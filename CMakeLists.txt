@@ -256,7 +256,7 @@ add_definitions(-m32)
 # add_library( hijack SHARED win32/arcan_target_win32.c )
 # target_link_libraries( hijack ${FSRV_LIBRARIES} )
 
- LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c getopt.h win32/sdl_win32_main.c arcan.rc.o)
+ LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c arcan.rc.o)
  LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan.rc.o)
 
  LIST(APPEND FSRV_LIBRARIES mingw32 ws2_32)
@@ -269,7 +269,7 @@ set(RESOURCES_DST "./resources")
 set(THEME_DST "./themes")
 set(TOOLS_DST "./tools")
 
-file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/*.dll")
+file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
 install(FILES ${_dlls} DESTINATION ${BIN_DST})
 install(FILES arcan.exe.manifest DESTINATION ${BIN_DST})
 install(FILES arcan_frameserver.exe.manifest DESTINATION ${BIN_DST})

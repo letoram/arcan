@@ -239,8 +239,8 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 			/* vfthresh    : tolerance (ms) in deviation from current time and PTS,
 			 * vskipthresh : tolerance (ms) before dropping a frame */
-			res->desc.vfthresh = ARCAN_MOVIE_DEFAULT_VTHRESH_WAIT;
-			res->desc.vskipthresh = ARCAN_MOVIE_DEFAULT_VTHRESH_SKIP / 2;
+			res->desc.vfthresh    = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_WAIT;
+			res->desc.vskipthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP / 2;
 			res->desc.samplerate = shmpage->frequency;
 			res->desc.channels = shmpage->channels;
 			res->desc.format = 0;
