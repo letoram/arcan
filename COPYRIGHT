@@ -1,0 +1,22 @@
+Arcan-FE is (c)opyright Björn Ståhl, 2011-2012
+publically licensed under the terms of the GPLv3 agreement (see LICENSE.TXT). 
+
+Code included in the project explicitly excluded from the above:
+win32/getopt_win32.c, (c) 2000 The NetBSD Foundation
+win32/SDL_main_win32.c, Public Domain (author, Sam Lantiga)
+SDLMain.*, Part of the SDL-1.2 dependency
+hidapi/*, (c) 2010 Alan Ott, FreeBSD License
+
+Furthermore, media included as part of the main distribution resources and themes,
+have individual licensing references (filename extension, .license) where applicable.
+
+Dependencies:
+ SDL-1.2, SDL-TTF, SDL_Image -- www.libsdl.org, LGPL
+ OpenGL -- www.opengl.org, SGI OpenGL License
+ OpenAL -- www.openal.org, 1.1 LGPL, > 1.1 proprietary
+ LUA 5.1 -- www.lua.org, MIT License
+ Ogg/Vorbis -- www.xiph.org, Individual BSD license, no linking restrictions. 
+ SQLite3 -- www.sqlite.org, Public Domain
+ FFMPEG -- www.ffmpeg-org, LGPL 2.1
+ BZip2 -- (implicitly used by some dependencies) BSD License
+ ZLib -- zlib license

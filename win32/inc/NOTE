@@ -1,0 +1,2 @@
+Dependencies (.dll, .lib, .h) are not included in the sourcetree,
+to build on MSYS/MinGW, populate with data from related projects (see CMakeLists.txt)

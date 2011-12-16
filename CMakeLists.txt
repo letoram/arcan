@@ -1,0 +1,333 @@
+# Arcan-fe, scriptable front-end engine
+#
+# Arcan-fe is the legal property of its developers, please refer
+# to the COPYRIGHT file distributed with this source distribution.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#
+# --- Project metadata
+PROJECT( arcan )
+
+cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
+set(MAJOR_VERSION 0 )
+set(MINOR_VERSION 1 )
+set(PATCH_LEVEL 0 )
+set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
+
+set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
+set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_EXCECUTE WORLD_READ)
+
+set( MAIN_LIBRARIES )
+
+# --- Step 1, Dependencies
+# paths / locations
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules)
+
+# os specific lib/dep lookup hacks
+if(APPLE)
+	set(CMAKE_FIND_FRAMEWORK "FIRST")
+# everytime I have to do something like this, I die a little on the inside. :'(
+elseif(WIN32)
+	add_definitions(-D__WINDOWS)
+	add_definitions(-DPOOR_GL_SUPPORT)
+
+	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/win32/lib)
+	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/win32/inc)
+	set(CMAKE_INCLUDE_PATH ${WININC} /usr/local/include)
+	set(CMAKE_LIBRARY_PATH ${WINLIB} /usr/local/lib)
+
+	set(SDL_INCLUDE_DIR ${WININC}\\SDL)
+	set(SDLTTF_INCLUDE_DIR ${WININC}\\SDL)
+	set(ZLIB_INCLUDE_DIR ${WININC})
+	set(BZIP2_INCLUDE_DIR ${WININC})
+	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
+	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
+	set(ZLIB_LIBRARY ${WINLIB}\\zlib1.dll)
+	set(LUA_LIBRARY ${WINLIB}\\lua5.1.lib)
+	set(SQLITE3_INCLUDE_DIR ${WININC})
+	set(SQLITE3_LIBRARY_RELEASE ${WINLIB}\\sqlite3.dll)
+	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
+	LIST(APPEND MAIN_LIBRARIES ${WINLIB}\\glew32s.lib)
+endif()
+
+FIND_PACKAGE ( SDL REQUIRED )
+FIND_PACKAGE ( SDL_image REQUIRED )
+FIND_PACKAGE ( SDL_ttf REQUIRED )
+FIND_PACKAGE ( OpenGL REQUIRED )
+FIND_PACKAGE ( OpenAL REQUIRED )
+FIND_PACKAGE ( Lua51 REQUIRED )
+FIND_PACKAGE ( BZip2 REQUIRED )
+FIND_PACKAGE ( ZLIB REQUIRED )
+FIND_PACKAGE ( FFMPEG REQUIRED )
+FIND_PACKAGE ( VORBIS REQUIRED )
+FIND_PACKAGE ( SQLITE3 REQUIRED )
+
+LIST (APPEND 
+	MAIN_LIBRARIES
+	${SDL_LIBRARY}
+	${SDLIMAGE_LIBRARY}
+	${SDLTTF_LIBRARY}
+	${LUA_LIBRARY}
+	${OPENGL_LIBRARY}
+	${OPENAL_LIBRARY}
+	${BZIP2_LIBRARIES}
+	${ZLIB_LIBRARY}
+	${ASSERT_LIBRARY}
+	${SQLITE3_LIBRARIES}
+	${VORBIS_LIBRARIES}
+)
+
+set (
+FSRV_LIBRARIES 
+	${FFMPEG_LIBRARIES}
+	${BZIP2_LIBRARIES}
+	${ZLIB_LIBRARY}
+)
+
+include_directories ( 
+	${LUA_INCLUDE_DIR}
+	${OPENAL_INCLUDE_DIR}
+	${SDL_INCLUDE_DIR}
+	${SDLIMAGE_INCLUDE_DIR}
+	${SDLTTF_INCLUDE_DIR}
+	${SQLITE3_INCLUDE_DIR}
+	${FFMPEG_INCLUDE_DIR}
+	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
+	${VORBIS_INCLUDE_DIR}
+)
+
+# removed, current code has some serious issues
+# if (MPG123_FOUND )
+# message("mpg123 found, enabling mp3 support.")
+# LIST(APPEND MAIN_LIBRARIES ${MPG123_LIBRARY} )
+# # LIST(APPEND include_directories ${MPG123_INCLUDE_DIR} )
+# add_definitions(-D_HAVE_MPG123)
+# endif(MPG123_FOUND)
+
+# --- Step 2, source files
+set (
+ SOURCES
+ arcan_event.c
+ arcan_lua.c
+ arcan_framequeue.c
+ arcan_frameserver_backend.c
+ arcan_main.c
+ arcan_db.c
+ arcan_video.c
+ arcan_audio.c
+ arcan_framequeue.h
+ arcan_event.h
+ arcan_lua.h
+ arcan_frameserver_backend.h
+ arcan_video.h
+ arcan_util.h
+ arcan_audio.h
+ arcan_target_launcher.h
+ arcan_general.c
+ arcan_led.c
+ arcan_led.h
+ arcan_general.h
+ arcan_db.h
+) 
+
+set (
+ FSRV_SOURCES
+ arcan_frameserver_backend.h
+ arcan_frameserver_decode.h
+ arcan_frameserver_decode.c
+ arcan_general.c
+)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+	add_definitions(-g -D_DEBUG)
+endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
+
+add_definitions(-std=c99 -D_BSD_SOURCE )
+
+# OS Specific modifications
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+#
+# the default paths / filenames for OSX default to
+# a bundle for the libs / app / frameserver
+# with ~/.arcan for other resources 
+#
+find_library(IOKIT NAMES IOKit)
+find_library(COREFOUNDATION NAMES CoreFoundation)
+LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
+LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
+LIST(APPEND SOURCES SDLMain.m hidapi/hid_mac.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
+
+# " probe " support not ready, idea is to sweep targets, look at dependencies with the hijack preloaded
+# and figure out which symbols are used and available 
+
+#add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
+#add_library(arcan_hijackprobe SHARED arcan_target_osx.c )
+#add_dependencies(arcan_hijackprobe arcan_target_probebackend)
+#set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
+
+add_library( arcan_hijack SHARED arcan_target_osx.c arcan_event.c)
+target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
+
+add_executable( arcan ${SOURCES} )
+
+# Packaging and installation. build a DMG which installs to a default
+# Application folder, with resources, themes and frameworks included.
+# 
+# The default search- order for resources/themes in the main app,
+# should be ENV -> home -> unix "share" -> bundle
+
+set(CPACK_BUNDLE_NAME Arcan)
+set(CPACK_BUNDLE_PLIST Info.plist)
+set(CPACK_BUNDLE_ICON Arcan.icns)
+# how should we select which frameworks to copy?
+
+set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
+set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
+set(DATA_INSTALL_DIR ".")
+add_definitions(-D__APPLE__ -D__UNIX)
+set(BIN_DST "../MacOS")
+set(THEME_DST "../Resources/themes")
+set(RESOURCES_DST "../Resources/resources")
+set(TOOLS_DST "../Resources/tools")
+
+install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
+
+SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
+
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+add_definitions(-D_POSIX_C_SOURCE -D_GNU_SOURCE -D__UNIX)
+
+
+LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
+LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
+LIST(APPEND FSRV_LIBRARIES -lrt)
+
+add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
+add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c)
+add_dependencies(arcan_hijack arcan_target_backend)
+target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
+
+# part of tools to troubleshoot / test hijack for a target (intended for the romman.rb)
+add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
+add_library(arcan_hijackprobe SHARED arcan_target_unix.c)
+add_dependencies(arcan_hijackprobe arcan_target_probebackend)
+set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
+
+set(BIN_DST bin)
+set(THEME_DST share/arcan/themes)
+set(RESOURCES_DST share/arcan/resources)
+set(TOOLS_DST share/arcan/tools)
+
+add_executable( arcan ${SOURCES})
+install(TARGETS arcan_hijack DESTINATION lib)
+
+# Debian / Ubuntu generator settings
+execute_process(COMMAND "dpkg" "--print-architecture" OUTPUT_VARIABLE DPKGARCH)
+string(REPLACE "\n" "" DPKGARCH "${DPKGARCH}")
+set(CPACK_GENERATOR "DEB")
+set(CPACK_SOURCE_GENERATOR "DEB")
+set(CPACK_SYSTEM_NAME ${DPKGARCH})
+set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION})
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Bjorn Stahl")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.3.1-6), libgcc1 (>= 1:3.4.2-12)")
+set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "ARCAN is a fully scriptable front-end for launching and managing emulators, games and other full-screen applications in a visually appealing and embeddable way.")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
+set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Packages;.*\\\\.cmake;install_manifest.txt;CMakeCache.txt;${CMAKE_PACKAGE_NAME}.*\\\\.(tar\\\\.gz|tar\\\\.bz2|deb);Makefile;")
+
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+add_definitions(-m32)
+
+# add_library( hijack SHARED win32/arcan_target_win32.c )
+# target_link_libraries( hijack ${FSRV_LIBRARIES} )
+
+ LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c getopt.h win32/sdl_win32_main.c arcan.rc.o)
+ LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan.rc.o)
+
+ LIST(APPEND FSRV_LIBRARIES mingw32 ws2_32)
+ LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32 ${WINLIB}/libvorbisfile.a ${WINLIB}/libvorbis.a ${WINLIB}/libogg.a)
+
+ add_executable( arcan WIN32 ${SOURCES})
+
+set(BIN_DST ".")
+set(RESOURCES_DST "./resources")
+set(THEME_DST "./themes")
+set(TOOLS_DST "./tools")
+
+file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/*.dll")
+install(FILES ${_dlls} DESTINATION ${BIN_DST})
+install(FILES arcan.exe.manifest DESTINATION ${BIN_DST})
+install(FILES arcan_frameserver.exe.manifest DESTINATION ${BIN_DST})
+install(FILES winicon.ico DESTINATION ${BIN_DST})
+
+# overwrite to reduce hassle on Vista++, only affects themes/resources
+set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_WRITE WORLD_READ)
+set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_EXCECUTE WORLD_WRITE WORLD_READ)
+
+set_target_properties(arcan PROPERTIES COMPILE_FLAGS "-Dmain=SDL_main -DREPLACE_GETOPT")
+SET(CPACK_GENERATOR ${CPACK_GENERATOR};NSIS)
+SET(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
+SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
+# SET(CPACK_PACKAGE_ICON "${CMAKE_CURRENT_SOURCE_DIR}/InstallIcon.bmp")
+
+SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
+
+SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
+			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\tools\\\\romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --database ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'") 
+
+SET(CPACK_NSIS_DELETE_ICONS_EXTRA "!insertmacro MUI_STARTMENU_GETFOLDER Application $MUI_TEMP
+				Delete '$SMPROGRAMS\\\\$MUI_TEMP\\\\Font Test.lnk'
+				Delete '$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
+	")
+
+SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
+
+INCLUDE(InstallRequiredSystemLibraries)
+
+endif()
+
+target_link_libraries( arcan ${MAIN_LIBRARIES} )
+
+add_executable( arcan_frameserver ${FSRV_SOURCES})
+set_target_properties(arcan_frameserver PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
+target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
+
+install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
+install(TARGETS arcan DESTINATION ${BIN_DST})
+
+install(DIRECTORY tools/ DESTINATION ${TOOLS_DST} PATTERN ".svn" EXCLUDE)
+install(DIRECTORY themes/ DESTINATION ${THEME_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
+install(DIRECTORY resources/ DESTINATION ${RESOURCES_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
+
+set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
+set(CPACK_PACKAGE_NAME "Arcan")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "")
+set(CPACK_PACKAGE_DESCRIPTION "")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
+
+set(CPACK_PACKAGE_VERSION_MAJOR ${MAJOR_VERSION} )
+set(CPACK_PACKAGE_VERSION_MINOR ${MINOR_VERSION} )
+set(CPACK_PACKAGE_VERSION_PATCH ${PATCH_LEVEL} )
+set(CPACK_PACKAGE_CONTACT "arcanfe@sourceforge.net")
+INCLUDE( CPack )
