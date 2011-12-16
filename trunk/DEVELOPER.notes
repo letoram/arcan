@@ -1,0 +1,31 @@
+Some notes and hints for building / patching / packaging the engine as such.
+
+[All]
+ * Remember to use the "default / standard" resources/themes when building packages, tools, resources, themes will be included in installation binaries as per the build system.
+   This includes .lua scripts emitted as part of keyconf / ledconf etc.
+
+[Win32]
+ * This is the more difficult environment to setup and compile for. 
+   Grab MinGW with MSYS, put the headers, .lib/.dll of all deps in relative ../external/win/32 or 64/lib and ../ext/win/32 or 64/inc, check CMakeLists.txt and set the path to 32 or 64 bit depending on what you want to build.
+ * Launch the MinGW shell, enter the src dir and make sure to run CMake with the MSYS Generator (-G MSYS Makefiles) and the rest (make, make package) will hopefully just work ;-)
+ * the arcan.rc.o (commited as binary) is simply from running windres.exe -i arcan.rc -o arcan.rc.o, current bugs with MSYS+CMake made the CMake support very hackish.
+ * the romman.exe wrapper used by the installer script, is from a Ruby193 gem called "ocra" that merges scripts, runtime, gems (nokogiri / sqlite3) into one compressed exe ball.
+   Do a c:\ruby193\bin\gem.exe install ocra and rebuild the package with c:\ruby193\bin\ruby.exe c:\ruby193\bin\ocra romman.rb romman_base.rb importers/* (dependency scanner isn't always spot on).
+ * console trace messages are notoriously dodgy, use -1 arcan.stdout -2 arcan.stderr as command-line arguments as a work-around.
+
+[OSX]
+ * Packaging on OSX is a bit of a pain, the current approach is (any CM guy, feel free to fix ;-))
+   quite simply to build a package using the make package, will lack dependencies (dylibs and Frameworks). 
+   The SDL stuff in particular is not included in a standard OSX installation.
+
+   so to build a redistributable bundle,
+   1. clear cmake cache, generate makefiles, patch cache- txt to point any /usr/local/lib stuff to be linked static. 
+   2. make package.
+   3. manually add the SDL frameworks to the package (some projects tend to leave them out, ScummVM etc. but with the impending mess of SDL1.3, well..)
+
+   Then comes the problem of "where should we keep themes / resources", and furthermore, how should the active theme
+   be specified? This will remain an open question until there is a userbase with an opinion on the matter ;-)
+
+[Linux]
+ * Nothing really new or surprising here -- huge dependency-tree,
+   ffmpeg, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL and quite possibly glew, cmake for building along with ruby (gems nokogiri and sqlite3).
