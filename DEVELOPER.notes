@@ -6,7 +6,7 @@ Some notes and hints for building / patching / packaging the engine as such.
 
 [Win32]
  * This is the more difficult environment to setup and compile for. 
-   Grab MinGW with MSYS, put the headers, .lib/.dll of all deps in relative ../external/win/32 or 64/lib and ../ext/win/32 or 64/inc, check CMakeLists.txt and set the path to 32 or 64 bit depending on what you want to build.
+   Grab MinGW with MSYS, put the headers, .lib/.dll of all deps in relative win32/lib, win32/inc and win32/distr (dll- files to be included in package).
  * Launch the MinGW shell, enter the src dir and make sure to run CMake with the MSYS Generator (-G MSYS Makefiles) and the rest (make, make package) will hopefully just work ;-)
  * the arcan.rc.o (commited as binary) is simply from running windres.exe -i arcan.rc -o arcan.rc.o, current bugs with MSYS+CMake made the CMake support very hackish.
  * the romman.exe wrapper used by the installer script, is from a Ruby193 gem called "ocra" that merges scripts, runtime, gems (nokogiri / sqlite3) into one compressed exe ball.
