@@ -2390,9 +2390,6 @@ static void draw_vobj(float x, float y, float x2, float y2, float zv, float* txc
 {
 	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
 
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
     glVertexPointer(2, GL_FLOAT, 0, verts);
     glTexCoordPointer(2, GL_FLOAT, 0, txcos);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -2405,7 +2402,9 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_TEXTURE_2D);
-
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	
 	arcan_vobject* world = &current_context->world;
 
 	float wlx = world->current.x, wly = world->current.y;
@@ -2516,6 +2515,8 @@ void arcan_video_refresh_GL(float lerp)
 		while ((current = current->next) != NULL);
 
 	glDisable(GL_TEXTURE_2D);
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 }
 
 void arcan_video_refresh(float tofs)

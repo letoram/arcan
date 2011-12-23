@@ -40,9 +40,6 @@ if(APPLE)
 	set(CMAKE_FIND_FRAMEWORK "FIRST")
 # everytime I have to do something like this, I die a little on the inside. :'(
 elseif(WIN32)
-	add_definitions(-D__WINDOWS)
-	add_definitions(-DPOOR_GL_SUPPORT)
-
 	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/win32/lib)
 	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/win32/inc)
 	set(CMAKE_INCLUDE_PATH ${WININC} /usr/local/include)
@@ -158,7 +155,6 @@ add_definitions(-std=c99 -D_BSD_SOURCE )
 
 # OS Specific modifications
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-
 #
 # the default paths / filenames for OSX default to
 # a bundle for the libs / app / frameserver
@@ -179,6 +175,7 @@ LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
 #add_dependencies(arcan_hijackprobe arcan_target_probebackend)
 #set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
 
+add_definitions(-D__APPLE__ -D__UNIX)
 add_library( arcan_hijack SHARED arcan_target_osx.c arcan_event.c)
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
@@ -198,19 +195,23 @@ set(CPACK_BUNDLE_ICON Arcan.icns)
 set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
 set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
 set(DATA_INSTALL_DIR ".")
-add_definitions(-D__APPLE__ -D__UNIX)
 set(BIN_DST "../MacOS")
 set(THEME_DST "../Resources/themes")
 set(RESOURCES_DST "../Resources/resources")
-set(TOOLS_DST "../Resources/tools")
 
 install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
+install(FILES arcan_romman.rb DESTINATION ${BIN_DST} FILE_PERMISSIONS 0755)
 
 SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
 
+#
+#
+#
+# ----------------------- LINUX --------------------------
+#
+#
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 add_definitions(-D_POSIX_C_SOURCE -D_GNU_SOURCE -D__UNIX)
-
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
@@ -222,19 +223,19 @@ add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c)
 add_dependencies(arcan_hijack arcan_target_backend)
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
 
-# part of tools to troubleshoot / test hijack for a target (intended for the romman.rb)
+# part of tools to troubleshoot / test hijack for a target (intended for the romman)
 add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
 add_library(arcan_hijackprobe SHARED arcan_target_unix.c)
 add_dependencies(arcan_hijackprobe arcan_target_probebackend)
 set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
 
-set(BIN_DST bin)
-set(THEME_DST share/arcan/themes)
-set(RESOURCES_DST share/arcan/resources)
-set(TOOLS_DST share/arcan/tools)
+set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
+set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
+set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES})
-install(TARGETS arcan_hijack DESTINATION lib)
+install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
 # Debian / Ubuntu generator settings
 execute_process(COMMAND "dpkg" "--print-architecture" OUTPUT_VARIABLE DPKGARCH)
@@ -250,11 +251,15 @@ set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "ARCAN is a fully scriptable front-end for 
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Packages;.*\\\\.cmake;install_manifest.txt;CMakeCache.txt;${CMAKE_PACKAGE_NAME}.*\\\\.(tar\\\\.gz|tar\\\\.bz2|deb);Makefile;")
 
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-add_definitions(-m32)
+#
+#
+#
+# ----------------------- WINDOWS --------------------------
+#
+#
 
-# add_library( hijack SHARED win32/arcan_target_win32.c )
-# target_link_libraries( hijack ${FSRV_LIBRARIES} )
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+ add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT)
 
  LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c arcan.rc.o)
  LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan.rc.o)
@@ -264,46 +269,47 @@ add_definitions(-m32)
 
  add_executable( arcan WIN32 ${SOURCES})
 
-set(BIN_DST ".")
-set(RESOURCES_DST "./resources")
-set(THEME_DST "./themes")
-set(TOOLS_DST "./tools")
+ set(BIN_DST ".")
+ set(RESOURCES_DST "./resources")
+ set(THEME_DST "./themes")
 
-file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
-install(FILES ${_dlls} DESTINATION ${BIN_DST})
-install(FILES arcan.exe.manifest DESTINATION ${BIN_DST})
-install(FILES arcan_frameserver.exe.manifest DESTINATION ${BIN_DST})
-install(FILES winicon.ico DESTINATION ${BIN_DST})
+ add_custom_command(OUTPUT arcan_romman.exe COMMAND ocra.bat --output romman.exe ./arcan_romman.rb ./resources/scripts/romman_base.rb)
+
+ file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
+ install(FILES ${_dlls} DESTINATION ${BIN_DST})
+ install(FILES arcan.exe.manifest DESTINATION ${BIN_DST})
+ install(FILES arcan_frameserver.exe.manifest DESTINATION ${BIN_DST})
+ install(FILES arcan_romman.exe DESTINATION ${BIN_DST})
+ install(FILES winicon.ico DESTINATION ${BIN_DST})
 
 # overwrite to reduce hassle on Vista++, only affects themes/resources
-set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_WRITE WORLD_READ)
-set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_EXCECUTE WORLD_WRITE WORLD_READ)
+# doesn't seem to have the desired effect however ..
+ set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_WRITE WORLD_READ)
+ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_EXCECUTE WORLD_WRITE WORLD_READ)
 
-set_target_properties(arcan PROPERTIES COMPILE_FLAGS "-Dmain=SDL_main -DREPLACE_GETOPT")
-SET(CPACK_GENERATOR ${CPACK_GENERATOR};NSIS)
-SET(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
-SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
-# SET(CPACK_PACKAGE_ICON "${CMAKE_CURRENT_SOURCE_DIR}/InstallIcon.bmp")
+ set_target_properties(arcan PROPERTIES COMPILE_FLAGS "-Dmain=SDL_main -DREPLACE_GETOPT")
+ SET(CPACK_GENERATOR ${CPACK_GENERATOR};NSIS)
+ SET(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
+ SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
 
-SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
-
-SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 
+ SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
+ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
-			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\tools\\\\romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --database ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
+			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\tools\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --database ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'") 
 
-SET(CPACK_NSIS_DELETE_ICONS_EXTRA "!insertmacro MUI_STARTMENU_GETFOLDER Application $MUI_TEMP
+# This doesn't seem to generate the proper undelete (ticket 0.1)
+ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "!insertmacro MUI_STARTMENU_GETFOLDER Application $MUI_TEMP
 				Delete '$SMPROGRAMS\\\\$MUI_TEMP\\\\Font Test.lnk'
 				Delete '$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
 	")
 
-SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
-
-INCLUDE(InstallRequiredSystemLibraries)
+ SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
+ INCLUDE(InstallRequiredSystemLibraries)
 
 endif()
 
@@ -316,9 +322,8 @@ target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 
-install(DIRECTORY tools/ DESTINATION ${TOOLS_DST} PATTERN ".svn" EXCLUDE)
-install(DIRECTORY themes/ DESTINATION ${THEME_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
-install(DIRECTORY resources/ DESTINATION ${RESOURCES_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ DESTINATION ${THEME_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION ${RESOURCES_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
 
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
 set(CPACK_PACKAGE_NAME "Arcan")

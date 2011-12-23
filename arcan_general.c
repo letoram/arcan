@@ -423,7 +423,7 @@ static int sem_timedwaithack(sem_handle semaphore, int msecs)
 		}
 		
 	}
-	
+
 	return false;
 }
 
