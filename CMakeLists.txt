@@ -262,7 +262,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT)
 
  LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c arcan.rc.o)
- LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan.rc.o)
+ LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan.rc.o arcan_romman.exe)
 
  LIST(APPEND FSRV_LIBRARIES mingw32 ws2_32)
  LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32 ${WINLIB}/libvorbisfile.a ${WINLIB}/libvorbis.a ${WINLIB}/libogg.a)
@@ -273,7 +273,13 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  set(RESOURCES_DST "./resources")
  set(THEME_DST "./themes")
 
- add_custom_command(OUTPUT arcan_romman.exe COMMAND ocra.bat --output romman.exe ./arcan_romman.rb ./resources/scripts/romman_base.rb)
+ # there must be a sane way to do this and actually have it work ...
+ add_custom_command(
+	OUTPUT arcan_romman.exe
+	DEPENDS ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
+	COMMAND ocra
+	ARGS --output arcan_romman.exe ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
+)
 
  file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
  install(FILES ${_dlls} DESTINATION ${BIN_DST})
@@ -293,14 +299,18 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
 
  SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
- SET(CPACK_NSIS_CREATE_ICONS_EXTRA "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 
+ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
+			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Getting Started.lnk' '\$INSTDIR\\\\resources\\\\doc\\\\quickstart.pdf'
+			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
                CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
-			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\tools\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --database ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'") 
+			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
+               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
+")
 
 # This doesn't seem to generate the proper undelete (ticket 0.1)
  SET(CPACK_NSIS_DELETE_ICONS_EXTRA "!insertmacro MUI_STARTMENU_GETFOLDER Application $MUI_TEMP

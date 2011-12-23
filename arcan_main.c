@@ -32,6 +32,7 @@
 #include <math.h>
 #include <limits.h>
 #include <errno.h>
+#include <time.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -128,7 +129,8 @@ int main(int argc, char* argv[])
 	int height = 480;
 	int ch;
 	char* dbfname = "arcandb.sqlite";
-	
+	srand( time(0) ); 
+
 /* start this here since some SDL builds have the nasty (albeit understandable) habit of 
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
@@ -162,6 +164,7 @@ int main(int argc, char* argv[])
 				break;
 			case 'g' :
 				luadebug = true;
+				srand(0xdeadbeef); 
 				break;
 			case 'r' :
 					scalemode = strtol(optarg, NULL, 10);
