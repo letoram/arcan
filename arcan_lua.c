@@ -69,7 +69,7 @@ int arcan_lua_zapresource(lua_State* ctx)
 {
 	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
 
-	if (path && unlink(path) > 0)
+	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, false);
 	else
 		lua_pushboolean(ctx, true);
