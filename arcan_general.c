@@ -427,7 +427,7 @@ static int sem_timedwaithack(sem_handle semaphore, int msecs)
 	return false;
 }
 
-# if __APPLE_
+# if __APPLE__
 int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 {
 	return sem_timedwaithack(semaphore, msecs);

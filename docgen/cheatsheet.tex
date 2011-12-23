@@ -1,0 +1,298 @@
+\documentclass[10pt,landscape]{article}
+\usepackage{multicol}
+\usepackage{calc}
+\usepackage{ifthen}
+\usepackage[landscape]{geometry}
+\usepackage{amsmath,amsthm,amsfonts,amssymb}
+\usepackage{color,graphicx,overpic}
+\usepackage{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage{latexsym}
+
+\pdfinfo{
+  /Title Arcan LUA API cheat sheet
+  /Creator (Tex)
+  /Producer (pdfTeX 1.40.0)
+  /Author (Björn Ståhl)
+  /Subject (Computing)
+  /Keywords (api, visualization, frontend)}
+
+% This sets page margins to .5 inch if using letter paper, and to 1cm
+% if using A4 paper. (This probably isn't strictly necessary.)
+% If using another size paper, use default 1cm margins.
+\ifthenelse{\lengthtest { \paperwidth = 11in}}
+    { \geometry{top=.5in,left=.5in,right=.5in,bottom=.5in} }
+    {\ifthenelse{ \lengthtest{ \paperwidth = 297mm}}
+        {\geometry{top=1cm,left=1cm,right=1cm,bottom=1cm} }
+        {\geometry{top=1cm,left=1cm,right=1cm,bottom=1cm} }
+    }
+
+% Turn off header and footer
+\pagestyle{empty}
+
+% Redefine section commands to use less space
+\makeatletter
+\renewcommand{\section}{\@startsection{section}{1}{0mm}%
+                                {-1ex plus -.5ex minus -.2ex}%
+                                {0.5ex plus .2ex}%x
+                                {\normalfont\large\bfseries}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{0mm}%
+                                {-1explus -.5ex minus -.2ex}%
+                                {0.5ex plus .2ex}%
+                                {\normalfont\normalsize\bfseries}}
+\renewcommand{\subsubsection}{\@startsection{subsubsection}{3}{0mm}%
+                                {-1ex plus -.5ex minus -.2ex}%
+                                {1ex plus .2ex}%
+                                {\normalfont\small\bfseries}}
+\makeatother
+
+% Define BibTeX command
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+% Don't print section numbers
+\setcounter{secnumdepth}{0}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt plus 0.5ex}
+
+%My Environments
+\newtheorem{example}[section]{Example}
+% -----------------------------------------------------------------------
+
+\begin{document}
+\raggedright
+\footnotesize
+\begin{multicols}{3}
+
+% multicol parameters
+% These lengths are set only within the two main columns
+%\setlength{\columnseprule}{0.25pt}
+\setlength{\premulticols}{1pt}
+\setlength{\postmulticols}{1pt}
+\setlength{\multicolsep}{1pt}
+\setlength{\columnsep}{2pt}
+
+\begin{center}
+     \Large{\underline{ARCAN LUA API}} \
+\end{center}
+
+\section{Entry points}
+	\emph{All entry-points are prefixed with themename\_}.\\
+
+	\textbf{clock\_pulse}\emph{()} \emph{invoked at a fixed rate (default: once every 25ms)}.\\
+	\textbf{input}\emph{(inputtable)} \emph{see IOTable}.\\
+	\textbf{video\_event}\emph{(source, argtbl)}, source:vobjid, argtbl:vidtable format \emph{resizes, completed transformations, ...}.\\
+	\textbf{themename}\emph{()}	\emph{invoked directly after initializing video, audio, events, ...}.\\
+	\textbf{on\_show}\emph{()} \emph{invoked after themename}.\\
+
+	\emph{All functions prefixed with * are considered experimental.}\\
+\section{Resource}
+		\textbf{resource}\emph{(name : searchmask(THEME\_RESOURCE, SHARED\_RESOURCE))} $\rightarrow$ (exists ? true or false).\\
+		\textbf{zap\_resource}\emph{(name)} $\rightarrow$ true or false, locates and deletes the referenced resource (in theme only).\\
+	    \textbf{open\_rawresource)}\emph{(resource)} $\rightarrow$ open resource for write (only one open allowed, in theme only).\\
+		\textbf{write\_rawresource)}\emph{(line)}, write line to opened rawresource.\\
+		\textbf{close\_rawresource)}\emph{()}, close/flush any opened rawresource.\\
+
+\section{Target}
+		\textbf{launch\_target}\emph{(gametitle, launchmode)}, LAUNCH\_INTERNAL ? $\rightarrow$ vid, aid.\\
+		\textbf{target\_input}\emph{(inputtable)}, inject an event into the running target.\\
+		\textbf{suspend\_target}\emph{(tgtvid)}, attempt to suspend target.\\
+		\textbf{resume\_target}\emph{(tgtvid)}, attempt to resume target.\\
+
+\section{System}
+	
+	\textbf{kbd\_repeat}\emph{(rate (ms))} $\rightarrow$ enable keyboard I/O generating repeating events.\\
+	\textbf{system\_load}\emph{(resource)} $\rightarrow$ load script and return function reference.\\
+	\textbf{shutdown}\emph{()} $\rightarrow$ kill targets, unload resources and shutdown.\\
+
+\section{Database}
+	\textbf{*store\_key}\emph{(key, value)} $\rightarrow$ store key/value (strings) in database as theme-specific table.\\
+	\textbf{*get\_key}\emph{(key)} $\rightarrow$ get value (or nil) from theme-specific database table.\\
+	\textbf{game\_cmdline}\emph{(title)} $\rightarrow$ generate execstr for a specific game.\\
+	\textbf{list\_games}\emph{(filtertbl)} $\rightarrow$ query database for games matching filter, empty table for all.\\
+	\textbf{list\_targets}\emph{()} $\rightarrow$ get a list of all targets.\\
+	\textbf{game\_info}\emph{(title)} $\rightarrow$ get a gametable for title (or nil)\\
+	\textbf{game\_family}\emph{(title)} $\rightarrow$ get the family for a title (or nil)\\
+	\textbf{game\_genres}\emph{()} $\rightarrow$ list all distinct (unique) genres / subgenres.\\
+
+\section{Audio}
+	\textbf{stream\_audio}\emph{(resource)} $\rightarrow$ returns an aid for a stream (or nil)\\
+	\textbf{play\_audio}\emph{(aid)} $\rightarrow$ start decode/buffer/playback for a stream\\
+	\textbf{pause\_audio}\emph{(aid)} $\rightarrow$ try and pause (slightly unstable) audio stream playback.\\
+	\textbf{delete\_audio}\emph{(aid)} $\rightarrow$ deallocate and stop playback (slight delay due to buffering).\\
+	\textbf{play\_sample}\emph{(resource, [gain])} $\rightarrow$ load and immediately play sample (wav) with optional gain.\\
+	\textbf{audio\_gain}\emph{(aid, newgain (0..1), [time])} $\rightarrow$ set or fade gain.\\
+
+\section{Video}
+	\textbf{load\_image}\emph{(resource, [initial zval (0..255)])} $\rightarrow$ vid\\
+	\textbf{delete\_image}\emph{(vid)} $\rightarrow$ immediately delete and deallocate (won't emit event).\\
+	\textbf{show\_image}\emph{(vid)} $\rightarrow$ wrapper for blend\_image(vid, 1.0).\\
+	\textbf{hide\_image}\emph{(vid)} $\rightarrow$ wrapper for blend\_image(vid, 0.0).\\
+	\textbf{move\_image}\emph{(vid, absx (px), absy (px), [time])} $\rightarrow$ reposition to absolute coordinates (absx, absy).\\
+	\textbf{rotate\_image}\emph{(vid, absangz, [time])} $\rightarrow$.\\
+	\textbf{scale\_image}\emph{(vid, xfact, yfact, [time])} $\rightarrow$ relative scale (1.0 == initial size), xfact or yfact zero = force aspect.\\
+	\textbf{resize\_image}\emph{(vid, width (px), height (px), [time])} $\rightarrow$ absolute resize, width or height zero = force aspect.\\
+	\textbf{blend\_image}\emph{(vid, opacity (0..1), [time])}\\
+	\textbf{order\_image}\emph{(vid, newz)} $\rightarrow$ 0 = further back, 255 = foreground.\\
+	\textbf{instance\_image}\emph{(vid)} $\rightarrow$ clone the vid (share resources, child dies if vid dies), returns newvid.\\
+	\textbf{*link\_image}\emph{(vid, parent)} $\rightarrow$ bind vid to parent coordinate system.\\
+	\textbf{expire\_image}\emph{(vid, lifetime)} $\rightarrow$ invoke delete\_image after lifetime ticks, emits event.\\
+	\textbf{reset\_image\_transform}\emph{(vid)} $\rightarrow$ remove all queued transformations.\\
+	\textbf{instant\_image\_transform}\emph{(vid)} $\rightarrow$ force all transformations, regardless of time.\\
+	\textbf{image\_mask\_toggle}\emph{(vid, enumint)} $\rightarrow$ toggle relative value lookup for a specific property.\\
+	\textbf{image\_mask\_set}\emph{(vid, enumint)}\\
+	\textbf{image\_mask\_clear}\emph{(vid, enumint)}\\
+	\textbf{image\_surface\_properties}\emph{(vid, [time])} $\rightarrow$ returns current (or future) surface properties as a surftbl\\
+	\textbf{image\_surface\_initial\_properties}\emph{(vid)} $\rightarrow$ returns initial (at load time) surface properties as a surftbl\\
+	\textbf{*image\_program}\emph{(vid, vertprog, fragprog)} $\rightarrow$ load and associate a shader (GPU program).\\
+	\textbf{render\_text}\emph{(formatstr)} $\rightarrow$ returns vid and table of lineheights.\\
+	\textbf{fill\_surface}\emph{(width (px), height (px), r (0..255), g, b)} $\rightarrow$ generate a single-colored vid.\\
+	\textbf{force\_image\_blend}\emph{(vid, boolint)} $\rightarrow$ always alpha-blend (transparent images).\\
+	\textbf{*push\_video\_context}\emph{()} $\rightarrow$ add to context stack (if there's any free stack slots).\\
+	\textbf{*pop\_video\_context}\emph{()} $\rightarrow$ deallocate current context (won't emit events) and load pushed context.\\
+
+\section{Frameserver}
+	\textbf{play\_movie}\emph{(vid)} $\rightarrow$ start playback of preloaded movie.\\
+	\textbf{load\_movie}\emph{(resource, [loop])} $\rightarrow$ launch frameserver, return vid,aid. \\
+	\textbf{pause\_movie}\emph{(vid)} $\rightarrow$ unreliable (due to openAL). \\
+	\textbf{resume\_movie}\emph{(vid)} $\rightarrow$ unreliable (due to openAL). \\
+	
+\section{Collision / Picking}
+	\textbf{image\_hit}\emph{(vid, x, y)} $\rightarrow$ boolnum if x, y is on pickable image vid.\\
+	\textbf{pick\_items}\emph{(x, y)} $\rightarrow$ returns ary of vids at x, y.\\
+
+\section{LED}
+	\textbf{set\_led}\emph{(ctrl, led, state)} $\rightarrow$ toggle led on or off.\\
+	\textbf{*led\_intensity}\emph{(ctrl, led, val)} $\rightarrow$ untested, for advanced led controllers.\\
+	\textbf{*set\_led\_rgb}\emph{(ctrl, led, rv, gv, bv)} $\rightarrow$ untested, for advanced led controllers.\\
+	\textbf{controller\_leds}\emph{(ctrl)} $\rightarrow$ number of leds associated with a controller.\\
+
+\section{IMGTable format}
+	\emph{width}, \emph{height}, \emph{x}, \emph{y}, \emph{angle}, \emph{opacity}
+
+\section{GameTable format}
+    \emph{gameid}, \emph{targetid}, \emph{title}, \emph{genre}, \emph{subgenre}, \emph{setname}, \emph{buttons}, \emph{manufacturer}, \emph{players}, \emph{input}, \emph{year}
+
+\section{IOTable format}
+    kind :- analog, digital\\
+	(kind == analog), devid, subid, source (mouse, joystick, ...)\\
+	(kind == digital), translated (bool), active (bool), devid, subid\\
+	(kind == digital, translated:true) number, keysym, modifiers\\ 
+
+\section{GameFilter}
+	fill the table with desired options; \\
+	year (number or 0), \\
+	title (string), \\
+	genre (string), \\
+	subgenre (string), \\
+	players (number), \\
+	buttons (number) \\	
+\end{multicols}
+\pagebreak
+
+\section{Global Variables}
+	\begin{itemize}
+		\item VRESW (num) set to the window/display width.
+		\item VRESH (num) set to the window/display height.
+		\item VCTXVIDLIMIT (num) vid stack context size.
+		\item WORLDID (num) \emph{vid} of a special object that refers to the outmost coordinate system.
+		\item BADID (num) functions returning a vid can also return BADID if the function failed for some reason.
+		\item CLOCK (num) built-in clock rate (default, 25hz).
+		\item JOYSTICKS (num) number of detected (and opened) joysticks.
+		\item LEDCONTROLLERS (num) number of detected LED controllers.
+		\item THEME\_RESOURCE (num) mask value for specifying themepath/themename/ as a search-path for resources.
+		\item SHARED\_RESOURCE (num) mask value for specifying resourcepath as a search-path for resources.
+		\item API\_VERSION\_MAJOR (num)
+		\item API\_VERSION\_MINOR (num)
+		\item LAUNCH\_EXTERNAL (num) mask value for specifying that the target should be launched in external mode.
+		\item LAUNCH\_INTERNAL (num) mask value for specifying that the target should be launched in internal mode.
+		\item MASK\_ORIENTATION, MASK\_OPACITY, MASK\_POSITION, MASK\_SCALE, MASK\_UNPICKABLE (num)
+		\item THEMENAME (text) name of the currently loaded theme.
+		\item RESOURCEPATH, THEMEPATH, BINPATH, LIBPATH (text)
+		\item INTERNALMODE (text) estimated level of internal launch support.
+		\item NOW (num) used to specify that a transformation (move, scale, blend, ...) should happen immediately. 
+	\end{itemize}
+\pagebreak
+
+\section{Planned Features}
+There's no strict schedule for these features currently. A lot will depend on community interest but the main priority
+is stability for the currently available API / feature-set. 
+
+	\subsection{Input}
+	\begin{itemize}
+        \item (RGB+intensity) LED controllers (don't have access to any currently).
+		\item scripts to convert from keyconfig scripts to mame etc.
+        \item Manymice support (includes the internal target launcher).
+		\item Wiimote support.
+		\item Touchscreen support.
+	\end{itemize}
+
+	\subsection{System}
+	\begin{itemize}
+		\item Replace IPC- esque commands for event- serialization using ProtocolBuffers.
+		\item Yield alternative for SDL\_delay in framequeue on EAGAIN.
+		\item Android port. 
+		\item Support- library for cooperative internal-launch for more efficient / less aggressive internal-launch, pause- functions etc. with possibly patches for mplayer, mame, mess, ...
+		\item Collision- / Intersection- tests for VIDs, basic 2d physics?
+	\end{itemize}
+
+    \subsection{OSX}
+    \begin{itemize}
+		\item Seems like a priority inversion problem when going into fullscreen / full-windowed mode, makes internal launch / movies slow.
+		\item Full- screen options don't work at all on Lion (SDL- problem as well).
+		\item Focus isn't properly moved between main window / external target and back (should use launch- hidden).
+		\item Internal launch- mode drops focus.
+		\item Overall "design" does not fit well with 'Bundle' style.
+    \end{itemize}
+	
+	\subsection{Linux}
+	\begin{itemize}
+		\item Build-system cleanup and package maintenance (rpm, deb, ...)
+	\end{itemize}
+	
+	\subsection{Windows}
+	\begin{itemize}
+		\item Internal launch-mode missing.
+	\end{itemize}
+	
+	\subsection{Video}
+	\begin{itemize}
+		\item Multi-frame object (animations, important one).
+		\item Direct mng support as animation format alternative to multiple single image files.
+		\item Proper orientation (3 axis, quat->matrix) with interpolation.
+		\item Two-sided objects (requires orientation + multiframe + updated picking).
+		\item More advanced frameserver support (webcam, ...).
+		\item Stream-export vid+aid (or world) to ffmpeg as external encoder / frameserver.
+		\item \emph{halign} (centered, left, right) and \emph{valign} (top, middle, bottom with multiline-multisize) text support.
+	\end{itemize}
+	
+	\subsection{Audio}
+		\begin{itemize}
+			\item slightly more format support, perhaps move to an audio\_frameserver.
+			\item mpd client support.
+			\item speex chat.
+			\item scriptable synthesis.
+		\end{itemize}
+		
+	\subsection{Database}
+	\begin{itemize}
+		\item Target filters
+		\item Game-/Target- based key/value tagging (current is only theme based)
+		\item Launch history.
+		\item Datamodel, support-scripts for movies / tv-series.
+	\end{itemize}
+	
+	\subsection{LUA}
+	\begin{itemize}
+		\item Pass command-line arguments to theme() function.
+		\item Better scheduling / preemption of lua- execution. Event multiplexing.
+		\item Working sandboxing, currently there's directory traversal in resource calls.
+		\item Restricted online features (gamelists, highscores, playcounts, ...)
+	\end{itemize}
+	
+% You can even have references
+\rule{0.3\linewidth}{0.25pt}
+\scriptsize
+
+\end{document}
+
