@@ -4,6 +4,8 @@
     The WinMain function -- calls your program's main() function
 */
 
+#define NO_STDIO_REDIRECT
+
 #include <stdio.h>
 #include <stdlib.h>
 

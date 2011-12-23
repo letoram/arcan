@@ -98,9 +98,9 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 void ffmpeg_cleanup(arcan_ffmpeg_context* ctx)
 {
 	if (ctx){
-		av_free(ctx->pframe);
 		free(ctx->audio_buf);
 		free(ctx->video_buf);
+		av_free(ctx->pframe);
 	}
 }
 

@@ -1,8 +1,9 @@
 /* stdlib */
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <strings.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
@@ -29,6 +30,18 @@ char* arcan_libpath;
 char* arcan_themepath;
 char* arcan_binpath;
 char* arcan_themename;
+
+/*void inval_param_handler(const wchar_t* expression,
+   const wchar_t* function, 
+   const wchar_t* file, 
+   unsigned int line, 
+   uintptr_t pReserved)
+{
+   wprintf(L"Invalid parameter detected in function %s."
+            L" File: %s Line: %d\n", function, file, line);
+   wprintf(L"Expression: %s\n", expression);
+   abort();
+}*/
 
 static bool parent_alive()
 {
@@ -96,11 +109,17 @@ int main(int argc, char* argv[])
 {
 	arcan_ffmpeg_context* vidctx;
 
+#ifndef _DEBUG
+/*	_set_invalid_parameter_handler(inval_param_handler) */
+	DWORD dwMode = SetErrorMode(SEM_NOGPFAULTERRORBOX);
+	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
+#endif
+
 	if (2 != argc)
 		return 1;
 		
 	char* fname = argv[0];
-	HANDLE shmh = (HANDLE) atoi(argv[1]);
+	HANDLE shmh = (HANDLE) strtoul(argv[1], NULL, 10);
 	
 	/* create a window, hide it and transfer the hwnd in the SHM,
 	 * use this HWND for sleeping / waking between frame transfers */
