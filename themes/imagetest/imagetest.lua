@@ -50,6 +50,7 @@ function zordervidlim(load)
 			 resize_image(newid, 64, 64, 0);
 		else
 			newid = fill_surface(64, 64, step * i, step * i, 255);
+
 			order_image(newid, math.floor ( i * step ));
 			for j=1,254 do
 				rotate_image(newid, math.random(360), 10);

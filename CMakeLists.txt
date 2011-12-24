@@ -327,7 +327,7 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetes'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
 		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
@@ -335,6 +335,7 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
 ")
 
 SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
+		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Welcome).lnk' 
 		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Getting Started.lnk'
 		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Font Test.lnk'
