@@ -248,7 +248,7 @@ int main(int argc, char* argv[])
 		arcan_led_init();
 
 		/* export what we know and load theme */
-		lua_State* luactx = lua_open();
+		lua_State* luactx = luaL_newstate();
 
 		/* prevent some functions (particularly file-system related) from being loaded,
 		 * not that the few "sandboxing"- options in LUA are particularly effective */

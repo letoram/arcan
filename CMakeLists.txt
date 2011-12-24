@@ -23,7 +23,7 @@ PROJECT( arcan )
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 1 )
-set(PATCH_LEVEL 0 )
+set(PATCH_LEVEL 1 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -52,7 +52,8 @@ elseif(WIN32)
 	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
 	set(ZLIB_LIBRARY ${WINLIB}\\zlib1.dll)
-	set(LUA_LIBRARY ${WINLIB}\\lua5.1.lib)
+	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
+	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
 	set(SQLITE3_INCLUDE_DIR ${WININC})
 	set(SQLITE3_LIBRARY_RELEASE ${WINLIB}\\sqlite3.dll)
 	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
@@ -180,6 +181,7 @@ add_library( arcan_hijack SHARED arcan_target_osx.c arcan_event.c)
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )
+add_executable( arcan_frameserver ${FSRV_SOURCES})
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
@@ -234,6 +236,7 @@ set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES})
+add_executable( arcan_frameserver ${FSRV_SOURCES})
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
@@ -261,19 +264,35 @@ set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Pa
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT)
 
- LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c arcan.rc.o)
- LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan.rc.o arcan_romman.exe)
+ LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c)
+ LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan_frameserver_resource.obj)
 
  LIST(APPEND FSRV_LIBRARIES mingw32 ws2_32)
  LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32 ${WINLIB}/libvorbisfile.a ${WINLIB}/libvorbis.a ${WINLIB}/libogg.a)
-
- add_executable( arcan WIN32 ${SOURCES})
 
  set(BIN_DST ".")
  set(RESOURCES_DST "./resources")
  set(THEME_DST "./themes")
 
- # there must be a sane way to do this and actually have it work ...
+ add_custom_command(
+	OUTPUT arcan_resource.obj
+	DEPENDS arcan.rc
+	COMMAND windres.exe
+	ARGS -o arcan_resource.obj
+	-iarcan.rc
+)
+
+ add_custom_command(
+	OUTPUT arcan_frameserver_resource.obj
+	DEPENDS arcan_frameserver.rc
+	COMMAND windres.exe
+	ARGS -o arcan_frameserver_resource.obj
+	-iarcan_frameserver.rc
+)
+
+ # there must be a sane way to do this and actually have it work,
+ # add_custom_target on the output seems to do absolutely nothing. 
+
  add_custom_command(
 	OUTPUT arcan_romman.exe
 	DEPENDS ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
@@ -281,10 +300,11 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	ARGS --output arcan_romman.exe ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
 )
 
+ add_executable( arcan WIN32 ${SOURCES} arcan_resource.obj arcan_romman.exe)
+ add_executable( arcan_frameserver ${FSRV_SOURCES})
+
  file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
  install(FILES ${_dlls} DESTINATION ${BIN_DST})
- install(FILES arcan.exe.manifest DESTINATION ${BIN_DST})
- install(FILES arcan_frameserver.exe.manifest DESTINATION ${BIN_DST})
  install(FILES arcan_romman.exe DESTINATION ${BIN_DST})
  install(FILES winicon.ico DESTINATION ${BIN_DST})
 
@@ -297,26 +317,36 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  SET(CPACK_GENERATOR ${CPACK_GENERATOR};NSIS)
  SET(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
  SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
+ SET(CPACK_PACKAGE_INSTALL_DIRECTORY "Arcan")
+# SET(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}\\\\InstallIcon.bmp") -- horrible scaling
 
- SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
- SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
-			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Getting Started.lnk' '\$INSTDIR\\\\resources\\\\doc\\\\quickstart.pdf'
-			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
-			   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
-               CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
+SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
+SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
+		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Getting Started.lnk' '\$INSTDIR\\\\resources\\\\doc\\\\quickstart.pdf'
+		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetes'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
+		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
 ")
 
-# This doesn't seem to generate the proper undelete (ticket 0.1)
- SET(CPACK_NSIS_DELETE_ICONS_EXTRA "!insertmacro MUI_STARTMENU_GETFOLDER Application $MUI_TEMP
-				Delete '$SMPROGRAMS\\\\$MUI_TEMP\\\\Font Test.lnk'
-				Delete '$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
-	")
+SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
+		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Getting Started.lnk'
+		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Font Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Sound Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Image Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Movie Test.lnk'
+		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Build DB.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Dishwater).lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Space).lnk'
+")
+
 
  SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
  INCLUDE(InstallRequiredSystemLibraries)
@@ -325,7 +355,6 @@ endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
 
-add_executable( arcan_frameserver ${FSRV_SOURCES})
 set_target_properties(arcan_frameserver PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
