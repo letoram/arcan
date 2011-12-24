@@ -82,19 +82,6 @@ static const struct option longopts[] = {
 	{ NULL, no_argument, NULL, 0 }
 };
 
-/* sandboxing needs some overhaul,
- * should really block all filesystem operations,
- * along with sockets and "possible extensions" */
-static const luaL_Reg lualibs[] = {
-  {"", luaopen_base},
-  {LUA_LOADLIBNAME, luaopen_package},
-  {LUA_TABLIBNAME, luaopen_table},
-  {LUA_STRLIBNAME, luaopen_string},
-  {LUA_MATHLIBNAME, luaopen_math},
-  {LUA_DBLIBNAME, luaopen_debug},
-  {NULL, NULL}
-};
-
 void usage()
 {
 	printf("usage:\narcan [-whfmsptoldg12] [theme]\n"
@@ -250,15 +237,7 @@ int main(int argc, char* argv[])
 		/* export what we know and load theme */
 		lua_State* luactx = luaL_newstate();
 
-		/* prevent some functions (particularly file-system related) from being loaded,
-		 * not that the few "sandboxing"- options in LUA are particularly effective */
-		const luaL_Reg *lib = lualibs;
-		for (; lib->func; lib++) {
-			lua_pushcfunction(luactx, lib->func);
-			lua_pushstring(luactx, lib->name);
-			lua_call(luactx, 1, 0);
-		}
-		
+		luaL_openlibs(luactx);
 		arcan_lua_exposefuncs(luactx, luadebug);
 		arcan_lua_pushglobalconsts(luactx);
 		int err_func = 0;

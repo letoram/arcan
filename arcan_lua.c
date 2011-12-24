@@ -1527,17 +1527,6 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 
 	lua_ctx_store.debug = debugfuncs;
 
-/* be wary of lines and comments following BEGIN LUA SYMTABLE and END LUA SYMTABLE 
- * as they are also used to generate the cheat- sheet, etc. 
- * formatted according to:
- * category: label
- * item: symbol,arg1,arg2,arg3,returnval:comments
- * constant: symbol,value
- * table: name,arg,descr,arg,descr,... 
- * optional (can be nil) args marked with [ ], * prefix marks unstable/experimental */
-	
-/* BEGIN LUA SYMTABLE */
-
 /* category: resource */
 /* item: resource,name,[searchmask : THEME_RESOURCE, SHARED_RESOURCE], boolean */
 	lua_register(ctx, "resource", arcan_lua_resource);
@@ -1818,7 +1807,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: THEMENAME,string */
 	arcan_lua_setglobalstr(ctx, "THEMENAME", arcan_themename);
 
-/* constant: RESOURCEPATH,tring */
+/* constant: RESOURCEPATH,string */
 	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath);
 
 /* constant: THEMEPATH,string */
@@ -1839,5 +1828,3 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: NOW, int */
 	arcan_lua_setglobalint(ctx, "NOW", 0);
 }
-
-/* END LUA SYMTABLE */
