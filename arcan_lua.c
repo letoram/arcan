@@ -19,6 +19,10 @@
  *
  */
 
+#ifdef LUA_51
+	#define lua_rawlen(x, y) lua_objlen(x, y)
+#endif
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -401,7 +405,7 @@ int arcan_lua_settxcos(lua_State* ctx)
 
 	if (arcan_video_retrieve_mapping(id, txcos) == ARCAN_OK){
 		luaL_checktype(ctx, 2, LUA_TTABLE);
-		int ncords = lua_objlen(ctx, -1);
+		int ncords = lua_rawlen(ctx, -1);
 		if (ncords < 8){
 			fprintf(stderr, "Warning: lua_settxcos(), Too few elements in txco tables (expected 8, got %i)\n", ncords);
 			return 0;
@@ -719,7 +723,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 		
 	/*  sweep the samples subtable, add as many as present (or possible) */
 		lua_getfield(ctx, 1, "samples");
-		size_t naxiss = lua_objlen(ctx, -1);
+		size_t naxiss = lua_rawlen(ctx, -1);
 		for (int i = 0; i < naxiss && i < sizeof(ev.data.io.input.analog.axisval); i++){
 			lua_rawgeti(ctx, -1, i+1);
 			ev.data.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
@@ -1041,6 +1045,7 @@ int arcan_lua_getkey(lua_State* ctx)
 
 static void dump_call_trace(lua_State* ctx)
 {
+#ifdef LUA51
 	if (lua_ctx_store.debug) {
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
@@ -1056,6 +1061,7 @@ static void dump_call_trace(lua_State* ctx)
 			}
 		}
 	}
+#endif 
 }
 
 /* dump argument stack, stack trace are shown only when --debug is set */
