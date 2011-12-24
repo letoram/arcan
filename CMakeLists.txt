@@ -176,7 +176,7 @@ LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
 #add_dependencies(arcan_hijackprobe arcan_target_probebackend)
 #set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
 
-add_definitions(-D__APPLE__ -D__UNIX)
+add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
 add_library( arcan_hijack SHARED arcan_target_osx.c arcan_event.c)
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
@@ -213,7 +213,7 @@ SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
 #
 #
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-add_definitions(-D_POSIX_C_SOURCE -D_GNU_SOURCE -D__UNIX)
+add_definitions(-D_POSIX_C_SOURCE -D_GNU_SOURCE -D__UNIX -DLUA_51)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
