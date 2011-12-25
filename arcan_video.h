@@ -43,6 +43,11 @@ enum arcan_vrtypes {
 	ARCAN_VRTYPE_CFUNC
 };
 
+enum arcan_vtex_mode {
+	ARCAN_VTEX_REPEAT = 0,
+	ARCAN_VTEX_CLAMP = 1
+};
+
 enum arcan_vimage_mode {
 	ARCAN_VIMAGE_NOPOW2 = 0, 
 	ARCAN_VIMAGE_TXCOORD = 1,
@@ -101,6 +106,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 
 /* will apply to all new vobjects, it is, however, tracked on a per-object basis so can be changed during runtime */
 void arcan_video_default_scalemode(enum arcan_vimage_mode);
+void arcan_video_default_texmode(enum arcan_vtex_mode s, enum arcan_vtex_mode t);
 void arcan_video_fullscreen();
 uint16_t arcan_video_screenw();
 uint16_t arcan_video_screenh();
@@ -127,6 +133,7 @@ signed arcan_video_pushcontext();
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, uint8_t zv);
 arcan_vobj_id arcan_video_addobject(const char* fname, img_cons constraints, uint8_t zv);
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, uint8_t zv);
+arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb feed, vfunc_state state);
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
 arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool mirror);

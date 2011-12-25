@@ -398,6 +398,17 @@ int arcan_lua_buildstr(lua_State* ctx)
 	return 2;
 }
 
+int arcan_lua_scaletxcos(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checknumber(ctx, 1);
+	float txs = luaL_checknumber(ctx, 2);
+	float txt = luaL_checknumber(ctx, 3);
+
+	arcan_video_scaletxcos(id, txs, txt);
+	
+	return 0;
+}
+
 int arcan_lua_settxcos(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkint(ctx, 1);
@@ -1505,6 +1516,19 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 	return rv;
 }
 
+int arcan_lua_settexmode(lua_State* ctx)
+{
+	int numa = luaL_checknumber(ctx, 1);
+	int numb = luaL_checknumber(ctx, 2);
+	
+	if ( (numa == ARCAN_VTEX_CLAMP || numa == ARCAN_VTEX_REPEAT) &&
+		(numb == ARCAN_VTEX_CLAMP || numb == ARCAN_VTEX_REPEAT) ){
+		arcan_video_default_texmode(numa, numb);
+	}
+
+	return 0;
+}
+
 int arcan_lua_setscalemode(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
@@ -1571,6 +1595,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 
 /* item:switch_default_scalemode, newmode ( NOPOW2(0) TXCOORD(1) SCALEPOW(2) ), nil */
 	lua_register(ctx, "switch_default_scalemode", arcan_lua_setscalemode);
+
+/* item:switch_default_texmode, newmode ( REPEAT(0), CLAMP_TO_EDGE(1) ), nil */
+	lua_register(ctx, "switch_default_texmode", arcan_lua_settexmode);
 	
 /* item: shutdown,nil */
 	lua_register(ctx, "shutdown", arcan_lua_shutdown);
@@ -1666,12 +1693,15 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item:instant_image_transform,vid,nil */
 	lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
 
-/* item:image_txcos(vid, float x8), nil */
+/* item:image_set_txcos,vid, float x8, nil */
 	lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
 
-/* item:image_txcos(vid), floatary */
+/* item:image_get_txcos,vid,floatary */
 	lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
 
+/* item:image_scaletxcos,vid,scales,scalet,nil */
+	lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
+	
 /* item:image_mask_toggle,vid,enumint,nil */
 	lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
 
@@ -1756,6 +1786,21 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: VRESW,int */
 	arcan_lua_setglobalint(ctx, "VRESW", arcan_video_screenw());
 
+/* constant: REPEAT,int */
+	arcan_lua_setglobalint(ctx, "TEX_REPEAT", ARCAN_VTEX_REPEAT);
+
+/* constant: CLAMP,int */
+	arcan_lua_setglobalint(ctx, "TEX_CLAMP", ARCAN_VTEX_CLAMP);
+
+/* constant: SCALE_NOPOW2, int */
+	arcan_lua_setglobalint(ctx, "SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2);
+
+/* constant: SCALE_TXCOORD, int */
+	arcan_lua_setglobalint(ctx, "SCALE_TXCOORD", ARCAN_VIMAGE_TXCOORD);
+
+/* constant: SCALE_POW2, int */
+	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);
+	
 /* constant: VCTXVIDLIMIT, int */
 	arcan_lua_setglobalint(ctx, "VCTXVIDLIMIT", VITEM_POOLSIZE);
 
