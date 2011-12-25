@@ -2526,7 +2526,7 @@ void arcan_video_refresh(float tofs)
 	SDL_GL_SwapBuffers();
 }
 
-void arcan_video_default_scalemode(enum arcan_vrtypes newmode)
+void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)
 {
 	arcan_video_display.scalemode = newmode;
 }

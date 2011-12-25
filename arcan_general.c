@@ -215,7 +215,7 @@ static char* unix_find(const char* fname){
 	return NULL;
 }
 
-static bool setpaths_unix()
+static void setpaths_unix()
 {
 	if (arcan_binpath == NULL)
 		if (file_exists( getenv("ARCAN_FRAMESERVER") ) )
@@ -434,7 +434,7 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 }
 #else 
 /* Linux 2.6 and 'BSD should handle this correct by now
-/* in the use-cases here, we are not excessively concerned about 
+ * in the use-cases here, we are not excessively concerned about
  * precision, it is either used to keep an I/O thread or determine
  * if something has gone wrong with a child process */
 int arcan_sem_timedwait(sem_handle semaphore, int msecs)
