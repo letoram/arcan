@@ -100,7 +100,7 @@ typedef int8_t(*arcan_vfunc_cb)(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fullscreen, bool frames, bool conservative);
 
 /* will apply to all new vobjects, it is, however, tracked on a per-object basis so can be changed during runtime */
-void arcan_video_default_scalemode(enum arcan_vrtypes);
+void arcan_video_default_scalemode(enum arcan_vimage_mode);
 void arcan_video_fullscreen();
 uint16_t arcan_video_screenw();
 uint16_t arcan_video_screenh();

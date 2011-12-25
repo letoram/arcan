@@ -240,20 +240,22 @@ add_executable( arcan_frameserver ${FSRV_SOURCES})
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
-# Debian / Ubuntu generator settings
-execute_process(COMMAND "dpkg" "--print-architecture" OUTPUT_VARIABLE DPKGARCH)
-string(REPLACE "\n" "" DPKGARCH "${DPKGARCH}")
-set(CPACK_GENERATOR "DEB")
-set(CPACK_SOURCE_GENERATOR "DEB")
-set(CPACK_SYSTEM_NAME ${DPKGARCH})
-set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
-set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION})
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Bjorn Stahl")
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.3.1-6), libgcc1 (>= 1:3.4.2-12)")
-set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "ARCAN is a fully scriptable front-end for launching and managing emulators, games and other full-screen applications in a visually appealing and embeddable way.")
+if (EXISTS "/usr/bin/dpkg")
+	execute_process(COMMAND "dpkg" "--print-architecture" OUTPUT_VARIABLE DPKGARCH)
+	string(REPLACE "\n" "" DPKGARCH "${DPKGARCH}")
+	set(CPACK_SYSTEM_NAME ${DPKGARCH})
+	set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+	set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION})
+	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Bjorn Stahl")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.4), libglu1-mesa | libglu1, liblua5.1-0, libopenal1, libsdl-image1.2 (>= 1.2.10), libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libvorbisfile3 (>= 1.1.2), libavcodec-extra-53 (>= 4:0.7-1), libavformat53 (>= 4:0.7-1) | libavformat-extra-53 (>= 4:0.7-1), libavutil-extra-51 (>= 4:0.7-1), libswscale2 (>= 4:0.7-1) | libswscale-extra-2 (>= 4:0.7-1), libavdevice53 (>= 4:0.7-1), libbz2-1.0, libvorbis0a, libogg0, ruby1.9.1, libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1")
+endif(EXISTS "/usr/bin/dpkg")
+
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Packages;.*\\\\.cmake;install_manifest.txt;CMakeCache.txt;${CMAKE_PACKAGE_NAME}.*\\\\.(tar\\\\.gz|tar\\\\.bz2|deb);Makefile;")
 
+set(CPACK_RPM_PACKAGE_NAME ${CPACK_DEBIAN_PACKAGE_DESCRIPTION})
+set(CPACK_RPM_PACKAGE_DESCRIPTION ${CPACK_DEBIAN_PACKAGE_DESCRIPTION})
+set(CPACK_RPM_PACKAGE_LICENSE "GNU General Public License (GPL")
 #
 #
 #
@@ -350,8 +352,6 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 
 
  SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
- INCLUDE(InstallRequiredSystemLibraries)
-
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
@@ -365,14 +365,15 @@ install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ DESTINATION ${THEME_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ DESTINATION ${RESOURCES_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)
 
+INCLUDE(InstallRequiredSystemLibraries)
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
 set(CPACK_PACKAGE_NAME "Arcan")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "")
-set(CPACK_PACKAGE_DESCRIPTION "")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Scriptable frontend for games and emulators")
+set(CPACK_PACKAGE_DESCRIPTION "ARCAN is a fully scriptable front-end for launching and managing emulators, games and other full-screen applications in a visually appealing and embeddable way.")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
 
 set(CPACK_PACKAGE_VERSION_MAJOR ${MAJOR_VERSION} )
 set(CPACK_PACKAGE_VERSION_MINOR ${MINOR_VERSION} )
 set(CPACK_PACKAGE_VERSION_PATCH ${PATCH_LEVEL} )
-set(CPACK_PACKAGE_CONTACT "arcanfe@sourceforge.net")
+set(CPACK_PACKAGE_CONTACT "arcan-fe@sourceforge.net")
 INCLUDE( CPack )

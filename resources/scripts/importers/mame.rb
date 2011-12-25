@@ -182,10 +182,20 @@ class Mame
 	def mame_each
 		status = {}
 		xmlin = IO.popen("#{@mametarget} -listxml")
+
+		endid = 0
+		
+# seriously ugly hack around Nokogiri versioning issues
+		begin
+			endid = Nokogiri::XML::Reader::TYPE_END_ELEMENT
+		rescue
+			endid = 15
+		end
+		
 		xp = Nokogiri::XML::Reader.from_io( xmlin )
 		while (xp.read)
 			next unless xp.name == "game"
-			next if xp.node_type == Nokogiri::XML::Reader::TYPE_END_ELEMENT
+			next if xp.node_type == endid
 			
 			node_tree = Nokogiri::XML.parse( xp.outer_xml.dup ) 
 			next if node_tree.root.attributes["isbios"]
