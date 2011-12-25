@@ -100,10 +100,11 @@
 		\textbf{resume\_target}\emph{(tgtvid)}, attempt to resume target.\\
 
 \section{System}
-	
 	\textbf{kbd\_repeat}\emph{(rate (ms))} $\rightarrow$ enable keyboard I/O generating repeating events.\\
 	\textbf{system\_load}\emph{(resource)} $\rightarrow$ load script and return function reference.\\
 	\textbf{shutdown}\emph{()} $\rightarrow$ kill targets, unload resources and shutdown.\\
+	\textbf{switch\_default\_scalemode}\emph{(enumint)} $\rightarrow$ override the default or command-line set scalemode.\\
+	\textbf{switch\_default\_texmode}\emph{(enumint)} $\rightarrow$ override the default texture coordinate mode.\\
 
 \section{Database}
 	\textbf{*store\_key}\emph{(key, value)} $\rightarrow$ store key/value (strings) in database as theme-specific table.\\
@@ -210,7 +211,12 @@
 		\item THEMENAME (text) name of the currently loaded theme.
 		\item RESOURCEPATH, THEMEPATH, BINPATH, LIBPATH (text)
 		\item INTERNALMODE (text) estimated level of internal launch support.
-		\item NOW (num) used to specify that a transformation (move, scale, blend, ...) should happen immediately. 
+		\item NOW (num) used to specify that a transformation (move, scale, blend, ...) should happen immediately.
+		\item TEX\_REPEAT (num) see switch\_default\_texmode.
+		\item TEX\_CLAMP (num) see switch\_default\_texmode.
+		\item SCALE\_NOPOW2 (num) see switch\_default\_scalemode.
+		\item SCALE\_TXCOORD (num) see switch\_default\_scalemode.
+		\item SCALE\_POW2 (num) see switch\_default\_scalemode.
 	\end{itemize}
 \pagebreak
 
@@ -288,6 +294,7 @@ is stability for the currently available API / feature-set.
 		\item Better scheduling / preemption of lua- execution. Event multiplexing.
 		\item Working sandboxing, currently there's directory traversal in resource calls.
 		\item Restricted online features (gamelists, highscores, playcounts, ...)
+		\item Structure for specifying theme requirements (resolution, aspect-ratio, ...)
 	\end{itemize}
 	
 % You can even have references

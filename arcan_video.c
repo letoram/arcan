@@ -199,7 +199,7 @@ static struct {
 
 	/* default image loading options */
 	enum arcan_vimage_mode scalemode; 
-	GLuint deftxu, deftxv;
+	GLuint deftxs, deftxt;
 
 	SDL_Surface* screen;
 	uint32_t sdlarg;
@@ -210,7 +210,7 @@ static struct {
 	
 } arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
-	.deftxu = GL_CLAMP_TO_EDGE, .deftxv = GL_CLAMP_TO_EDGE,
+	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
 	.suspended = false
 };
@@ -496,8 +496,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 	if (status) {
 		rv = current_context->vitems_pool + fid;
 		rv->current_frame = &rv->default_frame;
-		rv->gl_storage.txu = arcan_video_display.deftxu;
-		rv->gl_storage.txv = arcan_video_display.deftxv;
+		rv->gl_storage.txu = arcan_video_display.deftxs;
+		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
@@ -1234,6 +1234,22 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img
 
 	return rv;
 }
+
+arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (vobj){
+		vobj->txcos[0] *= sfs; 	vobj->txcos[2] *= sfs; 	vobj->txcos[4] *= sfs; 	vobj->txcos[6] *= sfs;
+		vobj->txcos[1] *= sft; 	vobj->txcos[3] *= sft; 	vobj->txcos[5] *= sft; 	vobj->txcos[7] *= sft;
+				
+		rv = ARCAN_OK;
+	}
+
+	return rv;
+}
+
 
 /*
  * This one is a mess,
@@ -2529,6 +2545,12 @@ void arcan_video_refresh(float tofs)
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)
 {
 	arcan_video_display.scalemode = newmode;
+}
+
+void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mode modet)
+{
+	arcan_video_display.deftxs = modes == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+	arcan_video_display.deftxt = modet == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE;
 }
 
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
