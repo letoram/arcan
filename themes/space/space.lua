@@ -46,18 +46,25 @@ function position_image(vid)
 
 -- send to background, add downwards and wrap around
     props = image_surface_properties(vid);
-    ydistr = ydistr + props["height"] + math.random(50,150);
+    ydistr = ydistr + props.height + math.random(50,150);
     ydistr = ydistr % VRESH;
 
 -- start just outside display, move just outside the display at a randomized speed
     move_image(vid, VRESW + 10, ydistr, 0);
     local lifetime = 500 + math.random(100, 1000);
-    move_image(vid, 0 - props["width"] - 50, ydistr, lifetime);
+    move_image(vid, 0 - props.width - 50, ydistr, lifetime);
     expire_image(vid, lifetime);
     
 -- scale and position based on "distance"
-    scale_image(vid, distance + 0.2, 0, 0);
-    order_image(vid, distance * 255.0);
+    scale_image(vid, distance + 0.3, 0, 0);
+    order_image(vid, distance * 254.0);
+    props = image_surface_properties(vid);
+
+    if (props.width > VRESW / 4) then
+  	  resize_image(vid, VRESW / 4, 0, 0);
+  	elseif (props.height > VRESH / 5) then
+	  resize_image(vid, 0, VRESH / 5, 0);
+    end
 
     show_image(vid);
 end
@@ -106,7 +113,6 @@ function space()
     resize_image(images.background, VRESW, VRESH, 0); -- scale to fit screen
     show_image(images.background);
     show_image(images.cursor);
-
 
 -- populate scale variables to make this resolution independent
     games = list_games( {} );
@@ -222,18 +228,26 @@ function check_cursor(x, y)
 			return;
 		end
 
-        grabbed_item.origx = props.x;
-        grabbed_item.origy = props.y;
-        grabbed_item.origw = props.width;
-        grabbed_item.origh = props.height;
+	grabbed_item.origx = props.x;
+	grabbed_item.origy = props.y;
+	grabbed_item.origw = props.width;
+	grabbed_item.origh = props.height;
 	grabbed_item.neww = VRESW / 4;
 
 -- abort "timed death" and stop movement..
 	reset_image_transform(grabbed_item.vid);
 	expire_image(grabbed_item.vid, 0);
-	
+
+-- figure out which size to scale to, make sure it keeps previous constraints
 	resize_image(grabbed_item.vid, grabbed_item.neww, 0, 0);
 	newprops = image_surface_properties(items[1]);
+	if (newprops.height > VRESH / 5) then
+	  resize_image(grabbed_item.vid, 0, VRESH / 5);
+	  newprops = image_surface_properties(grabbed_item.vid);
+	  grabbed_item.neww = newprops.width;
+	end
+	
+-- return to original size so we can animate-scale
 	resize_image(grabbed_item.vid, props.width, props.height, 0, 0);
 
 -- load movie if there is one
@@ -253,14 +267,14 @@ function check_cursor(x, y)
 	    
 			if (grabbed_item.movie) then
 			-- crossfade if we can load, reorient, reposition
-			blend_image(grabbed_item.vid, 0.0, 20);
+			blend_image(grabbed_item.vid, 0.0, 40);
 			order_image(grabbed_item.movie, 252);
-			blend_image(grabbed_item.movie, 1.0, 20);
+			blend_image(grabbed_item.movie, 1.0, 80);
 			audio_gain(grabbed_item.movieaud, 0.0);
 			audio_gain(grabbed_item.movieaud, 1.0, 40);
 			play_movie(grabbed_item.movie);
 			resize_image(grabbed_item.movie, props.width, props.height, 0);
-			resize_image(grabbed_item.movie, newprops.width, newprops.height, 10);
+			resize_image(grabbed_item.movie, newprops.width, newprops.height, 20);
 			move_image(grabbed_item.movie, props.x, props.y, 0);
 				move_image(grabbed_item.movie, props.x - dx / 2, props.y - dy / 2, 20); -- freeze the image
 			end
@@ -320,7 +334,7 @@ function spawn_particle()
 	move_image(particle, mx + math.random(-100, 100), my + math.random(-100, 100), life);
 	blend_image(particle, 0.0, life);
 	rotate_image(particle, math.random(-1080, 1080), life);
---	image_link_mask(particle, MASK_POSITION);
+	image_mask_clear(particle, MASK_POSITION);
 	expire_image(particle, life);
 end
 

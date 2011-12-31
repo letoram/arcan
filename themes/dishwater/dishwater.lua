@@ -28,6 +28,7 @@ local data = {
 
 local configkeys = false;
 local font_name  = "fonts/default.ttf,14 "; 
+local font_name_large = "fonts/default.ttf,96 ";
 local curs_dy = 0;
 local images = {};
 local iodispatch = {};
@@ -195,7 +196,7 @@ function select_item()
 
 -- last fallback, just render a string with the setname (so the user knows which screenshot to fix)
     if (images.gamepic == nil) then
-        images.gamepic, skip = render_text([[\f]] .. font_name .. game.setname, 0);
+        images.gamepic, skip = render_text([[\f]] .. font_name_large .. game.setname, 0);
 	end
 
     props = image_surface_properties(images.gamepic);
@@ -208,8 +209,8 @@ function select_item()
         neww, newh = resize_image(images.gamepic, 0, VRESH, 0);
     end
 
-    show_image(images.gamepic);
-    move_image(images.gamepic, VRESW - neww, (VRESH - newh) * 0.5, 50);
+    blend_image(images.gamepic, 1.0, 20);
+    move_image(images.gamepic, VRESW - neww, (VRESH - newh) * 0.5, 0);
 end
 
 ------ Event Handlers ----------
