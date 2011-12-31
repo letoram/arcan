@@ -151,6 +151,7 @@ typedef struct arcan_vobject {
 		bool in_use;
 		bool twofaced;
 		bool clone;
+		bool cliptoparent;
 	} flags;
 
 	/* position */
@@ -499,9 +500,10 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txu = arcan_video_display.deftxs;
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
+		rv->flags.cliptoparent = false;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
-		rv->mask = MASK_ORIENTATION;
+		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
 	}
 
 	if (id != NULL)
@@ -696,20 +698,16 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 	if (src && src->flags.clone)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	else if (src && dst) {
-		bool cref = false;
 		arcan_vobject* current = dst;
 
 		while (current) {
-			if (current->parent == src) {
-				cref = true;
-				break;
-			}
+			if (current->parent == src)
+				return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 			else
 				current = current->parent;
 		}
-
-		if (!cref)
-			src->parent = dst;
+	
+		src->parent = dst;
 
 		swipe_chain(&src->transform, offsetof(surface_transform, time_rotate));
 		swipe_chain(&src->transform, offsetof(surface_transform, time_move));
@@ -725,6 +723,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 static void arcan_video_gldefault()
 {
 	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_SCISSOR_TEST);
 	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_LIGHTING);
@@ -785,7 +784,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 #endif
 
 	return arcan_video_display.screen ? ARCAN_OK : ARCAN_ERRC_BADVMODE;
-	
 }
 
 uint16_t arcan_video_screenw()
@@ -1919,32 +1917,20 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 		arcan_video_detatchobject(id);
 
-		/* scan the current context, look for clones and other objects that has this object as a parent */
-		arcan_vobject_litem* current = current_context->first;
+/* scan the current context, look for clones and other objects that has this object as a parent */
+		arcan_vobject_litem* current;
+retry:  
+		current = current_context->first;
 		while (current && current->elem) {
 			arcan_vobject* elem = current->elem;
 
+		/* how to deal with those that inherit? */
 			if (elem->parent == vobj) {
-				/* a clone forcibly dies,
-				 * a linked object requires us to check the mask,
-				 * if its not masked, then invoke deleteobject on that one as well
-				 * or just inherit the object's parent */
 				if (elem->flags.clone || (elem->mask & MASK_LIVING) == 0) {
-					if (current->previous)
-						current->previous->next = current->next;
-					else
-						current_context->first = current->next; /* only first cell lacks a previous node */
-
-					if (current->next)
-						current->next->previous = current->previous;
-
-					arcan_video_zaptransform(current->cellid);
-					arcan_vobject_litem* oldie = current;
-					current = current->next;
-					memset(oldie, 0, sizeof(arcan_vobject_litem));
-					continue;
+					arcan_video_deleteobject(current->cellid);
+					goto retry; /* no guarantee the structure is intact */
 				}
-				else
+				else /* inherit parent instead */
 					elem->parent = vobj->parent;
 			}
 
@@ -1952,8 +1938,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 
 		arcan_video_zaptransform(id);
-		memset(vobj, 0, sizeof(arcan_vobject)); /* will also set in_use to false */
-
+		/* will also set in_use to false */
+		memset(vobj, 0, sizeof(arcan_vobject));
 		rv = ARCAN_OK;
 	}
 
@@ -2361,9 +2347,10 @@ uint32_t arcan_video_tick(uint8_t steps)
 						dobjev.tickstamp = arcan_video_display.c_ticks;
 						dobjev.data.video.source = tid;
 
-						/* since we cannot safely invoke deleteobject here,
-						 * we fire the event and hook it up to the event-handler */
 						arcan_event_enqueue(&dobjev);
+						/* disable the LIVING mask, otherwise we'd fire multiple
+						 * expire events when video logic is lagging behind */
+						elem->mask &= ~MASK_LIVING;
 					}
 					else {
 						elem->lifetime--;
@@ -2376,6 +2363,19 @@ uint32_t arcan_video_tick(uint8_t steps)
 	}
 
 	return 0;
+}
+
+arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (vobj){
+		vobj->flags.cliptoparent = toggleon;
+		rv = ARCAN_OK;
+	}
+	
+	return rv;
 }
 
 /* push some of the most useful context/video information
@@ -2412,6 +2412,61 @@ static void draw_vobj(float x, float y, float x2, float y2, float zv, float* txc
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
+/* take sprops, apply them to the coordinates in vobj with proper masking (or force to ignore mask), store the results in dprops */
+static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, surface_properties* sprops, bool force)
+{
+	*dprops = vobj->current;
+	
+/* apply within own dimensions */
+	if (vobj->transform.time_move){
+		dprops->x = vobj->transform.move[0] + vobj->transform.move[2] * lerp;
+		dprops->y = vobj->transform.move[1] + vobj->transform.move[3] * lerp;
+	}
+	
+	if (vobj->transform.time_scale) {
+		dprops->w = vobj->transform.scale[0] + vobj->transform.scale[2] * lerp;
+		dprops->h = vobj->transform.scale[1] + vobj->transform.scale[3] * lerp;
+	}
+	
+	if (vobj->transform.time_opacity)
+		dprops->opa = vobj->transform.opa[0] + vobj->transform.opa[1] * lerp;
+
+	if (vobj->transform.time_rotate)
+		dprops->angle_z = vobj->transform.rotate[0] + vobj->transform.rotate[1] * lerp;
+	
+	if (!sprops)
+		return;
+
+/* translate to sprops */
+	if (force || (vobj->mask & MASK_POSITION) > 0){
+		dprops->x += sprops->x;
+		dprops->y += sprops->y;
+	}
+	
+	if (force || (vobj->mask & MASK_ORIENTATION) > 0)
+		dprops->angle_z += sprops->angle_z;
+		
+	if (force || (vobj->mask & MASK_OPACITY) > 0)
+		dprops->opa *= sprops->opa;
+	
+	if (force || (vobj->mask & MASK_SCALE) > 0){
+		/* needs workaround .. */
+	}
+}
+
+static void resolve(arcan_vobject* vobj, float lerp, surface_properties* props)
+{
+//	printf("resolve for: %i\n", vobj->owner->cellid);
+/* recurse to top, keep a track of surface properties on the stack */
+	if (vobj->parent != &current_context->world){
+		surface_properties dprop = {0};
+		resolve(vobj->parent, lerp, &dprop);
+		apply(vobj, props, lerp, &dprop, false);
+	} else {
+		apply(vobj, props, lerp, &current_context->world.current, true);
+	}
+}
+
 /* assumes working ortographic projection matrix based on current resolution,
  * redraw the entire scene and linearly interpolate transformations */
 void arcan_video_refresh_GL(float lerp)
@@ -2424,25 +2479,7 @@ void arcan_video_refresh_GL(float lerp)
 	
 	arcan_vobject* world = &current_context->world;
 
-	float wlx = world->current.x, wly = world->current.y;
-	float wlw = world->current.w, wlh = world->current.h;
-	float wlo = world->current.opa, wla = world->current.angle_z;
-
 	/* prelerp the world translation and reuse it later */
-	if (world->transform.time_move) {
-		wlx = world->transform.move[0] + world->transform.move[2] * lerp;
-		wly = world->transform.move[1] + world->transform.move[3] * lerp;
-	}
-	if (world->transform.time_scale) {
-		wlw = world->transform.scale[0] + world->transform.scale[2] * lerp;
-		wlh = world->transform.scale[1] + world->transform.scale[3] * lerp;
-	}
-	if (world->transform.time_opacity)
-		wlo = world->transform.opa[0] + world->transform.opa[1] * lerp;
-
-	if (world->transform.time_rotate)
-		wla = world->transform.rotate[0] + world->transform.rotate[1] * lerp;
-
 	/* traverse main graph */
 	if (current)
 		do {
@@ -2470,61 +2507,38 @@ void arcan_video_refresh_GL(float lerp)
 
 		/* calculate coordinate system translations, 
 		 * world cannot be masked */
-			float tx = 0, ty = 0, tw = 0, th = 0, topa = wlo, tang = wla;
+			surface_properties dprops;
+			resolve(elem, lerp, &dprops);
 
-			if ( (elem->mask & MASK_POSITION) > 0 && 
-				elem->parent != &current_context->world){
-			/* due to sort order, parent is already interpolated */
-				tx = elem->parent->current.x;
-				ty = elem->parent->current.y;
-			} else {
-				tx = wlx;
-				ty = wly;
-			}
-
-		/* linear interpolations */
-			if (elem->transform.time_move) {
-				csurf->x = elem->transform.move[0] + elem->transform.move[2] * lerp;
-				csurf->y = elem->transform.move[1] + elem->transform.move[3] * lerp;
-			} 
-
-			if (elem->transform.time_scale) {
-				csurf->w = elem->transform.scale[0] + elem->transform.scale[2] * lerp;
-				csurf->h = elem->transform.scale[1] + elem->transform.scale[3] * lerp;
-			}
-
-			if (elem->transform.time_opacity) {
-				csurf->opa = elem->transform.opa[0] + elem->transform.opa[1] * lerp;
-			}
-
-			if (elem->transform.time_rotate) {
-				csurf->angle_z = elem->transform.rotate[0] + elem->transform.rotate[1] * lerp;
-			}
-
-			
 		/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
 		 * note that objects will have been sorted based on Z already */
-			if (csurf->opa > 0.001){
+			if ( dprops.opa > 0.001){
 				glBindTexture(GL_TEXTURE_2D, elem->gl_storage.glid);
 				glUseProgram(elem->gl_storage.program);
 				_setgl_stdargs(elem->gl_storage.program);
 				
-				if (csurf->opa > 0.999 && !csurf->force_blend){
+				if (dprops.opa > 0.999 && !csurf->force_blend){
 					glDisable(GL_BLEND);
 				}
 				else{
 					glEnable(GL_BLEND);
-					glColor4f(1.0, 1.0, 1.0, topa * csurf->opa);
+					glColor4f(1.0, 1.0, 1.0, dprops.opa);
 				}
 				
 				glPushMatrix();
-				glTranslatef( (csurf->x + tx) + (csurf->w / 2), 
-					(csurf->y + ty) + (csurf->h / 2), 
-					0);
-
-				glRotatef( -1 * (csurf->angle_z + tang), 0.0, 0.0, 1.0);
-				draw_vobj(-csurf->w / 2, -csurf->h / 2, csurf->w / 2, csurf->h / 2, 0, elem->txcos);
+	
+				glTranslatef( dprops.x + dprops.w * 0.5, dprops.y + dprops.h * 0.5, 0.0);
+				glRotatef( -1 * dprops.angle_z, 0.0, 0.0, 1.0);
+				
+				if (elem->flags.cliptoparent)
+				{
+//					glScissor(px, py, pw, ph);
+				} else {
+					glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
+				}
+				
+				draw_vobj(-dprops.w, -dprops.h, dprops.w, dprops.h, 0, elem->txcos);
 
 				glPopMatrix();
 			}

@@ -386,6 +386,7 @@ int arcan_lua_buildstr(lua_State* ctx)
 
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
+	
 	for (int i = 0; i < nlines; i++) {
 		lua_pushnumber(ctx, i + 1);
 		lua_pushnumber(ctx, lineheights[i]);
@@ -497,6 +498,18 @@ int arcan_lua_setmask(lua_State* ctx)
 		fprintf(stderr, "Script Warning: image_mask_set(), bad mask specified (%i)\n", val);
 	
 	return 0;
+}
+
+int arcan_lua_clipon(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkint(ctx, 1);
+	arcan_video_setclip(id, true);
+}
+
+int arcan_lua_clipoff(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkint(ctx, 1);
+	arcan_video_setclip(id, false);
 }
 
 int arcan_lua_pick(lua_State* ctx)
@@ -973,7 +986,7 @@ int arcan_lua_linkimage(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checknumber(ctx, 1);
 	arcan_vobj_id did = luaL_optnumber(ctx, 2, 0);
-	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_LIVING | MASK_ORIENTATION;
+	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION;
 
 	arcan_video_linkobjs(sid, did, lmask);
 
@@ -1702,6 +1715,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item:image_scaletxcos,vid,scales,scalet,nil */
 	lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
 	
+/* item:image_clipon,vid,nil */
+	lua_register(ctx, "image_clip_on", arcan_lua_clipon);
+	
+/* item:image_clipoff,vid,nil */
+	lua_register(ctx, "image_clip_off", arcan_lua_clipoff);
+
 /* item:image_mask_toggle,vid,enumint,nil */
 	lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
 
