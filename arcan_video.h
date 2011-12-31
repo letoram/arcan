@@ -155,6 +155,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id id);
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent, enum arcan_transform_mask mask);
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src, enum arcan_transform_mask mask);
+arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon);
 
 img_cons arcan_video_storage_properties(arcan_vobj_id id);
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
@@ -198,7 +199,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float deg, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
-arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); /* dst[8] */
+arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const char* fprogram);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
