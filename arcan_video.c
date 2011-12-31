@@ -739,10 +739,10 @@ static void arcan_video_gldefault()
 	float ox = 0.5f / (float) current_context->world.current.w;
 	float oy = 0.5f / (float) current_context->world.current.h;
 
-	/* if we just use width, height the coordinates will match the grid lines rather than the pixel centers,
-	 * matters if we AA */
-	glOrtho(ox, (float)current_context->world.current.w - 1.0f + ox, (float)current_context->world.current.h - 1.0 + oy,
-	        oy, 0.0, (float)current_context->world.current.w - 1.0 + ox);
+	glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
+/*	glOrtho(ox, (float)current_context->world.current.w - 1.0f + ox, (float)current_context->world.current.h - 1.0 + oy,
+	        oy, 0.0, (float)current_context->world.current.w - 1.0 + ox); */
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glFrontFace(GL_CW);
@@ -754,6 +754,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	/* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_WM_SetCaption("Arcan", "Arcan");
 
 	arcan_video_display.fullscreen = fs;
@@ -1247,7 +1248,6 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 
 	return rv;
 }
-
 
 /*
  * This one is a mess,
@@ -2403,7 +2403,7 @@ bool arcan_video_visible(arcan_vobj_id id)
 
 /* just draw a 'good ol' quad';
  * for GL3/GLES? compat. replace this with a small buffer ... */
-static void draw_vobj(float x, float y, float x2, float y2, float zv, float* txcos)
+static inline void draw_vobj(float x, float y, float x2, float y2, float zv, float* txcos)
 {
 	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
 
@@ -2427,7 +2427,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->w = vobj->transform.scale[0] + vobj->transform.scale[2] * lerp;
 		dprops->h = vobj->transform.scale[1] + vobj->transform.scale[3] * lerp;
 	}
-	
+
 	if (vobj->transform.time_opacity)
 		dprops->opa = vobj->transform.opa[0] + vobj->transform.opa[1] * lerp;
 
@@ -2454,10 +2454,10 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 	}
 }
 
+/* this is really grounds for some more elaborate caching strategy if CPU- bound.
+ * using some frame- specific tag so that we don't repeatedly resolve with this complexity. */
 static void resolve(arcan_vobject* vobj, float lerp, surface_properties* props)
 {
-//	printf("resolve for: %i\n", vobj->owner->cellid);
-/* recurse to top, keep a track of surface properties on the stack */
 	if (vobj->parent != &current_context->world){
 		surface_properties dprop = {0};
 		resolve(vobj->parent, lerp, &dprop);
@@ -2465,6 +2465,15 @@ static void resolve(arcan_vobject* vobj, float lerp, surface_properties* props)
 	} else {
 		apply(vobj, props, lerp, &current_context->world.current, true);
 	}
+}
+
+static inline void draw_surf(surface_properties prop, float* txcos)
+{
+	glPushMatrix();
+		glTranslatef( prop.x + prop.w, prop.y + prop.h, 0.0);
+		glRotatef( -1 * prop.angle_z, 0.0, 0.0, 1.0);
+		draw_vobj(-prop.w, -prop.h, prop.w, prop.h, 0, txcos);
+	glPopMatrix();
 }
 
 /* assumes working ortographic projection matrix based on current resolution,
@@ -2509,7 +2518,10 @@ void arcan_video_refresh_GL(float lerp)
 		 * world cannot be masked */
 			surface_properties dprops;
 			resolve(elem, lerp, &dprops);
+			dprops.w *= 0.5; dprops.h *= 0.5;
 
+		arcan_vobject* h = elem;
+			
 		/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
 		 * note that objects will have been sorted based on Z already */
@@ -2526,21 +2538,37 @@ void arcan_video_refresh_GL(float lerp)
 					glColor4f(1.0, 1.0, 1.0, dprops.opa);
 				}
 				
-				glPushMatrix();
-	
-				glTranslatef( dprops.x + dprops.w * 0.5, dprops.y + dprops.h * 0.5, 0.0);
-				glRotatef( -1 * dprops.angle_z, 0.0, 0.0, 1.0);
-				
-				if (elem->flags.cliptoparent)
-				{
-//					glScissor(px, py, pw, ph);
-				} else {
-					glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-				}
-				
-				draw_vobj(-dprops.w, -dprops.h, dprops.w, dprops.h, 0, elem->txcos);
+				if (elem->flags.cliptoparent && elem->parent != &current_context->world){
+				/* toggle stenciling, reset into zero, draw parent bounding area to stencil only,
+				 * redraw parent into stencil, draw new object then disable stencil. */
+					glEnable(GL_STENCIL_TEST);
+					glClearStencil(0);
+					glClear(GL_STENCIL_BUFFER_BIT);
+					glColorMask(0, 0, 0, 0);
+					glStencilFunc(GL_ALWAYS, 1, 1);
+					glStencilOp(GL_INCR, GL_INCR, GL_INCR);
 
-				glPopMatrix();
+					arcan_vobject* celem = elem;
+
+				/* since we can have hierarchies of partially clipped, we may need to resolve all */
+					while (celem->parent != &current_context->world){
+						surface_properties pprops;
+						resolve(celem->parent, lerp, &pprops);
+						
+						pprops.w *= 0.5; pprops.h *= 0.5;
+						draw_surf(pprops, elem->txcos);
+						celem = celem->parent;
+					}
+
+					glColorMask(1, 1, 1, 1);
+					glStencilFunc(GL_LEQUAL, 1, 1);
+					glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+
+					draw_surf(dprops, elem->txcos);
+					glDisable(GL_STENCIL_TEST);
+				} else {
+					draw_surf(dprops, elem->txcos);
+				}
 			}
 		}
 		while ((current = current->next) != NULL);
