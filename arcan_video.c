@@ -242,8 +242,8 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 				.x   = 0,
 				.y   = 0,
 				.opa = 1.0,
-				.w   = 640,
-				.h   = 480
+				.w   = 1.0,
+				.h   = 1.0
 			},
 			.transform = {
 				.opa = {1.0, 1.0}
@@ -394,8 +394,8 @@ signed arcan_video_pushcontext()
 	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
 	current_context->world = empty_vobj;
-	current_context->world.current.w = (current_context-1)->world.current.w;
-	current_context->world.current.h = (current_context-1)->world.current.h;
+	current_context->world.current.w = 1.0;
+	current_context->world.current.h = 1.0;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 	current_context->first = NULL;
 
@@ -455,6 +455,8 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
 		nobj->current.x = 0;
 		nobj->current.y = 0;
+		nobj->current.w = 1.0;
+		nobj->current.h = 1.0;
 		nobj->parent = pobj;
 		nobj->flags.clone = true;
 		memset(&nobj->transform, 0, sizeof(surface_transform));
@@ -501,6 +503,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
 		rv->flags.cliptoparent = false;
+		rv->current.w = 1.0;
+		rv->current.h = 1.0;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
@@ -736,9 +740,6 @@ static void arcan_video_gldefault()
 	SDL_ShowCursor(0);
 	glLoadIdentity();
 
-	float ox = 0.5f / (float) current_context->world.current.w;
-	float oy = 0.5f / (float) current_context->world.current.h;
-
 	glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 /*	glOrtho(ox, (float)current_context->world.current.w - 1.0f + ox, (float)current_context->world.current.h - 1.0 + oy,
@@ -773,8 +774,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		else
 			arcan_video_display.text_support = true;
 
-		current_context->world.current.w = width;
-		current_context->world.current.h = height;
+		current_context->world.current.w = 1.0;
+		current_context->world.current.h = 1.0;
 
 		current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 		arcan_video_gldefault();
@@ -993,7 +994,7 @@ arcan_errc arcan_video_cycleframe(arcan_vobj_id id, uint8_t steps)
 }
 */
 
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, uint8_t zv)
+arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, uint8_t zv)
 {
 	arcan_vobj_id rv = 0;
 
@@ -1002,11 +1003,11 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		if (!newvobj)
 			return ARCAN_EID;
 		
-		newvobj->gl_storage.w = newvobj->current.w = constraints.w;
-		newvobj->gl_storage.h = newvobj->current.h = constraints.h;
-		newvobj->origw = constraints.w;
-		newvobj->origh = constraints.h;
-		newvobj->current.opa = 1.0f;
+		newvobj->gl_storage.w = constraints.w;
+		newvobj->gl_storage.h = constraints.h;
+		newvobj->origw = origw;
+		newvobj->origh = origh;
+		newvobj->current.opa = 0.0f;
 		newvobj->current.angle_z = 0.0f;
 
 		/* allocate */
@@ -1042,8 +1043,6 @@ arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arc
 	if (rc == ARCAN_OK) {
 		newvobj->current.x = 0;
 		newvobj->current.y = 0;
-		newvobj->current.w = newvobj->origw;
-		newvobj->current.h = newvobj->origh;
 		newvobj->current.opa = 1.0f;
 		newvobj->current.angle_z = 0.0f;
 	}
@@ -1112,8 +1111,6 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		/* preset */
 		newvobj->current.x = 0;
 		newvobj->current.y = 0;
-		newvobj->current.w = constraints.w;
-		newvobj->current.h = constraints.h;
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
 		newvobj->current.opa = 1.0f;
@@ -1388,7 +1385,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 						if (!isxdigit(*base) || !isxdigit(*(base+1))) {
 							fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
 							*ok = false;
-							return failed;
+// 							return failed;
 						}
 
 						base += 2;
@@ -1460,7 +1457,8 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 					break;
 				default:
 					fprintf(stderr, "Warning: arcan_video_renderstring(), unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
-					base += 2;
+					*ok = false;
+					return failed;
 			}
 		}
 	}
@@ -1493,7 +1491,7 @@ static int build_textchain(char* message, struct rcell* root)
 				/* special case */
 				if (*(current+1) == '\\') {
 					memmove(current, current+1, strlen(current)+1);
-					current += 2;
+					current += 1;
 					msglen++;
 				}
 				else { /* split point found */
@@ -1689,8 +1687,6 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw, 1);
 		vobj->default_frame.tag = ARCAN_TAG_TEXT;
 		vobj->current.force_blend = true;
-		vobj->current.w = maxw;
-		vobj->current.h = maxh;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
 		vobj->current.opa = 1.0;
@@ -1996,7 +1992,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle_z, unsigned in
 
 			/* figure out the starting angle */
 			while (base && base->time_rotate) {
-				bv += base->rotate[1] * base->time_rotate;
+				bv = base->rotate[0] + base->rotate[1] * base->time_rotate;
 				last = base;
 				base = base->next;
 			}
@@ -2037,7 +2033,7 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int t
 			surface_transform* last = base;
 
 			while (base && base->time_opacity) {
-				bv += base->opa[1] * base->time_opacity;
+				bv = base->opa[0] + base->opa[1] * base->time_opacity;
 				last = base;
 				base = base->next;
 			}
@@ -2088,8 +2084,8 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsi
 			float bwx = vobj->current.x, bwy = vobj->current.y;
 
 			while (base && base->time_move) {
-				bwx = round(bwx + base->move[2] * (float)base->time_move);
-				bwy = round(bwy + base->move[3] * (float)base->time_move);
+				bwx = base->move[0] + base->move[2] * base->time_move;
+				bwy = base->move[1] + base->move[3] * base->time_move;
 				last = base;
 				base = base->next;
 			}
@@ -2120,15 +2116,13 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 
 	if (vobj) {
 		const int immediately = 0;
-		int neww = round((float)wf * (float)vobj->origw);
-		int newh = round((float)hf * (float)vobj->origh);
 		rv = ARCAN_OK;
 
 		if (tv == immediately) {
 			swipe_chain(&vobj->transform, offsetof(surface_transform, time_scale));
 
-			vobj->current.w = neww;
-			vobj->current.h = newh;
+			vobj->current.w = wf;
+			vobj->current.h = hf;
 		}
 		else {
 			surface_transform* base = &vobj->transform;
@@ -2138,8 +2132,8 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 			float bww = vobj->current.w, bwh = vobj->current.h;
 
 			while (base && base->time_scale) {
-				bww = round(bww + base->scale[2] * base->time_scale);
-				bwh = round(bwh + base->scale[3] * base->time_scale);
+				bww = base->scale[0] + (base->scale[2] * base->time_scale);
+				bwh = base->scale[1] + (base->scale[3] * base->time_scale);
 				last = base;
 				base = base->next;
 			}
@@ -2151,8 +2145,8 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 			base->scale[0] = bww;
 			base->scale[1] = bwh;
 			/* k = (y-y0) / (x-x0) */
-			base->scale[2] = ((neww - bww)+0.0001) / (float) tv;
-			base->scale[3] = ((newh - bwh)+0.0001) / (float) tv;
+			base->scale[2] = ((wf - bww)+0.0001) / (float) tv;
+			base->scale[3] = ((hf - bwh)+0.0001) / (float) tv;
 		}
 	}
 
@@ -2450,7 +2444,8 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->opa *= sprops->opa;
 	
 	if (force || (vobj->mask & MASK_SCALE) > 0){
-		/* needs workaround .. */
+		dprops->w *= sprops->w;
+		dprops->h *= sprops->h;
 	}
 }
 
@@ -2467,8 +2462,11 @@ static void resolve(arcan_vobject* vobj, float lerp, surface_properties* props)
 	}
 }
 
-static inline void draw_surf(surface_properties prop, float* txcos)
+static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
+	prop.w *= src->origw * 0.5;
+	prop.h *= src->origh * 0.5;
+	
 	glPushMatrix();
 		glTranslatef( prop.x + prop.w, prop.y + prop.h, 0.0);
 		glRotatef( -1 * prop.angle_z, 0.0, 0.0, 1.0);
@@ -2516,12 +2514,9 @@ void arcan_video_refresh_GL(float lerp)
 
 		/* calculate coordinate system translations, 
 		 * world cannot be masked */
-			surface_properties dprops;
-			resolve(elem, lerp, &dprops);
-			dprops.w *= 0.5; dprops.h *= 0.5;
-
-		arcan_vobject* h = elem;
-			
+		surface_properties dprops;
+		resolve(elem, lerp, &dprops);
+	
 		/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
 		 * note that objects will have been sorted based on Z already */
@@ -2546,7 +2541,7 @@ void arcan_video_refresh_GL(float lerp)
 					glClear(GL_STENCIL_BUFFER_BIT);
 					glColorMask(0, 0, 0, 0);
 					glStencilFunc(GL_ALWAYS, 1, 1);
-					glStencilOp(GL_INCR, GL_INCR, GL_INCR);
+					glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 
 					arcan_vobject* celem = elem;
 
@@ -2554,20 +2549,20 @@ void arcan_video_refresh_GL(float lerp)
 					while (celem->parent != &current_context->world){
 						surface_properties pprops;
 						resolve(celem->parent, lerp, &pprops);
-						
-						pprops.w *= 0.5; pprops.h *= 0.5;
-						draw_surf(pprops, elem->txcos);
+						if (celem->parent->flags.cliptoparent == false)
+							draw_surf(pprops, celem->parent, elem->txcos);
+
 						celem = celem->parent;
 					}
 
 					glColorMask(1, 1, 1, 1);
-					glStencilFunc(GL_LEQUAL, 1, 1);
+					glStencilFunc(GL_EQUAL, 1, 1);
 					glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-					draw_surf(dprops, elem->txcos);
+					draw_surf(dprops, elem, elem->txcos);
 					glDisable(GL_STENCIL_TEST);
 				} else {
-					draw_surf(dprops, elem->txcos);
+					draw_surf(dprops, elem, elem->txcos);
 				}
 			}
 		}
@@ -2598,15 +2593,20 @@ void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mod
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
+	
 	if (vobj && id > 0) {
+		surface_properties current = vobj->current;
+		current.w *= vobj->origw;
+		current.h *= vobj->origh;
+		
 		float lx = (float)x, ly = (float)y;
 
 		/* convert to radians */
-		float theta = vobj->current.angle_z * (2.0f * 3.14f / 360.0f);
+		float theta = current.angle_z * (2.0f * 3.14f / 360.0f);
 
 		/* translate */
-		float ox = vobj->current.x + ((float)vobj->current.w / 2.0);
-		float oy = vobj->current.y + ((float)vobj->current.h / 2.0);
+		float ox = current.x + current.w * 0.5;
+		float oy = current.y + current.h * 0.5;
 		float tx = x - ox;
 		float ty = y - oy;
 
@@ -2619,8 +2619,8 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		ly = ry + oy;
 
 		if (
-		    (lx > (vobj->current.x) && lx < (vobj->current.x + vobj->current.w)) &&
-		    (ly > (vobj->current.y) && ly < (vobj->current.y + vobj->current.h))
+		    (lx > (current.x) && lx < (current.x + current.w)) &&
+		    (ly > (current.y) && ly < (current.y + current.h))
 		) {
 			/* should check if there's a collision mask added (and scale rotate coords into correct space)
 			 * scale coordinates to 'fit' the proper range, extract the byte and then extract correct 'bits'
@@ -2706,7 +2706,13 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id)
 	surface_properties rv = {.x = 0 };
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	return vobj ? vobj->current : rv;
+	if (vobj){
+		rv = vobj->current;
+		rv.w *= vobj->origw;
+		rv.h *= vobj->origh;
+	}
+	
+	return rv;
 }
 
 /* Assuming current transformation chain,
@@ -2725,6 +2731,8 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 			update_object(vobj, 0);
 
 		rv = vobj->current;
+		rv.w *= vobj->origw;
+		rv.h *= vobj->origh;
 		arcan_video_remdup(vobj);
 	}
 	arcan_event_clearmask();

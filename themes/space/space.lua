@@ -335,6 +335,8 @@ function spawn_particle()
 	blend_image(particle, 0.0, life);
 	rotate_image(particle, math.random(-1080, 1080), life);
 	image_mask_clear(particle, MASK_POSITION);
+	image_mask_set(particle, MASK_UNPICKABLE);
+	image_mask_clear(particle, MASK_OPACITY);
 	expire_image(particle, life);
 end
 

@@ -79,7 +79,7 @@ function instancing_test()
 		order_image(instid, 254);
 		scale_image(instid, 0.5, 0.5, 0);
 		show_image(instid);
-		image_mask_set(instid, MASK_POSITION);
+		image_mask_clear(instid, MASK_SCALE);
 		blend_image(instid, 0.5);
 		
 		if (instid == BADID) then

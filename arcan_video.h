@@ -130,7 +130,7 @@ signed arcan_video_pushcontext();
  * buf* will be managed internally.
  * assumes constraints are a valid texture size (power of two),
  * and that the data is in RGBA format*/
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, uint8_t zv);
+arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, uint8_t zv);
 arcan_vobj_id arcan_video_addobject(const char* fname, img_cons constraints, uint8_t zv);
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, uint8_t zv);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
