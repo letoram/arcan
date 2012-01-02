@@ -20,7 +20,16 @@ local function console_buffer_draw(self)
 
 	order_image(self.bufferline, 255);
 	link_image(self.bufferline, self.console_window_inputbg);
-	move_image(self.bufferline, 0, self.fontsize * 0.5 - 1, 0);
+
+	local pprops = image_surface_properties(self.console_window_inputbg);
+	local props = image_surface_properties(self.bufferline);
+	local xofs = 0;
+	
+	if (props.width > pprops.width) then
+		xofs = 0 - (props.width - pprops.width);
+	end
+	
+	move_image(self.bufferline, xofs, self.fontsize * 0.5 - 1, 0);
 	image_clip_on(self.bufferline);
 	show_image(self.bufferline);
 end
@@ -45,6 +54,33 @@ local function console_hide(self)
 	move_image(self.console_window_border, self.x, self.y, 10);
 	resize_image(self.console_window_border, self.width, self.height, 10);
 	blend_image(self.console_window_border, 0.95, 10);
+end
+
+local function console_update_msgwin(self)
+	msgcmd = self.fontstr;
+	
+	for i=1, self.nlines do
+		local text = "";
+		local cline = #self.linehistory - self.linehistoryofs - (self.nlines - i);
+		if (cline > 0 and self.linehistory[ cline ] ~= nil) then
+			text = string.gsub( self.linehistory[ cline ], "\\", "\\\\" ) .. "\\n\\r";
+		else
+		end
+		
+		msgcmd = msgcmd .. text;
+	end
+
+	delete_image(self.historywin);
+	self.historywin = render_text( msgcmd );
+	link_image(self.historywin, self.console_window);
+	image_clip_on(self.historywin);
+	move_image(self.historywin, 0, 0);
+	order_image(self.historywin, 254);
+	show_image(self.historywin);
+end
+
+local function console_addmsg(self, msg)
+	table.insert(self.linehistory, msg);
 end
 
 local function console_clearbuffer(self)
@@ -75,6 +111,29 @@ local function console_update_caret(self)
 	move_image(self.caret, xpos, 0, 5);
 end
 
+local function console_autocomplete(self)
+	beg = 1;
+	
+	for i=self.caretpos,0,-1 do
+		if string.sub(self.buffer, i, i) == " " then
+			beg = i + 1;
+			break;
+		end
+	end
+	
+	local prefix = string.sub( self.buffer, beg );
+	local matchlist = {};
+	if (string.len(prefix) == 0) then
+		matchlist = self.autocomplete;
+	else
+		for i,v in pairs(matchlist) do
+		
+		end
+	end
+	
+	return matchlist;
+end
+
 local function console_input(self, iotbl)
 	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
 		symres = self.symtbl[ iotbl.keysym ];
@@ -83,10 +142,33 @@ local function console_input(self, iotbl)
 			return false;
 		end
 
-		if (symres == "UP") then
-			print("copy from history buffer");
-			elseif (symres == "DOWN") then
-			print("copy from history buffer");
+		if (symres == "UP" or symres == "DOWN") then
+			self.historypos = (symres == "UP" and self.historypos + 1) or (self.historypos - 1);
+
+			if (self.historypos >= #self.history) then
+				self.historypos = #self.history - 1;
+			end
+
+			if (self.historypos >= 0 and self.history[ #self.history - self.historypos] ) then
+				self.buffer = self.history[ # self.history - self.historypos ];
+				self.caretpos = string.len( self.buffer );
+			else
+				self.historypos = -1;
+				self.caretpos = 0;
+				self.buffer = "";
+			end
+
+			console_buffer_draw(self);
+			console_update_caret(self);
+			
+		elseif (symres == "HOME") then
+			self.caretpos = 0;
+			console_update_caret(self);
+			
+		elseif (symres == "END") then
+			self.caretpos = string.len( self.buffer );
+			console_update_caret(self);
+			
 		elseif (symres == "LEFT") then
 			self.caretpos = self.caretpos - 1 >= 0 and self.caretpos - 1 or 0;
 			console_update_caret(self);
@@ -96,25 +178,53 @@ local function console_input(self, iotbl)
 			console_update_caret(self);
 			
 		elseif (symres == "BACKSPACE") then
-			self.buffer = string.delete_at(self.buffer, self.caretpos);
-			self.caretpos = self.caretpos - 1 < 0 and 0 or self.caretpos - 1;
+			if (self.caretpos > 0) then
+				self.buffer = string.delete_at(self.buffer, self.caretpos);
+				self.caretpos = self.caretpos - 1 < 0 and 0 or self.caretpos - 1;
+				console_buffer_draw(self);
+				console_update_caret(self);
+			end
+			
+		elseif (symres == "DELETE") then
+			self.buffer = string.delete_at(self.buffer, self.caretpos + 1);
 			console_buffer_draw(self);
 			console_update_caret(self);
-
+			
 		elseif (symres == "TAB") then
-			print("present autocompletion list");
+
+			local matchlist = console_autocomplete(self);
+
+			if ( #matchlist == 1) then
+				self.buffer = string.insert(self.buffer, matchlist[1], self.caretpos+1);
+				self.caretpos = self.caretpos + string.len( matchlist[1] );
+
+				console_buffer_draw(self);
+				console_update_caret(self);
+			elseif (#matchlist > 1) then 
+				for i, v in pairs( matchlist ) do
+					console_addmsg(self, v);
+				end
+
+				console_update_msgwin(self);
+			end
+			
 		elseif (symres == "ESCAPE") then
 -- should really be filtered beforehand, oh well.
+			
 		elseif (symres == "RETURN") then
+			table.insert(self.history, self.buffer);
+			console_addmsg(self, self.buffer);
+			self.historypos = -1;
+			
 			console_clearbuffer(self);
 			self.caretpos = 0;
 			console_update_caret(self);
+			console_update_msgwin(self);
 		else
 			local keych = iotbl.utf8;
 
 			if (self.shortcut[ symres ] ~= nil) then
 				keych = self.shortcut[ symres ];
-				self.buffer = self.buffer .. self.shortcut[ symres ];
 			elseif keych == nil then
 				return false;
 			end
@@ -140,9 +250,11 @@ function create_console(w, h, font, fontsize)
 	local symfun = system_load("scripts/symtable.lua");
 	local newtbl = {
 		history = {},
-		position = 1,
+		linehistory = {},
+		linehistoryofs = 0,
+		position =  1,
 		buffer = "",
-		historyofs = 0,
+		historypos = -1,
 		width = w,
 		height = h,
 		x = 10,
@@ -151,7 +263,11 @@ function create_console(w, h, font, fontsize)
 		symtbl = symfun(),
 		input = console_input,
 		move = console_move,
-		nlines = ( VRESH / (fontsize + 4) ) - 1,
+		nlines = math.floor( ( h / (fontsize + 4) ) - 1 ),
+		autocomplete = {},
+		shortcut = {},
+		bufferline = BADID,
+		historywin = BADID
 	};
 
 	if (newtbl.nlines <= 0) then
@@ -160,12 +276,6 @@ function create_console(w, h, font, fontsize)
 	
 	newtbl.fontstr = [[\f]] .. font .. "," .. tostring(fontsize) .. " ";
 	newtbl.fontsize = fontsize;
-	newtbl.buffer = "";
-	newtbl.shortcut = {};
-	newtbl.bufferline = BADID;
-
--- should really be a prefix- tree .. 
-	newtbl.autocomplete = {};
 
 --  assert, width > 6f
 	newtbl.inputbg_height = fontsize + (0.5 * fontsize);
@@ -196,6 +306,21 @@ function create_console(w, h, font, fontsize)
 	show_image(newtbl.caret);
 	
 	newtbl.show = console_show;
+	newtbl.auto_completion = function( self, list )
+		if (list ~= nil) then
+			self.autocomplete = list;
+		else
+			self.history = {};
+		end
+	end
+
+	newtbl.shortcuts = function( self, list )
+		if (list ~= nil) then
+			self.shortcut = list;
+		else
+			self.shortcut = {};
+		end
+	end
 	
 	return newtbl;
 end
