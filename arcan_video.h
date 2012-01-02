@@ -223,6 +223,7 @@ unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int
  * 2D(AABB - OBB) test) */
 uint32_t arcan_video_pick_detailed(uint32_t* dst, uint32_t count, uint16_t x, uint16_t y, int zval_low, int zval_high, bool ignore_alpha);
 
+void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh);
 arcan_vobj_id arcan_video_renderstring(const char* message, /* string to render */
                                        int8_t line_spacing, /* default spacing between lines */
                                        int8_t tab_spacing,  /* default spacing between tabs */

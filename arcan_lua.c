@@ -102,6 +102,19 @@ int arcan_lua_rawresource(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_readrawresource(lua_State* ctx)
+{
+	if (lua_ctx_store.rfile){
+		char line[256];
+		if (fgets(line, sizeof(line), lua_ctx_store.rfile) != NULL){
+			lua_pushstring(ctx, line);
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
 {
 	arcan_vobj_id res = luaL_checknumber(ctx, num);
@@ -403,6 +416,20 @@ int arcan_lua_setshader(lua_State* ctx)
 	arcan_video_setprogram(id, vprogram, fprogram);
 
 	return 0;
+}
+
+int arcan_lua_strsize(lua_State* ctx)
+{
+	unsigned int width, height;
+	const char* message = luaL_checkstring(ctx, 1);
+	int vspacing = luaL_optint(ctx, 2, 4);
+	int tspacing = luaL_optint(ctx, 2, 64);
+	
+	arcan_video_stringdimensions(message, vspacing, tspacing, NULL, &width, &height);
+	lua_pushnumber(ctx, width);
+	lua_pushnumber(ctx, height);
+	
+	return 2;
 }
 
 int arcan_lua_buildstr(lua_State* ctx)
@@ -1650,6 +1677,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item: close_rawresource, boolean */
 	lua_register(ctx, "close_rawresource", arcan_lua_rawclose);
 
+/* item: read_rawresource, string or nil */
+	lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
+	
 /* category: target */
 /* item: launch_target, gametitle, launchmode, tgtvid and tgtaid or elapsed*/
 	lua_register(ctx, "launch_target", arcan_lua_targetlaunch);
@@ -1812,6 +1842,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item:render_text, formatstr, vid */
 	lua_register(ctx, "render_text", arcan_lua_buildstr);
 
+/* item:text_size, formatstr, width and height */
+	lua_register(ctx, "text_size", arcan_lua_strsize);
+	
 /* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
 	lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 

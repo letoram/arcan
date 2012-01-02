@@ -1261,6 +1261,8 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 struct rcell {
 
 	bool surface;
+	unsigned int width;
+	unsigned int height;
 
 	union {
 		SDL_Surface* surf;
@@ -1472,7 +1474,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 }
 
 /* a */
-static int build_textchain(char* message, struct rcell* root)
+static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 {
 	int rv = 0;
 	struct text_format* curr_style = &current_context->curr_style;
@@ -1503,14 +1505,18 @@ static int build_textchain(char* message, struct rcell* root)
 							return -1;
 						}
 
-						cnode->surface = true;
-						TTF_SetFontStyle(curr_style->font, curr_style->style);
-						cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
-						SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
+						if (sizeonly){
+							TTF_SizeUTF8(curr_style->font, base, &cnode->width, &cnode->height);
+						}
+						else{
+							cnode->surface = true;
+							TTF_SetFontStyle(curr_style->font, curr_style->style);
+							cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
+							SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
 
-						if (!cnode->data.surf)
-							fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
-
+							if (!cnode->data.surf)
+								fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
+						}
 						cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
 						*current = '\\';
 					}
@@ -1615,6 +1621,66 @@ static void dumptchain(struct rcell* node)
 	}
 }
 
+void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh)
+{
+	/* (A) */
+	int chainlines;
+	struct rcell root = {.surface = false};
+	char* work = strdup(message);
+	current_context->curr_style.newline = 0;
+	current_context->curr_style.tab = 0;
+	current_context->curr_style.cr = false;
+	
+	if ((chainlines = build_textchain(work, &root, true)) > 0) {
+		struct rcell* cnode = &root;
+		unsigned int linecount = 0;
+		bool flushed = false;
+		*maxw = 0;
+		*maxh = 0;
+		
+		int lineh = 0;
+		int curw = 0;
+		int curh = 0;
+		
+		while (cnode) {
+			if (cnode->width > 0) {
+				if (cnode->height > lineh + line_spacing)
+					lineh = cnode->height;
+				
+				curw += cnode->width;
+			}
+			else {
+				if (cnode->data.format.cr)
+					curw = 0;
+				
+				if (cnode->data.format.tab)
+					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
+				
+				if (cnode->data.format.newline > 0)
+					for (int i = cnode->data.format.newline; i > 0; i--) {
+						maxh += lineh + line_spacing;
+						lineh = 0;
+					}
+			}
+			
+			if (curw > *maxw)
+				*maxw = curw;
+			
+			cnode = cnode->next;
+		}
+	}
+
+	struct rcell* current = root.next;
+	
+	while (current){
+		struct rcell* prev = current;
+		current = current->next;
+		free(current);
+	}
+
+	free(work);
+}
+	
 arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, unsigned int** lineheights)
 {
 	arcan_vobj_id rv = ARCAN_EID;
@@ -1627,7 +1693,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 	current_context->curr_style.tab = 0;
 	current_context->curr_style.cr = false;
 
-	if ((chainlines = build_textchain(work, &root)) > 0) {
+	if ((chainlines = build_textchain(work, &root, false)) > 0) {
 		/* (B) */
 		/*		dumptchain(&root); */
 		struct rcell* cnode = &root;
@@ -1736,6 +1802,10 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 				free(prev);
 		}
 
+		if (canvas == NULL){
+			fprintf(stderr, "Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string is probably unreasonably large wide (len: %zi curw: %i)\n", strlen(message), curw);
+			exit(1);
+		}
 		/* upload */
 		memcpy(vobj->default_frame.raw, canvas->pixels, canvas->w * canvas->h * 4);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, canvas->w, canvas->h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
