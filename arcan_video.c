@@ -1480,7 +1480,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 	struct text_format* curr_style = &current_context->curr_style;
 	curr_style->col.r = curr_style->col.g = curr_style->col.b = 0xff;
 	curr_style->style = 0;
-	
+
 	if (message) {
 		struct rcell* cnode = root;
 		char* current = message;
@@ -1506,6 +1506,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 						}
 
 						if (sizeonly){
+							TTF_SetFontStyle(curr_style->font, curr_style->style);
 							TTF_SizeUTF8(curr_style->font, base, &cnode->width, &cnode->height);
 						}
 						else{
@@ -1552,11 +1553,18 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 
 		/* last element .. */
 		if (msglen && curr_style->font) {
-			cnode->surface = true;
 			cnode->next = NULL;
-			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
-			SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
+
+			if (sizeonly){
+				TTF_SetFontStyle(curr_style->font, curr_style->style);
+				TTF_SizeUTF8(curr_style->font, base, &cnode->width, &cnode->height);
+			}
+			else{
+				cnode->surface = true;
+				TTF_SetFontStyle(curr_style->font, curr_style->style);
+				cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
+				SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
+			}
 		}
 
 		cnode = cnode->next = (void*) calloc(sizeof(struct rcell), 1);
@@ -1646,7 +1654,7 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8
 			if (cnode->width > 0) {
 				if (cnode->height > lineh + line_spacing)
 					lineh = cnode->height;
-				
+
 				curw += cnode->width;
 			}
 			else {
@@ -1658,7 +1666,7 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8
 				
 				if (cnode->data.format.newline > 0)
 					for (int i = cnode->data.format.newline; i > 0; i--) {
-						maxh += lineh + line_spacing;
+						*maxh += lineh + line_spacing;
 						lineh = 0;
 					}
 			}

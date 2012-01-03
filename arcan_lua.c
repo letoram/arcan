@@ -420,12 +420,13 @@ int arcan_lua_setshader(lua_State* ctx)
 
 int arcan_lua_strsize(lua_State* ctx)
 {
-	unsigned int width, height;
+	unsigned int width = 0, height = 0;
 	const char* message = luaL_checkstring(ctx, 1);
 	int vspacing = luaL_optint(ctx, 2, 4);
 	int tspacing = luaL_optint(ctx, 2, 64);
 	
 	arcan_video_stringdimensions(message, vspacing, tspacing, NULL, &width, &height);
+
 	lua_pushnumber(ctx, width);
 	lua_pushnumber(ctx, height);
 	
@@ -1647,6 +1648,21 @@ int arcan_lua_setscalemode(lua_State* ctx)
 	return 0;
 }
 
+/* 0 => 7 bit char,
+ * 1 => start of char,
+ * 2 => in the middle of char */
+int arcan_lua_utf8kind(lua_State* ctx)
+{
+	char num = luaL_checkint(ctx, 1);
+
+	if (num & (1 << 7)){
+		lua_pushnumber(ctx, num & (1 << 6) ? 1 : 2);
+	} else
+		lua_pushnumber(ctx, 0);
+	
+	return 1;
+}
+
 void arcan_lua_cleanup()
 {
 }
@@ -1843,7 +1859,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 	lua_register(ctx, "render_text", arcan_lua_buildstr);
 
 /* item:text_size, formatstr, width and height */
-	lua_register(ctx, "text_size", arcan_lua_strsize);
+	lua_register(ctx, "text_dimensions", arcan_lua_strsize);
 	
 /* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
 	lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
@@ -1890,8 +1906,10 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item:controller_leds, ctrlid, nleds */
 	lua_register(ctx, "controller_leds", arcan_lua_n_leds);
 
+	lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
+	
 	atexit(arcan_lua_cleanup);
-
+	
 	return ARCAN_OK;
 }
 

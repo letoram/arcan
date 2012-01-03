@@ -1,18 +1,98 @@
 -- helper script for a simple command- console
 -- with some decent functions like autocomplete etc.
+--
+-- Input will come from IO events, which are UTF-8, which, of course, LUA doesn't support by default
+-- the utf8kind function is hacked into arcan_lua.c
+--
+-- Outstanding issues:
+-- No scrolling for the messagewin
+-- Just sanity check for dimensions ( too large a input is considered a fatal misuse of render_text )
+--
 
-function string.insert(src, msg, ofs)
-	return string.sub(src, 1,ofs-1) .. tostring(msg) .. string.sub(src, ofs, string.len(src));
+function string.utf8back(src, ofs)
+	if (ofs > 1 and string.len(src)+1 >= ofs) then
+		ofs = ofs - 1;
+		while (ofs > 1 and utf8kind(string.byte(src,ofs) ) == 2) do
+			ofs = ofs - 1;
+		end
+	end
+
+	return ofs;
+end
+
+function string.utf8forward(src, ofs)
+	if (ofs <= string.len(src)) then
+		repeat
+			ofs = ofs + 1;
+		until (ofs > string.len(src) or utf8kind( string.byte(src, ofs) ) < 2);
+	end
+
+	return ofs;
+end
+
+function string.translateofs(src, ofs, beg)
+	local i = beg;
+	local eos = string.len(src);
+
+	-- scan for corresponding UTF-8 position
+	while ofs > 1 and i <= eos do
+		local kind = utf8kind( string.byte(src, i) );
+		if (kind < 2) then
+			ofs = ofs - 1;
+		end
+		
+		i = i + 1;
+	end
+
+	return i;
+end
+
+function string.utf8len(src, ofs)
+	local i = 0;
+	local rawlen = string.len(src);
+	ofs = ofs < 1 and 1 or ofs
+	
+	while (ofs <= rawlen) do
+		local kind = utf8kind( string.byte(src, ofs) );
+		if (kind < 2) then
+			i = i + 1;
+		end
+
+		ofs = ofs + 1;
+	end
+
+	return i;
+end
+
+function string.insert(src, msg, ofs, limit)
+	local xlofs = src:translateofs(ofs, 1);
+	assert(limit > 0);
+	
+	if ofs + string.len(msg) > limit then
+		msg = string.sub(msg, 1, limit - ofs);
+
+	-- align to the last possible UTF8 char..
+		while (string.len(msg) > 0 and utf8kind( string.byte(msg, string.len(msg))) == 2) do
+			msg = string.sub(msg, 1, string.len(msg) - 1);
+		end
+	end
+	
+	return string.sub(src, 1, xlofs - 1) .. msg .. string.sub(src, xlofs, string.len(src)), string.len(msg);
 end
 
 function string.delete_at(src, ofs)
-	return string.sub(src, 1, ofs-1) .. string.sub(src, ofs+1, string.len(src));
+	local fwd = string.utf8forward(src, ofs);
+	if (fwd ~= ofs) then
+		return string.sub(src, 1, ofs - 1) .. string.sub(src, fwd, string.len(src));
+	end
+	
+	return src;
 end
 
 local function console_buffer_draw(self)
 	if (BADID ~= self.bufferline) then
 		delete_image(self.bufferline);
-	end
+ 	end
 
 --  Current edit-line
 	local text = string.gsub( self.buffer, "\\", "\\\\" );
@@ -94,17 +174,15 @@ local function console_update_caret(self)
 	local editprop = image_surface_properties(self.bufferline);
 	local xpos = 0;
 	
-	if (self.caretpos > 0) then 
-		local msgstr = string.sub( self.buffer, 1, self.caretpos);
+	if (self.caretpos > 1) then
+		local msgstr = string.sub( self.buffer, 1, string.utf8back(self.buffer, self.caretpos) );
 		editprop.width = self.fontsize;
 
 		-- Figure out how wide the current message is (locate ofset)
 		if (string.len(msgstr) > 0) then
 			msgstr = string.gsub( msgstr, "\\", "\\\\" );
-			local testimg  = render_text( self.fontstr .. msgstr );
-			local testprop = image_surface_properties( testimg );
-			xpos = testprop.width;
-			delete_image(testimg);
+			local w, h = text_dimensions( self.fontstr .. msgstr );
+			xpos = w;
 		end
 	end
 
@@ -170,23 +248,23 @@ local function console_input(self, iotbl)
 			console_update_caret(self);
 			
 		elseif (symres == "LEFT") then
-			self.caretpos = self.caretpos - 1 >= 0 and self.caretpos - 1 or 0;
+			self.caretpos = string.utf8back(self.buffer, self.caretpos);
 			console_update_caret(self);
 			
 		elseif (symres == "RIGHT") then
-			self.caretpos = self.caretpos + 1 > string.len(self.buffer) and self.caretpos or self.caretpos + 1;
+			self.caretpos = string.utf8forward(self.buffer, self.caretpos);
 			console_update_caret(self);
 			
 		elseif (symres == "BACKSPACE") then
 			if (self.caretpos > 0) then
+				self.caretpos = string.utf8back(self.buffer, self.caretpos);
 				self.buffer = string.delete_at(self.buffer, self.caretpos);
-				self.caretpos = self.caretpos - 1 < 0 and 0 or self.caretpos - 1;
 				console_buffer_draw(self);
 				console_update_caret(self);
 			end
 			
 		elseif (symres == "DELETE") then
-			self.buffer = string.delete_at(self.buffer, self.caretpos + 1);
+			self.buffer = string.delete_at(self.buffer, self.caretpos);
 			console_buffer_draw(self);
 			console_update_caret(self);
 			
@@ -195,8 +273,8 @@ local function console_input(self, iotbl)
 			local matchlist = console_autocomplete(self);
 
 			if ( #matchlist == 1) then
-				self.buffer = string.insert(self.buffer, matchlist[1], self.caretpos+1);
-				self.caretpos = self.caretpos + string.len( matchlist[1] );
+				self.buffer, nch = string.insert(self.buffer, matchlist[1], self.caretpos+1, self.nchars);
+				self.caretpos = self.caretpos + nch;
 
 				console_buffer_draw(self);
 				console_update_caret(self);
@@ -217,7 +295,7 @@ local function console_input(self, iotbl)
 			self.historypos = -1;
 			
 			console_clearbuffer(self);
-			self.caretpos = 0;
+			self.caretpos = 1;
 			console_update_caret(self);
 			console_update_msgwin(self);
 		else
@@ -229,8 +307,8 @@ local function console_input(self, iotbl)
 				return false;
 			end
 
-			self.buffer = string.insert(self.buffer, keych, self.caretpos+1);
-			self.caretpos = self.caretpos + string.len( keych );
+			self.buffer, nch = string.insert(self.buffer, keych, self.caretpos, self.nchars);
+			self.caretpos = self.caretpos + nch;
 			
 			console_buffer_draw(self);
 			console_update_caret(self);
@@ -259,11 +337,12 @@ function create_console(w, h, font, fontsize)
 		height = h,
 		x = 10,
 		y = 10,
-		caretpos = 0,
+		caretpos = 1,
 		symtbl = symfun(),
 		input = console_input,
 		move = console_move,
 		nlines = math.floor( ( h / (fontsize + 4) ) - 1 ),
+		nchars = math.floor( ( w / (fontsize * 0.3) )),
 		autocomplete = {},
 		shortcut = {},
 		bufferline = BADID,
