@@ -112,7 +112,7 @@ static int db_num_query(arcan_dbh* dbh, const char* qry)
 		sqlite3_finalize(stmt);
 	} 
 	else {
-		fprintf(stderr, "Warning: db_num_query(), Couldn't process query: %s, possibly broken/incomplete arcandb.sqlite\n", qry);
+		arcan_warning("Warning: db_num_query(), Couldn't process query: %s, possibly broken/incomplete arcandb.sqlite\n", qry);
 		count = -1;
 	}
 
@@ -389,7 +389,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 				else if (strcmp(col, "target") == 0)
 					row->targetname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
 				else
-					fprintf(stderr, "Warning: arcan_db_games(), unexpected column value %s\n", col);
+					arcan_warning("Warning: arcan_db_games(), unexpected column value %s\n", col);
 		}
 		while (++ofs < ncols);
 
@@ -648,8 +648,14 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 {
 	sqlite3* dbh;
 	int rc = 0;
+
 	if (!fname)
 		return NULL;
+
+/* create an empty one if no-one was found */
+	FILE* fpek = fopen(fname, "a");
+	if (fpek)
+		fclose(fpek);
 
 	if (!db_init) {
 		int rv = sqlite3_initialize();
@@ -671,7 +677,7 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 		if (themename)
 			create_theme_group(res, themename);
 
-		fprintf(stderr, "Notice: arcan_db_open(), # targets: %i, # games: %i\n", tc, gc);
+		arcan_warning("Notice: arcan_db_open(), # targets: %i, # games: %i\n", tc, gc);
 		return res;
 	}
 	else

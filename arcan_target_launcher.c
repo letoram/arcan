@@ -58,7 +58,7 @@ extern bool fullscreen;
 int arcan_target_launch_external(const char* fname, char** argv)
 {
 	if (arcan_video_prepare_external() == false){
-		fprintf(stderr, "Warning, arcan_target_launch_external(), couldn't push current context, aborting launch.\n");
+		arcan_warning("Warning, arcan_target_launch_external(), couldn't push current context, aborting launch.\n");
 		return 0;
 	}
 	
@@ -251,7 +251,7 @@ void arcan_target_tick_control(arcan_launchtarget* tgt)
 		int status;
 		if (waitpid( tgt->source.child, &status, WNOHANG ) == tgt->source.child){
 			tgt->source.child_alive = false;
-			fprintf(stderr, "arcan_target_tick_control() -- internal launch died\n");
+			arcan_warning("arcan_target_tick_control() -- internal launch died\n");
 		}
 	}
 }
@@ -270,7 +270,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
         enum communication_mode comm)
 {
 	if (arcan_libpath == NULL){
-		fprintf(stderr, "Warning: arcan_target_launch_internal() called without a proper hijack lib.\n");
+		arcan_warning("Warning: arcan_target_launch_internal() called without a proper hijack lib.\n");
 		return NULL;
 	}
 	
@@ -288,7 +288,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 	close(shmfd);
 
 	if (MAP_FAILED == shmpage){
-		fprintf(stderr, "arcan_frameserver_spawn_server() -- couldn't allocate shmpage\n");
+		arcan_warning("arcan_frameserver_spawn_server() -- couldn't allocate shmpage\n");
 		goto cleanup;
 	}
 	
@@ -337,7 +337,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 		fcntl(COMM_FD, F_SETFL, O_NONBLOCK);
 
 		execv(fname, argv);
-		fprintf(stderr, "arcan_target_launch_internal() child : couldn't execute %s\n", fname);
+		arcan_warning("arcan_target_launch_internal() child : couldn't execute %s\n", fname);
 		exit(1);
 	}
 	

@@ -288,11 +288,11 @@ static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* v
 	
 	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
 	if (rlen)
-		fprintf(stderr, "Warning: Couldn't compiler Shader vertex program: %s\n", buf);
+		arcan_warning("Warning: Couldn't compiler Shader vertex program: %s\n", buf);
 
 	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
 	if (rlen)
-		fprintf(stderr, "Warning: Couldn't compiler Shader fragment Program: %s\n", buf);
+		arcan_warning("Warning: Couldn't compiler Shader fragment Program: %s\n", buf);
 
 	glAttachShader(*dprg, *fprg);
 	glAttachShader(*dprg, *vprg);
@@ -301,7 +301,7 @@ static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* v
 
 	glGetProgramInfoLog(*dprg, 256, &rlen, buf);
 	if (rlen)
-		fprintf(stderr, "Warning: Problem linking Shader Program: %s\n", buf);
+		arcan_warning("Warning: Problem linking Shader Program: %s\n", buf);
 
 /*	glUseProgram(*dprg); */
 }
@@ -768,7 +768,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		
 	if (arcan_video_display.screen) {
 		if (TTF_Init() == -1) {
-			fprintf(stderr, "Warning: arcan_video_init(), Couldn't initialize freetype. Text rendering disabled.\n");
+			arcan_warning("Warning: arcan_video_init(), Couldn't initialize freetype. Text rendering disabled.\n");
 			arcan_video_display.text_support = false;
 		}
 		else
@@ -1385,7 +1385,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 					for (int i = 0; i < 3; i++) {
 						/* slide to cell */
 						if (!isxdigit(*base) || !isxdigit(*(base+1))) {
-							fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
+							arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
 							*ok = false;
 // 							return failed;
 						}
@@ -1411,7 +1411,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 					fontbase = (base += 2);
 					while (*base != ',') {
 						if (*base == 0) {
-							fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't scan font directive '%s' (%s)\n", fontbase, orig);
+							arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font directive '%s' (%s)\n", fontbase, orig);
 							*ok = false;
 							return failed;
 						}
@@ -1426,7 +1426,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 						base++;
 
 					if (numbase == base)
-						fprintf(stderr, "Warning: arcan_video_renderstring(), missing size argument in font specification (%s).\n", orig);
+						arcan_warning("Warning: arcan_video_renderstring(), missing size argument in font specification (%s).\n", orig);
 					else {
 						char ch = *base;
 						*base = 0;
@@ -1435,7 +1435,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 						TTF_Font* font = NULL;
 
 						if (!fname){
-							fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't find font (%s) (%s)\n", fontbase, orig);
+							arcan_warning("Warning: arcan_video_renderstring(), couldn't find font (%s) (%s)\n", fontbase, orig);
 							*ok = false;
 							return failed;
 						}
@@ -1443,7 +1443,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 							if ((font =
 							            grab_font(fname,
 							                      strtoul(numbase, NULL, 10))) == NULL){
-								fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't open font (%s) (%s)\n", fname, orig);
+								arcan_warning("Warning: arcan_video_renderstring(), couldn't open font (%s) (%s)\n", fname, orig);
 								free(fname);
 								*ok = false;
 								return failed;
@@ -1458,7 +1458,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 					/* scan until whitespace or ',' (filename) then if ',' scan to non-number */
 					break;
 				default:
-					fprintf(stderr, "Warning: arcan_video_renderstring(), unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
+					arcan_warning("Warning: arcan_video_renderstring(), unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
 					*ok = false;
 					return failed;
 			}
@@ -1501,7 +1501,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 						*current = 0;
 						/* render surface and slide window */
 						if (!curr_style->font) {
-							fprintf(stderr, "Warning: arcan_video_renderstring(), no font specified / found.\n");
+							arcan_warning("Warning: arcan_video_renderstring(), no font specified / found.\n");
 							return -1;
 						}
 
@@ -1514,7 +1514,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 							TTF_SetFontStyle(curr_style->font, curr_style->style);
 							cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
 							if (!cnode->data.surf)
-								fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
+								arcan_warning("Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
 							else
 								SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
 						}
@@ -1752,8 +1752,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		/* prepare structures */
 		arcan_vobject* vobj = arcan_video_newvobject(&rv);
 		if (!vobj){
-			fprintf(stderr, "Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or (more likely) out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
-			exit(1);
+			arcan_fatal("Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or (more likely) out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
 		}
 
 		int storw = nexthigher(maxw);
@@ -1784,10 +1783,8 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 #else
 		    SDL_CreateRGBSurface(SDL_SWSURFACE, storw, storh, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
 #endif
-		if (canvas == NULL){
-			fprintf(stderr, "Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string is probably unreasonably large wide (len: %zi curw: %i)\n", strlen(message), curw);
-			exit(1);
-		}
+		if (canvas == NULL)
+			arcan_fatal("Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string is probably unreasonably large wide (len: %zi curw: %i)\n", strlen(message), curw);
 
 		int line = 0;
 

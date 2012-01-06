@@ -106,7 +106,7 @@ bool arcan_led_set(uint8_t device, int8_t led)
 				break;
 
 			default:
-				fprintf(stderr, "Warning: arcan_led_set(), unknown LED controller type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_set(), unknown LED controller type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -133,7 +133,7 @@ bool arcan_led_clear(uint8_t device, int8_t led)
 				break;
 
 			default:
-				fprintf(stderr, "Warning: arcan_led_unset(), unknown LED controller type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_unset(), unknown LED controller type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -149,7 +149,7 @@ bool arcan_led_intensity(uint8_t device, int8_t led, uint8_t intensity)
 				/* doesn't support this feature */
 
 			default:
-				fprintf(stderr, "Warning: arcan_led_intensity(), unknown LED / unsupported mode for device type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_intensity(), unknown LED / unsupported mode for device type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -165,7 +165,7 @@ bool arcan_led_rgb(uint8_t device, int8_t led, uint8_t r, uint8_t g, uint8_t b)
 				/* doesn't support this feature */
 
 			default:
-				fprintf(stderr, "Warning: arcan_led_rgb(), unknown LED / unsupported mode for device type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_rgb(), unknown LED / unsupported mode for device type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -185,7 +185,7 @@ led_capabilities arcan_led_capabilities(uint8_t device)
 				break;
 
 			default:
-				fprintf(stderr, "Warning: arcan_led_capabilities(), unknown LED controller type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_capabilities(), unknown LED controller type: %i\n", controllers[device].type);
 				break;
 		}
 	}

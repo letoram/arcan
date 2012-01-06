@@ -156,7 +156,7 @@ int main(int argc, char* argv[])
 			case 'r' :
 					scalemode = strtol(optarg, NULL, 10);
 					if (scalemode < 0 || scalemode > 2){
-						fprintf(stderr, "Warning: main(), -r, invalid scalemode. Ignoring.\n");
+						arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
 						scalemode = ARCAN_VIMAGE_SCALEPOW2;
 					}
 					
@@ -190,7 +190,7 @@ int main(int argc, char* argv[])
 	else if (check_theme("welcome"))
 		arcan_themename = "welcome";
 	else {
-		fprintf(stderr, "Fatal: main(), No theme found.\n");
+		arcan_fatal("No theme found.\n");
 		goto error;
 	}
 
@@ -198,7 +198,7 @@ int main(int argc, char* argv[])
 
 	dbhandle = arcan_db_open(dbname, arcan_themename);
 	if (!dbhandle) {
-		fprintf(stderr, "Fatal: main(), Creating database connection (%s)=>%s.\n", dbfname, dbname);
+		arcan_fatal("Couldn't open database (requested:%s)=>(resource found:%s).\n", dbfname, dbname);
 		goto error;
 	}
 	free(dbname);
@@ -211,7 +211,7 @@ int main(int argc, char* argv[])
 		putenv("SDL_VIDEO_WINDOW_POS=0,0");
 	}
 	
-	fprintf(stderr, "Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i\n", 
+	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i\n", 
 			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", vi->wm_available ? "yes" : "no", scalemode);
 	
 	if (windowed) {
@@ -227,7 +227,7 @@ int main(int argc, char* argv[])
 		errno = 0;
 		/* grab audio, (possible to live without) */
 		if (ARCAN_OK != arcan_audio_setup()){
-			fprintf(stderr, "Warning: No audio devices could be found.\n");
+			arcan_warning("Warning: No audio devices could be found.\n");
 		}
 
 		/* setup device polling, cleanup, ... */
@@ -248,7 +248,7 @@ int main(int argc, char* argv[])
 
 		if ( luaL_dofile(luactx, fn) == 1 ){
 			const char* msg = lua_tostring(luactx, -1);
-			fprintf(stderr, "Fatal: main(), Error loading theme script (%s) : (%s)\n", themescr, msg);
+			arcan_fatal("Fatal: main(), Error loading theme script (%s) : (%s)\n", themescr, msg);
 			goto error;
 		}
 
@@ -324,7 +324,7 @@ int main(int argc, char* argv[])
 		arcan_video_shutdown();
 	}
 	else{
-		fprintf(stderr, "Error; Couldn't initialize video system, try other windowing options (-f, -w, ...)\n");
+		arcan_fatal("Error; Couldn't initialize video system, try other windowing options (-f, -w, ...)\n");
 	}
 	error:
 	SDL_Quit();
