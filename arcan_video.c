@@ -1513,10 +1513,10 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 							cnode->surface = true;
 							TTF_SetFontStyle(curr_style->font, curr_style->style);
 							cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
-							SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
-
 							if (!cnode->data.surf)
 								fprintf(stderr, "Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
+							else
+								SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
 						}
 						cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
 						*current = '\\';
@@ -1683,28 +1683,31 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8
 	while (current){
 		struct rcell* prev = current;
 		current = current->next;
-		free(current);
+		prev->next = (void*) 0xdeadbeef;
+		free(prev);
 	}
 
 	free(work);
 }
 	
+/* note: currently does not obey restrictions placed
+ * on texturemode (i.e. everything is padded to power of two and txco hacked) */
 arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, unsigned int** lineheights)
 {
 	arcan_vobj_id rv = ARCAN_EID;
 
 	/* (A) */
 	int chainlines;
-	struct rcell root = {.surface = false};
+	struct rcell* root = calloc( sizeof(struct rcell), 1);
 	char* work = strdup(message);
 	current_context->curr_style.newline = 0;
 	current_context->curr_style.tab = 0;
 	current_context->curr_style.cr = false;
 
-	if ((chainlines = build_textchain(work, &root, false)) > 0) {
+	if ((chainlines = build_textchain(work, root, false)) > 0) {
 		/* (B) */
 		/*		dumptchain(&root); */
-		struct rcell* cnode = &root;
+		struct rcell* cnode = root;
 		unsigned int linecount = 0;
 		bool flushed = false;
 		int maxw = 0;
@@ -1771,7 +1774,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
 		/* find dimensions and cleanup */
-		cnode = &root;
+		cnode = root;
 		curw = 0;
 		int yofs = 0;
 
@@ -1781,6 +1784,10 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 #else
 		    SDL_CreateRGBSurface(SDL_SWSURFACE, storw, storh, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
 #endif
+		if (canvas == NULL){
+			fprintf(stderr, "Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string is probably unreasonably large wide (len: %zi curw: %i)\n", strlen(message), curw);
+			exit(1);
+		}
 
 		int line = 0;
 
@@ -1789,7 +1796,6 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 				SDL_Rect dstrect = {.x = curw, .y = lines[line]};
 				SDL_BlitSurface(cnode->data.surf, 0, canvas, &dstrect);
 				curw += cnode->data.surf->w;
-				SDL_FreeSurface(cnode->data.surf);
 			}
 			else {
 				if (cnode->data.format.tab > 0)
@@ -1802,19 +1808,11 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 					line += cnode->data.format.newline;
 				}
 			}
-
-			struct rcell* prev = cnode;
+			
 			cnode = cnode->next;
-
-			if (prev != &root)
-				free(prev);
 		}
-
-		if (canvas == NULL){
-			fprintf(stderr, "Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string is probably unreasonably large wide (len: %zi curw: %i)\n", strlen(message), curw);
-			exit(1);
-		}
-		/* upload */
+	
+	/* upload */
 		memcpy(vobj->default_frame.raw, canvas->pixels, canvas->w * canvas->h * 4);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, canvas->w, canvas->h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
 		glBindTexture(GL_TEXTURE_2D, 0);
@@ -1835,22 +1833,22 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		else
 			free(lines);
 	}
-	else {
-	/* something failed, try to clean */ 
-		struct rcell* current = root.next;
-		if (root.surface && root.data.surf)
-			SDL_FreeSurface(root.data.surf);
-		
-		while (current){
-			if (current->surface && current->data.surf)
-				SDL_FreeSurface(current->data.surf);
+	
+	struct rcell* current;
 
-			struct rcell* prev = current;
-			current = current->next;
-			free(current);
-		}
+cleanup:
+	current = root;
+	while (current){
+		assert(current != (void*) 0xdeadbeef);
+		if (current->surface && current->data.surf)
+			SDL_FreeSurface(current->data.surf);
+			
+		struct rcell* prev = current;
+		current = current->next;
+		prev->next = (void*) 0xdeadbeef;
+		free(prev);
 	}
-
+	
 	free(work);
 
 	return rv;
