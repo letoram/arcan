@@ -109,21 +109,21 @@ static bool check_paths()
 {
 	/* binpath, libpath, resourcepath, themepath */
 	if (!arcan_binpath){
-		fprintf(stderr, "Fatal: check_paths(), frameserver not found.\n");
+		arcan_fatal("Fatal: check_paths(), frameserver not found.\n");
 		return false;
 	}
 	
 	if (!arcan_libpath){
-		fprintf(stderr, "Warning: check_paths(), libpath not found (internal support disabled).\n");
+		arcan_warning("Warning: check_paths(), libpath not found (internal support disabled).\n");
 	}
 	
 	if (!arcan_resourcepath){
-		fprintf(stderr, "Fatal: check_paths(), resourcepath not found.\n");
+		arcan_fatal("Fatal: check_paths(), resourcepath not found.\n");
 		return false;
 	}
 	
 	if (!arcan_themepath){
-		fprintf(stderr, "Fatal: check_paths(), themepath not found.\n");
+		arcan_fatal("Fatal: check_paths(), themepath not found.\n");
 	}
 
 	return true;
@@ -137,13 +137,13 @@ bool check_theme(const char* theme)
 	snprintf(playbuf, playbufsize-1, "%s/%s", arcan_themepath, theme);
 
 	if (!is_dir(playbuf)) {
-		fprintf(stderr, "Warning: theme check failed, directory %s not found.\n", playbuf);
+		arcan_warning("Warning: theme check failed, directory %s not found.\n", playbuf);
 		return false;
 	}
 
 	snprintf(playbuf, playbufsize-1, "%s/%s/%s.lua", arcan_themepath, theme, theme);
 	if (!file_exists(playbuf)) {
-		fprintf(stderr, "Warning: theme check failed, script %s.lua not found.\n", playbuf);
+		arcan_warning("Warning: theme check failed, script %s.lua not found.\n", playbuf);
 		return false;
 	}
 
@@ -191,7 +191,47 @@ char* arcan_find_resource_path(const char* label, const char* path, int searchma
 	return NULL;
 }
 
+void arcan_warning(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+}
+
+void arcan_fatal(const char* msg, ...)
+{
+	char buf[256] = {0};
+
+	va_list args;
+	va_start(args, msg );
+		vsnprintf(buf, 255, msg, args);
+	va_end(args);
+
+	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
+	exit(1);
+}
+
 #ifdef __UNIX
+
+void arcan_warning(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+}
+
+void arcan_fatal(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+
+	exit(1);
+}
+
 static char* unix_find(const char* fname){
 	const char* pathtbl[] = {
 		".",
@@ -253,6 +293,24 @@ static void setpaths_unix()
 }
 
 #ifdef __APPLE__
+
+void arcan_warning(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+}
+
+void arcan_fatal(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+
+	exit(1);
+}
 
 const char* internal_launch_support(){
 	return arcan_libpath ? "PARTIAL SUPPORT" : "NO SUPPORT (not found)";
@@ -373,7 +431,7 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 		case WAIT_OBJECT_0: break; /* default returnpath */
 
 	default:
-		fprintf(stderr, "Warning: arcan_sem_timedwait(win32) -- unknown result on WaitForSingleObject (%i)\n", rc);
+		arcan_warning("Warning: arcan_sem_timedwait(win32) -- unknown result on WaitForSingleObject (%i)\n", rc);
 	}
 
 	return rv;

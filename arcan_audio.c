@@ -129,7 +129,7 @@ static arcan_aobj* arcan_audio_prepare_format(enum aobj_atypes type, arcan_afunc
 #endif
 
 		default:
-			fprintf(stderr, "Warning: arcan_audio_prepare_format(), unknown audio type: %i\n", type);
+			arcan_warning("Warning: arcan_audio_prepare_format(), unknown audio type: %i\n", type);
 			break;
 	}
 
@@ -753,26 +753,26 @@ static void _wrap_alError(arcan_aobj* obj)
 	ALenum errc = alGetError();
 	if (errc != AL_NO_ERROR) {
 
-		fprintf(stderr, "(openAL): ");
+		arcan_warning("(openAL): ");
 		
 		switch (errc) {
 			case AL_INVALID_NAME:
-				fprintf(stderr, "(%li:%ui), bad ID passed to function\n", obj->id, obj->alid);
+				arcan_warning("(%li:%ui), bad ID passed to function\n", obj->id, obj->alid);
 				break;
 			case AL_INVALID_ENUM:
-				fprintf(stderr, "(%li:%ui), bad enum value passed to function\n", obj->id, obj->alid);
+				arcan_warning("(%li:%ui), bad enum value passed to function\n", obj->id, obj->alid);
 				break;
 			case AL_INVALID_VALUE:
-				fprintf(stderr, "(%li:%ui), bad value passed to function\n", obj->id, obj->alid);
+				arcan_warning("(%li:%ui), bad value passed to function\n", obj->id, obj->alid);
 				break;
 			case AL_INVALID_OPERATION:
-				fprintf(stderr, "(%li:%ui), requested operation is not valid\n", obj->id, obj->alid);
+				arcan_warning("(%li:%ui), requested operation is not valid\n", obj->id, obj->alid);
 				break;
 			case AL_OUT_OF_MEMORY:
-				fprintf(stderr, "(%li:%ui), OpenAL out of memory\n", obj->id, obj->alid);
+				arcan_warning("(%li:%ui), OpenAL out of memory\n", obj->id, obj->alid);
 				break;
 			default:
-				fprintf(stderr, "(%li:%ui), undefined error\n", obj->id, obj->alid);
+				arcan_warning("(%li:%ui), undefined error\n", obj->id, obj->alid);
 		}
 
 		

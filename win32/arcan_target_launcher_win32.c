@@ -30,7 +30,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	DWORD exitcode;
 	unsigned long int start = SDL_GetTicks();
 	if (fname == NULL || argv == NULL) {
-		fprintf(stderr, "arcan_target_launch_external(win32) : invalid arguments to launch\n\t (empty fname or empty argv), check the database.\n");
+		arcan_warning("arcan_target_launch_external(win32) : invalid arguments to launch\n\t (empty fname or empty argv), check the database.\n");
 		return -1;
 	}
 
@@ -43,7 +43,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	while (base && *base) {
 		size_t res = strlen(*base++);
 		if (res == -1) {
-			fprintf(stderr, "arcan_target_launch_external(), error parsing string argument.\n");
+			arcan_warning("arcan_target_launch_external(), error parsing string argument.\n");
 			continue;
 		}
 

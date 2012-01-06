@@ -481,7 +481,7 @@ int arcan_lua_settxcos(lua_State* ctx)
 		luaL_checktype(ctx, 2, LUA_TTABLE);
 		int ncords = lua_rawlen(ctx, -1);
 		if (ncords < 8){
-			fprintf(stderr, "Warning: lua_settxcos(), Too few elements in txco tables (expected 8, got %i)\n", ncords);
+			arcan_warning("Warning: lua_settxcos(), Too few elements in txco tables (expected 8, got %i)\n", ncords);
 			return 0;
 		}
 		
@@ -557,7 +557,7 @@ int arcan_lua_setmask(lua_State* ctx)
 		mask |= val;
 		arcan_video_transformmask(id, mask);
 	} else
-		fprintf(stderr, "Script Warning: image_mask_set(), bad mask specified (%i)\n", val);
+		arcan_warning("Script Warning: image_mask_set(), bad mask specified (%i)\n", val);
 	
 	return 0;
 }
@@ -627,7 +627,7 @@ int arcan_lua_dofile(lua_State* ctx)
 		luaL_loadfile(ctx, fname);
 	else{
 		free(fname);
-		fprintf(stderr, "Script Warning: system_load(), couldn't find resource (%s)\n", instr);
+		arcan_warning("Script Warning: system_load(), couldn't find resource (%s)\n", instr);
 		return 0;
 	}
 
@@ -791,7 +791,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	
 	if (!vstate || vstate->tag != ARCAN_TAG_TARGET){
-		fprintf(stderr, "Script Warning: bad ID in target_input()\n");
+		arcan_warning("Script Warning: bad ID in target_input()\n");
 		return 0;
 	}
 
@@ -839,7 +839,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 		}
 	} 
 	else {
-		fprintf(stderr, "Script Warning: target_input(), unkown \"kind\" field in table.\n");
+		arcan_warning("Script Warning: target_input(), unkown \"kind\" field in table.\n");
 		return 0;
 	}
 		
@@ -1024,7 +1024,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			break;
 
 			default:
-				fprintf(stderr, "Engine -> Script Warning: ignoring IO event: %i\n", ev.kind);
+				arcan_warning("Engine -> Script Warning: ignoring IO event: %i\n", ev.kind);
 		}
 
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
@@ -1055,7 +1055,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			break;
 
 		default:
-			fprintf(stderr, "Engine -> Script Warning: arcan_lua_pushevent(), unknown video event (%i)\n", ev.kind);
+			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown video event (%i)\n", ev.kind);
 		}
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: video_event");
 	}
@@ -1072,7 +1072,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			case EVENT_AUDIO_PLAYBACK_ABORTED: arcan_lua_tblstr(ctx, "kind", "playback aborted", top); break;
 			case EVENT_AUDIO_OBJECT_GONE: arcan_lua_tblstr(ctx, "kind", "gone", top); break;
 			default:
-				fprintf(stderr, "Engine -> Script Warning: arcan_lua_pushevent(), unknown audio event (%i)\n", ev.kind);
+				arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown audio event (%i)\n", ev.kind);
 		}
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: audio_event");
 	}
@@ -1521,15 +1521,13 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		return;
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
-	fprintf(stderr, "Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
+	arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 
 	if (lua_ctx_store.debug){
 		printf("Stack dump: \n");
 		dump_stack(ctx);
 		dump_call_trace(ctx);
 	}
-
-	exit(1);
 }
 
 int arcan_lua_resource(lua_State* ctx)
@@ -1608,11 +1606,10 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 			if (elapsed / 1000 < 3){
 				char** argvp = cmdline.data.strarr;
 				arcan_db_failed_launch(dbhandle, game);
-				fprintf(stderr, "Script Warning: launch_external(), possibly broken target/game combination. %s\n\tArguments:", *argvp++);
+				arcan_warning("Script Warning: launch_external(), possibly broken target/game combination. %s\n\tArguments:", *argvp++);
 				while(*argvp){
-					fprintf(stderr, "%s ", *argvp++);
+					arcan_warning("%s ", *argvp++);
 				}
-				fprintf(stderr, "\n");
 			} else
 				arcan_db_launch_counter_increment(dbhandle, game);
 		}

@@ -89,7 +89,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			arcan_frameserver_dropsemaphores(src);
 		
 			if (src->shm.ptr && -1 == munmap((void*) shmpage, src->shm.shmsize))
-				fprintf(stderr, "BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
+				arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
 			
 			shm_unlink( src->shm.key );
 			free(src->shm.key);
@@ -149,7 +149,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	close(shmfd);
 		
 	if (MAP_FAILED == shmpage){
-		fprintf(stderr, "arcan_frameserver_spawn_server() -- couldn't allocate shmpage\n");
+		arcan_warning("arcan_frameserver_spawn_server() -- couldn't allocate shmpage\n");
 		goto error_cleanup;		
 	}
 		
@@ -181,7 +181,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 /* semkey_vid is now in locked state, wait for it to unlock or timeout,
  * if timeout, kill child then cleanup */ 
 		if ( arcan_sem_timedwait( shmpage->vsyncp, 2000 ) == false){
-			fprintf(stderr, "arcan_frameserver_spawn_server() -- timeout waiting for child (%s), aborting.\n", strerror(errno));
+			arcan_warning("arcan_frameserver_spawn_server() -- timeout waiting for child (%s), aborting.\n", strerror(errno));
 			kill(child, SIGHUP);
 			waitpid(child, NULL, 0);
 			goto error_cleanup;
@@ -260,8 +260,8 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			argv[4] = NULL;
 
 			int rv = execv(arcan_binpath, argv);
-			fprintf(stderr, "FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver (%s) for %s, %s. Reason: %s\n", arcan_binpath, fname, shmkey, strerror(errno));
-			abort();
+			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver (%s) for %s, %s. Reason: %s\n", arcan_binpath, fname, shmkey, strerror(errno));
+			exit(1);
 		}
 	return res;
 
