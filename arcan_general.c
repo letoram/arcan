@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #include "arcan_general.h"
 
@@ -189,27 +190,6 @@ char* arcan_find_resource_path(const char* label, const char* path, int searchma
 	}
 
 	return NULL;
-}
-
-void arcan_warning(const char* msg, ...)
-{
-	va_list args;
-	va_start( args, msg );
-		vfprintf(stderr,  msg, args );
-	va_end( args);
-}
-
-void arcan_fatal(const char* msg, ...)
-{
-	char buf[256] = {0};
-
-	va_list args;
-	va_start(args, msg );
-		vsnprintf(buf, 255, msg, args);
-	va_end(args);
-
-	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
-	exit(1);
 }
 
 #ifdef __UNIX
@@ -383,6 +363,27 @@ const char* internal_launch_support(){
 #endif /* unix */
 
 #if _WIN32
+
+void arcan_warning(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+	vfprintf(stderr,  msg, args );
+	va_end( args);
+}
+
+void arcan_fatal(const char* msg, ...)
+{
+	char buf[256] = {0};
+	
+	va_list args;
+	va_start(args, msg );
+	vsnprintf(buf, 255, msg, args);
+	va_end(args);
+	
+	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
+	exit(1);
+}
 
 double round(double x)
 {
