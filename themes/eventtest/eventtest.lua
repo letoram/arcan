@@ -17,12 +17,10 @@ end
 
 function eventtest()
 --	zap keyconf table
-    local keyfun = system_load("scripts/keyconf.lua");
-    local symfun = system_load("scripts/symtable.lua");
-
-    keyconfig = keyfun();
-    symtable = symfun();
-    
+    system_load("scripts/keyconf.lua")();
+    symtable  = system_load("scripts/symtable.lua")();
+	keyconfig = keyconf_create(0);
+	
     local analabel   = drawline( [[\bAnalog]], 18 );
     local digilabel  = drawline( [[\bDigital]], 18 );
     local lookuplabel = drawline( [[\bLookup]], 18 );
@@ -36,11 +34,16 @@ function eventtest()
     show_image(analabel);
     show_image(digilabel);
     show_image(translabel);
-    
-    if (keyconfig.match("MENU_ESCAPE") == nil) then
-	keyconfig.new(1, nil, nil);
-	configkeys = true;
-    end
+
+-- redirect if we need to config hack
+	if (keyconfig.active == false) then
+		keyconfig.iofun = eventtest_input;
+		eventtest_input = function(iotbl)
+			if (keyconfig:input(iotbl) == true) then
+				eventtest_input = keyconfig.iofun;
+			end
+		end
+	end
 end
 
 function digital_str(iotbl)
@@ -93,8 +96,8 @@ function lookup(iotbl)
 	line = line .. iotbl.keysym .. " =(symtable)> " .. symtable[iotbl.keysym] .. [[\t]];
     end
     
-    if keyconfig.match(iotbl) then
-	line = line .. iotbl.keysym ..  " =(keyconf)> " .. table.concat(keyconfig.match(iotbl), ",");
+    if keyconfig:match(iotbl) then
+		line = line .. iotbl.keysym ..  " =(keyconf)> " .. table.concat(keyconfig:match(iotbl), ",");
     end
     
     if line ~= "" then
@@ -141,39 +144,24 @@ function eventtest_clock_pulse(stamp, delta)
 end
 
 function eventtest_input( iotbl )
-
-    if (configkeys) then
-	if (keyconfig.input( iotbl )) then
---	    return;
-	else
-	    keyconfig.save();
-	    configkeys = false;
-	end
-    end
-
-    if (iotbl.kind == "digital") then
-	if (iotbl.translated) then
-	    translate_str(iotbl);
-	    lookup(iotbl);
-	else
-	    digital_str(iotbl);
-	end
+	if (iotbl.kind == "digital") then
+		if (iotbl.translated) then
+			translate_str(iotbl);
+			lookup(iotbl);
+		else
+			digital_str(iotbl);
+		end
     
     elseif (iotbl.kind == "analog") then -- analog
-	if (analogdata[iotbl.devid] == nil) then
-	    analogdata[iotbl.devid] = {};
-	end
+		if (analogdata[iotbl.devid] == nil) then
+			analogdata[iotbl.devid] = {};
+		end
 
-	if (analogdata[iotbl.devid][iotbl.subid] == nil) then
-	    analogdata[iotbl.devid][iotbl.subid] = 0;
-	end
+		if (analogdata[iotbl.devid][iotbl.subid] == nil) then
+			analogdata[iotbl.devid][iotbl.subid] = 0;
+		end
 
-	local tbl = keyconfig.match(iotbl);
---	if (tbl ~= nil) then
---	    print(table.concat(tbl, ","));
---	end
--- too expensive regenerating strings every axis movement .. just log data
-	analogdata[iotbl.devid][iotbl.subid] = analogdata[iotbl.devid][iotbl.subid] + 1;
+		local tbl = keyconfig:match(iotbl);
+		analogdata[iotbl.devid][iotbl.subid] = analogdata[iotbl.devid][iotbl.subid] + 1;
     end
-    
 end

@@ -11,8 +11,8 @@ function internaltest()
 		shutdown();
 	end
 
-	local keyfun = system_load("scripts/keyconf.lua");
-	keyconfig = keyfun();
+	local keyfun = system_load("scripts/keyconf.lua")();
+
 	target_locked = false;
 	ofs_x = 0;
 	ofs_y = 0;
@@ -20,6 +20,7 @@ function internaltest()
 		force_image_blend(cursor);
 		image_mask_set(cursor, MASK_UNPICKABLE);
 	show_image(cursor);
+	order_image(cursor, 254);
 	
 	build_grid();
 	
@@ -117,21 +118,30 @@ function internaltest()
 	end
     end
 
-    if (keyconfig.match("MENU_ESCAPE") == nil) then
 	local menu_group = {
-	    "rMENU_ESCAPE",
-	    "rMENU_LAUNCH",
-	    "rMENU_SELECT",
-	    "rMENU_DELETE",
-	    "rMENU_SUSPEND",
-	    "rMENU_RESUME",
-	    "ACURSOR_X",
-	    "ACURSOR_Y"
+		"rMENU_ESCAPE",
+		"rMENU_DELETE",
+		"rMENU_SUSPEND",
+		"rMENU_SELECT",
+		"rMENU_LAUNCH",
+		"ACURSOR_X",
+		"ACURSOR_Y",
 	};
-		
-    	keyconfig.new(1, menu_group, nil);
-	configkeys = true;
-    end
+	
+	keyconfig = keyconf_create(1, menu_group, {}, nil);
+	if (keyconfig.active == false) then
+		keyconfig.iofun = internaltest_input;
+		internaltest_input = function(iotbl)
+		if (keyconfig:input(iotbl) == true) then
+			internaltest_input = keyconfig.iofun;
+		end
+	end
+	end
+	
+end
+
+function resume_target(vid)
+	
 end
 
 function maximize_target(vid, aid)
@@ -144,8 +154,6 @@ function maximize_target(vid, aid)
 
 	gaspect = props.width / props.height;
 	waspect = VRESW / VRESH;
-	print("props: " .. props.width .. " , " .. props.height);
-	print("VRES:" .. VRESW .. " , " .. VRESH .. ":" .. waspect);
  
 -- there's probably a decent formulae for this,
 -- too tired atm.
@@ -163,10 +171,10 @@ function maximize_target(vid, aid)
 	end
 	
 -- move, expensive little trick, "which properties will the obj. have in n ticks"
-	print("thus: " .. neww .. " x " ..newh);
 	move_image(vid, (VRESW - neww) / 2, (VRESH - newh) / 2, 20);
 	blend_image(vid, 1.0, 20);
 	movingtgt = vid;
+	order_image(vid, 255);
 	
 	audio_gain(current_target.aid, 1.0, 20);
 	resume_target(vid);
@@ -260,19 +268,8 @@ end
 
 ------ Event Handlers ----------
 function internaltest_input( iotbl )
--- input- keys 
-	if (configkeys) then
-		if (keyconfig.input( iotbl ) ) then
-			return;
-		else
-			keyconfig.save();
-			configkeys = false;
-		end
-	end
-
-    forward = true;
-
-    res = keyconfig.match(iotbl);
+    res = keyconfig:match(iotbl);
+	
     if (res ~= nil) then
 	for i,v in pairs(res) do
 	    iofun = iodispatch[ v ];
@@ -283,7 +280,6 @@ function internaltest_input( iotbl )
 	    end
 	end
     end
-    
     
     if (target_locked and current_target ~= nil) then
     -- translate mouse coordinates into target space
@@ -346,7 +342,6 @@ function internaltest_video_event( source, argtbl )
 	
 	if (argtbl.kind == "resized") then
 		if (source == current_target.vid) then
-			print("resizing");
 			current_target.width, current_target.height = resize_image(source, argtbl.width, argtbl.height, 0);
 			current_target.x = VRESW / 2 - current_target.width / 2;
 			current_target.y = VRESH / 2 - current_target.height / 2;

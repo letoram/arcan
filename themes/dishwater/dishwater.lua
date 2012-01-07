@@ -34,15 +34,34 @@ local images = {};
 local iodispatch = {};
 
 function dishwater()
-    local keyfun = system_load("scripts/keyconf.lua");
-    keyconf = keyfun();
+	system_load("scripts/keyconf.lua")();
+	keyconfig = keyconf_create(0, {
+		"rMENU_ESCAPE",
+		"rMENU_UP",
+		"rMENU_DOWN",
+		"MENU_LEFT",
+		"MENU_RIGHT",
+		"rMENU_SELECT",
+		"aCURSOR_Y"
+	} );
+	
+-- If we couldn't load,
+-- hijack the current input function and return input when configured.
+	if (keyconfig.active == false) then
+		keyconfig.iofun = dishwater_input;
+		dishwater_input = function(iotbl)
+			if (keyconfig:input(iotbl) == true) then
+				dishwater_input = keyconfig.iofun;
+			end
+		end
+	end
+	
+	images.selector = fill_surface(VRESW * 0.5, 20, 0, 40, 200);
+	show_image(images.selector);
+	order_image(images.selector, 1);
 
-    images.selector = fill_surface(VRESW * 0.5, 20, 0, 40, 200);
-    show_image(images.selector);
-    order_image(images.selector, 1);
-
-    images.background = load_image("background.png", 0);
-    resize_image(images.background, VRESW, VRESH, NOW);
+	images.background = load_image("background.png", 0);
+	resize_image(images.background, VRESW, VRESH, NOW);
 	show_image(images.background);
 
     data.targets = list_targets();
@@ -54,7 +73,6 @@ function dishwater()
 
     data.games = list_games( {} );
     local width, height = textdimensions( [[\f]] .. font_name .. [[jJ\n]], font_vspace);
-
     gamelist.page_size = math.ceil ( (VRESH - 20) / height );
     
     do_menu();
@@ -222,32 +240,18 @@ function dishwater_on_show()
 	blend_image(WORLDID, 1.0, 150);
 	rotate_image(WORLDID, 180, 0);
 	rotate_image(WORLDID, 0, 150);
-
-    if (keyconf.match("MENU_ESCAPE") == nil) then
-		keyconf.new(1, nil, nil); -- 1 player, use default labels / options
-		configkeys = true;
-    end
 end
 
+-- Lookup results from keyconfig,
+-- if there are any matching, find corresponding entry in iodispatch,
+-- and run it.
 function dishwater_input( iotbl )	
--- input- keys 
-	if (configkeys) then
-		if (keyconf.input( iotbl ) ) then
-			return;
-		else
-			keyconf.save();
-			configkeys = false;
+	local restbl = keyconfig:match(iotbl);
+	if (restbl) then
+		for i,v in pairs(restbl) do
+			if (iodispatch[v]) then
+				iodispatch[v](iotbl);
+			end
 		end
 	end
-
-    local restbl = keyconf.match( iotbl );
-    if (restbl == nil) then
-	return false;
-    end
-    
-    for i,v in pairs(restbl) do 
-	if (iodispatch[v]) then
-	    iodispatch[v](iotbl);
-	end
-    end
 end

@@ -213,6 +213,8 @@ local function console_autocomplete(self)
 end
 
 local function console_input(self, iotbl)
+	local rval = "";
+	
 	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
 		symres = self.symtbl[ iotbl.keysym ];
 		
@@ -293,7 +295,7 @@ local function console_input(self, iotbl)
 			table.insert(self.history, self.buffer);
 			console_addmsg(self, self.buffer);
 			self.historypos = -1;
-			
+			rval = self.buffer;
 			console_clearbuffer(self);
 			self.caretpos = 1;
 			console_update_caret(self);
@@ -304,7 +306,7 @@ local function console_input(self, iotbl)
 			if (self.shortcut[ symres ] ~= nil) then
 				keych = self.shortcut[ symres ];
 			elseif keych == nil then
-				return false;
+				return rval;
 			end
 
 			self.buffer, nch = string.insert(self.buffer, keych, self.caretpos, self.nchars);
@@ -314,10 +316,10 @@ local function console_input(self, iotbl)
 			console_update_caret(self);
 		end
 
-		return true;
+		return rval;
 	end
 
-	return false;
+	return rval;
 end
 
 local function console_move(self, newx, newy, time)
