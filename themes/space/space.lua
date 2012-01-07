@@ -96,8 +96,7 @@ end
 
 function space()
 -- pre-generated table of SDL keysyms, LED light remaps, .. 
-    keyfun = system_load("scripts/keyconf.lua");
-    keyconfig = keyfun();
+    keyfun = system_load("scripts/keyconf.lua")();
 
     images.background = load_image("space.png", 0);
     images.cursor = load_image("images/mouse_cursor.png", 255);
@@ -132,8 +131,6 @@ function space()
         random_game();
     end
     
-    if (keyconfig.match("MENU_SELECT") == nil) then
-	configkeys = true;
 	local menutbl = {
 	    "rMENU_ESCAPE",
 	    "ACURSOR_X",
@@ -141,9 +138,17 @@ function space()
 	    "rMENU_SELECT",
 	};
 	
-	keyconfig.new(0, menutbl, {});
-    end
-    
+	keyconfig = keyconf_create(0, menutbl, {});
+
+	if (keyconfig.active == false) then
+		keyconfig.iofun = space_input;
+		space_input = function(iotbl)
+			if (keyconfig:input(iotbl) == true) then
+				space_input = keyconfig.iofun;
+			end
+		end
+	end
+	
     iolut = {};
     iolut["MENU_SELECT"] = function(tbl) 
 		if (grabbed_item ~= nil) then
@@ -290,17 +295,7 @@ function check_cursor(x, y)
 end
 
 function space_input( iotbl )	
-
-    if (configkeys) then 
-	if (keyconfig.input(iotbl)) then
-	    return true;
-	else 
-	    keyconfig.save();
-	    configkeys = false;
-	end
-    end
-
-    match = keyconfig.match(iotbl);
+    match = keyconfig:match(iotbl);
 
     if (match ~= nil) then
 	for i, v in pairs(match) do

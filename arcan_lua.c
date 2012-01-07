@@ -1891,7 +1891,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 	lua_register(ctx, "pick_items", arcan_lua_pick);
 
 /* category: LED I/O */
-/* item:set_led, ctrlnum, lednum, nil */
+/* item:set_led, ctrlnum, lednum, state, nil */
 	lua_register(ctx, "set_led", arcan_lua_setled);
 
 /* item:*led_intensity, ctrl, led, intensity, nil */

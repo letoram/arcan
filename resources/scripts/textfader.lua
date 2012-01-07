@@ -48,9 +48,12 @@ local function formatskip(str, ofs)
 			while ( tonumber( string.sub(str, ofs, ofs) ) ~= nil ) do
 				ofs = utf8forward(str, ofs, 1);
 			end
-		else
+		elseif (ch2 == "!") then
 			ofs = utf8forward(str, ofs, 2);
+		else
+			ofs = utf8forward(str, ofs, 1);
 		end
+
 	until true;
 
 	return ofs;
@@ -71,18 +74,23 @@ local function textfader_step(self)
 -- time to step
 	if (self.clife >= self.mlife ) then
 -- now we have formatting strings to consider as well
+		self.last = self.cpos;
 		self.cpos = formatskip(self.message, self.cpos)
-	end
+		if (self.cpos == self.last) then
+			self.cpos = formatskip(self.message, utf8forward(self.message, self.cpos, 1) );
+		end
+		
+		self.clife = 0;
+		self.smessage = string.sub(self.message, 1, self.cpos);
 
-	self.smessage = string.sub(self.message, 1, self.cpos);
-	if (self.rmsg ~= BADID) then
-		delete_image(self.rmsg);
-	end
+		if (self.rmsg ~= BADID) then
+			delete_image(self.rmsg);
+		end
 
---  render all but the "last" character, render that one separately
-	self.rmsg = render_text( self.smessage );
-	move_image(self.rmsg, self.x, self.y, NOW);
-	blend_image(self.rmsg, self.opa, NOW);
+		self.rmsg = render_text(self.smessage);
+		move_image(self.rmsg, self.x, self.y, NOW);
+		blend_image(self.rmsg, self.opa, NOW);
+	end
 end
 
 function textfader_create( rawtext, xpos, ypos, opacity, speed )
@@ -92,8 +100,7 @@ function textfader_create( rawtext, xpos, ypos, opacity, speed )
 		y = ypos,
 		opa = opacity,
 		mlife = speed,
-		clife = 0,
-		cpos = 1,
+		clife = speed,
 		alive = true,
 		rmsg = BADID
 	};
@@ -101,7 +108,6 @@ function textfader_create( rawtext, xpos, ypos, opacity, speed )
 	assert(0 < speed);
 
 	fdrtbl.step = textfader_step;
-	fdrtbl.cpos = formatskip(rawtext, 1);
-
+	fdrtbl.cpos = 1;
 	return fdrtbl;
 end
