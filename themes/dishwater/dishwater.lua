@@ -35,23 +35,40 @@ local iodispatch = {};
 
 function dishwater()
 	system_load("scripts/keyconf.lua")();
+	system_load("scripts/ledconf.lua")();
 	keyconfig = keyconf_create(0, {
 		"rMENU_ESCAPE",
 		"rMENU_UP",
 		"rMENU_DOWN",
-		"MENU_LEFT",
-		"MENU_RIGHT",
+		" MENU_LEFT",
+		" MENU_RIGHT",
 		"rMENU_SELECT",
 		"aCURSOR_Y"
 	} );
 	
 -- If we couldn't load,
 -- hijack the current input function and return input when configured.
+-- when that is finished, remap to ledconfig and thereafter reset the proper input symbol ;-)
 	if (keyconfig.active == false) then
 		keyconfig.iofun = dishwater_input;
-		dishwater_input = function(iotbl)
+		
+		dishwater_input =
+		function(iotbl)
 			if (keyconfig:input(iotbl) == true) then
-				dishwater_input = keyconfig.iofun;
+				ledconfig = ledconf_create( keyconfig:labels() );
+				if (ledconfig.active == false) then
+					dishwater_input =
+						function(iotbl)
+							local restbl = keyconfig:match(iotbl);
+							if (iotbl.active and restbl and restbl[1]) then
+								if (ledconfig:input(restbl[1]) == true) then
+									dishwater_input = keyconfig.iofun;
+								end
+							end
+						end
+				else
+					dishwater_input = keyconfig.iofun;
+				end
 			end
 		end
 	end

@@ -31,6 +31,7 @@ void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val);
 void arcan_lua_setglobalstr(lua_State* ctx, const char* key, const char* val);
 void arcan_lua_pushevent(lua_State* ctx, arcan_event ev);
 void arcan_lua_callvoidfun(lua_State* ctx, const char* fun);
+void arcan_lua_pushargv(lua_State* ctx, char** argv);
 void arcan_lua_pushglobalconsts(lua_State* ctx);
 #endif
 
