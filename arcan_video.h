@@ -27,7 +27,7 @@
 	((uint32_t *)(d))[0] = (0xff << 24) | (r << 16) | (g << 8) | b;\
 }
 
-/* supposedly, GL_BGRA is more efficient and can be directly transferred,
+/* supposedly, GL_BGRA is more efficient and can be directly transferred without 'swizzling',
  * but it's not implemented in all supported GL environments */
 #define GL_PIXEL_FORMAT GL_RGBA
 
@@ -84,10 +84,10 @@ enum arcan_ffunc_cmd {
 
 enum arcan_ffunc_rv {
 	FFUNC_RV_FAILURE = -1,
-		FFUNC_RV_NOFRAME = 0,
-		FFUNC_RV_GOTFRAME = 1,
-		FFUNC_RV_COPIED = 2,
-		FFUNC_RV_NOUPLOAD = 64
+	FFUNC_RV_NOFRAME = 0,
+	FFUNC_RV_GOTFRAME = 1,
+	FFUNC_RV_COPIED = 2,
+	FFUNC_RV_NOUPLOAD = 64
 };
 
 /* callback format for a feed- function to a video object.
@@ -165,13 +165,15 @@ arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on);
 
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
 
-/* a particular addition to attach another (ARCAN_VRTYPE_IMAGE implied, cfunc gets frame-# implied) image-frame to
- * a vobject (stateful images, animations and the likes) with constraints etc. inherited
- * some picky semantics for this to work:
- * -> addobject -> alloc_frames -> addframe -> ... (then there's drop frame and drop frameset) */
-arcan_errc arcan_video_addframe(arcan_vobj_id id, const char* fname);
-arcan_errc arcan_video_activeframe(arcan_vobj_id id, unsigned int frame, bool front);
-int arcan_video_framecount(arcan_vobj_id id);
+/* -- multiple- frame management --
+ * this is done by associating a working video-object (src) with another (dst),
+ * so that (src) becomes part of (dst)s rendering. */
+
+/* specify the number of frames associated with vobj, default is 0 */
+arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity);
+/* note that the frame_id (fid) have to be available through allocframes first */
+arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch);
+arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
 void arcan_video_imgmanmode(enum arcan_vimage_mode mode, bool repeat);
 
 /* change zval (see arcan_video_addobject) for a particular object.

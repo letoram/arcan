@@ -137,6 +137,9 @@
 	\textbf{order\_image}\emph{(vid, newz)} $\rightarrow$ 0 = further back, 255 = foreground.\\
 	\textbf{instance\_image}\emph{(vid)} $\rightarrow$ clone the vid (share resources, child dies if vid dies), returns newvid.\\
 	\textbf{*link\_image}\emph{(vid, parent)} $\rightarrow$ bind vid to parent coordinate system.\\
+	\textbf{*set\_image\_as\_frame}\emph{dstvid, srcvid, frameno} $\rightarrow$ dstvid will have srcvid on frameno.\\
+	\textbf{image\_framesetsize}\emph{vid, ncells} $\rightarrow$ set the number of allowed frames (0 < allowed < 256) on vid.\\
+	\textbf{image\_active\_frame}\emph{vid, frameno} $\rightarrow$ change the currently active frame (reset to default if slot unset).\\
 	\textbf{expire\_image}\emph{(vid, lifetime)} $\rightarrow$ invoke delete\_image after lifetime ticks, emits event.\\
 	\textbf{reset\_image\_transform}\emph{(vid)} $\rightarrow$ remove all queued transformations.\\
 	\textbf{instant\_image\_transform}\emph{(vid)} $\rightarrow$ force all transformations, regardless of time.\\
@@ -258,14 +261,12 @@ is stability for the currently available API / feature-set.
 	
 	\subsection{Video}
 	\begin{itemize}
-		\item Multi-frame object (animations, important one).
 		\item Direct mng support as animation format alternative to multiple single image files.
 		\item Proper orientation (3 axis, quat->matrix) with interpolation.
 		\item Two-sided objects (requires orientation + multiframe + updated picking).
 		\item More advanced frameserver support (webcam, ...).
 		\item Stream-export vid+aid (or world) to ffmpeg as external encoder / frameserver.
 		\item \emph{halign} (centered, left, right) and \emph{valign} (top, middle, bottom with multiline-multisize) text support.
-		\item Enabling clipping of a linked image to its parent area. 
 	\end{itemize}
 	
 	\subsection{Audio}
