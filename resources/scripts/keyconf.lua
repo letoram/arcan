@@ -36,13 +36,7 @@ local default_player_group = {
 	"rRIGHT",
 	"rSTART",
     "rCOIN1",
-    " COIN2",
-    " BUTTON1",
-    " BUTTON2",
-    " BUTTON3",
-    " BUTTON4",
-    " BUTTON5",
-    " BUTTON6"
+    " COIN2"
 };
 
 local function keyconf_renderline(self, string, size)
@@ -310,7 +304,10 @@ local function keyconf_labels(self)
 	local labels = {};
 	
 	for key, value in pairs(self.table) do
-		if (tonumber(key) == nil) then
+		if string.sub(key, 1, 7) == "analog:" or
+				string.sub(key, 1, 8) == "digital:" or
+				string.sub(key, 1, 11) == "translated:" then
+		else
 			table.insert(labels, key);
 		end
 	end
@@ -374,12 +371,35 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		keyfile = keyname
 	};
 
+	local players = 0;
+	local buttons = {};
+
+	if (keyname == nil) then restbl.keyfile = "keysym.lua"; end
+
+-- command-line overrides
+	for k,v in ipairs(arguments) do
+		if (string.sub(v, 1, 8) == "players=") then
+			local plc = tonumber( string.sub(v, 9) );
+			if (plc and plc > 0) then restbl.n_players = plc; end
+		elseif (string.sub(v, 1, 8) == "buttons=") then
+			local bc = tonumber( string.sub(v, 9) );
+			if (bc and bc > 0) then
+				for i=1,bc do
+					table.insert(default_player_group, "rBUTTON" .. tostring(i));
+				end
+			end
+		elseif (string.sub(v, 1, 8) == "keyname=") then
+			local fn = string.sub(v, 9);
+			if (string.len(fn) > 0) then
+				restbl.keyfile = fn;
+			end
+		elseif (v == "forcekeyconf") then
+			zap_resource(restbl.keyfile);
+		end
+	end
+	
 	restbl.menu_group = menugroup and menugroup or default_menu_group;
 	restbl.player_group = playergroup and playergroup or default_player_group;
-	
-	if (keyname == nil) then
-		restbl.keyfile = "keysym.lua";
-	end
 	
 	if ( resource(restbl.keyfile) ) then
 		symfun = system_load(restbl.keyfile);

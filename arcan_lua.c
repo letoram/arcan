@@ -1664,6 +1664,23 @@ void arcan_lua_cleanup()
 {
 }
 
+void arcan_lua_pushargv(lua_State* ctx, char** argv)
+{
+	int argc = 0;
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+
+	while(argv[argc]){
+		lua_pushnumber(ctx, argc + 1);
+		lua_pushstring(ctx, argv[argc]);
+		lua_rawset(ctx, top);
+		argc++;
+	}
+
+	lua_setglobal(ctx, "arguments");
+}
+
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 {
 	if (!ctx)

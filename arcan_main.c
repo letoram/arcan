@@ -56,7 +56,7 @@
 arcan_dbh* dbhandle = NULL;
 
 /* globals, hackishly used in other places */
-char* arcan_themename = "arcan";
+char* arcan_themename = "welcome";
 char* arcan_themepath = NULL;
 char* arcan_resourcepath = NULL;
 char* arcan_libpath = NULL;
@@ -84,7 +84,7 @@ static const struct option longopts[] = {
 
 void usage()
 {
-	printf("usage:\narcan [-whfmsptoldg12] [theme]\n"
+	printf("usage:\narcan [-whfmsptoldg12] [theme] [themearguments]\n"
 		"-w\t--width       \tdesired width (default: 640)\n"
 		"-h\t--height      \tdesired height (default: 480)\n"
 		"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
@@ -240,6 +240,7 @@ int main(int argc, char* argv[])
 		luaL_openlibs(luactx);
 		arcan_lua_exposefuncs(luactx, luadebug);
 		arcan_lua_pushglobalconsts(luactx);
+		arcan_lua_pushargv(luactx, argv + optind + 1);
 		int err_func = 0;
 
 		char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
