@@ -2559,8 +2559,8 @@ void arcan_video_refresh_GL(float lerp)
 			/* special "hack" for situations where the ffunc can do the gl-calls
 			 * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
 				if (funcres == FFUNC_RV_COPIED){
-					glBindTexture(GL_TEXTURE_2D, elem->gl_storage.glid);
-					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->gl_storage.w, elem->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
+					glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
+					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->current_frame->gl_storage.w, elem->current_frame->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
 				}
 			}
 
@@ -2573,9 +2573,9 @@ void arcan_video_refresh_GL(float lerp)
 		 * add occlusion test / blending threshold here ..
 		 * note that objects will have been sorted based on Z already */
 			if ( dprops.opa > 0.001){
-				glBindTexture(GL_TEXTURE_2D, elem->gl_storage.glid);
-				glUseProgram(elem->gl_storage.program);
-				_setgl_stdargs(elem->gl_storage.program);
+				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
+				glUseProgram(elem->current_frame->gl_storage.program);
+				_setgl_stdargs(elem->current_frame->gl_storage.program);
 				
 				if (dprops.opa > 0.999 && !csurf->force_blend){
 					glDisable(GL_BLEND);
@@ -2602,7 +2602,7 @@ void arcan_video_refresh_GL(float lerp)
 						surface_properties pprops;
 						resolve(celem->parent, lerp, &pprops);
 						if (celem->parent->flags.cliptoparent == false)
-							draw_surf(pprops, celem->parent, elem->txcos);
+							draw_surf(pprops, celem->parent, elem->current_frame->txcos);
 
 						celem = celem->parent;
 					}
@@ -2611,10 +2611,10 @@ void arcan_video_refresh_GL(float lerp)
 					glStencilFunc(GL_EQUAL, 1, 1);
 					glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-					draw_surf(dprops, elem->current_frame, elem->current_frame->txcos);
+					draw_surf(dprops, elem, elem->current_frame->txcos);
 					glDisable(GL_STENCIL_TEST);
 				} else {
-					draw_surf(dprops, elem, elem->txcos);
+					draw_surf(dprops, elem, elem->current_frame->txcos);
 				}
 			}
 		}

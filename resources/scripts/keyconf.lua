@@ -253,8 +253,8 @@ local function keyconf_input(self, inputtable)
 	key = nil;
 
 -- special treatment for analog inputs
-	if ( (self.key_kind == 'a' or self.key_kind == 'A')
-     and inputtable.kind == "analog") then
+	if ( (self.key_kind == 'a' or self.key_kind == 'A') and
+			inputtable.kind == "analog") then
 		if (keyconf_analog(self, inputtable)) then
 			return false;
 		else
@@ -265,8 +265,10 @@ local function keyconf_input(self, inputtable)
 				return false;
 			end
 		end
+	end
+	
 -- the rest of the code only handles digital input (note: keyboard is digital + translated) 
-	elseif (inputtable.kind == "digital" and inputtable.active == true) then
+	if (inputtable.kind == "digital" and inputtable.active == true) then
 		key = inputtable;
     else
 		return false;
@@ -287,17 +289,19 @@ local function keyconf_input(self, inputtable)
         end
    end
 
-	if ( self:match(key) ~= nil ) then
-		print("Notice: Button (" .. self:id(inputtable) .. ") already in use.\n");
-	end
+   if (self.key_kind == ' ' or self.key_kind == 'r') then
+		if ( self:match(key) ~= nil ) then
+			print("Notice: Button (" .. self:id(inputtable) .. ") already in use.\n");
+		end
 
-	keyconf_set(self, inputtable );
-	if ( keyconf_next_key(self) == false) then
-		self:cleanup();
-		return true;
-	else
-		return false;
-	end
+		keyconf_set(self, inputtable );
+		if ( keyconf_next_key(self) == false) then
+			self:cleanup();
+			return true;
+		end
+   end
+
+   return false;
 end
 
 local function keyconf_labels(self)
