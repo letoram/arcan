@@ -1078,6 +1078,39 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 	}
 }
 
+int arcan_lua_framesetalloc(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	unsigned num = luaL_checkint(ctx, 2);
+	
+	if (num > 0 && num < 256){
+		arcan_video_allocframes(sid, num);
+	}
+	
+	return 0;
+}
+	
+int arcan_lua_activeframe(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	unsigned num = luaL_checkint(ctx, 2);
+	
+	arcan_video_setactiveframe(sid, num);
+
+	return 0;
+}
+
+int arcan_lua_imageasframe(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	unsigned num = luaL_checkint(ctx, 3);
+	
+	arcan_video_setasframe(sid, did, num, false);
+	
+	return 0;
+}
+
 int arcan_lua_linkimage(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
@@ -1826,6 +1859,15 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 
 /* item:*link_image,vid,vid,nil */
 	lua_register(ctx, "link_image", arcan_lua_linkimage);
+
+/* item:*set_image_as_frame,vid,vid,num */
+	lua_register(ctx, "set_image_as_frame", arcan_lua_imageasframe);
+
+/* item:image_framesetsize,vid,ncells,nil */
+	lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
+	
+/* item:image_activeframe,vid,num,nil */
+	lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
 
 /* item:expire_image,lifetime,nil */
 	lua_register(ctx, "expire_image", arcan_lua_setlife);

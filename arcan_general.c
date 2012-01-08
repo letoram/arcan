@@ -274,24 +274,6 @@ static void setpaths_unix()
 
 #ifdef __APPLE__
 
-void arcan_warning(const char* msg, ...)
-{
-	va_list args;
-	va_start( args, msg );
-		vfprintf(stderr,  msg, args );
-	va_end( args);
-}
-
-void arcan_fatal(const char* msg, ...)
-{
-	va_list args;
-	va_start( args, msg );
-		vfprintf(stderr,  msg, args );
-	va_end( args);
-
-	exit(1);
-}
-
 const char* internal_launch_support(){
 	return arcan_libpath ? "PARTIAL SUPPORT" : "NO SUPPORT (not found)";
 }
