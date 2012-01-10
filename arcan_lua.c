@@ -1413,7 +1413,7 @@ void pushgame(lua_State* ctx, arcan_db_game* curr)
 	lua_pushstring(ctx, "manufacturer");
 	lua_pushstring(ctx, curr->manufacturer);
 	lua_rawset(ctx, top);
-	lua_pushstring(ctx, "playfers");
+	lua_pushstring(ctx, "players");
 	lua_pushnumber(ctx, curr->n_players);
 	lua_rawset(ctx, top);
 	lua_pushstring(ctx, "input");
