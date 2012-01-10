@@ -33,6 +33,15 @@ local curs_dy = 0;
 local images = {};
 local iodispatch = {};
 
+local function ledconfig_iofun(iotbl)
+	local restbl = keyconfig:match(iotbl);
+
+	if (iotbl.active and restbl and restbl[1] and
+	    ledconfig:input(restbl[1]) == true) then
+	   dishwater_input = keyconfig.iofun;
+	end
+end
+
 function dishwater()
 	system_load("scripts/keyconf.lua")();
 	system_load("scripts/ledconf.lua")();
@@ -45,34 +54,26 @@ function dishwater()
 		"rMENU_SELECT",
 		"aCURSOR_Y"
 	} );
+	keyconfig.iofun = dishwater_input;
 	
--- If we couldn't load,
--- hijack the current input function and return input when configured.
--- when that is finished, remap to ledconfig and thereafter reset the proper input symbol ;-)
 	if (keyconfig.active == false) then
-		keyconfig.iofun = dishwater_input;
-		
-		dishwater_input =
-		function(iotbl)
+		dishwater_input = function(iotbl) -- keyconfig io function hook
 			if (keyconfig:input(iotbl) == true) then
 				ledconfig = ledconf_create( keyconfig:labels() );
 				if (ledconfig.active == false) then
-					dishwater_input =
-						function(iotbl)
-							local restbl = keyconfig:match(iotbl);
-							if (iotbl.active and restbl and restbl[1]) then
-								if (ledconfig:input(restbl[1]) == true) then
-									dishwater_input = keyconfig.iofun;
-								end
-							end
-						end
-				else
+					dishwater_input = ledconfig_iofun;
+				else -- no LED controller present, or LED configuration already exists
 					dishwater_input = keyconfig.iofun;
 				end
 			end
 		end
+	else
+		ledconfig = ledconf_create( keyconfig:labels() );
+		if (ledconfig.active == false) then
+				dishwater_input = ledconfig_iofun;
+		end
 	end
-	
+
 	images.selector = fill_surface(VRESW * 0.5, 20, 0, 40, 200);
 	show_image(images.selector);
 	order_image(images.selector, 1);
@@ -206,6 +207,8 @@ function select_item()
 	images.gamepic = nil;
     end
 
+	if (ledconfig) then	ledconfig:toggle(game.players, game.buttons); end
+	
 -- line-heights are stored from when we rendered the menu, use that as a LUT for where to draw the selection bar. 
     instant_image_transform(images.selector);
     move_image(images.selector, 0, images.menu_lines[page_ofs] - 2 + gamelist.yofs, 10);

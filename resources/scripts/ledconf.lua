@@ -36,10 +36,11 @@ local function ledconf_config(self, labels)
 	
 	self:nextlabel(false);
 	self:drawvals();
-	set_led(0, 0, 1);
 end
 
 local function ledconf_flush(self)
+	print("time to flush to " .. self.ledfile);
+	
 	zap_resource(self.ledfile);
 	open_rawresource(self.ledfile);
 	if (write_rawresource("local ledconf = {};\n") == false) then
@@ -58,19 +59,22 @@ end
 
 local function ledconf_cleanup(self)
 	if (self) then
-		delete_image(self.textvid);
-		delete_image(self.bgwindow);
-		self.active = true;
+		if (self.windowvid ~= nil and self.windowvid ~= BADID) then delete_image(self.windowvid); end
+		if (self.valvid ~= nil and self.valvid ~= BADID) then delete_image(self.valvid); end
 		self:flush();
+		self.active = true;
 	end
 end
 
 local function ledconf_nextlabel(self, store)
+	if (self.active) then return false; end
+	
 	if (store) then
 		self.table[ self.labels[ self.labelofs ] ] = { self.ctrlval, self.ledval };
 	end
 	
 	self.labelofs = self.labelofs + 1;
+	
 	if (self.labelofs > # self.labels) then
 		self:cleanup();
 	else
@@ -87,7 +91,10 @@ local function ledconf_nextlabel(self, store)
 		order_image(self.msgheader, 254);
 		move_image(self.msgheader, 5, 5);
 		show_image(self.msgheader);
+		return true;
 	end
+
+	return false;
 end
 
 local function ledconf_drawvals(self)
@@ -107,16 +114,11 @@ local function ledconf_drawvals(self)
 	
 	self.valvid = render_text( msg );
 	link_image(self.valvid, self.windowvid);
+	image_clip_on(self.valvid);
 	image_mask_clear(self.valvid, MASK_SCALE);
 	move_image(self.valvid, 5, props.y + props.height + 5, NOW);
 	order_image(self.valvid, 254);
 	show_image(self.valvid);
-end
-
-local function ledconf_cleanup(self)
-	delete_image(self.windowvid);
-	delete_image(self.msgheader);
-	delete_image(self.valvid);
 end
 
 local function ledconf_flush(self)
@@ -131,12 +133,7 @@ local function ledconf_flush(self)
 
 -- for key, value in pairs(keyconf_current.table) do
 	for key, value in pairs(self.table) do
-		if (type(value) == "table") then
-			write_rawresource( "ledconf[\"" .. key .. "\"] = {\"");
-			write_rawresource( table.concat(value, "\",\"") .. "\"};\n" );
-		else
-			write_rawresource( "ledconf[\"" .. key .. "\"] = \"" .. value .. "\";\n" );
-		end
+		write_rawresource( "ledconf[\"" .. key .. "\"] = {" .. tostring(value[1]) .. "," .. tostring(value[2]) .. "};\n" );
 	end
 
 	write_rawresource("return ledconf;");
@@ -144,7 +141,7 @@ local function ledconf_flush(self)
 end
 
 local function ledconf_value_change(self, val)
-	set_led( self.ctrlval, self.ledval, 0);
+	self:set_led( self.ctrlval, self.ledval, 0);
 	local lv = controller_leds( self.ctrlval );
 
 	if (self.groupid == 0) then
@@ -153,15 +150,24 @@ local function ledconf_value_change(self, val)
 		self.ledval = (self.ledval + val) % lv;
 	end
 	
-	set_led( self.ctrlval, self.ledval, 1);
+	self:set_led( self.ctrlval, self.ledval, 1);
 	self:drawvals(self);
 end
 
+local function ledconf_set_led(self, ctrl, id, val)
+	local key = tostring(ctrl) .. ":" .. tostring(id);
+	if (self.ledcache[ key ] ~= nil and self.ledcache[ key ][3] ~= val) then
+		self.ledcache[ key ] = {ctrl, id, val};
+		set_led(ctrl, id, val);
+	end
+end
+-- 
 local function ledconf_clearall(self)
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;
 		while j < controller_leds(i) do
 			set_led(i, j, 0);
+			self.ledcache[ tostring(i) .. ":" .. tostring(j) ] = {i, j, 0};
 			j = j + 1;
 		end
 	end
@@ -171,7 +177,7 @@ local function ledconf_setall(self)
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;
 		while j < controller_leds(i) do
-			set_led(i, j, 1);
+			self.ledcache[ tostring(i) .. ":" .. tostring(j) ] = {i, j, 1};
 			j = j + 1;
 		end
 	end
@@ -188,7 +194,7 @@ end
 -- menu escape, skip setting a LED for this label
 local function ledconf_input(self, symlbl)
 	if (self.active == true) then
-		return false;
+		return true;
 	end
 
 	if (symlbl == "MENU_UP") then
@@ -203,6 +209,34 @@ local function ledconf_input(self, symlbl)
 		self:nextlabel(true);
 	elseif (symlbl == "MENU_ESCAPE") then
 		self:nextlabel(false);
+	end
+
+	return false;
+end
+
+-- some extra work here due to possibly high latency / cost
+-- for each set_led operation
+function ledconf_toggle(self, players, buttons)
+	if (type(players) ~= "number" or type(buttons) ~= "number") then return false; end
+
+	local list = {};
+	
+	for np=1,players do
+		for nb=1,buttons do
+			local labelstr = "PLAYER" .. tostring(np) .. "_BUTTON" .. tostring(nb);
+			local refr = self.table[ labelstr ];
+			if (refr) then
+				list[ tostring(refr[1]) .. ":" .. tostring(refr[2])  ] = 1;
+			end
+		end
+	end
+
+	for key, val in pairs( self.ledcache ) do
+		if (list[key] == nil) then
+			self:set_led( val[1], val[2], 0);
+		else
+			self:set_led( val[1], val[2], 1);
+		end
 	end
 
 	return true;
@@ -223,8 +257,10 @@ local ledcfgtbl = {
 		value_change = ledconf_value_change,
 		group_change = ledconf_group_change,
 		setall = ledconf_setall,
+		set_led = ledconf_set_led,
 		clearall = ledconf_clearall,
-		fontline = [[\ffonts/default.ttf,18 ]]
+		fontline = [[\ffonts/default.ttf,18 ]],
+		ledcache = {};
 	}
 
 	for k, v in ipairs(arguments) do
@@ -233,6 +269,15 @@ local ledcfgtbl = {
 			if (string.len(fn) > 0) then
 				restbl.ledfile = fn;
 			end
+		elseif (string.sub(v, 1, 10) == "ledlabels=") then
+			local vals = string.sub(v, 11);
+			if (string.len(vals) > 0) then
+				for token in string.gmatch(vals, "[^,]+") do
+					table.insert(labels, token);
+				end
+			end
+		elseif (v == "forceledconf") then
+		        zap_resource(ledcfgtbl.ledfile);
 		end
 	end
 
@@ -246,6 +291,9 @@ local ledcfgtbl = {
 	else
 		ledcfgtbl.active = true;
 	end
+
+-- reset AND populate cache 
+	ledcfgtbl.clearall(ledcfgtbl);
 	
 	return ledcfgtbl;
 end

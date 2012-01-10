@@ -110,35 +110,37 @@ local function keyconf_next_key(self)
 		self.key_kind = string.sub(self.key, 1, 1);
 		self.key = string.sub(self.key, 2);
 
-	local lbl;
+		local lbl;
 	
-	lbl = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
+		lbl = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
 
-	if (self.key_kind == "A" or self.key_kind == "r") then
-	    lbl = "(required) ";
-	else
-	    lbl = "(optional) ";
-	end
+		if (self.key_kind == "A" or self.key_kind == "r") then
+			lbl = "(required) ";
+		else
+			lbl = "(optional) ";
+		end
 
-	if (self.key_kind == "a" or self.key_kind == "A") then
-		lbl = lbl .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t 0 samples grabbed]];
-		self.analog_samples = {};
-	else
-		lbl = lbl .. "Please press a button for " .. self.key;
-	end
+		if (self.key_kind == "a" or self.key_kind == "A") then
+			lbl = lbl .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t 0 samples grabbed]];
+			self.analog_samples = {};
+		else
+			lbl = lbl .. "Please press a button for " .. self.key;
+		end
 
-	self.label = lbl;
-	keyconf_renderline(self, self.label );
+		self.label = lbl;
+		keyconf_renderline(self, self.label );
 
-        return true;
-    else
         return false;
+    else
+		self:cleanup();
+		self.active = true;
+        return true;
     end
 end
 
 -- return the symstr that match inputtable, or nil.
 local function keyconf_match(self, input, label)
-	if (input == nil or self.active == false) then
+	if (input == nil) then
         return nil;
     end
 
@@ -148,21 +150,19 @@ local function keyconf_match(self, input, label)
 		kv = self.table[ input ];
     end
 
-    if label ~= nil then
-	if type(kv) == "table" then
-	    for i=1, #kv do
-		if kv[i] == label then 
-		    return true;
+-- with a label set, we expect a boolean result
+-- otherwise the actual matchresult will be returned
+
+	if label ~= nil and kv ~= nil then
+		if type(kv) == "table" then
+			for i=1, #kv do
+				if kv[i] == label then return true; end
+			end
+		else
+	    	return kv == label;
 		end
-	    end
-	    
-	    return false;
-	else
-	    return kv == label;
-	end
     end
 
--- need some patching for axis events (carry over the analog values) 
     return kv;
 end
 
@@ -225,7 +225,7 @@ local function keyconf_analog(self, inputtable)
 
 	self.label = self.label .. [[\n\r dominant device(:axis) is (]] .. maxkey .. ")";
 	if ( #self.analog_samples >= 100 and maxkey == self:id(inputtable) ) then
-        keyconf_set(self, inputtable);
+        self:set(inputtable);
         return false;
     else
 		keyconf_renderline(self, self.label );
@@ -233,75 +233,37 @@ local function keyconf_analog(self, inputtable)
 	end
 end
 
--- This is really "refactor me" messy,
--- but the flow is essentially that => true if keyconfig is finished, false if more input is needed.
---
--- five exit scenarios:
--- a. more input needed.
--- b. no keys left to configure.
--- c. last entry is analog.
--- d. ESCAPE pressed.
--- e. regular button/key pressed.
-
 local function keyconf_input(self, inputtable)
--- any key to configure.
-	if (self.key == nil and self.active == false) then
-		self:cleanup();
+	if (self.active or self.key == nil) then
 		return true;
-    end
-
-	key = nil;
-
--- special treatment for analog inputs
-	if ( (self.key_kind == 'a' or self.key_kind == 'A') and
-			inputtable.kind == "analog") then
-		if (keyconf_analog(self, inputtable)) then
-			return false;
-		else
-			if (keyconf_next_key(self) == false) then
-				self:cleanup();
-				return true;
-			else
-				return false;
-			end
-		end
 	end
 	
--- the rest of the code only handles digital input (note: keyboard is digital + translated) 
-	if (inputtable.kind == "digital" and inputtable.active == true) then
-		key = inputtable;
-    else
-		return false;
-    end
+-- early out, MENU_ESCAPE is defined to skip labels where this is allowed,
+-- meaning a keykind of ' ' or 'a'.
+	if (self:match(inputtable, "MENU_ESCAPE") and inputtable.active) then
+		
+		if (self.key_kind == 'A' or self.key_kind == 'r') then
+			self:renderline([[\#ff0000Cannot skip required keys/axes.\n\r\#ffffff]] .. self.label );
+			return false;
+		else
+			return self:next_key();
+		end
+	end
 
--- special treatement for the escape key, double- escape == abort
-   if ( self:match(key, "MENU_ESCAPE") ) then
-	   if (self.key_kind == 'r' or self.key_kind == "A") then
-		   keyconf_renderline(self, [[\#ff0000Cannot skip required keys/axes.\n\r\#ffffff]] .. self.label );
-		   return false;
-        else
-			if (keyconf_next_key(self) == false) then
-				self:cleanup();
-				return true;
-			else
-				return false;
-			end
-        end
-   end
-
-   if (self.key_kind == ' ' or self.key_kind == 'r') then
-		if ( self:match(key) ~= nil ) then
-			print("Notice: Button (" .. self:id(inputtable) .. ") already in use.\n");
+-- analog inputs or just look at the 'press' part.
+	if (self.key_kind == 'a' or self.key_kind == 'A') then
+		if (inputtable.kind == "analog") then self:analoginput(inputtable); end
+		
+	elseif (inputtable.kind == "digital" and inputtable.active) then
+		if (self:match(key) ~= nil) then
+			print("Keyconf.lua, Notice: Button (" ..self:id(inputtable) .. ") already in use.\n");
 		end
 
-		keyconf_set(self, inputtable );
-		if ( keyconf_next_key(self) == false) then
-			self:cleanup();
-			return true;
-		end
-   end
+		self:set(inputtable);
+		return self:next_key();
+	end
 
-   return false;
+	return false;
 end
 
 local function keyconf_labels(self)
@@ -365,11 +327,16 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 	local restbl = {
 		new = keyconf_new,
 		match = keyconf_match,
-		input = keyconf_input,
-		id = keyconf_tbltoid,
-		labels = keyconf_labels,
+		renderline = keyconf_renderline,
+		next_key = keyconf_next_key,
+		analoginput = keyconf_analog,
 		flush = keyconf_flush,
+		id = keyconf_tbltoid,
+		input = keyconf_input,
 		cleanup = keyconf_cleanup,
+		set = keyconf_set,
+--
+		labels = keyconf_labels,
 		ignore_modifiers = true,
 		n_players = nplayers,
 		keyfile = keyname
