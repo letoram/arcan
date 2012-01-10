@@ -214,6 +214,31 @@ local function ledconf_input(self, symlbl)
 	return false;
 end
 
+function ledconf_listtoggle(self, labellist)
+	if (self.table == nil) then
+		return false;
+	end
+
+	list = {};
+	
+	for key, val in pairs(labellist) do
+		local refr = self.table[ val ];
+		if (refr) then
+			list[ tostring(refr[1]) .. ":" .. tostring(refr[2]) ] = 1;
+		end
+	end
+	
+	for key, val in pairs( self.ledcache ) do
+		if (list[key] == nil) then
+			self:set_led( val[1], val[2], 0);
+		else
+			self:set_led( val[1], val[2], 1);
+		end
+	end
+
+	return true;
+end
+
 -- some extra work here due to possibly high latency / cost
 -- for each set_led operation
 function ledconf_toggle(self, players, buttons)
@@ -224,22 +249,11 @@ function ledconf_toggle(self, players, buttons)
 	for np=1,players do
 		for nb=1,buttons do
 			local labelstr = "PLAYER" .. tostring(np) .. "_BUTTON" .. tostring(nb);
-			local refr = self.table[ labelstr ];
-			if (refr) then
-				list[ tostring(refr[1]) .. ":" .. tostring(refr[2])  ] = 1;
-			end
+			table.insert(list, labelstr);
 		end
 	end
 
-	for key, val in pairs( self.ledcache ) do
-		if (list[key] == nil) then
-			self:set_led( val[1], val[2], 0);
-		else
-			self:set_led( val[1], val[2], 1);
-		end
-	end
-
-	return true;
+	return self:listtoggle(list);
 end
 
 function ledconf_create(labels)
@@ -259,6 +273,7 @@ local ledcfgtbl = {
 		setall = ledconf_setall,
 		set_led = ledconf_set_led,
 		clearall = ledconf_clearall,
+		listtoggle = ledconf_listtoggle,
 		fontline = [[\ffonts/default.ttf,18 ]],
 		ledcache = {};
 	}
