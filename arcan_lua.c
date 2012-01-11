@@ -2022,7 +2022,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
 	
 /* constant: API_VERSION_MINOR,int */
-	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 1);
+	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 2);
 
 /* constant: LAUNCH_EXTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);

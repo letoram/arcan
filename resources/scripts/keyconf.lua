@@ -159,8 +159,10 @@ local function keyconf_match(self, input, label)
 				if kv[i] == label then return true; end
 			end
 		else
-	    	return kv == label;
+			return kv == label;
 		end
+		
+		return false;
     end
 
     return kv;
@@ -187,7 +189,7 @@ end
 local function keyconf_set(self, inputtable)
 
 -- forward lookup: 1..n
-    local id = keyconf_tbltoid(self, inputtable);
+    local id = self:id(inputtable);
 	if (self.table[id] == nil) then
 		self.table[id] = {};
     end
@@ -201,7 +203,7 @@ end
 -- false otherwise.
 local function keyconf_analog(self, inputtable)
     -- find which axis that is active, sample 'n' numbers
-	table.insert(self.analog_samples, keyconf_tbltoid(self, inputtable));
+	table.insert(self.analog_samples, self:id(inputtable));
 
 	self.label = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
 	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t ]] .. tostring(# self.analog_samples) .. " samples grabbed (100+ needed)";
@@ -224,9 +226,9 @@ local function keyconf_analog(self, inputtable)
     end
 
 	self.label = self.label .. [[\n\r dominant device(:axis) is (]] .. maxkey .. ")";
-	if ( #self.analog_samples >= 100 and maxkey == self:id(inputtable) ) then
-        self:set(inputtable);
-        return false;
+	if ( #self.analog_samples > 100 and maxkey == self:id(inputtable) ) then
+		self:set(inputtable);
+		return self:next_key();
     else
 		keyconf_renderline(self, self.label );
 		return true;
@@ -241,7 +243,6 @@ local function keyconf_input(self, inputtable)
 -- early out, MENU_ESCAPE is defined to skip labels where this is allowed,
 -- meaning a keykind of ' ' or 'a'.
 	if (self:match(inputtable, "MENU_ESCAPE") and inputtable.active) then
-		
 		if (self.key_kind == 'A' or self.key_kind == 'r') then
 			self:renderline([[\#ff0000Cannot skip required keys/axes.\n\r\#ffffff]] .. self.label );
 			return false;
