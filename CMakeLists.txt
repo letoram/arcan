@@ -23,7 +23,7 @@ PROJECT( arcan )
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 1 )
-set(PATCH_LEVEL 1 )
+set(PATCH_LEVEL 2 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -324,6 +324,8 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
 SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
 SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
+    AccessControl::GrantOnFile '\$INSTDIR\\\\themes' '(BU)' 'GenericRead + GenericWrite'
+	AccessControl::GrantOnFile '\$INSTDIR\\\\resources' '(BU)' 'GenericRead + GenericWrite'
 		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Getting Started.lnk' '\$INSTDIR\\\\resources\\\\doc\\\\quickstart.pdf'
 		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
@@ -335,7 +337,7 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
 ")
-
+	
 SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Welcome).lnk' 
 		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Getting Started.lnk'
