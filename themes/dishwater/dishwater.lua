@@ -44,21 +44,17 @@ end
 
 function dishwater()
 	system_load("scripts/keyconf.lua")();
+	system_load("scripts/keyconf_mame.lua")();
 	system_load("scripts/ledconf.lua")();
-	keyconfig = keyconf_create(0, {
-		"rMENU_ESCAPE",
-		"rMENU_UP",
-		"rMENU_DOWN",
-		" MENU_LEFT",
-		" MENU_RIGHT",
-		"rMENU_SELECT",
-		"aCURSOR_Y"
-	} );
+
+	keyconfig = keyconf_create(0);
 	keyconfig.iofun = dishwater_input;
 	
 	if (keyconfig.active == false) then
 		dishwater_input = function(iotbl) -- keyconfig io function hook
 			if (keyconfig:input(iotbl) == true) then
+				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg");
+					
 				ledconfig = ledconf_create( keyconfig:labels() );
 				if (ledconfig.active == false) then
 					dishwater_input = ledconfig_iofun;
