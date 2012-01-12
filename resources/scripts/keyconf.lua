@@ -35,8 +35,14 @@ local default_player_group = {
 	"rLEFT",
 	"rRIGHT",
 	"rSTART",
+	" SELECT",
     "rCOIN1",
-    " COIN2"
+	" BUTTON1",
+	" BUTTON2",
+	" BUTTON3",
+	" BUTTON4",
+	" BUTTON5",
+	" BUTTON6",
 };
 
 local function keyconf_renderline(self, string, size)
@@ -170,18 +176,17 @@ end
 
 local function keyconf_tbltoid(self, inputtable)
     if (inputtable.kind == "analog") then
-	return "analog:" ..inputtable.devid .. ":" .. inputtable.subid;
+		return "analog:" ..inputtable.devid .. ":" .. inputtable.subid .. ":" .. inputtable.source;
     end
     
-    if (inputtable.translated) then
+    if inputtable.translated then
 		if self.ignore_modifiers then
-	    return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym;
-	else
-	    return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym .. ":" .. inputtable.modifiers;
-	end
-	
+			return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym;
+		else
+			return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym .. ":" .. inputtable.modifiers;
+		end
     else
-	return "digital:" .. inputtable.devid .. ":" .. inputtable.subid;
+		return "digital:" .. inputtable.devid .. ":" .. inputtable.subid .. ":" .. inputtable.source;
     end
 end
 
@@ -338,7 +343,7 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		set = keyconf_set,
 --
 		labels = keyconf_labels,
-		ignore_modifiers = true,
+		ignore_modifiers = false,
 		n_players = nplayers,
 		keyfile = keyname
 	};
@@ -365,6 +370,8 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 			if (string.len(fn) > 0) then
 				restbl.keyfile = fn;
 			end
+		elseif (string.sub(v, 1, 10) == "nomodifier") then
+			restbl.ignore_modifiers = true;
 		elseif (v == "forcekeyconf") then
 			zap_resource(restbl.keyfile);
 		end

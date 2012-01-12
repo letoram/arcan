@@ -1014,7 +1014,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 					arcan_lua_tblstr(ctx, "subdevice", "keyboard", top);
 				}
 				else if (ev.data.io.devkind == EVENT_IDEVKIND_MOUSE || ev.data.io.devkind == EVENT_IDEVKIND_GAMEDEV) {
-					arcan_lua_tblstr(ctx, "source", ev.data.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "gamepad", top);
+					arcan_lua_tblstr(ctx, "source", ev.data.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
 					arcan_lua_tblbool(ctx, "translated", false, top);
 					arcan_lua_tblnum(ctx, "devid", ev.data.io.input.digital.devid, top);
 					arcan_lua_tblnum(ctx, "subid", ev.data.io.input.digital.subid, top);
@@ -1554,13 +1554,14 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		return;
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
-	arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
-
 	if (lua_ctx_store.debug){
+		arcan_fatal("Warning: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 		printf("Stack dump: \n");
 		dump_stack(ctx);
 		dump_call_trace(ctx);
 	}
+	else 
+		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 }
 
 int arcan_lua_resource(lua_State* ctx)
@@ -1652,6 +1653,77 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 	
 	arcan_db_free_res(dbhandle, cmdline);
 	return rv;
+}
+
+int arcan_lua_decodemod(lua_State* ctx)
+{
+	int modval = luaL_checkint(ctx, 1);
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+
+	int count = 1;
+	if ((modval & KMOD_LSHIFT) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "lshift");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_RSHIFT) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "rshift");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_LALT) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "lalt");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_RALT) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "ralt");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_LCTRL) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "lctrl");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_RCTRL) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "rctrl");
+		lua_rawset(ctx, top);
+	}
+	
+	if ((modval & KMOD_LMETA) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "lmeta");
+		lua_rawset(ctx, top);
+	}
+	
+	if ((modval & KMOD_RMETA) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "rmeta");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_NUM) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "num");
+		lua_rawset(ctx, top);
+	}
+
+	if ((modval & KMOD_CAPS) > 0){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, "caps");
+		lua_rawset(ctx, top);
+	}
+
+	return 1;
 }
 
 int arcan_lua_settexmode(lua_State* ctx)
@@ -1962,7 +2034,11 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item:controller_leds, ctrlid, nleds */
 	lua_register(ctx, "controller_leds", arcan_lua_n_leds);
 
+/* item:utf8kind, character, charkindnum */
 	lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
+
+/* item:decode_modifiers, modval, strtable */
+	lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
 	
 	atexit(arcan_lua_cleanup);
 	

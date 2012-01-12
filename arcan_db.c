@@ -586,6 +586,10 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 			snprintf(wbuf, wbufs, "%s/games%s", arcan_resourcepath, arg + 10);
 			res.data.strarr[count++] = strdup(wbuf);
 		}
+		else if ( (strlen(arg) >= 11) && strncmp(arg, "[themepath]", 11) == 0){
+			snprintf(wbuf, wbufs, "%s/%s/%s", arcan_themepath, arcan_themename, arg + 11);
+			res.data.strarr[count++] = strdup(wbuf);
+		}
 		else
 			res.data.strarr[count++] = _n_strdup(arg, NULL);
 

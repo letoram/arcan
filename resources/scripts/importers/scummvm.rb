@@ -49,7 +49,7 @@ class ScummVM
 		@titles = {}
 
 		if (File.exists?(@scummpath) == false)
-			STDERR.print("[SCUMMVM importer] cannot find scummvm binary at #{scummpath}, skipping.\n")
+			STDERR.print("[SCUMMVM importer] cannot find scummvm binary at #{@scummpath}, skipping.\n")
 			return false
 		end
 
