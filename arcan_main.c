@@ -240,7 +240,9 @@ int main(int argc, char* argv[])
 		luaL_openlibs(luactx);
 		arcan_lua_exposefuncs(luactx, luadebug);
 		arcan_lua_pushglobalconsts(luactx);
-		arcan_lua_pushargv(luactx, argv + optind + 1);
+		if (argc > optind)
+			arcan_lua_pushargv(luactx, argv + optind + 1);
+
 		int err_func = 0;
 
 		char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
