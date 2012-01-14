@@ -466,6 +466,8 @@ void arcan_event_deinit()
 		free(current_context.sticks);
 		current_context.sticks = 0;
 	}
+
+	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }
 
 void arcan_event_init()
@@ -473,6 +475,7 @@ void arcan_event_init()
 	init_sdl_events();
 	current_context.event_sync = SDL_CreateMutex();
 
+	SDL_Init(SDL_INIT_JOYSTICK);
 	/* enumerate joysticks, try to connect to those available and map their respective axises */
 	SDL_JoystickEventState(SDL_ENABLE);
 	current_context.nsticks = SDL_NumJoysticks();

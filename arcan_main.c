@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
 
 /* start this here since some SDL builds have the nasty (albeit understandable) habit of 
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+	SDL_Init(SDL_INIT_VIDEO);
 
 	while ((ch = getopt_long(argc, argv, "w:h:?fmsp:t:o:l:d:1:2:gr:", longopts, NULL)) != -1){
 		switch (ch) {
