@@ -1003,6 +1003,11 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned
 	return rv;
 }
 
+arcan_vobj_id arcan_video_loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode)
+{
+
+}
+
 arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arcan_errc* errcode)
 {
 	GLuint gtid = 0;
@@ -2801,7 +2806,9 @@ bool arcan_video_prepare_external()
 		return false;
 	
 	SDL_FreeSurface(arcan_video_display.screen);
-	SDL_Quit();	
+
+	/* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
+	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 	
 	return true;
 }
@@ -2813,6 +2820,7 @@ void arcan_video_restore_external()
 											arcan_video_display.height, 
 											arcan_video_display.bpp, 
 											arcan_video_display.sdlarg);
+	arcan_event_init();
 	arcan_video_gldefault();
 	arcan_video_popcontext();
 }

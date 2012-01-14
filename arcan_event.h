@@ -209,8 +209,10 @@ void arcan_event_clearmask();
 /* set a specific mask, somewhat limited */
 void arcan_event_setmask(uint32_t mask);
 
-/* call to initialise the current context */
+/* call to initialise/deinitialize the current context
+ * may occur several times due to external target launch */
 void arcan_event_init();
+void arcan_event_deinit();
 
 /* call to dump the contents of the queue */
 void arcan_event_dumpqueue();
