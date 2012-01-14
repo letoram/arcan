@@ -2806,16 +2806,20 @@ bool arcan_video_prepare_external()
 		return false;
 	
 	SDL_FreeSurface(arcan_video_display.screen);
+	if (arcan_video_display.fullscreen)
+		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 
 	/* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
-	SDL_QuitSubSystem(SDL_INIT_VIDEO);
-	
+	arcan_event_deinit();
+
 	return true;
 }
 
 void arcan_video_restore_external()
 {
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+	if (arcan_video_display.fullscreen)
+		SDL_Init(SDL_INIT_VIDEO);
+
 	arcan_video_display.screen = SDL_SetVideoMode(arcan_video_display.width,
 											arcan_video_display.height, 
 											arcan_video_display.bpp, 
