@@ -374,10 +374,17 @@ double round(double x)
 
 bool arcan_setpaths()
 {
-	arcan_resourcepath = strdup("./resources");
+	if (!arcan_resourcepath)
+		arcan_resourcepath = strdup("./resources");
+
 	arcan_libpath = NULL;
-	arcan_themepath = strdup("./themes");
-	arcan_binpath = strdup("./arcan_frameserver");
+
+	if (!arcan_themepath)
+		arcan_themepath = strdup("./themes");
+
+	if (!arcan_binpath)
+		arcan_binpath = strdup("./arcan_frameserver");
+	
 	return true;
 }
 

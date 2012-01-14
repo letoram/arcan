@@ -76,6 +76,7 @@ struct event_context {
 	uint32_t mask_cat_inp;
 	uint32_t mask_cat_out;
 
+	unsigned kbdrepeat;
 	unsigned short nsticks;
 	struct arcan_stick* sticks;
 
@@ -86,7 +87,7 @@ struct event_context {
 	SDL_mutex* event_sync;
 };
 
-struct event_context current_context;
+static struct event_context current_context = {0};
 
 queue_cell* alloc_queuecell()
 {
@@ -231,13 +232,15 @@ void arcan_event_enqueue(arcan_event* src)
 
 void arcan_event_keyrepeat(unsigned int rate)
 {
-	SDL_EnableKeyRepeat(rate, SDL_DEFAULT_REPEAT_INTERVAL);
+	current_context.kbdrepeat = rate;
+	SDL_EnableKeyRepeat(current_context.kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
 }
 
 /* probe devices and generate mapping tables */
 void init_sdl_events()
 {
 	SDL_EnableUNICODE(1);
+	arcan_event_keyrepeat(current_context.kbdrepeat);
 }
 
 void map_sdl_events()
@@ -457,9 +460,16 @@ static unsigned long djb_hash(const char* str)
 	return hash;
 }
 
+void arcan_event_deinit()
+{
+	if (current_context.sticks){
+		free(current_context.sticks);
+		current_context.sticks = 0;
+	}
+}
+
 void arcan_event_init()
 {
-	memset(&current_context, 0, sizeof(struct event_context));
 	init_sdl_events();
 	current_context.event_sync = SDL_CreateMutex();
 
