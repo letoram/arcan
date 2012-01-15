@@ -62,6 +62,9 @@ char* arcan_resourcepath = NULL;
 char* arcan_libpath = NULL;
 char* arcan_binpath = NULL;
 
+bool stderr_redirected = false;
+bool stdout_redirected = false;
+
 static const struct option longopts[] = {
 	{ "help", no_argument, NULL, '?' },
 	{ "width", required_argument, NULL, 'w' },
@@ -99,9 +102,7 @@ void usage()
 		"-r\t--scalemode   \tset texture mode (0,1,2)\n\t"
 		"0(rectangle sized textures),\n\t"
 		"1(scale to power of two)\n\t"
-		"2(tweak texture coordinates)\n"
-		"-1\t--stdout      \tforce stdout- output to filename\n"
-		"-2\t--stderr      \tforce stderr- output to filename\n");
+		"2(tweak texture coordinates)\n");
 }
 
 int main(int argc, char* argv[])
@@ -171,9 +172,11 @@ int main(int argc, char* argv[])
 				arcan_binpath = strdup(optarg);
 			break;
 			case '1' :
+				stdout_redirected = true;
 				freopen(optarg, "a", stdout);
 			break;
 			case '2' :
+			stderr_redirected = true;
 				freopen(optarg, "a", stderr);
 			break;
 

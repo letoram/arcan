@@ -71,6 +71,7 @@ FIND_PACKAGE ( ZLIB REQUIRED )
 FIND_PACKAGE ( FFMPEG REQUIRED )
 FIND_PACKAGE ( VORBIS REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
+FIND_PACKAGE ( OpenCTM REQUIRED )
 
 LIST (APPEND 
 	MAIN_LIBRARIES
@@ -85,6 +86,7 @@ LIST (APPEND
 	${ASSERT_LIBRARY}
 	${SQLITE3_LIBRARIES}
 	${VORBIS_LIBRARIES}
+	${OPENCTM_LIBRARIES}
 )
 
 set (
@@ -104,6 +106,7 @@ include_directories (
 	${FFMPEG_INCLUDE_DIR}
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${VORBIS_INCLUDE_DIR}
+	${OPENCTM_INCLUDE_DIR}
 )
 
 # removed, current code has some serious issues
@@ -124,6 +127,7 @@ set (
  arcan_main.c
  arcan_db.c
  arcan_video.c
+ arcan_3dbase.c
  arcan_audio.c
  arcan_framequeue.h
  arcan_event.h

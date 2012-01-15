@@ -38,6 +38,7 @@
 #include <CoreFoundation/CoreFoundation.h>  
 #endif
 
+/* move to tls ;p */
 static const int playbufsize = (64 * 1024) - 2;
 static char playbuf[64 * 1024] = {0};
 
@@ -346,23 +347,43 @@ const char* internal_launch_support(){
 
 #if _WIN32
 
+/* sigh, we don't know where we come from so we have to have a separate buffer here */
+extern bool stdout_redirected;
+static char winplaybuf[64 * 1024] = {0};
 void arcan_warning(const char* msg, ...)
 {
+/* redirection needed for win (SDL etc. also tries to, but we need to handle things)
+ * differently, especially for Win/UAC and permissions, thus we can assume resource/theme
+ * folder is r/w but nothing else .. */
+	if (!stdout_redirected){
+		snprintf(winplaybuf, "%s/logs/%s_log.log");
+		freopen(winplaybuf, "a", stdout);
+		stdout_redirected = true;
+	}
+	
 	va_list args;
 	va_start( args, msg );
-	vfprintf(stderr,  msg, args );
-	va_end( args);
+	vfprintf(stdout,  msg, args );
+	va_end(args);
+	fflush(stdout);
 }
 
+extern bool stderr_redirected;
 void arcan_fatal(const char* msg, ...)
 {
 	char buf[256] = {0};
-	
+	if (!stderr_redirected){
+		
+		stderr_redirected = true;
+	}
+
 	va_list args;
 	va_start(args, msg );
 	vsnprintf(buf, 255, msg, args);
 	va_end(args);
 	
+	fprintf(stderr, "%s\n", msg);
+	fflush(stderr);
 	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
 	exit(1);
 }
