@@ -332,7 +332,7 @@ int main(int argc, char* argv[])
 	else{
 		arcan_fatal("Error; Couldn't initialize video system, try other windowing options (-f, -w, ...)\n");
 	}
-	error:
+error:
 	SDL_Quit();
 	exit(1);
 

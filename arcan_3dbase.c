@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include <openctm.h>
 #include <SDL/SDL_opengl.h>
