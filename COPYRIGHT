@@ -19,4 +19,5 @@ Dependencies:
  SQLite3 -- www.sqlite.org, Public Domain
  FFMPEG -- www.ffmpeg-org, LGPL 2.1
  BZip2 -- (implicitly used by some dependencies) BSD License
+ openCTM -- zlib / libpng license
  ZLib -- zlib license

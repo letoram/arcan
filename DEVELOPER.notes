@@ -21,11 +21,9 @@ Some notes and hints for building / patching / packaging the engine as such.
    so to build a redistributable bundle,
    1. clear cmake cache, generate makefiles, patch cache- txt to point any /usr/local/lib stuff to be linked static. 
    2. make package.
-   3. manually add the SDL frameworks to the package (some projects tend to leave them out, ScummVM etc. but with the impending mess of SDL1.3, well..)
-
-   Then comes the problem of "where should we keep themes / resources", and furthermore, how should the active theme
-   be specified? This will remain an open question until there is a userbase with an opinion on the matter ;-)
 
 [Linux]
  * Nothing really new or surprising here -- huge dependency-tree,
    ffmpeg, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL and quite possibly glew, cmake for building along with ruby (gems nokogiri and sqlite3).
+ 
+ * OpenCTM for the 3d model management is not included in debian/ubuntu etc. so for packaging, you have to modify the Makefiles for OpenCTM and link static.
