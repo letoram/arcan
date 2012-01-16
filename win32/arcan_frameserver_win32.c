@@ -25,6 +25,8 @@ static FILE* logdev = NULL;
 static HWND parent = 0;
 
 /* little linking hack .. */
+bool stdout_redirected;
+bool stderr_redirected;
 char* arcan_resourcepath;
 char* arcan_libpath;
 char* arcan_themepath;

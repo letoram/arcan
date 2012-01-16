@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -31,6 +32,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <time.h>
 
 #include "arcan_general.h"
 
@@ -356,7 +358,8 @@ void arcan_warning(const char* msg, ...)
  * differently, especially for Win/UAC and permissions, thus we can assume resource/theme
  * folder is r/w but nothing else .. */
 	if (!stdout_redirected){
-		snprintf(winplaybuf, "%s/logs/%s_log.log");
+		sprintf(winplaybuf, "%s/logs/arcan_warning.log", arcan_resourcepath);
+	/* even if this fail, we will not try again */
 		freopen(winplaybuf, "a", stdout);
 		stdout_redirected = true;
 	}
@@ -373,7 +376,8 @@ void arcan_fatal(const char* msg, ...)
 {
 	char buf[256] = {0};
 	if (!stderr_redirected){
-		
+		sprintf(winplaybuf, "%s/logs/arcan_fatal.log", arcan_resourcepath);
+		freopen(winplaybuf, "a", stderr);
 		stderr_redirected = true;
 	}
 
@@ -382,7 +386,7 @@ void arcan_fatal(const char* msg, ...)
 	vsnprintf(buf, 255, msg, args);
 	va_end(args);
 	
-	fprintf(stderr, "%s\n", msg);
+	fprintf(stderr, "%s\n", buf);
 	fflush(stderr);
 	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
 	exit(1);
