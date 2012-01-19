@@ -97,7 +97,8 @@ enum arcan_vobj_tags {
 	ARCAN_TAG_IMAGE = 1,
 	ARCAN_TAG_TEXT = 2,
 	ARCAN_TAG_MOVIE = 3,
-	ARCAN_TAG_TARGET = 4 
+	ARCAN_TAG_TARGET = 4,
+	ARCAN_TAG_3DOBJ = 5
 };
 
 enum arcan_errors {
@@ -122,10 +123,9 @@ enum arcan_status {
 };
 
 typedef struct {
-	float x, y, w, h;
+	float x, y, z, w, h;
 	float opa;
-	bool force_blend;
-	float angle_z;
+	float angle;
 } surface_properties;
 
 typedef struct {

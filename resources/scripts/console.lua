@@ -7,7 +7,11 @@
 -- Outstanding issues:
 -- No scrolling for the messagewin
 -- Just sanity check for dimensions ( too large a input is considered a fatal misuse of render_text )
---
+-- Select text (affect delete / insert)
+-- Copy + Paste in selectbuffer
+-- Popup window for browsing match namespace / Autocomplete (by word, by line),
+-- Template completion (mark words for replacement, stepping in completion word)
+-- Limit on line-history
 
 function string.utf8back(src, ofs)
 	if (ofs > 1 and string.len(src)+1 >= ofs) then
@@ -186,7 +190,8 @@ local function console_update_caret(self)
 		end
 	end
 
-	move_image(self.caret, xpos, 0, 5);
+	instant_image_transform(self.caret);
+	move_image(self.caret, xpos, 0, 2);
 end
 
 local function console_autocomplete(self)
@@ -240,7 +245,7 @@ local function console_input(self, iotbl)
 
 			console_buffer_draw(self);
 			console_update_caret(self);
-			
+
 		elseif (symres == "HOME") then
 			self.caretpos = 0;
 			console_update_caret(self);

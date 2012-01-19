@@ -40,7 +40,8 @@
 enum arcan_vrtypes {
 	ARCAN_VRTYPE_IMAGE,
 	ARCAN_VRTYPE_VIDEO,
-	ARCAN_VRTYPE_CFUNC
+	ARCAN_VRTYPE_CFUNC,
+	ARCAN_VRTYPE_RENDERSOURCE
 };
 
 enum arcan_vtex_mode {
@@ -52,16 +53,6 @@ enum arcan_vimage_mode {
 	ARCAN_VIMAGE_NOPOW2 = 0, 
 	ARCAN_VIMAGE_TXCOORD = 1,
 	ARCAN_VIMAGE_SCALEPOW2 = 2
-};
-
-/* when the feedfunc should be invoked,
- 0 = manually
- 1 = vrefresh
- 2 = logic tick
- 3 = vfresh and logic tick */
-enum ARCAN_EVENT_VIDEO_MASK {
-	FFUNC_VREFRESH = 1,
-	FFUNC_TICK = 2
 };
 
 enum arcan_transform_mask {
@@ -79,7 +70,9 @@ enum arcan_ffunc_cmd {
 	ffunc_poll = 0,
 	ffunc_render = 1,
 	ffunc_tick = 2,
-	ffunc_destroy = 3
+	ffunc_destroy = 3,
+	/* specialized for 3d situation, the ffunc args are a bit hacked */
+	ffunc_render_direct = 4
 };
 
 enum arcan_ffunc_rv {
@@ -130,9 +123,9 @@ signed arcan_video_pushcontext();
  * buf* will be managed internally.
  * assumes constraints are a valid texture size (power of two),
  * and that the data is in RGBA format*/
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, uint8_t zv);
-arcan_vobj_id arcan_video_addobject(const char* fname, img_cons constraints, uint8_t zv);
-arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, uint8_t zv);
+arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv);
+arcan_vobj_id arcan_video_addobject(const char* fname, img_cons constraints, unsigned short zv);
+arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb feed, vfunc_state state);
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
@@ -178,7 +171,7 @@ void arcan_video_imgmanmode(enum arcan_vimage_mode mode, bool repeat);
 
 /* change zval (see arcan_video_addobject) for a particular object.
  * return value is an error code */
-arcan_errc arcan_video_setzv(arcan_vobj_id id, uint8_t newzv);
+arcan_errc arcan_video_setzv(arcan_vobj_id id,unsigned short newzv);
 
 /* forcibly kill videoobject after n cycles,
  * which will reset a counter that upon expiration invocates

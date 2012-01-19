@@ -83,21 +83,7 @@ long long ARCAN_VIDEO_WORLDID = -1;
 static unsigned int font_cache_size = ARCAN_FONT_CACHE_LIMIT;
 static struct font_entry font_cache[ARCAN_FONT_CACHE_LIMIT] = {0};
 
-static struct {
-	bool suspended, text_support, fullscreen, conservative;
-
-	/* default image loading options */
-	enum arcan_vimage_mode scalemode; 
-	GLuint deftxs, deftxt;
-
-	SDL_Surface* screen;
-	uint32_t sdlarg;
-
-	uint8_t bpp;
-	uint16_t width, height;
-	uint32_t c_ticks;
-	
-} arcan_video_display = {
+struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
@@ -477,7 +463,7 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 			current_context->first = new_litem;
 		}
 		else
-			if (current_context->first->elem->zval > src->zval) { /* insert first */
+			if (current_context->first->elem->order > src->order) { /* insert first */
 				new_litem->next = current_context->first;
 				current_context->first = new_litem;
 				new_litem->next->previous = new_litem;
@@ -487,7 +473,7 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 				arcan_vobject_litem* ipoint = current_context->first;
 				/* scan for insertion point */
 				do {
-					last = (ipoint->elem->zval <= src->zval);
+					last = (ipoint->elem->order <= src->order);
 				}
 				while (last && ipoint->next && (ipoint = ipoint->next));
 
@@ -818,7 +804,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity)
 	return rv;
 }
 
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, uint8_t zv)
+arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv)
 {
 	arcan_vobj_id rv = 0;
 
@@ -833,7 +819,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->origw = origw;
 		newvobj->origh = origh;
 		newvobj->current.opa = 0.0f;
-		newvobj->current.angle_z = 0.0f;
+		newvobj->current.angle = 0.0f;
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
@@ -847,7 +833,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->default_frame.raw = buf;
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, newvobj->gl_storage.w, newvobj->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
 		glBindTexture(GL_TEXTURE_2D, 0);
-		newvobj->zval = 0;
+		newvobj->order = 0;
 		arcan_video_attachobject(rv);
 	}
 
@@ -913,7 +899,7 @@ arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arc
 		newvobj->current.x = 0;
 		newvobj->current.y = 0;
 		newvobj->current.opa = 1.0f;
-		newvobj->current.angle_z = 0.0f;
+		newvobj->current.angle = 0.0f;
 	}
 	else
 		arcan_video_deleteobject(rv);
@@ -950,6 +936,9 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb, vfunc_stat
 			vobj->state = state;
 			vobj->ffunc = cb;
 			rv = ARCAN_OK;
+			if (state.tag == ARCAN_TAG_3DOBJ){
+				vobj->order = abs(vobj->order) * -1;
+			} else vobj->order = abs(vobj->order);
 		}
 		else
 			rv = ARCAN_ERRC_BAD_ARGUMENT;
@@ -983,7 +972,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
 		newvobj->current.opa = 1.0f;
-		newvobj->current.angle_z = 0.0f;
+		newvobj->current.angle = 0.0f;
 		newvobj->gl_storage.ncpt = ncpt;
 
 		if (newvobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
@@ -1072,28 +1061,32 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	return rv;
 }
 
-arcan_vobj_id arcan_video_addobject(const char* rloc,img_cons constraints, uint8_t zv)
+arcan_vobj_id arcan_video_addobject(const char* rloc,img_cons constraints, unsigned short zv)
 {
 	arcan_vobj_id rv;
 
 	if ((rv = arcan_video_loadimage((char*) rloc, constraints, NULL)) > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
-		vobj->zval = zv;
+		vobj->order = zv;
 		arcan_video_attachobject(rv);
 	}
 
 	return rv;
 }
 
-arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, uint8_t zv)
+arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv)
 {
 	arcan_vobj_id rv;
 	const int feed_ntus = 1;
 
 	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus, constraints.bpp)) > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
-		vobj->zval = zv;
+		vobj->order = zv;
 		vobj->state = state;
+
+		if (state.tag == ARCAN_TAG_3DOBJ)
+			vobj->order = -1 * zv;
+		
 		arcan_video_attachobject(rv);
 	}
 
@@ -1631,7 +1624,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->default_frame.s_raw = storw * storh * 4;
 		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw, 1);
 		vobj->default_frame.tag = ARCAN_TAG_TEXT;
-		vobj->current.force_blend = true;
+		vobj->flags.forceblend = true;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
 		vobj->current.opa = 1.0;
@@ -1726,7 +1719,7 @@ arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		vobj->current.force_blend = on;
+		vobj->flags.forceblend = on;
 
 		rv = ARCAN_OK;
 	}
@@ -1736,13 +1729,13 @@ arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on)
 
 /* change zval (see arcan_video_addobject) for a particular object.
  * return value is an error code */
-arcan_errc arcan_video_setzv(arcan_vobj_id id, uint8_t newzv)
+arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		vobj->zval = newzv;
+		vobj->order = newzv;
 		arcan_video_detatchobject(id);
 		arcan_video_attachobject(id);
 		rv = ARCAN_OK;
@@ -1808,7 +1801,7 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 					vobj->current.opa = current->opa[0];
 				
 				if (current->time_rotate)
-					vobj->current.angle_z = current->rotate[0];
+					vobj->current.angle = current->rotate[0];
 				
 				if (current->time_scale){
 					vobj->current.w = current->scale[0];
@@ -1916,7 +1909,7 @@ arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst)
 	return rv;
 }
 
-arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle_z, unsigned int tv)
+arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int tv)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -1928,11 +1921,11 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle_z, unsigned in
 		 * if time is set to ovverride and be immediate */
 		if (tv == 0) {
 			swipe_chain(&vobj->transform, offsetof(surface_transform, time_rotate));
-			vobj->current.angle_z = angle_z;
-			vobj->transform.rotate[0] = angle_z;
+			vobj->current.angle = angle;
+			vobj->transform.rotate[0] = angle;
 		}
 		else { /* find endpoint to attach at */
-			float bv = (float) vobj->current.angle_z;
+			float bv = (float) vobj->current.angle;
 
 			surface_transform* base = &vobj->transform;
 			surface_transform* last = base;
@@ -1949,7 +1942,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle_z, unsigned in
 
 			base->time_rotate = tv;
 			base->rotate[0] = bv;
-			base->rotate[1] = ((angle_z - bv) + 0.00001) / (float) tv;
+			base->rotate[1] = ((angle - bv) + 0.00001) / (float) tv;
 		}
 	}
 
@@ -2238,7 +2231,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 	/* orientation */
 	if (ci->transform.time_rotate > 0) {
 		upd = true;
-		ci->current.angle_z = ci->transform.rotate[0] += ci->transform.rotate[1];
+		ci->current.angle = ci->transform.rotate[0] += ci->transform.rotate[1];
 		ci->transform.time_rotate--;
 
 		if (ci->transform.time_rotate == 0) {
@@ -2373,7 +2366,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->opa = vobj->transform.opa[0] + vobj->transform.opa[1] * lerp;
 
 	if (vobj->transform.time_rotate)
-		dprops->angle_z = vobj->transform.rotate[0] + vobj->transform.rotate[1] * lerp;
+		dprops->angle = vobj->transform.rotate[0] + vobj->transform.rotate[1] * lerp;
 	
 	if (!sprops)
 		return;
@@ -2385,7 +2378,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 	}
 	
 	if (force || (vobj->mask & MASK_ORIENTATION) > 0)
-		dprops->angle_z += sprops->angle_z;
+		dprops->angle += sprops->angle;
 		
 	if (force || (vobj->mask & MASK_OPACITY) > 0)
 		dprops->opa *= sprops->opa;
@@ -2416,7 +2409,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	
 	glPushMatrix();
 		glTranslatef( prop.x + prop.w, prop.y + prop.h, 0.0);
-		glRotatef( -1 * prop.angle_z, 0.0, 0.0, 1.0);
+		glRotatef( -1 * prop.angle, 0.0, 0.0, 1.0);
 		draw_vobj(-prop.w, -prop.h, prop.w, prop.h, 0, txcos);
 	glPopMatrix();
 }
@@ -2425,6 +2418,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
  * redraw the entire scene and linearly interpolate transformations */
 void arcan_video_refresh_GL(float lerp)
 {
+	bool ortographic_projection = false;
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_TEXTURE_2D);
@@ -2432,6 +2426,14 @@ void arcan_video_refresh_GL(float lerp)
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	
 	arcan_vobject* world = &current_context->world;
+
+/* start with a pristine projection matrix,
+ * as soon as we reach order == 0 (2D) we switch to a ortographic projection */
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
 
 	/* prelerp the world translation and reuse it later */
 	/* traverse main graph */
@@ -2441,6 +2443,16 @@ void arcan_video_refresh_GL(float lerp)
 			arcan_vstorage* evstor = &elem->default_frame;
 			surface_properties* csurf = &elem->current;
 
+		if (elem->order >= 0 && ortographic_projection == false){
+			glMatrixMode(GL_PROJECTION);
+			glLoadIdentity();
+			glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+			glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
+			glMatrixMode(GL_MODELVIEW);
+			glLoadIdentity();
+			ortographic_projection = true;
+		}
+			
 		/* feed objects require a check for changes,
 		 * and re-uploading texture */
 			if ( elem->ffunc && 
@@ -2466,13 +2478,15 @@ void arcan_video_refresh_GL(float lerp)
 	
 		/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
-		 * note that objects will have been sorted based on Z already */
-			if ( dprops.opa > 0.001){
+		 * note that objects will have been sorted based on Z already.
+		 * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
+		 */
+			if ( elem->order >= 0 && dprops.opa > 0.001){
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 				glUseProgram(elem->current_frame->gl_storage.program);
 				_setgl_stdargs(elem->current_frame->gl_storage.program);
 				
-				if (dprops.opa > 0.999 && !csurf->force_blend){
+				if (dprops.opa > 0.999 && !elem->flags.forceblend){
 					glDisable(GL_BLEND);
 				}
 				else{
@@ -2512,6 +2526,9 @@ void arcan_video_refresh_GL(float lerp)
 					draw_surf(dprops, elem, elem->current_frame->txcos);
 				}
 			}
+			else if (elem->order < 0 && elem->ffunc){
+				elem->ffunc(ffunc_render_direct, (uint8_t*) &dprops, sizeof(surface_properties), 0, 0, 0, 0, elem->state);
+			}
 		}
 		while ((current = current->next) != NULL);
 
@@ -2549,7 +2566,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		float lx = (float)x, ly = (float)y;
 
 		/* convert to radians */
-		float theta = current.angle_z * (2.0f * 3.14f / 360.0f);
+		float theta = current.angle * (2.0f * 3.14f / 360.0f);
 
 		/* translate */
 		float ox = current.x + current.w * 0.5;
@@ -2610,7 +2627,7 @@ void arcan_video_dumppipe()
 	printf("-----------\n");
 	if (current)
 		do {
-			printf("[%i] #(%i) - (ID:%u) (ZVal:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->cellid, current->elem->zval,
+			printf("[%i] #(%i) - (ID:%u) (Order:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->cellid, current->elem->order,
 			       current->elem->current.x, current->elem->current.y, current->elem->current.w, current->elem->current.h, current->elem->current.opa);
 		}
 		while ((current = current->next) != NULL);
