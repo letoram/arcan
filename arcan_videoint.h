@@ -101,10 +101,11 @@ typedef struct arcan_vobject {
 		bool twofaced;
 		bool clone;
 		bool cliptoparent;
+		bool forceblend;
 	} flags;
 	
 	/* position */
-	uint8_t zval;
+	signed short order;
 	surface_properties current;
 	
 	surface_transform transform;
@@ -127,6 +128,22 @@ struct arcan_vobject_litem {
 	arcan_vobj_id cellid;
 };
 typedef struct arcan_vobject_litem arcan_vobject_litem;
+
+struct arcan_video_display {
+	bool suspended, text_support, fullscreen, conservative;
+	
+	/* default image loading options */
+	enum arcan_vimage_mode scalemode;
+	GLuint deftxs, deftxt;
+	
+	SDL_Surface* screen;
+	uint32_t sdlarg;
+	
+	uint8_t bpp;
+	uint16_t width, height;
+	uint32_t c_ticks;
+	
+};
 
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);

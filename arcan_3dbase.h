@@ -22,8 +22,21 @@
 #ifndef _HAVE_ARCAN_3DBASE
 #define _HAVE_ARCAN_3DBASE
 
+typedef struct {
+	float near;
+	float far;
+	float fov;
+	float aspect;
+	float roll;
+	float pitch;
+	float yaw;
+	float xyz[3];
+} arcan_camera;
+
 /* Loads a compressed triangle mesh and wrap it around a 
- video object */ 
+ video object */
+
+void arcan_3d_perspective( arcan_camera view );
 arcan_vobj_id arcan_3d_loadmodel(const char* resource);
 
 #endif

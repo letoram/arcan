@@ -44,6 +44,7 @@
 
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_3dbase.h"
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_db.h"
@@ -1143,13 +1144,32 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "angle");
-	lua_pushnumber(ctx, prop.angle_z);
+	lua_pushnumber(ctx, prop.angle);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "opacity");
 	lua_pushnumber(ctx, prop.opa);
 	lua_rawset(ctx, -3);
 
+	return 1;
+}
+
+int arcan_lua_loadmodel(lua_State* ctx)
+{
+	arcan_vobj_id id = ARCAN_EID;
+	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	uint8_t prio = luaL_optint(ctx, 2, 0);
+	
+	if (path)
+		id = arcan_3d_loadmodel(path);
+	
+	/* loaded images start out hidden */
+	if (id != ARCAN_EID)
+		arcan_video_objectopacity(id, 0, 0);
+	
+	free(path);
+	lua_pushvid(ctx, id);
+	
 	return 1;
 }
 
@@ -2001,6 +2021,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
 /* item:*pop_video_context, int */
 	lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
 
+/* category: 3d */
+	lua_register(ctx, "load_model", arcan_lua_loadmodel);
+	
 /* category: frameserver */
 
 /* item:play_movie, vid, nil */ 
