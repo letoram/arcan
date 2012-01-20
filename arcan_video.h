@@ -236,6 +236,7 @@ void arcan_video_restore_external();
 /* fragment represents how much time left until the next timestep,
  * used to interpolate movements / fades */
 void arcan_video_refresh(float fragment);
+void arcan_video_pollfeed();
 
 void arcan_video_shutdown();
 

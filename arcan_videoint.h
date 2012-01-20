@@ -145,7 +145,10 @@ struct arcan_video_display {
 	
 };
 
+void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props);
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
+
+arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float fragment);
 
 #endif

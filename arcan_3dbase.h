@@ -36,7 +36,7 @@ typedef struct {
 /* Loads a compressed triangle mesh and wrap it around a 
  video object */
 
-void arcan_3d_perspective( arcan_camera view );
+void arcan_3d_setdefaults();
 arcan_vobj_id arcan_3d_loadmodel(const char* resource);
 
 #endif
