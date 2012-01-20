@@ -277,8 +277,10 @@ int main(int argc, char* argv[])
 				arcan_video_tick(nticks);
 				arcan_audio_tick(nticks);
 			}
-			else
+			else{
+				arcan_video_pollfeed();
 				arcan_video_refresh(frag);
+			}
 
 	    /* note that an onslaught of I/O operations can currently
 		 * saturate tick / video instead of evenly distribute between the two.

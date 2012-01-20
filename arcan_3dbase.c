@@ -14,7 +14,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-#define M_PI 3.14159265358979323846
+// #define M_PI 3.14159265358979323846
 
 extern struct arcan_video_display arcan_video_display;
 
@@ -30,24 +30,79 @@ typedef struct {
 } quat;
 
 typedef struct {
+	union{
+		struct {
+			float x, y, z;
+		};
+		float xyz[3];
+	};
+} vector;
+
+typedef struct orientation {
+	quat roll, pitch, yaw;
+	float rollf, pitchf, yawf;
+	vector view;
+	float matr[16];
+} orientation;
+
+enum virttype{
+	virttype_camera = 0,
+	virttype_pointlight,
+	virttype_dirlight,
+	virttype_reflection,
+	virttype_shadow
+};
+
+struct virtobj {
+/* for RTT - type scenarios */
+	GLuint rendertarget;
+	vector position;
+	bool dynamic;
+	
+/* ignored by pointlight */
+	orientation direction;
+	float fov;
+	float near;
+	float far;
+	
+	enum virttype type;
+/* linked list arranged, sorted high-to-low
+ * based on virttype */
+	struct virtobj* next;
+};
+
+typedef struct virtobj virtobj;
+
+typedef struct {
+	virtobj* perspectives;
+} arcan_3dscene;
+
+typedef struct {
 	CTMcontext ctmmodel; 
-	quat orientation;
+	orientation direction;
+	
+	struct {
+		bool recv_shdw;
+		bool cast_shdw;
+		bool cast_refl;
+	} flags;
 
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
-/* take advantage of the "vid as frame" feature to allow multiple video sources to be
- * associated with the texture- coordinaet sets definedin the model source */ 
-arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigned txslot)
-{
-	arcan_vobject* vobj = arcan_video_getobject(model);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
-	if (vobj){
-		
-	}
+static arcan_3dscene current_scene = {0};
 
-	return rv;
+vector build_vect_polar(const float phi, const float theta)
+{	
+	vector res = {.x = sinf(phi) * cosf(theta),
+	.y = sinf(phi) * sinf(theta), .z = sinf(phi)};
+	return res;
+}
+
+vector build_vect(const float x, const float y, const float z)
+{
+	vector res = {.x = x, .y = y, .z = z};
+	return res;
 }
 
 quat build_quat(float angdeg, float vx, float vy, float vz)
@@ -55,6 +110,41 @@ quat build_quat(float angdeg, float vx, float vy, float vz)
 	float res = sin( (angdeg / 18.0f * M_PI) / 2.0f);
 	quat  ret = {.x = vx * res, .y = vy * res, .z = vz * res, .w = cos(res)};
 	return ret;
+}
+
+float len_vector(vector invect)
+{
+	return sqrt(invect.x * invect.x + invect.y * invect.y + invect.z * invect.z);
+}
+
+vector crossp_vector(vector a, vector b)
+{
+	vector res = {
+		.x = a.y * b.z - a.z * b.y,
+		.y = a.z * b.x - a.x * b.z,
+		.z = a.x * b.y - a.y * b.x
+	};
+	return res;
+}
+
+float dotp_vector(vector a, vector b)
+{
+	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+vector norm_vector(vector invect){
+	vector empty = {.x = 0.0, .y = 0.0, .z = 0.0};
+	float len = len_vector(invect);
+	if (len < 0.0000001)
+		return empty;
+		
+	vector res = {
+		.x = invect.x * len,
+		.y = invect.y * len,
+		.z = invect.z * len
+	};
+
+	return res;
 }
 
 quat inv_quat(quat src)
@@ -108,7 +198,7 @@ float* matr_quat(quat a, float* dmatr)
 	return dmatr;
 }
 
-static void orient_obj(float x, float y, float z, float roll, float pitch, float yaw)
+static void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw)
 {
 	float matr[16];
 	quat orient = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0) ), build_quat(roll, 0.0, 0.0, 1.0));
@@ -116,6 +206,19 @@ static void orient_obj(float x, float y, float z, float roll, float pitch, float
 	matr_quat(orient, matr);
 	
 	glMultMatrixf(matr);
+}
+
+static void update_view(orientation* dst, float roll, float pitch, float yaw)
+{
+	dst->pitchf = pitch;
+	dst->rollf = roll;
+	dst->yawf = yaw;
+	dst->pitch = build_quat(pitch, 1.0, 0.0, 0.0);
+	dst->roll  = build_quat(roll, 0.0, 1.0, 0.0);
+	dst->yaw   = build_quat(yaw, 0.0, 0.0, 1.0);
+	quat res = mul_quat( mul_quat(dst->pitch, dst->yaw), dst->roll );
+	matr_quat(res, dst->matr);
+	dst->view = 
 }
 
 /* quatslerp:
@@ -139,14 +242,30 @@ static void freemodel(arcan_3dmodel* src)
 	}
 }
 
+/* take advantage of the "vid as frame" feature to allow multiple video sources to be
+ * associated with the texture- coordinaet sets definedin the model source */
+arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigned txslot)
+{
+	arcan_vobject* vobj = arcan_video_getobject(model);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (vobj){
+	}
+	
+	return rv;
+}
+
 static void rendermodel(arcan_3dmodel* src, surface_properties props)
 {
-// 		orient_obj(props.x, props.y
+	/* if  infrustrum */
+	glPushMatrix();
+		push_orient_matr(props.x, props.y, props.z, 0, 0, 0);
+	glPopMatrix();
 }
 
 static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
 {
-	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr)
+	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
 		switch (cmd){
 			case ffunc_tick:
 			break;
@@ -158,12 +277,58 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 			case ffunc_destroy:
 				freemodel( (arcan_3dmodel*) state.ptr );
 			break;
-				
+			
 			default:
 			break;
 		}
-		
+	}
+	
 	return 0;
+}
+
+void process_scene_normal(arcan_vobject_litem* cell, float lerp)
+{
+	arcan_vobject_litem* current = cell;
+	while (current){
+		if (current->elem->order >= 0) break;
+		surface_properties dprops;
+		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
+		
+		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops);
+
+		current = current->next;
+	}
+	
+}
+
+arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
+{
+	virtobj* base = current_scene.perspectives;
+
+	while(base){
+		float matr[16];
+		
+		switch(base->type){
+			case virttype_camera :
+
+			glMatrixMode(GL_MODELVIEW);
+				glPushMatrix();
+				glLoadIdentity();
+				glTranslatef(base->position.x, base->position.y, base->position.z);
+				glMultMatrixf(base->direction.matr);
+				process_scene_normal(cell, frag);
+			glPopMatrix();
+			
+			case virttype_dirlight : break;
+			case virttype_pointlight : break;
+			case virttype_reflection : break;
+			case virttype_shadow : break;
+		}
+
+		base = base->next;
+	}
+	
+	return cell;
 }
 
 arcan_vobj_id arcan_3d_loadmodel(const char* resource)
@@ -216,4 +381,15 @@ error:
 	return ARCAN_EID;
 }
 
+void arcan_3d_setdefaults()
+{
+	current_scene.perspectives = calloc( sizeof(virtobj), 1);
+	virtobj* cam = current_scene.perspectives;
+	cam->dynamic = true;
+	cam->fov = 45.0;
+	cam->rendertarget = 0;
+	cam->type = virttype_camera;
+	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
+	update_view(&cam->direction, 0, 0, 0);
+}
 

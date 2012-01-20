@@ -649,6 +649,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 
 		current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 		arcan_video_gldefault();
+		arcan_3d_setdefaults();
 	}
 
 #ifdef POOR_GL_SUPPORT
@@ -2391,11 +2392,11 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 
 /* this is really grounds for some more elaborate caching strategy if CPU- bound.
  * using some frame- specific tag so that we don't repeatedly resolve with this complexity. */
-static void resolve(arcan_vobject* vobj, float lerp, surface_properties* props)
+void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props)
 {
 	if (vobj->parent != &current_context->world){
 		surface_properties dprop = {0};
-		resolve(vobj->parent, lerp, &dprop);
+		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
 		apply(vobj, props, lerp, &dprop, false);
 	} else {
 		apply(vobj, props, lerp, &current_context->world.current, true);
@@ -2414,11 +2415,40 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	glPopMatrix();
 }
 
+void arcan_video_pollfeed()
+{
+	arcan_vobject_litem* current = current_context->first;
+
+	while(current){
+/* feed objects require a check for changes
+ * and re-uploading texture */
+		arcan_vobject* elem = current->elem;
+		arcan_vstorage* evstor = &elem->default_frame;
+
+		if ( elem->ffunc &&
+		elem->ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, elem->state) == FFUNC_RV_GOTFRAME) {
+			enum arcan_ffunc_rv funcres = elem->ffunc(ffunc_render,
+			evstor->raw, evstor->s_raw,
+			elem->gl_storage.w, elem->gl_storage.h, elem->gl_storage.ncpt,
+			elem->gl_storage.glid,
+			elem->state);
+			
+/* special "hack" for situations where the ffunc can do the gl-calls
+ * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
+			if (funcres == FFUNC_RV_COPIED){
+				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->current_frame->gl_storage.w, elem->current_frame->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
+			}
+		}
+
+		current = current->next;
+	}
+}
+
 /* assumes working ortographic projection matrix based on current resolution,
  * redraw the entire scene and linearly interpolate transformations */
 void arcan_video_refresh_GL(float lerp)
 {
-	bool ortographic_projection = false;
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_TEXTURE_2D);
@@ -2435,46 +2465,31 @@ void arcan_video_refresh_GL(float lerp)
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	/* prelerp the world translation and reuse it later */
-	/* traverse main graph */
-	if (current)
-		do {
+
+/* first, handle all 3d work (which may require multiple passes etc.) */
+	if (current && current->elem->order < 0){
+		current = arcan_refresh_3d(current, lerp);
+	}
+
+/* if there are any nodes left, treat them as 2D (ortographic projection) */
+	if (current){
+		glDisable(GL_DEPTH_TEST);
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+	
+		while (current){
 			arcan_vobject* elem = current->elem;
 			arcan_vstorage* evstor = &elem->default_frame;
 			surface_properties* csurf = &elem->current;
 
-		if (elem->order >= 0 && ortographic_projection == false){
-			glMatrixMode(GL_PROJECTION);
-			glLoadIdentity();
-			glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
-			glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-			glMatrixMode(GL_MODELVIEW);
-			glLoadIdentity();
-			ortographic_projection = true;
-		}
-			
-		/* feed objects require a check for changes,
-		 * and re-uploading texture */
-			if ( elem->ffunc && 
-				 elem->ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, elem->state) == FFUNC_RV_GOTFRAME) {
-				enum arcan_ffunc_rv funcres = elem->ffunc(ffunc_render,
-				evstor->raw, evstor->s_raw, 
-				elem->gl_storage.w, elem->gl_storage.h, elem->gl_storage.ncpt, 
-				elem->gl_storage.glid, 
-				elem->state);
-
-			/* special "hack" for situations where the ffunc can do the gl-calls
-			 * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
-				if (funcres == FFUNC_RV_COPIED){
-					glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
-					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->current_frame->gl_storage.w, elem->current_frame->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
-				}
-			}
-
-		/* calculate coordinate system translations, 
-		 * world cannot be masked */
-		surface_properties dprops;
-		resolve(elem, lerp, &dprops);
+			/* calculate coordinate system translations, 
+			* world cannot be masked */
+			surface_properties dprops;
+			arcan_resolve_vidprop(elem, lerp, &dprops);
 	
 		/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
@@ -2509,7 +2524,7 @@ void arcan_video_refresh_GL(float lerp)
 				/* since we can have hierarchies of partially clipped, we may need to resolve all */
 					while (celem->parent != &current_context->world){
 						surface_properties pprops;
-						resolve(celem->parent, lerp, &pprops);
+						arcan_resolve_vidprop(celem->parent, lerp, &pprops);
 						if (celem->parent->flags.cliptoparent == false)
 							draw_surf(pprops, celem->parent, elem->current_frame->txcos);
 
@@ -2526,11 +2541,10 @@ void arcan_video_refresh_GL(float lerp)
 					draw_surf(dprops, elem, elem->current_frame->txcos);
 				}
 			}
-			else if (elem->order < 0 && elem->ffunc){
-				elem->ffunc(ffunc_render_direct, (uint8_t*) &dprops, sizeof(surface_properties), 0, 0, 0, 0, elem->state);
-			}
+
+			current = current->next;
 		}
-		while ((current = current->next) != NULL);
+	}
 
 	glDisable(GL_TEXTURE_2D);
 	glDisableClientState(GL_VERTEX_ARRAY);
