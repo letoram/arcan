@@ -115,15 +115,8 @@ enum arcan_errors {
 	ARCAN_ERRC_NOAUDIO = -10
 };
 
-enum arcan_status {
-	ARCAN_IOSTATUS_PASSIVE = 0,
-	ARCAN_IOSTATUS_ACTIVE  = 1,
-	ARCAN_IOSTATUS_SATED   = 2,
-	ARCAN_IOSTATUS_DEAD    = -1
-};
-
 typedef struct {
-	float x, y, z, w, h;
+	float x, y, w, h;
 	float opa;
 	float angle;
 } surface_properties;

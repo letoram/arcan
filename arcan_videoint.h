@@ -33,11 +33,11 @@ struct arcan_vobject_item;
 typedef struct surface_transform {
 	/* g1 */
 	unsigned int time_move;
-	float move[4];
+	float move[6];
 	
 	/* g2 */
 	unsigned int time_scale;
-	float scale[4];
+	float scale[6];
 	
 	/* g3 */
 	unsigned int time_opacity;
@@ -45,7 +45,7 @@ typedef struct surface_transform {
 	
 	/* g4 */
 	unsigned int time_rotate;
-	float rotate[2];
+	float rotate[6];
 	
 	struct surface_transform* next;
 } surface_transform;
@@ -148,7 +148,7 @@ struct arcan_video_display {
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props);
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
-
+void arcan_3d_setdefaults();
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float fragment);
 
 #endif

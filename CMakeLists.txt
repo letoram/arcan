@@ -128,11 +128,14 @@ set (
  arcan_db.c
  arcan_video.c
  arcan_3dbase.c
+ arcan_math.c
  arcan_audio.c
  arcan_framequeue.h
  arcan_event.h
  arcan_lua.h
  arcan_frameserver_backend.h
+ arcan_math.h
+ arcan_3dbase.h
  arcan_video.h
  arcan_util.h
  arcan_audio.h

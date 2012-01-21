@@ -60,7 +60,7 @@ extern arcan_dbh* dbhandle;
 
 static struct {
 	FILE* rfile;
-	bool debug;
+	unsigned char debug;
 	unsigned lua_vidbase;
 
 } lua_ctx_store = {
@@ -567,12 +567,14 @@ int arcan_lua_clipon(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_video_setclip(id, true);
+    return 0;
 }
 
 int arcan_lua_clipoff(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_video_setclip(id, false);
+    return 0;
 }
 
 int arcan_lua_pick(lua_State* ctx)
@@ -1219,7 +1221,6 @@ int arcan_lua_getkey(lua_State* ctx)
 static void dump_call_trace(lua_State* ctx)
 {
 #ifdef LUA51
-	if (lua_ctx_store.debug) {
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
 			lua_pop(ctx, 1);
@@ -1233,7 +1234,6 @@ static void dump_call_trace(lua_State* ctx)
 				lua_call(ctx, 2, 1);
 			}
 		}
-	}
 #endif 
 }
 
@@ -1575,10 +1575,13 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
 	if (lua_ctx_store.debug){
-		arcan_fatal("Warning: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
+		arcan_warning("Warning: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 		printf("Stack dump: \n");
-		dump_stack(ctx);
-		dump_call_trace(ctx);
+		if (lua_ctx_store.debug > 1)
+			dump_stack(ctx);
+
+		if (lua_ctx_store.debug > 2)
+			dump_call_trace(ctx);
 	}
 	else 
 		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
@@ -1806,7 +1809,7 @@ void arcan_lua_pushargv(lua_State* ctx, char** argv)
 	lua_setglobal(ctx, "arguments");
 }
 
-arcan_errc arcan_lua_exposefuncs(lua_State* ctx, bool debugfuncs)
+arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
 	if (!ctx)
 		return ARCAN_ERRC_UNACCEPTED_STATE;

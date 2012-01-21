@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
 	bool windowed = false;
 	bool fullscreen = false;
 	bool conservative = false;
-	bool luadebug = false;
+	unsigned char luadebug = 0;
 	
 	int scalemode = ARCAN_VIMAGE_SCALEPOW2;
 	int width = 640;
@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
 				dbfname = strdup(optarg);
 				break;
 			case 'g' :
-				luadebug = true;
+				luadebug++;
 				srand(0xdeadbeef); 
 				break;
 			case 'r' :

@@ -179,6 +179,12 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 		case ffunc_poll:
 			return shmpage->vready;
 		break;
+        
+        case ffunc_render_direct:
+            break;
+            
+        case ffunc_tick:
+            break;
 		
 		case ffunc_destroy:
 			arcan_target_clean_internal( tgt );
@@ -209,12 +215,7 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 			shmpage->vready = false;
 			sem_post( shmpage->vsyncp );
 		break;
-		
-		case ffunc_tick:
-			/* launch- target has a separate tick pass,
-			 * used for resizes, keepalive, etc,. just ignore here */
-		break;
-	}
+    }
 
 	return rv;
 }
