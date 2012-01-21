@@ -9,6 +9,7 @@
 #include <SDL/SDL_opengl.h>
 #include <SDL/SDL.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
 #include "arcan_video.h"
@@ -20,30 +21,6 @@ extern struct arcan_video_display arcan_video_display;
 
 /* since the 3d is planned as a secondary feature, rather than the primary one,
  * things work slightly different as each 3d object is essentially coupled to 1..n of 2D video objects */
-typedef struct {
-	union{
-		struct {
-			float x, y, z, w;
-		};
-		float xyzw[4];
-	};
-} quat;
-
-typedef struct {
-	union{
-		struct {
-			float x, y, z;
-		};
-		float xyz[3];
-	};
-} vector;
-
-typedef struct orientation {
-	quat roll, pitch, yaw;
-	float rollf, pitchf, yawf;
-	vector view;
-	float matr[16];
-} orientation;
 
 enum virttype{
 	virttype_camera = 0,
@@ -57,6 +34,7 @@ struct virtobj {
 /* for RTT - type scenarios */
 	GLuint rendertarget;
 	vector position;
+    unsigned int updateticks;
 	bool dynamic;
 	
 /* ignored by pointlight */
@@ -80,11 +58,17 @@ typedef struct {
 typedef struct {
 	CTMcontext ctmmodel; 
 	orientation direction;
+    point position;
+    scalefactor scale;
+/* position, opacity etc. are inherited from parent */
 	
 	struct {
 		bool recv_shdw;
 		bool cast_shdw;
 		bool cast_refl;
+/* used for skyboxes etc. should be rendered before anything else
+ * without depth buffer writes enabled */
+        bool infinite;
 	} flags;
 
 	arcan_vobject* parent;
@@ -92,148 +76,6 @@ typedef struct {
 
 static arcan_3dscene current_scene = {0};
 
-vector build_vect_polar(const float phi, const float theta)
-{	
-	vector res = {.x = sinf(phi) * cosf(theta),
-	.y = sinf(phi) * sinf(theta), .z = sinf(phi)};
-	return res;
-}
-
-vector build_vect(const float x, const float y, const float z)
-{
-	vector res = {.x = x, .y = y, .z = z};
-	return res;
-}
-
-quat build_quat(float angdeg, float vx, float vy, float vz)
-{
-	float res = sin( (angdeg / 18.0f * M_PI) / 2.0f);
-	quat  ret = {.x = vx * res, .y = vy * res, .z = vz * res, .w = cos(res)};
-	return ret;
-}
-
-float len_vector(vector invect)
-{
-	return sqrt(invect.x * invect.x + invect.y * invect.y + invect.z * invect.z);
-}
-
-vector crossp_vector(vector a, vector b)
-{
-	vector res = {
-		.x = a.y * b.z - a.z * b.y,
-		.y = a.z * b.x - a.x * b.z,
-		.z = a.x * b.y - a.y * b.x
-	};
-	return res;
-}
-
-float dotp_vector(vector a, vector b)
-{
-	return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-vector norm_vector(vector invect){
-	vector empty = {.x = 0.0, .y = 0.0, .z = 0.0};
-	float len = len_vector(invect);
-	if (len < 0.0000001)
-		return empty;
-		
-	vector res = {
-		.x = invect.x * len,
-		.y = invect.y * len,
-		.z = invect.z * len
-	};
-
-	return res;
-}
-
-quat inv_quat(quat src)
-{
-	quat res = {.x = -src.x, .y = -src.y, .z = -src.z, .w = src.w }; 
-	
-}
-
-float len_quat(quat src)
-{
-	return sqrt(src.x * src.x + src.y * src.y + src.z * src.z + src.w * src.w);
-}
-
-quat norm_quat(quat src)
-{
-	float len = len_quat(src);
-	quat res = {.x = src.x / len, .y = src.y / len, .z = src.z / len, .w = src.w / len };
-	return res;
-}
-
-quat mul_quat(quat a, quat b)
-{
-	quat res;
-	res.w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
-	res.x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;
-	res.y = a.w * b.y + a.y * b.w + a.z * b.x - a.x * b.z;
-	res.z = a.w * b.z + a.z * b.w + a.x * b.y - a.y * b.x;
-	return res;
-}
-
-float* matr_quat(quat a, float* dmatr)
-{
-	if (dmatr){
-		dmatr[0] = 1.0f - 2.0f * (a.y * a.y + a.z * a.z);
-		dmatr[1] = 2.0f * (a.x * a.y + a.z * a.w);
-		dmatr[2] = 2.0f * (a.x * a.z - a.y * a.w);
-		dmatr[3] = 0.0f;
-		dmatr[4] = 2.0f * (a.x * a.y - a.z * a.w);
-		dmatr[5] = 1.0f - 2.0f * (a.x * a.x + a.z * a.z);
-		dmatr[6] = 2.0f * (a.z * a.y + a.x * a.w);
-		dmatr[7] = 0.0f;
-		dmatr[8] = 2.0f * (a.x * a.z + a.y * a.w);
-		dmatr[9] = 2.0f * (a.y * a.z - a.x * a.w);
-		dmatr[10]= 1.0f - 2.0f * (a.x * a.x + a.y * a.y);
-		dmatr[11]= 0.0f;
-		dmatr[12]= 0.0f;
-		dmatr[13]= 0.0f;
-		dmatr[14]= 0.0f;
-		dmatr[15]= 1.0f;
-	}
-	return dmatr;
-}
-
-static void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw)
-{
-	float matr[16];
-	quat orient = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0) ), build_quat(roll, 0.0, 0.0, 1.0));
-	glTranslatef(x, y, z);
-	matr_quat(orient, matr);
-	
-	glMultMatrixf(matr);
-}
-
-static void update_view(orientation* dst, float roll, float pitch, float yaw)
-{
-	dst->pitchf = pitch;
-	dst->rollf = roll;
-	dst->yawf = yaw;
-	dst->pitch = build_quat(pitch, 1.0, 0.0, 0.0);
-	dst->roll  = build_quat(roll, 0.0, 1.0, 0.0);
-	dst->yaw   = build_quat(yaw, 0.0, 0.0, 1.0);
-	quat res = mul_quat( mul_quat(dst->pitch, dst->yaw), dst->roll );
-	matr_quat(res, dst->matr);
-	dst->view = 
-}
-
-/* quatslerp:
- * a, b, t (framefrag) and eps (0.0001),
- * t < 0 (q1) t > 1 q2
- * copy q2 to a3
- * c is dot q1 q3
- * c < 0.0? neg q3, neg c
- * c > 1 - eps
- * 	normalize lerp(q1, q3, t)
- * a = acos(c)
- * quatret = sin(1 - t) * a) * q1 + sin(t * a * q3) / sin a */
-
-/* quatlerp:
- * q1 + t * (q2 - a1) */
 
 static void freemodel(arcan_3dmodel* src)
 {
@@ -257,12 +99,24 @@ arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigne
 
 static void rendermodel(arcan_3dmodel* src, surface_properties props)
 {
-	/* if  infrustrum */
 	glPushMatrix();
-		push_orient_matr(props.x, props.y, props.z, 0, 0, 0);
-	glPopMatrix();
+    const CTMfloat* verts   = ctmGetFloatArray(src->ctmmodel, CTM_VERTICES);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    /* if there's texture coordsets and an associated vobj,
+     * enable texture coord array, normal array etc. */
+
+    glColor4f(1.0, 1.0, 1.0, props.opa);
+    int nverts = ctmGetInteger(src->ctmmodel, CTM_VERTEX_COUNT);
+    glTranslatef(props.x, props.y, 0.0);
+    glMultMatrixf(src->direction.matr);
+    glVertexPointer(3, GL_FLOAT, 0, verts);
+    glDrawArrays(GL_POINTS, 0, nverts);
+
+    glPopMatrix();
 }
 
+/* the current model uses the associated scaling / blending
+ * of the associated vid and applies it uniformly */ 
 static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
@@ -288,6 +142,8 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 
 void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 {
+	glEnableClientState(GL_VERTEX_ARRAY);
+    
 	arcan_vobject_litem* current = cell;
 	while (current){
 		if (current->elem->order >= 0) break;
@@ -298,7 +154,8 @@ void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 
 		current = current->next;
 	}
-	
+
+	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
@@ -310,12 +167,12 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 		
 		switch(base->type){
 			case virttype_camera :
-
+            glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glMultMatrixf(base->direction.matr);
 			glMatrixMode(GL_MODELVIEW);
 				glPushMatrix();
 				glLoadIdentity();
-				glTranslatef(base->position.x, base->position.y, base->position.z);
-				glMultMatrixf(base->direction.matr);
 				process_scene_normal(cell, frag);
 			glPopMatrix();
 			
@@ -358,6 +215,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 		arcan_vobject* obj = arcan_video_getobject(rv);
 		newmodel->parent = obj;
 		newmodel->ctmmodel = ctx;
+        update_view(&newmodel->direction, 0, 0, 0);
 
 		n_uvs   = ctmGetInteger(newmodel->ctmmodel, CTM_UV_MAP_COUNT);
 		n_verts = ctmGetInteger(newmodel->ctmmodel, CTM_VERTEX_COUNT);
@@ -388,7 +246,7 @@ void arcan_3d_setdefaults()
 	cam->dynamic = true;
 	cam->fov = 45.0;
 	cam->rendertarget = 0;
-	cam->type = virttype_camera;
+    cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
 	update_view(&cam->direction, 0, 0, 0);
 }

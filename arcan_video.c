@@ -618,6 +618,8 @@ static void arcan_video_gldefault()
 	glLoadIdentity();
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 }
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
@@ -882,7 +884,7 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned
 
 arcan_vobj_id arcan_video_loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode)
 {
-
+    return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
 
 arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arcan_errc* errcode)
@@ -1370,7 +1372,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 
 						if (sizeonly){
 							TTF_SetFontStyle(curr_style->font, curr_style->style);
-							TTF_SizeUTF8(curr_style->font, base, &cnode->width, &cnode->height);
+							TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
 						}
 						else{
 							cnode->surface = true;
@@ -1420,7 +1422,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 
 			if (sizeonly){
 				TTF_SetFontStyle(curr_style->font, curr_style->style);
-				TTF_SizeUTF8(curr_style->font, base, &cnode->width, &cnode->height);
+				TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
 			}
 			else{
 				cnode->surface = true;
@@ -2452,8 +2454,6 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_TEXTURE_2D);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	
 	arcan_vobject* world = &current_context->world;
 
@@ -2547,8 +2547,6 @@ void arcan_video_refresh_GL(float lerp)
 	}
 
 	glDisable(GL_TEXTURE_2D);
-	glDisableClientState(GL_VERTEX_ARRAY);
-	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 }
 
 void arcan_video_refresh(float tofs)

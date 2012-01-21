@@ -23,7 +23,7 @@
 #define _HAVE_ARCAN_LUA
 
 /* add a set of wrapper functions exposing arcan_video_ to the LUA state */
-arcan_errc arcan_lua_exposefuncs(lua_State* dst, bool debugfuncs);
+arcan_errc arcan_lua_exposefuncs(lua_State* dst, unsigned char debugfuncs);
 
 /* wrap lua_pcalls with this (set errc to pcall result) */
 void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src);
