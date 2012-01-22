@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_frameserver_decode.h"
 #include "arcan_frameserver_backend_shmpage.h"

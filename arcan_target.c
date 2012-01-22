@@ -41,7 +41,7 @@
 #include <SDL/SDL_opengl.h>
 #include <SDL/SDL.h>
 
-
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
 #include "arcan_target_const.h"

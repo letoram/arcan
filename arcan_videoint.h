@@ -24,28 +24,36 @@
 
 struct arcan_vobject_item;
 
-/* this one needs a bit explaining:
- * each vobj- can have a series of transformations,
- * each transformation describes the number of ticks
- * left for each attribute, and the associated values
- * are deltas in respect to the current state of the object.
- * These are also used to interpolate between game-time clocks */
+struct transf_move{
+	enum arcan_interp_function interp;
+	arcan_tickv startt, endt;
+	point startp, endp;
+};
+
+struct transf_scale{
+	enum arcan_interp_function interp;
+	arcan_tickv startt, endt;
+	scalefactor startd, endd;
+};
+
+struct transf_blend{
+	enum arcan_interp_function interp;
+	arcan_tickv startt, endt;
+	float startopa, endopa;
+};
+
+struct transf_rotate{
+	enum arcan_interp_function interp;
+	arcan_tickv startt, endt;
+	quat starto, endo;
+};
+
 typedef struct surface_transform {
-	/* g1 */
-	unsigned int time_move;
-	float move[6];
-	
-	/* g2 */
-	unsigned int time_scale;
-	float scale[6];
-	
-	/* g3 */
-	unsigned int time_opacity;
-	float opa[2];
-	
-	/* g4 */
-	unsigned int time_rotate;
-	float rotate[6];
+
+	struct transf_move move;
+	struct transf_scale scale;
+	struct transf_blend blend;
+	struct transf_rotate rotate;
 	
 	struct surface_transform* next;
 } surface_transform;
@@ -94,22 +102,19 @@ typedef struct arcan_vobject {
 	} gl_storage;
 	
 	float txcos[8];
-	
+	enum arcan_blendfunc blendmode;
 	/* flags */
 	struct {
 		bool in_use;
-		bool twofaced;
 		bool clone;
 		bool cliptoparent;
-		bool forceblend;
 	} flags;
 	
 	/* position */
 	signed short order;
 	surface_properties current;
 	
-	surface_transform transform;
-	struct arcan_vobject* parent;
+	surface_transform* transform;
 	enum arcan_transform_mask mask;
 	
 	/* life-cycle tracking */
@@ -117,6 +122,7 @@ typedef struct arcan_vobject {
 	unsigned long lifetime;
 	
 	/* management mappings */
+	struct arcan_vobject* parent;
 	struct arcan_vobject_litem* owner;
 } arcan_vobject;
 

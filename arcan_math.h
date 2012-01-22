@@ -22,6 +22,8 @@
 #ifndef _HAVE_ARCAN_MATH
 #define _HAVE_ARCAN_MATH
 
+#define EPSILON 0.000001f
+
 typedef struct {
 	union{
 		struct {
@@ -36,12 +38,15 @@ typedef struct {
 		struct {
 			float x, y, z;
 		};
+		struct {
+			float w, h, d;
+		};
 		float xyz[3];
 	};
 } vector;
 
-typedef vector scalefactor;
 typedef vector point;
+typedef vector scalefactor;
 
 typedef struct orientation {
 	quat roll, pitch, yaw;
@@ -50,6 +55,8 @@ typedef struct orientation {
 	float matr[16];
 } orientation;
 
+/* Vectors */
+quat build_quat_euler(float roll, float pitch, float yaw);
 vector build_vect_polar(const float phi, const float theta);
 vector build_vect(const float x, const float y, const float z);
 quat build_quat(float angdeg, float vx, float vy, float vz);
@@ -57,13 +64,23 @@ float len_vector(vector invect);
 vector crossp_vector(vector a, vector b);
 float dotp_vector(vector a, vector b);
 vector norm_vector(vector invect);
+vector lerp_vector(vector a, vector b, float f);
+vector mul_vector(vector a, vector b);
+vector add_vector(vector a, vector b);
+
+/* Quaternions */
 quat inv_quat(quat src);
 float len_quat(quat src);
 quat norm_quat(quat src);
 quat mul_quat(quat a, quat b);
 float* matr_quat(quat a, float* dmatr);
-static void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw);
-static void update_view(orientation* dst, float roll, float pitch, float yaw);
+float angle_quat(quat a);
+quat lerp_quat(quat a, quat b, float f);
+quat add_quat(quat a, quat b);
 
-
+scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
+void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw);
+void update_view(orientation* dst, float roll, float pitch, float yaw);
+float lerp_val(float a, float b, float f);
+float lerp_fract(unsigned startt, unsigned endt, float ct);
 #endif

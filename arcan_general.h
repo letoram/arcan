@@ -88,6 +88,7 @@ typedef struct {
 typedef int8_t arcan_errc;
 typedef long long arcan_vobj_id;
 typedef long arcan_aobj_id;
+typedef unsigned int arcan_tickv;
 
 extern long long ARCAN_VIDEO_WORLDID;
 extern long long ARCAN_VIDEO_BADID;
@@ -116,9 +117,10 @@ enum arcan_errors {
 };
 
 typedef struct {
-	float x, y, w, h;
+	point position;
+	scalefactor scale;
 	float opa;
-	float angle;
+	quat rotation;
 } surface_properties;
 
 typedef struct {
