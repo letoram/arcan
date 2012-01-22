@@ -2602,8 +2602,8 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 			gluProject(-dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
 
 			float px[4], py[4];
-			px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0]; px[4] = p[4][0];
-			py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1]; py[4] = p[4][1];
+			px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0]; 
+			py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1]; 
 			
 		/* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
 			glPopMatrix();
