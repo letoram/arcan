@@ -107,7 +107,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props)
 
     glColor4f(1.0, 1.0, 1.0, props.opa);
     int nverts = ctmGetInteger(src->ctmmodel, CTM_VERTEX_COUNT);
-    glTranslatef(props.x, props.y, 0.0);
+    glTranslatef(props.position.x, props.position.y, 0.0);
     glMultMatrixf(src->direction.matr);
     glVertexPointer(3, GL_FLOAT, 0, verts);
     glDrawArrays(GL_POINTS, 0, nverts);

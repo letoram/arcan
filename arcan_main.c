@@ -42,6 +42,7 @@
 #include <sqlite3.h>
 
 #include "getopt.h"
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_audio.h"
 #include "arcan_video.h"

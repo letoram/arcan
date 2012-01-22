@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 #include "hidapi/hidapi.h"
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_led.h"
 

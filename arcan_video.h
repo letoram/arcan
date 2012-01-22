@@ -83,6 +83,17 @@ enum arcan_ffunc_rv {
 	FFUNC_RV_NOUPLOAD = 64
 };
 
+enum arcan_blendfunc {
+	blend_disable,
+	blend_force
+};
+
+enum arcan_interp_function {
+	interpolate_linear,
+	interpolate_spherical,
+	interpolate_normalized_linear
+};
+
 /* callback format for a feed- function to a video object.
  * buf can be 0 (peek to know if data is available) OR pointer to data storage * with storage format (buf_s = width * height * bpp)
  * src indicates if the tick is from video refresh (0) or how many logic ticks it represents */
@@ -161,7 +172,6 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
 /* -- multiple- frame management --
  * this is done by associating a working video-object (src) with another (dst),
  * so that (src) becomes part of (dst)s rendering. */
-
 /* specify the number of frames associated with vobj, default is 0 */
 arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity);
 /* note that the frame_id (fid) have to be available through allocframes first */

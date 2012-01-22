@@ -47,6 +47,7 @@
 #include <SDL_types.h>
 
 /* arcan */
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_framequeue.h"
 #include "arcan_video.h"

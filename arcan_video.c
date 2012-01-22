@@ -46,6 +46,7 @@
 #include <SDL_byteorder.h>
 #include <SDL_ttf.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
@@ -87,7 +88,8 @@ struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
-	.suspended = false
+	.suspended = false,
+	.c_ticks = 1
 };
 
 struct arcan_video_context {
@@ -99,7 +101,6 @@ struct arcan_video_context {
 	arcan_vobject_litem* first;
 };
 
-static void dump_transformation(surface_transform* dst, int count);
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe);
@@ -112,15 +113,10 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 		},
 		.world = {
 			.current  = {
-				.x   = 0,
-				.y   = 0,
 				.opa = 1.0,
-				.w   = 1.0,
-				.h   = 1.0
+				.scale = {.w = 1.0, .h = 1.0, .d = 1.0}
 			},
-			.transform = {
-				.opa = {1.0, 1.0}
-			}
+			.parent = (void*)0xc00ffe,
 		}
 	}
 };
@@ -253,7 +249,7 @@ unsigned arcan_video_nfreecontexts()
 signed arcan_video_pushcontext()
 {
 	struct text_format empty_style = { .col = {.r = 0xff, .g = 0xff, .b = 0xff} };
-	arcan_vobject empty_vobj = { .current = {.x = 0, .y = 0, .opa = 1.0}, .transform = { .opa = {1.0, 1.0} } };
+	arcan_vobject empty_vobj = {.current = {.position = {0}, .opa = 1.0} };
 
 	if (context_ind + 1 == CONTEXT_STACK_LIMIT)
 		return -1;
@@ -267,8 +263,8 @@ signed arcan_video_pushcontext()
 	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
 	current_context->world = empty_vobj;
-	current_context->world.current.w = 1.0;
-	current_context->world.current.h = 1.0;
+	current_context->world.current.scale.w = 1.0;
+	current_context->world.current.scale.h = 1.0;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 	current_context->first = NULL;
 
@@ -312,6 +308,26 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 	return rv;
 }
 
+static void dump_object(arcan_vobject* o){
+	if (!o) return;	
+	printf("[ Obj# %i\n\t Position: %f, %f, %f\n\t Opacity: %f\n\t Scale: %f, %f, %f\n\t Rotation: %f, %f, %f\n",
+		   o->owner->cellid,
+		o->current.position.x, o->current.position.y, o->current.position.z,
+		o->current.opa,
+		o->current.scale.w, o->current.scale.h, o->current.scale.d,
+		0.0, 0.0, 0.0);
+
+	surface_transform* trans = o->transform;
+	int c= 0;
+	while(trans){
+		printf("%i Move@(%i-%i): (%f->%f), (%f->%f), (%f->%f)\n Scale@(%i-%i): (%f->%f), (%f->%f)\n, Blend@(%i-%i): (%f->%f)\n ", ++c, trans->move.startt, trans->move.endt,
+			trans->move.startp.x, trans->move.endp.x, trans->move.startp.y, trans->move.endp.y, trans->move.startp.z, trans->move.endp.z,
+			trans->scale.startt, trans->scale.endt, trans->scale.startd.w, trans->scale.endd.w, trans->scale.startd.h, trans->scale.endd.h,
+			trans->blend.startt, trans->blend.endt, trans->blend.startopa, trans->blend.endopa);
+		trans = trans->next;
+	}
+}
+
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 {
 	arcan_vobject* pobj = arcan_video_getobject(parent);
@@ -326,10 +342,10 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	if (status) {
 		arcan_vobject* nobj = arcan_video_getobject(rv);
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
-		nobj->current.x = 0;
-		nobj->current.y = 0;
-		nobj->current.w = 1.0;
-		nobj->current.h = 1.0;
+		nobj->current.position.x = 0;
+		nobj->current.position.y = 0;
+		nobj->current.scale.w = 1.0;
+		nobj->current.scale.h = 1.0;
 		nobj->parent = pobj;
 		nobj->flags.clone = true;
 		memset(&nobj->transform, 0, sizeof(surface_transform));
@@ -376,8 +392,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
 		rv->flags.cliptoparent = false;
-		rv->current.w = 1.0;
-		rv->current.h = 1.0;
+		rv->current.scale.w = 1.0;
+		rv->current.scale.h = 1.0;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
@@ -387,49 +403,6 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		*id = fid;
 
 	return rv;
-}
-
-/* not what one might initially think, this is only
- * to create a surrogate clone where some properties are similar
- * in order to do some predictions (such as transforms),
- * not act as a proper depth- clone */
-arcan_vobject* arcan_video_dupobject(arcan_vobject* vobj)
-{
-	if (!vobj)
-		return NULL;
-	arcan_vobject* res = (arcan_vobject*) malloc(sizeof(arcan_vobject));
-	memcpy(res, vobj, sizeof(arcan_vobject));
-
-	surface_transform* current = &vobj->transform;
-	surface_transform* target = &res->transform;
-	while (current) {
-		memcpy(target, current, sizeof(surface_transform));
-
-		/* reroute next- pointers and allocate */
-		current = current->next;
-		if (current) {
-			target->next = (surface_transform*) malloc(sizeof(surface_transform));
-			target = target->next;
-		}
-	}
-
-	return res;
-}
-
-bool arcan_video_remdup(arcan_vobject* vobj)
-{
-	if (!vobj)
-		return false;
-	surface_transform* current = vobj->transform.next;
-
-	while (current) {
-		surface_transform* prev = current;
-		current = current->next;
-		free(prev);
-	};
-
-	free(vobj);
-	return true;
 }
 
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id)
@@ -495,10 +468,10 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 }
 
 /* run through the chain and delete all occurences at ofs */
-static void swipe_chain(surface_transform* base, unsigned int ofs)
+static void swipe_chain(surface_transform* base, unsigned int ofs, unsigned size)
 {
 	while (base) {
-		memset((void*)base + ofs, 0, sizeof(unsigned int));
+		memset((void*)base + ofs, 0, size);
 		base = base->next;
 	}
 }
@@ -583,10 +556,10 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 	
 		src->parent = dst;
 
-		swipe_chain(&src->transform, offsetof(surface_transform, time_rotate));
-		swipe_chain(&src->transform, offsetof(surface_transform, time_move));
-		swipe_chain(&src->transform, offsetof(surface_transform, time_opacity));
-		swipe_chain(&src->transform, offsetof(surface_transform, time_scale));
+		swipe_chain(src->transform, offsetof(surface_transform, blend), sizeof(struct transf_blend));
+		swipe_chain(src->transform, offsetof(surface_transform, move), sizeof(struct transf_move));
+		swipe_chain(src->transform, offsetof(surface_transform, scale), sizeof(struct transf_scale));
+		swipe_chain(src->transform, offsetof(surface_transform, rotate), sizeof(struct transf_rotate));
 		rv = ARCAN_OK;
 		src->mask = mask;
 	}
@@ -646,8 +619,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		else
 			arcan_video_display.text_support = true;
 
-		current_context->world.current.w = 1.0;
-		current_context->world.current.h = 1.0;
+		current_context->world.current.scale.w = 1.0;
+		current_context->world.current.scale.h = 1.0;
 
 		current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 		arcan_video_gldefault();
@@ -822,7 +795,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->origw = origw;
 		newvobj->origh = origh;
 		newvobj->current.opa = 0.0f;
-		newvobj->current.angle = 0.0f;
+		newvobj->current.rotation = build_quat_euler( 0, 0, 0 );
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
@@ -899,10 +872,10 @@ arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arc
 	arcan_errc rc = arcan_video_getimage(fname, newvobj, &newvobj->default_frame);
 
 	if (rc == ARCAN_OK) {
-		newvobj->current.x = 0;
-		newvobj->current.y = 0;
+		newvobj->current.position.x = 0;
+		newvobj->current.position.y = 0;
 		newvobj->current.opa = 1.0f;
-		newvobj->current.angle = 0.0f;
+		newvobj->current.rotation = build_quat_euler(0, 0, 0);
 	}
 	else
 		arcan_video_deleteobject(rv);
@@ -970,12 +943,12 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 	if (ffunc && newvobj) {
 		arcan_vstorage* vstor = &newvobj->default_frame;
 		/* preset */
-		newvobj->current.x = 0;
-		newvobj->current.y = 0;
+		newvobj->current.position.x = 0;
+		newvobj->current.position.y = 0;
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
 		newvobj->current.opa = 1.0f;
-		newvobj->current.angle = 0.0f;
+		newvobj->current.rotation = build_quat_euler(0, 0, 0);
 		newvobj->gl_storage.ncpt = ncpt;
 
 		if (newvobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
@@ -1627,7 +1600,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->default_frame.s_raw = storw * storh * 4;
 		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw, 1);
 		vobj->default_frame.tag = ARCAN_TAG_TEXT;
-		vobj->flags.forceblend = true;
+		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
 		vobj->current.opa = 1.0;
@@ -1722,7 +1695,7 @@ arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		vobj->flags.forceblend = on;
+		vobj->blendmode = blend_force;
 
 		rv = ARCAN_OK;
 	}
@@ -1773,15 +1746,15 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
 	if (vobj) {
-		surface_transform* current = vobj->transform.next;
+		surface_transform* current = vobj->transform;
+		
 		while (current) {
 			surface_transform* next = current->next;
 			free(current);
 			current = next;
 		}
-		memset(&vobj->transform, 0, sizeof(surface_transform));
+		vobj->transform = NULL;
 		rv = ARCAN_OK;
 	}
 
@@ -1793,23 +1766,20 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj) {
-			surface_transform* current = &vobj->transform;
+			surface_transform* current = vobj->transform;
 			while (current){
-				if (current->time_move){
-					vobj->current.x = current->move[0];
-					vobj->current.y = current->move[1];
+				if (current->move.startt){
+					vobj->current.position = current->move.endp;
 				}
 				
-				if (current->time_opacity)
-					vobj->current.opa = current->opa[0];
+				if (current->blend.startt)
+					vobj->current.opa = current->blend.endopa;
 				
-				if (current->time_rotate)
-					vobj->current.angle = current->rotate[0];
+				if (current->rotate.startt)
+					vobj->current.rotation = current->rotate.endo;
 				
-				if (current->time_scale){
-					vobj->current.w = current->scale[0];
-					vobj->current.h = current->scale[1];
-				}
+				if (current->scale.startt)
+					vobj->current.scale = current->scale.endd;
 				
 				current = current->next;
 			}
@@ -1923,29 +1893,39 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int 
 		/* clear chains for rotate attribute
 		 * if time is set to ovverride and be immediate */
 		if (tv == 0) {
-			swipe_chain(&vobj->transform, offsetof(surface_transform, time_rotate));
-			vobj->current.angle = angle;
-			vobj->transform.rotate[0] = angle;
+			swipe_chain(vobj->transform, offsetof(surface_transform, rotate), sizeof(struct transf_rotate));
+			vobj->current.rotation = build_quat_euler(angle, 0, 0);
 		}
 		else { /* find endpoint to attach at */
-			float bv = (float) vobj->current.angle;
+			quat bv = vobj->current.rotation;
 
-			surface_transform* base = &vobj->transform;
+			surface_transform* base = vobj->transform;
 			surface_transform* last = base;
 
 			/* figure out the starting angle */
-			while (base && base->time_rotate) {
-				bv = base->rotate[0] + base->rotate[1] * base->time_rotate;
+			while (base && base->rotate.startt) {
+				if (!base->next)
+					bv = base->rotate.endo;
+
 				last = base;
 				base = base->next;
 			}
 
-			if (!base)
-				base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			if (!base){
+				if (last)
+					base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+				else
+					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			}
 
-			base->time_rotate = tv;
-			base->rotate[0] = bv;
-			base->rotate[1] = ((angle - bv) + 0.00001) / (float) tv;
+			if (!vobj->transform)
+				vobj->transform = base;
+			
+			base->rotate.endo = build_quat_euler(angle, 0, 0);
+			base->rotate.starto = bv;
+			base->rotate.interp = interpolate_linear;
+			base->rotate.startt = last->rotate.endt;
+			base->rotate.endt   = base->rotate.startt + tv;
 		}
 	}
 
@@ -1965,28 +1945,36 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int t
 		/* clear chains for rotate attribute
 		 * if time is set to ovverride and be immediate */
 		if (tv == 0) {
-			swipe_chain(&vobj->transform, offsetof(surface_transform, time_opacity));
+			swipe_chain(vobj->transform, offsetof(surface_transform, blend), sizeof(struct transf_blend));
 			vobj->current.opa = opa;
-			vobj->transform.opa[0] = opa;
 		}
 		else { /* find endpoint to attach at */
 			float bv = vobj->current.opa;
 
-			surface_transform* base = &vobj->transform;
+			surface_transform* base = vobj->transform;
 			surface_transform* last = base;
 
-			while (base && base->time_opacity) {
-				bv = base->opa[0] + base->opa[1] * base->time_opacity;
+			while (base && base->blend.startt) {
+				bv = base->blend.endopa;
 				last = base;
 				base = base->next;
 			}
 
-			if (!base)
-				base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			if (!base){
+				if (last)
+					base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+				else
+					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			}
+			
+			if (!vobj->transform)
+				vobj->transform = base;
 
-			base->time_opacity = tv;
-			base->opa[0] = bv;
-			base->opa[1] = ((opa - bv) + 0.00001) / (float) tv;
+			base->blend.startt = last->blend.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->blend.endt;
+			base->blend.endt = base->blend.startt + tv;
+			base->blend.startopa = bv;
+			base->blend.endopa = opa + 0.0000000001;
+			base->blend.interp = interpolate_linear;
 		}
 	}
 
@@ -2015,34 +2003,46 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsi
 		/* clear chains for rotate attribute
 		 * if time is set to ovverride and be immediate */
 		if (tv == 0) {
-			swipe_chain(&vobj->transform, offsetof(surface_transform, time_move));
-			vobj->current.x = newx;
-			vobj->current.y = newy;
+			swipe_chain(vobj->transform, offsetof(surface_transform, move), sizeof(struct transf_move));
+			vobj->current.position.x = newx;
+			vobj->current.position.y = newy;
+			vobj->current.position.z = 0;
 		}
 		else { /* find endpoint to attach at */
-			surface_transform* base = &vobj->transform;
+			surface_transform* base = vobj->transform;
 			surface_transform* last = base;
 
 			/* figure out the coordinates which the transformation is chained to */
-			float bwx = vobj->current.x, bwy = vobj->current.y;
-
-			while (base && base->time_move) {
-				bwx = base->move[0] + base->move[2] * base->time_move;
-				bwy = base->move[1] + base->move[3] * base->time_move;
+			point bwp = vobj->current.position;
+			
+			while (base && base->move.startt) {
+				bwp = base->move.endp;
+				 
 				last = base;
 				base = base->next;
 			}
 
-			if (!base)
-				base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			if (!base){
+				if (last)
+					base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+				else
+					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			}
+			
+			point newp = {
+				.x = newx,
+				.y = newy,
+				.z = 0
+			};
 
-			base->time_move = tv;
-			base->move[0] = bwx;
-			base->move[1] = bwy;
-
-			/* k = (y-y0) / (x-x0), hack around div/0 */
-			base->move[2] = ((newx - bwx)+0.0001) / (float) tv;
-			base->move[3] = ((newy - bwy)+0.0001) / (float) tv;
+			if (!vobj->transform)
+				vobj->transform = base;
+			
+			base->move.startt = last->move.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->move.endt;
+			base->move.endt = base->move.startt + tv;
+			base->move.interp = interpolate_linear;
+			base->move.startp = bwp;
+			base->move.endp   = newp;
 		}
 	}
 
@@ -2062,56 +2062,53 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 		rv = ARCAN_OK;
 
 		if (tv == immediately) {
-			swipe_chain(&vobj->transform, offsetof(surface_transform, time_scale));
+			swipe_chain(vobj->transform, offsetof(surface_transform, scale), sizeof(struct transf_scale));
 
-			vobj->current.w = wf;
-			vobj->current.h = hf;
+			vobj->current.scale.w = wf;
+			vobj->current.scale.h = hf;
+			vobj->current.scale.d = 1.0;
 		}
 		else {
-			surface_transform* base = &vobj->transform;
+			surface_transform* base = vobj->transform;
 			surface_transform* last = base;
 
 			/* figure out the coordinates which the transformation is chained to */
-			float bww = vobj->current.w, bwh = vobj->current.h;
+			scalefactor bs = vobj->current.scale;
 
-			while (base && base->time_scale) {
-				bww = base->scale[0] + (base->scale[2] * base->time_scale);
-				bwh = base->scale[1] + (base->scale[3] * base->time_scale);
+			while (base && base->scale.startt) {
+				bs = base->scale.endd;
+				
 				last = base;
 				base = base->next;
 			}
 
-			if (!base)
-				base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			if (!base){
+				if (last)
+					base = last->next = (surface_transform*) calloc(sizeof(surface_transform), 1);
+				else
+					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
+			}
 
-			base->time_scale = tv;
-			base->scale[0] = bww;
-			base->scale[1] = bwh;
-			/* k = (y-y0) / (x-x0) */
-			base->scale[2] = ((wf - bww)+0.0001) / (float) tv;
-			base->scale[3] = ((hf - bwh)+0.0001) / (float) tv;
+			base->scale.startt = last->scale.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->scale.endt;
+			base->scale.endt = base->scale.startt + tv;
+			base->scale.interp = interpolate_linear;
+			base->scale.startd = bs;
+			base->scale.endd.d = 1.0;
+			base->scale.endd.w = wf;
+			base->scale.endd.h = hf;
 		}
 	}
 
 	return rv;
 }
 
-static void dump_transformation(surface_transform* dst, int count)
-{
-	if (dst) {
-		printf(": %" PRIxPTR ", %i, %i, %i, %i => : %" PRIxPTR "\n", (uintptr_t) dst, dst->time_opacity, dst->time_move, dst->time_scale, dst->time_rotate, (uintptr_t) dst->next);
-		dump_transformation(dst->next, count + 1);
-	}
-
-	if (count == 0)
-		printf("[/Object Transformation Matrix]\n");
-}
-
 /* called whenever a cell in update has a time that reaches 0 */
-static void compact_transformation(surface_transform* dst, unsigned int ofs, unsigned int count)
+static void compact_transformation(arcan_vobject* base, unsigned int ofs, unsigned int count)
 {
+	if (!base || !base->transform) return;
+	
 	surface_transform* last = NULL;
-	surface_transform* work = dst;
+	surface_transform* work = base->transform;
 	/* copy the next transformation */
 	
 	while (work && work->next) {
@@ -2122,17 +2119,19 @@ static void compact_transformation(surface_transform* dst, unsigned int ofs, uns
 	}
 
 	/* reset the last one */
-	*((uint8_t*) work + ofs) = 0;
+	memset((void*) work + ofs, 0, count);
 
 	/* if it is now empty, free and delink */
-	if (work && work != dst &&
-	        !(work->time_move |
-	          work->time_opacity |
-	          work->time_rotate |
-	          work->time_scale)
+	if (!(work->blend.startt |
+	          work->scale.startt |
+	          work->move.startt |
+	          work->rotate.startt )
 	   )	{
 		free(work);
-		last->next = NULL;
+		if (last)
+			last->next = NULL;
+		else
+			base->transform = NULL;
 	}
 }
 
@@ -2158,7 +2157,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const 
 static bool update_object(arcan_vobject* ci, unsigned int stamp)
 {
 	bool upd = false;
-
+	
 	if (ci->last_updated == stamp)
 		return false;
 	
@@ -2168,88 +2167,88 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 		ci->parent->last_updated != stamp){
 		update_object(ci->parent, stamp);
 	}
+
+	if (!ci->transform)
+		return false;
 	
 	ci->last_updated = stamp;
-	/* movement */
-	if (ci->transform.time_move > 0) {
+
+	if (ci->transform->blend.startt) {
 		upd = true;
-		ci->current.x = ci->transform.move[0] += ci->transform.move[2];
-		ci->current.y = ci->transform.move[1] += ci->transform.move[3];
-		ci->transform.time_move--;
+		float fract = lerp_fract(ci->transform->blend.startt, ci->transform->blend.endt, stamp);
+		ci->current.opa = lerp_val(ci->transform->blend.startopa, ci->transform->blend.endopa, fract);
 
-		if (ci->transform.time_move == 0) {
-			compact_transformation(&ci->transform,
-			                       offsetof(surface_transform, time_move),
-			                       sizeof(unsigned int) + sizeof(float) * 4);
+		if (fract > 0.9999f) {
+			ci->current.opa = ci->transform->blend.endopa;
+			compact_transformation(ci,
+			                       offsetof(surface_transform, blend),
+			                       sizeof(struct transf_blend));
 
-			/* no more events to process, fire event */
-			if (ci->transform.time_move == 0 && ci->owner) {
-				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_MOVED};
-				ev.data.video.source = ci->owner->cellid;
-				arcan_event_enqueue(&ev);
-			}
-		}
-
-	}
-
-	/* scale */
-	if (ci->transform.time_scale > 0) {
-		upd = true;
-		ci->current.w = ci->transform.scale[0] += ci->transform.scale[2];
-		ci->current.h = ci->transform.scale[1] += ci->transform.scale[3];
-		ci->transform.time_scale--;
-
-		if (ci->transform.time_scale == 0) {
-			compact_transformation(&ci->transform,
-			                       offsetof(surface_transform, time_scale),
-			                       sizeof(unsigned int) + sizeof(float) * 4);
-
-			if (ci->transform.time_scale == 0 && ci->owner) {
-				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
-				ev.data.video.source = ci->owner->cellid;
-				arcan_event_enqueue(&ev);
-			}
-		}
-	}
-
-	/* opacity */
-	if (ci->transform.time_opacity > 0) {
-		upd = true;
-		ci->current.opa = ci->transform.opa[0] += ci->transform.opa[1];
-		ci->transform.time_opacity--;
-
-		if (ci->transform.time_opacity == 0) {
-			compact_transformation(&ci->transform,
-			                       offsetof(surface_transform, time_opacity),
-			                       sizeof(unsigned int) + sizeof(float) * 2);
-
-			if (ci->transform.time_opacity == 0 && ci->owner) {
+			if (!ci->transform || ci->transform->blend.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_BLENDED};
-				ev.data.video.source = ci->owner->cellid;
+				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
 				arcan_event_enqueue(&ev);
 			}
 		}
 	}
 
-	/* orientation */
-	if (ci->transform.time_rotate > 0) {
+	if (ci->transform && ci->transform->move.startt) {
 		upd = true;
-		ci->current.angle = ci->transform.rotate[0] += ci->transform.rotate[1];
-		ci->transform.time_rotate--;
-
-		if (ci->transform.time_rotate == 0) {
-			compact_transformation(&ci->transform,
-			                       offsetof(surface_transform, time_rotate),
-			                       sizeof(unsigned int) + sizeof(float) * 2);
-
-			if (ci->transform.time_rotate == 0 && ci->owner) {
-				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_ROTATED};
-				ev.data.video.source = ci->owner->cellid;
+		float fract = lerp_fract(ci->transform->move.startt, ci->transform->move.endt, stamp);
+		ci->current.position = lerp_vector(ci->transform->move.startp, ci->transform->move.endp, fract);
+		
+		if (fract > 0.9999f) {
+			ci->current.position = ci->transform->move.endp;
+			compact_transformation(ci,
+								   offsetof(surface_transform, move),
+								   sizeof(struct transf_move));
+			
+			if (!ci->transform || ci->transform->move.startt == 0) {
+				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_MOVED};
+				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
 				arcan_event_enqueue(&ev);
 			}
 		}
 	}
 
+	if (ci->transform && ci->transform->scale.startt) {
+		upd = true;
+		float fract = lerp_fract(ci->transform->scale.startt, ci->transform->scale.endt, stamp);
+		ci->current.scale = lerp_vector(ci->transform->scale.startd, ci->transform->scale.endd, fract);
+		
+		if (fract > 0.9999f) {
+			ci->current.scale = ci->transform->scale.endd;
+			compact_transformation(ci,
+								   offsetof(surface_transform, scale),
+								   sizeof(struct transf_scale));
+			
+			if (!ci->transform || ci->transform->scale.startt == 0) {
+				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
+				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
+				arcan_event_enqueue(&ev);
+			}
+		}
+	}
+	
+	if (ci->transform && ci->transform->rotate.startt) {
+		upd = true;
+		float fract = lerp_fract(ci->transform->rotate.startt, ci->transform->rotate.endt, stamp);
+		ci->current.rotation = lerp_quat(ci->transform->rotate.starto, ci->transform->rotate.endo, fract);
+		
+		if (fract > 0.9999f) {
+			ci->current.rotation = ci->transform->rotate.endo;
+			compact_transformation(ci,
+								   offsetof(surface_transform, rotate),
+								   sizeof(struct transf_rotate));
+			
+			if (!ci->transform || ci->transform->rotate.startt == 0) {
+				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_ROTATED};
+				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
+				arcan_event_enqueue(&ev);
+			}
+		}
+	}
+	
 	return upd;
 }
 
@@ -2259,9 +2258,9 @@ uint32_t arcan_video_tick(uint8_t steps)
 {
 	unsigned now = SDL_GetTicks();
 	arcan_vobject_litem* current = current_context->first;
-	update_object(&current_context->world, now);
 
 	while (steps--) {
+		update_object(&current_context->world, arcan_video_display.c_ticks);
 		arcan_video_display.c_ticks++;
 		
 		if (current)
@@ -2269,7 +2268,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 				arcan_vobject* elem = current->elem;
 			
 				/* is the item to be updated? */
-				update_object(elem, now);
+				update_object(elem, arcan_video_display.c_ticks);
 				if (elem->ffunc)
 					elem->ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->state);
 				
@@ -2355,40 +2354,40 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 	*dprops = vobj->current;
 	
 /* apply within own dimensions */
-	if (vobj->transform.time_move){
-		dprops->x = vobj->transform.move[0] + vobj->transform.move[2] * lerp;
-		dprops->y = vobj->transform.move[1] + vobj->transform.move[3] * lerp;
+	if (vobj->transform){
+		surface_transform* tf = vobj->transform;
+		unsigned ct = arcan_video_display.c_ticks;
+		
+		if (tf->move.startt)
+			dprops->position = lerp_vector(tf->move.startp,
+										   tf->move.endp,
+										   lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp));
+	
+		if (tf->scale.startt)
+			dprops->scale = lerp_vector(tf->scale.startd, tf->scale.endd, lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp));
+
+		if (tf->blend.startt)
+			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
+
+		if (tf->rotate.startt)
+			dprops->rotation = lerp_quat(tf->rotate.starto, tf->rotate.endo, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
+	
+		if (!sprops)
+			return;
 	}
 	
-	if (vobj->transform.time_scale) {
-		dprops->w = vobj->transform.scale[0] + vobj->transform.scale[2] * lerp;
-		dprops->h = vobj->transform.scale[1] + vobj->transform.scale[3] * lerp;
-	}
-
-	if (vobj->transform.time_opacity)
-		dprops->opa = vobj->transform.opa[0] + vobj->transform.opa[1] * lerp;
-
-	if (vobj->transform.time_rotate)
-		dprops->angle = vobj->transform.rotate[0] + vobj->transform.rotate[1] * lerp;
-	
-	if (!sprops)
-		return;
-
 /* translate to sprops */
-	if (force || (vobj->mask & MASK_POSITION) > 0){
-		dprops->x += sprops->x;
-		dprops->y += sprops->y;
-	}
+	if (force || (vobj->mask & MASK_POSITION) > 0)
+		dprops->position = add_vector(dprops->position, sprops->position);
 	
 	if (force || (vobj->mask & MASK_ORIENTATION) > 0)
-		dprops->angle += sprops->angle;
+		dprops->rotation = add_quat(dprops->rotation, sprops->rotation);
 		
 	if (force || (vobj->mask & MASK_OPACITY) > 0)
 		dprops->opa *= sprops->opa;
 	
 	if (force || (vobj->mask & MASK_SCALE) > 0){
-		dprops->w *= sprops->w;
-		dprops->h *= sprops->h;
+		dprops->scale = mul_vector(dprops->scale, sprops->scale);
 	}
 }
 
@@ -2399,6 +2398,7 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 	if (vobj->parent != &current_context->world){
 		surface_properties dprop = {0};
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
+		
 		apply(vobj, props, lerp, &dprop, false);
 	} else {
 		apply(vobj, props, lerp, &current_context->world.current, true);
@@ -2407,13 +2407,16 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
-	prop.w *= src->origw * 0.5;
-	prop.h *= src->origh * 0.5;
+	float matr[16];
 	
+	prop.scale.w *= src->origw * 0.5;
+	prop.scale.h *= src->origh * 0.5;
+	matr_quat(prop.rotation, matr);
+
 	glPushMatrix();
-		glTranslatef( prop.x + prop.w, prop.y + prop.h, 0.0);
-		glRotatef( -1 * prop.angle, 0.0, 0.0, 1.0);
-		draw_vobj(-prop.w, -prop.h, prop.w, prop.h, 0, txcos);
+		glTranslatef( prop.position.x + prop.scale.w, prop.position.y + prop.scale.h, 0.0);
+		glMultMatrixf(matr);
+		draw_vobj(-prop.scale.w, -prop.scale.h, prop.scale.w, prop.scale.h, 0, txcos);
 	glPopMatrix();
 }
 
@@ -2486,6 +2489,8 @@ void arcan_video_refresh_GL(float lerp)
 			arcan_vstorage* evstor = &elem->default_frame;
 			surface_properties* csurf = &elem->current;
 
+			assert(elem->parent != NULL);
+			assert(elem->owner != NULL);
 			/* calculate coordinate system translations, 
 			* world cannot be masked */
 			surface_properties dprops;
@@ -2496,12 +2501,12 @@ void arcan_video_refresh_GL(float lerp)
 		 * note that objects will have been sorted based on Z already.
 		 * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
 		 */
-			if ( elem->order >= 0 && dprops.opa > 0.001){
+			if ( elem->order >= 0){
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 				glUseProgram(elem->current_frame->gl_storage.program);
 				_setgl_stdargs(elem->current_frame->gl_storage.program);
 				
-				if (dprops.opa > 0.999 && !elem->flags.forceblend){
+				if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force )){
 					glDisable(GL_BLEND);
 				}
 				else{
@@ -2572,17 +2577,17 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 	
 	if (vobj && id > 0) {
 		surface_properties current = vobj->current;
-		current.w *= vobj->origw;
-		current.h *= vobj->origh;
+		current.scale.w *= vobj->origw;
+		current.scale.h *= vobj->origh;
 		
 		float lx = (float)x, ly = (float)y;
 
 		/* convert to radians */
-		float theta = current.angle * (2.0f * 3.14f / 360.0f);
+		float theta = angle_quat(current.rotation) * (2.0f * 3.14f / 360.0f);
 
 		/* translate */
-		float ox = current.x + current.w * 0.5;
-		float oy = current.y + current.h * 0.5;
+		float ox = current.position.x + current.scale.w * 0.5;
+		float oy = current.position.y + current.scale.h * 0.5;
 		float tx = x - ox;
 		float ty = y - oy;
 
@@ -2595,8 +2600,8 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		ly = ry + oy;
 
 		if (
-		    (lx > (current.x) && lx < (current.x + current.w)) &&
-		    (ly > (current.y) && ly < (current.y + current.h))
+		    (lx > (current.position.x) && lx < (current.position.x + current.scale.w)) &&
+		    (ly > (current.position.y) && ly < (current.position.y + current.scale.h))
 		) {
 			/* should check if there's a collision mask added (and scale rotate coords into correct space)
 			 * scale coordinates to 'fit' the proper range, extract the byte and then extract correct 'bits'
@@ -2640,7 +2645,7 @@ void arcan_video_dumppipe()
 	if (current)
 		do {
 			printf("[%i] #(%i) - (ID:%u) (Order:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->cellid, current->elem->order,
-			       current->elem->current.x, current->elem->current.y, current->elem->current.w, current->elem->current.h, current->elem->current.opa);
+			       current->elem->current.position.x, current->elem->current.position.y, current->elem->current.scale.w, current->elem->current.scale.h, current->elem->current.opa);
 		}
 		while ((current = current->next) != NULL);
 	printf("-----------\n");
@@ -2666,12 +2671,12 @@ img_cons arcan_video_storage_properties(arcan_vobj_id id)
  * any transformations being applied */
 surface_properties arcan_video_initial_properties(arcan_vobj_id id)
 {
-	surface_properties res = {.x = 0, .y = 0, .w = 0, .h = 0};
+	surface_properties res = {0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		res.w = vobj->origw;
-		res.h = vobj->origh;
+		res.scale.w = vobj->origw;
+		res.scale.h = vobj->origh;
 	}
 
 	return res;
@@ -2679,13 +2684,13 @@ surface_properties arcan_video_initial_properties(arcan_vobj_id id)
 
 surface_properties arcan_video_current_properties(arcan_vobj_id id)
 {
-	surface_properties rv = {.x = 0 };
+	surface_properties rv = {0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){
 		rv = vobj->current;
-		rv.w *= vobj->origw;
-		rv.h *= vobj->origh;
+		rv.scale.w *= vobj->origw;
+		rv.scale.h *= vobj->origh;
 	}
 	
 	return rv;
@@ -2698,19 +2703,10 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id)
  * n times, copies the results and removes the object copy */
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 {
-	surface_properties rv = {.x = 0 };
+	surface_properties rv = {0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	arcan_event_maskall();
-	if (vobj && id > 0 && (vobj = arcan_video_dupobject(vobj))) {
-		while (ticks--)
-			update_object(vobj, 0);
-
-		rv = vobj->current;
-		rv.w *= vobj->origw;
-		rv.h *= vobj->origh;
-		arcan_video_remdup(vobj);
-	}
 	arcan_event_clearmask();
 	
 	return rv;

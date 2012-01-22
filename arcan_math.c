@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "arcan_math.h"
+#include <SDL_opengl.h>
 
 vector build_vect_polar(const float phi, const float theta)
 {	
@@ -41,6 +42,26 @@ vector crossp_vector(vector a, vector b)
 float dotp_vector(vector a, vector b)
 {
 	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+vector add_vector(vector a, vector b)
+{
+	vector res = {.x = a.x + b.x,
+	.y = a.y + b.y,
+	.z = a.z + b.z};
+
+	return res;
+}
+
+vector mul_vector(vector a, vector b)
+{
+	vector res = {
+		.x = a.x * b.x,
+		.y = a.y * b.y,
+		.z = a.z * b.z
+	};
+
+	return res;
 }
 
 vector norm_vector(vector invect){
@@ -86,6 +107,46 @@ quat mul_quat(quat a, quat b)
 	return res;
 }
 
+quat add_quat(quat a, quat b)
+{
+	quat res;
+	res.x = a.x + b.x;
+	res.y = a.y + b.y;
+	res.z = a.z + b.z;
+	res.w = a.w + b.w;
+
+	return res;
+}
+
+float angle_quat(quat a)
+{
+
+}
+
+vector lerp_vector(vector a, vector b, float fact)
+{
+	vector res;
+	res.x = a.x + fact * (b.x - a.x);
+	res.y = a.y + fact * (b.y - a.y);
+	res.z = a.z + fact * (b.z - a.z);
+	return res;
+}
+
+float lerp_val(float a, float b, float fact)
+{
+	return a + fact * (b - a);
+}
+
+quat lerp_quat(quat a, quat b, float fact)
+{
+	quat res;
+	res.x = a.x + fact * (b.x - a.x);
+	res.y = a.y + fact * (b.y - a.y);
+	res.z = a.z + fact * (b.z - a.z);
+	res.w = a.w + fact * (b.w - a.w);
+	return res;
+}
+
 float* matr_quat(quat a, float* dmatr)
 {
 	if (dmatr){
@@ -109,27 +170,46 @@ float* matr_quat(quat a, float* dmatr)
 	return dmatr;
 }
 
-static void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw)
+void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw)
 {
 	float matr[16];
-	quat orient = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0) ), build_quat(roll, 0.0, 0.0, 1.0));
+	quat orient = build_quat_euler(roll, pitch, yaw);
 	glTranslatef(x, y, z);
 	matr_quat(orient, matr);
 	
 	glMultMatrixf(matr);
 }
 
-static void update_view(orientation* dst, float roll, float pitch, float yaw)
+quat build_quat_euler(float roll, float pitch, float yaw)
+{
+	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0)), build_quat(roll, 0.0, 0.0, 1.0));
+	return res;
+}
+
+void update_view(orientation* dst, float roll, float pitch, float yaw)
 {
 	dst->pitchf = pitch;
 	dst->rollf = roll;
 	dst->yawf = yaw;
 	dst->pitch = build_quat(pitch, 1.0, 0.0, 0.0);
-	dst->roll  = build_quat(roll, 0.0, 1.0, 0.0);
-	dst->yaw   = build_quat(yaw, 0.0, 0.0, 1.0);
+	dst->roll  = build_quat(yaw, 0.0, 1.0, 0.0);
+	dst->yaw   = build_quat(roll, 0.0, 0.0, 1.0);
 	quat res = mul_quat( mul_quat(dst->pitch, dst->yaw), dst->roll );
 	matr_quat(res, dst->matr);
     /* cache view-vector as well why not .. */
+}
+
+float lerp_fract(unsigned startt, unsigned endt, float ct)
+{
+	float startf = (float)startt + EPSILON;
+	float endf = (float)endt + EPSILON;
+	
+	if (ct > endt)
+		ct = endt;
+
+	float cf = ((float)ct - startf + EPSILON);
+
+	return cf / (endf - startf);
 }
 
 /* quatslerp:

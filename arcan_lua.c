@@ -42,6 +42,7 @@
 
 #include <SDL.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_3dbase.h"
@@ -256,19 +257,19 @@ int arcan_lua_scaleimage2(lua_State* ctx)
 		return 0;
 
 	surface_properties prop = arcan_video_initial_properties(id);
-	if (prop.w < 0.001 && prop.h < 0.001) {
+	if (prop.scale.w < 0.001 && prop.scale.h < 0.001) {
 		lua_pushnumber(ctx, 0);
 		lua_pushnumber(ctx, 0);
 	}
 	else {
 		/* retain aspect ratio in scale */
 		if (neww < 0.0001 && newh > 0.0001)
-			neww = newh * (prop.w / prop.h);
+			neww = newh * (prop.scale.w / prop.scale.h);
 		else
 			if (neww > 0.0001 && newh < 0.0001)
-				newh = neww * (prop.h / prop.w);
+				newh = neww * (prop.scale.h / prop.scale.w);
 
-		arcan_video_objectscale(id, neww / prop.w, newh / prop.h, time);
+		arcan_video_objectscale(id, neww / prop.scale.w, newh / prop.scale.h, time);
 
 		lua_pushnumber(ctx, neww);
 		lua_pushnumber(ctx, newh);
@@ -290,10 +291,10 @@ int arcan_lua_scaleimage(lua_State* ctx)
 
 	/* retain aspect ratio in scale */
 	if (desw < 0.0001 && desh > 0.0001)
-		desw = desh * (prop.w / prop.h);
+		desw = desh * (prop.scale.w / prop.scale.h);
 	else
 		if (desw > 0.0001 && desh < 0.0001)
-			desh = desw * (prop.h / prop.w);
+			desh = desw * (prop.scale.h / prop.scale.w);
 
 	arcan_video_objectscale(id, desw, desh, time);
 
@@ -1130,23 +1131,23 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_createtable(ctx, 0, 6);
 
 	lua_pushstring(ctx, "x");
-	lua_pushinteger(ctx, prop.x);
+	lua_pushinteger(ctx, prop.position.x);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "y");
-	lua_pushinteger(ctx, prop.y);
+	lua_pushinteger(ctx, prop.position.y);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "width");
-	lua_pushinteger(ctx, prop.w);
+	lua_pushinteger(ctx, prop.scale.w);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "height");
-	lua_pushinteger(ctx, prop.h);
+	lua_pushinteger(ctx, prop.scale.h);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "angle");
-	lua_pushnumber(ctx, prop.angle);
+	lua_pushnumber(ctx, angle_quat(prop.rotation));
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "opacity");

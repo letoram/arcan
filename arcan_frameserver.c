@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <signal.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_frameserver_backend_shmpage.h"
 

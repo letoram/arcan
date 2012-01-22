@@ -28,10 +28,10 @@
 #include <errno.h>
 #include <unistd.h>
 
-
 #include <SDL.h>
 #include <SDL_thread.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 #include <assert.h>
 #include "arcan_framequeue.h"

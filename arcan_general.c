@@ -34,6 +34,7 @@
 #include <stdarg.h>
 #include <time.h>
 
+#include "arcan_math.h"
 #include "arcan_general.h"
 
 #ifdef __APPLE__
