@@ -1147,7 +1147,7 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "angle");
-	lua_pushnumber(ctx, angle_quat(prop.rotation));
+	lua_pushnumber(ctx, angle_quat(prop.rotation).x);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "opacity");

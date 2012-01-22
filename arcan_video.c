@@ -342,13 +342,14 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	if (status) {
 		arcan_vobject* nobj = arcan_video_getobject(rv);
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
+		nobj->current.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		nobj->current.position.x = 0;
 		nobj->current.position.y = 0;
 		nobj->current.scale.w = 1.0;
 		nobj->current.scale.h = 1.0;
+		nobj->transform = NULL;
 		nobj->parent = pobj;
 		nobj->flags.clone = true;
-		memset(&nobj->transform, 0, sizeof(surface_transform));
 		arcan_video_attachobject(rv);
 	}
 
@@ -1889,12 +1890,12 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int 
 
 	if (vobj) {
 		rv = ARCAN_OK;
-
+		
 		/* clear chains for rotate attribute
 		 * if time is set to ovverride and be immediate */
 		if (tv == 0) {
 			swipe_chain(vobj->transform, offsetof(surface_transform, rotate), sizeof(struct transf_rotate));
-			vobj->current.rotation = build_quat_euler(angle, 0, 0);
+			vobj->current.rotation = build_quat_euler(angle, 0.0, 0.0);
 		}
 		else { /* find endpoint to attach at */
 			quat bv = vobj->current.rotation;
@@ -1921,11 +1922,11 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int 
 			if (!vobj->transform)
 				vobj->transform = base;
 			
-			base->rotate.endo = build_quat_euler(angle, 0, 0);
-			base->rotate.starto = bv;
-			base->rotate.interp = interpolate_linear;
-			base->rotate.startt = last->rotate.endt;
+			base->rotate.startt = last->rotate.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->rotate.endt;
 			base->rotate.endt   = base->rotate.startt + tv;
+			base->rotate.starto = bv;
+			base->rotate.endo = build_quat_euler(angle, 0.0f, 0.0f);
+			base->rotate.interp = interpolate_linear;
 		}
 	}
 
@@ -2089,13 +2090,16 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
 			}
 
+			if (!vobj->transform)
+				vobj->transform = base;
+			
 			base->scale.startt = last->scale.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->scale.endt;
 			base->scale.endt = base->scale.startt + tv;
 			base->scale.interp = interpolate_linear;
 			base->scale.startd = bs;
-			base->scale.endd.d = 1.0;
 			base->scale.endd.w = wf;
 			base->scale.endd.h = hf;
+			base->scale.endd.d = 1.0;
 		}
 	}
 
@@ -2215,7 +2219,6 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 		upd = true;
 		float fract = lerp_fract(ci->transform->scale.startt, ci->transform->scale.endt, stamp);
 		ci->current.scale = lerp_vector(ci->transform->scale.startd, ci->transform->scale.endd, fract);
-		
 		if (fract > 0.9999f) {
 			ci->current.scale = ci->transform->scale.endd;
 			compact_transformation(ci,
@@ -2370,7 +2373,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
 
 		if (tf->rotate.startt)
-			dprops->rotation = lerp_quat(tf->rotate.starto, tf->rotate.endo, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
+			dprops->rotation = lerp_quat(tf->rotate.starto, tf->rotate.endo, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
 	
 		if (!sprops)
 			return;
@@ -2386,9 +2389,9 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 	if (force || (vobj->mask & MASK_OPACITY) > 0)
 		dprops->opa *= sprops->opa;
 	
-	if (force || (vobj->mask & MASK_SCALE) > 0){
+/*	if (force || (vobj->mask & MASK_SCALE) > 0){
 		dprops->scale = mul_vector(dprops->scale, sprops->scale);
-	}
+	} */
 }
 
 /* this is really grounds for some more elaborate caching strategy if CPU- bound.
@@ -2408,11 +2411,12 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
 	float matr[16];
-	
+	static a = 0;
+	a++;
 	prop.scale.w *= src->origw * 0.5;
 	prop.scale.h *= src->origh * 0.5;
-	matr_quat(prop.rotation, matr);
-
+	matr_quat(norm_quat (prop.rotation), matr);
+	
 	glPushMatrix();
 		glTranslatef( prop.position.x + prop.scale.w, prop.position.y + prop.scale.h, 0.0);
 		glMultMatrixf(matr);
@@ -2467,7 +2471,6 @@ void arcan_video_refresh_GL(float lerp)
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (current && current->elem->order < 0){
@@ -2583,7 +2586,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		float lx = (float)x, ly = (float)y;
 
 		/* convert to radians */
-		float theta = angle_quat(current.rotation) * (2.0f * 3.14f / 360.0f);
+		float theta = angle_quat(current.rotation).x * (2.0f * 3.14f / 360.0f);
 
 		/* translate */
 		float ox = current.position.x + current.scale.w * 0.5;

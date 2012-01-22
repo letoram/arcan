@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 
 #include "arcan_math.h"
@@ -19,8 +20,15 @@ vector build_vect(const float x, const float y, const float z)
 
 quat build_quat(float angdeg, float vx, float vy, float vz)
 {
-	float res = sin( (angdeg / 18.0f * M_PI) / 2.0f);
-	quat  ret = {.x = vx * res, .y = vy * res, .z = vz * res, .w = cos(res)};
+	quat ret;
+	float ang = angdeg / 180.f * M_PI;
+	float res = sinf(ang / 2.0f);
+
+	ret.w = cosf(ang / 2.0f);
+	ret.x = vx * res;
+	ret.y = vy * res;
+	ret.z = vz * res;
+	
 	return ret;
 }
 
@@ -92,8 +100,35 @@ float len_quat(quat src)
 
 quat norm_quat(quat src)
 {
-	float len = len_quat(src);
-	quat res = {.x = src.x / len, .y = src.y / len, .z = src.z / len, .w = src.w / len };
+	float val = src.x * src.x + src.y * src.y + src.z * src.z + src.w * src.w;
+
+	if (val > 0.99999 && val < 1.000001)
+		return src;
+
+	val = sqrtf(val);
+	quat res = {.x = src.x / val, .y = src.y / val, .z = src.z / val, .w = src.w / val};
+	return res;
+}
+
+quat div_quatf(quat a, float v)
+{
+	quat res = {
+		.x = a.x / v,
+		.y = a.y / v,
+		.z = a.z / v,
+		.w = a.z / v
+	};
+	return res;
+}
+
+quat mul_quatf(quat a, float v)
+{
+	quat res = {
+		.x = a.x * v,
+		.y = a.y * v,
+		.z = a.z * v,
+		.w = a.w * v
+	};
 	return res;
 }
 
@@ -118,9 +153,24 @@ quat add_quat(quat a, quat b)
 	return res;
 }
 
-float angle_quat(quat a)
+float dot_quat(quat a, quat b)
 {
+	return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+}
 
+vector angle_quat(quat a)
+{
+	float sqw = a.w*a.w;
+	float sqx = a.x*a.x;
+	float sqy = a.y*a.y;
+	float sqz = a.z*a.z;
+	
+	vector euler;
+	euler.x = atan2f(2.f * (a.x*a.y + a.z*a.w), sqx - sqy - sqz + sqw);
+	euler.y = asinf(-2.f * (a.x*a.z - a.y*a.w));
+	euler.z = atan2f(2.f * (a.y*a.z + a.x*a.w), -sqx - sqy + sqz + sqw);
+
+	return euler;
 }
 
 vector lerp_vector(vector a, vector b, float fact)
@@ -139,12 +189,27 @@ float lerp_val(float a, float b, float fact)
 
 quat lerp_quat(quat a, quat b, float fact)
 {
-	quat res;
-	res.x = a.x + fact * (b.x - a.x);
-	res.y = a.y + fact * (b.y - a.y);
-	res.z = a.z + fact * (b.z - a.z);
-	res.w = a.w + fact * (b.w - a.w);
+//	printf("a (%f, %f, %f, %f) -- b (%f, %f, %f, %f) - %f\n", a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w, fact);
+	quat res = add_quat( mul_quatf(a, 1 - fact), mul_quatf(b, fact) );
 	return res;
+}
+
+quat slerp_quat(quat a, quat b, float fact)
+{
+	float dp = dot_quat(a, b);
+	quat c;
+	
+	if (dp < 0){
+		dp = -dp;
+		c = inv_quat(b);
+	} else c = b;
+
+	if (dp < 0.95f){
+		float ang = acosf(dp);
+		quat res = add_quat( mul_quatf(a, sinf(ang * (1-fact))), mul_quatf(c, sinf(ang * fact)) );
+		return div_quatf(res, sinf(ang));
+	} else
+		return lerp_quat(a, c, fact);
 }
 
 float* matr_quat(quat a, float* dmatr)
@@ -191,12 +256,11 @@ void update_view(orientation* dst, float roll, float pitch, float yaw)
 	dst->pitchf = pitch;
 	dst->rollf = roll;
 	dst->yawf = yaw;
-	dst->pitch = build_quat(pitch, 1.0, 0.0, 0.0);
-	dst->roll  = build_quat(yaw, 0.0, 1.0, 0.0);
-	dst->yaw   = build_quat(roll, 0.0, 0.0, 1.0);
-	quat res = mul_quat( mul_quat(dst->pitch, dst->yaw), dst->roll );
+	quat pitchq = build_quat(pitch, 1.0, 0.0, 0.0);
+	quat rollq  = build_quat(yaw, 0.0, 1.0, 0.0);
+	quat yawq   = build_quat(roll, 0.0, 0.0, 1.0);
+	quat res = mul_quat( mul_quat(pitchq, yawq), rollq );
 	matr_quat(res, dst->matr);
-    /* cache view-vector as well why not .. */
 }
 
 float lerp_fract(unsigned startt, unsigned endt, float ct)
@@ -211,18 +275,3 @@ float lerp_fract(unsigned startt, unsigned endt, float ct)
 
 	return cf / (endf - startf);
 }
-
-/* quatslerp:
- * a, b, t (framefrag) and eps (0.0001),
- * t < 0 (q1) t > 1 q2
- * copy q2 to a3
- * c is dot q1 q3
- * c < 0.0? neg q3, neg c
- * c > 1 - eps
- * 	normalize lerp(q1, q3, t)
- * a = acos(c)
- * quatret = sin(1 - t) * a) * q1 + sin(t * a * q3) / sin a */
-
-/* quatlerp:
- * q1 + t * (q2 - a1) */
-
