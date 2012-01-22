@@ -2413,7 +2413,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	float matr[16];
 	prop.scale.w *= src->origw * 0.5;
 	prop.scale.h *= src->origh * 0.5;
-	matr_quat(norm_quat (prop.rotation), matr);
+	matr_quatf(norm_quat (prop.rotation), matr);
 	
 	glPushMatrix();
 		glTranslatef( prop.position.x + prop.scale.w, prop.position.y + prop.scale.h, 0.0);
@@ -2477,10 +2477,13 @@ void arcan_video_refresh_GL(float lerp)
 
 /* if there are any nodes left, treat them as 2D (ortographic projection) */
 	if (current){
+		GLdouble projmatr[16];
+		
 		glDisable(GL_DEPTH_TEST);
 		glMatrixMode(GL_PROJECTION);
 		glLoadIdentity();
 		glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+		glGetDoublev(GL_PROJECTION_MATRIX, arcan_video_display.projmatr);
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
@@ -2575,42 +2578,43 @@ void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mod
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	
-	if (vobj && id > 0) {
-		surface_properties current = vobj->current;
-		current.scale.w *= vobj->origw;
-		current.scale.h *= vobj->origh;
+	printf("hittest: %f,%f\n", (float)x, (float)y);
+	if (vobj){
+/* get object properties taking inheritance etc. into account */
+		surface_properties dprops;
+		arcan_resolve_vidprop(vobj, 0.0, &dprops);
+		dprops.scale.w *= vobj->origw * 0.5;
+		dprops.scale.h *= vobj->origh * 0.5;
 		
-		float lx = (float)x, ly = (float)y;
+/* transform and rotate the bounding coordinates into screen space */
+		glPushMatrix();
+			GLdouble orient[16];
+			GLfloat orientf[16];
+			GLint view[4];
 
-		/* convert to radians */
-		float theta = angle_quat(current.rotation).x * (2.0f * 3.14f / 360.0f);
+			matr_quatf(dprops.rotation, orientf);
+			glTranslatef(dprops.position.x + dprops.scale.w, dprops.position.y + dprops.scale.h, 0.0);
+			glMultMatrixf(orientf);
 
-		/* translate */
-		float ox = current.position.x + current.scale.w * 0.5;
-		float oy = current.position.y + current.scale.h * 0.5;
-		float tx = x - ox;
-		float ty = y - oy;
+			double p[4][3];
+			glGetDoublev(GL_MODELVIEW_MATRIX, orient);
+			glGetIntegerv(GL_VIEWPORT, view);
 
-		/* rotate translated coordinates into dst- space */
-		float rx = tx * cos(theta) - ty * sin(theta);
-		float ry = tx * sin(theta) + ty * cos(theta);
+		/* unproject all 4 vertices, usually very costly but for 4 vertices it's more manageable */
+			gluProject(-dprops.scale.w, -dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
+			gluProject( dprops.scale.w, -dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
+			gluProject( dprops.scale.w,  dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
+			gluProject(-dprops.scale.w,  dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
 
-		/* reverse translation, lx / ly now corresponds to the rotated coordinates */
-		lx = rx + ox;
-		ly = ry + oy;
-
-		if (
-		    (lx > (current.position.x) && lx < (current.position.x + current.scale.w)) &&
-		    (ly > (current.position.y) && ly < (current.position.y + current.scale.h))
-		) {
-			/* should check if there's a collision mask added (and scale rotate coords into correct space)
-			 * scale coordinates to 'fit' the proper range, extract the byte and then extract correct 'bits'
-			 * as the mask only requires (w/8) * (h/8) bits of storage */
-			return true;
-		}
-
+			float px[4], py[4];
+			px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0]; px[4] = p[4][0];
+			py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1]; py[4] = p[4][1];
+			
+		/* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
+			glPopMatrix();
+			return pinpoly(4, px, py, (float) x, (float) arcan_video_display.height - y);
 	}
+	
 	return false;
 }
 
@@ -2623,7 +2627,7 @@ unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int
 	uint32_t base = 0;
 
 	while (current && base < count) {
-		if (arcan_video_hittest(current->cellid, x, y) && current->cellid && !(current->elem->mask & MASK_UNPICKABLE))
+		if (current->cellid && !(current->elem->mask & MASK_UNPICKABLE) && current->elem->current.opa > EPSILON && arcan_video_hittest(current->cellid, x, y))
 			dst[base++] = current->cellid;
 		current = current->next;
 	}

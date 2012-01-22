@@ -73,7 +73,8 @@ quat norm_quat(quat src);
 quat mul_quat(quat a, quat b);
 quat mul_quatf(quat a, float b);
 quat div_quatf(quat a, float b);
-float* matr_quat(quat a, float* dmatr);
+float* matr_quatf(quat a, float* dmatr);
+double* matr_quat(quat a, double* dmatr);
 vector angle_quat(quat a);
 quat slerp_quat(quat a, quat b, float f);
 quat lerp_quat(quat a, quat b, float f);
@@ -84,4 +85,8 @@ void push_orient_matr(float x, float y, float z, float roll, float pitch, float 
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 float lerp_val(float a, float b, float f);
 float lerp_fract(unsigned startt, unsigned endt, float ct);
+
+/* comp.graphics.algorithms DAQ, Randolph Franklin */
+int pinpoly(int, float*, float*, float, float);
+
 #endif
