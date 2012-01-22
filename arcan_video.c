@@ -308,7 +308,7 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 	return rv;
 }
 
-static void dump_object(arcan_vobject* o){
+/*static void dump_object(arcan_vobject* o){
 	if (!o) return;	
 	printf("[ Obj# %i\n\t Position: %f, %f, %f\n\t Opacity: %f\n\t Scale: %f, %f, %f\n\t Rotation: %f, %f, %f\n",
 		   o->owner->cellid,
@@ -326,7 +326,7 @@ static void dump_object(arcan_vobject* o){
 			trans->blend.startt, trans->blend.endt, trans->blend.startopa, trans->blend.endopa);
 		trans = trans->next;
 	}
-}
+}*/
 
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 {
@@ -2411,8 +2411,6 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
 	float matr[16];
-	static a = 0;
-	a++;
 	prop.scale.w *= src->origw * 0.5;
 	prop.scale.h *= src->origh * 0.5;
 	matr_quat(norm_quat (prop.rotation), matr);
