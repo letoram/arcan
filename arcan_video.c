@@ -113,8 +113,7 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 		},
 		.world = {
 			.current  = {
-				.opa = 1.0,
-				.scale = {.w = 1.0, .h = 1.0, .d = 1.0}
+				.opa = 1.0
 			}
 		}
 	}
@@ -262,8 +261,8 @@ signed arcan_video_pushcontext()
 	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
 	current_context->world = empty_vobj;
-	current_context->world.current.scale.w = 1.0;
-	current_context->world.current.scale.h = 1.0;
+	current_context->world.current.scale.x = 1.0;
+	current_context->world.current.scale.y = 1.0;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 	current_context->first = NULL;
 
@@ -313,7 +312,7 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 		   o->owner->cellid,
 		o->current.position.x, o->current.position.y, o->current.position.z,
 		o->current.opa,
-		o->current.scale.w, o->current.scale.h, o->current.scale.d,
+		o->current.scale.x, o->current.scale.y, o->current.scale.z,
 		0.0, 0.0, 0.0);
 
 	surface_transform* trans = o->transform;
@@ -344,8 +343,8 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->current.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		nobj->current.position.x = 0;
 		nobj->current.position.y = 0;
-		nobj->current.scale.w = 1.0;
-		nobj->current.scale.h = 1.0;
+		nobj->current.scale.x = 1.0;
+		nobj->current.scale.y = 1.0;
 		nobj->transform = NULL;
 		nobj->parent = pobj;
 		nobj->flags.clone = true;
@@ -392,8 +391,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
 		rv->flags.cliptoparent = false;
-		rv->current.scale.w = 1.0;
-		rv->current.scale.h = 1.0;
+		rv->current.scale.x = 1.0;
+		rv->current.scale.y = 1.0;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
@@ -619,8 +618,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		else
 			arcan_video_display.text_support = true;
 
-		current_context->world.current.scale.w = 1.0;
-		current_context->world.current.scale.h = 1.0;
+		current_context->world.current.scale.x = 1.0;
+		current_context->world.current.scale.y = 1.0;
 
 		current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
 		arcan_video_gldefault();
@@ -2030,11 +2029,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsi
 					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
 			}
 			
-			point newp = {
-				.x = newx,
-				.y = newy,
-				.z = 0
-			};
+			point newp = {newx, newy, 0};
 
 			if (!vobj->transform)
 				vobj->transform = base;
@@ -2065,9 +2060,9 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 		if (tv == immediately) {
 			swipe_chain(vobj->transform, offsetof(surface_transform, scale), sizeof(struct transf_scale));
 
-			vobj->current.scale.w = wf;
-			vobj->current.scale.h = hf;
-			vobj->current.scale.d = 1.0;
+			vobj->current.scale.x = wf;
+			vobj->current.scale.y = hf;
+			vobj->current.scale.z = 1.0;
 		}
 		else {
 			surface_transform* base = vobj->transform;
@@ -2097,9 +2092,9 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 			base->scale.endt = base->scale.startt + tv;
 			base->scale.interp = interpolate_linear;
 			base->scale.startd = bs;
-			base->scale.endd.w = wf;
-			base->scale.endd.h = hf;
-			base->scale.endd.d = 1.0;
+			base->scale.endd.x = wf;
+			base->scale.endd.y = hf;
+			base->scale.endd.z = 1.0;
 		}
 	}
 
@@ -2411,14 +2406,14 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
 	float matr[16];
-	prop.scale.w *= src->origw * 0.5;
-	prop.scale.h *= src->origh * 0.5;
+	prop.scale.x *= src->origw * 0.5;
+	prop.scale.y *= src->origh * 0.5;
 	matr_quatf(norm_quat (prop.rotation), matr);
 	
 	glPushMatrix();
-		glTranslatef( prop.position.x + prop.scale.w, prop.position.y + prop.scale.h, 0.0);
+		glTranslatef( prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
 		glMultMatrixf(matr);
-		draw_vobj(-prop.scale.w, -prop.scale.h, prop.scale.w, prop.scale.h, 0, txcos);
+		draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
 	glPopMatrix();
 }
 
@@ -2583,8 +2578,8 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 /* get object properties taking inheritance etc. into account */
 		surface_properties dprops;
 		arcan_resolve_vidprop(vobj, 0.0, &dprops);
-		dprops.scale.w *= vobj->origw * 0.5;
-		dprops.scale.h *= vobj->origh * 0.5;
+		dprops.scale.x *= vobj->origw * 0.5;
+		dprops.scale.y *= vobj->origh * 0.5;
 		
 /* transform and rotate the bounding coordinates into screen space */
 		glPushMatrix();
@@ -2593,7 +2588,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 			GLint view[4];
 
 			matr_quatf(dprops.rotation, orientf);
-			glTranslatef(dprops.position.x + dprops.scale.w, dprops.position.y + dprops.scale.h, 0.0);
+			glTranslatef(dprops.position.x + dprops.scale.x, dprops.position.y + dprops.scale.y, 0.0);
 			glMultMatrixf(orientf);
 
 			double p[4][3];
@@ -2601,10 +2596,10 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 			glGetIntegerv(GL_VIEWPORT, view);
 
 		/* unproject all 4 vertices, usually very costly but for 4 vertices it's more manageable */
-			gluProject(-dprops.scale.w, -dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
-			gluProject( dprops.scale.w, -dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
-			gluProject( dprops.scale.w,  dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
-			gluProject(-dprops.scale.w,  dprops.scale.h, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
+			gluProject(-dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
+			gluProject( dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
+			gluProject( dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
+			gluProject(-dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
 
 			float px[4], py[4];
 			px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0]; px[4] = p[4][0];
@@ -2650,7 +2645,7 @@ void arcan_video_dumppipe()
 	if (current)
 		do {
 			printf("[%i] #(%i) - (ID:%u) (Order:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->cellid, current->elem->order,
-			       current->elem->current.position.x, current->elem->current.position.y, current->elem->current.scale.w, current->elem->current.scale.h, current->elem->current.opa);
+			       current->elem->current.position.x, current->elem->current.position.y, current->elem->current.scale.x, current->elem->current.scale.y, current->elem->current.opa);
 		}
 		while ((current = current->next) != NULL);
 	printf("-----------\n");
@@ -2680,8 +2675,8 @@ surface_properties arcan_video_initial_properties(arcan_vobj_id id)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		res.scale.w = vobj->origw;
-		res.scale.h = vobj->origh;
+		res.scale.x = vobj->origw;
+		res.scale.y = vobj->origh;
 	}
 
 	return res;
@@ -2694,8 +2689,8 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id)
 
 	if (vobj){
 		rv = vobj->current;
-		rv.scale.w *= vobj->origw;
-		rv.scale.h *= vobj->origh;
+		rv.scale.x *= vobj->origw;
+		rv.scale.y *= vobj->origh;
 	}
 	
 	return rv;

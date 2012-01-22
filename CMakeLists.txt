@@ -159,7 +159,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-g -D_DEBUG)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
-add_definitions(-std=c99 -D_BSD_SOURCE )
+add_definitions(-std=gnu99 -D_BSD_SOURCE )
 
 # OS Specific modifications
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
