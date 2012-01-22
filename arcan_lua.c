@@ -257,19 +257,19 @@ int arcan_lua_scaleimage2(lua_State* ctx)
 		return 0;
 
 	surface_properties prop = arcan_video_initial_properties(id);
-	if (prop.scale.w < 0.001 && prop.scale.h < 0.001) {
+	if (prop.scale.x < 0.001 && prop.scale.y < 0.001) {
 		lua_pushnumber(ctx, 0);
 		lua_pushnumber(ctx, 0);
 	}
 	else {
 		/* retain aspect ratio in scale */
 		if (neww < 0.0001 && newh > 0.0001)
-			neww = newh * (prop.scale.w / prop.scale.h);
+			neww = newh * (prop.scale.x / prop.scale.y);
 		else
 			if (neww > 0.0001 && newh < 0.0001)
-				newh = neww * (prop.scale.h / prop.scale.w);
+				newh = neww * (prop.scale.y / prop.scale.x);
 
-		arcan_video_objectscale(id, neww / prop.scale.w, newh / prop.scale.h, time);
+		arcan_video_objectscale(id, neww / prop.scale.x, newh / prop.scale.y, time);
 
 		lua_pushnumber(ctx, neww);
 		lua_pushnumber(ctx, newh);
@@ -291,10 +291,10 @@ int arcan_lua_scaleimage(lua_State* ctx)
 
 	/* retain aspect ratio in scale */
 	if (desw < 0.0001 && desh > 0.0001)
-		desw = desh * (prop.scale.w / prop.scale.h);
+		desw = desh * (prop.scale.x / prop.scale.y);
 	else
 		if (desw > 0.0001 && desh < 0.0001)
-			desh = desw * (prop.scale.h / prop.scale.w);
+			desh = desw * (prop.scale.y / prop.scale.x);
 
 	arcan_video_objectscale(id, desw, desh, time);
 
@@ -1139,11 +1139,11 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "width");
-	lua_pushinteger(ctx, prop.scale.w);
+	lua_pushinteger(ctx, prop.scale.x);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "height");
-	lua_pushinteger(ctx, prop.scale.h);
+	lua_pushinteger(ctx, prop.scale.y);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "angle");

@@ -40,7 +40,6 @@ extern char* arcan_libpath;
 #define LIBNAME "arcan_hijack.dll"
 /* some missing defines that doesn't seem to be included in the 
  * headers of mingw but still exported in the linked libraries, hmm */
-extern int putenv(char*);
 extern char* strdup(const char*);
 extern double round(double x);
 extern int strcasecmp(const char*, const char*);

@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <errno.h>
 
+#include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_video.h"
 #include "../arcan_audio.h"
