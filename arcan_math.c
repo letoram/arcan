@@ -5,6 +5,17 @@
 #include "arcan_math.h"
 #include <SDL_opengl.h>
 
+int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
+{
+	int i, j, c = 0;
+	for (i = 0, j = nvert-1; i < nvert; j = i++) {
+		if ( ((verty[i]>testy) != (verty[j]>testy)) &&
+			(testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+			c = !c;
+	}
+	return c;
+}
+
 vector build_vect_polar(const float phi, const float theta)
 {	
 	vector res = {.x = sinf(phi) * cosf(theta),
@@ -212,7 +223,32 @@ quat slerp_quat(quat a, quat b, float fact)
 		return lerp_quat(a, c, fact);
 }
 
-float* matr_quat(quat a, float* dmatr)
+
+
+float* matr_quatf(quat a, float* dmatr)
+{
+	if (dmatr){
+		dmatr[0] = 1.0f - 2.0f * (a.y * a.y + a.z * a.z);
+		dmatr[1] = 2.0f * (a.x * a.y + a.z * a.w);
+		dmatr[2] = 2.0f * (a.x * a.z - a.y * a.w);
+		dmatr[3] = 0.0f;
+		dmatr[4] = 2.0f * (a.x * a.y - a.z * a.w);
+		dmatr[5] = 1.0f - 2.0f * (a.x * a.x + a.z * a.z);
+		dmatr[6] = 2.0f * (a.z * a.y + a.x * a.w);
+		dmatr[7] = 0.0f;
+		dmatr[8] = 2.0f * (a.x * a.z + a.y * a.w);
+		dmatr[9] = 2.0f * (a.y * a.z - a.x * a.w);
+		dmatr[10]= 1.0f - 2.0f * (a.x * a.x + a.y * a.y);
+		dmatr[11]= 0.0f;
+		dmatr[12]= 0.0f;
+		dmatr[13]= 0.0f;
+		dmatr[14]= 0.0f;
+		dmatr[15]= 1.0f;
+	}
+	return dmatr;
+}
+
+double* matr_quat(quat a, double* dmatr)
 {
 	if (dmatr){
 		dmatr[0] = 1.0f - 2.0f * (a.y * a.y + a.z * a.z);
@@ -240,7 +276,7 @@ void push_orient_matr(float x, float y, float z, float roll, float pitch, float 
 	float matr[16];
 	quat orient = build_quat_euler(roll, pitch, yaw);
 	glTranslatef(x, y, z);
-	matr_quat(orient, matr);
+	matr_quatf(orient, matr);
 	
 	glMultMatrixf(matr);
 }
@@ -260,7 +296,7 @@ void update_view(orientation* dst, float roll, float pitch, float yaw)
 	quat rollq  = build_quat(yaw, 0.0, 1.0, 0.0);
 	quat yawq   = build_quat(roll, 0.0, 0.0, 1.0);
 	quat res = mul_quat( mul_quat(pitchq, yawq), rollq );
-	matr_quat(res, dst->matr);
+	matr_quatf(res, dst->matr);
 }
 
 float lerp_fract(unsigned startt, unsigned endt, float ct)
