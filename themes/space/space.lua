@@ -88,8 +88,6 @@ function random_game()
     
 		bglayer[vid] = game;
 		position_image(vid);
-	else
-		table.remove( games, gameid);
 	end
 
 end

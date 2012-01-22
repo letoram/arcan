@@ -238,9 +238,9 @@ is stability for the currently available API / feature-set.
 
 	\subsection{System}
 	\begin{itemize}
-		\item Replace IPC- esque commands for event- serialization using ProtocolBuffers.
+		\item Replace IPC- esque commands with event- serialization using ProtocolBuffers.
 		\item Yield alternative for SDL\_delay in framequeue on EAGAIN.
-		\item Android port. 
+		\item Android port (don't have any decent GLES tablet atm.)
 		\item Support- library for cooperative internal-launch for more efficient / less aggressive internal-launch, pause- functions etc. with possibly patches for mplayer, mame, mess, ...
 		\item Collision- / Intersection- tests for VIDs, basic 2d physics?
 	\end{itemize}
@@ -262,7 +262,6 @@ is stability for the currently available API / feature-set.
 	\subsection{Video}
 	\begin{itemize}
 		\item Direct mng support as animation format alternative to multiple single image files.
-		\item Proper orientation (3 axis, quat->matrix) with interpolation.
 		\item Two-sided objects (requires orientation + multiframe + updated picking).
 		\item More advanced frameserver support (webcam, ...).
 		\item Stream-export vid+aid (or world) to ffmpeg as external encoder / frameserver.
@@ -287,6 +286,7 @@ is stability for the currently available API / feature-set.
 	
 	\subsection{LUA}
 	\begin{itemize}
+		\item Replace it with Squirrel... 
 		\item Better scheduling / preemption of lua- execution. Event multiplexing.
 		\item Working sandboxing, currently there's directory traversal in resource calls.
 		\item Restricted online features (gamelists, highscores, playcounts, ...)

@@ -104,14 +104,23 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props)
 	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     /* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
-
+	if (src->flags.infinite){
+		glDepthMask(GL_FALSE);
+		glEnable(GL_DEPTH_TEST);
+	}
+	
     glColor4f(1.0, 1.0, 1.0, props.opa);
     int nverts = ctmGetInteger(src->ctmmodel, CTM_VERTEX_COUNT);
-    glTranslatef(props.position.x, props.position.y, 0.0);
+	glTranslatef(props.position.x, props.position.y, 0.0);
     glMultMatrixf(src->direction.matr);
     glVertexPointer(3, GL_FLOAT, 0, verts);
     glDrawArrays(GL_POINTS, 0, nverts);
 
+	if (src->flags.infinite){
+		glDepthMask(GL_TRUE);
+		glEnable(GL_DEPTH_TEST);
+	}
+	
     glPopMatrix();
 }
 
@@ -186,6 +195,11 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 	}
 	
 	return cell;
+}
+
+arcan_vobj_id arcan_3d_skybox(float base)
+{
+
 }
 
 arcan_vobj_id arcan_3d_loadmodel(const char* resource)

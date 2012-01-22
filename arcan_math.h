@@ -23,6 +23,7 @@
 #define _HAVE_ARCAN_MATH
 
 #define EPSILON 0.000001f
+#define DEG2RAD(X) (X * M_PI / 180)
 
 typedef struct {
 	union{
@@ -49,9 +50,7 @@ typedef vector point;
 typedef vector scalefactor;
 
 typedef struct orientation {
-	quat roll, pitch, yaw;
 	float rollf, pitchf, yawf;
-	vector view;
 	float matr[16];
 } orientation;
 
@@ -59,7 +58,6 @@ typedef struct orientation {
 quat build_quat_euler(float roll, float pitch, float yaw);
 vector build_vect_polar(const float phi, const float theta);
 vector build_vect(const float x, const float y, const float z);
-quat build_quat(float angdeg, float vx, float vy, float vz);
 float len_vector(vector invect);
 vector crossp_vector(vector a, vector b);
 float dotp_vector(vector a, vector b);
@@ -73,8 +71,11 @@ quat inv_quat(quat src);
 float len_quat(quat src);
 quat norm_quat(quat src);
 quat mul_quat(quat a, quat b);
+quat mul_quatf(quat a, float b);
+quat div_quatf(quat a, float b);
 float* matr_quat(quat a, float* dmatr);
-float angle_quat(quat a);
+vector angle_quat(quat a);
+quat slerp_quat(quat a, quat b, float f);
 quat lerp_quat(quat a, quat b, float f);
 quat add_quat(quat a, quat b);
 
