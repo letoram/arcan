@@ -115,8 +115,7 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 			.current  = {
 				.opa = 1.0,
 				.scale = {.w = 1.0, .h = 1.0, .d = 1.0}
-			},
-			.parent = (void*)0xc00ffe,
+			}
 		}
 	}
 };
@@ -1605,6 +1604,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->origw = maxw;
 		vobj->origh = maxh;
 		vobj->current.opa = 1.0;
+		vobj->current.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		vobj->parent = &current_context->world;
 		glGenTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
