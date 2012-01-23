@@ -137,7 +137,7 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, text_support, fullscreen, conservative;
-	GLdouble projmatr[16];
+	GLfloat projmatr[16];
 	/* default image loading options */
 	enum arcan_vimage_mode scalemode;
 	GLuint deftxs, deftxt;

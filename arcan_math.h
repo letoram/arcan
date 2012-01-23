@@ -72,6 +72,7 @@ void push_orient_matr(float x, float y, float z, float roll, float pitch, float 
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 float lerp_val(float a, float b, float f);
 float lerp_fract(unsigned startt, unsigned endt, float ct);
+int gluProjectf(float objx, float objy, float objz, const float model[16], const float projection[16], const int viewport[4], float*, float*, float*);
 
 /* comp.graphics.algorithms DAQ, Randolph Franklin */
 int pinpoly(int, float*, float*, float, float);

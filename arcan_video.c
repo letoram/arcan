@@ -2472,13 +2472,11 @@ void arcan_video_refresh_GL(float lerp)
 
 /* if there are any nodes left, treat them as 2D (ortographic projection) */
 	if (current){
-		GLdouble projmatr[16];
-		
 		glDisable(GL_DEPTH_TEST);
 		glMatrixMode(GL_PROJECTION);
 		glLoadIdentity();
 		glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
-		glGetDoublev(GL_PROJECTION_MATRIX, arcan_video_display.projmatr);
+		glGetFloatv(GL_PROJECTION_MATRIX, arcan_video_display.projmatr);
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
@@ -2582,7 +2580,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		
 /* transform and rotate the bounding coordinates into screen space */
 		glPushMatrix();
-			GLdouble orient[16];
+			GLfloat orient[16];
 			GLfloat orientf[16];
 			GLint view[4];
 
@@ -2590,15 +2588,15 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 			glTranslatef(dprops.position.x + dprops.scale.x, dprops.position.y + dprops.scale.y, 0.0);
 			glMultMatrixf(orientf);
 
-			double p[4][3];
-			glGetDoublev(GL_MODELVIEW_MATRIX, orient);
+			float p[4][3];
+			glGetFloatv(GL_MODELVIEW_MATRIX, orient);
 			glGetIntegerv(GL_VIEWPORT, view);
 
 		/* unproject all 4 vertices, usually very costly but for 4 vertices it's more manageable */
-			gluProject(-dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
-			gluProject( dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
-			gluProject( dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
-			gluProject(-dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
+			gluProjectf(-dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
+			gluProjectf( dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
+			gluProjectf( dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
+			gluProjectf(-dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
 
 			float px[4], py[4];
 			px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0]; 
