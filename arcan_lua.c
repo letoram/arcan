@@ -1176,6 +1176,19 @@ int arcan_lua_loadmodel(lua_State* ctx)
 	return 1;
 }
 
+/* move_3dcamera, px, py, pz, dt, camtag, nil */
+int arcan_lua_movecamera(lua_State* ctx)
+{
+    float px = luaL_checknumber(ctx, 1);
+    float py = luaL_checknumber(ctx, 2);
+    float pz = luaL_checknumber(ctx, 3);
+    unsigned dt = luaL_optint(ctx, 4, 0);
+    unsigned camtag = luaL_optint(ctx, 5, 0);
+    
+    arcan_3d_movecamera(camtag, px, py, pz, dt);
+    return 0;
+}
+
 int arcan_lua_getimageprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -2027,6 +2040,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* category: 3d */
 	lua_register(ctx, "load_model", arcan_lua_loadmodel);
+    
+/* item:move_3dcamera, px, py, pz, dt, camtag */
+    lua_register(ctx, "move_3dcamera", arcan_lua_movecamera);
 	
 /* category: frameserver */
 

@@ -2573,7 +2573,6 @@ void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mod
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	printf("hittest: %f,%f\n", (float)x, (float)y);
 	if (vobj){
 /* get object properties taking inheritance etc. into account */
 		surface_properties dprops;
