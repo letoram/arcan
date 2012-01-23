@@ -5,6 +5,53 @@
 #include "arcan_math.h"
 #include <SDL_opengl.h>
 
+static void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
+{
+	int i;
+	
+	for (i=0; i<4; i++) {
+		out[i] =
+		in[0] * matrix[0*4+i] +
+		in[1] * matrix[1*4+i] +
+		in[2] * matrix[2*4+i] +
+		in[3] * matrix[3*4+i];
+	}
+}
+
+int gluProjectf(float objx, float objy, float objz,
+		   const float modelMatrix[16],
+		   const float projMatrix[16],
+		   const int viewport[4],
+		   float *winx, float *winy, float *winz)
+{
+	float in[4];
+	float out[4];
+	
+	in[0]=objx;
+	in[1]=objy;
+	in[2]=objz;
+	in[3]=1.0;
+	mult_matrix_vecf(modelMatrix, in, out);
+	mult_matrix_vecf(projMatrix, out, in);
+	if (in[3] == 0.0) return(GL_FALSE);
+	in[0] /= in[3];
+	in[1] /= in[3];
+	in[2] /= in[3];
+	/* Map x, y and z to range 0-1 */
+	in[0] = in[0] * 0.5 + 0.5;
+	in[1] = in[1] * 0.5 + 0.5;
+	in[2] = in[2] * 0.5 + 0.5;
+	
+	/* Map x,y to viewport */
+	in[0] = in[0] * viewport[2] + viewport[0];
+	in[1] = in[1] * viewport[3] + viewport[1];
+	
+	*winx=in[0];
+	*winy=in[1];
+	*winz=in[2];
+	return(GL_TRUE);
+}
+
 int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
 {
 	int i, j, c = 0;

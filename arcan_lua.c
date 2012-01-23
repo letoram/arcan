@@ -1763,6 +1763,30 @@ int arcan_lua_decodemod(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_movemodel(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	float x = luaL_checknumber(ctx, 2);
+	float y = luaL_checknumber(ctx, 3);
+	float z = luaL_checknumber(ctx, 4);
+	unsigned int dt = luaL_optint(ctx, 5, 0);
+
+//	arcan_3d_movemodel(vid, x, y, z, dt);
+	return 0;
+}
+
+int arcan_lua_scalemodel(lua_State* ctx)
+{
+}
+
+int arcan_lua_rotatemodel(lua_State* ctx)
+{
+}
+
+int arcan_lua_modelmaterial(lua_State* ctx)
+{
+}
+
 int arcan_lua_settexmode(lua_State* ctx)
 {
 	int numa = luaL_checknumber(ctx, 1);
@@ -2032,17 +2056,34 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:force_image_blend, boolint, nil */
 	lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
 	
-/* item:*push_video_context, int */
+/* item:push_video_context, int */
 	lua_register(ctx, "push_video_context", arcan_lua_pushcontext);
 
-/* item:*pop_video_context, int */
+/* item:pop_video_context, int */
 	lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
 
 /* category: 3d */
-	lua_register(ctx, "load_model", arcan_lua_loadmodel);
+/* item:load_model, resource, vid */
+	lua_register(ctx, "load_mesh", arcan_lua_loadmodel);
+
+/* item:move3d_model, vid, xp, yp, zp, time, nil */
+	lua_register(ctx, "move3d_model", arcan_lua_movemodel);
+
+/* item:rotate3d_model, vid, yaw, pitch, roll, time, nil */
+	lua_register(ctx, "rotate3d_model", arcan_lua_movemodel);
+
+/* item:scale3d_model, vid, wf, hf, df, time, nil */
+	lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
+
+/* item:move3d_camera, cid, xp, yp, zp, nil */
+	lua_register(ctx, "move3d_camera", arcan_lua_movecamera); 
     
 /* item:move_3dcamera, px, py, pz, dt, camtag */
     lua_register(ctx, "move_3dcamera", arcan_lua_movecamera);
+	
+/* item:model_material, slot, vid, nil */
+	lua_register(ctx, "model_material", arcan_lua_modelmaterial);
+	
 	
 /* category: frameserver */
 

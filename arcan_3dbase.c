@@ -387,6 +387,10 @@ error:
 	return ARCAN_EID;
 }
 
+void arcan_3d_movemodel(arcan_vobj_id src, float x, float y, float z, unsigned dt)
+{
+}
+
 void arcan_3d_setdefaults()
 {
 	current_scene.perspectives = calloc( sizeof(virtobj), 1);
