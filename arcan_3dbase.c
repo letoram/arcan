@@ -397,11 +397,7 @@ void arcan_3d_setdefaults()
 	virtobj* cam = current_scene.perspectives;
 	cam->dynamic = true;
 
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(60.0, (float)arcan_video_display.width / (float)arcan_video_display.height, 0.0, 100.0);
-    glGetFloatv(GL_PROJECTION_MATRIX, cam->projmatr);
-    glLoadIdentity();
+    build_projmatr(0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0, cam->projmatr);
     
     cam->rendertarget = 0;
     cam->type = virttype_camera;
