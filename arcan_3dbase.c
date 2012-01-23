@@ -38,10 +38,9 @@ struct virtobj {
 	bool dynamic;
 	
 /* ignored by pointlight */
+    quat rotation;
 	orientation direction;
-	float fov;
-	float near;
-	float far;
+    float projmatr[16];
 	
 	enum virttype type;
 /* linked list arranged, sorted high-to-low
@@ -60,9 +59,14 @@ typedef struct {
 	orientation direction;
     point position;
     scalefactor scale;
-/* position, opacity etc. are inherited from parent */
-	
+
+/* AA-BB */
+    vector bbmin;
+    vector bbmax;
+    
+/* position, opacity etc. are inherited from parent */	
 	struct {
+        bool debug_vis;
 		bool recv_shdw;
 		bool cast_shdw;
 		bool cast_refl;
@@ -75,7 +79,6 @@ typedef struct {
 } arcan_3dmodel;
 
 static arcan_3dscene current_scene = {0};
-
 
 static void freemodel(arcan_3dmodel* src)
 {
@@ -97,6 +100,85 @@ arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigne
 	return rv;
 }
 
+static void build_hplane(point min, point max, point step, 
+                         float** verts, unsigned** indices, float** txcos,
+                         unsigned* nverts, unsigned* nindices, unsigned* ntxcos)
+{
+    point delta = {
+        .x = max.x - min.x,
+        .y = max.y,
+        .z = max.z - min.z
+    };
+    
+    unsigned nx = ceil(delta.x / step.x);
+    unsigned ny = ceil(delta.z / step.z);
+    
+    *nverts = nx * ny;
+    *verts = (float*) malloc(sizeof(float) * (*nverts) * 3);
+    
+    unsigned ofs = 0;
+    for (unsigned row = 0; row < ny; row++)
+        for (unsigned col = 0; col < nx; col++){
+            *verts[ofs++] = min.x + ((float)col * step.x);
+            *verts[ofs++] = max.y;
+            *verts[ofs++] = min.z + ((float)row * step.z);
+        }
+}
+
+static void build_projmatr(float near, float far, float aspect, float fov, float m[16]){
+    const float h = 1.0f / tan(fov * (M_PI / 360.0));
+    float neg_depth = near - far;
+    
+    m[0]  = h / aspect; m[1]  = 0; m[2]  = 0;  m[3] = 0;
+    m[4]  = 0; m[5]  = h; m[6]  = 0;  m[7] = 0;
+    m[8]  = 0; m[9]  = 0; m[10] = (far + near) / neg_depth; m[11] =-1;
+    m[12] = 0; m[13] = 0; m[14] = 2.0f * (near * far) / neg_depth; m[15] = 0;
+}
+
+static inline void wireframe_box(float minx, float miny, float minz, float maxx, float maxy, float maxz)
+{
+    glColor3f(0.2, 1.0, 0.2);
+    glBegin(GL_LINES);
+
+    glVertex3f(minx, miny, minz);
+    glVertex3f(minx, miny, maxz);
+    
+    glVertex3f(minx, miny, minz);
+    glVertex3f(minx, maxy, minz);
+    
+    glVertex3f(minx, miny, maxz);
+    glVertex3f(maxx, miny, maxz);
+
+    glVertex3f(minx, miny, maxz);
+    glVertex3f(minx, maxy, maxz);
+    
+    glVertex3f(maxx, miny, maxz);
+    glVertex3f(maxx, miny, minz);
+    
+    glVertex3f(maxx, miny, maxz);
+    glVertex3f(maxx, maxy, maxz);
+
+    glVertex3f(maxx, miny, maxz);
+    glVertex3f(maxx, miny, minz);
+
+    glVertex3f(maxx, miny, maxz);
+    glVertex3f(maxx, maxy, maxz);
+        
+    glVertex3f(minx, maxy, minz);
+    glVertex3f(minx, maxy, maxz);
+    
+    glVertex3f(minx, maxy, maxz);
+    glVertex3f(maxx, maxy, maxz);
+    
+    glVertex3f(maxx, maxy, maxz);
+    glVertex3f(maxx, maxy, minz);
+    
+    glVertex3f(maxx, maxy, maxz);
+    glVertex3f(maxx, maxy, minz);
+    
+    glEnd();
+}
+
 static void rendermodel(arcan_3dmodel* src, surface_properties props)
 {
 	glPushMatrix();
@@ -108,7 +190,11 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props)
 		glDepthMask(GL_FALSE);
 		glEnable(GL_DEPTH_TEST);
 	}
-	
+
+	if (1 || src->flags.debug_vis){
+        wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
+    }
+    
     glColor4f(1.0, 1.0, 1.0, props.opa);
     int nverts = ctmGetInteger(src->ctmmodel, CTM_VERTEX_COUNT);
 	glTranslatef(props.position.x, props.position.y, 0.0);
@@ -177,13 +263,13 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 		switch(base->type){
 			case virttype_camera :
             glMatrixMode(GL_PROJECTION);
-                glLoadIdentity();
-                glMultMatrixf(base->direction.matr);
-			glMatrixMode(GL_MODELVIEW);
-				glPushMatrix();
-				glLoadIdentity();
+                glLoadMatrixf(base->projmatr);
+
+                glMatrixMode(GL_MODELVIEW);
+                    glMultMatrixf(base->direction.matr);
+                    glTranslatef(base->position.x, base->position.y, base->position.z);
+                
 				process_scene_normal(cell, frag);
-			glPopMatrix();
 			
 			case virttype_dirlight : break;
 			case virttype_pointlight : break;
@@ -197,9 +283,55 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 	return cell;
 }
 
-arcan_vobj_id arcan_3d_skybox(float base)
-{
 
+static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigned nverts)
+{
+    vector empty = {0};
+    *minp = *maxp = empty;
+    
+    for (unsigned i = 0; i < nverts * 3; i += 3){
+        vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
+        if (a.x < minp->x) minp->x = a.x;        
+        if (a.y < minp->y) minp->y = a.y;
+        if (a.z < minp->z) minp->z = a.z;
+        if (a.x > maxp->x) maxp->x = a.x;        
+        if (a.y > maxp->y) maxp->y = a.y;
+        if (a.z > maxp->z) maxp->z = a.z;            
+    }
+}
+
+void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv)
+{
+    virtobj* vobj = current_scene.perspectives;
+    unsigned ofs = 0;
+    
+    while (vobj){
+        if (vobj->type == virttype_camera && camtag == ofs){
+            vobj->position.x = px;
+            vobj->position.y = py;
+            vobj->position.z = pz;
+            break;
+        } else ofs++;
+        vobj = vobj->next;
+    }
+}
+
+void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv)
+{
+    virtobj* vobj = current_scene.perspectives;
+    unsigned ofs = 0;
+    
+    while (vobj){
+        if (vobj->type == virttype_camera && camtag == ofs){
+            vobj->rotation = build_quat_euler(roll, pitch, yaw);
+            break;
+        } else ofs++;
+        vobj = vobj->next;
+    }    
+}
+
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y){
+    return ARCAN_OK;
 }
 
 arcan_vobj_id arcan_3d_loadmodel(const char* resource)
@@ -234,8 +366,10 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 		n_uvs   = ctmGetInteger(newmodel->ctmmodel, CTM_UV_MAP_COUNT);
 		n_verts = ctmGetInteger(newmodel->ctmmodel, CTM_VERTEX_COUNT);
 		
-		/*verts   = ctmGetFloatArray(src->ctmmodel, CTM_VERTICES);
-		 *	n_tris  = ctmGetInteger(src->ctmmodel, CTM_TRIANGLE_COUNT);
+		verts   = ctmGetFloatArray(newmodel->ctmmodel, CTM_VERTICES);
+        minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, n_verts); 
+        
+		 /*	n_tris  = ctmGetInteger(src->ctmmodel, CTM_TRIANGLE_COUNT);
 		 *	indices = ctmGetIntegerArray(src->ctmmodel, CTM_INDICES);
 		 *	normals = ctmGetFloatArray(src->ctmmodel, CTM_NORMALS); */
 		
@@ -258,8 +392,14 @@ void arcan_3d_setdefaults()
 	current_scene.perspectives = calloc( sizeof(virtobj), 1);
 	virtobj* cam = current_scene.perspectives;
 	cam->dynamic = true;
-	cam->fov = 45.0;
-	cam->rendertarget = 0;
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(60.0, (float)arcan_video_display.width / (float)arcan_video_display.height, 0.0, 100.0);
+    glGetFloatv(GL_PROJECTION_MATRIX, cam->projmatr);
+    glLoadIdentity();
+    
+    cam->rendertarget = 0;
     cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
 	update_view(&cam->direction, 0, 0, 0);

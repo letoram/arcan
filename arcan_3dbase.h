@@ -22,21 +22,14 @@
 #ifndef _HAVE_ARCAN_3DBASE
 #define _HAVE_ARCAN_3DBASE
 
-typedef struct {
-	float near;
-	float far;
-	float fov;
-	float aspect;
-	float roll;
-	float pitch;
-	float yaw;
-	float xyz[3];
-} arcan_camera;
-
 /* Loads a compressed triangle mesh and wrap it around a 
  video object */
 
 void arcan_3d_setdefaults();
+
+void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv);
+void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv);
 arcan_vobj_id arcan_3d_loadmodel(const char* resource);
+
 
 #endif
