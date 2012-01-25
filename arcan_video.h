@@ -167,7 +167,7 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id);
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks);
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
-arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned* ofs);
+arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
 
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
 

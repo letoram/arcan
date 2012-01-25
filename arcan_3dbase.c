@@ -15,7 +15,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-#include "arcan_3dbase_synth.h"
+//#include "arcan_3dbase_synth.h"
 
 // #define M_PI 3.14159265358979323846
 
@@ -53,15 +53,33 @@ struct virtobj {
 typedef struct virtobj virtobj;
 
 typedef struct {
+    unsigned ntxcos;
+    float* txcos;
+    arcan_vobj_id vid;
+} texture_set;
+
+typedef struct {
 	virtobj* perspectives;
 } arcan_3dscene;
 
 typedef struct {
-	CTMcontext ctmmodel; 
 	orientation direction;
     point position;
     scalefactor scale;
+    
+/* Geometry */
+    struct{
+        unsigned nverts;
+        float* verts;
+        unsigned nindices;
+        unsigned* indices;
+        /* nnormals == nverts */
+        float* normals;
+    } geometry;
 
+    unsigned char nsets;
+    texture_set* textures;
+    
 /* Frustum planes */
 	float frustum[6][4];
 	
@@ -116,8 +134,9 @@ void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned
 static vector camera_forward(vector position, quat orientation)
 {
 	vector res;
-	/* get quaternion inverse *(
+	/* get quaternion inverse */
 	/* forward = quat * vec3(0,0,-1) */
+    return res;
 }
 
 void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv)
@@ -183,25 +202,24 @@ static void freemodel(arcan_3dmodel* src)
 static void rendermodel(arcan_3dmodel* src, surface_properties props)
 {
 	glPushMatrix();
-    const CTMfloat* verts   = ctmGetFloatArray(src->ctmmodel, CTM_VERTICES);
 	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     /* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
 	if (src->flags.infinite){
+        glLoadIdentity();
 		glDepthMask(GL_FALSE);
 		glEnable(GL_DEPTH_TEST);
 	}
 
 	if (1 || src->flags.debug_vis){
-        wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
+//        wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
     }
-    
+
     glColor4f(1.0, 1.0, 1.0, props.opa);
-    int nverts = ctmGetInteger(src->ctmmodel, CTM_VERTEX_COUNT);
-	glTranslatef(props.position.x, props.position.y, 0.0);
+	glTranslatef(props.position.x, props.position.y, props.position.z);
     glMultMatrixf(src->direction.matr);
-    glVertexPointer(3, GL_FLOAT, 0, verts);
-    glDrawArrays(GL_POINTS, 0, nverts);
+    glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
+    glDrawArrays(GL_POINTS, 0, src->geometry.nverts);
 
 	if (src->flags.infinite){
 		glDepthMask(GL_TRUE);
@@ -221,7 +239,7 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 			break;
 			
 			case ffunc_render_direct:
-				rendermodel( (arcan_3dmodel*) state.ptr, *(surface_properties*)buf );
+/*				rendermodel( (arcan_3dmodel*) state.ptr, *(surface_properties*)buf ); */
 			break;
 				
 			case ffunc_destroy:
@@ -245,7 +263,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 	while (current){
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
-// 		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
+ 		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
 		
 		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops);
 
@@ -273,7 +291,7 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
                     glMultMatrixf(base->direction.matr);
                     glTranslatef(base->position.x, base->position.y, base->position.z);
                 
-				process_scene_normal(cell, frag);
+                    process_scene_normal(cell, frag);
 
 /* curious about deferred shading and forward shadow mapping, thus likely the first "hightech" renderpath */
 			case virttype_dirlight   : break;
@@ -324,10 +342,8 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 
 	if (ctmGetError(ctx) == CTM_NONE){
 		CTMuint n_verts, n_tris, n_uvs;
-		const CTMuint* indices;
 		const CTMfloat* verts;
-		const CTMfloat* normals;
-
+/* create container object and proxy vid */
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
 		vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
 
@@ -339,19 +355,41 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 
 		arcan_vobject* obj = arcan_video_getobject(rv);
 		newmodel->parent = obj;
-		newmodel->ctmmodel = ctx;
         update_view(&newmodel->direction, 0, 0, 0);
 
-		n_uvs   = ctmGetInteger(newmodel->ctmmodel, CTM_UV_MAP_COUNT);
-		n_verts = ctmGetInteger(newmodel->ctmmodel, CTM_VERTEX_COUNT);
-		
-		verts   = ctmGetFloatArray(newmodel->ctmmodel, CTM_VERTICES);
-        minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, n_verts); 
+        newmodel->geometry.nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
+        newmodel->geometry.nindices = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT) * 3;
+//        unsigned uvmaps = ctmGetInteger(ctx, CTM_
+		n_verts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
+		verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
+
+/* normalize model to a -1..1 scale and copy */
+        minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, n_verts);
+        unsigned indsize = newmodel->geometry.nindices * sizeof(unsigned);
+        unsigned vrtsize = n_verts * 3 * sizeof(float);
+
+        float dx = newmodel->bbmax.x - newmodel->bbmin.x;
+        float dy = newmodel->bbmax.y - newmodel->bbmin.y;
+        float dz = newmodel->bbmax.z - newmodel->bbmin.z;
+        float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
         
-		 /*	n_tris  = ctmGetInteger(src->ctmmodel, CTM_TRIANGLE_COUNT);
-		 *	indices = ctmGetIntegerArray(src->ctmmodel, CTM_INDICES);
-		 *	normals = ctmGetFloatArray(src->ctmmodel, CTM_NORMALS); */
-		
+        for (unsigned i = 0; i < n_verts * 3; i += 3){
+            newmodel->geometry.verts[i]   = verts[i]   * sfx;
+            newmodel->geometry.verts[i+1] = verts[i+1] * sfy;
+            newmodel->geometry.verts[i+2] = verts[i+2] * sfz;
+        }
+
+/* verbatimely copy indices and normals */
+        newmodel->geometry.verts = (float*) malloc(vrtsize);
+        newmodel->geometry.indices = (unsigned*) malloc(indsize);
+        
+        memcpy(newmodel->geometry.indices, ctmGetIntegerArray(ctx, CTM_INDICES), indsize);
+        memcpy(newmodel->geometry.normals, ctmGetFloatArray(ctx, CTM_NORMALS), vrtsize);
+
+/* generate a container for each texture set (or cap to limit) */
+        
+        ctmFreeContext(ctx);
+        		
 		return rv;
 	}
 
@@ -364,10 +402,6 @@ error:
 	
 	arcan_warning("arcan_3d_loadmodel(), couldn't load 3dmodel (%s)\n", resource);
 	return ARCAN_EID;
-}
-
-void arcan_3d_movemodel(arcan_vobj_id src, float x, float y, float z, unsigned dt)
-{
 }
 
 void arcan_3d_setdefaults()

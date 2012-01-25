@@ -1094,13 +1094,13 @@ int arcan_lua_imagechildren(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobj_id child;
-	unsigned ofs = 0, count = 0;
+	unsigned ofs = 0, count = 1;
 
 
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 
-	while( (child = arcan_video_findchild(0, &ofs)) != ARCAN_EID){
+	while( (child = arcan_video_findchild(id, ofs++)) != ARCAN_EID){
 		lua_pushnumber(ctx, count++);
 		lua_pushnumber(ctx, child);
 		lua_rawset(ctx, top);
@@ -1807,14 +1807,17 @@ int arcan_lua_movemodel(lua_State* ctx)
 
 int arcan_lua_scalemodel(lua_State* ctx)
 {
+    return -1;
 }
 
 int arcan_lua_rotatemodel(lua_State* ctx)
 {
+    return -1;
 }
 
 int arcan_lua_modelmaterial(lua_State* ctx)
 {
+    return -1;
 }
 
 int arcan_lua_settexmode(lua_State* ctx)

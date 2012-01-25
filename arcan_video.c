@@ -1894,9 +1894,33 @@ arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
 	return rv;
 }
 
-arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned* ofs)
+arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 {
 	arcan_vobj_id rv = ARCAN_EID;
+    arcan_vobject* vobj = arcan_video_getobject(parentid);
+    
+    if (!vobj)
+        return rv;
+    
+    arcan_vobject_litem* current = current_context->first;
+    
+    while (current && current->elem) {
+        arcan_vobject* elem = current->elem;
+        arcan_vobject** frameset = elem->frameset;
+		
+		/* how to deal with those that inherit? */
+        if (elem->parent == vobj) {
+            if (ofs > 0) 
+                ofs--;
+            else{
+                if (elem->owner)
+                    rv = elem->owner->cellid;
+                return rv;
+            }
+        }
+        
+        current = current->next;
+    }
 
 	return rv;
 }
