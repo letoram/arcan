@@ -18,6 +18,17 @@ static void mult_matrix_vecf(const float matrix[16], const float in[4], float ou
 	}
 }
 
+void build_projection_matrix(float near, float far, float aspect, float fov, float m[16])
+{
+	const float h = 1.0f / tan(fov * (M_PI / 360.0));
+	float neg_depth = near - far;
+	
+	m[0]  = h / aspect; m[1]  = 0; m[2]  = 0;  m[3] = 0;
+	m[4]  = 0; m[5]  = h; m[6]  = 0;  m[7] = 0;
+	m[8]  = 0; m[9]  = 0; m[10] = (far + near) / neg_depth; m[11] =-1;
+	m[12] = 0; m[13] = 0; m[14] = 2.0f * (near * far) / neg_depth; m[15] = 0;
+}
+
 int gluProjectf(float objx, float objy, float objz,
 		   const float modelMatrix[16],
 		   const float projMatrix[16],
@@ -357,4 +368,74 @@ float lerp_fract(unsigned startt, unsigned endt, float ct)
 	float cf = ((float)ct - startf + EPSILON);
 
 	return cf / (endf - startf);
+}
+
+
+static inline void normalize_plane(float* pl)
+{
+	float mag = 1.0f / sqrtf(pl[0] * pl[0] + pl[1] * pl[1] + pl[2] * pl[2]);
+	pl[0] *= mag;
+	pl[1] *= mag;
+	pl[2] *= mag;
+	pl[3] *= mag;
+}
+
+
+void update_frustum(float* prjm, float* mvm, float frustum[6][4])
+{
+	float mmr[16];
+/* multiply modelview with projection */
+	mmr[0] = mvm[0] * prjm[0] + mvm[1] * prjm[4] + mvm[2] * prjm[8] + mvm[3] * prjm[12];
+	mmr[1] = mvm[0] * prjm[1] + mvm[1] * prjm[5] + mvm[2] * prjm[9] + mvm[3] * prjm[13];
+	mmr[2] = mvm[0] * prjm[2] + mvm[1] * prjm[6] + mvm[2] * prjm[10] + mvm[3] * prjm[14];
+	mmr[3] = mvm[0] * prjm[3] + mvm[1] * prjm[7] + mvm[2] * prjm[11] + mvm[3] * prjm[15];
+	mmr[4] = mvm[4] * prjm[0] + mvm[5] * prjm[4] + mvm[6] * prjm[8] + mvm[7] * prjm[12];
+	mmr[5] = mvm[4] * prjm[1] + mvm[5] * prjm[5] + mvm[6] * prjm[9] + mvm[7] * prjm[13];
+	mmr[6] = mvm[4] * prjm[2] + mvm[5] * prjm[6] + mvm[6] * prjm[10] + mvm[7] * prjm[14];
+	mmr[7] = mvm[4] * prjm[3] + mvm[5] * prjm[7] + mvm[6] * prjm[11] + mvm[7] * prjm[15];
+	mmr[8] = mvm[8] * prjm[0] + mvm[9] * prjm[4] + mvm[10] * prjm[8] + mvm[11] * prjm[12];
+	mmr[9] = mvm[8] * prjm[1] + mvm[9] * prjm[5] + mvm[10] * prjm[9] + mvm[11] * prjm[13];
+	mmr[10] = mvm[8] * prjm[2] + mvm[9] * prjm[6] + mvm[10] * prjm[10] + mvm[11] * prjm[14];
+	mmr[11] = mvm[8] * prjm[3] + mvm[9] * prjm[7] + mvm[10] * prjm[11] + mvm[11] * prjm[15];
+	mmr[12] = mvm[12] * prjm[0] + mvm[13] * prjm[4] + mvm[14] * prjm[8] + mvm[15] * prjm[12];
+	mmr[13] = mvm[12] * prjm[1] + mvm[13] * prjm[5] + mvm[14] * prjm[9] + mvm[15] * prjm[13];
+	mmr[14] = mvm[12] * prjm[2] + mvm[13] * prjm[6] + mvm[14] * prjm[10] + mvm[15] * prjm[14];
+	mmr[15] = mvm[12] * prjm[3] + mvm[13] * prjm[7] + mvm[14] * prjm[11] + mvm[15] * prjm[15];
+
+/* extract and normalize planes */
+	frustum[0][0] = mmr[3] + mmr[0]; // left
+	frustum[0][1] = mmr[7] + mmr[4];
+	frustum[0][2] = mmr[11] + mmr[8];
+	frustum[0][3] = mmr[15] + mmr[12];
+	normalize_plane(frustum[0]);
+	
+	frustum[1][0] = mmr[3] - mmr[0]; // right
+	frustum[1][1] = mmr[7] - mmr[4];
+	frustum[1][2] = mmr[11] - mmr[8];
+	frustum[1][3] = mmr[15] - mmr[12];
+	normalize_plane(frustum[1]);
+	
+	frustum[2][0] = mmr[3] - mmr[1]; // top
+	frustum[2][1] = mmr[7] - mmr[5];
+	frustum[2][2] = mmr[11] - mmr[9];
+	frustum[2][3] = mmr[15] - mmr[13];
+	normalize_plane(frustum[2]);
+	
+	frustum[3][0] = mmr[3] + mmr[1]; // bottom
+	frustum[3][1] = mmr[7] + mmr[5];
+	frustum[3][2] = mmr[11] + mmr[9];
+	frustum[3][3] = mmr[15] + mmr[13];
+	normalize_plane(frustum[3]);
+	
+	frustum[4][0] = mmr[3] + mmr[2]; // near
+	frustum[4][1] = mmr[7] + mmr[6];
+	frustum[4][2] = mmr[11] + mmr[10];
+	frustum[4][3] = mmr[15] + mmr[14];
+	normalize_plane(frustum[4]);
+	
+	frustum[5][0] = mmr[3] - mmr[2]; // far
+	frustum[5][1] = mmr[7] - mmr[6];
+	frustum[5][2] = mmr[11] - mmr[10];
+	frustum[5][3] = mmr[15] - mmr[14];
+	normalize_plane(frustum[5]);
 }

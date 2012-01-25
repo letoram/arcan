@@ -248,9 +248,9 @@ is stability for the currently available API / feature-set.
     \subsection{OSX}
     \begin{itemize}
 		\item Seems like a priority inversion problem when going into fullscreen / full-windowed mode, makes internal launch / movies slow.
-		\item Full- screen options don't work at all on Lion (SDL- problem as well).
+		\item Full- screen options don't work at all on Lion (SDL- problem as well, patch apparently on its way).
 		\item Focus isn't properly moved between main window / external target and back (should use launch- hidden).
-		\item Internal launch- mode drops focus.
+		\item Internal launch- mode drops focus (also launch-hidden )
 		\item Overall "design" does not fit well with 'Bundle' style.
     \end{itemize}
 	
@@ -264,6 +264,7 @@ is stability for the currently available API / feature-set.
 		\item Direct mng support as animation format alternative to multiple single image files.
 		\item Two-sided objects (requires orientation + multiframe + updated picking).
 		\item More advanced frameserver support (webcam, ...).
+		\item Flag to make part of a render string outlined
 		\item Stream-export vid+aid (or world) to ffmpeg as external encoder / frameserver.
 		\item \emph{halign} (centered, left, right) and \emph{valign} (top, middle, bottom with multiline-multisize) text support.
 	\end{itemize}

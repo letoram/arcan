@@ -1082,6 +1082,36 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 	}
 }
 
+/* item:image_parent, vid, vid */
+int arcan_lua_imageparent(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	lua_pushnumber( ctx, arcan_video_findparent(id) );
+	return 1;
+}
+
+int arcan_lua_imagechildren(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id child;
+	unsigned ofs = 0, count = 0;
+
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+
+	while( (child = arcan_video_findchild(0, &ofs)) != ARCAN_EID){
+		lua_pushnumber(ctx, count++);
+		lua_pushnumber(ctx, child);
+		lua_rawset(ctx, top);
+	}
+	
+	return 1;
+}
+
+/* item:image_find_children, vid, vidtable */
+
+
 int arcan_lua_framesetalloc(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
@@ -1984,6 +2014,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:blend_image, vid,opacity (0..1),[time],nil */
 	lua_register(ctx, "blend_image", arcan_lua_imageopacity);
 
+/* item:image_parent, vid, vid */
+	lua_register(ctx, "image_parent", arcan_lua_imageparent);
+
+/* item:image_find_children, vid, vidtable */
+	lua_register(ctx, "image_children", arcan_lua_imagechildren);
+	
 /* item:order_image,vid,newz,nil */
 	lua_register(ctx, "order_image", arcan_lua_orderimage);
 
@@ -2142,6 +2178,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: VRESW,int */
 	arcan_lua_setglobalint(ctx, "VRESW", arcan_video_screenw());
 
+/* constant: VID_MAXCOUNT,int */
+	arcan_lua_setglobalint(ctx, "VID_MAXCOUNT", VITEM_POOLSIZE);
+
+/* constant: STACK_MAXCOUNT,int */
+	arcan_lua_setglobalint(ctx, "STACK_MAXCOUNT", CONTEXT_STACK_LIMIT);
+
 /* constant: REPEAT,int */
 	arcan_lua_setglobalint(ctx, "TEX_REPEAT", ARCAN_VTEX_REPEAT);
 
@@ -2189,6 +2231,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* constant: LAUNCH_INTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_INTERNAL", 1);
+
+/* constant: MASK_LIVING, enumint */
+	arcan_lua_setglobalint(ctx, "MASK_LIVING", MASK_LIVING);
 
 /* constant: MASK_ORIENTATION,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_ORIENTATION", MASK_ORIENTATION);

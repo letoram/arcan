@@ -15,6 +15,8 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
+#include "arcan_3dbase_synth.h"
+
 // #define M_PI 3.14159265358979323846
 
 extern struct arcan_video_display arcan_video_display;
@@ -60,6 +62,9 @@ typedef struct {
     point position;
     scalefactor scale;
 
+/* Frustum planes */
+	float frustum[6][4];
+	
 /* AA-BB */
     vector bbmin;
     vector bbmax;
@@ -80,12 +85,75 @@ typedef struct {
 
 static arcan_3dscene current_scene = {0};
 
-static void freemodel(arcan_3dmodel* src)
+/*
+ * CAMERA Control, generation and manipulation
+ */
+
+static virtobj* find_camera(unsigned camtag)
 {
-	if (src){
-		
+	virtobj* vobj = current_scene.perspectives;
+	unsigned ofs = 0;
+	
+	while (vobj){
+		if (vobj->type == virttype_camera && camtag == ofs){
+			return vobj;			
+		} else ofs++;
+		vobj = vobj->next;
+	}
+	return NULL;
+}
+
+void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv)
+{
+	virtobj* vobj = find_camera(camtag);
+	if (vobj){
+		vobj->position.x = px;
+		vobj->position.y = py;
+		vobj->position.z = pz;
 	}
 }
+
+static vector camera_forward(vector position, quat orientation)
+{
+	vector res;
+	/* get quaternion inverse *(
+	/* forward = quat * vec3(0,0,-1) */
+}
+
+void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv)
+{
+	unsigned ofs = 0;
+	virtobj* vobj = find_camera(camtag);
+	if (vobj){
+		vobj->rotation = build_quat_euler(roll, pitch, yaw);
+	}
+}
+
+void arcan_3d_camera_sidestep(unsigned camtag, float factor)
+{
+	virtobj* vobj = find_camera(camtag);
+	if (vobj){
+		vector viewv = camera_forward(vobj->position, vobj->rotation);
+		vector cpv = crossp_vector(viewv, build_vect(0.0, 1.0, 0.0));
+		vobj->position.x += cpv.x * factor;
+		vobj->position.y += cpv.y * factor; 
+	}
+}
+
+void arcan_3d_camera_forward(unsigned camtag, float fact)
+{
+	virtobj* vobj = find_camera(camtag);
+	if (vobj){
+		vector viewv = camera_forward(vobj->position, vobj->rotation);
+		vobj->position.x += viewv.x;
+		vobj->position.y += viewv.y;
+		vobj->position.z += viewv.z;
+	}
+}
+
+/*
+ * MODEL Control, generawtion and manipulation
+ */
 
 /* take advantage of the "vid as frame" feature to allow multiple video sources to be
  * associated with the texture- coordinaet sets definedin the model source */
@@ -100,84 +168,17 @@ arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigne
 	return rv;
 }
 
-static void build_hplane(point min, point max, point step, 
-                         float** verts, unsigned** indices, float** txcos,
-                         unsigned* nverts, unsigned* nindices, unsigned* ntxcos)
+static void freemodel(arcan_3dmodel* src)
 {
-    point delta = {
-        .x = max.x - min.x,
-        .y = max.y,
-        .z = max.z - min.z
-    };
-    
-    unsigned nx = ceil(delta.x / step.x);
-    unsigned ny = ceil(delta.z / step.z);
-    
-    *nverts = nx * ny;
-    *verts = (float*) malloc(sizeof(float) * (*nverts) * 3);
-    
-    unsigned ofs = 0;
-    for (unsigned row = 0; row < ny; row++)
-        for (unsigned col = 0; col < nx; col++){
-            *verts[ofs++] = min.x + ((float)col * step.x);
-            *verts[ofs++] = max.y;
-            *verts[ofs++] = min.z + ((float)row * step.z);
-        }
+	if (src){
+		
+	}
 }
 
-static void build_projmatr(float near, float far, float aspect, float fov, float m[16]){
-    const float h = 1.0f / tan(fov * (M_PI / 360.0));
-    float neg_depth = near - far;
-    
-    m[0]  = h / aspect; m[1]  = 0; m[2]  = 0;  m[3] = 0;
-    m[4]  = 0; m[5]  = h; m[6]  = 0;  m[7] = 0;
-    m[8]  = 0; m[9]  = 0; m[10] = (far + near) / neg_depth; m[11] =-1;
-    m[12] = 0; m[13] = 0; m[14] = 2.0f * (near * far) / neg_depth; m[15] = 0;
-}
+/*
+ * Render-loops, Pass control, Initialization
+ */
 
-static inline void wireframe_box(float minx, float miny, float minz, float maxx, float maxy, float maxz)
-{
-    glColor3f(0.2, 1.0, 0.2);
-    glBegin(GL_LINES);
-
-    glVertex3f(minx, miny, minz);
-    glVertex3f(minx, miny, maxz);
-    
-    glVertex3f(minx, miny, minz);
-    glVertex3f(minx, maxy, minz);
-    
-    glVertex3f(minx, miny, maxz);
-    glVertex3f(maxx, miny, maxz);
-
-    glVertex3f(minx, miny, maxz);
-    glVertex3f(minx, maxy, maxz);
-    
-    glVertex3f(maxx, miny, maxz);
-    glVertex3f(maxx, miny, minz);
-    
-    glVertex3f(maxx, miny, maxz);
-    glVertex3f(maxx, maxy, maxz);
-
-    glVertex3f(maxx, miny, maxz);
-    glVertex3f(maxx, miny, minz);
-
-    glVertex3f(maxx, miny, maxz);
-    glVertex3f(maxx, maxy, maxz);
-        
-    glVertex3f(minx, maxy, minz);
-    glVertex3f(minx, maxy, maxz);
-    
-    glVertex3f(minx, maxy, maxz);
-    glVertex3f(maxx, maxy, maxz);
-    
-    glVertex3f(maxx, maxy, maxz);
-    glVertex3f(maxx, maxy, minz);
-    
-    glVertex3f(maxx, maxy, maxz);
-    glVertex3f(maxx, maxy, minz);
-    
-    glEnd();
-}
 
 static void rendermodel(arcan_3dmodel* src, surface_properties props)
 {
@@ -235,7 +236,8 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 	return 0;
 }
 
-void process_scene_normal(arcan_vobject_litem* cell, float lerp)
+/* Simple one- off rendering pass, no exotic sorting, culling structures, projections or other */
+static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 {
 	glEnableClientState(GL_VERTEX_ARRAY);
     
@@ -243,7 +245,7 @@ void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 	while (current){
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
-		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
+// 		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
 		
 		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops);
 
@@ -253,6 +255,7 @@ void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
+/* Chained to the video-pass in arcan_video, stop at the first non-negative order value */
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 {
 	virtobj* base = current_scene.perspectives;
@@ -266,14 +269,19 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
                 glLoadMatrixf(base->projmatr);
 
                 glMatrixMode(GL_MODELVIEW);
+					glLoadIdentity();
                     glMultMatrixf(base->direction.matr);
                     glTranslatef(base->position.x, base->position.y, base->position.z);
                 
 				process_scene_normal(cell, frag);
-			
-			case virttype_dirlight : break;
+
+/* curious about deferred shading and forward shadow mapping, thus likely the first "hightech" renderpath */
+			case virttype_dirlight   : break;
 			case virttype_pointlight : break;
+/* camera with inverted Y, add a stencil at clipping plane and (optionally) render to texture (for water) */
 			case virttype_reflection : break;
+/* depends on caster source, treat pointlights separately, for infinite dirlights use ortographic projection, else
+ * have a caster-specific perspective projection */
 			case virttype_shadow : break;
 		}
 
@@ -300,35 +308,6 @@ static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigne
     }
 }
 
-void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv)
-{
-    virtobj* vobj = current_scene.perspectives;
-    unsigned ofs = 0;
-    
-    while (vobj){
-        if (vobj->type == virttype_camera && camtag == ofs){
-            vobj->position.x = px;
-            vobj->position.y = py;
-            vobj->position.z = pz;
-            break;
-        } else ofs++;
-        vobj = vobj->next;
-    }
-}
-
-void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv)
-{
-    virtobj* vobj = current_scene.perspectives;
-    unsigned ofs = 0;
-    
-    while (vobj){
-        if (vobj->type == virttype_camera && camtag == ofs){
-            vobj->rotation = build_quat_euler(roll, pitch, yaw);
-            break;
-        } else ofs++;
-        vobj = vobj->next;
-    }    
-}
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y){
     return ARCAN_OK;
@@ -397,7 +376,7 @@ void arcan_3d_setdefaults()
 	virtobj* cam = current_scene.perspectives;
 	cam->dynamic = true;
 
-    build_projmatr(0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0, cam->projmatr);
+    build_projection_matrix(0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0, cam->projmatr);
     
     cam->rendertarget = 0;
     cam->type = virttype_camera;
