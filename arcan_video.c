@@ -1882,6 +1882,25 @@ arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst)
 	return rv;
 }
 
+arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
+{
+	arcan_vobj_id rv = ARCAN_EID;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	
+		if (vobj && vobj->parent && vobj->parent->owner) {
+				rv = vobj->parent->owner->cellid;
+		}
+		
+	return rv;
+}
+
+arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned* ofs)
+{
+	arcan_vobj_id rv = ARCAN_EID;
+
+	return rv;
+}
+
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int tv)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
