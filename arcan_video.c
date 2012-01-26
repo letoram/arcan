@@ -579,7 +579,6 @@ static void arcan_video_gldefault()
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 	glAlphaFunc(GL_GREATER, 0);
 	glMatrixMode(GL_PROJECTION);
-	SDL_ShowCursor(0);
 	glLoadIdentity();
 
 	glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
@@ -590,8 +589,6 @@ static void arcan_video_gldefault()
 	glLoadIdentity();
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 }
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
@@ -2513,6 +2510,9 @@ void arcan_video_refresh_GL(float lerp)
 		current = arcan_refresh_3d(current, lerp);
 	}
 
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	
 /* if there are any nodes left, treat them as 2D (ortographic projection) */
 	if (current){
 		glDisable(GL_DEPTH_TEST);
@@ -2591,6 +2591,9 @@ void arcan_video_refresh_GL(float lerp)
 		}
 	}
 
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	
 	glDisable(GL_TEXTURE_2D);
 }
 

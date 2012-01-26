@@ -63,11 +63,13 @@ static struct {
 	FILE* rfile;
 	unsigned char debug;
 	unsigned lua_vidbase;
+	unsigned char grab;
 
 } lua_ctx_store = {
 	.lua_vidbase = 0,
 	.rfile = NULL,
-	.debug = false
+	.debug = false,
+	.grab = 0
 };
 
 static void dump_stack(lua_State* ctx);
@@ -1219,6 +1221,29 @@ int arcan_lua_movecamera(lua_State* ctx)
     return 0;
 }
 
+int arcan_lua_orientcamera(lua_State* ctx)
+{
+	float roll = luaL_checknumber(ctx, 1);
+	float pitch = luaL_checknumber(ctx, 2);
+	float yaw = luaL_checknumber(ctx, 3);
+	unsigned dt = luaL_optint(ctx, 4, 0);
+	unsigned camtag = luaL_optint(ctx, 5, 0);
+
+	arcan_3d_orientcamera(camtag, roll, pitch, yaw, dt);
+
+	return 0;
+}
+
+int arcan_lua_forwardcamera(lua_State* ctx)
+{
+	float step = luaL_checknumber(ctx, 1);
+	unsigned dt = luaL_optint(ctx, 2, 0);
+	unsigned camtag = luaL_optint(ctx, 3, 0);
+	
+	arcan_3d_forwardcamera(camtag, step, dt);
+	return 0;
+}
+
 int arcan_lua_getimageprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -1367,6 +1392,12 @@ int arcan_lua_kbdrepeat(lua_State* ctx)
 	unsigned rrate = luaL_checknumber(ctx, 1);
 	arcan_event_keyrepeat(rrate);
 	return 0;
+}
+
+int arcan_lua_mousegrab(lua_State* ctx)
+{
+	lua_ctx_store.grab = !lua_ctx_store.grab;
+	return 1;
 }
 
 int arcan_lua_gettargets(lua_State* ctx)
@@ -1926,6 +1957,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item: kbd_repeat, rate, nil */
 	lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
 
+/* item: toggle_mouse_grab, nil */
+ 	lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
+
 /* item: system_load,resource,loaderptr */
 	lua_register(ctx, "system_load", arcan_lua_dofile);
 
@@ -2114,13 +2148,16 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:scale3d_model, vid, wf, hf, df, time, nil */
 	lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
 
-/* item:move3d_camera, cid, xp, yp, zp, nil */
-	lua_register(ctx, "move3d_camera", arcan_lua_movecamera); 
-    
-/* item:move_3dcamera, px, py, pz, dt, camtag */
-    lua_register(ctx, "move_3dcamera", arcan_lua_movecamera);
+/* item:move3d_camera, cid, xp, yp, zp, [time], [camtag], nil */
+	lua_register(ctx, "move3d_camera", arcan_lua_movecamera);
 	
-/* item:model_material, slot, vid, nil */
+/* item:forward3d_camera, steps, [time], [camtag], nil */
+	lua_register(ctx, "forward3d_camera", arcan_lua_forwardcamera);
+
+/* item:orient3d_camera, roll, pitch, yaw, [time], [camtag], nil */
+	lua_register(ctx, "orient3d_camera", arcan_lua_orientcamera);
+	
+/* item:model_material, srcvid, slot, matvid, nil */
 	lua_register(ctx, "model_material", arcan_lua_modelmaterial);
 	
 	
