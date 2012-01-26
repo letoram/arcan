@@ -6,8 +6,15 @@
 #include <unistd.h>
 
 #include <openctm.h>
-#include <SDL/SDL_opengl.h>
+
+#ifdef POOR_GL_SUPPORT
+ #define GLEW_STATIC
+ #define NO_SDL_GLEXT
+ #include <glew.h>
+#endif
+
 #include <SDL/SDL.h>
+#include <SDL/SDL_opengl.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -38,12 +45,12 @@ struct virtobj {
 	vector position;
     unsigned int updateticks;
 	bool dynamic;
-	
+
 /* ignored by pointlight */
 	orientation direction;
 	vector view;
     float projmatr[16];
-	
+
 	enum virttype type;
 /* linked list arranged, sorted high-to-low
  * based on virttype */
@@ -70,22 +77,22 @@ typedef struct {
         unsigned ntris;
 		GLenum indexformat;
         void* indices;
-		
+
         /* nnormals == nverts */
         float* normals;
     } geometry;
 
     unsigned char nsets;
     texture_set* textures;
-    
+
 /* Frustum planes */
 	float frustum[6][4];
-	
+
 /* AA-BB */
     vector bbmin;
     vector bbmax;
-    
-/* position, opacity etc. are inherited from parent */	
+
+/* position, opacity etc. are inherited from parent */
 	struct {
         bool debug_vis;
 		bool recv_shdw;
@@ -109,10 +116,10 @@ static virtobj* find_camera(unsigned camtag)
 {
 	virtobj* vobj = current_scene.perspectives;
 	unsigned ofs = 0;
-	
+
 	while (vobj){
 		if (vobj->type == virttype_camera && camtag == ofs){
-			return vobj;			
+			return vobj;
 		} else ofs++;
 		vobj = vobj->next;
 	}
@@ -147,7 +154,7 @@ void arcan_3d_camera_sidestep(unsigned camtag, float factor)
 	if (vobj){
 		vector cpv = crossp_vector(vobj->view, build_vect(0.0, 1.0, 0.0));
 		vobj->position.x += cpv.x * factor;
-		vobj->position.y += cpv.y * factor; 
+		vobj->position.y += cpv.y * factor;
 	}
 }
 
@@ -171,17 +178,17 @@ arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigne
 {
 	arcan_vobject* vobj = arcan_video_getobject(model);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
+
 	if (vobj){
 	}
-	
+
 	return rv;
 }
 
 static void freemodel(arcan_3dmodel* src)
 {
 	if (src){
-		
+
 	}
 }
 
@@ -192,9 +199,9 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 {
 	if (props.opa < EPSILON)
 		return;
-		
+
 	glPushMatrix();
-	
+
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	/* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
@@ -214,7 +221,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 	if (1 || src->flags.debug_vis){
 		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
 	}
-	
+
 	if (src->geometry.normals){
 		glEnableClientState(GL_NORMAL_ARRAY);
 		glNormalPointer(GL_FLOAT, 0, src->geometry.normals);
@@ -224,13 +231,13 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 		unsigned counter = 0;
 		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
 			if (src->textures[i].vid != ARCAN_EID){
-				glClientActiveTexture(counter++);
+				glClientActiveTextureARB(counter++);
 				glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 				glTexCoordPointer(2, GL_FLOAT, 0, src->textures[i].txcos);
 				glBindTexture(GL_TEXTURE_2D, src->textures[i].vid);
 			}
 	}
-	
+
 	if (src->geometry.indices){
 		glDrawElements(GL_TRIANGLES, src->geometry.ntris, src->geometry.indexformat, src->geometry.indices);
 	} else{
@@ -247,7 +254,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 		unsigned counter = 0;
 		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
 			if (src->textures[i].vid != ARCAN_EID){
-				glClientActiveTexture(counter++);
+				glClientActiveTextureARB(counter++);
 				glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 				glBindTexture(GL_TEXTURE_2D, 0);
 			}
@@ -257,32 +264,32 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 		glDisableClientState(GL_NORMAL_ARRAY);
 
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-	
+
 	glPopMatrix();
 }
 
 /* the current model uses the associated scaling / blending
- * of the associated vid and applies it uniformly */ 
+ * of the associated vid and applies it uniformly */
 static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
 		switch (cmd){
 			case ffunc_tick:
 			break;
-			
+
 			case ffunc_render_direct:
 /*				rendermodel( (arcan_3dmodel*) state.ptr, *(surface_properties*)buf ); */
 			break;
-				
+
 			case ffunc_destroy:
 				freemodel( (arcan_3dmodel*) state.ptr );
 			break;
-			
+
 			default:
 			break;
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -290,13 +297,13 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 {
 	glEnableClientState(GL_VERTEX_ARRAY);
-    
+
 	arcan_vobject_litem* current = cell;
 	while (current){
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
-		
+
 		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops, true);
 
 		current = current->next;
@@ -312,7 +319,7 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 
 	while(base){
 		float matr[16];
-		
+
 		switch(base->type){
 			case virttype_camera :
             glMatrixMode(GL_PROJECTION);
@@ -322,7 +329,7 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 					glLoadIdentity();
                     glMultMatrixf(base->direction.matr);
                     glTranslatef(base->position.x, base->position.y, base->position.z);
-                
+
                     process_scene_normal(cell, frag);
 
 /* curious about deferred shading and forward shadow mapping, thus likely the first "hightech" renderpath */
@@ -337,7 +344,7 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 
 		base = base->next;
 	}
-	
+
 	return cell;
 }
 
@@ -346,15 +353,15 @@ static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigne
 {
     vector empty = {0};
     *minp = *maxp = empty;
-    
+
     for (unsigned i = 0; i < nverts * 3; i += 3){
         vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
-        if (a.x < minp->x) minp->x = a.x;        
+        if (a.x < minp->x) minp->x = a.x;
         if (a.y < minp->y) minp->y = a.y;
         if (a.z < minp->z) minp->z = a.z;
-        if (a.x > maxp->x) maxp->x = a.x;        
+        if (a.x > maxp->x) maxp->x = a.x;
         if (a.y > maxp->y) maxp->y = a.y;
-        if (a.z > maxp->z) maxp->z = a.z;            
+        if (a.z > maxp->z) maxp->z = a.z;
     }
 }
 
@@ -363,17 +370,17 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
-	
+
 	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
-	
+
 	arcan_3dmodel* newmodel = NULL;
 	arcan_vobject* vobj = NULL;
-	
+
 	if (rv != ARCAN_EID){
 		point minp = {.x = minx, .y = y, .z = minz};
 		point maxp = {.x = maxx, .y = y, .z = maxz};
 		point step = {.x = wdens, .y = 0, .z = ddens};
-		
+
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
 		state.ptr = (void*) newmodel;
 		arcan_video_alterfeed(rv, ffunc_3d, state);
@@ -385,7 +392,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
 					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &newmodel->geometry.ntris);
 	}
-	
+
 	return rv;
 }
 
@@ -394,7 +401,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 	arcan_vobj_id rv = ARCAN_EID;
 	arcan_3dmodel* newmodel = NULL;
 	arcan_vobject* vobj = NULL;
-	
+
 	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
 	ctmLoad(ctx, resource);
 
@@ -416,7 +423,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 		newmodel->geometry.nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
 		newmodel->geometry.ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
 		unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
-	
+
 		unsigned vrtsize = newmodel->geometry.nverts * 3 * sizeof(float);
 
 		newmodel->geometry.verts = (float*) malloc(vrtsize);
@@ -424,7 +431,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 		const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 		const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
 		const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
-		
+
 /* copy and repack */
 		if (normals){
 			newmodel->geometry.normals = (float*) malloc(vrtsize);
@@ -436,7 +443,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 			if (newmodel->geometry.nverts < 256){
 				uint8_t* buf = (uint8_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint8_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_BYTE;
-				
+
 				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
 					buf[i] = indices[i];
 
@@ -445,16 +452,16 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 			else if (newmodel->geometry.nverts < 65536){
 				uint16_t* buf = (uint16_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint16_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_SHORT;
-				
+
 				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
 					buf[i] = indices[i];
-				
+
 				newmodel->geometry.indices = (void*) buf;
 			}
 			else{
 				uint32_t* buf = (uint32_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint32_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-				
+
 				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
 					buf[i] = indices[i];
 				newmodel->geometry.indices = (void*) buf;
@@ -477,7 +484,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 
         newmodel->bbmax = build_vect(1.0f, 1.0f, 1.0f);
 		newmodel->bbmin = build_vect(-1.0f, -1.0f, -1.0f);
-		
+
 /* each txco set can have a different vid associated with it (multitexturing stuff),
  * possibly also specify filtermode, "mapname" and some other data currently ignored */
 		if (uvmaps > 0){
@@ -489,7 +496,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 				memcpy(newmodel->textures[i].txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1 + i), txsize);
 			}
 		}
-		
+
         ctmFreeContext(ctx);
 
 		return rv;
@@ -501,7 +508,7 @@ error:
 		arcan_video_deleteobject(rv);
 	else if (newmodel)
 		free(newmodel);
-	
+
 	arcan_warning("arcan_3d_loadmodel(), couldn't load 3dmodel (%s)\n", resource);
 	return ARCAN_EID;
 }
@@ -513,7 +520,7 @@ void arcan_3d_setdefaults()
 	cam->dynamic = true;
 
     build_projection_matrix(0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0, cam->projmatr);
-    
+
     cam->rendertarget = 0;
     cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */

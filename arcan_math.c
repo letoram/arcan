@@ -8,7 +8,7 @@
 static void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
 {
 	int i;
-	
+
 	for (i=0; i<4; i++) {
 		out[i] =
 		in[0] * matrix[0*4+i] +
@@ -18,15 +18,15 @@ static void mult_matrix_vecf(const float matrix[16], const float in[4], float ou
 	}
 }
 
-void build_projection_matrix(float near, float far, float aspect, float fov, float m[16])
+void build_projection_matrix(float nearv, float farv, float aspect, float fov, float m[16])
 {
 	const float h = 1.0f / tan(fov * (M_PI / 360.0));
-	float neg_depth = near - far;
-	
+	float neg_depth = nearv - farv;
+
 	m[0]  = h / aspect; m[1]  = 0; m[2]  = 0;  m[3] = 0;
 	m[4]  = 0; m[5]  = h; m[6]  = 0;  m[7] = 0;
-	m[8]  = 0; m[9]  = 0; m[10] = (far + near) / neg_depth; m[11] =-1;
-	m[12] = 0; m[13] = 0; m[14] = 2.0f * (near * far) / neg_depth; m[15] = 0;
+	m[8]  = 0; m[9]  = 0; m[10] = (farv + nearv) / neg_depth; m[11] =-1;
+	m[12] = 0; m[13] = 0; m[14] = 2.0f * (nearv * farv) / neg_depth; m[15] = 0;
 }
 
 int gluProjectf(float objx, float objy, float objz,
@@ -37,7 +37,7 @@ int gluProjectf(float objx, float objy, float objz,
 {
 	float in[4];
 	float out[4];
-	
+
 	in[0]=objx;
 	in[1]=objy;
 	in[2]=objz;
@@ -52,11 +52,11 @@ int gluProjectf(float objx, float objy, float objz,
 	in[0] = in[0] * 0.5 + 0.5;
 	in[1] = in[1] * 0.5 + 0.5;
 	in[2] = in[2] * 0.5 + 0.5;
-	
+
 	/* Map x,y to viewport */
 	in[0] = in[0] * viewport[2] + viewport[0];
 	in[1] = in[1] * viewport[3] + viewport[1];
-	
+
 	*winx=in[0];
 	*winy=in[1];
 	*winz=in[2];
@@ -75,7 +75,7 @@ int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
 }
 
 vector build_vect_polar(const float phi, const float theta)
-{	
+{
 	vector res = {.x = sinf(phi) * cosf(theta),
         .y = sinf(phi) * sinf(theta), .z = sinf(phi)};
 	return res;
@@ -97,7 +97,7 @@ quat build_quat(float angdeg, float vx, float vy, float vz)
 	ret.x = vx * res;
 	ret.y = vy * res;
 	ret.z = vz * res;
-	
+
 	return ret;
 }
 
@@ -146,19 +146,19 @@ vector norm_vector(vector invect){
 	float len = len_vector(invect);
 	if (len < 0.0000001)
 		return empty;
-    
+
 	vector res = {
 		.x = invect.x * len,
 		.y = invect.y * len,
 		.z = invect.z * len
 	};
-    
+
 	return res;
 }
 
 quat inv_quat(quat src)
 {
-	quat res = {.x = -src.x, .y = -src.y, .z = -src.z, .w = src.w }; 
+	quat res = {.x = -src.x, .y = -src.y, .z = -src.z, .w = src.w };
     return res;
 }
 
@@ -233,7 +233,7 @@ vector angle_quat(quat a)
 	float sqx = a.x*a.x;
 	float sqy = a.y*a.y;
 	float sqz = a.z*a.z;
-	
+
 	vector euler;
 	euler.x = atan2f(2.f * (a.x*a.y + a.z*a.w), sqx - sqy - sqz + sqw);
 	euler.y = asinf(-2.f * (a.x*a.z - a.y*a.w));
@@ -267,7 +267,7 @@ quat slerp_quat(quat a, quat b, float fact)
 {
 	float dp = dot_quat(a, b);
 	quat c;
-	
+
 	if (dp < 0){
 		dp = -dp;
 		c = inv_quat(b);
@@ -335,7 +335,7 @@ void push_orient_matr(float x, float y, float z, float roll, float pitch, float 
 	quat orient = build_quat_euler(roll, pitch, yaw);
 	glTranslatef(x, y, z);
 	matr_quatf(orient, matr);
-	
+
 	glMultMatrixf(matr);
 }
 
@@ -361,7 +361,7 @@ float lerp_fract(unsigned startt, unsigned endt, float ct)
 {
 	float startf = (float)startt + EPSILON;
 	float endf = (float)endt + EPSILON;
-	
+
 	if (ct > endt)
 		ct = endt;
 
@@ -408,31 +408,31 @@ void update_frustum(float* prjm, float* mvm, float frustum[6][4])
 	frustum[0][2] = mmr[11] + mmr[8];
 	frustum[0][3] = mmr[15] + mmr[12];
 	normalize_plane(frustum[0]);
-	
+
 	frustum[1][0] = mmr[3] - mmr[0]; // right
 	frustum[1][1] = mmr[7] - mmr[4];
 	frustum[1][2] = mmr[11] - mmr[8];
 	frustum[1][3] = mmr[15] - mmr[12];
 	normalize_plane(frustum[1]);
-	
+
 	frustum[2][0] = mmr[3] - mmr[1]; // top
 	frustum[2][1] = mmr[7] - mmr[5];
 	frustum[2][2] = mmr[11] - mmr[9];
 	frustum[2][3] = mmr[15] - mmr[13];
 	normalize_plane(frustum[2]);
-	
+
 	frustum[3][0] = mmr[3] + mmr[1]; // bottom
 	frustum[3][1] = mmr[7] + mmr[5];
 	frustum[3][2] = mmr[11] + mmr[9];
 	frustum[3][3] = mmr[15] + mmr[13];
 	normalize_plane(frustum[3]);
-	
+
 	frustum[4][0] = mmr[3] + mmr[2]; // near
 	frustum[4][1] = mmr[7] + mmr[6];
 	frustum[4][2] = mmr[11] + mmr[10];
 	frustum[4][3] = mmr[15] + mmr[14];
 	normalize_plane(frustum[4]);
-	
+
 	frustum[5][0] = mmr[3] - mmr[2]; // far
 	frustum[5][1] = mmr[7] - mmr[6];
 	frustum[5][2] = mmr[11] - mmr[10];
