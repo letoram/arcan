@@ -15,7 +15,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-//#include "arcan_3dbase_synth.h"
+#include "arcan_3dbase_synth.h"
 
 // #define M_PI 3.14159265358979323846
 
@@ -40,8 +40,8 @@ struct virtobj {
 	bool dynamic;
 	
 /* ignored by pointlight */
-    quat rotation;
 	orientation direction;
+	vector view;
     float projmatr[16];
 	
 	enum virttype type;
@@ -53,8 +53,8 @@ struct virtobj {
 typedef struct virtobj virtobj;
 
 typedef struct {
-    unsigned ntxcos;
-    float* txcos;
+	/* ntxcos == nverts */
+	float* txcos;
     arcan_vobj_id vid;
 } texture_set;
 
@@ -63,16 +63,14 @@ typedef struct {
 } arcan_3dscene;
 
 typedef struct {
-	orientation direction;
-    point position;
-    scalefactor scale;
-    
 /* Geometry */
     struct{
         unsigned nverts;
         float* verts;
-        unsigned nindices;
-        unsigned* indices;
+        unsigned ntris;
+		GLenum indexformat;
+        void* indices;
+		
         /* nnormals == nverts */
         float* normals;
     } geometry;
@@ -131,20 +129,15 @@ void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned
 	}
 }
 
-static vector camera_forward(vector position, quat orientation)
-{
-	vector res;
-	/* get quaternion inverse */
-	/* forward = quat * vec3(0,0,-1) */
-    return res;
-}
-
 void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv)
 {
 	unsigned ofs = 0;
-	virtobj* vobj = find_camera(camtag);
-	if (vobj){
-		vobj->rotation = build_quat_euler(roll, pitch, yaw);
+	virtobj* cam = find_camera(camtag);
+	if (cam){
+		update_view(&cam->direction, roll, pitch, yaw);
+		cam->view.x = -cam->direction.matr[2];
+		cam->view.y = -cam->direction.matr[6];
+		cam->view.z = -cam->direction.matr[10];
 	}
 }
 
@@ -152,21 +145,19 @@ void arcan_3d_camera_sidestep(unsigned camtag, float factor)
 {
 	virtobj* vobj = find_camera(camtag);
 	if (vobj){
-		vector viewv = camera_forward(vobj->position, vobj->rotation);
-		vector cpv = crossp_vector(viewv, build_vect(0.0, 1.0, 0.0));
+		vector cpv = crossp_vector(vobj->view, build_vect(0.0, 1.0, 0.0));
 		vobj->position.x += cpv.x * factor;
 		vobj->position.y += cpv.y * factor; 
 	}
 }
 
-void arcan_3d_camera_forward(unsigned camtag, float fact)
+void arcan_3d_forwardcamera(unsigned camtag, float fact, unsigned tv)
 {
 	virtobj* vobj = find_camera(camtag);
 	if (vobj){
-		vector viewv = camera_forward(vobj->position, vobj->rotation);
-		vobj->position.x += viewv.x;
-		vobj->position.y += viewv.y;
-		vobj->position.z += viewv.z;
+		vobj->position.x += (vobj->view.x * fact);
+		vobj->position.y += (vobj->view.y * fact);
+		vobj->position.z += (vobj->view.z * fact);
 	}
 }
 
@@ -197,13 +188,15 @@ static void freemodel(arcan_3dmodel* src)
 /*
  * Render-loops, Pass control, Initialization
  */
-
-
-static void rendermodel(arcan_3dmodel* src, surface_properties props)
+static void rendermodel(arcan_3dmodel* src, surface_properties props, bool texture)
 {
+	if (props.opa < EPSILON)
+		return;
+		
 	glPushMatrix();
-	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    /* if there's texture coordsets and an associated vobj,
+	
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	/* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
 	if (src->flags.infinite){
         glLoadIdentity();
@@ -211,22 +204,61 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props)
 		glEnable(GL_DEPTH_TEST);
 	}
 
-	if (1 || src->flags.debug_vis){
-//        wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
-    }
-
+	float rotmat[16];
     glColor4f(1.0, 1.0, 1.0, props.opa);
 	glTranslatef(props.position.x, props.position.y, props.position.z);
-    glMultMatrixf(src->direction.matr);
-    glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
-    glDrawArrays(GL_POINTS, 0, src->geometry.nverts);
+	matr_quatf(props.rotation, rotmat);
+	glMultMatrixf(rotmat);
+	glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
 
+	if (1 || src->flags.debug_vis){
+		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
+	}
+	
+	if (src->geometry.normals){
+		glEnableClientState(GL_NORMAL_ARRAY);
+		glNormalPointer(GL_FLOAT, 0, src->geometry.normals);
+	}
+
+	if (texture && src->nsets){
+		unsigned counter = 0;
+		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
+			if (src->textures[i].vid != ARCAN_EID){
+				glClientActiveTexture(counter++);
+				glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+				glTexCoordPointer(2, GL_FLOAT, 0, src->textures[i].txcos);
+				glBindTexture(GL_TEXTURE_2D, src->textures[i].vid);
+			}
+	}
+	
+	if (src->geometry.indices){
+		glDrawElements(GL_TRIANGLES, src->geometry.ntris, src->geometry.indexformat, src->geometry.indices);
+	} else{
+		glDrawArrays(GL_TRIANGLES, 0, src->geometry.ntris);
+	}
+
+/* and reverse transitions again for the next client */
 	if (src->flags.infinite){
 		glDepthMask(GL_TRUE);
 		glEnable(GL_DEPTH_TEST);
 	}
+
+	if (texture && src->nsets){
+		unsigned counter = 0;
+		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
+			if (src->textures[i].vid != ARCAN_EID){
+				glClientActiveTexture(counter++);
+				glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+				glBindTexture(GL_TEXTURE_2D, 0);
+			}
+ 	}
+
+	if (src->geometry.normals)
+		glDisableClientState(GL_NORMAL_ARRAY);
+
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	
-    glPopMatrix();
+	glPopMatrix();
 }
 
 /* the current model uses the associated scaling / blending
@@ -265,7 +297,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
 		
-		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops);
+		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops, true);
 
 		current = current->next;
 	}
@@ -327,8 +359,34 @@ static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigne
 }
 
 
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y){
-    return ARCAN_OK;
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens){
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
+	arcan_vobj_id rv = ARCAN_EID;
+	img_cons empty = {0};
+	
+	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+	
+	arcan_3dmodel* newmodel = NULL;
+	arcan_vobject* vobj = NULL;
+	
+	if (rv != ARCAN_EID){
+		point minp = {.x = minx, .y = y, .z = minz};
+		point maxp = {.x = maxx, .y = y, .z = maxz};
+		point step = {.x = wdens, .y = 0, .z = ddens};
+		
+		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
+		state.ptr = (void*) newmodel;
+		arcan_video_alterfeed(rv, ffunc_3d, state);
+
+		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
+		newmodel->textures = (texture_set*) calloc(sizeof(texture_set), 1);
+		newmodel->textures[0].vid = ARCAN_EID;
+		newmodel->nsets = 1;
+		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
+					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &newmodel->geometry.ntris);
+	}
+	
+	return rv;
 }
 
 arcan_vobj_id arcan_3d_loadmodel(const char* resource)
@@ -341,8 +399,6 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 	ctmLoad(ctx, resource);
 
 	if (ctmGetError(ctx) == CTM_NONE){
-		CTMuint n_verts, n_tris, n_uvs;
-		const CTMfloat* verts;
 /* create container object and proxy vid */
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
 		vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
@@ -355,41 +411,87 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 
 		arcan_vobject* obj = arcan_video_getobject(rv);
 		newmodel->parent = obj;
-        update_view(&newmodel->direction, 0, 0, 0);
 
-        newmodel->geometry.nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
-        newmodel->geometry.nindices = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT) * 3;
-//        unsigned uvmaps = ctmGetInteger(ctx, CTM_
-		n_verts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
-		verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
+/* figure out dimensions */
+		newmodel->geometry.nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
+		newmodel->geometry.ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
+		unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
+	
+		unsigned vrtsize = newmodel->geometry.nverts * 3 * sizeof(float);
 
-/* normalize model to a -1..1 scale and copy */
-        minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, n_verts);
-        unsigned indsize = newmodel->geometry.nindices * sizeof(unsigned);
-        unsigned vrtsize = n_verts * 3 * sizeof(float);
+		newmodel->geometry.verts = (float*) malloc(vrtsize);
+
+		const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
+		const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
+		const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
+		
+/* copy and repack */
+		if (normals){
+			newmodel->geometry.normals = (float*) malloc(vrtsize);
+			memcpy(newmodel->geometry.normals, normals, vrtsize);
+		}
+
+/* lots of memory to be saved, so worth the trouble */
+		if (indices){
+			if (newmodel->geometry.nverts < 256){
+				uint8_t* buf = (uint8_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint8_t));
+				newmodel->geometry.indexformat = GL_UNSIGNED_BYTE;
+				
+				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
+					buf[i] = indices[i];
+
+				newmodel->geometry.indices = (void*) buf;
+			}
+			else if (newmodel->geometry.nverts < 65536){
+				uint16_t* buf = (uint16_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint16_t));
+				newmodel->geometry.indexformat = GL_UNSIGNED_SHORT;
+				
+				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
+					buf[i] = indices[i];
+				
+				newmodel->geometry.indices = (void*) buf;
+			}
+			else{
+				uint32_t* buf = (uint32_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint32_t));
+				newmodel->geometry.indexformat = GL_UNSIGNED_INT;
+				
+				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
+					buf[i] = indices[i];
+				newmodel->geometry.indices = (void*) buf;
+			}
+		}
+
+/* normalize vertex values to -1..1 */
+        minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, newmodel->geometry.nverts);
 
         float dx = newmodel->bbmax.x - newmodel->bbmin.x;
         float dy = newmodel->bbmax.y - newmodel->bbmin.y;
         float dz = newmodel->bbmax.z - newmodel->bbmin.z;
         float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
-        
-        for (unsigned i = 0; i < n_verts * 3; i += 3){
+
+		for (unsigned i = 0; i < newmodel->geometry.nverts * 3; i += 3){
             newmodel->geometry.verts[i]   = verts[i]   * sfx;
-            newmodel->geometry.verts[i+1] = verts[i+1] * sfy;
-            newmodel->geometry.verts[i+2] = verts[i+2] * sfz;
+			newmodel->geometry.verts[i+1] = verts[i+1] * sfy;
+			newmodel->geometry.verts[i+2] = verts[i+2] * sfz;
         }
 
-/* verbatimely copy indices and normals */
-        newmodel->geometry.verts = (float*) malloc(vrtsize);
-        newmodel->geometry.indices = (unsigned*) malloc(indsize);
-        
-        memcpy(newmodel->geometry.indices, ctmGetIntegerArray(ctx, CTM_INDICES), indsize);
-        memcpy(newmodel->geometry.normals, ctmGetFloatArray(ctx, CTM_NORMALS), vrtsize);
-
-/* generate a container for each texture set (or cap to limit) */
-        
+        newmodel->bbmax = build_vect(1.0f, 1.0f, 1.0f);
+		newmodel->bbmin = build_vect(-1.0f, -1.0f, -1.0f);
+		
+/* each txco set can have a different vid associated with it (multitexturing stuff),
+ * possibly also specify filtermode, "mapname" and some other data currently ignored */
+		if (uvmaps > 0){
+			unsigned txsize = sizeof(float) * 2 * newmodel->geometry.nverts;
+			newmodel->textures = calloc(sizeof(texture_set), uvmaps);
+			for (int i = 0; i < uvmaps; i++){
+				newmodel->textures[i].vid = ARCAN_EID;
+				newmodel->textures[i].txcos = (float*) malloc(txsize);
+				memcpy(newmodel->textures[i].txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1 + i), txsize);
+			}
+		}
+		
         ctmFreeContext(ctx);
-        		
+
 		return rv;
 	}
 
@@ -415,6 +517,8 @@ void arcan_3d_setdefaults()
     cam->rendertarget = 0;
     cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
-	update_view(&cam->direction, 0, 0, 0);
+
+	arcan_3d_orientcamera(0, 0, 0, 0, 0);
+	arcan_3d_buildplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.5, 0.5);
 }
 

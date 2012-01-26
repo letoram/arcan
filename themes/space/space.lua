@@ -16,6 +16,28 @@
 -- will be shown.. 
 -------------------------
 
+vertex_shader = [[
+	uniform int n_ticks;
+	
+	void main(void)
+	{
+		gl_TexCoord[0] = gl_MultiTexCoord0;
+	gl_TexCoord[0].s = gl_TexCoord[0].s + fract(n_ticks / 640.0);
+	gl_TexCoord[0].t = gl_TexCoord[0].t;
+	gl_Position = ftransform();
+	}]];
+	
+	fragment_shader = [[
+	                    #version 120
+	                   uniform sampler2D tex;
+	                   
+	                   void main() {
+	                                vec4 color = texture2D(tex, gl_TexCoord[0].st);
+	                               gl_FragColor = color;
+	                               }
+	                   ]];
+	
+
 local background;
 local bgmusic;
 local menu;
@@ -96,7 +118,10 @@ function space()
 -- pre-generated table of SDL keysyms, LED light remaps, .. 
     keyfun = system_load("scripts/keyconf.lua")();
 
+	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
     images.background = load_image("space.png", 0);
+	image_program(images.background, vertex_shader, fragment_shader);
+	
     images.cursor = load_image("images/mouse_cursor.png", 255);
     images.emitter = fill_surface(12, 12, 200, 200, 200);
 

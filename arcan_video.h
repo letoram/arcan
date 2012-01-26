@@ -71,7 +71,6 @@ enum arcan_ffunc_cmd {
 	ffunc_render = 1,
 	ffunc_tick = 2,
 	ffunc_destroy = 3,
-	/* specialized for 3d situation, the ffunc args are a bit hacked */
 	ffunc_render_direct = 4
 };
 

@@ -242,13 +242,23 @@ void init_sdl_events()
 {
 	SDL_EnableUNICODE(1);
 	arcan_event_keyrepeat(current_context.kbdrepeat);
+
+/* OSX hack */
+	SDL_ShowCursor(0);
+	SDL_ShowCursor(1);
+	SDL_ShowCursor(0);
+	
+	SDL_Event dummy[1];
+	SDL_WM_GrabInput( SDL_GRAB_ON );
+	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, SDL_EVENTMASK(SDL_MOUSEMOTION)) );
+	
 }
 
 void map_sdl_events()
 {
 	SDL_Event event;
 	arcan_event newevent = {.category = EVENT_IO}; /* others will be set upon enqueue */
-
+	
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 			case SDL_MOUSEBUTTONDOWN:
@@ -281,6 +291,7 @@ void map_sdl_events()
 				newevent.data.io.input.analog.nvalues = 2;
 				newevent.data.io.input.analog.gotrel = true;
 				snprintf(newevent.label, sizeof(newevent.label)-1, "mouse%i", event.motion.which);
+				printf("SDL_MouseMotion: x,y(%i,%i)\n", event.motion.xrel, event.motion.yrel);
 
 			/* queue as two separate events, might need internal_launch workaround */
 				if (event.motion.xrel != 0){
