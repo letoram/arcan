@@ -204,7 +204,6 @@ int arcan_lua_loadimageasynch(lua_State* ctx)
 	if (path)
 		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, true);
 	
-	/* loaded images start out hidden */
 	if (id != ARCAN_EID)
 		arcan_video_objectopacity(id, 0, 0);
 	
@@ -1075,8 +1074,19 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
 			break;
-			case EVENT_VIDEO_ASYNCHIMAGE_LOADED: arcan_lua_tblstr(ctx, "kind", "image loaded", top); break;
-			case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: arcan_lua_tblstr(ctx, "kind", "image load failed", top); break;
+                
+			case EVENT_VIDEO_ASYNCHIMAGE_LOADED: 
+                arcan_lua_tblstr(ctx, "kind", "loaded", top); 
+                arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
+            break;
+                
+			case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: 
+                arcan_lua_tblstr(ctx, "kind", "load_failed", top); 
+                arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);    
+            break;
+                
 			case EVENT_VIDEO_FRAMESERVER_TERMINATED : 
 				arcan_lua_tblstr(ctx, "kind", "broken frameserver", top);
 			break;

@@ -231,7 +231,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 		unsigned counter = 0;
 		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
 			if (src->textures[i].vid != ARCAN_EID){
-				glClientActiveTextureARB(counter++);
+				glClientActiveTexture(counter++);
 				glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 				glTexCoordPointer(2, GL_FLOAT, 0, src->textures[i].txcos);
 				glBindTexture(GL_TEXTURE_2D, src->textures[i].vid);
@@ -253,7 +253,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 		unsigned counter = 0;
 		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
 			if (src->textures[i].vid != ARCAN_EID){
-				glClientActiveTextureARB(counter++);
+				glClientActiveTexture(counter++);
 				glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 				glBindTexture(GL_TEXTURE_2D, 0);
 			}
