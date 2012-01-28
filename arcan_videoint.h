@@ -62,7 +62,7 @@ typedef struct arcan_vstorage {
 	uint32_t s_raw;
 	uint8_t* raw;
 	char* source;
-	char tag;
+//	char tag;
 } arcan_vstorage;
 
 typedef struct arcan_vobject {

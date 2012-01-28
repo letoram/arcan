@@ -184,12 +184,30 @@ int arcan_lua_loadimage(lua_State* ctx)
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 
 	if (path)
-		id = arcan_video_addobject(path, arcan_video_dimensions(0, 0), prio);
+		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, false);
 
 	/* loaded images start out hidden */
 	if (id != ARCAN_EID)
 		arcan_video_objectopacity(id, 0, 0);
 
+	free(path);
+	lua_pushvid(ctx, id);
+	return 1;
+}
+
+int arcan_lua_loadimageasynch(lua_State* ctx)
+{
+	arcan_vobj_id id = ARCAN_EID;
+	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	uint8_t prio = luaL_optint(ctx, 2, 0);
+	
+	if (path)
+		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, true);
+	
+	/* loaded images start out hidden */
+	if (id != ARCAN_EID)
+		arcan_video_objectopacity(id, 0, 0);
+	
 	free(path);
 	lua_pushvid(ctx, id);
 	return 1;
@@ -683,6 +701,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	free(fname);
 	
 	if (mvctx) {
+		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
 		lua_pushaid(ctx, mvctx->aid);
 		return 2;
@@ -1056,6 +1075,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
 			break;
+			case EVENT_VIDEO_ASYNCHIMAGE_LOADED: arcan_lua_tblstr(ctx, "kind", "image loaded", top); break;
+			case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: arcan_lua_tblstr(ctx, "kind", "image load failed", top); break;
 			case EVENT_VIDEO_FRAMESERVER_TERMINATED : 
 				arcan_lua_tblstr(ctx, "kind", "broken frameserver", top);
 			break;
@@ -2027,6 +2048,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item: load_image, resource, [zval (0..255)], vid */
 	lua_register(ctx, "load_image", arcan_lua_loadimage);
 
+/* item: load_image_asynch, resource, [zval (0..255)], vid */
+	lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
+	
 /* item: delete_image, vid, nil */
 	lua_register(ctx, "delete_image", arcan_lua_deleteimage);
 

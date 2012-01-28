@@ -291,7 +291,6 @@ void map_sdl_events()
 				newevent.data.io.input.analog.nvalues = 2;
 				newevent.data.io.input.analog.gotrel = true;
 				snprintf(newevent.label, sizeof(newevent.label)-1, "mouse%i", event.motion.which);
-				printf("SDL_MouseMotion: x,y(%i,%i)\n", event.motion.xrel, event.motion.yrel);
 
 			/* queue as two separate events, might need internal_launch workaround */
 				if (event.motion.xrel != 0){

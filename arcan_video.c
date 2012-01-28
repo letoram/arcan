@@ -103,7 +103,7 @@ struct arcan_video_context {
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe);
+static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool nogl);
 
 static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 	{
@@ -173,17 +173,21 @@ static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* v
 /*	glUseProgram(*dprg); */
 }
 
-static void allocate_and_store_globj(arcan_vobject* current){
-	glGenTextures(1, &current->gl_storage.glid);
-	glBindTexture(GL_TEXTURE_2D, current->gl_storage.glid);
+static void allocate_and_store_globj(arcan_vobject* dst){
+	glGenTextures(1, &dst->gl_storage.glid);
+	glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
+
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, current->gl_storage.w, current->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, current->default_frame.raw);
-
-	if (current->gpu_program.fragment && 
-		current->gpu_program.vertex){
-			build_shader(&current->gl_storage.program, &current->gl_storage.vertex, &current->gl_storage.fragment,
-						   current->gpu_program.vertex, current->gpu_program.fragment);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
+	
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, dst->gl_storage.w, dst->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->default_frame.raw);
+	
+	if (dst->gpu_program.fragment &&
+		dst->gpu_program.vertex){
+			build_shader(&dst->gl_storage.program, &dst->gl_storage.vertex, &dst->gl_storage.fragment,
+						   dst->gpu_program.vertex, dst->gpu_program.fragment);
 		}
 }
 
@@ -223,8 +227,10 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			arcan_vobject* current = &current_context->vitems_pool[i];
 		/* conservative means that we do not keep a copy of the originally decoded memory,
 		 * essentially halving memory consumption but increasing cost of pop() and push() */
-			if (arcan_video_display.conservative && (char)current->default_frame.tag == ARCAN_TAG_IMAGE){
-				arcan_video_getimage(current->default_frame.source, current, &current->default_frame); 
+			if (arcan_video_display.conservative && (char)current->state.tag == ARCAN_TAG_IMAGE){
+				char* fname = current->default_frame.source;
+				arcan_video_getimage(fname, current, &current->default_frame, false);
+				free(fname); /* getimage will copy again */
 			}
 			else
 				allocate_and_store_globj(current);
@@ -654,7 +660,7 @@ void arcan_video_fullscreen()
 	SDL_WM_ToggleFullScreen(arcan_video_display.screen);
 }
 
-static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe)
+static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool nogl)
 {
     arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	SDL_Surface* res = IMG_Load(fname);
@@ -662,7 +668,9 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 	if (res) {
 		dst->origw = res->w;
 		dst->origh = res->h;
-		dstframe->tag = ARCAN_TAG_IMAGE;
+		if (!nogl)
+			dst->state.tag = ARCAN_TAG_IMAGE;
+		
 		dstframe->source = strdup(fname);
 		
 		/* let SDL do byte-order conversion and make sure we have BGRA, ... */
@@ -674,14 +682,6 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 #endif
 		SDL_SetAlpha(res, 0, SDL_ALPHA_TRANSPARENT);
 		SDL_BlitSurface(res, NULL, gl_image, NULL);
-
-		glGenTextures(1, &dst->gl_storage.glid);
-		glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
 
 		uint16_t neww, newh;
 		if (dst->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
@@ -699,7 +699,10 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		dstframe->s_raw = neww * newh * 4;
 		dstframe->raw = (uint8_t*) calloc(dstframe->s_raw, 1);
 
-		/* line-by-line copy */
+		/* line-by-line copy
+		 * possible problem loading asynch image (nogl)
+		 * with the gluScaleImage code, can't find decent documentation on it,
+		 * although it "shouldn't" need to use GL at all ... */
 
 		if (newh != gl_image->h || neww != gl_image->w){
 			if (dst->gl_storage.scale == ARCAN_VIMAGE_SCALEPOW2 && 
@@ -726,12 +729,13 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 	/* whileas the gpu texture format is (4 byte alignment, BGRA) and the 
 	 * glfunctions will waste membw- to convert to that, setting the "proper" 
 	 * format here seems to generate a bad (full-white texture), investigate! */
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, neww, newh, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dstframe->raw);
+		if (!nogl)
+			allocate_and_store_globj(dst);
 
 		SDL_FreeSurface(res);
 		SDL_FreeSurface(gl_image);
-		
-		if (arcan_video_display.conservative){
+	
+		if (!nogl && arcan_video_display.conservative){
 			free(dst->default_frame.raw);
 			dst->default_frame.raw = 0;
 		}
@@ -788,7 +792,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.h = constraints.h;
 		newvobj->origw = origw;
 		newvobj->origh = origh;
-		newvobj->current.opa = 0.0f;
+		newvobj->current.opa = 1.0f;
 		newvobj->current.rotation = build_quat_euler( 0, 0, 0 );
 
 	/* allocate */
@@ -849,30 +853,47 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned
 	return rv;
 }
 
+struct thread_loader_args {
+	arcan_vobject* dst;
+	arcan_vobj_id dstid;
+	char* fname;
+};
+
 /* if the loading failed, we'll add a small black image in its stead,
  * and emit a failed video event */
 static int thread_loader(void* in)
 {
-    void** argv = (void**) in;
-    arcan_vobject* dst = (arcan_vobject*) argv[0];
-    const char* fname = (const char*) argv[1]; 
-    
-/* while this happens, the following members of the struct are not to be touched 
+	arcan_event result;
+	struct thread_loader_args* localargs = (struct thread_loader_args*) in;
+	arcan_vobject* dst = localargs->dst;
+	
+	/* while this happens, the following members of the struct are not to be touched 
  * elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
-    arcan_errc rc = arcan_video_getimage(fname, dst, &dst->default_frame);
-    if (rc == ARCAN_OK){
-        /* emit OK event */
+    arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
+
+	if (rc == ARCAN_OK){ /* emit OK event */
+		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
     } else {
         dst->origw = 32;
         dst->origh = 32;
-        dst->default_frame.tag = ARCAN_TAG_IMAGE;
-        
-        /* emit FAILED event */
+		dst->default_frame.s_raw = 32 * 32 * 4;
+		dst->default_frame.raw = (char*) malloc(dst->default_frame.s_raw);
+		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
+		dst->gl_storage.w = 32;
+		dst->gl_storage.h = 32;
+		dst->current.opa = 1.0f;
+		dst->current.rotation = build_quat_euler( 0, 0, 0 );
+		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;
+		/* emit FAILED event */
     }
-    
-    dst->state.tag = ARCAN_TAG_IMAGE;
 
+    result.data.video.source = localargs->dstid;
+	result.category = EVENT_VIDEO;
+
+	arcan_event_enqueue(&result);
+	free(localargs->fname);
+	free(localargs);
     return 0;
 }
 
@@ -880,26 +901,43 @@ static int thread_loader(void* in)
  * as any other, but while the ASYNCIMG tag is active, it will be skipped in
  * rendering (linking, instancing etc. sortof works) but any external (script)
  * using the object before receiving a LOADED event may give undefined results */
-arcan_vobj_id arcan_video_loadimage_asynch(const char* fname, arcan_vobj_id placeholder, img_cons constraints, arcan_errc* errcode)
+static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode)
 {
-    arcan_vobj_id rv;
-    arcan_vobject* newvobj = arcan_video_newvobject(&rv);
-    if (!newvobj)
-        return ARCAN_EID;
+	struct thread_loader_args* args = (struct thread_loader_args*) calloc(sizeof(struct thread_loader_args), 1);
+	args->dst = arcan_video_newvobject(&args->dstid);
 
-    void** argv = (void**) malloc(sizeof(void*) * 3);
-    argv[0] = newvobj;
-    argv[1] = (void*) fname;
-    argv[2] = NULL;
-
-    newvobj->state.tag = ARCAN_TAG_ASYNCIMG;
-    newvobj->default_frame.tag = ARCAN_TAG_ASYNCIMG;
-    newvobj->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) argv);
-
-    return rv;
+	if (!args->dst){
+		free(args);
+		return ARCAN_EID;
+	}
+	args->fname = strdup(fname);
+	
+    args->dst->state.tag = ARCAN_TAG_ASYNCIMG;
+    args->dst->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
+	return args->dstid;
 }
 
-arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arcan_errc* errcode)
+arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(source);
+
+	if (vobj){
+		if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
+		/* protect us against premature invocation */
+			unsigned status;
+			SDL_WaitThread((SDL_Thread*)vobj->state.ptr, &status);
+			allocate_and_store_globj(vobj);
+			vobj->state.tag = ARCAN_TAG_IMAGE;
+			vobj->state.ptr = NULL;
+		}
+		else rv = ARCAN_ERRC_UNACCEPTED_STATE;
+	}
+	
+	return rv;
+}
+
+static arcan_vobj_id loadimage(const char* fname, img_cons constraints, arcan_errc* errcode)
 {
 	GLuint gtid = 0;
 	arcan_vobj_id rv = 0;
@@ -908,7 +946,7 @@ arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arc
 	if (newvobj == NULL)
 		return ARCAN_EID;
 	
-	arcan_errc rc = arcan_video_getimage(fname, newvobj, &newvobj->default_frame);
+	arcan_errc rc = arcan_video_getimage(fname, newvobj, &newvobj->default_frame, false);
 
 	if (rc == ARCAN_OK) {
 		newvobj->current.position.x = 0;
@@ -1004,17 +1042,11 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		}
 
 		/* allocate */
-		glGenTextures(1, &newvobj->gl_storage.glid);
-
-		glBindTexture(GL_TEXTURE_2D, newvobj->gl_storage.glid);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
 		vstor->s_raw = newvobj->gl_storage.w * newvobj->gl_storage.h * newvobj->gl_storage.ncpt;
 		vstor->raw = (uint8_t*) calloc(vstor->s_raw, 1);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, newvobj->gl_storage.w, newvobj->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vstor->raw);
-		glBindTexture(GL_TEXTURE_2D, 0);
+		
 		newvobj->ffunc = ffunc;
+		allocate_and_store_globj(newvobj);
 	}
 
 	return rv;
@@ -1077,11 +1109,13 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	return rv;
 }
 
-arcan_vobj_id arcan_video_addobject(const char* rloc,img_cons constraints, unsigned short zv)
+arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsigned short zv, bool asynch)
 {
-	arcan_vobj_id rv;
+	arcan_vobj_id rv = asynch ?
+		loadimage_asynch((char*) rloc, constraints, NULL) :
+		loadimage((char*) rloc, constraints, NULL);
 
-	if ((rv = arcan_video_loadimage((char*) rloc, constraints, NULL)) > 0) {
+		if (rv > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->order = zv;
 		arcan_video_attachobject(rv);
@@ -1099,6 +1133,7 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->order = zv;
 		vobj->state = state;
+		vobj->current.opa = 1.0f;
 
 		if (state.tag == ARCAN_TAG_3DOBJ)
 			vobj->order = -1 * zv;
@@ -1639,7 +1674,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->gl_storage.h = storh;
 		vobj->default_frame.s_raw = storw * storh * 4;
 		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw, 1);
-		vobj->default_frame.tag = ARCAN_TAG_TEXT;
+		vobj->state.tag = ARCAN_TAG_TEXT;
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
@@ -2543,7 +2578,6 @@ void arcan_video_refresh_GL(float lerp)
 {
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
-	glEnable(GL_TEXTURE_2D);
 	
 	arcan_vobject* world = &current_context->world;
 
@@ -2559,7 +2593,8 @@ void arcan_video_refresh_GL(float lerp)
 	if (current && current->elem->order < 0){
 		current = arcan_refresh_3d(current, lerp);
 	}
-
+	
+	glEnable(GL_TEXTURE_2D);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	

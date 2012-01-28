@@ -70,38 +70,38 @@ static void build_hplane(point min, point max, point step,
 	};
 
 	unsigned nx = ceil(delta.x / step.x);
-	unsigned ny = ceil(delta.z / step.z);
+	unsigned nz = ceil(delta.z / step.z);
 	
-	*nverts = nx * ny;
+	*nverts = nx * nz;
 	*verts = (float*) malloc(sizeof(float) * (*nverts) * 3);
 	*txcos = (float*) malloc(sizeof(float) * (*nverts) * 2);
 	
 	unsigned vofs = 0, tofs = 0;
-	for (unsigned row = 0; row < ny; row++)
-		for (unsigned col = 0; col < nx; col++){
-			(*verts)[vofs++] = min.x + ((float)col * step.x);
-			(*verts)[vofs++] = max.y;
-			(*verts)[vofs++] = min.z + ((float)row * step.z);
-			(*txcos)[tofs++] = (float)col / (float)nx;
-			(*txcos)[tofs++] = (float)row / (float)ny;
+	for (unsigned x = 0; x < nx; x++)
+		for (unsigned z = 0; z < nz; z++){
+			(*verts)[vofs++] = min.x + (float)x*step.x;
+			(*verts)[vofs++] = min.y;
+			(*verts)[vofs++] = min.z + (float)z*step.z;
+			(*txcos)[tofs++] = (float)x / (float)nx;
+			(*txcos)[tofs++] = (float)z / (float)nz;
 		}
 
-	vofs  = 0;
-#define VERTOFS(ROW,COL) ((ROW * ny) + COL)
-	
-	*nindices = (nx-1) * (ny-1) * 6;
-	*indices = (unsigned*) malloc(sizeof(unsigned) * (*nindices));
-	for (unsigned row = 0; row < ny - 1; row++)
-		for (unsigned col = 0; col < nx - 1; col++){
-/* triangle 1 */
-			(*indices)[vofs++] = VERTOFS(row, col);
-			(*indices)[vofs++] = VERTOFS(row+1, col);
-			(*indices)[vofs++] = VERTOFS(row+1, col+1);
-/* triangle 2 */
-			(*indices)[vofs++] = VERTOFS(row+1, col+1);
-			(*indices)[vofs++] = VERTOFS(row, col+1);
-			(*indices)[vofs++] = VERTOFS(row, col);
-		}
-#undef VERTOFS
+	vofs = 0; tofs = 0;
+#define GETVERT(X,Z)( ( (X) * nz) + Z)
+	*indices = (unsigned*) malloc(sizeof(unsigned) * (*nverts) * 3 * 2);
+		for (unsigned x = 0; x < nx-1; x++)
+			for (unsigned z = 0; z < nz-1; z++){
+				(*indices)[vofs++] = GETVERT(x, z);
+				(*indices)[vofs++] = GETVERT(x, z+1);
+				(*indices)[vofs++] = GETVERT(x+1, z+1);
+				tofs++;
+				
+				(*indices)[vofs++] = GETVERT(x, z);
+				(*indices)[vofs++] = GETVERT(x+1, z+1);
+				(*indices)[vofs++] = GETVERT(x+1, z);
+				tofs++;
+			}
+			
+	*nindices = tofs * 3;
 }
 

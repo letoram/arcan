@@ -133,7 +133,8 @@ signed arcan_video_pushcontext();
  * assumes constraints are a valid texture size (power of two),
  * and that the data is in RGBA format*/
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv);
-arcan_vobj_id arcan_video_addobject(const char* fname, img_cons constraints, unsigned short zv);
+arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv, bool asynch);
+arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb feed, vfunc_state state);

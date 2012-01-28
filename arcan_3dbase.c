@@ -216,7 +216,6 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 	glTranslatef(props.position.x, props.position.y, props.position.z);
 	matr_quatf(props.rotation, rotmat);
 	glMultMatrixf(rotmat);
-	glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
 
 	if (1 || src->flags.debug_vis){
 		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
@@ -226,7 +225,8 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 		glEnableClientState(GL_NORMAL_ARRAY);
 		glNormalPointer(GL_FLOAT, 0, src->geometry.normals);
 	}
-
+	
+	glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
 	if (texture && src->nsets){
 		unsigned counter = 0;
 		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
@@ -238,11 +238,10 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 			}
 	}
 
-	if (src->geometry.indices){
+	if (src->geometry.indices)
 		glDrawElements(GL_TRIANGLES, src->geometry.ntris, src->geometry.indexformat, src->geometry.indices);
-	} else{
+	else
 		glDrawArrays(GL_TRIANGLES, 0, src->geometry.ntris);
-	}
 
 /* and reverse transitions again for the next client */
 	if (src->flags.infinite){
@@ -277,10 +276,6 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 			case ffunc_tick:
 			break;
 
-			case ffunc_render_direct:
-/*				rendermodel( (arcan_3dmodel*) state.ptr, *(surface_properties*)buf ); */
-			break;
-
 			case ffunc_destroy:
 				freemodel( (arcan_3dmodel*) state.ptr );
 			break;
@@ -297,6 +292,7 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 {
 	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnable(GL_DEPTH_TEST);
 
 	arcan_vobject_litem* current = cell;
 	while (current){
@@ -316,7 +312,9 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 {
 	virtobj* base = current_scene.perspectives;
-
+	glClear(GL_DEPTH_BUFFER_BIT);
+	glColor4f(1.0, 1.0, 1.0, 1.0);
+	
 	while(base){
 		float matr[16];
 
@@ -389,8 +387,11 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		newmodel->textures = (texture_set*) calloc(sizeof(texture_set), 1);
 		newmodel->textures[0].vid = ARCAN_EID;
 		newmodel->nsets = 1;
+		unsigned nindices;
+		
 		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
-					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &newmodel->geometry.ntris);
+					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &nindices);
+		newmodel->geometry.ntris = nindices / 2;
 	}
 
 	return rv;
