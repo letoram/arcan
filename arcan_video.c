@@ -103,7 +103,7 @@ struct arcan_video_context {
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool nogl);
+static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc);
 
 static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 	{
@@ -660,7 +660,7 @@ void arcan_video_fullscreen()
 	SDL_WM_ToggleFullScreen(arcan_video_display.screen);
 }
 
-static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool nogl)
+static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc)
 {
     arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	SDL_Surface* res = IMG_Load(fname);
@@ -668,7 +668,8 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 	if (res) {
 		dst->origw = res->w;
 		dst->origh = res->h;
-		if (!nogl)
+
+		if (!asynchsrc)
 			dst->state.tag = ARCAN_TAG_IMAGE;
 		
 		dstframe->source = strdup(fname);
@@ -874,16 +875,21 @@ static int thread_loader(void* in)
 
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
+        result.data.video.constraints.w = dst->origw;
+        result.data.video.constraints.h = dst->origh;
     } else {
         dst->origw = 32;
         dst->origh = 32;
 		dst->default_frame.s_raw = 32 * 32 * 4;
-		dst->default_frame.raw = (char*) malloc(dst->default_frame.s_raw);
+		dst->default_frame.raw = (uint8_t*) malloc(dst->default_frame.s_raw);
 		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
 		dst->gl_storage.w = 32;
 		dst->gl_storage.h = 32;
 		dst->current.opa = 1.0f;
 		dst->current.rotation = build_quat_euler( 0, 0, 0 );
+        
+        result.data.video.constraints.w = 32;
+        result.data.video.constraints.h = 32;
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;
 		/* emit FAILED event */
     }
@@ -925,7 +931,7 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 	if (vobj){
 		if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
 		/* protect us against premature invocation */
-			unsigned status;
+			int status;
 			SDL_WaitThread((SDL_Thread*)vobj->state.ptr, &status);
 			allocate_and_store_globj(vobj);
 			vobj->state.tag = ARCAN_TAG_IMAGE;
@@ -1118,7 +1124,8 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsig
 		if (rv > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->order = zv;
-		arcan_video_attachobject(rv);
+    	vobj->current.rotation = build_quat_euler( 0, 0, 0 );
+        arcan_video_attachobject(rv);
 	}
 
 	return rv;
