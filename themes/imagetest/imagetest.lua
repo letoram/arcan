@@ -15,6 +15,7 @@
 --
 
 aimg = BADID;
+imagefun = load_image;
 
 function imagetest()
 	local symfun = system_load("scripts/symtable.lua");
@@ -26,7 +27,8 @@ function imagetest()
 	[[\b\!i(3)\t\!bvid limit test\n\r]] ..
 	[[\b\!i(s)\t\!bstack push\n\r]] ..
 	[[\b\!i(p)\t\!bstack pop\n\r]] ..
-	[[\b\!i(l)\t\!bload image into context\n\r]] .. 
+	[[\b\!i(l)\t\!bload image into context\n\r]] ..
+	[[\b\!i(a)\t\!btoggle asynchronous image_load\n\r]] .. 
 	[[\iESCAPE\t\!ishutdown\n\r]] );
 
 	sprop = image_surface_properties(text_vid);
@@ -45,7 +47,7 @@ function zordervidlim(load)
 
 		local newid;
 		if (load) then
-			 newid = load_image("imagetest.png", 0);
+			 newid = imagefun("imagetest.png", 0);
 			 move_image(newid, math.random( VRESW - 16), math.random( VRESH - 16), 0);
 			 resize_image(newid, 64, 64, 0);
 		else
@@ -111,7 +113,7 @@ function imagetest_input(inputtbl)
 			zordervidlim(true);
 		elseif (symtable[ inputtbl.keysym ] == "l") then
 			print("Loading image into context");
-			local vid = load_image("imagetest.png");
+			local vid = imagefun("imagetest.png");
 			resize_image(vid, 64, 64);
 			move_image(vid, math.random(VRESW - 64), math.random(VRESH - 64), 0);
 			order_image(vid, 0);
@@ -120,6 +122,9 @@ function imagetest_input(inputtbl)
 			print("Stack push => " .. tostring ( push_video_context() ) );
 		elseif (symtable[ inputtbl.keysym ] == "p") then
 			print("Stack pop => " .. tostring ( pop_video_context() ) );
+		elseif (symtable[inputtbl.keysym] == "a") then
+			print("Switching image mode\n");
+			imagefun = imagefun == load_image and load_image_asynch or load_image
 		end
 	end
 end
