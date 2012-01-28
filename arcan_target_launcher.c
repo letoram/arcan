@@ -181,9 +181,6 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 			return shmpage->vready;
 		break;
         
-        case ffunc_render_direct:
-            break;
-            
         case ffunc_tick:
             break;
 		

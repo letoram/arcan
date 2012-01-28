@@ -98,7 +98,8 @@ enum arcan_vobj_tags {
 	ARCAN_TAG_TEXT = 2,
 	ARCAN_TAG_MOVIE = 3,
 	ARCAN_TAG_TARGET = 4,
-	ARCAN_TAG_3DOBJ = 5
+	ARCAN_TAG_3DOBJ = 5,
+    ARCAN_TAG_ASYNCIMG = 6
 };
 
 enum arcan_errors {

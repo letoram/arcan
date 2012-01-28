@@ -235,7 +235,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
 	global.shared->glsource = (flags & SDL_OPENGL) > 0;
-
+    
 	if ( (flags & SDL_FULLSCREEN) > 0) { 
 		/* oh no you don't */
 		flags &= !SDL_FULLSCREEN;

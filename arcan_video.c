@@ -656,12 +656,10 @@ void arcan_video_fullscreen()
 
 static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe)
 {
-	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
+    arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	SDL_Surface* res = IMG_Load(fname);
 
 	if (res) {
-		/* quick workaround as the width / height specified in the target resoruce will be based
-		 * on power-of-two padding due to GLtexture limits (not that they "exist" in 2.0 but better be safe ..) */
 		dst->origw = res->w;
 		dst->origh = res->h;
 		dstframe->tag = ARCAN_TAG_IMAGE;
@@ -851,9 +849,54 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned
 	return rv;
 }
 
-arcan_vobj_id arcan_video_loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode)
+/* if the loading failed, we'll add a small black image in its stead,
+ * and emit a failed video event */
+static int thread_loader(void* in)
 {
-    return ARCAN_ERRC_NO_SUCH_OBJECT;
+    void** argv = (void**) in;
+    arcan_vobject* dst = (arcan_vobject*) argv[0];
+    const char* fname = (const char*) argv[1]; 
+    
+/* while this happens, the following members of the struct are not to be touched 
+ * elsewhere:
+ * origw / origh, default_frame->tag/source, gl_storage */
+    arcan_errc rc = arcan_video_getimage(fname, dst, &dst->default_frame);
+    if (rc == ARCAN_OK){
+        /* emit OK event */
+    } else {
+        dst->origw = 32;
+        dst->origh = 32;
+        dst->default_frame.tag = ARCAN_TAG_IMAGE;
+        
+        /* emit FAILED event */
+    }
+    
+    dst->state.tag = ARCAN_TAG_IMAGE;
+
+    return 0;
+}
+
+/* create a new vobj, fill it out with enough vals that we can treat it 
+ * as any other, but while the ASYNCIMG tag is active, it will be skipped in
+ * rendering (linking, instancing etc. sortof works) but any external (script)
+ * using the object before receiving a LOADED event may give undefined results */
+arcan_vobj_id arcan_video_loadimage_asynch(const char* fname, arcan_vobj_id placeholder, img_cons constraints, arcan_errc* errcode)
+{
+    arcan_vobj_id rv;
+    arcan_vobject* newvobj = arcan_video_newvobject(&rv);
+    if (!newvobj)
+        return ARCAN_EID;
+
+    void** argv = (void**) malloc(sizeof(void*) * 3);
+    argv[0] = newvobj;
+    argv[1] = (void*) fname;
+    argv[2] = NULL;
+
+    newvobj->state.tag = ARCAN_TAG_ASYNCIMG;
+    newvobj->default_frame.tag = ARCAN_TAG_ASYNCIMG;
+    newvobj->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) argv);
+
+    return rv;
 }
 
 arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, arcan_errc* errcode)
@@ -984,7 +1027,8 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	
-	if (vobj && vobj->flags.clone == true)
+	if (vobj && (vobj->flags.clone == true) && 
+        !(vobj->state.tag == ARCAN_TAG_TARGET || vobj->state.tag == ARCAN_TAG_MOVIE))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 	if (vobj) {
@@ -1800,6 +1844,9 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			if (vobj->ffunc)
 				vobj->ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->state);
 
+            if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
+                SDL_KillThread( vobj->state.ptr );
+            }
 			vobj->ffunc = NULL;
 			vobj->state.tag = 0;
 			vobj->state.ptr = NULL;
@@ -2445,6 +2492,9 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
+    if (src->state.tag == ARCAN_TAG_ASYNCIMG)
+        return;
+    
 	float matr[16];
 	prop.scale.x *= src->origw * 0.5;
 	prop.scale.y *= src->origh * 0.5;
@@ -2638,7 +2688,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 			glGetFloatv(GL_MODELVIEW_MATRIX, orient);
 			glGetIntegerv(GL_VIEWPORT, view);
 
-		/* unproject all 4 vertices, usually very costly but for 4 vertices it's more manageable */
+		/* unproject all 4 vertices, usually very costly but for 4 vertices it's manageable */
 			gluProjectf(-dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
 			gluProjectf( dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
 			gluProjectf( dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
@@ -2749,9 +2799,8 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 	surface_properties rv = {0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	arcan_event_maskall();
-	arcan_event_clearmask();
-	
+	/* FIXME: not working since transform rebuild */
+    
 	return rv;
 }
 
@@ -2779,8 +2828,8 @@ void arcan_video_restore_external()
 		SDL_Init(SDL_INIT_VIDEO);
 
 	arcan_video_display.screen = SDL_SetVideoMode(arcan_video_display.width,
-											arcan_video_display.height, 
-											arcan_video_display.bpp, 
+											arcan_video_display.height,
+											arcan_video_display.bpp,
 											arcan_video_display.sdlarg);
 	arcan_event_init();
 	arcan_video_gldefault();
