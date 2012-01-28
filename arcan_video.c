@@ -191,7 +191,6 @@ static void allocate_and_store_globj(arcan_vobject* dst){
 		}
 }
 
-
 /* scan through each cell in use.
  * if we want to clean the context permanently (delete flag)
  * just wrap the call to deleteobject,
@@ -730,13 +729,13 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 	/* whileas the gpu texture format is (4 byte alignment, BGRA) and the 
 	 * glfunctions will waste membw- to convert to that, setting the "proper" 
 	 * format here seems to generate a bad (full-white texture), investigate! */
-		if (!nogl)
+		if (!asynchsrc)
 			allocate_and_store_globj(dst);
 
 		SDL_FreeSurface(res);
 		SDL_FreeSurface(gl_image);
 	
-		if (!nogl && arcan_video_display.conservative){
+		if (!asynchsrc && arcan_video_display.conservative){
 			free(dst->default_frame.raw);
 			dst->default_frame.raw = 0;
 		}
