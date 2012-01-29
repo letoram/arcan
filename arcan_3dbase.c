@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include <openctm.h>
 
@@ -148,7 +149,7 @@ void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, 
 	}
 }
 
-void arcan_3d_camera_sidestep(unsigned camtag, float factor)
+void arcan_3d_strafecamera(unsigned camtag, float factor, unsigned tv)
 {
 	virtobj* vobj = find_camera(camtag);
 	if (vobj){
@@ -238,10 +239,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 			}
 	}
 
-	if (src->geometry.indices)
-		glDrawElements(GL_TRIANGLES, src->geometry.ntris, src->geometry.indexformat, src->geometry.indices);
-	else
-		glDrawArrays(GL_TRIANGLES, 0, src->geometry.ntris);
+	glDrawElements(GL_TRIANGLES, src->geometry.ntris * 3, src->geometry.indexformat, src->geometry.indices);
 
 /* and reverse transitions again for the next client */
 	if (src->flags.infinite){
@@ -363,6 +361,33 @@ static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigne
     }
 }
 
+/* Go through the indices of a model and reverse the winding- order of its indices or verts so
+ * that front/back facing attribute of each triangle is inverted */
+arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dst);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ){
+		arcan_3dmodel* model = (arcan_3dmodel*) vobj->state.ptr;
+
+		if (model->geometry.indices){
+
+		} else {
+			float* verts = model->geometry.verts;
+			assert(model->geometry.nverts % 3 == 0);
+			
+			for (unsigned i = 0; i < model->geometry.nverts * 9; i+= 9){
+				vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
+				vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
+				verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
+				verts[i+6] = v1.x; verts[i+7] = v1.y; verts[i+8] = v1.z;
+			}
+		}
+	}
+
+	return rv;
+}
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens){
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
@@ -391,7 +416,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		
 		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
 					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &nindices);
-		newmodel->geometry.ntris = nindices / 2;
+
+		newmodel->geometry.ntris = nindices;
 	}
 
 	return rv;
@@ -459,12 +485,12 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 
 				newmodel->geometry.indices = (void*) buf;
 			}
-			else{
+			else{ 
 				uint32_t* buf = (uint32_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint32_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-
 				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
 					buf[i] = indices[i];
+				
 				newmodel->geometry.indices = (void*) buf;
 			}
 		}
@@ -491,6 +517,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 		if (uvmaps > 0){
 			unsigned txsize = sizeof(float) * 2 * newmodel->geometry.nverts;
 			newmodel->textures = calloc(sizeof(texture_set), uvmaps);
+
 			for (int i = 0; i < uvmaps; i++){
 				newmodel->textures[i].vid = ARCAN_EID;
 				newmodel->textures[i].txcos = (float*) malloc(txsize);
@@ -527,6 +554,6 @@ void arcan_3d_setdefaults()
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
 
 	arcan_3d_orientcamera(0, 0, 0, 0, 0);
-	arcan_3d_buildplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.5, 0.5);
+	arcan_3d_buildplane(-5.0, -5.0, 5.0, 5.0, -1.0, 1.0, 1.0);
 }
 

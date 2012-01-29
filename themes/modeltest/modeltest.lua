@@ -4,7 +4,8 @@ function modeltest()
 	yaw = 0.0;
 	pitch = 0.0;
 	roll = 0.0;
-	stepsize = 0.0;
+	sidestepsize = 0.0;
+	fwdstepsize = 0.0;
 	print(arguments[1]);
 	vid = load_mesh(arguments[1]);
 	print("loaded model to: " .. vid);
@@ -15,7 +16,8 @@ function modeltest()
 end
 
 function modeltest_clock_pulse()
-	forward3d_camera(stepsize);
+	strafe3d_camera(sidestepsize);
+	forward3d_camera(fwdstepsize);
 	orient3d_camera(roll, pitch, yaw);
 end
 
@@ -23,9 +25,13 @@ function modeltest_input(iotable)
 	if (iotable.kind == "digital") then
 		key = symtable[iotable.keysym];
 		if key == "w" then
-			stepsize = iotable.active and -0.5 or 0.0;
+			fwdstepsize = iotable.active and -0.5 or 0.0;
 		elseif key == "s" then
-			stepsize = iotable.active and 0.5 or 0.0;
+			fwdstepsize = iotable.active and 0.5 or 0.0;
+		elseif key == "a" then
+			sidestepsize = iotable.active and 0.5 or 0.0;
+		elseif key == "d" then
+			sidestepsize = iotable.active and -0.5 or 0.0;
 		elseif key == "ESCAPE" then
 			shutdown();
 		end	

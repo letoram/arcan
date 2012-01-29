@@ -15,20 +15,32 @@
 --
 
 aimg = BADID;
+text_vid = BADID;
 imagefun = load_image;
+stacksize = 1024;
 
 function imagetest()
 	local symfun = system_load("scripts/symtable.lua");
 	symtable = symfun();
+	drawmenu();
+end
 
-	local text_vid = render_text( [[\ffonts/default.ttf,14\#ffffff\bImagetest:\n\r]] ..
+function drawmenu()
+	if (text_vid ~= BADID) then
+		delete_image(text_vid);
+	end
+
+	local total, used = current_context_usage();
+	
+	text_vid = render_text( [[\ffonts/default.ttf,14\#ffffff\bImagetest:\n\r]] ..
 	[[\b\!i(1)\t\!binstancing test\n\r]] ..
 	[[\b\!i(2)\t\!border + transform-stress test\n\r]] ..
 	[[\b\!i(3)\t\!bvid limit test\n\r]] ..
+	[[\b\!i(4)\t\!bdouble stacksize (current: ]] .. used+1 .. " / " .. total .. [[\n\r]] ..
 	[[\b\!i(s)\t\!bstack push\n\r]] ..
 	[[\b\!i(p)\t\!bstack pop\n\r]] ..
 	[[\b\!i(l)\t\!bload image into context\n\r]] ..
-	[[\b\!i(a)\t\!btoggle asynchronous image_load\n\r]] .. 
+	[[\b\!i(a)\t\!btoggle asynchronous image_load\n\r]] ..
 	[[\iESCAPE\t\!ishutdown\n\r]] );
 
 	sprop = image_surface_properties(text_vid);
@@ -37,12 +49,10 @@ function imagetest()
 	order_image(text_vid, 255);
 end
 
-
-
 function zordervidlim(load) 
-	local step = 254.0 / VCTXVIDLIMIT;
+	local step = 254.0 / stacksize;
 
-	for i=1,VCTXVIDLIMIT do
+	for i=1,stacksize-10 do
 		print (" --> generated # " .. tostring(i));
 
 		local newid;
@@ -64,10 +74,9 @@ function zordervidlim(load)
 		if (newid == BADID) then
 			break;
 		end
-		
+
 		show_image(newid);
 	end
-	
 end
 
 function instancing_test()
@@ -111,6 +120,10 @@ function imagetest_input(inputtbl)
 		elseif (symtable[ inputtbl.keysym ] == "3") then
 			print("Running image loading stress");
 			zordervidlim(true);
+		elseif (symtable[ inputtbl.keysym ] == "4") then
+			print("Double stacksize for next layer");
+			stacksize = stacksize * 2;
+			system_context_size(stacksize);
 		elseif (symtable[ inputtbl.keysym ] == "l") then
 			print("Loading image into context");
 			local vid = imagefun("imagetest.png");
@@ -119,17 +132,26 @@ function imagetest_input(inputtbl)
 			order_image(vid, 0);
 			show_image(vid);
 		elseif (symtable[ inputtbl.keysym ] == "s") then
+			delete_image(text_vid);
+			text_vid = BADID;
 			print("Stack push => " .. tostring ( push_video_context() ) );
 		elseif (symtable[ inputtbl.keysym ] == "p") then
+			delete_image(text_vid);
 			print("Stack pop => " .. tostring ( pop_video_context() ) );
 		elseif (symtable[inputtbl.keysym] == "a") then
 			print("Switching image mode\n");
 			imagefun = imagefun == load_image and load_image_asynch or load_image
 		end
+
+		drawmenu();
 	end
 end
 
 function imagetest_video_event(source, evtbl)
+	if (evtbl.kind == "loaded") then
+		resize_image(source, 64, 64);
+	end
+
 	print( "-- video event : " .. tostring(source) .. " => " .. evtbl.kind);
 end
 

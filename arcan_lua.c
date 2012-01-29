@@ -640,6 +640,17 @@ int arcan_lua_setlife(lua_State* ctx)
 	return 0;
 }
 
+/* to actually put this into effect, change value and pop the entire stack */
+int arcan_lua_systemcontextsize(lua_State* ctx)
+{
+	unsigned newlim = luaL_checkint(ctx, 1);
+	if (newlim > 1){
+		arcan_video_contextsize(newlim);
+	}
+
+	return 0;
+}
+
 int arcan_lua_dofile(lua_State* ctx)
 {
 	const char* instr = luaL_checkstring(ctx, 1);
@@ -781,6 +792,14 @@ int arcan_lua_popcontext(lua_State* ctx)
 {
 	lua_pushinteger(ctx, arcan_video_popcontext());
 	return 1;
+}
+
+int arcan_lua_contextusage(lua_State* ctx)
+{
+	unsigned usecount;
+	lua_pushinteger(ctx, arcan_video_contextusage(&usecount));
+	lua_pushinteger(ctx, usecount);
+	return 2;
 }
 
 static inline const char* intblstr(lua_State* ctx, const char* field){
@@ -1265,6 +1284,16 @@ int arcan_lua_orientcamera(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_strafecamera(lua_State* ctx)
+{
+	float step = luaL_checknumber(ctx, 1);
+	unsigned dt = luaL_optint(ctx, 2, 0);
+	unsigned camtag = luaL_optint(ctx, 3, 0);
+	
+	arcan_3d_strafecamera(camtag, step, dt);
+	return 0;
+}
+
 int arcan_lua_forwardcamera(lua_State* ctx)
 {
 	float step = luaL_checknumber(ctx, 1);
@@ -1428,6 +1457,7 @@ int arcan_lua_kbdrepeat(lua_State* ctx)
 int arcan_lua_mousegrab(lua_State* ctx)
 {
 	lua_ctx_store.grab = !lua_ctx_store.grab;
+	SDL_WM_GrabInput( lua_ctx_store.grab ? SDL_GRAB_ON : SDL_GRAB_OFF );
 	return 1;
 }
 
@@ -1994,6 +2024,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item: system_load,resource,loaderptr */
 	lua_register(ctx, "system_load", arcan_lua_dofile);
 
+/* item: system_stack_size(num, items) */
+	lua_register(ctx, "system_context_size", arcan_lua_systemcontextsize);
+
 /* item:default_movie_queueopts, vcells acells acellsize */
 	lua_register(ctx, "default_movie_queueopts", arcan_lua_getqueueopts);
 	
@@ -2169,6 +2202,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:pop_video_context, int */
 	lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
 
+/* item:current_context_usage, nusedint and nsizeint */
+	lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
+
 /* category: 3d */
 /* item:load_model, resource, vid */
 	lua_register(ctx, "load_mesh", arcan_lua_loadmodel);
@@ -2188,6 +2224,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:forward3d_camera, steps, [time], [camtag], nil */
 	lua_register(ctx, "forward3d_camera", arcan_lua_forwardcamera);
 
+/* item:strafe3d_camera, steps, [time], [camtag], nil */
+	lua_register(ctx, "strafe3d_camera", arcan_lua_strafecamera);
+	
 /* item:orient3d_camera, roll, pitch, yaw, [time], [camtag], nil */
 	lua_register(ctx, "orient3d_camera", arcan_lua_orientcamera);
 	
@@ -2252,9 +2291,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: VRESW,int */
 	arcan_lua_setglobalint(ctx, "VRESW", arcan_video_screenw());
 
-/* constant: VID_MAXCOUNT,int */
-	arcan_lua_setglobalint(ctx, "VID_MAXCOUNT", VITEM_POOLSIZE);
-
 /* constant: STACK_MAXCOUNT,int */
 	arcan_lua_setglobalint(ctx, "STACK_MAXCOUNT", CONTEXT_STACK_LIMIT);
 
@@ -2273,9 +2309,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: SCALE_POW2, int */
 	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);
 	
-/* constant: VCTXVIDLIMIT, int */
-	arcan_lua_setglobalint(ctx, "VCTXVIDLIMIT", VITEM_POOLSIZE);
-
 /* constant: WORLDID,int */
 	arcan_lua_setglobalint(ctx, "WORLDID", ARCAN_VIDEO_WORLDID);
 
