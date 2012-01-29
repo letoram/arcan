@@ -27,13 +27,13 @@
 	((uint32_t *)(d))[0] = (0xff << 24) | (r << 16) | (g << 8) | b;\
 }
 
+#ifndef CONTEXT_STACK_LIMIT
+#define CONTEXT_STACK_LIMIT 8
+#endif
+
 /* supposedly, GL_BGRA is more efficient and can be directly transferred without 'swizzling',
  * but it's not implemented in all supported GL environments */
 #define GL_PIXEL_FORMAT GL_RGBA
-
-/* sizeof arcan_vobject * (CONTEXT_STACK_LIMIT * VITEM_POOLSIZE) storage space used */
-#define VITEM_POOLSIZE 1024
-#define CONTEXT_STACK_LIMIT 8
 
 /* video-style enum of potential arcan_video_* outcomes */
 
@@ -116,6 +116,8 @@ uint16_t arcan_video_screenh();
 /* basic context management functions */
 unsigned arcan_video_popcontext();
 unsigned arcan_video_nfreecontexts();
+unsigned arcan_video_contextusage(unsigned* free);
+
 /* returns # of free context slots left, -1 if context could not be pushed */
 signed arcan_video_pushcontext();
 
@@ -179,6 +181,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity);
 arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch);
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
 void arcan_video_imgmanmode(enum arcan_vimage_mode mode, bool repeat);
+void arcan_video_contextsize(unsigned newlim);
 
 /* change zval (see arcan_video_addobject) for a particular object.
  * return value is an error code */

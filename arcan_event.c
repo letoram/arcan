@@ -249,7 +249,7 @@ void init_sdl_events()
 	SDL_ShowCursor(0);
 	
 	SDL_Event dummy[1];
-	SDL_WM_GrabInput( SDL_GRAB_ON );
+/*	SDL_WM_GrabInput( SDL_GRAB_ON ); */
 	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, SDL_EVENTMASK(SDL_MOUSEMOTION)) );
 	
 }

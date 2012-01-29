@@ -89,11 +89,13 @@ struct arcan_video_display arcan_video_display = {
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
 	.suspended = false,
-	.c_ticks = 1
+	.c_ticks = 1,
+	.default_vitemlim = 1024
 };
 
 struct arcan_video_context {
-	uint16_t vitem_ofs;
+	unsigned vitem_ofs;
+	unsigned vitem_limit;
 	struct text_format curr_style;
 	
 	arcan_vobject world;
@@ -198,13 +200,13 @@ static void allocate_and_store_globj(arcan_vobject* dst){
  * and pause possble movies */
 static void deallocate_gl_context(struct arcan_video_context* context, bool delete)
 {
-	for (int i = 1; i < VITEM_POOLSIZE; i++) {
-		if (current_context->vitems_pool[i].flags.in_use){
+	for (int i = 1; i < context->vitem_limit; i++) {
+		if (context->vitems_pool[i].flags.in_use){
 			
 			if (delete)
 				arcan_video_deleteobject(i); /* will also delink from the render list */
 			else {
-				arcan_vobject* current = &(current_context->vitems_pool[i]);
+				arcan_vobject* current = &(context->vitems_pool[i]);
 				glDeleteTextures(1, &current->gl_storage.glid);
 				kill_shader(&current->gl_storage.program, 
 							&current->gl_storage.fragment,
@@ -215,15 +217,26 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 			}
 		}
 	}
+
+	if (delete){
+		free(context->vitems_pool);
+		context->vitems_pool = NULL;
+	}
 }
 
 /* go through a saved context, and reallocate all resources associated with it */
 static void reallocate_gl_context(struct arcan_video_context* context)
 {
-	
-	for (int i = 1; i < VITEM_POOLSIZE; i++)
-		if (current_context->vitems_pool[i].flags.in_use){
-			arcan_vobject* current = &current_context->vitems_pool[i];
+/* If there's nothing saved, we reallocate */
+	if (!context->vitems_pool){
+		context->vitems_pool =  (arcan_vobject*) calloc( sizeof(arcan_vobject), arcan_video_display.default_vitemlim);
+		context->vitem_ofs = 1;
+		context->vitem_limit = arcan_video_display.default_vitemlim;
+	}
+	else for (int i = 1; i < context->vitem_limit; i++)
+		if (context->vitems_pool[i].flags.in_use){
+			arcan_vobject* current = &context->vitems_pool[i];
+
 		/* conservative means that we do not keep a copy of the originally decoded memory,
 		 * essentially halving memory consumption but increasing cost of pop() and push() */
 			if (arcan_video_display.conservative && (char)current->state.tag == ARCAN_TAG_IMAGE){
@@ -265,10 +278,14 @@ signed arcan_video_pushcontext()
 
 	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
+
 	current_context->world = empty_vobj;
 	current_context->world.current.scale.x = 1.0;
 	current_context->world.current.scale.y = 1.0;
-	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
+	current_context->world.current.rotation = build_quat_euler(0, 0, 0);
+	
+	current_context->vitem_limit = arcan_video_display.default_vitemlim;
+	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
 	current_context->first = NULL;
 
 	return arcan_video_nfreecontexts();
@@ -282,33 +299,33 @@ unsigned arcan_video_popcontext()
 		context_ind--;
 		current_context = &context_stack[ context_ind ];		
 	}
-
-	reallocate_gl_context(current_context);
 	
+	reallocate_gl_context(current_context);
+
 	return (CONTEXT_STACK_LIMIT - 1) - context_ind;
 }
 
 arcan_vobj_id arcan_video_allocid(bool* status)
 {
-	arcan_vobj_id rv = 0, i;
+	unsigned i = current_context->vitem_ofs;
 	*status = false;
 
-	for (i = current_context->vitem_ofs; i < VITEM_POOLSIZE; i++)
-		if (!current_context->vitems_pool[i].flags.in_use) {
+/* scan from vofs until full wrap-around */
+	while (i != current_context->vitem_ofs - 1){
+		if (i == 0) /* 0 is protected */
+			i = 1;
+		
+		if (!current_context->vitems_pool[i].flags.in_use){
 			*status = true;
 			current_context->vitems_pool[i].flags.in_use = true;
-			rv = i;
-			break;
+			current_context->vitem_ofs = (current_context->vitem_ofs + 1) >= current_context->vitem_limit ? 1 : i + 1;
+			return i;
 		}
 
-	if (i == VITEM_POOLSIZE - 1) {
-		current_context->vitem_ofs = 1;
-	}
-	else {
-		current_context->vitem_ofs = i + 1;
+		i = (i + 1) % (current_context->vitem_limit - 1);
 	}
 
-	return rv;
+	return 0;
 }
 
 /*static void dump_object(arcan_vobject* o){
@@ -413,7 +430,7 @@ arcan_vobject* arcan_video_getobject(arcan_vobj_id id)
 {
 	arcan_vobject* rc = NULL;
 
-	if (id > 0 && id < VITEM_POOLSIZE && current_context->vitems_pool[id].flags.in_use)
+	if (id > 0 && id < current_context->vitem_limit && current_context->vitems_pool[id].flags.in_use)
 		rc = current_context->vitems_pool + id;
 	else
 		if (id == ARCAN_VIDEO_WORLDID) {
@@ -622,8 +639,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 
 		current_context->world.current.scale.x = 1.0;
 		current_context->world.current.scale.y = 1.0;
-
-		current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), VITEM_POOLSIZE);
+		current_context->vitem_limit = arcan_video_display.default_vitemlim;
+		current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
 		arcan_video_gldefault();
 		arcan_3d_setdefaults();
 	}
@@ -2861,6 +2878,23 @@ bool arcan_video_prepare_external()
 	arcan_event_deinit();
 
 	return true;
+}
+
+unsigned arcan_video_contextusage(unsigned* free)
+{
+	if (free){
+		*free = 0;
+		for (unsigned i = 1; i < current_context->vitem_limit-1; i++)
+			if (current_context->vitems_pool[i].flags.in_use)
+				(*free)++;
+	}
+
+	return current_context->vitem_limit-1;
+}
+
+void arcan_video_contextsize(unsigned newlim)
+{
+	arcan_video_display.default_vitemlim = newlim;
 }
 
 void arcan_video_restore_external()
