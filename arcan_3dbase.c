@@ -76,6 +76,7 @@ typedef struct {
         unsigned nverts;
         float* verts;
         unsigned ntris;
+        unsigned nindices;
 		GLenum indexformat;
         void* indices;
 
@@ -218,10 +219,6 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 	matr_quatf(props.rotation, rotmat);
 	glMultMatrixf(rotmat);
 
-	if (1 || src->flags.debug_vis){
-		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
-	}
-
 	if (src->geometry.normals){
 		glEnableClientState(GL_NORMAL_ARRAY);
 		glNormalPointer(GL_FLOAT, 0, src->geometry.normals);
@@ -239,7 +236,15 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 			}
 	}
 
-	glDrawElements(GL_TRIANGLES, src->geometry.ntris * 3, src->geometry.indexformat, src->geometry.indices);
+    if (src->geometry.indices)
+        glDrawElements(GL_TRIANGLES, src->geometry.nindices, src->geometry.indexformat, src->geometry.indices);
+    else
+        glDrawArrays(GL_TRIANGLES, 0, src->geometry.nverts);
+
+	if (1 || src->flags.debug_vis){
+		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
+	}
+    
 
 /* and reverse transitions again for the next client */
 	if (src->flags.infinite){
@@ -348,6 +353,11 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigned nverts)
 {
     vector empty = {0};
+    if (nverts){
+        empty.x = verts[0];
+        empty.y = verts[1];
+        empty.z = verts[2];
+    }
     *minp = *maxp = empty;
 
     for (unsigned i = 0; i < nverts * 3; i += 3){
@@ -412,12 +422,11 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		newmodel->textures = (texture_set*) calloc(sizeof(texture_set), 1);
 		newmodel->textures[0].vid = ARCAN_EID;
 		newmodel->nsets = 1;
-		unsigned nindices;
 		
 		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
-					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &nindices);
+					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &newmodel->geometry.nindices);
 
-		newmodel->geometry.ntris = nindices;
+		newmodel->geometry.ntris = newmodel->geometry.nindices / 3;
 	}
 
 	return rv;
@@ -467,52 +476,56 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 
 /* lots of memory to be saved, so worth the trouble */
 		if (indices){
-			if (newmodel->geometry.nverts < 256){
-				uint8_t* buf = (uint8_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint8_t));
+            newmodel->geometry.nindices = newmodel->geometry.ntris * 3;
+            
+			if (newmodel->geometry.nindices < 256){
+				uint8_t* buf = (uint8_t*) malloc(newmodel->geometry.nindices * sizeof(uint8_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_BYTE;
 
-				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
+				for (unsigned i = 0; i < newmodel->geometry.nindices; i++)
 					buf[i] = indices[i];
 
 				newmodel->geometry.indices = (void*) buf;
 			}
-			else if (newmodel->geometry.nverts < 65536){
-				uint16_t* buf = (uint16_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint16_t));
+			else if (newmodel->geometry.nindices < 65536){
+				uint16_t* buf = (uint16_t*) malloc(newmodel->geometry.nindices * sizeof(uint16_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_SHORT;
 
-				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
+				for (unsigned i = 0; i < newmodel->geometry.nindices; i++)
 					buf[i] = indices[i];
 
 				newmodel->geometry.indices = (void*) buf;
 			}
 			else{ 
-				uint32_t* buf = (uint32_t*) malloc(newmodel->geometry.ntris * 3 * sizeof(uint32_t));
+				uint32_t* buf = (uint32_t*) malloc(newmodel->geometry.nindices * sizeof(uint32_t));
 				newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-				for (unsigned i = 0; i < newmodel->geometry.ntris * 3; i++)
+				for (unsigned i = 0; i < newmodel->geometry.nindices; i++)
 					buf[i] = indices[i];
 				
 				newmodel->geometry.indices = (void*) buf;
 			}
 		}
 
-/* normalize vertex values to -1..1 */
+/* rerange vertex values to -1..1 */
         minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, newmodel->geometry.nverts);
 
         float dx = newmodel->bbmax.x - newmodel->bbmin.x;
         float dy = newmodel->bbmax.y - newmodel->bbmin.y;
         float dz = newmodel->bbmax.z - newmodel->bbmin.z;
-        float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
 
+        float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
+        float tx = -1.0 - (newmodel->bbmin.x * sfx), ty = -1.0 - (newmodel->bbmin.y * sfy), tz = -1.0 - (newmodel->bbmin.z * sfz);
+        
 		for (unsigned i = 0; i < newmodel->geometry.nverts * 3; i += 3){
-            newmodel->geometry.verts[i]   = verts[i]   * sfx;
-			newmodel->geometry.verts[i+1] = verts[i+1] * sfy;
-			newmodel->geometry.verts[i+2] = verts[i+2] * sfz;
+            newmodel->geometry.verts[i]   = tx + verts[i]   * sfx;
+			newmodel->geometry.verts[i+1] = ty + verts[i+1] * sfy;
+			newmodel->geometry.verts[i+2] = tz + verts[i+2] * sfz;
         }
 
-        newmodel->bbmax = build_vect(1.0f, 1.0f, 1.0f);
-		newmodel->bbmin = build_vect(-1.0f, -1.0f, -1.0f);
+        newmodel->bbmin.x = -1.0; newmodel->bbmin.y = -1.0; newmodel->bbmin.z = -1.0;
+        newmodel->bbmax.x =  1.0; newmodel->bbmax.y =  1.0; newmodel->bbmax.z =  1.0;
 
-/* each txco set can have a different vid associated with it (multitexturing stuff),
+        /* each txco set can have a different vid associated with it (multitexturing stuff),
  * possibly also specify filtermode, "mapname" and some other data currently ignored */
 		if (uvmaps > 0){
 			unsigned txsize = sizeof(float) * 2 * newmodel->geometry.nverts;
@@ -554,6 +567,6 @@ void arcan_3d_setdefaults()
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
 
 	arcan_3d_orientcamera(0, 0, 0, 0, 0);
-	arcan_3d_buildplane(-5.0, -5.0, 5.0, 5.0, -1.0, 1.0, 1.0);
+	arcan_3d_buildplane(-1.0, -1.0, 5.0, 5.0, 0.0, 1.0, 1.0);
 }
 
