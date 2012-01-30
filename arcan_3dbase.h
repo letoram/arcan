@@ -31,7 +31,10 @@ void arcan_3d_strafecamera(unsigned camtag, float factor, unsigned tv);
 void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv);
 void arcan_3d_forwardcamera(unsigned camtag, float step, unsigned tv);
 void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv);
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens);
+arcan_errc arcan_3d_modeltexture(arcan_vobj_id model, unsigned txslot, arcan_vobj_id vidmat);
 arcan_vobj_id arcan_3d_loadmodel(const char* resource);
+
 
 
 #endif

@@ -1258,6 +1258,21 @@ int arcan_lua_loadmodel(lua_State* ctx)
 	return 1;
 }
 
+/* item:build_3dplane, minx, mind, endx, endd, hdens, ddens, nil */
+int arcan_lua_buildplane(lua_State* ctx)
+{
+	float minx = luaL_checknumber(ctx, 1);
+	float mind = luaL_checknumber(ctx, 2);
+	float endx = luaL_checknumber(ctx, 3);
+	float endd = luaL_checknumber(ctx, 4);
+	float starty = luaL_checknumber(ctx, 5);
+	float hdens = luaL_checknumber(ctx, 6);
+	float ddens = luaL_checknumber(ctx, 7);
+	
+	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty, hdens, ddens));
+	return 1;
+}
+
 /* move_3dcamera, px, py, pz, dt, camtag, nil */
 int arcan_lua_movecamera(lua_State* ctx)
 {
@@ -1899,17 +1914,22 @@ int arcan_lua_movemodel(lua_State* ctx)
 
 int arcan_lua_scalemodel(lua_State* ctx)
 {
-    return -1;
+    return 0;
 }
 
 int arcan_lua_rotatemodel(lua_State* ctx)
 {
-    return -1;
+    return 0;
 }
 
 int arcan_lua_modelmaterial(lua_State* ctx)
 {
-    return -1;
+	arcan_vobj_id dst = luaL_checkvid(ctx, 1);
+	arcan_vobj_id src = luaL_checkvid(ctx, 3);
+	unsigned slot = luaL_checkvid(ctx, 2);
+
+	arcan_3d_modeltexture(dst, slot, src);
+    return 0;
 }
 
 int arcan_lua_settexmode(lua_State* ctx)
@@ -2229,9 +2249,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	
 /* item:orient3d_camera, roll, pitch, yaw, [time], [camtag], nil */
 	lua_register(ctx, "orient3d_camera", arcan_lua_orientcamera);
+
+/* item:build_3dplane, minx, mind, maxx, maxd, yv, hdens, ddens, nil */
+	lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
 	
 /* item:model_material, srcvid, slot, matvid, nil */
-	lua_register(ctx, "model_material", arcan_lua_modelmaterial);
+	lua_register(ctx, "texture_model", arcan_lua_modelmaterial);
 	
 	
 /* category: frameserver */

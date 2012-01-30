@@ -855,13 +855,13 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
 	if (dstvobj && srcvobj){
 		if (fid < dstvobj->frameset_capacity){
 			if (detatch)
 				arcan_video_detatchobject(src);
 
 			dstvobj->frameset[fid] = srcvobj;
+			rv = ARCAN_OK;
 		}
 		else 
 			rv = ARCAN_ERRC_OUT_OF_SPACE;
