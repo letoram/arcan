@@ -174,14 +174,22 @@ void arcan_3d_forwardcamera(unsigned camtag, float fact, unsigned tv)
  * MODEL Control, generawtion and manipulation
  */
 
-/* take advantage of the "vid as frame" feature to allow multiple video sources to be
- * associated with the texture- coordinaet sets definedin the model source */
-arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigned txslot)
+arcan_errc arcan_3d_modeltexture(arcan_vobj_id model, unsigned txslot, arcan_vobj_id vidmat)
 {
 	arcan_vobject* vobj = arcan_video_getobject(model);
+	arcan_vobject* texture = arcan_video_getobject(vidmat);
+	
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj){
+/* 2d frameset and set of vids associated as textures with models are weakly linked */
+	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ && 
+		texture && (rv = arcan_video_setasframe(model, vidmat, txslot, false)) == ARCAN_OK){
+		arcan_3dmodel* model = (arcan_3dmodel*)vobj->state.ptr;
+
+		if (txslot < model->nsets)
+			model->textures[txslot].vid = vidmat;
+		else
+			rv = ARCAN_ERRC_OUT_OF_SPACE;
 	}
 
 	return rv;
@@ -190,7 +198,12 @@ arcan_errc arcan_3d_modelmaterial(arcan_vobj_id model, unsigned frameno, unsigne
 static void freemodel(arcan_3dmodel* src)
 {
 	if (src){
-
+		free(src->geometry.indices);
+		free(src->geometry.verts);
+		free(src->geometry.normals);
+		for (unsigned i = 0; i < src->nsets; i++)
+			free( src->textures[i].txcos );
+		free(src->textures);
 	}
 }
 
@@ -204,7 +217,7 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 
 	glPushMatrix();
 
-	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+//	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	/* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
 	if (src->flags.infinite){
@@ -226,14 +239,17 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 	
 	glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
 	if (texture && src->nsets){
+
 		unsigned counter = 0;
-		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
+		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++){
+			glEnable(GL_TEXTURE_2D);
 			if (src->textures[i].vid != ARCAN_EID){
 				glClientActiveTexture(counter++);
-				glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 				glTexCoordPointer(2, GL_FLOAT, 0, src->textures[i].txcos);
+				glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 				glBindTexture(GL_TEXTURE_2D, src->textures[i].vid);
 			}
+		}
 	}
 
     if (src->geometry.indices)
@@ -241,11 +257,10 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
     else
         glDrawArrays(GL_TRIANGLES, 0, src->geometry.nverts);
 
-	if (1 || src->flags.debug_vis){
+	if (src->flags.debug_vis){
 		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
 	}
     
-
 /* and reverse transitions again for the next client */
 	if (src->flags.infinite){
 		glDepthMask(GL_TRUE);
@@ -281,6 +296,7 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 
 			case ffunc_destroy:
 				freemodel( (arcan_3dmodel*) state.ptr );
+				free(state.ptr);
 			break;
 
 			default:
@@ -399,6 +415,29 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
+arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, float maxy, float maxz){
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
+	arcan_vobj_id rv = ARCAN_EID;
+	img_cons empty = {0};
+	
+	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+	
+	arcan_3dmodel* newmodel = NULL;
+	arcan_vobject* vobj = NULL;
+
+	if (rv != ARCAN_EID){
+		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
+		state.ptr = (void*) newmodel;
+		arcan_video_alterfeed(rv, ffunc_3d, state);
+		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
+		newmodel->textures = (texture_set*) calloc(sizeof(texture_set), 1);
+		newmodel->textures[0].vid = ARCAN_EID;
+		newmodel->nsets = 1;
+	}
+
+	return rv;
+}
+
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens){
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
@@ -427,6 +466,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &newmodel->geometry.nindices);
 
 		newmodel->geometry.ntris = newmodel->geometry.nindices / 3;
+		arcan_video_allocframes(rv, 1);
 	}
 
 	return rv;
@@ -538,6 +578,8 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 			}
 		}
 
+		printf("uvmaps: %i\n", uvmaps);
+		arcan_video_allocframes(rv, uvmaps);
         ctmFreeContext(ctx);
 
 		return rv;
@@ -567,6 +609,5 @@ void arcan_3d_setdefaults()
 	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
 
 	arcan_3d_orientcamera(0, 0, 0, 0, 0);
-	arcan_3d_buildplane(-1.0, -1.0, 5.0, 5.0, 0.0, 1.0, 1.0);
 }
 

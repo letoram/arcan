@@ -88,7 +88,6 @@ static void build_hplane(point min, point max, point step,
 
 	vofs = 0; tofs = 0;
 #define GETVERT(X,Z)( ( (X) * nz) + Z)
-	printf("nx %i, ny %i\n", nx, nz);
 	*indices = (unsigned*) malloc(sizeof(unsigned) * (*nverts) * 3 * 2);
 		for (unsigned x = 0; x < nx-1; x++)
 			for (unsigned z = 0; z < nz-1; z++){
@@ -104,6 +103,5 @@ static void build_hplane(point min, point max, point step,
 			}
 			
 	*nindices = vofs;
-	printf("generated, tofs: %i, indices: %i, verts: %i\n", tofs, *nindices, *nverts);
 }
 

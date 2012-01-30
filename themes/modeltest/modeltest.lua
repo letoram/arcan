@@ -6,12 +6,21 @@ function modeltest()
 	roll = 0.0;
 	sidestepsize = 0.0;
 	fwdstepsize = 0.0;
-	print(arguments[1]);
+	
+	games = list_games( {} );
+--	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
+	
 	vid = load_mesh(arguments[1]);
 	print("loaded model to: " .. vid);
 	mousex = VRESW * 0.5;
 	mousey = VRESH * 0.5;
+	
+	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
+--	texture_model(plane, 0, gvid);
+
 	toggle_mouse_grab();
+
+	show_image(plane);
 	show_image(vid);
 end
 
