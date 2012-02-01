@@ -11,7 +11,7 @@
 #include <math.h>
 
 #include "arcan_math.h"
-#include <openCTM.h>
+#include <openctm.h>
 
 /* need to store this for all contained meshes,
  * then split into a number of meshes, with the loading options
@@ -87,6 +87,7 @@ unsigned resolve(CTMfloat* sbuf, unsigned* lim, float v1, float v2, float v3){
     return i / 3;
 }
 
+static bool meshcount = 0;
 static int write_rep(FILE* src, FILE* luafile, bool flush)
 {    
     static char fname[64] = "";
@@ -139,9 +140,13 @@ static int write_rep(FILE* src, FILE* luafile, bool flush)
             ctmAddUVMap(context, textbuf, buf, NULL);
         
         ctmSave(context, buf);
-        
-        fprintf(luafile, "add_mesh(model, \"%s\");\n", buf);
-        
+
+		if (meshcount == 0)
+			fprintf(luafile, "local model = load_3dmodel(\"%s\");\n", buf);
+		else
+			fprintf(luafile, "add_3dmesh(model, \"%s\");\n", buf);
+
+		meshcount++;
         ctmFreeContext(context);
 /* ctm takes care of the buffers we handed over */
         if (!normbufofs)
@@ -422,10 +427,14 @@ int main(int argc, char** argv)
     
     parse_obj(fpek, luadst, argv[2]);
     
-    fprintf(luadst, "local model = new_3dmodel
     if (global.ofs_vertindbuf > 0)
         write_rep(fpek, luadst, true);
-    
+
+	if (meshcount > 0){
+		fprintf(luadst, "image_framesetsize(model, %i);\n", meshcount);
+		fprintf(luadst, "return model;\n");
+	}
+	
 	fclose(fpek);
 	fclose(luadst);
     

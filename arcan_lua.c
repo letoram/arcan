@@ -1244,7 +1244,7 @@ int arcan_lua_loadmesh(lua_State* ctx)
     arcan_vobj_id did = luaL_checkvid(ctx, 1);
     char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
-    arcan_3daddmesh(did, path);
+    arcan_3d_addmesh(did, path);
     
     return 0;
 }
@@ -1932,16 +1932,6 @@ int arcan_lua_rotatemodel(lua_State* ctx)
     return 0;
 }
 
-int arcan_lua_modelmaterial(lua_State* ctx)
-{
-	arcan_vobj_id dst = luaL_checkvid(ctx, 1);
-	arcan_vobj_id src = luaL_checkvid(ctx, 3);
-	unsigned slot = luaL_checkvid(ctx, 2);
-
-	arcan_3d_modeltexture(dst, slot, src);
-    return 0;
-}
-
 int arcan_lua_settexmode(lua_State* ctx)
 {
 	int numa = luaL_checknumber(ctx, 1);
@@ -2264,11 +2254,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:build_3dplane, minx, mind, maxx, maxd, yv, hdens, ddens, nil */
 	lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
-	
-/* item:model_material, srcvid, slot, matvid, nil */
-	lua_register(ctx, "texture_model", arcan_lua_modelmaterial);
-	
-	
+
 /* category: frameserver */
 
 /* item:play_movie, vid, nil */ 

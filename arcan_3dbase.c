@@ -62,7 +62,6 @@ typedef struct virtobj virtobj;
 
 typedef struct {
 	/* ntxcos == nverts */
-	float* txcos;
     arcan_vobj_id vid;
 } texture_set;
 
@@ -70,22 +69,27 @@ typedef struct {
 	virtobj* perspectives;
 } arcan_3dscene;
 
+struct geometry {
+	unsigned nverts;
+	float* verts;
+	unsigned ntris;
+	unsigned nindices;
+	GLenum indexformat;
+	void* indices;
+
+/* ntus used and sets of txcos available,
+ * the glid will be picked from the frames in the video object */
+	unsigned ntus;
+	float** txcos;
+	
+/* nnormals == nverts */
+	float* normals;
+	struct geometry* next;
+};
+
 typedef struct {
-/* Geometry */
-    struct{
-        unsigned nverts;
-        float* verts;
-        unsigned ntris;
-        unsigned nindices;
-		GLenum indexformat;
-        void* indices;
-
-        /* nnormals == nverts */
-        float* normals;
-    } geometry;
-
-    unsigned char nsets;
-    texture_set* textures;
+	struct geometry geometry;
+	unsigned char nsets;
 
 /* Frustum planes */
 	float frustum[6][4];
@@ -170,47 +174,26 @@ void arcan_3d_forwardcamera(unsigned camtag, float fact, unsigned tv)
 	}
 }
 
-/*
- * MODEL Control, generawtion and manipulation
- */
-
-arcan_errc arcan_3d_modeltexture(arcan_vobj_id model, unsigned txslot, arcan_vobj_id vidmat)
-{
-	arcan_vobject* vobj = arcan_video_getobject(model);
-	arcan_vobject* texture = arcan_video_getobject(vidmat);
-	
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-/* 2d frameset and set of vids associated as textures with models are weakly linked */
-	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ && 
-		texture && (rv = arcan_video_setasframe(model, vidmat, txslot, false)) == ARCAN_OK){
-		arcan_3dmodel* model = (arcan_3dmodel*)vobj->state.ptr;
-
-		if (txslot < model->nsets)
-			model->textures[txslot].vid = vidmat;
-		else
-			rv = ARCAN_ERRC_OUT_OF_SPACE;
-	}
-
-	return rv;
-}
-
 static void freemodel(arcan_3dmodel* src)
 {
 	if (src){
 		free(src->geometry.indices);
 		free(src->geometry.verts);
 		free(src->geometry.normals);
-		for (unsigned i = 0; i < src->nsets; i++)
-			free( src->textures[i].txcos );
-		free(src->textures);
+
+		float** txcos = src->geometry.txcos;
+		while(txcos && *txcos)
+			free((*txcos)++);
+
+		if (txcos)
+			free(txcos);
 	}
 }
 
 /*
  * Render-loops, Pass control, Initialization
  */
-static void rendermodel(arcan_3dmodel* src, surface_properties props, bool texture)
+static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_properties props, bool texture)
 {
 	if (props.opa < EPSILON)
 		return;
@@ -232,57 +215,69 @@ static void rendermodel(arcan_3dmodel* src, surface_properties props, bool textu
 	matr_quatf(props.rotation, rotmat);
 	glMultMatrixf(rotmat);
 
-	if (src->geometry.normals){
-		glEnableClientState(GL_NORMAL_ARRAY);
-		glNormalPointer(GL_FLOAT, 0, src->geometry.normals);
-	}
-	
-	glVertexPointer(3, GL_FLOAT, 0, src->geometry.verts);
-	if (texture && src->nsets){
+	unsigned cframe = 0;
+	struct geometry* base = &src->geometry;
 
+	while (base){
 		unsigned counter = 0;
-		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++){
-			glEnable(GL_TEXTURE_2D);
-			if (src->textures[i].vid != ARCAN_EID){
-				glClientActiveTexture(counter++);
-				glTexCoordPointer(2, GL_FLOAT, 0, src->textures[i].txcos);
-				glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-				glBindTexture(GL_TEXTURE_2D, src->textures[i].vid);
-			}
+		
+		if (base->normals){
+			glEnableClientState(GL_NORMAL_ARRAY);
+			glNormalPointer(GL_FLOAT, 0, base->normals);
 		}
-	}
 
-    if (src->geometry.indices)
-        glDrawElements(GL_TRIANGLES, src->geometry.nindices, src->geometry.indexformat, src->geometry.indices);
-    else
-        glDrawArrays(GL_TRIANGLES, 0, src->geometry.nverts);
+/* Map up all texture-units required,
+ * if there are corresponding frames and capacity in the parent vobj */
+		glVertexPointer(3, GL_FLOAT, 0, base->verts);
+		if (base->ntus > 0){
+			for (unsigned i = 0; i < base->ntus && i < GL_MAX_TEXTURE_UNITS && (i + cframe) < vobj->frameset_capacity; i++){
+				glEnable(GL_TEXTURE_2D);
+				if (vobj->frameset[cframe + i] &&
+					vobj->frameset[cframe + i]->gl_storage.glid){
 
-	if (src->flags.debug_vis){
-		wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
-	}
+					glClientActiveTexture(counter++);
+					glTexCoordPointer(2, GL_FLOAT, 0, base->txcos[i]);
+					glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+					glBindTexture(GL_TEXTURE_2D, vobj->frameset[cframe + i]->gl_storage.glid);
+				}
+			}	
+		}
+
+/* Indexed- or direct mode? */
+		if (base->indices)
+			glDrawElements(GL_TRIANGLES, base->nindices, base->indexformat, base->indices);
+		else
+			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
+
+/* bounding box, normals/face normals, ... */
+		if (src->flags.debug_vis){
+			wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
+		}
     
 /* and reverse transitions again for the next client */
-	if (src->flags.infinite){
-		glDepthMask(GL_TRUE);
-		glEnable(GL_DEPTH_TEST);
+		if (counter)
+		while (counter >= 0){
+			glClientActiveTexture(counter);
+			glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			counter--;
+		}
+
+		if (base->normals)
+			glDisableClientState(GL_NORMAL_ARRAY);
+
+		base = base->next;
 	}
-
-	if (texture && src->nsets){
-		unsigned counter = 0;
-		for (unsigned i = 0; i < src->nsets && i < GL_MAX_TEXTURE_UNITS; i++)
-			if (src->textures[i].vid != ARCAN_EID){
-				glClientActiveTexture(counter++);
-				glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-				glBindTexture(GL_TEXTURE_2D, 0);
-			}
- 	}
-
-	if (src->geometry.normals)
-		glDisableClientState(GL_NORMAL_ARRAY);
 
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 	glPopMatrix();
+	
+	if (src->flags.infinite){
+		glDepthMask(GL_TRUE);
+		glEnable(GL_DEPTH_TEST);
+	}
+	
 }
 
 /* the current model uses the associated scaling / blending
@@ -319,7 +314,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
 
-		rendermodel((arcan_3dmodel*) current->elem->state.ptr, dprops, true);
+		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, dprops, true);
 
 		current = current->next;
 	}
@@ -368,14 +363,6 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 
 static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigned nverts)
 {
-    vector empty = {0};
-    if (nverts){
-        empty.x = verts[0];
-        empty.y = verts[1];
-        empty.z = verts[2];
-    }
-    *minp = *maxp = empty;
-
     for (unsigned i = 0; i < nverts * 3; i += 3){
         vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
         if (a.x < minp->x) minp->x = a.x;
@@ -430,9 +417,8 @@ arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, 
 		state.ptr = (void*) newmodel;
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-		newmodel->textures = (texture_set*) calloc(sizeof(texture_set), 1);
-		newmodel->textures[0].vid = ARCAN_EID;
-		newmodel->nsets = 1;
+		newmodel->geometry.ntus  = 1;
+		newmodel->geometry.txcos = (float**) calloc(sizeof(float*), 2);
 	}
 
 	return rv;
@@ -458,18 +444,149 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 
 		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-		newmodel->textures = (texture_set*) calloc(sizeof(texture_set), 1);
-		newmodel->textures[0].vid = ARCAN_EID;
-		newmodel->nsets = 1;
+		newmodel->geometry.ntus  = 1;
+		newmodel->geometry.txcos = (float**) calloc(sizeof(float*), 2);
 		
 		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
-					 &newmodel->textures->txcos, &newmodel->geometry.nverts, &newmodel->geometry.nindices);
+					 &newmodel->geometry.txcos[0], &newmodel->geometry.nverts, &newmodel->geometry.nindices);
 
 		newmodel->geometry.ntris = newmodel->geometry.nindices / 3;
 		arcan_video_allocframes(rv, 1);
 	}
 
 	return rv;
+}
+
+static void loadmesh(struct geometry* dst, CTMcontext* ctx)
+{	
+/* figure out dimensions */
+	dst->nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
+	dst->ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
+	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
+	unsigned vrtsize = dst->nverts * 3 * sizeof(float);
+	dst->verts = (float*) malloc(vrtsize);
+	
+	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
+	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
+	const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
+	
+/* copy and repack */
+	if (normals){
+		dst->normals = (float*) malloc(vrtsize);
+		memcpy(dst->normals, normals, vrtsize);
+	}
+	
+/* lots of memory to be saved, so worth the trouble */
+	if (indices){
+		dst->nindices = dst->ntris * 3;
+		
+		if (dst->nindices < 256){
+			uint8_t* buf = (uint8_t*) malloc(dst->nindices * sizeof(uint8_t));
+			dst->indexformat = GL_UNSIGNED_BYTE;
+			
+			for (unsigned i = 0; i < dst->nindices; i++)
+				buf[i] = indices[i];
+			
+			dst->indices = (void*) buf;
+		}
+		else if (dst->nindices < 65536){
+			uint16_t* buf = (uint16_t*) malloc(dst->nindices * sizeof(uint16_t));
+			dst->indexformat = GL_UNSIGNED_SHORT;
+			
+			for (unsigned i = 0; i < dst->nindices; i++)
+				buf[i] = indices[i];
+			
+			dst->indices = (void*) buf;
+		}
+		else{
+			uint32_t* buf = (uint32_t*) malloc(dst->nindices * sizeof(uint32_t));
+			dst->indexformat = GL_UNSIGNED_INT;
+			for (unsigned i = 0; i < dst->nindices; i++)
+				buf[i] = indices[i];
+			
+			dst->indices = (void*) buf;
+		}
+	}
+
+	/* each txco set can have a different vid associated with it (multitexturing stuff),
+	 * possibly also specify filtermode, "mapname" and some other data currently ignored */
+	if (uvmaps > 0){
+		dst->txcos = (float**) calloc(sizeof(float**), uvmaps + 1);
+		unsigned txsize = sizeof(float) * 2 * dst->nverts;
+
+		for (int i = 0; i < uvmaps; i++){
+			dst->txcos[i] = (float*) malloc(txsize);
+			memcpy(dst->txcos[i], ctmGetFloatArray(ctx, CTM_UV_MAP_1 + i), txsize);
+		}
+	}
+}
+
+void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dst);	
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	/* 2d frameset and set of vids associated as textures with models are weakly linked */
+	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ)
+	{
+		CTMcontext ctx = ctmNewContext(CTM_IMPORT);
+		ctmLoad(ctx, resource);
+		
+		if (ctmGetError(ctx) == CTM_NONE){
+			arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
+
+		/* find last elem and add */
+			struct geometry** nextslot = &(dst->geometry.next);
+			while (*nextslot)
+				nextslot = &((*nextslot)->next);
+
+			*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
+
+		/* load / parsedata into geometry slot */
+			loadmesh(*nextslot, ctx);
+			minmax_verts(&dst->bbmin, &dst->bbmax, (*nextslot)->verts, (*nextslot)->nverts);
+		}
+
+		ctmFreeContext(ctx);
+	}
+}
+	
+arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	/* 2d frameset and set of vids associated as textures with models are weakly linked */
+	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ)
+	{
+		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
+		struct geometry* geom = &dst->geometry;
+
+		while (geom){
+			minmax_verts(&dst->bbmin, &dst->bbmax, geom->verts, geom->nverts);
+			geom = geom->next;
+		}
+
+		geom = &dst->geometry;
+		float dx = dst->bbmax.x - dst->bbmin.x;
+		float dy = dst->bbmax.y - dst->bbmin.y;
+		float dz = dst->bbmax.z - dst->bbmin.z;
+		float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
+		float tx = -1.0 - (dst->bbmin.x * sfx), ty = -1.0 - (dst->bbmin.y * sfy), tz = -1.0 - (dst->bbmin.z * sfz);
+		
+		while(geom){
+			for (unsigned i = 0; i < geom->nverts * 3; i += 3){
+				geom->verts[i]   = tx + geom->verts[i]   * sfx;
+				geom->verts[i+1] = ty + geom->verts[i+1] * sfy;
+				geom->verts[i+2] = tz + geom->verts[i+2] * sfz;
+			}
+			
+			geom = geom->next;
+		}
+			
+		dst->bbmin.x = -1.0; dst->bbmin.y = -1.0; dst->bbmin.z = -1.0;
+		dst->bbmax.x =  1.0; dst->bbmax.y =  1.0; dst->bbmax.z =  1.0;
+	}
 }
 
 arcan_vobj_id arcan_3d_loadmodel(const char* resource)
@@ -485,103 +602,29 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 /* create container object and proxy vid */
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
 		vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
-
-		img_cons empty = {0};
-		rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+		img_cons econs = {0};
+		rv = arcan_video_addfobject(ffunc_3d, state, econs, 1);
 
 		if (rv == ARCAN_EID)
 			goto error;
 
 		arcan_vobject* obj = arcan_video_getobject(rv);
 		newmodel->parent = obj;
+		loadmesh(&newmodel->geometry, ctx);
 
-/* figure out dimensions */
-		newmodel->geometry.nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
-		newmodel->geometry.ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
-		unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
-
-		unsigned vrtsize = newmodel->geometry.nverts * 3 * sizeof(float);
-
-		newmodel->geometry.verts = (float*) malloc(vrtsize);
-
-		const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
-		const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
-		const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
-
-/* copy and repack */
-		if (normals){
-			newmodel->geometry.normals = (float*) malloc(vrtsize);
-			memcpy(newmodel->geometry.normals, normals, vrtsize);
+/* set initial bounding box */
+		vector empty = {0};
+		if (newmodel->geometry.nverts){
+			empty.x = newmodel->geometry.verts[0];
+			empty.y = newmodel->geometry.verts[1];
+			empty.z = newmodel->geometry.verts[2];			
 		}
-
-/* lots of memory to be saved, so worth the trouble */
-		if (indices){
-            newmodel->geometry.nindices = newmodel->geometry.ntris * 3;
-            
-			if (newmodel->geometry.nindices < 256){
-				uint8_t* buf = (uint8_t*) malloc(newmodel->geometry.nindices * sizeof(uint8_t));
-				newmodel->geometry.indexformat = GL_UNSIGNED_BYTE;
-
-				for (unsigned i = 0; i < newmodel->geometry.nindices; i++)
-					buf[i] = indices[i];
-
-				newmodel->geometry.indices = (void*) buf;
-			}
-			else if (newmodel->geometry.nindices < 65536){
-				uint16_t* buf = (uint16_t*) malloc(newmodel->geometry.nindices * sizeof(uint16_t));
-				newmodel->geometry.indexformat = GL_UNSIGNED_SHORT;
-
-				for (unsigned i = 0; i < newmodel->geometry.nindices; i++)
-					buf[i] = indices[i];
-
-				newmodel->geometry.indices = (void*) buf;
-			}
-			else{ 
-				uint32_t* buf = (uint32_t*) malloc(newmodel->geometry.nindices * sizeof(uint32_t));
-				newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-				for (unsigned i = 0; i < newmodel->geometry.nindices; i++)
-					buf[i] = indices[i];
-				
-				newmodel->geometry.indices = (void*) buf;
-			}
-		}
-
-/* rerange vertex values to -1..1 */
-        minmax_verts(&newmodel->bbmin, &newmodel->bbmax, verts, newmodel->geometry.nverts);
-
-        float dx = newmodel->bbmax.x - newmodel->bbmin.x;
-        float dy = newmodel->bbmax.y - newmodel->bbmin.y;
-        float dz = newmodel->bbmax.z - newmodel->bbmin.z;
-
-        float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
-        float tx = -1.0 - (newmodel->bbmin.x * sfx), ty = -1.0 - (newmodel->bbmin.y * sfy), tz = -1.0 - (newmodel->bbmin.z * sfz);
-        
-		for (unsigned i = 0; i < newmodel->geometry.nverts * 3; i += 3){
-            newmodel->geometry.verts[i]   = tx + verts[i]   * sfx;
-			newmodel->geometry.verts[i+1] = ty + verts[i+1] * sfy;
-			newmodel->geometry.verts[i+2] = tz + verts[i+2] * sfz;
-        }
-
-        newmodel->bbmin.x = -1.0; newmodel->bbmin.y = -1.0; newmodel->bbmin.z = -1.0;
-        newmodel->bbmax.x =  1.0; newmodel->bbmax.y =  1.0; newmodel->bbmax.z =  1.0;
-
-        /* each txco set can have a different vid associated with it (multitexturing stuff),
- * possibly also specify filtermode, "mapname" and some other data currently ignored */
-		if (uvmaps > 0){
-			unsigned txsize = sizeof(float) * 2 * newmodel->geometry.nverts;
-			newmodel->textures = calloc(sizeof(texture_set), uvmaps);
-
-			for (int i = 0; i < uvmaps; i++){
-				newmodel->textures[i].vid = ARCAN_EID;
-				newmodel->textures[i].txcos = (float*) malloc(txsize);
-				memcpy(newmodel->textures[i].txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1 + i), txsize);
-			}
-		}
-
-		printf("uvmaps: %i\n", uvmaps);
-		arcan_video_allocframes(rv, uvmaps);
-        ctmFreeContext(ctx);
-
+		newmodel->bbmin = empty;
+		newmodel->bbmax = empty;
+		
+		minmax_verts(&newmodel->bbmin, &newmodel->bbmax, newmodel->geometry.verts, newmodel->geometry.nverts);
+		
+		ctmFreeContext(ctx);
 		return rv;
 	}
 

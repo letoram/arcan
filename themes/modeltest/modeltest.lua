@@ -8,15 +8,14 @@ function modeltest()
 	fwdstepsize = 0.0;
 	
 	games = list_games( {} );
---	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
-	
-	vid = load_mesh(arguments[1]);
+	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
+
+	vid = system_load("models/apb/apb.lua")();	
 	print("loaded model to: " .. vid);
 	mousex = VRESW * 0.5;
 	mousey = VRESH * 0.5;
 	
 	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
---	texture_model(plane, 0, gvid);
 
 	toggle_mouse_grab();
 
