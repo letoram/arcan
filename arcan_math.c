@@ -328,16 +328,6 @@ double* matr_quat(quat a, double* dmatr)
 	return dmatr;
 }
 
-void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw)
-{
-	float matr[16];
-	quat orient = build_quat_euler(roll, pitch, yaw);
-	glTranslatef(x, y, z);
-	matr_quatf(orient, matr);
-
-	glMultMatrixf(matr);
-}
-
 quat build_quat_euler(float roll, float pitch, float yaw)
 {
 	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0)), build_quat(roll, 0.0, 0.0, 1.0));

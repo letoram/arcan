@@ -1239,6 +1239,16 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	return 1;
 }
 
+int arcan_lua_loadmesh(lua_State* ctx)
+{
+    arcan_vobj_id did = luaL_checkvid(ctx, 1);
+    char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+
+    arcan_3daddmesh(did, path);
+    
+    return 0;
+}
+
 int arcan_lua_loadmodel(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
@@ -2226,8 +2236,10 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
 
 /* category: 3d */
-/* item:load_model, resource, vid */
-	lua_register(ctx, "load_mesh", arcan_lua_loadmodel);
+    lua_register(ctx, "load_3dmodel", arcan_lua_loadmodel);
+    
+/* item:load_model, dstvid, resource, nil */
+	lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
 
 /* item:move3d_model, vid, xp, yp, zp, time, nil */
 	lua_register(ctx, "move3d_model", arcan_lua_movemodel);
