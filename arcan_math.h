@@ -68,7 +68,6 @@ quat lerp_quat(quat a, quat b, float f);
 quat add_quat(quat a, quat b);
 
 scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
-void push_orient_matr(float x, float y, float z, float roll, float pitch, float yaw);
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 float lerp_val(float a, float b, float f);
 float lerp_fract(unsigned startt, unsigned endt, float ct);
