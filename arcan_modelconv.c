@@ -142,9 +142,9 @@ static int write_rep(FILE* src, FILE* luafile, bool flush)
         ctmSave(context, buf);
 
 		if (meshcount == 0)
-			fprintf(luafile, "local model = load_3dmodel(\"%s\");\n", buf);
+			fprintf(luafile, "model.vid = load_3dmodel(\"%s\");\n", buf);
 		else
-			fprintf(luafile, "add_3dmesh(model, \"%s\");\n", buf);
+			fprintf(luafile, "add_3dmesh(model.vid, \"%s\");\n", buf);
 
 		meshcount++;
         ctmFreeContext(context);
@@ -424,18 +424,18 @@ int main(int argc, char** argv)
     global.vertindbuf = (CTMuint*)  malloc(global.cap_vertindbuf * sizeof(CTMuint));
     global.texindbuf  = (CTMuint*)  malloc(global.cap_texindbuf  * sizeof(CTMuint));
     global.normindbuf = (CTMuint*)  malloc(global.cap_normindbuf * sizeof(CTMuint));
-    
+
+    fprintf(luadst, "local model = {.vid = ARCAN_EID};\n");
     parse_obj(fpek, luadst, argv[2]);
     
     if (global.ofs_vertindbuf > 0)
         write_rep(fpek, luadst, true);
 
-	if (meshcount > 0){
-		fprintf(luadst, "image_framesetsize(model, %i);\n", meshcount);
-		fprintf(luadst, "return model;\n");
-	}
-	
-	fclose(fpek);
+	if (meshcount > 0)
+		fprintf(luadst, "image_framesetsize(model.vid, %i);\n", meshcount);
+
+    fprintf(luadst, "return model;\n");
+    fclose(fpek);
 	fclose(luadst);
     
 	return 0;

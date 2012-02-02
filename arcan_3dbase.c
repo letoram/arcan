@@ -182,8 +182,8 @@ static void freemodel(arcan_3dmodel* src)
 		free(src->geometry.normals);
 
 		float** txcos = src->geometry.txcos;
-		while(txcos && *txcos)
-			free((*txcos)++);
+//		while(txcos && *txcos)
+//			free((*txcos)++);
 
 		if (txcos)
 			free(txcos);
@@ -229,7 +229,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
 		glVertexPointer(3, GL_FLOAT, 0, base->verts);
-		if (base->ntus > 0){
+		if (texture && base->ntus > 0){
 			for (unsigned i = 0; i < base->ntus && i < GL_MAX_TEXTURE_UNITS && (i + cframe) < vobj->frameset_capacity; i++){
 				glEnable(GL_TEXTURE_2D);
 				if (vobj->frameset[cframe + i] &&
@@ -249,23 +249,24 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 		else
 			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
 
-/* bounding box, normals/face normals, ... */
-		if (src->flags.debug_vis){
-			wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
-		}
-    
 /* and reverse transitions again for the next client */
-		if (counter)
-		while (counter >= 0){
+		while (counter-- > 0){
 			glClientActiveTexture(counter);
 			glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 			glBindTexture(GL_TEXTURE_2D, 0);
-			counter--;
 		}
 
 		if (base->normals)
 			glDisableClientState(GL_NORMAL_ARRAY);
 
+        /* bounding box, normals/face normals, ... */
+		if (1 || src->flags.debug_vis){
+            glColor4f(0.5, 0.5, 1.0, 1.0);
+			wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
+            glColor4f(1.0, 1.0, 1.0, 1.0);
+		}
+        
+        cframe++;
 		base = base->next;
 	}
 
@@ -383,20 +384,28 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	
 	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ){
 		arcan_3dmodel* model = (arcan_3dmodel*) vobj->state.ptr;
+        struct geometry* curr = &model->geometry;
+        while (curr) {
+            if (curr->indices){
+                unsigned* indices = curr->indices;
+                for (unsigned i = 0; i <curr->nindices * 3; i+= 3){
+                    unsigned t1[3] = { indices[i], indices[i+1], indices[i+2] };
+                    unsigned tmp = t1[0];
+                    t1[0] = t1[2]; t1[2] = tmp;
+                } 
+            } else {
+                float* verts = curr->verts;
+                
+                for (unsigned i = 0; i < curr->nverts * 9; i+= 9){
+                    vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
+                    vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
+                    verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
+                    verts[i+6] = v1.x; verts[i+7] = v1.y; verts[i+8] = v1.z;
+                }
+            }
 
-		if (model->geometry.indices){
-
-		} else {
-			float* verts = model->geometry.verts;
-			assert(model->geometry.nverts % 3 == 0);
-			
-			for (unsigned i = 0; i < model->geometry.nverts * 9; i+= 9){
-				vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
-				vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
-				verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
-				verts[i+6] = v1.x; verts[i+7] = v1.y; verts[i+8] = v1.z;
-			}
-		}
+            curr = curr->next;
+        }
 	}
 
 	return rv;
@@ -476,6 +485,8 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 		memcpy(dst->normals, normals, vrtsize);
 	}
 	
+    memcpy(dst->verts, verts, vrtsize);
+    
 /* lots of memory to be saved, so worth the trouble */
 	if (indices){
 		dst->nindices = dst->ntris * 3;
@@ -512,8 +523,9 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	 * possibly also specify filtermode, "mapname" and some other data currently ignored */
 	if (uvmaps > 0){
 		dst->txcos = (float**) calloc(sizeof(float**), uvmaps + 1);
+        dst->ntus = uvmaps;
 		unsigned txsize = sizeof(float) * 2 * dst->nverts;
-
+                                            
 		for (int i = 0; i < uvmaps; i++){
 			dst->txcos[i] = (float*) malloc(txsize);
 			memcpy(dst->txcos[i], ctmGetFloatArray(ctx, CTM_UV_MAP_1 + i), txsize);
@@ -587,6 +599,8 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 		dst->bbmin.x = -1.0; dst->bbmin.y = -1.0; dst->bbmin.z = -1.0;
 		dst->bbmax.x =  1.0; dst->bbmax.y =  1.0; dst->bbmax.z =  1.0;
 	}
+
+    return rv;
 }
 
 arcan_vobj_id arcan_3d_loadmodel(const char* resource)
