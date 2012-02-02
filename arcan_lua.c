@@ -996,6 +996,13 @@ static char* to_utf8(uint16_t utf16)
 	return (char*) utf8buf;
 }
 
+int arcan_lua_scale3dverts(lua_State* ctx)
+{
+    arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+    arcan_3d_scalevertices(vid);
+    return 0;
+}
+
 /* emitt input() call based on a arcan_event,
  * uses a separate format and translation to make it easier
  * for the user to modify. Perhaps one field should've been used
@@ -1242,9 +1249,11 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 int arcan_lua_loadmesh(lua_State* ctx)
 {
     arcan_vobj_id did = luaL_checkvid(ctx, 1);
-    char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+    char* path = arcan_find_resource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
-    arcan_3d_addmesh(did, path);
+    if (path){
+        arcan_3d_addmesh(did, path);
+    }
     
     return 0;
 }
@@ -2226,9 +2235,10 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
 
 /* category: 3d */
+/* item:load_3dmodel, resource, vid */
     lua_register(ctx, "load_3dmodel", arcan_lua_loadmodel);
     
-/* item:load_model, dstvid, resource, nil */
+/* item:add_3dmesh, dstvid, resource, nil */
 	lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
 
 /* item:move3d_model, vid, xp, yp, zp, time, nil */
@@ -2254,7 +2264,10 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:build_3dplane, minx, mind, maxx, maxd, yv, hdens, ddens, nil */
 	lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
-
+    
+/* item:scale_3dvertices, vid, nil */
+    lua_register(ctx, "scale_3dvertices", arcan_lua_scale3dverts);
+ 
 /* category: frameserver */
 
 /* item:play_movie, vid, nil */ 

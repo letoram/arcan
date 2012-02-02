@@ -7,20 +7,25 @@ function modeltest()
 	sidestepsize = 0.0;
 	fwdstepsize = 0.0;
 	
-	games = list_games( {} );
-	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
+--	games = list_games( {} );
+--	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
 
-	vid = system_load("models/apb/apb.lua")();	
-	print("loaded model to: " .. vid);
+	model = system_load("models/" .. arguments[1] .. "/" .. arguments[1] .. ".lua")();
+	print("loaded model to: " .. model.vid);
 	mousex = VRESW * 0.5;
 	mousey = VRESH * 0.5;
+
+	for i=1,25 do
+		local vid = fill_surface(32, 32, math.random(1,255), math.random(1,255), math.random(1,255));		
+		set_image_as_frame(model.vid, vid, i); 
+	end
 	
-	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
+--	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
 
 	toggle_mouse_grab();
 
-	show_image(plane);
-	show_image(vid);
+--	show_image(plane);
+	show_image(model.vid);
 end
 
 function modeltest_clock_pulse()

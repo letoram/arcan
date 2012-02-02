@@ -809,7 +809,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.h = constraints.h;
 		newvobj->origw = origw;
 		newvobj->origh = origh;
-		newvobj->current.opa = 1.0f;
+		newvobj->current.opa = 0.0f;
 		newvobj->current.rotation = build_quat_euler( 0, 0, 0 );
 
 	/* allocate */

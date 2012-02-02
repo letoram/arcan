@@ -217,26 +217,30 @@ void arcan_fatal(const char* msg, ...)
 }
 
 static char* unix_find(const char* fname){
-	const char* pathtbl[] = {
+    char* res = NULL;
+	char* pathtbl[] = {
 		".",
+        NULL,
 		"/usr/local/share/arcan",
 		"/usr/share/arcan",
 		NULL
 	};
-
+    
 	snprintf(playbuf, playbufsize, "%s/.arcan/%s", getenv("HOME"), fname );
+    pathtbl[1] = strdup(playbuf);
 
-	if (is_dir(playbuf))
-		return strdup(playbuf);
-
-	for (const char** base = pathtbl; *base != NULL; base++){
+	for (char** base = pathtbl; *base != NULL; base++){
 		snprintf(playbuf, playbufsize, "%s/%s", *base, fname );
 
-		if (is_dir(playbuf))
-			return strdup(playbuf);
+		if (is_dir(playbuf)){
+			res = strdup(playbuf);
+            break;
+        }
 	}
-	
-	return NULL;
+    
+cleanup:
+    free(pathtbl[1]);	
+	return res;
 }
 
 static void setpaths_unix()
