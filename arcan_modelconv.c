@@ -108,10 +108,41 @@ unsigned resolve(CTMfloat* sbuf, unsigned* lim, float v1, float v2, float v3){
     return i / 3;
 }
 
+static bool file_exists(const char* fn)
+{
+	struct stat buf;
+	bool rv = false;
+
+	if (fn == NULL) 
+		return false;
+		
+	if (stat(fn, &buf) == 0) {
+		rv = S_ISREG(buf.st_mode);
+	}
+
+	return rv;
+}
+
+/* since material split may result in several models
+ * with the same filename, we need to have a way of adding a seqn.
+ * thus we do a linear filesystem search (assumes there's enough space in dst) */
+static char* addseqn(char* dst, char* base, char* ext){
+	unsigned seqn = 1;
+	
+	sprintf(dst, "%s.%s", base, ext);
+	if (!file_exists(dst))
+		return dst;
+	
+	do{
+		sprintf(dst, "%s_%i.%s", base, seqn++, ext);
+	} while (file_exists(dst));
+
+	return dst;
+}
+
 static int meshcount = 0;
 static int write_rep(char* arg, FILE* luafile)
 {
-	printf("fucking split: %i\n", global.split);
 	/* nothing if were's no indices found */
     if (global.split && global.filename && global.ofs_vertindbuf > 0){
         CTMfloat (* vertbuf), (* normbuf), (* textbuf);
@@ -150,7 +181,8 @@ static int write_rep(char* arg, FILE* luafile)
  /* either I've messed up or there's something with CTMFreeContext,
   * but in some border-conditions, it will double-free */
 		char buf[68];
-		snprintf(buf, 68, "%.63s.ctm", chop(global.filename));
+		addseqn(buf, chop(global.filename), "ctm");
+		printf("yielded : %s\n", buf);
 		CTMcontext context;
 		context = ctmNewContext(CTM_EXPORT);
 		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, normbufofs ? normbuf : NULL);
@@ -177,7 +209,6 @@ static int write_rep(char* arg, FILE* luafile)
 /* need to keep all the other data since it may be referenced */
 		global.ofs_vertindbuf = global.ofs_texindbuf = global.ofs_normindbuf = 0;
 		meshcount++;
-		printf("saved\n");
 		/* read the rest of the line (should contain name of the group),
  * strip away any whitespace */
 	}
@@ -285,8 +316,8 @@ void storemat(FILE* dst, char* groupname)
 			fprintf(dst, "model.textures[\"%s\"] = load_image(\"models/%s/textures/%s\");\n", globalmat.groupname, global.basename, maptype);
 		}
 		else {
-			fprintf(dst, "model.textures[\"%s\"] = fill_surface(8, 8, %f, %f, %f);\n", globalmat.groupname, 
-					globalmat.diffuse.x, globalmat.diffuse.y, globalmat.diffuse.z);
+			fprintf(dst, "model.textures[\"%s\"] = fill_surface(8, 8, %d, %d, %d);\n", globalmat.groupname,
+					(unsigned) (255 * globalmat.diffuse.x), (unsigned) (255 * globalmat.diffuse.y), (unsigned) (255 * globalmat.diffuse.z));
 		}
 
 		free(globalmat.ambientmap); free(globalmat.specularmap); free(globalmat.bumpmap); free(globalmat.diffusemap);
@@ -578,8 +609,8 @@ int main(int argc, char** argv)
 /* add a wrapper function to make things slightly more cleaner */
 	fprintf(luadst, "local model = {vid = ARCAN_EID, labels = {}, textures = {}};\n");
 	fprintf(luadst, "local function model_material(label, slot)\n\t"
-	"if (model[label] == nil) then model[label] = {}; end\n\t"
-	"table.insert(model[label], slot);\nend\n");
+	"if (model.labels[label] == nil) then model.labels[label] = {}; end\n\t"
+	"table.insert(model.labels[label], slot);\nend\n");
 	
     parse_obj(fpek, luadst, basename);
 	global.split = true;
@@ -595,15 +626,22 @@ int main(int argc, char** argv)
 		fclose(matfpek);
 	}
 
-/*  this little loop scans through the loaded models, and tries to find corresponding textures */
-	fprintf(luadst, "\nfor label,vid in ipairs(model.labels) do\n"
+	if (global.debug){
+		fprintf(luadst, "\nfor label, vid in pairs(model.textures) do\n"
+		"\tif (vid == ARCAN_EID) then\n"
+		"\t\tmodel.textures[label] = fill_surface(8, 8, 255,255,0);\n"
+		"\tend");
+	}
+
+	/*  this little loop scans through the loaded models, and tries to find corresponding textures */
+	fprintf(luadst, "\nfor label,vids in pairs(model.labels) do\n"
 		"\tif (model.textures[label]) then\n"
-		"\t\tfor vid in model.textures[label] do\n"
-		"\t\t\tset_image_as_frame(model.vid, model.textures[label], vid, 1);\n"
+		"\t\tfor ind, slot in ipairs(vids) do\n"
+		"\t\t\tset_image_as_frame(model.vid, model.textures[label], slot, 1);\n"
 		"\t\t end\n"
 		"\tend\n"
 	"end\n");
-	
+
     fprintf(luadst, "return model;\n");
     fclose(fpek);
 	fclose(luadst);
