@@ -30,8 +30,8 @@
 extern struct arcan_video_display arcan_video_display;
 
 /* since the 3d is planned as a secondary feature, rather than the primary one,
- * things work slightly different as each 3d object is essentially coupled to 1..n of 2D video objects */
-
+ * things work slightly different as each 3d object is essentially coupled to 1..n of 2D
+ */
 enum virttype{
 	virttype_camera = 0,
 	virttype_pointlight,
@@ -263,7 +263,15 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 		if (1 || src->flags.debug_vis){
             glColor4f(0.5, 0.5, 1.0, 1.0);
 			wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
-            glColor4f(1.0, 1.0, 1.0, 1.0);
+			glBegin(GL_LINES);
+				glVertex3f(src->bbmin.x - 1.0, 0.0, 0.0);
+				glVertex3f(src->bbmax.x + 1.0, 0.0, 0.0);
+				glVertex3f(0.0, src->bbmin.y - 1.0, 0.0);
+				glVertex3f(0.0, src->bbmax.y + 1.0, 0.0);
+				glVertex3f(0.0, 0.0, src->bbmin.z - 1.0);
+				glVertex3f(0.0, 0.0, src->bbmax.z + 1.0);
+			glEnd();
+			glColor4f(1.0, 1.0, 1.0, 1.0);
 		}
         
         cframe++;
@@ -580,24 +588,38 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 		}
 
 		geom = &dst->geometry;
+		float sf, tx, ty, tz;
+		
 		float dx = dst->bbmax.x - dst->bbmin.x;
 		float dy = dst->bbmax.y - dst->bbmin.y;
 		float dz = dst->bbmax.z - dst->bbmin.z;
-		float sfx = 2.0 / dx, sfy = 2.0 / dy, sfz = 2.0 / dz;
-		float tx = -1.0 - (dst->bbmin.x * sfx), ty = -1.0 - (dst->bbmin.y * sfy), tz = -1.0 - (dst->bbmin.z * sfz);
+
+		if (dz > dy && dz > dx)
+			sf = 2.0 / dz;			
+		else if (dy > dz && dy > dx)
+			sf = 2.0 / dy;
+		else
+			sf = 2.0 / dx;
+
+		dst->bbmax = mul_vectorf(dst->bbmax, sf);
+		dst->bbmin = mul_vectorf(dst->bbmin, sf);
+
+		tx = (0.0 - dst->bbmin.x) - (dst->bbmax.x - dst->bbmin.x) * 0.5;
+		ty = (0.0 - dst->bbmin.y) - (dst->bbmax.y - dst->bbmin.y) * 0.5;
+		tz = (0.0 - dst->bbmin.z) - (dst->bbmax.z - dst->bbmin.z) * 0.5;
+		dst->bbmax.x += tx; dst->bbmin.x += tx;
+		dst->bbmax.y += ty; dst->bbmin.y += ty;
+		dst->bbmax.z += tz; dst->bbmin.z += tz;
 		
 		while(geom){
 			for (unsigned i = 0; i < geom->nverts * 3; i += 3){
-				geom->verts[i]   = tx + geom->verts[i]   * sfx;
-				geom->verts[i+1] = ty + geom->verts[i+1] * sfy;
-				geom->verts[i+2] = tz + geom->verts[i+2] * sfz;
+				geom->verts[i]   = tx + geom->verts[i]   * sf;
+				geom->verts[i+1] = ty + geom->verts[i+1] * sf;
+				geom->verts[i+2] = tz + geom->verts[i+2] * sf;
 			}
 			
 			geom = geom->next;
 		}
-			
-		dst->bbmin.x = -1.0; dst->bbmin.y = -1.0; dst->bbmin.z = -1.0;
-		dst->bbmax.x =  1.0; dst->bbmax.y =  1.0; dst->bbmax.z =  1.0;
 	}
 
     return rv;
