@@ -135,9 +135,8 @@ local function console_hide(self)
 	blend_image(self.console_window_border, 0.0, 10);
 	move_image(self.console_window_border, self.x + self.width * 0.5, self.y + self.height * 0.5, 0);
 	resize_image(self.console_window_border, 6, 6, 0);
-	move_image(self.console_window_border, self.x, self.y, 10);
-	resize_image(self.console_window_border, self.width, self.height, 10);
-	blend_image(self.console_window_border, 0.95, 10);
+	move_image(self.console_window_border, self.width, self.width, 10);
+	resize_image(self.console_window_border, 1, 1, 10);
 end
 
 local function console_update_msgwin(self)
@@ -342,8 +341,8 @@ function create_console(w, h, font, fontsize)
 		historypos = -1,
 		width = w,
 		height = h,
-		x = 10,
-		y = 10,
+		x = 0,
+		y = 0,
 		caretpos = 1,
 		symtbl = symfun(),
 		input = console_input,
@@ -390,7 +389,8 @@ function create_console(w, h, font, fontsize)
 	show_image(newtbl.console_window);
 	show_image(newtbl.console_window_inputbg);
 	show_image(newtbl.caret);
-	
+
+	newtbl.hide = console_hide;
 	newtbl.show = console_show;
 	newtbl.auto_completion = function( self, list )
 		if (list ~= nil) then

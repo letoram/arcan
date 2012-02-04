@@ -87,6 +87,12 @@ vector build_vect(const float x, const float y, const float z)
 	return res;
 }
 
+vector mul_vectorf(vector a, float f)
+{
+	vector res = {.x = a.x * f, .y = a.y * f, .z = a.z * f};
+	return res;
+}
+
 quat build_quat(float angdeg, float vx, float vy, float vz)
 {
 	quat ret;

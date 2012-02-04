@@ -203,9 +203,9 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
  * but also chained by repeatedly setting new values before the previous one expires.
  * If the change is to be instantaneous, set 0 as time (this will dequeue all chained- changes for
  * that particular attribute */
-arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsigned int time);
-arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigned int time);
-arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float deg, unsigned int time);
+arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, float newz, unsigned int time);
+arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, float df, unsigned int time);
+arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, float yaw, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 

@@ -2027,7 +2027,7 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 	return rv;
 }
 
-arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int tv)
+arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, float yaw, unsigned int tv)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -2039,7 +2039,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int 
 		 * if time is set to ovverride and be immediate */
 		if (tv == 0) {
 			swipe_chain(vobj->transform, offsetof(surface_transform, rotate), sizeof(struct transf_rotate));
-			vobj->current.rotation = build_quat_euler(angle, 0.0, 0.0);
+			vobj->current.rotation = build_quat_euler(roll, pitch, yaw);
 		}
 		else { /* find endpoint to attach at */
 			quat bv = vobj->current.rotation;
@@ -2069,7 +2069,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float angle, unsigned int 
 			base->rotate.startt = last->rotate.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->rotate.endt;
 			base->rotate.endt   = base->rotate.startt + tv;
 			base->rotate.starto = bv;
-			base->rotate.endo = build_quat_euler(angle, 0.0f, 0.0f);
+			base->rotate.endo = build_quat_euler(roll, pitch, yaw);
 			base->rotate.interp = interpolate_linear;
 		}
 	}
@@ -2137,7 +2137,7 @@ arcan_errc arcan_video_delaytransform(arcan_vobj_id id, uint8_t mask, unsigned t
  * if time is 0 the move will be instantaneous (and not generate an event)
  * otherwise time denotes how many ticks it should take to move the object
  * from its start position to it's final. An event will in this case be generated */
-arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsigned int tv)
+arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, float newz, unsigned int tv)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -2151,7 +2151,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsi
 			swipe_chain(vobj->transform, offsetof(surface_transform, move), sizeof(struct transf_move));
 			vobj->current.position.x = newx;
 			vobj->current.position.y = newy;
-			vobj->current.position.z = 0;
+			vobj->current.position.z = newz;
 		}
 		else { /* find endpoint to attach at */
 			surface_transform* base = vobj->transform;
@@ -2174,7 +2174,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsi
 					base = last = (surface_transform*) calloc(sizeof(surface_transform), 1);
 			}
 			
-			point newp = {newx, newy, 0};
+			point newp = {newx, newy, newz};
 
 			if (!vobj->transform)
 				vobj->transform = base;
@@ -2193,7 +2193,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, unsi
 /* scale the video object to match neww and newh, with stepx or stepy at 0 it will be instantaneous,
  * otherwise it will move at stepx % of delta-size each tick
  * return value is an errorcode, run through char* arcan_verror(int8_t) */
-arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigned int tv)
+arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, float df, unsigned tv)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -2207,7 +2207,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 
 			vobj->current.scale.x = wf;
 			vobj->current.scale.y = hf;
-			vobj->current.scale.z = 1.0;
+			vobj->current.scale.z = df;
 		}
 		else {
 			surface_transform* base = vobj->transform;
@@ -2239,7 +2239,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, unsigne
 			base->scale.startd = bs;
 			base->scale.endd.x = wf;
 			base->scale.endd.y = hf;
-			base->scale.endd.z = 1.0;
+			base->scale.endd.z = df;
 		}
 	}
 

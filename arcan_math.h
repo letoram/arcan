@@ -52,6 +52,7 @@ vector norm_vector(vector invect);
 vector lerp_vector(vector a, vector b, float f);
 vector mul_vector(vector a, vector b);
 vector add_vector(vector a, vector b);
+vector mul_vectorf(vector a, float f);
 
 /* Quaternions */
 quat inv_quat(quat src);

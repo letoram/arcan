@@ -10,13 +10,13 @@
 #include <assert.h>
 #include <math.h>
 
+#include "getopt.h"
 #include "arcan_math.h"
 #include <openctm.h>
 
 /* need to store this for all contained meshes,
  * then split into a number of meshes, with the loading options
  * specified in the basename/basename.lua file. Since
- * .objs indices are relative to an absolute vertex cloud, 
  * we have to reindex. */
 struct {
     CTMfloat* vertbuf;
@@ -37,9 +37,30 @@ struct {
     CTMuint* texindbuf;
     unsigned cap_texindbuf, ofs_texindbuf;
     
-    char* basename;
-    bool split;
-} global = {0};
+    char* basename; /* desired basename to store with */
+	char* filename; /* model output if we have no material set */
+	char* material; /* if a material label is given, we use that +ctm as we need to split on material */
+	bool split;
+	bool debug;
+} global = {.split = true};
+
+struct {
+	float opacity;
+	float specfact;
+	
+	vector diffuse;
+	vector ambient;
+	vector specular;
+	
+	char* diffusemap;
+	char* specularmap;
+	char* ambientmap;
+	char* bumpmap;
+	char* groupname;
+	
+} globalmat = {
+	.opacity = 1.0
+};
 
 char* chop(char* str)
 {
@@ -87,17 +108,12 @@ unsigned resolve(CTMfloat* sbuf, unsigned* lim, float v1, float v2, float v3){
     return i / 3;
 }
 
-static bool meshcount = 0;
-static int write_rep(FILE* src, FILE* luafile, bool flush)
-{    
-    static char fname[64] = "";
-    char* dstfile = fname;
-    
-    if (flush && strlen(fname) == 0)
-        dstfile = global.basename;
-    
-    /* nothing if were's no indices found */
-    if (global.ofs_vertindbuf > 0){
+static int meshcount = 0;
+static int write_rep(char* arg, FILE* luafile)
+{
+	printf("fucking split: %i\n", global.split);
+	/* nothing if were's no indices found */
+    if (global.split && global.filename && global.ofs_vertindbuf > 0){
         CTMfloat (* vertbuf), (* normbuf), (* textbuf);
         CTMuint* indbuf;
         unsigned vertbufofs = 0, indbufofs = 0, vertbufind = 0, normbufofs = 0, textbufofs = 0;
@@ -130,45 +146,49 @@ static int write_rep(FILE* src, FILE* luafile, bool flush)
                 textbuf[ textbufofs++ ] = global.texbuf[ind+1];
             }
         }
+
+ /* either I've messed up or there's something with CTMFreeContext,
+  * but in some border-conditions, it will double-free */
+		char buf[68];
+		snprintf(buf, 68, "%.63s.ctm", chop(global.filename));
+		CTMcontext context;
+		context = ctmNewContext(CTM_EXPORT);
+		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, normbufofs ? normbuf : NULL);
+		if (textbufofs)
+			ctmAddUVMap(context, textbuf, buf, NULL);
         
-        char buf[68];
-        snprintf(buf, 68, "%s.ctm", chop(dstfile));
-        CTMcontext context;
-        context = ctmNewContext(CTM_EXPORT);
-        ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, normbufofs ? normbuf : NULL);
-        if (textbufofs)
-            ctmAddUVMap(context, textbuf, buf, NULL);
-        
-        ctmSave(context, buf);
+		ctmSave(context, buf);
 
 		if (meshcount == 0)
-			fprintf(luafile, "model.vid = load_3dmodel(\"%s\");\n", buf);
+			fprintf(luafile, "-- Build and link meshes into a model\n\n"
+			"model.vid = load_3dmodel(\"models/%s/%s\");\n", global.basename, buf);
 		else
-			fprintf(luafile, "add_3dmesh(model.vid, \"%s\");\n", buf);
+			fprintf(luafile, "add_3dmesh(model.vid, \"models/%s/%s\");\n", global.basename, buf);
 
-		meshcount++;
-        ctmFreeContext(context);
+		fprintf(luafile, "model_material(\"%s\", %i);\n", chop(global.filename), meshcount);
+		ctmFreeContext(context);
 /* ctm takes care of the buffers we handed over */
-        if (!normbufofs)
-            free(normbuf);
+		if (!normbufofs)
+			free(normbuf);
         
-        if (!textbufofs)
-            free(textbuf);
-     
+		if (!textbufofs)
+			free(textbuf);
+
 /* need to keep all the other data since it may be referenced */
-        global.ofs_vertindbuf = global.ofs_texindbuf = global.ofs_normindbuf = 0;
-    }
-    
-    /* read the rest of the line (should contain name of the group),
-     * strip away any whitespace */
-    fgets(fname, 64, src);
-    return 0;
-}
+		global.ofs_vertindbuf = global.ofs_texindbuf = global.ofs_normindbuf = 0;
+		meshcount++;
+		printf("saved\n");
+		/* read the rest of the line (should contain name of the group),
+ * strip away any whitespace */
+	}
 
+	if (global.filename)
+		free(global.filename);
 
-static void print_usage()
-{
-	fprintf(stdout, "usage: arcan_modelconv infile basename outdir\n");
+	if (arg)
+		global.filename = strdup(arg);
+
+	return 0;
 }
 
 static void resizebuf(void** dbuf, unsigned* cap, unsigned ofs, unsigned step, unsigned size, const char* kind){
@@ -184,24 +204,21 @@ static void resizebuf(void** dbuf, unsigned* cap, unsigned ofs, unsigned step, u
 /* ' ' separated groups of floats (discard initial)
  * allowed num, . and neg. 
  * initial character (empty, n or t sets destination group, but all are floats) */
-static void read_vertval(FILE* src)
+static void read_vertval(char* arg, char dstgrp)
 {
 	float v1, v2, v3, v4;
 	unsigned* dstlim;
 	unsigned* dstofs;
 	CTMfloat* dstbuf;
 	CTMfloat** dstbufp;
-    long fpos = ftell(src);
-	char dstgrp;
-	dstgrp = fgetc(src);
 	
-	if (fscanf(src, " %f %f %f %f", &v1, &v2, &v3, &v4) < 3){
+	if (sscanf(arg, " %f %f %f %f", &v1, &v2, &v3, &v4) < 3){
 		fprintf(stderr, "Warning, vertex could not be read.\n");
 		v1 = 0.0; v2 = 0.0; v3 = 0.0;
 	}
     
 	switch (dstgrp){
-		case ' ' :
+		case 0 :
 			resizebuf((void**)&global.vertbuf, &global.cap_vertbuf, global.ofs_vertbuf, 3, sizeof(float), "vertbuf");
 			global.vertbuf[global.ofs_vertbuf++] = v1;
 			global.vertbuf[global.ofs_vertbuf++] = v2;
@@ -224,8 +241,6 @@ static void read_vertval(FILE* src)
         default:
             fprintf(stderr, "Warning, unknown vertex subtype (%c)\n", dstgrp);
 	}
-    
-    fseek(src, fpos, SEEK_SET);
 }
 
 static void storeind(signed vert, signed texco, signed norm)
@@ -252,22 +267,44 @@ static void storeind(signed vert, signed texco, signed norm)
     }
 }
 
-static void read_face(FILE* src)
+void storemat(FILE* dst, char* groupname)
+{
+/* current API for material support is quite limited,
+ * only one kind of map allowed,
+ * no tinting, no illumination model,
+ * only diffuse colour */
+	if (globalmat.groupname != NULL){
+		if (globalmat.diffusemap || globalmat.bumpmap ||
+			globalmat.specularmap || globalmat.ambientmap){
+			char* maptype = NULL;
+			if (globalmat.diffusemap) maptype = globalmat.diffusemap;
+			else if (globalmat.ambientmap) maptype = globalmat.ambientmap;
+			else if (globalmat.specularmap) maptype = globalmat.specularmap;
+			else if (globalmat.bumpmap) maptype = globalmat.bumpmap;
+
+			fprintf(dst, "model.textures[\"%s\"] = load_image(\"models/%s/textures/%s\");\n", globalmat.groupname, global.basename, maptype);
+		}
+		else {
+			fprintf(dst, "model.textures[\"%s\"] = fill_surface(8, 8, %f, %f, %f);\n", globalmat.groupname, 
+					globalmat.diffuse.x, globalmat.diffuse.y, globalmat.diffuse.z);
+		}
+
+		free(globalmat.ambientmap); free(globalmat.specularmap); free(globalmat.bumpmap); free(globalmat.diffusemap);
+		globalmat.ambientmap = globalmat.specularmap = globalmat.bumpmap = globalmat.diffusemap = NULL;
+		free(globalmat.groupname);
+		globalmat.groupname = NULL;
+			
+		if (groupname)
+			globalmat.groupname = strdup(groupname);
+	}
+	else
+		globalmat.groupname = strdup(groupname);
+}
+
+static void read_faceval(char* arg)
 {
     unsigned u1, u2, u3, u4, u5, u6, u7, u8, u9;
-    long fpos = ftell(src);
-    long feol = fpos;
-    
-    /* buffer the whole line */
-    while (fgetc(src) != '\n' && !feof(src));
-    feol = ftell(src);
-    char* linebuf = (char*) malloc(sizeof(char*) * (feol - fpos + 1));
-    if (!linebuf) return;
-    
-    fseek(src, fpos, SEEK_SET);
-    fgets(linebuf, (feol - fpos + 1), src);
-    
-    char* line = chop(linebuf);
+    char* line = chop(arg);
     
     /* need to know if we should tesselate into tris and how many attributes we have */
     unsigned ngroups = 0, ofs = 0, nelem = 0;
@@ -289,8 +326,8 @@ static void read_face(FILE* src)
     }
     if (++ngroups != 3 && ngroups != 4){
         fprintf(stderr, "Warning, couldn't read face from line: (%s)-- unknown size (%i) groups found.\n", line, ngroups);
-        goto error;
-    }
+		return;
+	}
     
     /* fill buf */
     struct {
@@ -335,10 +372,81 @@ static void read_face(FILE* src)
         storeind( buf[2].vrti, buf[2].txci, buf[2].normi );
         storeind( buf[3].vrti, buf[3].txci, buf[3].normi );
     }
-    
-error:
-    free(linebuf);
-    fseek(src, fpos, SEEK_SET);
+}
+
+/* will try to automatically map specified single- color / simple property materials,
+ * texture loading and map to the mesh (framenumber) with the corresponding label */
+void parse_mat(FILE* src, FILE* luafile, const char* basename)
+{
+	/* newmtl - set next group label */
+	/* Ka f f f    ambient term
+	 * Kd f f f    diffuse term
+	 * Ks f f f    specular term
+	 * d f         transparency
+	 * Tr 0.9      transparency
+	 * illum mode  (ignored)
+	 * map_Ka      (ambient texture map)
+	 * map_Kd      (diffuse texture map)
+	 * map_Ks      (specular texture map)
+	 * map_bump    (bump map)
+	 * bump        (alternative bump map format) */
+
+	char line[256];
+	unsigned ofs = 0;
+	vector nullv= {.x = 0.0, .y = 0.0, .z = 0.0};
+	
+	while (!feof(src)){
+		fgets(line, sizeof(line), src);
+		char* cmdl = chop(line);
+		char ofs = 0;
+
+		while (!isspace(cmdl[ofs]) && cmdl[ofs++]);
+		if (ofs >= sizeof(line)){
+			fprintf(stderr, "Unexpected input parsing material, giving up\n");
+			return;
+		}
+
+		cmdl[ofs] = 0;
+		char* arg = &cmdl[ofs+1];
+		
+		if (strcmp(cmdl, "Ka") == 0){
+			if (3 != sscanf(arg, "%f %f %f", &globalmat.ambient.x, &globalmat.ambient.y, &globalmat.ambient.y))
+				globalmat.ambient = nullv;
+		}
+		else if (strcmp(cmdl, "Kd") == 0){
+			if (3 != sscanf(arg, "%f %f %f", &globalmat.diffuse.x, &globalmat.diffuse.y, &globalmat.diffuse.y))
+				globalmat.diffuse = nullv;
+		}
+		else if (strcmp(cmdl, "Ks") == 0){
+			if (3 != sscanf(arg, "%f %f %f", &globalmat.specular.x, &globalmat.specular.y, &globalmat.specular.z))
+				globalmat.specular = nullv;
+		}
+		else if (strcmp(cmdl, "d") == 0 ||
+			strcmp(cmdl, "Tr") == 0){
+			if (1 != sscanf(arg, "%f", &globalmat.opacity))
+				globalmat.opacity = 1.0;
+		}
+		else if (strcmp(cmdl, "Ns") == 0){
+			if (1 != sscanf(arg, "%f", &globalmat.specfact))
+				globalmat.specfact = 0.0;
+		}
+		else if (strcmp(cmdl, "illum") == 0);
+		else if (strcmp(cmdl, "map_Ka") == 0)
+			globalmat.ambientmap = strdup(arg);
+		else if (strcmp(cmdl, "map_Kd") == 0)
+			globalmat.diffusemap = strdup(arg);
+		else if (strcmp(cmdl, "map_Ks") == 0)
+			globalmat.specularmap = strdup(arg);
+		else if (strcmp(cmdl, "map_bump") == 0 ||
+			strcmp(cmdl, "bump") == 0)
+			globalmat.bumpmap = strdup(arg);
+		
+		else if (strcmp(cmdl, "newmtl") == 0){
+			storemat(luafile, arg);
+		}
+	}
+
+	storemat(luafile, NULL);
 }
 
 /* quirks to note:
@@ -346,37 +454,49 @@ error:
  * 1-based indexing, with relative indexes possible */
 void parse_obj(FILE* src, FILE* luafile, const char* basename)
 {
-    unsigned linecount = 0;
-	/* skip all whitespace and lines beginning with # */
-	while(!feof(src)){
-		char ch;
-		bool skipline = false;
-        linecount++;
-        
-		while ( !feof(src) && (ch = fgetc(src)) != '\n' ){
-			if (skipline)
-				continue;
-            
-            if (isspace(ch))
-                continue;
-            
-			switch (ch){
-                    /* comment  */	case '#' : skipline = true; break;
-                    /* vertice  */ 	case 'v' : read_vertval(src); skipline = true; break; 
-                    /* faces    */  case 'f' : read_face(src); skipline = true; break; 
-                    /* grouping */  case 'g' : skipline = true; 
-                    if (global.split)
-                        write_rep(src, luafile, false); 
-                    break;
-                    
-                    /* smoothing*/  case 's' : skipline = true; break;
-                    /* usemat   */  case 'u' : skipline = true; break;
-                    /* mtllib   */  case 'm' : skipline = true; break;
-				default:
-					fprintf(stderr, "Warning, unknown control character: %c on line %i\n", ch, linecount);
-			}
+ 	char line[1024];
+	unsigned ofs = 0;
+	vector nullv= {.x = 0.0, .y = 0.0, .z = 0.0};
+	
+	while (!feof(src)){
+		fgets(line, sizeof(line), src);
+		char* cmdl = chop(line);
+		char ofs = 0;
+
+		while (!isspace(cmdl[ofs]) && cmdl[ofs++]);
+		if (ofs >= sizeof(line)){
+			fprintf(stderr, "Unexpected input parsing obj, giving up\n");
+			return;
 		}
+
+		cmdl[ofs] = 0;
+		char* arg = &cmdl[ofs+1];
+	   unsigned linecount = 0;
+
+		if (strcmp(cmdl, "#") == 0)
+			continue;
+		else if (strcmp(cmdl, "v") == 0 || strcmp(cmdl, "vt") == 0 ||
+			strcmp(cmdl, "vn") == 0)
+				read_vertval(arg, cmdl[1]);
+		else if (strcmp(cmdl, "f") == 0)
+			read_faceval(arg);
+		else if (strcmp(cmdl, "s") == 0)
+			continue; /* ignore smoothing groups */
+		else if (strcmp(cmdl, "g") == 0 ||
+			strcmp(cmdl, "usemtl") == 0)
+			write_rep(arg, luafile);
 	}
+}
+
+void print_usage()
+{
+	fprintf(stdout, "arcan_modelconv, usage: \n"
+	"\t-i inputfile -- (req) specify input file to parse\n"
+	"\t-b basename  -- (req) specify modelname\n"
+	"\t-m mtlfile   -- (opt) specify material file to parse\n"
+	"\t-s           -- (opt) disable splitting files on group\n"
+	"\t-g           -- (opt) emit debugoutput in model code\n"
+	"\t-o outputdir -- (opt) default: ./) specify where to store the resulting files\n");
 }
 
 /* Parse arguments,
@@ -384,27 +504,58 @@ void parse_obj(FILE* src, FILE* luafile, const char* basename)
  * Make filestructure, setup points and call parsing routines */
 int main(int argc, char** argv)
 {
-	if (argc != 4){
+	char* matfile   = NULL;
+	char* basename  = NULL;
+	char* inputfile = NULL;
+	char* outputdir = NULL;
+	char ch;
+
+	while ( (ch = getopt(argc, argv, "gsm:i:o:b:")) != -1){
+		switch (ch) {
+			case 'm' : matfile   = strdup(optarg); break;
+			case 'i' : inputfile = strdup(optarg); break;
+			case 'o' : outputdir = strdup(optarg); break;
+			case 'b' : basename  = strdup(optarg); break;
+			case 'g' : global.debug = true; break;
+			case 's' : global.split = false; break;
+			default:
+				fprintf(stderr, "Warning, unknown option (%c), ignored.\n", ch);  
+		}
+	}
+
+	if (!outputdir)
+		outputdir = "./";
+	
+	if (!inputfile || !basename){
 		print_usage();
-		return 1;
+		return 0;
 	}
+	
     
-	FILE* fpek = fopen(argv[1], "r");
+	FILE* fpek = fopen(inputfile, "r");
+	FILE* matfpek = NULL;
+	
+	if (matfile){
+		matfpek = fopen(matfile, "r");
+		if (!matfpek)
+			fprintf(stderr, "Warning, couldn't open material file (%s), ignoring.\n", matfile);
+	}
+	
 	if (!fpek){
-		fprintf(stderr, "Couldn't open input (%s)\n", argv[1]);
+		fprintf(stderr, "Couldn't open input (%s)\n", inputfile); 
 		return 1;
 	}
     
-	if (mkdir(argv[3], S_IRWXU | S_IXGRP | S_IXOTH | S_IROTH) == -1 &&
+	if (mkdir(outputdir, S_IRWXU | S_IXGRP | S_IXOTH | S_IROTH) == -1 &&
 		errno != EEXIST){
-        fprintf(stderr, "Couldn't create directory (%s)\n", argv[3]);
+        fprintf(stderr, "Couldn't create directory (%s)\n", outputdir);
         return 1;
 	}
 	
-	chdir(argv[3]);
+	chdir(outputdir);
     
-	char* luafname = (char*) malloc( (strlen(argv[2] + 5)) * sizeof(char) );
-	sprintf(luafname, "%s.lua", argv[2]);
+	char* luafname = (char*) malloc( (strlen(basename + 5)) * sizeof(char) );
+	sprintf(luafname, "%s.lua", basename);
 	FILE* luadst = fopen(luafname, "w");
 	free(luafname);
     
@@ -413,8 +564,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
     
-    global.split = true;
-    global.basename = argv[2];
+    global.basename = basename;
     global.cap_normalbuf  = global.cap_texbuf     = global.cap_vertbuf   = 640 * 1024;
     global.cap_normindbuf = global.cap_vertindbuf = global.cap_texindbuf = 640 * 1024;
     
@@ -425,18 +575,38 @@ int main(int argc, char** argv)
     global.texindbuf  = (CTMuint*)  malloc(global.cap_texindbuf  * sizeof(CTMuint));
     global.normindbuf = (CTMuint*)  malloc(global.cap_normindbuf * sizeof(CTMuint));
 
-    fprintf(luadst, "local model = {.vid = ARCAN_EID};\n");
-    parse_obj(fpek, luadst, argv[2]);
-    
-    if (global.ofs_vertindbuf > 0)
-        write_rep(fpek, luadst, true);
+/* add a wrapper function to make things slightly more cleaner */
+	fprintf(luadst, "local model = {vid = ARCAN_EID, labels = {}, textures = {}};\n");
+	fprintf(luadst, "local function model_material(label, slot)\n\t"
+	"if (model[label] == nil) then model[label] = {}; end\n\t"
+	"table.insert(model[label], slot);\nend\n");
+	
+    parse_obj(fpek, luadst, basename);
+	global.split = true;
+	
+	if (global.ofs_vertindbuf > 0)
+        write_rep(NULL, luadst);
 
 	if (meshcount > 0)
 		fprintf(luadst, "image_framesetsize(model.vid, %i);\n", meshcount);
 
+	if (matfpek){
+		parse_mat(matfpek, luadst, basename);
+		fclose(matfpek);
+	}
+
+/*  this little loop scans through the loaded models, and tries to find corresponding textures */
+	fprintf(luadst, "\nfor label,vid in ipairs(model.labels) do\n"
+		"\tif (model.textures[label]) then\n"
+		"\t\tfor vid in model.textures[label] do\n"
+		"\t\t\tset_image_as_frame(model.vid, model.textures[label], vid, 1);\n"
+		"\t\t end\n"
+		"\tend\n"
+	"end\n");
+	
     fprintf(luadst, "return model;\n");
     fclose(fpek);
 	fclose(luadst);
-    
+	
 	return 0;
 }

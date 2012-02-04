@@ -75,9 +75,20 @@ static struct {
 static void dump_stack(lua_State* ctx);
 extern char* _n_strdup(const char* instr, const char* alt);
 
+static inline char* findresource(const char* arg, int searchmask)
+{
+	char* res = arcan_find_resource(arg, searchmask);
+
+	if (lua_ctx_store.debug){
+		arcan_warning("Debug, resource lookup for %s, yielded: %s\n", arg, res);
+	}
+
+	return res;
+}
+
 int arcan_lua_zapresource(lua_State* ctx)
 {
-	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
 
 	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, false);
@@ -90,7 +101,7 @@ int arcan_lua_zapresource(lua_State* ctx)
 
 int arcan_lua_rawresource(lua_State* ctx)
 {
-	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
 
 	if (!path) {
 		if (lua_ctx_store.rfile)
@@ -180,7 +191,7 @@ int arcan_lua_pushrawstr(lua_State* ctx)
 int arcan_lua_loadimage(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 
 	if (path)
@@ -198,7 +209,7 @@ int arcan_lua_loadimage(lua_State* ctx)
 int arcan_lua_loadimageasynch(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 	
 	if (path)
@@ -219,7 +230,7 @@ int arcan_lua_moveimage(lua_State* ctx)
 	float newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
 
-	arcan_video_objectmove(id, newx, newy, time);
+	arcan_video_objectmove(id, newx, newy, 1.0, time);
 	return 0;
 }
 
@@ -258,7 +269,7 @@ int arcan_lua_rotateimage(lua_State* ctx)
 	int time = luaL_optint(ctx, 3, 0);
 	int rel = luaL_optint(ctx, 4, 0);
 
-	arcan_video_objectrotate(id, ang, time);
+	arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
 	
 	return 0;
 }
@@ -288,7 +299,7 @@ int arcan_lua_scaleimage2(lua_State* ctx)
 			if (neww > 0.0001 && newh < 0.0001)
 				newh = neww * (prop.scale.y / prop.scale.x);
 
-		arcan_video_objectscale(id, neww / prop.scale.x, newh / prop.scale.y, time);
+		arcan_video_objectscale(id, neww / prop.scale.x, newh / prop.scale.y, 1.0, time);
 
 		lua_pushnumber(ctx, neww);
 		lua_pushnumber(ctx, newh);
@@ -315,7 +326,7 @@ int arcan_lua_scaleimage(lua_State* ctx)
 		if (desw > 0.0001 && desh < 0.0001)
 			desh = desw * (prop.scale.y / prop.scale.x);
 
-	arcan_video_objectscale(id, desw, desh, time);
+	arcan_video_objectscale(id, desw, desh, 1.0, time);
 
 	lua_pushnumber(ctx, desw);
 	lua_pushnumber(ctx, desh);
@@ -370,7 +381,7 @@ int arcan_lua_imageopacity(lua_State* ctx)
 int arcan_lua_prepare_astream(lua_State* ctx)
 {
 	arcan_errc errc;
-	char* path = arcan_find_resource(
+	char* path = findresource(
 		luaL_checkstring(ctx, 1), 
 		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME
 	);
@@ -415,7 +426,7 @@ int arcan_lua_playaudio(lua_State* ctx)
 int arcan_lua_playsample(lua_State* ctx)
 {
 	const char* rname = luaL_checkstring(ctx, 1);
-	char* resource = arcan_find_resource(rname, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* resource = findresource(rname, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
 	arcan_audio_play_sample(resource, gain, NULL);
 	return 0;
@@ -654,7 +665,7 @@ int arcan_lua_systemcontextsize(lua_State* ctx)
 int arcan_lua_dofile(lua_State* ctx)
 {
 	const char* instr = luaL_checkstring(ctx, 1);
-	char* fname = arcan_find_resource(instr, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	char* fname = findresource(instr, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	int err_func = 0;
 
 	if (fname)
@@ -704,7 +715,7 @@ int arcan_lua_playmovie(lua_State* ctx)
 
 int arcan_lua_loadmovie(lua_State* ctx)
 {
-	char* fname = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	char* fname = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	bool loop = luaL_optint(ctx, 2, 0) > 0;
 
 	arcan_frameserver* mvctx = arcan_frameserver_spawn_server((char*) fname, false, loop, NULL);
@@ -1198,8 +1209,9 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
 	unsigned num = luaL_checkint(ctx, 3);
+	bool detatch = luaL_optint(ctx, 4, 0) > 0;
 	
-	arcan_video_setasframe(sid, did, num, false);
+	arcan_video_setasframe(sid, did, num, detatch);
 	
 	return 0;
 }
@@ -1249,7 +1261,7 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 int arcan_lua_loadmesh(lua_State* ctx)
 {
     arcan_vobj_id did = luaL_checkvid(ctx, 1);
-    char* path = arcan_find_resource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+    char* path = findresource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
     if (path){
         arcan_3d_addmesh(did, path);
@@ -1261,7 +1273,7 @@ int arcan_lua_loadmesh(lua_State* ctx)
 int arcan_lua_loadmodel(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = arcan_find_resource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 	
 	if (path)
@@ -1761,7 +1773,7 @@ int arcan_lua_resource(lua_State* ctx)
 {
 	const char* label = luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(ctx, 2, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	char* res = arcan_find_resource(label, mask);
+	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
 
 	free(res);
@@ -1927,18 +1939,32 @@ int arcan_lua_movemodel(lua_State* ctx)
 	float z = luaL_checknumber(ctx, 4);
 	unsigned int dt = luaL_optint(ctx, 5, 0);
 
-//	arcan_3d_movemodel(vid, x, y, z, dt);
+	arcan_video_objectmove(vid, x, y, z, dt);
 	return 0;
 }
 
 int arcan_lua_scalemodel(lua_State* ctx)
 {
-    return 0;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	float sx = luaL_checknumber(ctx, 2);
+	float sy = luaL_checknumber(ctx, 3);
+	float sz = luaL_checknumber(ctx, 4);
+	unsigned int dt = luaL_optint(ctx, 5, 0);
+
+	arcan_video_objectscale(vid, sx, sy, sz, 0);
+	return 0;
 }
 
 int arcan_lua_rotatemodel(lua_State* ctx)
 {
-    return 0;
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	float roll = luaL_checknumber(ctx, 2);
+	float pitch = luaL_checknumber(ctx, 3);
+	float yaw = luaL_checknumber(ctx, 4);
+	unsigned int dt = luaL_optint(ctx, 5, 0);
+
+	arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+	return 0;
 }
 
 int arcan_lua_settexmode(lua_State* ctx)
@@ -1961,7 +1987,7 @@ int arcan_lua_setscalemode(lua_State* ctx)
 	if (num >= 0 && num < 3){
 		arcan_video_default_scalemode(num);
 	}
-	
+
 	return 0;
 }
 
@@ -2245,7 +2271,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	lua_register(ctx, "move3d_model", arcan_lua_movemodel);
 
 /* item:rotate3d_model, vid, yaw, pitch, roll, time, nil */
-	lua_register(ctx, "rotate3d_model", arcan_lua_movemodel);
+	lua_register(ctx, "rotate3d_model", arcan_lua_rotatemodel);
 
 /* item:scale3d_model, vid, wf, hf, df, time, nil */
 	lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
