@@ -49,7 +49,7 @@ function modeltest_input(iotable)
 				local cmd = contbl:input(iotable);
 				if (cmd ~= "") then
 					print(" exec: " .. cmd);
-					assert(loadstring(cmd)());
+					assert(loadstring(cmd))();
 				end
 			end
 		else
