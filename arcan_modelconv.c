@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <ctype.h>
@@ -13,6 +14,19 @@
 #include "getopt.h"
 #include "arcan_math.h"
 #include <openctm.h>
+
+/* msys workaround */
+#ifndef HAVE_S_IXGRP
+#define S_IXGRP S_IXUSR
+#endif
+
+#ifndef HAVE_S_IXOTH
+#define S_IXOTH S_IXUSR
+#endif
+
+#ifndef HAVE_S_IROTH
+#define S_IROTH S_IXUSR
+#endif
 
 /* need to store this for all contained meshes,
  * then split into a number of meshes, with the loading options
@@ -378,7 +392,7 @@ static void read_faceval(char* arg)
                 break;
                 
             case 1: 
-                if (index(lineofs, '/')[1] == '/')
+                if (strchr(lineofs, '/')[1] == '/')
                     sscanf(lineofs, "%d//%d", &buf[i].vrti, &buf[i].normi);
                 else
                     sscanf(lineofs, "%d/%d", &buf[i].vrti, &buf[i].txci);
@@ -576,13 +590,21 @@ int main(int argc, char** argv)
 		fprintf(stderr, "Couldn't open input (%s)\n", inputfile); 
 		return 1;
 	}
-    
+
+#ifdef __MINGW_H
+	if (mkdir(outputdir) == -1 &&
+		errno != EEXIST){
+        fprintf(stderr, "Couldn't create directory (%s)\n", outputdir);
+        return 1;
+	}
+#else
 	if (mkdir(outputdir, S_IRWXU | S_IXGRP | S_IXOTH | S_IROTH) == -1 &&
 		errno != EEXIST){
         fprintf(stderr, "Couldn't create directory (%s)\n", outputdir);
         return 1;
 	}
-	
+#endif
+
 	chdir(outputdir);
     
 	char* luafname = (char*) malloc( (strlen(basename + 5)) * sizeof(char) );
