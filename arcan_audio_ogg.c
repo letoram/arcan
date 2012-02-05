@@ -30,8 +30,8 @@ struct ogg_ctx {
 	vorbis_info* info;
 	vorbis_comment* comment;
 	char* buffer;
-	uint16_t ofs;
-	uint16_t size;
+	unsigned ofs;
+	unsigned size;
 };
 
 /* just quick SDL RWops fptr wrappers */
@@ -70,7 +70,7 @@ void* arcan_audio_ogg_buildtag(arcan_aobj* aobj)
 	if ((ec = ov_open_callbacks(aobj->lfeed, &odtag->stream, NULL, 0, callbacks)) == 0) {
 		odtag->info = ov_info(&odtag->stream, -1);
 		odtag->comment = ov_comment(&odtag->stream, 1);
-		odtag->size = 1024 * 8;
+		odtag->size = 1024 * 64;
 		odtag->buffer = (char*) malloc(odtag->size);
 	}
 	else {
