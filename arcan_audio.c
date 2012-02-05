@@ -660,7 +660,7 @@ arcan_errc arcan_audio_setpitch(arcan_aobj_id id, float pitch, uint16_t time)
 static void arcan_astream_refill(arcan_aobj* current)
 {
 	ALenum state = 0;
-	ALuint processed = 0;
+	ALint processed = 0;
 
 /* stopped or not, the process is the same,
  * dequeue and requeue as many buffers as possible */
@@ -686,7 +686,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 
 /* if we're totally empty, try to fill all buffers,
  * if feed fails for the first one, it's over */
-	if (current->used == 0)
+	if (current->used == 0 && current->feed)
 	for (int i = current->used; i < current->n_streambuf; i++){
 			arcan_errc rv = current->feed(current, current->alid, current->streambuf[i], current->tag);
 			if (rv == ARCAN_OK){
