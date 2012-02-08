@@ -249,7 +249,7 @@ end
 
 ------ Event Handlers ----------
 
-function dishwater_on_show()
+function dishwater_show()
 	blend_image(WORLDID, 0.0, 0);
 	move_image(WORLDID, VRESW / 2, VRESH / 2, 0);
 	move_image(WORLDID, 0, 0, 150);

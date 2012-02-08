@@ -103,18 +103,33 @@ int arcan_lua_rawresource(lua_State* ctx)
 {
 	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
 
-	if (!path) {
-		if (lua_ctx_store.rfile)
-			fclose(lua_ctx_store.rfile);
+	if (lua_ctx_store.rfile)
+		fclose(lua_ctx_store.rfile);
 
+	if (!path) {
 		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), false);
 		lua_ctx_store.rfile = fopen(fname, "w+");
 		free(fname);
-	}
+	} else 
+		lua_ctx_store.rfile = fopen(path, "r");
 
 	lua_pushboolean(ctx, lua_ctx_store.rfile != NULL);
 	free(path);
 	return 1;
+}
+
+static char* chop(char* str)
+{
+    char* endptr = str + strlen(str) - 1;
+    while(isspace(*str)) str++;
+    
+    if(!*str) return str;
+    while(endptr > str && isspace(*endptr)) 
+        endptr--;
+    
+    *(endptr+1) = 0;
+    
+    return str;
 }
 
 int arcan_lua_readrawresource(lua_State* ctx)
@@ -122,7 +137,7 @@ int arcan_lua_readrawresource(lua_State* ctx)
 	if (lua_ctx_store.rfile){
 		char line[256];
 		if (fgets(line, sizeof(line), lua_ctx_store.rfile) != NULL){
-			lua_pushstring(ctx, line);
+			lua_pushstring(ctx, chop( line ));
 			return 1;
 		}
 	}
@@ -1708,7 +1723,6 @@ int arcan_lua_filtergames(lua_State* ctx)
 	lua_gettable(ctx, -2);
 	target = _n_strdup(lua_tostring(ctx, -1), NULL);
 	
-	
 	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target);
 	/* reason for all this is that lua_tostring MAY return NULL,
 	 * and if it doesn't, the string can be subject to garbage collection after POP,
@@ -1784,17 +1798,35 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 }
 
+
+struct globs{
+	lua_State* ctx;
+	int top;
+	int index;
+};
+
 static void globcb(char* arg, void* tag)
 {
-	lua_State* ctx = (lua_State*) tag;
-	printf("match: %s\n", arg);
+	struct globs* bptr = (struct globs*) tag;
+	lua_pushnumber(bptr->ctx, bptr->index++);
+	lua_pushstring(bptr->ctx, arg);
+	lua_rawset(bptr->ctx, bptr->top);
 }
 
 int arcan_lua_globresource(lua_State* ctx)
 {
+	struct globs bptr = {
+		.ctx = ctx,
+		.index = 1
+	};
+
 	char* label = (char*) luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(ctx, 2, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	arcan_glob(label, mask, globcb, ctx);
+
+	lua_newtable(ctx);
+	bptr.top = lua_gettop(ctx);
+	arcan_glob(label, mask, globcb, &bptr);
+
 	return 1;
 }
 
@@ -1804,7 +1836,7 @@ int arcan_lua_resource(lua_State* ctx)
 	int mask = luaL_optinteger(ctx, 2, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
-
+	
 	free(res);
 	return 1;
 }

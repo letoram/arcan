@@ -73,12 +73,18 @@ local function listview_redraw(self)
 
 -- self.list_lines is GCed, .list is "not"
 	self.listvid, self.list_lines = render_text(renderstr, self.vspace);
-	self.width = image_surface_properties(self.listvid).width + 4;
+	
 	link_image(self.listvid, self.window);
 	image_mask_clear(self.listvid, MASK_OPACITY);
 	image_clip_on(self.listvid);
 	order_image(self.listvid, self.order + 2);
 	blend_image(self.listvid, opa);
+
+	local props = image_surface_properties(self.listvid);
+
+	props.width = (props.width + 10 > 0) and (props.width + 10) or self.maxw;
+	resize_image(self.border, props.width, props.height, 5);
+	resize_image(self.window, props.width - 6, props.height - 6, 5);
 end
 
 local function listview_destroy(self)
@@ -115,7 +121,7 @@ local function listview_move_cursor(self, step, relative)
 	self:redraw();
 	instant_image_transform(self.cursorvid);
 	move_image(self.cursorvid, 0, self.list_lines[self.page_ofs] - 2 + self.yofs, 10);
-	resize_image(self.cursorvid, self.width, self.fontsize);
+	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, self.fontsize);
 	order_image(self.cursorvid, self.order+3);
 end
 
@@ -151,9 +157,9 @@ function listview_create(elem_list, height, maxw, font, fontsize)
 			
 	restbl.height = height;
 	restbl.list = elem_list;
-
 	restbl.width = 1;
 	restbl.cursor = 1;
+	restbl.maxw = maxw;
 	
 	if (font) then
 		restbl.fontsize = fontsize;
@@ -183,13 +189,6 @@ function listview_create(elem_list, height, maxw, font, fontsize)
 	restbl:window_opacity(0.2, 0.8);
 	restbl:move_cursor(0, true);
 	restbl:push_to_front();
-
--- some minor cleanup, "scale-" anmate, make sure cursor sizes etc. align
-	local props = image_surface_properties(restbl.listvid);
-	local windw = props.width + 10;
-	if (windw > maxw) then windw = maxw; end
-	
-	resize_image(restbl.window, windw - 6, restbl.height - 6, 10);
-	resize_image(restbl.border, windw, restbl.height, 10);
+	props = image_surface_properties(restbl.cursorvid);
 	return restbl;
 end
