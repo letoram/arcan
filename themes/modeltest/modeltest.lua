@@ -21,7 +21,7 @@ function modeltest()
 --	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
 
 	toggle_mouse_grab();
-
+	kbd_repeat(100);
 --	show_image(plane);
 	
 	rotate3d_model(model.vid, 0, 270,0, 100);
@@ -55,13 +55,13 @@ function modeltest_input(iotable)
 		else
 			key = symtable[iotable.keysym];
 			if key == "w" then
-				fwdstepsize = iotable.active and -0.5 or 0.0;
+			  forward3d_camera(0.5);
 			elseif key == "s" then
-				fwdstepsize = iotable.active and 0.5 or 0.0;
+			  forward3d_camera(-0.5);
 			elseif key == "a" then
-				sidestepsize = iotable.active and 0.5 or 0.0;
+			  strafe3d_camera(0.5);
 			elseif key == "d" then
-				sidestepsize = iotable.active and -0.5 or 0.0;
+			  strafe3d_camera(-0.5);
 			elseif key == "q" then
 				ystepsize = iotable.active and 0.5 or 0.0;
 			elseif key == "e" then

@@ -45,10 +45,10 @@ struct {
     CTMuint* vertindbuf;
     unsigned cap_vertindbuf, ofs_vertindbuf;
     
-    CTMuint* normindbuf;
+    CTMfloat* normindbuf;
     unsigned cap_normindbuf, ofs_normindbuf;
     
-    CTMuint* texindbuf;
+    CTMfloat* texindbuf;
     unsigned cap_texindbuf, ofs_texindbuf;
     
     char* basename; /* desired basename to store with */
@@ -165,8 +165,7 @@ static int write_rep(char* arg, FILE* luafile)
         
         /* reindex, rebuffer */
         vertbuf = (CTMfloat*) malloc(global.ofs_vertindbuf * sizeof(float) * 3);
-        normbuf = (CTMfloat*) malloc(global.ofs_vertindbuf * sizeof(float) * 3);
-        textbuf = (CTMfloat*) malloc(global.ofs_vertindbuf * sizeof(float) * 2);
+		textbuf = normbuf = NULL;
         indbuf  = (CTMuint*)  malloc(global.ofs_vertindbuf * sizeof(CTMuint));
         
         for (unsigned i = 0; i < global.ofs_vertindbuf; i++){
@@ -176,33 +175,34 @@ static int write_rep(char* arg, FILE* luafile)
                                           global.vertbuf[ ind   ],
                                           global.vertbuf[ ind+1 ],
                                           global.vertbuf[ ind+2 ]);
-            
-            if (global.ofs_normindbuf && global.ofs_normindbuf == global.ofs_vertindbuf){
-                ind = global.normindbuf[i]*3; /* per vertex normal */
-                
-                normbuf[ normbufofs++ ] = global.normalbuf[ind];
-                normbuf[ normbufofs++ ] = global.normalbuf[ind+1];
-                normbuf[ normbufofs++ ] = global.normindbuf[ind+1];
-            }
-            
-            if (global.ofs_texindbuf){
-                ind = global.texindbuf[i]*2;
-                textbuf[ textbufofs++ ] = global.texbuf[ind];
-                textbuf[ textbufofs++ ] = global.texbuf[ind+1];
-            }
         }
 
+/* we don't store indexed versions of texture coordinates and normals */
+	
+		if (global.ofs_normindbuf){
+			normbuf = (CTMfloat*) malloc(global.ofs_normindbuf);
+			memcpy(normbuf, global.normindbuf, global.ofs_normindbuf);
+		}
+		
  /* either I've messed up or there's something with CTMFreeContext,
   * but in some border-conditions, it will double-free */
 		char buf[68];
 		addseqn(buf, chop(global.filename), "ctm");
-		printf("yielded : %s\n", buf);
 		CTMcontext context;
 		context = ctmNewContext(CTM_EXPORT);
-		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, normbufofs ? normbuf : NULL);
-		if (textbufofs)
-			ctmAddUVMap(context, textbuf, buf, NULL);
-        
+
+        printf("flush: %s, (%i verts %i normals, %i txcos)\n", buf, indbufofs, global.ofs_vertbuf, global.ofs_normindbuf, global.ofs_texindbuf);
+		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, NULL); 
+
+		if (global.ofs_texindbuf){
+			textbuf = (CTMfloat*) malloc(global.ofs_texindbuf);
+			memcpy(textbuf, global.texindbuf, global.ofs_texindbuf);
+
+			if (ctmAddUVMap(context, textbuf, buf, NULL) == CTM_NONE){
+				fprintf(stderr, "crmAddUVMap failed, reason: %i\n", ctmGetError(context));
+			}
+		}
+			
 		ctmSave(context, buf);
 
 		if (meshcount == 0)
@@ -213,18 +213,10 @@ static int write_rep(char* arg, FILE* luafile)
 
 		fprintf(luafile, "model_material(\"%s\", %i);\n", chop(global.filename), meshcount);
 		ctmFreeContext(context);
-/* ctm takes care of the buffers we handed over */
-		if (!normbufofs)
-			free(normbuf);
-        
-		if (!textbufofs)
-			free(textbuf);
 
 /* need to keep all the other data since it may be referenced */
 		global.ofs_vertindbuf = global.ofs_texindbuf = global.ofs_normindbuf = 0;
 		meshcount++;
-		/* read the rest of the line (should contain name of the group),
- * strip away any whitespace */
 	}
 
 	if (global.filename)
@@ -252,12 +244,13 @@ static void resizebuf(void** dbuf, unsigned* cap, unsigned ofs, unsigned step, u
 static void read_vertval(char* arg, char dstgrp)
 {
 	float v1, v2, v3, v4;
+	int nargs = 0;
 	unsigned* dstlim;
 	unsigned* dstofs;
 	CTMfloat* dstbuf;
 	CTMfloat** dstbufp;
 	
-	if (sscanf(arg, " %f %f %f %f", &v1, &v2, &v3, &v4) < 3){
+	if ((nargs = sscanf(arg, " %f %f %f %f", &v1, &v2, &v3, &v4)) < 2){
 		fprintf(stderr, "Warning, vertex could not be read.\n");
 		v1 = 0.0; v2 = 0.0; v3 = 0.0;
 	}
@@ -278,10 +271,10 @@ static void read_vertval(char* arg, char dstgrp)
             break;
             
 		case 't' :
-			resizebuf((void**)&global.texbuf, &global.cap_texbuf, global.ofs_texbuf, 2, sizeof(float), "texindbuf");
+			resizebuf((void**)&global.texbuf, &global.cap_texbuf, global.ofs_texbuf, 2, sizeof(float), "texbuf");
 			global.texbuf[global.ofs_texbuf++] = v1;
 			global.texbuf[global.ofs_texbuf++] = v2;
-			/* note, 3 texcoords in some obj files?! */
+/* note, we ignore 'w' coordinates currently */
             break;
         default:
             fprintf(stderr, "Warning, unknown vertex subtype (%c)\n", dstgrp);
@@ -290,7 +283,8 @@ static void read_vertval(char* arg, char dstgrp)
 
 static void storeind(signed vert, signed texco, signed norm)
 {
-    if (vert){
+/* reindex, taking into account relative indices */
+	if (vert){
         if (vert < 1) vert += global.ofs_vertbuf;
         else vert--;
         resizebuf((void**)&global.vertindbuf, &global.cap_vertindbuf, global.ofs_vertindbuf, 3, sizeof(CTMuint), "vertindbuf");
@@ -299,16 +293,23 @@ static void storeind(signed vert, signed texco, signed norm)
     
     if (texco){
         if (texco < 1) texco += global.ofs_vertbuf;
-        else texco--;
-        resizebuf((void**)&global.texindbuf, &global.cap_texindbuf, global.ofs_texindbuf, 2, sizeof(CTMuint), "textindbuf");
-        global.texindbuf[global.ofs_texindbuf++] = texco;
-    }
+    else texco--;
+/* resolve the index as well */
+		resizebuf((void**)&global.texindbuf, &global.cap_texindbuf, global.ofs_texindbuf, 2, sizeof(CTMuint), "textindbuf");
+		printf("adding txco: %f, %f (%i)\n", global.texbuf[texco*2+0], global.texbuf[texco*2+1],
+			 texco
+		);
+		global.texindbuf[global.ofs_texindbuf++] = global.texbuf[texco*2+0];
+		global.texindbuf[global.ofs_texindbuf++] = global.texbuf[texco*2+1];
+	}
     
     if (norm){
         if (norm < 1) norm += global.ofs_normalbuf;
         else norm--;
         resizebuf((void**)&global.normindbuf, &global.cap_normindbuf, global.ofs_normindbuf, 3, sizeof(CTMuint), "normindbuf");    
-        global.normindbuf[global.ofs_normindbuf++] = norm;
+		global.normindbuf[global.ofs_normindbuf++] = global.normalbuf[norm*3+0];
+		global.normindbuf[global.ofs_normindbuf++] = global.normalbuf[norm*3+1];
+		global.normindbuf[global.ofs_normindbuf++] = global.normalbuf[norm*3+2];
     }
 }
 
@@ -386,7 +387,7 @@ static void read_faceval(char* arg)
     
     for (unsigned i = 0; i < ngroups; i++){
         while(*lineofs && isspace(*lineofs)) lineofs++;
-        
+
         switch (nelem){
             case 0: sscanf(lineofs, "%d", &buf[i].vrti); /* just vertex indices */
                 break;
@@ -405,8 +406,13 @@ static void read_faceval(char* arg)
         while (*lineofs && !isspace(*lineofs))
             lineofs++;
     }
-    
-    /* store in global */
+
+	printf("decoded line(%s) into: (%i/%i/%i), (%i/%i/%i), (%i/%i/%i)\n", line,
+		   buf[0].vrti, buf[0].txci, buf[0].normi,
+		   buf[1].vrti, buf[1].txci, buf[1].normi,
+ 		   buf[2].vrti, buf[2].txci, buf[2].normi);
+	
+     /* store in global */
     storeind( buf[0].vrti, buf[0].txci, buf[0].normi );
     storeind( buf[1].vrti, buf[1].txci, buf[1].normi );
     storeind( buf[2].vrti, buf[2].txci, buf[2].normi );
@@ -508,6 +514,7 @@ void parse_obj(FILE* src, FILE* luafile, const char* basename)
 		char* cmdl = chop(line);
 		char ofs = 0;
 
+		printf("fgets: %s, cmdl: %s\n", line, cmdl);
 		while (!isspace(cmdl[ofs]) && cmdl[ofs++]);
 		if (ofs >= sizeof(line)){
 			fprintf(stderr, "Unexpected input parsing obj, giving up\n");
@@ -625,8 +632,8 @@ int main(int argc, char** argv)
     global.texbuf     = (CTMfloat*) malloc(global.cap_texbuf     * sizeof(CTMfloat)); 
     global.normalbuf  = (CTMfloat*) malloc(global.cap_normalbuf  * sizeof(CTMfloat));
     global.vertindbuf = (CTMuint*)  malloc(global.cap_vertindbuf * sizeof(CTMuint));
-    global.texindbuf  = (CTMuint*)  malloc(global.cap_texindbuf  * sizeof(CTMuint));
-    global.normindbuf = (CTMuint*)  malloc(global.cap_normindbuf * sizeof(CTMuint));
+    global.texindbuf  = (CTMfloat*) malloc(global.cap_texindbuf  * sizeof(CTMfloat));
+    global.normindbuf = (CTMfloat*) malloc(global.cap_normindbuf * sizeof(CTMfloat));
 
 /* add a wrapper function to make things slightly more cleaner */
 	fprintf(luadst, "local model = {vid = ARCAN_EID, labels = {}, textures = {}};\n");

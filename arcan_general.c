@@ -280,6 +280,44 @@ static void setpaths_unix()
 			arcan_themepath = unix_find("themes");
 }
 
+#include <glob.h>
+unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag){
+	unsigned count = 0;
+	char* basepath;
+
+	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
+		snprintf(playbuf, playbufsize, "%s/%s", arcan_themepath, strip_traverse(basename));
+		glob_t res = {0};
+
+		if ( glob(playbuf, 0, NULL, &res) == 0 ){
+			char** beg = res.gl_pathv;
+			while(*beg){
+				cb(*beg, tag);
+				beg++;
+				count++;
+			}
+		}
+		globfree(&res);
+	}
+
+	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
+		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
+		glob_t res = {0};
+
+		if ( glob(playbuf, 0, NULL, &res) == 0 ){
+			char** beg = res.gl_pathv;
+			while(*beg){
+				cb(*beg, tag);
+				beg++;
+				count++;
+			}
+		}
+		globfree(&res);
+	}
+	
+	return count;
+}
+
 #ifdef __APPLE__
 
 const char* internal_launch_support(){

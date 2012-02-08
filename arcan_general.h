@@ -157,6 +157,10 @@ int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
 int arcan_sem_timedwait(sem_handle sem, int msecs);
 
+/* since mingw does not export a glob.h,
+ * we have to write a lightweight globber */
+unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag);
+
 const char* internal_launch_support();
 
 /* update rate of 25 ms / tick,

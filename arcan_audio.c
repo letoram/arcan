@@ -254,7 +254,6 @@ arcan_errc arcan_audio_free(arcan_aobj_id id)
 	if (current){
 		*owner = current->next;
 		
-		arcan_warning("cleanup, sdl");
 		if (current->lfeed)
 			SDL_RWclose(current->lfeed);
 		
@@ -332,11 +331,7 @@ arcan_errc arcan_audio_play(arcan_aobj_id id)
 
 	if (aobj && !aobj->active) {
 	/* 	alSourcei(aobj->alid, AL_BUFFER, NULL); could be used to force static to undetermined */
-				arcan_warning("queue buffers, names: %i, %i, %i, %i\n", aobj->streambuf[0], aobj->streambuf[1],
-			aobj->streambuf[2], aobj->streambuf[3]);  
-
 		if (aobj->used > 0){
-			arcan_warning("queue: %i buffers to %i\n", aobj->used, aobj->alid);
 			alSourceQueueBuffers(aobj->alid, aobj->used, aobj->streambuf);
 			_wrap_alError(aobj, "play(alQueueBuffers)");
 		}
@@ -781,7 +776,7 @@ static void _wrap_alError(arcan_aobj* obj, char* prefix)
 		obj = &empty;
 
 	if (errc != AL_NO_ERROR) {
-
+		return;
 		arcan_warning("(openAL): ");
 		
 		switch (errc) {
