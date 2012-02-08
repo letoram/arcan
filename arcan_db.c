@@ -338,8 +338,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	 * with the if-chain above */
 	if (patch_strings) {
 		int ofs = 1;
-		if (title)
+		if (title){
 			sqlite3_bind_text(stmt, ofs++, title, -1, SQLITE_TRANSIENT);
+		}
 		if (genre)
 			sqlite3_bind_text(stmt, ofs++, genre, -1, SQLITE_TRANSIENT);
 		if (subgenre)

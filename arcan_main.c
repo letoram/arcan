@@ -265,7 +265,7 @@ int main(int argc, char* argv[])
 		/* entry point follows the name of the theme,
 		 * hand over execution and begin event loop */
 		arcan_lua_callvoidfun(luactx, arcan_themename);
-		arcan_lua_callvoidfun(luactx, "on_show");
+		arcan_lua_callvoidfun(luactx, "show");
 
 		bool done = false;
 		while (!done) {
@@ -333,6 +333,7 @@ int main(int argc, char* argv[])
 			}
 		}
 
+		arcan_lua_callvoidfun(luactx, "shutdown");
 		arcan_led_cleanup();
 		arcan_video_shutdown();
 	}
