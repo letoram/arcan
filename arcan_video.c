@@ -1137,11 +1137,14 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsig
 		loadimage_asynch((char*) rloc, constraints, NULL) :
 		loadimage((char*) rloc, constraints, NULL);
 
+/* the asynch version could've been deleted in between, so we need to double check */
 		if (rv > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
-		vobj->order = zv;
-    	vobj->current.rotation = build_quat_euler( 0, 0, 0 );
-        arcan_video_attachobject(rv);
+		if (vobj){
+			vobj->order = zv;
+			vobj->current.rotation = build_quat_euler( 0, 0, 0 );
+			arcan_video_attachobject(rv);
+		}
 	}
 
 	return rv;
@@ -2833,6 +2836,20 @@ surface_properties arcan_video_initial_properties(arcan_vobj_id id)
 	return res;
 }
 
+surface_properties arcan_video_resolve_properties(arcan_vobj_id id)
+{
+	surface_properties res = {0};
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (vobj && id > 0) {
+		arcan_resolve_vidprop(vobj, 0.0, &res);
+		res.scale.x *= vobj->origw;
+		res.scale.y *= vobj->origh;
+	}
+
+	return res;
+}
+
 surface_properties arcan_video_current_properties(arcan_vobj_id id)
 {
 	surface_properties rv = {0};
@@ -2847,18 +2864,84 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id)
 	return rv;
 }
 
-/* Assuming current transformation chain,
- * what will the properties of the surface be in n ticks from now?
- *
- * does this by copying the object, then running the transformation chain
- * n times, copies the results and removes the object copy */
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 {
 	surface_properties rv = {0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	/* FIXME: not working since transform rebuild */
-    
+	if (vobj){
+		rv = vobj->current;
+/* if there's no transform defined, then the ticks will be the same */
+		if (vobj->transform){
+/* translate ticks from relative to absolute */
+			ticks += arcan_video_display.c_ticks;
+/* check if there is a transform for each individual attribute, and find the one that
+ * defines a timeslot within the range of the desired value */
+			surface_transform* current = vobj->transform;
+			if (current->move.startt){
+				while (current->move.endt < ticks && current->next && current->next->move.startt)
+					current = current->next;
+
+				if (current->move.endt <= ticks)
+					rv.position = current->move.endp;
+				else if (current->move.startt == ticks)
+					rv.position = current->move.startp;
+				else{ /* need to interpolate */
+					float fract = lerp_fract(current->move.startt, current->move.endt, ticks);
+					rv.position = lerp_vector(current->move.startp, current->move.endp, fract);
+				}
+			}
+			
+			current = vobj->transform;
+			if (current->scale.startt){
+				while (current->scale.endt < ticks && current->next && current->next->scale.startt)
+					current = current->next;
+
+				if (current->scale.endt <= ticks)
+					rv.scale = current->scale.endd;
+				else if (current->scale.startt == ticks)
+					rv.scale = current->scale.startd;
+				else{ /* need to interpolate */
+					float fract = lerp_fract(current->scale.startt, current->scale.endt, ticks);
+					rv.scale = lerp_vector(current->scale.startd, current->scale.endd, fract);
+				}
+			}
+
+			current = vobj->transform;
+			if (current->blend.startt){
+				while (current->blend.endt < ticks && current->next && current->next->blend.startt)
+					current = current->next;
+
+				if (current->blend.endt <= ticks)
+					rv.opa = current->blend.endopa;
+				else if (current->blend.startt == ticks)
+					rv.opa = current->blend.startopa;
+				else{ /* need to interpolate */
+					float fract = lerp_fract(current->blend.startt, current->blend.endt, ticks);
+					rv.opa = lerp_val(current->blend.startopa, current->blend.endopa, fract);
+				}
+			}
+
+			current = vobj->transform;
+			if (current->rotate.startt){
+				while (current->rotate.endt < ticks && current->next && current->next->rotate.startt)
+					current = current->next;
+
+				if (current->rotate.endt <= ticks)
+					rv.rotation = current->rotate.endo;
+				else if (current->rotate.startt == ticks)
+					rv.rotation = current->rotate.starto;
+				else{ /* need to interpolate */
+					float fract = lerp_fract(current->rotate.startt, current->rotate.endt, ticks);
+					rv.rotation = lerp_quat(current->rotate.starto, current->rotate.endo, fract);
+				}
+			}
+		}
+
+		rv.scale.x *= vobj->origw;
+		rv.scale.y *= vobj->origh;
+	}
+	
 	return rv;
 }
 
@@ -2878,6 +2961,21 @@ bool arcan_video_prepare_external()
 	arcan_event_deinit();
 
 	return true;
+}
+
+unsigned arcan_video_maxorder()
+{
+	arcan_vobject_litem* current = current_context->first;
+	unsigned order = 0;
+	
+	while (current){
+		if (current->elem && current->elem->order > order)
+			order = current->elem->order;
+		
+		current = current->next;
+	}
+
+	return order;
 }
 
 unsigned arcan_video_contextusage(unsigned* free)

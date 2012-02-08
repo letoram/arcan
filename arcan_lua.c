@@ -343,6 +343,12 @@ int arcan_lua_orderimage(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_maxorderimage(lua_State* ctx)
+{
+	lua_pushnumber(ctx, arcan_video_maxorder());
+	return 1;
+}
+
 int arcan_lua_showimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -1360,6 +1366,15 @@ int arcan_lua_getimageprop(lua_State* ctx)
 	return pushprop(ctx, prop);
 }
 
+int arcan_lua_getimageresolveprop(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	unsigned dt = luaL_optnumber(ctx, 2, 0);
+	surface_properties prop = arcan_video_resolve_properties(id);
+
+	return pushprop(ctx, prop);
+}
+
 int arcan_lua_getimageinitprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -1769,6 +1784,20 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 }
 
+static void globcb(char* arg, void* tag)
+{
+	lua_State* ctx = (lua_State*) tag;
+	printf("match: %s\n", arg);
+}
+
+int arcan_lua_globresource(lua_State* ctx)
+{
+	char* label = (char*) luaL_checkstring(ctx, 1);
+	int mask = luaL_optinteger(ctx, 2, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	arcan_glob(label, mask, globcb, ctx);
+	return 1;
+}
+
 int arcan_lua_resource(lua_State* ctx)
 {
 	const char* label = luaL_checkstring(ctx, 1);
@@ -2041,6 +2070,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item: resource,name,[searchmask : THEME_RESOURCE, SHARED_RESOURCE], boolean */
 	lua_register(ctx, "resource", arcan_lua_resource);
 
+/* item: glob_resource,basename,baseext,strtable */
+	lua_register(ctx, "glob_resource", arcan_lua_globresource);
+	
 /* item: zap_resource,name (in theme only), boolean */
 	lua_register(ctx, "zap_resource", arcan_lua_zapresource);
 
@@ -2182,6 +2214,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:order_image,vid,newz,nil */
 	lua_register(ctx, "order_image", arcan_lua_orderimage);
 
+/* item:max_current_image_order,int */
+	lua_register(ctx, "max_current_image_order", arcan_lua_maxorderimage);
+
 /* item:instance_image,vid */
 	lua_register(ctx, "instance_image", arcan_lua_instanceimage);
 
@@ -2235,6 +2270,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:image_surface_initial_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_initial_properties", arcan_lua_getimageinitprop);
+
+/* item:image_surface_resolve_properties, vid, surftbl */
+	lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
 
 /* item:*image_program, vid, vertstr, fragstr, nil */
 	lua_register(ctx, "image_program", arcan_lua_setshader);
@@ -2391,7 +2429,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
 	
 /* constant: API_VERSION_MINOR,int */
-	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 2);
+	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 3);
 
 /* constant: LAUNCH_EXTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);

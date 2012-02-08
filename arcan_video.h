@@ -163,6 +163,7 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id src, enum arcan_transform_mas
 arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon);
 
 img_cons arcan_video_storage_properties(arcan_vobj_id id);
+surface_properties arcan_video_resolve_properties(arcan_vobj_id id);
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
 surface_properties arcan_video_current_properties(arcan_vobj_id id);
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks);
@@ -212,6 +213,7 @@ arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const char* fprogram);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
+unsigned arcan_video_maxorder();
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent);
 
 /* process a logical time-frame (which more or less means, update / rescale / redraw / flip)
