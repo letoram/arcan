@@ -655,28 +655,25 @@ static void arcan_astream_refill(arcan_aobj* current)
 {
 	ALenum state = 0;
 	ALint processed = 0;
-
 /* stopped or not, the process is the same,
  * dequeue and requeue as many buffers as possible */
 	alGetSourcei(current->alid, AL_SOURCE_STATE, &state);
 	alGetSourcei(current->alid, AL_BUFFERS_PROCESSED, &processed);
-
 /* make sure to replace each one that finished with the next one */
 	for (int i = 0; i < processed; i++){
 		unsigned buffer = 0;
 		alSourceUnqueueBuffers(current->alid, 1, &buffer);
 		_wrap_alError(current, "audio_refill(refill:dequeue)");
 		current->used--;
-
 		if (current->feed){
 			arcan_errc rv = current->feed(current, current->alid, buffer, current->tag);
 			_wrap_alError(current, "audio_refill(refill:buffer)");
 			if (rv == ARCAN_OK){
-				arcan_warning("queued to: %i\n", current->alid);
 				alSourceQueueBuffers(current->alid, 1, &buffer);
 				_wrap_alError(current, "audio_refill(refill:queue)");
 				current->used++;
-			}
+			} else if (rv == ARCAN_ERRC_NOTREADY) 
+                return;
 		}
 	}
 
@@ -689,7 +686,9 @@ static void arcan_astream_refill(arcan_aobj* current)
 				alSourceQueueBuffers(current->alid, 1, &current->streambuf[i]);
 				_wrap_alError(current, "audio_refill(playing:queue)");
 				current->used++;
-			} else {
+			} else if (rv == ARCAN_ERRC_NOTREADY)
+                return;
+            else {
 				arcan_event newevent = {
 					.category = EVENT_AUDIO,
 					.kind = EVENT_AUDIO_PLAYBACK_FINISHED

@@ -99,11 +99,11 @@ void usage()
 		"-o\t--frameserver \tforce frameserver (default: autodetect)\n"
 		"-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
 		"-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
-		"-g\t--debug       \ttoggle LUA debug output (stacktraces, etc.)\n"
-		"-r\t--scalemode   \tset texture mode (0,1,2)\n\t"
-		"0(rectangle sized textures),\n\t"
-		"1(scale to power of two)\n\t"
-		"2(tweak texture coordinates)\n");
+		"-g\t--debug       \ttoggle debug output (stacktraces, events, etc.)\n"
+		"-r\t--scalemode   \tset texture mode:\n\t"
+		"%i(rectangle sized textures, default),\n\t"
+		"%i(scale to power of two)\n\t"
+		"%i(tweak texture coordinates)\n", ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2, ARCAN_VIMAGE_TXCOORD);
 }
 
 int main(int argc, char* argv[])
@@ -113,7 +113,7 @@ int main(int argc, char* argv[])
 	bool conservative = false;
 	unsigned char luadebug = 0;
 	
-	int scalemode = ARCAN_VIMAGE_SCALEPOW2;
+	int scalemode = ARCAN_VIMAGE_NOPOW2;
 	int width = 640;
 	int height = 480;
 	int ch;
@@ -217,7 +217,8 @@ int main(int argc, char* argv[])
 	
 	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i\n", 
 			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", vi->wm_available ? "yes" : "no", scalemode);
-	
+	arcan_video_default_scalemode(scalemode);
+    
 	if (windowed) {
 		fullscreen = false;
 /*		SDL_WM_GrabInput(SDL_GRAB_ON);
