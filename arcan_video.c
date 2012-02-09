@@ -1048,7 +1048,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		newvobj->origh = constraints.h;
 		newvobj->current.opa = 1.0f;
 		newvobj->current.rotation = build_quat_euler(0, 0, 0);
-		newvobj->gl_storage.ncpt = ncpt;
+		newvobj->gl_storage.ncpt = ncpt == 0 ? 4 : ncpt;
 
 		if (newvobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
 			newvobj->gl_storage.w = constraints.w;
@@ -2589,8 +2589,8 @@ void arcan_video_pollfeed()
 /* special "hack" for situations where the ffunc can do the gl-calls
  * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
 			if (funcres == FFUNC_RV_COPIED){
-				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->current_frame->gl_storage.w, elem->current_frame->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
+                glBindTexture(GL_TEXTURE_2D, elem->gl_storage.glid);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->gl_storage.w, elem->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
 			}
 		}
 
@@ -2717,6 +2717,7 @@ void arcan_video_refresh(float tofs)
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)
 {
 	arcan_video_display.scalemode = newmode;
+    printf("new scalemode: %i\n", newmode);
 }
 
 void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mode modet)

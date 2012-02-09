@@ -33,8 +33,16 @@ function movietest()
 	sprop = image_surface_properties(text_vid);
 	move_image(text_vid, VRESW - sprop.width, 0, 0);
 	show_image(text_vid);
+
+	debugbar_vid = fill_surface(1, 64, 0, 255, 0);
+	debugbar_aid = fill_surface(1, 64, 0, 0, 255);
+
+	move_image(debugbar_vid, 0, VRESH - 128, 0);
+	move_image(debugbar_aid, 0, VRESH - 64,  0);
+	show_image(debugbar_vid);
+	show_image(debugbar_aid);	
 	
-	vid,aid = load_movie("movietest.avi", 1);
+	vid = load_movie("movietest.avi", 1);
 	img.last = vid;
 	img.cursor = fill_surface(16, 16, 200, 50, 50);
 	order_image(img.cursor, 255);
@@ -47,8 +55,6 @@ function movietest()
 end
 
 function movietest_on_show()
-	show_image(vid);
-	play_movie(vid, 1);
 end
 
 function movietest_input( inputtbl )
@@ -58,12 +64,10 @@ function movietest_input( inputtbl )
 			
 		elseif (symtable[ inputtbl.keysym ] == "s") then
 			vid, aid = load_movie("movietest.avi");
-			audio_gain(aid, 0.2);
 			img.last = vid;
 			move_image(vid, cursor.x, cursor.y);
 			scale_image(vid, 0.3, 0.3);
 			show_image(vid);
-			play_movie(vid);
 			
 		elseif (symtable[ inputtbl.keysym ] == "p") then
 			pause_movie(img.last);
@@ -81,6 +85,16 @@ function movietest_input( inputtbl )
 		    cursor.y = inputtbl.samples[1];
 		end
 	end
+end
+
+function movietest_video_event(source, ev)
+	if (ev.kind == "moviestatus") then
+		resize_image(debugbar_vid, VRESW * (ev.curv / ev.maxv), 64);
+		resize_image(debugbar_aid, VRESW * (ev.cura / ev.maxa), 64);
+	elseif (ev.kind == "movieready") then
+		show_image(source);
+--		play_movie(source);
+	end	
 end
 
 function movietest_clock_pulse()

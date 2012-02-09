@@ -156,6 +156,7 @@ set (
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message("Debug build")
 	add_definitions(-g -D_DEBUG)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 

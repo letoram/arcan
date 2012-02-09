@@ -149,6 +149,12 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	 * > 0 if there are frames to render
 	*/
 	if (cmd == ffunc_poll) {
+#ifdef _DEBUG                
+        arcan_event ev = {.kind = EVENT_VIDEO_MOVIESTATUS, .data.video.constraints.w = src->vfq.c_cells,
+        .data.video.constraints.h = src->afq.c_cells, .data.video.props.position.x = src->vfq.n_cells,
+            .data.video.props.position.y = src->afq.n_cells, .category = EVENT_VIDEO};
+        arcan_event_enqueue(&ev);
+#endif        
 		if (src->vfq.front_cell) {
 			uint32_t toshow = *((uint32_t*)(src->vfq.front_cell->buf));
 			int64_t nticks = (int64_t) SDL_GetTicks() - (int64_t) src->base_time;
@@ -163,7 +169,6 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			if (nticks - toshow > src->desc.vskipthresh) {
 				unsigned int nframes = skip_frames(&src->vfq, nticks, src->desc.vskipthresh);
 				rv = src->vfq.front_cell != NULL ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
-				arcan_warning("frameserver_videoframe() skip %i frames\n", nframes);
 			}
 			else /* might be ahead */
 				rv = (toshow - nticks) < src->desc.vfthresh ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
@@ -177,7 +182,6 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 				                     };
 				src->playstate = ARCAN_PAUSED;
 
-				arcan_warning("frameserver_videoframe() frameserver died\n");
 				arcan_event_enqueue(&sevent);
 			}
 	}
@@ -185,19 +189,19 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	else
 		if (cmd == ffunc_render) {
 			frame_cell* current = src->vfq.front_cell;
-
 			if (src->vfq.cell_size - 4 != s_buf) {
 				/* cap to the size of the "to feed" object */
-				uint16_t cpy_width  = (width > src->desc.width   ? src->desc.width : width);
+				uint16_t cpy_width  = (width  > src->desc.width  ? src->desc.width  : width);
 				uint16_t cpy_height = (height > src->desc.height ? src->desc.height : height);
 
-				for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
+				for (uint16_t row = 0; row < cpy_height; row++)
 					memcpy(buf + (row * width * bpp),
-						current->buf + 4 + (row * src->desc.width * src->desc.bpp),
+						current->buf + (row * src->desc.width * src->desc.bpp),
 						cpy_width * src->desc.bpp);
-				rv = FFUNC_RV_COPIED;	
+                
+				rv = FFUNC_RV_COPIED;
 			}
-			else { 
+			else {
 				glBindTexture(GL_TEXTURE_2D, gltarget);
 				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*)current->buf);
 				rv = FFUNC_RV_NOUPLOAD;
@@ -207,7 +211,6 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		}
 		else
 			if (cmd == ffunc_destroy) {
-				arcan_warning("frameserver destroy\n");
 				arcan_frameserver_free(src, false);
 			}
 			else
@@ -220,20 +223,13 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 {
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 	struct arcan_aobj* aobjs = (struct arcan_aobj*) aobj;
-
+    
 	if (src->playstate == ARCAN_PLAYING && src->afq.front_cell) {
 		alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, src->afq.cell_size, src->desc.samplerate);
 		arcan_framequeue_dequeue(&src->afq);
-		arcan_warning("arcan_frameserver_audioframe(), correct frame.\n");
 	}
-	else if (src->playstate == ARCAN_PAUSED || /* pad with silence */
-		src->playstate == ARCAN_SUSPENDED ||
-		(src->afq.alive && src->afq.n_cells < ARCAN_FRAMESERVER_ACACHE_MINIMUM)) {
-		char buf[4096] = {0};
-		alBufferData(buffer, AL_FORMAT_STEREO16, buf, 4096, src->desc.samplerate);
-		arcan_warning("arcan_frameserver_audioframe(), silent buffer.\n");
-		return ARCAN_OK;
-	} else /* deprecated fix was here, check earlier revisions */ ;
+	else 
+        return ARCAN_ERRC_NOTREADY;
 
 	return ARCAN_OK;
 }
@@ -248,7 +244,6 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	src->base_time = SDL_GetTicks();
 	src->playstate = ARCAN_PLAYING;
 	arcan_audio_play(src->aid);
-	arcan_warning("arcan_frameserver_playback() => ARCAN_PLAYING\n");
 
 	return ARCAN_OK;
 }
@@ -260,7 +255,6 @@ arcan_errc arcan_frameserver_pause(arcan_frameserver* src, bool syssusp)
 	if (src) {
 		src->playstate = (syssusp ? ARCAN_SUSPENDED : ARCAN_PAUSED);
 		src->base_delta = SDL_GetTicks() - src->base_time;
-		arcan_warning("arcan_frameserver_pause() => %i\n", src->playstate);
 		rv = ARCAN_OK;
 	}
 
@@ -276,7 +270,6 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	) {
 		src->base_time = SDL_GetTicks() - src->base_delta;
 		src->playstate = ARCAN_PLAYING;
-		arcan_warning("arcan_frameserver_resume()\n");
 		/*		arcan_audio_play(src->aid); */
 
 		rv = ARCAN_OK;

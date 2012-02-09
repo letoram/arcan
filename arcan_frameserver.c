@@ -163,13 +163,13 @@ void cleanshmkey(){
 		return 1;
 	}
 	
-	bool loop = strcmp(argv[3], "loop") == 0;
-	vidctx = ffmpeg_preload(argv[1]);
-	
-/* shut up */
+    /* shut up */
 	close(0);
 	close(1);
 	close(2);
+	
+	bool loop = strcmp(argv[3], "loop") == 0;
+	vidctx = ffmpeg_preload(argv[1]);
 	
 	if (vidctx != NULL && setup_shm_ipc(vidctx, argv[2])){
 		atexit(cleanshmkey);
@@ -179,6 +179,7 @@ void cleanshmkey(){
 		 * ffunc in arcan_frameserver), but not as beneficial for internal launch. */
 		int semv, rv;
 
+        vidctx->shared->resized = true;
 		sem_post(vidctx->shared->vsyncc);
 		
 		LOG("arcan_frameserver() -- decoding\n");

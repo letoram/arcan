@@ -97,7 +97,7 @@ typedef struct arcan_vobject {
 		uint8_t c_glid;
 		uint16_t w, h;
 		GLuint txu, txv;
-		bool scale;
+        enum arcan_vimage_mode scale;
 		uint8_t ncpt;
 	} gl_storage;
 	

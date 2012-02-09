@@ -133,9 +133,73 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 		fprintf(dst, "arcan_frameserver_dbgdump:\n(null)\n\n");
 }
 
+static void tick_control(arcan_frameserver* src)
+{
+    if (src->shm.ptr){
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+		if (shmpage->resized){
+        /* may happen multiple- times */
+			vfunc_state cstate = *arcan_video_feedstate(src->vid);
+			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
+            src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
+
+			arcan_framequeue_free(&src->vfq);
+			shmpage->resized = false;
+			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
+			arcan_video_alterfeed(src->vid, (arcan_vfunc_cb) arcan_frameserver_videoframe, cstate);
+
+        /* set up the real framequeue */
+            unsigned short acachelim, vcachelim, abufsize;
+            
+            arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
+            src->desc.samplerate = shmpage->frequency;
+            src->desc.channels = shmpage->channels;
+
+            arcan_errc rv;
+            src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
+            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, arcan_frameserver_shmaudcb);
+            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, 4 + src->desc.width * src->desc.height * src->desc.bpp, arcan_frameserver_shmvidcb);
+        /* fire event that we're ready */
+            
+            arcan_frameserver_playback(src);
+            arcan_video_objectopacity(src->vid, 1.0, 0);
+            
+            arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
+                .data.video.constraints = cons, .category = EVENT_VIDEO};
+            arcan_event_enqueue(&ev);
+        /* FIXME: EVENT */
+		}
+		
+		int status;
+		if (waitpid(src->child, &status, WNOHANG ) == src->child){
+			src->child_alive = false;
+		}
+	}   
+}
+
+
+static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
+	
+	if (state.tag == ARCAN_TAG_MOVIE && state.ptr)
+		switch (cmd){
+			case ffunc_tick:
+                tick_control( (arcan_frameserver*) state.ptr);
+                break;
+                
+			case ffunc_destroy:
+				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+                break;
+                
+			default:
+                break;
+		}
+    
+	return 0;
+}
+
 arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
 {
-	img_cons cons = {.w = 1920, .h = 1080, .bpp = 4};
+	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
  	bool restart = res != NULL;
 	size_t shmsize = MAX_SHMSIZE;
 	struct frameserver_shmpage* shmpage;
@@ -159,16 +223,11 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
  * this is a deadlock candidate */
 	shmpage->parent = getpid();
 
-/* 
- * 
- * 2. spawn the frameserver, wait for a control- signal on the ctrl- pipe
- * with the signal received, check the shm-struct, cleanup and abort if everything doesn't look perfect.
- */
+/* old behavior was to wait for signal from frameserver, then allocate and return vid.
+ * instead, we now follow the structure of launch_internal (in hopes that we can merge the codebase
+ * for the two in the future) wherein we use a temporary CB that checks the state of the frameserver */
 	pid_t child = fork();
 	if (child) {
-/* 
- * 3. allocate the framequeues, generate videoobjects and IDs. 
- */
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
 
@@ -179,15 +238,6 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			shmpage->asyncp = sem_open(work, O_RDWR);
 		free(work);
 		
-/* semkey_vid is now in locked state, wait for it to unlock or timeout,
- * if timeout, kill child then cleanup */ 
-		if ( arcan_sem_timedwait( shmpage->vsyncp, 2000 ) == false){
-			arcan_warning("arcan_frameserver_spawn_server() -- timeout waiting for child (%s), aborting.\n", strerror(errno));
-			kill(child, SIGHUP);
-			waitpid(child, NULL, 0);
-			goto error_cleanup;
-		} 
-
 		cons.w = shmpage->w;
 		cons.h = shmpage->h;
 		cons.bpp = shmpage->bpp;
@@ -198,9 +248,11 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 			vfunc_state state = {.tag = ARCAN_TAG_MOVIE, .ptr = res};
 			res->source = strdup(fname);
-			res->vid = arcan_video_addfobject((arcan_vfunc_cb) arcan_frameserver_videoframe, state, cons, 0);
-			res->aid = arcan_audio_feed((void*)arcan_frameserver_audioframe, res, &err);
-		}
+            res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
+            res->aid = ARCAN_EID;
+		} else { 
+            /* revert back to empty vfunc? */
+        }
 
 		res->child_alive = true;
 		res->desc = vinfo;
@@ -212,37 +264,9 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 		res->shm.key = shmkey;
 		res->shm.ptr = (void*) shmpage;
 		res->shm.shmsize = shmsize;
-
-	/* colour conversion currently ignored */
-		res->desc.sformat = 0;
-		res->desc.dformat = 0;
-
-	/* vfthresh    : tolerance (ms) in deviation from current time and PTS,
-	 * vskipthresh : tolerance (ms) before dropping a frame */
 		res->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_WAIT;
 		res->desc.vskipthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP / 2;
-		res->desc.samplerate = shmpage->frequency;
-		res->desc.channels = shmpage->channels;
-		res->desc.format = 0;
 		res->desc.ready = true;
-		
-		res->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_WAIT;
-		res->desc.vskipthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
-
-	/* if color format is something we can do in hardware: */
-//		kill(res->child, SIGUSR1);
-//		arcan_video_setprogram(res->vid, GPUPROG_VERTEX_DEFAULT,  GPUPROG_FRAGMENT_YUVTORGB, false);
-		arcan_sem_post(shmpage->vsyncp);
-		/* start buffering ARCAN_MOVIE_VCACHE_LIMIT,ARCAN_MOVIE_ACACHE_LIMIT ARCAN_MOVIE_ABUFFER_SIZE */
-		unsigned short acachelim;
-		unsigned short vcachelim;
-		unsigned short abufsize;
-		
-		arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
-		
-		arcan_framequeue_alloc(&res->afq, res->vid, acachelim, abufsize, arcan_frameserver_shmaudcb);
-		arcan_framequeue_alloc(&res->vfq, res->vid, vcachelim, 4 + res->desc.width * res->desc.height * res->desc.bpp, arcan_frameserver_shmvidcb);
-		
 	}
 	else
 		if (child == 0) {

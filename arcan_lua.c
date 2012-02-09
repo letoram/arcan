@@ -728,7 +728,10 @@ int arcan_lua_playmovie(lua_State* ctx)
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (state && state->tag == ARCAN_TAG_MOVIE) {
-		arcan_frameserver_playback((arcan_frameserver*) state->ptr);
+        arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
+		arcan_frameserver_playback(movie);
+        lua_pushvid(ctx, movie->vid);
+        lua_pushaid(ctx, movie->aid);
 	}
 
 	return 0;
@@ -745,11 +748,10 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	if (mvctx) {
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
-		lua_pushaid(ctx, mvctx->aid);
-		return 2;
-	}
+	} else
+        lua_pushvid(ctx, ARCAN_EID);
 
-	return 0;
+    return 1;
 }
 
 int arcan_lua_n_leds(lua_State* ctx)
@@ -1120,8 +1122,17 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 		lua_pushvid(ctx, ev.data.video.source);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
-
 		switch (ev.kind) {
+#ifdef _DEBUG
+        /* this little hack will emit (in debug builds) status events each time 
+         * a video or audio frame is requested from a movie */
+            case EVENT_VIDEO_MOVIESTATUS: arcan_lua_tblstr(ctx, "kind", "moviestatus", top);
+                arcan_lua_tblnum(ctx, "maxv", ev.data.video.constraints.w, top);
+                arcan_lua_tblnum(ctx, "maxa", ev.data.video.constraints.h, top);
+                arcan_lua_tblnum(ctx, "curv", ev.data.video.props.position.x, top);
+                arcan_lua_tblnum(ctx, "cura", ev.data.video.props.position.y, top);
+            break;
+#endif
 			case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); break;
 			case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top); break;
 			case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); break; 
@@ -1132,6 +1143,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
 			break;
+                
+            case EVENT_VIDEO_MOVIEREADY:
+                arcan_lua_tblstr(ctx, "kind", "movieready", top);
+				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
+            break;
                 
 			case EVENT_VIDEO_ASYNCHIMAGE_LOADED: 
                 arcan_lua_tblstr(ctx, "kind", "loaded", top); 

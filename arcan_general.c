@@ -110,42 +110,6 @@ char* arcan_find_resource(const char* label, int searchmask)
 	return NULL;
 }
 
-unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag){
-	HANDLE findh;
-	WIN32_FIND_DATA finddata;
-
-	unsigned count = 0;
-	char* basepath;
-
-	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
-		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
-		findh = FindFirstFile(playbuf, &finddata);
-		if (findh != INVALID_HANDLE_VALUE)
-		do{
-			snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
-			cb(playbuf, tag);
-			count++;
-		} while (FindNextFile(findh, &finddata));
-		
-		FindClose(findh);
-	}
-
-	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
-		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
-		findh = FindFirstFile(playbuf, &finddata);
-		if (findh != INVALID_HANDLE_VALUE)
-		do{
-			snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
-			cb(playbuf, tag);
-			count++;
-		} while (FindNextFile(findh, &finddata));
-		
-		FindClose(findh);
-	}
-
-	return count;
-}
-
 static bool check_paths()
 {
 	/* binpath, libpath, resourcepath, themepath */
@@ -528,6 +492,43 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 	}
 
 	return rv;
+}
+
+
+unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag){
+	HANDLE findh;
+	WIN32_FIND_DATA finddata;
+    
+	unsigned count = 0;
+	char* basepath;
+    
+	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
+		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
+		findh = FindFirstFile(playbuf, &finddata);
+		if (findh != INVALID_HANDLE_VALUE)
+            do{
+                snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+                cb(playbuf, tag);
+                count++;
+            } while (FindNextFile(findh, &finddata));
+		
+		FindClose(findh);
+	}
+    
+	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
+		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
+		findh = FindFirstFile(playbuf, &finddata);
+		if (findh != INVALID_HANDLE_VALUE)
+            do{
+                snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+                cb(playbuf, tag);
+                count++;
+            } while (FindNextFile(findh, &finddata));
+		
+		FindClose(findh);
+	}
+    
+	return count;
 }
 
 const char* internal_launch_support(){
