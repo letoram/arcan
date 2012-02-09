@@ -1908,7 +1908,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				arcan_db_failed_launch(dbhandle, game);
 				arcan_warning("Script Warning: launch_external(), possibly broken target/game combination. %s\n\tArguments:", *argvp++);
 				while(*argvp){
-					arcan_warning("%s ", *argvp++);
+					arcan_warning("%s \n", *argvp++);
 				}
 			} else
 				arcan_db_launch_counter_increment(dbhandle, game);

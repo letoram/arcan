@@ -594,7 +594,6 @@ arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 {
 	arcan_aobj* dobj = arcan_audio_getobj(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
 	if (dobj) {
 		gain = gain > 1.0 ? 1.0 : (gain < 0.0 ? 0.0 : gain);
 
@@ -666,14 +665,16 @@ static void arcan_astream_refill(arcan_aobj* current)
 	for (int i = 0; i < processed; i++){
 		unsigned buffer = 0;
 		alSourceUnqueueBuffers(current->alid, 1, &buffer);
-		_wrap_alError(current, "audio_refill(playing:unqueue)");
+		_wrap_alError(current, "audio_refill(refill:dequeue)");
 		current->used--;
 
 		if (current->feed){
 			arcan_errc rv = current->feed(current, current->alid, buffer, current->tag);
+			_wrap_alError(current, "audio_refill(refill:buffer)");
 			if (rv == ARCAN_OK){
+				arcan_warning("queued to: %i\n", current->alid);
 				alSourceQueueBuffers(current->alid, 1, &buffer);
-				_wrap_alError(current, "audio_refill(playing:queue)");
+				_wrap_alError(current, "audio_refill(refill:queue)");
 				current->used++;
 			}
 		}
@@ -730,7 +731,6 @@ void arcan_audio_tick(uint8_t ntt)
 					current->gproxy(current->gain, current->tag);
 				else
 					alSourcef(current->alid, AL_GAIN, current->gain);
-					
 				_wrap_alError(current, "audio_tick(source/gain)");
 
 				if (current->t_gain == 0) {

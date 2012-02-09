@@ -38,7 +38,7 @@
 
 static bool db_init = false;
 static char wbuf[4096] = {0};
-static int wbufs = 4094; /* save ; and 0 */
+static int wbufs = 4094; /* save a panic 0 */
 
 extern char* arcan_resourcepath;
 
@@ -427,6 +427,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	res.count = count;
 	res.limit = limit;
 	sqlite3_finalize(stmt);
+
+	wbufs = sizeof(wbuf) - 2;
+	wbuf[wbufs+1] = 0;
 	return res;
 }
 
