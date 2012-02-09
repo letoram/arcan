@@ -100,6 +100,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
 
+		arcan_warning("freeing frameserver\n");
 	/* might have died prematurely (framequeue cbs), no reason sending signal */
  		if (src->child_alive) {
 			UINT ec;

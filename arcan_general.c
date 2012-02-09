@@ -110,6 +110,42 @@ char* arcan_find_resource(const char* label, int searchmask)
 	return NULL;
 }
 
+unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag){
+	HANDLE findh;
+	WIN32_FIND_DATA finddata;
+
+	unsigned count = 0;
+	char* basepath;
+
+	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
+		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
+		findh = FindFirstFile(playbuf, &finddata);
+		if (findh != INVALID_HANDLE_VALUE)
+		do{
+			snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+			cb(playbuf, tag);
+			count++;
+		} while (FindNextFile(findh, &finddata));
+		
+		FindClose(findh);
+	}
+
+	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
+		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
+		findh = FindFirstFile(playbuf, &finddata);
+		if (findh != INVALID_HANDLE_VALUE)
+		do{
+			snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+			cb(playbuf, tag);
+			count++;
+		} while (FindNextFile(findh, &finddata));
+		
+		FindClose(findh);
+	}
+
+	return count;
+}
+
 static bool check_paths()
 {
 	/* binpath, libpath, resourcepath, themepath */
@@ -288,7 +324,6 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
 		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
 		glob_t res = {0};
-		printf("glob for: %s\n", playbuf);
 		if ( glob(playbuf, 0, NULL, &res) == 0 ){
 			char** beg = res.gl_pathv;
 			while(*beg){

@@ -1,11 +1,11 @@
 -- dependencies
 system_load("scripts/listview.lua")();
-	
+
 local function spawnmenu(list, listptr)
 	if (#list < 1) then
 		return nil;
 	end
-	
+
 	local parent = current_menu;
 	local props = image_surface_resolve_properties(current_menu.cursorvid);
 	local windsize = #list * 24;
@@ -74,7 +74,7 @@ gridptrs["128x96"]  = function() settings.iodispatch["MENU_ESCAPE"](); settings.
 gridptrs["128x128"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 128; end
 
 local sortorderptrs = {};
-sortorderptrs["Ascending"]    = function() settings.iodispatch["MENU_ESCAPE"](); 
+sortorderptrs["Ascending"]    = function() settings.iodispatch["MENU_ESCAPE"]();
 	settings.sortlbl = "Ascending";
 	settings.sort = function(a,b) return string.lower(a.title) < string.lower(b.title) end
 end
@@ -82,7 +82,7 @@ end
 sortorderptrs["Descending"]   = function() settings.iodispatch["MENU_ESCAPE"]();
 	settings.sortlbl = "Descending";
 	settings.sort = function(a,b) return string.lower(a.title) > string.lower(b.title) end
-end 
+end
 
 sortorderptrs["Times Played"] = function() settings.iodispatch["MENU_ESCAPE"]();
 	settings.sortlbl = "Times Played";
@@ -105,9 +105,9 @@ settingsptrs["Repeat Rate"]      = function() spawnmenu(repeatlbls, repeatptrs);
 local function get_unique(list, field)
 	local res = {};
 	local tmp = {};
-	
+
 	for i=1,#list do
-		if ( list[i][field] and 
+		if ( list[i][field] and
 			string.len( list[i][field]) > 0 ) then
 			tmp[ list[i][field] ] = true;
 		end
@@ -123,7 +123,7 @@ local function get_unique(list, field)
 	for i=1,#res do
 		resptr[res[i]] = function(lbl) settings.iodispatch["MENU_ESCAPE"](); settings.filters[string.lower(current_menu:select())] = lbl; end
 	end
-	
+
 	return res, resptr;
 end
 
@@ -134,7 +134,7 @@ local function update_status()
 	table.insert(list, "# games: " .. tostring(#settings.games));
 	table.insert(list, "grid dimensions: " .. settings.cell_width .. "x" .. settings.cell_height);
 	table.insert(list, "sort order: " .. settings.sortlbl);
-	
+
 	filterstr = "filters: ";
 	if (settings.filters.title)   then filterstr = filterstr .. " title("    .. settings.filters.title .. ")"; end
 	if (settings.filters.genre)   then filterstr = filterstr .. " genre("    .. settings.filters.genre .. ")"; end
@@ -167,7 +167,7 @@ local function update_filterlist()
 		settings.games = list_games( {} );
 		settings.iodispatch["MENU_ESCAPE"]();
 	end
-	
+
 	for i=1,#filterlbls do
 		local filterlbl = filterlbls[i];
 		if (settings.filters[ filterlbls[i] ]) then
@@ -188,7 +188,7 @@ end
 function apply_gamefilter(listname)
 	local reslist = {};
 	local filter = {};
-	
+
 	open_rawresource("./lists/" .. listname .. ".txt");
 	line = read_rawresource();
 -- linear search, blergh.
@@ -201,7 +201,7 @@ function apply_gamefilter(listname)
 			line = read_rawresource();
 		end
 	close_rawresource();
-	
+
 	settings.games = reslist;
 end
 
@@ -209,19 +209,19 @@ function build_gamelists()
 	local lists = glob_resource("lists/*.txt", THEME_RESOURCE);
 	local res = {};
 	local resptr = {};
-	
+
 	for i=1, #lists do
-			res[i] = string.sub(lists[i], 7, -5);
+			res[i] = string.sub(lists[i], 1, -5);
 			resptr[ res[i] ] = function(lbl) settings.iodispatch["MENU_ESCAPE"](); apply_gamefilter(lbl); settings.filters = {}; end
 	end
-	
-	return res, resptr; 
+
+	return res, resptr;
 end
 
 function gridlemenu_settings()
--- first, replace all IO handlers 
+-- first, replace all IO handlers
 	griddispatch = settings.iodispatch;
-	
+
 	settings.iodispatch = {};
 	settings.iodispatch["MENU_UP"] = function(iotbl) current_menu:move_cursor(-1, true); end
 	settings.iodispatch["MENU_DOWN"] = function(iotbl) current_menu:move_cursor(1, true); end
@@ -254,14 +254,14 @@ function gridlemenu_settings()
 				update_status();
 			end
 		end
-		
+
 -- just aliases
 	settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
 	settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
 
 -- hide the cursor and all selected elements
 	erase_grid(false);
-	
+
 	parent_menu = nil;
 	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
 	current_menu.ptrs = {};

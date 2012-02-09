@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
 
 	if (2 != argc)
 		return 1;
-		
+
 	char* fname = argv[0];
 	HANDLE shmh = (HANDLE) strtoul(argv[1], NULL, 10);
 	

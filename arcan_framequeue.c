@@ -126,6 +126,7 @@ int framequeue_loop(void* data)
 
 			else
 				if (nr<= 0){
+					arcan_warning("frameserver going to die, errno: %i\n", errno);
 					break;
 				}
 	}

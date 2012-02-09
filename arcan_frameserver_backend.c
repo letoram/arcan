@@ -51,7 +51,7 @@ extern bool check_child(arcan_frameserver*);
 
 static struct {
 	unsigned vcellcount;
-	unsigned short abufsize;
+	unsigned abufsize;
 	unsigned short acellcount;
 } queueopts = {
 	.vcellcount = ARCAN_FRAMESERVER_VCACHE_LIMIT,
@@ -163,6 +163,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			if (nticks - toshow > src->desc.vskipthresh) {
 				unsigned int nframes = skip_frames(&src->vfq, nticks, src->desc.vskipthresh);
 				rv = src->vfq.front_cell != NULL ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
+				arcan_warning("frameserver_videoframe() skip %i frames\n", nframes);
 			}
 			else /* might be ahead */
 				rv = (toshow - nticks) < src->desc.vfthresh ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
@@ -176,6 +177,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 				                     };
 				src->playstate = ARCAN_PAUSED;
 
+				arcan_warning("frameserver_videoframe() frameserver died\n");
 				arcan_event_enqueue(&sevent);
 			}
 	}
@@ -205,6 +207,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		}
 		else
 			if (cmd == ffunc_destroy) {
+				arcan_warning("frameserver destroy\n");
 				arcan_frameserver_free(src, false);
 			}
 			else
@@ -221,22 +224,16 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 	if (src->playstate == ARCAN_PLAYING && src->afq.front_cell) {
 		alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, src->afq.cell_size, src->desc.samplerate);
 		arcan_framequeue_dequeue(&src->afq);
-	} else if (src->playstate == ARCAN_PAUSED || /* pad with silence */
+		arcan_warning("arcan_frameserver_audioframe(), correct frame.\n");
+	}
+	else if (src->playstate == ARCAN_PAUSED || /* pad with silence */
 		src->playstate == ARCAN_SUSPENDED ||
 		(src->afq.alive && src->afq.n_cells < ARCAN_FRAMESERVER_ACACHE_MINIMUM)) {
 		char buf[4096] = {0};
 		alBufferData(buffer, AL_FORMAT_STEREO16, buf, 4096, src->desc.samplerate);
+		arcan_warning("arcan_frameserver_audioframe(), silent buffer.\n");
 		return ARCAN_OK;
-	} else {
-		arcan_event sevent = {.category = EVENT_AUDIO,
-								.kind = EVENT_AUDIO_FRAMESERVER_TERMINATED,
-								.data.audio.data = src,
-								.data.audio.source = id
-							};
-
-		arcan_event_enqueue(&sevent);
-		src->playstate = ARCAN_PAUSED;
-	}
+	} else /* deprecated fix was here, check earlier revisions */ ;
 
 	return ARCAN_OK;
 }
@@ -251,6 +248,7 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	src->base_time = SDL_GetTicks();
 	src->playstate = ARCAN_PLAYING;
 	arcan_audio_play(src->aid);
+	arcan_warning("arcan_frameserver_playback() => ARCAN_PLAYING\n");
 
 	return ARCAN_OK;
 }
@@ -262,6 +260,7 @@ arcan_errc arcan_frameserver_pause(arcan_frameserver* src, bool syssusp)
 	if (src) {
 		src->playstate = (syssusp ? ARCAN_SUSPENDED : ARCAN_PAUSED);
 		src->base_delta = SDL_GetTicks() - src->base_time;
+		arcan_warning("arcan_frameserver_pause() => %i\n", src->playstate);
 		rv = ARCAN_OK;
 	}
 
@@ -277,6 +276,7 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	) {
 		src->base_time = SDL_GetTicks() - src->base_delta;
 		src->playstate = ARCAN_PLAYING;
+		arcan_warning("arcan_frameserver_resume()\n");
 		/*		arcan_audio_play(src->aid); */
 
 		rv = ARCAN_OK;
