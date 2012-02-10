@@ -728,10 +728,11 @@ int arcan_lua_playmovie(lua_State* ctx)
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (state && state->tag == ARCAN_TAG_MOVIE) {
-        arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
+		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		arcan_frameserver_playback(movie);
-        lua_pushvid(ctx, movie->vid);
-        lua_pushaid(ctx, movie->aid);
+		lua_pushvid(ctx, movie->vid);
+		lua_pushaid(ctx, movie->aid);
+		return 2;
 	}
 
 	return 0;
