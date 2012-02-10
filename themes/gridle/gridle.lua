@@ -86,7 +86,7 @@ function gridle()
     system_load("scripts/keyconf.lua")();
     system_load("scripts/keyconf_mame.lua")();
     system_load("scripts/ledconf.lua")();
-	system_load("gridle_menus.lua")();
+    system_load("gridle_menus.lua")();
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
 	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 3) then
@@ -333,8 +333,7 @@ function move_cursor( ofs )
     if (movievid) then
         expire_image(movievid, 40);
         blend_image(movievid, 0.0, 40);
-        audio_gain(movieaid, 0.0, 40);
-		movievid = nil;
+	movievid = nil;
 	end
 
     if (game and ledconfig) then
@@ -343,14 +342,11 @@ function move_cursor( ofs )
 
 -- look for a movie, if one exists, enable a timer that we'll check for later
     if (setname and resource( "movies/" .. setname .. ".avi")) then
-        movievid, movieaid = load_movie( "movies/" .. setname .. ".avi" );
-        if (movievid and movieaid and movievid ~= BADID and movieaid ~= BADID) then
-            audio_gain(movieaid, 0.0);
+        movievid = load_movie( "movies/" .. setname .. ".avi" );
+        if (movievid) then
             move_image(movievid, x, y);
             hide_image(movievid);
             order_image(movievid, 3);
-            resize_image(movievid, settings.cell_width, settings.cell_height);
-            movietimer = 10;
         end
     else
         moviefile = "";
@@ -403,19 +399,7 @@ function erase_grid(rebuild)
      end
     end
 
-	if (movievid) then delete_image(movievid); end
-end
-
-function gridle_clock_pulse()
-	if (movietimer) then
-        movietimer = movietimer - 1;
-        if (movietimer <= 0) then
-            play_movie(movievid);
-            blend_image(movievid, 1.0, 10);
-            audio_gain(movieaid, 1.0, 40);
-            movietimer = nil;
-        end
-    end
+    if (movievid) then delete_image(movievid); end
 end
 
 function build_grid(width, height)
@@ -455,7 +439,15 @@ function build_grid(width, height)
 end
 
 function gridle_video_event(source, event)
-    if (event.kind == "loaded") then
+    if (event.kind == "movieready") then
+	if (source == movievid) then
+		vid,aid = play_movie(movievid);
+		audio_gain(aid, 0.0);
+		audio_gain(aid, 1.0, 40);
+		blend_image(vid, 1.0, 40);
+            	resize_image(movievid, settings.cell_width, settings.cell_height);	
+	end
+    elseif (event.kind == "loaded") then
 		local cursor_row = math.floor(cursor / ncw);
 		local gridcell_vid = cursor_vid();
 
