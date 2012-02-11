@@ -99,7 +99,6 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 {
 	if (src && src->loop){
-        printf("loop!\n");
 		arcan_frameserver_free(src, true);
 		arcan_audio_pause(src->aid);
 		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src);
@@ -161,17 +160,23 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 #endif        
 		if (src->vfq.front_cell) {
 			int64_t toshow = src->vfq.front_cell->tag;
-			int64_t nticks = (int64_t)SDL_GetTicks() - (int64_t) src->base_time;
-            
+			int64_t nticks = arcan_frametime() - nticks;
+			int64_t delta  = abs(toshow - nticks);
+#ifdef _DEBUG
+            arcan_warning("(%lld) video_frame, PTS: %lld, nticks: %lld, base_time: %d, delta: %lld\n", 
+				arcan_frametime(),
+				toshow, 
+				nticks, 
+				src->base_time,
+				delta
+			);
+#endif
         /* broken timestamp? rebase */
             if (nticks - toshow > (int64_t) src->desc.vskipthresh) {
-				src->base_time = SDL_GetTicks();
+				src->base_time = arcan_frametime();
 				nticks = toshow;
 			}
             
-#ifdef _DEBUG
-            arcan_warning("video_frame, PTS: %i, nticks: %i, delta: %i\n", toshow, nticks, abs(toshow - nticks));
-#endif
             return synch_frames(&src->vfq, nticks, src->desc.vfthresh);
 		}
 		else if (src->vfq.alive == false) {
@@ -226,7 +231,7 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 
 	if (src->playstate == ARCAN_PLAYING && src->afq.front_cell){
         int64_t toshow = src->afq.front_cell->tag;
-        int64_t nticks = (int64_t)SDL_GetTicks() - (int64_t)src->base_time;
+        int64_t nticks = (int64_t)arcan_frametime() - (int64_t)src->base_time;
         alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, src->afq.cell_size - (src->afq.cell_size -src->afq.front_cell->ofs), src->desc.samplerate);
             arcan_framequeue_dequeue(&src->afq);
 	}
@@ -288,7 +293,7 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	if (!src->desc.ready)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	src->base_time = SDL_GetTicks();
+	src->base_time = arcan_frametime();
 	src->playstate = ARCAN_PLAYING;
 	arcan_audio_play(src->aid);
 
@@ -301,7 +306,7 @@ arcan_errc arcan_frameserver_pause(arcan_frameserver* src, bool syssusp)
 
 	if (src) {
 		src->playstate = (syssusp ? ARCAN_SUSPENDED : ARCAN_PAUSED);
-		src->base_delta = SDL_GetTicks() - src->base_time;
+		src->base_delta = arcan_frametime() - src->base_time;
 		rv = ARCAN_OK;
 	}
 
@@ -315,7 +320,7 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	if (src && (src->playstate == ARCAN_PAUSED ||
 		src->playstate == ARCAN_SUSPENDED)
 	) {
-		src->base_time = SDL_GetTicks() - src->base_delta;
+		src->base_time = arcan_frametime() - src->base_delta;
 		src->playstate = ARCAN_PLAYING;
 		/* arcan_audio_play(src->aid); */
 

@@ -2402,7 +2402,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
  * returns msecs elapsed */
 uint32_t arcan_video_tick(uint8_t steps)
 {
-	unsigned now = SDL_GetTicks();
+	unsigned now = arcan_frametime();
 	arcan_vobject_litem* current = current_context->first;
 
 	while (steps--) {
