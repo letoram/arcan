@@ -25,6 +25,7 @@
 typedef ssize_t(*arcan_rfunc)(int, void*, size_t);
 
 typedef struct frame_cell {
+    uint32_t tag;
 	uint32_t ofs;
 	uint8_t* buf;
 	struct frame_cell* next;
@@ -46,7 +47,7 @@ typedef struct frame_queue {
 	SDL_Thread* iothread;
 	SDL_mutex* framesync;
 	SDL_cond* framecond;
-	bool alive;
+	bool alive, vcs;
 
 	int fd;
 	arcan_rfunc read;
@@ -57,7 +58,7 @@ typedef struct frame_queue {
  * connect it asyncronously to [fd]
  * allocate [cell_count] slots with [cell_size] buffer to each cell
  * if rfunc is NULL, it defaults to read() on fd */
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, arcan_rfunc rfunc);
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc);
 
 /* cleanup,
  * free all the related buffers and terminate any ongoing AIO calls. */

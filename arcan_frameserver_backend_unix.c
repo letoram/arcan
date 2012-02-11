@@ -221,8 +221,6 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 		res->shm.key = shmkey;
 		res->shm.ptr = (void*) shmpage;
 		res->shm.shmsize = shmsize;
-		res->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_WAIT;
-		res->desc.vskipthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP / 2;
 		res->desc.ready = true;
 	}
 	else

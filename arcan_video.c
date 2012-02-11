@@ -2717,7 +2717,6 @@ void arcan_video_refresh(float tofs)
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)
 {
 	arcan_video_display.scalemode = newmode;
-    printf("new scalemode: %i\n", newmode);
 }
 
 void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mode modet)

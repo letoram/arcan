@@ -32,6 +32,7 @@ struct frameserver_shmpage {
 	bool glsource;
 
 	/* vbuf size = w * h * bpp */
+    uint32_t vdts;
 	uint16_t w, h;
 	uint8_t bpp;
 
@@ -45,6 +46,7 @@ struct frameserver_shmpage {
 	uint8_t channels;
 	uint16_t frequency;
 	uint32_t abufused;
+    uint32_t adts;
 	uint32_t abufbase;
 	uint32_t abufofs;
 };

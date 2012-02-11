@@ -105,19 +105,19 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 	return rv;
 }
 
-int framequeue_loop(void* data)
+static int framequeue_loop(void* data)
 {
 	frame_queue* queue = (frame_queue*) data;
 
 	while (queue->alive) {
 		frame_cell* current = &queue->da_cells[ queue->ni ];
-		size_t ntr = queue->cell_size - current->ofs;
+		size_t ntr = queue->vcs ? queue->cell_size : queue->cell_size - current->ofs;
 		ssize_t nr = queue->read(queue->fd, current->buf + current->ofs, ntr);
 
 		if (nr > 0) {
 			current->ofs += nr;
 
-			if (current->ofs == queue->cell_size)
+			if (current->ofs == queue->cell_size || queue->vcs)
 				arcan_framequeue_step(queue);
 		}
 		else if (nr == -1 && errno == EAGAIN)
@@ -130,7 +130,7 @@ int framequeue_loop(void* data)
 	return 0;
 }
 
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, arcan_rfunc rfunc)
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
@@ -141,7 +141,8 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_
 		queue->c_cells = cell_count; 
 		queue->da_cells = (frame_cell*) calloc(sizeof(frame_cell), queue->c_cells);
 		queue->cell_size = cell_size;
-		queue->ni = 0;
+	 	queue->ni = 0;
+        queue->vcs = variable;
 		queue->current_cell = &queue->front_cell;
 
 		if (rfunc)
