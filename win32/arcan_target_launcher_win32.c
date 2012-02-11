@@ -29,7 +29,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	PROCESS_INFORMATION pi;
 	STARTUPINFO si = {0};
 	DWORD exitcode;
-	unsigned long int start = SDL_GetTicks();
+	unsigned long int start = arcan_frametime();
 	if (fname == NULL || argv == NULL) {
 		arcan_warning("arcan_target_launch_external(win32) : invalid arguments to launch\n\t (empty fname or empty argv), check the database.\n");
 		return -1;
@@ -84,7 +84,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	ShowWindow(wmi.window, SW_SHOW);
 	arcan_video_restore_external();
 
-	return SDL_GetTicks() - start;
+	return arcan_frametime() - start;
 }
 
 /* Internal support missing completely,

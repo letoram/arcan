@@ -156,7 +156,7 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd, char** key)
 	if (*dfd != NULL && (res = MapViewOfFile(*dfd, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
 		memset(res, 0, sizeof(struct frameserver_shmpage));
 		res->vbufofs = sizeof(struct frameserver_shmpage);
-		res->vsyncc = res->vsyncp = CreateSemaphore(&sa, 0, 1, NULL); /* start locked, child will unlock when video is set-up */
+		res->vsyncc = res->vsyncp = CreateSemaphore(&sa, 1, 1, NULL); 
 		res->asyncc = res->asyncp = CreateSemaphore(&sa, 1, 1, NULL);
 		return res;
 	}
@@ -164,6 +164,25 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd, char** key)
 error:
 	fprintf(stderr, "arcan_frameserver_spawn_server(), could't allocate shared memory.\n");
 	return NULL;
+}
+
+static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
+	
+	if (state.tag == ARCAN_TAG_MOVIE && state.ptr)
+		switch (cmd){
+			case ffunc_tick:
+               arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
+                break;
+                
+			case ffunc_destroy:
+				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+                break;
+                
+			default:
+                break;
+		}
+    
+	return 0;
 }
 
 arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
@@ -207,59 +226,38 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	            &si, /* Startup info */
 	            &pi /* process-info */)) {
 
-		/* timed- wait for the semaphore */
-		while (arcan_sem_timedwait( shmpage->vsyncp, 2000 ) != 0);
-		if(1)
-		{
 			/* the child has successfully launched and provided the relevant video information */
-			img_cons cons = { .w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
+			img_cons cons = { .w = 32, .h = 32, .bpp = 4};
 			vfunc_state state = {.tag = ARCAN_TAG_MOVIE, .ptr = 0};
 			arcan_errc err;
 
 			if (res == NULL) {
 				res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 				state.ptr = res;
-				res->vid = arcan_video_addfobject((arcan_vfunc_cb) arcan_frameserver_videoframe, state, cons, 0);
-				res->aid = arcan_audio_feed((void*)arcan_frameserver_audioframe, res, &err);
+	            res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
+				res->aid = ARCAN_EID;
 				res->source = strdup(fname);
 			}
 
-			res->child = pi.hProcess;
-			res->child_alive = true;
-			res->loop = loop;
-			res->desc.width = cons.w;
-			res->desc.height = cons.h;
-			res->desc.bpp = cons.bpp;
-			res->shm.ptr = (void*) shmpage;
-			res->shm.handle = shmh;
-			res->shm.shmsize = MAX_SHMSIZE;
+		res->loop = loop;
+		res->child = pi.hProcess;
+		res->child_alive = true;
+		res->desc.width = cons.w;
+		res->desc.height = cons.h;
+		res->desc.bpp = cons.bpp;
+		res->desc.samplerate = shmpage->frequency;
+		res->desc.channels = shmpage->channels;
+		res->desc.format = 0;
+		res->desc.sformat = 0;
+		res->desc.dformat = 0;
+		res->desc.ready = true;
 
-			/* colour conversion currently ignored */
-			res->desc.sformat = 0;
-			res->desc.dformat = 0;
-
-			/* vfthresh    : tolerance (ms) in deviation from current time and PTS,
-			 * vskipthresh : tolerance (ms) before dropping a frame */
-			res->desc.vfthresh    = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_WAIT;
-			res->desc.vskipthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP / 2;
-			res->desc.samplerate = shmpage->frequency;
-			res->desc.channels = shmpage->channels;
-			res->desc.format = 0;
-			res->desc.ready = true;
-		
-			unsigned short acachelim;
-			unsigned short vcachelim;
-			unsigned short abufsize;
-			
-			arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
-			
-			arcan_framequeue_alloc(&res->afq, res->vid, acachelim, abufsize, arcan_frameserver_shmaudcb);
-			arcan_framequeue_alloc(&res->vfq, res->vid, vcachelim, 4 + cons.w * cons.h * cons.bpp, arcan_frameserver_shmvidcb);
-			return res;
-		}
-		else {
+		res->shm.ptr = (void*) shmpage;
+		res->shm.handle = shmh;
+		res->shm.shmsize = MAX_SHMSIZE;
+		return res;
+	} else {
 			fprintf(stderr, "arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
-		}
 	}
 
 error:

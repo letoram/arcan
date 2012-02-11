@@ -48,6 +48,7 @@
  * all in all, this is still a small subsystem and deserves a rewrite .. */
 
 const unsigned short arcan_joythresh  = 3200;
+static int64_t arcan_last_frametime = 0;
 
 struct queue_cell {
 	arcan_event elem;
@@ -423,13 +424,18 @@ void map_sdl_events()
 	}
 }
 
+int64_t arcan_frametime()
+{
+	return arcan_last_frametime;
+}
+
 /* the main usage case is simply to alternate
  * between process and poll after a scene has
  * been setup, kindof */
 float arcan_process(unsigned* dtick)
 {
-	unsigned timestamp = SDL_GetTicks();
-	unsigned delta  = timestamp - current_context.c_ticks;
+	arcan_last_frametime = SDL_GetTicks();
+	unsigned delta  = arcan_last_frametime - current_context.c_ticks;
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK; 
 	

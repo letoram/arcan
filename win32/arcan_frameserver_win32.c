@@ -94,10 +94,7 @@ static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, HANDLE key)
 	dstctx->shared->frequency = dstctx->samplerate;
 	dstctx->shared->abufbase = 0;
 	dstctx->shared->abufofs = dstctx->shared->vbufofs + 4 + dstctx->shared->w * dstctx->shared->h * dstctx->shared->bpp;
-
-	/* step 3, send user message to parent --
-	* now its safe to get mapping and start reading from it */
-	arcan_sem_post(dstctx->shared->vsyncc);
+	dstctx->shared->resized = true;
 
 	return true;
 }

@@ -215,6 +215,8 @@ void arcan_event_clearmask();
 /* set a specific mask, somewhat limited */
 void arcan_event_setmask(uint32_t mask);
 
+int64_t arcan_frametime();
+
 /* call to initialise/deinitialize the current context
  * may occur several times due to external target launch */
 void arcan_event_init();

@@ -64,7 +64,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	}
 	
 	pid_t child = fork();
-	unsigned long ticks = SDL_GetTicks();
+	unsigned long ticks = arcan_frametime();
 
 	if (child) {
 		int stat_loc;
@@ -75,7 +75,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 			}
 		arcan_video_restore_external();
 
-		return SDL_GetTicks() - ticks;
+		return arcan_frametime() - ticks;
 	}
 	else {
 		execv(fname, argv);
