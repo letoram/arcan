@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <math.h>
 
 #include <al.h>
 #include <alc.h>
@@ -77,21 +78,6 @@ void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* ace
 		*acellcount = queueopts.acellcount;
 }
 
-unsigned int skip_frames(frame_queue* queue, uint32_t current, uint32_t thresh)
-{
-	if (!queue || !queue->front_cell)
-		return 0;
-	int sc = 0;
-
-	while (queue->front_cell &&
-	        (current > *(uint32_t*)(queue->front_cell->buf)) &&
-	        ((current - *(uint32_t*)(queue->front_cell->buf)) > thresh)) {
-		arcan_framequeue_dequeue(queue);
-		sc++;
-	}
-	return sc;
-}
-
 void arcan_frameserver_dropsemaphores_keyed(char* key)
 {
 	char* work = strdup(key);
@@ -113,6 +99,7 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 {
 	if (src && src->loop){
+        printf("loop!\n");
 		arcan_frameserver_free(src, true);
 		arcan_audio_pause(src->aid);
 		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src);
@@ -132,6 +119,23 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 	}
 
 	return true;
+}
+
+static bool synch_frames(frame_queue* queue, int64_t current, uint32_t thresh)
+{
+	if (!queue || !queue->front_cell)
+		return false;
+
+/* while the frames are too old, just skip them */
+    while (queue->front_cell && 
+           (current - queue->front_cell->tag > thresh)){
+        printf("skip frame, pts: %i, current: %i, delta: %i\n", queue->front_cell->tag, current,
+               abs(queue->front_cell->tag - thresh));
+        arcan_framequeue_dequeue(queue);
+    }
+    
+/* if there are any frames left, and it is supposed to be shown close to now */
+	return (queue->front_cell) != NULL && (abs(queue->front_cell->tag - current) < thresh);
 }
 
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
@@ -156,25 +160,21 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
         arcan_event_enqueue(&ev);
 #endif        
 		if (src->vfq.front_cell) {
-			uint32_t toshow = *((uint32_t*)(src->vfq.front_cell->buf));
-			int64_t nticks = (int64_t) SDL_GetTicks() - (int64_t) src->base_time;
-
-			/* If we've had a huge stall, just forget that we can skip to that
-			 * point and assume our time-keeping is dodgy */
-			if (nticks - toshow > ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH) {
+			int64_t toshow = src->vfq.front_cell->tag;
+			int64_t nticks = (int64_t)SDL_GetTicks() - (int64_t) src->base_time;
+            
+        /* broken timestamp? rebase */
+            if (nticks - toshow > (int64_t) src->desc.vskipthresh) {
 				src->base_time = SDL_GetTicks();
 				nticks = toshow;
 			}
-
-			if (nticks - toshow > src->desc.vskipthresh) {
-				unsigned int nframes = skip_frames(&src->vfq, nticks, src->desc.vskipthresh);
-				rv = src->vfq.front_cell != NULL ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
-			}
-			else /* might be ahead */
-				rv = (toshow - nticks) < src->desc.vfthresh ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
+            
+#ifdef _DEBUG
+            arcan_warning("video_frame, PTS: %i, nticks: %i, delta: %i\n", toshow, nticks, abs(toshow - nticks));
+#endif
+            return synch_frames(&src->vfq, nticks, src->desc.vfthresh);
 		}
-		else
-			if (src->vfq.alive == false) {
+		else if (src->vfq.alive == false) {
 				arcan_event sevent = {.category = EVENT_VIDEO,
 				                      .kind = EVENT_VIDEO_FRAMESERVER_TERMINATED,
 				                      .data.video.data = src,
@@ -186,10 +186,9 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			}
 	}
 	/* RENDER, can assume that peek has just happened */
-	else
-		if (cmd == ffunc_render) {
+	else if (cmd == ffunc_render) {
 			frame_cell* current = src->vfq.front_cell;
-			if (src->vfq.cell_size - 4 != s_buf) {
+			if (src->vfq.cell_size != s_buf) {
 				/* cap to the size of the "to feed" object */
 				uint16_t cpy_width  = (width  > src->desc.width  ? src->desc.width  : width);
 				uint16_t cpy_height = (height > src->desc.height ? src->desc.height : height);
@@ -218,6 +217,25 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
+
+arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+{
+	arcan_frameserver* src = (arcan_frameserver*) tag;
+	struct arcan_aobj* aobjs = (struct arcan_aobj*) aobj;
+
+
+	if (src->playstate == ARCAN_PLAYING && src->afq.front_cell){
+        int64_t toshow = src->afq.front_cell->tag;
+        int64_t nticks = (int64_t)SDL_GetTicks() - (int64_t)src->base_time;
+        alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, src->afq.cell_size - (src->afq.cell_size -src->afq.front_cell->ofs), src->desc.samplerate);
+            arcan_framequeue_dequeue(&src->afq);
+	}
+	else 
+        return ARCAN_ERRC_NOTREADY;
+    
+	return ARCAN_OK;
+}
+
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
@@ -235,15 +253,24 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
         /* set up the real framequeue */
             unsigned short acachelim, vcachelim, abufsize;
-            
             arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
+            if (acachelim == 0 || abufsize == 0){
+                float mspvf = 1000.0 / 30.0;
+                float mspaf = 1000.0 / (float)shmpage->frequency;
+                abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
+                acachelim = vcachelim * 2;
+            }
+            
             src->desc.samplerate = shmpage->frequency;
             src->desc.channels = shmpage->channels;
 
+            src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
+            src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
+
             arcan_errc rv;
             src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
-            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, arcan_frameserver_shmaudcb);
-            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, 4 + src->desc.width * src->desc.height * src->desc.bpp, arcan_frameserver_shmvidcb);
+            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb);
+            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb);
             
             arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
                 .data.video.constraints = cons, .category = EVENT_VIDEO};
@@ -252,21 +279,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 		check_child(src->shm.ptr);
 	}   
-}
-
-arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
-{
-	arcan_frameserver* src = (arcan_frameserver*) tag;
-	struct arcan_aobj* aobjs = (struct arcan_aobj*) aobj;
-    
-	if (src->playstate == ARCAN_PLAYING && src->afq.front_cell) {
-		alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, src->afq.cell_size, src->desc.samplerate);
-		arcan_framequeue_dequeue(&src->afq);
-	}
-	else 
-        return ARCAN_ERRC_NOTREADY;
-
-	return ARCAN_OK;
 }
 
 arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
@@ -305,7 +317,7 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	) {
 		src->base_time = SDL_GetTicks() - src->base_delta;
 		src->playstate = ARCAN_PLAYING;
-		/*		arcan_audio_play(src->aid); */
+		/* arcan_audio_play(src->aid); */
 
 		rv = ARCAN_OK;
 	}
@@ -322,11 +334,12 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 	
 	if (state && state->tag == ARCAN_TAG_MOVIE && ((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
-		
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*) movie->shm.ptr;
 		
 		/* SDL mutex protects the shm- page for freeing etc. */
 			if (shm->vready) {
+                frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
+                current->tag = shm->vdts;
 				memcpy(dst, (void*)shm + shm->vbufofs, ntr);
 				shm->vready = false;
 				rv = ntr;
@@ -351,6 +364,9 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*)movie->shm.ptr;
 
 			if (shm->aready) {
+                frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
+                current->tag = shm->vdts;
+
 				if (shm->abufused - shm->abufbase > ntr) {
 					memcpy(dst, (void*) shm + shm->abufofs + shm->abufbase, ntr);
 					shm->abufbase += ntr;

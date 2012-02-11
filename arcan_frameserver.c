@@ -91,7 +91,6 @@ bool semcheck(sem_handle semaphore, unsigned mstimeout){
 static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, char* shmkey)
 {
 	/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
-	/* unsigned bufsize = sizeof(struct movie_shmpage) + 4 + (dstctx->width * dstctx->height * dstctx->bpp) + (dstctx->c_audio_buf); */
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = shm_open(shmkey, O_RDWR, 0700);
 	char* semkeya = strdup(shmkey);
@@ -130,7 +129,7 @@ static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, char* shmkey)
 	dstctx->shared->vbufofs = sizeof(struct frameserver_shmpage);
 	dstctx->shared->channels = dstctx->channels;
 	dstctx->shared->frequency = dstctx->samplerate;
-	dstctx->shared->abufofs = dstctx->shared->vbufofs + 4 + dstctx->width * dstctx->height * dstctx->bpp;
+	dstctx->shared->abufofs = dstctx->shared->vbufofs + dstctx->width * dstctx->height * dstctx->bpp;
 	dstctx->shared->abufbase = 0;
 	dstctx->shared->vsyncc = sem_open(semkeyv, O_RDWR, 0700);
 	dstctx->shared->asyncc = sem_open(semkeya, O_RDWR, 0700);

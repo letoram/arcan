@@ -15,7 +15,9 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 	AVPacket cpkg = {.size = ctx->packet.size,
 	                 .data = ctx->packet.data
 	                };
-
+    
+    uint32_t dts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
+    
 	while (cpkg.size > 0) {
 		uint32_t ofs = 0;
 		int ntw = ctx->c_audio_buf;
@@ -70,12 +72,12 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 	avcodec_decode_video2(ctx->vcontext, ctx->pframe, &complete_frame, &(ctx->packet));
 	if (complete_frame) {
 		if (ctx->extcc)
-			interleave_pict(ctx->video_buf + 4, ctx->c_video_buf - 4, ctx->pframe, ctx->vcontext->width, ctx->vcontext->height, ctx->vcontext->pix_fmt);
+			interleave_pict(ctx->video_buf, ctx->c_video_buf, ctx->pframe, ctx->vcontext->width, ctx->vcontext->height, ctx->vcontext->pix_fmt);
 		else {
 			uint8_t* dstpl[4] = {NULL, NULL, NULL, NULL};
 			int dststr[4] = {0, 0, 0, 0};
 			dststr[0] =ctx->width * ctx->bpp;
-			dstpl[0] = ctx->video_buf + 4;
+			dstpl[0] = ctx->video_buf;
 			if (!ctx->ccontext) {
 				ctx->ccontext = sws_getContext(ctx->vcontext->width, ctx->vcontext->height, ctx->vcontext->pix_fmt,
 				                               ctx->vcontext->width, ctx->vcontext->height, PIX_FMT_BGR32, SWS_FAST_BILINEAR, NULL, NULL, NULL);
@@ -84,8 +86,7 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 		}
 
 		/* SHM-CHG-PT */
-		uint32_t dts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
-		((uint32_t*) ctx->video_buf)[0] = dts;
+		ctx->shared->vdts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
 		memcpy(((void*)ctx->shared) + ctx->shared->vbufofs, ctx->video_buf, ctx->c_video_buf);
 		ctx->shared->vready = true;
 		
@@ -139,8 +140,8 @@ arcan_ffmpeg_context* ffmpeg_preload(const char* fname)
 					dst->bpp = 4;
 					dst->height = dst->vcontext->height;
 					/* dts + dimensions */
-					dst->c_video_buf = 4 + (dst->vcontext->width * dst->vcontext->height * dst->bpp);
-					dst->video_buf = (uint8_t*) av_malloc(dst->c_video_buf);
+					dst->c_video_buf = (dst->vcontext->width * dst->vcontext->height * dst->bpp);
+					dst->video_buf   = (uint8_t*) av_malloc(dst->c_video_buf);
 				}
 			}
 			else

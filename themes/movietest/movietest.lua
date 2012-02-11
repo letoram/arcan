@@ -93,7 +93,7 @@ function movietest_video_event(source, ev)
 		resize_image(debugbar_aid, VRESW * (ev.cura / ev.maxa), 64);
 	elseif (ev.kind == "movieready") then
 		show_image(source);
---		play_movie(source);
+		play_movie(source);
 	end	
 end
 
