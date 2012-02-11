@@ -77,7 +77,7 @@ typedef struct {
 
 /* used for plyaing, pausing etc. */
 	enum arcan_playstate playstate;
-
+	int64_t lastpts;
 	bool loop;
 
 /* set if color space conversion is done in process or not */
@@ -88,6 +88,7 @@ typedef struct {
 	uint32_t base_time;
 	uint32_t base_delta;
 	uint32_t vfcount;
+	double audioclock;
 
 	process_handle child;
 	bool child_alive;
