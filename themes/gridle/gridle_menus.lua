@@ -102,6 +102,35 @@ end
 settingsptrs["Cell Size"]        = function() spawnmenu(gridlbls, gridptrs); end
 settingsptrs["Repeat Rate"]      = function() spawnmenu(repeatlbls, repeatptrs); end
 
+local function update_status()
+-- show # games currently in list, current filter or gamelist
+
+	list = {};
+	table.insert(list, "# games: " .. tostring(#settings.games));
+	table.insert(list, "grid dimensions: " .. settings.cell_width .. "x" .. settings.cell_height);
+	table.insert(list, "sort order: " .. settings.sortlbl);
+	table.insert(list, "repeat rate: " .. settings.repeat_rate);
+	
+	filterstr = "filters: ";
+	if (settings.filters.title)   then filterstr = filterstr .. " title("    .. settings.filters.title .. ")"; end
+	if (settings.filters.genre)   then filterstr = filterstr .. " genre("    .. settings.filters.genre .. ")"; end
+	if (settings.filters.subgenre)then filterstr = filterstr .. " subgenre(" .. settings.filters.subgenre .. ")"; end
+	if (settings.filters.target)  then filterstr = filterstr .. " target("   .. settings.filters.target .. ")"; end
+	if (settings.filters.year)    then filterstr = filterstr .. " year("     .. tostring(settings.filters.year) .. ")"; end
+	if (settings.filters.players) then filterstr = filterstr .. " players("  .. tostring(settings.filters.players) .. ")"; end
+	if (settings.filters.buttons) then filterstr = filterstr .. " buttons("  .. tostring(settings.filters.buttons) .. ")"; end
+
+	table.insert(list, filterstr);
+	if (settings.statuslist == nil) then
+		settings.statuslist = listview_create(list, 24 * 5, VRESW * 0.75);
+		move_image(settings.statuslist:window_vid(), 5, 5);
+		hide_image(settings.statuslist.cursorvid);
+	else
+		settings.statuslist.list = list;
+		settings.statuslist:redraw();
+	end
+end
+
 local function get_unique(list, field)
 	local res = {};
 	local tmp = {};
@@ -121,45 +150,20 @@ local function get_unique(list, field)
 	table.sort(res, function(a,b) return a > b; end);
 	resptr = {};
 	for i=1,#res do
-		resptr[res[i]] = function(lbl) settings.iodispatch["MENU_ESCAPE"](); settings.filters[string.lower(current_menu:select())] = lbl; end
+		resptr[res[i]] = function(lbl)
+			settings.iodispatch["MENU_ESCAPE"]();
+			update_status();
+			settings.filters[string.lower(current_menu:select())] = lbl;
+			settings.games = list_games(settings.filters);
+		end
 	end
 
 	return res, resptr;
 end
 
-local function update_status()
--- show # games currently in list, current filter or gamelist
-
-	list = {};
-	table.insert(list, "# games: " .. tostring(#settings.games));
-	table.insert(list, "grid dimensions: " .. settings.cell_width .. "x" .. settings.cell_height);
-	table.insert(list, "sort order: " .. settings.sortlbl);
-
-	filterstr = "filters: ";
-	if (settings.filters.title)   then filterstr = filterstr .. " title("    .. settings.filters.title .. ")"; end
-	if (settings.filters.genre)   then filterstr = filterstr .. " genre("    .. settings.filters.genre .. ")"; end
-	if (settings.filters.subgenre)then filterstr = filterstr .. " subgenre(" .. settings.filters.subgenre .. ")"; end
-	if (settings.filters.target)  then filterstr = filterstr .. " target("   .. settings.filters.target .. ")"; end
-	if (settings.filters.year)    then filterstr = filterstr .. " year("     .. tostring(settings.filters.year) .. ")"; end
-	if (settings.filters.players) then filterstr = filterstr .. " players("  .. tostring(settings.filters.players) .. ")"; end
-	if (settings.filters.buttons) then filterstr = filterstr .. " buttons("  .. tostring(settings.filters.buttons) .. ")"; end
-
-	table.insert(list, filterstr);
-	if (settings.statuslist == nil) then
-		settings.statuslist = listview_create(list, 24 * 4, VRESW * 0.75);
-		move_image(settings.statuslist:window_vid(), 5, 5);
-		hide_image(settings.statuslist.cursorvid);
-	else
-		settings.statuslist.list = list;
-		settings.statuslist:redraw();
-	end
-end
-
 local function update_filterlist()
 	local filterres = {};
 	local filterresptr = {};
-
-	local gamelist = list_games( {} );
 
 	table.insert(filterres, "Reset");
 	filterresptr["Reset"] = function()
@@ -174,8 +178,8 @@ local function update_filterlist()
 			filterlbls[i] = filterlbls[i] .. [[\i (]] .. settings.filters[ filterlbls[i] ] .. [[)\!i]];
 		end
 
-			table.insert(filterres, filterlbl);
-			filterresptr[filterlbl] = function(lbl) spawnmenu( get_unique(gamelist, string.lower(lbl)) ); end
+		table.insert(filterres, filterlbl);
+		filterresptr[filterlbl] = function(lbl) spawnmenu( get_unique(settings.games, string.lower(lbl)) ); end
 	end
 
 	return filterres, filterresptr;
@@ -261,6 +265,12 @@ function gridlemenu_settings()
 
 -- hide the cursor and all selected elements
 	erase_grid(false);
+	if (movievid) then
+		instant_image_transform(movievid);
+		expire_image(movievid, 20);
+		blend_image(movievid, 0.0, 20);
+		movievid = nil;
+	end
 
 	parent_menu = nil;
 	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);

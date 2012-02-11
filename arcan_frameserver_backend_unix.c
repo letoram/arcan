@@ -133,49 +133,6 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 		fprintf(dst, "arcan_frameserver_dbgdump:\n(null)\n\n");
 }
 
-static void tick_control(arcan_frameserver* src)
-{
-    if (src->shm.ptr){
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-		if (shmpage->resized){
-        /* may happen multiple- times */
-			vfunc_state cstate = *arcan_video_feedstate(src->vid);
-			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
-            src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
-
-			arcan_framequeue_free(&src->vfq);
-			shmpage->resized = false;
-			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
-			arcan_video_alterfeed(src->vid, (arcan_vfunc_cb) arcan_frameserver_videoframe, cstate);
-
-        /* set up the real framequeue */
-            unsigned short acachelim, vcachelim, abufsize;
-            
-            arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
-            src->desc.samplerate = shmpage->frequency;
-            src->desc.channels = shmpage->channels;
-
-            arcan_errc rv;
-            src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
-            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, arcan_frameserver_shmaudcb);
-            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, 4 + src->desc.width * src->desc.height * src->desc.bpp, arcan_frameserver_shmvidcb);
-        /* fire event that we're ready */
-            
-            arcan_frameserver_playback(src);
-            arcan_video_objectopacity(src->vid, 1.0, 0);
-            
-            arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
-                .data.video.constraints = cons, .category = EVENT_VIDEO};
-            arcan_event_enqueue(&ev);
-        /* FIXME: EVENT */
-		}
-		
-		int status;
-		if (waitpid(src->child, &status, WNOHANG ) == src->child){
-			src->child_alive = false;
-		}
-	}   
-}
 
 
 static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
@@ -183,7 +140,7 @@ static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t
 	if (state.tag == ARCAN_TAG_MOVIE && state.ptr)
 		switch (cmd){
 			case ffunc_tick:
-                tick_control( (arcan_frameserver*) state.ptr);
+               arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
                 break;
                 
 			case ffunc_destroy:

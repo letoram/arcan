@@ -175,6 +175,7 @@ function build_fadefunctions()
 		else
 			move_image(vid, (col * props.width) + VRESW + props.width, props.y, 60);
 		end
+		expire_image(vid, 60);
 		return 60;
 	end);
 end
@@ -247,12 +248,6 @@ function blend_gridcell(val, dt)
 	    instant_image_transform(gridcell_vid);
 	    blend_image(gridcell_vid, val, dt);
     end
-end
-
-function random_fade()
-	expire_image(imagevid, delay);
-	rotate_image(imagevid, 270.0, delay);
-	scale_image(imagevid, 0.01, 0.01, delay);
 end
 
 function resize_grid(step)
@@ -331,9 +326,10 @@ function move_cursor( ofs )
     setname = game and game.setname or nil;
 
     if (movievid) then
-        expire_image(movievid, 40);
-        blend_image(movievid, 0.0, 40);
-	movievid = nil;
+		instant_image_transform(movievid);
+        expire_image(movievid, 20);
+        blend_image(movievid, 0.0, 20);
+		movievid = nil;
 	end
 
     if (game and ledconfig) then
@@ -345,7 +341,6 @@ function move_cursor( ofs )
         movievid = load_movie( "movies/" .. setname .. ".avi" );
         if (movievid) then
             move_image(movievid, x, y);
-            hide_image(movievid);
             order_image(movievid, 3);
         end
     else
@@ -386,20 +381,14 @@ function erase_grid(rebuild)
 			local imagevid = grid[row][col];
 
 			res = image_children(imagevid);
-			for key,val in ipairs(res) do
-				delete_image(val);
-			end
-
-			local tv = fadefunc(imagevid, col, row);
-			expire_image(imagevid, tv);
+			for key,val in ipairs(res) do delete_image(val); end
+			 fadefunc(imagevid, col, row);
        end
 
        grid[row][col] = nil;
       end
      end
     end
-
-    if (movievid) then delete_image(movievid); end
 end
 
 function build_grid(width, height)
@@ -440,14 +429,18 @@ end
 
 function gridle_video_event(source, event)
     if (event.kind == "movieready") then
-	if (source == movievid) then
-		vid,aid = play_movie(movievid);
-		audio_gain(aid, 0.0);
-		audio_gain(aid, 1.0, 40);
-		blend_image(vid, 1.0, 40);
-            	resize_image(movievid, settings.cell_width, settings.cell_height);	
-	end
-    elseif (event.kind == "loaded") then
+		if (source == movievid) then
+			vid,aid = play_movie(movievid);
+			audio_gain(aid, 0.0);
+			audio_gain(aid, 1.0, 40);
+			blend_image(vid, 1.0, 40);
+			resize_image(vid, settings.cell_width, settings.cell_height);
+		else
+			instant_image_transform(source);
+			blend_image(source, 0.0, 20);
+			expire_image(source, 20);
+		end
+	elseif (event.kind == "loaded") then
 		local cursor_row = math.floor(cursor / ncw);
 		local gridcell_vid = cursor_vid();
 

@@ -70,7 +70,7 @@ static bool parent_alive()
 
 /* need the timeout to avoid a deadlock situation */
 bool semcheck(sem_handle semaphore, unsigned mstimeout){
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 5000000L}, rem; /* 5 ms */
+	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; /* 5 ms */
 	bool rv = true;
 	int rc;
 
@@ -83,7 +83,7 @@ bool semcheck(sem_handle semaphore, unsigned mstimeout){
 				}
 			nanosleep(&st, &rem); /* don't care about precision here really */
 		}
-	} while (rc != 0 && ( rv = parent_alive()) );
+	} while ( (rv = parent_alive()) && rc != 0 );
 
 	return rv;
 }

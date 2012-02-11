@@ -107,6 +107,7 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores(arcan_frameserver*);
+void arcan_frameserver_tick_control(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);
 bool arcan_frameserver_check_frameserver(arcan_frameserver*);
 
