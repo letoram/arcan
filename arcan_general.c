@@ -286,12 +286,13 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 	char* basepath;
 
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
+		int ofs;
 		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
 		glob_t res = {0};
 		if ( glob(playbuf, 0, NULL, &res) == 0 ){
 			char** beg = res.gl_pathv;
 			while(*beg){
-				cb(*beg + 2+strlen(arcan_themepath)+strlen(arcan_themename), tag);
+				cb(rindex(*beg, '/') ? rindex(*beg, '/')+1 : *beg, tag);
 				beg++;
 				count++;
 			}

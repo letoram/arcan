@@ -210,13 +210,48 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			arcan_framequeue_dequeue(&src->vfq);
 		}
 		else
-			if (cmd == ffunc_destroy) {
+			if (cmd == ffunc_destroy ||
+				check_child(src) == false){
 				arcan_frameserver_free(src, false);
 			}
-			else
-				; /* ignore ffunc_tick */
 
 	return rv;
+}
+
+void arcan_frameserver_tick_control(arcan_frameserver* src)
+{
+    if (src->shm.ptr){
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+		if (shmpage->resized){
+        /* may happen multiple- times */
+			vfunc_state cstate = *arcan_video_feedstate(src->vid);
+			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
+            src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
+
+			arcan_framequeue_free(&src->vfq);
+			shmpage->resized = false;
+			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
+			arcan_video_alterfeed(src->vid, (arcan_vfunc_cb) arcan_frameserver_videoframe, cstate);
+
+        /* set up the real framequeue */
+            unsigned short acachelim, vcachelim, abufsize;
+            
+            arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
+            src->desc.samplerate = shmpage->frequency;
+            src->desc.channels = shmpage->channels;
+
+            arcan_errc rv;
+            src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
+            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, arcan_frameserver_shmaudcb);
+            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, 4 + src->desc.width * src->desc.height * src->desc.bpp, arcan_frameserver_shmvidcb);
+            
+            arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
+                .data.video.constraints = cons, .category = EVENT_VIDEO};
+            arcan_event_enqueue(&ev);
+		}
+
+		check_child(src->shm.ptr);
+	}   
 }
 
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
@@ -298,12 +333,9 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 				arcan_sem_post(shm->vsyncp);
 			}
 			else
-				errno = check_child(movie) == true ? EAGAIN : EINVAL;
-			
-		return rv;
-	}
+				errno = EAGAIN;
+	} else errno = EINVAL;
 
-	errno = EINVAL;
 	return rv;
 }
 
@@ -334,11 +366,8 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 				}
 			}
 			else
-				errno = check_child(movie) == true ? EAGAIN : EINVAL;
-			
-		return rv;
-	}
+				errno = EAGAIN;
+	}else errno = EINVAL;
 
-	errno = EINVAL;
 	return rv;
 }

@@ -120,15 +120,10 @@ int framequeue_loop(void* data)
 			if (current->ofs == queue->cell_size)
 				arcan_framequeue_step(queue);
 		}
+		else if (nr == -1 && errno == EAGAIN)
+			SDL_Delay(1); 
 		else
-			if (nr == -1 && errno == EAGAIN)
-				SDL_Delay(1); /* kind-of worst case, many feeders should have a sem_timedwait sort of functionality */
-
-			else
-				if (nr<= 0){
-					arcan_warning("frameserver going to die, errno: %i\n", errno);
-					break;
-				}
+			break;
 	}
 
 	queue->alive = false;
