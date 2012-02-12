@@ -47,9 +47,23 @@ function dishwater()
 	system_load("scripts/keyconf_mame.lua")();
 	system_load("scripts/ledconf.lua")();
 
-	keyconfig = keyconf_create(0);
+	local menutbl = {
+	    "rMENU_ESCAPE",
+	    "rMENU_UP",
+	    "rMENU_DOWN",
+	    "rMENU_SELECT",
+		" MENU_NEXTPAGE",
+		" MENU_PREVPAGE",
+		" MENU_RANDOM"
+	};
+
+	clipregion = fill_surface(1,1,0,0,0);
+	show_image(clipregion);
+	resize_image(clipregion, VRESW * 0.5, VRESH);
+
+	keyconfig = keyconf_create(0, menutbl);
 	keyconfig.iofun = dishwater_input;
-	
+		
 	if (keyconfig.active == false) then
 		dishwater_input = function(iotbl) -- keyconfig io function hook
 			if (keyconfig:input(iotbl) == true) then
@@ -71,6 +85,10 @@ function dishwater()
 	end
 
 	images.selector = fill_surface(VRESW * 0.5, 20, 0, 40, 200);
+	link_image(images.selector, clipregion);
+	image_clip_on(images.selector);
+	image_mask_clear(images.selector, MASK_OPACITY);
+
 	show_image(images.selector);
 	order_image(images.selector, 1);
 
@@ -78,46 +96,25 @@ function dishwater()
 	resize_image(images.background, VRESW, VRESH, NOW);
 	show_image(images.background);
 
-    data.targets = list_targets();
-
-    if (#data.targets == 0) then
-	error "No targets found";
-	shutdown(); 
-    end
-
     data.games = list_games( {} );
+	if (#data.games == 0) then
+		error("No Games configured, terminating.");
+		shutdown();
+	end
+
     local width, height = textdimensions( [[\f]] .. font_name .. [[jJ\n]], font_vspace);
     gamelist.page_size = math.ceil ( (VRESH - 20) / height );
     
     do_menu();
     select_item();
 
-    iodispatch["CURSOR_Y"]    = 
-    function(tbl) 
-	local dy = 0;
-	
-	if (tbl.relative) then
-	    dy = tbl.samples[2];
-	else
-	    dy = tbl.samples[1] / 65535 * 20;
-	end
-	
-	curs_dy = curs_dy + dy;
-	if (curs_dy > 20) then
-	    curs_dy = 0;
-	    next_item(1);
-	elseif (curs_dy < -20) then
-	    curs_dy = 0;
-	    next_item(-1);
-	end
-    end
-    iodispatch["MENU_UP"]     = function(tbl) if tbl.active then next_item(-1); end end
-    iodispatch["MENU_DOWN"]   = function(tbl) if tbl.active then next_item(1); end end
-    iodispatch["MENU_SELECT"] = function(tbl) if tbl.active then launch_game(data.games[gamelist.number]); end end
-    iodispatch["PLAYER1_BUTTON1"] = function(tbl) if tbl.active then random_item(); end end
-    iodispatch["MENU_LEFT"]   = function(tbl) if tbl.active then next_item(-1 * gamelist.page_size); end end
-    iodispatch["MENU_RIGHT"]  = function(tbl) if tbl.active then next_item(gamelist.page_size); end end
-    iodispatch["MENU_ESCAPE"] = function(tbl) if tbl.active then shutdown(); end end
+    iodispatch["MENU_UP"]         = function(tbl) if tbl.active then next_item(-1); end end
+    iodispatch["MENU_DOWN"]       = function(tbl) if tbl.active then next_item(1); end end
+    iodispatch["MENU_SELECT"]     = function(tbl) if tbl.active then launch_game(data.games[gamelist.number]); end end
+    iodispatch["MENU_RANDOM"]     = function(tbl) if tbl.active then random_item(); end end
+    iodispatch["MENU_NEXTPAGE"]   = function(tbl) if tbl.active then next_item(-1 * gamelist.page_size); end end
+    iodispatch["MENU_PREVPAGE"]   = function(tbl) if tbl.active then next_item(gamelist.page_size); end end
+    iodispatch["MENU_ESCAPE"]     = function(tbl) if tbl.active then shutdown(); end end
 end
 
 function textdimensions(str, vspace)
@@ -170,6 +167,26 @@ function calc_page(number, size, limit)
     return page_start + 1, offset + 1, page_end;
 end
 
+function have_video(setname)
+	local moviefn = "movies/" .. setname .. ".avi";
+	if (resource(moviefn)) then
+		return moviefn;
+	else
+		return nil;
+	end
+end
+
+function fit_image(vid)
+		resize_image(vid, VRESW * 0.5, 0);
+		if (image_surface_properties(vid).height > VRESH) then resize_image(vid, 0, VRESH); end
+		local prop = image_surface_properties(vid);
+
+		local dx = VRESW * 0.5 - prop.width;
+		local dy = VRESH - prop.height;
+
+		move_image(vid, VRESW*0.5 + dx*0.5, 0+dy*0.5,0);
+end
+
 function do_menu()
     if (images.menu ~= nil) then
 	delete_image(images.menu);
@@ -184,6 +201,10 @@ function do_menu()
     end
 
     images.menu, images.menu_lines = render_text(renderstr, gamelist.vspace);
+	link_image(images.menu, clipregion);
+	image_clip_on(images.menu);
+	image_mask_clear(images.menu, MASK_SCALE);
+
     props = image_surface_properties(images.menu);
 
     order_image(images.menu, 2);
@@ -213,49 +234,41 @@ function select_item()
     blend_image(images.selector, 0.5, 10);
 
 -- grab a reference to the current game data
-    local fn  = "movies/" .. game.setname .. ".avi";
+    local fn  = have_video(game.setname);
     local fn2 = "screenshots/" .. game.setname .. ".png";
 
--- try to find a matching movie or screenshot .. 
-    if (resource(fn) ~= nil) then
-        images.gamepic, aid = load_movie(fn);
-        if (images.gamepic) then 
-    	    play_movie(images.gamepic);
-	end
-    end
-    
-    if (images.gamepic == nil and resource(fn2) ~= nil) then
+    if (fn) then
+		-- res will happen asynchronously
+        images.gamepic = load_movie(fn);
+		return;
+
+    elseif (resource(fn2)) then
         images.gamepic = load_image(fn2, 1);
-    end
-
--- last fallback, just render a string with the setname (so the user knows which screenshot to fix)
-    if (images.gamepic == nil) then
-        images.gamepic, skip = render_text([[\f]] .. font_name_large .. game.setname, 0);
 	end
 
-    props = image_surface_properties(images.gamepic);
-    local neww = 0;
-    local newh = 0;
+	if (images.gamepic == nil) then
+        images.gamepic = render_text([[\f]] .. font_name_large .. game.setname, 0);
+	end
 
-    if (props.width > props.height) then
-        neww, newh = resize_image(images.gamepic, VRESW * 0.5, 0, 0);
-    else
-        neww, newh = resize_image(images.gamepic, 0, VRESH, 0);
-    end
-
-    blend_image(images.gamepic, 1.0, 20);
-    move_image(images.gamepic, VRESW - neww, (VRESH - newh) * 0.5, 0);
+	blend_image(images.gamepic, 1.0, 20);
+	fit_image(images.gamepic);
 end
 
 ------ Event Handlers ----------
 
+function dishwater_video_event(source, argtbl)
+	if (argtbl.kind == "movieready") then
+		fit_image(source);
+		local vid, aid = play_movie(source);
+		audio_gain(aid, 0.0);
+		audio_gain(aid, 1.0, 80);
+		blend_image(source, 1.0, 20);
+	end
+end
+
 function dishwater_show()
 	blend_image(WORLDID, 0.0, 0);
-	move_image(WORLDID, VRESW / 2, VRESH / 2, 0);
-	move_image(WORLDID, 0, 0, 150);
 	blend_image(WORLDID, 1.0, 150);
-	rotate_image(WORLDID, 180, 0);
-	rotate_image(WORLDID, 0, 150);
 end
 
 -- Lookup results from keyconfig,

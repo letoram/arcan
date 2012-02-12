@@ -445,6 +445,7 @@ function gridle_video_event(source, event)
 			blend_image(source, 0.0, 20);
 			expire_image(source, 20);
 		end
+
 	elseif (event.kind == "loaded") then
 		local cursor_row = math.floor(settings.cursor / ncw);
 		local gridcell_vid = cursor_vid();

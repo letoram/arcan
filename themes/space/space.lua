@@ -16,28 +16,6 @@
 -- will be shown.. 
 -------------------------
 
-vertex_shader = [[
-	uniform int n_ticks;
-	
-	void main(void)
-	{
-		gl_TexCoord[0] = gl_MultiTexCoord0;
-	gl_TexCoord[0].s = gl_TexCoord[0].s + fract(n_ticks / 640.0);
-	gl_TexCoord[0].t = gl_TexCoord[0].t;
-	gl_Position = ftransform();
-	}]];
-	
-	fragment_shader = [[
-	                    #version 120
-	                   uniform sampler2D tex;
-	                   
-	                   void main() {
-	                                vec4 color = texture2D(tex, gl_TexCoord[0].st);
-	                               gl_FragColor = color;
-	                               }
-	                   ]];
-	
-
 local background;
 local bgmusic;
 local menu;
@@ -65,30 +43,43 @@ local ydistr = 0;
 
 function position_image(vid)
     distance = math.random(1, 5) / 10;
-
--- send to background, add downwards and wrap around
     props = image_surface_properties(vid);
-    ydistr = ydistr + props.height + math.random(50,150);
-    ydistr = ydistr % VRESH;
+
+-- wider or taller?
+	if (props.width / props.height > 1) then
+		resize_image(vid, VRESW * 0.2, 0, NOW);
+	else
+		resize_image(vid, 0, VRESH * 0.2, NOW);
+	end
+
+-- scale and position based on "distance"
+    scale_image(vid, distance + 0.3, distance + 0.3, NOW);
+    order_image(vid, distance * 254.0);
+
+-- add downwards and wrap around
+	ydistr = ydistr + 10 + math.random(50);
+    props = image_surface_properties(vid);
+	if (ydistr + props.height > VRESH) then 
+		ydistr = math.random(50);
+	end
 
 -- start just outside display, move just outside the display at a randomized speed
-    move_image(vid, VRESW + 10, ydistr, 0);
+    move_image(vid, VRESW + 60, ydistr, NOW);
     local lifetime = 500 + math.random(100, 1000);
-    move_image(vid, 0 - props.width - 50, ydistr, lifetime);
+    move_image(vid, 0 - props.width, ydistr, lifetime);
     expire_image(vid, lifetime);
-    
--- scale and position based on "distance"
-    scale_image(vid, distance + 0.3, 0, 0);
-    order_image(vid, distance * 254.0);
-    props = image_surface_properties(vid);
 
-    if (props.width > VRESW / 4) then
-  	  resize_image(vid, VRESW / 4, 0, 0);
-  	elseif (props.height > VRESH / 5) then
-	  resize_image(vid, 0, VRESH / 5, 0);
-    end
-
+	ydistr = ydistr + props.height;
     show_image(vid);
+end
+
+function have_video(setname)
+	local moviefn = "movies/" .. setname .. ".avi";
+	if (resource(moviefn)) then
+		return moviefn;
+	else
+		return nil;
+	end
 end
 
 -- find a random game, load relevant resources and queue. 
@@ -102,14 +93,12 @@ function random_game()
 	gameid = math.random(1, #games);
     game = games[ gameid ];
     fn = "screenshots/" .. game["setname"] .. ".png";
-    vid = load_image(fn);
+    vid = load_image_asynch(fn);
 
 	if (vid ~= BADID) then
 		-- keep track of number of "background objects" alive
 		alive = alive + 1;
-    
 		bglayer[vid] = game;
-		position_image(vid);
 	end
 
 end
@@ -118,16 +107,22 @@ function space()
 -- pre-generated table of SDL keysyms, LED light remaps, .. 
     keyfun = system_load("scripts/keyconf.lua")();
 
+-- tile rather than clamp
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
+
     images.background = load_image("space.png", 0);
-	image_program(images.background, vertex_shader, fragment_shader);
-	
     images.cursor = load_image("images/mouse_cursor.png", 255);
+
+ -- used as the basis for all particles
     images.emitter = fill_surface(12, 12, 200, 200, 200);
 
+-- if this is changed, the hot-spot need to be changed as well
     resize_image(images.cursor, 64, 64, 0);
+
+--  we want the cursor opaque, but should still have alpha-channel used
     force_image_blend(images.cursor);
 
+-- don't want these to appear on hit detection
     image_mask_set(images.emitter, MASK_UNPICKABLE);
     image_mask_set(images.cursor, MASK_UNPICKABLE);
     image_mask_set(images.background, MASK_UNPICKABLE);
@@ -136,19 +131,22 @@ function space()
     show_image(images.background);
     show_image(images.cursor);
 
--- populate scale variables to make this resolution independent
+-- add all games that have a corresponding snapshot
+	local tmptbl = {};
     games = list_games( {} );
 
     for i, v in pairs(games) do
 		if resource("screenshots/" .. v.setname .. ".png") == false then
-		    print("space-theme, screenshot for set ( " .. v.setname " ) not found, ignoring game.");
 		    table[i] = nil;
+		else
+			table.insert(tmptbl, v);
 		end
     end
+	games = tmptbl;
 
 -- no reason to continue if we have no games setup
     if (# games == 0) then
-        error "No games found";
+        error "No games (with matching screenshots) could be found";
         shutdown();
     else
         random_game();
@@ -162,7 +160,6 @@ function space()
 	};
 	
 	keyconfig = keyconf_create(0, menutbl, {});
-
 	if (keyconfig.active == false) then
 		keyconfig.iofun = space_input;
 		space_input = function(iotbl)
@@ -174,7 +171,7 @@ function space()
 	
     iolut = {};
     iolut["MENU_SELECT"] = function(tbl) 
-		if (grabbed_item ~= nil) then
+		if (grabbed_item) then
 		    stop_music();
 			launch_target( bglayer[grabbed_item.vid].title, LAUNCH_EXTERNAL );
 		    start_music();
@@ -182,39 +179,41 @@ function space()
     end
     
     iolut["MENU_ESCAPE"] = function(tbl) shutdown(); end
-    iolut["CURSOR_X"] = function(tbl) 
 
-	if (tbl.source == "mouse") then
-	    mx = tbl.samples[1];
-	else
-	    mx = mx + (tbl.samples[1] / 32768) * step.x;
-	end
+-- the analog conversion for devices other than mice is so-so atm.
+    iolut["CURSOR_X"] = function(tbl) 
+		if (tbl.source == "mouse") then
+		    mx = tbl.samples[1];
+		else
+			mx = mx + (tbl.samples[1] / 32768) * step.x;
+		end
+
 		move_image(images.cursor, mx, my, 0);
     end
 
     iolut["CURSOR_Y"] = function(tbl)
-	if (tbl.source == "mouse") then
-	    my = tbl.samples[1];
-	elseif (tbl.samples[1] > 0) then
-	    my = my + (tbl.samples[1] / 32768) * step.y;
-	else
-	    my = my - step.y;
-	end
-
+		if (tbl.source == "mouse") then
+			my = tbl.samples[1];
+		elseif (tbl.samples[1] > 0) then
+			my = my + (tbl.samples[1] / 32768) * step.y;
+		else
+			my = my - step.y;
+		end
+		
 		move_image(images.cursor, mx, my, 0);
     end
 end
 
-function space_on_show()
+function space_show()
     start_music();
 end
 
 function start_music()
-    bgmusic = stream_audio("innerspace.ogg"); -- CCommons, grabbed from 8bc, (c)facundo, http://8bc.org/members/facundo
-
+-- CCommons, grabbed from 8bc, (c)facundo, http://8bc.org/members/facundo
+    bgmusic = stream_audio("innerspace.ogg"); 
     if bgmusic ~= BADID then
-	play_audio(bgmusic);
-	audio_gain(bgmusic, 0.3, 0);
+		play_audio(bgmusic);
+		audio_gain(bgmusic, 0.3, 0);
     end
 end
 
@@ -224,115 +223,122 @@ function stop_music()
     end
 end
 
-function check_cursor(x, y)
-    if (grabbed_item ~= nil) then 
--- check if the cursor is still on the currently selected one, if not, let the game go.
-        if (image_hit(grabbed_item.vid, x, y) == 0) then 
-			move_image(grabbed_item.vid, 0 - grabbed_item.neww, grabbed_item.origy, 20);
-			image_mask_set(grabbed_item.vid, MASK_UNPICKABLE);
+function release_item()
+	local dvid = grabbed_item.vid;
+	instant_image_transform(dvid);
+	local props = image_surface_properties(grabbed_item.vid);
+	image_mask_set(grabbed_item.vid, MASK_UNPICKABLE);
 
-		if (grabbed_item.movie) then
-			expire_image(grabbed_item.movie, 20);
-			audio_gain(grabbed_item.movieaud, 0.0, 20);
-		    show_image(grabbed_item.vid);
-			hide_image(grabbed_item.movie);
+	move_image(dvid, -10, props.y, 40);
+	expire_image(dvid, 40);
+
+	if (grabbed_item.movie) then
+		dvid = grabbed_item.movie;
+		instant_image_transform(dvid);
+		image_mask_set(dvid, MASK_UNPICKABLE);
+		if (grabbed_item.movieaud) then 
+			audio_gain(grabbed_item.movieaud, 0.0, 20); 
 		end
-		
-		expire_image(grabbed_item.vid, 20);
-        grabbed_item = nil;
-        end
-        
-        return;
-    end
+	end
+
+	resize_image(dvid, 1, 1, 40);
+	blend_image(dvid, 0.0, 60);
+	order_image(dvid, 3);
+	grabbed_item = nil;
+end
+
+function check_cursor(x, y)
+-- check if the cursor is still on the currently selected one, if not, let the game go.
+    if (grabbed_item) then 
+        if (image_hit(grabbed_item.vid, x, y) == 0) then 
+			release_item();
+		else
+			return;
+		end
+	end
 
 -- look for new items to select
     items = pick_items(x, y);
 
-    if (# items > 0) then
-        props = image_surface_properties(items[1]);
+	if (# items > 0) then
         grabbed_item = {}
         grabbed_item.vid = items[1];
-		if (grabbed_item.vid == nil) then
-			return;
+		reset_image_transform(grabbed_item.vid);
+
+		local props = image_surface_properties(grabbed_item.vid);
+		if (props.width / props.height > 1) then
+			resize_image(grabbed_item.vid, VRESW * 0.3, 0, 20 );
+		else
+			resize_image(grabbed_item.vid, 0, VRESH * 0.3, 20 );
+		end
+		
+		local fprops = image_surface_properties(grabbed_item.vid, 20);
+		local dx = fprops.x;
+		local dy = fprops.y;
+
+		if (fprops.x + fprops.width > VRESW) then 
+			dx = VRESW - fprops.width;
 		end
 
-	grabbed_item.origx = props.x;
-	grabbed_item.origy = props.y;
-	grabbed_item.origw = props.width;
-	grabbed_item.origh = props.height;
-	grabbed_item.neww = VRESW / 4;
+		if (fprops.y + fprops.height > VRESH) then
+			dy = VRESH - fprops.height;
+		end
 
--- abort "timed death" and stop movement..
-	reset_image_transform(grabbed_item.vid);
-	expire_image(grabbed_item.vid, 0);
-
--- figure out which size to scale to, make sure it keeps previous constraints
-	resize_image(grabbed_item.vid, grabbed_item.neww, 0, 0);
-	newprops = image_surface_properties(items[1]);
-	if (newprops.height > VRESH / 5) then
-	  resize_image(grabbed_item.vid, 0, VRESH / 5);
-	  newprops = image_surface_properties(grabbed_item.vid);
-	  grabbed_item.neww = newprops.width;
-	end
-	
--- return to original size so we can animate-scale
-	resize_image(grabbed_item.vid, props.width, props.height, 0, 0);
+		move_image(grabbed_item.vid, dx, dy, 20);
 
 -- load movie if there is one
-	grabbed_item.newh = newprops.height;
-	local dx = newprops.width - props.width;
-	local dy = newprops.height - props.height;
-	
-	if ( grabbed_item.vid ~= BADID and 
-		bglayer[grabbed_item.vid] ~= nil and
-		bglayer[grabbed_item.vid].setname) then
-			local moviefn = "movies/" .. bglayer[grabbed_item.vid].setname .. ".avi";
-	
-		if resource(moviefn) then
-			local vid, aid = load_movie(moviefn);
+		local fn = have_video(bglayer[grabbed_item.vid].setname);
+		if (fn) then
+			local vid = load_movie(fn);
 		    grabbed_item.movie = vid;
-			grabbed_item.movieaud = aid;
 	    
 			if (grabbed_item.movie) then
-			-- crossfade if we can load, reorient, reposition
-			blend_image(grabbed_item.vid, 0.0, 40);
-			order_image(grabbed_item.movie, 252);
-			blend_image(grabbed_item.movie, 1.0, 80);
-			audio_gain(grabbed_item.movieaud, 0.0);
-			audio_gain(grabbed_item.movieaud, 1.0, 40);
-			play_movie(grabbed_item.movie);
-			resize_image(grabbed_item.movie, props.width, props.height, 0);
-			resize_image(grabbed_item.movie, newprops.width, newprops.height, 20);
-			move_image(grabbed_item.movie, props.x, props.y, 0);
-				move_image(grabbed_item.movie, props.x - dx / 2, props.y - dy / 2, 20); -- freeze the image
+				order_image(grabbed_item.movie, 252);
+				link_image(grabbed_item.movie, grabbed_item.vid);
+				image_mask_clear(grabbed_item.movie, MASK_OPACITY);
+				image_mask_clear(grabbed_item.movie, MASK_SCALE);
 			end
 		else
 			grabbed_item.movie = nil;
 		end
-	end
 
-	resize_image(grabbed_item.vid, newprops.width, newprops.height, 20);
-        move_image(grabbed_item.vid, props.x - dx / 2, props.y - dy / 2, 20); -- freeze the image
-        order_image(grabbed_item.vid, 253); -- make sure nothing gets in front (except the current movie)
+-- scale and reposition
+		order_image(grabbed_item.vid, 253);
     end
 end
 
 function space_input( iotbl )	
-    match = keyconfig:match(iotbl);
+	match = keyconfig:match(iotbl);
 
     if (match ~= nil) then
-	for i, v in pairs(match) do
-	    if (iolut[v]) then
-		iolut[v](iotbl);
-	    end
+		for i, v in pairs(match) do
+			if (iolut[v]) then
+				iolut[v](iotbl);
+			end
+		end
 	end
-    end
 end
 
 function space_video_event( source, argtbl )
-
 -- keep track of expired background- images so that new ones can be spawned
-    if (argtbl.kind == "expired") then
+	if (argtbl.kind == "movieready") then
+		if (grabbed_item and source == grabbed_item.movie) then
+			local vid, aid = play_movie(source);
+			local props = image_surface_properties(grabbed_item.vid, 40);
+
+			audio_gain(aid, 0.0); audio_gain(aid, 1.0, 40);
+			grabbed_item.movieaud = aid;
+			 
+			blend_image(grabbed_item.vid, 0.0, 40);
+			resize_image(vid, props.width, props.height);
+			blend_image(vid, 1.0, 20);
+		else
+			delete_image(source);
+		end
+	elseif (argtbl.kind == "loaded") then
+		position_image(source);
+
+	elseif (argtbl.kind == "expired") then
 		if (bglayer[source] ~= nil) then
 			alive = alive - 1;
 			bglayer[source] = nil;
@@ -344,18 +350,19 @@ end
 function spawn_particle()
 	particle = instance_image(images.emitter);
 	resize_image(particle, 16, 16, 0);
-	force_image_blend(particle);
 	life = math.random(30, 60);
 
 	blend_image(particle, 1.0 - (math.random(1, 100) / 200));
-	move_image(particle, mx+32, my+32, 0);
+	move_image(particle, mx + 32, my + 32, 0);
 	move_image(particle, mx + math.random(-100, 100), my + math.random(-100, 100), life);
+	rotate_image(particle, math.random(-360, 360), life);
+
 	blend_image(particle, 0.0, life);
-	rotate_image(particle, math.random(-1080, 1080), life);
+	expire_image(particle, life);
+
 	image_mask_clear(particle, MASK_POSITION);
 	image_mask_set(particle, MASK_UNPICKABLE);
 	image_mask_clear(particle, MASK_OPACITY);
-	expire_image(particle, life);
 end
 
 function space_clock_pulse()

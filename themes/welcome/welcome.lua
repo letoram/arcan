@@ -8,9 +8,16 @@ function welcome()
 	local symfun = system_load("scripts/symtable.lua");
 	symtable = symfun();
 
-	welcomestr = [[\ffonts/default.ttf,18\t\tWelcome to ARCAN!\n\rPoints of reference: \n\r\i\ffonts/default.ttf,14
-https://sourceforge.net/projects/arcanfe/\!i\t - Project Page\n\r\i
-\ffonts/default.ttf,18\!iDetected settings:\n\r\ffonts/default.ttf,14]];
+	titlestr = render_text( [[\ffonts/default.ttf,18\bWelcome to ARCAN!]] );
+	move_image(titlestr, VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width)); 
+	show_image(titlestr);
+
+	welcomestr = [[\n\r
+	\ffonts/default.ttf,14\bPoints of reference:\!b\n\r\ffonts/default.ttf,12
+	http://arcanfe.wordpress.com - Main Site\n\r
+	https://sourceforge.net/projects/arcanfe\n\r
+	arcan-fe  at   b-stahl.se - E-mail contact\n\r
+	\ffonts/default.ttf,14\b\n\nDetected settings:\!b\n\r]];
 
 	gamelst = list_games( {} );
 
@@ -18,24 +25,34 @@ https://sourceforge.net/projects/arcanfe/\!i\t - Project Page\n\r\i
 		gamelst = {};
 	end
 
-	games = [[\b#games in database:\!b\t]] .. tostring( # gamelst ); 
+	games = [[#games:\t\t]] .. tostring( # gamelst ); 
+	display = [[resolution:\t\t]] .. tostring(VRESH) .. "x" .. tostring(VRESW);
+	internal_clock = [[clock:         \t]] .. tostring(CLOCK) .. " hz";
+	hardware = [[#joysticks:\t\t]] .. tostring(JOYSTICKS) .. [[\n\r#ledctrls:\t\t]] .. tostring(LEDCONTROLLERS);
+	pathstr = [[themepath:\t\t]] .. tostring(THEMEPATH) .. [[\n\rresourcepath:\t ]] .. tostring(RESOURCEPATH) ..
+		[[\n\rbinpath:\t\t ]] .. tostring(BINPATH) ..
+		[[\n\rlibpath:\t\t ]] .. tostring(LIBPATH);
+	internalmode = [[internal mode:\t]] .. tostring(INTERNALMODE);
 
-	display = [[\bvideo resolution:\!b\t]] .. tostring(VRESH) .. "x" .. tostring(VRESW);
+	vid = render_text( welcomestr .. [[\n\r\ffonts/default.ttf,12]] .. games .. [[\n\r]] .. hardware .. [[\n\r]] .. internal_clock .. 
+	[[\n\r]] .. display .. [[\n\r]] .. pathstr .. [[\n\r]] .. internalmode );
 
-	internal_clock = [[\binternal clock:\!b\t]] .. tostring(CLOCK) .. " hz";
+	vid2 = render_text( [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b\n\r\ffonts/default.ttf,12
+	-w res  \t(default: 640)\n\r
+	-h res  \t(default: 480)\n\r
+	-f      \tswitch resolution\n\r
+	-m      \t conservative memory profile\n\r
+	-s      \twindowed fullscreen\n\r
+	-p pname\tforce resource path\n\r
+	-t tname\tforce theme path\n\r
+	-o fname\tforce frameserver\n\r
+	-d fname\tdatabase filename\n\r
+	-g      \tenable (partial) debug output\n\r
+	-r num  \tset texture mode: (0, 1, 2)\n\t]] );
 
-	hardware = [[\b# joysticks:\b\t]] .. tostring(JOYSTICKS) .. 
-		[[\n\r\b# led controllers:\b\t]] .. tostring(LEDCONTROLLERS);
+	move_image(vid2, VRESW - image_surface_properties(vid2).width, 105);
+	move_image(vid, 10, 24);
 		
-	pathstr = [[ \btheme:\!b\t ]] .. tostring(THEMEPATH) ..
-		[[\n\r\bresource path: \!b\t ]] .. tostring(RESOURCEPATH) ..
-		[[\n\r\bbinpath: \!b\t ]] .. tostring(BINPATH) ..
-		[[\n\r\blibpath: \!b\t ]] .. tostring(LIBPATH);
-		
-	internalmode = [[\binternal mode support:\!b\t]] .. tostring(INTERNALMODE);
-	vid = render_text( welcomestr .. [[\n\r\ffonts/default.ttf,14]] .. display .. [[\n\r]] .. games .. [[\n\r]] .. internal_clock .. 
-	[[\n\r]] .. hardware .. [[\n\r]] .. pathstr .. [[\n\r]] .. internalmode );
-	
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;
 		while j < controller_leds(i) do
@@ -47,10 +64,6 @@ https://sourceforge.net/projects/arcanfe/\!i\t - Project Page\n\r\i
 	end	
 	
 	show_image(vid);
-end
-
--- check for available helper scripts etc.
-function sanity_test()
 end
 
 function welcome_input( inputtbl ) 
