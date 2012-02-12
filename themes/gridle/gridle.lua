@@ -33,7 +33,7 @@ settings = {
 	iodispatch = {},
 
 	vspacing = 4,
-    hspacing = 4,
+	hspacing = 4,
 	cursor   = 0,
 	cellcount= 0,
 	pageofs  = 0,

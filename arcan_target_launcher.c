@@ -64,7 +64,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	}
 	
 	pid_t child = fork();
-	unsigned long ticks = arcan_frametime();
+	unsigned long ticks = SDL_GetTicks();
 
 	if (child) {
 		int stat_loc;
@@ -75,7 +75,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 			}
 		arcan_video_restore_external();
 
-		return arcan_frametime() - ticks;
+		return SDL_GetTicks() - ticks;
 	}
 	else {
 		execv(fname, argv);
@@ -177,17 +177,9 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 	
 	/* should have a special framequeue mode which supports more direct form of rendering */
 	switch (cmd){
-		case ffunc_poll:
-			return shmpage->vready;
-		break;
-        
-        case ffunc_tick:
-            break;
-		
-		case ffunc_destroy:
-			arcan_target_clean_internal( tgt );
-		break;
-		
+		case ffunc_poll: return shmpage->vready; break;        
+        case ffunc_tick: arcan_target_tick_control( (arcan_launchtarget*) vstate.ptr); break;		
+		case ffunc_destroy: arcan_target_clean_internal( tgt ); break;
 		case ffunc_render:
 			if (width != shmpage->w || 
 				height != shmpage->h) {
@@ -207,7 +199,7 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 				glBindTexture(GL_TEXTURE_2D, mode);
 				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*)shmpage + shmpage->vbufofs);
 
-				rv = FFUNC_RV_COPIED;
+				rv = FFUNC_RV_NOUPLOAD;
 			}
 			
 			shmpage->vready = false;
