@@ -147,6 +147,7 @@ struct arcan_video_display {
 	GLuint deftxs, deftxt;
 	
 	SDL_Surface* screen;
+    uint32_t nalive, nglalive;
 	uint32_t sdlarg;
 	
 	uint8_t bpp;

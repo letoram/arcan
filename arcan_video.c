@@ -317,6 +317,7 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 		
 		if (!current_context->vitems_pool[i].flags.in_use){
 			*status = true;
+            arcan_video_display.nalive++;
 			current_context->vitems_pool[i].flags.in_use = true;
 			current_context->vitem_ofs = (current_context->vitem_ofs + 1) >= current_context->vitem_limit ? 1 : i + 1;
 			return i;
@@ -358,7 +359,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 
 	bool status;
 	rv = arcan_video_allocid(&status);
-
+    
 	if (status) {
 		arcan_vobject* nobj = arcan_video_getobject(rv);
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
@@ -405,7 +406,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 	arcan_vobject* rv = NULL;
 	bool status;
 	arcan_vobj_id fid = arcan_video_allocid(&status);
-
+    
 	if (status) {
 		rv = current_context->vitems_pool + fid;
 		rv->current_frame = rv;
@@ -788,7 +789,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity)
 				rv = ARCAN_ERRC_OUT_OF_SPACE;
 		}
 		else if (target->frameset_capacity > capacity){
-			
+    /* truncate currently ignored */
 		}
 	}
 
@@ -1908,10 +1909,10 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
             if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
                 SDL_KillThread( vobj->state.ptr );
             }
-			vobj->ffunc = NULL;
-			vobj->state.tag = 0;
-			vobj->state.ptr = NULL;
-			
+            
+            free(vobj->frameset);
+            free(vobj->default_frame.raw);
+
 			kill_shader(&vobj->gl_storage.program, 
 				&vobj->gl_storage.fragment,
 			   &vobj->gl_storage.vertex
@@ -1920,8 +1921,11 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			if (vobj->gl_storage.program)
 				glDeleteProgram(vobj->gl_storage.program);
 
+            arcan_video_display.nglalive--;
 			glDeleteTextures(1, &vobj->gl_storage.glid);
 		}
+        
+        arcan_video_display.nalive--;
 		arcan_video_detatchobject(id);
 
 /* scan the current context, look for clones and other objects that has this object as a parent */

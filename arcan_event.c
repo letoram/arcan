@@ -49,6 +49,7 @@
 
 const unsigned short arcan_joythresh  = 3200;
 static int64_t arcan_last_frametime = 0;
+static int64_t arcan_tickofset = 0;
 
 struct queue_cell {
 	arcan_event elem;
@@ -426,7 +427,7 @@ void map_sdl_events()
 
 int64_t arcan_frametime()
 {
-	return arcan_last_frametime;
+	return arcan_last_frametime - arcan_tickofset;
 }
 
 /* the main usage case is simply to alternate
@@ -490,8 +491,10 @@ void arcan_event_deinit()
 void arcan_event_init()
 {
 	init_sdl_events();
+    
 	current_context.event_sync = SDL_CreateMutex();
-
+ 	arcan_tickofset = SDL_GetTicks();
+    
 	SDL_Init(SDL_INIT_JOYSTICK);
 	/* enumerate joysticks, try to connect to those available and map their respective axises */
 	SDL_JoystickEventState(SDL_ENABLE);

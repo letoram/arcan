@@ -46,14 +46,13 @@ function position_image(vid)
     props = image_surface_properties(vid);
 
 -- wider or taller?
-	if (props.width / props.height > 1) then
+	if (props.width / props.height) > 1 then
 		resize_image(vid, VRESW * 0.2, 0, NOW);
 	else
 		resize_image(vid, 0, VRESH * 0.2, NOW);
 	end
 
 -- scale and position based on "distance"
-    scale_image(vid, distance + 0.3, distance + 0.3, NOW);
     order_image(vid, distance * 254.0);
 
 -- add downwards and wrap around
@@ -325,7 +324,6 @@ function space_video_event( source, argtbl )
 		if (grabbed_item and source == grabbed_item.movie) then
 			local vid, aid = play_movie(source);
 			local props = image_surface_properties(grabbed_item.vid, 40);
-
 			audio_gain(aid, 0.0); audio_gain(aid, 1.0, 40);
 			grabbed_item.movieaud = aid;
 			 
