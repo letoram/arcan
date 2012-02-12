@@ -2544,9 +2544,9 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 	if (vobj->parent != &current_context->world){
 		surface_properties dprop = {0};
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
-		
 		apply(vobj, props, lerp, &dprop, false);
-	} else {
+	} 
+	else{
 		apply(vobj, props, lerp, &current_context->world.current, true);
 	}
 }
@@ -2644,10 +2644,10 @@ void arcan_video_refresh_GL(float lerp)
 			assert(elem->owner != NULL);
 			/* calculate coordinate system translations, 
 			* world cannot be masked */
-			surface_properties dprops;
+			surface_properties dprops = {0};
 			arcan_resolve_vidprop(elem, lerp, &dprops);
-	
-		/* time for the drawcall, assuming object is visible
+
+			/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
 		 * note that objects will have been sorted based on Z already.
 		 * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
@@ -2679,7 +2679,7 @@ void arcan_video_refresh_GL(float lerp)
 
 				/* since we can have hierarchies of partially clipped, we may need to resolve all */
 					while (celem->parent != &current_context->world){
-						surface_properties pprops;
+						surface_properties pprops = {0};
 						arcan_resolve_vidprop(celem->parent, lerp, &pprops);
 						if (celem->parent->flags.cliptoparent == false)
 							draw_surf(pprops, celem->parent, elem->current_frame->txcos);
@@ -2730,7 +2730,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	if (vobj){
 /* get object properties taking inheritance etc. into account */
-		surface_properties dprops;
+		surface_properties dprops = {0};
 		arcan_resolve_vidprop(vobj, 0.0, &dprops);
 		dprops.scale.x *= vobj->origw * 0.5;
 		dprops.scale.y *= vobj->origh * 0.5;
