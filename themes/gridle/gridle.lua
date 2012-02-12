@@ -79,13 +79,6 @@ function gridle_ledconf()
 	end
 end	
 
--- use the key,val facility of the DB backend to store theme-specific settings
-function gridle_loadsettings()
-end
-
-function gridle_savesettings()
-end
-
 function gridle()
     system_load("scripts/keyconf.lua")();
     system_load("scripts/keyconf_mame.lua")();
@@ -141,6 +134,9 @@ function gridle()
     settings.iodispatch["MENU_SELECT"]  = function(iotbl) if (settings.games[settings.cursor + settings.pageofs + 1]) then
     launch_target( settings.games[settings.cursor + settings.pageofs + 1].title, LAUNCH_EXTERNAL); move_cursor(0); end end
 
+	whiteblock = fill_surface(1,1,255,255,255);
+	move_image(whiteblock, 0,0);
+	show_image(whiteblock);
     build_grid(settings.cell_width, settings.cell_height);
 
 -- Animated background
@@ -182,6 +178,19 @@ function build_fadefunctions()
 		expire_image(vid, 60);
 		return 60;
 	end);
+end
+
+function have_video(setname)
+	local exts = {".avi", ".mp4", ".mkv", ".mpg"};
+
+	for ind,val in ipairs(exts) do
+		local moviefn = "movies/" .. setname .. val;
+		if (resource(moviefn)) then
+			return moviefn;
+		end
+	end
+
+	return nil;
 end
 
 function zoom_cursor()
@@ -342,8 +351,9 @@ function move_cursor( ofs )
     end
 
 -- look for a movie, if one exists, enable a timer that we'll check for later
-    if (setname and resource( "movies/" .. setname .. ".avi")) then
-        movievid = load_movie( "movies/" .. setname .. ".avi" );
+	local moviefile = have_video(setname);
+	if (moviefile) then
+	    movievid = load_movie( moviefile );
         if (movievid) then
             move_image(movievid, x, y);
             order_image(movievid, 3);
@@ -381,16 +391,16 @@ function erase_grid(rebuild)
 
         if (rebuild) then
             delete_image(grid[row][col]);
+			delete_image(whitegrid[row][col]);
         else
             local x, y = cell_coords(row, col);
 			local imagevid = grid[row][col];
+			fadefunc(imagevid, col, row);
+		end
 
-			res = image_children(imagevid);
-			for key,val in ipairs(res) do delete_image(val); end
-			 fadefunc(imagevid, col, row);
-       end
-
-       grid[row][col] = nil;
+		delete_image(whitegrid[row][col]);
+		whitegrid[row][col] = nil;
+		grid[row][col] = nil;
       end
      end
     end
@@ -406,8 +416,11 @@ function build_grid(width, height)
     borderw = VRESW % (width + settings.hspacing);
     borderh = VRESH % (height + settings.vspacing);
 
+	whitegrid = {};
     for row=0, nch-1 do
         grid[row] = {};
+		whitegrid[row] = {};
+
         for col=0, ncw-1 do
             local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
             if (settings.games[gameno] == nil) then break; end
@@ -416,15 +429,16 @@ function build_grid(width, height)
             move_image(vid,cell_coords(col, row));
             order_image(vid, 2);
 
-			local whitebg = fill_surface(settings.cell_width, settings.cell_height, 255, 255, 255);
-	        order_image(whitebg, 1);
-	        show_image(whitebg);
-	        link_image(whitebg, vid);
-			image_mask_clear(whitebg, MASK_SCALE);
-	        image_mask_clear(whitebg, MASK_ORIENTATION);
-	        image_mask_clear(whitebg, MASK_OPACITY);
+			gridbg = instance_image(whiteblock);
+			resize_image(gridbg, settings.cell_width, settings.cell_height);
+			move_image(gridbg, cell_coords(col, row));
+	        image_mask_clear(gridbg, MASK_OPACITY);
+			order_image(gridbg, 1);
+			show_image(gridbg);
 
+			whitegrid[row][col] = gridbg;
             grid[row][col] = vid;
+
             settings.cellcount = settings.cellcount + 1;
         end
     end

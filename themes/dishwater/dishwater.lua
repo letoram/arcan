@@ -168,12 +168,16 @@ function calc_page(number, size, limit)
 end
 
 function have_video(setname)
-	local moviefn = "movies/" .. setname .. ".avi";
-	if (resource(moviefn)) then
-		return moviefn;
-	else
-		return nil;
+	local exts = {".avi", ".mp4", ".mkv", ".mpg"};
+
+	for ind,val in ipairs(exts) do
+		local moviefn = "movies/" .. setname .. val;
+		if (resource(moviefn)) then
+			return moviefn;
+		end
 	end
+
+	return nil;
 end
 
 function fit_image(vid)
