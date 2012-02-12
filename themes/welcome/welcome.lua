@@ -16,7 +16,7 @@ function welcome()
 	\ffonts/default.ttf,14\bPoints of reference:\!b\n\r\ffonts/default.ttf,12
 	http://arcanfe.wordpress.com - Main Site\n\r
 	https://sourceforge.net/projects/arcanfe\n\r
-	arcan-fe  at   b-stahl.se - E-mail contact\n\r
+	fearcan@gmail.com - E-mail contact\n\r
 	\ffonts/default.ttf,14\b\n\nDetected settings:\!b\n\r]];
 
 	gamelst = list_games( {} );
