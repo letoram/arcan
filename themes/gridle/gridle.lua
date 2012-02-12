@@ -1,11 +1,3 @@
-grid = {};
-vspacing = 4;
-hspacing = 4;
-cursor = 0;
-cellcount = 0;
-pageofs = 0;
-zoomed = BADID;
-
 vertex_shader = [[
 uniform int n_ticks;
 
@@ -27,13 +19,25 @@ void main() {
 }
 ]];
 
+grid = {};
+
+imagery = { 
+ zoomed = BADID;
+};
+
 settings = {
 	filters = {
 	},
 
 	sortlbl = "Default",
 	iodispatch = {},
-	
+
+	vspacing = 4,
+    hspacing = 4,
+	cursor   = 0,
+	cellcount= 0,
+	pageofs  = 0,
+
 	repeat_rate = 250,
 	cell_width = 48,
 	cell_height = 48
@@ -120,7 +124,7 @@ function gridle()
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeat_rate);
 	settings.iodispatch["ZOOM_CURSOR"]  = function(iotbl)
-		if zoomed == BADID then
+		if imagery.zoomed == BADID then
 			zoom_cursor();
 		else
 			remove_zoom();
@@ -134,8 +138,8 @@ function gridle()
     settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample("click.wav"); move_cursor( 1 ); end
     settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
-    settings.iodispatch["MENU_SELECT"]  = function(iotbl) if (settings.games[cursor + pageofs + 1]) then
-    launch_target( settings.games[cursor + pageofs + 1].title, LAUNCH_EXTERNAL); move_cursor(0); end end
+    settings.iodispatch["MENU_SELECT"]  = function(iotbl) if (settings.games[settings.cursor + settings.pageofs + 1]) then
+    launch_target( settings.games[settings.cursor + settings.pageofs + 1].title, LAUNCH_EXTERNAL); move_cursor(0); end end
 
     build_grid(settings.cell_width, settings.cell_height);
 
@@ -152,7 +156,7 @@ function gridle()
 end
 
 function cell_coords(x, y)
-    return (0.5 * borderw) + x * (settings.cell_width + hspacing), (0.5 * borderh) + y * (settings.cell_height + vspacing);
+    return (0.5 * borderw) + x * (settings.cell_width + settings.hspacing), (0.5 * borderh) + y * (settings.cell_height + settings.vspacing);
 end
 
 function build_fadefunctions()
@@ -181,7 +185,7 @@ function build_fadefunctions()
 end
 
 function zoom_cursor()
-	if (zoomed == BADID) then
+	if (imagery.zoomed == BADID) then
 -- calculate aspect based on initial properties, not current ones. 
 		local props = image_surface_initial_properties( cursor_vid() );
 		local aspect = props.width / props.height;
@@ -221,28 +225,28 @@ function zoom_cursor()
 
 		blend_image(vid, 1.0, 10);
 		move_image(vid, dx, dy, 10);
-		zoomed = vid;
+		imagery.zoomed = vid;
 	end
 end
 
 function remove_zoom()
-	if (zoomed ~= BADID) then
-		local props = image_surface_properties( image_parent( zoomed ) );
-		move_image(zoomed, props.x, props.y, 20);
-		blend_image(zoomed, 0.0, 20);
-		resize_image(zoomed, 1, 1, 20);
-		expire_image(zoomed, 20);
-		zoomed = BADID;
+	if (imagery.zoomed ~= BADID) then
+		local props = image_surface_properties( image_parent( imagery.zoomed ) );
+		move_image(imagery.zoomed, props.x, props.y, 20);
+		blend_image(imagery.zoomed, 0.0, 20);
+		resize_image(imagery.zoomed, 1, 1, 20);
+		expire_image(imagery.zoomed, 20);
+		imagery.zoomed = BADID;
 	end
 end
 	
 function cursor_vid()
-    local cursor_row = math.floor(cursor / ncw);
-	return grid[cursor_row][cursor - cursor_row * ncw ];
+    local cursor_row = math.floor(settings.cursor / ncw);
+	return grid[cursor_row][settings.cursor - cursor_row * ncw ];
 end
 
 function blend_gridcell(val, dt)
-    gridcell_vid = cursor_vid();
+    local gridcell_vid = cursor_vid();
 
     if (gridcell_vid) then
 	    instant_image_transform(gridcell_vid);
@@ -256,11 +260,11 @@ function resize_grid(step)
  -- find the next grid size that would involve a density change
  repeat
     new_cellw = new_cellw + step;
- until math.floor(VRESW / (new_cellw + hspacing)) ~= ncw;
+ until math.floor(VRESW / (new_cellw + settings.hspacing)) ~= ncw;
 
  repeat
     new_cellh = new_cellh + step;
- until math.floor(VRESH / (new_cellh + vspacing)) ~= nch;
+ until math.floor(VRESH / (new_cellh + settings.vspacing)) ~= nch;
 
 -- safety checks
  if (new_cellw < 64 or new_cellw > VRESW * 0.75) then return; end
@@ -269,11 +273,11 @@ function resize_grid(step)
  settings.cell_width = new_cellw;
  settings.cell_height = new_cellh;
 
- local currgame = pageofs + cursor;
- local new_ncc = math.floor( VRESW / (new_cellw + hspacing) ) * math.floor( VRESH / (new_cellh + vspacing) );
- pageofs = math.floor( currgame / new_ncc ) * new_ncc;
- cursor = currgame - pageofs;
- if (cursor < 0) then cursor = 0; end
+ local currgame = settings.pageofs + settings.cursor;
+ local new_ncc = math.floor( VRESW / (new_cellw + settings.hspacing) ) * math.floor( VRESH / (new_cellh + settings.vspacing) );
+ settings.pageofs = math.floor( currgame / new_ncc ) * new_ncc;
+ settings.cursor = currgame - settings.pageofs;
+ if (settings.cursor < 0) then settings.cursor = 0; end
 
 -- remove the old grid
  erase_grid(true);
@@ -281,48 +285,49 @@ function resize_grid(step)
 end
 
 function move_cursor( ofs )
+    local pageofs_cur = settings.pageofs;
     blend_gridcell(0.3, 10);
 	remove_zoom();
-    local pageofs_cur = pageofs;
-	cursor = cursor + ofs;
+
+	settings.cursor = settings.cursor + ofs;
 
 -- paging calculations
 	if (ofs > 0) then -- right/forward
-		if (cursor >= ncc) then -- move right or "forward"
-			cursor = cursor - ncc;
+		if (settings.cursor >= ncc) then -- move right or "forward"
+			settings.cursor = settings.cursor - ncc;
 			pageofs_cur = pageofs_cur + ncc;
 		end
 
 		-- wrap around on overflow
-		if (pageofs_cur + cursor >= #settings.games) then
+		if (pageofs_cur + settings.cursor >= #settings.games) then
 			pageofs_cur = 0;
-			cursor = 0;
+			settings.cursor = 0;
 		end
 	elseif (ofs < 0) then -- left/backward
-		if (cursor < 0) then -- step back a page
+		if (settings.cursor < 0) then -- step back a page
 			pageofs_cur = pageofs_cur - ncc;
-			cursor = ncc - ( -1 * cursor);
+			settings.cursor = ncc - ( -1 * settings.cursor);
 
 			if (pageofs_cur < 0) then -- wrap page around
 				pageofs_cur = math.floor(#settings.games / ncc) * ncc;
 			end
 
-			if (cursor < 0 or cursor >= #settings.games - pageofs_cur) then
-				cursor = #settings.games - pageofs_cur - 1;
+			if (settings.cursor < 0 or settings.cursor >= #settings.games - pageofs_cur) then
+				settings.cursor = #settings.games - pageofs_cur - 1;
 			end
 		end
 	end
 
-    local x,y = cell_coords(math.floor(cursor % ncw), math.floor(cursor / ncw));
+    local x,y = cell_coords(math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw));
 
 -- reload images of the page has changed
-	if (pageofs_cur ~= pageofs) then
+	if (pageofs_cur ~= settings.pageofs) then
 		erase_grid(false);
-		pageofs = pageofs_cur;
+		settings.pageofs = pageofs_cur;
 		build_grid(settings.cell_width, settings.cell_height);
 	end
 
-    local game = settings.games[cursor + pageofs + 1];
+    local game = settings.games[settings.cursor + settings.pageofs + 1];
     setname = game and game.setname or nil;
 
     if (movievid) then
@@ -367,7 +372,7 @@ function get_image(romset)
 end
 
 function erase_grid(rebuild)
-    cellcount = 0;
+    settings.cellcount = 0;
 	local fadefunc = fadefunctions[ math.random(1,#fadefunctions) ];
 	
     for row=0, nch-1 do
@@ -393,18 +398,18 @@ end
 
 function build_grid(width, height)
 --  figure out how many full cells we can fit with the current resolution
-    ncw = math.floor(VRESW / (width + hspacing));
-    nch = math.floor(VRESH / (height + vspacing));
+    ncw = math.floor(VRESW / (width + settings.hspacing));
+    nch = math.floor(VRESH / (height + settings.vspacing));
     ncc = ncw * nch;
 
 --  figure out how much "empty" space we'll have to pad with
-    borderw = VRESW % (width + hspacing);
-    borderh = VRESH % (height + vspacing);
+    borderw = VRESW % (width + settings.hspacing);
+    borderh = VRESH % (height + settings.vspacing);
 
     for row=0, nch-1 do
         grid[row] = {};
         for col=0, ncw-1 do
-            local gameno = (row * ncw + col + pageofs + 1); -- settings.games is 1 indexed
+            local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
             if (settings.games[gameno] == nil) then break; end
             local vid = get_image(settings.games[gameno]["setname"]);
             resize_image(vid, settings.cell_width, settings.cell_height);
@@ -420,7 +425,7 @@ function build_grid(width, height)
 	        image_mask_clear(whitebg, MASK_OPACITY);
 
             grid[row][col] = vid;
-            cellcount = cellcount + 1;
+            settings.cellcount = settings.cellcount + 1;
         end
     end
 
@@ -441,7 +446,7 @@ function gridle_video_event(source, event)
 			expire_image(source, 20);
 		end
 	elseif (event.kind == "loaded") then
-		local cursor_row = math.floor(cursor / ncw);
+		local cursor_row = math.floor(settings.cursor / ncw);
 		local gridcell_vid = cursor_vid();
 
 		if (source == gridcell_vid) then

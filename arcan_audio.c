@@ -27,7 +27,7 @@
 #include <strings.h>
 #include <fcntl.h>
 #include <sys/types.h>
-
+#include <assert.h>
 
 #include <SDL.h>
 #include <al.h>
@@ -73,6 +73,7 @@ typedef struct arcan_aobj {
 	unsigned char n_streambuf;
 	unsigned char used;
 	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
+	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
 
 	enum aobj_atypes atype;
 	arcan_afunc_cb feed;
@@ -651,8 +652,27 @@ arcan_errc arcan_audio_setpitch(arcan_aobj_id id, float pitch, uint16_t time)
 	return rv;
 }
 
+int find_bufferind(arcan_aobj* cur, unsigned bufnum){
+	for (int i = 0; i < sizeof(cur->streambuf); i++){
+		if (cur->streambuf[i] == bufnum)
+			return i;
+	}
+
+	return -1;
+}
+
+int find_freebufferind(arcan_aobj* cur){
+	for (int i = 0; i < sizeof(cur->streambuf); i++){
+		if (cur->streambufmask[i] == false)
+			return i;
+	}
+
+	return -1;
+}
+
 static void arcan_astream_refill(arcan_aobj* current)
 {
+	arcan_event newevent = {.category = EVENT_AUDIO, .kind = EVENT_AUDIO_PLAYBACK_FINISHED};
 	ALenum state = 0;
 	ALint processed = 0;
 /* stopped or not, the process is the same,
@@ -661,8 +681,12 @@ static void arcan_astream_refill(arcan_aobj* current)
 	alGetSourcei(current->alid, AL_BUFFERS_PROCESSED, &processed);
 /* make sure to replace each one that finished with the next one */
 	for (int i = 0; i < processed; i++){
-		unsigned buffer = 0;
+		unsigned buffer = 0, bufferind;
 		alSourceUnqueueBuffers(current->alid, 1, &buffer);
+		bufferind = find_bufferind(current, buffer);
+		assert(bufferind != -1);
+		current->streambufmask[bufferind] = false;
+
 		_wrap_alError(current, "audio_refill(refill:dequeue)");
 		current->used--;
 		if (current->feed){
@@ -670,38 +694,42 @@ static void arcan_astream_refill(arcan_aobj* current)
 			_wrap_alError(current, "audio_refill(refill:buffer)");
 			if (rv == ARCAN_OK){
 				alSourceQueueBuffers(current->alid, 1, &buffer);
+				current->streambufmask[bufferind] = true;
 				_wrap_alError(current, "audio_refill(refill:queue)");
 				current->used++;
 			} else if (rv == ARCAN_ERRC_NOTREADY) 
                 return;
+			else
+				goto cleanup;
 		}
 	}
 
 /* if we're totally empty, try to fill all buffers,
  * if feed fails for the first one, it's over */
-	if (current->used == 0 && current->feed)
-	for (int i = current->used; i < current->n_streambuf; i++){
-			arcan_errc rv = current->feed(current, current->alid, current->streambuf[i], current->tag);
+	if (current->used < sizeof(current->streambuf) / sizeof(current->streambuf[0]) && current->feed){
+		for (int i = current->used; i < sizeof(current->streambuf) / sizeof(current->streambuf[0]); i++){
+			int ind = find_freebufferind(current);
+			arcan_errc rv = current->feed(current, current->alid, current->streambuf[ind], current->tag);
+
 			if (rv == ARCAN_OK){
-				alSourceQueueBuffers(current->alid, 1, &current->streambuf[i]);
-				_wrap_alError(current, "audio_refill(playing:queue)");
+				alSourceQueueBuffers(current->alid, 1, &current->streambuf[ind]);
+				current->streambufmask[ind] = true;
 				current->used++;
 			} else if (rv == ARCAN_ERRC_NOTREADY)
-                return;
-            else {
-				arcan_event newevent = {
-					.category = EVENT_AUDIO,
-					.kind = EVENT_AUDIO_PLAYBACK_FINISHED
-				};
-
-			/* means that when main() receives this event, it will kill/free the object */
-				newevent.data.audio.source = current->id;
-				arcan_event_enqueue(&newevent);
-			}
+				return;
+			else 
+				goto cleanup;
 		}
+	}
 
 	if (current->used && state != AL_PLAYING)
 		alSourcePlay(current->alid);
+	return;
+
+cleanup:
+/* means that when main() receives this event, it will kill/free the object */
+	newevent.data.audio.source = current->id;
+	arcan_event_enqueue(&newevent);
 }
 
 void arcan_audio_tick(uint8_t ntt)

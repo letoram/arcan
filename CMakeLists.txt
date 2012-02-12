@@ -346,6 +346,7 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
 		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
+           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
            CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
 ")
@@ -360,6 +361,7 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Image Test.lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Movie Test.lnk'
 		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Build DB.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle).lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Dishwater).lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Space).lnk'
 ")

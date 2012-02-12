@@ -241,6 +241,8 @@ function gridlemenu_settings()
 			if (settings.sort) then
 				table.sort(settings.games, settings.sort);
 			end
+			settings.cursor = 0;
+			settings.pageofs = 0;
 			build_grid(settings.cell_width, settings.cell_height);
 			settings.iodispatch = griddispatch;
 			if (settings.statuslist) then
