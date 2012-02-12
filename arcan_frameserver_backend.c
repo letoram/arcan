@@ -99,6 +99,7 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 {
 	if (src && src->loop){
+		arcan_warning("loop\n");
 		arcan_frameserver_free(src, true);
 		arcan_audio_pause(src->aid);
 		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src);
@@ -110,7 +111,7 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 			.category = EVENT_SYSTEM,
 			.kind = EVENT_SYSTEM_FRAMESERVER_TERMINATED
 		};
-		
+		arcan_warning("terminating event\n");
 		ev.data.system.hitag = src->vid;
 		ev.data.system.lotag = src->aid;
 		arcan_event_enqueue(&ev);
@@ -118,23 +119,6 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 	}
 
 	return true;
-}
-
-static bool synch_frames(frame_queue* queue, int64_t current, uint32_t thresh)
-{
-	if (!queue || !queue->front_cell)
-		return false;
-
-/* while the frames are too old, just skip them */
-    while (queue->front_cell && 
-           (current - queue->front_cell->tag > thresh)){
-        printf("skip frame, pts: %d, current: %ld, delta: %d\n", queue->front_cell->tag, current,
-               abs(queue->front_cell->tag - thresh));
-        arcan_framequeue_dequeue(queue);
-    }
-    
-/* if there are any frames left, and it is supposed to be shown close to now */
-	return (queue->front_cell) != NULL && (abs(queue->front_cell->tag - current) < thresh);
 }
 
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
@@ -157,31 +141,24 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
         .data.video.constraints.h = src->afq.c_cells, .data.video.props.position.x = src->vfq.n_cells,
             .data.video.props.position.y = src->afq.n_cells, .category = EVENT_VIDEO};
         arcan_event_enqueue(&ev);
-#endif        
+#endif  
 		if (src->vfq.front_cell) {
-			int64_t toshow = src->vfq.front_cell->tag;
-			int64_t nticks = arcan_frametime() - src->base_time;
-			int64_t delta  = abs(toshow - nticks);
-#ifdef _DEBUG
-            arcan_warning("(%lld) video_frame, PTS: %lld, nticks: %lld, base_time: %d, delta: %lld\n", 
-				arcan_frametime(),
-				toshow, 
-				nticks, 
-				src->base_time,
-				delta
-			);
-#endif
-        /* broken timestamp? rebase */
-            if (nticks - toshow > (int64_t) src->desc.vskipthresh) {
-				src->base_time = arcan_frametime();
-				nticks = toshow;
+			int64_t now = arcan_frametime() - src->starttime;
+
+		/* if frames are too old, just ignore them */
+			while (src->vfq.front_cell && 
+				(now - (int64_t)src->vfq.front_cell->tag > (int64_t) src->desc.vskipthresh)){
+				src->lastpts = src->vfq.front_cell->tag;
+				arcan_framequeue_dequeue(&src->vfq);
 			}
 
-			bool synchok = synch_frames(&src->vfq, nticks, src->desc.vfthresh);
-			if (synchok)
-				src->lastpts = src->vfq.front_cell->tag;
-			
-			return synchok ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
+		/* if there are any frames left, check if the difference between then and now is acceptible */
+			if (src->vfq.front_cell != NULL &&
+				abs((int64_t)src->vfq.front_cell->tag - now) < (int64_t) src->desc.vskipthresh){
+					src->lastpts = src->vfq.front_cell->tag;
+					return FFUNC_RV_GOTFRAME;
+			}
+			else;
 		}
 		else if (src->vfq.alive == false) {
 				arcan_event sevent = {.category = EVENT_VIDEO,
@@ -217,47 +194,45 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 
 			arcan_framequeue_dequeue(&src->vfq);
 		}
-		else
-			if (cmd == ffunc_destroy ||
-				check_child(src) == false){
-				arcan_frameserver_free(src, false);
-			}
+		else if (cmd == ffunc_tick && !check_child(src)){
+			arcan_frameserver_free(src, src->loop);
+		}
+		else if (cmd == ffunc_destroy)
+			arcan_frameserver_free(src, false);
 
 	return rv;
 }
-
 
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
-	struct arcan_aobj* aobjs = (struct arcan_aobj*) aobj;
 
 /* for each cell, buffer (-> quit), wait (-> quit) or drop (full/partially) */
 	if (src->playstate == ARCAN_PLAYING){
 		while (src->afq.front_cell){
+			int64_t now = arcan_frametime() - src->starttime;
 			int64_t toshow = src->afq.front_cell->tag;
-			int64_t nticks = (int64_t)arcan_frametime() - (int64_t)src->base_time;
 
 		/* as there are latencies introduced by the audiocard etc. as well,
 		 * it is actually somewhat beneficial to lie a few ms ahead of the videotimer */
 			size_t buffers = src->afq.cell_size - (src->afq.cell_size - src->afq.front_cell->ofs);
-			double bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
 			double dc = src->lastpts - src->audioclock;
 
-			printf("dc: %f, bpms: %f, buffers: %ld, size: %f\n", dc, bpms, buffers, bpms * (double)buffers);
-			if (dc < -40.0)
-				break;/* do nothing */
+			src->audioclock += src->bpms * (double)buffers;
 
-			if (dc < 60.0)
+		/* not more than 60ms behind last known video?, send the audio, and stop */
+			if (dc < 60.0){
 				alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, buffers, src->desc.samplerate);
-				
-			src->audioclock += bpms * (double)buffers;
+				arcan_framequeue_dequeue(&src->afq);
+				rv = ARCAN_OK;
+				break;
+			}
+		
 			arcan_framequeue_dequeue(&src->afq);
 		}
-	}
+	} 
 
-	printf("audio clock: %f, %ld\n", src->audioclock, src->lastpts);
 	return rv;
 }
 
@@ -288,7 +263,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
             
             src->desc.samplerate = shmpage->frequency;
             src->desc.channels = shmpage->channels;
-
+			src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
             src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
             src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
 
@@ -313,8 +288,7 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	if (!src->desc.ready)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	src->base_time = arcan_frametime();
-	printf("basetime: %ld", src->base_time);
+	src->starttime = arcan_frametime();
 	src->playstate = ARCAN_PLAYING;
 	arcan_audio_play(src->aid);
 
@@ -327,7 +301,6 @@ arcan_errc arcan_frameserver_pause(arcan_frameserver* src, bool syssusp)
 
 	if (src) {
 		src->playstate = (syssusp ? ARCAN_SUSPENDED : ARCAN_PAUSED);
-		src->base_delta = arcan_frametime() - src->base_time;
 		rv = ARCAN_OK;
 	}
 
@@ -341,7 +314,6 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	if (src && (src->playstate == ARCAN_PAUSED ||
 		src->playstate == ARCAN_SUSPENDED)
 	) {
-		src->base_time = arcan_frametime() - src->base_delta;
 		src->playstate = ARCAN_PLAYING;
 		/* arcan_audio_play(src->aid); */
 

@@ -24,9 +24,9 @@
 
 #define ARCAN_FRAMESERVER_VCACHE_LIMIT 4
 #define ARCAN_FRAMESERVER_ACACHE_LIMIT 24
-#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 50
+#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 60
 #define ARCAN_FRAMESERVER_ABUFFER_SIZE 4 * 1024
-#define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 350
+#define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 450
 
 #define VID_FD 3
 #define AUD_FD 4
@@ -78,6 +78,7 @@ typedef struct {
 /* used for plyaing, pausing etc. */
 	enum arcan_playstate playstate;
 	int64_t lastpts;
+	int64_t starttime;
 	bool loop;
 
 /* set if color space conversion is done in process or not */
@@ -85,9 +86,8 @@ typedef struct {
 	unsigned int lastntr;
 
 	/* timing */
-	uint32_t base_time;
-	uint32_t base_delta;
 	uint32_t vfcount;
+	double bpms;
 	double audioclock;
 
 	process_handle child;
