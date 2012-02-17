@@ -81,6 +81,8 @@ struct geometry {
  * the glid will be picked from the frames in the video object */
 	unsigned ntus;
 	float** txcos;
+
+	bool opaque;
 	
 /* nnormals == nverts */
 	float* normals;
@@ -210,7 +212,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 	}
 
 	float rotmat[16];
-    glColor4f(1.0, 1.0, 1.0, props.opa);
 	glTranslatef(props.position.x, props.position.y, props.position.z);
 	matr_quatf(props.rotation, rotmat);
 	glMultMatrixf(rotmat);
@@ -260,7 +261,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 			glDisableClientState(GL_NORMAL_ARRAY);
 
         /* bounding box, normals/face normals, ... */
-		if (1 || src->flags.debug_vis){
+		if (src->flags.debug_vis){
             glColor4f(0.5, 0.5, 1.0, 1.0);
 			wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
 			glBegin(GL_LINES);
@@ -316,7 +317,13 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 {
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnable(GL_DEPTH_TEST);
-
+	glCullFace(GL_BACK);
+	glFrontFace(GL_CCW);
+	
+	glMatrixMode(GL_TEXTURE);
+	glLoadIdentity();
+	glMatrixMode(GL_MODELVIEW);
+	
 	arcan_vobject_litem* current = cell;
 	while (current){
 		if (current->elem->order >= 0) break;
@@ -328,6 +335,11 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 		current = current->next;
 	}
 
+	glFrontFace(GL_CW);
+	glMatrixMode(GL_TEXTURE);
+	glLoadIdentity();
+	glMatrixMode(GL_MODELVIEW);
+	
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
@@ -474,6 +486,14 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 	return rv;
 }
 
+static void invert_txcos(float* buf, unsigned bufs){
+	for (unsigned i = 0; i < bufs; i+= 2){
+		float a = buf[i+1];
+		buf[i+1] = buf[i];
+		buf[i] = a;
+	}
+}
+
 static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {	
 /* figure out dimensions */
@@ -541,6 +561,8 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	}
 }
 
+
+
 void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);	
@@ -564,6 +586,7 @@ void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource)
 
 		/* load / parsedata into geometry slot */
 			loadmesh(*nextslot, ctx);
+			
 			minmax_verts(&dst->bbmin, &dst->bbmax, (*nextslot)->verts, (*nextslot)->nverts);
 		}
 

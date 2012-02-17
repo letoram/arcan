@@ -32,6 +32,9 @@ settings = {
 	sortlbl = "Default",
 	iodispatch = {},
 
+	fadedelay = 10,
+	transitiondelay = 30,
+	
 	vspacing = 4,
 	hspacing = 4,
 	cursor   = 0,
@@ -42,6 +45,12 @@ settings = {
 	cell_width = 48,
 	cell_height = 48
 };
+
+settings.sortfunctions = {};
+settings.sortfunctions["Default"]      = function(a,b) return 0 end
+settings.sortfunctions["Ascending"]    = function(a,b) return string.lower(a.title) < string.lower(b.title) end 
+settings.sortfunctions["Descending"]   = function(a,b) return string.lower(a.title) > string.lower(b.title) end
+settings.sortfunctions["Times Played"] = function(a,b) return a.launch_counter > b.launch_counter end 
 
 function gridle_keyconf()
     keyconfig = keyconf_create(1, {
@@ -79,6 +88,7 @@ function gridle_ledconf()
 	end
 end	
 
+
 function gridle()
     system_load("scripts/keyconf.lua")();
     system_load("scripts/keyconf_mame.lua")();
@@ -92,16 +102,11 @@ function gridle()
 		shutdown();
 	end
 
-	cellw = get_key("cell_width");
-	cellh = get_key("cell_height");
-	if (cellw and cellh and tonumber(cellw) >= 48 and tonumber(cellh) >= 48) then
-		settings.cell_width = tonumber(cellw);
-		settings.cell_height = tonumber(cellh);
-	end
+	load_settings();
 	
 -- We'll reduce stack layers and increase number of elements,
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size
-	system_context_size( (VRESW * VRESH) / (48 * 48) * 6 );
+	system_context_size( (VRESW * VRESH) / (settings.cell_width * settings.cell_height) * 6 );
 -- make sure the current context runs with the new limit
 	pop_video_context();
 	
@@ -110,7 +115,8 @@ function gridle()
         error "No settings.games found";
         shutdown();
     end
-
+	
+	table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	gridle_keyconf();
 	gridle_ledconf();
 
@@ -160,10 +166,9 @@ function build_fadefunctions()
 
 -- spin
 	table.insert(fadefunctions, function(vid, col, row)
-		local delay = 10 + math.random(10, 30);
-		expire_image(vid, delay);
-		rotate_image(vid, 270.0, delay);
-		scale_image(vid, 0.01, 0.01, delay);
+		expire_image(vid, settings.transitiondelay);
+		rotate_image(vid, 270.0, settings.transitiondelay);
+		scale_image(vid, 0.01, 0.01, settings.transitiondelay);
 		return delay;
  	end);
 
@@ -171,12 +176,12 @@ function build_fadefunctions()
 	table.insert(fadefunctions, function(vid, col, row)
 		local props = image_surface_properties(vid);
 		if (row % 2 > 0) then
-			move_image(vid, -1 * (ncw-col) * props.width, props.y, 60);
+			move_image(vid, -1 * (ncw-col) * props.width, props.y, settings.transitiondelay);
 		else
-			move_image(vid, (col * props.width) + VRESW + props.width, props.y, 60);
+			move_image(vid, (col * props.width) + VRESW + props.width, props.y, settings.transitiondelay);
 		end
-		expire_image(vid, 60);
-		return 60;
+		expire_image(vid, settings.transitiondelay);
+		return settings.transitiondelay;
 	end);
 end
 
@@ -195,7 +200,7 @@ end
 
 function zoom_cursor()
 	if (imagery.zoomed == BADID) then
--- calculate aspect based on initial properties, not current ones. 
+-- calculate aspect based on initial properties, not current ones.
 		local props = image_surface_initial_properties( cursor_vid() );
 		local aspect = props.width / props.height;
 		
@@ -212,9 +217,9 @@ function zoom_cursor()
 -- how big should we make it?
 		resize_image(vid, 1, 1, 0);
 		if (aspect < 1.0) then -- vertical video
-			resize_image(vid, 0, VRESH * 0.75, 10);
+			resize_image(vid, 0, VRESH * 0.75, settings.fadedelay);
 		else
-			resize_image(vid, VRESW * 0.75, 0, 10);
+			resize_image(vid, VRESW * 0.75, 0, settings.fadedelay);
 		end
 
 		props = image_surface_properties( cursor_vid() );
@@ -223,7 +228,7 @@ function zoom_cursor()
 		move_image(vid, dx, dy, 0);
 
 -- make sure that it fits the current window
-		props = image_surface_properties(vid, 10);
+		props = image_surface_properties(vid, settings.fadedelay);
 		if (dx + props.width > VRESW) then
 			dx = VRESW - props.width;
 		end
@@ -232,8 +237,8 @@ function zoom_cursor()
 			dy = VRESH - props.height;
 		end
 
-		blend_image(vid, 1.0, 10);
-		move_image(vid, dx, dy, 10);
+		blend_image(vid, 1.0, settings.fadedelay);
+		move_image(vid, dx, dy, settings.fadedelay);
 		imagery.zoomed = vid;
 	end
 end
@@ -241,16 +246,16 @@ end
 function remove_zoom()
 	if (imagery.zoomed ~= BADID) then
 		local props = image_surface_properties( image_parent( imagery.zoomed ) );
-		move_image(imagery.zoomed, props.x, props.y, 20);
-		blend_image(imagery.zoomed, 0.0, 20);
-		resize_image(imagery.zoomed, 1, 1, 20);
-		expire_image(imagery.zoomed, 20);
+		move_image(imagery.zoomed, props.x, props.y, settings.fadedelay);
+		blend_image(imagery.zoomed, 0.0, settings.fadedelay);
+		resize_image(imagery.zoomed, 1, 1, settings.fadedelay);
+		expire_image(imagery.zoomed, settings.fadedelay);
 		imagery.zoomed = BADID;
 	end
 end
 	
 function cursor_vid()
-    local cursor_row = math.floor(settings.cursor / ncw);
+	local cursor_row = math.floor(settings.cursor / ncw);
 	return grid[cursor_row][settings.cursor - cursor_row * ncw ];
 end
 
@@ -295,11 +300,10 @@ end
 
 function move_cursor( ofs )
     local pageofs_cur = settings.pageofs;
-    blend_gridcell(0.3, 10);
+	blend_gridcell(0.3, settings.fadedelay);
 	remove_zoom();
 
 	settings.cursor = settings.cursor + ofs;
-
 -- paging calculations
 	if (ofs > 0) then -- right/forward
 		if (settings.cursor >= ncc) then -- move right or "forward"
@@ -316,9 +320,11 @@ function move_cursor( ofs )
 		if (settings.cursor < 0) then -- step back a page
 			pageofs_cur = pageofs_cur - ncc;
 			settings.cursor = ncc - ( -1 * settings.cursor);
-
 			if (pageofs_cur < 0) then -- wrap page around
 				pageofs_cur = math.floor(#settings.games / ncc) * ncc;
+				if (pageofs_cur == #settings.games) then
+					pageofs_cur = pageofs_cur - ncc;
+				end
 			end
 
 			if (settings.cursor < 0 or settings.cursor >= #settings.games - pageofs_cur) then
@@ -326,7 +332,7 @@ function move_cursor( ofs )
 			end
 		end
 	end
-
+	
     local x,y = cell_coords(math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw));
 
 -- reload images of the page has changed
@@ -341,8 +347,8 @@ function move_cursor( ofs )
 
     if (movievid) then
 		instant_image_transform(movievid);
-        expire_image(movievid, 20);
-        blend_image(movievid, 0.0, 20);
+        expire_image(movievid, settings.fadedelay);
+        blend_image(movievid, 0.0, settings.fadedelay);
 		movievid = nil;
 	end
 
@@ -350,20 +356,21 @@ function move_cursor( ofs )
     	ledconfig:toggle(game.players, game.buttons);
     end
 
--- look for a movie, if one exists, enable a timer that we'll check for later
 	local moviefile = have_video(setname);
 	if (moviefile) then
 	    movievid = load_movie( moviefile );
         if (movievid) then
             move_image(movievid, x, y);
             order_image(movievid, 3);
-        end
+			props = image_surface_properties(movievid);
+			return
+		end
     else
         moviefile = "";
         movietimer = nil;
     end
 
-    blend_gridcell(1.0, 10);
+	blend_gridcell(1.0, settings.fadedelay);
 end
 
 function get_image(romset)
@@ -451,13 +458,13 @@ function gridle_video_event(source, event)
 		if (source == movievid) then
 			vid,aid = play_movie(movievid);
 			audio_gain(aid, 0.0);
-			audio_gain(aid, 1.0, 40);
-			blend_image(vid, 1.0, 40);
+			audio_gain(aid, 1.0, settings.fadedelay);
+			blend_image(vid, 1.0, settings.fadedelay);
 			resize_image(vid, settings.cell_width, settings.cell_height);
 		else
 			instant_image_transform(source);
-			blend_image(source, 0.0, 20);
-			expire_image(source, 20);
+			blend_image(source, 0.0, settings.fadedelay);
+			expire_image(source, settings.fadedelay);
 		end
 
 	elseif (event.kind == "loaded") then
@@ -475,8 +482,33 @@ function gridle_video_event(source, event)
 end
 
 function gridle_shutdown()
+	store_key("transitiondelay", tostring(settings.transitiondelay));
+	store_key("fadedelay", tostring(settings.fadedelay));
 	store_key("cell_width", tostring(settings.cell_width));
 	store_key("cell_height", tostring(settings.cell_height));
+	store_key("sortorder", settings.sortlbl);
+end
+
+function load_settings()
+	local cellw = get_key("cell_width");
+	local cellh = get_key("cell_height");
+	if (cellw and cellh and tonumber(cellw) >= 48 and tonumber(cellh) >= 48) then
+		settings.cell_width = tonumber(cellw);
+		settings.cell_height = tonumber(cellh);
+	end
+
+	local setdelay = get_key("fadedelay");
+	local transdelay = get_key("transitiondelay");
+	if (setdelay) then settings.fadedelay = setdelay; end
+	if (transdelay) then settings.transitiondelay = transdelay; end
+
+	local sort = get_key("sortorder");
+	if (sort and sort ~= "Default") then
+		settings.sortlbl = sort;
+	end
+	
+	local repeatrate = get_key("repeatrate");
+	if (repeatrate) then settings.repeat_rate = tostring(repeatrate); end
 end
 
 function gridle_input(iotbl)

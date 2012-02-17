@@ -64,7 +64,7 @@ quat div_quatf(quat a, float b);
 float* matr_quatf(quat a, float* dmatr);
 double* matr_quat(quat a, double* dmatr);
 vector angle_quat(quat a);
-quat slerp_quat(quat a, quat b, float f);
+quat nlerp_quat(quat a, quat b, float f);
 quat lerp_quat(quat a, quat b, float f);
 quat add_quat(quat a, quat b);
 

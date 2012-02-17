@@ -90,7 +90,8 @@ struct arcan_video_display arcan_video_display = {
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
 	.suspended = false,
 	.c_ticks = 1,
-	.default_vitemlim = 1024
+	.default_vitemlim = 1024,
+	.imageproc = imageproc_normal
 };
 
 struct arcan_video_context {
@@ -191,6 +192,11 @@ static void allocate_and_store_globj(arcan_vobject* dst){
 			build_shader(&dst->gl_storage.program, &dst->gl_storage.vertex, &dst->gl_storage.fragment,
 						   dst->gpu_program.vertex, dst->gpu_program.fragment);
 		}
+}
+
+void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
+{
+	arcan_video_display.imageproc = mode;
 }
 
 /* scan through each cell in use.
@@ -677,6 +683,22 @@ void arcan_video_fullscreen()
 	SDL_WM_ToggleFullScreen(arcan_video_display.screen);
 }
 
+static void flipimage(SDL_Surface* src)
+{
+/* flip horizontal to match GL format */
+		unsigned char* dbuf = (unsigned char*) src->pixels;
+		for (int row=0; row < src->h * 0.5; row++)
+			for(int col=0; col < src->w; col++)
+				for(int ch=0; ch < 4; ch++){
+					unsigned normofs = (row * src->w + col) * 4 + ch;
+					unsigned invofs  = ((src->h - 1 - row) * src->w + col) * 4 + ch;
+					
+					unsigned char tmp = dbuf[normofs];
+					dbuf[normofs] = dbuf[invofs];
+					dbuf[invofs] = tmp;
+				}
+}
+
 static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc)
 {
     arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
@@ -713,10 +735,14 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		
 		dst->gl_storage.w = neww;
 		dst->gl_storage.h = newh;
+
+		if (arcan_video_display.imageproc == imageproc_fliph){
+			flipimage(gl_image);
+		}
 		
 		dstframe->s_raw = neww * newh * 4;
 		dstframe->raw = (uint8_t*) calloc(dstframe->s_raw, 1);
-
+		
 		/* line-by-line copy
 		 * possible problem loading asynch image (nogl)
 		 * with the gluScaleImage code, can't find decent documentation on it,
@@ -1081,8 +1107,8 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	
-	if (vobj && (vobj->flags.clone == true) && 
+
+	if (vobj && (vobj->flags.clone == true) &&
         !(vobj->state.tag == ARCAN_TAG_TARGET || vobj->state.tag == ARCAN_TAG_MOVIE))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
@@ -2383,7 +2409,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 	if (ci->transform && ci->transform->rotate.startt) {
 		upd = true;
 		float fract = lerp_fract(ci->transform->rotate.startt, ci->transform->rotate.endt, stamp);
-		ci->current.rotation = lerp_quat(ci->transform->rotate.starto, ci->transform->rotate.endo, fract);
+		ci->current.rotation = nlerp_quat(ci->transform->rotate.starto, ci->transform->rotate.endo, fract);
 		
 		if (fract > 0.9999f) {
 			ci->current.rotation = ci->transform->rotate.endo;
@@ -2520,7 +2546,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
 
 		if (tf->rotate.startt)
-			dprops->rotation = lerp_quat(tf->rotate.starto, tf->rotate.endo, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
+			dprops->rotation = nlerp_quat(tf->rotate.starto, tf->rotate.endo, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
 	
 		if (!sprops)
 			return;
@@ -2870,9 +2896,11 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id)
 
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 {
+	if (ticks == 0)
+		return arcan_video_current_properties(id);
 	surface_properties rv = {0};
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
+	
 	if (vobj){
 		rv = vobj->current;
 /* if there's no transform defined, then the ticks will be the same */
@@ -2937,7 +2965,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 					rv.rotation = current->rotate.starto;
 				else{ /* need to interpolate */
 					float fract = lerp_fract(current->rotate.startt, current->rotate.endt, ticks);
-					rv.rotation = lerp_quat(current->rotate.starto, current->rotate.endo, fract);
+					rv.rotation = nlerp_quat(current->rotate.starto, current->rotate.endo, fract);
 				}
 			}
 		}

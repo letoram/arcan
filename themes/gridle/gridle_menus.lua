@@ -42,7 +42,9 @@ local settingslbls = {
 	"Reconfigure Keys",
 	"Reconfigure LEDs",
 	"Cell Size",
-	"Repeat Rate"
+	"Repeat Rate",
+	"Fade Delay",
+	"Transition Delay"
 };
 
 local sortorderlbls = {
@@ -50,6 +52,24 @@ local sortorderlbls = {
 	"Descending",
 	"Times Played"
 };
+
+local fadedelaylbls = {"Disable", "10", "20", "40", "60", "80"}
+local transitiondelaylbls = {"Disable", "10", "20", "40", "60", "80"}
+local fadedelayptrs = {}
+fadedelayptrs["Disable"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 0; end
+fadedelayptrs["10"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 10; end
+fadedelayptrs["20"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 20; end
+fadedelayptrs["40"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 40; end
+fadedelayptrs["60"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 60; end
+fadedelayptrs["80"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 80; end
+
+local transitiondelayptrs = {}
+transitiondelayptrs ["Disable"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay = 0; end
+transitiondelayptrs ["10"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 10; end
+transitiondelayptrs ["20"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 20; end
+transitiondelayptrs ["40"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 40; end
+transitiondelayptrs ["60"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 60; end
+transitiondelayptrs ["80"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 80; end
 
 local repeatlbls = { "Disable", "100", "200", "300", "400", "500"};
 local repeatptrs = {};
@@ -74,20 +94,9 @@ gridptrs["128x96"]  = function() settings.iodispatch["MENU_ESCAPE"](); settings.
 gridptrs["128x128"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 128; end
 
 local sortorderptrs = {};
-sortorderptrs["Ascending"]    = function() settings.iodispatch["MENU_ESCAPE"]();
-	settings.sortlbl = "Ascending";
-	settings.sort = function(a,b) return string.lower(a.title) < string.lower(b.title) end
-end
-
-sortorderptrs["Descending"]   = function() settings.iodispatch["MENU_ESCAPE"]();
-	settings.sortlbl = "Descending";
-	settings.sort = function(a,b) return string.lower(a.title) > string.lower(b.title) end
-end
-
-sortorderptrs["Times Played"] = function() settings.iodispatch["MENU_ESCAPE"]();
-	settings.sortlbl = "Times Played";
-	settings.sort = function(a,b) return a.launch_counter > b.launch_counter end
-end
+sortorderptrs["Ascending"]    = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Ascending"; end
+sortorderptrs["Descending"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Descending"; end
+sortorderptrs["Times Played"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Times Played"; end
 
 local settingsptrs = {};
 settingsptrs["Sort Order..."]    = function() spawnmenu(sortorderlbls, sortorderptrs); end
@@ -99,6 +108,9 @@ settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
 end
+settingsptrs["Fade Delay"] = function() spawnmenu(fadedelaylbls, fadedelayptrs); end
+settingsptrs["Transition Delay"] = function() spawnmenu(transitiondelaylbls, transitiondelayptrs); end
+
 settingsptrs["Cell Size"]        = function() spawnmenu(gridlbls, gridptrs); end
 settingsptrs["Repeat Rate"]      = function() spawnmenu(repeatlbls, repeatptrs); end
 
@@ -123,7 +135,7 @@ local function update_status()
 	table.insert(list, filterstr);
 	if (settings.statuslist == nil) then
 		settings.statuslist = listview_create(list, 24 * 5, VRESW * 0.75);
-		move_image(settings.statuslist:window_vid(), 5, 5);
+		move_image(settings.statuslist:window_vid(), 5, settings.fadedelay);
 		hide_image(settings.statuslist.cursorvid);
 	else
 		settings.statuslist.list = list;
@@ -238,9 +250,7 @@ function gridlemenu_settings()
 			if (#settings.games == 0) then
 				settings.games = list_games( {} );
 			end
-			if (settings.sort) then
-				table.sort(settings.games, settings.sort);
-			end
+			table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
 			build_grid(settings.cell_width, settings.cell_height);
@@ -269,8 +279,8 @@ function gridlemenu_settings()
 	erase_grid(false);
 	if (movievid) then
 		instant_image_transform(movievid);
-		expire_image(movievid, 20);
-		blend_image(movievid, 0.0, 20);
+		expire_image(movievid, settings.fadedelay);
+		blend_image(movievid, 0.0, settings.fadedelay);
 		movievid = nil;
 	end
 
@@ -283,5 +293,5 @@ function gridlemenu_settings()
 
 -- add an info window
 	update_status();
-	move_image(current_menu:window_vid(), 100, 120, 40);
+	move_image(current_menu:window_vid(), 100, 120, settings.fadedelay);
 end

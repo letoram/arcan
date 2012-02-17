@@ -144,6 +144,7 @@ struct arcan_video_display {
 	
 	/* default image loading options */
 	enum arcan_vimage_mode scalemode;
+	enum arcan_imageproc_mode imageproc;
 	GLuint deftxs, deftxt;
 	
 	SDL_Surface* screen;

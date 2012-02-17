@@ -244,7 +244,8 @@ int arcan_lua_moveimage(lua_State* ctx)
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
-
+	if (time < 0) time = 0;
+	
 	arcan_video_objectmove(id, newx, newy, 1.0, time);
 	return 0;
 }
@@ -282,7 +283,6 @@ int arcan_lua_rotateimage(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	int ang = luaL_checkint(ctx, 2);
 	int time = luaL_optint(ctx, 3, 0);
-	int rel = luaL_optint(ctx, 4, 0);
 
 	arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
 	
@@ -297,6 +297,7 @@ int arcan_lua_scaleimage2(lua_State* ctx)
 	float neww = luaL_checknumber(ctx, 2);
 	float newh = luaL_checknumber(ctx, 3);
 	int time = luaL_optint(ctx, 4, 0);
+	if (time < 0) time = 0;
 
 	if (neww < 0.0001 && newh < 0.0001)
 		return 0;
@@ -330,7 +331,8 @@ int arcan_lua_scaleimage(lua_State* ctx)
 	float desw = luaL_checknumber(ctx, 2);
 	float desh = luaL_checknumber(ctx, 3);
 	int time = luaL_optint(ctx, 4, 0);
-
+	if (time < 0) time = 0;
+	
 	surface_properties cons = arcan_video_current_properties(id);
 	surface_properties prop = arcan_video_initial_properties(id);
 
@@ -666,9 +668,13 @@ int arcan_lua_hittest(lua_State* state)
 int arcan_lua_setlife(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	uint32_t ttl = luaL_checkint(ctx, 2);
+	int ttl = luaL_checkint(ctx, 2);
 
-	arcan_video_setlife(id, ttl);
+	if (ttl <= 0)
+			arcan_video_deleteobject(id);
+	else
+			arcan_video_setlife(id, ttl);
+
 	return 0;
 }
 
@@ -1436,7 +1442,7 @@ int arcan_lua_getkey(lua_State* ctx)
 		free(val);
 	}
 	else
-		lua_pushnumber(ctx, 0);
+		lua_pushnil(ctx);
 
 	return 1;
 }
@@ -1552,7 +1558,7 @@ int arcan_lua_mousegrab(lua_State* ctx)
 {
 	lua_ctx_store.grab = !lua_ctx_store.grab;
 	SDL_WM_GrabInput( lua_ctx_store.grab ? SDL_GRAB_ON : SDL_GRAB_OFF );
-	return 1;
+	return 0;
 }
 
 int arcan_lua_gettargets(lua_State* ctx)
@@ -2037,12 +2043,23 @@ int arcan_lua_scalemodel(lua_State* ctx)
 int arcan_lua_rotatemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
-	float roll = luaL_checknumber(ctx, 2);
-	float pitch = luaL_checknumber(ctx, 3);
-	float yaw = luaL_checknumber(ctx, 4);
-	unsigned int dt = luaL_optint(ctx, 5, 0);
-
+	double roll = luaL_checknumber(ctx, 2);
+	double pitch = luaL_checknumber(ctx, 3);
+	double yaw = luaL_checknumber(ctx, 4);
+	unsigned int dt = luaL_optnumber(ctx, 5, 0);
+	
 	arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+	return 0;
+}
+
+int arcan_lua_setimageproc(lua_State* ctx)
+{
+	int num = luaL_checknumber(ctx, 1);
+	
+	if (num >= 0 && num < 2){
+		arcan_video_default_imageprocmode(num);
+	}
+
 	return 0;
 }
 
@@ -2175,7 +2192,10 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:switch_default_texmode, newmode ( REPEAT(0), CLAMP_TO_EDGE(1) ), nil */
 	lua_register(ctx, "switch_default_texmode", arcan_lua_settexmode);
-	
+
+/* item:switch_default_imagemproc, newproc (NORMAL(0), FLIPH(1), nil */
+	lua_register(ctx, "switch_default_imageproc", arcan_lua_setimageproc);
+
 /* item: shutdown,nil */
 	lua_register(ctx, "shutdown", arcan_lua_shutdown);
 /*	lua_register(ctx, "toggle_fullscreen", arcan_lua_togglefs); */
@@ -2456,7 +2476,13 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* constant: SCALE_POW2, int */
 	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);
-	
+
+/* constant: IMAGEPROC_NORMAL, int */
+	arcan_lua_setglobalint(ctx, "IMAGEPROC_NORMAL", imageproc_normal);
+
+/* constant: IMAGEPROC_FLIPH, int */
+	arcan_lua_setglobalint(ctx, "IMAGEPROC_FLIPH", imageproc_fliph);
+
 /* constant: WORLDID,int */
 	arcan_lua_setglobalint(ctx, "WORLDID", ARCAN_VIDEO_WORLDID);
 

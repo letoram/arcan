@@ -191,7 +191,7 @@ static int write_rep(char* arg, FILE* luafile)
 		CTMcontext context;
 		context = ctmNewContext(CTM_EXPORT);
 
-        printf("flush: %s, (%i verts %i normals, %i txcos)\n", buf, indbufofs, global.ofs_vertbuf, global.ofs_normindbuf, global.ofs_texindbuf);
+        printf("flush: %s, (%i indices %i verts %i normals, %i txcos)\n", buf, indbufofs, global.ofs_vertbuf, global.ofs_normindbuf, global.ofs_texindbuf);
 		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, NULL); 
 
 		if (global.ofs_texindbuf){
@@ -407,11 +407,6 @@ static void read_faceval(char* arg)
             lineofs++;
     }
 
-	printf("decoded line(%s) into: (%i/%i/%i), (%i/%i/%i), (%i/%i/%i)\n", line,
-		   buf[0].vrti, buf[0].txci, buf[0].normi,
-		   buf[1].vrti, buf[1].txci, buf[1].normi,
- 		   buf[2].vrti, buf[2].txci, buf[2].normi);
-	
      /* store in global */
     storeind( buf[0].vrti, buf[0].txci, buf[0].normi );
     storeind( buf[1].vrti, buf[1].txci, buf[1].normi );
@@ -514,7 +509,6 @@ void parse_obj(FILE* src, FILE* luafile, const char* basename)
 		char* cmdl = chop(line);
 		char ofs = 0;
 
-		printf("fgets: %s, cmdl: %s\n", line, cmdl);
 		while (!isspace(cmdl[ofs]) && cmdl[ofs++]);
 		if (ofs >= sizeof(line)){
 			fprintf(stderr, "Unexpected input parsing obj, giving up\n");
@@ -532,6 +526,8 @@ void parse_obj(FILE* src, FILE* luafile, const char* basename)
 				read_vertval(arg, cmdl[1]);
 		else if (strcmp(cmdl, "f") == 0)
 			read_faceval(arg);
+		else if (strcmp(cmdl, "o") == 0) /* we use g or usemtl to split */
+			continue;
 		else if (strcmp(cmdl, "s") == 0)
 			continue; /* ignore smoothing groups */
 		else if (strcmp(cmdl, "g") == 0 ||

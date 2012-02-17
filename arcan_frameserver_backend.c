@@ -99,7 +99,6 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 {
 	if (src && src->loop){
-		arcan_warning("loop\n");
 		arcan_frameserver_free(src, true);
 		arcan_audio_pause(src->aid);
 		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src);
@@ -111,7 +110,6 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 			.category = EVENT_SYSTEM,
 			.kind = EVENT_SYSTEM_FRAMESERVER_TERMINATED
 		};
-		arcan_warning("terminating event\n");
 		ev.data.system.hitag = src->vid;
 		ev.data.system.lotag = src->aid;
 		arcan_event_enqueue(&ev);
@@ -217,7 +215,7 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 		/* as there are latencies introduced by the audiocard etc. as well,
 		 * it is actually somewhat beneficial to lie a few ms ahead of the videotimer */
 			size_t buffers = src->afq.cell_size - (src->afq.cell_size - src->afq.front_cell->ofs);
-			double dc = src->lastpts - src->audioclock;
+			double dc = (double)src->lastpts - src->audioclock;
 
 			src->audioclock += src->bpms * (double)buffers;
 

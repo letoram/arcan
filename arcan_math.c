@@ -269,24 +269,10 @@ quat lerp_quat(quat a, quat b, float fact)
 	return res;
 }
 
-quat slerp_quat(quat a, quat b, float fact)
+quat nlerp_quat(quat a, quat b, float fact)
 {
-	float dp = dot_quat(a, b);
-	const float thresh = 1.0 - EPSILON;
-	if (dp > thresh)
-			return lerp_quat(a, b, fact);
-
-	if (dp < -1.0f) dp = -1.0f;
-	else if (dp > 1.0f) dp = 1.0f;
-
-	float theta = acosf(dp) * fact;
-	quat c = mul_quatf(a, dp);
-	a = add_quat(b, inv_quat(c));
-
-	return norm_quat(a);
+	return norm_quat(lerp_quat(a, b, fact));
 }
-
-
 
 float* matr_quatf(quat a, float* dmatr)
 {
