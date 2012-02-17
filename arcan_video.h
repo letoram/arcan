@@ -92,6 +92,11 @@ enum arcan_interp_function {
 	interpolate_normalized_linear
 };
 
+enum arcan_imageproc_mode {
+	imageproc_normal,
+	imageproc_fliph
+};
+
 /* callback format for a feed- function to a video object.
  * buf can be 0 (peek to know if data is available) OR pointer to data storage * with storage format (buf_s = width * height * bpp)
  * src indicates if the tick is from video refresh (0) or how many logic ticks it represents */
@@ -109,6 +114,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 /* will apply to all new vobjects, it is, however, tracked on a per-object basis so can be changed during runtime */
 void arcan_video_default_scalemode(enum arcan_vimage_mode);
 void arcan_video_default_texmode(enum arcan_vtex_mode s, enum arcan_vtex_mode t);
+void arcan_video_default_imageprocmode(enum arcan_imageproc_mode);
+
 void arcan_video_fullscreen();
 uint16_t arcan_video_screenw();
 uint16_t arcan_video_screenh();
