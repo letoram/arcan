@@ -127,6 +127,7 @@ set (
  arcan_main.c
  arcan_db.c
  arcan_video.c
+ arcan_shdrmgmt.c
  arcan_3dbase.c
  arcan_math.c
  arcan_audio.c
@@ -145,6 +146,7 @@ set (
  arcan_led.h
  arcan_general.h
  arcan_db.h
+ arcan_shdrmgmt.h
 ) 
 
 set (
