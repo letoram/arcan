@@ -93,8 +93,8 @@ typedef struct arcan_vobject {
 	
 	struct {
 		GLuint glid;
-		GLuint program, vertex, fragment;
 		uint8_t c_glid;
+		arcan_shader_id program;
 		uint16_t w, h;
 		GLuint txu, txv;
         enum arcan_vimage_mode scale;
@@ -141,6 +141,7 @@ struct arcan_video_display {
 	GLfloat projmatr[16];
 
 	unsigned default_vitemlim;
+	arcan_shader_id defaultshdr;
 	
 	/* default image loading options */
 	enum arcan_vimage_mode scalemode;

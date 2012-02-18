@@ -55,6 +55,7 @@
 #include "arcan_frameserver_backend.h"
 #include "arcan_target_const.h"
 #include "arcan_target_launcher.h"
+#include "arcan_shdrmgmt.h"
 #include "arcan_videoint.h"
 
 #ifndef ARCAN_FONT_CACHE_LIMIT
@@ -126,56 +127,6 @@ static unsigned context_ind = 0;
 /* a default more-or-less empty context */
 static struct arcan_video_context* current_context = context_stack;
 
-static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
-	if (*dprg)
-		glDeleteProgram(*dprg);
-
-	if (*vprg)
-		glDeleteShader(*vprg);
-	
-	if (*fprg)
-		glDeleteShader(*fprg);
-	
-	*dprg = *vprg = *fprg = 0;
-}
-
-static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
-{
-	char buf[256];
-	int rlen;
-
-	kill_shader(dprg, vprg, fprg);
-	
-	*dprg = glCreateProgram();
-	*vprg = glCreateShader(GL_VERTEX_SHADER);
-	*fprg = glCreateShader(GL_FRAGMENT_SHADER);
-
-	glShaderSource(*vprg, 1, &vprogram, NULL);
-	glShaderSource(*fprg, 1, &fprogram, NULL);
-
-	glCompileShader(*vprg);
-	glCompileShader(*fprg);
-	
-	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
-	if (rlen)
-		arcan_warning("Warning: Couldn't compiler Shader vertex program: %s\n", buf);
-
-	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
-	if (rlen)
-		arcan_warning("Warning: Couldn't compiler Shader fragment Program: %s\n", buf);
-
-	glAttachShader(*dprg, *fprg);
-	glAttachShader(*dprg, *vprg);
-
-	glLinkProgram(*dprg);
-
-	glGetProgramInfoLog(*dprg, 256, &rlen, buf);
-	if (rlen)
-		arcan_warning("Warning: Problem linking Shader Program: %s\n", buf);
-
-/*	glUseProgram(*dprg); */
-}
-
 static void allocate_and_store_globj(arcan_vobject* dst){
 	glGenTextures(1, &dst->gl_storage.glid);
 	glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
@@ -186,12 +137,6 @@ static void allocate_and_store_globj(arcan_vobject* dst){
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
 	
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, dst->gl_storage.w, dst->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->default_frame.raw);
-	
-	if (dst->gpu_program.fragment &&
-		dst->gpu_program.vertex){
-			build_shader(&dst->gl_storage.program, &dst->gl_storage.vertex, &dst->gl_storage.fragment,
-						   dst->gpu_program.vertex, dst->gpu_program.fragment);
-		}
 }
 
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
@@ -214,10 +159,6 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 			else {
 				arcan_vobject* current = &(context->vitems_pool[i]);
 				glDeleteTextures(1, &current->gl_storage.glid);
-				kill_shader(&current->gl_storage.program, 
-							&current->gl_storage.fragment,
-							&current->gl_storage.vertex);
-
 				if (current->state.tag == ARCAN_TAG_MOVIE && current->state.ptr)
 					arcan_frameserver_pause((arcan_frameserver*) current->state.ptr, true);
 			}
@@ -620,6 +561,34 @@ static void arcan_video_gldefault()
 	glCullFace(GL_BACK);
 }
 
+
+const static char* defvprg = "\
+uniform mat4 modelview;\
+uniform mat4 projection;\
+\
+attribute vec4 vertex;\
+attribute vec3 normal;\
+attribute vec2 texcoord;\
+\
+varying vec2 texco;\
+\
+void main()\
+{\
+	texco = texcoord;\
+	gl_Position = (modelview * projection) * vertex;\
+}";
+
+const static char* deffprg = "\
+ uniform sampler2D map_diffuse;\
+ uniform float obj_opacity;\
+ varying vec2 texcoord;\
+ \
+ void main(){\
+	vec4 color = texture2D(map_diffuse, texcoord);\
+	color.a -= obj_opacity;\
+	gl_FragColor = color;\
+ }";
+
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
 {
 	/* some GL attributes have to be set before creating the video-surface */
@@ -635,6 +604,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	arcan_video_display.height = height;
 	arcan_video_display.bpp = bpp;
 	arcan_video_display.conservative = conservative;
+	arcan_video_display.defaultshdr  = arcan_shader_build("DEFAULT", NULL, defvprg, deffprg);
 		
 	if (arcan_video_display.screen) {
 		if (TTF_Init() == -1) {
@@ -1939,14 +1909,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
             free(vobj->frameset);
             free(vobj->default_frame.raw);
 
-			kill_shader(&vobj->gl_storage.program, 
-				&vobj->gl_storage.fragment,
-			   &vobj->gl_storage.vertex
-			);
-			
-			if (vobj->gl_storage.program)
-				glDeleteProgram(vobj->gl_storage.program);
-
             arcan_video_display.nglalive--;
 			glDeleteTextures(1, &vobj->gl_storage.glid);
 		}
@@ -2320,12 +2282,6 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const 
 	if (vobj && vobj->flags.clone == true)
 		rv = ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	else if (vobj && id > 0) {
-		if (vprogram)
-			vobj->gpu_program.vertex = strdup(vprogram);
-		if (fprogram)
-			vobj->gpu_program.fragment = strdup(fprogram);
-		
-		build_shader(&vobj->gl_storage.program, &vobj->gl_storage.vertex, &vobj->gl_storage.fragment, vprogram, fprogram);
 	}
 
 	return rv;
@@ -2438,6 +2394,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 	while (steps--) {
 		update_object(&current_context->world, arcan_video_display.c_ticks);
 		arcan_video_display.c_ticks++;
+		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, sizeof(arcan_video_display.c_ticks));
 		
 		if (current)
  			do {
@@ -2634,6 +2591,7 @@ void arcan_video_refresh_GL(float lerp)
 {
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
+	arcan_shader_activate(arcan_video_display.defaultshdr);
 	
 	arcan_vobject* world = &current_context->world;
 
@@ -2684,8 +2642,6 @@ void arcan_video_refresh_GL(float lerp)
 		 */
 			if ( elem->order >= 0){
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
-				glUseProgram(elem->current_frame->gl_storage.program);
-				_setgl_stdargs(elem->current_frame->gl_storage.program);
 				
 				if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force )){
 					glDisable(GL_BLEND);
@@ -2991,6 +2947,7 @@ bool arcan_video_prepare_external()
 
 	/* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
 	arcan_event_deinit();
+	arcan_shader_unload_all();
 
 	return true;
 }
@@ -3038,6 +2995,7 @@ void arcan_video_restore_external()
 											arcan_video_display.sdlarg);
 	arcan_event_init();
 	arcan_video_gldefault();
+	arcan_shader_rebuild_all();
 	arcan_video_popcontext();
 }
 
