@@ -23,6 +23,8 @@
 
 #define TBLSIZE (1 + TIMESTAMP_D - MODELVIEW_MATR)
 
+extern int arcan_debug_pumpglwarnings(const char* src);
+
 /* all current global shader settings,
  * updated whenever a vobj/3dobj needs a different state
  * each global */ 
@@ -154,7 +156,7 @@ struct shader_cont {
 	char (* vertex), (* fragment);
 	GLuint prg_container, obj_vertex, obj_fragment;
 
-	GLint locations[sizeof(ofstbl)];
+	GLint locations[sizeof(ofstbl) / sizeof(ofstbl[0])];
 /* match attrsymtbl */
 	GLint attributes[4];
 };
@@ -173,7 +175,7 @@ static struct {
 
 static void build_shader(GLuint*, GLuint*, GLuint*, const char*, const char*);
 
-static void setv(GLuint loc, enum shdrutype kind, void* val)
+static void setv(GLint loc, enum shdrutype kind, void* val)
 {
 /* add more as needed, just match the current shader_envts */
 	switch (kind){
@@ -188,12 +190,12 @@ static void setv(GLuint loc, enum shdrutype kind, void* val)
 
 		case shdrmat4x4: glUniformMatrix4fv(loc, 1, false, (GLfloat*) val); break;
 	}
-
-	GLenum errc = glGetError();
-	if (errc != GL_NO_ERROR){
-		arcan_warning("GL error: %d, loc: %d, kind: %i\n", errc, loc, kind);
-		abort();
-	}
+    
+#ifdef _DEBUG
+    if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:post") == -1){
+        abort();
+    }
+#endif
 }
 
 arcan_errc arcan_shader_activate(arcan_shader_id shid)
@@ -201,16 +203,17 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	shid -= shdr_global.base;
-	if (shid < shdr_global.ofs && shdr_global.active_prg != shid){
+ 	if (shid < shdr_global.ofs){
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
-		shdr_global.active_prg = shid;
+ 		shdr_global.active_prg = shid;
 
 	/* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
 	 * we use the index as a lookup for value and type */
-		for (unsigned i = 0; i < sizeof(ofstbl); i++){
-			if (cur->locations[i] >= 0)
+		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
+			if (cur->locations[i] >= 0){
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i]);
+            }
 		}
 			
 		rv = ARCAN_OK;
@@ -220,7 +223,7 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
 {
 	arcan_shader_id rv = ARCAN_EID;
-	if (shdr_global.ofs < sizeof(shdr_global.slots)){
+ 	if (shdr_global.ofs < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0])){
 		struct shader_cont* cur = shdr_global.slots + shdr_global.ofs;
 		cur->id = shdr_global.ofs;
 		cur->label = strdup(tag);
@@ -232,10 +235,18 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			assert(symtbl[i] != NULL);
 			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
-		}
+#ifdef _DEBUG
+            if(cur->locations[i] != -1)
+            arcan_warning("arcan_shader_build(%s)(%d), resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
+#endif
+        }
 
 		for (unsigned i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
 			cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
+#ifdef _DEBUG
+            if (cur->attributes[i] != -1)
+            arcan_warning("arcan_shader_build(%s)(%d), resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
+#endif
 		}
 		
 		rv = shdr_global.ofs + shdr_global.base;
@@ -251,8 +262,9 @@ void arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 	GLint loc;
 
 /* update the value for the shader so we might avoid a full glUseProgram, ... cycle */
-	if ( (loc = shdr_global.slots[ shdr_global.active_prg ].locations[slot]) >= 0 )
+	if ( (loc = shdr_global.slots[ shdr_global.active_prg ].locations[slot]) >= 0 ){
 		setv(loc, typetbl[slot], value);
+    }
 }
 
 GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)

@@ -35,6 +35,7 @@ function modeltest()
 	contbl:hide();
 	mpvid, aid = launch_target("Moon Patrol", 1);
 	hide_image(mpvid);
+	move3d_camera(0.0, 0.0, -5.0);
 	set_image_as_frame(model.vid, mpvid, model.labels["display"]);
 end
 
@@ -110,13 +111,13 @@ function modeltest_input(iotable)
 		else
 			key = symtable[iotable.keysym];
 			if key == "w" then
-			  forward3d_camera(0.5);
+			  forward3d_camera(0.05);
 			elseif key == "s" then
-			  forward3d_camera(-0.5);
+			  forward3d_camera(-0.05);
 			elseif key == "a" then
-			  strafe3d_camera(0.5);
+			  strafe3d_camera(0.05);
 			elseif key == "d" then
-			  strafe3d_camera(-0.5);
+			  strafe3d_camera(-0.05);
 			elseif key == "q" then
 				ystepsize = iotable.active and 0.5 or 0.0;
 			elseif key == "e" then

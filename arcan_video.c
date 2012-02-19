@@ -2591,7 +2591,6 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_shader_activate(arcan_video_display.defaultshdr);
-	
 	arcan_vobject* world = &current_context->world;
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
@@ -2617,7 +2616,7 @@ void arcan_video_refresh_GL(float lerp)
 			* world cannot be masked */
 			surface_properties dprops = {0};
 			arcan_resolve_vidprop(elem, lerp, &dprops);
-
+            
 			/* time for the drawcall, assuming object is visible
 		 * add occlusion test / blending threshold here ..
 		 * note that objects will have been sorted based on Z already.
@@ -2987,4 +2986,14 @@ void arcan_video_shutdown()
 		lastctxc = lastctxa;
 
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+}
+
+int arcan_debug_pumpglwarnings(const char* src){
+    GLenum errc = glGetError();
+    if (errc != GL_NO_ERROR){
+        arcan_warning("GLError detected (%s) GL error, code: %d\n", src, errc);
+        return -1;
+    }
+        
+    return 1;
 }
