@@ -85,7 +85,6 @@ settings = {
 };
 
 settings.sortfunctions = {};
-settings.sortfunctions["Default"]      = function(a,b) return 0 end
 settings.sortfunctions["Ascending"]    = function(a,b) return string.lower(a.title) < string.lower(b.title) end 
 settings.sortfunctions["Descending"]   = function(a,b) return string.lower(a.title) > string.lower(b.title) end
 settings.sortfunctions["Times Played"] = function(a,b) return a.launch_counter > b.launch_counter end 
@@ -154,8 +153,11 @@ function gridle()
         error "No settings.games found";
         shutdown();
     end
-	
-	table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
+
+	if (settings.sortfunctions[settings.sortlbl]) then
+		print(settings.sortfunctions[settings.sortlbl]);
+		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
+	end
 	gridle_keyconf();
 	gridle_ledconf();
 
