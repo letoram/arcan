@@ -141,6 +141,13 @@ static char* symtbl[TBLSIZE] = {
 	"timestamp"
 };
 
+static char* attrsymtbl[4] = {
+	"vertex",
+	"normal",
+	"color",
+	"texcoord"
+};
+
 struct shader_cont {
 	arcan_shader_id id;
 	char* label;
@@ -148,6 +155,8 @@ struct shader_cont {
 	GLuint prg_container, obj_vertex, obj_fragment;
 
 	GLint locations[sizeof(ofstbl)];
+/* match attrsymtbl */
+	GLint attributes[4];
 };
 
 /* base is added as a controllable offset similarly to what is done
@@ -194,9 +203,8 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	/* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
 	 * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl); i++){
-			if (cur->locations[i] >= 0){
+			if (cur->locations[i] >= 0)
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i]);
-			}
 		}
 			
 		rv = ARCAN_OK;
@@ -218,8 +226,14 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			assert(symtbl[i] != NULL);
 			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
+			printf("lookup for %s to %i\n", symtbl[i], cur->locations[i]);
 		}
 
+		for (unsigned i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
+			cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
+			printf("lookup attribute(%s) resolved to: %i\n", attrsymtbl[i], cur->attributes[i]);
+		}
+		
 		rv = shdr_global.ofs + shdr_global.base;
 		shdr_global.ofs++;
 	}
@@ -235,7 +249,12 @@ void arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 /* update the value for the shader so we might avoid a full glUseProgram, ... cycle */
 	if ( (loc = shdr_global.slots[ shdr_global.active_prg ].locations[slot]) >= 0 )
 		setv(loc, typetbl[slot], value);
-}	
+}
+
+GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
+{
+	return shdr_global.slots[ shdr_global.active_prg ].attributes[ attr ];
+}
 
 void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value)
 {
