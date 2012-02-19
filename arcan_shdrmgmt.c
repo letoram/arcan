@@ -168,7 +168,7 @@ static struct {
 	arcan_shader_id active_prg;
 	struct shader_envts context;
 	char guard;
-} shdr_global = {.base = 100, .active_prg = 256, .guard = 64};
+} shdr_global = {.base = 100, .active_prg = 0, .guard = 64};
 
 
 static void build_shader(GLuint*, GLuint*, GLuint*, const char*, const char*);
@@ -187,7 +187,13 @@ static void setv(GLuint loc, enum shdrutype kind, void* val)
 		case shdrvec4:  glUniform4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1], ((GLfloat*) val)[2], ((GLfloat*) val)[3]); break;
 
 		case shdrmat4x4: glUniformMatrix4fv(loc, 1, false, (GLfloat*) val); break;
-	}	
+	}
+
+	GLenum errc = glGetError();
+	if (errc != GL_NO_ERROR){
+		arcan_warning("GL error: %d, loc: %d, kind: %i\n", errc, loc, kind);
+		abort();
+	}
 }
 
 arcan_errc arcan_shader_activate(arcan_shader_id shid)
@@ -226,12 +232,10 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			assert(symtbl[i] != NULL);
 			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
-			printf("lookup for %s to %i\n", symtbl[i], cur->locations[i]);
 		}
 
 		for (unsigned i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
 			cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
-			printf("lookup attribute(%s) resolved to: %i\n", attrsymtbl[i], cur->attributes[i]);
 		}
 		
 		rv = shdr_global.ofs + shdr_global.base;
