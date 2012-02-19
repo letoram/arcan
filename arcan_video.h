@@ -217,7 +217,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
-arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const char* fprogram);
+arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
 unsigned arcan_video_maxorder();

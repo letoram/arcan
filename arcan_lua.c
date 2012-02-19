@@ -45,6 +45,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_shdrmgmt.h"
 #include "arcan_3dbase.h"
 #include "arcan_audio.h"
 #include "arcan_event.h"
@@ -462,13 +463,22 @@ int arcan_lua_pauseaudio(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_buildshader(lua_State* ctx)
+{
+	const char* vprog = luaL_checkstring(ctx, 1);
+	const char* fprog = luaL_checkstring(ctx, 2);
+	
+	arcan_shader_id rv = arcan_shader_build("USERSHDR", NULL, vprog, fprog);
+	lua_pushnumber(ctx, rv);
+	return 1;
+}
+
 int arcan_lua_setshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	const char* vprogram = luaL_checkstring(ctx, 2);
-	const char* fprogram = luaL_checkstring(ctx, 3);
+	arcan_shader_id shid = luaL_checkvid(ctx, 2);
 
-	arcan_video_setprogram(id, vprogram, fprogram);
+	arcan_video_setprogram(id, shid);
 
 	return 0;
 }
@@ -2344,9 +2354,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:image_surface_resolve_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
 
-/* item:*image_program, vid, vertstr, fragstr, nil */
-	lua_register(ctx, "image_program", arcan_lua_setshader);
+/* item:*image_program, vid, shaderid, nil */
+	lua_register(ctx, "image_shader", arcan_lua_setshader);
 
+/* item:build_shader, vertstr, fragstr, shaderid */
+	lua_register(ctx, "build_shader", arcan_lua_buildshader);
+	
 /* item:render_text, formatstr, vid */
 	lua_register(ctx, "render_text", arcan_lua_buildstr);
 
