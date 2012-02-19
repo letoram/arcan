@@ -536,6 +536,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 	return rv;
 }
 
+static float ortho_proj[16];
 static void arcan_video_gldefault()
 {
 /* not 100% sure which of these have been replaced by the programmable pipeline or not .. */
@@ -549,40 +550,34 @@ static void arcan_video_gldefault()
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 	glAlphaFunc(GL_GREATER, 0);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
 
-	glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+	build_orthographic_matrix(ortho_proj, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-/*	glOrtho(ox, (float)current_context->world.current.w - 1.0f + ox, (float)current_context->world.current.h - 1.0 + oy,
-	        oy, 0.0, (float)current_context->world.current.w - 1.0 + ox); */
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
 }
 
 
 const static char* defvprg =
-"uniform mat4 modelview;"
-"uniform mat4 projection;"
+"uniform mat4 modelview;\n"
+"uniform mat4 projection;\n"
 
-"attribute vec4 vertex;"
-"attribute vec2 texcoord;"
-"varying vec2 texco;"
-"void main(){"
-"	gl_Position = (projection * modelview) * vertex;"
-"   texco = texcoord;"
+"attribute vec4 vertex;\n"
+"attribute vec2 texcoord;\n"
+"varying vec2 texco;\n"
+"void main(){\n"
+"	gl_Position = (projection * modelview) * vertex;\n"
+"   texco = texcoord;\n"
 "}";
 
 const static char* deffprg =
-"uniform sampler2D mat_diffuse;"
-"varying vec2 texco;"
-"uniform float obj_opacity;"
-"void main(){"
-"   vec4 col = texture2D(mat_diffuse, texco);"
-"   col.a = col.a * obj_opacity;"
-"	gl_FragColor = col;"
+"uniform sampler2D mat_diffuse;\n"
+"varying vec2 texco;\n"
+"uniform float obj_opacity;\n"
+"void main(){\n"
+"   vec4 col = texture2D(mat_diffuse, texco);\n"
+"   col.a = col.a * obj_opacity;\n"
+"	gl_FragColor = col;\n"
 " }";
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
@@ -808,8 +803,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
 
-		GLint txu = 0;
-		arcan_shader_envv(MAP_DIFFUSE_D, &txu, sizeof(txu));
+	/* tacitly assume diffuse is bound to tu0 */
 		glBindTexture(GL_TEXTURE_2D, newvobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -2545,15 +2539,16 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
     if (src->state.tag == ARCAN_TAG_ASYNCIMG)
         return;
     
-	float mvm[16], omatr[16], idmatr[16];
+	float omatr[16], imatr[16], dmatr[16];
 	prop.scale.x *= src->origw * 0.5;
 	prop.scale.y *= src->origh * 0.5;
-	matr_quatf(norm_quat (prop.rotation), omatr);
 
-	identity_matrix(idmatr);
-	translate_matrix(idmatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
-	multiply_matrix(mvm, idmatr, omatr);
-	arcan_shader_envv(MODELVIEW_MATR, mvm, sizeof(float) * 16);
+	identity_matrix(imatr);
+	translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+	matr_quatf(norm_quat (prop.rotation), omatr);
+	multiply_matrix(dmatr, imatr, omatr);
+	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
 }
 
@@ -2597,14 +2592,6 @@ void arcan_video_refresh_GL(float lerp)
 	
 	arcan_vobject* world = &current_context->world;
 
-/* start with a pristine projection matrix,
- * as soon as we reach order == 0 (2D) we switch to a ortographic projection */
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (current && current->elem->order < 0){
 		current = arcan_refresh_3d(current, lerp);
@@ -2613,14 +2600,9 @@ void arcan_video_refresh_GL(float lerp)
 /* if there are any nodes left, treat them as 2D (ortographic projection) */
 	if (current){
 		glDisable(GL_DEPTH_TEST);
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
-		glGetFloatv(GL_PROJECTION_MATRIX, arcan_video_display.projmatr);
+		memcpy(arcan_video_display.projmatr, ortho_proj, sizeof(float) * 16);
 		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
 	
 		while (current){
 			arcan_vobject* elem = current->elem;
@@ -2720,32 +2702,28 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		dprops.scale.y *= vobj->origh * 0.5;
 		
 /* transform and rotate the bounding coordinates into screen space */
-		glPushMatrix();
-			GLfloat orient[16];
-			GLfloat orientf[16];
-			GLint view[4];
+		float omatr[16], imatr[16], dmatr[16];
+		int view[4] = {0, 0, arcan_video_display.width, arcan_video_display.height};
 
-			matr_quatf(dprops.rotation, orientf);
-			glTranslatef(dprops.position.x + dprops.scale.x, dprops.position.y + dprops.scale.y, 0.0);
-			glMultMatrixf(orientf);
-
-			float p[4][3];
-			glGetFloatv(GL_MODELVIEW_MATRIX, orient);
-			glGetIntegerv(GL_VIEWPORT, view);
+		identity_matrix(imatr);
+		matr_quatf(dprops.rotation, omatr);
+		translate_matrix(imatr, dprops.position.x + dprops.scale.x, dprops.position.y + dprops.scale.y, 0.0);
+		multiply_matrix(dmatr, omatr, imatr);
+		
+		float p[4][3];
 
 		/* unproject all 4 vertices, usually very costly but for 4 vertices it's manageable */
-			gluProjectf(-dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
-			gluProjectf( dprops.scale.x, -dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
-			gluProjectf( dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
-			gluProjectf(-dprops.scale.x,  dprops.scale.y, 0.0, orient, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
+		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
+		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
+		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
+		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
 
-			float px[4], py[4];
-			px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0]; 
-			py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1]; 
+		float px[4], py[4];
+		px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0];
+		py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1];
 			
 		/* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
-			glPopMatrix();
-			return pinpoly(4, px, py, (float) x, (float) arcan_video_display.height - y);
+		return pinpoly(4, px, py, (float) x, (float) arcan_video_display.height - y);
 	}
 	
 	return false;

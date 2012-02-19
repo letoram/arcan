@@ -705,7 +705,7 @@ void arcan_3d_setdefaults()
 	virtobj* cam = current_scene.perspectives;
 	cam->dynamic = true;
 
-    build_projection_matrix(0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0, cam->projmatr);
+    build_projection_matrix(cam->projmatr, 0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0);
 
     cam->rendertarget = 0;
     cam->type = virttype_camera;

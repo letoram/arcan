@@ -58,7 +58,35 @@ void identity_matrix(float* m)
 		memcpy(m, midentity, 16 * sizeof(float));
 }
 
-void build_projection_matrix(float nearv, float farv, float aspect, float fov, float m[16])
+void build_orthographic_matrix(float* m, const float left, const float right,
+							  const float bottom, const float top, const float near, const float far)
+{
+	float irml = 1.0 / (right - left);
+	float itmb = 1.0 / (top - bottom);
+	float ifmn = 1.0 / (far - near);
+	
+	m[0]  = 2.0f * irml;
+	m[1]  = 0.0f;
+	m[2]  = 0.0f;
+	m[3]  = 0.0; 
+
+	m[4]  = 0.0f;
+	m[5]  = 2.0f * itmb;
+	m[6]  = 0.0f;
+	m[7]  = 0.0; 
+
+	m[8]  = 0.0f;
+	m[9]  = 0.0f;
+	m[10] = 2.0f * ifmn;
+	m[11] = 0.0; 
+
+	m[12] = -(right+left) * irml;
+	m[13] = -(top+bottom) * itmb;
+	m[14] = -(far+near) * ifmn;
+	m[15] = 1.0f;
+}
+
+void build_projection_matrix(float* m, float nearv, float farv, float aspect, float fov)
 {
 	const float h = 1.0f / tan(fov * (M_PI / 360.0));
 	float neg_depth = nearv - farv;
@@ -69,7 +97,7 @@ void build_projection_matrix(float nearv, float farv, float aspect, float fov, f
 	m[12] = 0; m[13] = 0; m[14] = 2.0f * (nearv * farv) / neg_depth; m[15] = 0;
 }
 
-int gluProjectf(float objx, float objy, float objz,
+int project_matrix(float objx, float objy, float objz,
 		   const float modelMatrix[16],
 		   const float projMatrix[16],
 		   const int viewport[4],
@@ -82,9 +110,13 @@ int gluProjectf(float objx, float objy, float objz,
 	in[1]=objy;
 	in[2]=objz;
 	in[3]=1.0;
+
 	mult_matrix_vecf(modelMatrix, in, out);
 	mult_matrix_vecf(projMatrix, out, in);
-	if (in[3] == 0.0) return(GL_FALSE);
+
+	if (in[3] == 0.0)
+		return 0;
+	
 	in[0] /= in[3];
 	in[1] /= in[3];
 	in[2] /= in[3];
@@ -100,7 +132,7 @@ int gluProjectf(float objx, float objy, float objz,
 	*winx=in[0];
 	*winy=in[1];
 	*winz=in[2];
-	return(GL_TRUE);
+	return 1;
 }
 
 int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
