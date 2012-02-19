@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 #include "arcan_math.h"
 #include <SDL_opengl.h>
@@ -16,6 +17,45 @@ static void mult_matrix_vecf(const float matrix[16], const float in[4], float ou
 		in[2] * matrix[2*4+i] +
 		in[3] * matrix[3*4+i];
 	}
+}
+
+/* good chance for speedup here using SSE intrisics */
+void multiply_matrix(float* dst, float* a, float* b)
+{
+	for (int i = 0; i < 16; i+= 4)
+		for (int j = 0; j < 4; j++)
+			dst[i+j] =
+				b[i]   * a[j]   +
+				b[i+1] * a[j+4] +
+				b[i+2] * a[j+8] + 
+				b[i+3] * a[j+12];
+}
+
+void scale_matrix(float* m, float xs, float ys, float zs)
+{
+	m[0] *= xs; m[4] *= ys; m[8] *= zs;
+	m[1] *= xs; m[5] *= ys; m[9] *= zs;
+	m[2] *= xs; m[6] *= ys; m[10] *= zs;
+	m[3] *= xs; m[7] *= ys; m[11] *= zs;
+}
+
+void translate_matrix(float* m, float xt, float yt, float zt)
+{
+	m[12] = m[0] * xt + m[4] * yt + m[8] * zt + m[12];
+	m[13] = m[1] * xt + m[5] * yt + m[9] * zt + m[13];
+	m[14] = m[2] * xt + m[6] * yt + m[10]* zt + m[14];
+	m[15] = m[3] * xt + m[7] * yt + m[11]* zt + m[15];
+}
+
+static float midentity[] =
+ {1.0, 0.0, 0.0, 0.0,
+  0.0, 1.0, 0.0, 0.0,
+  0.0, 0.0, 1.0, 0.0,
+  0.0, 0.0, 0.0, 1.0};
+  
+void identity_matrix(float* m)
+{
+		memcpy(m, midentity, 16 * sizeof(float));
 }
 
 void build_projection_matrix(float nearv, float farv, float aspect, float fov, float m[16])

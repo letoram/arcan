@@ -538,6 +538,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 
 static void arcan_video_gldefault()
 {
+/* not 100% sure which of these have been replaced by the programmable pipeline or not .. */
 	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_SCISSOR_TEST);
 	glDisable(GL_ALPHA_TEST);
@@ -562,32 +563,27 @@ static void arcan_video_gldefault()
 }
 
 
-const static char* defvprg = "\
-uniform mat4 modelview;\
-uniform mat4 projection;\
-\
-attribute vec4 vertex;\
-attribute vec3 normal;\
-attribute vec2 texcoord;\
-\
-varying vec2 texco;\
-\
-void main()\
-{\
-	texco = texcoord;\
-	gl_Position = (modelview * projection) * vertex;\
-}";
+const static char* defvprg =
+"uniform mat4 modelview;"
+"uniform mat4 projection;"
 
-const static char* deffprg = "\
- uniform sampler2D map_diffuse;\
- uniform float obj_opacity;\
- varying vec2 texcoord;\
- \
- void main(){\
-	vec4 color = texture2D(map_diffuse, texcoord);\
-	color.a -= obj_opacity;\
-	gl_FragColor = color;\
- }";
+"attribute vec4 vertex;"
+"attribute vec2 texcoord;"
+"varying vec2 texco;"
+"void main(){"
+"	gl_Position = (projection * modelview) * vertex;"
+"   texco = texcoord;"
+"}";
+
+const static char* deffprg =
+"uniform sampler2D mat_diffuse;"
+"varying vec2 texco;"
+"uniform float obj_opacity;"
+"void main(){"
+"   vec4 col = texture2D(mat_diffuse, texco);"
+"   col.a = col.a * obj_opacity;"
+"	gl_FragColor = col;"
+" }";
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
 {
@@ -812,6 +808,8 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
 
+		GLint txu = 0;
+		arcan_shader_envv(MAP_DIFFUSE_D, &txu, sizeof(txu));
 		glBindTexture(GL_TEXTURE_2D, newvobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -819,7 +817,9 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.ncpt = constraints.bpp;
 		newvobj->default_frame.s_raw = bufs;
 		newvobj->default_frame.raw = buf;
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, newvobj->gl_storage.w, newvobj->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
+					 newvobj->gl_storage.w, newvobj->gl_storage.h, 0,
+			   GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
 		glBindTexture(GL_TEXTURE_2D, 0);
 		newvobj->order = 0;
 		arcan_video_attachobject(rv);
@@ -2447,18 +2447,6 @@ arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon)
 	return rv;
 }
 
-/* push some of the most useful context/video information
- * into the specified shader (assuming there's matching uniforms).
- * This should really be replaced with something more clever .. */
-static void _setgl_stdargs(GLuint progr)
-{
-	GLint tick_count = glGetUniformLocation(progr, "n_ticks");
-
-	if (tick_count != -1) {
-		glUniform1i(tick_count, arcan_video_display.c_ticks);
-	}
-}
-
 bool arcan_video_visible(arcan_vobj_id id)
 {
 	bool rv = false;
@@ -2468,17 +2456,6 @@ bool arcan_video_visible(arcan_vobj_id id)
 		return vobj->current.opa > 0.001;
 
 	return rv;
-}
-
-/* just draw a 'good ol' quad';
- * for GL3/GLES? compat. replace this with a small buffer ... */
-static inline void draw_vobj(float x, float y, float x2, float y2, float zv, float* txcos)
-{
-	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
-
-    glVertexPointer(2, GL_FLOAT, 0, verts);
-    glTexCoordPointer(2, GL_FLOAT, 0, txcos);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
 /* take sprops, apply them to the coordinates in vobj with proper masking (or force to ignore mask), store the results in dprops */
@@ -2538,21 +2515,46 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 	}
 }
 
+static inline void draw_vobj(float x, float y, float x2, float y2, float zv, float* txcos)
+{
+	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
+
+	GLint attrindv = arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX);
+	GLint attrindt = arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
+
+	if (attrindv != -1){
+		glEnableVertexAttribArray(attrindv);
+		glVertexAttribPointer(attrindv, 2, GL_FLOAT, GL_FALSE, 0, verts);
+
+		if (attrindt != -1){
+			glEnableVertexAttribArray(attrindt);
+			glVertexAttribPointer(attrindt, 2, GL_FLOAT, GL_FALSE, 0, txcos);
+		}
+		
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+		if (attrindt != -1)
+			glDisableVertexAttribArray(attrindt);
+		
+		glDisableVertexAttribArray(attrindv);
+	}
+}
+
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
     if (src->state.tag == ARCAN_TAG_ASYNCIMG)
         return;
     
-	float matr[16];
+	float mvm[16], omatr[16], idmatr[16];
 	prop.scale.x *= src->origw * 0.5;
 	prop.scale.y *= src->origh * 0.5;
-	matr_quatf(norm_quat (prop.rotation), matr);
-	
-	glPushMatrix();
-		glTranslatef( prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
-		glMultMatrixf(matr);
-		draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
-	glPopMatrix();
+	matr_quatf(norm_quat (prop.rotation), omatr);
+
+	identity_matrix(idmatr);
+	translate_matrix(idmatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+	multiply_matrix(mvm, idmatr, omatr);
+	arcan_shader_envv(MODELVIEW_MATR, mvm, sizeof(float) * 16);
+	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
 }
 
 void arcan_video_pollfeed()
@@ -2608,10 +2610,6 @@ void arcan_video_refresh_GL(float lerp)
 		current = arcan_refresh_3d(current, lerp);
 	}
 	
-	glEnable(GL_TEXTURE_2D);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-	
 /* if there are any nodes left, treat them as 2D (ortographic projection) */
 	if (current){
 		glDisable(GL_DEPTH_TEST);
@@ -2619,6 +2617,7 @@ void arcan_video_refresh_GL(float lerp)
 		glLoadIdentity();
 		glOrtho(0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 		glGetFloatv(GL_PROJECTION_MATRIX, arcan_video_display.projmatr);
+		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
@@ -2650,6 +2649,7 @@ void arcan_video_refresh_GL(float lerp)
 					glEnable(GL_BLEND);
 					glColor4f(1.0, 1.0, 1.0, dprops.opa);
 				}
+				arcan_shader_envv(OBJ_OPACITY_F, &dprops.opa, sizeof(float));
 				
 				if (elem->flags.cliptoparent && elem->parent != &current_context->world){
 				/* toggle stenciling, reset into zero, draw parent bounding area to stencil only,
@@ -2690,8 +2690,6 @@ void arcan_video_refresh_GL(float lerp)
 
 	glDisableClientState(GL_VERTEX_ARRAY);
 	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-	
-	glDisable(GL_TEXTURE_2D);
 }
 
 void arcan_video_refresh(float tofs)

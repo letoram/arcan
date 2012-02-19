@@ -41,6 +41,12 @@ typedef struct orientation {
 	float matr[16];
 } orientation;
 
+/* Matrix stuff */
+void scale_matrix(float*, float, float, float);
+void translate_matrix(float*, float, float, float);
+void identity_matrix(float*);
+void multiply_matrix(float* dst, float* a, float* b);
+
 /* Vectors */
 quat build_quat_euler(float roll, float pitch, float yaw);
 vector build_vect_polar(const float phi, const float theta);

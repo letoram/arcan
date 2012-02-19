@@ -42,7 +42,7 @@ enum arcan_shader_envts{
 	MODELVIEW_MATR  = 0,
 	PROJECTION_MATR,
 	TEXTURE_MATR,
-	
+
 /* current camera */
 	VIEW_UP_V,
 	VIEW_V,
@@ -53,7 +53,7 @@ enum arcan_shader_envts{
 	OBJ_POS_V,
 	OBJ_ORIENT_V,
 	OBJ_VIEW_V,
-	OBJ_OPACITY_V,
+	OBJ_OPACITY_F,
 
 /* texture mapping */
 	MAP_GENERIC_ND,
@@ -69,7 +69,14 @@ enum arcan_shader_envts{
 	LIGHT_WORLD_DIR_V,
 
 /* system values, don't change this order */
-	TIMESTAMP_D
+	TIMESTAMP_D,
+};
+
+enum shader_vertex_attributes {
+	ATTRIBUTE_VERTEX,
+	ATTRIBUTE_NORMAL,
+	ATTRIBUTE_COLOR,
+	ATTRIBUTE_TEXCORD
 };
 
 /* delete and forget all allocated shaders */
@@ -88,9 +95,14 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid);
 /* pack into a new texture and just return an index to use */
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag);
 
+GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
+
 /* subid ignreod for (! n*) types,
  * value assumed to have type specified in enumlabel */
 void arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
+
+/* for attrib pointers etc. */
+
 
 /* update a specific uniformslot that will map to whatever shader is active,
  * discarded when another shader is deactivated */
