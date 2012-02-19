@@ -476,7 +476,7 @@ int arcan_lua_buildshader(lua_State* ctx)
 int arcan_lua_setshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_shader_id shid = luaL_checkvid(ctx, 2);
+	arcan_shader_id shid = luaL_checknumber(ctx, 2);
 
 	arcan_video_setprogram(id, shid);
 
