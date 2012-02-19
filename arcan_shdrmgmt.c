@@ -193,6 +193,13 @@ static void setv(GLint loc, enum shdrutype kind, void* val)
     
 #ifdef _DEBUG
     if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:post") == -1){
+		printf("failed operation: store type(%i) into slot(%i)\n", kind, loc);
+		struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
+		printf("last active shader: (%s), id(%i), locals: \n", src->label, src->id);
+		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
+			printf("\t [%i] %s : %i\n", i, symtbl[i], src->locations[i]);
+		}
+		
         abort();
     }
 #endif
@@ -204,6 +211,7 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 
 	shid -= shdr_global.base;
  	if (shid < shdr_global.ofs){
+		printf("activate: %i\n", shid);
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
@@ -212,12 +220,14 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	 * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0){
+				printf("setenv: %s, [%i] to %i\n", symtbl [cur->locations[i]], i, cur->locations[i]);
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i]);
             }
 		}
-			
+
+		printf("activated.\n");
 		rv = ARCAN_OK;
-	}
+	} else printf("couldn't activate %i\n", shid);
 }
 
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)

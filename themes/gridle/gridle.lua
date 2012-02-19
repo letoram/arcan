@@ -17,12 +17,8 @@ void main(void)
 }]];
 
 fragment_shader = [[
-uniform sampler2D map_diffuse;
-varying vec2 texco;
-
 	void main() {
-    vec4 color = texture2D(map_diffuse, texco);
-	gl_FragColor = color;
+	gl_FragColor = vec4(255.0, 0.0, 0.0, 1.0);
 }
 ]];
 
@@ -141,7 +137,6 @@ function gridle()
 
 	load_settings();
 	local bgshader = build_shader(vertex_shader, fragment_shader);
-	
 -- We'll reduce stack layers and increase number of elements,
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size
 	system_context_size( (VRESW * VRESH) / (settings.cell_width * settings.cell_height) * 6 );
@@ -195,7 +190,6 @@ function gridle()
     show_image(bgimage);
     switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 	build_fadefunctions();
-
 end
 
 function cell_coords(x, y)

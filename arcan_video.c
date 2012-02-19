@@ -2276,6 +2276,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	if (vobj && vobj->flags.clone == true)
 		rv = ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	else if (vobj && id > 0) {
+		printf("setting vobj id :%i\n", shid);
 		vobj->gl_storage.program = shid;
 		rv = ARCAN_OK;
 	}
@@ -2624,6 +2625,8 @@ void arcan_video_refresh_GL(float lerp)
 		 */
 			if ( elem->order >= 0){
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
+				if(elem->gl_storage.program > 0)
+					arcan_shader_activate(elem->gl_storage.program);
 				
 				if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force )){
 					glDisable(GL_BLEND);
