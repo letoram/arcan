@@ -2268,7 +2268,7 @@ static void compact_transformation(arcan_vobject* base, unsigned int ofs, unsign
 	}
 }
 
-arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const char* fprogram)
+arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -2276,6 +2276,8 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, const char* vprogram, const 
 	if (vobj && vobj->flags.clone == true)
 		rv = ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	else if (vobj && id > 0) {
+		vobj->gl_storage.program = shid;
+		rv = ARCAN_OK;
 	}
 
 	return rv;

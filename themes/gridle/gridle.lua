@@ -1,21 +1,59 @@
 vertex_shader = [[
-uniform int n_ticks;
+uniform vec4 modelview;
+uniform vec4 projection;
+uniform int timestamp;
+
+attribute vec4 vertex;
+attribute vec2 texcoord;
+
+varying vec2 texco;
 
 void main(void)
 {
-    gl_TexCoord[0] = gl_MultiTexCoord0;
-    gl_TexCoord[0].s = gl_TexCoord[0].s + fract(float(n_ticks) / 64.0);
-    gl_TexCoord[0].t = gl_TexCoord[0].t + fract(float(n_ticks) / 64.0);
-    gl_Position = ftransform();
+	texco.s = texcoord.s + fract(float(timestamp) / 64.0);
+	texco.t = texcoord.t + fract(float(timestamp) / 64.0);
+	
+	gl_Position = (projection * modelview) * vertex;
 }]];
 
 fragment_shader = [[
-#version 120
-uniform sampler2D tex;
+uniform sampler2D map_diffuse;
+varying vec2 texco;
 
-void main() {
-    vec4 color = texture2D(tex, gl_TexCoord[0].st);
+	void main() {
+    vec4 color = texture2D(map_diffuse, texco);
 	gl_FragColor = color;
+}
+]];
+
+scanline_vertrex_shader = [[
+	uniform vec4 modelview;
+	uniform vec4 projection;
+
+	attribute vec4 vertex;
+	attribute vec2 texcoord;
+	varying vec2 texo;
+	varying vec2 omega;
+
+void main(void)
+{
+	omega = (3.14157 * outputsize.x * texturesize.x / inputsize.x, 2.0 * 3.1415 * rubytexturesize.y);
+	gl_Position = (projection * modelview) * vertex;
+	texco = texcoord;
+};]];
+
+scanline_fragment_shader = [[
+uniform sampler2D map_diffuse;
+varying vec2 omega;
+varying vec2 texco;
+const float base_brightness = 0.85;
+const vec2 sine_comp = vec2(0.0005, 0.35);
+
+void main()
+{
+	vec4 c11 = texture2D(map_diffuse, texco);
+	vec4 scanline = c11 * (base_brightness + dot(sine_comp * sin(texco * omega), vec2(1.0)));
+	gl_FragColor = clamp(scanline, 0.0, 1.0);
 }
 ]];
 
@@ -103,6 +141,7 @@ function gridle()
 	end
 
 	load_settings();
+	local bgshader = build_shader(vertex_shader, fragment_shader);
 	
 -- We'll reduce stack layers and increase number of elements,
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size
@@ -150,7 +189,7 @@ function gridle()
     bgimage = load_image("background.png");
     resize_image(bgimage, VRESW, VRESH);
     image_scale_txcos(bgimage, VRESW / 32, VRESH / 32);
-    image_program(bgimage, vertex_shader, fragment_shader);
+    image_shader(bgimage, bgshader);
     show_image(bgimage);
     switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 	build_fadefunctions();

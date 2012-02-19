@@ -22,8 +22,6 @@
 #ifndef _HAVE_ARCAN_SHADERMGMT
 #define _HAVE_ARCAN_SHADERMGMT
 
-typedef unsigned arcan_shader_id;
-
 enum shdrutype {
 	shdrbool,
 	shdrint,
@@ -95,7 +93,7 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid);
 /* pack into a new texture and just return an index to use */
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag);
 
-GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
+int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 
 /* subid ignreod for (! n*) types,
  * value assumed to have type specified in enumlabel */

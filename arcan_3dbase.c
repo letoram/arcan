@@ -29,6 +29,7 @@
 // #define M_PI 3.14159265358979323846
 
 extern struct arcan_video_display arcan_video_display;
+static arcan_shader_id default_3dprog;
 
 /* since the 3d is planned as a secondary feature, rather than the primary one,
  * things work slightly different as each 3d object is essentially coupled to 1..n of 2D
@@ -92,6 +93,8 @@ struct geometry {
 
 typedef struct {
 	struct geometry geometry;
+	arcan_shader_id program;
+	
 	unsigned char nsets;
 
 /* Frustum planes */
@@ -222,6 +225,12 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 
 	while (base){
 		unsigned counter = 0;
+		int attribv = arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX);
+		int attribn = arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL);
+		int attribt = arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
+
+		if (!attribv)
+			continue;
 		
 		if (base->normals){
 			glEnableClientState(GL_NORMAL_ARRAY);
@@ -230,7 +239,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
-		glVertexPointer(3, GL_FLOAT, 0, base->verts);
 		if (texture && base->ntus > 0){
 			for (unsigned i = 0; i < base->ntus && i < GL_MAX_TEXTURE_UNITS && (i + cframe) < vobj->frameset_capacity; i++){
 				glEnable(GL_TEXTURE_2D);
@@ -239,7 +247,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 
 					glClientActiveTexture(counter++);
 					glTexCoordPointer(2, GL_FLOAT, 0, base->txcos[i]);
-					glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 					glBindTexture(GL_TEXTURE_2D, vobj->frameset[cframe + i]->gl_storage.glid);
 				}
 			}	
@@ -677,7 +684,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource)
 		if (newmodel->geometry.nverts){
 			empty.x = newmodel->geometry.verts[0];
 			empty.y = newmodel->geometry.verts[1];
-			empty.z = newmodel->geometry.verts[2];			
+			empty.z = newmodel->geometry.verts[2];
 		}
 		newmodel->bbmin = empty;
 		newmodel->bbmax = empty;
@@ -698,6 +705,8 @@ error:
 	arcan_warning("arcan_3d_loadmodel(), couldn't load 3dmodel (%s)\n", resource);
 	return ARCAN_EID;
 }
+
+
 
 void arcan_3d_setdefaults()
 {
