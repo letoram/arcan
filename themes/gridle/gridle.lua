@@ -1,6 +1,6 @@
 vertex_shader = [[
-uniform vec4 modelview;
-uniform vec4 projection;
+uniform mat4 modelview;
+uniform mat4 projection;
 uniform int timestamp;
 
 attribute vec4 vertex;
@@ -17,9 +17,11 @@ void main(void)
 }]];
 
 fragment_shader = [[
+	uniform sampler2D map_diffuse;
+	varying vec2 texco;
 	void main() {
-	gl_FragColor = vec4(255.0, 0.0, 0.0, 1.0);
-}
+		gl_FragColor = texture2D(map_diffuse, texco);
+	}
 ]];
 
 scanline_vertrex_shader = [[

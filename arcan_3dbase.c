@@ -8,6 +8,8 @@
 
 #include <openctm.h>
 
+#define GL_GLEXT_PROTOTYPES 1
+
 #ifdef POOR_GL_SUPPORT
  #define GLEW_STATIC
  #define NO_SDL_GLEXT
@@ -74,15 +76,11 @@ typedef struct {
 struct geometry {
 	unsigned nverts;
 	float* verts;
+	float* txcos;
 	unsigned ntris;
 	unsigned nindices;
 	GLenum indexformat;
 	void* indices;
-
-/* ntus used and sets of txcos available,
- * the glid will be picked from the frames in the video object */
-	unsigned ntus;
-	float** txcos;
 
 	bool opaque;
 	
@@ -187,67 +185,77 @@ static void freemodel(arcan_3dmodel* src)
 		free(src->geometry.verts);
 		free(src->geometry.normals);
 
-		float** txcos = src->geometry.txcos;
-//		while(txcos && *txcos)
-//			free((*txcos)++);
-
-		if (txcos)
-			free(txcos);
+		if (src->geometry.txcos)
+			free(src->geometry.txcos);
 	}
 }
 
 /*
  * Render-loops, Pass control, Initialization
  */
-static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_properties props, bool texture)
+static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_properties props, bool texture, float* modelview)
 {
 	if (props.opa < EPSILON)
 		return;
 
-	glPushMatrix();
-
+	unsigned cframe = 0;
+	float wmvm[16];
+	
 //	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	/* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
 	if (src->flags.infinite){
-        glLoadIdentity();
+		identity_matrix(wmvm);
 		glDepthMask(GL_FALSE);
 		glEnable(GL_DEPTH_TEST);
-	}
+	} else
+		memcpy(wmvm, modelview, sizeof(float) * 16);
 
-	float rotmat[16];
-	glTranslatef(props.position.x, props.position.y, props.position.z);
-	matr_quatf(props.rotation, rotmat);
-	glMultMatrixf(rotmat);
+	float dmatr[16], omatr[16];
 
-	unsigned cframe = 0;
+/* reposition the current modelview, set it as the current shader data,
+ * enable vertex attributes and issue drawcalls */
+	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
+	matr_quatf(props.rotation, omatr);
+	multiply_matrix(dmatr, wmvm, omatr);
+	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+	
 	struct geometry* base = &src->geometry;
 
 	while (base){
 		unsigned counter = 0;
-		int attribv = arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX);
-		int attribn = arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL);
-		int attribt = arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD);
+		int attribs[3] = {arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
+			arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
+			arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)};
 
-		if (!attribv)
+		if (attribs[0] == -1)
 			continue;
-		
-		if (base->normals){
-			glEnableClientState(GL_NORMAL_ARRAY);
-			glNormalPointer(GL_FLOAT, 0, base->normals);
+		else {
+			glEnableVertexAttribArray(attribs[0]);
+			glVertexAttribPointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
 		}
 
+		if (attribs[1] != -1 && base->normals){
+			glEnableVertexAttribArray(attribs[1]);
+			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE, 0, base->normals);
+		} else attribs[1] = -1;
+
+		if (attribs[2] != -1){
+			glEnableVertexAttribArray(attribs[2]);
+			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
+		} else attribs[2] = -1;
+		
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
-		if (texture && base->ntus > 0){
-			for (unsigned i = 0; i < base->ntus && i < GL_MAX_TEXTURE_UNITS && (i + cframe) < vobj->frameset_capacity; i++){
-				glEnable(GL_TEXTURE_2D);
-				if (vobj->frameset[cframe + i] &&
-					vobj->frameset[cframe + i]->gl_storage.glid){
+		if (texture){
+			for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity; i++){
+				arcan_vobject* frame = vobj->frameset[i+cframe];
 
+				if (frame && frame->gl_storage.glid){
 					glClientActiveTexture(counter++);
-					glTexCoordPointer(2, GL_FLOAT, 0, base->txcos[i]);
-					glBindTexture(GL_TEXTURE_2D, vobj->frameset[cframe + i]->gl_storage.glid);
+					glEnable(GL_TEXTURE_2D);
+					glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
+					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)); 
 				}
 			}	
 		}
@@ -261,12 +269,16 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 /* and reverse transitions again for the next client */
 		while (counter-- > 0){
 			glClientActiveTexture(counter);
-			glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		if (base->normals)
-			glDisableClientState(GL_NORMAL_ARRAY);
+		for (unsigned i=cframe; i < vobj->frameset_capacity; i++){
+			arcan_vobject* frame = vobj->frameset[i];
+			if (frame && frame->gl_storage.glid){
+				unsigned zero = 0;
+				arcan_shader_envv(frame->gl_storage.maptype, &zero, sizeof(zero));
+			}
+		}
 
         /* bounding box, normals/face normals, ... */
 		if (src->flags.debug_vis){
@@ -282,20 +294,20 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 			glEnd();
 			glColor4f(1.0, 1.0, 1.0, 1.0);
 		}
-        
+
+		for (int i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
+			if (attribs[i] != -1)
+				glDisableVertexAttribArray(attribs[i]);
+			
         cframe++;
 		base = base->next;
 	}
 
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-	glPopMatrix();
-	
+/* revert from infinite geometry */
 	if (src->flags.infinite){
 		glDepthMask(GL_TRUE);
 		glEnable(GL_DEPTH_TEST);
 	}
-	
 }
 
 /* the current model uses the associated scaling / blending
@@ -321,16 +333,10 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 }
 
 /* Simple one- off rendering pass, no exotic sorting, culling structures, projections or other */
-static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
+static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* modelview, float* projection)
 {
-	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnable(GL_DEPTH_TEST);
 	glCullFace(GL_BACK);
-	glFrontFace(GL_CCW);
-	
-	glMatrixMode(GL_TEXTURE);
-	glLoadIdentity();
-	glMatrixMode(GL_MODELVIEW);
 	
 	arcan_vobject_litem* current = cell;
 	while (current){
@@ -338,17 +344,10 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp)
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
 
-		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, dprops, true);
+		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, dprops, true, modelview);
 
 		current = current->next;
 	}
-
-	glFrontFace(GL_CW);
-	glMatrixMode(GL_TEXTURE);
-	glLoadIdentity();
-	glMatrixMode(GL_MODELVIEW);
-	
-	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 /* Chained to the video-pass in arcan_video, stop at the first non-negative order value */
@@ -359,19 +358,15 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 	glColor4f(1.0, 1.0, 1.0, 1.0);
 	
 	while(base){
-		float matr[16];
+		float matr[16], dmatr[16];
 
 		switch(base->type){
 			case virttype_camera :
-            glMatrixMode(GL_PROJECTION);
-                glLoadMatrixf(base->projmatr);
-
-                glMatrixMode(GL_MODELVIEW);
-					glLoadIdentity();
-                    glMultMatrixf(base->direction.matr);
-                    glTranslatef(base->position.x, base->position.y, base->position.z);
-
-                    process_scene_normal(cell, frag);
+				arcan_shader_envv(PROJECTION_MATR, base->projmatr, sizeof(float) * 16);
+				identity_matrix(matr);
+				translate_matrix(matr, base->position.x, base->position.y, base->position.z);
+				multiply_matrix(dmatr, matr, base->direction.matr);
+				process_scene_normal(cell, frag, dmatr, base->projmatr);
 
 /* curious about deferred shading and forward shadow mapping, thus likely the first "hightech" renderpath */
 			case virttype_dirlight   : break;
@@ -454,8 +449,6 @@ arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, 
 		state.ptr = (void*) newmodel;
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-		newmodel->geometry.ntus  = 1;
-		newmodel->geometry.txcos = (float**) calloc(sizeof(float*), 2);
 	}
 
 	return rv;
@@ -481,11 +474,9 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 
 		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
-		newmodel->geometry.ntus  = 1;
-		newmodel->geometry.txcos = (float**) calloc(sizeof(float*), 2);
 		
 		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
-					 &newmodel->geometry.txcos[0], &newmodel->geometry.nverts, &newmodel->geometry.nindices);
+					 &newmodel->geometry.txcos, &newmodel->geometry.nverts, &newmodel->geometry.nindices);
 
 		newmodel->geometry.ntris = newmodel->geometry.nindices / 3;
 		arcan_video_allocframes(rv, 1);
@@ -555,17 +546,12 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 		}
 	}
 
-	/* each txco set can have a different vid associated with it (multitexturing stuff),
-	 * possibly also specify filtermode, "mapname" and some other data currently ignored */
+/* we require the model to be presplit on texture,
+ * so n maps but 1 set of txcos */
 	if (uvmaps > 0){
-		dst->txcos = (float**) calloc(sizeof(float**), uvmaps + 1);
-        dst->ntus = uvmaps;
 		unsigned txsize = sizeof(float) * 2 * dst->nverts;
-                                            
-		for (int i = 0; i < uvmaps; i++){
-			dst->txcos[i] = (float*) malloc(txsize);
-			memcpy(dst->txcos[i], ctmGetFloatArray(ctx, CTM_UV_MAP_1 + i), txsize);
-		}
+		dst->txcos = (float*) malloc(txsize);
+		memcpy(dst->txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1), txsize);
 	}
 }
 

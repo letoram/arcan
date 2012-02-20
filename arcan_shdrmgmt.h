@@ -54,7 +54,7 @@ enum arcan_shader_envts{
 	OBJ_OPACITY_F,
 
 /* texture mapping */
-	MAP_GENERIC_ND,
+	MAP_GENERIC_D,
 	MAP_DISPLACEMENT_D,
 	MAP_BUMP_D,
 	MAP_SHADOW_D,
@@ -67,6 +67,7 @@ enum arcan_shader_envts{
 	LIGHT_WORLD_DIR_V,
 
 /* system values, don't change this order */
+	FRACT_TIMESTAMP_F, 
 	TIMESTAMP_D,
 };
 

@@ -94,11 +94,13 @@ typedef struct arcan_vobject {
 	struct {
 		GLuint glid;
 		uint8_t c_glid;
-		arcan_shader_id program;
 		uint16_t w, h;
+		uint8_t ncpt;
 		GLuint txu, txv;
         enum arcan_vimage_mode scale;
-		uint8_t ncpt;
+
+		arcan_shader_id program;
+		unsigned maptype;
 	} gl_storage;
 	
 	float txcos[8];

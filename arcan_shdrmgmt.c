@@ -57,6 +57,7 @@ struct shader_envts {
 	vector light_worlddir;
 	
 /* system values, don't change this order */
+	float fract_timestamp;
 	arcan_tickv timestamp;
 }; 
 
@@ -92,6 +93,7 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, light_worlddir),
 	
 /* system values, don't change this order */
+	offsetof(struct shader_envts, fract_timestamp),
 	offsetof(struct shader_envts, timestamp)
 };
 
@@ -116,6 +118,7 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrint,
 	shdrint,
 	shdrvec3, /* light worlddir */
+	shdrfloat,
 	shdrint
 };
 
@@ -140,6 +143,7 @@ static char* symtbl[TBLSIZE] = {
 	"map_specular",
 	"map_diffuse",
 	"light_worlddir",
+	"fract_timestamp",
 	"timestamp"
 };
 
@@ -211,7 +215,6 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 
 	shid -= shdr_global.base;
  	if (shid < shdr_global.ofs){
-		printf("activate: %i\n", shid);
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
@@ -220,14 +223,14 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	 * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0){
-				printf("setenv: %s, [%i] to %i\n", symtbl [cur->locations[i]], i, cur->locations[i]);
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i]);
             }
 		}
 
-		printf("activated.\n");
 		rv = ARCAN_OK;
-	} else printf("couldn't activate %i\n", shid);
+	}
+
+	return rv;
 }
 
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
@@ -247,7 +250,7 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
 #ifdef _DEBUG
             if(cur->locations[i] != -1)
-            arcan_warning("arcan_shader_build(%s)(%d), resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
+				arcan_warning("arcan_shader_build(%s)(%d), resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
 #endif
         }
 
@@ -255,7 +258,7 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 			cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
 #ifdef _DEBUG
             if (cur->attributes[i] != -1)
-            arcan_warning("arcan_shader_build(%s)(%d), resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
+				arcan_warning("arcan_shader_build(%s)(%d), resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
 #endif
 		}
 		

@@ -130,7 +130,8 @@ static struct arcan_video_context* current_context = context_stack;
 static void allocate_and_store_globj(arcan_vobject* dst){
 	glGenTextures(1, &dst->gl_storage.glid);
 	glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
-
+	dst->gl_storage.maptype = MAP_GENERIC_D;
+	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
@@ -802,7 +803,8 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
-
+		newvobj->gl_storage.maptype = MAP_GENERIC_D;
+		
 	/* tacitly assume diffuse is bound to tu0 */
 		glBindTexture(GL_TEXTURE_2D, newvobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1699,6 +1701,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->current.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		vobj->parent = &current_context->world;
 		glGenTextures(1, &vobj->gl_storage.glid);
+		vobj->gl_storage.maptype = MAP_GENERIC_D;
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -2604,6 +2607,7 @@ void arcan_video_refresh_GL(float lerp)
 		glDisable(GL_DEPTH_TEST);
 		memcpy(arcan_video_display.projmatr, ortho_proj, sizeof(float) * 16);
 		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
+		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	
 		while (current){
@@ -2627,6 +2631,8 @@ void arcan_video_refresh_GL(float lerp)
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 				if(elem->gl_storage.program > 0)
 					arcan_shader_activate(elem->gl_storage.program);
+				else
+					arcan_shader_activate(arcan_video_display.defaultshdr);
 				
 				if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force )){
 					glDisable(GL_BLEND);
