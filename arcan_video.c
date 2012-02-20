@@ -92,7 +92,8 @@ struct arcan_video_display arcan_video_display = {
 	.suspended = false,
 	.c_ticks = 1,
 	.default_vitemlim = 1024,
-	.imageproc = imageproc_normal
+	.imageproc = imageproc_normal,
+    .mipmap = true
 };
 
 struct arcan_video_context {
@@ -136,9 +137,13 @@ static void allocate_and_store_globj(arcan_vobject* dst){
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
-	
+    if (arcan_video_display.mipmap)
+        glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+	else   
+        glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
+    
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, dst->gl_storage.w, dst->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->default_frame.raw);
-}
+    }
 
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 {
@@ -548,10 +553,15 @@ static void arcan_video_gldefault()
 	glDisable(GL_LIGHTING);
 	glDisable(GL_FOG);
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_MULTISAMPLE);
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 	glAlphaFunc(GL_GREATER, 0);
-
+    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST );
+    glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST );
+    
+    glEnable(GL_LINE_SMOOTH);
+    glEnable(GL_POLYGON_SMOOTH);
 	build_orthographic_matrix(ortho_proj, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
@@ -587,6 +597,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 	SDL_WM_SetCaption("Arcan", "Arcan");
 
 	arcan_video_display.fullscreen = fs;

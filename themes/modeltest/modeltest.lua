@@ -36,7 +36,7 @@ function modeltest()
 	model = generic_load( arguments[1] );
 	switch_default_imageproc(IMAGEPROC_NORMAL);
 
-	image_shader(model.vid, shdr);
+--	image_shader(model.vid, shdr);
 --	print("loaded model to: " .. model.vid);
 	scale_3dvertices(model.vid);
 	mousex = VRESW * 0.5;
