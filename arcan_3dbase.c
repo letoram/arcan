@@ -214,7 +214,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 
 	float dmatr[16], omatr[16];
 
-    
+    float opa = 1.0;
+    arcan_shader_envv(OBJ_OPACITY_F, &opa, sizeof(float));
+
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
@@ -250,7 +252,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
 		if (texture){
-			for (unsigned i = 0; i+txofs < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity; i++){
+			for (unsigned i = 0; i+txofs < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i < base->nmaps; i++){
 				arcan_vobject* frame = vobj->frameset[i+cframe];
 
 				if (frame && frame->gl_storage.glid){

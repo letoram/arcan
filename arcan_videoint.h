@@ -149,6 +149,7 @@ struct arcan_video_display {
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
 	GLuint deftxs, deftxt;
+    bool mipmap;
 	
 	SDL_Surface* screen;
     uint32_t nalive, nglalive;
