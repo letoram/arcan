@@ -1316,10 +1316,11 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 int arcan_lua_loadmesh(lua_State* ctx)
 {
     arcan_vobj_id did = luaL_checkvid(ctx, 1);
+    unsigned nmaps = luaL_optnumber(ctx, 3, 1);
     char* path = findresource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
     if (path){
-        arcan_3d_addmesh(did, path);
+        arcan_3d_addmesh(did, path, nmaps);
     }
     
     return 0;
