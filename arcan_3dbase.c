@@ -74,6 +74,7 @@ typedef struct {
 } arcan_3dscene;
 
 struct geometry {
+    unsigned nmaps;
 	unsigned nverts;
 	float* verts;
 	float* txcos;
@@ -193,7 +194,7 @@ static void freemodel(arcan_3dmodel* src)
 /*
  * Render-loops, Pass control, Initialization
  */
-static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_properties props, bool texture, float* modelview)
+static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_properties props, bool texture, float* modelview, unsigned txofs)
 {
 	if (props.opa < EPSILON)
 		return;
@@ -213,6 +214,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 
 	float dmatr[16], omatr[16];
 
+    
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
@@ -248,11 +250,11 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
 		if (texture){
-			for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity; i++){
+			for (unsigned i = 0; i+txofs < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity; i++){
 				arcan_vobject* frame = vobj->frameset[i+cframe];
 
 				if (frame && frame->gl_storage.glid){
-					glClientActiveTexture(counter++);
+					glClientActiveTexture(GL_TEXTURE0 + txofs + counter++);
 					glEnable(GL_TEXTURE_2D);
 					glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
 					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)); 
@@ -266,13 +268,14 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 		else
 			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
 
+        
 /* and reverse transitions again for the next client */
 		while (counter-- > 0){
-			glClientActiveTexture(counter);
+			glClientActiveTexture(GL_TEXTURE0 + txofs + counter);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		for (unsigned i=cframe; i < vobj->frameset_capacity; i++){
+		for (unsigned i=cframe; i < vobj->frameset_capacity && i < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i];
 			if (frame && frame->gl_storage.glid){
 				unsigned zero = 0;
@@ -280,26 +283,11 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 			}
 		}
 
-        /* bounding box, normals/face normals, ... */
-		if (src->flags.debug_vis){
-            glColor4f(0.5, 0.5, 1.0, 1.0);
-			wireframe_box(src->bbmin.x, src->bbmin.y, src->bbmin.z, src->bbmax.x, src->bbmax.y, src->bbmax.z);
-			glBegin(GL_LINES);
-				glVertex3f(src->bbmin.x - 1.0, 0.0, 0.0);
-				glVertex3f(src->bbmax.x + 1.0, 0.0, 0.0);
-				glVertex3f(0.0, src->bbmin.y - 1.0, 0.0);
-				glVertex3f(0.0, src->bbmax.y + 1.0, 0.0);
-				glVertex3f(0.0, 0.0, src->bbmin.z - 1.0);
-				glVertex3f(0.0, 0.0, src->bbmax.z + 1.0);
-			glEnd();
-			glColor4f(1.0, 1.0, 1.0, 1.0);
-		}
-
 		for (int i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
 			if (attribs[i] != -1)
 				glDisableVertexAttribArray(attribs[i]);
 			
-        cframe++;
+        cframe += base->nmaps;
 		base = base->next;
 	}
 
@@ -343,8 +331,9 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
-
-		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, dprops, true, modelview);
+        
+        arcan_shader_activate(current->elem->gl_storage.program);
+		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, dprops, true, modelview, 0);
 
 		current = current->next;
 	}
@@ -364,8 +353,8 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 			case virttype_camera :
 				arcan_shader_envv(PROJECTION_MATR, base->projmatr, sizeof(float) * 16);
 				identity_matrix(matr);
-				translate_matrix(matr, base->position.x, base->position.y, base->position.z);
 				multiply_matrix(dmatr, matr, base->direction.matr);
+				translate_matrix(dmatr, base->position.x, base->position.y, base->position.z);
 				process_scene_normal(cell, frag, dmatr, base->projmatr);
 
 /* curious about deferred shading and forward shadow mapping, thus likely the first "hightech" renderpath */
@@ -549,6 +538,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 /* we require the model to be presplit on texture,
  * so n maps but 1 set of txcos */
 	if (uvmaps > 0){
+        dst->nmaps = 1;
 		unsigned txsize = sizeof(float) * 2 * dst->nverts;
 		dst->txcos = (float*) malloc(txsize);
 		memcpy(dst->txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1), txsize);
@@ -557,7 +547,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 
 
 
-void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource)
+void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);	
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -580,6 +570,7 @@ void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource)
 
 		/* load / parsedata into geometry slot */
 			loadmesh(*nextslot, ctx);
+            (*nextslot)->nmaps = nmaps;
 			
 			minmax_verts(&dst->bbmin, &dst->bbmax, (*nextslot)->verts, (*nextslot)->nverts);
 		}

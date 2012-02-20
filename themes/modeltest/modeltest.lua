@@ -1,3 +1,20 @@
+vshader = [[
+	uniform mat4 modelview;
+	uniform mat4 projection;
+
+	attribute vec4 vertex;
+
+void main(){
+	gl_Position = (projection * modelview) * vertex;
+}
+]];
+
+fshader = [[
+	void main() {
+		gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);
+	}
+]];
+
 function modeltest()
 	symtable = system_load("scripts/symtable.lua")();
 	local confun = system_load("scripts/console.lua")();
@@ -10,6 +27,8 @@ function modeltest()
 	sidestepsize = 0.0;
 	fwdstepsize = 0.0;
 	
+	shdr = build_shader(vshader, fshader);
+	
 --	games = list_games( {} );
 --	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
 
@@ -17,6 +36,7 @@ function modeltest()
 	model = generic_load( arguments[1] );
 	switch_default_imageproc(IMAGEPROC_NORMAL);
 
+	image_shader(model.vid, shdr);
 --	print("loaded model to: " .. model.vid);
 	scale_3dvertices(model.vid);
 	mousex = VRESW * 0.5;
@@ -33,10 +53,10 @@ function modeltest()
 	contbl = create_console(VRESW , VRESH / 4, "fonts/default.ttf", 18);
 	console_enabled = false;
 	contbl:hide();
-	mpvid, aid = launch_target("Moon Patrol", 1);
-	hide_image(mpvid);
+--	mpvid, aid = launch_target("Moon Patrol", 1);
+--	hide_image(mpvid);
 	move3d_camera(0.0, 0.0, -5.0);
-	set_image_as_frame(model.vid, mpvid, model.labels["display"]);
+--	set_image_as_frame(model.vid, mpvid, model.labels["display"]);
 end
 
 function load_material(modelname, meshname)
@@ -93,7 +113,7 @@ function modeltest_clock_pulse()
 end
 
 function modeltest_input(iotable)
-	target_input(iotable, mpvid);
+--	target_input(iotable, mpvid);
 	
 	if (iotable.kind == "digital") then
 		if (console_enabled and iotable.active) then

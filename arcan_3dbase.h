@@ -38,7 +38,7 @@ arcan_vobj_id arcan_3d_loadmodel(const char* resource);
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens);
 
 /* add an additional piece of geometry to the specified model */
-void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource);
+void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps);
 
 /* scans through the specified model and all its' meshes,
  * rebuild the bounding volume and using that, maps all vertex values
