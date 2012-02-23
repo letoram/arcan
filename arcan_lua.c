@@ -467,8 +467,9 @@ int arcan_lua_buildshader(lua_State* ctx)
 {
 	const char* vprog = luaL_checkstring(ctx, 1);
 	const char* fprog = luaL_checkstring(ctx, 2);
+	const char* label = luaL_optstring(ctx, 3, "USERSHDR");
 	
-	arcan_shader_id rv = arcan_shader_build("USERSHDR", NULL, vprog, fprog);
+	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
 	lua_pushnumber(ctx, rv);
 	return 1;
 }
@@ -1338,22 +1339,15 @@ int arcan_lua_loadmesh(lua_State* ctx)
     return 0;
 }
 
-int arcan_lua_loadmodel(lua_State* ctx)
+int arcan_lua_buildmodel(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
-	uint8_t prio = luaL_optint(ctx, 2, 0);
+	id = arcan_3d_emptymodel();
 	
-	if (path)
-		id = arcan_3d_loadmodel(path);
-	
-	/* loaded images start out hidden */
 	if (id != ARCAN_EID)
 		arcan_video_objectopacity(id, 0, 0);
 	
-	free(path);
 	lua_pushvid(ctx, id);
-	
 	return 1;
 }
 
@@ -1415,6 +1409,15 @@ int arcan_lua_forwardcamera(lua_State* ctx)
 	unsigned camtag = luaL_optint(ctx, 3, 0);
 	
 	arcan_3d_forwardcamera(camtag, step, dt);
+	return 0;
+}
+
+int arcan_lua_imagemaptype(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	unsigned maptype = luaL_checknumber(ctx, 2);
+	
+	arcan_video_objectmaptype(id, maptype);
 	return 0;
 }
 
@@ -2458,6 +2461,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:image_mask_clear,vid,enumint,nil */
 	lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
 
+/* item:image_maptype,vid,enumint,nil*/
+	lua_register(ctx, "image_maptype", arcan_lua_imagemaptype);
+	
 /* item:image_surface_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
 
@@ -2499,7 +2505,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* category: 3d */
 /* item:load_3dmodel, resource, vid */
-    lua_register(ctx, "load_3dmodel", arcan_lua_loadmodel);
+    lua_register(ctx, "new_3dmodel", arcan_lua_buildmodel);
     
 /* item:add_3dmesh, dstvid, resource, nil */
 	lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
@@ -2690,6 +2696,15 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: LEDCONTROLLERS,string */
 	arcan_lua_setglobalint(ctx, "LEDCONTROLLERS", arcan_led_controllers());
 
+/* constant: MAPTYPE_NORMAL,num */
+	arcan_lua_setglobalint(ctx, "MAPTYPE_BUMP",	MAP_BUMP_D);
+	arcan_lua_setglobalint(ctx, "MAPTYPE_SHADOW", MAP_SHADOW_D);
+	arcan_lua_setglobalint(ctx, "MAPTYPE_REFLECTION", MAP_REFLECTION_D);
+	arcan_lua_setglobalint(ctx, "MAPTYPE_NORMAL", MAP_NORMAL_D);
+	arcan_lua_setglobalint(ctx, "MAPTYPE_SPECULAR",	MAP_SPECULAR_D);
+	arcan_lua_setglobalint(ctx, "MAPTYPE_DIFFUSE", MAP_DIFFUSE_D);
+	arcan_lua_setglobalint(ctx, "MAPTYPE_DISPLACEMENT", MAP_DISPLACEMENT_D);	
+	
 /* constant: NOW, int */
 	arcan_lua_setglobalint(ctx, "NOW", 0);
 }

@@ -20,27 +20,31 @@ function load_model_generic(modelname)
 	local meshes   = glob_resource(basep .. "*.ctm", SHARED_RESOURCE);
 	if (#meshes == 0) then return nil end
   
-	local model  = {}
-	model.labels = {} -- map frame # to filename
-	model.images = {} -- map frame # to vid
-	
-	model.vid = load_3dmodel( basep .. meshes[1] );
+	local model  = {
+		labels = {}, images = {}
+};
+
+-- This just gives us an empty model to fill with meshes,
+-- however it provides a reference point for other vid operations (i.e.
+-- instancing, linking etc.)
+
+	model.vid = new_3dmodel();
 	if (model.vid == BADID) then return nil end
-	image_framesetsize(model.vid, #meshes);
+	image_framesetsize(model.vid, #meshes * 2);
 
 	for i=1, #meshes do
-		if (i > 1) then
-			add_3dmesh(model.vid, basep .. meshes[i]);
-		end
-
+		slot = (i-1) * 2;
+		add_3dmesh(model.vid, basep .. meshes[i], 2);
 		switch_default_imageproc(IMAGEPROC_FLIPH);
-		local vid = load_material(modelname, string.sub(meshes[i], 1, -5));
+			local vid = load_material(modelname, string.sub(meshes[i], 1, -5));
+			image_maptype(vid, MAPTYPE_NORMAL);
 		switch_default_imageproc(IMAGEPROC_NORMAL);
 
-		model.labels[string.sub(meshes[i], 1, -5)] = i-1;
-		model.images[i-1] = vid;
+		model.labels[string.sub(meshes[i], 1, -5)] = slot;
+		model.images[slot] = vid;
 
-		set_image_as_frame(model.vid, vid, i-1, 1);
+		set_image_as_frame(model.vid, vid, slot, 1);
+		set_image_as_frame(model.vid, fill_surface(8, 8, math.random(1, 255), math.random(1,255), math.random(1,255)), slot+1, 1);
 	end
 	
 	return model;

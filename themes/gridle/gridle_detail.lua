@@ -54,8 +54,8 @@ local fgreen = [[
 ]];
 
 local flitshader = [[
-	uniform sampler2D map_diffuse;
 	uniform int timestamp;
+	uniform sampler2D map_diffuse;
 	varying vec2 txco;
 	
 	void main(){
@@ -89,10 +89,11 @@ void main(){
 ]];
 
 local fshader = [[
-	uniform sampler2D map_diffuse;
 	uniform vec3 wdiffuse;
 	uniform vec3 wambient;
-
+	uniform sampler2D map_diffuse;
+	uniform sampler2D map_normal;
+	
 	varying vec3 lightdir;
 	varying vec3 fnormal;
 	varying vec2 txco;
@@ -100,7 +101,8 @@ local fshader = [[
 	void main() {
 		vec4 color = vec4(wambient,1.0);
 		vec4 txcol = texture2D(map_diffuse, txco);
-
+		vec4 txcol2 = texture2D(map_normal, txco);
+		
 		if (txcol.a < 0.5){
 			discard;
 		}
@@ -110,13 +112,13 @@ local fshader = [[
 			txcol += vec4(wdiffuse * ndl, 0.0);
 		}
 		
-		gl_FragColor = txcol * color;
+		gl_FragColor = txcol * color * txcol2;
 	}
 ]];
 
-backlit_shader3d = build_shader(vlitshader, flitshader);
-default_shader3d = build_shader(vshader, fshader);
-scanline_shader  = build_shader(vscanshader, fscanshader);
+backlit_shader3d = build_shader(vlitshader, flitshader, "backlit");
+default_shader3d = build_shader(vshader, fshader, "default3d");
+scanline_shader  = build_shader(vscanshader, fscanshader, "scanline");
 
 shader_uniform(default_shader3d, "wlightdir", "fff", 1.0, 0.0, 0.0);
 shader_uniform(default_shader3d, "wambient", "fff", 0.3, 0.3, 0.3);
@@ -128,7 +130,7 @@ local function gridledetail_buildview( setname )
 		scale_3dvertices(detailview.model.vid);
 		show_image(detailview.model.vid);
 		image_shader(detailview.model.vid, default_shader3d);
---		image_shader(detailview.model.images[ detailview.model.labels["marquee"] ], backlit_shader3d);
+		image_shader(detailview.model.images[ detailview.model.labels["marquee"] ], backlit_shader3d);
 --		image_shader(detailview.model.images[ detailview.model.labels["display"] ], scanline_shader);
 		detailview.roll  = 0;
 		detailview.pitch = 0;
