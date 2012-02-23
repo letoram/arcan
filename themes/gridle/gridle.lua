@@ -19,6 +19,7 @@ void main(void)
 fragment_shader = [[
 	uniform sampler2D map_diffuse;
 	varying vec2 texco;
+
 	void main() {
 		gl_FragColor = texture2D(map_diffuse, texco);
 	}
@@ -91,7 +92,7 @@ function gridle_keyconf()
     keyconfig = keyconf_create(1, {
         "rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP",
         "rMENU_DOWN", "rMENU_SELECT",
-	" ZOOM_CURSOR", "rMENU_TOGGLE"} );
+	" ZOOM_CURSOR", "rMENU_TOGGLE", "rDETAIL_VIEW"} );
     keyconfig.iofun = gridle_input;
 	if (keyconfig.active == false) then
 		gridle_input = function(iotbl) -- keyconfig io function hook
@@ -128,7 +129,11 @@ function gridle()
     system_load("scripts/keyconf.lua")();
     system_load("scripts/keyconf_mame.lua")();
     system_load("scripts/ledconf.lua")();
+	system_load("scripts/3dsupport.lua")();
     system_load("gridle_menus.lua")();
+	system_load("gridle_detail.lua")();
+
+	video_3dorder(ORDER_LAST);
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
 	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 3) then
@@ -174,6 +179,7 @@ function gridle()
     settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_sample("click.wav"); move_cursor( -1 ); end
     settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample("click.wav"); move_cursor( 1 ); end
     settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
+	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl) remove_zoom(); gridledetail_show(); end
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
     settings.iodispatch["MENU_SELECT"]  = function(iotbl) if (settings.games[settings.cursor + settings.pageofs + 1]) then
     launch_target( settings.games[settings.cursor + settings.pageofs + 1].title, LAUNCH_EXTERNAL); move_cursor(0); end end

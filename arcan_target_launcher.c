@@ -127,12 +127,18 @@ arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event ev)
 		if (-1 != bufused){
 			buf[1] = bufused;
 			bufused += 2; 
-			
-			while( bufused ){
+
+			while(bufused && tgt->source.child_alive){
 				ssize_t nw = write(tgt->ifd, work, bufused);
 				if (-1 == nw)
-					if (errno == EAGAIN)
+					if (errno == EAGAIN){
+						int status;
+						if (waitpid( tgt->source.child, &status, WNOHANG ) == tgt->source.child){
+							tgt->source.child_alive = false;
+							return ARCAN_ERRC_EOF;
+						}
 						continue;
+					}
 					else
 						return ARCAN_ERRC_EOF;
 
@@ -312,6 +318,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 		res->source.shm.key = shmkey;
 		res->source.shm.shmsize = MAX_SHMSIZE;
 		res->source.loop = false;
+		res->source.child_alive = true;
 		
 		return res;
 	}

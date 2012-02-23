@@ -251,6 +251,10 @@ arcan_vobj_id arcan_video_renderstring(const char* message, /* string to render 
 
 void arcan_video_dumppipe();
 
+/* determine if 3D is going to be processed first (2D mode used as 'HUD' and supplementary imagery') or
+ * 'last' (adding partial 3D models to an otherwise 2D scene */
+void arcan_video_3dorder(bool first);
+
 /* somewhat ugly hack to try and pause the objects that rely on timing etc. that might be
  * disturbed by an external launch */
 bool arcan_video_prepare_external();

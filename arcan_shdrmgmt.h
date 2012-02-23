@@ -65,6 +65,8 @@ enum arcan_shader_envts{
 
 /* lighting */
 	LIGHT_WORLD_DIR_V,
+	LIGHT_WORLD_DIFFUSE_V,
+	LIGHT_WORLD_AMBIENT_V,
 
 /* system values, don't change this order */
 	FRACT_TIMESTAMP_F, 

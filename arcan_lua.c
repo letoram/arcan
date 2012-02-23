@@ -57,6 +57,9 @@
 #include "arcan_lua.h"
 #include "arcan_led.h"
 
+static const int ORDER_FIRST = 1;
+static const int ORDER_LAST  = 0;
+
 extern char* arcan_themename;
 extern arcan_dbh* dbhandle;
 
@@ -230,9 +233,6 @@ int arcan_lua_loadimageasynch(lua_State* ctx)
 	
 	if (path)
 		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, true);
-	
-	if (id != ARCAN_EID)
-		arcan_video_objectopacity(id, 0, 0);
 	
 	free(path);
 	lua_pushvid(ctx, id);
@@ -1303,9 +1303,21 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "angle");
-	lua_pushnumber(ctx, angle_quat(prop.rotation).x);
+	lua_pushnumber(ctx, prop.rotation.roll);
 	lua_rawset(ctx, -3);
 
+	lua_pushstring(ctx, "roll");
+	lua_pushnumber(ctx, prop.rotation.roll);
+	lua_rawset(ctx, -3);
+	
+	lua_pushstring(ctx, "pitch");
+	lua_pushnumber(ctx, prop.rotation.pitch);
+	lua_rawset(ctx, -3);
+	
+	lua_pushstring(ctx, "yaw");
+	lua_pushnumber(ctx, prop.rotation.yaw);
+	lua_rawset(ctx, -3);
+	
 	lua_pushstring(ctx, "opacity");
 	lua_pushnumber(ctx, prop.opa);
 	lua_rawset(ctx, -3);
@@ -1562,6 +1574,13 @@ int arcan_lua_kbdrepeat(lua_State* ctx)
 {
 	unsigned rrate = luaL_checknumber(ctx, 1);
 	arcan_event_keyrepeat(rrate);
+	return 0;
+}
+
+int arcan_lua_3dorder(lua_State* ctx)
+{
+	unsigned first = luaL_checknumber(ctx, 1) == ORDER_FIRST;
+	arcan_video_3dorder(-first);
 	return 0;
 }
 
@@ -2051,6 +2070,95 @@ int arcan_lua_scalemodel(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_orientmodel(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	double roll = luaL_checknumber(ctx, 2);
+	double pitch = luaL_checknumber(ctx, 3);
+	double yaw = luaL_checknumber(ctx, 4);
+	unsigned int dt = luaL_optnumber(ctx, 5, 0);
+
+	arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+	return 0;
+}
+
+/* map a format string to the arcan_shdrmgmt.h different datatypes */
+int arcan_lua_shader_uniform(lua_State* ctx)
+{
+	float fbuf[16];
+	
+	unsigned sid = luaL_checknumber(ctx, 1);
+	const char* label = luaL_checkstring(ctx, 2);
+	const char* fmtstr = luaL_checkstring(ctx, 3);
+
+	arcan_shader_activate(sid);
+
+	if (fmtstr[0] == 'b'){
+		bool fmt = luaL_checknumber(ctx, 4) != 0;
+		arcan_shader_forceunif(label, shdrbool, &fmt);
+	} else if (fmtstr[1] == 'i'){
+		bool fmt = luaL_checknumber(ctx, 4);
+		arcan_shader_forceunif(label, shdrint, &fmt);
+	} else {
+		unsigned i = 0;
+		while(fmtstr[i] == 'f') i++;
+		if (i)
+			switch(i){
+				case 1:
+					fbuf[0] = luaL_checknumber(ctx, 4);
+					arcan_shader_forceunif(label, shdrfloat, fbuf);
+				break;
+				
+				case 2:
+					fbuf[0] = luaL_checknumber(ctx, 4);
+					fbuf[1] = luaL_checknumber(ctx, 5);
+					arcan_shader_forceunif(label, shdrvec2, fbuf);
+				break;
+				
+				case 3:
+					fbuf[0] = luaL_checknumber(ctx, 4);
+					fbuf[1] = luaL_checknumber(ctx, 5);
+					fbuf[2] = luaL_checknumber(ctx, 6);
+					arcan_shader_forceunif(label, shdrvec3, fbuf);
+				break;
+				
+				case 4:
+					fbuf[0] = luaL_checknumber(ctx, 4);
+					fbuf[1] = luaL_checknumber(ctx, 5);
+					fbuf[2] = luaL_checknumber(ctx, 6);
+					fbuf[3] = luaL_checknumber(ctx, 7);
+					arcan_shader_forceunif(label, shdrvec3, fbuf);
+				break;
+
+				case 16:
+						while(i--)
+							fbuf[i] = luaL_checknumber(ctx, 4 + i);
+						
+						arcan_shader_forceunif(label, shdrmat4x4, fbuf);
+						
+				break;
+				default:
+					arcan_warning("arcan_lua_shader_uniform(), unsupported format string accepted f counts are 1..4 and 16\n");
+		}
+		else
+			arcan_warning("arcan_lua_shader_uniform(), unspported format string (%s)\n", fmtstr);
+			
+	}
+	
+	/* shdrbool : b
+	 *  shdrint : i
+	 *shdrfloat : f
+	 *shdrvec2  : ff
+	 *shdrvec3  : fff
+	 *shdrvec4  : ffff
+	 *shdrmat4x4: ffff.... */
+
+	/* check for the special ones, b and i */
+	/* count number of f:s, map that to the appropriate subtype */
+	
+	return 0;
+}
+
 int arcan_lua_rotatemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
@@ -2059,7 +2167,8 @@ int arcan_lua_rotatemodel(lua_State* ctx)
 	double yaw = luaL_checknumber(ctx, 4);
 	unsigned int dt = luaL_optnumber(ctx, 5, 0);
 	
-	arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+	surface_properties prop = arcan_video_current_properties(vid);
+	arcan_video_objectrotate(vid, prop.rotation.roll + roll, prop.rotation.pitch + pitch, prop.rotation.yaw + yaw, dt);
 	return 0;
 }
 
@@ -2182,6 +2291,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* category: core system */
 /* item: kbd_repeat, rate, nil */
 	lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
+
+/* item: 3dorder, bool, nil */
+	lua_register(ctx, "video_3dorder", arcan_lua_3dorder);
 
 /* item: toggle_mouse_grab, nil */
  	lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
@@ -2360,6 +2472,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:build_shader, vertstr, fragstr, shaderid */
 	lua_register(ctx, "build_shader", arcan_lua_buildshader);
+
+/* item:shader_uniform, shader, label, formatstr, args nil */
+	lua_register(ctx, "shader_uniform", arcan_lua_shader_uniform);
 	
 /* item:render_text, formatstr, vid */
 	lua_register(ctx, "render_text", arcan_lua_buildstr);
@@ -2395,6 +2510,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:rotate3d_model, vid, yaw, pitch, roll, time, nil */
 	lua_register(ctx, "rotate3d_model", arcan_lua_rotatemodel);
 
+/* item:orient3d_model, vid, absyaw, abspitch, absroll, time, nil */
+	lua_register(ctx, "orient3d_model", arcan_lua_orientmodel);
+	
 /* item:scale3d_model, vid, wf, hf, df, time, nil */
 	lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
 
@@ -2544,6 +2662,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* constant: MASK_UNPICKABLE,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_UNPICKABLE", MASK_UNPICKABLE);
+
+/* constant: ORDER_FIRST,int */
+	arcan_lua_setglobalint(ctx, "ORDER_FIRST", ORDER_FIRST);
+
+/* constant: ORDER_LAST,int */
+	arcan_lua_setglobalint(ctx, "ORDER_LAST", ORDER_LAST);
 	
 /* constant: THEMENAME,string */
 	arcan_lua_setglobalstr(ctx, "THEMENAME", arcan_themename);
