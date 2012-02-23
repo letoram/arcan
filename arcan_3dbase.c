@@ -75,6 +75,7 @@ typedef struct {
 
 struct geometry {
     unsigned nmaps;
+
 	unsigned nverts;
 	float* verts;
 	float* txcos;
@@ -91,13 +92,8 @@ struct geometry {
 };
 
 typedef struct {
-	struct geometry geometry;
+	struct geometry* geometry;
 	arcan_shader_id program;
-	
-	unsigned char nsets;
-
-/* Frustum planes */
-	float frustum[6][4];
 
 /* AA-BB */
     vector bbmin;
@@ -105,13 +101,10 @@ typedef struct {
 
 /* position, opacity etc. are inherited from parent */
 	struct {
-        bool debug_vis;
-		bool recv_shdw;
-		bool cast_shdw;
-		bool cast_refl;
-/* used for skyboxes etc. should be rendered before anything else
- * without depth buffer writes enabled */
-        bool infinite;
+/* debug geometry (position, normals, bounding box, ...) */
+		bool debug_vis;
+/* ignore projection matrix */
+		bool infinite;
 	} flags;
 
 	arcan_vobject* parent;
@@ -182,23 +175,31 @@ void arcan_3d_forwardcamera(unsigned camtag, float fact, unsigned tv)
 static void freemodel(arcan_3dmodel* src)
 {
 	if (src){
-		free(src->geometry.indices);
-		free(src->geometry.verts);
-		free(src->geometry.normals);
+		struct geometry* geom = src->geometry;
+		
+		while(geom){
+			free(geom->indices);
+			free(geom->verts);
+			free(geom->normals);
+			free(geom->txcos);
+			
+			struct geometry* last = geom;
+			geom = geom->next;
+			free(last);
+		}
 
-		if (src->geometry.txcos)
-			free(src->geometry.txcos);
+		free(src);
 	}
 }
 
 /*
  * Render-loops, Pass control, Initialization
  */
-static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id baseprog, surface_properties props, bool texture, float* modelview, unsigned txofs)
+static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id baseprog, surface_properties props, float* modelview)
 {
 	if (props.opa < EPSILON)
 		return;
-
+	
 	unsigned cframe = 0;
 	float wmvm[16];
 	
@@ -223,10 +224,12 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 	multiply_matrix(dmatr, wmvm, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	
-	struct geometry* base = &src->geometry;
+	struct geometry* base = src->geometry;
 
 	while (base){
-		unsigned counter = 0;
+		unsigned counter = 0; /* keep track of how many TUs are in use */
+
+	/* make sure the current program actually uses the attributes that the mesh has */
 		int attribs[3] = {arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
 			arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
 			arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)};
@@ -248,42 +251,25 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 		} else attribs[2] = -1;
 
-	/* ONLY switch active shader if there is another one specified for the submesh,
-	 * and that one is different from the one currently active */
-
-/*	if (txofs < vobj->frameset_capacity)
-			if (vobj->frameset[cframe]->gl_storage.program){
-				if (curprog != vobj->frameset[cframe]->gl_storage.program){
-					curprog = vobj->frameset[cframe]->gl_storage.program;
-					arcan_shader_activate(curprog);
-				}
-			} else {
-				if (curprog != baseprog){
-					curprog = baseprog;
-					arcan_shader_activate(baseprog);
-				}
-			}*/
+/* It's up to arcan_shader to determine if this will actually involve a program switch or not */
 	arcan_shader_id frameprog = vobj->frameset[cframe]->gl_storage.program;
-	if(frameprog){
-		arcan_shader_activate(frameprog);
-	}
-	else{
-		arcan_shader_activate(baseprog);
-	}
-		
-/* Map up all texture-units required,
- * if there are corresponding frames and capacity in the parent vobj */
-	if (texture){
-			for (unsigned i = 0; i+txofs < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i < base->nmaps; i++){
-				arcan_vobject* frame = vobj->frameset[i+cframe];
+	arcan_shader_activate(frameprog ? frameprog : baseprog);
 
-				if (frame && frame->gl_storage.glid){
-					glClientActiveTexture(GL_TEXTURE0 + txofs + counter);
-					glEnable(GL_TEXTURE_2D);
-					glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
-					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)); 
-                    counter++;
-				}
+/* Map up all texture-units required,
+ * if there are corresponding frames and capacity in the parent vobj,
+ * multiple meshes share the same frameset */
+		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i < base->nmaps; i++){
+			arcan_vobject* frame = vobj->frameset[i+cframe];
+			printf("i: %i, nmaps: %i, cframe: %i, frame->glid, %i, type: %i\n", i, base->nmaps, cframe, frame->gl_storage.glid, frame->gl_storage.maptype);
+/* only allocate set a sampler if there's a map and a corresponding map- slot in the shader */
+			if (frame && frame->gl_storage.glid &&
+					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)) ){
+
+				printf("activate, counter: %i\n", counter);
+				glClientActiveTexture(GL_TEXTURE0 + counter);
+				glEnable(GL_TEXTURE_2D);
+				glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
+				counter++;
 			}
 		}
 		
@@ -295,8 +281,10 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
         
 /* and reverse transitions again for the next client */
 		while (counter-- > 0){
-			glClientActiveTexture(GL_TEXTURE0 + txofs + counter);
+			glClientActiveTexture(GL_TEXTURE0 + counter);
 			glBindTexture(GL_TEXTURE_2D, 0);
+			if (counter > 0)
+				glDisable(GL_TEXTURE_2D);
 		}
 
 		for (unsigned i=cframe; i < vobj->frameset_capacity && i < base->nmaps; i++){
@@ -334,7 +322,6 @@ static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_
 
 			case ffunc_destroy:
 				freemodel( (arcan_3dmodel*) state.ptr );
-				free(state.ptr);
 			break;
 
 			default:
@@ -356,7 +343,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
-		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, current->elem->gl_storage.program, dprops, true, modelview, 0);
+		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, current->elem->gl_storage.program, dprops, modelview);
 
 		current = current->next;
 	}
@@ -419,7 +406,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	
 	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ){
 		arcan_3dmodel* model = (arcan_3dmodel*) vobj->state.ptr;
-        struct geometry* curr = &model->geometry;
+        struct geometry* curr = model->geometry;
         while (curr) {
             if (curr->indices){
                 unsigned* indices = curr->indices;
@@ -459,8 +446,7 @@ arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, 
 	if (rv != ARCAN_EID){
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
 		state.ptr = (void*) newmodel;
-		arcan_video_alterfeed(rv, ffunc_3d, state);
-		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
+		arcan_fatal("arcan_3d_buildbox() unfinished\n");
 	}
 
 	return rv;
@@ -485,13 +471,13 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		state.ptr = (void*) newmodel;
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 
-		newmodel->geometry.indexformat = GL_UNSIGNED_INT;
+		arcan_fatal("arcan_3d_buildplane() unfinished\n");
 		
-		build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
+	/*	build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
 					 &newmodel->geometry.txcos, &newmodel->geometry.nverts, &newmodel->geometry.nindices);
 
 		newmodel->geometry.ntris = newmodel->geometry.nindices / 3;
-		arcan_video_allocframes(rv, 1);
+		arcan_video_allocframes(rv, 1);*/
 	}
 
 	return rv;
@@ -585,7 +571,7 @@ void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps)
 			arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
 
 		/* find last elem and add */
-			struct geometry** nextslot = &(dst->geometry.next);
+			struct geometry** nextslot = &(dst->geometry);
 			while (*nextslot)
 				nextslot = &((*nextslot)->next);
 
@@ -611,14 +597,14 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ)
 	{
 		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
-		struct geometry* geom = &dst->geometry;
+		struct geometry* geom = dst->geometry;
 
 		while (geom){
 			minmax_verts(&dst->bbmin, &dst->bbmax, geom->verts, geom->nverts);
 			geom = geom->next;
 		}
 
-		geom = &dst->geometry;
+		geom = dst->geometry;
 		float sf, tx, ty, tz;
 		
 		float dx = dst->bbmax.x - dst->bbmin.x;
@@ -656,57 +642,22 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
     return rv;
 }
 
-arcan_vobj_id arcan_3d_loadmodel(const char* resource)
+arcan_vobj_id arcan_3d_emptymodel()
 {
 	arcan_vobj_id rv = ARCAN_EID;
-	arcan_3dmodel* newmodel = NULL;
-	arcan_vobject* vobj = NULL;
+	img_cons econs = {0};
+	arcan_3dmodel* newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
 
-	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
-	ctmLoad(ctx, resource);
+	rv = arcan_video_addfobject(ffunc_3d, state, econs, 1);
 
-	if (ctmGetError(ctx) == CTM_NONE){
-/* create container object and proxy vid */
-		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
-		vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
-		img_cons econs = {0};
-		rv = arcan_video_addfobject(ffunc_3d, state, econs, 1);
-
-		if (rv == ARCAN_EID)
-			goto error;
-
-		arcan_vobject* obj = arcan_video_getobject(rv);
-		newmodel->parent = obj;
-		loadmesh(&newmodel->geometry, ctx);
-
-/* set initial bounding box */
-		vector empty = {0};
-		if (newmodel->geometry.nverts){
-			empty.x = newmodel->geometry.verts[0];
-			empty.y = newmodel->geometry.verts[1];
-			empty.z = newmodel->geometry.verts[2];
-		}
-		newmodel->bbmin = empty;
-		newmodel->bbmax = empty;
-		
-		minmax_verts(&newmodel->bbmin, &newmodel->bbmax, newmodel->geometry.verts, newmodel->geometry.nverts);
-		
-		ctmFreeContext(ctx);
-		return rv;
-	}
-
-error:
-	ctmFreeContext(ctx);
-	if (vobj) /* if a feed object was set up, this will still call that part */
-		arcan_video_deleteobject(rv);
-	else if (newmodel)
+	if (rv != ARCAN_EID){
+		newmodel->parent = arcan_video_getobject(rv);
+	} else
 		free(newmodel);
 
-	arcan_warning("arcan_3d_loadmodel(), couldn't load 3dmodel (%s)\n", resource);
-	return ARCAN_EID;
-}
-
-
+	return rv;
+}	
 
 void arcan_3d_setdefaults()
 {

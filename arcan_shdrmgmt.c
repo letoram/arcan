@@ -169,6 +169,17 @@ struct shader_cont {
 	GLint attributes[4];
 };
 
+static int sizetbl[7]= {
+	sizeof(bool),
+	sizeof(int),
+	sizeof(float),
+	sizeof(float) * 2,
+	sizeof(float) * 3,
+	sizeof(float) * 4,
+	sizeof(float) * 16
+};
+
+
 /* base is added as a controllable offset similarly to what is done
  * with video/audio IDs, i.e. in order to quickly shake out hard-coded
  * ID references */
@@ -185,6 +196,13 @@ static void build_shader(GLuint*, GLuint*, GLuint*, const char*, const char*);
 
 static void setv(GLint loc, enum shdrutype kind, void* val)
 {
+#ifdef _DEBUG
+	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:pre") == -1){
+		arcan_warning("setv() -> errors found when pumping context.\n");
+        abort();
+    }
+    
+#endif
 /* add more as needed, just match the current shader_envts */
 	switch (kind){
 		case shdrbool:
@@ -278,15 +296,25 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 	return rv;
 }
 
-void arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
+bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 {
+	bool res = false;
+	
 	memcpy((char*) (&shdr_global.context) + ofstbl[slot], value, size);
 	GLint loc;
 
 /* update the value for the shader so we might avoid a full glUseProgram, ... cycle */
 	if ( (loc = shdr_global.slots[ shdr_global.active_prg ].locations[slot]) >= 0 ){
-		setv(loc, typetbl[slot], value);
-    }
+		if (size != sizetbl[typetbl[slot]]){
+			arcan_fatal("arcan_shader_envv(), got slot(%i)(%s) with specified size(%i), mismatch with (%i)\n",
+						slot, symtbl[slot], size, typetbl[sizetbl[slot]]);
+		}
+		else
+			setv(loc, typetbl[slot], value);
+		res = true;
+	}
+
+	return res;
 }
 
 GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
@@ -364,6 +392,11 @@ static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* v
 	glGetProgramInfoLog(*dprg, 256, &rlen, buf);
 	if (rlen)
 		arcan_warning("Warning: Problem linking Shader Program: %s\n", buf);
+}
+
+const char* arcan_shader_symtype(enum arcan_shader_envts env)
+{
+	return symtbl[env];
 }
 
 void arcan_shader_flush()

@@ -215,6 +215,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, floa
 arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, float df, unsigned int time);
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, float yaw, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
+arcan_errc arcan_video_objectmaptype(arcan_vobj_id id, int maptype);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);

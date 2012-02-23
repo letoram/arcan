@@ -33,11 +33,11 @@ void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned
 void arcan_3d_forwardcamera(unsigned camtag, float step, unsigned tv);
 void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv);
 
-/* build a new vobj+3dobj from the resource specified */
-arcan_vobj_id arcan_3d_loadmodel(const char* resource);
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens);
 
-/* add an additional piece of geometry to the specified model */
+/* empty model allocates and populates a container,
+ * then add a hierarchy of meshes to the model */
+arcan_vobj_id arcan_3d_emptymodel();
 void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps);
 
 /* scans through the specified model and all its' meshes,

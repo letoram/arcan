@@ -594,11 +594,11 @@ const static char* defvprg =
 "}";
 
 const static char* deffprg =
-"uniform sampler2D mat_diffuse;\n"
+"uniform sampler2D map_diffuse;\n"
 "varying vec2 texco;\n"
 "uniform float obj_opacity;\n"
 "void main(){\n"
-"   vec4 col = texture2D(mat_diffuse, texco);\n"
+"   vec4 col = texture2D(map_diffuse, texco);\n"
 "   col.a = col.a * obj_opacity;\n"
 "	gl_FragColor = col;\n"
 " }";
@@ -609,6 +609,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 	SDL_WM_SetCaption("Arcan", "Arcan");
@@ -942,6 +943,19 @@ static int thread_loader(void* in)
 	free(localargs->fname);
 	free(localargs);
     return 0;
+}
+
+arcan_errc arcan_video_objectmaptype(arcan_vobj_id vid, int maptype)
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (vobj){
+		vobj->gl_storage.maptype = maptype;
+		rv = ARCAN_OK;
+	}
+
+	return rv;
 }
 
 /* create a new vobj, fill it out with enough vals that we can treat it 
@@ -2634,17 +2648,18 @@ void arcan_video_refresh_GL(float lerp)
 {
 	arcan_vobject_litem* current = current_context->first;
 	glClear(GL_COLOR_BUFFER_BIT);
-	arcan_shader_activate(arcan_video_display.defaultshdr);
 	arcan_vobject* world = &current_context->world;
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(current, lerp);
 	}
-	
-/* if there are any nodes left, treat them as 2D (ortographic projection) */
+
 	if (current){
+	/* make sure we're in a decent state for 2D */
+		glClientActiveTexture(GL_TEXTURE0);
 		glDisable(GL_DEPTH_TEST);
+
 		memcpy(arcan_video_display.projmatr, ortho_proj, sizeof(float) * 16);
 		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));

@@ -23,13 +23,13 @@
 #define _HAVE_ARCAN_SHADERMGMT
 
 enum shdrutype {
-	shdrbool,
-	shdrint,
-	shdrfloat,
-	shdrvec2,
-	shdrvec3,
-	shdrvec4,
-	shdrmat4x4
+	shdrbool  = 0,
+	shdrint   = 1,
+	shdrfloat = 2,
+	shdrvec2  = 3,
+	shdrvec3  = 4,
+	shdrvec4  = 5,
+	shdrmat4x4 = 6
 };
 
 /* all the currently supported value slots,
@@ -98,11 +98,11 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 
 /* subid ignreod for (! n*) types,
- * value assumed to have type specified in enumlabel */
-void arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
+ * value assumed to have type specified in enumlabel,
+ * true if this matched something in the current active shader */
+bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
 
-/* for attrib pointers etc. */
-
+const char* arcan_shader_symtype(enum arcan_shader_envts env);
 
 /* update a specific uniformslot that will map to whatever shader is active,
  * discarded when another shader is deactivated */
