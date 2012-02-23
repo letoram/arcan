@@ -278,10 +278,11 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 				arcan_vobject* frame = vobj->frameset[i+cframe];
 
 				if (frame && frame->gl_storage.glid){
-					glClientActiveTexture(GL_TEXTURE0 + txofs + counter++);
+					glClientActiveTexture(GL_TEXTURE0 + txofs + counter);
 					glEnable(GL_TEXTURE_2D);
 					glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
 					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)); 
+                    counter++;
 				}
 			}
 		}
