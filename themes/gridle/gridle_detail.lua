@@ -15,6 +15,23 @@
 --
 local detailview = {};
 
+local vscanshader = [[
+	uniform mat4 modelview;
+	uniform mat4 projection;
+
+	attribute vec4 vertex;
+	
+	void main(){
+		gl_Position = (projection * modelview) * vertex;
+	}
+]];
+
+local fscanshader = [[
+	void main(){
+		gl_FragColor = vec4(0.0, 0.5, 1.0, 1.0);
+	}
+]];
+
 local vlitshader = [[
 	uniform mat4 modelview;
 	uniform mat4 projection;
@@ -37,12 +54,12 @@ local fgreen = [[
 ]];
 
 local flitshader = [[
-	uniform sampler2D mat_diffuse;
+	uniform sampler2D map_diffuse;
 	uniform int timestamp;
 	varying vec2 txco;
 	
 	void main(){
-		vec4 fragcol = texture2D(mat_diffuse, txco);
+		vec4 fragcol = texture2D(map_diffuse, txco);
 		gl_FragColor = fragcol;
 	}
 ]];
@@ -72,7 +89,7 @@ void main(){
 ]];
 
 local fshader = [[
-	uniform sampler2D mat_diffuse;
+	uniform sampler2D map_diffuse;
 	uniform vec3 wdiffuse;
 	uniform vec3 wambient;
 
@@ -82,9 +99,9 @@ local fshader = [[
 
 	void main() {
 		vec4 color = vec4(wambient,1.0);
-		vec4 txcol = texture2D(mat_diffuse, txco);
+		vec4 txcol = texture2D(map_diffuse, txco);
 
-		if (txcol.a < 0.01){
+		if (txcol.a < 0.5){
 			discard;
 		}
 		
@@ -93,12 +110,13 @@ local fshader = [[
 			txcol += vec4(wdiffuse * ndl, 0.0);
 		}
 		
-		gl_FragColor = color * txcol;
+		gl_FragColor = txcol * color;
 	}
 ]];
 
 backlit_shader3d = build_shader(vlitshader, flitshader);
 default_shader3d = build_shader(vshader, fshader);
+scanline_shader  = build_shader(vscanshader, fscanshader);
 
 shader_uniform(default_shader3d, "wlightdir", "fff", 1.0, 0.0, 0.0);
 shader_uniform(default_shader3d, "wambient", "fff", 0.3, 0.3, 0.3);
@@ -110,8 +128,8 @@ local function gridledetail_buildview( setname )
 		scale_3dvertices(detailview.model.vid);
 		show_image(detailview.model.vid);
 		image_shader(detailview.model.vid, default_shader3d);
-		image_shader(detailview.model.images[ detailview.model.labels["marquee"] ], backlit_shader3d);
---		image_shader(detailview.model.images[ detailview.model.labels["display"] ], backlit_shader3d);
+--		image_shader(detailview.model.images[ detailview.model.labels["marquee"] ], backlit_shader3d);
+--		image_shader(detailview.model.images[ detailview.model.labels["display"] ], scanline_shader);
 		detailview.roll  = 0;
 		detailview.pitch = 0;
 		detailview.yaw   = 0;

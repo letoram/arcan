@@ -131,19 +131,23 @@ static struct arcan_video_context* current_context = context_stack;
 static void allocate_and_store_globj(arcan_vobject* dst){
 	glGenTextures(1, &dst->gl_storage.glid);
 	glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
-	dst->gl_storage.maptype = MAP_GENERIC_D;
+	dst->gl_storage.maptype = MAP_DIFFUSE_D;
 	
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
-    if (arcan_video_display.mipmap)
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	
+	if (arcan_video_display.mipmap){
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
-	else   
-        glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
-    
+	}
+	else{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
+	}
+		
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, dst->gl_storage.w, dst->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->default_frame.raw);
-    }
+}
 
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
 {
@@ -831,7 +835,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
-		newvobj->gl_storage.maptype = MAP_GENERIC_D;
+		newvobj->gl_storage.maptype = MAP_DIFFUSE_D;
 		
 	/* tacitly assume diffuse is bound to tu0 */
 		glBindTexture(GL_TEXTURE_2D, newvobj->gl_storage.glid);
@@ -1728,7 +1732,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->current.rotation.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		vobj->parent = &current_context->world;
 		glGenTextures(1, &vobj->gl_storage.glid);
-		vobj->gl_storage.maptype = MAP_GENERIC_D;
+		vobj->gl_storage.maptype = MAP_DIFFUSE_D;
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

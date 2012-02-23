@@ -201,11 +201,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 
 	unsigned cframe = 0;
 	float wmvm[16];
-	arcan_shader_id curprog = baseprog;
-	arcan_shader_activate(curprog);
-//	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	/* if there's texture coordsets and an associated vobj,
-     * enable texture coord array, normal array etc. */
+	
+/* if there's texture coordsets and an associated vobj,
+ * enable texture coord array, normal array etc. */
 	if (src->flags.infinite){
 		identity_matrix(wmvm);
 		glDepthMask(GL_FALSE);
@@ -252,7 +250,8 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 
 	/* ONLY switch active shader if there is another one specified for the submesh,
 	 * and that one is different from the one currently active */
-		if (txofs < vobj->frameset_capacity)
+
+/*	if (txofs < vobj->frameset_capacity)
 			if (vobj->frameset[cframe]->gl_storage.program){
 				if (curprog != vobj->frameset[cframe]->gl_storage.program){
 					curprog = vobj->frameset[cframe]->gl_storage.program;
@@ -263,11 +262,18 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 					curprog = baseprog;
 					arcan_shader_activate(baseprog);
 				}
-			}
+			}*/
+	arcan_shader_id frameprog = vobj->frameset[cframe]->gl_storage.program;
+	if(frameprog){
+		arcan_shader_activate(frameprog);
+	}
+	else{
+		arcan_shader_activate(baseprog);
+	}
 		
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
-		if (texture){
+	if (texture){
 			for (unsigned i = 0; i+txofs < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i < base->nmaps; i++){
 				arcan_vobject* frame = vobj->frameset[i+cframe];
 
@@ -285,7 +291,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			glDrawElements(GL_TRIANGLES, base->nindices, base->indexformat, base->indices);
 		else
 			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
-
         
 /* and reverse transitions again for the next client */
 		while (counter-- > 0){

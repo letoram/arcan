@@ -44,7 +44,6 @@ struct shader_envts {
 	float obj_opacity;
 
 /* texture mapping */
-	int map_generic;
 	int map_displacement;
 	int map_bump;
 	int map_shadow;
@@ -82,7 +81,6 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, obj_opacity),
 
 /* texture mapping */
-	offsetof(struct shader_envts, map_generic),
 	offsetof(struct shader_envts, map_displacement),
 	offsetof(struct shader_envts, map_bump),
 	offsetof(struct shader_envts, map_shadow),
@@ -120,7 +118,6 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrint,
 	shdrint,
 	shdrint,
-	shdrint,
 	shdrvec3, /* light worlddir */
 	shdrvec3,
 	shdrvec3,
@@ -140,7 +137,6 @@ static char* symtbl[TBLSIZE] = {
 	"obj_orient",
 	"obj_view",
 	"obj_opacity",
-	"map_generic",
 	"map_displacement",
 	"map_bump",
 	"map_shadow",
