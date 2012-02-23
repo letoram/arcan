@@ -54,7 +54,6 @@ enum arcan_shader_envts{
 	OBJ_OPACITY_F,
 
 /* texture mapping */
-	MAP_GENERIC_D,
 	MAP_DISPLACEMENT_D,
 	MAP_BUMP_D,
 	MAP_SHADOW_D,

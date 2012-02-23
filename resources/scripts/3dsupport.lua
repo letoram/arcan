@@ -11,7 +11,7 @@ local function load_material(modelname, meshname)
 	else
 		rvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255));
 	end
-  
+
 	return rvid;
 end
 
