@@ -45,7 +45,7 @@ struct transf_blend{
 struct transf_rotate{
 	enum arcan_interp_function interp;
 	arcan_tickv startt, endt;
-	quat starto, endo;
+	surface_orientation starto, endo;
 };
 
 typedef struct surface_transform {
@@ -139,7 +139,7 @@ struct arcan_vobject_litem {
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
-	bool suspended, text_support, fullscreen, conservative;
+	bool suspended, text_support, fullscreen, conservative, late3d;
 	GLfloat projmatr[16];
 
 	unsigned default_vitemlim;

@@ -119,10 +119,15 @@ enum arcan_errors {
 };
 
 typedef struct {
+	float yaw, pitch, roll;
+	quat rotation;
+} surface_orientation;
+
+typedef struct {
 	point position;
 	scalefactor scale;
 	float opa;
-	quat rotation;
+	surface_orientation rotation;
 } surface_properties;
 
 typedef struct {

@@ -3,22 +3,35 @@ vshader = [[
 	uniform mat4 projection;
 
 	attribute vec4 vertex;
+	attribute vec2 texcoord;
 
+	varying vec2 txco;
+	
 void main(){
+	txco = texcoord;
 	gl_Position = (projection * modelview) * vertex;
 }
 ]];
 
 fshader = [[
+	uniform sampler2D mat_diffuse;
+	varying vec2 txco;
+
 	void main() {
-		gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);
+		vec4 col = texture2D(mat_diffuse, txco);
+		if (col.a < 0.01){
+			discard;
+		}
+		
+		gl_FragColor = col;
 	}
 ]];
 
 function modeltest()
 	symtable = system_load("scripts/symtable.lua")();
 	local confun = system_load("scripts/console.lua")();
-
+	system_load("scripts/3dsupport.lua")();
+	
 	sens = 0.1;
 	yaw = 0.0;
 	pitch = 0.0;
@@ -29,16 +42,12 @@ function modeltest()
 	
 	shdr = build_shader(vshader, fshader);
 	
---	games = list_games( {} );
---	gvid, gaid = launch_target(games[2].title, LAUNCH_INTERNAL);
-
-	switch_default_imageproc(IMAGEPROC_FLIPH);
-	model = generic_load( arguments[1] );
-	switch_default_imageproc(IMAGEPROC_NORMAL);
-
---	image_shader(model.vid, shdr);
---	print("loaded model to: " .. model.vid);
+	model = load_model(arguments[1]);
 	scale_3dvertices(model.vid);
+	show_image(model.vid);
+	move3d_camera(-1.0, 1.0, -5.0);
+
+	image_shader(model.vid, shdr);
 	mousex = VRESW * 0.5;
 	mousey = VRESH * 0.5;
 
@@ -48,15 +57,15 @@ function modeltest()
 	kbd_repeat(2);
 --	show_image(plane);
 
-	rotate3d_model(model.vid, 0.0, 270.0, 0.0);
+--	rotate3d_model(model.vid, 0.0, 270.0, 0.0);
 	show_image(model.vid);
 	contbl = create_console(VRESW , VRESH / 4, "fonts/default.ttf", 18);
 	console_enabled = false;
 	contbl:hide();
---	mpvid, aid = launch_target("Moon Patrol", 1);
---	hide_image(mpvid);
-	move3d_camera(0.0, 0.0, -5.0);
---	set_image_as_frame(model.vid, mpvid, model.labels["display"]);
+	mpvid, aid = launch_target(arguments[2], 1);
+	hide_image(mpvid);
+	move3d_camera(-1.0, 1.0, -5.0);
+	set_image_as_frame(model.vid, mpvid, model.labels["display"]);
 end
 
 function load_material(modelname, meshname)
@@ -113,14 +122,18 @@ function modeltest_clock_pulse()
 end
 
 function modeltest_input(iotable)
---	target_input(iotable, mpvid);
-	
+	if (mpvid and mpvid ~= BADID) then
+		target_input(iotable, mpvid);
+	end
+
 	if (iotable.kind == "digital") then
-		if (console_enabled and iotable.active) then
+		if (console_enabled) then
+		if (iotable.active) then
 			key = symtable[iotable.keysym];
 			if (key == "F12") then
 				console_enabled = false;
 				contbl:hide();
+				kbd_repeat(2);
 			else
 				local cmd = contbl:input(iotable);
 				if (cmd ~= "") then
@@ -128,6 +141,7 @@ function modeltest_input(iotable)
 					assert(loadstring(cmd))();
 				end
 			end
+		end
 		else
 			key = symtable[iotable.keysym];
 			if key == "w" then
@@ -146,14 +160,17 @@ function modeltest_input(iotable)
 				shutdown();
 			elseif iotable.active and key == "F12" then
 				contbl:show();
+				kbd_repeat(0);
 				console_enabled = true;
 			end
 		end
 	else
-		if iotable.subid == 1 then
-			pitch = (pitch + iotable.samples[2] * sens) % 360;
-		else
-			yaw = (yaw + iotable.samples[2] * sens) % 360;
+		if (console_enabled == false) then
+			if iotable.subid == 1 then
+				pitch = (pitch + iotable.samples[2] * sens) % 360;
+			else
+				yaw = (yaw + iotable.samples[2] * sens) % 360;
+			end	
 		end	
-	end	
+	end
 end

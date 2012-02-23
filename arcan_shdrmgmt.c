@@ -55,6 +55,8 @@ struct shader_envts {
 
 /* lighting */
 	vector light_worlddir;
+	vector light_worlddiffuse;
+	vector light_worldambient;
 	
 /* system values, don't change this order */
 	float fract_timestamp;
@@ -91,6 +93,8 @@ static int ofstbl[TBLSIZE] = {
 
 /* lighting */
 	offsetof(struct shader_envts, light_worlddir),
+	offsetof(struct shader_envts, light_worlddiffuse),
+	offsetof(struct shader_envts, light_worldambient),
 	
 /* system values, don't change this order */
 	offsetof(struct shader_envts, fract_timestamp),
@@ -118,6 +122,8 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrint,
 	shdrint,
 	shdrvec3, /* light worlddir */
+	shdrvec3,
+	shdrvec3,
 	shdrfloat,
 	shdrint
 };
@@ -143,6 +149,8 @@ static char* symtbl[TBLSIZE] = {
 	"map_specular",
 	"map_diffuse",
 	"light_worlddir",
+	"light_worlddiffuse",
+	"light_worldambient",
 	"fract_timestamp",
 	"timestamp"
 };
@@ -245,6 +253,11 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 
 		build_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag);
 		glUseProgram(cur->prg_container);
+
+#ifdef _DEBUG
+			arcan_warning("arcan_shader_build() -- new ID : (%i)=>%i\n", cur->id, cur->prg_container);
+#endif
+		
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			assert(symtbl[i] != NULL);
 			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
@@ -287,7 +300,24 @@ GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
 
 void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value)
 {
-	GLint loc = glGetAttribLocation(shdr_global.active_prg, label);
+/* linear search the globals first */
+	for (int i = 0; i < sizeof(symtbl) / sizeof(symtbl[0]); i++){
+		if (strcmp(symtbl[i], label) == 0){
+			if (type == typetbl[i]){
+				arcan_shader_envv(i, value, type);
+				return;
+			}
+			else
+				arcan_warning("arcan_shader_forceunif(%s), failed to update shared symbol, invalid type.\n", label);
+		}
+	}
+	
+	GLint loc = glGetUniformLocation(shdr_global.slots[shdr_global.active_prg].prg_container, label); 
+#ifdef _DEBUG
+	arcan_warning("arcan_shader_forceunif(%s) %i:%i => %i\n", label, shdr_global.active_prg,
+				  shdr_global.slots[shdr_global.active_prg].prg_container, loc);
+#endif
+	
 	if (loc >= 0)
 		setv(loc, type, value);
 }

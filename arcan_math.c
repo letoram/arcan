@@ -317,6 +317,11 @@ vector angle_quat(quat a)
 	euler.y = asinf(-2.f * (a.x*a.z - a.y*a.w));
 	euler.z = atan2f(2.f * (a.y*a.z + a.x*a.w), -sqx - sqy + sqz + sqw);
 
+	float mpi = 180.0 / M_PI;
+	euler.x *= mpi;
+	euler.y *= mpi;
+	euler.z *= mpi;
+	
 	return euler;
 }
 

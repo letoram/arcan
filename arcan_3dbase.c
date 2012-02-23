@@ -142,7 +142,7 @@ void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned
 	virtobj* vobj = find_camera(camtag);
 	if (vobj){
 		vobj->position.x = px;
-		vobj->position.y = py;
+		vobj->position.y = -py;
 		vobj->position.z = pz;
 	}
 }
@@ -194,14 +194,15 @@ static void freemodel(arcan_3dmodel* src)
 /*
  * Render-loops, Pass control, Initialization
  */
-static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_properties props, bool texture, float* modelview, unsigned txofs)
+static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id baseprog, surface_properties props, bool texture, float* modelview, unsigned txofs)
 {
 	if (props.opa < EPSILON)
 		return;
 
 	unsigned cframe = 0;
 	float wmvm[16];
-	
+	arcan_shader_id curprog = baseprog;
+	arcan_shader_activate(curprog);
 //	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	/* if there's texture coordsets and an associated vobj,
      * enable texture coord array, normal array etc. */
@@ -220,7 +221,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
-	matr_quatf(props.rotation, omatr);
+	matr_quatf(props.rotation.rotation, omatr);
 	multiply_matrix(dmatr, wmvm, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	
@@ -248,6 +249,21 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 			glEnableVertexAttribArray(attribs[2]);
 			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 		} else attribs[2] = -1;
+
+	/* ONLY switch active shader if there is another one specified for the submesh,
+	 * and that one is different from the one currently active */
+		if (txofs < vobj->frameset_capacity)
+			if (vobj->frameset[cframe]->gl_storage.program){
+				if (curprog != vobj->frameset[cframe]->gl_storage.program){
+					curprog = vobj->frameset[cframe]->gl_storage.program;
+					arcan_shader_activate(curprog);
+				}
+			} else {
+				if (curprog != baseprog){
+					curprog = baseprog;
+					arcan_shader_activate(baseprog);
+				}
+			}
 		
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj */
@@ -261,9 +277,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 					glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
 					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)); 
 				}
-			}	
+			}
 		}
-
+		
 /* Indexed- or direct mode? */
 		if (base->indices)
 			glDrawElements(GL_TRIANGLES, base->nindices, base->indexformat, base->indices);
@@ -281,6 +297,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, surface_propert
 			arcan_vobject* frame = vobj->frameset[i];
 			if (frame && frame->gl_storage.glid){
 				unsigned zero = 0;
+			
 				arcan_shader_envv(frame->gl_storage.maptype, &zero, sizeof(zero));
 			}
 		}
@@ -333,9 +350,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
  		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
-        
-        arcan_shader_activate(current->elem->gl_storage.program);
-		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, dprops, true, modelview, 0);
+		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, current->elem->gl_storage.program, dprops, true, modelview, 0);
 
 		current = current->next;
 	}

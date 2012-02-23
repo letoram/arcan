@@ -36,6 +36,8 @@ typedef struct {
 typedef vector point;
 typedef vector scalefactor;
 
+/* actually store all three forms as the conversion
+ * is costly */
 typedef struct orientation {
 	float rollf, pitchf, yawf;
 	float matr[16];
@@ -48,7 +50,6 @@ void identity_matrix(float*);
 void multiply_matrix(float* dst, float* a, float* b);
 
 /* Vectors */
-quat build_quat_euler(float roll, float pitch, float yaw);
 vector build_vect_polar(const float phi, const float theta);
 vector build_vect(const float x, const float y, const float z);
 float len_vector(vector invect);
@@ -73,6 +74,7 @@ vector angle_quat(quat a);
 quat nlerp_quat(quat a, quat b, float f);
 quat lerp_quat(quat a, quat b, float f);
 quat add_quat(quat a, quat b);
+quat build_quat_euler(float roll, float pitch, float yaw);
 
 scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
 void update_view(orientation* dst, float roll, float pitch, float yaw);
