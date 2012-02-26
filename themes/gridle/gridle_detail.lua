@@ -88,6 +88,15 @@ local function gridledetail_freeview()
 end
 
 function gridledetail_video_event(source, event)
+	if (event.kind == "resized") then
+		if (source == detailview.internal_vid) then
+			resize_image(source, event.width, event.height, 0);
+			set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
+			mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
+			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
+		end
+	end
+
 	if (event.kind == "movieready") then
 		if (source == movievid) then
 			vid,aid = play_movie(movievid);
@@ -114,6 +123,49 @@ function gridledetail_clock_pulse(tick)
 	end
 end
 
+function gridledetail_internalinput(iotbl)
+	local restbl = keyconfig:match(iotbl);
+
+	if (restbl) then
+		for ind,val in pairs(restbl) do
+			if (iotbl.active and val == "ZOOM_CURSOR") then
+-- switch between running with fullscreen and running with cabinet zoomed in
+				if (detailview.fullscreen) then
+					hide_image(detailview.internal_vid);
+					show_image(detailview.model.vid);
+					detailview.fullscreen = false;
+				else
+					detailview.fullscreen = true;
+					show_image(detailview.internal_vid);
+					local props = image_surface_properties(detailview.internal_vid);
+					if (props.width / props.height > 1.0) then -- horizontal game
+						resize_image(detailview.internal_vid, VRESW, 0, NOW);
+					else -- vertical game
+						resize_image(detailview.internal_vid, VRESH, 0, NOW);
+						props = image_surface_properties(detailview.internal_vid);
+						if (props.width < VRESW) then
+							move_image(detailview.internal_vid, 0.5 * (VRESW - props.width), 0, NOW);
+						end
+					end
+
+					hide_image(detailview.model.vid);
+					return;
+				end
+			elseif (iotbl.active and val == "MENU_ESCAPE") then
+-- stop the internal launch, zoom out the model and replace display with static
+				delete_image(detailview.internal_vid);
+				detailview.internal_vid = NULL;
+				move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
+				set_image_as_frame(detailview.model.vid, noise_image, detailview.model.labels["display"]);
+				mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
+				return;
+			end
+		end
+	end
+
+	target_input(iotbl, detailview.internal_vid);
+end
+
 -- 
 -- need some more advanced functionality to "zoom"
 -- a short press will immediately zoom in/out from the default position to focus on the display
@@ -122,6 +174,9 @@ end
 --
 function gridledetail_input(iotbl)
 -- if internal launch is active, only "ESCAPE" and "ZOOM" is accepted, all the others are being forwarded.
+	if (detailview.internal_vid) then
+		return gridledetail_internalinput(iotbl);
+	end
 	
 	if (iotbl.kind == "digital") then
 		local restbl = keyconfig:match(iotbl);
@@ -142,7 +197,7 @@ function gridledetail_input(iotbl)
 								gridledetail_zoomed = false;
 								move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
 							else
-								move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20); 
+								move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
 								gridledetail_zoomed = true;
 							end
 						else -- stop moving
@@ -232,8 +287,12 @@ function gridledetail_show(detailres, gametbl)
 
 -- Don't add this label unless internal support is working for the underlying platform
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
-		delete_image(
-		launch_target(detailview.game.title, LAUNCH_INTERNAL);
+		if (detailview.movie) then delete_image(detailview.movie, 20); end
+		local vid, aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
+
+		set_image_as_frame(detailview.model.vid, noise_image, detailview.model.labels["display"]);
+		mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
+		detailview.internal_vid = vid;
 	end
 
 -- Works the same, just make sure to stop any "internal session" as it is 
