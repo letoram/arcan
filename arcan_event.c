@@ -213,6 +213,7 @@ arcan_event* arcan_event_poll_masked(uint32_t mask_cat, uint32_t mask_ev)
 void arcan_event_enqueue(arcan_event* src)
 {
 	queue_cell* next;
+	src->tickstamp = current_context.c_ticks;
 	/* early-out mask-filter */
 	if (!src || (src->category & current_context.mask_cat_inp))
 		return;

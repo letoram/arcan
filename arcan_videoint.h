@@ -100,7 +100,6 @@ typedef struct arcan_vobject {
         enum arcan_vimage_mode scale;
 
 		arcan_shader_id program;
-		unsigned maptype;
 	} gl_storage;
 	
 	float txcos[8];

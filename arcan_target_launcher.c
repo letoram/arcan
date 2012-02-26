@@ -236,6 +236,7 @@ void arcan_target_tick_control(arcan_launchtarget* tgt)
 	if (tgt->source.shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->source.shm.ptr;
 
+		printf("tick control, %i\n", tgt->source.child_alive);
 		if (shmpage->resized){
 			vfunc_state cstate = *arcan_video_feedstate(tgt->source.vid);
 			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};

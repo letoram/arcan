@@ -105,7 +105,7 @@ int arcan_lua_zapresource(lua_State* ctx)
 
 int arcan_lua_rawresource(lua_State* ctx)
 {
-	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 
 	if (lua_ctx_store.rfile)
 		fclose(lua_ctx_store.rfile);
@@ -216,10 +216,6 @@ int arcan_lua_loadimage(lua_State* ctx)
 	if (path)
 		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, false);
 
-	/* loaded images start out hidden */
-	if (id != ARCAN_EID)
-		arcan_video_objectopacity(id, 0, 0);
-
 	free(path);
 	lua_pushvid(ctx, id);
 	return 1;
@@ -228,11 +224,16 @@ int arcan_lua_loadimage(lua_State* ctx)
 int arcan_lua_loadimageasynch(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
+	intptr_t ref = 0;
+	
 	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
-	uint8_t prio = luaL_optint(ctx, 2, 0);
+	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
+		lua_pushvalue(ctx, 2);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
 	
 	if (path)
-		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, true);
+		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), 0, (void*) ref);
 	
 	free(path);
 	lua_pushvid(ctx, id);
@@ -480,6 +481,17 @@ int arcan_lua_setshader(lua_State* ctx)
 	arcan_shader_id shid = luaL_checknumber(ctx, 2);
 
 	arcan_video_setprogram(id, shid);
+
+	return 0;
+}
+
+int arcan_lua_setmeshshader(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_shader_id shid = luaL_checknumber(ctx, 2);
+	int slot = abs ( luaL_checknumber(ctx, 3) );
+
+	arcan_3d_meshshader(id, shid, slot);
 
 	return 0;
 }
@@ -1168,17 +1180,35 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
             break;
                 
-			case EVENT_VIDEO_ASYNCHIMAGE_LOADED: 
+			case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
                 arcan_lua_tblstr(ctx, "kind", "loaded", top); 
                 arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
-            break;
+				int val = (intptr_t) ev.data.video.data;
+				if (val){ /* if we're here, the tag we got in data originates from the lua asynch - load call) */
+					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
+					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushnumber(ctx, 1);
+					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch callback");
+					lua_settop(ctx, 0);
+					return;
+				}
+			break;
                 
 			case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: 
                 arcan_lua_tblstr(ctx, "kind", "load_failed", top); 
                 arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);    
-            break;
+				val = (intptr_t) ev.data.video.data;
+				if (val){ 
+					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
+					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushnumber(ctx, 0);
+					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch callback");
+					lua_settop(ctx, 0);
+					return;
+				}
+	           break;
                 
 			case EVENT_VIDEO_FRAMESERVER_TERMINATED : 
 				arcan_lua_tblstr(ctx, "kind", "broken frameserver", top);
@@ -1288,19 +1318,23 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_createtable(ctx, 0, 6);
 
 	lua_pushstring(ctx, "x");
-	lua_pushinteger(ctx, prop.position.x);
+	lua_pushnumber(ctx, prop.position.x);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "y");
-	lua_pushinteger(ctx, prop.position.y);
+	lua_pushnumber(ctx, prop.position.y);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "z");
+	lua_pushnumber(ctx, prop.position.z);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "width");
-	lua_pushinteger(ctx, prop.scale.x);
+	lua_pushnumber(ctx, prop.scale.x);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "height");
-	lua_pushinteger(ctx, prop.scale.y);
+	lua_pushnumber(ctx, prop.scale.y);
 	lua_rawset(ctx, -3);
 
 	lua_pushstring(ctx, "angle");
@@ -1409,15 +1443,6 @@ int arcan_lua_forwardcamera(lua_State* ctx)
 	unsigned camtag = luaL_optint(ctx, 3, 0);
 	
 	arcan_3d_forwardcamera(camtag, step, dt);
-	return 0;
-}
-
-int arcan_lua_imagemaptype(lua_State* ctx)
-{
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	unsigned maptype = luaL_checknumber(ctx, 2);
-	
-	arcan_video_objectmaptype(id, maptype);
 	return 0;
 }
 
@@ -1644,7 +1669,28 @@ int arcan_lua_fillsurface(lua_State* ctx)
 			RGBPACK(b, g, r, cptr++);
 
 	arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, desw, desh, 0);
+	lua_pushvid(ctx, id);
 
+	return 1;
+}
+
+/* not intendend to be used as a noise function (duh) */
+int arcan_lua_randomsurface(lua_State* ctx)
+{
+	int desw = abs( luaL_checknumber(ctx, 1) );
+	int desh = abs( luaL_checknumber(ctx, 2) );
+	img_cons cons = {.w = desw, .h = desh, .bpp = 4};
+
+	uint32_t* cptr = (uint32_t*) malloc(desw * desh * 4);
+	uint8_t* buf = (uint8_t*) cptr;
+	
+	for (int y = 0; y < cons.h; y++)
+		for (int x = 0; x < cons.w; x++){
+			unsigned char val = 20 + random() % 235;
+			RGBPACK(val, val, val, cptr++);
+		}
+
+	arcan_vobj_id id = arcan_video_rawobject(buf, desw * desh * 4, cons, desw, desh, 0);
 	lua_pushvid(ctx, id);
 
 	return 1;
@@ -2093,51 +2139,52 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 	unsigned sid = luaL_checknumber(ctx, 1);
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
+	bool persist = luaL_checknumber(ctx, 4) != 0;
 
 	arcan_shader_activate(sid);
 
 	if (fmtstr[0] == 'b'){
-		bool fmt = luaL_checknumber(ctx, 4) != 0;
-		arcan_shader_forceunif(label, shdrbool, &fmt);
-	} else if (fmtstr[1] == 'i'){
-		bool fmt = luaL_checknumber(ctx, 4);
-		arcan_shader_forceunif(label, shdrint, &fmt);
+		bool fmt = luaL_checknumber(ctx, 5) != 0;
+		arcan_shader_forceunif(label, shdrbool, &fmt, persist);
+	} else if (fmtstr[0] == 'i'){
+		int fmt = luaL_checknumber(ctx, 5);
+		arcan_shader_forceunif(label, shdrint, &fmt, persist);
 	} else {
 		unsigned i = 0;
 		while(fmtstr[i] == 'f') i++;
 		if (i)
 			switch(i){
 				case 1:
-					fbuf[0] = luaL_checknumber(ctx, 4);
-					arcan_shader_forceunif(label, shdrfloat, fbuf);
+					fbuf[0] = luaL_checknumber(ctx, 5);
+					arcan_shader_forceunif(label, shdrfloat, fbuf, persist);
 				break;
 				
 				case 2:
-					fbuf[0] = luaL_checknumber(ctx, 4);
-					fbuf[1] = luaL_checknumber(ctx, 5);
-					arcan_shader_forceunif(label, shdrvec2, fbuf);
+					fbuf[0] = luaL_checknumber(ctx, 5);
+					fbuf[1] = luaL_checknumber(ctx, 6);
+					arcan_shader_forceunif(label, shdrvec2, fbuf, persist);
 				break;
 				
 				case 3:
-					fbuf[0] = luaL_checknumber(ctx, 4);
-					fbuf[1] = luaL_checknumber(ctx, 5);
-					fbuf[2] = luaL_checknumber(ctx, 6);
-					arcan_shader_forceunif(label, shdrvec3, fbuf);
+					fbuf[0] = luaL_checknumber(ctx, 5);
+					fbuf[1] = luaL_checknumber(ctx, 6);
+					fbuf[2] = luaL_checknumber(ctx, 7);
+					arcan_shader_forceunif(label, shdrvec3, fbuf, persist);
 				break;
 				
 				case 4:
-					fbuf[0] = luaL_checknumber(ctx, 4);
-					fbuf[1] = luaL_checknumber(ctx, 5);
-					fbuf[2] = luaL_checknumber(ctx, 6);
-					fbuf[3] = luaL_checknumber(ctx, 7);
-					arcan_shader_forceunif(label, shdrvec3, fbuf);
+					fbuf[0] = luaL_checknumber(ctx, 5);
+					fbuf[1] = luaL_checknumber(ctx, 6);
+					fbuf[2] = luaL_checknumber(ctx, 7);
+					fbuf[3] = luaL_checknumber(ctx, 8);
+					arcan_shader_forceunif(label, shdrvec3, fbuf, persist);
 				break;
 
 				case 16:
 						while(i--)
-							fbuf[i] = luaL_checknumber(ctx, 4 + i);
+							fbuf[i] = luaL_checknumber(ctx, 5 + i);
 						
-						arcan_shader_forceunif(label, shdrmat4x4, fbuf);
+						arcan_shader_forceunif(label, shdrmat4x4, fbuf, persist);
 						
 				break;
 				default:
@@ -2461,9 +2508,6 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:image_mask_clear,vid,enumint,nil */
 	lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
 
-/* item:image_maptype,vid,enumint,nil*/
-	lua_register(ctx, "image_maptype", arcan_lua_imagemaptype);
-	
 /* item:image_surface_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
 
@@ -2473,9 +2517,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:image_surface_resolve_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
 
-/* item:*image_program, vid, shaderid, nil */
+/* item:image_shader, vid, shaderid, nil */
 	lua_register(ctx, "image_shader", arcan_lua_setshader);
 
+/* item:mesh_shader, vid, shaderid, ofs, nil */
+	lua_register(ctx, "mesh_shader", arcan_lua_setmeshshader);
+	
 /* item:build_shader, vertstr, fragstr, shaderid */
 	lua_register(ctx, "build_shader", arcan_lua_buildshader);
 
@@ -2491,6 +2538,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
 	lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 
+/* item random_surface, width (px), height (px), vid >*/
+	lua_register(ctx, "random_surface", arcan_lua_randomsurface);
+	
 /* item:force_image_blend, boolint, nil */
 	lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
 	
@@ -2643,7 +2693,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
 	
 /* constant: API_VERSION_MINOR,int */
-	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 3);
+	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 4);
 
 /* constant: LAUNCH_EXTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);
@@ -2695,16 +2745,13 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* constant: LEDCONTROLLERS,string */
 	arcan_lua_setglobalint(ctx, "LEDCONTROLLERS", arcan_led_controllers());
-
-/* constant: MAPTYPE_NORMAL,num */
-	arcan_lua_setglobalint(ctx, "MAPTYPE_BUMP",	MAP_BUMP_D);
-	arcan_lua_setglobalint(ctx, "MAPTYPE_SHADOW", MAP_SHADOW_D);
-	arcan_lua_setglobalint(ctx, "MAPTYPE_REFLECTION", MAP_REFLECTION_D);
-	arcan_lua_setglobalint(ctx, "MAPTYPE_NORMAL", MAP_NORMAL_D);
-	arcan_lua_setglobalint(ctx, "MAPTYPE_SPECULAR",	MAP_SPECULAR_D);
-	arcan_lua_setglobalint(ctx, "MAPTYPE_DIFFUSE", MAP_DIFFUSE_D);
-	arcan_lua_setglobalint(ctx, "MAPTYPE_DISPLACEMENT", MAP_DISPLACEMENT_D);	
 	
 /* constant: NOW, int */
 	arcan_lua_setglobalint(ctx, "NOW", 0);
+
+/* constant: NOPERSIST, int */
+	arcan_lua_setglobalint(ctx, "NOPERSIST", 0);
+
+/* constant: PERSIST, int */
+	arcan_lua_setglobalint(ctx, "PERSIST", 1);
 }

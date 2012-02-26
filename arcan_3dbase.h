@@ -38,7 +38,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 /* empty model allocates and populates a container,
  * then add a hierarchy of meshes to the model */
 arcan_vobj_id arcan_3d_emptymodel();
-void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps);
+arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned slot);
+arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps);
 
 /* scans through the specified model and all its' meshes,
  * rebuild the bounding volume and using that, maps all vertex values

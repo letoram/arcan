@@ -1,60 +1,3 @@
-vertex_shader = [[
-uniform mat4 modelview;
-uniform mat4 projection;
-uniform int timestamp;
-
-attribute vec4 vertex;
-attribute vec2 texcoord;
-
-varying vec2 texco;
-
-void main(void)
-{
-	texco.s = texcoord.s + fract(float(timestamp) / 64.0);
-	texco.t = texcoord.t + fract(float(timestamp) / 64.0);
-	
-	gl_Position = (projection * modelview) * vertex;
-}]];
-
-fragment_shader = [[
-	uniform sampler2D map_diffuse;
-	varying vec2 texco;
-
-	void main() {
-		gl_FragColor = texture2D(map_diffuse, texco);
-	}
-]];
-
-scanline_vertrex_shader = [[
-	uniform vec4 modelview;
-	uniform vec4 projection;
-
-	attribute vec4 vertex;
-	attribute vec2 texcoord;
-	varying vec2 texo;
-	varying vec2 omega;
-
-void main(void)
-{
-	omega = (3.14157 * outputsize.x * texturesize.x / inputsize.x, 2.0 * 3.1415 * rubytexturesize.y);
-	gl_Position = (projection * modelview) * vertex;
-	texco = texcoord;
-};]];
-
-scanline_fragment_shader = [[
-uniform sampler2D map_diffuse;
-varying vec2 omega;
-varying vec2 texco;
-const float base_brightness = 0.85;
-const vec2 sine_comp = vec2(0.0005, 0.35);
-
-void main()
-{
-	vec4 c11 = texture2D(map_diffuse, texco);
-	vec4 scanline = c11 * (base_brightness + dot(sine_comp * sin(texco * omega), vec2(1.0)));
-	gl_FragColor = clamp(scanline, 0.0, 1.0);
-}
-]];
 
 grid = {};
 
@@ -78,8 +21,12 @@ settings = {
 	cellcount= 0,
 	pageofs  = 0,
 
+	favorites = {},
+	detailvids = {},
+	favvids = {},
+	
 	repeat_rate = 250,
-	cell_width = 48,
+	celll_width = 48,
 	cell_height = 48
 };
 
@@ -87,12 +34,26 @@ settings.sortfunctions = {};
 settings.sortfunctions["Ascending"]    = function(a,b) return string.lower(a.title) < string.lower(b.title) end 
 settings.sortfunctions["Descending"]   = function(a,b) return string.lower(a.title) > string.lower(b.title) end
 settings.sortfunctions["Times Played"] = function(a,b) return a.launch_counter > b.launch_counter end 
+settings.sortfunctions["Favorites"]    = function(a,b) 
+	local af = settings.favorites[a.title];
+	local bf = settings.favorites[b.title];
+	if (af and not bf) then
+		return true
+	elseif (bf and not af) then
+		return false
+	else
+		return string.lower(a.title) < string.lower(b.title);
+	end
+end
 
 function gridle_keyconf()
-    keyconfig = keyconf_create(1, {
+	local keylabels = {
         "rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP",
-        "rMENU_DOWN", "rMENU_SELECT",
-	" ZOOM_CURSOR", "rMENU_TOGGLE", "rDETAIL_VIEW"} );
+        "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE"};
+
+	if (INTERNALMODE ~= "NO SUPPORT") then table.insert(keylabels, " LAUNCH_INTERNAL"); end
+	
+    keyconfig = keyconf_create(1, keylabels);
     keyconfig.iofun = gridle_input;
 	if (keyconfig.active == false) then
 		gridle_input = function(iotbl) -- keyconfig io function hook
@@ -124,6 +85,53 @@ function gridle_ledconf()
 	end
 end	
 
+function current_game()
+	return settings.games[settings.cursor + settings.pageofs + 1];
+end
+
+function table.find(table, label)
+	for a,b in pairs(table) do
+		if (b == label) then return a end
+	end
+
+	return nil;  
+end
+
+function spawn_magnify( src )
+	local vid = instance_image(magnifyimage);
+	local w = settings.cell_width * 0.1;
+	local h = settings.cell_height * 0.1;
+	
+	image_mask_clear(vid, MASK_SCALE);
+	image_mask_clear(vid, MASK_OPACITY);
+	force_image_blend(vid);
+
+	local props = image_surface_properties( src );
+	move_image(vid, props.x - (settings.cell_width * 0.05) + w + 4, props.y + (settings.cell_width * 0.05), 0);
+	order_image(vid, 4);
+	blend_image(vid, 1.0, settings.fadedelay);
+	resize_image(vid, 1, 1, NOW);
+	resize_image(vid, w, h, 10);
+	table.insert(settings.detailvids, vid);
+	
+	return vid;
+end
+
+function spawn_favoritestar( src )
+	local vid = instance_image(starimage);
+	image_mask_clear(vid, MASK_SCALE);
+	image_mask_clear(vid, MASK_OPACITY);
+	force_image_blend(vid);
+
+	local props = image_surface_properties( src );
+	move_image(vid, props.x - (settings.cell_width * 0.05), props.y - (settings.cell_width * 0.05), 0);
+	order_image(vid, 4);
+	blend_image(vid, 1.0, settings.fadedelay);
+	resize_image(vid, 1, 1, NOW);
+	resize_image(vid, settings.cell_width * 0.1, settings.cell_height * 0.1, 10);
+	table.insert(settings.favvids, vid);
+	return vid;
+end
 
 function gridle()
     system_load("scripts/keyconf.lua")();
@@ -136,17 +144,18 @@ function gridle()
 	video_3dorder(ORDER_LAST);
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
-	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 3) then
-		msg = "Engine/Script API version match, expected 0.3, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
+	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 4) then
+		msg = "Engine/Script API version match, expected 0.4, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
 		error(msg);
 		shutdown();
 	end
 
 	load_settings();
-	local bgshader = build_shader(vertex_shader, fragment_shader);
+	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader");
+	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
 -- We'll reduce stack layers and increase number of elements,
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size
-	system_context_size( (VRESW * VRESH) / (settings.cell_width * settings.cell_height) * 6 );
+	system_context_size( (VRESW * VRESH) / (48 * 48) * 3 );
 -- make sure the current context runs with the new limit
 	pop_video_context();
 	
@@ -157,7 +166,6 @@ function gridle()
     end
 
 	if (settings.sortfunctions[settings.sortlbl]) then
-		print(settings.sortfunctions[settings.sortlbl]);
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
 	gridle_keyconf();
@@ -171,7 +179,7 @@ function gridle()
 		else
 			remove_zoom();
 		end
-	end
+end
 
 -- the dispatchtable will be manipulated by settings and other parts of the program
     settings.iodispatch["MENU_UP"]      = function(iotbl) play_sample("click.wav"); move_cursor( -1 * ncw); end
@@ -179,16 +187,37 @@ function gridle()
     settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_sample("click.wav"); move_cursor( -1 ); end
     settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample("click.wav"); move_cursor( 1 ); end
     settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
-	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl) remove_zoom(); gridledetail_show(); end
+	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
+		local ind = table.find(settings.favorites, current_game().title);
+		if (ind == nil) then -- flag
+			table.insert(settings.favorites, current_game().title);
+			local props = spawn_favoritestar(cursor_vid());
+			settings.favorites[current_game().title] = props;
+		else -- unflag
+			fvid = settings.favorites[current_game().title];
+			if (fvid) then
+				blend_image(fvid, 0.0, settings.fadedelay);
+				expire_image(fvid, settings.fadedelay);
+				settings.favorites[current_game().title] = nil;
+			end
+			
+			table.remove(settings.favorites, ind);
+		end
+	end
+	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
+		local key = gridledetail_havedetails(current_game());
+		if (key) then
+			remove_zoom();
+			gridledetail_show(key, current_game());
+		end
+	end
+	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
-    settings.iodispatch["MENU_SELECT"]  = function(iotbl) if (settings.games[settings.cursor + settings.pageofs + 1]) then
-    launch_target( settings.games[settings.cursor + settings.pageofs + 1].title, LAUNCH_EXTERNAL); move_cursor(0); end end
+    settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
 
 	whiteblock = fill_surface(1,1,255,255,255);
 	move_image(whiteblock, 0,0);
-	show_image(whiteblock);
-    build_grid(settings.cell_width, settings.cell_height);
-
+	
 -- Animated background
     switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
     bgimage = load_image("background.png");
@@ -197,6 +226,12 @@ function gridle()
     image_shader(bgimage, bgshader);
     show_image(bgimage);
     switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+
+-- Little star keeping track of games marked as favorites
+	starimage = load_image("star.png");
+	magnifyimage = load_image("magnify.png");
+	
+    build_grid(settings.cell_width, settings.cell_height);
 	build_fadefunctions();
 end
 
@@ -228,6 +263,22 @@ function build_fadefunctions()
 	end);
 end
 
+function got_asynchimage(source, status)
+	local cursor_row = math.floor(settings.cursor / ncw);
+	local gridcell_vid = cursor_vid();
+
+	if (status == 1) then
+		if (source == gridcell_vid) then
+			blend_image(source, 1.0);
+		else
+			blend_image(source, 0.3);
+		end
+		
+		resize_image(source, settings.cell_width, settings.cell_height);
+	end
+	
+end
+
 function have_video(setname)
 	local exts = {".avi", ".mp4", ".mkv", ".mpg"};
 
@@ -248,7 +299,7 @@ function zoom_cursor()
 		local aspect = props.width / props.height;
 		
 		local vid = movievid and instance_image(movievid) or instance_image( cursor_vid() );
-		-- make sure it is on top
+-- make sure it is on top
 		order_image(vid, max_current_image_order() + 1);
 
 -- we want to zoom using the global coordinate system
@@ -288,7 +339,7 @@ end
 
 function remove_zoom()
 	if (imagery.zoomed ~= BADID) then
-		local props = image_surface_properties( image_parent( imagery.zoomed ) );
+		local props = image_surface_properties( cursor_vid() );
 		move_image(imagery.zoomed, props.x, props.y, settings.fadedelay);
 		blend_image(imagery.zoomed, 0.0, settings.fadedelay);
 		resize_image(imagery.zoomed, 1, 1, settings.fadedelay);
@@ -420,8 +471,9 @@ function get_image(romset)
     local rvid = BADID;
 
     if resource("screenshots/" .. romset .. ".png") then
-        rvid = load_image_asynch("screenshots/" .. romset .. ".png");
-    end
+        rvid = load_image_asynch("screenshots/" .. romset .. ".png", got_asynchimage);
+		blend_image(rvid, 0.3);
+	end
 
     if (rvid == BADID) then
         rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. romset );
@@ -433,6 +485,20 @@ end
 
 function erase_grid(rebuild)
     settings.cellcount = 0;
+
+	for ind,vid in pairs(settings.favvids) do
+		expire_image(vid, settings.fadedelay);
+		blend_image(vid, 0.0, settings.fadedelay);
+	end
+
+	for ind,vid in pairs(settings.detailvids) do
+		expire_image(vid, settings.fadedelay);
+		blend_image(vid, 0.0, settings.fadedelay);
+	end
+
+	settings.detailvids = {};
+	settings.favvids = {};
+	
 	local fadefunc = fadefunctions[ math.random(1,#fadefunctions) ];
 	
     for row=0, nch-1 do
@@ -479,6 +545,15 @@ function build_grid(width, height)
             move_image(vid,cell_coords(col, row));
             order_image(vid, 2);
 
+			local ofs = 0;
+			if (settings.favorites[ settings.games[gameno].title ]) then
+				settings.favorites[ settings.games[gameno].title ] = spawn_favoritestar( vid );
+			end
+
+			if (gridledetail_havedetails( settings.games[gameno] )) then
+				ofs = ofs + spawn_magnify( vid, ofs );
+			end
+		
 			gridbg = instance_image(whiteblock);
 			resize_image(gridbg, settings.cell_width, settings.cell_height);
 			move_image(gridbg, cell_coords(col, row));
@@ -509,18 +584,6 @@ function gridle_video_event(source, event)
 			blend_image(source, 0.0, settings.fadedelay);
 			expire_image(source, settings.fadedelay);
 		end
-
-	elseif (event.kind == "loaded") then
-		local cursor_row = math.floor(settings.cursor / ncw);
-		local gridcell_vid = cursor_vid();
-
-		if (source == gridcell_vid) then
-			blend_image(source, 1.0);
-		else
-			blend_image(source, 0.3);
-		end
-		
-        resize_image(source, settings.cell_width, settings.cell_height);
 	end
 end
 
@@ -530,6 +593,18 @@ function gridle_shutdown()
 	store_key("cell_width", tostring(settings.cell_width));
 	store_key("cell_height", tostring(settings.cell_height));
 	store_key("sortorder", settings.sortlbl);
+
+	zap_resource("lists/favorites");
+	if (open_rawresource("lists/favorites")) then
+		for a=1,#settings.favorites do
+			if ( write_rawresource(settings.favorites[a] .. "\n") == false) then
+				print("Couldn't save favorites in lists/favorites. Check permissions.");
+				break;
+			end
+		end
+
+		close_rawresource();
+	end
 end
 
 function load_settings()
@@ -538,6 +613,9 @@ function load_settings()
 	if (cellw and cellh and tonumber(cellw) >= 48 and tonumber(cellh) >= 48) then
 		settings.cell_width = tonumber(cellw);
 		settings.cell_height = tonumber(cellh);
+	else
+		settings.cell_width = 128;
+		settings.cell_height = 128;
 	end
 
 	local setdelay = get_key("fadedelay");
@@ -552,10 +630,21 @@ function load_settings()
 	
 	local repeatrate = get_key("repeatrate");
 	if (repeatrate) then settings.repeat_rate = tostring(repeatrate); end
+
+	if ( open_rawresource("lists/favorites") ) then
+		line = read_rawresource();
+		while line ~= nil do
+			table.insert(settings.favorites, line);
+			settings.favorites[line] = true;
+			line = read_rawresource();
+		end
+		
+	end
 end
 
 function gridle_input(iotbl)
  local restbl = keyconfig:match(iotbl);
+ 
  if (restbl and iotbl.active) then
   for ind,val in pairs(restbl) do
    if (settings.iodispatch[val]) then

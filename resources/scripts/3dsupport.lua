@@ -5,9 +5,9 @@ local function load_material(modelname, meshname)
 	local fnameb = "models/" .. modelname .. "/textures/" .. meshname;
 
 	if (resource(fnameb .. ".png")) then
-		rvid = load_image(fnameb .. ".png");
+		rvid = load_image_asynch(fnameb .. ".png");
 	elseif (resource(fnameb .. ".jpg")) then
-		rvid = load_image(fnameb .. ".jpg");
+		rvid = load_image_asynch(fnameb .. ".jpg");
 	else
 		rvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255));
 	end
@@ -30,24 +30,55 @@ function load_model_generic(modelname)
 
 	model.vid = new_3dmodel();
 	if (model.vid == BADID) then return nil end
-	image_framesetsize(model.vid, #meshes * 2);
+	image_framesetsize(model.vid, #meshes);
 
 	for i=1, #meshes do
-		slot = (i-1) * 2;
-		add_3dmesh(model.vid, basep .. meshes[i], 2);
+		slot = i - 1;
+		add_3dmesh(model.vid, basep .. meshes[i], 1);
 		switch_default_imageproc(IMAGEPROC_FLIPH);
-			local vid = load_material(modelname, string.sub(meshes[i], 1, -5));
-			image_maptype(vid, MAPTYPE_NORMAL);
+		local vid = load_material(modelname, string.sub(meshes[i], 1, -5));
 		switch_default_imageproc(IMAGEPROC_NORMAL);
 
 		model.labels[string.sub(meshes[i], 1, -5)] = slot;
 		model.images[slot] = vid;
 
 		set_image_as_frame(model.vid, vid, slot, 1);
-		set_image_as_frame(model.vid, fill_surface(8, 8, math.random(1, 255), math.random(1,255), math.random(1,255)), slot+1, 1);
 	end
 	
 	return model;
+end
+
+-- Simple wrapper around the "raw-resource" bit.
+function load_shader(vertname, fragname, label)
+	local vprog = "";
+	local fprog = "";
+	local verttbl = {};
+	local fragtbl = {};
+
+	if ( open_rawresource(vertname) ) then
+		local line = read_rawresource();
+
+		while (line ~= nil) do
+			table.insert(verttbl, line);
+			line = read_rawresource();
+		end
+
+		vprog = table.concat(verttbl, "\n");
+		close_rawresource();
+	end
+
+	if (open_rawresource(fragname) ) then
+		local line = read_rawresource();
+		while (line ~= nil) do
+			table.insert(fragtbl, line);
+			line = read_rawresource();
+		end
+
+		fprog = table.concat(fragtbl, "\n"); 
+		close_rawresource();
+	end
+
+	return build_shader(vprog, fprog, label);
 end
 
 function load_model(modelname, shaderid)

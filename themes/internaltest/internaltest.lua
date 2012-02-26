@@ -24,7 +24,7 @@ function internaltest()
 	
 	build_grid();
 	
-	games = list_games( {target = "mame", title = "Moon Patrol"} );
+	games = list_games( {} );
 	current_target = nil;
 	iodispatch = {}
 

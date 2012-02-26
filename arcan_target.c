@@ -365,55 +365,44 @@ static void push_event(char* buf, size_t nb)
 
 static void poll_comm(){
 	static char buf[256] = {0};
-	static unsigned short bufofs = 0;
-	bool waitcmd;
+	static unsigned char bufofs   = 0;
+	bool waitcmd = false;
 	ssize_t nr;
 
-	waitcmd = false;
+/* when waitcmd is enabled, we jump here and block */
+retry:
+/* process has been adopted by something else (likely init) */
+	if (getppid() != global.shared->parent){
+fatal:
+		cleanup_shared( global.shmkey );
+
+	/* tried queueing SDL_QUIT, didn't help. */
+		exit(0);
+	}
 	
-	retry: 
-	nr = read(COMM_FD, buf + bufofs, sizeof(buf) / sizeof(buf[0]) - bufofs);
-	
+	nr = read(COMM_FD, buf + bufofs, sizeof(buf) / sizeof(buf[0]) - bufofs - 1);
+
 	if (nr > 0) {
-		/* do we have a full tlv- package? */
 		bufofs += nr;
-		while (bufofs >= 2 && bufofs >= (buf[1]+2)) {
-			/* decode */
+/* header(2b), rest(253+2) */
+		while (bufofs >= (buf[1] + 2)) {
+			if (buf[1] > 254){
+				fprintf(stderr, "Arcan Hijack, Parent requested illegaly sized tag (%i:%i)\n", buf[0], buf[1]);
+				goto fatal;
+			}
+		/* decode */
 			if (!waitcmd || (waitcmd && buf[0] == TF_WAKE))
 				switch (buf[0]) {
-				case TF_GFLAGS : 
-						printf("gflags?!\n");
-				break;
-
-				case TF_EVENT :
-					push_event(buf + 2, buf[1]);
-				break;
-				
-				case TF_WAKE:
-					waitcmd = false;
-					fcntl(COMM_FD, F_SETFL, 
-						  fcntl(COMM_FD, F_GETFL) | O_NONBLOCK);
-				break;
-				
-				case TF_SLEEP:
-				/* set to block on read, then we retry read and just ignore
-				 * all packets that are not wake, tried to do this with signals,
-				 * but unstable */
-					waitcmd = true;
-					fcntl(COMM_FD, F_SETFL, 
-						  fcntl(COMM_FD, F_GETFL) & ~O_NONBLOCK);
-				break;
-				
-				case TF_AGAIN  :
-					set_attenuation(buf + 2);
-				break;
-				
+					case TF_EVENT : push_event(buf + 2, buf[1]); break;
+					case TF_WAKE  : waitcmd = false; fcntl(COMM_FD, F_SETFL, fcntl(COMM_FD, F_GETFL) | O_NONBLOCK); break;
+					case TF_SLEEP : waitcmd = true; fcntl(COMM_FD, F_SETFL, fcntl(COMM_FD, F_GETFL) & ~O_NONBLOCK); break;
+					case TF_AGAIN : set_attenuation(buf + 2); break;
 				default:
-					fprintf(stderr, "Arcan Hijack, SDL_PollEvent, Unknown event received: %i\n", buf[0]);
+					fprintf(stderr, "Arcan Hijack, SDL_PollEvent, Unknown event received: %i:%i\n", buf[0], buf[1]);
 			}
 
-			/* slide */
-			unsigned short torem = buf[1] + 2;
+		/* slide */
+			unsigned char torem = buf[1] + 2;
 			memmove(buf, buf + torem, sizeof(buf) / sizeof(buf[0]) - torem);
 			bufofs -= torem;
 		}
@@ -430,14 +419,7 @@ int ARCAN_SDL_PollEvent(SDL_Event* ev)
 /* check pipe, decode events and inject */ 
  	poll_comm();
 
-/* process has been adopted by something else (likely init) */
-	if (getppid() != global.shared->parent){
-		cleanup_shared( global.shmkey );	
 
-	/* tried queueing SDL_QUIT, didn't help. */
-		exit(0);
-	}
-	
 /* we need to filter a few events ... ;-) */
 	int evs;
 	if ( (evs = forwardtbl.sdl_pollevent(&gevent) ) )

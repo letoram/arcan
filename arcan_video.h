@@ -142,7 +142,10 @@ signed arcan_video_pushcontext();
  * assumes constraints are a valid texture size (power of two),
  * and that the data is in RGBA format*/
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv);
-arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv, bool asynch);
+
+/* if tag is set,
+ * the image will be loaded asynch and in the event that will get pushed, the tag will come along */
+arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv, void* tag);
 arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
@@ -215,7 +218,6 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, floa
 arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, float df, unsigned int time);
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, float yaw, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
-arcan_errc arcan_video_objectmaptype(arcan_vobj_id id, int maptype);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);

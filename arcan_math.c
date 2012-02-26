@@ -1,3 +1,24 @@
+/* Arcan-fe, scriptable front-end engine
+ *
+ * Arcan-fe is the legal property of its developers, please refer
+ * to the COPYRIGHT file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -438,27 +459,11 @@ static inline void normalize_plane(float* pl)
 	pl[3] *= mag;
 }
 
-
 void update_frustum(float* prjm, float* mvm, float frustum[6][4])
 {
 	float mmr[16];
 /* multiply modelview with projection */
-	mmr[0] = mvm[0] * prjm[0] + mvm[1] * prjm[4] + mvm[2] * prjm[8] + mvm[3] * prjm[12];
-	mmr[1] = mvm[0] * prjm[1] + mvm[1] * prjm[5] + mvm[2] * prjm[9] + mvm[3] * prjm[13];
-	mmr[2] = mvm[0] * prjm[2] + mvm[1] * prjm[6] + mvm[2] * prjm[10] + mvm[3] * prjm[14];
-	mmr[3] = mvm[0] * prjm[3] + mvm[1] * prjm[7] + mvm[2] * prjm[11] + mvm[3] * prjm[15];
-	mmr[4] = mvm[4] * prjm[0] + mvm[5] * prjm[4] + mvm[6] * prjm[8] + mvm[7] * prjm[12];
-	mmr[5] = mvm[4] * prjm[1] + mvm[5] * prjm[5] + mvm[6] * prjm[9] + mvm[7] * prjm[13];
-	mmr[6] = mvm[4] * prjm[2] + mvm[5] * prjm[6] + mvm[6] * prjm[10] + mvm[7] * prjm[14];
-	mmr[7] = mvm[4] * prjm[3] + mvm[5] * prjm[7] + mvm[6] * prjm[11] + mvm[7] * prjm[15];
-	mmr[8] = mvm[8] * prjm[0] + mvm[9] * prjm[4] + mvm[10] * prjm[8] + mvm[11] * prjm[12];
-	mmr[9] = mvm[8] * prjm[1] + mvm[9] * prjm[5] + mvm[10] * prjm[9] + mvm[11] * prjm[13];
-	mmr[10] = mvm[8] * prjm[2] + mvm[9] * prjm[6] + mvm[10] * prjm[10] + mvm[11] * prjm[14];
-	mmr[11] = mvm[8] * prjm[3] + mvm[9] * prjm[7] + mvm[10] * prjm[11] + mvm[11] * prjm[15];
-	mmr[12] = mvm[12] * prjm[0] + mvm[13] * prjm[4] + mvm[14] * prjm[8] + mvm[15] * prjm[12];
-	mmr[13] = mvm[12] * prjm[1] + mvm[13] * prjm[5] + mvm[14] * prjm[9] + mvm[15] * prjm[13];
-	mmr[14] = mvm[12] * prjm[2] + mvm[13] * prjm[6] + mvm[14] * prjm[10] + mvm[15] * prjm[14];
-	mmr[15] = mvm[12] * prjm[3] + mvm[13] * prjm[7] + mvm[14] * prjm[11] + mvm[15] * prjm[15];
+	multiply_matrix(mmr, mvm, prjm);
 
 /* extract and normalize planes */
 	frustum[0][0] = mmr[3] + mmr[0]; // left
