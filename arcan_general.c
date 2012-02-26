@@ -213,7 +213,11 @@ void arcan_fatal(const char* msg, ...)
 		vfprintf(stderr,  msg, args );
 	va_end( args);
 
+#ifdef _DEBUG
+	abort();
+#else
 	exit(1);
+#endif
 }
 
 static char* unix_find(const char* fname){

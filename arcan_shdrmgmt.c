@@ -33,30 +33,7 @@ struct shader_envts {
 	float projection[16];
 	float texturemat[16];
 
-	vector camera_view;
-	vector camera_up;
-	vector camera_pos;
-
-	vector obj_scale;
-	vector obj_pos;
-	vector obj_orient;
-	vector obj_view;
-	float obj_opacity;
-
-/* texture mapping */
-	int map_displacement;
-	int map_bump;
-	int map_shadow;
-	int map_reflection;
-	int map_normal;
-	int map_specular;
-	int map_diffuse;
-
-/* lighting */
-	vector light_worlddir;
-	vector light_worlddiffuse;
-	vector light_worldambient;
-	
+	float opacity;
 /* system values, don't change this order */
 	float fract_timestamp;
 	arcan_tickv timestamp;
@@ -67,32 +44,8 @@ static int ofstbl[TBLSIZE] = {
 	offsetof(struct shader_envts, modelview),
 	offsetof(struct shader_envts, projection),
 	offsetof(struct shader_envts, texturemat),
-	
-/* current camera */
-	offsetof(struct shader_envts, camera_view),
-	offsetof(struct shader_envts, camera_up),
-	offsetof(struct shader_envts, camera_pos),
-	
-/* current object */
-	offsetof(struct shader_envts, obj_scale),
-	offsetof(struct shader_envts, obj_pos),
-	offsetof(struct shader_envts, obj_orient),
-	offsetof(struct shader_envts, obj_view),
-	offsetof(struct shader_envts, obj_opacity),
 
-/* texture mapping */
-	offsetof(struct shader_envts, map_displacement),
-	offsetof(struct shader_envts, map_bump),
-	offsetof(struct shader_envts, map_shadow),
-	offsetof(struct shader_envts, map_reflection),
-	offsetof(struct shader_envts, map_normal),
-	offsetof(struct shader_envts, map_specular),
-	offsetof(struct shader_envts, map_diffuse),
-
-/* lighting */
-	offsetof(struct shader_envts, light_worlddir),
-	offsetof(struct shader_envts, light_worlddiffuse),
-	offsetof(struct shader_envts, light_worldambient),
+	offsetof(struct shader_envts, opacity),
 	
 /* system values, don't change this order */
 	offsetof(struct shader_envts, fract_timestamp),
@@ -103,50 +56,28 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrmat4x4,
 	shdrmat4x4,
 	shdrmat4x4,
-	shdrvec3, /* camera */
-	shdrvec3,
-	shdrvec3,
-	shdrvec3, /* obj */
-	shdrvec3,
-	shdrvec3,
-	shdrvec3,
+
 	shdrfloat,
-	shdrint, /* map */
-	shdrint,
-	shdrint,
-	shdrint,
-	shdrint,
-	shdrint,
-	shdrint,
-	shdrvec3, /* light worlddir */
-	shdrvec3,
-	shdrvec3,
+	
 	shdrfloat,
 	shdrint
+};
+
+static char* typestrtbl[7] = {
+	"shdrbool",
+	"shdrint",
+	"shdrfloat",
+	"shdrvec2",
+	"shdrvec3",
+	"shdrvec4",
+	"shdrmat4x4"
 };
 
 static char* symtbl[TBLSIZE] = {
 	"modelview",
 	"projection",
-	"texture",
-	"camera_view",
-	"camera_up",
-	"camera_pos",
-	"obj_scale",
-	"obj_pos",
-	"obj_orient",
-	"obj_view",
+	"texturem",
 	"obj_opacity",
-	"map_displacement",
-	"map_bump",
-	"map_shadow",
-	"map_reflection",
-	"map_normal",
-	"map_specular",
-	"map_diffuse",
-	"light_worlddir",
-	"light_worlddiffuse",
-	"light_worldambient",
 	"fract_timestamp",
 	"timestamp"
 };
@@ -158,8 +89,15 @@ static char* attrsymtbl[4] = {
 	"texcoord"
 };
 
+struct shaderv {
+	GLint loc;
+	char* label;
+	enum shdrutype type;
+	uint8_t data[64]; /* largest supported type, mat4x4 */
+	struct shaderv* next;
+};
+
 struct shader_cont {
-	arcan_shader_id id;
 	char* label;
 	char (* vertex), (* fragment);
 	GLuint prg_container, obj_vertex, obj_fragment;
@@ -167,6 +105,7 @@ struct shader_cont {
 	GLint locations[sizeof(ofstbl) / sizeof(ofstbl[0])];
 /* match attrsymtbl */
 	GLint attributes[4];
+	struct shaderv* persistvs;
 };
 
 static int sizetbl[7]= {
@@ -189,10 +128,10 @@ static struct {
 	arcan_shader_id active_prg;
 	struct shader_envts context;
 	char guard;
-} shdr_global = {.base = 100, .active_prg = 0, .guard = 64};
+} shdr_global = {.base = 10000, .active_prg = -1, .guard = 64};
 
 
-static void build_shader(GLuint*, GLuint*, GLuint*, const char*, const char*);
+static void build_shader(const char*, GLuint*, GLuint*, GLuint*, const char*, const char*);
 
 static void setv(GLint loc, enum shdrutype kind, void* val)
 {
@@ -219,9 +158,12 @@ static void setv(GLint loc, enum shdrutype kind, void* val)
     
 #ifdef _DEBUG
     if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:post") == -1){
-		printf("failed operation: store type(%i) into slot(%i)\n", kind, loc);
+		int progno;
+		glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
+		
+		printf("failed operation: store type(%i:%s) into slot(%i) on program(%i)\n", kind, typestrtbl[kind], loc, progno);
 		struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
-		printf("last active shader: (%s), id(%i), locals: \n", src->label, src->id);
+		printf("last active shader: (%s), locals: \n", src->label);
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			printf("\t [%i] %s : %i\n", i, symtbl[i], src->locations[i]);
 		}
@@ -240,7 +182,6 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
-
 	/* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
 	 * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
@@ -249,6 +190,13 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
             }
 		}
 
+	/* activate any persistant values */
+		struct shaderv* current = cur->persistvs;
+		while (current){
+			setv(current->loc, current->type, (void*) current->data);
+			current = current->next;
+		}
+	
 		rv = ARCAN_OK;
 	}
 
@@ -260,16 +208,16 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 	arcan_shader_id rv = ARCAN_EID;
  	if (shdr_global.ofs < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0])){
 		struct shader_cont* cur = shdr_global.slots + shdr_global.ofs;
-		cur->id = shdr_global.ofs;
+		memset(cur, 0, sizeof(struct shader_cont));
 		cur->label = strdup(tag);
 		cur->vertex = strdup(vert);
 		cur->fragment = strdup(frag);
 
-		build_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag);
+		build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag);
 		glUseProgram(cur->prg_container);
 
 #ifdef _DEBUG
-			arcan_warning("arcan_shader_build() -- new ID : (%i)=>%i\n", cur->id, cur->prg_container);
+			arcan_warning("arcan_shader_build() -- new ID : (%i)\n", cur->prg_container);
 #endif
 		
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
@@ -289,8 +237,7 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 #endif
 		}
 		
-		rv = shdr_global.ofs + shdr_global.base;
-		shdr_global.ofs++;
+		rv = shdr_global.base + shdr_global.ofs++;
 	}
 
 	return rv;
@@ -298,23 +245,20 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 
 bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 {
-	bool res = false;
-	
 	memcpy((char*) (&shdr_global.context) + ofstbl[slot], value, size);
-	GLint loc;
-
-/* update the value for the shader so we might avoid a full glUseProgram, ... cycle */
-	if ( (loc = shdr_global.slots[ shdr_global.active_prg ].locations[slot]) >= 0 ){
-		if (size != sizetbl[typetbl[slot]]){
-			arcan_fatal("arcan_shader_envv(), got slot(%i)(%s) with specified size(%i), mismatch with (%i)\n",
-						slot, symtbl[slot], size, typetbl[sizetbl[slot]]);
-		}
-		else
-			setv(loc, typetbl[slot], value);
-		res = true;
+	if (-1  == shdr_global.active_prg)
+		return false;
+	
+	int glloc = shdr_global.slots[ shdr_global.active_prg].locations[slot];
+	
+	/* reflect change in current active shader */
+	if (glloc != -1){
+		assert(size == sizetbl[ typetbl[slot] ]);
+		setv(glloc, typetbl[slot], value);
+		return true;
 	}
 
-	return res;
+	return false;
 }
 
 GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
@@ -322,28 +266,44 @@ GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
 	return shdr_global.slots[ shdr_global.active_prg ].attributes[ attr ];
 }
 
-void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value)
+void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value, bool persist)
 {
-/* linear search the globals first */
-	for (int i = 0; i < sizeof(symtbl) / sizeof(symtbl[0]); i++){
-		if (strcmp(symtbl[i], label) == 0){
-			if (type == typetbl[i]){
-				arcan_shader_envv(i, value, type);
-				return;
+	GLint loc;
+	assert(shdr_global.active_prg != -1);
+	struct shader_cont* slot = &shdr_global.slots[shdr_global.active_prg];
+
+/* try to find a matching label, if one is found, just replace the loc and copy the value */
+	if (persist) {
+/* linear search */
+		struct shaderv** current = &(slot->persistvs);
+		for (current = &(slot->persistvs); *current; current = &(*current)->next)
+			if (strcmp((*current)->label, label) == 0)
+				break;
+
+/* found? then countinue, else allocate new and return that loc */
+		if (*current)
+			loc = (*current)->loc;
+		else {
+			loc = glGetUniformLocation(slot->prg_container, label);
+			if (loc >= 0){
+				*current = (struct shaderv*) malloc( sizeof(struct shaderv) );
+				(*current)->label = strdup(label);
+				(*current)->loc = loc;
+				(*current)->type = type;
+				(*current)->next  = NULL;
+				memcpy((*current)->data, value, sizetbl[type]);
 			}
-			else
-				arcan_warning("arcan_shader_forceunif(%s), failed to update shared symbol, invalid type.\n", label);
+			else; /* no need to check for this one, LOC will be -1, check further down fails and gives errormsg */
 		}
 	}
-	
-	GLint loc = glGetUniformLocation(shdr_global.slots[shdr_global.active_prg].prg_container, label); 
-#ifdef _DEBUG
-	arcan_warning("arcan_shader_forceunif(%s) %i:%i => %i\n", label, shdr_global.active_prg,
-				  shdr_global.slots[shdr_global.active_prg].prg_container, loc);
-#endif
+/* or, we just want to update the uniform ONCE (disappear on push/pop) */
+	else
+		loc = glGetUniformLocation(slot->prg_container, label);
 	
 	if (loc >= 0)
 		setv(loc, type, value);
+	else 
+		arcan_warning("arcan_shader_forceunif(): no matching location found for %s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
 }
 
 static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
@@ -359,7 +319,7 @@ static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
 	*dprg = *vprg = *fprg = 0;
 }
 
-static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
+static void build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
 {
 	char buf[256];
 	int rlen;
@@ -375,15 +335,30 @@ static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* v
 
 	glCompileShader(*vprg);
 	glCompileShader(*fprg);
+
+#ifdef _DEBUG
+	if (arcan_debug_pumpglwarnings("shdrmgmt.c:build_shader") == -1){
+		arcan_warning("setv() -> errors found when pumping context.\n");
+        abort();
+    }
+    
+#endif
 	
 	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
-	if (rlen)
-		arcan_warning("Warning: Couldn't compiler Shader vertex program: %s\n", buf);
-
+	if (rlen){
+		arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
+#ifdef _DEBUG
+		arcan_warning("Vertex Program: %s\n", vprogram);
+#endif
+	}
+	
 	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
-	if (rlen)
-		arcan_warning("Warning: Couldn't compiler Shader fragment Program: %s\n", buf);
-
+	if (rlen){
+		arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
+#ifdef _DEBUG
+		arcan_warning("Fragment Program: %s\n", fprogram);
+#endif
+	}
 	glAttachShader(*dprg, *fprg);
 	glAttachShader(*dprg, *vprg);
 
@@ -391,7 +366,7 @@ static void build_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* v
 
 	glGetProgramInfoLog(*dprg, 256, &rlen, buf);
 	if (rlen)
-		arcan_warning("Warning: Problem linking Shader Program: %s\n", buf);
+		arcan_warning("Warning: Problem linking Shader Program(%s): %s\n", label, buf);
 }
 
 const char* arcan_shader_symtype(enum arcan_shader_envts env)
@@ -429,7 +404,7 @@ void arcan_shader_rebuild_all()
 	for (unsigned i = 0; i < shdr_global.ofs; i++){
 		struct shader_cont* cur = shdr_global.slots + i;
 
-		build_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment,
+		build_shader(cur->label, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment,
 			cur->vertex, cur->fragment);
 	}
 }

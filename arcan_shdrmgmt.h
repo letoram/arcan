@@ -38,38 +38,14 @@ enum shdrutype {
 enum arcan_shader_envts{
 /* packed matrices */
 	MODELVIEW_MATR  = 0,
-	PROJECTION_MATR,
-	TEXTURE_MATR,
+	PROJECTION_MATR = 1,
+	TEXTURE_MATR    = 2,
 
-/* current camera */
-	VIEW_UP_V,
-	VIEW_V,
-	VIEW_POS_V,
-
-/* current object */
-	OBJ_SCALE_V,
-	OBJ_POS_V,
-	OBJ_ORIENT_V,
-	OBJ_VIEW_V,
-	OBJ_OPACITY_F,
-
-/* texture mapping */
-	MAP_DISPLACEMENT_D,
-	MAP_BUMP_D,
-	MAP_SHADOW_D,
-	MAP_REFLECTION_D,
-	MAP_NORMAL_D,
-	MAP_SPECULAR_D,
-	MAP_DIFFUSE_D,
-
-/* lighting */
-	LIGHT_WORLD_DIR_V,
-	LIGHT_WORLD_DIFFUSE_V,
-	LIGHT_WORLD_AMBIENT_V,
+	OBJ_OPACITY     = 3,
 
 /* system values, don't change this order */
-	FRACT_TIMESTAMP_F, 
-	TIMESTAMP_D,
+	FRACT_TIMESTAMP_F = 4, 
+	TIMESTAMP_D       = 5,
 };
 
 enum shader_vertex_attributes {
@@ -106,6 +82,6 @@ const char* arcan_shader_symtype(enum arcan_shader_envts env);
 
 /* update a specific uniformslot that will map to whatever shader is active,
  * discarded when another shader is deactivated */
-void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value);
+void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value, bool persist);
 
 #endif

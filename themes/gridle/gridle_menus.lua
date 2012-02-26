@@ -25,7 +25,7 @@ end
 local menulbls = {
 	"Game Lists...",
 	"Filters...",
-	"Settings..."
+	"Settings...",
 };
 
 local filterlbls = {
@@ -34,9 +34,9 @@ local filterlbls = {
 	"Buttons",
 	"Genre",
 	"Subgenre",
-	"Target",
+	"Target"
 };
-
+	
 local settingslbls = {
 	"Sort Order...",
 	"Reconfigure Keys",
@@ -50,26 +50,23 @@ local settingslbls = {
 local sortorderlbls = {
 	"Ascending",
 	"Descending",
-	"Times Played"
+	"Times Played",
+	"Favorites"
 };
 
-local fadedelaylbls = {"Disable", "10", "20", "40", "60", "80"}
-local transitiondelaylbls = {"Disable", "10", "20", "40", "60", "80"}
+local fadedelaylbls = {"5", "10", "20", "40"}
+local transitiondelaylbls = {"5", "10", "20", "40"}
 local fadedelayptrs = {}
-fadedelayptrs["Disable"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 0; end
+fadedelayptrs["5"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 5; end
 fadedelayptrs["10"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 10; end
 fadedelayptrs["20"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 20; end
 fadedelayptrs["40"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 40; end
-fadedelayptrs["60"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 60; end
-fadedelayptrs["80"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 80; end
 
 local transitiondelayptrs = {}
-transitiondelayptrs ["Disable"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay = 0; end
+transitiondelayptrs ["5"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay = 5; end
 transitiondelayptrs ["10"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 10; end
 transitiondelayptrs ["20"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 20; end
 transitiondelayptrs ["40"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 40; end
-transitiondelayptrs ["60"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 60; end
-transitiondelayptrs ["80"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 80; end
 
 local repeatlbls = { "Disable", "100", "200", "300", "400", "500"};
 local repeatptrs = {};
@@ -80,8 +77,10 @@ repeatptrs["300"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.re
 repeatptrs["400"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 400; kbd_repeat(settings.repeat_rate); end
 repeatptrs["500"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 500; kbd_repeat(settings.repeat_rate); end
 
-local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96", "128x96", "96x128", "128x128"};
+local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96", "128x96", "96x128", "128x128", "196x128", "128x196", "196x196",
+		"196x256", "256x196", "256x256"};
 local gridptrs = {};
+
 gridptrs["48x48"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 48; settings.cell_height= 48; end
 gridptrs["48x64"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 48; settings.cell_height = 64; end
 gridptrs["64x48"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 64; settings.cell_height = 48; end
@@ -92,11 +91,18 @@ gridptrs["96x96"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.
 gridptrs["96x128"]  = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 96; settings.cell_height = 128; end
 gridptrs["128x96"]  = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 96; end
 gridptrs["128x128"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 128; end
+gridptrs["196x128"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 196; settings.cell_height = 128; end
+gridptrs["128x196"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 196; end
+gridptrs["196x196"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 196; settings.cell_height = 196; end
+gridptrs["256x196"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 256; settings.cell_height = 196; end
+gridptrs["196x256"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 196; settings.cell_height = 256; end
+gridptrs["256x256"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 256; settings.cell_height = 256; end
 
 local sortorderptrs = {};
 sortorderptrs["Ascending"]    = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Ascending"; end
 sortorderptrs["Descending"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Descending"; end
 sortorderptrs["Times Played"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Times Played"; end
+sortorderptrs["Favorites"]    = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Favorites"; end
 
 local settingsptrs = {};
 settingsptrs["Sort Order..."]    = function() spawnmenu(sortorderlbls, sortorderptrs); end

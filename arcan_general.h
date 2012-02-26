@@ -86,7 +86,7 @@ typedef struct {
 /* shared definitions */
 typedef int8_t arcan_errc;
 typedef long long arcan_vobj_id;
-typedef unsigned arcan_shader_id;
+typedef int arcan_shader_id;
 typedef long arcan_aobj_id;
 typedef unsigned int arcan_tickv;
 

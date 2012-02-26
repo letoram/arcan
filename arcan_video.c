@@ -131,7 +131,6 @@ static struct arcan_video_context* current_context = context_stack;
 static void allocate_and_store_globj(arcan_vobject* dst){
 	glGenTextures(1, &dst->gl_storage.glid);
 	glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
-	dst->gl_storage.maptype = MAP_DIFFUSE_D;
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
@@ -381,6 +380,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->flags.cliptoparent = false;
 		rv->current.scale.x = 1.0;
 		rv->current.scale.y = 1.0;
+		rv->current.opa = 0.0;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
@@ -830,13 +830,11 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.h = constraints.h;
 		newvobj->origw = origw;
 		newvobj->origh = origh;
-		newvobj->current.opa = 0.0f;
 		newvobj->current.rotation.roll = newvobj->current.rotation.pitch = newvobj->current.rotation.yaw = 0.0;
 		newvobj->current.rotation.rotation = build_quat_euler( 0, 0, 0 );
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
-		newvobj->gl_storage.maptype = MAP_DIFFUSE_D;
 		
 	/* tacitly assume diffuse is bound to tu0 */
 		glBindTexture(GL_TEXTURE_2D, newvobj->gl_storage.glid);
@@ -897,9 +895,11 @@ arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned
 }
 
 struct thread_loader_args {
+/* where the results will be stored */
 	arcan_vobject* dst;
 	arcan_vobj_id dstid;
 	char* fname;
+	void* tag;
 };
 
 /* if the loading failed, we'll add a small black image in its stead,
@@ -914,12 +914,13 @@ static int thread_loader(void* in)
  * elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
     arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
-
+	result.data.video.data = localargs->tag;
+	
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
         result.data.video.constraints.w = dst->origw;
         result.data.video.constraints.h = dst->origh;
-    } else {
+	} else {
         dst->origw = 32;
         dst->origh = 32;
 		dst->default_frame.s_raw = 32 * 32 * 4;
@@ -927,7 +928,6 @@ static int thread_loader(void* in)
 		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
 		dst->gl_storage.w = 32;
 		dst->gl_storage.h = 32;
-		dst->current.opa = 1.0f;
 		dst->current.rotation.rotation = build_quat_euler( 0, 0, 0 );
         
         result.data.video.constraints.w = 32;
@@ -945,24 +945,11 @@ static int thread_loader(void* in)
     return 0;
 }
 
-arcan_errc arcan_video_objectmaptype(arcan_vobj_id vid, int maptype)
-{
-	arcan_vobject* vobj = arcan_video_getobject(vid);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
-	if (vobj){
-		vobj->gl_storage.maptype = maptype;
-		rv = ARCAN_OK;
-	}
-
-	return rv;
-}
-
 /* create a new vobj, fill it out with enough vals that we can treat it 
  * as any other, but while the ASYNCIMG tag is active, it will be skipped in
  * rendering (linking, instancing etc. sortof works) but any external (script)
  * using the object before receiving a LOADED event may give undefined results */
-static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode)
+static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode, void* tag)
 {
 	struct thread_loader_args* args = (struct thread_loader_args*) calloc(sizeof(struct thread_loader_args), 1);
 	args->dst = arcan_video_newvobject(&args->dstid);
@@ -972,7 +959,8 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, a
 		return ARCAN_EID;
 	}
 	args->fname = strdup(fname);
-	
+
+	args->tag = tag;
     args->dst->state.tag = ARCAN_TAG_ASYNCIMG;
     args->dst->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
 	return args->dstid;
@@ -1012,12 +1000,12 @@ static arcan_vobj_id loadimage(const char* fname, img_cons constraints, arcan_er
 	if (rc == ARCAN_OK) {
 		newvobj->current.position.x = 0;
 		newvobj->current.position.y = 0;
-/*		newvobj->current.opa = 1.0f; */
 		newvobj->current.rotation.rotation = build_quat_euler(0, 0, 0);
 	}
-	else
+	else{
 		arcan_video_deleteobject(rv);
-
+	}
+	
 	if (errcode != NULL)
 		*errcode = rc;
 
@@ -1081,11 +1069,8 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 	if (ffunc && newvobj) {
 		arcan_vstorage* vstor = &newvobj->default_frame;
 		/* preset */
-		newvobj->current.position.x = 0;
-		newvobj->current.position.y = 0;
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
-		newvobj->current.opa = 1.0f;
 		newvobj->current.rotation.rotation = build_quat_euler(0, 0, 0);
 		newvobj->gl_storage.ncpt = ncpt == 0 ? 4 : ncpt;
 
@@ -1170,10 +1155,10 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	return rv;
 }
 
-arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsigned short zv, bool asynch)
+arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsigned short zv, void* asynchtag)
 {
-	arcan_vobj_id rv = asynch ?
-		loadimage_asynch((char*) rloc, constraints, NULL) :
+	arcan_vobj_id rv = asynchtag ?
+		loadimage_asynch((char*) rloc, constraints, NULL, asynchtag) :
 		loadimage((char*) rloc, constraints, NULL);
 
 /* the asynch version could've been deleted in between, so we need to double check */
@@ -1742,11 +1727,9 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
-		vobj->current.opa = 1.0;
 		vobj->current.rotation.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		vobj->parent = &current_context->world;
 		glGenTextures(1, &vobj->gl_storage.glid);
-		vobj->gl_storage.maptype = MAP_DIFFUSE_D;
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -1940,7 +1923,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		if (vobj->flags.clone == false) {
+		if (vobj->flags.clone == false){
 			if (vobj->ffunc)
 				vobj->ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->state);
 
@@ -2457,13 +2440,11 @@ uint32_t arcan_video_tick(uint8_t steps)
 				
 				if ((elem->mask & MASK_LIVING) > 0) {
 					if (elem->lifetime <= 0) {
-						/* generate event (don't fire until deleted though) */
 						arcan_event dobjev = {
 							.category = EVENT_VIDEO,
 							.kind = EVENT_VIDEO_EXPIRE
 						};
 						uint32_t tid = current->cellid;
-						dobjev.tickstamp = arcan_video_display.c_ticks;
 						dobjev.data.video.source = tid;
 
 						arcan_event_enqueue(&dobjev);
@@ -2584,7 +2565,7 @@ static inline void draw_vobj(float x, float y, float x2, float y2, float zv, flo
 			glEnableVertexAttribArray(attrindt);
 			glVertexAttribPointer(attrindt, 2, GL_FLOAT, GL_FALSE, 0, txcos);
 		}
-		
+
 		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
 		if (attrindt != -1)
@@ -2608,6 +2589,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	matr_quatf(norm_quat (prop.rotation.rotation), omatr);
 	multiply_matrix(dmatr, imatr, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+	arcan_shader_envv(OBJ_OPACITY, &prop.opa, sizeof(float));
 
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
 }
@@ -2661,6 +2643,7 @@ void arcan_video_refresh_GL(float lerp)
 		glDisable(GL_DEPTH_TEST);
 
 		memcpy(arcan_video_display.projmatr, ortho_proj, sizeof(float) * 16);
+		arcan_shader_activate(arcan_video_display.defaultshdr);
 		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
@@ -2696,7 +2679,6 @@ void arcan_video_refresh_GL(float lerp)
 					glEnable(GL_BLEND);
 					glColor4f(1.0, 1.0, 1.0, dprops.opa);
 				}
-				arcan_shader_envv(OBJ_OPACITY_F, &dprops.opa, sizeof(float));
 				
 				if (elem->flags.cliptoparent && elem->parent != &current_context->world){
 				/* toggle stenciling, reset into zero, draw parent bounding area to stencil only,
@@ -3040,8 +3022,8 @@ void arcan_video_restore_external()
 											arcan_video_display.sdlarg);
 	arcan_event_init();
 	arcan_video_gldefault();
-	arcan_shader_rebuild_all();
 	arcan_video_popcontext();
+	arcan_shader_rebuild_all();
 }
 
 void arcan_video_shutdown()

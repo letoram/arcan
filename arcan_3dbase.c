@@ -1,3 +1,24 @@
+/* Arcan-fe, scriptable front-end engine
+ *
+ * Arcan-fe is the legal property of its developers, please refer
+ * to the COPYRIGHT file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -18,6 +39,7 @@
 
 #include <SDL/SDL.h>
 #include <SDL/SDL_opengl.h>
+#include <SDL/SDL_thread.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -75,6 +97,7 @@ typedef struct {
 
 struct geometry {
     unsigned nmaps;
+	arcan_shader_id program;
 
 	unsigned nverts;
 	float* verts;
@@ -84,17 +107,20 @@ struct geometry {
 	GLenum indexformat;
 	void* indices;
 
-	bool opaque;
+	volatile bool complete;
 	
 /* nnormals == nverts */
 	float* normals;
+	
+	SDL_Thread* worker;
 	struct geometry* next;
 };
 
 typedef struct {
+	SDL_mutex* lock;
 	struct geometry* geometry;
 	arcan_shader_id program;
-
+	
 /* AA-BB */
     vector bbmin;
     vector bbmax;
@@ -182,12 +208,17 @@ static void freemodel(arcan_3dmodel* src)
 			free(geom->verts);
 			free(geom->normals);
 			free(geom->txcos);
-			
+
 			struct geometry* last = geom;
+
+		/* spinlock while loading model */
+			while (!geom->complete);
+			
 			geom = geom->next;
 			free(last);
 		}
 
+		SDL_DestroyMutex(src->lock);
 		free(src);
 	}
 }
@@ -197,6 +228,8 @@ static void freemodel(arcan_3dmodel* src)
  */
 static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id baseprog, surface_properties props, float* modelview)
 {
+	assert(vobj);
+	
 	if (props.opa < EPSILON)
 		return;
 	
@@ -215,8 +248,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 	float dmatr[16], omatr[16];
 
     float opa = 1.0;
-    arcan_shader_envv(OBJ_OPACITY_F, &opa, sizeof(float));
-
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
@@ -227,7 +258,14 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 	struct geometry* base = src->geometry;
 
 	while (base){
+		if (!base->complete)
+			base = base->next;
+		
 		unsigned counter = 0; /* keep track of how many TUs are in use */
+			if (-1 != base->program)
+				arcan_shader_activate(base->program);
+			else
+				arcan_shader_activate(baseprog);
 
 	/* make sure the current program actually uses the attributes that the mesh has */
 		int attribs[3] = {arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
@@ -252,25 +290,18 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 		} else attribs[2] = -1;
 
 /* It's up to arcan_shader to determine if this will actually involve a program switch or not */
-	arcan_shader_id frameprog = vobj->frameset[cframe]->gl_storage.program;
-	arcan_shader_activate(frameprog ? frameprog : baseprog);
 
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj,
  * multiple meshes share the same frameset */
 		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i+cframe];
-			printf("i: %i, nmaps: %i, cframe: %i, frame->glid, %i, type: %i\n", i, base->nmaps, cframe, frame->gl_storage.glid, frame->gl_storage.maptype);
+			if (!frame)
+				continue; 
 /* only allocate set a sampler if there's a map and a corresponding map- slot in the shader */
-			if (frame && frame->gl_storage.glid &&
-					arcan_shader_envv(frame->gl_storage.maptype, &counter, sizeof(counter)) ){
-
-				printf("activate, counter: %i\n", counter);
-				glClientActiveTexture(GL_TEXTURE0 + counter);
-				glEnable(GL_TEXTURE_2D);
-				glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
-				counter++;
-			}
+			glClientActiveTexture(GL_TEXTURE0 + i);
+			glEnable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
 		}
 		
 /* Indexed- or direct mode? */
@@ -279,23 +310,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 		else
 			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
         
-/* and reverse transitions again for the next client */
-		while (counter-- > 0){
-			glClientActiveTexture(GL_TEXTURE0 + counter);
-			glBindTexture(GL_TEXTURE_2D, 0);
-			if (counter > 0)
-				glDisable(GL_TEXTURE_2D);
-		}
-
-		for (unsigned i=cframe; i < vobj->frameset_capacity && i < base->nmaps; i++){
-			arcan_vobject* frame = vobj->frameset[i];
-			if (frame && frame->gl_storage.glid){
-				unsigned zero = 0;
-			
-				arcan_shader_envv(frame->gl_storage.maptype, &zero, sizeof(zero));
-			}
-		}
-
 		for (int i = 0; i < sizeof(attribs) / sizeof(attribs[0]); i++)
 			if (attribs[i] != -1)
 				glDisableVertexAttribArray(attribs[i]);
@@ -499,6 +513,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
 	unsigned vrtsize = dst->nverts * 3 * sizeof(float);
 	dst->verts = (float*) malloc(vrtsize);
+	dst->program = -1;
 	
 	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
@@ -552,40 +567,92 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 		dst->txcos = (float*) malloc(txsize);
 		memcpy(dst->txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1), txsize);
 	}
+
+	dst->complete = true;
 }
 
 
+arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned slot)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dst);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-void arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps)
+	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ){
+		struct geometry* cur = ((arcan_3dmodel*)vobj->state.ptr)->geometry;
+		while (cur && slot){
+			cur = cur->next;
+			slot--;
+		}
+
+		if (cur && slot == 0){
+			cur->program = shid;
+			rv = ARCAN_OK;
+		}
+		else rv = ARCAN_ERRC_BAD_ARGUMENT;
+	}
+	
+	return rv;
+}
+
+
+struct threadarg{
+	arcan_3dmodel* model;
+	struct geometry* geom;
+	char* resource;
+};
+
+static int threadloader(void* arg)
+{
+	struct threadarg* threadarg = (struct threadarg*) arg;
+	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
+	ctmLoad(ctx, threadarg->resource);
+		
+	if (ctmGetError(ctx) == CTM_NONE){
+		loadmesh(threadarg->geom, ctx);
+
+		SDL_mutexP(threadarg->model->lock);
+			minmax_verts(&threadarg->model->bbmin, &threadarg->model->bbmax, threadarg->geom->verts, threadarg->geom->nverts);
+		SDL_mutexV(threadarg->model->lock);
+	}
+
+/* nonetheless, unlock the slot for the main rendering loop,
+ * or free ( which is locking deferred ) */
+	threadarg->geom->complete = true;
+	ctmFreeContext(ctx);
+	free(threadarg->resource);
+	free(threadarg);
+	return 0;
+}
+
+arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);	
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
-	/* 2d frameset and set of vids associated as textures with models are weakly linked */
+/* 2d frameset and set of vids associated as textures with models are weakly linked */
 	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ)
 	{
-		CTMcontext ctx = ctmNewContext(CTM_IMPORT);
-		ctmLoad(ctx, resource);
+		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
+		struct threadarg* arg = (struct threadarg*) malloc(sizeof(struct threadarg));
+		arg->model = dst;
+		arg->resource = strdup(resource);
+
+/* find last elem and add */
+		struct geometry** nextslot = &(dst->geometry);
+		while (*nextslot)
+			nextslot = &((*nextslot)->next);
+
+		*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
+
+		(*nextslot)->nmaps = nmaps;
+		arg->geom = *nextslot;
+		SDL_CreateThread(threadloader, (void*) arg);
 		
-		if (ctmGetError(ctx) == CTM_NONE){
-			arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
+		rv = ARCAN_OK;
+	} else
+		rv = ARCAN_ERRC_BAD_RESOURCE;
 
-		/* find last elem and add */
-			struct geometry** nextslot = &(dst->geometry);
-			while (*nextslot)
-				nextslot = &((*nextslot)->next);
-
-			*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
-
-		/* load / parsedata into geometry slot */
-			loadmesh(*nextslot, ctx);
-            (*nextslot)->nmaps = nmaps;
-			
-			minmax_verts(&dst->bbmin, &dst->bbmax, (*nextslot)->verts, (*nextslot)->nverts);
-		}
-
-		ctmFreeContext(ctx);
-	}
+	return rv;
 }
 	
 arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
@@ -600,6 +667,7 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 		struct geometry* geom = dst->geometry;
 
 		while (geom){
+			while (!geom->complete);
 			minmax_verts(&dst->bbmin, &dst->bbmax, geom->verts, geom->nverts);
 			geom = geom->next;
 		}
@@ -653,11 +721,13 @@ arcan_vobj_id arcan_3d_emptymodel()
 
 	if (rv != ARCAN_EID){
 		newmodel->parent = arcan_video_getobject(rv);
+		newmodel->lock = SDL_CreateMutex();
+		
 	} else
 		free(newmodel);
 
 	return rv;
-}	
+}
 
 void arcan_3d_setdefaults()
 {
