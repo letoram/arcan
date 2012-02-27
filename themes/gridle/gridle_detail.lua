@@ -21,8 +21,9 @@ local function gridledetail_load()
 
 	backlit_shader3d = load_shader("shaders/diffuse_only.vShader", "shaders/flicker_diffuse.fShader", "backlit");
 	default_shader3d = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
-	texco_shader   	 = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "noise");
-	diffuse_shader   = load_shader("shaders/flipy.vShader", "shaders/diffuse_only.fShader", "diffuse");
+	texco_shader     = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "noise");
+	diffusef_shader  = load_shader("shaders/flipy.vShader", "shaders/diffuse_only.fShader", "diffuse");
+	diffuse_shader   = load_shader("shaders/diffuse_only.vShader", "shaders/diffuse_only.fShader", "diffuse");
 
 	shader_uniform(default_shader3d, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
 	shader_uniform(default_shader3d, "wambient", "fff", PERSIST, 0.3, 0.3, 0.3);
@@ -92,7 +93,11 @@ function gridledetail_video_event(source, event)
 		if (source == detailview.internal_vid) then
 			resize_image(source, event.width, event.height, 0);
 			set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
-			mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
+			if (event.glsource) then
+				mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
+			else
+				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
+			end
 			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
 		end
 	end

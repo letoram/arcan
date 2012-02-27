@@ -1171,7 +1171,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			case EVENT_VIDEO_RESIZED :
 				arcan_lua_tblstr(ctx, "kind", "resized", top);
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
+				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);
+                arcan_lua_tblnum(ctx, "glsource", ev.data.video.constraints.bpp, top);
 			break;
                 
             case EVENT_VIDEO_MOVIEREADY:
