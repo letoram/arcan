@@ -1145,9 +1145,9 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 		 * opted for the "in script" option, thus just pushing an event */
 		arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_RESIZED};
 		ev.data.video.source = id;
-		ev.data.video.constraints = constraints;
-		ev.data.video.constraints.w = vobj->origw;
-		ev.data.video.constraints.h = vobj->origh;
+		ev.data.video.constraints.w   = vobj->origw;
+		ev.data.video.constraints.h   = vobj->origh;
+        ev.data.video.constraints.bpp = mirror;
 		arcan_event_enqueue(&ev);
 		rv = ARCAN_OK;
 	}

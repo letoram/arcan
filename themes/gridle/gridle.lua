@@ -9,7 +9,7 @@ settings = {
 	filters = {
 	},
 
-	sortlbl = "Default",
+	sortlbl = "Ascending",
 	iodispatch = {},
 
 	fadedelay = 10,
@@ -648,7 +648,8 @@ function gridle_input(iotbl)
  if (restbl and iotbl.active) then
   for ind,val in pairs(restbl) do
    if (settings.iodispatch[val]) then
-     settings.iodispatch[val](restbl);
+   	print(val);
+	  settings.iodispatch[val](restbl);
    end
   end
  end

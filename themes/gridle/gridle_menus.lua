@@ -256,7 +256,7 @@ function gridlemenu_settings()
 			if (#settings.games == 0) then
 				settings.games = list_games( {} );
 			end
-			table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
+	table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
 			build_grid(settings.cell_width, settings.cell_height);
