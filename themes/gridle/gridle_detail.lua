@@ -93,10 +93,11 @@ function gridledetail_video_event(source, event)
 		if (source == detailview.internal_vid) then
 			resize_image(source, event.width, event.height, 0);
 			set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
+			print("event.glsource?" .. event.glsource);
 			if (event.glsource) then
-				mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
-			else
 				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
+			else
+				mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
 			end
 			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
 		end
@@ -110,7 +111,7 @@ function gridledetail_video_event(source, event)
 			detailview.movievid = vid;
 			if (detailview.model.labels["display"]) then
 				set_image_as_frame(detailview.model.vid, vid, detailview.model.labels["display"]);
-				mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
+				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
 			end
 		else
 			delete_image(source);
@@ -151,8 +152,8 @@ function gridledetail_internalinput(iotbl)
 						if (props.width < VRESW) then
 							move_image(detailview.internal_vid, 0.5 * (VRESW - props.width), 0, NOW);
 						end
-					end
-
+				end
+	
 					hide_image(detailview.model.vid);
 					return;
 				end
@@ -274,8 +275,12 @@ function gridledetail_show(detailres, gametbl)
 	gridle_clock_pulse = gridledetail_clock_pulse;
 	
 	settings.iodispatch = {};
-	settings.iodispatch["MENU_UP"] = function(iotbl) print("missing, load prev. game"); end
-	settings.iodispatch["MENU_DOWN"] = function(iotbl) print("missing, load next. game"); end
+	settings.iodispatch["MENU_UP"] = function(iotbl)
+-- scan for next detailview
+	end
+	settings.iodispatch["MENU_DOWN"] = function(iotbl)
+-- scan for previous detailview
+	end
 	settings.iodispatch["MENU_LEFT"] = function(iotbl)
 		if (detailview.model) then
 			instant_image_transform(detailview.model.vid);

@@ -141,6 +141,13 @@ function gridle()
     system_load("gridle_menus.lua")();
 	system_load("gridle_detail.lua")();
 
+	pixelate_shader = load_shader("shaders/diffuse_only.vShader", "shaders/pixelate.fShader", "backlit");
+	shader_uniform(pixelate_shader, "map_diffuse", "i", PERSIST, 0);
+	shader_uniform(pixelate_shader, "pixelw", "f", PERSIST, 15);
+	shader_uniform(pixelate_shader, "pixelh", "f", PERSIST, 15);
+	shader_uniform(pixelate_shader, "targetw", "f", PERSIST, VRESW);
+	shader_uniform(pixelate_shader, "targeth", "f", PERSIST, VRESH);
+	
 	video_3dorder(ORDER_LAST);
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
@@ -168,8 +175,6 @@ function gridle()
 	if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
-	gridle_keyconf();
-	gridle_ledconf();
 
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeat_rate);
@@ -224,7 +229,7 @@ end
     resize_image(bgimage, VRESW, VRESH);
     image_scale_txcos(bgimage, VRESW / 32, VRESH / 32);
     image_shader(bgimage, bgshader);
-    show_image(bgimage);
+   show_image(bgimage);
     switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 
 -- Little star keeping track of games marked as favorites
@@ -233,6 +238,9 @@ end
 	
     build_grid(settings.cell_width, settings.cell_height);
 	build_fadefunctions();
+
+	gridle_keyconf();
+	gridle_ledconf();
 end
 
 function cell_coords(x, y)
@@ -250,6 +258,28 @@ function build_fadefunctions()
 		return delay;
  	end);
 
+-- pixelate
+	table.insert(fadefunctions, function(vid, col, row)
+		expire_image(vid, settings.transitiondelay);
+		count = settings.transitiondelay;
+		image_shader(vid, pixelate_shader);
+		blend_image(vid, 0.0, settings.transitiondelay);
+		resize_image(vid, VRESW, VRESH, settings.transitiondelay * 2.0);
+	end)
+
+-- odd / even scale + fade
+	table.insert(fadefunctions, function(vid, col, row)
+		local props = image_surface_properties(vid);
+		local time = settings.transitiondelay;
+		if (math.floor(col * row) % 2 > 0) then
+			time = math.floor(time * 0.4);
+		end
+
+		move_image(vid, props.x + props.width / 2, props.y + props.height / 2, time);
+		blend_image(vid, 0.0, time);
+		resize_image(vid, 1, 1, time);
+	end)
+	
 -- flee left/right
 	table.insert(fadefunctions, function(vid, col, row)
 		local props = image_surface_properties(vid);
@@ -507,7 +537,6 @@ function erase_grid(rebuild)
 
         if (rebuild) then
             delete_image(grid[row][col]);
-			delete_image(whitegrid[row][col]);
         else
             local x, y = cell_coords(row, col);
 			local imagevid = grid[row][col];
@@ -648,7 +677,6 @@ function gridle_input(iotbl)
  if (restbl and iotbl.active) then
   for ind,val in pairs(restbl) do
    if (settings.iodispatch[val]) then
-   	print(val);
 	  settings.iodispatch[val](restbl);
    end
   end
