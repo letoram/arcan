@@ -1314,7 +1314,7 @@ int arcan_lua_linkimage(lua_State* ctx)
 	return 0;
 }
 
-static inline int pushprop(lua_State* ctx, surface_properties prop)
+static inline int pushprop(lua_State* ctx, surface_properties prop, unsigned short zv)
 {
 	lua_createtable(ctx, 0, 6);
 
@@ -1358,6 +1358,10 @@ static inline int pushprop(lua_State* ctx, surface_properties prop)
 	lua_pushnumber(ctx, prop.opa);
 	lua_rawset(ctx, -3);
 
+	lua_pushstring(ctx, "order");
+	lua_pushnumber(ctx, zv);
+	lua_rawset(ctx, -3);
+
 	return 1;
 }
 
@@ -1396,8 +1400,9 @@ int arcan_lua_buildplane(lua_State* ctx)
 	float starty = luaL_checknumber(ctx, 5);
 	float hdens = luaL_checknumber(ctx, 6);
 	float ddens = luaL_checknumber(ctx, 7);
+	unsigned nmaps = luaL_optnumber(ctx, 8, 1);
 	
-	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty, hdens, ddens));
+	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty, hdens, ddens, nmaps));
 	return 1;
 }
 
@@ -1454,7 +1459,7 @@ int arcan_lua_getimageprop(lua_State* ctx)
 	surface_properties prop;
 	prop = dt > 0 ? arcan_video_properties_at(id, dt) : arcan_video_current_properties(id);
 
-	return pushprop(ctx, prop);
+	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 
 int arcan_lua_getimageresolveprop(lua_State* ctx)
@@ -1463,7 +1468,7 @@ int arcan_lua_getimageresolveprop(lua_State* ctx)
 	unsigned dt = luaL_optnumber(ctx, 2, 0);
 	surface_properties prop = arcan_video_resolve_properties(id);
 
-	return pushprop(ctx, prop);
+	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 
 int arcan_lua_getimageinitprop(lua_State* ctx)
@@ -1471,7 +1476,7 @@ int arcan_lua_getimageinitprop(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	surface_properties prop = arcan_video_initial_properties(id);
 
-	return pushprop(ctx, prop);
+	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 
 int arcan_lua_storekey(lua_State* ctx)

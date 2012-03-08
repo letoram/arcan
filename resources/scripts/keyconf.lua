@@ -239,7 +239,7 @@ local function keyconf_inp_playersel(self, inputtable)
 				self.playerconf = true;
 				self.ofs = self.ofs - 1;
 				
-				for i=1, self.playercount do
+				for i=1, self.buttoncount do
 					table.insert(default_player_group, "rBUTTON" .. tostring(i));
 				end
 				

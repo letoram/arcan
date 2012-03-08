@@ -197,6 +197,7 @@ void arcan_video_contextsize(unsigned newlim);
 /* change zval (see arcan_video_addobject) for a particular object.
  * return value is an error code */
 arcan_errc arcan_video_setzv(arcan_vobj_id id,unsigned short newzv);
+unsigned short arcan_video_getzv(arcan_vobj_id id);
 
 /* forcibly kill videoobject after n cycles,
  * which will reset a counter that upon expiration invocates

@@ -33,7 +33,8 @@ void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned
 void arcan_3d_forwardcamera(unsigned camtag, float step, unsigned tv);
 void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv);
 
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens);
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens, unsigned nmaps);
+arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
 
 /* empty model allocates and populates a container,
  * then add a hierarchy of meshes to the model */

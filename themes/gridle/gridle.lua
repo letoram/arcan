@@ -9,6 +9,8 @@ settings = {
 	filters = {
 	},
 
+	cursor_timer = 0,
+	
 	sortlbl = "Ascending",
 	iodispatch = {},
 
@@ -49,7 +51,8 @@ end
 function gridle_keyconf()
 	local keylabels = {
         "rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP",
-        "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE"};
+        "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
+		" OSD_KEYBOARD", "ACURSOR_X", "ACURSOR_Y"};
 
 	if (INTERNALMODE ~= "NO SUPPORT") then table.insert(keylabels, " LAUNCH_INTERNAL"); end
 	
@@ -133,15 +136,40 @@ function spawn_favoritestar( src )
 	return vid;
 end
 
+-- Hide and remap the OSD Keyboard, and if there's a filter msg, apply that one
+-- alongside other filters and user-set sort order
+function osdkbd_filter(msg)
+	osdkbd:hide();
+	gridle_input = settings.inputfun;
+	
+	if (msg ~= nil) then
+		local titlecpy = settings.filters.title;
+		settings.filters.title = msg;
+		local gamelist = list_games( settings.filters );
+
+		if (#gamelist > 0) then
+			settings.games = gamelist;
+		
+			if (settings.sortfunctions[settings.sortlbl]) then
+				table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
+			end
+
+			erase_grid(false);
+			build_grid(settings.cell_width, settings.cell_height);
+		end
+	end
+end
+
 function gridle()
     system_load("scripts/keyconf.lua")();
     system_load("scripts/keyconf_mame.lua")();
     system_load("scripts/ledconf.lua")();
 	system_load("scripts/3dsupport.lua")();
+	system_load("scripts/osdkbd.lua")();
     system_load("gridle_menus.lua")();
 	system_load("gridle_detail.lua")();
 
-	pixelate_shader = load_shader("shaders/diffuse_only.vShader", "shaders/pixelate.fShader", "backlit");
+	pixelate_shader = load_shader("shaders/diffuse_only.vShader", "shaders/pixelate.fShader", "pixelate");
 	shader_uniform(pixelate_shader, "map_diffuse", "i", PERSIST, 0);
 	shader_uniform(pixelate_shader, "pixelw", "f", PERSIST, 15);
 	shader_uniform(pixelate_shader, "pixelh", "f", PERSIST, 15);
@@ -209,6 +237,41 @@ end
 			table.remove(settings.favorites, ind);
 		end
 	end
+
+-- When OSD keyboard is to be shown, remap the input event handler,
+-- Forward all labels that match, but also any translated keys (so that we
+-- can use this as a regular input function as well) 
+	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
+		osdkbd = create_osdkbd();
+		osdkbd:show();
+		settings.inputfun = gridle_input;
+		gridle_input = function(iotbl)
+			if (iotbl.active) then
+				local restbl = keyconfig:match(iotbl);
+				local resstr = nil;
+				local done   = false;
+				
+				if (restbl) then
+					
+					for ind,val in pairs(restbl) do
+						if (val == "MENU_ESCAPE") then
+							return osdkbd_filter(nil);
+							
+						elseif (val ~= "MENU_SELECT" and val ~= "MENU_UP" and val ~= "MENU_LEFT" and
+								val ~= "MENU_RIGHT" and val ~= "MENU_DOWN" and iotbl.translated) then
+							resstr = osdkbd:input_key(iotbl);
+						else
+							resstr = osdkbd:input(val);
+						end
+					end
+				elseif (iotbl.translated) then
+					resstr = osdkbd:input_key(iotbl);
+				end
+				if (resstr) then return osdkbd_filter(resstr); end
+			end
+		end
+	end
+	
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
 		local key = gridledetail_havedetails(current_game());
 		if (key) then
@@ -219,32 +282,57 @@ end
 	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
     settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
+-- the analog conversion for devices other than mice is so-so atm.
+    settings.iodispatch["CURSOR_X"] = function(lblres, tbl)
+		if (tbl.source == "mouse") then mx = tbl.samples[1]; else mx = mx + (tbl.samples[1] / 32768) * step.x; end
+		move_image(mouse_cursor, mx, my, 0);
+		order_image(mouse_cursor, max_current_image_order() + 1);
+		show_image(mouse_cursor);
+		
+    end
+
+    settings.iodispatch["CURSOR_Y"] = function(lblres, tbl)
+		if (tbl.source == "mouse") then my = tbl.samples[1]; elseif (tbl.samples[1] > 0) then my = my + (tbl.samples[1] / 32768) * step.y;
+		else my = my - step.y; end
+		move_image(mouse_cursor, mx, my, 0);
+		show_image(mouse_cursor);
+		order_image(mouse_cursor, max_current_image_order() + 1);
+    end
 
 	whiteblock = fill_surface(1,1,255,255,255);
 	move_image(whiteblock, 0,0);
 	
 -- Animated background
-    switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
-    bgimage = load_image("background.png");
-    resize_image(bgimage, VRESW, VRESH);
-    image_scale_txcos(bgimage, VRESW / 32, VRESH / 32);
-    image_shader(bgimage, bgshader);
-   show_image(bgimage);
-    switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
+	bgimage = load_image("background.png");
+	resize_image(bgimage, VRESW, VRESH);
+	image_scale_txcos(bgimage, VRESW / 32, VRESH / 32);
+	image_shader(bgimage, bgshader);
+	show_image(bgimage);
+	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 
 -- Little star keeping track of games marked as favorites
-	starimage = load_image("star.png");
+	starimage    = load_image("star.png");
 	magnifyimage = load_image("magnify.png");
+    mouse_cursor = load_image("images/mouse_cursor.png");
+	resize_image(mouse_cursor, 64, 64);
+	force_image_blend(mouse_cursor);
 	
-    build_grid(settings.cell_width, settings.cell_height);
+	build_grid(settings.cell_width, settings.cell_height);
 	build_fadefunctions();
 
+	osd_visible = false;
+	
 	gridle_keyconf();
 	gridle_ledconf();
 end
 
 function cell_coords(x, y)
     return (0.5 * borderw) + x * (settings.cell_width + settings.hspacing), (0.5 * borderh) + y * (settings.cell_height + settings.vspacing);
+end
+
+function match_cell_coords(x, y)
+
 end
 
 function build_fadefunctions()
@@ -592,7 +680,6 @@ function build_grid(width, height)
 
 			whitegrid[row][col] = gridbg;
             grid[row][col] = vid;
-
             settings.cellcount = settings.cellcount + 1;
         end
     end
@@ -667,18 +754,29 @@ function load_settings()
 			settings.favorites[line] = true;
 			line = read_rawresource();
 		end
-		
+	end
+end
+
+function gridle_clock_pulse()
+	if (settings.cursor_timer > 0) then
+		settings.cursor_timer = settings.cursor_timer - 1;
+		if (settings.cursor_timer == 0) then hide_image(mouse_cursor); end
+	end
+
+	if (settings.shutdown_timer) then
+		settings.shutdown_timer = settings.shutdown_timer - 1;
+		if (settings.shutdown_timer == 0) then shutdown(); end
 	end
 end
 
 function gridle_input(iotbl)
- local restbl = keyconfig:match(iotbl);
+	local restbl = keyconfig:match(iotbl);
  
- if (restbl and iotbl.active) then
-  for ind,val in pairs(restbl) do
-   if (settings.iodispatch[val]) then
-	  settings.iodispatch[val](restbl);
-   end
-  end
- end
+	if (restbl and iotbl.active) then
+		for ind,val in pairs(restbl) do
+			if (settings.iodispatch[val]) then
+				settings.iodispatch[val](restbl, iotbl);
+			end
+		end
+	end
 end
