@@ -82,7 +82,12 @@ local function gridledetail_freeview()
 			delay = delay + delay;
 		end
 
-		move3d_model(detailview.model.vid, detailview.startx, detailview.starty - 5.0, detailview.startz, settings.transitiondelay);
+		if (detailview.model.labels["display"]) then
+			set_image_as_frame(detailview.model.vid, noise_image, detailview.model.labels["display"]);
+			mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
+		end
+			
+		move3d_model(detailview.model.vid, detailview.startx, detailview.starty - 6.0, detailview.startz, delay);
 		expire_image(detailview.model.vid, delay);
 		detailview.model = nil;
 	end
@@ -93,7 +98,6 @@ function gridledetail_video_event(source, event)
 		if (source == detailview.internal_vid) then
 			resize_image(source, event.width, event.height, 0);
 			set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
-			print("event.glsource?" .. event.glsource);
 			if (event.glsource) then
 				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
 			else
@@ -159,8 +163,8 @@ function gridledetail_internalinput(iotbl)
 				end
 			elseif (iotbl.active and val == "MENU_ESCAPE") then
 -- stop the internal launch, zoom out the model and replace display with static
-				delete_image(detailview.internal_vid);
-				detailview.internal_vid = NULL;
+				expire_image(detailview.internal_vid, 20);
+				detailview.internal_vid = BADID;
 				move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
 				set_image_as_frame(detailview.model.vid, noise_image, detailview.model.labels["display"]);
 				mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
@@ -231,6 +235,19 @@ function gridledetail_havedetails(gametbl)
 -- provide a .lua script for loading, we glob and cache 
 		local tmptbl = glob_resource("models/*");
 		gridledetail_modellut = {};
+		gridledetail_neogeosets = {};
+
+-- special treatment of neo-geo games (and possibly later on, naomi) 
+		if (resource("neogeo_sets") and open_rawresource("neogeo_sets")) then
+			setname = read_rawresource();
+
+			while (setname ~= nil) do
+				gridledetail_neogeosets[setname] = true;
+				setname = read_rawresource();
+			end
+			
+			close_rawresource();
+		end
 
 		for a,b in pairs(tmptbl) do
 			gridledetail_modellut[b] = true;
@@ -241,6 +258,10 @@ function gridledetail_havedetails(gametbl)
 	if (gridledetail_modellut[gametbl.setname] == nil) then
 		if (resource("gamescripts/" .. gametbl.setname .. ".lua")) then
 			return "gamescripts/" .. gametbl.setname .. ".lua";
+
+		elseif (gridledetail_neogeosets[gametbl.setname] == true and
+				gridledetail_modellut["neogeo"]) then
+			return "neogeo";
 		end
 	else
 		return gametbl.setname;

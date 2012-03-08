@@ -830,6 +830,9 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.h = constraints.h;
 		newvobj->origw = origw;
 		newvobj->origh = origh;
+		newvobj->current.scale.x = 1.0;
+		newvobj->current.scale.y = 1.0;
+		newvobj->current.scale.z = 1.0;
 		newvobj->current.rotation.roll = newvobj->current.rotation.pitch = newvobj->current.rotation.yaw = 0.0;
 		newvobj->current.rotation.rotation = build_quat_euler( 0, 0, 0 );
 
@@ -1824,6 +1827,18 @@ arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on)
 		rv = ARCAN_OK;
 	}
 
+	return rv;
+}
+
+unsigned short arcan_video_getzv(arcan_vobj_id id)
+{
+	unsigned short rv = 0;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (vobj){
+		rv = vobj->order;
+	}
+	
 	return rv;
 }
 

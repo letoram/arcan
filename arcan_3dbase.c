@@ -246,7 +246,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 		memcpy(wmvm, modelview, sizeof(float) * 16);
 
 	float dmatr[16], omatr[16];
-
     float opa = 1.0;
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
@@ -466,7 +465,7 @@ arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, 
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens){
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens, unsigned nmaps){
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
@@ -485,13 +484,21 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 		state.ptr = (void*) newmodel;
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 
-		arcan_fatal("arcan_3d_buildplane() unfinished\n");
-		
-	/*	build_hplane(minp, maxp, step, &newmodel->geometry.verts, (unsigned int**)&newmodel->geometry.indices,
-					 &newmodel->geometry.txcos, &newmodel->geometry.nverts, &newmodel->geometry.nindices);
+		struct geometry** nextslot = &(newmodel->geometry);
+		while (*nextslot)
+			nextslot = &((*nextslot)->next);
 
-		newmodel->geometry.ntris = newmodel->geometry.nindices / 3;
-		arcan_video_allocframes(rv, 1);*/
+		*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
+
+		(*nextslot)->nmaps = nmaps;
+		newmodel->geometry = *nextslot;
+		build_hplane(minp, maxp, step, &newmodel->geometry->verts, (unsigned int**)&newmodel->geometry->indices,
+					 &newmodel->geometry->txcos, &newmodel->geometry->nverts, &newmodel->geometry->nindices);
+
+		newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
+		arcan_video_allocframes(rv, 1);
+		newmodel->geometry->program = -1;
+		newmodel->geometry->complete = true;
 	}
 
 	return rv;
@@ -692,6 +699,7 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 		tx = (0.0 - dst->bbmin.x) - (dst->bbmax.x - dst->bbmin.x) * 0.5;
 		ty = (0.0 - dst->bbmin.y) - (dst->bbmax.y - dst->bbmin.y) * 0.5;
 		tz = (0.0 - dst->bbmin.z) - (dst->bbmax.z - dst->bbmin.z) * 0.5;
+
 		dst->bbmax.x += tx; dst->bbmin.x += tx;
 		dst->bbmax.y += ty; dst->bbmin.y += ty;
 		dst->bbmax.z += tz; dst->bbmin.z += tz;

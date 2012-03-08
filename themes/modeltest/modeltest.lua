@@ -51,21 +51,18 @@ function modeltest()
 	mousex = VRESW * 0.5;
 	mousey = VRESH * 0.5;
 
---	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
+	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
 
 	toggle_mouse_grab();
 	kbd_repeat(2);
---	show_image(plane);
+	show_image(plane);
 
 --	rotate3d_model(model.vid, 0.0, 270.0, 0.0);
 	show_image(model.vid);
 	contbl = create_console(VRESW , VRESH / 4, "fonts/default.ttf", 18);
 	console_enabled = false;
 	contbl:hide();
-	mpvid, aid = launch_target(arguments[2], 1);
-	hide_image(mpvid);
 	move3d_camera(-1.0, 1.0, -5.0);
-	set_image_as_frame(model.vid, mpvid, model.labels["display"]);
 end
 
 function load_material(modelname, meshname)
@@ -122,9 +119,6 @@ function modeltest_clock_pulse()
 end
 
 function modeltest_input(iotable)
-	if (mpvid and mpvid ~= BADID) then
-		target_input(iotable, mpvid);
-	end
 
 	if (iotable.kind == "digital") then
 		if (console_enabled) then

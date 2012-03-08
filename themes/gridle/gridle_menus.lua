@@ -1,4 +1,6 @@
--- dependencies
+-- this one is just a mess of tables, all mapping to a
+-- global settings structure, nothing really interesting
+
 system_load("scripts/listview.lua")();
 
 local function spawnmenu(list, listptr)
@@ -36,7 +38,29 @@ local filterlbls = {
 	"Subgenre",
 	"Target"
 };
-	
+
+local attractlbls = {
+	"Disabled",
+	"1 Min",
+	"5 Min",
+	"10 Min",
+	"15 Min"
+};
+
+local jukeboxlbls = {
+	"Disabled",
+	"Enabled"
+};
+
+local inactivitylbls = {
+	"Disabled",
+	"5 Min",
+	"10 Min",
+	"15 Min",
+	"30 Min",
+	"1 Hour"
+};
+
 local settingslbls = {
 	"Sort Order...",
 	"Reconfigure Keys",
@@ -44,7 +68,10 @@ local settingslbls = {
 	"Cell Size",
 	"Repeat Rate",
 	"Fade Delay",
-	"Transition Delay"
+	"Transition Delay",
+	"Attract Mode",
+	"Inactivity Shutdown",
+	"Jukebox"
 };
 
 local sortorderlbls = {
