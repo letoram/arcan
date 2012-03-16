@@ -40,7 +40,7 @@
 #include <pthread.h>
 
 /* GNU / LibUSB */
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 #include "iconv.h"
 
 #include "hidapi.h"
@@ -253,6 +253,12 @@ static int get_usage(uint8_t *report_descriptor, size_t size,
 #endif // INVASIVE_GET_USAGE
 
 
+#ifdef _LIBUSB_BSD
+static int libusb_get_string_descriptor(libusb_device_handle* dev, unsigned stringid, unsigned langid, unsigned char* buf, size_t bufsize){
+		return libusb_get_string_descriptor_ascii(dev, stringid, buf, bufsize);
+}
+#endif
+
 /* Get the first language the device says it reports. This comes from
    USB string #0. */
 static uint16_t get_first_language(libusb_device_handle *dev)
@@ -266,9 +272,10 @@ static uint16_t get_first_language(libusb_device_handle *dev)
 			0x0, /* Language */
 			(unsigned char*)buf,
 			sizeof(buf));
+
 	if (len < 4)
 		return 0x0;
-	
+		
 	return buf[1]; // First two bytes are len and descriptor type.
 }
 

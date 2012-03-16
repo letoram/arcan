@@ -203,7 +203,6 @@ add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 set(CPACK_BUNDLE_NAME Arcan)
 set(CPACK_BUNDLE_PLIST Info.plist)
 set(CPACK_BUNDLE_ICON Arcan.icns)
-# how should we select which frameworks to copy?
 
 set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
 set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
@@ -217,14 +216,35 @@ install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISS
 
 SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
 
-#
-#
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+	add_definitions(-DLUA_51 -D__UNIX -D_LIBUSB_BSD)
+
+	LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+	LIST(APPEND MAIN_LIBRARIES usb rt)
+	LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
+	LIST(APPEND FSRV_LIBRARIES -lrt)
+
+	add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
+	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c)
+	add_dependencies(arcan_hijack arcan_target_backend)
+	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
+	
+	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
+	set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
+	set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
+
+	add_executable( arcan ${SOURCES})
+	add_executable( arcan_frameserver ${FSRV_SOURCES})
+	add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
+
+	install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+	install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 #
 # ----------------------- LINUX --------------------------
 #
 #
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-add_definitions(-D_POSIX_C_SOURCE -D_GNU_SOURCE -D__UNIX -DLUA_51)
+add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
@@ -237,10 +257,10 @@ add_dependencies(arcan_hijack arcan_target_backend)
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
 
 # part of tools to troubleshoot / test hijack for a target (intended for the romman)
-add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
-add_library(arcan_hijackprobe SHARED arcan_target_unix.c)
-add_dependencies(arcan_hijackprobe arcan_target_probebackend)
-set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
+# add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
+# add_library(arcan_hijackprobe SHARED arcan_target_unix.c)
+# add_dependencies(arcan_hijackprobe arcan_target_probebackend)
+# set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
