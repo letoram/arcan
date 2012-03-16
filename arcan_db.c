@@ -23,10 +23,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
 #include <sqlite3.h>
 #include <assert.h>
 #include <string.h>
+
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"

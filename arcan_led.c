@@ -24,6 +24,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "hidapi/hidapi.h"
 #include "arcan_math.h"
 #include "arcan_general.h"

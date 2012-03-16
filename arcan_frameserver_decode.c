@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
