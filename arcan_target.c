@@ -203,7 +203,7 @@
 		global.shared->vready = false;
 		global.shared->vbufofs = sizeof(struct frameserver_shmpage);
 		global.shared->resized = false;
-		global.shared->vsyncc = sem_open(semkeyv, O_RDWR, 0700);
+		global.shared->vsyncc = sem_open(semkeyv, 0, 0700);
 	}
 
 	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)

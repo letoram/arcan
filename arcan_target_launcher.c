@@ -303,7 +303,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 		
 		char* work = strdup(shmkey);
 			work[strlen(work) - 1] = 'v';
-			shmpage->vsyncp = sem_open(work, O_RDWR);
+			shmpage->vsyncp = sem_open(work, 0);
 			sem_post(shmpage->vsyncp);
 		free(work);
 		

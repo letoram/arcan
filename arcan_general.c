@@ -629,6 +629,8 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 
 #endif 
 
+/* try to allocate a shared memory page and two semaphores (vid / aud) is specififed,
+ * return a pointer to the shared key (this will keep the resources allocated) or NULL on fail */
 #include <sys/mman.h>
 char* arcan_findshmkey(int* dfd, bool semalloc){
 	int fd = -1;
@@ -636,22 +638,29 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 	int retrycount = 10;
 	
 	while (1){
-		snprintf(playbuf, playbufsize, "arcan_%i_%im", selfpid, rand());
+		snprintf(playbuf, playbufsize, "/arcan_%i_%im", selfpid, rand());
 		fd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
-
-		if (fd){
+	
+	/* with EEXIST, we happened to have a name collision, it is unlikely, but may happen.
+	 * for the others however, there is something else going on and there's no point retrying */
+		if (-1 == fd && errno != EEXIST){
+			arcan_warning("arcan_findshmkey(), allocating shared memory, reason: %d\n", errno);
+			return NULL;
+		}
+		
+		if (fd > 0){
 			if (!semalloc)
 				break;
 			
 			char* work = strdup(playbuf);
 			work[strlen(work) - 1] = 'v';
 
-			sem_t* vid = sem_open(work, O_CREAT | O_RDWR | O_EXCL, 0700, 0);
+			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 0);
 	
 			if (SEM_FAILED != vid){
 				work[strlen(work) - 1] = 'a';
 				
-				sem_t* aud = sem_open(work, O_CREAT | O_RDWR | O_EXCL, 0700, 1);
+				sem_t* aud = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
 				if (SEM_FAILED != aud){
 					free(work);
 					break;
@@ -665,8 +674,11 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 			shm_unlink(playbuf);
 			fd = -1;
 			free(work);
-			if (retrycount-- == 0)
+
+			if (retrycount-- == 0){
+				arcan_warning("arcan_findshmkey(), allocating named semaphores failed, reason: %d, aborting.\n", errno);
 				return NULL;
+			}
 		}
 	}
 

@@ -162,8 +162,11 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	struct frameserver_shmpage* shmpage;
 	int shmfd = 0;
 	char* shmkey = arcan_findshmkey(&shmfd, true);
-/* findshmkey won't return until it gets a valid fd, shmkey is allocated and not freed there */
-	
+
+/* no shared memory available, no way forward */
+	if (shmkey == NULL)
+		return NULL;
+
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
 	ftruncate(shmfd, shmsize);
@@ -190,9 +193,9 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 		char* work = strdup(shmkey);
 			work[strlen(work) - 1] = 'v';
-			shmpage->vsyncp = sem_open(work, O_RDWR);
+			shmpage->vsyncp = sem_open(work, 0);
 			work[strlen(work) - 1] = 'a';
-			shmpage->asyncp = sem_open(work, O_RDWR);
+			shmpage->asyncp = sem_open(work, 0);
 		free(work);
 		
 		cons.w = shmpage->w;
