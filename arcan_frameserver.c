@@ -131,8 +131,14 @@ static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, char* shmkey)
 	dstctx->shared->frequency = dstctx->samplerate;
 	dstctx->shared->abufofs = dstctx->shared->vbufofs + dstctx->width * dstctx->height * dstctx->bpp;
 	dstctx->shared->abufbase = 0;
-	dstctx->shared->vsyncc = sem_open(semkeyv, O_RDWR, 0700);
-	dstctx->shared->asyncc = sem_open(semkeya, O_RDWR, 0700);
+	dstctx->shared->vsyncc = sem_open(semkeyv, 0, 0700);
+	dstctx->shared->asyncc = sem_open(semkeya, 0, 0700);
+	if (dstctx->shared->vsyncc == 0x0 ||
+		dstctx->shared->asyncc == 0x0){
+			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
+			return false;
+	}
+	
 	active_shmkey = shmkey;
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 	
@@ -162,7 +168,6 @@ void cleanshmkey(){
 		return 1;
 	}
 	
-    /* shut up */
 	close(0);
 	close(1);
 	close(2);
