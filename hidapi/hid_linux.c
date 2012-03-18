@@ -40,8 +40,15 @@
 #include <pthread.h>
 
 /* GNU / LibUSB */
+
+#ifdef _LIBUSB_BSD
 #include <libusb.h>
+#else 
+#include <libusb-1.0/libusb.h>
+#endif
+
 #include "iconv.h"
+
 
 #include "hidapi.h"
 

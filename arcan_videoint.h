@@ -126,6 +126,7 @@ typedef struct arcan_vobject {
 	/* management mappings */
 	struct arcan_vobject* parent;
 	struct arcan_vobject_litem* owner;
+	arcan_vobj_id cellid;
 } arcan_vobject;
 
 /* regular old- linked list, but also mapped to an array */
@@ -133,7 +134,6 @@ struct arcan_vobject_litem {
 	arcan_vobject* elem;
 	struct arcan_vobject_litem* next;
 	struct arcan_vobject_litem* previous;
-	arcan_vobj_id cellid;
 };
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 

@@ -898,8 +898,8 @@ int arcan_lua_targetinput(lua_State* ctx)
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	
 	if (!vstate || vstate->tag != ARCAN_TAG_TARGET){
-		arcan_warning("Script Warning: bad ID in target_input()\n");
-		return 0;
+		lua_pushnumber(ctx, false);
+		return 1;
 	}
 
 	arcan_launchtarget* intarget = (arcan_launchtarget*) vstate->ptr;
@@ -947,12 +947,14 @@ int arcan_lua_targetinput(lua_State* ctx)
 	} 
 	else {
 		arcan_warning("Script Warning: target_input(), unkown \"kind\" field in table.\n");
-		return 0;
+		lua_pushnumber(ctx, false);
+		return 1;
 	}
 		
 	arcan_target_inject_event(intarget, ev);
 
-	return 0;
+	lua_pushnumber(ctx, true);
+	return 1;
 }
 
 static int arcan_lua_targetsuspend(lua_State* ctx){
@@ -1297,10 +1299,11 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
 	unsigned num = luaL_checkint(ctx, 3);
 	bool detatch = luaL_optint(ctx, 4, 0) > 0;
+
+	arcan_errc errc;
+	lua_pushnumber(ctx, arcan_video_setasframe(sid, did, num, detatch, &errc));
 	
-	arcan_video_setasframe(sid, did, num, detatch);
-	
-	return 0;
+	return 1;
 }
 
 int arcan_lua_linkimage(lua_State* ctx)
@@ -2307,6 +2310,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	lua_ctx_store.debug = debugfuncs;
 #ifdef _DEBUG
 	lua_ctx_store.lua_vidbase = rand() % 32768;
+	arcan_warning("lua_exposefuncs() -- videobase is set to %d\n", lua_ctx_store.lua_vidbase);
 #endif
 	
 /* category: resource */

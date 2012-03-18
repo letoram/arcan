@@ -213,7 +213,7 @@ static void freemodel(arcan_3dmodel* src)
 
 		/* spinlock while loading model */
 			while (!geom->complete);
-			
+
 			geom = geom->next;
 			free(last);
 		}
@@ -355,7 +355,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 	while (current){
 		if (current->elem->order >= 0) break;
 		surface_properties dprops;
- 		arcan_resolve_vidprop(cell->elem, lerp, &dprops);
+ 		arcan_resolve_vidprop(current->elem, lerp, &dprops);
 		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, current->elem->gl_storage.program, dprops, modelview);
 
 		current = current->next;
@@ -497,6 +497,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 
 		newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
 		arcan_video_allocframes(rv, 1);
+		newmodel->geometry->indexformat = GL_UNSIGNED_INT;
 		newmodel->geometry->program = -1;
 		newmodel->geometry->complete = true;
 	}

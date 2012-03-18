@@ -189,7 +189,7 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
 /* specify the number of frames associated with vobj, default is 0 */
 arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity);
 /* note that the frame_id (fid) have to be available through allocframes first */
-arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch);
+arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch, arcan_errc* errc);
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
 void arcan_video_imgmanmode(enum arcan_vimage_mode mode, bool repeat);
 void arcan_video_contextsize(unsigned newlim);
