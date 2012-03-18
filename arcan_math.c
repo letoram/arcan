@@ -41,14 +41,14 @@ static void mult_matrix_vecf(const float matrix[16], const float in[4], float ou
 }
 
 /* good chance for speedup here using SSE intrisics */
-void multiply_matrix(float* dst, float* a, float* b)
+void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
 {
 	for (int i = 0; i < 16; i+= 4)
 		for (int j = 0; j < 4; j++)
 			dst[i+j] =
 				b[i]   * a[j]   +
 				b[i+1] * a[j+4] +
-				b[i+2] * a[j+8] + 
+				b[i+2] * a[j+8] +
 				b[i+3] * a[j+12];
 }
 
@@ -73,37 +73,36 @@ static float midentity[] =
   0.0, 1.0, 0.0, 0.0,
   0.0, 0.0, 1.0, 0.0,
   0.0, 0.0, 0.0, 1.0};
-  
+
 void identity_matrix(float* m)
 {
 		memcpy(m, midentity, 16 * sizeof(float));
 }
 
-void build_orthographic_matrix(float* m, const float left, const float right,
-							  const float bottom, const float top, const float near, const float far)
+void build_orthographic_matrix(float* m, const float left, const float right, const float bottom, const float top, const float nearf, const float farf)
 {
 	float irml = 1.0 / (right - left);
 	float itmb = 1.0 / (top - bottom);
-	float ifmn = 1.0 / (far - near);
-	
+	float ifmn = 1.0 / (farf - nearf);
+
 	m[0]  = 2.0f * irml;
 	m[1]  = 0.0f;
 	m[2]  = 0.0f;
-	m[3]  = 0.0; 
+	m[3]  = 0.0;
 
 	m[4]  = 0.0f;
 	m[5]  = 2.0f * itmb;
 	m[6]  = 0.0f;
-	m[7]  = 0.0; 
+	m[7]  = 0.0;
 
 	m[8]  = 0.0f;
 	m[9]  = 0.0f;
 	m[10] = 2.0f * ifmn;
-	m[11] = 0.0; 
+	m[11] = 0.0;
 
 	m[12] = -(right+left) * irml;
 	m[13] = -(top+bottom) * itmb;
-	m[14] = -(far+near) * ifmn;
+	m[14] = -(farf+nearf) * ifmn;
 	m[15] = 1.0f;
 }
 
@@ -137,7 +136,7 @@ int project_matrix(float objx, float objy, float objz,
 
 	if (in[3] == 0.0)
 		return 0;
-	
+
 	in[0] /= in[3];
 	in[1] /= in[3];
 	in[2] /= in[3];
@@ -342,7 +341,7 @@ vector angle_quat(quat a)
 	euler.x *= mpi;
 	euler.y *= mpi;
 	euler.z *= mpi;
-	
+
 	return euler;
 }
 
