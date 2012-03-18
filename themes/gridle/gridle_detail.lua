@@ -41,6 +41,8 @@ end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
+	warning("buildview");
+
 -- if we have a "load script", use that.
 	if (".lua" == string.sub(detailres, -4, -1)) then
 		return nil
@@ -48,6 +50,7 @@ local function gridledetail_buildview(detailres, gametbl )
 -- otherwise, use the generic model loader		
 		detailview.game = gametbl;
 		detailview.model = load_model(detailres);
+		warning("load model" .. detailres);
 
 -- this can fail (no model found) 
 		if (detailview.model) then

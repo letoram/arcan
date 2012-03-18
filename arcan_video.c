@@ -617,6 +617,16 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	arcan_video_display.fullscreen = fs;
 	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) | SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
 	arcan_video_display.screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
+
+/* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
+#ifdef POOR_GL_SUPPORT
+	int err;
+	if ( (err = glewInit()) != GLEW_OK){
+		arcan_fatal("Couldn't initialize GLew: %s\n", glewGetErrorString(err));
+	}
+	printf("%" PRIxPTR "\n", glUseProgram);
+#endif
+
 	arcan_video_display.width = width;
 	arcan_video_display.height = height;
 	arcan_video_display.bpp = bpp;
@@ -638,10 +648,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		arcan_video_gldefault();
 		arcan_3d_setdefaults();
 	}
-
-#ifdef POOR_GL_SUPPORT
-	glewInit();
-#endif
 
 	return arcan_video_display.screen ? ARCAN_OK : ARCAN_ERRC_BADVMODE;
 }

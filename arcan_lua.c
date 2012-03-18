@@ -1868,6 +1868,13 @@ int arcan_lua_filtergames(lua_State* ctx)
 	return rv;
 }
 
+int arcan_lua_warning(lua_State* ctx)
+{
+	char* msg = (char*) luaL_checkstring(ctx, 1);
+	arcan_warning(msg);
+	return 0;
+}
+
 int arcan_lua_shutdown(lua_State *ctx)
 {
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EXIT};
@@ -2381,6 +2388,10 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item: shutdown,nil */
 	lua_register(ctx, "shutdown", arcan_lua_shutdown);
+
+/* item: warning, string, nil */
+	lua_register(ctx, "warning", arcan_lua_warning);
+	
 /*	lua_register(ctx, "toggle_fullscreen", arcan_lua_togglefs); */
 
 /* category: database */
