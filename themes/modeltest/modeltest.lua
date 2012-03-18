@@ -45,19 +45,17 @@ function modeltest()
 	model = load_model(arguments[1]);
 	scale_3dvertices(model.vid);
 	show_image(model.vid);
-	move3d_camera(-1.0, 1.0, -5.0);
+	move3d_camera(0.0, 0.0, 0.0);
 
 	image_shader(model.vid, shdr);
 	mousex = VRESW * 0.5;
 	mousey = VRESH * 0.5;
 
-	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, -1.0, 0.1, 0.1);
-
+	plane = build_3dplane(-5.0, -5.0, 5.0, 5.0, 0.0, 1.0, 1.0);
+	
 	toggle_mouse_grab();
 	kbd_repeat(2);
 	show_image(plane);
-
---	rotate3d_model(model.vid, 0.0, 270.0, 0.0);
 	show_image(model.vid);
 	contbl = create_console(VRESW , VRESH / 4, "fonts/default.ttf", 18);
 	console_enabled = false;

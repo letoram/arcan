@@ -188,8 +188,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 		context->vitems_pool =  (arcan_vobject*) calloc( sizeof(arcan_vobject), arcan_video_display.default_vitemlim);
 		context->vitem_ofs = 1;
 		context->vitem_limit = arcan_video_display.default_vitemlim;
-	}
-	else for (int i = 1; i < context->vitem_limit; i++)
+	} else for (int i = 1; i < context->vitem_limit; i++)
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &context->vitems_pool[i];
 
@@ -331,6 +330,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		arcan_vobject* nobj = arcan_video_getobject(rv);
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
 		nobj->current = newprop;
+		nobj->cellid = rv;
 		nobj->current.rotation.rotation = build_quat_euler(0.0, 0.0, 0.0);
 		nobj->transform = NULL;
 		nobj->parent = pobj;
@@ -381,6 +381,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->current.scale.x = 1.0;
 		rv->current.scale.y = 1.0;
 		rv->current.opa = 0.0;
+		rv->cellid = fid;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
@@ -415,7 +416,6 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 		/* allocate new llist- item */
 		arcan_vobject_litem* new_litem = (arcan_vobject_litem*) calloc(sizeof(arcan_vobject_litem), 1);
 		new_litem->elem = src;
-		new_litem->cellid = id;
 		src->owner = new_litem;
 
 		/* case #1, no previous item or first */
@@ -877,21 +877,28 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 	return rv;
 }
 
-arcan_errc arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch)
+arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch, arcan_errc* errc)
 {
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_errc rv = ARCAN_EID;
+
+	if (errc)
+		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
 	if (dstvobj && srcvobj){
 		if (fid < dstvobj->frameset_capacity){
 			if (detatch)
 				arcan_video_detatchobject(src);
 
+			if (dstvobj->frameset[fid])
+				rv = dstvobj->frameset[fid]->cellid;
+				
 			dstvobj->frameset[fid] = srcvobj;
-			rv = ARCAN_OK;
+			if (errc) *errc = ARCAN_OK;
 		}
 		else 
-			rv = ARCAN_ERRC_OUT_OF_SPACE;
+			if (errc) *errc = ARCAN_ERRC_OUT_OF_SPACE;
 	}
 	
 	return rv;
@@ -1930,8 +1937,11 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 }
 
 /* removes an object immediately,
- * will also scan objects on the 'to expire' list
- * in order to avoid potential race conditions */
+ * one of the more complicated / dangerous functions,
+ *   -- if there's a feed function, invoke that with destroy
+ *   -- if there's a frameset, destroy associated frames IF NOT detatched,
+ *   -- if detatched, it is assumed the underlying ffunc mechanism will clean it up.
+ *   -- scan all associated objects and remove dangling references */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1945,7 +1955,13 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
             if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
                 SDL_KillThread( vobj->state.ptr );
             }
-            
+
+			for (unsigned int i = 0; i < vobj->frameset_capacity; i++)
+				if (vobj->frameset[i] && vobj->frameset[i]->owner){
+					arcan_video_deleteobject(vobj->frameset[i]->cellid);
+					vobj->frameset[i] = 0;
+				}
+			
             free(vobj->frameset);
             free(vobj->default_frame.raw);
 
@@ -1965,15 +1981,10 @@ retry:
 			arcan_vobject* elem = current->elem;
 			arcan_vobject** frameset = elem->frameset;
 		
-		/* remove from frameset references */
-			for (unsigned framecount = 0; framecount < elem->frameset_capacity; framecount++)
-				if (frameset[framecount] == vobj)
-					frameset[framecount] = (arcan_vobject*) NULL;
-			
 		/* how to deal with those that inherit? */
 			if (elem->parent == vobj) {
 				if (elem->flags.clone || (elem->mask & MASK_LIVING) == 0) {
-					arcan_video_deleteobject(current->cellid);
+					arcan_video_deleteobject(current->elem->cellid);
 					goto retry; /* no guarantee the structure is intact */
 				}
 				else /* inherit parent instead */
@@ -2025,7 +2036,7 @@ arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	
 		if (vobj && vobj->parent && vobj->parent->owner) {
-				rv = vobj->parent->owner->cellid;
+				rv = vobj->parent->cellid;
 		}
 		
 	return rv;
@@ -2050,8 +2061,7 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
             if (ofs > 0) 
                 ofs--;
             else{
-                if (elem->owner)
-                    rv = elem->owner->cellid;
+                rv = elem->cellid;
                 return rv;
             }
         }
@@ -2367,7 +2377,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 
 			if (!ci->transform || ci->transform->blend.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_BLENDED};
-				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
+				ev.data.video.source = ci->cellid;
 				arcan_event_enqueue(&ev);
 			}
 		}
@@ -2386,7 +2396,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			
 			if (!ci->transform || ci->transform->move.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_MOVED};
-				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
+				ev.data.video.source = ci->cellid;
 				arcan_event_enqueue(&ev);
 			}
 		}
@@ -2404,7 +2414,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			
 			if (!ci->transform || ci->transform->scale.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
-				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
+				ev.data.video.source = ci->cellid;
 				arcan_event_enqueue(&ev);
 			}
 		}
@@ -2423,7 +2433,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			
 			if (!ci->transform || ci->transform->rotate.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_ROTATED};
-				ev.data.video.source = ci->owner ? ci->owner->cellid : ARCAN_VIDEO_WORLDID;
+				ev.data.video.source = ci->cellid;
 				arcan_event_enqueue(&ev);
 			}
 		}
@@ -2459,7 +2469,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 							.category = EVENT_VIDEO,
 							.kind = EVENT_VIDEO_EXPIRE
 						};
-						uint32_t tid = current->cellid;
+						arcan_vobj_id tid = elem->cellid;
 						dobjev.data.video.source = tid;
 
 						arcan_event_enqueue(&dobjev);
@@ -2804,8 +2814,8 @@ unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int
 	uint32_t base = 0;
 
 	while (current && base < count) {
-		if (current->cellid && !(current->elem->mask & MASK_UNPICKABLE) && current->elem->current.opa > EPSILON && arcan_video_hittest(current->cellid, x, y))
-			dst[base++] = current->cellid;
+		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y))
+			dst[base++] = current->elem->cellid;
 		current = current->next;
 	}
 
@@ -2826,7 +2836,7 @@ void arcan_video_dumppipe()
 	printf("-----------\n");
 	if (current)
 		do {
-			printf("[%i] #(%i) - (ID:%u) (Order:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->cellid, current->elem->order,
+			printf("[%i] #(%i) - (ID:%u) (Order:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->elem->cellid, current->elem->order,
 			       current->elem->current.position.x, current->elem->current.position.y, current->elem->current.scale.x, current->elem->current.scale.y, current->elem->current.opa);
 		}
 		while ((current = current->next) != NULL);
@@ -3037,8 +3047,8 @@ void arcan_video_restore_external()
 											arcan_video_display.sdlarg);
 	arcan_event_init();
 	arcan_video_gldefault();
-	arcan_video_popcontext();
 	arcan_shader_rebuild_all();
+	arcan_video_popcontext();
 }
 
 void arcan_video_shutdown()

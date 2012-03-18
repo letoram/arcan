@@ -131,7 +131,7 @@ static struct {
 } shdr_global = {.base = 10000, .active_prg = -1, .guard = 64};
 
 
-static void build_shader(const char*, GLuint*, GLuint*, GLuint*, const char*, const char*);
+static bool build_shader(const char*, GLuint*, GLuint*, GLuint*, const char*, const char*);
 
 static void setv(GLint loc, enum shdrutype kind, void* val)
 {
@@ -319,7 +319,7 @@ static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
 	*dprg = *vprg = *fprg = 0;
 }
 
-static void build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
+static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
 {
 	char buf[256];
 	int rlen;
@@ -330,43 +330,44 @@ static void build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 	*vprg = glCreateShader(GL_VERTEX_SHADER);
 	*fprg = glCreateShader(GL_FRAGMENT_SHADER);
 
+	arcan_debug_pumpglwarnings("shdrmgmt:pre:build_shader");
+	
 	glShaderSource(*vprg, 1, &vprogram, NULL);
 	glShaderSource(*fprg, 1, &fprogram, NULL);
 
 	glCompileShader(*vprg);
 	glCompileShader(*fprg);
 
-#ifdef _DEBUG
-	if (arcan_debug_pumpglwarnings("shdrmgmt.c:build_shader") == -1){
-		arcan_warning("setv() -> errors found when pumping context.\n");
-        abort();
-    }
-    
-#endif
+	if (arcan_debug_pumpglwarnings("shdrmgmt:post:build_shader") == -1){
+		glGetShaderInfoLog(*vprg, 256, &rlen, buf);
+		if (rlen){
+			arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
+			arcan_warning("Vertex Program: %s\n", vprogram);
+		}
 	
-	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
-	if (rlen){
-		arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
-#ifdef _DEBUG
-		arcan_warning("Vertex Program: %s\n", vprogram);
-#endif
+
+		glGetShaderInfoLog(*fprg, 256, &rlen, buf);
+		if (rlen){
+			arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
+			arcan_warning("Fragment Program: %s\n", fprogram);
+		}
+		kill_shader(dprg, vprg, fprg);
+		return false;
+	} else {
+		glAttachShader(*dprg, *fprg);
+		glAttachShader(*dprg, *vprg);
+		glLinkProgram(*dprg);
+
+		if (arcan_debug_pumpglwarnings("shdrmgmt:post:link_shader") == -1){
+			glGetProgramInfoLog(*dprg, 256, &rlen, buf);
+			if (rlen)
+				arcan_warning("Warning: Problem linking Shader Program(%s): %s\n", label, buf);
+
+			kill_shader(dprg, vprg, fprg);
+		}
 	}
 	
-	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
-	if (rlen){
-		arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
-#ifdef _DEBUG
-		arcan_warning("Fragment Program: %s\n", fprogram);
-#endif
-	}
-	glAttachShader(*dprg, *fprg);
-	glAttachShader(*dprg, *vprg);
-
-	glLinkProgram(*dprg);
-
-	glGetProgramInfoLog(*dprg, 256, &rlen, buf);
-	if (rlen)
-		arcan_warning("Warning: Problem linking Shader Program(%s): %s\n", label, buf);
+	return true;
 }
 
 const char* arcan_shader_symtype(enum arcan_shader_envts env)

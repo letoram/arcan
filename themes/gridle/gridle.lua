@@ -185,6 +185,11 @@ function gridle()
 		shutdown();
 	end
 
+-- make sure that we don't have any weird resolution configurations
+	if (VRESW < 256 or VRESH < 256) then
+	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested. Check -w / -h arguments.");
+	end
+	
 	load_settings();
 	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader");
 	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
@@ -273,10 +278,22 @@ end
 	end
 	
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
-		local key = gridledetail_havedetails(current_game());
+		local gametbl = current_game();
+		local key = gridledetail_havedetails(gametbl);
 		if (key) then
 			remove_zoom();
-			gridledetail_show(key, current_game());
+			local gameind = 0;
+
+-- cache curind so we don't have to search if we're switching game inside detail view 
+			for ind = 1, #settings.games do
+				if (settings.games[ind].title == gametbl.title) then
+					gameind = ind;
+					break;
+				end
+			end
+
+			if (movievid and movievid ~= BADID) then delete_image(movievid); movievid = BADID; end
+			gridledetail_show(key, gametbl, gameind);
 		end
 	end
 	
@@ -736,8 +753,8 @@ function load_settings()
 
 	local setdelay = get_key("fadedelay");
 	local transdelay = get_key("transitiondelay");
-	if (setdelay) then settings.fadedelay = setdelay; end
-	if (transdelay) then settings.transitiondelay = transdelay; end
+	if (setdelay) then settings.fadedelay = tonumber(setdelay); end
+	if (transdelay) then settings.transitiondelay = tonumber(transdelay); end
 
 	local sort = get_key("sortorder");
 	if (sort and sort ~= "Default") then
@@ -745,7 +762,7 @@ function load_settings()
 	end
 	
 	local repeatrate = get_key("repeatrate");
-	if (repeatrate) then settings.repeat_rate = tostring(repeatrate); end
+	if (repeatrate) then settings.repeat_rate = tonumber(repeatrate); end
 
 	if ( open_rawresource("lists/favorites") ) then
 		line = read_rawresource();
