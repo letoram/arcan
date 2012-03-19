@@ -88,9 +88,6 @@ int arcan_target_clean_internal(arcan_launchtarget* tgt)
 	if (!tgt || tgt->source.child <= 0)
 		return -1;
 
-/* send a killcommand, wait n seconds and get the child a chance
- * to clean up "cleanly"? */
-	
 	kill(tgt->source.child, SIGKILL);
 	waitpid(tgt->source.child, NULL, 0);
 

@@ -79,7 +79,7 @@ typedef struct {
 	enum arcan_playstate playstate;
 	int64_t lastpts;
 	int64_t starttime;
-	bool loop;
+	bool loop, autoplay;
 
 /* set if color space conversion is done in process or not */
 	bool extcc;

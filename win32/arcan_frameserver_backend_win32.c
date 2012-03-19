@@ -237,6 +237,9 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	            res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
 				res->aid = ARCAN_EID;
 				res->source = strdup(fname);
+			} else {
+				state = *arcan_video_feedstate(res->vid);
+				arcan_video_alterfeed((arcan_vfunc_cb) emptyvframe, state);
 			}
 
 		res->loop = loop;

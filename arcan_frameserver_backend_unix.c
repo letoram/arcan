@@ -110,8 +110,7 @@ bool check_child(arcan_frameserver* movie){
 	if (waitpid( movie->child, &status, WNOHANG ) == movie->child){
 		rv = EINVAL;
 		movie->child_alive = false;
-	}
-	
+	}	
 	return rv;
 }
 
@@ -208,9 +207,11 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 			vfunc_state state = {.tag = ARCAN_TAG_MOVIE, .ptr = res};
 			res->source = strdup(fname);
-            res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
+			res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
             res->aid = ARCAN_EID;
 		} else { 
+			vfunc_state* cstate = arcan_video_feedstate(res->vid);
+			arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *cstate); 
             /* revert back to empty vfunc? */
         }
 
@@ -239,7 +240,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			argv[0] = arcan_binpath;
 			argv[1] = (char*) fname;
 			argv[2] = (char*) shmkey;
-			argv[3] = loop ? "loop" : "";
+			argv[3] = ""; //"loop"; // loop ? "loop" : "";
 			argv[4] = NULL;
 
 			int rv = execv(arcan_binpath, argv);
