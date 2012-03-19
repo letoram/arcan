@@ -307,15 +307,16 @@ int main(int argc, char* argv[])
 							arcan_video_pushasynch(ev->data.video.source);
 						
 						else if (ev->kind == EVENT_VIDEO_FRAMESERVER_TERMINATED)
-							arcan_frameserver_check_frameserver(ev->data.video.data);
+							if (!arcan_frameserver_check_frameserver(ev->data.video.data))
+								continue; /* on loop, just ignore event */
 					break;
 						
 
 					case EVENT_AUDIO:
 						if (ev->kind == EVENT_AUDIO_PLAYBACK_FINISHED)
 							arcan_audio_stop(ev->data.audio.source);
-						else if (ev->kind == EVENT_AUDIO_FRAMESERVER_TERMINATED)
-							arcan_frameserver_check_frameserver(ev->data.audio.data);
+/*						else if (ev->kind == EVENT_AUDIO_FRAMESERVER_TERMINATED)
+							arcan_frameserver_check_frameserver(ev->data.audio.data); */
 					break;
 
 					case EVENT_SYSTEM:

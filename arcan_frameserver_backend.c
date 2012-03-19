@@ -101,8 +101,9 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 	if (src && src->loop){
 		arcan_frameserver_free(src, true);
 		arcan_audio_pause(src->aid);
+	/* with asynch movieplayback, we can't set it to playing state before loaded */
+		src->autoplay = true;
 		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src);
-		arcan_frameserver_playback(src);
 		return false;
 	}
 	else{
@@ -234,10 +235,12 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 	return rv;
 }
 
+static int shmpagec = 0;
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+		printf("shmpage: %i, count: %i\n", shmpage->resized, shmpagec++);
 		if (shmpage->resized){
         /* may happen multiple- times */
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -266,13 +269,21 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
             src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
 
             arcan_errc rv;
-            src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
+			if (src->aid == ARCAN_EID)
+				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
+			
+		/*  note that the vid here is actually used to get the movie context, so this is correct */
             arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb);
             arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb);
-            
-            arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
+           
+			if (src->autoplay){
+				arcan_frameserver_playback(src);
+			}
+			else {
+				arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
                 .data.video.constraints = cons, .category = EVENT_VIDEO};
-            arcan_event_enqueue(&ev);
+				arcan_event_enqueue(&ev);
+			}
 		}
 
 		check_child(src->shm.ptr);
@@ -281,15 +292,17 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 {
+	arcan_warning("playback\n");
 	if (!src)
 		return ARCAN_ERRC_BAD_ARGUMENT;
+
 	if (!src->desc.ready)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	src->starttime = arcan_frametime();
 	src->playstate = ARCAN_PLAYING;
 	arcan_audio_play(src->aid);
-
+	arcan_warning("movie playing .. aid? %i\n", src->aid);
 	return ARCAN_OK;
 }
 
