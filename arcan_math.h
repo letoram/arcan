@@ -48,6 +48,8 @@ void scale_matrix(float*, float, float, float);
 void translate_matrix(float*, float, float, float);
 void identity_matrix(float*);
 void multiply_matrix(float* dst, float* a, float* b);
+quat quat_matrix(float* src); 
+void matr_lookat(float* m, vector position, vector dstpos, vector up);
 
 /* Vectors */
 vector build_vect_polar(const float phi, const float theta);
@@ -59,6 +61,7 @@ vector norm_vector(vector invect);
 vector lerp_vector(vector a, vector b, float f);
 vector mul_vector(vector a, vector b);
 vector add_vector(vector a, vector b);
+vector sub_vector(vector a, vector b);
 vector mul_vectorf(vector a, float f);
 
 /* Quaternions */
@@ -75,6 +78,7 @@ quat nlerp_quat(quat a, quat b, float f);
 quat lerp_quat(quat a, quat b, float f);
 quat add_quat(quat a, quat b);
 quat build_quat_euler(float roll, float pitch, float yaw);
+quat quat_lookat(vector viewpos, vector dstpos);
 
 scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
 void update_view(orientation* dst, float roll, float pitch, float yaw);

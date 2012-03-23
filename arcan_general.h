@@ -120,7 +120,7 @@ enum arcan_errors {
 
 typedef struct {
 	float yaw, pitch, roll;
-	quat rotation;
+	quat quaternion;
 } surface_orientation;
 
 typedef struct {

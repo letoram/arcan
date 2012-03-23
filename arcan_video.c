@@ -245,7 +245,7 @@ signed arcan_video_pushcontext()
 	current_context->world.current.rotation.roll  = 0.0;
 	current_context->world.current.rotation.pitch = 0.0;
 	current_context->world.current.rotation.yaw   = 0.0;
-	current_context->world.current.rotation.rotation = build_quat_euler(0, 0, 0);
+	current_context->world.current.rotation.quaternion = build_quat_euler(0, 0, 0);
 	
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
@@ -336,7 +336,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
 		nobj->current = newprop;
 		nobj->cellid = rv;
-		nobj->current.rotation.rotation = build_quat_euler(0.0, 0.0, 0.0);
+		nobj->current.rotation.quaternion = build_quat_euler(0.0, 0.0, 0.0);
 		nobj->transform = NULL;
 		nobj->parent = pobj;
 		nobj->flags.clone = true;
@@ -864,7 +864,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->current.scale.y = 1.0;
 		newvobj->current.scale.z = 1.0;
 		newvobj->current.rotation.roll = newvobj->current.rotation.pitch = newvobj->current.rotation.yaw = 0.0;
-		newvobj->current.rotation.rotation = build_quat_euler( 0, 0, 0 );
+		newvobj->current.rotation.quaternion = build_quat_euler( 0, 0, 0 );
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
@@ -968,7 +968,7 @@ static int thread_loader(void* in)
 		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
 		dst->gl_storage.w = 32;
 		dst->gl_storage.h = 32;
-		dst->current.rotation.rotation = build_quat_euler( 0, 0, 0 );
+		dst->current.rotation.quaternion = build_quat_euler( 0, 0, 0 );
         
         result.data.video.constraints.w = 32;
         result.data.video.constraints.h = 32;
@@ -1040,7 +1040,7 @@ static arcan_vobj_id loadimage(const char* fname, img_cons constraints, arcan_er
 	if (rc == ARCAN_OK) {
 		newvobj->current.position.x = 0;
 		newvobj->current.position.y = 0;
-		newvobj->current.rotation.rotation = build_quat_euler(0, 0, 0);
+		newvobj->current.rotation.quaternion = build_quat_euler(0, 0, 0);
 	}
 	else{
 		arcan_video_deleteobject(rv);
@@ -1111,7 +1111,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		/* preset */
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
-		newvobj->current.rotation.rotation = build_quat_euler(0, 0, 0);
+		newvobj->current.rotation.quaternion = build_quat_euler(0, 0, 0);
 		newvobj->gl_storage.ncpt = ncpt == 0 ? 4 : ncpt;
 
 		if (newvobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
@@ -1206,7 +1206,7 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsig
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		if (vobj){
 			vobj->order = zv;
-			vobj->current.rotation.rotation = build_quat_euler( 0, 0, 0 );
+			vobj->current.rotation.quaternion = build_quat_euler( 0, 0, 0 );
 			arcan_video_attachobject(rv);
 		}
 	}
@@ -1767,7 +1767,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
-		vobj->current.rotation.rotation = build_quat_euler(0.0, 0.0, 0.0);
+		vobj->current.rotation.quaternion = build_quat_euler(0.0, 0.0, 0.0);
 		vobj->parent = &current_context->world;
 		glGenTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
@@ -2117,7 +2117,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 			vobj->current.rotation.roll = roll;
 			vobj->current.rotation.pitch = pitch;
 			vobj->current.rotation.yaw = yaw;
-			vobj->current.rotation.rotation = build_quat_euler(roll, pitch, yaw);
+			vobj->current.rotation.quaternion = build_quat_euler(roll, pitch, yaw);
 		}
 		else { /* find endpoint to attach at */
 			surface_orientation bv = vobj->current.rotation;
@@ -2150,7 +2150,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 			base->rotate.endo.roll = roll;
 			base->rotate.endo.pitch = pitch;
 			base->rotate.endo.yaw = yaw;
-			base->rotate.endo.rotation = build_quat_euler(roll, pitch, yaw);
+			base->rotate.endo.quaternion = build_quat_euler(roll, pitch, yaw);
 			base->rotate.interp = interpolate_linear;
 		}
 	}
@@ -2452,7 +2452,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 	if (ci->transform && ci->transform->rotate.startt) {
 		upd = true;
 		float fract = lerp_fract(ci->transform->rotate.startt, ci->transform->rotate.endt, stamp);
-		ci->current.rotation.rotation = nlerp_quat(ci->transform->rotate.starto.rotation, ci->transform->rotate.endo.rotation, fract);
+		ci->current.rotation.quaternion = nlerp_quat(ci->transform->rotate.starto.quaternion, ci->transform->rotate.endo.quaternion, fract);
 		
 		if (fract > 0.9999f) {
 			ci->current.rotation = ci->transform->rotate.endo;
@@ -2566,7 +2566,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
 
 		if (tf->rotate.startt)
-			dprops->rotation.rotation = nlerp_quat(tf->rotate.starto.rotation, tf->rotate.endo.rotation, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
+			dprops->rotation.quaternion = nlerp_quat(tf->rotate.starto.quaternion, tf->rotate.endo.quaternion, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
 	
 		if (!sprops)
 			return;
@@ -2580,7 +2580,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->rotation.yaw   += dprops->rotation.yaw;
 		dprops->rotation.pitch += dprops->rotation.pitch;
 		dprops->rotation.roll  += dprops->rotation.roll;
-		dprops->rotation.rotation = add_quat(dprops->rotation.rotation, sprops->rotation.rotation);
+		dprops->rotation.quaternion = add_quat(dprops->rotation.quaternion, sprops->rotation.quaternion);
 	}
 	
 	if (force || (vobj->mask & MASK_OPACITY) > 0)
@@ -2641,7 +2641,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 
 	identity_matrix(imatr);
 	translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
-	matr_quatf(norm_quat (prop.rotation.rotation), omatr);
+	matr_quatf(norm_quat (prop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, imatr, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	arcan_shader_envv(OBJ_OPACITY, &prop.opa, sizeof(float));
@@ -2824,7 +2824,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		int view[4] = {0, 0, arcan_video_display.width, arcan_video_display.height};
 
 		identity_matrix(imatr);
-		matr_quatf(dprops.rotation.rotation, omatr);
+		matr_quatf(dprops.rotation.quaternion, omatr);
 		translate_matrix(imatr, dprops.position.x + dprops.scale.x, dprops.position.y + dprops.scale.y, 0.0);
 		multiply_matrix(dmatr, omatr, imatr);
 		
@@ -3015,7 +3015,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 					rv.rotation = current->rotate.starto;
 				else{ /* need to interpolate */
 					float fract = lerp_fract(current->rotate.startt, current->rotate.endt, ticks);
-					rv.rotation.rotation = nlerp_quat(current->rotate.starto.rotation, current->rotate.endo.rotation, fract);
+					rv.rotation.quaternion = nlerp_quat(current->rotate.starto.quaternion, current->rotate.endo.quaternion, fract);
 				}
 			}
 		}
