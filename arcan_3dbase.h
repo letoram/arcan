@@ -26,12 +26,10 @@
  video object */
 void arcan_3d_setdefaults();
 
-/* there's always a default (0) camtag, reserved for future use in
- * reflections, projective-texturing, shadow mapping etc. */
-void arcan_3d_strafecamera(unsigned camtag, float factor, unsigned tv);
-void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv);
-void arcan_3d_forwardcamera(unsigned camtag, float step, unsigned tv);
-void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv);
+/* the camtag (0) is always available, that's the default view that will be rasterized,
+ * more can be defined for lights, shadows, etc.
+ * by associating the camtag with a vobj parent, it will use that for resolving/interpolating position/orientation */
+arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id parent);
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens, unsigned nmaps);
 arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);

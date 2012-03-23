@@ -41,7 +41,6 @@ end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
-	warning("buildview");
 
 -- if we have a "load script", use that.
 	if (".lua" == string.sub(detailres, -4, -1)) then
@@ -50,7 +49,6 @@ local function gridledetail_buildview(detailres, gametbl )
 -- otherwise, use the generic model loader		
 		detailview.game = gametbl;
 		detailview.model = load_model(detailres);
-		warning("load model" .. detailres);
 
 -- this can fail (no model found) 
 		if (detailview.model) then
@@ -68,10 +66,14 @@ local function gridledetail_buildview(detailres, gametbl )
 			detailview.starty = 0.0;
 			detailview.startz = -4.0;
 
--- we tacitly assume the screen will be here, this should really be determined by the model loader
-			detailview.zoomx = 0.0;
-			detailview.zoomy = -0.5;
-			detailview.zoomz = -1.0;
+			if (detailview.model.screenview) then
+					
+			else
+	-- we tacitly assume the screen will be here, this should really be determined by the model loader
+				detailview.zoomx = 0.0;
+				detailview.zoomy = -0.5;
+				detailview.zoomz = -1.0;
+			end
 
 -- set specific shaders for marquee (fullbright, blink every now and then 
 			if (detailview.model.labels["marquee"]) then mesh_shader(detailview.model.vid, backlit_shader3d, detailview.model.labels["marquee"]); end
@@ -85,7 +87,7 @@ local function gridledetail_buildview(detailres, gametbl )
 
 				local moviefile = have_video(detailview.game.setname);
 				if (moviefile) then
-					detailview.movie_vid = load_movie(moviefile);
+					detailview.movie_vid = load_movie(moviefile, 1);
 					
 -- since we have ongoing motion in the background and for the model, we default to static and asynchronously load the screenshot
 				elseif resource("screenshots/" .. detailview.game.setname .. ".png") then
@@ -130,7 +132,7 @@ local function gridledetail_freeview(axis, mag)
 	elseif (axis == 2) then dz = mag; end
 
 		if (detailview.movie_vid ~= BADID) then expire_image(detailview.movie_vid, 20 + settings.transitiondelay); end
-		move3d_model(detailview.model.vid, detailview.startx + dx, detailview.starty + dy, detailview.startz + dz, settings.transitiondelay);
+		move3d_model(detailview.model.vid, detailview.startx + dx, detailview.starty + dy, detailview.startz + dz, 20 + settings.transitiondelay);
 		expire_image(detailview.model.vid, 20 + settings.transitiondelay);
 		detailview.model = nil;
 	end
@@ -155,7 +157,6 @@ function gridledetail_video_event(source, event)
 	if (event.kind == "movieready") then
 		if (source == detailview.movie_vid) then
 			vid,aid = play_movie(source);
-			print("movie playing: " .. vid);
 			audio_gain(aid, 0.0);
 			audio_gain(aid, 1.0, settings.fadedelay);
 			detailview.movie_vid = vid;
@@ -360,7 +361,7 @@ local function find_nextdetail(current, gametbl)
 	
 -- if we found a new, have a different fade "out" 
 	if (detailview.curind ~= nextind) then
-		gridledetail_freeview(2, 6.0);
+		gridledetail_freeview(2, -80.0);
 		gridledetail_buildview(detailres, settings.games[ nextind ]);
 		detailview.curind = nextind;
 	end
@@ -397,10 +398,10 @@ function gridledetail_show(detailres, gametbl, ind)
 	
 	settings.iodispatch = {};
 	settings.iodispatch["MENU_UP"] = function(iotbl)
-		if (detailview.cooldown == 0) then find_prevdetail(); end
+		if (detailview.cooldown == 0) then find_nextdetail(); end
 	end
 	settings.iodispatch["MENU_DOWN"] = function(iotbl)
-		if (detailview.cooldown == 0) then find_nextdetail(); end
+		if (detailview.cooldown == 0) then find_prevdetail(); end
 	end
 	settings.iodispatch["MENU_LEFT"] = function(iotbl)
 		if (detailview.model) then

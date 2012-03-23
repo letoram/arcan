@@ -69,12 +69,16 @@ enum virttype{
 struct virtobj {
 /* for RTT - type scenarios */
 	GLuint rendertarget;
-	vector position;
     unsigned int updateticks;
 	bool dynamic;
 
-/* ignored by pointlight */
+/* inherits orientation from this object (if it resolves,
+ * else revert to cached) */
+	arcan_vobj_id parent;
+
+/* cached orientation */
 	orientation direction;
+	vector position;
 	vector view;
     float projmatr[16];
 
@@ -137,12 +141,11 @@ typedef struct {
 } arcan_3dmodel;
 
 static arcan_3dscene current_scene = {0};
-
 /*
  * CAMERA Control, generation and manipulation
  */
 
-static virtobj* find_camera(unsigned camtag)
+static virtobj* find_perspective(unsigned camtag)
 {
 	virtobj* vobj = current_scene.perspectives;
 	unsigned ofs = 0;
@@ -154,48 +157,6 @@ static virtobj* find_camera(unsigned camtag)
 		vobj = vobj->next;
 	}
 	return NULL;
-}
-
-void arcan_3d_movecamera(unsigned camtag, float px, float py, float pz, unsigned tv)
-{
-	virtobj* vobj = find_camera(camtag);
-	if (vobj){
-		vobj->position.x = px;
-		vobj->position.y = -py;
-		vobj->position.z = pz;
-	}
-}
-
-void arcan_3d_orientcamera(unsigned camtag, float roll, float pitch, float yaw, unsigned tv)
-{
-	unsigned ofs = 0;
-	virtobj* cam = find_camera(camtag);
-	if (cam){
-		update_view(&cam->direction, roll, pitch, yaw);
-		cam->view.x = -cam->direction.matr[2];
-		cam->view.y = -cam->direction.matr[6];
-		cam->view.z = -cam->direction.matr[10];
-	}
-}
-
-void arcan_3d_strafecamera(unsigned camtag, float factor, unsigned tv)
-{
-	virtobj* vobj = find_camera(camtag);
-	if (vobj){
-		vector cpv = crossp_vector(vobj->view, build_vect(0.0, 1.0, 0.0));
-		vobj->position.x += cpv.x * factor;
-		vobj->position.y += cpv.y * factor;
-	}
-}
-
-void arcan_3d_forwardcamera(unsigned camtag, float fact, unsigned tv)
-{
-	virtobj* vobj = find_camera(camtag);
-	if (vobj){
-		vobj->position.x += (vobj->view.x * fact);
-		vobj->position.y += (vobj->view.y * fact);
-		vobj->position.z += (vobj->view.z * fact);
-	}
 }
 
 static void freemodel(arcan_3dmodel* src)
@@ -250,7 +211,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
-	matr_quatf(props.rotation.rotation, omatr);
+	matr_quatf(props.rotation.quaternion, omatr);
 	multiply_matrix(dmatr, wmvm, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	
@@ -371,7 +332,18 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 	
 	while(base){
 		float matr[16], dmatr[16];
-
+		arcan_vobject* parent = arcan_video_getobject(base->parent);
+		surface_properties dprops = {0};
+		if (parent){
+			arcan_resolve_vidprop(parent, frag, &dprops);
+		/* update local cache */
+			base->position  = dprops.position;
+			matr_quatf(dprops.rotation.quaternion, base->direction.matr);
+			base->direction.pitchf = dprops.rotation.pitch;
+			base->direction.rollf  = dprops.rotation.roll;
+			base->direction.yawf   = dprops.rotation.yaw;
+		}
+		
 		switch(base->type){
 			case virttype_camera :
 				arcan_shader_envv(PROJECTION_MATR, base->projmatr, sizeof(float) * 16);
@@ -738,6 +710,25 @@ arcan_vobj_id arcan_3d_emptymodel()
 	return rv;
 }
 
+arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid) 
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	virtobj* vrtobj = find_perspective(camtag);
+
+	if (vrtobj && vobj){
+		vrtobj->parent = vid;
+		vrtobj->position  = vobj->current.position;
+
+		matr_quatf(vobj->current.rotation.quaternion, vrtobj->direction.matr);
+		vrtobj->direction.pitchf = vobj->current.rotation.pitch;
+		vrtobj->direction.rollf  = vobj->current.rotation.roll;
+		vrtobj->direction.yawf   = vobj->current.rotation.yaw;
+	}
+	
+	return rv; 
+}
+
 void arcan_3d_setdefaults()
 {
 	current_scene.perspectives = calloc( sizeof(virtobj), 1);
@@ -748,8 +739,6 @@ void arcan_3d_setdefaults()
 
     cam->rendertarget = 0;
     cam->type = virttype_camera;
-	cam->position = build_vect(0, 0, 0); /* ret -x, y, +z */
-
-	arcan_3d_orientcamera(0, 0, 0, 0, 0);
+	cam->position = build_vect(0, 0, 0); 
 }
 

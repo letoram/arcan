@@ -76,7 +76,42 @@ static float midentity[] =
 
 void identity_matrix(float* m)
 {
-		memcpy(m, midentity, 16 * sizeof(float));
+	memcpy(m, midentity, 16 * sizeof(float));
+}
+
+quat quat_lookat(vector pos, vector dstpos)
+{
+	vector diff = norm_vector( sub_vector(dstpos, pos) );
+	float xang = acos( dotp_vector(diff, build_vect(1.0, 0.0, 0.0)) );
+	float yang = acos( dotp_vector(diff, build_vect(0.0, 1.0, 0.0)) );
+	float zang = acos( dotp_vector(diff, build_vect(0.0, 0.0, 1.0)) );
+	
+	return build_quat_euler(xang, yang, zang);
+}
+
+/* replacement for gluLookAt */
+void matr_lookat(float* m, vector position, vector dstpos, vector up)
+{
+	vector fwd, side, rup;
+	fwd  = norm_vector( sub_vector(dstpos, position) );
+	side = norm_vector( crossp_vector( fwd, up ) );
+	rup  = crossp_vector( side, fwd );
+	
+	m[0] = side.x;
+	m[1] = rup.x;
+	m[2] = -fwd.x;
+
+	m[4] = side.y;
+	m[5] = rup.y;
+	m[6] = -fwd.y;
+
+	m[8] = side.z;
+	m[9] = rup.z;
+	m[10] = -fwd.z;
+	
+	m[15] = 1.0;
+	
+	translate_matrix(m, -position.x, -position.y, -position.z);
 }
 
 void build_orthographic_matrix(float* m, const float left, const float right, const float bottom, const float top, const float nearf, const float farf)
@@ -217,6 +252,15 @@ vector crossp_vector(vector a, vector b)
 float dotp_vector(vector a, vector b)
 {
 	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+vector sub_vector(vector a, vector b)
+{
+	vector res = {.x = a.x - b.x,
+	.y = a.y - b.y,
+	.z = a.z - b.z};
+	
+	return res;
 }
 
 vector add_vector(vector a, vector b)
@@ -447,7 +491,6 @@ float lerp_fract(unsigned startt, unsigned endt, float ct)
 
 	return cf / (endf - startf);
 }
-
 
 static inline void normalize_plane(float* pl)
 {
