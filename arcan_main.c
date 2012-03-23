@@ -53,6 +53,7 @@
 #include "arcan_led.h"
 #include "arcan_db.h"
 #include "arcan_util.h"
+#include "arcan_videoint.h"
 
 arcan_dbh* dbhandle = NULL;
 
@@ -80,6 +81,7 @@ static const struct option longopts[] = {
 	{ "conservative", no_argument, NULL, 'm'},
 	{ "database", required_argument, NULL, 'd'},
 	{ "scalemode", required_argument, NULL, 'r'}, 
+	{ "multisamples", required_argument, NULL, 'a'},
 /* no points guessing which platform forcing this .. */
 	{ "stdout", required_argument, NULL, '1'}, 
 	{ "stderr", required_argument, NULL, '2'},
@@ -100,6 +102,7 @@ void usage()
 		"-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
 		"-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 		"-g\t--debug       \ttoggle debug output (stacktraces, events, etc.)\n"
+		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 		"-r\t--scalemode   \tset texture mode:\n\t"
 		"%i(rectangle sized textures, default),\n\t"
 		"%i(scale to power of two)\n\t"
@@ -124,55 +127,35 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:?fmsp:t:o:l:d:1:2:gr:", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:?fmsp:t:o:l:a:d:1:2:gr:", longopts, NULL)) != -1){
 		switch (ch) {
-			case 'w' :
-				width = strtol(optarg, NULL, 10);
-				break;
-			case 'h' :
-				height = strtol(optarg, NULL, 10);
-				break;
 			case '?' :
 				usage();
 				exit(1);
-				break;
-			case 'm' :
-				conservative = true;
-				break;
-			case 'f' :
-				fullscreen = true;
-				break;
-			case 's' :
-				windowed = true;
-				break;
-			case 'l' :
-				arcan_libpath = strdup(optarg);
-				break;
-			case 'd' :
-				dbfname = strdup(optarg);
-				break;
-			case 'g' :
+			break;
+			case 'w' : width = strtol(optarg, NULL, 10); break;
+			case 'h' : height = strtol(optarg, NULL, 10); break;
+			case 'm' : conservative = true; break;
+			case 'f' : fullscreen = true; break;
+			case 's' : windowed = true; break;
+			case 'l' : arcan_libpath = strdup(optarg); break;
+			case 'd' : dbfname = strdup(optarg); break;
+			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;			
+			case 'p' : arcan_resourcepath = strdup(optarg); break;
+			case 't' : arcan_themepath = strdup(optarg); break;
+			case 'o' : arcan_binpath = strdup(optarg); break;
+				case 'g' :
 				luadebug++;
 				srand(0xdeadbeef); 
 				break;
 			case 'r' :
-					scalemode = strtol(optarg, NULL, 10);
-					if (scalemode < 0 || scalemode > 2){
-						arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
-						scalemode = ARCAN_VIMAGE_SCALEPOW2;
-					}
-					
+				scalemode = strtol(optarg, NULL, 10);
+				if (scalemode < 0 || scalemode > 2){
+					arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
+					scalemode = ARCAN_VIMAGE_SCALEPOW2;
+				}	
 				break;
-			case 'p' :
-				arcan_resourcepath = strdup(optarg);
-				break;
-			case 't' :
-				arcan_themepath = strdup(optarg);
-				break;
-			case 'o' :
-				arcan_binpath = strdup(optarg);
-			break;
-			case '1' :
+		case '1' :
 				stdout_redirected = true;
 				freopen(optarg, "a", stdout);
 			break;

@@ -90,6 +90,7 @@ struct arcan_video_display arcan_video_display = {
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
 	.suspended = false,
+	.msasamples = 4,
 	.c_ticks = 1,
 	.default_vitemlim = 1024,
 	.imageproc = imageproc_normal,
@@ -99,6 +100,7 @@ struct arcan_video_display arcan_video_display = {
 struct arcan_video_context {
 	unsigned vitem_ofs;
 	unsigned vitem_limit;
+	long int nalive;
 	struct text_format curr_style;
 	
 	arcan_vobject world;
@@ -113,6 +115,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 	{
 		.vitem_ofs = 1,
+		.nalive    = 0,
 		.curr_style = {
 			.col = {.r = 0xff, .g = 0xff, .b = 0xff}
 		},
@@ -168,7 +171,8 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 			else {
 				arcan_vobject* current = &(context->vitems_pool[i]);
 				glDeleteTextures(1, &current->gl_storage.glid);
-				if (current->state.tag == ARCAN_TAG_MOVIE && current->state.ptr)
+				while (current->state.tag == ARCAN_TAG_ASYNCIMG); /* live lock until asynch- objects are loaded */
+				if (current->state.tag == ARCAN_TAG_FRAMESERV && current->state.ptr)
 					arcan_frameserver_pause((arcan_frameserver*) current->state.ptr, true);
 			}
 		}
@@ -195,14 +199,15 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 		/* conservative means that we do not keep a copy of the originally decoded memory,
 		 * essentially halving memory consumption but increasing cost of pop() and push() */
 			if (arcan_video_display.conservative && (char)current->state.tag == ARCAN_TAG_IMAGE){
-				char* fname = current->default_frame.source;
+				char* fname = strdup( current->default_frame.source ); /* copy the original filename */
+				free(current->default_frame.source);
 				arcan_video_getimage(fname, current, &current->default_frame, false);
 				free(fname); /* getimage will copy again */
 			}
 			else
 				allocate_and_store_globj(current);
 
-			if (current->state.tag == ARCAN_TAG_MOVIE && current->state.ptr) {
+			if (current->state.tag == ARCAN_TAG_FRAMESERV && current->state.ptr) {
 				arcan_frameserver* movie = (arcan_frameserver*) current->state.ptr;
 
 				arcan_audio_rebuild(movie->aid);
@@ -275,7 +280,7 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 		
 		if (!current_context->vitems_pool[i].flags.in_use){
 			*status = true;
-            arcan_video_display.nalive++;
+			current_context->nalive++;
 			current_context->vitems_pool[i].flags.in_use = true;
 			current_context->vitem_ofs = (current_context->vitem_ofs + 1) >= current_context->vitem_limit ? 1 : i + 1;
 			return i;
@@ -565,15 +570,18 @@ static void arcan_video_gldefault()
 	glDisable(GL_LIGHTING);
 	glDisable(GL_FOG);
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_MULTISAMPLE);
+	
+	if (arcan_video_display.msasamples)
+	    	glEnable(GL_MULTISAMPLE);
+
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 	glAlphaFunc(GL_GREATER, 0);
-    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST );
-    glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST );
+    	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST );
+    	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST );
     
-    glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_POLYGON_SMOOTH);
+   	 glEnable(GL_LINE_SMOOTH);
+    	glEnable(GL_POLYGON_SMOOTH);
 	build_orthographic_matrix(ortho_proj, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
@@ -605,18 +613,34 @@ const static char* deffprg =
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
 {
-	/* some GL attributes have to be set before creating the video-surface */
+/* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
+	if (arcan_video_display.msasamples > 0){ 
+	        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, arcan_video_display.msasamples);
+	}
+
 	SDL_WM_SetCaption("Arcan", "Arcan");
 
 	arcan_video_display.fullscreen = fs;
 	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) | SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
 	arcan_video_display.screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
+
+	if (arcan_video_display.msasamples && !arcan_video_display.screen){
+		arcan_warning("arcan_video_init(), Couldn't open OpenGL display, attempting without MSAA\n");
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+		arcan_video_display.screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
+	}
+
+	if (!arcan_video_display.screen){
+		arcan_warning("arcan_video_init(), SDL_SetVideoMode failed, reason: %s\n", SDL_GetError());
+		return ARCAN_ERRC_BADVMODE; 
+	}
 
 /* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
 #ifdef POOR_GL_SUPPORT
@@ -1122,7 +1146,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && (vobj->flags.clone == true) &&
-        !(vobj->state.tag == ARCAN_TAG_TARGET || vobj->state.tag == ARCAN_TAG_MOVIE))
+        !(vobj->state.tag == ARCAN_TAG_TARGET || vobj->state.tag == ARCAN_TAG_FRAMESERV))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 	if (vobj) {
@@ -1730,7 +1754,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		/* prepare structures */
 		arcan_vobject* vobj = arcan_video_newvobject(&rv);
 		if (!vobj){
-			arcan_fatal("Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or (more likely) out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
+			arcan_fatal("Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
 		}
 
 		int storw = nexthigher(maxw);
@@ -1971,11 +1995,11 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
             free(vobj->frameset);
             free(vobj->default_frame.raw);
 
-            arcan_video_display.nglalive--;
 			glDeleteTextures(1, &vobj->gl_storage.glid);
 		}
         
-        arcan_video_display.nalive--;
+        current_context->nalive--;
+		assert(current_context->nalive >= 0);
 		arcan_video_detatchobject(id);
 
 /* scan the current context, look for clones and other objects that has this object as a parent */
@@ -2417,7 +2441,6 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			compact_transformation(ci,
 								   offsetof(surface_transform, scale),
 								   sizeof(struct transf_scale));
-			
 			if (!ci->transform || ci->transform->scale.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
 				ev.data.video.source = ci->cellid;
@@ -2456,6 +2479,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 	arcan_vobject_litem* current = current_context->first;
 
 	while (steps--) {
+/*		printf("(%d) alive: %ld\n", arcan_video_display.c_ticks, current_context->nalive); */
 		update_object(&current_context->world, arcan_video_display.c_ticks);
 		arcan_video_display.c_ticks++;
 		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, sizeof(arcan_video_display.c_ticks));
@@ -2663,11 +2687,13 @@ void arcan_video_refresh_GL(float lerp)
 	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_vobject* world = &current_context->world;
 
+	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(current, lerp);
 	}
 
+	arcan_debug_pumpglwarnings("refreshGL:pre2d");
 	if (current){
 	/* make sure we're in a decent state for 2D */
 		glClientActiveTexture(GL_TEXTURE0);
@@ -2678,8 +2704,18 @@ void arcan_video_refresh_GL(float lerp)
 		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
-	
+		
+		
 		while (current){
+#ifdef _DEBUG
+			char cvid[24];
+			snprintf(cvid, 24, "refreshGL:2d(%d)", (unsigned) current->elem->cellid);
+			if (arcan_debug_pumpglwarnings(cvid) == -1){
+				arcan_warning("fatal: GL error detected, check dump.\n");
+				abort();
+			};
+#endif
+	
 			arcan_vobject* elem = current->elem;
 			arcan_vstorage* evstor = &elem->default_frame;
 			surface_properties* csurf = &elem->current;

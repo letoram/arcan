@@ -102,7 +102,7 @@ enum arcan_imageproc_mode {
  * src indicates if the tick is from video refresh (0) or how many logic ticks it represents */
 
 typedef struct {
-	int tag;
+	volatile int tag;
 	void* ptr;
 } vfunc_state;
 const

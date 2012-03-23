@@ -62,7 +62,6 @@ typedef struct arcan_vstorage {
 	uint32_t s_raw;
 	uint8_t* raw;
 	char* source;
-//	char tag;
 } arcan_vstorage;
 
 typedef struct arcan_vobject {
@@ -92,11 +91,11 @@ typedef struct arcan_vobject {
 	} gpu_program;
 	
 	struct {
-		GLuint glid;
-		uint8_t c_glid;
-		uint16_t w, h;
-		uint8_t ncpt;
-		GLuint txu, txv;
+		unsigned int glid;
+		unsigned char c_glid;
+		unsigned short w, h;
+		unsigned char ncpt;
+		unsigned int txu, txv;
         enum arcan_vimage_mode scale;
 
 		arcan_shader_id program;
@@ -139,7 +138,7 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, text_support, fullscreen, conservative, late3d;
-	GLfloat projmatr[16];
+	float projmatr[16];
 
 	unsigned default_vitemlim;
 	arcan_shader_id defaultshdr;
@@ -147,18 +146,21 @@ struct arcan_video_display {
 	/* default image loading options */
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
-	GLuint deftxs, deftxt;
-    bool mipmap;
+	unsigned deftxs, deftxt;
+    	bool mipmap;
 	
 	SDL_Surface* screen;
-    uint32_t nalive, nglalive;
 	uint32_t sdlarg;
 	
-	uint8_t bpp;
-	uint16_t width, height;
+	unsigned char bpp;
+	unsigned short width, height;
 	uint32_t c_ticks;
+	
+	unsigned char msasamples;
 };
 
+extern struct arcan_video_display arcan_video_display;
+int arcan_debug_pumpglwarnings(const char* src);
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props);
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);

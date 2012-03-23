@@ -214,7 +214,6 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 		cur->fragment = strdup(frag);
 
 		build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag);
-		glUseProgram(cur->prg_container);
 
 #ifdef _DEBUG
 			arcan_warning("arcan_shader_build() -- new ID : (%i)\n", cur->prg_container);
@@ -344,7 +343,6 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 			arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
 			arcan_warning("Vertex Program: %s\n", vprogram);
 		}
-	
 
 		glGetShaderInfoLog(*fprg, 256, &rlen, buf);
 		if (rlen){

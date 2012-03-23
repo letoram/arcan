@@ -94,13 +94,13 @@ extern long long ARCAN_VIDEO_WORLDID;
 extern long long ARCAN_VIDEO_BADID;
 
 enum arcan_vobj_tags {
-	ARCAN_TAG_NONE = 0,
-	ARCAN_TAG_IMAGE = 1,
-	ARCAN_TAG_TEXT = 2,
-	ARCAN_TAG_MOVIE = 3,
-	ARCAN_TAG_TARGET = 4,
-	ARCAN_TAG_3DOBJ = 5,
-    ARCAN_TAG_ASYNCIMG = 6
+	ARCAN_TAG_NONE      = 0,  /* "don't touch" -- rawobjects, uninitialized etc. */
+	ARCAN_TAG_IMAGE     = 1,  /* images from an external source, need to be able to grab by internal video_getimage function */
+	ARCAN_TAG_TEXT      = 2,  /* specialized form of RAWOBJECT */
+	ARCAN_TAG_FRAMESERV = 3,  /* got a connection to an external resource (frameserver) */
+	ARCAN_TAG_TARGET    = 4,  /* got a connection to an external resource (launched target) */
+	ARCAN_TAG_3DOBJ     = 5,  /* got a corresponding entry in arcan_3dbase, ffunc is used to control the behavior of the 3d part */
+    ARCAN_TAG_ASYNCIMG  = 6   /* intermediate state, means that getimage is still loading, don't touch objects in this state, wait for them to switch to TAG_IMAGE */
 };
 
 enum arcan_errors {
