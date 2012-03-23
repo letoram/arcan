@@ -8,14 +8,15 @@ imagery = {
 settings = {
 	filters = {
 	},
-
-	cursor_timer = 0,
 	
 	sortlbl = "Ascending",
 	iodispatch = {},
 
 	fadedelay = 10,
 	transitiondelay = 30,
+
+-- 0: disable, 1: all on, 2: game (all on), 3: game (press on) 
+	ledmode = 2,
 	
 	vspacing = 4,
 	hspacing = 4,
@@ -120,6 +121,25 @@ function spawn_magnify( src )
 	return vid;
 end
 
+function spawn_warning( message )
+-- render message and make sure it is on top
+	local vid = render_text([[\ffonts/default.ttf,18\#ff0000 ]] .. message)
+	order_image(vid, max_current_image_order() + 1);
+	local props = image_surface_properties(vid);
+
+-- long messages, vertical screens
+	if (props.width > VRESW) then 
+		props.width = VRESW;
+		resize_image(vid, VRESW, 0);
+	end
+
+-- position and start fading slowly
+	move_image(vid, VRESW * 0.5 - props.width * 0.5, 5, NOW);
+	show_image(vid);
+	expire_image(vid, 250);
+	blend_image(vid, 0.0, 250);
+end
+
 function spawn_favoritestar( src )
 	local vid = instance_image(starimage);
 	image_mask_clear(vid, MASK_SCALE);
@@ -156,6 +176,11 @@ function osdkbd_filter(msg)
 
 			erase_grid(false);
 			build_grid(settings.cell_width, settings.cell_height);
+		else
+		-- no match, send a warning message
+			spawn_warning("Couldn't find any games matching title: " .. settings.filters.title );
+	-- and restore settings
+			settings.filters.title = titlecpy;
 		end
 	end
 end
@@ -169,13 +194,6 @@ function gridle()
     system_load("gridle_menus.lua")();
 	system_load("gridle_detail.lua")();
 
-	pixelate_shader = load_shader("shaders/diffuse_only.vShader", "shaders/pixelate.fShader", "pixelate");
-	shader_uniform(pixelate_shader, "map_diffuse", "i", PERSIST, 0);
-	shader_uniform(pixelate_shader, "pixelw", "f", PERSIST, 15);
-	shader_uniform(pixelate_shader, "pixelh", "f", PERSIST, 15);
-	shader_uniform(pixelate_shader, "targetw", "f", PERSIST, VRESW);
-	shader_uniform(pixelate_shader, "targeth", "f", PERSIST, VRESH);
-	
 	video_3dorder(ORDER_LAST);
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
@@ -300,21 +318,6 @@ end
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
     settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
 -- the analog conversion for devices other than mice is so-so atm.
-    settings.iodispatch["CURSOR_X"] = function(lblres, tbl)
-		if (tbl.source == "mouse") then mx = tbl.samples[1]; else mx = mx + (tbl.samples[1] / 32768) * step.x; end
-		move_image(mouse_cursor, mx, my, 0);
-		order_image(mouse_cursor, max_current_image_order() + 1);
-		show_image(mouse_cursor);
-		
-    end
-
-    settings.iodispatch["CURSOR_Y"] = function(lblres, tbl)
-		if (tbl.source == "mouse") then my = tbl.samples[1]; elseif (tbl.samples[1] > 0) then my = my + (tbl.samples[1] / 32768) * step.y;
-		else my = my - step.y; end
-		move_image(mouse_cursor, mx, my, 0);
-		show_image(mouse_cursor);
-		order_image(mouse_cursor, max_current_image_order() + 1);
-    end
 
 	whiteblock = fill_surface(1,1,255,255,255);
 	move_image(whiteblock, 0,0);
@@ -331,10 +334,7 @@ end
 -- Little star keeping track of games marked as favorites
 	starimage    = load_image("star.png");
 	magnifyimage = load_image("magnify.png");
-    mouse_cursor = load_image("images/mouse_cursor.png");
-	resize_image(mouse_cursor, 64, 64);
-	force_image_blend(mouse_cursor);
-	
+
 	build_grid(settings.cell_width, settings.cell_height);
 	build_fadefunctions();
 
@@ -342,6 +342,7 @@ end
 	
 	gridle_keyconf();
 	gridle_ledconf();
+	init_leds();
 end
 
 function cell_coords(x, y)
@@ -357,20 +358,10 @@ function build_fadefunctions()
 
 -- spin
 	table.insert(fadefunctions, function(vid, col, row)
-		expire_image(vid, settings.transitiondelay);
 		rotate_image(vid, 270.0, settings.transitiondelay);
 		scale_image(vid, 0.01, 0.01, settings.transitiondelay);
 		return delay;
  	end);
-
--- pixelate
-	table.insert(fadefunctions, function(vid, col, row)
-		expire_image(vid, settings.transitiondelay);
-		count = settings.transitiondelay;
-		image_shader(vid, pixelate_shader);
-		blend_image(vid, 0.0, settings.transitiondelay);
-		resize_image(vid, VRESW, VRESH, settings.transitiondelay * 2.0);
-	end)
 
 -- odd / even scale + fade
 	table.insert(fadefunctions, function(vid, col, row)
@@ -393,7 +384,6 @@ function build_fadefunctions()
 		else
 			move_image(vid, (col * props.width) + VRESW + props.width, props.y, settings.transitiondelay);
 		end
-		expire_image(vid, settings.transitiondelay);
 		return settings.transitiondelay;
 	end);
 end
@@ -404,9 +394,9 @@ function got_asynchimage(source, status)
 
 	if (status == 1) then
 		if (source == gridcell_vid) then
-			blend_image(source, 1.0);
+			blend_image(source, 1.0, settings.transitiondelay);
 		else
-			blend_image(source, 0.3);
+			blend_image(source, 0.3, settings.transitiondelay);
 		end
 		
 		resize_image(source, settings.cell_width, settings.cell_height);
@@ -472,6 +462,33 @@ function zoom_cursor()
 	end
 end
 
+function init_leds()
+	if (ledconfig) then
+		if (settings.ledmode == 1) then
+			ledconfig:setall();
+		else
+			ledconfig:clearall();
+			-- rest will be in toggle led
+		end
+	end
+end
+
+function toggle_led(players, buttons, label, pressed)
+	if (ledconfig) then
+		if (settings.ledmode == 0) then
+			-- Do Nothing
+		elseif (settings.ledmode == 1) then
+			-- All On
+		elseif (settings.ledmode == 2 and label == "") then
+			-- Game All On
+			ledconfig:toggle(players, buttons);
+		elseif (settings.ledmode == 3 and label and label ~= "") then
+			-- Toggle specific LED
+			ledconfig:listtoggle( {label} );
+		end
+	end
+end
+
 function remove_zoom()
 	if (imagery.zoomed ~= BADID) then
 		local props = image_surface_properties( cursor_vid() );
@@ -522,7 +539,7 @@ function resize_grid(step)
  settings.cursor = currgame - settings.pageofs;
  if (settings.cursor < 0) then settings.cursor = 0; end
 
--- remove the old grid
+-- remove the old grid, without fadefuncs.
  erase_grid(true);
  build_grid(settings.cell_width, settings.cell_height);
 end
@@ -534,6 +551,12 @@ function move_cursor( ofs )
 
 	settings.cursor = settings.cursor + ofs;
 -- paging calculations
+-- ncc : number of cells in a "page" (so #rows * #cols)
+-- ncw : number of cells in a row
+-- settings.cursor: ( 0..ncc )
+-- pageofs_cur, settings.pageofs : at which position in settings.game should we start (pageofs % ncc == 0)
+-- if they differ at the end, we're on a new page. 
+	
 	if (ofs > 0) then -- right/forward
 		if (settings.cursor >= ncc) then -- move right or "forward"
 			settings.cursor = settings.cursor - ncc;
@@ -560,6 +583,15 @@ function move_cursor( ofs )
 				settings.cursor = #settings.games - pageofs_cur - 1;
 			end
 		end
+-- this means that the underlying datamodel has changed and we need to recaluclate page and ofs	
+	elseif (ofs == 0 and (settings.cursor + pageofs_cur > # settings.games)) then 
+		while (pageofs_cur >= #settings.games) do
+			pageofs_cur = pageofs_cur - ncc;
+		end
+		
+		if (settings.cursor + pageofs_cur >= #settings.games) then
+			settings.cursor = #settings.games - pageofs_cur - 1;
+		end
 	end
 	
     local x,y = cell_coords(math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw));
@@ -581,9 +613,7 @@ function move_cursor( ofs )
 		movievid = nil;
 	end
 
-    if (game and ledconfig) then
-    	ledconfig:toggle(game.players, game.buttons);
-    end
+	toggle_led(game.players, game.buttons, "");
 
 	local moviefile = have_video(setname);
 	if (moviefile) then
@@ -607,12 +637,12 @@ function get_image(romset)
 
     if resource("screenshots/" .. romset .. ".png") then
         rvid = load_image_asynch("screenshots/" .. romset .. ".png", got_asynchimage);
-		blend_image(rvid, 0.3);
+		blend_image(rvid, 0.0);
 	end
 
     if (rvid == BADID) then
         rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. romset );
-		blend_image(rvid, 0.3);
+		blend_image(rvid, 0.3, settings.transitiondelay);
 	end
 
     return rvid;
@@ -646,6 +676,7 @@ function erase_grid(rebuild)
             local x, y = cell_coords(row, col);
 			local imagevid = grid[row][col];
 			fadefunc(imagevid, col, row);
+			expire_image(imagevid, settings.transitiondelay);
 		end
 
 		delete_image(whitegrid[row][col]);
@@ -726,7 +757,8 @@ function gridle_shutdown()
 	store_key("cell_width", tostring(settings.cell_width));
 	store_key("cell_height", tostring(settings.cell_height));
 	store_key("sortorder", settings.sortlbl);
-
+	store_key("ledmode", settings.ledmode);
+	
 	zap_resource("lists/favorites");
 	if (open_rawresource("lists/favorites")) then
 		for a=1,#settings.favorites do
@@ -741,8 +773,14 @@ function gridle_shutdown()
 end
 
 function load_settings()
-	local cellw = get_key("cell_width");
-	local cellh = get_key("cell_height");
+	local cellw   = get_key("cell_width");
+	local cellh   = get_key("cell_height");
+	local ledmode = get_key("ledmode");
+
+	if (ledmode and tonumber(ledmode) < 4 and tonumber(ledmode) >= 0) then
+		settings.ledmode = tonumber(ledmode);
+	end	
+	
 	if (cellw and cellh and tonumber(cellw) >= 48 and tonumber(cellh) >= 48) then
 		settings.cell_width = tonumber(cellw);
 		settings.cell_height = tonumber(cellh);
@@ -775,11 +813,6 @@ function load_settings()
 end
 
 function gridle_clock_pulse()
-	if (settings.cursor_timer > 0) then
-		settings.cursor_timer = settings.cursor_timer - 1;
-		if (settings.cursor_timer == 0) then hide_image(mouse_cursor); end
-	end
-
 	if (settings.shutdown_timer) then
 		settings.shutdown_timer = settings.shutdown_timer - 1;
 		if (settings.shutdown_timer == 0) then shutdown(); end

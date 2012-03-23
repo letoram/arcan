@@ -734,7 +734,7 @@ int arcan_lua_pausemovie(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	vfunc_state* state = arcan_video_feedstate(vid);
 
-	if (state && state->tag == ARCAN_TAG_MOVIE && state->ptr)
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
 		arcan_frameserver_pause((arcan_frameserver*) state->ptr, false);
 
 	return 0;
@@ -745,7 +745,7 @@ int arcan_lua_resumemovie(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	vfunc_state* state = arcan_video_feedstate(vid);
 
-	if (state && state->tag == ARCAN_TAG_MOVIE && state->ptr)
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
 		arcan_frameserver_resume((arcan_frameserver*) state->ptr);
 
 	return 0;
@@ -756,7 +756,7 @@ int arcan_lua_playmovie(lua_State* ctx)
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	vfunc_state* state = arcan_video_feedstate(vid);
 
-	if (state && state->tag == ARCAN_TAG_MOVIE) {
+	if (state && state->tag == ARCAN_TAG_FRAMESERV) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		arcan_frameserver_playback(movie);
 		lua_pushvid(ctx, movie->vid);

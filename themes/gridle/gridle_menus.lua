@@ -47,11 +47,6 @@ local attractlbls = {
 	"15 Min"
 };
 
-local jukeboxlbls = {
-	"Disabled",
-	"Enabled"
-};
-
 local inactivitylbls = {
 	"Disabled",
 	"5 Min",
@@ -66,13 +61,26 @@ local settingslbls = {
 	"Reconfigure Keys",
 	"Reconfigure LEDs",
 	"Cell Size",
-	"Repeat Rate",
+	"LED display mode",
+	"Key Repeat Rate",
 	"Fade Delay",
 	"Transition Delay",
 	"Attract Mode",
 	"Inactivity Shutdown",
-	"Jukebox"
 };
+
+local ledmodelbls = {
+	"Disabled",
+	"All toggle",
+	"Game setting (always on)",
+	"Game setting (on push)"
+};
+
+local ledmodeptrs = {}
+ledmodeptrs["Disabled"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 0; end
+ledmodeptrs["All toggle"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 1; end
+ledmodeptrs["Game setting (always on)"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 2; end
+ledmodeptrs["Game setting (on push)"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 3; end
 
 local sortorderlbls = {
 	"Ascending",
@@ -137,6 +145,9 @@ settingsptrs["Reconfigure Keys"] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
+
+settingsptrs["LED display mode"] = function() spawnmenu(ledmodelbls, ledmodeptrs); end
+settingsptrs["Key Repeat Rate"]  = function() spawnmenu(repeatlbls, repeatptrs); end
 settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
@@ -283,7 +294,8 @@ function gridlemenu_settings()
 			if (#settings.games == 0) then
 				settings.games = list_games( {} );
 			end
-	table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
+			
+		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
 			build_grid(settings.cell_width, settings.cell_height);
@@ -293,6 +305,8 @@ function gridlemenu_settings()
 				settings.statuslist = nil;
 			end
 		end
+
+		init_leds();
 	end
 
 -- figure out if we should modify the settings table

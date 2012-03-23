@@ -178,6 +178,7 @@ local function ledconf_setall(self)
 		j = 0;
 		while j < controller_leds(i) do
 			self.ledcache[ tostring(i) .. ":" .. tostring(j) ] = {i, j, 1};
+			set_led(i, j, 1);
 			j = j + 1;
 		end
 	end

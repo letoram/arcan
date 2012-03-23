@@ -287,7 +287,7 @@ end
 
 function gridledetail_havedetails(gametbl)
 	if (gridledetail_modellut == nil) then
--- since resource() doesn't yield anything for directory entries, and no model is expected to
+		-- since resource() doesn't yield anything for directory entries, and no model is expected to
 -- provide a .lua script for loading, we glob and cache 
 		local tmptbl = glob_resource("models/*");
 		gridledetail_modellut = {};
@@ -296,7 +296,7 @@ function gridledetail_havedetails(gametbl)
 -- special treatment of neo-geo games (and possibly later on, naomi) 
 		if (resource("neogeo_sets") and open_rawresource("neogeo_sets")) then
 			local setname = read_rawresource();
-
+			
 			while (setname ~= nil) do
 				gridledetail_neogeosets[setname] = true;
 				setname = read_rawresource();

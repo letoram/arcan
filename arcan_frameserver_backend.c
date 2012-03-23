@@ -123,7 +123,7 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
 {
 	enum arcan_ffunc_rv rv = FFUNC_RV_NOFRAME;
-	if (vstate.tag != ARCAN_TAG_MOVIE || !vstate.ptr)
+	if (vstate.tag != ARCAN_TAG_FRAMESERV || !vstate.ptr)
 		return rv;
 
 	arcan_frameserver* src = (arcan_frameserver*) vstate.ptr;
@@ -235,12 +235,10 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 	return rv;
 }
 
-static int shmpagec = 0;
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-		printf("shmpage: %i, count: %i\n", shmpage->resized, shmpagec++);
 		if (shmpage->resized){
         /* may happen multiple- times */
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -292,7 +290,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 {
-	arcan_warning("playback\n");
 	if (!src)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
@@ -302,7 +299,6 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	src->starttime = arcan_frametime();
 	src->playstate = ARCAN_PLAYING;
 	arcan_audio_play(src->aid);
-	arcan_warning("movie playing .. aid? %i\n", src->aid);
 	return ARCAN_OK;
 }
 
@@ -341,7 +337,7 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 	ssize_t rv = -1;
 	vfunc_state* state = arcan_video_feedstate(fd);
 	
-	if (state && state->tag == ARCAN_TAG_MOVIE && ((arcan_frameserver*)state->ptr)->child_alive) {
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && ((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*) movie->shm.ptr;
 		
@@ -368,7 +364,7 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 	vfunc_state* state = arcan_video_feedstate(fd);
 	ssize_t rv = -1;
 
-	if (state && state->tag == ARCAN_TAG_MOVIE && ((arcan_frameserver*)state->ptr)->child_alive) {
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && ((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*)movie->shm.ptr;
 

@@ -136,7 +136,7 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 
 static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
 	
-	if (state.tag == ARCAN_TAG_MOVIE && state.ptr)
+	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 		switch (cmd){
 			case ffunc_tick:
                arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
@@ -174,7 +174,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 		
 	if (MAP_FAILED == shmpage){
 		arcan_warning("arcan_frameserver_spawn_server() -- couldn't allocate shmpage\n");
-		goto error_cleanup;		
+		goto error_cleanup;
 	}
 		
 	memset(shmpage, 0, MAX_SHMSIZE);
@@ -205,7 +205,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	 * keep the vid / aud as they are external references into the scripted state-space */
 		if (!restart) {
 			res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-			vfunc_state state = {.tag = ARCAN_TAG_MOVIE, .ptr = res};
+			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 			res->source = strdup(fname);
 			res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
             res->aid = ARCAN_EID;
