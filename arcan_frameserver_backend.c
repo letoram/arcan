@@ -48,7 +48,7 @@
 #define INCR(X, C) ( (X = (X + 1) % C) )
 
 int arcan_frameserver_decode(void*);
-extern bool check_child(arcan_frameserver*);
+extern int check_child(arcan_frameserver*);
 
 static struct {
 	unsigned vcellcount;
@@ -169,6 +169,8 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 
 				arcan_event_enqueue(&sevent);
 			}
+/* no videoframes, but we have audioframes? might be the sounddrivers that have given up,
+ * last resort workaround */
 	}
 	/* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
@@ -217,10 +219,8 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 		 * it is actually somewhat beneficial to lie a few ms ahead of the videotimer */
 			size_t buffers = src->afq.cell_size - (src->afq.cell_size - src->afq.front_cell->ofs);
 			double dc = (double)src->lastpts - src->audioclock;
-
 			src->audioclock += src->bpms * (double)buffers;
-
-		/* not more than 60ms behind last known video?, send the audio, and stop */
+		/* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
 			if (dc < 60.0){
 				alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, buffers, src->desc.samplerate);
 				arcan_framequeue_dequeue(&src->afq);
@@ -265,7 +265,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
             src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
             src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
-
+			src->audioclock = 0.0;
+			
             arcan_errc rv;
 			if (src->aid == ARCAN_EID)
 				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);

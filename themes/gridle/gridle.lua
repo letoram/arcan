@@ -425,8 +425,9 @@ function zoom_cursor()
 		
 		local vid = movievid and instance_image(movievid) or instance_image( cursor_vid() );
 -- make sure it is on top
+		warning("zoom, " .. vid .. " with order: " .. max_current_image_order() + 1 .. "\\n");
 		order_image(vid, max_current_image_order() + 1);
-
+		
 -- we want to zoom using the global coordinate system
 		image_mask_clear(vid, MASK_SCALE);
 		image_mask_clear(vid, MASK_ORIENTATION);

@@ -104,13 +104,19 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	return rv;
 }
 
-bool check_child(arcan_frameserver* movie){
-	int status, rv = EAGAIN;
+int check_child(arcan_frameserver* movie){
+	int rv = -1, status;
 
-	if (waitpid( movie->child, &status, WNOHANG ) == movie->child){
-		rv = EINVAL;
+/* this will be called on any attached video source with a tag of TAG_MOVIE,
+ * return EAGAIN to continue, EINVAL implies that the child frameserver died somehow.
+ * When a movie is in between states, the child pid might not be set yet */
+	if (movie->child &&
+		waitpid( movie->child, &status, WNOHANG ) == movie->child){
+		errno = EINVAL;
 		movie->child_alive = false;
-	}	
+	} else 
+		errno = EAGAIN;
+
 	return rv;
 }
 

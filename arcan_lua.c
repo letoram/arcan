@@ -770,9 +770,20 @@ int arcan_lua_playmovie(lua_State* ctx)
 int arcan_lua_loadmovie(lua_State* ctx)
 {
 	char* fname = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	bool loop = luaL_optint(ctx, 2, 0) > 0;
+	bool loop = luaL_optint(ctx, 2, 0) != 0;
+	intptr_t ref = (intptr_t) 0;
 
+/*  in order to stay backward compatible API wise, the load_movie with function callback
+ *  will always need to specify loop condition. */
+	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
+		lua_pushvalue(ctx, 3);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
+	
 	arcan_frameserver* mvctx = arcan_frameserver_spawn_server((char*) fname, false, loop, NULL);
+/* mvctx is passed with the corresponding async event, which will only be used in the main thread, so 
+ * no race condition here */ 
+	mvctx->tag = ref;
 	free(fname);
 	
 	if (mvctx) {
@@ -1180,20 +1191,29 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
             case EVENT_VIDEO_MOVIEREADY:
                 arcan_lua_tblstr(ctx, "kind", "movieready", top);
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
-            break;
+				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);
+				int val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev.data.video.source )->ptr)->tag;
+				if (val){
+					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
+					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushnumber(ctx, 1);
+					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch movie callback");
+					lua_settop(ctx, 0);
+					return;
+				}
+			break;
                 
 			case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
                 arcan_lua_tblstr(ctx, "kind", "loaded", top); 
                 arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
-				int val = (intptr_t) ev.data.video.data;
+				val = (intptr_t) ev.data.video.data;
 				if (val){ /* if we're here, the tag we got in data originates from the lua asynch - load call) */
 					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
 					lua_pushvid(ctx, ev.data.video.source);
 					lua_pushnumber(ctx, 1);
-					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch callback");
-					lua_settop(ctx, 0);
+					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch image callback");
+					lua_settop(ctx, 0); /* stuff on the stack not needed anylonger */
 					return;
 				}
 			break;
@@ -1848,6 +1868,10 @@ int arcan_lua_shutdown(lua_State *ctx)
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EXIT};
 	arcan_event_enqueue(&ev);
 
+	const char* str = luaL_optstring(ctx, 1, "");
+	if (strlen(str) > 0)
+		arcan_warning(str);
+	
 	return 0;
 }
 
