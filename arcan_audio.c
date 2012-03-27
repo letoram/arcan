@@ -71,7 +71,7 @@ typedef struct arcan_aobj {
 	SDL_RWops* lfeed;
 
 	unsigned char n_streambuf;
-	unsigned char used;
+	short used;
 	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
 
@@ -332,10 +332,10 @@ arcan_errc arcan_audio_play(arcan_aobj_id id)
 
 	if (aobj && !aobj->active) {
 	/* 	alSourcei(aobj->alid, AL_BUFFER, NULL); could be used to force static to undetermined */
-		if (aobj->used > 0){
+	/*	if (aobj->used > 0){
 			alSourceQueueBuffers(aobj->alid, aobj->used, aobj->streambuf);
 			_wrap_alError(aobj, "play(alQueueBuffers)");
-		}
+		} */
 
 		alSourcePlay(aobj->alid);
 		_wrap_alError(aobj, "play(alSourcePlay)");
@@ -555,11 +555,11 @@ arcan_errc arcan_audio_pause(arcan_aobj_id id)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (dobj) {
-		int processed;
+/*		int processed;
 		alGetSourcei(dobj->alid, AL_BUFFERS_PROCESSED, &processed);
 		alSourceUnqueueBuffers(dobj->alid, 1, (unsigned int*) &processed);
+		dobj->used -= processed; */ 
 		alSourceStop(dobj->alid);
-		dobj->used -= processed;
 		_wrap_alError(dobj, "audio_pause(get/unqueue/stop)"); 
 		dobj->active = false;
 		rv = ARCAN_OK;
@@ -680,6 +680,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 	alGetSourcei(current->alid, AL_SOURCE_STATE, &state);
 	alGetSourcei(current->alid, AL_BUFFERS_PROCESSED, &processed);
 /* make sure to replace each one that finished with the next one */
+
 	for (int i = 0; i < processed; i++){
 		unsigned buffer = 0, bufferind;
 		alSourceUnqueueBuffers(current->alid, 1, &buffer);
@@ -706,6 +707,9 @@ static void arcan_astream_refill(arcan_aobj* current)
 
 /* if we're totally empty, try to fill all buffers,
  * if feed fails for the first one, it's over */
+	if (current->used < 0)
+		arcan_warning("arcan_audio(), astream_refill: inconsistency with internal vs openAL buffers.\n");
+
 	if (current->used < sizeof(current->streambuf) / sizeof(current->streambuf[0]) && current->feed){
 		for (int i = current->used; i < sizeof(current->streambuf) / sizeof(current->streambuf[0]); i++){
 			int ind = find_freebufferind(current);
@@ -722,8 +726,9 @@ static void arcan_astream_refill(arcan_aobj* current)
 		}
 	}
 
-	if (current->used && state != AL_PLAYING)
+	if (current->used && state != AL_PLAYING){
 		alSourcePlay(current->alid);
+	}
 	return;
 
 cleanup:

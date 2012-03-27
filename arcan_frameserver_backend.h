@@ -75,7 +75,7 @@ typedef struct {
 	arcan_aobj_id aid;
 	arcan_vobj_id vid;
 
-/* used for plyaing, pausing etc. */
+/* used for playing, pausing etc. */
 	enum arcan_playstate playstate;
 	int64_t lastpts;
 	int64_t starttime;
@@ -92,6 +92,9 @@ typedef struct {
 
 	process_handle child;
 	bool child_alive;
+
+/* usual hack, similar to load_asynchimage */
+	intptr_t tag;
 } arcan_frameserver;
 
 /* contains both structures for managing movie- playback,

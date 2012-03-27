@@ -23,6 +23,10 @@ local function gridledetail_load()
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
 	noise_image      = random_surface(256, 256);
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+
+-- non-visible 3d object as camtag
+	camera = fill_surface(4, 4, 0, 0, 0);
+	camtag_model(camera, 0);
 	
 	backlit_shader3d = load_shader("shaders/diffuse_only.vShader", "shaders/flicker_diffuse.fShader", "backlit");
 	default_shader3d = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
