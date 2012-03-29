@@ -382,6 +382,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txu = arcan_video_display.deftxs;
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
+		rv->gl_storage.imageproc = arcan_video_display.imageproc;
 		rv->flags.cliptoparent = false;
 		rv->current.scale.x = 1.0;
 		rv->current.scale.y = 1.0;
@@ -753,7 +754,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		dst->gl_storage.w = neww;
 		dst->gl_storage.h = newh;
 
-		if (arcan_video_display.imageproc == imageproc_fliph){
+		if (dst->gl_storage.imageproc == imageproc_fliph){
 			flipimage(gl_image);
 		}
 		
@@ -1976,18 +1977,19 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
+	
 	if (vobj && id > 0) {
 		if (vobj->flags.clone == false){
-			if (vobj->ffunc)
+			if (vobj->ffunc){
 				vobj->ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->state);
-
+			}
+			
             if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
                 SDL_KillThread( vobj->state.ptr );
             }
 
 			for (unsigned int i = 0; i < vobj->frameset_capacity; i++)
-				if (vobj->frameset[i] && vobj->frameset[i]->owner){
+				if (vobj->frameset[i]){
 					arcan_video_deleteobject(vobj->frameset[i]->cellid);
 					vobj->frameset[i] = 0;
 				}
@@ -2721,7 +2723,6 @@ void arcan_video_refresh_GL(float lerp)
 			surface_properties* csurf = &elem->current;
 
 			assert(elem->parent != NULL);
-			assert(elem->owner != NULL);
 			/* calculate coordinate system translations, 
 			* world cannot be masked */
 			surface_properties dprops = {0};

@@ -10,6 +10,7 @@ settings = {
 	},
 	
 	sortlbl = "Ascending",
+	viewmode = "Grid",
 	iodispatch = {},
 
 	fadedelay = 10,
@@ -617,8 +618,22 @@ function move_cursor( ofs )
 	toggle_led(game.players, game.buttons, "");
 
 	local moviefile = have_video(setname);
+
 	if (moviefile) then
-	    movievid = load_movie( moviefile );
+		movievid = load_movie( moviefile, 1, function(source, status) 
+			if (status == 1 and source == movievid) then
+				vid,aid = play_movie(source);
+				audio_gain(aid, 0.0);
+				audio_gain(aid, 1.0, settings.fadedelay);
+				blend_image(vid, 1.0, settings.fadedelay);
+				resize_image(vid, settings.cell_width, settings.cell_height);
+			else
+				instant_image_transform(source);
+				blend_image(source, 0.0, settings.fadedelay);
+				expire_image(source, settings.fadedelay);
+			end		
+		end);
+		
         if (movievid) then
             move_image(movievid, x, y);
             order_image(movievid, 3);
@@ -734,22 +749,6 @@ function build_grid(width, height)
     end
 
     move_cursor(0);
-end
-
-function gridle_video_event(source, event)
-    if (event.kind == "movieready") then
-		if (source == movievid) then
-			vid,aid = play_movie(movievid);
-			audio_gain(aid, 0.0);
-			audio_gain(aid, 1.0, settings.fadedelay);
-			blend_image(vid, 1.0, settings.fadedelay);
-			resize_image(vid, settings.cell_width, settings.cell_height);
-		else
-			instant_image_transform(source);
-			blend_image(source, 0.0, settings.fadedelay);
-			expire_image(source, settings.fadedelay);
-		end
-	end
 end
 
 function gridle_shutdown()

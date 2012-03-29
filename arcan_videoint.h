@@ -97,6 +97,7 @@ typedef struct arcan_vobject {
 		unsigned char ncpt;
 		unsigned int txu, txv;
         enum arcan_vimage_mode scale;
+		enum arcan_imageproc_mode imageproc;
 
 		arcan_shader_id program;
 	} gl_storage;

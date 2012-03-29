@@ -9,7 +9,6 @@ varying vec2 txco;
 void main() {
 	vec4 color = vec4(wambient,1.0);
 	vec4 txcol = texture2D(map_diffuse, txco);
-	txcol.a = 1.0;
 	
 	float ndl = max( dot(fnormal, lightdir), 0.0);
 	if (ndl > 0.0){

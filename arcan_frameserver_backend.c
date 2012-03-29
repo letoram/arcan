@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <math.h>
+#include <assert.h>
 
 #include <al.h>
 #include <alc.h>
@@ -123,19 +124,19 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
 {
 	enum arcan_ffunc_rv rv = FFUNC_RV_NOFRAME;
-	if (vstate.tag != ARCAN_TAG_FRAMESERV || !vstate.ptr)
-		return rv;
 
+	assert(vstate.ptr);
+	assert(vstate.tag == ARCAN_TAG_FRAMESERV);
+	
 	arcan_frameserver* src = (arcan_frameserver*) vstate.ptr;
-
-	if (!(src->playstate == ARCAN_PLAYING))
-		return rv;
-
-	/* PEEK -
+/* PEEK -
 	 * > 0 if there are frames to render
 	*/
 	if (cmd == ffunc_poll) {
-#ifdef _DEBUG                
+		if (!(src->playstate == ARCAN_PLAYING))
+		return rv;
+
+	#ifdef _DEBUG                
         arcan_event ev = {.kind = EVENT_VIDEO_MOVIESTATUS, .data.video.constraints.w = src->vfq.c_cells,
         .data.video.constraints.h = src->afq.c_cells, .data.video.props.position.x = src->vfq.n_cells,
             .data.video.props.position.y = src->afq.n_cells, .category = EVENT_VIDEO};
@@ -194,12 +195,15 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			}
 
 			arcan_framequeue_dequeue(&src->vfq);
-		}
-		else if (cmd == ffunc_tick && !check_child(src)){
-			arcan_frameserver_free(src, src->loop);
-		}
-		else if (cmd == ffunc_destroy)
-			arcan_frameserver_free(src, false);
+	}
+	else if (cmd == ffunc_tick && !check_child(src)){
+		printf("tick and died\n");
+		arcan_frameserver_free(src, src->loop);
+	}
+	else if (cmd == ffunc_destroy){
+		printf("destroy! %d\n", src->vid);
+		arcan_frameserver_free(src, false);
+	}
 
 	return rv;
 }
