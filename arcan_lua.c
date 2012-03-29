@@ -1161,15 +1161,24 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 		lua_pushnumber(ctx, ev.data.timer.pulse_count);
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 	}
-	else if (ev.category == EVENT_VIDEO && arcan_lua_grabthemefunction(ctx, "video_event")) {
-		lua_pushvid(ctx, ev.data.video.source);
+	else if (ev.category == EVENT_VIDEO){
+		bool gotvev = false;
+		
+		if (arcan_lua_grabthemefunction(ctx, "video_event")){
+/* due to the asynch- callback approach some additional checks are needed before bailing */
+			lua_pushvid(ctx, ev.data.video.source);
+		gotvev = true;
+		}
+
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
+			
 		switch (ev.kind) {
 #ifdef _DEBUG
         /* this little hack will emit (in debug builds) status events each time 
          * a video or audio frame is requested from a movie */
-            case EVENT_VIDEO_MOVIESTATUS: arcan_lua_tblstr(ctx, "kind", "moviestatus", top);
+            case EVENT_VIDEO_MOVIESTATUS: 
+				arcan_lua_tblstr(ctx, "kind", "moviestatus", top);
                 arcan_lua_tblnum(ctx, "maxv", ev.data.video.constraints.w, top);
                 arcan_lua_tblnum(ctx, "maxa", ev.data.video.constraints.h, top);
                 arcan_lua_tblnum(ctx, "curv", ev.data.video.props.position.x, top);
@@ -1181,6 +1190,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); break; 
 			case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); break;
 			case EVENT_VIDEO_ROTATED : arcan_lua_tblstr(ctx, "kind", "rotated", top); break;
+
 			case EVENT_VIDEO_RESIZED :
 				arcan_lua_tblstr(ctx, "kind", "resized", top);
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
@@ -1234,13 +1244,27 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 	           break;
                 
 			case EVENT_VIDEO_FRAMESERVER_TERMINATED : 
+				val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev.data.video.source )->ptr)->tag;
+				if (val){
+					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
+					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushnumber(ctx, 0);
+					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch movie callback");
+					lua_settop(ctx, 0);
+					return;
+				}
+					
 				arcan_lua_tblstr(ctx, "kind", "broken frameserver", top);
 			break;
 
 		default:
 			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown video event (%i)\n", ev.kind);
 		}
-		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: video_event");
+		
+		if (gotvev)
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "video_event");
+		else
+			lua_settop(ctx, 0);
 	}
 	else if (ev.category == EVENT_AUDIO && arcan_lua_grabthemefunction(ctx, "audio_event")){
 		lua_pushaid(ctx, ev.data.video.source);
@@ -1321,7 +1345,7 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	bool detatch = luaL_optint(ctx, 4, 0) > 0;
 
 	arcan_errc errc;
-	lua_pushnumber(ctx, arcan_video_setasframe(sid, did, num, detatch, &errc));
+	lua_pushvid(ctx, arcan_video_setasframe(sid, did, num, detatch, &errc));
 	
 	return 1;
 }

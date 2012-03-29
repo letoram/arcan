@@ -45,7 +45,6 @@ function movietest()
 	vid = load_movie("movietest.avi", 1, function(source, status)
 		show_image(source);
 		play_movie(source);
-		print("callback");
 	end);
 	img.last = vid;
 	img.cursor = fill_surface(16, 16, 200, 50, 50);

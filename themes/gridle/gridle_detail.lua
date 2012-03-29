@@ -33,14 +33,48 @@ local function gridledetail_load()
 	texco_shader     = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "noise");
 	diffusef_shader  = load_shader("shaders/flipy.vShader", "shaders/diffuse_only.fShader", "diffuse");
 	diffuse_shader   = load_shader("shaders/diffuse_only.vShader", "shaders/diffuse_only.fShader", "diffuse");
-
+	cgwg_shader 	 = load_shader("shaders/cgwg.vShader", "shaders/cgwg.fShader", "cgwg");
+	
 	shader_uniform(default_shader3d, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
 	shader_uniform(default_shader3d, "wambient", "fff", PERSIST, 0.3, 0.3, 0.3);
 	shader_uniform(default_shader3d, "wdiffuse", "fff", PERSIST, 0.6, 0.6, 0.6);
 	shader_uniform(default_shader3d, "map_diffuse", "i", PERSIST, 0);
 	shader_uniform(texco_shader, "speedfact", "f", PERSIST, 24.0);
 
+	shader_uniform(cgwg_shader, "rubyInputSize", "ff", PERSIST, 320.0, 240.0);
+	shader_uniform(cgwg_shader, "rubyTextureSize", "ff", PERSIST, 320.0, 240.0);
+	shader_uniform(cgwg_shader, "rubyOutputSize", "ff", PERSIST, VRESW, VRESH);
+	shader_uniform(cgwg_shader, "rubyTexture", "i", PERSIST, 0);
 	loaded = true;
+end
+
+
+local function gridledetail_imagestatus(source, status)
+-- all asynchronous operations can fail (status == 0), or the resource may not be interesting anymore
+	if (status == 0 or source ~= detailview.asynchimg_dstvid) then 
+		delete_image(source);
+	else
+-- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
+-- we can't do this for movie, as we need 'tick' operations for it to properly poll the frameserver
+		mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
+		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
+
+		if (rvid ~= ARCAN_BADID) then  
+			delete_image(rvid);
+		end
+	end
+end
+
+local function gridledetail_moviestatus(source, status)
+	if (status == 1 and source == detailview.asynchimg_dstvid) then
+		vid,aid = play_movie(source);
+		resize_image(vid, settings.cell_width, settings.cell_height);
+		
+		audio_gain(aid, 0.0);
+		audio_gain(aid, 1.0, settings.fadedelay);
+	end
+	
+	gridledetail_imagestatus(source, status);
 end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
@@ -57,64 +91,51 @@ local function gridledetail_buildview(detailres, gametbl )
 -- this can fail (no model found) 
 		if (detailview.model) then
 
--- start "far away" and quickly zoom in, while that happens, prevent some keys from being used ("cooldown") 
-			show_image(detailview.model.vid);
-			move3d_model(detailview.model.vid, -1.0, 0.0, -40.0);
-			move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
-			detailview.cooldown = settings.transitiondelay;
 			image_shader(detailview.model.vid, default_shader3d);
 			scale_3dvertices(detailview.model.vid);
 
--- we can hardcode these values because the "scale vertices" part forces the actual value range of any model to -1..1
+-- we can hardcode these values because the "scale vertices" part forces the actual value range of any model hierarchy to -1..1
 			detailview.startx = -1.0;
 			detailview.starty = 0.0;
 			detailview.startz = -4.0;
 
+-- if the model specifies a default view pos (position + view + up), set that one as the target (and calculate linear steps by scaling)
 			if (detailview.model.screenview) then
 					
 			else
-	-- we tacitly assume the screen will be here, this should really be determined by the model loader
+				
+-- otherwise just thake a harcoded guess 
 				detailview.zoomx = 0.0;
 				detailview.zoomy = -0.5;
 				detailview.zoomz = -1.0;
 			end
 
 -- set specific shaders for marquee (fullbright, blink every now and then 
-			if (detailview.model.labels["marquee"]) then mesh_shader(detailview.model.vid, backlit_shader3d, detailview.model.labels["marquee"]); end
-
--- if we have a dedicated display, we can map the video here, and if there's no video, at least a screenshot, and if no screenshot, noise
+			if (detailview.model.labels["marquee"]) then 
+				mesh_shader(detailview.model.vid, backlit_shader3d, detailview.model.labels["marquee"]); 
+			end
+-- if we have a known "display" on the model, start by setting a noise texture, and replace if we find a movie or a screenshot
 			if (detailview.model.labels["display"]) then
 				local rvid = set_image_as_frame(detailview.model.vid, instance_image(noise_image), detailview.model.labels["display"], 1);
 				if (rvid ~= ARCAN_BADID) then delete_image(rvid); end
-				
 				mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 
 				local moviefile = have_video(detailview.game.setname);
 				if (moviefile) then
-					detailview.movie_vid = load_movie(moviefile, 1);
-					
--- since we have ongoing motion in the background and for the model, we default to static and asynchronously load the screenshot
+					detailview.asynchimg_dstvid = load_movie(moviefile, 1, gridledetail_moviestatus);
+					print("movie allocated: " .. detailview.asynchimg_dstvid);
 				elseif resource("screenshots/" .. detailview.game.setname .. ".png") then
-					detailview.asynchimg_dstvid = load_image_asynch( "screenshots/" .. detailview.game.setname .. ".png", function(source,status)
--- all asynchronous operations can fail (status == 0), or the resource may not be interesting anymore
-						if (status == 0 or source ~= detailview.asynchimg_dstvid) then delete_image(source);
-						else
--- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
--- we can't do this for movie, as we need 'tick' operations for it to properly poll the frameserver
-							mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
-							rvid = set_image_as_frame(detailview.model.vid, detailview.asynchimg_dstvid, detailview.model.labels["display"], 1);
-							if (rvid ~= ARCAN_BADID) then delete_image(rvid); end
-						end
-					end)
+					detailview.asynchimg_dstvid = load_image_asynch( "screenshots/" .. detailview.game.setname .. ".png", gridledetail_imagestatus);
 				end
 
-			return true;
-		else
-			return nil;
+				return true;
+			else
+				return nil;
+			end
 		end
 	end
 end
-end
+
 -- deallocate a model and all associated resources (movie / screenshot),
 -- axis (x:0, y:1, z:2), mag (value to add to the axis) 
 local function gridledetail_freeview(axis, mag)
@@ -135,7 +156,6 @@ local function gridledetail_freeview(axis, mag)
 	elseif (axis == 1) then dy = mag;
 	elseif (axis == 2) then dz = mag; end
 
-		if (detailview.movie_vid ~= BADID) then expire_image(detailview.movie_vid, 20 + settings.transitiondelay); end
 		move3d_model(detailview.model.vid, detailview.startx + dx, detailview.starty + dy, detailview.startz + dz, 20 + settings.transitiondelay);
 		expire_image(detailview.model.vid, 20 + settings.transitiondelay);
 		detailview.model = nil;
@@ -155,28 +175,6 @@ function gridledetail_video_event(source, event)
 			else mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]); end
 
 			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
-		end
-	end
-
-	if (event.kind == "movieready") then
-		if (source == detailview.movie_vid) then
-			vid,aid = play_movie(source);
-			audio_gain(aid, 0.0);
-			audio_gain(aid, 1.0, settings.fadedelay);
-			detailview.movie_vid = vid;
-			if (detailview.model.labels["display"]) then
-				local rvid = set_image_as_frame(detailview.model.vid, vid, detailview.model.labels["display"]);
-				if (rvid ~= BADID and rvid ~= vid) then delete_image(rvid); end
-				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
-			end
-
-			if (detailview.model.labels["snapshot"]) then
-				local rvid = set_image_as_frame(detailview.model.vid, vid, detailview.model.labels["snapshot"]);
-				if (rvid ~= BADID and rvid ~= vid) then delete_image(rvid); end
-				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["snapshot"]);
-			end
-		else
-			delete_image(source);
 		end
 	end
 end
@@ -206,6 +204,8 @@ function gridledetail_internalinput(iotbl)
 				else
 					detailview.fullscreen = true;
 					show_image(detailview.internal_vid);
+					image_shader(detailview.internal_vid, cgwg_shader);
+					
 					local props = image_surface_properties(detailview.internal_vid);
 					
 					if (props.width / props.height > 1.0) then -- horizontal game
@@ -347,6 +347,11 @@ local function find_prevdetail()
 	if (detailview.curind ~= nextind) then
 		gridledetail_freeview(2, 6.0);
 		gridledetail_buildview(detailres, settings.games[ nextind ])
+-- start "far away" and quickly zoom in, while that happens, prevent some keys from being used ("cooldown") 
+		show_image(detailview.model.vid);
+		move3d_model(detailview.model.vid, -1.0, 0.0, -80.0);
+		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
+		detailview.cooldown = settings.transitiondelay;
 		detailview.curind = nextind;
 	end	
 end
@@ -367,6 +372,10 @@ local function find_nextdetail(current, gametbl)
 	if (detailview.curind ~= nextind) then
 		gridledetail_freeview(2, -80.0);
 		gridledetail_buildview(detailres, settings.games[ nextind ]);
+		show_image(detailview.model.vid);
+		move3d_model(detailview.model.vid, -1.0, 0.0, 6.0);
+		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
+		detailview.cooldown = settings.transitiondelay;
 		detailview.curind = nextind;
 	end
 end
@@ -376,13 +385,13 @@ function gridledetail_show(detailres, gametbl, ind)
 		gridledetail_load();
 	end
 
-	if (detailview.movie_vid ~= BADID) then
-		delete_image(detailview.movie_vid);
-	end
-
 	-- override I/O table
 	if (detailres == nil or gametbl == nil or gridledetail_buildview(detailres, gametbl) == nil) then
 		return;
+	else
+		show_image(detailview.model.vid);
+		move3d_model(detailview.model.vid, -1.0, -6.0, -4.0);
+		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
 	end
 	
 	kbd_repeat(0);
@@ -431,8 +440,12 @@ function gridledetail_show(detailres, gametbl, ind)
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		if (detailview.movie) then delete_image(detailview.movie, 20); end
 		local vid, aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
+
 		local rvid = set_image_as_frame(detailview.model.vid, instance_image(noise_image), detailview.model.labels["display"], 1);
-		if (rvid ~= BADID) then delete_image(rvid); end
+		if (rvid ~= BADID) then 
+			delete_image(rvid); 
+		end
+
 		mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 		detailview.internal_vid = vid;
 	end

@@ -5,19 +5,19 @@ local function load_material(modelname, meshname)
 	local fnameb = "models/" .. modelname .. "/textures/" .. meshname;
 
 	if (resource(fnameb .. ".png")) then
-		rvid = load_image_asynch(fnameb .. ".png");
+		rvid = load_image_asynch(fnameb .. ".png", function(source, status) end);
 	elseif (resource(fnameb .. ".jpg")) then
-		rvid = load_image_asynch(fnameb .. ".jpg");
+		rvid = load_image_asynch(fnameb .. ".jpg", function(source, status) end);
 	else
-		rvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255));
+		tmpvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255))
 	end
 
 	return rvid;
 end
 
 function load_model_generic(modelname)
-	local basep = "models/" .. modelname .. "/";
-	local meshes   = glob_resource(basep .. "*.ctm", SHARED_RESOURCE);
+	local basep  = "models/" .. modelname .. "/";
+	local meshes = glob_resource(basep .. "*.ctm", SHARED_RESOURCE);
 	if (#meshes == 0) then return nil end
   
 	local model  = {
@@ -81,14 +81,17 @@ function load_shader(vertname, fragname, label)
 	return build_shader(vprog, fprog, label);
 end
 
-function load_model(modelname, shaderid)
+function load_model(modelname)
 	rv = nil;
 -- use one of the generic loaders
 	if (resource("models/" .. modelname .. "/" .. modelname .. ".lua")) then
-		modelshaderid = shaderid; -- ugly hack
 		rv = system_load("models/" .. modelname .. "/" .. modelname .. ".lua")();
 	else
-		rv = load_model_generic(modelname, shaderid);
+		rv = load_model_generic(modelname);
+	end
+
+	if (rv ~= nil) then
+-- add some helper functions 
 	end
 	
 	return rv;
