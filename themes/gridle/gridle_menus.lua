@@ -3,7 +3,7 @@
 
 system_load("scripts/listview.lua")();
 
-local function spawnmenu(list, listptr)
+function menu_spawnmenu(list, listptr)
 	if (#list < 1) then
 		return nil;
 	end
@@ -140,23 +140,23 @@ sortorderptrs["Times Played"] = function() settings.iodispatch["MENU_ESCAPE"]();
 sortorderptrs["Favorites"]    = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Favorites"; end
 
 local settingsptrs = {};
-settingsptrs["Sort Order..."]    = function() spawnmenu(sortorderlbls, sortorderptrs); end
+settingsptrs["Sort Order..."]    = function() menu_spawnmenu(sortorderlbls, sortorderptrs); end
 settingsptrs["Reconfigure Keys"] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
 
-settingsptrs["LED display mode"] = function() spawnmenu(ledmodelbls, ledmodeptrs); end
-settingsptrs["Key Repeat Rate"]  = function() spawnmenu(repeatlbls, repeatptrs); end
+settingsptrs["LED display mode"] = function() menu_spawnmenu(ledmodelbls, ledmodeptrs); end
+settingsptrs["Key Repeat Rate"]  = function() menu_spawnmenu(repeatlbls, repeatptrs); end
 settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
 end
-settingsptrs["Fade Delay"] = function() spawnmenu(fadedelaylbls, fadedelayptrs); end
-settingsptrs["Transition Delay"] = function() spawnmenu(transitiondelaylbls, transitiondelayptrs); end
+settingsptrs["Fade Delay"] = function() menu_spawnmenu(fadedelaylbls, fadedelayptrs); end
+settingsptrs["Transition Delay"] = function() menu_spawnmenu(transitiondelaylbls, transitiondelayptrs); end
 
-settingsptrs["Cell Size"]        = function() spawnmenu(gridlbls, gridptrs); end
-settingsptrs["Repeat Rate"]      = function() spawnmenu(repeatlbls, repeatptrs); end
+settingsptrs["Cell Size"]        = function() menu_spawnmenu(gridlbls, gridptrs); end
+settingsptrs["Repeat Rate"]      = function() menu_spawnmenu(repeatlbls, repeatptrs); end
 
 local function update_status()
 -- show # games currently in list, current filter or gamelist
@@ -235,7 +235,7 @@ local function update_filterlist()
 		end
 
 		table.insert(filterres, filterlbl);
-		filterresptr[filterlbl] = function(lbl) spawnmenu( get_unique(settings.games, string.lower(lbl)) ); end
+		filterresptr[filterlbl] = function(lbl) menu_spawnmenu( get_unique(settings.games, string.lower(lbl)) ); end
 	end
 
 	return filterres, filterresptr;
@@ -331,12 +331,11 @@ function gridlemenu_settings()
 		movievid = nil;
 	end
 
-	parent_menu = nil;
 	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
 	current_menu.ptrs = {};
-	current_menu.ptrs["Game Lists..."] = function() spawnmenu( build_gamelists() ); end
-	current_menu.ptrs["Filters..."]    = function() spawnmenu( update_filterlist() ); end
-	current_menu.ptrs["Settings..."]   = function() spawnmenu( settingslbls, settingsptrs ); end
+	current_menu.ptrs["Game Lists..."] = function() menu_spawnmenu( build_gamelists() ); end
+	current_menu.ptrs["Filters..."]    = function() menu_spawnmenu( update_filterlist() ); end
+	current_menu.ptrs["Settings..."]   = function() menu_spawnmenu( settingslbls, settingsptrs ); end
 
 -- add an info window
 	update_status();

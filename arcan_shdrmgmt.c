@@ -132,6 +132,7 @@ static struct {
 
 
 static bool build_shader(const char*, GLuint*, GLuint*, GLuint*, const char*, const char*);
+static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg);
 
 static void setv(GLint loc, enum shdrutype kind, void* val)
 {
@@ -206,19 +207,51 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
 {
 	arcan_shader_id rv = ARCAN_EID;
- 	if (shdr_global.ofs < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0])){
-		struct shader_cont* cur = shdr_global.slots + shdr_global.ofs;
+	bool overwrite = false;
+	int dstind = -1;
+	
+/* first, look for a preexisting tag */	
+	for (unsigned i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++)
+		if ( !shdr_global.slots[i].label ) 
+			break;
+		else if (strcmp( shdr_global.slots[i].label, tag ) == 0){
+			dstind = i;
+			overwrite = true;
+			break;
+		}
+
+/* didn't get a match? take the next free slot,
+ * else deallocate the current shader and replace it with the new ones */
+	if (-1 == dstind)
+		dstind = shdr_global.ofs++;
+	else{
+		kill_shader(&shdr_global.slots[dstind].prg_container, &shdr_global.slots[dstind].obj_vertex, &shdr_global.slots[dstind].obj_fragment);
+		free(shdr_global.slots[dstind].vertex);
+		free(shdr_global.slots[dstind].fragment);
+		free(shdr_global.slots[dstind].label);
+		memset(&shdr_global.slots[dstind], 0, sizeof(struct shader_cont));
+		memset(&shdr_global.slots[dstind].locations, -1, sizeof(ofstbl) / sizeof(ofstbl[0]) * sizeof(GLint));
+	}
+
+/* copy label, programs, send to GL, resolve shared uniforms etc. 
+ * keep the data even if the build fails */ 
+	if (dstind >= 0 && dstind < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0])){
+		struct shader_cont* cur = shdr_global.slots + dstind;
 		memset(cur, 0, sizeof(struct shader_cont));
 		cur->label = strdup(tag);
 		cur->vertex = strdup(vert);
 		cur->fragment = strdup(frag);
 
-		build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag);
-
+		if (build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag) == false){
+			if (overwrite == false)
+				shdr_global.ofs--;
+			return ARCAN_EID;
+		}
 #ifdef _DEBUG
-			arcan_warning("arcan_shader_build() -- new ID : (%i)\n", cur->prg_container);
+			arcan_warning("arcan_shader_build(%s) -- new ID : (%i)\n", tag, cur->prg_container);
 #endif
-		
+
+		glUseProgram(cur->prg_container);
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			assert(symtbl[i] != NULL);
 			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
@@ -236,7 +269,7 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 #endif
 		}
 		
-		rv = shdr_global.base + shdr_global.ofs++;
+		rv = dstind + shdr_global.base;
 	}
 
 	return rv;
@@ -322,8 +355,6 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 {
 	char buf[256];
 	int rlen;
-
-	kill_shader(dprg, vprg, fprg);
 	
 	*dprg = glCreateProgram();
 	*vprg = glCreateShader(GL_VERTEX_SHADER);
@@ -338,17 +369,19 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 	glCompileShader(*fprg);
 
 	if (arcan_debug_pumpglwarnings("shdrmgmt:post:build_shader") == -1){
+		arcan_warning("Warning: Error while compiling (%s)\n", label);
+		
 		glGetShaderInfoLog(*vprg, 256, &rlen, buf);
 		if (rlen){
 			arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
 			arcan_warning("Vertex Program: %s\n", vprogram);
 		}
-
 		glGetShaderInfoLog(*fprg, 256, &rlen, buf);
 		if (rlen){
 			arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
 			arcan_warning("Fragment Program: %s\n", fprogram);
 		}
+		
 		kill_shader(dprg, vprg, fprg);
 		return false;
 	} else {
@@ -358,10 +391,12 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 
 		if (arcan_debug_pumpglwarnings("shdrmgmt:post:link_shader") == -1){
 			glGetProgramInfoLog(*dprg, 256, &rlen, buf);
+			
 			if (rlen)
 				arcan_warning("Warning: Problem linking Shader Program(%s): %s\n", label, buf);
 
 			kill_shader(dprg, vprg, fprg);
+			return false;
 		}
 	}
 	

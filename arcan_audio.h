@@ -42,7 +42,7 @@ enum aobj_atypes {
 	MP4  = 8
 };
 
-arcan_errc arcan_audio_setup();
+arcan_errc arcan_audio_setup(bool nosound);
 
 /* refrain from using (particularly in ffunc callbacks)
  * and just return silence when asked.
