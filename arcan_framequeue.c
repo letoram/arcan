@@ -42,17 +42,21 @@ void arcan_framequeue_step(frame_queue* queue)
 	frame_cell* current = &queue->da_cells[ queue->ni ];
 	SDL_LockMutex(queue->framesync);
 
-	while (queue->n_cells + 1 == queue->c_cells) {
+	while (queue->alive && 
+		queue->n_cells + 1 == queue->c_cells) {
 		SDL_CondWait(queue->framecond, queue->framesync);
 	}
 
-	current->wronly = false;
-	*(queue->current_cell) = current;
-	queue->current_cell = &current->next;
-	*(queue->current_cell) = NULL;
+	if (queue->alive){
+		current->wronly = false;
+		*(queue->current_cell) = current;
+		queue->current_cell = &current->next;
+		*(queue->current_cell) = NULL;
 
-	queue->ni = (queue->ni + 1) % queue->c_cells;
-	queue->n_cells++;
+		queue->ni = (queue->ni + 1) % queue->c_cells;
+		queue->n_cells++;
+	}
+	
 	SDL_UnlockMutex(queue->framesync);
 }
 
@@ -89,10 +93,14 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
 	if (queue) {
-		SDL_KillThread(queue->iothread);
+		queue->alive = false;
+		int statusfl;
+		
+		SDL_CondSignal(queue->framecond);
 		SDL_DestroyCond(queue->framecond);
 		SDL_DestroyMutex(queue->framesync);
-
+		SDL_WaitThread(queue->iothread, &statusfl);
+			
 		if (queue->da_cells) {
 			free(queue->da_cells[0].buf);
 			free(queue->da_cells);

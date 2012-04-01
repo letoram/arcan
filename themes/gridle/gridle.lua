@@ -31,7 +31,9 @@ settings = {
 	
 	repeat_rate = 250,
 	celll_width = 48,
-	cell_height = 48
+	cell_height = 48,
+	
+	in_internal = false
 };
 
 settings.sortfunctions = {};
@@ -50,13 +52,41 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
+function gridle_video_event(source, event)
+	if (event.kind == "resized") then
+		if (not in_internal) then -- multiple resizes shouldn't trigger this
+			in_internal = true;
+			erase_grid(true);
+			if (movievid and movievid ~= BADID) then delete_image(movievid); movievid = nil; end
+		end
+	
+		if (source == internal_vid) then
+			if (event.width / event.height > 1.0) then
+				resize_image(source, VRESW, 0, NOW);
+			else
+				resize_image(source, 0, VRESH, NOW);
+			end
+			
+			if (fullscreen_shader) then
+				gridlemenu_update_fullscreen(source);
+				image_shader(source, fullscreen_shader);
+			end
+			
+			show_image(source);
+		end
+	end
+end
+
 function gridle_keyconf()
 	local keylabels = {
         "rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP",
         "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" OSD_KEYBOARD", "ACURSOR_X", "ACURSOR_Y"};
 
-	if (INTERNALMODE ~= "NO SUPPORT") then table.insert(keylabels, " LAUNCH_INTERNAL"); end
+	if (INTERNALMODE ~= "NO SUPPORT") then
+		table.insert(keylabels, " LAUNCH_INTERNAL");
+		system_load("gridle_intmenus.lua")();
+	end
 	
     keyconfig = keyconf_create(1, keylabels);
     keyconfig.iofun = gridle_input;
@@ -210,7 +240,7 @@ function gridle()
 	end
 	
 	load_settings();
-	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader");
+	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
 	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
 -- We'll reduce stack layers and increase number of elements,
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size
@@ -311,17 +341,29 @@ end
 				end
 			end
 
-			if (movievid and movievid ~= BADID) then delete_image(movievid); movievid = BADID; end
+			if (movievid and movievid ~= BADID) then delete_image(movievid); movievid = nil; end
 			gridledetail_show(key, gametbl, gameind);
 		end
 	end
 	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
     settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
+	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl) 
+		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL); 
+		gridle_oldinput = gridle_input;
+		gridle_input = gridle_internalinput;
+		background = instance_image(blackblock);
+		image_mask_clear(background, MASK_OPACITY);
+		resize_image(background, VRESW, VRESH, NOW);
+		order_image(background, max_current_image_order() + 1);
+		order_image(internal_vid, max_current_image_order() + 1);
+	end
+	
 -- the analog conversion for devices other than mice is so-so atm.
 
+	blackblock = fill_surface(1,1,0,0,0);
 	whiteblock = fill_surface(1,1,255,255,255);
-	move_image(whiteblock, 0,0);
+	moviecooldown = 5;
 	
 -- Animated background
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
@@ -348,10 +390,6 @@ end
 
 function cell_coords(x, y)
     return (0.5 * borderw) + x * (settings.cell_width + settings.hspacing), (0.5 * borderh) + y * (settings.cell_height + settings.vspacing);
-end
-
-function match_cell_coords(x, y)
-
 end
 
 function build_fadefunctions()
@@ -392,7 +430,7 @@ end
 function got_asynchimage(source, status)
 	local cursor_row = math.floor(settings.cursor / ncw);
 	local gridcell_vid = cursor_vid();
-
+	
 	if (status == 1) then
 		if (source == gridcell_vid) then
 			blend_image(source, 1.0, settings.transitiondelay);
@@ -620,7 +658,7 @@ function move_cursor( ofs )
 	local moviefile = have_video(setname);
 
 	if (moviefile) then
-		movievid = load_movie( moviefile, 1, function(source, status) 
+		movievid = load_movie( moviefile, 1, function(source, status)
 			if (status == 1 and source == movievid) then
 				vid,aid = play_movie(source);
 				audio_gain(aid, 0.0);
@@ -633,7 +671,7 @@ function move_cursor( ofs )
 				expire_image(source, settings.fadedelay);
 			end		
 		end);
-		
+
         if (movievid) then
             move_image(movievid, x, y);
             order_image(movievid, 3);
@@ -813,10 +851,51 @@ function load_settings()
 end
 
 function gridle_clock_pulse()
+-- a little safeguard against a high-repeat rate and just holding one button pressed
+	if (moviecooldown > 0) then
+		moviecooldown = moviecooldown - 1;
+	end
+	
 	if (settings.shutdown_timer) then
 		settings.shutdown_timer = settings.shutdown_timer - 1;
 		if (settings.shutdown_timer == 0) then shutdown(); end
 	end
+end
+
+function gridle_internalcleanup()
+	kbd_repeat(settings.repeat_rate);
+	delete_image(internal_vid);
+	gridle_input = gridle_oldinput;
+
+	if (in_internal) then
+		build_grid(settings.cell_width, settings.cell_height);
+	end
+	
+	delete_image(background);
+	in_internal = false;
+end
+
+function gridle_target_event(source, kind)
+	gridle_internalcleanup();
+end
+
+-- slightly different from gridledetail
+function gridle_internalinput(iotbl)
+	local restbl = keyconfig:match(iotbl);
+	
+	if (restbl) then
+		for ind, val in pairs(restbl) do
+			if (val == "MENU_ESCAPE") then
+				gridle_internalcleanup();
+				return;
+			elseif (val == "MENU_TOGGLE") then
+				gridlemenu_internal();
+				return;
+			end
+		end
+	end
+	
+	target_input(iotbl, internal_vid);
 end
 
 function gridle_input(iotbl)

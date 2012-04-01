@@ -143,9 +143,9 @@ signed arcan_video_pushcontext();
  * and that the data is in RGBA format*/
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv);
 
-/* if tag is set,
- * the image will be loaded asynch and in the event that will get pushed, the tag will come along */
-arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv, void* tag);
+/* tag will be stored in the asynchimg event when the image has been loaded */
+arcan_vobj_id arcan_video_loadimageasynch(const char* fname, img_cons constraints, intptr_t tag); 
+arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);

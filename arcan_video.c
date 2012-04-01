@@ -165,13 +165,16 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 {
 	for (int i = 1; i < context->vitem_limit; i++) {
 		if (context->vitems_pool[i].flags.in_use){
-			
+			arcan_vobject* current = &(context->vitems_pool[i]);
+
+			/* before doing any modification, wait for any async load calls to finish(!) */
+			if (current->state.tag == ARCAN_TAG_ASYNCIMG)
+				arcan_video_pushasynch(i);
+				
 			if (delete)
 				arcan_video_deleteobject(i); /* will also delink from the render list */
 			else {
-				arcan_vobject* current = &(context->vitems_pool[i]);
 				glDeleteTextures(1, &current->gl_storage.glid);
-				while (current->state.tag == ARCAN_TAG_ASYNCIMG); /* live lock until asynch- objects are loaded */
 				if (current->state.tag == ARCAN_TAG_FRAMESERV && current->state.ptr)
 					arcan_frameserver_pause((arcan_frameserver*) current->state.ptr, true);
 			}
@@ -242,9 +245,8 @@ signed arcan_video_pushcontext()
 	current_context->world = empty_vobj;
 	current_context->world.current.scale.x = 1.0;
 	current_context->world.current.scale.y = 1.0;
-	current_context->world.current.rotation.roll  = 0.0;
-	current_context->world.current.rotation.pitch = 0.0;
-	current_context->world.current.rotation.yaw   = 0.0;
+	current_context->world.current.scale.z = 1.0;
+	current_context->world.current.opa = 1.0;
 	current_context->world.current.rotation.quaternion = build_quat_euler(0, 0, 0);
 	
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
@@ -292,31 +294,13 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 	return 0;
 }
 
-/*static void dump_object(arcan_vobject* o){
-	if (!o) return;	
-	printf("[ Obj# %i\n\t Position: %f, %f, %f\n\t Opacity: %f\n\t Scale: %f, %f, %f\n\t Rotation: %f, %f, %f\n",
-		   o->owner->cellid,
-		o->current.position.x, o->current.position.y, o->current.position.z,
-		o->current.opa,
-		o->current.scale.x, o->current.scale.y, o->current.scale.z,
-		0.0, 0.0, 0.0);
-
-	surface_transform* trans = o->transform;
-	int c= 0;
-	while(trans){
-		printf("%i Move@(%i-%i): (%f->%f), (%f->%f), (%f->%f)\n Scale@(%i-%i): (%f->%f), (%f->%f)\n, Blend@(%i-%i): (%f->%f)\n ", ++c, trans->move.startt, trans->move.endt,
-			trans->move.startp.x, trans->move.endp.x, trans->move.startp.y, trans->move.endp.y, trans->move.startp.z, trans->move.endp.z,
-			trans->scale.startt, trans->scale.endt, trans->scale.startd.w, trans->scale.endd.w, trans->scale.startd.h, trans->scale.endd.h,
-			trans->blend.startt, trans->blend.endt, trans->blend.startopa, trans->blend.endopa);
-		trans = trans->next;
-	}
-}*/
-
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 {
 	arcan_vobject* pobj = arcan_video_getobject(parent);
 	arcan_vobj_id rv;
-
+	
+	
+	
 	if (pobj == NULL)
 		return 0;
 
@@ -386,6 +370,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->flags.cliptoparent = false;
 		rv->current.scale.x = 1.0;
 		rv->current.scale.y = 1.0;
+		rv->current.scale.z = 1.0;
+		rv->current.rotation.quaternion = build_quat_euler(0, 0, 0);
 		rv->current.opa = 0.0;
 		rv->cellid = fid;
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
@@ -418,6 +404,7 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 	arcan_vobject* src = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
+/* sorted linked list insert */
 	if (src) {
 		/* allocate new llist- item */
 		arcan_vobject_litem* new_litem = (arcan_vobject_litem*) calloc(sizeof(arcan_vobject_litem), 1);
@@ -703,7 +690,7 @@ void arcan_video_fullscreen()
 
 static void flipimage(SDL_Surface* src)
 {
-/* flip horizontal to match GL format */
+/* flip horizontal to match GL format, assumes RGBA */
 		unsigned char* dbuf = (unsigned char*) src->pixels;
 		for (int row=0; row < src->h * 0.5; row++)
 			for(int col=0; col < src->w; col++)
@@ -717,8 +704,24 @@ static void flipimage(SDL_Surface* src)
 				}
 }
 
+/* it would be interesting and useful to limit this to PNG and JPG and strip out SDL_Image altogether.
+ * futhermore, check up on libpng memory access patterns, MMAP the file with MADIVSE on MADV_SEQUENTIAL and MAP_POPULATE
+ * since this function is used extremely often and shuffles a lot of data, furthermore, we would like to split this into 
+ * a subprocess with lesser privileges due to the .. "varying" quality of image decoding routines. */
+#ifndef ASYNCH_CONCURRENT_THREADS
+#define ASYNCH_CONCURRENT_THREADS 8
+#endif 
+
 static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc)
 {
+	static SDL_sem* asynchsynch = NULL;
+	if (!asynchsynch)
+		asynchsynch = SDL_CreateSemaphore(ASYNCH_CONCURRENT_THREADS);
+
+/* with asynchsynch, it's likely that we get a storm of requests and we'd likely suffer 
+ * thrashing, so limit this. */
+	SDL_SemWait(asynchsynch);
+	
     arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	SDL_Surface* res = IMG_Load(fname);
 
@@ -726,12 +729,13 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		dst->origw = res->w;
 		dst->origh = res->h;
 
+	/* the thread_loader will take care of converting the asynchsrc to an image once its completely done */
 		if (!asynchsrc)
 			dst->state.tag = ARCAN_TAG_IMAGE;
 		
 		dstframe->source = strdup(fname);
 		
-		/* let SDL do byte-order conversion and make sure we have BGRA, ... */
+	/* let SDL do byte-order conversion and make sure we have BGRA, ... */
 		SDL_Surface* gl_image =
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
 		    SDL_CreateRGBSurface(SDL_SWSURFACE, res->w, res->h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
@@ -805,6 +809,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		rv = ARCAN_OK;
 	}
 
+	SDL_SemPost(asynchsynch);
 	return rv;
 }
 
@@ -861,11 +866,6 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.h = constraints.h;
 		newvobj->origw = origw;
 		newvobj->origh = origh;
-		newvobj->current.scale.x = 1.0;
-		newvobj->current.scale.y = 1.0;
-		newvobj->current.scale.z = 1.0;
-		newvobj->current.rotation.roll = newvobj->current.rotation.pitch = newvobj->current.rotation.yaw = 0.0;
-		newvobj->current.rotation.quaternion = build_quat_euler( 0, 0, 0 );
 
 	/* allocate */
 		glGenTextures(1, &newvobj->gl_storage.glid);
@@ -940,7 +940,7 @@ struct thread_loader_args {
 	arcan_vobject* dst;
 	arcan_vobj_id dstid;
 	char* fname;
-	void* tag;
+	intptr_t tag;
 };
 
 /* if the loading failed, we'll add a small black image in its stead,
@@ -951,16 +951,17 @@ static int thread_loader(void* in)
 	struct thread_loader_args* localargs = (struct thread_loader_args*) in;
 	arcan_vobject* dst = localargs->dst;
 	
-	/* while this happens, the following members of the struct are not to be touched 
- * elsewhere:
+/* while this happens, the following members of the struct are not to be touched elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
+	
     arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
-	result.data.video.data = localargs->tag;
+	result.data.video.data = (void*) localargs->tag;
 	
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
         result.data.video.constraints.w = dst->origw;
         result.data.video.constraints.h = dst->origh;
+		
 	} else {
         dst->origw = 32;
         dst->origh = 32;
@@ -969,8 +970,6 @@ static int thread_loader(void* in)
 		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
 		dst->gl_storage.w = 32;
 		dst->gl_storage.h = 32;
-		dst->current.rotation.quaternion = build_quat_euler( 0, 0, 0 );
-        
         result.data.video.constraints.w = 32;
         result.data.video.constraints.h = 32;
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;
@@ -983,6 +982,7 @@ static int thread_loader(void* in)
 	arcan_event_enqueue(&result);
 	free(localargs->fname);
 	free(localargs);
+	
     return 0;
 }
 
@@ -990,21 +990,26 @@ static int thread_loader(void* in)
  * as any other, but while the ASYNCIMG tag is active, it will be skipped in
  * rendering (linking, instancing etc. sortof works) but any external (script)
  * using the object before receiving a LOADED event may give undefined results */
-static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, arcan_errc* errcode, void* tag)
+static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, intptr_t tag)
 {
-	struct thread_loader_args* args = (struct thread_loader_args*) calloc(sizeof(struct thread_loader_args), 1);
-	args->dst = arcan_video_newvobject(&args->dstid);
+	arcan_vobj_id rv = ARCAN_EID;
+	arcan_vobject* dstobj = arcan_video_newvobject(&rv);
 
+	struct thread_loader_args* args = (struct thread_loader_args*) calloc(sizeof(struct thread_loader_args), 1);
+	args->dstid = rv;
+	args->dst = dstobj;
+	
 	if (!args->dst){
 		free(args);
 		return ARCAN_EID;
 	}
+	
 	args->fname = strdup(fname);
-
 	args->tag = tag;
     args->dst->state.tag = ARCAN_TAG_ASYNCIMG;
     args->dst->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
-	return args->dstid;
+	
+	return rv;
 }
 
 arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
@@ -1112,7 +1117,6 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		/* preset */
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
-		newvobj->current.rotation.quaternion = build_quat_euler(0, 0, 0);
 		newvobj->gl_storage.ncpt = ncpt == 0 ? 4 : ncpt;
 
 		if (newvobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
@@ -1151,6 +1155,9 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 	if (vobj) {
+		if (vobj->state.tag == ARCAN_TAG_ASYNCIMG)
+			arcan_video_pushasynch(id);
+
 		free(vobj->default_frame.raw);
 		
 		if (vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
@@ -1196,11 +1203,26 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	return rv;
 }
 
-arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsigned short zv, void* asynchtag)
+
+arcan_vobj_id arcan_video_loadimageasynch(const char* rloc, img_cons constraints, intptr_t tag)
 {
-	arcan_vobj_id rv = asynchtag ?
-		loadimage_asynch((char*) rloc, constraints, NULL, asynchtag) :
-		loadimage((char*) rloc, constraints, NULL);
+	arcan_vobj_id rv = loadimage_asynch(rloc, constraints, tag);
+
+	if (rv > 0) {
+		arcan_vobject* vobj = arcan_video_getobject(rv);
+
+		if (vobj){
+			vobj->current.rotation.quaternion = build_quat_euler( 0, 0, 0 );
+			arcan_video_attachobject(rv);
+		}
+	}
+
+	return rv;
+}
+
+arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsigned short zv)
+{
+	arcan_vobj_id rv = loadimage((char*) rloc, constraints, NULL);
 
 /* the asynch version could've been deleted in between, so we need to double check */
 		if (rv > 0) {
@@ -1347,7 +1369,7 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 			switch (*(base+1)) {
 					char* fontbase = base+1;
 					char* numbase;
-					char cbuf[2];
+					char cbuf[3] = {0};
 
 					/* missing; halign row, lalign row, ralign row */
 				case '!':
@@ -1768,7 +1790,6 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
-		vobj->current.rotation.quaternion = build_quat_euler(0.0, 0.0, 0.0);
 		vobj->parent = &current_context->world;
 		glGenTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
@@ -1984,9 +2005,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 				vobj->ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->state);
 			}
 			
-            if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
-                SDL_KillThread( vobj->state.ptr );
-            }
+            if (vobj->state.tag == ARCAN_TAG_ASYNCIMG)
+                SDL_WaitThread( vobj->state.ptr, NULL );
 
 			for (unsigned int i = 0; i < vobj->frameset_capacity; i++)
 				if (vobj->frameset[i]){

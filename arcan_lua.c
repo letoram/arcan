@@ -214,7 +214,7 @@ int arcan_lua_loadimage(lua_State* ctx)
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 
 	if (path)
-		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio, false);
+		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio);
 
 	free(path);
 	lua_pushvid(ctx, id);
@@ -232,10 +232,11 @@ int arcan_lua_loadimageasynch(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	
-	if (path)
-		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), 0, (void*) ref);
-	
+	if (path && strlen(path) > 0){
+		id = arcan_video_loadimageasynch(path, arcan_video_dimensions(0, 0), ref);
+	}
 	free(path);
+
 	lua_pushvid(ctx, id);
 	return 1;
 }
@@ -454,6 +455,7 @@ int arcan_lua_playsample(lua_State* ctx)
 	char* resource = findresource(rname, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
 	arcan_audio_play_sample(resource, gain, NULL);
+	free(resource);
 	return 0;
 }
 
@@ -468,7 +470,7 @@ int arcan_lua_buildshader(lua_State* ctx)
 {
 	const char* vprog = luaL_checkstring(ctx, 1);
 	const char* fprog = luaL_checkstring(ctx, 2);
-	const char* label = luaL_optstring(ctx, 3, "USERSHDR");
+	const char* label = luaL_checkstring(ctx, 3);
 	
 	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
 	lua_pushnumber(ctx, rv);
@@ -716,17 +718,19 @@ int arcan_lua_dofile(lua_State* ctx)
 {
 	const char* instr = luaL_checkstring(ctx, 1);
 	char* fname = findresource(instr, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	int err_func = 0;
+	int res = 0;
 
-	if (fname)
+	if (fname){
 		luaL_loadfile(ctx, fname);
+		res = 1;
+	}
 	else{
 		free(fname);
 		arcan_warning("Script Warning: system_load(), couldn't find resource (%s)\n", instr);
-		return 0;
 	}
 
-	return 1;
+	free(fname);
+	return res;
 }
 
 int arcan_lua_pausemovie(lua_State* ctx)
@@ -1161,6 +1165,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 		lua_pushnumber(ctx, ev.data.timer.pulse_count);
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 	}
+	else if (ev.category == EVENT_TARGET && arcan_lua_grabthemefunction(ctx, "target_event")) {
+		lua_pushnumber(ctx, ev.data.video.source);
+		if (ev.kind == EVENT_TARGET_INTERNAL_TERMINATED)
+			lua_pushstring(ctx, "terminated");
+		else
+			lua_pushstring(ctx, "unknown");
+		
+		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: target event");
+	}
 	else if (ev.category == EVENT_VIDEO){
 		bool gotvev = false;
 		
@@ -1418,10 +1431,10 @@ int arcan_lua_loadmesh(lua_State* ctx)
     unsigned nmaps = luaL_optnumber(ctx, 3, 1);
     char* path = findresource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
-    if (path){
+    if (path)
         arcan_3d_addmesh(did, path, nmaps);
-    }
     
+    free(path);
     return 0;
 }
 
@@ -1492,6 +1505,27 @@ int arcan_lua_getimageinitprop(lua_State* ctx)
 	surface_properties prop = arcan_video_initial_properties(id);
 
 	return pushprop(ctx, prop, arcan_video_getzv(id));
+}
+
+int arcan_lua_getimagestorageprop(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	img_cons cons = arcan_video_storage_properties(id);
+	lua_createtable(ctx, 0, 6);
+
+	lua_pushstring(ctx, "bpp");
+	lua_pushnumber(ctx, cons.bpp);
+	lua_rawset(ctx, -3);
+
+	lua_pushstring(ctx, "height");
+	lua_pushnumber(ctx, cons.h);
+	lua_rawset(ctx, -3);
+	
+	lua_pushstring(ctx, "width");
+	lua_pushnumber(ctx, cons.w);
+	lua_rawset(ctx, -3);
+	
+	return 1;
 }
 
 int arcan_lua_storekey(lua_State* ctx)
@@ -1883,7 +1917,9 @@ int arcan_lua_filtergames(lua_State* ctx)
 int arcan_lua_warning(lua_State* ctx)
 {
 	char* msg = (char*) luaL_checkstring(ctx, 1);
-	arcan_warning(msg);
+	if (strlen(msg) > 0)
+		arcan_warning("%s\n", msg);
+	
 	return 0;
 }
 
@@ -1894,7 +1930,7 @@ int arcan_lua_shutdown(lua_State *ctx)
 
 	const char* str = luaL_optstring(ctx, 1, "");
 	if (strlen(str) > 0)
-		arcan_warning(str);
+		arcan_warning("%s\n", str);
 	
 	return 0;
 }
@@ -1971,7 +2007,6 @@ int arcan_lua_resource(lua_State* ctx)
 	int mask = luaL_optinteger(ctx, 2, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	char* res = findresource(label, mask);
 	lua_pushstring(ctx, res);
-	
 	free(res);
 	return 1;
 }
@@ -2460,7 +2495,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item: load_image_asynch, resource, [zval (0..255)], vid */
 	lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
-	
+
 /* item: delete_image, vid, nil */
 	lua_register(ctx, "delete_image", arcan_lua_deleteimage);
 
@@ -2554,6 +2589,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:image_surface_resolve_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
 
+/* item:image_storage_properties, vid, surftbl */
+	lua_register(ctx, "image_storage_properties", arcan_lua_getimagestorageprop);
+	
 /* item:image_shader, vid, shaderid, nil */
 	lua_register(ctx, "image_shader", arcan_lua_setshader);
 

@@ -172,7 +172,7 @@ arcan_event* arcan_event_poll()
 }
 
 void arcan_event_maskall(){
-	current_context.mask_cat_inp = 0xffffff;
+	current_context.mask_cat_inp = 0xffffffff;
 }
 
 void arcan_event_clearmask(){

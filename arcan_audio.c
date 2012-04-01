@@ -277,12 +277,21 @@ arcan_errc arcan_audio_free(arcan_aobj_id id)
 	return rv;
 }
 
-arcan_errc arcan_audio_setup()
+arcan_errc arcan_audio_setup(bool nosound)
 {
 	arcan_errc rv = ARCAN_ERRC_NOAUDIO; 
-	
+
+/* don't supported repeated calls without shutting down in between */
 	if (current_acontext && !current_acontext->context) {
+
+/* unfortunately, the pretty poorly thought out alcOpenDevice/alcCreateContext doesn't allow you to create
+ * a nosound or debug/testing audio device (or for that matter, enumerate without an extension, seriously..)
+ * so to avoid yet another codepath, we'll just set the listenerGain to 0 */
 		current_acontext->context = alcCreateContext(alcOpenDevice(NULL), NULL);
+	
+		if (nosound)
+			alListenerf(AL_GAIN, 0.0);
+			
 		alcMakeContextCurrent(current_acontext->context);
 		current_acontext->al_active = true;
 		rv = ARCAN_OK;

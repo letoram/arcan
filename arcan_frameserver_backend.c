@@ -251,9 +251,11 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 			arcan_framequeue_free(&src->vfq);
 			shmpage->resized = false;
+			arcan_event_maskall();
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 			arcan_video_alterfeed(src->vid, (arcan_vfunc_cb) arcan_frameserver_videoframe, cstate);
-
+			arcan_event_clearmask();
+			
         /* set up the real framequeue */
             unsigned short acachelim, vcachelim, abufsize;
             arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
