@@ -208,6 +208,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 
 	float dmatr[16], omatr[16];
     float opa = 1.0;
+	
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
@@ -324,9 +325,10 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 }
 
 /* Chained to the video-pass in arcan_video, stop at the first non-negative order value */
-arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
+arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell, float frag, unsigned int destination)
 {
-	virtobj* base = current_scene.perspectives;
+	virtobj* base = find_perspective(camtag); 
+
 	glClear(GL_DEPTH_BUFFER_BIT);
 	glColor4f(1.0, 1.0, 1.0, 1.0);
 	
@@ -351,8 +353,6 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
 				multiply_matrix(dmatr, matr, base->direction.matr);
 				translate_matrix(dmatr, base->position.x, base->position.y, base->position.z);
 				process_scene_normal(cell, frag, dmatr, base->projmatr);
-
-/* curious about deferred shading and forward shadow mapping, thus likely the first "hightech" renderpath */
 			case virttype_dirlight   : break;
 			case virttype_pointlight : break;
 /* camera with inverted Y, add a stencil at clipping plane and (optionally) render to texture (for water) */
@@ -361,8 +361,6 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float frag)
  * have a caster-specific perspective projection */
 			case virttype_shadow : break;
 		}
-
-		base = base->next;
 	}
 
 	return cell;
@@ -727,6 +725,11 @@ arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
 	}
 	
 	return rv; 
+}
+
+arcan_errc arcan_3d_addperspective(unsigned type)
+{
+	
 }
 
 void arcan_3d_setdefaults()

@@ -91,11 +91,15 @@ function gridle_keyconf()
     keyconfig = keyconf_create(1, keylabels);
     keyconfig.iofun = gridle_input;
 	if (keyconfig.active == false) then
+		kbd_repeat(0);
+		
 		gridle_input = function(iotbl) -- keyconfig io function hook
 			if (keyconfig:input(iotbl) == true) then
 				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg");
 
 				ledconfig = ledconf_create( keyconfig:labels() );
+				kbd_repeat(settings.repeat_rate);
+				
 				if (ledconfig.active == false) then
 					gridle_input = ledconfig_iofun;
 				else -- no LED controller present, or LED configuration already exists

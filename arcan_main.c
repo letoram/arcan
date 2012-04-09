@@ -96,7 +96,7 @@ void usage()
 		"-h\t--height      \tdesired height (default: 480)\n"
 		"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 		"-m\t--conservative\ttoggle conservative memory management (default: off)\n"
-		"-s\t--windowed    \ttoggle windowed fullscreen\n"
+		"-s\t--windowed    \ttoggle borderless window mode\n"
 		"-p\t--rpath       \tchange path for resources (default: autodetect)\n"
 		"-t\t--themepath   \tchange path for themes (default: autodetect)\n"
 		"-o\t--frameserver \tforce frameserver (default: autodetect)\n"
@@ -195,8 +195,12 @@ int main(int argc, char* argv[])
 	free(dbname);
 
 	const SDL_VideoInfo* vi = SDL_GetVideoInfo();
+	if (!vi){
+		arcan_fatal("SDL_GetVideoInfo() failed, broken display subsystem.");
+		goto error;
+	}
 	
-	if (width == 0 || height == 0 || windowed) {
+	if (width == 0 || height == 0) {
 		width = vi->current_w;
 		height = vi->current_h;
 		putenv("SDL_VIDEO_WINDOW_POS=0,0");
