@@ -173,7 +173,8 @@ end
 
 local function keyconf_next_key(self)
 	self.ofs = self.ofs + 1;
-
+	self.time_lastkey = CLOCK;
+	
 	if (self.ofs <= # self.configlist) then
  
 		self.key = self.configlist[self.ofs];
@@ -364,12 +365,18 @@ local function keyconf_input(self, inputtable)
 	if (self.active or self.key == nil) then
 		return true;
 	end
+
+-- ignore input if cooldown ticks havn't passed,
+-- protects against partially bad contacts (getting repeated events), jumpy sticks etc. 
+	if (CLOCK - self.time_lastkey < self.cooldown) then
+		return false;
+	end
 	
 -- early out, MENU_ESCAPE is defined to skip labels where this is allowed,
 -- meaning a keykind of ' ' or 'a'.
 	if (self:match(inputtable, "MENU_ESCAPE") and inputtable.active) then
 		if (self.key_kind == 'A' or self.key_kind == 'r') then
-			self:renderline([[\#ff0000Cannot skip required keys/axes.\n\r\#ffffff]] .. self.label );
+			self:renderline([[\#aaff00Cannot skip required keys/axes.\n\r\#ffffff]] .. self.label );
 			return false;
 		else
 			return self:next_key();
@@ -457,7 +464,9 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		ignore_modifiers = false,
 		n_players = nplayers,
 		keyfile = keyname,
-		input_playersel = keyconf_inp_playersel	
+		input_playersel = keyconf_inp_playersel,
+		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key 
+		time_lastkey = CLOCK,
 	};
 
 	local players = 0;

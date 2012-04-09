@@ -149,6 +149,18 @@ int arcan_lua_readrawresource(lua_State* ctx)
 	return 0;
 }
 
+void arcan_lua_setglobalstr(lua_State* ctx, const char* key, const char* val)
+{
+	lua_pushstring(ctx, val);
+	lua_setglobal(ctx, key);
+}
+
+void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
+{
+	lua_pushnumber(ctx, val);
+	lua_setglobal(ctx, key);
+}
+
 static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
 {
 	arcan_vobj_id res = luaL_checknumber(ctx, num);
@@ -1163,6 +1175,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 	else if (ev.category == EVENT_TIMER && arcan_lua_grabthemefunction(ctx, "clock_pulse")) {
 		lua_pushnumber(ctx, ev.tickstamp);
 		lua_pushnumber(ctx, ev.data.timer.pulse_count);
+		arcan_lua_setglobalint(ctx, "CLOCK", ev.tickstamp);
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 	}
 	else if (ev.category == EVENT_TARGET && arcan_lua_grabthemefunction(ctx, "target_event")) {
@@ -1763,17 +1776,6 @@ int arcan_lua_getcmdline(lua_State* ctx)
 	return rv;
 }
 
-void arcan_lua_setglobalstr(lua_State* ctx, const char* key, const char* val)
-{
-	lua_pushstring(ctx, val);
-	lua_setglobal(ctx, key);
-}
-
-void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
-{
-	lua_pushnumber(ctx, val);
-	lua_setglobal(ctx, key);
-}
 
 void pushgame(lua_State* ctx, arcan_db_game* curr)
 {
@@ -2743,8 +2745,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 /* constant: BADID,int */
 	arcan_lua_setglobalint(ctx, "BADID", ARCAN_EID);
 
+/* constant: CLOCKRATE,int */
+	arcan_lua_setglobalint(ctx, "CLOCKRATE", ARCAN_TIMER_TICK);
+
 /* constant: CLOCK,int */
-	arcan_lua_setglobalint(ctx, "CLOCK", ARCAN_TIMER_TICK);
+	arcan_lua_setglobalint(ctx, "CLOCK", 0);
 
 /* constant: JOYSTICKS,int */
 	arcan_lua_setglobalint(ctx, "JOYSTICKS", SDL_NumJoysticks());

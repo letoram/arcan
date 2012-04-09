@@ -166,6 +166,6 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 void arcan_3d_setdefaults();
-arcan_vobject_litem* arcan_refresh_3d(arcan_vobject_litem* cell, float fragment);
+arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell, float frag, unsigned int destination);
 
 #endif

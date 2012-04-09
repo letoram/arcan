@@ -2712,7 +2712,7 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.late3d && current && current->elem->order < 0){
-		current = arcan_refresh_3d(current, lerp);
+		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
 
 	arcan_debug_pumpglwarnings("refreshGL:pre2d");
@@ -2727,8 +2727,7 @@ void arcan_video_refresh_GL(float lerp)
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 		
-		
-		while (current){
+		while (current && current->elem->order >= 0){
 #ifdef _DEBUG
 			char cvid[24];
 			snprintf(cvid, 24, "refreshGL:2d(%d)", (unsigned) current->elem->cellid);
@@ -2809,7 +2808,7 @@ void arcan_video_refresh_GL(float lerp)
 
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (arcan_video_display.late3d && current && current->elem->order < 0){
-		current = arcan_refresh_3d(current, lerp);
+		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
 }
 
