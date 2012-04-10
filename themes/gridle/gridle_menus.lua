@@ -1,6 +1,16 @@
 -- this one is just a mess of tables, all mapping to a
 -- global settings structure, nothing really interesting
 
+-- theme storage keys used:
+--  ledmode => settings.ledmode
+--  transitiondelay => settings.transitiondelay
+--  fadedelay => settings.fadedelay
+--  repeatrate => settings.repeatrate
+--  cell_width => settings.cell_width
+--  cell_height => settings.cell_height
+--  sortorder => settings.sortlbl
+-- 
+
 system_load("scripts/listview.lua")();
 
 function menu_spawnmenu(list, listptr)
@@ -66,7 +76,7 @@ local settingslbls = {
 	"Fade Delay",
 	"Transition Delay",
 	"Attract Mode",
-	"Inactivity Shutdown",
+	"Inactivity Shutdown"
 };
 
 local ledmodelbls = {
@@ -77,10 +87,29 @@ local ledmodelbls = {
 };
 
 local ledmodeptrs = {}
-ledmodeptrs["Disabled"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 0; end
-ledmodeptrs["All toggle"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 1; end
-ledmodeptrs["Game setting (always on)"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 2; end
-ledmodeptrs["Game setting (on push)"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.ledmode = 3; end
+	ledmodeptrs["Disabled"] = function(label, save) 
+	settings.iodispatch["MENU_ESCAPE"](); 
+	settings.ledmode = 0;
+	if (save) then store_key("ledmode", 0); end
+end
+
+ledmodeptrs["All toggle"] = function(label, save)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.ledmode = 1;
+	if (save) then store_key("ledmode", 1); end
+end
+
+ledmodeptrs["Game setting (always on)"] = function(label, save)
+	settings.iodispatch["MENU_ESCAPE"](); 
+	settings.ledmode = 2; 
+	if (save) then store_key("ledmode", 2); end
+end
+
+ledmodeptrs["Game setting (on push)"] = function(label, save)
+	settings.iodispatch["MENU_ESCAPE"](); 
+	settings.ledmode = 3; 
+	if (save) then store_key("ledmode", 3); end
+end
 
 local sortorderlbls = {
 	"Ascending",
@@ -92,52 +121,62 @@ local sortorderlbls = {
 local fadedelaylbls = {"5", "10", "20", "40"}
 local transitiondelaylbls = {"5", "10", "20", "40"}
 local fadedelayptrs = {}
-fadedelayptrs["5"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 5; end
-fadedelayptrs["10"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 10; end
-fadedelayptrs["20"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 20; end
-fadedelayptrs["40"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.fadedelay = 40; end
+
+local function fadedelaycb(label, save)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.fadedelay = tonumber(label);
+	if (save) then
+		store_key("fadedelay", tonumber(label));
+	end
+end
+for ind,val in ipairs(fadedelaylbls) do fadedelayptrs[val] = fadedelaycb; end
 
 local transitiondelayptrs = {}
-transitiondelayptrs ["5"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay = 5; end
-transitiondelayptrs ["10"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 10; end
-transitiondelayptrs ["20"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 20; end
-transitiondelayptrs ["40"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.transitiondelay= 40; end
+local function transitiondelaycb(label, save)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.transitiondelay = tonumber(label);
+	if (save) then
+		store_key("transitiondelay", tonumber(label));
+	end
+end
+for ind,val in ipairs(transitiondelaylbls) do transitiondelayptrs[val] = transitiondelaycb; end
 
-local repeatlbls = { "Disable", "100", "200", "300", "400", "500"};
+local repeatlbls = { "0", "100", "200", "300", "400", "500"};
 local repeatptrs = {};
-repeatptrs["Disable"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 0; kbd_repeat(settings.repeat_rate); end
-repeatptrs["100"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 100; kbd_repeat(settings.repeat_rate); end
-repeatptrs["200"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 200; kbd_repeat(settings.repeat_rate); end
-repeatptrs["300"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 300; kbd_repeat(settings.repeat_rate); end
-repeatptrs["400"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 400; kbd_repeat(settings.repeat_rate); end
-repeatptrs["500"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.repeat_rate = 500; kbd_repeat(settings.repeat_rate); end
+local function repeatratecb(label, save)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.repeat_rate = tonumber(label);
+	if (save) then
+		store_key("repeatrate", tonumber(label));
+	end
+end
+for ind,val in ipairs(repeatlbls) do repeatptrs[val] = repeatratecb; end
 
 local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96", "128x96", "96x128", "128x128", "196x128", "128x196", "196x196",
 		"196x256", "256x196", "256x256"};
 local gridptrs = {};
 
-gridptrs["48x48"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 48; settings.cell_height= 48; end
-gridptrs["48x64"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 48; settings.cell_height = 64; end
-gridptrs["64x48"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 64; settings.cell_height = 48; end
-gridptrs["64x64"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 64; settings.cell_height = 64; end
-gridptrs["96x64"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 96; settings.cell_height = 64; end
-gridptrs["64x96"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 64; settings.cell_height = 96; end
-gridptrs["96x96"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 96; settings.cell_height = 96; end
-gridptrs["96x128"]  = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 96; settings.cell_height = 128; end
-gridptrs["128x96"]  = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 96; end
-gridptrs["128x128"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 128; end
-gridptrs["196x128"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 196; settings.cell_height = 128; end
-gridptrs["128x196"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 128; settings.cell_height = 196; end
-gridptrs["196x196"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 196; settings.cell_height = 196; end
-gridptrs["256x196"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 256; settings.cell_height = 196; end
-gridptrs["196x256"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 196; settings.cell_height = 256; end
-gridptrs["256x256"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.cell_width = 256; settings.cell_height = 256; end
+local function gridcb(label, save)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.cell_width = tonumber( string.sub(label, 1, string.find(label, "x") - 1) );
+	settings.cell_height = tonumber( string.sub(label, string.find(label, "x") + 1, -1) );
+	if (save) then
+		store_key("cell_width", settings.cell_width);
+		store_key("cell_height", settings.cell_height);
+	end
+end
+for ind,val in ipairs(gridlbls) do gridptrs[val] = gridcb; end
 
 local sortorderptrs = {};
-sortorderptrs["Ascending"]    = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Ascending"; end
-sortorderptrs["Descending"]   = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Descending"; end
-sortorderptrs["Times Played"] = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Times Played"; end
-sortorderptrs["Favorites"]    = function() settings.iodispatch["MENU_ESCAPE"](); settings.sortlbl = "Favorites"; end
+local function sortordercb(label, save)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.sortlbl = label;
+	
+	if (save) then
+		store_key("sortorder", label);
+	end
+end
+for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
 
 local settingsptrs = {};
 settingsptrs["Sort Order..."]    = function() menu_spawnmenu(sortorderlbls, sortorderptrs); end
@@ -313,8 +352,15 @@ function gridlemenu_settings()
 	settings.iodispatch["MENU_SELECT"] = function(iotbl)
 			selectlbl = current_menu:select();
 			if (current_menu.ptrs[selectlbl]) then
-				current_menu.ptrs[selectlbl](selectlbl);
+				current_menu.ptrs[selectlbl](selectlbl, false);
 				update_status();
+			end
+		end
+		
+	settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
+			selectlbl = current_menu:select();
+			if (current_menu.ptrs[selectlbl]) then
+				current_menu.ptrs[selectlbl](selectlbl, true);
 			end
 		end
 

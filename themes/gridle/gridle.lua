@@ -538,7 +538,7 @@ function remove_zoom()
 		local props = image_surface_properties( cursor_vid() );
 		move_image(imagery.zoomed, props.x, props.y, settings.fadedelay);
 		blend_image(imagery.zoomed, 0.0, settings.fadedelay);
-		resize_image(imagery.zoomed, 1, 1, settings.fadedelay);
+		resize_image(imagery.zoomed,1,1, settings.fadedelay);
 		expire_image(imagery.zoomed, settings.fadedelay);
 		imagery.zoomed = BADID;
 	end
@@ -794,13 +794,6 @@ function build_grid(width, height)
 end
 
 function gridle_shutdown()
-	store_key("transitiondelay", tostring(settings.transitiondelay));
-	store_key("fadedelay", tostring(settings.fadedelay));
-	store_key("cell_width", tostring(settings.cell_width));
-	store_key("cell_height", tostring(settings.cell_height));
-	store_key("sortorder", settings.sortlbl);
-	store_key("ledmode", settings.ledmode);
-	
 	zap_resource("lists/favorites");
 	if (open_rawresource("lists/favorites")) then
 		for a=1,#settings.favorites do
@@ -814,6 +807,10 @@ function gridle_shutdown()
 	end
 end
 
+
+-- these should match those of 
+-- (a) the standard settings table (all should be set),
+-- (b) gridle_menus
 function load_settings()
 	local cellw   = get_key("cell_width");
 	local cellh   = get_key("cell_height");
