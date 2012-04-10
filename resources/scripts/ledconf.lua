@@ -16,31 +16,88 @@
 -- [LABEL] => ctrlid:ledid
 ----------------------------------------------------------
 
-local function ledconf_config(self, labels)
+local function ledconf_color(self, borderr, borderg, borderb, windowr, windowg, windowb)
+	local bprops = {x = 0, y = 0, width = 1, height = 1, opa = 1.0};
+	local wprops = {opa = 1.0, width = 1, height = 1, x = 3, y = 3};
+-- copy surface properties so that we can reset them on the new objects
+	if (self.window and self.window ~= BADID) then wprops = image_surface_properties(self.window); delete_image(self.window); end
+	if (self.border and self.border ~= BADID) then bprops = image_surface_properties(self.border); delete_image(self.border); end
+
+	self.border = fill_surface(8, 8, borderr, borderg, borderb);
+	self.window = fill_surface(8, 8, windowr, windowg, windowb);
+
+-- we associate with an anchor used for movement so that we can clip to
+-- window rather than border
+	link_image(self.border, self.anchor);
+	link_image(self.window, self.anchor);
+	
+	image_mask_clear(self.border, MASK_SCALE);
+	image_mask_clear(self.border, MASK_OPACITY);
+	image_mask_clear(self.window, MASK_SCALE);
+	image_mask_clear(self.window, MASK_OPACITY);
+
+-- reset all the old properties
+	resize_image(self.border, bprops.width, bprops.height);
+	resize_image(self.window, wprops.width, wprops.height);
+	
+	move_image(self.window, wprops.x, wprops.y);
+	move_image(self.border, bprops.x, bprops.y);
+	
+	blend_image(self.window, wprops.opa);
+	blend_image(self.border, bprops.opa);
+end
+
+local function ledconf_opacity(self, borderopa, windowopa)
+	blend_image(self.window, windowopa);
+	blend_image(self.border, borderopa);
+end
+
+local function ledconf_tofront(self)
+	self.order = max_current_image_order() + 1;
+	order_image(self.window, self.order+1);
+	order_image(self.border, self.order);
+	if (self.textvid) then
+		order_image(self.textvid, self.order+2);
+	end
+end
+
+local function keyconf_destroy(self)
+	expire_image(self.window, 20);
+	blend_image(self.window, 0.0, 20);
+	expire_image(self.border, 20);
+	blend_image(self.border, 0.0, 20);
+
+	delete_image(self.msgheader);
+	delete_image(self.textvid);
+	self.active = true;
+	self:flush();
+end
+
+local function ledconf_new(self, labels)
 	self.table = {};
 	self.labels = labels;
+	table.sort(self.labels);
 	self.config = true;
-
+	self.window_color = ledconf_color;
+	self.window_opacity = ledconf_opacity;
+	self.to_front = ledconf_tofront;
+	self.anchor = fill_surface(1, 1, 0, 0, 0);
+	self.yofs = 6;
+	
 	self.ctrlval = 0;
 	self.groupid = 0;
 	self.ledval = 0;
 
-	self.windowvid = fill_surface( 32, 32, 0, 0, 254);
-
-	local w = VRESW * 0.3;
-	local h = VRESH * 0.3;
-	resize_image(self.windowvid, w, h, NOW);
-	move_image(self.windowvid, VRESW * 0.5 - (w * 0.5), VRESH * 0.5 - (h * 0.5), NOW);
-	order_image(self.windowvid, 253);
-	show_image(self.windowvid);
-	
+	self:window_color(255, 255, 255, 0, 0, 164);
+	self:window_opacity(0.9, 0.6);
+	self:to_front();
+	resize_image(self.border, VRESW / 3, VRESH * 0.2, 5);
+	resize_image(self.window, VRESW / 3 - 6, VRESH * 0.2 - 6, 5);
 	self:nextlabel(false);
 	self:drawvals();
 end
 
 local function ledconf_flush(self)
-	print("time to flush to " .. self.ledfile);
-	
 	zap_resource(self.ledfile);
 	open_rawresource(self.ledfile);
 	if (write_rawresource("local ledconf = {};\n") == false) then
@@ -57,15 +114,6 @@ local function ledconf_flush(self)
 	close_rawresource();
 end
 
-local function ledconf_cleanup(self)
-	if (self) then
-		if (self.windowvid ~= nil and self.windowvid ~= BADID) then delete_image(self.windowvid); end
-		if (self.valvid ~= nil and self.valvid ~= BADID) then delete_image(self.valvid); end
-		self:flush();
-		self.active = true;
-	end
-end
-
 local function ledconf_nextlabel(self, store)
 	if (self.active) then return false; end
 	
@@ -76,26 +124,32 @@ local function ledconf_nextlabel(self, store)
 	self.labelofs = self.labelofs + 1;
 	
 	if (self.labelofs > # self.labels) then
-		self:cleanup();
+		self:destroy();
 	else
 		if (self.msgheader) then
 			delete_image(self.msgheader);
 		end
 		
-		self.msgheader = render_text( self.fontline .. [[Welcome to Arcan ledconf!\r\nPlease set values for label:\n\r\#00ffae]] .. self.labels[self.labelofs] ..
+		self.msgheader = render_text( self.fontline .. [[\#ffffffWelcome to Arcan ledconf!\r\nPlease set values for label:\n\r\#00ffae]] .. self.labels[self.labelofs] ..
 				[[\n\r\#ffffffCtrl:\tLed#]]);
 		local props = image_surface_properties(self.msgheader);
-		resize_image(self.windowvid, props.width + 10, props.height + 40);
-		link_image(self.msgheader, self.windowvid);
+		resize_image(self.window, props.width + 10, props.height + 40);
+		resize_image(self.border, props.width + 16, props.height + 46);
+		
+		link_image(self.msgheader, self.window);
 		image_mask_clear(self.msgheader, MASK_SCALE);
+		image_mask_clear(self.msgheader, MASK_OPACITY);
 		order_image(self.msgheader, 254);
 		move_image(self.msgheader, 5, 5);
 		show_image(self.msgheader);
+		
+		move_image(self.anchor, VRESW * 0.5 - props.width * 0.5, VRESH * 0.5 - (props.height + 10) * 0.5, 0);
 		return true;
 	end
 
 	return false;
 end
+
 
 local function ledconf_drawvals(self)
 	local msg = "";
@@ -113,12 +167,13 @@ local function ledconf_drawvals(self)
 	local props = image_surface_properties(self.msgheader);
 	
 	self.valvid = render_text( msg );
-	link_image(self.valvid, self.windowvid);
+	link_image(self.valvid, self.window);
 	image_clip_on(self.valvid);
 	image_mask_clear(self.valvid, MASK_SCALE);
 	move_image(self.valvid, 5, props.y + props.height + 5, NOW);
 	order_image(self.valvid, 254);
 	show_image(self.valvid);
+	
 end
 
 local function ledconf_flush(self)
@@ -262,7 +317,7 @@ local ledcfgtbl = {
 		labelofs = 0,
 		valvid = BADID,
 		ledfile = "ledsym.lua",
-		new = ledconf_config,
+		new = ledconf_new,
 		input = ledconf_input,
 		toggle = ledconf_toggle,
 		nextlabel = ledconf_nextlabel,
