@@ -270,7 +270,7 @@ function gridle()
 		else
 			remove_zoom();
 		end
-end
+	end
 
 -- the dispatchtable will be manipulated by settings and other parts of the program
     settings.iodispatch["MENU_UP"]      = function(iotbl) play_sample("click.wav"); move_cursor( -1 * ncw); end
@@ -300,7 +300,6 @@ end
 -- Forward all labels that match, but also any translated keys (so that we
 -- can use this as a regular input function as well) 
 	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
-		osdkbd = create_osdkbd();
 		osdkbd:show();
 		settings.inputfun = gridle_input;
 		gridle_input = function(iotbl)
@@ -390,6 +389,7 @@ end
 	gridle_keyconf();
 	gridle_ledconf();
 	init_leds();
+	osdkbd = create_osdkbd();
 end
 
 function cell_coords(x, y)
@@ -468,7 +468,6 @@ function zoom_cursor()
 		
 		local vid = movievid and instance_image(movievid) or instance_image( cursor_vid() );
 -- make sure it is on top
-		warning("zoom, " .. vid .. " with order: " .. max_current_image_order() + 1 .. "\\n");
 		order_image(vid, max_current_image_order() + 1);
 		
 -- we want to zoom using the global coordinate system
@@ -477,18 +476,19 @@ function zoom_cursor()
 		image_mask_clear(vid, MASK_OPACITY);
 		image_mask_clear(vid, MASK_POSITION);
 
+-- grab the parent dimensions so that we can use that
+		props = image_surface_properties( cursor_vid() );
+		local dx = props.x;
+		local dy = props.y;
+		move_image(vid, dx, dy, 0);
+		resize_image(vid, props.width, props.height, 0);
+		
 -- how big should we make it?
-		resize_image(vid, 1, 1, 0);
 		if (aspect < 1.0) then -- vertical video
 			resize_image(vid, 0, VRESH * 0.75, settings.fadedelay);
 		else
 			resize_image(vid, VRESW * 0.75, 0, settings.fadedelay);
 		end
-
-		props = image_surface_properties( cursor_vid() );
-		local dx = props.x;
-		local dy = props.y;
-		move_image(vid, dx, dy, 0);
 
 -- make sure that it fits the current window
 		props = image_surface_properties(vid, settings.fadedelay);

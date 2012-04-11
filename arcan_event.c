@@ -237,7 +237,10 @@ void arcan_event_enqueue(arcan_event* src)
 void arcan_event_keyrepeat(unsigned int rate)
 {
 	current_context.kbdrepeat = rate;
-	SDL_EnableKeyRepeat(current_context.kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
+	if (rate == 0) 
+		SDL_EnableKeyRepeat(current_context.kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
+	else 
+		SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_INTERVAL, current_context.kbdrepeat);
 }
 
 /* probe devices and generate mapping tables */
