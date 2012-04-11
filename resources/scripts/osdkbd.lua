@@ -14,6 +14,10 @@ local keymap = {
 	"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n",
 	"V", "W", "X", "Y", "Z", " ", "%", "0" };
 
+local function gridxy(chrh, col, row)
+	return ( col * chrh ), ( row * chrh );
+end
+	
 local function osdkbd_input(self, label)
 	if (label == "MENU_UP") then self:steprow(-1);
 elseif (label == "MENU_DOWN") then self:steprow(1);
@@ -86,7 +90,8 @@ local function osdkbd_step(self, dir)
 	end
 
 	instant_image_transform(self.cursorvid);
-	move_image(self.cursorvid, self.chrh * (self.curcol - 1), self.chrh * (self.currow), 5);
+	local x,y = gridxy( self.chrh, self.curcol - 1, self.currow );
+	move_image(self.cursorvid, x, y, 5); 
 end
 
 local function osdkbd_steprow(self, dir, noredraw)
@@ -105,7 +110,8 @@ local function osdkbd_steprow(self, dir, noredraw)
 	if (noredraw) then return; end
 	
 	instant_image_transform(self.cursorvid);
-	move_image(self.cursorvid, self.chrh * (self.curcol - 1), self.chrh * (self.currow), 5);
+	local x,y = gridxy( self.chrh, self.curcol - 1, self.currow );
+	move_image(self.cursorvid, x, y, 5); 
 end
 
 local function osdkbd_buildgrid(self, windw, windh)
@@ -114,7 +120,7 @@ local function osdkbd_buildgrid(self, windw, windh)
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
 	self.window = fill_surface(windw - 8, windh - 8, 0, 0, 128);
-	self.border = fill_surface(windw, windh, 255, 255, 255);
+	self.border = fill_surface(windw, windh, 0, 0, 164);
 
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
@@ -133,9 +139,6 @@ local function osdkbd_buildgrid(self, windw, windh)
 	order_image(self.border, vido);
 	order_image(self.window, vido+1);
 
-	show_image(self.border);
-	show_image(self.window);
-
 	local prop = image_surface_properties(self.border);
 	
 	move_image(self.window, 4, 4);
@@ -145,26 +148,24 @@ local function osdkbd_buildgrid(self, windw, windh)
 	self.vidrows = {};
 	for i=1, #self.rows do
 		vidcol = {};
+		
 		for j=1, #self.rows[i] do
 			if type(self.rows[i][j]) == "string" then
 				vidcol[j] = render_text( [[\ffonts/default.ttf,]] .. chrh .. [[\#ffffff]] .. self.rows[i][j]);
 			else
 				vidcol[j] = self.rows[i][j];
 				local props = image_surface_properties( vidcol[j] );
-				if (props.width / props.height > 1.0) then
-					resize_image(vidcol[j], chrh, 0, 0);
-				else
-					resize_image(vidcol[j], 0, chrh, 0);
-				end
+				resize_image(vidcol[j], self.chrh * 0.9, self.chrh * 0.9);
 			end
 
-			local cw = image_surface_properties(vidcol[j]).width;
-
 			link_image(vidcol[j], self.window);
-			move_image(vidcol[j], (j-1) * chrh + ((chrh - cw) * 0.5), chrh + (i-1) * chrh, NOW);
+			local x, y = gridxy( self.chrh, j - 1, i);
+			move_image(vidcol[j], x, y);
 			show_image(vidcol[j]);
 			order_image(vidcol[j], vido+3);
 		end
+
+		table.insert(self.vidrows, vidcol);
 	end
 
 	resize_image(self.border, chrh * self.colmax + 12, chrh + chrh * (#self.rows) + 12);
@@ -187,8 +188,8 @@ local function osdkbd_buildgrid(self, windw, windh)
 end
 
 local function osdkbd_show(self)
-	show_image(self.window);
-	show_image(self.border);
+	blend_image(self.window, 1.0, 5);
+	blend_image(self.border, 1.0, 5);
 end
 
 local function osdkbd_hide(self)
@@ -211,8 +212,8 @@ function create_osdkbd(map)
 	crow  = {};
 	maxcol = 0;
 	restbl.symtable   = system_load("scripts/symtable.lua")();
-	restbl.enterimage = load_image("enterarrow.png");
-	restbl.leftimage  = load_image("leftarrow.png");
+	restbl.enterimage = load_image("ok.png");
+	restbl.leftimage  = load_image("remove.png");
 	force_image_blend(restbl.enterimage);
 	force_image_blend(restbl.leftimage);
 	table.insert(restbl.keymap, restbl.leftimage);
@@ -249,7 +250,8 @@ function create_osdkbd(map)
 	restbl.steprow= osdkbd_steprow;
 
 	osdkbd_buildgrid(restbl, VRESW, VRESH);
-	move_image(restbl.cursorvid, restbl.chrh * (restbl.curcol - 1), restbl.chrh * (restbl.currow));
+	local x,y = gridxy( restbl.chrh, restbl.curcol - 1, restbl.currow );
+	move_image(restbl.cursorvid, x, y);
 	osdkbd_update(restbl);
 	return restbl;
 end

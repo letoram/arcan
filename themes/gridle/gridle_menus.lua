@@ -356,7 +356,7 @@ function gridlemenu_settings()
 				update_status();
 			end
 		end
-		
+
 	settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
 			selectlbl = current_menu:select();
 			if (current_menu.ptrs[selectlbl]) then
