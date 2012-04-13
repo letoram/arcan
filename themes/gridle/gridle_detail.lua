@@ -194,7 +194,11 @@ function gridledetail_internalinput(iotbl)
 
 	if (restbl) then
 		for ind,val in pairs(restbl) do
-			if (iotbl.active and val == "ZOOM_CURSOR") then
+			print(val);
+			if (iotbl.active and val == "MENU_TOGGLE" and detailview.fullscreen) then
+				gridlemenu_internal(detailview.internal_vid);
+				return;
+			elseif (iotbl.active and val == "ZOOM_CURSOR") then
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
 					hide_image(detailview.internal_vid);
@@ -203,7 +207,7 @@ function gridledetail_internalinput(iotbl)
 				else
 					detailview.fullscreen = true;
 					show_image(detailview.internal_vid);
-
+					
 					local props = image_surface_properties(detailview.internal_vid);
 					
 					if (props.width / props.height > 1.0) then -- horizontal game
@@ -215,8 +219,9 @@ function gridledetail_internalinput(iotbl)
 							move_image(detailview.internal_vid, 0.5 * (VRESW - props.width), 0, NOW);
 						end
 					end
-	
+
 					hide_image(detailview.model.vid);
+					order_image(detailview.internal_vid, max_current_image_order() + 1); 
 					return;
 				end
 			elseif (iotbl.active and val == "MENU_ESCAPE") then
@@ -462,5 +467,5 @@ function gridledetail_show(detailres, gametbl, ind)
 		settings.iodispatch = griddispatch;
 	end
 
-	erase_grid(false);
+--	erase_grid(false);
 end

@@ -1369,9 +1369,9 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 			switch (*(base+1)) {
 					char* fontbase = base+1;
 					char* numbase;
-					char cbuf[3] = {0};
+					char cbuf[3];
 
-					/* missing; halign row, lalign row, ralign row */
+/* missing; halign row, lalign row, ralign row */
 				case '!':
 					inv = true;
 					base++;
@@ -1412,25 +1412,28 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 						if (!isxdigit(*base) || !isxdigit(*(base+1))) {
 							arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
 							*ok = false;
-// 							return failed;
+ 							return failed;
 						}
 
 						base += 2;
 					}
-					/* now we know 6 valid chars are there, time to collect. */
+/* now we know 6 valid chars are there, time to collect. */
 					cbuf[0] = *(base - 6);
 					cbuf[1] = *(base - 5);
+					cbuf[2] = 0;
 					prev.col.r = strtol(cbuf, 0, 16);
 					cbuf[0] = *(base - 4);
 					cbuf[1] = *(base - 3);
+					cbuf[2] = 0;
 					prev.col.g = strtol(cbuf, 0, 16);
 					cbuf[0] = *(base - 2);
 					cbuf[1] = *(base - 1);
+					cbuf[2] = 0;
 					prev.col.b = strtol(cbuf, 0, 16);
 
 					break;
 
-// 					/* read 6(+2) characters, convert in pairs of two to hex, fill SDL_Color and set .alpha */
+/* read 6(+2) characters, convert in pairs of two to hex, fill SDL_Color and set .alpha */
 					break;
 				case 'f':
 					fontbase = (base += 2);
@@ -2710,11 +2713,16 @@ void arcan_video_refresh_GL(float lerp)
 	arcan_vobject* world = &current_context->world;
 
 	arcan_debug_pumpglwarnings("refreshGL:pre3d");
+
 /* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
 
+/* skip a possible 3d pipeline */
+	while (current && current->elem->order < 0) 
+		current = current->next;
+	
 	arcan_debug_pumpglwarnings("refreshGL:pre2d");
 	if (current){
 	/* make sure we're in a decent state for 2D */
@@ -2804,9 +2812,8 @@ void arcan_video_refresh_GL(float lerp)
 		}
 	}
 
+/* reset and try the 3d part again if requested */
 	current = current_context->first;
-
-/* first, handle all 3d work (which may require multiple passes etc.) */
 	if (arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
@@ -3069,7 +3076,7 @@ bool arcan_video_prepare_external()
 unsigned arcan_video_maxorder()
 {
 	arcan_vobject_litem* current = current_context->first;
-	unsigned order = 0;
+	int order = 0;
 	
 	while (current){
 		if (current->elem && current->elem->order > order)

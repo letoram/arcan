@@ -79,7 +79,6 @@ function gridle_video_event(source, event)
 			end
 
 -- any update in display size need to be reflected in the shader 
-			print("got a resize, fullscreen shader? " .. fullscreen_shader .. " on source " .. source);
 			if (fullscreen_shader) then
 				gridlemenu_resize_fullscreen(source);
 			end
@@ -234,12 +233,12 @@ function osdkbd_filter(msg)
 end
 
 function gridle()
-    system_load("scripts/keyconf.lua")();
-    system_load("scripts/keyconf_mame.lua")();
-    system_load("scripts/ledconf.lua")();
+	system_load("scripts/keyconf.lua")();
+	system_load("scripts/keyconf_mame.lua")();
+	system_load("scripts/ledconf.lua")();
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/osdkbd.lua")();
-    system_load("gridle_menus.lua")();
+	system_load("gridle_menus.lua")();
 	system_load("gridle_detail.lua")();
 
 	video_3dorder(ORDER_LAST);
@@ -820,7 +819,6 @@ function gridle_shutdown()
 		close_rawresource();
 	end
 end
-
 
 -- these should match those of 
 -- (a) the standard settings table (all should be set),

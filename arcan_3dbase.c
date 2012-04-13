@@ -332,7 +332,7 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 	glClear(GL_DEPTH_BUFFER_BIT);
 	glColor4f(1.0, 1.0, 1.0, 1.0);
 	
-	while(base){
+	if (base){
 		float matr[16], dmatr[16];
 		arcan_vobject* parent = arcan_video_getobject(base->parent);
 		surface_properties dprops = {0};

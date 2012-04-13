@@ -185,12 +185,21 @@ int main(int argc, char* argv[])
 		goto error;
 	}
 
-	char* dbname = arcan_find_resource(dbfname, ARCAN_RESOURCE_SHARED);
+	char* dbname = arcan_expand_resource(dbfname, true);
 
+/* try to open the specified database,
+ * if that fails, warn, try to create an empty database and if that fails, give up. */
 	dbhandle = arcan_db_open(dbname, arcan_themename);
 	if (!dbhandle) {
-		arcan_fatal("Couldn't open database (requested:%s)=>(resource found:%s).\n", dbfname, dbname);
-		goto error;
+		arcan_warning("Couldn't open database (requested: %s), trying to create a new one.\n", dbfname);
+		FILE* fpek = fopen(dbname, "a");
+		if (fpek){
+			fclose(fpek);
+			dbhandle = arcan_db_open(dbname, arcan_themename);
+		}
+		
+		if (!dbhandle)
+			goto error;
 	}
 	free(dbname);
 
