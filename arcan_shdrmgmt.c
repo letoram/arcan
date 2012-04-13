@@ -312,23 +312,25 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 			if (strcmp((*current)->label, label) == 0)
 				break;
 
-/* found? then countinue, else allocate new and return that loc */
-		if (*current)
+/* found? then continue, else allocate new and return that loc */
+		if (*current){
 			loc = (*current)->loc;
-		else {
-			loc = glGetUniformLocation(slot->prg_container, label);
-			if (loc >= 0){
-				*current = (struct shaderv*) malloc( sizeof(struct shaderv) );
-				(*current)->label = strdup(label);
-				(*current)->loc = loc;
-				(*current)->type = type;
-				(*current)->next  = NULL;
-				memcpy((*current)->data, value, sizetbl[type]);
+			if ((*current)->type != type){
+					arcan_warning("arcan_shader_forceunif(), type mismatch for persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
 			}
-			else; /* no need to check for this one, LOC will be -1, check further down fails and gives errormsg */
 		}
+		else { 
+			loc = glGetUniformLocation(slot->prg_container, label);
+			*current = (struct shaderv*) malloc( sizeof(struct shaderv) );
+			(*current)->label = strdup(label);
+			(*current)->loc = loc;
+			(*current)->type = type;
+			(*current)->next  = NULL;
+		}
+		
+		memcpy((*current)->data, value, sizetbl[type]);
 	}
-/* or, we just want to update the uniform ONCE (disappear on push/pop) */
+/* or, we just want to update the uniform ONCE (disappear on push/pop etc.) */
 	else
 		loc = glGetUniformLocation(slot->prg_container, label);
 	
