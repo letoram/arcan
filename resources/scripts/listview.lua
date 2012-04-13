@@ -67,9 +67,14 @@ local function listview_redraw(self)
 	
     renderstr = self.fontstr;
     for ind = self.page_beg, self.page_end do
-		tmpname = self.list[ind];
-		renderstr = renderstr .. tmpname .. [[\n\r]];
-    end
+			local tmpname = self.list[ind];
+			local fmt = self.formats[ tmpname ];
+			if (fmt) then
+				renderstr = renderstr .. fmt .. tmpname .. [[\n\r]];
+			else
+				renderstr = renderstr .. [[\#ffffff]] .. tmpname .. [[\n\r]];
+			end
+		end
 
 -- self.list_lines is GCed, .list is "not"
 	self.listvid, self.list_lines = render_text(renderstr, self.vspace);
@@ -146,7 +151,11 @@ local function listview_calcpage(self, number, size, limit)
     return page_start + 1, offset + 1, page_end;
 end
 
-function listview_create(elem_list, height, maxw, font, fontsize)
+function listview_format(formatlbls)
+	restbl.formats = formatlbls;
+end
+
+function listview_create(elem_list, height, maxw, font, fontsize, formatlist)
 	restbl = {};
 	restbl.anchor = fill_surface(1, 1, 0, 0, 0);
 	restbl.cursorvid = fill_surface(1, 1, 255, 255, 255);
@@ -163,7 +172,7 @@ function listview_create(elem_list, height, maxw, font, fontsize)
 	
 	if (font) then
 		restbl.fontsize = fontsize;
-		restbl.fontstr  = font .. "," .. fontsize .. " "; 
+		restbl.fontstr  = [[\#ffffff\f]] .. font .. "," .. fontsize .. " "; 
 	else
 		restbl.fontsize = 18;
 		restbl.fontstr  = [[\#ffffff\ffonts/default.ttf,18 ]];
@@ -181,9 +190,11 @@ function listview_create(elem_list, height, maxw, font, fontsize)
 	restbl.redraw = listview_redraw;
 	restbl.select = listview_select;
 	restbl.calcpage = listview_calcpage;
-	
+	restbl.formats = formatlist;
 	restbl.elements = elem_list;
 
+	if (restbl.formats == nil) then restbl.formats = {}; end
+	
 	restbl.order = 0;
 	restbl:window_color(0, 0, 255, 0, 0, 164);
 	restbl:window_opacity(0.2, 0.8);

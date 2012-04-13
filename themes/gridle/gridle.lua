@@ -33,6 +33,7 @@ settings = {
 	celll_width = 48,
 	cell_height = 48,
 	
+	fullscreenshader = "default";
 	in_internal = false
 };
 
@@ -54,33 +55,44 @@ end
 
 function gridle_video_event(source, event)
 	if (event.kind == "resized") then
-		if (not in_internal) then -- multiple resizes shouldn't trigger this
-			in_internal = true;
-			erase_grid(true);
-			if (movievid and movievid ~= BADID) then delete_image(movievid); movievid = nil; end
+
+-- a launch_internal almost immediately generates this event, so a decent trigger to use
+	if (not in_internal) then
+		in_internal = true;
+
+-- don't need these running in the background 
+		erase_grid(true);
+		if (movievid and movievid ~= BADID) then 
+			delete_image(movievid); 
+			movievid = nil; 
 		end
-	
-		if (source == internal_vid) then
+	end
+
+-- shouldn't ever really mismatch 
+	if (source == internal_vid) then
+-- this calculation is "slightly" more difficult when we consider rotated displays,
+-- mismatch in aspect ratio, use of additional overlay graphics etc.
 			if (event.width / event.height > 1.0) then
 				resize_image(source, VRESW, 0, NOW);
 			else
 				resize_image(source, 0, VRESH, NOW);
 			end
-			
+
+-- any update in display size need to be reflected in the shader 
+			print("got a resize, fullscreen shader? " .. fullscreen_shader .. " on source " .. source);
 			if (fullscreen_shader) then
-				gridlemenu_update_fullscreen(source);
-				image_shader(source, fullscreen_shader);
+				gridlemenu_resize_fullscreen(source);
 			end
 			
 			show_image(source);
 		end
 	end
+	
 end
 
 function gridle_keyconf()
 	local keylabels = {
-        "rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP",
-        "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" OSD_KEYBOARD", "ACURSOR_X", "ACURSOR_Y"};
 
 	if (INTERNALMODE ~= "NO SUPPORT") then
@@ -88,9 +100,10 @@ function gridle_keyconf()
 		system_load("gridle_intmenus.lua")();
 	end
 	
-    keyconfig = keyconf_create(1, keylabels);
-    keyconfig.iofun = gridle_input;
-	if (keyconfig.active == false) then
+		keyconfig = keyconf_create(1, keylabels);
+		keyconfig.iofun = gridle_input;
+	
+		if (keyconfig.active == false) then
 		kbd_repeat(0);
 		
 		gridle_input = function(iotbl) -- keyconfig io function hook
@@ -360,6 +373,7 @@ function gridle()
 		resize_image(background, VRESW, VRESH, NOW);
 		order_image(background, max_current_image_order() + 1);
 		order_image(internal_vid, max_current_image_order() + 1);
+		gridlemenu_loadshader(settings.fullscreenshader);
 	end
 	
 -- the analog conversion for devices other than mice is so-so atm.
@@ -538,7 +552,7 @@ function remove_zoom()
 		local props = image_surface_properties( cursor_vid() );
 		move_image(imagery.zoomed, props.x, props.y, settings.fadedelay);
 		blend_image(imagery.zoomed, 0.0, settings.fadedelay);
-		resize_image(imagery.zoomed,1,1, settings.fadedelay);
+		resize_image(imagery.zoomed,settings.cell_width, settings.cell_height, settings.fadedelay);
 		expire_image(imagery.zoomed, settings.fadedelay);
 		imagery.zoomed = BADID;
 	end
@@ -836,6 +850,11 @@ function load_settings()
 	local sort = get_key("sortorder");
 	if (sort and sort ~= "Default") then
 		settings.sortlbl = sort;
+	end
+
+	local fullscreenshader = get_key("defaultshader");
+	if (fullscreenshader) then
+		settings.fullscreenshader = get_key("defaultshader");
 	end
 	
 	local repeatrate = get_key("repeatrate");
