@@ -13,7 +13,7 @@
 
 system_load("scripts/listview.lua")();
 
-function menu_spawnmenu(list, listptr)
+function menu_spawnmenu(list, listptr, fmtlist)
 	if (#list < 1) then
 		return nil;
 	end
@@ -26,11 +26,12 @@ function menu_spawnmenu(list, listptr)
 		windsize = VRESH - props.y;
 	end
 
-	current_menu = listview_create(list, windsize, VRESW / 3);
+	current_menu = listview_create(list, windsize, VRESW / 3,"fonts/default.ttf", 18,  fmtlist);
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
 
 	move_image( current_menu:window_vid(), props.x + props.width + 6, props.y);
+	return current_menu;
 end
 
 -- static menu entries
@@ -178,23 +179,80 @@ local function sortordercb(label, save)
 end
 for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
 
+-- These submenus all follow the same pattern,
+-- lookup label matches the name of the entry, force a different formatting (cyan) for the current value,
+-- and set the "favorite" (default / stored) value to green
 local settingsptrs = {};
-settingsptrs["Sort Order..."]    = function() menu_spawnmenu(sortorderlbls, sortorderptrs); end
+settingsptrs["Sort Order..."]    = function() 
+	local fmts = {};
+	fmts[ settings.sortlbl ] = "\\#00ffff";
+	if ( get_key("sortorder") ) then
+		fmts[ get_key("sortorder") ] = "\\#00ff00";
+	end
+	menu_spawnmenu(sortorderlbls, sortorderptrs, fmts); 
+end
+
 settingsptrs["Reconfigure Keys"] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
 
-settingsptrs["LED display mode"] = function() menu_spawnmenu(ledmodelbls, ledmodeptrs); end
-settingsptrs["Key Repeat Rate"]  = function() menu_spawnmenu(repeatlbls, repeatptrs); end
+settingsptrs["LED display mode"] = function() 
+	local fmts = {};
+
+	fmts[ ledmodelbls[ tonumber(settings.ledmode) + 1] ] = "\\#00ffff";
+	if (get_key("ledmode")) then
+		fmts[ ledmodelbls[ tonumber(get_key("ledmode")) + 1] ] = "\\#00ff00";
+	end
+	
+	menu_spawnmenu(ledmodelbls, ledmodeptrs, fmts); 
+end
+
+settingsptrs["Key Repeat Rate"]  = function() 
+	local fmts = {};
+
+	fmts[ tostring( settings.repeat_rate) ] = "\\#00ffff";
+	if (get_key("repeatrate")) then
+		fmts[ get_key("repeatrate") ] = "\\#00ff00";
+	end
+	
+	menu_spawnmenu(repeatlbls, repeatptrs, fmts); 
+end
+
 settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
 end
-settingsptrs["Fade Delay"] = function() menu_spawnmenu(fadedelaylbls, fadedelayptrs); end
-settingsptrs["Transition Delay"] = function() menu_spawnmenu(transitiondelaylbls, transitiondelayptrs); end
+settingsptrs["Fade Delay"] = function() 
+	local fmts = {};
+	fmts[ tostring( settings.fadedelay ) ] =  "\\#00ffff";
+	if (get_key("fadedelay")) then
+		fmts[ get_key("fadedelay") ] = "\\#00ff00";
+	end
+	
+	menu_spawnmenu(fadedelaylbls, fadedelayptrs, fmts); 
+end
 
-settingsptrs["Cell Size"]        = function() menu_spawnmenu(gridlbls, gridptrs); end
+settingsptrs["Transition Delay"] = function() 
+	local fmts = {};
+	fmts[ tostring( settings.transitiondelay ) ] = "\\#00ffff";
+	if (get_key("transitiondelay")) then
+		fmts[ get_key("transitiondelay") ] = "\\#00ff00";
+	end
+
+	menu_spawnmenu(transitiondelaylbls, transitiondelayptrs, fmts); 
+end
+
+settingsptrs["Cell Size"] = function()
+	local fmts = {};
+	fmts[ tostring(settings.cell_width) .. "x" .. tostring(settings.cell_height) ] = "\\#00ffff";
+	if (get_key("cell_width") and get_key("cell_height")) then
+		fmts[ get_key("cell_width") .. "x" .. get_key("cell_height") ] = "\\#00ff00";
+	end
+
+	menu_spawnmenu(gridlbls, gridptrs, fmts); 
+end
+
 settingsptrs["Repeat Rate"]      = function() menu_spawnmenu(repeatlbls, repeatptrs); end
 
 local function update_status()
@@ -385,5 +443,5 @@ function gridlemenu_settings()
 
 -- add an info window
 	update_status();
-	move_image(current_menu:window_vid(), 100, 120, settings.fadedelay);
+	move_image(current_menu:window_vid(), 100, 140, settings.fadedelay);
 end
