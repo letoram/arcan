@@ -350,7 +350,6 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		if (target)
 			sqlite3_bind_text(stmt, ofs++, target, -1, SQLITE_TRANSIENT);
 	}
-
 	/* Iterate rows of the result set,
 	 * allocate cells in blocks of 8,
 	 * ctrlinput filter is applied AFTER data from a row has been retrieved */
@@ -663,16 +662,12 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 	if (!fname)
 		return NULL;
 
-/* create an empty one if no-one was found */
-	FILE* fpek = fopen(fname, "a");
-	if (fpek)
-		fclose(fpek);
-
 	if (!db_init) {
 		int rv = sqlite3_initialize();
 		atexit(sqliteexit);
 		assert(rv == SQLITE_OK);
 	}
+	
 	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL)) == SQLITE_OK) {
 		arcan_dbh* res = (arcan_dbh*) calloc(sizeof(arcan_dbh), 1);
 		res->dbh = dbh;

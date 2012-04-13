@@ -27,17 +27,17 @@ function welcome()
 
 	games = [[#games:\t\t]] .. tostring( # gamelst ); 
 	display = [[resolution:\t\t]] .. tostring(VRESH) .. "x" .. tostring(VRESW);
-	internal_clock = [[clock:         \t]] .. tostring(CLOCK) .. " hz";
+	internal_clock = [[clock:         \t]] .. tostring(CLOCKRATE) .. " hz";
 	hardware = [[#joysticks:\t\t]] .. tostring(JOYSTICKS) .. [[\n\r#ledctrls:\t\t]] .. tostring(LEDCONTROLLERS);
 	pathstr = [[themepath:\t\t]] .. tostring(THEMEPATH) .. [[\n\rresourcepath:\t ]] .. tostring(RESOURCEPATH) ..
 		[[\n\rbinpath:\t\t ]] .. tostring(BINPATH) ..
 		[[\n\rlibpath:\t\t ]] .. tostring(LIBPATH);
 	internalmode = [[internal mode:\t]] .. tostring(INTERNALMODE);
 
-	vid = render_text( welcomestr .. [[\n\r\ffonts/default.ttf,12]] .. games .. [[\n\r]] .. hardware .. [[\n\r]] .. internal_clock .. 
+	datawindow = render_text( welcomestr .. [[\n\r\ffonts/default.ttf,12]] .. games .. [[\n\r]] .. hardware .. [[\n\r]] .. internal_clock .. 
 	[[\n\r]] .. display .. [[\n\r]] .. pathstr .. [[\n\r]] .. internalmode );
 
-	vid2 = render_text( [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b\n\r\ffonts/default.ttf,12
+	argwindow = render_text( [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b\n\r\ffonts/default.ttf,12
 	-w res  \t(default: 640)\n\r
 	-h res  \t(default: 480)\n\r
 	-f      \tswitch resolution\n\r
@@ -46,12 +46,15 @@ function welcome()
 	-p pname\tforce resource path\n\r
 	-t tname\tforce theme path\n\r
 	-o fname\tforce frameserver\n\r
+  -l hijacklib\tforce hijack lib\n\r
 	-d fname\tdatabase filename\n\r
 	-g      \tenable (partial) debug output\n\r
-	-r num  \tset texture mode: (0, 1, 2)\n\t]] );
+	-a      \tmultisamples (default 4, disable 0)\n\r
+	-S      \t0dB global audio output\n\r
+	-r num  \tset texture scale mode: (0, 1, 2)\n\t]] );
 
-	move_image(vid2, VRESW - image_surface_properties(vid2).width, 105);
-	move_image(vid, 10, 24);
+	move_image(datawindow, VRESW - image_surface_properties(argwindow).width, 24);
+	move_image(argwindow, 10, 24);
 		
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;
@@ -63,7 +66,10 @@ function welcome()
 		last_leds[i] = controller_leds(i) - 1;
 	end	
 	
-	show_image(vid);
+	show_image(datawindow);
+	show_image(argwindow);
+	
+	c64_open();
 end
 
 function welcome_input( inputtbl ) 
@@ -74,9 +80,32 @@ function welcome_input( inputtbl )
 	end
 end
 
+function c64_open( )
+	system_load("scripts/textfader.lua")();
+	
+	local props = image_surface_properties(datawindow)
+	local wh = VRESH - (props.y + props.height);
+	
+	c64_bgwindow = fill_surface(VRESW, VRESH - wh, 200, 194, 242);
+	c64_fgwindow = fill_surface(VRESW - 40, wh - 40, 52, 42, 190);
+
+	c64_text = textfader_create( [[\fC64_User_Mono_v1.0-STYLE.ttf,12 \#c8c1fa \n\r**** COMMODORE 64 BASIC V2 ****\n\r 64K RAM SYSTEM  38911 BASIC BYTES FREE\n\r
+		\n\rPlaying: Den Indre Kilde, Kjell Nordbo(1977-2005)\n\rREADY.\n\r\n\rRIP Jacek Trzmiel(1928-8 April 2012)\n\rThanks for everything.]], 30, props.y + props.height + 30, 1.0, 10 );
+	
+	move_image(c64_bgwindow, 0, props.y + props.height + 10);
+	move_image(c64_fgwindow, 20, props.y + props.height + 25);
+
+	blend_image(c64_bgwindow, 1.0, 200);
+	blend_image(c64_fgwindow, 1.0, 200);
+	
+	local astream = stream_audio("kilde.ogg");
+	play_audio(astream);
+
+	countdown = CLOCKRATE * 180;
+end
+
 -- tinker with the LEDs if they're present and working
 function welcome_clock_pulse()
-	
 	ltime = ltime - 1;
 	if ltime == 0 then
 		for k, v in pairs(last_leds) do
@@ -87,4 +116,16 @@ function welcome_clock_pulse()
 		
 		ltime = 50;
 	end
+	
+	if (countdown > 0) then
+		countdown = countdown - 1;
+		if (countdown == 0) then
+			blend_image(c64_bgwindow, 0.0, 10);
+			blend_image(c64_fgwindow, 0.0, 10);
+			blend_image(c64_text.rmsg, 0.0, 10);
+			c64_text = nil;	
+		end
+	end
+		
+	if (c64_text) then c64_text:step(); end
 end

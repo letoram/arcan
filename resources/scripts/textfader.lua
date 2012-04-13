@@ -24,7 +24,7 @@ local function formatskip(str, ofs)
 			break;
 		end
 
--- proper escaping for backslash
+-- proper escaping for backslasht
 		if (ch2 == "\\") then 
 			break;
 		end
