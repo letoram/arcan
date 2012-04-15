@@ -11,7 +11,6 @@
 --  sortorder => settings.sortlbl
 -- 
 
-system_load("scripts/listview.lua")();
 
 function menu_spawnmenu(list, listptr, fmtlist)
 	if (#list < 1) then
