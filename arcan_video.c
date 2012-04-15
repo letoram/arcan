@@ -953,37 +953,35 @@ static int thread_loader(void* in)
 	
 /* while this happens, the following members of the struct are not to be touched elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
-	
-    arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
+	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
 	result.data.video.data = (void*) localargs->tag;
 	
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
-        result.data.video.constraints.w = dst->origw;
-        result.data.video.constraints.h = dst->origh;
-		
+		result.data.video.constraints.w = dst->origw;
+		result.data.video.constraints.h = dst->origh;
 	} else {
-        dst->origw = 32;
-        dst->origh = 32;
+		dst->origw = 32;
+		dst->origh = 32;
 		dst->default_frame.s_raw = 32 * 32 * 4;
 		dst->default_frame.raw = (uint8_t*) malloc(dst->default_frame.s_raw);
 		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
 		dst->gl_storage.w = 32;
 		dst->gl_storage.h = 32;
-        result.data.video.constraints.w = 32;
-        result.data.video.constraints.h = 32;
+		result.data.video.constraints.w = 32;
+		result.data.video.constraints.h = 32;
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;
 		/* emit FAILED event */
-    }
+	}
 
-    result.data.video.source = localargs->dstid;
+	result.data.video.source = localargs->dstid;
 	result.category = EVENT_VIDEO;
 
 	arcan_event_enqueue(&result);
 	free(localargs->fname);
 	free(localargs);
 	
-    return 0;
+	return 0;
 }
 
 /* create a new vobj, fill it out with enough vals that we can treat it 
@@ -1006,8 +1004,8 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, i
 	
 	args->fname = strdup(fname);
 	args->tag = tag;
-    args->dst->state.tag = ARCAN_TAG_ASYNCIMG;
-    args->dst->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
+	args->dst->state.tag = ARCAN_TAG_ASYNCIMG;
+	args->dst->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
 	
 	return rv;
 }
@@ -2581,8 +2579,8 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		
 		if (tf->move.startt)
 			dprops->position = lerp_vector(tf->move.startp,
-										   tf->move.endp,
-										   lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp));
+				tf->move.endp,
+				lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp));
 	
 		if (tf->scale.startt)
 			dprops->scale = lerp_vector(tf->scale.startd, tf->scale.endd, lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp));
@@ -2668,6 +2666,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
 	matr_quatf(norm_quat (prop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, imatr, omatr);
+	
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	arcan_shader_envv(OBJ_OPACITY, &prop.opa, sizeof(float));
 
@@ -3010,7 +3009,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 					rv.scale = current->scale.endd;
 				else if (current->scale.startt == ticks)
 					rv.scale = current->scale.startd;
-				else{ /* need to interpolate */
+				else{
 					float fract = lerp_fract(current->scale.startt, current->scale.endt, ticks);
 					rv.scale = lerp_vector(current->scale.startd, current->scale.endd, fract);
 				}
@@ -3025,7 +3024,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 					rv.opa = current->blend.endopa;
 				else if (current->blend.startt == ticks)
 					rv.opa = current->blend.startopa;
-				else{ /* need to interpolate */
+				else{
 					float fract = lerp_fract(current->blend.startt, current->blend.endt, ticks);
 					rv.opa = lerp_val(current->blend.startopa, current->blend.endopa, fract);
 				}
@@ -3040,7 +3039,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
 					rv.rotation = current->rotate.endo;
 				else if (current->rotate.startt == ticks)
 					rv.rotation = current->rotate.starto;
-				else{ /* need to interpolate */
+				else{ 
 					float fract = lerp_fract(current->rotate.startt, current->rotate.endt, ticks);
 					rv.rotation.quaternion = nlerp_quat(current->rotate.starto.quaternion, current->rotate.endo.quaternion, fract);
 				}

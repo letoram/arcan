@@ -1352,7 +1352,14 @@ int arcan_lua_framesetalloc(lua_State* ctx)
 	
 	return 0;
 }
-	
+
+int arcan_lua_pushasynch(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_video_pushasynch(sid);
+	return 0;
+}
+
 int arcan_lua_activeframe(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
@@ -2545,6 +2552,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:image_framesetsize,vid,ncells,nil */
 	lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
+
+/* item:image_pushasynch,vid,nil */
+	lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
 	
 /* item:image_activeframe,vid,num,nil */
 	lua_register(ctx, "image_active_frame", arcan_lua_activeframe);

@@ -1,9 +1,47 @@
-
 grid = {};
 
-imagery = { 
- zoomed = BADID;
+-- shared images, statebased vids etc.
+imagery = {
+	movie = nil,
+	black = BADID,
+	white = BADID,
+	bgimage = BADID, 
+	zoomed = BADID
 };
+
+soundmap = {
+	MENU_TOGGLE    = "sounds/menu_toggle.wav",
+	MENU_FADE      = "sounds/menu_fade.wav",
+	MENUCURSOR_MOVE= "sounds/menucursor_move.wav",
+	GRIDCURSOR_MOVE= "sounds/gridcursor_move.wav",
+	GRID_NEWPAGE   = "sounds/grid_newpage.wav",
+	GRID_RANDOM    = "sounds/click.wav",
+	SUBMENU_TOGGLE = "sounds/menu_toggle.wav",
+	SUBMENU_FADE   = "sounds/menu_fade.wav",
+	LAUNCH_INTERNAL= "sounds/launch_internal.wav",
+	LAUNCH_EXTERNAL= "sounds/launch_external.wav",
+	SWITCH_GAME    = "sounds/switch_game.wav",
+	DETAIL_VIEW    = "sounds/detail_view.wav",
+	SET_FAVORITE   = "sounds/set_favorite.wav",
+	CLEAR_FAVORITE = "sounds/clear_favorite.wav",
+	OSDKBD_TOGGLE  = "sounds/osdkbd_show.wav",
+	OSDKBD_MOVE    = "sounds/gridcursor_move.wav",
+	OSDKBD_ENTER   = "sounds/osdkb.wav",
+	OSDKBD_ERASE   = "sounds/click.wav",
+	OSDKBD_SELECT  = "sounds/osdkbd_select.wav",
+	OSDKBD_HIDE    = "sounds/osdkbd_hide.wav"
+};
+
+-- constants,
+ BGLAYER = 0;
+ GRIDBGLAYER = 1;
+ GRIDLAYER = 3;
+ GRIDLAYER_MOVIE = 2;
+ 
+ ICONLAYER = 4;
+ 
+ ZOOMLAYER = 6;
+ ZOOMLAYER_MOVIE = 5;
 
 settings = {
 	filters = {
@@ -11,6 +49,7 @@ settings = {
 	
 	sortlbl = "Ascending",
 	viewmode = "Grid",
+	scalemode = "Keep Aspect",
 	iodispatch = {},
 
 	fadedelay = 10,
@@ -33,7 +72,12 @@ settings = {
 	celll_width = 48,
 	cell_height = 48,
 	
-	fullscreenshader = "default";
+	cooldown = 15,
+	cooldown_start = 15,
+	zoom_countdown = 0,
+	
+	flipinputaxis = false,
+	fullscreenshader = "default",
 	in_internal = false
 };
 
@@ -55,38 +99,24 @@ end
 
 function gridle_video_event(source, event)
 	if (event.kind == "resized") then
-
 -- a launch_internal almost immediately generates this event, so a decent trigger to use
-	if (not in_internal) then
-		in_internal = true;
+		if (not in_internal) then
+			in_internal = true;
 
 -- don't need these running in the background 
-		erase_grid(true);
-		if (movievid and movievid ~= BADID) then 
-			delete_image(movievid); 
-			movievid = nil; 
+			erase_grid(true);
+			if (imagery.movie and imagery.movie ~= BADID) then 
+				delete_image(imagery.movie); 
+				imagery.movie = nil; 
+			end
 		end
-	end
 
 -- shouldn't ever really mismatch 
-	if (source == internal_vid) then
--- this calculation is "slightly" more difficult when we consider rotated displays,
--- mismatch in aspect ratio, use of additional overlay graphics etc.
-			if (event.width / event.height > 1.0) then
-				resize_image(source, VRESW, 0, NOW);
-			else
-				resize_image(source, 0, VRESH, NOW);
-			end
-
--- any update in display size need to be reflected in the shader 
-			if (fullscreen_shader) then
-				gridlemenu_resize_fullscreen(source);
-			end
-			
-			show_image(source);
+		if (source == internal_vid) then
+				gridlemenu_resize_fullscreen(internal_vid);
+				show_image(source); -- might be redundant
 		end
 	end
-	
 end
 
 function gridle_keyconf()
@@ -149,7 +179,7 @@ function table.find(table, label)
 end
 
 function spawn_magnify( src )
-	local vid = instance_image(magnifyimage);
+	local vid = instance_image(imagery.magnifyimage);
 	local w = settings.cell_width * 0.1;
 	local h = settings.cell_height * 0.1;
 	
@@ -159,7 +189,7 @@ function spawn_magnify( src )
 
 	local props = image_surface_properties( src );
 	move_image(vid, props.x - (settings.cell_width * 0.05) + w + 4, props.y + (settings.cell_width * 0.05), 0);
-	order_image(vid, 4);
+	order_image(vid, ICONLAYER);
 	blend_image(vid, 1.0, settings.fadedelay);
 	resize_image(vid, 1, 1, NOW);
 	resize_image(vid, w, h, 10);
@@ -188,14 +218,14 @@ function spawn_warning( message )
 end
 
 function spawn_favoritestar( src )
-	local vid = instance_image(starimage);
+	local vid = instance_image(imagery.starimage);
 	image_mask_clear(vid, MASK_SCALE);
 	image_mask_clear(vid, MASK_OPACITY);
 	force_image_blend(vid);
 
 	local props = image_surface_properties( src );
 	move_image(vid, props.x - (settings.cell_width * 0.05), props.y - (settings.cell_width * 0.05), 0);
-	order_image(vid, 4);
+	order_image(vid, ICONLAYER);
 	blend_image(vid, 1.0, settings.fadedelay);
 	resize_image(vid, 1, 1, NOW);
 	resize_image(vid, settings.cell_width * 0.1, settings.cell_height * 0.1, 10);
@@ -233,16 +263,17 @@ function osdkbd_filter(msg)
 end
 
 function gridle()
-	system_load("scripts/keyconf.lua")();
-	system_load("scripts/keyconf_mame.lua")();
-	system_load("scripts/ledconf.lua")();
-	system_load("scripts/3dsupport.lua")();
-	system_load("scripts/osdkbd.lua")();
-	system_load("gridle_menus.lua")();
-	system_load("gridle_detail.lua")();
+-- grab all dependencies;
+	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
+	system_load("scripts/keyconf.lua")();        -- input configuration dialoges
+	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
+	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
+	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus)
+	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
+	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
+	system_load("gridle_menus.lua")();           -- in-frontend configuration options
+	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 
-	video_3dorder(ORDER_LAST);
-	
 -- make sure that the engine API version and the version this theme was tested for, align.
 	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 4) then
 		msg = "Engine/Script API version match, expected 0.4, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
@@ -254,48 +285,61 @@ function gridle()
 	if (VRESW < 256 or VRESH < 256) then
 	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested. Check -w / -h arguments.");
 	end
-	
-	load_settings();
-	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
-	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
--- We'll reduce stack layers and increase number of elements,
--- make sure that it fits the resolution of the screen with the minimum grid-cell size
-	system_context_size( (VRESW * VRESH) / (48 * 48) * 3 );
+
+-- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
+-- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
+-- instances etc.
+	system_context_size( (VRESW * VRESH) / (48 * 48) * 4 );
+
 -- make sure the current context runs with the new limit
 	pop_video_context();
-	
-    settings.games = list_games( {} );
-    if (#settings.games == 0) then
-        error "No settings.games found";
-        shutdown();
-    end
 
+-- keep an active list of available games, make sure that we have something to play/show
+	settings.games = list_games( {} );
+	if (#settings.games == 0) then
+		error("There are no games defined in the database.");
+		shutdown();
+	end
+
+-- any 3D rendering (models etc.) should happen after any 2D surfaces have been draw
+	video_3dorder(ORDER_LAST); 
+
+-- use the DB theme-specific key/value store to populate the settings table
+	load_settings();
+
+-- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
+	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
+	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
+	
 	if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
-
+	
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeat_rate);
+
+-- setup callback table for input events
 	settings.iodispatch["ZOOM_CURSOR"]  = function(iotbl)
 		if imagery.zoomed == BADID then
-			zoom_cursor();
+			zoom_cursor(settings.fadedelay);
 		else
-			remove_zoom();
+			remove_zoom(settings.fadedelay);
 		end
 	end
 
 -- the dispatchtable will be manipulated by settings and other parts of the program
-    settings.iodispatch["MENU_UP"]      = function(iotbl) play_sample("click.wav"); move_cursor( -1 * ncw); end
-    settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_sample("click.wav"); move_cursor( ncw ); end
-    settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_sample("click.wav"); move_cursor( -1 ); end
-    settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample("click.wav"); move_cursor( 1 ); end
-    settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
+	settings.iodispatch["MENU_UP"]      = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
+	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
+	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
+	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
+	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
 		if (ind == nil) then -- flag
 			table.insert(settings.favorites, current_game().title);
 			local props = spawn_favoritestar(cursor_vid());
 			settings.favorites[current_game().title] = props;
+			play_sample(soundmap["SET_FAVORITE"]);
 		else -- unflag
 			fvid = settings.favorites[current_game().title];
 			if (fvid) then
@@ -305,6 +349,7 @@ function gridle()
 			end
 			
 			table.remove(settings.favorites, ind);
+			play_sample(soundmap["CLEAR_FAVORITE"]);
 		end
 	end
 
@@ -321,11 +366,10 @@ function gridle()
 				local done   = false;
 				
 				if (restbl) then
-					
 					for ind,val in pairs(restbl) do
 						if (val == "MENU_ESCAPE") then
+							play_sample(soundmap["OSDKBD_HIDE"]);
 							return osdkbd_filter(nil);
-							
 						elseif (val ~= "MENU_SELECT" and val ~= "MENU_UP" and val ~= "MENU_LEFT" and
 								val ~= "MENU_RIGHT" and val ~= "MENU_DOWN" and iotbl.translated) then
 							resstr = osdkbd:input_key(iotbl);
@@ -345,7 +389,7 @@ function gridle()
 		local gametbl = current_game();
 		local key = gridledetail_havedetails(gametbl);
 		if (key) then
-			remove_zoom();
+			remove_zoom(settings.fadedelay);
 			local gameind = 0;
 
 -- cache curind so we don't have to search if we're switching game inside detail view 
@@ -356,43 +400,39 @@ function gridle()
 				end
 			end
 
-			if (movievid and movievid ~= BADID) then delete_image(movievid); movievid = nil; end
+			if (imagery.movie and imagery.movie ~= BADID) then 
+				delete_image(imagery.movie); 
+				imagery.movie = nil; 
+			end
+			
 			gridledetail_show(key, gametbl, gameind);
 		end
 	end
 	
-	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(); gridlemenu_settings(); end
-    settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
+	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(settings.fadedelay); gridlemenu_settings(); end
+	settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl) 
 		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL); 
 		gridle_oldinput = gridle_input;
 		gridle_input = gridle_internalinput;
-		background = instance_image(blackblock);
-		image_mask_clear(background, MASK_OPACITY);
-		resize_image(background, VRESW, VRESH, NOW);
-		order_image(background, max_current_image_order() + 1);
-		order_image(internal_vid, max_current_image_order() + 1);
 		gridlemenu_loadshader(settings.fullscreenshader);
 	end
-	
--- the analog conversion for devices other than mice is so-so atm.
 
-	blackblock = fill_surface(1,1,0,0,0);
-	whiteblock = fill_surface(1,1,255,255,255);
-	moviecooldown = 5;
+	imagery.black = fill_surface(1,1,0,0,0);
+	imagery.white = fill_surface(1,1,255,255,255);
 	
 -- Animated background
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
-	bgimage = load_image("background.png");
-	resize_image(bgimage, VRESW, VRESH);
-	image_scale_txcos(bgimage, VRESW / 32, VRESH / 32);
-	image_shader(bgimage, bgshader);
-	show_image(bgimage);
+	imagery.bgimage = load_image("background.png");
+	resize_image(imagery.bgimage, VRESW, VRESH);
+	image_scale_txcos(imagery.bgimage, VRESW / 32, VRESH / 32);
+	image_shader(imagery.bgimage, bgshader);
+	show_image(imagery.bgimage);
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 
 -- Little star keeping track of games marked as favorites
-	starimage    = load_image("star.png");
-	magnifyimage = load_image("magnify.png");
+	imagery.starimage    = load_image("star.png");
+	imagery.magnifyimage = load_image("magnify.png");
 
 	build_grid(settings.cell_width, settings.cell_height);
 	build_fadefunctions();
@@ -473,15 +513,17 @@ function have_video(setname)
 	return nil;
 end
 
-function zoom_cursor()
+function zoom_cursor(speed)
 	if (imagery.zoomed == BADID) then
 -- calculate aspect based on initial properties, not current ones.
-		local props = image_surface_initial_properties( cursor_vid() );
-		local aspect = props.width / props.height;
-		
-		local vid = movievid and instance_image(movievid) or instance_image( cursor_vid() );
+-- but make sure that the values are correct (block until loaded)
+		image_pushasynch( cursor_vid() );
+		local iprops = image_surface_initial_properties( cursor_vid() );
+		local aspect = iprops.width / iprops.height;
+		local vid = imagery.movie and instance_image(imagery.movie) or instance_image( cursor_vid() );
+
 -- make sure it is on top
-		order_image(vid, max_current_image_order() + 1);
+		order_image(vid, ZOOMLAYER);
 		
 -- we want to zoom using the global coordinate system
 		image_mask_clear(vid, MASK_SCALE);
@@ -490,32 +532,41 @@ function zoom_cursor()
 		image_mask_clear(vid, MASK_POSITION);
 
 -- grab the parent dimensions so that we can use that
-		props = image_surface_properties( cursor_vid() );
-		local dx = props.x;
-		local dy = props.y;
-		move_image(vid, dx, dy, 0);
+		local props = image_surface_properties( cursor_vid() );
+		local destx = props.x;
+		local desty = props.y;
+		
+		move_image(vid, destx, desty, 0);
 		resize_image(vid, props.width, props.height, 0);
-		
--- how big should we make it?
-		if (aspect < 1.0) then -- vertical video
-			resize_image(vid, 0, VRESH * 0.75, settings.fadedelay);
+
+		settings.zoomp = {};
+	-- depending on dominant axis (horizontal or vertical)
+		if (aspect > 1.0) then
+			settings.zoomp.width = VRESW;
+			settings.zoomp.height = VRESH / aspect;
 		else
-			resize_image(vid, VRESW * 0.75, 0, settings.fadedelay);
+			settings.zoomp.height = VRESH;
+			settings.zoomp.width = VRESW * aspect;
+		end
+		resize_image(vid, settings.zoomp.width, settings.zoomp.height, speed);
+
+-- now the location is partially out of frame,
+-- figure out the end dimensions and then reposition
+		if (destx + settings.zoomp.width > VRESW) then
+			destx = VRESW - settings.zoomp.width;
+		end
+	
+		if (desty + settings.zoomp.height > VRESH) then
+			desty = VRESH - settings.zoomp.height;
 		end
 
--- make sure that it fits the current window
-		props = image_surface_properties(vid, settings.fadedelay);
-		if (dx + props.width > VRESW) then
-			dx = VRESW - props.width;
-		end
-		
-		if (dy + props.height > VRESH) then
-			dy = VRESH - props.height;
-		end
+		blend_image(vid, 1.0, speed);
+		move_image(vid, destx, desty, speed);
 
-		blend_image(vid, 1.0, settings.fadedelay);
-		move_image(vid, dx, dy, settings.fadedelay);
 		imagery.zoomed = vid;
+		settings.zoomp.x = destx;
+		settings.zoomp.y = desty;
+		settings.zoom_countdown = speed;
 	end
 end
 
@@ -546,12 +597,12 @@ function toggle_led(players, buttons, label, pressed)
 	end
 end
 
-function remove_zoom()
+function remove_zoom(speed)
 	if (imagery.zoomed ~= BADID) then
 		local props = image_surface_properties( cursor_vid() );
-		move_image(imagery.zoomed, props.x, props.y, settings.fadedelay);
+		move_image(imagery.zoomed, props.x, props.y, speed);
 		blend_image(imagery.zoomed, 0.0, settings.fadedelay);
-		resize_image(imagery.zoomed,settings.cell_width, settings.cell_height, settings.fadedelay);
+		resize_image(imagery.zoomed,settings.cell_width, settings.cell_height, speed);
 		expire_image(imagery.zoomed, settings.fadedelay);
 		imagery.zoomed = BADID;
 	end
@@ -574,7 +625,7 @@ end
 function resize_grid(step)
  local new_cellw = settings.cell_width; local new_cellh = settings.cell_width;
 
- -- find the next grid size that would involve a density change
+-- find the next grid size that would involve a density change
  repeat
     new_cellw = new_cellw + step;
  until math.floor(VRESW / (new_cellw + settings.hspacing)) ~= ncw;
@@ -604,7 +655,7 @@ end
 function move_cursor( ofs )
     local pageofs_cur = settings.pageofs;
 	blend_gridcell(0.3, settings.fadedelay);
-	remove_zoom();
+	remove_zoom(settings.fadedelay);
 
 	settings.cursor = settings.cursor + ofs;
 -- paging calculations
@@ -651,7 +702,9 @@ function move_cursor( ofs )
 		end
 	end
 	
-    local x,y = cell_coords(math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw));
+	local x,y = cell_coords(
+		math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw)
+	);
 
 -- reload images of the page has changed
 	if (pageofs_cur ~= settings.pageofs) then
@@ -660,67 +713,43 @@ function move_cursor( ofs )
 		build_grid(settings.cell_width, settings.cell_height);
 	end
 
-    local game = settings.games[settings.cursor + settings.pageofs + 1];
-    setname = game and game.setname or nil;
+	settings.cursorgame = settings.games[settings.cursor + settings.pageofs + 1];
 
-    if (movievid) then
-		instant_image_transform(movievid);
-        expire_image(movievid, settings.fadedelay);
-        blend_image(movievid, 0.0, settings.fadedelay);
-		movievid = nil;
+-- reset the previous movie
+	if (imagery.movie) then
+		instant_image_transform(imagery.movie);
+		expire_image(imagery.movie, settings.fadedelay);
+		blend_image(imagery.movie, 0.0, settings.fadedelay);
+		imagery.movie = nil;
 	end
 
-	toggle_led(game.players, game.buttons, "");
+-- just sweeps the matching PLAYERX_BUTTONY pattern, a more refined approach would take all the weird little
+-- arcade game control quirks into proper account
+	toggle_led(settings.cursorgame.players, settings.cursorgame.buttons, "");
 
-	local moviefile = have_video(setname);
-
-	if (moviefile) then
-		movievid = load_movie( moviefile, 1, function(source, status)
-			if (status == 1 and source == movievid) then
-				vid,aid = play_movie(source);
-				audio_gain(aid, 0.0);
-				audio_gain(aid, 1.0, settings.fadedelay);
-				blend_image(vid, 1.0, settings.fadedelay);
-				resize_image(vid, settings.cell_width, settings.cell_height);
-			else
-				instant_image_transform(source);
-				blend_image(source, 0.0, settings.fadedelay);
-				expire_image(source, settings.fadedelay);
-			end		
-		end);
-
-        if (movievid) then
-            move_image(movievid, x, y);
-            order_image(movievid, 3);
-			props = image_surface_properties(movievid);
-			return
-		end
-    else
-        moviefile = "";
-        movietimer = nil;
-    end
-
+-- reset the cooldown that triggers movie playback
+	settings.cooldown = settings.cooldown_start;
 	blend_gridcell(1.0, settings.fadedelay);
 end
 
 function get_image(romset)
-    local rvid = BADID;
+	local rvid = BADID;
 
-    if resource("screenshots/" .. romset .. ".png") then
-        rvid = load_image_asynch("screenshots/" .. romset .. ".png", got_asynchimage);
+	if resource("screenshots/" .. romset .. ".png") then
+		rvid = load_image_asynch("screenshots/" .. romset .. ".png", got_asynchimage);
 		blend_image(rvid, 0.0);
 	end
 
-    if (rvid == BADID) then
-        rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. romset );
+	if (rvid == BADID) then
+		rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. romset );
 		blend_image(rvid, 0.3, settings.transitiondelay);
 	end
 
-    return rvid;
+	return rvid;
 end
 
 function erase_grid(rebuild)
-    settings.cellcount = 0;
+	settings.cellcount = 0;
 
 	for ind,vid in pairs(settings.favvids) do
 		expire_image(vid, settings.fadedelay);
@@ -737,49 +766,52 @@ function erase_grid(rebuild)
 	
 	local fadefunc = fadefunctions[ math.random(1,#fadefunctions) ];
 	
-    for row=0, nch-1 do
-     for col=0, ncw-1 do
-      if (grid[row][col]) then
+	for row=0, nch-1 do
+		for col=0, ncw-1 do
+			if (grid[row][col]) then
+				if (rebuild) then
+					delete_image(grid[row][col]);
+				else
+					local x, y = cell_coords(row, col);
+					local imagevid = grid[row][col];
+					fadefunc(imagevid, col, row);
+					expire_image(imagevid, settings.transitiondelay);
+				end
 
-        if (rebuild) then
-            delete_image(grid[row][col]);
-        else
-            local x, y = cell_coords(row, col);
-			local imagevid = grid[row][col];
-			fadefunc(imagevid, col, row);
-			expire_image(imagevid, settings.transitiondelay);
+				delete_image(whitegrid[row][col]);
+				whitegrid[row][col] = nil;
+				grid[row][col] = nil;
+			end
 		end
+	end
 
-		delete_image(whitegrid[row][col]);
-		whitegrid[row][col] = nil;
-		grid[row][col] = nil;
-      end
-     end
-    end
+	if (imagery.movie and imagery.movie ~= BADID) then
+		delete_image(imagery.movie, settings.fadedelay);
+	end
 end
 
 function build_grid(width, height)
 --  figure out how many full cells we can fit with the current resolution
-    ncw = math.floor(VRESW / (width + settings.hspacing));
-    nch = math.floor(VRESH / (height + settings.vspacing));
-    ncc = ncw * nch;
+	ncw = math.floor(VRESW / (width + settings.hspacing));
+	nch = math.floor(VRESH / (height + settings.vspacing));
+	ncc = ncw * nch;
 
 --  figure out how much "empty" space we'll have to pad with
-    borderw = VRESW % (width + settings.hspacing);
-    borderh = VRESH % (height + settings.vspacing);
+	borderw = VRESW % (width + settings.hspacing);
+	borderh = VRESH % (height + settings.vspacing);
 
 	whitegrid = {};
-    for row=0, nch-1 do
-        grid[row] = {};
+	for row=0, nch-1 do
+		grid[row] = {};
 		whitegrid[row] = {};
 
-        for col=0, ncw-1 do
-            local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
-            if (settings.games[gameno] == nil) then break; end
-            local vid = get_image(settings.games[gameno]["setname"]);
-            resize_image(vid, settings.cell_width, settings.cell_height);
-            move_image(vid,cell_coords(col, row));
-            order_image(vid, 2);
+		for col=0, ncw-1 do
+			local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
+			if (settings.games[gameno] == nil) then break; end
+			local vid = get_image(settings.games[gameno]["setname"]);
+			resize_image(vid, settings.cell_width, settings.cell_height);
+			move_image(vid,cell_coords(col, row));
+			order_image(vid, GRIDLAYER);
 
 			local ofs = 0;
 			if (settings.favorites[ settings.games[gameno].title ]) then
@@ -790,20 +822,20 @@ function build_grid(width, height)
 				ofs = ofs + spawn_magnify( vid, ofs );
 			end
 		
-			gridbg = instance_image(whiteblock);
+			gridbg = instance_image(imagery.white);
 			resize_image(gridbg, settings.cell_width, settings.cell_height);
 			move_image(gridbg, cell_coords(col, row));
-	        image_mask_clear(gridbg, MASK_OPACITY);
-			order_image(gridbg, 1);
+			image_mask_clear(gridbg, MASK_OPACITY);
+			order_image(gridbg, GRIDBGLAYER);
 			show_image(gridbg);
 
 			whitegrid[row][col] = gridbg;
-            grid[row][col] = vid;
-            settings.cellcount = settings.cellcount + 1;
-        end
-    end
+			grid[row][col] = vid;
+			settings.cellcount = settings.cellcount + 1;
+		end
+	end
 
-    move_cursor(0);
+	move_cursor(0);
 end
 
 function gridle_shutdown()
@@ -868,10 +900,66 @@ function load_settings()
 	end
 end
 
+function asynch_movie_ready(source, status)
+	if (status == 1 and source == imagery.movie) then
+		vid,aid = play_movie(source);
+		audio_gain(aid, 0.0);
+		audio_gain(aid, 1.0, settings.fadedelay);
+		blend_image(vid, 1.0, settings.fadedelay);
+		resize_image(vid, settings.cell_width, settings.cell_height);
+		blend_image(cursor_vid(), 0.0, settings.fadedelay);
+		
+-- corner case, we're zooming or fully zoomed already and we need to replace the current image with
+-- the frameserver session
+		if (imagery.zoomed ~= BADID) then
+			expire_image(imagery.zoomed, settings.zoom_countdown + 20);
+			blend_image(imagery.zoomed, 0.0, 20);
+	
+			imagery.zoomed = instance_image(source);
+			image_mask_clear(imagery.zoomed, MASK_POSITION);
+			image_mask_clear(imagery.zoomed, MASK_ORIENTATION);
+			image_mask_clear(imagery.zoomed, MASK_OPACITY);
+			image_mask_clear(imagery.zoomed, MASK_SCALE);
+	
+			move_image(imagery.zoomed, settings.zoomp.x, settings.zoomp.y);
+			resize_image(imagery.zoomed, settings.zoomp.width, settings.zoomp.height);
+			blend_image(imagery.zoomed, 1.0, settings.zoom_countdown);
+			order_image(imagery.zoomed, ZOOMLAYER_MOVIE);
+		end
+	else
+		delete_image(source);
+	end
+end
+
 function gridle_clock_pulse()
--- a little safeguard against a high-repeat rate and just holding one button pressed
-	if (moviecooldown > 0) then
-		moviecooldown = moviecooldown - 1;
+-- used to account for a nasty race condition when zooming a screenshot with asynch movie loading mid-zoom
+	if (settings.zoom_countdown > 0) then settings.zoom_countdown = 0; end
+	
+-- the cooldown before loading a movie lowers the number of frameserver launches etc. in
+-- situations with a high repeatrate and a button hold down. It also gives the soundeffect
+-- change to play without being drowned by an audio track in the movie
+	if (settings.cooldown > 0) then
+		settings.cooldown = settings.cooldown - 1;
+
+-- cooldown reached, check the current cursor position, use that to figure out which movie to launch
+		if (settings.cooldown == 0) then
+			local moviefile = have_video(settings.cursorgame.setname);
+
+			if (moviefile) then
+				imagery.movie = load_movie( moviefile, 1, asynch_movie_ready);
+				if (imagery.movie) then
+					local vprop = image_surface_properties( cursor_vid() );
+					
+					move_image(imagery.movie, vprop.x, vprop.y);
+					order_image(imagery.movie, GRIDLAYER_MOVIE);
+					props = image_surface_properties(imagery.movie);
+					return
+				end
+			else
+				moviefile = "";
+				movietimer = nil;
+			end
+		end
 	end
 	
 	if (settings.shutdown_timer) then
@@ -889,7 +977,6 @@ function gridle_internalcleanup()
 		build_grid(settings.cell_width, settings.cell_height);
 	end
 	
-	delete_image(background);
 	in_internal = false;
 end
 
@@ -907,7 +994,7 @@ function gridle_internalinput(iotbl)
 				gridle_internalcleanup();
 				return;
 			elseif (val == "MENU_TOGGLE") then
-				gridlemenu_internal();
+				gridlemenu_internal(internal_vid);
 				return;
 			end
 		end
