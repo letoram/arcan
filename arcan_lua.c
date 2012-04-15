@@ -1974,10 +1974,11 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		if (lua_ctx_store.debug > 2)
 			dump_call_trace(ctx);
 	}
-	else 
+	else{
+		while ( arcan_video_popcontext() < CONTEXT_STACK_LIMIT -1);
 		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
+	}
 }
-
 
 struct globs{
 	lua_State* ctx;
