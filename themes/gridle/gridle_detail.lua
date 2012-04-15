@@ -1,22 +1,4 @@
--- Implement "detail view" in Gridle, albeit easily adapted to other themes.
---
--- gridledetail_show();
---  replaces the current "grid" with a single- game view,
---  trying to squeeze in as much extra information as possible (3d model,
---  flyer, history)
---
--- first determines layout by looking for specific resources;
--- 1. game- specific script (gamescripts/setname.lua)
--- 2. 3d- view (models/setname)
--- 3. (fallback) flow layout of whatever other (marquee, cpo, flyer, etc.) that was found.
---
--- Also allows for single (menu- up / down) navigation between games
--- MENU_ESCAPE returns to game
---
-local detailview = {
-	movie_vid = BADID,
-	internal_vid = BADID
-};
+detailview = {};
 local loaded = false;
 
 local function gridledetail_load()
@@ -40,7 +22,8 @@ local function gridledetail_load()
 	shader_uniform(default_shader3d, "map_diffuse", "i", PERSIST, 0);
 	shader_uniform(texco_shader, "speedfact", "f", PERSIST, 24.0);
 
-loaded = true;
+-- make sure this is only done once
+	loaded = true;
 end
 
 local function gridledetail_setnoisedisplay()
@@ -84,12 +67,12 @@ end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
-
 -- if we have a "load script", use that.
 	if (".lua" == string.sub(detailres, -4, -1)) then
-		return nil
+		gamescript = system_load(detailres)();
+		return (type(gamescript.status) == "function") and gamescript:status() or nil;
 	else
--- otherwise, use the generic model loader		
+-- otherwise, use the generic model loader
 		detailview.game = gametbl;
 		detailview.model = load_model(detailres);
 
@@ -119,13 +102,13 @@ local function gridledetail_buildview(detailres, gametbl )
 			if (detailview.model.labels["marquee"]) then 
 				mesh_shader(detailview.model.vid, backlit_shader3d, detailview.model.labels["marquee"]); 
 			end
+-- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
 			if (detailview.model.labels["display"]) then
 				local moviefile = have_video(detailview.game.setname);
 				if (moviefile) then
-					detailview.asynchimg_dstvid = load_movie(moviefile, 1, gridledetail_moviestatus);
-					print("movie allocated: " .. detailview.asynchimg_dstvid);
+					detailview.modeldisplay = load_movie(moviefile, 1, gridledetail_moviestatus);
 				elseif resource("screenshots/" .. detailview.game.setname .. ".png") then
-					detailview.asynchimg_dstvid = load_image_asynch( "screenshots/" .. detailview.game.setname .. ".png", gridledetail_imagestatus);
+					detailview.modeldisplay = load_image_asynch( "screenshots/" .. detailview.game.setname .. ".png", gridledetail_imagestatus);
 				end
 
 				return true;
@@ -160,7 +143,7 @@ end
 
 function gridledetail_video_event(source, event)
 	if (event.kind == "resized") then
-		if (source == detailview.internal_vid) then
+		if (source == internal_vid) then
 			resize_image(source, event.width, event.height, 0);
 
 			local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
@@ -196,38 +179,38 @@ function gridledetail_internalinput(iotbl)
 		for ind,val in pairs(restbl) do
 			print(val);
 			if (iotbl.active and val == "MENU_TOGGLE" and detailview.fullscreen) then
-				gridlemenu_internal(detailview.internal_vid);
+				gridlemenu_internal(internal_vid);
 				return;
 			elseif (iotbl.active and val == "ZOOM_CURSOR") then
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
-					hide_image(detailview.internal_vid);
+					hide_image(internal_vid);
 					show_image(detailview.model.vid);
 					detailview.fullscreen = false;
 				else
 					detailview.fullscreen = true;
-					show_image(detailview.internal_vid);
+					show_image(internal_vid);
 					
-					local props = image_surface_properties(detailview.internal_vid);
+					local props = image_surface_properties(internal_vid);
 					
 					if (props.width / props.height > 1.0) then -- horizontal game
-						resize_image(detailview.internal_vid, VRESW, 0, NOW);
+						resize_image(internal_vid, VRESW, 0, NOW);
 					else -- vertical game
-						resize_image(detailview.internal_vid, VRESH, 0, NOW);
-						props = image_surface_properties(detailview.internal_vid);
+						resize_image(internal_vid, VRESH, 0, NOW);
+						props = image_surface_properties(internal_vid);
 						if (props.width < VRESW) then
-							move_image(detailview.internal_vid, 0.5 * (VRESW - props.width), 0, NOW);
+							move_image(internal_vid, 0.5 * (VRESW - props.width), 0, NOW);
 						end
 					end
 
 					hide_image(detailview.model.vid);
-					order_image(detailview.internal_vid, max_current_image_order() + 1); 
+					order_image(internal_vid, max_current_image_order() + 1); 
 					return;
 				end
 			elseif (iotbl.active and val == "MENU_ESCAPE") then
 -- stop the internal launch, zoom out the model and replace display with static
-				delete_image(detailview.internal_vid);
-				detailview.internal_vid = BADID;
+				delete_image(internal_vid);
+				internal_vid = BADID;
 				show_image(detailview.model.vid);
 				gridledetail_setnoisedisplay();
 				move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
@@ -236,7 +219,7 @@ function gridledetail_internalinput(iotbl)
 		end
 	end
 
-	target_input(iotbl, detailview.internal_vid);
+	target_input(iotbl, internal_vid);
 end
 
 -- 
@@ -247,7 +230,7 @@ end
 --
 function gridledetail_input(iotbl)
 -- if internal launch is active, only "ESCAPE" and "ZOOM" is accepted, all the others are being forwarded.
-	if (detailview.internal_vid ~= BADID) then
+	if (internal_vid ~= BADID) then
 		return gridledetail_internalinput(iotbl);
 	end
 	
@@ -393,14 +376,16 @@ function gridledetail_show(detailres, gametbl, ind)
 	end
 
 	-- override I/O table
-	if (detailres == nil or gametbl == nil or gridledetail_buildview(detailres, gametbl) == nil) then
-		return;
+	if (detailres == nil or 
+			gametbl == nil or 
+			gridledetail_buildview(detailres, gametbl) == nil) then return;
 	else
 		show_image(detailview.model.vid);
 		move3d_model(detailview.model.vid, -1.0, -6.0, -4.0);
 		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
 	end
-	
+
+-- repeat-rate is ignored here
 	kbd_repeat(0);
 	
 	griddispatch = settings.iodispatch;
@@ -447,7 +432,7 @@ function gridledetail_show(detailres, gametbl, ind)
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		gridledetail_setnoisedisplay();
 		local vid, aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
-		detailview.internal_vid = vid;
+		internal_vid = vid;
 	end
 
 -- Works the same, just make sure to stop any "internal session" as it is 
@@ -463,9 +448,8 @@ function gridledetail_show(detailres, gametbl, ind)
 		gridle_input = gridinput;
 		gridle_video_event = gridvideo;
 		
-		build_grid(settings.cell_width, settings.cell_height);
 		settings.iodispatch = griddispatch;
+		kbd_repeat(settings.repeat_rate);
+		move_cursor(0);
 	end
-
---	erase_grid(false);
 end

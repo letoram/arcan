@@ -1,5 +1,8 @@
 grid = {};
 
+internal_vid = BADID;
+internal_aid = BADID;
+
 -- shared images, statebased vids etc.
 imagery = {
 	movie = nil,
@@ -12,7 +15,9 @@ imagery = {
 soundmap = {
 	MENU_TOGGLE    = "sounds/menu_toggle.wav",
 	MENU_FADE      = "sounds/menu_fade.wav",
-	MENUCURSOR_MOVE= "sounds/menucursor_move.wav",
+	MENU_SELECT    = "sounds/detail_view.wav",
+	MENU_FAVORITE  = "sounds/launch_external.wav",
+	MENUCURSOR_MOVE= "sounds/move.wav",
 	GRIDCURSOR_MOVE= "sounds/gridcursor_move.wav",
 	GRID_NEWPAGE   = "sounds/grid_newpage.wav",
 	GRID_RANDOM    = "sounds/click.wav",
@@ -47,6 +52,7 @@ settings = {
 	filters = {
 	},
 	
+	borderstyle = "Normal", 
 	sortlbl = "Ascending",
 	viewmode = "Grid",
 	scalemode = "Keep Aspect",
@@ -76,7 +82,9 @@ settings = {
 	cooldown_start = 15,
 	zoom_countdown = 0,
 	
+	internal_input = "Normal",
 	flipinputaxis = false,
+	internal_again = 1.0,
 	fullscreenshader = "default",
 	in_internal = false
 };
@@ -357,16 +365,20 @@ function gridle()
 -- Forward all labels that match, but also any translated keys (so that we
 -- can use this as a regular input function as well) 
 	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
+		play_sample(soundmap["OSDKBD_TOGGLE"]);
+		
 		osdkbd:show();
 		settings.inputfun = gridle_input;
 		gridle_input = function(iotbl)
-			if (iotbl.active) then
+
+		if (iotbl.active) then
 				local restbl = keyconfig:match(iotbl);
 				local resstr = nil;
 				local done   = false;
 				
 				if (restbl) then
 					for ind,val in pairs(restbl) do
+				
 						if (val == "MENU_ESCAPE") then
 							play_sample(soundmap["OSDKBD_HIDE"]);
 							return osdkbd_filter(nil);
@@ -377,6 +389,7 @@ function gridle()
 							resstr = osdkbd:input(val);
 						end
 					end
+					
 				elseif (iotbl.translated) then
 					resstr = osdkbd:input_key(iotbl);
 				end
@@ -391,7 +404,9 @@ function gridle()
 		if (key) then
 			remove_zoom(settings.fadedelay);
 			local gameind = 0;
-
+			blend_image( cursor_vid(), 0.3 );
+			play_sample( soundmap["DETAIL_VIEW"] ); 
+			
 -- cache curind so we don't have to search if we're switching game inside detail view 
 			for ind = 1, #settings.games do
 				if (settings.games[ind].title == gametbl.title) then
@@ -409,10 +424,23 @@ function gridle()
 		end
 	end
 	
-	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) remove_zoom(settings.fadedelay); gridlemenu_settings(); end
-	settings.iodispatch["MENU_SELECT"]  = function(iotbl) launch_target( current_game().title, LAUNCH_EXTERNAL); move_cursor(0); end
-	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl) 
-		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL); 
+	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
+		play_sample(soundmap["MENU_TOGGLE"]);
+		remove_zoom(settings.fadedelay); 
+		gridlemenu_settings(); 
+	end
+	
+	settings.iodispatch["MENU_SELECT"]  = function(iotbl) 
+		play_sample(soundmap["LAUNCH_EXTERNAL"]);
+		launch_target( current_game().title, LAUNCH_EXTERNAL); 
+		move_cursor(0);
+	end
+	
+	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
+		erase_grid(false);
+		play_sample(soundmap["LAUNCH_INTERNAL"]);
+		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL);
+		audio_gain(internal_aid, settings.internal_again, NOW);
 		gridle_oldinput = gridle_input;
 		gridle_input = gridle_internalinput;
 		gridlemenu_loadshader(settings.fullscreenshader);
@@ -708,6 +736,7 @@ function move_cursor( ofs )
 
 -- reload images of the page has changed
 	if (pageofs_cur ~= settings.pageofs) then
+		play_sample(soundmap["GRID_NEWPAGE"]);
 		erase_grid(false);
 		settings.pageofs = pageofs_cur;
 		build_grid(settings.cell_width, settings.cell_height);
@@ -898,6 +927,20 @@ function load_settings()
 			line = read_rawresource();
 		end
 	end
+	
+	local internalgain = get_key("internal_again");
+	if (internalgain) then
+		settings.internal_again = tonumber( get_key("internal_again") );
+	end
+	
+	local internalinp = get_key("internal_input");
+	if (internalinp ~= nil) then
+		settings.internal_input = internalinp;
+		settings.flipinputaxis = internalinp ~= "Normal";
+	end
+	
+	local scalemode = get_key("internal_scalemode");
+	if (scalemode ~= nil) then settings.scalemode = scalemode; end
 end
 
 function asynch_movie_ready(source, status)
@@ -945,7 +988,7 @@ function gridle_clock_pulse()
 		if (settings.cooldown == 0) then
 			local moviefile = have_video(settings.cursorgame.setname);
 
-			if (moviefile) then
+			if (moviefile and cursor_vid() ) then
 				imagery.movie = load_movie( moviefile, 1, asynch_movie_ready);
 				if (imagery.movie) then
 					local vprop = image_surface_properties( cursor_vid() );
@@ -971,7 +1014,9 @@ end
 function gridle_internalcleanup()
 	kbd_repeat(settings.repeat_rate);
 	delete_image(internal_vid);
-	gridle_input = gridle_oldinput;
+	gridle_input = gridle_dispatchinput;
+	internal_vid = BADID;
+	internal_aid = BADID;
 
 	if (in_internal) then
 		build_grid(settings.cell_width, settings.cell_height);
@@ -990,7 +1035,7 @@ function gridle_internalinput(iotbl)
 	
 	if (restbl) then
 		for ind, val in pairs(restbl) do
-			if (val == "MENU_ESCAPE") then
+			if (val == "MENU_ESCAPE" and restbl.active) then
 				gridle_internalcleanup();
 				return;
 			elseif (val == "MENU_TOGGLE") then
@@ -1003,7 +1048,7 @@ function gridle_internalinput(iotbl)
 	target_input(iotbl, internal_vid);
 end
 
-function gridle_input(iotbl)
+function gridle_dispatchinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
  
 	if (restbl and iotbl.active) then
@@ -1014,3 +1059,5 @@ function gridle_input(iotbl)
 		end
 	end
 end
+
+gridle_input = gridle_dispatchinput;

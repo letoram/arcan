@@ -44,8 +44,10 @@ void arcan_framequeue_step(frame_queue* queue)
 
 	while (queue->alive && 
 		queue->n_cells + 1 == queue->c_cells) {
+		SDL_UnlockMutex(queue->framesync);
 		SDL_CondWait(queue->framecond, queue->framesync);
-	}
+		SDL_LockMutex(queue->framesync);
+		}
 
 	if (queue->alive){
 		current->wronly = false;
@@ -97,10 +99,10 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 		int statusfl;
 		
 		SDL_CondSignal(queue->framecond);
+		SDL_WaitThread(queue->iothread, &statusfl);
 		SDL_DestroyCond(queue->framecond);
 		SDL_DestroyMutex(queue->framesync);
-		SDL_WaitThread(queue->iothread, &statusfl);
-			
+				
 		if (queue->da_cells) {
 			free(queue->da_cells[0].buf);
 			free(queue->da_cells);

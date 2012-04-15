@@ -29,6 +29,7 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
 
+	play_sample(soundmap["SUBMENU_TOGGLE"]);
 	move_image( current_menu:window_vid(), props.x + props.width + 6, props.y);
 	return current_menu;
 end
@@ -68,15 +69,14 @@ local inactivitylbls = {
 
 local settingslbls = {
 	"Sort Order...",
+	"Cell Size...",
+	"LED display mode...",
+	"Key Repeat Rate...",
+	"Fade Delay...",
+	"Transition Delay...",
+	"Inactivity Shutdown...",
 	"Reconfigure Keys",
 	"Reconfigure LEDs",
-	"Cell Size",
-	"LED display mode",
-	"Key Repeat Rate",
-	"Fade Delay",
-	"Transition Delay",
-	"Attract Mode",
-	"Inactivity Shutdown"
 };
 
 local ledmodelbls = {
@@ -88,27 +88,47 @@ local ledmodelbls = {
 
 local ledmodeptrs = {}
 	ledmodeptrs["Disabled"] = function(label, save) 
-	settings.iodispatch["MENU_ESCAPE"](); 
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
 	settings.ledmode = 0;
-	if (save) then store_key("ledmode", 0); end
+	if (save) then 
+		store_key("ledmode", 0);
+		play_sample(soundmap["MENU_FAVORITE"]);
+	else
+		play_sample(soundmap["MENU_SELECT"]);
+	end
 end
 
 ledmodeptrs["All toggle"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.ledmode = 1;
-	if (save) then store_key("ledmode", 1); end
+	if (save) then 
+		store_key("ledmode", 1);
+		play_sample(soundmap["MENU_FAVORITE"]);
+	else
+		play_sample(soundmap["MENU_SELECT"]);
+	end
 end
 
 ledmodeptrs["Game setting (always on)"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"](); 
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
 	settings.ledmode = 2; 
-	if (save) then store_key("ledmode", 2); end
+	if (save) then
+		store_key("ledmode", 2); 
+		play_sample(soundmap["MENU_FAVORITE"])
+	else
+		play_sample(soundmap["MENU_SELECT"]);
+	end
 end
 
 ledmodeptrs["Game setting (on push)"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"](); 
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
 	settings.ledmode = 3; 
-	if (save) then store_key("ledmode", 3); end
+	if (save) then 
+		store_key("ledmode", 3); 
+		play_sample(soundmap["MENU_FAVORITE"]);
+	else
+		play_sample(soundmap["MENU_SELECT"])	
+	end
 end
 
 local sortorderlbls = {
@@ -123,20 +143,26 @@ local transitiondelaylbls = {"5", "10", "20", "40"}
 local fadedelayptrs = {}
 
 local function fadedelaycb(label, save)
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.fadedelay = tonumber(label);
 	if (save) then
+		play_sample(soundmap["MENU_FAVORITE"]);
 		store_key("fadedelay", tonumber(label));
+	else
+		play_sample(soundmap["MENU_SELECT"]);
 	end
 end
 for ind,val in ipairs(fadedelaylbls) do fadedelayptrs[val] = fadedelaycb; end
 
 local transitiondelayptrs = {}
 local function transitiondelaycb(label, save)
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.transitiondelay = tonumber(label);
 	if (save) then
+		play_sample(soundmap["MENU_FAVORITE"]);
 		store_key("transitiondelay", tonumber(label));
+	else
+		play_sample(soundmap["MENU_SELECT"]);
 	end
 end
 for ind,val in ipairs(transitiondelaylbls) do transitiondelayptrs[val] = transitiondelaycb; end
@@ -144,10 +170,13 @@ for ind,val in ipairs(transitiondelaylbls) do transitiondelayptrs[val] = transit
 local repeatlbls = { "0", "100", "200", "300", "400", "500"};
 local repeatptrs = {};
 local function repeatratecb(label, save)
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.repeat_rate = tonumber(label);
 	if (save) then
+		play_sample(soundmap["MENU_FAVORITE"]);
 		store_key("repeatrate", tonumber(label));
+	else
+		play_sample(soundmap["MENU_SELECT"]);	
 	end
 end
 for ind,val in ipairs(repeatlbls) do repeatptrs[val] = repeatratecb; end
@@ -157,23 +186,29 @@ local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96"
 local gridptrs = {};
 
 local function gridcb(label, save)
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.cell_width = tonumber( string.sub(label, 1, string.find(label, "x") - 1) );
 	settings.cell_height = tonumber( string.sub(label, string.find(label, "x") + 1, -1) );
 	if (save) then
+		play_sample(soundmap["MENU_FAVORITE"]);	
 		store_key("cell_width", settings.cell_width);
 		store_key("cell_height", settings.cell_height);
+	else
+		play_sample(soundmap["MENU_SELECT"]);	
 	end
 end
 for ind,val in ipairs(gridlbls) do gridptrs[val] = gridcb; end
 
 local sortorderptrs = {};
 local function sortordercb(label, save)
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.sortlbl = label;
 	
 	if (save) then
 		store_key("sortorder", label);
+		play_sample(soundmap["MENU_FAVORITE"]);	
+	else
+		play_sample(soundmap["MENU_SELECT"]);	
 	end
 end
 for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
@@ -191,12 +226,12 @@ settingsptrs["Sort Order..."]    = function()
 	menu_spawnmenu(sortorderlbls, sortorderptrs, fmts); 
 end
 
-settingsptrs["Reconfigure Keys"] = function()
+settingsptrs["Reconfigure Keys..."] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
 
-settingsptrs["LED display mode"] = function() 
+settingsptrs["LED display mode..."] = function() 
 	local fmts = {};
 
 	fmts[ ledmodelbls[ tonumber(settings.ledmode) + 1] ] = "\\#00ffff";
@@ -207,7 +242,7 @@ settingsptrs["LED display mode"] = function()
 	menu_spawnmenu(ledmodelbls, ledmodeptrs, fmts); 
 end
 
-settingsptrs["Key Repeat Rate"]  = function() 
+settingsptrs["Key Repeat Rate..."]  = function() 
 	local fmts = {};
 
 	fmts[ tostring( settings.repeat_rate) ] = "\\#00ffff";
@@ -222,7 +257,7 @@ settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
 end
-settingsptrs["Fade Delay"] = function() 
+settingsptrs["Fade Delay..."] = function() 
 	local fmts = {};
 	fmts[ tostring( settings.fadedelay ) ] =  "\\#00ffff";
 	if (get_key("fadedelay")) then
@@ -232,7 +267,7 @@ settingsptrs["Fade Delay"] = function()
 	menu_spawnmenu(fadedelaylbls, fadedelayptrs, fmts); 
 end
 
-settingsptrs["Transition Delay"] = function() 
+settingsptrs["Transition Delay..."] = function() 
 	local fmts = {};
 	fmts[ tostring( settings.transitiondelay ) ] = "\\#00ffff";
 	if (get_key("transitiondelay")) then
@@ -242,7 +277,7 @@ settingsptrs["Transition Delay"] = function()
 	menu_spawnmenu(transitiondelaylbls, transitiondelayptrs, fmts); 
 end
 
-settingsptrs["Cell Size"] = function()
+settingsptrs["Cell Size..."] = function()
 	local fmts = {};
 	fmts[ tostring(settings.cell_width) .. "x" .. tostring(settings.cell_height) ] = "\\#00ffff";
 	if (get_key("cell_width") and get_key("cell_height")) then
@@ -252,7 +287,7 @@ settingsptrs["Cell Size"] = function()
 	menu_spawnmenu(gridlbls, gridptrs, fmts); 
 end
 
-settingsptrs["Repeat Rate"]      = function() menu_spawnmenu(repeatlbls, repeatptrs); end
+settingsptrs["Repeat Rate..."]      = function() menu_spawnmenu(repeatlbls, repeatptrs); end
 
 local function update_status()
 -- show # games currently in list, current filter or gamelist
@@ -303,7 +338,7 @@ local function get_unique(list, field)
 	resptr = {};
 	for i=1,#res do
 		resptr[res[i]] = function(lbl)
-			settings.iodispatch["MENU_ESCAPE"]();
+			settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
 			update_status();
 			settings.filters[string.lower(current_menu:select())] = lbl;
 			settings.games = list_games(settings.filters);
@@ -321,7 +356,7 @@ local function update_filterlist()
 	filterresptr["Reset"] = function()
 		settings.filters = {};
 		settings.games = list_games( {} );
-		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
 	end
 
 	for i=1,#filterlbls do
@@ -368,7 +403,7 @@ function build_gamelists()
 
 	for i=1, #lists do
 			res[i] = string.sub(lists[i], 1, -5);
-			resptr[ res[i] ] = function(lbl) settings.iodispatch["MENU_ESCAPE"](); apply_gamefilter(lbl); settings.filters = {}; end
+			resptr[ res[i] ] = function(lbl) settings.iodispatch["MENU_ESCAPE"](nil, nil, false); apply_gamefilter(lbl); settings.filters = {}; end
 	end
 
 	return res, resptr;
@@ -379,18 +414,20 @@ function gridlemenu_settings()
 	griddispatch = settings.iodispatch;
 
 	settings.iodispatch = {};
-	settings.iodispatch["MENU_UP"] = function(iotbl) current_menu:move_cursor(-1, true); end
-	settings.iodispatch["MENU_DOWN"] = function(iotbl) current_menu:move_cursor(1, true); end
-	settings.iodispatch["MENU_ESCAPE"] = function(iotbl)
+	settings.iodispatch["MENU_UP"] = function(iotbl) play_sample(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(-1, true); end
+	settings.iodispatch["MENU_DOWN"] = function(iotbl) play_sample(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(1, true); end
+	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		if (current_menu.parent ~= nil) then
+			if (silent == nil or silent == false) then play_sample(soundmap["SUBMENU_FADE"]); end
 			current_menu = current_menu.parent;
 			update_status();
 		else -- top level
 			if (#settings.games == 0) then
 				settings.games = list_games( {} );
 			end
-			
+		
+		play_sample(soundmap["MENU_FADE"]);
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
@@ -418,6 +455,7 @@ function gridlemenu_settings()
 			selectlbl = current_menu:select();
 			if (current_menu.ptrs[selectlbl]) then
 				current_menu.ptrs[selectlbl](selectlbl, true);
+				update_status();
 			end
 		end
 
