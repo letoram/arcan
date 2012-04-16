@@ -1,4 +1,6 @@
-detailview = {};
+detailview = {
+ modeldisplay = BADID
+};
 local loaded = false;
 
 local function gridledetail_load()
@@ -13,7 +15,6 @@ local function gridledetail_load()
 	backlit_shader3d = load_shader("shaders/diffuse_only.vShader", "shaders/flicker_diffuse.fShader", "backlit");
 	default_shader3d = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
 	texco_shader     = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "noise");
-	diffusef_shader  = load_shader("shaders/flipy.vShader", "shaders/diffuse_only.fShader", "diffuse");
 	diffuse_shader   = load_shader("shaders/diffuse_only.vShader", "shaders/diffuse_only.fShader", "diffuse");
 	
 	shader_uniform(default_shader3d, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
@@ -27,7 +28,14 @@ local function gridledetail_load()
 end
 
 local function gridledetail_setnoisedisplay()
-	if (detailview.model.labels["display"] == nil) then return; end
+	if (detailview.modeldisplay ~= BADID) then
+		delete_image(detailview.modeldisplay);
+		detailview.modeldisplay = BADID;
+	end
+	
+	if (detailview.model.labels["display"] == nil) then 
+		return; 
+	end
 	
 	local rvid = set_image_as_frame(detailview.model.vid, instance_image(noise_image), detailview.model.labels["display"], 1);
 	mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
@@ -39,30 +47,31 @@ end
 
 local function gridledetail_imagestatus(source, status)
 -- all asynchronous operations can fail (status == 0), or the resource may not be interesting anymore
-	if (status == 0 or source ~= detailview.asynchimg_dstvid) then 
+	if (status == 0 or source ~= detailview.modeldisplay) then 
 		delete_image(source);
 	else
 -- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
 -- we can't do this for movie, as we need 'tick' operations for it to properly poll the frameserver
-		mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
+		mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
 		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
 
-		if (rvid ~= ARCAN_BADID) then  
+		if (rvid ~= ARCAN_BADID) then 
 			delete_image(rvid);
 		end
+		
+		return true;
 	end
+	
+	return false;
 end
 
 local function gridledetail_moviestatus(source, status)
-	if (status == 1 and source == detailview.asynchimg_dstvid) then
-		vid,aid = play_movie(source);
-		resize_image(vid, settings.cell_width, settings.cell_height);
-		
+-- same procedure in loading / mapping, with the added playback / gain calls
+	if (gridledetail_imagestatus(source, status)) then
+		vid, aid = play_movie(source);
 		audio_gain(aid, 0.0);
 		audio_gain(aid, 1.0, settings.fadedelay);
 	end
-	
-	gridledetail_imagestatus(source, status);
 end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
@@ -78,7 +87,6 @@ local function gridledetail_buildview(detailres, gametbl )
 
 -- this can fail (no model found) 
 		if (detailview.model) then
-
 			image_shader(detailview.model.vid, default_shader3d);
 			scale_3dvertices(detailview.model.vid);
 
@@ -89,9 +97,8 @@ local function gridledetail_buildview(detailres, gametbl )
 
 -- if the model specifies a default view pos (position + view + up), set that one as the target (and calculate linear steps by scaling)
 			if (detailview.model.screenview) then
-					
+			
 			else
-				
 -- otherwise just thake a harcoded guess 
 				detailview.zoomx = 0.0;
 				detailview.zoomy = -0.5;
@@ -137,6 +144,7 @@ local function gridledetail_freeview(axis, mag)
 
 		move3d_model(detailview.model.vid, detailview.startx + dx, detailview.starty + dy, detailview.startz + dz, 20 + settings.transitiondelay);
 		expire_image(detailview.model.vid, 20 + settings.transitiondelay);
+		
 		detailview.model = nil;
 	end
 end
@@ -150,12 +158,11 @@ function gridledetail_video_event(source, event)
 			if (rvid ~= source and rvid ~= BADID) then delete_image(rvid); end 
 			
 -- with a gl source, it means it comes from a readback, means that we might need to flip texture coordinates for it to be rendered correctly
-			if (event.glsource) then 
-				mesh_shader(detailview.model.vid, diffusef_shader, detailview.model.labels["display"]);
-			else 
-				mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]); 
+			if (event.glsource) then
+				shader_uniform(diffuse_shader, "flip_t", "i", 1);
 			end
 
+			mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
 			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
 		end
 	end
