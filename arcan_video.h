@@ -63,7 +63,7 @@ enum arcan_transform_mask {
 	MASK_LIVING = 8,
 	MASK_ORIENTATION = 16,
 	MASK_UNPICKABLE = 32,
-	MASK_ALL = 63
+	MASK_ALL = 63 
 };
 
 enum arcan_ffunc_cmd {

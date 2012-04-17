@@ -36,7 +36,7 @@ local default_player_group = {
 	"rRIGHT",
 	"rSTART",
 	" SELECT",
-    "rCOIN1"
+	"rCOIN1"
 };
 
 local function keyconf_color(self, borderr, borderg, borderb, windowr, windowg, windowb)
@@ -268,14 +268,14 @@ end
 -- return the symstr that match inputtable, or nil.
 local function keyconf_match(self, input, label)
 	if (input == nil) then
-        return nil;
-    end
+		return nil;
+	end
 
-    if (type(input) == "table") then
+	if (type(input) == "table") then
 		kv = self.table[ self:id(input) ];
-    else
+	else
 		kv = self.table[ input ];
-    end
+	end
 
 -- with a label set, we expect a boolean result
 -- otherwise the actual matchresult will be returned
@@ -290,9 +290,9 @@ local function keyconf_match(self, input, label)
 		end
 		
 		return false;
-    end
+	end
 
-    return kv;
+	return kv;
 end
 
 local function keyconf_tbltoid(self, inputtable)
@@ -397,6 +397,29 @@ local function keyconf_input(self, inputtable)
 	end
 
 	return false;
+end
+
+-- interpose the values from iotable with the device/key mapping from the label
+local function keyconf_tablemod(self, label, iotable)
+		local res = self:table[label];
+
+-- if we have a label => key mapping, extract device/key/keysym IDs and push into
+-- iotable, then return it. This allows us to generate tables to send to target_input 
+-- using a label as lookup. 
+		if ( type(res) == "String" ) then
+			if (string.sub(key, 1, 7) == "analog:") then
+				iotable.kind = "analog";
+				
+			elseif (string.sub(key, 1, 8) == "digital:") then
+				iotable.kind = "digital";
+				
+			elseif (string.sub(key, 1, 11) == "translated:") then
+				iotable.kind = "translated";
+				
+			return iotable;
+		end
+		
+		return nil;
 end
 
 local function keyconf_labels(self)

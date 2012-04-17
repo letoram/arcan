@@ -805,10 +805,9 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	if (mvctx) {
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
-	} else
-        lua_pushvid(ctx, ARCAN_EID);
+	} else lua_pushvid(ctx, ARCAN_EID);
 
-    return 1;
+	return 1;
 }
 
 int arcan_lua_n_leds(lua_State* ctx)
@@ -1275,7 +1274,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
 					lua_pushvid(ctx, ev.data.video.source);
 					lua_pushnumber(ctx, 0);
-					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch movie callback");
+					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: video frameserver terminated");
 					lua_settop(ctx, 0);
 					return;
 				}
@@ -1959,6 +1958,13 @@ int arcan_lua_getgame(lua_State* ctx)
 	return rv;
 }
 
+void arcan_lua_panic(lua_State* ctx)
+{
+	lua_ctx_store.debug = true;
+		arcan_lua_wraperr(ctx, -1, "(panic)");
+		arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
+}
+
 void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (errc == 0)
@@ -2376,6 +2382,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	lua_ctx_store.debug = debugfuncs;
+	lua_atpanic(ctx, (lua_CFunction) arcan_lua_panic);
 #ifdef _DEBUG
 	lua_ctx_store.lua_vidbase = rand() % 32768;
 	arcan_warning("lua_exposefuncs() -- videobase is set to %d\n", lua_ctx_store.lua_vidbase);
@@ -2670,7 +2677,6 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
     lua_register(ctx, "scale_3dvertices", arcan_lua_scale3dverts);
  
 /* category: frameserver */
-
 /* item:play_movie, vid, nil */ 
 	lua_register(ctx, "play_movie", arcan_lua_playmovie);
 

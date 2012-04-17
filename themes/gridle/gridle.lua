@@ -169,8 +169,11 @@ function gridle_ledconf()
 			if (iotbl.active and restbl and restbl[1] and
 				ledconfig:input(restbl[1]) == true) then
 				gridle_input = keyconfig.iofun;
+				init_leds();
 			end
 		end
+	else
+		init_leds();
 	end
 end	
 
@@ -469,7 +472,6 @@ function gridle()
 	
 	gridle_keyconf();
 	gridle_ledconf();
-	init_leds();
 	osdkbd = create_osdkbd();
 end
 
@@ -618,9 +620,6 @@ function toggle_led(players, buttons, label, pressed)
 		elseif (settings.ledmode == 2 and label == "") then
 			-- Game All On
 			ledconfig:toggle(players, buttons);
-		elseif (settings.ledmode == 3 and label and label ~= "") then
-			-- Toggle specific LED
-			ledconfig:listtoggle( {label} );
 		end
 	end
 end
@@ -743,7 +742,9 @@ function move_cursor( ofs )
 	end
 
 	settings.cursorgame = settings.games[settings.cursor + settings.pageofs + 1];
-
+--	print(settings.cursorgame);
+--	print(#settings.games);
+	
 -- reset the previous movie
 	if (imagery.movie) then
 		instant_image_transform(imagery.movie);
@@ -940,7 +941,9 @@ function load_settings()
 	end
 	
 	local scalemode = get_key("internal_scalemode");
-	if (scalemode ~= nil) then settings.scalemode = scalemode; end
+	if (scalemode ~= nil) then 
+		settings.scalemode = scalemode; 
+	end
 end
 
 function asynch_movie_ready(source, status)
@@ -1035,17 +1038,25 @@ function gridle_internalinput(iotbl)
 	
 	if (restbl) then
 		for ind, val in pairs(restbl) do
-			if (val == "MENU_ESCAPE" and restbl.active) then
+			if (val == "MENU_ESCAPE" and iotbl.active) then
 				gridle_internalcleanup();
 				return;
 			elseif (val == "MENU_TOGGLE") then
 				gridlemenu_internal(internal_vid);
 				return;
 			end
+	
+			if (settings.ledmode == 3) then
+				ledconfig:set_led_label(val, iotbl.active);
+			end
 		end
 	end
 	
-	target_input(iotbl, internal_vid);
+	if (settings.internal_input == "Normal") then
+		target_input(iotbl, internal_vid);
+	elseif (settings.internal_input == "Flip X/Y") then
+		
+	end
 end
 
 function gridle_dispatchinput(iotbl)

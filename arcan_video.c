@@ -565,11 +565,11 @@ static void arcan_video_gldefault()
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 	glAlphaFunc(GL_GREATER, 0);
-    	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST );
-    	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST );
+	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
     
-   	 glEnable(GL_LINE_SMOOTH);
-    	glEnable(GL_POLYGON_SMOOTH);
+	glEnable(GL_LINE_SMOOTH);
+	glEnable(GL_POLYGON_SMOOTH);
 	build_orthographic_matrix(ortho_proj, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
@@ -2187,7 +2187,7 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int t
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	opa = CLAMP(opa, 0.0, 1.0);
-
+	
 	if (vobj) {
 		rv = ARCAN_OK;
 
@@ -2759,7 +2759,7 @@ void arcan_video_refresh_GL(float lerp)
 		 * note that objects will have been sorted based on Z already.
 		 * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
 		 */
-			if ( elem->order >= 0){
+			if ( elem->order >= 0 && elem->current.opa > EPSILON){
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 				if(elem->gl_storage.program > 0)
 					arcan_shader_activate(elem->gl_storage.program);

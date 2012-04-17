@@ -729,7 +729,7 @@ arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
 
 arcan_errc arcan_3d_addperspective(unsigned type)
 {
-	
+		/* INCOMPLETE */
 }
 
 void arcan_3d_setdefaults()
@@ -738,10 +738,14 @@ void arcan_3d_setdefaults()
 	virtobj* cam = current_scene.perspectives;
 	cam->dynamic = true;
 
-    build_projection_matrix(cam->projmatr, 0.1, 100.0, (float)arcan_video_display.width / (float) arcan_video_display.height, 45.0);
+	float aspect = (float) arcan_video_display.width / (float) arcan_video_display.height;
+	if (aspect < 1.0)
+		aspect = (float) arcan_video_display.height / (float) arcan_video_display.width;
+	
+	build_projection_matrix(cam->projmatr, 0.1, 100.0, aspect, 45.0);
 
-    cam->rendertarget = 0;
-    cam->type = virttype_camera;
+	cam->rendertarget = 0;
+	cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0); 
 }
 
