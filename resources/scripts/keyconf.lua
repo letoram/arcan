@@ -401,7 +401,7 @@ end
 
 -- interpose the values from iotable with the device/key mapping from the label
 local function keyconf_tablemod(self, label, iotable)
-		local res = self:table[label];
+		local res = self.table(label);
 
 -- if we have a label => key mapping, extract device/key/keysym IDs and push into
 -- iotable, then return it. This allows us to generate tables to send to target_input 
@@ -416,7 +416,8 @@ local function keyconf_tablemod(self, label, iotable)
 			elseif (string.sub(key, 1, 11) == "translated:") then
 				iotable.kind = "translated";
 				
-			return iotable;
+				return iotable;
+			end
 		end
 		
 		return nil;

@@ -1188,6 +1188,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 	}
 	else if (ev.category == EVENT_VIDEO){
 		bool gotvev = false;
+		int val;
+		vfunc_state* fsrvfstate;
 		
 		if (arcan_lua_grabthemefunction(ctx, "video_event")){
 /* due to the asynch- callback approach some additional checks are needed before bailing */
@@ -1223,18 +1225,25 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
                 arcan_lua_tblnum(ctx, "glsource", ev.data.video.constraints.bpp, top);
 			break;
                 
-            case EVENT_VIDEO_MOVIEREADY:
-                arcan_lua_tblstr(ctx, "kind", "movieready", top);
+			case EVENT_VIDEO_MOVIEREADY:
+				arcan_lua_tblstr(ctx, "kind", "movieready", top);
 				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
 				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);
-				int val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev.data.video.source )->ptr)->tag;
-				if (val){
-					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
-					lua_pushvid(ctx, ev.data.video.source);
-					lua_pushnumber(ctx, 1);
-					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch movie callback");
-					lua_settop(ctx, 0);
-					return;
+				fsrvfstate = arcan_video_feedstate( ev.data.video.source );
+				if (fsrvfstate && fsrvfstate->ptr){
+					val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev.data.video.source )->ptr)->tag;
+					if (val){
+						lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
+						lua_pushvid(ctx, ev.data.video.source);
+						lua_pushnumber(ctx, 1);
+						arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch movie callback");
+						lua_settop(ctx, 0);
+						return;
+					}
+				}
+				else {
+					/* nasty little race; frameserver terminated the same logical tick that the movie was made ready (so there's 
+					 * a frameserver failed event in the same queue as this one */
 				}
 			break;
                 
@@ -1572,9 +1581,18 @@ int arcan_lua_getkey(lua_State* ctx)
 	return 1;
 }
 
+static int get_linenumber(lua_State* ctx)
+{
+	lua_Debug ar;
+	lua_getstack(ctx, 1, &ar);
+	lua_getinfo(ctx, "nSl", &ar);
+	
+	return ar.currentline;
+}
+
 static void dump_call_trace(lua_State* ctx)
 {
-#ifdef LUA51
+		printf("-- call trace -- \n");
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
 			lua_pop(ctx, 1);
@@ -1587,15 +1605,15 @@ static void dump_call_trace(lua_State* ctx)
 				lua_pushinteger(ctx, 2);
 				lua_call(ctx, 2, 1);
 			}
-		}
-#endif 
+	}
 }
 
 /* dump argument stack, stack trace are shown only when --debug is set */
 static void dump_stack(lua_State* ctx)
 {
 	int top = lua_gettop(ctx);
-
+	printf("-- stack dump --\n");
+	
 	for (int i = 1; i <= top; i++) {
 		int t = lua_type(ctx, i);
 
@@ -1846,6 +1864,8 @@ int arcan_lua_filtergames(lua_State* ctx)
 	char* subgenre = NULL;
 	char* target = NULL;
 	int rv = 0;
+	int limit = 0;
+	int offset = 0;
 
 	luaL_checktype(ctx, 1, LUA_TTABLE);
 	char* tv;
@@ -1855,6 +1875,16 @@ int arcan_lua_filtergames(lua_State* ctx)
 	year = lua_tonumber(ctx, -1);
 	lua_pop(ctx, 1);
 
+	lua_pushstring(ctx, "limit");
+	lua_gettable(ctx, -2);
+	limit = lua_tonumber(ctx, -1);
+	lua_pop(ctx, 1);
+	
+	lua_pushstring(ctx, "offset");
+	lua_gettable(ctx, -2);
+	offset= lua_tonumber(ctx, -1);
+	lua_pop(ctx, 1);
+	
 	lua_pushstring(ctx, "input");
 	lua_gettable(ctx, -2);
 	input = lua_tonumber(ctx, -1);
@@ -1889,7 +1919,7 @@ int arcan_lua_filtergames(lua_State* ctx)
 	lua_gettable(ctx, -2);
 	target = _n_strdup(lua_tostring(ctx, -1), NULL);
 	
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target);
+	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target, limit, offset);
 	/* reason for all this is that lua_tostring MAY return NULL,
 	 * and if it doesn't, the string can be subject to garbage collection after POP,
 	 * thus need a working copu */
@@ -1902,7 +1932,7 @@ int arcan_lua_filtergames(lua_State* ctx)
 		int count = 1;
 
 		rv = 1;
-		/* table of tables .. wtb ruby yield */
+	/* table of tables .. wtb ruby yield */
 		lua_newtable(ctx);
 		int rtop = lua_gettop(ctx);
 
@@ -1948,11 +1978,24 @@ int arcan_lua_getgame(lua_State* ctx)
 	const char* game = luaL_checkstring(ctx, 1);
 	int rv = 0;
 
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, 0, 0, 0, 0, game, 0, 0, NULL);
+	arcan_dbh_res dbr = arcan_db_games(dbhandle, 0, 0, 0, 0, game, 0, 0, NULL, /*base */ 0, /*offset*/ 0);
 	if (dbr.kind == 1 && dbr.data.gamearr && (*dbr.data.gamearr)) {
+		arcan_db_game** curr = dbr.data.gamearr;
+	/* table of tables .. wtb ruby yield */
 		lua_newtable(ctx);
-		pushgame(ctx, *dbr.data.gamearr);
+		int rtop = lua_gettop(ctx);
+		int count = 1;
+		
+		while (*curr) {
+			lua_pushnumber(ctx, count++);
+			lua_newtable(ctx);
+			pushgame(ctx, *curr);
+			lua_rawset(ctx, rtop);
+			curr++;
+		}
+
 		rv = 1;
+		arcan_db_free_res(dbhandle, dbr);
 	}
 
 	return rv;
@@ -1972,13 +2015,17 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
 	if (lua_ctx_store.debug){
-		arcan_warning("Warning: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
-		printf("Stack dump: \n");
+		arcan_warning("Warning: arcan_lua_wraperr(%d), %s, from %s\n", get_linenumber(ctx), mesg, src);
+
 		if (lua_ctx_store.debug > 1)
+			dump_call_trace(ctx);
+		
+		if (lua_ctx_store.debug > 0)
 			dump_stack(ctx);
 
-		if (lua_ctx_store.debug > 2)
-			dump_call_trace(ctx);
+		if (!(lua_ctx_store.debug > 2))
+			arcan_fatal("Fatal: arcan_lua_wraperr()\n");
+		
 	}
 	else{
 		while ( arcan_video_popcontext() < CONTEXT_STACK_LIMIT -1);

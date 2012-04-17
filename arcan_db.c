@@ -40,7 +40,7 @@
 
 static bool db_init = false;
 static char wbuf[4096] = {0};
-static int wbufs = 4094; /* save a panic 0 */
+static int wbufsize = 4094;
 
 extern char* arcan_resourcepath;
 
@@ -140,7 +140,7 @@ static void freegame(arcan_db_game* game)
 static void create_theme_group(arcan_dbh* dbh, const char* themename)
 {
 	sqlite3_stmt* stmt = NULL;
-	int nw = snprintf(wbuf, wbufs, "CREATE TABLE theme_%s (key TEXT UNIQUE, value TEXT NOT NULL);", themename);
+	int nw = snprintf(wbuf, wbufsize, "CREATE TABLE theme_%s (key TEXT UNIQUE, value TEXT NOT NULL);", themename);
 	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -221,8 +221,14 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh* dbh,
 	return res;
 }
 
+static size_t nstrlen(const char* n){
+	return n == NULL ? 0 : strlen(n);
+}
+
 /* dynamically build a SQL query that
- * matches the desired attributes, a bit of a mess :'( */
+ * matches the desired attributes, a bit of a mess :'(
+ * as an afterthought, the limit / offset clauses should've been part of the dbh.
+ * the the upper/lower limit (as there might be thousands of entries here) '*/
 arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
                              const int year,
                              const int input,
@@ -231,16 +237,25 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
                              const char* title,
                              const char* genre,
                              const char* subgenre,
-							 const char* target
-							)
+														 const char* target,
+														 long long int offset,
+														 long long int limit
+						)
 {
 	arcan_dbh_res res = {.kind = -1};
+	int wbufs = sizeof(wbuf) - 2;
+	
 	sqlite3_stmt* stmt = NULL;
 	bool patch_strings = title || genre || subgenre || target;
 
 	if (!dbh)
 		return res;
 
+	if ( (nstrlen(title) + nstrlen(genre) + nstrlen(subgenre) + nstrlen(target)) + 1024 > wbufs ){
+		arcan_warning("arcan_db_games() unacceptably long filter arguments specified, ignored.\n");
+			return res;
+	}
+	
 	/* useful tautologies are useful */
 	const char* baseqry1 = "SELECT a.gameid AS \"gameid\", "
 	                       "a.title AS \"title\", "
@@ -254,7 +269,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	                       "a.manufacturer AS \"manufacturer\", "
 	                       "a.target AS \"targetid\", "
 						   "a.launch_counter AS \"launch_counter\", "
-						   "b.name AS \"target\" FROM game a, target b WHERE a.target = b.targetid AND 1=1";
+						   "b.name AS \"target\" FROM game a, target b WHERE a.target = b.targetid";
 
 	char* work = wbuf;
 	int nw = snprintf(wbuf, wbufs, "%s", baseqry1);
@@ -326,11 +341,19 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		work += nw;
 	}
 
+/* prevent SQLite from returning 0 results */
+	if (limit == 0) 
+		limit = -1;
+	
+	nw = snprintf(work, wbufs, " LIMIT %lli, %lli", offset, limit); 
+	wbufs -= nw;
+	work += nw;
+	
 	work[0] = ';';
 	work[1] = 0;
 
 	int code = sqlite3_prepare_v2(dbh->dbh, wbuf, strlen(wbuf), &stmt, NULL);
-	int count = 0, limit = 8;
+	int count = 0, alimit = 8;
 	res.kind = 1;
 	res.data.gamearr = (arcan_db_game**) calloc(sizeof(arcan_db_game*), 8);
 
@@ -405,8 +428,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 
 		res.data.gamearr[count++] = row;
 
-		if (count == limit-1) {
-			arcan_db_game** newarr = (arcan_db_game**) realloc(res.data.gamearr, (limit += REALLOC_STEP) * sizeof(arcan_db_game*));
+		if (count == alimit-1) {
+			arcan_db_game** newarr = (arcan_db_game**) realloc(res.data.gamearr, (alimit += REALLOC_STEP) * sizeof(arcan_db_game*));
 			if (newarr)
 				res.data.gamearr = newarr;
 			else {
@@ -426,11 +449,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	if (res.data.gamearr != NULL)
 		res.data.gamearr[count] = 0;
 	res.count = count;
-	res.limit = limit;
+	res.limit = alimit;
 	sqlite3_finalize(stmt);
 
-	wbufs = sizeof(wbuf) - 2;
-	wbuf[wbufs+1] = 0;
 	return res;
 }
 
@@ -440,7 +461,7 @@ long int arcan_db_launch_counter(arcan_dbh* dbh, const char* title)
 	
 	if (dbh && title && strlen(title) > 0){
 		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufs, "SELECT launch_counter FROM game WHERE title=?");
+		int nw = snprintf(wbuf, wbufsize, "SELECT launch_counter FROM game WHERE title=?");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
 		
@@ -459,7 +480,7 @@ bool arcan_db_launch_counter_increment(arcan_dbh* dbh, const char* title)
 	
 	if (dbh && title && strlen(title) > 0){
 		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufs, "UPDATE game SET launch_counter = launch_counter + 1 WHERE title=?");
+		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = launch_counter + 1 WHERE title=?");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
 		rv = sqlite3_step(stmt) == SQLITE_DONE;
@@ -475,7 +496,7 @@ bool arcan_db_clear_launch_counter(arcan_dbh* dbh)
 	
 	if (dbh){
 		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufs, "UPDATE game SET launch_counter = 0;");
+		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = 0;");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		rv = sqlite3_step(stmt) == SQLITE_DONE;
 		sqlite3_finalize(stmt);
@@ -496,14 +517,14 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, c
 	sqlite3_stmt* stmt = NULL;
 
 	if (okey) {
-		nw = snprintf(wbuf, wbufs, "UPDATE theme_%s SET value=? WHERE key=?;", themename);
+		nw = snprintf(wbuf, wbufsize, "UPDATE theme_%s SET value=? WHERE key=?;", themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 2, key, -1, SQLITE_TRANSIENT);
 		free(okey);
 	}
 	else {
-		nw = snprintf(wbuf, wbufs, "INSERT INTO theme_%s(key, value) VALUES(?, ?);", themename);
+		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) VALUES(?, ?);", themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, (char*) key, -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 2, (char*) value, -1, SQLITE_TRANSIENT);
@@ -524,7 +545,7 @@ char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key)
 		return NULL;
 	sqlite3_stmt* stmt = NULL;
 
-	int nw = snprintf(wbuf, wbufs, "SELECT value FROM theme_%s WHERE key = ?;", themename);
+	int nw = snprintf(wbuf, wbufsize, "SELECT value FROM theme_%s WHERE key = ?;", themename);
 	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 	sqlite3_bind_text(stmt, 1, (char*) key, -1, SQLITE_TRANSIENT);
 	if (sqlite3_step(stmt) == SQLITE_ROW)
@@ -589,11 +610,11 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 			romset = NULL;
 		}
 		else if ( (strlen(arg) >= 10) && strncmp(arg, "[gamepath]", 10) == 0){
-			snprintf(wbuf, wbufs, "%s/games%s", arcan_resourcepath, arg + 10);
+			snprintf(wbuf, wbufsize, "%s/games%s", arcan_resourcepath, arg + 10);
 			res.data.strarr[count++] = strdup(wbuf);
 		}
 		else if ( (strlen(arg) >= 11) && strncmp(arg, "[themepath]", 11) == 0){
-			snprintf(wbuf, wbufs, "%s/%s/%s", arcan_themepath, arcan_themename, arg + 11);
+			snprintf(wbuf, wbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, arg + 11);
 			res.data.strarr[count++] = strdup(wbuf);
 		}
 		else
@@ -674,10 +695,10 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 		assert(dbh);
 
 		const char* sqqry = "SELECT Count(*) FROM ";
-		snprintf(wbuf, wbufs, "%s%s", sqqry, "target");
+		snprintf(wbuf, wbufsize, "%s%s", sqqry, "target");
 		int tc = db_num_query(res, wbuf);
 
-		snprintf(wbuf, wbufs, "%s%s", sqqry, "game");
+		snprintf(wbuf, wbufsize, "%s%s", sqqry, "game");
 		int gc = db_num_query(res, wbuf);
 
 		if (themename)

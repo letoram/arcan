@@ -85,7 +85,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh*,
                              const char* title,
                              const char* genre,
                              const char* subgenre,
-							 const char* target
+							               const char* target,
+														 const long long offset,
+														 const long long limit
 							);
 
 /* log a database entry for a failed launch,
