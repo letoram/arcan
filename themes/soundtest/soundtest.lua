@@ -6,6 +6,7 @@
 -- d. spawn 'background.ogg' stream
 -- e. kill background music
 
+sample_countdown = 0;
 sample_fname = "soundtest.wav";
 bgmusic_fname_ogg = "soundtest.ogg";
 bgmusic_id = 0;
@@ -21,6 +22,7 @@ function soundtest()
 	[[c\tquick- play sample\n\r]] ..
 	[[d\tspawn 'background.ogg' stream\n\r]] ..
 	[[e\tkill background music\n\r]] ..
+	[[f\tsample spam\n\r]] .. 
 	[[ESCAPE\tshutdown\n\r]] );
 
 	show_image(vid);
@@ -54,6 +56,15 @@ function soundtest_input( inputtbl )
 		    play_audio(bgmusic_id);
 		    print(" => " .. bgmusic_id);
 
+		elseif (symtable[ inputtbl.keysym ] == "f") then
+		    if (sample_countdown > 0) then
+			sample_countdown = 0;
+			print("disabling sample spam");
+		    else
+			print("enabling sample spam");
+			sample_countdown = 15;
+		    end
+
 		elseif (symtable[ inputtbl.keysym ] == "e") then
 		    print("delete audio id : " ..bgmusic_id .. "\n");
 		    delete_audio(bgmusic_id);
@@ -64,7 +75,17 @@ function soundtest_input( inputtbl )
 	end
 end
 
-function movietest_audio_event( source, argtbl )
+function soundtest_clock_pulse()
+	if (sample_countdown > 0) then
+		sample_countdown = sample_countdown - 1;
+		if (sample_countdown == 0) then
+			play_sample(sample_fname);
+			sample_countdown = 15;
+		end
+	end
+end
+
+function soundtest_audio_event( source, argtbl )
   print(" [ Audio Event ]");
   print("-> source" .. source);
   print("-> kind" .. artgbl.kind);

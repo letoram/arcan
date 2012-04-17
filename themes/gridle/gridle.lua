@@ -69,6 +69,7 @@ settings = {
 	cursor   = 0,
 	cellcount= 0,
 	pageofs  = 0,
+	gameind  = 1,
 
 	favorites = {},
 	detailvids = {},
@@ -130,7 +131,7 @@ end
 function gridle_keyconf()
 	local keylabels = {
 		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
-		" OSD_KEYBOARD", "ACURSOR_X", "ACURSOR_Y"};
+		" RANDOM_GAME", " OSD_KEYBOARD" };
 
 	if (INTERNALMODE ~= "NO SUPPORT") then
 		table.insert(keylabels, " LAUNCH_INTERNAL");
@@ -175,10 +176,20 @@ function gridle_ledconf()
 	else
 		init_leds();
 	end
-end	
+end
 
 function current_game()
 	return settings.games[settings.cursor + settings.pageofs + 1];
+end
+
+-- ncc (number of cells per page)
+-- num within 1..#settings.games
+-- gives page and offset from page base.
+
+function page_calc(num)
+	num = num - 1;
+	local pageofs = math.floor( num / ncc ) * ncc;
+	return pageofs, num - pageofs;
 end
 
 function table.find(table, label)
@@ -254,7 +265,7 @@ function osdkbd_filter(msg)
 		local titlecpy = settings.filters.title;
 		settings.filters.title = msg;
 		local gamelist = list_games( settings.filters );
-
+		
 		if (#gamelist > 0) then
 			settings.games = gamelist;
 		
@@ -306,7 +317,9 @@ function gridle()
 	pop_video_context();
 
 -- keep an active list of available games, make sure that we have something to play/show
+-- since we want a custom sort, we'll have to keep a table of all the games (expensive)
 	settings.games = list_games( {} );
+	
 	if (#settings.games == 0) then
 		error("There are no games defined in the database.");
 		shutdown();
@@ -343,6 +356,7 @@ function gridle()
 	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
 	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
 	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
+	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) move_cursor( math.random(-#settings.games, #settings.games) ); end
 	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
@@ -636,7 +650,7 @@ function remove_zoom(speed)
 end
 	
 function cursor_vid()
-	local cursor_row = math.floor(settings.cursor / ncw);
+	local cursor_row = math.floor( settings.cursor / ncw);
 	return grid[cursor_row][settings.cursor - cursor_row * ncw ];
 end
 
@@ -649,86 +663,25 @@ function blend_gridcell(val, dt)
     end
 end
 
-function resize_grid(step)
- local new_cellw = settings.cell_width; local new_cellh = settings.cell_width;
-
--- find the next grid size that would involve a density change
- repeat
-    new_cellw = new_cellw + step;
- until math.floor(VRESW / (new_cellw + settings.hspacing)) ~= ncw;
-
- repeat
-    new_cellh = new_cellh + step;
- until math.floor(VRESH / (new_cellh + settings.vspacing)) ~= nch;
-
--- safety checks
- if (new_cellw < 64 or new_cellw > VRESW * 0.75) then return; end
- if (new_cellh < 64 or new_cellh > VRESH * 0.75) then return; end
-
- settings.cell_width = new_cellw;
- settings.cell_height = new_cellh;
-
- local currgame = settings.pageofs + settings.cursor;
- local new_ncc = math.floor( VRESW / (new_cellw + settings.hspacing) ) * math.floor( VRESH / (new_cellh + settings.vspacing) );
- settings.pageofs = math.floor( currgame / new_ncc ) * new_ncc;
- settings.cursor = currgame - settings.pageofs;
- if (settings.cursor < 0) then settings.cursor = 0; end
-
--- remove the old grid, without fadefuncs.
- erase_grid(true);
- build_grid(settings.cell_width, settings.cell_height);
-end
-
 function move_cursor( ofs )
-    local pageofs_cur = settings.pageofs;
+	local pageofs_cur = settings.pageofs;
 	blend_gridcell(0.3, settings.fadedelay);
 	remove_zoom(settings.fadedelay);
 
-	settings.cursor = settings.cursor + ofs;
--- paging calculations
--- ncc : number of cells in a "page" (so #rows * #cols)
--- ncw : number of cells in a row
--- settings.cursor: ( 0..ncc )
--- pageofs_cur, settings.pageofs : at which position in settings.game should we start (pageofs % ncc == 0)
--- if they differ at the end, we're on a new page. 
-	
-	if (ofs > 0) then -- right/forward
-		if (settings.cursor >= ncc) then -- move right or "forward"
-			settings.cursor = settings.cursor - ncc;
-			pageofs_cur = pageofs_cur + ncc;
-		end
+	settings.gameind = settings.gameind + ofs;
 
-		-- wrap around on overflow
-		if (pageofs_cur + settings.cursor >= #settings.games) then
-			pageofs_cur = 0;
-			settings.cursor = 0;
-		end
-	elseif (ofs < 0) then -- left/backward
-		if (settings.cursor < 0) then -- step back a page
-			pageofs_cur = pageofs_cur - ncc;
-			settings.cursor = ncc - ( -1 * settings.cursor);
-			if (pageofs_cur < 0) then -- wrap page around
-				pageofs_cur = math.floor(#settings.games / ncc) * ncc;
-				if (pageofs_cur == #settings.games) then
-					pageofs_cur = pageofs_cur - ncc;
-				end
-			end
-
-			if (settings.cursor < 0 or settings.cursor >= #settings.games - pageofs_cur) then
-				settings.cursor = #settings.games - pageofs_cur - 1;
-			end
-		end
--- this means that the underlying datamodel has changed and we need to recaluclate page and ofs	
-	elseif (ofs == 0 and (settings.cursor + pageofs_cur > # settings.games)) then 
-		while (pageofs_cur >= #settings.games) do
-			pageofs_cur = pageofs_cur - ncc;
-		end
-		
-		if (settings.cursor + pageofs_cur >= #settings.games) then
-			settings.cursor = #settings.games - pageofs_cur - 1;
-		end
+-- refit inside range
+	while (settings.gameind < 1) do 
+		settings.gameind = #settings.games + settings.gameind;
 	end
 	
+	while (settings.gameind > #settings.games) do
+		settings.gameind = settings.gameind - #settings.games;
+	end
+
+-- find new page / cursor position
+	settings.pageofs, settings.cursor = page_calc( settings.gameind );
+
 	local x,y = cell_coords(
 		math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw)
 	);
@@ -737,13 +690,10 @@ function move_cursor( ofs )
 	if (pageofs_cur ~= settings.pageofs) then
 		play_sample(soundmap["GRID_NEWPAGE"]);
 		erase_grid(false);
-		settings.pageofs = pageofs_cur;
 		build_grid(settings.cell_width, settings.cell_height);
 	end
 
-	settings.cursorgame = settings.games[settings.cursor + settings.pageofs + 1];
---	print(settings.cursorgame);
---	print(#settings.games);
+	settings.cursorgame = settings.games[settings.gameind];
 	
 -- reset the previous movie
 	if (imagery.movie) then
