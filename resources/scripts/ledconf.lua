@@ -12,6 +12,11 @@
 -- highlight-when-pushed (or perhaps even something more
 -- esoteric like hooking LED- up to internal- launch
 -- target memory value ;-)
+-- 
+-- suggested changes currently not covered include
+-- moving the labels from a sequence to a user controlled field,
+-- so that if the LABEL group is selected (menu_left/right) you
+-- can go back and change an old label or more quickly skip.
 --
 -- [LABEL] => ctrlid:ledid
 ----------------------------------------------------------
@@ -61,14 +66,15 @@ local function ledconf_tofront(self)
 	end
 end
 
-local function keyconf_destroy(self)
+local function ledconf_destroy(self)
 	expire_image(self.window, 20);
 	blend_image(self.window, 0.0, 20);
 	expire_image(self.border, 20);
 	blend_image(self.border, 0.0, 20);
 
+	delete_image(self.anchor);
 	delete_image(self.msgheader);
-	delete_image(self.textvid);
+	delete_image(self.valvid);
 	self.active = true;
 	self:flush();
 end
@@ -216,6 +222,13 @@ local function ledconf_set_led(self, ctrl, id, val)
 		set_led(ctrl, id, val);
 	end
 end
+
+local function ledconf_set_led_label(self, label, active)
+		local val = self.table and self.table[label] or nil
+		if (val) then
+			self:set_led(val[1], val[2], active and 1 or 0);
+		end
+end
 -- 
 local function ledconf_clearall(self)
 	for i=0,LEDCONTROLLERS-1 do
@@ -328,8 +341,10 @@ local ledcfgtbl = {
 		group_change = ledconf_group_change,
 		setall = ledconf_setall,
 		set_led = ledconf_set_led,
+		set_led_label = ledconf_set_led_label,
 		clearall = ledconf_clearall,
 		listtoggle = ledconf_listtoggle,
+		destroy = ledconf_destroy,
 		fontline = [[\ffonts/default.ttf,18 ]],
 		ledcache = {};
 	}
@@ -359,12 +374,13 @@ local ledcfgtbl = {
 	elseif LEDCONTROLLERS > 0 then 
 		ledcfgtbl.active = false;
 		ledcfgtbl:new(labels);
+		ledcfgtbl:clearall();
 	else
 		ledcfgtbl.active = true;
 	end
 
 -- reset AND populate cache 
-	ledcfgtbl.clearall(ledcfgtbl);
+--	ledcfgtbl:clearall();
 	
 	return ledcfgtbl;
 end

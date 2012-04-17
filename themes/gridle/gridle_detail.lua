@@ -1,7 +1,7 @@
 detailview = {
  modeldisplay = BADID
 };
-local loaded = false;
+local gridledetail_loaded = false;
 
 local function gridledetail_load()
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
@@ -15,16 +15,18 @@ local function gridledetail_load()
 	backlit_shader3d = load_shader("shaders/diffuse_only.vShader", "shaders/flicker_diffuse.fShader", "backlit");
 	default_shader3d = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
 	texco_shader     = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "noise");
-	diffuse_shader   = load_shader("shaders/diffuse_only.vShader", "shaders/diffuse_only.fShader", "diffuse");
+	display_shader   = load_shader("shaders/diffuse_only.vShader", "shaders/diffuse_only.fShader", "display");
 	
 	shader_uniform(default_shader3d, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
 	shader_uniform(default_shader3d, "wambient", "fff", PERSIST, 0.3, 0.3, 0.3);
 	shader_uniform(default_shader3d, "wdiffuse", "fff", PERSIST, 0.6, 0.6, 0.6);
 	shader_uniform(default_shader3d, "map_diffuse", "i", PERSIST, 0);
 	shader_uniform(texco_shader, "speedfact", "f", PERSIST, 24.0);
-
+	shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
+	shader_uniform(backlit_shader3d, "flip_t", "b", PERSIST, 0);
+	
 -- make sure this is only done once
-	loaded = true;
+	gridledetail_loaded = true;
 end
 
 local function gridledetail_setnoisedisplay()
@@ -50,9 +52,9 @@ local function gridledetail_imagestatus(source, status)
 	if (status == 0 or source ~= detailview.modeldisplay) then 
 		delete_image(source);
 	else
--- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
+	-- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
 -- we can't do this for movie, as we need 'tick' operations for it to properly poll the frameserver
-		mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
+		mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
 		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
 
 		if (rvid ~= ARCAN_BADID) then 
@@ -144,7 +146,7 @@ local function gridledetail_freeview(axis, mag)
 
 		move3d_model(detailview.model.vid, detailview.startx + dx, detailview.starty + dy, detailview.startz + dz, 20 + settings.transitiondelay);
 		expire_image(detailview.model.vid, 20 + settings.transitiondelay);
-		
+		detailview.fullscreen = false;
 		detailview.model = nil;
 	end
 end
@@ -158,11 +160,17 @@ function gridledetail_video_event(source, event)
 			if (rvid ~= source and rvid ~= BADID) then delete_image(rvid); end 
 			
 -- with a gl source, it means it comes from a readback, means that we might need to flip texture coordinates for it to be rendered correctly
+-- this is done in two ways, when we force it unto the model we can't assume a specific shape for the display, so we have to do it with texture coordinates
+-- in shader but statically in the fullscreen quad mode.
 			if (event.glsource) then
-				shader_uniform(diffuse_shader, "flip_t", "i", 1);
+				shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
+			else
+				shader_uniform(display_shader, "flip_t", "b", PERSIST, 0);
 			end
 
-			mesh_shader(detailview.model.vid, diffuse_shader, detailview.model.labels["display"]);
+-- changes the t axis of the texture (s-t x-y) to be 1.0 - t
+			detailview.glsource = event.glsource;
+			mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
 			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
 		end
 	end
@@ -184,7 +192,6 @@ function gridledetail_internalinput(iotbl)
 
 	if (restbl) then
 		for ind,val in pairs(restbl) do
-			print(val);
 			if (iotbl.active and val == "MENU_TOGGLE" and detailview.fullscreen) then
 				gridlemenu_internal(internal_vid);
 				return;
@@ -192,24 +199,16 @@ function gridledetail_internalinput(iotbl)
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
 					hide_image(internal_vid);
+					--:internal_vid = BADID;
 					show_image(detailview.model.vid);
 					detailview.fullscreen = false;
 				else
 					detailview.fullscreen = true;
+					gridlemenu_loadshader(settings.fullscreenshader);
+					gridlemenu_resize_fullscreen(internal_vid);
 					show_image(internal_vid);
-					
 					local props = image_surface_properties(internal_vid);
 					
-					if (props.width / props.height > 1.0) then -- horizontal game
-						resize_image(internal_vid, VRESW, 0, NOW);
-					else -- vertical game
-						resize_image(internal_vid, VRESH, 0, NOW);
-						props = image_surface_properties(internal_vid);
-						if (props.width < VRESW) then
-							move_image(internal_vid, 0.5 * (VRESW - props.width), 0, NOW);
-						end
-					end
-
 					hide_image(detailview.model.vid);
 					order_image(internal_vid, max_current_image_order() + 1); 
 					return;
@@ -223,6 +222,11 @@ function gridledetail_internalinput(iotbl)
 				move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
 				return;
 			end
+
+				if (settings.ledmode == 3) then
+				ledconfig:set_led_label(val, iotbl.active);
+			end	
+
 		end
 	end
 
@@ -277,7 +281,7 @@ function gridledetail_input(iotbl)
 -- The rest of the dispatch is similar to gridle.lua 
 		if (restbl and iotbl.active) then
 			for ind,val in pairs(restbl) do
-				if (settings.iodispatch[val]) then	settings.iodispatch[val](restbl); end
+				if (detailview.iodispatch[val]) then detailview.iodispatch[val](restbl); end
 			end
 		end
 	end
@@ -378,7 +382,7 @@ local function find_nextdetail(current, gametbl)
 end
 
 function gridledetail_show(detailres, gametbl, ind)
-	if (loaded == false) then
+	if (gridledetail_loaded == false) then
 		gridledetail_load();
 	end
 
@@ -395,9 +399,8 @@ function gridledetail_show(detailres, gametbl, ind)
 -- repeat-rate is ignored here
 	kbd_repeat(0);
 	
-	griddispatch = settings.iodispatch;
+	detailview.fullscreen = false;
 	gridvideo = gridle_video_event;
-	gridinput = gridle_input;
 	gridclock = gridle_clock_pulse;
 	
 	gridle_video_event = gridledetail_video_event;
@@ -408,14 +411,14 @@ function gridledetail_show(detailres, gametbl, ind)
 	detailview.curgame = gametbl;
 	detailview.cooldown = 0;
 	
-	settings.iodispatch = {};
-	settings.iodispatch["MENU_UP"] = function(iotbl)
+	detailview.iodispatch = {};
+	detailview.iodispatch["MENU_UP"] = function(iotbl)
 		if (detailview.cooldown == 0) then find_nextdetail(); end
 	end
-	settings.iodispatch["MENU_DOWN"] = function(iotbl)
+	detailview.iodispatch["MENU_DOWN"] = function(iotbl)
 		if (detailview.cooldown == 0) then find_prevdetail(); end
 	end
-	settings.iodispatch["MENU_LEFT"] = function(iotbl)
+	detailview.iodispatch["MENU_LEFT"] = function(iotbl)
 		if (detailview.model) then
 			if (detailview.cooldown == 0) then
 				instant_image_transform(detailview.model.vid);
@@ -425,7 +428,7 @@ function gridledetail_show(detailres, gametbl, ind)
 		end
 	end
 	
-	settings.iodispatch["MENU_RIGHT"] = function(iotbl)
+	detailview.iodispatch["MENU_RIGHT"] = function(iotbl)
 		if (detailview.model) then
 			if (detailview.cooldown == 0) then
 				instant_image_transform(detailview.model.vid);
@@ -436,26 +439,25 @@ function gridledetail_show(detailres, gametbl, ind)
 	end
 
 -- Don't add this label unless internal support is working for the underlying platform
-	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
+	detailview.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		gridledetail_setnoisedisplay();
-		local vid, aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
-		internal_vid = vid;
+		internal_vid, internal_aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
 	end
 
 -- Works the same, just make sure to stop any "internal session" as it is 
-	settings.iodispatch["MENU_SELECT"] = function (iotbl) 
+	detailview.iodispatch["MENU_SELECT"] = function (iotbl) 
 		launch_target( current_game().title, LAUNCH_EXTERNAL);
 		gridledetail_setnoisedisplay();
 	end 
 
-	settings.iodispatch["MENU_ESCAPE"] = function(iotbl)
+	detailview.iodispatch["MENU_ESCAPE"] = function(iotbl)
 		gridledetail_freeview(1, -6.0);
 
 		gridle_clock_pulse = gridclock;
-		gridle_input = gridinput;
+		gridle_input = gridle_dispatchinput;
 		gridle_video_event = gridvideo;
 		
-		settings.iodispatch = griddispatch;
+		detailview.iodispatch = griddispatch;
 		kbd_repeat(settings.repeat_rate);
 		move_cursor(0);
 	end

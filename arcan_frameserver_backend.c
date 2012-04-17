@@ -197,11 +197,9 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			arcan_framequeue_dequeue(&src->vfq);
 	}
 	else if (cmd == ffunc_tick && !check_child(src)){
-		printf("tick and died\n");
 		arcan_frameserver_free(src, src->loop);
 	}
 	else if (cmd == ffunc_destroy){
-		printf("destroy! %d\n", src->vid);
 		arcan_frameserver_free(src, false);
 	}
 
