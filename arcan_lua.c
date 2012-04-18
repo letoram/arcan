@@ -2115,6 +2115,13 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 	if (cmdline.kind == 0){
 		char* resourcestr = arcan_find_resource_path(cmdline.data.strarr[0], "targets", ARCAN_RESOURCE_SHARED);
 
+		if (lua_ctx_store.debug > 0){
+			arcan_warning("arcan_lua_launchtarget(%s,%d):\n", game, internal, resourcestr);
+			char** argbase = cmdline.data.strarr;
+				while(*argbase)
+					arcan_warning("\t%s\n", *argbase++);
+		}
+		
 		if (internal) {
 			arcan_launchtarget* intarget = arcan_target_launch_internal(
 			               resourcestr,
@@ -2149,6 +2156,8 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 		
 		free(resourcestr);
 	}
+	else
+		arcan_warning("arcan_lua_targetlaunch(%s, %i) failed, no match in database.\n", game, internal);
 	
 	arcan_db_free_res(dbhandle, cmdline);
 	return rv;
