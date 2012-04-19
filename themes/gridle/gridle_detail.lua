@@ -442,6 +442,7 @@ function gridledetail_show(detailres, gametbl, ind)
 	detailview.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		gridledetail_setnoisedisplay();
 		internal_vid, internal_aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
+		audio_gain(internal_aid, settings.internal_again, NOW);
 	end
 
 -- Works the same, just make sure to stop any "internal session" as it is 

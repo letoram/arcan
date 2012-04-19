@@ -132,47 +132,100 @@ function gridle_keyconf()
 	local keylabels = {
 		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD" };
-
+	local listlbls = {};
+	local lastofs = 1;
+	
 	if (INTERNALMODE ~= "NO SUPPORT") then
 		table.insert(keylabels, " LAUNCH_INTERNAL");
 		system_load("gridle_intmenus.lua")();
 	end
-	
-		keyconfig = keyconf_create(1, keylabels);
-		keyconfig.iofun = gridle_input;
-	
-		if (keyconfig.active == false) then
-		kbd_repeat(0);
+
+	for ind, key in ipairs(keylabels) do
+		table.insert(listlbls, string.sub(key, 2));
+	end
 		
+	keyconfig = keyconf_create(1, keylabels);
+	
+	if (keyconfig.active == false) then
+		kbd_repeat(0);
+
+-- keep a listview in the left-side behind the dialog to show all the labels left to configure
+		keyconf_labelview = listview_create(listlbls, VRESH, VRESW / 4, "fonts/default.ttf", 18,  nil);
+		local props = image_surface_properties(keyconf_labelview:window_vid(), 5);
+		if (props.height < VRESH) then
+			move_image(keyconf_labelview:anchor_vid(), 0, VRESH * 0.5 - props.height* 0.5);
+		end
+		
+		keyconfig:to_front();
+
+-- replace the current input function until we have a working keyconfig
 		gridle_input = function(iotbl) -- keyconfig io function hook
 			if (keyconfig:input(iotbl) == true) then
-				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg");
-
-				ledconfig = ledconf_create( keyconfig:labels() );
+				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
+				gridle_input = gridle_dispatchinput;
 				kbd_repeat(settings.repeat_rate);
+				if (keyconf_labelview) then keyconf_labelview:destroy(); end
 				
-				if (ledconfig.active == false) then
-					gridle_input = ledconfig_iofun;
-				else -- no LED controller present, or LED configuration already exists
-					gridle_input = keyconfig.iofun;
+			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
+				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
+					lastofs = keyconfig.ofs;
+					keyconf_labelview:move_cursor(1, 1); 
+				elseif (keyconfig.in_playerconf and keyconf_labelview) then
+					keyconf_labelview:destroy();
+					keyconf_labelview = nil;
 				end
 			end
 		end
+--
+
 	end
 end
-
+ 
+-- very similar to gridle_keyconf, only real difference is that the labels are a subset
+-- of the output from keyconf (PLAYERn)
 function gridle_ledconf()
-	ledconfig = ledconf_create(keyconfig:labels() );
+	ledconflabels = {};
+
+	for ind, val in ipairs(keyconfig:labels()) do
+		if (string.match(val, "PLAYER%d") ~= nil) then
+			table.insert(ledconflabels, val);
+		end
+	end
+
+	ledconfig = ledconf_create( ledconflabels );
+
+-- LED config, use a subset of the labels defined in keyconf
 	if (ledconfig.active == false) then
+		ledconf_labelview = listview_create(ledconflabels, VRESH, VRESW / 4, "fonts/default.ttf", 18,  nil);
+				
+		local props = image_surface_properties(ledconf_labelview:window_vid(), 5);
+		if (props.height < VRESH) then
+			move_image(ledconf_labelview:anchor_vid(), 0, VRESH * 0.5 - props.height* 0.5);
+		end
+
+		ledconfig:to_front();
+		ledconfig.lastofs = ledconfig.labelofs;
+		
+-- since we have a working symbol/label set by now, use that one
 		gridle_input = function(iotbl)
 			local restbl = keyconfig:match(iotbl);
 
-			if (iotbl.active and restbl and restbl[1] and
-				ledconfig:input(restbl[1]) == true) then
-				gridle_input = keyconfig.iofun;
-				init_leds();
+-- just push input until all labels are covered
+			if (iotbl.active and restbl and restbl[1]) then 
+				if (ledconfig:input(restbl[1]) == true) then
+					gridle_input = gridle_dispatchinput;
+					ledconf_labelview:destroy();
+					ledconf_labelview = nil;
+					init_leds();
+				else -- more input
+					if (ledconfig.lastofs ~= ledconfig.labelofs) then
+							ledconfig.lastofs = ledconfig.labelofs;
+							ledconf_labelview:move_cursor(1, 1);
+					end
+				end
 			end
 		end
+-- already got working LEDconf
 	else
 		init_leds();
 	end
@@ -286,11 +339,11 @@ end
 
 function gridle()
 -- grab all dependencies;
+	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
 	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
 	system_load("scripts/keyconf.lua")();        -- input configuration dialoges
 	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
 	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
-	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus)
 	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
 	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
@@ -908,17 +961,24 @@ function asynch_movie_ready(source, status)
 -- corner case, we're zooming or fully zoomed already and we need to replace the current image with
 -- the frameserver session
 		if (imagery.zoomed ~= BADID) then
-			expire_image(imagery.zoomed, settings.zoom_countdown + 20);
-			blend_image(imagery.zoomed, 0.0, 20);
-	
+			local cprops = image_surface_properties(imagery.zoomed);
+			expire_image(imagery.zoomed, settings.zoom_countdown);
+			blend_image(imagery.zoomed, 0.5, settings.zoom_countdown);
+			
 			imagery.zoomed = instance_image(source);
 			image_mask_clear(imagery.zoomed, MASK_POSITION);
 			image_mask_clear(imagery.zoomed, MASK_ORIENTATION);
 			image_mask_clear(imagery.zoomed, MASK_OPACITY);
 			image_mask_clear(imagery.zoomed, MASK_SCALE);
-	
-			move_image(imagery.zoomed, settings.zoomp.x, settings.zoomp.y);
-			resize_image(imagery.zoomed, settings.zoomp.width, settings.zoomp.height);
+
+---- copy the static zoomed image properties and then set the same transform
+			resize_image(imagery.zoomed, cprops.width, cprops.height);
+			move_image(imagery.zoomed, cprops.x, cprops.y);
+			blend_image(imagery.zoomed, cprops.opacity);
+			blend_image(imagery.zoomed, 1.0, settings.zoom_countdown);
+			
+			move_image(imagery.zoomed, settings.zoomp.x, settings.zoomp.y, settings.zoom_countdown);
+			resize_image(imagery.zoomed, settings.zoomp.width, settings.zoomp.height, settings.zoom_countdown);
 			blend_image(imagery.zoomed, 1.0, settings.zoom_countdown);
 			order_image(imagery.zoomed, ZOOMLAYER_MOVIE);
 		end
@@ -929,7 +989,9 @@ end
 
 function gridle_clock_pulse()
 -- used to account for a nasty race condition when zooming a screenshot with asynch movie loading mid-zoom
-	if (settings.zoom_countdown > 0) then settings.zoom_countdown = 0; end
+	if (settings.zoom_countdown > 0) then 
+		settings.zoom_countdown = settings.zoom_countdown - 1; 
+	end
 	
 -- the cooldown before loading a movie lowers the number of frameserver launches etc. in
 -- situations with a high repeatrate and a button hold down. It also gives the soundeffect

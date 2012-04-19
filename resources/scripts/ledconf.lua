@@ -61,8 +61,12 @@ local function ledconf_tofront(self)
 	self.order = max_current_image_order() + 1;
 	order_image(self.window, self.order+1);
 	order_image(self.border, self.order);
-	if (self.textvid) then
-		order_image(self.textvid, self.order+2);
+	if (self.msgheader) then
+		order_image(self.msgheader, self.order+2);
+	end
+
+	if (self.valvid) then
+		order_image(self.valvid, self.order+2);
 	end
 end
 
@@ -139,13 +143,15 @@ local function ledconf_nextlabel(self, store)
 		self.msgheader = render_text( self.fontline .. [[\#ffffffWelcome to Arcan ledconf!\r\nPlease set values for label:\n\r\#00ffae]] .. self.labels[self.labelofs] ..
 				[[\n\r\#ffffffCtrl:\tLed#]]);
 		local props = image_surface_properties(self.msgheader);
+		local pprops = image_surface_properties(self.window);
+		
 		resize_image(self.window, props.width + 10, props.height + 40);
 		resize_image(self.border, props.width + 16, props.height + 46);
 		
 		link_image(self.msgheader, self.window);
 		image_mask_clear(self.msgheader, MASK_SCALE);
 		image_mask_clear(self.msgheader, MASK_OPACITY);
-		order_image(self.msgheader, 254);
+		order_image(self.msgheader, pprops.order + 1);
 		move_image(self.msgheader, 5, 5);
 		show_image(self.msgheader);
 		
@@ -155,7 +161,6 @@ local function ledconf_nextlabel(self, store)
 
 	return false;
 end
-
 
 local function ledconf_drawvals(self)
 	local msg = "";
@@ -177,7 +182,7 @@ local function ledconf_drawvals(self)
 	image_clip_on(self.valvid);
 	image_mask_clear(self.valvid, MASK_SCALE);
 	move_image(self.valvid, 5, props.y + props.height + 5, NOW);
-	order_image(self.valvid, 254);
+	order_image(self.valvid, props.order);
 	show_image(self.valvid);
 	
 end
@@ -275,9 +280,9 @@ local function ledconf_input(self, symlbl)
 	elseif (symlbl == "MENU_RIGHT") then
 		self:group_change(1);
 	elseif (symlbl == "MENU_SELECT") then
-		self:nextlabel(true);
+		return not self:nextlabel(true);
 	elseif (symlbl == "MENU_ESCAPE") then
-		self:nextlabel(false);
+		return not self:nextlabel(false);
 	end
 
 	return false;
@@ -379,8 +384,5 @@ local ledcfgtbl = {
 		ledcfgtbl.active = true;
 	end
 
--- reset AND populate cache 
---	ledcfgtbl:clearall();
-	
 	return ledcfgtbl;
 end

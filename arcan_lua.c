@@ -1584,10 +1584,11 @@ int arcan_lua_getkey(lua_State* ctx)
 static int get_linenumber(lua_State* ctx)
 {
 	lua_Debug ar;
-	lua_getstack(ctx, 1, &ar);
+/*	seems to SEG in some settings
+ * lua_getstack(ctx, 1, &ar);
 	lua_getinfo(ctx, "nSl", &ar);
-	
-	return ar.currentline;
+	*/	
+	return -1;
 }
 
 static void dump_call_trace(lua_State* ctx)
