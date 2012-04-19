@@ -332,5 +332,5 @@ settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 	end
 	
 	play_sample(soundmap["MENU_TOGGLE"]);
-	move_image(current_menu:window_vid(), 100, 120, settings.fadedelay);
+	move_image(current_menu:anchor_vid(), 100, 120, settings.fadedelay);
 end

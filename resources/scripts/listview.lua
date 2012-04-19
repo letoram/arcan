@@ -46,8 +46,12 @@ local function listview_color(self, borderr, borderg, borderb, windowr, windowg,
 	blend_image(self.border, bprops.opa);
 end
 
-local function listview_vid(self)
+local function listview_anchor(self)
 	return self.anchor;
+end
+
+local function listview_vid(self)
+	return self.window;
 end
 
 local function listview_opacity(self, borderopa, windowopa)
@@ -186,6 +190,7 @@ function listview_create(elem_list, height, maxw, font, fontsize, formatlist)
 	restbl.destroy = listview_destroy;
 	restbl.move_cursor = listview_move_cursor;
 	restbl.window_vid = listview_vid;
+	restbl.anchor_vid = listview_anchor;
 	restbl.push_to_front = listview_tofront;
 	restbl.redraw = listview_redraw;
 	restbl.select = listview_select;
@@ -200,6 +205,6 @@ function listview_create(elem_list, height, maxw, font, fontsize, formatlist)
 	restbl:window_opacity(0.2, 0.8);
 	restbl:move_cursor(0, true);
 	restbl:push_to_front();
-	props = image_surface_properties(restbl.cursorvid);
+
 	return restbl;
 end

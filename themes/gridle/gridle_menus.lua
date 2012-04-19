@@ -30,7 +30,7 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	current_menu.ptrs = listptr;
 
 	play_sample(soundmap["SUBMENU_TOGGLE"]);
-	move_image( current_menu:window_vid(), props.x + props.width + 6, props.y);
+	move_image( current_menu:anchor_vid(), props.x + props.width + 6, props.y);
 	return current_menu;
 end
 
@@ -226,7 +226,7 @@ settingsptrs["Sort Order..."]    = function()
 	menu_spawnmenu(sortorderlbls, sortorderptrs, fmts); 
 end
 
-settingsptrs["Reconfigure Keys..."] = function()
+settingsptrs["Reconfigure Keys"] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
@@ -310,7 +310,7 @@ local function update_status()
 	table.insert(list, filterstr);
 	if (settings.statuslist == nil) then
 		settings.statuslist = listview_create(list, 24 * 5, VRESW * 0.75);
-		move_image(settings.statuslist:window_vid(), 5, settings.fadedelay);
+		move_image(settings.statuslist:anchor_vid(), 5, settings.fadedelay);
 		hide_image(settings.statuslist.cursorvid);
 	else
 		settings.statuslist.list = list;
@@ -480,5 +480,5 @@ function gridlemenu_settings()
 
 -- add an info window
 	update_status();
-	move_image(current_menu:window_vid(), 100, 140, settings.fadedelay);
+	move_image(current_menu:anchor_vid(), 100, 140, settings.fadedelay);
 end

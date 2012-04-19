@@ -212,6 +212,7 @@ local function keyconf_next_key(self)
 			self.active_group = 0;
 			self.playercount  = 0;
 			self.buttoncount  = 0;
+			self.in_playerconf = true;
 			keyconf_playerline(self);
 			return false;
 		end
@@ -239,9 +240,9 @@ local function keyconf_inp_playersel(self, inputtable)
 				self.input = self.defaultinput;
 				self.playerconf = true;
 				self.ofs = self.ofs - 1;
-				
+	
 				for i=1, self.buttoncount do
-					table.insert(default_player_group, "rBUTTON" .. tostring(i));
+					table.insert(self.player_group, "rBUTTON" .. tostring(i));
 				end
 				
 				if (self.playercount > 0 and self.buttoncount > 0) then
@@ -486,6 +487,7 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		set = keyconf_set,
 		labels = keyconf_labels,
 		ignore_modifiers = false,
+		in_playerconf = false,
 		n_players = nplayers,
 		keyfile = keyname,
 		input_playersel = keyconf_inp_playersel,
@@ -513,7 +515,16 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 	end
 	
 	restbl.menu_group = menugroup and menugroup or default_menu_group;
-	restbl.player_group = playergroup and playergroup or default_player_group;
+
+	if (not playergroup) then
+		restbl.player_group = {};
+
+		for ind,key in ipairs(default_player_group) do
+			table.insert(restbl.player_group, key);
+		end
+	else
+		restbl.player_group = playergroup;
+	end
 	
 	if ( resource(restbl.keyfile) ) then
 		symfun = system_load(restbl.keyfile);
