@@ -42,6 +42,7 @@ local default_player_group = {
 local function keyconf_color(self, borderr, borderg, borderb, windowr, windowg, windowb)
 	local bprops = {x = 0, y = 0, width = 1, height = 1, opa = 1.0};
 	local wprops = {opa = 1.0, width = 1, height = 1, x = 3, y = 3};
+	
 -- copy surface properties so that we can reset them on the new objects
 	if (self.window and self.window ~= BADID) then wprops = image_surface_properties(self.window); delete_image(self.window); end
 	if (self.border and self.border ~= BADID) then bprops = image_surface_properties(self.border); delete_image(self.border); end
@@ -216,7 +217,7 @@ local function keyconf_next_key(self)
 			keyconf_playerline(self);
 			return false;
 		end
-    end
+	end
 end
 
 local function keyconf_inp_playersel(self, inputtable)
@@ -297,11 +298,11 @@ local function keyconf_match(self, input, label)
 end
 
 local function keyconf_tbltoid(self, inputtable)
-    if (inputtable.kind == "analog") then
+	if (inputtable.kind == "analog") then
 		return "analog:" ..inputtable.devid .. ":" .. inputtable.subid .. ":" .. inputtable.source;
     end
-    
-    if inputtable.translated then
+
+		if inputtable.translated then
 		if self.ignore_modifiers then
 			return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym;
 		else

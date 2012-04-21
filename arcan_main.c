@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;
-				case 'g' :
+			case 'g' :
 				luadebug++;
 				srand(0xdeadbeef); 
 				break;
@@ -160,12 +160,12 @@ int main(int argc, char* argv[])
 				}	
 				break;
 		case '1' :
-				stdout_redirected = true;
-				freopen(optarg, "a", stdout);
+			stdout_redirected = true;
+			freopen(optarg, "a", stdout);
 			break;
-			case '2' :
+		case '2' :
 			stderr_redirected = true;
-				freopen(optarg, "a", stderr);
+			freopen(optarg, "a", stderr);
 			break;
 
 			default:

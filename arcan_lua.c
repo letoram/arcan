@@ -82,6 +82,10 @@ extern char* _n_strdup(const char* instr, const char* alt);
 static inline char* findresource(const char* arg, int searchmask)
 {
 	char* res = arcan_find_resource(arg, searchmask);
+/* since this is invoked extremely frequently and is involved in file-system related stalls,
+ * maybe a sort of caching mechanism should be implemented (invalidate / refill every N ticks
+ * or have a flag to side-step it, as a lot of resources are quite static and the rest of the
+ * API have to handle missing / bad resources anyhow */
 
 	if (lua_ctx_store.debug){
 		arcan_warning("Debug, resource lookup for %s, yielded: %s\n", arg, res);
@@ -461,14 +465,15 @@ int arcan_lua_playaudio(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_playsample(lua_State* ctx)
+int arcan_lua_loadasample(lua_State* ctx)
 {
 	const char* rname = luaL_checkstring(ctx, 1);
 	char* resource = findresource(rname, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	float gain = luaL_optnumber(ctx, 2, 1.0);
-	arcan_audio_play_sample(resource, gain, NULL);
+	arcan_aobj_id sid = arcan_audio_load_sample(resource, gain, NULL);
 	free(resource);
-	return 0;
+	lua_pushaid(ctx, sid);
+	return 1;
 }
 
 int arcan_lua_pauseaudio(lua_State* ctx)
@@ -2558,7 +2563,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	lua_register(ctx, "delete_audio", arcan_lua_dropaudio);
 
 /* item: play_sample, resource, [gain], nil */
-	lua_register(ctx, "play_sample", arcan_lua_playsample);
+	lua_register(ctx, "load_asample", arcan_lua_loadasample);
 
 /* item: audio_gain, aid, newgain (0..1), [time], nil */
 	lua_register(ctx, "audio_gain", arcan_lua_gain);

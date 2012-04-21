@@ -13,28 +13,28 @@ imagery = {
 };
 
 soundmap = {
-	MENU_TOGGLE    = "sounds/menu_toggle.wav",
-	MENU_FADE      = "sounds/menu_fade.wav",
-	MENU_SELECT    = "sounds/detail_view.wav",
-	MENU_FAVORITE  = "sounds/launch_external.wav",
-	MENUCURSOR_MOVE= "sounds/move.wav",
-	GRIDCURSOR_MOVE= "sounds/gridcursor_move.wav",
-	GRID_NEWPAGE   = "sounds/grid_newpage.wav",
-	GRID_RANDOM    = "sounds/click.wav",
-	SUBMENU_TOGGLE = "sounds/menu_toggle.wav",
-	SUBMENU_FADE   = "sounds/menu_fade.wav",
-	LAUNCH_INTERNAL= "sounds/launch_internal.wav",
-	LAUNCH_EXTERNAL= "sounds/launch_external.wav",
-	SWITCH_GAME    = "sounds/switch_game.wav",
-	DETAIL_VIEW    = "sounds/detail_view.wav",
-	SET_FAVORITE   = "sounds/set_favorite.wav",
-	CLEAR_FAVORITE = "sounds/clear_favorite.wav",
-	OSDKBD_TOGGLE  = "sounds/osdkbd_show.wav",
-	OSDKBD_MOVE    = "sounds/gridcursor_move.wav",
-	OSDKBD_ENTER   = "sounds/osdkb.wav",
-	OSDKBD_ERASE   = "sounds/click.wav",
-	OSDKBD_SELECT  = "sounds/osdkbd_select.wav",
-	OSDKBD_HIDE    = "sounds/osdkbd_hide.wav"
+	MENU_TOGGLE    = load_asample("sounds/menu_toggle.wav"),
+	MENU_FADE      = load_asample("sounds/menu_fade.wav"),
+	MENU_SELECT    = load_asample("sounds/detail_view.wav"),
+	MENU_FAVORITE  = load_asample("sounds/launch_external.wav"),
+	MENUCURSOR_MOVE= load_asample("sounds/move.wav"),
+	GRIDCURSOR_MOVE= load_asample("sounds/gridcursor_move.wav"),
+	GRID_NEWPAGE   = load_asample("sounds/grid_newpage.wav"),
+	GRID_RANDOM    = load_asample("sounds/click.wav"),
+	SUBMENU_TOGGLE = load_asample("sounds/menu_toggle.wav"),
+	SUBMENU_FADE   = load_asample("sounds/menu_fade.wav"),
+	LAUNCH_INTERNAL= load_asample("sounds/launch_internal.wav"),
+	LAUNCH_EXTERNAL= load_asample("sounds/launch_external.wav"),
+	SWITCH_GAME    = load_asample("sounds/switch_game.wav"),
+	DETAIL_VIEW    = load_asample("sounds/detail_view.wav"),
+	SET_FAVORITE   = load_asample("sounds/set_favorite.wav"),
+	CLEAR_FAVORITE = load_asample("sounds/clear_favorite.wav"),
+	OSDKBD_TOGGLE  = load_asample("sounds/osdkbd_show.wav"),
+	OSDKBD_MOVE    = load_asample("sounds/gridcursor_move.wav"),
+	OSDKBD_ENTER   = load_asample("sounds/osdkb.wav"),
+	OSDKBD_ERASE   = load_asample("sounds/click.wav"),
+	OSDKBD_SELECT  = load_asample("sounds/osdkbd_select.wav"),
+	OSDKBD_HIDE    = load_asample("sounds/osdkbd_hide.wav")
 };
 
 -- constants,
@@ -405,10 +405,10 @@ function gridle()
 	end
 
 -- the dispatchtable will be manipulated by settings and other parts of the program
-	settings.iodispatch["MENU_UP"]      = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
-	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
-	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
-	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_sample(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
+	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
+	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
+	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
+	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
 	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) move_cursor( math.random(-#settings.games, #settings.games) ); end
 	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
@@ -417,7 +417,7 @@ function gridle()
 			table.insert(settings.favorites, current_game().title);
 			local props = spawn_favoritestar(cursor_vid());
 			settings.favorites[current_game().title] = props;
-			play_sample(soundmap["SET_FAVORITE"]);
+			play_audio(soundmap["SET_FAVORITE"]);
 		else -- unflag
 			fvid = settings.favorites[current_game().title];
 			if (fvid) then
@@ -427,7 +427,7 @@ function gridle()
 			end
 			
 			table.remove(settings.favorites, ind);
-			play_sample(soundmap["CLEAR_FAVORITE"]);
+			play_audio(soundmap["CLEAR_FAVORITE"]);
 		end
 	end
 
@@ -435,7 +435,7 @@ function gridle()
 -- Forward all labels that match, but also any translated keys (so that we
 -- can use this as a regular input function as well) 
 	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
-		play_sample(soundmap["OSDKBD_TOGGLE"]);
+		play_audio(soundmap["OSDKBD_TOGGLE"]);
 		
 		osdkbd:show();
 		settings.inputfun = gridle_input;
@@ -450,7 +450,7 @@ function gridle()
 					for ind,val in pairs(restbl) do
 				
 						if (val == "MENU_ESCAPE") then
-							play_sample(soundmap["OSDKBD_HIDE"]);
+							play_audio(soundmap["OSDKBD_HIDE"]);
 							return osdkbd_filter(nil);
 						elseif (val ~= "MENU_SELECT" and val ~= "MENU_UP" and val ~= "MENU_LEFT" and
 								val ~= "MENU_RIGHT" and val ~= "MENU_DOWN" and iotbl.translated) then
@@ -475,7 +475,7 @@ function gridle()
 			remove_zoom(settings.fadedelay);
 			local gameind = 0;
 			blend_image( cursor_vid(), 0.3 );
-			play_sample( soundmap["DETAIL_VIEW"] ); 
+			play_audio( soundmap["DETAIL_VIEW"] ); 
 			
 -- cache curind so we don't have to search if we're switching game inside detail view 
 			for ind = 1, #settings.games do
@@ -495,20 +495,20 @@ function gridle()
 	end
 	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
-		play_sample(soundmap["MENU_TOGGLE"]);
+		play_audio(soundmap["MENU_TOGGLE"]);
 		remove_zoom(settings.fadedelay); 
 		gridlemenu_settings(); 
 	end
 	
 	settings.iodispatch["MENU_SELECT"]  = function(iotbl) 
-		play_sample(soundmap["LAUNCH_EXTERNAL"]);
+		play_audio(soundmap["LAUNCH_EXTERNAL"]);
 		launch_target( current_game().title, LAUNCH_EXTERNAL); 
 		move_cursor(0);
 	end
 	
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		erase_grid(false);
-		play_sample(soundmap["LAUNCH_INTERNAL"]);
+		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL);
 		audio_gain(internal_aid, settings.internal_again, NOW);
 		gridle_oldinput = gridle_input;
@@ -595,19 +595,6 @@ function got_asynchimage(source, status)
 		resize_image(source, settings.cell_width, settings.cell_height);
 	end
 	
-end
-
-function have_video(setname)
-	local exts = {".avi", ".mp4", ".mkv", ".mpg"};
-
-	for ind,val in ipairs(exts) do
-		local moviefn = "movies/" .. setname .. val;
-		if (resource(moviefn)) then
-			return moviefn;
-		end
-	end
-
-	return nil;
 end
 
 function zoom_cursor(speed)
@@ -741,7 +728,7 @@ function move_cursor( ofs )
 
 -- reload images of the page has changed
 	if (pageofs_cur ~= settings.pageofs) then
-		play_sample(soundmap["GRID_NEWPAGE"]);
+		play_audio(soundmap["GRID_NEWPAGE"]);
 		erase_grid(false);
 		build_grid(settings.cell_width, settings.cell_height);
 	end
@@ -765,16 +752,16 @@ function move_cursor( ofs )
 	blend_gridcell(1.0, settings.fadedelay);
 end
 
-function get_image(romset)
+-- resourcetbl is quite large, check resourcefinder.lua for more info
+function get_image( resourcetbl, setname )
 	local rvid = BADID;
-
-	if resource("screenshots/" .. romset .. ".png") then
-		rvid = load_image_asynch("screenshots/" .. romset .. ".png", got_asynchimage);
-		blend_image(rvid, 0.0);
+	if ( resourcetbl.screenshots[1] ) then
+		rvid = load_image_asynch( resourcetbl.screenshots[1], got_asynchimage );
+		blend_image(rvid, 0.0); -- don't show until loaded 
 	end
-
+	
 	if (rvid == BADID) then
-		rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. romset );
+		rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. setname );
 		blend_image(rvid, 0.3, settings.transitiondelay);
 	end
 
@@ -841,7 +828,8 @@ function build_grid(width, height)
 		for col=0, ncw-1 do
 			local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
 			if (settings.games[gameno] == nil) then break; end
-			local vid = get_image(settings.games[gameno]["setname"]);
+			settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
+			local vid = get_image(settings.games[gameno].resources, settings.games[gameno].setname);
 			resize_image(vid, settings.cell_width, settings.cell_height);
 			move_image(vid,cell_coords(col, row));
 			order_image(vid, GRIDLAYER);
@@ -989,6 +977,8 @@ end
 
 function gridle_clock_pulse()
 -- used to account for a nasty race condition when zooming a screenshot with asynch movie loading mid-zoom
+	settings.iodispatch["MENU_DOWN"]();
+	
 	if (settings.zoom_countdown > 0) then 
 		settings.zoom_countdown = settings.zoom_countdown - 1; 
 	end
@@ -1001,7 +991,7 @@ function gridle_clock_pulse()
 
 -- cooldown reached, check the current cursor position, use that to figure out which movie to launch
 		if (settings.cooldown == 0) then
-			local moviefile = have_video(settings.cursorgame.setname);
+			local moviefile = settings.cursorgame.resources.movies[1];
 
 			if (moviefile and cursor_vid() ) then
 				imagery.movie = load_movie( moviefile, 1, asynch_movie_ready);

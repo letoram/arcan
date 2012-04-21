@@ -60,7 +60,7 @@ arcan_errc arcan_audio_teardown();
 arcan_errc arcan_audio_rebuild(arcan_aobj_id id);
 
 /* object management --- */
-arcan_aobj_id arcan_audio_play_sample(const char* fname, float gain, arcan_errc* err);
+arcan_aobj_id arcan_audio_load_sample(const char* fname, float gain, arcan_errc* err);
 
 /* setup / change a callback feed for refilling buffers */
 arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc);
