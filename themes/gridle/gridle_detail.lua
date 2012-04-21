@@ -89,6 +89,9 @@ local function gridledetail_buildview(detailres, gametbl )
 
 -- this can fail (no model found) 
 		if (detailview.model) then
+			local props = image_surface_properties(detailview.model.vid);
+			detailview.model.default_orientation = {roll = props.roll, pitch = props.pitch, yaw = props.yaw};
+			
 			image_shader(detailview.model.vid, default_shader3d);
 			scale_3dvertices(detailview.model.vid);
 
@@ -113,7 +116,7 @@ local function gridledetail_buildview(detailres, gametbl )
 			end
 -- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
 			if (detailview.model.labels["display"]) then
-				local moviefile = have_video(detailview.game.setname);
+				local moviefile = detailview.game.resources.movies[1];
 				if (moviefile) then
 					detailview.modeldisplay = load_movie(moviefile, 1, gridledetail_moviestatus);
 				elseif resource("screenshots/" .. detailview.game.setname .. ".png") then
@@ -170,8 +173,11 @@ function gridledetail_video_event(source, event)
 
 -- changes the t axis of the texture (s-t x-y) to be 1.0 - t
 			detailview.glsource = event.glsource;
+			local o = detailview.model.default_orientation;
+			orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
 			mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
 			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
+			
 		end
 	end
 end
@@ -328,57 +334,38 @@ function gridledetail_havedetails(gametbl)
 	return nil;
 end
 
-local function find_prevdetail()
-	local nextind = detailview.curind - 1;
-	local detailres = nil;
-	
--- reverse- scan for a gametbl that 'havedetail' will return something for
+local function find_detail(step, zout)
+	local nextind = detailview.curind + step;
+
+-- scan and look for next
 	while nextind ~= detailview.curind do
-		if (nextind == 0) then nextind = #settings.games end
+		if (nextind == 0) then nextind = #settings.games
+		elseif (nextind > #settings.games) then nextind = 1; end
+
+		if (settings.games[nextind].resources == nil) then
+			settings.games[nextind].resources = resourcefinder_search( settings.games[nextind], true); 
+		end
+
 		detailres = gridledetail_havedetails(settings.games[nextind]);
 		if (detailres) then break; end
-		nextind = nextind - 1;
+
+		nextind = nextind + step;
 	end
 	
--- if we found a new, have a different fade "out" 
+-- at the very worst, we'll loop (and it takes a bit of time .. )
 	if (detailview.curind ~= nextind) then
 		gridledetail_freeview(2, 6.0);
 		gridledetail_buildview(detailres, settings.games[ nextind ])
+
 -- start "far away" and quickly zoom in, while that happens, prevent some keys from being used ("cooldown") 
 		show_image(detailview.model.vid);
-		move3d_model(detailview.model.vid, -1.0, 0.0, -80.0);
+		move3d_model(detailview.model.vid, -1.0, 0.0, zout);
 		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
 		detailview.zoomed = false;
 		detailview.zoompress = nil;
 		detailview.cooldown = settings.transitiondelay;
 		detailview.curind = nextind;
 	end	
-end
-
-local function find_nextdetail(current, gametbl)
-	local nextind = detailview.curind + 1;
-	local detailres = nil;
-	
--- reverse- scan for a gametbl that 'havedetail' will return something for
-	while nextind ~= detailview.curind do
-		if (nextind > #settings.games) then nextind = 1; end
-		detailres = gridledetail_havedetails(settings.games[nextind]);
-		if (detailres) then break; end
-		nextind = nextind + 1;
-	end
-	
--- if we found a new, have a different fade "out" 
-	if (detailview.curind ~= nextind) then
-		gridledetail_freeview(2, -80.0);
-		gridledetail_buildview(detailres, settings.games[ nextind ]);
-		show_image(detailview.model.vid);
-		move3d_model(detailview.model.vid, -1.0, 0.0, 6.0);
-		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
-		detailview.zoomed = false;
-		detailview.zoompress = nil;
-		detailview.cooldown = settings.transitiondelay;
-		detailview.curind = nextind;
-	end
 end
 
 function gridledetail_show(detailres, gametbl, ind)
@@ -413,10 +400,10 @@ function gridledetail_show(detailres, gametbl, ind)
 	
 	detailview.iodispatch = {};
 	detailview.iodispatch["MENU_UP"] = function(iotbl)
-		if (detailview.cooldown == 0) then find_nextdetail(); end
+		if (detailview.cooldown == 0) then find_detail(-1, -80.0); end
 	end
 	detailview.iodispatch["MENU_DOWN"] = function(iotbl)
-		if (detailview.cooldown == 0) then find_prevdetail(); end
+		if (detailview.cooldown == 0) then find_detail(1, -80.0); end
 	end
 	detailview.iodispatch["MENU_LEFT"] = function(iotbl)
 		if (detailview.model) then

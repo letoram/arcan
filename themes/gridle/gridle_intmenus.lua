@@ -12,9 +12,9 @@ local function scalemodechg(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	if (save) then
 		store_key("internal_scalemode", label);
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 	
 	gridlemenu_resize_fullscreen(gridlemenu_destvid);
@@ -38,10 +38,10 @@ inputmodeptrs["Normal"] = function(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 
 	if (save) then
-			play_sample(soundmap["MENU_FAVORITE"]);
+			play_audio(soundmap["MENU_FAVORITE"]);
 			store_key("internal_input", "Normal");
 	else
-			play_sample(soundmap["MENU_SELECT"]);
+			play_audio(soundmap["MENU_SELECT"]);
 	end
 	
 	settings.flipinputaxis = false;
@@ -52,10 +52,10 @@ inputmodeptrs["Flip X/Y"] = function(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 
 	if (save) then
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 		store_key("internal_input", "Flip X/Y");
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 	
 	settings.flipinputaxis = not settings.flipinputaxis; 
@@ -69,10 +69,10 @@ local function audiogaincb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	
 	if (save) then
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 		store_key("internal_again", label);
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 
 	audio_gain(internal_aid, settings.internal_again, settings.fadedelay);
@@ -248,12 +248,12 @@ function gridlemenu_internal(target_vid)
 		end	
 	
 	settings.iodispatch["MENU_UP"] = function(iotbl)
-		play_sample(soundmap["MENUCURSOR_MOVE"]);
+		play_audio(soundmap["MENUCURSOR_MOVE"]);
 		current_menu:move_cursor(-1, true); 
 	end
 
 	settings.iodispatch["MENU_DOWN"] = function(iotbl)
-		play_sample(soundmap["MENUCURSOR_MOVE"]);
+		play_audio(soundmap["MENUCURSOR_MOVE"]);
 		current_menu:move_cursor(1, true); 
 	end
 
@@ -261,13 +261,13 @@ settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		if (current_menu.parent ~= nil) then
 			if (silent == nil or silent == false) then
-					play_sample(soundmap["SUBMENU_FADE"]);
+					play_audio(soundmap["SUBMENU_FADE"]);
 			end
 			
 			current_menu = current_menu.parent;
 		else
 			if (silent == nil or silent == false) then
-				play_sample(soundmap["MENU_FADE"]);
+				play_audio(soundmap["MENU_FADE"]);
 			end
 			
 			current_menu = nil;
@@ -331,6 +331,6 @@ settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		menu_spawnmenu( audiogainlist, audiogainptrs, def );
 	end
 	
-	play_sample(soundmap["MENU_TOGGLE"]);
+	play_audio(soundmap["MENU_TOGGLE"]);
 	move_image(current_menu:anchor_vid(), 100, 120, settings.fadedelay);
 end

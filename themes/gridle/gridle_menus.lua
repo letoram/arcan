@@ -29,7 +29,7 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
 
-	play_sample(soundmap["SUBMENU_TOGGLE"]);
+	play_audio(soundmap["SUBMENU_TOGGLE"]);
 	move_image( current_menu:anchor_vid(), props.x + props.width + 6, props.y);
 	return current_menu;
 end
@@ -92,9 +92,9 @@ local ledmodeptrs = {}
 	settings.ledmode = 0;
 	if (save) then 
 		store_key("ledmode", 0);
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 end
 
@@ -103,9 +103,9 @@ ledmodeptrs["All toggle"] = function(label, save)
 	settings.ledmode = 1;
 	if (save) then 
 		store_key("ledmode", 1);
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 end
 
@@ -114,9 +114,9 @@ ledmodeptrs["Game setting (always on)"] = function(label, save)
 	settings.ledmode = 2; 
 	if (save) then
 		store_key("ledmode", 2); 
-		play_sample(soundmap["MENU_FAVORITE"])
+		play_audio(soundmap["MENU_FAVORITE"])
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 end
 
@@ -125,9 +125,9 @@ ledmodeptrs["Game setting (on push)"] = function(label, save)
 	settings.ledmode = 3; 
 	if (save) then 
 		store_key("ledmode", 3); 
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 	else
-		play_sample(soundmap["MENU_SELECT"])	
+		play_audio(soundmap["MENU_SELECT"])	
 	end
 end
 
@@ -146,10 +146,10 @@ local function fadedelaycb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.fadedelay = tonumber(label);
 	if (save) then
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 		store_key("fadedelay", tonumber(label));
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 end
 for ind,val in ipairs(fadedelaylbls) do fadedelayptrs[val] = fadedelaycb; end
@@ -159,10 +159,10 @@ local function transitiondelaycb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.transitiondelay = tonumber(label);
 	if (save) then
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 		store_key("transitiondelay", tonumber(label));
 	else
-		play_sample(soundmap["MENU_SELECT"]);
+		play_audio(soundmap["MENU_SELECT"]);
 	end
 end
 for ind,val in ipairs(transitiondelaylbls) do transitiondelayptrs[val] = transitiondelaycb; end
@@ -173,10 +173,10 @@ local function repeatratecb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.repeat_rate = tonumber(label);
 	if (save) then
-		play_sample(soundmap["MENU_FAVORITE"]);
+		play_audio(soundmap["MENU_FAVORITE"]);
 		store_key("repeatrate", tonumber(label));
 	else
-		play_sample(soundmap["MENU_SELECT"]);	
+		play_audio(soundmap["MENU_SELECT"]);	
 	end
 end
 for ind,val in ipairs(repeatlbls) do repeatptrs[val] = repeatratecb; end
@@ -190,11 +190,11 @@ local function gridcb(label, save)
 	settings.cell_width = tonumber( string.sub(label, 1, string.find(label, "x") - 1) );
 	settings.cell_height = tonumber( string.sub(label, string.find(label, "x") + 1, -1) );
 	if (save) then
-		play_sample(soundmap["MENU_FAVORITE"]);	
+		play_audio(soundmap["MENU_FAVORITE"]);	
 		store_key("cell_width", settings.cell_width);
 		store_key("cell_height", settings.cell_height);
 	else
-		play_sample(soundmap["MENU_SELECT"]);	
+		play_audio(soundmap["MENU_SELECT"]);	
 	end
 end
 for ind,val in ipairs(gridlbls) do gridptrs[val] = gridcb; end
@@ -206,9 +206,9 @@ local function sortordercb(label, save)
 	
 	if (save) then
 		store_key("sortorder", label);
-		play_sample(soundmap["MENU_FAVORITE"]);	
+		play_audio(soundmap["MENU_FAVORITE"]);	
 	else
-		play_sample(soundmap["MENU_SELECT"]);	
+		play_audio(soundmap["MENU_SELECT"]);	
 	end
 end
 for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
@@ -414,12 +414,12 @@ function gridlemenu_settings()
 	griddispatch = settings.iodispatch;
 
 	settings.iodispatch = {};
-	settings.iodispatch["MENU_UP"] = function(iotbl) play_sample(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(-1, true); end
-	settings.iodispatch["MENU_DOWN"] = function(iotbl) play_sample(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(1, true); end
+	settings.iodispatch["MENU_UP"] = function(iotbl) play_audio(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(-1, true); end
+	settings.iodispatch["MENU_DOWN"] = function(iotbl) play_audio(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(1, true); end
 	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		if (current_menu.parent ~= nil) then
-			if (silent == nil or silent == false) then play_sample(soundmap["SUBMENU_FADE"]); end
+			if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
 			current_menu = current_menu.parent;
 			update_status();
 		else -- top level
@@ -427,7 +427,7 @@ function gridlemenu_settings()
 				settings.games = list_games( {} );
 			end
 		
-		play_sample(soundmap["MENU_FADE"]);
+		play_audio(soundmap["MENU_FADE"]);
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
