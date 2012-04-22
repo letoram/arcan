@@ -431,7 +431,11 @@ function gridlemenu_settings()
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
-			build_grid(settings.cell_width, settings.cell_height);
+			if (current_menu.gamecount ~= #settings.games) then
+				erase_grid(false);
+				build_grid(settings.cell_width, settings.cell_height);
+			end
+			
 			settings.iodispatch = griddispatch;
 			if (settings.statuslist) then
 				settings.statuslist:destroy();
@@ -464,7 +468,6 @@ function gridlemenu_settings()
 	settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
 
 -- hide the cursor and all selected elements
-	erase_grid(false);
 	if (movievid) then
 		instant_image_transform(movievid);
 		expire_image(movievid, settings.fadedelay);
@@ -478,6 +481,7 @@ function gridlemenu_settings()
 	current_menu.ptrs["Filters..."]    = function() menu_spawnmenu( update_filterlist() ); end
 	current_menu.ptrs["Settings..."]   = function() menu_spawnmenu( settingslbls, settingsptrs ); end
 
+	current_menu.gamecount = #settings.games;
 -- add an info window
 	update_status();
 	move_image(current_menu:anchor_vid(), 100, 140, settings.fadedelay);

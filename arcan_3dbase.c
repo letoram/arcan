@@ -315,7 +315,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 	
 	arcan_vobject_litem* current = cell;
 	while (current){
-		if (current->elem->order >= 0) break;
+		if (current->elem->order >= 0 || !current->elem->state.ptr) break;
 		surface_properties dprops;
  		arcan_resolve_vidprop(current->elem, lerp, &dprops);
 		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, current->elem->gl_storage.program, dprops, modelview);

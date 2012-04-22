@@ -1,6 +1,7 @@
 -- just a copy of gridle menus with the stuff specific for internal launch / fullscreen
 local scalemodelist = {
 	"Keep Aspect",
+	"Original Size", 
 	"Stretch",
 	"Rotate CW",
 	"Rotate CCW"
@@ -24,6 +25,7 @@ scalemodeptrs["Keep Aspect"] = scalemodechg;
 scalemodeptrs["Stretch"] = scalemodechg;
 scalemodeptrs["Rotate CW"] = scalemodechg;
 scalemodeptrs["Rotate CCW"] = scalemodechg;
+scalemodeptrs["Original Size"] = scalemodechg;
 
 local inputmodelist = {
 -- revert all manipulation to default settings
@@ -87,9 +89,7 @@ end
 -- decent place to add bezel- support
 local function resize_reposition(source)
 	local props = image_surface_properties(source);
-	local dw = VRESW - props.width;
-	local dh = VRESH - props.height;
-	move_image(source, dw * 0.5, dh * 0.5);
+	move_image(source, 0.5 * (VRESW - props.width), 0.5 * (VRESH - props.height))
 end
 
 local function similar_aspect(sourcew, sourceh)
@@ -101,10 +101,14 @@ end
 -- furthermore, the user might want to change scaling etc. in-game
 function gridlemenu_resize_fullscreen(source)
 	local props = image_surface_initial_properties(source);
-	
 -- always scale to source dominant axis 
-	if (settings.scalemode == "Keep Aspect") then
+	if (settings.scalemode == "Original Size") then
+		resize_image(source, props.width, props.height);
+		resize_reposition(source);
+		
+	elseif (settings.scalemode == "Keep Aspect") then
 		rotate_image(source, 0);
+		
 		if (props.width / props.height > 1.0) then
 			resize_image(source, VRESW, 0);
 		else

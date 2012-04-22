@@ -1909,7 +1909,7 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj && id > 0) {
+	if (vobj && newzv > 0) {
 		vobj->order = newzv;
 		arcan_video_detatchobject(id);
 		arcan_video_attachobject(id);

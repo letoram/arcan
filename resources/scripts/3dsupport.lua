@@ -31,20 +31,23 @@ function load_model_generic(modelname)
 	model.vid = new_3dmodel();
 	if (model.vid == BADID) then return nil end
 	image_framesetsize(model.vid, #meshes);
+	switch_default_imageproc(IMAGEPROC_FLIPH);
 
 	for i=1, #meshes do
 		slot = i - 1;
 		add_3dmesh(model.vid, basep .. meshes[i], 1);
-		switch_default_imageproc(IMAGEPROC_FLIPH);
 		local vid = load_material(modelname, string.sub(meshes[i], 1, -5));
-		switch_default_imageproc(IMAGEPROC_NORMAL);
 
 		model.labels[string.sub(meshes[i], 1, -5)] = slot;
 		model.images[slot] = vid;
-
+		model.screenview = {};
+		model.default_orientation = {roll = 0, pitch = 0, yaw = 0};
+		model.screenview.position = {x = 0, y = 0.5, z = 1.0};
+		model.screenview.orientation = {roll = 0, pitch = 0, yaw = 0};
 		set_image_as_frame(model.vid, vid, slot, 1);
 	end
 	
+	switch_default_imageproc(IMAGEPROC_NORMAL);
 	return model;
 end
 

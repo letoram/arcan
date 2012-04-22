@@ -23,7 +23,6 @@ local function gridledetail_load()
 	shader_uniform(default_shader3d, "map_diffuse", "i", PERSIST, 0);
 	shader_uniform(texco_shader, "speedfact", "f", PERSIST, 24.0);
 	shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
-	shader_uniform(backlit_shader3d, "flip_t", "b", PERSIST, 0);
 	
 -- make sure this is only done once
 	gridledetail_loaded = true;
@@ -89,26 +88,19 @@ local function gridledetail_buildview(detailres, gametbl )
 
 -- this can fail (no model found) 
 		if (detailview.model) then
-			local props = image_surface_properties(detailview.model.vid);
-			detailview.model.default_orientation = {roll = props.roll, pitch = props.pitch, yaw = props.yaw};
-			
 			image_shader(detailview.model.vid, default_shader3d);
 			scale_3dvertices(detailview.model.vid);
 
 -- we can hardcode these values because the "scale vertices" part forces the actual value range of any model hierarchy to -1..1
-			detailview.startx = -1.0;
-			detailview.starty = 0.0;
-			detailview.startz = -4.0;
-
--- if the model specifies a default view pos (position + view + up), set that one as the target (and calculate linear steps by scaling)
-			if (detailview.model.screenview) then
+			detailview.startpos = {x = -1.0, y = 0.0, z = -4.0};
+			detailview.startang = {roll = 0, pitch = 0, yaw = 0};
 			
-			else
--- otherwise just thake a harcoded guess 
-				detailview.zoomx = 0.0;
-				detailview.zoomy = -0.5;
-				detailview.zoomz = -1.0;
-			end
+-- if the model specifies a default view pos (position + roll/pitch/yaw), set that one as the target)
+			detailview.zoompos = detailview.model.screenview.position;
+			detailview.zoompos.x = detailview.zoompos.x * -1;
+			detailview.zoompos.y = detailview.zoompos.y * -1;	
+			detailview.zoompos.z = detailview.zoompos.z * -1;
+			detailview.zoomang = detailview.model.screenview.orientation;
 
 -- set specific shaders for marquee (fullbright, blink every now and then 
 			if (detailview.model.labels["marquee"]) then 
@@ -147,7 +139,7 @@ local function gridledetail_freeview(axis, mag)
 	elseif (axis == 1) then dy = mag;
 	elseif (axis == 2) then dz = mag; end
 
-		move3d_model(detailview.model.vid, detailview.startx + dx, detailview.starty + dy, detailview.startz + dz, 20 + settings.transitiondelay);
+		move3d_model(detailview.model.vid, detailview.startpos.x + dx, detailview.startpos.y + dy, detailview.startpos.z + dz, 20 + settings.transitiondelay);
 		expire_image(detailview.model.vid, 20 + settings.transitiondelay);
 		detailview.fullscreen = false;
 		detailview.model = nil;
@@ -171,25 +163,17 @@ function gridledetail_video_event(source, event)
 				shader_uniform(display_shader, "flip_t", "b", PERSIST, 0);
 			end
 
--- changes the t axis of the texture (s-t x-y) to be 1.0 - t
-			detailview.glsource = event.glsource;
-			local o = detailview.model.default_orientation;
-			orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
+			move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
+			orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
 			mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
-			move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
-			
 		end
 	end
 end
 
 function gridledetail_clock_pulse(tick)
 	timestamp = tick;
-	if (detailview.cooldown > 0) then detailview.cooldown = detailview.cooldown - 1; end
-	
-	if (detailview.zoompress and (tick - detailview.zoompress > 200)) then
-		detailview.zoomed = true;
-		props = image_surface_properties(detailview.model.vid);
-		move3d_model(detailview.model.vid, props.x + gridledetail_stepx, props.y + gridledetail_stepy, props.z + gridledetail_stepz);
+	if (detailview.cooldown > 0) then 
+		detailview.cooldown = detailview.cooldown - 1; 
 	end
 end
 
@@ -205,27 +189,41 @@ function gridledetail_internalinput(iotbl)
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
 					hide_image(internal_vid);
-					--:internal_vid = BADID;
+					delete_image(internal_vidborder);
 					show_image(detailview.model.vid);
 					detailview.fullscreen = false;
 				else
 					detailview.fullscreen = true;
 					gridlemenu_loadshader(settings.fullscreenshader);
 					gridlemenu_resize_fullscreen(internal_vid);
+
+					internal_vidborder = instance_image( imagery.black );
+					image_mask_clearall(internal_vidborder);
+					resize_image(internal_vidborder, VRESW, VRESH);
+					show_image(internal_vidborder);
 					show_image(internal_vid);
-					local props = image_surface_properties(internal_vid);
 					
 					hide_image(detailview.model.vid);
+					order_image(internal_vidborder, max_current_image_order() + 1);
 					order_image(internal_vid, max_current_image_order() + 1); 
 					return;
 				end
 			elseif (iotbl.active and val == "MENU_ESCAPE") then
 -- stop the internal launch, zoom out the model and replace display with static
+				if (internal_vidborder) then 
+					delete_image(internal_vidborder);
+					internal_vidborder = nil;
+				end
+				
 				delete_image(internal_vid);
 				internal_vid = BADID;
 				show_image(detailview.model.vid);
 				gridledetail_setnoisedisplay();
-				move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
+
+				local o = detailview.model.default_orientation;
+				orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
+				move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
+				
 				return;
 			end
 
@@ -239,12 +237,6 @@ function gridledetail_internalinput(iotbl)
 	target_input(iotbl, internal_vid);
 end
 
--- 
--- need some more advanced functionality to "zoom"
--- a short press will immediately zoom in/out from the default position to focus on the display
--- a continous press will gradually zoom in
--- if we have an internal launch running though, MENU_ZOOM will switch from fullscreen- display to "mapped to monitor"
---
 function gridledetail_input(iotbl)
 -- if internal launch is active, only "ESCAPE" and "ZOOM" is accepted, all the others are being forwarded.
 	if (internal_vid ~= BADID) then
@@ -256,40 +248,28 @@ function gridledetail_input(iotbl)
 		if (restbl == nil) then return; end
 
 		for ind,val in pairs(restbl) do
--- This only works without key-repeat on
-			if (val == "ZOOM_CURSOR" and detailview.cooldown == 0) then
-					if (iotbl.active) then -- start moving
-						detailview.zoompress = timestamp;
-						gridledetail_stepx = 0.5 * ((detailview.zoomx - detailview.startx) / settings.transitiondelay);
-						gridledetail_stepy = 0.5 * ((detailview.zoomy - detailview.starty) / settings.transitiondelay);
-						gridledetail_stepz = 0.5 * ((detailview.zoomz - detailview.startz) / settings.transitiondelay);
-					else -- release
-						if (detailview.zoompress and 
-								timestamp - detailview.zoompress < 200) then
-							-- full- zoom or revert to normal
-							if (detailview.zoomed) then
-								detailview.zoomed = false;
-								move3d_model(detailview.model.vid, detailview.startx, detailview.starty, detailview.startz, 20);
-							else
-								move3d_model(detailview.model.vid, detailview.zoomx, detailview.zoomy, detailview.zoomz, 20);
-								detailview.zoomed = true;
-							end
-						else -- stop moving
-							gridledetail_stepx = 0.0;
-							gridledetail_stepy = 0.0;
-							gridledetail_stepz = 0.0;
-						end
-						detailview.zoompress = nil;
-					end
-			end
-		end
+			if (iotbl.active and val == "ZOOM_CURSOR" and detailview.cooldown == 0) then
+				if (detailview.zoomed) then
+					detailview.zoomed = false;
+					move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
+					local o = detailview.model.default_orientation;
+					orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
+				else
+					move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
+					orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
+					detailview.zoomed = true;
+				end
+			else
 
--- The rest of the dispatch is similar to gridle.lua 
-		if (restbl and iotbl.active) then
-			for ind,val in pairs(restbl) do
-				if (detailview.iodispatch[val]) then detailview.iodispatch[val](restbl); end
+			if (restbl and iotbl.active) then
+				for ind,val in pairs(restbl) do
+					if (detailview.iodispatch[val]) then detailview.iodispatch[val](restbl); end
+				end
 			end
+					
 		end
+	end
+		
 	end
 end
 

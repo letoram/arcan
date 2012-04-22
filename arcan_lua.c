@@ -375,7 +375,9 @@ int arcan_lua_orderimage(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned int zv = luaL_checknumber(ctx, 2);
 
-	arcan_video_setzv(id, zv);
+	if (zv >= 0)
+		arcan_video_setzv(id, zv);
+	
 	return 0;
 }
 
@@ -625,6 +627,16 @@ int arcan_lua_togglemask(lua_State* ctx)
 		enum arcan_transform_mask mask = arcan_video_getmask(id);
 		mask ^= ~val;
 		arcan_video_transformmask(id, mask);
+	}
+
+	return 0;
+}
+
+int arcan_lua_clearall(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	if (id){
+		arcan_video_transformmask(id, 0);
 	}
 
 	return 0;
@@ -2661,6 +2673,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:image_mask_clear,vid,enumint,nil */
 	lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
+	
+/* item:image_mask_clearall,vid, nil */
+	lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);
 
 /* item:image_surface_properties, vid, surftbl */
 	lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
