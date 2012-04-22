@@ -7,6 +7,7 @@
 --  screenshots
 --  bezels
 --  marquees
+--  cabinet
 --  artwork (* special, acceptes anything that matches setname_wildcard.extension)
 --  
 -- (Audio)
@@ -22,59 +23,74 @@
 
 -- iterate the result from a glob_resource resultset, put those that match extension into
 -- dsttable under 'key'.
-local function filter_ext(globres, basepath, dsttable, extensions, key )
-	if (dsttable[key] == nil) then dsttable[key] = {}; end
-	local count = 0;
+
+-- reindex the result of a resource_glob to be a bitmap
+local function glob(path)
+	local lut = glob_resource(path, SHARED_RESOURCE);
+	local restbl = {};
+
+	for ind, val in ipairs(lut) do
+		restbl[val] = true;
+	end
 	
-	for ind, val in ipairs(globres) do
-		local extension = string.match(val, ".(%w+)$");
-		if (extensions[extension] ~= nil) then
-			table.insert(dsttable[key], basepath .. val);
-			count = count + 1;
+	return restbl;
+end
+
+-- take a bitmap table (globres)
+-- look for (basename.{extensions}) add first result to globres as 
+-- basepath .. basename . .. extension as a subtable defined by 'key'
+local function filter_ext(globres, basename, basepath, dsttable, extensions, key )
+	if (dsttable[key] == nil) then dsttable[key] = {}; end
+	
+	for ind, val in ipairs(extensions) do
+		if (globres[ basename .. "." .. val ] == true) then
+			table.insert(dsttable[key], basepath .. basename .. "." .. val);
+			return true;
 		end
 	end
 	
-	return count;
+	return false;
 end
 
-local function synch_cache(setname, pathkey)
+-- simple indirection to glob, keep a cache of previous glob results
+local function synch_cache(pathkey)
 	if (resourcefinder_cache == nil) then resourcefinder_cache = {}; end
 
 	local pathtbl = resourcefinder_cache[pathkey];
 	if (pathtbl == nil) then
-		pathtbl = glob_resource(pathkey .. "*", SHARED_RESOURCE);
+		pathtbl = glob(pathkey .. "*");
 		resourcefinder_cache[pathkey] = pathtbl;
 	end
-	
+
 	return pathtbl;
 end
 
 local function resourcefinder_video(game, restbl, cache_results)
-	local vidext  = {mpg = true, avi = true, mkv = true, mp4 = true};
+	local vidext  = {"mkv", "mp4", "mpg", "avi"};
 	local tgtpath = "movies/" .. game.target .. "/";
 	local mvpath  = "movies/";
 
-	local tgttbl = cache_results and synch_cache(game.setname, tgtpath) or glob_resource(tgtpath .. game.setname .. ".*", SHARED_RESOURCE);
-	if (filter_ext(tgttbl, tgtpath, restbl, vidext, "movies") == 0) then
-		tgttbl = cache_results and synch_cache(game.setname, mvpath) or glob_resource(mvpath .. game.setname .. ".*", SHARED_RESOURCE);
-		filter_ext(tgttbl, mvpath, restbl, vidext, "movies");
+	local tgttbl = cache_results and synch_cache(tgtpath) or glob(tgtpath .. game.setname .. ".*");
+	if (not filter_ext(tgttbl, game.setname, tgtpath, restbl, vidext, "movies")) then
+		tgttbl = cache_results and synch_cache(mvpath) or glob(mvpath .. game.setname .. ".*");
+		filter_ext(tgttbl, game.setname, mvpath, restbl, vidext, "movies");
 	end
 		
 	return restbl;
 end
 
 local function resourcefinder_audio(game, restbl, cache_results)
-	local audext = {ogg = true, wav = true};
+	local audext = {"ogg", "wav"};
 	local worktbl = {"music", "sfx"};
 	
 	for ind, val in ipairs(worktbl) do
 		local tgtpath = val .. "/" .. game.target .. "/";
 		local grppath = val .. "/";
 
-		local tgttbl = cache_results and synch_cache(game.setname, tgtpath) or glob_resource(tgtpath .. game.setname .. ".*", SHARED_RESOURCE);
-		if (filter_ext(tgttbl, tgtpath, restbl, audext, val) == 0) then
-			tgttbl = cache_results and synch_cache(game.setname, grppath) or glob_resource(grppath .. game.setname .. ".*", SHARED_RESOURCE);
-			filter_ext(tgttbl, grppath, restbl, audext, val);
+		local tgttbl = cache_results and synch_cache(tgtpath) or glob(tgtpath .. game.setname .. ".*");
+		if ( not filter_ext(tgttbl, game.setname, tgtpath, restbl, audext, val)) then
+			tgttbl = cache_results and synch_cache(grppath) or glob(grppath .. game.setname .. ".*");
+			filter_ext(tgttbl, game.setname, grppath, restbl, audext, val);
 		end
 	end
 
@@ -82,18 +98,18 @@ local function resourcefinder_audio(game, restbl, cache_results)
 end
 
 local function resourcefinder_graphics(game, restbl, cache_results)
-	local imgext = {jpg = true, png = true};
+	local imgext = {"png", "jpg"};
 	
-	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "overlays", "artwork"};
+	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "overlays", "cabinets"};
 
 	for ind, val in ipairs(worktbl) do
 		local tgtpath = val .. "/" .. game.target .. "/";
 		local grppath = val .. "/";
 
-		local tgttbl = cache_results and synch_cache(game.setname, tgtpath) or glob_resource(tgtpath .. game.setname .. ".*", SHARED_RESOURCE);
-		if (filter_ext(tgttbl, tgtpath, restbl, imgext, val) == 0) then
-			tgttbl = cache_results and synch_cache(game.setname, grppath) or glob_resource(grppath .. game.setname .. ".*", SHARED_RESOURCE);
-			filter_ext(tgttbl, grppath, restbl, imgext, val);
+		local tgttbl = cache_results and synch_cache(tgtpath) or glob(tgtpath .. game.setname .. ".*");
+		if (not filter_ext(tgttbl, game.setname, tgtpath, restbl, imgext, val)) then
+			tgttbl = cache_results and synch_cache(grppath) or glob(grppath .. game.setname .. ".*");
+			filter_ext(tgttbl, game.setname, grppath, restbl, imgext, val);
 		end
 	end
 	
@@ -101,17 +117,25 @@ local function resourcefinder_graphics(game, restbl, cache_results)
 end
 
 function resourcefinder_misc( game, restbl, cache_results ) 
-	if (resource("gamescripts/" .. game.target .. "/" .. game.setname .. "/" .. game.setname .. ".lua")) then
-		restbl.gamescript = "gamescripts/" .. game.target .. "/" .. game.setname .. "/" .. game.setname .. ".lua";
-
-	elseif (resource("gamescripts/" .. game.setname .. "/" .. game.setname .. ".lua")) then 
-		restbl.gamescript = "gamescripts/" .. game.setname .. "/" .. game.setname .. ".lua";
+	local fulln = "gamescripts/" .. game.setname .. "/" .. game.setname .. ".lua";
+	
+	if (cache_results) then 
+		tbl = synch_cache("gamescripts/");
+		if (tbl[game.setname .. "/"]) then
+			restbl.gamescript = fulln;
+		end
+	else
+		if (resource(fulln)) then
+			restbl.gamescript = fulln;
+		else
+			restbl.gamescript = nil;
+		end
 	end
+	
 end
 
 function resourcefinder_search( gametable, cache_results )
 	if (gametable == nil) then return nil; end
-	cache_results = false;
 	local restbl = {};
 
 	resourcefinder_graphics(gametable, restbl, cache_results );

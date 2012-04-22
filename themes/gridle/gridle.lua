@@ -13,28 +13,28 @@ imagery = {
 };
 
 soundmap = {
-	MENU_TOGGLE    = load_asample("sounds/menu_toggle.wav"),
-	MENU_FADE      = load_asample("sounds/menu_fade.wav"),
-	MENU_SELECT    = load_asample("sounds/detail_view.wav"),
-	MENU_FAVORITE  = load_asample("sounds/launch_external.wav"),
-	MENUCURSOR_MOVE= load_asample("sounds/move.wav"),
-	GRIDCURSOR_MOVE= load_asample("sounds/gridcursor_move.wav"),
-	GRID_NEWPAGE   = load_asample("sounds/grid_newpage.wav"),
-	GRID_RANDOM    = load_asample("sounds/click.wav"),
-	SUBMENU_TOGGLE = load_asample("sounds/menu_toggle.wav"),
-	SUBMENU_FADE   = load_asample("sounds/menu_fade.wav"),
-	LAUNCH_INTERNAL= load_asample("sounds/launch_internal.wav"),
-	LAUNCH_EXTERNAL= load_asample("sounds/launch_external.wav"),
-	SWITCH_GAME    = load_asample("sounds/switch_game.wav"),
-	DETAIL_VIEW    = load_asample("sounds/detail_view.wav"),
-	SET_FAVORITE   = load_asample("sounds/set_favorite.wav"),
-	CLEAR_FAVORITE = load_asample("sounds/clear_favorite.wav"),
-	OSDKBD_TOGGLE  = load_asample("sounds/osdkbd_show.wav"),
-	OSDKBD_MOVE    = load_asample("sounds/gridcursor_move.wav"),
-	OSDKBD_ENTER   = load_asample("sounds/osdkb.wav"),
-	OSDKBD_ERASE   = load_asample("sounds/click.wav"),
-	OSDKBD_SELECT  = load_asample("sounds/osdkbd_select.wav"),
-	OSDKBD_HIDE    = load_asample("sounds/osdkbd_hide.wav")
+	MENU_TOGGLE     = load_asample("sounds/menu_toggle.wav"),
+	MENU_FADE       = load_asample("sounds/menu_fade.wav"),
+	MENU_SELECT     = load_asample("sounds/detail_view.wav"),
+	MENU_FAVORITE   = load_asample("sounds/launch_external.wav"),
+	MENUCURSOR_MOVE = load_asample("sounds/move.wav"),
+	GRIDCURSOR_MOVE = load_asample("sounds/gridcursor_move.wav"),
+	GRID_NEWPAGE    = load_asample("sounds/grid_newpage.wav"),
+	GRID_RANDOM     = load_asample("sounds/click.wav"),
+	SUBMENU_TOGGLE  = load_asample("sounds/menu_toggle.wav"),
+	SUBMENU_FADE    = load_asample("sounds/menu_fade.wav"),
+	LAUNCH_INTERNAL = load_asample("sounds/launch_internal.wav"),
+	LAUNCH_EXTERNAL = load_asample("sounds/launch_external.wav"),
+	SWITCH_GAME     = load_asample("sounds/switch_game.wav"),
+	DETAIL_VIEW     = load_asample("sounds/detail_view.wav"),
+	SET_FAVORITE    = load_asample("sounds/set_favorite.wav"),
+	CLEAR_FAVORITE  = load_asample("sounds/clear_favorite.wav"),
+	OSDKBD_TOGGLE   = load_asample("sounds/osdkbd_show.wav"),
+	OSDKBD_MOVE     = load_asample("sounds/gridcursor_move.wav"),
+	OSDKBD_ENTER    = load_asample("sounds/osdkb.wav"),
+	OSDKBD_ERASE    = load_asample("sounds/click.wav"),
+	OSDKBD_SELECT   = load_asample("sounds/osdkbd_select.wav"),
+	OSDKBD_HIDE     = load_asample("sounds/osdkbd_hide.wav")
 };
 
 -- constants,
@@ -109,6 +109,10 @@ end
 function gridle_video_event(source, event)
 	if (event.kind == "resized") then
 -- a launch_internal almost immediately generates this event, so a decent trigger to use
+		if (source == internal_vid) then
+				gridlemenu_resize_fullscreen(internal_vid);
+		end
+
 		if (not in_internal) then
 			in_internal = true;
 
@@ -118,12 +122,20 @@ function gridle_video_event(source, event)
 				delete_image(imagery.movie); 
 				imagery.movie = nil; 
 			end
-		end
 
--- shouldn't ever really mismatch 
-		if (source == internal_vid) then
-				gridlemenu_resize_fullscreen(internal_vid);
-				show_image(source); -- might be redundant
+			show_image(internal_vid);
+			local props = image_surface_properties(internal_vid);
+			resize_image(internal_vid, 1,1);
+			move_image(internal_vid, VRESW * 0.5, VRESH * 0.5);
+			resize_image(internal_vid, props.width, props.height, settings.transitiondelay);
+			move_image(internal_vid, props.x, props.y, settings.transitiondelay);
+
+			internal_vidborder = instance_image( imagery.black );
+			image_mask_clearall(internal_vidborder);
+			resize_image(internal_vidborder, VRESW, VRESH);
+			blend_image(internal_vidborder, 1.0, settings.transitiondelay * 2);
+			order_image(internal_vid, 1);
+			order_image(internal_vidborder, 0);
 		end
 	end
 end
@@ -977,8 +989,6 @@ end
 
 function gridle_clock_pulse()
 -- used to account for a nasty race condition when zooming a screenshot with asynch movie loading mid-zoom
-	settings.iodispatch["MENU_DOWN"]();
-	
 	if (settings.zoom_countdown > 0) then 
 		settings.zoom_countdown = settings.zoom_countdown - 1; 
 	end
@@ -1018,15 +1028,24 @@ end
 
 function gridle_internalcleanup()
 	kbd_repeat(settings.repeat_rate);
-	delete_image(internal_vid);
 	gridle_input = gridle_dispatchinput;
-	internal_vid = BADID;
-	internal_aid = BADID;
 
 	if (in_internal) then
+		order_image(internal_vid, ZOOMLAYER_MOVIE + 1); 
+		expire_image(internal_vid, settings.transitiondelay);
+		resize_image(internal_vid, 1, 1, settings.transitiondelay);
+		audio_gain(internal_aid, 0.0, settings.transitiondelay);
+		move_image(internal_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
 		build_grid(settings.cell_width, settings.cell_height);
+	else
+		delete_image(internal_vid);
 	end
 	
+	internal_vid = BADID;
+	internal_aid = BADID;
+	instant_image_transform(internal_vidborder);
+	expire_image(internal_vidborder, settings.transitiondelay);
+	blend_image(internal_vidborder, 0.0, settings.transitiondelay);
 	in_internal = false;
 end
 
