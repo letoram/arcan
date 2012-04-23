@@ -27,7 +27,7 @@ DDL = {
 
 	:game => "CREATE TABLE game (\
 	gameid INTEGER PRIMARY KEY,\
-	title TEXT UNIQUE NOT NULL,\
+	title TEXT NOT NULL,\
 	setname TEXT,\
 	players INT,\
 	buttons INT,\

@@ -11,7 +11,6 @@
 --  sortorder => settings.sortlbl
 -- 
 
-
 function menu_spawnmenu(list, listptr, fmtlist)
 	if (#list < 1) then
 		return nil;
@@ -25,12 +24,13 @@ function menu_spawnmenu(list, listptr, fmtlist)
 		windsize = VRESH - props.y;
 	end
 
-	current_menu = listview_create(list, windsize, VRESW / 3,"fonts/default.ttf", 18,  fmtlist);
+	current_menu = listview_create(list, windsize, VRESW / 3, fmtlist);
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
-
+	current_menu:show();
+	
 	play_audio(soundmap["SUBMENU_TOGGLE"]);
-	move_image( current_menu:anchor_vid(), props.x + props.width + 6, props.y);
+	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
 	return current_menu;
 end
 
@@ -204,6 +204,10 @@ local function sortordercb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.sortlbl = label;
 	
+	local node = current_menu;
+	while (node.parent) do node = node.parent; end
+	node.gamecount = -1;
+	
 	if (save) then
 		store_key("sortorder", label);
 		play_audio(soundmap["MENU_FAVORITE"]);	
@@ -219,9 +223,9 @@ for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
 local settingsptrs = {};
 settingsptrs["Sort Order..."]    = function() 
 	local fmts = {};
-	fmts[ settings.sortlbl ] = "\\#00ffff";
+	fmts[ settings.sortlbl ] = settings.colourtable.notice_fontstr;
 	if ( get_key("sortorder") ) then
-		fmts[ get_key("sortorder") ] = "\\#00ff00";
+		fmts[ get_key("sortorder") ] = settings.colourtable.alert_fontstr; 
 	end
 	menu_spawnmenu(sortorderlbls, sortorderptrs, fmts); 
 end
@@ -234,9 +238,9 @@ end
 settingsptrs["LED display mode..."] = function() 
 	local fmts = {};
 
-	fmts[ ledmodelbls[ tonumber(settings.ledmode) + 1] ] = "\\#00ffff";
+	fmts[ ledmodelbls[ tonumber(settings.ledmode) + 1] ] = settings.colourtable.notice_fontstr;
 	if (get_key("ledmode")) then
-		fmts[ ledmodelbls[ tonumber(get_key("ledmode")) + 1] ] = "\\#00ff00";
+		fmts[ ledmodelbls[ tonumber(get_key("ledmode")) + 1] ] = settings.colourtable.alert_fontstr;
 	end
 	
 	menu_spawnmenu(ledmodelbls, ledmodeptrs, fmts); 
@@ -245,9 +249,9 @@ end
 settingsptrs["Key Repeat Rate..."]  = function() 
 	local fmts = {};
 
-	fmts[ tostring( settings.repeat_rate) ] = "\\#00ffff";
+	fmts[ tostring( settings.repeat_rate) ] = settings.colourtable.notice_fontstr;
 	if (get_key("repeatrate")) then
-		fmts[ get_key("repeatrate") ] = "\\#00ff00";
+		fmts[ get_key("repeatrate") ] = settings.colourtable.alert_fontstr;
 	end
 	
 	menu_spawnmenu(repeatlbls, repeatptrs, fmts); 
@@ -259,9 +263,9 @@ settingsptrs["Reconfigure LEDs"] = function()
 end
 settingsptrs["Fade Delay..."] = function() 
 	local fmts = {};
-	fmts[ tostring( settings.fadedelay ) ] =  "\\#00ffff";
+	fmts[ tostring( settings.fadedelay ) ] =  settings.colourtable.notice_fontstr;
 	if (get_key("fadedelay")) then
-		fmts[ get_key("fadedelay") ] = "\\#00ff00";
+		fmts[ get_key("fadedelay") ] = settings.colourtable.alert_fontstr;
 	end
 	
 	menu_spawnmenu(fadedelaylbls, fadedelayptrs, fmts); 
@@ -269,9 +273,9 @@ end
 
 settingsptrs["Transition Delay..."] = function() 
 	local fmts = {};
-	fmts[ tostring( settings.transitiondelay ) ] = "\\#00ffff";
+	fmts[ tostring( settings.transitiondelay ) ] = settings.colourtable.notice_fontstr;
 	if (get_key("transitiondelay")) then
-		fmts[ get_key("transitiondelay") ] = "\\#00ff00";
+		fmts[ get_key("transitiondelay") ] = settings.colourtable.alert_fontstr;
 	end
 
 	menu_spawnmenu(transitiondelaylbls, transitiondelayptrs, fmts); 
@@ -279,9 +283,9 @@ end
 
 settingsptrs["Cell Size..."] = function()
 	local fmts = {};
-	fmts[ tostring(settings.cell_width) .. "x" .. tostring(settings.cell_height) ] = "\\#00ffff";
+	fmts[ tostring(settings.cell_width) .. "x" .. tostring(settings.cell_height) ] = settings.colourtable.notice_fontstr;
 	if (get_key("cell_width") and get_key("cell_height")) then
-		fmts[ get_key("cell_width") .. "x" .. get_key("cell_height") ] = "\\#00ff00";
+		fmts[ get_key("cell_width") .. "x" .. get_key("cell_height") ] = settings.colourtable.alert_fontstr;
 	end
 
 	menu_spawnmenu(gridlbls, gridptrs, fmts); 
@@ -310,7 +314,8 @@ local function update_status()
 	table.insert(list, filterstr);
 	if (settings.statuslist == nil) then
 		settings.statuslist = listview_create(list, 24 * 5, VRESW * 0.75);
-		move_image(settings.statuslist:anchor_vid(), 5, settings.fadedelay);
+		settings.statuslist:show();
+		move_image(settings.statuslist.anchor, 5, settings.fadedelay);
 		hide_image(settings.statuslist.cursorvid);
 	else
 		settings.statuslist.list = list;
@@ -431,9 +436,11 @@ function gridlemenu_settings()
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 			settings.cursor = 0;
 			settings.pageofs = 0;
+			
 			if (current_menu.gamecount ~= #settings.games) then
 				erase_grid(false);
 				build_grid(settings.cell_width, settings.cell_height);
+				move_cursor(1, true);
 			end
 			
 			settings.iodispatch = griddispatch;
@@ -482,7 +489,9 @@ function gridlemenu_settings()
 	current_menu.ptrs["Settings..."]   = function() menu_spawnmenu( settingslbls, settingsptrs ); end
 
 	current_menu.gamecount = #settings.games;
+	current_menu:show();
+	
 -- add an info window
 	update_status();
-	move_image(current_menu:anchor_vid(), 100, 140, settings.fadedelay);
+	move_image(current_menu.anchor, 100, 140, settings.fadedelay);
 end

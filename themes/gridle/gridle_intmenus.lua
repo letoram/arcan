@@ -335,6 +335,7 @@ settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		menu_spawnmenu( audiogainlist, audiogainptrs, def );
 	end
 	
+	current_menu:show();
 	play_audio(soundmap["MENU_TOGGLE"]);
-	move_image(current_menu:anchor_vid(), 100, 120, settings.fadedelay);
+	move_image(current_menu.anchor, 100, 120, settings.fadedelay);
 end

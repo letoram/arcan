@@ -36,50 +36,14 @@ local default_player_group = {
 	"rRIGHT",
 	"rSTART",
 	" SELECT",
-	"rCOIN1"
+	" COIN1"
 };
 
-local function keyconf_color(self, borderr, borderg, borderb, windowr, windowg, windowb)
-	local bprops = {x = 0, y = 0, width = 1, height = 1, opa = 1.0};
-	local wprops = {opa = 1.0, width = 1, height = 1, x = 3, y = 3};
-	
--- copy surface properties so that we can reset them on the new objects
-	if (self.window and self.window ~= BADID) then wprops = image_surface_properties(self.window); delete_image(self.window); end
-	if (self.border and self.border ~= BADID) then bprops = image_surface_properties(self.border); delete_image(self.border); end
-
-	self.border = fill_surface(8, 8, borderr, borderg, borderb);
-	self.window = fill_surface(8, 8, windowr, windowg, windowb);
-
--- we associate with an anchor used for movement so that we can clip to
--- window rather than border
-	link_image(self.border, self.anchor);
-	link_image(self.window, self.anchor);
-	
-	image_mask_clear(self.border, MASK_SCALE);
-	image_mask_clear(self.border, MASK_OPACITY);
-	image_mask_clear(self.window, MASK_SCALE);
-	image_mask_clear(self.window, MASK_OPACITY);
-
--- reset all the old properties
-	resize_image(self.border, bprops.width, bprops.height);
-	resize_image(self.window, wprops.width, wprops.height);
-	move_image(self.window, wprops.x, wprops.y);
-	move_image(self.border, bprops.x, bprops.y);
-	blend_image(self.window, wprops.opa);
-	blend_image(self.border, bprops.opa);
-end
-
-local function keyconf_opacity(self, borderopa, windowopa)
-	blend_image(self.window, windowopa);
-	blend_image(self.border, borderopa);
-end
-
 local function keyconf_tofront(self)
-	self.order = max_current_image_order() + 1;
-	order_image(self.window, self.order+1);
-	order_image(self.border, self.order);
+	order_image(self.border, max_current_image_order());
+	order_image(self.window, max_current_image_order() + 1);
 	if (self.textvid) then
-		order_image(self.textvid, self.order+2);
+		order_image(self.textvid, max_current_image_order() + 1);
 	end
 end
 
@@ -88,7 +52,7 @@ local function keyconf_destroy(self)
 	blend_image(self.window, 0.0, 20);
 	expire_image(self.border, 20);
 	blend_image(self.border, 0.0, 20);
-
+	expire_image(self.anchor, 20);
 	delete_image(self.textvid);
 	self.active = true;
 	self:flush();
@@ -105,7 +69,7 @@ local function keyconf_renderline(self, string, size)
 	end
 
 -- push to front, render text, resize window, align to current resolution 
-	self.textvid = render_text([[\ffonts/default.ttf,]] .. size .. " " .. string);
+	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string);
 	self.line = string;
 	prop = image_surface_properties(self.textvid);
 
@@ -118,7 +82,7 @@ local function keyconf_renderline(self, string, size)
 	resize_image(self.border, prop.width + 16, prop.height + 16, NOW);
 
 	move_image(self.textvid, 5, 5, NOW);
-	order_image(self.textvid, self.order + 2);
+	order_image(self.textvid, image_surface_properties(self.window).order + 1);
 	blend_image(self.textvid, 1.0);
 end
 
@@ -126,20 +90,23 @@ end
 local function keyconf_new(self)
 	self.used = {};
 	self.table = {};
-	self.window_color = keyconf_color;
-	self.window_opacity = keyconf_opacity;
 	self.to_front = keyconf_tofront;
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
-	self.yofs = 6;
+	move_image(self.anchor, -1, -1);
+		
+	self.border = fill_surface(VRESW * 0.33 + 6, VRESH * 0.33 + 6, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
+	self.window = fill_surface(VRESW * 0.33, VRESH * 0.33, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
 
-	self:window_color(255, 255, 255, 0, 0, 164);
-	self:window_opacity(0.9, 0.6);
-	self:to_front();
-	resize_image(self.border, VRESW / 3, VRESH * 0.2, 5);
-	resize_image(self.window, VRESW / 3 - 6, VRESH * 0.2 - 6, 5);
-
-	keyconf_renderline(self, [[\#ffffffWelcome to Arcan keyconfig!\r\nPlease press a button for MENU_ESCAPE (required)]], 18);
+	link_image(self.border, self.anchor);
+	link_image(self.window, self.anchor);
+	blend_image(self.anchor, 1.0, 15);
+	blend_image(self.border, settings.colourtable.dialog_border.a);
+	blend_image(self.window, settings.colourtable.dialog_window.a);
+	order_image(self.anchor, 0);
+	move_image(self.window, 3, 3);
+	
+	keyconf_renderline(self, [[Welcome to Arcan keyconfig!\r\nPlease press a button for MENU_ESCAPE (required)]], 18);
 	self.label = [[Please press a button for MENU_ESCAPE (required)]];
 
 	self.key = "MENU_ESCAPE";
@@ -153,7 +120,8 @@ local function keyconf_new(self)
 		self.configlist[ofs] = self.menu_group[i];
 		ofs = ofs + 1;
 	end
-	
+
+	self:to_front();
 end
 
 
@@ -495,6 +463,9 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key 
 		time_lastkey = CLOCK,
 	};
+
+	if (settings == nil) then settings = {}; end
+	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
 
 	local players = 0;
 	local buttons = {};

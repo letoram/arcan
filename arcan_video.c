@@ -1994,7 +1994,7 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
  *   -- if there's a feed function, invoke that with destroy
  *   -- if there's a frameset, destroy associated frames IF NOT detatched,
  *   -- if detatched, it is assumed the underlying ffunc mechanism will clean it up.
- *   -- scan all associated objects and remove dangling references */
+ *   -- scan all associated objects and remove dangling references AND destroy them too if not masked */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -2606,8 +2606,9 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->rotation.quaternion = add_quat(dprops->rotation.quaternion, sprops->rotation.quaternion);
 	}
 	
-	if (force || (vobj->mask & MASK_OPACITY) > 0)
+	if (force || (vobj->mask & MASK_OPACITY) > 0){
 		dprops->opa *= sprops->opa;
+	}
 	
 /*	if (force || (vobj->mask & MASK_SCALE) > 0){
 		dprops->scale = mul_vector(dprops->scale, sprops->scale);
