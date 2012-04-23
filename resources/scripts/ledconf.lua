@@ -21,64 +21,15 @@
 -- [LABEL] => ctrlid:ledid
 ----------------------------------------------------------
 
-local function ledconf_color(self, borderr, borderg, borderb, windowr, windowg, windowb)
-	local bprops = {x = 0, y = 0, width = 1, height = 1, opa = 1.0};
-	local wprops = {opa = 1.0, width = 1, height = 1, x = 3, y = 3};
--- copy surface properties so that we can reset them on the new objects
-	if (self.window and self.window ~= BADID) then wprops = image_surface_properties(self.window); delete_image(self.window); end
-	if (self.border and self.border ~= BADID) then bprops = image_surface_properties(self.border); delete_image(self.border); end
-
-	self.border = fill_surface(8, 8, borderr, borderg, borderb);
-	self.window = fill_surface(8, 8, windowr, windowg, windowb);
-
--- we associate with an anchor used for movement so that we can clip to
--- window rather than border
-	link_image(self.border, self.anchor);
-	link_image(self.window, self.anchor);
-	
-	image_mask_clear(self.border, MASK_SCALE);
-	image_mask_clear(self.border, MASK_OPACITY);
-	image_mask_clear(self.window, MASK_SCALE);
-	image_mask_clear(self.window, MASK_OPACITY);
-
--- reset all the old properties
-	resize_image(self.border, bprops.width, bprops.height);
-	resize_image(self.window, wprops.width, wprops.height);
-	
-	move_image(self.window, wprops.x, wprops.y);
-	move_image(self.border, bprops.x, bprops.y);
-	
-	blend_image(self.window, wprops.opa);
-	blend_image(self.border, bprops.opa);
-end
-
-local function ledconf_opacity(self, borderopa, windowopa)
-	blend_image(self.window, windowopa);
-	blend_image(self.border, borderopa);
-end
-
-local function ledconf_tofront(self)
-	self.order = max_current_image_order() + 1;
-	order_image(self.window, self.order+1);
-	order_image(self.border, self.order);
-	if (self.msgheader) then
-		order_image(self.msgheader, self.order+2);
-	end
-
-	if (self.valvid) then
-		order_image(self.valvid, self.order+2);
-	end
-end
-
 local function ledconf_destroy(self)
 	expire_image(self.window, 20);
 	blend_image(self.window, 0.0, 20);
 	expire_image(self.border, 20);
 	blend_image(self.border, 0.0, 20);
-
-	delete_image(self.anchor);
+	expire_image(self.anchor, 20);
 	delete_image(self.msgheader);
 	delete_image(self.valvid);
+	
 	self.active = true;
 	self:flush();
 end
@@ -87,24 +38,33 @@ local function ledconf_new(self, labels)
 	self.table = {};
 	self.labels = labels;
 	table.sort(self.labels);
+
 	self.config = true;
-	self.window_color = ledconf_color;
-	self.window_opacity = ledconf_opacity;
-	self.to_front = ledconf_tofront;
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
-	self.yofs = 6;
-	
+	move_image(self.anchor, -1, -1);
+		
+	self.border = fill_surface(VRESW * 0.33 + 6, VRESH * 0.33 + 6, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
+	self.window = fill_surface(VRESW * 0.33, VRESH * 0.33, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
+
+	link_image(self.border, self.anchor);
+	link_image(self.window, self.anchor);
+	blend_image(self.anchor, 1.0, 15);
+	blend_image(self.border, settings.colourtable.dialog_border.a);
+	blend_image(self.window, settings.colourtable.dialog_window.a);
+	order_image(self.anchor, 0);
+	move_image(self.window, 3, 3);
+		
 	self.ctrlval = 0;
 	self.groupid = 0;
 	self.ledval = 0;
 
-	self:window_color(255, 255, 255, 0, 0, 164);
-	self:window_opacity(0.9, 0.6);
-	self:to_front();
-	resize_image(self.border, VRESW / 3, VRESH * 0.2, 5);
-	resize_image(self.window, VRESW / 3 - 6, VRESH * 0.2 - 6, 5);
 	self:nextlabel(false);
 	self:drawvals();
+
+	order_image(self.border, max_current_image_order());
+	order_image(self.window, max_current_image_order() + 1);
+	order_image(self.msgheader, max_current_image_order());
+	order_image(self.valvid, max_current_image_order());
 end
 
 local function ledconf_flush(self)
@@ -140,10 +100,9 @@ local function ledconf_nextlabel(self, store)
 			delete_image(self.msgheader);
 		end
 		
-		self.msgheader = render_text( self.fontline .. [[\#ffffffWelcome to Arcan ledconf!\r\nPlease set values for label:\n\r\#00ffae]] .. self.labels[self.labelofs] ..
+		self.msgheader = render_text( settings.colourtable.fontstr .. [[Welcome to LEDconf!\r\nPlease set values for label:\n\r\#00ffae]] .. self.labels[self.labelofs] ..
 				[[\n\r\#ffffffCtrl:\tLed#]]);
 		local props = image_surface_properties(self.msgheader);
-		local pprops = image_surface_properties(self.window);
 		
 		resize_image(self.window, props.width + 10, props.height + 40);
 		resize_image(self.border, props.width + 16, props.height + 46);
@@ -151,7 +110,7 @@ local function ledconf_nextlabel(self, store)
 		link_image(self.msgheader, self.window);
 		image_mask_clear(self.msgheader, MASK_SCALE);
 		image_mask_clear(self.msgheader, MASK_OPACITY);
-		order_image(self.msgheader, pprops.order + 1);
+		order_image(self.msgheader,image_surface_properties(self.window).order + 1);
 		move_image(self.msgheader, 5, 5);
 		show_image(self.msgheader);
 		
@@ -166,9 +125,9 @@ local function ledconf_drawvals(self)
 	local msg = "";
 	
 	if (self.groupid == 0) then
-		msg = [[\#ff0000]] .. self.fontline .. tostring(self.ctrlval) .. [[\t\#ffffff]] .. tostring(self.ledval);
+		msg = settings.colourtable.fontstr .. [[\#ff0000]] .. tostring(self.ctrlval) .. [[\t\#ffffff]] .. tostring(self.ledval);
 	else
-		msg = [[\#ffffff]] .. self.fontline .. tostring(self.ctrlval) .. [[\t\#ff0000]] .. tostring(self.ledval);
+		msg = settings.colourtable.fontstr .. [[\#ffffff]] .. tostring(self.ctrlval) .. [[\t\#ff0000]] .. tostring(self.ledval);
 	end
 
 	if (self.valvid ~= BADID) then
@@ -350,7 +309,6 @@ local ledcfgtbl = {
 		clearall = ledconf_clearall,
 		listtoggle = ledconf_listtoggle,
 		destroy = ledconf_destroy,
-		fontline = [[\ffonts/default.ttf,18 ]],
 		ledcache = {};
 	}
 

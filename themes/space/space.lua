@@ -42,8 +42,8 @@ local alive = 0;
 local ydistr = 0;
 
 function position_image(vid)
-    distance = math.random(1, 5) / 10;
-    props = image_surface_properties(vid);
+	distance = math.random(1, 5) / 10;
+	props = image_surface_properties(vid);
 
 -- wider or taller?
 	if (props.width / props.height) > 1 then
@@ -63,13 +63,13 @@ function position_image(vid)
 	end
 
 -- start just outside display, move just outside the display at a randomized speed
-    move_image(vid, VRESW + 60, ydistr, NOW);
-    local lifetime = 500 + math.random(100, 1000);
-    move_image(vid, 0 - props.width, ydistr, lifetime);
-    expire_image(vid, lifetime);
+	move_image(vid, VRESW + 60, ydistr, NOW);
+	local lifetime = 500 + math.random(100, 1000);
+	move_image(vid, 0 - props.width, ydistr, lifetime);
+	expire_image(vid, lifetime);
 
 	ydistr = ydistr + props.height;
-    show_image(vid);
+	show_image(vid);
 end
 
 function have_video(setname)
@@ -113,14 +113,15 @@ function space()
 -- tile rather than clamp
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
 
-    images.background = load_image("space.png", 0);
-    images.cursor = load_image("images/mouse_cursor.png", 255);
-
+	images.background = load_image("space.png", 0);
+	images.cursor = load_image("images/mouse_cursor.png", 255);
+	show_image(images.cursor);
+		
  -- used as the basis for all particles
-    images.emitter = fill_surface(12, 12, 200, 200, 200);
+	images.emitter = fill_surface(12, 12, 200, 200, 200);
 
 -- if this is changed, the hot-spot need to be changed as well
-    resize_image(images.cursor, 64, 64, 0);
+	resize_image(images.cursor, 64, 64, 0);
 
 --  we want the cursor opaque, but should still have alpha-channel used
     force_image_blend(images.cursor);

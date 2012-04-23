@@ -1,0 +1,18 @@
+-- Just a table of some identifiers used by other supportscripts
+-- if a theme just overloads this file all the dialog color/font/...
+-- can be replaced in a whiff.
+
+local colourtable = {};
+
+colourtable.dialog_border = {r = 0x44 , g = 0x44, b = 0xaa, a = 0.9};
+colourtable.dialog_window = {r = 0x00, g = 0x00, b = 0xa4, a = 0.9};
+
+colourtable.font            = [[\ffonts/default.ttf,]]
+colourtable.font_size       = 18;
+colourtable.fontstr         = colourtable.font .. colourtable.font_size;
+colourtable.label_fontstr   = colourtable.fontstr.. [[\b\#ffffff]]
+colourtable.data_fontstr    = colourtable.fontstr .. [[\#ffffff]]
+colourtable.alert_fontstr   = colourtable.fontstr .. [[\#aa5500]]
+colourtable.notice_fontstr  = colourtable.fontstr .. [[\#55aa00]]
+
+return colourtable;

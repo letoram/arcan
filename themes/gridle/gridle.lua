@@ -106,6 +106,242 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
+
+function gridle()
+-- grab all dependencies;
+	settings.colourtable = system_load("scripts/colourtable.lua")();    -- default colour values for windows, text etc.
+
+	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
+	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
+	system_load("scripts/dialog.lua")();         -- dialog used for confirmations 
+	system_load("scripts/keyconf.lua")();        -- input configuration dialoges
+	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
+	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
+	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
+	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
+	system_load("gridle_menus.lua")();           -- in-frontend configuration options
+	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
+	
+-- make sure that the engine API version and the version this theme was tested for, align.
+	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 4) then
+		msg = "Engine/Script API version match, expected 0.4, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
+		error(msg);
+		shutdown();
+	end
+
+-- make sure that we don't have any weird resolution configurations
+	if (VRESW < 256 or VRESH < 256) then
+	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested. Check -w / -h arguments.");
+	end
+
+-- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
+-- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
+-- instances etc.
+	system_context_size( (VRESW * VRESH) / (48 * 48) * 4 );
+
+-- make sure the current context runs with the new limit
+	pop_video_context();
+
+-- keep an active list of available games, make sure that we have something to play/show
+-- since we want a custom sort, we'll have to keep a table of all the games (expensive)
+	settings.games = list_games( {} );
+	
+	if (#settings.games == 0) then
+		error("There are no games defined in the database.");
+		shutdown();
+	end
+
+-- any 3D rendering (models etc.) should happen after any 2D surfaces have been draw
+	video_3dorder(ORDER_LAST); 
+
+-- use the DB theme-specific key/value store to populate the settings table
+	load_settings();
+
+-- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
+	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
+	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
+	
+	if (settings.sortfunctions[settings.sortlbl]) then
+		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
+	end
+	
+-- enable key-repeat events AFTER we've done possible configuration of label->key mapping
+	kbd_repeat(settings.repeat_rate);
+
+-- setup callback table for input events
+	settings.iodispatch["ZOOM_CURSOR"]  = function(iotbl)
+		if imagery.zoomed == BADID then
+			zoom_cursor(settings.fadedelay);
+		else
+			remove_zoom(settings.fadedelay);
+		end
+	end
+
+-- the dispatchtable will be manipulated by settings and other parts of the program
+	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
+	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
+	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
+	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
+	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) move_cursor( math.random(-#settings.games, #settings.games) ); end
+	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
+	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
+		local ind = table.find(settings.favorites, current_game().title);
+		if (ind == nil) then -- flag
+			table.insert(settings.favorites, current_game().title);
+			local props = spawn_favoritestar(cursor_vid());
+			settings.favorites[current_game().title] = props;
+			play_audio(soundmap["SET_FAVORITE"]);
+		else -- unflag
+			fvid = settings.favorites[current_game().title];
+			if (fvid) then
+				blend_image(fvid, 0.0, settings.fadedelay);
+				expire_image(fvid, settings.fadedelay);
+				settings.favorites[current_game().title] = nil;
+			end
+			
+			table.remove(settings.favorites, ind);
+			play_audio(soundmap["CLEAR_FAVORITE"]);
+		end
+	end
+
+-- When OSD keyboard is to be shown, remap the input event handler,
+-- Forward all labels that match, but also any translated keys (so that we
+-- can use this as a regular input function as well) 
+	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
+		play_audio(soundmap["OSDKBD_TOGGLE"]);
+		
+		osdkbd:show();
+		settings.inputfun = gridle_input;
+		gridle_input = function(iotbl)
+
+		if (iotbl.active) then
+				local restbl = keyconfig:match(iotbl);
+				local resstr = nil;
+				local done   = false;
+				
+				if (restbl) then
+					for ind,val in pairs(restbl) do
+				
+						if (val == "MENU_ESCAPE") then
+							play_audio(soundmap["OSDKBD_HIDE"]);
+							return osdkbd_filter(nil);
+						elseif (val ~= "MENU_SELECT" and val ~= "MENU_UP" and val ~= "MENU_LEFT" and
+								val ~= "MENU_RIGHT" and val ~= "MENU_DOWN" and iotbl.translated) then
+							resstr = osdkbd:input_key(iotbl);
+						else
+							resstr = osdkbd:input(val);
+						end
+					end
+					
+				elseif (iotbl.translated) then
+					resstr = osdkbd:input_key(iotbl);
+				end
+				if (resstr) then return osdkbd_filter(resstr); end
+			end
+		end
+	end
+	
+	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
+		local gametbl = current_game();
+		local key = gridledetail_havedetails(gametbl);
+		if (key) then
+			remove_zoom(settings.fadedelay);
+			local gameind = 0;
+			blend_image( cursor_vid(), 0.3 );
+			play_audio( soundmap["DETAIL_VIEW"] ); 
+			
+-- cache curind so we don't have to search if we're switching game inside detail view 
+			for ind = 1, #settings.games do
+				if (settings.games[ind].title == gametbl.title) then
+					gameind = ind;
+					break;
+				end
+			end
+
+			if (imagery.movie and imagery.movie ~= BADID) then 
+				delete_image(imagery.movie); 
+				imagery.movie = nil; 
+			end
+			
+			gridledetail_show(key, gametbl, gameind);
+		end
+	end
+	
+	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
+		play_audio(soundmap["MENU_TOGGLE"]);
+		remove_zoom(settings.fadedelay); 
+		gridlemenu_settings(); 
+	end
+	
+	settings.iodispatch["MENU_SELECT"]  = function(iotbl) 
+		play_audio(soundmap["LAUNCH_EXTERNAL"]);
+		launch_target( current_game().title, LAUNCH_EXTERNAL); 
+		move_cursor(0);
+	end
+	
+	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
+		erase_grid(false);
+		play_audio(soundmap["LAUNCH_INTERNAL"]);
+		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL);
+		audio_gain(internal_aid, settings.internal_again, NOW);
+		gridle_oldinput = gridle_input;
+		gridle_input = gridle_internalinput;
+		gridlemenu_loadshader(settings.fullscreenshader);
+	end
+
+	imagery.black = fill_surface(1,1,0,0,0);
+	imagery.white = fill_surface(1,1,255,255,255);
+	
+-- Animated background
+	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
+	imagery.bgimage = load_image("background.png");
+	resize_image(imagery.bgimage, VRESW, VRESH);
+	image_scale_txcos(imagery.bgimage, VRESW / 32, VRESH / 32);
+	image_shader(imagery.bgimage, bgshader);
+	show_image(imagery.bgimage);
+	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+
+-- Little star keeping track of games marked as favorites
+	imagery.starimage    = load_image("star.png");
+	imagery.magnifyimage = load_image("magnify.png");
+
+	build_grid(settings.cell_width, settings.cell_height);
+	build_fadefunctions();
+
+	osd_visible = false;
+	
+	gridle_keyconf();
+	gridle_ledconf();
+	osdkbd = create_osdkbd();
+end
+
+function confirm_shutdown()
+	local shutdown_dialog = dialog_create("Shutdown Arcan/Gridle?", {"NO", "YES"}, true);
+	local asamples = {MENU_LEFT = "MENUCURSOR_MOVE", MENU_RIGHT = "MENUCURSOR_MOVE", MENU_ESCAPE = "MENU_FADE", MENU_SELECT = "MENU_FADE"};
+	shutdown_dialog:show();
+	play_audio(soundmap["MENU_TOGGLE"]);
+	
+-- temporarily replace the input function with one that just resolves LABEL and forwards to
+-- the shutdown_dialog, if the user cancels (MENU_ESCAPE) or MENU_SELECT on NO, reset the table.
+	gridle_input = function(iotbl)
+		local restbl = keyconfig:match(iotbl);
+		if (restbl and iotbl.active) then
+			for ind,val in pairs(restbl) do
+				if (asamples[val]) then play_audio(soundmap[asamples[val]]); end
+				local iores = shutdown_dialog:input(val);
+				if (iores ~= nil) then
+						if (iores == "YES") then
+							shutdown();
+						else
+							gridle_input = gridle_dispatchinput;
+						end
+				end
+			end -- more input needed
+		end
+	end -- of inputfunc.
+	
+end
+
 function gridle_video_event(source, event)
 	if (event.kind == "resized") then
 -- a launch_internal almost immediately generates this event, so a decent trigger to use
@@ -162,10 +398,12 @@ function gridle_keyconf()
 		kbd_repeat(0);
 
 -- keep a listview in the left-side behind the dialog to show all the labels left to configure
-		keyconf_labelview = listview_create(listlbls, VRESH, VRESW / 4, "fonts/default.ttf", 18,  nil);
-		local props = image_surface_properties(keyconf_labelview:window_vid(), 5);
+		keyconf_labelview = listview_create(listlbls, VRESH, VRESW / 4);
+		keyconf_labelview:show();
+		
+		local props = image_surface_properties(keyconf_labelview.window, 5);
 		if (props.height < VRESH) then
-			move_image(keyconf_labelview:anchor_vid(), 0, VRESH * 0.5 - props.height* 0.5);
+			move_image(keyconf_labelview.anchor, 0, VRESH * 0.5 - props.height* 0.5);
 		end
 		
 		keyconfig:to_front();
@@ -208,14 +446,14 @@ function gridle_ledconf()
 
 -- LED config, use a subset of the labels defined in keyconf
 	if (ledconfig.active == false) then
-		ledconf_labelview = listview_create(ledconflabels, VRESH, VRESW / 4, "fonts/default.ttf", 18,  nil);
-				
-		local props = image_surface_properties(ledconf_labelview:window_vid(), 5);
+		ledconf_labelview = listview_create(ledconflabels, VRESH, VRESW / 4);
+		ledconf_labelview:show();
+		
+		local props = image_surface_properties(ledconf_labelview.window, 5);
 		if (props.height < VRESH) then
-			move_image(ledconf_labelview:anchor_vid(), 0, VRESH * 0.5 - props.height* 0.5);
+			move_image(ledconf_labelview.anchor, 0, VRESH * 0.5 - props.height* 0.5);
 		end
 
-		ledconfig:to_front();
 		ledconfig.lastofs = ledconfig.labelofs;
 		
 -- since we have a working symbol/label set by now, use that one
@@ -347,211 +585,6 @@ function osdkbd_filter(msg)
 			settings.filters.title = titlecpy;
 		end
 	end
-end
-
-function gridle()
--- grab all dependencies;
-	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
-	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
-	system_load("scripts/keyconf.lua")();        -- input configuration dialoges
-	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
-	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
-	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
-	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
-	system_load("gridle_menus.lua")();           -- in-frontend configuration options
-	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
-
--- make sure that the engine API version and the version this theme was tested for, align.
-	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 4) then
-		msg = "Engine/Script API version match, expected 0.4, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
-		error(msg);
-		shutdown();
-	end
-
--- make sure that we don't have any weird resolution configurations
-	if (VRESW < 256 or VRESH < 256) then
-	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested. Check -w / -h arguments.");
-	end
-
--- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
--- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
--- instances etc.
-	system_context_size( (VRESW * VRESH) / (48 * 48) * 4 );
-
--- make sure the current context runs with the new limit
-	pop_video_context();
-
--- keep an active list of available games, make sure that we have something to play/show
--- since we want a custom sort, we'll have to keep a table of all the games (expensive)
-	settings.games = list_games( {} );
-	
-	if (#settings.games == 0) then
-		error("There are no games defined in the database.");
-		shutdown();
-	end
-
--- any 3D rendering (models etc.) should happen after any 2D surfaces have been draw
-	video_3dorder(ORDER_LAST); 
-
--- use the DB theme-specific key/value store to populate the settings table
-	load_settings();
-
--- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
-	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
-	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
-	
-	if (settings.sortfunctions[settings.sortlbl]) then
-		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
-	end
-	
--- enable key-repeat events AFTER we've done possible configuration of label->key mapping
-	kbd_repeat(settings.repeat_rate);
-
--- setup callback table for input events
-	settings.iodispatch["ZOOM_CURSOR"]  = function(iotbl)
-		if imagery.zoomed == BADID then
-			zoom_cursor(settings.fadedelay);
-		else
-			remove_zoom(settings.fadedelay);
-		end
-	end
-
--- the dispatchtable will be manipulated by settings and other parts of the program
-	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
-	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
-	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
-	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
-	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) move_cursor( math.random(-#settings.games, #settings.games) ); end
-	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) shutdown(); end
-	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
-		local ind = table.find(settings.favorites, current_game().title);
-		if (ind == nil) then -- flag
-			table.insert(settings.favorites, current_game().title);
-			local props = spawn_favoritestar(cursor_vid());
-			settings.favorites[current_game().title] = props;
-			play_audio(soundmap["SET_FAVORITE"]);
-		else -- unflag
-			fvid = settings.favorites[current_game().title];
-			if (fvid) then
-				blend_image(fvid, 0.0, settings.fadedelay);
-				expire_image(fvid, settings.fadedelay);
-				settings.favorites[current_game().title] = nil;
-			end
-			
-			table.remove(settings.favorites, ind);
-			play_audio(soundmap["CLEAR_FAVORITE"]);
-		end
-	end
-
--- When OSD keyboard is to be shown, remap the input event handler,
--- Forward all labels that match, but also any translated keys (so that we
--- can use this as a regular input function as well) 
-	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
-		play_audio(soundmap["OSDKBD_TOGGLE"]);
-		
-		osdkbd:show();
-		settings.inputfun = gridle_input;
-		gridle_input = function(iotbl)
-
-		if (iotbl.active) then
-				local restbl = keyconfig:match(iotbl);
-				local resstr = nil;
-				local done   = false;
-				
-				if (restbl) then
-					for ind,val in pairs(restbl) do
-				
-						if (val == "MENU_ESCAPE") then
-							play_audio(soundmap["OSDKBD_HIDE"]);
-							return osdkbd_filter(nil);
-						elseif (val ~= "MENU_SELECT" and val ~= "MENU_UP" and val ~= "MENU_LEFT" and
-								val ~= "MENU_RIGHT" and val ~= "MENU_DOWN" and iotbl.translated) then
-							resstr = osdkbd:input_key(iotbl);
-						else
-							resstr = osdkbd:input(val);
-						end
-					end
-					
-				elseif (iotbl.translated) then
-					resstr = osdkbd:input_key(iotbl);
-				end
-				if (resstr) then return osdkbd_filter(resstr); end
-			end
-		end
-	end
-	
-	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
-		local gametbl = current_game();
-		local key = gridledetail_havedetails(gametbl);
-		if (key) then
-			remove_zoom(settings.fadedelay);
-			local gameind = 0;
-			blend_image( cursor_vid(), 0.3 );
-			play_audio( soundmap["DETAIL_VIEW"] ); 
-			
--- cache curind so we don't have to search if we're switching game inside detail view 
-			for ind = 1, #settings.games do
-				if (settings.games[ind].title == gametbl.title) then
-					gameind = ind;
-					break;
-				end
-			end
-
-			if (imagery.movie and imagery.movie ~= BADID) then 
-				delete_image(imagery.movie); 
-				imagery.movie = nil; 
-			end
-			
-			gridledetail_show(key, gametbl, gameind);
-		end
-	end
-	
-	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
-		play_audio(soundmap["MENU_TOGGLE"]);
-		remove_zoom(settings.fadedelay); 
-		gridlemenu_settings(); 
-	end
-	
-	settings.iodispatch["MENU_SELECT"]  = function(iotbl) 
-		play_audio(soundmap["LAUNCH_EXTERNAL"]);
-		launch_target( current_game().title, LAUNCH_EXTERNAL); 
-		move_cursor(0);
-	end
-	
-	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
-		erase_grid(false);
-		play_audio(soundmap["LAUNCH_INTERNAL"]);
-		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL);
-		audio_gain(internal_aid, settings.internal_again, NOW);
-		gridle_oldinput = gridle_input;
-		gridle_input = gridle_internalinput;
-		gridlemenu_loadshader(settings.fullscreenshader);
-	end
-
-	imagery.black = fill_surface(1,1,0,0,0);
-	imagery.white = fill_surface(1,1,255,255,255);
-	
--- Animated background
-	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
-	imagery.bgimage = load_image("background.png");
-	resize_image(imagery.bgimage, VRESW, VRESH);
-	image_scale_txcos(imagery.bgimage, VRESW / 32, VRESH / 32);
-	image_shader(imagery.bgimage, bgshader);
-	show_image(imagery.bgimage);
-	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
-
--- Little star keeping track of games marked as favorites
-	imagery.starimage    = load_image("star.png");
-	imagery.magnifyimage = load_image("magnify.png");
-
-	build_grid(settings.cell_width, settings.cell_height);
-	build_fadefunctions();
-
-	osd_visible = false;
-	
-	gridle_keyconf();
-	gridle_ledconf();
-	osdkbd = create_osdkbd();
 end
 
 function cell_coords(x, y)
@@ -715,13 +748,14 @@ function blend_gridcell(val, dt)
     end
 end
 
-function move_cursor( ofs )
+function move_cursor( ofs, absolute )
 	local pageofs_cur = settings.pageofs;
 	blend_gridcell(0.3, settings.fadedelay);
 	remove_zoom(settings.fadedelay);
 
 	settings.gameind = settings.gameind + ofs;
-
+	if (absolute) then settings.gameind = ofs; end
+	
 -- refit inside range
 	while (settings.gameind < 1) do 
 		settings.gameind = #settings.games + settings.gameind;
@@ -1053,7 +1087,7 @@ function gridle_target_event(source, kind)
 	gridle_internalcleanup();
 end
 
--- slightly different from gridledetail
+-- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
 	
