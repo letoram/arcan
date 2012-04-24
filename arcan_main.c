@@ -59,10 +59,10 @@ arcan_dbh* dbhandle = NULL;
 
 /* globals, hackishly used in other places */
 char* arcan_themename = "welcome";
-char* arcan_themepath = NULL;
-char* arcan_resourcepath = NULL;
+char* arcan_themepath = "./themes";
+char* arcan_resourcepath = "./resources";
 char* arcan_libpath = NULL;
-char* arcan_binpath = NULL;
+char* arcan_binpath = "./";
 
 bool stderr_redirected = false;
 bool stdout_redirected = false;

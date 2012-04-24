@@ -1609,6 +1609,7 @@ static int get_linenumber(lua_State* ctx)
 
 static void dump_call_trace(lua_State* ctx)
 {
+#ifdef LUA_51
 		printf("-- call trace -- \n");
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
@@ -1623,6 +1624,7 @@ static void dump_call_trace(lua_State* ctx)
 				lua_call(ctx, 2, 1);
 			}
 	}
+#endif
 }
 
 /* dump argument stack, stack trace are shown only when --debug is set */
