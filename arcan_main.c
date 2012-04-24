@@ -224,7 +224,7 @@ int main(int argc, char* argv[])
 /*		SDL_WM_GrabInput(SDL_GRAB_ON);
 		putenv("SDL_VIDEO_WINDOW_POS=0,0");*/
 
-		/* some kind of call is missing on OSX in order to put the priority above the menu-bar (and disable border/bar) */
+/* some kind of call is missing on OSX in order to put the priority above the menu-bar (and disable border/bar) */
 	}
 
 	/* grab video, (necessary) */
