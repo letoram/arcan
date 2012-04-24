@@ -146,9 +146,11 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			int64_t now = arcan_frametime() - src->starttime;
 
 		/* if frames are too old, just ignore them */
+			arcan_warning("(mt) synch time\n");
 			while (src->vfq.front_cell && 
 				(now - (int64_t)src->vfq.front_cell->tag > (int64_t) src->desc.vskipthresh)){
 				src->lastpts = src->vfq.front_cell->tag;
+				arcan_warning("(mt) drop frame\n");
 				arcan_framequeue_dequeue(&src->vfq);
 			}
 
@@ -194,13 +196,19 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 				rv = FFUNC_RV_NOUPLOAD;
 			}
 
+			arcan_warning("(mt) deqeue vf\n");
 			arcan_framequeue_dequeue(&src->vfq);
+			arcan_warning("(mt) dequeued\n");
 	}
 	else if (cmd == ffunc_tick && !check_child(src)){
+		arcan_warning("(mt) kill vf\n");
 		arcan_frameserver_free(src, src->loop);
+		arcan_warning("(mt) killed nf\n");
 	}
 	else if (cmd == ffunc_destroy){
+		arcan_warning("(mt) destroy vf\n");
 		arcan_frameserver_free(src, false);
+		arcan_warning("(mt) destroyed\n");
 	}
 
 	return rv;
@@ -210,10 +218,12 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
+	arcan_warning("(mt) begin audio\n");
 
 /* for each cell, buffer (-> quit), wait (-> quit) or drop (full/partially) */
 	if (src->playstate == ARCAN_PLAYING){
 		while (src->afq.front_cell){
+			arcan_warning("(mt) audioframe\n");
 			int64_t now = arcan_frametime() - src->starttime;
 			int64_t toshow = src->afq.front_cell->tag;
 
@@ -234,6 +244,7 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 		}
 	} 
 
+	arcan_warning("(mt) end audio\n");
 	return rv;
 }
 
@@ -276,8 +287,12 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
 			
 		/*  note that the vid here is actually used to get the movie context, so this is correct */
-            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb);
-            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb);
+			char labelbuf[32] = {0};
+			snprintf(labelbuf, 31, "audio_%d", src->vid);
+            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
+
+			snprintf(labelbuf, 31, "video_%d", src->aid);
+            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
            
 			if (src->autoplay){
 				arcan_frameserver_playback(src);

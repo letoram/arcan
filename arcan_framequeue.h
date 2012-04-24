@@ -52,13 +52,14 @@ typedef struct frame_queue {
 	int fd;
 	arcan_rfunc read;
 
+	char* label;
 } frame_queue;
 
 /* initialize a frame_queue (non NULL),
  * connect it asyncronously to [fd]
  * allocate [cell_count] slots with [cell_size] buffer to each cell
  * if rfunc is NULL, it defaults to read() on fd */
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc);
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc, char* idlabel);
 
 /* cleanup,
  * free all the related buffers and terminate any ongoing AIO calls. */

@@ -40,14 +40,14 @@
 void arcan_framequeue_step(frame_queue* queue)
 {
 	frame_cell* current = &queue->da_cells[ queue->ni ];
+
 	SDL_LockMutex(queue->framesync);
 
+/* Condition variable guarded area */
 	while (queue->alive && 
 		queue->n_cells + 1 == queue->c_cells) {
-		SDL_UnlockMutex(queue->framesync);
 		SDL_CondWait(queue->framecond, queue->framesync);
-		SDL_LockMutex(queue->framesync);
-		}
+	}
 
 	if (queue->alive){
 		current->wronly = false;
@@ -58,22 +58,24 @@ void arcan_framequeue_step(frame_queue* queue)
 		queue->ni = (queue->ni + 1) % queue->c_cells;
 		queue->n_cells++;
 	}
-	
+
 	SDL_UnlockMutex(queue->framesync);
+/* End of Condition variable guarded area */
 }
 
-/* This is the only function that is called at regular intervals from
- * other parts of the running process. */
-
+/* This is one of few major synchpoints between MT and other threads,
+ * with any issue where MT becomes unresponsive, look here first. */
 frame_cell* arcan_framequeue_dequeue(frame_queue* src)
 {
 	frame_cell* rcell = NULL;
 
 	if (src->front_cell) {
-		SDL_LockMutex(src->framesync);
+		int lv = SDL_LockMutex(src->framesync);
+
 		rcell = src->front_cell;
 		src->front_cell = src->front_cell->next;
-		/* reset the flags already */
+
+	/* reset the flags already */
 		rcell->ofs = 0;
 		rcell->next = NULL;
 		rcell->wronly = true;
@@ -81,9 +83,9 @@ frame_cell* arcan_framequeue_dequeue(frame_queue* src)
 
 		if (src->front_cell == NULL)
 			src->current_cell = &src->front_cell;
-
-		SDL_UnlockMutex(src->framesync);
+		
 		SDL_CondSignal(src->framecond);
+		SDL_UnlockMutex(src->framesync);
 	}
 
 	return rcell;
@@ -97,12 +99,10 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 	if (queue) {
 		queue->alive = false;
 		int statusfl;
-		
 		SDL_CondSignal(queue->framecond);
 		SDL_WaitThread(queue->iothread, &statusfl);
 		SDL_DestroyCond(queue->framecond);
 		SDL_DestroyMutex(queue->framesync);
-				
 		if (queue->da_cells) {
 			free(queue->da_cells[0].buf);
 			free(queue->da_cells);
@@ -140,7 +140,7 @@ static int framequeue_loop(void* data)
 	return 0;
 }
 
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc)
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc, char* label)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
@@ -168,6 +168,7 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_
 		}
 
 		queue->fd = fd;
+		queue->label = label ? strdup(label) : strdup("(unlabeled)");
 		queue->framesync = SDL_CreateMutex();
 		queue->framecond = SDL_CreateCond();
 		queue->alive = true;

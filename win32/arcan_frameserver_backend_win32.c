@@ -1,4 +1,24 @@
-/* stdlib */
+/* Arcan-fe, scriptable front-end engine
+ *
+ * Arcan-fe is the legal property of its developers, please refer
+ * to the COPYRIGHT file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+ */
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -27,6 +47,51 @@
 #include "../arcan_event.h"
 #include "../arcan_util.h"
 #include "../arcan_frameserver_backend_shmpage.h"
+
+static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode);
+
+arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (src) {
+		src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
+		if (!loop)
+			arcan_audio_stop(src->aid);
+			
+		if (src->vfq.alive)
+			arcan_framequeue_free(&src->vfq);
+		
+		if (src->afq.alive)
+			arcan_framequeue_free(&src->afq);
+
+	/* might have died prematurely (framequeue cbs), no reason sending signal */
+ 		if (src->child_alive) {
+			UINT ec;
+			SafeTerminateProcess(src->child, &ec);
+			src->child_alive = false;
+			src->child = 0;
+		}
+
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+
+		if (shmpage){
+			arcan_frameserver_dropsemaphores(src);
+		
+			if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
+				fprintf(stderr, "BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
+
+			CloseHandle( src->shm.handle );
+			free(src->shm.key);
+			
+			src->shm.ptr = NULL;
+		}
+		
+		rv = ARCAN_OK;
+	}
+
+	return rv;
+}
 
 /* Dr.Dobb, anno 99, because a working signaling system and kill is too clean */
 static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
@@ -75,58 +140,24 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 	return bSuccess;
 }
 
-bool check_child(arcan_frameserver* src)
+int check_child(arcan_frameserver* movie)
 {
-	if (!src)
-		return false;
+	int rv = -1;
+	errno = EAGAIN;
 
-	DWORD exitcode;
-	GetExitCodeProcess((HANDLE) src->child, &exitcode);
-	return exitcode == STILL_ACTIVE;
-}
-
-arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
-{
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (src) {
-		src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
-		if (!loop)
-			arcan_audio_stop(src->aid);
-			
-		if (src->vfq.alive)
-			arcan_framequeue_free(&src->vfq);
-		
-		if (src->afq.alive)
-			arcan_framequeue_free(&src->afq);
-
-	/* might have died prematurely (framequeue cbs), no reason sending signal */
- 		if (src->child_alive) {
-			UINT ec;
-			SafeTerminateProcess(src->child, &ec);
-			src->child_alive = false;
-			src->child = 0;
+	if (movie->child){
+		DWORD exitcode;
+		GetExitCodeProcess((HANDLE) movie->child, &exitcode);
+		if (exitcode == STILL_ACTIVE); /* this was a triumph */
+		else {
+			errno = EINVAL;
+			movie->child_alive = false;
 		}
-
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-
-		if (shmpage){
-			arcan_frameserver_dropsemaphores(src);
-		
-			if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
-				fprintf(stderr, "BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
-
-			CloseHandle( src->shm.handle );
-			free(src->shm.key);
-			
-			src->shm.ptr = NULL;
-		}
-		
-		rv = ARCAN_OK;
 	}
 
 	return rv;
 }
+
 
 static TCHAR* alloc_wchar(const char* key)
 {
@@ -136,7 +167,26 @@ static TCHAR* alloc_wchar(const char* key)
 	return mskey;
 }
 
-static struct frameserver_shmpage* setupshmipc(HANDLE* dfd, char** key)
+static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
+	
+	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
+		switch (cmd){
+			case ffunc_tick:
+               arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
+                break;
+                
+			case ffunc_destroy:
+				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+                break;
+                
+			default:
+                break;
+		}
+    
+	return 0;
+}
+
+static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 {
 	struct frameserver_shmpage* res = NULL;
 
@@ -156,7 +206,7 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd, char** key)
 	if (*dfd != NULL && (res = MapViewOfFile(*dfd, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
 		memset(res, 0, sizeof(struct frameserver_shmpage));
 		res->vbufofs = sizeof(struct frameserver_shmpage);
-		res->vsyncc = res->vsyncp = CreateSemaphore(&sa, 1, 1, NULL); 
+		res->vsyncc = res->vsyncp = CreateSemaphore(&sa, 1, 0, NULL); 
 		res->asyncc = res->asyncp = CreateSemaphore(&sa, 1, 1, NULL);
 		return res;
 	}
@@ -166,34 +216,14 @@ error:
 	return NULL;
 }
 
-static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
-	
-	if (state.tag == ARCAN_TAG_MOVIE && state.ptr)
-		switch (cmd){
-			case ffunc_tick:
-               arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
-                break;
-                
-			case ffunc_destroy:
-				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
-                break;
-                
-			default:
-                break;
-		}
-    
-	return 0;
-}
-
 arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
 {
 	/* if res is non-null, we have a server context already set up,
 	 * just need to reset the frame-server */
 	bool restart = res != NULL;
-	char* key;
 
 	HANDLE shmh;
-	struct frameserver_shmpage* shmpage = setupshmipc(&shmh, &key);
+	struct frameserver_shmpage* shmpage = setupshmipc(&shmh);
 
 	if  (!shmpage)
 		goto error;
@@ -228,42 +258,42 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 			/* the child has successfully launched and provided the relevant video information */
 			img_cons cons = { .w = 32, .h = 32, .bpp = 4};
-			vfunc_state state = {.tag = ARCAN_TAG_MOVIE, .ptr = 0};
+			arcan_frameserver_meta vinfo = {0};
 			arcan_errc err;
 
-			if (res == NULL) {
+			if (!restart) {
 				res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-				state.ptr = res;
+				vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
+				res->source = strdup(fname);
 	            res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
 				res->aid = ARCAN_EID;
-				res->source = strdup(fname);
 			} else {
-				state = *arcan_video_feedstate(res->vid);
-				arcan_video_alterfeed((arcan_vfunc_cb) emptyvframe, state);
+				vfunc_state* state = arcan_video_feedstate(res->vid);
+				arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *state);
 			}
 
-		res->loop = loop;
-		res->child = pi.hProcess;
 		res->child_alive = true;
+		res->desc = vinfo;
+		res->child = pi.hProcess;
+		res->loop = loop;
 		res->desc.width = cons.w;
 		res->desc.height = cons.h;
 		res->desc.bpp = cons.bpp;
-		res->desc.samplerate = shmpage->frequency;
-		res->desc.channels = shmpage->channels;
-		res->desc.format = 0;
-		res->desc.sformat = 0;
-		res->desc.dformat = 0;
-		res->desc.ready = true;
-
+		res->shm.key = strdup("win32_static");
 		res->shm.ptr = (void*) shmpage;
-		res->shm.handle = shmh;
 		res->shm.shmsize = MAX_SHMSIZE;
+		res->shm.handle = shmh;
+ 		res->desc.ready = true;
+
 		return res;
-	} else {
-			fprintf(stderr, "arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
-	}
+	} else 
+		fprintf(stderr, "arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
 
 error:
+	if (shmpage) UnmapViewOfFile((void*) shmpage);
+	if (shmh)
+		CloseHandle(shmh);
+
 	return NULL;
 }
 

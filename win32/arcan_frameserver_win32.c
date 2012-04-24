@@ -90,10 +90,11 @@ static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, HANDLE key)
 	dstctx->shared->bpp = dstctx->bpp;
 	dstctx->shared->vready = false;
 	dstctx->shared->aready = false;
+	dstctx->shared->vbufofs = sizeof(struct frameserver_shmpage);
 	dstctx->shared->channels = dstctx->channels;
 	dstctx->shared->frequency = dstctx->samplerate;
 	dstctx->shared->abufbase = 0;
-	dstctx->shared->abufofs = dstctx->shared->vbufofs + 4 + dstctx->shared->w * dstctx->shared->h * dstctx->shared->bpp;
+	dstctx->shared->abufofs = dstctx->shared->vbufofs + dstctx->width * dstctx->height * dstctx->bpp;
 	dstctx->shared->resized = true;
 
 	return true;
@@ -128,6 +129,9 @@ int main(int argc, char* argv[])
 	if (vidctx != NULL && setup_shm_ipc(vidctx, shmh)) {
 		struct frameserver_shmpage* page = vidctx->shared;
 		parent = page->parent;
+		vidctx->shared->resized = true;
+		arcan_sem_post(vidctx->shared->vsyncc);
+
 		/* reuse the shmpage, anyhow, the main app should support
 		 * relaunching the frameserver when looping to cover for
 		 * memory leaks, crashes and other ffmpeg goodness */
