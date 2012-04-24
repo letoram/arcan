@@ -11,9 +11,7 @@
 -- Mouse "cursor" (just an image hooked up to the mouse motion event)
 -- Instance and hierarchical coordinates (the particle system underneath the cursor)
 -- Music playback (background music, stored in theme)
--- Only games with a matching screenshot/movie 
--- (resources/screenshots/setname.png or resources/moviesd/setname.avi)
--- will be shown.. 
+-- Only shows games that has a screenshot and (optionally) movie associated
 -------------------------
 
 local background;
@@ -41,74 +39,11 @@ local alive = 0;
 -- reposition an image for the "starfield scroller"
 local ydistr = 0;
 
-function position_image(vid)
-	distance = math.random(1, 5) / 10;
-	props = image_surface_properties(vid);
-
--- wider or taller?
-	if (props.width / props.height) > 1 then
-		resize_image(vid, VRESW * 0.2, 0, NOW);
-	else
-		resize_image(vid, 0, VRESH * 0.2, NOW);
-	end
-
--- scale and position based on "distance"
-    order_image(vid, distance * 254.0);
-
--- add downwards and wrap around
-	ydistr = ydistr + 10 + math.random(50);
-    props = image_surface_properties(vid);
-	if (ydistr + props.height > VRESH) then 
-		ydistr = math.random(50);
-	end
-
--- start just outside display, move just outside the display at a randomized speed
-	move_image(vid, VRESW + 60, ydistr, NOW);
-	local lifetime = 500 + math.random(100, 1000);
-	move_image(vid, 0 - props.width, ydistr, lifetime);
-	expire_image(vid, lifetime);
-
-	ydistr = ydistr + props.height;
-	show_image(vid);
-end
-
-function have_video(setname)
-	local exts = {".avi", ".mp4", ".mkv", ".mpg"};
-
-	for ind,val in ipairs(exts) do
-		local moviefn = "movies/" .. setname .. val;
-		if (resource(moviefn)) then
-			return moviefn;
-		end
-	end
-
-	return nil;
-end
-
--- find a random game, load relevant resources and queue. 
-function random_game()
-    vid = 0;
-    
-    if (alive >= bglayer_limit) then
-		return;
-    end
-    
-	gameid = math.random(1, #games);
-    game = games[ gameid ];
-    fn = "screenshots/" .. game["setname"] .. ".png";
-    vid = load_image_asynch(fn);
-
-	if (vid ~= BADID) then
-		-- keep track of number of "background objects" alive
-		alive = alive + 1;
-		bglayer[vid] = game;
-	end
-
-end
 
 function space()
 -- pre-generated table of SDL keysyms, LED light remaps, .. 
-    keyfun = system_load("scripts/keyconf.lua")();
+	keyfun = system_load("scripts/keyconf.lua")();
+	system_load("scripts/resourcefinder.lua")();	
 
 -- tile rather than clamp
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
@@ -140,7 +75,8 @@ function space()
     games = list_games( {} );
 
     for i, v in pairs(games) do
-		if resource("screenshots/" .. v.setname .. ".png") == false then
+		if (resource("screenshots/" .. v.setname .. ".png") == false)
+			and (resource("screenshots/" .. v.target .. "/" .. v.setname .. ".png")) then
 		    table[i] = nil;
 		else
 			table.insert(tmptbl, v);
@@ -206,6 +142,69 @@ function space()
 		
 		move_image(images.cursor, mx, my, 0);
     end
+end
+
+function position_image(vid)
+	distance = math.random(1, 5) / 10;
+	props = image_surface_properties(vid);
+
+-- wider or taller?
+	if (props.width / props.height) > 1 then
+		resize_image(vid, VRESW * 0.2, 0, NOW);
+	else
+		resize_image(vid, 0, VRESH * 0.2, NOW);
+	end
+
+-- scale and position based on "distance"
+    order_image(vid, distance * 254.0);
+
+-- add downwards and wrap around
+	ydistr = ydistr + 10 + math.random(50);
+    props = image_surface_properties(vid);
+	if (ydistr + props.height > VRESH) then 
+		ydistr = math.random(50);
+	end
+
+-- start just outside display, move just outside the display at a randomized speed
+	move_image(vid, VRESW + 60, ydistr, NOW);
+	local lifetime = 500 + math.random(100, 1000);
+	move_image(vid, 0 - props.width, ydistr, lifetime);
+	expire_image(vid, lifetime);
+
+	ydistr = ydistr + props.height;
+	show_image(vid);
+end
+
+-- find a random game, load relevant resources and queue. 
+function random_game()
+	vid = 0;
+    
+	if (alive >= bglayer_limit) then
+		return;
+	end
+  
+	gameid = math.random(1, #games);
+	game = games[ gameid ];
+	game.resources = resourcefinder_search(game, false);
+
+	if (game.resources:find_screenshot()) then
+		vid = load_image_asynch(game.resources:find_screenshot(), function(source, status)
+		if (status == 1) then
+			position_image(source);
+		else
+			delete_image(source);
+			bglayer[source] = nil;
+			alive = alive - 1;
+		end
+	end);
+
+		if (vid ~= BADID) then
+-- keep track of number of "background objects" alive
+			alive = alive + 1;
+			bglayer[vid] = game;
+		end
+	end
+
 end
 
 function space_show()
@@ -291,10 +290,23 @@ function check_cursor(x, y)
 		move_image(grabbed_item.vid, dx, dy, 20);
 
 -- load movie if there is one
-		local fn = have_video(bglayer[grabbed_item.vid].setname);
-		if (fn) then
-			local vid = load_movie(fn);
-		    grabbed_item.movie = vid;
+		local gametbl = bglayer[grabbed_item.vid].resources
+		
+		if (gametbl:find_movie()) then
+			local vid = load_movie(gametbl:find_movie(), 0, function(source, status)
+				if (status == 1) then
+					local vid, aid = play_movie(source);
+					local props = image_surface_properties(grabbed_item.vid, 40);
+					audio_gain(aid, 0.0); audio_gain(aid, 1.0, 40);
+					grabbed_item.movieaud = aid;
+			 
+					blend_image(grabbed_item.vid, 0.0, 40);
+					resize_image(vid, props.width, props.height);
+					blend_image(vid, 1.0, 20);
+				end
+			end);
+			
+			grabbed_item.movie = vid;
 	    
 			if (grabbed_item.movie) then
 				order_image(grabbed_item.movie, 252);
@@ -308,7 +320,7 @@ function check_cursor(x, y)
 
 -- scale and reposition
 		order_image(grabbed_item.vid, 253);
-    end
+	end
 end
 
 function space_input( iotbl )	
@@ -325,29 +337,12 @@ end
 
 function space_video_event( source, argtbl )
 -- keep track of expired background- images so that new ones can be spawned
-	if (argtbl.kind == "movieready") then
-		if (grabbed_item and source == grabbed_item.movie) then
-			local vid, aid = play_movie(source);
-			local props = image_surface_properties(grabbed_item.vid, 40);
-			audio_gain(aid, 0.0); audio_gain(aid, 1.0, 40);
-			grabbed_item.movieaud = aid;
-			 
-			blend_image(grabbed_item.vid, 0.0, 40);
-			resize_image(vid, props.width, props.height);
-			blend_image(vid, 1.0, 20);
-		else
-			delete_image(source);
-		end
-	elseif (argtbl.kind == "loaded") then
-		position_image(source);
-
-	elseif (argtbl.kind == "expired") then
+	if (argtbl.kind == "expired") then
 		if (bglayer[source] ~= nil) then
 			alive = alive - 1;
 			bglayer[source] = nil;
 		end
-    end
-    
+	end
 end
 
 function spawn_particle()
@@ -369,15 +364,15 @@ function spawn_particle()
 end
 
 function space_clock_pulse()
-    move_image(images.emitter, mx + 20, my + 20);
-    check_cursor(mx + hotspot.x, my + hotspot.y);
+	move_image(images.emitter, mx + 20, my + 20);
+	check_cursor(mx + hotspot.x, my + hotspot.y);
 	spawn_particle();
 
 --  spawn a new game each ~50 ticks (with some randomness) up until the limit.
-    bglayer_d = bglayer_d - 1;
+	bglayer_d = bglayer_d - 1;
 
-    if (bglayer_d == 0) then 
-        bglayer_d = 50 + math.random(1,50);
-        random_game();
-    end
+	if (bglayer_d == 0) then 
+		bglayer_d = 50 + math.random(1,50);
+		random_game();
+	end
 end

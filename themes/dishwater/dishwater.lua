@@ -43,15 +43,17 @@ local function ledconfig_iofun(iotbl)
 end
 
 function dishwater()
+	system_load("scripts/colourtable.lua")();
 	system_load("scripts/keyconf.lua")();
 	system_load("scripts/keyconf_mame.lua")();
 	system_load("scripts/ledconf.lua")();
-
+	system_load("scripts/resourcefinder.lua")();
+	
 	local menutbl = {
-	    "rMENU_ESCAPE",
-	    "rMENU_UP",
-	    "rMENU_DOWN",
-	    "rMENU_SELECT",
+		"rMENU_ESCAPE",
+		"rMENU_UP",
+		"rMENU_DOWN",
+		"rMENU_SELECT",
 		" MENU_NEXTPAGE",
 		" MENU_PREVPAGE",
 		" MENU_RANDOM"
@@ -167,19 +169,6 @@ function calc_page(number, size, limit)
     return page_start + 1, offset + 1, page_end;
 end
 
-function have_video(setname)
-	local exts = {".avi", ".mp4", ".mkv", ".mpg"};
-
-	for ind,val in ipairs(exts) do
-		local moviefn = "movies/" .. setname .. val;
-		if (resource(moviefn)) then
-			return moviefn;
-		end
-	end
-
-	return nil;
-end
-
 function fit_image(vid)
 		resize_image(vid, VRESW * 0.5, 0);
 		if (image_surface_properties(vid).height > VRESH) then resize_image(vid, 0, VRESH); end
@@ -188,7 +177,7 @@ function fit_image(vid)
 		local dx = VRESW * 0.5 - prop.width;
 		local dy = VRESH - prop.height;
 
-		move_image(vid, VRESW*0.5 + dx*0.5, 0+dy*0.5,0);
+		move_image(vid, 0.5 * (VRESW + dx), dy * 0.5,0);
 end
 
 function do_menu()
@@ -218,55 +207,41 @@ end
 
 function select_item()
 -- clean up any old image (fade it out and then have the engine kill it off) 
-    local game = data.games[gamelist.number];
-    page_beg, page_ofs, page_end = calc_page(gamelist.number, gamelist.page_size, #data.games);
+local game = data.games[gamelist.number];
+	page_beg, page_ofs, page_end = calc_page(gamelist.number, gamelist.page_size, #data.games);
 
-    if (images.gamepic ~= nil) then
-	reset_image_transform(images.gamepic);
-	blend_image(images.gamepic, 0.0, 30);
-	expire_image(images.gamepic, 30);
-	images.gamepic = nil;
-    end
+	if (images.gamepic ~= nil) then
+		reset_image_transform(images.gamepic);
+		blend_image(images.gamepic, 0.0, 30);
+		expire_image(images.gamepic, 30);
+		images.gamepic = nil;
+	end
 
 	if (ledconfig) then	ledconfig:toggle(game.players, game.buttons); end
 	
 -- line-heights are stored from when we rendered the menu, use that as a LUT for where to draw the selection bar. 
-    instant_image_transform(images.selector);
-    move_image(images.selector, 0, images.menu_lines[page_ofs] - 2 + gamelist.yofs, 10);
-    resize_image(images.selector, textwidth(data.games[ gamelist.number ].title) + 40, 20, 10);
-    blend_image(images.selector, 1.0, 10);
-    blend_image(images.selector, 0.5, 10);
+	instant_image_transform(images.selector);
+	move_image(images.selector, 0, images.menu_lines[page_ofs] - 2 + gamelist.yofs, 10);
+	resize_image(images.selector, textwidth(data.games[ gamelist.number ].title) + 40, 20, 10);
+	blend_image(images.selector, 1.0, 10);
+	blend_image(images.selector, 0.5, 10);
 
--- grab a reference to the current game data
-    local fn  = have_video(game.setname);
-    local fn2 = "screenshots/" .. game.setname .. ".png";
-
-    if (fn) then
-		-- res will happen asynchronously
-        images.gamepic = load_movie(fn);
-		return;
-
-    elseif (resource(fn2)) then
-        images.gamepic = load_image(fn2, 1);
-	end
-
-	if (images.gamepic == nil) then
-        images.gamepic = render_text([[\f]] .. font_name_large .. game.setname, 0);
-	end
-
-	blend_image(images.gamepic, 1.0, 20);
-	fit_image(images.gamepic);
-end
-
------- Event Handlers ----------
-
-function dishwater_video_event(source, argtbl)
-	if (argtbl.kind == "movieready") then
-		fit_image(source);
-		local vid, aid = play_movie(source);
-		audio_gain(aid, 0.0);
-		audio_gain(aid, 1.0, 80);
-		blend_image(source, 1.0, 20);
+	local restbl = resourcefinder_search(game, false);
+		if (restbl:find_movie()) then
+			images.gamepic = load_movie(restbl:find_movie(), 1, function(source, status)
+			if (source == images.gamepic) then
+				local vid, aid = play_movie(source);
+				audio_gain(aid, 0.0);
+				audio_gain(aid, 1.0, 80);
+				blend_image(source, 1.0, 20);
+				fit_image(source);
+			end
+		end)
+	
+	elseif (restbl:find_screenshot()) then
+		images.gamepic = load_image(restbl:find_screenshot(), 1);
+		fit_image(images.gamepic);
+		blend_image(images.gamepic, 1.0, 20);
 	end
 end
 
