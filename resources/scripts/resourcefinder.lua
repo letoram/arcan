@@ -135,13 +135,31 @@ function resourcefinder_misc( game, restbl, cache_results )
 end
 
 function resourcefinder_search( gametable, cache_results )
-	if (gametable == nil) then return nil; end
 	local restbl = {};
 
-	resourcefinder_graphics(gametable, restbl, cache_results );
-	resourcefinder_audio(gametable, restbl, cache_results );
-	resourcefinder_video(gametable, restbl, cache_results );
-	resourcefinder_misc(gametable, restbl, cache_results );
+	if (gametable ~= nil) then
+		resourcefinder_graphics(gametable, restbl, cache_results );
+		resourcefinder_audio(gametable, restbl, cache_results );
+		resourcefinder_video(gametable, restbl, cache_results );
+		resourcefinder_misc(gametable, restbl, cache_results );
+	end
+
+-- ugly and used often so hide 'em ;-)
+	restbl.find_screenshot = function(self)
+		if (self and self.screenshots and self.screenshots[1]) then
+			return self.screenshots[1];
+		else
+			return nil;
+		end
+	end
+	
+	restbl.find_movie = function(self)
+		if (self and self.movies and self.movies[1]) then
+			return self.movies[1];
+		else
+			return nil;
+		end
+	end
 	
 	return restbl;
 end

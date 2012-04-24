@@ -138,7 +138,7 @@ function gridle()
 
 -- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
--- instances etc.
+-- instances etc. Tightly minimizing this value help track down leaks as overriding it will trigger a dump.
 	system_context_size( (VRESW * VRESH) / (48 * 48) * 4 );
 
 -- make sure the current context runs with the new limit
@@ -179,7 +179,8 @@ function gridle()
 		end
 	end
 
--- the dispatchtable will be manipulated by settings and other parts of the program
+-- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
+-- check gridle_input / gridle_dispatchinput for more detail
 	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
 	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
 	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
