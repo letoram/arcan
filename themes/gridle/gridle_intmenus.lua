@@ -201,6 +201,7 @@ local function build_shadermenu()
 		resptrs[ key ] = function(lbl, store) 
 			settings.iodispatch["MENU_ESCAPE"](); 
 			gridlemenu_loadshader(lbl);
+			settings.fullscreenshader = lbl;
 
 			if (store) then
 				store_key("defaultshader", lbl);
