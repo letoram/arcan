@@ -234,6 +234,37 @@ local function keyconf_inp_playersel(self, inputtable)
 	return false;
 end
 
+local function keyconf_buildtable(self, label, state)
+-- matching label? else early out.
+	matchtbl = self:idtotbl(label); 
+	if (matchtbl == nil) then return nil; end
+	
+-- if we don't get a table from an input event, we build a small empty table,
+-- with the expr-eval of state as basis 
+	worktbl = {};
+	
+	if (type(state) ~= "table") then
+		worktbl.kind = "digital";
+		worktbl.active = state and true or false;
+	else
+		worktbl = state;
+	end
+	
+-- safety check, analog must be mapped to analog (translated is a subtype of digital so that can be reused)
+	if (worktbl.kind == "analog" and matchtbl.kind ~= "analog") then return nil; end
+	
+-- impose state / data values from the worktable unto the matchtbl
+	if (matchtbl.kind == "digital") then
+		matchtbl.active = worktbl.active;
+		worktbl = matchtbl;
+	else
+-- for analog, swap the device/axis IDs and keep the samples
+		worktbl.devid = matchtbl.devid;
+		worktbl.subid = matchtbl.subid;
+	end
+
+	return worktbl;
+end
 
 -- return the symstr that match inputtable, or nil.
 local function keyconf_match(self, input, label)
@@ -263,6 +294,53 @@ local function keyconf_match(self, input, label)
 	end
 
 	return kv;
+end
+
+local function splits(instr, delim)
+	local res = {};
+	local strt = 1;
+	local delim_pos, delim_stp = string.find(instr, delim, strt);
+	
+	while delim_pos do
+		table.insert(res, string.sub(instr, strt, delim_pos-1));
+		strt = delim_stp + 1;
+		delim_pos, delim_stp = string.find(instr, delim, strt);
+	end
+	
+	table.insert(res, string.sub(instr, strt));
+	return res;
+end
+
+local function keyconf_idtotbl(self, idstr)
+	local res = self.table[ idstr ];
+	if (res == nil) then return nil; end
+
+	restbl = splits(res, ":");
+	if (restbl[1] == "digital") then
+		restbl.kind = "digital";
+		restbl.devid = tonumber(restbl[2]);
+		restbl.subid = tonumber(restbl[3]);
+		restbl.source = restbl[4];
+		restbl.active = false;
+		
+	elseif (restbl[1] == "translated") then
+		restbl.kind = "digital";
+		restbl.translated = true;
+		restbl.devid = tonumber(restbl[2]);
+		restbl.keysym = tonumber(restbl[3]);
+		restbl.modifiers = restbl[4] == nil and 0 or tonumber(restbl[4]);
+		restbl.active = false;
+		
+	elseif (restbl[1] == "analog") then
+		restbl.kind = "analog";
+		restbl.devid = tonumber(restbl[2]);
+		restbl.subid = tonumber(restbl[3]);
+		restbl.source = restbl[4];
+	else
+		restbl = nil;
+	end
+	
+	return restbl;
 end
 
 local function keyconf_tbltoid(self, inputtable)
@@ -451,6 +529,8 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		defaultinput = keyconf_input,
 		flush = keyconf_flush,
 		id = keyconf_tbltoid,
+		idtotbl = keyconf_idtotbl,
+		buildtbl = keyconf_buildtable,
 		input = keyconf_input,
 		destroy = keyconf_destroy,
 		set = keyconf_set,

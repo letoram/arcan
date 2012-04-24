@@ -345,6 +345,7 @@ local function find_detail(step, zout)
 		detailview.zoompress = nil;
 		detailview.cooldown = settings.transitiondelay;
 		detailview.curind = nextind;
+		play_audio(soundmap["DETAILVIEW_SWITCH"]);
 	end	
 end
 
@@ -419,6 +420,7 @@ function gridledetail_show(detailres, gametbl, ind)
 	end 
 
 	detailview.iodispatch["MENU_ESCAPE"] = function(iotbl)
+		play_audio(soundmap["DETAILVIEW_FADE"]);
 		gridledetail_freeview(1, -6.0);
 
 		gridle_clock_pulse = gridclock;
