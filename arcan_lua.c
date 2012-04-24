@@ -966,7 +966,6 @@ int arcan_lua_targetinput(lua_State* ctx)
 			lua_pop(ctx, 1);
 		}
 		
-		
 	} 
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, "translated")){

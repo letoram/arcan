@@ -6,6 +6,7 @@ local colourtable = {};
 
 colourtable.dialog_border = {r = 0x44 , g = 0x44, b = 0xaa, a = 0.9};
 colourtable.dialog_window = {r = 0x00, g = 0x00, b = 0xa4, a = 0.9};
+colourtable.dialog_cursor = {r = 0xff, g = 0xff, b = 0xff, a = 0.5};
 
 colourtable.font            = [[\ffonts/default.ttf,]]
 colourtable.font_size       = 18;

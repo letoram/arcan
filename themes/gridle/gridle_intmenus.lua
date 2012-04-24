@@ -30,38 +30,30 @@ scalemodeptrs["Original Size"] = scalemodechg;
 local inputmodelist = {
 -- revert all manipulation to default settings
 	"Normal",
--- help to compensate for when we rotate to scale, look for PLAYERn_UP/DOWN/LEFT/RIGHT and replace
-	"Flip X/Y"
+	"Rotate CW",
+	"Rotate CCW",
+	"Invert Axis (analog)",
+	"Mirror Axis (analog)"
 };
 
 local inputmodeptrs = {};
-inputmodeptrs["Normal"] = function(label, save)
-	settings.internal_input = "Normal";
+local function inputmodechg(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-
 	if (save) then
-			play_audio(soundmap["MENU_FAVORITE"]);
-			store_key("internal_input", "Normal");
-	else
-			play_audio(soundmap["MENU_SELECT"]);
-	end
-	
-	settings.flipinputaxis = false;
-end
-
-inputmodeptrs["Flip X/Y"] = function(label, save)
-	settings.internal_input = "Flip X/Y";
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-
-	if (save) then
+		store_key("internal_input", label);
 		play_audio(soundmap["MENU_FAVORITE"]);
-		store_key("internal_input", "Flip X/Y");
 	else
 		play_audio(soundmap["MENU_SELECT"]);
 	end
 	
-	settings.flipinputaxis = not settings.flipinputaxis; 
+	settings.internal_input = label;
 end
+
+inputmodeptrs["Normal"] = inputmodechg;
+inputmodeptrs["Rotate CW"] = inputmodechg;
+inputmodeptrs["Rotate CCW"] = inputmodechg;
+inputmodeptrs["Invert Axis (analog)"] = inputmodechg;
+inputmodeptrs["Mirror Axis (analog)"] = inputmodechg;
 
 local audiogainlist = {};
 local audiogainptrs = {};
@@ -103,6 +95,7 @@ function gridlemenu_resize_fullscreen(source)
 	local props = image_surface_initial_properties(source);
 -- always scale to source dominant axis 
 	if (settings.scalemode == "Original Size") then
+		rotate_image(source, 0);
 		resize_image(source, props.width, props.height);
 		resize_reposition(source);
 		
@@ -127,23 +120,13 @@ function gridlemenu_resize_fullscreen(source)
 	elseif (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") then
 		local angdeg = 90;
 		if (settings.scalemode == "Rotate CCW") then angdeg = -90; end
-		
--- no mismatch? then it's the same as before, resize to dominant axis
-		if ( similar_aspect(props.width, props.height) ) then 
-			if (props.width / props.height > 1.0) then
-				resize_image(source, VRESW, 0);
-			else
-				resize_image(source, 0, VRESH);
-			end
-		else
 			rotate_image(source, angdeg);
-			
-			if (props.width / props.height > 1.0) then
+
+			if (props.height/ props.width > 1.0) then
 				resize_image(source, 0, VRESW);
 			else
 				resize_image(source, VRESH, 0);
 			end
-		end
 
 		resize_reposition(source);
 	else
@@ -200,14 +183,16 @@ local function build_shadermenu()
 	local vreslist = glob_resource("shaders/fullscreen/*.vShader", 2);
 	local freslist = glob_resource("shaders/fullscreen/*.fShader", 2);
 
+-- make sure both exist, add vertex to list, then add to real list if fragment
+-- exist as well
 	for i = 1, #vreslist do 
 		local basename = string.sub(vreslist[i], 1, -9);
-		shaderlist[basename] = tue; 
+		vreslist[basename] = true; 
 	end
 	
 	for i = 1, #freslist do
 		local basename = string.sub(vreslist[i], 1, -9);
-		if (shaderlist[basename] == nil) then 
+		if (vreslist[basename] == true) then 
 			shaderlist[basename] = true;
 		end
 	end
@@ -216,8 +201,12 @@ local function build_shadermenu()
 		resptrs[ key ] = function(lbl, store) 
 			settings.iodispatch["MENU_ESCAPE"](); 
 			gridlemenu_loadshader(lbl);
+
 			if (store) then
 				store_key("defaultshader", lbl);
+				play_audio(soundmap["MENU_FAVORITE"]);
+			else
+				play_audio(soundmap["MENU_SELECT"]);
 			end
 	end
 
@@ -295,10 +284,11 @@ settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 	current_menu.ptrs = {};
 	current_menu.parent = nil;
 	current_menu.ptrs["Shaders..."] = function() 
-		local def = {};
+
+	local def = {};
 		def[ settings.fullscreenshader ] = "\\#00ffff";
-		if (get_key("fullscreen_shader")) then
-				def[ get_key("fullscreen_shader") ] = "\\#00ff00";
+		if (get_key("defaultshader")) then
+			def[ get_key("defaultshader") ] = "\\#00ff00";
 		end
 	
 		local listl, listp = build_shadermenu();

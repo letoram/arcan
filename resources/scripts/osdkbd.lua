@@ -67,12 +67,24 @@ local function osdkbd_inputkey(self, iotbl)
 end
 
 local function osdkbd_update(self)
-	if (self.textvid ~= BADID) then delete_image(self.textvid); end
+	if (self.textvid ~= BADID) then 
+		delete_image(self.textvid); 
+	end
+
+	order = image_surface_properties(self.inputwin).order;
+	
 	self.textvid = render_text( [[\ffonts/default.ttf,]] .. self.chrh .. [[\#ffffff]] .. self.str);
 	link_image(self.textvid, self.window);
-	order_image(self.textvid, self.order + 2);
+	order_image(self.textvid, order);
 	image_clip_on(self.textvid);
 	show_image(self.textvid);
+end
+
+local function osdkbd_updatecursor(tbl, col, row)
+	local lx, ly = gridxy(tbl.chrh, col, row);
+
+	instant_image_transform(tbl.cursorvid);
+	move_image(tbl.cursorvid, lx, ly - 2, 5);
 end
 
 local function osdkbd_step(self, dir)
@@ -89,9 +101,7 @@ local function osdkbd_step(self, dir)
 		self.curcol = #self.rows[ self.currow ];
 	end
 
-	instant_image_transform(self.cursorvid);
-	local x,y = gridxy( self.chrh, self.curcol - 1, self.currow );
-	move_image(self.cursorvid, x, y, 5); 
+	self:update_cursor(self.curcol - 1, self.currow);
 end
 
 local function osdkbd_steprow(self, dir, noredraw)
@@ -109,42 +119,32 @@ local function osdkbd_steprow(self, dir, noredraw)
 
 	if (noredraw) then return; end
 	
-	instant_image_transform(self.cursorvid);
-	local x,y = gridxy( self.chrh, self.curcol - 1, self.currow );
-	move_image(self.cursorvid, x, y, 5); 
+	osdkbd_updatecursor(self, self.curcol - 1, self.currow);
 end
 
 local function osdkbd_buildgrid(self, windw, windh)
 -- calculate how many buttons per column and how many rows,
 -- output text in first row, control button in last
-
+	local ctb = settings.colourtable; -- where's the "using" clause when needed .. 
+	
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
-	self.window = fill_surface(windw - 8, windh - 8, 0, 0, 128);
-	self.border = fill_surface(windw, windh, 0, 0, 164);
+	
+-- will resize these later based on the button grid
+	self.window = fill_surface(1, 1, ctb.dialog_window.r, ctb.dialog_window.g, ctb.dialog_window.b);
+	self.border = fill_surface(1, 1, ctb.dialog_border.r, ctb.dialog_border.g, ctb.dialog_border.b);
 
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
+	show_image(self.window);
+	show_image(self.border);
 	
-	image_mask_clear(self.border, MASK_SCALE);
-	image_mask_clear(self.border, MASK_OPACITY);
-	image_mask_clear(self.window, MASK_SCALE);
-	image_mask_clear(self.window, MASK_OPACITY);
-
 	local rowh = windh / (#self.rows + 2);
 	local roww = windw / (self.colmax + 2);
 	local chrh = math.floor( rowh > roww and roww or rowh );
-	local vido = max_current_image_order() + 1;
-	self.order = vido;
 	
-	order_image(self.border, vido);
-	order_image(self.window, vido+1);
-
-	local prop = image_surface_properties(self.border);
-	
-	move_image(self.window, 4, 4);
+	move_image(self.window, 3, 3);
 
 	self.chrh = chrh - (chrh % 2);
-
 	self.vidrows = {};
 	for i=1, #self.rows do
 		vidcol = {};
@@ -154,15 +154,15 @@ local function osdkbd_buildgrid(self, windw, windh)
 				vidcol[j] = render_text( [[\ffonts/default.ttf,]] .. chrh .. [[\#ffffff]] .. self.rows[i][j]);
 			else
 				vidcol[j] = self.rows[i][j];
-				local props = image_surface_properties( vidcol[j] );
 				resize_image(vidcol[j], self.chrh * 0.9, self.chrh * 0.9);
 			end
 
 			link_image(vidcol[j], self.window);
 			local x, y = gridxy( self.chrh, j - 1, i);
-			move_image(vidcol[j], x, y);
+			local cellp = image_surface_properties(vidcol[j]);
+-- center in grid square
+			move_image(vidcol[j], x + 0.5 * (chrh - cellp.width), y + 2);
 			show_image(vidcol[j]);
-			order_image(vidcol[j], vido+3);
 		end
 
 		table.insert(self.vidrows, vidcol);
@@ -170,34 +170,56 @@ local function osdkbd_buildgrid(self, windw, windh)
 
 	resize_image(self.border, chrh * self.colmax + 12, chrh + chrh * (#self.rows) + 12);
 	resize_image(self.window, chrh * self.colmax + 4, chrh + chrh * (#self.rows) + 4);
-	local props = image_surface_properties(self.border);
+	windw = image_surface_properties( self.border ).width;
+	windh = image_surface_properties( self.border ).height;
 	
-	self.inputwin  = fill_surface(chrh * self.colmax + 4, chrh - 4, 0, 0, 64);
-	self.cursorvid = fill_surface(chrh, chrh - 4, 255, 0, 0);
+	self.inputwin  = fill_surface(chrh * self.colmax + 4, chrh - 4, 0.5 * ctb.dialog_window.r, 0.5 * ctb.dialog_window.g, 0.5 * ctb.dialog_window.b); 
+	self.cursorvid = fill_surface(chrh, chrh, ctb.dialog_cursor.r, ctb.dialog_cursor.g, ctb.dialog_cursor.b);
 	
 	link_image(self.inputwin, self.window);
 	link_image(self.cursorvid, self.window);
 
 	image_clip_on(self.cursorvid);
 
-	order_image(self.inputwin, vido + 1);
-	order_image(self.cursorvid, vido + 2);
+-- won't show until :show is invoked anyhow as window inherits from anchor
 	show_image(self.inputwin);
-	show_image(self.cursorvid);
-	move_image(self.anchor, VRESW * 0.5 - props.width * 0.5, VRESH * 0.5 - props.height * 0.5);
+	blend_image(self.cursorvid, settings.colourtable.dialog_cursor.a);
+	move_image(self.anchor, 0.5 * (VRESW - windw), 0.5 * (VRESH - windh));
 end
 
 local function osdkbd_show(self)
-	blend_image(self.window, 1.0, 5);
-	blend_image(self.border, 1.0, 5);
+	self:update_cursor(self.curcol - 1, self.currow);
+	self:update();
+
+	blend_image(self.anchor, 1.0, 5);
+	order_image(self.anchor, 0);
+	order_image(self.border, max_current_image_order() + 1);
+	
+	local base = max_current_image_order();
+	order_image(self.window, base);
+	order_image(self.cursorvid, base);
+	order_image(self.inputwin, base);
+	if (self.textvid and self.textvid ~= BADID) then
+		order_image(self.textvid, base);
+	end
+
+	local itemorder = base + 1; 
+	for i=1, #self.vidrows do
+		for j=1, #self.vidrows[i] do
+			local vid = self.vidrows[i][j];
+			if (vid ~= nil and vid ~= BADID) then
+				order_image(vid, itemorder);
+			end
+		end
+	end
+	
 end
 
 local function osdkbd_hide(self)
-	hide_image(self.window);
-	hide_image(self.border);
+	blend_image(self.anchor, 0.0, 5);
 end
 
-function create_osdkbd(map)
+function osdkbd_create(map)
 	local restbl = {
 		cursor = 0,
 		str = "",
@@ -207,6 +229,8 @@ function create_osdkbd(map)
 	};
 	
 	if (map) then restbl.keymap = map else restbl.keymap = keymap; end
+	if (settings == nil) then settings = {}; end
+	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
 
 	rows  = {};
 	crow  = {};
@@ -214,6 +238,7 @@ function create_osdkbd(map)
 	restbl.symtable   = system_load("scripts/symtable.lua")();
 	restbl.enterimage = load_image("ok.png");
 	restbl.leftimage  = load_image("remove.png");
+	
 	force_image_blend(restbl.enterimage);
 	force_image_blend(restbl.leftimage);
 	table.insert(restbl.keymap, restbl.leftimage);
@@ -238,20 +263,17 @@ function create_osdkbd(map)
 	restbl.colmax = maxcol;
 	
 	restbl.button_background = keymap_buttonbg;
-	restbl.border = function(self) return self.border_vid; end
-	restbl.anchor = function(self) return self.anchor_vid; end
-	restbl.canvas = function(self) return self.canvas_vid; end
 	restbl.input  = osdkbd_input;
 	restbl.input_key = osdkbd_inputkey;
 	restbl.show   = osdkbd_show;
 	restbl.hide   = osdkbd_hide;
 	restbl.update = osdkbd_update;
+	restbl.update_cursor = osdkbd_updatecursor;
 	restbl.step   = osdkbd_step;
 	restbl.steprow= osdkbd_steprow;
+	restbl.col = 1;
 
 	osdkbd_buildgrid(restbl, VRESW, VRESH);
-	local x,y = gridxy( restbl.chrh, restbl.curcol - 1, restbl.currow );
-	move_image(restbl.cursorvid, x, y);
-	osdkbd_update(restbl);
+
 	return restbl;
 end

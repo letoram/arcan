@@ -50,35 +50,20 @@ local filterlbls = {
 	"Target"
 };
 
-local attractlbls = {
-	"Disabled",
-	"1 Min",
-	"5 Min",
-	"10 Min",
-	"15 Min"
-};
-
-local inactivitylbls = {
-	"Disabled",
-	"5 Min",
-	"10 Min",
-	"15 Min",
-	"30 Min",
-	"1 Hour"
-};
-
 local settingslbls = {
 	"Sort Order...",
 	"Cell Size...",
-	"LED display mode...",
 	"Key Repeat Rate...",
 	"Fade Delay...",
 	"Transition Delay...",
-	"Inactivity Shutdown...",
 	"Reconfigure Keys",
-	"Reconfigure LEDs",
 };
 
+if (LEDCONTROLLERS > 0) then
+	table.insert(settingslbls, "LED display mode...");
+	table.insert(settingslbls, "Reconfigure LEDs");
+end
+	
 local ledmodelbls = {
 	"Disabled",
 	"All toggle",
@@ -434,21 +419,22 @@ function gridlemenu_settings()
 		
 		play_audio(soundmap["MENU_FADE"]);
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
+
+		if (current_menu.gamecount ~= #settings.games) then
 			settings.cursor = 0;
 			settings.pageofs = 0;
 			
-			if (current_menu.gamecount ~= #settings.games) then
-				erase_grid(false);
-				build_grid(settings.cell_width, settings.cell_height);
-				move_cursor(1, true);
-			end
-			
-			settings.iodispatch = griddispatch;
-			if (settings.statuslist) then
-				settings.statuslist:destroy();
-				settings.statuslist = nil;
-			end
+			erase_grid(false);
+			build_grid(settings.cell_width, settings.cell_height);
+			move_cursor(1, true);
 		end
+			
+		settings.iodispatch = griddispatch;
+		if (settings.statuslist) then
+			settings.statuslist:destroy();
+			settings.statuslist = nil;
+		end
+	end
 
 		init_leds();
 	end

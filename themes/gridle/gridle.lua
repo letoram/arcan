@@ -13,28 +13,30 @@ imagery = {
 };
 
 soundmap = {
-	MENU_TOGGLE     = load_asample("sounds/menu_toggle.wav"),
-	MENU_FADE       = load_asample("sounds/menu_fade.wav"),
-	MENU_SELECT     = load_asample("sounds/detail_view.wav"),
-	MENU_FAVORITE   = load_asample("sounds/launch_external.wav"),
-	MENUCURSOR_MOVE = load_asample("sounds/move.wav"),
-	GRIDCURSOR_MOVE = load_asample("sounds/gridcursor_move.wav"),
-	GRID_NEWPAGE    = load_asample("sounds/grid_newpage.wav"),
-	GRID_RANDOM     = load_asample("sounds/click.wav"),
-	SUBMENU_TOGGLE  = load_asample("sounds/menu_toggle.wav"),
-	SUBMENU_FADE    = load_asample("sounds/menu_fade.wav"),
-	LAUNCH_INTERNAL = load_asample("sounds/launch_internal.wav"),
-	LAUNCH_EXTERNAL = load_asample("sounds/launch_external.wav"),
-	SWITCH_GAME     = load_asample("sounds/switch_game.wav"),
-	DETAIL_VIEW     = load_asample("sounds/detail_view.wav"),
-	SET_FAVORITE    = load_asample("sounds/set_favorite.wav"),
-	CLEAR_FAVORITE  = load_asample("sounds/clear_favorite.wav"),
-	OSDKBD_TOGGLE   = load_asample("sounds/osdkbd_show.wav"),
-	OSDKBD_MOVE     = load_asample("sounds/gridcursor_move.wav"),
-	OSDKBD_ENTER    = load_asample("sounds/osdkb.wav"),
-	OSDKBD_ERASE    = load_asample("sounds/click.wav"),
-	OSDKBD_SELECT   = load_asample("sounds/osdkbd_select.wav"),
-	OSDKBD_HIDE     = load_asample("sounds/osdkbd_hide.wav")
+	MENU_TOGGLE       = load_asample("sounds/menu_toggle.wav"),
+	MENU_FADE         = load_asample("sounds/menu_fade.wav"),
+	MENU_SELECT       = load_asample("sounds/menu_select.wav"),
+	MENU_FAVORITE     = load_asample("sounds/launch_external.wav"),
+	MENUCURSOR_MOVE   = load_asample("sounds/move.wav"),
+	GRIDCURSOR_MOVE   = load_asample("sounds/gridcursor_move.wav"),
+	GRID_NEWPAGE      = load_asample("sounds/grid_newpage.wav"),
+	GRID_RANDOM       = load_asample("sounds/click.wav"),
+	SUBMENU_TOGGLE    = load_asample("sounds/menu_toggle.wav"),
+	SUBMENU_FADE      = load_asample("sounds/menu_fade.wav"),
+	LAUNCH_INTERNAL   = load_asample("sounds/launch_internal.wav"),
+	LAUNCH_EXTERNAL   = load_asample("sounds/launch_external.wav"),
+	SWITCH_GAME       = load_asample("sounds/switch_game.wav"),
+	DETAILVIEW_TOGGLE = load_asample("sounds/detailview_toggle.wav"),
+	DETAILVIEW_FADE   = load_asample("sounds/detailview_fade.wav"),
+  DETAILVIEW_SWITCH = load_asample("sounds/detailview_switch.wav");
+	SET_FAVORITE      = load_asample("sounds/set_favorite.wav"),
+	CLEAR_FAVORITE    = load_asample("sounds/clear_favorite.wav"),
+	OSDKBD_TOGGLE     = load_asample("sounds/osdkbd_show.wav"),
+	OSDKBD_MOVE       = load_asample("sounds/gridcursor_move.wav"),
+	OSDKBD_ENTER      = load_asample("sounds/osdkb.wav"),
+	OSDKBD_ERASE      = load_asample("sounds/click.wav"),
+	OSDKBD_SELECT     = load_asample("sounds/osdkbd_select.wav"),
+	OSDKBD_HIDE       = load_asample("sounds/osdkbd_hide.wav")
 };
 
 -- constants,
@@ -204,43 +206,13 @@ function gridle()
 		end
 	end
 
--- When OSD keyboard is to be shown, remap the input event handler,
--- Forward all labels that match, but also any translated keys (so that we
--- can use this as a regular input function as well) 
 	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
 		play_audio(soundmap["OSDKBD_TOGGLE"]);
-		
 		osdkbd:show();
 		settings.inputfun = gridle_input;
-		gridle_input = function(iotbl)
-
-		if (iotbl.active) then
-				local restbl = keyconfig:match(iotbl);
-				local resstr = nil;
-				local done   = false;
-				
-				if (restbl) then
-					for ind,val in pairs(restbl) do
-				
-						if (val == "MENU_ESCAPE") then
-							play_audio(soundmap["OSDKBD_HIDE"]);
-							return osdkbd_filter(nil);
-						elseif (val ~= "MENU_SELECT" and val ~= "MENU_UP" and val ~= "MENU_LEFT" and
-								val ~= "MENU_RIGHT" and val ~= "MENU_DOWN" and iotbl.translated) then
-							resstr = osdkbd:input_key(iotbl);
-						else
-							resstr = osdkbd:input(val);
-						end
-					end
-					
-				elseif (iotbl.translated) then
-					resstr = osdkbd:input_key(iotbl);
-				end
-				if (resstr) then return osdkbd_filter(resstr); end
-			end
-		end
+		gridle_input = osdkbd_inputcb;
 	end
-	
+
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
 		local key = gridledetail_havedetails(gametbl);
@@ -248,7 +220,7 @@ function gridle()
 			remove_zoom(settings.fadedelay);
 			local gameind = 0;
 			blend_image( cursor_vid(), 0.3 );
-			play_audio( soundmap["DETAIL_VIEW"] ); 
+			play_audio( soundmap["DETAILVIEW_TOGGLE"] ); 
 			
 -- cache curind so we don't have to search if we're switching game inside detail view 
 			for ind = 1, #settings.games do
@@ -312,7 +284,7 @@ function gridle()
 	
 	gridle_keyconf();
 	gridle_ledconf();
-	osdkbd = create_osdkbd();
+	osdkbd = osdkbd_create();
 end
 
 function confirm_shutdown()
@@ -340,6 +312,43 @@ function confirm_shutdown()
 		end
 	end -- of inputfunc.
 	
+end
+
+-- When OSD keyboard is to be shown, remap the input event handler,
+-- Forward all labels that match, but also any translated keys (so that we
+-- can use this as a regular input function as well) 	
+function osdkbd_inputcb(iotbl)
+	if (iotbl.active) then
+		local restbl = keyconfig:match(iotbl);
+		local resstr = nil;
+		local done   = false;
+
+		if (restbl) then
+			for ind,val in pairs(restbl) do
+				if (val == "MENU_ESCAPE") then
+					play_audio(soundmap["OSDKBD_HIDE"]);
+					return osdkbd_filter(nil);
+
+				elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or 
+					val == "MENU_RIGHT" or val == "MENU_DOWN") then
+					resstr = osdkbd:input(val);
+					play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
+							
+-- also allow direct keyboard input
+				elseif (iotbl.translated) then
+					resstr = osdkbd:input_key(iotbl);
+				else
+				end
+
+-- input/input_key returns the filterstring when finished
+				if (resstr) then
+					return osdkbd_filter(resstr); 
+				end
+
+-- stop processing labels immediately after we get a valid filterstring
+			end
+		end
+	end
 end
 
 function gridle_video_event(source, event)
@@ -1034,7 +1043,8 @@ function gridle_clock_pulse()
 		settings.cooldown = settings.cooldown - 1;
 
 -- cooldown reached, check the current cursor position, use that to figure out which movie to launch
-		if (settings.cooldown == 0) then
+		if (settings.cooldown == 0 and settings.cursorgame and settings.cursorgame.resources
+		and settings.cursorgame.resources.movies[1]) then
 			local moviefile = settings.cursorgame.resources.movies[1];
 
 			if (moviefile and cursor_vid() ) then
@@ -1087,10 +1097,25 @@ function gridle_target_event(source, kind)
 	gridle_internalcleanup();
 end
 
+-- PLAYERn_UP, PLAYERn_DOWN, PLAYERn_LEFT, playern_RIGHT
+function rotate_label(label, cw)
+	local dirtbl_cw = {UP = "RIGHT", RIGHT = "DOWN", DOWN = "LEFT", LEFT = "UP"};
+	local dirtbl_ccw= {UP = "LEFT", RIGHT = "UP", DOWN = "RIGHT", LEFT = "DOWN"};
+	
+	if (string.sub(label, 1, 6) == "PLAYER") then
+		local num = string.sub(label, 7, 7);
+		local dir = cw and dirtbl_cw[ string.sub(label, 9) ] or dirtbl_ccw[ string.sub(label, 9) ];
+		return dir and ("PLAYER" .. num .."_" .. dir) or nil;
+	end
+	
+	return nil;
+end
+
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
-	
+
+-- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 	if (restbl) then
 		for ind, val in pairs(restbl) do
 			if (val == "MENU_ESCAPE" and iotbl.active) then
@@ -1100,18 +1125,48 @@ function gridle_internalinput(iotbl)
 				gridlemenu_internal(internal_vid);
 				return;
 			end
-	
+			
+			if (settings.internal_input == "Rotate CW" or settings.internal_input == "Rotate CCW") then
+				val = rotate_label(val, settings.internal_input == "Rotate CW");
+				
+				if (val ~= nil) then
+					print("val yielded: " .. val);
+					res = keyconfig:buildtbl(val, iotbl);
+
+					if (res) then
+						target_input(res, internal_vid);
+						return;
+					end
+				end
+			end
+		
+-- toggle corresponding button LEDs if we want to light only on push
 			if (settings.ledmode == 3) then
 				ledconfig:set_led_label(val, iotbl.active);
 			end
 		end
+	end	
+
+	-- negate analog axis values 
+	if (settings.internal_input == "Invert Axis (analog)") then
+		if (iotbl.kind == "analog") then
+			iotbl.subid = iotbl.subid == 0 and 1 or 0;
+		end
+
+-- figure out the image center, calculate offset and negate that
+	elseif (settings.internal_input == "Mirror Axis (analog)") then
+		if (iotbl.kind == "analog") then
+			if ( (iotbl.subid + 1) % 2 == 0 ) then -- treat as Y
+				local center = image_surface_initial_properties(internal_vid).height * 0.5;
+				iotbl.samples[1] = center + (center - iotbl.samples[1]);
+			else -- treat as X 
+				local center = image_surface_initial_properties(internal_vid).width * 0.5;
+				iotbl.samples[1] = center + (center - iotbl.samples[1]);
+			end
+		end
 	end
-	
-	if (settings.internal_input == "Normal") then
-		target_input(iotbl, internal_vid);
-	elseif (settings.internal_input == "Flip X/Y") then
-		
-	end
+
+	target_input(iotbl, internal_vid);
 end
 
 function gridle_dispatchinput(iotbl)
