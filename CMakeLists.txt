@@ -23,7 +23,7 @@ PROJECT( arcan )
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 1 )
-set(PATCH_LEVEL 3 )
+set(PATCH_LEVEL 4 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -343,6 +343,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  install(FILES ${_dlls} DESTINATION ${BIN_DST})
  install(FILES arcan_romman.exe DESTINATION ${BIN_DST})
  install(FILES winicon.ico DESTINATION ${BIN_DST})
+ install(FILES oalinst.exe DESTINATION ${BIN_DST})
 
 # overwrite to reduce hassle on Vista++, only affects themes/resources
 # doesn't seem to have the desired effect however ..
@@ -355,6 +356,10 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
  SET(CPACK_PACKAGE_INSTALL_DIRECTORY "Arcan")
 # SET(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}\\\\InstallIcon.bmp") -- horrible scaling
+
+# try to autoinstall OpenAL (if needed)
+SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
+ExecWait '\\\"$INSTDIR\\\\redist\\\\oalinst.exe\\\" /s'" )
 
 SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
 SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
