@@ -402,7 +402,7 @@ function gridle_keyconf()
 		table.insert(listlbls, string.sub(key, 2));
 	end
 		
-	keyconfig = keyconf_create(1, keylabels);
+	keyconfig = keyconf_create(keylabels);
 	
 	if (keyconfig.active == false) then
 		kbd_repeat(0);

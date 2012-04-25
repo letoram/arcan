@@ -99,14 +99,17 @@ function space()
 	    "rMENU_SELECT",
 	};
 	
-	keyconfig = keyconf_create(0, menutbl, {});
+	keyconfig = keyconf_create(menutbl);
 	if (keyconfig.active == false) then
-		keyconfig.iofun = space_input;
 		space_input = function(iotbl)
 			if (keyconfig:input(iotbl) == true) then
-				space_input = keyconfig.iofun;
+				space_clock_pulse = background_timer;
+				space_input = main_input;
 			end
 		end
+	else
+		space_input = main_input;
+		space_clock_pulse = background_timer;
 	end
 	
     iolut = {};
@@ -290,10 +293,10 @@ function check_cursor(x, y)
 		move_image(grabbed_item.vid, dx, dy, 20);
 
 -- load movie if there is one
-		local gametbl = bglayer[grabbed_item.vid].resources
-		
-		if (gametbl:find_movie()) then
-			local vid = load_movie(gametbl:find_movie(), 0, function(source, status)
+		local game = bglayer[grabbed_item.vid]
+
+		if (game and game.resources and game.resources:find_movie()) then
+			local vid = load_movie(game.resources:find_movie(), 0, function(source, status)
 				if (status == 1) then
 					local vid, aid = play_movie(source);
 					local props = image_surface_properties(grabbed_item.vid, 40);
@@ -323,7 +326,7 @@ function check_cursor(x, y)
 	end
 end
 
-function space_input( iotbl )	
+function main_input( iotbl )	
 	match = keyconfig:match(iotbl);
 
     if (match ~= nil) then
@@ -363,7 +366,7 @@ function spawn_particle()
 	image_mask_clear(particle, MASK_OPACITY);
 end
 
-function space_clock_pulse()
+function background_timer()
 	move_image(images.emitter, mx + 20, my + 20);
 	check_cursor(mx + hotspot.x, my + hotspot.y);
 	spawn_particle();
@@ -375,4 +378,10 @@ function space_clock_pulse()
 		bglayer_d = 50 + math.random(1,50);
 		random_game();
 	end
+end
+
+function space_input(iotbl)
+end
+
+function space_clock_pulse()
 end
