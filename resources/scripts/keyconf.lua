@@ -519,7 +519,7 @@ end
 
 -- set the current working table.
 -- for each stored entry, set prefix if defined 
-function keyconf_create(nplayers, menugroup, playergroup, keyname)
+function keyconf_create(menugroup, playergroup, keyname)
 	local restbl = {
 		new = keyconf_new,
 		match = keyconf_match,
@@ -537,7 +537,6 @@ function keyconf_create(nplayers, menugroup, playergroup, keyname)
 		labels = keyconf_labels,
 		ignore_modifiers = false,
 		in_playerconf = false,
-		n_players = nplayers,
 		keyfile = keyname,
 		input_playersel = keyconf_inp_playersel,
 		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key 

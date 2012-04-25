@@ -1187,11 +1187,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
 	}
-	else if (ev.category == EVENT_TIMER && arcan_lua_grabthemefunction(ctx, "clock_pulse")) {
-		lua_pushnumber(ctx, ev.tickstamp);
-		lua_pushnumber(ctx, ev.data.timer.pulse_count);
+	else if (ev.category == EVENT_TIMER){
 		arcan_lua_setglobalint(ctx, "CLOCK", ev.tickstamp);
-		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
+
+		if (arcan_lua_grabthemefunction(ctx, "clock_pulse")) {
+			lua_pushnumber(ctx, ev.tickstamp);
+			lua_pushnumber(ctx, ev.data.timer.pulse_count);
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
+		}
 	}
 	else if (ev.category == EVENT_TARGET && arcan_lua_grabthemefunction(ctx, "target_event")) {
 		lua_pushnumber(ctx, ev.data.video.source);
