@@ -36,11 +36,23 @@ local iodispatch = {};
 local function ledconfig_iofun(iotbl)
 	local restbl = keyconfig:match(iotbl);
 
-	if (iotbl.active and restbl and restbl[1] and
-	    ledconfig:input(restbl[1]) == true) then
-	   dishwater_input = keyconfig.iofun;
+	if (iotbl.active and restbl and restbl[1] and ledconfig:input(restbl[1]) == true) then
+			dishwater_input = default_input;
 	end
 end
+
+local function keyconfig_iofun(iotbl)
+	if (keyconfig:input(iotbl) == true) then
+		keyconf_tomame(keyconfig, "_mame/cfg/default.cfg");
+		ledconfig = ledconf_create( keyconfig:labels() );
+		if (ledconfig.active == false) then
+			dishwater_input = ledconfig_iofun;
+		else -- no LED controller present, or LED configuration already exists
+			dishwater_input = default_input;
+		end
+	end
+end
+
 
 function dishwater()
 	system_load("scripts/colourtable.lua")();
@@ -54,37 +66,14 @@ function dishwater()
 		"rMENU_UP",
 		"rMENU_DOWN",
 		"rMENU_SELECT",
-		" MENU_NEXTPAGE",
-		" MENU_PREVPAGE",
+		" MENU_RIGHT",
+		" MENU_LEFT",
 		" MENU_RANDOM"
 	};
 
 	clipregion = fill_surface(1,1,0,0,0);
 	show_image(clipregion);
 	resize_image(clipregion, VRESW * 0.5, VRESH);
-
-	keyconfig = keyconf_create(0, menutbl);
-	keyconfig.iofun = dishwater_input;
-		
-	if (keyconfig.active == false) then
-		dishwater_input = function(iotbl) -- keyconfig io function hook
-			if (keyconfig:input(iotbl) == true) then
-				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg");
-					
-				ledconfig = ledconf_create( keyconfig:labels() );
-				if (ledconfig.active == false) then
-					dishwater_input = ledconfig_iofun;
-				else -- no LED controller present, or LED configuration already exists
-					dishwater_input = keyconfig.iofun;
-				end
-			end
-		end
-	else
-		ledconfig = ledconf_create( keyconfig:labels() );
-		if (ledconfig.active == false) then
-				dishwater_input = ledconfig_iofun;
-		end
-	end
 
 	images.selector = fill_surface(VRESW * 0.5, 20, 0, 40, 200);
 	link_image(images.selector, clipregion);
@@ -110,12 +99,22 @@ function dishwater()
     do_menu();
     select_item();
 
+	keyconfig = keyconf_create(menutbl);
+	if (keyconfig.active == false) then
+		dishwater_input = keyconfig_iofun;
+	else
+		ledconfig = ledconf_create( keyconfig:labels() );
+		if (ledconfig.active == false) then
+				dishwater_input = ledconfig_iofun;
+		end
+	end
+
     iodispatch["MENU_UP"]         = function(tbl) if tbl.active then next_item(-1); end end
     iodispatch["MENU_DOWN"]       = function(tbl) if tbl.active then next_item(1); end end
     iodispatch["MENU_SELECT"]     = function(tbl) if tbl.active then launch_game(data.games[gamelist.number]); end end
     iodispatch["MENU_RANDOM"]     = function(tbl) if tbl.active then random_item(); end end
-    iodispatch["MENU_NEXTPAGE"]   = function(tbl) if tbl.active then next_item(-1 * gamelist.page_size); end end
-    iodispatch["MENU_PREVPAGE"]   = function(tbl) if tbl.active then next_item(gamelist.page_size); end end
+    iodispatch["MENU_RIGHT"]      = function(tbl) if tbl.active then next_item(-1 * gamelist.page_size); end end
+    iodispatch["MENU_LEFT"]       = function(tbl) if tbl.active then next_item(gamelist.page_size); end end
     iodispatch["MENU_ESCAPE"]     = function(tbl) if tbl.active then shutdown(); end end
 end
 
@@ -250,10 +249,7 @@ function dishwater_show()
 	blend_image(WORLDID, 1.0, 150);
 end
 
--- Lookup results from keyconfig,
--- if there are any matching, find corresponding entry in iodispatch,
--- and run it.
-function dishwater_input( iotbl )	
+function default_input( iotbl )
 	local restbl = keyconfig:match(iotbl);
 	if (restbl) then
 		for i,v in pairs(restbl) do
@@ -262,4 +258,8 @@ function dishwater_input( iotbl )
 			end
 		end
 	end
+end
+
+function dishwater_input( tobl )
+	default_input(iotbl)
 end

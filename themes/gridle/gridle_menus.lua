@@ -11,6 +11,12 @@
 --  sortorder => settings.sortlbl
 -- 
 
+function menu_resetgcount(node)
+	local node = current_menu;
+	while (node.parent) do node = node.parent; end
+	node.gamecount = -1;
+end
+
 function menu_spawnmenu(list, listptr, fmtlist)
 	if (#list < 1) then
 		return nil;
@@ -174,6 +180,8 @@ local function gridcb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.cell_width = tonumber( string.sub(label, 1, string.find(label, "x") - 1) );
 	settings.cell_height = tonumber( string.sub(label, string.find(label, "x") + 1, -1) );
+	menu_resetgcount(current_menu);
+
 	if (save) then
 		play_audio(soundmap["MENU_FAVORITE"]);	
 		store_key("cell_width", settings.cell_width);
@@ -189,9 +197,7 @@ local function sortordercb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.sortlbl = label;
 	
-	local node = current_menu;
-	while (node.parent) do node = node.parent; end
-	node.gamecount = -1;
+	menu_resetgcount(current_menu);
 	
 	if (save) then
 		store_key("sortorder", label);
@@ -420,6 +426,7 @@ function gridlemenu_settings()
 		play_audio(soundmap["MENU_FADE"]);
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 
+-- only rebuild gruid if we have to
 		if (current_menu.gamecount ~= #settings.games) then
 			settings.cursor = 0;
 			settings.pageofs = 0;

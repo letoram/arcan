@@ -19,7 +19,7 @@ function eventtest()
 --	zap keyconf table
     system_load("scripts/keyconf.lua")();
     symtable  = system_load("scripts/symtable.lua")();
-	keyconfig = keyconf_create(0);
+	keyconfig = keyconf_create();
 	
     local analabel   = drawline( [[\bAnalog]], 18 );
     local digilabel  = drawline( [[\bDigital]], 18 );
