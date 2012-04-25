@@ -1603,10 +1603,8 @@ int arcan_lua_getkey(lua_State* ctx)
 static int get_linenumber(lua_State* ctx)
 {
 	lua_Debug ar;
-/*	seems to SEG in some settings
- * lua_getstack(ctx, 1, &ar);
-	lua_getinfo(ctx, "nSl", &ar);
-	*/	
+  lua_getstack(ctx, 1, &ar);
+	lua_getinfo(ctx, "Sln", &ar);
 	return -1;
 }
 
@@ -2026,8 +2024,9 @@ int arcan_lua_getgame(lua_State* ctx)
 void arcan_lua_panic(lua_State* ctx)
 {
 	lua_ctx_store.debug = true;
-		arcan_lua_wraperr(ctx, -1, "(panic)");
-		arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
+	arcan_lua_wraperr(ctx, -1, "(panic)");
+	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
+	
 }
 
 void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
@@ -2037,7 +2036,7 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
 	if (lua_ctx_store.debug){
-		arcan_warning("Warning: arcan_lua_wraperr(%d), %s, from %s\n", get_linenumber(ctx), mesg, src);
+		arcan_warning("Warning: arcan_lua_wraperr((), %s, from %s\n", mesg, src);
 
 		if (lua_ctx_store.debug > 1)
 			dump_call_trace(ctx);
@@ -2461,6 +2460,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 	lua_ctx_store.debug = debugfuncs;
 	lua_atpanic(ctx, (lua_CFunction) arcan_lua_panic);
+	
 #ifdef _DEBUG
 	lua_ctx_store.lua_vidbase = rand() % 32768;
 	arcan_warning("lua_exposefuncs() -- videobase is set to %d\n", lua_ctx_store.lua_vidbase);
