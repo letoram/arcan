@@ -241,10 +241,12 @@ int main(int argc, char* argv[])
 
 		/* export what we know and load theme */
 		lua_State* luactx = luaL_newstate();
-
 		luaL_openlibs(luactx);
+
+		/* this one also sandboxes os/io functions (just by setting to nil) */
 		arcan_lua_exposefuncs(luactx, luadebug);
 		arcan_lua_pushglobalconsts(luactx);
+
 		if (argc > optind)
 			arcan_lua_pushargv(luactx, argv + optind + 1);
 

@@ -253,6 +253,22 @@ function release_item()
 	grabbed_item = nil;
 end
 
+function moviecb(source, status)
+	if (grabbed_item and source == grabbed_item.movie and status == 1) then
+		local vid, aid = play_movie(source);
+		local props = image_surface_properties(grabbed_item.vid, 40);
+		
+		audio_gain(aid, 0.0); audio_gain(aid, 1.0, 40);
+		grabbed_item.movieaud = aid;
+			 
+		blend_image(grabbed_item.vid, 0.0, 40);
+		resize_image(vid, props.width, props.height);
+		blend_image(vid, 1.0, 20);
+	else
+		delete_image(source);
+	end
+end
+
 function check_cursor(x, y)
 -- check if the cursor is still on the currently selected one, if not, let the game go.
     if (grabbed_item) then 
@@ -295,20 +311,8 @@ function check_cursor(x, y)
 -- load movie if there is one
 		local game = bglayer[grabbed_item.vid]
 
-		if (game and game.resources and game.resources:find_movie()) then
-			local vid = load_movie(game.resources:find_movie(), 0, function(source, status)
-				if (status == 1) then
-					local vid, aid = play_movie(source);
-					local props = image_surface_properties(grabbed_item.vid, 40);
-					audio_gain(aid, 0.0); audio_gain(aid, 1.0, 40);
-					grabbed_item.movieaud = aid;
-			 
-					blend_image(grabbed_item.vid, 0.0, 40);
-					resize_image(vid, props.width, props.height);
-					blend_image(vid, 1.0, 20);
-				end
-			end);
-			
+		if (game and game.resources and game.resources:find_movie()) then  
+			local vid = load_movie(game.resources:find_movie(), 0, moviecb); 
 			grabbed_item.movie = vid;
 	    
 			if (grabbed_item.movie) then
