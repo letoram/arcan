@@ -27,8 +27,11 @@ local function ledconf_destroy(self)
 	expire_image(self.border, 20);
 	blend_image(self.border, 0.0, 20);
 	expire_image(self.anchor, 20);
+	
+if (self.msgheader and self.msgheader ~= BADID) then
 	delete_image(self.msgheader);
 	delete_image(self.valvid);
+end
 	
 	self.active = true;
 	self:flush();
@@ -45,7 +48,7 @@ local function ledconf_new(self, labels)
 		
 	self.border = fill_surface(VRESW * 0.33 + 6, VRESH * 0.33 + 6, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
 	self.window = fill_surface(VRESW * 0.33, VRESH * 0.33, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
-
+	
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
 	blend_image(self.anchor, 1.0, 15);
@@ -92,7 +95,7 @@ local function ledconf_nextlabel(self, store)
 	end
 	
 	self.labelofs = self.labelofs + 1;
-	
+
 	if (self.labelofs > # self.labels) then
 		self:destroy();
 	else
@@ -311,7 +314,7 @@ local ledcfgtbl = {
 		destroy = ledconf_destroy,
 		ledcache = {};
 	}
-
+	
 	for k, v in ipairs(arguments) do
 		if (string.sub(v, 1, 8) == "ledname=") then
 			local fn = string.sub(v, 9);
