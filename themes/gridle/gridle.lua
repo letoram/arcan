@@ -72,12 +72,13 @@ settings = {
 	cellcount= 0,
 	pageofs  = 0,
 	gameind  = 1,
+	movieagain = 1.0,
 
 	favorites = {},
 	detailvids = {},
 	favvids = {},
 	
-	repeat_rate = 250,
+	repeatrate = 250,
 	celll_width = 48,
 	cell_height = 48,
 	
@@ -168,7 +169,7 @@ function gridle()
 	end
 	
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
-	kbd_repeat(settings.repeat_rate);
+	kbd_repeat(settings.repeatrate);
 
 -- setup callback table for input events
 	settings.iodispatch["ZOOM_CURSOR"]  = function(iotbl)
@@ -423,7 +424,7 @@ function gridle_keyconf()
 			if (keyconfig:input(iotbl) == true) then
 				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
 				gridle_input = gridle_dispatchinput;
-				kbd_repeat(settings.repeat_rate);
+				kbd_repeat(settings.repeatrate);
 				if (keyconf_labelview) then keyconf_labelview:destroy(); end
 				
 			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
@@ -965,7 +966,7 @@ function load_settings()
 	end
 	
 	local repeatrate = get_key("repeatrate");
-	if (repeatrate) then settings.repeat_rate = tonumber(repeatrate); end
+	if (repeatrate) then settings.repeatrate = tonumber(repeatrate); end
 
 	if ( open_rawresource("lists/favorites") ) then
 		line = read_rawresource();
@@ -991,13 +992,18 @@ function load_settings()
 	if (scalemode ~= nil) then 
 		settings.scalemode = scalemode; 
 	end
+	
+	local movieagain = get_key("movieagain");
+	if (movieagain ~= nil) then
+		settings.movieagain = tonumber(movieagain);
+	end
 end
 
 function asynch_movie_ready(source, status)
 	if (status == 1 and source == imagery.movie) then
 		vid,aid = play_movie(source);
 		audio_gain(aid, 0.0);
-		audio_gain(aid, 1.0, settings.fadedelay);
+		audio_gain(aid, settings.movieagain, settings.fadedelay);
 		blend_image(vid, 1.0, settings.fadedelay);
 		resize_image(vid, settings.cell_width, settings.cell_height);
 		blend_image(cursor_vid(), 0.0, settings.fadedelay);
@@ -1072,7 +1078,7 @@ function gridle_clock_pulse()
 end
 
 function gridle_internalcleanup()
-	kbd_repeat(settings.repeat_rate);
+	kbd_repeat(settings.repeatrate);
 	gridle_input = gridle_dispatchinput;
 
 	if (in_internal) then

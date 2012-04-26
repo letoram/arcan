@@ -1,5 +1,6 @@
 detailview = {
- modeldisplay = BADID
+	modeldisplay = BADID,
+	modeldisplay_aid = BADID, 
 };
 local gridledetail_loaded = false;
 
@@ -31,6 +32,7 @@ end
 local function gridledetail_setnoisedisplay()
 	if (detailview.modeldisplay ~= BADID) then
 		delete_image(detailview.modeldisplay);
+		detailview.modeldisplay_aid = BADID;
 		detailview.modeldisplay = BADID;
 	end
 	
@@ -71,7 +73,12 @@ local function gridledetail_moviestatus(source, status)
 	if (gridledetail_imagestatus(source, status)) then
 		vid, aid = play_movie(source);
 		audio_gain(aid, 0.0);
-		audio_gain(aid, 1.0, settings.fadedelay);
+		if (zoomed) then
+			audio_gain(aid, settings.movieagain, 0);
+		else
+			audio_gain(aid, settings.movieagain * 0.5, 0);
+		end
+		detailview.modeldisplay_aid = aid;
 	end
 end
 
@@ -251,12 +258,19 @@ function gridledetail_input(iotbl)
 			if (iotbl.active and val == "ZOOM_CURSOR" and detailview.cooldown == 0) then
 				if (detailview.zoomed) then
 					detailview.zoomed = false;
+					if (detailview.modeldisplay_aid ~= BADID) then
+							audio_gain(detailview.modeldisplay_aid, settings.movieagain * 0.5, 20);
+					end
+					
 					move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
 					local o = detailview.model.default_orientation;
 					orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
 				else
 					move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
 					orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
+					if (detailview.modeldisplay_aid ~= BADID) then
+							audio_gain(detailview.modeldisplay_aid, settings.movieagain, 20);
+					end
 					detailview.zoomed = true;
 				end
 			else
@@ -428,7 +442,7 @@ function gridledetail_show(detailres, gametbl, ind)
 		gridle_video_event = gridvideo;
 		
 		detailview.iodispatch = griddispatch;
-		kbd_repeat(settings.repeat_rate);
+		kbd_repeat(settings.repeatrate);
 		move_cursor(0);
 	end
 end

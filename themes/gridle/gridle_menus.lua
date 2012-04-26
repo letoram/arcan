@@ -1,20 +1,60 @@
 -- this one is just a mess of tables, all mapping to a
 -- global settings structure, nothing really interesting
 
--- theme storage keys used:
---  ledmode => settings.ledmode
---  transitiondelay => settings.transitiondelay
---  fadedelay => settings.fadedelay
---  repeatrate => settings.repeatrate
---  cell_width => settings.cell_width
---  cell_height => settings.cell_height
---  sortorder => settings.sortlbl
--- 
 
+-- traverse the current menu back up to the root node, set the gamecount to an "impossible" number
+-- 
 function menu_resetgcount(node)
 	local node = current_menu;
 	while (node.parent) do node = node.parent; end
 	node.gamecount = -1;
+end
+
+-- for some menu items we just want to have a list of useful values
+-- this little function builds a list of those numbers, with corresponding functions,
+-- dispatch handling etc.
+local function gen_num_menu(name, base, step, count)
+	local reslbl = {};
+	local resptr = {};
+	local clbl = base;
+	
+	local basename = function(label, save)
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		settings[name] = tonumber(label);
+		if (save) then
+			play_audio(soundmap["MENU_FAVORITE"]);
+			store_key(name, tonumber(label));
+		else
+			play_audio(soundmap["MENU_SELECT"]);
+		end
+	end
+
+	clbl = base;
+	for i=1,count do
+		table.insert(reslbl, tostring(clbl));
+		resptr[tostring(clbl)] = basename; 
+		clbl = clbl + step;
+	end
+	
+	return reslbl, resptr;
+end
+
+local function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
+	table.insert(dstlbls, label);
+	
+	dstptrs[label] = function()
+		local fmts = {};
+		local ind = tostring(settings[key]);
+	
+		if (ind) then
+			fmts[ ind ] = settings.colourtable.notice_fontstr;
+			if(get_key(key)) then
+				fmts[ get_key(key) ] = settings.colourtable.alert_fontstr;
+			end
+		end
+		
+		menu_spawnmenu(lbls, ptrs, fmts);
+	end
 end
 
 function menu_spawnmenu(list, listptr, fmtlist)
@@ -40,7 +80,6 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	return current_menu;
 end
 
--- static menu entries
 local menulbls = {
 	"Game Lists...",
 	"Filters...",
@@ -59,11 +98,14 @@ local filterlbls = {
 local settingslbls = {
 	"Sort Order...",
 	"Cell Size...",
-	"Key Repeat Rate...",
-	"Fade Delay...",
-	"Transition Delay...",
 	"Reconfigure Keys",
 };
+	
+local settingsptrs = {};
+add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6));
+add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
+add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
+add_submenu(settingslbls, settingsptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
 
 if (LEDCONTROLLERS > 0) then
 	table.insert(settingslbls, "LED display mode...");
@@ -73,10 +115,13 @@ end
 local ledmodelbls = {
 	"Disabled",
 	"All toggle",
-	"Game setting (always on)",
-	"Game setting (on push)"
+	"Game setting (always on)"
 };
 
+if INTERNALMODE ~= "NO SUPPORT" then
+	table.insert(ledmodelbls, "Game setting (on push)");
+end
+	
 local ledmodeptrs = {}
 	ledmodeptrs["Disabled"] = function(label, save) 
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
@@ -129,48 +174,6 @@ local sortorderlbls = {
 	"Favorites"
 };
 
-local fadedelaylbls = {"5", "10", "20", "40"}
-local transitiondelaylbls = {"5", "10", "20", "40"}
-local fadedelayptrs = {}
-
-local function fadedelaycb(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.fadedelay = tonumber(label);
-	if (save) then
-		play_audio(soundmap["MENU_FAVORITE"]);
-		store_key("fadedelay", tonumber(label));
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-end
-for ind,val in ipairs(fadedelaylbls) do fadedelayptrs[val] = fadedelaycb; end
-
-local transitiondelayptrs = {}
-local function transitiondelaycb(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.transitiondelay = tonumber(label);
-	if (save) then
-		play_audio(soundmap["MENU_FAVORITE"]);
-		store_key("transitiondelay", tonumber(label));
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-end
-for ind,val in ipairs(transitiondelaylbls) do transitiondelayptrs[val] = transitiondelaycb; end
-
-local repeatlbls = { "0", "100", "200", "300", "400", "500"};
-local repeatptrs = {};
-local function repeatratecb(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.repeat_rate = tonumber(label);
-	if (save) then
-		play_audio(soundmap["MENU_FAVORITE"]);
-		store_key("repeatrate", tonumber(label));
-	else
-		play_audio(soundmap["MENU_SELECT"]);	
-	end
-end
-for ind,val in ipairs(repeatlbls) do repeatptrs[val] = repeatratecb; end
 
 local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96", "128x96", "96x128", "128x128", "196x128", "128x196", "196x196",
 		"196x256", "256x196", "256x256"};
@@ -211,7 +214,6 @@ for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
 -- These submenus all follow the same pattern,
 -- lookup label matches the name of the entry, force a different formatting (cyan) for the current value,
 -- and set the "favorite" (default / stored) value to green
-local settingsptrs = {};
 settingsptrs["Sort Order..."]    = function() 
 	local fmts = {};
 	fmts[ settings.sortlbl ] = settings.colourtable.notice_fontstr;
@@ -237,39 +239,10 @@ settingsptrs["LED display mode..."] = function()
 	menu_spawnmenu(ledmodelbls, ledmodeptrs, fmts); 
 end
 
-settingsptrs["Key Repeat Rate..."]  = function() 
-	local fmts = {};
-
-	fmts[ tostring( settings.repeat_rate) ] = settings.colourtable.notice_fontstr;
-	if (get_key("repeatrate")) then
-		fmts[ get_key("repeatrate") ] = settings.colourtable.alert_fontstr;
-	end
-	
-	menu_spawnmenu(repeatlbls, repeatptrs, fmts); 
-end
 
 settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
-end
-settingsptrs["Fade Delay..."] = function() 
-	local fmts = {};
-	fmts[ tostring( settings.fadedelay ) ] =  settings.colourtable.notice_fontstr;
-	if (get_key("fadedelay")) then
-		fmts[ get_key("fadedelay") ] = settings.colourtable.alert_fontstr;
-	end
-	
-	menu_spawnmenu(fadedelaylbls, fadedelayptrs, fmts); 
-end
-
-settingsptrs["Transition Delay..."] = function() 
-	local fmts = {};
-	fmts[ tostring( settings.transitiondelay ) ] = settings.colourtable.notice_fontstr;
-	if (get_key("transitiondelay")) then
-		fmts[ get_key("transitiondelay") ] = settings.colourtable.alert_fontstr;
-	end
-
-	menu_spawnmenu(transitiondelaylbls, transitiondelayptrs, fmts); 
 end
 
 settingsptrs["Cell Size..."] = function()
@@ -282,8 +255,6 @@ settingsptrs["Cell Size..."] = function()
 	menu_spawnmenu(gridlbls, gridptrs, fmts); 
 end
 
-settingsptrs["Repeat Rate..."]      = function() menu_spawnmenu(repeatlbls, repeatptrs); end
-
 local function update_status()
 -- show # games currently in list, current filter or gamelist
 
@@ -291,7 +262,7 @@ local function update_status()
 	table.insert(list, "# games: " .. tostring(#settings.games));
 	table.insert(list, "grid dimensions: " .. settings.cell_width .. "x" .. settings.cell_height);
 	table.insert(list, "sort order: " .. settings.sortlbl);
-	table.insert(list, "repeat rate: " .. settings.repeat_rate);
+	table.insert(list, "repeat rate: " .. settings.repeatrate);
 	
 	filterstr = "filters: ";
 	if (settings.filters.title)   then filterstr = filterstr .. " title("    .. settings.filters.title .. ")"; end
