@@ -423,9 +423,12 @@ function gridle_keyconf()
 		gridle_input = function(iotbl) -- keyconfig io function hook
 			if (keyconfig:input(iotbl) == true) then
 				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
+				zap_resource("ledsym.lua"); -- delete this one and retry ledconf
+				
 				gridle_input = gridle_dispatchinput;
 				kbd_repeat(settings.repeatrate);
 				if (keyconf_labelview) then keyconf_labelview:destroy(); end
+				gridle_ledconf();
 				
 			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
 				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
@@ -445,7 +448,9 @@ end
 -- very similar to gridle_keyconf, only real difference is that the labels are a subset
 -- of the output from keyconf (PLAYERn)
 function gridle_ledconf()
-	ledconflabels = {};
+	if (keyconfig.active == false) then return; end -- defer ledconf
+	
+	local ledconflabels = {};
 
 	for ind, val in ipairs(keyconfig:labels()) do
 		if (string.match(val, "PLAYER%d") ~= nil) then
@@ -1137,7 +1142,6 @@ function gridle_internalinput(iotbl)
 				val = rotate_label(val, settings.internal_input == "Rotate CW");
 				
 				if (val ~= nil) then
-					print("val yielded: " .. val);
 					res = keyconfig:buildtbl(val, iotbl);
 
 					if (res) then
