@@ -83,16 +83,17 @@
 	\textbf{input}\emph{(inputtable)} \emph{see IOTable}.\\
 	\textbf{video\_event}\emph{(source, argtbl)}, source:vobjid, argtbl:vidtable format \emph{resizes, completed transformations, ...}.\\
 	\textbf{themename}\emph{()}	\emph{invoked directly after initializing video, audio, events, ...}.\\
-	\textbf{on\_show}\emph{()} \emph{invoked after themename}.\\
+	\textbf{on\_show}\emph{()} \emph{invoked after themename} (deprecated).\\
 
 	\emph{All functions prefixed with * are considered experimental.}\\
 \section{Resource}
 		\textbf{resource}\emph{(name : searchmask(THEME\_RESOURCE, SHARED\_RESOURCE))} $\rightarrow$ (exists ? true or false).\\
+		\textbf{glob\_resource}\emph{searchmask, tgtmask (THEME, SHARED, ALL)} $\rightarrow$ resourcetbl.\\
 		\textbf{zap\_resource}\emph{(name)} $\rightarrow$ true or false, locates and deletes the referenced resource (in theme only).\\
-	    \textbf{open\_rawresource)}\emph{(resource)} $\rightarrow$ open resource for write (only one open allowed, in theme only).\\
-		\textbf{write\_rawresource)}\emph{(line)}, write line to opened rawresource.\\
-		\textbf{close\_rawresource)}\emph{()}, close/flush any opened rawresource.\\
-
+		\textbf{open\_rawresource}\emph{(resource)} $\rightarrow$ open resource for write (only one open allowed, in theme only).\\
+		\textbf{write\_rawresource}\emph{(line)}, write line to opened rawresource.\\
+		\textbf{close\_rawresource}\emph{()}, close/flush any opened rawresource.\\
+		
 \section{Target}
 		\textbf{launch\_target}\emph{(gametitle, launchmode)}, LAUNCH\_INTERNAL ? $\rightarrow$ vid, aid.\\
 		\textbf{target\_input}\emph{(inputtable)}, inject an event into the running target.\\
@@ -105,10 +106,12 @@
 	\textbf{shutdown}\emph{()} $\rightarrow$ kill targets, unload resources and shutdown.\\
 	\textbf{switch\_default\_scalemode}\emph{(enumint)} $\rightarrow$ override the default or command-line set scalemode.\\
 	\textbf{switch\_default\_texmode}\emph{(enumint)} $\rightarrow$ override the default texture coordinate mode.\\
-
+	\textbf{switch\_default\_imageproc}\emph{(enumimgproc)} $\rightarrow$ override the default image-loading preprocessor.\\
+	\textbf{warning}\emph{(msg)} $\rightarrow$ push warning as a string to the device associated with ERR.\\
+	
 \section{Database}
-	\textbf{*store\_key}\emph{(key, value)} $\rightarrow$ store key/value (strings) in database as theme-specific table.\\
-	\textbf{*get\_key}\emph{(key)} $\rightarrow$ get value (or nil) from theme-specific database table.\\
+	\textbf{store\_key}\emph{(key, value)} $\rightarrow$ store key/value (strings) in database as theme-specific table.\\
+	\textbf{get\_key}\emph{(key)} $\rightarrow$ get value (or nil) from theme-specific database table.\\
 	\textbf{game\_cmdline}\emph{(title)} $\rightarrow$ generate execstr for a specific game.\\
 	\textbf{list\_games}\emph{(filtertbl)} $\rightarrow$ query database for games matching filter, empty table for all.\\
 	\textbf{list\_targets}\emph{()} $\rightarrow$ get a list of all targets.\\
@@ -121,11 +124,12 @@
 	\textbf{play\_audio}\emph{(aid)} $\rightarrow$ start decode/buffer/playback for a stream\\
 	\textbf{pause\_audio}\emph{(aid)} $\rightarrow$ try and pause (slightly unstable) audio stream playback.\\
 	\textbf{delete\_audio}\emph{(aid)} $\rightarrow$ deallocate and stop playback (slight delay due to buffering).\\
-	\textbf{play\_sample}\emph{(resource, [gain])} $\rightarrow$ load and immediately play sample (wav) with optional gain.\\
+	\textbf{load\_asample}\emph{(resource)} $\rightarrow$ load sample (wav) into aid.\\
 	\textbf{audio\_gain}\emph{(aid, newgain (0..1), [time])} $\rightarrow$ set or fade gain.\\
 
 \section{Video}
 	\textbf{load\_image}\emph{(resource, [initial zval (0..255)])} $\rightarrow$ vid\\
+	\textbf{load\_image\_asynch}\emph{(resour
 	\textbf{delete\_image}\emph{(vid)} $\rightarrow$ immediately delete and deallocate (won't emit event).\\
 	\textbf{show\_image}\emph{(vid)} $\rightarrow$ wrapper for blend\_image(vid, 1.0).\\
 	\textbf{hide\_image}\emph{(vid)} $\rightarrow$ wrapper for blend\_image(vid, 0.0).\\

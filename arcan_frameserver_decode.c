@@ -114,7 +114,7 @@ arcan_ffmpeg_context* ffmpeg_preload(const char* fname)
 
 	arcan_ffmpeg_context* dst = (arcan_ffmpeg_context*) calloc(sizeof(arcan_ffmpeg_context), 1);
 
-	int errc = av_open_input_file(&dst->fcontext, fname, NULL, 0, NULL);
+	int errc = avformat_open_input(&dst->fcontext, fname, NULL, NULL);
 
 	errc = av_find_stream_info(dst->fcontext);
 
