@@ -249,7 +249,7 @@ add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
 LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
-LIST(APPEND FSRV_LIBRARIES -lrt)
+LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 
 add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
 add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c)

@@ -2494,7 +2494,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item: target_input, tgtvid, inputtbl, nil */
 	lua_register(ctx, "target_input", arcan_lua_targetinput);
-
+	lua_register(ctx, "input_target", arcan_lua_targetinput);
+	
 /* item: suspend_target, tgtvid, nil */
 	lua_register(ctx, "suspend_target", arcan_lua_targetsuspend);
 	
