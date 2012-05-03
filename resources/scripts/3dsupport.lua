@@ -9,7 +9,7 @@ local function load_material(modelname, meshname)
 	elseif (resource(fnameb .. ".jpg")) then
 		rvid = load_image_asynch(fnameb .. ".jpg", function(source, status) end);
 	else
-		tmpvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255))
+		rvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255))
 	end
 
 	return rvid;
