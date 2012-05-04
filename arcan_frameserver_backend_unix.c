@@ -246,7 +246,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			argv[0] = arcan_binpath;
 			argv[1] = (char*) fname;
 			argv[2] = (char*) shmkey;
-			argv[3] = ""; //"loop"; // loop ? "loop" : "";
+			argv[3] = "movie"; //"loop"; // loop ? "loop" : "";
 			argv[4] = NULL;
 
 			int rv = execv(arcan_binpath, argv);

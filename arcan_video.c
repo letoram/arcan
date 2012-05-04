@@ -131,9 +131,9 @@ static unsigned context_ind = 0;
 /* a default more-or-less empty context */
 static struct arcan_video_context* current_context = context_stack;
 
-static void allocate_and_store_globj(arcan_vobject* dst){
-	glGenTextures(1, &dst->gl_storage.glid);
-	glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
+static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsigned w, unsigned h, void* buf){
+	glGenTextures(1, dstid);
+	glBindTexture(GL_TEXTURE_2D, *dstid);
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
@@ -148,7 +148,7 @@ static void allocate_and_store_globj(arcan_vobject* dst){
 		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
 	}
 		
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, dst->gl_storage.w, dst->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, dst->default_frame.raw);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, w, h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
 }
 
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
@@ -168,15 +168,15 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 			arcan_vobject* current = &(context->vitems_pool[i]);
 
 			/* before doing any modification, wait for any async load calls to finish(!) */
-			if (current->state.tag == ARCAN_TAG_ASYNCIMG)
+			if (current->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 				arcan_video_pushasynch(i);
 				
 			if (delete)
 				arcan_video_deleteobject(i); /* will also delink from the render list */
 			else {
 				glDeleteTextures(1, &current->gl_storage.glid);
-				if (current->state.tag == ARCAN_TAG_FRAMESERV && current->state.ptr)
-					arcan_frameserver_pause((arcan_frameserver*) current->state.ptr, true);
+				if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && current->feed.state.ptr)
+					arcan_frameserver_pause((arcan_frameserver*) current->feed.state.ptr, true);
 			}
 		}
 	}
@@ -201,17 +201,17 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 
 		/* conservative means that we do not keep a copy of the originally decoded memory,
 		 * essentially halving memory consumption but increasing cost of pop() and push() */
-			if (arcan_video_display.conservative && (char)current->state.tag == ARCAN_TAG_IMAGE){
+			if (arcan_video_display.conservative && (char)current->feed.state.tag == ARCAN_TAG_IMAGE){
 				char* fname = strdup( current->default_frame.source ); /* copy the original filename */
 				free(current->default_frame.source);
 				arcan_video_getimage(fname, current, &current->default_frame, false);
 				free(fname); /* getimage will copy again */
 			}
 			else
-				allocate_and_store_globj(current);
+				allocate_and_store_globj(current, &current->gl_storage.glid, current->gl_storage.w, current->gl_storage.h, current->default_frame.raw);
 
-			if (current->state.tag == ARCAN_TAG_FRAMESERV && current->state.ptr) {
-				arcan_frameserver* movie = (arcan_frameserver*) current->state.ptr;
+			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && current->feed.state.ptr) {
+				arcan_frameserver* movie = (arcan_frameserver*) current->feed.state.ptr;
 
 				arcan_audio_rebuild(movie->aid);
 				arcan_frameserver_resume(movie);
@@ -731,7 +731,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 
 	/* the thread_loader will take care of converting the asynchsrc to an image once its completely done */
 		if (!asynchsrc)
-			dst->state.tag = ARCAN_TAG_IMAGE;
+			dst->feed.state.tag = ARCAN_TAG_IMAGE;
 		
 		dstframe->source = strdup(fname);
 		
@@ -796,7 +796,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 	 * glfunctions will waste membw- to convert to that, setting the "proper" 
 	 * format here seems to generate a bad (full-white texture), investigate! */
 		if (!asynchsrc)
-			allocate_and_store_globj(dst);
+			allocate_and_store_globj(dst, &dst->gl_storage.glid, dst->gl_storage.w, dst->gl_storage.h, dstframe->raw);
 
 		SDL_FreeSurface(res);
 		SDL_FreeSurface(gl_image);
@@ -1004,8 +1004,8 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, i
 	
 	args->fname = strdup(fname);
 	args->tag = tag;
-	args->dst->state.tag = ARCAN_TAG_ASYNCIMG;
-	args->dst->state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
+	args->dst->feed.state.tag = ARCAN_TAG_ASYNCIMG;
+	args->dst->feed.state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
 	
 	return rv;
 }
@@ -1016,13 +1016,13 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 	arcan_vobject* vobj = arcan_video_getobject(source);
 
 	if (vobj){
-		if (vobj->state.tag == ARCAN_TAG_ASYNCIMG){
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG){
 		/* protect us against premature invocation */
 			int status;
-			SDL_WaitThread((SDL_Thread*)vobj->state.ptr, &status);
-			allocate_and_store_globj(vobj);
-			vobj->state.tag = ARCAN_TAG_IMAGE;
-			vobj->state.ptr = NULL;
+			SDL_WaitThread((SDL_Thread*)vobj->feed.state.ptr, &status);
+			allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, vobj->default_frame.raw);
+			vobj->feed.state.tag = ARCAN_TAG_IMAGE;
+			vobj->feed.state.ptr = NULL;
 		}
 		else rv = ARCAN_ERRC_UNACCEPTED_STATE;
 	}
@@ -1063,7 +1063,7 @@ vfunc_state* arcan_video_feedstate(arcan_vobj_id id)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
-		rv = &vobj->state;
+		rv = &vobj->feed.state;
 	}
 
 	return rv;
@@ -1079,8 +1079,8 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb, vfunc_stat
 	
 	if (vobj && id > 0) {
 		if (cb) {
-			vobj->state = state;
-			vobj->ffunc = cb;
+			vobj->feed.state = state;
+			vobj->feed.ffunc = cb;
 			rv = ARCAN_OK;
 			if (state.tag == ARCAN_TAG_3DOBJ){
 				vobj->order = abs(vobj->order) * -1;
@@ -1134,8 +1134,8 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		vstor->s_raw = newvobj->gl_storage.w * newvobj->gl_storage.h * newvobj->gl_storage.ncpt;
 		vstor->raw = (uint8_t*) calloc(vstor->s_raw, 1);
 		
-		newvobj->ffunc = ffunc;
-		allocate_and_store_globj(newvobj);
+		newvobj->feed.ffunc = ffunc;
+		allocate_and_store_globj(newvobj, &newvobj->gl_storage.glid, newvobj->gl_storage.w, newvobj->gl_storage.h, newvobj->default_frame.raw);
 	}
 
 	return rv;
@@ -1149,11 +1149,11 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && (vobj->flags.clone == true) &&
-        !(vobj->state.tag == ARCAN_TAG_TARGET || vobj->state.tag == ARCAN_TAG_FRAMESERV))
+        !(vobj->feed.state.tag == ARCAN_TAG_TARGET || vobj->feed.state.tag == ARCAN_TAG_FRAMESERV))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 	if (vobj) {
-		if (vobj->state.tag == ARCAN_TAG_ASYNCIMG)
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 			arcan_video_pushasynch(id);
 
 		free(vobj->default_frame.raw);
@@ -1235,6 +1235,49 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsig
 	return rv;
 }
 
+arcan_errc arcan_video_rrobinfeed(arcan_vobj_id id, unsigned nfeeds)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (vobj)
+		if ( vobj->flags.clone == false && (
+			vobj->feed.state.tag == ARCAN_TAG_FRAMESERV ||
+			vobj->feed.state.tag == ARCAN_TAG_TARGET) ){
+			
+/* remove the old one before defining a new */
+			if (vobj->feed.rrobin){
+				if (nfeeds > 1)
+					glDeleteTextures(nfeeds - 1, &vobj->feed.rrobin[1]);
+				
+				free(vobj->feed.rrobin);
+				vobj->feed.rrobin = NULL;
+			}
+
+/* allocate and pre-fill with the current object */
+			vobj->feed.rrobin = malloc(nfeeds * sizeof(unsigned));
+			vobj->feed.rrobin_lim = nfeeds;
+			vobj->feed.rrobin_cur = 0;
+			vobj->feed.rrobin[0] = vobj->gl_storage.glid;
+			
+/* might have a memory conservative user, then we don't have access to the source buffer and we have to use a temporary buffer */
+			char* dbuf = vobj->default_frame.raw;
+			char* tmpbuf = NULL;
+			if (!dbuf)
+				dbuf = tmpbuf = (char*) calloc(sizeof(char) * vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt, 1);
+			unsigned* cf = (vobj->feed.rrobin + 1);
+			while(nfeeds--){
+				allocate_and_store_globj(vobj, cf, vobj->gl_storage.w, vobj->gl_storage.h, vobj->default_frame.raw);
+				cf++;
+			}
+			free(tmpbuf);
+		}
+	else
+		rv = ARCAN_ERRC_UNACCEPTED_STATE;
+
+	return rv;
+}
+
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv)
 {
 	arcan_vobj_id rv;
@@ -1243,7 +1286,7 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img
 	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus, constraints.bpp)) > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->order = zv;
-		vobj->state = state;
+		vobj->feed.state = state;
 
 		if (state.tag == ARCAN_TAG_3DOBJ)
 			vobj->order = -1 * zv;
@@ -1787,7 +1830,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->gl_storage.h = storh;
 		vobj->default_frame.s_raw = storw * storh * 4;
 		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw, 1);
-		vobj->state.tag = ARCAN_TAG_TEXT;
+		vobj->feed.state.tag = ARCAN_TAG_TEXT;
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
@@ -2002,26 +2045,32 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	
 	if (vobj && id > 0) {
 		if (vobj->flags.clone == false){
-			if (vobj->ffunc){
-				vobj->ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->state);
+			if (vobj->feed.ffunc){
+				vobj->feed.ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->feed.state);
 			}
 			
-            if (vobj->state.tag == ARCAN_TAG_ASYNCIMG)
-                SDL_WaitThread( vobj->state.ptr, NULL );
+			if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+				SDL_WaitThread( vobj->feed.state.ptr, NULL );
 
-			for (unsigned int i = 0; i < vobj->frameset_capacity; i++)
+			for (unsigned i = 0; i < vobj->frameset_capacity; i++)
 				if (vobj->frameset[i]){
 					arcan_video_deleteobject(vobj->frameset[i]->cellid);
 					vobj->frameset[i] = 0;
 				}
+				
+			if (vobj->feed.rrobin){
+				if (vobj->feed.rrobin_lim > 1)
+					glDeleteTextures(vobj->feed.rrobin_lim - 1, &vobj->feed.rrobin[1]);
+				free(vobj->feed.rrobin);
+			}
 			
-            free(vobj->frameset);
-            free(vobj->default_frame.raw);
+			free(vobj->frameset);
+			free(vobj->default_frame.raw);
 
 			glDeleteTextures(1, &vobj->gl_storage.glid);
 		}
         
-        current_context->nalive--;
+		current_context->nalive--;
 		assert(current_context->nalive >= 0);
 		arcan_video_detatchobject(id);
 
@@ -2513,8 +2562,8 @@ uint32_t arcan_video_tick(uint8_t steps)
 			
 				/* is the item to be updated? */
 				update_object(elem, arcan_video_display.c_ticks);
-				if (elem->ffunc)
-					elem->ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->state);
+				if (elem->feed.ffunc)
+					elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
 				
 				if ((elem->mask & MASK_LIVING) > 0) {
 					if (elem->lifetime <= 0) {
@@ -2656,7 +2705,7 @@ static inline void draw_vobj(float x, float y, float x2, float y2, float zv, flo
 
 static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
 {
-    if (src->state.tag == ARCAN_TAG_ASYNCIMG)
+    if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
         return;
     
 	float omatr[16], imatr[16], dmatr[16];
@@ -2684,13 +2733,13 @@ void arcan_video_pollfeed()
 		arcan_vobject* elem = current->elem;
 		arcan_vstorage* evstor = &elem->default_frame;
 
-		if ( elem->ffunc &&
-		elem->ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, elem->state) == FFUNC_RV_GOTFRAME) {
-			enum arcan_ffunc_rv funcres = elem->ffunc(ffunc_render,
+		if ( elem->feed.ffunc &&
+		elem->feed.ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, elem->feed.state) == FFUNC_RV_GOTFRAME) {
+			enum arcan_ffunc_rv funcres = elem->feed.ffunc(ffunc_render,
 			evstor->raw, evstor->s_raw,
 			elem->gl_storage.w, elem->gl_storage.h, elem->gl_storage.ncpt,
 			elem->gl_storage.glid,
-			elem->state);
+			elem->feed.state);
 			
 /* special "hack" for situations where the ffunc can do the gl-calls
  * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */

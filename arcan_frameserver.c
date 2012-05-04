@@ -25,14 +25,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
+#include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
 
+#include <SDL/SDL_loadso.h>
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_frameserver_backend_shmpage.h"
+#include "libretro.h"
 
 #define VID_FD 3
 #define AUD_FD 4
@@ -88,9 +92,15 @@ bool semcheck(sem_handle semaphore, unsigned mstimeout){
 	return rv;
 }
 
-static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, char* shmkey)
-{
-	/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
+void cleanshmkey(){
+	LOG("arcan_frameserver() -- atexit( cleanshmkey )\n");
+	arcan_frameserver_dropsemaphores(active_shmkey);
+	shm_unlink(active_shmkey);
+}
+
+static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq){
+/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
+	struct frameserver_shmpage* buf = NULL;
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = shm_open(shmkey, O_RDWR, 0700);
 	char* semkeya = strdup(shmkey);
@@ -101,54 +111,181 @@ static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, char* shmkey)
 	
 	if (-1 == fd) {
 		LOG("arcan_frameserver() -- couldn't open keyfile (%s)\n", shmkey);
-		return false;
+		return NULL;
 	}
 
 	LOG("arcan_frameserver() -- mapping shm, %i from %i\n", bufsize, fd);
 	/* map up the shared key- file */
-	char* buf = (char*) mmap(NULL,
+	buf = (struct frameserver_shmpage*) mmap(NULL,
 							bufsize,
 							PROT_READ | PROT_WRITE,
 							MAP_SHARED,
 							fd,
-							0);
+	0);
 	
 	if (buf == MAP_FAILED){
 		LOG("arcan_frameserver() -- couldn't map shared memory keyfile.\n");
 		close(fd);
-		return false;
+		return NULL;
 	}
 	
-	/* step 2, buffer all set-up, map it to the shared structure */
-	dstctx->shared = (struct frameserver_shmpage*) buf;
-	dstctx->shared->w = dstctx->width;
-	dstctx->shared->h = dstctx->height;
-	dstctx->shared->bpp = dstctx->bpp;
-	dstctx->shared->vready = false;
-	dstctx->shared->aready = false;
-	dstctx->shared->vbufofs = sizeof(struct frameserver_shmpage);
-	dstctx->shared->channels = dstctx->channels;
-	dstctx->shared->frequency = dstctx->samplerate;
-	dstctx->shared->abufofs = dstctx->shared->vbufofs + dstctx->width * dstctx->height * dstctx->bpp;
-	dstctx->shared->abufbase = 0;
-	dstctx->shared->vsyncc = sem_open(semkeyv, 0, 0700);
-	dstctx->shared->asyncc = sem_open(semkeya, 0, 0700);
-	if (dstctx->shared->vsyncc == 0x0 ||
-		dstctx->shared->asyncc == 0x0){
+/* step 2, buffer all set-up, map it to the shared structure */
+	buf->w = width;
+	buf->h = height;
+	buf->bpp = bpp;
+	buf->vready = false;
+	buf->aready = false;
+	buf->vbufofs = sizeof(struct frameserver_shmpage);
+	buf->channels = nchan;
+	buf->frequency = freq;
+
+/* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
+	buf->abufofs = buf->vbufofs + (buf->w* buf->h* buf->bpp);
+	buf->abufbase = 0;
+	buf->vsyncc = sem_open(semkeyv, 0, 0700);
+	buf->asyncc = sem_open(semkeya, 0, 0700);
+
+	if (buf->vsyncc == 0x0 ||
+		buf->asyncc == 0x0){
 			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
-			return false;
+			return NULL; /* munmap on process close */
 	}
 	
 	active_shmkey = shmkey;
+	atexit(cleanshmkey);
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
-	
-	return true;
+
+	return buf;
 }
 
-void cleanshmkey(){
-	LOG("arcan_frameserver() -- atexit( cleanshmkey )\n");
-	arcan_frameserver_dropsemaphores(active_shmkey);
-	shm_unlink(active_shmkey);
+/* interface for loading many different emulators,
+ * we assume "resource" points to a dlopen:able library,
+ * that can be handled by SDLs library management functions. */
+struct libretro_t {
+		struct retro_system_info sysinfo;
+		struct retro_game_info gameinfo;
+		unsigned state_size;
+		
+		retro_audio_sample_batch_t libretro_audioframe;
+		retro_video_refresh_t libretro_videoframe;
+		
+		void (*run)();
+		bool (*load_game)(const struct retro_game_info* game);
+};
+
+/* XRGB555 */
+static void* libretro_h = NULL;
+static void* libretro_requirefun(const char* sym)
+{
+	void* rfun = NULL;
+
+	if (!libretro_h || !(rfun = SDL_LoadFunction(libretro_h, sym)) )
+	{
+		LOG("arcan_frameserver(libretro) -- missing library or symbol (%s) during lookup.\n", sym);
+		exit(1);
+	}
+	
+	return rfun;
+}
+
+static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch){
+	/* blit XRGB1555 to RGBA in shmpage and signal the semaphore */
+}
+
+/* map up a libretro compatible library resident at fullpath:game */
+static void mode_libretro(char* resource, char* keyfile)
+{
+	struct libretro_t retroctx = {0};
+	char* libname  = resource;
+
+/* abssopath : gamename */
+	char* gamename = index(resource, ':');
+	if (!gamename) return;
+	*gamename = 0;
+	gamename++;
+	
+	if (*libname == 0) 
+		return;
+	
+/* map up functions and test version */
+	libretro_h = SDL_LoadObject(libname);
+	void (*initf)() = libretro_requirefun("retro_init");
+	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
+	
+	if ( (initf(), true) && apiver() == RETRO_API_VERSION){
+		struct retro_system_info sysinf = {0};
+		struct retro_game_info gameinf = {0};
+		((void(*)(struct retro_system_info*)) libretro_requirefun("retro_get_system_info")) (&sysinf);
+
+		if (sysinf.need_fullpath){
+			gameinf.path = strdup( gamename );
+		} else {
+			struct stat filedat;
+			int fd;
+			
+			if (-1 == stat(gamename, &filedat) || -1 == (fd = open(gamename, O_RDWR)) || 
+				MAP_FAILED == ( gameinf.data = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0) ) )
+				return;
+
+			gameinf.size = filedat.st_size;
+		}
+
+/* load game and get info on the resolution etc. */
+		struct frameserver_shmpage* shmpage = get_shm(keyfile, 0, 0, 4, 2, 44100);
+		
+/* at this point, we have the correct library, we have loaded the ROM in question,
+ * get shared memory, setup callbacks and loop */
+		
+	}
+
+}
+
+/* Stream-server is used as a 'reverse' movie mode,
+ * i.e. it is the frameserver that reads from the shmpage,
+ * feeding whatever comes to ffmpeg */
+void mode_streamserv(char* resource, char* keyfile)
+{
+	/* incomplete, first version should just take
+	 * a vid (so buffercopy or readback) and an aid (due to buffering,
+	 * we can't treat this the same as vid), encode and store in a file.
+	 * 
+	 * next step would be to compare this with a more established straming protocol 
+	 */
+}
+
+void mode_video(char* resource, char* keyfile)
+{
+	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
+	if (!vidctx) return;
+	
+	vidctx->shared = get_shm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
+
+	if (vidctx->shared){
+		int semv, rv;
+		vidctx->shared->resized = true;
+		sem_post(vidctx->shared->vsyncc);
+		
+		LOG("arcan_frameserver(video) -- decoding\n");
+		
+/* reuse the shmpage, anyhow, the main app should support
+ * relaunching the frameserver when looping to cover for
+ * memory leaks, crashes and other ffmpeg goodness */
+		while (ffmpeg_decode(vidctx) && vidctx->shared->loop) {
+			struct frameserver_shmpage* page = vidctx->shared;
+			LOG("arcan_frameserver(video) -- decode finished, looping\n");
+			ffmpeg_cleanup(vidctx);
+			vidctx = ffmpeg_preload(resource);
+
+			/* sanity check, file might have changed between loads */
+			if (!vidctx ||
+				vidctx->width != page->w ||
+				vidctx->height != page->h ||
+				vidctx->bpp != page->bpp)
+			break;
+
+			vidctx->shared = page;
+		}
+	}
 }
 
 /* args accepted;
@@ -160,53 +297,27 @@ void cleanshmkey(){
  */
  int main(int argc, char** argv)
 {
-	arcan_ffmpeg_context* vidctx;
+	char* resource = argv[1];
+	char* keyfile  = argv[2];
+	char* fsrvmode = argv[3];
 	
 	logdev = stderr;
-	if (argc != 4){
+	if (argc != 4 || !resource || !keyfile || !fsrvmode){
 		LOG("arcan_frameserver(), invalid arguments in exec()\n");
 		return 1;
 	}
-	
+
 	close(0);
 	close(1);
 	close(2);
-	
-	bool loop = strcmp(argv[3], "loop") == 0;
-	vidctx = ffmpeg_preload(argv[1]);
-	
-	if (vidctx != NULL && setup_shm_ipc(vidctx, argv[2])){
-		atexit(cleanshmkey);
-		/* the better solution for this kind of frame-server,
-		 * would be to build the arcan_framequeue.c in such a way that
-		 * it can live in either the child or in the parent (transparently to the
-		 * ffunc in arcan_frameserver), but not as beneficial for internal launch. */
-		int semv, rv;
 
-        vidctx->shared->resized = true;
-		sem_post(vidctx->shared->vsyncc);
-		
-		LOG("arcan_frameserver() -- decoding\n");
-		
-		/* reuse the shmpage, anyhow, the main app should support
-		 * relaunching the frameserver when looping to cover for
-		 * memory leaks, crashes and other ffmpeg goodness */
-		while (ffmpeg_decode(vidctx) && loop) {
-			struct frameserver_shmpage* page = vidctx->shared;
-			LOG("arcan_frameserver() -- decode finished, looping\n");
-			ffmpeg_cleanup(vidctx);
-			vidctx = ffmpeg_preload(argv[1]);
+	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
+		mode_video(resource, keyfile);
+	else if (strcmp(fsrvmode, "libretro") == 0)
+		mode_libretro(resource, keyfile);
+	else if (strcmp(fsrvmode, "streamserve") == 0)
+		mode_streamserv(resource, keyfile);
+	else;
 
-			/* sanity check, file might have changed between loads */
-			if (!vidctx ||
-			        vidctx->width != page->w ||
-			        vidctx->height != page->h ||
-			        vidctx->bpp != page->bpp)
-				break;
-
-			vidctx->shared = page;
-		}
-	}
-	
-	exit(0);
+	return 0;
 }
