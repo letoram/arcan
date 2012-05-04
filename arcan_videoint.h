@@ -64,24 +64,42 @@ typedef struct arcan_vstorage {
 	char* source;
 } arcan_vstorage;
 
+struct storage_info_t {
+		unsigned int glid;
+		
+		unsigned short w, h;
+		unsigned char ncpt;
+		unsigned int txu, txv;
+		enum arcan_vimage_mode scale;
+		enum arcan_imageproc_mode imageproc;
+
+		arcan_shader_id program;
+};
+
 typedef struct arcan_vobject {
 	/* image-storage / reference,
 	 * current_frame is set to default_frame */
 	arcan_vstorage default_frame;
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
-	
-	/* animation / states,
-	 * (could also be used for multitexturing
-	 * but would require some more "thought" first) */
+
 	struct arcan_vobject** frameset;
 	unsigned frameset_capacity;
+	
+	struct storage_info_t gl_storage;
 	
 	/* support for feed- functions
 	 * set to null if no feed functions are avail.
 	 * [note] this might be more handy as a per/frame thing */
-	arcan_vfunc_cb ffunc;
-	vfunc_state state;
+	struct {
+		arcan_vfunc_cb ffunc;
+		vfunc_state state;
+		
+		unsigned* rrobin;
+		unsigned rrobin_cur;
+		unsigned rrobin_lim;
+	} feed;
+	
 	uint8_t ffunc_mask;
 	
 	/* visual- params */
@@ -90,18 +108,7 @@ typedef struct arcan_vobject {
 		char* fragment;
 	} gpu_program;
 	
-	struct {
-		unsigned int glid;
-		unsigned char c_glid;
-		unsigned short w, h;
-		unsigned char ncpt;
-		unsigned int txu, txv;
-        enum arcan_vimage_mode scale;
-		enum arcan_imageproc_mode imageproc;
 
-		arcan_shader_id program;
-	} gl_storage;
-	
 	float txcos[8];
 	enum arcan_blendfunc blendmode;
 	/* flags */
@@ -109,21 +116,21 @@ typedef struct arcan_vobject {
 		bool in_use;
 		bool clone;
 		bool cliptoparent;
-        bool asynchdisable;
+		bool asynchdisable;
 	} flags;
 	
-	/* position */
+/* position */
 	signed short order;
 	surface_properties current;
 	
 	surface_transform* transform;
 	enum arcan_transform_mask mask;
 	
-	/* life-cycle tracking */
+/* life-cycle tracking */
 	unsigned long last_updated;
 	unsigned long lifetime;
 	
-	/* management mappings */
+/* management mappings */
 	struct arcan_vobject* parent;
 	struct arcan_vobject_litem* owner;
 	arcan_vobj_id cellid;
@@ -166,6 +173,10 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 void arcan_3d_setdefaults();
+
+/* sweep the glstor and bind the corresponding texture units (unless we hit the imit that is) */
+unsigned int arcan_video_pushglids(struct storage_info_t* glstor, unsigned ofs);
+
 arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell, float frag, unsigned int destination);
 
 #endif

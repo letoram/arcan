@@ -315,10 +315,10 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 	
 	arcan_vobject_litem* current = cell;
 	while (current){
-		if (current->elem->order >= 0 || !current->elem->state.ptr) break;
+		if (current->elem->order >= 0 || !current->elem->feed.state.ptr) break;
 		surface_properties dprops;
  		arcan_resolve_vidprop(current->elem, lerp, &dprops);
-		rendermodel(current->elem, (arcan_3dmodel*) current->elem->state.ptr, current->elem->gl_storage.program, dprops, modelview);
+		rendermodel(current->elem, (arcan_3dmodel*) current->elem->feed.state.ptr, current->elem->gl_storage.program, dprops, modelview);
 
 		current = current->next;
 	}
@@ -387,8 +387,8 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
-	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ){
-		arcan_3dmodel* model = (arcan_3dmodel*) vobj->state.ptr;
+	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
+		arcan_3dmodel* model = (arcan_3dmodel*) vobj->feed.state.ptr;
         struct geometry* curr = model->geometry;
         while (curr) {
             if (curr->indices){
@@ -555,8 +555,8 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ){
-		struct geometry* cur = ((arcan_3dmodel*)vobj->state.ptr)->geometry;
+	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
+		struct geometry* cur = ((arcan_3dmodel*)vobj->feed.state.ptr)->geometry;
 		while (cur && slot){
 			cur = cur->next;
 			slot--;
@@ -608,9 +608,9 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nm
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 /* 2d frameset and set of vids associated as textures with models are weakly linked */
-	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ)
+	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
 	{
-		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
+		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
 		struct threadarg* arg = (struct threadarg*) malloc(sizeof(struct threadarg));
 		arg->model = dst;
 		arg->resource = strdup(resource);
@@ -639,9 +639,9 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	/* 2d frameset and set of vids associated as textures with models are weakly linked */
-	if (vobj && vobj->state.tag == ARCAN_TAG_3DOBJ)
+	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
 	{
-		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->state.ptr;
+		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
 		struct geometry* geom = dst->geometry;
 
 		while (geom){
