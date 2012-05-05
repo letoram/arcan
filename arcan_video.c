@@ -187,6 +187,24 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 	}
 }
 
+static void step_active_frame(arcan_vobject* vobj)
+{
+	unsigned ind = 0;
+
+	if (!vobj->frameset)
+		return;
+	
+	do
+		if (vobj->frameset[ind] == vobj->current_frame){
+			do {
+				vobj->current_frame = vobj->frameset[(ind + 1) % vobj->frameset_capacity];
+				ind++;
+			} while (!vobj->current_frame);
+			break;
+		}
+	while (++ind < vobj->frameset_capacity);
+}
+
 /* go through a saved context, and reallocate all resources associated with it */
 static void reallocate_gl_context(struct arcan_video_context* context)
 {
@@ -820,35 +838,42 @@ void arcan_video_3dorder(bool first){
 		arcan_video_display.late3d = true;
 }
 
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity)
+arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enum arcan_framemode mode)
 {
 	arcan_vobject* target = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	if (!target)
+		return rv;
+
+	if (target->flags.clone)
+		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
-	if (target && target->flags.clone)
-		rv = ARCAN_ERRC_CLONE_NOT_PERMITTED;
+		capacity++; /* reserve 1 */
+		if (capacity == 0)
+			return ARCAN_ERRC_OUT_OF_SPACE;
 
-	if (target && target->flags.clone == false) {
-	/* ignore truncation and same- size */
-		if (target->frameset_capacity < capacity) {
-			arcan_vobject** newset = (arcan_vobject**) realloc(target->frameset, capacity * sizeof(arcan_vobject*));
-			if (newset != NULL){
-	/* during rendering, if the current frame is "empty", the default frame will be used */
-				target->frameset = newset;
-				memset(target->frameset + (target->frameset_capacity), 
-					0,
-					(capacity - target->frameset_capacity) * sizeof(arcan_vobject*));
-				target->frameset_capacity = capacity;
-				rv = ARCAN_OK;
-			}
-			else 
-				rv = ARCAN_ERRC_OUT_OF_SPACE;
-		}
-		else if (target->frameset_capacity > capacity){
-    /* truncate currently ignored */
-		}
+		if (target->frameset)
+			free(target->frameset);
+		
+		target->frameset = (arcan_vobject**) calloc(capacity, sizeof(arcan_vobject*) );
+		target->frameset[0] = target;
+		target->frameset_capacity = capacity;
+
+	return ARCAN_OK;
+}
+
+arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* all the real work is done in tick/render */
+	if (vobj){
+		vobj->framecycle_mode = mode;
+		vobj->framecycle_counter = abs(mode);
+		rv = ARCAN_OK;
 	}
-
+	
 	return rv;
 }
 
@@ -895,14 +920,8 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	if (dstvobj){
-		if (fid < dstvobj->frameset_capacity){
-			if (dstvobj->frameset[fid])
-				dstvobj->current_frame = dstvobj->frameset[fid];
-			else
-				dstvobj->current_frame = dstvobj;
-
-			rv = ARCAN_OK;
-		}
+		dstvobj->current_frame = fid < dstvobj->frameset_capacity && dstvobj->frameset[fid] ? dstvobj->frameset[fid] : dstvobj;
+		rv = ARCAN_OK;		
 	}
 	
 	return rv;
@@ -913,7 +932,8 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
 	arcan_errc rv = ARCAN_EID;
-
+	fid++; /* enforce 1 index */
+	
 	if (errc)
 		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
@@ -1056,7 +1076,6 @@ static arcan_vobj_id loadimage(const char* fname, img_cons constraints, arcan_er
 	return rv;
 }
 
-
 vfunc_state* arcan_video_feedstate(arcan_vobj_id id)
 {
 	void* rv = NULL;
@@ -1112,7 +1131,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 
 	if (ffunc && newvobj) {
 		arcan_vstorage* vstor = &newvobj->default_frame;
-		/* preset */
+/* preset */
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
 		newvobj->gl_storage.ncpt = ncpt == 0 ? 4 : ncpt;
@@ -1231,49 +1250,6 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsig
 			arcan_video_attachobject(rv);
 		}
 	}
-
-	return rv;
-}
-
-arcan_errc arcan_video_rrobinfeed(arcan_vobj_id id, unsigned nfeeds)
-{
-	arcan_vobject* vobj = arcan_video_getobject(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
-	if (vobj)
-		if ( vobj->flags.clone == false && (
-			vobj->feed.state.tag == ARCAN_TAG_FRAMESERV ||
-			vobj->feed.state.tag == ARCAN_TAG_TARGET) ){
-			
-/* remove the old one before defining a new */
-			if (vobj->feed.rrobin){
-				if (nfeeds > 1)
-					glDeleteTextures(nfeeds - 1, &vobj->feed.rrobin[1]);
-				
-				free(vobj->feed.rrobin);
-				vobj->feed.rrobin = NULL;
-			}
-
-/* allocate and pre-fill with the current object */
-			vobj->feed.rrobin = malloc(nfeeds * sizeof(unsigned));
-			vobj->feed.rrobin_lim = nfeeds;
-			vobj->feed.rrobin_cur = 0;
-			vobj->feed.rrobin[0] = vobj->gl_storage.glid;
-			
-/* might have a memory conservative user, then we don't have access to the source buffer and we have to use a temporary buffer */
-			char* dbuf = vobj->default_frame.raw;
-			char* tmpbuf = NULL;
-			if (!dbuf)
-				dbuf = tmpbuf = (char*) calloc(sizeof(char) * vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt, 1);
-			unsigned* cf = (vobj->feed.rrobin + 1);
-			while(nfeeds--){
-				allocate_and_store_globj(vobj, cf, vobj->gl_storage.w, vobj->gl_storage.h, vobj->default_frame.raw);
-				cf++;
-			}
-			free(tmpbuf);
-		}
-	else
-		rv = ARCAN_ERRC_UNACCEPTED_STATE;
 
 	return rv;
 }
@@ -2052,18 +2028,12 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 				SDL_WaitThread( vobj->feed.state.ptr, NULL );
 
-			for (unsigned i = 0; i < vobj->frameset_capacity; i++)
+			for (unsigned i = 1; i < vobj->frameset_capacity; i++)
 				if (vobj->frameset[i]){
 					arcan_video_deleteobject(vobj->frameset[i]->cellid);
 					vobj->frameset[i] = 0;
 				}
 				
-			if (vobj->feed.rrobin){
-				if (vobj->feed.rrobin_lim > 1)
-					glDeleteTextures(vobj->feed.rrobin_lim - 1, &vobj->feed.rrobin[1]);
-				free(vobj->feed.rrobin);
-			}
-			
 			free(vobj->frameset);
 			free(vobj->default_frame.raw);
 
@@ -2279,13 +2249,6 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int t
 	return rv;
 }
 
-arcan_errc arcan_video_delaytransform(arcan_vobj_id id, uint8_t mask, unsigned tv){
-	/* for each masked category,
-	 * grab the last state of the transform
-	 * and then add a new one with the same value and new 'tv' */
-	return 0;
-}
-
 /* linear transition from current position to a new desired position,
  * if time is 0 the move will be instantaneous (and not generate an event)
  * otherwise time denotes how many ticks it should take to move the object
@@ -2333,7 +2296,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, floa
 				vobj->transform = base;
 			
 			base->move.startt = last->move.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->move.endt;
-			base->move.endt = base->move.startt + tv;
+			base->move.endt   = base->move.startt + tv;
 			base->move.interp = interpolate_linear;
 			base->move.startp = bwp;
 			base->move.endp   = newp;
@@ -2583,6 +2546,15 @@ uint32_t arcan_video_tick(uint8_t steps)
 						elem->lifetime--;
 					}
 				}
+			
+			/* cycle active frame */
+				if (elem->framecycle_mode > 0){
+					elem->framecycle_counter--;
+					if (elem->framecycle_counter == 0){
+						elem->framecycle_counter = elem->framecycle_mode;
+						step_active_frame(elem);
+					}
+				}
 			}
 			while ((current = current->next) != NULL);
 
@@ -2727,25 +2699,39 @@ void arcan_video_pollfeed()
 {
 	arcan_vobject_litem* current = current_context->first;
 
-	while(current){
+	while(current && current->elem){
 /* feed objects require a check for changes
  * and re-uploading texture */
-		arcan_vobject* elem = current->elem;
-		arcan_vstorage* evstor = &elem->default_frame;
+		arcan_vobject* cframe = current->elem->current_frame;
+		arcan_vobject* celem  = current->elem;
+		arcan_vstorage* evstor = &cframe->default_frame;
+		
+/* cycle active frame */
+		if (celem->framecycle_mode < 0){
+			celem->framecycle_counter--;
+			if (celem->framecycle_counter == 0){
+				celem->framecycle_counter = abs( celem->framecycle_mode );
+				step_active_frame(celem);
+				cframe = celem->current_frame;
+			}
+		}
 
-		if ( elem->feed.ffunc &&
-		elem->feed.ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, elem->feed.state) == FFUNC_RV_GOTFRAME) {
-			enum arcan_ffunc_rv funcres = elem->feed.ffunc(ffunc_render,
+/* if there's a feed function, try and grab a new sample and upload,
+ * make sure that we use the current elements "feed function", but set the target
+ * to its current active frame, most of the time, they are the same */
+		if ( celem->feed.ffunc &&
+		celem->feed.ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, celem->feed.state) == FFUNC_RV_GOTFRAME) {
+			enum arcan_ffunc_rv funcres = celem->feed.ffunc(ffunc_render,
 			evstor->raw, evstor->s_raw,
-			elem->gl_storage.w, elem->gl_storage.h, elem->gl_storage.ncpt,
-			elem->gl_storage.glid,
-			elem->feed.state);
+			cframe->gl_storage.w, cframe->gl_storage.h, cframe->gl_storage.ncpt,
+			cframe->gl_storage.glid,
+			celem->feed.state);
 			
 /* special "hack" for situations where the ffunc can do the gl-calls
  * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
 			if (funcres == FFUNC_RV_COPIED){
-                glBindTexture(GL_TEXTURE_2D, elem->gl_storage.glid);
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, elem->gl_storage.w, elem->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
+				glBindTexture(GL_TEXTURE_2D, cframe->gl_storage.glid);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
 			}
 		}
 
@@ -2804,11 +2790,11 @@ void arcan_video_refresh_GL(float lerp)
 			surface_properties dprops = {0};
 			arcan_resolve_vidprop(elem, lerp, &dprops);
             
-			/* time for the drawcall, assuming object is visible
-		 * add occlusion test / blending threshold here ..
-		 * note that objects will have been sorted based on Z already.
-		 * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
-		 */
+/* time for the drawcall, assuming object is visible
+ * add occlusion test / blending threshold here ..
+ * note that objects will have been sorted based on Z already.
+ * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
+ */
 			if ( elem->order >= 0 && elem->current.opa > EPSILON){
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 				if(elem->gl_storage.program > 0)
@@ -2821,12 +2807,11 @@ void arcan_video_refresh_GL(float lerp)
 				}
 				else{
 					glEnable(GL_BLEND);
-					glColor4f(1.0, 1.0, 1.0, dprops.opa);
 				}
 				
 				if (elem->flags.cliptoparent && elem->parent != &current_context->world){
-				/* toggle stenciling, reset into zero, draw parent bounding area to stencil only,
-				 * redraw parent into stencil, draw new object then disable stencil. */
+/* toggle stenciling, reset into zero, draw parent bounding area to stencil only,
+ * redraw parent into stencil, draw new object then disable stencil. */
 					glEnable(GL_STENCIL_TEST);
 					glClearStencil(0);
 					glClear(GL_STENCIL_BUFFER_BIT);
@@ -2836,7 +2821,7 @@ void arcan_video_refresh_GL(float lerp)
 
 					arcan_vobject* celem = elem;
 
-				/* since we can have hierarchies of partially clipped, we may need to resolve all */
+/* since we can have hierarchies of partially clipped, we may need to resolve all */
 					while (celem->parent != &current_context->world){
 						surface_properties pprops = {0};
 						arcan_resolve_vidprop(celem->parent, lerp, &pprops);

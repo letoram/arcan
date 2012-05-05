@@ -282,6 +282,7 @@ int main(int argc, char* argv[])
 				arcan_audio_tick(nticks);
 			}
 			else{
+	/* we separate the ffunc per-frame update and the video refresh */
 				arcan_video_pollfeed();
 				arcan_video_refresh(frag);
 			}
@@ -312,7 +313,6 @@ int main(int argc, char* argv[])
 							if (!arcan_frameserver_check_frameserver(ev->data.video.data))
 								continue; /* on loop, just ignore event */
 					break;
-						
 
 					case EVENT_AUDIO:
 						if (ev->kind == EVENT_AUDIO_PLAYBACK_FINISHED)

@@ -44,6 +44,11 @@ enum arcan_vrtypes {
 	ARCAN_VRTYPE_RENDERSOURCE
 };
 
+enum arcan_framemode {
+	ARCAN_FRAMESET_SPLIT,
+	ARCAN_FRAMESET_MULTITEXTURE
+};
+
 enum arcan_vtex_mode {
 	ARCAN_VTEX_REPEAT = 0,
 	ARCAN_VTEX_CLAMP = 1
@@ -186,11 +191,24 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
 /* -- multiple- frame management --
  * this is done by associating a working video-object (src) with another (dst),
  * so that (src) becomes part of (dst)s rendering. */
-/* specify the number of frames associated with vobj, default is 0 */
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity);
+
+/* specify the number of frames associated with vobj, default is 0
+ * default mode is ARCAN_FRAMESET_SPLIT, ARCAN_FRAMESET_MULTITEXTURE tries to take
+ * the active texture of each frame and divide among the available texture units,
+ * then set corresponding uniforms (map_fset1..capacity) */
+arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity, enum arcan_framemode mode);
+
 /* note that the frame_id (fid) have to be available through allocframes first */
 arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch, arcan_errc* errc);
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
+
+/* this will automatically switch active frame (so setactiveframe becomes useless unless mode is set to 0),
+ * depending on the value of mode:
+ * 'mode == 0, don't cycle'
+ * 'mode <  0, cycle everyabs(mode) ticks',
+ * 'mode >  0, cycle_every 'mode' frames' */
+arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
+
 void arcan_video_imgmanmode(enum arcan_vimage_mode mode, bool repeat);
 void arcan_video_contextsize(unsigned newlim);
 
