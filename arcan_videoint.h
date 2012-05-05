@@ -85,6 +85,8 @@ typedef struct arcan_vobject {
 
 	struct arcan_vobject** frameset;
 	unsigned frameset_capacity;
+	signed framecycle_mode;
+	unsigned framecycle_counter;
 	
 	struct storage_info_t gl_storage;
 	
@@ -94,10 +96,6 @@ typedef struct arcan_vobject {
 	struct {
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;
-		
-		unsigned* rrobin;
-		unsigned rrobin_cur;
-		unsigned rrobin_lim;
 	} feed;
 	
 	uint8_t ffunc_mask;

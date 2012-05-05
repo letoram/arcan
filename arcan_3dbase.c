@@ -255,12 +255,12 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj,
  * multiple meshes share the same frameset */
-		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i < base->nmaps; i++){
+		for (unsigned i = 1; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i-1 < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i+cframe];
 			if (!frame)
 				continue; 
 /* only allocate set a sampler if there's a map and a corresponding map- slot in the shader */
-			glClientActiveTexture(GL_TEXTURE0 + i);
+			glClientActiveTexture(GL_TEXTURE0 + i - 1);
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
 		}
@@ -466,7 +466,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 					 &newmodel->geometry->txcos, &newmodel->geometry->nverts, &newmodel->geometry->nindices);
 
 		newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
-		arcan_video_allocframes(rv, 1);
+		arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 		newmodel->geometry->indexformat = GL_UNSIGNED_INT;
 		newmodel->geometry->program = -1;
 		newmodel->geometry->complete = true;

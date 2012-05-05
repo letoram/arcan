@@ -1365,18 +1365,24 @@ int arcan_lua_imagechildren(lua_State* ctx)
 	return 1;
 }
 
-/* item:image_find_children, vid, vidtable */
-
-
 int arcan_lua_framesetalloc(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	unsigned num = luaL_checkint(ctx, 2);
+	unsigned mode = luaL_optint(ctx, 3, ARCAN_FRAMESET_SPLIT);
 	
 	if (num > 0 && num < 256){
-		arcan_video_allocframes(sid, num);
+		arcan_video_allocframes(sid, num, mode);
 	}
 	
+	return 0;
+}
+
+int arcan_lua_framesetcycle(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	unsigned num = luaL_optint(ctx, 2, 0);
+	arcan_video_framecyclemode(sid, num);
 	return 0;
 }
 
@@ -1772,6 +1778,9 @@ int arcan_lua_fillsurface(lua_State* ctx)
 	uint8_t r = luaL_checknumber(ctx, 3);
 	uint8_t g = luaL_checknumber(ctx, 4);
 	uint8_t b = luaL_checknumber(ctx, 5);
+	
+	cons.w = luaL_optnumber(ctx, 6, 8);
+	cons.h = luaL_optnumber(ctx, 7, 8);
 
 	uint8_t* buf = (uint8_t*) malloc(cons.w * cons.h * 4);
 	uint32_t* cptr = (uint32_t*) buf;
@@ -2639,6 +2648,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:image_framesetsize,vid,ncells,nil */
 	lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
+	
+/* item:image_framecyclemode,vid,nil */
+	lua_register(ctx, "image_framecyclemode", arcan_lua_framesetcycle);
 
 /* item:image_pushasynch,vid,nil */
 	lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
