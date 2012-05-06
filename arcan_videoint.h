@@ -84,9 +84,12 @@ typedef struct arcan_vobject {
 	uint16_t origw, origh;
 
 	struct arcan_vobject** frameset;
-	unsigned frameset_capacity;
-	signed framecycle_mode;
-	unsigned framecycle_counter;
+	struct {
+		unsigned short capacity;
+		signed short mode;
+		unsigned short counter;
+		unsigned short current;
+	} frameset_meta;
 	
 	struct storage_info_t gl_storage;
 	

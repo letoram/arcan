@@ -255,7 +255,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj,
  * multiple meshes share the same frameset */
-		for (unsigned i = 1; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_capacity && i-1 < base->nmaps; i++){
+		for (unsigned i = 1; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_meta.capacity && i-1 < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i+cframe];
 			if (!frame)
 				continue; 
