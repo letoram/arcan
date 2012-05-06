@@ -195,14 +195,10 @@ static void step_active_frame(arcan_vobject* vobj)
 		return;
 	
 	do
-		if (vobj->frameset[ind] == vobj->current_frame){
-			do {
-				vobj->current_frame = vobj->frameset[(ind + 1) % vobj->frameset_capacity];
-				ind++;
-			} while (!vobj->current_frame);
-			break;
-		}
-	while (++ind < vobj->frameset_capacity);
+		vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) % vobj->frameset_meta.capacity;
+	while (vobj->frameset[ vobj->frameset_meta.current ] == NULL);
+	
+	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
 }
 
 /* go through a saved context, and reallocate all resources associated with it */
@@ -857,7 +853,8 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		
 		target->frameset = (arcan_vobject**) calloc(capacity, sizeof(arcan_vobject*) );
 		target->frameset[0] = target;
-		target->frameset_capacity = capacity;
+		target->frameset_meta.current = 0;
+		target->frameset_meta.capacity = capacity;
 
 	return ARCAN_OK;
 }
@@ -869,8 +866,8 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode)
 
 /* all the real work is done in tick/render */
 	if (vobj){
-		vobj->framecycle_mode = mode;
-		vobj->framecycle_counter = abs(mode);
+		vobj->frameset_meta.mode = mode;
+		vobj->frameset_meta.counter = abs(mode);
 		rv = ARCAN_OK;
 	}
 	
@@ -919,8 +916,9 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
-	if (dstvobj){
-		dstvobj->current_frame = fid < dstvobj->frameset_capacity && dstvobj->frameset[fid] ? dstvobj->frameset[fid] : dstvobj;
+	if (dstvobj && dstvobj->frameset){
+		dstvobj->frameset_meta.current = fid < dstvobj->frameset_meta.capacity && dstvobj->frameset[fid] ? fid : 0;
+		dstvobj->current_frame = dstvobj->frameset[ dstvobj->frameset_meta.current ];
 		rv = ARCAN_OK;		
 	}
 	
@@ -938,10 +936,13 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	if (dstvobj && srcvobj){
-		if (fid < dstvobj->frameset_capacity){
+		if (dstvobj->frameset && fid < dstvobj->frameset_meta.capacity){
+
+/* if we want to manage the frame entirely through this object, we can detatch src and stop worrying about deleting it */
 			if (detatch)
 				arcan_video_detatchobject(src);
 
+/* if there already is an object in the desired slot, return the management responsibility to the user*/
 			if (dstvobj->frameset[fid])
 				rv = dstvobj->frameset[fid]->cellid;
 				
@@ -2019,6 +2020,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	
+/* vid 0 is reserved for world, which should never be deleted */
 	if (vobj && id > 0) {
 		if (vobj->flags.clone == false){
 			if (vobj->feed.ffunc){
@@ -2028,20 +2030,24 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 				SDL_WaitThread( vobj->feed.state.ptr, NULL );
 
-			for (unsigned i = 1; i < vobj->frameset_capacity; i++)
+/* for a frameset, index (0) is always reserved for self */
+			for (unsigned i = 1; i < vobj->frameset_meta.capacity; i++)
 				if (vobj->frameset[i]){
 					arcan_video_deleteobject(vobj->frameset[i]->cellid);
 					vobj->frameset[i] = 0;
 				}
-				
 			free(vobj->frameset);
 			free(vobj->default_frame.raw);
 
+/* don't keep any dangling referernce */
+			vobj->current_frame = vobj;
 			glDeleteTextures(1, &vobj->gl_storage.glid);
 		}
-        
+
 		current_context->nalive--;
 		assert(current_context->nalive >= 0);
+
+/* no effect if already detatched */
 		arcan_video_detatchobject(id);
 
 /* scan the current context, look for clones and other objects that has this object as a parent */
@@ -2051,23 +2057,26 @@ retry:
 		
 		while (current && current->elem) {
 			arcan_vobject* elem = current->elem;
-			arcan_vobject** frameset = elem->frameset;
 		
-		/* how to deal with those that inherit? */
 			if (elem->parent == vobj) {
+/* if we have a child or a linked object that isn't masked from being deleted, cascade */
 				if (elem->flags.clone || (elem->mask & MASK_LIVING) == 0) {
 					arcan_video_deleteobject(current->elem->cellid);
 					goto retry; /* no guarantee the structure is intact */
 				}
-				else /* inherit parent instead */
+/* otherwise, just inherit this objects parent (eventually, WORLDID) */
+				else 
 					elem->parent = vobj->parent;
 			}
 
 			current = current->next;
 		}
 
+/* transforms are also dynamically allocated, so clean and reset */
 		arcan_video_zaptransform(id);
-		/* will also set in_use to false */
+
+/* lots of default values are assumed to be 0, so reset the entire object to be sure.
+ * will help leak detectors as well */ 
 		memset(vobj, 0, sizeof(arcan_vobject));
 		rv = ARCAN_OK;
 	}
@@ -2520,7 +2529,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, sizeof(arcan_video_display.c_ticks));
 		
 		if (current)
- 			do {
+			do {
 				arcan_vobject* elem = current->elem;
 			
 				/* is the item to be updated? */
@@ -2547,14 +2556,16 @@ uint32_t arcan_video_tick(uint8_t steps)
 					}
 				}
 			
-			/* cycle active frame */
-				if (elem->framecycle_mode > 0){
-					elem->framecycle_counter--;
-					if (elem->framecycle_counter == 0){
-						elem->framecycle_counter = elem->framecycle_mode;
+/* mode > 0, cycle every 'n' ticks */
+				if (elem->frameset_meta.mode > 0){
+					elem->frameset_meta.counter--;
+					if (elem->frameset_meta.counter == 0){
+						elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
 						step_active_frame(elem);
 					}
 				}
+
+/* sweep the entire list, any detatched objects won't ever get this update (frameservers, ...) */
 			}
 			while ((current = current->next) != NULL);
 
@@ -2695,43 +2706,42 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
 }
 
+/* scan all 'feed objects' (possible optimization, keep these tracked in a separate list) */
 void arcan_video_pollfeed()
 {
 	arcan_vobject_litem* current = current_context->first;
 
 	while(current && current->elem){
-/* feed objects require a check for changes
- * and re-uploading texture */
-		arcan_vobject* cframe = current->elem->current_frame;
-		arcan_vobject* celem  = current->elem;
-		arcan_vstorage* evstor = &cframe->default_frame;
-		
-/* cycle active frame */
-		if (celem->framecycle_mode < 0){
-			celem->framecycle_counter--;
-			if (celem->framecycle_counter == 0){
-				celem->framecycle_counter = abs( celem->framecycle_mode );
-				step_active_frame(celem);
-				cframe = celem->current_frame;
-			}
-		}
+	arcan_vobject* cframe = current->elem->current_frame;
+	arcan_vobject* celem  = current->elem;
 
 /* if there's a feed function, try and grab a new sample and upload,
  * make sure that we use the current elements "feed function", but set the target
  * to its current active frame, most of the time, they are the same */
 		if ( celem->feed.ffunc &&
 		celem->feed.ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, celem->feed.state) == FFUNC_RV_GOTFRAME) {
+
+			/* cycle active frame */
+			if (celem->frameset_meta.mode < 0){
+				celem->frameset_meta.counter--;
+			
+				if (celem->frameset_meta.counter == 0){
+					celem->frameset_meta.counter = abs( celem->frameset_meta.mode );
+					step_active_frame(celem);
+					cframe = celem->current_frame;
+				}
+			}
+			
 			enum arcan_ffunc_rv funcres = celem->feed.ffunc(ffunc_render,
-			evstor->raw, evstor->s_raw,
+			cframe->default_frame.raw, cframe->default_frame.s_raw,
 			cframe->gl_storage.w, cframe->gl_storage.h, cframe->gl_storage.ncpt,
 			cframe->gl_storage.glid,
 			celem->feed.state);
 			
-/* special "hack" for situations where the ffunc can do the gl-calls
- * without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
+/* special "hack" for situations where the ffunc can do the gl-calls without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
 			if (funcres == FFUNC_RV_COPIED){
 				glBindTexture(GL_TEXTURE_2D, cframe->gl_storage.glid);
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, evstor->raw);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, cframe->default_frame.raw);
 			}
 		}
 
