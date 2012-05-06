@@ -71,6 +71,8 @@ static const struct option longopts[] = {
 	{ "help", no_argument, NULL, '?' },
 	{ "width", required_argument, NULL, 'w' },
 	{ "height", required_argument, NULL, 'h' },
+	{ "winx", required_argument, NULL, 'x' },
+	{ "winy", required_argument, NULL, 'y' },
 	{ "fullscreen", no_argument, NULL, 'f' },
 	{ "windowed", no_argument, NULL, 's' },
 	{ "debug", no_argument, NULL, 'g' },
@@ -94,6 +96,8 @@ void usage()
 	printf("usage:\narcan [-whfmsptoldg12] [theme] [themearguments]\n"
 		"-w\t--width       \tdesired width (default: 640)\n"
 		"-h\t--height      \tdesired height (default: 480)\n"
+		"-x\t--winx        \tforce window x position (default: don't set)\n"
+		"-y\t--winy        \tforce window y position (default: don't set)\n" 
 		"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 		"-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 		"-s\t--windowed    \ttoggle borderless window mode\n"
@@ -122,6 +126,9 @@ int main(int argc, char* argv[])
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
 	int width = 640;
 	int height = 480;
+	int winx = -1;
+	int winy = -1;
+	
 	int ch;
 	char* dbfname = "arcandb.sqlite";
 	srand( time(0) ); 
@@ -130,7 +137,7 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:?fmsp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fmsp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
 				usage();
@@ -139,6 +146,8 @@ int main(int argc, char* argv[])
 			case 'w' : width = strtol(optarg, NULL, 10); break;
 			case 'h' : height = strtol(optarg, NULL, 10); break;
 			case 'm' : conservative = true; break;
+			case 'x' : winx = strtol(optarg, NULL, 10); break;
+			case 'y' : winy = strtol(optarg, NULL, 10); break;
 			case 'f' : fullscreen = true; break;
 			case 's' : windowed = true; break;
 			case 'l' : arcan_libpath = strdup(optarg); break;
@@ -209,10 +218,15 @@ int main(int argc, char* argv[])
 		goto error;
 	}
 	
+	if (winx != -1 || winy != -1){
+		char windbuf[64] = {0}; 
+		snprintf(windbuf, 63, "SDL_VIDEO_WINDOW_POS=%i,%i", winx >= 0 ? winx : 0, winy >= 0 ? winy : 0);
+		putenv(windbuf);
+	}
+
 	if (width == 0 || height == 0) {
-		width = vi->current_w;
+	width = vi->current_w;
 		height = vi->current_h;
-		putenv("SDL_VIDEO_WINDOW_POS=0,0");
 	}
 	
 	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i\n", 
@@ -221,10 +235,6 @@ int main(int argc, char* argv[])
     
 	if (windowed) {
 		fullscreen = false;
-/*		SDL_WM_GrabInput(SDL_GRAB_ON);
-		putenv("SDL_VIDEO_WINDOW_POS=0,0");*/
-
-/* some kind of call is missing on OSX in order to put the priority above the menu-bar (and disable border/bar) */
 	}
 
 	/* grab video, (necessary) */
