@@ -89,6 +89,7 @@ typedef struct arcan_vobject {
 		signed short mode;
 		unsigned short counter;
 		unsigned short current;
+		enum arcan_framemode framemode;
 	} frameset_meta;
 	
 	struct storage_info_t gl_storage;
