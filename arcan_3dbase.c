@@ -260,7 +260,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			if (!frame)
 				continue; 
 /* only allocate set a sampler if there's a map and a corresponding map- slot in the shader */
-			glClientActiveTexture(GL_TEXTURE0 + i - 1);
+			glActiveTexture(GL_TEXTURE0 + i - 1);
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
 		}
@@ -275,7 +275,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			if (attribs[i] != -1)
 				glDisableVertexAttribArray(attribs[i]);
 			
-        cframe += base->nmaps;
+		cframe += base->nmaps;
 		base = base->next;
 	}
 

@@ -855,6 +855,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		target->frameset[0] = target;
 		target->frameset_meta.current = 0;
 		target->frameset_meta.capacity = capacity;
+		target->frameset_meta.framemode = mode;
 
 	return ARCAN_OK;
 }
@@ -2791,7 +2792,6 @@ void arcan_video_refresh_GL(float lerp)
 #endif
 	
 			arcan_vobject* elem = current->elem;
-			arcan_vstorage* evstor = &elem->default_frame;
 			surface_properties* csurf = &elem->current;
 
 			assert(elem->parent != NULL);
@@ -2800,57 +2800,73 @@ void arcan_video_refresh_GL(float lerp)
 			surface_properties dprops = {0};
 			arcan_resolve_vidprop(elem, lerp, &dprops);
             
-/* time for the drawcall, assuming object is visible
- * add occlusion test / blending threshold here ..
- * note that objects will have been sorted based on Z already.
- * order is split in a negative (3d) and positive (2D), negative are handled through ffunc. 
- */
-			if ( elem->order >= 0 && elem->current.opa > EPSILON){
-				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
-				if(elem->gl_storage.program > 0)
-					arcan_shader_activate(elem->gl_storage.program);
-				else
-					arcan_shader_activate(arcan_video_display.defaultshdr);
-				
-				if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force )){
-					glDisable(GL_BLEND);
-				}
-				else{
-					glEnable(GL_BLEND);
-				}
-				
-				if (elem->flags.cliptoparent && elem->parent != &current_context->world){
+/* don't waste time on objects that aren't supposed to be visible */
+			if ( dprops.opa < EPSILON){
+				current = current->next;
+				continue;
+			}
+
+/* enable clipping if used */
+			bool clipped = false;
+			if (elem->flags.cliptoparent && elem->parent != &current_context->world){
 /* toggle stenciling, reset into zero, draw parent bounding area to stencil only,
  * redraw parent into stencil, draw new object then disable stencil. */
-					glEnable(GL_STENCIL_TEST);
-					glClearStencil(0);
-					glClear(GL_STENCIL_BUFFER_BIT);
-					glColorMask(0, 0, 0, 0);
-					glStencilFunc(GL_ALWAYS, 1, 1);
-					glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+				clipped = true;
+				glEnable(GL_STENCIL_TEST);
+				glClearStencil(0);
+				glClear(GL_STENCIL_BUFFER_BIT);
+				glColorMask(0, 0, 0, 0);
+				glStencilFunc(GL_ALWAYS, 1, 1);
+				glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
 
-					arcan_vobject* celem = elem;
+/* switch to default shader as we don't want any fancy vertex processing interfering with clipping */
+				arcan_shader_activate(arcan_video_display.defaultshdr);
+				arcan_vobject* celem = elem;
 
 /* since we can have hierarchies of partially clipped, we may need to resolve all */
-					while (celem->parent != &current_context->world){
-						surface_properties pprops = {0};
-						arcan_resolve_vidprop(celem->parent, lerp, &pprops);
-						if (celem->parent->flags.cliptoparent == false)
-							draw_surf(pprops, celem->parent, elem->current_frame->txcos);
+				while (celem->parent != &current_context->world){
+					surface_properties pprops = {0};
+					arcan_resolve_vidprop(celem->parent, lerp, &pprops);
+					if (celem->parent->flags.cliptoparent == false)
+						draw_surf(pprops, celem->parent, elem->current_frame->txcos);
 
-						celem = celem->parent;
-					}
-
-					glColorMask(1, 1, 1, 1);
-					glStencilFunc(GL_EQUAL, 1, 1);
-					glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-
-					draw_surf(dprops, elem, elem->current_frame->txcos);
-					glDisable(GL_STENCIL_TEST);
-				} else {
-					draw_surf(dprops, elem, elem->current_frame->txcos);
+					celem = celem->parent;
 				}
+
+				glColorMask(1, 1, 1, 1);
+				glStencilFunc(GL_EQUAL, 1, 1);
+				glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 			}
+
+			arcan_shader_activate( elem->gl_storage.program > 0 ? elem->gl_storage.program : arcan_video_display.defaultshdr );
+
+/* depending on frameset- mode, we may need to split the frameset up into multitexturing */
+		if (elem->frameset_meta.counter > 0 && elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE){
+				unsigned j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
+				for(unsigned i = 0;i < j; i++){
+					char unifbuf[9] = {0};
+					
+					if (elem->frameset[i] == NULL) continue;
+					glActiveTexture(GL_TEXTURE0 + i);
+					glEnable(GL_TEXTURE_2D);
+					glBindTexture(GL_TEXTURE_2D, elem->frameset[ (elem->frameset_meta.current + i) % elem->frameset_meta.capacity ]->gl_storage.glid);
+					snprintf(unifbuf, 8, "map_tu%d", i);
+					arcan_shader_forceunif(unifbuf, shdrint, &i, false);
+				}
+		}
+			else
+				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
+
+/* only blend if the object isn't entirely solid or if the object has specific settings */
+			if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force ))
+				glDisable(GL_BLEND);
+			else
+				glEnable(GL_BLEND);
+
+			draw_surf(dprops, elem, elem->current_frame->txcos);
+
+			if (clipped)
+				glDisable(GL_STENCIL_TEST);
 
 			current = current->next;
 		}
