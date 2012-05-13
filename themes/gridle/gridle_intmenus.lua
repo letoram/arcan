@@ -163,14 +163,44 @@ function gridlemenu_loadshader(basename)
 	end
 	
 -- insert into 'fullscreen' slot
-	fullscreen_shader = load_shader(vsh, fsh, "fullscreen");
+	fullscreen_shader = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
 
 -- this might be used from detail-view as well so don't assume we know what to update
 	if (internal_vid ~= nil) then
-		-- force the shader unto the current vid
+	-- force the shader unto the current vid
 		gridlemenu_resize_fullscreen(internal_vid);
 		image_shader(internal_vid, fullscreen_shader);
 	end
+end
+
+local function select_shaderfun(label, store)
+	settings.iodispatch["MENU_ESCAPE"]();
+	
+	gridlemenu_loadshader(label);
+	settings.fullscreenshader = label;
+
+	if (store) then
+		store_key("defaultshader", label);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+end
+
+local function grab_shaderconf(basename)
+	local vdef, vcond = parse_shader("shaders/fullscreen/" .. basename .. ".vShader");
+	local fdef, fcond = parse_shader("shaders/fullscreen/" .. basename .. ".fShader");
+	
+	local resdef = {};
+	local rescond = {};
+	
+-- remap the tables into hash/LUT, doesn't separate namespaces in v/f shaders 
+	for ind, val in ipairs( vdef ) do resdef[val] = true; end
+	for ind, val in ipairs( fdef ) do resdef[val] = true; end
+	for ind, val in ipairs( vcond ) do rescond[val] = true; end
+	for ind, val in ipairs( fcond ) do rescond[val] = true; end
+
+	return resdef, rescond;
 end
 
 -- glob shaders/fullscreen/*
@@ -178,7 +208,7 @@ end
 -- upon selection, load it into the "fullscreen" slot and reset the relevant uniforms
 local function build_shadermenu()
 	local reslbls = {};
-	local resptrs = {};	
+	local resptrs = {};
 	local shaderlist = {};
 	local vreslist = glob_resource("shaders/fullscreen/*.vShader", 2);
 	local freslist = glob_resource("shaders/fullscreen/*.fShader", 2);
@@ -191,30 +221,30 @@ local function build_shadermenu()
 	end
 	
 	for i = 1, #freslist do
-		local basename = string.sub(vreslist[i], 1, -9);
-		if (vreslist[basename] == true) then 
+		local basename = string.sub(freslist[i], 1, -9);
+		if (vreslist[basename]) then 
 			shaderlist[basename] = true;
 		end
 	end
-
+	
 	for key, val in pairs(shaderlist) do
-		resptrs[ key ] = function(lbl, store) 
-			settings.iodispatch["MENU_ESCAPE"](); 
-			gridlemenu_loadshader(lbl);
-			settings.fullscreenshader = lbl;
-
-			if (store) then
-				store_key("defaultshader", lbl);
-				play_audio(soundmap["MENU_FAVORITE"]);
-			else
-				play_audio(soundmap["MENU_SELECT"]);
-			end
-	end
-
+		resptrs[ key ] = select_shaderfun;
 		table.insert(reslbls, key);
 	end
-	
+
 	return reslbls, resptrs, resstyles;
+end
+
+local function toggle_shadersetting(label, save)
+	if (settings.shader_opts[label]) then
+		settings.shader_opts[label] = nil;
+		current_menu.formats[ label ] = nil;
+	else
+		current_menu.formats[ label ] = "\\#ff0000";
+		settings.shader_opts[label] = true;
+	end
+	
+	current_menu:move_cursor(0, 0, true);
 end
 
 function gridlemenu_internal(target_vid)
@@ -234,6 +264,31 @@ function gridlemenu_internal(target_vid)
 		end
 	end
 
+	settings.iodispatch["ZOOM_CURSOR"] = function(iotbl)
+		selectlbl = current_menu:select()
+		
+		if (settings.inshader) then
+			local def, cond = grab_shaderconf(selectlbl);
+			local labels = {};
+			local ptrs   = {};
+			local fmts   = {};
+
+			for key, val in pairs(cond) do
+				table.insert(labels, key);
+				ptrs[ key ] = toggle_shadersetting;
+				if (def [ key ] ) then
+					fmts[ key ] = "\\#ff0000";
+				end
+			end
+
+			if (#labels > 0) then
+				settings.shader_opts = def;
+				menu_spawnmenu(labels, ptrs, fmts);
+			end
+			
+		end
+	end
+	
 	settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
 			selectlbl = current_menu:select();
 			if (current_menu.ptrs[selectlbl]) then
@@ -243,7 +298,7 @@ function gridlemenu_internal(target_vid)
 	
 	settings.iodispatch["MENU_UP"] = function(iotbl)
 		play_audio(soundmap["MENUCURSOR_MOVE"]);
-		current_menu:move_cursor(-1, true); 
+		current_menu:move_cursor(-1, true);
 	end
 
 	settings.iodispatch["MENU_DOWN"] = function(iotbl)
@@ -251,8 +306,10 @@ function gridlemenu_internal(target_vid)
 		current_menu:move_cursor(1, true); 
 	end
 
-settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
+		settings.inshader = false;
+		
 		if (current_menu.parent ~= nil) then
 			if (silent == nil or silent == false) then
 					play_audio(soundmap["SUBMENU_FADE"]);
@@ -293,6 +350,7 @@ settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		end
 	
 		local listl, listp = build_shadermenu();
+		settings.inshader = true;
 		menu_spawnmenu( listl, listp, def ); 
 	end
 	

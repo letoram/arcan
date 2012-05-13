@@ -235,7 +235,6 @@ static void mode_libretro(char* resource, char* keyfile)
 		
 /* at this point, we have the correct library, we have loaded the ROM in question,
  * get shared memory, setup callbacks and loop */
-		
 	}
 
 }
