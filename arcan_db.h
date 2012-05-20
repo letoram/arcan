@@ -78,17 +78,17 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename);
  * subgenre (null or string for match, prepend with asterisk for wildcard match)
  * manufacturer (null or string for match) */
 arcan_dbh_res arcan_db_games(arcan_dbh*,
-                             const int year,
-                             const int input,
-                             const int n_players,
-                             const int n_buttons,
-                             const char* title,
-                             const char* genre,
-                             const char* subgenre,
-							               const char* target,
-														 const long long offset,
-														 const long long limit
-							);
+	const int year,
+	const int input,
+	const int n_players,
+	const int n_buttons,
+	const char* title,
+	const char* genre,
+	const char* subgenre,
+	const char* target,
+	const long long offset,
+	const long long limit
+);
 
 /* log a database entry for a failed launch,
  * assist in maintaing game-db / config */

@@ -10,10 +10,21 @@ function menu_resetgcount(node)
 	node.gamecount = -1;
 end
 
+local function build_globmenu(globstr, cbfun, globmask)
+	local lists = glob_resource(globstr, globmask);
+	local resptr = {};
+	
+	for i = 1, #lists do
+		resptr[ lists[i] ] = cbfun;
+	end
+	
+	return lists, resptr;
+end
+
 -- for some menu items we just want to have a list of useful values
 -- this little function builds a list of those numbers, with corresponding functions,
 -- dispatch handling etc.
-local function gen_num_menu(name, base, step, count)
+local function gen_num_menu(name, base, step, count, triggerfun)
 	local reslbl = {};
 	local resptr = {};
 	local clbl = base;
@@ -27,14 +38,19 @@ local function gen_num_menu(name, base, step, count)
 		else
 			play_audio(soundmap["MENU_SELECT"]);
 		end
+		
+		if (triggerfun) then triggerfun(); end
 	end
 
 	clbl = base;
 	for i=1,count do
+		if (type(step) == "function") then clbl = step(i); end
+
 		table.insert(reslbl, tostring(clbl));
-		resptr[tostring(clbl)] = basename; 
-		clbl = clbl + step;
-	end
+		resptr[tostring(clbl)] = basename;
+		
+		if (type(step) == "number") then clbl = clbl + step; end
+end
 	
 	return reslbl, resptr;
 end
@@ -66,17 +82,43 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	local props = image_surface_resolve_properties(current_menu.cursorvid);
 	local windsize = #list * 24;
 
+	local yofs = 0;
 	if (props.y + windsize > VRESH) then
-		windsize = VRESH - props.y;
+		yofs = VRESH - windsize;
 	end
 
 	current_menu = listview_create(list, windsize, VRESW / 3, fmtlist);
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
 	current_menu:show();
+	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
+
+	
+	local xofs = 0;
+	local yofs = 0;
+	
+-- if the new list overflows the current window borders, nudge it back a little.
+	
+-- figure out where the window is going to be.
+	local aprops_l = image_surface_properties(current_menu.anchor, settings.fadedelay);
+	local wprops_l = image_surface_properties(current_menu.window, settings.fadedelay);
+	local dx = aprops_l.x;
+	local dy = aprops_l.y;
+	
+	local winw = wprops_l.width;
+	local winh = wprops_l.height;
+	
+	if (dx + winw > VRESW) then
+		dx = dx + (VRESW - (dx + winw));
+	end
+	
+	if (dy + winh > VRESH) then
+		dy = dy + (VRESH - (dy + winh));
+	end
+	
+	move_image( current_menu.anchor, dx, dy, settings.fadedelay );
 	
 	play_audio(soundmap["SUBMENU_TOGGLE"]);
-	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
 	return current_menu;
 end
 
@@ -92,6 +134,7 @@ local filterlbls = {
 	"Buttons",
 	"Genre",
 	"Subgenre",
+	"Platform", 
 	"Target"
 };
 
@@ -101,11 +144,73 @@ local settingslbls = {
 	"Reconfigure Keys",
 };
 	
+local backgroundlbls = {
+};
+
+local function updatebgtrigger()
+	zap_whitegrid();
+	build_whitegrid();
+	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh)	
+end
+
+local function setbgfun(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
+	settings.bgname = label;
+
+	if (save) then 
+		store_key("bgname", 0);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+	
+  updatebgtrigger();
+end
+
+local function animnums(i)
+	if (i > 1) then
+		return math.pow(2, i);
+	else
+		return 1;
+	end
+end
+
+local function tilenums(i)
+	if (i > 1) then
+		return 4 * (i - 1);
+	else
+		return 1;
+	end
+end
+
+local function bgtileupdate(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.tilebg = label;
+
+	if (save) then 
+		store_key("tilebg", label);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+	
+  updatebgtrigger();
+end
+
+local backgroundptrs = {};
+add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES, updatebgtrigger));
+add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, updatebgtrigger));
+add_submenu(backgroundlbls, backgroundptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, updatebgtrigger));
+add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, updatebgtrigger));
+add_submenu(backgroundlbls, backgroundptrs, "Animate (horizontal)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, updatebgtrigger));
+
 local settingsptrs = {};
 add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
+add_submenu(settingslbls, settingsptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
+add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate});
 
 if (LEDCONTROLLERS > 0) then
 	table.insert(settingslbls, "LED display mode...");
@@ -375,6 +480,7 @@ function build_gamelists()
 
 	return res, resptr;
 end
+
 
 function gridlemenu_settings()
 -- first, replace all IO handlers

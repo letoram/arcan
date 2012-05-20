@@ -158,6 +158,27 @@ arcan_dbh_res arcan_db_targets(arcan_dbh* dbh)
 	return res;
 }
 
+long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status)
+{
+	const char* baseqry1 = "SELECT gameid FROM game WHERE title=? LIMIT 1;";
+	long int rv = -1;
+	if (status)
+		*status = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	sqlite3_stmt* stmt = NULL;
+
+	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
+	
+	while (sqlite3_step(stmt) == SQLITE_ROW){
+		rv = sqlite3_column_int(stmt, 0);
+		if (status)
+			*status = ARCAN_OK;
+	}
+
+	sqlite3_finalize(stmt);
+}
+
 arcan_dbh_res arcan_db_genres(arcan_dbh* dbh, bool sub)
 {
 	const char* baseqry1 = "SELECT DISTINCT genre FROM game;";
@@ -389,33 +410,32 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 			const char* col = sqlite3_column_name(stmt, ofs);
 			if (strcmp(col, "gameid") == 0)
 				row->gameid = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "title") == 0)
+				row->title = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+			else if (strcmp(col, "setname") == 0)
+				row->setname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+			else if (strcmp(col, "players") == 0)
+				row->n_players = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "buttons") == 0)
+				row->n_buttons = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "ctrlmask") == 0)
+				row->input = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "genre") == 0)
+				row->genre = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+			else if (strcmp(col, "subgenre") == 0)
+				row->subgenre = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+			else if (strcmp(col, "year") == 0)
+				row->year = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "manufacturer") == 0)
+				row->manufacturer = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+			else if (strcmp(col, "targetid") == 0)
+				row->targetid = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "launch_counter") == 0)
+				row->launch_counter = sqlite3_column_int(stmt, ofs);
+			else if (strcmp(col, "target") == 0)
+				row->targetname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
 			else
-				if (strcmp(col, "title") == 0)
-					row->title = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
-				else if (strcmp(col, "setname") == 0)
-					row->setname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
-				else if (strcmp(col, "players") == 0)
-					row->n_players = sqlite3_column_int(stmt, ofs);
-				else if (strcmp(col, "buttons") == 0)
-					row->n_buttons = sqlite3_column_int(stmt, ofs);
-				else if (strcmp(col, "ctrlmask") == 0)
-					row->input = sqlite3_column_int(stmt, ofs);
-				else if (strcmp(col, "genre") == 0)
-					row->genre = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
-				else if (strcmp(col, "subgenre") == 0)
-					row->subgenre = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
-				else if (strcmp(col, "year") == 0)
-					row->year = sqlite3_column_int(stmt, ofs);
-				else if (strcmp(col, "manufacturer") == 0)
-					row->manufacturer = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
-				else if (strcmp(col, "targetid") == 0)
-					row->targetid = sqlite3_column_int(stmt, ofs);
-				else if (strcmp(col, "launch_counter") == 0)
-					row->launch_counter = sqlite3_column_int(stmt, ofs);
-				else if (strcmp(col, "target") == 0)
-					row->targetname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
-				else
-					arcan_warning("Warning: arcan_db_games(), unexpected column value %s\n", col);
+				arcan_warning("Warning: arcan_db_games(), unexpected column value %s\n", col);
 		}
 		while (++ofs < ncols);
 

@@ -22,7 +22,7 @@ local function gridledetail_load()
 	shader_uniform(default_shader3d, "wambient", "fff", PERSIST, 0.3, 0.3, 0.3);
 	shader_uniform(default_shader3d, "wdiffuse", "fff", PERSIST, 0.6, 0.6, 0.6);
 	shader_uniform(default_shader3d, "map_diffuse", "i", PERSIST, 0);
-	shader_uniform(texco_shader, "speedfact", "f", PERSIST, 24.0);
+	shader_uniform(texco_shader, "speedfact", "ff", PERSIST, 12.0, 12.0);
 	shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
 	
 -- make sure this is only done once
@@ -43,7 +43,7 @@ local function gridledetail_setnoisedisplay()
 	local rvid = set_image_as_frame(detailview.model.vid, instance_image(noise_image), detailview.model.labels["display"], 1);
 	mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 
-	if (rvid ~= BADID) then 
+	if (rvid ~= BADID) then
 		delete_image(rvid); 
 	end
 end
@@ -58,7 +58,7 @@ local function gridledetail_imagestatus(source, status)
 		mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
 		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
 
-		if (rvid ~= ARCAN_BADID) then 
+		if (rvid ~= BADID) then 
 			delete_image(rvid);
 		end
 		
@@ -159,7 +159,9 @@ function gridledetail_video_event(source, event)
 			resize_image(source, event.width, event.height, 0);
 
 			local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
-			if (rvid ~= source and rvid ~= BADID) then delete_image(rvid); end 
+			if (rvid ~= source and rvid ~= BADID) then 
+				delete_image(rvid); 
+			end 
 			
 -- with a gl source, it means it comes from a readback, means that we might need to flip texture coordinates for it to be rendered correctly
 -- this is done in two ways, when we force it unto the model we can't assume a specific shape for the display, so we have to do it with texture coordinates
