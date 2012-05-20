@@ -41,6 +41,7 @@
 #include <lauxlib.h>
 
 #include <SDL.h>
+#include <assert.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -165,11 +166,20 @@ void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
 	lua_setglobal(ctx, key);
 }
 
+const char* luaL_lastcaller(lua_State* ctx)
+{
+	return lua_tostring(ctx, lua_upvalueindex(2));
+}
+
 static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
 {
 	arcan_vobj_id res = luaL_checknumber(ctx, num);
+	
 	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
 		res -= lua_ctx_store.lua_vidbase;
+
+	if (res < 0)
+		res = ARCAN_EID;
 	
 	return res;
 }
@@ -183,8 +193,8 @@ static inline void lua_pushvid(lua_State* ctx, arcan_vobj_id id)
 {
 	if (id != ARCAN_EID && id != ARCAN_VIDEO_WORLDID)
 		id += lua_ctx_store.lua_vidbase;
-	
-	lua_pushnumber(ctx, id);
+
+	lua_pushnumber(ctx, (double) id);
 }
 
 static inline void lua_pushaid(lua_State* ctx, arcan_aobj_id id)
@@ -719,13 +729,33 @@ int arcan_lua_hittest(lua_State* state)
 	return 1;
 }
 
+int arcan_lua_deleteimage(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+
+	/* possibly long journey,
+	 * for a vid with a movie associated (or any feedfunc),
+	 * the feedfunc will be invoked with the cleanup cmd
+	 * which in the movie cause will trigger a full movie cleanup */
+	arcan_errc rv = arcan_video_deleteobject(id);
+	if (rv != ARCAN_OK){
+		if (lua_ctx_store.debug > 0){
+			arcan_warning("%s => arcan_lua_deleteimage(%d) -- Object could not be deleted, invalid object specified.\n", luaL_lastcaller(ctx), id);
+		}
+		else
+			arcan_fatal("Theme tried to delete non-existing object (%d) from (%s). Relaunch with debug flags (-g) to suppress.\n", id, luaL_lastcaller(ctx));
+	}
+	
+	return 0;
+}
+
 int arcan_lua_setlife(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	int ttl = luaL_checkint(ctx, 2);
 
 	if (ttl <= 0)
-			arcan_video_deleteobject(id);
+			return arcan_lua_deleteimage(ctx);
 	else
 			arcan_video_setlife(id, ttl);
 
@@ -867,20 +897,6 @@ int arcan_lua_setled(lua_State* ctx)
 	lua_pushnumber(ctx, state ? arcan_led_set(id, num) : arcan_led_clear(id, num));
 
 	return 1;
-}
-
-int arcan_lua_deleteimage(lua_State* ctx)
-{
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-
-	/* possibly long journey,
-	 * for a vid with a movie associated (or any feedfunc),
-	 * the feedfunc will be invoked with the cleanup cmd
-	 * which in the movie cause will trigger a full movie cleanup */
-	if (id > 0)
-		arcan_video_deleteobject(id);
-
-	return 0;
 }
 
 int arcan_lua_pushcontext(lua_State* ctx)
@@ -1411,7 +1427,11 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	bool detatch = luaL_optint(ctx, 4, 0) > 0;
 
 	arcan_errc errc;
-	lua_pushvid(ctx, arcan_video_setasframe(sid, did, num, detatch, &errc));
+	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num, detatch, &errc);
+	if (errc == ARCAN_OK)
+		lua_pushvid(ctx, vid);
+	else
+		lua_pushvid(ctx, ARCAN_EID);
 	
 	return 1;
 }
@@ -2032,7 +2052,7 @@ int arcan_lua_getgame(lua_State* ctx)
 
 void arcan_lua_panic(lua_State* ctx)
 {
-	lua_ctx_store.debug = true;
+	lua_ctx_store.debug = 2;
 	arcan_lua_wraperr(ctx, -1, "(panic)");
 	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
 	
@@ -2361,7 +2381,6 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 		}
 		else
 			arcan_warning("arcan_lua_shader_uniform(), unspported format string (%s)\n", fmtstr);
-			
 	}
 	
 	/* shdrbool : b
@@ -2462,6 +2481,13 @@ void arcan_lua_pushargv(lua_State* ctx, char** argv)
 	lua_setglobal(ctx, "arguments");
 }
 
+static void arcan_lua_register(lua_State* ctx, const char* name, lua_CFunction fun)
+{
+	lua_pushstring(ctx, name);
+	lua_pushcclosure(ctx, fun, 1);
+	lua_setglobal(ctx, name);
+}
+
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
 	if (!ctx)
@@ -2477,336 +2503,336 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	
 /* category: resource */
 /* item: resource,name,[searchmask : THEME_RESOURCE, SHARED_RESOURCE], boolean */
-	lua_register(ctx, "resource", arcan_lua_resource);
+	arcan_lua_register(ctx, "resource", arcan_lua_resource);
 
 /* item: glob_resource,basename,baseext,strtable */
-	lua_register(ctx, "glob_resource", arcan_lua_globresource);
+	arcan_lua_register(ctx, "glob_resource", arcan_lua_globresource);
 	
 /* item: zap_resource,name (in theme only), boolean */
-	lua_register(ctx, "zap_resource", arcan_lua_zapresource);
+	arcan_lua_register(ctx, "zap_resource", arcan_lua_zapresource);
 
 /* item: open_resource,name (in theme only), boolean */
-	lua_register(ctx, "open_rawresource", arcan_lua_rawresource);
+	arcan_lua_register(ctx, "open_rawresource", arcan_lua_rawresource);
 
 /* item: write_rawresource,line, boolean */
-	lua_register(ctx, "write_rawresource", arcan_lua_pushrawstr);
+	arcan_lua_register(ctx, "write_rawresource", arcan_lua_pushrawstr);
 
 /* item: close_rawresource, boolean */
-	lua_register(ctx, "close_rawresource", arcan_lua_rawclose);
+	arcan_lua_register(ctx, "close_rawresource", arcan_lua_rawclose);
 
 /* item: read_rawresource, string or nil */
-	lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
+	arcan_lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
 	
 /* category: target */
 /* item: launch_target, gametitle, launchmode, tgtvid and tgtaid or elapsed*/
-	lua_register(ctx, "launch_target", arcan_lua_targetlaunch);
+	arcan_lua_register(ctx, "launch_target", arcan_lua_targetlaunch);
 
 /* item: target_input, tgtvid, inputtbl, nil */
-	lua_register(ctx, "target_input", arcan_lua_targetinput);
-	lua_register(ctx, "input_target", arcan_lua_targetinput);
+	arcan_lua_register(ctx, "target_input", arcan_lua_targetinput);
+	arcan_lua_register(ctx, "input_target", arcan_lua_targetinput);
 	
 /* item: suspend_target, tgtvid, nil */
-	lua_register(ctx, "suspend_target", arcan_lua_targetsuspend);
+	arcan_lua_register(ctx, "suspend_target", arcan_lua_targetsuspend);
 	
 /* item: resume_target, tgtvid, nil */
-	lua_register(ctx, "resume_target", arcan_lua_targetresume);
+	arcan_lua_register(ctx, "resume_target", arcan_lua_targetresume);
 
 /* category: core system */
 /* item: kbd_repeat, rate, nil */
-	lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
+	arcan_lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
 
 /* item: 3dorder, bool, nil */
-	lua_register(ctx, "video_3dorder", arcan_lua_3dorder);
+	arcan_lua_register(ctx, "video_3dorder", arcan_lua_3dorder);
 
 /* item: toggle_mouse_grab, nil */
- 	lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
+ 	arcan_lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
 
 /* item: system_load,resource,loaderptr */
-	lua_register(ctx, "system_load", arcan_lua_dofile);
+	arcan_lua_register(ctx, "system_load", arcan_lua_dofile);
 
 /* item: system_stack_size(num, items) */
-	lua_register(ctx, "system_context_size", arcan_lua_systemcontextsize);
+	arcan_lua_register(ctx, "system_context_size", arcan_lua_systemcontextsize);
 
 /* item:default_movie_queueopts, vcells acells acellsize */
-	lua_register(ctx, "default_movie_queueopts", arcan_lua_getqueueopts);
+	arcan_lua_register(ctx, "default_movie_queueopts", arcan_lua_getqueueopts);
 	
 /* item:default_movie_queueopts_override, vcells acells acellsize, nil */
-	lua_register(ctx, "default_movie_queueopts_override", arcan_lua_setqueueopts);
+	arcan_lua_register(ctx, "default_movie_queueopts_override", arcan_lua_setqueueopts);
 
 /* item:switch_default_scalemode, newmode ( NOPOW2(0) TXCOORD(1) SCALEPOW(2) ), nil */
-	lua_register(ctx, "switch_default_scalemode", arcan_lua_setscalemode);
+	arcan_lua_register(ctx, "switch_default_scalemode", arcan_lua_setscalemode);
 
 /* item:switch_default_texmode, newmode ( REPEAT(0), CLAMP_TO_EDGE(1) ), nil */
-	lua_register(ctx, "switch_default_texmode", arcan_lua_settexmode);
+	arcan_lua_register(ctx, "switch_default_texmode", arcan_lua_settexmode);
 
 /* item:switch_default_imagemproc, newproc (NORMAL(0), FLIPH(1), nil */
-	lua_register(ctx, "switch_default_imageproc", arcan_lua_setimageproc);
+	arcan_lua_register(ctx, "switch_default_imageproc", arcan_lua_setimageproc);
 
 /* item: shutdown,nil */
-	lua_register(ctx, "shutdown", arcan_lua_shutdown);
+	arcan_lua_register(ctx, "shutdown", arcan_lua_shutdown);
 
 /* item: warning, string, nil */
-	lua_register(ctx, "warning", arcan_lua_warning);
+	arcan_lua_register(ctx, "warning", arcan_lua_warning);
 	
 /*	lua_register(ctx, "toggle_fullscreen", arcan_lua_togglefs); */
 
 /* category: database */
 /* item: *store_key, key, value, nil */
-	lua_register(ctx, "store_key", arcan_lua_storekey);
+	arcan_lua_register(ctx, "store_key", arcan_lua_storekey);
 
 /* item: *get_key, key, value */
-	lua_register(ctx, "get_key", arcan_lua_getkey);
+	arcan_lua_register(ctx, "get_key", arcan_lua_getkey);
 
 /* item: game_cmdline, title, execstr */
-	lua_register(ctx, "game_cmdline", arcan_lua_getcmdline);
+	arcan_lua_register(ctx, "game_cmdline", arcan_lua_getcmdline);
 
 /* item: list_games, [filter], arr_gametbl */
-	lua_register(ctx, "list_games", arcan_lua_filtergames);
+	arcan_lua_register(ctx, "list_games", arcan_lua_filtergames);
 
 /* item: list_targets, arr_string */
-	lua_register(ctx, "list_targets", arcan_lua_gettargets);
+	arcan_lua_register(ctx, "list_targets", arcan_lua_gettargets);
 
 /* item: game_info, title, gametbl or nil */
-	lua_register(ctx, "game_info", arcan_lua_getgame);
+	arcan_lua_register(ctx, "game_info", arcan_lua_getgame);
 
 /* item: game_family, title, arr_titles or nil */
-	lua_register(ctx, "game_family", arcan_lua_gamefamily);
+	arcan_lua_register(ctx, "game_family", arcan_lua_gamefamily);
 
 /* item: game_genres, title, arr_genres or nil */
-	lua_register(ctx, "game_genres", arcan_lua_getgenres);
+	arcan_lua_register(ctx, "game_genres", arcan_lua_getgenres);
 
 /* category: audio */
 /* item: stream_audio, resource, aid */
-	lua_register(ctx, "stream_audio", arcan_lua_prepare_astream);
+	arcan_lua_register(ctx, "stream_audio", arcan_lua_prepare_astream);
 
 /* item: play_audio, aid, nil */
-	lua_register(ctx, "play_audio", arcan_lua_playaudio);
+	arcan_lua_register(ctx, "play_audio", arcan_lua_playaudio);
 	
 /* item: pause_audio, aid, nil */	
-	lua_register(ctx, "pause_audio", arcan_lua_pauseaudio);
+	arcan_lua_register(ctx, "pause_audio", arcan_lua_pauseaudio);
 
 /* item: delete_audio, aid, nil */
-	lua_register(ctx, "delete_audio", arcan_lua_dropaudio);
+	arcan_lua_register(ctx, "delete_audio", arcan_lua_dropaudio);
 
 /* item: play_sample, resource, [gain], nil */
-	lua_register(ctx, "load_asample", arcan_lua_loadasample);
+	arcan_lua_register(ctx, "load_asample", arcan_lua_loadasample);
 
 /* item: audio_gain, aid, newgain (0..1), [time], nil */
-	lua_register(ctx, "audio_gain", arcan_lua_gain);
+	arcan_lua_register(ctx, "audio_gain", arcan_lua_gain);
 
 /* category: video */
 /* item: load_image, resource, [zval (0..255)], vid */
-	lua_register(ctx, "load_image", arcan_lua_loadimage);
+	arcan_lua_register(ctx, "load_image", arcan_lua_loadimage);
 
 /* item: load_image_asynch, resource, [zval (0..255)], vid */
-	lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
+	arcan_lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
 
 /* item: delete_image, vid, nil */
-	lua_register(ctx, "delete_image", arcan_lua_deleteimage);
+	arcan_lua_register(ctx, "delete_image", arcan_lua_deleteimage);
 
 /* item: show_image, vid, nil */
-	lua_register(ctx, "show_image", arcan_lua_showimage);
+	arcan_lua_register(ctx, "show_image", arcan_lua_showimage);
 
 /* item: hide_image, vid, nil */
-	lua_register(ctx, "hide_image", arcan_lua_hideimage);
+	arcan_lua_register(ctx, "hide_image", arcan_lua_hideimage);
 
 /* item:move_image, vid, absx, absy, [time], nil */
-	lua_register(ctx, "move_image", arcan_lua_moveimage);
+	arcan_lua_register(ctx, "move_image", arcan_lua_moveimage);
 
 /* item:rotate_image, vid, absangz, [time], nil */
-	lua_register(ctx, "rotate_image", arcan_lua_rotateimage);
+	arcan_lua_register(ctx, "rotate_image", arcan_lua_rotateimage);
 
 /* item:scale_image, xfact, yfact, [time], nil */
-	lua_register(ctx, "scale_image", arcan_lua_scaleimage);
+	arcan_lua_register(ctx, "scale_image", arcan_lua_scaleimage);
 
 /* item:resize_image, pxwidth, pyheight, [time], nil */
-	lua_register(ctx, "resize_image", arcan_lua_scaleimage2);
+	arcan_lua_register(ctx, "resize_image", arcan_lua_scaleimage2);
 
 /* item:blend_image, vid,opacity (0..1),[time],nil */
-	lua_register(ctx, "blend_image", arcan_lua_imageopacity);
+	arcan_lua_register(ctx, "blend_image", arcan_lua_imageopacity);
 
 /* item:image_parent, vid, vid */
-	lua_register(ctx, "image_parent", arcan_lua_imageparent);
+	arcan_lua_register(ctx, "image_parent", arcan_lua_imageparent);
 
 /* item:image_find_children, vid, vidtable */
-	lua_register(ctx, "image_children", arcan_lua_imagechildren);
+	arcan_lua_register(ctx, "image_children", arcan_lua_imagechildren);
 	
 /* item:order_image,vid,newz,nil */
-	lua_register(ctx, "order_image", arcan_lua_orderimage);
+	arcan_lua_register(ctx, "order_image", arcan_lua_orderimage);
 
 /* item:max_current_image_order,int */
-	lua_register(ctx, "max_current_image_order", arcan_lua_maxorderimage);
+	arcan_lua_register(ctx, "max_current_image_order", arcan_lua_maxorderimage);
 
 /* item:instance_image,vid */
-	lua_register(ctx, "instance_image", arcan_lua_instanceimage);
+	arcan_lua_register(ctx, "instance_image", arcan_lua_instanceimage);
 
 /* item:*link_image,vid,vid,nil */
-	lua_register(ctx, "link_image", arcan_lua_linkimage);
+	arcan_lua_register(ctx, "link_image", arcan_lua_linkimage);
 
 /* item:*set_image_as_frame,vid,vid,num */
-	lua_register(ctx, "set_image_as_frame", arcan_lua_imageasframe);
+	arcan_lua_register(ctx, "set_image_as_frame", arcan_lua_imageasframe);
 
 /* item:image_framesetsize,vid,ncells,nil */
-	lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
+	arcan_lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
 	
 /* item:image_framecyclemode,vid,nil */
-	lua_register(ctx, "image_framecyclemode", arcan_lua_framesetcycle);
+	arcan_lua_register(ctx, "image_framecyclemode", arcan_lua_framesetcycle);
 
 /* item:image_pushasynch,vid,nil */
-	lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
+	arcan_lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
 	
 /* item:image_activeframe,vid,num,nil */
-	lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
+	arcan_lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
 
 /* item:expire_image,lifetime,nil */
-	lua_register(ctx, "expire_image", arcan_lua_setlife);
+	arcan_lua_register(ctx, "expire_image", arcan_lua_setlife);
 
 /* item:reset_image_transform,vid,nil */
-	lua_register(ctx, "reset_image_transform", arcan_lua_resettransform);
+	arcan_lua_register(ctx, "reset_image_transform", arcan_lua_resettransform);
 
 /* item:instant_image_transform,vid,nil */
-	lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
+	arcan_lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
 
 /* item:image_set_txcos,vid, float x8, nil */
-	lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
+	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
 
 /* item:image_get_txcos,vid,floatary */
-	lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
+	arcan_lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
 
 /* item:image_scaletxcos,vid,scales,scalet,nil */
-	lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
+	arcan_lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
 	
 /* item:image_clipon,vid,nil */
-	lua_register(ctx, "image_clip_on", arcan_lua_clipon);
+	arcan_lua_register(ctx, "image_clip_on", arcan_lua_clipon);
 	
 /* item:image_clipoff,vid,nil */
-	lua_register(ctx, "image_clip_off", arcan_lua_clipoff);
+	arcan_lua_register(ctx, "image_clip_off", arcan_lua_clipoff);
 
 /* item:image_mask_toggle,vid,enumint,nil */
-	lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
+	arcan_lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
 
 /* item:image_mask_set,vid,enumint,nil */
-	lua_register(ctx, "image_mask_set", arcan_lua_setmask);
+	arcan_lua_register(ctx, "image_mask_set", arcan_lua_setmask);
 
 /* item:image_mask_clear,vid,enumint,nil */
-	lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
+	arcan_lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
 	
 /* item:image_mask_clearall,vid, nil */
-	lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);
+	arcan_lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);
 
 /* item:image_surface_properties, vid, surftbl */
-	lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
+	arcan_lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
 
 /* item:image_surface_initial_properties, vid, surftbl */
-	lua_register(ctx, "image_surface_initial_properties", arcan_lua_getimageinitprop);
+	arcan_lua_register(ctx, "image_surface_initial_properties", arcan_lua_getimageinitprop);
 
 /* item:image_surface_resolve_properties, vid, surftbl */
-	lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
+	arcan_lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
 
 /* item:image_storage_properties, vid, surftbl */
-	lua_register(ctx, "image_storage_properties", arcan_lua_getimagestorageprop);
+	arcan_lua_register(ctx, "image_storage_properties", arcan_lua_getimagestorageprop);
 	
 /* item:image_shader, vid, shaderid, nil */
-	lua_register(ctx, "image_shader", arcan_lua_setshader);
+	arcan_lua_register(ctx, "image_shader", arcan_lua_setshader);
 
 /* item:mesh_shader, vid, shaderid, ofs, nil */
-	lua_register(ctx, "mesh_shader", arcan_lua_setmeshshader);
+	arcan_lua_register(ctx, "mesh_shader", arcan_lua_setmeshshader);
 	
 /* item:build_shader, vertstr, fragstr, shaderid */
-	lua_register(ctx, "build_shader", arcan_lua_buildshader);
+	arcan_lua_register(ctx, "build_shader", arcan_lua_buildshader);
 
 /* item:shader_uniform, shader, label, formatstr, args nil */
-	lua_register(ctx, "shader_uniform", arcan_lua_shader_uniform);
+	arcan_lua_register(ctx, "shader_uniform", arcan_lua_shader_uniform);
 	
 /* item:render_text, formatstr, vid */
-	lua_register(ctx, "render_text", arcan_lua_buildstr);
+	arcan_lua_register(ctx, "render_text", arcan_lua_buildstr);
 
 /* item:text_size, formatstr, width and height */
-	lua_register(ctx, "text_dimensions", arcan_lua_strsize);
+	arcan_lua_register(ctx, "text_dimensions", arcan_lua_strsize);
 	
 /* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
-	lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
+	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 
 /* item random_surface, width (px), height (px), vid >*/
-	lua_register(ctx, "random_surface", arcan_lua_randomsurface);
+	arcan_lua_register(ctx, "random_surface", arcan_lua_randomsurface);
 	
 /* item:force_image_blend, boolint, nil */
-	lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
+	arcan_lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
 	
 /* item:push_video_context, int */
-	lua_register(ctx, "push_video_context", arcan_lua_pushcontext);
+	arcan_lua_register(ctx, "push_video_context", arcan_lua_pushcontext);
 
 /* item:pop_video_context, int */
-	lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
+	arcan_lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
 
 /* item:current_context_usage, nusedint and nsizeint */
-	lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
+	arcan_lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
 
 /* category: 3d */
 /* item:load_3dmodel, resource, vid */
-    lua_register(ctx, "new_3dmodel", arcan_lua_buildmodel);
+  arcan_lua_register(ctx, "new_3dmodel", arcan_lua_buildmodel);
     
 /* item:add_3dmesh, dstvid, resource, nil */
-	lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
+	arcan_lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
 
 /* item:move3d_model, vid, xp, yp, zp, time, nil */
-	lua_register(ctx, "move3d_model", arcan_lua_movemodel);
+	arcan_lua_register(ctx, "move3d_model", arcan_lua_movemodel);
 
 /* item:rotate3d_model, vid, yaw, pitch, roll, time, nil */
-	lua_register(ctx, "rotate3d_model", arcan_lua_rotatemodel);
+	arcan_lua_register(ctx, "rotate3d_model", arcan_lua_rotatemodel);
 
 /* item:orient3d_model, vid, absyaw, abspitch, absroll, time, nil */
-	lua_register(ctx, "orient3d_model", arcan_lua_orientmodel);
+	arcan_lua_register(ctx, "orient3d_model", arcan_lua_orientmodel);
 	
 /* item:scale3d_model, vid, wf, hf, df, time, nil */
-	lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
+	arcan_lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
 
 /* item:camtag_model, vid, camtag, boolean */
-	lua_register(ctx, "camtag_model", arcan_lua_camtag);
+	arcan_lua_register(ctx, "camtag_model", arcan_lua_camtag);
 	
 /* item:build_3dplane, minx, mind, maxx, maxd, yv, hdens, ddens, nil */
-	lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
+	arcan_lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
 	
 /* item:scale_3dvertices, vid, nil */
-    lua_register(ctx, "scale_3dvertices", arcan_lua_scale3dverts);
+	arcan_lua_register(ctx, "scale_3dvertices", arcan_lua_scale3dverts);
  
 /* category: frameserver */
 /* item:play_movie, vid, nil */ 
-	lua_register(ctx, "play_movie", arcan_lua_playmovie);
+	arcan_lua_register(ctx, "play_movie", arcan_lua_playmovie);
 
 /* item:load_movie, resource, loop, vid and aid */
-	lua_register(ctx, "load_movie", arcan_lua_loadmovie);
+	arcan_lua_register(ctx, "load_movie", arcan_lua_loadmovie);
 
 /* item:pause_movie, vid, nil */
-	lua_register(ctx, "pause_movie", arcan_lua_pausemovie);
+	arcan_lua_register(ctx, "pause_movie", arcan_lua_pausemovie);
 
 /* item:resume_movie, vid, nil */
-	lua_register(ctx, "resume_movie", arcan_lua_resumemovie);
+	arcan_lua_register(ctx, "resume_movie", arcan_lua_resumemovie);
 
 /* category: collision detection */
-	lua_register(ctx, "image_hit", arcan_lua_hittest);
+	arcan_lua_register(ctx, "image_hit", arcan_lua_hittest);
 	
 /* item:pick_items,xpos,ypos, vidary */
-	lua_register(ctx, "pick_items", arcan_lua_pick);
+	arcan_lua_register(ctx, "pick_items", arcan_lua_pick);
 
 /* category: LED I/O */
 /* item:set_led, ctrlnum, lednum, state, nil */
-	lua_register(ctx, "set_led", arcan_lua_setled);
+	arcan_lua_register(ctx, "set_led", arcan_lua_setled);
 
 /* item:*led_intensity, ctrl, led, intensity, nil */
-	lua_register(ctx, "led_intensity", arcan_lua_led_intensity);
+	arcan_lua_register(ctx, "led_intensity", arcan_lua_led_intensity);
 
 /* item:*set_led_rgb, ctrl, led, rv, gv, bv, nil */
-	lua_register(ctx, "set_led_rgb", arcan_lua_led_rgb);
+	arcan_lua_register(ctx, "set_led_rgb", arcan_lua_led_rgb);
 
 /* item:controller_leds, ctrlid, nleds */
-	lua_register(ctx, "controller_leds", arcan_lua_n_leds);
+	arcan_lua_register(ctx, "controller_leds", arcan_lua_n_leds);
 
 /* item:utf8kind, character, charkindnum */
-	lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
+	arcan_lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
 
 /* item:decode_modifiers, modval, strtable */
-	lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
+	arcan_lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
 	
 	atexit(arcan_lua_cleanup);
 	
@@ -2870,12 +2896,15 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* constant: SHARED_RESOURCE,enumint */
 	arcan_lua_setglobalint(ctx, "SHARED_RESOURCE", ARCAN_RESOURCE_SHARED);
+
+/* constant: ALL_RESOURCES,enumint */
+	arcan_lua_setglobalint(ctx, "ALL_RESOURCES", ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	
 /* constant: API_VERSION_MAJOR,int */
 	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
 	
 /* constant: API_VERSION_MINOR,int */
-	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 4);
+	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 5);
 
 /* constant: LAUNCH_EXTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);

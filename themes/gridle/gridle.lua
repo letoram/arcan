@@ -54,6 +54,13 @@ settings = {
 	filters = {
 	},
 	
+	bgname = "smstile.png",
+	bg_rh = VRESH / 32,
+	bg_rw = VRESW / 32,
+	bg_speedh = 64,
+	bg_speedv = 64,
+	tilebg = "White",
+	
 	borderstyle = "Normal", 
 	sortlbl = "Ascending",
 	viewmode = "Grid",
@@ -79,8 +86,8 @@ settings = {
 	favvids = {},
 	
 	repeatrate = 250,
-	celll_width = 48,
-	cell_height = 48,
+	cell_width = 128,
+	cell_height = 128,
 	
 	cooldown = 15,
 	cooldown_start = 15,
@@ -109,11 +116,26 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
+function string.split(instr, delim)
+	local res = {};
+	local strt = 1;
+	local delim_pos, delim_stp = string.find(instr, delim, strt);
+	
+	while delim_pos do
+		table.insert(res, string.sub(instr, strt, delim_pos-1));
+		strt = delim_stp + 1;
+		delim_pos, delim_stp = string.find(instr, delim, strt);
+	end
+	
+	table.insert(res, string.sub(instr, strt));
+	return res;
+end
 
 function gridle()
 -- grab all dependencies;
 	settings.colourtable = system_load("scripts/colourtable.lua")();    -- default colour values for windows, text etc.
 
+	system_load("scripts/calltrace.lua")();      -- debug features Trace() and Untrace()
 	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
 	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
 	system_load("scripts/dialog.lua")();         -- dialog used for confirmations 
@@ -126,8 +148,8 @@ function gridle()
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
-	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 4) then
-		msg = "Engine/Script API version match, expected 0.4, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
+	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 5) then
+		msg = "Engine/Script API version match, expected 0.5, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
 		error(msg);
 		shutdown();
 	end
@@ -160,11 +182,7 @@ function gridle()
 -- use the DB theme-specific key/value store to populate the settings table
 	load_settings();
 
--- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
-	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
-	shader_uniform(bgshader, "speedfact", "f", PERSIST, 64.0);
-	
-	if (settings.sortfunctions[settings.sortlbl]) then
+if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
 	
@@ -186,7 +204,7 @@ function gridle()
 	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
 	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
 	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
-	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) move_cursor( math.random(-#settings.games, #settings.games) ); end
+	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
 	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
@@ -218,6 +236,7 @@ function gridle()
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
 		local key = gridledetail_havedetails(gametbl);
+		
 		if (key) then
 			remove_zoom(settings.fadedelay);
 			local gameind = 0;
@@ -267,13 +286,7 @@ function gridle()
 	imagery.white = fill_surface(1,1,255,255,255);
 	
 -- Animated background
-	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
-	imagery.bgimage = load_image("background.png");
-	resize_image(imagery.bgimage, VRESW, VRESH);
-	image_scale_txcos(imagery.bgimage, VRESW / 32, VRESH / 32);
-	image_shader(imagery.bgimage, bgshader);
-	show_image(imagery.bgimage);
-	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 
 -- Little star keeping track of games marked as favorites
 	imagery.starimage    = load_image("star.png");
@@ -287,6 +300,27 @@ function gridle()
 	gridle_keyconf();
 	gridle_ledconf();
 	osdkbd = osdkbd_create();
+end
+
+function set_background(name, tilefw, tilefh, hspeed, vspeed)
+	if (imagery.bgimage and imagery.bgimage ~= BADID) then
+		delete_image(imagery.bgimage);
+		imagery.bgimage = nil;
+	end
+
+-- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
+	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
+	shader_uniform(bgshader, "speedfact", "ff", PERSIST, hspeed, vspeed);
+	
+	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
+	imagery.bgimage = load_image("backgrounds/" .. name);
+	
+	resize_image(imagery.bgimage, VRESW, VRESH);
+	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
+	image_shader(imagery.bgimage, bgshader);
+	show_image(imagery.bgimage);
+	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+	
 end
 
 function confirm_shutdown()
@@ -365,6 +399,8 @@ function gridle_video_event(source, event)
 
 -- don't need these running in the background 
 			erase_grid(true);
+			blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
+			
 			if (imagery.movie and imagery.movie ~= BADID) then 
 				delete_image(imagery.movie); 
 				imagery.movie = nil; 
@@ -376,13 +412,8 @@ function gridle_video_event(source, event)
 			move_image(internal_vid, VRESW * 0.5, VRESH * 0.5);
 			resize_image(internal_vid, props.width, props.height, settings.transitiondelay);
 			move_image(internal_vid, props.x, props.y, settings.transitiondelay);
-
-			internal_vidborder = instance_image( imagery.black );
-			image_mask_clearall(internal_vidborder);
-			resize_image(internal_vidborder, VRESW, VRESH);
-			blend_image(internal_vidborder, 1.0, settings.transitiondelay * 2);
 			order_image(internal_vid, 1);
-			order_image(internal_vidborder, 0);
+			
 		end
 	end
 end
@@ -830,6 +861,46 @@ function get_image( resourcetbl, setname )
 	return rvid;
 end
 
+function zap_whitegrid()
+	if (whitegrid == nil) then 
+		return; 
+	end
+	
+	for row=0, nch-1 do
+		for col=0, ncw-1 do
+			if (whitegrid[row] and whitegrid[row][col]) then 
+				delete_image(whitegrid[row][col]); 
+			end
+		end
+	end
+	
+end
+
+
+function build_whitegrid()
+	whitegrid = {};
+	
+	for row=0, nch-1 do
+		whitegrid[row] = {};
+		for col=0, ncw-1 do
+-- only build new cells if there's a corresponding one in the grid 
+			if (settings.tilebg ~= "None" and grid[row][col] ~= nil and grid[row][col] > 0) then
+				local gridbg = instance_image(settings.tilebg ~= "Black" and imagery.white or imagery.black);
+				
+				resize_image(gridbg, settings.cell_width, settings.cell_height);
+				move_image(gridbg, cell_coords(col, row));
+				image_mask_clear(gridbg, MASK_OPACITY);
+				order_image(gridbg, GRIDBGLAYER);
+				show_image(gridbg);
+			
+				whitegrid[row][col] = gridbg;
+			end
+			
+		end
+	end
+	
+end
+
 function erase_grid(rebuild)
 	settings.cellcount = 0;
 
@@ -860,8 +931,6 @@ function erase_grid(rebuild)
 					expire_image(imagevid, settings.transitiondelay);
 				end
 
-				delete_image(whitegrid[row][col]);
-				whitegrid[row][col] = nil;
 				grid[row][col] = nil;
 			end
 		end
@@ -874,6 +943,8 @@ end
 
 function build_grid(width, height)
 --  figure out how many full cells we can fit with the current resolution
+	zap_whitegrid();
+	
 	ncw = math.floor(VRESW / (width + settings.hspacing));
 	nch = math.floor(VRESH / (height + settings.vspacing));
 	ncc = ncw * nch;
@@ -881,11 +952,9 @@ function build_grid(width, height)
 --  figure out how much "empty" space we'll have to pad with
 	borderw = VRESW % (width + settings.hspacing);
 	borderh = VRESH % (height + settings.vspacing);
-
-	whitegrid = {};
+	
 	for row=0, nch-1 do
 		grid[row] = {};
-		whitegrid[row] = {};
 
 		for col=0, ncw-1 do
 			local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
@@ -905,19 +974,12 @@ function build_grid(width, height)
 				ofs = ofs + spawn_magnify( vid, ofs );
 			end
 		
-			gridbg = instance_image(imagery.white);
-			resize_image(gridbg, settings.cell_width, settings.cell_height);
-			move_image(gridbg, cell_coords(col, row));
-			image_mask_clear(gridbg, MASK_OPACITY);
-			order_image(gridbg, GRIDBGLAYER);
-			show_image(gridbg);
-
-			whitegrid[row][col] = gridbg;
 			grid[row][col] = vid;
 			settings.cellcount = settings.cellcount + 1;
 		end
 	end
 
+	build_whitegrid();
 	move_cursor(0);
 end
 
@@ -935,44 +997,59 @@ function gridle_shutdown()
 	end
 end
 
+function load_key_num(name, val, opt)
+	local kval = get_key(name)
+	if (kval) then
+		settings[val] = tonumber(kval);
+	else
+		settings[val] = opt;
+	end
+end
+
+function load_key_str(name, val, opt)
+	local kval = get_key(name)
+	settings[val] = kval or opt
+end
+
 -- these should match those of 
 -- (a) the standard settings table (all should be set),
 -- (b) gridle_menus
 function load_settings()
-	local cellw   = get_key("cell_width");
-	local cellh   = get_key("cell_height");
-	local ledmode = get_key("ledmode");
-
-	if (ledmode and tonumber(ledmode) < 4 and tonumber(ledmode) >= 0) then
-		settings.ledmode = tonumber(ledmode);
-	end	
-	
-	if (cellw and cellh and tonumber(cellw) >= 48 and tonumber(cellh) >= 48) then
-		settings.cell_width = tonumber(cellw);
-		settings.cell_height = tonumber(cellh);
-	else
-		settings.cell_width = 128;
-		settings.cell_height = 128;
+	load_key_num("ledmode", "ledmode", settings.ledmode);
+	load_key_num("cell_width", "cell_width", settings.cell_width);
+	load_key_num("cell_height", "cell_height", settings.cell_height);
+	load_key_num("fadedelay", "fadedelay", settings.fadedelay);
+	load_key_num("transitiondelay", "transitiondelay", settings.transitiondelay);
+	load_key_str("sortorder", "sortlbl", settings.sortlbl);
+	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
+	load_key_num("repeatrate", "repeatrate", settings.repeatrate);
+	load_key_num("internal_again", "internal_again", settings.internal_again);
+	load_key_str("internal_scalemode", "internal_scalemode", settings.scalemode);
+	load_key_num("movieagain", "movieagain", settings.movieagain);
+	load_key_str("tilebg", "tilebg", settings.tilebg);
+	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
+	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
+	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);
+	load_key_num("bg_speedh", "bg_speedh", settings.bg_speedh);
+		
+-- special handling for a few settings, modeflag + additional processing
+	local internalinp = get_key("internal_input");
+	if (internalinp ~= nil) then
+		settings.internal_input = internalinp;
+		settings.flipinputaxis = internalinp ~= "Normal";
 	end
 
-	local setdelay = get_key("fadedelay");
-	local transdelay = get_key("transitiondelay");
-	if (setdelay) then settings.fadedelay = tonumber(setdelay); end
-	if (transdelay) then settings.transitiondelay = tonumber(transdelay); end
+-- each shader argument is patched into a boolean table of #defines to tiggle
+if (get_key("defaultshader_defs")) then
+		settings.fullscreenshader_opts = {};
 
-	local sort = get_key("sortorder");
-	if (sort and sort ~= "Default") then
-		settings.sortlbl = sort;
+		local args = string.split(get_key("defaultshader_defs"), ",");
+		for ind, val in ipairs(args) do
+			settings.fullscreenshader_opts[val] = true;
+		end
 	end
 
-	local fullscreenshader = get_key("defaultshader");
-	if (fullscreenshader) then
-		settings.fullscreenshader = get_key("defaultshader");
-	end
-	
-	local repeatrate = get_key("repeatrate");
-	if (repeatrate) then settings.repeatrate = tonumber(repeatrate); end
-
+-- the list of favorites is stored / restored on every program open/close cycle
 	if ( open_rawresource("lists/favorites") ) then
 		line = read_rawresource();
 		while line ~= nil do
@@ -980,27 +1057,6 @@ function load_settings()
 			settings.favorites[line] = true;
 			line = read_rawresource();
 		end
-	end
-	
-	local internalgain = get_key("internal_again");
-	if (internalgain) then
-		settings.internal_again = tonumber( get_key("internal_again") );
-	end
-	
-	local internalinp = get_key("internal_input");
-	if (internalinp ~= nil) then
-		settings.internal_input = internalinp;
-		settings.flipinputaxis = internalinp ~= "Normal";
-	end
-	
-	local scalemode = get_key("internal_scalemode");
-	if (scalemode ~= nil) then 
-		settings.scalemode = scalemode; 
-	end
-	
-	local movieagain = get_key("movieagain");
-	if (movieagain ~= nil) then
-		settings.movieagain = tonumber(movieagain);
 	end
 end
 
@@ -1099,7 +1155,7 @@ function gridle_internalcleanup()
 	
 	internal_vid = BADID;
 	internal_aid = BADID;
-	instant_image_transform(internal_vidborder);
+	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
 	expire_image(internal_vidborder, settings.transitiondelay);
 	blend_image(internal_vidborder, 0.0, settings.transitiondelay);
 	in_internal = false;

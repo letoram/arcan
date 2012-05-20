@@ -334,6 +334,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
 		nobj->current = newprop;
 		nobj->cellid = rv;
+		assert(nobj->cellid > 0);
 		nobj->current.rotation.quaternion = build_quat_euler(0.0, 0.0, 0.0);
 		nobj->transform = NULL;
 		nobj->parent = pobj;
@@ -388,6 +389,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->current.rotation.quaternion = build_quat_euler(0, 0, 0);
 		rv->current.opa = 0.0;
 		rv->cellid = fid;
+		assert(rv->cellid > 0);
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
@@ -930,7 +932,7 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 {
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
-	arcan_errc rv = ARCAN_EID;
+	arcan_vobj_id rv = ARCAN_EID;
 	fid++; /* enforce 1 index */
 	
 	if (errc)
@@ -938,14 +940,17 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	
 	if (dstvobj && srcvobj){
 		if (dstvobj->frameset && fid < dstvobj->frameset_meta.capacity){
-
+			
 /* if we want to manage the frame entirely through this object, we can detatch src and stop worrying about deleting it */
 			if (detatch)
 				arcan_video_detatchobject(src);
 
 /* if there already is an object in the desired slot, return the management responsibility to the user*/
-			if (dstvobj->frameset[fid])
-				rv = dstvobj->frameset[fid]->cellid;
+			if (dstvobj->frameset[fid]){
+				arcan_vobject* frame = dstvobj->frameset[fid];
+				rv = frame->cellid;
+				assert(rv >= 0);
+			}
 				
 			dstvobj->frameset[fid] = srcvobj;
 			if (errc) *errc = ARCAN_OK;
@@ -3031,7 +3036,7 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id)
 	return rv;
 }
 
-surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks)
+surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 {
 	if (ticks == 0)
 		return arcan_video_current_properties(id);
