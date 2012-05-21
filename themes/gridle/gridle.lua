@@ -937,7 +937,8 @@ function erase_grid(rebuild)
 	end
 
 	if (imagery.movie and imagery.movie ~= BADID) then
-		delete_image(imagery.movie, settings.fadedelay);
+		expire_image(imagery.movie, settings.fadedelay);
+		imagery.movie = BADID;
 	end
 end
 
@@ -1156,8 +1157,6 @@ function gridle_internalcleanup()
 	internal_vid = BADID;
 	internal_aid = BADID;
 	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
-	expire_image(internal_vidborder, settings.transitiondelay);
-	blend_image(internal_vidborder, 0.0, settings.transitiondelay);
 	in_internal = false;
 end
 
