@@ -1004,7 +1004,7 @@ static int thread_loader(void* in)
 	result.data.video.source = localargs->dstid;
 	result.category = EVENT_VIDEO;
 
-	arcan_event_enqueue(&result);
+	arcan_event_enqueue(arcan_event_defaultctx(), &result);
 	free(localargs->fname);
 	free(localargs);
 	
@@ -1220,7 +1220,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 		ev.data.video.constraints.w   = vobj->origw;
 		ev.data.video.constraints.h   = vobj->origh;
         ev.data.video.constraints.bpp = mirror;
-		arcan_event_enqueue(&ev);
+		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		rv = ARCAN_OK;
 	}
 
@@ -2458,7 +2458,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			if (!ci->transform || ci->transform->blend.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_BLENDED};
 				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(&ev);
+				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
 		}
 	}
@@ -2477,7 +2477,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			if (!ci->transform || ci->transform->move.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_MOVED};
 				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(&ev);
+				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
 		}
 	}
@@ -2494,7 +2494,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			if (!ci->transform || ci->transform->scale.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
 				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(&ev);
+				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
 		}
 	}
@@ -2513,7 +2513,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 			if (!ci->transform || ci->transform->rotate.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_ROTATED};
 				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(&ev);
+				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
 		}
 	}
@@ -2552,7 +2552,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 						arcan_vobj_id tid = elem->cellid;
 						dobjev.data.video.source = tid;
 
-						arcan_event_enqueue(&dobjev);
+						arcan_event_enqueue(arcan_event_defaultctx(), &dobjev);
 						/* disable the LIVING mask, otherwise we'd fire multiple
 						 * expire events when video logic is lagging behind */
 						elem->mask &= ~MASK_LIVING;
@@ -3132,7 +3132,7 @@ bool arcan_video_prepare_external()
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 
 	/* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
-	arcan_event_deinit();
+	arcan_event_deinit(arcan_event_defaultctx());
 	arcan_shader_unload_all();
 
 	return true;
@@ -3179,7 +3179,7 @@ void arcan_video_restore_external()
 											arcan_video_display.height,
 											arcan_video_display.bpp,
 											arcan_video_display.sdlarg);
-	arcan_event_init();
+	arcan_event_init( arcan_event_defaultctx() );
 	arcan_video_gldefault();
 	arcan_shader_rebuild_all();
 	arcan_video_popcontext();

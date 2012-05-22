@@ -63,6 +63,8 @@ void arcan_frameserver_dropsemaphores(char* shmkey){
 		sem_unlink(work);
 		work[strlen(work) - 1] = 'a';
 		sem_unlink(work);
+		work[strlen(work) - 1] = 'e';
+		sem_unlink(work);
 	free(work);	
 }
 
@@ -105,9 +107,11 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 	int fd = shm_open(shmkey, O_RDWR, 0700);
 	char* semkeya = strdup(shmkey);
 	char* semkeyv = strdup(shmkey);
+	char* semkeye = strdup(shmkey);
 
 	semkeyv[ strlen(shmkey) - 1 ] = 'v';
 	semkeya[ strlen(shmkey) - 1 ] = 'a';
+	semkeye[ strlen(shmkey) - 1 ] = 'e';
 	
 	if (-1 == fd) {
 		LOG("arcan_frameserver() -- couldn't open keyfile (%s)\n", shmkey);
@@ -144,6 +148,7 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 	buf->abufbase = 0;
 	buf->vsyncc = sem_open(semkeyv, 0, 0700);
 	buf->asyncc = sem_open(semkeya, 0, 0700);
+	buf->esyncc = sem_open(semkeye, 0, 0700);
 
 	if (buf->vsyncc == 0x0 ||
 		buf->asyncc == 0x0){
