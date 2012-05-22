@@ -104,7 +104,6 @@ char* arcan_find_resource(const char* label, int searchmask)
 		
 		if (file_exists(playbuf))
 			return strdup(playbuf);
-
 	}
 
 	return NULL;
@@ -515,6 +514,9 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 
 int arcan_sem_timedwait(sem_handle sem, int msecs)
 {
+	if (msecs == -1) 
+		msecs = INFINITE; 
+	
 	DWORD rc = WaitForSingleObject(sem, msecs);
 	int rv = 0;
 
@@ -616,6 +618,11 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 static int sem_timedwaithack(sem_handle semaphore, int msecs)
 {
 	struct timespec st = {.tv_sec  = 0, .tv_nsec = 10000000L}, rem; /* 10 ms */
+
+	if (msecs == -1){
+		while (-1 == sem_wait( semaphore ) && errno == EINTR);
+		return true;
+	}
 	
 	while (msecs > 0){
 		int rc = sem_trywait( semaphore );
@@ -647,6 +654,12 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 	static bool arcan_sem_usehack = false;
 	if (arcan_sem_usehack) 
 		return sem_timedwaithack(semaphore, msecs);
+	
+/* special case, just block forever */
+	if (msecs == -1){
+		while (-1 == sem_wait( semaphore ) && errno == EINTR);
+		return true;
+	}
 	
 	struct timespec tv = {
 		.tv_sec = 0,

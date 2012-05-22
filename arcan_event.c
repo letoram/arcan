@@ -37,8 +37,8 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 
-#define LOCK() ( SDL_LockMutex(current_context.event_sync) )
-#define UNLOCK() ( SDL_UnlockMutex(current_context.event_sync) )
+#define LOCK() if (ctx->local) lock_local(ctx); else lock_shared(ctx); 
+#define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx); 
 
 /* code is quite old and dodgy design at best.
  * The plan was initially to be able to get rid of SDL at some point,
@@ -50,13 +50,6 @@
 const unsigned short arcan_joythresh  = 3200;
 static int64_t arcan_last_frametime = 0;
 static int64_t arcan_tickofset = 0;
-
-struct queue_cell {
-	arcan_event elem;
-	arcan_event* ep;
-	struct queue_cell* next;
-	struct queue_cell* previous;
-};
 
 struct arcan_stick {
 	unsigned long hashid;
@@ -72,53 +65,63 @@ struct arcan_stick {
 
 typedef struct queue_cell queue_cell;
 
-struct event_context {
+struct arcan_evctx {
 	uint32_t seqn;
 	uint32_t c_ticks;
 	uint32_t c_leaks;
 	uint32_t mask_cat_inp;
 	uint32_t mask_cat_out;
 
+/* won't be used in non-local mode */
 	unsigned kbdrepeat;
 	unsigned short nsticks;
 	struct arcan_stick* sticks;
 
-	queue_cell front;
-	queue_cell* back;
-	queue_cell cell_buffer[ARCAN_EVENT_QUEUE_LIM];
+	unsigned front;
+	unsigned back;
+	arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 	uint32_t cell_aofs;
-	SDL_mutex* event_sync;
+
+	bool local;
+	union {
+		SDL_mutex* local;
+		sem_handle shared;
+	} synch;
 };
 
-static struct event_context current_context = {0};
+static struct arcan_evctx default_evctx = {
+	.local = true
+};
 
-queue_cell* alloc_queuecell()
+arcan_evctx* arcan_event_defaultctx(){
+	return &default_evctx;
+}
+
+static unsigned alloc_queuecell(arcan_evctx* ctx)
 {
-	/* increment scan current context for avail-slot,
-	 * if wraparound with no avail slot
-	 * remove first from queue and inc. counter,
-	 * but that's really a terminal condition for lots of cases */
-	
-	uint32_t ofs = current_context.cell_aofs;
-	while (1) {
-		ofs = (ofs + 1) % ARCAN_EVENT_QUEUE_LIM;
+	unsigned rv = ctx->back;
+	ctx->back = (ctx->back + 1) % ( sizeof(ctx->eventbuf) / sizeof(ctx->eventbuf[0]) );
+	return rv;
+}
 
-		if (current_context.cell_buffer[ofs].ep == NULL) {
-			current_context.cell_aofs = (ofs + 1) % ARCAN_EVENT_QUEUE_LIM;
-			current_context.cell_buffer[ofs].ep = &current_context.cell_buffer[ofs].elem;
-			return &current_context.cell_buffer[ofs];
-		}
-		else
-			if (ofs == current_context.cell_aofs) { /* happens at wraparound = no slots avail, dump first in queue */
-				queue_cell* leak = current_context.front.next;
-				current_context.front.next = leak->next;
-				current_context.back->next = leak;
-				current_context.back = leak;
-				current_context.c_leaks++;
-				leak->next = NULL;
-				return leak;
-			}
-	}
+static inline void lock_local(arcan_evctx* ctx)
+{
+	SDL_LockMutex(ctx->synch.local);
+}
+
+static inline void lock_shared(arcan_evctx* ctx)
+{
+	arcan_sem_timedwait(ctx->synch.shared, -1);
+}
+
+static inline void unlock_local(arcan_evctx* ctx)
+{
+	SDL_UnlockMutex(ctx->synch.local);
+}
+
+static inline void unlock_shared(arcan_evctx* ctx)
+{
+	arcan_sem_post(ctx->synch.shared);
 }
 
 /* no exotic protocol atm. as both parent / child are supposed to be 
@@ -148,106 +151,71 @@ bool arcan_event_frombytebuf(arcan_event* dst, char* src, size_t dstsize)
 }
 
 /* check queue for event, ignores mask */
-arcan_event* arcan_event_poll()
+arcan_event* arcan_event_poll(arcan_evctx* ctx)
 {
 	arcan_event* rv = NULL;
 
 	LOCK();
-
-	queue_cell* cell = current_context.front.next;
-	/* dequeue */
-	if (cell) {
-		rv = cell->ep;
-		if (cell == current_context.back)
-			current_context.back = NULL;
-
-		cell->ep = NULL; /* 'free' */
-		cell->previous = NULL; /* detach */
-		current_context.front.next = cell->next; /* forward front pointer */
-	}
-
-	UNLOCK();
-
-	return rv;
-}
-
-void arcan_event_maskall(){
-	current_context.mask_cat_inp = 0xffffffff;
-}
-
-void arcan_event_clearmask(){
-	current_context.mask_cat_inp = 0;
-}
-
-void arcan_event_setmask(uint32_t mask){
-		current_context.mask_cat_inp = mask;
-}
-
-
-arcan_event* arcan_event_poll_masked(uint32_t mask_cat, uint32_t mask_ev)
-{
-	arcan_event* rv = NULL;
-	/* find matching */
-
-	LOCK();
-
-	queue_cell* cell = &current_context.front;
-	while ((cell = cell->next) != NULL) {
-		if (cell->ep && (cell->ep->category & mask_cat)
-		        && (cell->ep->kind & mask_ev)) {
-			/* match, dequeue and pop */
-			rv = cell->ep;
-			cell->ep = NULL; /* flag as avail */
-			cell->previous->next = cell->next;
-			break;
+		if (ctx->front != ctx->back){
+			rv = &ctx->eventbuf[ ctx->front ];
+			ctx->front = (ctx->front + 1) % ( (sizeof(ctx->eventbuf) / sizeof(ctx->eventbuf[0])) );
 		}
-	}
-
 	UNLOCK();
 
 	return rv;
+}
+
+void arcan_event_maskall(arcan_evctx* ctx){
+	LOCK();
+		ctx->mask_cat_inp = 0xffffffff;
+	UNLOCK();
+}
+
+void arcan_event_clearmask(arcan_evctx* ctx){
+	LOCK();
+		ctx->mask_cat_inp = 0;
+	UNLOCK();
+}
+
+void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask){
+	LOCK();
+		ctx->mask_cat_inp = mask;
+	UNLOCK();
 }
 
 /* enqueue to current context considering input-masking,
  * unless label is set, assign one based on what kind of event it is */
-void arcan_event_enqueue(arcan_event* src)
+void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 {
-	queue_cell* next;
-	src->tickstamp = current_context.c_ticks;
 	/* early-out mask-filter */
-	if (!src || (src->category & current_context.mask_cat_inp))
+	if (!src || (src->category & ctx->mask_cat_inp))
 		return;
 
 	LOCK();
-	next = alloc_queuecell();
-	next->elem = *src;
-	next->elem.seqn = current_context.seqn++;
+		unsigned ind = alloc_queuecell(ctx);
 
-	if (current_context.back) {
-		current_context.back->next = next;
-		current_context.back = next;
-	}
-	else {
-		current_context.front.next = next;
-		current_context.back = next;
-	}
+		ctx->eventbuf[ind] = *src;
+		ctx->eventbuf[ind].tickstamp = ctx->c_ticks;
+
 	UNLOCK();
 }
 
-void arcan_event_keyrepeat(unsigned int rate)
+void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
-	current_context.kbdrepeat = rate;
-	if (rate == 0) 
-		SDL_EnableKeyRepeat(current_context.kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
-	else 
-		SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_INTERVAL, current_context.kbdrepeat);
+	LOCK();
+		ctx->kbdrepeat = rate;
+		if (rate == 0) 
+			SDL_EnableKeyRepeat(ctx->kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
+		else 
+			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_INTERVAL, ctx->kbdrepeat);
+	UNLOCK();
 }
 
 /* probe devices and generate mapping tables */
-void init_sdl_events()
+static void init_sdl_events(arcan_evctx* ctx)
 {
 	SDL_EnableUNICODE(1);
-	arcan_event_keyrepeat(current_context.kbdrepeat);
+	arcan_event_keyrepeat(ctx, ctx->kbdrepeat);
 
 /* OSX hack */
 	SDL_ShowCursor(0);
@@ -260,7 +228,7 @@ void init_sdl_events()
 	
 }
 
-void map_sdl_events()
+void map_sdl_events(arcan_evctx* ctx)
 {
 	SDL_Event event;
 	arcan_event newevent = {.category = EVENT_IO}; /* others will be set upon enqueue */
@@ -275,7 +243,7 @@ void map_sdl_events()
 				newevent.data.io.input.digital.subid = event.button.button;
 				newevent.data.io.input.digital.active = true;
 				snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i", event.motion.which);
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 			case SDL_MOUSEBUTTONUP:
@@ -286,7 +254,7 @@ void map_sdl_events()
 				newevent.data.io.input.digital.subid = event.button.button;
 				newevent.data.io.input.digital.active = false;
 				snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i", event.motion.which);
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 			case SDL_MOUSEMOTION: /* map to axis event */
@@ -303,14 +271,14 @@ void map_sdl_events()
 					newevent.data.io.input.analog.subid = 0;
 					newevent.data.io.input.analog.axisval[0] = event.motion.x;
 					newevent.data.io.input.analog.axisval[1] = event.motion.xrel;
-					arcan_event_enqueue(&newevent);
+					arcan_event_enqueue(ctx, &newevent);
 				}
 				
 				if (event.motion.yrel != 0){
 					newevent.data.io.input.analog.subid = 1;
 					newevent.data.io.input.analog.axisval[0] = event.motion.y;
 					newevent.data.io.input.analog.axisval[1] = event.motion.yrel;
-					arcan_event_enqueue(&newevent);
+					arcan_event_enqueue(ctx, &newevent);
 				}
 				break;
 				
@@ -320,14 +288,14 @@ void map_sdl_events()
 				newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
 				
 			/* need to filter out "noise" */
-				if (event.jaxis.value < (-1 * current_context.sticks[ event.jaxis.which ].threshold) ||
-				        event.jaxis.value > current_context.sticks[ event.jaxis.which ].threshold) {
+				if (event.jaxis.value < (-1 * ctx->sticks[ event.jaxis.which ].threshold) ||
+				        event.jaxis.value > ctx->sticks[ event.jaxis.which ].threshold) {
 					newevent.data.io.input.analog.gotrel = false;
 					newevent.data.io.input.analog.devid = ARCAN_JOYIDBASE + event.jaxis.which;
 					newevent.data.io.input.analog.subid = event.jaxis.axis;
 					newevent.data.io.input.analog.nvalues = 1;
 					newevent.data.io.input.analog.axisval[0] = event.jaxis.value;
-					arcan_event_enqueue(&newevent);
+					arcan_event_enqueue(ctx, &newevent);
 				}
 			break;
 
@@ -340,7 +308,7 @@ void map_sdl_events()
 				newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
 				newevent.data.io.input.translated.scancode = event.key.keysym.scancode;
 				newevent.data.io.input.translated.subid = event.key.keysym.unicode;
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 			case SDL_KEYUP: /* should check timer for keypress ... */
@@ -352,7 +320,7 @@ void map_sdl_events()
 				newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
 				newevent.data.io.input.translated.scancode = event.key.keysym.scancode;
 				newevent.data.io.input.translated.subid = event.key.keysym.unicode;
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 			case SDL_JOYBUTTONDOWN:
@@ -363,7 +331,7 @@ void map_sdl_events()
 				newevent.data.io.input.digital.subid = event.jbutton.button;
 				newevent.data.io.input.digital.active = true;
 				snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i", event.jbutton.which);
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 			case SDL_JOYBUTTONUP:
@@ -374,7 +342,7 @@ void map_sdl_events()
 				newevent.data.io.input.digital.subid = event.jbutton.button;
 				newevent.data.io.input.digital.active = false;
 				snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i", event.jbutton.which);
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 		/* don't got any devices that actually use this to test with,
@@ -406,7 +374,7 @@ void map_sdl_events()
 			case SDL_QUIT:
 				newevent.category = EVENT_SYSTEM;
 				newevent.kind = EVENT_SYSTEM_EXIT;
-				arcan_event_enqueue(&newevent);
+				arcan_event_enqueue(ctx, &newevent);
 				break;
 
 			case SDL_SYSWMEVENT:
@@ -437,10 +405,10 @@ int64_t arcan_frametime()
 /* the main usage case is simply to alternate
  * between process and poll after a scene has
  * been setup, kindof */
-float arcan_process(unsigned* dtick)
+float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 {
 	arcan_last_frametime = SDL_GetTicks();
-	unsigned delta  = arcan_last_frametime - current_context.c_ticks;
+	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK; 
 	
@@ -450,24 +418,13 @@ float arcan_process(unsigned* dtick)
 	 * process audio / video / io. */
 	if (nticks){
 		arcan_event newevent = {.category = EVENT_TIMER, .kind = 0, .data.timer.pulse_count = nticks};
-		current_context.c_ticks += nticks * ARCAN_TIMER_TICK;
-		arcan_event_enqueue(&newevent);
+		ctx->c_ticks += nticks * ARCAN_TIMER_TICK;
+		arcan_event_enqueue(ctx, &newevent);
 	}
 	
 	*dtick = nticks;
-	map_sdl_events();
+	map_sdl_events(ctx);
 	return fragment;
-}
-
-void arcan_event_dumpqueue()
-{
-	queue_cell* current = &current_context.front;
-
-	LOCK();
-	while ((current = current->next) != NULL) {
-		printf("cat: %i kind: %i seq: %i tick#: %i\n", current->elem.category, current->elem.kind, current->elem.seqn, current->elem.tickstamp);
-	}
-	UNLOCK();
 }
 
 /* afaik, this function has been placed in the public domain by daniel bernstein */
@@ -482,40 +439,45 @@ static unsigned long djb_hash(const char* str)
 	return hash;
 }
 
-void arcan_event_deinit()
+void arcan_event_deinit(arcan_evctx* ctx)
 {
-	if (current_context.sticks){
-		free(current_context.sticks);
-		current_context.sticks = 0;
+	if (ctx->sticks){
+		free(ctx->sticks);
+		ctx->sticks = 0;
 	}
 
 	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }
 
-void arcan_event_init()
+void arcan_event_init(arcan_evctx* ctx)
 {
-	init_sdl_events();
-    
-	current_context.event_sync = SDL_CreateMutex();
+	if (!ctx->local){
+	
+		return;
+	}
+	
+	init_sdl_events(ctx);
+	
+	ctx->synch.local = SDL_CreateMutex();
  	arcan_tickofset = SDL_GetTicks();
     
 	SDL_Init(SDL_INIT_JOYSTICK);
 	/* enumerate joysticks, try to connect to those available and map their respective axises */
 	SDL_JoystickEventState(SDL_ENABLE);
-	current_context.nsticks = SDL_NumJoysticks();
+	ctx->nsticks = SDL_NumJoysticks();
 
-	if (current_context.nsticks > 0) {
-		current_context.sticks = (struct arcan_stick*) calloc(sizeof(struct arcan_stick), current_context.nsticks);
-		for (int i = 0; i < current_context.nsticks; i++) {
-			strncpy(current_context.sticks[i].label, SDL_JoystickName(i), 255);
-			current_context.sticks[i].hashid = djb_hash(SDL_JoystickName(i));
-			current_context.sticks[i].handle = SDL_JoystickOpen(i);
-			current_context.sticks[i].devnum = i;
-			current_context.sticks[i].axis = SDL_JoystickNumAxes(current_context.sticks[i].handle);
-			current_context.sticks[i].buttons = SDL_JoystickNumButtons(current_context.sticks[i].handle);
-			current_context.sticks[i].balls = SDL_JoystickNumBalls(current_context.sticks[i].handle);
-			current_context.sticks[i].hats = SDL_JoystickNumHats(current_context.sticks[i].handle);
-			current_context.sticks[i].threshold = arcan_joythresh;
+	if (ctx->nsticks > 0) {
+		ctx->sticks = (struct arcan_stick*) calloc(sizeof(struct arcan_stick), ctx->nsticks);
+		for (int i = 0; i < ctx->nsticks; i++) {
+			strncpy(ctx->sticks[i].label, SDL_JoystickName(i), 255);
+			ctx->sticks[i].hashid = djb_hash(SDL_JoystickName(i));
+			ctx->sticks[i].handle = SDL_JoystickOpen(i);
+			ctx->sticks[i].devnum = i;
+			ctx->sticks[i].axis = SDL_JoystickNumAxes(ctx->sticks[i].handle);
+			ctx->sticks[i].buttons = SDL_JoystickNumButtons(ctx->sticks[i].handle);
+			ctx->sticks[i].balls = SDL_JoystickNumBalls(ctx->sticks[i].handle);
+			ctx->sticks[i].hats = SDL_JoystickNumHats(ctx->sticks[i].handle);
+			ctx->sticks[i].threshold = arcan_joythresh;
 		}
 	}
 }

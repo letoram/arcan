@@ -246,7 +246,7 @@ void arcan_target_tick_control(arcan_launchtarget* tgt)
 		if (waitpid( tgt->source.child, &status, WNOHANG ) == tgt->source.child){
 			tgt->source.child_alive = false;
 			arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_TERMINATED, .category = EVENT_TARGET, .data.video.source = tgt->source.vid};
-			arcan_event_enqueue(&ev);
+			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		}
 	}
 }

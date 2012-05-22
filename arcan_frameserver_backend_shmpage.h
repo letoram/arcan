@@ -20,9 +20,9 @@
  */
 
 struct frameserver_shmpage {
-	/* video */
-	sem_handle vsyncc; sem_handle asyncc;
-	sem_handle vsyncp; sem_handle asyncp;
+/* synchronization */
+	sem_handle vsyncc; sem_handle asyncc; sem_handle esyncc;
+	sem_handle vsyncp; sem_handle asyncp; sem_handle esyncp;
 	bool resized;
 	bool loop;
 
@@ -31,22 +31,22 @@ struct frameserver_shmpage {
 	volatile uint8_t vready;
 	bool glsource;
 
-	/* vbuf size = w * h * bpp */
-    uint32_t vdts;
+/* vbuf size = w * h * bpp */
+	uint32_t vdts;
 	uint16_t w, h;
 	uint8_t bpp;
 
-	/* align this on a 32- bit boundary,
+/* align this on a 32- bit boundary,
 	 * first 32- bits are PTS */
 	uint32_t vbufofs;
 
-	/* audio */
+/* audio */
 	volatile uint8_t aready;
 	
 	uint8_t channels;
 	uint16_t frequency;
 	uint32_t abufused;
-    uint32_t adts;
+	uint32_t adts;
 	uint32_t abufbase;
 	uint32_t abufofs;
 };

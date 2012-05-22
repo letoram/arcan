@@ -246,7 +246,7 @@ int main(int argc, char* argv[])
 		}
 
 		/* setup device polling, cleanup, ... */
-		arcan_event_init();
+		arcan_event_init( arcan_event_defaultctx() );
 		arcan_led_init();
 
 		/* export what we know and load theme */
@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
 			arcan_event* ev;
 
 			unsigned nticks;
-			float frag = arcan_process(&nticks);
+			float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
 
 			if (nticks > 0){
 				arcan_video_tick(nticks);
@@ -297,12 +297,12 @@ int main(int argc, char* argv[])
 				arcan_video_refresh(frag);
 			}
 
-	    /* note that an onslaught of I/O operations can currently
-		 * saturate tick / video instead of evenly distribute between the two.
-		 * since these can also propagate to LUA and user scripts, there 
-		 * should really be a timing balance here (keep track of avg. time to dispatch
-		 * event, figure out how many we can handle before we must push a logic- frame */
-			while ((ev = arcan_event_poll())) {
+/* note that an onslaught of I/O operations can currently
+ * saturate tick / video instead of evenly distribute between the two.
+ * since these can also propagate to LUA and user scripts, there 
+ * should really be a timing balance here (keep track of avg. time to dispatch
+ * event, figure out how many we can handle before we must push a logic- frame */
+			while ((ev = arcan_event_poll(arcan_event_defaultctx()))) {
 
 				switch (ev->category) {
 					case EVENT_IO:
@@ -327,8 +327,9 @@ int main(int argc, char* argv[])
 					case EVENT_AUDIO:
 						if (ev->kind == EVENT_AUDIO_PLAYBACK_FINISHED)
 							arcan_audio_stop(ev->data.audio.source);
-/*						else if (ev->kind == EVENT_AUDIO_FRAMESERVER_TERMINATED)
-							arcan_frameserver_check_frameserver(ev->data.audio.data); */
+						else if (ev->kind == EVENT_AUDIO_FRAMESERVER_TERMINATED)
+							if (!arcan_frameserver_check_frameserver(ev->data.audio.data))
+								continue; 
 					break;
 
 					case EVENT_SYSTEM:

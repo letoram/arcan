@@ -152,7 +152,7 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_
 		queue->da_cells = (frame_cell*) calloc(sizeof(frame_cell), queue->c_cells);
 		queue->cell_size = cell_size;
 	 	queue->ni = 0;
-        queue->vcs = variable;
+		queue->vcs = variable;
 		queue->current_cell = &queue->front_cell;
 
 		if (rfunc)
@@ -163,7 +163,7 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_
 		char* cbuf = (char*) malloc(cell_size * queue->c_cells);
 
 		for (int i = 0; i < queue->c_cells; i++) {
-				queue->da_cells[i].wronly = true;
+			queue->da_cells[i].wronly = true;
 			queue->da_cells[i].buf  = (uint8_t*)(cbuf + (i * cell_size));
 		}
 

@@ -1739,7 +1739,7 @@ static int push_stringres(lua_State* ctx, arcan_dbh_res res)
 int arcan_lua_kbdrepeat(lua_State* ctx)
 {
 	unsigned rrate = luaL_checknumber(ctx, 1);
-	arcan_event_keyrepeat(rrate);
+	arcan_event_keyrepeat(arcan_event_defaultctx(), rrate);
 	return 0;
 }
 
@@ -2013,7 +2013,7 @@ int arcan_lua_warning(lua_State* ctx)
 int arcan_lua_shutdown(lua_State *ctx)
 {
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EXIT};
-	arcan_event_enqueue(&ev);
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	const char* str = luaL_optstring(ctx, 1, "");
 	if (strlen(str) > 0)

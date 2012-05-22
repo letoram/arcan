@@ -177,20 +177,22 @@ typedef struct arcan_event {
 	event_data data;
 } arcan_event;
 
+typedef struct arcan_evctx arcan_evctx;
+
 /* check timers, poll IO events and timing calculations
  * out : (NOT NULL) storage- container for number of ticks that has passed
  *                   since the last call to arcan_process 
  * ret : range [0 > n < 1] how much time has passed towards the next tick */ 
-float arcan_process(unsigned* nticks);
+float arcan_event_process(arcan_evctx*, unsigned* nticks);
 
 /* check the queue for events,
- * don't attempt to run this one
+ * don't attempt to run this one-
  * on more than one thread */
-arcan_event* arcan_event_poll();
+arcan_event* arcan_event_poll(arcan_evctx*);
 
 /* similar to event poll, but will only
  * return events matching masked event */
-arcan_event* arcan_event_poll_masked(uint32_t mask_cat, uint32_t mask_ev);
+arcan_event* arcan_event_poll_masked(arcan_evctx*, uint32_t mask_cat, uint32_t mask_ev);
 
 /* serialize src into dst, 
  * returns number of bytes used OR -1 (invalid size) */
@@ -200,29 +202,31 @@ ssize_t arcan_event_tobytebuf(char* dst, size_t dstsize, arcan_event* src);
 bool arcan_event_frombytebuf(arcan_event* dst, char* src, size_t dstsize);
 
 /* force a keyboard repeat- rate */
-void arcan_event_keyrepeat(unsigned rate);
+void arcan_event_keyrepeat(arcan_evctx*, unsigned rate);
+
+arcan_evctx* arcan_event_defaultctx();
 
 /* add an event to the queue,
  * currently thread-unsafe as there's
  * no active context-management */
-void arcan_event_enqueue(arcan_event*);
+void arcan_event_enqueue(arcan_evctx*, const arcan_event*);
 
 /* ignore-all on enqueue */
-void arcan_event_maskall();
+void arcan_event_maskall(arcan_evctx*);
 
 /* drop any mask, including maskall */
-void arcan_event_clearmask();
+void arcan_event_clearmask(arcan_evctx*);
 
 /* set a specific mask, somewhat limited */
-void arcan_event_setmask(uint32_t mask);
+void arcan_event_setmask(arcan_evctx*, uint32_t mask);
 
 int64_t arcan_frametime();
 
 /* call to initialise/deinitialize the current context
  * may occur several times due to external target launch */
-void arcan_event_init();
-void arcan_event_deinit();
+void arcan_event_init(arcan_evctx*);
+void arcan_event_deinit(arcan_evctx*);
 
 /* call to dump the contents of the queue */
-void arcan_event_dumpqueue();
+void arcan_event_dumpqueue(arcan_evctx*);
 #endif

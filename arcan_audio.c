@@ -616,7 +616,7 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 /* different from the finished/stopped event */
 		arcan_event newevent = {.category = EVENT_AUDIO, .kind = EVENT_AUDIO_OBJECT_GONE};
 		newevent.data.audio.source = id;
-		arcan_event_enqueue(&newevent);
+		arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 		rv = ARCAN_OK;
 	}
 
@@ -766,7 +766,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 cleanup:
 /* means that when main() receives this event, it will kill/free the object */
 	newevent.data.audio.source = current->id;
-	arcan_event_enqueue(&newevent);
+	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 }
 
 void arcan_audio_tick(uint8_t ntt)
@@ -806,7 +806,7 @@ void arcan_audio_tick(uint8_t ntt)
 					};
 					
 					newevent.data.audio.source = current->id;
-					arcan_event_enqueue(&newevent);
+					arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 				}
 			}
 		
@@ -825,7 +825,7 @@ void arcan_audio_tick(uint8_t ntt)
 					};
 					
 					newevent.data.audio.source = current->id;
-					arcan_event_enqueue(&newevent);
+					arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 				}
 			}
 

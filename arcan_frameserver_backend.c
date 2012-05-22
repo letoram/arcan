@@ -114,7 +114,7 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 		};
 		ev.data.system.hitag = src->vid;
 		ev.data.system.lotag = src->aid;
-		arcan_event_enqueue(&ev);
+		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		arcan_frameserver_free(src, false);
 	}
 
@@ -140,7 +140,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
         arcan_event ev = {.kind = EVENT_VIDEO_MOVIESTATUS, .data.video.constraints.w = src->vfq.c_cells,
         .data.video.constraints.h = src->afq.c_cells, .data.video.props.position.x = src->vfq.n_cells,
             .data.video.props.position.y = src->afq.n_cells, .category = EVENT_VIDEO};
-        arcan_event_enqueue(&ev);
+        arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 #endif  
 		if (src->vfq.front_cell) {
 			int64_t now = arcan_frametime() - src->starttime;
@@ -168,7 +168,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 				                     };
 				src->playstate = ARCAN_PAUSED;
 
-				arcan_event_enqueue(&sevent);
+				arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 			}
 /* no videoframes, but we have audioframes? might be the sounddrivers that have given up,
  * last resort workaround */
@@ -249,10 +249,10 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 			arcan_framequeue_free(&src->vfq);
 			shmpage->resized = false;
-			arcan_event_maskall();
+			arcan_event_maskall(arcan_event_defaultctx());
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 			arcan_video_alterfeed(src->vid, (arcan_vfunc_cb) arcan_frameserver_videoframe, cstate);
-			arcan_event_clearmask();
+			arcan_event_clearmask(arcan_event_defaultctx());
 			
         /* set up the real framequeue */
             unsigned short acachelim, vcachelim, abufsize;
@@ -289,7 +289,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			else {
 				arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
                 .data.video.constraints = cons, .category = EVENT_VIDEO};
-				arcan_event_enqueue(&ev);
+				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
 		}
 
