@@ -124,6 +124,25 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 	return true;
 }
 
+int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
+	
+	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
+		switch (cmd){
+			case ffunc_tick:
+				arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
+			break;
+                
+			case ffunc_destroy:
+				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+			break;
+                
+			default:
+				break;
+		}
+    
+	return 0;
+}
+
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
 {
 	enum arcan_ffunc_rv rv = FFUNC_RV_NOFRAME;
