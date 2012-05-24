@@ -113,6 +113,11 @@ local function gridledetail_buildview(detailres, gametbl )
 			if (detailview.model.labels["marquee"]) then 
 				mesh_shader(detailview.model.vid, backlit_shader3d, detailview.model.labels["marquee"]); 
 			end
+			
+			if (detailview.model.labels["coinlights"]) then
+				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["coinlights"]);
+			end
+			
 -- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
 			if (detailview.model.labels["display"]) then
 				local moviefile = detailview.game.resources.movies[1];
