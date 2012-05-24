@@ -84,6 +84,9 @@
 		
 		char* shmkey;
 		
+		sem_handle vsync;
+		sem_handle async;
+		sem_handle esync;
 		struct frameserver_shmpage* shared;
 	} global = {
 		.desfmt = {
@@ -173,10 +176,6 @@
 		}
 		
 		int fd = shm_open(global.shmkey, O_RDWR, 0700);
-		char* semkeyv = strdup(global.shmkey);
-
-		semkeyv[ strlen(global.shmkey) - 1 ] = 'v';
-		
 		if (-1 == fd) {
 			fprintf(stderr, "ARCAN Hijack: Couldn't open shmkey (%s)\n", global.shmkey);
 			exit(1);		
@@ -203,7 +202,16 @@
 		global.shared->vready = false;
 		global.shared->vbufofs = sizeof(struct frameserver_shmpage);
 		global.shared->resized = false;
-		global.shared->vsyncc = sem_open(semkeyv, 0, 0700);
+
+		char* semkey = strdup(global.shmkey);
+		semkey[ strlen(global.shmkey) - 1 ] = 'v';
+		global.vsync = sem_open(semkey, 0);
+
+		semkey[ strlen(global.shmkey) - 1 ] = 'a';
+		global.async = sem_open(semkey, 0);
+		
+		semkey[ strlen(global.shmkey) - 1 ] = 'e';
+		global.esync = sem_open(semkey, 0);
 	}
 
 	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -441,7 +449,7 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 }
 
 static void copysurface(SDL_Surface* src){
-	sem_wait(global.shared->vsyncc);
+	sem_wait(global.vsync);
 
 	if ( cmpfmt(src->format, &global.desfmt) ){
 			SDL_LockSurface(src);
@@ -531,7 +539,7 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
 	 * increase when using PBOs */
-	sem_wait(global.shared->vsyncc);
+	sem_wait(global.vsync);
 
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),

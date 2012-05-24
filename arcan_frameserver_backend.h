@@ -121,7 +121,8 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr);
 
 /* return a callback function for retrieving appropriate video-feeds */
-int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned src, vfunc_state vstate);
+int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
+int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state); 
 
 /* return a callback function for retrieving appropriate audio-feeds */
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag);

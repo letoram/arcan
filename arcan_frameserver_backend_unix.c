@@ -138,27 +138,6 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 		fprintf(dst, "arcan_frameserver_dbgdump:\n(null)\n\n");
 }
 
-
-
-static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
-	
-	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
-		switch (cmd){
-			case ffunc_tick:
-				arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
-			break;
-                
-			case ffunc_destroy:
-				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
-			break;
-                
-			default:
-				break;
-		}
-    
-	return 0;
-}
-
 arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
@@ -206,11 +185,11 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 			res->source = strdup(fname);
-			res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
+			res->vid = arcan_video_addfobject(arcan_frameserver_emptyframe, state, cons, 0);
 			res->aid = ARCAN_EID;
 		} else { 
 			vfunc_state* cstate = arcan_video_feedstate(res->vid);
-			arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *cstate); /* revert back to empty vfunc? */
+			arcan_video_alterfeed(res->vid, arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
 
 		char* work = strdup(shmkey);
