@@ -17,6 +17,7 @@
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
+#include "../arcan_event.h"
 #include "../arcan_frameserver_decode.h"
 #include "../arcan_frameserver_backend_shmpage.h"
 
@@ -100,37 +101,23 @@ static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, HANDLE key)
 	return true;
 }
 
-/* args accepted;
- * fname
- * parent window handle
- * semaphore handle (one for vid, one for aud) (passed by parent in CreateProcess)
- * in-frameserver loop
- */
-int main(int argc, char* argv[])
+void mode_video(char* resource, HANDLE shmh, HANDLE semary[3])
 {
 	arcan_ffmpeg_context* vidctx;
 
-#ifndef _DEBUG
-/*	_set_invalid_parameter_handler(inval_param_handler) */
-	DWORD dwMode = SetErrorMode(SEM_NOGPFAULTERRORBOX);
-	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
-#endif
-
-	if (2 != argc)
-		return 1;
-
-	char* fname = argv[0];
-	HANDLE shmh = (HANDLE) strtoul(argv[1], NULL, 10);
-	
 	/* create a window, hide it and transfer the hwnd in the SHM,
 	 * use this HWND for sleeping / waking between frame transfers */
-	vidctx = ffmpeg_preload(fname);
+	vidctx = ffmpeg_preload(resource);
+	vidctx->async = semary[0];
+	vidctx->vsync = semary[1];
+	vidctx->esync = semary[2];
 
 	if (vidctx != NULL && setup_shm_ipc(vidctx, shmh)) {
 		struct frameserver_shmpage* page = vidctx->shared;
 		parent = page->parent;
 		vidctx->shared->resized = true;
-		arcan_sem_post(vidctx->shared->vsyncc);
+
+		arcan_sem_post(vidctx->vsync);
 
 		/* reuse the shmpage, anyhow, the main app should support
 		 * relaunching the frameserver when looping to cover for
@@ -138,7 +125,7 @@ int main(int argc, char* argv[])
 
 		while (ffmpeg_decode(vidctx) && page->loop) {
 			ffmpeg_cleanup(vidctx);
-			vidctx = ffmpeg_preload(fname);
+			vidctx = ffmpeg_preload(resource);
 
 			/* sanity check, file might have changed between loads */
 			if (!vidctx ||
@@ -150,6 +137,47 @@ int main(int argc, char* argv[])
 			vidctx->shared = page;
 		}
 	}
+}
+
+/* [Required arguments] 
+ *
+ * resourcepath
+ * parent window handle
+ * vidsemh
+ * audsemh
+ * eventsemh
+ * frameserver mode (movie, libretro, streamserve)
+ */
+int main(int argc, char* argv[])
+{
+#ifndef _DEBUG
+/*	_set_invalid_parameter_handler(inval_param_handler) */
+	DWORD dwMode = SetErrorMode(SEM_NOGPFAULTERRORBOX);
+	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
+#endif
+
+
+	if (6 != argc)
+		return 1;
+
+	char* fname = argv[0];
+	char* fsrvmode = argv[5];
+	HANDLE shmh = (HANDLE) strtoul(argv[1], NULL, 10);
+
+/* semaphores were previously passed through shmpage, after refactoring,
+ * they're not command-line arguments */
+	HANDLE semary[3];
+	semary[0] = (HANDLE) strtoul(argv[2], NULL, 10);
+	semary[1] = (HANDLE) strtoul(argv[3], NULL, 10);
+	semary[2] = (HANDLE) strtoul(argv[4], NULL, 10);
+
+	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
+		mode_video(fname, shmh, semary);
+	else if (strcmp(fsrvmode, "libretro") == 0)
+/*		mode_libretro(fname, shmh) */ ;
+	else if (strcmp(fsrvmode, "streamserve") == 0)
+/*		mode_streamserv(fname, shmh) */ ;
+	else;
 
 	return 0;
 }
