@@ -81,6 +81,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
 				fprintf(stderr, "BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
 
+			CloseHandle(src->async);
+			CloseHandle(src->vsync);
+			CloseHandle(src->esync);
 			CloseHandle( src->shm.handle );
 			free(src->shm.key);
 			
@@ -186,17 +189,17 @@ static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t
 	return 0;
 }
 
+static SECURITY_ATTRIBUTES nullsec_attr;
 static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 {
 	struct frameserver_shmpage* res = NULL;
 
-	SECURITY_ATTRIBUTES sa;
-	sa.nLength = sizeof(sa);
-	sa.lpSecurityDescriptor = NULL;
-	sa.bInheritHandle = TRUE;
+	nullsec_attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	nullsec_attr.lpSecurityDescriptor = NULL;
+	nullsec_attr.bInheritHandle = TRUE;
 	
 	*dfd = CreateFileMapping(INVALID_HANDLE_VALUE,  /* hack for specifying shm */
-		&sa, /* security, want to inherit */
+		&nullsec_attr, /* security, want to inherit */
 		PAGE_READWRITE, /* access */
 	    0, /* big-endian size? */
 		MAX_SHMSIZE, /* little-endian size */
@@ -206,8 +209,6 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 	if (*dfd != NULL && (res = MapViewOfFile(*dfd, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
 		memset(res, 0, sizeof(struct frameserver_shmpage));
 		res->vbufofs = sizeof(struct frameserver_shmpage);
-		res->vsyncc = res->vsyncp = CreateSemaphore(&sa, 1, 0, NULL); 
-		res->asyncc = res->asyncp = CreateSemaphore(&sa, 1, 1, NULL);
 		return res;
 	}
 
@@ -218,14 +219,15 @@ error:
 
 arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
 {
-	/* if res is non-null, we have a server context already set up,
-	 * just need to reset the frame-server */
+/* if res is non-null, we have a server context already set up, 
+ * just need to reset the frame-server */
 	bool restart = res != NULL;
 
+/* even if we're looping, it's assumed that the frameserver resources have been free:ed (with loop args) */
 	HANDLE shmh;
 	struct frameserver_shmpage* shmpage = setupshmipc(&shmh);
 
-	if  (!shmpage)
+	if (!shmpage)
 		goto error;
 
 	SDL_SysWMinfo wmi;
@@ -233,9 +235,14 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	SDL_GetWMInfo(&wmi);
 	HWND handle = wmi.window;
 
-	/* b: spawn the child process */
-	char cmdline[512];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i", fname, shmh);
+/* if we have run out of unnamed semaphores, we're in pretty much an unrecoverable / crashstate anyhow */
+	sem_handle vsync = CreateSemaphore(&nullsec_attr, 1, 0, NULL);
+	sem_handle async = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+	sem_handle esync = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+
+/* b: spawn the child process */
+	char cmdline[4196];
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i movie", fname, shmh, vsync, async, esync);
 	shmpage->loop = loop;
 	shmpage->parent = handle;
 
@@ -271,6 +278,10 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 				vfunc_state* state = arcan_video_feedstate(res->vid);
 				arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *state);
 			}
+
+		res->vsync = vsync;
+		res->async = async;
+		res->esync = esync;
 
 		res->child_alive = true;
 		res->desc = vinfo;
