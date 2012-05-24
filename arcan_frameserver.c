@@ -278,6 +278,9 @@ void mode_video(char* resource, char* keyfile)
 			break;
 
 			vidctx->shared = page;
+			vidctx->async = async;
+			vidctx->vsync = vsync;
+			vidctx->esync = esync;
 		}
 	}
 }
@@ -286,7 +289,7 @@ void mode_video(char* resource, char* keyfile)
  * fname
  * keyfile
  * these are set-up by the parent before exec, so is the sempage.
- * the sem_t semaphores in the page are set up as vid(1), aud(0)
+ * all of these are derived from the keyfile (last char replaced with v, a, e for sems) 
  * and we release vid (within a few seconds or get killed).
  */
  int main(int argc, char** argv)
@@ -316,7 +319,6 @@ void mode_video(char* resource, char* keyfile)
 			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
 			return 1; /* munmap on process close */
 	}
-	
 	
 	close(0);
 	close(1);

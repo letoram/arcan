@@ -80,6 +80,7 @@ void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* ace
 		*acellcount = queueopts.acellcount;
 }
 
+/* won't do anything on windows */
 void arcan_frameserver_dropsemaphores_keyed(char* key)
 {
 	char* work = strdup(key);
