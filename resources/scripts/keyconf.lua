@@ -242,7 +242,8 @@ local function keyconf_buildtable(self, label, state)
 -- if we don't get a table from an input event, we build a small empty table,
 -- with the expr-eval of state as basis 
 	worktbl = {};
-	
+	worktbl.label = label;
+
 	if (type(state) ~= "table") then
 		worktbl.kind = "digital";
 		worktbl.active = state and true or false;
@@ -473,7 +474,7 @@ end
 
 local function keyconf_labels(self)
 	local labels = {};
-	
+
 	for key, value in pairs(self.table) do
 		if string.sub(key, 1, 7) == "analog:" or
 				string.sub(key, 1, 8) == "digital:" or

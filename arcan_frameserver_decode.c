@@ -7,6 +7,7 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_event.h"
 #include "arcan_frameserver_decode.h"
 #include "arcan_frameserver_backend_shmpage.h"
 
@@ -37,7 +38,7 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 		ctx->shared->abufused = ntw;
 		ctx->shared->aready = true;
 
-		if (!semcheck( ctx->shared->asyncc, 0 ))
+		if (!semcheck( ctx->async, 0 ))
 			return false;
 	}
 
@@ -92,7 +93,7 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 		memcpy(((void*)ctx->shared) + ctx->shared->vbufofs, ctx->video_buf, ctx->c_video_buf);
 		ctx->shared->vready = true;
 		
-		if (!semcheck( ctx->shared->vsyncc, 0 ))
+		if (!semcheck( ctx->vsync, 0 ))
 			return false;
 	}
 

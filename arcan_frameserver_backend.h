@@ -70,6 +70,7 @@ typedef struct {
 	
 /*  OS- specific, defined in general.h */
 	shm_handle shm;
+	sem_handle vsync, async, esync; 
 	int key; /*shmid */
 
 	arcan_aobj_id aid;

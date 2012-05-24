@@ -19,13 +19,17 @@
  *
  */
 
+#define SHMPAGE_QUEUESIZE 64
+
 struct frameserver_shmpage {
-/* synchronization */
-	sem_handle vsyncc; sem_handle asyncc; sem_handle esyncc;
-	sem_handle vsyncp; sem_handle asyncp; sem_handle esyncp;
 	bool resized;
 	bool loop;
 
+/* these are managed / populated by a queue 
+ * context in each process, mapped to the same posix semaphore */
+	arcan_event inevq[ SHMPAGE_QUEUESIZE ];
+	arcan_event outevq[ SHMPAGE_QUEUESIZE ];
+	
 	process_handle parent;
 	
 	volatile uint8_t vready;

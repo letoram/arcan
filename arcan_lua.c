@@ -960,8 +960,11 @@ int arcan_lua_targetinput(lua_State* ctx)
 		lua_pushnumber(ctx, false);
 		return 1;
 	}
-
 	arcan_launchtarget* intarget = (arcan_launchtarget*) vstate->ptr;
+
+	const char* label = intblstr(ctx, "label");
+	if (label)
+		snprintf(ev.label, 16, "%s", label);
 	
 	/* populate all arguments */
 	const char* kindlbl = intblstr(ctx, "kind");

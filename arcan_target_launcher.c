@@ -206,7 +206,7 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 			}
 			
 			shmpage->vready = false;
-			sem_post( shmpage->vsyncp );
+			sem_post( tgt->source.vsync );
 		break;
     }
 
@@ -301,8 +301,8 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 		
 		char* work = strdup(shmkey);
 			work[strlen(work) - 1] = 'v';
-			shmpage->vsyncp = sem_open(work, 0);
-			sem_post(shmpage->vsyncp);
+			res->source.vsync = sem_open(work, 0);
+			sem_post(res->source.vsync);
 		free(work);
 		
 	/* tick() checks for a video-init. When one happens, the fobject- is resized

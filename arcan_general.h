@@ -25,8 +25,6 @@
 #define ARCAN_VERSION_MAJOR 0
 #define ARCAN_VERSION_MINOR 1
 
-/* max accepted vidres (1080p, 4bpp) + synch & structures + max audioframesize according to ffmpeg */
-#define MAX_SHMSIZE 8582916
 
 extern char* arcan_themename;
 extern char* arcan_resourcepath;
@@ -177,10 +175,13 @@ const char* internal_launch_support();
 
 /* fixed limit of allowed events in queue
  * before old gets overwritten */
-#define ARCAN_EVENT_QUEUE_LIM 65536
+#define ARCAN_EVENT_QUEUE_LIM 1024 
 
 #define ARCAN_EID 0
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
+
+/* max accepted vidres (1080p, 4bpp) + synch & structures + max audioframesize according to ffmpeg */
+#define MAX_SHMSIZE 9582916
 
 #endif

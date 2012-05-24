@@ -177,6 +177,29 @@ typedef struct arcan_event {
 	event_data data;
 } arcan_event;
 
+struct arcan_evctx {
+	uint32_t seqn;
+	uint32_t c_ticks;
+	uint32_t c_leaks;
+	uint32_t mask_cat_inp;
+	uint32_t mask_cat_out;
+
+	unsigned kbdrepeat;
+	
+	unsigned n_eventbuf;
+	arcan_event* eventbuf;
+	
+	unsigned front;
+	unsigned back;
+	uint32_t cell_aofs;
+
+	bool local;
+	union {
+		void* local;
+		sem_handle shared;
+	} synch;
+};
+
 typedef struct arcan_evctx arcan_evctx;
 
 /* check timers, poll IO events and timing calculations
