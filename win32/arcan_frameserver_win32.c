@@ -108,8 +108,8 @@ void mode_video(char* resource, HANDLE shmh, HANDLE semary[3])
 	/* create a window, hide it and transfer the hwnd in the SHM,
 	 * use this HWND for sleeping / waking between frame transfers */
 	vidctx = ffmpeg_preload(resource);
-	vidctx->async = semary[0];
-	vidctx->vsync = semary[1];
+	vidctx->vsync = semary[0];
+	vidctx->async = semary[1];
 	vidctx->esync = semary[2];
 
 	if (vidctx != NULL && setup_shm_ipc(vidctx, shmh)) {
