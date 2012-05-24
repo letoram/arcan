@@ -1181,7 +1181,8 @@ end
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
-
+	local addlbl = "";
+	
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 	if (restbl) then
 		for ind, val in pairs(restbl) do
@@ -1192,6 +1193,8 @@ function gridle_internalinput(iotbl)
 				gridlemenu_internal(internal_vid);
 				return;
 			end
+
+			addlbl = val;
 			
 			if (settings.internal_input == "Rotate CW" or settings.internal_input == "Rotate CCW") then
 				val = rotate_label(val, settings.internal_input == "Rotate CW");
@@ -1232,6 +1235,10 @@ function gridle_internalinput(iotbl)
 		end
 	end
 
+-- the label used in iotbl will be the last matching label of a set,
+-- another option would be to fire an event for each generated label
+-- and leave it up to the target to filter.
+	iotbl.label = addlbl;
 	target_input(iotbl, internal_vid);
 end
 

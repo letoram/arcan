@@ -5,7 +5,10 @@
 
 typedef struct arcan_ffmpeg_context {
 	struct frameserver_shmpage* shared;
-
+	sem_handle async;
+	sem_handle vsync;
+	sem_handle esync;
+	
 	struct SwsContext* ccontext;
 	AVFormatContext* fcontext;
 	AVCodecContext* acontext;

@@ -65,31 +65,16 @@ struct arcan_stick {
 
 typedef struct queue_cell queue_cell;
 
-struct arcan_evctx {
-	uint32_t seqn;
-	uint32_t c_ticks;
-	uint32_t c_leaks;
-	uint32_t mask_cat_inp;
-	uint32_t mask_cat_out;
-
-/* won't be used in non-local mode */
-	unsigned kbdrepeat;
-	unsigned short nsticks;
-	struct arcan_stick* sticks;
-
-	unsigned front;
-	unsigned back;
-	arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
-	uint32_t cell_aofs;
-
-	bool local;
-	union {
-		SDL_mutex* local;
-		sem_handle shared;
-	} synch;
-};
+static struct {
+		unsigned short n_joy;
+		struct arcan_stick* joys;
+} joydev = {0};
+	
+static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 
 static struct arcan_evctx default_evctx = {
+	.eventbuf = eventbuf,
+	.n_eventbuf = ARCAN_EVENT_QUEUE_LIM, 
 	.local = true
 };
 
@@ -100,7 +85,7 @@ arcan_evctx* arcan_event_defaultctx(){
 static unsigned alloc_queuecell(arcan_evctx* ctx)
 {
 	unsigned rv = ctx->back;
-	ctx->back = (ctx->back + 1) % ( sizeof(ctx->eventbuf) / sizeof(ctx->eventbuf[0]) );
+	ctx->back = (ctx->back + 1) % ctx->n_eventbuf;
 	return rv;
 }
 
@@ -158,7 +143,7 @@ arcan_event* arcan_event_poll(arcan_evctx* ctx)
 	LOCK();
 		if (ctx->front != ctx->back){
 			rv = &ctx->eventbuf[ ctx->front ];
-			ctx->front = (ctx->front + 1) % ( (sizeof(ctx->eventbuf) / sizeof(ctx->eventbuf[0])) );
+			ctx->front = (ctx->front + 1) % ctx->n_eventbuf;
 		}
 	UNLOCK();
 
@@ -288,8 +273,8 @@ void map_sdl_events(arcan_evctx* ctx)
 				newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
 				
 			/* need to filter out "noise" */
-				if (event.jaxis.value < (-1 * ctx->sticks[ event.jaxis.which ].threshold) ||
-				        event.jaxis.value > ctx->sticks[ event.jaxis.which ].threshold) {
+				if (event.jaxis.value < (-1 * joydev.joys[ event.jaxis.which ].threshold) ||
+				        event.jaxis.value > joydev.joys[ event.jaxis.which ].threshold) {
 					newevent.data.io.input.analog.gotrel = false;
 					newevent.data.io.input.analog.devid = ARCAN_JOYIDBASE + event.jaxis.which;
 					newevent.data.io.input.analog.subid = event.jaxis.axis;
@@ -441,9 +426,9 @@ static unsigned long djb_hash(const char* str)
 
 void arcan_event_deinit(arcan_evctx* ctx)
 {
-	if (ctx->sticks){
-		free(ctx->sticks);
-		ctx->sticks = 0;
+	if (joydev.joys){
+		free(joydev.joys);
+		joydev.joys = 0;
 	}
 
 	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
@@ -452,7 +437,6 @@ void arcan_event_deinit(arcan_evctx* ctx)
 void arcan_event_init(arcan_evctx* ctx)
 {
 	if (!ctx->local){
-	
 		return;
 	}
 	
@@ -464,20 +448,20 @@ void arcan_event_init(arcan_evctx* ctx)
 	SDL_Init(SDL_INIT_JOYSTICK);
 	/* enumerate joysticks, try to connect to those available and map their respective axises */
 	SDL_JoystickEventState(SDL_ENABLE);
-	ctx->nsticks = SDL_NumJoysticks();
+	joydev.n_joy = SDL_NumJoysticks();
 
-	if (ctx->nsticks > 0) {
-		ctx->sticks = (struct arcan_stick*) calloc(sizeof(struct arcan_stick), ctx->nsticks);
-		for (int i = 0; i < ctx->nsticks; i++) {
-			strncpy(ctx->sticks[i].label, SDL_JoystickName(i), 255);
-			ctx->sticks[i].hashid = djb_hash(SDL_JoystickName(i));
-			ctx->sticks[i].handle = SDL_JoystickOpen(i);
-			ctx->sticks[i].devnum = i;
-			ctx->sticks[i].axis = SDL_JoystickNumAxes(ctx->sticks[i].handle);
-			ctx->sticks[i].buttons = SDL_JoystickNumButtons(ctx->sticks[i].handle);
-			ctx->sticks[i].balls = SDL_JoystickNumBalls(ctx->sticks[i].handle);
-			ctx->sticks[i].hats = SDL_JoystickNumHats(ctx->sticks[i].handle);
-			ctx->sticks[i].threshold = arcan_joythresh;
+	if (joydev.n_joy > 0) {
+		joydev.joys = (struct arcan_stick*) calloc(sizeof(struct arcan_stick), joydev.n_joy);
+		for (int i = 0; i < joydev.n_joy; i++) {
+			strncpy(joydev.joys[i].label, SDL_JoystickName(i), 255);
+			joydev.joys[i].hashid = djb_hash(SDL_JoystickName(i));
+			joydev.joys[i].handle = SDL_JoystickOpen(i);
+			joydev.joys[i].devnum = i;
+			joydev.joys[i].axis = SDL_JoystickNumAxes(joydev.joys[i].handle);
+			joydev.joys[i].buttons = SDL_JoystickNumButtons(joydev.joys[i].handle);
+			joydev.joys[i].balls = SDL_JoystickNumBalls(joydev.joys[i].handle);
+			joydev.joys[i].hats = SDL_JoystickNumHats(joydev.joys[i].handle);
+			joydev.joys[i].threshold = arcan_joythresh;
 		}
 	}
 }

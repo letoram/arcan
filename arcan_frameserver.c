@@ -35,6 +35,7 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_event.h"
 #include "arcan_frameserver_backend_shmpage.h"
 #include "libretro.h"
 
@@ -46,6 +47,8 @@
 
 FILE* logdev = NULL;
 char* active_shmkey = NULL;
+static sem_handle async, vsync, esync;
+
 #define LOG(...) ( fprintf(logdev, __VA_ARGS__))
 
 char* arcan_themepath = "";
@@ -105,14 +108,7 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 	struct frameserver_shmpage* buf = NULL;
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = shm_open(shmkey, O_RDWR, 0700);
-	char* semkeya = strdup(shmkey);
-	char* semkeyv = strdup(shmkey);
-	char* semkeye = strdup(shmkey);
 
-	semkeyv[ strlen(shmkey) - 1 ] = 'v';
-	semkeya[ strlen(shmkey) - 1 ] = 'a';
-	semkeye[ strlen(shmkey) - 1 ] = 'e';
-	
 	if (-1 == fd) {
 		LOG("arcan_frameserver() -- couldn't open keyfile (%s)\n", shmkey);
 		return NULL;
@@ -146,16 +142,7 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 /* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
 	buf->abufofs = buf->vbufofs + (buf->w* buf->h* buf->bpp);
 	buf->abufbase = 0;
-	buf->vsyncc = sem_open(semkeyv, 0, 0700);
-	buf->asyncc = sem_open(semkeya, 0, 0700);
-	buf->esyncc = sem_open(semkeye, 0, 0700);
 
-	if (buf->vsyncc == 0x0 ||
-		buf->asyncc == 0x0){
-			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
-			return NULL; /* munmap on process close */
-	}
-	
 	active_shmkey = shmkey;
 	atexit(cleanshmkey);
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
@@ -263,11 +250,14 @@ void mode_video(char* resource, char* keyfile)
 	if (!vidctx) return;
 	
 	vidctx->shared = get_shm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
-
+	vidctx->async = async;
+	vidctx->vsync = vsync;
+	vidctx->esync = esync;
+	
 	if (vidctx->shared){
 		int semv, rv;
 		vidctx->shared->resized = true;
-		sem_post(vidctx->shared->vsyncc);
+		sem_post(vidctx->vsync);
 		
 		LOG("arcan_frameserver(video) -- decoding\n");
 		
@@ -311,6 +301,23 @@ void mode_video(char* resource, char* keyfile)
 		return 1;
 	}
 
+	char* work = strdup(keyfile);
+		work[strlen(work) - 1] = 'v';
+		vsync = sem_open(work, 0);
+		work[strlen(work) - 1] = 'a';
+		async = sem_open(work, 0);
+		work[strlen(work) - 1] = 'e';
+		esync = sem_open(work, 0);	
+	free(work);
+	
+	if (async == 0x0 ||
+		vsync == 0x0 ||
+		esync == 0x0 ){
+			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
+			return 1; /* munmap on process close */
+	}
+	
+	
 	close(0);
 	close(1);
 	close(2);

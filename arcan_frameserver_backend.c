@@ -38,6 +38,7 @@
 /* arcan */
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_event.h"
 #include "arcan_framequeue.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
@@ -85,6 +86,8 @@ void arcan_frameserver_dropsemaphores_keyed(char* key)
 		work[ strlen(work) - 1] = 'v';
 		arcan_sem_unlink(NULL, work);
 		work[strlen(work) - 1] = 'a';
+		arcan_sem_unlink(NULL, work);
+		work[strlen(work) - 1] = 'e';
 		arcan_sem_unlink(NULL, work);
 	free(work);	
 }
@@ -357,7 +360,7 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 				memcpy(dst, (void*)shm + shm->vbufofs, ntr);
 				shm->vready = false;
 				rv = ntr;
-				arcan_sem_post(shm->vsyncp);
+				arcan_sem_post(movie->vsync);
 			}
 			else
 				errno = EAGAIN;
@@ -391,7 +394,7 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 					memcpy(dst, (void*) shm + shm->abufofs + shm->abufbase, nc);
 					shm->abufbase = 0;
 					shm->aready = false;
-					arcan_sem_post(shm->asyncp);
+					arcan_sem_post(movie->async);
 					rv = nc;
 				}
 			}

@@ -724,8 +724,17 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 				
 				sem_t* aud = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
 				if (SEM_FAILED != aud){
-					free(work);
-					break;
+					
+					work[strlen(work) -1] = 'e';
+					sem_t* ev = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
+
+					if (SEM_FAILED != ev){
+						free(work);
+						break;
+					}
+					
+					work[strlen(work) -1] = 'a';
+					sem_unlink(work);
 				}
 				
 				work[strlen(work) - 1] = 'v';

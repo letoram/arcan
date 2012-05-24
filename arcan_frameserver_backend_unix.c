@@ -145,15 +145,15 @@ static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 		switch (cmd){
 			case ffunc_tick:
-               arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
-                break;
+				arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
+			break;
                 
 			case ffunc_destroy:
 				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
-                break;
+			break;
                 
 			default:
-                break;
+				break;
 		}
     
 	return 0;
@@ -196,13 +196,6 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
 
-		char* work = strdup(shmkey);
-			work[strlen(work) - 1] = 'v';
-			shmpage->vsyncp = sem_open(work, 0);
-			work[strlen(work) - 1] = 'a';
-			shmpage->asyncp = sem_open(work, 0);
-		free(work);
-		
 		cons.w = shmpage->w;
 		cons.h = shmpage->h;
 		cons.bpp = shmpage->bpp;
@@ -214,13 +207,21 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 			res->source = strdup(fname);
 			res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
-            res->aid = ARCAN_EID;
+			res->aid = ARCAN_EID;
 		} else { 
 			vfunc_state* cstate = arcan_video_feedstate(res->vid);
-			arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *cstate); 
-            /* revert back to empty vfunc? */
-        }
+			arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *cstate); /* revert back to empty vfunc? */
+		}
 
+		char* work = strdup(shmkey);
+			work[strlen(work) - 1] = 'v';
+			res->vsync = sem_open(work, 0);
+			work[strlen(work) - 1] = 'a';
+			res->async = sem_open(work, 0);
+			work[strlen(work) - 1] = 'e';
+			res->esync = sem_open(work, 0);	
+		free(work);
+		
 		res->child_alive = true;
 		res->desc = vinfo;
 		res->child = child;
