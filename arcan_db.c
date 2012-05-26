@@ -177,6 +177,7 @@ long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status)
 	}
 
 	sqlite3_finalize(stmt);
+	return rv;
 }
 
 arcan_dbh_res arcan_db_genres(arcan_dbh* dbh, bool sub)

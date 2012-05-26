@@ -110,7 +110,6 @@ typedef struct {
 	volatile int tag;
 	void* ptr;
 } vfunc_state;
-const
 
 typedef int8_t(*arcan_vfunc_cb)(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
 

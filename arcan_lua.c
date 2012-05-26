@@ -385,8 +385,7 @@ int arcan_lua_orderimage(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned int zv = luaL_checknumber(ctx, 2);
 
-	if (zv >= 0)
-		arcan_video_setzv(id, zv);
+	arcan_video_setzv(id, zv);
 	
 	return 0;
 }
@@ -942,13 +941,12 @@ static inline bool intblbool(lua_State* ctx, const char* field){
 
 /*
  * Next step in the input mess, take a properly formatted table,
- * convert it back into an arcan event, push that to the target_launcher
- * that'll serialise it to a hijack function which then decodes into a
+ * convert it back into an arcan event, push that to the target_launcher or frameserver.
+ * The targetr_launcher will serialise it to a hijack function which then decodes into a
  * native format (currently most likely SDL). All this hassle (instead 
  * of creating a custom LUA object, tag it with the raw event and be done with it)
  * is to allow the theme- to modify or even generate new ones based on in-theme actions.
  */
-
 int arcan_lua_targetinput(lua_State* ctx)
 {
 	arcan_event ev = {.kind = 0};
@@ -956,11 +954,10 @@ int arcan_lua_targetinput(lua_State* ctx)
 	luaL_checktype(ctx, 1, LUA_TTABLE);
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	
-	if (!vstate || vstate->tag != ARCAN_TAG_TARGET){
+	if (!vstate || (vstate->tag != ARCAN_TAG_TARGET && vstate->tag != ARCAN_TAG_FRAMESERV)){
 		lua_pushnumber(ctx, false);
 		return 1;
 	}
-	arcan_launchtarget* intarget = (arcan_launchtarget*) vstate->ptr;
 
 	const char* label = intblstr(ctx, "label");
 	if (label)
@@ -1012,7 +1009,10 @@ int arcan_lua_targetinput(lua_State* ctx)
 		return 1;
 	}
 		
-	arcan_target_inject_event(intarget, ev);
+	if (vstate->tag == ARCAN_TAG_FRAMESERV)
+		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev );
+	else
+		arcan_target_inject_event( (arcan_launchtarget*) vstate->ptr, ev);
 
 	lua_pushnumber(ctx, true);
 	return 1;
@@ -2167,7 +2167,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, game, internal);
 	if (cmdline.kind == 0){
 		char* resourcestr = arcan_find_resource_path(cmdline.data.strarr[0], "targets", ARCAN_RESOURCE_SHARED);
-
+		
 		if (lua_ctx_store.debug > 0){
 			arcan_warning("arcan_lua_launchtarget(%s,%d):\n", game, internal, resourcestr);
 			char** argbase = cmdline.data.strarr;
@@ -2175,7 +2175,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					arcan_warning("\t%s\n", *argbase++);
 		}
 		
-		if (internal) {
+		if (internal && resourcestr) {
 			arcan_launchtarget* intarget = arcan_target_launch_internal(
 			               resourcestr,
 			               cmdline.data.strarr,

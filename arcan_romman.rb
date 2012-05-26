@@ -21,9 +21,8 @@ if (!basepath)
 	STDERR.print("Fatal, could not find romman_base.rb (should reside in resources/scripts)\n")
 	exit(1)
 end
-		
+	
 load "#{basepath}/romman_base.rb"
-
 
 # just split based on ',', allow '\' to make the next character stick
 def argsplit( inarg )

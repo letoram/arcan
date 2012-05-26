@@ -98,7 +98,7 @@ typedef struct {
 	arcan_aobj_id lastid;
 	unsigned aobjc;
 	
-	ALint sample_sources[ARCAN_AUDIO_SLIMIT];
+	ALuint sample_sources[ARCAN_AUDIO_SLIMIT];
 } arcan_acontext;
 
 static void _wrap_alError(arcan_aobj*, char*);

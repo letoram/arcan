@@ -288,7 +288,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 
 /* the current model uses the associated scaling / blending
  * of the associated vid and applies it uniformly */
-static const int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
+static int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
 		switch (cmd){
@@ -725,11 +725,6 @@ arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
 	}
 	
 	return rv; 
-}
-
-arcan_errc arcan_3d_addperspective(unsigned type)
-{
-		/* INCOMPLETE */
 }
 
 void arcan_3d_setdefaults()

@@ -45,10 +45,19 @@ class ScummVM
 	end
 	
 	def check_target(target, targetpath)
-		@scummpath = "#{targetpath}/#{target}"
+		@scummpath = nil; 
 		@titles = {}
-
-		if (File.exists?(@scummpath) == false)
+		
+		execs = ["", ".exe"];
+		execs.each{|ext|
+		           fullname = "#{targetpath}/#{target}#{ext}"
+		           if (File.exists?(fullname))
+		               @scummpath = fullname
+						break
+		           end
+		}
+		
+		if (@scummpath == nil)
 			STDERR.print("[SCUMMVM importer] cannot find scummvm binary at #{@scummpath}, skipping.\n")
 			return false
 		end
