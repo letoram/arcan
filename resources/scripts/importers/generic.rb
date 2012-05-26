@@ -60,14 +60,28 @@ class Generic
 	end
 	
 	def check_target(target, targetpath)
-		@genericpath = "#{targetpath}/#{target}"
+		@genericpath = nil
+		extension = ""
+		execs = ["", ".exe", ".so", ".dll"];
+		
+		execs.each{|ext|
+		           fullname = "#{targetpath}/#{target}#{ext}"
+		           if (File.exists?(fullname))
+		               @genericpath = fullname
+						extension = ext
+						break
+		           end
+		}
+		
+		if (@genericpath == nil) 
+			return false;
+		end
+		
 		@titles = {}
 		@targetname = target
-		return false unless File.exists?(@genericpath) and File.executable?(@genericpath)
-		
-		@target = Target.Load(0, target)
+		@target = Target.Load(0, @targetname)
 		if (@target == nil)
-			@target = Target.Create(target, target, @gentargets[target])
+			@target = Target.Create(@targetname, "#{@targetname}#{extension}",@gentargets[target])
 		elsif (@gentargets[target])
 			@target.arguments = @gentargets[target]
 			@target.store

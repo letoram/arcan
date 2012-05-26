@@ -117,10 +117,10 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 	LOG("arcan_frameserver() -- mapping shm, %i from %i\n", bufsize, fd);
 	/* map up the shared key- file */
 	buf = (struct frameserver_shmpage*) mmap(NULL,
-							bufsize,
-							PROT_READ | PROT_WRITE,
-							MAP_SHARED,
-							fd,
+		bufsize,
+		PROT_READ | PROT_WRITE,
+		MAP_SHARED,
+		fd,
 	0);
 	
 	if (buf == MAP_FAILED){
@@ -153,7 +153,12 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 /* interface for loading many different emulators,
  * we assume "resource" points to a dlopen:able library,
  * that can be handled by SDLs library management functions. */
-struct libretro_t {
+static struct {
+		bool alive; /* toggle this flag off to terminate main loop */
+		
+		struct arcan_evctx inevq;
+		struct arcan_evctx outevq;
+	
 		struct retro_system_info sysinfo;
 		struct retro_game_info gameinfo;
 		unsigned state_size;
@@ -163,7 +168,7 @@ struct libretro_t {
 		
 		void (*run)();
 		bool (*load_game)(const struct retro_game_info* game);
-};
+} retroctx;
 
 /* XRGB555 */
 static void* libretro_h = NULL;
@@ -182,12 +187,24 @@ static void* libretro_requirefun(const char* sym)
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch){
 	/* blit XRGB1555 to RGBA in shmpage and signal the semaphore */
+	printf("vidcb(%d, %d, %d)\n", width ,height, pitch);
+}
+
+size_t libretro_audcb(const int16_t* data, size_t nframes)
+{
+	printf("audcb(%d)\n", nframes);
+	return 0;
+}
+
+static void libretro_pollcb(){}
+static bool libretro_setenv(unsigned cmd, void* data){ return false; }
+static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
+	return 0;
 }
 
 /* map up a libretro compatible library resident at fullpath:game */
 static void mode_libretro(char* resource, char* keyfile)
 {
-	struct libretro_t retroctx = {0};
 	char* libname  = resource;
 
 /* abssopath : gamename */
@@ -203,6 +220,7 @@ static void mode_libretro(char* resource, char* keyfile)
 	libretro_h = SDL_LoadObject(libname);
 	void (*initf)() = libretro_requirefun("retro_init");
 	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
+	( (void(*)(retro_environment_t)) libretro_requirefun("retro_set_environment"))(libretro_setenv);
 	
 	if ( (initf(), true) && apiver() == RETRO_API_VERSION){
 		struct retro_system_info sysinf = {0};
@@ -224,11 +242,28 @@ static void mode_libretro(char* resource, char* keyfile)
 
 /* load game and get info on the resolution etc. */
 		struct frameserver_shmpage* shmpage = get_shm(keyfile, 0, 0, 4, 2, 44100);
-		
+
 /* at this point, we have the correct library, we have loaded the ROM in question,
  * get shared memory, setup callbacks and loop */
-	}
+		retroctx.inevq.synch.shared = esync;
+		retroctx.inevq.local = false;
+		retroctx.outevq.synch.shared = esync;
+		retroctx.inevq.eventbuf = shmpage->childdevq;
+		retroctx.outevq.eventbuf = shmpage->parentdevq;
 
+		( (void(*)(retro_video_refresh_t)) libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
+		( (void(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
+		( (void(*)(retro_input_poll_t)) libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
+		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
+		
+		retroctx.alive = true;
+	/* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
+	* parent event processing as well */
+		while (retroctx.alive){
+			retroctx.run();
+			printf("run() completed.\n");
+		}
+	}
 }
 
 /* Stream-server is used as a 'reverse' movie mode,

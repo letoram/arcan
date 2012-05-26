@@ -125,6 +125,18 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 	return true;
 }
 
+arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (dst && ev)
+		rv = dst->child_alive ? 
+			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) : 
+			ARCAN_ERRC_UNACCEPTED_STATE;
+	
+	return rv;
+}
+
 int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
 	
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
@@ -159,6 +171,10 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		if (!(src->playstate == ARCAN_PLAYING))
 		return rv;
 
+/* early out if the "synch- to PTS" feature has been disabled */
+		if (src->nopts && src->vfq.front_cell != NULL)
+			return FFUNC_RV_GOTFRAME;
+		
 	#ifdef _DEBUG                
         arcan_event ev = {.kind = EVENT_VIDEO_MOVIESTATUS, .data.video.constraints.w = src->vfq.c_cells,
         .data.video.constraints.h = src->afq.c_cells, .data.video.props.position.x = src->vfq.n_cells,

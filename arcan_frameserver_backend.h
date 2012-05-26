@@ -64,6 +64,7 @@ typedef struct {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
 	frame_queue vfq, afq;
+	struct arcan_evctx inqueue, outqueue;
 	
 /* original filename, needed for reloading */
 	char* source;
@@ -80,13 +81,13 @@ typedef struct {
 	enum arcan_playstate playstate;
 	int64_t lastpts;
 	int64_t starttime;
-	bool loop, autoplay;
+	bool loop, autoplay, nopts;
 
 /* set if color space conversion is done in process or not */
 	bool extcc;
 	unsigned int lastntr;
 
-	/* timing */
+/* timing */
 	uint32_t vfcount;
 	double bpms;
 	double audioclock;
@@ -108,6 +109,9 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
+
+arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
+
 void arcan_frameserver_dropsemaphores(arcan_frameserver*);
 void arcan_frameserver_tick_control(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);

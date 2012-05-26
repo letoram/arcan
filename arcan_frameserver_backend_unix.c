@@ -49,11 +49,11 @@
 /* arcan */
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_event.h"
 #include "arcan_framequeue.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_event.h"
 #include "arcan_util.h"
 #include "arcan_frameserver_backend_shmpage.h"
 
@@ -138,6 +138,7 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 		fprintf(dst, "arcan_frameserver_dbgdump:\n(null)\n\n");
 }
 
+
 arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
@@ -211,6 +212,16 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 		res->shm.key = shmkey;
 		res->shm.ptr = (void*) shmpage;
 		res->shm.shmsize = shmsize;
+
+/* two separate queues for passing events back and forth between main program and frameserver,
+ * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
+		res->inqueue.local = false;
+		res->outqueue.local = false;
+		res->inqueue.synch.shared = res->outqueue.synch.shared = res->esync;
+		res->outqueue.n_eventbuf = sizeof(shmpage->childdevq) / sizeof(shmpage->childdevq[0]);
+		res->inqueue.n_eventbuf = sizeof(shmpage->parentdevq) / sizeof(shmpage->parentdevq[0]);
+		res->inqueue.eventbuf = shmpage->parentdevq;
+		res->outqueue.eventbuf = shmpage->childdevq;
 		res->desc.ready = true;
 	}
 	else

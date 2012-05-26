@@ -150,7 +150,7 @@ arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event ev)
 	return rc;
 }
 
-static const int8_t internal_empty(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
+static int8_t internal_empty(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
 	
 	if (state.tag == ARCAN_TAG_TARGET && state.ptr)
 		switch (cmd){
