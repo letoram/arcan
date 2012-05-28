@@ -842,7 +842,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	
-	arcan_frameserver* mvctx = arcan_frameserver_spawn_server((char*) fname, false, loop, NULL);
+	arcan_frameserver* mvctx = arcan_frameserver_spawn_server((char*) fname, false, loop, NULL, NULL);
 /* mvctx is passed with the corresponding async event, which will only be used in the main thread, so 
  * no race condition here */ 
 	mvctx->tag = ref;
@@ -2157,26 +2157,64 @@ int arcan_lua_setqueueopts(lua_State* ctx)
 	return 0;
 }
 
+static bool use_loader(char* fname)
+{
+	char* ext = rindex( fname, '.' );
+
+	if (strcasecmp(ext, ".so") == 0)
+		return true;
+	else if (strcasecmp(ext, ".dll") == 0)
+		return true;
+	else	
+		return false;
+}
+
 int arcan_lua_targetlaunch(lua_State* ctx)
 {
 	const char* game = luaL_checkstring(ctx, 1);
 	int internal = luaL_checkint(ctx, 2) == 1;
+	intptr_t ref = (intptr_t) 0;
 	int rv = 0;
+
+	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
+		lua_pushvalue(ctx, 3);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
 
 	/* see if we know what the game is */
 	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, game, internal);
 	if (cmdline.kind == 0){
 		char* resourcestr = arcan_find_resource_path(cmdline.data.strarr[0], "targets", ARCAN_RESOURCE_SHARED);
+		if (!resourcestr)
+			goto cleanup;
 		
 		if (lua_ctx_store.debug > 0){
-			arcan_warning("arcan_lua_launchtarget(%s,%d):\n", game, internal, resourcestr);
 			char** argbase = cmdline.data.strarr;
 				while(*argbase)
 					arcan_warning("\t%s\n", *argbase++);
 		}
-		
-		if (internal && resourcestr) {
-			arcan_launchtarget* intarget = arcan_target_launch_internal(
+	
+		if (internal && resourcestr)
+			if (use_loader(resourcestr)){
+				char* metastr = resourcestr; /* for lib / frameserver targets, we assume that the argumentlist is just [romsetfull] */
+				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){ /* launch_options adds exec path first, we already know that one */
+					size_t arglen = strlen(resourcestr) + 1 + strlen(cmdline.data.strarr[1]) + 1;
+					
+					metastr = (char*) malloc( arglen );
+					snprintf(metastr, arglen, "%s:%s", resourcestr, cmdline.data.strarr[1]);
+				}
+			
+				arcan_frameserver* intarget = arcan_frameserver_spawn_server(metastr, false, false, NULL, "libretro");
+				intarget->tag = ref;
+				intarget->nopts = true;
+				intarget->autoplay = true;
+				lua_pushvid(ctx, intarget->vid);
+				lua_pushaid(ctx, intarget->aid);
+				arcan_db_launch_counter_increment(dbhandle, game);
+				rv = 2;
+			}
+			else {
+				arcan_launchtarget* intarget = arcan_target_launch_internal(
 			               resourcestr,
 			               cmdline.data.strarr,
 			               INTERCEPT_PRELOAD,
@@ -2184,15 +2222,15 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 			               COM_PIPE
 			           );
 			
-			if (intarget) {
-				lua_pushvid(ctx, intarget->source.vid);
-				lua_pushaid(ctx, intarget->source.aid);
-				arcan_db_launch_counter_increment(dbhandle, game);
-				rv = 2;
-			} else {
-				arcan_db_failed_launch(dbhandle, game);
+				if (intarget) {
+					lua_pushvid(ctx, intarget->source.vid);
+					lua_pushaid(ctx, intarget->source.aid);
+					arcan_db_launch_counter_increment(dbhandle, game);
+					rv = 2;
+				} else {
+					arcan_db_failed_launch(dbhandle, game);
+				}
 			}
-		}
 		else {
 			unsigned long elapsed = arcan_target_launch_external(resourcestr, cmdline.data.strarr);
 			
@@ -2211,7 +2249,8 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 	}
 	else
 		arcan_warning("arcan_lua_targetlaunch(%s, %i) failed, no match in database.\n", game, internal);
-	
+
+cleanup:
 	arcan_db_free_res(dbhandle, cmdline);
 	return rv;
 }

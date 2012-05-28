@@ -63,26 +63,36 @@ class Generic
 		@genericpath = nil
 		extension = ""
 		execs = ["", ".exe", ".so", ".dll"];
+		libloader = false # for dynamic libraries, we don't accept user supplied arguments, only target + romsetfull
 		
 		execs.each{|ext|
 		           fullname = "#{targetpath}/#{target}#{ext}"
 		           if (File.exists?(fullname))
 		               @genericpath = fullname
 						extension = ext
+						if (ext == ".so" or ext == ".dll")
+							libloader = true
+						end
+		          
 						break
 		           end
 		}
 		
-		if (@genericpath == nil) 
-			return false;
-		end
+		return false if @genericpath == nil 
 		
 		@titles = {}
 		@targetname = target
 		@target = Target.Load(0, @targetname)
+		
+		if (libloader)
+			@gentargets[target] = [ ["[romsetfull]"], [], [] ]
+		end
+		
 		if (@target == nil)
 			@target = Target.Create(@targetname, "#{@targetname}#{extension}",@gentargets[target])
-		elsif (@gentargets[target])
+		end 
+	
+		if (@gentargets[target])
 			@target.arguments = @gentargets[target]
 			@target.store
 		end

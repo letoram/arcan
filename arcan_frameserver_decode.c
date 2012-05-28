@@ -53,7 +53,7 @@ static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_
 		/* av_malloc (buf) guarantees alignment */
 		uint32_t* dst = (uint32_t*) buf;
 
-		/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct linewidth / height is present */
+/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct linewidth / height is present */
 		for (int row = 0; row < height; row++)
 			for (int col = 0; col < width; col++) {
 				uint8_t y = frame->data[0][row * frame->linesize[0] + col];

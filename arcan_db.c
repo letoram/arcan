@@ -158,6 +158,29 @@ arcan_dbh_res arcan_db_targets(arcan_dbh* dbh)
 	return res;
 }
 
+bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec)
+{
+	bool rv = false;
+	const char* baseqry1 = "SELECT name, executable FROM target WHERE targetid=? LIMIT 1;";
+	sqlite3_stmt* stmt = NULL;
+	
+	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, targetid);
+	
+	while(sqlite3_step(stmt) == SQLITE_ROW){
+		if (targetname)
+			*targetname = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
+		
+		if (targetexec)
+			*targetexec = _n_strdup((const char*) sqlite3_column_text(stmt, 1), NULL);
+
+		rv = true;
+	}
+	sqlite3_finalize(stmt);
+	
+	return rv;
+}
+
 long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status)
 {
 	const char* baseqry1 = "SELECT gameid FROM game WHERE title=? LIMIT 1;";
@@ -259,9 +282,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
                              const char* title,
                              const char* genre,
                              const char* subgenre,
-														 const char* target,
-														 long long int offset,
-														 long long int limit
+							 const char* target,
+							 long long int offset,
+							 long long int limit
 						)
 {
 	arcan_dbh_res res = {.kind = -1};
@@ -278,7 +301,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 			return res;
 	}
 	
-	/* useful tautologies are useful */
+/* useful tautologies are useful */
 	const char* baseqry1 = "SELECT a.gameid AS \"gameid\", "
 	                       "a.title AS \"title\", "
 	                       "a.setname AS \"setname\", "
@@ -586,16 +609,16 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 	sqlite3_stmt* stmt = NULL;
 
 	unsigned int targetid = -1,gameid = -1;
-	char* romset = NULL;
+	char* romset = NULL, (* targetname) = NULL;
 
 	const char* launchqry1 = "SELECT a.targetid, b.gameid, a.executable, b.setname FROM target a, game b WHERE b.title=? AND b.target = a.targetid;";
 	const char* launchqry2 = "SELECT argument FROM target_arguments WHERE target = ? AND (mode = ? OR mode = 0) AND game = ? ORDER BY id ASC;";
 	const char* argcount = "SELECT Count(*) FROM target_arguments WHERE (mode = ? OR mode = 0) AND game = ?;";
 	
-	/* query 1, figure out which program to launch based on the requested game */
+/* query 1, figure out which program to launch based on the requested game */
 	int code = sqlite3_prepare_v2(dbh->dbh, launchqry1, strlen(launchqry1), &stmt, NULL);
+
 	sqlite3_bind_text(stmt, 1, game, -1, SQLITE_TRANSIENT);
-		   
 	if ((code = sqlite3_step(stmt)) == SQLITE_ROW) {
 		targetid = sqlite3_column_int(stmt, 0);
 		gameid = sqlite3_column_int(stmt, 1);
@@ -604,7 +627,11 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 	}
 	sqlite3_finalize(stmt);
 
-	/* query 2, check if there are any game- specific arguments that override the target defaults */
+	if (targetid != -1)
+		if (!arcan_db_targetdata(dbh, targetid, &targetname, NULL))
+			targetname = strdup("");
+	
+/* query 2, check if there are any game- specific arguments that override the target defaults */
 	int arggameid = 0;
 	
 	code = sqlite3_prepare_v2(dbh->dbh, argcount, strlen(argcount), &stmt, NULL);
@@ -615,18 +642,24 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 			arggameid = gameid;
 	sqlite3_finalize(stmt);
 	
-	/* query 3, build a list of command-line arguments for the specific game / target combination */
+/* query 3, build a list of command-line arguments for the specific game / target combination */
 	code = sqlite3_prepare_v2(dbh->dbh, launchqry2, strlen(launchqry2), &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, targetid);
 	sqlite3_bind_int(stmt, 2, internal ? 1 : 2);
 	sqlite3_bind_int(stmt, 3, arggameid);
 
-	/* since we don't know how many are in the result set (without running another query),
-	 * allocate slots in batches of 8, free and fail if realloc isn't possible */
+/* since we don't know how many are in the result set (without running another query),
+ * allocate slots in batches of 8, free and fail if realloc isn't possible */
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
 		if (strcmp((char*)arg, "[romset]") == 0) {
 			res.data.strarr[count++] = _n_strdup(romset, "");
+			free(romset);
+			romset = NULL;
+		}
+		else if ( strcmp(arg, "[romsetfull]") == 0){
+			snprintf(wbuf, wbufsize, "%s/games/%s/%s", arcan_resourcepath, targetname, romset);
+			res.data.strarr[count++] = strdup(wbuf);
 			free(romset);
 			romset = NULL;
 		}
@@ -641,8 +674,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 		else
 			res.data.strarr[count++] = _n_strdup(arg, NULL);
 
-		/* need to always have two spaces left, one for NULL terminator,
-		 * one for (possible) romset */
+/* need to always have two spaces left, one for NULL terminator,
+ * one for (possible) romset */
 		if (count == limit-1) {
 			char** newarr = (char**) realloc(res.data.strarr, (limit += REALLOC_STEP) * sizeof(char*));
 			if (newarr)
@@ -659,7 +692,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 			}
 		}
 	}
-	/* null terminate result array */
+
+/* if romset hasn't been defined, just add it last (how else should the target know what to launch..) */
 	if (romset) {
 		res.data.strarr[count++] = _n_strdup((char*) romset, "");
 		free(romset);
@@ -669,6 +703,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool int
 	res.data.strarr[count] = NULL;
 	res.count = count;
 	res.limit = limit;
+	
+	free(targetname); /* just used to construct [romsetfull] */
 	return res;
 }
 

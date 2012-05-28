@@ -103,7 +103,7 @@ typedef struct {
  * both video and audio support functions */
 
 /* all the necessary ffmpeg- foreplay */
-arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res);
+arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res, char* modestr);
 
 /* enable the forked process to start decoding */
 arcan_errc arcan_frameserver_playback(arcan_frameserver*);

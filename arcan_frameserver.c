@@ -155,6 +155,7 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
  * that can be handled by SDLs library management functions. */
 static struct {
 		bool alive; /* toggle this flag off to terminate main loop */
+		struct frameserver_shmpage* shared;
 		
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
@@ -163,10 +164,8 @@ static struct {
 		struct retro_game_info gameinfo;
 		unsigned state_size;
 		
-		retro_audio_sample_batch_t libretro_audioframe;
-		retro_video_refresh_t libretro_videoframe;
-		
 		void (*run)();
+		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
 } retroctx;
 
@@ -186,17 +185,51 @@ static void* libretro_requirefun(const char* sym)
 }
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch){
-	/* blit XRGB1555 to RGBA in shmpage and signal the semaphore */
-	printf("vidcb(%d, %d, %d)\n", width ,height, pitch);
+/* the shmpage size will be larger than the possible values for width / height,
+ * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
+	if (width != retroctx.shared->w || height != retroctx.shared->h){
+		retroctx.shared->w = width;
+		retroctx.shared->h = height;
+		retroctx.shared->resized = true;
+	}
+	
+	uint16_t* buf  = (uint16_t*) data; /* assumes aligned 8-bit */
+	uint32_t* dbuf = (uint32_t*) ((void*) retroctx.shared + retroctx.shared->vbufofs);
+	
+	for (int y = 0; y < height; y++){
+		for (int x = 0; x < width; x++){
+			uint16_t val = buf[x];
+			uint8_t r = ((val & 0x7c00) >> 10 ) << 3;
+			uint8_t g = ((val & 0x3e0) >> 5) << 3;
+			uint8_t b = (val & 0x1f) << 3;
+
+			*dbuf = (0xff) << 24 | b << 16 | g << 8 | r;
+			/* aabbggrr */
+			dbuf++;
+		}
+			
+		buf  += pitch >> 1;
+	}
+
+	retroctx.shared->vready = true;
+	
+	if (!semcheck(vsync, 0))
+		exit(1);
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
-	printf("audcb(%d)\n", nframes);
-	return 0;
+	memcpy(((void*) retroctx.shared) + retroctx.shared->abufofs, data, nframes * 2 * sizeof(int16_t) );
+	retroctx.shared->abufused = nframes * 2 * sizeof(int16_t);
+	retroctx.shared->aready = true;
+
+	if (!semcheck( async, 0 ))
+		exit(1);
+	
+	return nframes;
 }
 
-static void libretro_pollcb(){}
+static void libretro_pollcb(){ }
 static bool libretro_setenv(unsigned cmd, void* data){ return false; }
 static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
 	return 0;
@@ -206,7 +239,8 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 static void mode_libretro(char* resource, char* keyfile)
 {
 	char* libname  = resource;
-
+	LOG("mode_libretro (%s)\n", resource);
+	
 /* abssopath : gamename */
 	char* gamename = index(resource, ':');
 	if (!gamename) return;
@@ -215,53 +249,71 @@ static void mode_libretro(char* resource, char* keyfile)
 	
 	if (*libname == 0) 
 		return;
-	
+
 /* map up functions and test version */
 	libretro_h = SDL_LoadObject(libname);
 	void (*initf)() = libretro_requirefun("retro_init");
 	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
 	( (void(*)(retro_environment_t)) libretro_requirefun("retro_set_environment"))(libretro_setenv);
-	
+
+/* get the lib up and running */
 	if ( (initf(), true) && apiver() == RETRO_API_VERSION){
 		struct retro_system_info sysinf = {0};
 		struct retro_game_info gameinf = {0};
 		((void(*)(struct retro_system_info*)) libretro_requirefun("retro_get_system_info")) (&sysinf);
-
+LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
+		
+/* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
 		if (sysinf.need_fullpath){
 			gameinf.path = strdup( gamename );
 		} else {
 			struct stat filedat;
 			int fd;
-			
 			if (-1 == stat(gamename, &filedat) || -1 == (fd = open(gamename, O_RDWR)) || 
 				MAP_FAILED == ( gameinf.data = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0) ) )
 				return;
-
 			gameinf.size = filedat.st_size;
+			LOG("mmapped buffer (%d), (%d)\n", fd, gameinf.size);
 		}
 
-/* load game and get info on the resolution etc. */
-		struct frameserver_shmpage* shmpage = get_shm(keyfile, 0, 0, 4, 2, 44100);
-
-/* at this point, we have the correct library, we have loaded the ROM in question,
- * get shared memory, setup callbacks and loop */
-		retroctx.inevq.synch.shared = esync;
-		retroctx.inevq.local = false;
-		retroctx.outevq.synch.shared = esync;
-		retroctx.inevq.eventbuf = shmpage->childdevq;
-		retroctx.outevq.eventbuf = shmpage->parentdevq;
+/* map functions to context structure */
+LOG("map functions\n");
+		retroctx.run = (void(*)()) libretro_requirefun("retro_run");
+		retroctx.load_game = (bool(*)(const struct retro_game_info* game)) libretro_requirefun("retro_load_game");
+	
+/* setup callbacks */
+LOG("setup callbacks\n");
 
 		( (void(*)(retro_video_refresh_t)) libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
 		( (void(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
 		( (void(*)(retro_input_poll_t)) libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
 		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
+
+/* load the game, and if that fails, give up */
+LOG("load_game\n");
+		if ( retroctx.load_game( &gameinf ) == false )
+			return;
+
+		struct retro_system_av_info avinfo;
+		( (void(*)(struct retro_system_av_info*)) libretro_requirefun("retro_get_system_av_info"))(&avinfo);
+		
+LOG("map shm\n");
+/* setup frameserver, synchronization etc. */
+		retroctx.shared = get_shm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
+		retroctx.inevq.synch.shared = esync;
+		retroctx.inevq.local = false;
+		retroctx.outevq.synch.shared = esync;
+		retroctx.inevq.eventbuf = retroctx.shared->childdevq;
+		retroctx.outevq.eventbuf = retroctx.shared->parentdevq;
 		
 		retroctx.alive = true;
+		retroctx.shared->resized = true;
+		sem_post(vsync);
+		
 	/* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
 		while (retroctx.alive){
 			retroctx.run();
-			printf("run() completed.\n");
 		}
 	}
 }
@@ -283,7 +335,7 @@ void mode_video(char* resource, char* keyfile)
 {
 	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
 	if (!vidctx) return;
-	
+	LOG("video(%s)\n", resource);
 	vidctx->shared = get_shm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
 	vidctx->async = async;
 	vidctx->vsync = vsync;
@@ -352,12 +404,15 @@ void mode_video(char* resource, char* keyfile)
 		vsync == 0x0 ||
 		esync == 0x0 ){
 			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
-			return 1; /* munmap on process close */
+			return 1;  
 	}
-	
+
+/*
 	close(0);
 	close(1);
 	close(2);
+*/
+	LOG("frameserver with %s\n", fsrvmode);
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		mode_video(resource, keyfile);
