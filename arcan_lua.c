@@ -978,7 +978,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 	const char* label = intblstr(ctx, tblind, "label");
 	if (label)
 		snprintf(ev.label, 16, "%s", label);
-	
+
 	/* populate all arguments */
 	const char* kindlbl = intblstr(ctx, tblind, "kind");
 	
@@ -1009,7 +1009,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 			ev.data.io.input.translated.modifiers = intblnum(ctx, tblind, "modifiers");
 			ev.data.io.input.translated.devid     = intblnum(ctx, tblind, "devid");
 			ev.data.io.input.translated.subid     = intblnum(ctx, tblind, "subid");
-			ev.kind = ev.data.io.input.digital.active ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
+			ev.kind = ev.data.io.input.translated.active ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
 		}
 		else {
 			ev.data.io.devkind = strcmp( intblstr(ctx, tblind, "source"), "mouse") == 0 ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV; 
