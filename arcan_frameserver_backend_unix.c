@@ -186,11 +186,11 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 			res->source = strdup(fname);
-			res->vid = arcan_video_addfobject(arcan_frameserver_emptyframe, state, cons, 0);
+			res->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 			res->aid = ARCAN_EID;
 		} else { 
 			vfunc_state* cstate = arcan_video_feedstate(res->vid);
-			arcan_video_alterfeed(res->vid, arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
+			arcan_video_alterfeed(res->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
 
 		char* work = strdup(shmkey);

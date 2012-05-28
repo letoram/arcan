@@ -248,7 +248,7 @@ function gridledetail_internalinput(iotbl)
 		end
 	end
 
-	target_input(iotbl, internal_vid);
+	target_input(internal_vid, iotbl);
 end
 
 function gridledetail_input(iotbl)
