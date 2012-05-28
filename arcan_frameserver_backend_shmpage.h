@@ -27,8 +27,10 @@ struct frameserver_shmpage {
 
 /* these are managed / populated by a queue 
  * context in each process, mapped to the same posix semaphore */
-	arcan_event childdevq[ SHMPAGE_QUEUESIZE ];
-	arcan_event parentdevq[SHMPAGE_QUEUESIZE ];
+	struct {
+		arcan_event evqueue[ SHMPAGE_QUEUESIZE ];
+		unsigned front, back;
+	} childdevq, parentdevq;
 	
 	process_handle parent;
 	

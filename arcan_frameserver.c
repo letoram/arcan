@@ -236,16 +236,11 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 	return 0;
 }
 
+static volatile bool debugready = false;
 void flush_eventq(){
 	 arcan_event* ev;
+	 
 	while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
-		switch (ev->category){
-			case EVENT_IO:
-				LOG("IO Event!");
-			break;
-			default:
-				LOG("Unhandled: %d\n", ev->category);
-		}
 	}
 }
 
@@ -314,12 +309,21 @@ LOG("load_game\n");
 LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
 		retroctx.shared = get_shm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
+
 		retroctx.inevq.synch.shared = esync;
 		retroctx.inevq.local = false;
+		retroctx.inevq.eventbuf = retroctx.shared->childdevq.evqueue;
+		retroctx.inevq.front = &retroctx.shared->childdevq.front;
+		retroctx.inevq.back  = &retroctx.shared->childdevq.back;
+		retroctx.inevq.n_eventbuf = sizeof(retroctx.shared->childdevq.evqueue) / sizeof(arcan_event);
+	
 		retroctx.outevq.synch.shared = esync;
-		retroctx.inevq.eventbuf = retroctx.shared->childdevq;
-		retroctx.outevq.eventbuf = retroctx.shared->parentdevq;
-		
+		retroctx.outevq.local =false;
+		retroctx.outevq.eventbuf = retroctx.shared->parentdevq.evqueue;
+		retroctx.outevq.front = &retroctx.shared->parentdevq.front;
+		retroctx.outevq.back  = &retroctx.shared->parentdevq.back;
+		retroctx.outevq.n_eventbuf = sizeof(retroctx.shared->parentdevq.evqueue) / sizeof(arcan_event);
+
 		retroctx.alive = true;
 		retroctx.shared->resized = true;
 		sem_post(vsync);

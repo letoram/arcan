@@ -131,6 +131,11 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 /* return a callback function for retrieving appropriate audio-feeds */
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
 
+/* simplified versions of the above that ignores PTS/DTS and doesn't use the framequeue */
+int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
+int8_t arcan_frameserver_emptyframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state); 
+arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
+
 /* stop playback and free resources associated with a movie */
 arcan_errc arcan_frameserver_free(arcan_frameserver*, bool loop);
 #endif

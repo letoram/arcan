@@ -71,10 +71,13 @@ static struct {
 } joydev = {0};
 	
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
+static unsigned eventfront = 0, eventback = 0;
 
 static struct arcan_evctx default_evctx = {
 	.eventbuf = eventbuf,
-	.n_eventbuf = ARCAN_EVENT_QUEUE_LIM, 
+	.n_eventbuf = ARCAN_EVENT_QUEUE_LIM,
+	.front = &eventfront,
+	.back  = &eventback,
 	.local = true
 };
 
@@ -84,8 +87,8 @@ arcan_evctx* arcan_event_defaultctx(){
 
 static unsigned alloc_queuecell(arcan_evctx* ctx)
 {
-	unsigned rv = ctx->back;
-	ctx->back = (ctx->back + 1) % ctx->n_eventbuf;
+	unsigned rv = *(ctx->back);
+	*(ctx->back) = ( *(ctx->back) + 1) % ctx->n_eventbuf;
 	return rv;
 }
 
@@ -140,12 +143,14 @@ arcan_event* arcan_event_poll(arcan_evctx* ctx)
 {
 	arcan_event* rv = NULL;
 
-	LOCK();
-		if (ctx->front != ctx->back){
-			rv = &ctx->eventbuf[ ctx->front ];
-			ctx->front = (ctx->front + 1) % ctx->n_eventbuf;
+		if (*ctx->front != *ctx->back){
+			LOCK();
+
+			rv = &ctx->eventbuf[ *ctx->front ];
+			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
+		
+			UNLOCK();
 		}
-	UNLOCK();
 
 	return rv;
 }
