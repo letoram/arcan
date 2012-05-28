@@ -150,6 +150,14 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
 	return buf;
 }
 
+#ifndef MAX_PORTS
+#define MAX_PORTS 4
+#endif
+
+#ifndef MAX_BUTTONS
+#define MAX_BUTTONS 12
+#endif
+
 /* interface for loading many different emulators,
  * we assume "resource" points to a dlopen:able library,
  * that can be handled by SDLs library management functions. */
@@ -164,10 +172,20 @@ static struct {
 		struct retro_game_info gameinfo;
 		unsigned state_size;
 		
+/* 
+ * current versions only support a subset of inputs (e.g. 1 mouse/lightgun + 12 buttons per port.
+ * we map PLAYERn_BUTTONa and substitute n for port and a for button index, with a LUT for UP/DOWN/LEFT/RIGHT
+ * MOUSE_X, MOUSE_Y to both mouse and lightgun inputs, and the PLAYER- buttons to MOUSE- buttons 
+ */ 
+		struct {
+			bool joypad[MAX_PORTS][MAX_BUTTONS];
+			signed axis[2];
+		} inputmatr;
+		
 		void (*run)();
 		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
-} retroctx;
+} retroctx = {0};
 
 /* XRGB555 */
 static void* libretro_h = NULL;
@@ -184,13 +202,16 @@ static void* libretro_requirefun(const char* sym)
 	return rfun;
 }
 
-static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch){
+static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
+{
+	LOG("vidframe\n");
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (width != retroctx.shared->w || height != retroctx.shared->h){
 		retroctx.shared->w = width;
 		retroctx.shared->h = height;
 		retroctx.shared->resized = true;
+		LOG("resize() to %d, %d\n", retroctx.shared->w, retroctx.shared->h);
 	}
 	
 	uint16_t* buf  = (uint16_t*) data; /* assumes aligned 8-bit */
@@ -210,6 +231,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		buf  += pitch >> 1;
 	}
 
+	LOG("vframe ready.\n");
 	retroctx.shared->vready = true;
 	
 	if (!semcheck(vsync, 0))
@@ -218,6 +240,9 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
+	LOG("audio\n");
+	return nframes;
+	
 	memcpy(((void*) retroctx.shared) + retroctx.shared->abufofs, data, nframes * 2 * sizeof(int16_t) );
 	retroctx.shared->abufused = nframes * 2 * sizeof(int16_t);
 	retroctx.shared->aready = true;
@@ -228,19 +253,88 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	return nframes;
 }
 
-static void libretro_pollcb(){
-}
+/* we ignore these since before pushing for a frame, we've already processed the queue */
+static void libretro_pollcb(){LOG("pollcb\n");}
 
 static bool libretro_setenv(unsigned cmd, void* data){ return false; }
+
+/* use the context-tables from retroctx in combination with dev / ind / ... 
+ * to try and figure out what to return, this table is populated in flush_eventq() */
 static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
+	assert(ind < MAX_PORTS);
+	assert(id  < MAX_BUTTONS);
+	
+	switch (dev){
+		case RETRO_DEVICE_JOYPAD:
+			return (int16_t) retroctx.inputmatr.joypad[ind][id];
+		break;
+		
+		case RETRO_DEVICE_MOUSE:
+		break;
+		
+		case RETRO_DEVICE_LIGHTGUN:
+		break;
+		
+		default:
+			LOG("(arcan_frameserver:libretro) Unknown device ID specified (%d)\n", dev);
+	}
+	
 	return 0;
 }
 
-static volatile bool debugready = false;
-void flush_eventq(){
+static int remaptbl[] = { 
+	RETRO_DEVICE_ID_JOYPAD_A,
+	RETRO_DEVICE_ID_JOYPAD_B,	
+	RETRO_DEVICE_ID_JOYPAD_X,
+	RETRO_DEVICE_ID_JOYPAD_Y,
+	RETRO_DEVICE_ID_JOYPAD_L,
+	RETRO_DEVICE_ID_JOYPAD_R
+};
+		
+static void ioev_ctxtbl(arcan_event* ioev)
+{
+	int ind, button = -1;
+	char* subtype;
+
+	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind < MAX_PORTS &&
+		(subtype = index(ioev->label, '_')) ){
+		subtype++;
+		if (1 == sscanf(subtype, "BUTTON%d", &button) && button >= 0 && button < MAX_BUTTONS)
+			button = button > sizeof(remaptbl) / sizeof(remaptbl[0]) - 1 ? -1 : remaptbl[button];
+		else if ( strcmp(subtype, "UP") == 0 )
+			button = RETRO_DEVICE_ID_JOYPAD_UP;
+		else if ( strcmp(subtype, "DOWN") == 0 )
+			button = RETRO_DEVICE_ID_JOYPAD_DOWN;
+		else if ( strcmp(subtype, "LEFT") == 0 )
+			button = RETRO_DEVICE_ID_JOYPAD_LEFT;
+		else if ( strcmp(subtype, "RIGHT") == 0 )
+			button = RETRO_DEVICE_ID_JOYPAD_RIGHT;
+		else if ( strcmp(subtype, "SELECT") == 0 )
+			button = RETRO_DEVICE_ID_JOYPAD_SELECT;
+		else if ( strcmp(subtype, "START") == 0 )
+			button = RETRO_DEVICE_ID_JOYPAD_START;
+		else;
+
+		signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
+		if (button >= 0){
+			retroctx.inputmatr.joypad[ind-1][button] = value;
+		}
+	}
+
+/* if we found a matching remap */
+}
+
+static void flush_eventq(){
 	 arcan_event* ev;
 	 
+/* use labels etc. for trying to populate the context table */
+/* we also process requests to save state, shutdown, reset, plug/unplug input, here */
 	while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
+		switch (ev->category){
+			case EVENT_IO:
+				ioev_ctxtbl(ev);
+			break;
+		}
 	}
 }
 
@@ -288,6 +382,7 @@ LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library
 /* map functions to context structure */
 LOG("map functions\n");
 		retroctx.run = (void(*)()) libretro_requirefun("retro_run");
+		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
 		retroctx.load_game = (bool(*)(const struct retro_game_info* game)) libretro_requirefun("retro_load_game");
 	
 /* setup callbacks */
@@ -326,13 +421,19 @@ LOG("map shm\n");
 
 		retroctx.alive = true;
 		retroctx.shared->resized = true;
-		sem_post(vsync);
+		arcan_sem_post(vsync);
 		
 	/* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
+	LOG("reset\n");
+		retroctx.reset();
+		
+	LOG("start\n");
 		while (retroctx.alive){
 			flush_eventq();
+			LOG("eventq flushed\n");
 			retroctx.run();
+			LOG("frame\n");
 		}
 	}
 }
