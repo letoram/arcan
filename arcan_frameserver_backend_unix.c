@@ -215,13 +215,21 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
+	
 		res->inqueue.local = false;
+		res->inqueue.synch.shared = res->esync;
+		res->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
+		res->inqueue.eventbuf = shmpage->parentdevq.evqueue;
+		res->inqueue.front = &(shmpage->parentdevq.front);
+		res->inqueue.back = &(shmpage->parentdevq.back);
+		res->desc.ready = true;
+		
 		res->outqueue.local = false;
-		res->inqueue.synch.shared = res->outqueue.synch.shared = res->esync;
-		res->outqueue.n_eventbuf = sizeof(shmpage->childdevq) / sizeof(shmpage->childdevq[0]);
-		res->inqueue.n_eventbuf = sizeof(shmpage->parentdevq) / sizeof(shmpage->parentdevq[0]);
-		res->inqueue.eventbuf = shmpage->parentdevq;
-		res->outqueue.eventbuf = shmpage->childdevq;
+		res->outqueue.synch.shared = res->esync;
+		res->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
+		res->outqueue.eventbuf = shmpage->childdevq.evqueue;
+		res->outqueue.front = &(shmpage->childdevq.front);
+		res->outqueue.back = &(shmpage->childdevq.back);
 		res->desc.ready = true;
 	}
 	else

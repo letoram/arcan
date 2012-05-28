@@ -196,8 +196,8 @@ struct arcan_evctx {
 	unsigned n_eventbuf;
 	arcan_event* eventbuf;
 	
-	unsigned front;
-	unsigned back;
+	unsigned* front;
+	unsigned* back;
 	uint32_t cell_aofs;
 
 	bool local;

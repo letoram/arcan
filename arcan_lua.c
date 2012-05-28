@@ -953,7 +953,7 @@ static inline bool intblbool(lua_State* ctx, int ind, const char* field){
  * whethere the table argument is first or second, and extract accordingly, so both will work */
 int arcan_lua_targetinput(lua_State* ctx)
 {
-	arcan_event ev = {.kind = 0};
+	arcan_event ev = {.kind = 0, .category = EVENT_IO };
 	int vidind, tblind;
 
 /* swizzle if necessary */
