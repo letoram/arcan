@@ -109,6 +109,10 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh*,
 /* populate a list of viable targets (with games associated) */
 arcan_dbh_res arcan_db_targets(arcan_dbh* handle);
 
+/* query name / executable from a target ID, store the resulting char* in targetname/targetexec,
+ * caller is responible for cleanup */
+bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec);
+
 /* populate a list of genres / subgenres */
 arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
 

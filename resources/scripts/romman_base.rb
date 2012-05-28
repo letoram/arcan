@@ -328,10 +328,11 @@ class Target < DBObject
 
 	def Target.Create(name, executable, arguments)
 		@@dbconn.execute(DQL[:insert_target], [name, executable])
-	
+		
 		res = Target.new
 		res.pkid = @@dbconn.last_insert_row_id
 		res.name = name
+		res.target = executable
 
 		if (arguments)
 			res.arguments = arguments

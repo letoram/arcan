@@ -217,7 +217,7 @@ error:
 	return NULL;
 }
 
-arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res)
+arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res, char* mode)
 {
 /* if res is non-null, we have a server context already set up, 
  * just need to reset the frame-server */
@@ -242,7 +242,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 /* b: spawn the child process */
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i movie", fname, shmh, vsync, async, esync);
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", fname, shmh, vsync, async, esync, mode ? mode : "movie");
 	shmpage->loop = loop;
 	shmpage->parent = handle;
 

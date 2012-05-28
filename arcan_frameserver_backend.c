@@ -108,7 +108,7 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 		arcan_audio_pause(src->aid);
 	/* with asynch movieplayback, we can't set it to playing state before loaded */
 		src->autoplay = true;
-		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src);
+		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src, NULL);
 		return false;
 	}
 	else{
