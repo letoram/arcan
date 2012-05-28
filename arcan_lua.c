@@ -924,18 +924,18 @@ int arcan_lua_contextusage(lua_State* ctx)
 	return 2;
 }
 
-static inline const char* intblstr(lua_State* ctx, const char* field){
-	lua_getfield(ctx, 1, field);
+static inline const char* intblstr(lua_State* ctx, int ind, const char* field){
+	lua_getfield(ctx, ind, field);
 	return lua_tostring(ctx, -1);
 }
 
-static inline int intblnum(lua_State* ctx, const char* field){
-	lua_getfield(ctx, 1, field);
+static inline int intblnum(lua_State* ctx, int ind, const char* field){
+	lua_getfield(ctx, ind, field);
 	return lua_tointeger(ctx, -1);
 }
 
-static inline bool intblbool(lua_State* ctx, const char* field){
-	lua_getfield(ctx, 1, field);
+static inline bool intblbool(lua_State* ctx, int ind, const char* field){
+	lua_getfield(ctx, ind, field);
 	return lua_toboolean(ctx, -1);
 }
 
@@ -947,11 +947,27 @@ static inline bool intblbool(lua_State* ctx, const char* field){
  * of creating a custom LUA object, tag it with the raw event and be done with it)
  * is to allow the theme- to modify or even generate new ones based on in-theme actions.
  */
+
+/* there is a slight API inconsistency here in that we had (iotbl, vid) in the first few versions
+ * while other functions tend to lead with vid, which causes some confusion. So we check
+ * whethere the table argument is first or second, and extract accordingly, so both will work */
 int arcan_lua_targetinput(lua_State* ctx)
 {
 	arcan_event ev = {.kind = 0};
-	arcan_vobj_id vid = luaL_checkvid(ctx, 2);
-	luaL_checktype(ctx, 1, LUA_TTABLE);
+	int vidind, tblind;
+
+/* swizzle if necessary */
+	if (lua_type(ctx, 1) == LUA_TTABLE){
+		vidind = 2;
+		tblind = 1;
+	} else {
+		tblind = 2;
+		vidind = 1;
+	}
+	
+	arcan_vobj_id vid = luaL_checkvid(ctx, vidind);
+	luaL_checktype(ctx, tblind, LUA_TTABLE);
+	
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	
 	if (!vstate || (vstate->tag != ARCAN_TAG_TARGET && vstate->tag != ARCAN_TAG_FRAMESERV)){
@@ -959,22 +975,22 @@ int arcan_lua_targetinput(lua_State* ctx)
 		return 1;
 	}
 
-	const char* label = intblstr(ctx, "label");
+	const char* label = intblstr(ctx, tblind, "label");
 	if (label)
 		snprintf(ev.label, 16, "%s", label);
 	
 	/* populate all arguments */
-	const char* kindlbl = intblstr(ctx, "kind");
+	const char* kindlbl = intblstr(ctx, tblind, "kind");
 	
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		ev.kind = EVENT_IO_AXIS_MOVE;
-		ev.data.io.devkind = strcmp( intblstr(ctx, "source"), "mouse") == 0 ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-		ev.data.io.input.analog.devid = intblnum(ctx, "devid");
-		ev.data.io.input.analog.subid = intblnum(ctx, "subid");
+		ev.data.io.devkind = strcmp( intblstr(ctx, tblind, "source"), "mouse") == 0 ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
+		ev.data.io.input.analog.devid = intblnum(ctx, tblind, "devid");
+		ev.data.io.input.analog.subid = intblnum(ctx, tblind, "subid");
 		ev.data.io.input.analog.gotrel = ev.data.io.devkind == EVENT_IDEVKIND_MOUSE;
 		
 	/*  sweep the samples subtable, add as many as present (or possible) */
-		lua_getfield(ctx, 1, "samples");
+		lua_getfield(ctx, tblind, "samples");
 		size_t naxiss = lua_rawlen(ctx, -1);
 		for (int i = 0; i < naxiss && i < sizeof(ev.data.io.input.analog.axisval); i++){
 			lua_rawgeti(ctx, -1, i+1);
@@ -984,23 +1000,23 @@ int arcan_lua_targetinput(lua_State* ctx)
 		
 	} 
 	else if (strcmp(kindlbl, "digital") == 0){
-		if (intblbool(ctx, "translated")){
+		if (intblbool(ctx, tblind, "translated")){
 			ev.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
 			ev.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-			ev.data.io.input.translated.active    = intblbool(ctx, "active");
-			ev.data.io.input.translated.scancode  = intblnum(ctx, "number");
-			ev.data.io.input.translated.keysym    = intblnum(ctx, "keysym");
-			ev.data.io.input.translated.modifiers = intblnum(ctx, "modifiers");
-			ev.data.io.input.translated.devid     = intblnum(ctx, "devid");
-			ev.data.io.input.translated.subid     = intblnum(ctx, "subid");
+			ev.data.io.input.translated.active    = intblbool(ctx, tblind, "active");
+			ev.data.io.input.translated.scancode  = intblnum(ctx, tblind, "number");
+			ev.data.io.input.translated.keysym    = intblnum(ctx, tblind, "keysym");
+			ev.data.io.input.translated.modifiers = intblnum(ctx, tblind, "modifiers");
+			ev.data.io.input.translated.devid     = intblnum(ctx, tblind, "devid");
+			ev.data.io.input.translated.subid     = intblnum(ctx, tblind, "subid");
 			ev.kind = ev.data.io.input.digital.active ? EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
 		}
 		else {
-			ev.data.io.devkind = strcmp( intblstr(ctx, "source"), "mouse") == 0 ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV; 
+			ev.data.io.devkind = strcmp( intblstr(ctx, tblind, "source"), "mouse") == 0 ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV; 
 			ev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-			ev.data.io.input.digital.active= intblbool(ctx, "active");
-			ev.data.io.input.digital.devid = intblnum(ctx, "devid");
-			ev.data.io.input.digital.subid = intblnum(ctx, "subid");
+			ev.data.io.input.digital.active= intblbool(ctx, tblind, "active");
+			ev.data.io.input.digital.devid = intblnum(ctx, tblind, "devid");
+			ev.data.io.input.digital.subid = intblnum(ctx, tblind, "subid");
 		}
 	} 
 	else {

@@ -156,6 +156,7 @@ set (
  arcan_frameserver_decode.h
  arcan_frameserver_decode.c
  arcan_general.c
+ arcan_event.c
 )
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

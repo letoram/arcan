@@ -204,7 +204,6 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 			uint8_t b = (val & 0x1f) << 3;
 
 			*dbuf = (0xff) << 24 | b << 16 | g << 8 | r;
-			/* aabbggrr */
 			dbuf++;
 		}
 			
@@ -229,10 +228,25 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	return nframes;
 }
 
-static void libretro_pollcb(){ }
+static void libretro_pollcb(){
+}
+
 static bool libretro_setenv(unsigned cmd, void* data){ return false; }
 static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
 	return 0;
+}
+
+void flush_eventq(){
+	 arcan_event* ev;
+	while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
+		switch (ev->category){
+			case EVENT_IO:
+				LOG("IO Event!");
+			break;
+			default:
+				LOG("Unhandled: %d\n", ev->category);
+		}
+	}
 }
 
 /* map up a libretro compatible library resident at fullpath:game */
@@ -313,6 +327,7 @@ LOG("map shm\n");
 	/* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
 		while (retroctx.alive){
+			flush_eventq();
 			retroctx.run();
 		}
 	}
