@@ -2176,7 +2176,8 @@ int arcan_lua_setqueueopts(lua_State* ctx)
 static bool use_loader(char* fname)
 {
 	char* ext = rindex( fname, '.' );
-
+	if (!ext) return false;
+	
 	if (strcasecmp(ext, ".so") == 0)
 		return true;
 	else if (strcasecmp(ext, ".dll") == 0)

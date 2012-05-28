@@ -41,6 +41,7 @@ function load_model_generic(modelname, rndmissing)
 		local vid = load_material(modelname, string.sub(meshes[i], 1, -5), rndmissing);
 
 		model.labels[string.sub(meshes[i], 1, -5)] = slot;
+		
 		model.images[slot] = vid;
 		model.screenview = {};
 		model.default_orientation = {roll = 0, pitch = 0, yaw = 0};
