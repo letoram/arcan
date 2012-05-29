@@ -139,10 +139,13 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 }
 
 
-arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res, char* mode)
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource, char* mode)
 {
+	if (ctx == NULL)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+	
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
- 	bool restart = res != NULL;
+	
 	size_t shmsize = MAX_SHMSIZE;
 	struct frameserver_shmpage* shmpage;
 	int shmfd = 0;
@@ -150,7 +153,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 /* no shared memory available, no way forward */
 	if (shmkey == NULL)
-		return NULL;
+		return ARCAN_ERRC_OUT_OF_SPACE;
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
@@ -182,55 +185,53 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 		
 	/* init- call (different from loop-exec as we need to 
 	 * keep the vid / aud as they are external references into the scripted state-space */
-		if (!restart) {
-			res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
-			res->source = strdup(fname);
-			res->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
-			res->aid = ARCAN_EID;
+		if (ctx->vid == ARCAN_EID) {
+			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
+			ctx->source = strdup(resource);
+			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
+			ctx->aid = ARCAN_EID;
 		} else { 
-			vfunc_state* cstate = arcan_video_feedstate(res->vid);
-			arcan_video_alterfeed(res->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
+			vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
+			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
 
 		char* work = strdup(shmkey);
 			work[strlen(work) - 1] = 'v';
-			res->vsync = sem_open(work, 0);
+			ctx->vsync = sem_open(work, 0);
 			work[strlen(work) - 1] = 'a';
-			res->async = sem_open(work, 0);
+			ctx->async = sem_open(work, 0);
 			work[strlen(work) - 1] = 'e';
-			res->esync = sem_open(work, 0);	
+			ctx->esync = sem_open(work, 0);	
 		free(work);
 		
-		res->child_alive = true;
-		res->desc = vinfo;
-		res->child = child;
-		res->loop = loop;
-		res->desc.width = cons.w;
-		res->desc.height = cons.h;
-		res->desc.bpp = cons.bpp;
-		res->shm.key = shmkey;
-		res->shm.ptr = (void*) shmpage;
-		res->shm.shmsize = shmsize;
+		ctx->child_alive = true;
+		ctx->desc = vinfo;
+		ctx->child = child;
+		ctx->desc.width = cons.w;
+		ctx->desc.height = cons.h;
+		ctx->desc.bpp = cons.bpp;
+		ctx->shm.key = shmkey;
+		ctx->shm.ptr = (void*) shmpage;
+		ctx->shm.shmsize = shmsize;
 
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
 	
-		res->inqueue.local = false;
-		res->inqueue.synch.shared = res->esync;
-		res->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
-		res->inqueue.eventbuf = shmpage->parentdevq.evqueue;
-		res->inqueue.front = &(shmpage->parentdevq.front);
-		res->inqueue.back = &(shmpage->parentdevq.back);
-		res->desc.ready = true;
+		ctx->inqueue.local = false;
+		ctx->inqueue.synch.shared = ctx->esync;
+		ctx->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
+		ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
+		ctx->inqueue.front = &(shmpage->parentdevq.front);
+		ctx->inqueue.back = &(shmpage->parentdevq.back);
+		ctx->desc.ready = true;
 		
-		res->outqueue.local = false;
-		res->outqueue.synch.shared = res->esync;
-		res->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
-		res->outqueue.eventbuf = shmpage->childdevq.evqueue;
-		res->outqueue.front = &(shmpage->childdevq.front);
-		res->outqueue.back = &(shmpage->childdevq.back);
-		res->desc.ready = true;
+		ctx->outqueue.local = false;
+		ctx->outqueue.synch.shared = ctx->esync;
+		ctx->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
+		ctx->outqueue.eventbuf = shmpage->childdevq.evqueue;
+		ctx->outqueue.front = &(shmpage->childdevq.front);
+		ctx->outqueue.back = &(shmpage->childdevq.back);
+		ctx->desc.ready = true;
 	}
 	else
 		if (child == 0) {
@@ -243,21 +244,22 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			 * three pipes (vid, aud and control)
 			 * usage pattern is pretty simple */
 			argv[0] = arcan_binpath;
-			argv[1] = (char*) fname;
+			argv[1] = (char*) resource;
 			argv[2] = (char*) shmkey;
-			argv[3] = mode == NULL ? "movie" : mode; //"loop"; // loop ? "loop" : "";
+			argv[3] = mode == NULL ? "movie" : mode;
 			argv[4] = NULL;
 
 			int rv = execv(arcan_binpath, argv);
-			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver (%s) for %s, %s. Reason: %s\n", arcan_binpath, fname, shmkey, strerror(errno));
+			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver (%s) for %s, %s. Reason: %s\n", arcan_binpath, resource, shmkey, strerror(errno));
 			exit(1);
 		}
-	return res;
+		
+	return ARCAN_OK;
 
 error_cleanup:
 	arcan_frameserver_dropsemaphores_keyed(shmkey);
 	shm_unlink(shmkey);
 	free(shmkey);
 
-	return NULL;
+	return ARCAN_ERRC_OUT_OF_SPACE;
 }

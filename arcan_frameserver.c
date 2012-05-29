@@ -204,7 +204,6 @@ static void* libretro_requirefun(const char* sym)
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
-	LOG("vidframe\n");
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (width != retroctx.shared->w || height != retroctx.shared->h){
@@ -231,30 +230,31 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		buf  += pitch >> 1;
 	}
 
-	LOG("vframe ready.\n");
 	retroctx.shared->vready = true;
 	
 	if (!semcheck(vsync, 0))
 		exit(1);
+	
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
-	LOG("audio\n");
-	return nframes;
-	
-	memcpy(((void*) retroctx.shared) + retroctx.shared->abufofs, data, nframes * 2 * sizeof(int16_t) );
-	retroctx.shared->abufused = nframes * 2 * sizeof(int16_t);
-	retroctx.shared->aready = true;
+	size_t new_s = nframes * 2 * sizeof(int16_t);
+	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
 
-	if (!semcheck( async, 0 ))
-		exit(1);
-	
+	memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
+	retroctx.shared->abufused += new_s;
+
 	return nframes;
 }
 
+void libretro_audscb(int16_t left, int16_t right){
+	int16_t lr[2] = {left, right};
+	libretro_audcb(lr, 1);
+}
+
 /* we ignore these since before pushing for a frame, we've already processed the queue */
-static void libretro_pollcb(){LOG("pollcb\n");}
+static void libretro_pollcb(){}
 
 static bool libretro_setenv(unsigned cmd, void* data){ return false; }
 
@@ -284,7 +284,7 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 
 static int remaptbl[] = { 
 	RETRO_DEVICE_ID_JOYPAD_A,
-	RETRO_DEVICE_ID_JOYPAD_B,	
+	RETRO_DEVICE_ID_JOYPAD_B,
 	RETRO_DEVICE_ID_JOYPAD_X,
 	RETRO_DEVICE_ID_JOYPAD_Y,
 	RETRO_DEVICE_ID_JOYPAD_L,
@@ -295,7 +295,10 @@ static void ioev_ctxtbl(arcan_event* ioev)
 {
 	int ind, button = -1;
 	char* subtype;
+	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 
+//	LOG("button: %s, value: %d\n", ioev->label, value);
+	
 	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind < MAX_PORTS &&
 		(subtype = index(ioev->label, '_')) ){
 		subtype++;
@@ -315,7 +318,6 @@ static void ioev_ctxtbl(arcan_event* ioev)
 			button = RETRO_DEVICE_ID_JOYPAD_START;
 		else;
 
-		signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 		if (button >= 0){
 			retroctx.inputmatr.joypad[ind-1][button] = value;
 		}
@@ -388,8 +390,9 @@ LOG("map functions\n");
 /* setup callbacks */
 LOG("setup callbacks\n");
 
-		( (void(*)(retro_video_refresh_t)) libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
-		( (void(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
+		( (void(*)(retro_video_refresh_t) )libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
+		( (size_t(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
+		( (void(*)(retro_audio_sample_t)) libretro_requirefun("retro_set_audio_sample"))(libretro_audscb);
 		( (void(*)(retro_input_poll_t)) libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
 		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
 
@@ -423,17 +426,24 @@ LOG("map shm\n");
 		retroctx.shared->resized = true;
 		arcan_sem_post(vsync);
 		
-	/* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
+/* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
-	LOG("reset\n");
 		retroctx.reset();
 		
-	LOG("start\n");
 		while (retroctx.alive){
+/* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
+ * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
-			LOG("eventq flushed\n");
+
 			retroctx.run();
-			LOG("frame\n");
+
+/* push audio buffer */
+			if (retroctx.shared->abufused > 0){
+				retroctx.shared->aready = false;
+				retroctx.shared->abufused = 0;
+//				if (!semcheck( async, 0 ))
+//					exit(1);
+			}
 		}
 	}
 }
@@ -455,6 +465,7 @@ void mode_video(char* resource, char* keyfile)
 {
 	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
 	if (!vidctx) return;
+
 	LOG("video(%s)\n", resource);
 	vidctx->shared = get_shm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
 	vidctx->async = async;
