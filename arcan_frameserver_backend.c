@@ -374,7 +374,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			} else {
 				if (src->aid == ARCAN_EID)
 				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
-
+				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
 /* otherwise, figure out reasonable buffer sizes (or user-defined overrides) */
 				unsigned short acachelim, vcachelim, abufsize;
 				arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
