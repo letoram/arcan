@@ -832,7 +832,6 @@ int arcan_lua_playmovie(lua_State* ctx)
 int arcan_lua_loadmovie(lua_State* ctx)
 {
 	char* fname = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	bool loop = luaL_optint(ctx, 2, 0) != 0;
 	intptr_t ref = (intptr_t) 0;
 
 /*  in order to stay backward compatible API wise, the load_movie with function callback
@@ -842,16 +841,22 @@ int arcan_lua_loadmovie(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	
-	arcan_frameserver* mvctx = arcan_frameserver_spawn_server((char*) fname, false, loop, NULL, NULL);
+	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
+	mvctx->loop = luaL_optint(ctx, 2, 0) != 0;
+	
+	if ( arcan_frameserver_spawn_server(mvctx, (char*) fname, NULL) == ARCAN_OK )
+	{
 /* mvctx is passed with the corresponding async event, which will only be used in the main thread, so 
  * no race condition here */ 
-	mvctx->tag = ref;
-	free(fname);
-	
-	if (mvctx) {
+		mvctx->tag = ref;
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
-	} else lua_pushvid(ctx, ARCAN_EID);
+	} else {
+		free(mvctx);
+		lua_pushvid(ctx, ARCAN_EID);
+	}
+
+	free(fname);
 
 	return 1;
 }
@@ -2221,13 +2226,22 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					snprintf(metastr, arglen, "%s:%s", resourcestr, cmdline.data.strarr[1]);
 				}
 			
-				arcan_frameserver* intarget = arcan_frameserver_spawn_server(metastr, false, false, NULL, "libretro");
+				arcan_frameserver* intarget = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 				intarget->tag = ref;
 				intarget->nopts = true;
 				intarget->autoplay = true;
-				lua_pushvid(ctx, intarget->vid);
-				lua_pushaid(ctx, intarget->aid);
-				arcan_db_launch_counter_increment(dbhandle, game);
+				
+				if (arcan_frameserver_spawn_server(intarget, metastr, "libretro") == ARCAN_OK){
+					lua_pushvid(ctx, intarget->vid);
+					lua_pushaid(ctx, intarget->aid);
+					arcan_db_launch_counter_increment(dbhandle, game);
+				}
+				else {
+					lua_pushvid(ctx, ARCAN_EID);
+					lua_pushaid(ctx, ARCAN_EID);
+					free(intarget);
+				}
+				
 				rv = 2;
 			}
 			else {

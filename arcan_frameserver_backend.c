@@ -108,7 +108,7 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 		arcan_audio_pause(src->aid);
 	/* with asynch movieplayback, we can't set it to playing state before loaded */
 		src->autoplay = true;
-		arcan_frameserver_spawn_server(src->source, src->extcc, src->loop, src, NULL);
+		arcan_frameserver_spawn_server(src, src->source, NULL);
 		return false;
 	}
 	else{
@@ -154,6 +154,50 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		}
     
 	return 0;
+}
+
+int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state)
+{
+	int8_t rv = 0;
+	if (state.tag != ARCAN_TAG_FRAMESERV || !state.ptr)
+		return rv;
+
+	arcan_frameserver* tgt = (arcan_frameserver*) state.ptr;
+	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->shm.ptr;
+	
+	/* should have a special framequeue mode which supports more direct form of rendering */
+	switch (cmd){
+		case ffunc_poll: return shmpage->vready; break;        
+        case ffunc_tick: arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr); break;		
+		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
+		case ffunc_render:
+			if (width != shmpage->w || 
+				height != shmpage->h) {
+					uint16_t cpy_width  = (width > shmpage->w ? shmpage->w : width);
+					uint16_t cpy_height = (height > shmpage->h ? shmpage->h : height);
+					assert(bpp == shmpage->bpp);
+					
+					for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
+						memcpy(buf + (row * width * bpp),
+						       ((void*)shmpage + shmpage->vbufofs) + (row * shmpage->w * shmpage->bpp),
+						       cpy_width * bpp
+						);
+						
+					rv = FFUNC_RV_COPIED; 
+			}
+			else {  /* need to reduce all those copies if at all possible .. */
+				glBindTexture(GL_TEXTURE_2D, mode);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*)shmpage + shmpage->vbufofs);
+
+				rv = FFUNC_RV_NOUPLOAD;
+			}
+
+			shmpage->vready = false;
+			sem_post( tgt->vsync );
+		break;
+    }
+
+	return rv;
 }
 
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
@@ -245,6 +289,26 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
+arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+{
+	arcan_errc rv = ARCAN_ERRC_NOTREADY;
+	arcan_frameserver* src = (arcan_frameserver*) tag;
+	
+	if (src->playstate == ARCAN_PLAYING){
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+		if (shmpage->aready){
+			alBufferData(buffer, AL_FORMAT_STEREO16, (void*)shmpage + shmpage->abufofs, shmpage->abufused, src->desc.samplerate);
+			rv = ARCAN_OK;
+
+			shmpage->abufused = 0;
+			shmpage->aready = false;
+			arcan_sem_post(src->async);
+		}
+	}
+	
+	return rv;
+}
+
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
@@ -288,40 +352,53 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 			arcan_framequeue_free(&src->vfq);
 			shmpage->resized = false;
-			arcan_event_maskall(arcan_event_defaultctx());
-			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
-			arcan_video_alterfeed(src->vid, (arcan_vfunc_cb) arcan_frameserver_videoframe, cstate);
-			arcan_event_clearmask(arcan_event_defaultctx());
-			
-/* set up the real framequeue */
-            unsigned short acachelim, vcachelim, abufsize;
-            arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
-            if (acachelim == 0 || abufsize == 0){
-                float mspvf = 1000.0 / 30.0;
-                float mspaf = 1000.0 / (float)shmpage->frequency;
-                abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
-                acachelim = vcachelim * 2;
-            }
-            
+
+/* resize the source vid in a way that won't propagate to user scripts */
             src->desc.samplerate = shmpage->frequency;
             src->desc.channels = shmpage->channels;
-			src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
-            src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
-            src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
-			src->audioclock = 0.0;
-			
-            arcan_errc rv;
-			if (src->aid == ARCAN_EID)
-				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
-			
-		/*  note that the vid here is actually used to get the movie context, so this is correct */
-			char labelbuf[32] = {0};
-			snprintf(labelbuf, 31, "audio_%lli", (long long) src->vid);
-            arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
+			arcan_event_maskall(arcan_event_defaultctx());
+			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 
-			snprintf(labelbuf, 31, "video_%lli", (long long) src->aid);
-            arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
-           
+/* if there's no audio-stream set up (no detection for video- only or audio- only frameservers yet),
+ * create one ... */
+			arcan_errc rv;
+
+/* simplified mode, disables framequeues and just use the buffer in the shared memory page */
+			if (src->nopts){
+				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
+				if (src->aid == ARCAN_EID)
+					src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+				
+			} else {
+				if (src->aid == ARCAN_EID)
+				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
+
+/* otherwise, figure out reasonable buffer sizes (or user-defined overrides) */
+				unsigned short acachelim, vcachelim, abufsize;
+				arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
+				if (acachelim == 0 || abufsize == 0){
+					float mspvf = 1000.0 / 30.0;
+					float mspaf = 1000.0 / (float)shmpage->frequency;
+					abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
+					acachelim = vcachelim * 2;
+				}
+				
+				src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
+				src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
+				src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
+				src->audioclock = 0.0;
+				
+				char labelbuf[32];
+				snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
+				arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
+
+				snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
+				arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
+			}
+
+			arcan_event_clearmask(arcan_event_defaultctx());
+				
+/*  note that the vid here is actually used to get the movie context, so this is correct */
 			if (src->autoplay){
 				arcan_frameserver_playback(src);
 			}
@@ -332,7 +409,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			}
 		}
 
-		check_child(src->shm.ptr);
+/* since this is a tick, make sure that the child process is still alive */
+		if (!check_child(src->shm.ptr))
+			arcan_frameserver_free(src, src->loop);
 	}   
 }
 
