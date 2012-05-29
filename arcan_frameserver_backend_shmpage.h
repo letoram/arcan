@@ -20,6 +20,8 @@
  */
 
 #define SHMPAGE_QUEUESIZE 64
+#define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
+#define SHMPAGE_AUDIOBUF_SIZE (192000 * 3 / 2)
 
 struct frameserver_shmpage {
 	bool resized;
@@ -51,8 +53,12 @@ struct frameserver_shmpage {
 	
 	uint8_t channels;
 	uint16_t frequency;
-	uint32_t abufused;
 	uint32_t adts;
-	uint32_t abufbase;
-	uint32_t abufofs;
+
+/* abufbase is a working buffer offset in how far parent has processed */
+	off_t abufbase;
+	
+/* abufused is how much that can actually be read from (shmpagebase + ofs) */
+	size_t abufused;
+	off_t abufofs;
 };
