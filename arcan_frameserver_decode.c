@@ -66,8 +66,7 @@ static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_
 	}
 }
 
-/* note, if shared + vbufofs is aligned to ffmpeg standards, we could sws_scale directly to it,
- * */
+/* note, if shared + vbufofs is aligned to ffmpeg standards, we could sws_scale directly to it */
 static bool decode_vframe(arcan_ffmpeg_context* ctx)
 {
 	int complete_frame = 0;

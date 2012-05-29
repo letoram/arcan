@@ -242,10 +242,19 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	size_t new_s = nframes * 2 * sizeof(int16_t);
 	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
 
-	memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
-	retroctx.shared->abufused += new_s;
+	if ( arcan_sem_timedwait(async, -1) ){
 
-	return nframes;
+/* if we can't buffer safely, drop the new data */
+		if (retroctx.shared->abufused + new_s < SHMPAGE_AUDIOBUF_SIZE){
+			memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
+			retroctx.shared->abufused += new_s;
+		}
+		
+		arcan_sem_post(async);
+		return nframes;
+	}
+	
+	return 0;
 }
 
 void libretro_audscb(int16_t left, int16_t right){
@@ -434,16 +443,7 @@ LOG("map shm\n");
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
-
 			retroctx.run();
-
-/* push audio buffer */
-			if (retroctx.shared->abufused > 0){
-				retroctx.shared->aready = false;
-				retroctx.shared->abufused = 0;
-//				if (!semcheck( async, 0 ))
-//					exit(1);
-			}
 		}
 	}
 }
