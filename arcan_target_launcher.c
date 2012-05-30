@@ -51,7 +51,7 @@
 #include "arcan_framequeue.h"
 #include "arcan_target_const.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_frameserver_backend_shmpage.h"
+#include "arcan_frameserver_shmpage.h"
 #include "arcan_target_launcher.h"
 
 extern bool fullscreen;

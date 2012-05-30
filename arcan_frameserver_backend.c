@@ -43,7 +43,7 @@
 #include "arcan_video.h"
 #include "arcan_audio.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_frameserver_backend_shmpage.h"
+#include "arcan_frameserver_shmpage.h"
 #include "arcan_event.h"
 #include "arcan_util.h"
 
