@@ -155,6 +155,8 @@ set (
  FSRV_SOURCES
  frameserver/arcan_frameserver_decode.h
  frameserver/arcan_frameserver_decode.c
+ frameserver/arcan_frameserver_libretro.h
+ frameserver/arcan_frameserver_libretro.c
  arcan_frameserver_shmpage.h
  arcan_general.c
  arcan_event.c
