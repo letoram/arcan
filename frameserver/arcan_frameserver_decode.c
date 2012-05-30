@@ -5,11 +5,11 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_event.h"
+#include "../arcan_math.h"
+#include "../arcan_general.h"
+#include "../arcan_event.h"
 #include "arcan_frameserver_decode.h"
-#include "arcan_frameserver_backend_shmpage.h"
+#include "../arcan_frameserver_shmpage.h"
 
 extern bool semcheck(sem_handle, unsigned timeout);
 

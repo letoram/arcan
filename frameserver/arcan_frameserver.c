@@ -33,10 +33,10 @@
 
 #include <SDL/SDL_loadso.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_event.h"
-#include "arcan_frameserver_backend_shmpage.h"
+#include "../arcan_math.h"
+#include "../arcan_general.h"
+#include "../arcan_event.h"
+#include "../arcan_frameserver_shmpage.h"
 #include "libretro.h"
 
 #define VID_FD 3
@@ -163,6 +163,9 @@ static struct frameserver_shmpage* get_shm(char* shmkey, unsigned width, unsigne
  * that can be handled by SDLs library management functions. */
 static struct {
 		bool alive; /* toggle this flag off to terminate main loop */
+		int16_t audbuf[4196]; /* audio buffer for retro- targets that supply samples one call at a time */
+		size_t audbuf_used;
+		
 		struct frameserver_shmpage* shared;
 		
 		struct arcan_evctx inevq;
@@ -234,7 +237,6 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	
 	if (!semcheck(vsync, 0))
 		exit(1);
-	
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
@@ -243,7 +245,6 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
 
 	if ( arcan_sem_timedwait(async, -1) ){
-
 /* if we can't buffer safely, drop the new data */
 		if (retroctx.shared->abufused + new_s < SHMPAGE_AUDIOBUF_SIZE){
 			memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
@@ -258,8 +259,8 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 }
 
 void libretro_audscb(int16_t left, int16_t right){
-	int16_t lr[2] = {left, right};
-	libretro_audcb(lr, 1);
+	retroctx.audbuf[ retroctx.audbuf_used++ ] = left;
+	retroctx.audbuf[ retroctx.audbuf_used++ ] = right; 
 }
 
 /* we ignore these since before pushing for a frame, we've already processed the queue */
@@ -306,13 +307,13 @@ static void ioev_ctxtbl(arcan_event* ioev)
 	char* subtype;
 	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 
-//	LOG("button: %s, value: %d\n", ioev->label, value);
-	
 	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind < MAX_PORTS &&
 		(subtype = index(ioev->label, '_')) ){
 		subtype++;
-		if (1 == sscanf(subtype, "BUTTON%d", &button) && button >= 0 && button < MAX_BUTTONS)
+		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
+			button--;
 			button = button > sizeof(remaptbl) / sizeof(remaptbl[0]) - 1 ? -1 : remaptbl[button];
+		}
 		else if ( strcmp(subtype, "UP") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_UP;
 		else if ( strcmp(subtype, "DOWN") == 0 )
@@ -415,6 +416,7 @@ LOG("load_game\n");
 		
 LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
+LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
 		retroctx.shared = get_shm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
 
 		retroctx.inevq.synch.shared = esync;
@@ -444,6 +446,13 @@ LOG("map shm\n");
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
 			retroctx.run();
+			
+/* wrapper around the audscb buffering */
+			if (retroctx.audbuf_used){
+				libretro_audcb(retroctx.audbuf, retroctx.audbuf_used / 2);
+				retroctx.audbuf_used = 0;
+			}
+
 		}
 	}
 }
@@ -454,7 +463,7 @@ LOG("map shm\n");
 void mode_streamserv(char* resource, char* keyfile)
 {
 	/* incomplete, first version should just take
-	 * a vid (so buffercopy or readback) and an aid (due to buffering,
+	 * a vid (so buffercopy or readback) or an aggregate (render vids to fbo, readback fbo)
 	 * we can't treat this the same as vid), encode and store in a file.
 	 * 
 	 * next step would be to compare this with a more established straming protocol 

@@ -148,13 +148,14 @@ set (
  arcan_general.h
  arcan_db.h
  arcan_shdrmgmt.h
+ arcan_frameserver_shmpage.h
 ) 
 
 set (
  FSRV_SOURCES
- arcan_frameserver_backend.h
- arcan_frameserver_decode.h
- arcan_frameserver_decode.c
+ frameserver/arcan_frameserver_decode.h
+ frameserver/arcan_frameserver_decode.c
+ arcan_frameserver_shmpage.h
  arcan_general.c
  arcan_event.c
 )
@@ -178,7 +179,7 @@ find_library(COREFOUNDATION NAMES CoreFoundation)
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
 LIST(APPEND SOURCES SDLMain.m hidapi/hid_mac.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
-LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
+LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 
 # " probe " support not ready, idea is to sweep targets, look at dependencies with the hijack preloaded
 # and figure out which symbols are used and available 
@@ -223,7 +224,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
 	LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 	LIST(APPEND MAIN_LIBRARIES usb rt)
-	LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
+	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
 	add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
@@ -250,7 +251,7 @@ add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
-LIST(APPEND FSRV_SOURCES arcan_frameserver.c)
+LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 
 add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
@@ -321,7 +322,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
  add_custom_command(
 	OUTPUT arcan_frameserver_resource.obj
-	DEPENDS arcan_frameserver.rc
+	DEPENDS win32/arcan_frameserver.rc
 	COMMAND windres.exe
 	ARGS -o arcan_frameserver_resource.obj
 	-iarcan_frameserver.rc
