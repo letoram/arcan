@@ -45,7 +45,7 @@
 	#include "arcan_general.h"
 	#include "arcan_event.h"
 	#include "arcan_target_const.h"
-	#include "arcan_frameserver_backend_shmpage.h"
+	#include "arcan_frameserver_shmpage.h"
 
 	static struct {
 			void (*sdl_swapbuffers)(void);
