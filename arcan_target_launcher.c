@@ -302,6 +302,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 		char* work = strdup(shmkey);
 			work[strlen(work) - 1] = 'v';
 			res->source.vsync = sem_open(work, 0);
+			assert(res->source.vsync);
 			sem_post(res->source.vsync);
 		free(work);
 		

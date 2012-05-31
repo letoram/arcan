@@ -276,11 +276,7 @@ if (settings.sortfunctions[settings.sortlbl]) then
 		erase_grid(false);
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL);
-		audio_gain(internal_aid, settings.internal_again, NOW);
-		gridle_oldinput = gridle_input;
-		gridle_input = gridle_internalinput;
-		gridlemenu_loadshader(settings.fullscreenshader);
-	end
+end
 
 	imagery.black = fill_surface(1,1,0,0,0);
 	imagery.white = fill_surface(1,1,255,255,255);
@@ -396,6 +392,13 @@ function gridle_video_event(source, event)
 
 		if (not in_internal) then
 			in_internal = true;
+	
+			audio_gain(internal_aid, settings.internal_again, NOW);
+			gridle_oldinput = gridle_input;
+			gridle_input = gridle_internalinput;
+			gridlemenu_loadshader(settings.fullscreenshader);
+	
+			zap_whitegrid();
 
 -- don't need these running in the background 
 			erase_grid(true);
@@ -874,8 +877,8 @@ function zap_whitegrid()
 		end
 	end
 	
+	whitegrid = nil;
 end
-
 
 function build_whitegrid()
 	whitegrid = {};
