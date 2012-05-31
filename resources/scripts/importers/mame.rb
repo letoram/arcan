@@ -242,17 +242,20 @@ class Mame
 
 	def check_target(target, targetpath)
 		@mametarget = nil
+		executable = nil
+
 		execs = ["mame", "mame.exe", "ume", "ume.exe"];
 		execs.each{|ext|
-		           fullname = "#{targetpath}/#{execs}"
+		           fullname = "#{targetpath}/#{ext}"
 		           if (File.exists?(fullname))
 		               @mametarget = fullname
-					   break
+				executable = ext	
+			       break
 		           end
 		}
 
 		if (@mametarget == nil)
-			raise "Could not locate mame (tried #{targetpath}/mame and #{targetpath}/mame.exe, giving up. "
+			raise "Could not locate mame, giving up (tried #{targetpath}/#{execs.join(', ')}. "
 		end
 		
 		@target = Target.Load(0, "mame")
