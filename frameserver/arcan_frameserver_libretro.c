@@ -139,8 +139,8 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	size_t new_s = nframes * 2 * sizeof(int16_t);
 	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
 
-	if ( arcan_sem_timedwait(retroctx.async, -1) ){
-/* if we can't buffer safely, drop the new data */
+/* if we can't buffer safely, new data is dropped */
+	if ( frameserver_semcheck(retroctx.async, -1) ){
 		if (retroctx.shared->abufused + new_s < SHMPAGE_AUDIOBUF_SIZE){
 			memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
 			retroctx.shared->abufused += new_s;
@@ -327,14 +327,16 @@ LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
 		retroctx.async = cont.asem;
 		retroctx.esync = cont.esem;
 		
-		retroctx.inevq.synch.shared = retroctx.esync;
+		retroctx.inevq.synch.external.shared = retroctx.esync;
+		retroctx.inevq.synch.external.killswitch = NULL; 
 		retroctx.inevq.local = false;
 		retroctx.inevq.eventbuf = retroctx.shared->childdevq.evqueue;
 		retroctx.inevq.front = &retroctx.shared->childdevq.front;
 		retroctx.inevq.back  = &retroctx.shared->childdevq.back;
 		retroctx.inevq.n_eventbuf = sizeof(retroctx.shared->childdevq.evqueue) / sizeof(arcan_event);
 	
-		retroctx.outevq.synch.shared = retroctx.esync;
+		retroctx.outevq.synch.external.shared = retroctx.esync;
+		retroctx.outevq.synch.external.killswitch = NULL;
 		retroctx.outevq.local =false;
 		retroctx.outevq.eventbuf = retroctx.shared->parentdevq.evqueue;
 		retroctx.outevq.front = &retroctx.shared->parentdevq.front;

@@ -53,6 +53,7 @@
 #include "arcan_db.h"
 #include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
+#include "arcan_frameserver_shmpage.h"
 #include "arcan_target_const.h"
 #include "arcan_target_launcher.h"
 #include "arcan_lua.h"
@@ -731,6 +732,7 @@ int arcan_lua_hittest(lua_State* state)
 int arcan_lua_deleteimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	double srcid = luaL_checknumber(ctx, 1);
 
 	/* possibly long journey,
 	 * for a vid with a movie associated (or any feedfunc),
@@ -742,7 +744,7 @@ int arcan_lua_deleteimage(lua_State* ctx)
 			arcan_warning("%s => arcan_lua_deleteimage(%d) -- Object could not be deleted, invalid object specified.\n", luaL_lastcaller(ctx), id);
 		}
 		else
-			arcan_fatal("Theme tried to delete non-existing object (%d) from (%s). Relaunch with debug flags (-g) to suppress.\n", id, luaL_lastcaller(ctx));
+			arcan_fatal("Theme tried to delete non-existing object (%.0lf=>%d) from (%s). Relaunch with debug flags (-g) to suppress.\n", srcid, id, luaL_lastcaller(ctx));
 	}
 	
 	return 0;
@@ -1033,7 +1035,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 	if (vstate->tag == ARCAN_TAG_FRAMESERV)
 		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev );
 	else
-		arcan_target_inject_event( (arcan_launchtarget*) vstate->ptr, ev);
+		arcan_target_inject_event( (arcan_launchtarget*) vstate->ptr, &ev);
 
 	lua_pushnumber(ctx, true);
 	return 1;
@@ -1238,14 +1240,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_TARGET){
 		vfunc_state* fstate = arcan_video_feedstate( ev->data.target.video.source );
-		intptr_t val = 0;
-		
+
+		arcan_frameserver* srv;
 		if (fstate->tag == ARCAN_TAG_TARGET)
-			val = ((arcan_launchtarget*) fstate->ptr)->source.tag;
-		else if (fstate->tag == ARCAN_TAG_FRAMESERV)
-			val = ((arcan_frameserver*) fstate->ptr)->tag;
-		else
-			arcan_fatal("(arcan_lua_pushevent) dangerous event received, submit crashdump if possible.\n");
+			srv = & ( ((arcan_launchtarget*) fstate->ptr)->source);
+		else 
+			srv = ( arcan_frameserver*) fstate->ptr;
+			
+		intptr_t val = srv->tag;
 			
 		if (val){
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
@@ -1273,6 +1275,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				
 				case TARGET_STATUS_RESIZED : 
 					arcan_lua_tblstr(ctx, "kind", "resized", top);
+					arcan_lua_tblbool(ctx, "glsource", ((struct frameserver_shmpage*)(srv->shm.ptr))->glsource, top); 
 					arcan_lua_tblnum(ctx, "width", ev->data.target.video.constraints.w, top);
 					arcan_lua_tblnum(ctx, "height", ev->data.target.video.constraints.h, top);
 				break;

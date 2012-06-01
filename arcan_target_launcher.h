@@ -24,7 +24,6 @@
 
 /* Structure for keeping track of the context */
 typedef struct {
-	pipe_handle ifd;
 	arcan_frameserver source;
 } arcan_launchtarget;
 
@@ -33,7 +32,7 @@ typedef struct {
 int arcan_target_clean_internal(arcan_launchtarget* tgt);
 
 /* convert and input event into the target */
-arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event ev);
+arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event* ev);
 
 /* upkeep, check if child is still alive etc. */
 void arcan_target_tick_control(arcan_launchtarget* tgt);

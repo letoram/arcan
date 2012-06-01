@@ -87,6 +87,9 @@
 		sem_handle vsync;
 		sem_handle async;
 		sem_handle esync;
+		
+		struct arcan_evctx inevq, outevq;
+		
 		struct frameserver_shmpage* shared;
 	} global = {
 		.desfmt = {
@@ -142,17 +145,52 @@
 		}
 	}
 
-	static void cleanup_shared(char* shmkey){
-		if (NULL == shmkey) 
-			return;
+static void cleanup_shared(char* shmkey){
+	if (NULL == shmkey) 
+		return;
 		
-		char* work = strdup(shmkey);
-			work[ strlen(work) - 1] = 'v';
-			sem_unlink(work);
-		free(work);	
+	char* work = strdup(shmkey);
+		work[ strlen(work) - 1] = 'v';
+		sem_unlink(work);
+	free(work);	
 
-		shm_unlink(shmkey);
-	}
+	shm_unlink(shmkey);
+}
+
+/* select friends from arcan_general as we don't want to take the entire .o in */
+#include <time.h>
+static inline bool parent_alive()
+{
+	return getppid() != 1;
+}
+
+int arcan_sem_post(sem_handle sem)
+{
+	return sem_post(sem);
+}
+
+int arcan_sem_unlink(sem_handle sem, char* key)
+{
+	return sem_unlink(key);
+}
+
+int arcan_sem_timedwait(sem_handle semaphore, int mstimeout){
+	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
+	bool rv = true;
+	int rc;
+
+	do {
+		rc = sem_trywait(semaphore);
+		if (-1 == rc){
+				if (errno == EINVAL){
+					exit(1);
+				}
+			nanosleep(&st, &rem); /* don't care about precision here really */
+		}
+	} while ( (rv = parent_alive()) && rc != 0 );
+
+	return rv;
+}
 
 	SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 	{
@@ -202,6 +240,7 @@
 		global.shared->bpp = 4;
 		global.shared->vready = false;
 		global.shared->vbufofs = sizeof(struct frameserver_shmpage);
+		
 		global.shared->resized = false;
 
 		char* semkey = strdup(global.shmkey);
@@ -213,6 +252,22 @@
 		
 		semkey[ strlen(global.shmkey) - 1 ] = 'e';
 		global.esync = sem_open(semkey, 0);
+		 
+		global.inevq.synch.external.shared = global.esync;
+		global.inevq.synch.external.killswitch = NULL; 
+		global.inevq.local = false;
+		global.inevq.eventbuf = global.shared->childdevq.evqueue;
+		global.inevq.front = &global.shared->childdevq.front;
+		global.inevq.back  = &global.shared->childdevq.back;
+		global.inevq.n_eventbuf = sizeof(global.shared->childdevq.evqueue) / sizeof(arcan_event);
+	
+		global.outevq.synch.external.shared = global.esync;
+		global.outevq.synch.external.killswitch = NULL;
+		global.outevq.local =false;
+		global.outevq.eventbuf = global.shared->parentdevq.evqueue;
+		global.outevq.front = &global.shared->parentdevq.front;
+		global.outevq.back  = &global.shared->parentdevq.back;
+		global.outevq.n_eventbuf = sizeof(global.shared->parentdevq.evqueue) / sizeof(arcan_event);
 	}
 
 	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -281,7 +336,8 @@
 	static inline void push_ioevent(arcan_ioevent event){
 		SDL_Event newev = {0};
 		bool active;
-
+		fprintf(stderr, "push_ioevent()\n");
+	
 		switch (event.datatype){
 			case EVENT_IDATATYPE_DIGITAL:
 				newev.button.which = event.input.digital.devid;	
@@ -351,91 +407,25 @@
 		}
 	}
 
-	static void push_event(char* buf, size_t nb)
-	{
-		arcan_event newev;
-		if ( arcan_event_frombytebuf(&newev, buf, nb) ){
-			switch (newev.kind){
-				case EVENT_IO_BUTTON_PRESS:
-				case EVENT_IO_BUTTON_RELEASE:
-				case EVENT_IO_AXIS_MOVE:
-				case EVENT_IO_KEYB_PRESS:
-				case EVENT_IO_KEYB_RELEASE:
-					push_ioevent(newev.data.io);
-				break;
-					
-				default:
-					fprintf(stderr, "[target] push_event(), this hijack does not support the supplied event type (%i)\n", newev.kind);
-			}
-		} else 
-			fprintf(stderr, "[target] push_event(), couldn't decode event sent from parent.\n");
-	}
-
-	static void poll_comm(){
-		static char buf[256] = {0};
-		static unsigned char bufofs   = 0;
-		bool waitcmd = false;
-		ssize_t nr;
-
-	/* when waitcmd is enabled, we jump here and block */
-	retry:
-	/* process has been adopted by something else (likely init) */
-		if (getppid() != global.shared->parent){
-	fatal:
-			cleanup_shared( global.shmkey );
-
-		/* tried queueing SDL_QUIT, didn't help. */
-			exit(0);
-		}
-		
-		nr = read(COMM_FD, buf + bufofs, sizeof(buf) / sizeof(buf[0]) - bufofs - 1);
-
-		if (nr > 0) {
-			bufofs += nr;
-	/* header(2b), rest(253+2) */
-			while (bufofs >= (buf[1] + 2)) {
-				if ((unsigned char)buf[1] > 253){
-				fprintf(stderr, "Arcan Hijack, Parent requested illegaly sized tag (%i:%i)\n", buf[0], buf[1]);
-				goto fatal;
-			}
-		/* decode */
-			if (!waitcmd || (waitcmd && buf[0] == TF_WAKE))
-				switch (buf[0]) {
-					case TF_EVENT : push_event(buf + 2, buf[1]); break;
-					case TF_WAKE  : waitcmd = false; fcntl(COMM_FD, F_SETFL, fcntl(COMM_FD, F_GETFL) | O_NONBLOCK); break;
-					case TF_SLEEP : waitcmd = true; fcntl(COMM_FD, F_SETFL, fcntl(COMM_FD, F_GETFL) & ~O_NONBLOCK); break;
-					case TF_AGAIN : set_attenuation(buf + 2); break;
-				default:
-					fprintf(stderr, "Arcan Hijack, SDL_PollEvent, Unknown event received: %i:%i\n", buf[0], buf[1]);
-			}
-
-		/* slide */
-			unsigned char torem = buf[1] + 2;
-			memmove(buf, buf + torem, sizeof(buf) / sizeof(buf[0]) - torem);
-			bufofs -= torem;
-		}
-	}
-	
-	if (waitcmd) 
-		goto retry;
-}
-
-int ARCAN_SDL_PollEvent(SDL_Event* ev)
+int ARCAN_SDL_PollEvent(SDL_Event* inev)
 {
 	SDL_Event gevent;
 
-/* check pipe, decode events and inject */ 
- 	poll_comm();
-
+	arcan_event* ev;
+	
+	while ( (ev = arcan_event_poll(&global.inevq)) ) 
+		switch (ev->category){
+			case EVENT_IO: push_ioevent(ev->data.io); break;
+	}
 
 /* we need to filter a few events ... ;-) */
 	int evs;
 	if ( (evs = forwardtbl.sdl_pollevent(&gevent) ) )
 	{
 		if (gevent.type == SDL_ACTIVEEVENT)
-			return forwardtbl.sdl_pollevent(ev);
+			return forwardtbl.sdl_pollevent(inev);
 
-		*ev = gevent;
+		*inev = gevent;
 	}
 
 	return evs;
@@ -450,8 +440,10 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 }
 
 static void copysurface(SDL_Surface* src){
+	printf("lock for target\n");
 	sem_wait(global.vsync);
-
+	printf("lock after target\n");
+	
 	if ( cmpfmt(src->format, &global.desfmt) ){
 			SDL_LockSurface(src);
 			memcpy((char*)global.shared + global.shared->vbufofs, 
@@ -540,8 +532,9 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
 	 * increase when using PBOs */
+	printf("lock for frame\n");
 	sem_wait(global.vsync);
-
+	printf("lock after frame\n");
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
@@ -549,6 +542,6 @@ void ARCAN_SDL_GL_SwapBuffers()
 	global.shared->vready = true;
 
 /*  uncomment to keep video- operations running in the target,
- *  some 3d algorithms want this (readback -> shadow mapping etc.) */
+ *  some weird 3d- edge cases might need this */
 /*	forwardtbl.sdl_swapbuffers(); */
 }
