@@ -54,8 +54,6 @@
 #include "arcan_frameserver_shmpage.h"
 #include "arcan_target_launcher.h"
 
-extern bool fullscreen;
-
 int arcan_target_launch_external(const char* fname, char** argv)
 {
 	if (arcan_video_prepare_external() == false){
@@ -225,7 +223,6 @@ void arcan_target_resume_internal(arcan_launchtarget* tgt)
 	write(tgt->ifd, wbuf, sizeof(wbuf));
 }
 
-
 void arcan_target_tick_control(arcan_launchtarget* tgt)
 {
 	/* check if child is alive */
@@ -238,14 +235,30 @@ void arcan_target_tick_control(arcan_launchtarget* tgt)
 			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
 			arcan_framequeue_free(&tgt->source.vfq);
 			shmpage->resized = false;
+			
+/* resizefeed etc. actually generate a resized event, since we're going to push a specific one for this 
+ * purpose, mask it out */
+			arcan_event_maskall( arcan_event_defaultctx() );
 			arcan_video_resizefeed(tgt->source.vid, cons, shmpage->glsource);
 			arcan_video_alterfeed(tgt->source.vid, (arcan_vfunc_cb) internal_videoframe, cstate);
+			arcan_event_clearmask( arcan_event_defaultctx() );
+			
+			arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, 
+				.data.target.video.source = tgt->source.vid,
+				.data.target.audio = tgt->source.aid, 
+				.data.target.statuscode = TARGET_STATUS_RESIZED,
+				.data.target.video.constraints = cons, 
+				.category = EVENT_TARGET};
+			
+			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		}
 		
 		int status;
 		if (waitpid( tgt->source.child, &status, WNOHANG ) == tgt->source.child){
 			tgt->source.child_alive = false;
-			arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_TERMINATED, .category = EVENT_TARGET, .data.video.source = tgt->source.vid};
+			arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_TERMINATED, .category = EVENT_TARGET, .data.target.video.source = tgt->source.vid,
+				.data.target.audio = tgt->source.aid, .data.target.statuscode = TARGET_STATUS_DIED
+			};
 			arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		}
 	}
@@ -259,10 +272,7 @@ void arcan_target_tick_control(arcan_launchtarget* tgt)
  * for other platforms, patch the hijacklib loader to set an infinite while loop on a volatile flag,
  * break the process and manually change the memory of the flag */
 extern char* arcan_libpath;
-arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
-        enum intercept_mechanism mechanism,
-        enum intercept_mode intercept,
-        enum communication_mode comm)
+arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv)
 {
 	if (arcan_libpath == NULL){
 		arcan_warning("Warning: arcan_target_launch_internal() called without a proper hijack lib.\n");
@@ -310,7 +320,7 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 	 * and a new ffunc is set, framequeue is not used as such as we don't need / want
 	 * intermediate buffering */
 		res->ifd = i[1];
-		res->comm = comm;
+		
 		res->source.vid = arcan_video_addfobject(internal_empty, state, empty, 0);
 		res->source.aid = arcan_audio_proxy(again_feed, res);
 		res->source.shm.ptr = (void*) shmpage;
@@ -318,6 +328,8 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
 		res->source.shm.shmsize = MAX_SHMSIZE;
 		res->source.loop = false;
 		res->source.child_alive = true;
+		res->source.nopts = true;
+		res->source.kind = ARCAN_FRAMESERVER_INTERACTIVE;
 		
 		return res;
 	}

@@ -345,7 +345,7 @@ int main(int argc, char* argv[])
 						break;
 				}
 
-				arcan_lua_pushevent(luactx, *ev);
+				arcan_lua_pushevent(luactx, ev);
 			}
 		}
 

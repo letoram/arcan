@@ -26,11 +26,6 @@
 typedef struct {
 	pipe_handle ifd;
 	arcan_frameserver source;
-	
-	enum intercept_mechanism mechanism;
-	enum intercept_mode mode;
-	enum communication_mode comm;
-
 } arcan_launchtarget;
 
 /* kill the process, free resources associated with the
@@ -58,6 +53,6 @@ void arcan_target_resume_internal(arcan_launchtarget* tgt);
 /* launch the target as an internal process,
  * meaning that a ffunc will be hooked up to aid/vids,
  * and a callback can be added that translates events into the space of the child */
-arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv, enum intercept_mechanism, enum intercept_mode, enum communication_mode);
+arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv);
 
 #endif

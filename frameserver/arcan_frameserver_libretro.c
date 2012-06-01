@@ -56,6 +56,10 @@ static struct {
 		bool alive; /* toggle this flag off to terminate main loop */
 		int16_t audbuf[4196]; /* audio buffer for retro- targets that supply samples one call at a time */
 		size_t audbuf_used;
+	
+		sem_handle async;
+		sem_handle vsync;
+		sem_handle esync;
 		
 		struct frameserver_shmpage* shared;
 		
@@ -126,7 +130,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 
 	retroctx.shared->vready = true;
 	
-	if (!frameserver_semcheck(video_sync, 0))
+	if (!frameserver_semcheck(retroctx.vsync, 0))
 		exit(1);
 }
 
@@ -135,14 +139,14 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	size_t new_s = nframes * 2 * sizeof(int16_t);
 	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
 
-	if ( arcan_sem_timedwait(audio_sync, -1) ){
+	if ( arcan_sem_timedwait(retroctx.async, -1) ){
 /* if we can't buffer safely, drop the new data */
 		if (retroctx.shared->abufused + new_s < SHMPAGE_AUDIOBUF_SIZE){
 			memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
 			retroctx.shared->abufused += new_s;
 		}
 		
-		arcan_sem_post(audio_sync);
+		arcan_sem_post(retroctx.async);
 		return nframes;
 	}
 	
@@ -162,6 +166,9 @@ static bool libretro_setenv(unsigned cmd, void* data){ return false; }
 /* use the context-tables from retroctx in combination with dev / ind / ... 
  * to try and figure out what to return, this table is populated in flush_eventq() */
 static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
+	static bool warned_mouse = false;
+	static bool warned_lightgun = false;
+	
 	assert(ind < MAX_PORTS);
 	assert(id  < MAX_BUTTONS);
 	
@@ -171,9 +178,14 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 		break;
 		
 		case RETRO_DEVICE_MOUSE:
+			if (!warned_mouse)
+				warned_mouse = (LOG("(arcan_frameserver:libretro) Mouse input requested, unsupported.\n"), true);
+			
 		break;
 		
 		case RETRO_DEVICE_LIGHTGUN:
+			if (!warned_lightgun)
+				warned_lightgun = (LOG("(arcan_frameserver:libretro) Lightgun input requested, unsupported.\n"), true);
 		break;
 		
 		default:
@@ -270,17 +282,18 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
 		
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
-		if (sysinf.need_fullpath){
-			gameinf.path = strdup( gamename );
-		} else {
-			struct stat filedat;
-			int fd;
-			if (-1 == stat(gamename, &filedat) || -1 == (fd = open(gamename, O_RDWR)) || 
-				MAP_FAILED == ( gameinf.data = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0) ) )
-				return;
-			gameinf.size = filedat.st_size;
-			LOG("mmapped buffer (%d), (%d)\n", fd, gameinf.size);
-		}
+	gameinf.path = strdup( gamename );
+	struct stat filedat;
+	int fd;
+
+	if (!sysinf.need_fullpath){
+		if (-1 == stat(gamename, &filedat) || -1 == (fd = open(gamename, O_RDWR)) || 
+			MAP_FAILED == ( gameinf.data = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0) ) )
+		return;
+		
+		gameinf.size = filedat.st_size;
+		LOG("mmapped buffer (%d), (%d)\n", fd, gameinf.size);
+	}
 
 /* map functions to context structure */
 LOG("map functions\n");
@@ -308,16 +321,20 @@ LOG("load_game\n");
 LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
 LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
-		retroctx.shared = frameserver_getshm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
-
-		retroctx.inevq.synch.shared = event_sync;
+		struct frameserver_shmcont cont = frameserver_getshm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
+		retroctx.shared = cont.addr;
+		retroctx.vsync = cont.vsem;
+		retroctx.async = cont.asem;
+		retroctx.esync = cont.esem;
+		
+		retroctx.inevq.synch.shared = retroctx.esync;
 		retroctx.inevq.local = false;
 		retroctx.inevq.eventbuf = retroctx.shared->childdevq.evqueue;
 		retroctx.inevq.front = &retroctx.shared->childdevq.front;
 		retroctx.inevq.back  = &retroctx.shared->childdevq.back;
 		retroctx.inevq.n_eventbuf = sizeof(retroctx.shared->childdevq.evqueue) / sizeof(arcan_event);
 	
-		retroctx.outevq.synch.shared = event_sync;
+		retroctx.outevq.synch.shared = retroctx.esync;
 		retroctx.outevq.local =false;
 		retroctx.outevq.eventbuf = retroctx.shared->parentdevq.evqueue;
 		retroctx.outevq.front = &retroctx.shared->parentdevq.front;
@@ -326,7 +343,7 @@ LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
 
 		retroctx.alive = true;
 		retroctx.shared->resized = true;
-		arcan_sem_post(video_sync);
+		arcan_sem_post(retroctx.esync);
 		
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */

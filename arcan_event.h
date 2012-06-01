@@ -49,6 +49,14 @@ enum ARCAN_EVENT_SYSTEM {
 	EVENT_SYSTEM_FRAMESERVER_TERMINATED
 };
 
+enum ARCAN_TARGET_STATUS {
+	TARGET_STATUS_RESIZED,
+	TARGET_STATUS_SNAPSHOT_STORED,
+	TARGET_STATUS_SHAPSHOT_RESTORED,
+	TARGET_STATUS_DATABLOCK_SAMPLED,
+	TARGET_STATUS_DIED
+};
+
 enum ARCAN_EVENT_IO {
 	EVENT_IO_BUTTON_PRESS, /*  joystick buttons, mouse buttons, ...    */
 	EVENT_IO_BUTTON_RELEASE,
@@ -106,6 +114,7 @@ enum ARCAN_EVENT_AUDIO {
 enum ARCAN_EVENT_TARGET {
 	EVENT_TARGET_EXTERNAL_LAUNCHED,
 	EVENT_TARGET_EXTERNAL_TERMINATED,
+	EVENT_TARGET_INTERNAL_STATUS,
 	EVENT_TARGET_INTERNAL_LAUNCHED,
 	EVENT_TARGET_INTERNAL_TERMINATED
 };
@@ -165,12 +174,20 @@ typedef struct arcan_tevent {
 	uint8_t pulse_count;
 } arcan_tevent;
 
+typedef struct arcan_tgtevent {
+	arcan_vevent video;
+	arcan_aobj_id audio;
+	enum ARCAN_TARGET_STATUS statuscode;
+} arcan_tgtevent;
+
 typedef union event_data {
 	arcan_ioevent io;
 	arcan_vevent video;
 	arcan_aevent audio;
 	arcan_sevent system;
 	arcan_tevent timer;
+	arcan_tgtevent target;
+	
 	void* other;
 } event_data;
 

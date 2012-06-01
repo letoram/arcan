@@ -106,7 +106,8 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 	if (src && src->loop){
 		arcan_frameserver_free(src, true);
 		arcan_audio_pause(src->aid);
-	/* with asynch movieplayback, we can't set it to playing state before loaded */
+
+/* with asynch movieplayback, we can't set it to playing state before loaded */
 		src->autoplay = true;
 		arcan_frameserver_spawn_server(src, src->source, NULL);
 		return false;
@@ -290,7 +291,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 }
 
 /* synching behavior is different in this mode,
- * the semaphore is used as a mutex rather than than a longer lock */
+ * the semaphore is used as a mutex rather than than a conditional */
 arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
@@ -322,12 +323,13 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 			int64_t now = arcan_frametime() - src->starttime;
 			int64_t toshow = src->afq.front_cell->tag;
 
-		/* as there are latencies introduced by the audiocard etc. as well,
-		 * it is actually somewhat beneficial to lie a few ms ahead of the videotimer */
+/* as there are latencies introduced by the audiocard etc. as well,
+ * it is actually somewhat beneficial to lie a few ms ahead of the videotimer */
 			size_t buffers = src->afq.cell_size - (src->afq.cell_size - src->afq.front_cell->ofs);
 			double dc = (double)src->lastpts - src->audioclock;
 			src->audioclock += src->bpms * (double)buffers;
-		/* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
+
+/* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
 			if (dc < 60.0){
 				alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, buffers, src->desc.samplerate);
 				arcan_framequeue_dequeue(&src->afq);
@@ -346,8 +348,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-		if (shmpage->resized){
+
 /* may happen multiple- times */
+		if (shmpage->resized){
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
 			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
             src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
@@ -360,6 +363,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
             src->desc.channels = shmpage->channels;
 			arcan_event_maskall(arcan_event_defaultctx());
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
+			arcan_event_clearmask(arcan_event_defaultctx());
 
 /* if there's no audio-stream set up (no detection for video- only or audio- only frameservers yet),
  * create one ... */
@@ -368,13 +372,14 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* simplified mode, disables framequeues and just use the buffer in the shared memory page */
 			if (src->nopts){
 				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
+				
 				if (src->aid == ARCAN_EID)
 					src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
-				
 			} else {
 				if (src->aid == ARCAN_EID)
 				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
 				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
+
 /* otherwise, figure out reasonable buffer sizes (or user-defined overrides) */
 				unsigned short acachelim, vcachelim, abufsize;
 				arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
@@ -398,17 +403,29 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 				arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
 			}
 
-			arcan_event_clearmask(arcan_event_defaultctx());
-				
-/*  note that the vid here is actually used to get the movie context, so this is correct */
-			if (src->autoplay){
-				arcan_frameserver_playback(src);
+		
+			if (src->kind == ARCAN_FRAMESERVER_INPUT){
+				if (src->autoplay){
+					arcan_frameserver_playback(src);
+				}
+				else {
+					arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
+					.data.video.constraints = cons, .category = EVENT_VIDEO};
+					arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+				}
 			}
-			else {
-				arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
-                .data.video.constraints = cons, .category = EVENT_VIDEO};
+			else if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE){
+				arcan_frameserver_playback(src);
+				arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, .category = EVENT_TARGET,
+				.data.target.video.source = src->vid,
+				.data.target.video.constraints = cons,
+				.data.target.audio = src->aid,
+				.data.target.statuscode = TARGET_STATUS_RESIZED};
+				
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
+			else 
+				arcan_warning("(frameserver_tick_control) unhandled frameserver type (%d)\n", src->kind);
 		}
 
 /* since this is a tick, make sure that the child process is still alive */

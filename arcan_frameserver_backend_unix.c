@@ -145,6 +145,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 		return ARCAN_ERRC_BAD_ARGUMENT;
 	
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
+	char* rmode = mode ? mode : "movie";
 	
 	size_t shmsize = MAX_SHMSIZE;
 	struct frameserver_shmpage* shmpage;
@@ -204,6 +205,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 			ctx->esync = sem_open(work, 0);	
 		free(work);
 		
+		if (strcmp(rmode, "movie") == 0)
+			ctx->kind = ARCAN_FRAMESERVER_INPUT;
+		else if (strcmp(rmode, "libretro") == 0)
+			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+		else; 
+		
 		ctx->child_alive = true;
 		ctx->desc = vinfo;
 		ctx->child = child;
@@ -246,7 +253,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 			argv[0] = arcan_binpath;
 			argv[1] = (char*) resource;
 			argv[2] = (char*) shmkey;
-			argv[3] = mode == NULL ? "movie" : mode;
+			argv[3] = rmode;
 			argv[4] = NULL;
 
 			int rv = execv(arcan_binpath, argv);

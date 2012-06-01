@@ -25,12 +25,18 @@
 #define LOG(...) ( fprintf(logdev, __VA_ARGS__))
 
 extern FILE* logdev;
-extern sem_handle video_sync;
-extern sem_handle audio_sync;
-extern sem_handle event_sync;
 
-/* clean up any namespace entries used for semaphores / shared memory */
+/* try and acquire a lock on the semaphore before mstimeout runs out */
 bool frameserver_semcheck(sem_handle semaphore, unsigned mstimeout);
-struct frameserver_shmpage* frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
+
+/* setup a named memory / semaphore mapping with the server */
+struct frameserver_shmcont{
+	struct frameserver_shmpage* addr;
+	sem_handle vsem;
+	sem_handle asem;
+	sem_handle esem;
+};
+
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
 
 #endif

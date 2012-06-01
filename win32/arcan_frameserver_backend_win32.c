@@ -222,7 +222,8 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 /* if res is non-null, we have a server context already set up, 
  * just need to reset the frame-server */
 	bool restart = res != NULL;
-
+	char* rmode = mode ? mode : "movie";
+	
 /* even if we're looping, it's assumed that the frameserver resources have been free:ed (with loop args) */
 	HANDLE shmh;
 	struct frameserver_shmpage* shmpage = setupshmipc(&shmh);
@@ -242,7 +243,7 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 
 /* b: spawn the child process */
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", fname, shmh, vsync, async, esync, mode ? mode : "movie");
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", fname, shmh, vsync, async, esync, rmode);
 	shmpage->loop = loop;
 	shmpage->parent = handle;
 

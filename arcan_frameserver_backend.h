@@ -42,6 +42,13 @@ enum arcan_playstate {
 	ARCAN_SUSPENDED = 4
 };
 
+enum arcan_frameserver_kinds {
+	ARCAN_FRAMESERVER_INPUT,
+	ARCAN_FRAMESERVER_OUTPUT,
+	ARCAN_FRAMESERVER_INTERACTIVE,
+	ARCAN_HIJACKLIB
+};
+
 typedef struct {
 	/* video */
 	uint16_t width;
@@ -66,13 +73,12 @@ typedef struct {
 	frame_queue vfq, afq;
 	struct arcan_evctx inqueue, outqueue;
 	
-/* original filename, needed for reloading */
+/* original resource, needed for reloading */
 	char* source;
 	
 /*  OS- specific, defined in general.h */
 	shm_handle shm;
 	sem_handle vsync, async, esync; 
-	int key; /*shmid */
 
 	arcan_aobj_id aid;
 	arcan_vobj_id vid;
@@ -87,7 +93,9 @@ typedef struct {
 	bool extcc;
 	unsigned int lastntr;
 
-/* timing */
+	enum arcan_frameserver_kinds kind;
+	
+/* timing, only relevant if nopts == false */
 	uint32_t vfcount;
 	double bpms;
 	double audioclock;
