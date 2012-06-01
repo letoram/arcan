@@ -846,7 +846,13 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 	mvctx->loop = luaL_optint(ctx, 2, 0) != 0;
 	
-	if ( arcan_frameserver_spawn_server(mvctx, (char*) fname, NULL) == ARCAN_OK )
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.args.builtin.mode = "movie",
+		.args.builtin.resource = fname  
+	};
+	
+	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
 	{
 /* mvctx is passed with the corresponding async event, which will only be used in the main thread, so 
  * no race condition here */ 
@@ -1034,8 +1040,6 @@ int arcan_lua_targetinput(lua_State* ctx)
 		
 	if (vstate->tag == ARCAN_TAG_FRAMESERV)
 		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev );
-	else
-		arcan_target_inject_event( (arcan_launchtarget*) vstate->ptr, &ev);
 
 	lua_pushnumber(ctx, true);
 	return 1;
@@ -1047,7 +1051,7 @@ static int arcan_lua_targetsuspend(lua_State* ctx){
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
 		if (state && state->ptr && state->tag == ARCAN_TAG_TARGET){
-			arcan_target_suspend_internal( (arcan_launchtarget*) state->ptr );
+//			arcan_target_suspend_internal( (arcan_launchtarget*) state->ptr );
 		}
 	}
 
@@ -1059,7 +1063,7 @@ static int arcan_lua_targetresume(lua_State* ctx){
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
 		if (state && state->ptr && state->tag == ARCAN_TAG_TARGET){
-			arcan_target_resume_internal( (arcan_launchtarget*) state->ptr );
+//			arcan_target_resume_internal( (arcan_launchtarget*) state->ptr );
 		}
 	}
 
@@ -2329,7 +2333,13 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				intarget->nopts = true;
 				intarget->autoplay = true;
 				
-				if (arcan_frameserver_spawn_server(intarget, metastr, "libretro") == ARCAN_OK){
+				struct frameserver_envp args = {
+					.use_builtin = true,
+					.args.builtin.resource = metastr,
+					.args.builtin.mode = "libretro"
+				};
+				
+				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
 					arcan_db_launch_counter_increment(dbhandle, game);
 				}
@@ -2341,11 +2351,11 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				rv = 1;
 			}
 			else {
-				arcan_launchtarget* intarget = arcan_target_launch_internal( resourcestr, cmdline.data.strarr);
-				intarget->source.tag = ref;
+				arcan_frameserver* intarget = arcan_target_launch_internal( resourcestr, cmdline.data.strarr);
+				intarget->tag = ref;
 				
 				if (intarget) {
-					lua_pushvid(ctx, intarget->source.vid);
+					lua_pushvid(ctx, intarget->vid);
 					arcan_db_launch_counter_increment(dbhandle, game);
 					rv = 1;
 				} else {

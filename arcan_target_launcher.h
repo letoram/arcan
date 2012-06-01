@@ -52,6 +52,6 @@ void arcan_target_resume_internal(arcan_launchtarget* tgt);
 /* launch the target as an internal process,
  * meaning that a ffunc will be hooked up to aid/vids,
  * and a callback can be added that translates events into the space of the child */
-arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv);
+arcan_frameserver* arcan_target_launch_internal(const char* fname, char** argv);
 
 #endif

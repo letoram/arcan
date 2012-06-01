@@ -138,23 +138,18 @@ void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 		fprintf(dst, "arcan_frameserver_dbgdump:\n(null)\n\n");
 }
 
-
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource, char* mode)
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 	
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
-	char* rmode = mode ? mode : "movie";
 	
 	size_t shmsize = MAX_SHMSIZE;
 	struct frameserver_shmpage* shmpage;
 	int shmfd = 0;
-	char* shmkey = arcan_findshmkey(&shmfd, true);
-
-/* no shared memory available, no way forward */
-	if (shmkey == NULL)
-		return ARCAN_ERRC_OUT_OF_SPACE;
+	
+	ctx->shm.key = arcan_findshmkey(&shmfd, true);
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
@@ -188,7 +183,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 	 * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
-			ctx->source = strdup(resource);
+			ctx->source = strdup(setup.args.builtin.resource);
 			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 			ctx->aid = ARCAN_EID;
 		} else { 
@@ -196,7 +191,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
 
-		char* work = strdup(shmkey);
+		char* work = strdup(ctx->shm.key);
 			work[strlen(work) - 1] = 'v';
 			ctx->vsync = sem_open(work, 0);
 			work[strlen(work) - 1] = 'a';
@@ -205,11 +200,18 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 			ctx->esync = sem_open(work, 0);	
 		free(work);
 		
-		if (strcmp(rmode, "movie") == 0)
+		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
 			ctx->kind = ARCAN_FRAMESERVER_INPUT;
-		else if (strcmp(rmode, "libretro") == 0)
+		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
-		else; 
+			ctx->nopts = true;
+			ctx->autoplay = true;
+		}
+		else if (!setup.use_builtin){
+			ctx->kind = ARCAN_HIJACKLIB;
+			ctx->nopts = true;
+			ctx->autoplay = true;
+		}
 		
 		ctx->child_alive = true;
 		ctx->desc = vinfo;
@@ -217,7 +219,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 		ctx->desc.width = cons.w;
 		ctx->desc.height = cons.h;
 		ctx->desc.bpp = cons.bpp;
-		ctx->shm.key = shmkey;
 		ctx->shm.ptr = (void*) shmpage;
 		ctx->shm.shmsize = shmsize;
 
@@ -241,34 +242,45 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 		ctx->outqueue.front = &(shmpage->childdevq.front);
 		ctx->outqueue.back = &(shmpage->childdevq.back);
 		ctx->desc.ready = true;
+		
+		arcan_sem_post(ctx->vsync);
 	}
-	else
-		if (child == 0) {
-			char* argv[5];
-			char fn[MAXPATHLEN];
-			char fn2[MAXPATHLEN];
+	else if (child == 0) {
+		if (setup.use_builtin){
+			char* argv[5] = { arcan_binpath, setup.args.builtin.resource, ctx->shm.key, setup.args.builtin.mode, NULL };
+				int rv = execv(arcan_binpath, argv);
+				arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", arcan_binpath, 
+										setup.args.builtin.mode, setup.args.builtin.resource, strerror(errno));
+				exit(1);
+		} else {
+			char shmsize_s[32];
+			snprintf(shmsize_s, 32, "%zu", shmsize);
+			
+			char** envv = setup.args.external.envv;
 
-			/* spawn the frameserver process,
-			 * some IPC required;
-			 * three pipes (vid, aud and control)
-			 * usage pattern is pretty simple */
-			argv[0] = arcan_binpath;
-			argv[1] = (char*) resource;
-			argv[2] = (char*) shmkey;
-			argv[3] = rmode;
-			argv[4] = NULL;
-
-			int rv = execv(arcan_binpath, argv);
-			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver (%s) for %s, %s. Reason: %s\n", arcan_binpath, resource, shmkey, strerror(errno));
+			while (envv && *envv){
+				if (strcmp(envv[0], "ARCAN_SHMKEY") == 0)
+					setenv("ARCAN_SHMKEY", ctx->shm.key, 1);
+				else if (strcmp(envv[0], "ARCAN_SHMSIZE") == 0)
+					setenv("ARCAN_SHMSIZE", shmsize_s, 1);
+				else 
+					setenv(envv[0], envv[1], 1);
+				
+				envv += 2;
+			}
+			
+			int rv = execv(setup.args.external.fname, setup.args.external.argv);
 			exit(1);
 		}
+	}
 		
 	return ARCAN_OK;
 
 error_cleanup:
-	arcan_frameserver_dropsemaphores_keyed(shmkey);
-	shm_unlink(shmkey);
-	free(shmkey);
+	arcan_frameserver_dropsemaphores_keyed(ctx->shm.key);
+	shm_unlink(ctx->shm.key);
+	free(ctx->shm.key);
+	ctx->shm.key = NULL;
 
 	return ARCAN_ERRC_OUT_OF_SPACE;
 }

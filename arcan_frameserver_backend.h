@@ -111,8 +111,29 @@ typedef struct {
 /* contains both structures for managing movie- playback,
  * both video and audio support functions */
 
-/* all the necessary ffmpeg- foreplay */
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, char* resource, char* mode);
+struct frameserver_envp {
+	bool use_builtin;
+	
+	union {
+
+		struct {
+			char* resource;
+			char* mode; /* movie, libretro */
+		} builtin;
+
+		struct {
+			char* fname; /* program to execute */
+			char** argv; /* references to ARCAN_SHMKEY, ARCAN_SHMSIZE will be replaced, NULL terminated */
+			char** envv; /* key with ARCAN_SHMKEY, ARCAN_SHMSIZE will have its value replaced, key=val, NULL terminated */
+		} external;
+		
+	} args;
+};
+
+/* this will either launch the configured frameserver (use_builtin),
+ * or act as a more generic execv of a program that supposedly implements the
+ * same shmpage interface and protocol. */
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, struct frameserver_envp);
 
 /* enable the forked process to start decoding */
 arcan_errc arcan_frameserver_playback(arcan_frameserver*);

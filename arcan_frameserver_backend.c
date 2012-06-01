@@ -108,7 +108,14 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 
 /* with asynch movieplayback, we can't set it to playing state before loaded */
 		src->autoplay = true;
-		arcan_frameserver_spawn_server(src, src->source, NULL);
+		
+		struct frameserver_envp args = {
+			.use_builtin = true,
+			.args.builtin.resource = src->source,
+			.args.builtin.mode = "movie"
+		};
+		
+		arcan_frameserver_spawn_server(src, args);
 		return false;
 	}
 	else{
@@ -343,6 +350,17 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 	return rv;
 }
 
+static arcan_errc again_feed(float gain, void* tag)
+{
+	arcan_frameserver* target = (arcan_frameserver*) tag;
+
+	if (target){
+		/* queue event into target */
+	}
+	
+	return ARCAN_OK;
+}
+
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
@@ -364,16 +382,18 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 			arcan_event_clearmask(arcan_event_defaultctx());
 
-/* if there's no audio-stream set up (no detection for video- only or audio- only frameservers yet),
- * create one ... */
 			arcan_errc rv;
 
 /* simplified mode, disables framequeues and just use the buffer in the shared memory page */
 			if (src->nopts){
 				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
 				
-				if (src->aid == ARCAN_EID)
-					src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+				if (src->aid == ARCAN_EID){
+					src->aid =
+						src->kind == ARCAN_HIJACKLIB ? arcan_audio_proxy(again_feed, src) :
+						arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+				}
+				
 			} else {
 				if (src->aid == ARCAN_EID)
 				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
@@ -413,7 +433,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 					arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 				}
 			}
-			else if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE){
+			else if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE || src->kind == ARCAN_HIJACKLIB){
 				arcan_frameserver_playback(src);
 				arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, .category = EVENT_TARGET,
 				.data.target.video.source = src->vid,
