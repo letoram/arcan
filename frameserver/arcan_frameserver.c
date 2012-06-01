@@ -47,7 +47,6 @@
 #include "arcan_frameserver_decode.h"
 
 FILE* logdev = NULL;
-sem_handle audio_sync, video_sync, event_sync;
 const char* active_shmkey = NULL;
 
 char* arcan_themepath = "";
@@ -102,51 +101,69 @@ static void cleanshmkey(){
 	shm_unlink(active_shmkey);
 }
 
-struct frameserver_shmpage* frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq){
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq){
 /* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
-	struct frameserver_shmpage* buf = NULL;
+	struct frameserver_shmcont res = {0};
+	
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd) {
 		LOG("arcan_frameserver() -- couldn't open keyfile (%s)\n", shmkey);
-		return NULL;
+		return res;
 	}
 
 	LOG("arcan_frameserver() -- mapping shm, %i from %i\n", bufsize, fd);
 	/* map up the shared key- file */
-	buf = (struct frameserver_shmpage*) mmap(NULL,
+	res.addr = (struct frameserver_shmpage*) mmap(NULL,
 		bufsize,
 		PROT_READ | PROT_WRITE,
 		MAP_SHARED,
 		fd,
 	0);
 	
-	if (buf == MAP_FAILED){
-		LOG("arcan_frameserver() -- couldn't map shared memory keyfile.\n");
+	if (res.addr == MAP_FAILED){
+		LOG("arcan_frameserver() -- couldn't map addr memory keyfile.\n");
 		close(fd);
-		return NULL;
+		return res;
 	}
+
+/* step 2, semaphore handles */
+	char* work = strdup(shmkey);
+	work[strlen(work) - 1] = 'v';
+	res.vsem = sem_open(work, 0);
+	work[strlen(work) - 1] = 'a';
+	res.asem = sem_open(work, 0);
+	work[strlen(work) - 1] = 'e';
+	res.esem = sem_open(work, 0);	
+	free(work);
 	
-/* step 2, buffer all set-up, map it to the shared structure */
-	buf->w = width;
-	buf->h = height;
-	buf->bpp = bpp;
-	buf->vready = false;
-	buf->aready = false;
-	buf->vbufofs = sizeof(struct frameserver_shmpage);
-	buf->channels = nchan;
-	buf->frequency = freq;
+	if (res.asem == 0x0 ||
+		res.esem == 0x0 ||
+		res.vsem == 0x0 ){
+		LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
+		return res;  
+	}
+
+/* step 2, buffer all set-up, map it to the addr structure */
+	res.addr->w = width;
+	res.addr->h = height;
+	res.addr->bpp = bpp;
+	res.addr->vready = false;
+	res.addr->aready = false;
+	res.addr->vbufofs = sizeof(struct frameserver_shmpage);
+	res.addr->channels = nchan;
+	res.addr->frequency = freq;
 
 /* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
-	buf->abufofs = buf->vbufofs + (buf->w* buf->h* buf->bpp);
-	buf->abufbase = 0;
+	res.addr->abufofs = res.addr->vbufofs + (res.addr->w* res.addr->h* res.addr->bpp);
+	res.addr->abufbase = 0;
 
 	active_shmkey = shmkey;
 	atexit(cleanshmkey);
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 
-	return buf;
+	return res;
 }
 
 
@@ -169,10 +186,11 @@ void mode_video(char* resource, const char* keyfile)
 	if (!vidctx) return;
 
 	LOG("video(%s)\n", resource);
-	vidctx->shared = frameserver_getshm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
-	vidctx->async = audio_sync;
-	vidctx->vsync = video_sync;
-	vidctx->esync = event_sync;
+	struct frameserver_shmcont shms = frameserver_getshm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
+	vidctx->shared = shms.addr;
+	vidctx->async  = shms.asem;
+	vidctx->vsync  = shms.vsem;
+	vidctx->esync  = shms.esem;
 	
 	if (vidctx->shared){
 		int semv, rv;
@@ -198,9 +216,9 @@ void mode_video(char* resource, const char* keyfile)
 			break;
 
 			vidctx->shared = page;
-			vidctx->async = audio_sync;
-			vidctx->vsync = video_sync;
-			vidctx->esync = event_sync;
+			vidctx->async = shms.asem;
+			vidctx->vsync = shms.vsem;
+			vidctx->esync = shms.esem;
 		}
 	}
 }
@@ -222,22 +240,6 @@ void mode_video(char* resource, const char* keyfile)
 	if (argc != 4 || !resource || !keyfile || !fsrvmode){
 		LOG("arcan_frameserver(), invalid arguments in exec()\n");
 		return 1;
-	}
-
-	char* work = strdup(keyfile);
-		work[strlen(work) - 1] = 'v';
-		video_sync = sem_open(work, 0);
-		work[strlen(work) - 1] = 'a';
-		audio_sync = sem_open(work, 0);
-		work[strlen(work) - 1] = 'e';
-		event_sync = sem_open(work, 0);	
-	free(work);
-	
-	if (audio_sync == 0x0 ||
-		video_sync == 0x0 ||
-		event_sync == 0x0 ){
-			LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
-			return 1;  
 	}
 
 /*

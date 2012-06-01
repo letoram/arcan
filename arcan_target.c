@@ -168,6 +168,7 @@
 	void ARCAN_target_init(){
 		global.shmkey = getenv("ARCAN_SHMKEY");
 		char* shmsize = getenv("ARCAN_SHMSIZE");
+
 		unsigned bufsize = strtoul(shmsize, NULL, 10);
 
 		if (errno == ERANGE || errno == EINVAL){

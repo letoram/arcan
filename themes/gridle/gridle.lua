@@ -275,8 +275,8 @@ if (settings.sortfunctions[settings.sortlbl]) then
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		erase_grid(false);
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
-		internal_vid, internal_aid = launch_target( current_game().title, LAUNCH_INTERNAL);
-end
+		internal_vid = launch_target( current_game().title, LAUNCH_INTERNAL, gridle_internal_status );
+	end
 
 	imagery.black = fill_surface(1,1,0,0,0);
 	imagery.white = fill_surface(1,1,255,255,255);
@@ -383,42 +383,37 @@ function osdkbd_inputcb(iotbl)
 	end
 end
 
-function gridle_video_event(source, event)
-	if (event.kind == "resized") then
--- a launch_internal almost immediately generates this event, so a decent trigger to use
-		if (source == internal_vid) then
-				gridlemenu_resize_fullscreen(internal_vid);
-		end
+function gridle_setup_internal(video, audio)
+	settings.in_internal = true;
+	internal_aid = audio;
+	internal_vid = video;
+	
+	audio_gain(internal_aid, settings.internal_again, NOW);
 
-		if (not in_internal) then
-			in_internal = true;
-	
-			audio_gain(internal_aid, settings.internal_again, NOW);
-			gridle_oldinput = gridle_input;
-			gridle_input = gridle_internalinput;
-			gridlemenu_loadshader(settings.fullscreenshader);
-	
-			zap_whitegrid();
+-- remap input function to one that can handle forwarding and have access to context specific menu
+	gridle_oldinput = gridle_input;
+	gridle_input = gridle_internalinput;
+	gridlemenu_loadshader(settings.fullscreenshader);
 
 -- don't need these running in the background 
-			erase_grid(true);
-			blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
-			
-			if (imagery.movie and imagery.movie ~= BADID) then 
-				delete_image(imagery.movie); 
-				imagery.movie = nil; 
-			end
+	erase_grid(true);
+	zap_whitegrid();
 
-			show_image(internal_vid);
-			local props = image_surface_properties(internal_vid);
-			resize_image(internal_vid, 1,1);
-			move_image(internal_vid, VRESW * 0.5, VRESH * 0.5);
-			resize_image(internal_vid, props.width, props.height, settings.transitiondelay);
-			move_image(internal_vid, props.x, props.y, settings.transitiondelay);
-			order_image(internal_vid, 1);
+	blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
 			
-		end
+	if (imagery.movie and imagery.movie ~= BADID) then 
+		delete_image(imagery.movie); 
+		imagery.movie = nil; 
 	end
+
+	show_image(internal_vid);
+	local props = image_surface_properties(internal_vid);
+
+	resize_image(internal_vid, 1,1);
+	move_image(internal_vid, VRESW * 0.5, VRESH * 0.5);
+	resize_image(internal_vid, props.width, props.height, settings.transitiondelay);
+	move_image(internal_vid, props.x, props.y, settings.transitiondelay);
+	order_image(internal_vid, 1);
 end
 
 function gridle_keyconf()
@@ -1146,7 +1141,7 @@ function gridle_internalcleanup()
 	kbd_repeat(settings.repeatrate);
 	gridle_input = gridle_dispatchinput;
 
-	if (in_internal) then
+	if (settings.in_internal) then
 		order_image(internal_vid, ZOOMLAYER_MOVIE + 1); 
 		expire_image(internal_vid, settings.transitiondelay);
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
@@ -1160,11 +1155,21 @@ function gridle_internalcleanup()
 	internal_vid = BADID;
 	internal_aid = BADID;
 	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
-	in_internal = false;
+	settings.in_internal = false;
 end
 
-function gridle_target_event(source, kind)
-	gridle_internalcleanup();
+function gridle_internal_status(source, datatbl)
+	print("internal_status");
+	
+	if (datatbl.kind == "resized") then
+		if (settings.in_internal) then
+			print("resize fullscreen");
+			gridlemenu_resize_fullscreen(source);
+		else
+			print("setup internal");
+			gridle_setup_internal(source, datatbl.audio);
+		end
+	end
 end
 
 -- PLAYERn_UP, PLAYERn_DOWN, PLAYERn_LEFT, playern_RIGHT

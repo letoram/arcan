@@ -102,10 +102,6 @@ enum arcan_imageproc_mode {
 	imageproc_fliph
 };
 
-/* callback format for a feed- function to a video object.
- * buf can be 0 (peek to know if data is available) OR pointer to data storage * with storage format (buf_s = width * height * bpp)
- * src indicates if the tick is from video refresh (0) or how many logic ticks it represents */
-
 typedef struct {
 	volatile int tag;
 	void* ptr;

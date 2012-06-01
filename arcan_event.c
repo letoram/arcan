@@ -184,8 +184,9 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 	LOCK();
 		unsigned ind = alloc_queuecell(ctx);
 
-		ctx->eventbuf[ind] = *src;
-		ctx->eventbuf[ind].tickstamp = ctx->c_ticks;
+		arcan_event* dst = &ctx->eventbuf[ind];
+		*dst = *src;
+		dst->tickstamp = ctx->c_ticks;
 
 	UNLOCK();
 }

@@ -1155,38 +1155,38 @@ int arcan_lua_scale3dverts(lua_State* ctx)
  * uses a separate format and translation to make it easier
  * for the user to modify. Perhaps one field should've been used
  * to store the actual event, but it wouldn't really help extration. */
-void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
+void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	char* funname;
-	if (ev.category == EVENT_SYSTEM && arcan_lua_grabthemefunction(ctx, "system")){
+	if (ev->category == EVENT_SYSTEM && arcan_lua_grabthemefunction(ctx, "system")){
 		lua_newtable(ctx);
-		int top = arcan_lua_funtable(ctx, ev.kind);
+		int top = arcan_lua_funtable(ctx, ev->kind);
 	}
-	if (ev.category == EVENT_IO && arcan_lua_grabthemefunction(ctx, "input")){
+	if (ev->category == EVENT_IO && arcan_lua_grabthemefunction(ctx, "input")){
 		int naxis;
-		int top = arcan_lua_funtable(ctx, ev.kind);
+		int top = arcan_lua_funtable(ctx, ev->kind);
 		
 		lua_pushstring(ctx, "kind");
 
-		switch (ev.kind) {
+		switch (ev->kind) {
 			case EVENT_IO_AXIS_MOVE:
 				lua_pushstring(ctx, "analog");
 				lua_rawset(ctx, top);
 
-				arcan_lua_tblstr(ctx, "source", ev.data.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
-				arcan_lua_tblnum(ctx, "devid", ev.data.io.input.analog.devid, top);
-				arcan_lua_tblnum(ctx, "subid", ev.data.io.input.analog.subid, top);
+				arcan_lua_tblstr(ctx, "source", ev->data.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
+				arcan_lua_tblnum(ctx, "devid", ev->data.io.input.analog.devid, top);
+				arcan_lua_tblnum(ctx, "subid", ev->data.io.input.analog.subid, top);
 				arcan_lua_tblbool(ctx, "active", true, top); /* always active, just saves a conditional here and there */
 
 			/* "stateful" data? */
-				arcan_lua_tblbool(ctx, "relative", ev.data.io.input.analog.gotrel, top);
+				arcan_lua_tblbool(ctx, "relative", ev->data.io.input.analog.gotrel, top);
 
 				lua_pushstring(ctx, "samples");
 				lua_newtable(ctx);
 					int top2 = lua_gettop(ctx);
-					for (int i = 0; i < ev.data.io.input.analog.nvalues; i++) {
+					for (int i = 0; i < ev->data.io.input.analog.nvalues; i++) {
 						lua_pushnumber(ctx, i + 1);
-						lua_pushnumber(ctx, ev.data.io.input.analog.axisval[i]);
+						lua_pushnumber(ctx, ev->data.io.input.analog.axisval[i]);
 						lua_rawset(ctx, top2);
 					}
 				lua_rawset(ctx, top);
@@ -1199,76 +1199,120 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 				lua_pushstring(ctx, "digital");
 				lua_rawset(ctx, top);
 
-				if (ev.data.io.devkind == EVENT_IDEVKIND_KEYBOARD) {
+				if (ev->data.io.devkind == EVENT_IDEVKIND_KEYBOARD) {
 					arcan_lua_tblbool(ctx, "translated", true, top);
-					arcan_lua_tblnum(ctx, "number", ev.data.io.input.translated.scancode, top);
-					arcan_lua_tblnum(ctx, "keysym", ev.data.io.input.translated.keysym, top);
-					arcan_lua_tblnum(ctx, "modifiers", ev.data.io.input.translated.modifiers, top);
-					arcan_lua_tblnum(ctx, "devid", ev.data.io.input.translated.devid, top);
-					arcan_lua_tblnum(ctx, "subid", ev.data.io.input.translated.subid, top);
-					arcan_lua_tblstr(ctx, "utf8", to_utf8(ev.data.io.input.translated.subid), top);
-					arcan_lua_tblbool(ctx, "active", ev.kind == EVENT_IO_KEYB_PRESS ? true : false, top);
+					arcan_lua_tblnum(ctx, "number", ev->data.io.input.translated.scancode, top);
+					arcan_lua_tblnum(ctx, "keysym", ev->data.io.input.translated.keysym, top);
+					arcan_lua_tblnum(ctx, "modifiers", ev->data.io.input.translated.modifiers, top);
+					arcan_lua_tblnum(ctx, "devid", ev->data.io.input.translated.devid, top);
+					arcan_lua_tblnum(ctx, "subid", ev->data.io.input.translated.subid, top);
+					arcan_lua_tblstr(ctx, "utf8", to_utf8(ev->data.io.input.translated.subid), top);
+					arcan_lua_tblbool(ctx, "active", ev->kind == EVENT_IO_KEYB_PRESS ? true : false, top);
 					arcan_lua_tblstr(ctx, "device", "translated", top);
 					arcan_lua_tblstr(ctx, "subdevice", "keyboard", top);
 				}
-				else if (ev.data.io.devkind == EVENT_IDEVKIND_MOUSE || ev.data.io.devkind == EVENT_IDEVKIND_GAMEDEV) {
-					arcan_lua_tblstr(ctx, "source", ev.data.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
+				else if (ev->data.io.devkind == EVENT_IDEVKIND_MOUSE || ev->data.io.devkind == EVENT_IDEVKIND_GAMEDEV) {
+					arcan_lua_tblstr(ctx, "source", ev->data.io.devkind == EVENT_IDEVKIND_MOUSE ? "mouse" : "joystick", top);
 					arcan_lua_tblbool(ctx, "translated", false, top);
-					arcan_lua_tblnum(ctx, "devid", ev.data.io.input.digital.devid, top);
-					arcan_lua_tblnum(ctx, "subid", ev.data.io.input.digital.subid, top);
- 					arcan_lua_tblbool(ctx, "active", ev.data.io.input.digital.active, top);
+					arcan_lua_tblnum(ctx, "devid", ev->data.io.input.digital.devid, top);
+					arcan_lua_tblnum(ctx, "subid", ev->data.io.input.digital.subid, top);
+ 					arcan_lua_tblbool(ctx, "active", ev->data.io.input.digital.active, top);
 				}
 				else;
 			break;
 
 			default:
-				arcan_warning("Engine -> Script Warning: ignoring IO event: %i\n", ev.kind);
+				arcan_warning("Engine -> Script Warning: ignoring IO event: %i\n", ev->kind);
 		}
 
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
 	}
-	else if (ev.category == EVENT_TIMER){
-		arcan_lua_setglobalint(ctx, "CLOCK", ev.tickstamp);
+	else if (ev->category == EVENT_TIMER){
+		arcan_lua_setglobalint(ctx, "CLOCK", ev->tickstamp);
 
 		if (arcan_lua_grabthemefunction(ctx, "clock_pulse")) {
-			lua_pushnumber(ctx, ev.tickstamp);
-			lua_pushnumber(ctx, ev.data.timer.pulse_count);
+			lua_pushnumber(ctx, ev->tickstamp);
+			lua_pushnumber(ctx, ev->data.timer.pulse_count);
 			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 		}
 	}
-	else if (ev.category == EVENT_TARGET && arcan_lua_grabthemefunction(ctx, "target_event")) {
-		lua_pushnumber(ctx, ev.data.video.source);
-		if (ev.kind == EVENT_TARGET_INTERNAL_TERMINATED)
-			lua_pushstring(ctx, "terminated");
-		else
-			lua_pushstring(ctx, "unknown");
+	else if (ev->category == EVENT_TARGET){
+		vfunc_state* fstate = arcan_video_feedstate( ev->data.target.video.source );
+		intptr_t val = 0;
 		
+		if (fstate->tag == ARCAN_TAG_TARGET)
+			val = ((arcan_launchtarget*) fstate->ptr)->source.tag;
+		else if (fstate->tag == ARCAN_TAG_FRAMESERV)
+			val = ((arcan_frameserver*) fstate->ptr)->tag;
+		else
+			arcan_fatal("(arcan_lua_pushevent) dangerous event received, submit crashdump if possible.\n");
+			
+		if (val){
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
+		} 
+		else if (!arcan_lua_grabthemefunction(ctx, "target_event")){
+			lua_settop(ctx, 0);
+			return;
+		}
+		
+		lua_pushvid(ctx, ev->data.target.video.source);
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+		
+		if (ev->kind == EVENT_TARGET_INTERNAL_STATUS){
+			arcan_lua_tblnum(ctx, "audio", ev->data.target.audio, top);
+			
+			switch (ev->data.target.statuscode){
+				case TARGET_STATUS_DATABLOCK_SAMPLED : 
+					arcan_lua_tblstr(ctx, "kind", "datablock_sampled", top);
+				break;
+				
+				case TARGET_STATUS_DIED :
+					arcan_lua_tblstr(ctx, "kind", "died", top);
+				break;
+				
+				case TARGET_STATUS_RESIZED : 
+					arcan_lua_tblstr(ctx, "kind", "resized", top);
+					arcan_lua_tblnum(ctx, "width", ev->data.target.video.constraints.w, top);
+					arcan_lua_tblnum(ctx, "height", ev->data.target.video.constraints.h, top);
+				break;
+				
+				case TARGET_STATUS_SNAPSHOT_STORED : 
+					arcan_lua_tblstr(ctx, "kind", "snapshot_stored", top);
+				break;
+				
+				case TARGET_STATUS_SHAPSHOT_RESTORED: 
+					arcan_lua_tblstr(ctx, "kind", "snapshot_restored", top);
+				break;
+			}
+		}
+	
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: target event");
 	}
-	else if (ev.category == EVENT_VIDEO){
+	else if (ev->category == EVENT_VIDEO){
 		bool gotvev = false;
 		int val;
 		vfunc_state* fsrvfstate;
 		
 		if (arcan_lua_grabthemefunction(ctx, "video_event")){
 /* due to the asynch- callback approach some additional checks are needed before bailing */
-			lua_pushvid(ctx, ev.data.video.source);
+			lua_pushvid(ctx, ev->data.video.source);
 		gotvev = true;
 		}
 
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 			
-		switch (ev.kind) {
+		switch (ev->kind) {
 #ifdef _DEBUG
         /* this little hack will emit (in debug builds) status events each time 
          * a video or audio frame is requested from a movie */
             case EVENT_VIDEO_MOVIESTATUS: 
 				arcan_lua_tblstr(ctx, "kind", "moviestatus", top);
-                arcan_lua_tblnum(ctx, "maxv", ev.data.video.constraints.w, top);
-                arcan_lua_tblnum(ctx, "maxa", ev.data.video.constraints.h, top);
-                arcan_lua_tblnum(ctx, "curv", ev.data.video.props.position.x, top);
-                arcan_lua_tblnum(ctx, "cura", ev.data.video.props.position.y, top);
+                arcan_lua_tblnum(ctx, "maxv", ev->data.video.constraints.w, top);
+                arcan_lua_tblnum(ctx, "maxa", ev->data.video.constraints.h, top);
+                arcan_lua_tblnum(ctx, "curv", ev->data.video.props.position.x, top);
+                arcan_lua_tblnum(ctx, "cura", ev->data.video.props.position.y, top);
             break;
 #endif
 			case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); break;
@@ -1279,21 +1323,21 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 
 			case EVENT_VIDEO_RESIZED :
 				arcan_lua_tblstr(ctx, "kind", "resized", top);
-				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);
-                arcan_lua_tblnum(ctx, "glsource", ev.data.video.constraints.bpp, top);
+				arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);
+                arcan_lua_tblnum(ctx, "glsource", ev->data.video.constraints.bpp, top);
 			break;
                 
 			case EVENT_VIDEO_MOVIEREADY:
 				arcan_lua_tblstr(ctx, "kind", "movieready", top);
-				arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);
-				fsrvfstate = arcan_video_feedstate( ev.data.video.source );
+				arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);
+				fsrvfstate = arcan_video_feedstate( ev->data.video.source );
 				if (fsrvfstate && fsrvfstate->ptr){
-					val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev.data.video.source )->ptr)->tag;
+					val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev->data.video.source )->ptr)->tag;
 					if (val){
 						lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
-						lua_pushvid(ctx, ev.data.video.source);
+						lua_pushvid(ctx, ev->data.video.source);
 						lua_pushnumber(ctx, 1);
 						arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch movie callback");
 						lua_settop(ctx, 0);
@@ -1308,12 +1352,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
                 
 			case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
                 arcan_lua_tblstr(ctx, "kind", "loaded", top); 
-                arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top); 
-				val = (intptr_t) ev.data.video.data;
+                arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top); 
+				val = (intptr_t) ev->data.video.data;
 				if (val){ /* if we're here, the tag we got in data originates from the lua asynch - load call) */
 					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
-					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushvid(ctx, ev->data.video.source);
 					lua_pushnumber(ctx, 1);
 					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch image callback");
 					lua_settop(ctx, 0); /* stuff on the stack not needed anylonger */
@@ -1323,12 +1367,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
                 
 			case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: 
                 arcan_lua_tblstr(ctx, "kind", "load_failed", top); 
-                arcan_lua_tblnum(ctx, "width", ev.data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev.data.video.constraints.h, top);    
-				val = (intptr_t) ev.data.video.data;
+                arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
+				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);    
+				val = (intptr_t) ev->data.video.data;
 				if (val){ 
 					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
-					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushvid(ctx, ev->data.video.source);
 					lua_pushnumber(ctx, 0);
 					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: asynch callback");
 					lua_settop(ctx, 0);
@@ -1337,10 +1381,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 	           break;
                 
 			case EVENT_VIDEO_FRAMESERVER_TERMINATED : 
-				val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev.data.video.source )->ptr)->tag;
+				val = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev->data.video.source )->ptr)->tag;
 				if (val){
 					lua_rawgeti(ctx, LUA_REGISTRYINDEX, val);
-					lua_pushvid(ctx, ev.data.video.source);
+					lua_pushvid(ctx, ev->data.video.source);
 					lua_pushnumber(ctx, 0);
 					arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: video frameserver terminated");
 					lua_settop(ctx, 0);
@@ -1351,7 +1395,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			break;
 
 		default:
-			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown video event (%i)\n", ev.kind);
+			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown video event (%i)\n", ev->kind);
 		}
 		
 		if (gotvev)
@@ -1359,12 +1403,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 		else
 			lua_settop(ctx, 0);
 	}
-	else if (ev.category == EVENT_AUDIO && arcan_lua_grabthemefunction(ctx, "audio_event")){
-		lua_pushaid(ctx, ev.data.video.source);
+	else if (ev->category == EVENT_AUDIO && arcan_lua_grabthemefunction(ctx, "audio_event")){
+		lua_pushaid(ctx, ev->data.video.source);
 		lua_newtable(ctx);
 
 		int top = lua_gettop(ctx);
-		switch (ev.kind){
+		switch (ev->kind){
 			case EVENT_AUDIO_FRAMESERVER_TERMINATED: arcan_lua_tblstr(ctx, "kind", "broken frameserver", top); break;
 			case EVENT_AUDIO_BUFFER_UNDERRUN: arcan_lua_tblstr(ctx, "kind", "audio buffer underrun", top); break;
 			case EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED: arcan_lua_tblstr(ctx, "kind", "gain transformed", top); break;
@@ -1372,7 +1416,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event ev)
 			case EVENT_AUDIO_PLAYBACK_ABORTED: arcan_lua_tblstr(ctx, "kind", "playback aborted", top); break;
 			case EVENT_AUDIO_OBJECT_GONE: arcan_lua_tblstr(ctx, "kind", "gone", top); break;
 			default:
-				arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown audio event (%i)\n", ev.kind);
+				arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown audio event (%i)\n", ev->kind);
 		}
 		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: audio_event");
 	}
@@ -2191,6 +2235,57 @@ static bool use_loader(char* fname)
 		return false;
 }
 
+int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
+{
+	const char* targetname = luaL_checkstring(ctx, 1);
+	
+	char* resourcestr = arcan_find_resource_path(targetname, "targets", ARCAN_RESOURCE_SHARED);
+	if (resourcestr){
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+		
+/* currently, this means frameserver / libretro interface
+ * so these capabilities are hard-coded rather than queried */
+		if (use_loader(resourcestr)){
+			arcan_lua_tblbool(ctx, "internal_launch", true, top);
+			arcan_lua_tblbool(ctx, "snapshot", false, top);
+			arcan_lua_tblbool(ctx, "rewind", false, top);
+			arcan_lua_tblbool(ctx, "suspend", false, top);
+			
+		} else {
+/* the plan is to extend the internal launch support with a probe (sortof prepared for in the build-system)
+ * to check how the target is linked, which dependencies it has etc. */
+			if (strcmp(internal_launch_support(), "NO SUPPORT") == 0)
+				arcan_lua_tblbool(ctx, "internal_launch", false, top);
+			else
+				arcan_lua_tblbool(ctx, "internal_launch", true, top);
+			
+			arcan_lua_tblbool(ctx, "snapshot", false, top);
+			arcan_lua_tblbool(ctx, "rewind", false, top);
+			arcan_lua_tblbool(ctx, "suspend", false, top);
+		}
+		
+		return 1;
+	}
+	
+	return 0;
+}
+
+int arcan_lua_targetrestore(lua_State* ctx)
+{
+	return 0;
+}
+
+int arcan_lua_targetrewind(lua_State* ctx)
+{
+	return 0;
+}
+
+int arcan_lua_targetsnapshot(lua_State* ctx)
+{
+	return 0;
+}
+	
 int arcan_lua_targetlaunch(lua_State* ctx)
 {
 	const char* game = luaL_checkstring(ctx, 1);
@@ -2233,31 +2328,23 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				
 				if (arcan_frameserver_spawn_server(intarget, metastr, "libretro") == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
-					lua_pushaid(ctx, intarget->aid);
 					arcan_db_launch_counter_increment(dbhandle, game);
 				}
 				else {
 					lua_pushvid(ctx, ARCAN_EID);
-					lua_pushaid(ctx, ARCAN_EID);
 					free(intarget);
 				}
 				
-				rv = 2;
+				rv = 1;
 			}
 			else {
-				arcan_launchtarget* intarget = arcan_target_launch_internal(
-			               resourcestr,
-			               cmdline.data.strarr,
-			               INTERCEPT_PRELOAD,
-			               INTERCEPT_AUDIO | INTERCEPT_VIDEO,
-			               COM_PIPE
-			           );
-			
+				arcan_launchtarget* intarget = arcan_target_launch_internal( resourcestr, cmdline.data.strarr);
+				intarget->source.tag = ref;
+				
 				if (intarget) {
 					lua_pushvid(ctx, intarget->source.vid);
-					lua_pushaid(ctx, intarget->source.aid);
 					arcan_db_launch_counter_increment(dbhandle, game);
-					rv = 2;
+					rv = 1;
 				} else {
 					arcan_db_failed_launch(dbhandle, game);
 				}
@@ -2575,49 +2662,97 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 #endif
 	
 /* category: resource */
-/* item: resource,name,[searchmask : THEME_RESOURCE, SHARED_RESOURCE], boolean */
+/* item: resource,name,[searchmask : THEME_RESOURCE, SHARED_RESOURCE], boolean 
+ * search for a specific resource. 
+ */
 	arcan_lua_register(ctx, "resource", arcan_lua_resource);
 
-/* item: glob_resource,basename,baseext,strtable */
+/* item: glob_resource,basename,baseext,strtable 
+ * return a list of resources matching a specific pattern
+ */
 	arcan_lua_register(ctx, "glob_resource", arcan_lua_globresource);
-	
-/* item: zap_resource,name (in theme only), boolean */
+
+/* item: zap_resource,name (in theme only), boolean 
+ * delete a theme- specific resource
+ */
 	arcan_lua_register(ctx, "zap_resource", arcan_lua_zapresource);
 
-/* item: open_resource,name (in theme only), boolean */
+/* item: open_resource,name (in theme only), boolean 
+ * open a resource for reading, only one resource can be opened at any one time 
+ */
 	arcan_lua_register(ctx, "open_rawresource", arcan_lua_rawresource);
 
-/* item: write_rawresource,line, boolean */
+/* item: write_rawresource,line, boolean 
+ * write a line to an opened rawresource
+ */
 	arcan_lua_register(ctx, "write_rawresource", arcan_lua_pushrawstr);
 
-/* item: close_rawresource, boolean */
+/* item: close_rawresource, boolean 
+ * close whatever currently open rawresource 
+ */
 	arcan_lua_register(ctx, "close_rawresource", arcan_lua_rawclose);
 
-/* item: read_rawresource, string or nil */
+/* item: read_rawresource, string or nil 
+ * read a line from the currently open rawresource
+ */
 	arcan_lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
 	
 /* category: target */
-/* item: launch_target, gametitle, launchmode, tgtvid and tgtaid or elapsed*/
+/* item: launch_target, gametitle or ID, launchmode, tgtvid or elapsed 
+ * attempt to launch the specified target, returns vid on LAUNCH_INTERNAL, elapsed time for LAUNCH_EXTERNAL.
+ * optional third argument is event handler for the LAUNCH_INTERNAL session 
+ */
 	arcan_lua_register(ctx, "launch_target", arcan_lua_targetlaunch);
 
-/* item: target_input, tgtvid, inputtbl, nil */
+/* item: launch_target_capacity, targetname
+ * return a table of strings describing the launch capabilities the selected target has */ 
+	arcan_lua_register(ctx, "launch_target_capabilities", arcan_lua_targetlaunch_capabilities);
+	
+/* item: target_input, tgtvid, inputtbl, nil 
+ * push an input event table to the specified target
+ */
 	arcan_lua_register(ctx, "target_input", arcan_lua_targetinput);
 	arcan_lua_register(ctx, "input_target", arcan_lua_targetinput);
 	
-/* item: suspend_target, tgtvid, nil */
+/* item: suspend_target, tgtvid, nil
+ * try and pause the specific target (if suspend capabilities are there) 
+ */
 	arcan_lua_register(ctx, "suspend_target", arcan_lua_targetsuspend);
-	
-/* item: resume_target, tgtvid, nil */
+
+/* item: resume_target, tgtvid, nil
+ * try and unpause the specific target (if suspend capabilities are there) 
+ */ 
 	arcan_lua_register(ctx, "resume_target", arcan_lua_targetresume);
 
+/* item: rewind_target, tgtvid, seconds, nil
+ * try and rewind the state of the specific target (if rewind capabilities are there) 
+ */
+	arcan_lua_register(ctx, "rewind_target", arcan_lua_targetrewind);
+	
+/* item: snapshot_target, tgtvid, snapid, nil
+ * try and store the targets state (if snapshot capabilities are there) 
+ */
+	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);
+	
+/* item: restore_target, tgtvid, snapid, nil
+ * try and restore the targets state (if snapshot capabilities are there) 
+ */
+	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
+	
 /* category: core system */
-/* item: kbd_repeat, rate, nil */
+/* item: kbd_repeat, rate, nil 
+ * set how often input events from keyboard should repeat themselves (generates push/release triggers)
+ */
 	arcan_lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
 
-/* item: 3dorder, bool, nil */
+/* item: 3dorder, bool, nil 
+ * define in which order the 3d pipeline should be processed, before (true) or after the 2d pipeline (false)
+ */
 	arcan_lua_register(ctx, "video_3dorder", arcan_lua_3dorder);
 
-/* item: toggle_mouse_grab, nil */
+/* item: toggle_mouse_grab, nil
+ * try and lock mouse input to the current window (not possible in all environments)
+ */
  	arcan_lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
 
 /* item: system_load,resource,loaderptr */
