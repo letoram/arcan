@@ -336,7 +336,6 @@ int arcan_sem_timedwait(sem_handle semaphore, int mstimeout){
 	static inline void push_ioevent(arcan_ioevent event){
 		SDL_Event newev = {0};
 		bool active;
-		fprintf(stderr, "push_ioevent()\n");
 	
 		switch (event.datatype){
 			case EVENT_IDATATYPE_DIGITAL:
@@ -440,10 +439,9 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 }
 
 static void copysurface(SDL_Surface* src){
-	printf("lock for target\n");
 	sem_wait(global.vsync);
-	printf("lock after target\n");
 	
+	global.shared->glsource = false;
 	if ( cmpfmt(src->format, &global.desfmt) ){
 			SDL_LockSurface(src);
 			memcpy((char*)global.shared + global.shared->vbufofs, 
@@ -532,13 +530,12 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
 	 * increase when using PBOs */
-	printf("lock for frame\n");
 	sem_wait(global.vsync);
-	printf("lock after frame\n");
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
 	glReadPixels(0, 0, global.shared->w, global.shared->h, GL_RGBA, GL_UNSIGNED_BYTE, (char*)(global.shared) + global.shared->vbufofs); 
+	global.shared->glsource = true;
 	global.shared->vready = true;
 
 /*  uncomment to keep video- operations running in the target,
