@@ -120,6 +120,11 @@ local function gridledetail_buildview(detailres, gametbl )
 			if (detailview.model.labels["coinlights"]) then
 				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["coinlights"]);
 			end
+		
+			if (detailview.model.labels["snapshot"]) then
+				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["snapshot"]);
+				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources.screenshots[1] ), detailview.model.labels["snapshot"], 1);
+			end
 			
 -- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
 			if (detailview.model.labels["display"]) then
