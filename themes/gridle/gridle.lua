@@ -1159,17 +1159,15 @@ function gridle_internalcleanup()
 end
 
 function gridle_internal_status(source, datatbl)
-	print("internal_status");
 	
 	if (datatbl.kind == "resized") then
 		if (settings.in_internal) then
-			print("resize fullscreen");
 			gridlemenu_resize_fullscreen(source);
 		else
-			print("setup internal");
 			gridle_setup_internal(source, datatbl.audio);
 		end
 	end
+
 end
 
 -- PLAYERn_UP, PLAYERn_DOWN, PLAYERn_LEFT, playern_RIGHT

@@ -25,6 +25,11 @@
 #define ARCAN_JOYIDBASE 64
 #define ARCAN_MOUSEIDBASE 0
 
+/* this is relevant if the event queue is authoritative,
+ * i.e. the main process side with a frameserver associated. A failure to get
+ * a lock within the set time, will forcibly free the frameserver */
+#define DEFAULT_EVENT_TIMEOUT 500
+
 #define ARCAN_IO_AXIS_LIM = 6
 
 enum ARCAN_EVENT_CATEGORY {
@@ -220,7 +225,12 @@ struct arcan_evctx {
 	bool local;
 	union {
 		void* local;
-		sem_handle shared;
+		
+		struct {
+			void* killswitch; /* assumed to be NULL or frameserver */
+			sem_handle shared;
+		} external;
+		
 	} synch;
 };
 
@@ -240,13 +250,6 @@ arcan_event* arcan_event_poll(arcan_evctx*);
 /* similar to event poll, but will only
  * return events matching masked event */
 arcan_event* arcan_event_poll_masked(arcan_evctx*, uint32_t mask_cat, uint32_t mask_ev);
-
-/* serialize src into dst, 
- * returns number of bytes used OR -1 (invalid size) */
-ssize_t arcan_event_tobytebuf(char* dst, size_t dstsize, arcan_event* src);
-
-/* deserialize src into dst, return false of *dst could not be filled in or set */
-bool arcan_event_frombytebuf(arcan_event* dst, char* src, size_t dstsize);
 
 /* force a keyboard repeat- rate */
 void arcan_event_keyrepeat(arcan_evctx*, unsigned rate);

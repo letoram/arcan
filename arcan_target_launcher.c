@@ -91,61 +91,25 @@ int arcan_target_clean_internal(arcan_launchtarget* tgt)
 
 	arcan_frameserver_dropsemaphores(&tgt->source);
 	shm_unlink(tgt->source.shm.key);
-	close(tgt->ifd);
 
 	return 0;
 }
 
 static arcan_errc again_feed(float gain, void* tag)
 {
-	arcan_launchtarget* tgt = (arcan_launchtarget*) tag;
-	arcan_errc rv = ARCAN_OK;
-
-	if (tgt) {
-		char buf[ sizeof(float) + 2] = {TF_AGAIN, sizeof(float)};
-		memcpy(&buf[2], &gain, sizeof(float));
-		write(tgt->ifd, buf, sizeof(buf));
-	}
-
-	return rv;
+	return ARCAN_OK;
 }
 
-arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event ev)
+arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event* ev)
 {
-	arcan_errc rc = ARCAN_ERRC_BAD_ARGUMENT;
-
-	if (tgt) {
-		char buf[256] = {TF_EVENT, 0};
-		char* work = buf;
-		int bufused = arcan_event_tobytebuf(buf + 2, sizeof(buf) - 2, &ev);
-		
-		if (-1 != bufused){
-			buf[1] = bufused;
-			bufused += 2; 
-
-			while(bufused && tgt->source.child_alive){
-				ssize_t nw = write(tgt->ifd, work, bufused);
-				if (-1 == nw)
-					if (errno == EAGAIN){
-						int status;
-						if (waitpid( tgt->source.child, &status, WNOHANG ) == tgt->source.child){
-							tgt->source.child_alive = false;
-							return ARCAN_ERRC_EOF;
-						}
-						continue;
-					}
-					else
-						return ARCAN_ERRC_EOF;
-
-				bufused -= nw;
-				work += nw;
-			}	
-			
-			rc = ARCAN_OK;
-		}
-	}
-
-	return rc;
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (tgt && ev)
+		rv = tgt->source.child_alive ? 
+			(arcan_event_enqueue(&tgt->source.outqueue, ev), ARCAN_OK) : 
+			ARCAN_ERRC_UNACCEPTED_STATE;
+	
+	return rv;
 }
 
 static int8_t internal_empty(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
@@ -213,14 +177,10 @@ static int8_t internal_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32
 
 void arcan_target_suspend_internal(arcan_launchtarget* tgt)
 {
-	char wbuf[2] = {TF_SLEEP, sizeof(wbuf)/sizeof(wbuf[0]) - 2};
-	write(tgt->ifd, wbuf, sizeof(wbuf));
 }
 
 void arcan_target_resume_internal(arcan_launchtarget* tgt)
 {
-	char wbuf[2] = {TF_WAKE, sizeof(wbuf)/sizeof(wbuf[0]) - 2};
-	write(tgt->ifd, wbuf, sizeof(wbuf));
 }
 
 void arcan_target_tick_control(arcan_launchtarget* tgt)
@@ -279,7 +239,6 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv)
 		return NULL;
 	}
 	
-	int i[2];
 	int shmfd = 0;
 	arcan_launchtarget* res = (arcan_launchtarget*) calloc(sizeof(arcan_launchtarget), 1);
 	char* shmkey = arcan_findshmkey(&shmfd, true);
@@ -298,8 +257,6 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv)
 	}
 	
 	shmpage->parent = getpid();
-	pipe(i);
-	fcntl(i[1], F_SETFL, O_NONBLOCK);
 
 	if ( (res->source.child = fork() ) > 0) {
 		arcan_errc err;
@@ -312,15 +269,15 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv)
 		char* work = strdup(shmkey);
 			work[strlen(work) - 1] = 'v';
 			res->source.vsync = sem_open(work, 0);
-			assert(res->source.vsync);
-			sem_post(res->source.vsync);
+			work[strlen(work) - 1] = 'e';
+			res->source.esync = sem_open(work, 0);
+			work[strlen(work) - 1] = 'a';
+			res->source.async = sem_open(work, 0);
 		free(work);
 		
 	/* tick() checks for a video-init. When one happens, the fobject- is resized
 	 * and a new ffunc is set, framequeue is not used as such as we don't need / want
 	 * intermediate buffering */
-		res->ifd = i[1];
-		
 		res->source.vid = arcan_video_addfobject(internal_empty, state, empty, 0);
 		res->source.aid = arcan_audio_proxy(again_feed, res);
 		res->source.shm.ptr = (void*) shmpage;
@@ -330,7 +287,26 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv)
 		res->source.child_alive = true;
 		res->source.nopts = true;
 		res->source.kind = ARCAN_FRAMESERVER_INTERACTIVE;
+		 
+		res->source.inqueue.local = false;
+		res->source.inqueue.synch.external.shared = res->source.esync;
+		res->source.inqueue.synch.external.killswitch = &res->source;
+		res->source.inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
+		res->source.inqueue.eventbuf = shmpage->parentdevq.evqueue;
+		res->source.inqueue.front = &(shmpage->parentdevq.front);
+		res->source.inqueue.back = &(shmpage->parentdevq.back);
+		res->source.desc.ready = true;
 		
+		res->source.outqueue.local = false;
+		res->source.outqueue.synch.external.shared = res->source.esync;
+		res->source.outqueue.synch.external.killswitch = &res->source;
+		res->source.outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
+		res->source.outqueue.eventbuf = shmpage->childdevq.evqueue;
+		res->source.outqueue.front = &(shmpage->childdevq.front);
+		res->source.outqueue.back = &(shmpage->childdevq.back);
+		res->source.desc.ready = true;
+	
+		sem_post(res->source.vsync);
 		return res;
 	}
 	else {
@@ -341,9 +317,6 @@ arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv)
 		setenv("DYLD_INSERT_LIBRARIES", arcan_libpath, 1); /* ignored by other NIXes */
 		setenv("ARCAN_SHMKEY", shmkey, 1);
 		setenv("ARCAN_SHMSIZE", shmsize, 1);
-
-		dup2(i[0], COMM_FD);
-		fcntl(COMM_FD, F_SETFL, O_NONBLOCK);
 
 		execv(fname, argv);
 		arcan_warning("arcan_target_launch_internal() child : couldn't execute %s\n", fname);

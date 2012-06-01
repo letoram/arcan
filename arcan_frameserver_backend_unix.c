@@ -225,7 +225,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
 	
 		ctx->inqueue.local = false;
-		ctx->inqueue.synch.shared = ctx->esync;
+		ctx->inqueue.synch.external.shared = ctx->esync;
+		ctx->inqueue.synch.external.killswitch = ctx;
 		ctx->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
 		ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
 		ctx->inqueue.front = &(shmpage->parentdevq.front);
@@ -233,7 +234,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, char* resource
 		ctx->desc.ready = true;
 		
 		ctx->outqueue.local = false;
-		ctx->outqueue.synch.shared = ctx->esync;
+		ctx->outqueue.synch.external.shared = ctx->esync;
+		ctx->outqueue.synch.external.killswitch = ctx;
 		ctx->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
 		ctx->outqueue.eventbuf = shmpage->childdevq.evqueue;
 		ctx->outqueue.front = &(shmpage->childdevq.front);

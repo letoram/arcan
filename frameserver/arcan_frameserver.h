@@ -27,7 +27,7 @@
 extern FILE* logdev;
 
 /* try and acquire a lock on the semaphore before mstimeout runs out */
-bool frameserver_semcheck(sem_handle semaphore, unsigned mstimeout);
+bool frameserver_semcheck(sem_handle semaphore, signed mstimeout);
 
 /* setup a named memory / semaphore mapping with the server */
 struct frameserver_shmcont{

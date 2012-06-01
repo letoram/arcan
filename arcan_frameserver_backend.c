@@ -49,7 +49,6 @@
 
 #define INCR(X, C) ( (X = (X + 1) % C) )
 
-int arcan_frameserver_decode(void*);
 extern int check_child(arcan_frameserver*);
 
 static struct {
@@ -359,8 +358,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			shmpage->resized = false;
 
 /* resize the source vid in a way that won't propagate to user scripts */
-            src->desc.samplerate = shmpage->frequency;
-            src->desc.channels = shmpage->channels;
+			src->desc.samplerate = shmpage->frequency;
+			src->desc.channels = shmpage->channels;
 			arcan_event_maskall(arcan_event_defaultctx());
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 			arcan_event_clearmask(arcan_event_defaultctx());

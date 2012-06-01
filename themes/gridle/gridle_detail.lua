@@ -31,6 +31,7 @@ end
 
 local function gridledetail_setnoisedisplay()
 	if (detailview.modeldisplay ~= BADID) then
+		print("delete modeldisplay: " .. detailview.modeldisplay .. " internal: " .. internal_vid);
 		delete_image(detailview.modeldisplay);
 		detailview.modeldisplay_aid = BADID;
 		detailview.modeldisplay = BADID;
@@ -44,6 +45,7 @@ local function gridledetail_setnoisedisplay()
 	mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 
 	if (rvid ~= BADID) then
+		print("delete old display");
 		delete_image(rvid); 
 	end
 end
@@ -59,6 +61,7 @@ local function gridledetail_imagestatus(source, status)
 		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
 
 		if (rvid ~= BADID) then 
+			print("delete old display");
 			delete_image(rvid);
 		end
 		
@@ -158,29 +161,30 @@ local function gridledetail_freeview(axis, mag)
 	end
 end
 
-function gridledetail_video_event(source, event)
-	if (event.kind == "resized") then
-		if (source == internal_vid) then
-			resize_image(source, event.width, event.height, 0);
+function gridledetail_internal_status(source, datatbl)
+	if (datatbl.kind == "resized") then
+		internal_aid = datatbl.audio;
+		resize_image(source, datatbl.width, datatbl.height, 0);
+		audio_gain(internal_aid, settings.internal_again, NOW);
 
-			local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
-			if (rvid ~= source and rvid ~= BADID) then 
-				delete_image(rvid); 
-			end 
-			
+		local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
+		if (rvid ~= source and rvid ~= BADID) then 
+			print("delete rvid.." ..rvid);
+			delete_image(rvid); 
+		end 
+
 -- with a gl source, it means it comes from a readback, means that we might need to flip texture coordinates for it to be rendered correctly
 -- this is done in two ways, when we force it unto the model we can't assume a specific shape for the display, so we have to do it with texture coordinates
 -- in shader but statically in the fullscreen quad mode.
-			if (event.glsource) then
-				shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
-			else
-				shader_uniform(display_shader, "flip_t", "b", PERSIST, 0);
-			end
-
-			move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
-			orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
-			mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
+		if (datatbl.glsource) then
+			shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
+		else
+			shader_uniform(display_shader, "flip_t", "b", PERSIST, 0);
 		end
+
+		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
+		orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
+		mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
 	end
 end
 
@@ -203,6 +207,7 @@ function gridledetail_internalinput(iotbl)
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
 					hide_image(internal_vid);
+					print("drop border");
 					delete_image(internal_vidborder);
 					show_image(detailview.model.vid);
 					detailview.fullscreen = false;
@@ -228,7 +233,8 @@ function gridledetail_internalinput(iotbl)
 					delete_image(internal_vidborder);
 					internal_vidborder = nil;
 				end
-				
+			
+				print("delete: " .. internal_vid);
 				delete_image(internal_vid);
 				internal_vid = BADID;
 				show_image(detailview.model.vid);
@@ -430,8 +436,8 @@ function gridledetail_show(detailres, gametbl, ind)
 -- Don't add this label unless internal support is working for the underlying platform
 	detailview.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		gridledetail_setnoisedisplay();
-		internal_vid, internal_aid = launch_target(detailview.game.title, LAUNCH_INTERNAL);
-		audio_gain(internal_aid, settings.internal_again, NOW);
+		internal_vid = launch_target(detailview.game.title, LAUNCH_INTERNAL, gridledetail_internal_status);
+		print("internal_vid:" .. internal_vid);
 	end
 
 -- Works the same, just make sure to stop any "internal session" as it is 

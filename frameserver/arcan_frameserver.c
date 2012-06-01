@@ -70,13 +70,13 @@ static void drop_semaphores(const char* shmkey){
 }
 
 /* based on the idea that init inherits an orphaned process */
-static bool parent_alive()
+static inline bool parent_alive()
 {
 	return getppid() != 1;
 }
 
 /* need the timeout to avoid a deadlock situation */
-bool frameserver_semcheck(sem_handle semaphore, unsigned mstimeout){
+bool frameserver_semcheck(sem_handle semaphore, int mstimeout){
 	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
 	bool rv = true;
 	int rc;
@@ -166,6 +166,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	return res;
 }
 
+/* linker hack */
+void arcan_frameserver_free(void* dontuse){}
 
 /* Stream-server is used as a 'reverse' movie mode,
  * i.e. it is the frameserver that reads from the shmpage,

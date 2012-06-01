@@ -28,7 +28,6 @@
 #include <sys/types.h>
 #include <errno.h>
 
-
 #include <SDL/SDL.h>
 
 #include "arcan_math.h"
@@ -36,6 +35,8 @@
 #include "arcan_video.h"
 #include "arcan_audio.h"
 #include "arcan_event.h"
+#include "arcan_framequeue.h"
+#include "arcan_frameserver_backend.h"
 
 #define LOCK() if (ctx->local) lock_local(ctx); else lock_shared(ctx); 
 #define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx); 
@@ -99,7 +100,12 @@ static inline void lock_local(arcan_evctx* ctx)
 
 static inline void lock_shared(arcan_evctx* ctx)
 {
-	arcan_sem_timedwait(ctx->synch.shared, -1);
+	if (ctx->synch.external.killswitch){
+		if (!arcan_sem_timedwait(ctx->synch.external.shared, DEFAULT_EVENT_TIMEOUT))
+			arcan_frameserver_free( (arcan_frameserver*) ctx->synch.external.killswitch, false );
+	}
+	else 
+			arcan_sem_timedwait(ctx->synch.external.shared, -1);
 }
 
 static inline void unlock_local(arcan_evctx* ctx)
@@ -109,33 +115,7 @@ static inline void unlock_local(arcan_evctx* ctx)
 
 static inline void unlock_shared(arcan_evctx* ctx)
 {
-	arcan_sem_post(ctx->synch.shared);
-}
-
-/* no exotic protocol atm. as both parent / child are supposed to be 
- * built with the same compiler / alignment / structures so padding is 
- * quicker than the alternative, for more exotic purposes, here would be
- * a good place for protocolbuffers- style IDLs */
-ssize_t arcan_event_tobytebuf(char* dst, size_t dstsize, arcan_event* src)
-{
-	if (NULL != src && dstsize >= sizeof(arcan_event)){
-		memcpy(dst, src, sizeof(arcan_event));
-		return sizeof(arcan_event);
-	}
-
-	return -1;
-}
-
-bool arcan_event_frombytebuf(arcan_event* dst, char* src, size_t dstsize)
-{
-	if (NULL != src &&
-		NULL != dst && 
-		dstsize >= sizeof(arcan_event)){
-		memcpy(dst, src, dstsize);
-		return true;
-	}
-
-	return false;
+	arcan_sem_post(ctx->synch.external.shared);
 }
 
 /* check queue for event, ignores mask */

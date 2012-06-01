@@ -67,6 +67,7 @@ typedef struct {
 	bool ready;
 } arcan_frameserver_meta;
 
+
 typedef struct {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
