@@ -43,10 +43,11 @@
 #include "../arcan_framequeue.h"
 #include "../arcan_video.h"
 #include "../arcan_audio.h"
+#include "../arcan_event.h"
 #include "../arcan_frameserver_backend.h"
 #include "../arcan_event.h"
 #include "../arcan_util.h"
-#include "../arcan_frameserver_backend_shmpage.h"
+#include "../arcan_frameserver_shmpage.h"
 
 static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode);
 
@@ -170,25 +171,6 @@ static TCHAR* alloc_wchar(const char* key)
 	return mskey;
 }
 
-static const int8_t emptyvframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
-	
-	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
-		switch (cmd){
-			case ffunc_tick:
-               arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
-                break;
-                
-			case ffunc_destroy:
-				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
-                break;
-                
-			default:
-                break;
-		}
-    
-	return 0;
-}
-
 static SECURITY_ATTRIBUTES nullsec_attr;
 static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 {
@@ -217,14 +199,16 @@ error:
 	return NULL;
 }
 
-arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool loop, arcan_frameserver* res, char* mode)
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
-/* if res is non-null, we have a server context already set up, 
- * just need to reset the frame-server */
-	bool restart = res != NULL;
-	char* rmode = mode ? mode : "movie";
-	
-/* even if we're looping, it's assumed that the frameserver resources have been free:ed (with loop args) */
+	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
+
+/* we have only lib (frameserver) based "internal" launch support here */
+	if (ctx == NULL || setup.use_builtin == false)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
+	size_t shmsize = MAX_SHMSIZE;
+
 	HANDLE shmh;
 	struct frameserver_shmpage* shmpage = setupshmipc(&shmh);
 
@@ -236,15 +220,24 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 	SDL_GetWMInfo(&wmi);
 	HWND handle = wmi.window;
 
+/* is the ctx in an uninitialized state? */
+	if (ctx->vid == ARCAN_EID) {
+		vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
+		ctx->source = strdup(setup.args.builtin.resource);
+		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
+		ctx->aid = ARCAN_EID;
+	} else { 
+		vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
+		arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
+	}
+
 /* if we have run out of unnamed semaphores, we're in pretty much an unrecoverable / crashstate anyhow */
-	sem_handle vsync = CreateSemaphore(&nullsec_attr, 1, 0, NULL);
+	sem_handle vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
 	sem_handle async = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
 	sem_handle esync = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
 
-/* b: spawn the child process */
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", fname, shmh, vsync, async, esync, rmode);
-	shmpage->loop = loop;
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh, vsync, async, esync, setup.args.builtin.mode);
 	shmpage->parent = handle;
 
 	PROCESS_INFORMATION pi;
@@ -269,43 +262,39 @@ arcan_frameserver* arcan_frameserver_spawn_server(char* fname, bool extcc, bool 
 			arcan_frameserver_meta vinfo = {0};
 			arcan_errc err;
 
-			if (!restart) {
-				res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-				vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
-				res->source = strdup(fname);
-	            res->vid = arcan_video_addfobject((arcan_vfunc_cb) emptyvframe, state, cons, 0);
-				res->aid = ARCAN_EID;
-			} else {
-				vfunc_state* state = arcan_video_feedstate(res->vid);
-				arcan_video_alterfeed(res->vid, (arcan_vfunc_cb) emptyvframe, *state);
-			}
+		ctx->vsync = vsync;
+		ctx->async = async;
+		ctx->esync = esync;
 
-		res->vsync = vsync;
-		res->async = async;
-		res->esync = esync;
+		ctx->child_alive = true;
+		ctx->desc = vinfo;
+		ctx->child = pi.hProcess;
+		ctx->desc.width = cons.w;
+		ctx->desc.height = cons.h;
+		ctx->desc.bpp = cons.bpp;
+		ctx->shm.key = strdup("win32_static");
+		ctx->shm.ptr = (void*) shmpage;
+		ctx->shm.shmsize = MAX_SHMSIZE;
+		ctx->shm.handle = shmh;
+ 		ctx->desc.ready = true;
 
-		res->child_alive = true;
-		res->desc = vinfo;
-		res->child = pi.hProcess;
-		res->loop = loop;
-		res->desc.width = cons.w;
-		res->desc.height = cons.h;
-		res->desc.bpp = cons.bpp;
-		res->shm.key = strdup("win32_static");
-		res->shm.ptr = (void*) shmpage;
-		res->shm.shmsize = MAX_SHMSIZE;
-		res->shm.handle = shmh;
- 		res->desc.ready = true;
+		arcan_sem_post(vsync);
 
-		return res;
+		return ARCAN_OK;
 	} else 
 		fprintf(stderr, "arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
 
 error:
-	if (shmpage) UnmapViewOfFile((void*) shmpage);
+	CloseHandle(async);
+	CloseHandle(vsync);
+	CloseHandle(esync);
+
+	if (shmpage) 
+		UnmapViewOfFile((void*) shmpage);
+
 	if (shmh)
 		CloseHandle(shmh);
 
-	return NULL;
+	return ARCAN_ERRC_OUT_OF_SPACE;
 }
 

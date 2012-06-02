@@ -87,51 +87,13 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	return arcan_frametime() - start;
 }
 
-/* Internal support missing completely,
- * See arcan_target_launcher_unix for the structure 
- * (most of the rendering code etc. should be usable still)
- * Port arcan_target.c and make a .dll- generating front-end.
- * Lastly, integrate one of the nasty ways of doing dll- injection */
-
-int arcan_target_clean_internal(arcan_launchtarget* tgt)
-{
-	if (!tgt)
-		return -1;
-
-	/* kill process handle */
-	/* close descriptors / shared memory pages, ... */
-
-	return 0;
-}
-
 static arcan_errc again_feed(float gain, void* tag)
 {
-	arcan_launchtarget* tgt = (arcan_launchtarget*) tag;
-	arcan_errc rv = ARCAN_OK;
-
-	/* 1 char tag (2 : audio gain)
-	 * 1 float (4 bytes) gain value */
-
-	return rv;
+	return ARCAN_OK;
 }
 
-void arcan_target_suspend_internal(arcan_launchtarget* tgt)
-{
-}
-
-void arcan_target_resume_internal(arcan_launchtarget* tgt)
-{
-}
-
-arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event ev)
-{
-	return ARCAN_ERRC_NOT_IMPLEMENTED;
-}
-
-arcan_launchtarget* arcan_target_launch_internal(const char* fname, char** argv,
-        enum intercept_mechanism mechanism,
-        enum intercept_mode intercept,
-        enum communication_mode comm)
+extern char* arcan_libpath;
+arcan_frameserver* arcan_target_launch_internal(const char* fname, char** argv)
 {
 	return NULL;
 }
