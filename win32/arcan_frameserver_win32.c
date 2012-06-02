@@ -18,17 +18,22 @@
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
-#include "../arcan_frameserver_decode.h"
-#include "../arcan_frameserver_backend_shmpage.h"
 
-/* functions used by the "frameserver_decode.h" */
-static FILE* logdev = NULL;
-#define LOG(...) ( fprintf(logdev, __VA_ARGS__) )
+#include "../frameserver/arcan_frameserver.h"
+#include "../frameserver/arcan_frameserver_libretro.h"
+#include "../frameserver/arcan_frameserver_decode.h"
+#include "../arcan_frameserver_shmpage.h"
+
+FILE* logdev = NULL;
 static HWND parent = 0;
+static sem_handle async, vsync, esync;
 
-/* little linking hack .. */
+/* linking hacks .. */
+void arcan_frameserver_free(void* dontuse){}
+
 bool stdout_redirected;
 bool stderr_redirected;
+
 char* arcan_resourcepath;
 char* arcan_libpath;
 char* arcan_themepath;
@@ -53,13 +58,13 @@ static bool parent_alive()
 	return IsWindow(parent);
 }
 
-bool semcheck(sem_handle semaphore)
+bool frameserver_semcheck(sem_handle semaphore, int mstimeout)
 {
 	bool rv = true;
 	int rc;
 
 	do {
-		rc = arcan_sem_timedwait(semaphore, 1000);
+		rc = arcan_sem_timedwait(semaphore, mstimeout);
 		if (-1 == rc){
 				if (errno == EINVAL){
 					LOG("arcan_frameserver -- fatal error while waiting for semaphore (%i)\n", errno);
@@ -71,83 +76,101 @@ bool semcheck(sem_handle semaphore)
 	return rv;
 }
 
-static bool setup_shm_ipc(arcan_ffmpeg_context* dstctx, HANDLE key)
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq)
 {
-	/* step 1, request allocation, PTS + video-frame + audio-buffer + (padding) */
+	struct frameserver_shmcont res = {0};
+	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
+	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
 
-	void* buf = (void*) MapViewOfFile(key, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
-
-	if (buf == NULL) {
-		LOG("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", key, GetLastError());
+	if ( res.addr == NULL ) {
+		LOG("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
 		fflush(NULL);
-		CloseHandle(key);
-		return false;
+		CloseHandle(shmh);
+		return res;
 	}
 
-	/* step 2, buffer all set-up, map it to the shared structure */
-	dstctx->shared = (struct frameserver_shmpage*) buf;
-	dstctx->shared->w = dstctx->width;
-	dstctx->shared->h = dstctx->height;
-	dstctx->shared->bpp = dstctx->bpp;
-	dstctx->shared->vready = false;
-	dstctx->shared->aready = false;
-	dstctx->shared->vbufofs = sizeof(struct frameserver_shmpage);
-	dstctx->shared->channels = dstctx->channels;
-	dstctx->shared->frequency = dstctx->samplerate;
-	dstctx->shared->abufbase = 0;
-	dstctx->shared->abufofs = dstctx->shared->vbufofs + dstctx->width * dstctx->height * dstctx->bpp;
-	dstctx->shared->resized = true;
+	res.asem = async;
+	res.vsem = vsync;
+	res.esem = esync;
+	res.addr->w = width;
+	res.addr->h = height;
+	res.addr->bpp = bpp;
+	res.addr->vready = false;
+	res.addr->aready = false,
+	res.addr->vbufofs = sizeof(struct frameserver_shmpage);
+	res.addr->channels = nchan;
+	res.addr->frequency =freq;
+	res.addr->abufofs = res.addr->vbufofs + (res.addr->w * res.addr->h * res.addr->bpp);
 
-	return true;
+	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
+	return res;
 }
 
-void mode_video(char* resource, HANDLE shmh, HANDLE semary[3])
+void* frameserver_getrawfile(const char* resource, size_t* ressize)
 {
-	arcan_ffmpeg_context* vidctx;
+	HANDLE fh = CreateFile( resource, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
+	if (!fh)
+		return NULL;
+
+	HANDLE fmh = CreateFileMapping(fh, NULL, PAGE_READONLY, 0, 0, NULL);
+	if (!fmh)
+		return NULL;
+
+	void* res = (void*) MapViewOfFile(fmh, FILE_MAP_READ, 0, 0, 0);
+	if (ressize)
+		*ressize = (size_t) GetFileSize(fmh, NULL);
+
+	return res;
+}
+
+
+void mode_video(char* resource, const char* keyfile)
+{
+	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
+	if (!vidctx) return;
+
+	LOG("video(%s)\n", resource);
+	struct frameserver_shmcont shms = frameserver_getshm(keyfile, vidctx->width,
+		vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
 
 	/* create a window, hide it and transfer the hwnd in the SHM,
 	 * use this HWND for sleeping / waking between frame transfers */
 	vidctx = ffmpeg_preload(resource);
-	vidctx->vsync = semary[0];
-	vidctx->async = semary[1];
-	vidctx->esync = semary[2];
+	vidctx->vsync = shms.vsem;
+	vidctx->async = shms.asem;
+	vidctx->esync = shms.esem;
 
-	if (vidctx != NULL && setup_shm_ipc(vidctx, shmh)) {
-		struct frameserver_shmpage* page = vidctx->shared;
-		parent = page->parent;
+	if (vidctx->shared){
+		int semv, rv;
 		vidctx->shared->resized = true;
-
-		arcan_sem_post(vidctx->vsync);
-
-		/* reuse the shmpage, anyhow, the main app should support
-		 * relaunching the frameserver when looping to cover for
-		 * memory leaks, crashes and other ffmpeg goodness */
-
-		while (ffmpeg_decode(vidctx) && page->loop) {
+		frameserver_semcheck(vidctx->vsync, -1);
+		
+		LOG("arcan_frameserver(video) -- decoding\n");
+		
+/* reuse the shmpage, anyhow, the main app should support
+ * relaunching the frameserver when looping to cover for
+ * memory leaks, crashes and other ffmpeg goodness */
+		while (ffmpeg_decode(vidctx) && vidctx->shared->loop) {
+			struct frameserver_shmpage* page = vidctx->shared;
+			LOG("arcan_frameserver(video) -- decode finished, looping\n");
 			ffmpeg_cleanup(vidctx);
 			vidctx = ffmpeg_preload(resource);
 
 			/* sanity check, file might have changed between loads */
 			if (!vidctx ||
-			        vidctx->width != page->w ||
-			        vidctx->height != page->h ||
-			        vidctx->bpp != page->bpp)
-				break;
+				vidctx->width != page->w ||
+				vidctx->height != page->h ||
+				vidctx->bpp != page->bpp)
+			break;
 
 			vidctx->shared = page;
+			vidctx->async = shms.asem;
+			vidctx->vsync = shms.vsem;
+			vidctx->esync = shms.esem;
 		}
 	}
 }
 
-/* [Required arguments] 
- *
- * resourcepath
- * parent window handle
- * vidsemh
- * audsemh
- * eventsemh
- * frameserver mode (movie, libretro, streamserve)
- */
 int main(int argc, char* argv[])
 {
 #ifndef _DEBUG
@@ -156,23 +179,21 @@ int main(int argc, char* argv[])
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
 #endif
 
-
+	logdev = stderr;
+	LOG("parsing..\n");
+/* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode) */
 	if (6 != argc)
 		return 1;
 
-	char* fname = argv[0];
+	vsync = (HANDLE) strtoul(argv[2], NULL, 10);
+	async = (HANDLE) strtoul(argv[3], NULL, 10);
+	esync = (HANDLE) strtoul(argv[4], NULL, 10);
+	char* resource = argv[0];
 	char* fsrvmode = argv[5];
-	HANDLE shmh = (HANDLE) strtoul(argv[1], NULL, 10);
-
-/* semaphores were previously passed through shmpage, after refactoring,
- * they're not command-line arguments */
-	HANDLE semary[3];
-	semary[0] = (HANDLE) strtoul(argv[2], NULL, 10);
-	semary[1] = (HANDLE) strtoul(argv[3], NULL, 10);
-	semary[2] = (HANDLE) strtoul(argv[4], NULL, 10);
+	char* shmkey   = argv[1];
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
-		mode_video(fname, shmh, semary);
+		mode_video(resource, argv[1]);
 	else if (strcmp(fsrvmode, "libretro") == 0)
 /*		mode_libretro(fname, shmh) */ ;
 	else if (strcmp(fsrvmode, "streamserve") == 0)
