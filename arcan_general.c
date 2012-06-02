@@ -294,7 +294,7 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		if ( glob(playbuf, 0, NULL, &res) == 0 ){
 			char** beg = res.gl_pathv;
 			while(*beg){
-				cb(rindex(*beg, '/') ? rindex(*beg, '/')+1 : *beg, tag);
+				cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, tag);
 				beg++;
 				count++;
 			}
@@ -309,7 +309,7 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		if ( glob(playbuf, 0, NULL, &res) == 0 ){
 			char** beg = res.gl_pathv;
 			while(*beg){
-				cb(rindex(*beg, '/') ? rindex(*beg, '/')+1 : *beg, tag);
+				cb(strrchr(*beg, '/') ? strrchr(*beg, '/')+1 : *beg, tag);
 				beg++;
 				count++;
 			}
