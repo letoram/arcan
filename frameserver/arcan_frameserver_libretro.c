@@ -27,11 +27,6 @@
 #include <unistd.h>
 #include <strings.h>
 
-#include <sys/types.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
@@ -211,7 +206,7 @@ static void ioev_ctxtbl(arcan_event* ioev)
 	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 
 	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind < MAX_PORTS &&
-		(subtype = index(ioev->label, '_')) ){
+		(subtype = strchr(ioev->label, '_')) ){
 		subtype++;
 		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
 			button--;
@@ -260,14 +255,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	LOG("mode_libretro (%s)\n", resource);
 	
 /* abssopath : gamename */
-	char* gamename = index(resource, ':');
+	char* gamename = strchr(resource, ':');
 	if (!gamename) return;
 	*gamename = 0;
 	gamename++;
 	
 	if (*libname == 0) 
 		return;
-
+	
 /* map up functions and test version */
 	libretro_h = SDL_LoadObject(libname);
 	void (*initf)() = libretro_requirefun("retro_init");
@@ -283,16 +278,13 @@ LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library
 		
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
 	gameinf.path = strdup( gamename );
-	struct stat filedat;
-	int fd;
 
 	if (!sysinf.need_fullpath){
-		if (-1 == stat(gamename, &filedat) || -1 == (fd = open(gamename, O_RDWR)) || 
-			MAP_FAILED == ( gameinf.data = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0) ) )
-		return;
-		
-		gameinf.size = filedat.st_size;
-		LOG("mmapped buffer (%d), (%d)\n", fd, gameinf.size);
+		gameinf.data = frameserver_getrawfile(resource, &gameinf.size);
+		if (!gameinf.data) 
+			return;
+
+		LOG("mapped %d bytes as ROM- input buffer.\n", gameinf.size);
 	}
 
 /* map functions to context structure */
