@@ -36,9 +36,6 @@
 
 #include <SDL.h>
 #include <SDL_opengl.h>
-#include <SDL_syswm.h>
-
-#include <al.h>
 
 #include <assert.h>
 #include <errno.h>

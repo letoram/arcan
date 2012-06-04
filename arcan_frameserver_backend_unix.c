@@ -163,13 +163,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	}
 		
 	memset(shmpage, 0, MAX_SHMSIZE);
-/* lock video, child will unlock or die trying, if this is a loop and the framequeues wasn't terminated,
- * this is a deadlock candidate */
 	shmpage->parent = getpid();
 
-/* old behavior was to wait for signal from frameserver, then allocate and return vid.
- * instead, we now follow the structure of launch_internal (in hopes that we can merge the codebase
- * for the two in the future) wherein we use a temporary CB that checks the state of the frameserver */
 	pid_t child = fork();
 	if (child) {
 		arcan_frameserver_meta vinfo = {0};
