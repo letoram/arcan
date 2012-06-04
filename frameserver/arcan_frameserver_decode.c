@@ -198,7 +198,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	if (vidctx->shared){
 		int semv, rv;
 		vidctx->shared->resized = true;
-		sem_post(vidctx->vsync);
+		arcan_sem_post(vidctx->vsync);
 		
 		LOG("arcan_frameserver(video) -- decoding\n");
 		
