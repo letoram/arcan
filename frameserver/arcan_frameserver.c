@@ -55,20 +55,6 @@ char* arcan_themename = "";
 char* arcan_binpath = "";
 char *arcan_libpath = "";
 
-static void drop_semaphores(const char* shmkey){
-	if (NULL == shmkey) 
-		return;
-	
-	char* work = strdup(shmkey);
-		work[ strlen(work) - 1] = 'v';
-		sem_unlink(work);
-		work[strlen(work) - 1] = 'a';
-		sem_unlink(work);
-		work[strlen(work) - 1] = 'e';
-		sem_unlink(work);
-	free(work);	
-}
-
 /* based on the idea that init inherits an orphaned process */
 static inline bool parent_alive()
 {
@@ -95,11 +81,6 @@ bool frameserver_semcheck(sem_handle semaphore, int mstimeout){
 	return rv;
 }
 
-static void cleanshmkey(){
-	LOG("arcan_frameserver() -- atexit( cleanshmkey )\n");
-	drop_semaphores(active_shmkey);
-	shm_unlink(active_shmkey);
-}
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 {
 	int fd;
@@ -149,6 +130,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	0);
 	
 	close(fd);
+	shm_unlink(shmkey);
+	
 	if (res.addr == MAP_FAILED){
 		LOG("arcan_frameserver(getshm) -- couldn't map keyfile (%s)\n", shmkey);
 		return res;
@@ -158,10 +141,15 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	char* work = strdup(shmkey);
 	work[strlen(work) - 1] = 'v';
 	res.vsem = sem_open(work, 0);
+	sem_unlink(work);
+	
 	work[strlen(work) - 1] = 'a';
 	res.asem = sem_open(work, 0);
+	sem_unlink(work);
+	
 	work[strlen(work) - 1] = 'e';
 	res.esem = sem_open(work, 0);	
+	sem_unlink(work);
 	free(work);
 	
 	if (res.asem == 0x0 ||
@@ -186,7 +174,6 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	res.addr->abufbase = 0;
 
 	active_shmkey = shmkey;
-	atexit(cleanshmkey);
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 
 	return res;
