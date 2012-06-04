@@ -195,48 +195,6 @@ void mode_streamserv(char* resource, char* keyfile)
 	 */
 }
 
-void mode_video(char* resource, const char* keyfile)
-{
-	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
-	if (!vidctx) return;
-
-	LOG("video(%s)\n", resource);
-	struct frameserver_shmcont shms = frameserver_getshm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
-	vidctx->shared = shms.addr;
-	vidctx->async  = shms.asem;
-	vidctx->vsync  = shms.vsem;
-	vidctx->esync  = shms.esem;
-	
-	if (vidctx->shared){
-		int semv, rv;
-		vidctx->shared->resized = true;
-		sem_post(vidctx->vsync);
-		
-		LOG("arcan_frameserver(video) -- decoding\n");
-		
-/* reuse the shmpage, anyhow, the main app should support
- * relaunching the frameserver when looping to cover for
- * memory leaks, crashes and other ffmpeg goodness */
-		while (ffmpeg_decode(vidctx) && vidctx->shared->loop) {
-			struct frameserver_shmpage* page = vidctx->shared;
-			LOG("arcan_frameserver(video) -- decode finished, looping\n");
-			ffmpeg_cleanup(vidctx);
-			vidctx = ffmpeg_preload(resource);
-
-			/* sanity check, file might have changed between loads */
-			if (!vidctx ||
-				vidctx->width != page->w ||
-				vidctx->height != page->h ||
-				vidctx->bpp != page->bpp)
-			break;
-
-			vidctx->shared = page;
-			vidctx->async = shms.asem;
-			vidctx->vsync = shms.vsem;
-			vidctx->esync = shms.esem;
-		}
-	}
-}
 
 /* args accepted;
  * fname
@@ -265,7 +223,7 @@ void mode_video(char* resource, const char* keyfile)
 	LOG("frameserver with %s\n", fsrvmode);
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
-		mode_video(resource, keyfile);
+		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	
 	else if (strcmp(fsrvmode, "libretro") == 0)
 		arcan_frameserver_libretro_run(resource, keyfile);
