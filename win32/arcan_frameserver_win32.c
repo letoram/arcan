@@ -84,7 +84,6 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 
 	if ( res.addr == NULL ) {
 		LOG("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
-		fflush(NULL);
 		CloseHandle(shmh);
 		return res;
 	}
@@ -106,7 +105,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	return res;
 }
 
-void* frameserver_getrawfile(const char* resource, size_t* ressize)
+void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 {
 	HANDLE fh = CreateFile( resource, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
 	if (!fh)
@@ -123,54 +122,6 @@ void* frameserver_getrawfile(const char* resource, size_t* ressize)
 	return res;
 }
 
-
-void mode_video(char* resource, const char* keyfile)
-{
-	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
-	if (!vidctx) return;
-
-	LOG("video(%s)\n", resource);
-	struct frameserver_shmcont shms = frameserver_getshm(keyfile, vidctx->width,
-		vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
-
-	/* create a window, hide it and transfer the hwnd in the SHM,
-	 * use this HWND for sleeping / waking between frame transfers */
-	vidctx = ffmpeg_preload(resource);
-	vidctx->vsync = shms.vsem;
-	vidctx->async = shms.asem;
-	vidctx->esync = shms.esem;
-
-	if (vidctx->shared){
-		int semv, rv;
-		vidctx->shared->resized = true;
-		frameserver_semcheck(vidctx->vsync, -1);
-		
-		LOG("arcan_frameserver(video) -- decoding\n");
-		
-/* reuse the shmpage, anyhow, the main app should support
- * relaunching the frameserver when looping to cover for
- * memory leaks, crashes and other ffmpeg goodness */
-		while (ffmpeg_decode(vidctx) && vidctx->shared->loop) {
-			struct frameserver_shmpage* page = vidctx->shared;
-			LOG("arcan_frameserver(video) -- decode finished, looping\n");
-			ffmpeg_cleanup(vidctx);
-			vidctx = ffmpeg_preload(resource);
-
-			/* sanity check, file might have changed between loads */
-			if (!vidctx ||
-				vidctx->width != page->w ||
-				vidctx->height != page->h ||
-				vidctx->bpp != page->bpp)
-			break;
-
-			vidctx->shared = page;
-			vidctx->async = shms.asem;
-			vidctx->vsync = shms.vsem;
-			vidctx->esync = shms.esem;
-		}
-	}
-}
-
 int main(int argc, char* argv[])
 {
 #ifndef _DEBUG
@@ -180,7 +131,7 @@ int main(int argc, char* argv[])
 #endif
 
 	logdev = stderr;
-	LOG("parsing..\n");
+
 /* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode) */
 	if (6 != argc)
 		return 1;
@@ -193,9 +144,9 @@ int main(int argc, char* argv[])
 	char* shmkey   = argv[1];
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
-		mode_video(resource, argv[1]);
+		arcan_frameserver_ffmpeg_run(resource, shmkey);
 	else if (strcmp(fsrvmode, "libretro") == 0)
-/*		mode_libretro(fname, shmh) */ ;
+		arcan_frameserver_libretro_run(resource, shmkey);
 	else if (strcmp(fsrvmode, "streamserve") == 0)
 /*		mode_streamserv(fname, shmh) */ ;
 	else;
