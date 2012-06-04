@@ -44,22 +44,4 @@ typedef struct arcan_ffmpeg_context {
 
 } arcan_ffmpeg_context;
 
-/* preload and scan for streams.
- * arg(1)   : filename
- * ret(ok)  : pointer to allocated context
- * ret(fail): NULL */
-arcan_ffmpeg_context* ffmpeg_preload(const char* fname);
-
-/* free any resources related to the ffmpeg context */
-void ffmpeg_cleanup(arcan_ffmpeg_context*);
-
-/* assumes that ctx->shared has been set up to point
- * to shared memory, controlled by the respective sempares
- *
- * ret(true)  : all frames processed (or decoding error, common enough).
- * ret(false) : check_alive failed or semaphores have been freed
- *
- * notes :
- * assumes the symbol bool sem_check(sem_handle) exists
- * and returns true on a successfull wait or false if parent process is dead */
-bool ffmpeg_decode(arcan_ffmpeg_context*);
+void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile);
