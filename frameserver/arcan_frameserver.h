@@ -38,7 +38,7 @@ struct frameserver_shmcont{
 };
 
 /* to get rid of a few POSIX calls in libretro implementation */
-void* frameserver_getrawfile(const char* resource, size_t* ressize);
+void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
 
 #endif

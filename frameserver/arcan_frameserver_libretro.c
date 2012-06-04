@@ -27,6 +27,11 @@
 #include <unistd.h>
 #include <strings.h>
 
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
@@ -206,7 +211,7 @@ static void ioev_ctxtbl(arcan_event* ioev)
 	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 
 	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind < MAX_PORTS &&
-		(subtype = strchr(ioev->label, '_')) ){
+		(subtype = index(ioev->label, '_')) ){
 		subtype++;
 		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
 			button--;
@@ -255,14 +260,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	LOG("mode_libretro (%s)\n", resource);
 	
 /* abssopath : gamename */
-	char* gamename = strchr(resource, ':');
+	char* gamename = index(resource, ':');
 	if (!gamename) return;
 	*gamename = 0;
 	gamename++;
 	
 	if (*libname == 0) 
 		return;
-	
+
 /* map up functions and test version */
 	libretro_h = SDL_LoadObject(libname);
 	void (*initf)() = libretro_requirefun("retro_init");
@@ -277,16 +282,16 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
 		
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
+	ssize_t bufsize;
 	gameinf.path = strdup( gamename );
-
-	if (!sysinf.need_fullpath){
-		gameinf.data = frameserver_getrawfile(resource, &gameinf.size);
-		if (!gameinf.data) 
-			return;
-
-		LOG("mapped %d bytes as ROM- input buffer.\n", gameinf.size);
+	gameinf.data = frameserver_getrawfile(gamename, &bufsize);
+	if (bufsize == -1){
+		LOG("libretro(%s), couldn't load data, giving up.\n", gamename);
+		return;
 	}
-
+		
+	gameinf.size = bufsize;
+	
 /* map functions to context structure */
 LOG("map functions\n");
 		retroctx.run = (void(*)()) libretro_requirefun("retro_run");

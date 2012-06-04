@@ -100,6 +100,33 @@ static void cleanshmkey(){
 	drop_semaphores(active_shmkey);
 	shm_unlink(active_shmkey);
 }
+void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
+{
+	int fd;
+	struct stat filedat;
+	*dstsize = -1;
+	
+	if (-1 == stat(fname, &filedat)){
+		LOG("arcan_frameserver(get_rawfile) stat (%s) failed, reason: %d,%s\n", fname, errno, strerror(errno));
+		return NULL;
+	}
+	
+	if (-1 == (fd = open(fname, O_RDWR)))
+	{
+		LOG("arcan_frameserver(get_rawfile) open (%s) failed, reason: %d:%s\n", fname, errno, strerror(errno));
+		return NULL;
+	}
+	
+	void* buf = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	if (buf == MAP_FAILED){
+		LOG("arcan_frameserver(get_rawfile) mmap (%s) failed (fd: %d, size: %zu)\n", fname, fd, filedat.st_size);
+		close(fd);
+		return NULL;
+	}
+
+	*dstsize = filedat.st_size;
+	return buf;
+}
 
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq){
 /* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
@@ -109,11 +136,10 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	int fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd) {
-		LOG("arcan_frameserver() -- couldn't open keyfile (%s)\n", shmkey);
+		LOG("arcan_frameserver(getshm) -- couldn't open keyfile (%s)\n", shmkey);
 		return res;
 	}
 
-	LOG("arcan_frameserver() -- mapping shm, %i from %i\n", bufsize, fd);
 	/* map up the shared key- file */
 	res.addr = (struct frameserver_shmpage*) mmap(NULL,
 		bufsize,
@@ -122,9 +148,9 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 		fd,
 	0);
 	
+	close(fd);
 	if (res.addr == MAP_FAILED){
-		LOG("arcan_frameserver() -- couldn't map addr memory keyfile.\n");
-		close(fd);
+		LOG("arcan_frameserver(getshm) -- couldn't map keyfile (%s)\n", shmkey);
 		return res;
 	}
 
@@ -141,7 +167,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	if (res.asem == 0x0 ||
 		res.esem == 0x0 ||
 		res.vsem == 0x0 ){
-		LOG("arcan_frameserver() -- couldn't map semaphores, giving up.\n");
+		LOG("arcan_frameserver(getshm) -- couldn't map semaphores (basekey: %s), giving up.\n", shmkey);
 		return res;  
 	}
 
