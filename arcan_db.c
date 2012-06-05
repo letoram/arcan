@@ -220,13 +220,13 @@ arcan_dbh_res arcan_db_genres(arcan_dbh* dbh, bool sub)
 	return res;
 }
 
-void arcan_db_failed_launch(arcan_dbh* dbh, const char* gametitle)
+void arcan_db_failed_launch(arcan_dbh* dbh, int gameid)
 {
 	sqlite3_stmt* stmt = NULL;
 	
-	const char* insertqry = "INSERT into broken (gameid) VALUES ( (SELECT gameid FROM game WHERE title=?) );";
+	const char* insertqry = "INSERT into broken (gameid) VALUES ?;";
 	sqlite3_prepare_v2(dbh->dbh, insertqry, strlen(insertqry), &stmt, NULL);
-	sqlite3_bind_text(stmt, 1, gametitle, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 1, gameid);
 
 	sqlite3_finalize(stmt);
 }
@@ -518,15 +518,15 @@ long int arcan_db_launch_counter(arcan_dbh* dbh, const char* title)
 	return rv;
 }
 
-bool arcan_db_launch_counter_increment(arcan_dbh* dbh, const char* title)
+bool arcan_db_launch_counter_increment(arcan_dbh* dbh, int gameid)
 {
 	bool rv = false;
 	
-	if (dbh && title && strlen(title) > 0){
+	if (dbh > 0){
 		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = launch_counter + 1 WHERE title=?");
+		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = launch_counter + 1 WHERE gameid=?");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int(stmt, 1, gameid);
 		rv = sqlite3_step(stmt) == SQLITE_DONE;
 		sqlite3_finalize(stmt);
 	}
@@ -601,24 +601,24 @@ char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key)
 	return rv;
 }
 
-arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool internal)
+arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 {
 	arcan_dbh_res res = {.kind = 0};
 	res.data.strarr = (char**) calloc(sizeof(char*), 8);
 	unsigned int count = 0, limit = 8;
 	sqlite3_stmt* stmt = NULL;
 
-	unsigned int targetid = -1,gameid = -1;
+	unsigned int targetid = -1;
 	char* romset = NULL, (* targetname) = NULL;
 
-	const char* launchqry1 = "SELECT a.targetid, b.gameid, a.executable, b.setname FROM target a, game b WHERE b.title=? AND b.target = a.targetid;";
+	const char* launchqry1 = "SELECT a.targetid, b.gameid, a.executable, b.setname FROM target a, game b WHERE b.gameid=? AND b.target = a.targetid;";
 	const char* launchqry2 = "SELECT argument FROM target_arguments WHERE target = ? AND (mode = ? OR mode = 0) AND game = ? ORDER BY id ASC;";
 	const char* argcount = "SELECT Count(*) FROM target_arguments WHERE (mode = ? OR mode = 0) AND game = ?;";
 	
 /* query 1, figure out which program to launch based on the requested game */
 	int code = sqlite3_prepare_v2(dbh->dbh, launchqry1, strlen(launchqry1), &stmt, NULL);
 
-	sqlite3_bind_text(stmt, 1, game, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 1, gameid);
 	if ((code = sqlite3_step(stmt)) == SQLITE_ROW) {
 		targetid = sqlite3_column_int(stmt, 0);
 		gameid = sqlite3_column_int(stmt, 1);

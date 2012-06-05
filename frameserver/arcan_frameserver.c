@@ -47,7 +47,6 @@
 #include "arcan_frameserver_decode.h"
 
 FILE* logdev = NULL;
-const char* active_shmkey = NULL;
 
 char* arcan_themepath = "";
 char* arcan_resourcepath = "";
@@ -173,7 +172,6 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	res.addr->abufofs = res.addr->vbufofs + (res.addr->w* res.addr->h* res.addr->bpp);
 	res.addr->abufbase = 0;
 
-	active_shmkey = shmkey;
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 
 	return res;
@@ -214,6 +212,9 @@ void mode_streamserv(char* resource, char* keyfile)
 		LOG("arcan_frameserver(), invalid arguments in exec()\n");
 		return 1;
 	}
+
+	volatile a = 0;
+	while (a==0);
 
 /*
 	close(0);

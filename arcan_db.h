@@ -92,11 +92,11 @@ arcan_dbh_res arcan_db_games(arcan_dbh*,
 
 /* log a database entry for a failed launch,
  * assist in maintaing game-db / config */
-void arcan_db_failed_launch(arcan_dbh*, const char*);
+void arcan_db_failed_launch(arcan_dbh*, int); 
 
 /* manipulate the launch_counter property of a game */
 long arcan_db_launch_counter(arcan_dbh*, const char* title);
-bool arcan_db_launch_counter_increment(arcan_dbh* dbhandle, const char* title);
+bool arcan_db_launch_counter_increment(arcan_dbh* dbhandle, int gameid);
 bool arcan_db_clear_launch_counter(arcan_dbh*);
 
 /* find games that match the specified one,
@@ -126,7 +126,8 @@ arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
 /* the special argument [romset] inserts the romset name,
  * arguments will be inserted in the order (game specific) -> (game generic),
  * if romset hasn't been set at the end, it will be forcibly attached. */
-arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, const char* game, bool internal);
+arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal);
+long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status);
 
 /* store/update a key/value pair under a theme,
  * for theme_val, the resulting string (or NULL) should be

@@ -162,7 +162,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		goto error_cleanup;
 	}
 		
-	memset(shmpage, 0, MAX_SHMSIZE);
 	shmpage->parent = getpid();
 
 	pid_t child = fork();
@@ -170,10 +169,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
 
-		cons.w = shmpage->w;
-		cons.h = shmpage->h;
-		cons.bpp = shmpage->bpp;
-		
 	/* init- call (different from loop-exec as we need to 
 	 * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {
