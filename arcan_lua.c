@@ -1914,10 +1914,21 @@ int arcan_lua_randomsurface(lua_State* ctx)
 
 int arcan_lua_getcmdline(lua_State* ctx)
 {
-	const char* game = luaL_checkstring(ctx, 1);
+	int gameid = 0;
+	arcan_errc status = ARCAN_OK;
+	
+	if (lua_isstring(ctx, 1)){
+		gameid = arcan_db_gameid(dbhandle, luaL_checkstring(ctx, 1), &status); 
+	}
+	else
+		gameid = luaL_checknumber(ctx, 1); 
+	
+	if (status != ARCAN_OK)
+		return 0;
+	
 	int internal = luaL_optnumber(ctx, 2, 1);
 
-	arcan_dbh_res res = arcan_db_launch_options(dbhandle, game, internal == 0);
+	arcan_dbh_res res = arcan_db_launch_options(dbhandle, gameid, internal == 0);
 	int rv = push_stringres(ctx, res);
 
 	arcan_db_free_res(dbhandle, res);
@@ -2258,7 +2269,6 @@ int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 			arcan_lua_tblbool(ctx, "snapshot", false, top);
 			arcan_lua_tblbool(ctx, "rewind", false, top);
 			arcan_lua_tblbool(ctx, "suspend", false, top);
-			
 		} else {
 /* the plan is to extend the internal launch support with a probe (sortof prepared for in the build-system)
  * to check how the target is linked, which dependencies it has etc. */
@@ -2295,7 +2305,12 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 	
 int arcan_lua_targetlaunch(lua_State* ctx)
 {
-	const char* game = luaL_checkstring(ctx, 1);
+	int gameid = luaL_checknumber(ctx, 1);
+	arcan_errc status = ARCAN_OK;
+	
+	if (status != ARCAN_OK)
+		return 0;
+	
 	int internal = luaL_checkint(ctx, 2) == 1;
 	intptr_t ref = (intptr_t) 0;
 	int rv = 0;
@@ -2306,7 +2321,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 	}
 
 	/* see if we know what the game is */
-	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, game, internal);
+	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, gameid, internal);
 	if (cmdline.kind == 0){
 		char* resourcestr = arcan_find_resource_path(cmdline.data.strarr[0], "targets", ARCAN_RESOURCE_SHARED);
 		if (!resourcestr)
@@ -2341,7 +2356,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				
 				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
-					arcan_db_launch_counter_increment(dbhandle, game);
+					arcan_db_launch_counter_increment(dbhandle, gameid);
 				}
 				else {
 					lua_pushvid(ctx, ARCAN_EID);
@@ -2356,10 +2371,10 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				
 				if (intarget) {
 					lua_pushvid(ctx, intarget->vid);
-					arcan_db_launch_counter_increment(dbhandle, game);
+					arcan_db_launch_counter_increment(dbhandle, gameid);
 					rv = 1;
 				} else {
-					arcan_db_failed_launch(dbhandle, game);
+					arcan_db_failed_launch(dbhandle, gameid);
 				}
 			}
 		else {
@@ -2367,19 +2382,19 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 			
 			if (elapsed / 1000 < 3){
 				char** argvp = cmdline.data.strarr;
-				arcan_db_failed_launch(dbhandle, game);
+				arcan_db_failed_launch(dbhandle, gameid);
 				arcan_warning("Script Warning: launch_external(), possibly broken target/game combination. %s\n\tArguments:", *argvp++);
 				while(*argvp){
 					arcan_warning("%s \n", *argvp++);
 				}
 			} else
-				arcan_db_launch_counter_increment(dbhandle, game);
+				arcan_db_launch_counter_increment(dbhandle, gameid);
 		}
 		
 		free(resourcestr);
 	}
 	else
-		arcan_warning("arcan_lua_targetlaunch(%s, %i) failed, no match in database.\n", game, internal);
+		arcan_warning("arcan_lua_targetlaunch(%i, %i) failed, no match in database.\n", gameid, internal);
 
 cleanup:
 	arcan_db_free_res(dbhandle, cmdline);
