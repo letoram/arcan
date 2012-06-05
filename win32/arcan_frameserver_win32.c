@@ -100,6 +100,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width
 	res.addr->channels = nchan;
 	res.addr->frequency =freq;
 	res.addr->abufofs = res.addr->vbufofs + (res.addr->w * res.addr->h * res.addr->bpp);
+	parent = res.addr->parent;
 
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
@@ -130,9 +131,11 @@ int main(int argc, char* argv[])
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
 #endif
 
-	logdev = stderr;
+/* quick tracing	logdev = fopen("output.log", "w"); */
+	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 
-/* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode) */
+/* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode),
+ * parent is retrieved from shmpage */
 	if (6 != argc)
 		return 1;
 
@@ -143,6 +146,7 @@ int main(int argc, char* argv[])
 	char* fsrvmode = argv[5];
 	char* shmkey   = argv[1];
 
+	LOG("arcan_frameserver(win32) -- initial argcheck OK, %s:%s\n", fsrvmode, resource);
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, shmkey);
 	else if (strcmp(fsrvmode, "libretro") == 0)

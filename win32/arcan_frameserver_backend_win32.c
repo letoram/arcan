@@ -80,7 +80,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			arcan_frameserver_dropsemaphores(src);
 		
 			if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
-				fprintf(stderr, "BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
+				arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
 
 			CloseHandle(src->async);
 			CloseHandle(src->vsync);
@@ -195,18 +195,14 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 	}
 
 error:
-	fprintf(stderr, "arcan_frameserver_spawn_server(), could't allocate shared memory.\n");
+	arcan_warning("arcan_frameserver_spawn_server(), could't allocate shared memory.\n");
 	return NULL;
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
-
-/* we have only lib (frameserver) based "internal" launch support here */
-	if (ctx == NULL || setup.use_builtin == false)
-		return ARCAN_ERRC_BAD_ARGUMENT;
-
+	arcan_frameserver_meta vinfo = {0};
 	size_t shmsize = MAX_SHMSIZE;
 
 	HANDLE shmh;
@@ -231,14 +227,44 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 	}
 
-/* if we have run out of unnamed semaphores, we're in pretty much an unrecoverable / crashstate anyhow */
-	sem_handle vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
-	sem_handle async = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
-	sem_handle esync = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+	ctx->vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
+	ctx->async = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+	ctx->esync = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+	if (!ctx->vsync || !ctx->async ||!ctx->esync)
+		arcan_fatal("arcan_frameserver(win32) couldn't allocate semaphores.\n");
+
+/* mode- specific options */
+	if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
+		ctx->kind = ARCAN_FRAMESERVER_INPUT;
+	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
+		ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+		ctx->nopts = true;
+		ctx->autoplay = true;
+	}
+	else if (!setup.use_builtin){
+		arcan_warning("arcan_frameserver(win32) : hijack mode unsupported\n");
+		ctx->nopts = true;
+		ctx->autoplay = true;
+	}
+
+/* few of these options are actually worth anything here,
+ * they will be changed by arcan_frameserver_tick_control when
+ * child knows its own structure */
+	ctx->child_alive = true;
+	ctx->desc = vinfo;
+	ctx->desc.width = cons.w;
+	ctx->desc.height = cons.h;
+	ctx->desc.bpp = cons.bpp;
+	ctx->shm.key = strdup("win32_static");
+	ctx->shm.ptr = (void*) shmpage;
+	ctx->shm.shmsize = MAX_SHMSIZE;
+	ctx->shm.handle = shmh;
+ 	ctx->desc.ready = true;
+	shmpage->parent = handle;
 
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh, vsync, async, esync, setup.args.builtin.mode);
-	shmpage->parent = handle;
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh, 
+		ctx->vsync, ctx->async, ctx->esync, setup.args.builtin.mode);
 
 	PROCESS_INFORMATION pi;
 	STARTUPINFO si = {0};
@@ -257,37 +283,20 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	            &si, /* Startup info */
 	            &pi /* process-info */)) {
 
-			/* the child has successfully launched and provided the relevant video information */
-			img_cons cons = { .w = 32, .h = 32, .bpp = 4};
-			arcan_frameserver_meta vinfo = {0};
-			arcan_errc err;
-
-		ctx->vsync = vsync;
-		ctx->async = async;
-		ctx->esync = esync;
-
-		ctx->child_alive = true;
-		ctx->desc = vinfo;
+/* anything else that can happen to the child at this point is handled in
+ * frameserver_tick_control */
 		ctx->child = pi.hProcess;
-		ctx->desc.width = cons.w;
-		ctx->desc.height = cons.h;
-		ctx->desc.bpp = cons.bpp;
-		ctx->shm.key = strdup("win32_static");
-		ctx->shm.ptr = (void*) shmpage;
-		ctx->shm.shmsize = MAX_SHMSIZE;
-		ctx->shm.handle = shmh;
- 		ctx->desc.ready = true;
-
-		arcan_sem_post(vsync);
+		arcan_sem_post(ctx->vsync);
 
 		return ARCAN_OK;
 	} else 
-		fprintf(stderr, "arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
+		arcan_warning("arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
 
 error:
-	CloseHandle(async);
-	CloseHandle(vsync);
-	CloseHandle(esync);
+	arcan_warning("arcan_frameserver(win32): couldn't spawn frameserver session (out of shared memory?)\n");
+	CloseHandle(ctx->async);
+	CloseHandle(ctx->vsync);
+	CloseHandle(ctx->esync);
 
 	if (shmpage) 
 		UnmapViewOfFile((void*) shmpage);
