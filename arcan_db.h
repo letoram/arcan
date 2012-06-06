@@ -63,6 +63,8 @@ enum ARCAN_DB_INPUTMASK {
 	VJOY2WAY = 128
 };
 
+/* unless specified, caller is responsible for cleanup for returned strings / db res structs */
+
 /* Opens database and performs sanity check,
  * if themename is not null, make sure there is a table for the specified theme 
  * returns null IF fname can't be opened/read OR sanity check fails */
@@ -109,9 +111,8 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh*,
 /* populate a list of viable targets (with games associated) */
 arcan_dbh_res arcan_db_targets(arcan_dbh* handle);
 
-/* query name / executable from a target ID, store the resulting char* in targetname/targetexec,
- * caller is responible for cleanup */
 bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec);
+char* arcan_db_targetexec(arcan_dbh* dbh, char* targetname);
 
 /* populate a list of genres / subgenres */
 arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
@@ -135,9 +136,7 @@ long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status);
 bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, const char* value);
 char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key);
 
-/* cleanup for results gained from;
- * arcan_db_launch_options,
- * arcan_db_filter_games */
+/* cleanup for any function that returns a arcan_dbh_res type */
 bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res);
 
 #endif

@@ -58,22 +58,34 @@ static bool parent_alive()
 	return IsWindow(parent);
 }
 
-bool frameserver_semcheck(sem_handle semaphore, int mstimeout)
+/* any unrecoverable errors will lead to an exit(),
+ * add an exit handler if chances are we might lose data. */
+int frameserver_semcheck(sem_handle semaphore, int timeoutms)
 {
 	bool rv = true;
-	int rc;
+	int rc = 0;
 
 	do {
-		rc = arcan_sem_timedwait(semaphore, mstimeout);
+		rc = arcan_sem_timedwait(semaphore, timeoutms);
+
 		if (-1 == rc){
 				if (errno == EINVAL){
 					LOG("arcan_frameserver -- fatal error while waiting for semaphore (%i)\n", errno);
-					break; /* propagates outward from _decode_(video,audo) -> decode_frame -> main */
-				}
+					exit(1);
+				} else
+					break; /* EINTR isn't valid on win32 */
 		}
-	} while (rc != 0 && (rv = parent_alive()) );
 
-	return rv;
+/* shouldn't be needed, WaitForSingleObject should be subject to an abandoned- error 
+		if (!parent_alive())
+		{
+			LOG("arcan_frameserver -- parent died, giving up.\n");
+			exit(1); 
+		} */
+
+	} while (rc != 0);
+
+	return rc;
 }
 
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq)
@@ -118,7 +130,7 @@ void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 
 	void* res = (void*) MapViewOfFile(fmh, FILE_MAP_READ, 0, 0, 0);
 	if (ressize)
-		*ressize = (size_t) GetFileSize(fmh, NULL);
+		*ressize = (size_t) GetFileSize(fh, NULL);
 
 	return res;
 }
@@ -131,7 +143,8 @@ int main(int argc, char* argv[])
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
 #endif
 
-/* quick tracing	logdev = fopen("output.log", "w"); */
+/* quick tracing */
+/*	logdev = fopen("output.log", "w");  */
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 
 /* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode),

@@ -38,8 +38,7 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 		ctx->shared->abufused = ntw;
 		ctx->shared->aready = true;
 
-		if (!frameserver_semcheck( ctx->async, 0 ))
-			return false;
+		frameserver_semcheck( ctx->async, -1 );
 	}
 
 	return true;
@@ -92,8 +91,7 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 		memcpy(((void*)ctx->shared) + ctx->shared->vbufofs, ctx->video_buf, ctx->c_video_buf);
 		ctx->shared->vready = true;
 		
-		if (!frameserver_semcheck( ctx->vsync, 0 ))
-			return false;
+		frameserver_semcheck( ctx->vsync, -1);
 	}
 
 	return true;

@@ -2242,7 +2242,7 @@ int arcan_lua_setqueueopts(lua_State* ctx)
 
 static bool use_loader(char* fname)
 {
-	char* ext = rindex( fname, '.' );
+	char* ext = strrchr( fname, '.' );
 	if (!ext) return false;
 	
 	if (strcasecmp(ext, ".so") == 0)
@@ -2255,9 +2255,12 @@ static bool use_loader(char* fname)
 
 int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 {
-	const char* targetname = luaL_checkstring(ctx, 1);
-	
-	char* resourcestr = arcan_find_resource_path(targetname, "targets", ARCAN_RESOURCE_SHARED);
+	char* targetname = strdup( luaL_checkstring(ctx, 1) );
+	char* targetexec = arcan_db_targetexec(dbhandle, targetname);
+	char* resourcestr = targetexec ? arcan_find_resource_path(targetexec, "targets", ARCAN_RESOURCE_SHARED) : NULL;
+
+	unsigned rv = 0;
+
 	if (resourcestr){
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
@@ -2282,10 +2285,14 @@ int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 			arcan_lua_tblbool(ctx, "suspend", false, top);
 		}
 		
-		return 1;
+		rv = 1;
 	}
 	
-	return 0;
+	free(targetname);
+	free(targetexec);
+	free(resourcestr);
+
+	return rv;
 }
 
 int arcan_lua_targetrestore(lua_State* ctx)
@@ -2362,7 +2369,8 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					lua_pushvid(ctx, ARCAN_EID);
 					free(intarget);
 				}
-				
+				free(metastr);
+
 				rv = 1;
 			}
 			else {

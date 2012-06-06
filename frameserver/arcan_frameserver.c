@@ -61,9 +61,8 @@ static inline bool parent_alive()
 }
 
 /* need the timeout to avoid a deadlock situation */
-bool frameserver_semcheck(sem_handle semaphore, int mstimeout){
+int frameserver_semcheck(sem_handle semaphore, bool* parentstatus){
 	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
-	bool rv = true;
 	int rc;
 
 	do {

@@ -38,9 +38,6 @@
 #include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
 
-#define LOCK() if (ctx->local) lock_local(ctx); else lock_shared(ctx); 
-#define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx); 
-
 /* code is quite old and dodgy design at best.
  * The plan was initially to be able to get rid of SDL at some point,
  * and stop the stupid specialization of all these different device types,
@@ -93,38 +90,51 @@ static unsigned alloc_queuecell(arcan_evctx* ctx)
 	return rv;
 }
 
-static inline void lock_local(arcan_evctx* ctx)
+static inline bool lock_local(arcan_evctx* ctx)
 {
 	SDL_LockMutex(ctx->synch.local);
+	return true;
 }
 
-static inline void lock_shared(arcan_evctx* ctx)
+static inline bool lock_shared(arcan_evctx* ctx)
 {
 	if (ctx->synch.external.killswitch){
-		if (!arcan_sem_timedwait(ctx->synch.external.shared, DEFAULT_EVENT_TIMEOUT))
+		if (-1 == arcan_sem_timedwait(ctx->synch.external.shared, DEFAULT_EVENT_TIMEOUT)){
 			arcan_frameserver_free( (arcan_frameserver*) ctx->synch.external.killswitch, false );
+			return false;
+		}
 	}
 	else 
-			arcan_sem_timedwait(ctx->synch.external.shared, -1);
+		arcan_sem_timedwait(ctx->synch.external.shared, -1);
+	return true;
 }
 
-static inline void unlock_local(arcan_evctx* ctx)
+static inline bool unlock_local(arcan_evctx* ctx)
 {
 	SDL_UnlockMutex(ctx->synch.local);
+	return true;
 }
 
-static inline void unlock_shared(arcan_evctx* ctx)
+static inline bool unlock_shared(arcan_evctx* ctx)
 {
 	arcan_sem_post(ctx->synch.external.shared);
+	return true;
 }
+
+static inline bool LOCK(arcan_evctx* ctx)
+{
+	return ctx->local ? lock_local : lock_shared;
+}
+
+#define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx); 
+
 
 /* check queue for event, ignores mask */
 arcan_event* arcan_event_poll(arcan_evctx* ctx)
 {
 	arcan_event* rv = NULL;
 
-		if (*ctx->front != *ctx->back){
-			LOCK();
+		if (*ctx->front != *ctx->back && LOCK(ctx)){
 
 			rv = &ctx->eventbuf[ *ctx->front ];
 			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
@@ -136,21 +146,24 @@ arcan_event* arcan_event_poll(arcan_evctx* ctx)
 }
 
 void arcan_event_maskall(arcan_evctx* ctx){
-	LOCK();
+	if ( LOCK(ctx) ){
 		ctx->mask_cat_inp = 0xffffffff;
-	UNLOCK();
+		UNLOCK();
+	}
 }
 
 void arcan_event_clearmask(arcan_evctx* ctx){
-	LOCK();
+	if ( LOCK(ctx) ){
 		ctx->mask_cat_inp = 0;
 	UNLOCK();
+	}
 }
 
 void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask){
-	LOCK();
+	if (LOCK(ctx)){
 		ctx->mask_cat_inp = mask;
-	UNLOCK();
+		UNLOCK();
+	}
 }
 
 /* enqueue to current context considering input-masking,
@@ -161,25 +174,27 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 	if (!src || (src->category & ctx->mask_cat_inp))
 		return;
 
-	LOCK();
+	if (LOCK(ctx)){
 		unsigned ind = alloc_queuecell(ctx);
 
 		arcan_event* dst = &ctx->eventbuf[ind];
 		*dst = *src;
 		dst->tickstamp = ctx->c_ticks;
 
-	UNLOCK();
+		UNLOCK();
+	}
 }
 
 void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
-	LOCK();
+	if (LOCK(ctx)){
 		ctx->kbdrepeat = rate;
 		if (rate == 0) 
 			SDL_EnableKeyRepeat(ctx->kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
 		else 
 			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_INTERVAL, ctx->kbdrepeat);
-	UNLOCK();
+		UNLOCK();
+	}
 }
 
 /* probe devices and generate mapping tables */

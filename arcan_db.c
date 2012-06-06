@@ -158,6 +158,26 @@ arcan_dbh_res arcan_db_targets(arcan_dbh* dbh)
 	return res;
 }
 
+char* arcan_db_targetexec(arcan_dbh* dbh, char* targetname)
+{
+	char* rv = NULL;
+	if (!targetname)
+		return NULL;
+
+	const char* baseqry1 = "SELECT executable FROM target WHERE name=? LIMIT 1;";
+	sqlite3_stmt* stmt = NULL;
+
+	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, targetname, -1, SQLITE_TRANSIENT);
+
+	while (sqlite3_step(stmt) == SQLITE_ROW){
+		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
+	}
+
+	sqlite3_finalize(stmt);
+	return rv;
+}
+
 bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec)
 {
 	bool rv = false;

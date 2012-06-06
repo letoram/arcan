@@ -214,7 +214,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
-	
 		ctx->inqueue.local = false;
 		ctx->inqueue.synch.external.shared = ctx->esync;
 		ctx->inqueue.synch.external.killswitch = ctx;

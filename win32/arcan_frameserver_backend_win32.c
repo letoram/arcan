@@ -230,6 +230,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
 	ctx->async = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
 	ctx->esync = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+
 	if (!ctx->vsync || !ctx->async ||!ctx->esync)
 		arcan_fatal("arcan_frameserver(win32) couldn't allocate semaphores.\n");
 
@@ -261,6 +262,29 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->shm.handle = shmh;
  	ctx->desc.ready = true;
 	shmpage->parent = handle;
+
+/* two separate queues for passing events back and forth between main program and frameserver,
+ * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
+	ctx->inqueue.local = false;
+	ctx->inqueue.synch.external.shared = ctx->esync;
+	ctx->inqueue.synch.external.killswitch = ctx;
+	ctx->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
+	ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
+	ctx->inqueue.front = &(shmpage->parentdevq.front);
+	ctx->inqueue.back = &(shmpage->parentdevq.back);
+	ctx->desc.ready = true;
+		
+	ctx->outqueue.local = false;
+	ctx->outqueue.synch.external.shared = ctx->esync;
+	ctx->outqueue.synch.external.killswitch = ctx;
+	ctx->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
+	ctx->outqueue.eventbuf = shmpage->childdevq.evqueue;
+	ctx->outqueue.front = &(shmpage->childdevq.front);
+	ctx->outqueue.back = &(shmpage->childdevq.back);
+	ctx->desc.ready = true;
+
+	arcan_event test = {0};
+	arcan_event_enqueue(&ctx->outqueue, &test);
 
 	char cmdline[4196];
 	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh, 
