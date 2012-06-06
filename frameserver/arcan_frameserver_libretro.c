@@ -20,6 +20,7 @@
  */
 #include <SDL/SDL_loadso.h>
 
+#include <math.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -44,14 +45,30 @@
 #define MAX_BUTTONS 12
 #endif
 
+/* note on synchronization:
+ * the async and esync mechanisms will buffer locally and have that buffer flushed by the main application
+ * whenever appropriate. For audio, this is likely limited by the buffering capacity of the sound device / pipeline
+ * whileas the event queue might be a bit more bursty.
+ * 
+ * however, we will lock to video, meaning that it is the framerate of the frameserver that will decide
+ * the actual framerate, that may be locked to VREFRESH (or lower). Thus we also need frameskipping heuristics here.
+ *
+ */
+
 /* interface for loading many different emulators,
  * we assume "resource" points to a dlopen:able library,
  * that can be handled by SDLs library management functions. */
 static struct {
-		bool alive; /* toggle this flag off to terminate main loop */
-		int16_t audbuf[4196]; /* audio buffer for retro- targets that supply samples one call at a time */
-		size_t audbuf_used;
+		bool skipframe; /* set if next frame should just be dropped (not copied to buffers) */
 	
+		double lastframe, fps;
+	
+		int16_t* audbuf; /* audio buffer for retro- targets that supply samples one call at a time */
+		unsigned audbuf_nsamples; 
+		void* framebuffer;
+
+		size_t audbuf_used;
+
 		sem_handle async;
 		sem_handle vsync;
 		sem_handle esync;
@@ -72,7 +89,7 @@ static struct {
  */ 
 		struct {
 			bool joypad[MAX_PORTS][MAX_BUTTONS];
-			signed axis[2];
+			signed axis[2]; /* every "stick" usually returns in 2, but we also have analog or pseudo-analog buttons etc. etc. */
 		} inputmatr;
 		
 		void (*run)();
@@ -97,6 +114,11 @@ static void* libretro_requirefun(const char* sym)
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
+	if (retroctx.skipframe){
+		retroctx.skipframe = false;
+		return;
+	}
+	
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (width != retroctx.shared->w || height != retroctx.shared->h){
@@ -106,9 +128,10 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		LOG("arcan_frameserver(libretro) -- resize to %d, %d\n", retroctx.shared->w, retroctx.shared->h);
 	}
 	
-	uint16_t* buf  = (uint16_t*) data; /* assumes aligned 8-bit */
-	uint32_t* dbuf = (uint32_t*) ((void*) retroctx.shared + retroctx.shared->vbufofs);
-	
+	uint16_t* buf  = (uint16_t*) data; /* assumes alignment */
+	uint32_t* dbuf = retroctx.framebuffer;
+
+/* RGB1555 to RGBA */
 	for (int y = 0; y < height; y++){
 		for (int x = 0; x < width; x++){
 			uint16_t val = buf[x];
@@ -122,34 +145,17 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 			
 		buf  += pitch >> 1;
 	}
-
-	retroctx.shared->vready = true;
-	frameserver_semcheck(retroctx.vsync, -1);
+	
 }
 
+/* flush to audiobuffer */
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
-	size_t new_s = nframes * 2 * sizeof(int16_t);
-	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
-
-/* if we can't buffer safely, old data is dropped, all synchronization is made in respect to video here */
-	if ( frameserver_semcheck(retroctx.async, -1) == 0 ){
-		void* dstbuf = ((void*) retroctx.shared) + dstofs;
-		ssize_t overflow = retroctx.shared->abufused + new_s - SHMPAGE_AUDIOBUF_SIZE;
-
-		if (overflow > 0){
-			memmove((void*)dstbuf, dstbuf + overflow, overflow);
-			retroctx.shared->abufused -= overflow;
-			LOG("discarded: %d\n", overflow);
-		}
-
-		memcpy(dstbuf + retroctx.shared->abufused, data, new_s);
-		retroctx.shared->abufused += new_s;
-		LOG("used: %d\n", retroctx.shared->abufused);
-
-		arcan_sem_post(retroctx.async);
-	}
-		
+	memcpy(&retroctx.audbuf[retroctx.audbuf_used], data, nframes * sizeof(int16_t) * 2);
+	retroctx.audbuf_used += nframes * 2;
+	
+/* audbuf_used should be sized to fit the number of samples corresponding to one videoframe + 
+ * a guardsample (easy to watchpoint) and then be flushed each frame, but have this as a propagation protection */
 	return nframes;
 }
 
@@ -206,7 +212,7 @@ static int remaptbl[] = {
 		
 static void ioev_ctxtbl(arcan_event* ioev)
 {
-	int ind, button = -1;
+	int ind, button = -1, axis;
 	char* subtype;
 	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 
@@ -216,6 +222,9 @@ static void ioev_ctxtbl(arcan_event* ioev)
 		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
 			button--;
 			button = button > sizeof(remaptbl) / sizeof(remaptbl[0]) - 1 ? -1 : remaptbl[button];
+		} else if (1 == sscanf(subtype, "AXIS%d", &axis) && axis > 0 &&
+			axis <= ( sizeof(retroctx.inputmatr.axis) / sizeof(retroctx.inputmatr.axis[0]) ) ){
+			
 		}
 		else if ( strcmp(subtype, "UP") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_UP;
@@ -236,7 +245,6 @@ static void ioev_ctxtbl(arcan_event* ioev)
 		}
 	}
 
-/* if we found a matching remap */
 }
 
 /* use labels etc. for trying to populate the context table */
@@ -255,6 +263,7 @@ static void flush_eventq(){
 		}
 	}
 }
+
 
 /* map up a libretro compatible library resident at fullpath:game */
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
@@ -320,12 +329,21 @@ LOG("load_game\n");
 		
 LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
-LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
+LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_rate);
+
+/* samples per frame = samples per second / frames per second */
+		retroctx.audbuf_nsamples = (unsigned) round(avinfo.timing.sample_rate / avinfo.timing.fps) * 2 + 4;
+		retroctx.audbuf = (int16_t*) malloc( retroctx.audbuf_nsamples * sizeof(int16_t));
+		
+		for (unsigned i = 0; i < retroctx.audbuf_nsamples; i++)
+			retroctx.audbuf[i] = 0xaded;
+		
 		struct frameserver_shmcont cont = frameserver_getshm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
 		retroctx.shared = cont.addr;
 		retroctx.vsync = cont.vsem;
 		retroctx.async = cont.asem;
 		retroctx.esync = cont.esem;
+		retroctx.framebuffer = (void*) cont.addr + sizeof(struct frameserver_shmpage);
 		
 		retroctx.inevq.synch.external.shared = retroctx.esync;
 		retroctx.inevq.synch.external.killswitch = NULL; 
@@ -343,27 +361,38 @@ LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
 		retroctx.outevq.back  = &retroctx.shared->parentdevq.back;
 		retroctx.outevq.n_eventbuf = sizeof(retroctx.shared->parentdevq.evqueue) / sizeof(arcan_event);
 
-		retroctx.alive = true;
 		retroctx.shared->resized = true;
 		
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
 		retroctx.reset();
 		
-		while (retroctx.alive){
+		while (true){
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
-			LOG("flush evqueue\n");
 			flush_eventq();
-			LOG("process frame\n");
 			retroctx.run();
 			
-/* wrapper around the audscb buffering done with emulators that yield single frames */
-			if (retroctx.audbuf_used){
-				libretro_audcb(retroctx.audbuf, retroctx.audbuf_used / 2);
-				retroctx.audbuf_used = 0;
-			}
+/* if we're lagging behind, drop the next frame */
 
+/* otherwise, flush to frameserver, the size of audiobuf should be well above that of the retroctx buffer,
+ * but cap, warn about the overflow and drop */
+
+/* these are a bit redundant, fix in next refactor */
+			retroctx.shared->vready = true;
+			
+/* LOCK audio */
+			frameserver_semcheck( retroctx.async, -1);
+		
+		/* other buffer is in number of samples, dst is in number of bytes */
+			retroctx.shared->abufused = sizeof(int16_t) * retroctx.audbuf_used;
+			memcpy( ((void*)retroctx.shared) + retroctx.shared->abufofs, retroctx.audbuf, retroctx.shared->abufused);
+			retroctx.audbuf_used = 0;
+			retroctx.shared->aready = true;
+			arcan_sem_post( retroctx.async );
+		
+		/* Video is already copied, wait for frameserver to pick it up */
+			frameserver_semcheck( retroctx.vsync, -1);
 		}
 	}
 }

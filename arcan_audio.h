@@ -53,6 +53,8 @@ arcan_errc arcan_audio_resume();
 /* Similar to the video version,
  * input is how many logical time-units that we should process. */
 void arcan_audio_tick(uint8_t ntt);
+void arcan_audio_refresh(); /* audiobuffers may need to be requeued / processed quicker than tickrate */
+
 arcan_errc arcan_audio_teardown();
 
 /* A little hack to workaround certain AL implementation bugs,

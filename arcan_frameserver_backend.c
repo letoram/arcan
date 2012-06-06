@@ -304,7 +304,7 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-	if (shmpage->abufused > 0 && arcan_sem_timedwait(src->async, 1) == 0 ){
+	if (shmpage->abufused > 0 && arcan_sem_timedwait(src->async, 0) == 0 ){
 		alBufferData(buffer, AL_FORMAT_STEREO16, (void*)shmpage + shmpage->abufofs, shmpage->abufused, src->desc.samplerate);
 		rv = ARCAN_OK;
 	
