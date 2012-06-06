@@ -61,22 +61,25 @@ static inline bool parent_alive()
 }
 
 /* need the timeout to avoid a deadlock situation */
-int frameserver_semcheck(sem_handle semaphore, bool* parentstatus){
+int frameserver_semcheck(sem_handle semaphore, int timeout){
 	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
 	int rc;
+	int timeleft = timeout;	
 
-	do {
-		rc = sem_trywait(semaphore);
-		if (-1 == rc){
-				if (errno == EINVAL){
-					LOG("arcan_frameserver -- fatal error while waiting for semaphore\n");
-					exit(1);
-				}
-			nanosleep(&st, &rem); /* don't care about precision here really */
+/* infinite wait, every 100ms or so, check if parent is still alive */	
+	if (timeout == -1)
+		while(true){
+		rc = arcan_sem_timedwait(semaphore, 100);
+		if (rc == 0)
+			return 0;
+		
+		if (!parent_alive()){
+			LOG("arcan_frameserver() -- parent died, aborting.\n");
+			exit(1);
 		}
-	} while ( (rv = parent_alive()) && rc != 0 );
-
-	return rv;
+	} else {
+		return arcan_sem_timedwait(semaphore, timeout);
+	}	
 }
 
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
@@ -211,9 +214,6 @@ void mode_streamserv(char* resource, char* keyfile)
 		LOG("arcan_frameserver(), invalid arguments in exec()\n");
 		return 1;
 	}
-
-	volatile a = 0;
-	while (a==0);
 
 /*
 	close(0);
