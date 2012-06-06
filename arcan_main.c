@@ -295,6 +295,7 @@ int main(int argc, char* argv[])
 	/* we separate the ffunc per-frame update and the video refresh */
 				arcan_video_pollfeed();
 				arcan_video_refresh(frag);
+				arcan_audio_refresh();
 			}
 
 /* note that an onslaught of I/O operations can currently

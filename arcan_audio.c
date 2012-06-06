@@ -769,6 +769,23 @@ cleanup:
 	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 }
 
+void arcan_audio_refresh()
+{
+	if (!current_acontext->context || !current_acontext->al_active)
+		return;
+
+	arcan_aobj* current = current_acontext->first;
+
+	while(current){
+		if (current->kind == AOBJ_STREAM ||
+			current->kind == AOBJ_FRAMESTREAM )
+			arcan_astream_refill(current);
+
+		_wrap_alError(current, "audio_refresh()");
+		current = current->next;
+	}
+}	
+
 void arcan_audio_tick(uint8_t ntt)
 {
 	/* scan list of allocated IDs and update buffers for all streaming / cb function,
@@ -779,14 +796,12 @@ void arcan_audio_tick(uint8_t ntt)
 	if (alcGetCurrentContext() != current_acontext->context)
 		alcMakeContextCurrent(current_acontext->context);
 
+	arcan_audio_refresh(); /* only guarantee we have this is ever run during high loads */
+	
 	while (ntt-- > 0) {
 		arcan_aobj* current = current_acontext->first;
 
 		while (current){
-			if (current->kind == AOBJ_STREAM ||
-				current->kind == AOBJ_FRAMESTREAM )
-				arcan_astream_refill(current);
-			_wrap_alError(current, "audio_tick()");
 
 		/* step gradual gain change */
 			if (current->t_gain > 0) {
@@ -834,15 +849,16 @@ void arcan_audio_tick(uint8_t ntt)
 	}
 	
 	for (unsigned i = 0; i < ARCAN_AUDIO_SLIMIT; i++)
-		if ( current_acontext->sample_sources[i] > 0) {
-			ALint state;
-			alGetSourcei(current_acontext->sample_sources[i], AL_SOURCE_STATE, &state);
-			if (state != AL_PLAYING){
-				alDeleteSources(1, &current_acontext->sample_sources[i]);
-				current_acontext->sample_sources[i] = 0;
-			}
+	if ( current_acontext->sample_sources[i] > 0) {
+		ALint state;
+		alGetSourcei(current_acontext->sample_sources[i], AL_SOURCE_STATE, &state);
+		if (state != AL_PLAYING){
+			alDeleteSources(1, &current_acontext->sample_sources[i]);
+			current_acontext->sample_sources[i] = 0;
 		}
-}
+	}
+}	
+
 
 static void _wrap_alError(arcan_aobj* obj, char* prefix)
 {

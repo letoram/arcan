@@ -81,7 +81,19 @@ function target_update(source, status)
 end
 
 function dispatch_input(iotbl)
-	target_input(target_id, iotbl);
+	local match = false;
+	local restbl = keyconfig:match(iotbl);
+	if (restbl) then 
+		for ind, val in pairs(restbl) do
+			iotbl.label = val;
+			target_input(target_id, iotbl);
+			match = true;
+		end
+	end
+
+	if (match == false) then
+		target_input(target_id, iotbl);
+	end
 end
 
 internaltest_input = dispatch_input;
