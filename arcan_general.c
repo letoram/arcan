@@ -535,7 +535,9 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 			rv = -1;
 			errno = EINVAL;
 		break;
-		case WAIT_OBJECT_0: break; /* default returnpath */
+
+		case WAIT_OBJECT_0: 
+		break; /* default returnpath */
 
 	default:
 		arcan_warning("Warning: arcan_sem_timedwait(win32) -- unknown result on WaitForSingleObject (%i)\n", rc);
@@ -617,17 +619,20 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 
 static int sem_timedwaithack(sem_handle semaphore, int msecs)
 {
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 10000000L}, rem; /* 10 ms */
+	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; /* 1 ms */
+	
+	if (msecs == 0)
+		return sem_trywait( semaphore );
 
 	if (msecs == -1){
 		while (-1 == sem_wait( semaphore ) && errno == EINTR);
-		return true;
+		return 0;
 	}
-	
+
 	while (msecs > 0){
 		int rc = sem_trywait( semaphore );
 		if (0 == rc)
-			return true;
+			return 0;
 		else{
 			struct timespec rem;
 			nanosleep(&st, &rem);
@@ -636,7 +641,7 @@ static int sem_timedwaithack(sem_handle semaphore, int msecs)
 		
 	}
 
-	return false;
+	return -1;
 }
 
 # if __APPLE__
@@ -658,7 +663,7 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 /* special case, just block forever */
 	if (msecs == -1){
 		while (-1 == sem_wait( semaphore ) && errno == EINTR);
-		return true;
+		return 0;
 	}
 	
 	struct timespec tv = {
@@ -681,11 +686,11 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 				break;
 				
 				case ETIMEDOUT:
-					return false;
+					return -1;
 				break;
 			}
 		else 
-			return true;
+			return 0;
 	}
 }
 

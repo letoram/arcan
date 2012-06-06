@@ -103,7 +103,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		retroctx.shared->w = width;
 		retroctx.shared->h = height;
 		retroctx.shared->resized = true;
-		LOG("resize() to %d, %d\n", retroctx.shared->w, retroctx.shared->h);
+		LOG("arcan_frameserver(libretro) -- resize to %d, %d\n", retroctx.shared->w, retroctx.shared->h);
 	}
 	
 	uint16_t* buf  = (uint16_t*) data; /* assumes aligned 8-bit */
@@ -124,9 +124,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	}
 
 	retroctx.shared->vready = true;
-	
-	if (!frameserver_semcheck(retroctx.vsync, 0))
-		exit(1);
+	frameserver_semcheck(retroctx.vsync, -1);
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
@@ -134,18 +132,25 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	size_t new_s = nframes * 2 * sizeof(int16_t);
 	off_t dstofs = retroctx.shared->abufofs + retroctx.shared->abufused;
 
-/* if we can't buffer safely, new data is dropped */
-	if ( frameserver_semcheck(retroctx.async, -1) ){
-		if (retroctx.shared->abufused + new_s < SHMPAGE_AUDIOBUF_SIZE){
-			memcpy(((void*) retroctx.shared) + dstofs, data, new_s);
-			retroctx.shared->abufused += new_s;
+/* if we can't buffer safely, old data is dropped, all synchronization is made in respect to video here */
+	if ( frameserver_semcheck(retroctx.async, -1) == 0 ){
+		void* dstbuf = ((void*) retroctx.shared) + dstofs;
+		ssize_t overflow = retroctx.shared->abufused + new_s - SHMPAGE_AUDIOBUF_SIZE;
+
+		if (overflow > 0){
+			memmove((void*)dstbuf, dstbuf + overflow, overflow);
+			retroctx.shared->abufused -= overflow;
+			LOG("discarded: %d\n", overflow);
 		}
-		
+
+		memcpy(dstbuf + retroctx.shared->abufused, data, new_s);
+		retroctx.shared->abufused += new_s;
+		LOG("used: %d\n", retroctx.shared->abufused);
+
 		arcan_sem_post(retroctx.async);
-		return nframes;
 	}
-	
-	return 0;
+		
+	return nframes;
 }
 
 void libretro_audscb(int16_t left, int16_t right){
@@ -234,12 +239,15 @@ static void ioev_ctxtbl(arcan_event* ioev)
 /* if we found a matching remap */
 }
 
-static void flush_eventq(){
-	 arcan_event* ev;
-	 
 /* use labels etc. for trying to populate the context table */
 /* we also process requests to save state, shutdown, reset, plug/unplug input, here */
-	while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
+static void flush_eventq(){
+	 arcan_event* ev;
+
+/* note that event_poll will have a timeout, and if that one is exceeded, will return NULL.
+ * this means that should the parent process die, we'll exit this function, hit the
+ * frameserver semcheck, which will exit */
+	 while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
 		switch (ev->category){
 			case EVENT_IO:
 				ioev_ctxtbl(ev);
@@ -274,16 +282,17 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		struct retro_system_info sysinf = {0};
 		struct retro_game_info gameinf = {0};
 		((void(*)(struct retro_system_info*)) libretro_requirefun("retro_get_system_info")) (&sysinf);
-LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
+
+	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
 		
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
-	ssize_t bufsize;
-	gameinf.path = strdup( gamename );
-	gameinf.data = frameserver_getrawfile(gamename, &bufsize);
-	if (bufsize == -1){
-		LOG("libretro(%s), couldn't load data, giving up.\n", gamename);
-		return;
-	}
+		ssize_t bufsize;
+		gameinf.path = strdup( gamename );
+		gameinf.data = frameserver_getrawfile(gamename, &bufsize);
+		if (bufsize == -1){
+			LOG("libretro(%s), couldn't load data, giving up.\n", gamename);
+			return;
+		}
 		
 	gameinf.size = bufsize;
 	
@@ -295,7 +304,6 @@ LOG("map functions\n");
 	
 /* setup callbacks */
 LOG("setup callbacks\n");
-
 		( (void(*)(retro_video_refresh_t) )libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
 		( (size_t(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
 		( (void(*)(retro_audio_sample_t)) libretro_requirefun("retro_set_audio_sample"))(libretro_audscb);
@@ -337,7 +345,6 @@ LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
 
 		retroctx.alive = true;
 		retroctx.shared->resized = true;
-		arcan_sem_post(retroctx.esync);
 		
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
@@ -346,10 +353,12 @@ LOG("samplerate: %lf\n", avinfo.timing.sample_rate);
 		while (retroctx.alive){
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
+			LOG("flush evqueue\n");
 			flush_eventq();
+			LOG("process frame\n");
 			retroctx.run();
 			
-/* wrapper around the audscb buffering */
+/* wrapper around the audscb buffering done with emulators that yield single frames */
 			if (retroctx.audbuf_used){
 				libretro_audcb(retroctx.audbuf, retroctx.audbuf_used / 2);
 				retroctx.audbuf_used = 0;

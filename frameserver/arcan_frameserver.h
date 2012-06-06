@@ -22,12 +22,13 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
-#define LOG(...) ( fprintf(logdev, __VA_ARGS__))
+#define LOG(...) ( (logdev ? fprintf(logdev, __VA_ARGS__) : 0) )
 
 extern FILE* logdev;
 
-/* try and acquire a lock on the semaphore before mstimeout runs out */
-bool frameserver_semcheck(sem_handle semaphore, signed mstimeout);
+/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately) 
+ * this will forcibly exit should any error other than timeout occur.*/
+int frameserver_semcheck(sem_handle semaphore, int timeout);
 
 /* setup a named memory / semaphore mapping with the server */
 struct frameserver_shmcont{
