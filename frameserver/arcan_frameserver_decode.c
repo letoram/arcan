@@ -169,7 +169,8 @@ bool ffmpeg_decode(arcan_ffmpeg_context* ctx)
 	/* Main Decoding sequence */
 	while (fstatus &&
 		av_read_frame(ctx->fcontext, &ctx->packet) >= 0) {
-		/* got a videoframe */
+
+/* got a videoframe */
 		if (ctx->packet.stream_index == ctx->vid)
 			fstatus = decode_vframe(ctx);
 		else if (ctx->packet.stream_index == ctx->aid)
@@ -192,11 +193,14 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	vidctx->async  = shms.asem;
 	vidctx->vsync  = shms.vsem;
 	vidctx->esync  = shms.esem;
+
+/* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
+	frameserver_semcheck(vidctx->async, -1);
+	frameserver_semcheck(vidctx->vsync, -1);
 	
 	if (vidctx->shared){
 		int semv, rv;
 		vidctx->shared->resized = true;
-		arcan_sem_post(vidctx->vsync);
 		
 		LOG("arcan_frameserver(video) -- decoding\n");
 		

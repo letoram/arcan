@@ -441,7 +441,7 @@ function gridledetail_show(detailres, gametbl, ind)
 -- Don't add this label unless internal support is working for the underlying platform
 	detailview.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		gridledetail_setnoisedisplay();
-		internal_vid = launch_target(detailview.game.title, LAUNCH_INTERNAL, gridledetail_internal_status);
+		internal_vid = launch_target(detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status);
 		print("internal_vid:" .. internal_vid);
 	end
 

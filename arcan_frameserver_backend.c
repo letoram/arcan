@@ -506,7 +506,7 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*) movie->shm.ptr;
 		
-		/* SDL mutex protects the shm- page for freeing etc. */
+/* SDL mutex protects the shm- page for freeing etc. */
 			if (shm->vready) {
                 frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
                 current->tag = shm->vdts;

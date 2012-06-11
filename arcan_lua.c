@@ -2218,7 +2218,6 @@ void arcan_lua_callvoidfun(lua_State* ctx, const char* fun)
 	                  fun);
 }
 
-
 int arcan_lua_getqueueopts(lua_State* ctx)
 {
 	unsigned short rv[3];

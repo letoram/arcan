@@ -4,7 +4,7 @@
 # as the main application binaries. Tries to locate the resource folder
 # in use, where the main script is, along with importers.
 
-searchpath = [".", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
+searchpath = [".", "./scripts", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
 
 searchpath.insert(0, ENV['ARCAN_RESOURCEPATH']) if ENV['ARCAN_RESOURCEPATH']
 
@@ -16,8 +16,64 @@ searchpath.each{|path|
 		break
 	end
 }
-	
+
+def show_usage
+STDOUT.print "Arcan Romman (romman.rb) #{ROMMAN_VERSION ? ROMMAN_VERSION : "(basescripts not found)"}, usage:\n\
+romman.rb command generic-options command-specific arguments\n\
+\n\
+valid commands:\n\
+builddb - scans roms/targets and creates a database\n\
+list - shows single or multiple entries that match specified search criteria\n\
+alterdb - manually add or change single entries in the database\n\
+exec - show the arguments that would be used to launch a specific game\n\
+\n\
+generic options:\n\
+(--help, -h) - this text\n\
+(--dbname) (filename) - set the input/output database\n\
+(--rompath) (path) - use path as root for finding roms\n\
+(--targetpath) (path) - use path as root for finding targets\n\
+\n\
+builddb options:\n\
+(--generic) - Use generic importer for unknown targets\n\
+(--skiptarget) targetname - Don't try to import the specified target\n\
+"
+begin	Importers.Each_importer{|imp|
+		line = imp.usage.join("\n")
+		STDOUT.print(line)
+		STDOUT.print("\n") if (imp.usage.size > 0)
+	}
+rescue => er
+ end
+
+STDOUT.print "\n\
+alterdb options:\n\
+(--deletegame) title - Remove matching title\n\
+(--gameargs) title,arglist - Override target- specific arguments with arglist\n\
+(--gameintargs) title,arglist - Override target arguments for internal launch\n\
+(--gameextargs) title,arglist - Override target arguments for external launch\n\
+(--addgame) title,tgtnme,stnme,optfld=value - Add a game entry, optfields:\n\
+\tplayers (num), buttons (num), ctrlmask (specialnum), genre (text),\n\
+\tsubgenre (text),year (num), launch_counter (num), manufacturer (text)\n\
+(--deletetarget) target - Remove target and all associated games\n\
+(--addtarget) name,executable - Manually add the specified target\n\
+(--targetargs) name,arglist - Replace the list of shared arguments\n\
+(--targetintargs) name,arglist - Replace the list of internal launch arguments\n\
+(--targetextargs) name,arglist - Replace the list of external launch arguments\n\
+\n\
+list options:\n\
+(--gamesbrief) - List all available game titles\n\
+(--targets) - List all available targets\n\
+(--showgame) title - Display verbose information for a specific title (* wildcard)\n\
+\n\
+exec options:\n\
+(--execgame) - Required, sets the game to generate execution arguments for\n\
+(--internal) - Use arguments intended for internal launch mode\n\
+(--execlaunch) - Run the execstr\n\
+"
+end
+
 if (!basepath)
+	show_usage()
 	STDERR.print("Fatal, could not find romman_base.rb (should reside in resources/scripts)\n")
 	exit(1)
 end
@@ -49,59 +105,6 @@ def argsplit( inarg )
 	
 	res << buf if buf.length > 0
 	res
-end
-
-def show_usage
-STDOUT.print "Arcan Romman (romman.rb) #{ROMMAN_VERSION}, usage:\n\
-romman.rb command generic-options command-specific arguments\n\
-\n\
-valid commands:\n\
-builddb - scans roms/targets and creates a database\n\
-list - shows single or multiple entries that match specified search criteria\n\
-alterdb - manually add or change single entries in the database\n\
-exec - show the arguments that would be used to launch a specific game\n\
-\n\
-generic options:\n\
-(--help, -h) - this text\n\
-(--dbname) (filename) - set the input/output database\n\
-(--rompath) (path) - use path as root for finding roms\n\
-(--targetpath) (path) - use path as root for finding targets\n\
-\n\
-builddb options:\n\
-(--generic) - Use generic importer for unknown targets\n\
-(--skiptarget) targetname - Don't try to import the specified target\n\
-"
-	Importers.Each_importer{|imp|
-		line = imp.usage.join("\n")
-		STDOUT.print(line)
-		STDOUT.print("\n") if (imp.usage.size > 0)
-	}
-
-STDOUT.print "\n\
-alterdb options:\n\
-(--deletegame) title - Remove matching title\n\
-(--gameargs) title,arglist - Override target- specific arguments with arglist\n\
-(--gameintargs) title,arglist - Override target arguments for internal launch\n\
-(--gameextargs) title,arglist - Override target arguments for external launch\n\
-(--addgame) title,tgtnme,stnme,optfld=value - Add a game entry, optfields:\n\
-\tplayers (num), buttons (num), ctrlmask (specialnum), genre (text),\n\
-\tsubgenre (text),year (num), launch_counter (num), manufacturer (text)\n\
-(--deletetarget) target - Remove target and all associated games\n\
-(--addtarget) name,executable - Manually add the specified target\n\
-(--targetargs) name,arglist - Replace the list of shared arguments\n\
-(--targetintargs) name,arglist - Replace the list of internal launch arguments\n\
-(--targetextargs) name,arglist - Replace the list of external launch arguments\n\
-\n\
-list options:\n\
-(--gamesbrief) - List all available game titles\n\
-(--targets) - List all available targets\n\
-(--showgame) title - Display verbose information for a specific title (* wildcard)\n\
-\n\
-exec options:\n\
-(--execgame) - Required, sets the game to generate execution arguments for\n\
-(--internal) - Use arguments intended for internal launch mode\n\
-(--execlaunch) - Run the execstr\n\
-"
 end
 
 # scan importers/* folder,

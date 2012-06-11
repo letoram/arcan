@@ -268,14 +268,14 @@ if (settings.sortfunctions[settings.sortlbl]) then
 	
 	settings.iodispatch["MENU_SELECT"]  = function(iotbl) 
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
-		launch_target( current_game().title, LAUNCH_EXTERNAL); 
+		launch_target( current_game().gameid, LAUNCH_EXTERNAL); 
 		move_cursor(0);
 	end
 	
 	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
 		erase_grid(false);
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
-		internal_vid = launch_target( current_game().title, LAUNCH_INTERNAL, gridle_internal_status );
+		internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 	end
 
 	imagery.black = fill_surface(1,1,0,0,0);
