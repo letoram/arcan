@@ -656,19 +656,19 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
  * if something has gone wrong with a child process */
 int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 {
-	static bool arcan_sem_usehack = false;
-	if (arcan_sem_usehack) 
-		return sem_timedwaithack(semaphore, msecs);
-	
 /* special case, just block forever */
 	if (msecs == -1){
 		while (-1 == sem_wait( semaphore ) && errno == EINTR);
 		return 0;
 	}
 	
+	static bool arcan_sem_usehack = false;
+	if (arcan_sem_usehack) 
+		return sem_timedwaithack(semaphore, msecs);
+
 	struct timespec tv = {
 		.tv_sec = 0,
-		.tv_nsec = msecs * 1000000
+		.tv_nsec = msecs * 10000000
 	};
 	
 	while (1){
@@ -679,15 +679,14 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 					continue;
 				break;
 				
-				case EINVAL:
-					fprintf(stderr, "Bug: arcan_sem_timedwait(UNIX), invalid semaphore passed, workaround activated.\n");
-					arcan_sem_usehack = true;
-					return sem_timedwaithack(semaphore, msecs);
-				break;
-				
 				case ETIMEDOUT:
 					return -1;
 				break;
+				
+				default:
+					arcan_warning("arcan_sem_timedwait(UNIX), unhandled error (%s), defaulting to workaround.\n", strerror(errno));
+					arcan_sem_usehack = true;
+					return sem_timedwaithack(semaphore, msecs);
 			}
 		else 
 			return 0;
@@ -721,8 +720,7 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 			
 			char* work = strdup(playbuf);
 			work[strlen(work) - 1] = 'v';
-
-			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 0);
+			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
 	
 			if (SEM_FAILED != vid){
 				work[strlen(work) - 1] = 'a';

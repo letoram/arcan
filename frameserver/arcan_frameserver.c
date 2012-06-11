@@ -72,7 +72,7 @@ int frameserver_semcheck(sem_handle semaphore, int timeout){
 		rc = arcan_sem_timedwait(semaphore, 100);
 		if (rc == 0)
 			return 0;
-		
+
 		if (!parent_alive()){
 			LOG("arcan_frameserver() -- parent died, aborting.\n");
 			exit(1);

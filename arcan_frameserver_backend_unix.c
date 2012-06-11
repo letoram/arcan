@@ -231,8 +231,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->outqueue.front = &(shmpage->childdevq.front);
 		ctx->outqueue.back = &(shmpage->childdevq.back);
 		ctx->desc.ready = true;
-		
-		arcan_sem_post(ctx->vsync);
 	}
 	else if (child == 0) {
 		if (setup.use_builtin){
