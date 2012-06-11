@@ -153,15 +153,16 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	memcpy(&retroctx.audbuf[retroctx.audbuf_used], data, nframes * sizeof(int16_t) * 2);
 	retroctx.audbuf_used += nframes * 2;
+	retroctx.audbuf_used = retroctx.audbuf_used % (retroctx.audbuf_nsamples + 1);
 	
-/* audbuf_used should be sized to fit the number of samples corresponding to one videoframe + 
- * a guardsample (easy to watchpoint) and then be flushed each frame, but have this as a propagation protection */
 	return nframes;
 }
 
 void libretro_audscb(int16_t left, int16_t right){
 	retroctx.audbuf[ retroctx.audbuf_used++ ] = left;
 	retroctx.audbuf[ retroctx.audbuf_used++ ] = right; 
+	
+	retroctx.audbuf_used = retroctx.audbuf_used % (retroctx.audbuf_nsamples + 1); /* allow 1 sample overflow into guardsample as watchpoint for misbehaving libs */
 }
 
 /* we ignore these since before pushing for a frame, we've already processed the queue */
@@ -343,6 +344,7 @@ LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_
 		retroctx.vsync = cont.vsem;
 		retroctx.async = cont.asem;
 		retroctx.esync = cont.esem;
+		frameserver_semcheck(cont.vsem, -1);
 		retroctx.framebuffer = (void*) cont.addr + sizeof(struct frameserver_shmpage);
 		
 		retroctx.inevq.synch.external.shared = retroctx.esync;
