@@ -34,7 +34,7 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 			break;
 		}
 
-		memcpy(ctx->vidp, ctx->audio_buf, ntw);
+		memcpy(ctx->audp, ctx->audio_buf, ntw);
 		ctx->shared->abufused = ntw;
 		ctx->shared->aready = true;
 
@@ -187,7 +187,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
 	if (!vidctx) return;
 
-	struct frameserver_shmcont shms = frameserver_getshm(keyfile);
+	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
 	if (!frameserver_shmpage_resize(&shms, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate)){
 		arcan_fatal("arcan_frameserver_ffmpeg_run() -- setup of vid(%d x %d @ %d) aud(%d,%d) failed \n",
 			vidctx->width,
@@ -198,7 +198,10 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		);
 		return;
 	}
-	
+
+	frameserver_shmpage_calcofs(shms.addr, &(vidctx->vidp), &(vidctx->audp) );
+	arcan_warning("calculated offsets, baseaddr: %" PRIxPTR" with vidp: %" PRIxPTR" and audp: %" PRIxPTR" and vids: %d bytes, auds: %d bytes\n",
+				  (uintptr_t) vidctx->vidp, (uintptr_t) vidctx->audp, (long int) ( vidctx->vidp - (void*) shms.addr ), (long int) (vidctx->audp - vidctx->vidp) );
 	vidctx->shared = shms.addr;
 	vidctx->async  = shms.asem;
 	vidctx->vsync  = shms.vsem;

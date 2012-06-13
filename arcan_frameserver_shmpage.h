@@ -78,10 +78,10 @@ bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 void frameserver_shmpage_calcofs(struct frameserver_shmpage*, void** dstvidptr, void** dstaudptr);
 
 /* this code is repeated a little too often so sortof fits here but adds a dependency to arcan_event */
-void frameserver_shmpage_setevqs(struct frameserver_shmpage*, arcan_evctx* dstin, arcan_evctx* dstout, bool parent);
+void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_evctx*, arcan_evctx*, bool);
 
 /* (client use only) using a keyname, setup shmpage (with eventqueues etc.) and semaphores */
-struct frameserver_shmcont frameserver_getshm(const char* shmkey);
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink);
 
 /* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
 bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
