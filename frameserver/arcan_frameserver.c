@@ -30,8 +30,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <signal.h>
-
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -39,48 +37,17 @@
 #include "arcan_frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_libretro.h"
-
-#define VID_FD 3
-#define AUD_FD 4
-#define CTRL_FD 5
-
 #include "arcan_frameserver_decode.h"
 
 FILE* logdev = NULL;
 
+/* arcan_general functions assumes these are valid for searchpaths etc.
+ * since we want to use some of those functions, we need a linkerhack or two */
 char* arcan_themepath = "";
 char* arcan_resourcepath = "";
 char* arcan_themename = "";
 char* arcan_binpath = "";
 char *arcan_libpath = "";
-
-/* based on the idea that init inherits an orphaned process */
-static inline bool parent_alive()
-{
-	return getppid() != 1;
-}
-
-/* need the timeout to avoid a deadlock situation */
-int frameserver_semcheck(sem_handle semaphore, int timeout){
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
-	int rc;
-	int timeleft = timeout;	
-
-/* infinite wait, every 100ms or so, check if parent is still alive */	
-	if (timeout == -1)
-		while(true){
-		rc = arcan_sem_timedwait(semaphore, 100);
-		if (rc == 0)
-			return 0;
-
-		if (!parent_alive()){
-			LOG("arcan_frameserver() -- parent died, aborting.\n");
-			exit(1);
-		}
-	} else {
-		return arcan_sem_timedwait(semaphore, timeout);
-	}	
-}
 
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 {
@@ -110,82 +77,13 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 	return buf;
 }
 
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq){
-/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
-	struct frameserver_shmcont res = {0};
-	
-	unsigned bufsize = MAX_SHMSIZE;
-	int fd = shm_open(shmkey, O_RDWR, 0700);
-
-	if (-1 == fd) {
-		LOG("arcan_frameserver(getshm) -- couldn't open keyfile (%s)\n", shmkey);
-		return res;
-	}
-
-	/* map up the shared key- file */
-	res.addr = (struct frameserver_shmpage*) mmap(NULL,
-		bufsize,
-		PROT_READ | PROT_WRITE,
-		MAP_SHARED,
-		fd,
-	0);
-	
-	close(fd);
-	shm_unlink(shmkey);
-	
-	if (res.addr == MAP_FAILED){
-		LOG("arcan_frameserver(getshm) -- couldn't map keyfile (%s)\n", shmkey);
-		return res;
-	}
-
-/* step 2, semaphore handles */
-	char* work = strdup(shmkey);
-	work[strlen(work) - 1] = 'v';
-	res.vsem = sem_open(work, 0);
-	sem_unlink(work);
-	
-	work[strlen(work) - 1] = 'a';
-	res.asem = sem_open(work, 0);
-	sem_unlink(work);
-	
-	work[strlen(work) - 1] = 'e';
-	res.esem = sem_open(work, 0);	
-	sem_unlink(work);
-	free(work);
-	
-	if (res.asem == 0x0 ||
-		res.esem == 0x0 ||
-		res.vsem == 0x0 ){
-		LOG("arcan_frameserver(getshm) -- couldn't map semaphores (basekey: %s), giving up.\n", shmkey);
-		return res;  
-	}
-
-/* step 2, buffer all set-up, map it to the addr structure */
-	res.addr->w = width;
-	res.addr->h = height;
-	res.addr->bpp = bpp;
-	res.addr->vready = false;
-	res.addr->aready = false;
-	res.addr->vbufofs = sizeof(struct frameserver_shmpage);
-	res.addr->channels = nchan;
-	res.addr->frequency = freq;
-
-/* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
-	res.addr->abufofs = res.addr->vbufofs + (res.addr->w* res.addr->h* res.addr->bpp);
-	res.addr->abufbase = 0;
-
-	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
-
-	return res;
-}
-
 /* linker hack */
 void arcan_frameserver_free(void* dontuse){}
 
 /* Stream-server is used as a 'reverse' movie mode,
  * i.e. it is the frameserver that reads from the shmpage,
  * feeding whatever comes to ffmpeg */
-void mode_streamserv(char* resource, char* keyfile)
+static void mode_streamserv(char* resource, char* keyfile)
 {
 	/* incomplete, first version should just take
 	 * a vid (so buffercopy or readback) or an aggregate (render vids to fbo, readback fbo)
@@ -195,6 +93,55 @@ void mode_streamserv(char* resource, char* keyfile)
 	 */
 }
 
+#ifdef _DEBUG
+static void arcan_simulator(struct frameserver_shmcont* shm){
+	arcan_evctx inevq, outevq;
+	frameserver_shmpage_setevqs(shm->addr, &inevq, &outevq, true /*parent*/ );
+
+	while( getppid() != 1 ){
+		if (shm->addr->vready){
+			shm->addr->vready = false;
+			sem_post(shm->vsem);
+		}
+		
+		if (shm->addr->aready){
+			sem_wait(shm->asem);
+			shm->addr->aready = false;
+			sem_post(shm->asem);
+		}
+		
+		while ( arcan_event_poll( &inevq ) != NULL );
+	}
+}
+
+static char* launch_debugparent()
+{
+	pthread_t* thread;
+	int shmfd = 0;
+	struct frameserver_shmcont cont;
+
+/* prealloc shmpage */
+	char* key = arcan_findshmkey(&shmfd, true);
+	if (!key)
+		return NULL;
+	ftruncate(shmfd, MAX_SHMSIZE);
+
+/* set the size, fork a child (mimicking frameserver parent behavior)
+ * now we can break / step the frameserver with correct synching behavior
+ * without the complexity of the main program */
+
+	if ( fork() == 0){
+		struct frameserver_shmcont cont = frameserver_getshm(key);
+		if (cont.addr)
+			arcan_simulator(&cont);
+
+		shm_unlink(key);
+		exit(1);
+	}
+	else 
+		return key;
+}
+#endif
 
 /* args accepted;
  * fname
@@ -215,13 +162,26 @@ void mode_streamserv(char* resource, char* keyfile)
 		return 1;
 	}
 
+/* to ease debugging, allow the frameserver to be launched without a parent of we 
+ * pass debug: to modestr, so setup shmpage, fork a lightweight parent, ..*/
+#ifdef _DEBUG
+	char* modeprefix = NULL;
+	char* splitp = strchr(fsrvmode, ':');
+	if (splitp){
+		*splitp = '\0';
+		modeprefix = fsrvmode;
+		fsrvmode = splitp+1;
+		
+		if (strcmp(modeprefix, "debug") == 0){
+			keyfile = launch_debugparent();
+		}
+	}
+#endif
 /*
 	close(0);
 	close(1);
 	close(2);
 */
-	LOG("frameserver with %s\n", fsrvmode);
-
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	

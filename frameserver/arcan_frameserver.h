@@ -30,16 +30,7 @@ extern FILE* logdev;
  * this will forcibly exit should any error other than timeout occur.*/
 int frameserver_semcheck(sem_handle semaphore, int timeout);
 
-/* setup a named memory / semaphore mapping with the server */
-struct frameserver_shmcont{
-	struct frameserver_shmpage* addr;
-	sem_handle vsem;
-	sem_handle asem;
-	sem_handle esem;
-};
-
 /* to get rid of a few POSIX calls in libretro implementation */
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
 
 #endif

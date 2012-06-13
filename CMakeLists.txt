@@ -149,6 +149,7 @@ set (
  arcan_db.h
  arcan_shdrmgmt.h
  arcan_frameserver_shmpage.h
+ arcan_frameserver_shmpage.c
 ) 
 
 set (
@@ -158,6 +159,7 @@ set (
  frameserver/arcan_frameserver_libretro.h
  frameserver/arcan_frameserver_libretro.c
  arcan_frameserver_shmpage.h
+ arcan_frameserver_shmpage.c
  arcan_general.c
  arcan_event.c
 )

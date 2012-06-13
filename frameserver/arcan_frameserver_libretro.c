@@ -64,20 +64,16 @@ static struct {
 		double lastframe, fps;
 	
 		int16_t* audbuf; /* audio buffer for retro- targets that supply samples one call at a time */
-		unsigned audbuf_nsamples; 
-		void* framebuffer;
-
-		size_t audbuf_used;
-
-		sem_handle async;
-		sem_handle vsync;
-		sem_handle esync;
+		unsigned audbuf_nsamples;
 		
-		struct frameserver_shmpage* shared;
+		struct frameserver_shmcont shmcont;
+		void* vidp, (* audp);
 		
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
-	
+
+		size_t audbuf_used;
+
 		struct retro_system_info sysinfo;
 		struct retro_game_info gameinfo;
 		unsigned state_size;
@@ -121,15 +117,15 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
-	if (width != retroctx.shared->w || height != retroctx.shared->h){
-		retroctx.shared->w = width;
-		retroctx.shared->h = height;
-		retroctx.shared->resized = true;
-		LOG("arcan_frameserver(libretro) -- resize to %d, %d\n", retroctx.shared->w, retroctx.shared->h);
+	if (width != retroctx.shmcont.addr->w || height != retroctx.shmcont.addr->h){
+		retroctx.shmcont.addr->w = width;
+		retroctx.shmcont.addr->h = height;
+		retroctx.shmcont.addr->resized = true;
+		LOG("arcan_frameserver(libretro) -- resize to %d, %d\n", retroctx.shmcont.addr->w, retroctx.shmcont.addr->h);
 	}
 	
 	uint16_t* buf  = (uint16_t*) data; /* assumes alignment */
-	uint32_t* dbuf = retroctx.framebuffer;
+	uint32_t* dbuf = retroctx.vidp;
 
 /* RGB1555 to RGBA */
 	for (int y = 0; y < height; y++){
@@ -339,32 +335,32 @@ LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_
 		for (unsigned i = 0; i < retroctx.audbuf_nsamples; i++)
 			retroctx.audbuf[i] = 0xaded;
 		
-		struct frameserver_shmcont cont = frameserver_getshm(keyfile, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate);
-		retroctx.shared = cont.addr;
-		retroctx.vsync = cont.vsem;
-		retroctx.async = cont.asem;
-		retroctx.esync = cont.esem;
-		frameserver_semcheck(cont.vsem, -1);
-		retroctx.framebuffer = (void*) cont.addr + sizeof(struct frameserver_shmpage);
+		retroctx.shmcont = frameserver_getshm(keyfile);
+		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 		
-		retroctx.inevq.synch.external.shared = retroctx.esync;
+		if (!frameserver_shmpage_resize(&retroctx.shmcont, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate)){
+			return;
+		}
+		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
+		
+		frameserver_semcheck(retroctx.shmcont.vsem, -1);
+		
+		retroctx.inevq.synch.external.shared = retroctx.shmcont.esem;
 		retroctx.inevq.synch.external.killswitch = NULL; 
 		retroctx.inevq.local = false;
-		retroctx.inevq.eventbuf = retroctx.shared->childdevq.evqueue;
-		retroctx.inevq.front = &retroctx.shared->childdevq.front;
-		retroctx.inevq.back  = &retroctx.shared->childdevq.back;
-		retroctx.inevq.n_eventbuf = sizeof(retroctx.shared->childdevq.evqueue) / sizeof(arcan_event);
+		retroctx.inevq.eventbuf = retroctx.shmcont.addr->childdevq.evqueue;
+		retroctx.inevq.front = &shared->childdevq.front;
+		retroctx.inevq.back  = &shared->childdevq.back;
+		retroctx.inevq.n_eventbuf = sizeof(shared->childdevq.evqueue) / sizeof(arcan_event);
 	
-		retroctx.outevq.synch.external.shared = retroctx.esync;
+		retroctx.outevq.synch.external.shared = retroctx.shmcont.esem;
 		retroctx.outevq.synch.external.killswitch = NULL;
 		retroctx.outevq.local =false;
-		retroctx.outevq.eventbuf = retroctx.shared->parentdevq.evqueue;
-		retroctx.outevq.front = &retroctx.shared->parentdevq.front;
-		retroctx.outevq.back  = &retroctx.shared->parentdevq.back;
-		retroctx.outevq.n_eventbuf = sizeof(retroctx.shared->parentdevq.evqueue) / sizeof(arcan_event);
+		retroctx.outevq.eventbuf = shared->parentdevq.evqueue;
+		retroctx.outevq.front = &shared->parentdevq.front;
+		retroctx.outevq.back  = &shared->parentdevq.back;
+		retroctx.outevq.n_eventbuf = sizeof(shared->parentdevq.evqueue) / sizeof(arcan_event);
 
-		retroctx.shared->resized = true;
-		
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
 		retroctx.reset();
@@ -381,20 +377,20 @@ LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_
  * but cap, warn about the overflow and drop */
 
 /* these are a bit redundant, fix in next refactor */
-			retroctx.shared->vready = true;
+			retroctx.shmcont.addr->vready = true;
 			
 /* LOCK audio */
-			frameserver_semcheck( retroctx.async, -1);
+			frameserver_semcheck( retroctx.shmcont.asem, -1);
 		
 		/* other buffer is in number of samples, dst is in number of bytes */
-			retroctx.shared->abufused = sizeof(int16_t) * retroctx.audbuf_used;
-			memcpy( ((void*)retroctx.shared) + retroctx.shared->abufofs, retroctx.audbuf, retroctx.shared->abufused);
+			shared->abufused = sizeof(int16_t) * retroctx.audbuf_used;
+			memcpy( retroctx.audp, retroctx.audbuf, shared->abufused);
 			retroctx.audbuf_used = 0;
-			retroctx.shared->aready = true;
-			arcan_sem_post( retroctx.async );
+			shared->aready = true;
+			arcan_sem_post( retroctx.shmcont.asem );
 		
 		/* Video is already copied, wait for frameserver to pick it up */
-			frameserver_semcheck( retroctx.vsync, -1);
+			frameserver_semcheck( retroctx.shmcont.vsem, -1);
 		}
 	}
 }
