@@ -150,7 +150,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	int shmfd = 0;
 	
 	ctx->shm.key = arcan_findshmkey(&shmfd, true);
-
+	
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
 	ftruncate(shmfd, shmsize);
@@ -214,23 +214,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
-		ctx->inqueue.local = false;
-		ctx->inqueue.synch.external.shared = ctx->esync;
+		frameserver_shmpage_setevqs( shmpage, ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
 		ctx->inqueue.synch.external.killswitch = ctx;
-		ctx->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
-		ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
-		ctx->inqueue.front = &(shmpage->parentdevq.front);
-		ctx->inqueue.back = &(shmpage->parentdevq.back);
-		ctx->desc.ready = true;
-		
-		ctx->outqueue.local = false;
-		ctx->outqueue.synch.external.shared = ctx->esync;
 		ctx->outqueue.synch.external.killswitch = ctx;
-		ctx->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
-		ctx->outqueue.eventbuf = shmpage->childdevq.evqueue;
-		ctx->outqueue.front = &(shmpage->childdevq.front);
-		ctx->outqueue.back = &(shmpage->childdevq.back);
-		ctx->desc.ready = true;
 	}
 	else if (child == 0) {
 		if (setup.use_builtin){

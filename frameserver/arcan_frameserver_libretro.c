@@ -335,31 +335,15 @@ LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_
 		for (unsigned i = 0; i < retroctx.audbuf_nsamples; i++)
 			retroctx.audbuf[i] = 0xaded;
 		
-		retroctx.shmcont = frameserver_getshm(keyfile);
+		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 		
 		if (!frameserver_shmpage_resize(&retroctx.shmcont, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate)){
 			return;
 		}
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
-		
+		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false); 
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
-		
-		retroctx.inevq.synch.external.shared = retroctx.shmcont.esem;
-		retroctx.inevq.synch.external.killswitch = NULL; 
-		retroctx.inevq.local = false;
-		retroctx.inevq.eventbuf = retroctx.shmcont.addr->childdevq.evqueue;
-		retroctx.inevq.front = &shared->childdevq.front;
-		retroctx.inevq.back  = &shared->childdevq.back;
-		retroctx.inevq.n_eventbuf = sizeof(shared->childdevq.evqueue) / sizeof(arcan_event);
-	
-		retroctx.outevq.synch.external.shared = retroctx.shmcont.esem;
-		retroctx.outevq.synch.external.killswitch = NULL;
-		retroctx.outevq.local =false;
-		retroctx.outevq.eventbuf = shared->parentdevq.evqueue;
-		retroctx.outevq.front = &shared->parentdevq.front;
-		retroctx.outevq.back  = &shared->parentdevq.back;
-		retroctx.outevq.n_eventbuf = sizeof(shared->parentdevq.evqueue) / sizeof(arcan_event);
 
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
@@ -382,7 +366,7 @@ LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_
 /* LOCK audio */
 			frameserver_semcheck( retroctx.shmcont.asem, -1);
 		
-		/* other buffer is in number of samples, dst is in number of bytes */
+/* other buffer is in number of samples, dst is in number of bytes */
 			shared->abufused = sizeof(int16_t) * retroctx.audbuf_used;
 			memcpy( retroctx.audp, retroctx.audbuf, shared->abufused);
 			retroctx.audbuf_used = 0;

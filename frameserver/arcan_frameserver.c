@@ -96,7 +96,7 @@ static void mode_streamserv(char* resource, char* keyfile)
 #ifdef _DEBUG
 static void arcan_simulator(struct frameserver_shmcont* shm){
 	arcan_evctx inevq, outevq;
-	frameserver_shmpage_setevqs(shm->addr, &inevq, &outevq, true /*parent*/ );
+	frameserver_shmpage_setevqs(shm->addr, shm->esem, &inevq, &outevq, true /*parent*/ );
 
 	while( getppid() != 1 ){
 		if (shm->addr->vready){
@@ -110,36 +110,48 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 			sem_post(shm->asem);
 		}
 		
-		while ( arcan_event_poll( &inevq ) != NULL );
+		unsigned evc = 0;		
+		while ( arcan_event_poll( &inevq ) != NULL ) evc++;
+
+/* if nothing has happened, the frameserver is probably not set up right yet, sleep a little */
+		struct timespec tv = {.tv_sec = 0, .tv_nsec = 10000000L};
+		if (!(shm->addr->vready || shm->addr->aready || evc > 0))
+			nanosleep(&tv, NULL);
 	}
 }
 
 static char* launch_debugparent()
 {
 	pthread_t* thread;
-	int shmfd = 0;
+	int shmfd = -1;
 	struct frameserver_shmcont cont;
 
 /* prealloc shmpage */
 	char* key = arcan_findshmkey(&shmfd, true);
 	if (!key)
 		return NULL;
+	
 	ftruncate(shmfd, MAX_SHMSIZE);
 
 /* set the size, fork a child (mimicking frameserver parent behavior)
  * now we can break / step the frameserver with correct synching behavior
  * without the complexity of the main program */
 
+	return key;
+	
 	if ( fork() == 0){
-		struct frameserver_shmcont cont = frameserver_getshm(key);
+		struct frameserver_shmcont cont = frameserver_getshm(key, false);
+
 		if (cont.addr)
 			arcan_simulator(&cont);
 
-		shm_unlink(key);
+		arcan_warning("frameserver_debugparent() -- shutting down.\n");
 		exit(1);
 	}
-	else 
+	else{
+		sleep(1); /* make sure the parent has been able to setup keys by now so we can unlink */
 		return key;
+	}
 }
 #endif
 
@@ -158,7 +170,12 @@ static char* launch_debugparent()
 	
 	logdev = stderr;
 	if (argc != 4 || !resource || !keyfile || !fsrvmode){
-		LOG("arcan_frameserver(), invalid arguments in exec()\n");
+#ifdef _DEBUG
+		printf("arcan_frameserver(debug) resource keyfile fsrvmode\n");
+#else
+		printf(stdout, "arcan_frameserver - Invalid arguments (shouldn't be launched from the commandline).\n");
+#endif
+
 		return 1;
 	}
 
@@ -174,6 +191,10 @@ static char* launch_debugparent()
 		
 		if (strcmp(modeprefix, "debug") == 0){
 			keyfile = launch_debugparent();
+			if (keyfile)
+				arcan_warning("frameserver_debug() -- mapped to %s\n", keyfile);
+			else
+				arcan_fatal("frameserver_debug() -- couldn't get shmkey\n");
 		}
 	}
 #endif
