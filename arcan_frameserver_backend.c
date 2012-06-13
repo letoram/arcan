@@ -92,7 +92,6 @@ void arcan_frameserver_dropsemaphores_keyed(char* key)
 	free(work);	
 }
 
-
 void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 	if (src && src->shm.key && src->shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
@@ -185,16 +184,13 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 					assert(bpp == shmpage->bpp);
 					
 					for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
-						memcpy(buf + (row * width * bpp),
-						       ((void*)shmpage + shmpage->vbufofs) + (row * shmpage->w * shmpage->bpp),
-						       cpy_width * bpp
-						);
+						memcpy(buf + (row * width * bpp), tgt->vidp, cpy_width * bpp);
 						
 					rv = FFUNC_RV_COPIED; 
 			}
 			else {  /* need to reduce all those copies if at all possible .. */
 				glBindTexture(GL_TEXTURE_2D, mode);
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*)shmpage + shmpage->vbufofs);
+				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*) tgt->vidp);
 
 				rv = FFUNC_RV_NOUPLOAD;
 			}
@@ -305,7 +301,7 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 	if (shmpage->abufused > 0 && arcan_sem_timedwait(src->async, 0) == 0 ){
-		alBufferData(buffer, AL_FORMAT_STEREO16, (void*)shmpage + shmpage->abufofs, shmpage->abufused, src->desc.samplerate);
+		alBufferData(buffer, AL_FORMAT_STEREO16, src->audp, shmpage->abufused, src->desc.samplerate);
 		rv = ARCAN_OK;
 	
 		shmpage->abufused = 0;
@@ -360,13 +356,19 @@ static arcan_errc again_feed(float gain, void* tag)
 	return ARCAN_OK;
 }
 
+static void suspect_frameserver(arcan_frameserver* srv){
+	arcan_fatal("Frameserver inconsistency, terminating.\n");
+}
+
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 /* may happen multiple- times */
-		if (shmpage->resized){
+		if (shmpage->resized && (frameserver_shmpage_integrity_check(shmpage) || (suspect_frameserver(src),true) ) ){
+			frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
+			
 			arcan_warning("trace, resize event: %d, %d\n", shmpage->w, shmpage->h);
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
 			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
@@ -414,6 +416,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 				src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
 				src->audioclock = 0.0;
 				
+/* just to get some kind of trace when threading acts up */
 				char labelbuf[32];
 				snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
 				arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
@@ -510,7 +513,7 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 			if (shm->vready) {
                 frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
                 current->tag = shm->vdts;
-				memcpy(dst, (void*)shm + shm->vbufofs, ntr);
+				memcpy(dst, movie->vidp, ntr);
 				shm->vready = false;
 				rv = ntr;
 				arcan_sem_post(movie->vsync);
@@ -538,13 +541,13 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
                 current->tag = shm->vdts;
 
 				if (shm->abufused - shm->abufbase > ntr) {
-					memcpy(dst, (void*) shm + shm->abufofs + shm->abufbase, ntr);
+					memcpy(dst, movie->audp, ntr);
 					shm->abufbase += ntr;
 					rv = ntr;
 				}
 				else {
 					size_t nc = shm->abufused - shm->abufbase;
-					memcpy(dst, (void*) shm + shm->abufofs + shm->abufbase, nc);
+					memcpy(dst, movie->audp, nc);
 					shm->abufbase = 0;
 					shm->aready = false;
 					arcan_sem_post(movie->async);

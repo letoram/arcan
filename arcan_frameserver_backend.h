@@ -104,6 +104,9 @@ typedef struct {
 	process_handle child;
 	bool child_alive;
 
+/* precalc offsets into mapped shmpage, calculated at resize */
+	void* vidp, (* audp);
+
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
 } arcan_frameserver;

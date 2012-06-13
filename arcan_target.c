@@ -1,96 +1,98 @@
-	/* Arcan-fe, scriptable front-end engine
-	 *
-	 * Arcan-fe is the legal, property of its developers, please refer
-	 * to the COPYRIGHT file distributed with this source distribution.
-	 *
-	 * This program is free software; you can redistribute it and/or
-	 * modify it under the terms of the GNU General Public License
-	 * as published by the Free Software Foundation; either version 2
-	 * of the License, or (at your option) any later version.
+/* Arcan-fe, scriptable front-end engine
+ *
+ * Arcan-fe is the legal, property of its developers, please refer
+ * to the COPYRIGHT file distributed with this source distribution.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
 
-	 * This program is distributed in the hope that it will be useful,
-	 * but WITHOUT ANY WARRANTY; without even the implied warranty of
-	 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	 * GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
 
-	 * You should have received a copy of the GNU General Public License
-	 * along with this program; if not, write to the Free Software
-	 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-	 *
-	 */
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ *
+*/
 
-	#include <stdio.h>
-	#include <stdlib.h>
-	#include <unistd.h>
-	#include <fcntl.h>
-	#include <poll.h>
-	#include <math.h>
-	#include <stdbool.h>
-	#include <ulimit.h>
-	#include <limits.h>
-	#include <string.h>
-	#include <sys/mman.h>
-	#include <errno.h>
-	#include <poll.h>
-	#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <math.h>
+#include <stdbool.h>
+#include <ulimit.h>
+#include <limits.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <errno.h>
+#include <poll.h>
+#include <signal.h>
 
-	#define GL_GLEXT_PROTOTYPES 1
-	#define clamp(a,min,max) (((a)>(max))?(max):(((a)<(min))?(min):(a)))
+#define GL_GLEXT_PROTOTYPES 1
+#define clamp(a,min,max) (((a)>(max))?(max):(((a)<(min))?(min):(a)))
 
-	#include <SDL/SDL.h>
-	#include <SDL/SDL_opengl.h>
-	#include <SDL/SDL.h>
+#include <SDL/SDL.h>
+#include <SDL/SDL_opengl.h>
+#include <SDL/SDL.h>
 
-	#include "arcan_math.h"
-	#include "arcan_general.h"
-	#include "arcan_event.h"
-	#include "arcan_target_const.h"
-	#include "arcan_frameserver_shmpage.h"
+#include "arcan_math.h"
+#include "arcan_general.h"
+#include "arcan_event.h"
+#include "arcan_target_const.h"
+#include "arcan_frameserver_shmpage.h"
 
-	static struct {
-			void (*sdl_swapbuffers)(void);
-			SDL_Surface* (*sdl_setvideomode)(int, int, int, Uint32);
-			int (*sdl_pollevent)(SDL_Event*);
-			int (*sdl_pushevent)(SDL_Event*);
-			int (*sdl_peepevents)(SDL_Event*, int, SDL_eventaction, Uint32);
-			int (*sdl_openaudio)(SDL_AudioSpec*, SDL_AudioSpec*);
-			SDL_GrabMode (*sdl_grabinput)(SDL_GrabMode);
-			int (*sdl_iconify)(void);
-			void (*sdl_updaterect)(SDL_Surface*, Sint32, Sint32, Uint32, Uint32);
-			void (*sdl_updaterects)(SDL_Surface*, int, SDL_Rect*);
-			int (*sdl_upperblit)(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect);
-			int (*sdl_flip)(SDL_Surface*);
-			SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int, int, Uint32, Uint32, Uint32, Uint32);
-			int (*audioproxy)(int, int);
-	} forwardtbl = {0};
+static struct {
+	void (*sdl_swapbuffers)(void);
+	SDL_Surface* (*sdl_setvideomode)(int, int, int, Uint32);
+	int (*sdl_pollevent)(SDL_Event*);
+	int (*sdl_pushevent)(SDL_Event*);
+	int (*sdl_peepevents)(SDL_Event*, int, SDL_eventaction, Uint32);
+	int (*sdl_openaudio)(SDL_AudioSpec*, SDL_AudioSpec*);
+	SDL_GrabMode (*sdl_grabinput)(SDL_GrabMode);
+	int (*sdl_iconify)(void);
+	void (*sdl_updaterect)(SDL_Surface*, Sint32, Sint32, Uint32, Uint32);
+	void (*sdl_updaterects)(SDL_Surface*, int, SDL_Rect*);
+	int (*sdl_upperblit)(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect);
+	int (*sdl_flip)(SDL_Surface*);
+	SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int, int, Uint32, Uint32, Uint32, Uint32);
+	int (*audioproxy)(int, int);
+} forwardtbl = {0};
 
-	static struct {
-	/* audio */
-		float attenuation;
-		uint16_t frequency;
-		uint8_t channels;
-		uint16_t format;
+static struct {
+/* audio */
+	float attenuation;
+	uint16_t frequency;
+	uint8_t channels;
+	uint16_t format;
 		
-		int lastmx;
-		int lastmy;
+	int lastmx;
+	int lastmy;
+	
+	uint8_t* buf;
+	bool doublebuffered;
+	SDL_Surface* mainsrfc;
+	SDL_PixelFormat desfmt;
 		
-		uint8_t* buf;
-		bool doublebuffered;
-		SDL_Surface* mainsrfc;
-		SDL_PixelFormat desfmt;
+	SDL_MouseMotionEvent mousestate;
+	uint8_t mousebutton;
 		
-		SDL_MouseMotionEvent mousestate;
-		uint8_t mousebutton;
+	char* shmkey;
 		
-		char* shmkey;
+	sem_handle vsync;
+	sem_handle async;
+	sem_handle esync;
 		
-		sem_handle vsync;
-		sem_handle async;
-		sem_handle esync;
+	struct arcan_evctx inevq, outevq;
 		
-		struct arcan_evctx inevq, outevq;
+	struct frameserver_shmpage* shared;
+	void* vidp, (* audp);
 		
-		struct frameserver_shmpage* shared;
 	} global = {
 		.desfmt = {
 			.BitsPerPixel = 32,
@@ -109,41 +111,42 @@
 		}
 	};
 
-	/* lots of funky little details when it comes to video,
-	 * there may be multiple calls to video init (resizing windows etc.)
-	 * which subsequently leads to a synch in buffer sizes on both this side and
-	 * on the controlling node, which may, depending on transfer mode, require a re-allocation
-	 * of shared memory pages etc. Some of the conversions are done simply 
-	 * to have the option of getting rid of SDL entirely in favor of a GL- only solution */
+/* lots of funky little details when it comes to video,
+ * there may be multiple calls to video init (resizing windows etc.)
+ * which subsequently leads to a synch in buffer sizes on both this side and
+ * on the controlling node, which may, depending on transfer mode, require a re-allocation
+ * of shared memory pages etc. Some of the conversions are done simply 
+ * to have the option of getting rid of SDL entirely in favor of a GL- only solution 
+*/
 
-	/*
-	 * audio on the other hand,
-	 * we have several mixer options for hijacking, OR the more raw layers of SDL.
-	 * a viable option is to have a "light" and a "heavy" hijack mode for audio,
-	 * where light simply translated control commands (changing gain) and mapping
-	 * to corresponding SDL gain changes. This can be done with the control channel.
-	 * we might also need target- specific hijacks, thus these little dylibs
-	 * should be tossed in a folder of their own and force name to match their
-	 * respective target.
-	 */
+/*
+ * audio on the other hand,
+ * we have several mixer options for hijacking, OR the more raw layers of SDL.
+ * a viable option is to have a "light" and a "heavy" hijack mode for audio,
+ * where light simply translated control commands (changing gain) and mapping
+ * to corresponding SDL gain changes. This can be done with the control channel.
+ * we might also need target- specific hijacks, thus these little dylibs
+ * should be tossed in a folder of their own and force name to match their
+ * respective target.
+*/
 
-	static void(*acbfun)(void*, uint8_t*, int) = NULL;
-	static void audiocb(void *userdata, uint8_t *stream, int len)
-	{
-		if (acbfun) {
-			acbfun(userdata, stream, len);
-			/* hi-jacked the audio data,
-			 * we can either force it out through the afd, or modify it in place here */
+static void(*acbfun)(void*, uint8_t*, int) = NULL;
+static void audiocb(void *userdata, uint8_t *stream, int len)
+{
+	if (acbfun) {
+		acbfun(userdata, stream, len);
+		/* hi-jacked the audio data,
+		 * we can either force it out through the afd, or modify it in place here */
 
-			int16_t* samples = (int16_t*)stream;
+		int16_t* samples = (int16_t*)stream;
 
-			len /= 2;
-			for (; len; len--, samples++) {
-				int vl = *samples * (int)(255.0 * global.attenuation) >> 8;
-				*samples = clamp(vl, SHRT_MIN, SHRT_MAX);
-			}
+		len /= 2;
+		for (; len; len--, samples++) {
+			int vl = *samples * (int)(255.0 * global.attenuation) >> 8;
+			*samples = clamp(vl, SHRT_MIN, SHRT_MAX);
 		}
 	}
+}
 
 static void cleanup_shared(char* shmkey){
 	if (NULL == shmkey) 
@@ -192,83 +195,82 @@ int arcan_sem_timedwait(sem_handle semaphore, int mstimeout){
 	return rv;
 }
 
-	SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
-	{
-		static SDL_GrabMode requested_mode = SDL_GRAB_OFF;
+SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
+{
+	static SDL_GrabMode requested_mode = SDL_GRAB_OFF;
 
-	/* blatantly lie about being able to grab input */
-		if (mode != SDL_GRAB_QUERY)
-			requested_mode = mode;
+/* blatantly lie about being able to grab input */
+	if (mode != SDL_GRAB_QUERY)
+		requested_mode = mode;
 
-		return requested_mode;
+	return requested_mode;
+}
+
+void ARCAN_target_init(){
+	global.shmkey = getenv("ARCAN_SHMKEY");
+	char* shmsize = getenv("ARCAN_SHMSIZE");
+
+	unsigned bufsize = strtoul(shmsize, NULL, 10);
+
+	if (errno == ERANGE || errno == EINVAL){
+		fprintf(stderr, "ARCAN Hijack: Bad value in ENV[ARCAN_SHMSIZE]\n");
+		exit(1);
 	}
-
-	void ARCAN_target_init(){
-		global.shmkey = getenv("ARCAN_SHMKEY");
-		char* shmsize = getenv("ARCAN_SHMSIZE");
-
-		unsigned bufsize = strtoul(shmsize, NULL, 10);
-
-		if (errno == ERANGE || errno == EINVAL){
-			fprintf(stderr, "ARCAN Hijack: Bad value in ENV[ARCAN_SHMSIZE]\n");
-			exit(1);
-		}
-		
-		int fd = shm_open(global.shmkey, O_RDWR, 0700);
-		if (-1 == fd) {
-			fprintf(stderr, "ARCAN Hijack: Couldn't open shmkey (%s)\n", global.shmkey);
-			exit(1);		
-		}
-
-		/* map up the shared key- file */
-		char* buf = (char*) mmap(NULL,
-								bufsize,
-								PROT_READ | PROT_WRITE,
-								MAP_SHARED,
-								fd,
-								0);
-		
-		if (buf == MAP_FAILED){
-			fprintf(stderr, "ARCAN Hijack: Couldn't map shared memory from (%s)\n", global.shmkey);
-			close(fd);
-			exit(1);
-		}
-		
-		global.shared = (struct frameserver_shmpage*) buf;
-		global.shared->w = 32;
-		global.shared->h = 32;
-		global.shared->bpp = 4;
-		global.shared->vready = false;
-		global.shared->vbufofs = sizeof(struct frameserver_shmpage);
-		
-		global.shared->resized = false;
-
-		char* semkey = strdup(global.shmkey);
-		semkey[ strlen(global.shmkey) - 1 ] = 'v';
-		global.vsync = sem_open(semkey, 0);
-
-		semkey[ strlen(global.shmkey) - 1 ] = 'a';
-		global.async = sem_open(semkey, 0);
-		
-		semkey[ strlen(global.shmkey) - 1 ] = 'e';
-		global.esync = sem_open(semkey, 0);
-		 
-		global.inevq.synch.external.shared = global.esync;
-		global.inevq.synch.external.killswitch = NULL; 
-		global.inevq.local = false;
-		global.inevq.eventbuf = global.shared->childdevq.evqueue;
-		global.inevq.front = &global.shared->childdevq.front;
-		global.inevq.back  = &global.shared->childdevq.back;
-		global.inevq.n_eventbuf = sizeof(global.shared->childdevq.evqueue) / sizeof(arcan_event);
 	
-		global.outevq.synch.external.shared = global.esync;
-		global.outevq.synch.external.killswitch = NULL;
-		global.outevq.local =false;
-		global.outevq.eventbuf = global.shared->parentdevq.evqueue;
-		global.outevq.front = &global.shared->parentdevq.front;
-		global.outevq.back  = &global.shared->parentdevq.back;
-		global.outevq.n_eventbuf = sizeof(global.shared->parentdevq.evqueue) / sizeof(arcan_event);
+	int fd = shm_open(global.shmkey, O_RDWR, 0700);
+	if (-1 == fd) {
+		fprintf(stderr, "ARCAN Hijack: Couldn't open shmkey (%s)\n", global.shmkey);
+		exit(1);		
 	}
+
+/* map up the shared key- file */
+	char* buf = (char*) mmap(NULL,
+		bufsize,
+		PROT_READ | PROT_WRITE,
+		MAP_SHARED,
+		fd,
+	0);
+		
+	if (buf == MAP_FAILED){
+		fprintf(stderr, "ARCAN Hijack: Couldn't map shared memory from (%s)\n", global.shmkey);
+		close(fd);
+		exit(1);
+	}
+		
+	global.shared = (struct frameserver_shmpage*) buf;
+	frameserver_shmpage_resize(
+	global.shared->w = 32;
+	global.shared->h = 32;
+	global.shared->bpp = 4;
+	global.shared->vready = false;
+	global.shared->resized = false;
+
+	char* semkey = strdup(global.shmkey);
+	semkey[ strlen(global.shmkey) - 1 ] = 'v';
+	global.vsync = sem_open(semkey, 0);
+
+	semkey[ strlen(global.shmkey) - 1 ] = 'a';
+	global.async = sem_open(semkey, 0);
+		
+	semkey[ strlen(global.shmkey) - 1 ] = 'e';
+	global.esync = sem_open(semkey, 0);
+		 
+	global.inevq.synch.external.shared = global.esync;
+	global.inevq.synch.external.killswitch = NULL; 
+	global.inevq.local = false;
+	global.inevq.eventbuf = global.shared->childdevq.evqueue;
+	global.inevq.front = &global.shared->childdevq.front;
+	global.inevq.back  = &global.shared->childdevq.back;
+	global.inevq.n_eventbuf = sizeof(global.shared->childdevq.evqueue) / sizeof(arcan_event);
+	
+	global.outevq.synch.external.shared = global.esync;
+	global.outevq.synch.external.killswitch = NULL;
+	global.outevq.local =false;
+	global.outevq.eventbuf = global.shared->parentdevq.evqueue;
+	global.outevq.front = &global.shared->parentdevq.front;
+	global.outevq.back  = &global.shared->parentdevq.back;
+	global.outevq.n_eventbuf = sizeof(global.shared->parentdevq.evqueue) / sizeof(arcan_event);
+}
 
 	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	{
@@ -444,14 +446,14 @@ static void copysurface(SDL_Surface* src){
 	global.shared->glsource = false;
 	if ( cmpfmt(src->format, &global.desfmt) ){
 			SDL_LockSurface(src);
-			memcpy((char*)global.shared + global.shared->vbufofs, 
+			memcpy(global.vidp, 
 				   src->pixels, 
 				   src->w * src->h * 4);
 			SDL_UnlockSurface(src);
 	} else {
 		SDL_Surface* surf = SDL_ConvertSurface(src, &global.desfmt, SDL_SWSURFACE);
 		SDL_LockSurface(surf);
-		memcpy((char*)global.shared + global.shared->vbufofs, 
+		memcpy(global.vidp, 
 			   surf->pixels, 
 			   surf->w * surf->h * 4);
 		SDL_UnlockSurface(surf);
@@ -534,7 +536,7 @@ void ARCAN_SDL_GL_SwapBuffers()
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-	glReadPixels(0, 0, global.shared->w, global.shared->h, GL_RGBA, GL_UNSIGNED_BYTE, (char*)(global.shared) + global.shared->vbufofs); 
+	glReadPixels(0, 0, global.shared->w, global.shared->h, GL_RGBA, GL_UNSIGNED_BYTE, (char*) global.vidp); 
 	global.shared->glsource = true;
 	global.shared->vready = true;
 

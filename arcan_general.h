@@ -182,6 +182,5 @@ const char* internal_launch_support();
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
 
 /* max accepted vidres (1080p, 4bpp) + synch & structures + max audioframesize according to ffmpeg */
-#define MAX_SHMSIZE 9582916
 
 #endif

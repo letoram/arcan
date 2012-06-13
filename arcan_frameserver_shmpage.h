@@ -22,6 +22,15 @@
 #define SHMPAGE_QUEUESIZE 64
 #define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
 #define SHMPAGE_AUDIOBUF_SIZE (192000 * 3 / 2)
+#define MAX_SHMSIZE 9582916
+
+/* setup a named memory / semaphore mapping with the server */
+struct frameserver_shmcont{
+	struct frameserver_shmpage* addr;
+	sem_handle vsem;
+	sem_handle asem;
+	sem_handle esem;
+};
 
 struct frameserver_shmpage {
 	bool resized;
@@ -44,10 +53,6 @@ struct frameserver_shmpage {
 	uint16_t w, h;
 	uint8_t bpp;
 
-/* align this on a 32- bit boundary,
-	 * first 32- bits are PTS */
-	uint32_t vbufofs;
-
 /* audio */
 	volatile uint8_t aready;
 	
@@ -57,8 +62,26 @@ struct frameserver_shmpage {
 
 /* abufbase is a working buffer offset in how far parent has processed */
 	off_t abufbase;
-	
-/* abufused is how much that can actually be read from (shmpagebase + ofs) */
 	size_t abufused;
-	off_t abufofs;
 };
+
+/* note, frameserver_semcheck is hidden in arcan_frameserver_shmpage.o,
+ * this is partly to make it easier to share code between hijacklib and frameserver,
+ * while at the same time keeping it out of the frameserver routine in the main app, where
+ * that kind of shmcheck is dangerous */
+
+/* returns true of the contents of the shmpage seems sound (unless this passes,
+ * the server will likely kill or ignore the client */
+bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
+
+/* return relative offsets from shmpage as baseaddr where the vbuf and audbufs can be found */
+void frameserver_shmpage_calcofs(struct frameserver_shmpage*, void** dstvidptr, void** dstaudptr);
+
+/* this code is repeated a little too often so sortof fits here but adds a dependency to arcan_event */
+void frameserver_shmpage_setevqs(struct frameserver_shmpage*, arcan_evctx* dstin, arcan_evctx* dstout, bool parent);
+
+/* (client use only) using a keyname, setup shmpage (with eventqueues etc.) and semaphores */
+struct frameserver_shmcont frameserver_getshm(const char* shmkey);
+
+/* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
+bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);

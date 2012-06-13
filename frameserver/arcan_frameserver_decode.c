@@ -34,7 +34,7 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 			break;
 		}
 
-		memcpy(((void*) ctx->shared) + ctx->shared->abufofs, ctx->audio_buf, ntw);
+		memcpy(ctx->vidp, ctx->audio_buf, ntw);
 		ctx->shared->abufused = ntw;
 		ctx->shared->aready = true;
 
@@ -88,7 +88,7 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 
 		/* SHM-CHG-PT */
 		ctx->shared->vdts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
-		memcpy(((void*)ctx->shared) + ctx->shared->vbufofs, ctx->video_buf, ctx->c_video_buf);
+		memcpy(ctx->vidp, ctx->video_buf, ctx->c_video_buf);
 		ctx->shared->vready = true;
 		
 		frameserver_semcheck( ctx->vsync, -1);
@@ -187,8 +187,18 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
 	if (!vidctx) return;
 
-	LOG("video(%s)\n", resource);
-	struct frameserver_shmcont shms = frameserver_getshm(keyfile, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate);
+	struct frameserver_shmcont shms = frameserver_getshm(keyfile);
+	if (!frameserver_shmpage_resize(&shms, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate)){
+		arcan_fatal("arcan_frameserver_ffmpeg_run() -- setup of vid(%d x %d @ %d) aud(%d,%d) failed \n",
+			vidctx->width,
+			vidctx->height,
+			vidctx->bpp,
+			vidctx->channels,
+			vidctx->samplerate
+		);
+		return;
+	}
+	
 	vidctx->shared = shms.addr;
 	vidctx->async  = shms.asem;
 	vidctx->vsync  = shms.vsem;

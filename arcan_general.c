@@ -619,7 +619,7 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 
 static int sem_timedwaithack(sem_handle semaphore, int msecs)
 {
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; /* 1 ms */
+	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
 	
 	if (msecs == 0)
 		return sem_trywait( semaphore );
