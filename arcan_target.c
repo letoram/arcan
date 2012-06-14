@@ -218,7 +218,7 @@ void ARCAN_target_init(){
 	}
 	
 	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
-}
+	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 
 	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	{
@@ -259,6 +259,8 @@ void ARCAN_target_init(){
 			if (!frameserver_shmpage_resize(&global.shared, w, h, 4, 0, 0)){
 				arcan_fatal("arcan_hijacklib() resize failed (%d, %d)\n", w, h);	
 			}
+			
+			frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 		}
 		
 		global.mainsrfc = res;

@@ -5,12 +5,10 @@
 
 typedef struct arcan_ffmpeg_context {
 	struct frameserver_shmpage* shared;
+	struct frameserver_shmcont shmcont;
+	
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
-	
-	sem_handle async;
-	sem_handle vsync;
-	sem_handle esync;
 	
 	struct SwsContext* ccontext;
 	AVFormatContext* fcontext;
@@ -24,10 +22,9 @@ typedef struct arcan_ffmpeg_context {
 	AVFrame* pframe;
 
 	bool extcc;
-	bool loop;
 
-	int vid;
-	int aid;
+	int vid; /* selected video-stream */
+	int aid; /* Selected audio-stream */
 
 	int height;
 	int width;
