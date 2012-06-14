@@ -4,7 +4,6 @@
 #include <libswscale/swscale.h>
 
 typedef struct arcan_ffmpeg_context {
-	struct frameserver_shmpage* shared;
 	struct frameserver_shmcont shmcont;
 	
 	struct arcan_evctx inevq;

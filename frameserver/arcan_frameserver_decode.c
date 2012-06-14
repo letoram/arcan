@@ -35,10 +35,11 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 		}
 
 		memcpy(ctx->audp, ctx->audio_buf, ntw);
-		ctx->shared->abufused = ntw;
-		ctx->shared->aready = true;
+		ctx->shmcont.addr->abufused = ntw;
 
-		frameserver_semcheck( ctx->shmcont.vsem, -1 );
+/* parent will check if aready, then set to false and post */
+		ctx->shmcont.addr->aready = true;
+		frameserver_semcheck( ctx->shmcont.asem, -1);
 	}
 
 	return true;
@@ -87,10 +88,11 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 		}
 
 		/* SHM-CHG-PT */
-		ctx->shared->vdts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
+		ctx->shmcont.addr->vdts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
 		memcpy(ctx->vidp, ctx->video_buf, ctx->c_video_buf);
-		ctx->shared->vready = true;
-		
+
+/* parent will check vready, then set to false and post */
+		ctx->shmcont.addr->vready = true;
 		frameserver_semcheck( ctx->shmcont.vsem, -1);
 	}
 
@@ -189,15 +191,15 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	
 	do {
 /* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
-	frameserver_semcheck(vidctx->shmcont.asem, -1);
-	frameserver_semcheck(vidctx->shmcont.vsem, -1);
 
 		vidctx = ffmpeg_preload(resource);
 		if (!vidctx)
 			break;
 
 		vidctx->shmcont = shms;
-		
+		frameserver_semcheck(vidctx->shmcont.asem, -1);
+		frameserver_semcheck(vidctx->shmcont.vsem, -1);
+	
 		if (!frameserver_shmpage_resize(&shms, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate))
 		arcan_fatal("arcan_frameserver_ffmpeg_run() -- setup of vid(%d x %d @ %d) aud(%d,%d) failed \n",
 			vidctx->width,
@@ -209,5 +211,5 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 
 		frameserver_shmpage_calcofs(shms.addr, &(vidctx->vidp), &(vidctx->audp) );
 	
-	} while (ffmpeg_decode(vidctx) && vidctx->shared->loop);
+	} while (ffmpeg_decode(vidctx) && vidctx->shmcont.addr->loop);
 }
