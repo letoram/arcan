@@ -16,11 +16,116 @@
 #include "arcan_event.h"
 #include "arcan_frameserver_shmpage.h"
 
-/* based on the idea that init inherits an orphaned process */
+
+/* Dislike pulling stunts like this,
+ * but it saved a lot of bad codepaths */
+#if _WIN32
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
+	struct frameserver_shmcont res = {0};
+	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
+	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
+
+	if ( res.addr == NULL ) {
+		LOG("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
+		CloseHandle(shmh);
+		return res;
+	}
+
+	res.asem = async;
+	res.vsem = vsync;
+	res.esem = esync;
+	res.addr->w = width;
+	res.addr->h = height;
+	res.addr->bpp = bpp;
+	res.addr->vready = false;
+	res.addr->aready = false,
+	res.addr->vbufofs = sizeof(struct frameserver_shmpage);
+	res.addr->channels = nchan;
+	res.addr->frequency =freq;
+	res.addr->abufofs = res.addr->vbufofs + (res.addr->w * res.addr->h * res.addr->bpp);
+	parent = res.addr->parent;
+
+	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
+	return res;
+}
+#else 
+
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
+/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
+	struct frameserver_shmcont res = {0};
+	
+	unsigned bufsize = MAX_SHMSIZE;
+	int fd = -1;
+
+/* little hack to get around some implementations not accepting a shm_open on a named shm already
+ * mapped in the same process (?!) */
+	fd = shm_open(shmkey, O_RDWR, 0700);
+	
+	if (-1 == fd) {
+		arcan_warning("arcan_frameserver(getshm) -- couldn't open keyfile (%s), reason: %s\n", shmkey, strerror(errno));
+		return res;
+	}
+
+	/* map up the shared key- file */
+	res.addr = (struct frameserver_shmpage*) mmap(NULL,
+		bufsize,
+		PROT_READ | PROT_WRITE,
+		MAP_SHARED,
+		fd,
+	0);
+	
+	close(fd);
+	if (force_unlink) shm_unlink(shmkey);
+	
+	if (res.addr == MAP_FAILED){
+		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile (%s), reason: %s\n", shmkey, strerror(errno));
+		return res;
+	}
+
+/* step 2, semaphore handles */
+	char* work = strdup(shmkey);
+	work[strlen(work) - 1] = 'v';
+	res.vsem = sem_open(work, 0);
+	if (force_unlink) sem_unlink(work);
+	
+	work[strlen(work) - 1] = 'a';
+	res.asem = sem_open(work, 0);
+	if (force_unlink) sem_unlink(work);
+	
+	work[strlen(work) - 1] = 'e';
+	res.esem = sem_open(work, 0);	
+	if (force_unlink) sem_unlink(work);
+	free(work);
+	
+	if (res.asem == 0x0 ||
+		res.esem == 0x0 ||
+		res.vsem == 0x0 ){
+		arcan_warning("arcan_frameserver_shmpage(getshm) -- couldn't map semaphores (basekey: %s), giving up.\n", shmkey);
+		return res;  
+	}
+
+/* step 2, buffer all set-up, map it to the addr structure */
+	res.addr->w = 0;
+	res.addr->h = 0;
+	res.addr->bpp = 4;
+	res.addr->vready = false;
+	res.addr->aready = false;
+	res.addr->channels = 0;
+	res.addr->frequency = 0;
+
+/* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
+	res.addr->abufbase = 0;
+
+	return res;
+}
+
 static inline bool parent_alive()
 {
+/* based on the idea that init inherits an orphaned process,
+ * wouldn't surprise me if some GNUish environment would break this .. */
 	return getppid() != 1;
 }
+#endif
 
 /* need the timeout to avoid a deadlock situation */
 int frameserver_semcheck(sem_handle semaphore, int timeout){
@@ -116,71 +221,3 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 	return false;
 }
 
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
-/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
-	struct frameserver_shmcont res = {0};
-	
-	unsigned bufsize = MAX_SHMSIZE;
-	int fd = -1;
-
-/* little hack to get around some implementations not accepting a shm_open on a named shm already
- * mapped in the same process (?!) */
-	fd = shm_open(shmkey, O_RDWR, 0700);
-	
-	if (-1 == fd) {
-		arcan_warning("arcan_frameserver(getshm) -- couldn't open keyfile (%s), reason: %s\n", shmkey, strerror(errno));
-		return res;
-	}
-
-	/* map up the shared key- file */
-	res.addr = (struct frameserver_shmpage*) mmap(NULL,
-		bufsize,
-		PROT_READ | PROT_WRITE,
-		MAP_SHARED,
-		fd,
-	0);
-	
-	close(fd);
-	if (force_unlink) shm_unlink(shmkey);
-	
-	if (res.addr == MAP_FAILED){
-		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile (%s), reason: %s\n", shmkey, strerror(errno));
-		return res;
-	}
-
-/* step 2, semaphore handles */
-	char* work = strdup(shmkey);
-	work[strlen(work) - 1] = 'v';
-	res.vsem = sem_open(work, 0);
-	if (force_unlink) sem_unlink(work);
-	
-	work[strlen(work) - 1] = 'a';
-	res.asem = sem_open(work, 0);
-	if (force_unlink) sem_unlink(work);
-	
-	work[strlen(work) - 1] = 'e';
-	res.esem = sem_open(work, 0);	
-	if (force_unlink) sem_unlink(work);
-	free(work);
-	
-	if (res.asem == 0x0 ||
-		res.esem == 0x0 ||
-		res.vsem == 0x0 ){
-		arcan_warning("arcan_frameserver_shmpage(getshm) -- couldn't map semaphores (basekey: %s), giving up.\n", shmkey);
-		return res;  
-	}
-
-/* step 2, buffer all set-up, map it to the addr structure */
-	res.addr->w = 0;
-	res.addr->h = 0;
-	res.addr->bpp = 4;
-	res.addr->vready = false;
-	res.addr->aready = false;
-	res.addr->channels = 0;
-	res.addr->frequency = 0;
-
-/* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
-	res.addr->abufbase = 0;
-
-	return res;
-}

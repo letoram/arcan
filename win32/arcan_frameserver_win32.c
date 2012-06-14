@@ -58,65 +58,9 @@ static bool parent_alive()
 	return IsWindow(parent);
 }
 
-/* any unrecoverable errors will lead to an exit(),
- * add an exit handler if chances are we might lose data. */
-int frameserver_semcheck(sem_handle semaphore, int timeoutms)
-{
-	bool rv = true;
-	int rc = 0;
-
-	do {
-		rc = arcan_sem_timedwait(semaphore, timeoutms);
-
-		if (-1 == rc){
-				if (errno == EINVAL){
-					LOG("arcan_frameserver -- fatal error while waiting for semaphore (%i)\n", errno);
-					exit(1);
-				} else
-					break; /* EINTR isn't valid on win32 */
-		}
-
-/* shouldn't be needed, WaitForSingleObject should be subject to an abandoned- error 
-		if (!parent_alive())
-		{
-			LOG("arcan_frameserver -- parent died, giving up.\n");
-			exit(1); 
-		} */
-
-	} while (rc != 0);
-
-	return rc;
-}
-
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq)
 {
-	struct frameserver_shmcont res = {0};
-	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
-	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
 
-	if ( res.addr == NULL ) {
-		LOG("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
-		CloseHandle(shmh);
-		return res;
-	}
-
-	res.asem = async;
-	res.vsem = vsync;
-	res.esem = esync;
-	res.addr->w = width;
-	res.addr->h = height;
-	res.addr->bpp = bpp;
-	res.addr->vready = false;
-	res.addr->aready = false,
-	res.addr->vbufofs = sizeof(struct frameserver_shmpage);
-	res.addr->channels = nchan;
-	res.addr->frequency =freq;
-	res.addr->abufofs = res.addr->vbufofs + (res.addr->w * res.addr->h * res.addr->bpp);
-	parent = res.addr->parent;
-
-	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
-	return res;
-}
 
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 {

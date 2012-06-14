@@ -10,8 +10,8 @@
 #include "../arcan_event.h"
 
 #include "arcan_frameserver.h"
-#include "arcan_frameserver_decode.h"
 #include "../arcan_frameserver_shmpage.h"
+#include "arcan_frameserver_decode.h"
 
 static bool decode_aframe(arcan_ffmpeg_context* ctx)
 {
@@ -38,7 +38,7 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 		ctx->shared->abufused = ntw;
 		ctx->shared->aready = true;
 
-		frameserver_semcheck( ctx->async, -1 );
+		frameserver_semcheck( ctx->shmcont.vsem, -1 );
 	}
 
 	return true;
@@ -91,7 +91,7 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 		memcpy(ctx->vidp, ctx->video_buf, ctx->c_video_buf);
 		ctx->shared->vready = true;
 		
-		frameserver_semcheck( ctx->vsync, -1);
+		frameserver_semcheck( ctx->shmcont.vsem, -1);
 	}
 
 	return true;
@@ -184,11 +184,21 @@ bool ffmpeg_decode(arcan_ffmpeg_context* ctx)
 
 void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 {
-	arcan_ffmpeg_context* vidctx = ffmpeg_preload(resource);
-	if (!vidctx) return;
-
+	arcan_ffmpeg_context* vidctx;
 	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
-	if (!frameserver_shmpage_resize(&shms, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate)){
+	
+	do {
+/* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
+	frameserver_semcheck(vidctx->shmcont.asem, -1);
+	frameserver_semcheck(vidctx->shmcont.vsem, -1);
+
+		vidctx = ffmpeg_preload(resource);
+		if (!vidctx)
+			break;
+
+		vidctx->shmcont = shms;
+		
+		if (!frameserver_shmpage_resize(&shms, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate))
 		arcan_fatal("arcan_frameserver_ffmpeg_run() -- setup of vid(%d x %d @ %d) aud(%d,%d) failed \n",
 			vidctx->width,
 			vidctx->height,
@@ -196,47 +206,8 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 			vidctx->channels,
 			vidctx->samplerate
 		);
-		return;
-	}
 
-	frameserver_shmpage_calcofs(shms.addr, &(vidctx->vidp), &(vidctx->audp) );
-	arcan_warning("calculated offsets, baseaddr: %" PRIxPTR" with vidp: %" PRIxPTR" and audp: %" PRIxPTR" and vids: %d bytes, auds: %d bytes\n",
-				  (uintptr_t) vidctx->vidp, (uintptr_t) vidctx->audp, (long int) ( vidctx->vidp - (void*) shms.addr ), (long int) (vidctx->audp - vidctx->vidp) );
-	vidctx->shared = shms.addr;
-	vidctx->async  = shms.asem;
-	vidctx->vsync  = shms.vsem;
-	vidctx->esync  = shms.esem;
-
-/* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
-	frameserver_semcheck(vidctx->async, -1);
-	frameserver_semcheck(vidctx->vsync, -1);
+		frameserver_shmpage_calcofs(shms.addr, &(vidctx->vidp), &(vidctx->audp) );
 	
-	if (vidctx->shared){
-		int semv, rv;
-		vidctx->shared->resized = true;
-		
-		LOG("arcan_frameserver(video) -- decoding\n");
-		
-/* reuse the shmpage, anyhow, the main app should support
- * relaunching the frameserver when looping to cover for
- * memory leaks, crashes and other ffmpeg goodness */
-		while (ffmpeg_decode(vidctx) && vidctx->shared->loop) {
-			struct frameserver_shmpage* page = vidctx->shared;
-			LOG("arcan_frameserver(video) -- decode finished, looping\n");
-			ffmpeg_cleanup(vidctx);
-			vidctx = ffmpeg_preload(resource);
-
-			/* sanity check, file might have changed between loads */
-			if (!vidctx ||
-				vidctx->width != page->w ||
-				vidctx->height != page->h ||
-				vidctx->bpp != page->bpp)
-			break;
-
-			vidctx->shared = page;
-			vidctx->async = shms.asem;
-			vidctx->vsync = shms.vsem;
-			vidctx->esync = shms.esem;
-		}
-	}
+	} while (ffmpeg_decode(vidctx) && vidctx->shared->loop);
 }
