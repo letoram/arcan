@@ -84,13 +84,8 @@ static struct {
 		
 	char* shmkey;
 		
-	sem_handle vsync;
-	sem_handle async;
-	sem_handle esync;
-		
 	struct arcan_evctx inevq, outevq;
-		
-	struct frameserver_shmpage* shared;
+	struct frameserver_shmcont shared;
 	void* vidp, (* audp);
 		
 	} global = {
@@ -213,63 +208,16 @@ void ARCAN_target_init(){
 	unsigned bufsize = strtoul(shmsize, NULL, 10);
 
 	if (errno == ERANGE || errno == EINVAL){
-		fprintf(stderr, "ARCAN Hijack: Bad value in ENV[ARCAN_SHMSIZE]\n");
+		fprintf(stderr, "ARCAN Hijack: Bad value in ENV[ARCAN_SHMSIZE], terminating.\n");
 		exit(1);
 	}
 	
-	int fd = shm_open(global.shmkey, O_RDWR, 0700);
-	if (-1 == fd) {
-		fprintf(stderr, "ARCAN Hijack: Couldn't open shmkey (%s)\n", global.shmkey);
-		exit(1);		
-	}
-
-/* map up the shared key- file */
-	char* buf = (char*) mmap(NULL,
-		bufsize,
-		PROT_READ | PROT_WRITE,
-		MAP_SHARED,
-		fd,
-	0);
-		
-	if (buf == MAP_FAILED){
-		fprintf(stderr, "ARCAN Hijack: Couldn't map shared memory from (%s)\n", global.shmkey);
-		close(fd);
+	if (global.shmkey == NULL || ( global.shared = frameserver_getshm(global.shmkey, true)).addr == NULL ){
+		fprintf(stderr, "ARCAN Hijack: Couldn't access shm-API, terminating.\n");
 		exit(1);
 	}
-		
-	global.shared = (struct frameserver_shmpage*) buf;
-	frameserver_shmpage_resize(
-	global.shared->w = 32;
-	global.shared->h = 32;
-	global.shared->bpp = 4;
-	global.shared->vready = false;
-	global.shared->resized = false;
-
-	char* semkey = strdup(global.shmkey);
-	semkey[ strlen(global.shmkey) - 1 ] = 'v';
-	global.vsync = sem_open(semkey, 0);
-
-	semkey[ strlen(global.shmkey) - 1 ] = 'a';
-	global.async = sem_open(semkey, 0);
-		
-	semkey[ strlen(global.shmkey) - 1 ] = 'e';
-	global.esync = sem_open(semkey, 0);
-		 
-	global.inevq.synch.external.shared = global.esync;
-	global.inevq.synch.external.killswitch = NULL; 
-	global.inevq.local = false;
-	global.inevq.eventbuf = global.shared->childdevq.evqueue;
-	global.inevq.front = &global.shared->childdevq.front;
-	global.inevq.back  = &global.shared->childdevq.back;
-	global.inevq.n_eventbuf = sizeof(global.shared->childdevq.evqueue) / sizeof(arcan_event);
 	
-	global.outevq.synch.external.shared = global.esync;
-	global.outevq.synch.external.killswitch = NULL;
-	global.outevq.local =false;
-	global.outevq.eventbuf = global.shared->parentdevq.evqueue;
-	global.outevq.front = &global.shared->parentdevq.front;
-	global.outevq.back  = &global.shared->parentdevq.back;
-	global.outevq.n_eventbuf = sizeof(global.shared->parentdevq.evqueue) / sizeof(arcan_event);
+	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
 }
 
 	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -300,19 +248,19 @@ void ARCAN_target_init(){
 	{
 		SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 		global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
-		global.shared->glsource = (flags & SDL_OPENGL) > 0;
+		global.shared.addr->glsource = (flags & SDL_OPENGL) > 0;
 		if ( (flags & SDL_FULLSCREEN) > 0) { 
 /* oh no you don't */
 			flags &= !SDL_FULLSCREEN;
 		}
 		
-		if (res) {
-			global.shared->w = w;
-			global.shared->h = h;
-			global.shared->bpp = 4;
-			global.shared->resized = true;
+		if (res){
+		/* we proxy latency to not mess further with audio latency (pulseaudio junk does that enough already) */
+			if (!frameserver_shmpage_resize(&global.shared, w, h, 4, 0, 0)){
+				arcan_fatal("arcan_hijacklib() resize failed (%d, %d)\n", w, h);	
+			}
 		}
-
+		
 		global.mainsrfc = res;
 
 		if (forwardtbl.sdl_iconify)
@@ -441,9 +389,10 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 }
 
 static void copysurface(SDL_Surface* src){
-	sem_wait(global.vsync);
+	frameserver_semcheck(global.shared.vsem, -1);
 	
-	global.shared->glsource = false;
+	global.shared.addr->glsource = false;
+/* check so that we have the same pixelformat and dimensions as our parent */
 	if ( cmpfmt(src->format, &global.desfmt) ){
 			SDL_LockSurface(src);
 			memcpy(global.vidp, 
@@ -451,6 +400,7 @@ static void copysurface(SDL_Surface* src){
 				   src->w * src->h * 4);
 			SDL_UnlockSurface(src);
 	} else {
+/* otherwise, a costly conversion (avoid at all times if possible) */
 		SDL_Surface* surf = SDL_ConvertSurface(src, &global.desfmt, SDL_SWSURFACE);
 		SDL_LockSurface(surf);
 		memcpy(global.vidp, 
@@ -460,7 +410,7 @@ static void copysurface(SDL_Surface* src){
 		SDL_FreeSurface(surf);
 	}
 
-	global.shared->vready = true;
+	global.shared.addr->vready = true;
 }
 
 /* NON-GL SDL applications (unfortunately, moreso for 1.3 which is not handled at all currently) 
@@ -532,13 +482,15 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
 	 * increase when using PBOs */
-	sem_wait(global.vsync);
+	frameserver_semcheck(global.shared.vsem, -1);
+
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-	glReadPixels(0, 0, global.shared->w, global.shared->h, GL_RGBA, GL_UNSIGNED_BYTE, (char*) global.vidp); 
-	global.shared->glsource = true;
-	global.shared->vready = true;
+	glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, (char*) global.vidp); 
+
+	global.shared.addr->glsource = true; /* in theory, this could alternate every single frame.. */
+	global.shared.addr->vready = true;
 
 /*  uncomment to keep video- operations running in the target,
  *  some weird 3d- edge cases might need this */

@@ -41,6 +41,12 @@
 #include <CoreFoundation/CoreFoundation.h>  
 #endif
 
+char* arcan_themepath = NULL;
+char* arcan_resourcepath = NULL;
+char* arcan_themename = "welcome";
+char* arcan_binpath = NULL;
+char* arcan_libpath = NULL;
+
 /* move to tls ;p */
 static const int playbufsize = (64 * 1024) - 2;
 static char playbuf[64 * 1024] = {0};
