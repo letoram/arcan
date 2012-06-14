@@ -367,7 +367,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 /* may happen multiple- times */
 		if (shmpage->resized && (frameserver_shmpage_integrity_check(shmpage) || (suspect_frameserver(src),true) ) ){
-			frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 			
 			arcan_warning("trace, resize event: %d, %d\n", shmpage->w, shmpage->h);
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -383,6 +382,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			arcan_event_maskall(arcan_event_defaultctx());
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 			arcan_event_clearmask(arcan_event_defaultctx());
+			frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 			arcan_errc rv;
 
@@ -461,11 +461,9 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	if (!src)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (!src->desc.ready)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
-
 	src->starttime = arcan_frametime();
 	src->playstate = ARCAN_PLAYING;
+
 	arcan_audio_play(src->aid);
 	return ARCAN_OK;
 }
