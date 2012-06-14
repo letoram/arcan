@@ -24,6 +24,12 @@
 #define SHMPAGE_AUDIOBUF_SIZE (192000 * 3 / 2)
 #define MAX_SHMSIZE 9582916
 
+enum frameserver_colormode {
+	COLOR_RGBA,
+	COLOR_RGB155,
+	COLOR_YUV420
+};
+
 /* setup a named memory / semaphore mapping with the server */
 struct frameserver_shmcont{
 	struct frameserver_shmpage* addr;
@@ -69,6 +75,10 @@ struct frameserver_shmpage {
  * this is partly to make it easier to share code between hijacklib and frameserver,
  * while at the same time keeping it out of the frameserver routine in the main app, where
  * that kind of shmcheck is dangerous */
+
+/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately) 
+ * this will forcibly exit should any error other than timeout occur.*/
+int frameserver_semcheck(sem_handle semaphore, int timeout);
 
 /* returns true of the contents of the shmpage seems sound (unless this passes,
  * the server will likely kill or ignore the client */

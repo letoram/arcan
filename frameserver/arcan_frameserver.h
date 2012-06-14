@@ -26,10 +26,6 @@
 
 extern FILE* logdev;
 
-/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately) 
- * this will forcibly exit should any error other than timeout occur.*/
-int frameserver_semcheck(sem_handle semaphore, int timeout);
-
 /* to get rid of a few POSIX calls in libretro implementation */
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
 

@@ -58,11 +58,11 @@
 arcan_dbh* dbhandle = NULL;
 
 /* globals, hackishly used in other places */
-char* arcan_themename = "welcome";
-char* arcan_themepath = NULL;
-char* arcan_resourcepath = NULL; 
-char* arcan_libpath = NULL;
-char* arcan_binpath = NULL;
+extern char* arcan_themename;
+extern char* arcan_themepath;
+extern char* arcan_resourcepath;
+extern char* arcan_libpath;
+extern char* arcan_binpath;
 
 bool stderr_redirected = false;
 bool stdout_redirected = false;

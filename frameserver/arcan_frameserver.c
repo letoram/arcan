@@ -43,11 +43,6 @@ FILE* logdev = NULL;
 
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
-char* arcan_themepath = "";
-char* arcan_resourcepath = "";
-char* arcan_themename = "";
-char* arcan_binpath = "";
-char *arcan_libpath = "";
 
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 {
@@ -105,7 +100,6 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 		}
 		
 		if (shm->addr->aready){
-			sem_wait(shm->asem);
 			shm->addr->aready = false;
 			sem_post(shm->asem);
 		}
