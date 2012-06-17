@@ -280,6 +280,21 @@ int arcan_lua_moveimage(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_nudgeimage(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	float newx = luaL_optnumber(ctx, 2, 0);
+	float newy = luaL_optnumber(ctx, 3, 0);
+
+	surface_properties props = arcan_video_current_properties(id);
+		
+	int time = luaL_optint(ctx, 4, 0);
+	if (time < 0) time = 0;
+	
+	arcan_video_objectmove(id, props.position.x + newx, props.position.y + newy, 1.0, time);
+	return 0;
+}
+
 int arcan_lua_instanceimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -2881,6 +2896,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:move_image, vid, absx, absy, [time], nil */
 	arcan_lua_register(ctx, "move_image", arcan_lua_moveimage);
+
+	/* item:move_image, vid, absx, absy, [time], nil */
+	arcan_lua_register(ctx, "nudge_image", arcan_lua_nudgeimage);
 
 /* item:rotate_image, vid, absangz, [time], nil */
 	arcan_lua_register(ctx, "rotate_image", arcan_lua_rotateimage);
