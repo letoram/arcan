@@ -122,7 +122,7 @@ typedef struct arcan_vobject {
 	} flags;
 	
 /* position */
-	signed short order;
+	signed int order;
 	surface_properties current;
 	
 	surface_transform* transform;
