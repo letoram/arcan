@@ -1994,6 +1994,9 @@ void pushgame(lua_State* ctx, arcan_db_game* curr)
 	lua_pushstring(ctx, "launch_counter");
 	lua_pushnumber(ctx, curr->launch_counter);
 	lua_rawset(ctx, top);
+	lua_pushstring(ctx, "system");
+	lua_pushstring(ctx, curr->system);
+	lua_rawset(ctx, top);
 }
 
 /* sort-order (asc or desc),
@@ -2013,6 +2016,8 @@ int arcan_lua_filtergames(lua_State* ctx)
 	char* genre = NULL;
 	char* subgenre = NULL;
 	char* target = NULL;
+	char* system = NULL;
+	
 	int rv = 0;
 	int limit = 0;
 	int offset = 0;
@@ -2068,8 +2073,14 @@ int arcan_lua_filtergames(lua_State* ctx)
 	lua_pushstring(ctx, "target");
 	lua_gettable(ctx, -2);
 	target = _n_strdup(lua_tostring(ctx, -1), NULL);
+	lua_pop(ctx, 1);
 	
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target, limit, offset);
+	lua_pushstring(ctx, "system");
+	lua_gettable(ctx, -2);
+	system = _n_strdup(lua_tostring(ctx, -1), NULL);
+	lua_pop(ctx, 1);
+	
+	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target, system, offset, limit);
 	/* reason for all this is that lua_tostring MAY return NULL,
 	 * and if it doesn't, the string can be subject to garbage collection after POP,
 	 * thus need a working copu */
@@ -2128,7 +2139,11 @@ int arcan_lua_getgame(lua_State* ctx)
 	const char* game = luaL_checkstring(ctx, 1);
 	int rv = 0;
 
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, 0, 0, 0, 0, game, 0, 0, NULL, /*base */ 0, /*offset*/ 0);
+	arcan_dbh_res dbr = arcan_db_games(dbhandle, 
+		0, 0, 0, 0, /* year, input, players, buttons */
+		game, NULL, NULL, NULL, NULL, /* title, genre, subgenre, target, system */
+		0, 0); /* offset, limit */
+	
 	if (dbr.kind == 1 && dbr.data.gamearr && (*dbr.data.gamearr)) {
 		arcan_db_game** curr = dbr.data.gamearr;
 	/* table of tables .. wtb ruby yield */

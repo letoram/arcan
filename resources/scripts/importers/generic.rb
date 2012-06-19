@@ -6,7 +6,25 @@
 # Would be somewhat fun to play around with heuristics + websearchengines and try to
 # automatically deduce reasonable data for each target, but that's for the future ..
 #
+SystemTable = {
+"fceu" => "NES",
+"bnes" => "NES",
+"snes9x" => "SNES",
+"n64" => "N64",
+"bsnes" => "SNES",
+"mame" => "Arcade/Multi",
+"mess" => "Multi",
+"ume" => "Multi",
+"mednafen" => "Multi",
+"vba" => "Gameboy",
+"fba" => "Arcade",
+"psx" => "Playstation",
+"dolphin" => "Wii",
+"genplus" => "Sega/Multi",
+"scummvm" => "Adventure/VM"
+}
 
+# Common target- names and their corresponding system
 class Generic
 	def initialize
 		@gentargets = {}
@@ -115,6 +133,7 @@ class Generic
 				newgame.title = setname
 				newgame.setname = @genromlist[@targetname] == true ? fn : setname
 				newgame.target = @target
+				newgame.system = SystemTable[ @targetname ]
 
 				yield newgame
 			end

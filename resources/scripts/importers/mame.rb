@@ -211,6 +211,8 @@ class Mame
 			res.year  = node_tree.xpath("//game/year").text
 			res.manufacturer = node_tree.xpath("//game/manufacturer").text
 			res.setname = node_tree.root.attributes['name'].value
+			res.system = "Arcade" # It might be possible to parse more out of the description
+			
 			if (@categories[res.setname])
 				res.genre = @categories[res.setname][0]
 				res.subgenre = @categories[res.setname][1]
