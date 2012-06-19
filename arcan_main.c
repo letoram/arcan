@@ -130,6 +130,7 @@ int main(int argc, char* argv[])
 	int winy = -1;
 	
 	int ch;
+	FILE* errc;
 	char* dbfname = "arcandb.sqlite";
 	srand( time(0) ); 
 
@@ -153,7 +154,7 @@ int main(int argc, char* argv[])
 			case 'l' : arcan_libpath = strdup(optarg); break;
 			case 'd' : dbfname = strdup(optarg); break;
 			case 'S' : nosound = true; break;
-			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;			
+			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;
@@ -170,11 +171,11 @@ int main(int argc, char* argv[])
 				break;
 		case '1' :
 			stdout_redirected = true;
-			freopen(optarg, "a", stdout);
+			errc = freopen(optarg, "a", stdout);
 			break;
 		case '2' :
 			stderr_redirected = true;
-			freopen(optarg, "a", stderr);
+			errc = freopen(optarg, "a", stderr);
 			break;
 
 			default:
@@ -191,9 +192,12 @@ int main(int argc, char* argv[])
 		arcan_themename = "welcome";
 	else {
 		arcan_fatal("No theme found.\n");
-		goto error;
 	}
 
+	if (strcmp(arcan_themename, "arcan") == 0){
+		arcan_fatal("Theme name 'arcan' is reserved\n");
+	}
+	
 	char* dbname = arcan_expand_resource(dbfname, true);
 
 /* try to open the specified database,
