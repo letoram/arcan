@@ -1,7 +1,6 @@
 -- this one is just a mess of tables, all mapping to a
 -- global settings structure, nothing really interesting
 
-
 -- traverse the current menu back up to the root node, set the gamecount to an "impossible" number
 -- 
 function menu_resetgcount(node)
@@ -134,7 +133,7 @@ local filterlbls = {
 	"Buttons",
 	"Genre",
 	"Subgenre",
-	"Platform", 
+	"System", 
 	"Target"
 };
 

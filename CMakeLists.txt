@@ -257,7 +257,7 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 
 add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
-add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c)
+add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c)
 add_dependencies(arcan_hijack arcan_target_backend)
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
 

@@ -93,11 +93,13 @@ settings = {
 	cooldown_start = 15,
 	zoom_countdown = 0,
 	
+-- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
 	flipinputaxis = false,
 	internal_again = 1.0,
 	fullscreenshader = "default",
-	in_internal = false
+	in_internal = false,
+	cocktail_mode = "Off"
 };
 
 settings.sortfunctions = {};

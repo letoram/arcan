@@ -22,6 +22,10 @@
 #ifndef _HAVE_ARCAN_MATH
 #define _HAVE_ARCAN_MATH
 
+/* I know it's dumb to roll your own mathlib by now,
+ * replace with something quick at your own leisure -- 
+ * I use this as a refresher-course ;-) */
+
 #define EPSILON 0.000001f
 #define DEG2RAD(X) (X * M_PI / 180)
 
