@@ -43,7 +43,6 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
-#include "arcan_event.h"
 #include "arcan_target_const.h"
 #include "arcan_frameserver_shmpage.h"
 
@@ -104,15 +103,24 @@ static struct {
 			.Amask = 0xff000000
 	#endif
 		}
-	};
+};
+
+static inline void trace(const char* msg, ...)
+{
+#ifdef TRACE_ENABLE 
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr,  msg, args );
+	va_end( args);
+#endif
+}
 
 /* lots of funky little details when it comes to video,
  * there may be multiple calls to video init (resizing windows etc.)
  * which subsequently leads to a synch in buffer sizes on both this side and
  * on the controlling node, which may, depending on transfer mode, require a re-allocation
  * of shared memory pages etc. Some of the conversions are done simply 
- * to have the option of getting rid of SDL entirely in favor of a GL- only solution 
-*/
+ * to have the option of getting rid of SDL entirely in favor of a GL- only solution */
 
 /*
  * audio on the other hand,
@@ -123,15 +131,15 @@ static struct {
  * we might also need target- specific hijacks, thus these little dylibs
  * should be tossed in a folder of their own and force name to match their
  * respective target.
-*/
+ */
 
 static void(*acbfun)(void*, uint8_t*, int) = NULL;
 static void audiocb(void *userdata, uint8_t *stream, int len)
 {
 	if (acbfun) {
 		acbfun(userdata, stream, len);
-		/* hi-jacked the audio data,
-		 * we can either force it out through the afd, or modify it in place here */
+/* hi-jacked the audio data,
+ * we can either force it out through the afd, or modify it in place here */
 
 		int16_t* samples = (int16_t*)stream;
 
@@ -141,18 +149,6 @@ static void audiocb(void *userdata, uint8_t *stream, int len)
 			*samples = clamp(vl, SHRT_MIN, SHRT_MAX);
 		}
 	}
-}
-
-static void cleanup_shared(char* shmkey){
-	if (NULL == shmkey) 
-		return;
-		
-	char* work = strdup(shmkey);
-		work[ strlen(work) - 1] = 'v';
-		sem_unlink(work);
-	free(work);	
-
-	shm_unlink(shmkey);
 }
 
 /* select friends from arcan_general as we don't want to take the entire .o in */
@@ -172,7 +168,8 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return sem_unlink(key);
 }
 
-int arcan_sem_timedwait(sem_handle semaphore, int mstimeout){
+int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
+{
 	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
 	bool rv = true;
 	int rc;
@@ -193,7 +190,8 @@ int arcan_sem_timedwait(sem_handle semaphore, int mstimeout){
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 {
 	static SDL_GrabMode requested_mode = SDL_GRAB_OFF;
-
+	trace("WM_GrabInput( %d )\n", mode);
+	
 /* blatantly lie about being able to grab input */
 	if (mode != SDL_GRAB_QUERY)
 		requested_mode = mode;
@@ -204,7 +202,8 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
 	char* shmsize = getenv("ARCAN_SHMSIZE");
-
+	trace("ARCAN_target_init(%s, s)\n", global.shmkey, shmsize);
+	
 	unsigned bufsize = strtoul(shmsize, NULL, 10);
 
 	if (errno == ERANGE || errno == EINVAL){
@@ -219,14 +218,18 @@ void ARCAN_target_init(){
 	
 	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
+	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
+
+//	sem_wait( global.shared.vsem ); 
 }
 
-int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
+	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	{
 		acbfun = desired->callback;
 		desired->callback = audiocb;
 		int rc = forwardtbl.sdl_openaudio(desired, obtained);
 
+		trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
 		global.frequency = obtained->freq;
 		global.channels = obtained->channels;
 		global.format = obtained->format;
@@ -236,6 +239,7 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	}
 
 	SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height, int depth, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask){
+		trace("SDL_CreateRGBSurface(%d, %d, %d, %d)\n", flags, width, height, depth);
 		return forwardtbl.sdl_creatergbsurface(flags, width, height, depth, Rmask, Gmask, Bmask, Amask);
 	}
 
@@ -245,132 +249,124 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	 * even though it is not
 	 */
 
-	SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
-	{
-		SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
-		global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
-		global.shared.addr->glsource = (flags & SDL_OPENGL) > 0;
-		if ( (flags & SDL_FULLSCREEN) > 0) { 
-/* oh no you don't */
-			flags &= !SDL_FULLSCREEN;
-		}
+SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
+{
+	trace("SDL_SetVideoMode(%d, %d, %d, %d)\n", w, h, ncps, flags);
 		
-		if (res){
-		/* we proxy latency to not mess further with audio latency (pulseaudio junk does that enough already) */
-			if (!frameserver_shmpage_resize(&global.shared, w, h, 4, 0, 0)){
-				arcan_fatal("arcan_hijacklib() resize failed (%d, %d)\n", w, h);	
+	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
+	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
+	global.shared.addr->glsource = (flags & SDL_OPENGL) > 0;
+	if ( (flags & SDL_FULLSCREEN) > 0) { 
+/* oh no you don't */
+		flags &= !SDL_FULLSCREEN;
+	}
+		
+/* resize */
+	if (res) {
+		frameserver_shmpage_resize( &(global.shared), w, h, 4, 0, 0 );
+		frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
+		frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
+		global.shared.addr->w = w;
+		global.shared.addr->h = h;
+		global.shared.addr->bpp = 4;
+		global.shared.addr->resized = true;
+	}
+
+	global.mainsrfc = res;
+
+	if (forwardtbl.sdl_iconify)
+		forwardtbl.sdl_iconify();
+			
+	return res;
+}
+
+static inline void push_ioevent(arcan_ioevent event){
+	SDL_Event newev = {0};
+	bool active;
+	
+	switch (event.datatype){
+		case EVENT_IDATATYPE_DIGITAL:
+			newev.button.which = event.input.digital.devid;	
+				
+			if (event.devkind == EVENT_IDEVKIND_MOUSE){
+				newev.button.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
+				newev.button.type   = event.input.digital.active ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+				newev.button.button = event.input.digital.subid;
+				newev.button.which -= ARCAN_MOUSEIDBASE;
+				newev.button.x = global.mousestate.x;
+				newev.button.y = global.mousestate.y;
+					
+				global.mousebutton = event.input.digital.active ?
+					global.mousebutton | SDL_BUTTON( newev.button.button + 1 ) :
+					global.mousebutton & ~(SDL_BUTTON( newev.button.button + 1 ));
+			} else {
+				newev.jbutton.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
+				newev.jbutton.type   = event.input.digital.active ? SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
+				newev.jbutton.button = event.input.digital.subid;
+				newev.button.which  -= ARCAN_JOYIDBASE;
 			}
 			
-			frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-		}
+			forwardtbl.sdl_pushevent(&newev);
+		break;
+
+		case EVENT_IDATATYPE_TRANSLATED:
+			newev.key.keysym.scancode = event.input.translated.scancode;
+			newev.key.keysym.sym      = event.input.translated.keysym;
+			newev.key.keysym.mod      = event.input.translated.modifiers;
+			newev.key.keysym.unicode  = event.input.translated.subid;
+			newev.key.which           = event.input.translated.devid;
+			newev.key.state           = event.input.translated.active ? SDL_PRESSED : SDL_RELEASED;
+			newev.key.type            = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
+
+			forwardtbl.sdl_pushevent(&newev);
+		break;
 		
-		global.mainsrfc = res;
-
-		if (forwardtbl.sdl_iconify)
-			forwardtbl.sdl_iconify();
-			
-		return res;
-	}
-
-	static void set_attenuation(char* buf)
-	{
-		float att;
-		memcpy(&att, buf, 4);
-		global.attenuation = att;
-
-		int vol = att * 128.0;
-		if (vol > 128) vol = 128;
-		else if (vol < 0) vol = 0;
-		
-		if (forwardtbl.audioproxy)
-			forwardtbl.audioproxy(-1, vol);
-	}
-
-	static inline void push_ioevent(arcan_ioevent event){
-		SDL_Event newev = {0};
-		bool active;
-	
-		switch (event.datatype){
-			case EVENT_IDATATYPE_DIGITAL:
-				newev.button.which = event.input.digital.devid;	
+		case EVENT_IDATATYPE_ANALOG:
+			if (event.devkind == EVENT_IDEVKIND_MOUSE){
+					newev.motion = global.mousestate;
 				
-				if (event.devkind == EVENT_IDEVKIND_MOUSE){
-					newev.button.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
-					newev.button.type   = event.input.digital.active ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-					newev.button.button = event.input.digital.subid;
-					newev.button.which -= ARCAN_MOUSEIDBASE;
-					newev.button.x = global.mousestate.x;
-					newev.button.y = global.mousestate.y;
+					newev.motion.which = event.input.analog.devid - ARCAN_MOUSEIDBASE;
+					newev.motion.state = global.mousebutton;
+					newev.motion.type = SDL_MOUSEMOTION;
+
+				if (event.input.analog.subid == 0){
+					newev.motion.x = event.input.analog.axisval[0];
+					newev.motion.xrel = event.input.analog.axisval[1];
+					newev.motion.yrel = 0;
 					
-					global.mousebutton = event.input.digital.active ?
-						global.mousebutton | SDL_BUTTON( newev.button.button + 1 ) :
-						global.mousebutton & ~(SDL_BUTTON( newev.button.button + 1 ));
-				} else {
-					newev.jbutton.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
-					newev.jbutton.type   = event.input.digital.active ? SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
-					newev.jbutton.button = event.input.digital.subid;
-					newev.button.which  -= ARCAN_JOYIDBASE;
+				} else if (event.input.analog.subid == 1){
+					newev.motion.y = event.input.analog.axisval[0];
+					newev.motion.yrel = event.input.analog.axisval[1];
+					newev.motion.xrel = 0;
 				}
-				
+
+				global.mousestate = newev.motion;
 				forwardtbl.sdl_pushevent(&newev);
-			break;
-
-			case EVENT_IDATATYPE_TRANSLATED:
-				newev.key.keysym.scancode = event.input.translated.scancode;
-				newev.key.keysym.sym      = event.input.translated.keysym;
-				newev.key.keysym.mod      = event.input.translated.modifiers;
-				newev.key.keysym.unicode  = event.input.translated.subid;
-				newev.key.which           = event.input.translated.devid;
-				newev.key.state           = event.input.translated.active ? SDL_PRESSED : SDL_RELEASED;
-				newev.key.type            = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
-
+			} else {
+				newev.jaxis.value = event.input.analog.axisval[0];
+				newev.jaxis.which = event.input.analog.devid - ARCAN_JOYIDBASE;
+				newev.jaxis.axis = event.input.analog.subid;
+				newev.jaxis.type = SDL_JOYAXISMOTION;
 				forwardtbl.sdl_pushevent(&newev);
-			break;
-			
-			case EVENT_IDATATYPE_ANALOG:
-				if (event.devkind == EVENT_IDEVKIND_MOUSE){
-						newev.motion = global.mousestate;
-					
-						newev.motion.which = event.input.analog.devid - ARCAN_MOUSEIDBASE;
-						newev.motion.state = global.mousebutton;
-						newev.motion.type = SDL_MOUSEMOTION;
-
-					if (event.input.analog.subid == 0){
-						newev.motion.x = event.input.analog.axisval[0];
-						newev.motion.xrel = event.input.analog.axisval[1];
-						newev.motion.yrel = 0;
-						
-					} else if (event.input.analog.subid == 1){
-						newev.motion.y = event.input.analog.axisval[0];
-						newev.motion.yrel = event.input.analog.axisval[1];
-						newev.motion.xrel = 0;
-					}
-
-					global.mousestate = newev.motion;
-					forwardtbl.sdl_pushevent(&newev);
-				} else {
-					newev.jaxis.value = event.input.analog.axisval[0];
-					newev.jaxis.which = event.input.analog.devid - ARCAN_JOYIDBASE;
-					newev.jaxis.axis = event.input.analog.subid;
-					newev.jaxis.type = SDL_JOYAXISMOTION;
-					forwardtbl.sdl_pushevent(&newev);
-				}
-			break;
-		}
+			}
+		break;
 	}
+}
 
 int ARCAN_SDL_PollEvent(SDL_Event* inev)
 {
 	SDL_Event gevent;
-
 	arcan_event* ev;
+
+	trace("SDL_PollEvent()\n");
 	
 	while ( (ev = arcan_event_poll(&global.inevq)) ) 
 		switch (ev->category){
 			case EVENT_IO: push_ioevent(ev->data.io); break;
 	}
 
-/* we need to filter a few events ... ;-) */
+/* strip away a few events related to fullscreen,
+ * I/O grabs etc. */
 	int evs;
 	if ( (evs = forwardtbl.sdl_pollevent(&gevent) ) )
 	{
@@ -392,10 +388,8 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 }
 
 static void copysurface(SDL_Surface* src){
-	frameserver_semcheck(global.shared.vsem, -1);
+	trace("CopySurface(noGL)\n");
 	
-	global.shared.addr->glsource = false;
-/* check so that we have the same pixelformat and dimensions as our parent */
 	if ( cmpfmt(src->format, &global.desfmt) ){
 			SDL_LockSurface(src);
 			memcpy(global.vidp, 
@@ -403,10 +397,9 @@ static void copysurface(SDL_Surface* src){
 				   src->w * src->h * 4);
 			SDL_UnlockSurface(src);
 	} else {
-/* otherwise, a costly conversion (avoid at all times if possible) */
 		SDL_Surface* surf = SDL_ConvertSurface(src, &global.desfmt, SDL_SWSURFACE);
 		SDL_LockSurface(surf);
-		memcpy(global.vidp, 
+		memcpy(global.vidp,
 			   surf->pixels, 
 			   surf->w * surf->h * 4);
 		SDL_UnlockSurface(surf);
@@ -485,16 +478,15 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
 	 * increase when using PBOs */
-	frameserver_semcheck(global.shared.vsem, -1);
-
+	trace("CopySurface(GL:pre)");
+	sem_wait(global.shared.vsem);
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-	glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, (char*) global.vidp); 
-
-	global.shared.addr->glsource = true; /* in theory, this could alternate every single frame.. */
+	glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
 	global.shared.addr->vready = true;
-
+	trace("CopySurface(GL:post)");
+	
 /*  uncomment to keep video- operations running in the target,
  *  some weird 3d- edge cases might need this */
 /*	forwardtbl.sdl_swapbuffers(); */

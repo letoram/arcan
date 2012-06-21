@@ -429,7 +429,7 @@ module Importers
 
 	def Importers.Load(path)
 		@@instances = {}
-		Dir["#{path}/importers/*"].each{|imp|
+		Dir["#{path}/importers/*.rb"].each{|imp|
 			modname = imp[imp.rindex('/')+1..-4]
 			
 			begin

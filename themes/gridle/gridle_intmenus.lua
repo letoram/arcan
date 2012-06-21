@@ -329,15 +329,20 @@ function gridlemenu_internal(target_vid)
 	settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
 	settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
 
--- Decent entrypoint to add support for more esoteric functions (snapshot recording, highscore tracking,
--- Savestate management, ...)
 	local menulbls = {
 		"Shaders...",
 		"Scaling...",
 		"Input...",
-		"Audio Gain..."
+		"Audio Gain...",
+		"Cocktail Modes...",
 	};
 
+	local capabilities = launch_target_capabilities( current_game().target );
+	if (capabilities.snapshot) then
+		table.insert(menulbls, "Save State...");
+		table.insert(menulbls, "Load State...");
+	end
+	
 	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
 	current_menu.ptrs = {};
 	current_menu.parent = nil;
@@ -382,6 +387,16 @@ function gridlemenu_internal(target_vid)
 		end
 		
 		menu_spawnmenu( audiogainlist, audiogainptrs, def );
+	end
+	
+	current_menu.ptrs["Cocktail Modes..."] = function()
+		local def = {};
+		def[ tostring(settings.cocktail_mode) ] = "\\#00ffff";
+		if (get_key("cocktail_mode")) then
+			def[ get_key("cocktail_mode") ] = "\\#00ff00";
+		end
+		
+		menu_spawnmenu( cocktaillist, cocktailptrs, def);
 	end
 	
 	current_menu:show();

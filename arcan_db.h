@@ -21,6 +21,10 @@
 
 #ifndef _HAVE_ARCAN_DB
 
+/* this solution is pretty rigid to work with,
+ * it is likely that future revisions will revert to a 
+ * NoSQL with Protocol Buffers kindof solution, but it's a low priority */
+
 struct arcan_dbh;
 typedef struct arcan_dbh arcan_dbh;
 
@@ -38,6 +42,7 @@ typedef struct {
 	char* setname;
 	char* manufacturer;
 	char* targetname;
+	char* system;
 } arcan_db_game;
 
 union resdata {
@@ -88,6 +93,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh*,
 	const char* genre,
 	const char* subgenre,
 	const char* target,
+	const char* system,
 	const long long offset,
 	const long long limit
 );
