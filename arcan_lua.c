@@ -2457,8 +2457,10 @@ cleanup:
 
 int arcan_lua_borderscan(lua_State* ctx)
 {
-	int upperleft = 0;
-	int lowerright = 0;
+	int x1, y1, x2, y2;
+	x1 = y1 = 0;
+	x2 = arcan_video_screenw();
+	y2 = arcan_video_screenh();
 	
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	arcan_vobject* vobj = arcan_video_getobject(vid);
@@ -2468,17 +2470,21 @@ int arcan_lua_borderscan(lua_State* ctx)
  * use memory- conservative mode and just grab the buffer from the cached storage. */
 	if (vobj && vobj->default_frame.raw && vobj->default_frame.s_raw > 0
 		&& vobj->origw > 0 && vobj->origh > 0){
-		int mpx = vobj->origw >> 2;
-		int mpy = vobj->origh >> 2;
-/* scan left */
-/* scan right */
-/* scan top */
-/* scan bottom */
+	
+#define sample(x,y) ( vobj->default_frame.raw[ ((y) * vobj->origw + (x)) * 4 + 3 ] )
+		
+			for (x1 = vobj->origw >> 1; x1 >= 0 && sample(x1, vobj->origh >> 1) < 128; x1--);
+			for (x2 = vobj->origw >> 1; x2 < vobj->origw && sample(x2, vobj->origh >> 1) < 128; x2++);
+			for (y1 = vobj->origh >> 1; y1 >= 0 && sample(vobj->origw >> 1, y1) < 128; y1--);
+			for (y2 = vobj->origh >> 1; y2 < vobj->origh && sample(vobj->origw >> 1, y2) < 128; y2++);
+#undef sample
 		}
 	
-	lua_pushnumber(ctx, upperleft);
-	lua_pushnumber(ctx, lowerright);
-	return 2;
+	lua_pushnumber(ctx, x1);
+	lua_pushnumber(ctx, y1);
+	lua_pushnumber(ctx, x2);
+	lua_pushnumber(ctx, y2);
+	return 4;
 }
 
 int arcan_lua_decodemod(lua_State* ctx)

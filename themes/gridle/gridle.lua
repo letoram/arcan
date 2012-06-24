@@ -389,7 +389,8 @@ function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
 	internal_aid = audio;
 	internal_vid = video;
-	
+	order_image(internal_vid, max_current_image_order());
+			
 	audio_gain(internal_aid, settings.internal_again, NOW);
 
 -- remap input function to one that can handle forwarding and have access to context specific menu
@@ -1017,7 +1018,7 @@ function load_settings()
 	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
 	load_key_num("repeatrate", "repeatrate", settings.repeatrate);
 	load_key_num("internal_again", "internal_again", settings.internal_again);
-	load_key_str("internal_scalemode", "internal_scalemode", settings.scalemode);
+	load_key_str("scalemode", "scalemode", settings.scalemode);
 	load_key_num("movieagain", "movieagain", settings.movieagain);
 	load_key_str("tilebg", "tilebg", settings.tilebg);
 	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
@@ -1143,6 +1144,11 @@ function gridle_internalcleanup()
 		blend_image(internal_vid, 0.0, settings.transitiondelay);
 		audio_gain(internal_aid, 0.0, settings.transitiondelay);
 		move_image(internal_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+
+		if (valid_vid(imagery.bezel)) then
+			blend_image(imagery.bezel, 0.0, settings.transitiondelay);
+			expire_image(imagery.bezel, settings.transitiondelay);
+		end
 		
 		if (valid_vid(imagery.cocktail_vid)) then
 			image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
@@ -1151,6 +1157,7 @@ function gridle_internalcleanup()
 			resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
 			blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
 			move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay)	
+			imagery.cocktail_vid = BADID;
 		end
 
 		build_grid(settings.cell_width, settings.cell_height);
