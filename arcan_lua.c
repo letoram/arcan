@@ -41,11 +41,13 @@
 #include <lauxlib.h>
 
 #include <SDL.h>
+#include <SDL_opengl.h>
 #include <assert.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
+#include "arcan_videoint.h"
 #include "arcan_shdrmgmt.h"
 #include "arcan_3dbase.h"
 #include "arcan_audio.h"
@@ -1452,6 +1454,21 @@ int arcan_lua_imageparent(lua_State* ctx)
 	return 1;
 }
 
+/* item: image_parent, vid, vid */
+int arcan_lua_validvid(lua_State* ctx)
+{
+	arcan_vobj_id res = (arcan_vobj_id) luaL_optnumber(ctx, 1, ARCAN_EID);
+	
+	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
+		res -= lua_ctx_store.lua_vidbase;
+
+	if (res < 0)
+		res = ARCAN_EID;
+
+	lua_pushboolean(ctx, arcan_video_findparent(res) != ARCAN_EID);
+	return 1;
+}
+
 int arcan_lua_imagechildren(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -2438,6 +2455,32 @@ cleanup:
 	return rv;
 }
 
+int arcan_lua_borderscan(lua_State* ctx)
+{
+	int upperleft = 0;
+	int lowerright = 0;
+	
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+
+/* since GLES doesn't support texture readback, the option would be to render then readback pixels
+ * as there is limited use for this feature, we'll stick to the cheap route, i.e. assume we don't
+ * use memory- conservative mode and just grab the buffer from the cached storage. */
+	if (vobj && vobj->default_frame.raw && vobj->default_frame.s_raw > 0
+		&& vobj->origw > 0 && vobj->origh > 0){
+		int mpx = vobj->origw >> 2;
+		int mpy = vobj->origh >> 2;
+/* scan left */
+/* scan right */
+/* scan top */
+/* scan bottom */
+		}
+	
+	lua_pushnumber(ctx, upperleft);
+	lua_pushnumber(ctx, lowerright);
+	return 2;
+}
+
 int arcan_lua_decodemod(lua_State* ctx)
 {
 	int modval = luaL_checkint(ctx, 1);
@@ -2846,6 +2889,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item: warning, string, nil */
 	arcan_lua_register(ctx, "warning", arcan_lua_warning);
+
+/* item: valid_vid, vid, bool */
+	arcan_lua_register(ctx, "valid_vid", arcan_lua_validvid);
 	
 /*	lua_register(ctx, "toggle_fullscreen", arcan_lua_togglefs); */
 
@@ -3029,6 +3075,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
 	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 
+/* item:define_rendertarget( width, height, kind, updatemode, vidlist ); */
+//	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
+	
+/* item:image_borderscan( vid ) => upperleft, lowerright */
+	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);
+	
 /* item random_surface, width (px), height (px), vid >*/
 	arcan_lua_register(ctx, "random_surface", arcan_lua_randomsurface);
 	

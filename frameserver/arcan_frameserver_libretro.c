@@ -52,7 +52,6 @@
  * 
  * however, we will lock to video, meaning that it is the framerate of the frameserver that will decide
  * the actual framerate, that may be locked to VREFRESH (or lower). Thus we also need frameskipping heuristics here.
- *
  */
 
 /* interface for loading many different emulators,

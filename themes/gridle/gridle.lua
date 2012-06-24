@@ -99,7 +99,7 @@ settings = {
 	internal_again = 1.0,
 	fullscreenshader = "default",
 	in_internal = false,
-	cocktail_mode = "Off"
+	cocktail_mode = "Disabled"
 };
 
 settings.sortfunctions = {};
@@ -158,7 +158,7 @@ function gridle()
 
 -- make sure that we don't have any weird resolution configurations
 	if (VRESW < 256 or VRESH < 256) then
-	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested. Check -w / -h arguments.");
+	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested (minimum 256x256). Check -w / -h arguments.");
 	end
 
 -- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
@@ -307,7 +307,7 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	end
 
 -- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
-	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/diffuse_only.fShader", "background");
+	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/anim_txco.fShader", "background");
 	shader_uniform(bgshader, "speedfact", "ff", PERSIST, hspeed, vspeed);
 	
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
@@ -402,20 +402,12 @@ function gridle_setup_internal(video, audio)
 	zap_whitegrid();
 
 	blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
-			
+	blend_image(video, 1.0, settings.transitiondelay);
+	
 	if (imagery.movie and imagery.movie ~= BADID) then 
 		delete_image(imagery.movie); 
 		imagery.movie = nil; 
 	end
-
-	show_image(internal_vid);
-	local props = image_surface_properties(internal_vid);
-
-	resize_image(internal_vid, 1,1);
-	move_image(internal_vid, VRESW * 0.5, VRESH * 0.5);
-	resize_image(internal_vid, props.width, props.height, settings.transitiondelay);
-	move_image(internal_vid, props.x, props.y, settings.transitiondelay);
-	order_image(internal_vid, 1);
 end
 
 function gridle_keyconf()
@@ -1032,6 +1024,7 @@ function load_settings()
 	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
 	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);
 	load_key_num("bg_speedh", "bg_speedh", settings.bg_speedh);
+	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
 		
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");
@@ -1147,8 +1140,19 @@ function gridle_internalcleanup()
 		order_image(internal_vid, ZOOMLAYER_MOVIE + 1); 
 		expire_image(internal_vid, settings.transitiondelay);
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
+		blend_image(internal_vid, 0.0, settings.transitiondelay);
 		audio_gain(internal_aid, 0.0, settings.transitiondelay);
 		move_image(internal_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+		
+		if (valid_vid(imagery.cocktail_vid)) then
+			image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
+			order_image(imagery.cocktail_vid, ZOOMLAYER_MOVIE + 1); 
+			expire_image(imagery.cocktail_vid, settings.transitiondelay);
+			resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
+			blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
+			move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay)	
+		end
+
 		build_grid(settings.cell_width, settings.cell_height);
 	else
 		delete_image(internal_vid);
@@ -1160,16 +1164,15 @@ function gridle_internalcleanup()
 	settings.in_internal = false;
 end
 
-function gridle_internal_status(source, datatbl)
-	
+function gridle_internal_status(source, datatbl)	
 	if (datatbl.kind == "resized") then
-		if (settings.in_internal) then
-			gridlemenu_resize_fullscreen(source);
-		else
+		
+		if (not settings.in_internal) then
 			gridle_setup_internal(source, datatbl.audio);
 		end
-	end
 
+		gridlemenu_resize_fullscreen(source);
+	end
 end
 
 -- PLAYERn_UP, PLAYERn_DOWN, PLAYERn_LEFT, playern_RIGHT

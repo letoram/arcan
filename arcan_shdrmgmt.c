@@ -204,6 +204,19 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	return rv;
 }
 
+arcan_shader_id arcan_shader_lookup(const char* tag, bool* status)
+{
+	if (status) *status = true;
+	
+		for (int i = 0; i < shdr_global.ofs; i++){
+			if (shdr_global.slots[i].label && strcmp(tag, shdr_global.slots[i].label) == 0)
+				return i;
+		}
+	
+	if (status) *status = false;
+	return 0;
+}
+
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
 {
 	arcan_shader_id rv = ARCAN_EID;
@@ -336,8 +349,10 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 	
 	if (loc >= 0)
 		setv(loc, type, value);
+#ifdef DEBUG
 	else 
 		arcan_warning("arcan_shader_forceunif(): no matching location found for %s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
+#endif
 }
 
 static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){

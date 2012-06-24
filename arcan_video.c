@@ -597,9 +597,9 @@ const static char* defvprg =
 "uniform mat4 modelview;\n"
 "uniform mat4 projection;\n"
 
-"attribute vec4 vertex;\n"
 "attribute vec2 texcoord;\n"
 "varying vec2 texco;\n"
+"attribute vec4 vertex;\n"
 "void main(){\n"
 "	gl_Position = (projection * modelview) * vertex;\n"
 "   texco = texcoord;\n"
@@ -708,7 +708,7 @@ static void flipimage(SDL_Surface* src)
 {
 /* flip horizontal to match GL format, assumes RGBA */
 		unsigned char* dbuf = (unsigned char*) src->pixels;
-		for (int row=0; row < src->h * 0.5; row++)
+		for (int row=0; row < (src->h >> 2); row++)
 			for(int col=0; col < src->w; col++)
 				for(int ch=0; ch < 4; ch++){
 					unsigned normofs = (row * src->w + col) * 4 + ch;
@@ -2417,7 +2417,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 
 	if (vobj && vobj->flags.clone == true)
 		rv = ARCAN_ERRC_CLONE_NOT_PERMITTED;
-	else if (vobj && id > 0) {
+	else if (vobj && id >= 0) {
 		vobj->gl_storage.program = shid;
 		rv = ARCAN_OK;
 	}
