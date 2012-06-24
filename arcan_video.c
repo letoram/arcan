@@ -2122,8 +2122,13 @@ arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
 	arcan_vobj_id rv = ARCAN_EID;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	
-		if (vobj && vobj->parent && vobj->parent->owner) {
+		if (vobj){
+			rv = id;
+
+			if (vobj->parent && vobj->parent->owner) {
 				rv = vobj->parent->cellid;
+				printf("found, %d\n", rv);
+			}
 		}
 		
 	return rv;

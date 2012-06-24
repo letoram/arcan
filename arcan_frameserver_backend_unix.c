@@ -150,7 +150,15 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	int shmfd = 0;
 	
 	ctx->shm.key = arcan_findshmkey(&shmfd, true);
-	
+	char* work = strdup(ctx->shm.key);
+		work[strlen(work) - 1] = 'v';
+		ctx->vsync = sem_open(work, 0);
+		work[strlen(work) - 1] = 'a';
+		ctx->async = sem_open(work, 0);
+		work[strlen(work) - 1] = 'e';
+		ctx->esync = sem_open(work, 0);	
+	free(work);
+		
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
 	ftruncate(shmfd, shmsize);
@@ -180,16 +188,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
 			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
-
-		char* work = strdup(ctx->shm.key);
-			work[strlen(work) - 1] = 'v';
-			ctx->vsync = sem_open(work, 0);
-			work[strlen(work) - 1] = 'a';
-			ctx->async = sem_open(work, 0);
-			work[strlen(work) - 1] = 'e';
-			ctx->esync = sem_open(work, 0);	
-		free(work);
-		
+	
 		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
 			ctx->kind = ARCAN_FRAMESERVER_INPUT;
 		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){

@@ -5,7 +5,8 @@ local scalemodelist = {
 	"2X",
 	"Stretch",
 	"Rotate CW",
-	"Rotate CCW"
+	"Rotate CCW",
+	"Bezel"
 };
 
 local scalemodeptrs = {};
@@ -13,7 +14,7 @@ local function scalemodechg(label, save)
 	settings.scalemode = label;
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	if (save) then
-		store_key("internal_scalemode", label);
+		store_key("scalemode", label);
 		play_audio(soundmap["MENU_FAVORITE"]);
 	else
 		play_audio(soundmap["MENU_SELECT"]);
@@ -125,11 +126,57 @@ local props = image_surface_properties(source);
 	end
 end
 
+local function bezel_loaded(source, status)
+
+	if (status == 1) then
+		local props = image_storage_properties(source);
+		resize_image(source, VRESW, VRESH);
+		local x1,y1,x2,y2 = image_borderscan(source);
+		x1 = (x1 / props.width) * VRESW;
+		x2 = (x2 / props.width) * VRESW;
+		y1 = (y1 / props.height) * VRESH;
+		y2 = (y2 / props.height) * VRESH;
+		
+		resize_image(internal_vid, x2 - x1, y2 - y1);
+		move_image(internal_vid, x1, y1);
+		order_image(source, image_surface_properties(internal_vid).order - 1);
+		blend_image(source, 1.0, settings.transitiondelay);
+		blend_image(internal_vid, 1.0, settings.transitiondelay);
+		bezel_loading = false;
+	end
+	
+end
+
+local function setup_bezel()
+	local bzltbl = current_game().resources["bezels"];
+	local bezel = bzltbl and bzltbl[1] or nil;
+
+	if (bezel) then
+-- this will be cleared everytime internal mode is shut down
+		if (valid_vid(imagery.bezel) == false) then
+			imagery.bezel = load_image_asynch(bezel, bezel_loaded);
+			force_image_blend(imagery.bezel);
+			bezel_loading = true;
+			hide_image(internal_vid);
+		else
+			local props = image_surface_properties(imagery.bezel);
+			if (bezel_loading == false) then
+				bezel_loaded(imagery.bezel, 1);
+			end
+		end
+		
+		return true;
+	end
+	
+	return false;
+end
+
 function gridlemenu_resize_fullscreen(source)
--- rotations are not allowed for H-Split / H-Split SBS
+-- rotations are not allowed for H-Split / H-Split SBS and V-Split needs separate treatment 
 	local rotate = (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") and (settings.cocktail_mode == "Disabled");
 	local scalemode = settings.scalemode;
-
+	local cocktailmode = settings.cocktail_mode;
+	
 	local windw = VRESW;
 	local windh = VRESH;
 	rotate_image(source, 0);
@@ -147,8 +194,25 @@ function gridlemenu_resize_fullscreen(source)
 		scalemode = "Keep Aspect";
 	end
 
-	if (settings.cocktail_mode ~= "Disabled") then
-		if (settings.cocktail_mode == "V-Split") then
+-- use an external image (if found) for defining position and dimensions
+	if (scalemode == "Bezel") then
+		hide_image(internal_vid);
+		if (setup_bezel() == false) then
+			scalemode = "Keep Aspect";
+			show_image(internal_vid);
+		end
+
+-- this excludes cocktailmode from working
+		cocktailmode = "Disabled";
+	else
+		if (valid_vid(imagery.bezel)) then
+			hide_image(imagery.bezel);
+		end
+	end
+
+-- for cocktail-modes, we fake half-width or half-height
+	if (cocktailmode ~= "Disabled") then
+		if (cocktailmode == "V-Split") then
 			local tmp = windw;
 			windw = windh;
 			windh = tmp;
@@ -158,7 +222,8 @@ function gridlemenu_resize_fullscreen(source)
 			windw = windw * 0.5;
 		end
 	end
-		
+	
+-- some of the scale modes also work for cocktail, treat them the same
 	if (scalemode == "Original Size") then
 		resize_image(source, props.width, props.height);
 
@@ -166,7 +231,7 @@ function gridlemenu_resize_fullscreen(source)
 		resize_image(source, props.width * 2, props.height * 2);
 
 	elseif (scalemode == "Keep Aspect") then
--- more expensive but doesn't yield a nest of ifs ..
+-- more expensive than the 'correct' way, but less math ;p  
 		local step = 0;
 		local ar = props.width / props.height;
 		while ( (step < windw) and (step / ar < windh) ) do
@@ -199,7 +264,7 @@ function gridlemenu_resize_fullscreen(source)
 		if (rotate) then
 			rotate_image(source, settings.scalemode == "Rotate CW" and -90 or 90);
 			move_image(source, 0.5 * (windh - props.width), 0.5 * (windw - props.height));
-		else
+		elseif (scalemode ~= "Bezel") then
 			move_image(source, 0.5 * (windw - props.width), 0.5 * (windh - props.height));
 		end
 	end
@@ -434,8 +499,8 @@ function gridlemenu_internal(target_vid)
 	current_menu.ptrs["Scaling..."] = function()
 		local def = {};
 		def[ settings.scalemode ] = "\\#00ffff";
-		if (get_key("internal_scalemode")) then
-			def[ get_key("internal_scalemode") ] = "\\#00ff00";
+		if (get_key("scalemode")) then
+			def[ get_key("scalemode") ] = "\\#00ff00";
 		end
 		
 		menu_spawnmenu( scalemodelist, scalemodeptrs, def );
