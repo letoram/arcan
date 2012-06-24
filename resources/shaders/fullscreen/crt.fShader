@@ -23,6 +23,7 @@
 uniform sampler2D rubyTexture;
 uniform vec2 rubyInputSize;
 uniform vec2 rubyTextureSize;
+uniform float obj_opacity;
  
 varying vec2 texCoord;
 varying vec2 one;
@@ -221,6 +222,6 @@ void main()
   mul_res = pow(mul_res, vec3(1.0 / monitorgamma));
  
   // Color the texel.
-  gl_FragColor = vec4(mul_res, 1.0);
+  gl_FragColor = vec4(mul_res, obj_opacity);
 }
 

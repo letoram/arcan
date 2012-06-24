@@ -43,6 +43,7 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "arcan_event.h"
 #include "arcan_target_const.h"
 #include "arcan_frameserver_shmpage.h"
 
@@ -216,7 +217,7 @@ void ARCAN_target_init(){
 		exit(1);
 	}
 	
-	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
+//	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
 

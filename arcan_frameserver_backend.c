@@ -367,8 +367,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 /* may happen multiple- times */
 		if (shmpage->resized && (frameserver_shmpage_integrity_check(shmpage) || (suspect_frameserver(src),true) ) ){
-			
-			arcan_warning("trace, resize event: %d, %d\n", shmpage->w, shmpage->h);
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
 			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
             src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;

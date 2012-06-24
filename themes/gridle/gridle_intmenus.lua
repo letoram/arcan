@@ -1,7 +1,8 @@
 -- just a copy of gridle menus with the stuff specific for internal launch / fullscreen
 local scalemodelist = {
 	"Keep Aspect",
-	"Original Size", 
+	"Original Size",
+	"2X",
 	"Stretch",
 	"Rotate CW",
 	"Rotate CCW"
@@ -21,11 +22,7 @@ local function scalemodechg(label, save)
 	gridlemenu_resize_fullscreen(gridlemenu_destvid);
 end
 
-scalemodeptrs["Keep Aspect"] = scalemodechg;
-scalemodeptrs["Stretch"] = scalemodechg;
-scalemodeptrs["Rotate CW"] = scalemodechg;
-scalemodeptrs["Rotate CCW"] = scalemodechg;
-scalemodeptrs["Original Size"] = scalemodechg;
+for ind, val in ipairs(scalemodelist) do scalemodeptrs[val] = scalemodechg; end
 
 local inputmodelist = {
 -- revert all manipulation to default settings
@@ -77,60 +74,134 @@ for i=0,10 do
 	audiogainptrs[tostring( i * 0.1 )] = audiogaincb;
 end
 
--- make sure source is centered and add black bars to hide the background if needed
--- decent place to add bezel- support
-local function resize_reposition(source)
-	local props = image_surface_properties(source);
-	move_image(source, 0.5 * (VRESW - props.width), 0.5 * (VRESH - props.height))
-end
-
-local function similar_aspect(sourcew, sourceh)
-	return (VRESW / VRESH > 1.0 and sourcew / sourceh > 1.0) or 
-		(VRESW / VRESH < 1.0 and sourcew / sourceh < 1.0);
-end
-
--- whenever a target resizes internally shaders might need to be updated with new values,
--- furthermore, the user might want to change scaling etc. in-game
-function gridlemenu_resize_fullscreen(source)
-	local props = image_surface_initial_properties(source);
--- always scale to source dominant axis 
-	if (settings.scalemode == "Original Size") then
-		rotate_image(source, 0);
-		resize_image(source, props.width, props.height);
-		resize_reposition(source);
-		
-	elseif (settings.scalemode == "Keep Aspect") then
-		rotate_image(source, 0);
-		
-		if (props.width / props.height > 1.0) then
-			resize_image(source, VRESW, 0);
-		else
-			resize_image(source, 0, VRESH);
-		end
-
-		resize_reposition(source);
-
--- just stretch to fill screen, no reposition etc. needed
-	elseif (settings.scalemode == "Stretch") then 
-		resize_image(source, VRESW, VRESH);
-		rotate_image(source, 0);
-		move_image(source, 0, 0);
-
--- if aspect ratios mismatch, rotate image and flip dominant axis 
-	elseif (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") then
-		local angdeg = 90;
-		if (settings.scalemode == "Rotate CCW") then angdeg = -90; end
-			rotate_image(source, angdeg);
-
-			if (props.height/ props.width > 1.0) then
-				resize_image(source, 0, VRESW);
-			else
-				resize_image(source, VRESH, 0);
-			end
-
-		resize_reposition(source);
+local function cocktailmodechg(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	if (save) then
+		store_key("cocktail_mode", label);
+		play_audio(soundmap["MENU_FAVORITE"]);
 	else
-		warning("unknown scalemode specified: " .. settings.scalemode .. "\n");
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+	
+	settings.cocktail_mode = label;
+	gridlemenu_resize_fullscreen(gridlemenu_destvid);
+end
+
+local cocktaillist = {
+	"Disabled",
+-- horizontal split, means scale to fit width, instance and flip instance 180
+	"H-Split",
+-- vsplit means scale to fit width to height, instance, and rotate 90 -90
+	"V-Split",
+-- same as h-split, but don't rotate 
+	"H-Split SBS"
+};
+
+local cocktailptrs = {};
+for ind, val in ipairs(cocktaillist) do
+	cocktailptrs[val] = cocktailmodechg;
+end
+
+local function setup_cocktail(mode, source, vresw, vresh)
+local props = image_surface_properties(source);
+	
+	imagery.cocktail_vid = instance_image(source);
+	image_mask_clear(imagery.cocktail_vid, MASK_OPACITY);
+	image_mask_clear(imagery.cocktail_vid, MASK_ORIENTATION);
+	resize_image(imagery.cocktail_vid, props.width, props.height);
+	show_image(imagery.cocktail_vid);
+
+	if (mode == "H-Split" or mode == "H-Split SBS") then
+		if (mode == "H-Split") then rotate_image(imagery.cocktail_vid, 180); end
+		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
+		move_image(source, 0.5 * (vresw - props.width), 0.5 * (vresh - props.height));
+		move_image(imagery.cocktail_vid, vresw + 0.5 * (vresw - props.width), 0.5 * (vresh - props.height));
+		
+	elseif (mode == "V-Split") then
+		move_image(source, 0.5 * (vresh - props.width), 0.5 * (vresw - props.height))
+		move_image(imagery.cocktail_vid, vresh, 0);
+		rotate_image(imagery.cocktail_vid, -90);
+		rotate_image(source, 90);
+	end
+end
+
+function gridlemenu_resize_fullscreen(source)
+-- rotations are not allowed for H-Split / H-Split SBS
+	local rotate = (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") and (settings.cocktail_mode == "Disabled");
+	local scalemode = settings.scalemode;
+
+	local windw = VRESW;
+	local windh = VRESH;
+	rotate_image(source, 0);
+
+	if (valid_vid(imagery.cocktail_vid)) then
+		delete_image(imagery.cocktail_vid);
+		imagery.cocktail_vid = BADID;
+	end
+		
+	local props = image_surface_initial_properties(source);
+	if (rotate) then
+		local tmp = windw;
+		windw = windh;
+		windh = tmp;
+		scalemode = "Keep Aspect";
+	end
+
+	if (settings.cocktail_mode ~= "Disabled") then
+		if (settings.cocktail_mode == "V-Split") then
+			local tmp = windw;
+			windw = windh;
+			windh = tmp;
+			windh = windh * 0.5;
+			scalemode = "Keep Aspect";
+		else
+			windw = windw * 0.5;
+		end
+	end
+		
+	if (scalemode == "Original Size") then
+		resize_image(source, props.width, props.height);
+
+	elseif (scalemode == "2X") then
+		resize_image(source, props.width * 2, props.height * 2);
+
+	elseif (scalemode == "Keep Aspect") then
+-- more expensive but doesn't yield a nest of ifs ..
+		local step = 0;
+		local ar = props.width / props.height;
+		while ( (step < windw) and (step / ar < windh) ) do
+			step = step + 1;
+		end
+	
+		resize_image(source, step, math.ceil(step / ar) );
+	
+	elseif (scalemode == "Stretch") then 
+		resize_image(source, windw, windh);
+	end
+	
+-- some operations overshoot, just step down
+	props = image_surface_properties(source);
+	if (props.width > windw or props.height > windw) then
+		local ar = props.width / props.height;
+		local step = windw;
+
+		while ( (step > windw ) or (step / ar > windh) ) do
+			step = step - 1;
+		end
+		resize_image(source, step, math.ceil(step / ar) );
+	end
+	
+-- update all the values to the result of calculations
+	props = image_surface_properties(source);
+	if (settings.cocktail_mode ~= "Disabled") then
+		setup_cocktail(settings.cocktail_mode, source, windw, windh);
+	else
+		if (rotate) then
+			rotate_image(source, settings.scalemode == "Rotate CW" and -90 or 90);
+			move_image(source, 0.5 * (windh - props.width), 0.5 * (windw - props.height));
+		else
+			move_image(source, 0.5 * (windw - props.width), 0.5 * (windh - props.height));
+		end
 	end
 	
 	local sprops = image_storage_properties(source);
@@ -139,9 +210,10 @@ function gridlemenu_resize_fullscreen(source)
 	if (fullscreen_shader) then
 		shader_uniform(fullscreen_shader, "rubyInputSize", "ff", PERSIST, sprops.width, sprops.height); -- need to reflect actual texel size
 		shader_uniform(fullscreen_shader, "rubyTextureSize", "ff", PERSIST, dprops.width, dprops.height); -- since target is allowed to resize at more or less anytime, we need to update this
-		shader_uniform(fullscreen_shader, "rubyOutputSize", "ff", PERSIST, VRESW, VRESH);
+		shader_uniform(fullscreen_shader, "rubyOutputSize", "ff", PERSIST, windw, windh);
 		shader_uniform(fullscreen_shader, "rubyTexture", "i", PERSIST, 0);
 	end
+	
 end
 
 function gridlemenu_loadshader(basename)
