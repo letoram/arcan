@@ -20,13 +20,13 @@
 #include "../arcan_event.h"
 
 #include "../frameserver/arcan_frameserver.h"
+#include "../arcan_frameserver_shmpage.h"
 #include "../frameserver/arcan_frameserver_libretro.h"
 #include "../frameserver/arcan_frameserver_decode.h"
-#include "../arcan_frameserver_shmpage.h"
 
 FILE* logdev = NULL;
-static HWND parent = 0;
-static sem_handle async, vsync, esync;
+HWND parent = 0;
+sem_handle async, vsync, esync;
 
 /* linking hacks .. */
 void arcan_frameserver_free(void* dontuse){}
@@ -52,16 +52,6 @@ char* arcan_themename;
    abort();
 }*/
 
-static bool parent_alive()
-{
-	LOG("parent alive? %i, %i\n", IsWindow(parent), parent);
-	return IsWindow(parent);
-}
-
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq)
-{
-
-
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 {
 	HANDLE fh = CreateFile( resource, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
@@ -77,6 +67,33 @@ void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 		*ressize = (size_t) GetFileSize(fh, NULL);
 
 	return res;
+}
+
+
+static LARGE_INTEGER ticks_pers;
+static LARGE_INTEGER start_ticks;
+
+unsigned long int frameserver_timemillis()
+{
+	LARGE_INTEGER ticksnow;
+	QueryPerformanceCounter(&ticksnow);
+
+	ticksnow.QuadPart -= start_ticks.QuadPart;
+	ticksnow.QuadPart *= 1000;
+	ticksnow.QuadPart /= ticks_pers.QuadPart;
+
+	return (unsigned long int) ticksnow.QuadPart;
+}
+
+void frameserver_delay(unsigned long val)
+{
+/* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds) 
+ * just busyloop and count .. */
+
+	unsigned long int start = frameserver_timemillis();
+
+	while (val > (frameserver_timemillis() - start))
+		Sleep(0); /* yield */
 }
 
 int main(int argc, char* argv[])
@@ -102,6 +119,8 @@ int main(int argc, char* argv[])
 	char* resource = argv[0];
 	char* fsrvmode = argv[5];
 	char* shmkey   = argv[1];
+	QueryPerformanceFrequency(&ticks_pers);
+	QueryPerformanceCounter(&start_ticks);
 
 	LOG("arcan_frameserver(win32) -- initial argcheck OK, %s:%s\n", fsrvmode, resource);
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
