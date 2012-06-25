@@ -19,6 +19,9 @@
  *
  */
 
+#ifndef _HAVE_FRAMESERVER_SHMPAGE
+#define _HAVE_FRAMESERVER_SHMPAGE
+
 #define SHMPAGE_QUEUESIZE 64
 #define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
 #define SHMPAGE_AUDIOBUF_SIZE (192000 * 3 / 2)
@@ -95,3 +98,5 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 
 /* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
 bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
+
+#endif

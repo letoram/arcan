@@ -1,10 +1,11 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/types.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 
 #include <unistd.h>
@@ -14,12 +15,22 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
+#include "frameserver/arcan_frameserver.h"
 #include "arcan_frameserver_shmpage.h"
-
 
 /* Dislike pulling stunts like this,
  * but it saved a lot of bad codepaths */
 #if _WIN32
+extern sem_handle async, vsync, esync;
+extern HANDLE parent;
+
+static inline bool parent_alive()
+{
+/* based on the idea that init inherits an orphaned process,
+ * wouldn't surprise me if some GNUish environment would break this .. */
+	return IsWindow(parent);
+}
+
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
 	struct frameserver_shmcont res = {0};
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
@@ -34,21 +45,19 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.asem = async;
 	res.vsem = vsync;
 	res.esem = esync;
-	res.addr->w = width;
-	res.addr->h = height;
-	res.addr->bpp = bpp;
+	res.addr->w = 0;
+	res.addr->h = 0;
+	res.addr->bpp = 4;
 	res.addr->vready = false;
-	res.addr->aready = false,
-	res.addr->vbufofs = sizeof(struct frameserver_shmpage);
-	res.addr->channels = nchan;
-	res.addr->frequency =freq;
-	res.addr->abufofs = res.addr->vbufofs + (res.addr->w * res.addr->h * res.addr->bpp);
-	parent = res.addr->parent;
+	res.addr->aready = false;
+	res.addr->channels = 0;
+	res.addr->frequency = 0;
 
 	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
 }
 #else 
+#include <sys/mman.h>
 
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
 /* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
@@ -129,7 +138,6 @@ static inline bool parent_alive()
 
 /* need the timeout to avoid a deadlock situation */
 int frameserver_semcheck(sem_handle semaphore, int timeout){
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
 	int rc;
 	int timeleft = timeout;	
 

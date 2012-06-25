@@ -190,7 +190,6 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 
 	if (*dfd != NULL && (res = MapViewOfFile(*dfd, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
 		memset(res, 0, sizeof(struct frameserver_shmpage));
-		res->vbufofs = sizeof(struct frameserver_shmpage);
 		return res;
 	}
 
@@ -198,6 +197,12 @@ error:
 	arcan_warning("arcan_frameserver_spawn_server(), could't allocate shared memory.\n");
 	return NULL;
 }
+
+
+/* hack around linking shmpage */
+sem_handle async, vsync, esync;
+HANDLE parent;
+FILE* logdev = NULL;
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
