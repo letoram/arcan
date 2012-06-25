@@ -30,6 +30,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -70,6 +71,31 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 
 	*dstsize = filedat.st_size;
 	return buf;
+}
+
+unsigned long int frameserver_timemillis()
+{
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	return (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
+}
+
+void frameserver_delay(unsigned long val)
+{
+	struct timespec req, rem;
+	req.tv_sec = floor(val / 1000);
+	val -= req.tv_sec * 1000;
+	req.tv_nsec = val * 1000000;
+	
+	while( nanosleep(&req, &rem) == -1 ){
+/* sweeping EINTR introduces an error rate that can grow large,
+ * check if the remaining time is less than a threshold */
+		if (errno == EINTR) {
+			req = rem;
+			if (rem.tv_sec * 1000 + (1 + req.tv_nsec) / 1000000 < 4)
+				break;
+		} 
+	}
 }
 
 /* linker hack */
