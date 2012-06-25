@@ -1,3 +1,4 @@
+# look in arcan_romman.rb for launching / loading
 gotgems = false
 
 begin

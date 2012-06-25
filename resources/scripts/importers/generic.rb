@@ -136,6 +136,9 @@ class Generic
 				newgame.setname = @genromlist[@targetname] == true ? fn : setname
 				newgame.target = @target
 				newgame.system = SystemTable[ @targetname ]
+				if (newgame.system == nil) then
+				    newgame.system = @target
+				end
 
 				yield newgame
 			end

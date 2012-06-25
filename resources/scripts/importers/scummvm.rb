@@ -109,6 +109,7 @@ class ScummVM
 					newgame.pkid = 0
 					newgame.genre = "Adventure"
 					newgame.year = 0
+					newgame.system = "Multi"
 					newgame.manufacturer = ""
 					newgame.arguments[1] = ["-F"]
 					newgame.arguments[2] = ["-f"]
