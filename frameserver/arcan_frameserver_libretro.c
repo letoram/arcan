@@ -114,11 +114,6 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 {
 	if (!data) return;
 	
-	if (retroctx.skipframe){
-		retroctx.skipframe = false;
-		return;
-	}
-	
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (width != retroctx.shmcont.addr->w || height != retroctx.shmcont.addr->h){
@@ -378,6 +373,7 @@ LOG("map shm\n");
 				else if (framedelta > retroctx.mspf){
 					retroctx.skipframe = true;
 					retroctx.run();
+					retroctx.skipframe = false;
 					continue;
 				}
 			}
@@ -385,7 +381,7 @@ LOG("map shm\n");
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
-			
+		
 			unsigned long int postt, pret = frameserver_timemillis();
 			retroctx.run();
 			postt = frameserver_timemillis();

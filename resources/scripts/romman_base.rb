@@ -33,12 +33,12 @@ DDL = {
 	buttons INT,\
 	ctrlmask INT,\
 	genre text,\
-	system text,\
 	subgenre text,\
 	platform text,\
 	year INT,\
 	launch_counter INT,\
 	manufacturer TEXT,\
+	system text,\
 	target INT NOT NULL,\
 	FOREIGN KEY (target) REFERENCES target(targetid) )",
 
@@ -83,7 +83,7 @@ class Dql
 	
 	:update_game => "UPDATE game SET setname=?, players=?, buttons=?, ctrlmask=?, genre=?, subgenre=?, year=?, manufacturer=?, system=? WHERE gameid=?",
 	:update_target_by_targetid => "UPDATE target SET name = ?, executable = ? WHERE targetid = ?",
-	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?, 0)",
+	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?,0)",
 	:insert_target => "INSERT INTO target (name, executable) VALUES (?,?)",
 	:insert_arg => "INSERT INTO target_arguments (target, game, argument, mode) VALUES (?, ?, ?, ?)",
 	
@@ -167,7 +167,7 @@ class Game < DBObject
 				[@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
 		else
 			@@dbconn.execute(DQL[:insert_game],
-				[@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
+				[@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @target.pkid])
 
 			@pkid = @@dbconn.last_insert_row_id()
 		end
@@ -433,7 +433,7 @@ module Importers
 
 	def Importers.Load(path)
 		@@instances = {}
-		Dir["#{path}/importers/*"].each{|imp|
+		Dir["#{path}/importers/*.rb"].each{|imp|
 			modname = imp[imp.rindex('/')+1..-4]
 			
 			begin
