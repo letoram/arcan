@@ -124,7 +124,7 @@ static bool check_paths()
 	}
 	
 	if (!arcan_libpath){
-		arcan_warning("Warning: check_paths(), libpath not found (internal support disabled).\n");
+		arcan_warning("Warning: check_paths(), libpath not found (internal support downgraded to partial).\n");
 	}
 	
 	if (!arcan_resourcepath){
@@ -329,7 +329,7 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 #ifdef __APPLE__
 
 const char* internal_launch_support(){
-	return arcan_libpath ? "PARTIAL SUPPORT" : "NO SUPPORT (not found)";
+	return arcan_libpath ? "FULL SUPPORT" : "PARTIAL SUPPORT";
 }
 
 bool arcan_setpaths()
@@ -391,7 +391,7 @@ bool arcan_setpaths()
 }
 
 const char* internal_launch_support(){
-	return arcan_libpath ? "FULL SUPPORT" : "NO SUPPORT (not found)";
+	return arcan_libpath ? "FULL SUPPORT" : "PARTIAL SUPPORT";
 }
 
 #endif
@@ -595,7 +595,7 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 }
 
 const char* internal_launch_support(){
-	return "NO SUPPORT";
+	return "PARTIAL SUPPORT";
 }
 
 /* ... cough ... */
