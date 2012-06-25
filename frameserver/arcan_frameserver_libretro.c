@@ -59,8 +59,10 @@
  * that can be handled by SDLs library management functions. */
 static struct {
 		bool skipframe; /* set if next frame should just be dropped (not copied to buffers) */
-	
-		double lastframe, fps;
+		unsigned skipcount, framecount;
+		
+		double mspf;
+		long long int basetime;
 	
 		int16_t* audbuf; /* audio buffer for retro- targets that supply samples one call at a time */
 		unsigned audbuf_nsamples;
@@ -77,6 +79,7 @@ static struct {
 		struct retro_game_info gameinfo;
 		unsigned state_size;
 		
+		unsigned long int last_frametime;
 /* 
  * current versions only support a subset of inputs (e.g. 1 mouse/lightgun + 12 buttons per port.
  * we map PLAYERn_BUTTONa and substitute n for port and a for button index, with a LUT for UP/DOWN/LEFT/RIGHT
@@ -109,6 +112,8 @@ static void* libretro_requirefun(const char* sym)
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
+	if (!data) return;
+	
 	if (retroctx.skipframe){
 		retroctx.skipframe = false;
 		return;
@@ -146,6 +151,9 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 /* flush to audiobuffer */
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
+	if (retroctx.skipframe)
+		return nframes;
+	
 	memcpy(&retroctx.audbuf[retroctx.audbuf_used], data, nframes * sizeof(int16_t) * 2);
 	retroctx.audbuf_used += nframes * 2;
 	retroctx.audbuf_used = retroctx.audbuf_used % (retroctx.audbuf_nsamples + 1);
@@ -154,6 +162,9 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 }
 
 void libretro_audscb(int16_t left, int16_t right){
+	if (retroctx.skipframe)
+		return;
+	
 	retroctx.audbuf[ retroctx.audbuf_used++ ] = left;
 	retroctx.audbuf[ retroctx.audbuf_used++ ] = right; 
 	
@@ -325,8 +336,9 @@ LOG("load_game\n");
 		
 LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
-LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_rate);
-
+		LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_rate);
+		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
+		
 /* samples per frame = samples per second / frames per second */
 		retroctx.audbuf_nsamples = (unsigned) round(avinfo.timing.sample_rate / avinfo.timing.fps) * 2 + 4;
 		retroctx.audbuf = (int16_t*) malloc( retroctx.audbuf_nsamples * sizeof(int16_t));
@@ -347,21 +359,42 @@ LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
 		retroctx.reset();
+		retroctx.basetime = frameserver_timemillis();
+		unsigned long int last_framecost = 1;
 		
 		while (true){
+/* if we're lagging behind, drop the next frame, otherwise sleep */
+			long long int frametime = frameserver_timemillis();
+			if (frametime > retroctx.basetime){
+				double framedelta = (frametime - retroctx.basetime) - ( (double)retroctx.framecount++ * retroctx.mspf);
+
+/* framedelta is the deviation from the current time to the next expected frame, depending on the cost
+ * of the previos frame, the choice is between sleeping, dropping and rendering */
+				if (framedelta < (retroctx.mspf - last_framecost) ){
+					frameserver_delay( ceil( fabs(framedelta) ) - last_framecost  );
+				} 
+
+/* more than a frame behind? skip */
+				else if (framedelta > retroctx.mspf){
+					retroctx.skipframe = true;
+					retroctx.run();
+					continue;
+				}
+			}
+		
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
-			retroctx.run();
 			
-/* if we're lagging behind, drop the next frame */
-
+			unsigned long int postt, pret = frameserver_timemillis();
+			retroctx.run();
+			postt = frameserver_timemillis();
+			last_framecost = (postt - pret);
+			
 /* otherwise, flush to frameserver, the size of audiobuf should be well above that of the retroctx buffer,
  * but cap, warn about the overflow and drop */
+			shared->vready = true;
 
-/* these are a bit redundant, fix in next refactor */
-			retroctx.shmcont.addr->vready = true;
-			
 /* LOCK audio */
 			frameserver_semcheck( retroctx.shmcont.asem, -1);
 		
