@@ -1,4 +1,3 @@
-# look in arcan_romman.rb for launching / loading
 gotgems = false
 
 begin
@@ -18,7 +17,7 @@ rescue LoadError => ex
 end
 
 	require 'getoptlong'
-ROMMAN_VERSION = 0.1
+ROMMAN_VERSION = 0.2
 
 DDL = {
 	:target => "CREATE TABLE target (
@@ -34,7 +33,9 @@ DDL = {
 	buttons INT,\
 	ctrlmask INT,\
 	genre text,\
+	system text,\
 	subgenre text,\
+	platform text,\
 	year INT,\
 	launch_counter INT,\
 	manufacturer TEXT,\
@@ -71,18 +72,18 @@ class Dql
 	def initialize
 @dqltbl = {
 	:get_gameid_by_title => "SELECT gameid FROM game WHERE title = ?",
-	:get_game_by_gameid => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, target FROM game WHERE gameid=?",
-	:get_game_by_title_exact => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, target FROM game WHERE title=?",
-	:get_game_by_title_wild => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, target FROM game WHERE title LIKE ?",
+	:get_game_by_gameid => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE gameid=?",
+	:get_game_by_title_exact => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE title=?",
+	:get_game_by_title_wild => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE title LIKE ?",
 	:get_games_by_target => "SELECT gameid FROM game WHERE target = ?",
 	:get_games_title => "SELECT title FROM game",
 	:get_arg_by_id_mode => "SELECT argument FROM target_arguments WHERE target = ? AND mode = ? AND game = 0",
 	:get_target_by_id => "SELECT targetid, name, executable FROM target WHERE targetid = ?",
 	:get_target_by_name => "SELECT targetid, name, executable FROM target WHERE name = ?",
 	
-	:update_game => "UPDATE game SET setname=?, players=?, buttons=?, ctrlmask=?, genre=?, subgenre=?, year=?, manufacturer=? WHERE gameid=?",
+	:update_game => "UPDATE game SET setname=?, players=?, buttons=?, ctrlmask=?, genre=?, subgenre=?, year=?, manufacturer=?, system=? WHERE gameid=?",
 	:update_target_by_targetid => "UPDATE target SET name = ?, executable = ? WHERE targetid = ?",
-	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?, 0)",
+	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?, 0)",
 	:insert_target => "INSERT INTO target (name, executable) VALUES (?,?)",
 	:insert_arg => "INSERT INTO target_arguments (target, game, argument, mode) VALUES (?, ?, ?, ?)",
 	
@@ -119,8 +120,8 @@ class DBObject
 end
 
 class Game < DBObject
-	attr_accessor :pkid, :title, :setname, :players, :buttons, :ctrlmask, :genre,	
-	:subgenre, :year, :manufacturer, :target, :arguments
+	attr_accessor :pkid, :title, :setname, :players, :buttons, :ctrlmask, :genre,
+	:subgenre, :year, :manufacturer, :system, :target, :arguments
 
 	INPUTMASK_LUT = ["joy2way", "doublejoy2way", "joy4way", "doublejoy4way", 
 	"joy8way", "doublejoy8way", "dial", "paddle", "stick", "lightgun",
@@ -138,6 +139,7 @@ class Game < DBObject
 		@year = 0
 		@manufacturer = ""
 		@target = nil
+		@system = ""
 		@arguments = [ [], [], [] ]
 	end
 
@@ -162,10 +164,10 @@ class Game < DBObject
 		if (chkid.size > 0)
 			@pkid = chkid[0][0].to_i
 			@@dbconn.execute(DQL[:update_game], 
-				[@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @target.pkid])
+				[@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
 		else
 			@@dbconn.execute(DQL[:insert_game],
-				[@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @target.pkid])
+				[@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
 
 			@pkid = @@dbconn.last_insert_row_id()
 		end
@@ -277,7 +279,8 @@ class Game < DBObject
 			newg.subgenre= row[7]
 			newg.year    = row[8].to_i
 			newg.manufacturer = row[9]
-			newg.target  = row[10].to_i
+			newg.system = row[10]
+			newg.target  = row[11].to_i
 			newg.target  = Target.Load( newg.target, nil )
 			res << newg
 		}
@@ -430,7 +433,7 @@ module Importers
 
 	def Importers.Load(path)
 		@@instances = {}
-		Dir["#{path}/importers/*.rb"].each{|imp|
+		Dir["#{path}/importers/*"].each{|imp|
 			modname = imp[imp.rindex('/')+1..-4]
 			
 			begin
@@ -601,6 +604,7 @@ def addgame(args)
 					when "subgenre" then newgame.subgenre = kvary[1].to_s
 					when "year"     then newgame.year     = kvary[1].to_i
 					when "manufacturer" then newgame.manufacturer = kvary[1].to_i
+					when "system" then newgame.system = kvary[1].to_s
 				else
 					STDERR.print("alterdb --addgame, unknown optarg (#{kvary[0]}), ignored.")
 				end
