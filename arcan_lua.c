@@ -2603,7 +2603,7 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
 	bool persist = luaL_checknumber(ctx, 4) != 0;
-
+	arcan_warning("fmtstr: %s, %s\n", label, fmtstr);
 	arcan_shader_activate(sid);
 
 	if (fmtstr[0] == 'b'){
@@ -2615,6 +2615,7 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 	} else {
 		unsigned i = 0;
 		while(fmtstr[i] == 'f') i++;
+		arcan_warning("floatarry: %s:%d\n", fmtstr, i);
 		if (i)
 			switch(i){
 				case 1:

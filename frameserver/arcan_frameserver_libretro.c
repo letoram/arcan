@@ -117,10 +117,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (width != retroctx.shmcont.addr->w || height != retroctx.shmcont.addr->h){
-		retroctx.shmcont.addr->w = width;
-		retroctx.shmcont.addr->h = height;
-		retroctx.shmcont.addr->resized = true;
-		LOG("arcan_frameserver(libretro) -- resize to %d, %d\n", retroctx.shmcont.addr->w, retroctx.shmcont.addr->h);
+		frameserver_shmpage_resize(&retroctx.shmcont, width, height, 4, 2, retroctx.shmcont.addr->frequency);
 	}
 	
 	uint16_t* buf  = (uint16_t*) data; /* assumes alignment */

@@ -53,14 +53,13 @@ static int ofstbl[TBLSIZE] = {
 };
 
 static enum shdrutype typetbl[TBLSIZE] = {
-	shdrmat4x4,
-	shdrmat4x4,
-	shdrmat4x4,
+	shdrmat4x4, /* modelview */
+	shdrmat4x4, /* projection */
+	shdrmat4x4, /* texturem */
 
-	shdrfloat,
-	
-	shdrfloat,
-	shdrint
+	shdrfloat, /* obj_opacity */
+	shdrfloat, /* fract_timestamp */
+	shdrint /* timestamp */
 };
 
 static char* typestrtbl[7] = {
@@ -134,7 +133,7 @@ static struct {
 static bool build_shader(const char*, GLuint*, GLuint*, GLuint*, const char*, const char*);
 static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg);
 
-static void setv(GLint loc, enum shdrutype kind, void* val)
+static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, const char* program)
 {
 #ifdef _DEBUG
 	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:pre") == -1){
@@ -162,7 +161,7 @@ static void setv(GLint loc, enum shdrutype kind, void* val)
 		int progno;
 		glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
 		
-		printf("failed operation: store type(%i:%s) into slot(%i) on program(%i)\n", kind, typestrtbl[kind], loc, progno);
+		printf("failed operation: store type(%i:%s) into slot(%i:%s) on program(%i:%s)\n", kind, typestrtbl[kind], loc, id, progno, program);
 		struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
 		printf("last active shader: (%s), locals: \n", src->label);
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
@@ -183,18 +182,19 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
-	/* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
-	 * we use the index as a lookup for value and type */
+
+/* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
+ * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0){
-				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i]);
+				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i], typestrtbl[i], cur->label);
             }
 		}
 
-	/* activate any persistant values */
+/* activate any persistant values */
 		struct shaderv* current = cur->persistvs;
 		while (current){
-			setv(current->loc, current->type, (void*) current->data);
+			setv(current->loc, current->type, (void*) current->data, current->label, cur->label);
 			current = current->next;
 		}
 	
@@ -299,7 +299,7 @@ bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 	/* reflect change in current active shader */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
-		setv(glloc, typetbl[slot], value);
+		setv(glloc, typetbl[slot], value, typestrtbl[slot], shdr_global.slots[ shdr_global.active_prg].label );
 		return true;
 	}
 
@@ -346,9 +346,13 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 /* or, we just want to update the uniform ONCE (disappear on push/pop etc.) */
 	else
 		loc = glGetUniformLocation(slot->prg_container, label);
-	
-	if (loc >= 0)
-		setv(loc, type, value);
+
+	if (loc >= 0){
+		setv(loc, type, value, label, slot->label);
+#ifdef DEBUG
+		arcan_warning("arcan_shader_forceunif(): setting uniform %s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
+#endif
+	}
 #ifdef DEBUG
 	else 
 		arcan_warning("arcan_shader_forceunif(): no matching location found for %s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
