@@ -418,11 +418,8 @@ function gridle_keyconf()
 	local listlbls = {};
 	local lastofs = 1;
 	
-	print("INTERNALMODE: " .. INTERNAL)
-	if (INTERNALMODE ~= "NO SUPPORT") then
-		table.insert(keylabels, " LAUNCH_INTERNAL");
-		system_load("gridle_intmenus.lua")();
-	end
+	table.insert(keylabels, " LAUNCH_INTERNAL");
+	system_load("gridle_intmenus.lua")();
 
 	for ind, key in ipairs(keylabels) do
 		table.insert(listlbls, string.sub(key, 2));
