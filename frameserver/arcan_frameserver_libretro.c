@@ -333,7 +333,7 @@ LOG("map shm\n");
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
 		
 /* samples per frame = samples per second / frames per second */
-		retroctx.audbuf_nsamples = (unsigned) round(avinfo.timing.sample_rate / avinfo.timing.fps) * 2 + 4;
+		retroctx.audbuf_nsamples = (unsigned) round(avinfo.timing.sample_rate / avinfo.timing.fps) * 8 + 4;
 		retroctx.audbuf = (int16_t*) malloc( retroctx.audbuf_nsamples * sizeof(int16_t));
 		
 		for (unsigned i = 0; i < retroctx.audbuf_nsamples; i++)
@@ -358,7 +358,7 @@ LOG("map shm\n");
 		retroctx.basetime = frameserver_timemillis();
 		unsigned long int last_framecost = 1;
 		
-		while (retroctx.shmcont.dms){
+		while (retroctx.shmcont.addr->dms){
 		goto skipskip;
 			long long int frametime = frameserver_timemillis();
 
@@ -396,9 +396,8 @@ skipskip:
 			shared->vready = true;
 
 /* LOCK audio */
-			if (retroctx.audbuf_used) {
+			if (shared->aready == false && retroctx.audbuf_used > 512) {
 				frameserver_semcheck( retroctx.shmcont.asem, -1);
-		
 /* other buffer is in number of samples, dst is in number of bytes */
 				memcpy( retroctx.audp, retroctx.audbuf, sizeof(int16_t) * retroctx.audbuf_used);
 				shared->abufused = sizeof(int16_t) * (retroctx.audbuf_used);

@@ -292,15 +292,14 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
-/* synching behavior is different in this mode,
- * the semaphore is used for mutex */
 arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
-
+	int trycount = 10;
+	
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-	if (shmpage->abufused > 0 && arcan_sem_timedwait(src->async, 0) == 0 ){
+	if (shmpage->aready && arcan_sem_timedwait(src->async, 1) != 0){
 		alBufferData(buffer, AL_FORMAT_STEREO16, src->audp, shmpage->abufused, src->desc.samplerate);
 		rv = ARCAN_OK;
 	
