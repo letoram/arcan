@@ -67,6 +67,7 @@ arcan_aobj_id arcan_audio_load_sample(const char* fname, float gain, arcan_errc*
 /* setup / change a callback feed for refilling buffers */
 arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc);
 arcan_errc arcan_audio_alterfeed(arcan_aobj_id id, arcan_afunc_cb feed);
+int arcan_audio_findstreambufslot(arcan_aobj_id id);
 
 /* setup a proxy object for some commands (gain, ...),
  * used particularly in internal target launch mode when
