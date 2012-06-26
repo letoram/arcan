@@ -684,7 +684,7 @@ arcan_errc arcan_audio_setpitch(arcan_aobj_id id, float pitch, uint16_t time)
 	return rv;
 }
 
-int find_bufferind(arcan_aobj* cur, unsigned bufnum){
+static int find_bufferind(arcan_aobj* cur, unsigned bufnum){
 	for (int i = 0; i < sizeof(cur->streambuf); i++){
 		if (cur->streambuf[i] == bufnum)
 			return i;
@@ -693,13 +693,23 @@ int find_bufferind(arcan_aobj* cur, unsigned bufnum){
 	return -1;
 }
 
-int find_freebufferind(arcan_aobj* cur){
+static int find_freebufferind(arcan_aobj* cur, bool tag){
 	for (int i = 0; i < sizeof(cur->streambuf); i++){
-		if (cur->streambufmask[i] == false)
+		if (cur->streambufmask[i] == false){
+			if (tag)
+				cur->streambufmask[i] = true;
+
 			return i;
+		}
 	}
 
 	return -1;
+}
+
+int arcan_audio_findstreambufslot(arcan_aobj_id id)
+{
+	arcan_aobj* aobj = arcan_audio_getobj(id);
+	return aobj ? find_freebufferind(aobj, true) : -1;
 }
 
 static void arcan_astream_refill(arcan_aobj* current)
@@ -722,9 +732,14 @@ static void arcan_astream_refill(arcan_aobj* current)
 
 		_wrap_alError(current, "audio_refill(refill:dequeue)");
 		current->used--;
+
+/* as soon as we've used a buffer, try to refill it.
+ * for streaming source etc. try with a callback. Some frameserver modes will do this
+ * as a push rather than pull however. */
 		if (current->feed){
 			arcan_errc rv = current->feed(current, current->alid, buffer, current->tag);
 			_wrap_alError(current, "audio_refill(refill:buffer)");
+
 			if (rv == ARCAN_OK){
 				alSourceQueueBuffers(current->alid, 1, &buffer);
 				current->streambufmask[bufferind] = true;
@@ -744,7 +759,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 
 	if (current->used < sizeof(current->streambuf) / sizeof(current->streambuf[0]) && current->feed){
 		for (int i = current->used; i < sizeof(current->streambuf) / sizeof(current->streambuf[0]); i++){
-			int ind = find_freebufferind(current);
+			int ind = find_freebufferind(current, false);
 			arcan_errc rv = current->feed(current, current->alid, current->streambuf[ind], current->tag);
 
 			if (rv == ARCAN_OK){

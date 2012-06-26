@@ -330,6 +330,8 @@ LOG("load_game\n");
 LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
 		LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_rate);
+		assert(avinfo.timing.fps > 1);
+		assert(avinfo.timing.sample_rate > 1);
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
 		
 /* samples per frame = samples per second / frames per second */
@@ -396,7 +398,7 @@ skipskip:
 			shared->vready = true;
 
 /* LOCK audio */
-			if (shared->aready == false && retroctx.audbuf_used > 512) {
+			if (shared->aready == false) {
 				frameserver_semcheck( retroctx.shmcont.asem, -1);
 /* other buffer is in number of samples, dst is in number of bytes */
 				memcpy( retroctx.audp, retroctx.audbuf, sizeof(int16_t) * retroctx.audbuf_used);

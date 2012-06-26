@@ -171,7 +171,6 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	arcan_frameserver* tgt = (arcan_frameserver*) state.ptr;
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->shm.ptr;
 	
-	/* should have a special framequeue mode which supports more direct form of rendering */
 	switch (cmd){
 		case ffunc_poll: return shmpage->vready; break;        
         case ffunc_tick: arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr); break;		
@@ -196,6 +195,20 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 			}
 
 			shmpage->vready = false;
+
+/* in contrast to the framequeues, where we'd just be able to grab the next frame whenever,
+ * we can align our audio- buffering to this operation and safe a few context switches and improve timing. */
+			if (shmpage->aready) {
+				int abufslot = arcan_audio_findstreambufslot(tgt->aid);
+				if (abufslot != -1){
+					alBufferData(abufslot, AL_FORMAT_STEREO16, tgt->audp, shmpage->abufused, tgt->desc.samplerate);
+					shmpage->abufused = 0;
+					shmpage->aready = false;
+				} else {
+					arcan_warning("arcan_frameserver_backend::poll_data -- audio buffer overrun\n");
+				}
+			}
+
 			arcan_sem_post( tgt->vsync );
 		break;
     }
@@ -292,24 +305,11 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
+/* this one doesn't actually do anything other than say that we're not ready for another buffer,
+ * but rather align audio- buffering to video frames */
 arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
-	arcan_errc rv = ARCAN_ERRC_NOTREADY;
-	arcan_frameserver* src = (arcan_frameserver*) tag;
-	int trycount = 10;
-	
-	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-	if (shmpage->aready && arcan_sem_timedwait(src->async, 1) != 0){
-		alBufferData(buffer, AL_FORMAT_STEREO16, src->audp, shmpage->abufused, src->desc.samplerate);
-		rv = ARCAN_OK;
-	
-		shmpage->abufused = 0;
-		shmpage->aready = false;
-
-		arcan_sem_post(src->async);
-	}
-	
-	return rv;
+	return ARCAN_ERRC_NOTREADY;
 }
 
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)

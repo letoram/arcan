@@ -53,6 +53,9 @@ void spawn_guardthread(struct guard_struct gs)
 /* Dislike pulling stunts like this,
  * but it saved a lot of bad codepaths */
 #if _WIN32
+
+#define sleep(n) Sleep(1000 * n)
+
 extern sem_handle async, vsync, esync;
 extern HANDLE parent;
 
@@ -85,9 +88,11 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.addr->vready = false;
 	res.addr->aready = false;
 	res.addr->channels = 0;
-	res.addr->frequency = 0;
+	res.addr->samplerate = 0;
 	res.addr->dms = true;
 	
+	parent = res.addr->parent;
+
 	struct guard_struct gs = {
 		.dms = &res.addr->dms,
 		.semset = { async, vsync, esync }
@@ -194,7 +199,7 @@ static void* guard_thread(void* gs)
 			
 			for (int i = 0; i < sizeof(gstr->semset) / sizeof(gstr->semset[0]); i++)
 				if (gstr->semset[i]) 
-					sem_post(gstr->semset[i]);
+					arcan_sem_post(gstr->semset[i]);
 				
 			sleep(5);
 			arcan_warning("frameserver::guard_thread -- couldn't shut down gracefully, exiting.\n");

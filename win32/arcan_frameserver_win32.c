@@ -105,8 +105,15 @@ int main(int argc, char* argv[])
 #endif
 
 /* quick tracing */
-/*	logdev = fopen("output.log", "w");  */
+	logdev = fopen("output.log", "w");  
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
+
+/* set this env whenever you want to step through the frameserver as launched from the parent */
+	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
+		arcan_warning("-- frameserver stall activated, won't continue without gdb intervention. Pid: (%d)\n", getpid());
+		volatile int a = 0;
+		while (a == 0);
+	}
 
 /* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode),
  * parent is retrieved from shmpage */
@@ -116,9 +123,12 @@ int main(int argc, char* argv[])
 	vsync = (HANDLE) strtoul(argv[2], NULL, 10);
 	async = (HANDLE) strtoul(argv[3], NULL, 10);
 	esync = (HANDLE) strtoul(argv[4], NULL, 10);
+
 	char* resource = argv[0];
 	char* fsrvmode = argv[5];
 	char* shmkey   = argv[1];
+
+/* seed monotonic timing */
 	QueryPerformanceFrequency(&ticks_pers);
 	QueryPerformanceCounter(&start_ticks);
 
