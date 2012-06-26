@@ -375,7 +375,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			shmpage->resized = false;
 
 /* resize the source vid in a way that won't propagate to user scripts */
-			src->desc.samplerate = shmpage->frequency;
+			src->desc.samplerate = shmpage->samplerate;
 			src->desc.channels = shmpage->channels;
 			arcan_event_maskall(arcan_event_defaultctx());
 			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
@@ -404,7 +404,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 				arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize);
 				if (acachelim == 0 || abufsize == 0){
 					float mspvf = 1000.0 / 30.0;
-					float mspaf = 1000.0 / (float)shmpage->frequency;
+					float mspaf = 1000.0 / (float)shmpage->samplerate;
 					abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
 					acachelim = vcachelim * 2;
 				}

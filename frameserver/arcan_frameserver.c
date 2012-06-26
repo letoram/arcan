@@ -142,7 +142,6 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 
 static char* launch_debugparent()
 {
-	pthread_t* thread;
 	int shmfd = -1;
 	struct frameserver_shmcont cont;
 
@@ -199,6 +198,13 @@ static char* launch_debugparent()
 		return 1;
 	}
 
+/* set this env whenever you want to step through the frameserver as launched from the parent */
+	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
+		arcan_warning("-- frameserver stall activated, won't continue without gdb intervention. Pid: (%d)\n", getpid());
+		volatile int a = 0;
+		while (a == 0);
+	}
+	
 /* to ease debugging, allow the frameserver to be launched without a parent of we 
  * pass debug: to modestr, so setup shmpage, fork a lightweight parent, ..*/
 #ifdef _DEBUG

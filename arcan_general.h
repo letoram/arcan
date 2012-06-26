@@ -25,7 +25,6 @@
 #define ARCAN_VERSION_MAJOR 0
 #define ARCAN_VERSION_MINOR 1
 
-
 extern char* arcan_themename;
 extern char* arcan_resourcepath;
 extern char* arcan_themepath;
