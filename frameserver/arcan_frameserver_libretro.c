@@ -398,7 +398,7 @@ skipskip:
 			shared->vready = true;
 
 /* LOCK audio */
-			if (shared->aready == false) {
+			if (retroctx.audbuf_used > 512 && shared->aready == false) {
 				frameserver_semcheck( retroctx.shmcont.asem, -1);
 /* other buffer is in number of samples, dst is in number of bytes */
 				memcpy( retroctx.audp, retroctx.audbuf, sizeof(int16_t) * retroctx.audbuf_used);

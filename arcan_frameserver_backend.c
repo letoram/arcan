@@ -200,13 +200,12 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
  * we can align our audio- buffering to this operation and safe a few context switches and improve timing. */
 			if (shmpage->aready) {
 				int abufslot = arcan_audio_findstreambufslot(tgt->aid);
-				if (abufslot != -1){
-					alBufferData(abufslot, AL_FORMAT_STEREO16, tgt->audp, shmpage->abufused, tgt->desc.samplerate);
-					shmpage->abufused = 0;
-					shmpage->aready = false;
-				} else {
-					arcan_warning("arcan_frameserver_backend::poll_data -- audio buffer overrun\n");
-				}
+				if (abufslot == -1 || 
+					ARCAN_OK != arcan_audio_queuebufslot(tgt->aid, abufslot, tgt->audp, shmpage->abufused, tgt->desc.channels, tgt->desc.samplerate))
+						arcan_warning("arcan_frameserver_backend::poll_data -- couldn't buffer audio (%d into %d)\n", shmpage->abufused, abufslot);
+				
+				shmpage->abufused = 0;
+				shmpage->aready = false;
 			}
 
 			arcan_sem_post( tgt->vsync );

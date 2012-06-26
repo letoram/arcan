@@ -39,8 +39,7 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 
-#define ARCAN_ASTREAMBUF_LIMIT 4
-#define ARCAN_ASTREAMBUF_DEFAULT 4
+#define ARCAN_ASTREAMBUF_LIMIT 8 
 #define ARCAN_ASAMPLE_LIMIT 1024 * 64
 
 struct arcan_aobj_cell;
@@ -76,7 +75,9 @@ typedef struct arcan_aobj {
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
 
 	enum aobj_atypes atype;
+	uint32_t preguard;
 	arcan_afunc_cb feed;
+	uint32_t postguard;
 	arcan_again_cb gproxy;
 
 	void* tag;
@@ -200,6 +201,8 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst)
 		return rv;
 
 	arcan_aobj* newcell = (arcan_aobj*) calloc(sizeof(arcan_aobj), 1);
+	newcell->preguard = 0xdeadbeef;
+	newcell->postguard = 0xdeadbeef;
 	newcell->alid = alid;
 	rv = newcell->id = current_acontext->lastid++;
 	if (dst)
@@ -428,10 +431,11 @@ arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc)
 	if (aobj) {
 		aobj->streaming = true;
 		aobj->tag = tag;
-		aobj->n_streambuf = ARCAN_ASTREAMBUF_DEFAULT;
+		aobj->n_streambuf = ARCAN_ASTREAMBUF_LIMIT;
 		aobj->feed = feed;
 		aobj->gain = 1.0;
 		aobj->kind = AOBJ_STREAM;
+		arcan_warning("audio feed, %d buffers\n", aobj->n_streambuf);
 		alGenBuffers(aobj->n_streambuf, aobj->streambuf);
 		_wrap_alError(NULL, "audio_feed(genBuffers)");
 
@@ -529,7 +533,7 @@ arcan_aobj_id arcan_audio_stream(const char* fname, enum aobj_atypes type, arcan
 	if (rid != ARCAN_EID){
 		if (arcan_audio_prepare_format(type, &cb, aobj) ){
 			aobj->streaming = true;
-			aobj->n_streambuf = ARCAN_ASTREAMBUF_DEFAULT;
+			aobj->n_streambuf = ARCAN_ASTREAMBUF_LIMIT;
 			aobj->feed = cb;
 			aobj->kind = AOBJ_STREAM;
 			alGenBuffers(aobj->n_streambuf, aobj->streambuf);
@@ -685,7 +689,7 @@ arcan_errc arcan_audio_setpitch(arcan_aobj_id id, float pitch, uint16_t time)
 }
 
 static int find_bufferind(arcan_aobj* cur, unsigned bufnum){
-	for (int i = 0; i < sizeof(cur->streambuf); i++){
+	for (int i = 0; i < cur->n_streambuf; i++){
 		if (cur->streambuf[i] == bufnum)
 			return i;
 	}
@@ -694,16 +698,38 @@ static int find_bufferind(arcan_aobj* cur, unsigned bufnum){
 }
 
 static int find_freebufferind(arcan_aobj* cur, bool tag){
-	for (int i = 0; i < sizeof(cur->streambuf); i++){
+	for (int i = 0; i < cur->n_streambuf; i++){
 		if (cur->streambufmask[i] == false){
-			if (tag)
+			if (tag){
+				cur->used++;
 				cur->streambufmask[i] = true;
+			}
 
 			return i;
 		}
 	}
 
 	return -1;
+}
+
+arcan_errc arcan_audio_queuebufslot(arcan_aobj_id aid, unsigned int abufslot, void* audbuf, size_t nbytes, unsigned int channels, unsigned int samplerate)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_aobj* aobj = arcan_audio_getobj(aid);
+
+	if (aobj && abufslot < aobj->n_streambuf && aobj->streambufmask[abufslot]){
+		
+		arcan_warning("buffer(%d):%d => %d bytes @ %dHz:%d\n", aid, abufslot, nbytes, samplerate, channels);
+		alBufferData(aobj->streambuf[abufslot], AL_FORMAT_STEREO16, audbuf, nbytes, samplerate);
+		_wrap_alError(aobj, "audio_queuebufslot()::buffer");
+		
+		alSourceQueueBuffers(aobj->alid, 1, &aobj->streambuf[abufslot]);
+		_wrap_alError(aobj, "audio_queuebufslot()::queue buffer");
+
+		rv = ARCAN_OK;
+	}
+	
+	return rv;
 }
 
 int arcan_audio_findstreambufslot(arcan_aobj_id id)
@@ -729,6 +755,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 		bufferind = find_bufferind(current, buffer);
 		assert(bufferind != -1);
 		current->streambufmask[bufferind] = false;
+		arcan_warning("dequeue %d\n", bufferind);
 
 		_wrap_alError(current, "audio_refill(refill:dequeue)");
 		current->used--;
@@ -745,8 +772,9 @@ static void arcan_astream_refill(arcan_aobj* current)
 				current->streambufmask[bufferind] = true;
 				_wrap_alError(current, "audio_refill(refill:queue)");
 				current->used++;
-			} else if (rv == ARCAN_ERRC_NOTREADY) 
-                return;
+			} 
+			else if (rv == ARCAN_ERRC_NOTREADY) 
+        goto playback;
 			else
 				goto cleanup;
 		}
@@ -757,7 +785,7 @@ static void arcan_astream_refill(arcan_aobj* current)
 	if (current->used < 0)
 		arcan_warning("arcan_audio(), astream_refill: inconsistency with internal vs openAL buffers.\n");
 
-	if (current->used < sizeof(current->streambuf) / sizeof(current->streambuf[0]) && current->feed){
+	if (current->used < current->n_streambuf && current->feed){
 		for (int i = current->used; i < sizeof(current->streambuf) / sizeof(current->streambuf[0]); i++){
 			int ind = find_freebufferind(current, false);
 			arcan_errc rv = current->feed(current, current->alid, current->streambuf[ind], current->tag);
@@ -767,18 +795,21 @@ static void arcan_astream_refill(arcan_aobj* current)
 				current->streambufmask[ind] = true;
 				current->used++;
 			} else if (rv == ARCAN_ERRC_NOTREADY)
-				return;
-			else 
+				goto playback;
+			else
 				goto cleanup;
 		}
 	}
 
+playback:
 	if (current->used && state != AL_PLAYING){
 		alSourcePlay(current->alid);
+		_wrap_alError(current, "audio_restart(astream_refill)");
 	}
 	return;
 
 cleanup:
+arcan_warning("cleaning up\n");
 /* means that when main() receives this event, it will kill/free the object */
 	newevent.data.audio.source = current->id;
 	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
@@ -883,7 +914,6 @@ static void _wrap_alError(arcan_aobj* obj, char* prefix)
 		obj = &empty;
 
 	if (errc != AL_NO_ERROR) {
-		return;
 		arcan_warning("(openAL): ");
 		
 		switch (errc) {
