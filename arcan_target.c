@@ -472,7 +472,7 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * increase when using PBOs */
 	trace("CopySurface(GL:pre)");
 	sem_wait(global.shared.vsem);
-	if (global.shared.dms == false){
+	if (global.shared.addr->dms == false){
 		/* parent dead, quit gracefully */
 	}
 	else{

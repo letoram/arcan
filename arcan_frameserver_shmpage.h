@@ -39,12 +39,12 @@ struct frameserver_shmcont{
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
-	bool dms; /* dead man's switch, if false, shut down */
 };
 
 struct frameserver_shmpage {
 	bool resized;
 	bool loop;
+	bool dms;
 
 /* these are managed / populated by a queue 
  * context in each process, mapped to the same posix semaphore */

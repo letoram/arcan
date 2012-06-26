@@ -631,38 +631,25 @@ static int sem_timedwaithack(sem_handle semaphore, int msecs)
 		return sem_trywait( semaphore );
 
 	if (msecs == -1){
-		while (-1 == sem_wait( semaphore ) && errno == EINTR);
-		return 0;
+		int rv;
+		while ( -1 == (rv = sem_wait( semaphore )) && errno == EINTR);
+		return rv;
 	}
 
-	while (msecs > 0){
-		int rc = sem_trywait( semaphore );
-		if (0 == rc)
-			return 0;
-		else{
-			struct timespec rem;
-			nanosleep(&st, &rem);
-			msecs -= 10;
-		}
-		
+	int rc = -1;
+	while ( (rc = sem_trywait(semaphore) != 0) && msecs && errno != EINVAL){
+		struct timespec rem;
+	//	nanosleep(&st, &rem);
+		msecs -= 1;
 	}
 
-	return -1;
+	return rc;
 }
 
-# if __APPLE__
 int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 {
 	return sem_timedwaithack(semaphore, msecs);
 }
-#else 
-int arcan_sem_timedwait(sem_handle semaphore, int msecs)
-{
-	static bool arcan_sem_usehack = false;
-	return sem_timedwaithack(semaphore, msecs);
-}
-
-#endif 
 
 /* try to allocate a shared memory page and two semaphores (vid / aud) is specififed,
  * return a pointer to the shared key (this will keep the resources allocated) or NULL on fail */

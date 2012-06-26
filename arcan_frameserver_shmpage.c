@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <errno.h>
 #include <time.h>
@@ -44,7 +45,7 @@ void spawn_guardthread(struct guard_struct gs)
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-	pthread_attr_setstacksize(&pthattr, PTHREAD_STACK_MIN);
+//	pthread_attr_setstacksize(&pthattr, PTHREAD_STACK_MIN);
 	
 	pthread_create(&pth, &pthattr, (void*) guard_thread, (void*) hgs);
 }
@@ -85,10 +86,10 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.addr->aready = false;
 	res.addr->channels = 0;
 	res.addr->frequency = 0;
-	res.dms = true;
+	res.addr->dms = true;
 	
 	struct guard_struct gs = {
-		.dms = &res.dms,
+		.dms = &res.addr->dms,
 		.semset = { async, vsync, esync }
 	};
 	spawn_guardthread(gs);
@@ -130,6 +131,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile (%s), reason: %s\n", shmkey, strerror(errno));
 		return res;
 	}
+	
+	arcan_warning("arcan_frameserver(getshm) -- mapped to %" PRIxPTR " \n", (uintptr_t) res.addr); 
 
 /* step 2, semaphore handles */
 	char* work = strdup(shmkey);
@@ -161,10 +164,10 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.addr->aready = false;
 	res.addr->channels = 0;
 	res.addr->samplerate = 0;
-	res.dms = true;
+	res.addr->dms = true;
 
 	struct guard_struct gs = {
-		.dms = &res.dms,
+		.dms = &res.addr->dms,
 		.semset = { res.asem, res.vsem, res.esem }
 	};
 	spawn_guardthread(gs);
@@ -204,8 +207,9 @@ static void* guard_thread(void* gs)
 	return NULL;
 }
 
+#include <assert.h>
 int frameserver_semcheck(sem_handle semaphore, int timeout){
-		return arcan_sem_timedwait(semaphore, -1);
+		return arcan_sem_timedwait(semaphore, timeout);
 }
 
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage* shmp)
