@@ -117,7 +117,8 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (width != retroctx.shmcont.addr->w || height != retroctx.shmcont.addr->h){
-		frameserver_shmpage_resize(&retroctx.shmcont, width, height, 4, 2, retroctx.shmcont.addr->frequency);
+		frameserver_shmpage_resize(&retroctx.shmcont, width, height, 4, 2, retroctx.shmcont.addr->samplerate);
+		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
 	}
 	
 	uint16_t* buf  = (uint16_t*) data; /* assumes alignment */
@@ -147,16 +148,16 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 		return nframes;
 	
 	memcpy(&retroctx.audbuf[retroctx.audbuf_used], data, nframes * sizeof(int16_t) * 2);
-	retroctx.audbuf_used += nframes * 2;
+	retroctx.audbuf_used += nframes * 2; /* two channels */
 	retroctx.audbuf_used = retroctx.audbuf_used % (retroctx.audbuf_nsamples + 1);
-	
+
 	return nframes;
 }
 
 void libretro_audscb(int16_t left, int16_t right){
 	if (retroctx.skipframe)
 		return;
-	
+
 	retroctx.audbuf[ retroctx.audbuf_used++ ] = left;
 	retroctx.audbuf[ retroctx.audbuf_used++ ] = right; 
 	
@@ -341,9 +342,12 @@ LOG("map shm\n");
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 		
-		if (!frameserver_shmpage_resize(&retroctx.shmcont, avinfo.geometry.max_width, avinfo.geometry.max_height, 4, 2, avinfo.timing.sample_rate)){
+		if (!frameserver_shmpage_resize(&retroctx.shmcont,
+			avinfo.geometry.max_width, 
+			avinfo.geometry.max_height, 4, 2, 
+			avinfo.timing.sample_rate))
 			return;
-		}
+		
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
 		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false); 
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
@@ -354,9 +358,11 @@ LOG("map shm\n");
 		retroctx.basetime = frameserver_timemillis();
 		unsigned long int last_framecost = 1;
 		
-		while (true){
-/* if we're lagging behind, drop the next frame, otherwise sleep */
+		while (retroctx.shmcont.dms){
+		goto skipskip;
 			long long int frametime = frameserver_timemillis();
+
+/* if we're lagging behind, drop the next frame, otherwise sleep */			
 			if (frametime > retroctx.basetime){
 				double framedelta = (frametime - retroctx.basetime) - ( (double)retroctx.framecount++ * retroctx.mspf);
 
@@ -374,7 +380,8 @@ LOG("map shm\n");
 					continue;
 				}
 			}
-		
+
+skipskip:
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
@@ -389,17 +396,24 @@ LOG("map shm\n");
 			shared->vready = true;
 
 /* LOCK audio */
-			frameserver_semcheck( retroctx.shmcont.asem, -1);
+			if (retroctx.audbuf_used) {
+				frameserver_semcheck( retroctx.shmcont.asem, -1);
 		
 /* other buffer is in number of samples, dst is in number of bytes */
-			shared->abufused = sizeof(int16_t) * retroctx.audbuf_used;
-			memcpy( retroctx.audp, retroctx.audbuf, shared->abufused);
-			retroctx.audbuf_used = 0;
-			shared->aready = true;
-			arcan_sem_post( retroctx.shmcont.asem );
-		
-		/* Video is already copied, wait for frameserver to pick it up */
-			frameserver_semcheck( retroctx.shmcont.vsem, -1);
+				memcpy( retroctx.audp, retroctx.audbuf, sizeof(int16_t) * retroctx.audbuf_used);
+				shared->abufused = sizeof(int16_t) * (retroctx.audbuf_used);
+				retroctx.audbuf_used = 0;
+				shared->aready = true;
+				
+				arcan_sem_post( retroctx.shmcont.asem );
+			}
+			
+/* Video is already copied, wait for frameserver to pick it up */
+		frameserver_semcheck( retroctx.shmcont.vsem, -1);
 		}
+		
+		arcan_warning("dead mans switch!\n");
+
+/* cleanup of session goes here (i.e. push any autosave slot, ...) */
 	}
 }

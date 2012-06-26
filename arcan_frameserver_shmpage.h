@@ -39,6 +39,7 @@ struct frameserver_shmcont{
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
+	bool dms; /* dead man's switch, if false, shut down */
 };
 
 struct frameserver_shmpage {
@@ -66,7 +67,7 @@ struct frameserver_shmpage {
 	volatile uint8_t aready;
 	
 	uint8_t channels;
-	uint16_t frequency;
+	unsigned samplerate;
 	uint32_t adts;
 
 /* abufbase is a working buffer offset in how far parent has processed */
@@ -97,6 +98,6 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink);
 
 /* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
-bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq);
+bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq);
 
 #endif

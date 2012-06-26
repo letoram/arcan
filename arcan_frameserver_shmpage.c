@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <time.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -11,12 +12,42 @@
 #include <unistd.h>
 #include <fcntl.h> 
 #include <string.h>
+#include <pthread.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
 #include "frameserver/arcan_frameserver.h"
 #include "arcan_frameserver_shmpage.h"
+
+/* This little function tries to get around all the insane problems
+ * that occur with the fundamentally broken sem_timedwait with named 
+ * semaphores and a parent<->child circular dependency (like we have here).
+ * 
+ * Sleep a fixed amount of seconds, wake up and check if parent is alive.
+ * If that's true, go back to sleep -- otherwise -- wake up, pop open all semaphores
+ * set the disengage flag and go back to a longer sleep that it shouldn't wake up from.
+ * Show this sleep be engaged anyhow, shut down forcefully. */
+
+struct guard_struct {
+	sem_handle semset[3];
+	bool* dms; /* dead man's switch */
+};
+static void* guard_thread(void* gstruct);
+
+void spawn_guardthread(struct guard_struct gs)
+{
+	struct guard_struct* hgs = (struct guard_struct*) malloc(sizeof(struct guard_struct));
+	*hgs = gs;
+
+	pthread_t pth;
+	pthread_attr_t pthattr;
+	pthread_attr_init(&pthattr);
+	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setstacksize(&pthattr, PTHREAD_STACK_MIN);
+	
+	pthread_create(&pth, &pthattr, (void*) guard_thread, (void*) hgs);
+}
 
 /* Dislike pulling stunts like this,
  * but it saved a lot of bad codepaths */
@@ -31,13 +62,15 @@ static inline bool parent_alive()
 	return IsWindow(parent);
 }
 
+/* force_unlink isn't used here as the semaphores are passed as inherited handles */
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
 	struct frameserver_shmcont res = {0};
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
+	
 	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
 
 	if ( res.addr == NULL ) {
-		LOG("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
+		arcan_warning("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
 		CloseHandle(shmh);
 		return res;
 	}
@@ -52,8 +85,15 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.addr->aready = false;
 	res.addr->channels = 0;
 	res.addr->frequency = 0;
-
-	LOG("arcan_frameserver() -- shmpage configured and filled.\n");
+	res.dms = true;
+	
+	struct guard_struct gs = {
+		.dms = &res.dms,
+		.semset = { async, vsync, esync }
+	};
+	spawn_guardthread(gs);
+	
+	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
 }
 #else 
@@ -120,11 +160,15 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.addr->vready = false;
 	res.addr->aready = false;
 	res.addr->channels = 0;
-	res.addr->frequency = 0;
+	res.addr->samplerate = 0;
+	res.dms = true;
 
-/* ensure vbufofs is aligned, and the rest should follow (bpp forced to 4) */
-	res.addr->abufbase = 0;
-
+	struct guard_struct gs = {
+		.dms = &res.dms,
+		.semset = { res.asem, res.vsem, res.esem }
+	};
+	spawn_guardthread(gs);
+	
 	return res;
 }
 
@@ -136,25 +180,32 @@ static inline bool parent_alive()
 }
 #endif
 
-/* need the timeout to avoid a deadlock situation */
-int frameserver_semcheck(sem_handle semaphore, int timeout){
-	int rc;
-	int timeleft = timeout;	
-
-/* infinite wait, every 100ms or so, check if parent is still alive */	
-	if (timeout == -1)
-		while(true){
-		rc = arcan_sem_timedwait(semaphore, 100);
-		if (rc == 0)
-			return 0;
-
+static void* guard_thread(void* gs)
+{
+	struct guard_struct* gstr = (struct guard_struct*) gs;
+	*(gstr->dms) = true;
+	
+	while (true){
 		if (!parent_alive()){
-			arcan_warning("arcan_frameserver() -- parent died, aborting.\n");
+			*(gstr->dms) = false;
+			
+			for (int i = 0; i < sizeof(gstr->semset) / sizeof(gstr->semset[0]); i++)
+				if (gstr->semset[i]) 
+					sem_post(gstr->semset[i]);
+				
+			sleep(5);
+			arcan_warning("frameserver::guard_thread -- couldn't shut down gracefully, exiting.\n");
 			exit(1);
 		}
-	} else {
-		return arcan_sem_timedwait(semaphore, timeout);
-	}	
+
+		sleep(5);
+	}
+
+	return NULL;
+}
+
+int frameserver_semcheck(sem_handle semaphore, int timeout){
+		return arcan_sem_timedwait(semaphore, -1);
 }
 
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage* shmp)
@@ -210,7 +261,7 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, void** dstvid
 	}
 }
 
-bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, unsigned freq)
+bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq)
 {
 	/* need to rethink synchronization a bit before forcing a resize */
 	if (arg->addr){
@@ -218,7 +269,7 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->h = height;
 		arg->addr->bpp = bpp;
 		arg->addr->channels = nchan;
-		arg->addr->frequency = freq;
+		arg->addr->samplerate = freq;
 	
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			arg->addr->resized = true;

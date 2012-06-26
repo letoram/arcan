@@ -656,47 +656,10 @@ int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 	return sem_timedwaithack(semaphore, msecs);
 }
 #else 
-/* Linux 2.6 and 'BSD should handle this correct by now
- * in the use-cases here, we are not excessively concerned about
- * precision, it is either used to keep an I/O thread or determine
- * if something has gone wrong with a child process */
 int arcan_sem_timedwait(sem_handle semaphore, int msecs)
 {
-/* special case, just block forever */
-	if (msecs == -1){
-		while (-1 == sem_wait( semaphore ) && errno == EINTR);
-		return 0;
-	}
-	
 	static bool arcan_sem_usehack = false;
-	if (arcan_sem_usehack) 
-		return sem_timedwaithack(semaphore, msecs);
-
-	struct timespec tv = {
-		.tv_sec = 0,
-		.tv_nsec = msecs * 10000000
-	};
-	
-	while (1){
-		int ec = sem_timedwait(semaphore, &tv);
-		if (-1 == ec)
-			switch (errno){
-				case EINTR:
-					continue;
-				break;
-				
-				case ETIMEDOUT:
-					return -1;
-				break;
-				
-				default:
-					arcan_warning("arcan_sem_timedwait(UNIX), unhandled error (%s), defaulting to workaround.\n", strerror(errno));
-					arcan_sem_usehack = true;
-					return sem_timedwaithack(semaphore, msecs);
-			}
-		else 
-			return 0;
-	}
+	return sem_timedwaithack(semaphore, msecs);
 }
 
 #endif 

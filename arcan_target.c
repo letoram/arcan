@@ -169,23 +169,14 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return sem_unlink(key);
 }
 
+/* left for legacy reasons, old timedwait used timedwait which 
+ * was broken on a lot of platforms. Now shmget spawns a guardthread instead */
 int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
 {
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
-	bool rv = true;
-	int rc;
-
-	do {
-		rc = sem_trywait(semaphore);
-		if (-1 == rc){
-				if (errno == EINVAL){
-					exit(1);
-				}
-			nanosleep(&st, &rem); /* don't care about precision here really */
-		}
-	} while ( (rv = parent_alive()) && rc != 0 );
-
-	return rv;
+	if (mstimeout == 0)
+		return sem_trywait(semaphore);
+	else
+		return sem_wait(semaphore);
 }
 
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
@@ -481,12 +472,17 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * increase when using PBOs */
 	trace("CopySurface(GL:pre)");
 	sem_wait(global.shared.vsem);
+	if (global.shared.dms == false){
+		/* parent dead, quit gracefully */
+	}
+	else{
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-	glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
-	global.shared.addr->vready = true;
-	trace("CopySurface(GL:post)");
+		glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
+		global.shared.addr->vready = true;
+		trace("CopySurface(GL:post)");
+	}
 	
 /*  uncomment to keep video- operations running in the target,
  *  some weird 3d- edge cases might need this */

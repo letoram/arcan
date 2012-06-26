@@ -59,7 +59,7 @@ typedef struct {
 	uint16_t vskipthresh;
 
 	/* audio */
-	uint16_t samplerate;
+	unsigned samplerate;
 	uint8_t channels;
 	uint8_t format;
 	uint16_t vfthresh;

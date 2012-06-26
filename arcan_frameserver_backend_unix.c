@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor Boston, MA 02110-1301, USA.
  *
  */
 
@@ -172,7 +172,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		
 	shmpage->parent = getpid();
 
-	pid_t child = fork();
+	pid_t child = vfork();
 	if (child) {
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
