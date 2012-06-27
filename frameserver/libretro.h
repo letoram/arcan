@@ -1,6 +1,7 @@
 #ifndef LIBRETRO_H__
 #define LIBRETRO_H__
 
+#include <stdint.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -23,6 +24,7 @@ extern "C" {
 #define RETRO_DEVICE_MOUSE        2
 #define RETRO_DEVICE_KEYBOARD     3
 #define RETRO_DEVICE_LIGHTGUN     4
+#define RETRO_DEVICE_ANALOG       5
 
 #define RETRO_DEVICE_JOYPAD_MULTITAP        ((1 << 8) | RETRO_DEVICE_JOYPAD)
 #define RETRO_DEVICE_LIGHTGUN_SUPER_SCOPE   ((1 << 8) | RETRO_DEVICE_LIGHTGUN)
@@ -41,6 +43,15 @@ extern "C" {
 #define RETRO_DEVICE_ID_JOYPAD_X        9
 #define RETRO_DEVICE_ID_JOYPAD_L       10
 #define RETRO_DEVICE_ID_JOYPAD_R       11
+#define RETRO_DEVICE_ID_JOYPAD_L2      12
+#define RETRO_DEVICE_ID_JOYPAD_R2      13
+#define RETRO_DEVICE_ID_JOYPAD_L3      14
+#define RETRO_DEVICE_ID_JOYPAD_R3      15
+
+#define RETRO_DEVICE_INDEX_ANALOG_LEFT   0
+#define RETRO_DEVICE_INDEX_ANALOG_RIGHT  1
+#define RETRO_DEVICE_ID_ANALOG_X         0
+#define RETRO_DEVICE_ID_ANALOG_Y         1
 
 #define RETRO_DEVICE_ID_MOUSE_X      0
 #define RETRO_DEVICE_ID_MOUSE_Y      1
@@ -106,6 +117,52 @@ extern "C" {
 #define RETRO_ENVIRONMENT_SET_MESSAGE   6  // const struct retro_message * --
                                            // Sets a message to be displayed in implementation-specific manner for a certain amount of 'frames'.
                                            // Should not be used for trivial messages, which should simply be logged to stderr.
+#define RETRO_ENVIRONMENT_SHUTDOWN      7  // N/A (NULL) --
+                                           // Requests the frontend to shutdown.
+                                           // Should only be used if game has a specific
+                                           // way to shutdown the game from a menu item or similar.
+                                           //
+#define RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL 8
+                                           // const unsigned * --
+                                           // Gives a hint to the frontend how demanding this implementation
+                                           // is on a system. E.g. reporting a level of 2 means
+                                           // this implementation should run decently on all frontends
+                                           // of level 2 and up.
+                                           //
+                                           // It can be used by the frontend to potentially warn
+                                           // about too demanding implementations.
+                                           // 
+                                           // The levels are "floating", but roughly defined as:
+                                           // 1: Low-powered devices such as Raspberry Pi, smart phones, tablets, etc.
+                                           // 2: Medium-spec consoles, such as PS3/360, with sub-par CPUs.
+                                           // 3: Modern desktop/laptops with reasonably powerful CPUs.
+                                           // 4: High-end desktops with very powerful CPUs.
+                                           //
+                                           // This function can be called on a per-game basis,
+                                           // as certain games an implementation can play might be
+                                           // particularily demanding.
+                                           // If called, it should be called in retro_load_game().
+                                           //
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
+                                           // const char ** --
+                                           // Returns the "system" directory of the frontend.
+                                           // This directory can be used to store system specific ROMs such as BIOSes, configuration data, etc.
+                                           // The returned value can be NULL.
+                                           // If so, no such directory is defined,
+                                           // and it's up to the implementation to find a suitable directory.
+                                           //
+#define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 10
+                                           // const enum retro_pixel_format * --
+                                           // Sets the internal pixel format used by the implementation.
+                                           // The default pixel format is RETRO_PIXEL_FORMAT_XRGB1555.
+                                           // If the call returns false, the frontend does not support this pixel format.
+                                           // This function should be called inside retro_load_game() or retro_get_system_av_info().
+
+enum retro_pixel_format
+{
+   RETRO_PIXEL_FORMAT_0RGB1555 = 0, // 0RGB1555, native endian. 0 bit must be set to 0.
+   RETRO_PIXEL_FORMAT_XRGB8888      // XRGB8888, native endian. X bits are ignored.
+};
 
 struct retro_message
 {
@@ -180,7 +237,7 @@ struct retro_game_info
 // Environment callback. Gives implementations a way of performing uncommon tasks. Extensible.
 typedef bool (*retro_environment_t)(unsigned cmd, void *data);
 
-// Render a frame. Pixel format is 15-bit XRGB1555 native endian.
+// Render a frame. Pixel format is 15-bit 0RGB1555 native endian unless changed (see RETRO_ENVIRONMENT_SET_PIXEL_FORMAT).
 // Width and height specify dimensions of buffer.
 // Pitch specifices length in bytes between two lines in buffer.
 typedef void (*retro_video_refresh_t)(const void *data, unsigned width, unsigned height, size_t pitch);
