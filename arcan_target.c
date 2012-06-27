@@ -86,7 +86,7 @@ static struct {
 		
 	struct arcan_evctx inevq, outevq;
 	struct frameserver_shmcont shared;
-	void* vidp, (* audp);
+	uint8_t* vidp, (* audp);
 		
 	} global = {
 		.desfmt = {
@@ -114,6 +114,14 @@ static inline void trace(const char* msg, ...)
 		vfprintf(stderr,  msg, args );
 	va_end( args);
 #endif
+}
+
+void arcan_warning(const char* msg, ...)
+{
+	va_list args;
+	va_start( args, msg );
+		vfprintf(stderr, msg, args),
+	va_end(args);
 }
 
 /* lots of funky little details when it comes to video,
