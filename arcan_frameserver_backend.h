@@ -105,7 +105,7 @@ typedef struct {
 	bool child_alive;
 
 /* precalc offsets into mapped shmpage, calculated at resize */
-	void* vidp, (* audp);
+	uint8_t* vidp, (* audp);
 
 /* temporary buffer for aligning queue/dequeue events in audio */
 	size_t sz_audb;

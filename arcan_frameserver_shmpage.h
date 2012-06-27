@@ -89,7 +89,7 @@ int frameserver_semcheck(sem_handle semaphore, int timeout);
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 
 /* return relative offsets from shmpage as baseaddr where the vbuf and audbufs can be found */
-void frameserver_shmpage_calcofs(struct frameserver_shmpage*, void** dstvidptr, void** dstaudptr);
+void frameserver_shmpage_calcofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr);
 
 /* this code is repeated a little too often so sortof fits here but adds a dependency to arcan_event */
 void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_evctx*, arcan_evctx*, bool);

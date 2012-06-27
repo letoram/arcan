@@ -202,9 +202,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->nopts = true;
 			ctx->autoplay = true;
-			ctx->sz_abuf = 1024 * 64;
-			ctx->ofs_abuf = 0;
-			ctx->abuf = malloc( ctx->sz_abuf );
+			ctx->sz_audb = 1024 * 64;
+			ctx->ofs_audb = 0;
+			ctx->audb = malloc( ctx->sz_audb );
 		}
 
 /* hijack works as a 'process parasite' inside the rendering pipeline of other projects,
