@@ -107,6 +107,11 @@ typedef struct {
 /* precalc offsets into mapped shmpage, calculated at resize */
 	void* vidp, (* audp);
 
+/* temporary buffer for aligning queue/dequeue events in audio */
+	size_t sz_audb;
+	off_t ofs_audb;
+	uint8_t* audb;
+
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
 } arcan_frameserver;

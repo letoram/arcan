@@ -187,27 +187,40 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 						
 					rv = FFUNC_RV_COPIED; 
 			}
-			else {  /* need to reduce all those copies if at all possible .. */
+/* hack to reduce extraneous copying, afaik. there's also streaming texture mode
+ * that might be worth looking into */
+			else {
 				glBindTexture(GL_TEXTURE_2D, mode);
 				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*) tgt->vidp);
 
 				rv = FFUNC_RV_NOUPLOAD;
 			}
 
-			shmpage->vready = false;
-
-/* in contrast to the framequeues, where we'd just be able to grab the next frame whenever,
- * we can align our audio- buffering to this operation and safe a few context switches and improve timing. */
+/* in constrast to the framequeue approach, we here need to limit the number of context switches
+ * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
+ * an intermediate buffer for this */
 			if (shmpage->aready) {
-				int abufslot = arcan_audio_findstreambufslot(tgt->aid);
-				if (abufslot == -1 || 
-					ARCAN_OK != arcan_audio_queuebufslot(tgt->aid, abufslot, tgt->audp, shmpage->abufused, tgt->desc.channels, tgt->desc.samplerate))
-						arcan_warning("arcan_frameserver_backend::poll_data -- couldn't buffer audio (%d into %d)\n", shmpage->abufused, abufslot);
-				
+				size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ? 
+					(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
+
+				if (shmpage->abufused != ntc)
+					arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun (%d[%d]:%d), %zu\n", 
+					tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused, ntc);
+
+				static FILE* rawd = NULL;
+				if (!rawd)
+					rawd = fopen("arcan.raw", "w");
+
+				fwrite(tgt->audp, ntc, 1, rawd);
+				memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
+				tgt->ofs_audb += ntc;
+
 				shmpage->abufused = 0;
 				shmpage->aready = false;
 			}
 
+/* interactive frameserver blocks on vsemaphore only, so set monitor flags and wake up */
+			shmpage->vready = false;
 			arcan_sem_post( tgt->vsync );
 		break;
     }
@@ -308,7 +321,16 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
  * but rather align audio- buffering to video frames */
 arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
-	return ARCAN_ERRC_NOTREADY;
+	arcan_errc rv = ARCAN_ERRC_NOTREADY;
+	arcan_frameserver* src = (arcan_frameserver*) tag;
+
+	if (src->audb && src->ofs_audb){
+		alBufferData(buffer, AL_FORMAT_STEREO16, src->audb, src->ofs_audb, src->desc.samplerate);
+		src->ofs_audb = 0;
+		rv = ARCAN_OK;
+	}
+
+	return rv;
 }
 
 arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
@@ -354,22 +376,20 @@ static arcan_errc again_feed(float gain, void* tag)
 	return ARCAN_OK;
 }
 
-static void suspect_frameserver(arcan_frameserver* srv){
-	arcan_fatal("Frameserver inconsistency, terminating.\n");
-}
-
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
     if (src->shm.ptr){
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 /* may happen multiple- times */
-		if (shmpage->resized && (frameserver_shmpage_integrity_check(shmpage) || (suspect_frameserver(src),true) ) ){
+		if (shmpage->resized && frameserver_shmpage_integrity_check(shmpage) ){
 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
 			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
             src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
 
 			arcan_framequeue_free(&src->vfq);
+
+/* acknowledge the resize */
 			shmpage->resized = false;
 
 /* resize the source vid in a way that won't propagate to user scripts */
