@@ -207,11 +207,6 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 					arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun (%d[%d]:%d), %zu\n", 
 					tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused, ntc);
 
-				static FILE* rawd = NULL;
-				if (!rawd)
-					rawd = fopen("arcan.raw", "w");
-
-				fwrite(tgt->audp, ntc, 1, rawd);
 				memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 				tgt->ofs_audb += ntc;
 
@@ -325,7 +320,8 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
 	if (src->audb && src->ofs_audb){
-		alBufferData(buffer, AL_FORMAT_STEREO16, src->audb, src->ofs_audb, src->desc.samplerate);
+		alBufferData(buffer, src->desc.channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, 
+								 src->audb, src->ofs_audb, src->desc.samplerate);
 		src->ofs_audb = 0;
 		rv = ARCAN_OK;
 	}

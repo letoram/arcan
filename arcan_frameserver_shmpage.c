@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <time.h>
 #include <limits.h>
+#include <math.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -247,26 +248,26 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, sem_handle ese
 	outq->n_eventbuf = sizeof(dst->parentdevq.evqueue) / sizeof(arcan_event);
 }
 
-void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, void** dstvidptr, void** dstaudptr)
+void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
 /* we want these 16-bit aligned so we'd possibly get something SSE optimized etc. */
-	uintptr_t base = (uintptr_t) shmp;
-	uintptr_t vidaddr = base + sizeof(struct frameserver_shmpage);
-	uintptr_t audaddr;
+	uint8_t* base = (uint8_t*) shmp;
+	uint8_t* vidaddr = base + sizeof(struct frameserver_shmpage);
+	uint8_t* audaddr;
 	
-	if (vidaddr % 16 != 0)
-		vidaddr += 16 - (vidaddr % 16);
+	if ( (uintptr_t)vidaddr % 16 != 0)
+		vidaddr += 16 - ( (uintptr_t)vidaddr % 16);
 	
 	audaddr = vidaddr + abs(shmp->w * shmp->h * shmp->bpp); 
-	if (audaddr % 16 != 0)
-		audaddr += 16 - (audaddr % 16);
+	if ( (uintptr_t) audaddr % 16 != 0)
+		audaddr += 16 - ( (uintptr_t) audaddr % 16);
 	
 	if (audaddr < base || vidaddr < base){
 		*dstvidptr = *dstaudptr = NULL;
 	}
 	else {
-		*dstvidptr = (void*) vidaddr;
-		*dstaudptr = (void*) audaddr;
+		*dstvidptr = (uint8_t*) vidaddr;
+		*dstaudptr = (uint8_t*) audaddr;
 	}
 }
 
@@ -278,7 +279,7 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->h = height;
 		arg->addr->bpp = bpp;
 		arg->addr->channels = nchan;
-		arg->addr->samplerate = freq;
+		arg->addr->samplerate = ceil(freq);
 	
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			arg->addr->resized = true;

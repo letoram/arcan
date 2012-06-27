@@ -39,7 +39,7 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 
-#define ARCAN_ASTREAMBUF_LIMIT 4
+#define ARCAN_ASTREAMBUF_LIMIT 8 
 #define ARCAN_ASAMPLE_LIMIT 1024 * 64
 
 struct arcan_aobj_cell;
@@ -717,14 +717,10 @@ arcan_errc arcan_audio_queuebufslot(arcan_aobj_id aid, unsigned int abufslot, vo
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_aobj* aobj = arcan_audio_getobj(aid);
 	static FILE* fout = NULL;
-/*	if (!fout)
-		fout = fopen("nisse.raw", "wb");*/
 
 	if (aobj && abufslot < aobj->n_streambuf && aobj->streambufmask[abufslot]){
 		
-		arcan_warning("buffer(%d):%d => %d bytes @ %dHz:%d\n", aid, abufslot, nbytes, samplerate, channels);
 		alBufferData(aobj->streambuf[abufslot], AL_FORMAT_STEREO16, audbuf, nbytes, samplerate);
-//		fwrite(audbuf, 1, nbytes, fout);
 		_wrap_alError(aobj, "audio_queuebufslot()::buffer");
 		
 		alSourceQueueBuffers(aobj->alid, 1, &aobj->streambuf[abufslot]);

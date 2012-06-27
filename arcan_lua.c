@@ -1923,8 +1923,10 @@ int arcan_lua_fillsurface(lua_State* ctx)
 	return 1;
 }
 
+#if _WIN32
 /* mingw headers miss this one for some reason, but it's still in the header */
 int random(void);
+#endif
 
 /* not intendend to be used as a low-frequency noise function (duh) */
 int arcan_lua_randomsurface(lua_State* ctx)

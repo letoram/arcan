@@ -65,7 +65,8 @@ static struct {
 		long long int basetime;
 	
 		struct frameserver_shmcont shmcont;
-		void* vidp, (* audp);
+		uint8_t* vidp, (* audp);
+		uint8_t* audguardb; /* 0xdead */
 		
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
@@ -114,10 +115,18 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	if (width != retroctx.shmcont.addr->w || height != retroctx.shmcont.addr->h){
 		frameserver_shmpage_resize(&retroctx.shmcont, width, height, 4, 2, retroctx.shmcont.addr->samplerate);
 		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
+		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
+		retroctx.audguardb[0] = 0xde;
+		retroctx.audguardb[1] = 0xad;
 	}
+
+/* assumption 1: aligned source data */
+	uint16_t* buf  = (uint16_t*) data;
+	assert( (uintptr_t)buf % 2 == 0 );
 	
-	uint16_t* buf  = (uint16_t*) data; /* assumes alignment */
-	uint32_t* dbuf = retroctx.vidp;
+/* assumption 2: aligned vidp */
+	uint32_t* dbuf = (uint32_t*) retroctx.vidp;
+	assert( (uintptr_t)dbuf % 4 == 0 );
 
 /* RGB1555 to RGBA */
 	for (int y = 0; y < height; y++){
@@ -142,35 +151,24 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	if (retroctx.skipframe)
 		return nframes;
 
-	static FILE* rawd = NULL;
-	if (!rawd)
-		rawd = fopen("retro.raw", "w");
-
 	size_t ntc = nframes * 2 * sizeof(int16_t); /* 2 channels per frame, 16 bit local endian data */
 
-	fwrite(data, ntc / 2, 1, rawd);
-	memcpy((uint8_t*)retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc);
-
+	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc);
 	retroctx.shmcont.addr->abufused += ntc;
 
 	return nframes;
 }
 
 
-void libretro_audscb(int16_t left, int16_t right){
+void libretro_audscb(int16_t left, int16_t right)
+{
 	if (retroctx.skipframe)
 		return;
-
-	static FILE* rawd = NULL;
-	if (!rawd)
-		rawd = fopen("retro_alt.raw", "w");
-
+	
 	int16_t buf[2] = {left, right};
 
-	memcpy((uint8_t*)retroctx.audp + retroctx.shmcont.addr->abufused, &buf, 4);
+	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, buf, 4);
 	retroctx.shmcont.addr->abufused += 4;
-
-	fwrite(buf, 4, 1, rawd);
 }
 
 /* we ignore these since before pushing for a frame, we've already processed the queue */
@@ -394,6 +392,8 @@ skipskip:
 			shared->aready = true;
 			shared->vready = true;
 			frameserver_semcheck( retroctx.shmcont.vsem, -1);
+	
+			assert( retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad );
 		}
 		
 /* cleanup of session goes here (i.e. push any autosave slot, ...) */
