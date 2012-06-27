@@ -86,6 +86,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		
 		struct movie_shmpage* shmpage = (struct movie_shmpage*) src->shm.ptr;
 		
+		free(src->audb);
+
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);
 		
@@ -177,8 +179,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
 
-	/* init- call (different from loop-exec as we need to 
-	 * keep the vid / aud as they are external references into the scripted state-space */
+/* init- call (different from loop-exec as we need to 
+ * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
 			ctx->source = strdup(setup.args.builtin.resource);
@@ -189,13 +191,24 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
 	
+/* "movie" mode involves parallell queues of raw, decoded, frames and heuristics 
+ * for dropping, delaying or showing frames based on DTS/PTS values */
 		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
 			ctx->kind = ARCAN_FRAMESERVER_INPUT;
+
+/* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
+ * each transfer, minimized latency is key. */
 		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->nopts = true;
 			ctx->autoplay = true;
+			ctx->sz_abuf = 1024 * 64;
+			ctx->ofs_abuf = 0;
+			ctx->abuf = malloc( ctx->sz_abuf );
 		}
+
+/* hijack works as a 'process parasite' inside the rendering pipeline of other projects,
+ * similar otherwise to libretro except it only deals with videoframes */
 		else if (!setup.use_builtin){
 			ctx->kind = ARCAN_HIJACKLIB;
 			ctx->nopts = true;

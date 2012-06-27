@@ -74,6 +74,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			src->child = 0;
 		}
 
+		free(src->audb);
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 		if (shmpage){
@@ -266,6 +267,10 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->shm.shmsize = MAX_SHMSIZE;
 	ctx->shm.handle = shmh;
  	ctx->desc.ready = true;
+	ctx->ofs_audb = 0;
+	ctx->sz_audb = 64 * 1024;
+	ctx->audb = (uint8_t*) malloc( ctx->sz_audb );
+
 	shmpage->parent = handle;
 
 /* two separate queues for passing events back and forth between main program and frameserver,
@@ -326,6 +331,7 @@ error:
 	CloseHandle(ctx->async);
 	CloseHandle(ctx->vsync);
 	CloseHandle(ctx->esync);
+	free(ctx->audb);
 
 	if (shmpage) 
 		UnmapViewOfFile((void*) shmpage);

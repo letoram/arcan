@@ -64,16 +64,11 @@ static struct {
 		double mspf;
 		long long int basetime;
 	
-		int16_t* audbuf; /* audio buffer for retro- targets that supply samples one call at a time */
-		unsigned audbuf_nsamples;
-		
 		struct frameserver_shmcont shmcont;
 		void* vidp, (* audp);
 		
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
-
-		size_t audbuf_used;
 
 		struct retro_system_info sysinfo;
 		struct retro_game_info gameinfo;
@@ -146,22 +141,36 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	if (retroctx.skipframe)
 		return nframes;
-	
-	memcpy(&retroctx.audbuf[retroctx.audbuf_used], data, nframes * sizeof(int16_t) * 2);
-	retroctx.audbuf_used += nframes * 2; /* two channels */
-	retroctx.audbuf_used = retroctx.audbuf_used % (retroctx.audbuf_nsamples + 1);
+
+	static FILE* rawd = NULL;
+	if (!rawd)
+		rawd = fopen("retro.raw", "w");
+
+	size_t ntc = nframes * 2 * sizeof(int16_t); /* 2 channels per frame, 16 bit local endian data */
+
+	fwrite(data, ntc / 2, 1, rawd);
+	memcpy((uint8_t*)retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc);
+
+	retroctx.shmcont.addr->abufused += ntc;
 
 	return nframes;
 }
+
 
 void libretro_audscb(int16_t left, int16_t right){
 	if (retroctx.skipframe)
 		return;
 
-	retroctx.audbuf[ retroctx.audbuf_used++ ] = left;
-	retroctx.audbuf[ retroctx.audbuf_used++ ] = right; 
-	
-	retroctx.audbuf_used = retroctx.audbuf_used % (retroctx.audbuf_nsamples + 1); /* allow 1 sample overflow into guardsample as watchpoint for misbehaving libs */
+	static FILE* rawd = NULL;
+	if (!rawd)
+		rawd = fopen("retro_alt.raw", "w");
+
+	int16_t buf[2] = {left, right};
+
+	memcpy((uint8_t*)retroctx.audp + retroctx.shmcont.addr->abufused, &buf, 4);
+	retroctx.shmcont.addr->abufused += 4;
+
+	fwrite(buf, 4, 1, rawd);
 }
 
 /* we ignore these since before pushing for a frame, we've already processed the queue */
@@ -306,13 +315,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	gameinf.size = bufsize;
 	
 /* map functions to context structure */
-LOG("map functions\n");
 		retroctx.run = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
 		retroctx.load_game = (bool(*)(const struct retro_game_info* game)) libretro_requirefun("retro_load_game");
 	
 /* setup callbacks */
-LOG("setup callbacks\n");
 		( (void(*)(retro_video_refresh_t) )libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
 		( (size_t(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
 		( (void(*)(retro_audio_sample_t)) libretro_requirefun("retro_set_audio_sample"))(libretro_audscb);
@@ -320,26 +327,16 @@ LOG("setup callbacks\n");
 		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
 
 /* load the game, and if that fails, give up */
-LOG("load_game\n");
 		if ( retroctx.load_game( &gameinf ) == false )
 			return;
 
 		struct retro_system_av_info avinfo;
 		( (void(*)(struct retro_system_av_info*)) libretro_requirefun("retro_get_system_av_info"))(&avinfo);
 		
-LOG("map shm\n");
 /* setup frameserver, synchronization etc. */
-		LOG("framerate: %lf samplerate: %lf\n", avinfo.timing.fps, avinfo.timing.sample_rate);
 		assert(avinfo.timing.fps > 1);
 		assert(avinfo.timing.sample_rate > 1);
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
-		
-/* samples per frame = samples per second / frames per second */
-		retroctx.audbuf_nsamples = (unsigned) round(avinfo.timing.sample_rate / avinfo.timing.fps) * 8 + 4;
-		retroctx.audbuf = (int16_t*) malloc( retroctx.audbuf_nsamples * sizeof(int16_t));
-		
-		for (unsigned i = 0; i < retroctx.audbuf_nsamples; i++)
-			retroctx.audbuf[i] = 0xaded;
 		
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
@@ -392,29 +389,13 @@ skipskip:
 			retroctx.run();
 			postt = frameserver_timemillis();
 			last_framecost = (postt - pret);
-			
-/* otherwise, flush to frameserver, the size of audiobuf should be well above that of the retroctx buffer,
- * but cap, warn about the overflow and drop */
-			shared->vready = true;
 
-/* LOCK audio */
-			if (retroctx.audbuf_used > 512 && shared->aready == false) {
-				frameserver_semcheck( retroctx.shmcont.asem, -1);
-/* other buffer is in number of samples, dst is in number of bytes */
-				memcpy( retroctx.audp, retroctx.audbuf, sizeof(int16_t) * retroctx.audbuf_used);
-				shared->abufused = sizeof(int16_t) * (retroctx.audbuf_used);
-				retroctx.audbuf_used = 0;
-				shared->aready = true;
-				
-				arcan_sem_post( retroctx.shmcont.asem );
-			}
-			
-/* Video is already copied, wait for frameserver to pick it up */
-		frameserver_semcheck( retroctx.shmcont.vsem, -1);
+/* the audp/vidp buffers have already been updated in the callbacks */
+			shared->aready = true;
+			shared->vready = true;
+			frameserver_semcheck( retroctx.shmcont.vsem, -1);
 		}
 		
-		arcan_warning("dead mans switch!\n");
-
 /* cleanup of session goes here (i.e. push any autosave slot, ...) */
 	}
 }

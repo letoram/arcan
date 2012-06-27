@@ -23,6 +23,7 @@
 	#define lua_rawlen(x, y) lua_objlen(x, y)
 #endif
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -1922,7 +1923,10 @@ int arcan_lua_fillsurface(lua_State* ctx)
 	return 1;
 }
 
-/* not intendend to be used as a noise function (duh) */
+/* mingw headers miss this one for some reason, but it's still in the header */
+int random(void);
+
+/* not intendend to be used as a low-frequency noise function (duh) */
 int arcan_lua_randomsurface(lua_State* ctx)
 {
 	int desw = abs( luaL_checknumber(ctx, 1) );
