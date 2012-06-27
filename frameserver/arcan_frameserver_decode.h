@@ -40,7 +40,7 @@ typedef struct arcan_ffmpeg_context {
 	uint32_t c_video_buf;
 	
 /* precalc dstptrs into shm */
-	void* vidp, (* audp);
+	uint8_t* vidp, (* audp);
 
 } arcan_ffmpeg_context;
 
