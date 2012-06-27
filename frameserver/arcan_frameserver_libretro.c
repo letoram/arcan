@@ -150,7 +150,7 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	if (retroctx.skipframe)
 		return nframes;
-
+	
 	size_t ntc = nframes * 2 * sizeof(int16_t); /* 2 channels per frame, 16 bit local endian data */
 
 	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc);
@@ -346,6 +346,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			return;
 		
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
+		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
+		retroctx.audguardb[0] = 0xde;
+		retroctx.audguardb[1] = 0xad;
+
 		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false); 
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 
@@ -393,6 +397,7 @@ skipskip:
 			shared->vready = true;
 			frameserver_semcheck( retroctx.shmcont.vsem, -1);
 	
+			assert(shared->aready == false && shared->vready == false);
 			assert( retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad );
 		}
 		
