@@ -174,7 +174,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		
 	shmpage->parent = getpid();
 
-	pid_t child = vfork();
+	pid_t child = fork();
 	if (child) {
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
