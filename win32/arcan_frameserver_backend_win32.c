@@ -267,9 +267,10 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->shm.shmsize = MAX_SHMSIZE;
 	ctx->shm.handle = shmh;
  	ctx->desc.ready = true;
-	ctx->ofs_audb = 0;
+	ctx->ofs_audb = 16024;
 	ctx->sz_audb = 64 * 1024;
 	ctx->audb = (uint8_t*) malloc( ctx->sz_audb );
+	memset(ctx->audb, 0, ctx->ofs_audb);
 
 	shmpage->parent = handle;
 

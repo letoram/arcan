@@ -387,15 +387,20 @@ skipskip:
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
 		
-			unsigned long int postt, pret = frameserver_timemillis();
 			retroctx.run();
-			postt = frameserver_timemillis();
-			last_framecost = (postt - pret);
 
 /* the audp/vidp buffers have already been updated in the callbacks */
 			shared->aready = true;
 			shared->vready = true;
+			FILE* flog = NULL;
+			if (!flog)
+				flog = fopen("log", "w");
+
+			unsigned long int postt, pret = frameserver_timemillis();
 			frameserver_semcheck( retroctx.shmcont.vsem, -1);
+			postt = frameserver_timemillis();
+			last_framecost = (postt - pret);
+			fprintf(flog, "framecost: %d\n", last_framecost);
 	
 			assert(shared->aready == false && shared->vready == false);
 			assert( retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad );

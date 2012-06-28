@@ -85,6 +85,7 @@ static const struct option longopts[] = {
 	{ "scalemode", required_argument, NULL, 'r'}, 
 	{ "multisamples", required_argument, NULL, 'a'},
 	{ "nosound", no_argument, NULL, 'S'},
+	{ "novsync", no_argument, NULL, 'v'},
 /* no points guessing which platform forcing this .. */
 	{ "stdout", required_argument, NULL, '1'}, 
 	{ "stderr", required_argument, NULL, '2'},
@@ -108,6 +109,7 @@ void usage()
 		"-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
 		"-g\t--debug       \ttoggle debug output (stacktraces, events, etc.)\n"
 		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
+		"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
 		"-S\t--nosound     \tdisable audio output\n"
 		"-r\t--scalemode   \tset texture mode:\n\t"
 		"%i(rectangle sized textures, default),\n\t"
@@ -138,7 +140,7 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fmsp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvmsp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
 				usage();
@@ -155,6 +157,7 @@ int main(int argc, char* argv[])
 			case 'd' : dbfname = strdup(optarg); break;
 			case 'S' : nosound = true; break;
 			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
+			case 'v' : arcan_video_display.vsync = false;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;
