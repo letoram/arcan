@@ -55,10 +55,12 @@ static struct {
 	unsigned vcellcount;
 	unsigned abufsize;
 	unsigned short acellcount;
+	unsigned presilence;
 } queueopts = {
 	.vcellcount = ARCAN_FRAMESERVER_VCACHE_LIMIT,
 	.abufsize = ARCAN_FRAMESERVER_ABUFFER_SIZE,
-	.acellcount = ARCAN_FRAMESERVER_ACACHE_LIMIT
+	.acellcount = ARCAN_FRAMESERVER_ACACHE_LIMIT,
+	.presilence = ARCAN_FRAMESERVER_PRESILENCE
 };
 
 void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned short abufsize, unsigned short acellcount)
@@ -143,6 +145,36 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 	return rv;
 }
 
+static int void push_buffer(char* buf, unsigned int mode, 
+	unsigned sw, unsigned sh, unsigned bpp,
+	unsigned dw, unsigned dh, unsigned dpp)
+{
+	int8_t rv;
+
+	if (sw != dw || 
+		sh != dh) {
+	
+		uint16_t cpy_width  = (dw > sw ? sw : dw);
+		uint16_t cpy_height = (dh > sh ? sh : dh);
+		assert(bpp == dpp);
+					
+		for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
+			memcpy(buf + (row * sw * bpp), buf, cpy_width * bpp);
+					
+		rv = FFUNC_RV_COPIED; 
+	}
+/* hack to reduce extraneous copying, afaik. there's also a streaming texture mode
+ * that might be worth looking into */
+	else {
+		glBindTexture(GL_TEXTURE_2D, mode);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+
+		rv = FFUNC_RV_NOUPLOAD;
+	}
+
+	return rv;
+}
+
 int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
 	
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
@@ -175,26 +207,8 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_poll: return shmpage->vready; break;        
         case ffunc_tick: arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr); break;		
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
-		case ffunc_render:
-			if (width != shmpage->w || 
-				height != shmpage->h) {
-					uint16_t cpy_width  = (width > shmpage->w ? shmpage->w : width);
-					uint16_t cpy_height = (height > shmpage->h ? shmpage->h : height);
-					assert(bpp == shmpage->bpp);
-					
-					for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
-						memcpy(buf + (row * width * bpp), tgt->vidp, cpy_width * bpp);
-						
-					rv = FFUNC_RV_COPIED; 
-			}
-/* hack to reduce extraneous copying, afaik. there's also streaming texture mode
- * that might be worth looking into */
-			else {
-				glBindTexture(GL_TEXTURE_2D, mode);
-				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, (char*) tgt->vidp);
-
-				rv = FFUNC_RV_NOUPLOAD;
-			}
+		case ffunc_render: 	
+			push_buffer( (char*) tgt->vidp, mode, shmpage->w, shmpage->h, shmpage->bpp, width, height, bpp); break;
 
 /* in constrast to the framequeue approach, we here need to limit the number of context switches
  * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
@@ -312,8 +326,6 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
-/* this one doesn't actually do anything other than say that we're not ready for another buffer,
- * but rather align audio- buffering to video frames */
 arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
@@ -322,7 +334,6 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 	if (src->audb && src->ofs_audb){
 		alBufferData(buffer, src->desc.channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, 
 								 src->audb, src->ofs_audb, src->desc.samplerate);
-		src->ofs_audb = 0;
 		rv = ARCAN_OK;
 	}
 
@@ -450,6 +461,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			}
 			else if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE || src->kind == ARCAN_HIJACKLIB){
 				arcan_frameserver_playback(src);
+
 				arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, .category = EVENT_TARGET,
 				.data.target.video.source = src->vid,
 				.data.target.video.constraints = cons,
