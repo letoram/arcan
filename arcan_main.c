@@ -157,7 +157,7 @@ int main(int argc, char* argv[])
 			case 'd' : dbfname = strdup(optarg); break;
 			case 'S' : nosound = true; break;
 			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
-			case 'v' : arcan_video_display.vsync = false;
+			case 'v' : arcan_video_display.vsync = false; break;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;

@@ -145,17 +145,18 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	
 }
 
-/* flush to audiobuffer */
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
+	static unsigned base = 22000;
+	
 	if (retroctx.skipframe)
 		return nframes;
 	
-	size_t ntc = nframes * 2 * sizeof(int16_t); /* 2 channels per frame, 16 bit local endian data */
+	size_t ntc = nframes * 4; /* 2 channels per frame, 16 bit local endian data */
 
-	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc);
-	retroctx.shmcont.addr->abufused += ntc;
-
+	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc); 
+	retroctx.shmcont.addr->abufused += ntc; 
+	
 	return nframes;
 }
 
@@ -216,7 +217,7 @@ static int remaptbl[] = {
 	RETRO_DEVICE_ID_JOYPAD_L,
 	RETRO_DEVICE_ID_JOYPAD_R
 };
-		
+
 static void ioev_ctxtbl(arcan_event* ioev)
 {
 	int ind, button = -1, axis;
@@ -392,18 +393,14 @@ skipskip:
 /* the audp/vidp buffers have already been updated in the callbacks */
 			shared->aready = true;
 			shared->vready = true;
-			FILE* flog = NULL;
-			if (!flog)
-				flog = fopen("log", "w");
 
 			unsigned long int postt, pret = frameserver_timemillis();
 			frameserver_semcheck( retroctx.shmcont.vsem, -1);
 			postt = frameserver_timemillis();
 			last_framecost = (postt - pret);
-			fprintf(flog, "framecost: %d\n", last_framecost);
-	
+			
 			assert(shared->aready == false && shared->vready == false);
-			assert( retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad );
+			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
 		
 /* cleanup of session goes here (i.e. push any autosave slot, ...) */

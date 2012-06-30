@@ -68,6 +68,7 @@ typedef struct {
 	bool ready;
 } arcan_frameserver_meta;
 
+typedef struct SDL_mutex SDL_mutex;
 
 typedef struct {
 /* video / audio properties used */
@@ -112,6 +113,7 @@ typedef struct {
 	size_t sz_audb;
 	off_t ofs_audb;
 	uint8_t* audb;
+	SDL_mutex* lock_audb;
 
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
@@ -157,11 +159,12 @@ void arcan_frameserver_dropsemaphores_keyed(char*);
 bool arcan_frameserver_check_frameserver(arcan_frameserver*);
 
 /* override the defauult queue opts (may be necessary for some frame-server sources */
-void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned short abufsize, unsigned short acellcount);
-void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* acellcount, unsigned short* abufsize);
+void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned short abufsize, unsigned short acellcount, unsigned short presilence);
+void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* acellcount, unsigned short* abufsize, unsigned short* presilence);
 
 ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr);
+ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
 
 /* return a callback function for retrieving appropriate video-feeds */
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
