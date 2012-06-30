@@ -36,6 +36,8 @@
 #include <assert.h>
 #include "arcan_framequeue.h"
 
+#include <sched.h>
+
 /* Slide the destination buffer target */
 void arcan_framequeue_step(frame_queue* queue)
 {
@@ -103,6 +105,7 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 		SDL_WaitThread(queue->iothread, &statusfl);
 		SDL_DestroyCond(queue->framecond);
 		SDL_DestroyMutex(queue->framesync);
+		free(queue->label);
 		if (queue->da_cells) {
 			free(queue->da_cells[0].buf);
 			free(queue->da_cells);
@@ -130,8 +133,9 @@ static int framequeue_loop(void* data)
 			if (current->ofs == queue->cell_size || queue->vcs)
 				arcan_framequeue_step(queue);
 		}
+		
 		else if (nr == -1 && errno == EAGAIN)
-			SDL_Delay(1); 
+			SDL_Delay(1), 1;
 		else
 			break;
 	}

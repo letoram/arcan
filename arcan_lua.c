@@ -2273,11 +2273,12 @@ void arcan_lua_callvoidfun(lua_State* ctx, const char* fun)
 
 int arcan_lua_getqueueopts(lua_State* ctx)
 {
-	unsigned short rv[3];
-	arcan_frameserver_queueopts( &rv[0], &rv[1], &rv[2] );
+	unsigned short rv[4];
+	arcan_frameserver_queueopts( &rv[0], &rv[1], &rv[2], &rv[3] );
 	lua_pushnumber(ctx, rv[0]);
 	lua_pushnumber(ctx, rv[1]);
 	lua_pushnumber(ctx, rv[2]);
+	lua_pushnumber(ctx, rv[3]);
 
 	return 3;
 }
@@ -2287,8 +2288,9 @@ int arcan_lua_setqueueopts(lua_State* ctx)
 	unsigned short vcellc = luaL_checknumber(ctx, 1);
 	unsigned short acellc = luaL_checknumber(ctx, 2);
 	unsigned short abufs = luaL_checknumber(ctx, 3);
+	unsigned short presilence = luaL_optnumber(ctx, 4, ARCAN_FRAMESERVER_PRESILENCE);
 	
-	arcan_frameserver_queueopts_override( vcellc, acellc, abufs );
+	arcan_frameserver_queueopts_override( vcellc, acellc, abufs, presilence );
 	return 0;
 }
 

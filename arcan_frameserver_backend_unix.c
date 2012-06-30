@@ -197,13 +197,14 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			ctx->kind = ARCAN_FRAMESERVER_INPUT;
 
 /* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
- * each transfer, minimized latency is key. */
+ * each transfer, minimized latency is key. All operations require an intermediate buffer 
+ * and are synched to one framequeue */
 		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->nopts = true;
 			ctx->autoplay = true;
 			ctx->sz_audb = 1024 * 24;
-			ctx->ofs_audb = 4096;
+			
 			ctx->audb = malloc( ctx->sz_audb );
 			memset(ctx->audb, 0, ctx->ofs_audb);
 		}

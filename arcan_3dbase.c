@@ -366,7 +366,6 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 	return cell;
 }
 
-
 static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigned nverts)
 {
     for (unsigned i = 0; i < nverts * 3; i += 3){
@@ -483,6 +482,10 @@ static void invert_txcos(float* buf, unsigned bufs){
 	}
 }
 
+/* undesired limits with this function is that it ignores
+ * many possible vertex attributes (such as colour weighting)
+ * and multiple UV maps. It should, furthermore, store these in an
+ * interleaved way rather than planar. */
 static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {	
 /* figure out dimensions */
@@ -503,7 +506,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 		memcpy(dst->normals, normals, vrtsize);
 	}
 	
-    memcpy(dst->verts, verts, vrtsize);
+	memcpy(dst->verts, verts, vrtsize);
     
 /* lots of memory to be saved, so worth the trouble */
 	if (indices){
