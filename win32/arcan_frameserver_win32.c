@@ -72,7 +72,7 @@ void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 static LARGE_INTEGER ticks_pers;
 static LARGE_INTEGER start_ticks;
 
-unsigned long int frameserver_timemillis()
+long long int frameserver_timemillis()
 {
 	LARGE_INTEGER ticksnow;
 	QueryPerformanceCounter(&ticksnow);
@@ -81,7 +81,7 @@ unsigned long int frameserver_timemillis()
 	ticksnow.QuadPart *= 1000;
 	ticksnow.QuadPart /= ticks_pers.QuadPart;
 
-	return (unsigned long int) ticksnow.QuadPart;
+	return ticksnow.QuadPart;
 }
 
 void frameserver_delay(unsigned long val)

@@ -99,7 +99,8 @@ settings = {
 	internal_again = 1.0,
 	fullscreenshader = "default",
 	in_internal = false,
-	cocktail_mode = "Disabled"
+	cocktail_mode = "Disabled",
+	autosave = "autosave.state" -- if nil, no attempt at autosave / autoload will be made, otherwise specifies file-name
 };
 
 settings.sortfunctions = {};
@@ -952,6 +953,8 @@ function build_grid(width, height)
 			local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
 			if (settings.games[gameno] == nil) then break; end
 			settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
+			settings.games[gameno].capabilities = launch_target_capabilities( settings.games[gameno].target );
+			
 			local vid = get_image(settings.games[gameno].resources, settings.games[gameno].setname);
 			resize_image(vid, settings.cell_width, settings.cell_height);
 			move_image(vid,cell_coords(col, row));

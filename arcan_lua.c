@@ -2322,18 +2322,21 @@ int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 /* currently, this means frameserver / libretro interface
  * so these capabilities are hard-coded rather than queried */
 		if (use_loader(resourcestr)){
+			arcan_lua_tblbool(ctx, "external_launch", false, top);
 			arcan_lua_tblbool(ctx, "internal_launch", true, top);
-			arcan_lua_tblbool(ctx, "snapshot", false, top);
+			arcan_lua_tblbool(ctx, "snapshot", true, top);
 			arcan_lua_tblbool(ctx, "rewind", false, top);
 			arcan_lua_tblbool(ctx, "suspend", false, top);
+			arcan_lua_tblbool(ctx, "reset", true, top);
 		} else {
 /* the plan is to extend the internal launch support with a probe (sortof prepared for in the build-system)
  * to check how the target is linked, which dependencies it has etc. */
+			arcan_lua_tblbool(ctx, "external_launch", true, top);
 			if (strcmp(internal_launch_support(), "NO SUPPORT") == 0)
 				arcan_lua_tblbool(ctx, "internal_launch", false, top);
 			else
 				arcan_lua_tblbool(ctx, "internal_launch", true, top);
-			
+			arcan_lua_tblbool(ctx, "reset", false, top);
 			arcan_lua_tblbool(ctx, "snapshot", false, top);
 			arcan_lua_tblbool(ctx, "rewind", false, top);
 			arcan_lua_tblbool(ctx, "suspend", false, top);

@@ -474,17 +474,19 @@ function gridlemenu_internal(target_vid)
 		"Cocktail Modes...",
 	};
 
-	local capabilities = launch_target_capabilities( current_game().target );
-	if (capabilities.snapshot) then
+	if ( current_game().capabilities.snapshot )  then
 		table.insert(menulbls, "Save State...");
 		table.insert(menulbls, "Load State...");
+	end
+	
+	if ( current_game().capabilities.reset ) then
+		table.insert(menulbls, "Reset Game");
 	end
 	
 	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
 	current_menu.ptrs = {};
 	current_menu.parent = nil;
 	current_menu.ptrs["Shaders..."] = function() 
-
 	local def = {};
 		def[ settings.fullscreenshader ] = "\\#00ffff";
 		if (get_key("defaultshader")) then
