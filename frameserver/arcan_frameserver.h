@@ -28,7 +28,7 @@ extern FILE* logdev;
 
 /* to get rid of a few POSIX calls in libretro implementation */
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
-unsigned long int frameserver_timemillis();
+unsigned long long int frameserver_timemillis();
 void frameserver_delay(unsigned long);
 
 #endif

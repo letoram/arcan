@@ -418,10 +418,10 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 /* the difference here is that whenever it reads a video frame into the queue,
  * it also flushes the audio buffer but into the framequeue context (a little hackish) */
-					arcan_framequeue_alloc(&src->vfq, src->vid, 4, 
+					arcan_framequeue_alloc(&src->vfq, src->vid, 3, 
 						src->desc.width * src->desc.height * src->desc.bpp, 
 						false, arcan_frameserver_shmvidaudcb, labelbuf);
-					printf("threading enabled.\n");
+					
 					arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
 				}
 /* otherwise, synching is actually up to the frameserver and we can keep the main program nice and reponsive */
@@ -548,7 +548,7 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 /* SDL mutex protects the shm- page for freeing etc. */
 			if (shm->vready) {
                 frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
-                current->tag = shm->vdts;
+                current->tag = shm->vpts;
 				memcpy(dst, movie->vidp, ntr);
 				shm->vready = false;
 				rv = ntr;
@@ -573,7 +573,7 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr)
 /* SDL mutex protects the shm- page for freeing etc. */
 			if (shmpage->vready) {
 				frame_cell* current = &(tgt->vfq.da_cells[ tgt->vfq.ni ]);
-				current->tag = shmpage->vdts;
+				current->tag = shmpage->vpts;
 				memcpy(dst, tgt->vidp, ntr);
 				shmpage->vready = false;
 				rv = ntr;
@@ -622,7 +622,7 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 
 			if (shm->aready) {
                 frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
-                current->tag = shm->vdts;
+                current->tag = shm->vpts;
 
 				if (shm->abufused - shm->abufbase > ntr) {
 					memcpy(dst, movie->audp, ntr);

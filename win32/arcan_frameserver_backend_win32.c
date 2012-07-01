@@ -66,6 +66,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
 
+		if (src->lock_audb)
+			SDL_DestroyMutex(src->lock_audb);
+		
 	/* might have died prematurely (framequeue cbs), no reason sending signal */
  		if (src->child_alive) {
 			UINT ec;
@@ -270,6 +273,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->ofs_audb = 16024;
 	ctx->sz_audb = 64 * 1024;
 	ctx->audb = (uint8_t*) malloc( ctx->sz_audb );
+	ctx->lock_audb = SDL_CreateMutex();
 	memset(ctx->audb, 0, ctx->ofs_audb);
 
 	shmpage->parent = handle;
