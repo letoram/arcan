@@ -39,7 +39,7 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 
-#define ARCAN_ASTREAMBUF_LIMIT 8 
+#define ARCAN_ASTREAMBUF_LIMIT 4 
 #define ARCAN_ASAMPLE_LIMIT 1024 * 64
 
 struct arcan_aobj_cell;

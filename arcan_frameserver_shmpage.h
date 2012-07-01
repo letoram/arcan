@@ -59,7 +59,7 @@ struct frameserver_shmpage {
 	bool glsource;
 
 /* vbuf size = w * h * bpp */
-	uint32_t vdts;
+	uint32_t vpts;
 	uint16_t w, h;
 	uint8_t bpp;
 
@@ -68,7 +68,7 @@ struct frameserver_shmpage {
 	
 	uint8_t channels;
 	unsigned samplerate;
-	uint32_t adts;
+	uint32_t apts;
 
 /* abufbase is a working buffer offset in how far parent has processed */
 	off_t abufbase;

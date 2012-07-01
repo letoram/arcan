@@ -88,7 +88,7 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 		}
 
 		/* SHM-CHG-PT */
-		ctx->shmcont.addr->vdts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
+		ctx->shmcont.addr->vpts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
 		memcpy(ctx->vidp, ctx->video_buf, ctx->c_video_buf);
 
 /* parent will check vready, then set to false and post */

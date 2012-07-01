@@ -59,7 +59,7 @@
  * that can be handled by SDLs library management functions. */
 static struct {
 		bool skipframe; /* set if next frame should just be dropped (not copied to buffers) */
-		unsigned skipcount, framecount;
+		unsigned skipcount;
 		
 		double mspf;
 		long long int basetime;
@@ -75,7 +75,7 @@ static struct {
 		struct retro_game_info gameinfo;
 		unsigned state_size;
 		
-		unsigned long int last_frametime;
+		unsigned long long framecount;
 /* 
  * current versions only support a subset of inputs (e.g. 1 mouse/lightgun + 12 buttons per port.
  * we map PLAYERn_BUTTONa and substitute n for port and a for button index, with a LUT for UP/DOWN/LEFT/RIGHT
@@ -272,7 +272,6 @@ static void flush_eventq(){
 	}
 }
 
-
 /* map up a libretro compatible library resident at fullpath:game */
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
@@ -361,29 +360,36 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		unsigned long int last_framecost = 1;
 		
 		while (retroctx.shmcont.addr->dms){
-		goto skipskip;
 			long long int frametime = frameserver_timemillis();
+			retroctx.shmcont.addr->vpts = retroctx.framecount * retroctx.mspf;
 
-/* if we're lagging behind, drop the next frame, otherwise sleep */			
+/* if we're lagging behind, drop the next frame, otherwise sleep */	
 			if (frametime > retroctx.basetime){
-				double framedelta = (frametime - retroctx.basetime) - ( (double)retroctx.framecount++ * retroctx.mspf);
-
-/* framedelta is the deviation from the current time to the next expected frame, depending on the cost
- * of the previos frame, the choice is between sleeping, dropping and rendering */
-				if (framedelta < (retroctx.mspf - last_framecost) ){
-					frameserver_delay( ceil( fabs(framedelta) ) - last_framecost  );
+				long long int nextframe = retroctx.basetime + retroctx.framecount * retroctx.mspf;
+				long long int framedelta = frametime - nextframe;
+				
+/* sleep */
+				printf("%lld, framedelta, %lf mspf\n", framedelta, retroctx.mspf);
+				if (framedelta < -4){
+					printf("ahead, by %lld ms\n", abs(framedelta));
+					frameserver_delay( abs(framedelta) );
 				} 
-
-/* more than a frame behind? skip */
+/* more than a frame behind, skip + rebase */
 				else if (framedelta > retroctx.mspf){
 					retroctx.skipframe = true;
+					retroctx.framecount++;
 					retroctx.run();
 					retroctx.skipframe = false;
 					continue;
 				}
 			}
-
-skipskip:
+/* timing isn't actually monotonic, either wraparound, ntpd or similar */
+			else {
+				retroctx.basetime = frameserver_timemillis();;
+				continue; 
+			}
+			
+skipsync:
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
 			flush_eventq();
@@ -394,11 +400,14 @@ skipskip:
 			shared->aready = true;
 			shared->vready = true;
 
-			unsigned long int postt, pret = frameserver_timemillis();
+/*		unsigned long int postt, pret = frameserver_timemillis(); */
 			frameserver_semcheck( retroctx.shmcont.vsem, -1);
-			postt = frameserver_timemillis();
+/*		postt = frameserver_timemillis();
 			last_framecost = (postt - pret);
+			LOG("frametransfer: %d\n", last_framecost); */
 			
+			printf("transferred frame\n");
+			retroctx.framecount++;
 			assert(shared->aready == false && shared->vready == false);
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}

@@ -69,7 +69,6 @@ void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 	return res;
 }
 
-
 static LARGE_INTEGER ticks_pers;
 static LARGE_INTEGER start_ticks;
 
