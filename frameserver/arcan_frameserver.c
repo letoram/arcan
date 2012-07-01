@@ -73,7 +73,7 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 	return buf;
 }
 
-unsigned long long int frameserver_timemillis()
+long long int frameserver_timemillis()
 {
 	struct timespec tp;
 	clock_gettime(CLOCK_MONOTONIC, &tp);

@@ -75,7 +75,7 @@ static struct {
 		struct retro_game_info gameinfo;
 		unsigned state_size;
 		
-		unsigned long long framecount;
+		long long framecount;
 /* 
  * current versions only support a subset of inputs (e.g. 1 mouse/lightgun + 12 buttons per port.
  * we map PLAYERn_BUTTONa and substitute n for port and a for button index, with a LUT for UP/DOWN/LEFT/RIGHT
@@ -356,26 +356,33 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex 
 	* parent event processing as well */
 		retroctx.reset();
+
+/* basetime is used as epoch for all other timing calculations */
 		retroctx.basetime = frameserver_timemillis();
-		unsigned long int last_framecost = 1;
+
+/* start of new frame */
+		long long int frametime = retroctx.basetime;
+		long long int framestart;
+
+/* cost of previous run() + synch operation, used to determine how long to sleep */
+		int last_framecost = 1;
 		
 		while (retroctx.shmcont.addr->dms){
-			long long int frametime = frameserver_timemillis();
+			frametime = frameserver_timemillis();
 			retroctx.shmcont.addr->vpts = retroctx.framecount * retroctx.mspf;
-
+			
 /* if we're lagging behind, drop the next frame, otherwise sleep */	
-			if (frametime > retroctx.basetime){
+			if (frametime >= retroctx.basetime){
 				long long int nextframe = retroctx.basetime + retroctx.framecount * retroctx.mspf;
-				long long int framedelta = frametime - nextframe;
+				long long int framedelta = nextframe - frametime;
 				
 /* sleep */
-				printf("%lld, framedelta, %lf mspf\n", framedelta, retroctx.mspf);
-				if (framedelta < -4){
-					printf("ahead, by %lld ms\n", abs(framedelta));
-					frameserver_delay( abs(framedelta) );
-				} 
+				if (framedelta > last_framecost){
+					frameserver_delay( framedelta );
+				}
+				else 
 /* more than a frame behind, skip + rebase */
-				else if (framedelta > retroctx.mspf){
+				if (framedelta < -retroctx.mspf){
 					retroctx.skipframe = true;
 					retroctx.framecount++;
 					retroctx.run();
@@ -383,17 +390,20 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					continue;
 				}
 			}
-/* timing isn't actually monotonic, either wraparound, ntpd or similar */
+/* timing isn't actually monotonic, either wraparound, ntpd or similr, rebase */
 			else {
-				retroctx.basetime = frameserver_timemillis();;
+				retroctx.basetime = frameserver_timemillis();
+				retroctx.framecount++;
 				continue; 
 			}
-			
 skipsync:
+			
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
+			
+			framestart = frameserver_timemillis();
+
 			flush_eventq();
-		
 			retroctx.run();
 
 /* the audp/vidp buffers have already been updated in the callbacks */
@@ -402,12 +412,10 @@ skipsync:
 
 /*		unsigned long int postt, pret = frameserver_timemillis(); */
 			frameserver_semcheck( retroctx.shmcont.vsem, -1);
-/*		postt = frameserver_timemillis();
-			last_framecost = (postt - pret);
-			LOG("frametransfer: %d\n", last_framecost); */
-			
-			printf("transferred frame\n");
+		
+			last_framecost = frameserver_timemillis() - framestart;
 			retroctx.framecount++;
+
 			assert(shared->aready == false && shared->vready == false);
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
