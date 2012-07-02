@@ -1176,7 +1176,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && (vobj->flags.clone == true) &&
-        !(vobj->feed.state.tag == ARCAN_TAG_TARGET || vobj->feed.state.tag == ARCAN_TAG_FRAMESERV))
+        vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 	if (vobj) {

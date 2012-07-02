@@ -1001,7 +1001,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 	
 	vfunc_state* vstate = arcan_video_feedstate(vid);
 	
-	if (!vstate || (vstate->tag != ARCAN_TAG_TARGET && vstate->tag != ARCAN_TAG_FRAMESERV)){
+	if (!vstate || vstate->tag != ARCAN_TAG_FRAMESERV){
 		lua_pushnumber(ctx, false);
 		return 1;
 	}
@@ -1068,7 +1068,7 @@ static int arcan_lua_targetsuspend(lua_State* ctx){
 
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
-		if (state && state->ptr && state->tag == ARCAN_TAG_TARGET){
+		if (state && state->ptr && state->tag == ARCAN_TAG_FRAMESERV){
 //			arcan_target_suspend_internal( (arcan_launchtarget*) state->ptr );
 		}
 	}
@@ -1080,8 +1080,13 @@ static int arcan_lua_targetresume(lua_State* ctx){
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
-		if (state && state->ptr && state->tag == ARCAN_TAG_TARGET){
-//			arcan_target_resume_internal( (arcan_launchtarget*) state->ptr );
+		if (state && state->ptr && state->tag == ARCAN_TAG_FRAMESERV){
+			arcan_event ev = {
+				.kind = TARGET_COMMAND_UNPAUSE,
+				.category = EVENT_TARGET
+			};
+			
+			arcan_frameserver_pushevent( &( (arcan_launchtarget*) state->ptr )->source, &ev);
 		}
 	}
 
@@ -1260,11 +1265,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 		}
 	}
-	else if (ev->category == EVENT_TARGET){
-		vfunc_state* fstate = arcan_video_feedstate( ev->data.target.video.source );
+	else if (ev->category == EVENT_TARGETSTATUS){
+		vfunc_state* fstate = arcan_video_feedstate( ev->data.target_status.video.source );
 
 		arcan_frameserver* srv;
-		if (fstate->tag == ARCAN_TAG_TARGET)
+		if (fstate->tag == ARCAN_TAG_FRAMESERV)
 			srv = & ( ((arcan_launchtarget*) fstate->ptr)->source);
 		else 
 			srv = ( arcan_frameserver*) fstate->ptr;
@@ -1279,14 +1284,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 		}
 		
-		lua_pushvid(ctx, ev->data.target.video.source);
+		lua_pushvid(ctx, ev->data.target_status.video.source);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 		
 		if (ev->kind == EVENT_TARGET_INTERNAL_STATUS){
-			arcan_lua_tblnum(ctx, "audio", ev->data.target.audio, top);
+			arcan_lua_tblnum(ctx, "audio", ev->data.target_status.audio, top);
 			
-			switch (ev->data.target.statuscode){
+			switch (ev->data.target_status.statuscode){
 				case TARGET_STATUS_DATABLOCK_SAMPLED : 
 					arcan_lua_tblstr(ctx, "kind", "datablock_sampled", top);
 				break;
@@ -1298,8 +1303,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				case TARGET_STATUS_RESIZED : 
 					arcan_lua_tblstr(ctx, "kind", "resized", top);
 					arcan_lua_tblbool(ctx, "glsource", ((struct frameserver_shmpage*)(srv->shm.ptr))->glsource, top); 
-					arcan_lua_tblnum(ctx, "width", ev->data.target.video.constraints.w, top);
-					arcan_lua_tblnum(ctx, "height", ev->data.target.video.constraints.h, top);
+					arcan_lua_tblnum(ctx, "width", ev->data.target_status.video.constraints.w, top);
+					arcan_lua_tblnum(ctx, "height", ev->data.target_status.video.constraints.h, top);
 				break;
 				
 				case TARGET_STATUS_SNAPSHOT_STORED : 
@@ -2299,12 +2304,7 @@ static bool use_loader(char* fname)
 	char* ext = strrchr( fname, '.' );
 	if (!ext) return false;
 	
-	if (strcasecmp(ext, ".so") == 0)
-		return true;
-	else if (strcasecmp(ext, ".dll") == 0)
-		return true;
-	else	
-		return false;
+	return (strcasecmp(ext, ".so") == 0) || (strcasecmp(ext, ".dll") == 0) ? true : false;
 }
 
 int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
@@ -2354,19 +2354,46 @@ int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 
 int arcan_lua_targetrestore(lua_State* ctx)
 {
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	const char* snapkey = luaL_checkstring(ctx, 2);
+	
+	
 	return 0;
 }
 
 int arcan_lua_targetrewind(lua_State* ctx)
 {
+	
 	return 0;
 }
 
 int arcan_lua_targetsnapshot(lua_State* ctx)
 {
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	const char* snapkey = luaL_checkstring(ctx, 2);
+	
 	return 0;
 }
+
+int arcan_lua_targetreset(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	if (vid != ARCAN_EID){
+		vfunc_state* state = arcan_video_feedstate(vid);
+
+		if (state && state->ptr && state->tag == ARCAN_TAG_FRAMESERV){
+			arcan_event ev = {
+				.kind = TARGET_COMMAND_RESET,
+				.category = EVENT_TARGET
+			};
+			
+			arcan_frameserver_pushevent( &( (arcan_launchtarget*) state->ptr )->source, &ev);
+		}
+	}
 	
+	return 0;
+}
+
 int arcan_lua_targetlaunch(lua_State* ctx)
 {
 	int gameid = luaL_checknumber(ctx, 1);
@@ -2862,6 +2889,11 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
  * try and restore the targets state (if snapshot capabilities are there) 
  */
 	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
+
+/* item: reset_target, tgtvid, nil
+ * reset the state of specified target. 
+ */
+	arcan_lua_register(ctx, "reset_target", arcan_lua_targetreset);
 	
 /* category: core system */
 /* item: kbd_repeat, rate, nil 

@@ -31,9 +31,6 @@ typedef struct {
  * launchtarget, vid however will be kept (destroy the video object manually) */
 int arcan_target_clean_internal(arcan_launchtarget* tgt);
 
-/* convert and input event into the target */
-arcan_errc arcan_target_inject_event(arcan_launchtarget* tgt, arcan_event* ev);
-
 /* upkeep, check if child is still alive etc. */
 void arcan_target_tick_control(arcan_launchtarget* tgt);
 

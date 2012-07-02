@@ -94,7 +94,6 @@ typedef struct {
 
 /* set if color space conversion is done in process or not */
 	bool extcc;
-	unsigned int lastntr;
 
 	enum arcan_frameserver_kinds kind;
 	

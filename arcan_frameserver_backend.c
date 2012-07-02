@@ -476,11 +476,11 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			else if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE || src->kind == ARCAN_HIJACKLIB){
 				arcan_frameserver_playback(src);
 
-				arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, .category = EVENT_TARGET,
-				.data.target.video.source = src->vid,
-				.data.target.video.constraints = cons,
-				.data.target.audio = src->aid,
-				.data.target.statuscode = TARGET_STATUS_RESIZED};
+				arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, .category = EVENT_TARGETSTATUS,
+				.data.target_status.video.source = src->vid,
+				.data.target_status.video.constraints = cons,
+				.data.target_status.audio = src->aid,
+				.data.target_status.statuscode = TARGET_STATUS_RESIZED};
 				
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}

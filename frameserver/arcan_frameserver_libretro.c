@@ -255,6 +255,42 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 }
 
+static inline void targetev(arcan_event* ev)
+{
+	switch (ev->kind){
+		case TARGET_COMMAND_RESET: 
+			retroctx.reset();
+		break;
+
+/* FD transfer has different behavior on Win32 vs UNIX,
+ * Win32 has a handle attribute that directly is set as the latest active FD,
+ * for UNIX, we read it from the socket connection we have */
+		case TARGET_COMMAND_FDTRANSFER: break;
+		
+/* if intval is > 0, the skipval is to drop every N frames,
+ * if intval is < 0, the skipval is to render every abs(n) frames. */
+		case TARGET_COMMAND_FRAMESKIP: break;
+		
+/* any event not being UNPAUSE is ignored, no frames are processed
+ * and the core is allowed to sleep in between polls */
+		case TARGET_COMMAND_PAUSE: break;
+		case TARGET_COMMAND_UNPAUSE: break;
+
+/* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from _event.h */
+		case TARGET_COMMAND_SETIODEV: break;
+	
+/* store / rewind operate on the last FD set through FDtransfer */
+		case TARGET_COMMAND_STORE: break;
+		case TARGET_COMMAND_RESTORE: break;
+		
+/* intval[0] > 0 step back n frames. < 0 step back abs(n) frames every frame */
+		case TARGET_COMMAND_REWIND: break;
+
+		default:
+			arcan_warning("frameserver(libretro), unknown target event (%d), ignored.\n", ev->kind);
+	}
+}
+
 /* use labels etc. for trying to populate the context table */
 /* we also process requests to save state, shutdown, reset, plug/unplug input, here */
 static void flush_eventq(){
@@ -265,9 +301,8 @@ static void flush_eventq(){
  * frameserver semcheck, which will exit */
 	 while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
 		switch (ev->category){
-			case EVENT_IO:
-				ioev_ctxtbl(ev);
-			break;
+			case EVENT_IO: ioev_ctxtbl(ev); break;
+			case EVENT_TARGET: targetev(ev); break;
 		}
 	}
 }
