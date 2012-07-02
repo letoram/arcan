@@ -186,6 +186,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
  * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
+			
 			ctx->source = strdup(setup.args.builtin.resource);
 			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 			ctx->aid = ARCAN_EID;
@@ -239,11 +240,18 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	else if (child == 0) {
 		if (setup.use_builtin){
 			char* argv[5] = { arcan_binpath, setup.args.builtin.resource, ctx->shm.key, setup.args.builtin.mode, NULL };
-				int rv = execv(arcan_binpath, argv);
-				arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", arcan_binpath, 
-										setup.args.builtin.mode, setup.args.builtin.resource, strerror(errno));
-				exit(1);
+
+/* just to help keeping track when there's a lot of them */
+			char vla[ strlen(setup.args.builtin.mode) + 1];
+			snprintf( vla, sizeof(vla), "%s", setup.args.builtin.mode );
+			argv[0] = vla;
+
+			int rv = execv(arcan_binpath, argv);
+			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", arcan_binpath, 
+									setup.args.builtin.mode, setup.args.builtin.resource, strerror(errno));
+			exit(1);
 		} else {
+/* hijack lib */
 			char shmsize_s[32];
 			snprintf(shmsize_s, 32, "%zu", shmsize);
 			
@@ -264,6 +272,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			exit(1);
 		}
 	}
+	else /* -1 */
+		goto error_cleanup;
 		
 	return ARCAN_OK;
 

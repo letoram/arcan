@@ -38,7 +38,8 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_TIMER  = 4,
 	EVENT_VIDEO  = 8,
 	EVENT_AUDIO  = 16,
-	EVENT_TARGET = 32
+	EVENT_TARGET = 32,
+	EVENT_TARGETSTATUS = 64, 
 };
 
 enum ARCAN_EVENT_SYSTEM {
@@ -60,6 +61,18 @@ enum ARCAN_TARGET_STATUS {
 	TARGET_STATUS_SHAPSHOT_RESTORED,
 	TARGET_STATUS_DATABLOCK_SAMPLED,
 	TARGET_STATUS_DIED
+};
+
+enum ARCAN_TARGET_COMMAND {
+	TARGET_COMMAND_FDTRANSFER,
+	TARGET_COMMAND_FRAMESKIP,
+	TARGET_COMMAND_STORE,
+	TARGET_COMMAND_RESTORE,
+	TARGET_COMMAND_RESET,
+	TARGET_COMMAND_REWIND,
+	TARGET_COMMAND_PAUSE,
+	TARGET_COMMAND_SETIODEV,
+	TARGET_COMMAND_UNPAUSE
 };
 
 enum ARCAN_EVENT_IO {
@@ -176,13 +189,18 @@ typedef struct arcan_sevent {
 } arcan_sevent;
 
 typedef struct arcan_tevent {
-	uint8_t pulse_count;
+	long long int pulse_count;
 } arcan_tevent;
 
-typedef struct arcan_tgtevent {
+typedef struct arcan_tgtstatusevent {
 	arcan_vevent video;
 	arcan_aobj_id audio;
 	enum ARCAN_TARGET_STATUS statuscode;
+} arcan_tgtstatusevent;
+
+typedef struct arcan_tgtevent {
+	enum ARCAN_TARGET_COMMAND command;
+	int ioevs[4];
 } arcan_tgtevent;
 
 typedef union event_data {
@@ -191,8 +209,8 @@ typedef union event_data {
 	arcan_aevent audio;
 	arcan_sevent system;
 	arcan_tevent timer;
+	arcan_tgtstatusevent target_status;
 	arcan_tgtevent target;
-	
 	void* other;
 } event_data;
 

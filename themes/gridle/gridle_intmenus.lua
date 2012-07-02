@@ -384,6 +384,32 @@ local function toggle_shadersetting(label, save)
 	current_menu:move_cursor(0, 0, true);
 end
 
+local function add_gamelbls( lbltbl, ptrtbl )
+	local captbl = current_game().capabilities;
+	
+	if not (captbl.snapshot or captbl.reset) then
+			return false;
+	end
+	
+	table.insert( lbltbl, "--- game ---" );
+
+	if ( current_game().capabilities.snapshot)  then
+		table.insert(lbltbl, "Save State...");
+		table.insert(lbltbl, "Load State...");
+	end
+	
+	if ( current_game().capabilities.reset ) then
+		table.insert(lbltbl, "Reset Game");
+			ptrtbl["Reset Game"] = function(label, store)
+				settings.iodispatch["MENU_ESCAPE"]();
+				reset_target(internal_vid);
+				play_audio(soundmap["MENU_SELECT"]);
+			end
+		end
+	
+	return true;
+end	
+
 function gridlemenu_internal(target_vid)
 -- copy the old dispatch table, and keep a reference to the previous input handler
 -- replace it with the one used for these menus (check iodispatch for MENU_ESCAPE for the handover)
@@ -474,18 +500,12 @@ function gridlemenu_internal(target_vid)
 		"Cocktail Modes...",
 	};
 
-	if ( current_game().capabilities.snapshot )  then
-		table.insert(menulbls, "Save State...");
-		table.insert(menulbls, "Load State...");
-	end
-	
-	if ( current_game().capabilities.reset ) then
-		table.insert(menulbls, "Reset Game");
-	end
-	
+	local ptrs = {};
+	local gameopts = add_gamelbls(menulbls, ptrs);
 	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
-	current_menu.ptrs = {};
+	current_menu.ptrs = ptrs;
 	current_menu.parent = nil;
+	
 	current_menu.ptrs["Shaders..."] = function() 
 	local def = {};
 		def[ settings.fullscreenshader ] = "\\#00ffff";

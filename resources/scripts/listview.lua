@@ -24,10 +24,14 @@ local function listview_redraw(self)
 			local tmpname = self.list[ind];
 			local fmt = self.formats[ tmpname ];
 			
-			if (fmt) then
-				renderstr = renderstr .. fmt .. tmpname .. [[\n\r]];
+			if (string.sub(tmpname, 1, 3) == "---") then
+				renderstr = renderstr .. settings.colourtable.hilight_fontstr .. tmpname .. [[\n\r]];
 			else
-				renderstr = renderstr .. settings.colourtable.data_fontstr .. tmpname .. [[\n\r]];
+				if (fmt) then
+					renderstr = renderstr .. fmt .. tmpname .. [[\n\r]];
+				else
+					renderstr = renderstr .. settings.colourtable.data_fontstr .. tmpname .. [[\n\r]];
+				end
 			end
 		end
 
@@ -73,7 +77,11 @@ local function listview_move_cursor(self, step, relative)
 	end
 
 	self.cursor = itempos;
-
+	if (string.sub( self.list[ self.cursor ], 1, 3) == "---" ) then
+		self:move_cursor(step, relative);
+		return;
+	end
+	
 	self:redraw();
 	instant_image_transform(self.cursorvid);
 	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] - 2 + 6, 10);
@@ -147,7 +155,6 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.select = listview_select;
 	restbl.calcpage = listview_calcpage;
 	restbl.formats = formatlist;
-	restbl.elements = elem_list;
 
 	if (restbl.formats == nil) then restbl.formats = {}; end
 	return restbl;

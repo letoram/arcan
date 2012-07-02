@@ -1,4 +1,3 @@
-precision mediump float;
 uniform sampler2D map_diffuse;
 uniform vec2 rubyTextureSize;
 
@@ -9,6 +8,7 @@ void main()
 	vec2 ul, ur, dl, dr;
 	float dx = pow(rubyTextureSize.x, -1.0) * 0.25;
 	float dy = pow(rubyTextureSize.y, -1.0) * 0.25;
+	vec3 dt = vec3(1.0, 1.0, 1.0);
 
 	ul = texco + vec2(-dx, -dy);
 	ur = texco + vec2(dx, -dy);

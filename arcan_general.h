@@ -45,7 +45,8 @@ extern int strcasecmp(const char*, const char*);
 	#define S_ISREG(x) (((x) & S_IFMT) == S_IFREG)
 	#define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
 	#define strcasecmp stricmp */
-typedef unsigned int pipe_handle;
+typedef int pipe_handle;
+typedef HANDLE file_handle;
 typedef HANDLE sem_handle;
 typedef void* process_handle;
 typedef struct {
@@ -67,6 +68,7 @@ typedef struct {
 #include <semaphore.h>
 #include <getopt.h>
 typedef int pipe_handle;
+typedef int file_handle;
 typedef pid_t process_handle;
 typedef sem_t* sem_handle;
 
@@ -95,7 +97,6 @@ enum arcan_vobj_tags {
 	ARCAN_TAG_IMAGE     = 1,  /* images from an external source, need to be able to grab by internal video_getimage function */
 	ARCAN_TAG_TEXT      = 2,  /* specialized form of RAWOBJECT */
 	ARCAN_TAG_FRAMESERV = 3,  /* got a connection to an external resource (frameserver) */
-	ARCAN_TAG_TARGET    = 4,  /* got a connection to an external resource (launched target) */
 	ARCAN_TAG_3DOBJ     = 5,  /* got a corresponding entry in arcan_3dbase, ffunc is used to control the behavior of the 3d part */
     ARCAN_TAG_ASYNCIMG  = 6   /* intermediate state, means that getimage is still loading, don't touch objects in this state, wait for them to switch to TAG_IMAGE */
 };

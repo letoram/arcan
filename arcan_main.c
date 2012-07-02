@@ -236,8 +236,8 @@ int main(int argc, char* argv[])
 		height = vi->current_h;
 	}
 	
-	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i\n", 
-			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", vi->wm_available ? "yes" : "no", scalemode);
+	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i, VSYNC: %i\n", 
+			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", vi->wm_available ? "yes" : "no", scalemode, arcan_video_display.vsync);
 	arcan_video_default_scalemode(scalemode);
     
 	if (windowed) {
