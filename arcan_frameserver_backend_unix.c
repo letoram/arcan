@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
+
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -125,6 +126,46 @@ int check_child(arcan_frameserver* movie){
 	return rv;
 }
 
+arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
+{
+	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
+
+	if (fsrv && fd > 0){
+		char empty = '!';
+		
+		struct cmsgbuf {
+			struct cmsghdr hdr;
+			int fd[1];
+		} msgbuf;
+		
+		struct iovec nothing_ptr = {
+			.iov_base = &empty,
+			.iov_len = 1
+		};
+		
+		struct msghdr msg = {
+			.msg_name = NULL,
+			.msg_namelen = 0,
+			.msg_iov = &nothing_ptr,
+			.msg_iovlen = 1,
+			.msg_flags = 0,
+			.msg_control = &msgbuf,
+			.msg_controllen = sizeof(struct cmsghdr) + sizeof(int)
+		};
+		
+		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+		cmsg->cmsg_len = msg.msg_controllen;
+		cmsg->cmsg_level = SOL_SOCKET;
+		cmsg->cmsg_type  = SCM_RIGHTS;
+		((int*) CMSG_DATA(cmsg))[0] = fd;
+		
+		if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0)
+			rv = ARCAN_OK;
+	}
+	
+	return rv;
+}
+
 void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
 	if (src){
 		fprintf(dst, "movie source: %s\n"
@@ -171,17 +212,23 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	close(shmfd);
 		
 	if (MAP_FAILED == shmpage){
-		arcan_warning("arcan_frameserver_spawn_server() -- couldn't allocate shmpage\n");
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't allocate shmpage\n");
 		goto error_cleanup;
 	}
 		
 	shmpage->parent = getpid();
 
+	int sockp[2] = {-1, -1};
+	if ( socketpair(PF_UNIX, SOCK_DGRAM, 0, sockp) < 0 ){
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't get socket pair\n");
+	}
+	
 	pid_t child = fork();
 	if (child) {
 		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
-
+		close(sockp[1]);
+		
 /* init- call (different from loop-exec as we need to 
  * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {
@@ -230,6 +277,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->desc.bpp = cons.bpp;
 		ctx->shm.ptr = (void*) shmpage;
 		ctx->shm.shmsize = shmsize;
+		ctx->sockout_fd = sockp[1];
 
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
@@ -238,6 +286,14 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->outqueue.synch.external.killswitch = ctx;
 	}
 	else if (child == 0) {
+		char convb[8];
+	
+/* this little thing is used to push file-descriptors between parent and child, as to not expose 
+ * child to parents namespace, and to improve privilege separation */
+		close(sockp[0]);
+		sprintf(convb, "%i", sockp[1]);
+		setenv("ARCAN_SOCKIN_FD", convb, 1);
+		
 		if (setup.use_builtin){
 			char* argv[5] = { arcan_binpath, setup.args.builtin.resource, ctx->shm.key, setup.args.builtin.mode, NULL };
 

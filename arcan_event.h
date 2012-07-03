@@ -185,7 +185,7 @@ typedef struct {
 
 typedef struct arcan_sevent {
 	int errcode; /* copy of errno if possible */
-	int64_t hitag, lotag;	
+	long long hitag, lotag;	
 } arcan_sevent;
 
 typedef struct arcan_tevent {
@@ -201,6 +201,9 @@ typedef struct arcan_tgtstatusevent {
 typedef struct arcan_tgtevent {
 	enum ARCAN_TARGET_COMMAND command;
 	int ioevs[4];
+#ifdef _WIN32
+	HANDLE fh;
+#endif
 } arcan_tgtevent;
 
 typedef union event_data {
@@ -215,21 +218,21 @@ typedef union event_data {
 } event_data;
 
 typedef struct arcan_event {
-	uint32_t kind;
-	uint32_t tickstamp;
-	uint32_t seqn;
+	unsigned kind;
+	unsigned tickstamp;
+	unsigned seqn;
 
 	char label[16];
-	uint8_t category;
+	char category;
 	event_data data;
 } arcan_event;
 
 struct arcan_evctx {
-	uint32_t seqn;
-	uint32_t c_ticks;
-	uint32_t c_leaks;
-	uint32_t mask_cat_inp;
-	uint32_t mask_cat_out;
+	unsigned seqn;
+	unsigned c_ticks;
+	unsigned c_leaks;
+	unsigned mask_cat_inp;
+	unsigned mask_cat_out;
 
 	unsigned kbdrepeat;
 	
@@ -238,7 +241,7 @@ struct arcan_evctx {
 	
 	unsigned* front;
 	unsigned* back;
-	uint32_t cell_aofs;
+	unsigned cell_aofs;
 
 	bool local;
 	union {
@@ -267,7 +270,7 @@ arcan_event* arcan_event_poll(arcan_evctx*);
 
 /* similar to event poll, but will only
  * return events matching masked event */
-arcan_event* arcan_event_poll_masked(arcan_evctx*, uint32_t mask_cat, uint32_t mask_ev);
+arcan_event* arcan_event_poll_masked(arcan_evctx*, unsigned mask_cat, unsigned mask_ev);
 
 /* force a keyboard repeat- rate */
 void arcan_event_keyrepeat(arcan_evctx*, unsigned rate);
@@ -286,7 +289,7 @@ void arcan_event_maskall(arcan_evctx*);
 void arcan_event_clearmask(arcan_evctx*);
 
 /* set a specific mask, somewhat limited */
-void arcan_event_setmask(arcan_evctx*, uint32_t mask);
+void arcan_event_setmask(arcan_evctx*, unsigned mask);
 
 int64_t arcan_frametime();
 

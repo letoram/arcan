@@ -82,7 +82,8 @@ typedef struct {
 /*  OS- specific, defined in general.h */
 	shm_handle shm;
 	sem_handle vsync, async, esync; 
-
+	file_handle sockout_fd;
+	
 	arcan_aobj_id aid;
 	arcan_vobj_id vid;
 
@@ -150,17 +151,37 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
+/* frameserver_pushfd doesn't do anything on win32 targets (handle is already carried in the event),
+ * on UNIX, it uses the socket associated with the frameserver, the corresponding event is not emitted 
+ * but should be pushed separately,
+ * returns a failure (!ARCAN_OK) if the socket isn't connected, wrong type or the fd cannot be transferred (e.g. stdin) */
+arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
+
+/* take the argument event and add it to the event queue of the target, returns a failure if the event queue 
+ * in the child is full */
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
 
+/* poll the frameserver out eventqueue and push it unto the evctx, filter events that 
+ * are outside the accepted category / kind */ 
+void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
+
+/* symbol should only be used by the backend to reach OS specific implementations (_unix.c / win32/* )*/
 void arcan_frameserver_dropsemaphores(arcan_frameserver*);
-void arcan_frameserver_tick_control(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);
+
+/* check if the frameserver is still alive, that the shared memory page is intact and look for any state-changes,
+ * e.g. resize (which would require a recalculation of shared memory layout */
+void arcan_frameserver_tick_control(arcan_frameserver*);
+
+/* used in outer loop (not part of a tick- cycle), if parent has died, cleans up and emits the proper events */ 
 bool arcan_frameserver_check_frameserver(arcan_frameserver*);
 
-/* override the defauult queue opts (may be necessary for some frame-server sources */
+/* override the default queue opts (may be necessary for some frame-server sources */
 void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned short abufsize, unsigned short acellcount, unsigned short presilence);
 void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* acellcount, unsigned short* abufsize, unsigned short* presilence);
 
+/* default implementations for shared memory framequeue readers, two with separate sync (vidcb audcb) and one where
+ * sync is locked to vid only but transfer audio frames into intermediate buffer as well */
 ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
