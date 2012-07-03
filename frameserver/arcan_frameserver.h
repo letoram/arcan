@@ -26,9 +26,24 @@
 
 extern FILE* logdev;
 
-/* to get rid of a few POSIX calls in libretro implementation */
+/* resolve 'resource', open and try to store it in one buffer, possibly memory mapped,
+ * avoid if possible since the parent may manipulate the frameserver file-system namespace and
+ * access permissions quite aggressively */ 
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
+
+/* similar to above, but use a preopened file-handle for the operation */
+void* frameserver_getrawfile_handle(file_handle, ssize_t* ressize);
+
+/* block until parent has supplied us with a file_handle valid in this process */
+file_handle frameserver_readhandle(arcan_event*);
+
+/* store buf in handle pointed out by file_handle, ressize specifies number of bytes to store */
+int frameserver_pushraw_handle(file_handle, void* buf, size_t ressize);
+
+/* retrieve a (unassociated), monotonic, reference clock value in millisecond precision */
 long long int frameserver_timemillis();
-void frameserver_delay(unsigned long);
+
+/* try to waste (approximately) delay milliseconds. */
+void frameserver_delay(unsigned long delay);
 
 #endif

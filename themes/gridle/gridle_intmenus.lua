@@ -390,7 +390,8 @@ local function add_gamelbls( lbltbl, ptrtbl )
 	if not (captbl.snapshot or captbl.reset) then
 			return false;
 	end
-	
+
+-- good item to experiment with having images being embedded into format string rendering
 	table.insert( lbltbl, "--- game ---" );
 
 	if ( current_game().capabilities.snapshot)  then

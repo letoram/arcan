@@ -547,8 +547,8 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 		
 /* SDL mutex protects the shm- page for freeing etc. */
 			if (shm->vready) {
-                frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
-                current->tag = shm->vpts;
+				frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
+				current->tag = shm->vpts;
 				memcpy(dst, movie->vidp, ntr);
 				shm->vready = false;
 				rv = ntr;
@@ -556,7 +556,9 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 			}
 			else
 				errno = EAGAIN;
-	} else errno = EINVAL;
+	} 
+	else 
+		errno = EINVAL;
 
 	return rv;
 }

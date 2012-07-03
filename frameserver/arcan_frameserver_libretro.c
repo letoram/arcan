@@ -68,6 +68,8 @@ static struct {
 		uint8_t* vidp, (* audp);
 		uint8_t* audguardb; /* 0xdead */
 		
+		file_handle last_fd;
+		
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
 
@@ -265,7 +267,9 @@ static inline void targetev(arcan_event* ev)
 /* FD transfer has different behavior on Win32 vs UNIX,
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
-		case TARGET_COMMAND_FDTRANSFER: break;
+		case TARGET_COMMAND_FDTRANSFER: 
+			retroctx.last_fd = frameserver_readhandle( ev );
+		break;
 		
 /* if intval is > 0, the skipval is to drop every N frames,
  * if intval is < 0, the skipval is to render every abs(n) frames. */
@@ -369,6 +373,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* setup frameserver, synchronization etc. */
 		assert(avinfo.timing.fps > 1);
 		assert(avinfo.timing.sample_rate > 1);
+		retroctx.last_fd = -1;
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
 		
 		retroctx.shmcont = frameserver_getshm(keyfile, true);

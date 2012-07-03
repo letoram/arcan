@@ -29,6 +29,8 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
 #include <fcntl.h>
 #include <time.h>
 
@@ -41,6 +43,7 @@
 #include "arcan_frameserver_decode.h"
 
 FILE* logdev = NULL;
+int sockin_fd = -1;
 
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
@@ -174,6 +177,50 @@ static char* launch_debugparent()
 }
 #endif
 
+/* inev is part of the argument in order for Win32 and others that can pass handles in a 
+ * less hackish way to do so by reusing symbols and cutting down on defines */
+file_handle frameserver_readhandle(arcan_event* inev)
+{
+	int rv = -1;
+	
+/* some would call this black magic. They'd be right. */
+	if (sockin_fd != -1){
+		char empty;
+		
+		struct cmsgbuf {
+			struct cmsghdr hdr;
+			int fd[1];
+		} msgbuf;
+		
+		struct iovec nothing_ptr = {
+			.iov_base = &empty,
+			.iov_len = 1
+		};
+		
+		struct msghdr msg = {
+			.msg_name = NULL,
+			.msg_namelen = 0,
+			.msg_iov = &nothing_ptr,
+			.msg_iovlen = 1,
+			.msg_flags = 0,
+			.msg_control = &msgbuf,
+			.msg_controllen = sizeof(struct cmsghdr) + sizeof(int)
+		};
+		
+		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+		cmsg->cmsg_len = msg.msg_controllen;
+		cmsg->cmsg_level = SOL_SOCKET;
+		cmsg->cmsg_type  = SCM_RIGHTS;
+		((int*) CMSG_DATA(cmsg))[0] = -1;
+		
+		if (recvmsg(sockin_fd, &msg, 0) >= 0)
+			rv = msgbuf.fd[0];
+	}
+	
+	arcan_warning("read fd yields: %d\n", rv);
+	return rv;
+}
+
 /* args accepted;
  * fname
  * keyfile
@@ -181,6 +228,7 @@ static char* launch_debugparent()
  * all of these are derived from the keyfile (last char replaced with v, a, e for sems) 
  * and we release vid (within a few seconds or get killed).
  */
+
  int main(int argc, char** argv)
 {
 	char* resource = argv[1];
@@ -198,6 +246,13 @@ static char* launch_debugparent()
 		return 1;
 	}
 
+/* this is not passed as a command-line argument in order to reuse code with arcan_target where we don't 
+ * have control over argv. furthermore, it requires the FD to be valid from an environment perspective (already open socket that
+ * can pass file-descriptors */
+	if (getenv("ARCAN_SOCKIN_FD")){
+		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
+	}
+	
 /* set this env whenever you want to step through the frameserver as launched from the parent */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		arcan_warning("-- frameserver stall activated, won't continue without gdb intervention. Pid: (%d)\n", getpid());
