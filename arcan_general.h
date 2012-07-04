@@ -154,10 +154,13 @@ char* arcan_findshmkey(int* dhd, bool semalloc);
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
+/* open a file using a format string (fmt + variadic), flags and mode matches regular
+ * open() semantics */
+file_handle fmt_open(int flags, mode_t mode, const char* fmt, ...);
+
 /* wrap the posix-2001 semaphore functions,
  * needs workarounds for some platforms for timed_wait, 
  * and everything on win32 ;P */
-
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
 int arcan_sem_timedwait(sem_handle sem, int msecs);

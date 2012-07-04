@@ -161,6 +161,8 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 		
 		if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0)
 			rv = ARCAN_OK;
+		else
+			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", fd, fsrv->sockout_fd, errno, strerror(errno));
 	}
 	
 	return rv;

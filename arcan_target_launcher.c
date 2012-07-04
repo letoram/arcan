@@ -98,7 +98,7 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname, char** argv)
 		return NULL;
 	}
 	
-	arcan_frameserver* res = (arcan_frameserver*) calloc(sizeof(arcan_launchtarget), 1);
+	arcan_frameserver* res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 	
 	char shmsize[ 39 ] = {0};
 
