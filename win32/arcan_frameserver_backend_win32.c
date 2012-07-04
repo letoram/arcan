@@ -166,6 +166,12 @@ int check_child(arcan_frameserver* movie)
 	return rv;
 }
 
+arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, file_handle fd)
+{
+	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
+	
+	return rv;
+}
 
 static TCHAR* alloc_wchar(const char* key)
 {

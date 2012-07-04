@@ -428,6 +428,29 @@ const char* internal_launch_support(){
 extern bool stdout_redirected;
 static char winplaybuf[64 * 1024] = {0};
 
+file_handle fmt_open(int flags, mode_t mode, const char* fmt, ...)
+{
+	file_handle rv = -1;
+
+	unsigned cc;
+	va_list args;
+	va_start( args, fmt );
+		cc = vsnprintf(NULL, 0,  fmt, args );
+	va_end( args);
+
+	char* dbuf; 
+	if (cc > 0 && (dbuf = (char*) malloc(cc)) ) {
+		va_start(args, fmt);
+			vsprintf(dbuf, fmt, args);
+		va_end(args);
+		
+		rv = open(dbuf, flags, mode);
+		free(dbuf);
+	}
+	
+	return rv;
+}
+
 void arcan_warning(const char* msg, ...)
 {
 /* redirection needed for win (SDL etc. also tries to, but we need to handle things)

@@ -31,10 +31,17 @@ extern char* arcan_themepath;
 extern char* arcan_binpath;
 extern char* arcan_libpath;
 
+#define BADFD -1
+
 /* OS specific definitions */
 #if _WIN32
 #include <Windows.h>
+
 #define LIBNAME "arcan_hijack.dll"
+
+#undef BADFD
+#define BADFD INVALID_HANDLE_VALUE
+
 /* some missing defines that doesn't seem to be included in the 
  * headers of mingw but still exported in the linked libraries, hmm */
 extern char* strdup(const char*);

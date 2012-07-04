@@ -84,6 +84,11 @@ long long int frameserver_timemillis()
 	return ticksnow.QuadPart;
 }
 
+file_handle frameserver_readhandle(arcan_event* src)
+{
+	return src->data.target.fh;
+}
+
 void frameserver_delay(unsigned long val)
 {
 /* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds) 

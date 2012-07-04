@@ -159,8 +159,14 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 		cmsg->cmsg_type  = SCM_RIGHTS;
 		((int*) CMSG_DATA(cmsg))[0] = fd;
 		
-		if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0)
+		if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0){
 			rv = ARCAN_OK;
+			arcan_event ev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_FDTRANSFER
+			};
+			
+		}
 		else
 			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", fd, fsrv->sockout_fd, errno, strerror(errno));
 	}
