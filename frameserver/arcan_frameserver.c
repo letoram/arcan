@@ -48,7 +48,7 @@ int sockin_fd = -1;
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
 
-void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
+void* frameserver_getrawfile(const char* fname, size_t* dstsize)
 {
 	int fd;
 	struct stat filedat;
@@ -74,6 +74,54 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 
 	*dstsize = filedat.st_size;
 	return buf;
+}
+
+void* frameserver_getrawfile_handle(file_handle fd, size_t* dstsize)
+{
+	struct stat filedat;
+	void* rv = NULL;
+	*dstsize = -1;
+	
+	if (-1 == fstat(fd, &filedat)){
+		LOG("arcan_frameserver(get_rawfile) stat (%d) failed, reason: %d,%s\n", fd, errno, strerror(errno));
+		goto error;
+	}
+	
+	void* buf = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	if (buf == MAP_FAILED){
+		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zu)\n", fd, filedat.st_size);
+		goto error;
+	}
+
+	rv = buf;
+	*dstsize = filedat.st_size;
+
+error:
+	return rv;
+}
+
+bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file_handle dst)
+{
+	bool rv = false;
+	
+	if (dst != BADFD)
+	{
+		off_t ofs = 0;
+		ssize_t nw;
+
+		while ( ofs != sz_data && (
+			(nw = write(dst, ((char*) data) + ofs, sz_data - ofs)) >= 0, ofs += nw)
+			|| errno == EAGAIN || errno == EINTR);
+		
+		if (nw == -1)
+			LOG("arcan_frameserver(dumprawfile) -- write failed (%d), reason: %s\n", errno, strerror(errno));
+		
+		close(dst);
+	}
+	 else
+		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid file handle ignored.\n");
+	
+	return rv;
 }
 
 long long int frameserver_timemillis()
@@ -217,7 +265,6 @@ file_handle frameserver_readhandle(arcan_event* inev)
 			rv = msgbuf.fd[0];
 	}
 	
-	arcan_warning("read fd yields: %d\n", rv);
 	return rv;
 }
 

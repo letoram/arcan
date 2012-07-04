@@ -29,10 +29,12 @@ extern FILE* logdev;
 /* resolve 'resource', open and try to store it in one buffer, possibly memory mapped,
  * avoid if possible since the parent may manipulate the frameserver file-system namespace and
  * access permissions quite aggressively */ 
-void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
+void* frameserver_getrawfile(const char* resource, size_t* ressize);
 
 /* similar to above, but use a preopened file-handle for the operation */
-void* frameserver_getrawfile_handle(file_handle, ssize_t* ressize);
+void* frameserver_getrawfile_handle(file_handle, size_t* ressize);
+
+bool frameserver_dumprawfile_handle(const void(* const), size_t, file_handle);
 
 /* block until parent has supplied us with a file_handle valid in this process */
 file_handle frameserver_readhandle(arcan_event*);

@@ -166,6 +166,8 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 				.kind = TARGET_COMMAND_FDTRANSFER
 			};
 			
+			arcan_frameserver_pushevent( fsrv, &ev );
+			close(fd);
 		}
 		else
 			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", fd, fsrv->sockout_fd, errno, strerror(errno));
@@ -285,7 +287,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->desc.bpp = cons.bpp;
 		ctx->shm.ptr = (void*) shmpage;
 		ctx->shm.shmsize = shmsize;
-		ctx->sockout_fd = sockp[1];
+		ctx->sockout_fd = sockp[0];
 
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
