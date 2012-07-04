@@ -268,7 +268,9 @@ static inline void targetev(arcan_event* ev)
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER: 
+			arcan_warning("fdtransfer!");
 			retroctx.last_fd = frameserver_readhandle( ev );
+			arcan_warning("received: %d\n", retroctx.last_fd);
 		break;
 		
 /* if intval is > 0, the skipval is to drop every N frames,
@@ -284,8 +286,20 @@ static inline void targetev(arcan_event* ev)
 		case TARGET_COMMAND_SETIODEV: break;
 	
 /* store / rewind operate on the last FD set through FDtransfer */
-		case TARGET_COMMAND_STORE: break;
-		case TARGET_COMMAND_RESTORE: break;
+		case TARGET_COMMAND_STORE: 
+			if (-1 != retroctx.last_fd){
+			}
+			else
+				LOG("frameserver(libretro), snapshot store requested without any viable target\n");
+		break;
+		
+		case TARGET_COMMAND_RESTORE: 
+			if (-1 != retroctx.last_fd){
+				
+			}
+			else
+				LOG("frameserver(libretro), snapshot restore requested without any viable target\n");
+		break;
 		
 /* intval[0] > 0 step back n frames. < 0 step back abs(n) frames every frame */
 		case TARGET_COMMAND_REWIND: break;

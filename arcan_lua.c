@@ -1086,7 +1086,7 @@ static int arcan_lua_targetresume(lua_State* ctx){
 				.category = EVENT_TARGET
 			};
 			
-			arcan_frameserver_pushevent( &( (arcan_launchtarget*) state->ptr )->source, &ev);
+			arcan_frameserver_pushevent( (arcan_frameserver*) state->ptr, &ev);
 		}
 	}
 
@@ -1268,12 +1268,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_TARGETSTATUS){
 		vfunc_state* fstate = arcan_video_feedstate( ev->data.target_status.video.source );
 
-		arcan_frameserver* srv;
-		if (fstate->tag == ARCAN_TAG_FRAMESERV)
-			srv = & ( ((arcan_launchtarget*) fstate->ptr)->source);
-		else 
-			srv = ( arcan_frameserver*) fstate->ptr;
-			
+		arcan_frameserver* srv = (arcan_frameserver*) fstate->ptr;
 		intptr_t val = srv->tag;
 			
 		if (val){
@@ -2356,9 +2351,32 @@ int arcan_lua_targetrestore(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	const char* snapkey = luaL_checkstring(ctx, 2);
+
+	vfunc_state* state = arcan_video_feedstate(tgt);
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
+		int fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
+		if (-1 != fd){
+			arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+			arcan_event ev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_FDTRANSFER
+			};
+			
+			arcan_frameserver_pushfd( fsrv, fd );
+			arcan_frameserver_pushevent( fsrv, &ev );
+			ev.kind = TARGET_COMMAND_RESTORE;
+			arcan_frameserver_pushevent( fsrv, &ev );
+			
+			close(fd);
+			lua_pushboolean(ctx, true);
+		}
+		else
+			lua_pushboolean(ctx, false);
+	}
+	else
+		lua_pushboolean(ctx, false);
 	
-	
-	return 0;
+	return 1;
 }
 
 int arcan_lua_targetrewind(lua_State* ctx)
@@ -2371,8 +2389,22 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	const char* snapkey = luaL_checkstring(ctx, 2);
+
+	vfunc_state* state = arcan_video_feedstate(tgt);
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
+		int fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
+		if (-1 != fd){
+			arcan_frameserver_pushfd( (arcan_frameserver*) state->ptr, fd );
+			close(fd);
+			lua_pushboolean(ctx, true);
+		}
+		else
+			lua_pushboolean(ctx, false);
+	}
+	else
+		lua_pushboolean(ctx, false);
 	
-	return 0;
+	return 1;
 }
 
 int arcan_lua_targetreset(lua_State* ctx)
@@ -2387,7 +2419,7 @@ int arcan_lua_targetreset(lua_State* ctx)
 				.category = EVENT_TARGET
 			};
 			
-			arcan_frameserver_pushevent( &( (arcan_launchtarget*) state->ptr )->source, &ev);
+			arcan_frameserver_pushevent( (arcan_frameserver*) state->ptr, &ev);
 		}
 	}
 	

@@ -477,7 +477,8 @@ void ARCAN_SDL_GL_SwapBuffers()
 	/* the assumption as to the performance impact of this is that if it is aligned to the
 	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
-	 * increase when using PBOs */
+	 * increase when using PBOs. The 2D-in-GL edgecase could probably get an additional boost
+	 * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
 	trace("CopySurface(GL:pre)");
 	sem_wait(global.shared.vsem);
 	if (global.shared.addr->dms == false){

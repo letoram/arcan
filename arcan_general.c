@@ -51,6 +51,7 @@ char* arcan_libpath = NULL;
 static const int playbufsize = (64 * 1024) - 2;
 static char playbuf[64 * 1024] = {0};
 
+
 static bool is_dir(const char* fn)
 {
 	struct stat buf;
@@ -202,6 +203,29 @@ char* arcan_find_resource_path(const char* label, const char* path, int searchma
 }
 
 #ifdef __UNIX
+
+file_handle fmt_open(int flags, mode_t mode, const char* fmt, ...)
+{
+	file_handle rv = -1;
+
+	unsigned cc;
+	va_list args;
+	va_start( args, fmt );
+		cc = vsnprintf(NULL, 0,  fmt, args );
+	va_end( args);
+
+	char* dbuf; 
+	if (cc > 0 && (dbuf = (char*) malloc(cc)) ) {
+		va_start(args, fmt);
+			vsprintf(dbuf, fmt, args);
+		va_end(args);
+		
+		rv = open(dbuf, flags, mode);
+		free(dbuf);
+	}
+	
+	return rv;
+}
 
 void arcan_warning(const char* msg, ...)
 {

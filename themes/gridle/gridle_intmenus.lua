@@ -397,6 +397,15 @@ local function add_gamelbls( lbltbl, ptrtbl )
 	if ( current_game().capabilities.snapshot)  then
 		table.insert(lbltbl, "Save State...");
 		table.insert(lbltbl, "Load State...");
+		ptrtbl["Save State..."] = function(label, store)
+			settings.iodispatch["MENU_ESCAPE"]();
+			snapshot_target(internal_vid, "nisse");
+		end
+		
+		ptrtbl["Load State..."] = function(label, store)
+			settings.iodispatch["MENU_ESCAPE"]();
+			restore_target(internal_vid, "nisse");
+		end
 	end
 	
 	if ( current_game().capabilities.reset ) then
