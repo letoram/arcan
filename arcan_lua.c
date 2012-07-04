@@ -2354,17 +2354,15 @@ int arcan_lua_targetrestore(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
-		int fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
-		if (-1 != fd){
+		file_handle fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
+		if (BADFD != fd){
 			arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+
+			arcan_frameserver_pushfd( fsrv, fd );
+
 			arcan_event ev = {
 				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_FDTRANSFER
-			};
-			
-			arcan_frameserver_pushfd( fsrv, fd );
-			arcan_frameserver_pushevent( fsrv, &ev );
-			ev.kind = TARGET_COMMAND_RESTORE;
+				.kind = TARGET_COMMAND_RESTORE };
 			arcan_frameserver_pushevent( fsrv, &ev );
 			
 			close(fd);

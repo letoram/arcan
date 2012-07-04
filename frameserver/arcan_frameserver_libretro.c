@@ -287,14 +287,14 @@ static inline void targetev(arcan_event* ev)
 	
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE: 
-			if (-1 != retroctx.last_fd){
+			if (BADFD != retroctx.last_fd){
 			}
 			else
 				LOG("frameserver(libretro), snapshot store requested without any viable target\n");
 		break;
 		
 		case TARGET_COMMAND_RESTORE: 
-			if (-1 != retroctx.last_fd){
+			if (BADFD != retroctx.last_fd){
 				
 			}
 			else
@@ -387,7 +387,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* setup frameserver, synchronization etc. */
 		assert(avinfo.timing.fps > 1);
 		assert(avinfo.timing.sample_rate > 1);
-		retroctx.last_fd = -1;
+		retroctx.last_fd = BADFD;
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
 		
 		retroctx.shmcont = frameserver_getshm(keyfile, true);

@@ -155,7 +155,7 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver*);
  * on UNIX, it uses the socket associated with the frameserver, the corresponding event is not emitted 
  * but should be pushed separately,
  * returns a failure (!ARCAN_OK) if the socket isn't connected, wrong type or the fd cannot be transferred (e.g. stdin) */
-arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
+arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, file_handle fd);
 
 /* take the argument event and add it to the event queue of the target, returns a failure if the event queue 
  * in the child is full */
