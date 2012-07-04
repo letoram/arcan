@@ -2357,23 +2357,21 @@ int arcan_lua_targetrestore(lua_State* ctx)
 		file_handle fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
 		if (BADFD != fd){
 			arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-
-			arcan_frameserver_pushfd( fsrv, fd );
-
-			arcan_event ev = {
-				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_RESTORE };
-			arcan_frameserver_pushevent( fsrv, &ev );
 			
-			close(fd);
-			lua_pushboolean(ctx, true);
+			if ( ARCAN_OK == arcan_frameserver_pushfd( fsrv, fd ) ){
+				arcan_event ev = {
+					.category = EVENT_TARGET,
+					.kind = TARGET_COMMAND_RESTORE };
+				arcan_frameserver_pushevent( fsrv, &ev );
+			
+				lua_pushboolean(ctx, true);
+				return 1;
+			}
+			else; /* note that this will leave an empty statefile in the filesystem */
 		}
-		else
-			lua_pushboolean(ctx, false);
 	}
-	else
-		lua_pushboolean(ctx, false);
-	
+	lua_pushboolean(ctx, false);
+
 	return 1;
 }
 
@@ -2387,21 +2385,28 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	const char* snapkey = luaL_checkstring(ctx, 2);
-
+	bool gotval = false;
+	
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 		int fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
 		if (-1 != fd){
-			arcan_frameserver_pushfd( (arcan_frameserver*) state->ptr, fd );
-			close(fd);
-			lua_pushboolean(ctx, true);
-		}
-		else
-			lua_pushboolean(ctx, false);
-	}
-	else
-		lua_pushboolean(ctx, false);
+			if ( ARCAN_OK == arcan_frameserver_pushfd( (arcan_frameserver*) state->ptr, fd ) ){
+				arcan_event ev = {
+					.category = EVENT_TARGET,
+					.kind = TARGET_COMMAND_STORE };
+				arcan_frameserver_pushevent( (arcan_frameserver*) state->ptr, &ev );
 	
+				lua_pushboolean(ctx, true);
+				gotval = true;
+			}
+			close(fd);
+		}
+	}
+
+	if (!gotval)
+		lua_pushboolean(ctx, false);
+
 	return 1;
 }
 

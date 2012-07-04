@@ -91,6 +91,9 @@ static struct {
 		void (*run)();
 		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
+		size_t (*serialize_size)();
+		bool (*serialize)(void*, size_t);
+		bool (*deserialize)(const void*, size_t);
 } retroctx = {0};
 
 /* XRGB555 */
@@ -268,9 +271,7 @@ static inline void targetev(arcan_event* ev)
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER: 
-			arcan_warning("fdtransfer!");
 			retroctx.last_fd = frameserver_readhandle( ev );
-			arcan_warning("received: %d\n", retroctx.last_fd);
 		break;
 		
 /* if intval is > 0, the skipval is to drop every N frames,
@@ -286,16 +287,31 @@ static inline void targetev(arcan_event* ev)
 		case TARGET_COMMAND_SETIODEV: break;
 	
 /* store / rewind operate on the last FD set through FDtransfer */
-		case TARGET_COMMAND_STORE: 
+		case TARGET_COMMAND_STORE:
+			LOG("store!");
 			if (BADFD != retroctx.last_fd){
+				size_t dstsize = retroctx.serialize_size();
+				void* buf;
+				if (dstsize && ( buf = malloc( dstsize ) )){
+					if ( retroctx.serialize(buf, dstsize) ){
+						frameserver_dumprawfile_handle( buf, dstsize, retroctx.last_fd );
+						retroctx.last_fd = BADFD;
+					} else 
+						LOG("frameserver(libretro), serialization failed.\n");
+				}
 			}
 			else
-				LOG("frameserver(libretro), snapshot store requested without any viable target\n");
+				LOG("frameserver(libretro), snapshot store requested without any viable target.\n");
 		break;
 		
 		case TARGET_COMMAND_RESTORE: 
 			if (BADFD != retroctx.last_fd){
-				
+				size_t dstsize;
+				void* buf = frameserver_getrawfile_handle( retroctx.last_fd, &dstsize );
+				if (buf != NULL){
+					retroctx.deserialize( buf, dstsize );
+				}
+				retroctx.last_fd = BADFD;
 			}
 			else
 				LOG("frameserver(libretro), snapshot restore requested without any viable target\n");
@@ -369,14 +385,17 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.run = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
 		retroctx.load_game = (bool(*)(const struct retro_game_info* game)) libretro_requirefun("retro_load_game");
-	
+		retroctx.serialize = (bool(*)(void*, size_t)) libretro_requirefun("retro_serialize");
+		retroctx.deserialize = (bool(*)(const void*, size_t)) libretro_requirefun("retro_unserialize"); /* bah, unmarshal or deserialize.. not unserialize :p */
+		retroctx.serialize_size = (size_t(*)()) libretro_requirefun("retro_serialize_size");
+		
 /* setup callbacks */
 		( (void(*)(retro_video_refresh_t) )libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
 		( (size_t(*)(retro_audio_sample_batch_t)) libretro_requirefun("retro_set_audio_sample_batch"))(libretro_audcb);
 		( (void(*)(retro_audio_sample_t)) libretro_requirefun("retro_set_audio_sample"))(libretro_audscb);
 		( (void(*)(retro_input_poll_t)) libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
 		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
-
+		
 /* load the game, and if that fails, give up */
 		if ( retroctx.load_game( &gameinf ) == false )
 			return;

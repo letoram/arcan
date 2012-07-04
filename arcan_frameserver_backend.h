@@ -151,10 +151,10 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
-/* frameserver_pushfd doesn't do anything on win32 targets (handle is already carried in the event),
- * on UNIX, it uses the socket associated with the frameserver, the corresponding event is not emitted 
- * but should be pushed separately,
- * returns a failure (!ARCAN_OK) if the socket isn't connected, wrong type or the fd cannot be transferred (e.g. stdin) */
+/* frameserver_pushfd send the file_handle into the process controlled by the specified frameserver
+ * and emits a corresponding event into the eventqueue of the frameserver. 
+ * returns !ARCAN_OK if the socket isn't connected, wrong type, OS can't handle transfer or the FD can't be transferred (e.g. stdin) 
+ * fd will always be closed in this function. */ 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, file_handle fd);
 
 /* take the argument event and add it to the event queue of the target, returns a failure if the event queue 
