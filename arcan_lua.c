@@ -2389,7 +2389,8 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 	
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
-		int fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
+
+		int fd = fmt_open(O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
 		if (-1 != fd){
 			if ( ARCAN_OK == arcan_frameserver_pushfd( (arcan_frameserver*) state->ptr, fd ) ){
 				arcan_event ev = {

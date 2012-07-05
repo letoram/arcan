@@ -215,7 +215,7 @@ file_handle fmt_open(int flags, mode_t mode, const char* fmt, ...)
 	va_end( args);
 
 	char* dbuf; 
-	if (cc > 0 && (dbuf = (char*) malloc(cc)) ) {
+	if (cc > 0 && (dbuf = (char*) malloc(cc + 1)) ) {
 		va_start(args, fmt);
 			vsprintf(dbuf, fmt, args);
 		va_end(args);
