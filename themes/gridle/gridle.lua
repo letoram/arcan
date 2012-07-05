@@ -100,7 +100,7 @@ settings = {
 	fullscreenshader = "default",
 	in_internal = false,
 	cocktail_mode = "Disabled",
-	autosave = "autosave.state" -- if nil, no attempt at autosave / autoload will be made, otherwise specifies file-name
+	autosave = true -- if nil, no attempt at autosave / autoload will be made, otherwise specifies file-name
 };
 
 settings.sortfunctions = {};
@@ -209,6 +209,16 @@ if (settings.sortfunctions[settings.sortlbl]) then
 	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
 	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
 	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
+	settings.iodispatch["QUICKSAVE"]    = function(iotbl) 
+end
+
+	settings.iodispatch["QUICKLOAD"]    = function(iotbl)
+		local cg = current_game();
+		if (cg and cg.capabilities.snapshot) then
+			restore_target( cg.capabilities.target .. "_" .. cg.capabilities.setname .. "_quicksave" );
+		end
+	end
+	
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
 		if (ind == nil) then -- flag
@@ -388,6 +398,11 @@ end
 
 function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
+
+	if (settings.autosave) then
+		internal_statectl("_auto", false);
+	end
+	
 	internal_aid = audio;
 	internal_vid = video;
 	order_image(internal_vid, max_current_image_order());
@@ -415,7 +430,7 @@ end
 function gridle_keyconf()
 	local keylabels = {
 		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
-		" RANDOM_GAME", " OSD_KEYBOARD" };
+		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 	local listlbls = {};
 	local lastofs = 1;
 	
@@ -463,7 +478,6 @@ function gridle_keyconf()
 				end
 			end
 		end
---
 
 	end
 end
@@ -1139,6 +1153,12 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 
 	if (settings.in_internal) then
+		if (settings.autosave) then
+-- note, this is currently not blocking, and the frameserver termination can be quite
+-- aggressive, so there is a possibility for a race-condition here 
+			internal_statectl("_auto", true);
+		end
+		
 		order_image(internal_vid, ZOOMLAYER_MOVIE + 1); 
 		expire_image(internal_vid, settings.transitiondelay);
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
@@ -1197,6 +1217,21 @@ function rotate_label(label, cw)
 	return nil;
 end
 
+function internal_statectl(suffix, save)
+	local cg = current_game();
+
+	if (cg and cg.capabilities.snapshot) then
+		local label = cg.target .. "_" .. cg.setname .. suffix;
+		print("statectl on " .. label);
+		if (save) then
+			snapshot_target( internal_vid, label );
+		else
+			restore_target( internal_vid, label );
+		end
+	end
+	
+end
+
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
@@ -1211,8 +1246,11 @@ function gridle_internalinput(iotbl)
 			elseif (val == "MENU_TOGGLE") then
 				gridlemenu_internal(internal_vid);
 				return;
+			elseif (val == "QUICKSAVE" or val == "QUICKLOAD") then
+				internal_statectl("_quicksave", val == "QUICKSAVE");
+				return;
 			end
-
+			
 			addlbl = val;
 			
 			if (settings.internal_input == "Rotate CW" or settings.internal_input == "Rotate CCW") then

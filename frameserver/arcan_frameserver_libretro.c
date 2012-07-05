@@ -60,6 +60,7 @@
 static struct {
 		bool skipframe; /* set if next frame should just be dropped (not copied to buffers) */
 		unsigned skipcount;
+		int skipmode; 
 		
 		double mspf;
 		long long int basetime;
@@ -276,7 +277,9 @@ static inline void targetev(arcan_event* ev)
 		
 /* if intval is > 0, the skipval is to drop every N frames,
  * if intval is < 0, the skipval is to render every abs(n) frames. */
-		case TARGET_COMMAND_FRAMESKIP: break;
+		case TARGET_COMMAND_FRAMESKIP: 
+			retroctx.skipmode = ev->data.target.ioevs[0];
+		break;
 		
 /* any event not being UNPAUSE is ignored, no frames are processed
  * and the core is allowed to sleep in between polls */
@@ -288,7 +291,6 @@ static inline void targetev(arcan_event* ev)
 	
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:
-			LOG("store!");
 			if (BADFD != retroctx.last_fd){
 				size_t dstsize = retroctx.serialize_size();
 				void* buf;
@@ -318,7 +320,9 @@ static inline void targetev(arcan_event* ev)
 		break;
 		
 /* intval[0] > 0 step back n frames. < 0 step back abs(n) frames every frame */
-		case TARGET_COMMAND_REWIND: break;
+		case TARGET_COMMAND_REWIND: 
+			LOG("frameserver(libretro), rewind not implemented.\n");
+		break;
 
 		default:
 			arcan_warning("frameserver(libretro), unknown target event (%d), ignored.\n", ev->kind);
