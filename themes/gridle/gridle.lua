@@ -332,31 +332,36 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	
 end
 
-function confirm_shutdown()
-	local shutdown_dialog = dialog_create("Shutdown Arcan/Gridle?", {"NO", "YES"}, true);
+function dialog_option( message, buttons, samples, canescape, valcbs )
 	local asamples = {MENU_LEFT = "MENUCURSOR_MOVE", MENU_RIGHT = "MENUCURSOR_MOVE", MENU_ESCAPE = "MENU_FADE", MENU_SELECT = "MENU_FADE"};
-	shutdown_dialog:show();
-	play_audio(soundmap["MENU_TOGGLE"]);
+	if (samples == nil) then samples = asamples; end
+	local dialogwin = dialog_create(message, buttons, canescape );
 	
--- temporarily replace the input function with one that just resolves LABEL and forwards to
--- the shutdown_dialog, if the user cancels (MENU_ESCAPE) or MENU_SELECT on NO, reset the table.
+	play_audio(soundmap["MENU_TOGGLE"]);
+	dialogwin:show();
+	
 	gridle_input = function(iotbl)
 		local restbl = keyconfig:match(iotbl);
 		if (restbl and iotbl.active) then
-			for ind,val in pairs(restbl) do
-				if (asamples[val]) then play_audio(soundmap[asamples[val]]); end
-				local iores = shutdown_dialog:input(val);
+			for ind, val in pairs(restbl) do
+				if (samples[ val ]) then play_audio(soundmap[samples[val]]); end
+				local iores = dialogwin:input(val);
+
 				if (iores ~= nil) then
-						if (iores == "YES") then
-							shutdown();
-						else
-							gridle_input = gridle_dispatchinput;
-						end
+					gridle_input = gridle_dispatchinput;
+					if (valcbs[iores]) then valcbs[iores](); end
 				end
-			end -- more input needed
+			end
 		end
-	end -- of inputfunc.
+	end
+
+end
+
+function confirm_shutdown()
+	local valcbs = {};
+	valcbs["YES"] = function() shutdown(); end
 	
+	dialog_option("Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs);
 end
 
 -- When OSD keyboard is to be shown, remap the input event handler,
@@ -400,7 +405,7 @@ function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
 
 	if (settings.autosave) then
-		internal_statectl("_auto", false);
+		internal_statectl("auto", false);
 	end
 	
 	internal_aid = audio;
@@ -578,7 +583,7 @@ end
 
 function spawn_warning( message )
 -- render message and make sure it is on top
-	local vid = render_text([[\ffonts/default.ttf,18\#ff0000 ]] .. message)
+	local vid = render_text(settings.colourtable.alert_fontstr .. message)
 	order_image(vid, max_current_image_order() + 1);
 	local props = image_surface_properties(vid);
 
@@ -1156,7 +1161,7 @@ function gridle_internalcleanup()
 		if (settings.autosave) then
 -- note, this is currently not blocking, and the frameserver termination can be quite
 -- aggressive, so there is a possibility for a race-condition here 
-			internal_statectl("_auto", true);
+			internal_statectl("auto", true);
 		end
 		
 		order_image(internal_vid, ZOOMLAYER_MOVIE + 1); 
@@ -1221,8 +1226,7 @@ function internal_statectl(suffix, save)
 	local cg = current_game();
 
 	if (cg and cg.capabilities.snapshot) then
-		local label = cg.target .. "_" .. cg.setname .. suffix;
-		print("statectl on " .. label);
+		local label = cg.target .. "_" .. cg.setname .. "_" .. suffix;
 		if (save) then
 			snapshot_target( internal_vid, label );
 		else
@@ -1246,8 +1250,8 @@ function gridle_internalinput(iotbl)
 			elseif (val == "MENU_TOGGLE") then
 				gridlemenu_internal(internal_vid);
 				return;
-			elseif (val == "QUICKSAVE" or val == "QUICKLOAD") then
-				internal_statectl("_quicksave", val == "QUICKSAVE");
+			elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD") and iotbl.active) then
+				internal_statectl("quicksave", val == "QUICKSAVE");
 				return;
 			end
 			

@@ -14,7 +14,7 @@
 ----------------------------------------------------------------------
 
 local function listview_redraw(self)
-	if (self.listvid and self.listvid ~= BADID) then	delete_image(self.listvid); end
+	if (valid_vid(self.listvid)) then	delete_image(self.listvid); end
 	
 --	figure out the interval to place in the list
 	self.page_beg, self.page_ofs, self.page_end = self:calcpage(self.cursor, self.page_size, #self.list);
@@ -37,6 +37,7 @@ local function listview_redraw(self)
 
 -- self.list_lines is GCed, .list is "not"
 	self.listvid, self.list_lines = render_text(renderstr, self.vspace);
+	
 	link_image(self.listvid, self.window);
 	image_mask_clear(self.listvid, MASK_OPACITY);
 	image_clip_on(self.listvid);
@@ -78,8 +79,9 @@ local function listview_move_cursor(self, step, relative)
 
 	self.cursor = itempos;
 	if (string.sub( self.list[ self.cursor ], 1, 3) == "---" ) then
-		self:move_cursor(step, relative);
-		return;
+		if (step ~= 0) then 
+			self:move_cursor(step, relative);
+		end
 	end
 	
 	self:redraw();
@@ -134,19 +136,24 @@ end
 
 function listview_create(elem_list, height, maxw, formatlist)
 	restbl = {};
-
+	
 -- we associate with an anchor used for movement so that we can clip to
 -- window rather than border
 	if (settings == nil) then settings = {}; end
 	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
-
+	
 	restbl.height = height;
 	restbl.list = elem_list;
 	restbl.width = 1;
 	restbl.cursor = 1;
-	restbl.maxw = maxw;
-	
+	restbl.maxw = math.ceil( maxw );
+
 	restbl.page_size = math.floor( height / (settings.colourtable.font_size + 6) );
+	if (restbl.page_size == 0) then
+		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(settings.colourtable.font_size + 6) .. ")\n");
+		return nil;
+	end
+		
 	restbl.show = listview_show;
 	restbl.destroy = listview_destroy;
 	restbl.move_cursor = listview_move_cursor;

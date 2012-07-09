@@ -14,7 +14,7 @@ colourtable.fontstr         = colourtable.font .. colourtable.font_size;
 colourtable.label_fontstr   = colourtable.fontstr.. [[\b\#ffffff]];
 colourtable.data_fontstr    = colourtable.fontstr .. [[\#ffffff]];
 colourtable.hilight_fontstr = colourtable.fontstr .. [[\#00ffaa]];
-colourtable.alert_fontstr   = colourtable.fontstr .. [[\#aa5500]];
+colourtable.alert_fontstr   = colourtable.fontstr .. [[\#aa0000]];
 colourtable.notice_fontstr  = colourtable.fontstr .. [[\#55aa00]];
 
 return colourtable;

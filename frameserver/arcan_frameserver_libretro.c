@@ -261,6 +261,19 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 }
 
+static void pauseloop()
+{
+	arcan_event* ev;
+	while (true){
+		ev = arcan_event_poll(&retroctx.inevq);
+		if (ev && ev->category == EVENT_TARGET && ev->kind == TARGET_COMMAND_UNPAUSE) break;
+		frameserver_delay(100);
+	}
+	
+/* rebase so we won't trigger frameskips */
+	retroctx.basetime = frameserver_timemillis() - (retroctx.framecount * retroctx.mspf);
+}
+
 static inline void targetev(arcan_event* ev)
 {
 	switch (ev->kind){
@@ -283,8 +296,7 @@ static inline void targetev(arcan_event* ev)
 		
 /* any event not being UNPAUSE is ignored, no frames are processed
  * and the core is allowed to sleep in between polls */
-		case TARGET_COMMAND_PAUSE: break;
-		case TARGET_COMMAND_UNPAUSE: break;
+		case TARGET_COMMAND_PAUSE: pauseloop(); break;
 
 /* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from _event.h */
 		case TARGET_COMMAND_SETIODEV: break;
@@ -331,12 +343,9 @@ static inline void targetev(arcan_event* ev)
 
 /* use labels etc. for trying to populate the context table */
 /* we also process requests to save state, shutdown, reset, plug/unplug input, here */
-static void flush_eventq(){
+static inline void flush_eventq(){
 	 arcan_event* ev;
 
-/* note that event_poll will have a timeout, and if that one is exceeded, will return NULL.
- * this means that should the parent process die, we'll exit this function, hit the
- * frameserver semcheck, which will exit */
 	 while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
 		switch (ev->category){
 			case EVENT_IO: ioev_ctxtbl(ev); break;
@@ -445,6 +454,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		int last_framecost = 1;
 		
 		while (retroctx.shmcont.addr->dms){
+/* since pause and other timing anomalies are part of the eventq flush, take care of it
+ * outside of frame frametime measurements */
+			flush_eventq();
+			
 			frametime = frameserver_timemillis();
 			retroctx.shmcont.addr->vpts = retroctx.framecount * retroctx.mspf;
 			
@@ -477,10 +490,8 @@ skipsync:
 			
 /* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
  * I/O is already mapped into the table by that point anyhow */
-			
 			framestart = frameserver_timemillis();
 
-			flush_eventq();
 			retroctx.run();
 
 /* the audp/vidp buffers have already been updated in the callbacks */
