@@ -1069,7 +1069,12 @@ static int arcan_lua_targetsuspend(lua_State* ctx){
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
 		if (state && state->ptr && state->tag == ARCAN_TAG_FRAMESERV){
-//			arcan_target_suspend_internal( (arcan_launchtarget*) state->ptr );
+			arcan_event ev = {
+				.kind = TARGET_COMMAND_PAUSE,
+				.category = EVENT_TARGET
+			};
+			
+			arcan_frameserver_pushevent( (arcan_frameserver*) state->ptr, &ev);
 		}
 	}
 

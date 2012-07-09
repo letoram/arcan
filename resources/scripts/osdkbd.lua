@@ -215,6 +215,11 @@ local function osdkbd_show(self)
 	
 end
 
+local function osdkbd_destroy(self)
+-- everything else should be linked living already
+	delete_image(self.anchor);
+end
+
 local function osdkbd_hide(self)
 	blend_image(self.anchor, 0.0, 5);
 end
@@ -271,6 +276,7 @@ function osdkbd_create(map)
 	restbl.update_cursor = osdkbd_updatecursor;
 	restbl.step   = osdkbd_step;
 	restbl.steprow= osdkbd_steprow;
+	restbl.destroy = osdkbd_destroy;
 	restbl.col = 1;
 
 	osdkbd_buildgrid(restbl, VRESW, VRESH);

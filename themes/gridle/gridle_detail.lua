@@ -182,9 +182,9 @@ function gridledetail_internal_status(source, datatbl)
 -- this is done in two ways, when we force it unto the model we can't assume a specific shape for the display, so we have to do it with texture coordinates
 -- in shader but statically in the fullscreen quad mode.
 		if (datatbl.glsource) then
-			shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
-		else
 			shader_uniform(display_shader, "flip_t", "b", PERSIST, 0);
+		else
+			shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
 		end
 
 		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
@@ -212,7 +212,6 @@ function gridledetail_internalinput(iotbl)
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
 					hide_image(internal_vid);
-					print("drop border");
 					delete_image(internal_vidborder);
 					show_image(detailview.model.vid);
 					detailview.fullscreen = false;
@@ -234,7 +233,7 @@ function gridledetail_internalinput(iotbl)
 				end
 			elseif (iotbl.active and val == "MENU_ESCAPE") then
 -- stop the internal launch, zoom out the model and replace display with static
-				if (internal_vidborder) then 
+				if (valid_vid( internal_vidborder )) then 
 					delete_image(internal_vidborder);
 					internal_vidborder = nil;
 				end

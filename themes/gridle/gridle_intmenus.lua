@@ -324,6 +324,22 @@ local function select_shaderfun(label, store)
 	end
 end
 
+local function get_saveslist(gametbl)
+-- check for existing snapshots (ignore auto and quicksave)
+	local saveslist = {};
+	local saves = glob_resource("savestates/" .. gametbl.target .. "_" .. gametbl.setname .. "_*", 2)
+	for ind, val in ipairs( saves ) do
+		if not (string.sub( val, -5, -1 ) == "_auto" or 
+				string.sub( val, -10, -1 ) == "_quicksave") then
+		
+			local prefix = string.sub( val, string.len( gametbl.target ) + string.len(gametbl.setname) + 3 );
+			table.insert(saveslist, prefix);
+		end
+	end
+	
+	return saveslist;
+end
+
 local function grab_shaderconf(basename)
 	local vdef, vcond = parse_shader("shaders/fullscreen/" .. basename .. ".vShader");
 	local fdef, fcond = parse_shader("shaders/fullscreen/" .. basename .. ".fShader");
@@ -372,6 +388,114 @@ local function build_shadermenu()
 	return reslbls, resptrs, resstyles;
 end
 
+local function load_savestate(label, store)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"]();
+	internal_statectl(label, false);
+end
+
+local function save_savestate(label, store)
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"]();
+	internal_statectl(label, true);
+end
+
+local function build_savemenu()
+	local reslbls = {};
+	local resptrs = {};
+	local saveslist = get_saveslist( current_game() );
+	local highind = 0;
+	
+	for key, val in pairs(saveslist) do
+		table.insert(reslbls, val);
+		resptrs[ val ] = save_savestate;
+		local num = tonumber( val );
+		if (num and num > highind) then highind = num; end
+	end
+
+	table.insert(reslbls, "(New)");
+	table.insert(reslbls, "(Create)");
+
+	resptrs["(Create)"] = function(label, store)
+	local resstr = nil;
+	local keymap = {  
+		"A", "B", "C", "D", "E", "F", "G", "1", "2", "3", "\n",
+		"H", "I", "J", "K", "L", "M", "N", "4", "5", "6", "\n",
+		"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n",
+		"V", "W", "X", "Y", "Z", "_", "0" };
+		
+	local osdsavekbd = osdkbd_create( keymap );
+	osdsavekbd:show();
+		
+-- do this here so we have access to the namespace where osdsavekbd exists
+		gridle_input = function(iotbl)
+			if (iotbl.active) then
+				local restbl = keyconfig:match(iotbl);
+				if (restbl) then
+					for ind,val in pairs(restbl) do
+
+-- go back to menu without doing anything
+						if (val == "MENU_ESCAPE") then
+							play_audio(soundmap["OSDKBD_HIDE"]);
+							settings.iodispatch["MENU_ESCAPE"]();
+							osdsavekbd:destroy();
+							osdsavekbd = nil;
+							gridle_input = gridle_dispatchinput;
+
+-- input character or select an action (
+						elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or 
+							val == "MENU_RIGHT" or val == "MENU_DOWN") then
+							resstr = osdsavekbd:input(val);
+							play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
+
+-- also allow direct keyboard input
+						elseif (iotbl.translated) then
+							resstr = osdsavekbd:input_key(iotbl);
+					end
+					end
+				end
+
+-- input/input_key returns the filterstring when finished
+				if (resstr) then
+					osdsavekbd:destroy();
+					osdsavekbd = nil;
+					gridle_input = gridle_dispatchinput;
+					internal_statectl(resstr, true);
+					spawn_warning("state saved as (" .. resstr .. ")");
+					settings.iodispatch["MENU_ESCAPE"]();
+					settings.iodispatch["MENU_ESCAPE"]();
+				end
+				
+			end
+		end
+-- remap input to a temporary function that just maps to osdkbd until ready,
+-- then use that to save if finished
+	end
+	
+-- just grab the last num found, increment by one and use as prefix
+	resptrs["(New)"] = function(label, store)
+		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"]();
+		spawn_warning("state saved as (" .. tostring( highind + 1) .. ")");
+		internal_statectl(highind + 1, true);
+	end
+	
+	return reslbls, resptrs, {};
+end
+
+local function build_loadmenu()
+	local reslbls = {};
+	local resptrs = {};
+	local saveslist = get_saveslist( current_game() );
+
+	for key, val in pairs(saveslist) do
+		table.insert(reslbls, val);
+		resptrs[ val ] = load_savestate;
+	end
+	
+	return reslbls, resptrs, {};
+end
+
 local function toggle_shadersetting(label, save)
 	if (settings.shader_opts[label]) then
 		settings.shader_opts[label] = nil;
@@ -385,24 +509,37 @@ local function toggle_shadersetting(label, save)
 end
 
 local function add_gamelbls( lbltbl, ptrtbl )
-	local captbl = current_game().capabilities;
+	local cg = current_game();
+	local captbl = cg.capabilities;
 	
 	if not (captbl.snapshot or captbl.reset) then
 			return false;
 	end
 
--- good item to experiment with having images being embedded into format string rendering
-	table.insert( lbltbl, "--- game ---" );
-
-	if ( current_game().capabilities.snapshot) then
+if (captbl.snapshot) then
+		if ( (# get_saveslist( cg )) > 0 ) then
+			table.insert(lbltbl, "Load State...");
+			ptrtbl[ "Load State..." ] = function(label, store)
+				local lbls, ptrs, fmt = build_loadmenu();
+				menu_spawnmenu( lbls, ptrs, fmt );
+			end
+		
+		end
+		
+		table.insert(lbltbl, "Save State...");
+		ptrtbl[ "Save State..." ] = function(label, store)
+			local lbls, ptrs, fmt = build_savemenu();
+			menu_spawnmenu( lbls, ptrs, fmt );
+		end
 	end
 	
-	if ( current_game().capabilities.reset ) then
+	if ( captbl.reset ) then
 		table.insert(lbltbl, "Reset Game");
 			ptrtbl["Reset Game"] = function(label, store)
-				settings.iodispatch["MENU_ESCAPE"]();
-				reset_target(internal_vid);
-				play_audio(soundmap["MENU_SELECT"]);
+				valcbs = {};
+				valcbs["YES"] = function() reset_target(internal_vid); settings.iodispatch["MENU_ESCAPE"](); end
+				valcbs["NO"]  = function() settings.iodispatch["MENU_ESCAPE"](); end
+				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, nil, true, valcbs);
 			end
 		end
 	
@@ -486,25 +623,30 @@ function gridlemenu_internal(target_vid)
 			current_menu = nil;
 			settings.iodispatch = griddispatch;
 			gridle_input = gridle_oldinput;
+			resume_target(internal_vid);
 		end
 	end
 	settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
 	settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
 
-	local menulbls = {
-		"Shaders...",
-		"Scaling...",
-		"Input...",
-		"Audio Gain...",
-		"Cocktail Modes...",
-	};
-
+	local menulbls = {};
 	local ptrs = {};
 	local gameopts = add_gamelbls(menulbls, ptrs);
-	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
+
+	if (#menulbls > 0) then
+		table.insert(menulbls, "---------   " );
+	end
+
+	table.insert(menulbls, "Shaders...");
+	table.insert(menulbls, "Scaling...");
+	table.insert(menulbls, "Input...");
+	table.insert(menulbls, "Audio Gain...");
+	table.insert(menulbls,	"Cocktail Modes...");
+	
+	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = ptrs;
 	current_menu.parent = nil;
-	
+
 	current_menu.ptrs["Shaders..."] = function() 
 	local def = {};
 		def[ settings.fullscreenshader ] = "\\#00ffff";
@@ -558,6 +700,7 @@ function gridlemenu_internal(target_vid)
 	end
 	
 	current_menu:show();
+	suspend_target(internal_vid);
 	play_audio(soundmap["MENU_TOGGLE"]);
 	move_image(current_menu.anchor, 100, 120, settings.fadedelay);
 end
