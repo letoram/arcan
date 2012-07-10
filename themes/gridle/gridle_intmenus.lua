@@ -1,4 +1,15 @@
--- just a copy of gridle menus with the stuff specific for internal launch / fullscreen
+-- 
+-- Same mess as with gridle_settings
+-- most are just lists of  textlabels mapping to a similar callback structure that, when triggered,
+-- either spawns a submenu or updates the settings table, possibly calling store_key.
+--
+-- The ones that work differently are mostly shader submenu (scans filesystem)
+-- saves/loads menu (scans filesystem and pops up OSD keyboard)
+-- input-port config menu (generates "N" slots, with possible constraints for each submenu in each slot)
+--
+-- changes to most/all of these needs to be tested both from "grid view" and from "detailed view + zoom"
+--
+
 local scalemodelist = {
 	"Keep Aspect",
 	"Original Size",
@@ -101,6 +112,22 @@ local cocktaillist = {
 local cocktailptrs = {};
 for ind, val in ipairs(cocktaillist) do
 	cocktailptrs[val] = cocktailmodechg;
+end
+
+local inputportoptlist = {
+	"GAMEPAD",
+	"KEYBOARD",
+	"MOUSE" 
+};
+	
+local function inputport_submenu(label, store, silent)
+end
+
+local inputportlist = { };
+local inputportptrs = { };
+for i=1,6 do 
+	table.insert(inputportlist, tostring(i));
+	inputportptrs[ tostring(i) ] = inputport_submenu;
 end
 
 local function setup_cocktail(mode, source, vresw, vresh)
@@ -299,7 +326,6 @@ function gridlemenu_loadshader(basename)
 		return nil;
 	end
 	
--- insert into 'fullscreen' slot
 	fullscreen_shader = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
 
 -- this might be used from detail-view as well so don't assume we know what to update
@@ -318,6 +344,21 @@ local function select_shaderfun(label, store)
 
 	if (store) then
 		store_key("defaultshader", label);
+
+		if (settings.shader_opts) then
+			local keyopts = nil;
+			
+			for key, val in pairs(settings.shader_opts) do
+				if (keyopts == nil) then
+					keyopts = key;
+				else 
+					keyopts = keyopts .. "," .. key;
+				end
+			end
+	
+			store_key("defaultshader_defs", keyopts or "");
+		end
+
 		play_audio(soundmap["MENU_FAVORITE"]);
 	else
 		play_audio(soundmap["MENU_SELECT"]);
@@ -339,6 +380,7 @@ local function get_saveslist(gametbl)
 	
 	return saveslist;
 end
+
 
 local function grab_shaderconf(basename)
 	local vdef, vcond = parse_shader("shaders/fullscreen/" .. basename .. ".vShader");
@@ -563,7 +605,7 @@ function gridlemenu_internal(target_vid)
 		end
 	end
 
-	settings.iodispatch["ZOOM_CURSOR"] = function(iotbl)
+	settings.iodispatch["CONTEXT"] = function(iotbl)
 		selectlbl = current_menu:select()
 		
 		if (settings.inshader) then
@@ -572,6 +614,10 @@ function gridlemenu_internal(target_vid)
 			local ptrs   = {};
 			local fmts   = {};
 
+			if (settings.shader_opts) then 
+				def = settings.shader_opts; 
+			end
+			
 			for key, val in pairs(cond) do
 				table.insert(labels, key);
 				ptrs[ key ] = toggle_shadersetting;
