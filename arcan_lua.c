@@ -326,6 +326,36 @@ int arcan_lua_instanttransform(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_cycletransform(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	bool flag = luaL_checknumber(ctx, 2) != 0;
+	
+	arcan_video_transformcycle(sid, flag);
+
+	return 0;
+}
+
+int arcan_lua_copytransform(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	
+	arcan_video_copytransform(sid, did);
+	
+	return 0;
+}
+
+int arcan_lua_transfertransform(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	
+	arcan_video_transfertransform(sid, did);
+	
+	return 0;
+}
+
 int arcan_lua_rotateimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -3104,6 +3134,15 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:instant_image_transform,vid,nil */
 	arcan_lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
 
+/* item:image_transform_cycle,vid,bool,nil*/
+	arcan_lua_register(ctx, "image_transform_cycle", arcan_lua_cycletransform);
+
+/* item:copy_image_transform,sid,did,nil*/
+	arcan_lua_register(ctx, "copy_image_transform", arcan_lua_copytransform);
+	
+/* item:transfer_image_transform,vid,vid, nil */
+	arcan_lua_register(ctx, "transfer_image_transform", arcan_lua_transfertransform);
+	
 /* item:image_set_txcos,vid, float x8, nil */
 	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
 

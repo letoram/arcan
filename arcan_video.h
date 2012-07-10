@@ -236,6 +236,10 @@ arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
+arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did);
+arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did);
+arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
+
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
 unsigned arcan_video_maxorder();
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent);
