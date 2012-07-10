@@ -473,6 +473,32 @@ static void swipe_chain(surface_transform* base, unsigned int ofs, unsigned size
 	}
 }
 
+/* copy a transform and at the same time, compact it into a better sized buffer */
+static surface_transform* dup_chain(surface_transform* base)
+{
+	if (!base)
+		return NULL;
+	
+	unsigned count = 1;
+	surface_transform* res = (surface_transform*) malloc(sizeof(surface_transform));
+	surface_transform* current = res;
+	
+	while (base)
+	{
+		memcpy(current, base, sizeof(surface_transform));
+
+		if (base->next)
+			current->next = (surface_transform*) malloc(sizeof(surface_transform));
+		else
+			current->next = NULL;
+
+		current = current->next;
+		base = base->next;
+	}
+	
+	return res;
+}
+
 arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
@@ -528,7 +554,6 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id id, enum arcan_transform_mask
 
 	return rv;
 }
-
 
 arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enum arcan_transform_mask mask)
 {
@@ -2016,6 +2041,69 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	return rv;
 }
 
+arcan_errc arcan_video_transformcycle(arcan_vobj_id sid, bool flag)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* src = arcan_video_getobject(sid);
+	
+	if (src)
+	{
+		src->flags.cycletransform = flag;
+		rv = ARCAN_OK;
+	}
+	
+	return rv;
+}
+
+arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	arcan_vobject* src, (* dst);
+
+	if (sid == did) 
+		rv = ARCAN_ERRC_BAD_ARGUMENT;
+	
+	src = arcan_video_getobject(sid);
+	dst = arcan_video_getobject(did);
+	
+/* remove what's happening in destination, move pointers from source to dest and done. */
+	if (src && dst && src != dst){
+
+		arcan_video_zaptransform(did);
+		dst->transform = dup_chain(src->transform);
+		
+		rv = ARCAN_OK;
+	}
+	
+	return rv;
+}
+
+arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	arcan_vobject* src, (* dst);
+
+	if (sid == did) 
+		rv = ARCAN_ERRC_BAD_ARGUMENT;
+	
+	src = arcan_video_getobject(sid);
+	dst = arcan_video_getobject(did);
+	
+/* remove what's happening in destination, move pointers from source to dest and done. */
+	if (src && dst && src != dst){
+		arcan_video_zaptransform(did);
+
+		dst->transform = src->transform;
+		src->transform = NULL;
+		
+		rv = ARCAN_OK;
+	}
+	
+	return rv;
+}
+
 /* removes an object immediately,
  * one of the more complicated / dangerous functions,
  *   -- if there's a feed function, invoke that with destroy
@@ -2456,10 +2544,16 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 
 		if (fract > 0.9999f) {
 			ci->current.opa = ci->transform->blend.endopa;
+			
+			if (ci->flags.cycletransform){
+				arcan_video_objectopacity(ci->cellid, ci->transform->blend.endopa, ci->transform->blend.endt - ci->transform->blend.startt);
+			}
+			
 			compact_transformation(ci,
 			                       offsetof(surface_transform, blend),
 			                       sizeof(struct transf_blend));
-
+			
+/* only fire event if we've run out of the transform chain for the current value */
 			if (!ci->transform || ci->transform->blend.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_BLENDED};
 				ev.data.video.source = ci->cellid;
@@ -2475,6 +2569,14 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 		
 		if (fract > 0.9999f) {
 			ci->current.position = ci->transform->move.endp;
+			
+			if (ci->flags.cycletransform)
+				arcan_video_objectmove(ci->cellid, 
+					 ci->transform->move.endp.x,
+					 ci->transform->move.endp.y,
+					 ci->transform->move.endp.z,
+					 ci->transform->move.endt - ci->transform->move.startt);
+			
 			compact_transformation(ci,
 								   offsetof(surface_transform, move),
 								   sizeof(struct transf_move));
@@ -2493,6 +2595,13 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 		ci->current.scale = lerp_vector(ci->transform->scale.startd, ci->transform->scale.endd, fract);
 		if (fract > 0.9999f) {
 			ci->current.scale = ci->transform->scale.endd;
+
+			if (ci->flags.cycletransform)
+				arcan_video_objectscale(ci->cellid, ci->transform->scale.endd.x,
+																ci->transform->scale.endd.y,
+																ci->transform->scale.endd.z,
+																ci->transform->scale.endt - ci->transform->scale.startt);
+			
 			compact_transformation(ci,
 								   offsetof(surface_transform, scale),
 								   sizeof(struct transf_scale));
@@ -2511,6 +2620,13 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 		
 		if (fract > 0.9999f) {
 			ci->current.rotation = ci->transform->rotate.endo;
+			if (ci->flags.cycletransform)
+				arcan_video_objectrotate(ci->cellid,
+																 ci->transform->rotate.endo.roll,
+																 ci->transform->rotate.endo.pitch,
+																 ci->transform->rotate.endo.yaw,
+																 ci->transform->rotate.endt - ci->transform->rotate.startt);
+			
 			compact_transformation(ci,
 								   offsetof(surface_transform, rotate),
 								   sizeof(struct transf_rotate));
