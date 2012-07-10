@@ -514,7 +514,7 @@ arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
 			
 		src->owner = NULL;
 
-		/* double-linked */
+/* double-linked */
 		if (current_litem->previous)
 			current_litem->previous->next = current_litem->next;
 		else
@@ -2070,9 +2070,14 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 /* remove what's happening in destination, move pointers from source to dest and done. */
 	if (src && dst && src != dst){
 
+		memcpy(&dst->current, &src->current, sizeof(surface_properties)); 
+
 		arcan_video_zaptransform(did);
 		dst->transform = dup_chain(src->transform);
-		
+		dst->order = src->order;
+		dst->origw = src->origw;
+		dst->origh = src->origh;
+			
 		rv = ARCAN_OK;
 	}
 	
@@ -2095,8 +2100,12 @@ arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 	if (src && dst && src != dst){
 		arcan_video_zaptransform(did);
 
+		memcpy(&dst->current, &src->current, sizeof(surface_properties));
 		dst->transform = src->transform;
 		src->transform = NULL;
+		dst->order = src->order;
+		dst->origw = src->origw;
+		dst->origh = src->origh;
 		
 		rv = ARCAN_OK;
 	}

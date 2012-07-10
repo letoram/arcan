@@ -119,6 +119,7 @@ typedef struct arcan_vobject {
 		bool clone;
 		bool cliptoparent;
 		bool asynchdisable;
+		bool cycletransform;
 	} flags;
 	
 /* position */

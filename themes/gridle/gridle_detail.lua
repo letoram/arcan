@@ -174,7 +174,6 @@ function gridledetail_internal_status(source, datatbl)
 
 		local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
 		if (rvid ~= source and rvid ~= BADID) then 
-			print("delete rvid.." ..rvid);
 			delete_image(rvid); 
 		end 
 
@@ -208,7 +207,7 @@ function gridledetail_internalinput(iotbl)
 			if (iotbl.active and val == "MENU_TOGGLE" and detailview.fullscreen) then
 				gridlemenu_internal(internal_vid);
 				return;
-			elseif (iotbl.active and val == "ZOOM_CURSOR") then
+			elseif (iotbl.active and val == "CONTEXT") then
 -- switch between running with fullscreen and running with cabinet zoomed in
 				if (detailview.fullscreen) then
 					hide_image(internal_vid);
@@ -272,7 +271,7 @@ function gridledetail_input(iotbl)
 		if (restbl == nil) then return; end
 
 		for ind,val in pairs(restbl) do
-			if (iotbl.active and val == "ZOOM_CURSOR" and detailview.cooldown == 0) then
+			if (iotbl.active and val == "CONTEXT" and detailview.cooldown == 0) then
 				if (detailview.zoomed) then
 					detailview.zoomed = false;
 					if (detailview.modeldisplay_aid ~= BADID) then

@@ -57,8 +57,8 @@ end
 -- scan <filename> and look for #define SYMBOL <LF> or #ifdef <SYMBOL>
 -- and return in two separate lists. 
 function parse_shader(filename)
-	local defines = {}
-	local conditions = {}
+	local defines = {};
+	local conditions = {};
 	
 	if (open_rawresource(filename)) then
 		local line = read_rawresource();

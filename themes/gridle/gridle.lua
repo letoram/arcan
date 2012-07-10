@@ -9,7 +9,6 @@ imagery = {
 	black = BADID,
 	white = BADID,
 	bgimage = BADID, 
-	zoomed = BADID
 };
 
 soundmap = {
@@ -46,9 +45,6 @@ soundmap = {
  GRIDLAYER_MOVIE = 2;
  
  ICONLAYER = 4;
- 
- ZOOMLAYER = 6;
- ZOOMLAYER_MOVIE = 5;
 
 settings = {
 	filters = {
@@ -91,7 +87,6 @@ settings = {
 	
 	cooldown = 15,
 	cooldown_start = 15,
-	zoom_countdown = 0,
 	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
@@ -192,15 +187,6 @@ if (settings.sortfunctions[settings.sortlbl]) then
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeatrate);
 
--- setup callback table for input events
-	settings.iodispatch["ZOOM_CURSOR"]  = function(iotbl)
-		if imagery.zoomed == BADID then
-			zoom_cursor(settings.fadedelay);
-		else
-			remove_zoom(settings.fadedelay);
-		end
-	end
-
 -- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
 	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
@@ -251,7 +237,6 @@ end
 		local key = gridledetail_havedetails(gametbl);
 		
 		if (key) then
-			remove_zoom(settings.fadedelay);
 			local gameind = 0;
 			blend_image( cursor_vid(), 0.3 );
 			play_audio( soundmap["DETAILVIEW_TOGGLE"] ); 
@@ -275,7 +260,6 @@ end
 	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
 		play_audio(soundmap["MENU_TOGGLE"]);
-		remove_zoom(settings.fadedelay); 
 		gridlemenu_settings(); 
 	end
 	
@@ -434,7 +418,7 @@ end
 
 function gridle_keyconf()
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " ZOOM_CURSOR", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 	local listlbls = {};
 	local lastofs = 1;
@@ -700,63 +684,6 @@ function got_asynchimage(source, status)
 	
 end
 
-function zoom_cursor(speed)
-	if (imagery.zoomed == BADID) then
--- calculate aspect based on initial properties, not current ones.
--- but make sure that the values are correct (block until loaded)
-		image_pushasynch( cursor_vid() );
-		local iprops = image_surface_initial_properties( cursor_vid() );
-		local aspect = iprops.width / iprops.height;
-		local vid = imagery.movie and instance_image(imagery.movie) or instance_image( cursor_vid() );
-
--- make sure it is on top
-		order_image(vid, ZOOMLAYER);
-		
--- we want to zoom using the global coordinate system
-		image_mask_clear(vid, MASK_SCALE);
-		image_mask_clear(vid, MASK_ORIENTATION);
-		image_mask_clear(vid, MASK_OPACITY);
-		image_mask_clear(vid, MASK_POSITION);
-
--- grab the parent dimensions so that we can use that
-		local props = image_surface_properties( cursor_vid() );
-		local destx = props.x;
-		local desty = props.y;
-		
-		move_image(vid, destx, desty, 0);
-		resize_image(vid, props.width, props.height, 0);
-
-		settings.zoomp = {};
-	-- depending on dominant axis (horizontal or vertical)
-		if (aspect > 1.0) then
-			settings.zoomp.width = VRESW;
-			settings.zoomp.height = VRESH / aspect;
-		else
-			settings.zoomp.height = VRESH;
-			settings.zoomp.width = VRESW * aspect;
-		end
-		resize_image(vid, settings.zoomp.width, settings.zoomp.height, speed);
-
--- now the location is partially out of frame,
--- figure out the end dimensions and then reposition
-		if (destx + settings.zoomp.width > VRESW) then
-			destx = VRESW - settings.zoomp.width;
-		end
-	
-		if (desty + settings.zoomp.height > VRESH) then
-			desty = VRESH - settings.zoomp.height;
-		end
-
-		blend_image(vid, 1.0, speed);
-		move_image(vid, destx, desty, speed);
-
-		imagery.zoomed = vid;
-		settings.zoomp.x = destx;
-		settings.zoomp.y = desty;
-		settings.zoom_countdown = speed;
-	end
-end
-
 function init_leds()
 	if (ledconfig) then
 		if (settings.ledmode == 1) then
@@ -781,17 +708,6 @@ function toggle_led(players, buttons, label, pressed)
 	end
 end
 
-function remove_zoom(speed)
-	if (imagery.zoomed ~= BADID) then
-		local props = image_surface_properties( cursor_vid() );
-		move_image(imagery.zoomed, props.x, props.y, speed);
-		blend_image(imagery.zoomed, 0.0, settings.fadedelay);
-		resize_image(imagery.zoomed,settings.cell_width, settings.cell_height, speed);
-		expire_image(imagery.zoomed, settings.fadedelay);
-		imagery.zoomed = BADID;
-	end
-end
-	
 function cursor_vid()
 	local cursor_row = math.floor( settings.cursor / ncw);
 	return grid[cursor_row][settings.cursor - cursor_row * ncw ];
@@ -809,7 +725,6 @@ end
 function move_cursor( ofs, absolute )
 	local pageofs_cur = settings.pageofs;
 	blend_gridcell(0.3, settings.fadedelay);
-	remove_zoom(settings.fadedelay);
 
 	settings.gameind = settings.gameind + ofs;
 	if (absolute) then settings.gameind = ofs; end
@@ -1012,7 +927,7 @@ function gridle_shutdown()
 end
 
 function load_key_num(name, val, opt)
-	local kval = get_key(name)
+	local kval = get_key(name);
 	if (kval) then
 		settings[val] = tonumber(kval);
 	else
@@ -1021,7 +936,7 @@ function load_key_num(name, val, opt)
 end
 
 function load_key_str(name, val, opt)
-	local kval = get_key(name)
+	local kval = get_key(name);
 	settings[val] = kval or opt
 end
 
@@ -1055,12 +970,12 @@ function load_settings()
 	end
 
 -- each shader argument is patched into a boolean table of #defines to tiggle
-if (get_key("defaultshader_defs")) then
-		settings.fullscreenshader_opts = {};
-
-		local args = string.split(get_key("defaultshader_defs"), ",");
-		for ind, val in ipairs(args) do
-			settings.fullscreenshader_opts[val] = true;
+	local defshdrkey = get_key("defaultshader_defs");
+	if (defshdrkey) then
+		settings.shader_opts = {};
+		if (string.len(defshdrkey) > 0) then
+			local args = string.split(defshdrkey, ",");
+			for ind, val in ipairs(args) do settings.shader_opts[val] = true; end
 		end
 	end
 
@@ -1083,42 +998,12 @@ function asynch_movie_ready(source, status)
 		blend_image(vid, 1.0, settings.fadedelay);
 		resize_image(vid, settings.cell_width, settings.cell_height);
 		blend_image(cursor_vid(), 0.0, settings.fadedelay);
-		
--- corner case, we're zooming or fully zoomed already and we need to replace the current image with
--- the frameserver session
-		if (imagery.zoomed ~= BADID) then
-			local cprops = image_surface_properties(imagery.zoomed);
-			expire_image(imagery.zoomed, settings.zoom_countdown);
-			blend_image(imagery.zoomed, 0.5, settings.zoom_countdown);
-			
-			imagery.zoomed = instance_image(source);
-			image_mask_clear(imagery.zoomed, MASK_POSITION);
-			image_mask_clear(imagery.zoomed, MASK_ORIENTATION);
-			image_mask_clear(imagery.zoomed, MASK_OPACITY);
-			image_mask_clear(imagery.zoomed, MASK_SCALE);
-
----- copy the static zoomed image properties and then set the same transform
-			resize_image(imagery.zoomed, cprops.width, cprops.height);
-			move_image(imagery.zoomed, cprops.x, cprops.y);
-			blend_image(imagery.zoomed, cprops.opacity);
-			blend_image(imagery.zoomed, 1.0, settings.zoom_countdown);
-			
-			move_image(imagery.zoomed, settings.zoomp.x, settings.zoomp.y, settings.zoom_countdown);
-			resize_image(imagery.zoomed, settings.zoomp.width, settings.zoomp.height, settings.zoom_countdown);
-			blend_image(imagery.zoomed, 1.0, settings.zoom_countdown);
-			order_image(imagery.zoomed, ZOOMLAYER_MOVIE);
-		end
 	else
 		delete_image(source);
 	end
 end
 
 function gridle_clock_pulse()
--- used to account for a nasty race condition when zooming a screenshot with asynch movie loading mid-zoom
-	if (settings.zoom_countdown > 0) then 
-		settings.zoom_countdown = settings.zoom_countdown - 1; 
-	end
-	
 -- the cooldown before loading a movie lowers the number of frameserver launches etc. in
 -- situations with a high repeatrate and a button hold down. It also gives the soundeffect
 -- change to play without being drowned by an audio track in the movie
@@ -1164,7 +1049,6 @@ function gridle_internalcleanup()
 			internal_statectl("auto", true);
 		end
 		
-		order_image(internal_vid, ZOOMLAYER_MOVIE + 1); 
 		expire_image(internal_vid, settings.transitiondelay);
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
 		blend_image(internal_vid, 0.0, settings.transitiondelay);
@@ -1178,7 +1062,6 @@ function gridle_internalcleanup()
 		
 		if (valid_vid(imagery.cocktail_vid)) then
 			image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
-			order_image(imagery.cocktail_vid, ZOOMLAYER_MOVIE + 1); 
 			expire_image(imagery.cocktail_vid, settings.transitiondelay);
 			resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
 			blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
