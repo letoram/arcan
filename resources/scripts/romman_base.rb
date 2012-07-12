@@ -83,7 +83,7 @@ class Dql
 	
 	:update_game => "UPDATE game SET setname=?, players=?, buttons=?, ctrlmask=?, genre=?, subgenre=?, year=?, manufacturer=?, system=? WHERE gameid=?",
 	:update_target_by_targetid => "UPDATE target SET name = ?, executable = ? WHERE targetid = ?",
-	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?,0)",
+	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
 	:insert_target => "INSERT INTO target (name, executable) VALUES (?,?)",
 	:insert_arg => "INSERT INTO target_arguments (target, game, argument, mode) VALUES (?, ?, ?, ?)",
 	
@@ -121,7 +121,7 @@ end
 
 class Game < DBObject
 	attr_accessor :pkid, :title, :setname, :players, :buttons, :ctrlmask, :genre,
-	:subgenre, :year, :manufacturer, :system, :target, :arguments
+	:subgenre, :year, :manufacturer, :system, :target, :arguments, :family
 
 	INPUTMASK_LUT = ["joy2way", "doublejoy2way", "joy4way", "doublejoy4way", 
 	"joy8way", "doublejoy8way", "dial", "paddle", "stick", "lightgun",
@@ -140,6 +140,7 @@ class Game < DBObject
 		@manufacturer = ""
 		@target = nil
 		@system = ""
+		@family = nil 
 		@arguments = [ [], [], [] ]
 	end
 
@@ -159,19 +160,22 @@ class Game < DBObject
 	def store
 		qry = ""
 
-		chkid = @@dbconn.execute(DQL[:get_gameid_by_title], [@title])
-
-		if (chkid.size > 0)
-			@pkid = chkid[0][0].to_i
+		last = nil
+		if (@pkid > 0)
 			@@dbconn.execute(DQL[:update_game], 
-				[@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
+				last = [@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
 		else
 			@@dbconn.execute(DQL[:insert_game],
-				[@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @target.pkid])
+				last = [@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
 
 			@pkid = @@dbconn.last_insert_row_id()
 		end
 
+		if (@family != nil) 
+			@@dbconn.execute(DQL[:deassociate_game], @pkid)
+			@@dbconn.execute(DQL[:associate_game], @family, @pkid)
+		end
+		
 		@@dbconn.execute(DQL[:delete_arg_by_gameid], @pkid)
 		3.times{|arggrp|
 			@arguments[arggrp].each{|gamearg|
@@ -179,7 +183,11 @@ class Game < DBObject
 			}
 		}
 	rescue => er
-		STDOUT.print "[Sqlite3 DB] store failed #{er},\n\t #{er.backtrace.join("\n\t")}\n"
+		STDOUT.print "[Sqlite3 DB] store failed #{er}\n\t #{er.backtrace.join("\n\t")}\n"
+		if (last) 
+			last.each{|val| STDOUT.print(" (#{val.class}) ")}
+			STDOUT.print("\n")
+		end
 	end
 
 	def get_mask( label )

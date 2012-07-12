@@ -37,7 +37,7 @@ struct guard_struct {
 };
 static void* guard_thread(void* gstruct);
 
-void spawn_guardthread(struct guard_struct gs)
+static void spawn_guardthread(struct guard_struct gs)
 {
 	struct guard_struct* hgs = (struct guard_struct*) malloc(sizeof(struct guard_struct));
 	*hgs = gs;
@@ -280,7 +280,8 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->bpp = bpp;
 		arg->addr->channels = nchan;
 		arg->addr->samplerate = ceil(freq);
-	
+
+		
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			arg->addr->resized = true;
 			return true;

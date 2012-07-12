@@ -25,7 +25,7 @@ class ScummVM
 		]
 	end
 
-	def set_defaults(options, opts)
+	def set_defaults(basepath, options, opts)
 		chkargs = ["--scummargs", "--scummintargs", "--scummextargs"]
 		chkargs.each_with_index{|argstr, ind|
 			if (arg = opts[argstr])

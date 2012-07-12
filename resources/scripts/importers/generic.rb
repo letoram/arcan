@@ -7,21 +7,21 @@
 # automatically deduce reasonable data for each target, but that's for the future ..
 #
 SystemTable = {
-"fceu" => "NES",
-"bnes" => "NES",
-"snes9x" => "SNES",
-"n64" => "N64",
-"bsnes" => "SNES",
-"mame" => "Arcade/Multi",
-"mess" => "Multi",
-"ume" => "Multi",
-"mednafen" => "Multi",
-"vba" => "Gameboy",
-"fba" => "Arcade",
-"psx" => "Playstation",
-"dolphin" => "Wii",
-"genplus" => "Sega/Multi",
-"scummvm" => "Adventure/VM"
+"fceu" => "nes",
+"bnes" => "nes",
+"snes9x" => "snes",
+"n64" => "n64",
+"bsnes" => "snes",
+"mame" => "arcade/multi",
+"mess" => "multi",
+"ume" => "multi",
+"mednafen" => "multi",
+"vba" => "gameboy",
+"fba" => "arcade",
+"psx" => "playstation",
+"dolphin" => "wii",
+"genplus" => "sega/multi",
+"scummvm" => "adventure/VM"
 }
 
 # Common target- names and their corresponding system
@@ -29,6 +29,7 @@ class Generic
 	def initialize
 		@gentargets = {}
 		@genromlist = {}
+		@striptitle = true
 	end
 
 	def usage
@@ -48,11 +49,11 @@ class Generic
 			["--genargs", GetoptLong::REQUIRED_ARGUMENT],
 			["--genintargs", GetoptLong::REQUIRED_ARGUMENT],
 			["--genextargs", GetoptLong::REQUIRED_ARGUMENT],
-			["--genstriptitle", GetoptLong::NO_ARGUMENT]
+			["--gennostriptitle", GetoptLong::NO_ARGUMENT]
 		]
 	end
 
-	def set_defaults(options, opts)
+	def set_defaults(basepath, options, opts)
 		chkargs = ["--genargs", "--genintargs", "--genextargs"]
 	
 		if (opts["--genrompath"] != nil)
@@ -61,6 +62,10 @@ class Generic
 		}
 		end
 
+		if (opts["--gennostriptitle"]) 
+			@striptitle = false
+		end
+		
 		chkargs.each_with_index{|argstr, ind|
 			if (arg = opts[argstr])
 				arg.each{|subarg|
@@ -124,20 +129,55 @@ class Generic
 		"[Generic (#{@targetname}) Importer]"
 	end
 
+	def strip_title(instr)
+		resstr = instr
+
+		titleind = instr.index(/[()\[]/)
+		if (titleind and titleind > 0)
+			resstr = instr[0..titleind-1].strip
+		end
+		matchd = resstr.match( /(.*)([.]\w{3,4})\z/ )
+		resstr = matchd[1] if matchd and matchd[1]
+		
+		matchd = resstr.match(/\A\d{4}\s-\s(.*)/)
+		resstr = matchd[1] if matchd and matchd[1]
+
+		resstr
+	end
+
+# should also try and extract other features,
+# [code] (country) + specials (???k) (Unl)
+# system codes [C] (Color GB) [S] (Super GB), (M#) Multilang, [M] Mono/NGP, (PC10), (1,4,5,8) Genesis,
+# (BS,ST,NP) Snes, (Adam) ColecoVision, (PAL) PALVideo + bsnes XML folder format
 	def check_games(rompath)
+		codetbl = {
+			"a" => "Alternate",
+			"b" => "Bad Dump",
+			"BF" => "Bung Fix",
+			"c" => "cracked",
+			"f" => "Other Fix",
+			"h" => "hack",
+			"o" => "overdump",
+			"p" => "Pirate",
+			"t" => "Trained",
+			"T" => "Translation",
+			"x" => "Bad Checksum",
+			"\!" => "Verified Good Dump",
+		}
+		
 		Dir["#{rompath}/*"].each{|fn|
-			if (fn == "." || fn == "..") 
+			if (fn == "." || fn == ".." || fn =~ /\.srm\z/) 
 				next
 			else
 				setname = fn[ fn.rindex('/') +1 .. -1 ]
 
 				newgame = Game.new
-				newgame.title = setname
+				newgame.title = @striptitle ? strip_title(setname) : setname
 				newgame.setname = @genromlist[@targetname] == true ? fn : setname
 				newgame.target = @target
 				newgame.system = SystemTable[ @targetname ]
 				if (newgame.system == nil) then
-				    newgame.system = @target
+				    newgame.system = @targetname
 				end
 
 				yield newgame

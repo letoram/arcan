@@ -79,7 +79,7 @@ function menu_spawnmenu(list, listptr, fmtlist)
 
 	local parent = current_menu;
 	local props = image_surface_resolve_properties(current_menu.cursorvid);
-	local windsize = #list * 24;
+	local windsize = VRESH;
 
 	local yofs = 0;
 	if (props.y + windsize > VRESH) then
@@ -89,14 +89,12 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	current_menu = listview_create(list, windsize, VRESW / 3, fmtlist);
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
+	current_menu.updatecb = parent.updatecb;
 	current_menu:show();
 	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
-
 	
 	local xofs = 0;
 	local yofs = 0;
-	
--- if the new list overflows the current window borders, nudge it back a little.
 	
 -- figure out where the window is going to be.
 	local aprops_l = image_surface_properties(current_menu.anchor, settings.fadedelay);
@@ -196,6 +194,18 @@ local function bgtileupdate(label, save)
   updatebgtrigger();
 end
 
+local function launchmodeupdate(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.default_launchmode = label;
+	
+	if (save) then
+		store_key("default_launchmode", label);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+end
+
 local backgroundptrs = {};
 add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES, updatebgtrigger));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, updatebgtrigger));
@@ -204,6 +214,7 @@ add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedv"
 add_submenu(backgroundlbls, backgroundptrs, "Animate (horizontal)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, updatebgtrigger));
 
 local settingsptrs = {};
+add_submenu(settingslbls, settingsptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
 add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
@@ -379,7 +390,7 @@ local function update_status()
 
 	table.insert(list, filterstr);
 	if (settings.statuslist == nil) then
-		settings.statuslist = listview_create(list, 24 * 5, VRESW * 0.75);
+		settings.statuslist = listview_create(list, VRESH * 0.9, VRESW * 0.75);
 		settings.statuslist:show();
 		move_image(settings.statuslist.anchor, 5, settings.fadedelay);
 		hide_image(settings.statuslist.cursorvid);
@@ -480,14 +491,62 @@ function build_gamelists()
 	return res, resptr;
 end
 
+-- reuse by other menu functions
+function gridlemenu_defaultdispatch()
+	if (not settings.iodispatch["MENU_UP"]) then
+		settings.iodispatch["MENU_UP"] = function(iotbl) 
+			play_audio(soundmap["MENUCURSOR_MOVE"]); 
+			current_menu:move_cursor(-1, true); 
+		end
+	end
+
+	if (not settings.iodispatch["MENU_DOWN"]) then
+			settings.iodispatch["MENU_DOWN"] = function(iotbl)
+			play_audio(soundmap["MENUCURSOR_MOVE"]); 
+			current_menu:move_cursor(1, true); 
+		end
+	end
+	
+	if (not settings.iodispatch["MENU_SELECT"]) then
+		settings.iodispatch["MENU_SELECT"] = function(iotbl)
+			selectlbl = current_menu:select();
+			if (current_menu.ptrs[selectlbl]) then
+				current_menu.ptrs[selectlbl](selectlbl, false);
+				if (current_menu and current_menu.updatecb) then
+					current_menu.updatecb();
+				end
+			end
+		end
+	end
+	
+-- figure out if we should modify the settings table
+	if (not settings.iodispatch["FLAG_FAVORITE"]) then
+		settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
+				selectlbl = current_menu:select();
+				if (current_menu.ptrs[selectlbl]) then
+					current_menu.ptrs[selectlbl](selectlbl, true);
+					if (current_menu and current_menu.updatecb) then
+						current_menu.updatecb();
+					end
+				end
+			end
+	end
+	
+	if (not settings.iodispatch["MENU_RIGHT"]) then
+		settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
+	end
+	
+	if (not settings.iodispatch["MENU_LEFT"]) then
+		settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
+	end
+end
 
 function gridlemenu_settings()
 -- first, replace all IO handlers
 	griddispatch = settings.iodispatch;
 
 	settings.iodispatch = {};
-	settings.iodispatch["MENU_UP"] = function(iotbl) play_audio(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(-1, true); end
-	settings.iodispatch["MENU_DOWN"] = function(iotbl) play_audio(soundmap["MENUCURSOR_MOVE"]); current_menu:move_cursor(1, true); end
+
 	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		if (current_menu.parent ~= nil) then
@@ -502,7 +561,7 @@ function gridlemenu_settings()
 		play_audio(soundmap["MENU_FADE"]);
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 
--- only rebuild gruid if we have to
+-- only rebuild grid if we have to
 		if (current_menu.gamecount ~= #settings.games) then
 			settings.cursor = 0;
 			settings.pageofs = 0;
@@ -522,27 +581,8 @@ function gridlemenu_settings()
 		init_leds();
 	end
 
--- figure out if we should modify the settings table
-	settings.iodispatch["MENU_SELECT"] = function(iotbl)
-			selectlbl = current_menu:select();
-			if (current_menu.ptrs[selectlbl]) then
-				current_menu.ptrs[selectlbl](selectlbl, false);
-				update_status();
-			end
-		end
-
-	settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
-			selectlbl = current_menu:select();
-			if (current_menu.ptrs[selectlbl]) then
-				current_menu.ptrs[selectlbl](selectlbl, true);
-				update_status();
-			end
-		end
-
--- just aliases
-	settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
-	settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
-
+	gridlemenu_defaultdispatch();
+	
 -- hide the cursor and all selected elements
 	if (movievid) then
 		instant_image_transform(movievid);
@@ -551,12 +591,13 @@ function gridlemenu_settings()
 		movievid = nil;
 	end
 
-	current_menu = listview_create(menulbls, #menulbls * 24, VRESW / 3);
+	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = {};
 	current_menu.ptrs["Game Lists..."] = function() menu_spawnmenu( build_gamelists() ); end
 	current_menu.ptrs["Filters..."]    = function() menu_spawnmenu( update_filterlist() ); end
 	current_menu.ptrs["Settings..."]   = function() menu_spawnmenu( settingslbls, settingsptrs ); end
-
+	current_menu.updatecb = update_status;
+	
 	current_menu.gamecount = #settings.games;
 	current_menu:show();
 	

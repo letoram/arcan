@@ -205,7 +205,7 @@ function gridledetail_internalinput(iotbl)
 	if (restbl) then
 		for ind,val in pairs(restbl) do
 			if (iotbl.active and val == "MENU_TOGGLE" and detailview.fullscreen) then
-				gridlemenu_internal(internal_vid);
+				gridlemenu_internal(internal_vid, true, true);
 				return;
 			elseif (iotbl.active and val == "CONTEXT") then
 -- switch between running with fullscreen and running with cabinet zoomed in
@@ -213,9 +213,12 @@ function gridledetail_internalinput(iotbl)
 					hide_image(internal_vid);
 					delete_image(internal_vidborder);
 					show_image(detailview.model.vid);
+					if (valid_vid(imagery.bezel)) then hide_image(imagery.bezel); end
+					if (valid_vid(imagery.cocktail_vid)) then hide_image(imagery.cocktail_vid); end 
 					detailview.fullscreen = false;
 				else
 					detailview.fullscreen = true;
+				
 					gridlemenu_loadshader(settings.fullscreenshader);
 					gridlemenu_resize_fullscreen(internal_vid);
 
@@ -226,8 +229,19 @@ function gridledetail_internalinput(iotbl)
 					show_image(internal_vid);
 					
 					hide_image(detailview.model.vid);
+
 					order_image(internal_vidborder, max_current_image_order() + 1);
 					order_image(internal_vid, max_current_image_order() + 1); 
+					if (valid_vid(imagery.bezel)) then
+						show_image(imagery.bezel);
+						order_image(imagery.bezel, max_current_image_order());
+					end
+
+					if (valid_vid(imagery.cocktail_vid)) then
+						show_image(imagery.cocktail_vid);
+						order_image(imagery.cocktail_vid, max_current_image_order());
+					end
+					
 					return;
 				end
 			elseif (iotbl.active and val == "MENU_ESCAPE") then
@@ -237,7 +251,6 @@ function gridledetail_internalinput(iotbl)
 					internal_vidborder = nil;
 				end
 			
-				print("delete: " .. internal_vid);
 				delete_image(internal_vid);
 				internal_vid = BADID;
 				show_image(detailview.model.vid);
@@ -437,17 +450,21 @@ function gridledetail_show(detailres, gametbl, ind)
 	end
 
 -- Don't add this label unless internal support is working for the underlying platform
-	detailview.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
-		gridledetail_setnoisedisplay();
-		internal_vid = launch_target(detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status);
-		print("internal_vid:" .. internal_vid);
-	end
+	detailview.iodispatch["LAUNCH"] = function(iotbl)
+		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
+			and current_game().capabilities.internal_launch;
 
--- Works the same, just make sure to stop any "internal session" as it is 
-	detailview.iodispatch["MENU_SELECT"] = function (iotbl) 
-		launch_target( current_game().title, LAUNCH_EXTERNAL);
-		gridledetail_setnoisedisplay();
-	end 
+			if (launch_internal) then
+				gridledetail_setnoisedisplay();
+				internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridledetail_internal_status );
+			else
+				erase_grid(true);
+				launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+				move_cursor(0);
+				build_grid(settings.cell_width, settings.cell_height)			
+			end
+		
+	end
 
 	detailview.iodispatch["MENU_ESCAPE"] = function(iotbl)
 		play_audio(soundmap["DETAILVIEW_FADE"]);

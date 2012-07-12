@@ -214,7 +214,7 @@ case cmd
 		
 		Importers.Each_importer{|imp|
 			STDOUT.print("\t#{imp.class}\n")
-			imp.set_defaults(options, opttbl)
+			imp.set_defaults(basepath, options, opttbl)
 		}
 
 		import_roms(options)

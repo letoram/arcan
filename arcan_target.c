@@ -219,7 +219,7 @@ void ARCAN_target_init(){
 //	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
-
+	
 //	sem_wait( global.shared.vsem ); 
 }
 
@@ -266,6 +266,8 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 		frameserver_shmpage_resize( &(global.shared), w, h, 4, 0, 0 );
 		frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 		frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
+		memset(global.vidp, 0x000000ff, w * h * 4);
+		
 		global.shared.addr->w = w;
 		global.shared.addr->h = h;
 		global.shared.addr->bpp = 4;
@@ -490,6 +492,7 @@ void ARCAN_SDL_GL_SwapBuffers()
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
 		glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
 		global.shared.addr->vready = true;
+		global.shared.addr->glsource = true;
 		trace("CopySurface(GL:post)");
 	}
 	
