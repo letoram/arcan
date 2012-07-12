@@ -579,8 +579,15 @@ if (captbl.snapshot) then
 		table.insert(lbltbl, "Reset Game");
 			ptrtbl["Reset Game"] = function(label, store)
 				valcbs = {};
-				valcbs["YES"] = function() reset_target(internal_vid); settings.iodispatch["MENU_ESCAPE"](); end
-				valcbs["NO"]  = function() settings.iodispatch["MENU_ESCAPE"](); end
+				valcbs["YES"] = function() 
+					reset_target(internal_vid); 
+					settings.iodispatch["MENU_ESCAPE"]();
+				end
+				
+				valcbs["NO"]  = function()
+					settings.iodispatch["MENU_ESCAPE"](); 
+				end
+				
 				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, nil, true, valcbs);
 			end
 		end
@@ -588,7 +595,7 @@ if (captbl.snapshot) then
 	return true;
 end	
 
-function gridlemenu_internal(target_vid)
+function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
 -- replace it with the one used for these menus (check iodispatch for MENU_ESCAPE for the handover)
 	griddispatch = settings.iodispatch;
@@ -598,13 +605,7 @@ function gridlemenu_internal(target_vid)
 	
 	gridlemenu_destvid = target_vid;
 
-	settings.iodispatch["MENU_SELECT"] = function(iotbl) 
-		selectlbl = current_menu:select()
-		if (current_menu.ptrs[selectlbl]) then
-			current_menu.ptrs[selectlbl](selectlbl, false);
-		end
-	end
-
+	
 	settings.iodispatch["CONTEXT"] = function(iotbl)
 		selectlbl = current_menu:select()
 		
@@ -634,23 +635,6 @@ function gridlemenu_internal(target_vid)
 		end
 	end
 	
-	settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
-			selectlbl = current_menu:select();
-			if (current_menu.ptrs[selectlbl]) then
-				current_menu.ptrs[selectlbl](selectlbl, true);
-			end
-		end	
-	
-	settings.iodispatch["MENU_UP"] = function(iotbl)
-		play_audio(soundmap["MENUCURSOR_MOVE"]);
-		current_menu:move_cursor(-1, true);
-	end
-
-	settings.iodispatch["MENU_DOWN"] = function(iotbl)
-		play_audio(soundmap["MENUCURSOR_MOVE"]);
-		current_menu:move_cursor(1, true); 
-	end
-
 	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		settings.inshader = false;
@@ -666,28 +650,31 @@ function gridlemenu_internal(target_vid)
 				play_audio(soundmap["MENU_FADE"]);
 			end
 			
+			resume_target(internal_vid);
 			current_menu = nil;
 			settings.iodispatch = griddispatch;
 			gridle_input = gridle_oldinput;
-			resume_target(internal_vid);
 		end
 	end
-	settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
-	settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
 
 	local menulbls = {};
 	local ptrs = {};
-	local gameopts = add_gamelbls(menulbls, ptrs);
 
-	if (#menulbls > 0) then
+	if (contextlbls) then
+		add_gamelbls(menulbls, ptrs);
+	end
+
+	if (#menulbls > 0 and settingslbls) then
 		table.insert(menulbls, "---------   " );
 	end
 
-	table.insert(menulbls, "Shaders...");
-	table.insert(menulbls, "Scaling...");
-	table.insert(menulbls, "Input...");
-	table.insert(menulbls, "Audio Gain...");
-	table.insert(menulbls,	"Cocktail Modes...");
+	if (settingslbls) then
+		table.insert(menulbls, "Shaders...");
+		table.insert(menulbls, "Scaling...");
+		table.insert(menulbls, "Input...");
+		table.insert(menulbls, "Audio Gain...");
+		table.insert(menulbls,	"Cocktail Modes...");
+	end
 	
 	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = ptrs;
@@ -744,6 +731,8 @@ function gridlemenu_internal(target_vid)
 		
 		menu_spawnmenu( cocktaillist, cocktailptrs, def);
 	end
+
+	gridlemenu_defaultdispatch();
 	
 	current_menu:show();
 	suspend_target(internal_vid);

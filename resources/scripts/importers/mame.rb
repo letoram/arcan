@@ -27,6 +27,8 @@ class Mame
 
 	def merge_relatives(series)
 		STDERR.print("[MAME importer::series] processing series file\n")
+		gname = ""
+		
 		infile = File.open(series, File::RDONLY).each_line{|line|
 			cline = line.strip
 			next if cline.size == 0
@@ -45,7 +47,7 @@ class Mame
 		false
 	end
 
-	def set_defaults(options, cmdopts)
+	def set_defaults(basepath, options, cmdopts)
 		@mameargs[0] << "-rompath"
 		@mameargs[0] << "[gamepath]/mame"
 		@mameargs[0] << "-cfg_directory"
@@ -76,10 +78,14 @@ class Mame
 		
 		if (res = cmdopts["--mamecatver"])
 			merge_gameinfo( res[0] )
+		elsif File.exists?("#{basepath}/importers/catver.ini")
+			merge_gameinfo("#{basepath}/importers/catver.ini")
 		end
 
 		if (res = cmdopts["--mameseries"])
 			merge_relatives( res[0] )
+		elsif File.exists?("#{basepath}/importers/series.ini")
+			merge_relatives("#{basepath}/importers/series.ini")
 		end
 
 		@onlygood = cmdopts["--mamegood"] ? true : false
@@ -121,7 +127,7 @@ class Mame
 	   [
 		"(--mamecatver) filename - Specify a catver.ini file",
 		"(--mameseries) filename - Specify a series.ini file",
-        "(--mameverify) - Only add games that pass verification",
+		"(--mameverify) - Only add games that pass verification",
 		"(--mameargs) - comma-separated list of launch arguments",
 		"(--mameintargs) - comma- separated list of internal- launch arguments",
 		"(--mameextargs) - comma- separated list of external- launch arguments",
@@ -203,16 +209,18 @@ class Mame
 
 			title = node_tree.xpath("//game/description").text
 			shorttitle = title.split(/\s\(/)[0]
-
+			shorttitle = shorttitle.split(/\//)[0] if shorttitle.index("/")
+			
 			res = Game.new
 			res.target = @target
-			res.title = @shorttitle ? shorttitle : title 
+			res.title = @shorttitle ? shorttitle : title
+		
 			res.ctrlmask = 0
 			res.year  = node_tree.xpath("//game/year").text
 			res.manufacturer = node_tree.xpath("//game/manufacturer").text
 			res.setname = node_tree.root.attributes['name'].value
 			res.system = "Arcade" # It might be possible to parse more out of the description
-			
+			res.family = @series[res.setname]
 			if (@categories[res.setname])
 				res.genre = @categories[res.setname][0]
 				res.subgenre = @categories[res.setname][1]

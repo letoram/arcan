@@ -59,6 +59,7 @@
  * that can be handled by SDLs library management functions. */
 static struct {
 		bool skipframe; /* set if next frame should just be dropped (not copied to buffers) */
+		bool pause;
 		unsigned skipcount;
 		int skipmode; 
 		
@@ -114,7 +115,7 @@ static void* libretro_requirefun(const char* sym)
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
-	if (!data) return;
+	if (!data || retroctx.skipframe) return;
 	
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
@@ -261,43 +262,30 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 }
 
-static void pauseloop()
-{
-	arcan_event* ev;
-	while (true){
-		ev = arcan_event_poll(&retroctx.inevq);
-		if (ev && ev->category == EVENT_TARGET && ev->kind == TARGET_COMMAND_UNPAUSE) break;
-		frameserver_delay(100);
-	}
-	
-/* rebase so we won't trigger frameskips */
-	retroctx.basetime = frameserver_timemillis() - (retroctx.framecount * retroctx.mspf);
-}
-
 static inline void targetev(arcan_event* ev)
 {
 	switch (ev->kind){
-		case TARGET_COMMAND_RESET: 
-			retroctx.reset();
-		break;
+		case TARGET_COMMAND_RESET: retroctx.reset(); break;
 
 /* FD transfer has different behavior on Win32 vs UNIX,
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
-		case TARGET_COMMAND_FDTRANSFER: 
-			retroctx.last_fd = frameserver_readhandle( ev );
-		break;
+		case TARGET_COMMAND_FDTRANSFER: retroctx.last_fd = frameserver_readhandle( ev ); break;
 		
 /* if intval is > 0, the skipval is to drop every N frames,
  * if intval is < 0, the skipval is to render every abs(n) frames. */
-		case TARGET_COMMAND_FRAMESKIP: 
-			retroctx.skipmode = ev->data.target.ioevs[0];
-		break;
+		case TARGET_COMMAND_FRAMESKIP: retroctx.skipmode = ev->data.target.ioevs[0]; break;
 		
 /* any event not being UNPAUSE is ignored, no frames are processed
  * and the core is allowed to sleep in between polls */
-		case TARGET_COMMAND_PAUSE: pauseloop(); break;
+		case TARGET_COMMAND_PAUSE: retroctx.pause = true; break;
 
+		case TARGET_COMMAND_UNPAUSE: 
+			retroctx.pause = false; 
+			retroctx.basetime = frameserver_timemillis() + retroctx.framecount * retroctx.mspf;
+			retroctx.framecount = 0;
+		break;
+		
 /* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from _event.h */
 		case TARGET_COMMAND_SETIODEV: break;
 	
@@ -346,12 +334,41 @@ static inline void targetev(arcan_event* ev)
 static inline void flush_eventq(){
 	 arcan_event* ev;
 
-	 while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
-		switch (ev->category){
-			case EVENT_IO: ioev_ctxtbl(ev); break;
-			case EVENT_TARGET: targetev(ev); break;
+	 do
+		while ( (ev = arcan_event_poll(&retroctx.inevq)) ){ 
+			switch (ev->category){
+				case EVENT_IO: ioev_ctxtbl(ev); break;
+				case EVENT_TARGET: targetev(ev); break;
+			}
 		}
+		while (retroctx.pause && (frameserver_delay(100), 1));
+}
+
+/* return true if we're in synch (may sleep),
+ * return false if we're lagging behind */
+static inline bool retroctx_sync()
+{
+	long long int now  = frameserver_timemillis() - retroctx.basetime;
+	long long int next = floor( (double)retroctx.framecount * retroctx.mspf );
+	int left = next - now;
+	
+/* ntpd, settimeofday, wonky OS etc. or some massive stall */
+	if (now < 0 || abs( left ) > retroctx.mspf * 60){
+		retroctx.basetime = frameserver_timemillis();
+		retroctx.framecount = 1;
+		return true;
 	}
+
+/* more than a frame behind? just skip */
+	if ( left < -1 * retroctx.mspf )
+		return false;
+
+/* used to measure the elapsed time between frames in order to wake up in time,
+ * but frame- distribution didn't get better than this magic value on anything in the test set */
+	if (left > 4)
+		frameserver_delay( left );
+	
+	return true;
 }
 
 /* map up a libretro compatible library resident at fullpath:game */
@@ -446,63 +463,20 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* basetime is used as epoch for all other timing calculations */
 		retroctx.basetime = frameserver_timemillis();
 
-/* start of new frame */
-		long long int frametime = retroctx.basetime;
-		long long int framestart;
-
-/* cost of previous run() + synch operation, used to determine how long to sleep */
-		int last_framecost = 1;
-		
 		while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
 			flush_eventq();
-			
-			frametime = frameserver_timemillis();
-			retroctx.shmcont.addr->vpts = retroctx.framecount * retroctx.mspf;
-			
-/* if we're lagging behind, drop the next frame, otherwise sleep */	
-			if (frametime >= retroctx.basetime){
-				long long int nextframe = retroctx.basetime + retroctx.framecount * retroctx.mspf;
-				long long int framedelta = nextframe - frametime;
-				
-/* sleep */
-				if (framedelta > last_framecost){
-					frameserver_delay( framedelta );
-				}
-				else 
-/* more than a frame behind, skip + rebase */
-				if (framedelta < -retroctx.mspf){
-					retroctx.skipframe = true;
-					retroctx.framecount++;
-					retroctx.run();
-					retroctx.skipframe = false;
-					continue;
-				}
-			}
-/* timing isn't actually monotonic, either wraparound, ntpd or similr, rebase */
-			else {
-				retroctx.basetime = frameserver_timemillis();
-				retroctx.framecount++;
-				continue; 
-			}
-skipsync:
-			
-/* the libretro poll input function isn't used, since we have to flush the eventqueue for other events,
- * I/O is already mapped into the table by that point anyhow */
-			framestart = frameserver_timemillis();
-
 			retroctx.run();
 
 /* the audp/vidp buffers have already been updated in the callbacks */
-			shared->aready = true;
-			shared->vready = true;
+			if (retroctx.skipframe == false){
+				shared->aready = shared->vready = true;
+				frameserver_semcheck( retroctx.shmcont.vsem, -1);
+			};
 
-/*		unsigned long int postt, pret = frameserver_timemillis(); */
-			frameserver_semcheck( retroctx.shmcont.vsem, -1);
-		
-			last_framecost = frameserver_timemillis() - framestart;
 			retroctx.framecount++;
+			retroctx.skipframe = !retroctx_sync();
 
 			assert(shared->aready == false && shared->vready == false);
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);

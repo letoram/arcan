@@ -88,6 +88,8 @@ settings = {
 	cooldown = 15,
 	cooldown_start = 15,
 	
+	default_launchmode = "Internal",
+	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
 	flipinputaxis = false,
@@ -143,6 +145,7 @@ function gridle()
 	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
 	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
+	system_load("gridle_contmenus.lua")();       -- context menus (quickfilter, database manipulation, ...)
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
@@ -263,16 +266,26 @@ end
 		gridlemenu_settings(); 
 	end
 	
-	settings.iodispatch["MENU_SELECT"]  = function(iotbl) 
-		play_audio(soundmap["LAUNCH_EXTERNAL"]);
-		launch_target( current_game().gameid, LAUNCH_EXTERNAL); 
-		move_cursor(0);
+	settings.iodispatch["CONTEXT"] = function(iotbl)
+		play_audio(soundmap["MENU_TOGGLE"]);
+		gridlemenu_context( current_game() );
 	end
 	
-	settings.iodispatch["LAUNCH_INTERNAL"] = function(iotbl)
-		erase_grid(false);
-		play_audio(soundmap["LAUNCH_INTERNAL"]);
-		internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
+	settings.iodispatch["LAUNCH"] = function(iotbl)
+		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
+			and current_game().capabilities.internal_launch;
+
+
+		if (launch_internal) then
+				play_audio(soundmap["LAUNCH_INTERNAL"]);
+				internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
+			else
+				erase_grid(true);
+				play_audio(soundmap["LAUNCH_EXTERNAL"]);
+				launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+				move_cursor(0);
+				build_grid(settings.cell_width, settings.cell_height)			
+			end
 	end
 
 	imagery.black = fill_surface(1,1,0,0,0);
@@ -313,7 +326,6 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	image_shader(imagery.bgimage, bgshader);
 	show_image(imagery.bgimage);
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
-	
 end
 
 function dialog_option( message, buttons, samples, canescape, valcbs )
@@ -418,12 +430,11 @@ end
 
 function gridle_keyconf()
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 	local listlbls = {};
 	local lastofs = 1;
 	
-	table.insert(keylabels, " LAUNCH_INTERNAL");
 	system_load("gridle_intmenus.lua")();
 
 	for ind, key in ipairs(keylabels) do
@@ -436,7 +447,7 @@ function gridle_keyconf()
 		kbd_repeat(0);
 
 -- keep a listview in the left-side behind the dialog to show all the labels left to configure
-		keyconf_labelview = listview_create(listlbls, VRESH, VRESW / 4);
+		keyconf_labelview = listview_create(listlbls, VRESH * 0.9, VRESW / 4);
 		keyconf_labelview:show();
 		
 		local props = image_surface_properties(keyconf_labelview.window, 5);
@@ -772,7 +783,7 @@ function move_cursor( ofs, absolute )
 end
 
 -- resourcetbl is quite large, check resourcefinder.lua for more info
-function get_image( resourcetbl, setname )
+function get_image( resourcetbl, gametbl )
 	local rvid = BADID;
 	if ( resourcetbl.screenshots[1] ) then
 		rvid = load_image_asynch( resourcetbl.screenshots[1], got_asynchimage );
@@ -780,7 +791,7 @@ function get_image( resourcetbl, setname )
 	end
 	
 	if (rvid == BADID) then
-		rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. setname );
+		rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. gametbl.title );
 		blend_image(rvid, 0.3, settings.transitiondelay);
 	end
 
@@ -889,7 +900,7 @@ function build_grid(width, height)
 			settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
 			settings.games[gameno].capabilities = launch_target_capabilities( settings.games[gameno].target );
 			
-			local vid = get_image(settings.games[gameno].resources, settings.games[gameno].setname);
+			local vid = get_image(settings.games[gameno].resources, settings.games[gameno]);
 			resize_image(vid, settings.cell_width, settings.cell_height);
 			move_image(vid,cell_coords(col, row));
 			order_image(vid, GRIDLAYER);
@@ -948,6 +959,7 @@ function load_settings()
 	load_key_num("cell_width", "cell_width", settings.cell_width);
 	load_key_num("cell_height", "cell_height", settings.cell_height);
 	load_key_num("fadedelay", "fadedelay", settings.fadedelay);
+	load_key_str("default_launchmode", "default_launchmode", settings.default_launchmode);
 	load_key_num("transitiondelay", "transitiondelay", settings.transitiondelay);
 	load_key_str("sortorder", "sortlbl", settings.sortlbl);
 	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
@@ -1131,7 +1143,10 @@ function gridle_internalinput(iotbl)
 				gridle_internalcleanup();
 				return;
 			elseif (val == "MENU_TOGGLE") then
-				gridlemenu_internal(internal_vid);
+				gridlemenu_internal(internal_vid, false, true);
+				return;
+			elseif (val == "CONTEXT") then
+				gridlemenu_internal(internal_vid, true, false);
 				return;
 			elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD") and iotbl.active) then
 				internal_statectl("quicksave", val == "QUICKSAVE");
