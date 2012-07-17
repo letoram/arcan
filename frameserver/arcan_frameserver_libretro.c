@@ -41,6 +41,10 @@
 #define MAX_PORTS 4
 #endif
 
+#ifndef MAX_AXES
+#define MAX_AXES 2
+#endif
+
 #ifndef MAX_BUTTONS
 #define MAX_BUTTONS 12
 #endif
@@ -87,7 +91,7 @@ static struct {
  */ 
 		struct {
 			bool joypad[MAX_PORTS][MAX_BUTTONS];
-			signed axis[2]; /* every "stick" usually returns in 2, but we also have analog or pseudo-analog buttons etc. etc. */
+			signed axis[MAX_PORTS][MAX_AXES];
 		} inputmatr;
 		
 		void (*run)();
@@ -182,7 +186,16 @@ void libretro_audscb(int16_t left, int16_t right)
 /* we ignore these since before pushing for a frame, we've already processed the queue */
 static void libretro_pollcb(){}
 
-static bool libretro_setenv(unsigned cmd, void* data){ return false; }
+static bool libretro_setenv(unsigned cmd, void* data){ 
+	bool rv = false;
+	
+	switch (cmd){
+//		case RETRO_ENVIRONMENT_CAN_DUPE: rv = true; break;
+		case RETRO_ENVIRONMENT_SHUTDOWN: rv = true; break;
+	}
+	
+	return rv; 
+}
 
 /* use the context-tables from retroctx in combination with dev / ind / ... 
  * to try and figure out what to return, this table is populated in flush_eventq() */
@@ -231,15 +244,14 @@ static void ioev_ctxtbl(arcan_event* ioev)
 	char* subtype;
 	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
 
-	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind < MAX_PORTS &&
+	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind <= MAX_PORTS &&
 		(subtype = strchr(ioev->label, '_')) ){
 		subtype++;
 		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
 			button--;
 			button = button > sizeof(remaptbl) / sizeof(remaptbl[0]) - 1 ? -1 : remaptbl[button];
-		} else if (1 == sscanf(subtype, "AXIS%d", &axis) && axis > 0 &&
-			axis <= ( sizeof(retroctx.inputmatr.axis) / sizeof(retroctx.inputmatr.axis[0]) ) ){
-			
+		} else if (1 == sscanf(subtype, "AXIS_%d", &axis) && axis > 0 && axis <= MAX_AXES){
+			retroctx.inputmatr.axis[ind-1][ axis ] = ioev->data.io.input.analog.axisval[0];
 		}
 		else if ( strcmp(subtype, "UP") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_UP;
@@ -287,7 +299,9 @@ static inline void targetev(arcan_event* ev)
 		break;
 		
 /* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from _event.h */
-		case TARGET_COMMAND_SETIODEV: break;
+		case TARGET_COMMAND_SETIODEV: 
+			
+		break;
 	
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:

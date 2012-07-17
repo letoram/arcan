@@ -126,11 +126,13 @@ end
 
 
 local function keyconf_playerline(self)
-	line = [[Configure player input (press SELECT to continue):\n\r\t\t#Players\t#Buttons\n\r]]
+	line = [[Configure player input (press SELECT to continue):\n\r\t\t#Players\t#Buttons\t#Axes\n\r]]
 	if (self.active_group == 0) then
-		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount);
+		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);
+	elseif (self.active_group == 1) then
+		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffff00]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);	
 	else
-		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffff00]] .. tostring(self.buttoncount);
+		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\t\#ffff00]] .. tostring(self.axescount);
 	end
 
 	keyconf_renderline(self, line);
@@ -181,6 +183,8 @@ local function keyconf_next_key(self)
 			self.active_group = 0;
 			self.playercount  = 0;
 			self.buttoncount  = 0;
+			self.axescount    = 0;
+			
 			self.in_playerconf = true;
 			keyconf_playerline(self);
 			return false;
@@ -198,13 +202,16 @@ local function keyconf_inp_playersel(self, inputtable)
 				if (val == "MENU_DOWN") then dir = -1; end
 				if (self.active_group == 0) then
 					self.playercount = (self.playercount + dir) > 0 and (self.playercount + dir) or 0;
-				else
+				elseif (self.active_group == 1) then
 					self.buttoncount = (self.buttoncount + dir) > 0 and (self.buttoncount + dir) or 0;
+				else
+					self.axescount = (self.axescount + dir) > 0 and (self.axescount + dir) or 0;
 				end
 			
-			elseif (val == "MENU_LEFT" or val == "MENU_RIGHT") then
-				self.active_group = self.active_group == 1 and 0 or 1;
-
+			elseif (val == "MENU_LEFT") then
+				self.active_group = (self.active_group - 1) % 3;
+			elseif (val == "MENU_RIGHT") then
+				self.active_group = (self.active_group + 1) % 3;
 			elseif (val == "MENU_SELECT") then
 				self.input = self.defaultinput;
 				self.playerconf = true;
@@ -213,8 +220,12 @@ local function keyconf_inp_playersel(self, inputtable)
 				for i=1, self.buttoncount do
 					table.insert(self.player_group, "rBUTTON" .. tostring(i));
 				end
+
+				for i=1, self.axescount do
+					table.insert(self.player_group, "aAXIS_" .. tostring(i));
+				end
 				
-				if (self.playercount > 0 and self.buttoncount > 0) then
+				if (self.playercount > 0 and (self.buttoncount > 0 or self.axescount > 0)) then
 					for i=1,self.playercount do
 						for j=1,#self.player_group do
 							kind = string.sub(self.player_group[j], 1, 1);

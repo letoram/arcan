@@ -198,6 +198,10 @@ local function setup_bezel()
 	return false;
 end
 
+function gridle_fit(sourcew, sourceh, windw, windh)
+	
+end
+
 function gridlemenu_resize_fullscreen(source)
 -- rotations are not allowed for H-Split / H-Split SBS and V-Split needs separate treatment 
 	local rotate = (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") and (settings.cocktail_mode == "Disabled");
@@ -258,7 +262,6 @@ function gridlemenu_resize_fullscreen(source)
 		resize_image(source, props.width * 2, props.height * 2);
 
 	elseif (scalemode == "Keep Aspect") then
--- more expensive than the 'correct' way, but less math ;p  
 		local step = 0;
 		local ar = props.width / props.height;
 		while ( (step < windw) and (step / ar < windh) ) do
