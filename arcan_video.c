@@ -98,6 +98,29 @@ struct arcan_video_display arcan_video_display = {
     .mipmap = true
 };
 
+/* these all represent a subset of the current context that is to be drawn.
+ * if (dest != NULL) this means tha the vid actually represents a rendertarget, e.g. FBO or PBO.
+ * the mode defines which output buffers (color, depth, ...) that should be stored.
+ * readback defines if we want a PBO- or glReadPixels style readback into the .raw buffer of the target.
+ * reset defines if any of the intermediate buffers should be cleared beforehand.
+ * first refers to the first object in the subset.
+ * if first and dest are null, stop processing the list of rendertargets. */
+
+enum rendertarget_mode {
+	RENDERTARGET_COLOR,
+	RENDERTARGET_DEPTH
+};
+
+struct rendertarget {
+	GLint fbo;
+	bool readback, reset;  
+	enum rendertarget_mode mode;
+	arcan_vobject_litem* dest;
+	arcan_vobject_litem* first;
+
+	struct rendertarget* next;
+};
+
 struct arcan_video_context {
 	unsigned vitem_ofs;
 	unsigned vitem_limit;
@@ -106,7 +129,9 @@ struct arcan_video_context {
 	
 	arcan_vobject world;
 	arcan_vobject* vitems_pool;
-	arcan_vobject_litem* first;
+
+	struct rendertarget** targets;
+	struct rendertarget stdout;
 };
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
@@ -190,11 +215,9 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 
 static void step_active_frame(arcan_vobject* vobj)
 {
-	unsigned ind = 0;
-
 	if (!vobj->frameset)
 		return;
-	
+
 	do
 		vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) % vobj->frameset_meta.capacity;
 	while (vobj->frameset[ vobj->frameset_meta.current ] == NULL);
@@ -266,7 +289,7 @@ signed arcan_video_pushcontext()
 	
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
-	current_context->first = NULL;
+	current_context->targets = NULL;
 
 	return arcan_video_nfreecontexts();
 }
@@ -429,18 +452,18 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 		src->owner = new_litem;
 
 		/* case #1, no previous item or first */
-		if (!current_context->first) {
-			current_context->first = new_litem;
+		if (!current_context->stdout.first) {
+			current_context->stdout.first = new_litem;
 		}
 		else
-			if (current_context->first->elem->order > src->order) { /* insert first */
-				new_litem->next = current_context->first;
-				current_context->first = new_litem;
+			if (current_context->stdout.first->elem->order > src->order) { /* insert first */
+				new_litem->next = current_context->stdout.first;
+				current_context->stdout.first = new_litem;
 				new_litem->next->previous = new_litem;
 			} /* insert "anywhere" */
 			else {
 				bool last = true;
-				arcan_vobject_litem* ipoint = current_context->first;
+				arcan_vobject_litem* ipoint = current_context->stdout.first;
 				/* scan for insertion point */
 				do {
 					last = (ipoint->elem->order <= src->order);
@@ -499,26 +522,33 @@ static surface_transform* dup_chain(surface_transform* base)
 	return res;
 }
 
-arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
+arcan_errc detatch_fromtarget(struct rendertarget* dst, arcan_vobj_id id, bool gotowner)
 {
-	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* src = arcan_video_getobject(id);
 
 	if (src && src->owner) {
-		arcan_vobject_litem* current_litem = src->owner;
+		arcan_vobject_litem* current_litem;
+		if (gotowner && src->owner)
+			current_litem = src->owner;
+		else {
+			current_litem = dst->first;
+			while (current_litem && current_litem->elem && current_litem->elem->cellid != id)
+				current_litem = current_litem->next;
+		}
 
-/* with frameset objects, we can get a detatch call
- * even though it's not attached */
-		if (!src->owner)
-			return ARCAN_ERRC_UNACCEPTED_STATE;
-			
-		src->owner = NULL;
+		if (!current_litem || !current_litem->elem)
+			return rv;
+		
+/* with frameset objects, we can get a detatch call even though it's not attached */
+		if (gotowner && src->owner)
+			src->owner = NULL;
 
 /* double-linked */
 		if (current_litem->previous)
 			current_litem->previous->next = current_litem->next;
 		else
-			current_context->first = current_litem->next; /* only first cell lacks a previous node */
+			dst->first = current_litem->next; /* only first cell lacks a previous node */
 
 		if (current_litem->next)
 			current_litem->next->previous = current_litem->previous;
@@ -528,6 +558,11 @@ arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
 	}
 
 	return rv;
+}
+
+arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
+{
+	return detatch_fromtarget(&current_context->stdout, id, true);
 }
 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
@@ -2154,10 +2189,12 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* no effect if already detatched */
 		arcan_video_detatchobject(id);
 
+/* FIXME: scan all rendertargets and detatch. If this leaves the rendertarget useless, delete it. */
+
 /* scan the current context, look for clones and other objects that has this object as a parent */
 		arcan_vobject_litem* current;
 retry:  
-		current = current_context->first;
+		current = current_context->stdout.first;
 		
 		while (current && current->elem) {
 			arcan_vobject* elem = current->elem;
@@ -2239,7 +2276,7 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
     if (!vobj)
         return rv;
     
-    arcan_vobject_litem* current = current_context->first;
+    arcan_vobject_litem* current = current_context->stdout.first;
     
     while (current && current->elem) {
         arcan_vobject* elem = current->elem;
@@ -2656,7 +2693,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 uint32_t arcan_video_tick(uint8_t steps)
 {
 	unsigned now = arcan_frametime();
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 
 	while (steps--) {
 /*		printf("(%d) alive: %ld\n", arcan_video_display.c_ticks, current_context->nalive); */
@@ -2705,7 +2742,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 			}
 			while ((current = current->next) != NULL);
 
-		current = current_context->first;
+		current = current_context->stdout.first;
 	}
 
 	return 0;
@@ -2842,10 +2879,11 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, prop.scale.y, 0, txcos);
 }
 
-/* scan all 'feed objects' (possible optimization, keep these tracked in a separate list) */
+/* scan all 'feed objects' (possible optimization, keep these tracked in a separate list and run prior to all other rendering,
+ * might gain something when other pseudo-asynchronous operations (e.g. PBO) are concerned */
 void arcan_video_pollfeed()
 {
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 
 	while(current && current->elem){
 	arcan_vobject* cframe = current->elem->current_frame;
@@ -2860,7 +2898,7 @@ void arcan_video_pollfeed()
 			/* cycle active frame */
 			if (celem->frameset_meta.mode < 0){
 				celem->frameset_meta.counter--;
-			
+				
 				if (celem->frameset_meta.counter == 0){
 					celem->frameset_meta.counter = abs( celem->frameset_meta.mode );
 					step_active_frame(celem);
@@ -2889,7 +2927,7 @@ void arcan_video_pollfeed()
  * redraw the entire scene and linearly interpolate transformations */
 void arcan_video_refresh_GL(float lerp)
 {
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_vobject* world = &current_context->world;
 
@@ -2980,11 +3018,16 @@ void arcan_video_refresh_GL(float lerp)
 				unsigned j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
 				for(unsigned i = 0;i < j; i++){
 					char unifbuf[9] = {0};
-					
-					if (elem->frameset[i] == NULL) continue;
+					int frameind = (elem->frameset_meta.current + i) % elem->frameset_meta.capacity;
+					if (elem->frameset[frameind] == NULL){
+#ifdef _DEBUG
+						arcan_warning("arcan_video_refresh_GL( MULTITEXTURE ) -- unmapped cell (%d) ignored.\n", frameind);
+#endif
+						continue;
+					}
 					glActiveTexture(GL_TEXTURE0 + i);
 					glEnable(GL_TEXTURE_2D);
-					glBindTexture(GL_TEXTURE_2D, elem->frameset[ (elem->frameset_meta.current + i) % elem->frameset_meta.capacity ]->gl_storage.glid);
+					glBindTexture(GL_TEXTURE_2D, elem->frameset[ frameind ]->gl_storage.glid);
 					snprintf(unifbuf, 8, "map_tu%d", i);
 					arcan_shader_forceunif(unifbuf, shdrint, &i, false);
 				}
@@ -3008,7 +3051,7 @@ void arcan_video_refresh_GL(float lerp)
 	}
 
 /* reset and try the 3d part again if requested */
-	current = current_context->first;
+	current = current_context->stdout.first;
 	if (arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
@@ -3074,7 +3117,7 @@ unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int
 	if (count == 0)
 		return 0;
 
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 	uint32_t base = 0;
 
 	while (current && base < count) {
@@ -3095,7 +3138,7 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h)
 
 void arcan_video_dumppipe()
 {
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 	uint32_t count = 0;
 	printf("-----------\n");
 	if (current)
@@ -3270,7 +3313,7 @@ bool arcan_video_prepare_external()
 
 unsigned arcan_video_maxorder()
 {
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 	int order = 0;
 	
 	while (current){
@@ -3317,7 +3360,7 @@ void arcan_video_restore_external()
 
 void arcan_video_shutdown()
 {
-	arcan_vobject_litem* current = current_context->first;
+	arcan_vobject_litem* current = current_context->stdout.first;
 	unsigned lastctxa, lastctxc = arcan_video_popcontext();
 
 /*  this will effectively make sure that all external launchers, frameservers etc. gets killed off */

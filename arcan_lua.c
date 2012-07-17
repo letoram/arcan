@@ -1828,8 +1828,8 @@ static void dump_stack(lua_State* ctx)
 
 int arcan_lua_gamefamily(lua_State* ctx)
 {
-	const char* game = luaL_checkstring(ctx, 1);
-	arcan_dbh_res res = arcan_db_game_siblings(dbhandle, game, 0);
+	const int gameid = luaL_checkinteger(ctx, 1);
+	arcan_dbh_res res = arcan_db_game_siblings(dbhandle, NULL, gameid);
 	int rv = 0;
 
 	if (res.kind == 0 && res.data.strarr) {

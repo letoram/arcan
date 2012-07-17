@@ -271,8 +271,6 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh* dbh,
                                      const int gameid)
 {
 	arcan_dbh_res res = {.kind = -1};
-	res.data.strarr = (char**) calloc(sizeof(char*), 8);
-	unsigned int count = 0, limit = 8;
 
 	sqlite3_stmt* stmt = NULL;
 	const char* baseqry1 = "SELECT a.title FROM game a, game_relations b WHERE b.series = "
@@ -289,13 +287,13 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh* dbh,
 	else
 		if (gameid > 0) {
 			sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
-			sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int(stmt, 1, gameid);
 		}
 		else
 			return res;
 
 	res.kind = 0;
-
+	res = db_string_query(dbh, stmt, NULL);
 	sqlite3_finalize(stmt);
 
 	return res;

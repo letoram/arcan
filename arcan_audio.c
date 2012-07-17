@@ -435,7 +435,6 @@ arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc)
 		aobj->feed = feed;
 		aobj->gain = 1.0;
 		aobj->kind = AOBJ_STREAM;
-		arcan_warning("audio feed, %d buffers\n", aobj->n_streambuf);
 		alGenBuffers(aobj->n_streambuf, aobj->streambuf);
 		_wrap_alError(NULL, "audio_feed(genBuffers)");
 

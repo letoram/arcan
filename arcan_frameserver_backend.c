@@ -169,7 +169,7 @@ static int push_buffer(char* buf, unsigned int mode,
 					
 		rv = FFUNC_RV_COPIED; 
 	}
-/* hack to reduce extraneous copying, afaik. there's also a streaming texture mode
+/* hack to reduce extraneous copying, afaik. there's also a streaming texture mode and PBOs
  * that might be worth looking into */
 	else {
 		glBindTexture(GL_TEXTURE_2D, mode);

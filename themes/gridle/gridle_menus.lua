@@ -131,7 +131,7 @@ local filterlbls = {
 	"Buttons",
 	"Genre",
 	"Subgenre",
-	"System", 
+	"System",
 	"Target"
 };
 
@@ -155,7 +155,7 @@ local function setbgfun(label, save)
 	settings.bgname = label;
 
 	if (save) then 
-		store_key("bgname", 0);
+		store_key("bgname", label);
 		play_audio(soundmap["MENU_FAVORITE"]);
 	else
 		play_audio(soundmap["MENU_SELECT"]);
@@ -530,6 +530,20 @@ function gridlemenu_defaultdispatch()
 					end
 				end
 			end
+	end
+	
+	if (not (settings.iodispatch["MENU_ESCAPE"])) then
+		settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+		current_menu:destroy();
+
+		if (current_menu.parent ~= nil) then
+			if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
+			current_menu = current_menu.parent;
+		else -- top level
+			play_audio(soundmap["MENU_FADE"]);
+			settings.iodispatch = griddispatch;
+		end
+		end
 	end
 	
 	if (not settings.iodispatch["MENU_RIGHT"]) then

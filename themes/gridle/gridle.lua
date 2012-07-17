@@ -320,7 +320,7 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
 	imagery.bgimage = load_image("backgrounds/" .. name);
-	
+	print("load:" .. name);
 	resize_image(imagery.bgimage, VRESW, VRESH);
 	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
 	image_shader(imagery.bgimage, bgshader);
@@ -968,6 +968,7 @@ function load_settings()
 	load_key_str("scalemode", "scalemode", settings.scalemode);
 	load_key_num("movieagain", "movieagain", settings.movieagain);
 	load_key_str("tilebg", "tilebg", settings.tilebg);
+	load_key_str("bgname", "bgname", settings.bgname);
 	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
 	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
 	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);

@@ -39,7 +39,7 @@ class Generic
 			"(--genintargs) - comma- separated list of internal- launch arguments",
 			"(--genextargs) - comma- separated list of external- launch arguments",
 			"(--genrompath) targetname - encodes full rompath (as per --rompath) into the romset",
-			"(--genstriptitle) try and shrink the game title as much as possible",
+			"(--gennostriptitle) try and shrink the game title as much as possible",
 		]
 	end
 

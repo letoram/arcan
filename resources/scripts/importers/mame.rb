@@ -216,7 +216,10 @@ class Mame
 			res.title = @shorttitle ? shorttitle : title
 		
 			res.ctrlmask = 0
-			res.year  = node_tree.xpath("//game/year").text
+			res.year = node_tree.xpath("//game/year").text
+			res.year = res.year.to_i if (res.year) 
+			res.year = 0 if res.year < 1900
+			
 			res.manufacturer = node_tree.xpath("//game/manufacturer").text
 			res.setname = node_tree.root.attributes['name'].value
 			res.system = "Arcade" # It might be possible to parse more out of the description
