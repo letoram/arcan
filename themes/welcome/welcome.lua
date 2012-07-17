@@ -40,6 +40,7 @@ function welcome()
 	argwindow = render_text( [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b\n\r\ffonts/default.ttf,12
 	-w res  \t(default: 640)\n\r
 	-h res  \t(default: 480)\n\r
+	-v      \tdisable VSYNC\n\r
 	-x winx \tset window start x coordinate\n\r
 	-y winy \tset window start y coordinate\n\r
 	-f      \tswitch resolution\n\r

@@ -67,6 +67,8 @@ static struct {
 		unsigned skipcount;
 		int skipmode; 
 		
+		enum retro_pixel_format colormode;
+		
 		double mspf;
 		long long int basetime;
 	
@@ -82,7 +84,6 @@ static struct {
 		struct retro_system_info sysinfo;
 		struct retro_game_info gameinfo;
 		unsigned state_size;
-		
 		long long framecount;
 /* 
  * current versions only support a subset of inputs (e.g. 1 mouse/lightgun + 12 buttons per port.
@@ -100,6 +101,7 @@ static struct {
 		size_t (*serialize_size)();
 		bool (*serialize)(void*, size_t);
 		bool (*deserialize)(const void*, size_t);
+		void (*set_ioport)(unsigned, unsigned);
 } retroctx = {0};
 
 /* XRGB555 */
@@ -131,29 +133,43 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		retroctx.audguardb[1] = 0xad;
 	}
 
-/* assumption 1: aligned source data */
-	uint16_t* buf  = (uint16_t*) data;
-	assert( (uintptr_t)buf % 2 == 0 );
-	
-/* assumption 2: aligned vidp */
+/* assumption 1: aligned vidp */
 	uint32_t* dbuf = (uint32_t*) retroctx.vidp;
 	assert( (uintptr_t)dbuf % 4 == 0 );
 
-/* RGB1555 to RGBA */
-	for (int y = 0; y < height; y++){
-		for (int x = 0; x < width; x++){
-			uint16_t val = buf[x];
-			uint8_t r = ((val & 0x7c00) >> 10 ) << 3;
-			uint8_t g = ((val & 0x3e0) >> 5) << 3;
-			uint8_t b = (val & 0x1f) << 3;
+/* assumption 2: aligned source data */
+	if (retroctx.colormode == RETRO_PIXEL_FORMAT_0RGB1555){
+		uint16_t* buf  = (uint16_t*) data;
+		assert( (uintptr_t)buf % 4 == 0 );
+		for (int y = 0; y < height; y++){
+			for (int x = 0; x < width; x++){
+				uint16_t val = buf[x];
+				uint8_t r = ((val & 0x7c00) >> 10 ) << 3;
+				uint8_t g = ((val & 0x3e0) >> 5) << 3;
+				uint8_t b = (val & 0x1f) << 3;
 
-			*dbuf = (0xff) << 24 | b << 16 | g << 8 | r;
-			dbuf++;
-		}
+				*dbuf = (0xff) << 24 | b << 16 | g << 8 | r;
+				dbuf++;
+			}
 			
-		buf  += pitch >> 1;
+			buf += pitch >> 1;
+		}
 	}
-	
+	else if (retroctx.colormode == RETRO_PIXEL_FORMAT_XRGB8888){
+		uint32_t* buf = (uint32_t*) data;
+		assert( (uintptr_t)buf % 4 == 0 );
+		
+		for (int y = 0; y < height; y++){
+			for (int x = 0; x < width; x++){
+					uint32_t val = buf[x];
+					*dbuf = 0xff & ( val << 8 );
+			}
+
+			buf += pitch >> 2;
+		}
+	}
+	else
+		LOG("arcan_frameserver(libretro) -- unknown pixel format (%d) specified.\n", retroctx.colormode);
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
@@ -190,8 +206,16 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	bool rv = false;
 	
 	switch (cmd){
-//		case RETRO_ENVIRONMENT_CAN_DUPE: rv = true; break;
-		case RETRO_ENVIRONMENT_SHUTDOWN: rv = true; break;
+		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: 
+			rv = true; 
+			retroctx.colormode = *(enum retro_pixel_format*) data;
+		break;
+		
+/* ignore for now */
+		case RETRO_ENVIRONMENT_SHUTDOWN: break;
+		
+ /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
+		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: break;
 	}
 	
 	return rv; 
@@ -284,8 +308,7 @@ static inline void targetev(arcan_event* ev)
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER: retroctx.last_fd = frameserver_readhandle( ev ); break;
 		
-/* if intval is > 0, the skipval is to drop every N frames,
- * if intval is < 0, the skipval is to render every abs(n) frames. */
+/* 0 : auto, -1 : disable, > 0 render every n frames. */
 		case TARGET_COMMAND_FRAMESKIP: retroctx.skipmode = ev->data.target.ioevs[0]; break;
 		
 /* any event not being UNPAUSE is ignored, no frames are processed
@@ -300,7 +323,12 @@ static inline void targetev(arcan_event* ev)
 		
 /* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from _event.h */
 		case TARGET_COMMAND_SETIODEV: 
-			
+			retroctx.set_ioport(ev->data.target.ioevs[0], ev->data.target.ioevs[1]);
+		break;
+		
+		case TARGET_COMMAND_STEPFRAME:
+			if (ev->data.target.ioevs[0] < 0); /* FIXME: rewind not implemented */
+				else while(ev->data.target.ioevs[0]--){ retroctx.run(); }
 		break;
 	
 /* store / rewind operate on the last FD set through FDtransfer */
@@ -333,11 +361,6 @@ static inline void targetev(arcan_event* ev)
 				LOG("frameserver(libretro), snapshot restore requested without any viable target\n");
 		break;
 		
-/* intval[0] > 0 step back n frames. < 0 step back abs(n) frames every frame */
-		case TARGET_COMMAND_REWIND: 
-			LOG("frameserver(libretro), rewind not implemented.\n");
-		break;
-
 		default:
 			arcan_warning("frameserver(libretro), unknown target event (%d), ignored.\n", ev->kind);
 	}
@@ -362,6 +385,19 @@ static inline void flush_eventq(){
  * return false if we're lagging behind */
 static inline bool retroctx_sync()
 {
+	retroctx.framecount++;
+
+	if (retroctx.skipmode == TARGET_SKIP_NONE) return true;
+	if (retroctx.skipmode > TARGET_SKIP_STEP) {
+		if (retroctx.skipcount == 0){
+			retroctx.skipcount = retroctx.skipmode - 1;
+			return false;
+		}
+		else  
+			retroctx.skipcount--;
+	}
+
+/* TARGET_SKIP_AUTO here */
 	long long int now  = frameserver_timemillis() - retroctx.basetime;
 	long long int next = floor( (double)retroctx.framecount * retroctx.mspf );
 	int left = next - now;
@@ -432,6 +468,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.serialize = (bool(*)(void*, size_t)) libretro_requirefun("retro_serialize");
 		retroctx.deserialize = (bool(*)(const void*, size_t)) libretro_requirefun("retro_unserialize"); /* bah, unmarshal or deserialize.. not unserialize :p */
 		retroctx.serialize_size = (size_t(*)()) libretro_requirefun("retro_serialize_size");
+		retroctx.set_ioport = (void(*)(unsigned,unsigned)) libretro_requirefun("retro_set_controller_port_device");
 		
 /* setup callbacks */
 		( (void(*)(retro_video_refresh_t) )libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);
@@ -489,7 +526,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				frameserver_semcheck( retroctx.shmcont.vsem, -1);
 			};
 
-			retroctx.framecount++;
 			retroctx.skipframe = !retroctx_sync();
 
 			assert(shared->aready == false && shared->vready == false);

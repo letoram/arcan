@@ -55,7 +55,7 @@ settings = {
 	bg_rw = VRESW / 32,
 	bg_speedh = 64,
 	bg_speedv = 64,
-	tilebg = "White",
+	tilebg = "Sysicons",
 	
 	borderstyle = "Normal", 
 	sortlbl = "Ascending",
@@ -131,6 +131,19 @@ function string.split(instr, delim)
 	return res;
 end
 
+function gridle_launchexternal()
+	erase_grid(true);
+	play_audio(soundmap["LAUNCH_EXTERNAL"]);
+	launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+	move_cursor(0);
+	build_grid(settings.cell_width, settings.cell_height);
+end
+
+function gridle_launchinternal()
+	play_audio(soundmap["LAUNCH_INTERNAL"]);
+	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
+end
+
 function gridle()
 -- grab all dependencies;
 	settings.colourtable = system_load("scripts/colourtable.lua")();    -- default colour values for windows, text etc.
@@ -182,7 +195,8 @@ function gridle()
 
 -- use the DB theme-specific key/value store to populate the settings table
 	load_settings();
-
+	grab_sysicons();
+	
 if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
@@ -275,17 +289,12 @@ end
 		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
 			and current_game().capabilities.internal_launch;
 
-
+-- can also be invoked from the context menus
 		if (launch_internal) then
-				play_audio(soundmap["LAUNCH_INTERNAL"]);
-				internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
-			else
-				erase_grid(true);
-				play_audio(soundmap["LAUNCH_EXTERNAL"]);
-				launch_target( current_game().gameid, LAUNCH_EXTERNAL);
-				move_cursor(0);
-				build_grid(settings.cell_width, settings.cell_height)			
-			end
+			gridle_launchinternal();
+		else
+			gridle_launchexternal();
+		end
 	end
 
 	imagery.black = fill_surface(1,1,0,0,0);
@@ -295,8 +304,8 @@ end
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 
 -- Little star keeping track of games marked as favorites
-	imagery.starimage    = load_image("star.png");
-	imagery.magnifyimage = load_image("magnify.png");
+	imagery.starimage    = load_image("images/star.png");
+	imagery.magnifyimage = load_image("images/magnify.png");
 
 	build_grid(settings.cell_width, settings.cell_height);
 	build_fadefunctions();
@@ -320,7 +329,6 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
 	imagery.bgimage = load_image("backgrounds/" .. name);
-	print("load:" .. name);
 	resize_image(imagery.bgimage, VRESW, VRESH);
 	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
 	image_shader(imagery.bgimage, bgshader);
@@ -566,7 +574,7 @@ function spawn_magnify( src )
 	force_image_blend(vid);
 
 	local props = image_surface_properties( src );
-	move_image(vid, props.x - (settings.cell_width * 0.05) + w + 4, props.y + (settings.cell_width * 0.05), 0);
+	move_image(vid, props.x, props.y + (settings.cell_width * 0.05), 0);
 	order_image(vid, ICONLAYER);
 	blend_image(vid, 1.0, settings.fadedelay);
 	resize_image(vid, 1, 1, NOW);
@@ -578,7 +586,7 @@ end
 
 function spawn_warning( message )
 -- render message and make sure it is on top
-	local vid = render_text(settings.colourtable.alert_fontstr .. message)
+	local vid = render_text(settings.colourtable.alert_fontstr .. string.gsub(message, "\\", "\\\\") )
 	order_image(vid, max_current_image_order() + 1);
 	local props = image_surface_properties(vid);
 
@@ -785,17 +793,29 @@ end
 -- resourcetbl is quite large, check resourcefinder.lua for more info
 function get_image( resourcetbl, gametbl )
 	local rvid = BADID;
+	
 	if ( resourcetbl.screenshots[1] ) then
 		rvid = load_image_asynch( resourcetbl.screenshots[1], got_asynchimage );
 		blend_image(rvid, 0.0); -- don't show until loaded 
 	end
 	
-	if (rvid == BADID) then
-		rvid = render_text( [[\#000088\ffonts/default.ttf,96 ]] .. gametbl.title );
-		blend_image(rvid, 0.3, settings.transitiondelay);
-	end
-
 	return rvid;
+end
+
+-- load icons used for title "background" (if there's no snapshot handy and that mode is set)
+function grab_sysicons()
+	if (imagery.sysicons == nil and settings.tilebg == "Sysicons") then
+		list = glob_resource("images/systems/*.png", ALL_RESOURCES);
+
+		imagery.sysicons = {};
+		for ind, val in ipairs(list) do
+			local sysname = string.sub(val, 1, -5);
+			local imgid = load_image("images/systems/" .. val);
+			if (imgid) then
+				imagery.sysicons[sysname] = imgid;
+			end
+		end
+	end
 end
 
 function zap_whitegrid()
@@ -822,7 +842,19 @@ function build_whitegrid()
 		for col=0, ncw-1 do
 -- only build new cells if there's a corresponding one in the grid 
 			if (settings.tilebg ~= "None" and grid[row][col] ~= nil and grid[row][col] > 0) then
-				local gridbg = instance_image(settings.tilebg ~= "Black" and imagery.white or imagery.black);
+				local gameno = (row * ncw + col + settings.pageofs + 1);
+				local gametbl = settings.games[gameno];
+				local gridbg = BADID;
+	
+				if (gametbl and gametbl.system and settings.tilebg == "Sysicons") then
+					local icon = imagery.sysicons[ string.lower(gametbl.system) ];
+					if (icon) then gridbg = icon; end
+					print(gametbl.system);
+				end
+				
+				if (gridbg == BADID) then
+					gridbg = instance_image(settings.tilebg == "Black" and imagery.black or imagery.white);
+				end
 				
 				resize_image(gridbg, settings.cell_width, settings.cell_height);
 				move_image(gridbg, cell_coords(col, row));
@@ -879,6 +911,24 @@ function erase_grid(rebuild)
 	end
 end
 
+-- try to fit msg into a cell
+local function titlestr(msg)
+	local basemsg = string.gsub(msg, "\\", "\\\\");
+	local fontheight = settings.cell_height < 10 and settings.cell_height or 10;
+	local bgcolor = settings.tilebg == "Black" and [[\#ffffff]] or [[\#0000ff]];
+	local fontstr = settings.colourtable.font .. tostring(fontheight) .. "\\b" .. bgcolor;
+
+-- if it doesn't fit by default, just crop until it does.
+	local w,h = text_dimensions( fontstr .. basemsg );
+	while (w > settings.cell_width and #basemsg > 1) do
+		local last = string.sub(basemsg, -1, -1) == "\\" 
+		w, h = text_dimensions( fontstr .. basemsg );
+	end
+	
+	local vid, lines = render_text(fontstr .. basemsg);
+	return vid;
+end
+
 function build_grid(width, height)
 --  figure out how many full cells we can fit with the current resolution
 	zap_whitegrid();
@@ -899,10 +949,17 @@ function build_grid(width, height)
 			if (settings.games[gameno] == nil) then break; end
 			settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
 			settings.games[gameno].capabilities = launch_target_capabilities( settings.games[gameno].target );
-			
+		
 			local vid = get_image(settings.games[gameno].resources, settings.games[gameno]);
-			resize_image(vid, settings.cell_width, settings.cell_height);
-			move_image(vid,cell_coords(col, row));
+			if (vid == BADID) then
+				vid = titlestr( settings.games[gameno].title );
+				blend_image(vid, 0.3);
+-- center
+			else
+				resize_image(vid, settings.cell_width, settings.cell_height);
+				move_image(vid, cell_coords(col, row));
+			end
+			
 			order_image(vid, GRIDLAYER);
 
 			local ofs = 0;

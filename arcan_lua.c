@@ -2074,12 +2074,16 @@ int arcan_lua_filtergames(lua_State* ctx)
 	char* genre = NULL;
 	char* subgenre = NULL;
 	char* target = NULL;
+	char* manufacturer = NULL;
 	char* system = NULL;
 	
 	int rv = 0;
 	int limit = 0;
 	int offset = 0;
 
+/* reason for all this is that lua_tostring MAY return NULL,
+ * and if it doesn't, the string can be subject to garbage collection after POP,
+ * thus need a working copy */
 	luaL_checktype(ctx, 1, LUA_TTABLE);
 	char* tv;
 	/* populate all arguments */
@@ -2137,16 +2141,21 @@ int arcan_lua_filtergames(lua_State* ctx)
 	lua_gettable(ctx, -2);
 	system = _n_strdup(lua_tostring(ctx, -1), NULL);
 	lua_pop(ctx, 1);
+
+	lua_pushstring(ctx, "manufacturer");
+	lua_gettable(ctx, -2);
+	manufacturer = _n_strdup(lua_tostring(ctx, -1), NULL);
+	lua_pop(ctx, 1);
 	
-	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target, system, offset, limit);
-	/* reason for all this is that lua_tostring MAY return NULL,
-	 * and if it doesn't, the string can be subject to garbage collection after POP,
-	 * thus need a working copu */
+	arcan_dbh_res dbr = arcan_db_games(dbhandle, year, input, n_players, n_buttons, title, genre, subgenre, target, system, manufacturer, offset, limit);
 	free(genre);
 	free(subgenre);
 	free(title);
+	free(target);
+	free(system);
+	free(manufacturer);
 
-	if (dbr.kind == 1) {
+	if (dbr.kind == 1 && dbr.count > 0) {
 		arcan_db_game** curr = dbr.data.gamearr;
 		int count = 1;
 
@@ -2199,10 +2208,10 @@ int arcan_lua_getgame(lua_State* ctx)
 
 	arcan_dbh_res dbr = arcan_db_games(dbhandle, 
 		0, 0, 0, 0, /* year, input, players, buttons */
-		game, NULL, NULL, NULL, NULL, /* title, genre, subgenre, target, system */
+		game, NULL, NULL, NULL, NULL, NULL, /*title, genre, subgenre, target, system, manufacturer */
 		0, 0); /* offset, limit */
 	
-	if (dbr.kind == 1 && dbr.data.gamearr && (*dbr.data.gamearr)) {
+	if (dbr.kind == 1 && dbr.count > 0 && dbr.data.gamearr && (*dbr.data.gamearr)) {
 		arcan_db_game** curr = dbr.data.gamearr;
 	/* table of tables .. wtb ruby yield */
 		lua_newtable(ctx);
@@ -2358,18 +2367,22 @@ int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 			arcan_lua_tblbool(ctx, "rewind", false, top);
 			arcan_lua_tblbool(ctx, "suspend", false, top);
 			arcan_lua_tblbool(ctx, "reset", true, top);
+			arcan_lua_tblnum(ctx, "ports", 4, top);
 		} else {
 /* the plan is to extend the internal launch support with a probe (sortof prepared for in the build-system)
  * to check how the target is linked, which dependencies it has etc. */
 			arcan_lua_tblbool(ctx, "external_launch", true, top);
-			if (strcmp(internal_launch_support(), "NO SUPPORT") == 0)
+			if (strcmp(internal_launch_support(), "NO SUPPORT") == 0 ||
+				(strcmp(internal_launch_support(), "PARTIAL SUPPORT") == 0 && arcan_libpath == NULL))
 				arcan_lua_tblbool(ctx, "internal_launch", false, top);
 			else
 				arcan_lua_tblbool(ctx, "internal_launch", true, top);
+			
 			arcan_lua_tblbool(ctx, "reset", false, top);
 			arcan_lua_tblbool(ctx, "snapshot", false, top);
 			arcan_lua_tblbool(ctx, "rewind", false, top);
 			arcan_lua_tblbool(ctx, "suspend", false, top);
+			arcan_lua_tblnum(ctx, "ports", 0, top);
 		}
 		
 		rv = 1;
@@ -2380,6 +2393,54 @@ int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 	free(resourcestr);
 
 	return rv;
+}
+
+static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
+{
+	vfunc_state* state = arcan_video_feedstate(dst);
+
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
+		arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+		arcan_frameserver_pushevent( fsrv, &ev );
+		return true;
+	}
+	
+	return false;
+}
+
+int arcan_lua_targetportcfg(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	unsigned tgtport  = luaL_checkinteger(ctx, 2);
+	unsigned tgtkind  = luaL_checkinteger(ctx, 3);
+	
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_SETIODEV};
+
+	ev.data.target.ioevs[0] = tgtport;
+	ev.data.target.ioevs[1] = tgtkind;
+	
+	tgtevent(tgt, ev);
+	
+	return 0;
+}
+
+int arcan_lua_targetskipmodecfg(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	int skipval       = luaL_checkinteger(ctx, 2);
+	if (skipval < -1) return 0;	
+	
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_FRAMESKIP
+	};
+
+	ev.data.target.ioevs[0] = skipval;
+	tgtevent(tgt, ev);
+	
+	return 0;
 }
 
 int arcan_lua_targetrestore(lua_State* ctx)
@@ -2412,6 +2473,17 @@ int arcan_lua_targetrestore(lua_State* ctx)
 
 int arcan_lua_targetrewind(lua_State* ctx)
 {
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	int nframes = luaL_checknumber(ctx, 2);
+	if (nframes == 0) return 0;
+	
+	arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_STEPFRAME
+	};
+	ev.data.target.ioevs[0] = nframes;
+	
+	tgtevent(tgt, ev);
 	
 	return 0;
 }
@@ -2449,18 +2521,12 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 int arcan_lua_targetreset(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
-	if (vid != ARCAN_EID){
-		vfunc_state* state = arcan_video_feedstate(vid);
+	arcan_event ev = {
+		.kind = TARGET_COMMAND_RESET,
+		.category = EVENT_TARGET
+	};
 
-		if (state && state->ptr && state->tag == ARCAN_TAG_FRAMESERV){
-			arcan_event ev = {
-				.kind = TARGET_COMMAND_RESET,
-				.category = EVENT_TARGET
-			};
-			
-			arcan_frameserver_pushevent( (arcan_frameserver*) state->ptr, &ev);
-		}
-	}
+	tgtevent(vid, ev);
 	
 	return 0;
 }
@@ -2530,9 +2596,8 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 			}
 			else {
 				arcan_frameserver* intarget = arcan_target_launch_internal( resourcestr, cmdline.data.strarr);
-				intarget->tag = ref;
-				
 				if (intarget) {
+					intarget->tag = ref;
 					lua_pushvid(ctx, intarget->vid);
 					arcan_db_launch_counter_increment(dbhandle, gameid);
 					rv = 1;
@@ -2946,9 +3011,17 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
  */ 
 	arcan_lua_register(ctx, "resume_target", arcan_lua_targetresume);
 
-/* item: rewind_target, tgtvid, seconds, nil
- * try and rewind the state of the specific target (if rewind capabilities are there) 
- */
+/* item: target_portconfig, portnum, devtype, nil
+ * plug in the specific devicetype in the port number portnum */
+	arcan_lua_register(ctx, "target_portconfig", arcan_lua_targetportcfg);
+	
+/* item: target_framemode, mode, nil
+ * change the default framemode for the target (default / auto = 0, noskip = -1, singlestep = 1, > n (n > 1) process every n frames */
+	arcan_lua_register(ctx, "target_framemode", arcan_lua_targetskipmodecfg);
+
+/* item: rewind_target, tgtvid, frames, nil
+ * try and rewind the state of the specific target (if rewind capabilities are there)
+ * n number of frames */
 	arcan_lua_register(ctx, "rewind_target", arcan_lua_targetrewind);
 	
 /* item: snapshot_target, tgtvid, snapid, nil

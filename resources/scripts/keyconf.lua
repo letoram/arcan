@@ -505,16 +505,18 @@ local function keyconf_flush(self)
 		print("Couldn't save keysym.lua, check diskspace and permissions in theme folder.\n");
 		close_rawresource();
 		return;
-    end
-
-	for key, value in pairs(self.table) do
-	if (type(value) == "table") then
-	    write_rawresource( "keyconf[\"" .. key .. "\"] = {\"");
-	    write_rawresource( table.concat(value, "\",\"") .. "\"};\n" );
-	else
-	    write_rawresource( "keyconf[\"" .. key .. "\"] = \"" .. value .. "\";\n" );
 	end
-    end
+
+	write_rawresource( "keyconf.player_count = " .. self.playercount .. ";\n" );
+	
+	for key, value in pairs(self.table) do
+		if (type(value) == "table") then
+			write_rawresource( "keyconf[\"" .. key .. "\"] = {\"");
+			write_rawresource( table.concat(value, "\",\"") .. "\"};\n" );
+		else
+			write_rawresource( "keyconf[\"" .. key .. "\"] = \"" .. value .. "\";\n" );
+		end
+	end
 
     write_rawresource("return keyconf;");
     close_rawresource();

@@ -10,11 +10,6 @@
 -- Admin
 --
 
-local mainlbls = {
-	"Quickfilter",
-	"Admin"
-}
-
 local filterlbls = {
 	"Manufacturer",
 	"System",
@@ -24,7 +19,33 @@ local filterlbls = {
 	"Genre"
 };
 
+local launchlbls = {
+	"External",
+	"Internal"
+};
+
+local launchptrs = {};
+launchptrs["External"] = function() 
+	settings.iodispatch["MENU_ESCAPE"](false, nil, true); 
+	settings.iodispatch["MENU_ESCAPE"](false, nil, true); 
+	gridle_launchexternal(); 
+end
+
+launchptrs["Internal"] = function() 
+	settings.iodispatch["MENU_ESCAPE"](false, nil, true); 
+	settings.iodispatch["MENU_ESCAPE"](false, nil, true);
+	gridle_launchinternal(); 
+end
+
 local filterptrs = {};
+
+local function dofilter()
+	settings.iodispatch["MENU_ESCAPE"](false, nil, true);
+	settings.iodispatch["MENU_ESCAPE"](false, nil, true);
+
+	table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
+	gridlemenu_filterchanged();
+end
 
 -- we know there's a family list available with 1..n titles where n >= 1.
 local function gridlemenu_familyfilter(source, target, sound)
@@ -42,40 +63,34 @@ local function gridlemenu_familyfilter(source, target, sound)
 		end
 	end
 
-	settings.iodispatch["MENU_ESCAPE"](false, nil, nil);
-	settings.iodispatch["MENU_ESCAPE"](false, nil, nil);
-	play_audio(soundmap["MENU_FADE"]);
+	dofilter(); 
+end
 
-	table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
-	settings.cursor = 0;
-	settings.pageofs = 0;
-	
-	erase_grid(false);
-	build_grid(settings.cell_width, settings.cell_height);
-	move_cursor(1, true);
+local function gridlemenu_resetfilter(source, target, sound)
+	settings.filters = {};
+	local gl = list_games(settings.filters);
+	dofilter();
 end
 
 local function gridlemenu_quickfilter(source, target, sound)
-	settings.iodispatch["MENU_ESCAPE"](false, nil, nil);
-	settings.iodispatch["MENU_ESCAPE"](false, nil, nil);
-	
-	settings.filters = {};
-	settings.filters[source] = current_game()[source];
-	settings.games = list_games(settings.filters);
-	
-	play_audio(soundmap["MENU_FADE"]);
-	table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
+	local filters = {};
+	filters[source] = current_game()[source];
 
-	settings.cursor = 0;
-	settings.pageofs = 0;
-			
-	erase_grid(false);
-	build_grid(settings.cell_width, settings.cell_height);
-	move_cursor(1, true);
+	local gl = list_games(filters);
+	if (gl == nil) then
+		settings.games = list_games(settings.filters);
+	else
+		settings.games = gl;
+		settings.filters = filters;
+	end
+	
+	dofilter();
 end
 
 -- change launch mode for this particular game
 function gridlemenu_context( gametbl )
+	local mainlbls = {"Quickfilter"};
+	
 	griddispatch = settings.iodispatch;
 	settings.iodispatch = {};
 	gridle_oldinput = gridle_input;
@@ -115,10 +130,22 @@ function gridlemenu_context( gametbl )
 			table.insert(restbl, "family");
 			resptr[ "family" ] = gridlemenu_familyfilter;
 		end
+	
+		table.insert(restbl, "reset");
+		resptr[ "reset" ] = gridlemenu_resetfilter;
 		
-		if (#restbl > 0) then
-			menu_spawnmenu(restbl, resptr, {});
-		end
+		menu_spawnmenu(restbl, resptr, {});
+	end
+
+	if (gametbl.capabilities.external_launch and gametbl.capabilities.internal_launch) then
+		table.insert(mainlbls, "Launch...");
+		ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end
+	elseif (gametbl.capabilities.external_launch) then 
+		table.insert(mainlbls, "Launch External");
+		ptrs[ "Launch External" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchexternal(); end 
+	else
+		table.insert(mainlbls, "Launch Internal");
+		ptrs[ "Launch Internal" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchinternal(); end
 	end
 	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);

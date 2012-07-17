@@ -371,7 +371,7 @@ end
 local function get_saveslist(gametbl)
 -- check for existing snapshots (ignore auto and quicksave)
 	local saveslist = {};
-	local saves = glob_resource("savestates/" .. gametbl.target .. "_" .. gametbl.setname .. "_*", 2)
+	local saves = glob_resource("savestates/" .. gametbl.target .. "_" .. gametbl.setname .. "_*", SHARED_RESOURCE)
 	for ind, val in ipairs( saves ) do
 		if not (string.sub( val, -5, -1 ) == "_auto" or 
 				string.sub( val, -10, -1 ) == "_quicksave") then
@@ -408,8 +408,8 @@ local function build_shadermenu()
 	local reslbls = {};
 	local resptrs = {};
 	local shaderlist = {};
-	local vreslist = glob_resource("shaders/fullscreen/*.vShader", 2);
-	local freslist = glob_resource("shaders/fullscreen/*.fShader", 2);
+	local vreslist = glob_resource("shaders/fullscreen/*.vShader", SHARED_RESOURCE);
+	local freslist = glob_resource("shaders/fullscreen/*.fShader", SHARED_RESOURCE);
 
 -- make sure both exist, add vertex to list, then add to real list if fragment
 -- exist as well
@@ -561,7 +561,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 			return false;
 	end
 
-if (captbl.snapshot) then
+	if (captbl.snapshot) then
 		if ( (# get_saveslist( cg )) > 0 ) then
 			table.insert(lbltbl, "Load State...");
 			ptrtbl[ "Load State..." ] = function(label, store)
@@ -577,6 +577,20 @@ if (captbl.snapshot) then
 			menu_spawnmenu( lbls, ptrs, fmt );
 		end
 	end
+
+-- fixme; generate menus for each input port with (gamepad, mouse, keyboard, ...) sort of options
+-- in order to plug into proper libretro devices .. 
+--	if ( captbl.ports and captbl.ports > 0) then
+--		local numslots = captbl.ports > keyconfig.table.player_count and keyconfig.table.player_count or captbl.ports;
+--		if (numslots > 0) then
+--			table.insert(lbltbl, "Input Ports");
+--			for i=1,numslots do
+--				local key = "Input " .. tostring(i);
+--				table.insert(lbltbl, key);
+--				ptrtbl[key] = "
+--			end
+--		end
+--	end
 	
 	if ( captbl.reset ) then
 		table.insert(lbltbl, "Reset Game");
@@ -601,6 +615,16 @@ end
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
 -- replace it with the one used for these menus (check iodispatch for MENU_ESCAPE for the handover)
+	if (not (contextlbls or settingslbls)) then return; end
+
+	local menulbls = {};
+	local ptrs = {};
+
+	if (contextlbls) then
+		add_gamelbls(menulbls, ptrs);
+		if (#menulbls == 0) then return; end
+	end
+
 	griddispatch = settings.iodispatch;
 	settings.iodispatch = {};
 	gridle_oldinput = gridle_input;
@@ -608,7 +632,6 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 	
 	gridlemenu_destvid = target_vid;
 
-	
 	settings.iodispatch["CONTEXT"] = function(iotbl)
 		selectlbl = current_menu:select()
 		
@@ -660,14 +683,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 		end
 	end
 
-	local menulbls = {};
-	local ptrs = {};
-
-	if (contextlbls) then
-		add_gamelbls(menulbls, ptrs);
-	end
-
-	if (#menulbls > 0 and settingslbls) then
+if (#menulbls > 0 and settingslbls) then
 		table.insert(menulbls, "---------   " );
 	end
 

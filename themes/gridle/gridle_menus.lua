@@ -132,6 +132,7 @@ local filterlbls = {
 	"Genre",
 	"Subgenre",
 	"System",
+--	"Manufacturer", typically yields such a large list it'd be useless.
 	"Target"
 };
 
@@ -145,6 +146,7 @@ local backgroundlbls = {
 };
 
 local function updatebgtrigger()
+	grab_sysicons();
 	zap_whitegrid();
 	build_whitegrid();
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh)	
@@ -220,7 +222,7 @@ add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_me
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
 add_submenu(settingslbls, settingsptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
-add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate});
+add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
 
 if (LEDCONTROLLERS > 0) then
 	table.insert(settingslbls, "LED display mode...");
@@ -387,6 +389,8 @@ local function update_status()
 	if (settings.filters.year)    then filterstr = filterstr .. " year("     .. tostring(settings.filters.year) .. ")"; end
 	if (settings.filters.players) then filterstr = filterstr .. " players("  .. tostring(settings.filters.players) .. ")"; end
 	if (settings.filters.buttons) then filterstr = filterstr .. " buttons("  .. tostring(settings.filters.buttons) .. ")"; end
+	if (settings.filters.system)  then filterstr = filterstr .. " system(" .. tostring(settings.filters.system) .. ")"; end
+	if (settings.filters.manufacturer) then filterstr = filterstr .. " manufacturer(" .. tostring(settings.filters.manufacturer) .. ")"; end
 
 	table.insert(list, filterstr);
 	if (settings.statuslist == nil) then
@@ -555,6 +559,15 @@ function gridlemenu_defaultdispatch()
 	end
 end
 
+function gridlemenu_filterchanged()
+	settings.cursor = 0;
+	settings.pageofs = 0;
+
+	erase_grid(false);
+	build_grid(settings.cell_width, settings.cell_height);
+	move_cursor(1, true);
+end
+
 function gridlemenu_settings()
 -- first, replace all IO handlers
 	griddispatch = settings.iodispatch;
@@ -576,14 +589,7 @@ function gridlemenu_settings()
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 
 -- only rebuild grid if we have to
-		if (current_menu.gamecount ~= #settings.games) then
-			settings.cursor = 0;
-			settings.pageofs = 0;
-			
-			erase_grid(false);
-			build_grid(settings.cell_width, settings.cell_height);
-			move_cursor(1, true);
-		end
+		if (current_menu.gamecount ~= #settings.games) then gridlemenu_filterchanged(); end
 			
 		settings.iodispatch = griddispatch;
 		if (settings.statuslist) then

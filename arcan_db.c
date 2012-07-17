@@ -317,6 +317,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		const char* subgenre,
 		const char* target,
 		const char* system,
+		const char* manufacturer,
 		long long int offset,
 		long long int limit
 	)
@@ -325,7 +326,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	int wbufs = sizeof(wbuf) - 2;
 	
 	sqlite3_stmt* stmt = NULL;
-	bool patch_strings = title || genre || subgenre || target || system;
+	bool patch_strings = title || genre || subgenre || target || system || manufacturer;
 
 	if (!dbh)
 		return res;
@@ -403,8 +404,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		work += nw;
 	}
 
-	if (system) {
-		nw = strchr(system, '%') ? snprintf(work, wbufs, " AND a.system LIKE ?") : snprintf(work, wbufs, " AND a.system=?");
+	if (subgenre) {
+		nw = strchr(subgenre, '%') ? snprintf(work, wbufs, " AND a.subgenre LIKE ?") : snprintf(work, wbufs, " AND a.subgenre=?");
 		if (-1 == nw)
 			return res;
 
@@ -412,8 +413,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		work += nw;
 	}
 	
-	if (subgenre) {
-		nw = strchr(subgenre, '%') ? snprintf(work, wbufs, " AND a.subgenre LIKE ?") : snprintf(work, wbufs, " AND a.subgenre=?");
+	if (system) {
+		nw = strchr(system, '%') ? snprintf(work, wbufs, " AND a.system LIKE ?") : snprintf(work, wbufs, " AND a.system=?");
 		if (-1 == nw)
 			return res;
 
@@ -430,6 +431,15 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		work += nw;
 	}
 
+	if (manufacturer) {
+		nw = strchr(manufacturer, '%') ? snprintf(work, wbufs, " AND a.manufacturer LIKE ?") : snprintf(work, wbufs, " AND a.manufacturer=?");
+		if (-1 == nw)
+			return res;
+		
+		wbufs -= nw;
+		work += nw;
+	}
+	
 /* prevent SQLite from returning 0 results */
 	if (limit == 0) 
 		limit = -1;
@@ -456,12 +466,14 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 			sqlite3_bind_text(stmt, ofs++, title, -1, SQLITE_TRANSIENT);
 		if (genre)
 			sqlite3_bind_text(stmt, ofs++, genre, -1, SQLITE_TRANSIENT);
-		if (system)
-			sqlite3_bind_text(stmt, ofs++, system, -1, SQLITE_TRANSIENT);
 		if (subgenre)
 			sqlite3_bind_text(stmt, ofs++, subgenre, -1, SQLITE_TRANSIENT);
+		if (system)
+			sqlite3_bind_text(stmt, ofs++, system, -1, SQLITE_TRANSIENT);
 		if (target)
 			sqlite3_bind_text(stmt, ofs++, target, -1, SQLITE_TRANSIENT);
+		if (manufacturer)
+			sqlite3_bind_text(stmt, ofs++, manufacturer, -1, SQLITE_TRANSIENT);
 	}
 	/* Iterate rows of the result set,
 	 * allocate cells in blocks of 8,
