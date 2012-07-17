@@ -21,7 +21,7 @@ local function listview_redraw(self)
 	renderstr = "";
 	
     for ind = self.page_beg, self.page_end do
-			local tmpname = self.list[ind];
+			local tmpname = string.gsub(self.list[ind], "\\", "\\\\");
 			local fmt = self.formats[ tmpname ];
 			
 			if (string.sub(tmpname, 1, 3) == "---") then

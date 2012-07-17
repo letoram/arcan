@@ -94,6 +94,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh*,
 	const char* subgenre,
 	const char* target,
 	const char* system,
+	const char* manufacturer,
 	const long long offset,
 	const long long limit
 );

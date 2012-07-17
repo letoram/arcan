@@ -241,8 +241,8 @@ function osdkbd_create(map)
 	crow  = {};
 	maxcol = 0;
 	restbl.symtable   = system_load("scripts/symtable.lua")();
-	restbl.enterimage = load_image("ok.png");
-	restbl.leftimage  = load_image("remove.png");
+	restbl.enterimage = load_image("images/ok.png");
+	restbl.leftimage  = load_image("images/remove.png");
 	
 	force_image_blend(restbl.enterimage);
 	force_image_blend(restbl.leftimage);
