@@ -102,7 +102,7 @@ enum ARCAN_EVENT_VIDEO {
 	EVENT_VIDEO_BLENDED,
 	EVENT_VIDEO_RESIZED,
 	EVENT_VIDEO_ROTATED,
-    EVENT_VIDEO_MOVIEREADY,
+	EVENT_VIDEO_MOVIEREADY,
 #ifdef _DEBUG
     EVENT_VIDEO_MOVIESTATUS,
 #endif
@@ -241,6 +241,19 @@ struct arcan_evctx {
 	unsigned mask_cat_out;
 
 	unsigned kbdrepeat;
+
+/* limit analog sampling rate as to not saturate the event buffer,
+ * with rate == 0, all axis events will be emitted 
+ * with rate >  0, the upper limit is n samples per second. 
+ * with rate <  0, emitt a sample per axis every n milliseconds. */
+	struct {
+		int rate;
+		
+/* with smooth samples > 0, use a ring-buffer of smooth_samples values per axis,
+ * and whenever an sample is to be emitted, the actual value will be based on an average
+ * of the smooth buffer. */
+		char smooth_samples;
+	};
 	
 	unsigned n_eventbuf;
 	arcan_event* eventbuf;

@@ -50,14 +50,21 @@ static int64_t arcan_last_frametime = 0;
 static int64_t arcan_tickofset = 0;
 
 struct arcan_stick {
+	char label[256];
 	unsigned long hashid;
+
 	unsigned short devnum;
 	unsigned short threshold;
-	char label[256];
 	unsigned short axis;
+
+/* sized according to axis * evctx->smooth_samples */
+	unsigned short** ring_buffers;
+
+/* these map to digital events */
 	unsigned short buttons;
 	unsigned short balls;
 	unsigned short hats;
+	
 	SDL_Joystick* handle;
 };
 
@@ -127,7 +134,6 @@ static inline bool LOCK(arcan_evctx* ctx)
 }
 
 #define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx); 
-
 
 /* check queue for event, ignores mask */
 arcan_event* arcan_event_poll(arcan_evctx* ctx)
@@ -252,7 +258,7 @@ void map_sdl_events(arcan_evctx* ctx)
 				newevent.data.io.input.analog.gotrel = true;
 				snprintf(newevent.label, sizeof(newevent.label)-1, "mouse%i", event.motion.which);
 
-			/* queue as two separate events, might need internal_launch workaround */
+/* split into two axis events, internal_launch targets might wish to merge again locally however */
 				if (event.motion.xrel != 0){
 					newevent.data.io.input.analog.subid = 0;
 					newevent.data.io.input.analog.axisval[0] = event.motion.x;
@@ -273,7 +279,7 @@ void map_sdl_events(arcan_evctx* ctx)
 				newevent.data.io.datatype = EVENT_IDATATYPE_ANALOG;
 				newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
 				
-			/* need to filter out "noise" */
+/* need to filter out "noise" */
 				if (event.jaxis.value < (-1 * joydev.joys[ event.jaxis.which ].threshold) ||
 				        event.jaxis.value > joydev.joys[ event.jaxis.which ].threshold) {
 					newevent.data.io.input.analog.gotrel = false;
@@ -331,8 +337,8 @@ void map_sdl_events(arcan_evctx* ctx)
 				arcan_event_enqueue(ctx, &newevent);
 				break;
 
-		/* don't got any devices that actually use this to test with,
-		 * but should really just be translated into analog/digital events */
+/* don't got any devices that actually use this to test with,
+ * but should really just be translated into analog/digital events */
 			case SDL_JOYBALLMOTION:
 				break;
 

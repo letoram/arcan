@@ -162,7 +162,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		for (int y = 0; y < height; y++){
 			for (int x = 0; x < width; x++){
 					uint32_t val = buf[x];
-					*dbuf = 0xff & ( val << 8 );
+					*dbuf = 0xff | ( val << 8 );
 			}
 
 			buf += pitch >> 2;
@@ -236,14 +236,9 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 		break;
 		
 		case RETRO_DEVICE_MOUSE:
-			if (!warned_mouse)
-				warned_mouse = (LOG("(arcan_frameserver:libretro) Mouse input requested, unsupported.\n"), true);
-			
-		break;
-		
 		case RETRO_DEVICE_LIGHTGUN:
-			if (!warned_lightgun)
-				warned_lightgun = (LOG("(arcan_frameserver:libretro) Lightgun input requested, unsupported.\n"), true);
+		case RETRO_DEVICE_ANALOG:
+			return (int16_t) retroctx.inputmatr.axis[ind][id];
 		break;
 		
 		default:
