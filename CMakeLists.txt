@@ -189,12 +189,12 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 # and figure out which symbols are used and available 
 
 #add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
-#add_library(arcan_hijackprobe SHARED arcan_target_osx.c )
+#add_library(arcan_hijackprobe SHARED arcan_target_osx.c arcan_frameserver_shmpage.c)
 #add_dependencies(arcan_hijackprobe arcan_target_probebackend)
 #set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
 
 add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
-add_library( arcan_hijack SHARED arcan_target_osx.c arcan_event.c)
+add_library( arcan_hijack SHARED arcan_target_osx.c arcan_frameserver_shmpage.c arcan_event.c)
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )

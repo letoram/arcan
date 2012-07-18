@@ -31,6 +31,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <time.h>
 
@@ -67,7 +68,7 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 	
 	void* buf = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if (buf == MAP_FAILED){
-		LOG("arcan_frameserver(get_rawfile) mmap (%s) failed (fd: %d, size: %zu)\n", fname, fd, filedat.st_size);
+		LOG("arcan_frameserver(get_rawfile) mmap (%s) failed (fd: %d, size: %zd)\n", fname, fd, (ssize_t) filedat.st_size);
 		close(fd);
 		return NULL;
 	}
@@ -89,7 +90,7 @@ void* frameserver_getrawfile_handle(file_handle fd, ssize_t* dstsize)
 	
 	void* buf = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if (buf == MAP_FAILED){
-		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zu)\n", fd, filedat.st_size);
+		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zd)\n", fd, (ssize_t) filedat.st_size);
 		goto error;
 	}
 
@@ -126,8 +127,17 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 
 long long int frameserver_timemillis()
 {
+
 	struct timespec tp;
+#if _POSIX_TIMERS > 0
 	clock_gettime(CLOCK_MONOTONIC, &tp);
+#else
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	tp.tv_sec = tp.tv_sec;
+	tp.tv_nsec = tv.tv_usec * 1000;
+#endif
+
 	return (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
 }
 
