@@ -100,7 +100,7 @@ error:
 	return rv;
 }
 
-bool frameserver_dumprawfile_handle(const void* const data, ssize_t sz_data, file_handle dst)
+bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file_handle dst)
 {
 	bool rv = false;
 	
