@@ -848,8 +848,7 @@ function build_whitegrid()
 	
 				if (gametbl and gametbl.system and settings.tilebg == "Sysicons") then
 					local icon = imagery.sysicons[ string.lower(gametbl.system) ];
-					if (icon) then gridbg = icon; end
-					print(gametbl.system);
+					if (icon) then gridbg = instance_image(icon); end
 				end
 				
 				if (gridbg == BADID) then
@@ -914,18 +913,18 @@ end
 -- try to fit msg into a cell
 local function titlestr(msg)
 	local basemsg = string.gsub(msg, "\\", "\\\\");
-	local fontheight = settings.cell_height < 10 and settings.cell_height or 10;
+	local fontheight = math.ceil( settings.cell_height * 0.5 );
 	local bgcolor = settings.tilebg == "Black" and [[\#ffffff]] or [[\#0000ff]];
 	local fontstr = settings.colourtable.font .. tostring(fontheight) .. "\\b" .. bgcolor;
-
--- if it doesn't fit by default, just crop until it does.
-	local w,h = text_dimensions( fontstr .. basemsg );
-	while (w > settings.cell_width and #basemsg > 1) do
-		local last = string.sub(basemsg, -1, -1) == "\\" 
-		w, h = text_dimensions( fontstr .. basemsg );
-	end
 	
 	local vid, lines = render_text(fontstr .. basemsg);
+	resize_image(vid, settings.cell_width, 0);
+	
+	local props = image_surface_properties(vid);
+	if (props.height < 10) then
+		resize_image(vid, settings.cell_width, 10);
+	end
+	
 	return vid;
 end
 
@@ -953,8 +952,10 @@ function build_grid(width, height)
 			local vid = get_image(settings.games[gameno].resources, settings.games[gameno]);
 			if (vid == BADID) then
 				vid = titlestr( settings.games[gameno].title );
+				local props = image_surface_properties(vid);
+				local cx, cy = cell_coords(col, row);
+				move_image(vid, cx + 0.5 * (settings.cell_width - props.width), cy + 0.5 * (settings.cell_height - props.height));
 				blend_image(vid, 0.3);
--- center
 			else
 				resize_image(vid, settings.cell_width, settings.cell_height);
 				move_image(vid, cell_coords(col, row));

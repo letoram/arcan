@@ -27,12 +27,6 @@
 #define SHMPAGE_AUDIOBUF_SIZE (192000 * 3 / 2)
 #define MAX_SHMSIZE 9582916
 
-enum frameserver_colormode {
-	COLOR_RGBA,
-	COLOR_RGB155,
-	COLOR_YUV420
-};
-
 /* setup a named memory / semaphore mapping with the server */
 struct frameserver_shmcont{
 	struct frameserver_shmpage* addr;
@@ -88,7 +82,7 @@ int frameserver_semcheck(sem_handle semaphore, int timeout);
  * the server will likely kill or ignore the client */
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 
-/* return relative offsets from shmpage as baseaddr where the vbuf and audbufs can be found */
+/* calculate video/audio buffers from shmpage as baseaddr */
 void frameserver_shmpage_calcofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr);
 
 /* this code is repeated a little too often so sortof fits here but adds a dependency to arcan_event */
