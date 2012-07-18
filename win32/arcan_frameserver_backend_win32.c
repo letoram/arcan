@@ -166,10 +166,37 @@ int check_child(arcan_frameserver* movie)
 	return rv;
 }
 
-arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, file_handle fd)
+arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
-	
+
+	if (fsrv){
+		HANDLE dh, childh;
+		DWORD pid;
+
+		childh = OpenProcess(PROCESS_DUP_HANDLE, FALSE, fsrv->childp);
+		if (INVALID_HANDLE_VALUE == childh){
+			arcan_warning("arcan_frameserver(win32)::push_handle, couldn't open child process (%ld)\n", GetLastError());
+			return rv;
+		}
+
+		if (DuplicateHandle(GetCurrentProcess(), (HANDLE) _get_osfhandle(fd), childh, &dh, 0, true, DUPLICATE_SAME_ACCESS)){
+			arcan_event ev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_FDTRANSFER
+			};
+
+			ev.data.target.fh = dh;
+			arcan_frameserver_pushevent( fsrv, &ev );
+			close(fd);
+			rv = ARCAN_OK;
+		}
+		else {
+			arcan_warning("arcan_frameserver(win32)::push_handle failed (%ld)\n", GetLastError() );
+			rv = ARCAN_ERRC_BAD_ARGUMENT;
+		}
+	}
+
 	return rv;
 }
 
@@ -331,6 +358,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 /* anything else that can happen to the child at this point is handled in
  * frameserver_tick_control */
 		ctx->child = pi.hProcess;
+		ctx->childp = pi.dwProcessId;
+
 		arcan_sem_post(ctx->vsync);
 
 		return ARCAN_OK;

@@ -131,7 +131,7 @@ struct arcan_video_context {
 	arcan_vobject* vitems_pool;
 
 	struct rendertarget** targets;
-	struct rendertarget stdout;
+	struct rendertarget stdoutp;
 };
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
@@ -452,18 +452,18 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 		src->owner = new_litem;
 
 		/* case #1, no previous item or first */
-		if (!current_context->stdout.first) {
-			current_context->stdout.first = new_litem;
+		if (!current_context->stdoutp.first) {
+			current_context->stdoutp.first = new_litem;
 		}
 		else
-			if (current_context->stdout.first->elem->order > src->order) { /* insert first */
-				new_litem->next = current_context->stdout.first;
-				current_context->stdout.first = new_litem;
+			if (current_context->stdoutp.first->elem->order > src->order) { /* insert first */
+				new_litem->next = current_context->stdoutp.first;
+				current_context->stdoutp.first = new_litem;
 				new_litem->next->previous = new_litem;
 			} /* insert "anywhere" */
 			else {
 				bool last = true;
-				arcan_vobject_litem* ipoint = current_context->stdout.first;
+				arcan_vobject_litem* ipoint = current_context->stdoutp.first;
 				/* scan for insertion point */
 				do {
 					last = (ipoint->elem->order <= src->order);
@@ -562,7 +562,7 @@ arcan_errc detatch_fromtarget(struct rendertarget* dst, arcan_vobj_id id, bool g
 
 arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
 {
-	return detatch_fromtarget(&current_context->stdout, id, true);
+	return detatch_fromtarget(&current_context->stdoutp, id, true);
 }
 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
@@ -2194,7 +2194,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* scan the current context, look for clones and other objects that has this object as a parent */
 		arcan_vobject_litem* current;
 retry:  
-		current = current_context->stdout.first;
+		current = current_context->stdoutp.first;
 		
 		while (current && current->elem) {
 			arcan_vobject* elem = current->elem;
@@ -2276,7 +2276,7 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
     if (!vobj)
         return rv;
     
-    arcan_vobject_litem* current = current_context->stdout.first;
+    arcan_vobject_litem* current = current_context->stdoutp.first;
     
     while (current && current->elem) {
         arcan_vobject* elem = current->elem;
@@ -2693,7 +2693,7 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 uint32_t arcan_video_tick(uint8_t steps)
 {
 	unsigned now = arcan_frametime();
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 
 	while (steps--) {
 /*		printf("(%d) alive: %ld\n", arcan_video_display.c_ticks, current_context->nalive); */
@@ -2742,7 +2742,7 @@ uint32_t arcan_video_tick(uint8_t steps)
 			}
 			while ((current = current->next) != NULL);
 
-		current = current_context->stdout.first;
+		current = current_context->stdoutp.first;
 	}
 
 	return 0;
@@ -2883,7 +2883,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
  * might gain something when other pseudo-asynchronous operations (e.g. PBO) are concerned */
 void arcan_video_pollfeed()
 {
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 
 	while(current && current->elem){
 	arcan_vobject* cframe = current->elem->current_frame;
@@ -2927,7 +2927,7 @@ void arcan_video_pollfeed()
  * redraw the entire scene and linearly interpolate transformations */
 void arcan_video_refresh_GL(float lerp)
 {
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_vobject* world = &current_context->world;
 
@@ -3051,7 +3051,7 @@ void arcan_video_refresh_GL(float lerp)
 	}
 
 /* reset and try the 3d part again if requested */
-	current = current_context->stdout.first;
+	current = current_context->stdoutp.first;
 	if (arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
@@ -3117,7 +3117,7 @@ unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int
 	if (count == 0)
 		return 0;
 
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 	uint32_t base = 0;
 
 	while (current && base < count) {
@@ -3138,7 +3138,7 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h)
 
 void arcan_video_dumppipe()
 {
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 	uint32_t count = 0;
 	printf("-----------\n");
 	if (current)
@@ -3313,7 +3313,7 @@ bool arcan_video_prepare_external()
 
 unsigned arcan_video_maxorder()
 {
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 	int order = 0;
 	
 	while (current){
@@ -3360,7 +3360,7 @@ void arcan_video_restore_external()
 
 void arcan_video_shutdown()
 {
-	arcan_vobject_litem* current = current_context->stdout.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
 	unsigned lastctxa, lastctxc = arcan_video_popcontext();
 
 /*  this will effectively make sure that all external launchers, frameservers etc. gets killed off */

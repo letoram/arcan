@@ -52,19 +52,53 @@ char* arcan_themename;
    abort();
 }*/
 
-void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
+/* caller is responsible for cleaning up handle */
+void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 {
-	HANDLE fh = CreateFile( resource, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
-	if (!fh)
-		return NULL;
-
 	HANDLE fmh = CreateFileMapping(fh, NULL, PAGE_READONLY, 0, 0, NULL);
 	if (!fmh)
 		return NULL;
 
 	void* res = (void*) MapViewOfFile(fmh, FILE_MAP_READ, 0, 0, 0);
 	if (ressize)
-		*ressize = (size_t) GetFileSize(fh, NULL);
+		*ressize = (ssize_t) GetFileSize(fh, NULL);
+
+	return res;
+}
+
+/* always close handle */
+bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_handle fh)
+{
+	bool rv = false;
+	LOG("frameserver_dumpraw(%ld)\n", fh);
+
+	if (INVALID_HANDLE_VALUE != fh){
+		rv = WriteFile(fh, buf, bufs, NULL, NULL);
+		if (!rv){
+			LOG("frameserver_dumpraw() failed, reason: %ld\n", GetLastError());
+		} else 
+			LOG("frameserver_dumpraw(%zu) => %ld\n", bufs, fh);
+
+		CloseHandle(fh);
+	}
+
+	return rv;
+}
+
+/* assumed to live as long as the frameserver is alive, and killed / closed alongside process */
+void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
+{
+	HANDLE fh = CreateFile( resource, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
+	if (fh == INVALID_HANDLE_VALUE)
+		return NULL;
+
+	HANDLE fmh = CreateFileMapping(fh, NULL, PAGE_READONLY, 0, 0, NULL);
+	if (fmh == INVALID_HANDLE_VALUE)
+		return NULL;
+
+	void* res = (void*) MapViewOfFile(fmh, FILE_MAP_READ, 0, 0, 0);
+	if (ressize)
+		*ressize = (ssize_t) GetFileSize(fh, NULL);
 
 	return res;
 }
