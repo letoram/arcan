@@ -48,7 +48,7 @@ int sockin_fd = -1;
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
 
-void* frameserver_getrawfile(const char* fname, size_t* dstsize)
+void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 {
 	int fd;
 	struct stat filedat;
@@ -76,7 +76,7 @@ void* frameserver_getrawfile(const char* fname, size_t* dstsize)
 	return buf;
 }
 
-void* frameserver_getrawfile_handle(file_handle fd, size_t* dstsize)
+void* frameserver_getrawfile_handle(file_handle fd, ssize_t* dstsize)
 {
 	struct stat filedat;
 	void* rv = NULL;
@@ -100,7 +100,7 @@ error:
 	return rv;
 }
 
-bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file_handle dst)
+bool frameserver_dumprawfile_handle(const void* const data, ssize_t sz_data, file_handle dst)
 {
 	bool rv = false;
 	

@@ -2450,8 +2450,8 @@ int arcan_lua_targetrestore(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
-		file_handle fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
-		if (BADFD != fd){
+		int fd = fmt_open(O_RDONLY, S_IRWXU, "%s/savestates/%s", arcan_resourcepath, snapkey);
+		if (-1 != fd){
 			arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
 			
 			if ( ARCAN_OK == arcan_frameserver_pushfd( fsrv, fd ) ){
@@ -2493,7 +2493,7 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	const char* snapkey = luaL_checkstring(ctx, 2);
 	bool gotval = false;
-	
+
 	vfunc_state* state = arcan_video_feedstate(tgt);
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr){
 

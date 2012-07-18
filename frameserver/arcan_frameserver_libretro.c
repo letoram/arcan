@@ -295,6 +295,7 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 static inline void targetev(arcan_event* ev)
 {
+	LOG("ev(%d)\n", ev->kind);
 	switch (ev->kind){
 		case TARGET_COMMAND_RESET: retroctx.reset(); break;
 
@@ -316,7 +317,7 @@ static inline void targetev(arcan_event* ev)
 			retroctx.framecount = 0;
 		break;
 		
-/* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from _event.h */
+/* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from event.h */
 		case TARGET_COMMAND_SETIODEV: 
 			retroctx.set_ioport(ev->data.target.ioevs[0], ev->data.target.ioevs[1]);
 		break;
@@ -328,12 +329,16 @@ static inline void targetev(arcan_event* ev)
 	
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:
+			LOG("store\n");
 			if (BADFD != retroctx.last_fd){
+				LOG("got fd\n");
 				size_t dstsize = retroctx.serialize_size();
 				void* buf;
 				if (dstsize && ( buf = malloc( dstsize ) )){
+					LOG("try serialize\n");
 					if ( retroctx.serialize(buf, dstsize) ){
 						frameserver_dumprawfile_handle( buf, dstsize, retroctx.last_fd );
+						free(buf);
 						retroctx.last_fd = BADFD;
 					} else 
 						LOG("frameserver(libretro), serialization failed.\n");

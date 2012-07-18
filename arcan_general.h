@@ -162,8 +162,10 @@ void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
 /* open a file using a format string (fmt + variadic), flags and mode matches regular
- * open() semantics */
-file_handle fmt_open(int flags, mode_t mode, const char* fmt, ...);
+ * open() semantics. 
+ * the file_handle wrapper is purposefully not used on this function and for Win32, is expected to
+ * be managed by _get_osfhandle */
+int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
 /* wrap the posix-2001 semaphore functions,
  * needs workarounds for some platforms for timed_wait, 
