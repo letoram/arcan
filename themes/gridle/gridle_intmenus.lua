@@ -622,7 +622,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 
 	if (contextlbls) then
 		add_gamelbls(menulbls, ptrs);
-		if (#menulbls == 0) then return; end
+		if (#menulbls == 0 and not settingslbls) then return; end
 	end
 
 	griddispatch = settings.iodispatch;

@@ -91,10 +91,10 @@ function movietest_input( inputtbl )
 end
 
 function movietest_video_event(source, ev)
-	if (ev.kind == "moviestatus") then
+	if (ev.kind == "bufferstatus") then
 		resize_image(debugbar_vid, VRESW * (ev.curv / ev.maxv), 64);
 		resize_image(debugbar_aid, VRESW * (ev.cura / ev.maxa), 64);
-	elseif (ev.kind == "movieready") then
+	elseif (ev.kind == "resized") then
 		show_image(source);
 		play_movie(source);
 	end	

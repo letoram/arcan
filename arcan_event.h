@@ -38,8 +38,7 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_TIMER  = 4,
 	EVENT_VIDEO  = 8,
 	EVENT_AUDIO  = 16,
-	EVENT_TARGET = 32,
-	EVENT_TARGETSTATUS = 64, 
+	EVENT_TARGET = 32
 };
 
 enum ARCAN_EVENT_SYSTEM {
@@ -51,16 +50,7 @@ enum ARCAN_EVENT_SYSTEM {
 	EVENT_SYSTEM_INACTIVATE,
 	EVENT_SYSTEM_ACTIVATE,
 	EVENT_SYSTEM_LAUNCH_EXTERNAL,
-	EVENT_SYSTEM_CLEANUP_EXTERNAL,
-	EVENT_SYSTEM_FRAMESERVER_TERMINATED
-};
-
-enum ARCAN_TARGET_STATUS {
-	TARGET_STATUS_RESIZED,
-	TARGET_STATUS_SNAPSHOT_STORED,
-	TARGET_STATUS_SHAPSHOT_RESTORED,
-	TARGET_STATUS_DATABLOCK_SAMPLED,
-	TARGET_STATUS_DIED
+	EVENT_SYSTEM_CLEANUP_EXTERNAL
 };
 
 enum ARCAN_TARGET_COMMAND {
@@ -102,9 +92,8 @@ enum ARCAN_EVENT_VIDEO {
 	EVENT_VIDEO_BLENDED,
 	EVENT_VIDEO_RESIZED,
 	EVENT_VIDEO_ROTATED,
-	EVENT_VIDEO_MOVIEREADY,
 #ifdef _DEBUG
-    EVENT_VIDEO_MOVIESTATUS,
+    EVENT_VIDEO_BUFFERSTATUS,
 #endif
 	EVENT_VIDEO_FRAMESERVER_TERMINATED,
 	EVENT_VIDEO_ASYNCHIMAGE_LOADED,
@@ -127,14 +116,6 @@ enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_OBJECT_GONE,
 	EVENT_AUDIO_INVALID_OBJECT_REFERENCED,
 	EVENT_AUDIO_FRAMESERVER_TERMINATED
-};
-
-enum ARCAN_EVENT_TARGET {
-	EVENT_TARGET_EXTERNAL_LAUNCHED,
-	EVENT_TARGET_EXTERNAL_TERMINATED,
-	EVENT_TARGET_INTERNAL_STATUS,
-	EVENT_TARGET_INTERNAL_LAUNCHED,
-	EVENT_TARGET_INTERNAL_TERMINATED
 };
 
 enum ARCAN_TARGET_SKIPMODE {
@@ -181,7 +162,7 @@ typedef struct {
 	arcan_vobj_id source;
 	img_cons constraints;
 	surface_properties props;
-	void* data;
+	intptr_t data;
 } arcan_vevent;
 
 typedef struct {
@@ -198,12 +179,6 @@ typedef struct arcan_tevent {
 	long long int pulse_count;
 } arcan_tevent;
 
-typedef struct arcan_tgtstatusevent {
-	arcan_vevent video;
-	arcan_aobj_id audio;
-	enum ARCAN_TARGET_STATUS statuscode;
-} arcan_tgtstatusevent;
-
 typedef struct arcan_tgtevent {
 	enum ARCAN_TARGET_COMMAND command;
 	int ioevs[4];
@@ -218,7 +193,6 @@ typedef union event_data {
 	arcan_aevent audio;
 	arcan_sevent system;
 	arcan_tevent timer;
-	arcan_tgtstatusevent target_status;
 	arcan_tgtevent target;
 	void* other;
 } event_data;
