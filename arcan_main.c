@@ -328,7 +328,7 @@ int main(int argc, char* argv[])
 							arcan_video_pushasynch(ev->data.video.source);
 						
 						else if (ev->kind == EVENT_VIDEO_FRAMESERVER_TERMINATED)
-							if (!arcan_frameserver_check_frameserver(ev->data.video.data))
+							if (!arcan_frameserver_check_frameserver( (arcan_frameserver*) ev->data.video.data) )
 								continue; /* on loop, just ignore event */
 					break;
 

@@ -168,7 +168,7 @@ end
 
 function gridledetail_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
-		internal_aid = datatbl.audio;
+		internal_vid, internal_aid = play_movie(source);
 		resize_image(source, datatbl.width, datatbl.height, 0);
 		audio_gain(internal_aid, settings.internal_again, NOW);
 
@@ -176,15 +176,6 @@ function gridledetail_internal_status(source, datatbl)
 		if (rvid ~= source and rvid ~= BADID) then 
 			delete_image(rvid); 
 		end 
-
--- with a gl source, it means it comes from a readback, means that we might need to flip texture coordinates for it to be rendered correctly
--- this is done in two ways, when we force it unto the model we can't assume a specific shape for the display, so we have to do it with texture coordinates
--- in shader but statically in the fullscreen quad mode.
-		if (datatbl.glsource) then
-			shader_uniform(display_shader, "flip_t", "b", PERSIST, 0);
-		else
-			shader_uniform(display_shader, "flip_t", "b", PERSIST, 1);
-		end
 
 		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
 		orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);

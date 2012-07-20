@@ -691,7 +691,7 @@ function got_asynchimage(source, status)
 	local cursor_row = math.floor(settings.cursor / ncw);
 	local gridcell_vid = cursor_vid();
 	
-	if (status == 1) then
+	if (status.kind == "loaded") then
 		if (source == gridcell_vid) then
 			blend_image(source, 1.0, settings.transitiondelay);
 		else
@@ -1061,8 +1061,8 @@ function load_settings()
 	end
 end
 
-function asynch_movie_ready(source, status)
-	if (status == 1 and source == imagery.movie) then
+function asynch_movie_ready(source, statustbl)
+	if (imagery.movie == source and statustbl.kind == "resized")then
 		vid,aid = play_movie(source);
 		audio_gain(aid, 0.0);
 		audio_gain(aid, settings.movieagain, settings.fadedelay);
@@ -1151,11 +1151,11 @@ function gridle_internalcleanup()
 	settings.in_internal = false;
 end
 
-function gridle_internal_status(source, datatbl)	
+function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
-		
 		if (not settings.in_internal) then
-			gridle_setup_internal(source, datatbl.audio);
+			local vid, aid = play_movie(source); -- hack to get the aid
+			gridle_setup_internal(vid, aid);
 		end
 
 		gridlemenu_resize_fullscreen(source);

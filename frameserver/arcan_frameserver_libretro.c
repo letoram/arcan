@@ -295,7 +295,6 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 static inline void targetev(arcan_event* ev)
 {
-	LOG("ev(%d)\n", ev->kind);
 	switch (ev->kind){
 		case TARGET_COMMAND_RESET: retroctx.reset(); break;
 

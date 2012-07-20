@@ -1042,10 +1042,10 @@ static int thread_loader(void* in)
 /* while this happens, the following members of the struct are not to be touched elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
 	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
-	result.data.video.data = (void*) localargs->tag;
 	
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
+		result.data.video.data = localargs->tag;
 		result.data.video.constraints.w = dst->origw;
 		result.data.video.constraints.h = dst->origh;
 	} else {
@@ -1280,7 +1280,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 		ev.data.video.source = id;
 		ev.data.video.constraints.w   = vobj->origw;
 		ev.data.video.constraints.h   = vobj->origh;
-        ev.data.video.constraints.bpp = mirror;
+		ev.data.video.constraints.bpp = mirror; /* slightly hackish .. */
 		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		rv = ARCAN_OK;
 	}

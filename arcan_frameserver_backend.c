@@ -125,16 +125,8 @@ bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
 		arcan_frameserver_spawn_server(src, args);
 		return false;
 	}
-	else{
-		arcan_event ev = {
-			.category = EVENT_SYSTEM,
-			.kind = EVENT_SYSTEM_FRAMESERVER_TERMINATED
-		};
-		ev.data.system.hitag = src->vid;
-		ev.data.system.lotag = src->aid;
-		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
+	else
 		arcan_frameserver_free(src, false);
-	}
 
 	return true;
 }
@@ -263,7 +255,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			return FFUNC_RV_GOTFRAME;
 		
 	#ifdef _DEBUG                
-		arcan_event ev = {.kind = EVENT_VIDEO_MOVIESTATUS, 
+		arcan_event ev = {.kind = EVENT_VIDEO_BUFFERSTATUS, 
 			.data.video.constraints.w = src->vfq.c_cells,
 			.data.video.constraints.h = src->afq.c_cells,
 			.data.video.props.position.x = src->vfq.n_cells,
@@ -292,7 +284,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		else if (src->vfq.alive == false) {
 				arcan_event sevent = {.category = EVENT_VIDEO,
 				                      .kind = EVENT_VIDEO_FRAMESERVER_TERMINATED,
-				                      .data.video.data = src,
+				                      .data.video.data = (intptr_t) src,
 				                      .data.video.source = src->vid
 				                     };
 				src->playstate = ARCAN_PAUSED;
@@ -384,114 +376,92 @@ static arcan_errc again_feed(float gain, void* tag)
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
-    if (src->shm.ptr){
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 /* may happen multiple- times */
-		if (shmpage->resized && frameserver_shmpage_integrity_check(shmpage) ){
-			char labelbuf[32];
-			vfunc_state cstate = *arcan_video_feedstate(src->vid);
-			img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
-            src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
+	if (shmpage->resized && frameserver_shmpage_integrity_check(shmpage) ){
+		arcan_errc rv;
+		char labelbuf[32];
+		vfunc_state cstate = *arcan_video_feedstate(src->vid);
+		img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
+		src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
 
-			arcan_framequeue_free(&src->vfq);
-			arcan_framequeue_free(&src->afq);
-			
-/* acknowledge the resize */
-			shmpage->resized = false;
+		arcan_framequeue_free(&src->vfq);
+		arcan_framequeue_free(&src->afq);
 
 /* resize the source vid in a way that won't propagate to user scripts */
-			src->desc.samplerate = shmpage->samplerate;
-			src->desc.channels = shmpage->channels;
-			arcan_event_maskall(arcan_event_defaultctx());
-			arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
-			arcan_event_clearmask(arcan_event_defaultctx());
-			frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
+		src->desc.samplerate = shmpage->samplerate;
+		src->desc.channels = shmpage->channels;
+		arcan_event_maskall(arcan_event_defaultctx());
+		arcan_event_clearmask(arcan_event_defaultctx());
+		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
-			arcan_errc rv;
+/* this will also emit the resize event */
+		arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
 
-/* we don't need to keep a large framequeue in order to satisfy PTS (presentation time-stamp) demands,
- * but if vsync is enabled, we may still need a small one to offset the latency introduced by vsync and polling */
-			if (src->nopts){
-				if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE && arcan_video_display.vsync) {
-					sprintf(labelbuf, "interactive_%d", (int) src->vid);
+/* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
+ * if we don't maintain a queue (present as soon as possible) */
+		if (src->nopts){
+			if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE && arcan_video_display.vsync) {
+				sprintf(labelbuf, "interactive_%d", (int) src->vid);
 
 /* the difference here is that whenever it reads a video frame into the queue,
  * it also flushes the audio buffer but into the framequeue context (a little hackish) */
-					arcan_framequeue_alloc(&src->vfq, src->vid, 3, 
-						src->desc.width * src->desc.height * src->desc.bpp, 
-						false, arcan_frameserver_shmvidaudcb, labelbuf);
-					
-					arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
-				}
-/* otherwise, synching is actually up to the frameserver and we can keep the main program nice and reponsive */
-				else 
-					arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
-					
-				if (src->aid == ARCAN_EID)
-					src->aid = src->kind == ARCAN_HIJACKLIB ? arcan_audio_proxy(again_feed, src) :
-						arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+				arcan_framequeue_alloc(&src->vfq, src->vid, 3, 
+					src->desc.width * src->desc.height * src->desc.bpp, 
+					false, arcan_frameserver_shmvidaudcb, labelbuf);
 
-			} else {
-				if (src->aid == ARCAN_EID)
-					src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
-				
 				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
+			}
+/* otherwise, synching is actually up to the frameserver and we can keep the main program nice and reponsive */
+			else 
+				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
+
+/* the first time around, we also need to setup the audio mapping */
+			if (src->aid == ARCAN_EID)
+				src->aid = src->kind == ARCAN_HIJACKLIB ? arcan_audio_proxy(again_feed, src) :
+					arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+		} 
+		else {
+			if (src->aid == ARCAN_EID)
+				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
+
+			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
 
 /* otherwise, figure out reasonable buffer sizes (or user-defined overrides) */
-				unsigned short acachelim, vcachelim, abufsize, presilence;
-				arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize, &presilence);
-				if (acachelim == 0 || abufsize == 0){
-					float mspvf = 1000.0 / 30.0;
-					float mspaf = 1000.0 / (float)shmpage->samplerate;
-					abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
-					acachelim = vcachelim * 2;
-				}
+			unsigned short acachelim, vcachelim, abufsize, presilence;
+			arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize, &presilence);
+			if (acachelim == 0 || abufsize == 0){
+				float mspvf = 1000.0 / 30.0;
+				float mspaf = 1000.0 / (float)shmpage->samplerate;
+				abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
+				acachelim = vcachelim * 2;
+			}
 
 /* tolerance margins for PTS deviations */
-				src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
-				src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
-				src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
-				src->audioclock = 0.0;
+			src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
+			src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
+			src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
+			src->audioclock = 0.0;
 				
 /* just to get some kind of trace when threading acts up */
-				snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
-				arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
+			snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
+			arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
 
-				snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
-				arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
-			}
-
-/* push the corresponding event to the script */
-			if (src->kind == ARCAN_FRAMESERVER_INPUT){
-				if (src->autoplay){
-					arcan_frameserver_playback(src);
-				}
-				else {
-					arcan_event ev = {.kind = EVENT_VIDEO_MOVIEREADY, .data.video.source = src->vid,
-					.data.video.constraints = cons, .category = EVENT_VIDEO};
-					arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-				}
-			}
-			else if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE || src->kind == ARCAN_HIJACKLIB){
-				arcan_frameserver_playback(src);
-
-				arcan_event ev = {.kind = EVENT_TARGET_INTERNAL_STATUS, .category = EVENT_TARGETSTATUS,
-				.data.target_status.video.source = src->vid,
-				.data.target_status.video.constraints = cons,
-				.data.target_status.audio = src->aid,
-				.data.target_status.statuscode = TARGET_STATUS_RESIZED};
-				
-				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-			}
-			else 
-				arcan_warning("(frameserver_tick_control) unhandled frameserver type (%d)\n", src->kind);
+			snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
+			arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
 		}
 
+		if (src->autoplay && src->playstate != ARCAN_PLAYING)
+			arcan_frameserver_playback(src);
+
+/* acknowledge the resize */
+		shmpage->resized = false;
+	}
+	
 /* since this is a tick, make sure that the child process is still alive */
-		if (!check_child(src->shm.ptr))
-			arcan_frameserver_free(src, src->loop);
-	}   
+	if (!check_child(src->shm.ptr))
+		arcan_frameserver_free(src, src->loop);
 }
 
 arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
