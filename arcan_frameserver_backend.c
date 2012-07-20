@@ -107,30 +107,6 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 	}
 }
 
-bool arcan_frameserver_check_frameserver(arcan_frameserver* src)
-{
-	if (src && src->loop){
-		arcan_frameserver_free(src, true);
-		arcan_audio_pause(src->aid);
-
-/* with asynch movieplayback, we can't set it to playing state before loaded */
-		src->autoplay = true;
-		
-		struct frameserver_envp args = {
-			.use_builtin = true,
-			.args.builtin.resource = src->source,
-			.args.builtin.mode = "movie"
-		};
-		
-		arcan_frameserver_spawn_server(src, args);
-		return false;
-	}
-	else
-		arcan_frameserver_free(src, false);
-
-	return true;
-}
-
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -203,7 +179,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	
 	switch (cmd){
 		case ffunc_poll: return shmpage->vready; break;        
-        case ffunc_tick: arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr); break;		
+		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;		
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		case ffunc_render: 	
 			rv = push_buffer( (char*) tgt->vidp, mode, shmpage->w, shmpage->h, shmpage->bpp, width, height, bpp); 
@@ -301,9 +277,9 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			rv = push_buffer( (char*) current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
 			arcan_framequeue_dequeue(&src->vfq);
 	}
-	else if (cmd == ffunc_tick && !check_child(src)){
-		arcan_frameserver_free(src, src->loop);
-	}
+	else if (cmd == ffunc_tick)
+		arcan_frameserver_tick_control(src);
+
 	else if (cmd == ffunc_destroy){
 		arcan_frameserver_free(src, false);
 	}
@@ -379,7 +355,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 /* may happen multiple- times */
-	if (shmpage->resized && frameserver_shmpage_integrity_check(shmpage) ){
+	if (shmpage && shmpage->resized && frameserver_shmpage_integrity_check(shmpage) ){
 		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -458,10 +434,31 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* acknowledge the resize */
 		shmpage->resized = false;
 	}
-	
-/* since this is a tick, make sure that the child process is still alive */
-	if (!check_child(src->shm.ptr))
-		arcan_frameserver_free(src, src->loop);
+
+	assert(src->child != 0);
+	if (src->child && -1 == check_child(src) && errno == EINVAL){
+		if (!src->loop){
+				arcan_event sevent = {.category = EVENT_VIDEO,
+					.kind = EVENT_VIDEO_FRAMESERVER_TERMINATED,
+					.data.video.data = (intptr_t) src,
+					.data.video.source = src->vid
+				};
+				arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
+				arcan_frameserver_free(src, false);
+		} else {
+			arcan_audio_pause(src->aid);
+			arcan_frameserver_free(src, true);
+			src->autoplay = true;
+
+			struct frameserver_envp args = {
+				.use_builtin = true,
+				.args.builtin.resource = src->source,
+				.args.builtin.mode = "movie"
+			};
+		
+			arcan_frameserver_spawn_server(src, args);
+		}
+	}
 }
 
 arcan_errc arcan_frameserver_playback(arcan_frameserver* src)

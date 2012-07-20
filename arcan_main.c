@@ -319,7 +319,7 @@ int main(int argc, char* argv[])
 					case EVENT_VIDEO:
 					/* these events can typically be determined in video_tick(), 
 					 * however there are so many hierarchical dependencies (linked objs, instances, ...)
-					 * that a full delete is not safe there */
+					 * that a full delete is not safe there (e.g. event -> callback -> */
 						if (ev->kind == EVENT_VIDEO_EXPIRE)
 							arcan_video_deleteobject(ev->data.video.source);
 						
@@ -327,17 +327,6 @@ int main(int argc, char* argv[])
 							ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED)
 							arcan_video_pushasynch(ev->data.video.source);
 						
-						else if (ev->kind == EVENT_VIDEO_FRAMESERVER_TERMINATED)
-							if (!arcan_frameserver_check_frameserver( (arcan_frameserver*) ev->data.video.data) )
-								continue; /* on loop, just ignore event */
-					break;
-
-					case EVENT_AUDIO:
-						if (ev->kind == EVENT_AUDIO_PLAYBACK_FINISHED)
-							arcan_audio_stop(ev->data.audio.source);
-						else if (ev->kind == EVENT_AUDIO_FRAMESERVER_TERMINATED)
-							if (!arcan_frameserver_check_frameserver(ev->data.audio.data))
-								continue; 
 					break;
 
 					case EVENT_SYSTEM:

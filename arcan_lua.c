@@ -798,7 +798,7 @@ int arcan_lua_deleteimage(lua_State* ctx)
 	arcan_errc rv = arcan_video_deleteobject(id);
 	if (rv != ARCAN_OK){
 		if (lua_ctx_store.debug > 0){
-			arcan_warning("%s => arcan_lua_deleteimage(%d) -- Object could not be deleted, invalid object specified.\n", luaL_lastcaller(ctx), id);
+			arcan_warning("%s => arcan_lua_deleteimage(%.0lf=>%d) -- Object could not be deleted, invalid object specified.\n", luaL_lastcaller(ctx), srcid, id);
 		}
 		else
 			arcan_fatal("Theme tried to delete non-existing object (%.0lf=>%d) from (%s). Relaunch with debug flags (-g) to suppress.\n", srcid, id, luaL_lastcaller(ctx));
@@ -911,9 +911,8 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	
 	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
 	{
-/* mvctx is passed with the corresponding async event, which will only be used in the main thread, so 
- * no race condition here */ 
 		mvctx->tag = ref;
+		
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
 	} else {
@@ -1230,7 +1229,6 @@ int arcan_lua_scale3dverts(lua_State* ctx)
  * to store the actual event, but it wouldn't really help extration. */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
-	char* funname;
 	if (ev->category == EVENT_SYSTEM && arcan_lua_grabthemefunction(ctx, "system")){
 		lua_newtable(ctx);
 		int top = arcan_lua_funtable(ctx, ev->kind);
@@ -1352,8 +1350,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				if (fsrvfstate && fsrvfstate->ptr){
 					arcan_frameserver* fsrv = (arcan_frameserver*) arcan_video_feedstate(ev->data.video.source )->ptr;
 					dst_cb = fsrv->tag;
-					lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
-					lua_ctx_store.cb_source_tag = lua_ctx_store.lua_vidbase + ev->data.video.source;
+					if (dst_cb)
+						lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
 				}
 			break;
                 
@@ -2176,7 +2174,7 @@ void arcan_lua_panic(lua_State* ctx)
 
 	if (!lua_ctx_store.cb_source_kind == CB_SOURCE_NONE){
 		char vidbuf[64];
-		sprintf(vidbuf, "script error in callback for VID (%lld)", lua_ctx_store.cb_source_tag);
+		sprintf(vidbuf, "script error in callback for VID (%lld)", lua_ctx_store.lua_vidbase + lua_ctx_store.cb_source_tag);
 		arcan_lua_wraperr(ctx, -1, vidbuf); 
 	} else 
 		arcan_lua_wraperr(ctx, -1, "(panic)");
