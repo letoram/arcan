@@ -173,9 +173,6 @@ void arcan_frameserver_dropsemaphores_keyed(char*);
  * e.g. resize (which would require a recalculation of shared memory layout */
 void arcan_frameserver_tick_control(arcan_frameserver*);
 
-/* used in outer loop (not part of a tick- cycle), if parent has died, cleans up and emits the proper events */ 
-bool arcan_frameserver_check_frameserver(arcan_frameserver*);
-
 /* override the default queue opts (may be necessary for some frame-server sources */
 void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned short abufsize, unsigned short acellcount, unsigned short presilence);
 void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* acellcount, unsigned short* abufsize, unsigned short* presilence);

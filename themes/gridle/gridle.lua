@@ -1152,6 +1152,8 @@ function gridle_internalcleanup()
 end
 
 function gridle_internal_status(source, datatbl)
+	print(datatbl.kind);
+	
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
 			local vid, aid = play_movie(source); -- hack to get the aid

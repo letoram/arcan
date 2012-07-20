@@ -22,12 +22,11 @@ stacksize = 1024;
 function imagetest()
 	local symfun = system_load("scripts/symtable.lua");
 	symtable = symfun();
-	delete_image(1000);
 	drawmenu();
 end
 
 function drawmenu()
-	if (text_vid ~= BADID) then
+	if (valid_vid(text_vid)) then
 		delete_image(text_vid);
 	end
 

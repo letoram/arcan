@@ -233,13 +233,19 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 		context->vitems_pool =  (arcan_vobject*) calloc( sizeof(arcan_vobject), arcan_video_display.default_vitemlim);
 		context->vitem_ofs = 1;
 		context->vitem_limit = arcan_video_display.default_vitemlim;
-	} else for (int i = 1; i < context->vitem_limit; i++)
+	} 
+	else 
+		for (int i = 1; i < context->vitem_limit; i++)
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &context->vitems_pool[i];
+
+			if (current->flags.clone)
+				continue;
 
 		/* conservative means that we do not keep a copy of the originally decoded memory,
 		 * essentially halving memory consumption but increasing cost of pop() and push() */
 			if (arcan_video_display.conservative && (char)current->feed.state.tag == ARCAN_TAG_IMAGE){
+				assert(current->default_frame.source );
 				char* fname = strdup( current->default_frame.source ); /* copy the original filename */
 				free(current->default_frame.source);
 				arcan_video_getimage(fname, current, &current->default_frame, false);
@@ -276,7 +282,8 @@ signed arcan_video_pushcontext()
 	deallocate_gl_context(current_context, false);
 	
 	current_context = &context_stack[ context_ind ];
-
+	memset(&current_context->stdoutp, 0, sizeof( struct rendertarget ) );
+	current_context->stdoutp.first = NULL;
 	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
 
@@ -337,8 +344,6 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	arcan_vobject* pobj = arcan_video_getobject(parent);
 	arcan_vobj_id rv;
 	
-	
-	
 	if (pobj == NULL)
 		return 0;
 
@@ -356,6 +361,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		
 		arcan_vobject* nobj = arcan_video_getobject(rv);
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
+		memset(&nobj->default_frame, 0, sizeof( arcan_vstorage ));
 		nobj->current = newprop;
 		nobj->cellid = rv;
 		assert(nobj->cellid > 0);
@@ -868,10 +874,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		}
 		else
 			memcpy(dstframe->raw, gl_image->pixels, dstframe->s_raw);
-		
-	/* whileas the gpu texture format is (4 byte alignment, BGRA) and the 
-	 * glfunctions will waste membw- to convert to that, setting the "proper" 
-	 * format here seems to generate a bad (full-white texture), investigate! */
+
 		if (!asynchsrc)
 			allocate_and_store_globj(dst, &dst->gl_storage.glid, dst->gl_storage.w, dst->gl_storage.h, dstframe->raw);
 
@@ -879,6 +882,9 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		SDL_FreeSurface(gl_image);
 	
 		if (!asynchsrc && arcan_video_display.conservative){
+#ifdef DEBUG
+			memset(dst->default_frame.raw, 0x50, dst->default_frame.s_raw);
+#endif
 			free(dst->default_frame.raw);
 			dst->default_frame.raw = 0;
 		}
@@ -965,8 +971,9 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->default_frame.s_raw = bufs;
 		newvobj->default_frame.raw = buf;
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
-					 newvobj->gl_storage.w, newvobj->gl_storage.h, 0,
-			   GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
+			newvobj->gl_storage.w, newvobj->gl_storage.h, 0,
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
+		
 		glBindTexture(GL_TEXTURE_2D, 0);
 		newvobj->order = 0;
 		arcan_video_attachobject(rv);
@@ -1109,6 +1116,16 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 			int status;
 			SDL_WaitThread((SDL_Thread*)vobj->feed.state.ptr, &status);
 			allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, vobj->default_frame.raw);
+	
+			if (arcan_video_display.conservative){
+#ifdef DEBUG
+				memset(vobj->default_frame.raw, 0x66, vobj->default_frame.s_raw);
+#endif
+				free(vobj->default_frame.raw);
+				vobj->default_frame.raw = 0;
+				vobj->default_frame.s_raw = 0;
+			}
+			
 			vobj->feed.state.tag = ARCAN_TAG_IMAGE;
 			vobj->feed.state.ptr = NULL;
 		}
@@ -1235,16 +1252,20 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj && (vobj->flags.clone == true) &&
-        vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+	if (vobj && (vobj->flags.clone == true ||
+        vobj->feed.state.tag != ARCAN_TAG_FRAMESERV))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 	if (vobj) {
 		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 			arcan_video_pushasynch(id);
 
-		free(vobj->default_frame.raw);
-		
+#ifdef DEBUG
+		free(vobj->default_frame.s_raw);
+		vobj->default_frame.s_raw = 0;
+		vobj->default_frame.raw = NULL;
+#endif
+	
 		if (vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
 			vobj->origw = vobj->gl_storage.w = constraints.w;
 			vobj->origh = vobj->gl_storage.h = constraints.h;
@@ -2175,7 +2196,12 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					arcan_video_deleteobject(vobj->frameset[i]->cellid);
 					vobj->frameset[i] = 0;
 				}
+
 			free(vobj->frameset);
+#ifdef _DEBUG
+			if (vobj->default_frame.raw)
+				memset(vobj->default_frame.raw, 0x10, vobj->default_frame.s_raw); 
+#endif
 			free(vobj->default_frame.raw);
 
 /* don't keep any dangling referernce */

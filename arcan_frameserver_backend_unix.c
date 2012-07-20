@@ -116,11 +116,12 @@ int check_child(arcan_frameserver* movie){
 /* this will be called on any attached video source with a tag of TAG_MOVIE,
  * return EAGAIN to continue, EINVAL implies that the child frameserver died somehow.
  * When a movie is in between states, the child pid might not be set yet */
-	if (movie->child &&
-		waitpid( movie->child, &status, WNOHANG ) == movie->child){
-		errno = EINVAL;
+	int ec = waitpid(movie->child, &status, WNOHANG);
+	if (ec == movie->child){
 		movie->child_alive = false;
-	} else 
+		errno = EINVAL;
+	} 
+	else 
 		errno = EAGAIN;
 
 	return rv;
@@ -287,7 +288,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->shm.ptr = (void*) shmpage;
 		ctx->shm.shmsize = shmsize;
 		ctx->sockout_fd = sockp[0];
-
+		
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
 		frameserver_shmpage_setevqs( shmpage, ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);

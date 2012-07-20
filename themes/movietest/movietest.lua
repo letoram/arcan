@@ -42,7 +42,7 @@ function movietest()
 	show_image(debugbar_vid);
 	show_image(debugbar_aid);	
 	
-	vid = load_movie("movietest.avi", 1, function(source, status)
+	vid = load_movie("movietest.avi", 1, function(source, statustbl)
 		show_image(source);
 		play_movie(source);
 	end);
