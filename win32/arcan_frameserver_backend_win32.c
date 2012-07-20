@@ -171,7 +171,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
 	if (fsrv){
-		HANDLE dh, childh;
+		HANDLE dh, childh, fdh;
 		DWORD pid;
 
 		childh = OpenProcess(PROCESS_DUP_HANDLE, FALSE, fsrv->childp);
@@ -180,7 +180,10 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			return rv;
 		}
 
-		if (DuplicateHandle(GetCurrentProcess(), (HANDLE) _get_osfhandle(fd), childh, &dh, 0, true, DUPLICATE_SAME_ACCESS)){
+/* assume valid input fd, 64bit issues with this one? */
+		fdh = (HANDLE) _get_osfhandle(fd);
+
+		if (DuplicateHandle(GetCurrentProcess(), fdh, childh, &dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
 				.kind = TARGET_COMMAND_FDTRANSFER
@@ -188,13 +191,16 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 
 			ev.data.target.fh = dh;
 			arcan_frameserver_pushevent( fsrv, &ev );
-			close(fd);
+			arcan_warning("arcan_frameserver(win32)::push_handle (%ld)\n", dh);
 			rv = ARCAN_OK;
 		}
 		else {
 			arcan_warning("arcan_frameserver(win32)::push_handle failed (%ld)\n", GetLastError() );
 			rv = ARCAN_ERRC_BAD_ARGUMENT;
 		}
+
+		CloseHandle(fdh);
+		_close(fd);
 	}
 
 	return rv;

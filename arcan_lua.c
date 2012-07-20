@@ -2451,7 +2451,6 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 				lua_pushboolean(ctx, true);
 				gotval = true;
 			}
-			close(fd);
 		}
 	}
 

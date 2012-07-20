@@ -301,7 +301,10 @@ static inline void targetev(arcan_event* ev)
 /* FD transfer has different behavior on Win32 vs UNIX,
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
-		case TARGET_COMMAND_FDTRANSFER: retroctx.last_fd = frameserver_readhandle( ev ); break;
+		case TARGET_COMMAND_FDTRANSFER:
+			retroctx.last_fd = frameserver_readhandle( ev ); 
+			LOG("arcan_frameserver(libretro) - descriptor transferred, %d\n", retroctx.last_fd);
+		break;
 		
 /* 0 : auto, -1 : disable, > 0 render every n frames. */
 		case TARGET_COMMAND_FRAMESKIP: retroctx.skipmode = ev->data.target.ioevs[0]; break;
@@ -328,19 +331,18 @@ static inline void targetev(arcan_event* ev)
 	
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:
-			LOG("store\n");
 			if (BADFD != retroctx.last_fd){
-				LOG("got fd\n");
 				size_t dstsize = retroctx.serialize_size();
 				void* buf;
 				if (dstsize && ( buf = malloc( dstsize ) )){
-					LOG("try serialize\n");
+
 					if ( retroctx.serialize(buf, dstsize) ){
 						frameserver_dumprawfile_handle( buf, dstsize, retroctx.last_fd );
-						free(buf);
 						retroctx.last_fd = BADFD;
 					} else 
 						LOG("frameserver(libretro), serialization failed.\n");
+
+					free(buf);
 				}
 			}
 			else
@@ -349,11 +351,12 @@ static inline void targetev(arcan_event* ev)
 		
 		case TARGET_COMMAND_RESTORE: 
 			if (BADFD != retroctx.last_fd){
-				size_t dstsize;
+				ssize_t dstsize = -1;
+
 				void* buf = frameserver_getrawfile_handle( retroctx.last_fd, &dstsize );
-				if (buf != NULL){
+				if (buf != NULL && dstsize > 0)
 					retroctx.deserialize( buf, dstsize );
-				}
+
 				retroctx.last_fd = BADFD;
 			}
 			else

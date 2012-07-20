@@ -84,7 +84,7 @@ static bool file_exists(const char* fn)
 
 int fmt_open(int flags, mode_t mode, const char* fmt, ...)
 {
-	file_handle rv = -1;
+	int rv = -1;
 
 	unsigned cc;
 	va_list args;
