@@ -167,7 +167,6 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			};
 			
 			arcan_frameserver_pushevent( fsrv, &ev );
-			close(fd);
 		}
 		else
 			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", fd, fsrv->sockout_fd, errno, strerror(errno));

@@ -52,33 +52,60 @@ char* arcan_themename;
    abort();
 }*/
 
-/* caller is responsible for cleaning up handle */
 void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 {
-	HANDLE fmh = CreateFileMapping(fh, NULL, PAGE_READONLY, 0, 0, NULL);
-	if (!fmh)
-		return NULL;
+	void* retb = NULL;
+	
+	*ressize = GetFileSize(fh, NULL);
 
-	void* res = (void*) MapViewOfFile(fmh, FILE_MAP_READ, 0, 0, 0);
-	if (ressize)
-		*ressize = (ssize_t) GetFileSize(fh, NULL);
+	if (*ressize > 0 /* && sz < THRESHOLD */ )
+	{
+		retb = malloc(*ressize);
+		if (!retb)
+			return retb;
 
-	return res;
+		memset(retb, 0, *ressize);
+		OVERLAPPED ov = {0};
+		DWORD retc;
+		ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+		if (!ReadFile(fh, retb, *ressize, &retc, &ov) && GetLastError() == ERROR_IO_PENDING){
+			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
+				free(retb);
+				retb = NULL;
+				*ressize = -1;
+			} 
+		}
+
+		CloseHandle(ov.hEvent);
+	}
+
+	CloseHandle(fh);
+
+	return retb;
 }
 
 /* always close handle */
 bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_handle fh)
 {
 	bool rv = false;
-	LOG("frameserver_dumpraw(%ld)\n", fh);
+
+/* facepalm awarded for this function .. */
+	OVERLAPPED ov = {0};
+	DWORD retc; 
 
 	if (INVALID_HANDLE_VALUE != fh){
-		rv = WriteFile(fh, buf, bufs, NULL, NULL);
-		if (!rv){
-			LOG("frameserver_dumpraw() failed, reason: %ld\n", GetLastError());
-		} else 
-			LOG("frameserver_dumpraw(%zu) => %ld\n", bufs, fh);
+		ov.Offset = 0xFFFFFFFF;
+		ov.OffsetHigh = 0xFFFFFFFF;
+		ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
+		if (!WriteFile(fh, buf, bufs, &retc, &ov) && GetLastError() == ERROR_IO_PENDING){
+			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
+				LOG("frameserver(win32)_dumprawfile : failed, %ld\n", GetLastError()); 
+			}
+		}
+
+		CloseHandle(ov.hEvent);
 		CloseHandle(fh);
 	}
 
@@ -140,18 +167,18 @@ int main(int argc, char* argv[])
 /*	_set_invalid_parameter_handler(inval_param_handler) */
 	DWORD dwMode = SetErrorMode(SEM_NOGPFAULTERRORBOX);
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
-#endif
 
-/* quick tracing */
+#else
+/* set this env whenever you want to step through the frameserver as launched from the parent */
 	logdev = fopen("output.log", "w");  
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 
-/* set this env whenever you want to step through the frameserver as launched from the parent */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		arcan_warning("-- frameserver stall activated, won't continue without gdb intervention. Pid: (%d)\n", getpid());
 		volatile int a = 0;
 		while (a == 0);
 	}
+#endif
 
 /* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode),
  * parent is retrieved from shmpage */

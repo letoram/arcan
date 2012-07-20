@@ -55,6 +55,7 @@ extern int strcasecmp(const char*, const char*);
 typedef int pipe_handle;
 typedef HANDLE file_handle;
 typedef HANDLE sem_handle;
+
 typedef void* process_handle;
 typedef struct {
 	void* ptr;
