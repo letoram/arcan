@@ -31,6 +31,9 @@ extern char* arcan_themepath;
 extern char* arcan_binpath;
 extern char* arcan_libpath;
 
+typedef struct arcan_frameserver arcan_frameserver;
+typedef struct frameserver_shmpage frameserver_shmpage; 
+
 #define BADFD -1
 
 /* OS specific definitions */
@@ -58,7 +61,7 @@ typedef HANDLE sem_handle;
 
 typedef void* process_handle;
 typedef struct {
-	void* ptr;
+	struct frameserver_shmpage* ptr;
 	void* handle;
 	void* synch;
 	char* key;
@@ -81,7 +84,7 @@ typedef pid_t process_handle;
 typedef sem_t* sem_handle;
 
 typedef struct {
-	void* ptr;
+	frameserver_shmpage* ptr;
 	int handle;
 	void* synch;
 	char* key;
@@ -106,7 +109,7 @@ enum arcan_vobj_tags {
 	ARCAN_TAG_TEXT      = 2,  /* specialized form of RAWOBJECT */
 	ARCAN_TAG_FRAMESERV = 3,  /* got a connection to an external resource (frameserver) */
 	ARCAN_TAG_3DOBJ     = 5,  /* got a corresponding entry in arcan_3dbase, ffunc is used to control the behavior of the 3d part */
-    ARCAN_TAG_ASYNCIMG  = 6   /* intermediate state, means that getimage is still loading, don't touch objects in this state, wait for them to switch to TAG_IMAGE */
+	ARCAN_TAG_ASYNCIMG  = 6   /* intermediate state, means that getimage is still loading, don't touch objects in this state, wait for them to switch to TAG_IMAGE */
 };
 
 enum arcan_errors {
@@ -120,7 +123,7 @@ enum arcan_errors {
 	ARCAN_ERRC_NO_SUCH_OBJECT = -7,
 	ARCAN_ERRC_BAD_RESOURCE = -8,
 	ARCAN_ERRC_BADVMODE = -9,
-    ARCAN_ERRC_NOTREADY = -10,
+	ARCAN_ERRC_NOTREADY = -10,
 	ARCAN_ERRC_NOAUDIO = -11
 };
 

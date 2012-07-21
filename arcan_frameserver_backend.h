@@ -68,7 +68,7 @@ typedef struct {
 	bool ready;
 } arcan_frameserver_meta;
 
-typedef struct {
+struct arcan_frameserver {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
 	frame_queue vfq, afq;
@@ -117,7 +117,7 @@ typedef struct {
 
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
-} arcan_frameserver;
+};
 
 /* contains both structures for managing movie- playback,
  * both video and audio support functions */

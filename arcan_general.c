@@ -51,7 +51,6 @@ char* arcan_libpath = NULL;
 static const int playbufsize = (64 * 1024) - 2;
 static char playbuf[64 * 1024] = {0};
 
-
 static bool is_dir(const char* fn)
 {
 	struct stat buf;

@@ -30,8 +30,7 @@ local function gridledetail_load()
 end
 
 local function gridledetail_setnoisedisplay()
-	if (detailview.modeldisplay ~= BADID) then
-		print("delete modeldisplay: " .. detailview.modeldisplay .. " internal: " .. internal_vid);
+	if (valid_vid( detailview.modeldisplay ) ) then
 		delete_image(detailview.modeldisplay);
 		detailview.modeldisplay_aid = BADID;
 		detailview.modeldisplay = BADID;
@@ -45,25 +44,25 @@ local function gridledetail_setnoisedisplay()
 	mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 
 	if (rvid ~= BADID) then
-		print("delete old display");
 		delete_image(rvid); 
 	end
 end
 
 local function gridledetail_imagestatus(source, status)
 -- all asynchronous operations can fail (status == 0), or the resource may not be interesting anymore
-	if (status == 0 or source ~= detailview.modeldisplay) then 
+	if (valid_vid(source) == false) then
+		warning("gridledetail_imagestatus() -- invalid ID received.\n");
+		return false;
+	end
+	
+	if (source ~= detailview.modeldisplay) then 
 		delete_image(source);
 	else
 	-- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
 -- we can't do this for movie, as we need 'tick' operations for it to properly poll the frameserver
 		mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
 		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
-
-		if (rvid ~= BADID) then 
-			print("delete old display");
-			delete_image(rvid);
-		end
+		if (rvid ~= BADID) then delete_image(rvid); end
 		
 		return true;
 	end
@@ -73,15 +72,19 @@ end
 
 local function gridledetail_moviestatus(source, status)
 -- same procedure in loading / mapping, with the added playback / gain calls
-	if (gridledetail_imagestatus(source, status)) then
-		vid, aid = play_movie(source);
+	if (status.kind == "frameserver_terminated") then
+		gridledetail_setnoisedisplay();
+	elseif (status.kind == "resized") and gridledetail_imagestatus(source, status) then
+		local aid = status.source_audio;
+		play_movie(source);
+		
 		audio_gain(aid, 0.0);
 		if (zoomed) then
 			audio_gain(aid, settings.movieagain, 0);
 		else
 			audio_gain(aid, settings.movieagain * 0.5, 0);
 		end
-		detailview.modeldisplay_aid = aid;
+		detailview.modeldisplay_aid = status.source_audio;
 	end
 end
 
@@ -130,7 +133,7 @@ local function gridledetail_buildview(detailres, gametbl )
 			if (detailview.model.labels["display"]) then
 				local moviefile = detailview.game.resources.movies[1];
 				if (moviefile) then
-					detailview.modeldisplay = load_movie(moviefile, 1, gridledetail_moviestatus);
+					detailview.modeldisplay = load_movie(moviefile, FRAMESERVER_NOLOOP, gridledetail_moviestatus);
 				elseif resource("screenshots/" .. detailview.game.setname .. ".png") then
 					detailview.modeldisplay = load_image_asynch( "screenshots/" .. detailview.game.setname .. ".png", gridledetail_imagestatus);
 				end

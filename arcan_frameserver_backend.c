@@ -230,12 +230,15 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		if (src->nopts && src->vfq.front_cell != NULL)
 			return FFUNC_RV_GOTFRAME;
 		
-	#ifdef _DEBUG                
-		arcan_event ev = {.kind = EVENT_VIDEO_BUFFERSTATUS, 
-			.data.video.constraints.w = src->vfq.c_cells,
-			.data.video.constraints.h = src->afq.c_cells,
-			.data.video.props.position.x = src->vfq.n_cells,
-			.data.video.props.position.y = src->afq.n_cells, .category = EVENT_VIDEO};
+	#ifdef _DDEBUG                
+		arcan_event ev = {.kind = EVENT_FRAMESERVER_BUFFERSTATUS,
+			.category = EVENT_FRAMESERVER,
+			.data.frameserver.c_vbuffer = src->vfq.c_cells,
+			.data.frameserver.c_abuffer = src->afq.c_cells,
+			.data.frameserver.l_vbuffer = src->vfq.n_cells,
+			.data.frameserver.l_abuffer = src->afq.n_cells,
+			.data.frameserver.otag = src->tag
+		};
 			
 		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 #endif  
@@ -257,16 +260,6 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 			}
 			else;
 		}
-		else if (src->vfq.alive == false) {
-				arcan_event sevent = {.category = EVENT_VIDEO,
-				                      .kind = EVENT_VIDEO_FRAMESERVER_TERMINATED,
-				                      .data.video.data = (intptr_t) src,
-				                      .data.video.source = src->vid
-				                     };
-				src->playstate = ARCAN_PAUSED;
-
-				arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
-			}
 /* no videoframes, but we have audioframes? might be the sounddrivers that have given up,
  * last resort workaround */
 	}
@@ -427,6 +420,18 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
 			arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
 		}
+			
+		arcan_event rezev = {
+			.category = EVENT_FRAMESERVER,
+			.kind = EVENT_FRAMESERVER_RESIZED,
+			.data.frameserver.width = cons.w, 
+			.data.frameserver.height = cons.h,
+			.data.frameserver.video = src->vid,
+			.data.frameserver.audio = src->aid,
+			.data.frameserver.otag = src->tag
+		};
+		
+		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 
 		if (src->autoplay && src->playstate != ARCAN_PLAYING)
 			arcan_frameserver_playback(src);
@@ -437,18 +442,19 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 	assert(src->child != 0);
 	if (src->child && -1 == check_child(src) && errno == EINVAL){
-		if (!src->loop){
-				arcan_event sevent = {.category = EVENT_VIDEO,
-					.kind = EVENT_VIDEO_FRAMESERVER_TERMINATED,
-					.data.video.data = (intptr_t) src,
-					.data.video.source = src->vid
-				};
-				arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
-				arcan_frameserver_free(src, false);
-		} else {
-			arcan_audio_pause(src->aid);
+		arcan_event sevent = {.category = EVENT_FRAMESERVER,
+		.kind = EVENT_FRAMESERVER_TERMINATED,
+		.data.frameserver.video = src->vid,
+		.data.frameserver.glsource = false,
+		.data.frameserver.audio = src->aid,
+		.data.frameserver.otag = src->tag
+		};
+
+		if (src->loop){
+//			arcan_audio_pause(src->aid);
 			arcan_frameserver_free(src, true);
 			src->autoplay = true;
+			sevent.kind = EVENT_FRAMESERVER_LOOPED;
 
 			struct frameserver_envp args = {
 				.use_builtin = true,
@@ -458,6 +464,10 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		
 			arcan_frameserver_spawn_server(src, args);
 		}
+		else
+			arcan_frameserver_free(src, false);
+
+		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 	}
 }
 

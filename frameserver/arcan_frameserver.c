@@ -191,7 +191,7 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 			sem_post(shm->asem);
 		}
 		
-		unsigned evc = 0;		
+		unsigned evc = 0;
 		while ( arcan_event_poll( &inevq ) != NULL ) evc++;
 
 /* if nothing has happened, the frameserver is probably not set up right yet, sleep a little */
