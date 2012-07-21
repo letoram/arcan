@@ -95,6 +95,13 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			src->shm.ptr = NULL;
 		}
 		
+		if (!loop){
+			vfunc_state emptys = {0};
+			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
+			memset(src, 0xaa, sizeof(arcan_frameserver));
+			free(src);
+		}
+	
 		rv = ARCAN_OK;
 	}
 

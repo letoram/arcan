@@ -38,7 +38,8 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_TIMER  = 4,
 	EVENT_VIDEO  = 8,
 	EVENT_AUDIO  = 16,
-	EVENT_TARGET = 32
+	EVENT_TARGET = 32,
+	EVENT_FRAMESERVER = 64
 };
 
 enum ARCAN_EVENT_SYSTEM {
@@ -85,17 +86,21 @@ enum ARCAN_EVENT_IDATATYPE {
 	EVENT_IDATATYPE_TRANSLATED
 };
 
+enum ARCAN_EVENT_FRAMESERVER {
+	EVENT_FRAMESERVER_RESIZED,
+	EVENT_FRAMESERVER_TERMINATED,
+#ifdef _DEBUG
+	EVENT_FRAMESERVER_BUFFERSTATUS,
+#endif
+	EVENT_FRAMESERVER_LOOPED
+};
+
 enum ARCAN_EVENT_VIDEO {
 	EVENT_VIDEO_EXPIRE = 0,
 	EVENT_VIDEO_SCALED,
 	EVENT_VIDEO_MOVED,
 	EVENT_VIDEO_BLENDED,
-	EVENT_VIDEO_RESIZED,
 	EVENT_VIDEO_ROTATED,
-#ifdef _DEBUG
-    EVENT_VIDEO_BUFFERSTATUS,
-#endif
-	EVENT_VIDEO_FRAMESERVER_TERMINATED,
 	EVENT_VIDEO_ASYNCHIMAGE_LOADED,
 	EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED
 };
@@ -114,8 +119,7 @@ enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_PITCH_TRANSFORMATION_FINISHED,
 	EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED,
 	EVENT_AUDIO_OBJECT_GONE,
-	EVENT_AUDIO_INVALID_OBJECT_REFERENCED,
-	EVENT_AUDIO_FRAMESERVER_TERMINATED
+	EVENT_AUDIO_INVALID_OBJECT_REFERENCED
 };
 
 enum ARCAN_TARGET_SKIPMODE {
@@ -166,6 +170,20 @@ typedef struct {
 } arcan_vevent;
 
 typedef struct {
+	arcan_vobj_id video;
+	arcan_aobj_id audio;
+	
+	int width, height;
+	
+	unsigned c_abuffer, c_vbuffer;
+	unsigned l_abuffer, l_vbuffer;
+
+	bool glsource;
+	
+	intptr_t otag;
+} arcan_fsrvevent;
+
+typedef struct {
 	arcan_aobj_id source;
 	void* data;
 } arcan_aevent;
@@ -194,6 +212,7 @@ typedef union event_data {
 	arcan_sevent system;
 	arcan_tevent timer;
 	arcan_tgtevent target;
+	arcan_fsrvevent frameserver;
 	void* other;
 } event_data;
 

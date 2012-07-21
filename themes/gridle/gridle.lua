@@ -1062,13 +1062,15 @@ function load_settings()
 end
 
 function asynch_movie_ready(source, statustbl)
-	if (imagery.movie == source and statustbl.kind == "resized")then
-		vid,aid = play_movie(source);
-		audio_gain(aid, 0.0);
-		audio_gain(aid, settings.movieagain, settings.fadedelay);
-		blend_image(vid, 1.0, settings.fadedelay);
-		resize_image(vid, settings.cell_width, settings.cell_height);
-		blend_image(cursor_vid(), 0.0, settings.fadedelay);
+	if (imagery.movie == source) then
+		if (statustbl.kind == "resized") then
+			vid,aid = play_movie(source);
+			audio_gain(aid, 0.0);
+			audio_gain(aid, settings.movieagain, settings.fadedelay);
+			blend_image(vid, 1.0, settings.fadedelay);
+			resize_image(vid, settings.cell_width, settings.cell_height);
+			blend_image(cursor_vid(), 0.0, settings.fadedelay);
+		end
 	else
 		delete_image(source);
 	end
@@ -1087,7 +1089,7 @@ function gridle_clock_pulse()
 			local moviefile = settings.cursorgame.resources.movies[1];
 
 			if (moviefile and cursor_vid() ) then
-				imagery.movie = load_movie( moviefile, 1, asynch_movie_ready);
+				imagery.movie = load_movie( moviefile, FRAMESERVER_LOOP, asynch_movie_ready);
 				if (imagery.movie) then
 					local vprop = image_surface_properties( cursor_vid() );
 					
@@ -1152,12 +1154,9 @@ function gridle_internalcleanup()
 end
 
 function gridle_internal_status(source, datatbl)
-	print(datatbl.kind);
-	
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
-			local vid, aid = play_movie(source); -- hack to get the aid
-			gridle_setup_internal(vid, aid);
+			gridle_setup_internal(source, datatbl.source_audio);
 		end
 
 		gridlemenu_resize_fullscreen(source);

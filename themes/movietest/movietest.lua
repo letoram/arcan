@@ -43,6 +43,7 @@ function movietest()
 	show_image(debugbar_aid);	
 	
 	vid = load_movie("movietest.avi", 1, function(source, statustbl)
+		print("main frameserver_event(",source, statustbl.kind,")"); 
 		show_image(source);
 		play_movie(source);
 	end);
@@ -58,6 +59,17 @@ function movietest()
 end
 
 function movietest_on_show()
+end
+
+function movietest_frameserver_event(source, tbl)
+	print("uncatched frameserver event(",source,tbl.kind,")");
+	if (tbl.kind == "bufferstatus") then
+		resize_image(debugbar_vid, VRESW * (ev.curv / ev.maxv), 64);
+		resize_image(debugbar_aid, VRESW * (ev.cura / ev.maxa), 64);
+	elseif (tbl.kind == "resized") then
+		show_image(source);
+		play_movie(source);
+	end	
 end
 
 function movietest_input( inputtbl )
@@ -88,16 +100,6 @@ function movietest_input( inputtbl )
 		    cursor.y = inputtbl.samples[1];
 		end
 	end
-end
-
-function movietest_video_event(source, ev)
-	if (ev.kind == "bufferstatus") then
-		resize_image(debugbar_vid, VRESW * (ev.curv / ev.maxv), 64);
-		resize_image(debugbar_aid, VRESW * (ev.cura / ev.maxa), 64);
-	elseif (ev.kind == "resized") then
-		show_image(source);
-		play_movie(source);
-	end	
 end
 
 function movietest_clock_pulse()

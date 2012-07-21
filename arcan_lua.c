@@ -65,6 +65,9 @@
 static const int ORDER_FIRST = 1;
 static const int ORDER_LAST  = 0;
 
+static const int FRAMESERVER_LOOP = 1;
+static const int FRAMESERVER_NOLOOP = 0;
+
 extern char* arcan_themename;
 extern arcan_dbh* dbhandle;
 
@@ -884,7 +887,11 @@ int arcan_lua_playmovie(lua_State* ctx)
 		lua_pushaid(ctx, movie->aid);
 		return 2;
 	}
-
+	else {
+		arcan_vobject* vobj = arcan_video_getobject(vid);
+		arcan_warning("arcan_lua_playmovie(%d) -- bad feed / no frameserver (%" PRIxPTR ",%d)\n", lua_ctx_store.lua_vidbase + vid, state, state ? state->tag : -1);
+	}
+		
 	return 0;
 }
 
@@ -901,7 +908,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	}
 	
 	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-	mvctx->loop = luaL_optint(ctx, 2, 0) != 0;
+	mvctx->loop = luaL_optint(ctx, 2, FRAMESERVER_NOLOOP) == FRAMESERVER_LOOP;
 	
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -1307,10 +1314,70 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 		}
 	}
+	else if (ev->category == EVENT_FRAMESERVER){
+		bool gotfun;
+		intptr_t dst_cb = 0;
+		
+		if (arcan_lua_grabthemefunction(ctx, "frameserver_event"))
+			gotfun = true;
+		else
+			gotfun = (lua_pushnumber(ctx, 0), false);
+		
+		lua_pushvid(ctx, ev->data.frameserver.video);
+		lua_newtable(ctx);
+		int top = lua_gettop(ctx);
+	
+		switch(ev->kind){
+#ifdef _DEBUG
+/* this little hack will emit (in debug builds) high frequent status events each time a video or audio frame is requested */
+			case EVENT_FRAMESERVER_BUFFERSTATUS: 
+				arcan_lua_tblstr(ctx, "kind", "bufferstatus", top);
+				arcan_lua_tblnum(ctx, "maxv", ev->data.frameserver.l_vbuffer, top);
+				arcan_lua_tblnum(ctx, "maxa", ev->data.frameserver.l_abuffer, top);
+				arcan_lua_tblnum(ctx, "curv", ev->data.frameserver.c_vbuffer, top);
+				arcan_lua_tblnum(ctx, "cura", ev->data.frameserver.c_abuffer, top);
+			break;
+#endif
+
+			case EVENT_FRAMESERVER_LOOPED :
+				arcan_lua_tblstr(ctx, "kind", "frameserver_loop", top);
+				dst_cb = ev->data.frameserver.otag;
+			break;
+
+			case EVENT_FRAMESERVER_TERMINATED : 
+				arcan_lua_tblstr(ctx, "kind", "frameserver_terminated", top);
+				dst_cb = ev->data.frameserver.otag;
+			break;
+
+			case EVENT_FRAMESERVER_RESIZED :
+				arcan_lua_tblstr(ctx, "kind", "resized", top);
+				arcan_lua_tblnum(ctx, "width", ev->data.frameserver.width, top); 
+				arcan_lua_tblnum(ctx, "height", ev->data.frameserver.height, top);
+        arcan_lua_tblnum(ctx, "mirrored", ev->data.frameserver.glsource, top);
+				arcan_lua_tblnum(ctx, "source_audio", ev->data.frameserver.audio, top);
+					
+				dst_cb = ev->data.frameserver.otag;
+			break;
+		}
+
+		if (dst_cb){
+			lua_ctx_store.cb_source_tag = ev->data.frameserver.video;
+			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
+			lua_replace(ctx, 1);
+			gotfun = true;
+		}
+
+		if (gotfun)
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+		else
+			lua_settop(ctx, 0);
+		
+		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+	}
 	else if (ev->category == EVENT_VIDEO){
 		intptr_t dst_cb = 0;
 		bool gotfun;
-		vfunc_state* fsrvfstate;
 		
 		if (arcan_lua_grabthemefunction(ctx, "video_event"))
 /* due to the asynch- callback approach some additional checks are needed before bailing */
@@ -1324,61 +1391,29 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		int top = lua_gettop(ctx);
 			
 		switch (ev->kind) {
-#ifdef _DEBUG
-/* this little hack will emit (in debug builds) status events each time 
- * a video or audio frame is requested */
-			case EVENT_VIDEO_BUFFERSTATUS: 
-				arcan_lua_tblstr(ctx, "kind", "bufferstatus", top);
-				arcan_lua_tblnum(ctx, "maxv", ev->data.video.constraints.w, top);
-				arcan_lua_tblnum(ctx, "maxa", ev->data.video.constraints.h, top);
-				arcan_lua_tblnum(ctx, "curv", ev->data.video.props.position.x, top);
-				arcan_lua_tblnum(ctx, "cura", ev->data.video.props.position.y, top);
-			break;
-#endif
-			case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); break;
-			case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top); break;
-			case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); break; 
-			case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); break;
-			case EVENT_VIDEO_ROTATED : arcan_lua_tblstr(ctx, "kind", "rotated", top); break;
-			case EVENT_VIDEO_RESIZED :
-				arcan_lua_tblstr(ctx, "kind", "resized", top);
-				arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);
-        arcan_lua_tblnum(ctx, "mirrored", ev->data.video.constraints.bpp, top);
-				
-				fsrvfstate = arcan_video_feedstate( ev->data.video.source );
-				if (fsrvfstate && fsrvfstate->ptr){
-					arcan_frameserver* fsrv = (arcan_frameserver*) arcan_video_feedstate(ev->data.video.source )->ptr;
-					dst_cb = fsrv->tag;
-					if (dst_cb)
-						lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
-				}
-			break;
+		case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); break;
+		case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top); break;
+		case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); break; 
+		case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); break;
+		case EVENT_VIDEO_ROTATED : arcan_lua_tblstr(ctx, "kind", "rotated", top); break;
+
+		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
+			arcan_lua_tblstr(ctx, "kind", "loaded", top); 
+			arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
+			arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top); 
+			dst_cb = (intptr_t) ev->data.video.data;
+			if (dst_cb)
+				lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+		break;
                 
-			case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
-				arcan_lua_tblstr(ctx, "kind", "loaded", top); 
-				arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top); 
-				dst_cb = (intptr_t) ev->data.video.data;
-				if (dst_cb)
-					lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
-			break;
-                
-			case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: 
-				arcan_lua_tblstr(ctx, "kind", "load_failed", top); 
-				arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
-				arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);    
-				dst_cb = (intptr_t) ev->data.video.data;
-				if (dst_cb)
-					lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
-			break;
-                
-			case EVENT_VIDEO_FRAMESERVER_TERMINATED : 
-				arcan_lua_tblstr(ctx, "kind", "frameserver_died", top);
-				dst_cb = (intptr_t) ((arcan_frameserver*) arcan_video_feedstate( ev->data.video.source )->ptr)->tag;
-				if (dst_cb)
-					lua_ctx_store.cb_source_tag = CB_SOURCE_FRAMESERVER;
-			break;
+		case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: 
+			arcan_lua_tblstr(ctx, "kind", "load_failed", top); 
+			arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
+			arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);    
+			dst_cb = (intptr_t) ev->data.video.data;
+			if (dst_cb)
+				lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+		break;
 
 		default:
 			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(), unknown video event (%i)\n", ev->kind);
@@ -1404,7 +1439,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		int top = lua_gettop(ctx);
 		switch (ev->kind){
-			case EVENT_AUDIO_FRAMESERVER_TERMINATED: arcan_lua_tblstr(ctx, "kind", "broken frameserver", top); break;
 			case EVENT_AUDIO_BUFFER_UNDERRUN: arcan_lua_tblstr(ctx, "kind", "audio buffer underrun", top); break;
 			case EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED: arcan_lua_tblstr(ctx, "kind", "gain transformed", top); break;
 			case EVENT_AUDIO_PLAYBACK_FINISHED: arcan_lua_tblstr(ctx, "kind", "playback finished", top); break;
@@ -3404,6 +3438,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 /* constant: ORDER_LAST,int */
 	arcan_lua_setglobalint(ctx, "ORDER_LAST", ORDER_LAST);
+	
+/* constant: FRAMESERVER_LOOP,int */
+	arcan_lua_setglobalint(ctx, "FRAMESERVER_LOOP", FRAMESERVER_LOOP);
+	
+/* constant: FRAMESERVER_NOLOOP,int */ 
+	arcan_lua_setglobalint(ctx, "FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP);
 	
 /* constant: THEMENAME,string */
 	arcan_lua_setglobalstr(ctx, "THEMENAME", arcan_themename);

@@ -1261,11 +1261,14 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 			arcan_video_pushasynch(id);
 
 #ifdef DEBUG
-		free(vobj->default_frame.s_raw);
+			if (vobj->default_frame.s_raw)
+				memset(vobj->default_frame.s_raw, 0xee, s_raw);
+#endif
+
+		free(vobj->default_frame.raw);
 		vobj->default_frame.s_raw = 0;
 		vobj->default_frame.raw = NULL;
-#endif
-	
+
 		if (vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
 			vobj->origw = vobj->gl_storage.w = constraints.w;
 			vobj->origh = vobj->gl_storage.h = constraints.h;
@@ -1292,23 +1295,11 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 			generate_basic_mapping(vobj->txcos, hx, hy);
 			
 		glBindTexture(GL_TEXTURE_2D, 0);
-
-		/* scale- values are no longer correct,
-		 * to correct "in engine", rerun compact transform, set the object size to the newfound one,
-		 * then push a system event.
-		 * opted for the "in script" option, thus just pushing an event */
-		arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_RESIZED};
-		ev.data.video.source = id;
-		ev.data.video.constraints.w   = vobj->origw;
-		ev.data.video.constraints.h   = vobj->origh;
-		ev.data.video.constraints.bpp = mirror; /* slightly hackish .. */
-		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 		rv = ARCAN_OK;
 	}
 
 	return rv;
 }
-
 
 arcan_vobj_id arcan_video_loadimageasynch(const char* rloc, img_cons constraints, intptr_t tag)
 {

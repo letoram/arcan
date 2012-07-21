@@ -65,11 +65,9 @@ extern char* arcan_binpath;
 arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
+	
 	if (src) {
 		src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
-		if (!loop)
-			arcan_audio_stop(src->aid);
 			
 		if (src->vfq.alive)
 			arcan_framequeue_free(&src->vfq);
@@ -102,6 +100,14 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			free(src->shm.key);
 			
 			src->shm.ptr = NULL;
+		}
+		
+		if (!loop){
+			vfunc_state emptys = {0};
+			arcan_audio_stop(src->aid);
+			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
+			memset(src, 0xaa, sizeof(arcan_frameserver));
+			free(src);
 		}
 		
 		rv = ARCAN_OK;
@@ -232,7 +238,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	if ( socketpair(PF_UNIX, SOCK_DGRAM, 0, sockp) < 0 ){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't get socket pair\n");
 	}
-	
+
 	pid_t child = fork();
 	if (child) {
 		arcan_frameserver_meta vinfo = {0};
