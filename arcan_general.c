@@ -575,7 +575,6 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 	return rv;
 }
 
-
 unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag){
 	HANDLE findh;
 	WIN32_FIND_DATA finddata;
@@ -585,17 +584,17 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
     
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
 		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
+
 		findh = FindFirstFile(playbuf, &finddata);
 		if (findh != INVALID_HANDLE_VALUE)
-            do{
+			do{
 				if (strcmp(playbuf, ".") != 0 &&
 					strcmp(playbuf, "..") != 0){
-	                snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
-	             cb(playbuf, tag);
-	                count++;
-					arcan_warning("resource stored: %s\n", playbuf);
+					snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+					cb(playbuf, tag);
+					count++;
 				}
-            } while (FindNextFile(findh, &finddata));
+			} while (FindNextFile(findh, &finddata));
 		
 		FindClose(findh);
 	}
@@ -604,12 +603,14 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
 		findh = FindFirstFile(playbuf, &finddata);
 		if (findh != INVALID_HANDLE_VALUE)
-            do{
-                snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
-                cb(playbuf, tag);
-                count++;
-				arcan_warning("resource stored: %s\n", playbuf);
-            } while (FindNextFile(findh, &finddata));
+		do{
+			if (strcmp(playbuf, ".") != 0 && 
+				strcmp(playbuf, "..") != 0){
+				snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+				cb(playbuf, tag);
+				count++;
+			}
+		} while (FindNextFile(findh, &finddata));
 		
 		FindClose(findh);
 	}
