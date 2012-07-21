@@ -22,8 +22,8 @@ PROJECT( arcan )
 
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
-set(MINOR_VERSION 1 )
-set(PATCH_LEVEL 4 )
+set(MINOR_VERSION 2 )
+set(PATCH_LEVEL 0 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -368,31 +368,34 @@ SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
 ExecWait '\\\"$INSTDIR\\\\redist\\\\oalinst.exe\\\" /s'" )
 
 SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
+
 SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
     AccessControl::GrantOnFile '\$INSTDIR\\\\themes' '(BU)' 'GenericRead + GenericWrite'
 	AccessControl::GrantOnFile '\$INSTDIR\\\\resources' '(BU)' 'GenericRead + GenericWrite'
-		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Getting Started.lnk' '\$INSTDIR\\\\resources\\\\doc\\\\quickstart.pdf'
-		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
-		   CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
-           CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
+	AccessControl::GrantOnFile '\$INSTDIR\\\\savestates' '(BU)' 'GenericRead + GenericWrite'
+	
+	CreateDirectory '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests'
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
+    CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
 ")
 	
 SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Welcome).lnk' 
-		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Getting Started.lnk'
-		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
-           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Font Test.lnk'
-           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Event Test.lnk'
-           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Sound Test.lnk'
-           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Image Test.lnk'
-           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Movie Test.lnk'
+		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Event Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Font Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Event Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Sound Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Image Test.lnk'
+           Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Movie Test.lnk'
+		   Delete '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests'
 		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Build DB.lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle).lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Dishwater).lnk'
