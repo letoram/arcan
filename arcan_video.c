@@ -771,22 +771,6 @@ void arcan_video_fullscreen()
 	SDL_WM_ToggleFullScreen(arcan_video_display.screen);
 }
 
-static void flipimage(SDL_Surface* src)
-{
-/* flip horizontal to match GL format, assumes RGBA */
-		unsigned char* dbuf = (unsigned char*) src->pixels;
-		for (int row=0; row < (src->h >> 2); row++)
-			for(int col=0; col < src->w; col++)
-				for(int ch=0; ch < 4; ch++){
-					unsigned normofs = (row * src->w + col) * 4 + ch;
-					unsigned invofs  = ((src->h - 1 - row) * src->w + col) * 4 + ch;
-					
-					unsigned char tmp = dbuf[normofs];
-					dbuf[normofs] = dbuf[invofs];
-					dbuf[invofs] = tmp;
-				}
-}
-
 /* it would be interesting and useful to limit this to PNG and JPG and strip out SDL_Image altogether.
  * futhermore, check up on libpng memory access patterns, MMAP the file with MADIVSE on MADV_SEQUENTIAL and MAP_POPULATE
  * since this function is used extremely often and shuffles a lot of data, furthermore, we would like to split this into 
@@ -794,6 +778,23 @@ static void flipimage(SDL_Surface* src)
 #ifndef ASYNCH_CONCURRENT_THREADS
 #define ASYNCH_CONCURRENT_THREADS 8
 #endif 
+
+/* ZLib antialiased SDL- based upscaler from SDL-gfx/rotozoom package */
+#include "stretchblit.c"
+
+/* copy RGBA src row by row with optional "flip",
+ * swidth <= dwidth */
+static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int swidth, int height, bool flipv)
+{
+	if (flipv)
+	{
+		for (int drow = height-1, srow = 0; srow < height; srow++, drow--)
+			memcpy(&dst[drow * dwidth], &src[srow * swidth], swidth * 4);
+	}
+	else
+		for (int row = 0; row < height; row++)
+			memcpy(&dst[row * dwidth], &src[row * swidth], swidth * 4);
+}
 
 static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc)
 {
@@ -841,40 +842,37 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		dst->gl_storage.w = neww;
 		dst->gl_storage.h = newh;
 
-		if (dst->gl_storage.imageproc == imageproc_fliph){
-			flipimage(gl_image);
-		}
-		
 		dstframe->s_raw = neww * newh * 4;
-		dstframe->raw = (uint8_t*) calloc(dstframe->s_raw, 1);
+		dstframe->raw = (uint8_t*) malloc(dstframe->s_raw);
 		
-		/* line-by-line copy
-		 * possible problem loading asynch image (nogl)
-		 * with the gluScaleImage code, can't find decent documentation on it,
-		 * although it "shouldn't" need to use GL at all ... */
-
 		if (newh != gl_image->h || neww != gl_image->w){
-			if (dst->gl_storage.scale == ARCAN_VIMAGE_SCALEPOW2 && 
-				(newh != gl_image->h || neww != gl_image->w))
-				gluScaleImage(GL_PIXEL_FORMAT, 
-							gl_image->w, gl_image->h, GL_UNSIGNED_BYTE, gl_image->pixels,
-							neww, newh, GL_UNSIGNED_BYTE, dstframe->raw);
-			
-			else if (dst->gl_storage.scale == ARCAN_VIMAGE_TXCOORD){
-				for (int row = 0; row < gl_image->h; row++)
-					memcpy(&dstframe->raw[neww * row * 4],
-						   &(((uint8_t*)gl_image->pixels)[gl_image->w * row * 4]),
-						   gl_image->w * 4);
 
-			/* Patch texture coordinates */
+/* we need a stretch blit or patch coordinates */
+			if (dst->gl_storage.scale == ARCAN_VIMAGE_SCALEPOW2){
+/* for stretch blit, we use the interpolated upscaler from SDL_gfx/rotozoom,
+ * as gluScaleImage is not present in GLES and not thread-safe (sigh) */
+				stretchblit(gl_image, (uint32_t*) dstframe->raw, neww, newh, neww * 4, dst->gl_storage.imageproc == imageproc_fliph); 
+			}
+			else if (dst->gl_storage.scale == ARCAN_VIMAGE_TXCOORD){
+				memset(dstframe->raw, 0, dstframe->s_raw); /* black 0 alpha "border" */
+/* dst is aligned with the nearest power of 2 of the dimensions of source */
+				imagecopy((uint32_t*) dstframe->raw, gl_image->pixels, 
+									neww, gl_image->w, gl_image->h, dst->gl_storage.imageproc == imageproc_fliph); 
+
+/* Patch texture coordinates */
 				float hx = (float)dst->origw / (float)dst->gl_storage.w;
 				float hy = (float)dst->origh / (float)dst->gl_storage.h;
 				generate_basic_mapping(dst->txcos, hx, hy);
 			}
-		}
-		else
-			memcpy(dstframe->raw, gl_image->pixels, dstframe->s_raw);
 
+		}
+		else{ /* src and dst match, only do line- by line copy if flip is needed */
+			if (dst->gl_storage.imageproc == imageproc_fliph)
+				imagecopy((uint32_t*)dstframe->raw, gl_image->pixels, neww, neww, newh, true);
+			else
+				memcpy(dstframe->raw, gl_image->pixels, dstframe->s_raw);
+		}
+		
 		if (!asynchsrc)
 			allocate_and_store_globj(dst, &dst->gl_storage.glid, dst->gl_storage.w, dst->gl_storage.h, dstframe->raw);
 
