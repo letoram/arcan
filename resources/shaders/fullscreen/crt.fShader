@@ -1,15 +1,9 @@
-// Comment the next line to disable interpolation in linear gamma (and gain speed).
-//#define LINEAR_PROCESSING
- 
 // Enable screen curvature.
 #define CURVATURE
  
 // Enable 3x oversampling of the beam profile
 #define OVERSAMPLE
- 
-// Use the older, purely gaussian beam profile
-//#define USEGAUSSIAN
- 
+
 // Macros.
 #define FIX(c) max(abs(c), 1e-5);
 #define PI 3.141592653589
