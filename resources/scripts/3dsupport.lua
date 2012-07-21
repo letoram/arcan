@@ -33,7 +33,7 @@ function load_model_generic(modelname, rndmissing)
 	model.vid = new_3dmodel();
 	if (model.vid == BADID) then return nil end
 	image_framesetsize(model.vid, #meshes);
---	switch_default_imageproc(IMAGEPROC_FLIPH);
+	switch_default_imageproc(IMAGEPROC_FLIPH);
 
 	for i=1, #meshes do
 		slot = i - 1;
