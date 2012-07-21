@@ -588,12 +588,9 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		findh = FindFirstFile(playbuf, &finddata);
 		if (findh != INVALID_HANDLE_VALUE)
 			do{
-				if (strcmp(playbuf, ".") != 0 &&
-					strcmp(playbuf, "..") != 0){
-					snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
-					cb(playbuf, tag);
-					count++;
-				}
+				snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+				cb(playbuf, tag);
+				count++;
 			} while (FindNextFile(findh, &finddata));
 		
 		FindClose(findh);
@@ -601,15 +598,13 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
     
 	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
 		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
+
 		findh = FindFirstFile(playbuf, &finddata);
 		if (findh != INVALID_HANDLE_VALUE)
 		do{
-			if (strcmp(playbuf, ".") != 0 && 
-				strcmp(playbuf, "..") != 0){
-				snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
-				cb(playbuf, tag);
-				count++;
-			}
+			snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+			cb(playbuf, tag);
+			count++;
 		} while (FindNextFile(findh, &finddata));
 		
 		FindClose(findh);
