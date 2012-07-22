@@ -1,18 +1,35 @@
 -- Collection of support functions and shaders
 
+local function material_loaded(source, statustbl)
+	if (statustbl.kind == "load_failed") then
+		warning("Material load failed on resource ( " .. tostring(statustbl.resource) .. " )\n");
+	end
+end
+
 local function load_material(modelname, meshname, synth)
 	local rvid = BADID;
 	local fnameb = "models/" .. modelname .. "/textures/" .. meshname;
 
 	if (resource(fnameb .. ".png")) then
-		rvid = load_image_asynch(fnameb .. ".png", function(source, status) end);
+		rvid = load_image_asynch(fnameb .. ".png", material_loaded);
 	elseif (resource(fnameb .. ".jpg")) then
-		rvid = load_image_asynch(fnameb .. ".jpg", function(source, status) end);
+		rvid = load_image_asynch(fnameb .. ".jpg", material_loaded);
 	elseif (synth) then 
 		rvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255))
 	end
 
 	return rvid;
+end
+
+-- sort so that labels with known alpha attributes, get rendered last (just bezel and marquee in this case)
+local function sort_meshes(a, b)
+	if (a[1] == "bezel" and b[1] ~= "bezel") then 
+		return false;
+	elseif (b[1] == "bezel" and a[1] ~= "bezel") then
+		return true;
+	else
+		return a[1] < b[1]
+	end
 end
 
 function load_model_generic(modelname, rndmissing)
@@ -35,12 +52,23 @@ function load_model_generic(modelname, rndmissing)
 	image_framesetsize(model.vid, #meshes);
 	switch_default_imageproc(IMAGEPROC_FLIPH);
 
+	seqlist = {}
+	
 	for i=1, #meshes do
-		slot = i - 1;
-		add_3dmesh(model.vid, basep .. meshes[i], 1);
-		local vid = load_material(modelname, string.sub(meshes[i], 1, -5), rndmissing);
+		local ent = {};
+		ent[1] = string.sub(meshes[i], 1, -5);
+		ent[2] = meshes[i];
+		seqlist[i] = ent;
+	end
 
-		model.labels[string.sub(meshes[i], 1, -5)] = slot;
+	table.sort(seqlist, sort_meshes);
+	
+	for i=1, #seqlist do
+		slot = i - 1;
+		add_3dmesh(model.vid, basep .. seqlist[i][2], 1);
+		local vid = load_material(modelname, seqlist[i][1], rndmissing);
+
+		model.labels[seqlist[i][1]] = slot;
 		
 		model.images[slot] = vid;
 		model.screenview = {};

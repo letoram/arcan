@@ -1,4 +1,5 @@
 grid = {};
+filter_label_statetbl = {};
 
 internal_vid = BADID;
 internal_aid = BADID;
@@ -93,11 +94,12 @@ settings = {
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
 	flipinputaxis = false,
+	filter_opposing= false, 
 	internal_again = 1.0,
 	fullscreenshader = "default",
 	in_internal = false,
 	cocktail_mode = "Disabled",
-	autosave = true -- if nil, no attempt at autosave / autoload will be made, otherwise specifies file-name
+	autosave = "On" 
 };
 
 settings.sortfunctions = {};
@@ -203,7 +205,8 @@ if (settings.sortfunctions[settings.sortlbl]) then
 	
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeatrate);
-
+--	Trace();
+	
 -- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
 	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
@@ -224,14 +227,16 @@ end
 	
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
+		
 		if (ind == nil) then -- flag
 			table.insert(settings.favorites, current_game().title);
-			local props = spawn_favoritestar(cursor_vid());
-			settings.favorites[current_game().title] = props;
+			local props = image_surface_properties( cursor_bgvid() );
+			settings.favorites[current_game().title] = spawn_favoritestar(props.x, props.y);
 			play_audio(soundmap["SET_FAVORITE"]);
+
 		else -- unflag
 			fvid = settings.favorites[current_game().title];
-			if (fvid) then
+			if (valid_vid(fvid)) then
 				blend_image(fvid, 0.0, settings.fadedelay);
 				expire_image(fvid, settings.fadedelay);
 				settings.favorites[current_game().title] = nil;
@@ -408,7 +413,7 @@ end
 function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
 
-	if (settings.autosave) then
+	if (settings.autosave == "On") then
 		internal_statectl("auto", false);
 	end
 	
@@ -564,7 +569,7 @@ function table.find(table, label)
 	return nil;  
 end
 
-function spawn_magnify( src )
+function spawn_magnify( x, y )
 	local vid = instance_image(imagery.magnifyimage);
 	local w = settings.cell_width * 0.1;
 	local h = settings.cell_height * 0.1;
@@ -573,8 +578,7 @@ function spawn_magnify( src )
 	image_mask_clear(vid, MASK_OPACITY);
 	force_image_blend(vid);
 
-	local props = image_surface_properties( src );
-	move_image(vid, props.x, props.y + (settings.cell_width * 0.05), 0);
+	move_image(vid, x, y, 0);
 	order_image(vid, ICONLAYER);
 	blend_image(vid, 1.0, settings.fadedelay);
 	resize_image(vid, 1, 1, NOW);
@@ -599,23 +603,23 @@ function spawn_warning( message )
 -- position and start fading slowly
 	move_image(vid, VRESW * 0.5 - props.width * 0.5, 5, NOW);
 	show_image(vid);
-	expire_image(vid, 250);
-	blend_image(vid, 0.0, 250);
+	expire_image(vid, 125);
+	blend_image(vid, 0.0, 125);
 end
 
-function spawn_favoritestar( src )
+function spawn_favoritestar( x, y )
 	local vid = instance_image(imagery.starimage);
 	image_mask_clear(vid, MASK_SCALE);
 	image_mask_clear(vid, MASK_OPACITY);
 	force_image_blend(vid);
 
-	local props = image_surface_properties( src );
-	move_image(vid, props.x - (settings.cell_width * 0.05), props.y - (settings.cell_width * 0.05), 0);
+	move_image(vid, x, y, 0);
 	order_image(vid, ICONLAYER);
 	blend_image(vid, 1.0, settings.fadedelay);
 	resize_image(vid, 1, 1, NOW);
 	resize_image(vid, settings.cell_width * 0.1, settings.cell_height * 0.1, 10);
 	table.insert(settings.favvids, vid);
+	
 	return vid;
 end
 
@@ -630,7 +634,7 @@ function osdkbd_filter(msg)
 		settings.filters.title = msg;
 		local gamelist = list_games( settings.filters );
 		
-		if (#gamelist > 0) then
+		if (gamelist and #gamelist > 0) then
 			settings.games = gamelist;
 		
 			if (settings.sortfunctions[settings.sortlbl]) then
@@ -730,6 +734,11 @@ end
 function cursor_vid()
 	local cursor_row = math.floor( settings.cursor / ncw);
 	return grid[cursor_row][settings.cursor - cursor_row * ncw ];
+end
+
+function cursor_bgvid()
+	local cursor_row = math.floor( settings.cursor / ncw );
+	return whitegrid[cursor_row][settings.cursor - cursor_row * ncw];
 end
 
 function blend_gridcell(val, dt)
@@ -841,7 +850,7 @@ function build_whitegrid()
 		whitegrid[row] = {};
 		for col=0, ncw-1 do
 -- only build new cells if there's a corresponding one in the grid 
-			if (settings.tilebg ~= "None" and grid[row][col] ~= nil and grid[row][col] > 0) then
+			if (grid[row][col] ~= nil and grid[row][col] > 0) then
 				local gameno = (row * ncw + col + settings.pageofs + 1);
 				local gametbl = settings.games[gameno];
 				local gridbg = BADID;
@@ -859,8 +868,15 @@ function build_whitegrid()
 				move_image(gridbg, cell_coords(col, row));
 				image_mask_clear(gridbg, MASK_OPACITY);
 				order_image(gridbg, GRIDBGLAYER);
-				show_image(gridbg);
-			
+				
+-- we have hidden images for the "None" mode to use the positioning for snapshots etc.
+-- so we attach other images to the "right" vid position.
+				if (settings.tilebg == "None") then
+					hide_image(gridbg);
+				else
+					show_image(gridbg);
+				end
+				
 				whitegrid[row][col] = gridbg;
 			end
 			
@@ -945,6 +961,8 @@ function build_grid(width, height)
 
 		for col=0, ncw-1 do
 			local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
+			local cx, cy = cell_coords(col, row);
+
 			if (settings.games[gameno] == nil) then break; end
 			settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
 			settings.games[gameno].capabilities = launch_target_capabilities( settings.games[gameno].target );
@@ -953,7 +971,6 @@ function build_grid(width, height)
 			if (vid == BADID) then
 				vid = titlestr( settings.games[gameno].title );
 				local props = image_surface_properties(vid);
-				local cx, cy = cell_coords(col, row);
 				move_image(vid, cx + 0.5 * (settings.cell_width - props.width), cy + 0.5 * (settings.cell_height - props.height));
 				blend_image(vid, 0.3);
 			else
@@ -963,13 +980,12 @@ function build_grid(width, height)
 			
 			order_image(vid, GRIDLAYER);
 
-			local ofs = 0;
 			if (settings.favorites[ settings.games[gameno].title ]) then
-				settings.favorites[ settings.games[gameno].title ] = spawn_favoritestar( vid );
+				settings.favorites[ settings.games[gameno].title ] = spawn_favoritestar( cx, cy );
 			end
 
 			if (gridledetail_havedetails( settings.games[gameno] )) then
-				ofs = ofs + spawn_magnify( vid, ofs );
+				spawn_magnify( cx, cy + settings.cell_height * 0.1 );
 			end
 		
 			grid[row][col] = vid;
@@ -986,7 +1002,7 @@ function gridle_shutdown()
 	if (open_rawresource("lists/favorites")) then
 		for a=1,#settings.favorites do
 			if ( write_rawresource(settings.favorites[a] .. "\n") == false) then
-				print("Couldn't save favorites in lists/favorites. Check permissions.");
+				warning("Couldn't save favorites in lists/favorites. Check permissions.");
 				break;
 			end
 		end
@@ -1001,6 +1017,16 @@ function load_key_num(name, val, opt)
 		settings[val] = tonumber(kval);
 	else
 		settings[val] = opt;
+	end
+end
+
+function load_key_bool(name, val, opt)
+	local kval = get_key(name);
+	
+	if (kval) then
+		settings[val] = tonumber(kval) > 0;
+	else
+		settings[val] = false;
 	end
 end
 
@@ -1032,6 +1058,8 @@ function load_settings()
 	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);
 	load_key_num("bg_speedh", "bg_speedh", settings.bg_speedh);
 	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
+	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
+	load_key_str("autosave", "autosave", settings.autosave);
 		
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");
@@ -1054,6 +1082,7 @@ function load_settings()
 	if ( open_rawresource("lists/favorites") ) then
 		line = read_rawresource();
 		while line ~= nil do
+			line = string.trim(line);
 			table.insert(settings.favorites, line);
 			settings.favorites[line] = true;
 			line = read_rawresource();
@@ -1064,6 +1093,17 @@ end
 function asynch_movie_ready(source, statustbl)
 	if (imagery.movie == source) then
 		if (statustbl.kind == "resized") then
+			
+			if (valid_vid(imagery.zoomed)) then
+				local newinst = instance_image(source);
+				image_mask_clear(newinst, MASK_POSITION);
+				copy_image_transform(imagery.zoomed, newinst);
+				reset_image_transform(newinst);
+				delete_image(imagery.zoomed);
+				imagery.zoomed = newinst;
+				gridlemenu_setzoom(newinst, source); -- use new aspect ratio
+			end
+			
 			vid,aid = play_movie(source);
 			audio_gain(aid, 0.0);
 			audio_gain(aid, settings.movieagain, settings.fadedelay);
@@ -1091,7 +1131,7 @@ function gridle_clock_pulse()
 			if (moviefile and cursor_vid() ) then
 				imagery.movie = load_movie( moviefile, FRAMESERVER_LOOP, asynch_movie_ready);
 				if (imagery.movie) then
-					local vprop = image_surface_properties( cursor_vid() );
+					local vprop = image_surface_properties( cursor_bgvid() );
 					
 					move_image(imagery.movie, vprop.x, vprop.y);
 					order_image(imagery.movie, GRIDLAYER_MOVIE);
@@ -1116,13 +1156,16 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 
 	if (settings.in_internal) then
-		if (settings.autosave) then
+		if (settings.autosave == "On") then
 -- note, this is currently not blocking, and the frameserver termination can be quite
--- aggressive, so there is a possibility for a race-condition here 
+-- aggressive, so there is a possibility for a race-condition here, hacking a safeguard in the meantime.
+-- the real solution would be to wait for frameserver to flush event buffer or 'n' seconds, whatever comes first. 
 			internal_statectl("auto", true);
+			expire_image(internal_vid, 20);
+		else
+			expire_image(internal_vid, settings.transitiondelay);
 		end
 		
-		expire_image(internal_vid, settings.transitiondelay);
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
 		blend_image(internal_vid, 0.0, settings.transitiondelay);
 		audio_gain(internal_aid, 0.0, settings.transitiondelay);
@@ -1163,19 +1206,6 @@ function gridle_internal_status(source, datatbl)
 	end
 end
 
--- PLAYERn_UP, PLAYERn_DOWN, PLAYERn_LEFT, playern_RIGHT
-function rotate_label(label, cw)
-	local dirtbl_cw = {UP = "RIGHT", RIGHT = "DOWN", DOWN = "LEFT", LEFT = "UP"};
-	local dirtbl_ccw= {UP = "LEFT", RIGHT = "UP", DOWN = "RIGHT", LEFT = "DOWN"};
-	
-	if (string.sub(label, 1, 6) == "PLAYER") then
-		local num = string.sub(label, 7, 7);
-		local dir = cw and dirtbl_cw[ string.sub(label, 9) ] or dirtbl_ccw[ string.sub(label, 9) ];
-		return dir and ("PLAYER" .. num .."_" .. dir) or nil;
-	end
-	
-	return nil;
-end
 
 function internal_statectl(suffix, save)
 	local cg = current_game();
@@ -1191,74 +1221,145 @@ function internal_statectl(suffix, save)
 	
 end
 
+-- PLAYERn_UP, PLAYERn_DOWN, PLAYERn_LEFT, playern_RIGHT
+dirtbl_cw  = {UP = "RIGHT", RIGHT = "DOWN", DOWN = "LEFT", LEFT = "UP"};
+dirtbl_ccw = {UP = "LEFT", RIGHT = "UP", DOWN = "RIGHT", LEFT = "DOWN"};
+
+local function rotate_label(label, cw)
+
+	if (string.sub(label, 1, 6) == "PLAYER") then
+		local num = string.sub(label, 7, 7);
+		local dir = cw and dirtbl_cw[ string.sub(label, 9) ] or dirtbl_ccw[ string.sub(label, 9) ];
+		return dir and ("PLAYER" .. num .."_" .. dir) or nil;
+	end
+	
+	return nil;
+end
+
+-- keep track of active directions for each player,
+-- if a label representing a direction opposite of level is activated, 
+filter_label_dirtbl = {UP = "DOWN", DOWN = "UP", LEFT = "RIGHT", RIGHT = "LEFT"};
+local function filter_label(label, iotbl)
+	
+	if (string.sub(label, 1, 6) == "PLAYER") then
+		local num = tonumber( string.sub(label, 7, 7) );
+		local dir = string.sub(label, 9);
+	
+		if (num == nil) then return label; end
+		if (filter_label_statetbl[ num ] == nil) then 
+			local emptytbl = {};
+			emptytbl["UP"] = false;
+			emptytbl["DOWN"] = false;
+			emptytbl["LEFT"] = false;
+			emptytbl["RIGHT"] = false;
+			filter_label_statetbl[ num ] = emptytbl;
+		end
+
+-- lookup the opposite direction, check if that one is active, if it is, ignore this input
+-- else have the state table updated with the state from the iotable 
+		if (filter_label_dirtbl[ dir ] ) then
+			if (filter_label_statetbl[ filter_label_dirtbl[ dir ] ]) then 
+				return nil;
+			else
+				filter_label_statetbl[ dir ] = iotbl.active;
+			end
+		end
+	end
+	
+	return label;
+end
+
+function gridle_internaltgt_analoginput(val, iotbl)
+-- negate analog axis values 
+	if (settings.internal_input == "Invert Axis (analog)") then
+		iotbl.subid = iotbl.subid == 0 and 1 or 0;
+
+-- figure out the image center, calculate offset and negate that
+	elseif (settings.internal_input == "Mirror Axis (analog)") then
+		if ( (iotbl.subid + 1) % 2 == 0 ) then -- treat as Y
+			local center = image_surface_initial_properties(internal_vid).height * 0.5;
+			iotbl.samples[1] = center + (center - iotbl.samples[1]);
+		else -- treat as X 
+			local center = image_surface_initial_properties(internal_vid).width * 0.5;
+			iotbl.samples[1] = center + (center - iotbl.samples[1]);
+		end
+	end
+
+	iotbl.label = val;
+	target_input(internal_vid, iotbl);
+end
+
+function gridle_internaltgt_input(val, iotbl)
+-- toggle corresponding button LEDs if we want to light only on push
+	if (settings.ledmode == 3) then
+		ledconfig:set_led_label(val, iotbl.active);
+	end
+
+-- strip all input events for which there is an opposing, active, PLAYERn_UP/DOWN/LEFT/RIGHT
+	if (settings.filter_opposing) then
+		val = filter_label(val, iotbl); 
+	end
+
+-- useful for horiz/vertical game switching
+	if (val and settings.internal_input == "Rotate CW" or settings.internal_input == "Rotate CCW") then
+		val = rotate_label(val, settings.internal_input == "Rotate CW");
+	end
+
+-- now, the iotbl doesn't necessarily correspond to the iotbl, so have keyconfig try
+-- to rebuild a useful iotbl.
+	if (val) then
+		res = keyconfig:buildtbl(val, iotbl);
+		
+		if (res) then
+			res.label = val;
+			target_input(res, internal_vid);
+		else
+			iotbl.label = val;
+			target_input(iotbl, internal_vid);
+		end
+	end
+	
+end
+
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
 	local addlbl = "";
 	
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
+-- the reason for looping the restbl is simply that the iotbl can be set to match several labels
+	
 	if (restbl) then
 		for ind, val in pairs(restbl) do
 			if (val == "MENU_ESCAPE" and iotbl.active) then
 				gridle_internalcleanup();
-				return;
+
 			elseif (val == "MENU_TOGGLE") then
 				gridlemenu_internal(internal_vid, false, true);
-				return;
+
 			elseif (val == "CONTEXT") then
 				gridlemenu_internal(internal_vid, true, false);
-				return;
+
+-- iotbl.active filter here is just to make sure we don't save twice (press and release) 
 			elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD") and iotbl.active) then
 				internal_statectl("quicksave", val == "QUICKSAVE");
-				return;
-			end
-			
-			addlbl = val;
-			
-			if (settings.internal_input == "Rotate CW" or settings.internal_input == "Rotate CCW") then
-				val = rotate_label(val, settings.internal_input == "Rotate CW");
-				
-				if (val ~= nil) then
-					res = keyconfig:buildtbl(val, iotbl);
 
-					if (res) then
-						target_input(res, internal_vid);
-						return;
-					end
+-- since we want similar behavior in detailview, the rest is split.
+			else
+
+				if (iotbl.kind == "analog") then 
+					gridle_internaltgt_analoginput(val, iotbl);
+				else
+					gridle_internaltgt_input(val, iotbl);
 				end
-			end
-		
--- toggle corresponding button LEDs if we want to light only on push
-			if (settings.ledmode == 3) then
-				ledconfig:set_led_label(val, iotbl.active);
-			end
-		end
-	end	
 
-	-- negate analog axis values 
-	if (settings.internal_input == "Invert Axis (analog)") then
-		if (iotbl.kind == "analog") then
-			iotbl.subid = iotbl.subid == 0 and 1 or 0;
-		end
-
--- figure out the image center, calculate offset and negate that
-	elseif (settings.internal_input == "Mirror Axis (analog)") then
-		if (iotbl.kind == "analog") then
-			if ( (iotbl.subid + 1) % 2 == 0 ) then -- treat as Y
-				local center = image_surface_initial_properties(internal_vid).height * 0.5;
-				iotbl.samples[1] = center + (center - iotbl.samples[1]);
-			else -- treat as X 
-				local center = image_surface_initial_properties(internal_vid).width * 0.5;
-				iotbl.samples[1] = center + (center - iotbl.samples[1]);
 			end
 		end
+	else
+-- default behavior is to forward even unmapped keys, the frameserver will simply ignore
+-- and hijack target then allows for local use even when input hasn't been set up correctly
+		target_input(iotbl, internal_vid);
 	end
-
--- the label used in iotbl will be the last matching label of a set,
--- another option would be to fire an event for each generated label
--- and leave it up to the target to filter.
-	iotbl.label = addlbl;
-	target_input(iotbl, internal_vid);
 end
 
 function gridle_dispatchinput(iotbl)

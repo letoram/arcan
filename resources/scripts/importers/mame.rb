@@ -211,6 +211,9 @@ class Mame
 			shorttitle = title.split(/\s\(/)[0]
 			shorttitle = shorttitle.split(/\//)[0] if shorttitle.index("/")
 			
+			title.strip! if title
+			shorttitle.strip! if title
+			
 			res = Game.new
 			res.target = @target
 			res.title = @shorttitle ? shorttitle : title

@@ -1378,6 +1378,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 	else if (ev->category == EVENT_VIDEO){
 		intptr_t dst_cb = 0;
+		arcan_vobject* srcobj;
+		const char* evmsg = "video_event";
+		const char* srcres = "";
 		bool gotfun;
 		
 		if (arcan_lua_grabthemefunction(ctx, "video_event"))
@@ -1392,28 +1395,38 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		int top = lua_gettop(ctx);
 			
 		switch (ev->kind) {
-		case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); break;
-		case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top); break;
-		case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); break; 
-		case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); break;
-		case EVENT_VIDEO_ROTATED : arcan_lua_tblstr(ctx, "kind", "rotated", top); break;
+		case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); evmsg = "video_event(expire)"; break;
+		case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top); evmsg = "video_event(scale)"; break;
+		case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); evmsg = "video_event(move))"; break; 
+		case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); evmsg = "video_event(blend)"; break;
+		case EVENT_VIDEO_ROTATED : arcan_lua_tblstr(ctx, "kind", "rotated", top); evmsg = "video_event(rotate)"; break;
 
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
-			arcan_lua_tblstr(ctx, "kind", "loaded", top); 
+			evmsg = "video_event(asynchimg_loaded)";
+			arcan_lua_tblstr(ctx, "kind", "loaded", top);
 			arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
 			arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top); 
 			dst_cb = (intptr_t) ev->data.video.data;
-			if (dst_cb)
+
+			if (dst_cb){
+				evmsg = "video_event(asynchimg_loaded), callback";
 				lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+			}
 		break;
                 
 		case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED: 
+			srcobj = arcan_video_getobject(ev->data.video.source);
+			evmsg = "video_event(asynchimg_load_fail), callback";
 			arcan_lua_tblstr(ctx, "kind", "load_failed", top); 
+			arcan_lua_tblstr(ctx, "resource", srcobj && srcobj->default_frame.source ? srcobj->default_frame.source : "unknown", top); 
 			arcan_lua_tblnum(ctx, "width", ev->data.video.constraints.w, top); 
 			arcan_lua_tblnum(ctx, "height", ev->data.video.constraints.h, top);    
 			dst_cb = (intptr_t) ev->data.video.data;
-			if (dst_cb)
+
+			if (dst_cb){
+				evmsg = "video_event(asynchimg_load_fail), callback";
 				lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+			}
 		break;
 
 		default:
@@ -1428,7 +1441,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 
 		if (gotfun)
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "video_event");
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), evmsg); 
 		else
 			lua_settop(ctx, 0);
 		

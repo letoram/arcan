@@ -42,7 +42,8 @@ local inputmodelist = {
 	"Rotate CW",
 	"Rotate CCW",
 	"Invert Axis (analog)",
-	"Mirror Axis (analog)"
+	"Mirror Axis (analog)",
+	"Filter Opposing"
 };
 
 local inputmodeptrs = {};
@@ -56,6 +57,22 @@ local function inputmodechg(label, save)
 	end
 	
 	settings.internal_input = label;
+end
+
+inputmodeptrs["Filter Opposing"] = function(label, save)
+	settings.filter_opposing = not settings.filter_opposing;
+
+	if (settings.filter_opposing) then
+		current_menu.formats[ label ] = "\\#ff0000";
+	else
+		current_menu.formats[ label ] = nil; 
+	end
+	
+	current_menu:move_cursor(0, 0, true);
+
+	if (save) then
+		store_key("filter_opposing", settings.filter_opposing and "1" or "0");
+	end
 end
 
 inputmodeptrs["Normal"] = inputmodechg;
@@ -505,8 +522,12 @@ local function build_savemenu()
 					osdsavekbd:destroy();
 					osdsavekbd = nil;
 					gridle_input = gridle_dispatchinput;
-					internal_statectl(resstr, true);
-					spawn_warning("state saved as (" .. resstr .. ")");
+
+					if (string.len(resstr) > 0) then
+						internal_statectl(resstr, true);
+						spawn_warning("state saved as (" .. resstr .. ")");
+					end
+					
 					settings.iodispatch["MENU_ESCAPE"]();
 					settings.iodispatch["MENU_ESCAPE"]();
 				end
@@ -568,7 +589,6 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				local lbls, ptrs, fmt = build_loadmenu();
 				menu_spawnmenu( lbls, ptrs, fmt );
 			end
-		
 		end
 		
 		table.insert(lbltbl, "Save State...");
@@ -577,7 +597,10 @@ local function add_gamelbls( lbltbl, ptrtbl )
 			menu_spawnmenu( lbls, ptrs, fmt );
 		end
 	end
-
+	
+-- fixme; generate menus for all the different kinds of "frame-stepping" options we'd like to have
+-- (auto, draw every n frames, rewind n frames, ...)
+	
 -- fixme; generate menus for each input port with (gamepad, mouse, keyboard, ...) sort of options
 -- in order to plug into proper libretro devices .. 
 --	if ( captbl.ports and captbl.ports > 0) then
@@ -692,7 +715,7 @@ if (#menulbls > 0 and settingslbls) then
 		table.insert(menulbls, "Scaling...");
 		table.insert(menulbls, "Input...");
 		table.insert(menulbls, "Audio Gain...");
-		table.insert(menulbls,	"Cocktail Modes...");
+		table.insert(menulbls, "Cocktail Modes...");
 	end
 	
 	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
@@ -723,6 +746,10 @@ if (#menulbls > 0 and settingslbls) then
 	
 	current_menu.ptrs["Input..."] = function()
 		local def = {};
+		if (settings.filter_opposing) then
+			def["Filter Opposing"]= "\\#ff0000";
+		end
+		
 		def[ settings.internal_input ] = "\\#00ffff";
 		if (get_key("internal_input")) then
 			def[ get_key("internal_input") ] = "\\#00ff00";
