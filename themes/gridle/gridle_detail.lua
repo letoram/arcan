@@ -43,13 +43,18 @@ local function gridledetail_setnoisedisplay()
 	local rvid = set_image_as_frame(detailview.model.vid, instance_image(noise_image), detailview.model.labels["display"], 1);
 	mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 
-	if (rvid ~= BADID) then
-		delete_image(rvid); 
+	if (valid_vid( rvid )) then
+		expire_image(rvid, rvid == internal_vid and 20 or 0);
 	end
 end
 
 local function gridledetail_imagestatus(source, status)
--- all asynchronous operations can fail (status == 0), or the resource may not be interesting anymore
+-- all asynchronous operations can fail or the resource may not be interesting anymore
+	if (status.kind =="load_failed") then
+		warning("Couldn't load source (" .. tostring(status.resource) .. ")\n");
+		return false;
+	end
+	
 	if (valid_vid(source) == false) then
 		warning("gridledetail_imagestatus() -- invalid ID received.\n");
 		return false;
@@ -88,13 +93,21 @@ local function gridledetail_moviestatus(source, status)
 	end
 end
 
+local function asynch_snapvid(source, statustbl)
+	if (statustbl.kind == "load_failed") then
+		gridledetail_setnoisedisplay();
+	end
+end
+
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
--- if we have a "load script", use that.
-	if (".lua" == string.sub(detailres, -4, -1)) then
+
+-- "game- specific load script" instead of generic / 3d.
+	if (".lua" == string.sub(detailres, -1, -1)) then
 		gamescript = system_load(detailres)();
 		return (type(gamescript.status) == "function") and gamescript:status() or nil;
 	else
+		
 -- otherwise, use the generic model loader
 		detailview.game = gametbl;
 		detailview.model = load_model(detailres);
@@ -124,9 +137,9 @@ local function gridledetail_buildview(detailres, gametbl )
 				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["coinlights"]);
 			end
 		
-			if (detailview.model.labels["snapshot"]) then
+			if (detailview.model.labels["snapshot"] and detailview.game.resources.screenshots[1]) then
 				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["snapshot"]);
-				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources.screenshots[1] ), detailview.model.labels["snapshot"], 1);
+				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources.screenshots[1], asynch_snapvid ), detailview.model.labels["snapshot"], 1);
 			end
 			
 -- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
@@ -193,121 +206,162 @@ function gridledetail_clock_pulse(tick)
 	end
 end
 
-function gridledetail_internalinput(iotbl)
-	local restbl = keyconfig:match(iotbl);
-
-	if (restbl) then
-		for ind,val in pairs(restbl) do
-			if (iotbl.active and val == "MENU_TOGGLE" and detailview.fullscreen) then
-				gridlemenu_internal(internal_vid, true, true);
-				return;
-			elseif (iotbl.active and val == "CONTEXT") then
+local function gridledetail_switchfs()
 -- switch between running with fullscreen and running with cabinet zoomed in
-				if (detailview.fullscreen) then
-					hide_image(internal_vid);
-					delete_image(internal_vidborder);
-					show_image(detailview.model.vid);
-					if (valid_vid(imagery.bezel)) then hide_image(imagery.bezel); end
-					if (valid_vid(imagery.cocktail_vid)) then hide_image(imagery.cocktail_vid); end 
-					detailview.fullscreen = false;
-				else
-					detailview.fullscreen = true;
+	if (detailview.fullscreen) then
+		hide_image(internal_vid);
+		delete_image(internal_vidborder);
+		show_image(detailview.model.vid);
+		
+		if (valid_vid(imagery.bezel)) then hide_image(imagery.bezel); end
+		if (valid_vid(imagery.cocktail_vid)) then hide_image(imagery.cocktail_vid); end 
+			detailview.fullscreen = false;
+	else
+		detailview.fullscreen = true;
 				
-					gridlemenu_loadshader(settings.fullscreenshader);
-					gridlemenu_resize_fullscreen(internal_vid);
+		gridlemenu_loadshader(settings.fullscreenshader);
+		gridlemenu_resize_fullscreen(internal_vid);
 
-					internal_vidborder = instance_image( imagery.black );
-					image_mask_clearall(internal_vidborder);
-					resize_image(internal_vidborder, VRESW, VRESH);
-					show_image(internal_vidborder);
-					show_image(internal_vid);
+		internal_vidborder = instance_image( imagery.black );
+		image_mask_clearall(internal_vidborder);
+		resize_image(internal_vidborder, VRESW, VRESH);
+		show_image(internal_vidborder);
+		show_image(internal_vid);
 					
-					hide_image(detailview.model.vid);
+		hide_image(detailview.model.vid);
 
-					order_image(internal_vidborder, max_current_image_order() + 1);
-					order_image(internal_vid, max_current_image_order() + 1); 
-					if (valid_vid(imagery.bezel)) then
-						show_image(imagery.bezel);
-						order_image(imagery.bezel, max_current_image_order());
-					end
+		order_image(internal_vidborder, max_current_image_order() + 1);
+		order_image(internal_vid, max_current_image_order() + 1); 
 
-					if (valid_vid(imagery.cocktail_vid)) then
-						show_image(imagery.cocktail_vid);
-						order_image(imagery.cocktail_vid, max_current_image_order());
-					end
-					
-					return;
-				end
-			elseif (iotbl.active and val == "MENU_ESCAPE") then
--- stop the internal launch, zoom out the model and replace display with static
-				if (valid_vid( internal_vidborder )) then 
-					delete_image(internal_vidborder);
-					internal_vidborder = nil;
-				end
-			
-				delete_image(internal_vid);
-				internal_vid = BADID;
-				show_image(detailview.model.vid);
-				gridledetail_setnoisedisplay();
+		if (valid_vid(imagery.bezel)) then
+			show_image(imagery.bezel);
+			order_image(imagery.bezel, max_current_image_order());
+		end
 
-				local o = detailview.model.default_orientation;
-				orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
-				move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
-				
-				return;
-			end
-
-				if (settings.ledmode == 3) then
-				ledconfig:set_led_label(val, iotbl.active);
-			end	
-
+		if (valid_vid(imagery.cocktail_vid)) then
+			show_image(imagery.cocktail_vid);
+			order_image(imagery.cocktail_vid, max_current_image_order());
 		end
 	end
+	
+end
 
-	target_input(internal_vid, iotbl);
+function gridledetail_stopinternal()
+-- stop the internal launch, zoom out the model and replace display with static
+	if (valid_vid( internal_vidborder )) then 
+		delete_image(internal_vidborder);
+		internal_vidborder = nil;
+	end
+
+	if (settings.autosave == "On") then
+		internal_statectl("auto", true);
+-- definately on the "to fix" for 0.2.1
+		expire_image(internal_vid, 20);
+	else
+		delete_image(internal_vid);
+	end
+
+	detailview.fullscreen = false;
+	
+	show_image(detailview.model.vid);
+	gridledetail_setnoisedisplay();
+	internal_vid = BADID;
+
+	local o = detailview.model.default_orientation;
+	orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
+	move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
+end
+
+function gridledetail_internalinput(iotbl)
+	local restbl = keyconfig:match(iotbl);
+	local addlbl = "";
+	
+	if (restbl) then
+		for ind,val in pairs(restbl) do
+			local forward = false;
+			addlbl = val;
+			
+			if (iotbl.active) then
+				if (val == "MENU_TOGGLE" and detailview.fullscreen) then
+					gridlemenu_internal(internal_vid, true, true);
+	
+-- iotbl.active filter here is just to make sure we don't save twice (press and release) 
+				elseif (val == "QUICKSAVE" or val == "QUICKLOAD") then
+					internal_statectl("quicksave", val == "QUICKSAVE");
+
+				elseif (val == "MENU_ESCAPE") then
+					gridledetail_stopinternal();
+				
+				elseif (val == "CONTEXT") then
+					gridledetail_switchfs();
+				
+				else
+					forward = true;
+				end
+			else 
+				forward = true;
+			end
+
+			if (forward) then
+				if (iotbl.kind == "analog") then 
+					gridle_internaltgt_analoginput(val, iotbl);
+				else
+					gridle_internaltgt_input(val, iotbl);
+				end
+			end
+		end
+
+	else
+		target_input(iotbl, internal_vid);
+	end
+	
+end
+
+local function gridledetail_contextinput()
+
+	if (detailview.zoomed) then
+		detailview.zoomed = false;
+		if (detailview.modeldisplay_aid ~= BADID) then
+			audio_gain(detailview.modeldisplay_aid, settings.movieagain * 0.5, 20);
+		end
+
+		local o = detailview.model.default_orientation;
+		move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
+		orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
+	else
+		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
+		orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
+		if (detailview.modeldisplay_aid ~= BADID) then
+			audio_gain(detailview.modeldisplay_aid, settings.movieagain, 20);
+		end
+		detailview.zoomed = true;
+	end
+	
 end
 
 function gridledetail_input(iotbl)
--- if internal launch is active, only "ESCAPE" and "ZOOM" is accepted, all the others are being forwarded.
-	if (internal_vid ~= BADID) then
+	if (valid_vid(internal_vid)) then
 		return gridledetail_internalinput(iotbl);
 	end
-	
+
+-- just ignore analog events for now
 	if (iotbl.kind == "digital") then
 		local restbl = keyconfig:match(iotbl);
-		if (restbl == nil) then return; end
+		if (restbl == nil or iotbl.active == false) then return; end
 
+-- just override "CONTEXT" from the dispatchtbl currently
 		for ind,val in pairs(restbl) do
-			if (iotbl.active and val == "CONTEXT" and detailview.cooldown == 0) then
-				if (detailview.zoomed) then
-					detailview.zoomed = false;
-					if (detailview.modeldisplay_aid ~= BADID) then
-							audio_gain(detailview.modeldisplay_aid, settings.movieagain * 0.5, 20);
-					end
-					
-					move3d_model(detailview.model.vid, detailview.startpos.x, detailview.startpos.y, detailview.startpos.z, 20);
-					local o = detailview.model.default_orientation;
-					orient3d_model(detailview.model.vid, o.roll, o.pitch, o.yaw, 20);
-				else
-					move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
-					orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
-					if (detailview.modeldisplay_aid ~= BADID) then
-							audio_gain(detailview.modeldisplay_aid, settings.movieagain, 20);
-					end
-					detailview.zoomed = true;
-				end
+			if (val == "CONTEXT") then
+				gridledetail_contextinput();
 			else
-
-			if (restbl and iotbl.active) then
-				for ind,val in pairs(restbl) do
-					if (detailview.iodispatch[val]) then detailview.iodispatch[val](restbl); end
+				if (detailview.iodispatch[val]) then 
+					detailview.iodispatch[val](restbl); 
 				end
 			end
-					
+
 		end
 	end
 		
-	end
 end
 
 function gridledetail_havedetails(gametbl)
@@ -443,19 +497,22 @@ function gridledetail_show(detailres, gametbl, ind)
 		end
 	end
 
--- Don't add this label unless internal support is working for the underlying platform
 	detailview.iodispatch["LAUNCH"] = function(iotbl)
-		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
-			and current_game().capabilities.internal_launch;
+		local captbl = launch_target_capabilities( detailview.game.target )
+
+		local launch_internal = (settings.default_launchmode == "Internal" or captbl.external_launch == false) and captbl.internal_launch;
 
 			if (launch_internal) then
 				gridledetail_setnoisedisplay();
-				internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridledetail_internal_status );
+				internal_vid = launch_target( detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status );
+				if (internal_vid and settings.autosave == "On") then
+					internal_statectl("auto", false);
+				end
 			else
 				erase_grid(true);
-				launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+				launch_target( detailview.game.gameid, LAUNCH_EXTERNAL);
 				move_cursor(0);
-				build_grid(settings.cell_width, settings.cell_height)			
+				build_grid(settings.cell_width, settings.cell_height);
 			end
 		
 	end

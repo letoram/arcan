@@ -1047,10 +1047,10 @@ static int thread_loader(void* in)
 /* while this happens, the following members of the struct are not to be touched elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
 	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
+	result.data.video.data = localargs->tag;
 	
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
-		result.data.video.data = localargs->tag;
 		result.data.video.constraints.w = dst->origw;
 		result.data.video.constraints.h = dst->origh;
 	} else {
@@ -1061,6 +1061,8 @@ static int thread_loader(void* in)
 		memset(dst->default_frame.raw, 0, dst->default_frame.s_raw);
 		dst->gl_storage.w = 32;
 		dst->gl_storage.h = 32;
+		dst->default_frame.source = strdup(localargs->fname);
+		result.data.video.data = localargs->tag;
 		result.data.video.constraints.w = 32;
 		result.data.video.constraints.h = 32;
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;

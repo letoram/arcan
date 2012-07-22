@@ -68,7 +68,7 @@ end
 
 local function gridlemenu_resetfilter(source, target, sound)
 	settings.filters = {};
-	local gl = list_games(settings.filters);
+	settings.games = list_games(settings.filters);
 	dofilter();
 end
 
@@ -87,6 +87,27 @@ local function gridlemenu_quickfilter(source, target, sound)
 	dofilter();
 end
 
+function gridlemenu_setzoom( source, reference )
+	local props = image_surface_initial_properties( reference );
+	local desw = 0.5 * VRESW;
+	local ar = props.width / props.height;
+	local endh;
+	local endw;
+	
+	if (ar > 1.0) then
+		endw = desw;
+		endh = endw / ar;
+	else
+		endh = desw / ar;
+		endw = endh * ar;
+	end
+	
+	resize_image(source, endw, endh, 20);
+	move_image(source, desw + 0.5 * (desw - endw), 0.5 * (VRESH - endh), settings.transitiondelay);
+	blend_image(source, 1.0, settings.transitiondelay);
+	order_image(source, max_current_image_order());
+end
+
 -- change launch mode for this particular game
 function gridlemenu_context( gametbl )
 	local mainlbls = {"Quickfilter"};
@@ -100,16 +121,19 @@ function gridlemenu_context( gametbl )
 
 -- we'll resort to the aspect ratio of the cursor_vid() no matter what,
 -- if we have a loaded movie though, we'll instance that
-	local screenshot = cursor_vid();
-	image_pushasynch( screenshot );
-	local props = image_surface_properties( screenshot );
-	if (valid_vid( imagery.movie )) then screenshot = imagery.movie; end 
-	
-	screenshot = instance_image( screenshot );
-	image_mask_clear( screenshot, MASK_POSITION );
+	imagery.zoomed = cursor_vid();
+	image_pushasynch( imagery.zoomed ); 
+
+	if (valid_vid( imagery.movie )) then 
+		imagery.zoomed = imagery.movie; 
+	end 
+
+	imagery.zoomed = instance_image( imagery.zoomed );
+	image_mask_clear( imagery.zoomed, MASK_POSITION );
+	gridlemenu_setzoom( imagery.zoomed, imagery.zoomed );
 	
 -- split the screen in half, resize the current screenshot / movie to fit the rightmost half
-	
+
 -- derive the menu based on the current game
 	local ptrs = {};
 	ptrs["Quickfilter"] = function()
@@ -119,7 +143,8 @@ function gridlemenu_context( gametbl )
 		
 		for ind, val in ipairs(filterlbls) do
 			local key = string.lower( val );
-			if (gametbl[key] and string.len(gametbl[key]) > 0) then
+			if (gametbl[key] and string.len(gametbl[key]) > 0) and
+				(key ~= "year" or tonumber(gametbl[key]) > 0) then
 				table.insert(restbl, key);
 				resptr[ key ] = gridlemenu_quickfilter;
 			end	
@@ -137,6 +162,17 @@ function gridlemenu_context( gametbl )
 		menu_spawnmenu(restbl, resptr, {});
 	end
 
+	parent_escapefun = settings.iodispatch["MENU_ESCAPE"];
+	settings.iodispatch["MENU_ESCAPE"] = function(key, store, silent)
+		if (current_menu.parent == nil) then
+			blend_image(imagery.zoomed, 0.0, settings.fadedelay);
+			expire_image(imagery.zoomed, settings.fadedelay);
+			imagery.zoomed = BADID;
+		end
+		parent_escapefun(key, store, silent);
+	end
+	settings.iodispatch["MENU_LEFT"] = settings.iodispatch["MENU_ESCAPE"];
+	
 	if (gametbl.capabilities.external_launch and gametbl.capabilities.internal_launch) then
 		table.insert(mainlbls, "Launch...");
 		ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end

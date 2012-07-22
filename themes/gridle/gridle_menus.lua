@@ -196,6 +196,19 @@ local function bgtileupdate(label, save)
   updatebgtrigger();
 end
 
+local function autosaveupd(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.autosave = label;
+	
+	if (save) then
+		store_key("autosave", label);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+	
+end
+
 local function launchmodeupdate(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.default_launchmode = label;
@@ -223,6 +236,7 @@ add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay"
 add_submenu(settingslbls, settingsptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
 add_submenu(settingslbls, settingsptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
 add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
+add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
 
 if (LEDCONTROLLERS > 0) then
 	table.insert(settingslbls, "LED display mode...");
@@ -458,7 +472,7 @@ local function update_filterlist()
 	return filterres, filterresptr;
 end
 
-function trim(s)
+function string.trim(s)
 	return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
@@ -468,18 +482,24 @@ function apply_gamefilter(listname)
 
 	open_rawresource("./lists/" .. listname .. ".txt");
 	line = read_rawresource();
--- linear search, blergh.
-		while (line) do
+
+	while (line) do
 			filter["title"] = line;
 			local dblookup = list_games( filter )
-			if #dblookup > 0 then
+
+			if dblookup and #dblookup > 0 then
 				table.insert(reslist, dblookup[1]);
 			end
+
 			line = read_rawresource();
 		end
 	close_rawresource();
 
-	settings.games = reslist;
+	if (#reslist == 0) then
+			spawn_warning("No games from gamelist( " .. listname .. ") could be found.");
+	else
+		settings.games = reslist;
+	end
 end
 
 function build_gamelists()
