@@ -499,7 +499,6 @@ end
 -- of the output from keyconf (PLAYERn)
 function gridle_ledconf()
 	if (keyconfig.active == false) then return; end -- defer ledconf
-	
 	local ledconflabels = {};
 
 	for ind, val in ipairs(keyconfig:labels()) do

@@ -1,5 +1,5 @@
 -- Space theme
--- Written as a more "crazy" example, mouse only theme
+-- Written as a more "crazy" quick and dirty example, mouse only theme
 --
 -- Features demonstrated;
 -------------------------
@@ -11,7 +11,6 @@
 -- Mouse "cursor" (just an image hooked up to the mouse motion event)
 -- Instance and hierarchical coordinates (the particle system underneath the cursor)
 -- Music playback (background music, stored in theme)
--- Only shows games that has a screenshot and (optionally) movie associated
 -------------------------
 
 local background;
@@ -59,44 +58,34 @@ function space()
 	resize_image(images.cursor, 64, 64, 0);
 
 --  we want the cursor opaque, but should still have alpha-channel used
-    force_image_blend(images.cursor);
+	force_image_blend(images.cursor);
 
 -- don't want these to appear on hit detection
-    image_mask_set(images.emitter, MASK_UNPICKABLE);
-    image_mask_set(images.cursor, MASK_UNPICKABLE);
-    image_mask_set(images.background, MASK_UNPICKABLE);
+	image_mask_set(images.emitter, MASK_UNPICKABLE);
+	image_mask_set(images.cursor, MASK_UNPICKABLE);
+	image_mask_set(images.background, MASK_UNPICKABLE);
 
-    resize_image(images.background, VRESW, VRESH, 0); -- scale to fit screen
-    show_image(images.background);
-    show_image(images.cursor);
+	resize_image(images.background, VRESW, VRESH, 0); -- scale to fit screen
+	show_image(images.background);
+	show_image(images.cursor);
 
 -- add all games that have a corresponding snapshot
 	local tmptbl = {};
-    games = list_games( {} );
+	games = list_games( {} );
+	
+	if (#games == 0) then
+		error "No games found.";
+		shutdown();
+	end
 
-    for i, v in pairs(games) do
-		if (resource("screenshots/" .. v.setname .. ".png") == false)
-			and (resource("screenshots/" .. v.target .. "/" .. v.setname .. ".png")) then
-		    table[i] = nil;
-		else
-			table.insert(tmptbl, v);
-		end
-    end
-	games = tmptbl;
 
--- no reason to continue if we have no games setup
-    if (# games == 0) then
-        error "No games (with matching screenshots) could be found";
-        shutdown();
-    else
-        random_game();
-    end
+	random_game();
     
 	local menutbl = {
-	    "rMENU_ESCAPE",
-	    "ACURSOR_X",
-	    "ACURSOR_Y",
-	    "rMENU_SELECT",
+		"rMENU_ESCAPE",
+		"ACURSOR_X",
+		"ACURSOR_Y",
+		"rMENU_SELECT",
 	};
 	
 	keyconfig = keyconf_create(menutbl);
@@ -112,29 +101,28 @@ function space()
 		space_clock_pulse = background_timer;
 	end
 	
-    iolut = {};
-    iolut["MENU_SELECT"] = function(tbl) 
+	iolut = {};
+	iolut["MENU_SELECT"] = function(tbl) 
 		if (grabbed_item) then
-		    stop_music();
-			launch_target( bglayer[grabbed_item.vid].title, LAUNCH_EXTERNAL );
-		    start_music();
+			stop_music();
+			launch_target( bglayer[grabbed_item.vid].gameid, LAUNCH_EXTERNAL );
+			start_music();
 		end
-    end
+	end
     
-    iolut["MENU_ESCAPE"] = function(tbl) shutdown(); end
+	iolut["MENU_ESCAPE"] = function(tbl) shutdown(); end
 
 -- the analog conversion for devices other than mice is so-so atm.
-    iolut["CURSOR_X"] = function(tbl) 
+	iolut["CURSOR_X"] = function(tbl) 
 		if (tbl.source == "mouse") then
-		    mx = tbl.samples[1];
+			mx = tbl.samples[1];
 		else
 			mx = mx + (tbl.samples[1] / 32768) * step.x;
 		end
-
 		move_image(images.cursor, mx, my, 0);
-    end
+	end
 
-    iolut["CURSOR_Y"] = function(tbl)
+	iolut["CURSOR_Y"] = function(tbl)
 		if (tbl.source == "mouse") then
 			my = tbl.samples[1];
 		elseif (tbl.samples[1] > 0) then
@@ -142,9 +130,9 @@ function space()
 		else
 			my = my - step.y;
 		end
-		
 		move_image(images.cursor, mx, my, 0);
-    end
+	end
+	
 end
 
 function position_image(vid)
@@ -159,11 +147,12 @@ function position_image(vid)
 	end
 
 -- scale and position based on "distance"
-    order_image(vid, distance * 254.0);
+	order_image(vid, distance * 254.0);
 
 -- add downwards and wrap around
 	ydistr = ydistr + 10 + math.random(50);
-    props = image_surface_properties(vid);
+	props = image_surface_properties(vid);
+	
 	if (ydistr + props.height > VRESH) then 
 		ydistr = math.random(50);
 	end
@@ -181,52 +170,64 @@ end
 -- find a random game, load relevant resources and queue. 
 function random_game()
 	vid = 0;
+	resourcefinder_search(games[i], true);
     
 	if (alive >= bglayer_limit) then
 		return;
 	end
   
-	gameid = math.random(1, #games);
-	game = games[ gameid ];
-	game.resources = resourcefinder_search(game, false);
 
-	if (game.resources:find_screenshot()) then
-		vid = load_image_asynch(game.resources:find_screenshot(), function(source, status)
-		if (status == 1) then
-			position_image(source);
-		else
-			delete_image(source);
-			bglayer[source] = nil;
-			alive = alive - 1;
-		end
-	end);
+	local game_found = false;
+	repeat
+		gameid = math.random(1, #games);
+		game = games[ gameid ];
+		game.resources = resourcefinder_search(game, false);
+		
+		if (game.resources:find_screenshot() and launch_target_capabilities(game.target).external_launch) then
+			game_found = true;
+			vid = load_image_asynch(game.resources:find_screenshot(), function(source, status)
+				if (status.kind == "loaded") then
+					position_image(source);
+				else
+					delete_image(source);
+					bglayer[source] = nil;
+					alive = alive - 1;
+				end
+			end);
 
-		if (vid ~= BADID) then
+			if (vid ~= BADID) then
 -- keep track of number of "background objects" alive
-			alive = alive + 1;
-			bglayer[vid] = game;
+				alive = alive + 1;
+				bglayer[vid] = game;
+			end
+		else
+			table.remove(games, gameid);
 		end
-	end
+	until game_found or #games == 0;
 
+	if (#games == 0) then
+		error("No games with matching screenshots found, shutting down.\n");
+		shutdown();
+	end
 end
 
 function space_show()
-    start_music();
+	start_music();
 end
 
 function start_music()
 -- CCommons, grabbed from 8bc, (c)facundo, http://8bc.org/members/facundo
-    bgmusic = stream_audio("innerspace.ogg"); 
-    if bgmusic ~= BADID then
+	bgmusic = stream_audio("innerspace.ogg"); 
+	if bgmusic ~= BADID then
 		play_audio(bgmusic);
 		audio_gain(bgmusic, 0.3, 0);
-    end
+	end
 end
 
 function stop_music()
-    if bgmusic ~= BADID then
-        delete_audio(bgmusic);
-    end
+	if bgmusic ~= BADID then
+		delete_audio(bgmusic);
+	end
 end
 
 function release_item()
@@ -254,7 +255,7 @@ function release_item()
 end
 
 function moviecb(source, status)
-	if (grabbed_item and source == grabbed_item.movie and status == 1) then
+	if (grabbed_item and source == grabbed_item.movie and status.kind == "resized") then
 		local vid, aid = play_movie(source);
 		local props = image_surface_properties(grabbed_item.vid, 40);
 		
