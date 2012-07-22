@@ -15,15 +15,15 @@
 -------------------------------------------
 
 local gamelist = {
- vid  = BADID,
- yofs = 40,
- vspace = 6,
- number = 1
+	vid  = BADID,
+	yofs = 40,
+	vspace = 6,
+	number = 1
 };
 
 local data = {
-    games = {},
-    targets = {}
+	games = {},
+	targets = {}
 }
 
 local configkeys = false;
@@ -60,15 +60,16 @@ function dishwater()
 	system_load("scripts/keyconf_mame.lua")();
 	system_load("scripts/ledconf.lua")();
 	system_load("scripts/resourcefinder.lua")();
+	system_load("scripts/dialog.lua")();
 	
 	local menutbl = {
 		"rMENU_ESCAPE",
+		"rMENU_SELECT",
 		"rMENU_UP",
 		"rMENU_DOWN",
-		"rMENU_SELECT",
-		" MENU_RIGHT",
-		" MENU_LEFT",
-		" MENU_RANDOM"
+		"rMENU_LEFT",
+		"rMENU_RIGHT",
+		" RANDOM_ITEM"
 	};
 
 	clipregion = fill_surface(1,1,0,0,0);
@@ -87,90 +88,119 @@ function dishwater()
 	resize_image(images.background, VRESW, VRESH, NOW);
 	show_image(images.background);
 
-    data.games = list_games( {} );
+	data.games = list_games( {} );
 	if (#data.games == 0) then
 		error("No Games configured, terminating.");
 		shutdown();
 	end
 
-    local width, height = textdimensions( [[\f]] .. font_name .. [[jJ\n]], font_vspace);
-    gamelist.page_size = math.ceil ( (VRESH - 20) / height );
+	local width, height = textdimensions( [[\f]] .. font_name .. [[jJ\n]], font_vspace);
+	gamelist.page_size = math.ceil ( (VRESH - 20) / height );
     
-    do_menu();
-    select_item();
+	do_menu();
+	select_item();
 
 	keyconfig = keyconf_create(menutbl);
 	if (keyconfig.active == false) then
 		dishwater_input = keyconfig_iofun;
 	else
 		ledconfig = ledconf_create( keyconfig:labels() );
-		if (ledconfig.active == false) then
-				dishwater_input = ledconfig_iofun;
+		if (ledconfig.active == false ) then
+			dishwater_input = ledconfig_iofun;
+		else
+			dishwater_input = default_input;
 		end
 	end
 
-    iodispatch["MENU_UP"]         = function(tbl) if tbl.active then next_item(-1); end end
-    iodispatch["MENU_DOWN"]       = function(tbl) if tbl.active then next_item(1); end end
-    iodispatch["MENU_SELECT"]     = function(tbl) if tbl.active then launch_game(data.games[gamelist.number]); end end
-    iodispatch["MENU_RANDOM"]     = function(tbl) if tbl.active then random_item(); end end
-    iodispatch["MENU_RIGHT"]      = function(tbl) if tbl.active then next_item(-1 * gamelist.page_size); end end
-    iodispatch["MENU_LEFT"]       = function(tbl) if tbl.active then next_item(gamelist.page_size); end end
-    iodispatch["MENU_ESCAPE"]     = function(tbl) if tbl.active then shutdown(); end end
+	iodispatch["MENU_UP"]      = function(tbl) if tbl.active then next_item(-1); end end
+	iodispatch["MENU_DOWN"]    = function(tbl) if tbl.active then next_item(1); end end
+	iodispatch["MENU_SELECT"]  = function(tbl) if tbl.active then launch_game(data.games[gamelist.number]); end end
+	iodispatch["RANDOM_ITEM"]  = function(tbl) if tbl.active then random_item(); end end
+	iodispatch["MENU_RIGHT"]   = function(tbl) if tbl.active then next_item(-1 * gamelist.page_size); end end
+	iodispatch["MENU_LEFT"]    = function(tbl) if tbl.active then next_item(gamelist.page_size); end end
+	iodispatch["MENU_ESCAPE"]  = function(tbl) if tbl.active then shutdown(); end end
 end
 
 function textdimensions(str, vspace)
-    local teststr, testlines = render_text( str, vspace );
-    props = image_surface_properties(teststr);
-    delete_image(teststr);
+	local teststr, testlines = render_text( str, vspace );
+	props = image_surface_properties(teststr);
+	delete_image(teststr);
     
-    return props.width, props.height;
+	return props.width, props.height;
 end
 
 function textwidth(str)
-    width, height = textdimensions(str, gamelist.vspace);
-    return width;
+	width, height = textdimensions(str, gamelist.vspace);
+	return width;
+end
+
+function message_dialog(message)
+	local dialogwin = dialog_create(message, {"OK"}, true);
+	
+	dialogwin:show();
+	
+	dishwater_input = function(iotbl)
+		local restbl = keyconfig:match(iotbl);
+		if (restbl and iotbl.active) then
+			for ind, val in pairs(restbl) do
+				local iores = dialogwin:input(val);
+
+				if (iores ~= nil) then
+					dishwater_input = default_input;
+				end
+			end
+		end
+
+	end
 end
 
 function launch_game(game)
-    launch_target(game.title, LAUNCH_EXTERNAL);
+	local caps = launch_target_capabilities(game.target);
+	if (caps.external_launch) then
+		launch_target(game.gameid, LAUNCH_EXTERNAL);
+	else
+		message_dialog("The " .. game.target .. " target requires internal launch.\\n\\rThis theme only support external launch.\\n"); 
+	end
 end
 
 function random_item()
-    gamelist.number = math.random(1, #data.games);
-    do_menu();
-    select_item();
+	gamelist.number = math.random(1, #data.games);
+	do_menu();
+	select_item();
 end
 
 function next_item(step)
-    local ngamenumber = gamelist.number + step;
+	local ngamenumber = gamelist.number + step;
 
-    if (ngamenumber < 1) then
-	ngamenumber = #data.games;
-    elseif (ngamenumber > #data.games) then
-	ngamenumber = 1;
-    end
+	if (ngamenumber < 1) then
+		ngamenumber = #data.games;
+	elseif (ngamenumber > #data.games) then
+		ngamenumber = 1;
+	end
 
-    gamelist.number = ngamenumber;
-    do_menu();
+	gamelist.number = ngamenumber;
+	do_menu();
 -- update LEDs, game selector, screenshot / ovie
-    select_item();
+	select_item();
 end
 
 function calc_page(number, size, limit)
-    local page_start = math.floor( (number-1) / size) * size;
-    local offset = (number - 1) % size;
-    local page_end = page_start + size;
+	local page_start = math.floor( (number-1) / size) * size;
+	local offset = (number - 1) % size;
+	local page_end = page_start + size;
     
-    if (page_end > limit) then
-	page_end = limit;
-    end
+	if (page_end > limit) then
+		page_end = limit;
+	end
 
-    return page_start + 1, offset + 1, page_end;
+	return page_start + 1, offset + 1, page_end;
 end
 
 function fit_image(vid)
 		resize_image(vid, VRESW * 0.5, 0);
-		if (image_surface_properties(vid).height > VRESH) then resize_image(vid, 0, VRESH); end
+		if (image_surface_properties(vid).height > VRESH) then 
+			resize_image(vid, 0, VRESH); 
+		end
 		local prop = image_surface_properties(vid);
 
 		local dx = VRESW * 0.5 - prop.width;
@@ -180,33 +210,39 @@ function fit_image(vid)
 end
 
 function do_menu()
-    if (images.menu ~= nil) then
-	delete_image(images.menu);
-    end
+	if (images.menu ~= nil) then
+		delete_image(images.menu);
+	end
 
-    page_beg, page_ofs, page_end = calc_page(gamelist.number, gamelist.page_size, #data.games);
-    
-    renderstr = [[\#ffffff\f]] ..font_name;
-    for ind = page_beg, page_end do
-	tmpname = data.games[ind].title;
-	renderstr = renderstr .. tmpname .. [[\n\r]];
-    end
+	page_beg, page_ofs, page_end = calc_page(gamelist.number, gamelist.page_size, #data.games);
+	renderstr = [[\#ffffff\f]] .. font_name;
+	
+	for ind = page_beg, page_end do
+		local caps = launch_target_capabilities(data.games[ind].target);
+		local tmpname = data.games[ind].title;
 
-    images.menu, images.menu_lines = render_text(renderstr, gamelist.vspace);
+			if (caps.external_launch == false) then
+			renderstr = renderstr .. [[\#ff0000]] .. tmpname .. [[\n\r]];
+		else
+			renderstr = renderstr .. [[\#ffffff]] .. tmpname .. [[\n\r]];
+		end
+	end
+
+	images.menu, images.menu_lines = render_text(renderstr, gamelist.vspace);
 	link_image(images.menu, clipregion);
 	image_clip_on(images.menu);
 	image_mask_clear(images.menu, MASK_SCALE);
 
-    props = image_surface_properties(images.menu);
+	props = image_surface_properties(images.menu);
 
-    order_image(images.menu, 2);
-    move_image(images.menu, 20, gamelist.yofs, 0);
-    show_image(images.menu);
+	order_image(images.menu, 2);
+	move_image(images.menu, 20, gamelist.yofs, 0);
+	show_image(images.menu);
 end
 
 function select_item()
 -- clean up any old image (fade it out and then have the engine kill it off) 
-local game = data.games[gamelist.number];
+	local game = data.games[gamelist.number];
 	page_beg, page_ofs, page_end = calc_page(gamelist.number, gamelist.page_size, #data.games);
 
 	if (images.gamepic ~= nil) then
@@ -216,7 +252,9 @@ local game = data.games[gamelist.number];
 		images.gamepic = nil;
 	end
 
-	if (ledconfig) then	ledconfig:toggle(game.players, game.buttons); end
+	if (ledconfig) then	
+		ledconfig:toggle(game.players, game.buttons); 
+	end
 	
 -- line-heights are stored from when we rendered the menu, use that as a LUT for where to draw the selection bar. 
 	instant_image_transform(images.selector);
@@ -228,7 +266,7 @@ local game = data.games[gamelist.number];
 	local restbl = resourcefinder_search(game, false);
 		if (restbl:find_movie()) then
 			images.gamepic = load_movie(restbl:find_movie(), 1, function(source, status)
-			if (source == images.gamepic) then
+			if (source == images.gamepic and status.kind == "resized") then
 				local vid, aid = play_movie(source);
 				audio_gain(aid, 0.0);
 				audio_gain(aid, 1.0, 80);
@@ -260,6 +298,4 @@ function default_input( iotbl )
 	end
 end
 
-function dishwater_input( tobl )
-	default_input(iotbl)
-end
+dishwater_input = default_input;
