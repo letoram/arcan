@@ -187,7 +187,7 @@ function gridle()
 -- since we want a custom sort, we'll have to keep a table of all the games (expensive)
 	settings.games = list_games( {} );
 	
-	if (#settings.games == 0) then
+	if (not settings.games or #settings.games == 0) then
 		error("There are no games defined in the database.");
 		shutdown();
 	end
