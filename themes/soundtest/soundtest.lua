@@ -7,7 +7,7 @@
 -- e. kill background music
 
 sample_countdown = 0;
-sample_fname = "soundtest.wav";
+sample = load_asample("soundtest.wav");
 bgmusic_fname_ogg = "soundtest.ogg";
 bgmusic_id = 0;
 symtable = {}
@@ -42,8 +42,8 @@ function soundtest_input( inputtbl )
 		    audio_gain(bgmusic_id, 1.0, 100);
 		    
 		elseif (symtable[ inputtbl.keysym ] == "c") then
-		    print("play " .. sample_fname .. " sample\n");
-		    play_sample(sample_fname, 1.0);
+		    print("play sample\n");
+		    play_audio(sample, 1.0);
 		    
 		elseif (symtable[ inputtbl.keysym ] == "d") then
 		    print("play " .. bgmusic_fname_ogg .. " stream\n");
@@ -79,7 +79,7 @@ function soundtest_clock_pulse()
 	if (sample_countdown > 0) then
 		sample_countdown = sample_countdown - 1;
 		if (sample_countdown == 0) then
-			play_sample(sample_fname);
+			play_audio(sample);
 			sample_countdown = 15;
 		end
 	end
@@ -88,7 +88,7 @@ end
 function soundtest_audio_event( source, argtbl )
   print(" [ Audio Event ]");
   print("-> source" .. source);
-  print("-> kind" .. artgbl.kind);
+  print("-> kind" .. argtbl.kind);
   print(" [---  End  ---]");
   print(" ");
 end
