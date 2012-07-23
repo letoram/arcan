@@ -198,7 +198,6 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 
 			ev.data.target.fh = dh;
 			arcan_frameserver_pushevent( fsrv, &ev );
-			arcan_warning("arcan_frameserver(win32)::push_handle (%ld)\n", dh);
 			rv = ARCAN_OK;
 		}
 		else {

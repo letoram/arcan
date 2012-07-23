@@ -719,7 +719,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	if ( (err = glewInit()) != GLEW_OK){
 		arcan_fatal("Couldn't initialize GLew: %s\n", glewGetErrorString(err));
 	}
-	printf("%" PRIxPTR "\n", glUseProgram);
 #endif
 
 	arcan_video_display.width = width;
