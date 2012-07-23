@@ -93,7 +93,12 @@ void main()
   R = 1.5;
   // tilt angle in radians
   // (behavior might be a bit wrong if both components are nonzero)
+  #define LIGHT_TILT
+  #ifdef LIGHT_TILT
   const vec2 angle = vec2(0.0,-0.15);
+  #else
+  const vec2 angle = vec2(0.0,0.0);
+  #endif
   // size of curved corners
   cornersize = 0.03;
   // border smoothness parameter

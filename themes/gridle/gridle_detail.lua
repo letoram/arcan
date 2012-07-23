@@ -137,18 +137,17 @@ local function gridledetail_buildview(detailres, gametbl )
 				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["coinlights"]);
 			end
 		
-			if (detailview.model.labels["snapshot"] and detailview.game.resources.screenshots[1]) then
+			if (detailview.model.labels["snapshot"] and detailview.game.resources:find_screenshot() ) then
 				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["snapshot"]);
-				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources.screenshots[1], asynch_snapvid ), detailview.model.labels["snapshot"], 1);
+				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources:find_screenshot(), asynch_snapvid ), detailview.model.labels["snapshot"], 1);
 			end
 			
 -- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
 			if (detailview.model.labels["display"]) then
-				local moviefile = detailview.game.resources.movies[1];
-				if (moviefile) then
-					detailview.modeldisplay = load_movie(moviefile, FRAMESERVER_NOLOOP, gridledetail_moviestatus);
-				elseif resource("screenshots/" .. detailview.game.setname .. ".png") then
-					detailview.modeldisplay = load_image_asynch( "screenshots/" .. detailview.game.setname .. ".png", gridledetail_imagestatus);
+				if (detailview.game.resources:find_movie()) then
+					detailview.modeldisplay = load_movie(detailview.game.resources:find_movie(), FRAMESERVER_NOLOOP, gridledetail_moviestatus);
+				elseif (detailview.game.resources:find_screenshot()) then
+					detailview.modeldisplay = load_image_asynch( detailview.game.resources:find_screenshot(), gridledetail_imagestatus);
 				end
 
 				return true;
@@ -257,6 +256,7 @@ function gridledetail_stopinternal()
 		internal_statectl("auto", true);
 -- definately on the "to fix" for 0.2.1
 		expire_image(internal_vid, 20);
+		blend_image(internal_vid, 0.0, 20);
 	else
 		delete_image(internal_vid);
 	end
