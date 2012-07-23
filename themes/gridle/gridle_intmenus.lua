@@ -172,7 +172,7 @@ end
 
 local function bezel_loaded(source, status)
 
-	if (status == 1) then
+	if (status.kind == "loaded") then
 		local props = image_storage_properties(source);
 		resize_image(source, VRESW, VRESH);
 		local x1,y1,x2,y2 = image_borderscan(source);
@@ -187,8 +187,7 @@ local function bezel_loaded(source, status)
 		blend_image(source, 1.0, settings.transitiondelay);
 		blend_image(internal_vid, 1.0, settings.transitiondelay);
 		bezel_loading = false;
-	end
-	
+	end	
 end
 
 local function setup_bezel()
