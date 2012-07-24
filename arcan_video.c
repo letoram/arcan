@@ -30,12 +30,9 @@
 #include <math.h>
 #include <assert.h>
 
-#ifdef POOR_GL_SUPPORT
 #define GLEW_STATIC
 #define NO_SDL_GLEXT
-#include <glew.h>
-
-#endif
+#include <GL/glew.h>
 
 #define GL_GLEXT_PROTOTYPES 1
 #define CLAMP(x, l, h) (((x) > (h)) ? (h) : (((x) < (l)) ? (l) : (x)))
@@ -60,6 +57,10 @@
 
 #ifndef ARCAN_FONT_CACHE_LIMIT
 #define ARCAN_FONT_CACHE_LIMIT 8
+#endif
+
+#ifndef RENDERTARGET_LIMIT
+#define RENDERTARGET_LIMIT 4
 #endif
 
 struct text_format {
@@ -112,13 +113,13 @@ enum rendertarget_mode {
 };
 
 struct rendertarget {
-	GLint fbo;
+	GLuint fbo, depth, stencil;
+	
 	bool readback, reset;  
 	enum rendertarget_mode mode;
-	arcan_vobject_litem* dest;
+	
+	arcan_vobject* color;
 	arcan_vobject_litem* first;
-
-	struct rendertarget* next;
 };
 
 struct arcan_video_context {
@@ -130,7 +131,9 @@ struct arcan_video_context {
 	arcan_vobject world;
 	arcan_vobject* vitems_pool;
 
-	struct rendertarget** targets;
+	struct rendertarget rtargets[RENDERTARGET_LIMIT];
+	size_t n_rtargets;
+	
 	struct rendertarget stdoutp;
 };
 
@@ -140,6 +143,7 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 
 static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 	{
+		.n_rtargets = 0,
 		.vitem_ofs = 1,
 		.nalive    = 0,
 		.curr_style = {
@@ -296,7 +300,7 @@ signed arcan_video_pushcontext()
 	
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
-	current_context->targets = NULL;
+	current_context->rtargets[0].first = NULL;
 
 	return arcan_video_nfreecontexts();
 }
@@ -445,48 +449,48 @@ arcan_vobject* arcan_video_getobject(arcan_vobj_id id)
 	return rc;
 }
 
+static void attach_object(struct rendertarget* dst, arcan_vobject* src)
+{
+	arcan_vobject_litem* new_litem = malloc(sizeof *new_litem);
+	new_litem->next = new_litem->previous = NULL;
+	new_litem->elem = src;
+	src->owner = new_litem;
+
+	if (!dst->first)
+		dst->first = new_litem;
+	else if (dst->first->elem->order > src->order) { /* insert first */
+		new_litem->next = dst->first;
+		dst->first = new_litem;
+		new_litem->next->previous = new_litem;
+	} /* insert "anywhere" */
+	else {
+		bool last = true;
+		arcan_vobject_litem* ipoint = dst->first;
+		/* scan for insertion point */
+		do 
+			last = (ipoint->elem->order <= src->order);
+		while (last && ipoint->next && (ipoint = ipoint->next));
+
+		if (last) {
+			new_litem->previous = ipoint;
+			ipoint->next = new_litem;
+		}
+		else {
+			ipoint->previous->next = new_litem;
+			new_litem->previous = ipoint->previous;
+			ipoint->previous = new_litem;
+			new_litem->next = ipoint;
+		}
+	}
+}
+
 arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 {
 	arcan_vobject* src = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
-/* sorted linked list insert */
 	if (src) {
-		/* allocate new llist- item */
-		arcan_vobject_litem* new_litem = (arcan_vobject_litem*) calloc(sizeof(arcan_vobject_litem), 1);
-		new_litem->elem = src;
-		src->owner = new_litem;
-
-		/* case #1, no previous item or first */
-		if (!current_context->stdoutp.first) {
-			current_context->stdoutp.first = new_litem;
-		}
-		else
-			if (current_context->stdoutp.first->elem->order > src->order) { /* insert first */
-				new_litem->next = current_context->stdoutp.first;
-				current_context->stdoutp.first = new_litem;
-				new_litem->next->previous = new_litem;
-			} /* insert "anywhere" */
-			else {
-				bool last = true;
-				arcan_vobject_litem* ipoint = current_context->stdoutp.first;
-				/* scan for insertion point */
-				do {
-					last = (ipoint->elem->order <= src->order);
-				}
-				while (last && ipoint->next && (ipoint = ipoint->next));
-
-				if (last) {
-					new_litem->previous = ipoint;
-					ipoint->next = new_litem;
-				}
-				else {
-					ipoint->previous->next = new_litem;
-					new_litem->previous = ipoint->previous;
-					ipoint->previous = new_litem;
-					new_litem->next = ipoint;
-				}
-			}
+		attach_object(&current_context->stdoutp, src);
 		rv = ARCAN_OK;
 	}
 
@@ -528,47 +532,47 @@ static surface_transform* dup_chain(surface_transform* base)
 	return res;
 }
 
-arcan_errc detatch_fromtarget(struct rendertarget* dst, arcan_vobj_id id, bool gotowner)
+static bool detatch_fromtarget(struct rendertarget* dst, arcan_vobject* src, bool gotowner)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	arcan_vobject* src = arcan_video_getobject(id);
-
-	if (src && src->owner) {
-		arcan_vobject_litem* current_litem;
-		if (gotowner && src->owner)
-			current_litem = src->owner;
-		else {
-			current_litem = dst->first;
-			while (current_litem && current_litem->elem && current_litem->elem->cellid != id)
-				current_litem = current_litem->next;
-		}
-
-		if (!current_litem || !current_litem->elem)
-			return rv;
-		
-/* with frameset objects, we can get a detatch call even though it's not attached */
-		if (gotowner && src->owner)
-			src->owner = NULL;
-
-/* double-linked */
-		if (current_litem->previous)
-			current_litem->previous->next = current_litem->next;
-		else
-			dst->first = current_litem->next; /* only first cell lacks a previous node */
-
-		if (current_litem->next)
-			current_litem->next->previous = current_litem->previous;
-
-		memset(current_litem, 0, sizeof(arcan_vobject_litem));
-		free(current_litem);
+	arcan_vobject_litem* current_litem;
+	if (gotowner && src->owner)
+		current_litem = src->owner;
+	else {
+		current_litem = dst->first;
+		while (current_litem && current_litem->elem && current_litem->elem != src)
+			current_litem = current_litem->next;
 	}
 
-	return rv;
+	if (!current_litem || !current_litem->elem)
+		return false;
+		
+/* with frameset objects, we can get a detatch call even though it's not attached */
+	if (gotowner && src->owner)
+		src->owner = NULL;
+
+/* double-linked */
+	if (current_litem->previous)
+		current_litem->previous->next = current_litem->next;
+	else
+		dst->first = current_litem->next; /* only first cell lacks a previous node */
+
+	if (current_litem->next)
+		current_litem->next->previous = current_litem->previous;
+
+	memset(current_litem, 0, sizeof(arcan_vobject_litem));
+	free(current_litem);
+	return true;
 }
 
 arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
 {
-	return detatch_fromtarget(&current_context->stdoutp, id, true);
+	arcan_vobject* src = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (src)
+		rv = detatch_fromtarget(&current_context->stdoutp, src, true) ? ARCAN_OK : ARCAN_ERRC_UNACCEPTED_STATE;
+	
+	return rv;
 }
 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
@@ -714,12 +718,10 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	}
 
 /* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
-#ifdef POOR_GL_SUPPORT
 	int err;
 	if ( (err = glewInit()) != GLEW_OK){
 		arcan_fatal("Couldn't initialize GLew: %s\n", glewGetErrorString(err));
 	}
-#endif
 
 	arcan_video_display.width = width;
 	arcan_video_display.height = height;
@@ -978,6 +980,68 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 
 	return rv;
 }
+
+/* glGenFramebuffers(n, ptr_ids);
+ * glDeleteFramebuffers when destroying the fbo
+ * 
+ * glBindFramebuffer(before rendering)
+ * bind 0 for default.
+ * 
+ * glRenderbufferStorage(GL_RENDERBUFER, RGBA, width, height);
+ * glFramebufferTexture2D(GL_FRAMEBUFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE2D,
+ * 
+ * verify with glCheckFrameBufferStatus(target) == GL_FRAMEBUFER_COMPLETE
+ * 
+ * For PBO readback,
+ * glGenBuffers(1, pbo);
+ * glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+ * glReadBuffer(fbnotex);
+ * glReadPixels(0, 0, w, h, format, type, 0);
+ * glBindBuffer ->A glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+ * 
+ * to free, BindBuffer, UnmapBuffer, BindBuffer0, DeleteBuffers*/
+
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(did);
+	
+	if (vobj)
+	{
+		if (current_context->n_rtargets < RENDERTARGET_LIMIT){
+			struct rendertarget* dst = &current_context->rtargets[ current_context->n_rtargets++ ];
+			dst->mode = RENDERTARGET_COLOR;
+			dst->readback = readback;
+			dst->color = vobj;
+	
+			glGenFramebuffers(1, &dst->fbo);
+
+/* need both stencil and depth buffer, but we don't need the data from them */
+			glGenRenderbuffers(1, &dst->depth);
+			glGenRenderbuffers(1, &dst->stencil);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, vobj->gl_storage.glid, 0);
+
+/* need a depth buffer (can optimize if we knew that no 3D vids was present */
+			glBindRenderbuffer(GL_RENDERBUFFER, dst->depth); 
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, vobj->gl_storage.w, vobj->gl_storage.h);
+			
+/* need a stencil buffer (can optimize if we knew that no 2D vids would be present */
+			glBindRenderbuffer(GL_RENDERBUFFER, dst->stencil);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX, vobj->gl_storage.w, vobj->gl_storage.h);
+			
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			rv = ARCAN_OK;
+		}
+		else 
+			rv = ARCAN_ERRC_OUT_OF_SPACE;
+	}
+	
+	return rv;
+}
+
+
 
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 {
@@ -2939,17 +3003,15 @@ void arcan_video_pollfeed()
 	}
 }
 
-/* assumes working ortographic projection matrix based on current resolution,
- * redraw the entire scene and linearly interpolate transformations */
-void arcan_video_refresh_GL(float lerp)
+static void process_rendertarget(struct rendertarget* tgt, float lerp)
 {
-	arcan_vobject_litem* current = current_context->stdoutp.first;
-	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_vobject* world = &current_context->world;
+	arcan_vobject_litem* current = tgt->first;
+	glClear(GL_COLOR_BUFFER_BIT);
 
 	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 
-/* first, handle all 3d work (which may require multiple passes etc.) */
+	/* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
@@ -2959,6 +3021,7 @@ void arcan_video_refresh_GL(float lerp)
 		current = current->next;
 	
 	arcan_debug_pumpglwarnings("refreshGL:pre2d");
+	
 	if (current){
 	/* make sure we're in a decent state for 2D */
 		glClientActiveTexture(GL_TEXTURE0);
@@ -3067,10 +3130,40 @@ void arcan_video_refresh_GL(float lerp)
 	}
 
 /* reset and try the 3d part again if requested */
-	current = current_context->stdoutp.first;
+	current = tgt->first;
 	if (arcan_video_display.late3d && current && current->elem->order < 0){
 		current = arcan_refresh_3d(0, current, lerp, 0);
 	}
+}
+
+/* assumes working ortographic projection matrix based on current resolution,
+ * redraw the entire scene and linearly interpolate transformations */
+void arcan_video_refresh_GL(float lerp)
+{
+/* for performance reasons, we should try and re-use FBOs whenever possible */
+	for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
+		struct rendertarget* tgt = &current_context->rtargets[ind];
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->color->gl_storage.glid, 0);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, tgt->depth);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, tgt->stencil);
+	
+		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (status == GL_FRAMEBUFFER_COMPLETE){
+			process_rendertarget(tgt, lerp);
+		}
+		else {
+			arcan_warning("Couldn't process rendertarget, incomplete attachment.\n");
+		}
+
+/* if readback, query PBO */
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	process_rendertarget(&current_context->stdoutp, lerp);
+	
+/* now all PBOs should be finished, push them to their respective buffers */
 }
 
 void arcan_video_refresh(float tofs)
