@@ -32,7 +32,7 @@
 
 #define GLEW_STATIC
 #define NO_SDL_GLEXT
-#include <GL/glew.h>
+#include <glew.h>
 
 #define GL_GLEXT_PROTOTYPES 1
 #define CLAMP(x, l, h) (((x) > (h)) ? (h) : (((x) < (l)) ? (l) : (x)))
