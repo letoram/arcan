@@ -188,17 +188,31 @@ const char* luaL_lastcaller(lua_State* ctx)
 	return lua_tostring(ctx, lua_upvalueindex(2));
 }
 
-static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
+static inline arcan_vobj_id luavid_tovid(lua_Number innum)
 {
-	arcan_vobj_id res = luaL_checknumber(ctx, num);
+	arcan_vobj_id res = ARCAN_VIDEO_WORLDID;
 	
-	if (res != ARCAN_EID && res != ARCAN_VIDEO_WORLDID)
-		res -= lua_ctx_store.lua_vidbase;
-
+	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
+		res = (arcan_vobj_id) innum - lua_ctx_store.lua_vidbase;
+	
 	if (res < 0)
 		res = ARCAN_EID;
 	
 	return res;
+}
+
+static inline lua_Number vid_toluavid(arcan_vobj_id innum)
+{
+	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
+		innum += lua_ctx_store.lua_vidbase;
+
+	return (double) innum;
+}
+
+static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
+{
+	arcan_vobj_id res = luaL_checknumber(ctx, num);
+	return luavid_tovid(res);
 }
 
 static inline arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
@@ -2619,8 +2633,24 @@ cleanup:
 
 int arcan_lua_renderset(lua_State* ctx)
 {
-	arcan_vobj_id did =  luaL_checkvid(ctx, 1);
-	
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	bool readback     = luaL_optint(ctx, 3, 0) != 0; 
+	int nvids         = lua_rawlen(ctx, -1);
+	luaL_checktype(ctx, 2, LUA_TTABLE);
+
+	if (nvids > 0){
+		arcan_video_setuprendertarget(did, readback);
+		for (int i = 0; i < nvids; i++){
+			lua_rawgeti(ctx, -1, i+1);
+			arcan_vobj_id setvid = lua_tonumber(ctx, -1);
+			lua_pop(ctx, -1);
+			arcan_warning("renderset add: %d\n", setvid);
+		}
+	}
+	else
+		arcan_warning("arcan_lua_renderset(%d, %d) - refusing to define empty renderset.\n");
+		
+	return 0;
 /* iterate the table and extract vids */
 }
 

@@ -220,6 +220,10 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
 
 /* removes an object immediately, regardless of masks, life-cycles left etc. */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback);
+
+/* Attach src to rendertarget did. */
+arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src);
 
 /* move, scale and so on all works in a similar fashion,
  * you enter the desired values whatever attribute you wish to be changed, then

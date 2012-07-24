@@ -1001,13 +1001,35 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
  * 
  * to free, BindBuffer, UnmapBuffer, BindBuffer0, DeleteBuffers*/
 
+arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src)
+{
+	arcan_vobject* dstobj = arcan_video_getobject(did);
+	arcan_vobject* srcobj = arcan_video_getobject(src);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (dstobj && srcobj){
+/* find dstobj in rendertargets */
+		rv = ARCAN_ERRC_UNACCEPTED_STATE;
+		
+		for (int ind = 0; ind < current_context->n_rtargets; ind++){
+			if (current_context->rtargets[ind].color == dstobj){
+				attach_object(&current_context->rtargets[ind], srcobj); 
+				rv = ARCAN_OK;
+			}
+	
+		}
+	}
+	
+	return rv;
+}
+
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
-	
+
+/* FIXME, check for duplicates */
 	if (vobj)
-	{
 		if (current_context->n_rtargets < RENDERTARGET_LIMIT){
 			struct rendertarget* dst = &current_context->rtargets[ current_context->n_rtargets++ ];
 			dst->mode = RENDERTARGET_COLOR;
@@ -1036,7 +1058,6 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback)
 		}
 		else 
 			rv = ARCAN_ERRC_OUT_OF_SPACE;
-	}
 	
 	return rv;
 }
