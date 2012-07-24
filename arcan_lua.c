@@ -2617,6 +2617,13 @@ cleanup:
 	return rv;
 }
 
+int arcan_lua_renderset(lua_State* ctx)
+{
+	arcan_vobj_id did =  luaL_checkvid(ctx, 1);
+	
+/* iterate the table and extract vids */
+}
+
 int arcan_lua_borderscan(lua_State* ctx)
 {
 	int x1, y1, x2, y2;
@@ -3265,7 +3272,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 
 /* item:define_rendertarget( width, height, kind, updatemode, vidlist ); */
-//	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
+	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
 	
 /* item:image_borderscan( vid ) => upperleft, lowerright */
 	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);
