@@ -1,16 +1,14 @@
 -- generate a shader that mixes frames [each cell means weight] 
 function create_weighted_fbo( frames )
-	local resshader = "";
-	local midp = "\nvarying vec2 texco;\nvoid main()\n{\n";
-	local endp = "\n}\n";
-	local blendstr = "";
+	local resshader = {};
+	table.insert(resshader, "varying vec2 texco;");
 	
 	for i=1,#frames do
-		resshader = resshader .. "uniform sampler2D map_tu" .. tostring(i-1) .. ";\n";
-		blendstr = blendstr .. "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i-1) .. ", texco);\n";
+		table.insert(resshader, "uniform sampler2D map_tu" .. tostring(i-1) .. ";");
+		table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i-1) .. ", texco);");
 	end
-		
-	resshader = resshader .. midp;
+
+	table.insert(resshader, "void main(){");
 
 	local mixl = "gl_FragColor = "
 	for i=1,#frames do
@@ -25,7 +23,8 @@ function create_weighted_fbo( frames )
 		end
 	end
 
-	return resshader .. blendstr .. mixl;
+	table.insert(resshader, mixl);
+	return resshader; 
 end
 
 -- associate this with the frameset of the launch_target, keep one as the "sharp source"
@@ -39,7 +38,6 @@ end
 -- for CRT mode, add an additional FBO with a mix shader that combines the sharp and the two blurs and 
 -- set the CRT shader as the outer-most output.
 function setup_history_buffer(parent, frames, delay, targetwidth, targetheight, blurwidth, blurheight)
-	
 	image_framesetsize(parent, #frames);
 	for i=1,#frames do
 		local vid = fill_surface(0, 0, 0, 0, 0, targetwidth, targetheight);
@@ -51,8 +49,6 @@ function setup_history_buffer(parent, frames, delay, targetwidth, targetheight, 
 	
 	define_rendertarget(blur_buf_a, {parent});
 	define_rendertarget(blur_buf_b, {blur_buf_a});
-	
-	print(create_weighted_fbo(frames));
 	
 	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames), "history_mix", {});
 	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});

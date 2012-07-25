@@ -144,27 +144,39 @@ function load_shader(vertname, fragname, label, defines)
 			end
 		end
 	
-	if ( open_rawresource(vertname) ) then
-		local line = read_rawresource();
+	if (type(vertname) == "string") then
+		if ( open_rawresource(vertname) ) then
+			local line = read_rawresource();
 
-		while (line ~= nil) do
-			table.insert(verttbl, shaderproc_line(line, defines ~= nil) );
-			line = read_rawresource();
+			while (line ~= nil) do
+				table.insert(verttbl, shaderproc_line(line, defines ~= nil) );
+				line = read_rawresource();
+			end
+
+			vprog = table.concat(verttbl, "\n");
+			close_rawresource();
 		end
-
-		vprog = table.concat(verttbl, "\n");
-		close_rawresource();
+	elseif (type(vertname) == "table") then
+		vprog = table.concat(vertname, "\n");
+	else
+		warning("load_shader(" .. label .. ") failed, bad vertex program argument.\n");
 	end
 
-	if (open_rawresource(fragname) ) then
-		local line = read_rawresource();
-		while (line ~= nil) do
-			table.insert(fragtbl, shaderproc_line(line, defines ~= nil) );
-			line = read_rawresource();
-		end
+	if (type(fragname) == "string") then
+		if (open_rawresource(fragname) ) then
+			local line = read_rawresource();
+			while (line ~= nil) do
+				table.insert(fragtbl, shaderproc_line(line, defines ~= nil) );
+				line = read_rawresource();
+			end
 
-		fprog = table.concat(fragtbl, "\n"); 
-		close_rawresource();
+			fprog = table.concat(fragtbl, "\n"); 
+			close_rawresource();
+		end
+	elseif (type(fragname) == "table") then
+		fprog = table.concat(fragname, "\n");
+	else
+		warning("load_shader(" .. label .. ") failed, bad fragment program argument.\n");
 	end
 
 	return build_shader(vprog, fprog, label);
