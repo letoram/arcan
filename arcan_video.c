@@ -116,7 +116,8 @@ enum rendertarget_mode {
 
 struct rendertarget {
 	GLuint fbo, depth; /* depth and stencil are combined as stencil_index formats have poor driver support */
-	GLfloat ortho_proj;
+	GLfloat base[16];  
+	GLfloat projection[16];
 	
 	bool readback, reset;  
 	enum rendertarget_mode mode;
@@ -289,7 +290,7 @@ signed arcan_video_pushcontext()
 	deallocate_gl_context(current_context, false);
 	
 	current_context = &context_stack[ context_ind ];
-	memset(&current_context->stdoutp, 0, sizeof( struct rendertarget ) );
+	current_context->stdoutp.color = NULL;
 	current_context->stdoutp.first = NULL;
 	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
@@ -637,7 +638,6 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 	return rv;
 }
 
-static float ortho_proj[16];
 static void arcan_video_gldefault()
 {
 /* not 100% sure which of these have been replaced by the programmable pipeline or not .. */
@@ -650,7 +650,7 @@ static void arcan_video_gldefault()
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 	
 	if (arcan_video_display.msasamples)
-	    	glEnable(GL_MULTISAMPLE);
+		glEnable(GL_MULTISAMPLE);
 
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
@@ -660,7 +660,8 @@ static void arcan_video_gldefault()
     
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_POLYGON_SMOOTH);
-	build_orthographic_matrix(ortho_proj, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+	build_orthographic_matrix(current_context->stdoutp.projection, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+	identity_matrix(current_context->stdoutp.base);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
@@ -1060,22 +1061,37 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
 
-/* FIXME, check for duplicates */
-	if (vobj)
+	if (vobj){
+		for (int i = 0; i < current_context->n_rtargets; i++){
+			if (current_context->rtargets[i].color == vobj){
+				arcan_warning("arcan_video_setuprendertarget() source vid already is a rendertarget\n");
+				rv = ARCAN_ERRC_BAD_ARGUMENT;
+				return rv;
+			}
+		}
+		
 		if (current_context->n_rtargets < RENDERTARGET_LIMIT){
 			struct rendertarget* dst = &current_context->rtargets[ current_context->n_rtargets++ ];
 			dst->mode = RENDERTARGET_COLOR_DEPTH_STENCIL;
 			dst->readback = readback;
 			dst->color = vobj;
-			if (dst->color->gl_storage.w != arcan_video_display.width ||
-				dst->color->gl_storage.h != arcan_video_display.height) {
-			}
+		
+/* alter projection so the GL texture gets stored in the way the images are rendered in normal mode,
+ * with 0,0 being upper left */
+			build_orthographic_matrix(dst->projection, 0, arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
+			float xs = (float) vobj->gl_storage.w / (float)arcan_video_display.width;
+			float ys = (float) vobj->gl_storage.h / (float)arcan_video_display.height;
+
+/* since we may likely have a differetly sized FBO, scale it */
+			identity_matrix(dst->base);
+			scale_matrix(dst->base, xs, ys, 1.0);
 
 			alloc_fbo(dst);
 			rv = ARCAN_OK;
 		}
 		else 
 			rv = ARCAN_ERRC_OUT_OF_SPACE;
+	}
 	
 	return rv;
 }
@@ -2976,7 +2992,7 @@ static inline void draw_vobj(float x, float y, float x2, float y2, float zv, flo
 	}
 }
 
-static inline void draw_surf(surface_properties prop, arcan_vobject* src, float* txcos)
+static inline void draw_surf(struct rendertarget* dst, surface_properties prop, arcan_vobject* src, float* txcos)
 {
     if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
         return;
@@ -2985,7 +3001,7 @@ static inline void draw_surf(surface_properties prop, arcan_vobject* src, float*
 	prop.scale.x *= src->origw * 0.5;
 	prop.scale.y *= src->origh * 0.5;
 
-	identity_matrix(imatr);
+	memcpy(imatr, dst->base, sizeof(imatr));
 	translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
 	matr_quatf(norm_quat (prop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, imatr, omatr);
@@ -3044,8 +3060,9 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 {
 	arcan_vobject* world = &current_context->world;
 	arcan_vobject_litem* current = tgt->first;
+	int width, height;
+	
 	glClear(GL_COLOR_BUFFER_BIT);
-
 	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 
 	/* first, handle all 3d work (which may require multiple passes etc.) */
@@ -3064,11 +3081,9 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 		glClientActiveTexture(GL_TEXTURE0);
 		glDisable(GL_DEPTH_TEST);
 
-		memcpy(arcan_video_display.projmatr, ortho_proj, sizeof(float) * 16);
 		arcan_shader_activate(arcan_video_display.defaultshdr);
-		arcan_shader_envv(PROJECTION_MATR, arcan_video_display.projmatr, sizeof(float)*16);
+		arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
-		glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 		
 		while (current && current->elem->order >= 0){
 #ifdef _DEBUG
@@ -3117,7 +3132,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 					surface_properties pprops = {0};
 					arcan_resolve_vidprop(celem->parent, lerp, &pprops);
 					if (celem->parent->flags.cliptoparent == false)
-						draw_surf(pprops, celem->parent, elem->current_frame->txcos);
+						draw_surf(tgt, pprops, celem->parent, elem->current_frame->txcos);
 
 					celem = celem->parent;
 				}
@@ -3157,7 +3172,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 			else
 				glEnable(GL_BLEND);
 
-			draw_surf(dprops, elem, elem->current_frame->txcos);
+			draw_surf(tgt, dprops, elem, elem->current_frame->txcos);
 
 			if (clipped)
 				glDisable(GL_STENCIL_TEST);
@@ -3173,7 +3188,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 	}
 }
 
-/* assumes working ortographic projection matrix based on current resolution,
+/* assumes working orthographic projection matrix based on current resolution,
  * redraw the entire scene and linearly interpolate transformations */
 static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
 void arcan_video_refresh_GL(float lerp)
@@ -3261,10 +3276,10 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		float p[4][3];
 
 		/* unproject all 4 vertices, usually very costly but for 4 vertices it's manageable */
-		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[0][0], &p[0][1], &p[0][2]);
-		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[1][0], &p[1][1], &p[1][2]);
-		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[2][0], &p[2][1], &p[2][2]);
-		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, arcan_video_display.projmatr, view, &p[3][0], &p[3][1], &p[3][2]);
+		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[0][0], &p[0][1], &p[0][2]);
+		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[1][0], &p[1][1], &p[1][2]);
+		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[2][0], &p[2][1], &p[2][2]);
+		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[3][0], &p[3][1], &p[3][2]);
 
 		float px[4], py[4];
 		px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0];
