@@ -8,15 +8,15 @@ void main()
 {
 	vec4 sum = vec4(0.0);
 
-	sum += texture2D(map_diffuse, vec2(texco.x - 4.0 * blur, texco.y) * 0.05;
-	sum += texture2D(map_diffuse, vec2(texco.x - 3.0 * blur, texco.y) * 0.09;
-	sum += texture2D(map_diffuse, vec2(texco.x - 2.0 * blur, texco.y) * 0.12;
-	sum += texture2D(map_diffuse, vec2(texco.x - 1.0 * blur, texco.y) * 0.15;
-	sum += texture2D(map_diffuse, vec2(texco.x - 0.0 * blur, texco.y) * 0.16;
-	sum += texture2D(map_diffuse, vec2(texco.x + 1.0 * blur, texco.y) * 0.15;
-	sum += texture2D(map_diffuse, vec2(texco.x + 2.0 * blur, texco.y) * 0.12;
-	sum += texture2D(map_diffuse, vec2(texco.x + 3.0 * blur, texco.y) * 0.09;
-	sum += texture2D(map_diffuse, vec2(texco.x 0 4.0 * blur, texco.y) * 0.05;
+	sum += texture2D(map_diffuse, vec2(texco.x - 4.0 * blur, texco.y)) * 0.05;
+	sum += texture2D(map_diffuse, vec2(texco.x - 3.0 * blur, texco.y)) * 0.09;
+	sum += texture2D(map_diffuse, vec2(texco.x - 2.0 * blur, texco.y)) * 0.12;
+	sum += texture2D(map_diffuse, vec2(texco.x - 1.0 * blur, texco.y)) * 0.15;
+	sum += texture2D(map_diffuse, vec2(texco.x - 0.0 * blur, texco.y)) * 0.16;
+	sum += texture2D(map_diffuse, vec2(texco.x + 1.0 * blur, texco.y)) * 0.15;
+	sum += texture2D(map_diffuse, vec2(texco.x + 2.0 * blur, texco.y)) * 0.12;
+	sum += texture2D(map_diffuse, vec2(texco.x + 3.0 * blur, texco.y)) * 0.09;
+	sum += texture2D(map_diffuse, vec2(texco.x + 4.0 * blur, texco.y)) * 0.05;
 
 	gl_FragColor = sum;	
 }
