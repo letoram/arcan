@@ -1061,6 +1061,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
 
+/* make sure there isn't already a RT associated with this VID */
 	if (vobj){
 		for (int i = 0; i < current_context->n_rtargets; i++){
 			if (current_context->rtargets[i].color == vobj){
@@ -1069,7 +1070,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback)
 				return rv;
 			}
 		}
-		
+
+/* hard-coded number of render-targets allowed */ 
 		if (current_context->n_rtargets < RENDERTARGET_LIMIT){
 			struct rendertarget* dst = &current_context->rtargets[ current_context->n_rtargets++ ];
 			dst->mode = RENDERTARGET_COLOR_DEPTH_STENCIL;
