@@ -108,12 +108,15 @@ struct arcan_video_display arcan_video_display = {
  * if first and dest are null, stop processing the list of rendertargets. */
 
 enum rendertarget_mode {
-	RENDERTARGET_COLOR,
-	RENDERTARGET_DEPTH
+	RENDERTARGET_DEPTH = 0,
+	RENDERTARGET_COLOR = 1,
+	RENDERTARGET_COLOR_DEPTH = 2,
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
 };
 
 struct rendertarget {
-	GLuint fbo, depth, stencil;
+	GLuint fbo, depth; /* depth and stencil are combined as stencil_index formats have poor driver support */
+	GLfloat ortho_proj;
 	
 	bool readback, reset;  
 	enum rendertarget_mode mode;
@@ -1023,7 +1026,36 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 	return rv;
 }
 
-arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback)
+
+static bool alloc_fbo(struct rendertarget* dst)
+{
+	glGenFramebuffers(1, &dst->fbo);
+
+/* need both stencil and depth buffer, but we don't need the data from them */
+	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+
+	if (dst->mode > RENDERTARGET_DEPTH)
+	{
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst->color->gl_storage.glid, 0);
+
+		if (dst->mode >= RENDERTARGET_COLOR_DEPTH) {
+			glGenRenderbuffers(1, &dst->depth);
+/* need a depth buffer (can optimize if we knew that no 3D vids was present */
+			glBindRenderbuffer(GL_RENDERBUFFER, dst->depth); 
+			glRenderbufferStorage(GL_RENDERBUFFER, 
+				dst->mode == RENDERTARGET_COLOR_DEPTH_STENCIL ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT, 
+				dst->color->gl_storage.w, dst->color->gl_storage.h);
+		}
+	}
+/* DEPTH buffer only (shadowmapping, ...) */
+	else {
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, dst->color->gl_storage.glid, 0);
+	}
+	
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
@@ -1032,28 +1064,14 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback)
 	if (vobj)
 		if (current_context->n_rtargets < RENDERTARGET_LIMIT){
 			struct rendertarget* dst = &current_context->rtargets[ current_context->n_rtargets++ ];
-			dst->mode = RENDERTARGET_COLOR;
+			dst->mode = RENDERTARGET_COLOR_DEPTH_STENCIL;
 			dst->readback = readback;
 			dst->color = vobj;
-	
-			glGenFramebuffers(1, &dst->fbo);
+			if (dst->color->gl_storage.w != arcan_video_display.width ||
+				dst->color->gl_storage.h != arcan_video_display.height) {
+			}
 
-/* need both stencil and depth buffer, but we don't need the data from them */
-			glGenRenderbuffers(1, &dst->depth);
-			glGenRenderbuffers(1, &dst->stencil);
-			
-			glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, vobj->gl_storage.glid, 0);
-
-/* need a depth buffer (can optimize if we knew that no 3D vids was present */
-			glBindRenderbuffer(GL_RENDERBUFFER, dst->depth); 
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, vobj->gl_storage.w, vobj->gl_storage.h);
-			
-/* need a stencil buffer (can optimize if we knew that no 2D vids would be present */
-			glBindRenderbuffer(GL_RENDERBUFFER, dst->stencil);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX, vobj->gl_storage.w, vobj->gl_storage.h);
-			
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			alloc_fbo(dst);
 			rv = ARCAN_OK;
 		}
 		else 
@@ -1061,8 +1079,6 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback)
 	
 	return rv;
 }
-
-
 
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 {
@@ -2290,7 +2306,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* no effect if already detatched */
 		arcan_video_detatchobject(id);
 
-/* FIXME: scan all rendertargets and detatch. If this leaves the rendertarget useless, delete it. */
+/* FIXME: scan all rendertargets for the id as well */
 
 /* scan the current context, look for clones and other objects that has this object as a parent */
 		arcan_vobject_litem* current;
@@ -3159,29 +3175,48 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 
 /* assumes working ortographic projection matrix based on current resolution,
  * redraw the entire scene and linearly interpolate transformations */
+static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
 void arcan_video_refresh_GL(float lerp)
 {
-/* for performance reasons, we should try and re-use FBOs whenever possible */
-	for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
-		struct rendertarget* tgt = &current_context->rtargets[ind];
-		
-		glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->color->gl_storage.glid, 0);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, tgt->depth);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, tgt->stencil);
+	static bool nofbo = false;
 	
-		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status == GL_FRAMEBUFFER_COMPLETE){
-			process_rendertarget(tgt, lerp);
-		}
-		else {
-			arcan_warning("Couldn't process rendertarget, incomplete attachment.\n");
-		}
+/* for performance reasons, we should try and re-use FBOs whenever possible */
+	if (nofbo == false){
+		for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
+			struct rendertarget* tgt = &current_context->rtargets[ind];
+		
+			glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 
-/* if readback, query PBO */
+			if (tgt->mode == RENDERTARGET_DEPTH){
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tgt->depth, 0);
+/* unsure if these ONLY EVER apply to the active FBO, assume that they do. */
+					glDrawBuffer(GL_NONE);
+					glReadBuffer(GL_NONE);
+			}
+			else { /* RENDERTARGET_COLOR */
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->color->gl_storage.glid, 0);
+				
+				if (tgt->mode > RENDERTARGET_COLOR)
+					glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, tgt->depth);
+	
+				if (tgt->mode > RENDERTARGET_COLOR_DEPTH)
+					glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, tgt->depth);
+			}
+			
+			GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+			if (status == GL_FRAMEBUFFER_COMPLETE){
+				process_rendertarget(tgt, lerp);
+			}
+			else {
+				nofbo = true;
+				arcan_warning("Error using rendertarget(FBO), feature disabled.\n");
+				arcan_debug_curfbostatus(status, tgt->mode);
+			}
+		}
+	
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	process_rendertarget(&current_context->stdoutp, lerp);
 	
 /* now all PBOs should be finished, push them to their respective buffers */
@@ -3501,11 +3536,123 @@ void arcan_video_shutdown()
 }
 
 int arcan_debug_pumpglwarnings(const char* src){
-    GLenum errc = glGetError();
-    if (errc != GL_NO_ERROR){
-        arcan_warning("GLError detected (%s) GL error, code: %d\n", src, errc);
-        return -1;
-    }
-        
-    return 1;
+	GLenum errc = glGetError();
+	if (errc != GL_NO_ERROR){
+		arcan_warning("GLError detected (%s) GL error, code: %d\n", src, errc);
+		return -1;
+	}
 }
+
+static char fbobuf[64];
+static char* renderbuf_parameters(GLuint id)
+{
+	int w, h, format;
+
+	glBindRenderbuffer(GL_RENDERBUFFER, id);
+	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &w); 
+	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &h); 
+	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &format); 
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+	snprintf(fbobuf, 64, "%d * %d @ %d\n", w, h, format);
+	
+	return fbobuf;
+}
+
+static char* texture_parameters(GLuint id)
+{
+	int w, h, format;
+	
+	glBindTexture(GL_TEXTURE_2D, id);
+
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w); 
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
+	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &format); 
+	
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	snprintf(fbobuf, 64, "%d * %d @ %d\n", w, h, format);
+	return fbobuf;
+}
+        
+/* assume an active / bound FBO,
+ * enumerate all available attachments, decode the format of each detatched object */
+static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode mode)
+{
+	arcan_warning("FBO status:\n----------\n");
+		switch (mode){
+			case RENDERTARGET_COLOR : arcan_warning("mode: color\n"); break;
+			case RENDERTARGET_COLOR_DEPTH : arcan_warning("mode: color, depth\n"); break;
+			case RENDERTARGET_COLOR_DEPTH_STENCIL: arcan_warning("mode: color, depth, stencil\n"); break;
+			case RENDERTARGET_DEPTH : arcan_warning("mode: depth\n"); break;
+		}
+	
+	switch (status){
+		case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT: arcan_warning("error: incomplete attachment\n"); break;
+		case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: arcan_warning("error: incomplete / missing attachment\n"); break;
+		case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER: arcan_warning("error: incomplete draw buffer\n"); break;
+		case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER: arcan_warning("error: incomplete read buffer\n"); break;
+		case GL_FRAMEBUFFER_UNSUPPORTED: arcan_warning("error: GPU FBO implementation doesn't support the requested configuration.\n"); break;
+		default:
+			arcan_warning("error: unknown code(%d)\n", status);
+	}
+	
+	
+	int n_colbuf = 0;
+	glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &n_colbuf);
+	arcan_warning("\tcolor buffer attachments: %d\n", n_colbuf);
+		
+	int objectType;
+	int objectId;
+
+	for(int i = 0; i < n_colbuf; ++i){
+		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0+i,
+			GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+			&objectType);
+
+		if(objectType != GL_NONE){
+			glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
+				GL_COLOR_ATTACHMENT0+i,
+				GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+				&objectId);
+
+			arcan_warning("\tcolor attachment(%d):\n", i);
+			if(objectType == GL_TEXTURE)
+				arcan_warning("\t\ttexture: %s\n", texture_parameters(objectId));
+			else if(objectType == GL_RENDERBUFFER)
+				arcan_warning("\t\trenderbuffer: %d\n", renderbuf_parameters(objectId));
+		}
+	}
+
+	glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
+		GL_DEPTH_ATTACHMENT,
+		GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+		&objectType);
+ 
+	if(objectType != GL_NONE){
+		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
+			GL_DEPTH_ATTACHMENT,
+			GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+			&objectId);
+
+		arcan_warning("\tdepth attachment:\n");
+		switch(objectType){
+			case GL_TEXTURE: arcan_warning("\t\ttexture: %s\n", texture_parameters(objectId)); break;
+			case GL_RENDERBUFFER: arcan_warning("\t\trenderbuffer: %s\n", renderbuf_parameters(objectId)); break;
+    }
+	}
+
+	glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &objectType);
+	if(objectType != GL_NONE){
+		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &objectId);
+
+		arcan_warning("\tstencil attachment:\n");
+		switch(objectType){
+			case GL_TEXTURE: arcan_warning("\t\ttexture: %s\n", texture_parameters(objectId)); break;
+			case GL_RENDERBUFFER: arcan_warning("\t\trenderbuffer: %s\n", renderbuf_parameters(objectId)); break;
+		}
+	}
+
+}
+

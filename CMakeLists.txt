@@ -111,6 +111,7 @@ include_directories (
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${VORBIS_INCLUDE_DIR}
 	${OPENCTM_INCLUDE_DIR}
+	${GLEW_INCLUDE_DIRS}
 )
 
 # removed, current code has some serious issues
