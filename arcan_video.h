@@ -220,7 +220,7 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
 
 /* removes an object immediately, regardless of masks, life-cycles left etc. */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, bool readback);
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback);
 
 /* Attach src to rendertarget did. */
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src);

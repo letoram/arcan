@@ -2634,24 +2634,22 @@ cleanup:
 int arcan_lua_renderset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
-	bool readback     = luaL_optint(ctx, 3, 0) != 0; 
-	int nvids         = lua_rawlen(ctx, -1);
-	luaL_checktype(ctx, 2, LUA_TTABLE);
+	int nvids         = lua_rawlen(ctx, 2);
 
 	if (nvids > 0){
-		arcan_video_setuprendertarget(did, readback);
+		arcan_video_setuprendertarget(did, 0);
+
 		for (int i = 0; i < nvids; i++){
-			lua_rawgeti(ctx, -1, i+1);
-			arcan_vobj_id setvid = lua_tonumber(ctx, -1);
-			lua_pop(ctx, -1);
-			arcan_warning("renderset add: %d\n", setvid);
+			lua_rawgeti(ctx, 2, i+1);
+			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
+			arcan_video_attachtorendertarget(did, setvid);
 		}
+		
 	}
 	else
 		arcan_warning("arcan_lua_renderset(%d, %d) - refusing to define empty renderset.\n");
 		
 	return 0;
-/* iterate the table and extract vids */
 }
 
 int arcan_lua_borderscan(lua_State* ctx)
