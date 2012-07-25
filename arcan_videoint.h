@@ -149,7 +149,6 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, text_support, fullscreen, conservative, late3d, vsync;
-	float projmatr[16];
 
 	unsigned default_vitemlim;
 	arcan_shader_id defaultshdr;
