@@ -175,6 +175,7 @@ function load_shader(vertname, fragname, label, defines)
 		end
 	elseif (type(fragname) == "table") then
 		fprog = table.concat(fragname, "\n");
+		print(fprog);
 	else
 		warning("load_shader(" .. label .. ") failed, bad fragment program argument.\n");
 	end

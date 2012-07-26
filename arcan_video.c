@@ -350,10 +350,10 @@ arcan_vobj_id arcan_video_allocid(bool* status)
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 {
 	arcan_vobject* pobj = arcan_video_getobject(parent);
-	arcan_vobj_id rv;
+	arcan_vobj_id rv = ARCAN_EID;
 	
 	if (pobj == NULL)
-		return 0;
+		return rv;
 
 	bool status;
 	rv = arcan_video_allocid(&status);
@@ -368,15 +368,21 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		};
 		
 		arcan_vobject* nobj = arcan_video_getobject(rv);
+/* use parent values as template */
 		memcpy(nobj, pobj, sizeof(arcan_vobject));
 		memset(&nobj->default_frame, 0, sizeof( arcan_vstorage ));
+
+/* then reset "dangerous" ones */
 		nobj->current = newprop;
 		nobj->cellid = rv;
 		assert(nobj->cellid > 0);
 		nobj->current.rotation.quaternion = build_quat_euler(0.0, 0.0, 0.0);
 		nobj->transform = NULL;
-		nobj->parent = pobj;
 		nobj->flags.clone = true;
+		nobj->parent = pobj;
+		
+		nobj->parent->refcount++;
+		printf("%"PRIxPTR") refcount increased to: %d\n", nobj->parent, nobj->parent->refcount);
 		arcan_video_attachobject(rv);
 	}
 
@@ -420,6 +426,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
 		rv->gl_storage.imageproc = arcan_video_display.imageproc;
+		rv->blendmode = blend_normal;
 		rv->flags.cliptoparent = false;
 		rv->current.scale.x = 1.0;
 		rv->current.scale.y = 1.0;
@@ -453,39 +460,196 @@ arcan_vobject* arcan_video_getobject(arcan_vobj_id id)
 	return rc;
 }
 
+static void dumptgt_list(struct rendertarget*);
+
+#ifdef _DEBUG
+/* check for duplicates */
+static void recurse_scan_duplicate(arcan_vobject_litem* base)
+{
+	arcan_vobject_litem* nextp = base->next;
+	
+	while (nextp){
+/* collision */
+		if (nextp == base || nextp->elem == base->elem)
+			*(intptr_t*)(NULL) = 0xdeadbeef;
+			
+		nextp = nextp->next;
+	}
+}
+
+/* this is a quick heuristic scan to grab most undesired states for the pipe,
+ * meaning invalid fwd/back references or duplicates in the pipe.
+ * to use in gdb, define a macro like:
+ * def vn
+ * call integrity_scan(&current_context->stdoutp)
+ * next
+ * end
+ * 
+ * set breakpoint and use vn to step */ 
+static void integrity_scan(struct rendertarget* src)
+{
+	arcan_vobject_litem* current = src->first;
+
+/* first, duplicates and linked-list integrity */
+	while (current){
+		recurse_scan_duplicate(current);
+		assert(current->elem);
+		
+		if (current != src->first){
+			assert(current->previous != NULL);
+			assert(current->previous->next == current);
+		}
+	
+		if (current->next)
+			assert(current->next->previous == current);
+	
+		current = current->next;
+	}
+}
+
+/* assuming the object is not an orphan,
+ * sweep through all rendertargets, count references and compare with refcounter */
+static bool scan_rtgt(struct rendertarget* src, arcan_vobject_litem* cell)
+{
+	arcan_vobject_litem* current = src->first;
+
+	while (current){
+		if (current == cell) 
+			return true;
+		
+		current = current->next;
+	}
+	
+	return false;
+}
+
+static void verify_owner(arcan_vobject* src)
+{
+	arcan_vobject_litem* owner = src->owner;
+	unsigned count = 0;
+	
+	if (owner){
+		count += scan_rtgt(&current_context->stdoutp, owner) ? 1 : 0;
+		
+		for (unsigned int n = 0; n < current_context->n_rtargets; n++)
+			count += scan_rtgt(&current_context->rtargets[n], owner) ? 1 : 0;
+	}
+	
+/* check each object that is not the source, if it has a frameset assigned,
+ * check that one for any references to src->cellid */
+	for (unsigned int n = 0; n < current_context->vitem_limit; n++){
+		arcan_vobject* vobj = &current_context->vitems_pool[n];
+
+		if (vobj->parent == src)
+			count++;
+		
+		if (vobj != src && vobj->flags.in_use && vobj->frameset)
+			for (unsigned int cell = 1; cell < vobj->frameset_meta.capacity; cell++)
+				if (vobj->frameset[cell] && vobj->frameset[cell] == src)
+					count++;
+	}
+	
+	assert(count == src->refcount);
+}
+#endif
+
+static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
+{
+	arcan_vobject_litem* torem;
+	assert(dst != NULL);
+	assert(src != NULL);
+	
+/* already detached or empty target */
+	if (!dst || !src->owner)
+		return false;
+
+	verify_owner(src);
+	
+/* orphan */
+	torem = src->owner;
+	src->owner = NULL;
+
+/* (1.) remove first */
+	if (dst->first == torem){
+		dst->first = torem->next;
+		
+		/* only one element? */
+		if (dst->first){
+			dst->first->previous = NULL;
+		}
+	}
+/* (2.) remove last */
+	else if (torem->next == NULL){
+		assert(torem->previous);
+		torem->previous->next = NULL;
+	}
+/* (3.) remove arbitrary */
+	else {
+		torem->next->previous = torem->previous;
+		torem->previous->next = torem->next;
+	}
+
+/* cleanup torem */
+	memset(torem, 0, sizeof(arcan_vobject_litem));
+	free(torem);
+
+	printf("%"PRIxPTR")refcount decreased to: %d\n", src, src->refcount);
+	src->refcount--;
+	assert(src->refcount >= 0);
+	
+	return true;
+}
+
 static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 {
 	arcan_vobject_litem* new_litem = malloc(sizeof *new_litem);
 	new_litem->next = new_litem->previous = NULL;
 	new_litem->elem = src;
-	src->owner = new_litem;
+	verify_owner(src);
+	src->refcount++;
 
+	printf("%"PRIxPTR") refcount: %d\n", (intptr_t) src, src->refcount);
+	
+/* (pre) if orphaned, assign */
+	if (src->owner == NULL)
+		src->owner = new_litem;
+
+/* 2. insert first into empty? */
 	if (!dst->first)
 		dst->first = new_litem;
-	else if (dst->first->elem->order > src->order) { /* insert first */
+	else
+/* 3. insert first with n >= 1 */
+	if (dst->first->elem->order > src->order) { 
 		new_litem->next = dst->first;
 		dst->first = new_litem;
 		new_litem->next->previous = new_litem;
-	} /* insert "anywhere" */
+	}
+/* 4. insert last or arbitrary */
 	else {
-		bool last = true;
+		bool last;
 		arcan_vobject_litem* ipoint = dst->first;
-		/* scan for insertion point */
+
+/* 5. scan for insertion point */
 		do 
 			last = (ipoint->elem->order <= src->order);
 		while (last && ipoint->next && (ipoint = ipoint->next));
 
+/* 6. insert last? */
 		if (last) {
 			new_litem->previous = ipoint;
 			ipoint->next = new_litem;
 		}
+
 		else {
+/* 7. insert arbitrary */
 			ipoint->previous->next = new_litem;
 			new_litem->previous = ipoint->previous;
 			ipoint->previous = new_litem;
 			new_litem->next = ipoint;
 		}
 	}
+	
+	verify_owner(src);	
 }
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id)
@@ -493,7 +657,9 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 	arcan_vobject* src = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
-	if (src) {
+	if (src){
+/* make sure that there isn't already one attached */
+		detach_fromtarget(&current_context->stdoutp, src);
 		attach_object(&current_context->stdoutp, src);
 		rv = ARCAN_OK;
 	}
@@ -536,48 +702,6 @@ static surface_transform* dup_chain(surface_transform* base)
 	return res;
 }
 
-static bool detatch_fromtarget(struct rendertarget* dst, arcan_vobject* src, bool gotowner)
-{
-	arcan_vobject_litem* current_litem;
-	if (gotowner && src->owner)
-		current_litem = src->owner;
-	else {
-		current_litem = dst->first;
-		while (current_litem && current_litem->elem && current_litem->elem != src)
-			current_litem = current_litem->next;
-	}
-
-	if (!current_litem || !current_litem->elem)
-		return false;
-		
-/* with frameset objects, we can get a detatch call even though it's not attached */
-	if (gotowner && src->owner)
-		src->owner = NULL;
-
-/* double-linked */
-	if (current_litem->previous)
-		current_litem->previous->next = current_litem->next;
-	else
-		dst->first = current_litem->next; /* only first cell lacks a previous node */
-
-	if (current_litem->next)
-		current_litem->next->previous = current_litem->previous;
-
-	memset(current_litem, 0, sizeof(arcan_vobject_litem));
-	free(current_litem);
-	return true;
-}
-
-arcan_errc arcan_video_detatchobject(arcan_vobj_id id)
-{
-	arcan_vobject* src = arcan_video_getobject(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
-	if (src)
-		rv = detatch_fromtarget(&current_context->stdoutp, src, true) ? ARCAN_OK : ARCAN_ERRC_UNACCEPTED_STATE;
-	
-	return rv;
-}
 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
 {
@@ -589,7 +713,6 @@ enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
 
 	return mask;
 }
-
 
 arcan_errc arcan_video_transformmask(arcan_vobj_id id, enum arcan_transform_mask mask)
 {
@@ -626,6 +749,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 		}
 	
 		src->parent = dst;
+		dst->refcount++;
 
 		swipe_chain(src->transform, offsetof(surface_transform, blend), sizeof(struct transf_blend));
 		swipe_chain(src->transform, offsetof(surface_transform, move), sizeof(struct transf_move));
@@ -647,7 +771,7 @@ static void arcan_video_gldefault()
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_LIGHTING);
 	glDisable(GL_FOG);
-	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
 	if (arcan_video_display.msasamples)
 		glEnable(GL_MULTISAMPLE);
@@ -1005,7 +1129,28 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
  * 
  * to free, BindBuffer, UnmapBuffer, BindBuffer0, DeleteBuffers*/
 
-arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src)
+static struct rendertarget* find_owner(arcan_vobject* src)
+{
+/* trick to find owner rendertarget */
+	arcan_vobject_litem* cur = src->owner;
+
+/* sweep back to the first elem, which also will be the first from
+ * a rtarget or the stdout */
+	while (cur->previous != NULL) 
+		cur = cur->previous;
+
+	if (current_context->stdoutp.first == cur)
+		return &current_context->stdoutp;
+	
+/* whichever rendertarget that has this litem as first owns the object */
+	for (int oind = 0; oind < current_context->n_rtargets; oind++)
+		if (current_context->rtargets[oind].first == cur)
+			return &(current_context->rtargets[oind]);
+		
+	return NULL;
+}
+
+arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src, bool detach)
 {
 	arcan_vobject* dstobj = arcan_video_getobject(did);
 	arcan_vobject* srcobj = arcan_video_getobject(src);
@@ -1014,9 +1159,14 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 	if (dstobj && srcobj){
 /* find dstobj in rendertargets */
 		rv = ARCAN_ERRC_UNACCEPTED_STATE;
-		
+
 		for (int ind = 0; ind < current_context->n_rtargets; ind++){
 			if (current_context->rtargets[ind].color == dstobj){
+
+				if (srcobj->owner && detach)
+					detach_fromtarget(find_owner(srcobj), srcobj);
+	
+				detach_fromtarget(&current_context->rtargets[ind], srcobj);
 				attach_object(&current_context->rtargets[ind], srcobj); 
 				rv = ARCAN_OK;
 			}
@@ -1056,7 +1206,7 @@ static bool alloc_fbo(struct rendertarget* dst)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback)
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool scale)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
@@ -1081,13 +1231,16 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback)
 /* alter projection so the GL texture gets stored in the way the images are rendered in normal mode,
  * with 0,0 being upper left */
 			build_orthographic_matrix(dst->projection, 0, arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
-			float xs = (float) vobj->gl_storage.w / (float)arcan_video_display.width;
-			float ys = (float) vobj->gl_storage.h / (float)arcan_video_display.height;
+			identity_matrix(dst->base);
+
+			if (scale){
+				float xs = (float) vobj->gl_storage.w / (float)arcan_video_display.width;
+				float ys = (float) vobj->gl_storage.h / (float)arcan_video_display.height;
 
 /* since we may likely have a differetly sized FBO, scale it */
-			identity_matrix(dst->base);
-			scale_matrix(dst->base, xs, ys, 1.0);
-
+				scale_matrix(dst->base, xs, ys, 1.0);
+			}
+			
 			alloc_fbo(dst);
 			rv = ARCAN_OK;
 		}
@@ -1106,18 +1259,24 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 	if (dstvobj && dstvobj->frameset){
 		dstvobj->frameset_meta.current = fid < dstvobj->frameset_meta.capacity && dstvobj->frameset[fid] ? fid : 0;
 		dstvobj->current_frame = dstvobj->frameset[ dstvobj->frameset_meta.current ];
-		rv = ARCAN_OK;		
+		rv = ARCAN_OK;
 	}
 	
 	return rv;
 }
 
-arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detatch, arcan_errc* errc)
+arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detach, arcan_errc* errc)
 {
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
 	arcan_vobj_id rv = ARCAN_EID;
 	fid++; /* enforce 1 index */
+	
+	if (dstvobj == srcvobj){
+		if (errc)
+			*errc = ARCAN_ERRC_BAD_ARGUMENT;
+		return rv;
+	}
 	
 	if (errc)
 		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1125,9 +1284,9 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	if (dstvobj && srcvobj){
 		if (dstvobj->frameset && fid < dstvobj->frameset_meta.capacity){
 			
-/* if we want to manage the frame entirely through this object, we can detatch src and stop worrying about deleting it */
-			if (detatch)
-				arcan_video_detatchobject(src);
+/* if we want to manage the frame entirely through this object, we can detach src and stop worrying about deleting it */
+			if (detach && srcvobj->owner)
+				detach_fromtarget(find_owner(srcvobj), srcvobj);
 
 /* if there already is an object in the desired slot, return the management responsibility to the user*/
 			if (dstvobj->frameset[fid]){
@@ -1711,7 +1870,6 @@ struct text_format formatend(char* base, struct text_format prev, char* orig, bo
 	if (*base == 0)
 		prev.endofs = base;
 
-//	printf("formatblock(lf:%i, tab:%i, cr:%i)\n", prev.newline, prev.tab, prev.cr);
 	*ok = true;
 	return prev;
 }
@@ -2093,14 +2251,13 @@ cleanup:
 	return rv;
 }
 
-arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on)
+arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc mode)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
+	
 	if (vobj && id > 0) {
-		vobj->blendmode = blend_force;
-
+		vobj->blendmode = mode;
 		rv = ARCAN_OK;
 	}
 
@@ -2126,10 +2283,17 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj && newzv > 0) {
+	if (vobj && newzv > 0 && newzv != vobj->order) {
+		struct rendertarget* owner = find_owner(vobj);
+
+/* attach also works like an insertion sort */
 		vobj->order = newzv;
-		arcan_video_detatchobject(id);
-		arcan_video_attachobject(id);
+
+		if (owner){
+			detach_fromtarget(owner, vobj);
+			attach_object(owner, vobj);
+		}
+
 		rv = ARCAN_OK;
 	}
 
@@ -2278,84 +2442,108 @@ arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 	return rv;
 }
 
-/* removes an object immediately,
- * one of the more complicated / dangerous functions,
- *   -- if there's a feed function, invoke that with destroy
- *   -- if there's a frameset, destroy associated frames IF NOT detatched,
- *   -- if detatched, it is assumed the underlying ffunc mechanism will clean it up.
- *   -- scan all associated objects and remove dangling references AND destroy them too if not masked */
+static void drop_rtarget(struct rendertarget* vobj)
+{
+	arcan_fatal("drop target not working\n");
+}
+
+/* clear any and all items that in some way references the vobj in question */
+static void eradicate_vobj(arcan_vobject* vobj)
+{
+/* first, make sure no object still references this one,
+ * that includes "linked" transformation chains, framesets and instances.
+ * remove from any frameset and delete any clone
+ * otherwise check mask, if "death inheritance" isn't active, set parent (ultimately, WORLD) to new owner */ 
+	for (unsigned ind = 0; ind < current_context->vitem_limit && vobj->refcount; ind++){
+		if (ind == vobj->cellid)
+			continue;
+		
+		arcan_vobject* cur = &current_context->vitems_pool[ind];
+
+		if (cur->frameset)
+			for(unsigned i = 1; i < vobj->frameset_meta.capacity && vobj->refcount; i++)
+				if (vobj->frameset[i] && vobj->frameset[i]->cellid == cur->cellid){
+					vobj->frameset[i] = NULL;
+					vobj->refcount--;
+				}
+
+		if (cur->parent == vobj){
+			vobj->refcount--;
+				
+			if (cur->flags.clone || (cur->mask & MASK_LIVING) == 0)
+				arcan_video_deleteobject(ind);
+			else
+				cur->parent = vobj->parent;
+		}
+	}
+
+	detach_fromtarget(&current_context->stdoutp, vobj);
+	
+/* remove from all rendertargets */
+	for (unsigned ind = 0; ind < current_context->n_rtargets && vobj->refcount; ind++){
+		struct rendertarget* rtarget = &current_context->rtargets[ind];
+
+		if (rtarget->color != vobj)
+			detach_fromtarget(rtarget, vobj);
+		
+/* the entire rendertarget is gone */
+		else 
+			drop_rtarget(rtarget);
+	}
+
+	assert(vobj->refcount >= 0);
+}
+
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	
-/* vid 0 is reserved for world, which should never be deleted */
-	if (vobj && id > 0) {
-		if (vobj->flags.clone == false){
-			if (vobj->feed.ffunc){
-				vobj->feed.ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->feed.state);
-			}
-			
-			if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
-				SDL_WaitThread( vobj->feed.state.ptr, NULL );
 
-/* for a frameset, index (0) is always reserved for self */
-			for (unsigned i = 1; i < vobj->frameset_meta.capacity; i++)
-				if (vobj->frameset[i]){
-					arcan_video_deleteobject(vobj->frameset[i]->cellid);
-					vobj->frameset[i] = 0;
-				}
-
-			free(vobj->frameset);
-#ifdef _DEBUG
-			if (vobj->default_frame.raw)
-				memset(vobj->default_frame.raw, 0x10, vobj->default_frame.s_raw); 
-#endif
-			free(vobj->default_frame.raw);
-
-/* don't keep any dangling referernce */
-			vobj->current_frame = vobj;
-			glDeleteTextures(1, &vobj->gl_storage.glid);
-		}
-
-		current_context->nalive--;
-		assert(current_context->nalive >= 0);
-
-/* no effect if already detatched */
-		arcan_video_detatchobject(id);
-
-/* FIXME: scan all rendertargets for the id as well */
-
-/* scan the current context, look for clones and other objects that has this object as a parent */
-		arcan_vobject_litem* current;
-retry:  
-		current = current_context->stdoutp.first;
-		
-		while (current && current->elem) {
-			arcan_vobject* elem = current->elem;
-		
-			if (elem->parent == vobj) {
-/* if we have a child or a linked object that isn't masked from being deleted, cascade */
-				if (elem->flags.clone || (elem->mask & MASK_LIVING) == 0) {
-					arcan_video_deleteobject(current->elem->cellid);
-					goto retry; /* no guarantee the structure is intact */
-				}
-/* otherwise, just inherit this objects parent (eventually, WORLDID) */
-				else 
-					elem->parent = vobj->parent;
-			}
-
-			current = current->next;
-		}
-
-/* transforms are also dynamically allocated, so clean and reset */
-		arcan_video_zaptransform(id);
-
-/* lots of default values are assumed to be 0, so reset the entire object to be sure.
- * will help leak detectors as well */ 
-		memset(vobj, 0, sizeof(arcan_vobject));
-		rv = ARCAN_OK;
+	if (!vobj || id == ARCAN_VIDEO_WORLDID || id == ARCAN_EID){
+		return rv;
 	}
+
+	if (vobj->owner)
+		detach_fromtarget(find_owner(vobj), vobj);
+	
+	current_context->nalive--;
+	arcan_video_zaptransform(id);
+	
+/* full- object specific clean-up */
+	if (vobj->flags.clone == false){
+		if (vobj->feed.ffunc)
+			vobj->feed.ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->feed.state);
+		
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+			SDL_WaitThread( vobj->feed.state.ptr, NULL );
+		
+/* frameset, might have orphans here */
+		for (unsigned i = 1; i < vobj->frameset_meta.capacity; i++){
+			if (vobj->frameset[i] && !vobj->frameset[i]->owner)
+				arcan_video_deleteobject(vobj->frameset[i]->cellid);
+				vobj->frameset[i] = NULL;
+		}
+	
+		free(vobj->frameset);
+	
+/* video storage */
+#ifdef _DEBUG
+		if (vobj->default_frame.raw)
+			memset(vobj->default_frame.raw, 0x10, vobj->default_frame.s_raw);
+#endif
+		free(vobj->default_frame.raw);
+
+		glDeleteTextures(1, &vobj->gl_storage.glid);
+	}
+	
+/* lots of default values are assumed to be 0, so reset the entire object to be sure.
+ * will help leak detectors as well */
+
+/* make sure there's no-one else referencing this object */
+	eradicate_vobj(vobj);
+
+	memset(vobj, 0, sizeof(arcan_vobject));
+	rv = ARCAN_OK;
 
 	return rv;
 }
@@ -2699,12 +2887,9 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	return rv;
 }
 
-static bool update_object(arcan_vobject* ci, unsigned int stamp)
+static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 {
 	bool upd = false;
-	
-	if (ci->last_updated == stamp)
-		return false;
 	
 /* update parent if this has not already been updated this cycle */
 	if (ci->last_updated < stamp && 
@@ -2713,11 +2898,11 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 		update_object(ci->parent, stamp);
 	}
 
+	ci->last_updated = stamp;
+	
 	if (!ci->transform)
 		return false;
 	
-	ci->last_updated = stamp;
-
 	if (ci->transform->blend.startt) {
 		upd = true;
 		float fract = lerp_fract(ci->transform->blend.startt, ci->transform->blend.endt, stamp);
@@ -2823,64 +3008,74 @@ static bool update_object(arcan_vobject* ci, unsigned int stamp)
 	return upd;
 }
 
+static void expire_object(arcan_vobject* obj){
+	if (obj->lifetime <= 0) {
+		arcan_event dobjev = {
+		.category = EVENT_VIDEO,
+		.kind = EVENT_VIDEO_EXPIRE
+		};
+	
+		dobjev.data.video.source = obj->cellid;
+
+		arcan_event_enqueue(arcan_event_defaultctx(), &dobjev);
+/* disable the LIVING mask, otherwise we'd fire multiple
+ * expire events when video logic is lagging behind */
+		obj->mask &= ~MASK_LIVING;
+	}
+	else 
+		obj->lifetime--;
+}
+
 /* process a logical time-frame (which more or less means, update / rescale / redraw / flip)
  * returns msecs elapsed */
-uint32_t arcan_video_tick(uint8_t steps)
+static void tick_rendertarget(struct rendertarget* tgt)
 {
 	unsigned now = arcan_frametime();
-	arcan_vobject_litem* current = current_context->stdoutp.first;
+	arcan_vobject_litem* current = tgt->first;
 
-	while (steps--) {
-/*		printf("(%d) alive: %ld\n", arcan_video_display.c_ticks, current_context->nalive); */
-		update_object(&current_context->world, arcan_video_display.c_ticks);
-		arcan_video_display.c_ticks++;
-		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, sizeof(arcan_video_display.c_ticks));
+	while (current){
+		arcan_vobject* elem = current->elem;
+		if (elem->last_updated != arcan_video_display.c_ticks){
+/* is the item to be updated? */
+			update_object(elem, arcan_video_display.c_ticks);
 		
-		if (current)
-			do {
-				arcan_vobject* elem = current->elem;
-			
-				/* is the item to be updated? */
-				update_object(elem, arcan_video_display.c_ticks);
-				if (elem->feed.ffunc)
-					elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
-				
-				if ((elem->mask & MASK_LIVING) > 0) {
-					if (elem->lifetime <= 0) {
-						arcan_event dobjev = {
-							.category = EVENT_VIDEO,
-							.kind = EVENT_VIDEO_EXPIRE
-						};
-						arcan_vobj_id tid = elem->cellid;
-						dobjev.data.video.source = tid;
+			if (elem->feed.ffunc)
+				elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
 
-						arcan_event_enqueue(arcan_event_defaultctx(), &dobjev);
-						/* disable the LIVING mask, otherwise we'd fire multiple
-						 * expire events when video logic is lagging behind */
-						elem->mask &= ~MASK_LIVING;
-					}
-					else {
-						elem->lifetime--;
-					}
-				}
+			if ((elem->mask & MASK_LIVING) > 0)
+				expire_object(elem);
 			
 /* mode > 0, cycle every 'n' ticks */
-				if (elem->frameset_meta.mode > 0){
-					elem->frameset_meta.counter--;
-					if (elem->frameset_meta.counter == 0){
-						elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
-						step_active_frame(elem);
-					}
+			if (elem->frameset_meta.mode > 0){
+				elem->frameset_meta.counter--;
+				if (elem->frameset_meta.counter == 0){
+					elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
+					step_active_frame(elem);
 				}
-
-/* sweep the entire list, any detatched objects won't ever get this update (frameservers, ...) */
 			}
-			while ((current = current->next) != NULL);
-
-		current = current_context->stdoutp.first;
+		}
+		
+		current = current->next;
 	}
+}
 
-	return 0;
+unsigned arcan_video_tick(unsigned steps)
+{
+	unsigned now = arcan_frametime();
+
+	while(steps--){
+		update_object(&current_context->world, arcan_video_display.c_ticks);
+
+		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, sizeof(arcan_video_display.c_ticks));
+		
+		for (int i = 0; i < current_context->n_rtargets; i++)
+			tick_rendertarget(&current_context->rtargets[i]);
+		
+		tick_rendertarget(&current_context->stdoutp);
+		arcan_video_display.c_ticks++;
+	}
+	
+	return arcan_frametime() - now;
 }
 
 arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon)
@@ -3016,10 +3211,8 @@ static inline void draw_surf(struct rendertarget* dst, surface_properties prop, 
 
 /* scan all 'feed objects' (possible optimization, keep these tracked in a separate list and run prior to all other rendering,
  * might gain something when other pseudo-asynchronous operations (e.g. PBO) are concerned */
-void arcan_video_pollfeed()
+void poll_list(arcan_vobject_litem* current)
 {
-	arcan_vobject_litem* current = current_context->stdoutp.first;
-
 	while(current && current->elem){
 	arcan_vobject* cframe = current->elem->current_frame;
 	arcan_vobject* celem  = current->elem;
@@ -3056,6 +3249,13 @@ void arcan_video_pollfeed()
 
 		current = current->next;
 	}
+}
+
+void arcan_video_pollfeed(){
+	for (int i = 0; i < current_context->n_rtargets; i++)
+		poll_list(current_context->rtargets[i].first);
+		
+	poll_list(current_context->stdoutp.first);
 }
 
 static void process_rendertarget(struct rendertarget* tgt, float lerp)
@@ -3151,7 +3351,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 				unsigned j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
 				for(unsigned i = 0;i < j; i++){
 					char unifbuf[9] = {0};
-					int frameind = (elem->frameset_meta.current + i) % elem->frameset_meta.capacity;
+					int frameind = (elem->frameset_meta.current - i) % elem->frameset_meta.capacity;
 					if (elem->frameset[frameind] == NULL){
 #ifdef _DEBUG
 						arcan_warning("arcan_video_refresh_GL( MULTITEXTURE ) -- unmapped cell (%d) ignored.\n", frameind);
@@ -3169,11 +3369,20 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 
 /* only blend if the object isn't entirely solid or if the object has specific settings */
-			if (dprops.opa > 0.99999 && ( elem->blendmode != blend_force ))
-				glDisable(GL_BLEND);
-			else
-				glEnable(GL_BLEND);
-
+		if (dprops.opa > 0.999f && elem->blendmode != blend_force)
+			glDisable(GL_BLEND);
+		else{
+			glEnable(GL_BLEND);
+			switch (elem->blendmode){
+				case blend_force:
+				case blend_normal: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); break; 
+				case blend_multiply: glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA); break;
+				case blend_add: glBlendFunc(GL_ONE, GL_ONE); break;
+				default:
+					arcan_warning("unknown blend-mode specified(%d)\n", elem->blendmode);
+			}
+		}
+			
 			draw_surf(tgt, dprops, elem, elem->current_frame->txcos);
 
 			if (clipped)
@@ -3593,7 +3802,7 @@ static char* texture_parameters(GLuint id)
 }
         
 /* assume an active / bound FBO,
- * enumerate all available attachments, decode the format of each detatched object */
+ * enumerate all available attachments, decode the format of each detached object */
 static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode mode)
 {
 	arcan_warning("FBO status:\n----------\n");

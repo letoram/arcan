@@ -137,6 +137,8 @@ typedef struct arcan_vobject {
 	struct arcan_vobject* parent;
 	struct arcan_vobject_litem* owner;
 	arcan_vobj_id cellid;
+	int refcount;
+	
 } arcan_vobject;
 
 /* regular old- linked list, but also mapped to an array */

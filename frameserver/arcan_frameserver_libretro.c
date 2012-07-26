@@ -209,13 +209,18 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: 
 			rv = true; 
 			retroctx.colormode = *(enum retro_pixel_format*) data;
+			LOG("(arcan_frameserver:libretro) - colormode switched to (%d).\n", retroctx.colormode);
 		break;
 		
 /* ignore for now */
-		case RETRO_ENVIRONMENT_SHUTDOWN: break;
+		case RETRO_ENVIRONMENT_SHUTDOWN: 
+				LOG("(arcan_frameserver:libretro) - shutdown requested from lib.\n");
+		break;
 		
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
-		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: break;
+		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: 
+				LOG("(arcan_frameserver:libretro) - system directory requested, likely not able to run.\n");
+		break;
 	}
 	
 	return rv; 

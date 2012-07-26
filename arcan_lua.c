@@ -69,6 +69,17 @@ static const int ORDER_LAST  = 0;
 static const int FRAMESERVER_LOOP = 1;
 static const int FRAMESERVER_NOLOOP = 0;
 
+static const int RENDERTARGET_DETACH = 10;
+static const int RENDERTARGET_NODETACH = 11;
+static const int RENDERTARGET_SCALE = 20;
+static const int RENDERTARGET_NOSCALE = 21;
+
+static const int BLEND_NONE     = blend_disable;
+static const int BLEND_NORMAL   = blend_normal;
+static const int BLEND_ADD      = blend_add;
+static const int BLEND_MULTIPLY = blend_multiply;
+static const int BLEND_FORCE    = blend_force;
+
 extern char* arcan_themename;
 extern arcan_dbh* dbhandle;
 
@@ -491,8 +502,8 @@ int arcan_lua_hideimage(lua_State* ctx)
 int arcan_lua_forceblend(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	bool state = luaL_optnumber(ctx, 2, true);
-	arcan_video_forceblend(id, state);
+	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_NORMAL);
+	arcan_video_forceblend(id, mode);
 
 	return 0;
 }
@@ -2635,14 +2646,26 @@ int arcan_lua_renderset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	int nvids         = lua_rawlen(ctx, 2);
+	int detach        = luaL_checkint(ctx, 3);
+	int scale         = luaL_checkint(ctx, 4); 
 
+	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
+		arcan_warning("arcan_lua_renderset(%d) invalid arg 3, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
+		return 0;
+	}
+	
+	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
+		arcan_warning("arcan_lua_renderset(%d) invalid arg 4, expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
+		return 0;
+	}
+	
 	if (nvids > 0){
-		arcan_video_setuprendertarget(did, 0);
+		arcan_video_setuprendertarget(did, 0, scale == RENDERTARGET_SCALE);
 
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
-			arcan_video_attachtorendertarget(did, setvid);
+			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
 		}
 		
 	}
@@ -3398,129 +3421,57 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* category: constants */
 
 void arcan_lua_pushglobalconsts(lua_State* ctx){
-/* constant: VRESH,int */
 	arcan_lua_setglobalint(ctx, "VRESH", arcan_video_screenh());
-
-/* constant: VRESW,int */
 	arcan_lua_setglobalint(ctx, "VRESW", arcan_video_screenw());
-
-/* constant: STACK_MAXCOUNT,int */
 	arcan_lua_setglobalint(ctx, "STACK_MAXCOUNT", CONTEXT_STACK_LIMIT);
-
-/* constant: REPEAT,int */
+	arcan_lua_setglobalint(ctx, "FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT);
+	arcan_lua_setglobalint(ctx, "FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE);
+	arcan_lua_setglobalint(ctx, "BLEND_NONE", BLEND_NONE);
+	arcan_lua_setglobalint(ctx, "BLEND_ADD", BLEND_ADD);	
+	arcan_lua_setglobalint(ctx, "BLEND_MULTIPLY", BLEND_MULTIPLY);
+	arcan_lua_setglobalint(ctx, "BLEND_NORMAL", BLEND_NORMAL);
+	arcan_lua_setglobalint(ctx, "RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE);
+	arcan_lua_setglobalint(ctx, "RENDERTARGET_SCALE", RENDERTARGET_SCALE);
+	arcan_lua_setglobalint(ctx, "RENDERTARGET_NODETACH", RENDERTARGET_NODETACH);
+	arcan_lua_setglobalint(ctx, "RENDERTARGET_DETACH", RENDERTARGET_DETACH);
 	arcan_lua_setglobalint(ctx, "TEX_REPEAT", ARCAN_VTEX_REPEAT);
-
-/* constant: CLAMP,int */
 	arcan_lua_setglobalint(ctx, "TEX_CLAMP", ARCAN_VTEX_CLAMP);
-
-/* constant: SCALE_NOPOW2, int */
 	arcan_lua_setglobalint(ctx, "SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2);
-
-/* constant: SCALE_TXCOORD, int */
 	arcan_lua_setglobalint(ctx, "SCALE_TXCOORD", ARCAN_VIMAGE_TXCOORD);
-
-/* constant: SCALE_POW2, int */
 	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);
-
-/* constant: IMAGEPROC_NORMAL, int */
 	arcan_lua_setglobalint(ctx, "IMAGEPROC_NORMAL", imageproc_normal);
-
-/* constant: IMAGEPROC_FLIPH, int */
 	arcan_lua_setglobalint(ctx, "IMAGEPROC_FLIPH", imageproc_fliph);
-
-/* constant: WORLDID,int */
+	arcan_lua_setglobalint(ctx, "BLEND_NORMAL", BLEND_NORMAL);
 	arcan_lua_setglobalint(ctx, "WORLDID", ARCAN_VIDEO_WORLDID);
-
-/* constant: BADID,int */
 	arcan_lua_setglobalint(ctx, "BADID", ARCAN_EID);
-
-/* constant: CLOCKRATE,int */
 	arcan_lua_setglobalint(ctx, "CLOCKRATE", ARCAN_TIMER_TICK);
-
-/* constant: CLOCK,int */
 	arcan_lua_setglobalint(ctx, "CLOCK", 0);
-
-/* constant: JOYSTICKS,int */
 	arcan_lua_setglobalint(ctx, "JOYSTICKS", SDL_NumJoysticks());
-
-/* constant: THEME_RESOURCE,enumint */
 	arcan_lua_setglobalint(ctx, "THEME_RESOURCE", ARCAN_RESOURCE_THEME);
-
-/* constant: SHARED_RESOURCE,enumint */
 	arcan_lua_setglobalint(ctx, "SHARED_RESOURCE", ARCAN_RESOURCE_SHARED);
-
-/* constant: ALL_RESOURCES,enumint */
 	arcan_lua_setglobalint(ctx, "ALL_RESOURCES", ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	
-/* constant: API_VERSION_MAJOR,int */
 	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
-	
-/* constant: API_VERSION_MINOR,int */
 	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 5);
-
-/* constant: LAUNCH_EXTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);
-
-/* constant: LAUNCH_INTERNAL,enumint */
 	arcan_lua_setglobalint(ctx, "LAUNCH_INTERNAL", 1);
-
-/* constant: MASK_LIVING, enumint */
 	arcan_lua_setglobalint(ctx, "MASK_LIVING", MASK_LIVING);
-
-/* constant: MASK_ORIENTATION,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_ORIENTATION", MASK_ORIENTATION);
-
-/* constant: MASK_OPACITY,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_OPACITY", MASK_OPACITY);
-
-/* constant: MASK_POSITION,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_POSITION", MASK_POSITION);
-
-/* constant: MASK_SCALE,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_SCALE", MASK_SCALE);
-
-/* constant: MASK_UNPICKABLE,enumint */
 	arcan_lua_setglobalint(ctx, "MASK_UNPICKABLE", MASK_UNPICKABLE);
-
-/* constant: ORDER_FIRST,int */
 	arcan_lua_setglobalint(ctx, "ORDER_FIRST", ORDER_FIRST);
-
-/* constant: ORDER_LAST,int */
 	arcan_lua_setglobalint(ctx, "ORDER_LAST", ORDER_LAST);
-	
-/* constant: FRAMESERVER_LOOP,int */
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_LOOP", FRAMESERVER_LOOP);
-	
-/* constant: FRAMESERVER_NOLOOP,int */ 
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP);
-	
-/* constant: THEMENAME,string */
 	arcan_lua_setglobalstr(ctx, "THEMENAME", arcan_themename);
-
-/* constant: RESOURCEPATH,string */
 	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath);
-
-/* constant: THEMEPATH,string */
 	arcan_lua_setglobalstr(ctx, "THEMEPATH", arcan_themepath);
-
-/* constant: BINPATH,string */
 	arcan_lua_setglobalstr(ctx, "BINPATH", arcan_binpath);
-
-/* constant: LIBPATH,string */
 	arcan_lua_setglobalstr(ctx, "LIBPATH", arcan_libpath);
-
-/* constant: INTERNALMODE,string */
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
-
-/* constant: LEDCONTROLLERS,string */
 	arcan_lua_setglobalint(ctx, "LEDCONTROLLERS", arcan_led_controllers());
-	
-/* constant: NOW, int */
 	arcan_lua_setglobalint(ctx, "NOW", 0);
-
-/* constant: NOPERSIST, int */
 	arcan_lua_setglobalint(ctx, "NOPERSIST", 0);
-
-/* constant: PERSIST, int */
 	arcan_lua_setglobalint(ctx, "PERSIST", 1);
 }

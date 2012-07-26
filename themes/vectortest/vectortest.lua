@@ -5,13 +5,14 @@ function create_weighted_fbo( frames )
 	
 	for i=1,#frames do
 		table.insert(resshader, "uniform sampler2D map_tu" .. tostring(i-1) .. ";");
-		table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i-1) .. ", texco);");
 	end
 
 	table.insert(resshader, "void main(){");
 
 	local mixl = "gl_FragColor = "
 	for i=1,#frames do
+		table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i-1) .. ", texco);");
+
 		local strv = tostring(frames[i]);
 		local coll = "vec4(" .. strv .. ", " .. strv .. ", " .. strv .. ", 1.0)";
 		mixl = mixl .. "col" .. tostring(i) .. " * " .. coll;
@@ -38,37 +39,40 @@ end
 -- for CRT mode, add an additional FBO with a mix shader that combines the sharp and the two blurs and 
 -- set the CRT shader as the outer-most output.
 function setup_history_buffer(parent, frames, delay, targetwidth, targetheight, blurwidth, blurheight)
-	image_framesetsize(parent, #frames);
+	image_framesetsize(parent, #frames, FRAMESET_MULTITEXTURE);
+	image_framecyclemode(parent, delay);
+	
 	for i=1,#frames do
-		local vid = fill_surface(0, 0, 0, 0, 0, targetwidth, targetheight);
+		local vid = fill_surface(VRESW, VRESH, 0, 0, 0, targetwidth, targetheight);
 		set_image_as_frame(parent, vid, i-1);
 	end
 	
-	local blur_buf_a = fill_surface(0, 0, 0, 0, 0, blurwidth, blurheight);
-	local blur_buf_b = fill_surface(0, 0, 0, 0, 0, blurwidth, blurheight);
+	local blur_buf_a = fill_surface(blurwidth, blurheight, 0, 0, 0, blurwidth, blurheight);
+	local blur_buf_b = fill_surface(VRESW, VRESH, 0, 0, 0, blurwidth, blurheight);
+	local last_frame = fill_surface(targetwidth, targetheight, 0, 0, 0, targetwidth, targetheight);
 	
-	define_rendertarget(blur_buf_a, {parent});
-	define_rendertarget(blur_buf_b, {blur_buf_a});
+	local clone = instance_image(parent);
+	resize_image(clone, VRESW, VRESH);
+	force_image_blend(last_frame, BLEND_NONE);
+
+	show_image(blur_buf_a);
+--	show_image(blur_buf_b);
+--	blend_image(last_frame, 0.5);
 	
-	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames), "history_mix", {});
+	show_image(parent);
+	show_image(clone);
+	
+	define_rendertarget(blur_buf_a, {parent}, RENDERTARGET_DETACH, RENDERTARGET_SCALE);
+	define_rendertarget(blur_buf_b, {blur_buf_a}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	
+	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames),  "history_mix", {});
 	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
 	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
 	
--- short path, no CRT
-	show_image(parent);
-	resize_image(parent, VRESW*0.5, VRESH*0.5);
-	
-	image_framecyclemode(parent, delay);
 	image_shader(parent, mixshader);
 
 	image_shader(blur_buf_a, blurshader_h);
 	image_shader(blur_buf_b, blurshader_v);
-
-	resize_image(blur_buf_a, VRESW*0.5, VRESH*0.5);
-	show_image(blur_buf_a);
-	
-	resize_image(blur_buf_b, VRESW*0.5, VRESH*0.5);
-	show_image(blur_buf_b);
 end
 
 function vectortest()
@@ -108,8 +112,8 @@ end
 
 function target_update(source, status)
 	if (status.kind == "resized") then
-	    local props = image_storage_properties(source);
-			setup_history_buffer( target_id, {1.0, 0.8, 0.6}, -10, props.width, props.height, 512, 512);
+		local props = image_storage_properties(source);
+		setup_history_buffer( target_id, {0.8, 0.6, 0.4, 0.2}, -1, props.width, props.height, props.width * 0.4, props.height * 0.4);
 	end
 end
 

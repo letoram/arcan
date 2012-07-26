@@ -87,8 +87,11 @@ enum arcan_ffunc_rv {
 };
 
 enum arcan_blendfunc {
-	blend_disable,
-	blend_force
+	blend_disable = 10,
+	blend_normal,
+	blend_force,
+	blend_add,
+	blend_multiply,
 };
 
 enum arcan_interp_function {
@@ -177,7 +180,7 @@ surface_properties arcan_video_resolve_properties(arcan_vobj_id id);
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
 surface_properties arcan_video_current_properties(arcan_vobj_id id);
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks);
-arcan_errc arcan_video_forceblend(arcan_vobj_id id, bool on);
+arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
 
@@ -220,10 +223,11 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
 
 /* removes an object immediately, regardless of masks, life-cycles left etc. */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback);
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool scale);
 
-/* Attach src to rendertarget did. */
-arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src);
+/* Attach src to rendertarget did,
+ * if detach is set to true, the rendertarget will be the new owner of the object */
+arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src, bool detach);
 
 /* move, scale and so on all works in a similar fashion,
  * you enter the desired values whatever attribute you wish to be changed, then
@@ -250,7 +254,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent);
 
 /* process a logical time-frame (which more or less means, update / rescale / redraw / flip)
  * returns msecs elapsed */
-uint32_t arcan_video_tick(uint8_t steps);
+unsigned arcan_video_tick(unsigned steps);
 
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y);
 
