@@ -1,6 +1,7 @@
 uniform sampler2D map_diffuse;
+uniform float obj_opacity;
 
-varyign vec2 texco;
+varying vec2 texco;
 
 const float blur = 1.0 / 512.0; /* this should really be set to the size of the blurtexture */
 
@@ -18,5 +19,5 @@ void main()
 	sum += texture2D(map_diffuse, vec2(texco.x, texco.y + 3.0 * blur)) * 0.09;
 	sum += texture2D(map_diffuse, vec2(texco.x, texco.y + 4.0 * blur)) * 0.05;
 
-	gl_FragColor = sum;	
+	gl_FragColor = vec4(sum.r, sum.g, sum.b, obj_opacity);
 }
