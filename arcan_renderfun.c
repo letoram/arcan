@@ -357,7 +357,6 @@ static struct text_format formatend(char* base, struct text_format prev, char* o
 	struct text_format failed = {0};
 	prev.newline = prev.tab = prev.cr = 0; /* don't carry caret modifiers */
 	bool inv = false;
-
 	while (*base) {
 /* skip whitespace */
 		if (isspace(*base)) { base++; continue; }
@@ -370,11 +369,12 @@ static struct text_format formatend(char* base, struct text_format prev, char* o
  * ! = inverse (bold,italic,underline), #rrggbb = setcolor, fpath,size = setfont,
  * Pwidth,height,fname(, or NULL) extract 
  * pwidth,height = embedd image (width, height optional) */
-		char (* fontbase), (* imgbase), (* numbase);
-		char cmd = *(base+1);
+	char cmd;
+
+retry:
+		cmd = *(base+1);
 		base += 2;
 		
-retry:
 		switch (cmd){
 /* the ! prefix is a special case, meaning that we invert the next character */
 			case '!': inv = true; base--; *base = '\\'; goto retry; break;

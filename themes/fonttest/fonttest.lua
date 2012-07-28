@@ -9,6 +9,7 @@ testlines_normal = {
 	[[Multi\ffonts/default.ttf,28Sizes\nSizes2\ffonts/default.ttf,32Sizes3]],
 	[[Multi\ffonts/default.ttf,16Size and \pfonttest.ico, \ticon]],
 	[[differently\P12,12,fonttest.ico, sized \P16,16,fonttest.ico, even huge \P128,128,fonttest.ico, icons]],
+	[[\!iaxis on an analog device for:\n\r CURSOR_X\t 0 samples grabbed]],
 	[[\n\n\n]]	
 };
 
