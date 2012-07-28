@@ -7,11 +7,18 @@ testlines_normal = {
 	[[Multiline_test\n\n\rTwo empty lines]],
 	[[Multi\nLine\test]],
 	[[Multi\ffonts/default.ttf,28Sizes\nSizes2\ffonts/default.ttf,32Sizes3]],
+	[[Multi\ffonts/default.ttf,16Size and \pfonttest.ico, \ticon]],
+--	[[differently\pfonttest.ico,12,12, sized \pfonttest.ico,16,16, icons]],
 	[[\n\n\n]]	
 };
 
 testlines_error = {
 	[[\ffonts/missing.ttf]],
+	[[\ffonts/missing.ttf,a]],
+	[[\ffonts/default.ttf,1000000]],
+	[[\p,badimg,]],
+	[[\p12,a,badimg,]],
+	[[\p14,10000,fonttest.ico,]],
 	[[\#badcolour]],
 	[[\t\a\b\c\d\e\f]]
 };

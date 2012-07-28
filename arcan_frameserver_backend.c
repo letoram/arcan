@@ -285,7 +285,8 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
-	if (src->audb && src->ofs_audb){
+/* buffer == 0, shutting down */
+	if (buffer > 0 && src->audb && src->ofs_audb){
 		
 		SDL_mutexP( src->lock_audb );
 		alBufferData(buffer, src->desc.channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, 

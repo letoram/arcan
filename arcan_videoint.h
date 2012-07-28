@@ -176,11 +176,19 @@ int arcan_debug_pumpglwarnings(const char* src);
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props);
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
+arcan_errc arcan_video_attachobject(arcan_vobj_id id);
+arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
+arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
+uint16_t nexthigher(uint16_t k);
+
+void generate_basic_mapping(float* dst, float st, float tt);
+void generate_mirrored_mapping(float* dst, float st, float tt);
+
 void arcan_3d_setdefaults();
 
 /* sweep the glstor and bind the corresponding texture units (unless we hit the imit that is) */
 unsigned int arcan_video_pushglids(struct storage_info_t* glstor, unsigned ofs);
-
 arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell, float frag, unsigned int destination);
 
+int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitch, int flipy);
 #endif

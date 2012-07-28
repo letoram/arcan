@@ -312,7 +312,12 @@ end
 	imagery.starimage    = load_image("images/star.png");
 	imagery.magnifyimage = load_image("images/magnify.png");
 
-	build_grid(settings.cell_width, settings.cell_height);
+	if (settings.list_view) then
+		
+	else
+		build_grid(settings.cell_width, settings.cell_height);
+	end
+	
 	build_fadefunctions();
 
 	osd_visible = false;

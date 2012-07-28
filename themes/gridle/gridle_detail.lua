@@ -39,8 +39,9 @@ local function gridledetail_setnoisedisplay()
 	if (detailview.model.labels["display"] == nil) then 
 		return; 
 	end
-	
-	local rvid = set_image_as_frame(detailview.model.vid, instance_image(noise_image), detailview.model.labels["display"], 1);
+
+	local noise = instance_image(noise_image);
+	local rvid = set_image_as_frame(detailview.model.vid, noise, detailview.model.labels["display"], FRAMESET_DETACH);
 	mesh_shader(detailview.model.vid, texco_shader, detailview.model.labels["display"]);
 
 	if (valid_vid( rvid )) then
@@ -63,10 +64,10 @@ local function gridledetail_imagestatus(source, status)
 	if (source ~= detailview.modeldisplay) then 
 		delete_image(source);
 	else
-	-- the last flag, detatches the vid from the default render-list, however it will still be an addressable vid,
+	-- the last flag, detaches the vid from the default render-list, however it will still be an addressable vid,
 -- we can't do this for movie, as we need 'tick' operations for it to properly poll the frameserver
 		mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
-		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
+		rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"], FRAMESET_NODETACH);
 		if (rvid ~= BADID) then delete_image(rvid); end
 		
 		return true;
@@ -139,7 +140,7 @@ local function gridledetail_buildview(detailres, gametbl )
 		
 			if (detailview.model.labels["snapshot"] and detailview.game.resources:find_screenshot() ) then
 				mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["snapshot"]);
-				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources:find_screenshot(), asynch_snapvid ), detailview.model.labels["snapshot"], 1);
+				set_image_as_frame(detailview.model.vid, load_image_asynch( detailview.game.resources:find_screenshot(), asynch_snapvid ), detailview.model.labels["snapshot"], FRAMESET_DETACH);
 			end
 			
 -- if we find a "display" (somewhere we can map internal launch, movie etc.) try to replace the texture used.
@@ -187,7 +188,7 @@ function gridledetail_internal_status(source, datatbl)
 		resize_image(source, datatbl.width, datatbl.height, 0);
 		audio_gain(internal_aid, settings.internal_again, NOW);
 
-		local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"]);
+		local rvid = set_image_as_frame(detailview.model.vid, source, detailview.model.labels["display"], FRAMESET_NODETACH);
 		if (rvid ~= source and rvid ~= BADID) then 
 			delete_image(rvid); 
 		end 

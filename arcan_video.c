@@ -41,7 +41,6 @@
 #include <SDL_image.h>
 #include <SDL_opengl.h>
 #include <SDL_byteorder.h>
-#include <SDL_ttf.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -55,36 +54,14 @@
 #include "arcan_shdrmgmt.h"
 #include "arcan_videoint.h"
 
-#ifndef ARCAN_FONT_CACHE_LIMIT
-#define ARCAN_FONT_CACHE_LIMIT 8
-#endif
 
 #ifndef RENDERTARGET_LIMIT
 #define RENDERTARGET_LIMIT 4
 #endif
 
-struct text_format {
-	TTF_Font* font;
-	SDL_Color col;
-	uint8_t alpha;
-	uint8_t tab;
-	uint8_t newline;
-	bool cr;
-	int style;
-	char* endofs;
-};
-
-struct font_entry {
-	TTF_Font* data;
-	char* identifier;
-	uint8_t size;
-	uint8_t usecount;
-};
 
 long long ARCAN_VIDEO_WORLDID = -1;
 
-static unsigned int font_cache_size = ARCAN_FONT_CACHE_LIMIT;
-static struct font_entry font_cache[ARCAN_FONT_CACHE_LIMIT] = {0};
 
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
@@ -130,7 +107,6 @@ struct arcan_video_context {
 	unsigned vitem_ofs;
 	unsigned vitem_limit;
 	long int nalive;
-	struct text_format curr_style;
 	
 	arcan_vobject world;
 	arcan_vobject* vitems_pool;
@@ -141,18 +117,12 @@ struct arcan_video_context {
 	struct rendertarget stdoutp;
 };
 
-arcan_errc arcan_video_attachobject(arcan_vobj_id id);
-arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc);
 
 static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 	{
 		.n_rtargets = 0,
 		.vitem_ofs = 1,
 		.nalive    = 0,
-		.curr_style = {
-			.col = {.r = 0xff, .g = 0xff, .b = 0xff}
-		},
 		.world = {
 			.current  = {
 				.opa = 1.0
@@ -256,7 +226,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				assert(current->default_frame.source );
 				char* fname = strdup( current->default_frame.source ); /* copy the original filename */
 				free(current->default_frame.source);
-				arcan_video_getimage(fname, current, &current->default_frame, false);
+				arcan_video_getimage(fname, current, &current->default_frame, arcan_video_dimensions(current->origw, current->origh), false);
 				free(fname); /* getimage will copy again */
 			}
 			else
@@ -279,7 +249,6 @@ unsigned arcan_video_nfreecontexts()
 
 signed arcan_video_pushcontext()
 {
-	struct text_format empty_style = { .col = {.r = 0xff, .g = 0xff, .b = 0xff} };
 	arcan_vobject empty_vobj = {.current = {.position = {0}, .opa = 1.0} };
 
 	if (context_ind + 1 == CONTEXT_STACK_LIMIT)
@@ -292,7 +261,6 @@ signed arcan_video_pushcontext()
 	current_context = &context_stack[ context_ind ];
 	current_context->stdoutp.color = NULL;
 	current_context->stdoutp.first = NULL;
-	current_context->curr_style = empty_style;
 	current_context->vitem_ofs = 1;
 
 	current_context->world = empty_vobj;
@@ -352,7 +320,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	arcan_vobject* pobj = arcan_video_getobject(parent);
 	arcan_vobj_id rv = ARCAN_EID;
 	
-	if (pobj == NULL)
+	if (pobj == NULL || pobj->flags.clone)
 		return rv;
 
 	bool status;
@@ -368,28 +336,25 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		};
 		
 		arcan_vobject* nobj = arcan_video_getobject(rv);
-/* use parent values as template */
-		memcpy(nobj, pobj, sizeof(arcan_vobject));
-		memset(&nobj->default_frame, 0, sizeof( arcan_vstorage ));
 
-/* then reset "dangerous" ones */
-		nobj->current = newprop;
-		nobj->cellid = rv;
-		assert(nobj->cellid > 0);
-		nobj->current.rotation.quaternion = build_quat_euler(0.0, 0.0, 0.0);
-		nobj->transform = NULL;
+/* use parent values as template */
 		nobj->flags.clone = true;
 		nobj->parent = pobj;
+		nobj->blendmode = pobj->blendmode;
+		nobj->current_frame = pobj->current_frame;
+		nobj->origw = pobj->origw;
+		nobj->origh = pobj->origh;
+		nobj->order = pobj->order;
+		nobj->gpu_program = pobj->gpu_program;
 		
 		nobj->parent->refcount++;
-		printf("%"PRIxPTR") refcount increased to: %d\n", nobj->parent, nobj->parent->refcount);
 		arcan_video_attachobject(rv);
 	}
 
 	return rv;
 }
 
-static void generate_basic_mapping(float* dst, float st, float tt)
+void generate_basic_mapping(float* dst, float st, float tt)
 {
 	dst[0] = 0.0;
 	dst[1] = 0.0;
@@ -401,7 +366,7 @@ static void generate_basic_mapping(float* dst, float st, float tt)
 	dst[7] = tt;
 }
 
-static void generate_mirror_mapping(float* dst, float st, float tt)
+void generate_mirror_mapping(float* dst, float st, float tt)
 {
 	dst[6] = 0.0;
 	dst[7] = 0.0;
@@ -526,13 +491,35 @@ static bool scan_rtgt(struct rendertarget* src, arcan_vobject_litem* cell)
 static void verify_owner(arcan_vobject* src)
 {
 	arcan_vobject_litem* owner = src->owner;
-	unsigned count = 0;
 	
+/* if the verify pass fails, this is repeated with a verbose setting, giving more printout on who owns what */
+	bool verbose = false;
+#define LOGV(X) if (verbose) (X);
+	unsigned count;
+	
+reevaluate:
+	count = 0;
+	LOGV( printf("verify (%" PRIxPTR ") : (%d) -- parent: %d, clone: %d\n",
+		(intptr_t) src, src->refcount, src->parent != NULL && src->parent != &current_context->world, src->flags.clone) );
+	if (src->default_frame.source)
+		LOGV( printf("-> %s\n", src->default_frame.source) );
+
 	if (owner){
-		count += scan_rtgt(&current_context->stdoutp, owner) ? 1 : 0;
+		integrity_scan(&current_context->stdoutp);
+		if ( scan_rtgt(&current_context->stdoutp, owner) ){
+			LOGV( printf(" -> found reference in stdoutp.\n") );
+			count++;
+		}
 		
-		for (unsigned int n = 0; n < current_context->n_rtargets; n++)
-			count += scan_rtgt(&current_context->rtargets[n], owner) ? 1 : 0;
+		for (unsigned int n = 0; n < current_context->n_rtargets; n++){
+			integrity_scan(&current_context->rtargets[n]);
+			
+			if ( scan_rtgt(&current_context->rtargets[n], owner) ){
+			LOGV( printf(" -> found reference in rendertarget (%"PRIxPTR":%"PRIxVOBJ").\n", 
+				(intptr_t) &current_context->rtargets[n], current_context->rtargets[n].color->cellid) );
+				count++;
+			}
+		}
 	}
 	
 /* check each object that is not the source, if it has a frameset assigned,
@@ -540,17 +527,29 @@ static void verify_owner(arcan_vobject* src)
 	for (unsigned int n = 0; n < current_context->vitem_limit; n++){
 		arcan_vobject* vobj = &current_context->vitems_pool[n];
 
-		if (vobj->parent == src)
+		if (vobj->parent == src){
+			LOGV( printf("-> worldpool: child found (%"PRIxPTR":%"PRIxVOBJ"), clone? (%d)\n", (intptr_t) vobj, vobj->cellid, vobj->flags.clone) );
 			count++;
+		}
 		
-		if (vobj != src && vobj->flags.in_use && vobj->frameset)
-			for (unsigned int cell = 1; cell < vobj->frameset_meta.capacity; cell++)
-				if (vobj->frameset[cell] && vobj->frameset[cell] == src)
+		if (vobj != src && vobj->flags.in_use && vobj->frameset && vobj->flags.clone == false)
+			for (unsigned int cell = 1; cell < vobj->frameset_meta.capacity; cell++){
+				if (vobj->frameset[cell] == src){
+					LOGV( printf("->worldpool: found in frameset (%"PRIxPTR":%"PRIxVOBJ") cell: %d\n", (intptr_t)vobj, vobj->cellid, count) );
 					count++;
+				}
+			}
 	}
 	
-	assert(count == src->refcount);
+	if (verbose)
+		assert(count == src->refcount);
+	else if (count != src->refcount){
+		verbose = true;
+		LOGV( printf(" -- mismatch (%d) <-> (%d) \n", count, src->refcount) );
+		goto reevaluate;
+	}
 }
+#undef LOGV
 #endif
 
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
@@ -558,12 +557,11 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	arcan_vobject_litem* torem;
 	assert(dst != NULL);
 	assert(src != NULL);
+	verify_owner(src);
 	
 /* already detached or empty target */
 	if (!dst || !src->owner)
 		return false;
-
-	verify_owner(src);
 	
 /* orphan */
 	torem = src->owner;
@@ -593,7 +591,6 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	memset(torem, 0, sizeof(arcan_vobject_litem));
 	free(torem);
 
-	printf("%"PRIxPTR")refcount decreased to: %d\n", src, src->refcount);
 	src->refcount--;
 	assert(src->refcount >= 0);
 	
@@ -606,13 +603,11 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 	new_litem->next = new_litem->previous = NULL;
 	new_litem->elem = src;
 	verify_owner(src);
-	src->refcount++;
 
-	printf("%"PRIxPTR") refcount: %d\n", (intptr_t) src, src->refcount);
-	
 /* (pre) if orphaned, assign */
-	if (src->owner == NULL)
+	if (src->owner == NULL){
 		src->owner = new_litem;
+	}
 
 /* 2. insert first into empty? */
 	if (!dst->first)
@@ -649,14 +644,14 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 		}
 	}
 	
-	verify_owner(src);	
+	src->refcount++;
 }
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 {
 	arcan_vobject* src = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
-
+	
 	if (src){
 /* make sure that there isn't already one attached */
 		detach_fromtarget(&current_context->stdoutp, src);
@@ -750,7 +745,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 	
 		src->parent = dst;
 		dst->refcount++;
-
+		
 		swipe_chain(src->transform, offsetof(surface_transform, blend), sizeof(struct transf_blend));
 		swipe_chain(src->transform, offsetof(surface_transform, move), sizeof(struct transf_move));
 		swipe_chain(src->transform, offsetof(surface_transform, scale), sizeof(struct transf_scale));
@@ -813,6 +808,8 @@ const static char* deffprg =
 "   col.a = col.a * obj_opacity;\n"
 "	gl_FragColor = col;\n"
 " }";
+
+extern int TTF_Init();
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
 {
@@ -886,7 +883,7 @@ uint16_t arcan_video_screenh()
 	return arcan_video_display.screen ? arcan_video_display.screen->h : 0;
 }
 
-static inline uint16_t nexthigher(uint16_t k)
+uint16_t nexthigher(uint16_t k)
 {
 	k--;
 	for (int i=1; i < sizeof(uint16_t) * 8; i = i * 2)
@@ -908,9 +905,6 @@ void arcan_video_fullscreen()
 #define ASYNCH_CONCURRENT_THREADS 8
 #endif 
 
-/* ZLib antialiased SDL- based upscaler from SDL-gfx/rotozoom package */
-#include "stretchblit.c"
-
 /* copy RGBA src row by row with optional "flip",
  * swidth <= dwidth */
 static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int swidth, int height, bool flipv)
@@ -925,7 +919,7 @@ static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int swidt
 			memcpy(&dst[row * dwidth], &src[row * swidth], swidth * 4);
 }
 
-static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, bool asynchsrc)
+arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc)
 {
 	static SDL_sem* asynchsynch = NULL;
 	if (!asynchsynch)
@@ -959,7 +953,23 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		SDL_BlitSurface(res, NULL, gl_image, NULL);
 
 		uint16_t neww, newh;
-		if (dst->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
+		enum arcan_vimage_mode desm = dst->gl_storage.scale;
+		
+/* the user requested specific dimensions,
+ * so wer force the rescale texture mode for mismatches and set the dimensions accordingly */
+		if (forced.h > 0 && forced.w > 0)
+		{
+			if (desm == ARCAN_VIMAGE_SCALEPOW2 || desm == ARCAN_VIMAGE_TXCOORD){
+				neww = nexthigher(forced.w);
+				newh = nexthigher(forced.h);
+			} else {
+				neww = forced.w;
+				newh = forced.h;
+			}
+
+			desm = ARCAN_VIMAGE_SCALEPOW2;
+		}
+		else if (desm == ARCAN_VIMAGE_NOPOW2){
 			neww = gl_image->w;
 			newh = gl_image->h;
 		}
@@ -975,14 +985,13 @@ static arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, ar
 		dstframe->raw = (uint8_t*) malloc(dstframe->s_raw);
 		
 		if (newh != gl_image->h || neww != gl_image->w){
-
 /* we need a stretch blit or patch coordinates */
-			if (dst->gl_storage.scale == ARCAN_VIMAGE_SCALEPOW2){
+			if (desm == ARCAN_VIMAGE_SCALEPOW2){
 /* for stretch blit, we use the interpolated upscaler from SDL_gfx/rotozoom,
  * as gluScaleImage is not present in GLES and not thread-safe (sigh) */
 				stretchblit(gl_image, (uint32_t*) dstframe->raw, neww, newh, neww * 4, dst->gl_storage.imageproc == imageproc_fliph); 
 			}
-			else if (dst->gl_storage.scale == ARCAN_VIMAGE_TXCOORD){
+			else if (desm == ARCAN_VIMAGE_TXCOORD){
 				memset(dstframe->raw, 0, dstframe->s_raw); /* black 0 alpha "border" */
 /* dst is aligned with the nearest power of 2 of the dimensions of source */
 				imagecopy((uint32_t*) dstframe->raw, gl_image->pixels, 
@@ -1044,8 +1053,10 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		if (capacity == 0)
 			return ARCAN_ERRC_OUT_OF_SPACE;
 
-		if (target->frameset)
+		if (target->frameset){
 			free(target->frameset);
+			target->frameset = NULL;
+		}
 		
 		target->frameset = (arcan_vobject**) calloc(capacity, sizeof(arcan_vobject*) );
 		target->frameset[0] = target;
@@ -1097,6 +1108,8 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		newvobj->gl_storage.ncpt = constraints.bpp;
 		newvobj->default_frame.s_raw = bufs;
 		newvobj->default_frame.raw = buf;
+		newvobj->blendmode = blend_normal;
+		
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
 			newvobj->gl_storage.w, newvobj->gl_storage.h, 0,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
@@ -1155,17 +1168,24 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 	arcan_vobject* dstobj = arcan_video_getobject(did);
 	arcan_vobject* srcobj = arcan_video_getobject(src);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* don't allow to attach to self, that FBO behavior would be undefined */
+	if (dstobj == srcobj)
+		return ARCAN_ERRC_BAD_ARGUMENT;
 	
 	if (dstobj && srcobj){
 /* find dstobj in rendertargets */
 		rv = ARCAN_ERRC_UNACCEPTED_STATE;
 
+/* linear search for rendertarget matching the destination id */
 		for (int ind = 0; ind < current_context->n_rtargets; ind++){
 			if (current_context->rtargets[ind].color == dstobj){
 
+/* find whatever rendertarget we're already attached to, and detach */
 				if (srcobj->owner && detach)
 					detach_fromtarget(find_owner(srcobj), srcobj);
-	
+
+/* try and detach (most likely fail) to make sure that we don't get duplicates */
 				detach_fromtarget(&current_context->rtargets[ind], srcobj);
 				attach_object(&current_context->rtargets[ind], srcobj); 
 				rv = ARCAN_OK;
@@ -1257,6 +1277,9 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	if (dstvobj && dstvobj->frameset){
+		if (dstvobj->flags.clone)
+			dstvobj->frameset = dstvobj->parent->frameset;
+		
 		dstvobj->frameset_meta.current = fid < dstvobj->frameset_meta.capacity && dstvobj->frameset[fid] ? fid : 0;
 		dstvobj->current_frame = dstvobj->frameset[ dstvobj->frameset_meta.current ];
 		rv = ARCAN_OK;
@@ -1272,14 +1295,11 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	arcan_vobj_id rv = ARCAN_EID;
 	fid++; /* enforce 1 index */
 	
-	if (dstvobj == srcvobj){
+	if (dstvobj == srcvobj || dstvobj->flags.clone){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
 		return rv;
 	}
-	
-	if (errc)
-		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	if (dstvobj && srcvobj){
 		if (dstvobj->frameset && fid < dstvobj->frameset_meta.capacity){
@@ -1291,16 +1311,21 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 /* if there already is an object in the desired slot, return the management responsibility to the user*/
 			if (dstvobj->frameset[fid]){
 				arcan_vobject* frame = dstvobj->frameset[fid];
+				frame->refcount--;
 				rv = frame->cellid;
-				assert(rv >= 0);
 			}
-				
+			
 			dstvobj->frameset[fid] = srcvobj;
-			if (errc) *errc = ARCAN_OK;
+			srcvobj->refcount++;
+			
+			if (errc)
+				*errc = ARCAN_OK;
 		}
 		else 
 			if (errc) *errc = ARCAN_ERRC_OUT_OF_SPACE;
 	}
+	else
+		if (errc) *errc = ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	return rv;
 }
@@ -1311,6 +1336,7 @@ struct thread_loader_args {
 	arcan_vobj_id dstid;
 	char* fname;
 	intptr_t tag;
+	img_cons constraints;
 };
 
 /* if the loading failed, we'll add a small black image in its stead,
@@ -1323,7 +1349,7 @@ static int thread_loader(void* in)
 	
 /* while this happens, the following members of the struct are not to be touched elsewhere:
  * origw / origh, default_frame->tag/source, gl_storage */
-	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, true);
+	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, localargs->constraints, true);
 	result.data.video.data = localargs->tag;
 	
 	if (rc == ARCAN_OK){ /* emit OK event */
@@ -1378,6 +1404,7 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, i
 	args->tag = tag;
 	args->dst->feed.state.tag = ARCAN_TAG_ASYNCIMG;
 	args->dst->feed.state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
+	args->constraints = constraints;
 	
 	return rv;
 }
@@ -1421,7 +1448,7 @@ static arcan_vobj_id loadimage(const char* fname, img_cons constraints, arcan_er
 	if (newvobj == NULL)
 		return ARCAN_EID;
 	
-	arcan_errc rc = arcan_video_getimage(fname, newvobj, &newvobj->default_frame, false);
+	arcan_errc rc = arcan_video_getimage(fname, newvobj, &newvobj->default_frame, constraints, false);
 
 	if (rc == ARCAN_OK) {
 		newvobj->current.position.x = 0;
@@ -1594,7 +1621,7 @@ arcan_vobj_id arcan_video_loadimageasynch(const char* rloc, img_cons constraints
 	return rv;
 }
 
-arcan_vobj_id arcan_video_loadimage(const char* rloc,img_cons constraints, unsigned short zv)
+arcan_vobj_id arcan_video_loadimage(const char* rloc, img_cons constraints, unsigned short zv)
 {
 	arcan_vobj_id rv = loadimage((char*) rloc, constraints, NULL);
 
@@ -1645,611 +1672,6 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 	return rv;
 }
 
-/*
- * This one is a mess,
- * (a) begin by splitting the input string into a linked list of data elements.
- * each element can EITHER modfiy to current cursor position OR represent a rendered surface.
-
- * (b) take the linked list, sweep through it and figure out which dimensions it requires,
- * allocate a corresponding storage object.
-
- * (c) sweep the list yet again, render to the storage object.
-*/
-
-// TTF_FontHeight sets line-spacing.
-struct rcell {
-
-	bool surface;
-	unsigned int width;
-	unsigned int height;
-
-	union {
-		SDL_Surface* surf;
-
-		struct {
-			uint8_t newline;
-			uint8_t tab;
-			bool cr;
-		} format;
-	} data;
-
-	struct rcell* next;
-};
-
-/* Simple font-cache */
-static TTF_Font* grab_font(const char* fname, uint8_t size)
-{
-	int leasti = 0, i;
-	const int nchannels_rgba = 4;
-
-	if (!fname || !arcan_video_display.text_support)
-		return NULL;
-
-	for (i = 0; i < font_cache_size; i++) {
-		/* (a) no need to look further, either empty slot or no font found. */
-		if (font_cache[i].data == NULL)
-			break;
-		if (strcmp(fname, font_cache[i].identifier) == 0 &&
-		        font_cache[i].size == size) {
-			font_cache[i].usecount++;
-			return font_cache[i].data;
-		}
-
-		if (font_cache[i].usecount < font_cache[leasti].usecount)
-			leasti = i;
-	}
-
-	/* (b) no match, no empty slot. */
-	if (font_cache[i].data != NULL) {
-		free(font_cache[leasti].identifier);
-		TTF_CloseFont(font_cache[leasti].data);
-	}
-	else
-		i = leasti;
-
-	/* load in new font */
-	font_cache[i].data = TTF_OpenFont(fname, size);
-	font_cache[i].identifier = strdup(fname);
-	font_cache[i].usecount = 1;
-	font_cache[i].size = size;
-
-	return font_cache[i].data;
-}
-
-/*
- * starting from a suspected format character,
- * repeatedly look for format characters.
- * When there is none- left to be found,
- */
-struct text_format formatend(char* base, struct text_format prev, char* orig, bool* ok) {
-	struct text_format failed = {0};
-	prev.newline = prev.tab = prev.cr = 0; /* don't carry caret modifiers */
-	
-	bool inv = false;
-
-	while (*base) {
-		if (isspace(*base)) {
-			base++;
-			continue;
-		}
-
-		if (*base != '\\') {
-			prev.endofs = base;
-			break;
-		}
-
-		else {
-		retry:
-			switch (*(base+1)) {
-					char* fontbase = base+1;
-					char* numbase;
-					char cbuf[3];
-
-/* missing; halign row, lalign row, ralign row */
-				case '!':
-					inv = true;
-					base++;
-					*base = '\\';
-					goto retry;
-					break;
-				case 't':
-					prev.tab++;
-					base += 2;
-					break;
-				case 'n':
-					prev.newline++;
-					base += 2;
-					break;
-				case 'r':
-					prev.cr = true;
-					base += 2;
-					break;
-				case 'b':
-					prev.style = (inv ? prev.style & !TTF_STYLE_BOLD : prev.style | TTF_STYLE_BOLD);
-					inv = false;
-					base+=2;
-					break;
-				case 'i':
-					prev.style = (inv ? prev.style & !TTF_STYLE_ITALIC : prev.style | TTF_STYLE_ITALIC);
-					inv = false;
-					base+=2;
-					break;
-				case 'u':
-					prev.style = (inv ? prev.style & TTF_STYLE_UNDERLINE : prev.style | TTF_STYLE_UNDERLINE);
-					inv = false;
-					base+=2;
-					break;
-				case '#':
-					base += 2;
-					for (int i = 0; i < 3; i++) {
-						/* slide to cell */
-						if (!isxdigit(*base) || !isxdigit(*(base+1))) {
-							arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
-							*ok = false;
- 							return failed;
-						}
-
-						base += 2;
-					}
-/* now we know 6 valid chars are there, time to collect. */
-					cbuf[0] = *(base - 6);
-					cbuf[1] = *(base - 5);
-					cbuf[2] = 0;
-					prev.col.r = strtol(cbuf, 0, 16);
-					cbuf[0] = *(base - 4);
-					cbuf[1] = *(base - 3);
-					cbuf[2] = 0;
-					prev.col.g = strtol(cbuf, 0, 16);
-					cbuf[0] = *(base - 2);
-					cbuf[1] = *(base - 1);
-					cbuf[2] = 0;
-					prev.col.b = strtol(cbuf, 0, 16);
-
-					break;
-
-/* read 6(+2) characters, convert in pairs of two to hex, fill SDL_Color and set .alpha */
-					break;
-				case 'f':
-					fontbase = (base += 2);
-					while (*base != ',') {
-						if (*base == 0) {
-							arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font directive '%s' (%s)\n", fontbase, orig);
-							*ok = false;
-							return failed;
-						}
-						base++;
-					}
-
-					*base = 0; /* now fontbase points to the full filename, wrap that through the resource finder */
-					base++;
-					numbase = base;
-
-					while (*base != 0 && isdigit(*base))
-						base++;
-
-					if (numbase == base)
-						arcan_warning("Warning: arcan_video_renderstring(), missing size argument in font specification (%s).\n", orig);
-					else {
-						char ch = *base;
-						*base = 0;
-
-						char* fname = arcan_find_resource(fontbase, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
-						TTF_Font* font = NULL;
-
-						if (!fname){
-							arcan_warning("Warning: arcan_video_renderstring(), couldn't find font (%s) (%s)\n", fontbase, orig);
-							*ok = false;
-							return failed;
-						}
-						else
-							if ((font =
-							            grab_font(fname,
-							                      strtoul(numbase, NULL, 10))) == NULL){
-								arcan_warning("Warning: arcan_video_renderstring(), couldn't open font (%s) (%s)\n", fname, orig);
-								free(fname);
-								*ok = false;
-								return failed;
-							}
-							else
-								prev.font = font;
-
-						free(fname);
-						*base = ch;
-					}
-
-					/* scan until whitespace or ',' (filename) then if ',' scan to non-number */
-					break;
-				default:
-					arcan_warning("Warning: arcan_video_renderstring(), unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
-					*ok = false;
-					return failed;
-			}
-		}
-	}
-
-	if (*base == 0)
-		prev.endofs = base;
-
-	*ok = true;
-	return prev;
-}
-
-/* a */
-static int build_textchain(char* message, struct rcell* root, bool sizeonly)
-{
-	int rv = 0;
-	struct text_format* curr_style = &current_context->curr_style;
-	curr_style->col.r = curr_style->col.g = curr_style->col.b = 0xff;
-	curr_style->style = 0;
-
-	if (message) {
-		struct rcell* cnode = root;
-		char* current = message;
-		char* base = message;
-		int msglen = 0;
-
-		/* outer loop, find first split- point */
-		while (*current) {
-			if (*current == '\\') {
-				/* special case */
-				if (*(current+1) == '\\') {
-					memmove(current, current+1, strlen(current)+1);
-					current += 1;
-					msglen++;
-				}
-				else { /* split point found */
-					if (msglen > 0) {
-						*current = 0;
-						/* render surface and slide window */
-						if (!curr_style->font) {
-							arcan_warning("Warning: arcan_video_renderstring(), no font specified / found.\n");
-							return -1;
-						}
-
-						if (sizeonly){
-							TTF_SetFontStyle(curr_style->font, curr_style->style);
-							TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
-						}
-						else{
-							cnode->surface = true;
-							TTF_SetFontStyle(curr_style->font, curr_style->style);
-							cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
-							if (!cnode->data.surf)
-								arcan_warning("Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
-							else
-								SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
-						}
-						cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
-						*current = '\\';
-					}
-
-					bool okstatus;
-					*curr_style = formatend(current, *curr_style, message, &okstatus);
-					if (!okstatus)
-						return -1;
-
-					/* caret modifiers need to be separately chained
-					 * to avoid (three?) nasty little basecases */
-					if (curr_style->newline || curr_style->tab || curr_style->cr) {
-						cnode->surface = false;
-						rv += curr_style->newline;
-						cnode->data.format.newline = curr_style->newline;
-						cnode->data.format.tab = curr_style->tab;
-						cnode->data.format.cr = curr_style->cr;
-						cnode = cnode->next = (void*) calloc(sizeof(struct rcell), 1);
-					}
-
-					current = base = curr_style->endofs;
-					if (current == NULL)
-						return -1; /* note, may this be a condition for a break rather than a return? */
-
-					msglen = 0;
-				}
-			}
-			else {
-				msglen += 1;
-				current++;
-			}
-		}
-
-		/* last element .. */
-		if (msglen && curr_style->font) {
-			cnode->next = NULL;
-
-			if (sizeonly){
-				TTF_SetFontStyle(curr_style->font, curr_style->style);
-				TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
-			}
-			else{
-				cnode->surface = true;
-				TTF_SetFontStyle(curr_style->font, curr_style->style);
-				cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
-				SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
-			}
-		}
-
-		cnode = cnode->next = (void*) calloc(sizeof(struct rcell), 1);
-		cnode->data.format.newline = 1;
-		rv++;
-	}
-
-	return rv;
-}
-
-static unsigned int round_mult(unsigned num, unsigned int mult)
-{
-	if (num == 0 || mult == 0)
-		return mult; /* intended ;-) */
-	unsigned int remain = num % mult;
-	return remain ? num + mult - remain : num;
-}
-
-/* tabs are messier still,
- * for each format segment, there may be 'tabc' number of tabsteps,
- * these concern only the current text block and are thus calculated from a fixed offset. */
-static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing, unsigned int* tabs)
-{
-	if (!tabs || *tabs == 0) /* tabc will always be >= 1 */
-		return tab_spacing ? round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset;
-
-	unsigned int lastofs = offset;
-
-	/* find last matching tab pos first */
-	while (*tabs && *tabs < offset)
-		lastofs = *tabs++;
-
-	/* matching tab found */
-	if (*tabs) {
-		offset = *tabs;
-		tabc--;
-	}
-
-	while (tabc--) {
-		if (*tabs)
-			offset = *tabs++;
-		else
-			offset += round_mult(offset, tab_spacing); /* out of defined tabs, pad with default spacing */
-
-	}
-
-	return offset;
-}
-
-static void dumptchain(struct rcell* node)
-{
-	int count = 0;
-
-	while (node) {
-		if (node->surface) {
-			printf("[%i] image surface\n", count++);
-		}
-		else {
-			printf("[%i] format (%i lines, %i tabs, %i cr)\n", count++, node->data.format.newline, node->data.format.tab, node->data.format.cr);
-		}
-		node = node->next;
-	}
-}
-
-void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh)
-{
-	/* (A) */
-	int chainlines;
-	struct rcell root = {.surface = false};
-	char* work = strdup(message);
-	current_context->curr_style.newline = 0;
-	current_context->curr_style.tab = 0;
-	current_context->curr_style.cr = false;
-	
-	if ((chainlines = build_textchain(work, &root, true)) > 0) {
-		struct rcell* cnode = &root;
-		unsigned int linecount = 0;
-		bool flushed = false;
-		*maxw = 0;
-		*maxh = 0;
-		
-		int lineh = 0;
-		int curw = 0;
-		int curh = 0;
-		
-		while (cnode) {
-			if (cnode->width > 0) {
-				if (cnode->height > lineh + line_spacing)
-					lineh = cnode->height;
-
-				curw += cnode->width;
-			}
-			else {
-				if (cnode->data.format.cr)
-					curw = 0;
-				
-				if (cnode->data.format.tab)
-					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-				
-				if (cnode->data.format.newline > 0)
-					for (int i = cnode->data.format.newline; i > 0; i--) {
-						*maxh += lineh + line_spacing;
-						lineh = 0;
-					}
-			}
-			
-			if (curw > *maxw)
-				*maxw = curw;
-			
-			cnode = cnode->next;
-		}
-	}
-
-	struct rcell* current = root.next;
-	
-	while (current){
-		struct rcell* prev = current;
-		current = current->next;
-		prev->next = (void*) 0xdeadbeef;
-		free(prev);
-	}
-
-	free(work);
-}
-	
-/* note: currently does not obey restrictions placed
- * on texturemode (i.e. everything is padded to power of two and txco hacked) */
-arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, unsigned int** lineheights)
-{
-	arcan_vobj_id rv = ARCAN_EID;
-
-	/* (A) */
-	int chainlines;
-	struct rcell* root = calloc( sizeof(struct rcell), 1);
-	char* work = strdup(message);
-	current_context->curr_style.newline = 0;
-	current_context->curr_style.tab = 0;
-	current_context->curr_style.cr = false;
-
-	if ((chainlines = build_textchain(work, root, false)) > 0) {
-		/* (B) */
-		/*		dumptchain(&root); */
-		struct rcell* cnode = root;
-		unsigned int linecount = 0;
-		bool flushed = false;
-		int maxw = 0;
-		int maxh = 0;
-		int lineh = 0;
-		int curw = 0;
-		int curh = 0;
-		/* note, linecount is overflow */
-		unsigned int* lines = (unsigned int*) calloc(sizeof(unsigned int), chainlines + 1);
-		unsigned int* curr_line = lines;
-
-		while (cnode) {
-			if (cnode->surface) {
-				assert(cnode->data.surf != NULL);
-				if (cnode->data.surf->h > lineh + line_spacing)
-					lineh = cnode->data.surf->h;
-
-				curw += cnode->data.surf->w;
-			}
-			else {
-				if (cnode->data.format.cr)
-					curw = 0;
-
-				if (cnode->data.format.tab)
-					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-
-				if (cnode->data.format.newline > 0)
-					for (int i = cnode->data.format.newline; i > 0; i--) {
-						lines[linecount++] = maxh;
-						maxh += lineh + line_spacing;
-						lineh = 0;
-					}
-			}
-
-			if (curw > maxw)
-				maxw = curw;
-
-			cnode = cnode->next;
-		}
-		
-		/* (C) */
-		/* prepare structures */
-		arcan_vobject* vobj = arcan_video_newvobject(&rv);
-		if (!vobj){
-			arcan_fatal("Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
-		}
-
-		int storw = nexthigher(maxw);
-		int storh = nexthigher(maxh);
-		vobj->gl_storage.w = storw;
-		vobj->gl_storage.h = storh;
-		vobj->default_frame.s_raw = storw * storh * 4;
-		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw, 1);
-		vobj->feed.state.tag = ARCAN_TAG_TEXT;
-		vobj->blendmode = blend_force;
-		vobj->origw = maxw;
-		vobj->origh = maxh;
-		vobj->parent = &current_context->world;
-		glGenTextures(1, &vobj->gl_storage.glid);
-		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-		/* find dimensions and cleanup */
-		cnode = root;
-		curw = 0;
-		int yofs = 0;
-
-		SDL_Surface* canvas =
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-		    SDL_CreateRGBSurface(SDL_SWSURFACE, storw, storh, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
-#else
-		    SDL_CreateRGBSurface(SDL_SWSURFACE, storw, storh, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
-#endif
-		if (canvas == NULL)
-			arcan_fatal("Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string is probably unreasonably large wide (len: %zi curw: %i)\n", strlen(message), curw);
-
-		int line = 0;
-
-		while (cnode) {
-			if (cnode->surface) {
-				SDL_Rect dstrect = {.x = curw, .y = lines[line]};
-				SDL_BlitSurface(cnode->data.surf, 0, canvas, &dstrect);
-				curw += cnode->data.surf->w;
-			}
-			else {
-				if (cnode->data.format.tab > 0)
-					curw = get_tabofs(curw, cnode->data.format.tab, tab_spacing, tabs);
-
-				if (cnode->data.format.cr)
-					curw = 0;
-
-				if (cnode->data.format.newline > 0) {
-					line += cnode->data.format.newline;
-				}
-			}
-			
-			cnode = cnode->next;
-		}
-	
-	/* upload */
-		memcpy(vobj->default_frame.raw, canvas->pixels, canvas->w * canvas->h * 4);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, canvas->w, canvas->h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
-		glBindTexture(GL_TEXTURE_2D, 0);
-	
-		SDL_FreeSurface(canvas);
-
-		float wv = (float)maxw / (float)vobj->gl_storage.w;
-		float hv = (float)maxh / (float)vobj->gl_storage.h;
-
-		generate_basic_mapping(vobj->txcos, wv, hv);
-		arcan_video_attachobject(rv);
-
-		if (n_lines)
-			*n_lines = linecount;
-
-		if (lineheights)
-			*lineheights = lines;
-		else
-			free(lines);
-	}
-	
-	struct rcell* current;
-
-cleanup:
-	current = root;
-	while (current){
-		assert(current != (void*) 0xdeadbeef);
-		if (current->surface && current->data.surf)
-			SDL_FreeSurface(current->data.surf);
-			
-		struct rcell* prev = current;
-		current = current->next;
-		prev->next = (void*) 0xdeadbeef;
-		free(prev);
-	}
-	
-	free(work);
-
-	return rv;
-}
 
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc mode)
 {
@@ -2447,42 +1869,51 @@ static void drop_rtarget(struct rendertarget* vobj)
 	arcan_fatal("drop target not working\n");
 }
 
-/* clear any and all items that in some way references the vobj in question */
+/* scan through the entire context looking for objects that reference this one.
+ * to speed things up and reduce complexity, there's a reference counter which acts as 
+ * early out for this function. */
 static void eradicate_vobj(arcan_vobject* vobj)
 {
-/* first, make sure no object still references this one,
- * that includes "linked" transformation chains, framesets and instances.
- * remove from any frameset and delete any clone
- * otherwise check mask, if "death inheritance" isn't active, set parent (ultimately, WORLD) to new owner */ 
+/* most objects are attached, so start with that */
+	verify_owner(vobj);
+	
+	detach_fromtarget(&current_context->stdoutp, vobj);
+
 	for (unsigned ind = 0; ind < current_context->vitem_limit && vobj->refcount; ind++){
+/* ignore self */
 		if (ind == vobj->cellid)
 			continue;
 		
 		arcan_vobject* cur = &current_context->vitems_pool[ind];
 
-		if (cur->frameset)
+/* might be part of frameset */
+		if (cur->frameset && cur->flags.clone == false)
 			for(unsigned i = 1; i < vobj->frameset_meta.capacity && vobj->refcount; i++)
 				if (vobj->frameset[i] && vobj->frameset[i]->cellid == cur->cellid){
 					vobj->frameset[i] = NULL;
 					vobj->refcount--;
 				}
 
+/* child found */
 		if (cur->parent == vobj){
 			vobj->refcount--;
-				
-			if (cur->flags.clone || (cur->mask & MASK_LIVING) == 0)
+			cur->parent = NULL;
+
+/* if it's a clone or has opted out from linking living, move to new parent */
+			if (cur->flags.clone || (cur->mask & MASK_LIVING) == 0){
+				//printf("clone: %d, LIVING: %d\n", cur->flags.clone, (cur->mask & MASK_LIVING) == 0);
 				arcan_video_deleteobject(ind);
-			else
+			}
+			else{
 				cur->parent = vobj->parent;
+				cur->parent->refcount++;
+			}
 		}
 	}
 
-	detach_fromtarget(&current_context->stdoutp, vobj);
-	
 /* remove from all rendertargets */
 	for (unsigned ind = 0; ind < current_context->n_rtargets && vobj->refcount; ind++){
 		struct rendertarget* rtarget = &current_context->rtargets[ind];
-
 		if (rtarget->color != vobj)
 			detach_fromtarget(rtarget, vobj);
 		
@@ -2491,18 +1922,25 @@ static void eradicate_vobj(arcan_vobject* vobj)
 			drop_rtarget(rtarget);
 	}
 
+#ifdef _DEBUG
 	assert(vobj->refcount >= 0);
+#endif
 }
 
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
+	
 	if (!vobj || id == ARCAN_VIDEO_WORLDID || id == ARCAN_EID){
 		return rv;
 	}
+	
+	verify_owner(vobj);
 
+	if (vobj->parent)
+		vobj->parent->refcount--;
+	
 	if (vobj->owner)
 		detach_fromtarget(find_owner(vobj), vobj);
 	
@@ -2525,6 +1963,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 	
 		free(vobj->frameset);
+		vobj->frameset = NULL;
 	
 /* video storage */
 #ifdef _DEBUG
@@ -2594,29 +2033,29 @@ arcan_vobj_id arcan_video_findparent(arcan_vobj_id id)
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 {
 	arcan_vobj_id rv = ARCAN_EID;
-    arcan_vobject* vobj = arcan_video_getobject(parentid);
+	arcan_vobject* vobj = arcan_video_getobject(parentid);
     
-    if (!vobj)
-        return rv;
+	if (!vobj)
+		return rv;
     
-    arcan_vobject_litem* current = current_context->stdoutp.first;
+	arcan_vobject_litem* current = current_context->stdoutp.first;
     
-    while (current && current->elem) {
-        arcan_vobject* elem = current->elem;
-        arcan_vobject** frameset = elem->frameset;
+	while (current && current->elem) {
+		arcan_vobject* elem = current->elem;
+		arcan_vobject** frameset = elem->frameset;
 		
 		/* how to deal with those that inherit? */
-        if (elem->parent == vobj) {
-            if (ofs > 0) 
-                ofs--;
-            else{
-                rv = elem->cellid;
-                return rv;
-            }
-        }
+		if (elem->parent == vobj) {
+			if (ofs > 0) 
+				ofs--;
+			else{
+				rv = elem->cellid;
+				return rv;
+			}
+		}
         
-        current = current->next;
-    }
+		current = current->next;
+	}
 
 	return rv;
 }
@@ -3220,7 +2659,7 @@ void poll_list(arcan_vobject_litem* current)
 /* if there's a feed function, try and grab a new sample and upload,
  * make sure that we use the current elements "feed function", but set the target
  * to its current active frame, most of the time, they are the same */
-		if ( celem->feed.ffunc &&
+		if ( celem->flags.clone == false && celem->feed.ffunc &&
 		celem->feed.ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, celem->feed.state) == FFUNC_RV_GOTFRAME) {
 
 			/* cycle active frame */
@@ -3300,9 +2739,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 			arcan_vobject* elem = current->elem;
 			surface_properties* csurf = &elem->current;
 
-			assert(elem->parent != NULL);
-			/* calculate coordinate system translations, 
-			* world cannot be masked */
+/* calculate coordinate system translations, world cannot be masked */
 			surface_properties dprops = {0};
 			arcan_resolve_vidprop(elem, lerp, &dprops);
             
@@ -3312,6 +2749,17 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 				continue;
 			}
 
+/* special safeguards, current_frame could've been deleted and replaced leaving a dangling pointer here,
+ * or frameset location might've moved */
+			if (elem->flags.clone){
+				elem->frameset = elem->parent->frameset; 
+				elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
+				
+				assert(elem->parent && elem->parent != &current_context->world);
+				elem->current_frame = (elem->parent->frameset_meta.capacity > 0 && elem->parent->frameset[ elem->frameset_meta.current ]) ?
+					elem->parent->frameset[elem->frameset_meta.current] : elem->parent->current_frame;
+			}
+			
 /* enable clipping if used */
 			bool clipped = false;
 			if (elem->flags.cliptoparent && elem->parent != &current_context->world){

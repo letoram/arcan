@@ -104,7 +104,6 @@ static struct {
 		void (*set_ioport)(unsigned, unsigned);
 } retroctx = {0};
 
-/* XRGB555 */
 static void* libretro_h = NULL;
 static void* libretro_requirefun(const char* sym)
 {

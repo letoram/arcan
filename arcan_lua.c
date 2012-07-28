@@ -44,6 +44,7 @@
 
 #include <SDL.h>
 #include <SDL_opengl.h>
+#include <SDL_ttf.h>
 #include <assert.h>
 
 #include "arcan_math.h"
@@ -68,6 +69,9 @@ static const int ORDER_LAST  = 0;
 
 static const int FRAMESERVER_LOOP = 1;
 static const int FRAMESERVER_NOLOOP = 0;
+
+static const int FRAMESET_NODETACH = 11;
+static const int FRAMESET_DETACH = 10;
 
 static const int RENDERTARGET_DETACH = 10;
 static const int RENDERTARGET_NODETACH = 11;
@@ -280,9 +284,11 @@ int arcan_lua_loadimage(lua_State* ctx)
 	arcan_vobj_id id = ARCAN_EID;
 	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	uint8_t prio = luaL_optint(ctx, 2, 0);
+	unsigned desw = luaL_optint(ctx, 3, 0);
+	unsigned desh = luaL_optint(ctx, 4, 0);
 
 	if (path)
-		id = arcan_video_loadimage(path, arcan_video_dimensions(0, 0), prio);
+		id = arcan_video_loadimage(path, arcan_video_dimensions(desw, desh), prio);
 
 	free(path);
 	lua_pushvid(ctx, id);
@@ -341,11 +347,15 @@ int arcan_lua_instanceimage(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobj_id newid = arcan_video_cloneobject(id);
 
-	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION;
-	arcan_video_transformmask(newid, lmask);
+	if (newid != ARCAN_EID){
+		enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION;
+		arcan_video_transformmask(newid, lmask);
 
-	lua_pushvid(ctx, newid);
-	return 1;
+		lua_pushvid(ctx, newid);
+		return 1;
+	}
+	
+	return 0;
 }
 
 int arcan_lua_resettransform(lua_State* ctx)
@@ -502,7 +512,7 @@ int arcan_lua_hideimage(lua_State* ctx)
 int arcan_lua_forceblend(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_NORMAL);
+	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_FORCE);
 	arcan_video_forceblend(id, mode);
 
 	return 0;
@@ -1575,10 +1585,11 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
 	unsigned num = luaL_checkint(ctx, 3);
-	bool detatch = luaL_optint(ctx, 4, 0) > 0;
+	bool detach = luaL_optint(ctx, 4, FRAMESET_NODETACH) == FRAMESET_DETACH;
 
 	arcan_errc errc;
-	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num, detatch, &errc);
+	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num, detach, &errc);
+
 	if (errc == ARCAN_OK)
 		lua_pushvid(ctx, vid);
 	else
@@ -1593,9 +1604,10 @@ int arcan_lua_linkimage(lua_State* ctx)
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
 	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION;
 
-	arcan_video_linkobjs(sid, did, lmask);
-
-	return 0;
+	arcan_errc rv = arcan_video_linkobjs(sid, did, lmask);
+	lua_pushboolean(ctx, rv == ARCAN_OK);
+	
+	return 1;
 }
 
 static inline int pushprop(lua_State* ctx, surface_properties prop, unsigned short zv)
@@ -3426,6 +3438,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "STACK_MAXCOUNT", CONTEXT_STACK_LIMIT);
 	arcan_lua_setglobalint(ctx, "FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT);
 	arcan_lua_setglobalint(ctx, "FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE);
+	arcan_lua_setglobalint(ctx, "FRAMESET_NODETACH", FRAMESET_NODETACH);
+	arcan_lua_setglobalint(ctx, "FRAMESET_DETACH", FRAMESET_DETACH);
 	arcan_lua_setglobalint(ctx, "BLEND_NONE", BLEND_NONE);
 	arcan_lua_setglobalint(ctx, "BLEND_ADD", BLEND_ADD);	
 	arcan_lua_setglobalint(ctx, "BLEND_MULTIPLY", BLEND_MULTIPLY);

@@ -75,7 +75,7 @@ function load_model_generic(modelname, rndmissing)
 		model.default_orientation = {roll = 0, pitch = 0, yaw = 0};
 		model.screenview.position = {x = 0, y = 0.5, z = 1.0};
 		model.screenview.orientation = {roll = 0, pitch = 0, yaw = 0};
-		set_image_as_frame(model.vid, vid, slot, 1);
+		set_image_as_frame(model.vid, vid, slot, FRAMESET_DETACH);
 	end
 	
 	switch_default_imageproc(IMAGEPROC_NORMAL);
