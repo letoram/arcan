@@ -28,46 +28,47 @@ function create_weighted_fbo( frames )
 	return resshader; 
 end
 
--- associate this with the frameset of the launch_target, keep one as the "sharp source"
--- and then split off two FBOs and use a two-phase gaussian blur kernel
--- 
--- if we have an overlay, draw that first and additive blend the main-frame and the blurred FBO output
--- with a modified CRT shader attached
-
--- generate n target sized buffer to contain the output from the different frames, 
--- one screen sized "sharp" output buffer and two FBOs used for separated gaussian blurs (horiz -> vert)
--- for CRT mode, add an additional FBO with a mix shader that combines the sharp and the two blurs and 
--- set the CRT shader as the outer-most output.
+-- light version:
+-- generate an output buffer that does a weighted blend of a variable number of spaced frames
+-- apply a low-res gaussian filter and upscale this to full res and blend additively.
+-- lastly, multiply with overlay.
+--
+-- heavy version:
+-- store the additive blend into a new FBO, use this FBO as input shader and map to the CRT shader
+-- lastly, blend with overlay
 function setup_history_buffer(parent, frames, delay, targetwidth, targetheight, blurwidth, blurheight)
+	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames),  "history_mix", {});
 	image_framesetsize(parent, #frames, FRAMESET_MULTITEXTURE);
 	image_framecyclemode(parent, delay);
 	
 	for i=1,#frames do
 		local vid = fill_surface(VRESW, VRESH, 0, 0, 0, targetwidth, targetheight);
-		set_image_as_frame(parent, vid, i-1);
+		set_image_as_frame(parent, vid, i-1, FRAMESET_DETACH);
 	end
-	
+
+	local normal_out = instance_image(parent);
+	resize_image(normal_out, targetwidth, targetheight);
+	show_image(normal_out);
+
+	image_shader(parent, mixshader);
+
 	local blur_buf_a = fill_surface(blurwidth, blurheight, 0, 0, 0, blurwidth, blurheight);
-	local blur_buf_b = fill_surface(VRESW, VRESH, 0, 0, 0, blurwidth, blurheight);
-	local last_frame = fill_surface(targetwidth, targetheight, 0, 0, 0, targetwidth, targetheight);
+	local blur_buf_b = fill_surface(blurwidth, blurheight, 0, 0, 0, blurwidth, blurheight);
+--	local last_frame = fill_surface(targetwidth, targetheight, 0, 0, 0, targetwidth, targetheight);
 	
-	local clone = instance_image(parent);
-	resize_image(clone, VRESW, VRESH);
-	force_image_blend(last_frame, BLEND_NONE);
+--	resize_image(clone, VRESW, VRESH);
+--	force_image_blend(last_frame, BLEND_NONE);
 
 	show_image(blur_buf_a);
---	show_image(blur_buf_b);
+	show_image(blur_buf_b);
+	resize_image(blur_buf_b, targetwidth, targetheight);
 --	blend_image(last_frame, 0.5);
 	
 	show_image(parent);
-	show_image(clone);
+--	show_image(clone);
 	
-	define_rendertarget(blur_buf_a, {parent}, RENDERTARGET_DETACH, RENDERTARGET_SCALE);
+	define_rendertarget(blur_buf_a, {parent}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	define_rendertarget(blur_buf_b, {blur_buf_a}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	
-	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames),  "history_mix", {});
-	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
-	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
 	
 	image_shader(parent, mixshader);
 
@@ -110,10 +111,42 @@ function vectortest()
 
 end
 
+-- only gaussian, no history.
+function vector_lightmode(source, targetw, targeth, blurw, blurh)
+	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
+	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
+	shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
+	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
+	shader_uniform(blurshader_h, "ampl", "f", PERSIST, 1.2);
+	shader_uniform(blurshader_v, "ampl", "f", PERSIST, 1.2);	
+
+	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
+	local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
+	show_image(source);
+
+-- clone that will be passed through the blur stages
+	local node = instance_image(source);
+	resize_image(node, blurw, blurh);
+	show_image(node);
+	show_image(blur_hbuf);
+	show_image(blur_vbuf);
+
+	define_rendertarget(blur_hbuf, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
+	image_shader(blur_hbuf, blurshader_h);
+	image_shader(blur_vbuf, blurshader_v);
+
+	blend_image(blur_vbuf, 0.95);
+	force_image_blend(blur_vbuf, BLEND_ADD);
+	order_image(blur_vbuf, max_current_image_order() + 1);
+--	define_rendertarget(blur_vbuf, {blur_hbuf},  RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+end
+
 function target_update(source, status)
 	if (status.kind == "resized") then
 		local props = image_storage_properties(source);
-		setup_history_buffer( target_id, {0.8, 0.6, 0.4, 0.2}, -1, props.width, props.height, props.width * 0.4, props.height * 0.4);
+		vector_lightmode(source, props.width, props.height, props.width * 0.5, props.height * 0.5);
 	end
 end
 
