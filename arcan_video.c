@@ -2316,9 +2316,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && vobj->flags.clone == true)
-		rv = ARCAN_ERRC_CLONE_NOT_PERMITTED;
-	else if (vobj && id >= 0) {
+	if (vobj && shid >= 0) {
 		vobj->gl_storage.program = shid;
 		rv = ARCAN_OK;
 	}
@@ -2757,7 +2755,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 				
 				assert(elem->parent && elem->parent != &current_context->world);
 				elem->current_frame = (elem->parent->frameset_meta.capacity > 0 && elem->parent->frameset[ elem->frameset_meta.current ]) ?
-					elem->parent->frameset[elem->frameset_meta.current] : elem->parent->current_frame;
+				elem->parent->frameset[elem->frameset_meta.current] : elem->parent->current_frame;
 			}
 			
 /* enable clipping if used */
