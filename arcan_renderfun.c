@@ -157,20 +157,35 @@ SDL_Surface* text_loadimage(const char* const infn, img_cons constraints)
 
 /* Might've specified a forced scale */
 		if (constraints.w > 0 && constraints.h > 0){
-			SDL_Surface* stretchcanvas = 
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
-	    SDL_CreateRGBSurface(SDL_SWSURFACE, constraints.w, constraints.h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
+			SDL_Surface* stretchcanv = SDL_CreateRGBSurface(SDL_SWSURFACE, constraints.w, constraints.h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
 #else
-	    SDL_CreateRGBSurface(SDL_SWSURFACE, constraints.w, constraints.h, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+			SDL_Surface* stretchcanv = SDL_CreateRGBSurface(SDL_SWSURFACE, constraints.w, constraints.h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
 #endif
 
-			if (stretchcanvas){
-				stretchblit(res, stretchcanvas->pixels, constraints.w, constraints.h, constraints.w * 4, false);
-				SDL_FreeSurface(res);
-				res = stretchcanvas;
+/* Can't allocate intermediate buffers? cleanup */
+			if (!stretchcanv){
+				arcan_warning("Warning: arcan_video_renderstring(), couldn't create intermediate stretchblit buffers, poor dimensions? (%d, %d)\n", res->w, res->h);
+
+				if (stretchcanv) SDL_FreeSurface(stretchcanv);
+				free(fname);
+				return NULL;
 			}
-			else 
-				arcan_warning("Warning: arcan_video_renderstring(), stretchblit failed -- poor dimensions? (%d,%d)\n", constraints.w, constraints.h);
+
+/* convert colourspace */
+			SDL_Surface* basecanv = SDL_ConvertSurface(res, stretchcanv->format, SDL_SWSURFACE);
+			SDL_FreeSurface(res);
+			if (!basecanv){
+				arcan_warning("Warning: arcan_video_renderstring(9, couldn't perform colorspace conversion.\n");
+				SDL_FreeSurface(stretchcanv);
+				free(fname);
+				return NULL;
+			}
+
+			stretchblit(basecanv, stretchcanv->pixels, constraints.w, constraints.h, constraints.w * 4, false);
+			SDL_FreeSurface(basecanv);
+			
+			res = stretchcanv;
 		}
 	}
 	else
@@ -179,6 +194,7 @@ SDL_Surface* text_loadimage(const char* const infn, img_cons constraints)
 
 	if (res)
 		SDL_SetAlpha(res, 0, SDL_ALPHA_TRANSPARENT);
+
 	free(fname);
 	return res;
 }
@@ -224,7 +240,6 @@ static char* extract_font(struct text_format* prev, char* base){
 	numbase = base;
 	while (*base != 0 && isdigit(*base))
 	base++;
-	printf("fontbase: %s\n", base);
 	
 /* error state, no size specifier */
 	if (numbase == base)
@@ -279,16 +294,63 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 	}
 }
 
-static char* extract_image(struct text_format* prev, char* base) {
-	char* wbase = base;
-	while( *base && *base != ',' && isdigit(*base) ) base++;
-	if (*base != ','){
-		arcan_warning("Warning: arcan_video_renderstring(), couldn't scan image directive.\n");
+static char* extract_image(struct text_format* prev, char* base)
+{
+	int forcew = 0, forceh = 0;
+
+	char* widbase = base;
+	while (*base && *base != ',' && isdigit(*base)) base++;
+	if (*base && strlen(widbase) > 0) 
+		*base++ = 0;
+	else {
+		arcan_warning("Warning: arcan_video_renderstring(), width scan failed, premature end in sized image scan directive (%s)\n", widbase);
+		return NULL;
+	}
+	forcew = strtol(widbase, 0, 10);
+	if (forcew <= 0 || forcew > 1024){
+		arcan_warning("Warning: arcan_video_renderstring(), width scan failed, unreasonable width (%d) specified in sized image scan directive (%s)\n", forcew, widbase);
 		return NULL;
 	}
 	
-	*base = 0;
-	strtol(wbase, 0, 10);
+	char* hghtbase = base;
+	while (*base && *base != ',' && isdigit(*base)) base++;
+	if (*base && strlen(hghtbase) > 0)
+		*base++ = 0;
+	else {
+		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, premature end in sized image scan directive (%s)\n", hghtbase);
+		return NULL;
+	}
+	forceh = strtol(hghtbase, 0, 10);
+	if (forceh <= 0 || forceh > 1024){
+		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, unreasonable height (%d) specified in sized image scan directive (%s)\n", forceh, hghtbase);
+		return NULL;
+	}
+
+	char* wbase = base;
+	while (*base && *base != ',') base++;
+	if (*base == ','){
+		*base++ = 0;
+	}
+	else {
+		arcan_warning("Warning: arcan_video_renderstring(), missing resource name terminator (,) in sized image scan directive (%s)\n", wbase);
+		return NULL;
+	}
+	
+	if (strlen(wbase) > 0){
+		prev->imgcons.w = forcew;
+		prev->imgcons.h = forceh;
+		prev->image = text_loadimage(wbase, prev->imgcons);
+		if (prev->image){
+			prev->imgcons.w = prev->image->w;
+			prev->imgcons.h = prev->image->h;
+		}
+		
+		return base;
+	}
+	else{
+		arcan_warning("Warning: arcan_video_renderstring(), missing resource name.\n");
+		return NULL;
+	}
 }
 
 static struct text_format formatend(char* base, struct text_format prev, char* orig, bool* ok) {

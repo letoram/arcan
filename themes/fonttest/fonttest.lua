@@ -8,7 +8,7 @@ testlines_normal = {
 	[[Multi\nLine\test]],
 	[[Multi\ffonts/default.ttf,28Sizes\nSizes2\ffonts/default.ttf,32Sizes3]],
 	[[Multi\ffonts/default.ttf,16Size and \pfonttest.ico, \ticon]],
---	[[differently\pfonttest.ico,12,12, sized \pfonttest.ico,16,16, icons]],
+	[[differently\P12,12,fonttest.ico, sized \P16,16,fonttest.ico, even huge \P128,128,fonttest.ico, icons]],
 	[[\n\n\n]]	
 };
 
