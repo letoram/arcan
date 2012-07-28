@@ -140,13 +140,63 @@ function vector_lightmode(source, targetw, targeth, blurw, blurh)
 	blend_image(blur_vbuf, 0.95);
 	force_image_blend(blur_vbuf, BLEND_ADD);
 	order_image(blur_vbuf, max_current_image_order() + 1);
+
+	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	define_rendertarget(comp_outbuf, {blur_vbuf, source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(comp_outbuf);
+
+	return comp_outbuf;	
 --	define_rendertarget(blur_vbuf, {blur_hbuf},  RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+end
+
+local function grab_shaderconf(basename)
+	local vdef, vcond = parse_shader("shaders/fullscreen/" .. basename .. ".vShader");
+	local fdef, fcond = parse_shader("shaders/fullscreen/" .. basename .. ".fShader");
+	
+	local resdef = {};
+	local rescond = {};
+	
+-- remap the tables into hash/LUT, doesn't separate namespaces in v/f shaders 
+	for ind, val in ipairs( vdef ) do resdef[val] = true; end
+	for ind, val in ipairs( fdef ) do resdef[val] = true; end
+	for ind, val in ipairs( vcond ) do rescond[val] = true; end
+	for ind, val in ipairs( fcond ) do rescond[val] = true; end
+
+	return resdef, rescond;
+end
+
+function crt_toggle(source)
+	local resdef, rescond = grab_shaderconf("crt");
+	
+	local crtshader = load_shader("shaders/fullscreen/crt.vShader", "shaders/fullscreen/crt.fShader", "CRT", resdef);
+	local sprops = image_storage_properties(source);
+	local dprops = image_surface_initial_properties(source);
+	
+	shader_uniform(crtshader, "rubyInputSize", "ff", PERSIST, sprops.width, sprops.height); -- need to reflect actual texel size
+	shader_uniform(crtshader, "rubyTextureSize", "ff", PERSIST, dprops.width, dprops.height); -- since target is allowed to resize at more or less anytime, we need to update this
+	shader_uniform(crtshader, "rubyOutputSize", "ff", PERSIST, VRESW, VRESH);
+	shader_uniform(crtshader, "rubyTexture", "i", PERSIST, 0);
+	
+	image_shader(source, crtshader);
+	resize_image(source, VRESW, VRESH);
+	
+	backdrop = load_image("astdelux.png");
+	resize_image(backdrop, VRESW, VRESH);
+	blend_image(backdrop, 0.3);
+
+	hide_image( source );
+	order_image(source, 1);
+	force_image_blend(source, BLEND_ADD);
+	blend_image(source, 0.98);
 end
 
 function target_update(source, status)
 	if (status.kind == "resized") then
 		local props = image_storage_properties(source);
-		vector_lightmode(source, props.width, props.height, props.width * 0.5, props.height * 0.5);
+
+		outp = vector_lightmode(source, props.width, props.height, props.width * 0.5, props.height * 0.5);
+		resize_image(outp, VRESW, VRESH);
+--		crt_toggle(outp);
 	end
 end
 

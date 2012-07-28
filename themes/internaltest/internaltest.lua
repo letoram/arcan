@@ -18,7 +18,7 @@ function internaltest()
 	targets = list_targets();
 	valid_tgts = {};
 
-	if (arguments[1] ~= nil) then
+	if (arguments[1] ~= nil and arguments[1] == nil) then
 		targets = { arguments[1] };
 	end
 
@@ -35,9 +35,15 @@ function internaltest()
 		shutdown();
 	end
 
+
+	local filters = {target = val};
+	if (arguments[2] ~= nil) then
+		filters.title = arguments[2];
+	end
+
 	games = {};
 	for ind, val in ipairs(valid_tgts) do
-		local tgtgames = list_games( { target = val } );
+		local tgtgames = list_games( filters );
 		games = table.join(games, tgtgames); 
 	end
 
