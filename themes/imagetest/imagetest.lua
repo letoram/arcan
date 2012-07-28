@@ -89,7 +89,6 @@ function instancing_test()
 		local instid = instance_image(newid);
 		order_image(instid, 254);
 		scale_image(instid, 0.5, 0.5, 0);
-		show_image(instid);
 		image_mask_clear(instid, MASK_SCALE);
 		blend_image(instid, 0.5);
 		
