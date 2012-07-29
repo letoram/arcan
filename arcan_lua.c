@@ -618,7 +618,7 @@ int arcan_lua_setmeshshader(lua_State* ctx)
 	arcan_shader_id shid = luaL_checknumber(ctx, 2);
 	int slot = abs ( luaL_checknumber(ctx, 3) );
 
-	arcan_3d_meshshader(id, shid, slot);
+	arcan_3d_meshshader(id, shid, slot-1);
 
 	return 0;
 }
@@ -3474,6 +3474,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "MASK_POSITION", MASK_POSITION);
 	arcan_lua_setglobalint(ctx, "MASK_SCALE", MASK_SCALE);
 	arcan_lua_setglobalint(ctx, "MASK_UNPICKABLE", MASK_UNPICKABLE);
+	arcan_lua_setglobalint(ctx, "MASK_FRAMESET", MASK_FRAMESET);
 	arcan_lua_setglobalint(ctx, "ORDER_FIRST", ORDER_FIRST);
 	arcan_lua_setglobalint(ctx, "ORDER_LAST", ORDER_LAST);
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_LOOP", FRAMESERVER_LOOP);

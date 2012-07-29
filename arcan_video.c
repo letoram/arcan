@@ -196,10 +196,7 @@ static void step_active_frame(arcan_vobject* vobj)
 	if (!vobj->frameset)
 		return;
 
-	do
-		vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) % vobj->frameset_meta.capacity;
-	while (vobj->frameset[ vobj->frameset_meta.current ] == NULL);
-	
+	vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) % vobj->frameset_meta.capacity;
 	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
 }
 
@@ -345,7 +342,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->origw = pobj->origw;
 		nobj->origh = pobj->origh;
 		nobj->order = pobj->order;
-		nobj->gpu_program = pobj->gpu_program;
+		nobj->gl_storage.program = 0;
 		
 		nobj->parent->refcount++;
 		arcan_video_attachobject(rv);
@@ -402,7 +399,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		assert(rv->cellid > 0);
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 		rv->parent = &current_context->world;
-		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION;
+		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION | MASK_FRAMESET;
 	}
 
 	if (id != NULL)
@@ -532,8 +529,8 @@ reevaluate:
 			count++;
 		}
 		
-		if (vobj != src && vobj->flags.in_use && vobj->frameset && vobj->flags.clone == false)
-			for (unsigned int cell = 1; cell < vobj->frameset_meta.capacity; cell++){
+		if (vobj->flags.in_use && vobj->frameset && vobj->flags.clone == false)
+			for (unsigned int cell = 0; cell < vobj->frameset_meta.capacity; cell++){
 				if (vobj->frameset[cell] == src){
 					LOGV( printf("->worldpool: found in frameset (%"PRIxPTR":%"PRIxVOBJ") cell: %d\n", (intptr_t)vobj, vobj->cellid, count) );
 					count++;
@@ -545,7 +542,7 @@ reevaluate:
 		assert(count == src->refcount);
 	else if (count != src->refcount){
 		verbose = true;
-		LOGV( printf(" -- mismatch (%d) <-> (%d) \n", count, src->refcount) );
+		LOGV( printf(" -- mismatch (count:%d) <-> (refcount:%d) \n", count, src->refcount) );
 		goto reevaluate;
 	}
 }
@@ -557,7 +554,6 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	arcan_vobject_litem* torem;
 	assert(dst != NULL);
 	assert(src != NULL);
-	verify_owner(src);
 	
 /* already detached or empty target */
 	if (!dst || !src->owner)
@@ -602,7 +598,6 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 	arcan_vobject_litem* new_litem = malloc(sizeof *new_litem);
 	new_litem->next = new_litem->previous = NULL;
 	new_litem->elem = src;
-	verify_owner(src);
 
 /* (pre) if orphaned, assign */
 	if (src->owner == NULL){
@@ -1049,17 +1044,17 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 	if (target->flags.clone)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
-		capacity++; /* reserve 1 */
-		if (capacity == 0)
-			return ARCAN_ERRC_OUT_OF_SPACE;
-
 		if (target->frameset){
 			free(target->frameset);
 			target->frameset = NULL;
 		}
 		
-		target->frameset = (arcan_vobject**) calloc(capacity, sizeof(arcan_vobject*) );
-		target->frameset[0] = target;
+		target->frameset = malloc(sizeof(arcan_vobject*) * capacity);
+		for (int i = 0; i < capacity; i++){
+			target->frameset[i] = target;
+			target->frameset[i]->refcount++;	
+		}
+	
 		target->frameset_meta.current = 0;
 		target->frameset_meta.capacity = capacity;
 		target->frameset_meta.framemode = mode;
@@ -1293,9 +1288,8 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
 	arcan_vobj_id rv = ARCAN_EID;
-	fid++; /* enforce 1 index */
 	
-	if (dstvobj == srcvobj || dstvobj->flags.clone){
+	if (dstvobj->flags.clone){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
 		return rv;
@@ -1305,7 +1299,7 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 		if (dstvobj->frameset && fid < dstvobj->frameset_meta.capacity){
 			
 /* if we want to manage the frame entirely through this object, we can detach src and stop worrying about deleting it */
-			if (detach && srcvobj->owner)
+			if (detach && srcvobj != dstvobj && srcvobj->owner)
 				detach_fromtarget(find_owner(srcvobj), srcvobj);
 
 /* if there already is an object in the desired slot, return the management responsibility to the user*/
@@ -1875,9 +1869,6 @@ static void drop_rtarget(struct rendertarget* vobj)
 static void eradicate_vobj(arcan_vobject* vobj)
 {
 /* most objects are attached, so start with that */
-	verify_owner(vobj);
-	
-	detach_fromtarget(&current_context->stdoutp, vobj);
 
 	for (unsigned ind = 0; ind < current_context->vitem_limit && vobj->refcount; ind++){
 /* ignore self */
@@ -1888,7 +1879,7 @@ static void eradicate_vobj(arcan_vobject* vobj)
 
 /* might be part of frameset */
 		if (cur->frameset && cur->flags.clone == false)
-			for(unsigned i = 1; i < vobj->frameset_meta.capacity && vobj->refcount; i++)
+			for(unsigned i = 0; i < vobj->frameset_meta.capacity && vobj->refcount; i++)
 				if (vobj->frameset[i] && vobj->frameset[i]->cellid == cur->cellid){
 					vobj->frameset[i] = NULL;
 					vobj->refcount--;
@@ -1899,11 +1890,10 @@ static void eradicate_vobj(arcan_vobject* vobj)
 			vobj->refcount--;
 			cur->parent = NULL;
 
-/* if it's a clone or has opted out from linking living, move to new parent */
 			if (cur->flags.clone || (cur->mask & MASK_LIVING) == 0){
-				//printf("clone: %d, LIVING: %d\n", cur->flags.clone, (cur->mask & MASK_LIVING) == 0);
 				arcan_video_deleteobject(ind);
 			}
+/* if it's a clone or has opted out from linking living, move to new parent */
 			else{
 				cur->parent = vobj->parent;
 				cur->parent->refcount++;
@@ -1912,6 +1902,7 @@ static void eradicate_vobj(arcan_vobject* vobj)
 	}
 
 /* remove from all rendertargets */
+	detach_fromtarget(&current_context->stdoutp, vobj);
 	for (unsigned ind = 0; ind < current_context->n_rtargets && vobj->refcount; ind++){
 		struct rendertarget* rtarget = &current_context->rtargets[ind];
 		if (rtarget->color != vobj)
@@ -1921,6 +1912,7 @@ static void eradicate_vobj(arcan_vobject* vobj)
 		else 
 			drop_rtarget(rtarget);
 	}
+
 
 #ifdef _DEBUG
 	assert(vobj->refcount >= 0);
@@ -1936,8 +1928,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		return rv;
 	}
 	
-	verify_owner(vobj);
-
 	if (vobj->parent)
 		vobj->parent->refcount--;
 	
@@ -1956,10 +1946,13 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			SDL_WaitThread( vobj->feed.state.ptr, NULL );
 		
 /* frameset, might have orphans here */
-		for (unsigned i = 1; i < vobj->frameset_meta.capacity; i++){
-			if (vobj->frameset[i] && !vobj->frameset[i]->owner)
+		for (unsigned i = 0; i < vobj->frameset_meta.capacity; i++){
+			vobj->frameset[i]->refcount--;
+			
+			if (vobj->frameset[i] != vobj && !vobj->frameset[i]->owner)
 				arcan_video_deleteobject(vobj->frameset[i]->cellid);
-				vobj->frameset[i] = NULL;
+		
+			vobj->frameset[i] = NULL;
 		}
 	
 		free(vobj->frameset);
@@ -2667,6 +2660,7 @@ void poll_list(arcan_vobject_litem* current)
 				if (celem->frameset_meta.counter == 0){
 					celem->frameset_meta.counter = abs( celem->frameset_meta.mode );
 					step_active_frame(celem);
+						
 					cframe = celem->current_frame;
 				}
 			}
@@ -2677,7 +2671,8 @@ void poll_list(arcan_vobject_litem* current)
 			cframe->gl_storage.glid,
 			celem->feed.state);
 			
-/* special "hack" for situations where the ffunc can do the gl-calls without an additional memtransfer (some video/targets, particularly in no POW2 Textures) */
+/* special "hack" for situations where the ffunc can do the gl-calls without an additional
+ *  memtransfer (some video/targets, particularly in no POW2 Textures) */
 			if (funcres == FFUNC_RV_COPIED){
 				glBindTexture(GL_TEXTURE_2D, cframe->gl_storage.glid);
 				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, cframe->default_frame.raw);
@@ -2733,7 +2728,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 				abort();
 			};
 #endif
-	
+
 			arcan_vobject* elem = current->elem;
 			surface_properties* csurf = &elem->current;
 
@@ -2750,12 +2745,21 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 /* special safeguards, current_frame could've been deleted and replaced leaving a dangling pointer here,
  * or frameset location might've moved */
 			if (elem->flags.clone){
-				elem->frameset = elem->parent->frameset; 
-				elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
+				if ( (elem->mask & MASK_FRAMESET) > 0 ){
+					enum arcan_framemode mode = elem->frameset_meta.framemode;
+					elem->frameset = elem->parent->frameset;
+					elem->frameset_meta = elem->parent->frameset_meta;
+					elem->current_frame = elem->parent->current_frame;
+					elem->frameset_meta.mode = mode; 
+					printf("owner @frame: %d\n", elem->current_frame->frameset_meta.current);
+				} else {
+					elem->frameset = elem->parent->frameset; 
+					elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
 				
-				assert(elem->parent && elem->parent != &current_context->world);
-				elem->current_frame = (elem->parent->frameset_meta.capacity > 0 && elem->parent->frameset[ elem->frameset_meta.current ]) ?
-				elem->parent->frameset[elem->frameset_meta.current] : elem->parent->current_frame;
+					assert(elem->parent && elem->parent != &current_context->world);
+					elem->current_frame = (elem->parent->frameset_meta.capacity > 0 && elem->parent->frameset[ elem->frameset_meta.current ]) ?
+					elem->parent->frameset[elem->frameset_meta.current] : elem->parent->current_frame;
+				}
 			}
 			
 /* enable clipping if used */
@@ -2793,23 +2797,20 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 			arcan_shader_activate( elem->gl_storage.program > 0 ? elem->gl_storage.program : arcan_video_display.defaultshdr );
 
 /* depending on frameset- mode, we may need to split the frameset up into multitexturing */
-		if (elem->frameset_meta.counter > 0 && elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE){
-				unsigned j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
-				for(unsigned i = 0;i < j; i++){
-					char unifbuf[9] = {0};
-					int frameind = (elem->frameset_meta.current - i) % elem->frameset_meta.capacity;
-					if (elem->frameset[frameind] == NULL){
-#ifdef _DEBUG
-						arcan_warning("arcan_video_refresh_GL( MULTITEXTURE ) -- unmapped cell (%d) ignored.\n", frameind);
-#endif
-						continue;
-					}
-					glActiveTexture(GL_TEXTURE0 + i);
-					glEnable(GL_TEXTURE_2D);
-					glBindTexture(GL_TEXTURE_2D, elem->frameset[ frameind ]->gl_storage.glid);
-					snprintf(unifbuf, 8, "map_tu%d", i);
-					arcan_shader_forceunif(unifbuf, shdrint, &i, false);
-				}
+		int cfind  = elem->frameset_meta.current;
+		if (elem->frameset_meta.capacity > 0 && elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE){
+			int j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
+
+			for(int i = 0; i < j; i++){
+				char unifbuf[GL_MAX_TEXTURE_UNITS] = {0};
+				int frameind = ((cfind - i) % j + j)  % j;
+
+				glActiveTexture(GL_TEXTURE0 + i);
+				glEnable(GL_TEXTURE_2D);
+				glBindTexture(GL_TEXTURE_2D, elem->frameset[ frameind ]->gl_storage.glid);
+				snprintf(unifbuf, 8, "map_tu%d", i);
+				arcan_shader_forceunif(unifbuf, shdrint, &i, false);
+			}
 		}
 			else
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
@@ -2828,11 +2829,11 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 					arcan_warning("unknown blend-mode specified(%d)\n", elem->blendmode);
 			}
 		}
-			
-			draw_surf(tgt, dprops, elem, elem->current_frame->txcos);
+		
+		draw_surf(tgt, dprops, elem, elem->current_frame->txcos);
 
-			if (clipped)
-				glDisable(GL_STENCIL_TEST);
+		if (clipped)
+			glDisable(GL_STENCIL_TEST);
 
 			current = current->next;
 		}

@@ -64,7 +64,7 @@ function load_model_generic(modelname, rndmissing)
 	table.sort(seqlist, sort_meshes);
 	
 	for i=1, #seqlist do
-		slot = i - 1;
+		slot = i;
 		add_3dmesh(model.vid, basep .. seqlist[i][2], 1);
 		local vid = load_material(modelname, seqlist[i][1], rndmissing);
 
