@@ -85,11 +85,11 @@ typedef struct arcan_vobject {
 
 	struct arcan_vobject** frameset;
 	struct {
-		unsigned short capacity;
-		signed short mode;
-		unsigned short counter;
-		unsigned short current;
-		enum arcan_framemode framemode;
+		unsigned short capacity; /* only allowed to grow */
+		signed short mode; /* automatic cycling, > 0 per tick, < 0 per frame */
+		unsigned short counter; /* keeps track on steps left until cycle */
+		unsigned short current; /* current frame, might be "dst" */
+		enum arcan_framemode framemode; /* multitexture or just active frame */
 	} frameset_meta;
 	
 	struct storage_info_t gl_storage;
@@ -103,14 +103,6 @@ typedef struct arcan_vobject {
 	} feed;
 	
 	uint8_t ffunc_mask;
-	
-	/* visual- params */
-	struct {
-		char* vertex;
-		char* fragment;
-	} gpu_program;
-	
-
 	float txcos[8];
 	enum arcan_blendfunc blendmode;
 	/* flags */

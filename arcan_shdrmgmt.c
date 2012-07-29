@@ -178,17 +178,16 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	shid -= shdr_global.base;
- 	if (shid < shdr_global.ofs){
+ 	if (shid < shdr_global.ofs && shid != shdr_global.active_prg){
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
-
+		
 /* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
  * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
-			if (cur->locations[i] >= 0){
+			if (cur->locations[i] >= 0)
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i], typestrtbl[i], cur->label);
-            }
 		}
 
 /* activate any persistant values */
@@ -389,20 +388,22 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 	glCompileShader(*vprg);
 	glCompileShader(*fprg);
 
+	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
+	
+	if (rlen){
+		arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
+		arcan_warning("Vertex Program: %s\n", vprogram);
+	}
+	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
+
+	if (rlen){
+		arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
+		arcan_warning("Fragment Program: %s\n", fprogram);
+	}
+	
 	if (arcan_debug_pumpglwarnings("shdrmgmt:post:build_shader") == -1){
 		arcan_warning("Warning: Error while compiling (%s)\n", label);
-		
-		glGetShaderInfoLog(*vprg, 256, &rlen, buf);
-		if (rlen){
-			arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
-			arcan_warning("Vertex Program: %s\n", vprogram);
-		}
-		glGetShaderInfoLog(*fprg, 256, &rlen, buf);
-		if (rlen){
-			arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
-			arcan_warning("Fragment Program: %s\n", fprogram);
-		}
-		
+	
 		kill_shader(dprg, vprg, fprg);
 		return false;
 	} else {
