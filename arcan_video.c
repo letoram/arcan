@@ -2751,7 +2751,6 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 					elem->frameset_meta = elem->parent->frameset_meta;
 					elem->current_frame = elem->parent->current_frame;
 					elem->frameset_meta.mode = mode; 
-					printf("owner @frame: %d\n", elem->current_frame->frameset_meta.current);
 				} else {
 					elem->frameset = elem->parent->frameset; 
 					elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
@@ -2798,19 +2797,22 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 
 /* depending on frameset- mode, we may need to split the frameset up into multitexturing */
 		int cfind  = elem->frameset_meta.current;
+		int unbc = 0;
 		if (elem->frameset_meta.capacity > 0 && elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE){
 			int j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
-
+			unbc = 0;
+			
 			for(int i = 0; i < j; i++){
 				char unifbuf[GL_MAX_TEXTURE_UNITS] = {0};
 				int frameind = ((cfind - i) % j + j)  % j;
 
 				glActiveTexture(GL_TEXTURE0 + i);
-				glEnable(GL_TEXTURE_2D);
 				glBindTexture(GL_TEXTURE_2D, elem->frameset[ frameind ]->gl_storage.glid);
 				snprintf(unifbuf, 8, "map_tu%d", i);
 				arcan_shader_forceunif(unifbuf, shdrint, &i, false);
 			}
+			
+			glActiveTexture(GL_TEXTURE0);
 		}
 			else
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
@@ -2832,6 +2834,14 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 		
 		draw_surf(tgt, dprops, elem, elem->current_frame->txcos);
 
+		if (unbc){
+			for (int i = 1; i <= unbc-1; i++){
+				glActiveTexture(GL_TEXTURE0 + i);
+				glBindTexture(GL_TEXTURE_2D, 0);
+			}
+			glActiveTexture(GL_TEXTURE0);
+		}
+		
 		if (clipped)
 			glDisable(GL_STENCIL_TEST);
 

@@ -85,7 +85,7 @@ end
 
 -- additive blend with blur
 function vector_lightmode(source, targetw, targeth, blurw, blurh)
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.8, 1.2);
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.2, 1.1);
 	show_image(source);
 
 	local node = instance_image(source);
@@ -106,40 +106,46 @@ function vector_lightmode(source, targetw, targeth, blurw, blurh)
 end
 
 function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh)
+-- create an instance of the parent that won't be multitextured 
+	local normal = instance_image(parent);
+	image_mask_set(normal, MASK_FRAMESET);
+	show_image(normal);
+	resize_image(normal, targetw, targeth);	
+
 -- set frameset for parent to work as a round robin with multitexture,
--- build a shader that blends the frames according with user-defined weights
+-- build a shader that blends the frames according with user-defined weights	
 	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames) , "history_mix", {});
 	image_framesetsize(parent, #frames, FRAMESET_MULTITEXTURE);
 	image_framecyclemode(parent, delay);
 	image_shader(parent, mixshader);
 	show_image(parent);
+	resize_image(parent, blurw, blurh);
 
---	local normal = instance_image(parent);
---	image_mask_set(normal, MASK_FRAMESET);
---	show_image(normal);
---	resize_image(normal, VRESW, VRESH);	
-
+-- generate textures to use as round-robin store
 	for i=1,#frames-1 do
 		local vid = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
 		set_image_as_frame(parent, vid, i, FRAMESET_DETACH);
 	end
 
-	resize_image(parent, targetw, targeth);
---	rendertgt = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
---	define_rendertarget(rendertgt, {parent}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+-- render this to a FBO that will be used for input to blurring
+	rendertgt = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
+	define_rendertarget(rendertgt, {parent}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(rendertgt);
 
---	show_image(rendertgt);
---	order_image(rendertgt, max_current_image_order() + 1);
+-- this part is the same as lightmode, use the normal instance as background, then blend the blur result
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.2, 1.1);
+	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	blend_image(blur_vbuf, 0.95);
+	force_image_blend(blur_vbuf, BLEND_ADD);
+	order_image(blur_vbuf, max_current_image_order() + 1);
 
--- take the mixshader- version and pass it through the gaussian blur
---	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.4, 1.4);
---	define_rendertarget(blur_hbuf, {parent}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
---	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	
--- additive blend, untop of the normal (non- multiframe) output
---	blend_image(blur_vbuf, 0.95);
---	force_image_blend(blur_vbuf, BLEND_ADD);
---	order_image(blur_vbuf, max_current_image_order() + 1);
+-- one last FBO for output to CRT etc.
+	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	define_rendertarget(comp_outbuf, {blur_vbuf, normal}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(comp_outbuf);
+
+	return comp_outbuf;
 end
 
 local function grab_shaderconf(basename)
@@ -187,9 +193,9 @@ function target_update(source, status)
 	if (status.kind == "resized") then
 		local props = image_storage_properties(source);
 --		outp = vector_lightmode(source, props.width, props.height, props.width * 0.2, props.height * 0.2);
-		outp = vector_heavymode(source, {0.8, 0.8, 0.8}, -10, props.width, props.height, props.width, props.height)
-		--resize_image(outp, VRESW, VRESH);
---		crt_toggle(outp);
+		outp = vector_heavymode(source, {0.6, 0.5, 0.4, 0.2}, -3, props.width, props.height, props.width * 0.6, props.height * 0.6)
+		resize_image(outp, VRESW, VRESH);
+		crt_toggle(outp);
 	end
 end
 
