@@ -317,7 +317,7 @@ file_handle frameserver_readhandle(arcan_event* inev)
 		while (a == 0);
 	}
 	
-/* to ease debugging, allow the frameserver to be launched without a parent of we 
+/* to ease debugging, allow the frameserver to be launched without a parent we 
  * pass debug: to modestr, so setup shmpage, fork a lightweight parent, ..*/
 #ifdef _DEBUG
 	char* modeprefix = NULL;
@@ -348,7 +348,7 @@ file_handle frameserver_readhandle(arcan_event* inev)
 		arcan_frameserver_libretro_run(resource, keyfile);
 	
 	else if (strcmp(fsrvmode, "streamserve") == 0)
-		mode_streamserv(resource, keyfile);
+		arcan_frameserver_ffmpeg_encode(resource, keyfile);
 	
 	else;
 

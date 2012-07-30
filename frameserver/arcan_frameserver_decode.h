@@ -1,3 +1,18 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <sys/types.h>
+
+#include "../arcan_math.h"
+#include "../arcan_general.h"
+#include "../arcan_event.h"
+
+#include "arcan_frameserver.h"
+#include "../arcan_frameserver_shmpage.h"
+#include "arcan_frameserver_encode.h"
+
 /* libFFMPEG */
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>

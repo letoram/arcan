@@ -39,6 +39,7 @@
 
 #include <SDL.h>
 #include <SDL_image.h>
+
 #include <SDL_opengl.h>
 #include <SDL_byteorder.h>
 
@@ -53,11 +54,6 @@
 #include "arcan_target_launcher.h"
 #include "arcan_shdrmgmt.h"
 #include "arcan_videoint.h"
-
-
-#ifndef RENDERTARGET_LIMIT
-#define RENDERTARGET_LIMIT 4
-#endif
 
 
 long long ARCAN_VIDEO_WORLDID = -1;
@@ -92,13 +88,22 @@ enum rendertarget_mode {
 };
 
 struct rendertarget {
-	GLuint fbo, depth; /* depth and stencil are combined as stencil_index formats have poor driver support */
+/* depth and stencil are combined as stencil_index formats have poor driver support */
+	GLuint fbo, depth; 
+
+/* think of base as identity matrix, sometimes with added scale */
 	GLfloat base[16];  
 	GLfloat projection[16];
 	
-	bool readback, reset;  
+/* readback == 0, no readback. Otherwise, a readback is requested every abs(readback) frames
+ * if readback is negative, or readback ticks if it is positive */
+	int readback, readcnt; 
+	void* rbbuffer;
+	size_t rbbuffer_sz;
+
 	enum rendertarget_mode mode;
-	
+
+/* color representes the attached vid, first is the pipeline (subset of context vid pool) */
 	arcan_vobject* color;
 	arcan_vobject_litem* first;
 };
@@ -779,6 +784,7 @@ static void arcan_video_gldefault()
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
+	glGenBuffers(RENDERTARGET_LIMIT+1, arcan_video_display.pbos);
 }
 
 
@@ -1045,6 +1051,9 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 		if (target->frameset){
+			for (int i = 0; i < capacity; i++)
+				target->frameset[i]->refcount--;
+			
 			free(target->frameset);
 			target->frameset = NULL;
 		}
@@ -1192,7 +1201,6 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 	return rv;
 }
 
-
 static bool alloc_fbo(struct rendertarget* dst)
 {
 	glGenFramebuffers(1, &dst->fbo);
@@ -1257,6 +1265,14 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 			}
 			
 			alloc_fbo(dst);
+			
+			if (readback != 0){
+				dst->readback     = readback;
+				dst->readcnt      = abs(readback);
+				dst->rbbuffer     = dst->color->default_frame.raw;
+				dst->rbbuffer_sz  = dst->color->default_frame.s_raw;
+			}
+			
 			rv = ARCAN_OK;
 		}
 		else 
@@ -2672,7 +2688,8 @@ void poll_list(arcan_vobject_litem* current)
 			celem->feed.state);
 			
 /* special "hack" for situations where the ffunc can do the gl-calls without an additional
- *  memtransfer (some video/targets, particularly in no POW2 Textures) */
+ * memtransfer (some video/targets, particularly in no POW2 Textures), this interface should
+ * really be changed to use glBufferData + GL_STREAM_COPY or GL_DYNAMIC_COPY */
 			if (funcres == FFUNC_RV_COPIED){
 				glBindTexture(GL_TEXTURE_2D, cframe->gl_storage.glid);
 				glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, cframe->default_frame.raw);
@@ -2856,6 +2873,91 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 	}
 }
 
+bool arcan_video_screenshot(void** dptr, size_t* dsize){
+	assert(*dptr);
+	assert(dsize);
+
+	*dsize = sizeof(char) * arcan_video_display.width * arcan_video_display.height * 4;
+
+	uint32_t* tmpb = malloc( *dsize ); 
+	*dptr = malloc( *dsize );
+	
+	if (!(*dptr)){
+		*dsize = 0;
+		free(tmpb);
+		
+		return false;
+	}
+	
+	glReadBuffer(GL_FRONT);
+	glReadPixels(0, 0, arcan_video_display.width, arcan_video_display.height, GL_RGBA, GL_UNSIGNED_BYTE, tmpb);
+	imagecopy(*dptr, tmpb, arcan_video_display.width, arcan_video_display.width, arcan_video_display.height, true);
+	free(tmpb);
+	return true;
+}
+
+static void process_readback(struct rendertarget* tgt, int ind, bool tick)
+{
+	bool req_rb = false;
+/* check if there's data ready to be copied */
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
+	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+	if (src){
+		memcpy(tgt->rbbuffer, src, tgt->rbbuffer_sz);
+		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+	}
+	
+/* check timers */
+	if (tick){
+
+		if (ind > 0){
+			tgt->readcnt--;
+			
+			if (tgt->readcnt == 0){
+				req_rb = true;
+				tgt->readcnt = ind;
+			}
+			
+		}
+		else 
+			goto cleanup; /* do nothing on tick */
+			
+	} else {
+		if (ind < 0){
+			tgt->readcnt--;
+
+			if (tgt->readcnt == 0){
+				req_rb = true;
+				tgt->readcnt = abs(tgt->readback);
+			}
+			
+		}
+		else 
+			goto cleanup; /* do nothing on frame */
+	}
+
+/* check if we should request new data */
+	if (req_rb){
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
+		
+		if (tgt->color){
+			assert(tgt->rbbuffer_sz >= (tgt->color->gl_storage.w * tgt->color->gl_storage.h * tgt->color->gl_storage.ncpt));
+		
+			glReadBuffer(GL_COLOR_ATTACHMENT0);
+			glReadPixels(0, 0, tgt->color->gl_storage.w, tgt->color->gl_storage.h, GL_RGBA, GL_UNSIGNED_BYTE, tgt->rbbuffer);
+		} else { /* stdoutp */
+			assert(tgt->rbbuffer_sz >= (arcan_video_display.width * arcan_video_display.height * arcan_video_display.bpp));
+			
+			glReadBuffer(GL_FRONT);
+			glReadPixels(0, 0, arcan_video_display.width, arcan_video_display.height, GL_RGBA, GL_UNSIGNED_BYTE, tgt->rbbuffer);
+		}
+		
+	}
+	
+cleanup:
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+}
+
 /* assumes working orthographic projection matrix based on current resolution,
  * redraw the entire scene and linearly interpolate transformations */
 static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
@@ -2889,6 +2991,8 @@ void arcan_video_refresh_GL(float lerp)
 			GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 			if (status == GL_FRAMEBUFFER_COMPLETE){
 				process_rendertarget(tgt, lerp);
+				if (tgt->readback != 0)
+					process_readback(tgt, ind, false);
 			}
 			else {
 				nofbo = true;
@@ -2902,7 +3006,10 @@ void arcan_video_refresh_GL(float lerp)
 
 	process_rendertarget(&current_context->stdoutp, lerp);
 	
-/* now all PBOs should be finished, push them to their respective buffers */
+/* this facility isn't designed for screenshots (that'd be just a stalling glReadPixels from the framebuffer without any fuss),
+ * so this feature is for movie recording and streaming game */
+	if (current_context->stdoutp.readback != 0) 
+		process_readback(&current_context->stdoutp, RENDERTARGET_LIMIT, false);
 }
 
 void arcan_video_refresh(float tofs)
@@ -3152,7 +3259,8 @@ bool arcan_video_prepare_external()
 	if (arcan_video_display.fullscreen)
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 
-	/* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
+	glDeleteBuffers(RENDERTARGET_LIMIT+1, arcan_video_display.pbos);
+/* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
 	arcan_event_deinit(arcan_event_defaultctx());
 	arcan_shader_unload_all();
 
@@ -3215,6 +3323,7 @@ void arcan_video_shutdown()
 	while ( lastctxc != (lastctxa = arcan_video_popcontext()) )
 		lastctxc = lastctxa;
 
+	glDeleteBuffers(RENDERTARGET_LIMIT + 1, arcan_video_display.pbos);
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 

@@ -222,7 +222,10 @@ unsigned short arcan_video_getzv(arcan_vobj_id id);
  * and fires a corresponding event */
 arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
 
-/* removes an object immediately, regardless of masks, life-cycles left etc. */
+/* removes an object immediately, regardless of masks, life-cycles left etc. 
+ * readback == 0, no readback will be performed
+ * readback <  0, readback will occur every abs(readback) frames 
+ * readback >  0, readback will occur every tick frames */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool scale);
 
@@ -280,6 +283,11 @@ arcan_vobj_id arcan_video_renderstring(const char* message, /* string to render 
                                        unsigned int** lineheights); /* [out]-> height of each line, needs to be freed */
 
 void arcan_video_dumppipe();
+
+/* allocate buffer, readback current front buffer and return buffer ptr in *dptr with buffer size in dsize.
+ * true on success
+ * false on failed malloc */
+bool arcan_video_screenshot(void** dptr, size_t* dsize);
 
 /* determine if 3D is going to be processed first (2D mode used as 'HUD' and supplementary imagery') or
  * 'last' (adding partial 3D models to an otherwise 2D scene */

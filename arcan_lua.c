@@ -47,6 +47,7 @@
 #include <SDL_ttf.h>
 #include <assert.h>
 
+#include "lodepng/lodepng.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -2965,6 +2966,34 @@ int arcan_lua_utf8kind(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_screenshot(lua_State* ctx)
+{
+	const char* const resstr = luaL_checkstring(ctx, 1);
+	void* databuf;
+	size_t bufs;
+	
+	if (arcan_video_screenshot(&databuf, &bufs)){
+/* FIXME(sandboxing) */
+		char* fname = arcan_find_resource(resstr, ARCAN_RESOURCE_THEME);
+		if (!fname){
+			fname = arcan_expand_resource(resstr, false);
+			
+			if (lodepng_encode32_file(fname, databuf, arcan_video_screenw(), arcan_video_screenh()))
+				arcan_warning("arcan_lua_screenshot() -- write failed, empty or truncated screenshot.\n");
+			
+		}
+		else{
+			arcan_warning("arcan_lua_screenshot() -- refusing to overwrite existing (%s)\n", fname);
+		}
+		free(fname);
+		free(databuf);
+	}
+	else
+		arcan_warning("arcan_lua_screenshot() -- request failed, couldn't allocate memory.\n");
+	
+	return 0;
+}
+
 void arcan_lua_cleanup()
 {
 }
@@ -3041,6 +3070,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
  * read a line from the currently open rawresource
  */
 	arcan_lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
+
+/* item: save_screenshot, string, nil */
+	arcan_lua_register(ctx, "save_screenshot", arcan_lua_screenshot);
 	
 /* category: target */
 /* item: launch_target, gametitle or ID, launchmode, tgtvid or elapsed 

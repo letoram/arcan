@@ -634,9 +634,22 @@ local function add_gamelbls( lbltbl, ptrtbl )
 	return true;
 end	
 
+function screenshot()
+	local tbl = current_game();
+	local lblbase = "screenshots/" .. tbl.target .. "_" .. tbl.setname;
+	local ofs = 1;
+
+	while resource(lblbase .. "_" .. tostring(ofs) .. ".png") do
+		ofs = ofs + 1;
+	end
+
+	save_screenshot(lblbase .. "_" .. tostring(ofs) .. ".png");
+end
+
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
 -- replace it with the one used for these menus (check iodispatch for MENU_ESCAPE for the handover)
+	
 	if (not (contextlbls or settingslbls)) then return; end
 
 	local menulbls = {};
@@ -710,18 +723,19 @@ if (#menulbls > 0 and settingslbls) then
 	end
 
 	if (settingslbls) then
-		table.insert(menulbls, "Shaders...");
+		table.insert(menulbls, "Custom Shaders...");
 		table.insert(menulbls, "Scaling...");
 		table.insert(menulbls, "Input...");
 		table.insert(menulbls, "Audio Gain...");
 		table.insert(menulbls, "Cocktail Modes...");
+		table.insert(menulbls, "Screenshot");
 	end
 	
 	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = ptrs;
 	current_menu.parent = nil;
 
-	current_menu.ptrs["Shaders..."] = function() 
+	current_menu.ptrs["Custom Shaders..."] = function() 
 	local def = {};
 		def[ settings.fullscreenshader ] = "\\#00ffff";
 		if (get_key("defaultshader")) then
@@ -765,6 +779,28 @@ if (#menulbls > 0 and settingslbls) then
 		end
 		
 		menu_spawnmenu( audiogainlist, audiogainptrs, def );
+	end
+	
+-- trickier than expected, as we don't want the game to progress and we don't want any UI elements involved */
+	current_menu.ptrs["Screenshot"] = function()
+		local tbl = current_game();
+		
+		settings.iodispatch["MENU_ESCAPE"]();
+		local tmpclock = gridle_clock_pulse;
+		local tmpclock_c = 22; -- listview has a fixed 20tick expire
+		suspend_target( target_vid );
+
+-- replace the current timing function with one that only ticks down and then takes a screenshot
+		gridle_clock_pulse = function()
+-- generate a filename that's not in use 
+			if (tmpclock_c > 0) then 
+				tmpclock_c = tmpclock_c - 1; 
+			else
+				screenshot();
+				resume_target(target_vid);
+				gridle_clock_pulse = tmpclock;
+			end
+		end
 	end
 	
 	current_menu.ptrs["Cocktail Modes..."] = function()

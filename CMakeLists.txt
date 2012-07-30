@@ -121,7 +121,6 @@ include_directories (
 # # LIST(APPEND include_directories ${MPG123_INCLUDE_DIR} )
 # add_definitions(-D_HAVE_MPG123)
 # endif(MPG123_FOUND)
-
 # --- Step 2, source files
 set (
  SOURCES
@@ -155,12 +154,20 @@ set (
  arcan_shdrmgmt.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
+ lodepng/lodepng.h
+ lodepng/lodepng.c
 ) 
+
+# plan is to have a separate image server part of the frameserver that
+# deals with maintaining caching, protection against source-changes during
+# execution, dump SDL_image and just have lodepng + jpglib embedded
 
 set (
  FSRV_SOURCES
  frameserver/arcan_frameserver_decode.h
  frameserver/arcan_frameserver_decode.c
+ frameserver/arcan_frameserver_encode.h
+ frameserver/arcan_frameserver_encode.c
  frameserver/arcan_frameserver_libretro.h
  frameserver/arcan_frameserver_libretro.c
  arcan_frameserver_shmpage.h
