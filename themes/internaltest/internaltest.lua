@@ -18,7 +18,7 @@ function internaltest()
 	targets = list_targets();
 	valid_tgts = {};
 
-	if (arguments[1] ~= nil and arguments[1] == nil) then
+	if (arguments[1] ~= nil and arguments[2] == nil) then
 		targets = { arguments[1] };
 	end
 

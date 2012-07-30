@@ -22,6 +22,10 @@
 #ifndef _HAVE_ARCAN_VIDEOINT
 #define _HAVE_ARCAN_VIDEOINT
 
+#ifndef RENDERTARGET_LIMIT
+#define RENDERTARGET_LIMIT 6 
+#endif
+
 struct arcan_vobject_item;
 
 struct transf_move{
@@ -143,7 +147,8 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, text_support, fullscreen, conservative, late3d, vsync;
-
+	unsigned int pbos[RENDERTARGET_LIMIT+1]; /* be prepared to store stdoutp as well */
+	
 	unsigned default_vitemlim;
 	arcan_shader_id defaultshdr;
 	
