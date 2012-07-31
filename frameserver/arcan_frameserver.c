@@ -42,6 +42,7 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_libretro.h"
 #include "arcan_frameserver_decode.h"
+#include "arcan_frameserver_encode.h"
 
 FILE* logdev = NULL;
 int sockin_fd = -1;
@@ -297,7 +298,7 @@ file_handle frameserver_readhandle(arcan_event* inev)
 #ifdef _DEBUG
 		printf("arcan_frameserver(debug) resource keyfile fsrvmode\n");
 #else
-		printf(stdout, "arcan_frameserver - Invalid arguments (shouldn't be launched from the commandline).\n");
+		printf("arcan_frameserver - Invalid arguments (shouldn't be launched from the commandline).\n");
 #endif
 
 		return 1;
@@ -341,13 +342,15 @@ file_handle frameserver_readhandle(arcan_event* inev)
 	close(1);
 	close(2);
 */
+	LOG("mode: %s", fsrvmode);
+	
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	
 	else if (strcmp(fsrvmode, "libretro") == 0)
 		arcan_frameserver_libretro_run(resource, keyfile);
 	
-	else if (strcmp(fsrvmode, "streamserve") == 0)
+	else if (strcmp(fsrvmode, "record") == 0)
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);
 	
 	else;

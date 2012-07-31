@@ -934,9 +934,20 @@ int arcan_lua_playmovie(lua_State* ctx)
 
 int arcan_lua_loadmovie(lua_State* ctx)
 {
+	int loop = luaL_optint(ctx, 2, FRAMESERVER_NOLOOP);
+	if (loop != FRAMESERVER_LOOP && loop != FRAMESERVER_NOLOOP){
+		arcan_warning("arcan_lua_loadmovie() invalid second argument (%d) specified, should be FRAMESERVER_NOLOOP or FRAMESERVER_LOOP\n", loop);
+		return 0;
+	}
+	
 	char* fname = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	intptr_t ref = (intptr_t) 0;
 
+	if (!fname){
+		arcan_warning("arcan_lua_loadmovie() -- unknown resource (%s) specified.\n", fname);
+		return 0;
+	}
+	
 /*  in order to stay backward compatible API wise, the load_movie with function callback
  *  will always need to specify loop condition. */
 	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
@@ -945,7 +956,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	}
 	
 	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-	mvctx->loop = luaL_optint(ctx, 2, FRAMESERVER_NOLOOP) == FRAMESERVER_LOOP;
+	mvctx->loop = loop == FRAMESERVER_LOOP; 
 	
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -2691,31 +2702,35 @@ int arcan_lua_renderset(lua_State* ctx)
 int arcan_lua_recordset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
-	int nvids         = lua_rawlen(ctx, 2);
-	int naids         = lua_rawlen(ctx, 3);
-	int detach        = luaL_checkint(ctx, 4);
-	int scale         = luaL_checkint(ctx, 5);
-	int pollrate      = luaL_checkint(ctx, 6);
+	const char*   res = luaL_checkstring(ctx, 2);
+	int nvids         = lua_rawlen(ctx, 3);
+	int naids         = lua_rawlen(ctx, 4);
+	int detach        = luaL_checkint(ctx, 5);
+	int scale         = luaL_checkint(ctx, 6);
+	int pollrate      = luaL_checkint(ctx, 7);
 
 	intptr_t ref = (intptr_t) 0;
 
-	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH)
+	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 3, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		return 0;
+	}
 	
-	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE)
+	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 4, expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
 		return 0;
-
-	if (pollrate == 0)
+	}
+	
+	if (pollrate == 0){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 5, expected n < 0 (every n frame) or n > 0 (every n tick)\n");
 		return 0;
+	}
 	
 	if (nvids > 0){
 		arcan_video_setuprendertarget(did, pollrate, scale == RENDERTARGET_SCALE);
 
 		for (int i = 0; i < nvids; i++){
-			lua_rawgeti(ctx, 2, i+1);
+			lua_rawgeti(ctx, 3, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
 			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
 		}
@@ -2733,8 +2748,8 @@ int arcan_lua_recordset(lua_State* ctx)
 	
 /*  in order to stay backward compatible API wise, the load_movie with function callback
  *  will always need to specify loop condition. */
-	if (lua_isfunction(ctx, 7) && !lua_iscfunction(ctx, 7)){
-		lua_pushvalue(ctx, 7);
+	if (lua_isfunction(ctx, 8) && !lua_iscfunction(ctx, 8)){
+		lua_pushvalue(ctx, 8);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	
@@ -2746,15 +2761,20 @@ int arcan_lua_recordset(lua_State* ctx)
 		.use_builtin = true,
 		.custom_feed = true,
 		.args.builtin.mode = "record",
-		.args.builtin.resource = "",
+		.args.builtin.resource = res
 	};
 
-/* FIXME: setup feed function that does the reverse frameserving thing, e.g. when PBO has populated raw,
- * copy s_raw + flush audio buffer into shmpage, and inject event */
+	vfunc_state fftag = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = mvctx};
 	
+	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
 	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
-/* TODO: need to calculate the offsets for the shmpage here */
-	} else 
+		arcan_vobject* dobj = arcan_video_getobject(did);
+		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
+		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
+	} 
+	else 
 		free(mvctx);
 
 	return 0;
@@ -3438,9 +3458,12 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 /* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
 	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 
-/* item:define_rendertarget( width, height, kind, updatemode, vidlist ); */
+/* item:define_rendertarget( width, height, kind, updatemode, vidlist, nil */
 	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
-	
+
+/* item:define_recordtarget(did, resstr, vidtbl, aidtbl, detacharg, scalearg, pollrate, cbfun) */
+	arcan_lua_register(ctx, "define_recordtarget", arcan_lua_recordset);
+
 /* item:image_borderscan( vid ) => upperleft, lowerright */
 	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);
 	

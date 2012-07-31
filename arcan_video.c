@@ -561,7 +561,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	assert(src != NULL);
 	
 /* already detached or empty target */
-	if (!dst || !src->owner)
+	if (!dst || !dst->first || !src->owner)
 		return false;
 	
 /* orphan */
@@ -1246,7 +1246,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 
 /* hard-coded number of render-targets allowed */ 
 		if (current_context->n_rtargets < RENDERTARGET_LIMIT){
-			struct rendertarget* dst = &current_context->rtargets[ current_context->n_rtargets++ ];
+			int ind = current_context->n_rtargets++;
+			struct rendertarget* dst = &current_context->rtargets[ ind ];
 			dst->mode = RENDERTARGET_COLOR_DEPTH_STENCIL;
 			dst->readback = readback;
 			dst->color = vobj;
@@ -1269,8 +1270,12 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 			if (readback != 0){
 				dst->readback     = readback;
 				dst->readcnt      = abs(readback);
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
+				glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt, NULL, GL_STREAM_READ);
+/* these might not always be used */
 				dst->rbbuffer     = dst->color->default_frame.raw;
 				dst->rbbuffer_sz  = dst->color->default_frame.s_raw;
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 			}
 			
 			rv = ARCAN_OK;

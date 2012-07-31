@@ -248,7 +248,7 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, sem_handle ese
 	outq->n_eventbuf = sizeof(dst->parentdevq.evqueue) / sizeof(arcan_event);
 }
 
-void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr)
+void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, unsigned height, unsigned bpp)
 {
 /* we want these 16-bit aligned so we'd possibly get something SSE optimized etc. */
 	uint8_t* base = (uint8_t*) shmp;
@@ -258,7 +258,7 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dst
 	if ( (uintptr_t)vidaddr % 16 != 0)
 		vidaddr += 16 - ( (uintptr_t)vidaddr % 16);
 	
-	audaddr = vidaddr + abs(shmp->w * shmp->h * shmp->bpp); 
+	audaddr = vidaddr + abs(width * height * bpp);
 	if ( (uintptr_t) audaddr % 16 != 0)
 		audaddr += 16 - ( (uintptr_t) audaddr % 16);
 	
@@ -269,6 +269,11 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dst
 		*dstvidptr = (uint8_t*) vidaddr;
 		*dstaudptr = (uint8_t*) audaddr;
 	}
+}
+
+void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr)
+{
+	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, shmp->w, shmp->h, shmp->bpp);
 }
 
 bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq)
