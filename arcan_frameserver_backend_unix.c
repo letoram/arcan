@@ -311,7 +311,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
 		
 		if (setup.use_builtin){
-			char* argv[5] = { arcan_binpath, setup.args.builtin.resource, ctx->shm.key, setup.args.builtin.mode, NULL };
+			char* argv[5] = { arcan_binpath, strdup(setup.args.builtin.resource), ctx->shm.key, strdup(setup.args.builtin.mode), NULL };
 
 /* just to help keeping track when there's a lot of them */
 			char vla[ strlen(setup.args.builtin.mode) + 1];

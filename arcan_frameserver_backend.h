@@ -131,8 +131,8 @@ struct frameserver_envp {
 	union {
 
 		struct {
-			char* resource;
-			char* mode; /* movie, libretro */
+			const char* const resource;
+			const char* const mode; /* movie, libretro */
 		} builtin;
 
 		struct {

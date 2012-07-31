@@ -85,7 +85,7 @@ end
 
 -- additive blend with blur
 function vector_lightmode(source, targetw, targeth, blurw, blurh)
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.2, 1.1);
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.4, 1.0);
 	show_image(source);
 
 	local node = instance_image(source);
@@ -133,10 +133,10 @@ function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh)
 	show_image(rendertgt);
 
 -- this part is the same as lightmode, use the normal instance as background, then blend the blur result
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.6, 1.2);
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.6, 1.0);
 	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	blend_image(blur_vbuf, 0.95);
+	blend_image(blur_vbuf, 0.97);
 	force_image_blend(blur_vbuf, BLEND_ADD);
 	order_image(blur_vbuf, max_current_image_order() + 1);
 
@@ -179,9 +179,9 @@ function crt_toggle(source)
 	image_shader(source, crtshader);
 	resize_image(source, VRESW, VRESH);
 	
-	backdrop = load_image("astdelux.png");
-	resize_image(backdrop, VRESW, VRESH);
-	blend_image(backdrop, 0.3);
+--	backdrop = load_image("astdelux.png");
+--	resize_image(backdrop, VRESW, VRESH);
+--	blend_image(backdrop, 0.3);
 
 	hide_image( source );
 	order_image(source, 1);
@@ -193,9 +193,9 @@ function target_update(source, status)
 	if (status.kind == "resized") then
 		local props = image_storage_properties(source);
 --		outp = vector_lightmode(source, props.width, props.height, props.width * 0.2, props.height * 0.2);
-		outp = vector_heavymode(source, {0.8, 0.7, 0.4, 0.2}, -2, props.width, props.height, props.width * 0.8, props.height * 0.8)
+		outp = vector_heavymode(source, {0.5, 0.4, 0.2}, -1, props.width, props.height, props.width * 0.7, props.height * 0.7)
 		resize_image(outp, VRESW, VRESH);
-		crt_toggle(outp);
+	--	crt_toggle(outp);
 	end
 end
 

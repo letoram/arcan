@@ -84,6 +84,7 @@ bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 
 /* calculate video/audio buffers from shmpage as baseaddr */
 void frameserver_shmpage_calcofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr);
+void frameserver_shmpage_forceofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, unsigned height, unsigned bpp);
 
 /* this code is repeated a little too often so sortof fits here but adds a dependency to arcan_event */
 void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_evctx*, arcan_evctx*, bool);

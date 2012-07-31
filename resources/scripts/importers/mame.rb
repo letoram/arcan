@@ -67,6 +67,10 @@ class Mame
 		@mameargs[0] << "-comment_directory"
 		@mameargs[0] << "[themepath]/_mame/comment"
 		@mameargs[0] << "-skip_gameinfo"
+		@mameargs[0] << "-flicker"
+		@mameargs[0] << "1.2"
+		@mameargs[0] << "-beam"
+		@mameargs[0] << "2.0"
 
 # internal launch arguments, we want the data as "pure" as and "cheap" possible
 		@mameargs[1] << "-window"

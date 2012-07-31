@@ -269,6 +269,11 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
  */
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) ){
+
+/* sign that the pointers havn't been properly initialized */
+			if (src->vidp == src->audp)
+				frameserver_shmpage_forceofs(src->shm.ptr, &(src->vidp), &(src->audp), width, height, bpp);
+			
 			memcpy(src->vidp, buf, s_buf);
 			/* TODO: flush audio hook buffer */
 			arcan_sem_post(src->vsync);
