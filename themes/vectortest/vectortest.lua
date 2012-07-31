@@ -133,7 +133,7 @@ function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh)
 	show_image(rendertgt);
 
 -- this part is the same as lightmode, use the normal instance as background, then blend the blur result
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.2, 1.1);
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.6, 1.2);
 	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	blend_image(blur_vbuf, 0.95);
@@ -193,7 +193,7 @@ function target_update(source, status)
 	if (status.kind == "resized") then
 		local props = image_storage_properties(source);
 --		outp = vector_lightmode(source, props.width, props.height, props.width * 0.2, props.height * 0.2);
-		outp = vector_heavymode(source, {0.6, 0.5, 0.4, 0.2}, -3, props.width, props.height, props.width * 0.6, props.height * 0.6)
+		outp = vector_heavymode(source, {0.8, 0.7, 0.4, 0.2}, -2, props.width, props.height, props.width * 0.8, props.height * 0.8)
 		resize_image(outp, VRESW, VRESH);
 		crt_toggle(outp);
 	end

@@ -276,7 +276,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->source = strdup(setup.args.builtin.resource);
 		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 		ctx->aid = ARCAN_EID;
-	} else { 
+	} else if (setp.
 		vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
 		arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 	}

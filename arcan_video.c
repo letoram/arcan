@@ -2902,8 +2902,17 @@ static void process_readback(struct rendertarget* tgt, int ind, bool tick)
 /* check if there's data ready to be copied */
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
 	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-	if (src){
-		memcpy(tgt->rbbuffer, src, tgt->rbbuffer_sz);
+	if (src){ 
+		arcan_vobject* vobj = tgt->color;
+/* streaming to frameserver */
+		if (vobj && vobj->feed.ffunc)
+			vobj->feed.ffunc(ffunc_rendertarget_readback, src, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt,
+			vobj->gl_storage.w, vobj->gl_storage.h, vobj->gl_storage.ncpt, 
+			0, vobj->feed.state);
+		else 
+/* shadow mapping etc. might take this approach */
+			memcpy(tgt->rbbuffer, src, tgt->rbbuffer_sz);
+
 		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
 	}
 	
