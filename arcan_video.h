@@ -76,7 +76,8 @@ enum arcan_ffunc_cmd {
 	ffunc_poll = 0,
 	ffunc_render = 1,
 	ffunc_tick = 2,
-	ffunc_destroy = 3
+	ffunc_destroy = 3,
+	ffunc_rendertarget_readback = 4
 };
 
 enum arcan_ffunc_rv {

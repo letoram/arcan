@@ -107,6 +107,44 @@ void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 	}
 }
 
+bool arcan_frameserver_control_chld(arcan_frameserver* src){
+/* bunch of terminating conditions -- frameserver messes with the structure to provoke a vulnerability,
+ * frameserver dying or timing out, ... */
+	if (frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
+		src->child && -1 == check_child(src) && errno == EINVAL)
+	{
+		arcan_event sevent = {.category = EVENT_FRAMESERVER,
+		.kind = EVENT_FRAMESERVER_TERMINATED,
+		.data.frameserver.video = src->vid,
+		.data.frameserver.glsource = false,
+		.data.frameserver.audio = src->aid,
+		.data.frameserver.otag = src->tag
+		};
+
+		if (src->loop){
+//			arcan_audio_pause(src->aid);
+			arcan_frameserver_free(src, true);
+			src->autoplay = true;
+			sevent.kind = EVENT_FRAMESERVER_LOOPED;
+
+			struct frameserver_envp args = {
+				.use_builtin = true,
+				.args.builtin.resource = src->source,
+				.args.builtin.mode = "movie"
+			};
+			
+			arcan_frameserver_spawn_server(src, args);
+		}
+		else
+			arcan_frameserver_free(src, false);
+
+		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
+		return false;
+	}
+	
+	return true;
+}
+
 arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -211,6 +249,45 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	return rv;
 }
 
+int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state)
+{
+	assert(state.ptr);
+	assert(state.tag == ARCAN_TAG_FRAMESERV);
+	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
+	
+	if (cmd == ffunc_destroy){
+		;
+	}
+	if (cmd == ffunc_tick)
+/* done differently since we don't care if the frameserver wants to resize, that's its problem. */
+		arcan_frameserver_control_chld(src);
+
+/* if the frameserver isn't ready to receive (semaphore unlocked) then the frame will be dropped,
+ * a warning noting that the frameserver isn't fast enough to deal with the data (allowed to duplicate
+ * frame to maintain framerate, it can catch up reasonably by using less CPU intensive frame format.
+ * Audio will keep on buffering until overflow, 
+ */
+	else if (cmd == ffunc_rendertarget_readback){
+		if ( arcan_sem_timedwait(src->vsync, 0) ){
+			memcpy(src->vidp, buf, s_buf);
+			/* TODO: flush audio hook buffer */
+			arcan_sem_post(src->vsync);
+	
+			arcan_event ev  = {
+				.kind = TARGET_COMMAND_STEPFRAME,
+				.category = EVENT_TARGET,
+				.data.target.ioevs[0] = 0  /* TODO: need counter of frames here so the frameserver can fix timing */
+			};
+				
+			arcan_event_enqueue(&src->outqueue, &ev);
+		}
+	}
+	else;
+	
+/* not really used */
+	return 0;
+}
+
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
 {
 	enum arcan_ffunc_rv rv = FFUNC_RV_NOFRAME;
@@ -230,7 +307,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		if (src->nopts && src->vfq.front_cell != NULL)
 			return FFUNC_RV_GOTFRAME;
 		
-	#ifdef _DDEBUG                
+	#ifdef _DDEBUG
 		arcan_event ev = {.kind = EVENT_FRAMESERVER_BUFFERSTATUS,
 			.category = EVENT_FRAMESERVER,
 			.data.frameserver.c_vbuffer = src->vfq.c_cells,
@@ -344,12 +421,13 @@ static arcan_errc again_feed(float gain, void* tag)
 	return ARCAN_OK;
 }
 
+
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 /* may happen multiple- times */
-	if (shmpage && shmpage->resized && frameserver_shmpage_integrity_check(shmpage) ){
+	if ( arcan_frameserver_control_chld(src) &&	shmpage && shmpage->resized ){
 		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -441,35 +519,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		shmpage->resized = false;
 	}
 
-	assert(src->child != 0);
-	if (src->child && -1 == check_child(src) && errno == EINVAL){
-		arcan_event sevent = {.category = EVENT_FRAMESERVER,
-		.kind = EVENT_FRAMESERVER_TERMINATED,
-		.data.frameserver.video = src->vid,
-		.data.frameserver.glsource = false,
-		.data.frameserver.audio = src->aid,
-		.data.frameserver.otag = src->tag
-		};
-
-		if (src->loop){
-//			arcan_audio_pause(src->aid);
-			arcan_frameserver_free(src, true);
-			src->autoplay = true;
-			sevent.kind = EVENT_FRAMESERVER_LOOPED;
-
-			struct frameserver_envp args = {
-				.use_builtin = true,
-				.args.builtin.resource = src->source,
-				.args.builtin.mode = "movie"
-			};
-		
-			arcan_frameserver_spawn_server(src, args);
-		}
-		else
-			arcan_frameserver_free(src, false);
-
-		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
-	}
 }
 
 arcan_errc arcan_frameserver_playback(arcan_frameserver* src)

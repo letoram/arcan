@@ -50,6 +50,8 @@ enum arcan_frameserver_kinds {
 	ARCAN_HIJACKLIB
 };
 
+/* FIXME: the interfaces to all the frameserver callbacks should really
+ * be harmonized to pass this struct rather than the current win32ish arghell */
 typedef struct {
 	/* video */
 	uint16_t width;
@@ -124,6 +126,7 @@ struct arcan_frameserver {
 
 struct frameserver_envp {
 	bool use_builtin;
+	bool custom_feed;
 	
 	union {
 
@@ -182,6 +185,9 @@ void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* ace
 ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr);
 ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
+
+/* used for streaming data to the frameserver, audio / video interleaved in one synch */
+int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
 
 /* return a callback function for retrieving appropriate video-feeds */
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);

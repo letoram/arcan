@@ -2688,6 +2688,78 @@ int arcan_lua_renderset(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_recordset(lua_State* ctx)
+{
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	int nvids         = lua_rawlen(ctx, 2);
+	int naids         = lua_rawlen(ctx, 3);
+	int detach        = luaL_checkint(ctx, 4);
+	int scale         = luaL_checkint(ctx, 5);
+	int pollrate      = luaL_checkint(ctx, 6);
+
+	intptr_t ref = (intptr_t) 0;
+
+	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH)
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 3, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
+		return 0;
+	
+	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE)
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 4, expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
+		return 0;
+
+	if (pollrate == 0)
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 5, expected n < 0 (every n frame) or n > 0 (every n tick)\n");
+		return 0;
+	
+	if (nvids > 0){
+		arcan_video_setuprendertarget(did, pollrate, scale == RENDERTARGET_SCALE);
+
+		for (int i = 0; i < nvids; i++){
+			lua_rawgeti(ctx, 2, i+1);
+			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
+			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
+		}
+	}
+	else{
+		/* FIXME: tedious cleanup goes here */
+		arcan_warning("arcan_lua_recordset(%d, %d) - refusing to define empty renderset.\n");
+		return 0;
+	}
+
+	if (naids > 0){
+/* FIXME: audio layer is missing appropriate hooks (something like audio_hook_aid(aid, samplerate, channels, callback(size_t, buf), and in the future,
+ * we need both sample-rate conversion and audio mixing :-( */
+	} 
+	
+/*  in order to stay backward compatible API wise, the load_movie with function callback
+ *  will always need to specify loop condition. */
+	if (lua_isfunction(ctx, 7) && !lua_iscfunction(ctx, 7)){
+		lua_pushvalue(ctx, 7);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
+	
+	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
+	mvctx->loop = FRAMESERVER_NOLOOP;
+	mvctx->vid  = did;
+	
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.custom_feed = true,
+		.args.builtin.mode = "record",
+		.args.builtin.resource = "",
+	};
+
+/* FIXME: setup feed function that does the reverse frameserving thing, e.g. when PBO has populated raw,
+ * copy s_raw + flush audio buffer into shmpage, and inject event */
+	
+	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
+/* TODO: need to calculate the offsets for the shmpage here */
+	} else 
+		free(mvctx);
+
+	return 0;
+}
+
 int arcan_lua_borderscan(lua_State* ctx)
 {
 	int x1, y1, x2, y2;
