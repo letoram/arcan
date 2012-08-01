@@ -357,6 +357,7 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 				multiply_matrix(dmatr, matr, base->direction.matr);
 				translate_matrix(dmatr, base->position.x, base->position.y, base->position.z);
 				process_scene_normal(cell, frag, dmatr, base->projmatr);
+
 			case virttype_dirlight   : break;
 			case virttype_pointlight : break;
 /* camera with inverted Y, add a stencil at clipping plane and (optionally) render to texture (for water) */
@@ -500,6 +501,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	dst->verts = (float*) malloc(vrtsize);
 	dst->program = -1;
 	
+/*	arcan_warning("mesh loaded, %d vertices, %d triangles, %d texture maps\n", dst->nverts, dst->ntris, uvmaps); */
 	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
 	const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
