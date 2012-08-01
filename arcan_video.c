@@ -89,17 +89,21 @@ enum rendertarget_mode {
 
 struct rendertarget {
 /* depth and stencil are combined as stencil_index formats have poor driver support */
-	GLuint fbo, depth; 
+	GLuint fbo, depth;
 
+/* only used / allocated if readback != 0 */ 
+	GLuint pbo;
+	
 /* think of base as identity matrix, sometimes with added scale */
 	GLfloat base[16];  
 	GLfloat projection[16];
 	
 /* readback == 0, no readback. Otherwise, a readback is requested every abs(readback) frames
  * if readback is negative, or readback ticks if it is positive */
-	int readback, readcnt; 
-	void* rbbuffer;
-	size_t rbbuffer_sz;
+	int readback, readcnt;
+
+/* flagged after a PBO readback has been issued, cleared when buffer have been mapped */
+	bool readreq; 
 
 	enum rendertarget_mode mode;
 
@@ -444,6 +448,27 @@ static void recurse_scan_duplicate(arcan_vobject_litem* base)
 	}
 }
 
+static struct rendertarget* find_owner(arcan_vobject* src)
+{
+/* trick to find owner rendertarget */
+	arcan_vobject_litem* cur = src->owner;
+
+/* sweep back to the first elem, which also will be the first from
+ * a rtarget or the stdout */
+	while (cur->previous != NULL) 
+		cur = cur->previous;
+
+	if (current_context->stdoutp.first == cur)
+		return &current_context->stdoutp;
+	
+/* whichever rendertarget that has this litem as first owns the object */
+	for (int oind = 0; oind < current_context->n_rtargets; oind++)
+		if (current_context->rtargets[oind].first == cur)
+			return &(current_context->rtargets[oind]);
+		
+	return NULL;
+}
+
 /* this is a quick heuristic scan to grab most undesired states for the pipe,
  * meaning invalid fwd/back references or duplicates in the pipe.
  * to use in gdb, define a macro like:
@@ -561,7 +586,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	assert(src != NULL);
 	
 /* already detached or empty target */
-	if (!dst || !dst->first || !src->owner)
+	if (!dst || !dst->first || !src->owner || dst != find_owner(src))
 		return false;
 	
 /* orphan */
@@ -784,7 +809,6 @@ static void arcan_video_gldefault()
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
-	glGenBuffers(RENDERTARGET_LIMIT+1, arcan_video_display.pbos);
 }
 
 
@@ -1146,26 +1170,6 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
  * 
  * to free, BindBuffer, UnmapBuffer, BindBuffer0, DeleteBuffers*/
 
-static struct rendertarget* find_owner(arcan_vobject* src)
-{
-/* trick to find owner rendertarget */
-	arcan_vobject_litem* cur = src->owner;
-
-/* sweep back to the first elem, which also will be the first from
- * a rtarget or the stdout */
-	while (cur->previous != NULL) 
-		cur = cur->previous;
-
-	if (current_context->stdoutp.first == cur)
-		return &current_context->stdoutp;
-	
-/* whichever rendertarget that has this litem as first owns the object */
-	for (int oind = 0; oind < current_context->n_rtargets; oind++)
-		if (current_context->rtargets[oind].first == cur)
-			return &(current_context->rtargets[oind]);
-		
-	return NULL;
-}
 
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src, bool detach)
 {
@@ -1267,14 +1271,14 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 			
 			alloc_fbo(dst);
 			
+/* allocate a readback buffer with the PBO */
 			if (readback != 0){
 				dst->readback     = readback;
 				dst->readcnt      = abs(readback);
-				glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
+				
+				glGenBuffers(1, &dst->pbo);
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
 				glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt, NULL, GL_STREAM_READ);
-/* these might not always be used */
-				dst->rbbuffer     = dst->color->default_frame.raw;
-				dst->rbbuffer_sz  = dst->color->default_frame.s_raw;
 				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 			}
 			
@@ -2895,77 +2899,57 @@ bool arcan_video_screenshot(void** dptr, size_t* dsize){
 	}
 	
 	glReadBuffer(GL_FRONT);
+
 	glReadPixels(0, 0, arcan_video_display.width, arcan_video_display.height, GL_RGBA, GL_UNSIGNED_BYTE, tmpb);
 	imagecopy(*dptr, tmpb, arcan_video_display.width, arcan_video_display.width, arcan_video_display.height, true);
 	free(tmpb);
 	return true;
 }
 
-static void process_readback(struct rendertarget* tgt, int ind, bool tick)
+static void process_readback(struct rendertarget* tgt, bool tick)
 {
+/* should we issue a new readback? */
 	bool req_rb = false;
-/* check if there's data ready to be copied */
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
-	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-	if (src){ 
-		arcan_vobject* vobj = tgt->color;
-/* streaming to frameserver */
-		if (vobj && vobj->feed.ffunc)
+
+/* check if there's data ready to be copied 
+   TODO: this doesn't accept stencil / depth readback */
+	if (tgt->readreq){
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
+		GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+
+		if (src){
+			arcan_vobject* vobj = tgt->color;
 			vobj->feed.ffunc(ffunc_rendertarget_readback, src, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt,
-			vobj->gl_storage.w, vobj->gl_storage.h, vobj->gl_storage.ncpt, 
-			0, vobj->feed.state);
-		else 
-/* shadow mapping etc. might take this approach */
-			memcpy(tgt->rbbuffer, src, tgt->rbbuffer_sz);
+				vobj->gl_storage.w, vobj->gl_storage.h, vobj->gl_storage.ncpt, 0, vobj->feed.state);
+		}
 
 		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+		tgt->readreq = false;
 	}
 	
 /* check timers */
-	if (tick){
-
-		if (ind > 0){
-			tgt->readcnt--;
+	if (tick && tgt->readback > 0){
+		tgt->readcnt--;
 			
-			if (tgt->readcnt == 0){
-				req_rb = true;
-				tgt->readcnt = ind;
-			}
-			
+		if (tgt->readcnt == 0){
+			req_rb = true;
+			tgt->readcnt = tgt->readback;
 		}
-		else 
-			goto cleanup; /* do nothing on tick */
-			
-	} else {
-		if (ind < 0){
-			tgt->readcnt--;
-
-			if (tgt->readcnt == 0){
-				req_rb = true;
-				tgt->readcnt = abs(tgt->readback);
-			}
-			
+	}
+	else if (!tick && tgt->readback < 0){
+		tgt->readcnt--;
+		if (tgt->readcnt == 0){
+			req_rb = true;
+			tgt->readcnt = abs(tgt->readback);
 		}
-		else 
-			goto cleanup; /* do nothing on frame */
 	}
 
 /* check if we should request new data */
 	if (req_rb){
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, arcan_video_display.pbos[ind]);
-		
-		if (tgt->color){
-			assert(tgt->rbbuffer_sz >= (tgt->color->gl_storage.w * tgt->color->gl_storage.h * tgt->color->gl_storage.ncpt));
-		
-			glReadBuffer(GL_COLOR_ATTACHMENT0);
-			glReadPixels(0, 0, tgt->color->gl_storage.w, tgt->color->gl_storage.h, GL_RGBA, GL_UNSIGNED_BYTE, tgt->rbbuffer);
-		} else { /* stdoutp */
-			assert(tgt->rbbuffer_sz >= (arcan_video_display.width * arcan_video_display.height * arcan_video_display.bpp));
-			
-			glReadBuffer(GL_FRONT);
-			glReadPixels(0, 0, arcan_video_display.width, arcan_video_display.height, GL_RGBA, GL_UNSIGNED_BYTE, tgt->rbbuffer);
-		}
-		
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo); 
+		glBindTexture(GL_TEXTURE_2D, tgt->color->gl_storage.glid);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0); /* null as PBO is responsible */
+		tgt->readreq = true;
 	}
 	
 cleanup:
@@ -3005,8 +2989,10 @@ void arcan_video_refresh_GL(float lerp)
 			GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 			if (status == GL_FRAMEBUFFER_COMPLETE){
 				process_rendertarget(tgt, lerp);
-				if (tgt->readback != 0)
-					process_readback(tgt, ind, false);
+				if (tgt->readback != 0){
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					process_readback(tgt, false);
+				}
 			}
 			else {
 				nofbo = true;
@@ -3023,7 +3009,7 @@ void arcan_video_refresh_GL(float lerp)
 /* this facility isn't designed for screenshots (that'd be just a stalling glReadPixels from the framebuffer without any fuss),
  * so this feature is for movie recording and streaming game */
 	if (current_context->stdoutp.readback != 0) 
-		process_readback(&current_context->stdoutp, RENDERTARGET_LIMIT, false);
+		process_readback(&current_context->stdoutp, false);
 }
 
 void arcan_video_refresh(float tofs)
@@ -3273,7 +3259,6 @@ bool arcan_video_prepare_external()
 	if (arcan_video_display.fullscreen)
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 
-	glDeleteBuffers(RENDERTARGET_LIMIT+1, arcan_video_display.pbos);
 /* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
 	arcan_event_deinit(arcan_event_defaultctx());
 	arcan_shader_unload_all();
@@ -3337,7 +3322,6 @@ void arcan_video_shutdown()
 	while ( lastctxc != (lastctxa = arcan_video_popcontext()) )
 		lastctxc = lastctxa;
 
-	glDeleteBuffers(RENDERTARGET_LIMIT + 1, arcan_video_display.pbos);
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 

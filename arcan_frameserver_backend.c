@@ -269,14 +269,9 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
  */
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) ){
-//			static unsigned seqno = 0;
-//			char fn[64];
-//			sprintf(fn, "frame_%d.png", seqno++);
-//			lodepng_encode32_file(fn, buf, arcan_video_screenw(), arcan_video_screenh());
-				
-//			memcpy(src->vidp, buf, s_buf);
+			memcpy(src->vidp, buf, s_buf);
 			/* TODO: flush audio hook buffer */
-	//		arcan_sem_post(src->vsync);
+			arcan_sem_post(src->vsync);
 	
 			arcan_event ev  = {
 				.kind = TARGET_COMMAND_STEPFRAME,
@@ -284,7 +279,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 				.data.target.ioevs[0] = 0  /* TODO: need counter of frames here so the frameserver can fix timing */
 			};
 				
-		//	arcan_event_enqueue(&src->outqueue, &ev);
+			arcan_event_enqueue(&src->outqueue, &ev);
 		}
 	}
 	else;
