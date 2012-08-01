@@ -86,7 +86,7 @@ void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 }
 
 /* always close handle */
-bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_handle fh)
+bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_handle fh, bool finalize)
 {
 	bool rv = false;
 
@@ -106,7 +106,8 @@ bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_han
 		}
 
 		CloseHandle(ov.hEvent);
-		CloseHandle(fh);
+		if (finalize)
+			CloseHandle(fh);
 	}
 
 	return rv;

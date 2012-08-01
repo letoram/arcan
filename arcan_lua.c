@@ -31,6 +31,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <errno.h>
 
 #include <string.h>
 #include <fcntl.h>
@@ -1603,7 +1604,7 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num, detach, &errc);
 
 	if (errc == ARCAN_OK)
-		lua_pushvid(ctx, vid);
+		lua_pushvid(ctx, vid != sid ? vid : ARCAN_EID);
 	else
 		lua_pushvid(ctx, ARCAN_EID);
 	
@@ -2764,15 +2765,27 @@ int arcan_lua_recordset(lua_State* ctx)
 		.args.builtin.resource = res
 	};
 
+/* we use a special feed function meant to flush audiobuffer + a single video frame for encoding */
 	vfunc_state fftag = {
 		.tag = ARCAN_TAG_FRAMESERV,
 		.ptr = mvctx};
-	
 	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
+	
 	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
 		arcan_vobject* dobj = arcan_video_getobject(did);
+
+/* we define the size of the recording to be that of the storage of the rendertarget vid,
+ * this should be allocated through fill_surface */
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
+		shmpage->w = dobj->gl_storage.w;
+		shmpage->h = dobj->gl_storage.h;
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
+
+/* pushing the file descriptor signals the frameserver to start receiving,
+ * it is permitted to close and push another one to the same session */
+		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s", arcan_themepath, "testout.h264");
+		printf("fd: %d, %d, %s\n", fd, errno, strerror(errno));
+		printf("errc: %d\n", arcan_frameserver_pushfd( mvctx, fd ));
 	} 
 	else 
 		free(mvctx);

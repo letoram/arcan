@@ -102,7 +102,7 @@ error:
 	return rv;
 }
 
-bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file_handle dst)
+bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file_handle dst, bool finalize)
 {
 	bool rv = false;
 	
@@ -118,7 +118,8 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 		if (nw == -1)
 			LOG("arcan_frameserver(dumprawfile) -- write failed (%d), reason: %s\n", errno, strerror(errno));
 		
-		close(dst);
+		if (finalize)
+			close(dst);
 	}
 	 else
 		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid file handle ignored.\n");
@@ -342,8 +343,6 @@ file_handle frameserver_readhandle(arcan_event* inev)
 	close(1);
 	close(2);
 */
-	LOG("mode: %s", fsrvmode);
-	
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	

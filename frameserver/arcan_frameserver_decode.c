@@ -15,11 +15,12 @@
 
 static bool decode_aframe(arcan_ffmpeg_context* ctx)
 {
-	AVPacket cpkg = {.size = ctx->packet.size,
-	                 .data = ctx->packet.data
-	                };
+	AVPacket cpkg = {
+		.size = ctx->packet.size,
+		.data = ctx->packet.data
+	};
     
-    uint32_t dts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
+	uint32_t dts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
     
 	while (cpkg.size > 0) {
 		uint32_t ofs = 0;
