@@ -61,6 +61,10 @@ arcan_errc arcan_audio_teardown();
  * will reallocate AL IDs / buffers associated with the aobj */
 arcan_errc arcan_audio_rebuild(arcan_aobj_id id);
 
+/* Hook the audio buffer refills to the select set of audio objects,
+ * primarily used to grab / mix / push audio streams for recording to frameserver */
+bool arcan_audio_hookfeed(arcan_aobj_id* feeds, size_t nfeeds, arcan_afunc_cb hookfun);
+
 /* object management --- */
 arcan_aobj_id arcan_audio_load_sample(const char* fname, float gain, arcan_errc* err);
 

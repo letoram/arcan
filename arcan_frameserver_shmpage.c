@@ -83,8 +83,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.asem = async;
 	res.vsem = vsync;
 	res.esem = esync;
-	res.addr->w = 0;
-	res.addr->h = 0;
+/*res.addr->w = 0;
+	res.addr->h = 0; */
 	res.addr->bpp = 4;
 	res.addr->vready = false;
 	res.addr->aready = false;
@@ -163,8 +163,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	}
 
 /* step 2, buffer all set-up, map it to the addr structure */
-	res.addr->w = 0;
-	res.addr->h = 0;
+/*	res.addr->w = 0;
+	res.addr->h = 0; */
 	res.addr->bpp = 4;
 	res.addr->vready = false;
 	res.addr->aready = false;

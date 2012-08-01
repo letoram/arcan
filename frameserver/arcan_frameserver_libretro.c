@@ -341,7 +341,7 @@ static inline void targetev(arcan_event* ev)
 				if (dstsize && ( buf = malloc( dstsize ) )){
 
 					if ( retroctx.serialize(buf, dstsize) ){
-						frameserver_dumprawfile_handle( buf, dstsize, retroctx.last_fd );
+						frameserver_dumprawfile_handle( buf, dstsize, retroctx.last_fd, true );
 						retroctx.last_fd = BADFD;
 					} else 
 						LOG("frameserver(libretro), serialization failed.\n");
