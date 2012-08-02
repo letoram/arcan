@@ -44,6 +44,7 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
+#include "arcan_audioint.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_frameserver_shmpage.h"
 #include "arcan_event.h"
@@ -270,13 +271,21 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) ){
 			memcpy(src->vidp, buf, s_buf);
-			/* TODO: flush audio hook buffer */
+
+/* these may come from monitors feed by different frames, possibly threaded framequeue */
+			SDL_mutexP(src->lock_audb);
+				memcpy(src->audp, src->audb, src->ofs_audb);
+				src->ofs_audb = 0;
+			SDL_mutexV(src->lock_audb);
+/* the actual structure of the audb used (is more visible in the audio monitor and in the frameserver/ffmpeg_encode */
 			arcan_sem_post(src->vsync);
-	
+
+/* it is possible that we deliver more videoframes than we can legitimately encode in the target
+ * framerate, it is up to the frameserver to determine when to drop and when to double frames */
 			arcan_event ev  = {
 				.kind = TARGET_COMMAND_STEPFRAME,
 				.category = EVENT_TARGET,
-				.data.target.ioevs[0] = 0  /* TODO: need counter of frames here so the frameserver can fix timing */
+				.data.target.ioevs[0] = src->vfcount++  
 			};
 				
 			arcan_event_enqueue(&src->outqueue, &ev);
@@ -286,6 +295,11 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	
 /* not really used */
 	return 0;
+}
+
+void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
+{
+	
 }
 
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
@@ -357,7 +371,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
-arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
@@ -366,6 +380,10 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 	if (buffer > 0 && src->audb && src->ofs_audb){
 		
 		SDL_mutexP( src->lock_audb );
+		
+		if (aobj->monitor)
+			aobj->monitor(id, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
+	
 		alBufferData(buffer, src->desc.channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, 
 								 src->audb, src->ofs_audb, src->desc.samplerate);
 		SDL_mutexV( src->lock_audb );
@@ -378,7 +396,7 @@ arcan_errc arcan_frameserver_audioframe_direct(void* aobj, arcan_aobj_id id, uns
 	return rv;
 }
 
-arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
@@ -397,6 +415,9 @@ arcan_errc arcan_frameserver_audioframe(void* aobj, arcan_aobj_id id, unsigned b
 
 /* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
 			if (dc < 60.0){
+				if ( (arcan_aobj*) aobj->monitor)
+					aobj->monitor(id, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
+
 				alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, buffers, src->desc.samplerate);
 				arcan_framequeue_dequeue(&src->afq);
 				rv = ARCAN_OK;

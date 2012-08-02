@@ -37,56 +37,8 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
+#include "arcan_audioint.h"
 #include "arcan_event.h"
-
-#define ARCAN_ASTREAMBUF_LIMIT 4 
-#define ARCAN_ASAMPLE_LIMIT 1024 * 64
-
-struct arcan_aobj_cell;
-
-enum aobj_kind {
-	AOBJ_STREAM,
-	AOBJ_SAMPLE,
-	AOBJ_FRAMESTREAM,
-	AOBJ_PROXY
-};
-
-typedef struct arcan_aobj {
-	arcan_aobj_id id;
-	ALuint alid;
-	enum aobj_kind kind;
-	
-	bool active;
-
-	unsigned t_gain;
-	unsigned t_pitch;
-
-	float gain;
-	float pitch;
-	float d_gain;
-	float d_pitch;
-
-	bool streaming;
-	SDL_RWops* lfeed;
-
-	unsigned char n_streambuf;
-	short used;
-	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
-	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
-
-	enum aobj_atypes atype;
-	uint32_t preguard;
-	arcan_afunc_cb feed;
-	uint32_t postguard;
-	arcan_again_cb gproxy;
-
-	void* tag;
-	struct arcan_aobj* next;
-} arcan_aobj;
-
-#ifndef ARCAN_AUDIO_SLIMIT 
-#define ARCAN_AUDIO_SLIMIT 16
-#endif
 
 typedef struct {
 /* linked list of audio sources,

@@ -105,6 +105,9 @@ arcan_errc arcan_audio_sfeed_ogg(arcan_aobj* aobj, arcan_aobj_id id, ALuint buf,
 			while (ntr);
 
 			if (octx->ofs) {
+				if (aobj->monitor)
+					aobj->monitor(id, octx->buffer, octx->ofs, octx->info->channels, octx->info->rate, aobj->tag);
+				
 				alBufferData(buf, (octx->info->channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16), octx->buffer, octx->ofs, octx->info->rate);
 				octx->ofs = 0;
 			}
