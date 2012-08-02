@@ -23,7 +23,7 @@ PROJECT( arcan )
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 2 )
-set(PATCH_LEVEL 0 )
+set(PATCH_LEVEL 1 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -136,6 +136,7 @@ set (
  arcan_3dbase.c
  arcan_math.c
  arcan_audio.c
+ arcan_audioint.h
  arcan_framequeue.h
  arcan_event.h
  arcan_lua.h
