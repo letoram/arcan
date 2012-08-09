@@ -99,7 +99,7 @@ void arcan_frameserver_stepframe(unsigned long frameno, bool flush)
 		double thresh = mspf * 0.5;
 		long long encb    = frameserver_timemillis();
 		long long cft     = encb - ffmpegctx.lastframe; /* assumed >= 0 */
-		long long nf      = round( ffmpegctx.fps * (double)ffmpegctx.framecount );
+		long long nf      = round( mspf * (double)ffmpegctx.framecount );
 		long long delta   = cft - nf;
 		unsigned fc       = 1;
 
@@ -113,7 +113,7 @@ void arcan_frameserver_stepframe(unsigned long frameno, bool flush)
 		
 		int rv = sws_scale(ffmpegctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0, ffmpegctx.vcontext->height, ffmpegctx.pframe->data, ffmpegctx.pframe->linesize);
 		ffmpegctx.framecount += fc;
-		printf("frame(delta:%lld) @ %lld vs %lld\n", cft - nf, cft, nf);
+//		printf("frame(delta:%lld) @ %lld vs %lld\n", cft - nf, cft, nf);
 		
 		while (fc--){
 			rs = avcodec_encode_video(ffmpegctx.vcontext, ffmpegctx.encvbuf, ffmpegctx.encvbuf_sz, ffmpegctx.pframe);
