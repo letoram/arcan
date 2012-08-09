@@ -264,6 +264,7 @@ class Mame
 		@mametarget = nil
 		executable = nil
 
+# TODO Switch to wildcard arguments (regexp e.g. mame%, ..)
 		execs = ["mame", "mame.exe", "ume", "ume.exe"];
 		execs.each{|ext|
 		           fullname = "#{targetpath}/#{ext}"

@@ -100,7 +100,8 @@ struct rendertarget {
 	
 /* readback == 0, no readback. Otherwise, a readback is requested every abs(readback) frames
  * if readback is negative, or readback ticks if it is positive */
-	int readback, readcnt;
+	int readback;
+	long long readcnt;
 
 /* flagged after a PBO readback has been issued, cleared when buffer have been mapped */
 	bool readreq; 
@@ -433,7 +434,6 @@ arcan_vobject* arcan_video_getobject(arcan_vobj_id id)
 
 static void dumptgt_list(struct rendertarget*);
 
-#ifdef _DEBUG
 /* check for duplicates */
 static void recurse_scan_duplicate(arcan_vobject_litem* base)
 {
@@ -577,7 +577,6 @@ reevaluate:
 	}
 }
 #undef LOGV
-#endif
 
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 {
@@ -2716,7 +2715,7 @@ void arcan_video_pollfeed(){
 	poll_list(current_context->stdoutp.first);
 }
 
-static void process_rendertarget(struct rendertarget* tgt, float lerp)
+static void process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject* world = &current_context->world;
 	arcan_vobject_litem* current = tgt->first;
@@ -2727,7 +2726,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 
 	/* first, handle all 3d work (which may require multiple passes etc.) */
 	if (!arcan_video_display.late3d && current && current->elem->order < 0){
-		current = arcan_refresh_3d(0, current, lerp, 0);
+		current = arcan_refresh_3d(0, current, fract, 0);
 	}
 
 /* skip a possible 3d pipeline */
@@ -2743,7 +2742,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 
 		arcan_shader_activate(arcan_video_display.defaultshdr);
 		arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
-		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
+		arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 		
 		while (current && current->elem->order >= 0){
 #ifdef _DEBUG
@@ -2760,7 +2759,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 
 /* calculate coordinate system translations, world cannot be masked */
 			surface_properties dprops = {0};
-			arcan_resolve_vidprop(elem, lerp, &dprops);
+			arcan_resolve_vidprop(elem, fract, &dprops);
             
 /* don't waste time on objects that aren't supposed to be visible */
 			if ( dprops.opa < EPSILON){
@@ -2807,7 +2806,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 /* since we can have hierarchies of partially clipped, we may need to resolve all */
 				while (celem->parent != &current_context->world){
 					surface_properties pprops = {0};
-					arcan_resolve_vidprop(celem->parent, lerp, &pprops);
+					arcan_resolve_vidprop(celem->parent, fract, &pprops);
 					if (celem->parent->flags.cliptoparent == false)
 						draw_surf(tgt, pprops, celem->parent, elem->current_frame->txcos);
 
@@ -2878,7 +2877,7 @@ static void process_rendertarget(struct rendertarget* tgt, float lerp)
 /* reset and try the 3d part again if requested */
 	current = tgt->first;
 	if (arcan_video_display.late3d && current && current->elem->order < 0){
-		current = arcan_refresh_3d(0, current, lerp, 0);
+		current = arcan_refresh_3d(0, current, fract, 0);
 	}
 }
 
@@ -2906,7 +2905,7 @@ bool arcan_video_screenshot(void** dptr, size_t* dsize){
 	return true;
 }
 
-static void process_readback(struct rendertarget* tgt, bool tick)
+static void process_readback(struct rendertarget* tgt, float fract)
 {
 /* should we issue a new readback? */
 	bool req_rb = false;
@@ -2927,20 +2926,20 @@ static void process_readback(struct rendertarget* tgt, bool tick)
 		tgt->readreq = false;
 	}
 	
-/* check timers */
-	if (tick && tgt->readback > 0){
-		tgt->readcnt--;
-			
-		if (tgt->readcnt == 0){
-			req_rb = true;
-			tgt->readcnt = tgt->readback;
-		}
-	}
-	else if (!tick && tgt->readback < 0){
+/* resolution is "by frame" */
+	if (tgt->readback < 0){
 		tgt->readcnt--;
 		if (tgt->readcnt == 0){
 			req_rb = true;
 			tgt->readcnt = abs(tgt->readback);
+		}
+	}
+/* resolution is "by ms", approximately */
+	else if (tgt->readback > 0){
+		long long stamp = round( ((double)arcan_video_display.c_ticks + fract) * (double)ARCAN_TIMER_TICK ); 
+		if (stamp - tgt->readcnt > tgt->readback){
+			req_rb = true;
+			tgt->readcnt = stamp;
 		}
 	}
 
@@ -3009,7 +3008,7 @@ void arcan_video_refresh_GL(float lerp)
 /* this facility isn't designed for screenshots (that'd be just a stalling glReadPixels from the framebuffer without any fuss),
  * so this feature is for movie recording and streaming game */
 	if (current_context->stdoutp.readback != 0) 
-		process_readback(&current_context->stdoutp, false);
+		process_readback(&current_context->stdoutp, lerp);
 }
 
 void arcan_video_refresh(float tofs)

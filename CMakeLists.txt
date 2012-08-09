@@ -262,7 +262,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 #
 #
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
+add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE -lm)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
@@ -420,7 +420,7 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
-target_link_libraries( arcan_modelconv ${OPENCTM_LIBRARIES} )
+target_link_libraries( arcan_modelconv ${OPENCTM_LIBRARIES} m )
 set_target_properties(arcan_frameserver PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 

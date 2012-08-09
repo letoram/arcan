@@ -489,7 +489,9 @@ rescue => er
 end
 
 def import_roms(options)
-#scan ROM folder..
+# scan ROM folder.. and pass it through the list of found importer classes
+# if there's no match between importer and rompath, and the generic importer
+# option is disabled, ignore the folder
 	STDOUT.print("[builddb] Scanning rompath (#{options[:rompath]}):\n")
 	groups = []
 	Dir[ "#{options[:rompath]}/*" ].each{|entry|
@@ -500,13 +502,16 @@ def import_roms(options)
 
 	db = getdb(options, true)
 
-	# for each rom group..   
+# for each rom group..   
 	groups.each{|group|
 		if (options[:skiptarget][group])
 			STDOUT.print("\tIgnoring #{group}\n" )
 			next
 		end
 
+# note, it is the importers themselves that determine if it will handle the
+# target or not, it is only the generic importer that follows the romname <=>
+# targetname matching to the letter
 		imp = Importers.Find(group)
 		imp = Importers.Find("generic") if (imp == nil and options[:generic])
 
@@ -689,8 +694,8 @@ def alterdb(options)
 				end
 			end
 		end
-	                                                                         
-		ind += 1
+
+	ind += 1
 	}
 	
 	targetqueue.each_pair{|key, tgt| tgt.store }

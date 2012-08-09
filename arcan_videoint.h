@@ -52,6 +52,9 @@ struct transf_rotate{
 	surface_orientation starto, endo;
 };
 
+/* these are arranged in a linked list of slots,
+ * where one slot may contain one of each transform categories
+ * and will be packed "to the left" each time any one of them finishes */
 typedef struct surface_transform {
 
 	struct transf_move move;
@@ -69,20 +72,20 @@ typedef struct arcan_vstorage {
 } arcan_vstorage;
 
 struct storage_info_t {
-		unsigned int glid;
+	unsigned int glid;
 		
-		unsigned short w, h;
-		unsigned char ncpt;
-		unsigned int txu, txv;
-		enum arcan_vimage_mode scale;
-		enum arcan_imageproc_mode imageproc;
+	unsigned short w, h;
+	unsigned char ncpt;
+	unsigned int txu, txv;
+	enum arcan_vimage_mode scale;
+	enum arcan_imageproc_mode imageproc;
 
-		arcan_shader_id program;
+	arcan_shader_id program;
 };
 
 typedef struct arcan_vobject {
-	/* image-storage / reference,
-	 * current_frame is set to default_frame */
+/* image-storage / reference,
+ * current_frame is set to default_frame */
 	arcan_vstorage default_frame;
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
@@ -98,9 +101,9 @@ typedef struct arcan_vobject {
 	
 	struct storage_info_t gl_storage;
 	
-	/* support for feed- functions
-	 * set to null if no feed functions are avail.
-	 * [note] this might be more handy as a per/frame thing */
+/* support for feed- functions
+ * set to null if no feed functions are avail.
+ * [note] this might be more handy as a per/frame thing */
 	struct {
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;
@@ -175,6 +178,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
+
+/* only ever used for next power of two concerning dislay resolutions */
 uint16_t nexthigher(uint16_t k);
 
 void generate_basic_mapping(float* dst, float st, float tt);
