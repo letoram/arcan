@@ -128,6 +128,12 @@ enum ARCAN_TARGET_SKIPMODE {
 	TARGET_SKIP_STEP = 1
 };
 
+enum event_priority {
+	PRIORITY_SYSTEM = 2,
+	PRIORITY_NORMAL = 1,
+	PRIORITY_SAMPLE = 0
+};
+
 typedef union arcan_ioevent_data {
 	struct {
 		uint8_t devid;
@@ -219,15 +225,16 @@ typedef union event_data {
 typedef struct arcan_event {
 	unsigned kind;
 	unsigned tickstamp;
-	unsigned seqn;
+	enum event_priority prio;
 
 	char label[16];
 	char category;
+	char used;
+	
 	event_data data;
 } arcan_event;
 
 struct arcan_evctx {
-	unsigned seqn;
 	unsigned c_ticks;
 	unsigned c_leaks;
 	unsigned mask_cat_inp;

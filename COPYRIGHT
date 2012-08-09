@@ -6,6 +6,8 @@ win32/getopt_win32.c, (c) 2000 The NetBSD Foundation
 win32/SDL_main_win32.c, Public Domain (author, Sam Lantiga)
 SDLMain.*, Part of the SDL-1.2 dependency
 hidapi/*, (c) 2010 Alan Ott, FreeBSD License
+openCTM/* (c) Marcus Geelnard -- zlib / libpng license
+arcan_renderfun.c:stretchblit derived from SDL_GFX (c) Andreas Schiffler -- BSD- like 
 
 Furthermore, media included as part of the main distribution resources and themes,
 have individual licensing references (filename extension, .license) where applicable.
@@ -19,5 +21,4 @@ Dependencies:
  SQLite3 -- www.sqlite.org, Public Domain
  FFMPEG -- www.ffmpeg-org, LGPL 2.1
  BZip2 -- (implicitly used by some dependencies) BSD License
- openCTM -- zlib / libpng license
  ZLib -- zlib license

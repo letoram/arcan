@@ -269,16 +269,13 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
  * Audio will keep on buffering until overflow, 
  */
 	else if (cmd == ffunc_rendertarget_readback){
-		if ( arcan_sem_timedwait(src->vsync, 0) ){
+		if ( arcan_sem_timedwait(src->vsync, 0) == 0){
 			memcpy(src->vidp, buf, s_buf);
-
 /* these may come from monitors feed by different frames, possibly threaded framequeue */
 			SDL_mutexP(src->lock_audb);
 				memcpy(src->audp, src->audb, src->ofs_audb);
 				src->ofs_audb = 0;
 			SDL_mutexV(src->lock_audb);
-/* the actual structure of the audb used (is more visible in the audio monitor and in the frameserver/ffmpeg_encode */
-			arcan_sem_post(src->vsync);
 
 /* it is possible that we deliver more videoframes than we can legitimately encode in the target
  * framerate, it is up to the frameserver to determine when to drop and when to double frames */
@@ -287,7 +284,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 				.category = EVENT_TARGET,
 				.data.target.ioevs[0] = src->vfcount++  
 			};
-				
+	
 			arcan_event_enqueue(&src->outqueue, &ev);
 		}
 	}
@@ -297,6 +294,9 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	return 0;
 }
 
+/* attach buffer to frameserver associated with tag,
+ * this may be invoked multiple times from different sources in short succession, hence we use a little tag/len/val format
+ * to link these together and just keep on buffering until the videoframe- part forces a flush that's accepted by the frameserver */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
 {
 	

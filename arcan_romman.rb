@@ -88,15 +88,15 @@ def argsplit( inarg )
 	inarg.each_char{|ch|
 		case ch
 			when '\\' then
-	               ignore = true
+				ignore = true
 			when ',' then
-					if (ignore)
-						buf << ch
-						ignore = false
-	               else
-						res << buf if buf.length > 0
-						buf = ""
-	               end
+				if (ignore)
+					buf << ch
+					ignore = false
+	       else
+					res << buf if buf.length > 0
+					buf = ""
+	       end
 		else
 			buf << ch
 			ignore = false

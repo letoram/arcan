@@ -186,6 +186,7 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 		arcan_event* dst = &ctx->eventbuf[ind];
 		*dst = *src;
 		dst->tickstamp = ctx->c_ticks;
+		dst->used = 0xab;
 
 		UNLOCK();
 	}
@@ -372,9 +373,11 @@ void map_sdl_events(arcan_evctx* ctx)
 			case SDL_SYSWMEVENT:
 				break;
 				/*
-				 *  currently ignoring these events (and a resizeable window frame isn't 
-				 *  yet supported, although the video- code is capable of handling a rebuild/reinit,
-				 *  the lua- scripts themselves all depend quite a bit on VRESH/VRESW 
+				 * currently ignoring these events (and a resizeable window frame isn't 
+				 * yet supported, although the video- code is capable of handling a rebuild/reinit,
+				 * the lua- scripts themselves all depend quite a bit on VRESH/VRESW, one option
+				 * would be to just calculate a scale factor for the newvresh, newvresw and apply that
+				 * as a translation step when passing the lua<->core border    
 					 case SDL_VIDEORESIZE:
 					 break;
 
