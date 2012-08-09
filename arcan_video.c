@@ -798,11 +798,16 @@ static void arcan_video_gldefault()
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
 	glAlphaFunc(GL_GREATER, 0);
+
+/*
+ * -- Removed as they were causing trouble with NVidia GPUs (white line outline) 
 	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
 	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
-    
 	glEnable(GL_LINE_SMOOTH);
 	glEnable(GL_POLYGON_SMOOTH);
+	*
+	*/
+
 	build_orthographic_matrix(current_context->stdoutp.projection, 0, arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
 	identity_matrix(current_context->stdoutp.base);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
@@ -844,7 +849,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 	
 	if (arcan_video_display.msasamples > 0){ 
-	        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, arcan_video_display.msasamples);
 	}
 
@@ -858,6 +863,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		arcan_warning("arcan_video_init(), Couldn't open OpenGL display, attempting without MSAA\n");
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+		arcan_video_display.msasamples = 0;
 		arcan_video_display.screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
 	}
 
@@ -2934,6 +2940,7 @@ static void process_readback(struct rendertarget* tgt, float fract)
 			tgt->readcnt = abs(tgt->readback);
 		}
 	}
+	
 /* resolution is "by ms", approximately */
 	else if (tgt->readback > 0){
 		long long stamp = round( ((double)arcan_video_display.c_ticks + fract) * (double)ARCAN_TIMER_TICK ); 
