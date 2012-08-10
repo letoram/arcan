@@ -167,10 +167,10 @@ int main(int argc, char* argv[])
 				break;
 			case 'r' :
 				scalemode = strtol(optarg, NULL, 10);
-				if (scalemode < 0 || scalemode > 2){
+				if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode != ARCAN_VIMAGE_SCALEPOW2 && scalemode != ARCAN_VIMAGE_TXCOORD){
 					arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
 					scalemode = ARCAN_VIMAGE_SCALEPOW2;
-				}	
+				}
 				break;
 		case '1' :
 			stdout_redirected = true;
@@ -245,7 +245,7 @@ int main(int argc, char* argv[])
 		fullscreen = false;
 	}
 
-	/* grab video, (necessary) */
+/* grab video, (necessary) */
 	if (arcan_video_init(width, height, 32, fullscreen, windowed, conservative) == ARCAN_OK) {
 		errno = 0;
 		/* grab audio, (possible to live without) */
@@ -253,15 +253,15 @@ int main(int argc, char* argv[])
 			arcan_warning("Warning: No audio devices could be found.\n");
 		}
 
-		/* setup device polling, cleanup, ... */
+/* setup device polling, cleanup, ... */
 		arcan_event_init( arcan_event_defaultctx() );
 		arcan_led_init();
 
-		/* export what we know and load theme */
+/* export what we know and load theme */
 		lua_State* luactx = luaL_newstate();
 		luaL_openlibs(luactx);
 
-		/* this one also sandboxes os/io functions (just by setting to nil) */
+/* this one also sandboxes os/io functions (just by setting to nil) */
 		arcan_lua_exposefuncs(luactx, luadebug);
 		arcan_lua_pushglobalconsts(luactx);
 
@@ -283,8 +283,8 @@ int main(int argc, char* argv[])
 		free(fn);
 		free(themescr);
 
-		/* entry point follows the name of the theme,
-		 * hand over execution and begin event loop */
+/* entry point follows the name of the theme,
+ * hand over execution and begin event loop */
 		arcan_lua_callvoidfun(luactx, arcan_themename);
 		arcan_lua_callvoidfun(luactx, "show");
 
@@ -300,7 +300,7 @@ int main(int argc, char* argv[])
 				arcan_audio_tick(nticks);
 			}
 			else{
-	/* we separate the ffunc per-frame update and the video refresh */
+/* we separate the ffunc per-frame update and the video refresh */
 				arcan_video_pollfeed();
 				arcan_video_refresh(frag);
 				arcan_audio_refresh();

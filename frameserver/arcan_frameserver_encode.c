@@ -68,7 +68,8 @@ struct {
  * checks, we determine how many samples to mix and dequeue based on the smallest buffer size and the state of the video encoder */
 bool flush_audbuf(size_t* nb, unsigned* nf)
 {
-	
+
+
 }
 
 /* there's exactly one video frame to encode, and stuff as much audio into it as possible */
@@ -306,7 +307,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	}
 	
 	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d b/s), acodec: (%s:%d rate %d b/s), container: (%s)\n",
-			vck,  fps, vbr, ac, afreq, abr, cont);
+			vck?vck:"default",  fps, vbr, ac?ac:"default", afreq, abr, cont?cont:"default");
 	setup_videocodec(vck);
 	//setup_audiocodec(ac);
 	setup_container(cont);

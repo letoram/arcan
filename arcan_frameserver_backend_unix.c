@@ -226,12 +226,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ftruncate(shmfd, shmsize);
 	shmpage = (void*) mmap(NULL, shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 	close(shmfd);
-		
+
 	if (MAP_FAILED == shmpage){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't allocate shmpage\n");
 		goto error_cleanup;
 	}
-		
+
 	shmpage->parent = getpid();
 
 	int sockp[2] = {-1, -1};
@@ -272,6 +272,18 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			ctx->autoplay = true;
 			ctx->sz_audb = 1024 * 24;
 			
+			ctx->audb = malloc( ctx->sz_audb );
+			ctx->lock_audb = SDL_CreateMutex();
+			memset(ctx->audb, 0, ctx->ofs_audb);
+		}
+		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "record") == 0)
+		{
+			ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
+			ctx->nopts = true;
+			ctx->autoplay = true;
+/* we don't know how many audio feeds are actually monitored to produce the output,
+ * thus not how large the intermediate buffer should be to safely accommodate them all */
+			ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
 			ctx->audb = malloc( ctx->sz_audb );
 			ctx->lock_audb = SDL_CreateMutex();
 			memset(ctx->audb, 0, ctx->ofs_audb);

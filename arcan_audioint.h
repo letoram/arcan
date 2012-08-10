@@ -33,7 +33,6 @@ enum aobj_kind {
 	AOBJ_PROXY
 };
 
-
 typedef struct arcan_aobj {
 	arcan_aobj_id id;
 	ALuint alid;
@@ -41,34 +40,37 @@ typedef struct arcan_aobj {
 	
 	bool active;
 
-	unsigned t_gain;
 	unsigned t_pitch;
 
 	float gain;
-	float pitch;
+	arcan_again_cb gproxy;
+	unsigned t_gain;
 	float d_gain;
+
+	float pitch;
 	float d_pitch;
 
 	bool streaming;
 	SDL_RWops* lfeed;
 
 	unsigned char n_streambuf;
-	short used;
 	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
-
+	uint16_t* samplebuf;
+	
 	enum aobj_atypes atype;
-	uint32_t preguard;
 	
 	arcan_afunc_cb feed;
 	arcan_monafunc_cb monitor;
+	void* monitortag, (* tag);
 	
-	uint32_t postguard;
-	arcan_again_cb gproxy;
 
-	void* tag;
+	short used;
 	struct arcan_aobj* next;
 } arcan_aobj;
+
+/* just a wrapper around alBufferData that takes monitors into account */
+void arcan_audio_buffer(arcan_aobj*, ALuint, void*, size_t, unsigned, unsigned, void*);
 
 #ifndef ARCAN_AUDIO_SLIMIT 
 #define ARCAN_AUDIO_SLIMIT 16
