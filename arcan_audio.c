@@ -52,6 +52,9 @@ typedef struct {
 	unsigned aobjc;
 	
 	ALuint sample_sources[ARCAN_AUDIO_SLIMIT];
+	
+	arcan_monafunc_cb globalhook;
+	void* global_hooktag;
 } arcan_acontext;
 
 static void _wrap_alError(arcan_aobj*, char*);
@@ -153,8 +156,6 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst)
 		return rv;
 
 	arcan_aobj* newcell = (arcan_aobj*) calloc(sizeof(arcan_aobj), 1);
-	newcell->preguard = 0xdeadbeef;
-	newcell->postguard = 0xdeadbeef;
 	newcell->alid = alid;
 	rv = newcell->id = current_acontext->lastid++;
 	if (dst)
@@ -372,6 +373,24 @@ arcan_aobj_id arcan_audio_load_sample(const char* fname, float gain, arcan_errc*
 	}
 	
 	return rid;
+}
+
+arcan_errc arcan_audio_hookfeed(arcan_aobj_id id, void* tag, arcan_monafunc_cb hookfun, void** oldtag)
+{
+	arcan_aobj* aobj = arcan_audio_getobj(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (aobj){
+		if (oldtag)
+			*oldtag = aobj->monitortag ? aobj->monitortag : NULL;
+	
+		aobj->monitor = hookfun;
+		aobj->monitortag = tag;
+		
+		rv = ARCAN_OK;
+	}
+	
+	return rv;
 }
 
 arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc)
@@ -670,7 +689,10 @@ arcan_errc arcan_audio_queuebufslot(arcan_aobj_id aid, unsigned int abufslot, vo
 	static FILE* fout = NULL;
 
 	if (aobj && abufslot < aobj->n_streambuf && aobj->streambufmask[abufslot]){
-		
+	
+		if (aobj->monitor)
+			aobj->monitor(aid, audbuf, nbytes, channels, samplerate, aobj->monitortag);
+
 		alBufferData(aobj->streambuf[abufslot], AL_FORMAT_STEREO16, audbuf, nbytes, samplerate);
 		_wrap_alError(aobj, "audio_queuebufslot()::buffer");
 		
@@ -681,6 +703,17 @@ arcan_errc arcan_audio_queuebufslot(arcan_aobj_id aid, unsigned int abufslot, vo
 	}
 	
 	return rv;
+}
+
+void arcan_audio_buffer(arcan_aobj* aobj, ALuint buffer, void* audbuf, size_t abufs, unsigned int channels, unsigned int samplerate, void* tag)
+{
+	if (aobj->monitor)
+		aobj->monitor(aobj->id, audbuf, abufs, channels, samplerate, aobj->monitortag);
+
+	if (current_acontext->globalhook)
+		current_acontext->globalhook(aobj->id, audbuf, abufs, channels, samplerate, current_acontext->global_hooktag);
+
+	alBufferData(buffer, channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, audbuf, abufs, samplerate);
 }
 
 int arcan_audio_findstreambufslot(arcan_aobj_id id)

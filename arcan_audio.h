@@ -22,6 +22,9 @@
 #ifndef _HAVE_ARCAN_AUDIO
 #define _HAVE_ARCAN_AUDIO
 
+/* TODO: a lot of old cruft in here, should be replaced with sample management and frameserver playback,
+ * specific audio format support etc. will be thrown out the door */
+
 struct arcan_aobj;
 
 /* this one is shady at best, patchwork to get audio - movie deps. allover the place
@@ -68,9 +71,10 @@ arcan_errc arcan_audio_teardown();
  * will reallocate AL IDs / buffers associated with the aobj */
 arcan_errc arcan_audio_rebuild(arcan_aobj_id id);
 
-/* Hook the audio buffer refills to the select set of audio objects,
- * primarily used to grab / mix / push audio streams for recording to frameserver */
-bool arcan_audio_hookfeed(arcan_aobj_id* feeds, size_t nfeeds, arcan_afunc_cb hookfun);
+/* Hook the audio buffer refills to the selected audio object,
+ * primarily used to grab or patch data fed to a specific audio object for recording etc.
+ * returns the previous tag (or NULL) in oldtag if it overrides */
+arcan_errc arcan_audio_hookfeed(arcan_aobj_id id, void* tag, arcan_monafunc_cb hookfun, void** oldtag);
 
 /* object management --- */
 arcan_aobj_id arcan_audio_load_sample(const char* fname, float gain, arcan_errc* err);

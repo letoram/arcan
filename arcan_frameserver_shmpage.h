@@ -24,7 +24,7 @@
 
 #define SHMPAGE_QUEUESIZE 64
 #define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
-#define SHMPAGE_AUDIOBUF_SIZE (192000 * 3 / 2)
+#define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
 #define MAX_SHMSIZE 9582916
 
 /* setup a named memory / semaphore mapping with the server */

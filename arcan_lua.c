@@ -205,6 +205,11 @@ const char* luaL_lastcaller(lua_State* ctx)
 	return lua_tostring(ctx, lua_upvalueindex(2));
 }
 
+static inline arcan_aobj_id luaaid_toaid(lua_Number innum)
+{
+	return (arcan_aobj_id) innum;
+}
+
 static inline arcan_vobj_id luavid_tovid(lua_Number innum)
 {
 	arcan_vobj_id res = ARCAN_VIDEO_WORLDID;
@@ -2703,27 +2708,28 @@ int arcan_lua_renderset(lua_State* ctx)
 int arcan_lua_recordset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
-	const char*   res = luaL_checkstring(ctx, 2);
-	int nvids         = lua_rawlen(ctx, 3);
-	int naids         = lua_rawlen(ctx, 4);
-	int detach        = luaL_checkint(ctx, 5);
-	int scale         = luaL_checkint(ctx, 6);
-	int pollrate      = luaL_checkint(ctx, 7);
+	const char* resf  = luaL_checkstring(ctx, 2);
+	const char* argl  = luaL_checkstring(ctx, 3);
+	int nvids         = lua_rawlen(ctx, 4);
+	int naids         = lua_rawlen(ctx, 5);
+	int detach        = luaL_checkint(ctx, 6);
+	int scale         = luaL_checkint(ctx, 7);
+	int pollrate      = luaL_checkint(ctx, 8);
 
 	intptr_t ref = (intptr_t) 0;
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
-		arcan_warning("arcan_lua_recordset(%d) invalid arg 3, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 6, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		return 0;
 	}
 	
 	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
-		arcan_warning("arcan_lua_recordset(%d) invalid arg 4, expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 7, expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
 		return 0;
 	}
 	
 	if (pollrate == 0){
-		arcan_warning("arcan_lua_recordset(%d) invalid arg 5, expected n < 0 (every n frame) or n > 0 (every n tick)\n");
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 8, expected n < 0 (every n frame) or n > 0 (every n tick)\n");
 		return 0;
 	}
 	
@@ -2731,21 +2737,30 @@ int arcan_lua_recordset(lua_State* ctx)
 		arcan_video_setuprendertarget(did, pollrate, scale == RENDERTARGET_SCALE);
 
 		for (int i = 0; i < nvids; i++){
-			lua_rawgeti(ctx, 3, i+1);
+			lua_rawgeti(ctx, 4, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
 			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
 		}
 	}
 	else{
-		/* FIXME: tedious cleanup goes here */
-		arcan_warning("arcan_lua_recordset(%d, %d) - refusing to define empty renderset.\n");
+		/* FIXME: empty recordset, attach as colour to stdout */
 		return 0;
 	}
 
+	arcan_aobj_id* aidlocks = NULL;
+	unsigned n_aidlocks = abs(naids);
+	
 	if (naids > 0){
-/* FIXME: audio layer is missing appropriate hooks (something like audio_hook_aid(aid, samplerate, channels, callback(size_t, buf), and in the future,
- * we need both sample-rate conversion and audio mixing :-( */
-	} 
+		aidlocks = malloc(sizeof(arcan_aobj_id) * naids + 1);
+		aidlocks[naids] = 0; /* terminate */
+
+/* can't hook the monitors until we have the frameserver in place */
+		for (int i = 0; i < naids; i++){
+			lua_rawgeti(ctx, 5, i+1);
+			arcan_aobj_id setaid = luaaid_toaid( lua_tonumber(ctx, -1) );
+			aidlocks[i] = setaid;
+		}
+	}
 	
 /*  in order to stay backward compatible API wise, the load_movie with function callback
  *  will always need to specify loop condition. */
@@ -2762,7 +2777,7 @@ int arcan_lua_recordset(lua_State* ctx)
 		.use_builtin = true,
 		.custom_feed = true,
 		.args.builtin.mode = "record",
-		.args.builtin.resource = res
+		.args.builtin.resource = argl 
 	};
 
 /* we use a special feed function meant to flush audiobuffer + a single video frame for encoding */
@@ -2783,9 +2798,18 @@ int arcan_lua_recordset(lua_State* ctx)
 
 /* pushing the file descriptor signals the frameserver to start receiving,
  * it is permitted to close and push another one to the same session */
-		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s", arcan_themepath, "testout.h264");
-		printf("fd: %d, %d, %s\n", fd, errno, strerror(errno));
-		printf("errc: %d\n", arcan_frameserver_pushfd( mvctx, fd ));
+		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
+		if (fd){
+			arcan_frameserver_pushfd( mvctx, fd );
+			mvctx->alocks = aidlocks;
+			arcan_aobj_id* base = mvctx->alocks;
+			while(base && *base){
+				void* hookfun;
+				arcan_audio_hookfeed(*base++, mvctx, arcan_frameserver_avfeedmon, &hookfun);
+			}
+		}
+		else
+			arcan_warning("arcan_lua_recordset(%s/%s/%s) -- couldn't create output.\n", arcan_themepath, arcan_themename, resf);
 	} 
 	else 
 		free(mvctx);

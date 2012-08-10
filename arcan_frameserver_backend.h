@@ -85,6 +85,8 @@ struct arcan_frameserver {
 	file_handle sockout_fd;
 	
 	arcan_aobj_id aid;
+/* for monitoring hooks, NULL term. */
+	arcan_aobj_id* alocks;
 	arcan_vobj_id vid;
 
 /* used for playing, pausing etc. */
@@ -92,9 +94,6 @@ struct arcan_frameserver {
 	int64_t lastpts;
 	int64_t starttime;
 	bool loop, autoplay, nopts;
-
-/* set if color space conversion is done in process or not */
-	bool extcc;
 
 	enum arcan_frameserver_kinds kind;
 	
@@ -188,6 +187,9 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
 
 /* used for streaming data to the frameserver, audio / video interleaved in one synch */
 int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
+
+/* used as monitor hook for frameserver audio feeds */
+void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
 
 /* return a callback function for retrieving appropriate video-feeds */
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);

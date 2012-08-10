@@ -232,7 +232,7 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 	*dfd = CreateFileMapping(INVALID_HANDLE_VALUE,  /* hack for specifying shm */
 		&nullsec_attr, /* security, want to inherit */
 		PAGE_READWRITE, /* access */
-	    0, /* big-endian size? */
+		0, /* big-endian size? */
 		MAX_SHMSIZE, /* little-endian size */
 		NULL /* null, pass by inheritance */
 	);
@@ -291,10 +291,17 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 /* mode- specific options */
 	if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
 		ctx->kind = ARCAN_FRAMESERVER_INPUT;
+	
 	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
 		ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 		ctx->nopts = true;
 		ctx->autoplay = true;
+	}
+	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "record") == 0){
+		ctx->kind     = ARCAN_FRAMESERVER_OUTPUT;
+		ctx->nopts    = true;
+		ctx->autoplay = true;
+		ctx->sz_audb  = 
 	}
 	else if (!setup.use_builtin){
 		arcan_warning("arcan_frameserver(win32) : hijack mode unsupported\n");
@@ -315,8 +322,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->shm.shmsize = MAX_SHMSIZE;
 	ctx->shm.handle = shmh;
  	ctx->desc.ready = true;
-	ctx->ofs_audb = 16024;
-	ctx->sz_audb = 64 * 1024;
+	ctx->ofs_audb = 0;
+	ctx->sz_audb = SHMPAGE_AUDBUF_SIZE;
 	ctx->audb = (uint8_t*) malloc( ctx->sz_audb );
 	ctx->lock_audb = SDL_CreateMutex();
 	memset(ctx->audb, 0, ctx->ofs_audb);

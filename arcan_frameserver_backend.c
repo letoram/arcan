@@ -61,7 +61,7 @@ static struct {
 	unsigned presilence;
 } queueopts = {
 	.vcellcount = ARCAN_FRAMESERVER_VCACHE_LIMIT,
-	.abufsize = ARCAN_FRAMESERVER_ABUFFER_SIZE,
+	.abufsize   = ARCAN_FRAMESERVER_ABUFFER_SIZE,
 	.acellcount = ARCAN_FRAMESERVER_ACACHE_LIMIT,
 	.presilence = ARCAN_FRAMESERVER_PRESILENCE
 };
@@ -220,7 +220,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_poll: return shmpage->vready; break;        
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;		
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
-		case ffunc_render: 	
+		case ffunc_render:
 			rv = push_buffer( (char*) tgt->vidp, mode, shmpage->w, shmpage->h, shmpage->bpp, width, height, bpp); 
 
 /* in constrast to the framequeue approach, we here need to limit the number of context switches
@@ -271,9 +271,11 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) == 0){
 			memcpy(src->vidp, buf, s_buf);
-/* these may come from monitors feed by different frames, possibly threaded framequeue */
+/* these may come from monitors feed by different frames, possibly threaded framequeue
+ * always assume audb <= shmaudb */
 			SDL_mutexP(src->lock_audb);
 				memcpy(src->audp, src->audb, src->ofs_audb);
+				src->shm.ptr->abufused = src->ofs_audb;
 				src->ofs_audb = 0;
 			SDL_mutexV(src->lock_audb);
 
@@ -299,6 +301,23 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
  * to link these together and just keep on buffering until the videoframe- part forces a flush that's accepted by the frameserver */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
 {
+	arcan_frameserver* dst = tag;
+	unsigned hdr[4] = {buf_sz, frequency, channels, 0xaa};
+
+/* make sure we don't overflow, store to intermediate buffer as we have many access threads and can't rely on 
+ * synching to an untrusted source(the frameserver) here */
+	if (dst->ofs_audb + buf_sz + sizeof(hdr) < dst->sz_audb){
+	SDL_mutexP(dst->lock_audb);
+
+		memcpy(dst->audb + dst->ofs_audb, hdr, sizeof(hdr));
+		dst->ofs_audb += sizeof(hdr);
+		memcpy(dst->audb + dst->ofs_audb, buf, buf_sz);
+		dst->ofs_audb += buf_sz;
+		
+	SDL_mutexV(dst->lock_audb);
+	}
+	else 
+		arcan_warning("arcan_avfeedmon(frameserver:%d) -- intermediate audio buffer full, (%zu).\n", src, buf_sz);
 	
 }
 
@@ -357,9 +376,9 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
-			frame_cell* current = src->vfq.front_cell;
-			rv = push_buffer( (char*) current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
-			arcan_framequeue_dequeue(&src->vfq);
+		frame_cell* current = src->vfq.front_cell;
+		rv = push_buffer( (char*) current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
+		arcan_framequeue_dequeue(&src->vfq);
 	}
 	else if (cmd == ffunc_tick)
 		arcan_frameserver_tick_control(src);
@@ -378,14 +397,10 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 
 /* buffer == 0, shutting down */
 	if (buffer > 0 && src->audb && src->ofs_audb){
-		
+
+/* this function will make sure all monitors etc. gets their chance */
 		SDL_mutexP( src->lock_audb );
-		
-		if (aobj->monitor)
-			aobj->monitor(id, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
-	
-		alBufferData(buffer, src->desc.channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, 
-								 src->audb, src->ofs_audb, src->desc.samplerate);
+			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag); 
 		SDL_mutexV( src->lock_audb );
 		
 		src->ofs_audb = 0;
@@ -415,10 +430,7 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, unsi
 
 /* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
 			if (dc < 60.0){
-				if ( (arcan_aobj*) aobj->monitor)
-					aobj->monitor(id, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
-
-				alBufferData(buffer, AL_FORMAT_STEREO16, src->afq.front_cell->buf, buffers, src->desc.samplerate);
+				arcan_audio_buffer(aobj, buffer, src->afq.front_cell->buf, buffers, src->desc.channels, src->desc.samplerate, tag); 	
 				arcan_framequeue_dequeue(&src->afq);
 				rv = ARCAN_OK;
 				break;
