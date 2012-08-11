@@ -74,11 +74,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
-
-		if (src->lock_audb)
-			SDL_DestroyMutex(src->lock_audb);
-		
-	/* might have died prematurely (framequeue cbs), no reason sending signal */
+	
+/* might have died prematurely (framequeue cbs), no reason sending signal */
  		if (src->child_alive) {
 			kill(src->child, SIGHUP);
 			src->child_alive = false;
@@ -87,8 +84,17 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		}
 		
 		struct movie_shmpage* shmpage = (struct movie_shmpage*) src->shm.ptr;
-		
+
+/* unhook audio monitors */
+		arcan_aobj_id* base = src->alocks;
+		while (base && *base){
+			arcan_audio_hookfeed(*base, NULL, NULL, NULL);
+			base++;
+		}
 		free(src->audb);
+
+		if (src->lock_audb)
+			SDL_DestroyMutex(src->lock_audb);
 
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);

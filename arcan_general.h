@@ -31,7 +31,7 @@ extern char* arcan_themepath;
 extern char* arcan_binpath;
 extern char* arcan_libpath;
 
-typedef struct arcan_frameserver arcan_frameserver;
+//typedef struct arcan_frameserver arcan_frameserver;
 typedef struct frameserver_shmpage frameserver_shmpage; 
 
 #define BADFD -1

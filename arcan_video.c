@@ -3056,7 +3056,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		
 		float p[4][3];
 
-		/* unproject all 4 vertices, usually very costly but for 4 vertices it's manageable */
+/* unproject all 4 vertices, usually very costly but for 4 vertices it's manageable */
 		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[0][0], &p[0][1], &p[0][2]);
 		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[1][0], &p[1][1], &p[1][2]);
 		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[2][0], &p[2][1], &p[2][2]);
@@ -3066,7 +3066,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0];
 		py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1];
 			
-		/* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
+/* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
 		return pinpoly(4, px, py, (float) x, (float) arcan_video_display.height - y);
 	}
 	

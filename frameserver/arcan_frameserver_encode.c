@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -17,74 +18,167 @@
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 
+/* although there's a libswresampler already "handy", speex is used (a) for the simple relief in not having to deal with
+ * more ffmpeg "APIs" and (b) for future VoIP features */
+#include <speex/speex_resampler.h>
+
+struct resampler {
+	arcan_aobj_id source;
+	float weight;
+	
+	SpeexResamplerState* resampler;
+	
+	struct resampler* next;
+};
+
 struct {
 	struct frameserver_shmcont shmcont;
 	
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
-	
-	struct SwsContext* ccontext;
-	
+
 	AVFormatContext* fcontext;
 	AVCodecContext* acontext;
 	AVCodecContext* vcontext;
+
+	struct SwsContext* ccontext;
 
 	AVCodec* vcodec;
 	long long lastframe; /* monotonic clock time-stamp */
 	unsigned long framecount; 
 	float fps;
-	
+	uint8_t* encvbuf;
+	size_t encvbuf_sz;
+		
 	AVCodec* acodec;
+	unsigned frequency;
 	
+/* muxing */
 	AVStream* astream;
 	AVStream* vstream;
 
 	AVPacket packet;
 	AVFrame* pframe;
 
-	bool extcc;
-
-	int vid; /* selected video-stream */
-	int aid; /* Selected audio-stream */
-
-/* intermediate storage when it can't be avoided */
-	int16_t* encabuf;
+/* two channels output + one resampler for now, 
+ * add a float mixing buffer for 0.2.2 */
+	uint8_t* encabuf;
 	size_t encabuf_sz;
+	struct resampler* resamplers;
 
-	uint8_t* encvbuf;
-	size_t encvbuf_sz;
-	
 /* precalc dstptrs into shm */
 	uint8_t* vidp, (* audp);
-
+	
 /* sent from parent */
 	file_handle lastfd;
-
+	
 } ffmpegctx = {0};
 
-/* this one is a bit complicated, since we have a dynamic set of dynamic input audio sources (euwgh) being we multiplexed into a 
- * rate-chan-nsamples-weight-data format and then demultiplex here. Since these streams can
- * have different lengths, we maintain separate local buffers where we store the upsampled version (float format), when stepframe
- * checks, we determine how many samples to mix and dequeue based on the smallest buffer size and the state of the video encoder */
-bool flush_audbuf(size_t* nb, unsigned* nf)
+static struct resampler* grab_resampler(arcan_aobj_id id, unsigned frequency, unsigned channels)
 {
+/* no resampler setup, allocate */
+	struct resampler* res = ffmpegctx.resamplers;
+	struct resampler** ip = &ffmpegctx.resamplers;
+	
+	while (res){
+		if (res->source == id)
+			return res;
 
+		if (res->next == NULL)
+			ip = &res->next;
+		
+		res = res->next;
+	}
 
+/* no match, allocate */
+	res = *ip = malloc( sizeof(struct resampler) );
+	res->next = NULL;
+
+	int errc;
+	res->resampler = speex_resampler_init(channels, frequency, ffmpegctx.frequency, 3, &errc);
+	res->weight = 1.0; 
+	res->source = id;
+	
+	return res;
 }
 
-/* there's exactly one video frame to encode, and stuff as much audio into it as possible */
+static size_t flush_audbuf()
+{
+	size_t cur_sz = ffmpegctx.shmcont.addr->abufused;
+	uint8_t* audb = ffmpegctx.audp;
+	off_t ofs = 0;
+	unsigned hdr[5] = {/* src */ 0, /* size_t */ 0, /* frequency */ 0, /* channels */ 0, 0/* 0xfeedface */};
+	
+/* plow through the number of available bytes, these will be gone when stepframe is completed */
+	while(cur_sz > sizeof(hdr) && ofs < ffmpegctx.encabuf_sz){
+		memcpy(&hdr, audb, sizeof(hdr));
+		assert(hdr[4] == 0xfeedface);
+		audb += sizeof(hdr);
+		struct resampler* rsmp = grab_resampler(hdr[0], hdr[2], hdr[3]);
+
+/* parent guarantees stereo, SINT16LE, size in bytes, so 4 bytes per sample but resampler 
+ * takes channels into account and wants the in count to be samples per channel (so half again) */
+		unsigned inlen = hdr[1] >> 2; 
+
+/* same samplerate, no conversion needed, just push */
+		if (hdr[2] == ffmpegctx.frequency){
+			memcpy(&ffmpegctx.encabuf[ofs], audb, hdr[1]);
+			ofs += hdr[1];
+		}
+/* pass through speex resampler before pushing, no mixing of channels happen here */
+		else {
+			size_t out_sz     = inlen << 2;
+			unsigned int outc = out_sz;
+
+/* note the quirk that outc first represents the size of the buffer, THEN after resampling, it's the number of samples */
+			speex_resampler_process_interleaved_int(rsmp->resampler, (uint16_t*) audb, &inlen, (uint16_t*) &ffmpegctx.encabuf[ofs], &outc);
+			ofs += outc << 2;
+		}
+
+		audb += hdr[1];
+		cur_sz -= hdr[1] + sizeof(hdr); 
+	}
+	
+	return ofs;
+}
+
 void arcan_frameserver_stepframe(unsigned long frameno, bool flush)
 {
 	ssize_t rs = -1;
-
 /* if astream open and abuf, flush abuf into audio codec, feed both into muxer */
 	if (ffmpegctx.acontext){
-		size_t numb;
-		int numf;
-		
-		AVPacket pkt = {0};
-		if ( flush_audbuf(&numb, &numf) ){
-			
+		size_t numb = flush_audbuf();
+		if (numb > 0){
+			int numf;
+
+/* will be populated by encoder */
+			AVPacket pkt;
+			av_init_packet(&pkt);
+			pkt.data = NULL;
+			pkt.size = 0;
+
+/* fill with result from audio buffer flush */
+			AVFrame frame;
+			avcodec_get_frame_defaults(&frame);
+			frame.nb_samples = numb >> 2;
+			avcodec_fill_audio_frame(&frame, 2, ffmpegctx.acontext->sample_fmt, ffmpegctx.encabuf, numb, 1); 
+
+/* encode + send to multiplexer */
+			int got_packet;
+			if ( avcodec_encode_audio2(ffmpegctx.acontext, &pkt, &frame, &got_packet) == 0 && got_packet){
+				pkt.flags |= AV_PKT_FLAG_KEY;
+				pkt.stream_index = ffmpegctx.astream->index;
+
+/* really no way to recover from this, if we can't mux once, feeding empty audio frames and hoping
+ * that the video frame stays intact is a dead race, give up */
+				if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0){
+					LOG("arcan_frameserver(encode) -- audio muxing failed, shutting down.\n");
+
+					ffmpegctx.acontext = NULL;
+				}
+				
+				av_free_packet(&pkt);
+			}
 		}
 	}
 	
@@ -309,7 +403,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d b/s), acodec: (%s:%d rate %d b/s), container: (%s)\n",
 			vck?vck:"default",  fps, vbr, ac?ac:"default", afreq, abr, cont?cont:"default");
 	setup_videocodec(vck);
-	//setup_audiocodec(ac);
+	setup_audiocodec(ac);
 	setup_container(cont);
 
 	if (ffmpegctx.fcontext == NULL || (!ffmpegctx.vcodec && !ffmpegctx.acodec)){
@@ -332,6 +426,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 		ctx->gop_size = gop;
 		ctx->time_base = timebase;
 		ffmpegctx.fps = fps;
+		ffmpegctx.frequency = afreq;
 		ctx->width = shared->w;
 		ctx->height = shared->h;
 	
@@ -367,11 +462,11 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 	if (ffmpegctx.acodec){
 		AVCodecContext* ctx = avcodec_alloc_context();
+		
 		ctx->sample_rate = afreq;
 		ctx->time_base   = av_d2q(1.0 / ctx->sample_rate, 1000000);
 		ctx->channels    = 2;
 		ctx->sample_fmt  = AV_SAMPLE_FMT_S16;
-		
 		ffmpegctx.acontext = ctx;
 		
 		if (avcodec_open2(ffmpegctx.acontext, ffmpegctx.acodec, NULL) < 0){
@@ -380,7 +475,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.acodec = NULL;
 		} 
 		else{
-			ffmpegctx.encabuf = malloc(ffmpegctx.encabuf_sz = (ctx->frame_size * ctx->channels * sizeof(int16_t)) );
+			ffmpegctx.encabuf_sz = SHMPAGE_AUDIOBUF_SIZE * 2;
+			ffmpegctx.encabuf = malloc(ffmpegctx.encabuf_sz); 
 			ffmpegctx.astream = av_new_stream(ffmpegctx.fcontext, contextc++);
 			ffmpegctx.astream->codec = ffmpegctx.acontext;
 		}
@@ -427,6 +523,7 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 				case TARGET_COMMAND_STEPFRAME: 
 					if (ffmpegctx.lastfd != BADFD)
 						arcan_frameserver_stepframe(ev->data.target.ioevs[0], false);
+					
 				break;
 				case TARGET_COMMAND_STORE: 
 					goto cleanup; 
@@ -438,10 +535,10 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 	}
 
 cleanup:
+	LOG("giveup\n");
 /* TODO: close codec -> free streams -> close output -> free stream */
 	if (ffmpegctx.fcontext)
 		av_write_trailer(ffmpegctx.fcontext);
 	
 	return;
 }
-

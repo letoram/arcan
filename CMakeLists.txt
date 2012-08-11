@@ -73,6 +73,7 @@ FIND_PACKAGE ( FFMPEG REQUIRED )
 FIND_PACKAGE ( VORBIS REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
 FIND_PACKAGE ( OpenCTM REQUIRED )
+FIND_PACKAGE( Speex REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
 
 LIST (APPEND 
@@ -98,6 +99,7 @@ FSRV_LIBRARIES
 	${FFMPEG_LIBRARIES}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
+	${SPEEX_LIBRARIES}
 )
 
 include_directories ( 
@@ -298,7 +300,12 @@ if (EXISTS "/usr/bin/dpkg")
 	set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
 	set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION})
 	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Bjorn Stahl")
-	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.4), libglu1-mesa | libglu1, liblua5.1-0, libopenal1, libsdl-image1.2 (>= 1.2.10), libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libvorbisfile3 (>= 1.1.2), libavcodec-extra-53 (>= 4:0.7-1), libavformat53 (>= 4:0.7-1) | libavformat-extra-53 (>= 4:0.7-1), libavutil-extra-51 (>= 4:0.7-1), libswscale2 (>= 4:0.7-1) | libswscale-extra-2 (>= 4:0.7-1), libavdevice53 (>= 4:0.7-1), libbz2-1.0, libvorbis0a, libogg0, ruby1.9.1, libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.4), libglu1-mesa | libglu1, liblua5.1-0, libopenal1, libsdl-image1.2 (>= 1.2.10), "
+	"libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libvorbisfile3 (>= 1.1.2), "
+	"libavcodec-extra-53 (>= 4:0.7-1), libavformat53 (>= 4:0.7-1) | libavformat-extra-53 (>= 4:0.7-1), libavutil-extra-51 (>= 4:0.7-1), "
+	"libswscale2 (>= 4:0.7-1) | libswscale-extra-2 (>= 4:0.7-1), libavdevice53 (>= 4:0.7-1), libbz2-1.0, libvorbis0a, libogg0, ruby1.9.1, "
+	"libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1, libspeex >= 1.2rc1")
+	
 endif(EXISTS "/usr/bin/dpkg")
 
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
