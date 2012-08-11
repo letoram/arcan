@@ -88,8 +88,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.addr->bpp = 4;
 	res.addr->vready = false;
 	res.addr->aready = false;
-	res.addr->channels = 0;
-	res.addr->samplerate = 0;
+/*	res.addr->channels = 0;
+	res.addr->samplerate = 0; */
 	res.addr->dms = true;
 	
 	parent = res.addr->parent;
@@ -285,7 +285,6 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->bpp = bpp;
 		arg->addr->channels = nchan;
 		arg->addr->samplerate = ceil(freq);
-
 		
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			arg->addr->resized = true;

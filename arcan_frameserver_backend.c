@@ -270,14 +270,16 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
  */
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) == 0){
+			assert(src->vidp != src->audp);
+			
 			memcpy(src->vidp, buf, s_buf);
-/* these may come from monitors feed by different frames, possibly threaded framequeue
- * always assume audb <= shmaudb */
-			SDL_mutexP(src->lock_audb);
-				memcpy(src->audp, src->audb, src->ofs_audb);
-				src->shm.ptr->abufused = src->ofs_audb;
-				src->ofs_audb = 0;
-			SDL_mutexV(src->lock_audb);
+			if (src->ofs_audb){
+				SDL_mutexP(src->lock_audb);
+					memcpy(src->audp, src->audb, src->ofs_audb);
+					src->shm.ptr->abufused = src->ofs_audb;
+					src->ofs_audb = 0;
+				SDL_mutexV(src->lock_audb);
+			}
 
 /* it is possible that we deliver more videoframes than we can legitimately encode in the target
  * framerate, it is up to the frameserver to determine when to drop and when to double frames */
@@ -296,29 +298,45 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	return 0;
 }
 
-/* attach buffer to frameserver associated with tag,
+/* attach buffer to frameserver associated with tag, format in buf is always S16LE 
  * this may be invoked multiple times from different sources in short succession, hence we use a little tag/len/val format
  * to link these together and just keep on buffering until the videoframe- part forces a flush that's accepted by the frameserver */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
 {
 	arcan_frameserver* dst = tag;
-	unsigned hdr[4] = {buf_sz, frequency, channels, 0xaa};
-
+	unsigned hdr[5] = {src, buf_sz, frequency, 2, 0xfeedface};
+	assert(dst->ofs_audb < dst->sz_audb);
 /* make sure we don't overflow, store to intermediate buffer as we have many access threads and can't rely on 
  * synching to an untrusted source(the frameserver) here */
-	if (dst->ofs_audb + buf_sz + sizeof(hdr) < dst->sz_audb){
+	if (dst->ofs_audb + (channels == 1 ? buf_sz * 2 : buf_sz) + sizeof(hdr) < dst->sz_audb){
 	SDL_mutexP(dst->lock_audb);
 
+/* store header */
 		memcpy(dst->audb + dst->ofs_audb, hdr, sizeof(hdr));
 		dst->ofs_audb += sizeof(hdr);
-		memcpy(dst->audb + dst->ofs_audb, buf, buf_sz);
-		dst->ofs_audb += buf_sz;
+	
+/* just convert to stereo right here */
+		if (channels == 1){
+			for (int i = 0; i < buf_sz; i+=2){
+				dst->audb[dst->ofs_audb + (i*2)]   = buf[i];
+				dst->audb[dst->ofs_audb + (i*2)+1] = buf[i+1];
+				dst->audb[dst->ofs_audb + (i*2)+2] = buf[i];
+				dst->audb[dst->ofs_audb + (i*2)+3] = buf[i+1];
+			}
+			dst->ofs_audb += buf_sz * 2; 
+		} 
+/* already "right" format, just copy */
+		else if (channels == 2) {
+			memcpy(dst->audb + dst->ofs_audb, buf, buf_sz);
+			dst->ofs_audb += buf_sz;
+		}
+		else
+			arcan_warning("arcan_avfeedmon(frameserver:%d) -- illegal number of channels %d (1,2 supported)\n", channels);
 		
 	SDL_mutexV(dst->lock_audb);
 	}
-	else 
-		arcan_warning("arcan_avfeedmon(frameserver:%d) -- intermediate audio buffer full, (%zu).\n", src, buf_sz);
-	
+	else; 
+//		arcan_warning("arcan_avfeedmon(frameserver:%d) -- intermediate audio buffer full, (%zu) => %d/%d).\n", src, (channels == 1 ? buf_sz * 2 : buf_sz) + sizeof(hdr), dst->ofs_audb, dst->sz_audb);
 }
 
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
@@ -445,15 +463,19 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, unsi
 
 static arcan_errc again_feed(float gain, void* tag)
 {
-	arcan_frameserver* target = (arcan_frameserver*) tag;
+	arcan_frameserver* target = tag;
 
 	if (target){
-		/* queue event into target */
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_RESTORE };
+		arcan_frameserver_pushevent( target, &ev );
+		
+		return ARCAN_OK;
 	}
-	
-	return ARCAN_OK;
+	else
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 }
-
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
@@ -682,27 +704,29 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*)movie->shm.ptr;
 
-			if (shm->aready) {
-                frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
-                current->tag = shm->vpts;
+		if (shm->aready) {
+			frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
+			current->tag = shm->vpts;
 
-				if (shm->abufused - shm->abufbase > ntr) {
-					memcpy(dst, movie->audp, ntr);
-					shm->abufbase += ntr;
-					rv = ntr;
-				}
-				else {
-					size_t nc = shm->abufused - shm->abufbase;
-					memcpy(dst, movie->audp, nc);
-					shm->abufbase = 0;
-					shm->aready = false;
-					arcan_sem_post(movie->async);
-					rv = nc;
-				}
+			if (shm->abufused - shm->abufbase > ntr) {
+				memcpy(dst, movie->audp, ntr);
+				shm->abufbase += ntr;
+				rv = ntr;
 			}
-			else
-				errno = EAGAIN;
-	}else errno = EINVAL;
+			else {
+				size_t nc = shm->abufused - shm->abufbase;
+				memcpy(dst, movie->audp, nc);
+				shm->abufbase = 0;
+				shm->aready = false;
+				arcan_sem_post(movie->async);
+				rv = nc;
+			}
+		}
+		else
+			errno = EAGAIN;
+	}
+	else
+		errno = EINVAL;
 
 	return rv;
 }

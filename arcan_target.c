@@ -147,9 +147,6 @@ static void audiocb(void *userdata, uint8_t *stream, int len)
 {
 	if (acbfun) {
 		acbfun(userdata, stream, len);
-/* hi-jacked the audio data,
- * we can either force it out through the afd, or modify it in place here */
-
 		int16_t* samples = (int16_t*)stream;
 
 		len /= 2;
@@ -202,6 +199,7 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
 	char* shmsize = getenv("ARCAN_SHMSIZE");
+	
 	trace("ARCAN_target_init(%s, s)\n", global.shmkey, shmsize);
 	
 	unsigned bufsize = strtoul(shmsize, NULL, 10);
@@ -216,43 +214,40 @@ void ARCAN_target_init(){
 		exit(1);
 	}
 	
-//	frameserver_shmpage_resize( &(global.shared), 32, 32, 4, 0, 0 );
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
-	
-//	sem_wait( global.shared.vsem ); 
 }
 
-	int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
-	{
-		acbfun = desired->callback;
-		desired->callback = audiocb;
-		int rc = forwardtbl.sdl_openaudio(desired, obtained);
+int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
+{
+	acbfun = desired->callback;
+	desired->callback = audiocb;
+	int rc = forwardtbl.sdl_openaudio(desired, obtained);
 
-		trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
-		global.frequency = obtained->freq;
-		global.channels = obtained->channels;
-		global.format = obtained->format;
-		global.attenuation = 1.0;
+	trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
+	global.frequency = obtained->freq;
+	global.channels = obtained->channels;
+	global.format = obtained->format;
+	global.attenuation = 1.0;
 
-		return rc;
-	}
+	return rc;
+}
 
-	SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height, int depth, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask){
-		trace("SDL_CreateRGBSurface(%d, %d, %d, %d)\n", flags, width, height, depth);
-		return forwardtbl.sdl_creatergbsurface(flags, width, height, depth, Rmask, Gmask, Bmask, Amask);
-	}
+SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height, int depth, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask){
+	trace("SDL_CreateRGBSurface(%d, %d, %d, %d)\n", flags, width, height, depth);
+	return forwardtbl.sdl_creatergbsurface(flags, width, height, depth, Rmask, Gmask, Bmask, Amask);
+}
 
-	/*
-	 * certain events might be filtered as well,
-	 * since the subject needs to be tricked to belive that it is active/in focus/...
-	 * even though it is not
-	 */
+/*
+ * certain events might be filtered as well,
+ * since the subject needs to be tricked to belive that it is active/in focus/...
+ * even though it is not
+ */
 
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 {
 	trace("SDL_SetVideoMode(%d, %d, %d, %d)\n", w, h, ncps, flags);
-		
+
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
 	global.shared.addr->glsource = (flags & SDL_OPENGL) > 0;

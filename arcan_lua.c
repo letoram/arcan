@@ -66,8 +66,21 @@
 #include "arcan_lua.h"
 #include "arcan_led.h"
 
-static const int ORDER_FIRST = 1;
-static const int ORDER_LAST  = 0;
+
+/* these take some explaining:
+ * to enforce that actual constants are used in LUA scripts and not magic numbers
+ * the corresponding binding functions check that the match these global constants (not defines
+ * as we want them maintained in DWARF debug data as well), but their actual values are set by
+ * defines so that they can be swizzled around by the build-system */
+#ifndef CONST_ORDER_FIRST 
+#define CONST_ORDER_FIRST 1
+#endif
+static const int ORDER_FIRST = CONST_ORDER_FIRST;
+
+#ifndef CONST_ORDER_LAST
+#define CONST_ORDER_LAST 0
+#endif
+static const int ORDER_LAST  = CONST_ORDER_LAST;
 
 static const int FRAMESERVER_LOOP = 1;
 static const int FRAMESERVER_NOLOOP = 0;
@@ -2794,9 +2807,13 @@ int arcan_lua_recordset(lua_State* ctx)
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
 		shmpage->w = dobj->gl_storage.w;
 		shmpage->h = dobj->gl_storage.h;
+		shmpage->bpp = 4;
+		shmpage->channels = 2;
+		shmpage->samplerate = 44100;
+		
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
-/* pushing the file descriptor signals the frameserver to start receiving,
+/* pushing the file descriptor signals the frameserver to start receiving (and use the proper dimensions),
  * it is permitted to close and push another one to the same session */
 		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
 		if (fd){
