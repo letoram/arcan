@@ -20,6 +20,15 @@ local scalemodelist = {
 	"Bezel"
 };
 
+-- crazy amount of options for vector mode:
+-- all the regular CRT options
+-- beam width, point width (bullets etc.)
+-- trails (on: submenu -- 1..n + weight for each trail, off)
+-- horizontal bias
+-- vertical bias
+-- blur PBO dimensions
+-- blur source opacity
+-- backdrop
 local scalemodeptrs = {};
 local function scalemodechg(label, save)
 	settings.scalemode = label;
@@ -151,17 +160,22 @@ local function setup_cocktail(mode, source, vresw, vresh)
 local props = image_surface_properties(source);
 	
 	imagery.cocktail_vid = instance_image(source);
+	image_shader(imagery.cocktail_vid, fullscreen_shader);
+	
 	image_mask_clear(imagery.cocktail_vid, MASK_OPACITY);
 	image_mask_clear(imagery.cocktail_vid, MASK_ORIENTATION);
 	resize_image(imagery.cocktail_vid, props.width, props.height);
 	show_image(imagery.cocktail_vid);
 
 	if (mode == "H-Split" or mode == "H-Split SBS") then
-		if (mode == "H-Split") then rotate_image(imagery.cocktail_vid, 180); end
+		if (mode == "H-Split") then 
+			rotate_image(imagery.cocktail_vid, 180); 
+		end
+		
 		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
 		move_image(source, 0.5 * (vresw - props.width), 0.5 * (vresh - props.height));
 		move_image(imagery.cocktail_vid, vresw + 0.5 * (vresw - props.width), 0.5 * (vresh - props.height));
-		
+
 	elseif (mode == "V-Split") then
 		move_image(source, 0.5 * (vresh - props.width), 0.5 * (vresw - props.height))
 		move_image(imagery.cocktail_vid, vresh, 0);
@@ -171,7 +185,6 @@ local props = image_surface_properties(source);
 end
 
 local function bezel_loaded(source, status)
-
 	if (status.kind == "loaded") then
 		local props = image_storage_properties(source);
 		resize_image(source, VRESW, VRESH);
@@ -214,8 +227,125 @@ local function setup_bezel()
 	return false;
 end
 
-function gridle_fit(sourcew, sourceh, windw, windh)
+-- generate a special "mix shader" for multitexturing purposes,
+-- where input frames is an array of weights e.g {1.0, 0.8, 0.6} 
+function create_weighted_fbo( frames )
+	local resshader = {};
+	table.insert(resshader, "varying vec2 texco;");
 	
+	for i=0,#frames-1 do
+		table.insert(resshader, "uniform sampler2D map_tu" .. tostring(i) .. ";");
+	end
+
+	table.insert(resshader, "void main(){");
+
+	local mixl = "gl_FragColor = "
+	for i=0,#frames-1 do
+		table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i) .. ", texco);");
+
+		local strv = tostring(frames[i+1]);
+		local coll = "vec4(" .. strv .. ", " .. strv .. ", " .. strv .. ", 1.0)";
+		mixl = mixl .. "col" .. tostring(i) .. " * " .. coll;
+		
+		if (i == #frames-1) then 
+			mixl = mixl .. ";\n}\n";
+		else
+			mixl = mixl .. " + ";
+		end
+	end
+
+	table.insert(resshader, mixl);
+	return resshader; 
+end
+
+-- configure shaders for the blur / glow / bloom effect
+function vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp)
+	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
+	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
+	shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
+	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
+	shader_uniform(blurshader_h, "ampl", "f", PERSIST, hamp);
+	shader_uniform(blurshader_v, "ampl", "f", PERSIST, vamp);	
+
+	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
+	local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
+
+	image_shader(blur_hbuf, blurshader_h);
+	image_shader(blur_vbuf, blurshader_v);
+
+	show_image(blur_hbuf);
+	show_image(blur_vbuf);
+
+	return blur_hbuf, blur_vbuf;
+end
+
+-- additive blend with blur
+function vector_lightmode(source, targetw, targeth, blurw, blurh, hamp, vamp)
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp);
+	show_image(source);
+
+	local node = instance_image(source);
+	resize_image(node, blurw, blurh);
+	show_image(node);
+	define_rendertarget(blur_hbuf, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
+	blend_image(blur_vbuf, 0.95);
+	force_image_blend(blur_vbuf, BLEND_ADD);
+	order_image(blur_vbuf, max_current_image_order() + 1);
+
+	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	define_rendertarget(comp_outbuf, {blur_vbuf, source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(comp_outbuf);
+
+	return comp_outbuf;	
+end
+
+--
+-- additive blend with blur, base image for blur as a weighted blend of previous images
+-- creates lots of little FBOs container resources that needs to be cleaned up
+--
+function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh)
+-- create an instance of the parent that won't be multitextured 
+	local normal = instance_image(parent);
+	image_mask_set(normal, MASK_FRAMESET);
+	show_image(normal);
+	resize_image(normal, targetw, targeth);	
+
+-- set frameset for parent to work as a round robin with multitexture,
+-- build a shader that blends the frames according with user-defined weights	
+	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames) , "history_mix", {});
+	image_framesetsize(parent, #frames, FRAMESET_MULTITEXTURE);
+	image_framecyclemode(parent, delay);
+	image_shader(parent, mixshader);
+	show_image(parent);
+	resize_image(parent, blurw, blurh);
+
+-- generate textures to use as round-robin store
+	for i=1,#frames-1 do
+		local vid = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
+		set_image_as_frame(parent, vid, i, FRAMESET_DETACH);
+	end
+
+-- render this to a FBO that will be used for input to blurring
+	rendertgt = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
+	define_rendertarget(rendertgt, {parent}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(rendertgt);
+
+-- this part is the same as lightmode, use the normal instance as background, then blend the blur result
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.6, 1.0);
+	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	blend_image(blur_vbuf, 0.97);
+	force_image_blend(blur_vbuf, BLEND_ADD);
+	order_image(blur_vbuf, max_current_image_order() + 1);
+
+-- one last FBO for output to CRT etc.
+	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	define_rendertarget(comp_outbuf, {blur_vbuf, normal}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(comp_outbuf);
+
+	return comp_outbuf;
 end
 
 function gridlemenu_resize_fullscreen(source)

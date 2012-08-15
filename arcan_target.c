@@ -62,6 +62,9 @@ static struct {
 	int (*sdl_flip)(SDL_Surface*);
 	SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int, int, Uint32, Uint32, Uint32, Uint32);
 	int (*audioproxy)(int, int);
+	void (*glLineWidth)(float);
+	void (*glPointSize)(float);
+	
 } forwardtbl = {0};
 
 static struct {
@@ -78,7 +81,11 @@ static struct {
 	bool doublebuffered;
 	SDL_Surface* mainsrfc;
 	SDL_PixelFormat desfmt;
-		
+
+	float point_size;
+	float line_size;
+	float point_atten[3];
+	
 	SDL_MouseMotionEvent mousestate;
 	uint8_t mousebutton;
 		
@@ -87,8 +94,7 @@ static struct {
 	struct arcan_evctx inevq, outevq;
 	struct frameserver_shmcont shared;
 	uint8_t* vidp, (* audp);
-		
-	} global = {
+} global = {
 		.desfmt = {
 			.BitsPerPixel = 32,
 			.BytesPerPixel = 4,
@@ -103,7 +109,11 @@ static struct {
 			.Bmask = 0x00ff0000,
 			.Amask = 0xff000000
 	#endif
-		}
+		},
+		
+		.point_size = 1.0,
+		.line_size  = 1.0,
+		.point_atten = {1.0, 0.0, 0.0}
 };
 
 static inline void trace(const char* msg, ...)
@@ -463,6 +473,25 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface *
 			copysurface(dst);
 
 	return rv;
+}
+
+/* Hacks for MAME + Vectors */
+void ARCAN_glLineWidth( float num )
+{
+	return forwardtbl.glLineWidth( global.line_size );
+}
+
+void ARCAN_glPointSize( float num )
+{
+/* glPointParameter(f,i)v:
+ * GL_POINT_SIZE_MIN (0.0..0.1, 0.0 def.)
+ * GL_POINT_SIZE_MAX (0.0..* 1.0 def.)
+ * GL_POINT_DISTANCE_ATTENUATION (3f array, 1, 0, 0 def.)
+ * GL_POINT_FADE_THRESHOLD_SIZE (1.0, clamp float size.)
+ * GL_POINT_SPRITE_COORD_ORIGIN (enum, GL_LOWER_LEFT or GL_UPPER_LEFT) */
+
+	glPointParameterfv(GL_POINT_DISTANCE_ATTENUATION, global.point_atten );
+	return forwardtbl.glPointSize( global.point_size * 4 );
 }
 
 /* 

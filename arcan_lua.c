@@ -2400,6 +2400,7 @@ static bool use_loader(char* fname)
 	char* ext = strrchr( fname, '.' );
 	if (!ext) return false;
 	
+/* there are prettier ways to do this . . . */
 	return (strcasecmp(ext, ".so") == 0) || (strcasecmp(ext, ".dll") == 0) ? true : false;
 }
 

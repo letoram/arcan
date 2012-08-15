@@ -75,10 +75,14 @@ class Mame
 # internal launch arguments, we want the data as "pure" as and "cheap" possible
 		@mameargs[1] << "-window"
 		@mameargs[1] << "-scalemode"
-		@mameargs[1] << "none" 
+		@mameargs[1] << "none"
+		@mameargs[1] << "-video"
+		@mameargs[1] << "opengl" 
 		@mameargs[1] << "-nomaximize"
 		@mameargs[1] << "-multithreading"
 		@mameargs[1] << "-keepaspect"
+		@mameargs[1] << "-resolution"
+		@mameargs[1] << "320x240"
 		
 		if (res = cmdopts["--mamecatver"])
 			merge_gameinfo( res[0] )

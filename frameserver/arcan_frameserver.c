@@ -129,7 +129,6 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 
 long long int frameserver_timemillis()
 {
-
 	struct timespec tp;
 #if _POSIX_TIMERS > 0
 	clock_gettime(CLOCK_MONOTONIC, &tp);

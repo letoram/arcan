@@ -223,7 +223,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_render:
 			rv = push_buffer( (char*) tgt->vidp, mode, shmpage->w, shmpage->h, shmpage->bpp, width, height, bpp); 
 
-/* in constrast to the framequeue approach, we here need to limit the number of context switches
+/* in contrast to the framequeue approach, we here need to limit the number of context switches
  * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
  * an intermediate buffer for this */
 			if (shmpage->aready) {
