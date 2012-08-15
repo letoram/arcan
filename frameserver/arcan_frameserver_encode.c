@@ -142,95 +142,112 @@ static size_t flush_audbuf()
 	return ofs;
 }
 
-void arcan_frameserver_stepframe(unsigned long frameno, bool flush)
+static void encode_audio(bool flush)
 {
-	ssize_t rs = -1;
 /* if astream open and abuf, flush abuf into audio codec, feed both into muxer */
-	if (ffmpegctx.acontext){
-		size_t numb = flush_audbuf();
-		if (numb > 0){
-			int numf;
+	size_t numb = flush_audbuf();
+	int numf, got_packet;
+
+	if (numb == 0 && !flush)
+		return;
 
 /* will be populated by encoder */
-			AVPacket pkt;
-			av_init_packet(&pkt);
-			pkt.data = NULL;
-			pkt.size = 0;
+	do{
+		AVPacket pkt;
+		av_init_packet(&pkt);
+		pkt.data = NULL;
+		pkt.size = 0;
 
 /* fill with result from audio buffer flush */
-			AVFrame frame;
-			avcodec_get_frame_defaults(&frame);
-			frame.nb_samples = numb >> 2;
-			avcodec_fill_audio_frame(&frame, 2, ffmpegctx.acontext->sample_fmt, ffmpegctx.encabuf, numb, 1); 
+		AVFrame frame;
+		avcodec_get_frame_defaults(&frame);
+		frame.nb_samples = numb >> 2;
+		avcodec_fill_audio_frame(&frame, 2, ffmpegctx.acontext->sample_fmt, ffmpegctx.encabuf, numb, 1); 
 
 /* encode + send to multiplexer */
-			int got_packet;
-			if ( avcodec_encode_audio2(ffmpegctx.acontext, &pkt, &frame, &got_packet) == 0 && got_packet){
-				pkt.flags |= AV_PKT_FLAG_KEY;
-				pkt.stream_index = ffmpegctx.astream->index;
+		if ( avcodec_encode_audio2(ffmpegctx.acontext, &pkt, flush ? NULL : &frame, &got_packet) == 0 && got_packet){
+			pkt.flags |= AV_PKT_FLAG_KEY;
+			pkt.stream_index = ffmpegctx.astream->index;
 
 /* really no way to recover from this, if we can't mux once, feeding empty audio frames and hoping
  * that the video frame stays intact is a dead race, give up */
-				if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0){
-					LOG("arcan_frameserver(encode) -- audio muxing failed, shutting down.\n");
-
-					ffmpegctx.acontext = NULL;
-				}
-				
-				av_free_packet(&pkt);
+			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0){
+				ffmpegctx.acontext = NULL;
+				return;
 			}
+				
+			av_free_packet(&pkt);
 		}
 	}
-	
-	if (ffmpegctx.vcontext){
-		uint8_t* srcpl[4] = {ffmpegctx.vidp, NULL, NULL, NULL};
-		int srcstr[4] = {0, 0, 0, 0};
-		srcstr[0] = ffmpegctx.vcontext->width * 4;
+	while (flush && got_packet);
+}
+
+void encode_video(bool flush)
+{
+	uint8_t* srcpl[4] = {ffmpegctx.vidp, NULL, NULL, NULL};
+	int srcstr[4] = {0, 0, 0, 0};
+	srcstr[0] = ffmpegctx.vcontext->width * 4;
 
 /* the main problem here is that the source material may encompass many framerates, in fact, even be variable (!) 
  * the samplerate we're running with that is of interest. Thus compare the current time against the next expected time-slots,
  * if we're running behind, just repeat the last frame N times as to not get out of synch with possible audio. */
-		double mspf = 1000.0 / ffmpegctx.fps;
-		double thresh = mspf * 0.5;
-		long long encb    = frameserver_timemillis();
-		long long cft     = encb - ffmpegctx.lastframe; /* assumed >= 0 */
-		long long nf      = round( mspf * (double)ffmpegctx.framecount );
-		long long delta   = cft - nf;
-		unsigned fc       = 1;
+	double mspf = 1000.0 / ffmpegctx.fps;
+	double thresh = mspf * 0.5;
+	long long encb    = frameserver_timemillis();
+	long long cft     = encb - ffmpegctx.lastframe; /* assumed >= 0 */
+	long long nf      = round( mspf * (double)ffmpegctx.framecount );
+	long long delta   = cft - nf;
+	unsigned fc       = 1;
 
 /* ahead by too much? give up */
-		if (delta < -thresh)
-			goto flush;
-
-/* running behind, need to repeat a frame */
-		if ( delta > thresh )
-			fc += 1 + floor( delta / mspf);
+	if (delta < -thresh)
+		return;
 		
-		int rv = sws_scale(ffmpegctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0, ffmpegctx.vcontext->height, ffmpegctx.pframe->data, ffmpegctx.pframe->linesize);
-		ffmpegctx.framecount += fc;
+/* running behind, need to repeat a frame */
+	if ( delta > thresh )
+		fc += 1 + floor( delta / mspf);
+		
+	int rv = sws_scale(ffmpegctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0, ffmpegctx.vcontext->height, ffmpegctx.pframe->data, ffmpegctx.pframe->linesize);
+	ffmpegctx.framecount += fc;
 //		printf("frame(delta:%lld) @ %lld vs %lld\n", cft - nf, cft, nf);
 		
-		while (fc--){
-			rs = avcodec_encode_video(ffmpegctx.vcontext, ffmpegctx.encvbuf, ffmpegctx.encvbuf_sz, ffmpegctx.pframe);
-			AVCodecContext* ctx = ffmpegctx.vcontext;
-			AVPacket pkt;
-			av_init_packet(&pkt);
+	while (fc--){
+		int rs = avcodec_encode_video(ffmpegctx.vcontext, ffmpegctx.encvbuf, ffmpegctx.encvbuf_sz, ffmpegctx.pframe);
+		AVCodecContext* ctx = ffmpegctx.vcontext;
+		AVPacket pkt;
+		av_init_packet(&pkt);
 			
-			if (ctx->coded_frame->pts != AV_NOPTS_VALUE)
-				pkt.pts = av_rescale_q(ctx->coded_frame->pts, ctx->time_base, ffmpegctx.vstream->time_base);
+		if (ctx->coded_frame->pts != AV_NOPTS_VALUE)
+			pkt.pts = av_rescale_q(ctx->coded_frame->pts, ctx->time_base, ffmpegctx.vstream->time_base);
 	
-			pkt.stream_index = ffmpegctx.vstream->index;
-			pkt.data = ffmpegctx.encvbuf;
-			pkt.size = rs;
+		pkt.stream_index = ffmpegctx.vstream->index;
+		pkt.data = ffmpegctx.encvbuf;
+		pkt.size = rs;
 
-			int rv = av_interleaved_write_frame(ffmpegctx.fcontext, &pkt);
-		}
+		int rv = av_interleaved_write_frame(ffmpegctx.fcontext, &pkt);
 	}
+}
+
+void arcan_frameserver_stepframe(bool flush)
+{
+	if (ffmpegctx.acontext)
+		encode_audio(flush);
 	
-/* Ready to receive more */
-flush:
+	if (ffmpegctx.vcontext)
+		encode_video(flush);
+	
 	ffmpegctx.shmcont.addr->abufused = 0;
 	arcan_sem_post(ffmpegctx.shmcont.vsem);
+}
+
+static void encoder_atexit()
+{
+	if (ffmpegctx.lastfd != BADFD){
+		arcan_frameserver_stepframe(true);
+
+		if (ffmpegctx.fcontext)
+			av_write_trailer(ffmpegctx.fcontext);
+	}
 }
 
 static void setup_videocodec(const char* req)
@@ -503,6 +520,7 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 	struct frameserver_shmpage* shared = ffmpegctx.shmcont.addr;
 	frameserver_shmpage_setevqs(ffmpegctx.shmcont.addr, ffmpegctx.shmcont.esem, &(ffmpegctx.inevq), &(ffmpegctx.outevq), false); 
 	ffmpegctx.lastfd = BADFD;
+	atexit(encoder_atexit);
 
 /* main event loop */
 	while (true){
@@ -512,33 +530,25 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 			switch (ev->kind){
 				case TARGET_COMMAND_FDTRANSFER:
 					if (ffmpegctx.lastfd != BADFD)
-						arcan_frameserver_stepframe(0, true); /* flush */
+						arcan_frameserver_stepframe(true); /* flush */
 					
 					ffmpegctx.lastframe = frameserver_timemillis();
 					ffmpegctx.lastfd = frameserver_readhandle(ev);
 					if (!setup_ffmpeg_encode(resource))
-						goto cleanup;
-					
+						return;
 				break;
+
 				case TARGET_COMMAND_STEPFRAME: 
 					if (ffmpegctx.lastfd != BADFD)
-						arcan_frameserver_stepframe(ev->data.target.ioevs[0], false);
-					
+						arcan_frameserver_stepframe(false);	
 				break;
-				case TARGET_COMMAND_STORE: 
-					goto cleanup; 
+
+				case TARGET_COMMAND_STORE:
+					return;
 				break;
 			}
 		}
 
 		frameserver_delay(1);
 	}
-
-cleanup:
-	LOG("giveup\n");
-/* TODO: close codec -> free streams -> close output -> free stream */
-	if (ffmpegctx.fcontext)
-		av_write_trailer(ffmpegctx.fcontext);
-	
-	return;
 }

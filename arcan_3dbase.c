@@ -50,8 +50,6 @@
 
 #include "arcan_3dbase_synth.h"
 
-// #define M_PI 3.14159265358979323846
-
 extern struct arcan_video_display arcan_video_display;
 static arcan_shader_id default_3dprog;
 

@@ -171,8 +171,8 @@ function gridle()
 	end
 
 -- make sure that we don't have any weird resolution configurations
-	if (VRESW < 256 or VRESH < 256) then
-	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested (minimum 256x256). Check -w / -h arguments.");
+	if (VRESW < 240 or VRESH < 180) then
+	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested (minimum 240x180). Check -w / -h arguments.");
 	end
 
 -- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one

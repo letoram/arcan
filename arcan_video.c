@@ -334,14 +334,6 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	rv = arcan_video_allocid(&status);
     
 	if (status){
-		surface_properties newprop = {
-		.position.x = 0,
-		.position.y = 0,
-		.scale.x = 1.0,
-		.scale.y = 1.0,
-		.scale.z = 1.0
-		};
-		
 		arcan_vobject* nobj = arcan_video_getobject(rv);
 
 /* use parent values as template */
@@ -352,6 +344,8 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->origw = pobj->origw;
 		nobj->origh = pobj->origh;
 		nobj->order = pobj->order;
+		nobj->current.rotation.quaternion = build_quat_euler(0, 0, 0);
+		
 		nobj->gl_storage.program = 0;
 		
 		nobj->parent->refcount++;
@@ -814,7 +808,6 @@ static void arcan_video_gldefault()
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
 }
-
 
 const static char* defvprg =
 "uniform mat4 modelview;\n"

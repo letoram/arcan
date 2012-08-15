@@ -14,9 +14,16 @@ end
 function internaltest()
 	system_load("scripts/keyconf.lua")();
 	args = {};
-	
+	print("internal test\n", "target:", arguments[1], "game:", arguments[2]);	
+
 	targets = list_targets();
 	valid_tgts = {};
+
+	print("targets found:\n----------\n");
+	for key,val in pairs(targets) do
+		print(key);
+	end
+	print("----------");
 
 	if (arguments[1] ~= nil and arguments[2] == nil) then
 		targets = { arguments[1] };

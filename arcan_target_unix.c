@@ -62,6 +62,8 @@ static void hijack_init(void){
 	forwardtbl.sdl_updaterects = lookupsym("SDL_UpdateRects", true);
 	forwardtbl.sdl_upperblit = lookupsym("SDL_UpperBlit", true);
 	forwardtbl.sdl_creatergbsurface = lookupsym("SDL_CreateRGBSurface", true);
+	forwardtbl.glLineWidth = lookupsym("glLineWidth", true);
+	forwardtbl.glPointSize = lookupsym("glPointSize", true);
 
 /* SDL_mixer hijack, might not be present */
 	forwardtbl.audioproxy = lookupsym("Mix_Volume", false);
