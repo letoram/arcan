@@ -176,6 +176,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent, enum ar
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src, enum arcan_transform_mask mask);
 arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon);
+arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);
 
 img_cons arcan_video_storage_properties(arcan_vobj_id id);
 surface_properties arcan_video_resolve_properties(arcan_vobj_id id);

@@ -184,7 +184,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	add_definitions(-g -D_DEBUG)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
-add_definitions(-std=gnu99 -D_BSD_SOURCE )
+add_definitions(-std=c99 -D_BSD_SOURCE )
 
 # OS Specific modifications
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -264,7 +264,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 #
 #
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE -lm)
+add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)

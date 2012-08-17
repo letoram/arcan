@@ -167,7 +167,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver*, arcan_event*);
  * are outside the accepted category / kind */ 
 void arcan_frameserver_pollevent(arcan_frameserver*, arcan_evctx*);
 
-/* symbol should only be used by the backend to reach OS specific implementations (_unix.c / win32/* )*/
+/* symbol should only be used by the backend to reach OS specific implementations (_unix.c / win32 )*/
 void arcan_frameserver_dropsemaphores(arcan_frameserver*);
 void arcan_frameserver_dropsemaphores_keyed(char*);
 

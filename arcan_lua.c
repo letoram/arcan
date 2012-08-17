@@ -2298,6 +2298,9 @@ void arcan_lua_panic(lua_State* ctx)
 	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
 }
 
+
+extern void arcan_debug_tracetag_dump();
+
 void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (errc == 0)
@@ -2307,6 +2310,8 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 	if (lua_ctx_store.debug){
 		arcan_warning("Warning: arcan_lua_wraperr((), %s, from %s\n", mesg, src);
 
+		arcan_debug_tracetag_dump();
+		
 		if (lua_ctx_store.debug > 1)
 			dump_call_trace(ctx);
 		
@@ -3087,6 +3092,16 @@ int arcan_lua_settexmode(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_tracetag(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	const char* const msg = luaL_checkstring(ctx, 2);
+	
+	arcan_video_tracetag(id, msg);
+	
+	return 0;
+}
+
 int arcan_lua_setscalemode(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
@@ -3476,6 +3491,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 
 /* item:image_mask_clear,vid,enumint,nil */
 	arcan_lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
+	
+/* item:image_tracetag,vid,string,nil */
+	arcan_lua_register(ctx, "image_tracetag", arcan_lua_tracetag);
 	
 /* item:image_mask_clearall,vid, nil */
 	arcan_lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);
