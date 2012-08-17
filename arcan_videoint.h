@@ -26,7 +26,42 @@
 #define RENDERTARGET_LIMIT 6 
 #endif
 
-struct arcan_vobject_item;
+
+enum rendertarget_mode {
+	RENDERTARGET_DEPTH = 0,
+	RENDERTARGET_COLOR = 1,
+	RENDERTARGET_COLOR_DEPTH = 2,
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
+};
+
+struct arcan_vobject_litem;
+struct arcan_vobject;
+
+struct rendertarget {
+/* depth and stencil are combined as stencil_index formats have poor driver support */
+	unsigned fbo, depth;
+
+/* only used / allocated if readback != 0 */ 
+	unsigned pbo;
+	
+/* think of base as identity matrix, sometimes with added scale */
+	float base[16];  
+	float projection[16];
+	
+/* readback == 0, no readback. Otherwise, a readback is requested every abs(readback) frames
+ * if readback is negative, or readback ticks if it is positive */
+	int readback;
+	long long readcnt;
+
+/* flagged after a PBO readback has been issued, cleared when buffer have been mapped */
+	bool readreq; 
+
+	enum rendertarget_mode mode;
+
+/* color representes the attached vid, first is the pipeline (subset of context vid pool) */
+	struct arcan_vobject* color;
+	struct arcan_vobject_litem* first;
+};
 
 struct transf_move{
 	enum arcan_interp_function interp;
@@ -85,7 +120,7 @@ struct storage_info_t {
 
 typedef struct arcan_vobject {
 /* image-storage / reference,
- * current_frame is set to default_frame */
+ * current_frame is set to default_frame, but could well reference another object (frameset) */
 	arcan_vstorage default_frame;
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
@@ -110,15 +145,17 @@ typedef struct arcan_vobject {
 	} feed;
 	
 	uint8_t ffunc_mask;
+
+/* basic texture mapping, can be overridden (to mirror, skew etc.) */
 	float txcos[8];
 	enum arcan_blendfunc blendmode;
-	/* flags */
+
 	struct {
-		bool in_use;
-		bool clone;
-		bool cliptoparent;
-		bool asynchdisable;
-		bool cycletransform;
+		bool in_use; /* must be set for any operation other than allocate to be valid */
+		bool clone;  /* limits the set of allowed operations from those that allocate resources or link */
+		bool cliptoparent;  /* only draw to the parent object surface area */
+		bool asynchdisable; /* don't run any asynchronous loading operations */
+		bool cycletransform; /* when a transform is finished, attach it to the end */
 	} flags;
 	
 /* position */
@@ -130,14 +167,22 @@ typedef struct arcan_vobject {
 	
 /* life-cycle tracking */
 	unsigned long last_updated;
-	unsigned long lifetime;
+	long lifetime;
 	
 /* management mappings */
 	struct arcan_vobject* parent;
-	struct arcan_vobject_litem* owner;
+	struct rendertarget* owner;
 	arcan_vobj_id cellid;
-	int refcount;
-	
+
+/* for integrity checks, a destructive operation on a !0 reference count is a terminal state */
+	struct {
+		signed framesets;
+		signed instances;
+		signed attachments;
+		signed links;
+	} extrefc;
+
+	char* tracetag;
 } arcan_vobject;
 
 /* regular old- linked list, but also mapped to an array */
@@ -178,6 +223,10 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
+
+#ifdef _DEBUG
+void arcan_debug_tracetag_dump();
+#endif
 
 /* only ever used for next power of two concerning dislay resolutions */
 uint16_t nexthigher(uint16_t k);

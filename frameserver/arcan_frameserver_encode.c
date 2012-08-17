@@ -131,7 +131,7 @@ static size_t flush_audbuf()
 			unsigned int outc = out_sz;
 
 /* note the quirk that outc first represents the size of the buffer, THEN after resampling, it's the number of samples */
-			speex_resampler_process_interleaved_int(rsmp->resampler, (uint16_t*) audb, &inlen, (uint16_t*) &ffmpegctx.encabuf[ofs], &outc);
+			speex_resampler_process_interleaved_int(rsmp->resampler, (const spx_int16_t*) audb, &inlen, (spx_int16_t*) &ffmpegctx.encabuf[ofs], &outc);
 			ofs += outc << 2;
 		}
 
@@ -291,12 +291,12 @@ static void setup_audiocodec(const char* req)
 		ffmpegctx.acodec = avcodec_find_encoder(CODEC_ID_FLAC);
 
 	if (!ffmpegctx.acodec){
-		LOG("arcan_frameserver(encode) -- no FLAC support found, trying vorbis.\n", req);
+		LOG("arcan_frameserver(encode) -- no FLAC support found, trying vorbis.\n");
 		ffmpegctx.acodec = avcodec_find_encoder(CODEC_ID_VORBIS);
 	}
 	
 	if (!ffmpegctx.acodec){
-		LOG("arcan_frameserver(encode) -- no vorbis support found, trying raw (PCM/S16LE).\n", req);
+		LOG("arcan_frameserver(encode) -- no vorbis support found, trying raw (PCM/S16LE).\n");
 		ffmpegctx.acodec = avcodec_find_encoder(CODEC_ID_PCM_S16LE);
 	}
 	
@@ -319,11 +319,11 @@ static void setup_container(const char* req)
 
 	if (!fmt){
 		fmt = av_guess_format("mp4", NULL, NULL);
-		LOG("arcan_frameserver(encode) -- Matroska container not found, trying MP4.\n", req);
+		LOG("arcan_frameserver(encode) -- Matroska container not found, trying MP4.\n");
 	}
 	
 	if (!fmt){
-		LOG("arcan_frameserver(encode) -- MP4 container not found, trying AVI.\n", req);
+		LOG("arcan_frameserver(encode) -- MP4 container not found, trying AVI.\n");
 		fmt = av_guess_format("avi", NULL, NULL);
 	}
 	

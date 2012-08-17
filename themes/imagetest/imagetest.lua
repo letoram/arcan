@@ -58,6 +58,7 @@ function zordervidlim(load)
 		local newid;
 		if (load) then
 			 newid = imagefun("imagetest.png", 0);
+			 image_tracetag("new_image");
 			 move_image(newid, math.random( VRESW - 16), math.random( VRESH - 16), 0);
 			 resize_image(newid, 64, 64, 0);
 		else
@@ -149,6 +150,7 @@ end
 function imagetest_video_event(source, evtbl)
 	if (evtbl.kind == "loaded") then
 		resize_image(source, 64, 64);
+		image_tracetag(source, "asynch_image");
 	end
 
 	print( "-- video event : " .. tostring(source) .. " => " .. evtbl.kind);

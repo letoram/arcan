@@ -91,6 +91,19 @@ settings = {
 	
 	default_launchmode = "Internal",
 	
+	vector = {
+		line_width = 1,   -- sent to target for patching glPointSize and friends.
+		point_size = 1, 
+		hbias = 1.4,      -- how much horizontal weight to add when blending
+		vbias = 1.2,      -- how much vertical weight to add when blending
+		hresf = 0.6,      -- size of  blur texture (relative to parent) <= 1.0, will enhance gaussian
+		vresf = 0.6,
+		delay = -2,       -- trail-step every other frame 
+		trail = {},       -- empty trail == only building "light" version
+		backdrop = false, -- blend in backdrop / overlay if found
+		crt = false       -- should the CRT settings from the other display- mode be applied as a post process?
+	},
+	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
 	flipinputaxis = false,
@@ -303,15 +316,21 @@ end
 	end
 
 	imagery.black = fill_surface(1,1,0,0,0);
+	image_tracetag(imagery.black, "black");
+	
 	imagery.white = fill_surface(1,1,255,255,255);
+	image_tracetag(imagery.white, "white");
 	
 -- Animated background
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 
 -- Little star keeping track of games marked as favorites
 	imagery.starimage    = load_image("images/star.png");
+	image_tracetag(imagery.starimage, "favorite star");
+	
 	imagery.magnifyimage = load_image("images/magnify.png");
-
+	image_tracetag(imagery.magnifyimage, "detailview icon");
+	
 	if (settings.list_view) then
 		
 	else
@@ -338,7 +357,10 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	shader_uniform(bgshader, "speedfact", "ff", PERSIST, hspeed, vspeed);
 	
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
+
 	imagery.bgimage = load_image("backgrounds/" .. name);
+	image_tracetag(imagery.bgimage, "background");
+	
 	resize_image(imagery.bgimage, VRESW, VRESH);
 	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
 	image_shader(imagery.bgimage, bgshader);
@@ -1204,9 +1226,10 @@ function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
 			gridle_setup_internal(source, datatbl.source_audio);
+			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
 		end
 
-		gridlemenu_resize_fullscreen(source);
+		gridlemenu_resize_fullscreen(source, image_surface_initial_properties(source));
 	end
 end
 

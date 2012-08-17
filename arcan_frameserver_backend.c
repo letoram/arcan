@@ -112,7 +112,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to provoke a vulnerability,
  * frameserver dying or timing out, ... */
 	if (frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
-		src->child && -1 == check_child(src) && errno == EINVAL)
+		(src->child && -1 == check_child(src) && errno == EINVAL))
 	{
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,
@@ -217,6 +217,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->shm.ptr;
 	
 	switch (cmd){
+		case ffunc_rendertarget_readback: break;
 		case ffunc_poll: return shmpage->vready; break;        
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;		
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;

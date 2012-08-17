@@ -113,6 +113,12 @@ local function resourcefinder_graphics(game, restbl, cache_results)
 		end
 	end
 	
+-- special hack just for screenshots taken by the screenshot function in gridle() and other themes 
+	local ss = "screenshots/" .. game.target .. "_" .. game.setname .. ".png";
+	if (resource(ss)) then
+		table.insert(restbl.screenshots, ss);
+	end
+	
 	return restbl;
 end
 
