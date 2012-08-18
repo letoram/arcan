@@ -329,7 +329,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->order = pobj->order;
 		nobj->cellid = rv;
 		nobj->current.rotation.quaternion = build_quat_euler(0, 0, 0);
-		
+
 		nobj->gl_storage.program = 0;
 
 		nobj->parent->extrefc.instances++;
@@ -458,12 +458,12 @@ static void integrity_scan(struct rendertarget* src)
 
 /* assuming the object is not an orphan,
  * sweep through all rendertargets, count references and compare with refcounter */
-static bool scan_rtgt(struct rendertarget* src, arcan_vobject_litem* cell)
+static bool scan_rtgt(struct rendertarget* src, arcan_vobject* cell)
 {
 	arcan_vobject_litem* current = src->first;
 
 	while (current){
-		if (current == cell) 
+		if (current->elem == cell) 
 			return true;
 		
 		current = current->next;
@@ -490,7 +490,7 @@ static void verify_pool()
 
 static void verify_owner(arcan_vobject* src)
 {
-	arcan_vobject_litem* owner = src->owner;
+	struct rendertarget* owner = src->owner;
 	
 /* if the verify pass fails, this is repeated with a verbose setting, giving more printout on who owns what */
 	bool verbose = false;
@@ -505,9 +505,9 @@ reevaluate:
 	if (src->default_frame.source)
 		LOGV( printf("-> %s\n", src->default_frame.source) );
 
-	if (owner){
+	if (src){
 		integrity_scan(&current_context->stdoutp);
-		if ( scan_rtgt(&current_context->stdoutp, owner) ){
+		if ( scan_rtgt(&current_context->stdoutp, src) ){
 			LOGV( printf(" -> found reference in stdoutp.\n") );
 			count++;
 		}
@@ -515,7 +515,7 @@ reevaluate:
 		for (unsigned int n = 0; n < current_context->n_rtargets; n++){
 			integrity_scan(&current_context->rtargets[n]);
 			
-			if ( scan_rtgt(&current_context->rtargets[n], owner) ){
+			if ( scan_rtgt(&current_context->rtargets[n], src) ){
 			LOGV( printf(" -> found reference in rendertarget (%"PRIxPTR":%"PRIxVOBJ").\n", 
 				(intptr_t) &current_context->rtargets[n], current_context->rtargets[n].color->cellid) );
 				count++;
@@ -557,20 +557,28 @@ reevaluate:
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 {
 	arcan_vobject_litem* torem;
+	assert(src);
 	
-/* already detached or empty target */
-	if (!dst || !src || !dst->first || !src->owner || dst != find_owner(src))
+/* already detached or empty source/target */
+	if (!dst || !dst->first || !src->owner)  
+		return false;
+
+/* find it */
+	torem = dst->first;
+	while(torem){ 
+		if (torem->elem == src) 
+			break;
+		
+		torem = torem->next;
+	}
+	if (!torem)
 		return false;
 	
-/* orphan */
-	torem = src->owner;
-	src->owner = NULL;
-
 /* (1.) remove first */
 	if (dst->first == torem){
 		dst->first = torem->next;
 		
-		/* only one element? */
+/* only one element? */
 		if (dst->first){
 			dst->first->previous = NULL;
 		}
@@ -590,9 +598,14 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	memset(torem, 0, sizeof(arcan_vobject_litem));
 	free(torem);
 
-	src->extrefc.attachments--;
-	if (dst->color)
+	src->owner = NULL;
+	if (dst->color){
+		arcan_warning("detach(%s:%lld, %d) from (%s:%lld, %d)\n", src->tracetag, src->cellid, src->extrefc.attachments,
+								dst->color->tracetag, dst->color->cellid, dst->color->extrefc.attachments);
+
+		src->extrefc.attachments--;
 		dst->color->extrefc.attachments--;
+	}
 	
 	return true;
 }
@@ -605,7 +618,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 
 /* (pre) if orphaned, assign */
 	if (src->owner == NULL){
-		src->owner = new_litem;
+		src->owner = dst;
 	}
 
 /* 2. insert first into empty? */
@@ -643,9 +656,13 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 		}
 	}
 
-	src->extrefc.attachments++;
-	if (dst->color)
+	if (dst->color){
+		arcan_warning("atach(%s:%lld, %d) from (%s:%lld, %d)\n", src->tracetag, src->cellid, src->extrefc.attachments,
+								dst->color->tracetag, dst->color->cellid, dst->color->extrefc.attachments);
+
+		src->extrefc.attachments++;
 		dst->color->extrefc.attachments++;
+	}
 }
 
 arcan_errc arcan_video_attachobject(arcan_vobj_id id)
@@ -1171,13 +1188,22 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 			if (current_context->rtargets[ind].color == dstobj){
 
 /* find whatever rendertarget we're already attached to, and detach */
+				bool c;
 				if (srcobj->owner && detach)
-					detach_fromtarget(find_owner(srcobj), srcobj);
+					c = detach_fromtarget(srcobj->owner, srcobj);
 
 /* try and detach (most likely fail) to make sure that we don't get duplicates */
-				detach_fromtarget(&current_context->rtargets[ind], srcobj);
+				bool a = detach_fromtarget(&current_context->rtargets[ind], srcobj);
 				attach_object(&current_context->rtargets[ind], srcobj);
-				printf("attached to %d\n", did);
+
+				if (c) 
+					arcan_warning("detach: (%s) from owner.\n", srcobj->tracetag, dstobj->tracetag);
+				
+				if (a) 
+					arcan_warning("detach: (%s) from rendertarget (%s).\n", srcobj->tracetag, dstobj->tracetag);
+		
+				arcan_warning("attach: (%s) to rendertarget (%s).\n", srcobj->tracetag, dstobj->tracetag);
+				
 				rv = ARCAN_OK;
 			}
 	
@@ -1308,7 +1334,7 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 			
 /* if we want to manage the frame entirely through this object, we can detach src and stop worrying about deleting it */
 			if (detach && srcvobj != dstvobj && srcvobj->owner)
-				detach_fromtarget(find_owner(srcvobj), srcvobj);
+				detach_fromtarget(srcvobj->owner, srcvobj);
 
 /* if there already is an object in the desired slot, return the management responsibility to the user*/
 			if (dstvobj->frameset[fid]){
@@ -1708,7 +1734,7 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && newzv > 0 && newzv != vobj->order) {
-		struct rendertarget* owner = find_owner(vobj);
+		struct rendertarget* owner = vobj->owner;
 
 /* attach also works like an insertion sort */
 		vobj->order = newzv;
@@ -1872,6 +1898,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 {
 /* check if vobj is indeed a rendertarget */
 	struct rendertarget* dst = NULL;
+	arcan_vobject** dpool = NULL, (** base);
+	
 	unsigned dstind;
 	
 	for (dstind = 0; dstind < current_context->n_rtargets; dstind++){
@@ -1885,7 +1913,6 @@ static void drop_rtarget(arcan_vobject* vobj)
 		return;
 
 /* guaranteed rtarget */
-	vobj->extrefc.attachments--;
 	current_context->n_rtargets--;
 	assert(current_context->n_rtargets >= 0);
 
@@ -1899,32 +1926,16 @@ static void drop_rtarget(arcan_vobject* vobj)
 		glDeleteBuffers(1, &dst->pbo);
 	
 	arcan_vobject_litem* current = dst->first;
-
-/* drop all members reattach to main if MASK_LIVING is set, orphan before deleting so we won't recurse */
+	size_t pool_sz = (dst->color->extrefc.attachments + 1) * sizeof(arcan_vobject*);
+	dpool = malloc(pool_sz);
+	memset(dpool, 0, pool_sz);
+	base = dpool;
+	
 	while (current){
-/* someone else responsible for cleanup? then do nothing */
-		if (current->elem->owner != current);
-/* masked out of cascading delete? re-attach to main */
-		else if (current->elem->flags.clone == false && (current->elem->mask & MASK_LIVING) == 0){
-			current->elem->owner = NULL;
-			printf("reattaching object to main displaylist (%s)\n", current->elem->tracetag);
-			attach_object(&current_context->stdoutp, current->elem); 
-		}
-		else{
-/* remove it and try again, since this function isn't reentrant */
-			arcan_warning("cascade delete rendertarget child: (%s):(%ld)\n", current->elem->tracetag, current->elem->cellid);
-			arcan_video_deleteobject(current->elem->cellid);
-			current = dst->first;
-			continue;
-		}
-		
-		current = current->next;
-	}
-
-/* free the list */
-	current = dst->first;
-	while (current){
+		(*base++) = current->elem;
+		vobj->extrefc.attachments--;
 		arcan_vobject_litem* last = current;
+		current->elem = NULL;
 		current = current->next;
 		free(last);
 	}
@@ -1934,6 +1945,28 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 /* always kill the last element */
 	memset(&current_context->rtargets[RENDERTARGET_LIMIT- 1], 0, sizeof(struct rendertarget));
+/* self-reference gone */
+	vobj->extrefc.attachments--;
+
+	base = dpool;
+	while (*base){
+		if ((*base)->owner == dst){
+
+/* lightweight detach */
+			(*base)->extrefc.attachments--;
+			assert( (*base)->extrefc.attachments >= 0);
+			(*base)->owner = NULL;
+			attach_object(&current_context->stdoutp, *base);
+			
+/* kill or revert to stdout */
+			if ((*base)->flags.clone || ( (*base)->mask & MASK_LIVING) > 0 )
+				arcan_video_deleteobject((*base)->cellid);
+		}
+		
+		base++;
+	}
+	
+	free(dpool);
 }
 
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
@@ -1947,20 +1980,16 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	}
 	
 /* there shouldn't be anything that still references this object, so clean- up fully or "cloned" */
-	if (vobj->tracetag){
-		arcan_warning("(arcan_video_deleteobject) -- delete (%s), from: (%s)\n",
-			vobj->tracetag, vobj->parent && vobj->parent->tracetag ? vobj->parent->tracetag : "(unknown)");
-		free(vobj->tracetag);
-		vobj->tracetag = NULL;
-	}
+//	if (vobj->tracetag){
+		arcan_warning("object (%s:%"PRIxVOBJ") about to be deleted, attachments:(%d) framesets:(%d), links: (%d), instances: (%d) \n",
+		vobj->tracetag, vobj->cellid, vobj->extrefc.attachments, vobj->extrefc.framesets, vobj->extrefc.links, vobj->extrefc.instances);
+	//}
 
 /* step one, disassociate */
-	printf("vobj->extrefc: %d\n", vobj->extrefc.attachments);
 	detach_fromtarget(&current_context->stdoutp, vobj);
+	
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
 		detach_fromtarget(&current_context->rtargets[i], vobj);
-	printf("vobj->extrefc: %d\n", vobj->extrefc.attachments);
-	printf("vobj->owner: %"PRIxPTR"\n", vobj->owner);
 	
 	if (vobj->parent){
 		if (vobj->flags.clone)
@@ -2070,10 +2099,16 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 clone_cleanup:
 /* lots of default values are assumed to be 0, so reset the entire object to be sure.
  * will help leak detectors as well */
+	arcan_warning("object (%s:%"PRIxVOBJ" deleted, attachments:(%d) framesets:(%d), links: (%d), instances: (%d) \n",
+		vobj->tracetag, vobj->cellid, vobj->extrefc.attachments, vobj->extrefc.framesets, vobj->extrefc.links, vobj->extrefc.instances);
+
+	printf("attachments: %d\n", vobj->extrefc.attachments);
 	assert(vobj->extrefc.attachments == 0);
 	assert(vobj->extrefc.framesets == 0);
 	assert(vobj->extrefc.links == 0);
 	assert(vobj->extrefc.instances == 0);
+	free(vobj->tracetag);
+		
 	memset(vobj, 0, sizeof(arcan_vobject));
 
 	basep = pool;
