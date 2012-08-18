@@ -347,20 +347,20 @@ function vector_lightmode(source, targetw, targeth, blurw, blurh, hamp, vamp)
 	show_image(node);
 	image_tracetag(node, "vector(source:clone)");
 
-	define_rendertarget(blur_hbuf, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	
 	image_tracetag(blur_hbuf, "vector(hblur)");
 	image_tracetag(blur_vbuf, "vector(vblur)");
 	
+	define_rendertarget(blur_hbuf, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 	order_image(blur_vbuf, max_current_image_order() + 1);
 	blend_image(blur_vbuf, 0.95);
 	force_image_blend(blur_vbuf, BLEND_ADD);
 	order_image(blur_vbuf, max_current_image_order() + 1);
 
 	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
-	define_rendertarget(comp_outbuf, {blur_vbuf, source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	image_tracetag(comp_outbuf, "vector(composite)");
+	define_rendertarget(comp_outbuf, {blur_vbuf, source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	show_image(comp_outbuf);
 	
 	return comp_outbuf;
@@ -436,7 +436,7 @@ local function toggle_vectormode()
 -- should only happen when shutting down internal_launch with vector mode active
 	
 	settings.last_mode = "vector";
-	image_mask_set(internal_vid, MASK_LIVING);
+	image_mask_clear(internal_vid, MASK_LIVING);
 	local props = image_surface_initial_properties(internal_vid);
 
 -- activate trails or not?
