@@ -1969,6 +1969,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 	free(dpool);
 }
 
+/* by far, the most involved and dangerous function in this .o, hence the many safe-guards
+ * checks and tracing output */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1980,12 +1982,14 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	}
 	
 /* there shouldn't be anything that still references this object, so clean- up fully or "cloned" */
-//	if (vobj->tracetag){
+#ifdef _DEBUG
+	if (vobj->tracetag){
 		arcan_warning("object (%s:%"PRIxVOBJ") about to be deleted, attachments:(%d) framesets:(%d), links: (%d), instances: (%d) \n",
 		vobj->tracetag, vobj->cellid, vobj->extrefc.attachments, vobj->extrefc.framesets, vobj->extrefc.links, vobj->extrefc.instances);
-	//}
-
-/* step one, disassociate */
+	}
+#endif
+	
+/* step one, disassociate from target */
 	detach_fromtarget(&current_context->stdoutp, vobj);
 	
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
@@ -1998,38 +2002,39 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			vobj->parent->extrefc.links--;
 		vobj->parent = NULL;
 	}
-	
-	assert(vobj->owner == NULL);
-	
-/* step two, delete if we're a rendertarget, this may recursively drop or re-associate objects */
+
 	drop_rtarget(vobj);
 
-/* step three, populate a pool of cascade deletions */
+/* step four, populate a pool of cascade deletions */
 	arcan_vobject** pool = NULL, (** basep);
+	unsigned sum = (vobj->flags.clone ? 0 : 
+		vobj->frameset_meta.capacity) + vobj->extrefc.links + vobj->extrefc.framesets + vobj->extrefc.instances;
 
-	unsigned sum = vobj->extrefc.links + vobj->extrefc.framesets + vobj->extrefc.instances;
 	if (sum){
 		basep = pool = malloc(sizeof(arcan_vobject*) * (sum + 1));
 		memset(pool, 0, sizeof(arcan_vobject*) * (sum + 1));
 
-/* start with our own frameset as it may contain self references, decrement the counter for those,
- * and if there's a child with the wrong mask, add it to the cleanup pool,  */
-		if (vobj->frameset && vobj->flags.clone == false)
+		if (vobj->flags.clone == false)
 			for (unsigned i = 0; i < vobj->frameset_meta.capacity; i++){
 				arcan_vobject* dobj = vobj->frameset[i];
-
+				vobj->frameset[i] = NULL;
+				sum--;
+				if (!dobj) continue;
+			
 /* the cells can be empty, or contain self- referenced or objects that might be self-contained,
  * or belong to someone else ... */
 				if (dobj){
 					dobj->extrefc.framesets--;
-					if (dobj != vobj && (dobj->mask & MASK_LIVING) > 0){
-						dobj->parent = NULL;
-						*basep++ = dobj;
-					}
-				}
+					if (dobj == vobj || dobj->owner != NULL) continue;
 				
-				vobj->frameset[i] = NULL;
+					if ( (dobj->mask & MASK_LIVING) > 0)
+						*basep++ = dobj;
+					else 
+						attach_object(&current_context->stdoutp, dobj);
+				}
+
 			}
+
 /* sweep the entire context vobj pool for references */
 		for (unsigned int i = 1; i < current_context->vitem_limit && sum; i++){
 			arcan_vobject* dobj = &current_context->vitems_pool[i];
@@ -2069,7 +2074,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					}
 			}
 		}
-
+	}
+	
 	current_context->nalive--;
 	arcan_video_zaptransform(id);
 	
@@ -2094,15 +2100,9 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 		glDeleteTextures(1, &vobj->gl_storage.glid);
 	}
-	}
 
-clone_cleanup:
 /* lots of default values are assumed to be 0, so reset the entire object to be sure.
  * will help leak detectors as well */
-	arcan_warning("object (%s:%"PRIxVOBJ" deleted, attachments:(%d) framesets:(%d), links: (%d), instances: (%d) \n",
-		vobj->tracetag, vobj->cellid, vobj->extrefc.attachments, vobj->extrefc.framesets, vobj->extrefc.links, vobj->extrefc.instances);
-
-	printf("attachments: %d\n", vobj->extrefc.attachments);
 	assert(vobj->extrefc.attachments == 0);
 	assert(vobj->extrefc.framesets == 0);
 	assert(vobj->extrefc.links == 0);
