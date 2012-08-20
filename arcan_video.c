@@ -61,6 +61,7 @@ struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
+	.filtermode = ARCAN_VFILTER_LINEAR,
 	.suspended = false,
 	.vsync = true,
 	.msasamples = 4,
@@ -71,7 +72,7 @@ struct arcan_video_display arcan_video_display = {
 };
 
 /* these all represent a subset of the current context that is to be drawn.
- * if (dest != NULL) this means tha the vid actually represents a rendertarget, e.g. FBO or PBO.
+ * if (dest != NULL) this means that the vid actually represents a rendertarget, e.g. FBO or PBO.
  * the mode defines which output buffers (color, depth, ...) that should be stored.
  * readback defines if we want a PBO- or glReadPixels style readback into the .raw buffer of the target.
  * reset defines if any of the intermediate buffers should be cleared beforehand.
@@ -116,18 +117,37 @@ static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsign
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	
-	if (arcan_video_display.mipmap){
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
-	}
-	else{
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
-	}
+
+	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, arcan_video_display.mipmap ? GL_TRUE : GL_FALSE);
+
+	switch (arcan_video_display.filtermode){
+		case ARCAN_VFILTER_NONE:
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		break;
 		
+		case ARCAN_VFILTER_LINEAR:
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		break;
+		
+		case ARCAN_VFILTER_BILINEAR:
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		break;
+		
+		case ARCAN_VFILTER_TRILINEAR:
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		break;
+	}
+	
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, w, h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+}
+
+void arcan_video_default_texfilter(enum arcan_vfilter_mode mode)
+{
+	arcan_video_display.filtermode = mode;
 }
 
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode mode)
@@ -1073,13 +1093,21 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 		if (target->frameset){
-			for (int i = 0; i < capacity; i++)
+			for (int i = 0; i < capacity; i++){
+				arcan_vobject* torem = target->frameset[i];
 				target->frameset[i]->extrefc.framesets--;
+				target->frameset[i] = NULL;
+				
+				if (torem && torem != target && torem->parent == NULL)
+					arcan_video_deleteobject(torem->cellid);
+			}
 			
 			free(target->frameset);
 			target->frameset = NULL;
 		}
-		
+
+		target->current_frame = target;
+		target->frameset_meta.current = 0;
 		target->frameset = malloc(sizeof(arcan_vobject*) * capacity);
 		for (int i = 0; i < capacity; i++){
 			target->frameset[i] = target;
@@ -2047,6 +2075,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 				if (dobj->flags.clone){
 					assert(vobj->extrefc.instances);
 					vobj->extrefc.instances--;
+					sum--;
 				}
 				else {
 					assert(vobj->extrefc.links > 0);
@@ -2057,8 +2086,10 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 						*basep++ = dobj;
 						dobj->parent = NULL;
 					}
-					else
+					else{
 						dobj->parent = &current_context->world;
+						printf("changing inheritance\n");
+					}
 				}
 			}
 

@@ -563,7 +563,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			.data.frameserver.height = cons.h,
 			.data.frameserver.video = src->vid,
 			.data.frameserver.audio = src->aid,
-			.data.frameserver.otag = src->tag
+			.data.frameserver.otag = src->tag,
+			.data.frameserver.glsource = shmpage->glsource
 		};
 		
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);

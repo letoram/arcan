@@ -202,6 +202,8 @@ struct arcan_video_display {
 	/* default image loading options */
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
+	enum arcan_vfilter_mode filtermode;
+	
 	unsigned deftxs, deftxt;
     	bool mipmap;
 	

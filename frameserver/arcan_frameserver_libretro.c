@@ -384,7 +384,7 @@ static inline void flush_eventq(){
 				case EVENT_TARGET: targetev(ev); break;
 			}
 		}
-		while (retroctx.pause && (frameserver_delay(100), 1));
+		while (retroctx.pause && (frameserver_delay(1), 1));
 }
 
 /* return true if we're in synch (may sleep),

@@ -83,7 +83,7 @@ local function gridledetail_moviestatus(source, status)
 	elseif (status.kind == "resized") and gridledetail_imagestatus(source, status) then
 		local aid = status.source_audio;
 		play_movie(source);
-		
+
 		audio_gain(aid, 0.0);
 		if (zoomed) then
 			audio_gain(aid, settings.movieagain, 0);
@@ -193,6 +193,13 @@ function gridledetail_internal_status(source, datatbl)
 			delete_image(rvid); 
 		end 
 
+		print(datatbl.mirrored);
+		if (datatbl.mirrored == 0) then
+			shader_uniform(display_shader, "flip_t", "b", PERSIST, 1)	
+		else
+			shader_uniform(display_shader, "flip_t", "b", PERSIST, 0)	
+		end
+	
 		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
 		orient3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20);
 		mesh_shader(detailview.model.vid, display_shader, detailview.model.labels["display"]);
@@ -220,14 +227,14 @@ local function gridledetail_switchfs()
 		detailview.fullscreen = true;
 				
 		gridlemenu_loadshader(settings.fullscreenshader);
-		gridlemenu_resize_fullscreen(internal_vid);
-
+		gridlemenu_rebuilddisplay();
+		
 		internal_vidborder = instance_image( imagery.black );
 		image_mask_clearall(internal_vidborder);
 		resize_image(internal_vidborder, VRESW, VRESH);
 		show_image(internal_vidborder);
 		show_image(internal_vid);
-					
+				
 		hide_image(detailview.model.vid);
 
 		order_image(internal_vidborder, max_current_image_order() + 1);

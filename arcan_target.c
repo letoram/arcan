@@ -261,6 +261,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
 	global.shared.addr->glsource = (flags & SDL_OPENGL) > 0;
+	
 	if ( (flags & SDL_FULLSCREEN) > 0) { 
 /* oh no you don't */
 		flags &= !SDL_FULLSCREEN;
@@ -413,6 +414,7 @@ static void copysurface(SDL_Surface* src){
 		SDL_FreeSurface(surf);
 	}
 
+	global.shared.addr->glsource = false;
 	global.shared.addr->vready = true;
 }
 
@@ -450,7 +452,6 @@ int ARCAN_SDL_Flip(SDL_Surface* screen)
 
 void ARCAN_SDL_UpdateRect(SDL_Surface* screen, Sint32 x, Sint32 y, Uint32 w, Uint32 h){
 	forwardtbl.sdl_updaterect(screen, x, y, w, h);
-
 	if (!global.doublebuffered && 
 		screen == global.mainsrfc)
 			copysurface(screen);
@@ -515,8 +516,8 @@ void ARCAN_SDL_GL_SwapBuffers()
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
 		glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
-		global.shared.addr->vready = true;
 		global.shared.addr->glsource = true;
+		global.shared.addr->vready = true;
 		trace("CopySurface(GL:post)");
 	}
 	
