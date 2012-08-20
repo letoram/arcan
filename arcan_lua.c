@@ -1420,7 +1420,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				arcan_lua_tblstr(ctx, "kind", "resized", top);
 				arcan_lua_tblnum(ctx, "width", ev->data.frameserver.width, top); 
 				arcan_lua_tblnum(ctx, "height", ev->data.frameserver.height, top);
-        arcan_lua_tblnum(ctx, "mirrored", ev->data.frameserver.glsource, top);
+				arcan_lua_tblnum(ctx, "mirrored", ev->data.frameserver.glsource, top);
 				arcan_lua_tblnum(ctx, "source_audio", ev->data.frameserver.audio, top);
 					
 				dst_cb = ev->data.frameserver.otag;
@@ -1633,7 +1633,7 @@ int arcan_lua_linkimage(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
-	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION;
+	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION | MASK_LIVING;
 
 	arcan_errc rv = arcan_video_linkobjs(sid, did, lmask);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
@@ -3079,6 +3079,17 @@ int arcan_lua_setimageproc(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_settexfilter(lua_State* ctx)
+{
+	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 1);
+
+	if (mode == ARCAN_VFILTER_BILINEAR || mode == ARCAN_VFILTER_LINEAR || mode == ARCAN_VFILTER_NONE){
+		arcan_video_default_texfilter(mode);	
+	}
+	
+	return 0;
+}
+
 int arcan_lua_settexmode(lua_State* ctx)
 {
 	int numa = luaL_checknumber(ctx, 1);
@@ -3197,428 +3208,131 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_warning("lua_exposefuncs() -- videobase is set to %d\n", lua_ctx_store.lua_vidbase);
 #endif
 	
-/* category: resource */
-/* item: resource,name,[searchmask : THEME_RESOURCE, SHARED_RESOURCE], boolean 
- * search for a specific resource. 
- */
 	arcan_lua_register(ctx, "resource", arcan_lua_resource);
-
-/* item: glob_resource,basename,baseext,strtable 
- * return a list of resources matching a specific pattern
- */
 	arcan_lua_register(ctx, "glob_resource", arcan_lua_globresource);
-
-/* item: zap_resource,name (in theme only), boolean 
- * delete a theme- specific resource
- */
 	arcan_lua_register(ctx, "zap_resource", arcan_lua_zapresource);
-
-/* item: open_resource,name (in theme only), boolean 
- * open a resource for reading, only one resource can be opened at any one time 
- */
 	arcan_lua_register(ctx, "open_rawresource", arcan_lua_rawresource);
-
-/* item: write_rawresource,line, boolean 
- * write a line to an opened rawresource
- */
 	arcan_lua_register(ctx, "write_rawresource", arcan_lua_pushrawstr);
-
-/* item: close_rawresource, boolean 
- * close whatever currently open rawresource 
- */
 	arcan_lua_register(ctx, "close_rawresource", arcan_lua_rawclose);
-
-/* item: read_rawresource, string or nil 
- * read a line from the currently open rawresource
- */
 	arcan_lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
-
-/* item: save_screenshot, string, nil */
 	arcan_lua_register(ctx, "save_screenshot", arcan_lua_screenshot);
-	
-/* category: target */
-/* item: launch_target, gametitle or ID, launchmode, tgtvid or elapsed 
- * attempt to launch the specified target, returns vid on LAUNCH_INTERNAL, elapsed time for LAUNCH_EXTERNAL.
- * optional third argument is event handler for the LAUNCH_INTERNAL session 
- */
 	arcan_lua_register(ctx, "launch_target", arcan_lua_targetlaunch);
-
-/* item: launch_target_capacity, targetname
- * return a table of strings describing the launch capabilities the selected target has */ 
 	arcan_lua_register(ctx, "launch_target_capabilities", arcan_lua_targetlaunch_capabilities);
-	
-/* item: target_input, tgtvid, inputtbl, nil 
- * push an input event table to the specified target
- */
 	arcan_lua_register(ctx, "target_input", arcan_lua_targetinput);
 	arcan_lua_register(ctx, "input_target", arcan_lua_targetinput);
-	
-/* item: suspend_target, tgtvid, nil
- * try and pause the specific target (if suspend capabilities are there) 
- */
 	arcan_lua_register(ctx, "suspend_target", arcan_lua_targetsuspend);
-
-/* item: resume_target, tgtvid, nil
- * try and unpause the specific target (if suspend capabilities are there) 
- */ 
 	arcan_lua_register(ctx, "resume_target", arcan_lua_targetresume);
-
-/* item: target_portconfig, portnum, devtype, nil
- * plug in the specific devicetype in the port number portnum */
 	arcan_lua_register(ctx, "target_portconfig", arcan_lua_targetportcfg);
-	
-/* item: target_framemode, mode, nil
- * change the default framemode for the target (default / auto = 0, noskip = -1, singlestep = 1, > n (n > 1) process every n frames */
 	arcan_lua_register(ctx, "target_framemode", arcan_lua_targetskipmodecfg);
-
-/* item: rewind_target, tgtvid, frames, nil
- * try and rewind the state of the specific target (if rewind capabilities are there)
- * n number of frames */
 	arcan_lua_register(ctx, "rewind_target", arcan_lua_targetrewind);
-	
-/* item: snapshot_target, tgtvid, snapid, nil
- * try and store the targets state (if snapshot capabilities are there) 
- */
 	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);
-	
-/* item: restore_target, tgtvid, snapid, nil
- * try and restore the targets state (if snapshot capabilities are there) 
- */
 	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
-
-/* item: reset_target, tgtvid, nil
- * reset the state of specified target. 
- */
 	arcan_lua_register(ctx, "reset_target", arcan_lua_targetreset);
-	
-/* category: core system */
-/* item: kbd_repeat, rate, nil 
- * set how often input events from keyboard should repeat themselves (generates push/release triggers)
- */
 	arcan_lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
-
-/* item: 3dorder, bool, nil 
- * define in which order the 3d pipeline should be processed, before (true) or after the 2d pipeline (false)
- */
 	arcan_lua_register(ctx, "video_3dorder", arcan_lua_3dorder);
-
-/* item: toggle_mouse_grab, nil
- * try and lock mouse input to the current window (not possible in all environments)
- */
  	arcan_lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
-
-/* item: system_load,resource,loaderptr */
 	arcan_lua_register(ctx, "system_load", arcan_lua_dofile);
-
-/* item: system_stack_size(num, items) */
 	arcan_lua_register(ctx, "system_context_size", arcan_lua_systemcontextsize);
-
-/* item:default_movie_queueopts, vcells acells acellsize */
 	arcan_lua_register(ctx, "default_movie_queueopts", arcan_lua_getqueueopts);
-	
-/* item:default_movie_queueopts_override, vcells acells acellsize, nil */
 	arcan_lua_register(ctx, "default_movie_queueopts_override", arcan_lua_setqueueopts);
-
-/* item:switch_default_scalemode, newmode ( NOPOW2(0) TXCOORD(1) SCALEPOW(2) ), nil */
 	arcan_lua_register(ctx, "switch_default_scalemode", arcan_lua_setscalemode);
-
-/* item:switch_default_texmode, newmode ( REPEAT(0), CLAMP_TO_EDGE(1) ), nil */
 	arcan_lua_register(ctx, "switch_default_texmode", arcan_lua_settexmode);
-
-/* item:switch_default_imagemproc, newproc (NORMAL(0), FLIPH(1), nil */
 	arcan_lua_register(ctx, "switch_default_imageproc", arcan_lua_setimageproc);
-
-/* item: shutdown,nil */
+	arcan_lua_register(ctx, "switch_default_texfilter", arcan_lua_settexfilter);
 	arcan_lua_register(ctx, "shutdown", arcan_lua_shutdown);
-
-/* item: warning, string, nil */
 	arcan_lua_register(ctx, "warning", arcan_lua_warning);
-
-/* item: valid_vid, vid, bool */
 	arcan_lua_register(ctx, "valid_vid", arcan_lua_validvid);
-	
-/*	lua_register(ctx, "toggle_fullscreen", arcan_lua_togglefs); */
-
-/* category: database */
-/* item: *store_key, key, value, nil */
 	arcan_lua_register(ctx, "store_key", arcan_lua_storekey);
-
-/* item: *get_key, key, value */
 	arcan_lua_register(ctx, "get_key", arcan_lua_getkey);
-
-/* item: game_cmdline, title, execstr */
 	arcan_lua_register(ctx, "game_cmdline", arcan_lua_getcmdline);
-
-/* item: list_games, [filter], arr_gametbl */
 	arcan_lua_register(ctx, "list_games", arcan_lua_filtergames);
-
-/* item: list_targets, arr_string */
 	arcan_lua_register(ctx, "list_targets", arcan_lua_gettargets);
-
-/* item: game_info, title, gametbl or nil */
 	arcan_lua_register(ctx, "game_info", arcan_lua_getgame);
-
-/* item: game_family, title, arr_titles or nil */
 	arcan_lua_register(ctx, "game_family", arcan_lua_gamefamily);
-
-/* item: game_genres, title, arr_genres or nil */
 	arcan_lua_register(ctx, "game_genres", arcan_lua_getgenres);
-
-/* category: audio */
-/* item: stream_audio, resource, aid */
 	arcan_lua_register(ctx, "stream_audio", arcan_lua_prepare_astream);
-
-/* item: play_audio, aid, nil */
 	arcan_lua_register(ctx, "play_audio", arcan_lua_playaudio);
-	
-/* item: pause_audio, aid, nil */	
 	arcan_lua_register(ctx, "pause_audio", arcan_lua_pauseaudio);
-
-/* item: delete_audio, aid, nil */
 	arcan_lua_register(ctx, "delete_audio", arcan_lua_dropaudio);
-
-/* item: play_sample, resource, [gain], nil */
 	arcan_lua_register(ctx, "load_asample", arcan_lua_loadasample);
-
-/* item: audio_gain, aid, newgain (0..1), [time], nil */
 	arcan_lua_register(ctx, "audio_gain", arcan_lua_gain);
-
-/* category: video */
-/* item: load_image, resource, [zval (0..255)], vid */
 	arcan_lua_register(ctx, "load_image", arcan_lua_loadimage);
-
-/* item: load_image_asynch, resource, [zval (0..255)], vid */
 	arcan_lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
-
-/* item: delete_image, vid, nil */
 	arcan_lua_register(ctx, "delete_image", arcan_lua_deleteimage);
-
-/* item: show_image, vid, nil */
 	arcan_lua_register(ctx, "show_image", arcan_lua_showimage);
-
-/* item: hide_image, vid, nil */
 	arcan_lua_register(ctx, "hide_image", arcan_lua_hideimage);
-
-/* item:move_image, vid, absx, absy, [time], nil */
 	arcan_lua_register(ctx, "move_image", arcan_lua_moveimage);
-
-	/* item:move_image, vid, absx, absy, [time], nil */
 	arcan_lua_register(ctx, "nudge_image", arcan_lua_nudgeimage);
-
-/* item:rotate_image, vid, absangz, [time], nil */
 	arcan_lua_register(ctx, "rotate_image", arcan_lua_rotateimage);
-
-/* item:scale_image, xfact, yfact, [time], nil */
 	arcan_lua_register(ctx, "scale_image", arcan_lua_scaleimage);
-
-/* item:resize_image, pxwidth, pyheight, [time], nil */
 	arcan_lua_register(ctx, "resize_image", arcan_lua_scaleimage2);
-
-/* item:blend_image, vid,opacity (0..1),[time],nil */
 	arcan_lua_register(ctx, "blend_image", arcan_lua_imageopacity);
-
-/* item:image_parent, vid, vid */
 	arcan_lua_register(ctx, "image_parent", arcan_lua_imageparent);
-
-/* item:image_find_children, vid, vidtable */
 	arcan_lua_register(ctx, "image_children", arcan_lua_imagechildren);
-	
-/* item:order_image,vid,newz,nil */
 	arcan_lua_register(ctx, "order_image", arcan_lua_orderimage);
-
-/* item:max_current_image_order,int */
 	arcan_lua_register(ctx, "max_current_image_order", arcan_lua_maxorderimage);
-
-/* item:instance_image,vid */
 	arcan_lua_register(ctx, "instance_image", arcan_lua_instanceimage);
-
-/* item:*link_image,vid,vid,nil */
 	arcan_lua_register(ctx, "link_image", arcan_lua_linkimage);
-
-/* item:*set_image_as_frame,vid,vid,num */
 	arcan_lua_register(ctx, "set_image_as_frame", arcan_lua_imageasframe);
-
-/* item:image_framesetsize,vid,ncells,nil */
 	arcan_lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
-	
-/* item:image_framecyclemode,vid,nil */
 	arcan_lua_register(ctx, "image_framecyclemode", arcan_lua_framesetcycle);
-
-/* item:image_pushasynch,vid,nil */
 	arcan_lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
-	
-/* item:image_activeframe,vid,num,nil */
 	arcan_lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
-
-/* item:expire_image,lifetime,nil */
 	arcan_lua_register(ctx, "expire_image", arcan_lua_setlife);
-
-/* item:reset_image_transform,vid,nil */
 	arcan_lua_register(ctx, "reset_image_transform", arcan_lua_resettransform);
-
-/* item:instant_image_transform,vid,nil */
 	arcan_lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
-
-/* item:image_transform_cycle,vid,bool,nil*/
 	arcan_lua_register(ctx, "image_transform_cycle", arcan_lua_cycletransform);
-
-/* item:copy_image_transform,sid,did,nil*/
 	arcan_lua_register(ctx, "copy_image_transform", arcan_lua_copytransform);
-	
-/* item:transfer_image_transform,vid,vid, nil */
 	arcan_lua_register(ctx, "transfer_image_transform", arcan_lua_transfertransform);
-	
-/* item:image_set_txcos,vid, float x8, nil */
 	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
-
-/* item:image_get_txcos,vid,floatary */
 	arcan_lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
-
-/* item:image_scaletxcos,vid,scales,scalet,nil */
 	arcan_lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
-	
-/* item:image_clipon,vid,nil */
 	arcan_lua_register(ctx, "image_clip_on", arcan_lua_clipon);
-	
-/* item:image_clipoff,vid,nil */
 	arcan_lua_register(ctx, "image_clip_off", arcan_lua_clipoff);
-
-/* item:image_mask_toggle,vid,enumint,nil */
 	arcan_lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
-
-/* item:image_mask_set,vid,enumint,nil */
 	arcan_lua_register(ctx, "image_mask_set", arcan_lua_setmask);
-
-/* item:image_mask_clear,vid,enumint,nil */
 	arcan_lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
-	
-/* item:image_tracetag,vid,string,nil */
 	arcan_lua_register(ctx, "image_tracetag", arcan_lua_tracetag);
-	
-/* item:image_mask_clearall,vid, nil */
 	arcan_lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);
-
-/* item:image_surface_properties, vid, surftbl */
 	arcan_lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
-
-/* item:image_surface_initial_properties, vid, surftbl */
 	arcan_lua_register(ctx, "image_surface_initial_properties", arcan_lua_getimageinitprop);
-
-/* item:image_surface_resolve_properties, vid, surftbl */
 	arcan_lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
-
-/* item:image_storage_properties, vid, surftbl */
 	arcan_lua_register(ctx, "image_storage_properties", arcan_lua_getimagestorageprop);
-	
-/* item:image_shader, vid, shaderid, nil */
 	arcan_lua_register(ctx, "image_shader", arcan_lua_setshader);
-
-/* item:mesh_shader, vid, shaderid, ofs, nil */
 	arcan_lua_register(ctx, "mesh_shader", arcan_lua_setmeshshader);
-	
-/* item:build_shader, vertstr, fragstr, shaderid */
 	arcan_lua_register(ctx, "build_shader", arcan_lua_buildshader);
-
-/* item:shader_uniform, shader, label, formatstr, args nil */
 	arcan_lua_register(ctx, "shader_uniform", arcan_lua_shader_uniform);
-	
-/* item:render_text, formatstr, vid */
 	arcan_lua_register(ctx, "render_text", arcan_lua_buildstr);
-
-/* item:text_size, formatstr, width and height */
 	arcan_lua_register(ctx, "text_dimensions", arcan_lua_strsize);
-	
-/* item:fill_surface, width (px), height (px), r (0..255), g (0.255), b (0.255), vid */
 	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
-
-/* item:define_rendertarget( width, height, kind, updatemode, vidlist, nil */
 	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
-
-/* item:define_recordtarget(did, resstr, vidtbl, aidtbl, detacharg, scalearg, pollrate, cbfun) */
 	arcan_lua_register(ctx, "define_recordtarget", arcan_lua_recordset);
-
-/* item:image_borderscan( vid ) => upperleft, lowerright */
 	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);
-	
-/* item random_surface, width (px), height (px), vid >*/
 	arcan_lua_register(ctx, "random_surface", arcan_lua_randomsurface);
-	
-/* item:force_image_blend, boolint, nil */
 	arcan_lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
-	
-/* item:push_video_context, int */
 	arcan_lua_register(ctx, "push_video_context", arcan_lua_pushcontext);
-
-/* item:pop_video_context, int */
 	arcan_lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
-
-/* item:current_context_usage, nusedint and nsizeint */
 	arcan_lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
-
-/* category: 3d */
-/* item:load_3dmodel, resource, vid */
   arcan_lua_register(ctx, "new_3dmodel", arcan_lua_buildmodel);
-    
-/* item:add_3dmesh, dstvid, resource, nil */
 	arcan_lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
-
-/* item:move3d_model, vid, xp, yp, zp, time, nil */
 	arcan_lua_register(ctx, "move3d_model", arcan_lua_movemodel);
-
-/* item:rotate3d_model, vid, yaw, pitch, roll, time, nil */
 	arcan_lua_register(ctx, "rotate3d_model", arcan_lua_rotatemodel);
-
-/* item:orient3d_model, vid, absyaw, abspitch, absroll, time, nil */
 	arcan_lua_register(ctx, "orient3d_model", arcan_lua_orientmodel);
-	
-/* item:scale3d_model, vid, wf, hf, df, time, nil */
 	arcan_lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
-
-/* item:camtag_model, vid, camtag, boolean */
 	arcan_lua_register(ctx, "camtag_model", arcan_lua_camtag);
-	
-/* item:build_3dplane, minx, mind, maxx, maxd, yv, hdens, ddens, nil */
 	arcan_lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
-	
-/* item:scale_3dvertices, vid, nil */
 	arcan_lua_register(ctx, "scale_3dvertices", arcan_lua_scale3dverts);
- 
-/* category: frameserver */
-/* item:play_movie, vid, nil */ 
 	arcan_lua_register(ctx, "play_movie", arcan_lua_playmovie);
-
-/* item:load_movie, resource, loop, vid and aid */
 	arcan_lua_register(ctx, "load_movie", arcan_lua_loadmovie);
-
-/* item:pause_movie, vid, nil */
 	arcan_lua_register(ctx, "pause_movie", arcan_lua_pausemovie);
-
-/* item:resume_movie, vid, nil */
 	arcan_lua_register(ctx, "resume_movie", arcan_lua_resumemovie);
-
-/* category: collision detection */
 	arcan_lua_register(ctx, "image_hit", arcan_lua_hittest);
-	
-/* item:pick_items,xpos,ypos, vidary */
 	arcan_lua_register(ctx, "pick_items", arcan_lua_pick);
-
-/* category: LED I/O */
-/* item:set_led, ctrlnum, lednum, state, nil */
 	arcan_lua_register(ctx, "set_led", arcan_lua_setled);
-
-/* item:*led_intensity, ctrl, led, intensity, nil */
 	arcan_lua_register(ctx, "led_intensity", arcan_lua_led_intensity);
-
-/* item:*set_led_rgb, ctrl, led, rv, gv, bv, nil */
 	arcan_lua_register(ctx, "set_led_rgb", arcan_lua_led_rgb);
-
-/* item:controller_leds, ctrlid, nleds */
 	arcan_lua_register(ctx, "controller_leds", arcan_lua_n_leds);
-
-/* item:utf8kind, character, charkindnum */
 	arcan_lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
-
-/* item:decode_modifiers, modval, strtable */
 	arcan_lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
 	
 	atexit(arcan_lua_cleanup);
@@ -3650,6 +3364,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "RENDERTARGET_DETACH", RENDERTARGET_DETACH);
 	arcan_lua_setglobalint(ctx, "TEX_REPEAT", ARCAN_VTEX_REPEAT);
 	arcan_lua_setglobalint(ctx, "TEX_CLAMP", ARCAN_VTEX_CLAMP);
+	arcan_lua_setglobalint(ctx, "FILTER_NONE", ARCAN_VFILTER_NONE);
+	arcan_lua_setglobalint(ctx, "FILTER_LINEAR", ARCAN_VFILTER_LINEAR);
+	arcan_lua_setglobalint(ctx, "FILTER_BILINEAR", ARCAN_VFILTER_BILINEAR);
 	arcan_lua_setglobalint(ctx, "SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2);
 	arcan_lua_setglobalint(ctx, "SCALE_TXCOORD", ARCAN_VIMAGE_TXCOORD);
 	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);

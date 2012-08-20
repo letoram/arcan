@@ -21,6 +21,7 @@ local scalemodelist = {
 };
 
 local scalemodeptrs = {};
+
 local function scalemodechg(label, save)
 	settings.scalemode = label;
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
@@ -30,8 +31,8 @@ local function scalemodechg(label, save)
 	else
 		play_audio(soundmap["MENU_SELECT"]);
 	end
-	
-	gridlemenu_resize_fullscreen(gridlemenu_destvid, image_surface_initial_properties(gridlemenu_destvid));
+
+	gridlemenu_rebuilddisplay();
 end
 
 for ind, val in ipairs(scalemodelist) do scalemodeptrs[val] = scalemodechg; end
@@ -105,10 +106,11 @@ end
 
 local function select_shaderfun(label, store)
 	settings.iodispatch["MENU_ESCAPE"]();
-	
-	gridlemenu_loadshader(label);
 	settings.fullscreenshader = label;
-
+	settings.internal_toggles = {};
+	
+	gridlemenu_rebuilddisplay();
+	
 	if (store) then
 		store_key("defaultshader", label);
 
@@ -164,8 +166,6 @@ local function build_shadermenu()
 	return reslbls, resptrs, resstyles;
 end
 
-
-
 local function cocktailmodechg(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	if (save) then
@@ -176,7 +176,7 @@ local function cocktailmodechg(label, save)
 	end
 	
 	settings.cocktail_mode = label;
-	gridlemenu_resize_fullscreen(gridlemenu_destvid, image_surface_initial_properties(gridlemenu_destvid));
+	gridlemenu_rebuilddisplay();
 end
 
 local cocktaillist = {
@@ -193,6 +193,8 @@ local cocktailptrs = {};
 for ind, val in ipairs(cocktaillist) do
 	cocktailptrs[val] = cocktailmodechg;
 end
+
+local vectormenuptrs = {};
 
 local inputportoptlist = {
 	"GAMEPAD",
@@ -313,13 +315,16 @@ function create_weighted_fbo( frames )
 end
 
 -- configure shaders for the blur / glow / bloom effect
-function vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp)
+function vector_setupblur(targetw, targeth)
 	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
 	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
+	local blurw = targetw * settings.vector_hblurscale;
+	local blurh = targeth * settings.vector_vblurscale;
+	
 	shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
 	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
-	shader_uniform(blurshader_h, "ampl", "f", PERSIST, hamp);
-	shader_uniform(blurshader_v, "ampl", "f", PERSIST, vamp);	
+	shader_uniform(blurshader_h, "ampl", "f", PERSIST, settings.vector_hbias);
+	shader_uniform(blurshader_v, "ampl", "f", PERSIST, settings.vector_vbias);	
 
 	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
 	local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
@@ -334,8 +339,8 @@ function vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp)
 end
 
 -- additive blend with blur
-function vector_lightmode(source, targetw, targeth, blurw, blurh, hamp, vamp)
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp);
+function vector_lightmode(source, targetw, targeth)
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth);
 	
 -- undo / ignore everything put in place by the normal resize
 	move_image(source, 0, 0);
@@ -343,7 +348,8 @@ function vector_lightmode(source, targetw, targeth, blurw, blurh, hamp, vamp)
 	show_image(source);
 	
 	local node = instance_image(source);
-	resize_image(node, blurw, blurh);
+	
+	resize_image(node, targetw * settings.vector_hblurscale, targeth * settings.vector_vblurscale);
 	show_image(node);
 	image_tracetag(node, "vector(source:clone)");
 
@@ -353,13 +359,13 @@ function vector_lightmode(source, targetw, targeth, blurw, blurh, hamp, vamp)
 	define_rendertarget(blur_hbuf, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
-	order_image(blur_vbuf, max_current_image_order() + 1);
-	blend_image(blur_vbuf, 0.95);
+	blend_image(blur_vbuf, 0.99);
 	force_image_blend(blur_vbuf, BLEND_ADD);
 	order_image(blur_vbuf, max_current_image_order() + 1);
 
 	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
 	image_tracetag(comp_outbuf, "vector(composite)");
+	move_image(blur_vbuf, settings.vector_hblurofs, settings.vector_vblurofs);
 	define_rendertarget(comp_outbuf, {blur_vbuf, source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	show_image(comp_outbuf);
 	
@@ -398,7 +404,7 @@ function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh,
 	show_image(rendertgt);
 
 -- this part is the same as lightmode, use the normal instance as background, then blend the blur result
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 1.6, 1.0);
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp);
 	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	blend_image(blur_vbuf, 0.97);
@@ -414,52 +420,65 @@ function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh,
 	return comp_outbuf;
 end
 
-local function undo_vectormode()
-	if (settings.last_mode == "vector") then
+function undo_vectormode()
+	if (valid_vid(imagery.vector_vid)) then
+		print("delete vector");
 -- lots of things happening beneath the surface here, killing the vector vid will cascade and drop all detached images
 -- that are part of the render target, EXCEPT for the initial internal vid that has its MASKED_LIVING disabled
 -- this means that it gets reattached to the main pipe instead of deleted
-		print("-- delete vector --", imagery.vector_vid);
 		delete_image(imagery.vector_vid);
-		print("-- end delete --");
-		gridlemenu_resize_fullscreen(internal_vid, image_surface_initial_properties(internal_vid));
-		settings.last_mode = nil;
+		imagery.vector_vid = BADID;
 	end
 end
 
 local function toggle_vectormode()
--- special cleanup to not leak VBOs etc.
-	if (settings.last_mode == "vector") then
-		return;
-	end
-
 -- should only happen when shutting down internal_launch with vector mode active
-	
-	settings.last_mode = "vector";
 	image_mask_clear(internal_vid, MASK_LIVING);
 	local props = image_surface_initial_properties(internal_vid);
 
 -- activate trails or not?
-	if (settings.vector.trail and #settings.vector.trail > 0) then
-		imagery.vector_vid = vector_heavymode(internal_vid, settings.vector.trail, settings.vector.delay, props.width, props.height, settings.vector.hresf * props.width, 
-			settings.vector.vresf * props.height, settings.vector.hbias, settings.vector.vbias);
+	if (settings.vector_trail and #settings.vector_trail > 0) then
+--		imagery.vector_vid = vector_heavymode(internal_vid, settings.vector.trail, settings.vector.delay, props.width, props.height, settings.vector.hresf * props.width, 
+--		settings.vector.vresf * props.height, settings.vector.hbias, settings.vector.vbias);
 	else
-		print("light");
-		imagery.vector_vid = vector_lightmode(internal_vid, props.width, props.height, 256, 256, 1.0, 1.0); 
+		imagery.vector_vid = vector_lightmode(internal_vid, props.width, props.height);
 	end
 	
--- look for backdrop or not?
+	order_image(imagery.vector_vid, 1);
 -- CRT toggle is done through the fullscreen_shader member
-	gridlemenu_resize_fullscreen(imagery.vector_vid, image_surface_initial_properties(internal_vid));
+end
+
+function gridlemenu_rebuilddisplay()
+	print("update");
+	undo_vectormode();
+	
+	if (settings.internal_toggles.vector) then
+		toggle_vectormode();
+		
+		if (settings.internal_toggles.crt) then
+			gridlemenu_loadshader("crt", imagery.vector_vid, image_surface_initial_properties(internal_vid));
+		end
+
+		gridlemenu_resize_fullscreen(imagery.vector_vid, image_surface_initial_properties(internal_vid));
+		return;
+
+	elseif (settings.internal_toggles.crt) then
+		gridlemenu_loadshader("crt");
+
+	else
+		gridlemenu_loadshader(settings.fullscreenshader);
+	end
+
+	gridlemenu_resize_fullscreen(internal_vid, image_surface_initial_properties(internal_vid))
 end
 
 function gridlemenu_resize_fullscreen(source, init_props)
+	print("resize");
 -- rotations are not allowed for H-Split / H-Split SBS and V-Split needs separate treatment 
 	local rotate = (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") and (settings.cocktail_mode == "Disabled");
 	local scalemode = settings.scalemode;
 	local cocktailmode = settings.cocktail_mode;
 	
-	print("resize");
 	local windw = VRESW;
 	local windh = VRESH;
 	rotate_image(source, 0);
@@ -564,9 +583,11 @@ function gridlemenu_resize_fullscreen(source, init_props)
 	
 end
 
-function gridlemenu_loadshader(basename)
+function gridlemenu_loadshader(basename, dstvid, dstprops)
 	local vsh = nil;
 	local fsh = nil;
+	if (dstvid == nil) then dstvid = internal_vid; end
+	if (dstprops == nil) then dstprops = image_surface_initial_properties(dstvid); end
 	
 	if ( resource("shaders/fullscreen/" .. basename .. ".vShader") ) then
 		vsh = "shaders/fullscreen/" .. basename .. ".vShader";
@@ -584,14 +605,8 @@ function gridlemenu_loadshader(basename)
 	
 	fullscreen_shader = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
 
--- this might be used from detail-view as well so don't assume we know what to update
-	if (internal_vid ~= nil) then
-	-- force the shader unto the current vid
-		gridlemenu_resize_fullscreen(internal_vid, image_surface_initial_properties(internal_vid));
-		image_shader(internal_vid, fullscreen_shader);
-	end
+	image_shader(dstvid, fullscreen_shader);
 end
-
 
 local function get_saveslist(gametbl)
 -- check for existing snapshots (ignore auto and quicksave)
@@ -609,7 +624,6 @@ local function get_saveslist(gametbl)
 	return saveslist;
 end
 
-
 local function grab_shaderconf(basename)
 	local vdef, vcond = parse_shader("shaders/fullscreen/" .. basename .. ".vShader");
 	local fdef, fcond = parse_shader("shaders/fullscreen/" .. basename .. ".fShader");
@@ -625,7 +639,6 @@ local function grab_shaderconf(basename)
 
 	return resdef, rescond;
 end
-
 
 local function load_savestate(label, store)
 	settings.iodispatch["MENU_ESCAPE"]();
@@ -837,33 +850,65 @@ displaymodeptrs["Custom Shaders..."] = function()
 	end
 	
 	local listl, listp = build_shadermenu();
-	settings.incustom = true;
+	settings.context_menu = "custom shaders";
 	menu_spawnmenu( listl, listp, def ); 
 end
 	
 -- Don't implement save / favorite for these ones,
 -- want fail-safe as default, and the others mess too much with GPU for that
-displaymodelist = {"Normal", "CRT", "Vector", "Custom Shaders..."};
-displaymodeptrs = {};
-
-displaymodeptrs["Normal"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	undo_vectormode();
-end;
+displaymodelist = {"NTSC", "Upscale", "CRT", "Vector", "Overlay", "Custom Shaders..."};
 
 -- the vector display modes take a lot of options and the set of shaders
 -- used need to be set up and configured in a very specific order,
 -- some options also need to be propagated to the launched target
 displaymodeptrs["Vector"] = function(label, save)
-	local def = {};
-	toggle_vectormode();
+	settings.internal_toggles.vector = not settings.internal_toggles.vector;
+	if (settings.internal_toggles.vector) then
+		current_menu.formats[ "Vector" ] = "\\#ff0000";
+	else
+		current_menu.formats[ "Vector" ] = nil;
+	end
+	
+	current_menu:move_cursor(0, 0, true);
+
+	gridlemenu_rebuilddisplay();
+	current_menu:push_to_front();
 end;
 
 -- similar to just loading the fullscreen shader,
 -- but with menus for setting a lot more options
 displaymodeptrs["CRT"] = function(label, save)
+	settings.internal_toggles.crt = not settings.internal_toggles.crt;
+	if (settings.internal_toggles.crt) then
+		current_menu.formats[ "CRT" ] = "\\#ff0000";
+	else
+		current_menu.formats[ "CRT" ] = nil;
+	end
+	
+	current_menu:move_cursor(0, 0, true);
 
+	gridlemenu_rebuilddisplay();
+	current_menu:push_to_front();
 end;
+
+vectormenulbls = {};
+vectormenuptrs = {};
+
+local function updatetrigger()
+	gridlemenu_rebuilddisplay();
+end
+
+add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen_num_menu("vector_linew", 1, 1, 4, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 1, 4, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (X)...", "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (Y)...", "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Vertical Offset...", "vector_vblurofs", gen_num_menu("vector_vblurofs", -4, 2, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Offset...", "vector_hblurofs", gen_num_menu("vector_hblurofs", -4, 2, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Vertical Bias...", "vector_vbias", gen_num_menu("vector_vbias", 0.6, 0.1, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Bias...", "vector_hbias", gen_num_menu("vector_hbias", 0.6, 0.1, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 9, updatetrigger))
+table.insert(vectormenulbls, "Trails...");
+
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
@@ -888,8 +933,8 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 
 	settings.iodispatch["CONTEXT"] = function(iotbl)
 		selectlbl = current_menu:select()
-		
-		if (settings.incustom) then
+	
+		if (settings.context_menu == "custom shaders") then
 			local def, cond = grab_shaderconf(selectlbl);
 			local labels = {};
 			local ptrs   = {};
@@ -912,12 +957,18 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 				menu_spawnmenu(labels, ptrs, fmts);
 			end
 			
+		elseif (selectlbl == "CRT") then
+			fmts = {};
+			menu_spawnmenu(crtmenulbls, crtmenuptrs, fmts);
+			
+		elseif (selectlbl == "Vector") then
+			fmts = {}; -- do for CRT / Overlay 
+			menu_spawnmenu(vectormenulbls, vectormenuptrs, fmts);
 		end
 	end
 	
 	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
-		settings.incustom = false;
 		
 		if (current_menu.parent ~= nil) then
 			if (silent == nil or silent == false) then
@@ -956,6 +1007,15 @@ if (#menulbls > 0 and settingslbls) then
 
 	current_menu.ptrs["Display Modes..."] = function()
 		local def = {};
+		if ( settings.internal_toggles.crt ) then 
+			def[ "CRT" ] = "\\#00ffff";
+		end
+		
+		if (settings.internal_toggles.vector ) then
+			def[ "Vector" ] = "\\#00ffff";
+		end
+		
+		settings.context_menu = "display modes";
 		menu_spawnmenu(displaymodelist, displaymodeptrs, def );
 	end
 
@@ -1026,6 +1086,7 @@ if (#menulbls > 0 and settingslbls) then
 	end
 
 	gridlemenu_defaultdispatch();
+	settings.context_menu = nil;
 	
 	current_menu:show();
 	suspend_target(internal_vid);

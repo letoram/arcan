@@ -137,6 +137,18 @@ int SDL_WM_ToggleFullscreen(SDL_Surface* screen){
 		return 0;
 }
 
+void glLineWidth(GLfloat neww){
+	lastsym = "glLineWidth";
+	printf("glLineWidth called\n");
+	ARCAN_glLineWidth(neww);
+}
+
+void glPointSize(GLfloat size){
+	lastsym = "glPointSize";
+	printf("glPointSize called\n");
+	ARCAN_glPointSize(size);
+}
+
 DECLSPEC int SDLCALL SDL_UpperBlit(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect){
 	return ARCAN_SDL_UpperBlit(src, srcrect, dst, dstrect);	
 }

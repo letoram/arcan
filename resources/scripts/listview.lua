@@ -62,6 +62,7 @@ local function listview_destroy(self)
 	expire_image(self.listvid, 20);
 	blend_image(self.listvid, 0.0, 20);
 	expire_image(self.anchor, 20);
+	print("cursor gone");
 end
 
 local function listview_select(self)
@@ -93,10 +94,11 @@ local function listview_move_cursor(self, step, relative)
 end
 
 local function listview_tofront(self)
-	order_image(self.border, max_current_image_order());
-	order_image(self.window, max_current_image_order());
-	order_image(self.listvid, max_current_image_order());
-	order_image(self.cursorvid, max_current_image_order() + 1);
+	local base = max_current_image_order();
+	order_image(self.border, base + 1); 
+	order_image(self.window, base + 2); 
+	order_image(self.listvid, base + 3); 
+	order_image(self.cursorvid, base + 4);
 end
 
 -- Need this wholeheartedly to get around the headache of 1-indexed vs ofset. 

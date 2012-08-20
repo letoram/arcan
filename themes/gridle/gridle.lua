@@ -90,22 +90,36 @@ settings = {
 	cooldown_start = 15,
 	
 	default_launchmode = "Internal",
+
+	crt_gamma = 0.2,
+	crt_hoverscan = 1.0,
+	crt_voverscan = 1.0,
+	crt_hcurv = 1.0,
+	crt_vcurv = 1.0,
+	crt_curvrad = 2.0,
+	crt_distance = 2.0,
+	crt_tilth = 0.0,
+	crt_tiltv = -0.15, 
+	crt_cornersz = 0.001, 
+	crt_nocurv = false,
+	crt_gaussian = false,
+	crt_oversample = false,
 	
-	vector = {
-		line_width = 1,   -- sent to target for patching glPointSize and friends.
-		point_size = 1, 
-		hbias = 1.4,      -- how much horizontal weight to add when blending
-		vbias = 1.2,      -- how much vertical weight to add when blending
-		hresf = 0.6,      -- size of  blur texture (relative to parent) <= 1.0, will enhance gaussian
-		vresf = 0.6,
-		delay = -2,       -- trail-step every other frame 
-		trail = {},       -- empty trail == only building "light" version
-		backdrop = false, -- blend in backdrop / overlay if found
-		crt = false       -- should the CRT settings from the other display- mode be applied as a post process?
-	},
-	
+	vector_linew = 1,
+	vector_pointsz = 1,
+	vector_blurblendw = 0.95, 
+	vector_hblurscale = 0.4,
+	vector_vblurscale = 0.4,
+	vector_vblurofs = 0, 
+	vector_hblurofs = 0,
+	vector_vbias = 1.0,
+	vector_hbias = 1.0,
+	vector_trailstep = -4,
+	vector_trail = {},
+
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
+	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false},
 	flipinputaxis = false,
 	filter_opposing= false, 
 	internal_again = 1.0,
@@ -453,8 +467,9 @@ function gridle_setup_internal(video, audio)
 -- remap input function to one that can handle forwarding and have access to context specific menu
 	gridle_oldinput = gridle_input;
 	gridle_input = gridle_internalinput;
-	gridlemenu_loadshader(settings.fullscreenshader);
-
+	
+	gridlemenu_rebuilddisplay();
+	
 -- don't need these running in the background 
 	erase_grid(true);
 	zap_whitegrid();
@@ -1191,6 +1206,7 @@ function gridle_internalcleanup()
 		else
 			expire_image(internal_vid, settings.transitiondelay);
 		end
+		undo_vectormode();
 		
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
 		blend_image(internal_vid, 0.0, settings.transitiondelay);
@@ -1224,12 +1240,15 @@ end
 
 function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
+		
 		if (not settings.in_internal) then
 			gridle_setup_internal(source, datatbl.source_audio);
 			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
-		end
+		else
 
-		gridlemenu_resize_fullscreen(source, image_surface_initial_properties(source));
+			gridlemenu_rebuilddisplay();
+		end
+			
 	end
 end
 

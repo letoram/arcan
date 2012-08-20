@@ -9,7 +9,7 @@ function menu_resetgcount(node)
 	node.gamecount = -1;
 end
 
-local function build_globmenu(globstr, cbfun, globmask)
+function build_globmenu(globstr, cbfun, globmask)
 	local lists = glob_resource(globstr, globmask);
 	local resptr = {};
 	
@@ -23,7 +23,7 @@ end
 -- for some menu items we just want to have a list of useful values
 -- this little function builds a list of those numbers, with corresponding functions,
 -- dispatch handling etc.
-local function gen_num_menu(name, base, step, count, triggerfun)
+function gen_num_menu(name, base, step, count, triggerfun)
 	local reslbl = {};
 	local resptr = {};
 	local clbl = base;
@@ -54,7 +54,7 @@ end
 	return reslbl, resptr;
 end
 
-local function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
+function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
 	table.insert(dstlbls, label);
 	
 	dstptrs[label] = function()
