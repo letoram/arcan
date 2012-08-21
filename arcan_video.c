@@ -3010,7 +3010,11 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			}
 		}
 		
-		draw_surf(tgt, dprops, elem, elem->current_frame->txcos);
+		float* txcos = elem->current_frame->txcos;
+		if ( (elem->mask & MASK_MAPPING) > 0)
+			txcos = elem->parent != &current_context->world ? elem->parent->txcos : elem->txcos;
+		
+		draw_surf(tgt, dprops, elem, txcos);
 
 		if (unbc){
 			for (int i = 1; i <= unbc-1; i++){

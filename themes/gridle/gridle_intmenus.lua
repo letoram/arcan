@@ -344,6 +344,8 @@ end
 -- additive blend with blur
 function vector_lightmode(source, targetw, targeth)
 	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth);
+	local blurw = targetw * settings.vector_hblurscale;
+	local blurh = targeth * settings.vector_vblurscale;
 	
 -- undo / ignore everything put in place by the normal resize
 	move_image(source, 0, 0);
@@ -352,7 +354,7 @@ function vector_lightmode(source, targetw, targeth)
 	
 	local node = instance_image(source);
 	
-	resize_image(node, targetw * settings.vector_hblurscale, targeth * settings.vector_vblurscale);
+	resize_image(node, blurw, blurh);
 	show_image(node);
 	image_tracetag(node, "vector(source:clone)");
 
@@ -379,47 +381,65 @@ end
 -- additive blend with blur, base image for blur as a weighted blend of previous images
 -- creates lots of little FBOs container resources that needs to be cleaned up
 --
-function vector_heavymode(parent, frames, delay, targetw, targeth, blurw, blurh, hamp, vamp)
--- create an instance of the parent that won't be multitextured 
-	local normal = instance_image(parent);
+function vector_heavymode(source, targetw, targeth)
+	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth);
+	image_tracetag(blur_hbuf, "vector(hblur)");
+	image_tracetag(blur_vbuf, "vector(vblur)");
+
+	local blurw = targetw * settings.vector_hblurscale;
+	local blurh = targeth * settings.vector_vblurscale;
+		
+	local normal = instance_image(source);
 	image_mask_set(normal, MASK_FRAMESET);
 	show_image(normal);
-	resize_image(normal, targetw, targeth);	
+	resize_image(normal, targetw, targeth);
+	image_mask_set(normal, MASK_MAPPING);
 
--- set frameset for parent to work as a round robin with multitexture,
+	local frames = {};
+	local base = 1.0;
+	
+	for i=1, settings.vector_glowtrails+1 do
+		frames[i] = base;
+		base = base - settings.vector_trailfall;
+	end
+	
+-- set frameset for parent to work as around robin with multitexture,
 -- build a shader that blends the frames according with user-defined weights	
 	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames) , "history_mix", {});
-	image_framesetsize(parent, #frames, FRAMESET_MULTITEXTURE);
-	image_framecyclemode(parent, delay);
-	image_shader(parent, mixshader);
-	show_image(parent);
-	resize_image(parent, blurw, blurh);
+	print(#frames);
+	image_framesetsize(source, #frames, FRAMESET_MULTITEXTURE);
+	image_framecyclemode(source, settings.vector_trailstep);
+	image_shader(source, mixshader);
+	show_image(source);
+	resize_image(source, blurw, blurh); -- borde inte den vara ehrm, blurw, blurh?
+	move_image(source, 0, 0);
+	image_mask_set(source, MASK_MAPPING);
 
--- generate textures to use as round-robin store
-	for i=1,#frames-1 do
+-- generate textures to use as round-robin store, these need to math the storage size to avoid
+-- a copy/scale each frame
+	for i=1,settings.vector_glowtrails do
 		local vid = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
-		set_image_as_frame(parent, vid, i, FRAMESET_DETACH);
+		set_image_as_frame(source, vid, i, FRAMESET_DETACH);
 	end
 
--- render this to a FBO that will be used for input to blurring
-	rendertgt = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
-	define_rendertarget(rendertgt, {parent}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	rendertgt = fill_surface(blurw, blurh, 0, 0, 0, blurw, blurh);
+	define_rendertarget(rendertgt, {source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	show_image(rendertgt);
+	image_tracetag(rendertgt, "vector(trailblur)");
 
--- this part is the same as lightmode, use the normal instance as background, then blend the blur result
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, hamp, vamp);
 	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	blend_image(blur_vbuf, 0.97);
+
+	blend_image(blur_vbuf, 0.99);
 	force_image_blend(blur_vbuf, BLEND_ADD);
 	order_image(blur_vbuf, max_current_image_order() + 1);
 
--- one last FBO for output to CRT etc.
 	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
-	image_tracetag(comp_outbuf, "vector(composite output)");
+	image_tracetag(comp_outbuf, "vector(composite)");
+	move_image(blur_vbuf, settings.vector_hblurofs, settings.vector_vblurofs);
 	define_rendertarget(comp_outbuf, {blur_vbuf, normal}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	show_image(comp_outbuf);
-
+	
 	return comp_outbuf;
 end
 
@@ -440,9 +460,8 @@ local function toggle_vectormode()
 	local props = image_surface_initial_properties(internal_vid);
 
 -- activate trails or not?
-	if (settings.vector_trail and #settings.vector_trail > 0) then
---		imagery.vector_vid = vector_heavymode(internal_vid, settings.vector.trail, settings.vector.delay, props.width, props.height, settings.vector.hresf * props.width, 
---		settings.vector.vresf * props.height, settings.vector.hbias, settings.vector.vbias);
+	if (settings.vector_glowtrails > 0) then
+		imagery.vector_vid = vector_heavymode(internal_vid, props.width, props.height);
 	else
 		imagery.vector_vid = vector_lightmode(internal_vid, props.width, props.height);
 	end

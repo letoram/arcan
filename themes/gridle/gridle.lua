@@ -115,6 +115,8 @@ settings = {
 	vector_vbias = 1.0,
 	vector_hbias = 1.0,
 	vector_trailstep = -4,
+	vector_trailfall = 0.2,
+	vector_glowtrails = 3,
 
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",

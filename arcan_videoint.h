@@ -234,7 +234,7 @@ void arcan_debug_tracetag_dump();
 uint16_t nexthigher(uint16_t k);
 
 void generate_basic_mapping(float* dst, float st, float tt);
-void generate_mirrored_mapping(float* dst, float st, float tt);
+void generate_mirror_mapping(float* dst, float st, float tt);
 
 void arcan_3d_setdefaults();
 
