@@ -202,6 +202,8 @@ static void step_active_frame(arcan_vobject* vobj)
 
 	vobj->frameset_meta.current = (vobj->frameset_meta.current + 1) % vobj->frameset_meta.capacity;
 	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
+	if (vobj->current_frame == NULL) 
+		vobj->current_frame = vobj;
 }
 
 /* go through a saved context, and reallocate all resources associated with it */
@@ -2076,6 +2078,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					assert(vobj->extrefc.instances);
 					vobj->extrefc.instances--;
 					sum--;
+					*basep++ = dobj;
 				}
 				else {
 					assert(vobj->extrefc.links > 0);
@@ -2758,7 +2761,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
  * using some frame- specific tag so that we don't repeatedly resolve with this complexity. */
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props)
 {
-	if (vobj->parent != &current_context->world){
+	if (vobj->parent && vobj->parent != &current_context->world){
 		surface_properties dprop = {0};
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
 		apply(vobj, props, lerp, &dprop, false);
