@@ -82,6 +82,7 @@ static struct {
 	SDL_Surface* mainsrfc;
 	SDL_PixelFormat desfmt;
 
+	bool update_vector;
 	float point_size;
 	float line_size;
 	float point_atten[3];
@@ -111,6 +112,7 @@ static struct {
 	#endif
 		},
 		
+		.update_vector = true,
 		.point_size = 1.0,
 		.line_size  = 1.0,
 		.point_atten = {1.0, 0.0, 0.0}
@@ -361,16 +363,33 @@ static inline void push_ioevent(arcan_ioevent event){
 	}
 }
 
+void process_targetevent(unsigned kind, arcan_tgtevent* ev)
+{
+	switch (kind)
+	{
+		case TARGET_COMMAND_VECTOR_LINEWIDTH:
+			global.update_vector = true;
+			global.line_size = (float) ev->ioevs[0];
+		break;
+		
+		case TARGET_COMMAND_VECTOR_POINTSIZE:
+			global.update_vector = true;
+			global.point_size = (float) ev->ioevs[0];
+		break;
+	}
+}
+
 int ARCAN_SDL_PollEvent(SDL_Event* inev)
 {
 	SDL_Event gevent;
 	arcan_event* ev;
-
+	
 	trace("SDL_PollEvent()\n");
 	
 	while ( (ev = arcan_event_poll(&global.inevq)) ) 
 		switch (ev->category){
 			case EVENT_IO: push_ioevent(ev->data.io); break;
+			case EVENT_TARGET: process_targetevent(ev->kind, &ev->data.target); break;
 	}
 
 /* strip away a few events related to fullscreen,
@@ -476,25 +495,6 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface *
 	return rv;
 }
 
-/* Hacks for MAME + Vectors */
-void ARCAN_glLineWidth( float num )
-{
-	return forwardtbl.glLineWidth( global.line_size );
-}
-
-void ARCAN_glPointSize( float num )
-{
-/* glPointParameter(f,i)v:
- * GL_POINT_SIZE_MIN (0.0..0.1, 0.0 def.)
- * GL_POINT_SIZE_MAX (0.0..* 1.0 def.)
- * GL_POINT_DISTANCE_ATTENUATION (3f array, 1, 0, 0 def.)
- * GL_POINT_FADE_THRESHOLD_SIZE (1.0, clamp float size.)
- * GL_POINT_SPRITE_COORD_ORIGIN (enum, GL_LOWER_LEFT or GL_UPPER_LEFT) */
-
-	glPointParameterfv(GL_POINT_DISTANCE_ATTENUATION, global.point_atten );
-	return forwardtbl.glPointSize( global.point_size * 4 );
-}
-
 /* 
  * The OpenGL case is easier, but perhaps a bit pricier .. 
  */
@@ -521,7 +521,11 @@ void ARCAN_SDL_GL_SwapBuffers()
 		trace("CopySurface(GL:post)");
 	}
 	
-/*  uncomment to keep video- operations running in the target,
- *  some weird 3d- edge cases might need this */
+/* can't be done in the target event handler as it might be in a different thread */
+	if (global.update_vector){
+		forwardtbl.glPointSize(global.point_size);
+		forwardtbl.glLineWidth(global.line_size);
+		global.update_vector = false;
+	}
 /*	forwardtbl.sdl_swapbuffers(); */
 }

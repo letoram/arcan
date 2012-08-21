@@ -247,7 +247,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
 	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c)
-	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
+	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
 	
 	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 	set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
@@ -274,7 +274,7 @@ LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
 add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c)
 add_dependencies(arcan_hijack arcan_target_backend)
-target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENAL_LIBRARY})
+target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
 
 # part of tools to troubleshoot / test hijack for a target (intended for the romman)
 # add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")

@@ -216,6 +216,7 @@ local function setup_cocktail(mode, source, vresw, vresh)
 local props = image_surface_properties(source);
 	
 	imagery.cocktail_vid = instance_image(source);
+	image_tracetag(imagery.cocktail_vid, "cocktail");
 	image_shader(imagery.cocktail_vid, fullscreen_shader);
 	
 	image_mask_clear(imagery.cocktail_vid, MASK_OPACITY);
@@ -245,6 +246,8 @@ local function bezel_loaded(source, status)
 		local props = image_storage_properties(source);
 		resize_image(source, VRESW, VRESH);
 		local x1,y1,x2,y2 = image_borderscan(source);
+		image_tracetag(source, "bezel");
+		
 		x1 = (x1 / props.width) * VRESW;
 		x2 = (x2 / props.width) * VRESW;
 		y1 = (y1 / props.height) * VRESH;
@@ -449,11 +452,12 @@ local function toggle_vectormode()
 end
 
 function gridlemenu_rebuilddisplay()
-	print("update");
 	undo_vectormode();
 	
 	if (settings.internal_toggles.vector) then
 		toggle_vectormode();
+		target_pointsize(internal_vid, settings.vector_pointsz);
+		target_linewidth(internal_vid, settings.vector_linew);
 		
 		if (settings.internal_toggles.crt) then
 			gridlemenu_loadshader("crt", imagery.vector_vid, image_surface_initial_properties(internal_vid));
@@ -902,13 +906,13 @@ add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen
 add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 1, 4, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (X)...", "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (Y)...", "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1, 9, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Vertical Offset...", "vector_vblurofs", gen_num_menu("vector_vblurofs", -4, 2, 9, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Offset...", "vector_hblurofs", gen_num_menu("vector_hblurofs", -4, 2, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Vertical Offset...", "vector_vblurofs", gen_num_menu("vector_vblurofs", -6, 1, 13, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Offset...", "vector_hblurofs", gen_num_menu("vector_hblurofs", -6, 1, 13, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Vertical Bias...", "vector_vbias", gen_num_menu("vector_vbias", 0.6, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Bias...", "vector_hbias", gen_num_menu("vector_hbias", 0.6, 0.1, 9, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 9, updatetrigger))
-table.insert(vectormenulbls, "Trails...");
-
+add_submenu(vectormenulbls, vectormenuptrs, "Glow Trails...", "vector_glowtrails", gen_num_menu("vector_glowtrails", 0, 1, 4, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Trail Falloff...", "vector_trailfall", gen_num_menu("vector_trailfall", 0.05, 0.05, 20, updatetrailtrigger));
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler

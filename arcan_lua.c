@@ -2534,6 +2534,46 @@ int arcan_lua_targetrestore(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_targetlinewidth(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+
+	int intp = luaL_checknumber(ctx, 2);
+	int fractp = luaL_optnumber(ctx, 3, 0);
+	
+	arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_VECTOR_LINEWIDTH
+	};
+	
+	ev.data.target.ioevs[0] = intp;
+	ev.data.target.ioevs[1] = fractp;
+	
+	tgtevent(tgt, ev);
+	
+	return 0;
+}
+
+int arcan_lua_targetpointsize(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+
+	int intp = luaL_checknumber(ctx, 2);
+	int fractp = luaL_optnumber(ctx, 3, 0);
+	
+	arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_VECTOR_POINTSIZE
+	};
+	
+	ev.data.target.ioevs[0] = intp;
+	ev.data.target.ioevs[1] = fractp;
+	
+	tgtevent(tgt, ev);
+	
+	return 0;
+}
+
 int arcan_lua_targetrewind(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
@@ -3224,6 +3264,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "resume_target", arcan_lua_targetresume);
 	arcan_lua_register(ctx, "target_portconfig", arcan_lua_targetportcfg);
 	arcan_lua_register(ctx, "target_framemode", arcan_lua_targetskipmodecfg);
+	arcan_lua_register(ctx, "target_pointsize", arcan_lua_targetpointsize);
+	arcan_lua_register(ctx, "target_linewidth", arcan_lua_targetlinewidth);
 	arcan_lua_register(ctx, "rewind_target", arcan_lua_targetrewind);
 	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);
 	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
