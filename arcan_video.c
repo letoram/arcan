@@ -1095,9 +1095,9 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	
 		if (target->frameset){
-			for (int i = 0; i < capacity; i++){
+			for (int i = 0; i < target->frameset_meta.capacity; i++){
 				arcan_vobject* torem = target->frameset[i];
-				target->frameset[i]->extrefc.framesets--;
+				torem->extrefc.framesets--;
 				target->frameset[i] = NULL;
 				
 				if (torem && torem != target && torem->parent == NULL)
@@ -2137,6 +2137,9 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* lots of default values are assumed to be 0, so reset the entire object to be sure.
  * will help leak detectors as well */
+	if (vobj->extrefc.attachments + vobj->extrefc.framesets + vobj->extrefc.links + vobj->extrefc.instances > 0 && vobj->tracetag){
+		arcan_warning("-- reference integrity failure on (%s)\n", vobj->tracetag);
+	}
 	assert(vobj->extrefc.attachments == 0);
 	assert(vobj->extrefc.framesets == 0);
 	assert(vobj->extrefc.links == 0);

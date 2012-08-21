@@ -625,8 +625,18 @@ int arcan_lua_buildshader(lua_State* ctx)
 int arcan_lua_setshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_shader_id shid = luaL_checknumber(ctx, 2);
+	arcan_shader_id shid;
+	bool stat;
 
+	if (	lua_type(ctx, 2) == LUA_TSTRING){
+		shid = arcan_shader_lookup(luaL_checkstring(ctx, 2), &stat);
+		if (!stat){
+			shid = arcan_shader_lookup("DEFAULT", &stat);
+			arcan_warning("arcan_lua_setshader: shader lookup (%s) failed, reverting to DEFAULT.\n", luaL_checkstring(ctx, 2));
+		}
+	}
+	else shid = luaL_checknumber(ctx, 2);
+	
 	arcan_video_setprogram(id, shid);
 
 	return 0;
