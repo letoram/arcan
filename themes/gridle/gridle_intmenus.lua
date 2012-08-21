@@ -445,7 +445,9 @@ end
 
 function undo_vectormode()
 	if (valid_vid(imagery.vector_vid)) then
-		print("delete vector");
+		image_shader(internal_vid, "DEFAULT");
+		image_framesetsize(internal_vid, 0);
+		image_framecyclemode(internal_vid, 0);
 -- lots of things happening beneath the surface here, killing the vector vid will cascade and drop all detached images
 -- that are part of the render target, EXCEPT for the initial internal vid that has its MASKED_LIVING disabled
 -- this means that it gets reattached to the main pipe instead of deleted
@@ -921,16 +923,16 @@ local function updatetrigger()
 	gridlemenu_rebuilddisplay();
 end
 
-add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen_num_menu("vector_linew", 1, 1, 4, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 1, 4, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen_num_menu("vector_linew", 1, 1, 6, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 1, 6, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (X)...", "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (Y)...", "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Vertical Offset...", "vector_vblurofs", gen_num_menu("vector_vblurofs", -6, 1, 13, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Offset...", "vector_hblurofs", gen_num_menu("vector_hblurofs", -6, 1, 13, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Vertical Bias...", "vector_vbias", gen_num_menu("vector_vbias", 0.6, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Bias...", "vector_hbias", gen_num_menu("vector_hbias", 0.6, 0.1, 9, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Glow Trails...", "vector_glowtrails", gen_num_menu("vector_glowtrails", 0, 1, 4, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 9, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Glow Trails...", "vector_glowtrails", gen_num_menu("vector_glowtrails", 0, 1, 6, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 12, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Trail Falloff...", "vector_trailfall", gen_num_menu("vector_trailfall", 0.05, 0.05, 20, updatetrailtrigger));
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
@@ -992,6 +994,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 	
 	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
+		settings.context_menu = nil;
 		
 		if (current_menu.parent ~= nil) then
 			if (silent == nil or silent == false) then

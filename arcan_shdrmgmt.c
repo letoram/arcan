@@ -209,7 +209,7 @@ arcan_shader_id arcan_shader_lookup(const char* tag, bool* status)
 	
 		for (int i = 0; i < shdr_global.ofs; i++){
 			if (shdr_global.slots[i].label && strcmp(tag, shdr_global.slots[i].label) == 0)
-				return i;
+				return i + shdr_global.base;
 		}
 	
 	if (status) *status = false;

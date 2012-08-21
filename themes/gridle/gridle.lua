@@ -106,17 +106,16 @@ settings = {
 	crt_oversample = false,
 	
 	vector_linew = 1,
-	vector_pointsz = 1,
-	vector_blurblendw = 0.95, 
-	vector_hblurscale = 0.4,
-	vector_vblurscale = 0.4,
+	vector_pointsz = 2,
+	vector_hblurscale = 0.6,
+	vector_vblurscale = 0.6,
 	vector_vblurofs = 0, 
 	vector_hblurofs = 0,
 	vector_vbias = 1.0,
-	vector_hbias = 1.0,
+	vector_hbias = 1.2,
 	vector_trailstep = -4,
 	vector_trailfall = 0.2,
-	vector_glowtrails = 3,
+	vector_glowtrails = 0,
 
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
@@ -1102,7 +1101,18 @@ function load_settings()
 	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
 	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
 	load_key_str("autosave", "autosave", settings.autosave);
-		
+	load_key_num("vector_linew", "vector_linew", settings.vector_linew);
+	load_key_num("vector_pointsz", "vector_pointsz", settings.vector_pointsz);
+	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
+	load_key_num("vector_vblurscale", "vector_vblurscale", settings.vector_vblurscale);
+	load_key_num("vector_hblurofs", "vector_hblurofs", settings.vector_hblurofs);
+	load_key_num("vector_vblurofs", "vector_vblurofs", settings.vector_vblurofs);
+	load_key_num("vector_vbias", "vector_vbias", settings.vector_vbias);
+	load_key_num("vector_hbias", "vector_hbias", settings.vector_hbias);
+	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
+	load_key_num("vector_trailstep", "vector_trailstep", settings.vector_trailstep);
+	load_key_num("vector_trailfall", "vector_trailfall", settings.vector_trailfall);
+
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");
 	if (internalinp ~= nil) then
