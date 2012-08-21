@@ -76,7 +76,8 @@ enum arcan_transform_mask {
 	MASK_ORIENTATION = 16,
 	MASK_UNPICKABLE = 32,
 	MASK_FRAMESET = 64,
-	MASK_ALL = 127
+	MASK_MAPPING = 128,
+	MASK_ALL = 255
 };
 
 enum arcan_ffunc_cmd {
