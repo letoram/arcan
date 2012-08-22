@@ -72,12 +72,12 @@ FIND_PACKAGE ( ZLIB REQUIRED )
 FIND_PACKAGE ( FFMPEG REQUIRED )
 FIND_PACKAGE ( VORBIS REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
-FIND_PACKAGE ( OpenCTM REQUIRED )
 FIND_PACKAGE( Speex REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
 
 LIST (APPEND 
 	MAIN_LIBRARIES
+	openctm
 	${SDL_LIBRARY}
 	${SDLIMAGE_LIBRARY}
 	${SDLTTF_LIBRARY}
@@ -89,7 +89,6 @@ LIST (APPEND
 	${ASSERT_LIBRARY}
 	${SQLITE3_LIBRARIES}
 	${VORBIS_LIBRARIES}
-	${OPENCTM_LIBRARIES}
 	${GLEW_LIBRARIES}
 )
 
@@ -112,9 +111,10 @@ include_directories (
 	${FFMPEG_INCLUDE_DIR}
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${VORBIS_INCLUDE_DIR}
-	${OPENCTM_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIRS}
 )
+
+add_subdirectory( openctm )
 
 # removed, current code has some serious issues
 # if (MPG123_FOUND )
@@ -427,7 +427,7 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
-target_link_libraries( arcan_modelconv ${OPENCTM_LIBRARIES} m )
+target_link_libraries( arcan_modelconv openctm m )
 set_target_properties(arcan_frameserver PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
