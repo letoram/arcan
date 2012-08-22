@@ -114,12 +114,15 @@ settings = {
 	vector_vbias = 1.0,
 	vector_hbias = 1.2,
 	vector_trailstep = -4,
-	vector_trailfall = 0.2,
+	vector_trailfall = 1,
 	vector_glowtrails = 0,
 
+	upscale_nofilter = false,
+	upscale_method   = "5xBR",
+	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
-	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false},
+	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false},
 	flipinputaxis = false,
 	filter_opposing= false, 
 	internal_again = 1.0,
@@ -460,13 +463,39 @@ function gridle_setup_internal(video, audio)
 	
 	internal_aid = audio;
 	internal_vid = video;
+
+	local restbl = current_game().resources
+	
+	settings.internal_toggles.bezel = false;
+	settings.internal_toggles.overlay = false;
+	settings.internal_toggles.backdrops = false;
+	
+	if (restbl) then
+		if (restbl.bezels and restbl.bezels[1]) then 
+			imagery.bezel = load_image_asynch(restbl.bezels[1]); 
+			image_tracetag(imagery.bezel, "bezel");
+		end
+		
+		if (restbl.overlays and restbl.overlays[1]) then 
+			imagery.overlay = load_image_asynch(restbl.overlays[1]); 
+			image_mask_clear(imagery.overlay, MASK_LIVING);
+			image_tracetag(imagery.overlay, "overlay");
+		end 
+		if (restbl.backdrops and restbl.backdrops[1]) then 
+			imagery.backdrop = load_image_asynch(restbl.backdrops[1]);
+			image_mask_clear(imagery.backdrop, MASK_LIVING);
+			image_tracetag(imagery.backdrop, "backdrop");
+		end
+	end
+	
 	order_image(internal_vid, max_current_image_order());
-			
 	audio_gain(internal_aid, settings.internal_again, NOW);
 
 -- remap input function to one that can handle forwarding and have access to context specific menu
 	gridle_oldinput = gridle_input;
 	gridle_input = gridle_internalinput;
+	
+	-- current_game().resources 
 	
 	gridlemenu_rebuilddisplay();
 	
@@ -1208,6 +1237,21 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 
 	if (settings.in_internal) then
+		if (valid_vid(imagery.backdrop)) then 
+			delete_image(imagery.backdrop); 
+			imagery.backdrop = BADID;
+		end
+	
+		if (valid_vid(imagery.overlay)) then 
+			delete_image(imagery.overlay); 
+			imagery.overlay = BADID;
+		end
+		
+		if (valid_vid(imagery.bezel)) then
+			delete_image(imagery.bezel);
+			imagery.bezel = BADID;
+		end
+		
 		if (settings.autosave == "On") then
 -- note, this is currently not blocking, and the frameserver termination can be quite
 -- aggressive, so there is a possibility for a race-condition here, hacking a safeguard in the meantime.

@@ -163,6 +163,7 @@ static int push_buffer(char* buf, unsigned int mode,
 	unsigned dw, unsigned dh, unsigned dpp)
 {
 	int8_t rv;
+	bool usepbo = false;
 
 	if (sw != dw || 
 		sh != dh) {
@@ -179,7 +180,19 @@ static int push_buffer(char* buf, unsigned int mode,
 /* hack to reduce extraneous copying, afaik. there's also a streaming texture mode and PBOs
  * that might be worth looking into */
 	else {
-		glBindTexture(GL_TEXTURE_2D, mode);
+		if (usepbo){
+			unsigned pboind = 0;
+			unsigned nextind = (pboind + 1) % 2;
+			
+//			glBindTexture(GL_TEXTURE_2D, mode);
+//			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboind);
+// 		glBufferData(GL_PIXEL_UNPACK_BUFFER, DATA_SIZE, 0, GL_STREAM_DRAW);
+//			ptr = glMapBuffer(GL_PIXEL_BUFFER, GL_WRITE_ONLY);
+//			if (ptr) store_shit; glUnmapBuffer(GL_PIXEL_UNPACK_BUFER); 
+//			glBindBuffer(GL_PIXEL_UNPACK_BUFFER);
+		} else
+			glBindTexture(GL_TEXTURE_2D, mode);
+		
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
 
 		rv = FFUNC_RV_NOUPLOAD;
