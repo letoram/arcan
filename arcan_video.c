@@ -61,7 +61,7 @@ struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
 	.screen = NULL, .scalemode = ARCAN_VIMAGE_SCALEPOW2,
-	.filtermode = ARCAN_VFILTER_LINEAR,
+	.filtermode = ARCAN_VFILTER_TRILINEAR,
 	.suspended = false,
 	.vsync = true,
 	.msasamples = 4,
@@ -124,6 +124,7 @@ static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsign
 
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, arcan_video_display.mipmap ? GL_TRUE : GL_FALSE);
 
+	printf("filtermode: %d\n", dst->gl_storage.filtermode);
 	switch (dst->gl_storage.filtermode){
 		case ARCAN_VFILTER_NONE:
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
