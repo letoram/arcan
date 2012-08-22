@@ -664,7 +664,7 @@ int arcan_lua_setmeshshader(lua_State* ctx)
 	arcan_shader_id shid = luaL_checknumber(ctx, 2);
 	int slot = abs ( luaL_checknumber(ctx, 3) );
 
-	arcan_3d_meshshader(id, shid, slot-1);
+	arcan_3d_meshshader(id, shid, slot);
 
 	return 0;
 }
@@ -1642,10 +1642,13 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
 	unsigned num = luaL_checkint(ctx, 3);
-	bool detach = luaL_optint(ctx, 4, FRAMESET_NODETACH) == FRAMESET_DETACH;
+	unsigned detach = luaL_optint(ctx, 4, FRAMESET_NODETACH);
+	
+	if (detach != FRAMESET_DETACH && detach != FRAMESET_NODETACH)
+		arcan_fatal("set_image_as_frame() -- invalid 4th argument (should be FRAMESET_DETACH or FRAMESET_NODETACH)\n");
 
 	arcan_errc errc;
-	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num, detach, &errc);
+	arcan_vobj_id vid = arcan_video_setasframe(sid, did, num, detach == FRAMESET_DETACH, &errc);
 
 	if (errc == ARCAN_OK)
 		lua_pushvid(ctx, vid != sid ? vid : ARCAN_EID);

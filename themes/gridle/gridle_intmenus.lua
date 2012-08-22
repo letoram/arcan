@@ -482,6 +482,11 @@ function undo_vectormode()
 		delete_image(imagery.vector_vid);
 		imagery.vector_vid = BADID;
 	end
+	
+	if (valid_vid(imagery.upscale_vid)) then
+		delete_image(imagery.upscale_vid)
+	end
+	
 end
 
 local function toggle_vectormode()
@@ -519,11 +524,27 @@ function gridlemenu_rebuilddisplay()
 
 -- send NTSC to internal_vid
 -- clone internal_vid to FBO and set upscaler as shader
+	if (settings.internal_toggles.upscale) then
+		imagery.upscale_vid = fill_surface(VRESW, VRESH, 0, 0, 0, props.width * 2, props.height * 2);
+		dstvid = imagery.upscale_vid;
+
+		print("upscale");
+		local shader = load_shader("display/2xBR.vShader", "display/2xBR.fShader", "upscaler", {});
+		shader_uniform(shader, "output_dimensions", "ff", PERSIST, props.width * 2, props.height * 2);
+		image_shader(internal_vid, shader);
+		move_image(internal_vid, 0, 0);
+		resize_image(internal_vid, props.width * 2, props.height * 2);
+		show_image(internal_vid);
+		image_mask_clear(internal_vid, MASK_LIVING);
+		image_texfilter(internal_vid, FILTER_NONE);
+		define_rendertarget(dstvid, {internal_vid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		show_image(dstvid);
+	end
 	
 -- enable all display options
 	if (settings.internal_toggles.vector) then
-		target_pointsize(internal_vid, settings.vector_pointsz);
-		target_linewidth(internal_vid, settings.vector_linew);
+		target_pointsize(dstvid, settings.vector_pointsz);
+		target_linewidth(dstvid, settings.vector_linew);
 
 		toggle_vectormode();
 		dstvid = imagery.vector_vid;
@@ -534,7 +555,7 @@ function gridlemenu_rebuilddisplay()
 
 	elseif (settings.internal_toggles.crt) then
 		
-		toggle_crtmode(internal_vid, props);
+		toggle_crtmode(dstvid, props);
 
 	else
 		fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader);
@@ -640,7 +661,7 @@ function gridlemenu_resize_fullscreen(source, init_props)
 	return windw, windh;
 end
 
-function gridlemenu_loadshader(basename, dstvid, dstprops)
+function gridlemenu_loadshader(basename, dstvid, dstprops, key)
 	local vsh = nil;
 	local fsh = nil;
 	if (dstvid == nil) then dstvid = internal_vid; end
