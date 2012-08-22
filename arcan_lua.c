@@ -319,7 +319,7 @@ int arcan_lua_loadimageasynch(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
 	intptr_t ref = 0;
-	
+
 	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
 		lua_pushvalue(ctx, 2);
@@ -332,6 +332,19 @@ int arcan_lua_loadimageasynch(lua_State* ctx)
 	free(path);
 
 	lua_pushvid(ctx, id);
+	return 1;
+}
+
+int arcan_lua_imageloaded(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (vobj)
+		lua_pushnumber(ctx, vobj->feed.state.tag == ARCAN_TAG_IMAGE);
+	else
+		lua_pushnumber(ctx, false);
+	
 	return 1;
 }
 
@@ -533,7 +546,10 @@ int arcan_lua_forceblend(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_FORCE);
-	arcan_video_forceblend(id, mode);
+	
+	if (mode == BLEND_FORCE || mode == BLEND_ADD || 
+		mode == BLEND_MULTIPLY || mode == BLEND_NONE || mode == BLEND_NORMAL)
+			arcan_video_forceblend(id, mode);
 
 	return 0;
 }
@@ -3140,6 +3156,18 @@ int arcan_lua_settexfilter(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_changetexfilter(lua_State* ctx)
+{
+	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 2);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	
+	if (mode == ARCAN_VFILTER_BILINEAR || mode == ARCAN_VFILTER_LINEAR || mode == ARCAN_VFILTER_NONE){
+		arcan_video_objectfilter(vid, mode);
+	}
+	
+	return 0;
+}
+
 int arcan_lua_settexmode(lua_State* ctx)
 {
 	int numa = luaL_checknumber(ctx, 1);
@@ -3310,6 +3338,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "audio_gain", arcan_lua_gain);
 	arcan_lua_register(ctx, "load_image", arcan_lua_loadimage);
 	arcan_lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
+	arcan_lua_register(ctx, "image_loaded", arcan_lua_imageloaded);
 	arcan_lua_register(ctx, "delete_image", arcan_lua_deleteimage);
 	arcan_lua_register(ctx, "show_image", arcan_lua_showimage);
 	arcan_lua_register(ctx, "hide_image", arcan_lua_hideimage);
@@ -3338,6 +3367,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "transfer_image_transform", arcan_lua_transfertransform);
 	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
 	arcan_lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
+	arcan_lua_register(ctx, "image_texfilter", arcan_lua_changetexfilter);
 	arcan_lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
 	arcan_lua_register(ctx, "image_clip_on", arcan_lua_clipon);
 	arcan_lua_register(ctx, "image_clip_off", arcan_lua_clipoff);

@@ -5,9 +5,11 @@
 -- Paths used (first tries path\target\setname.extension and thereafter path\setname.extension if there's no match)
 -- (2D graphics)
 --  screenshots
+-- backdrops
 --  bezels
 --  marquees
 --  cabinet
+--  overlays
 --  artwork (* special, acceptes anything that matches setname_wildcard.extension)
 --  
 -- (Audio)
@@ -100,7 +102,7 @@ end
 local function resourcefinder_graphics(game, restbl, cache_results)
 	local imgext = {"png", "jpg"};
 	
-	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "overlays", "cabinets"};
+	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "backdrops", "overlays", "cabinets"};
 
 	for ind, val in ipairs(worktbl) do
 		local tgtpath = val .. "/" .. game.target .. "/";

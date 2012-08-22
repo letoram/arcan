@@ -111,16 +111,20 @@ static unsigned context_ind = 0;
 /* a default more-or-less empty context */
 static struct arcan_video_context* current_context = context_stack;
 
-static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsigned w, unsigned h, void* buf){
-	glGenTextures(1, dstid);
-	glBindTexture(GL_TEXTURE_2D, *dstid);
+static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsigned w, unsigned h, bool noupload, void* buf){
+	if (noupload)
+		glBindTexture(GL_TEXTURE_2D, dst->gl_storage.glid);
+	else{
+		glGenTextures(1, dstid);
+		glBindTexture(GL_TEXTURE_2D, *dstid);
+	}
 	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, arcan_video_display.mipmap ? GL_TRUE : GL_FALSE);
 
-	switch (arcan_video_display.filtermode){
+	switch (dst->gl_storage.filtermode){
 		case ARCAN_VFILTER_NONE:
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -142,7 +146,8 @@ static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsign
 		break;
 	}
 	
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, w, h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+	if (!noupload)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, w, h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
 }
 
 void arcan_video_default_texfilter(enum arcan_vfilter_mode mode)
@@ -233,7 +238,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				free(fname); /* getimage will copy again */
 			}
 			else
-				allocate_and_store_globj(current, &current->gl_storage.glid, current->gl_storage.w, current->gl_storage.h, current->default_frame.raw);
+				allocate_and_store_globj(current, &current->gl_storage.glid, current->gl_storage.w, current->gl_storage.h, false, current->default_frame.raw);
 
 			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && current->feed.state.ptr) {
 				arcan_frameserver* movie = (arcan_frameserver*) current->feed.state.ptr;
@@ -398,6 +403,8 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
 		rv->gl_storage.imageproc = arcan_video_display.imageproc;
+		rv->gl_storage.filtermode = arcan_video_display.filtermode;
+		
 		rv->blendmode = blend_normal;
 		rv->flags.cliptoparent = false;
 		rv->current.scale.x = 1.0;
@@ -1057,7 +1064,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vst
 		}
 		
 		if (!asynchsrc)
-			allocate_and_store_globj(dst, &dst->gl_storage.glid, dst->gl_storage.w, dst->gl_storage.h, dstframe->raw);
+			allocate_and_store_globj(dst, &dst->gl_storage.glid, dst->gl_storage.w, dst->gl_storage.h, false, dstframe->raw);
 
 		SDL_FreeSurface(res);
 		SDL_FreeSurface(gl_image);
@@ -1477,7 +1484,7 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 		/* protect us against premature invocation */
 			int status;
 			SDL_WaitThread((SDL_Thread*)vobj->feed.state.ptr, &status);
-			allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, vobj->default_frame.raw);
+			allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, false, vobj->default_frame.raw);
 	
 			if (arcan_video_display.conservative){
 #ifdef DEBUG
@@ -1601,7 +1608,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		vstor->raw = (uint8_t*) calloc(vstor->s_raw, 1);
 		
 		newvobj->feed.ffunc = ffunc;
-		allocate_and_store_globj(newvobj, &newvobj->gl_storage.glid, newvobj->gl_storage.w, newvobj->gl_storage.h, newvobj->default_frame.raw);
+		allocate_and_store_globj(newvobj, &newvobj->gl_storage.glid, newvobj->gl_storage.w, newvobj->gl_storage.h, false, newvobj->default_frame.raw);
 	}
 
 	return rv;
@@ -1849,6 +1856,20 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 		arcan_video_zaptransform(id);
 	}
 	
+	return rv;
+}
+
+arcan_errc arcan_video_objectfilter(arcan_vobj_id id, enum arcan_vfilter_mode mode)
+{
+	arcan_vobject* src = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+		
+/* fake an upload with disabled filteroptions */
+	if (src){
+		src->gl_storage.filtermode = mode;
+		allocate_and_store_globj(src, NULL, 0, 0, true, NULL);
+	}
+
 	return rv;
 }
 
@@ -2999,7 +3020,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 				glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 
 /* only blend if the object isn't entirely solid or if the object has specific settings */
-		if (dprops.opa > 0.999f && elem->blendmode != blend_force)
+		if (dprops.opa > 0.999f && elem->blendmode == blend_disable)
 			glDisable(GL_BLEND);
 		else{
 			glEnable(GL_BLEND);
