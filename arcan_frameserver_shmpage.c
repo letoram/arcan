@@ -165,7 +165,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 /* step 2, buffer all set-up, map it to the addr structure */
 /*	res.addr->w = 0;
 	res.addr->h = 0; */
-	res.addr->bpp = 4;
+	res.addr->storage.bpp = 4;
 	res.addr->vready = false;
 	res.addr->aready = false;
 	res.addr->channels = 0;
@@ -250,7 +250,6 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, sem_handle ese
 
 void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, unsigned height, unsigned bpp)
 {
-/* we want these 16-bit aligned so we'd possibly get something SSE optimized etc. */
 	uint8_t* base = (uint8_t*) shmp;
 	uint8_t* vidaddr = base + sizeof(struct frameserver_shmpage);
 	uint8_t* audaddr;
@@ -273,16 +272,18 @@ void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** ds
 
 void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
-	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, shmp->w, shmp->h, shmp->bpp);
+	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, shmp->storage.w, shmp->storage.h, shmp->storage.bpp);
 }
 
 bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq)
 {
 	/* need to rethink synchronization a bit before forcing a resize */
 	if (arg->addr){
-		arg->addr->w = width;
-		arg->addr->h = height;
-		arg->addr->bpp = bpp;
+		arg->addr->storage.w = width;
+		arg->addr->storage.h = height;
+		arg->addr->display.w = width;
+		arg->addr->display.h = height;
+		arg->addr->storage.bpp = bpp;
 		arg->addr->channels = nchan;
 		arg->addr->samplerate = ceil(freq);
 		

@@ -262,7 +262,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
-	global.shared.addr->glsource = (flags & SDL_OPENGL) > 0;
+	global.shared.addr->storage.glsource = (flags & SDL_OPENGL) > 0;
 	
 	if ( (flags & SDL_FULLSCREEN) > 0) { 
 /* oh no you don't */
@@ -276,9 +276,13 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 		frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
 		memset(global.vidp, 0x000000ff, w * h * 4);
 		
-		global.shared.addr->w = w;
-		global.shared.addr->h = h;
-		global.shared.addr->bpp = 4;
+		global.shared.addr->storage.w = w;
+		global.shared.addr->display.w = w;
+		
+		global.shared.addr->storage.h = h;
+		global.shared.addr->display.h = h;
+		
+		global.shared.addr->storage.bpp = 4;
 		global.shared.addr->resized = true;
 	}
 
@@ -433,7 +437,7 @@ static void copysurface(SDL_Surface* src){
 		SDL_FreeSurface(surf);
 	}
 
-	global.shared.addr->glsource = false;
+	global.shared.addr->storage.glsource = false;
 	global.shared.addr->vready = true;
 }
 
@@ -515,8 +519,8 @@ void ARCAN_SDL_GL_SwapBuffers()
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-		glReadPixels(0, 0, global.shared.addr->w, global.shared.addr->h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
-		global.shared.addr->glsource = true;
+		glReadPixels(0, 0, global.shared.addr->storage.w, global.shared.addr->storage.h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
+		global.shared.addr->storage.glsource = true;
 		global.shared.addr->vready = true;
 		trace("CopySurface(GL:post)");
 	}

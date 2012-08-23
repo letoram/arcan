@@ -216,39 +216,35 @@ end
 local function gridledetail_switchfs()
 -- switch between running with fullscreen and running with cabinet zoomed in
 	if (detailview.fullscreen) then
+		detail_toggles = settings.internal_toggles;
+		settings.internal_toggles = settings.internal_notoggles;
+		gridlemenu_rebuilddisplay(); -- this will undo the vectordisplay, cocktail, ... 
+		
 		hide_image(internal_vid);
-		delete_image(internal_vidborder);
+		delete_image(internal_vidborder); 
+
+-- return to cabinet view, partial cleanup
 		show_image(detailview.model.vid);
 		
-		if (valid_vid(imagery.bezel)) then hide_image(imagery.bezel); end
-		if (valid_vid(imagery.cocktail_vid)) then hide_image(imagery.cocktail_vid); end 
-			detailview.fullscreen = false;
-	else
-		detailview.fullscreen = true;
-				
-		gridlemenu_loadshader(settings.fullscreenshader);
-		gridlemenu_rebuilddisplay();
+		if (valid_vid(imagery.bezel)) then 
+			hide_image(imagery.bezel); 
+		end
 		
+		detailview.fullscreen = false;
+	else
+		hide_image(detailview.model.vid);
+		settings.internal_toggles = detail_toggles;
+
+-- setup black frame around output
 		internal_vidborder = instance_image( imagery.black );
 		image_mask_clearall(internal_vidborder);
+		order_image(internal_vidborder, max_current_image_order());
 		resize_image(internal_vidborder, VRESW, VRESH);
 		show_image(internal_vidborder);
-		show_image(internal_vid);
-				
-		hide_image(detailview.model.vid);
 
-		order_image(internal_vidborder, max_current_image_order() + 1);
-		order_image(internal_vid, max_current_image_order() + 1); 
+		gridlemenu_rebuilddisplay();
 
-		if (valid_vid(imagery.bezel)) then
-			show_image(imagery.bezel);
-			order_image(imagery.bezel, max_current_image_order());
-		end
-
-		if (valid_vid(imagery.cocktail_vid)) then
-			show_image(imagery.cocktail_vid);
-			order_image(imagery.cocktail_vid, max_current_image_order());
-		end
+		detailview.fullscreen = true;
 	end
 	
 end
@@ -260,9 +256,11 @@ function gridledetail_stopinternal()
 		internal_vidborder = nil;
 	end
 
+	undo_vectormode();
+	
 	if (settings.autosave == "On") then
 		internal_statectl("auto", true);
--- definately on the "to fix" for 0.2.1
+-- definitely on the "to fix" for 0.2.1
 		expire_image(internal_vid, 20);
 		blend_image(internal_vid, 0.0, 20);
 	else
@@ -272,6 +270,7 @@ function gridledetail_stopinternal()
 	detailview.fullscreen = false;
 	
 	show_image(detailview.model.vid);
+	gridle_delete_internal_extras();
 	gridledetail_setnoisedisplay();
 	internal_vid = BADID;
 
@@ -402,6 +401,7 @@ function gridledetail_havedetails(gametbl)
 		if (resource("gamescripts/" .. gametbl.setname .. ".lua")) then
 			return "gamescripts/" .. gametbl.setname .. ".lua";
 
+-- should split this to treat more "generic" models (e.g. nintendo, ...) 
 		elseif (gridledetail_neogeosets[gametbl.setname] == true and
 				gridledetail_modellut["neogeo"]) then
 			return "neogeo";
@@ -467,6 +467,8 @@ function gridledetail_show(detailres, gametbl, ind)
 	kbd_repeat(0);
 	
 	detailview.fullscreen = false;
+	detail_toggles = settings.internal_toggles;
+	
 	gridvideo = gridle_video_event;
 	gridclock = gridle_clock_pulse;
 	
@@ -512,6 +514,8 @@ function gridledetail_show(detailres, gametbl, ind)
 
 			if (launch_internal) then
 				gridledetail_setnoisedisplay();
+				gridle_load_internal_extras();
+	
 				internal_vid = launch_target( detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status );
 				if (internal_vid and settings.autosave == "On") then
 					internal_statectl("auto", false);

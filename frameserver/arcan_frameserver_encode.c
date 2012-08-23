@@ -444,8 +444,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 		ctx->time_base = timebase;
 		ffmpegctx.fps = fps;
 		ffmpegctx.frequency = afreq;
-		ctx->width = shared->w;
-		ctx->height = shared->h;
+		ctx->width = shared->storage.w;
+		ctx->height = shared->storage.h;
 	
 		ffmpegctx.vcontext = ctx;
 	
@@ -455,14 +455,14 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.vcodec = NULL;
 		} else {
 /* default to YUV420P, so then we need this framelayout */
-			size_t base_sz = shared->w * shared->h;
+			size_t base_sz = shared->storage.w * shared->storage.h;
 			ffmpegctx.pframe = avcodec_alloc_frame();
 			ffmpegctx.pframe->data[0] = malloc( (base_sz * 3) / 2);
 			ffmpegctx.pframe->data[1] = ffmpegctx.pframe->data[0] + base_sz;
 			ffmpegctx.pframe->data[2] = ffmpegctx.pframe->data[1] + base_sz / 4;
-			ffmpegctx.pframe->linesize[0] = shared->w;
-			ffmpegctx.pframe->linesize[1] = shared->w / 2;
-			ffmpegctx.pframe->linesize[2] = shared->w / 2;
+			ffmpegctx.pframe->linesize[0] = shared->storage.w;
+			ffmpegctx.pframe->linesize[1] = shared->storage.w / 2;
+			ffmpegctx.pframe->linesize[2] = shared->storage.w / 2;
 
 /* larger than this and we have a really crap codec ;-) */
 			ffmpegctx.encvbuf_sz = base_sz * 4;

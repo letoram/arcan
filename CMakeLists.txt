@@ -112,6 +112,7 @@ include_directories (
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${VORBIS_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIRS}
+	"frameserver/ntsc"
 )
 
 add_subdirectory( openctm )
@@ -157,9 +158,10 @@ set (
  arcan_shdrmgmt.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
+# external projections included in the codebase
  lodepng/lodepng.h
  lodepng/lodepng.c
-) 
+)
 
 # plan is to have a separate image server part of the frameserver that
 # deals with maintaining caching, protection against source-changes during
@@ -173,7 +175,8 @@ set (
  frameserver/arcan_frameserver_encode.c
  frameserver/arcan_frameserver_libretro.h
  frameserver/arcan_frameserver_libretro.c
- arcan_frameserver_shmpage.h
+ frameserver/ntsc/snes_ntsc.h
+ frameserver/ntsc/snes_ntsc.c arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
  arcan_general.c
  arcan_event.c

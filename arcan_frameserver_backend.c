@@ -235,7 +235,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;		
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		case ffunc_render:
-			rv = push_buffer( (char*) tgt->vidp, mode, shmpage->w, shmpage->h, shmpage->bpp, width, height, bpp); 
+			rv = push_buffer( (char*) tgt->vidp, mode, shmpage->storage.w, shmpage->storage.h, shmpage->storage.bpp, width, height, bpp); 
 
 /* in contrast to the framequeue approach, we here need to limit the number of context switches
  * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
@@ -500,8 +500,10 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		img_cons cons = {.w = shmpage->w, .h = shmpage->h, .bpp = shmpage->bpp};
-		src->desc.width = cons.w; src->desc.height = cons.h; src->desc.bpp = cons.bpp;
+		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, .bpp = shmpage->storage.bpp};
+		img_cons disp  = {.w = shmpage->display.w, .h = shmpage->display.h}; 
+		
+		src->desc.width = store.w; src->desc.height = store.h; src->desc.bpp = store.bpp;
 
 		arcan_framequeue_free(&src->vfq);
 		arcan_framequeue_free(&src->afq);
@@ -514,7 +516,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 /* this will also emit the resize event */
-		arcan_video_resizefeed(src->vid, cons, shmpage->glsource);
+		arcan_video_resizefeed(src->vid, store, disp, shmpage->storage.glsource);
 
 /* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
  * if we don't maintain a queue (present as soon as possible) */
@@ -572,12 +574,12 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_event rezev = {
 			.category = EVENT_FRAMESERVER,
 			.kind = EVENT_FRAMESERVER_RESIZED,
-			.data.frameserver.width = cons.w, 
-			.data.frameserver.height = cons.h,
+			.data.frameserver.width = store.w, 
+			.data.frameserver.height = store.h,
 			.data.frameserver.video = src->vid,
 			.data.frameserver.audio = src->aid,
 			.data.frameserver.otag = src->tag,
-			.data.frameserver.glsource = shmpage->glsource
+			.data.frameserver.glsource = shmpage->storage.glsource
 		};
 		
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);

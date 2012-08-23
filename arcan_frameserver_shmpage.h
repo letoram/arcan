@@ -50,13 +50,19 @@ struct frameserver_shmpage {
 	process_handle parent;
 	
 	volatile uint8_t vready;
-	bool glsource;
-
-/* vbuf size = w * h * bpp */
 	uint32_t vpts;
-	uint16_t w, h;
-	uint8_t bpp;
+	
+	struct {
+		bool glsource;
+		uint16_t w, h;
+		uint8_t bpp;
+	} storage;
 
+/* if the source wants the input to be stretched in some way */
+	struct {
+		uint16_t w,h;
+	} display;
+	
 /* audio */
 	volatile uint8_t aready;
 	

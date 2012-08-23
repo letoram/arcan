@@ -208,7 +208,10 @@ typedef struct arcan_tevent {
 
 typedef struct arcan_tgtevent {
 	enum ARCAN_TARGET_COMMAND command;
-	int ioevs[4];
+	union {
+		int iv;
+		float fv;
+	} ioevs[4];
 #ifdef _WIN32
 	HANDLE fh;
 #endif
