@@ -39,7 +39,6 @@ soundmap = {
 	OSDKBD_HIDE       = load_asample("sounds/osdkbd_hide.wav")
 };
 
--- constants,
  BGLAYER = 0;
  GRIDBGLAYER = 1;
  GRIDLAYER = 3;
@@ -123,6 +122,8 @@ settings = {
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
 	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false},
+	internal_notoggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false}, -- used by detailview
+	
 	flipinputaxis = false,
 	filter_opposing= false, 
 	internal_again = 1.0,
@@ -454,21 +455,25 @@ function osdkbd_inputcb(iotbl)
 	end
 end
 
-function gridle_setup_internal(video, audio)
-	settings.in_internal = true;
-
-	if (settings.autosave == "On") then
-		internal_statectl("auto", false);
-	end
+function gridle_delete_internal_extras()
+if (valid_vid(imagery.backdrop)) then 
+			delete_image(imagery.backdrop); 
+			imagery.backdrop = BADID;
+		end
 	
-	internal_aid = audio;
-	internal_vid = video;
-
+		if (valid_vid(imagery.overlay)) then 
+			delete_image(imagery.overlay); 
+			imagery.overlay = BADID;
+		end
+		
+		if (valid_vid(imagery.bezel)) then
+			delete_image(imagery.bezel);
+			imagery.bezel = BADID;
+		end
+end
+	
+function gridle_load_internal_extras()
 	local restbl = current_game().resources
-	
-	settings.internal_toggles.bezel = false;
-	settings.internal_toggles.overlay = false;
-	settings.internal_toggles.backdrops = false;
 	
 	if (restbl) then
 		if (restbl.bezels and restbl.bezels[1]) then 
@@ -487,7 +492,22 @@ function gridle_setup_internal(video, audio)
 			image_tracetag(imagery.backdrop, "backdrop");
 		end
 	end
+end
+
+function gridle_setup_internal(video, audio)
+	settings.in_internal = true;
+
+	if (settings.autosave == "On") then
+		internal_statectl("auto", false);
+	end
 	
+	internal_aid = audio;
+	internal_vid = video;
+	
+	settings.internal_toggles.bezel = false;
+	settings.internal_toggles.overlay = false;
+	settings.internal_toggles.backdrops = false;
+
 	order_image(internal_vid, max_current_image_order());
 	audio_gain(internal_aid, settings.internal_again, NOW);
 
@@ -1237,20 +1257,7 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 
 	if (settings.in_internal) then
-		if (valid_vid(imagery.backdrop)) then 
-			delete_image(imagery.backdrop); 
-			imagery.backdrop = BADID;
-		end
-	
-		if (valid_vid(imagery.overlay)) then 
-			delete_image(imagery.overlay); 
-			imagery.overlay = BADID;
-		end
-		
-		if (valid_vid(imagery.bezel)) then
-			delete_image(imagery.bezel);
-			imagery.bezel = BADID;
-		end
+		gridle_delete_internal_extras();
 		
 		if (settings.autosave == "On") then
 -- note, this is currently not blocking, and the frameserver termination can be quite

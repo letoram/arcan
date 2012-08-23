@@ -124,7 +124,6 @@ static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsign
 
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, arcan_video_display.mipmap ? GL_TRUE : GL_FALSE);
 
-	printf("filtermode: %d\n", dst->gl_storage.filtermode);
 	switch (dst->gl_storage.filtermode){
 		case ARCAN_VFILTER_NONE:
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -1617,7 +1616,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 
 /* some targets like to change size dynamically (thanks for that),
  * thus, drop the allocated buffers, generate new one and tweak txcos */
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool mirror)
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display, bool mirror)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -1638,23 +1637,16 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons constraints, bool m
 		free(vobj->default_frame.raw);
 		vobj->default_frame.s_raw = 0;
 		vobj->default_frame.raw = NULL;
-
-		if (vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
-			vobj->origw = vobj->gl_storage.w = constraints.w;
-			vobj->origh = vobj->gl_storage.h = constraints.h;
-		}
-		else {
-			vobj->gl_storage.w = nexthigher(constraints.w);
-			vobj->gl_storage.h = nexthigher(constraints.h);
-			vobj->origw = constraints.w;
-			vobj->origh = constraints.h;
-		}
-		
+	
+		vobj->origw = display.w;
+		vobj->origh = display.h;
+		vobj->gl_storage.w = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.w : nexthigher(store.w);
+		vobj->gl_storage.h = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.h : nexthigher(store.h);
 		vobj->default_frame.s_raw = vobj->gl_storage.w * vobj->gl_storage.h * 4;
 		vobj->default_frame.raw = (uint8_t*) calloc(vobj->default_frame.s_raw,1);
 
-		float hx = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : (float)constraints.w / (float)vobj->gl_storage.w;
-		float hy = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : (float)constraints.h / (float)vobj->gl_storage.h;
+		float hx = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : (float)store.w / (float)vobj->gl_storage.w;
+		float hy = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : (float)store.h / (float)vobj->gl_storage.h;
 
 		/* as the dimensions may be different, we need to reinitialize the gl-storage as well */
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);

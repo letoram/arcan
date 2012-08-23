@@ -34,6 +34,7 @@
 
 #include "arcan_frameserver.h"
 #include "arcan_frameserver_libretro.h"
+#include "./ntsc/snes_ntsc.h"
 #include "../arcan_frameserver_shmpage.h"
 #include "libretro.h"
 
@@ -49,6 +50,9 @@
 #define MAX_BUTTONS 12
 #endif
 
+static const int NAUDCHAN = 2;
+static const int NVIDCHAN = 4;
+
 /* note on synchronization:
  * the async and esync mechanisms will buffer locally and have that buffer flushed by the main application
  * whenever appropriate. For audio, this is likely limited by the buffering capacity of the sound device / pipeline
@@ -62,16 +66,23 @@
  * we assume "resource" points to a dlopen:able library,
  * that can be handled by SDLs library management functions. */
 static struct {
-		bool skipframe; /* set if next frame should just be dropped (not copied to buffers) */
+/* frame management */
+		bool skipframe; 
 		bool pause;
-		unsigned skipcount;
-		int skipmode; 
-		
-		enum retro_pixel_format colormode;
-		
 		double mspf;
 		long long int basetime;
+		unsigned skipcount;
+		int skipmode; 
+		long long framecount;
 	
+/* colour conversion / filtering */
+		enum retro_pixel_format colormode;
+		uint16_t* ntsc_imb;
+		bool ntscconv;
+		snes_ntsc_t ntscctx;
+		snes_ntsc_setup_t ntsc_opts;
+		
+/* input-output */
 		struct frameserver_shmcont shmcont;
 		uint8_t* vidp, (* audp);
 		uint8_t* audguardb; /* 0xdead */
@@ -81,15 +92,11 @@ static struct {
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
 
+/* libretro states / function pointers */
 		struct retro_system_info sysinfo;
 		struct retro_game_info gameinfo;
 		unsigned state_size;
-		long long framecount;
-/* 
- * current versions only support a subset of inputs (e.g. 1 mouse/lightgun + 12 buttons per port.
- * we map PLAYERn_BUTTONa and substitute n for port and a for button index, with a LUT for UP/DOWN/LEFT/RIGHT
- * MOUSE_X, MOUSE_Y to both mouse and lightgun inputs, and the PLAYER- buttons to MOUSE- buttons 
- */ 
+		
 		struct {
 			bool joypad[MAX_PORTS][MAX_BUTTONS];
 			signed axis[MAX_PORTS][MAX_AXES];
@@ -118,57 +125,96 @@ static void* libretro_requirefun(const char* sym)
 	return rfun;
 }
 
+#define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
+                            
+static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
+{
+	assert( (uintptr_t)data % 4 == 0 );
+	uint16_t* interm = retroctx.ntsc_imb;
+		
+	for (int y = 0; y < height; y++){
+		for (int x = 0; x < width; x++){
+			uint32_t val = data[x];
+			if (retroctx.ntscconv){
+				uint8_t* quad = (uint8_t*) data;
+				*interm++ = RGB565(quad[1], quad[2], quad[3]);
+			}
+			else
+				*outp++ = 0xff | ( val << 8 );
+		}
+
+		data += pitch >> 2;
+	}
+	
+	if (retroctx.ntscconv)
+		snes_ntsc_blit(&retroctx.ntscctx, retroctx.ntsc_imb, pitch, 0, width, height, outp, pitch);	
+}
+
+static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
+{
+	assert( (uintptr_t)outp % 4 == 0 );
+	uint16_t* interm = retroctx.ntsc_imb;
+	
+	for (int y = 0; y < height; y++){
+		for (int x = 0; x < width; x++){
+			uint16_t val = data[x];
+			uint8_t r = ((val & 0x7c00) >> 10 ) << 3;
+			uint8_t g = ((val & 0x3e0) >> 5) << 3;
+			uint8_t b = (val & 0x1f) << 3;
+
+/* unsure if the underlying libs assess endianess correct, big-endian untested atm. */
+			if (retroctx.ntscconv)
+				*interm++ = RGB565(b, g, r);
+			else
+				*outp++ = (0xff) << 24 | b << 16 | g << 8 | r; 
+		}
+		
+		data += pitch >> 1;
+	}
+
+	if (retroctx.ntscconv){
+		size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
+/* only draw on every other line, so we can easily mix or blend interleaved */
+		snes_ntsc_blit(&retroctx.ntscctx, retroctx.ntsc_imb, width, 0, width, height, outp, linew * 2);
+		for (int row = 1; row < height * 2; row += 2)
+			memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew);
+	}
+}
+
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
 	if (!data || retroctx.skipframe) return;
+	unsigned outh = retroctx.ntscconv ? height * 2 : height;
+	unsigned outw = retroctx.ntscconv ? SNES_NTSC_OUT_WIDTH( width ) : width;
 	
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
-	if (width != retroctx.shmcont.addr->w || height != retroctx.shmcont.addr->h){
-		frameserver_shmpage_resize(&retroctx.shmcont, width, height, 4, 2, retroctx.shmcont.addr->samplerate);
+	if (outw != retroctx.shmcont.addr->storage.w || outh != retroctx.shmcont.addr->storage.h){
+		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh, NVIDCHAN, NAUDCHAN, retroctx.shmcont.addr->samplerate);
 		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
+		
 		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
 		retroctx.audguardb[0] = 0xde;
 		retroctx.audguardb[1] = 0xad;
-	}
-
-/* assumption 1: aligned vidp */
-	uint32_t* dbuf = (uint32_t*) retroctx.vidp;
-	assert( (uintptr_t)dbuf % 4 == 0 );
-
-/* assumption 2: aligned source data */
-	if (retroctx.colormode == RETRO_PIXEL_FORMAT_0RGB1555){
-		uint16_t* buf  = (uint16_t*) data;
-		assert( (uintptr_t)buf % 4 == 0 );
-		for (int y = 0; y < height; y++){
-			for (int x = 0; x < width; x++){
-				uint16_t val = buf[x];
-				uint8_t r = ((val & 0x7c00) >> 10 ) << 3;
-				uint8_t g = ((val & 0x3e0) >> 5) << 3;
-				uint8_t b = (val & 0x1f) << 3;
-
-				*dbuf = (0xff) << 24 | b << 16 | g << 8 | r;
-				dbuf++;
-			}
-			
-			buf += pitch >> 1;
-		}
-	}
-	else if (retroctx.colormode == RETRO_PIXEL_FORMAT_XRGB8888){
-		uint32_t* buf = (uint32_t*) data;
-		assert( (uintptr_t)buf % 4 == 0 );
 		
-		for (int y = 0; y < height; y++){
-			for (int x = 0; x < width; x++){
-					uint32_t val = buf[x];
-					*dbuf = 0xff | ( val << 8 );
-			}
-
-			buf += pitch >> 2;
+/* will be reallocated of needed and not set so just free and unset */
+		if (retroctx.ntsc_imb){
+			free(retroctx.ntsc_imb);
+			retroctx.ntsc_imb = NULL;
 		}
 	}
-	else
-		LOG("arcan_frameserver(libretro) -- unknown pixel format (%d) specified.\n", retroctx.colormode);
+
+/* intermediate storage for blargg NTSC filter, if toggled */
+	if (retroctx.ntscconv && !retroctx.ntsc_imb){
+		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
+	}
+		
+	switch (retroctx.colormode){
+		case RETRO_PIXEL_FORMAT_0RGB1555: libretro_rgb1555_rgba((uint16_t*) data, (uint32_t*) retroctx.vidp, width, height, pitch); break;
+		case RETRO_PIXEL_FORMAT_XRGB8888: libretro_xrgb888_rgba((uint32_t*) data, (uint32_t*) retroctx.vidp, width, height, pitch); break;
+		default:
+			LOG("arcan_frameserver(libretro) -- unknown pixel format (%d) specified.\n", retroctx.colormode);
+	}
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
@@ -297,6 +343,19 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 }
 
+static void toggle_ntscfilter()
+{
+	if (retroctx.ntscconv){
+		free(retroctx.ntsc_imb);
+		retroctx.ntsc_imb = NULL;
+		retroctx.ntscconv = false;
+	}
+	else {
+/* malloc etc. happens in resize */
+		retroctx.ntscconv = true;
+	}
+}
+
 static inline void targetev(arcan_event* ev)
 {
 	switch (ev->kind){
@@ -310,8 +369,15 @@ static inline void targetev(arcan_event* ev)
 			LOG("arcan_frameserver(libretro) - descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 		
+		case TARGET_COMMAND_NTSCFILTER: 
+			if (ev->data.target.ioevs[0].iv){
+				if (!retroctx.ntscconv) toggle_ntscfilter();
+			} 
+			else if (retroctx.ntscconv) toggle_ntscfilter();
+		break;
+		
 /* 0 : auto, -1 : disable, > 0 render every n frames. */
-		case TARGET_COMMAND_FRAMESKIP: retroctx.skipmode = ev->data.target.ioevs[0]; break;
+		case TARGET_COMMAND_FRAMESKIP: retroctx.skipmode = ev->data.target.ioevs[0].iv; break;
 		
 /* any event not being UNPAUSE is ignored, no frames are processed
  * and the core is allowed to sleep in between polls */
@@ -325,12 +391,12 @@ static inline void targetev(arcan_event* ev)
 		
 /* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from event.h */
 		case TARGET_COMMAND_SETIODEV: 
-			retroctx.set_ioport(ev->data.target.ioevs[0], ev->data.target.ioevs[1]);
+			retroctx.set_ioport(ev->data.target.ioevs[0].iv, ev->data.target.ioevs[1].iv);
 		break;
 		
 		case TARGET_COMMAND_STEPFRAME:
-			if (ev->data.target.ioevs[0] < 0); /* FIXME: rewind not implemented */
-				else while(ev->data.target.ioevs[0]--){ retroctx.run(); }
+			if (ev->data.target.ioevs[0].iv < 0); /* FIXME: rewind not implemented */
+				else while(ev->data.target.ioevs[0].iv--){ retroctx.run(); }
 		break;
 	
 /* store / rewind operate on the last FD set through FDtransfer */
@@ -495,6 +561,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		assert(avinfo.timing.sample_rate > 1);
 		retroctx.last_fd = BADFD;
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
+		
+		retroctx.ntscconv  = false;
+		retroctx.ntsc_opts = snes_ntsc_composite;
+		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 		
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;

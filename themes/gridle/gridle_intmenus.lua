@@ -469,6 +469,16 @@ function vector_heavymode(source, targetw, targeth)
 	return comp_outbuf;
 end
 
+function gridlemenu_tofront(cur)
+	if (cur) then
+		if (cur.parent) then
+			gridlemenu_tofront(cur.parent);
+		end
+		
+		cur:push_to_front();
+	end
+end
+
 function undo_vectormode()
 	image_shader(internal_vid, "DEFAULT");
 
@@ -519,16 +529,19 @@ end
 
 function gridlemenu_rebuilddisplay()
 	undo_vectormode();
+	
 	local props  = image_surface_initial_properties(internal_vid);
 	local dstvid = internal_vid;
 
 -- send NTSC to internal_vid
+	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
+	
 -- clone internal_vid to FBO and set upscaler as shader
 	if (settings.internal_toggles.upscale) then
 		imagery.upscale_vid = fill_surface(VRESW, VRESH, 0, 0, 0, props.width * 2, props.height * 2);
 		dstvid = imagery.upscale_vid;
 
-		print("upscale");
+-- this should take actual difference in resolution into account and chose the proper upscaler 
 		local shader = load_shader("display/2xBR.vShader", "display/2xBR.fShader", "upscaler", {});
 		shader_uniform(shader, "output_dimensions", "ff", PERSIST, props.width * 2, props.height * 2);
 		image_shader(internal_vid, shader);
@@ -564,6 +577,10 @@ function gridlemenu_rebuilddisplay()
 -- redo so that instancing etc. match
 	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
 	shader_uniform(fullscreen_shader, "rubyOutputSize", "ff", PERSIST, windw, windh);
+	order_image(dstvid, max_current_image_order() + 1);
+	show_image(dstvid);
+
+	gridlemenu_tofront(current_menu);
 end
 
 function gridlemenu_resize_fullscreen(source, init_props)
@@ -950,9 +967,8 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	end
 	
 	togglecb();
-		
 	current_menu:move_cursor(0, 0, true);
-	current_menu:push_to_front();
+	gridlemenu_tofront(current_menu);
 	end
 end
 
@@ -960,7 +976,7 @@ add_displaymodeptr(displaymodelist, displaymodeptrs, "vector", "Vector", gridlem
 add_displaymodeptr(displaymodelist, displaymodeptrs, "upscale", "Upscale", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay", "Overlay", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop", "Backdrop", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc", "NTSC", function() end);
+add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc", "NTSC", gridlemenu_rebuilddisplay); 
 add_displaymodeptr(displaymodelist, displaymodeptrs, "crt", "CRT", gridlemenu_rebuilddisplay);
 	
 vectormenulbls = {};

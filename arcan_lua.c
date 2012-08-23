@@ -99,6 +99,9 @@ static const int BLEND_ADD      = blend_add;
 static const int BLEND_MULTIPLY = blend_multiply;
 static const int BLEND_FORCE    = blend_force;
 
+static const int POSTFILTER_NTSC = 100;
+static const int POSTFILTER_OFF  = 10;
+
 extern char* arcan_themename;
 extern arcan_dbh* dbhandle;
 
@@ -2510,8 +2513,8 @@ int arcan_lua_targetportcfg(lua_State* ctx)
 		.category = EVENT_TARGET,
 		.kind = TARGET_COMMAND_SETIODEV};
 
-	ev.data.target.ioevs[0] = tgtport;
-	ev.data.target.ioevs[1] = tgtkind;
+	ev.data.target.ioevs[0].iv = tgtport;
+	ev.data.target.ioevs[1].iv = tgtkind;
 	
 	tgtevent(tgt, ev);
 	
@@ -2529,7 +2532,7 @@ int arcan_lua_targetskipmodecfg(lua_State* ctx)
 		.kind = TARGET_COMMAND_FRAMESKIP
 	};
 
-	ev.data.target.ioevs[0] = skipval;
+	ev.data.target.ioevs[0].iv = skipval;
 	tgtevent(tgt, ev);
 	
 	return 0;
@@ -2575,8 +2578,8 @@ int arcan_lua_targetlinewidth(lua_State* ctx)
 			.kind = TARGET_COMMAND_VECTOR_LINEWIDTH
 	};
 	
-	ev.data.target.ioevs[0] = intp;
-	ev.data.target.ioevs[1] = fractp;
+	ev.data.target.ioevs[0].iv = intp;
+	ev.data.target.ioevs[1].iv = fractp;
 	
 	tgtevent(tgt, ev);
 	
@@ -2595,10 +2598,32 @@ int arcan_lua_targetpointsize(lua_State* ctx)
 			.kind = TARGET_COMMAND_VECTOR_POINTSIZE
 	};
 	
-	ev.data.target.ioevs[0] = intp;
-	ev.data.target.ioevs[1] = fractp;
+	ev.data.target.ioevs[0].iv = intp;
+	ev.data.target.ioevs[1].iv = fractp;
 	
 	tgtevent(tgt, ev);
+	
+	return 0;
+}
+
+int arcan_lua_targetpostfilter(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	int filtertype = luaL_checknumber(ctx, 2);
+	
+	if (filtertype != POSTFILTER_NTSC && filtertype != POSTFILTER_OFF)
+		arcan_warning("arcan_lua_targetpostfilter() -- unknown filter (%d) specified.\n", filtertype);
+	else {
+		arcan_event ev = {
+			.category    = EVENT_TARGET,
+			.kind        = TARGET_COMMAND_NTSCFILTER
+		};
+	
+		printf("send: %d\n", filtertype);
+		ev.data.target.ioevs[0].iv = filtertype == POSTFILTER_NTSC;
+		
+		tgtevent(tgt, ev);
+	}
 	
 	return 0;
 }
@@ -2613,7 +2638,7 @@ int arcan_lua_targetrewind(lua_State* ctx)
 			.category = EVENT_TARGET,
 			.kind = TARGET_COMMAND_STEPFRAME
 	};
-	ev.data.target.ioevs[0] = nframes;
+	ev.data.target.ioevs[0].iv = nframes;
 	
 	tgtevent(tgt, ev);
 	
@@ -2880,9 +2905,13 @@ int arcan_lua_recordset(lua_State* ctx)
 /* we define the size of the recording to be that of the storage of the rendertarget vid,
  * this should be allocated through fill_surface */
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
-		shmpage->w = dobj->gl_storage.w;
-		shmpage->h = dobj->gl_storage.h;
-		shmpage->bpp = 4;
+		shmpage->storage.w = dobj->gl_storage.w;
+		shmpage->storage.h = dobj->gl_storage.h;
+		
+/* separate storage and display dimensions to allow for scaling hints, or cropping */
+		shmpage->display.w = dobj->gl_storage.w;
+		shmpage->display.h = dobj->gl_storage.h;
+		shmpage->storage.bpp = 4;
 		shmpage->channels = 2;
 		shmpage->samplerate = 44100;
 		
@@ -3307,6 +3336,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "target_framemode", arcan_lua_targetskipmodecfg);
 	arcan_lua_register(ctx, "target_pointsize", arcan_lua_targetpointsize);
 	arcan_lua_register(ctx, "target_linewidth", arcan_lua_targetlinewidth);
+	arcan_lua_register(ctx, "target_postfilter", arcan_lua_targetpostfilter);
 	arcan_lua_register(ctx, "rewind_target", arcan_lua_targetrewind);
 	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);
 	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
@@ -3482,6 +3512,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "ORDER_LAST", ORDER_LAST);
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_LOOP", FRAMESERVER_LOOP);
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP);
+	arcan_lua_setglobalint(ctx, "POSTFILTER_NTSC", POSTFILTER_NTSC);
+	arcan_lua_setglobalint(ctx, "POSTFILTER_OFF", POSTFILTER_OFF);
 	arcan_lua_setglobalstr(ctx, "THEMENAME", arcan_themename);
 	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath);
 	arcan_lua_setglobalstr(ctx, "THEMEPATH", arcan_themepath);
