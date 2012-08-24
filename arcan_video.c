@@ -1168,7 +1168,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-		newvobj->gl_storage.ncpt = constraints.bpp;
+		newvobj->gl_storage.bpp = constraints.bpp;
 		newvobj->default_frame.s_raw = bufs;
 		newvobj->default_frame.raw = buf;
 		newvobj->blendmode = blend_normal;
@@ -1325,7 +1325,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 				
 			glGenBuffers(1, &dst->pbo);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
-			glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt, NULL, GL_STREAM_READ);
+			glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.bpp, NULL, GL_STREAM_READ);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 		}
 			
@@ -1588,7 +1588,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 /* preset */
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
-		newvobj->gl_storage.ncpt = ncpt == 0 ? 4 : ncpt;
+		newvobj->gl_storage.bpp = ncpt == 0 ? 4 : ncpt;
 
 		if (newvobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2){
 			newvobj->gl_storage.w = constraints.w;
@@ -1604,7 +1604,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 		}
 
 		/* allocate */
-		vstor->s_raw = newvobj->gl_storage.w * newvobj->gl_storage.h * newvobj->gl_storage.ncpt;
+		vstor->s_raw = newvobj->gl_storage.w * newvobj->gl_storage.h * newvobj->gl_storage.bpp;
 		vstor->raw = (uint8_t*) calloc(vstor->s_raw, 1);
 		
 		newvobj->feed.ffunc = ffunc;
@@ -1649,8 +1649,10 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		float hy = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : (float)store.h / (float)vobj->gl_storage.h;
 
 		/* as the dimensions may be different, we need to reinitialize the gl-storage as well */
+		glDeleteTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, vobj->gl_storage.w, vobj->gl_storage.h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
+		allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, false, vobj->default_frame.raw);
+
 		if (mirror)
 			generate_mirror_mapping(vobj->txcos, hx, hy);
 		else
@@ -2652,8 +2654,6 @@ static void expire_object(arcan_vobject* obj){
  * returns msecs elapsed */
 static void tick_rendertarget(struct rendertarget* tgt)
 {
-	verify_pool();
-	
 	unsigned now = arcan_frametime();
 	arcan_vobject_litem* current = tgt->first;
 
@@ -2861,7 +2861,7 @@ void poll_list(arcan_vobject_litem* current)
 			
 			enum arcan_ffunc_rv funcres = celem->feed.ffunc(ffunc_render,
 			cframe->default_frame.raw, cframe->default_frame.s_raw,
-			cframe->gl_storage.w, cframe->gl_storage.h, cframe->gl_storage.ncpt,
+			cframe->gl_storage.w, cframe->gl_storage.h, cframe->gl_storage.bpp,
 			cframe->gl_storage.glid,
 			celem->feed.state);
 			
@@ -3092,8 +3092,8 @@ static void process_readback(struct rendertarget* tgt, float fract)
 
 		if (src){
 			arcan_vobject* vobj = tgt->color;
-			vobj->feed.ffunc(ffunc_rendertarget_readback, src, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.ncpt,
-				vobj->gl_storage.w, vobj->gl_storage.h, vobj->gl_storage.ncpt, 0, vobj->feed.state);
+			vobj->feed.ffunc(ffunc_rendertarget_readback, src, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.bpp,
+				vobj->gl_storage.w, vobj->gl_storage.h, vobj->gl_storage.bpp, 0, vobj->feed.state);
 		}
 
 		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
@@ -3289,7 +3289,7 @@ img_cons arcan_video_storage_properties(arcan_vobj_id id)
 	if (vobj && id > 0) {
 		res.w = vobj->gl_storage.w;
 		res.h = vobj->gl_storage.h;
-		res.bpp = vobj->gl_storage.ncpt;
+		res.bpp = vobj->gl_storage.bpp;
 	}
 
 	return res;

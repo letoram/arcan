@@ -276,7 +276,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->source = strdup(setup.args.builtin.resource);
 		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 		ctx->aid = ARCAN_EID;
-	} else if (setp.
+	} else if (setp.custom_feed == false){
 		vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
 		arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 	}
@@ -321,7 +321,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->shm.ptr = (void*) shmpage;
 	ctx->shm.shmsize = MAX_SHMSIZE;
 	ctx->shm.handle = shmh;
- 	ctx->desc.ready = true;
 	ctx->ofs_audb = 0;
 	ctx->sz_audb = SHMPAGE_AUDBUF_SIZE;
 	ctx->audb = (uint8_t*) malloc( ctx->sz_audb );
@@ -339,7 +338,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
 	ctx->inqueue.front = &(shmpage->parentdevq.front);
 	ctx->inqueue.back = &(shmpage->parentdevq.back);
-	ctx->desc.ready = true;
 		
 	ctx->outqueue.local = false;
 	ctx->outqueue.synch.external.shared = ctx->esync;
@@ -348,7 +346,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->outqueue.eventbuf = shmpage->childdevq.evqueue;
 	ctx->outqueue.front = &(shmpage->childdevq.front);
 	ctx->outqueue.back = &(shmpage->childdevq.back);
-	ctx->desc.ready = true;
 
 	arcan_event test = {0};
 	arcan_event_enqueue(&ctx->outqueue, &test);

@@ -67,7 +67,11 @@ typedef struct {
 	uint8_t format;
 	uint16_t vfthresh;
 
-	bool ready;
+/* transfer */
+	bool pbo_transfer;
+	unsigned pbo_index;
+	unsigned upload_pbo[2];
+	
 } arcan_frameserver_meta;
 
 typedef struct arcan_frameserver {

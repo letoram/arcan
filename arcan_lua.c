@@ -2570,16 +2570,13 @@ int arcan_lua_targetlinewidth(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 
-	int intp = luaL_checknumber(ctx, 2);
-	int fractp = luaL_optnumber(ctx, 3, 0);
+	float lsz = luaL_checknumber(ctx, 2);
 	
 	arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_VECTOR_LINEWIDTH
+			.kind = TARGET_COMMAND_VECTOR_LINEWIDTH,
+			.data.target.ioevs[0].fv = lsz
 	};
-	
-	ev.data.target.ioevs[0].iv = intp;
-	ev.data.target.ioevs[1].iv = fractp;
 	
 	tgtevent(tgt, ev);
 	
@@ -2590,16 +2587,13 @@ int arcan_lua_targetpointsize(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 
-	int intp = luaL_checknumber(ctx, 2);
-	int fractp = luaL_optnumber(ctx, 3, 0);
+	float psz = luaL_checknumber(ctx, 2);
 	
 	arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_VECTOR_POINTSIZE
+			.kind = TARGET_COMMAND_VECTOR_POINTSIZE,
+			.data.target.ioevs[0].fv = psz
 	};
-	
-	ev.data.target.ioevs[0].iv = intp;
-	ev.data.target.ioevs[1].iv = fractp;
 	
 	tgtevent(tgt, ev);
 	

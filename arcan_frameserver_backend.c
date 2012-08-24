@@ -30,6 +30,11 @@
 #include <al.h>
 #include <alc.h>
 
+#define GL_GLEXT_PROTOTYPES 
+#define GLEW_STATIC
+#define NO_SDL_GLEXT
+#include <glew.h>
+
 /* libSDL */
 #include <SDL.h>
 #include <SDL_types.h>
@@ -158,12 +163,11 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 	return rv;
 }
 
-static int push_buffer(char* buf, unsigned int mode, 
+static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid, 
 	unsigned sw, unsigned sh, unsigned bpp,
 	unsigned dw, unsigned dh, unsigned dpp)
 {
 	int8_t rv;
-	bool usepbo = false;
 
 	if (sw != dw || 
 		sh != dh) {
@@ -174,31 +178,37 @@ static int push_buffer(char* buf, unsigned int mode,
 					
 		for (uint16_t row = 0; row < cpy_height && row < cpy_height; row++)
 			memcpy(buf + (row * sw * bpp), buf, cpy_width * bpp);
-					
-		rv = FFUNC_RV_COPIED; 
+				
+		rv = FFUNC_RV_COPIED;
+		return rv;
 	}
+	
 /* hack to reduce extraneous copying, afaik. there's also a streaming texture mode and PBOs
  * that might be worth looking into */
-	else {
-		if (usepbo){
-			unsigned pboind = 0;
-			unsigned nextind = (pboind + 1) % 2;
-			
-//			glBindTexture(GL_TEXTURE_2D, mode);
-//			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pboind);
-// 		glBufferData(GL_PIXEL_UNPACK_BUFFER, DATA_SIZE, 0, GL_STREAM_DRAW);
-//			ptr = glMapBuffer(GL_PIXEL_BUFFER, GL_WRITE_ONLY);
-//			if (ptr) store_shit; glUnmapBuffer(GL_PIXEL_UNPACK_BUFER); 
-//			glBindBuffer(GL_PIXEL_UNPACK_BUFFER);
-		} else
-			glBindTexture(GL_TEXTURE_2D, mode);
+	glBindTexture(GL_TEXTURE_2D, glid);
+	
+	if (src->desc.pbo_transfer){
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 		
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+		src->desc.pbo_index = 1 - src->desc.pbo_index;
 
-		rv = FFUNC_RV_NOUPLOAD;
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
+		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+
+		if (ptr){
+			memcpy(ptr, buf, sw * sh * bpp);
+		}
+
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER); 
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
+	else 
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);	
 
-	return rv;
+	glBindTexture(GL_TEXTURE_2D, 0);
+	
+	return FFUNC_RV_NOUPLOAD;
 }
 
 int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
@@ -226,8 +236,10 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	if (state.tag != ARCAN_TAG_FRAMESERV || !state.ptr)
 		return rv;
 
-	arcan_frameserver* tgt = (arcan_frameserver*) state.ptr;
+	arcan_frameserver* tgt = state.ptr;
+	arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->shm.ptr;
+	unsigned srcw, srch, srcbpp;
 	
 	switch (cmd){
 		case ffunc_rendertarget_readback: break;
@@ -235,26 +247,32 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;		
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		case ffunc_render:
-			rv = push_buffer( (char*) tgt->vidp, mode, shmpage->storage.w, shmpage->storage.h, shmpage->storage.bpp, width, height, bpp); 
+/* as we don't really "synch on resize", if one is detected, just ignore this frame */
+			srcw = shmpage->storage.w;
+			srch = shmpage->storage.h;
+			srcbpp = shmpage->storage.bpp;
+	
+			if (srcw == tgt->desc.width && srch == tgt->desc.height && srcbpp == tgt->desc.bpp){
+				rv = push_buffer( tgt, tgt->vidp, mode, srcw, srch, srcbpp, width, height, bpp); 
 
 /* in contrast to the framequeue approach, we here need to limit the number of context switches
  * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
  * an intermediate buffer for this */
-			if (shmpage->aready) {
-				size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ? 
-					(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
+				if (shmpage->aready) {
+					size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ? 
+						(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
-				if (shmpage->abufused != ntc)
-					arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun (%d[%d]:%d), %zu\n", 
-					tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused, ntc);
+					if (shmpage->abufused != ntc)
+						arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun (%d[%d]:%d), %zu\n", 
+						tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused, ntc);
 
-				memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
-				tgt->ofs_audb += ntc;
+					memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
+					tgt->ofs_audb += ntc;
 
-				shmpage->abufused = 0;
-				shmpage->aready = false;
+					shmpage->abufused = 0;
+					shmpage->aready = false;
+				}
 			}
-
 /* interactive frameserver blocks on vsemaphore only, so set monitor flags and wake up */
 			shmpage->vready = false;
 			arcan_sem_post( tgt->vsync );
@@ -409,7 +427,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
 		frame_cell* current = src->vfq.front_cell;
-		rv = push_buffer( (char*) current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
+		rv = push_buffer( src, current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
 		arcan_framequeue_dequeue(&src->vfq);
 	}
 	else if (cmd == ffunc_tick)
@@ -518,6 +536,21 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* this will also emit the resize event */
 		arcan_video_resizefeed(src->vid, store, disp, shmpage->storage.glsource);
 
+/* for PBO transfers, new buffers etc. need to be prepared */
+		glBindTexture(GL_TEXTURE_2D, arcan_video_getobject(src->vid)->gl_storage.glid); 
+		if (src->desc.pbo_transfer)
+			glDeleteBuffers(2, src->desc.upload_pbo);
+
+		src->desc.pbo_transfer = true;
+		glGenBuffers(2, src->desc.upload_pbo);
+		for (int i = 0; i < 2; i++){
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
+			glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, NULL, GL_STREAM_DRAW);
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+		arcan_debug_pumpglwarnings("buffergen");
+		
 /* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
  * if we don't maintain a queue (present as soon as possible) */
 		if (src->nopts){
@@ -570,7 +603,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
 			arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
 		}
-			
+
 		arcan_event rezev = {
 			.category = EVENT_FRAMESERVER,
 			.kind = EVENT_FRAMESERVER_RESIZED,

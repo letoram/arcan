@@ -373,12 +373,12 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 	{
 		case TARGET_COMMAND_VECTOR_LINEWIDTH:
 			global.update_vector = true;
-			global.line_size = (float) ev->ioevs[0];
+			global.line_size = ev->ioevs[0].fv;
 		break;
 		
 		case TARGET_COMMAND_VECTOR_POINTSIZE:
 			global.update_vector = true;
-			global.point_size = (float) ev->ioevs[0];
+			global.point_size = ev->ioevs[0].fv;
 		break;
 	}
 }
