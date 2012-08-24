@@ -109,9 +109,9 @@ typedef struct arcan_vstorage {
 struct storage_info_t {
 	unsigned int glid;
 		
-	unsigned short w, h;
-	unsigned char ncpt;
+	unsigned short w, h, bpp;
 	unsigned int txu, txv;
+	
 	enum arcan_vimage_mode scale;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode filtermode;

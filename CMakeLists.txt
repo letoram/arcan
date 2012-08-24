@@ -182,6 +182,11 @@ set (
  arcan_event.c
 )
 
+if (CMAKE_BUILD_TYPE STREQUAL "Profile")
+    message("Profile build")
+        add_definitions(-pg)
+endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Debug build")
 	add_definitions(-g -D_DEBUG)
