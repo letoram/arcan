@@ -62,7 +62,6 @@ local function listview_destroy(self)
 	expire_image(self.listvid, 20);
 	blend_image(self.listvid, 0.0, 20);
 	expire_image(self.anchor, 20);
-	print("cursor gone");
 end
 
 local function listview_select(self)

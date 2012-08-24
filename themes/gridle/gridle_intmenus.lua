@@ -64,7 +64,7 @@ inputmodeptrs["Filter Opposing"] = function(label, save)
 	settings.filter_opposing = not settings.filter_opposing;
 
 	if (settings.filter_opposing) then
-		current_menu.formats[ label ] = "\\#ff0000";
+		current_menu.formats[ label ] = settings.colourtable.notice_fontstr;
 	else
 		current_menu.formats[ label ] = nil; 
 	end
@@ -532,9 +532,7 @@ function gridlemenu_rebuilddisplay()
 	
 	local props  = image_surface_initial_properties(internal_vid);
 	local dstvid = internal_vid;
-
--- send NTSC to internal_vid
-	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
+	print("rebuild:", props.width, props.height);
 	
 -- clone internal_vid to FBO and set upscaler as shader
 	if (settings.internal_toggles.upscale) then
@@ -853,7 +851,7 @@ local function toggle_shadersetting(label, save)
 		settings.shader_opts[label] = nil;
 		current_menu.formats[ label ] = nil;
 	else
-		current_menu.formats[ label ] = "\\#ff0000";
+		current_menu.formats[ label ] = settings.colourtable.notice_fontstr;
 		settings.shader_opts[label] = true;
 	end
 	
@@ -940,9 +938,9 @@ end
 displaymodeptrs = {};
 displaymodeptrs["Custom Shaders..."] = function() 
 	local def = {};
-	def[ settings.fullscreenshader ] = "\\#00ffff";
+	def[ settings.fullscreenshader ] = settings.colourtable.notice_fontstr;
 	if (get_key("defaultshader")) then
-		def[ get_key("defaultshader") ] = "\\#00ff00";
+		def[ get_key("defaultshader") ] = settings.colourtable.alert_fontstr;
 	end
 	
 	local listl, listp = build_shadermenu();
@@ -976,7 +974,17 @@ add_displaymodeptr(displaymodelist, displaymodeptrs, "vector", "Vector", gridlem
 add_displaymodeptr(displaymodelist, displaymodeptrs, "upscale", "Upscale", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay", "Overlay", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop", "Backdrop", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc", "NTSC", gridlemenu_rebuilddisplay); 
+
+table.insert(displaymodelist, "NTSC");
+displaymodeptrs["NTSC"] = function()
+	settings.internal_toggles.ntsc = not settings.internal_toggles.ntsc;
+	print("sending postfilter command");
+	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
+	
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"]();	
+end
+
 add_displaymodeptr(displaymodelist, displaymodeptrs, "crt", "CRT", gridlemenu_rebuilddisplay);
 	
 vectormenulbls = {};
@@ -986,8 +994,8 @@ local function updatetrigger()
 	gridlemenu_rebuilddisplay();
 end
 
-add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen_num_menu("vector_linew", 1, 1, 6, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 1, 6, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen_num_menu("vector_linew", 1, 0.5, 6, updatetrigger));
+add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 0.5, 6, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (X)...", "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (Y)...", "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1, 9, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Vertical Offset...", "vector_vblurofs", gen_num_menu("vector_vblurofs", -6, 1, 13, updatetrigger));
@@ -1036,7 +1044,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 				table.insert(labels, key);
 				ptrs[ key ] = toggle_shadersetting;
 				if (def [ key ] ) then
-					fmts[ key ] = "\\#ff0000";
+					fmts[ key ] = settings.colourtable.notice_fontstr; 
 				end
 			end
 
@@ -1050,7 +1058,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 			menu_spawnmenu(crtmenulbls, crtmenuptrs, fmts);
 			
 		elseif (selectlbl == "Vector") then
-			fmts = {}; -- do for CRT / Overlay 
+			fmts = {}; 
 			menu_spawnmenu(vectormenulbls, vectormenuptrs, fmts);
 		end
 	end
@@ -1096,12 +1104,30 @@ if (#menulbls > 0 and settingslbls) then
 
 	current_menu.ptrs["Display Modes..."] = function()
 		local def = {};
+		local gottog = false;
+		
 		if ( settings.internal_toggles.crt ) then 
-			def[ "CRT" ] = "\\#00ffff";
+			def[ "CRT" ] = settings.colourtable.notice_fontstr;
 		end
 		
+		if ( settings.internal_toggles.ntsc ) then
+			def[ "NTSC" ] = settings.colourtable.notice_fontstr;
+		end
+	
+		if ( settings.internal_toggles.upscaler ) then
+			def[ "Upscaler" ] = settings.colourtable.notice_fontstr;
+		end
+	
+		if ( settings.internal_toggles.overlay ) then
+			def[ "Overlay" ] = settings.colourtable.notice_fontstr;
+		end
+
+		if ( settings.internal_toggles.backdrop ) then
+			def[ "Backdrop" ] = settings.colourtable.notice_fontstr;
+		end
+			
 		if (settings.internal_toggles.vector ) then
-			def[ "Vector" ] = "\\#00ffff";
+			def[ "Vector" ] = settings.colourtable.notice_fontstr;
 		end
 		
 		settings.context_menu = "display modes";
@@ -1110,9 +1136,9 @@ if (#menulbls > 0 and settingslbls) then
 
 	current_menu.ptrs["Scaling..."] = function()
 		local def = {};
-		def[ settings.scalemode ] = "\\#00ffff";
+		def[ settings.scalemode ] = settings.colourtable.notice_fontstr;
 		if (get_key("scalemode")) then
-			def[ get_key("scalemode") ] = "\\#00ff00";
+			def[ get_key("scalemode") ] = settings.colourtable.alert_fontstr;
 		end
 		
 		menu_spawnmenu( scalemodelist, scalemodeptrs, def );
@@ -1121,12 +1147,12 @@ if (#menulbls > 0 and settingslbls) then
 	current_menu.ptrs["Input..."] = function()
 		local def = {};
 		if (settings.filter_opposing) then
-			def["Filter Opposing"]= "\\#ff0000";
+			def["Filter Opposing"]= settings.colourtable.notice_fontstr;
 		end
 		
-		def[ settings.internal_input ] = "\\#00ffff";
+		def[ settings.internal_input ] = settings.colourtable.notice_fontstr;
 		if (get_key("internal_input")) then
-			def[ get_key("internal_input") ] = "\\#00ff00";
+			def[ get_key("internal_input") ] = settings.colourtable.alert_fontstr;
 		end
 		
 		menu_spawnmenu( inputmodelist, inputmodeptrs, def );
@@ -1134,9 +1160,9 @@ if (#menulbls > 0 and settingslbls) then
 	
 	current_menu.ptrs["Audio Gain..."] = function()
 		local def = {};
-		def[ tostring(settings.internal_again) ] = "\\#00ffff";
+		def[ tostring(settings.internal_again) ] = settings.colourtable.notice_fontstr;
 		if (get_key("internal_again")) then
-			def[ get_key("internal_again") ] = "\\#00ff00";
+			def[ get_key("internal_again") ] = settings.colourtable.alert_fontstr;
 		end
 		
 		menu_spawnmenu( audiogainlist, audiogainptrs, def );
@@ -1166,9 +1192,9 @@ if (#menulbls > 0 and settingslbls) then
 	
 	current_menu.ptrs["Cocktail Modes..."] = function()
 		local def = {};
-		def[ tostring(settings.cocktail_mode) ] = "\\#00ffff";
+		def[ tostring(settings.cocktail_mode) ] = settings.colourtable.notice_fontstr;
 		if (get_key("cocktail_mode")) then
-			def[ get_key("cocktail_mode") ] = "\\#00ff00";
+			def[ get_key("cocktail_mode") ] = settings.colourtable.alert_fontstr;
 		end
 		
 		menu_spawnmenu( cocktaillist, cocktailptrs, def);
