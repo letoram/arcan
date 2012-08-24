@@ -1301,8 +1301,9 @@ function gridle_internalcleanup()
 end
 
 function gridle_internal_status(source, datatbl)
+	print(datatbl.kind);
+	
 	if (datatbl.kind == "resized") then
-		
 		if (not settings.in_internal) then
 			gridle_setup_internal(source, datatbl.source_audio);
 			image_tracetag(source, "internal_launch(" .. current_game().title ..")");

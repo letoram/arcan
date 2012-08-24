@@ -277,7 +277,7 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dst
 
 bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq)
 {
-	/* need to rethink synchronization a bit before forcing a resize */
+/* need to rethink synchronization a bit before forcing a resize */
 	if (arg->addr){
 		arg->addr->storage.w = width;
 		arg->addr->storage.h = height;
@@ -287,8 +287,16 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->channels = nchan;
 		arg->addr->samplerate = ceil(freq);
 		
+/* relocate current audio output buffer */
+
 		if (frameserver_shmpage_integrity_check(arg->addr)){
+			fprintf(stderr, "-- child: resizing\n");
 			arg->addr->resized = true;
+
+/* spinlock until acknowledged */
+			while(arg->addr->resized); 
+			
+			fprintf(stderr, "-- child: acknowledged\n");
 			return true;
 		}
 	}

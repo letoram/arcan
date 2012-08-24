@@ -73,19 +73,33 @@ static struct {
 	uint16_t frequency;
 	uint8_t channels;
 	uint16_t format;
-		
+
+/* merging event pairs to single mouse motion events */
 	int lastmx;
 	int lastmy;
-	
+
+/* video readback from GL */
 	uint8_t* buf;
-	bool doublebuffered;
+
+/* for non-GL accelerated applications, we need to know if the source
+ * is doublebuffered or not as it yields a different execution path */
+	bool doublebuffered, glsource;
+	
+/* track the display surface so we know what to work with / convert between */
 	SDL_Surface* mainsrfc;
 	SDL_PixelFormat desfmt;
+	
+/* for GL surfaces only */
+	unsigned pbo_ind;
+	unsigned rb_pbos[2];
 
+/* specialized hack for vector graphics, a better approach would be to implement
+ * a geometry buffering scheme (requires different SHM sizes though) and have a list of 
+ * geometry + statetable + maptable etc. and see how many 3D- based emulators that would run
+ * in such conditions */
 	bool update_vector;
 	float point_size;
 	float line_size;
-	float point_atten[3];
 	
 	SDL_MouseMotionEvent mousestate;
 	uint8_t mousebutton;
@@ -114,8 +128,7 @@ static struct {
 		
 		.update_vector = true,
 		.point_size = 1.0,
-		.line_size  = 1.0,
-		.point_atten = {1.0, 0.0, 0.0}
+		.line_size  = 1.0
 };
 
 static inline void trace(const char* msg, ...)
@@ -262,7 +275,7 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
-	global.shared.addr->storage.glsource = (flags & SDL_OPENGL) > 0;
+	global.glsource = global.shared.addr->storage.glsource = (flags & SDL_OPENGL) > 0;
 	
 	if ( (flags & SDL_FULLSCREEN) > 0) { 
 /* oh no you don't */
@@ -284,6 +297,8 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 		
 		global.shared.addr->storage.bpp = 4;
 		global.shared.addr->resized = true;
+
+/* drop PBOs if we have a GL source */
 	}
 
 	global.mainsrfc = res;
@@ -525,11 +540,12 @@ void ARCAN_SDL_GL_SwapBuffers()
 		trace("CopySurface(GL:post)");
 	}
 	
-/* can't be done in the target event handler as it might be in a different thread */
+/* can't be done in the target event handler as it might be in a different threading context */
 	if (global.update_vector){
 		forwardtbl.glPointSize(global.point_size);
 		forwardtbl.glLineWidth(global.line_size);
 		global.update_vector = false;
 	}
-/*	forwardtbl.sdl_swapbuffers(); */
+
+/*	 forwardtbl.sdl_swapbuffers(); */
 }

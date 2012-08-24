@@ -36,7 +36,7 @@ struct frameserver_shmcont{
 };
 
 struct frameserver_shmpage {
-	bool resized;
+	volatile bool resized;
 	bool loop;
 	bool dms;
 

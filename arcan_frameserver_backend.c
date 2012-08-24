@@ -243,15 +243,20 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	
 	switch (cmd){
 		case ffunc_rendertarget_readback: break;
-		case ffunc_poll: return shmpage->vready; break;        
-		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;		
+		case ffunc_poll: 
+			if (shmpage->resized)
+				arcan_frameserver_tick_control( tgt);
+	
+			return shmpage->vready;
+		break; 
+		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		case ffunc_render:
 /* as we don't really "synch on resize", if one is detected, just ignore this frame */
 			srcw = shmpage->storage.w;
 			srch = shmpage->storage.h;
 			srcbpp = shmpage->storage.bpp;
-	
+			
 			if (srcw == tgt->desc.width && srch == tgt->desc.height && srcbpp == tgt->desc.bpp){
 				rv = push_buffer( tgt, tgt->vidp, mode, srcw, srch, srcbpp, width, height, bpp); 
 
@@ -383,6 +388,9 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	 * > 0 if there are frames to render
 	*/
 	if (cmd == ffunc_poll) {
+		if (src->shm.ptr && src->shm.ptr->resized)
+			arcan_frameserver_tick_control(src);
+		
 		if (!(src->playstate == ARCAN_PLAYING))
 		return rv;
 
@@ -532,7 +540,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_event_maskall(arcan_event_defaultctx());
 		arcan_event_clearmask(arcan_event_defaultctx());
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
-
+		
 /* this will also emit the resize event */
 		arcan_video_resizefeed(src->vid, store, disp, shmpage->storage.glsource);
 
@@ -549,7 +557,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 		}
 		glBindTexture(GL_TEXTURE_2D, 0);
-		arcan_debug_pumpglwarnings("buffergen");
 		
 /* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
  * if we don't maintain a queue (present as soon as possible) */
