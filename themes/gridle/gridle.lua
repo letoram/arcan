@@ -190,6 +190,7 @@ function gridle()
 	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
 	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
 	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
+	system_load("gridle_featuremapper.lua")();   -- adds macros for common features ((quick)save / (quick)load / reset) to internal_launch(hijack)
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
 	system_load("gridle_contmenus.lua")();       -- context menus (quickfilter, database manipulation, ...)
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
@@ -346,10 +347,16 @@ end
 	imagery.starimage    = load_image("images/star.png");
 	image_tracetag(imagery.starimage, "favorite star");
 	
+	imagery.crashimage   = load_image("images/terminated.png");
+	image_tracetag(imagery.crashimage, "terminated");
+
+	resize_image(imagery.crashimage, VRESW * 0.5, VRESH * 0.5);
+	move_image(imagery.crashimage, 0.5 * (VRESW - (VRESW * 0.5)), 0.5 * (VRESH - (VRESH * 0.5)));
+
 	imagery.magnifyimage = load_image("images/magnify.png");
 	image_tracetag(imagery.magnifyimage, "detailview icon");
 	
-	if (settings.list_view) then
+	if (settings.custom_view) then
 		
 	else
 		build_grid(settings.cell_width, settings.cell_height);
@@ -1255,6 +1262,7 @@ end
 function gridle_internalcleanup()
 	kbd_repeat(settings.repeatrate);
 	gridle_input = gridle_dispatchinput;
+	hide_image(imagery.crashimage);
 
 	if (settings.in_internal) then
 		gridle_delete_internal_extras();
@@ -1312,6 +1320,12 @@ function gridle_internal_status(source, datatbl)
 			gridlemenu_rebuilddisplay();
 		end
 			
+	elseif (datatbl.kind == "frameserver_terminated") then
+		order_image(imagery.crashimage, max_current_image_order());
+		blend_image(imagery.crashimage, 0.8);
+		if (not settings.in_internal) then
+			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
+		end
 	end
 end
 

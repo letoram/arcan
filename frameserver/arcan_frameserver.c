@@ -111,18 +111,27 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 		off_t ofs = 0;
 		ssize_t nw;
 
-		while ( ofs != sz_data && (
-			(nw = write(dst, ((char*) data) + ofs, sz_data - ofs)) >= 0, ofs += nw)
-			|| errno == EAGAIN || errno == EINTR);
+		while ( ofs != sz_data){
+			nw = write(dst, ((char*) data) + ofs, sz_data - ofs);
+			if (-1 == nw)
+				switch (errno){
+					case EAGAIN: continue;
+					case EINTR: continue;
+					default:
+						LOG("arcan_frameserver(dumprawfile) -- write failed (%d), reason: %s\n", errno, strerror(errno));
+						goto out;
+				}
+				
+				ofs += nw;
+			}
+		rv = true;
 		
-		if (nw == -1)
-			LOG("arcan_frameserver(dumprawfile) -- write failed (%d), reason: %s\n", errno, strerror(errno));
-		
+		out:
 		if (finalize)
 			close(dst);
 	}
 	 else
-		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid file handle ignored.\n");
+		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid file handle ignored, no output set by parent.\n");
 	
 	return rv;
 }

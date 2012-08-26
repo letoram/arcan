@@ -504,7 +504,7 @@ def import_roms(options)
 
 # for each rom group..   
 	groups.each{|group|
-		if (options[:skiptarget][group])
+		if (options[:skiptarget][group] or group.upcase == "SYSTEM")
 			STDOUT.print("\tIgnoring #{group}\n" )
 			next
 		end
