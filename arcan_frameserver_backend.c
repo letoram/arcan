@@ -196,9 +196,8 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
 		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
 
-		if (ptr){
+		if (ptr)
 			memcpy(ptr, buf, sw * sh * bpp);
-		}
 
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER); 
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -554,6 +553,11 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		for (int i = 0; i < 2; i++){
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
 			glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, NULL, GL_STREAM_DRAW);
+			void* ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
+			if (ptr){
+				memset(ptr, 0, store.w * store.h * store.bpp);
+			}
+			glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 		}
 		glBindTexture(GL_TEXTURE_2D, 0);

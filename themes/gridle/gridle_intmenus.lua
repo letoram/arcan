@@ -953,15 +953,22 @@ end
 displaymodelist = {"Custom Shaders..."};
 
 local function add_displaymodeptr(list, ptrs, key, label, togglecb)
+	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Upscale = false, NTSC = true, Vector = true};
+	
 	table.insert(list, label);
 	
 	ptrs[label] = function(label, save)
 	settings.internal_toggles[key] = not settings.internal_toggles[key];
+
+	current_menu.formats[label] = nil; 
+	local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,"	
+
+	if (ctxmenus[label]) then 
+		current_menu.formats[label] = iconlbl; 
+	end
 	
 	if (settings.internal_toggles[key]) then
-		current_menu.formats[ label ] = settings.colourtable.notice_fontstr;
-	else
-		current_menu.formats[ label ] = nil;
+		current_menu.formats[label] = (ctxmenus[label] and iconlbl or "") .. settings.colourtable.notice_fontstr;
 	end
 	
 	togglecb();
@@ -989,6 +996,10 @@ add_displaymodeptr(displaymodelist, displaymodeptrs, "crt", "CRT", gridlemenu_re
 	
 vectormenulbls = {};
 vectormenuptrs = {};
+crtmenulbls    = {};
+crtmenuptrs    = {};
+ntscmenulbls   = {};
+ntscmenuptrs   = {};
 
 local function updatetrigger()
 	gridlemenu_rebuilddisplay();
@@ -1005,6 +1016,7 @@ add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Bias...", "vector_hbias"
 add_submenu(vectormenulbls, vectormenuptrs, "Glow Trails...", "vector_glowtrails", gen_num_menu("vector_glowtrails", 0, 1, 8, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 12, updatetrigger));
 add_submenu(vectormenulbls, vectormenuptrs, "Trail Falloff...", "vector_trailfall", gen_num_menu("vector_trailfall", 0, 1, 9, updatetrigger));
+
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
@@ -1105,19 +1117,22 @@ if (#menulbls > 0 and settingslbls) then
 	current_menu.ptrs["Display Modes..."] = function()
 		local def = {};
 		local gottog = false;
+		local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,";
 		
+		def["CRT"] = iconlbl;
 		if ( settings.internal_toggles.crt ) then 
-			def[ "CRT" ] = settings.colourtable.notice_fontstr;
+			def[ "CRT" ] = iconlbl .. settings.colourtable.notice_fontstr;
 		end
 		
+		def["NTSC"] = iconlbl;
 		if ( settings.internal_toggles.ntsc ) then
-			def[ "NTSC" ] = settings.colourtable.notice_fontstr;
+			def[ "NTSC" ] = iconlbl .. settings.colourtable.notice_fontstr;
 		end
-	
+
 		if ( settings.internal_toggles.upscaler ) then
 			def[ "Upscaler" ] = settings.colourtable.notice_fontstr;
 		end
-	
+
 		if ( settings.internal_toggles.overlay ) then
 			def[ "Overlay" ] = settings.colourtable.notice_fontstr;
 		end
@@ -1126,8 +1141,9 @@ if (#menulbls > 0 and settingslbls) then
 			def[ "Backdrop" ] = settings.colourtable.notice_fontstr;
 		end
 			
+		def["Vector"] = iconlbl;
 		if (settings.internal_toggles.vector ) then
-			def[ "Vector" ] = settings.colourtable.notice_fontstr;
+			def[ "Vector" ] = iconlbl .. settings.colourtable.notice_fontstr;
 		end
 		
 		settings.context_menu = "display modes";

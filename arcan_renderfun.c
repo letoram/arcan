@@ -154,7 +154,6 @@ SDL_Surface* text_loadimage(const char* const infn, img_cons constraints)
 	char* fname = arcan_find_resource(infn, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);	
 	
 	if (fname && (res = IMG_Load(fname) )){
-
 /* Might've specified a forced scale */
 		if (constraints.w > 0 && constraints.h > 0){
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
@@ -418,7 +417,6 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 		
 /* image or render font */
 		if (curr_style->image){
-			printf("curr_style: %d\n", curr_style->newline);
 			cnode->data.surf = curr_style->image;
 			curr_style->image = NULL;
 		}
@@ -494,11 +492,6 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 				if (!okstatus)
 					return -1;
 
-				if (curr_style->image){
-					currstyle_cnode(curr_style, base, cnode, sizeonly);
-					cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
-				}
-
 /* caret modifiers need to be separately chained to avoid (three?) nasty little basecases */
 				if (curr_style->newline || curr_style->tab || curr_style->cr) {
 					cnode->surface = false;
@@ -508,6 +501,11 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 					cnode->data.format.cr = curr_style->cr;
 					cnode = cnode->next = (void*) calloc(sizeof(struct rcell), 1);
 				} 
+
+				if (curr_style->image){
+					currstyle_cnode(curr_style, base, cnode, sizeonly);
+					cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
+				}
 
 				current = base = curr_style->endofs;
 				if (current == NULL)
