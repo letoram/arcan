@@ -49,8 +49,18 @@ local function osdkbd_inputkey(self, iotbl)
 	local msg = self.symtable[ iotbl.keysym ];
 	
 	if (key) then
-		if (string.len(key) == 1) then
-			self.str = self.str .. string.upper(key);
+		key = string.upper(key);
+		found = nil
+		
+		for i=1,#keymap do
+			if string.upper(keymap[i]) == key then
+				found = i
+				break
+			end
+		end
+		
+		if (found ~= nil) then
+			self.str = self.str .. keymap[found];
 			self:update();
 			return;
 		end

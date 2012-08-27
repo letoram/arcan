@@ -85,6 +85,7 @@ static const struct option longopts[] = {
 	{ "scalemode", required_argument, NULL, 'r'}, 
 	{ "multisamples", required_argument, NULL, 'a'},
 	{ "nosound", no_argument, NULL, 'S'},
+	{ "ratelimit", required_argument, NULL, 'V'},
 	{ "novsync", no_argument, NULL, 'v'},
 /* no points guessing which platform forcing this .. */
 	{ "stdout", required_argument, NULL, '1'}, 
@@ -94,7 +95,7 @@ static const struct option longopts[] = {
 
 void usage()
 {
-	printf("usage:\narcan [-whfmsptoldg12] [theme] [themearguments]\n"
+	printf("usage:\narcan [-whxyfmstptodgavVSr] [theme] [themearguments]\n"
 		"-w\t--width       \tdesired width (default: 640)\n"
 		"-h\t--height      \tdesired height (default: 480)\n"
 		"-x\t--winx        \tforce window x position (default: don't set)\n"
@@ -110,11 +111,12 @@ void usage()
 		"-g\t--debug       \ttoggle debug output (stacktraces, events, etc.)\n"
 		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 		"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
+		"-V\t--ratelimit   \tvsync off, with simulated Hz to (%i .. 120)\n"
 		"-S\t--nosound     \tdisable audio output\n"
 		"-r\t--scalemode   \tset texture mode:\n\t"
 		"%i(rectangle sized textures, default),\n\t"
 		"%i(scale to power of two)\n\t"
-		"%i(tweak texture coordinates)\n", ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2, ARCAN_VIMAGE_TXCOORD);
+		"%i(tweak texture coordinates)\n", ARCAN_TIMER_TICK, ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2, ARCAN_VIMAGE_TXCOORD);
 }
 
 int main(int argc, char* argv[])
@@ -140,7 +142,7 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvmsp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvV:msp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
 				usage();
@@ -157,6 +159,9 @@ int main(int argc, char* argv[])
 			case 'd' : dbfname = strdup(optarg); break;
 			case 'S' : nosound = true; break;
 			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
+			case 'V' : 
+				arcan_video_display.vsync = false;
+				arcan_video_display.ratelimit = strtol(optarg, NULL, 10); break;
 			case 'v' : arcan_video_display.vsync = false; break;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
 			case 't' : arcan_themepath = strdup(optarg); break;
@@ -232,7 +237,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (width == 0 || height == 0) {
-	width = vi->current_w;
+		width = vi->current_w;
 		height = vi->current_h;
 	}
 	
@@ -295,6 +300,7 @@ int main(int argc, char* argv[])
 			unsigned nticks;
 			float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
 
+/* priority is always in maintaining logical clock and event processing */
 			if (nticks > 0){
 				arcan_video_tick(nticks);
 				arcan_audio_tick(nticks);

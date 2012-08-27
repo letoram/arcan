@@ -763,63 +763,34 @@ local function build_savemenu()
 	table.insert(reslbls, "(Create)");
 
 	resptrs["(Create)"] = function(label, store)
-	local resstr = nil;
-	local keymap = {  
-		"A", "B", "C", "D", "E", "F", "G", "1", "2", "3", "\n",
-		"H", "I", "J", "K", "L", "M", "N", "4", "5", "6", "\n",
-		"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n",
-		"V", "W", "X", "Y", "Z", "_", "0" };
+		local resstr = nil;
+		local keymap = {  
+			"A", "B", "C", "D", "E", "F", "G", "1", "2", "3", "\n",
+			"H", "I", "J", "K", "L", "M", "N", "4", "5", "6", "\n",
+			"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n",
+			"V", "W", "X", "Y", "Z", "_", "0" };
 		
-	local osdsavekbd = osdkbd_create( keymap );
-	osdsavekbd:show();
+		local osdsavekbd = osdkbd_create( keymap );
+		osdsavekbd:show();
 		
 -- do this here so we have access to the namespace where osdsavekbd exists
 		gridle_input = function(iotbl)
-			if (iotbl.active) then
-				local restbl = keyconfig:match(iotbl);
-				if (restbl) then
-					for ind,val in pairs(restbl) do
+			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
+			
+			if (complete) then
+				osdsavekbd:destroy();
+				osdsavekbd = nil;
+				gridle_input = gridle_dispatchinput;
 
--- go back to menu without doing anything
-						if (val == "MENU_ESCAPE") then
-							play_audio(soundmap["OSDKBD_HIDE"]);
-							settings.iodispatch["MENU_ESCAPE"]();
-							osdsavekbd:destroy();
-							osdsavekbd = nil;
-							gridle_input = gridle_dispatchinput;
-
--- input character or select an action (
-						elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or 
-							val == "MENU_RIGHT" or val == "MENU_DOWN") then
-							resstr = osdsavekbd:input(val);
-							play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
-
--- also allow direct keyboard input
-						elseif (iotbl.translated) then
-							resstr = osdsavekbd:input_key(iotbl);
-					end
-					end
+				if (resstr ~= nil and string.len(resstr) > 0) then
+					internal_statectl(resstr, true);
+					spawn_warning("state saved as (" .. resstr .. ")");
 				end
-
--- input/input_key returns the filterstring when finished
-				if (resstr) then
-					osdsavekbd:destroy();
-					osdsavekbd = nil;
-					gridle_input = gridle_dispatchinput;
-
-					if (string.len(resstr) > 0) then
-						internal_statectl(resstr, true);
-						spawn_warning("state saved as (" .. resstr .. ")");
-					end
 					
-					settings.iodispatch["MENU_ESCAPE"]();
-					settings.iodispatch["MENU_ESCAPE"]();
-				end
-				
+				settings.iodispatch["MENU_ESCAPE"]();
+				settings.iodispatch["MENU_ESCAPE"]();
 			end
 		end
--- remap input to a temporary function that just maps to osdkbd until ready,
--- then use that to save if finished
 	end
 	
 -- just grab the last num found, increment by one and use as prefix

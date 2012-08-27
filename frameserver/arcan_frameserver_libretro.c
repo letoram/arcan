@@ -126,7 +126,15 @@ static void* libretro_requirefun(const char* sym)
 }
 
 #define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
-                            
+ static void push_ntsc(unsigned width, unsigned height, uint32_t* outp)
+ {
+		size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
+/* only draw on every other line, so we can easily mix or blend interleaved */
+		snes_ntsc_blit(&retroctx.ntscctx, retroctx.ntsc_imb, width, 0, width, height, outp, linew * 2);
+		for (int row = 1; row < height * 2; row += 2)
+			memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew);
+ }
+ 
 static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
 	assert( (uintptr_t)data % 4 == 0 );
@@ -137,7 +145,7 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 			uint32_t val = data[x];
 			if (retroctx.ntscconv){
 				uint8_t* quad = (uint8_t*) data;
-				*interm++ = RGB565(quad[1], quad[2], quad[3]);
+				*interm++ = RGB565(quad[3], quad[2], quad[1]);
 			}
 			else
 				*outp++ = 0xff | ( val << 8 );
@@ -147,7 +155,7 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 	}
 	
 	if (retroctx.ntscconv)
-		snes_ntsc_blit(&retroctx.ntscctx, retroctx.ntsc_imb, pitch, 0, width, height, outp, pitch);	
+		push_ntsc(width, height, outp);
 }
 
 static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
@@ -172,13 +180,8 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 		data += pitch >> 1;
 	}
 
-	if (retroctx.ntscconv){
-		size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
-/* only draw on every other line, so we can easily mix or blend interleaved */
-		snes_ntsc_blit(&retroctx.ntscctx, retroctx.ntsc_imb, width, 0, width, height, outp, linew * 2);
-		for (int row = 1; row < height * 2; row += 2)
-			memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew);
-	}
+	if (retroctx.ntscconv)
+		push_ntsc(width, height, outp);
 }
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)

@@ -881,6 +881,11 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) | SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
 	arcan_video_display.screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
 
+	if (arcan_video_display.ratelimit != 0 && (arcan_video_display.ratelimit < ARCAN_TIMER_TICK || arcan_video_display.ratelimit > 120)){
+		arcan_warning("arcan_video_init(), Invalid rate limit requested (%d), ignored.\n", arcan_video_display.ratelimit);
+		arcan_video_display.ratelimit = 0;
+	}
+
 	if (arcan_video_display.msasamples && !arcan_video_display.screen){
 		arcan_warning("arcan_video_init(), Couldn't open OpenGL display, attempting without MSAA\n");
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);

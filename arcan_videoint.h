@@ -196,8 +196,12 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
 	bool suspended, text_support, fullscreen, conservative, late3d, vsync;
-	
 	unsigned default_vitemlim;
+ 
+/* ratelimit is a complement to disabling VSYNC for limiting the number and distribution of video refreshes
+ * during a second, allowing event processing and other tasks to be prioritized */ 
+	unsigned ratelimit;
+
 	arcan_shader_id defaultshdr;
 	
 	/* default image loading options */
