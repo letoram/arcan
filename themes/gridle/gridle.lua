@@ -425,40 +425,50 @@ function confirm_shutdown()
 	dialog_option("Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs);
 end
 
--- When OSD keyboard is to be shown, remap the input event handler,
--- Forward all labels that match, but also any translated keys (so that we
--- can use this as a regular input function as well) 	
-function osdkbd_inputcb(iotbl)
+-- also used in intmenus for savestate naming
+function osdkbd_inputfun(iotbl, dstkbd)
 	if (iotbl.active) then
 		local restbl = keyconfig:match(iotbl);
-		local resstr = nil;
 		local done   = false;
+		local resstr = nil;
 
 		if (restbl) then
 			for ind,val in pairs(restbl) do
 				if (val == "MENU_ESCAPE") then
 					play_audio(soundmap["OSDKBD_HIDE"]);
-					return osdkbd_filter(nil);
+					return true, nil
 
 				elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or 
 					val == "MENU_RIGHT" or val == "MENU_DOWN") then
-					resstr = osdkbd:input(val);
+					resstr = dstkbd:input(val);
+					
 					play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
 							
 -- also allow direct keyboard input
 				elseif (iotbl.translated) then
-					resstr = osdkbd:input_key(iotbl);
-				else
+					resstr = dstkbd:input_key(iotbl);
 				end
-
--- input/input_key returns the filterstring when finished
-				if (resstr) then
-					return osdkbd_filter(resstr); 
-				end
-
 -- stop processing labels immediately after we get a valid filterstring
 			end
+		else -- still need to try and input even if we didn't find a matching value
+			if (iotbl.translated) then
+				resstr = dstkbd:input_key(iotbl);
+			end
 		end
+
+		if (resstr) then
+			return true, resstr; 
+		end	
+	end
+	
+	return false, nil
+end
+
+function osdkbd_inputcb(iotbl)
+	local complete, resstr = osdkbd_inputfun(iotbl, osdkbd);
+	
+	if (complete) then
+		osdkbd_filter(resstr);
 	end
 end
 

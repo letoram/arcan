@@ -46,6 +46,23 @@
 #include "arcan_event.h"
 #include "arcan_target_const.h"
 #include "arcan_frameserver_shmpage.h"
+#include "frameserver/ntsc/snes_ntsc.h"
+
+static SDL_PixelFormat PixelFormat_RGB565 = {
+	.BitsPerPixel = 16,
+	.BytesPerPixel = 2,
+	.Bmask = 0xf800,.Gmask = 0x7e0,.Rmask = 0x1f,
+	.Rloss = 3,.Gloss = 2,.Bloss = 3
+};
+
+static SDL_PixelFormat PixelFormat_RGBA888 = {
+	.BitsPerPixel = 32,
+	.BytesPerPixel = 4,
+	.Rmask = 0x000000ff,
+	.Gmask = 0x0000ff00,
+	.Bmask = 0x00ff0000,
+	.Amask = 0xff000000
+};
 
 static struct {
 	void (*sdl_swapbuffers)(void);
@@ -73,6 +90,9 @@ static struct {
 	uint16_t frequency;
 	uint8_t channels;
 	uint16_t format;
+	
+/* keep track of video surface size as it may differ pre/post NTSC */
+	unsigned width, height;
 
 /* merging event pairs to single mouse motion events */
 	int lastmx;
@@ -93,6 +113,12 @@ static struct {
 	unsigned pbo_ind;
 	unsigned rb_pbos[2];
 
+/* for NTSC conversion filter */
+	uint16_t* ntsc_imb;
+	bool ntscconv;
+	snes_ntsc_t ntscctx;
+	snes_ntsc_setup_t ntsc_opts;
+	
 /* specialized hack for vector graphics, a better approach would be to implement
  * a geometry buffering scheme (requires different SHM sizes though) and have a list of 
  * geometry + statetable + maptable etc. and see how many 3D- based emulators that would run
@@ -221,6 +247,11 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 	return requested_mode;
 }
 
+static void update_desfmt()
+{
+	
+}
+
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
 	char* shmsize = getenv("ARCAN_SHMSIZE");
@@ -254,7 +285,10 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	global.channels = obtained->channels;
 	global.format = obtained->format;
 	global.attenuation = 1.0;
-
+	
+	global.ntsc_opts = snes_ntsc_composite;
+	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
+	
 	return rc;
 }
 
@@ -284,21 +318,23 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 		
 /* resize */
 	if (res) {
+		global.width = w;
+		global.height = h;
+	
+/* rebuild if this is a reinitialization */
+		if (global.ntscconv){
+			trace("rebuilding NTSC settings.\n");
+			free(global.ntsc_imb);
+			global.ntsc_imb = malloc(w * h * 2);
+			w = SNES_NTSC_OUT_WIDTH(w);
+			h *= 2;
+		}
+
 		frameserver_shmpage_resize( &(global.shared), w, h, 4, 0, 0 );
 		frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-		frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
-		memset(global.vidp, 0x000000ff, w * h * 4);
-		
-		global.shared.addr->storage.w = w;
-		global.shared.addr->display.w = w;
-		
-		global.shared.addr->storage.h = h;
-		global.shared.addr->display.h = h;
-		
-		global.shared.addr->storage.bpp = 4;
-		global.shared.addr->resized = true;
+		frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
 
-/* drop PBOs if we have a GL source */
+		memset(global.vidp, 0x000000ff, w * h * 4);
 	}
 
 	global.mainsrfc = res;
@@ -382,6 +418,38 @@ static inline void push_ioevent(arcan_ioevent event){
 	}
 }
 
+static void toggle_ntscfilter()
+{
+	if (global.ntscconv){
+		trace("toggle NTSC off.\n");
+
+/* these need to lock as we can't assume video rendering is coming 
+ * from the same threading context */
+		sem_wait(global.shared.vsem);
+		
+			free(global.ntsc_imb);
+			global.ntsc_imb = NULL;
+			global.ntscconv = false;
+			global.desfmt = PixelFormat_RGBA888;
+			frameserver_shmpage_resize( &(global.shared), global.width, global.height, 4, 0, 0 );
+		
+		sem_post(global.shared.vsem);
+	}
+	else {
+		trace("toggle NTSC on.\n");
+		sem_wait(global.shared.vsem);
+		
+		global.ntscconv = true;
+		global.desfmt = PixelFormat_RGB565;
+		frameserver_shmpage_resize( &(global.shared), 
+		SNES_NTSC_OUT_WIDTH(global.width), global.height * 2, 4, 0, 0 );
+		global.ntsc_imb = malloc(global.width * global.height * 2);
+		
+		sem_post(global.shared.vsem);
+	}
+	
+	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
+}
 void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 {
 	switch (kind)
@@ -394,6 +462,15 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 		case TARGET_COMMAND_VECTOR_POINTSIZE:
 			global.update_vector = true;
 			global.point_size = ev->ioevs[0].fv;
+		break;
+		
+		case TARGET_COMMAND_NTSCFILTER: 
+			if (ev->ioevs[0].iv){
+				if (!global.ntscconv) 
+					toggle_ntscfilter();
+			} 
+			else if (global.ntscconv) 
+				toggle_ntscfilter();
 		break;
 	}
 }
@@ -425,6 +502,19 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 	return evs;
 }
 
+static void push_ntsc()
+{
+	unsigned width = global.width;
+	unsigned height = global.height;
+	trace("push_ntsc()\n");
+	
+	size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
+/* only draw on every other line, so we can easily mix or blend interleaved */
+	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, width, 0, width, height, global.vidp, linew * 2);
+	for (int row = 1; row < height * 2; row += 2)
+		memcpy(&global.vidp[row * linew], &global.vidp[(row-1) * linew], linew);
+}
+
 static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 	return (b->BitsPerPixel == a->BitsPerPixel &&
 	a->Amask == b->Amask &&
@@ -435,23 +525,29 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 
 static void copysurface(SDL_Surface* src){
 	trace("CopySurface(noGL)\n");
+	char* destp = global.ntscconv ? (char*)global.ntsc_imb : (char*)global.vidp;
 	
 	if ( cmpfmt(src->format, &global.desfmt) ){
+		trace("don't convert surface, just copy\n"); 
 			SDL_LockSurface(src);
-			memcpy(global.vidp, 
+			memcpy(destp, 
 				   src->pixels, 
-				   src->w * src->h * 4);
+				   src->w * src->h * global.desfmt.BytesPerPixel);
 			SDL_UnlockSurface(src);
 	} else {
+		trace("convert surface\n");
 		SDL_Surface* surf = SDL_ConvertSurface(src, &global.desfmt, SDL_SWSURFACE);
 		SDL_LockSurface(surf);
-		memcpy(global.vidp,
+		memcpy(destp,
 			   surf->pixels, 
-			   surf->w * surf->h * 4);
+			   surf->w * surf->h * global.desfmt.BytesPerPixel);
 		SDL_UnlockSurface(surf);
 		SDL_FreeSurface(surf);
 	}
 
+	if (global.ntscconv)
+		push_ntsc();
+	
 	global.shared.addr->storage.glsource = false;
 	global.shared.addr->vready = true;
 }
@@ -525,7 +621,7 @@ void ARCAN_SDL_GL_SwapBuffers()
 	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
 	 * increase when using PBOs. The 2D-in-GL edgecase could probably get an additional boost
 	 * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
-	trace("CopySurface(GL:pre)");
+	trace("CopySurface(GL:pre)\n");
 	sem_wait(global.shared.vsem);
 	if (global.shared.addr->dms == false){
 		/* parent dead, quit gracefully */
@@ -534,11 +630,18 @@ void ARCAN_SDL_GL_SwapBuffers()
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-		glReadPixels(0, 0, global.shared.addr->storage.w, global.shared.addr->storage.h, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp); 
+		if (global.ntscconv) {
+			trace("glSwapBuffers(%d, %d) - ntsconv\n", global.width, global.height);
+			glReadPixels(0, 0, global.width, global.height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5_REV, global.ntsc_imb);
+			push_ntsc();
+		}
+		else
+			glReadPixels(0, 0, global.width, global.height, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
+		
 		global.shared.addr->storage.glsource = true;
 		global.shared.addr->vready = true;
-		trace("CopySurface(GL:post)");
 	}
+	trace("CopySurface(GL:post)");
 	
 /* can't be done in the target event handler as it might be in a different threading context */
 	if (global.update_vector){

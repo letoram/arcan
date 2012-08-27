@@ -176,7 +176,8 @@ set (
  frameserver/arcan_frameserver_libretro.h
  frameserver/arcan_frameserver_libretro.c
  frameserver/ntsc/snes_ntsc.h
- frameserver/ntsc/snes_ntsc.c arcan_frameserver_shmpage.h
+ frameserver/ntsc/snes_ntsc.c
+ arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
  arcan_general.c
  arcan_event.c
@@ -217,7 +218,8 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 #set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
 
 add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
-add_library( arcan_hijack SHARED arcan_target_osx.c arcan_frameserver_shmpage.c arcan_event.c)
+add_library( arcan_hijack SHARED arcan_target_osx.c arcan_frameserver_shmpage.c arcan_event.c frameserver/ntsc/snes_ntsc.c )
+ 
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )
@@ -254,7 +256,8 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
-	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c)
+	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c)
+ 
 	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
 	
 	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
@@ -280,7 +283,7 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 
 add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
-add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c)
+add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c)
 add_dependencies(arcan_hijack arcan_target_backend)
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
 
