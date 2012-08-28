@@ -23,6 +23,31 @@ end
 -- for some menu items we just want to have a list of useful values
 -- this little function builds a list of those numbers, with corresponding functions,
 -- dispatch handling etc.
+function gen_tbl_menu(name, tbl, triggerfun, isstring)
+	local reslbl = {};
+	local resptr = {};
+	
+	local basename = function(label, save)
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		settings[name] = isstring and label or tonumber(label);
+		if (save) then
+			play_audio(soundmap["MENU_FAVORITE"]);
+			store_key(name, tonumber(label));
+		else
+			play_audio(soundmap["MENU_SELECT"]);
+		end
+		
+		if (triggerfun) then triggerfun(); end
+	end
+
+	for key,val in ipairs(tbl) do
+		table.insert(reslbl, val);
+		resptr[val] = basename;
+	end
+	
+	return reslbl, resptr;
+end
+
 function gen_num_menu(name, base, step, count, triggerfun)
 	local reslbl = {};
 	local resptr = {};
@@ -49,8 +74,8 @@ function gen_num_menu(name, base, step, count, triggerfun)
 		resptr[tostring(clbl)] = basename;
 		
 		if (type(step) == "number") then clbl = clbl + step; end
-end
-	
+	end
+
 	return reslbl, resptr;
 end
 

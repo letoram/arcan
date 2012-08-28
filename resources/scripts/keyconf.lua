@@ -222,7 +222,7 @@ local function keyconf_inp_playersel(self, inputtable)
 				end
 
 				for i=1, self.axescount do
-					table.insert(self.player_group, "aAXIS_" .. tostring(i));
+					table.insert(self.player_group, "aAXIS" .. tostring(i));
 				end
 				
 				if (self.playercount > 0 and (self.buttoncount > 0 or self.axescount > 0)) then
@@ -531,6 +531,42 @@ local function keyconf_running(self)
 	end
 end
 
+local function keyconf_countplayers(self)
+	local count = 0;
+	
+	for i=1,9 do
+		if (self.table[ "PLAYER" .. i .. "_UP"]) then
+			count = count + 1;
+		end
+	end
+	
+	return count;
+end
+
+local function keyconf_countaxes(self, playerind)
+	local count = 0;
+	local ind = 1;
+	
+	while self.table["PLAYER" .. playerind .. "_AXIS" .. ind] do
+		count = count + 1;
+		ind = ind + 1;
+	end
+	
+	return count;
+end
+
+local function keyconf_countbuttons(self, playerind)
+	local count = 0;
+	local ind = 1;
+	
+	while self.table["PLAYER" .. playerind .. "_BUTTON" .. ind] do
+		count = count + 1;
+		ind = ind + 1;
+	end
+	
+	return count;
+end
+
 -- set the current working table.
 -- for each stored entry, set prefix if defined 
 function keyconf_create(menugroup, playergroup, keyname)
@@ -549,6 +585,9 @@ function keyconf_create(menugroup, playergroup, keyname)
 		destroy = keyconf_destroy,
 		set = keyconf_set,
 		labels = keyconf_labels,
+		n_players = keyconf_countplayers,
+		n_buttons = keyconf_couuntbuttons,
+		n_axes = keyconf_countaxes,
 		ignore_modifiers = false,
 		in_playerconf = false,
 		keyfile = keyname,
