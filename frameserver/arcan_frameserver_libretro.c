@@ -80,6 +80,7 @@ static struct {
 		uint16_t* ntsc_imb;
 		bool ntscconv;
 		snes_ntsc_t ntscctx;
+		unsigned retro_lastw, retro_lasth;
 		snes_ntsc_setup_t ntsc_opts;
 		
 /* input-output */
@@ -187,6 +188,7 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
 	if (!data || retroctx.skipframe) return;
+	retroctx.retro_lasth = height; retroctx.retro_lastw = width;
 	unsigned outh = retroctx.ntscconv ? height * 2 : height;
 	unsigned outw = retroctx.ntscconv ? SNES_NTSC_OUT_WIDTH( width ) : width;
 	
@@ -346,14 +348,14 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 }
 
-static void toggle_ntscfilter()
+static void toggle_ntscfilter(int toggle)
 {
-	if (retroctx.ntscconv){
+	if (retroctx.ntscconv && toggle == 0){
 		free(retroctx.ntsc_imb);
 		retroctx.ntsc_imb = NULL;
 		retroctx.ntscconv = false;
 	}
-	else {
+	else if (!retroctx.ntscconv && toggle == 1) {
 /* malloc etc. happens in resize */
 		retroctx.ntscconv = true;
 	}
@@ -361,6 +363,7 @@ static void toggle_ntscfilter()
 
 static inline void targetev(arcan_event* ev)
 {
+	arcan_tgtevent* tgt = &ev->data.target;
 	switch (ev->kind){
 		case TARGET_COMMAND_RESET: retroctx.reset(); break;
 
@@ -372,19 +375,27 @@ static inline void targetev(arcan_event* ev)
 			LOG("arcan_frameserver(libretro) - descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 		
-		case TARGET_COMMAND_NTSCFILTER: 
-			if (ev->data.target.ioevs[0].iv){
-				if (!retroctx.ntscconv) toggle_ntscfilter();
-			} 
-			else if (retroctx.ntscconv) toggle_ntscfilter();
+		case TARGET_COMMAND_NTSCFILTER:
+			toggle_ntscfilter(tgt->ioevs[0].iv);
 		break;
 		
+/* ioev[0].iv = group, 1.fv, 2.fv, 3.fv */
+		case TARGET_COMMAND_NTSCFILTER_ARGS:
+			snes_ntsc_update_setup(&retroctx.ntscctx, &retroctx.ntsc_opts, 
+				tgt->ioevs[0].iv, tgt->ioevs[1].fv, tgt->ioevs[2].fv, tgt->ioevs[3].fv);
+	
+		break;	
+		
 /* 0 : auto, -1 : disable, > 0 render every n frames. */
-		case TARGET_COMMAND_FRAMESKIP: retroctx.skipmode = ev->data.target.ioevs[0].iv; break;
+		case TARGET_COMMAND_FRAMESKIP: 
+			retroctx.skipmode = tgt->ioevs[0].iv; 
+		break;
 		
 /* any event not being UNPAUSE is ignored, no frames are processed
  * and the core is allowed to sleep in between polls */
-		case TARGET_COMMAND_PAUSE: retroctx.pause = true; break;
+		case TARGET_COMMAND_PAUSE: 
+			retroctx.pause = true; 
+		break;
 
 		case TARGET_COMMAND_UNPAUSE: 
 			retroctx.pause = false; 
@@ -392,14 +403,14 @@ static inline void targetev(arcan_event* ev)
 			retroctx.framecount = 0;
 		break;
 		
-/* for iodev, intval[0] = portnumber, intval[1] matches IDEVKIND from event.h */
 		case TARGET_COMMAND_SETIODEV: 
-			retroctx.set_ioport(ev->data.target.ioevs[0].iv, ev->data.target.ioevs[1].iv);
+			retroctx.set_ioport(tgt->ioevs[0].iv, tgt->ioevs[1].iv);
 		break;
 		
 		case TARGET_COMMAND_STEPFRAME:
-			if (ev->data.target.ioevs[0].iv < 0); /* FIXME: rewind not implemented */
-				else while(ev->data.target.ioevs[0].iv--){ retroctx.run(); }
+			if (tgt->ioevs[0].iv < 0); /* FIXME: rewind not implemented */
+				else 
+					while(tgt->ioevs[0].iv--){ retroctx.run(); }
 		break;
 	
 /* store / rewind operate on the last FD set through FDtransfer */
@@ -453,7 +464,9 @@ static inline void flush_eventq(){
 				case EVENT_TARGET: targetev(ev); break;
 			}
 		}
-		while (retroctx.pause && (frameserver_delay(1), 1));
+		while (retroctx.shmcont.addr->dms && 
+/* only pause if the DMS isn't released */
+			retroctx.pause && (frameserver_delay(1), 1));
 }
 
 /* return true if we're in synch (may sleep),
@@ -566,7 +579,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
 		
 		retroctx.ntscconv  = false;
-		retroctx.ntsc_opts = snes_ntsc_composite;
+		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 		
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
@@ -592,6 +605,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* basetime is used as epoch for all other timing calculations */
 		retroctx.basetime = frameserver_timemillis();
+
+/* since we might have requests to save state before we die, we use the flush_eventq as an atexit */
+		atexit(flush_eventq);
 
 		while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, take care of it

@@ -127,6 +127,36 @@ void snes_ntsc_init( snes_ntsc_t* ntsc, snes_ntsc_setup_t const* setup )
 	}
 }
 
+void snes_ntsc_update_setup( snes_ntsc_t* ntsc, snes_ntsc_setup_t* dst, int group, float v1, float v2, float v3)
+{
+	switch( group ){
+		case 1:
+			dst->hue = v1;
+			dst->saturation = v2;
+			dst->contrast = v3;
+		break;
+		
+		case 2:
+			dst->brightness = v1;
+			dst->gamma = v2;
+			dst->sharpness = v3;
+		break;
+		
+		case 3:
+			dst->resolution = v1;
+			dst->artifacts = v2;
+			dst->bleed = v3;
+		break;
+		
+		case 4:
+			dst->fringing = v1;
+/* v2, v3 unused */
+			snes_ntsc_init(ntsc, dst);
+		break;
+	}
+	
+}
+
 #ifndef SNES_NTSC_NO_BLITTERS
 
 void snes_ntsc_blit( snes_ntsc_t const* ntsc, SNES_NTSC_IN_T const* input, long in_row_width,

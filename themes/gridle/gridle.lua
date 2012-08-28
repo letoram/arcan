@@ -90,19 +90,22 @@ settings = {
 	
 	default_launchmode = "Internal",
 
-	crt_gamma = 0.2,
-	crt_hoverscan = 1.0,
-	crt_voverscan = 1.0,
-	crt_hcurv = 1.0,
-	crt_vcurv = 1.0,
-	crt_curvrad = 2.0,
+	crt_gamma = 2.4,
+	crt_mongamma = 2.2,
+	crt_hoverscan = 1.02,
+	crt_voverscan = 1.02,
+	crt_haspect = 1.0,
+	crt_vaspect = 0.75,
+	crt_curvrad = 1.5, 
 	crt_distance = 2.0,
 	crt_tilth = 0.0,
 	crt_tiltv = -0.15, 
-	crt_cornersz = 0.001, 
-	crt_nocurv = false,
-	crt_gaussian = false,
-	crt_oversample = false,
+	crt_cornersz = 0.03,
+	crt_cornersmooth = 1000,
+	crt_curvature = true,
+	crt_gaussian = true,
+	crt_oversample = true,
+	crt_linearproc = false,
 	
 	vector_linew = 1,
 	vector_pointsz = 2,
@@ -116,8 +119,18 @@ settings = {
 	vector_trailfall = 1,
 	vector_glowtrails = 0,
 
-	upscale_nofilter = false,
-	upscale_method   = "5xBR",
+	ntsc_hue        = 0.0,
+	ntsc_saturation = 0.0,
+	ntsc_contrast   = 0.0,
+	ntsc_brightness = 0.0,
+	ntsc_gamma      = 0.2,
+	ntsc_sharpness  = 0.0,
+	ntsc_resolution = 0.7,
+	ntsc_artifacts  =-1.0,
+	ntsc_bleed      =-1.0,
+	ntsc_fringing   =-1.0,
+	
+	imagefilter = "Bilinear",
 	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
@@ -174,6 +187,7 @@ end
 
 function gridle_launchinternal()
 	play_audio(soundmap["LAUNCH_INTERNAL"]);
+	print("launch: " .. current_game().setname);
 	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -498,12 +512,12 @@ function gridle_load_internal_extras()
 			image_tracetag(imagery.bezel, "bezel");
 		end
 		
-		if (restbl.overlays and restbl.overlays[1]) then 
+		if (restbl.overlays and restbl.overlays[1]) then
 			imagery.overlay = load_image_asynch(restbl.overlays[1]); 
 			image_mask_clear(imagery.overlay, MASK_LIVING);
 			image_tracetag(imagery.overlay, "overlay");
 		end 
-		if (restbl.backdrops and restbl.backdrops[1]) then 
+		if (restbl.backdrops and restbl.backdrops[1]) then
 			imagery.backdrop = load_image_asynch(restbl.backdrops[1]);
 			image_mask_clear(imagery.backdrop, MASK_LIVING);
 			image_tracetag(imagery.backdrop, "backdrop");
@@ -513,7 +527,8 @@ end
 
 function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
-
+	gridle_load_internal_extras();
+	
 	if (settings.autosave == "On") then
 		internal_statectl("auto", false);
 	end
@@ -1167,18 +1182,48 @@ function load_settings()
 	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
 	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
 	load_key_str("autosave", "autosave", settings.autosave);
-	load_key_num("vector_linew", "vector_linew", settings.vector_linew);
-	load_key_num("vector_pointsz", "vector_pointsz", settings.vector_pointsz);
+
+	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
+	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
 	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
 	load_key_num("vector_vblurscale", "vector_vblurscale", settings.vector_vblurscale);
-	load_key_num("vector_hblurofs", "vector_hblurofs", settings.vector_hblurofs);
-	load_key_num("vector_vblurofs", "vector_vblurofs", settings.vector_vblurofs);
-	load_key_num("vector_vbias", "vector_vbias", settings.vector_vbias);
-	load_key_num("vector_hbias", "vector_hbias", settings.vector_hbias);
+	load_key_num("vector_hblurofs",   "vector_hblurofs",   settings.vector_hblurofs);
+	load_key_num("vector_vblurofs",   "vector_vblurofs",   settings.vector_vblurofs);
+	load_key_num("vector_vbias",      "vector_vbias",      settings.vector_vbias);
+	load_key_num("vector_hbias",      "vector_hbias",      settings.vector_hbias);
 	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
-	load_key_num("vector_trailstep", "vector_trailstep", settings.vector_trailstep);
-	load_key_num("vector_trailfall", "vector_trailfall", settings.vector_trailfall);
+	load_key_num("vector_trailstep",  "vector_trailstep",  settings.vector_trailstep);
+	load_key_num("vector_trailfall",  "vector_trailfall",  settings.vector_trailfall);
 
+	load_key_num("ntsc_hue",        "ntsc_hue",        settings.ntsc_hue); 
+	load_key_num("ntsc_saturation", "ntsc_saturation", settings.ntsc_saturation);
+	load_key_num("ntsc_contrast",   "ntsc_contrast",   settings.ntsc_contrast);
+	load_key_num("ntsc_brightness", "ntsc_brightness", settings.ntsc_brightness); 
+	load_key_num("ntsc_gamma",      "ntsc_gamma",      settings.ntsc_brightness);
+	load_key_num("ntsc_sharpness",  "ntsc_sharpness",  settings.ntsc_sharpness); 
+	load_key_num("ntsc_resolution", "ntsc_resolution", settings.ntsc_resolution); 
+	load_key_num("ntsc_artifacts",  "ntsc_artifacts",  settings.ntsc_artifacts);
+	load_key_num("ntsc_bleed",      "ntsc_bleed",      settings.ntsc_bleed);
+	load_key_num("ntsc_fringing",   "ntsc_fringing",   settings.ntsc_fringing); 
+
+	load_key_num("crt_gamma",       "crt_gamma",       settings.crt_gamma);
+	load_key_num("crt_mongamma",    "crt_mongamma",    settings.crt_mongamma);
+	load_key_num("crt_hoverscan",   "crt_hoverscan",   settings.crt_hoverscan);
+	load_key_num("crt_voverscan",   "crt_voverscan",   settings.crt_voverscan);
+	load_key_num("crt_haspect",     "crt_haspect",     settings.crt_haspect);
+	load_key_num("crt_vaspect",     "crt_vaspect",     settings.crt_vaspect);
+	load_key_num("crt_curvrad",     "crt_curvrad",     settings.crt_curvrad); 
+	load_key_num("crt_distance",    "crt_distance",    settings.crt_distance);
+	load_key_num("crt_tilth",       "crt_tilth",       settings.crt_tilth); 
+	load_key_num("crt_tiltv",       "crt_tiltv",       settings.crt_tiltv); 
+	load_key_num("crt_cornersz",    "crt_cornersz",    settings.crt_cornersz); 
+	load_key_num("crt_cornersmooth","crt_cornersmooth",settings.crt_cornersmooth); 
+
+	load_key_bool("crt_curvature",   "crt_curvature",   settings.curvature); 
+	load_key_bool("crt_gaussian",    "crt_gaussian",    settings.gaussian); 
+	load_key_bool("crt_oversample",  "crt_oversample",  settings.oversample); 
+	load_key_bool("crt_linearproc",  "crt_linearproc",  settings.linearproc); 
+	
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");
 	if (internalinp ~= nil) then
@@ -1303,7 +1348,7 @@ function gridle_internalcleanup()
 			expire_image(imagery.cocktail_vid, settings.transitiondelay);
 			resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
 			blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
-			move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay)	
+			move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
 			imagery.cocktail_vid = BADID;
 		end
 

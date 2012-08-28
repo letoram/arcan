@@ -2613,7 +2613,6 @@ int arcan_lua_targetpostfilter(lua_State* ctx)
 			.kind        = TARGET_COMMAND_NTSCFILTER
 		};
 	
-		printf("send: %d\n", filtertype);
 		ev.data.target.ioevs[0].iv = filtertype == POSTFILTER_NTSC;
 		
 		tgtevent(tgt, ev);
@@ -2622,7 +2621,30 @@ int arcan_lua_targetpostfilter(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetrewind(lua_State* ctx)
+int arcan_lua_targetpostfilterargs(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	int group = luaL_checknumber(ctx, 2);
+	float v1  = luaL_optnumber(ctx, 3, 0.0);
+	float v2  = luaL_optnumber(ctx, 3, 0.0);
+	float v3  = luaL_optnumber(ctx, 3, 0.0);
+		
+	arcan_event ev = {
+		.category    = EVENT_TARGET,
+		.kind        = TARGET_COMMAND_NTSCFILTER_ARGS
+	};
+	
+	ev.data.target.ioevs[0].iv = group;
+	ev.data.target.ioevs[1].fv = v1;
+	ev.data.target.ioevs[2].fv = v2;
+	ev.data.target.ioevs[3].fv = v3;
+		
+	tgtevent(tgt, ev);
+	
+	return 0;
+}
+
+int arcan_lua_targetstepframe(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int nframes = luaL_checknumber(ctx, 2);
@@ -3175,7 +3197,10 @@ int arcan_lua_settexfilter(lua_State* ctx)
 {
 	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 1);
 
-	if (mode == ARCAN_VFILTER_BILINEAR || mode == ARCAN_VFILTER_LINEAR || mode == ARCAN_VFILTER_NONE){
+	if (mode == ARCAN_VFILTER_TRILINEAR || 
+			mode == ARCAN_VFILTER_BILINEAR || 
+		  mode == ARCAN_VFILTER_LINEAR ||
+		  mode == ARCAN_VFILTER_NONE){
 		arcan_video_default_texfilter(mode);	
 	}
 	
@@ -3187,7 +3212,10 @@ int arcan_lua_changetexfilter(lua_State* ctx)
 	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 2);
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	
-	if (mode == ARCAN_VFILTER_BILINEAR || mode == ARCAN_VFILTER_LINEAR || mode == ARCAN_VFILTER_NONE){
+	if (mode == ARCAN_VFILTER_TRILINEAR || 
+			mode == ARCAN_VFILTER_BILINEAR ||
+		  mode == ARCAN_VFILTER_LINEAR || 
+		  mode == ARCAN_VFILTER_NONE){
 		arcan_video_objectfilter(vid, mode);
 	}
 	
@@ -3331,7 +3359,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "target_pointsize", arcan_lua_targetpointsize);
 	arcan_lua_register(ctx, "target_linewidth", arcan_lua_targetlinewidth);
 	arcan_lua_register(ctx, "target_postfilter", arcan_lua_targetpostfilter);
-	arcan_lua_register(ctx, "rewind_target", arcan_lua_targetrewind);
+	arcan_lua_register(ctx, "target_postfilter_args", arcan_lua_targetpostfilterargs);
+	arcan_lua_register(ctx, "stepframe_target", arcan_lua_targetstepframe);
 	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);
 	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
 	arcan_lua_register(ctx, "reset_target", arcan_lua_targetreset);
@@ -3476,6 +3505,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "FILTER_NONE", ARCAN_VFILTER_NONE);
 	arcan_lua_setglobalint(ctx, "FILTER_LINEAR", ARCAN_VFILTER_LINEAR);
 	arcan_lua_setglobalint(ctx, "FILTER_BILINEAR", ARCAN_VFILTER_BILINEAR);
+	arcan_lua_setglobalint(ctx, "FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR);
 	arcan_lua_setglobalint(ctx, "SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2);
 	arcan_lua_setglobalint(ctx, "SCALE_TXCOORD", ARCAN_VIMAGE_TXCOORD);
 	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);

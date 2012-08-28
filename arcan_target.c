@@ -286,7 +286,7 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	global.format = obtained->format;
 	global.attenuation = 1.0;
 	
-	global.ntsc_opts = snes_ntsc_composite;
+	global.ntsc_opts = snes_ntsc_rgb;
 	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
 	
 	return rc;
@@ -472,6 +472,11 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 			else if (global.ntscconv) 
 				toggle_ntscfilter();
 		break;
+		
+		case TARGET_COMMAND_NTSCFILTER_ARGS:
+			snes_ntsc_update_setup(&global.ntscctx, &global.ntsc_opts, 
+				ev->ioevs[0].iv, ev->ioevs[1].fv, ev->ioevs[2].fv, ev->ioevs[3].fv);
+		break;	
 	}
 }
 

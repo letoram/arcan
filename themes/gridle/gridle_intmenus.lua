@@ -322,19 +322,22 @@ end
 local function merge_compositebuffer(sourcevid, blurvid, targetw, targeth, blurw, burh)
 	local rtgts = {};
 
-	order_image(blurvid, 2);
+	if (valid_vid(blurvid)) then
+		order_image(blurvid, 2);
+		force_image_blend(blurvid, BLEND_ADD);
+		table.insert(rtgts, blurvid);
+	end
+	
 	order_image(sourcevid, 3);
-	force_image_blend(blurvid, BLEND_ADD);
 	force_image_blend(sourcevid, BLEND_ADD);
 	
-	table.insert(rtgts, blurvid);
 	table.insert(rtgts, sourcevid);
 		
 	if (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) then
 		local backdrop = instance_image(imagery.backdrop);
 		image_mask_clear(backdrop, MASK_OPACITY);
 		order_image(backdrop, 1);
-		show_image(backdrop);
+		blend_image(backdrop, 0.95);
 		resize_image(backdrop, targetw, targeth);
 		table.insert(rtgts, backdrop);
 		force_image_blend(sourcevid, BLEND_ADD);
@@ -486,15 +489,12 @@ function undo_vectormode()
 		image_framesetsize(internal_vid, 0);
 		image_framecyclemode(internal_vid, 0);
 		image_texfilter(internal_vid, FILTER_BILINEAR);
+		
 -- lots of things happening beneath the surface here, killing the vector vid will cascade and drop all detached images
 -- that are part of the render target, EXCEPT for the initial internal vid that has its MASKED_LIVING disabled
 -- this means that it gets reattached to the main pipe instead of deleted
 		delete_image(imagery.vector_vid);
 		imagery.vector_vid = BADID;
-	end
-	
-	if (valid_vid(imagery.upscale_vid)) then
-		delete_image(imagery.upscale_vid)
 	end
 	
 end
@@ -516,42 +516,68 @@ local function toggle_vectormode()
 -- CRT toggle is done through the fullscreen_shader member
 end
 
-local function toggle_crtmode(vid, props)
-	local shader = gridlemenu_loadshader("crt", vid, props);
+local function toggle_crtmode(vid, props, windw, windh)
+	local shaderopts = {};
+-- CURVATURE, OVERSAMPLE, LINEAR_PROCESSING, USEGAUSSIAN
+	if (settings.crt_curvature) then shaderopts["CURVATURE"] = true; end
+	if (settings.crt_gaussian)  then shaderopts["USEGAUSSIAN"] = true; end
+	if (settings.crt_linearproc) then shaderopts["LINEAR_PROCESSING"] = true; end
+	if (settings.crt_oversample) then shaderopts["OVERSAMPLE"] = true; end
+	
+	local shader = load_shader("display/crt.vShader", "display/crt.fShader", "crt", shaderopts); 
 	local sprops = image_storage_properties(internal_vid);
+	settings.fullscreen_shader = shader;
 
-	fullscreen_shader = shader;
-
-	shader_uniform(shader, "rubyInputSize", "ff", PERSIST, sprops.width, sprops.height); -- need to reflect actual texel size
-	shader_uniform(shader, "rubyTextureSize", "ff", PERSIST, props.width, props.height); -- since target is allowed to resize at more or less anytime, we need to update this
+	shader_uniform(shader, "rubyInputSize", "ff", PERSIST, sprops.width, sprops.height);
+	shader_uniform(shader, "rubyOutputSize", "ff", PERSIST, windw, windh); 
+	shader_uniform(shader, "rubyTextureSize", "ff", PERSIST, props.width, props.height);
 	shader_uniform(shader, "rubyTexture", "i", PERSIST, 0);
+	shader_uniform(shader, "CRTgamma", "f", PERSIST, settings.crt_gamma);
+	shader_uniform(shader, "overscan", "ff", PERSIST, settings.crt_hoverscan, settings.crt_voverscan);
+	shader_uniform(shader, "monitorgamma", "f", PERSIST, settings.crt_mongamma);
+	shader_uniform(shader, "aspect", "ff", PERSIST, settings.crt_haspect, settings.crt_vaspect);
+	shader_uniform(shader, "distance", "f", PERSIST, settings.crt_distance);
+	shader_uniform(shader, "curv_radius", "f", PERSIST, settings.crt_curvrad);
+	shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv);
+	shader_uniform(shader, "cornersize", "f", PERSIST, settings.crt_cornersz);
+	shader_uniform(shader, "cornersmooth", "f", PERSIST, settings.crt_cornersmooth);
+
+	image_shader(vid, shader);
+end
+
+local filterlut = {None = FILTER_NONE, 
+		Linear   = FILTER_LINEAR,
+		Bilinear = FILTER_BILINEAR};
+
+local function update_filter(vid, filtermode)
+	local modeval = filterlut[filtermode];
+	if (modeval) then
+		image_texfilter(vid, modeval);
+	end
+end
+
+local function push_ntsc()
+	target_postfilter_args(internal_vid, 1, settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
+	target_postfilter_args(internal_vid, 2, settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
+	target_postfilter_args(internal_vid, 3, settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
+	target_postfilter_args(internal_vid, 4, settings.ntsc_fringing);
+
+	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
+
+-- for the argument changes to be reflected, we need the video rolling
+	resume_target(internal_vid);
 end
 
 function gridlemenu_rebuilddisplay()
 	undo_vectormode();
+	update_filter(internal_vid, settings.imagefilter);
 	
 	local props  = image_surface_initial_properties(internal_vid);
 	local dstvid = internal_vid;
-	print("rebuild:", props.width, props.height);
 	
--- clone internal_vid to FBO and set upscaler as shader
-	if (settings.internal_toggles.upscale) then
-		imagery.upscale_vid = fill_surface(VRESW, VRESH, 0, 0, 0, props.width * 2, props.height * 2);
-		dstvid = imagery.upscale_vid;
+-- need to do this twice in order to cover all the basis (upscaler, ...)
+	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
 
--- this should take actual difference in resolution into account and chose the proper upscaler 
-		local shader = load_shader("display/2xBR.vShader", "display/2xBR.fShader", "upscaler", {});
-		shader_uniform(shader, "output_dimensions", "ff", PERSIST, props.width * 2, props.height * 2);
-		image_shader(internal_vid, shader);
-		move_image(internal_vid, 0, 0);
-		resize_image(internal_vid, props.width * 2, props.height * 2);
-		show_image(internal_vid);
-		image_mask_clear(internal_vid, MASK_LIVING);
-		image_texfilter(internal_vid, FILTER_NONE);
-		define_rendertarget(dstvid, {internal_vid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-		show_image(dstvid);
-	end
-	
 -- enable all display options
 	if (settings.internal_toggles.vector) then
 		target_pointsize(dstvid, settings.vector_pointsz);
@@ -559,25 +585,45 @@ function gridlemenu_rebuilddisplay()
 
 		toggle_vectormode();
 		dstvid = imagery.vector_vid;
+	
+	elseif ( (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) or (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) ) then
+		image_mask_clear(internal_vid, MASK_LIVING);
 		
-		if (settings.internal_toggles.crt) then
-			toggle_crtmode(imagery.vector_vid, props); 
-		end
-
-	elseif (settings.internal_toggles.crt) then
+		dstvid = fill_surface(windw, windh, 1, 1, 1, windw, windh);
+		imagery.vector_vid = dstvid;
+		order_image(imagery.vector_vid, 1);
 		
-		toggle_crtmode(dstvid, props);
-
+		image_tracetag(dstvid, "overlay_backdrop");
+	
+		local cbuf = merge_compositebuffer(internal_vid, BADID, windw, windh, 0, 0);
+		define_rendertarget(dstvid, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		
+		blend_image(dstvid, 1);
 	else
+
 		fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader);
 	end
-
+	
 -- redo so that instancing etc. match
-	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
-	shader_uniform(fullscreen_shader, "rubyOutputSize", "ff", PERSIST, windw, windh);
 	order_image(dstvid, max_current_image_order() + 1);
 	show_image(dstvid);
+	
+-- redo resize so it covers possible FBO rendertargets
+	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props)
+	update_filter(dstvid, settings.imagefilter);
+	
+-- crt is always last
+	if (settings.internal_toggles.crt) then
 
+-- special case with cocktail modes
+		toggle_crtmode(dstvid, props, windw, windh);
+		if ( valid_vid(imagery.cocktail_vid) ) then
+			image_shader(imagery.cocktail_vid, settings.fullscreen_shader);
+		end
+
+	end
+
+-- all the above changes may have reordered the menu 
 	gridlemenu_tofront(current_menu);
 end
 
@@ -918,19 +964,21 @@ displaymodeptrs["Custom Shaders..."] = function()
 	settings.context_menu = "custom shaders";
 	menu_spawnmenu( listl, listp, def ); 
 end
-	
+
+
 -- Don't implement save / favorite for these ones,
 -- want fail-safe as default, and the others mess too much with GPU for that
 displaymodelist = {"Custom Shaders..."};
 
 local function add_displaymodeptr(list, ptrs, key, label, togglecb)
-	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Upscale = false, NTSC = true, Vector = true};
+	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, NTSC = true, Vector = true};
 	
 	table.insert(list, label);
 	
 	ptrs[label] = function(label, save)
 	settings.internal_toggles[key] = not settings.internal_toggles[key];
 
+	print(label, settings.internal_toggles[key]);
 	current_menu.formats[label] = nil; 
 	local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,"	
 
@@ -940,6 +988,8 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	
 	if (settings.internal_toggles[key]) then
 		current_menu.formats[label] = (ctxmenus[label] and iconlbl or "") .. settings.colourtable.notice_fontstr;
+	else
+		current_menu.formats[label] = (ctxmenus[label] and iconlbl or "") .. settings.colourtable.data_fontstr;
 	end
 	
 	togglecb();
@@ -949,45 +999,92 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 end
 
 add_displaymodeptr(displaymodelist, displaymodeptrs, "vector", "Vector", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "upscale", "Upscale", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay", "Overlay", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop", "Backdrop", gridlemenu_rebuilddisplay);
-
-table.insert(displaymodelist, "NTSC");
-displaymodeptrs["NTSC"] = function()
-	settings.internal_toggles.ntsc = not settings.internal_toggles.ntsc;
-	print("sending postfilter command");
-	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
-	
-	settings.iodispatch["MENU_ESCAPE"]();
-	settings.iodispatch["MENU_ESCAPE"]();	
-end
-
+add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc", "NTSC", push_ntsc);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "crt", "CRT", gridlemenu_rebuilddisplay);
 	
-vectormenulbls = {};
-vectormenuptrs = {};
-crtmenulbls    = {};
-crtmenuptrs    = {};
-ntscmenulbls   = {};
-ntscmenuptrs   = {};
+local vectormenulbls = {};
+local vectormenuptrs = {};
+local crtmenulbls    = {};
+local crtmenuptrs    = {};
+local ntscmenulbls   = {};
+local ntscmenuptrs   = {};
+local filtermenulbls = {};
+local filtermenuptrs = {};
 
 local function updatetrigger()
 	gridlemenu_rebuilddisplay();
 end
 
-add_submenu(vectormenulbls, vectormenuptrs, "Line Width...", "vector_linew", gen_num_menu("vector_linew", 1, 0.5, 6, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Point Size...", "vector_pointsz", gen_num_menu("vector_pointsz", 1, 0.5, 6, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (X)...", "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1, 9, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Blur Scale (Y)...", "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1, 9, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Vertical Offset...", "vector_vblurofs", gen_num_menu("vector_vblurofs", -6, 1, 13, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Offset...", "vector_hblurofs", gen_num_menu("vector_hblurofs", -6, 1, 13, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Vertical Bias...", "vector_vbias", gen_num_menu("vector_vbias", 0.6, 0.1, 13, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Horizontal Bias...", "vector_hbias", gen_num_menu("vector_hbias", 0.6, 0.1, 13, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Glow Trails...", "vector_glowtrails", gen_num_menu("vector_glowtrails", 0, 1, 8, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Trail Step...", "vector_trailstep", gen_num_menu("vector_trailstep", -1, -1, 12, updatetrigger));
-add_submenu(vectormenulbls, vectormenuptrs, "Trail Falloff...", "vector_trailfall", gen_num_menu("vector_trailfall", 0, 1, 9, updatetrigger));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Hue...",        "ntsc_hue",        gen_tbl_menu("ntsc_hue",        {-0.1, -0.05, 0, 0.05, 0.1}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Saturation...", "ntsc_saturation", gen_tbl_menu("ntsc_saturation", {-1, -0.5, 0, 0.5, 1}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Contrast...",   "ntsc_contrast",   gen_tbl_menu("ntsc_contrast",   {-0.5, 0, 0.5}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Brightness...", "ntsc_brightness", gen_tbl_menu("ntsc_brightness", {-0.5, -0.25, 0, 0.25, 0.5}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Gamma...",      "ntsc_gamma",      gen_tbl_menu("ntsc_gamma",      {-0.5, -0.2, 0, 0.2, 0.5}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Sharpness...",  "ntsc_sharpness",  gen_tbl_menu("ntsc_sharpness",  {-1, 0, 1}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Resolution...", "ntsc_resolution", gen_tbl_menu("ntsc_resolution", {0, 0.2, 0.5, 0.7}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Artifacts...",  "ntsc_artifacts",  gen_tbl_menu("ntsc_artifacts",  {-1, -0.5, -0.2, 0}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Bleed...",      "ntsc_bleed",      gen_tbl_menu("ntsc_bleed",      {-1, -0.5, -0.2, 0}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Fringing...",   "ntsc_fringing",   gen_tbl_menu("ntsc_fringing",   {-1, 0, 1}, push_ntsc))
 
+add_submenu(displaymodelist, displaymodeptrs, "Filtering...",         "imagefilter",       gen_tbl_menu("imagefilter", {"None", "Linear", "Bilinear"}, updatetrigger, true));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Line Width...",        "vector_linew",      gen_num_menu("vector_linew",        1, 0.5,  6, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Point Size...",        "vector_pointsz",    gen_num_menu("vector_pointsz",      1, 0.5,  6, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Blur Scale (X)...",    "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1,  9, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Blur Scale (Y)...",    "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1,  9, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Vertical Offset...",   "vector_vblurofs",   gen_num_menu("vector_vblurofs",    -6,   1, 13, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Horizontal Offset...", "vector_hblurofs",   gen_num_menu("vector_hblurofs",    -6,   1, 13, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Vertical Bias...",     "vector_vbias",      gen_num_menu("vector_vbias",      0.6, 0.1, 13, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Horizontal Bias...",   "vector_hbias",      gen_num_menu("vector_hbias",      0.6, 0.1, 13, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Glow Trails...",       "vector_glowtrails", gen_num_menu("vector_glowtrails",   0,   1,  8, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Trail Step...",        "vector_trailstep",  gen_num_menu("vector_trailstep",   -1,  -1, 12, updatetrigger));
+add_submenu(vectormenulbls,  vectormenuptrs,  "Trail Falloff...",     "vector_trailfall",  gen_num_menu("vector_trailfall",    0,   1,  9, updatetrigger));
+
+add_submenu(crtmenulbls, crtmenuptrs, "CRT Gamma",             "crt_gamma",       gen_num_menu("crt_gamma",       1.8, 0.2 , 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Monitor Gamma",         "crt_mongamma",    gen_num_menu("crt_mongamma",    1.8, 0.2 , 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Curvature Radius",      "crt_curvrad",     gen_num_menu("crt_curvrad",     1.4, 0.1 , 8, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Distance",              "crt_distance",    gen_num_menu("crt_distance",    1.0, 0.2 , 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Overscan (Horizontal)", "crt_hoverscan",   gen_num_menu("crt_hoverscan",   1.0, 0.02, 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Overscan (Vertical)",   "crt_voverscan",   gen_num_menu("crt_voverscan",   1.0, 0.02, 5, updatetrigger));
+
+add_submenu(crtmenulbls, crtmenuptrs, "Aspect (Horizontal)",   "crt_haspect",     gen_tbl_menu("crt_haspect",     {0.75, 1.0, 1.25}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Aspect (Vertical)",     "crt_vaspect",     gen_tbl_menu("crt_vaspect",     {0.75, 1.0, 1.25}, updatetrigger)); 
+add_submenu(crtmenulbls, crtmenuptrs, "Corner Size",           "crt_cornersz",    gen_tbl_menu("crt_cornersz",    {0.001, 0.01, 0.03, 0.05, 0.07, .1}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Corner Smooth",         "crt_cornersmooth",gen_tbl_menu("crt_cornersmooth",{80.0, 1000.0, 1500.0}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)",     "crt_tilth",       gen_tbl_menu("crt_tilth",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
+
+local function flip_crttog(label, save)
+	local dstkey;
+	
+	if (label == "Curvature")         then dstkey = "crt_curvature";  end
+	if (label == "Gaussian Profile")  then dstkey = "crt_gaussian";   end
+	if (label == "Oversample")        then dstkey = "crt_oversample"; end
+	if (label == "Linear Processing") then dstkey = "crt_linearproc"; end
+	
+	settings[dstkey] = not settings[dstkey];
+	
+	if (save) then
+		store_key(dstkey, settings[dstkey] and 1 or 0);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+
+	current_menu.formats[label] = settings[dstkey] and settings.colourtable.notice_fontstr or nil;
+	current_menu:move_cursor(0,0,true);
+	
+	gridlemenu_rebuilddisplay();
+end
+
+table.insert(crtmenulbls, "Curvature"); table.insert(crtmenulbls, "Gaussian Profile"); table.insert(crtmenulbls, "Oversample"); table.insert(crtmenulbls, "Linear Processing");
+crtmenuptrs["Curvature"] = flip_crttog;
+crtmenuptrs["Gaussian Profile"] = flip_crttog;
+crtmenuptrs["Oversample"] = flip_crttog;
+crtmenuptrs["Linear Processing"] = flip_crttog;
+
+--add_submenu(crtmenulbls, crtmenuptrs, "Shader Toggles", togglelbls, toggleptrs, updatetrigger);
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
@@ -1043,6 +1140,10 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 		elseif (selectlbl == "Vector") then
 			fmts = {}; 
 			menu_spawnmenu(vectormenulbls, vectormenuptrs, fmts);
+		
+		elseif (selectlbl == "NTSC") then
+			fmts = {};
+			menu_spawnmenu(ntscmenulbls, ntscmenuptrs, fmts);
 		end
 	end
 	
@@ -1090,32 +1191,12 @@ if (#menulbls > 0 and settingslbls) then
 		local gottog = false;
 		local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,";
 		
-		def["CRT"] = iconlbl;
-		if ( settings.internal_toggles.crt ) then 
-			def[ "CRT" ] = iconlbl .. settings.colourtable.notice_fontstr;
-		end
+		def[ "CRT" ]     = iconlbl .. (settings.internal_toggles.crt    and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def[ "NTSC" ]    = iconlbl .. (settings.internal_toggles.ntsc   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def[ "Vector" ]  = iconlbl .. (settings.internal_toggles.vector and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		
-		def["NTSC"] = iconlbl;
-		if ( settings.internal_toggles.ntsc ) then
-			def[ "NTSC" ] = iconlbl .. settings.colourtable.notice_fontstr;
-		end
-
-		if ( settings.internal_toggles.upscaler ) then
-			def[ "Upscaler" ] = settings.colourtable.notice_fontstr;
-		end
-
-		if ( settings.internal_toggles.overlay ) then
-			def[ "Overlay" ] = settings.colourtable.notice_fontstr;
-		end
-
-		if ( settings.internal_toggles.backdrop ) then
-			def[ "Backdrop" ] = settings.colourtable.notice_fontstr;
-		end
-			
-		def["Vector"] = iconlbl;
-		if (settings.internal_toggles.vector ) then
-			def[ "Vector" ] = iconlbl .. settings.colourtable.notice_fontstr;
-		end
+		def[ "Overlay"  ] = 	settings.internal_toggles.overlay  and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
+		def[ "Backdrop" ] = 	settings.internal_toggles.backdrop and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr	
 		
 		settings.context_menu = "display modes";
 		menu_spawnmenu(displaymodelist, displaymodeptrs, def );

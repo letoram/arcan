@@ -286,8 +286,6 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->storage.bpp = bpp;
 		arg->addr->channels = nchan;
 		arg->addr->samplerate = ceil(freq);
-		
-/* relocate current audio output buffer */
 
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			fprintf(stderr, "-- child: resizing\n");
