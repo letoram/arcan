@@ -34,13 +34,20 @@ function recordtest()
 		shutdown();
 	end
 
+	recording = false
+
 	vid = launch_target(game[1].gameid, LAUNCH_INTERNAL, function(source, stat)
 	if (stat.kind == "resized") then
-		dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, 320, 240);
 		resize_image(source, VRESW, VRESH);
 		show_image(source);
-		show_image(dstvid);
-		define_recordtarget(dstvid, "testout.mkv", "", {source, a, b, c}, {stat.source_audio}, RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1);
+		
+		if (not recording) then
+			recording = true
+			dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, 320, 240);
+			resize_image(source, VRESW, VRESH);
+			show_image(dstvid);
+			define_recordtarget(dstvid, "testout.mkv", "", {source, a, b, c}, {stat.source_audio}, RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1);
+		end
 	end
 end)
 
