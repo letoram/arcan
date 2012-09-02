@@ -39,7 +39,6 @@ local function listview_redraw(self)
 	self.listvid, self.list_lines = render_text(renderstr, self.vspace);
 	
 	link_image(self.listvid, self.window);
-	image_mask_clear(self.listvid, MASK_OPACITY);
 	image_clip_on(self.listvid);
 	show_image(self.listvid);
 	
@@ -131,7 +130,6 @@ function listview_show(self)
 	link_image(self.cursorvid, restbl.anchor);
 	blend_image(self.cursorvid, 0.3);
 	move_image(self.window, 3, 3);
-	image_mask_clear(self.cursorvid, MASK_OPACITY);
 
 	self:move_cursor(0, true);
 	self:push_to_front();

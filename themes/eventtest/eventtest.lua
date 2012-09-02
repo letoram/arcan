@@ -19,7 +19,7 @@ function eventtest()
 --	zap keyconf table
     system_load("scripts/keyconf.lua")();
     symtable  = system_load("scripts/symtable.lua")();
-	keyconfig = keyconf_create();
+keyconfig = keyconf_create();
 	
     local analabel   = drawline( [[\bAnalog]], 18 );
     local digilabel  = drawline( [[\bDigital]], 18 );
@@ -29,7 +29,7 @@ function eventtest()
     move_image(analabel, 0, 0, 0);
     move_image(digilabel, (VRESW / 3), 0, 0);
     move_image(translabel, (VRESW / 3) * 2, 0, 0);
-    move_image(lookuplabel, 0, VRESH / 2, 0);
+    move_image(lookuplabel, VRESW / 3 * 2, VRESH / 2, 0);
     
     show_image(analabel);
     show_image(digilabel);
@@ -44,6 +44,10 @@ function eventtest()
 			end
 		end
 	end
+end
+
+function round(inn, dec)
+	return math.floor( (inn * 10^dec) / 10^dec);	
 end
 
 function digital_str(iotbl)
@@ -118,8 +122,17 @@ function lookup(iotbl)
     end
     
     lookupimg = drawline(line, 12);
-    move_image(lookupimg, 0, VRESH / 2 + 20, 0);
+    move_image(lookupimg, VRESW / 3, VRESH / 2 + 20, 0);
     show_image(lookupimg);
+end
+
+function analog_str(intbl)
+	local res = "";
+
+	res = tostring(intbl.count) .. " : " .. tostring(round(intbl.min, 2)) .. 
+"/" .. tostring(round(intbl.max, 2)) .. "(" .. tostring(round(intbl.avg, 2)) .. ")";
+
+	return res;
 end
 
 function eventtest_clock_pulse(stamp, delta)
@@ -132,7 +145,7 @@ function eventtest_clock_pulse(stamp, delta)
 	workline = [[\n\rDevice(]] .. ak .. [[):\n\r\t]];
 		
 	for id, iv in pairs( ad ) do
-	    workline = workline .. " axis: " .. id .. " # " .. iv .. [[\n\r\t]];
+	    workline = workline .. " axis: " .. id .. " # " .. analog_str(iv) .. [[\n\r\t]];
 	end 
 
 	line = line .. workline .. [[\r\n]];
@@ -153,15 +166,41 @@ function eventtest_input( iotbl )
 		end
     
     elseif (iotbl.kind == "analog") then -- analog
+		local anatbl = {};
+
 		if (analogdata[iotbl.devid] == nil) then
 			analogdata[iotbl.devid] = {};
 		end
 
 		if (analogdata[iotbl.devid][iotbl.subid] == nil) then
-			analogdata[iotbl.devid][iotbl.subid] = 0;
+			analogdata[iotbl.devid][iotbl.subid] = anatbl;
+			anatbl.count = 0;
+			anatbl.min = 65535;
+			anatbl.max = 0;
+			anatbl.avg = 1;
+			anatbl.samples = {};
+		end
+
+		anatbl = analogdata[iotbl.devid][iotbl.subid];
+		anatbl.count = anatbl.count + 1;
+		table.insert(anatbl.samples, iotbl.samples[1]);
+		
+		if (iotbl.samples[1] < anatbl.min) then 
+			anatbl.min = iotbl.samples[1]; 
+		end
+
+		if (iotbl.samples[1] > anatbl.max) then 
+			anatbl.max = iotbl.samples[1]; 
+		end
+
+		anatbl.avg = (anatbl.avg + iotbl.samples[1]) / 2;
+
+		if (#anatbl.samples > 10) then
+			table.remove(anatbl.samples, 1);
 		end
 
 		local tbl = keyconfig:match(iotbl);
-		analogdata[iotbl.devid][iotbl.subid] = analogdata[iotbl.devid][iotbl.subid] + 1;
+		anatbl.match = tbl;
     end
 end
+

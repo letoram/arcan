@@ -254,6 +254,7 @@ static void libretro_pollcb(){}
 
 static bool libretro_setenv(unsigned cmd, void* data){ 
 	bool rv = false;
+	LOG("arcan_frameserver:libretro) : %d\n", cmd);
 	
 	switch (cmd){
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: 
@@ -264,12 +265,13 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		
 /* ignore for now */
 		case RETRO_ENVIRONMENT_SHUTDOWN: 
-				LOG("(arcan_frameserver:libretro) - shutdown requested from lib.\n");
+			retroctx.shmcont.addr->dms = true;
+			LOG("(arcan_frameserver:libretro) - shutdown requested from lib.\n");
 		break;
 		
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: 
-				LOG("(arcan_frameserver:libretro) - system directory requested, likely not able to run.\n");
+			LOG("(arcan_frameserver:libretro) - system directory requested, likely not able to run.\n");
 		break;
 	}
 	

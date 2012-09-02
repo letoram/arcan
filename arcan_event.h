@@ -23,14 +23,13 @@
 #define _HAVE_ARCAN_EVENT
 
 #define ARCAN_JOYIDBASE 64
+#define ARCAN_HATBTNBASE 128
 #define ARCAN_MOUSEIDBASE 0
 
 /* this is relevant if the event queue is authoritative,
  * i.e. the main process side with a frameserver associated. A failure to get
  * a lock within the set time, will forcibly free the frameserver */
 #define DEFAULT_EVENT_TIMEOUT 500
-
-#define ARCAN_IO_AXIS_LIM = 6
 
 enum ARCAN_EVENT_CATEGORY {
 	EVENT_SYSTEM = 1,
@@ -126,16 +125,16 @@ enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_INVALID_OBJECT_REFERENCED
 };
 
+enum ARCAN_EVENTFILTER_ANALOG {
+	EVENT_FILTER_ANALOG_NONE,
+	EVENT_FILTER_ANALOG_ALL,
+	EVENT_FILTER_ANALOG_SPECIFIC
+};
+
 enum ARCAN_TARGET_SKIPMODE {
 	TARGET_SKIP_AUTO = 0,
 	TARGET_SKIP_NONE = -1,
 	TARGET_SKIP_STEP = 1
-};
-
-enum event_priority {
-	PRIORITY_SYSTEM = 2,
-	PRIORITY_NORMAL = 1,
-	PRIORITY_SAMPLE = 0
 };
 
 typedef union arcan_ioevent_data {
@@ -149,6 +148,7 @@ typedef union arcan_ioevent_data {
 		bool gotrel; /* axis- values are first relative then absolute if set */
 		uint8_t devid;
 		uint8_t subid;
+		uint8_t idcount;
 		uint8_t nvalues;
 		int16_t axisval[4];
 	} analog;
@@ -232,7 +232,6 @@ typedef union event_data {
 typedef struct arcan_event {
 	unsigned kind;
 	unsigned tickstamp;
-	enum event_priority prio;
 
 	char label[16];
 	char category;

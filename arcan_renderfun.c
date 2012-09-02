@@ -438,7 +438,7 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 	else {
 		TTF_SetFontStyle(curr_style->font, curr_style->style);
 		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
-
+		
 /* load only if we don't have a dimension specifier */
 		if (curr_style->imgcons.w && curr_style->imgcons.h){
 			cnode->width = curr_style->imgcons.w;
@@ -657,7 +657,7 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8
 		prev->next = (void*) 0xdeadbeef;
 		free(prev);
 	}
-
+	
 	free(work);
 }
 	
@@ -784,14 +784,14 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		memcpy(vobj->default_frame.raw, canvas->pixels, canvas->w * canvas->h * 4);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, canvas->w, canvas->h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
 		glBindTexture(GL_TEXTURE_2D, 0);
-	
-		SDL_FreeSurface(canvas);
 
 		float wv = (float)maxw / (float)vobj->gl_storage.w;
 		float hv = (float)maxh / (float)vobj->gl_storage.h;
 
 		generate_basic_mapping(vobj->txcos, wv, hv);
 		arcan_video_attachobject(rv);
+		
+		SDL_FreeSurface(canvas);
 
 		if (n_lines)
 			*n_lines = linecount;

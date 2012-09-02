@@ -65,20 +65,14 @@ enum virttype{
 };
 
 struct virtobj {
-/* for RTT - type scenarios */
-	GLuint rendertarget;
-    unsigned int updateticks;
-	bool dynamic;
-
-/* inherits orientation from this object (if it resolves,
- * else revert to cached) */
+/* inherits orientation from this object (if it resolves else revert to cached) */
 	arcan_vobj_id parent;
 
 /* cached orientation */
 	orientation direction;
 	vector position;
 	vector view;
-    float projmatr[16];
+	float projmatr[16];
 
 	enum virttype type;
 /* linked list arranged, sorted high-to-low
@@ -371,15 +365,15 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 
 static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigned nverts)
 {
-    for (unsigned i = 0; i < nverts * 3; i += 3){
-        vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
-        if (a.x < minp->x) minp->x = a.x;
-        if (a.y < minp->y) minp->y = a.y;
-        if (a.z < minp->z) minp->z = a.z;
-        if (a.x > maxp->x) maxp->x = a.x;
-        if (a.y > maxp->y) maxp->y = a.y;
-        if (a.z > maxp->z) maxp->z = a.z;
-    }
+	for (unsigned i = 0; i < nverts * 3; i += 3){
+		vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
+		if (a.x < minp->x) minp->x = a.x;
+		if (a.y < minp->y) minp->y = a.y;
+		if (a.z < minp->z) minp->z = a.z;
+		if (a.x > maxp->x) maxp->x = a.x;
+		if (a.y > maxp->y) maxp->y = a.y;
+		if (a.z > maxp->z) maxp->z = a.z;
+	}
 }
 
 /* Go through the indices of a model and reverse the winding- order of its indices or verts so
@@ -391,28 +385,28 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	
 	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
 		arcan_3dmodel* model = (arcan_3dmodel*) vobj->feed.state.ptr;
-        struct geometry* curr = model->geometry;
-        while (curr) {
-            if (curr->indices){
-                unsigned* indices = curr->indices;
-                for (unsigned i = 0; i <curr->nindices * 3; i+= 3){
-                    unsigned t1[3] = { indices[i], indices[i+1], indices[i+2] };
-                    unsigned tmp = t1[0];
-                    t1[0] = t1[2]; t1[2] = tmp;
-                } 
-            } else {
-                float* verts = curr->verts;
-                
-                for (unsigned i = 0; i < curr->nverts * 9; i+= 9){
-                    vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
-                    vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
-                    verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
-                    verts[i+6] = v1.x; verts[i+7] = v1.y; verts[i+8] = v1.z;
-                }
-            }
+		struct geometry* curr = model->geometry;
+		while (curr) {
+			if (curr->indices){
+				unsigned* indices = curr->indices;
+				for (unsigned i = 0; i <curr->nindices * 3; i+= 3){
+					unsigned t1[3] = { indices[i], indices[i+1], indices[i+2] };
+					unsigned tmp = t1[0];
+					t1[0] = t1[2]; t1[2] = tmp;
+				} 
+			} else {
+				float* verts = curr->verts;
 
-            curr = curr->next;
-        }
+				for (unsigned i = 0; i < curr->nverts * 9; i+= 9){
+					vector v1 = { .x = verts[i  ], .y = verts[i+1], .z = verts[i+2] };
+					vector v3 = { .x = verts[i+6], .y = verts[i+7], .z = verts[i+8] };
+					verts[i  ] = v3.x; verts[i+1] = v3.y; verts[i+2] = v3.z;
+					verts[i+6] = v1.x; verts[i+7] = v1.y; verts[i+8] = v1.z;
+				}
+			}
+
+			curr = curr->next;
+		}
 	}
 
 	return rv;
@@ -552,10 +546,7 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 		dst->txcos = (float*) malloc(txsize);
 		memcpy(dst->txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1), txsize);
 	}
-
-	dst->complete = true;
 }
-
 
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned slot)
 {
@@ -578,7 +569,6 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned
 	
 	return rv;
 }
-
 
 struct threadarg{
 	arcan_3dmodel* model;
@@ -738,7 +728,6 @@ void arcan_3d_setdefaults()
 {
 	current_scene.perspectives = calloc( sizeof(virtobj), 1);
 	virtobj* cam = current_scene.perspectives;
-	cam->dynamic = true;
 
 	float aspect = (float) arcan_video_display.width / (float) arcan_video_display.height;
 	if (aspect < 1.0)
@@ -746,7 +735,6 @@ void arcan_3d_setdefaults()
 	
 	build_projection_matrix(cam->projmatr, 0.1, 100.0, aspect, 45.0);
 
-	cam->rendertarget = 0;
 	cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0); 
 }
