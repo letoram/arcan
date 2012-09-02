@@ -2937,6 +2937,7 @@ int arcan_lua_recordset(lua_State* ctx)
  * it is permitted to close and push another one to the same session */
 		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
 		if (fd){
+			printf("recordtarget(%s/%s/%s) opened to %d\n", arcan_themepath, arcan_themename, resf,  fd);
 			arcan_frameserver_pushfd( mvctx, fd );
 			mvctx->alocks = aidlocks;
 			arcan_aobj_id* base = mvctx->alocks;
@@ -3271,6 +3272,12 @@ int arcan_lua_utf8kind(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_inputfilteranalog(lua_State* ctx)
+{
+	int joyid = luaL_checknumber(ctx, 1);
+	
+}
+
 int arcan_lua_screenshot(lua_State* ctx)
 {
 	const char* const resstr = luaL_checkstring(ctx, 1);
@@ -3470,6 +3477,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "led_intensity", arcan_lua_led_intensity);
 	arcan_lua_register(ctx, "set_led_rgb", arcan_lua_led_rgb);
 	arcan_lua_register(ctx, "controller_leds", arcan_lua_n_leds);
+	arcan_lua_register(ctx, "input_filter_analog", arcan_lua_inputfilteranalog);
 	arcan_lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
 	arcan_lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
 	
@@ -3521,7 +3529,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "SHARED_RESOURCE", ARCAN_RESOURCE_SHARED);
 	arcan_lua_setglobalint(ctx, "ALL_RESOURCES", ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
-	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 5);
+	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 6);
 	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);
 	arcan_lua_setglobalint(ctx, "LAUNCH_INTERNAL", 1);
 	arcan_lua_setglobalint(ctx, "MASK_LIVING", MASK_LIVING);

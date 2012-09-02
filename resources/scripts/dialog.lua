@@ -14,7 +14,7 @@ local function dialog_nextlabel(self, step)
 -- position below message string, center and clip to window
 	link_image(vid, self.window);
 	image_clip_on(vid);
-	move_image(vid, 0.5 * (self.maxwidth - image_surface_properties(vid).width), self.maxheight / 4 * 3);
+	move_image(vid, 0.5 * (props.width - image_surface_properties(vid).width), self.maxheight / 4 * 3);
 	order_image(vid, max_current_image_order() + 1);
 	image_mask_clear(vid, MASK_OPACITY);
 	show_image(vid);
@@ -42,25 +42,30 @@ end
 
 local function dialog_sizewindow(self)
 -- figure out reasonable dimensions for the window
-	local maxstrlen = string.len(self.message);
-
-	for ind, val in ipairs(self.options) do
-		local len = string.len(val);
-		if (len > maxstrlen) then maxstrlen = len; end
-	end
+	local strw, strh = text_dimensions(self.message);
 	
-	local tmpstr = string.rep("M", maxstrlen);
-	local tmpvid = render_text( restable.messagefont .. tmpstr );
-	local props = image_surface_properties( tmpvid );
-	restable.maxwidth = props.width; 
-	restable.maxheight = props.height * 4;
+	if (self.options) then
+		local maxh = strh;
+		
+		for ind, val in ipairs(self.options) do
+			local optw, opth = text_dimensions(val);
+			if (optw > strw) then strw = optw; end
+			if (opth > strh) then strh = opth; end
+		end
 
-	delete_image(tmpvid);
+		strh = strh + maxh;
+	end
+
+	restable.maxwidth = strw; 
+	restable.maxheight = strh;
 end
 
-local function dialog_free(self)
-	if (restable.anchor) then
-		delete_image(restable.anchor);
+local function dialog_free(self, timer)
+	local time = 0;
+	if (timer and type(timer) == "number" and time > 0) then time = timer; end
+	
+	if (self.anchor) then
+		expire_image(self.anchor, time);
 	end
 end
 
@@ -70,8 +75,10 @@ local function dialog_show(self)
 		restable.anchor = fill_surface(1, 1, 0, 0, 0);
 		move_image(restable.anchor, -1, -1);
 		
-		restable.border = fill_surface(self.maxwidth + 26, self.maxheight + 26, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
-		restable.window = fill_surface(self.maxwidth + 20, self.maxheight + 20, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
+		local windw = self.maxwidth; 
+		local padding = windw * 0.3;
+		restable.border = fill_surface(windw + padding + 6, self.maxheight + 26, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
+		restable.window = fill_surface(windw + padding, self.maxheight + 20, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
 
 		link_image(restable.border, restable.anchor);
 		link_image(restable.window, restable.anchor);
@@ -86,26 +93,39 @@ local function dialog_show(self)
 	end
 
 	local header = render_text(restable.messagefont .. self.message);
+	local windw = image_surface_properties(restable.window).width;
+	local props = image_surface_properties(header);
+	
 	link_image(header, self.window);
-	move_image(header, 0.5 * (self.maxwidth - image_surface_properties(header).width), self.maxheight / 4);
+	move_image(header, 0.5 * ( windw - props.width), 12);
 	order_image(header, max_current_image_order() + 1);
 	image_mask_clear(header, MASK_OPACITY);
+	image_clip_on(header);
 	show_image(header);
 	
 	local borderp = image_surface_properties( restable.border );
-	self:nextlabel(0);
-	move_image(restable.anchor, 0.5 * (VRESW - borderp.width), 0.5 * (VRESH - borderp.height) );
+	if (self.options) then
+		self:nextlabel(0);
+	end
+	
+	local x = 0.5 * (VRESW - borderp.width);
+	local y = 0.5 * (VRESH - borderp.height);
+	
+	if (self.valign == "top") then    y = 0; end
+	if (self.halign == "left") then   x = 0; end
+	if (self.valign == "bottom") then y = VRESH - borderp.height; end
+	if (self.halign == "right") then  x = VRESW - borderp.width; end
+
+	move_image(restable.anchor, x, y);
 	blend_image(restable.border, 1.0, 5);
 	self.visible = true;
 end
 
 function dialog_create(message, options, canescape)
-	restable = {};
-	
--- forceload colourtable if its missing
-	if (#options == 0) then return; end
 	if (settings == nil) then settings = {}; end
 	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
+
+	restable = {};
 	
 	restable.messagefont = settings.colourtable.label_fontstr; 
 	restable.optionfont = settings.colourtable.data_fontstr; 
@@ -114,9 +134,13 @@ function dialog_create(message, options, canescape)
 	restable.options = options;
 	restable.current = 1;
 	restable.message = message;
-	restable.input = dialog_input;
-	restable.nextlabel = dialog_nextlabel;
-	restable.canescape = canescape;
+
+-- no options? just use as an info window
+	if (options ~= nil and #options > 0) then
+		restable.input = dialog_input;
+		restable.nextlabel = dialog_nextlabel;
+		restable.canescape = canescape;
+	end
 
 	dialog_sizewindow(restable);
 

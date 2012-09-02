@@ -28,11 +28,12 @@
 
 -- reindex the result of a resource_glob to be a bitmap
 local function glob(path)
-	local lut = glob_resource(path, SHARED_RESOURCE);
+	local lut = glob_resource(path);
 	local restbl = {};
 
 	for ind, val in ipairs(lut) do
 		restbl[val] = true;
+		print("globres", path, val);
 	end
 	
 	return restbl;

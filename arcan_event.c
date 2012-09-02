@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <assert.h>
 
 #include <SDL/SDL.h>
 
@@ -49,6 +50,18 @@ const unsigned short arcan_joythresh  = 3200;
 static int64_t arcan_last_frametime = 0;
 static int64_t arcan_tickofset = 0;
 
+/* possibly need different sample methods for different axis. especially as 
+ * the controls get increasingly "weird" */
+struct axis_control;
+typedef bool(*sample_cb)(struct axis_control*, int, int*, int, int*); 
+/* anything needed to rate-limit a specific axis,
+ * smoothing buffers, threshold scaling etc. */
+struct axis_control {
+	enum ARCAN_EVENTFILTER_ANALOG mode;
+	void* buffer;
+	sample_cb samplefun;
+};
+
 struct arcan_stick {
 	char label[256];
 	unsigned long hashid;
@@ -56,13 +69,13 @@ struct arcan_stick {
 	unsigned short devnum;
 	unsigned short threshold;
 	unsigned short axis;
-
-/* sized according to axis * evctx->smooth_samples */
-	unsigned short** ring_buffers;
-
+	struct axis_control* axis_control;
+	
 /* these map to digital events */
 	unsigned short buttons;
 	unsigned short balls;
+	
+	unsigned* hattbls;
 	unsigned short hats;
 	
 	SDL_Joystick* handle;
@@ -196,14 +209,67 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
 	if (LOCK(ctx)){
 		ctx->kbdrepeat = rate;
+		printf("newrate: %d\n", rate);
 		if (rate == 0) 
-			SDL_EnableKeyRepeat(ctx->kbdrepeat, SDL_DEFAULT_REPEAT_INTERVAL);
+			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else 
-			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_INTERVAL, ctx->kbdrepeat);
+			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, ctx->kbdrepeat);
 		UNLOCK();
 	}
 }
 
+static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, unsigned value)
+{
+	arcan_event newevent = {
+		.kind = EVENT_IO_BUTTON_PRESS,
+		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
+		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
+		.data.io.input.digital.devid = devid,
+		.data.io.input.digital.subid = 128 + (hatid * 4)
+	};
+	
+	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT, SDL_HAT_RIGHT};
+
+	assert(joydev.n_joy > devid);
+	assert(joydev.joys[devid].hats > hatid);
+
+/* shouldn't really ever be the same, but not trusting SDL */
+	if (joydev.joys[devid].hattbls[ hatid ] != value){
+		unsigned oldtbl = joydev.joys[devid].hattbls[hatid];
+	
+		for (int i = 0; i < 4; i++){
+			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
+				newevent.data.io.input.digital.subid  = ARCAN_HATBTNBASE + (hatid * 4) + i;
+				newevent.data.io.input.digital.active = (value & hattbl[i]) > 0;
+				arcan_event_enqueue(ctx, &newevent);
+			}
+		}
+	}
+}
+
+static void process_axismotion(arcan_evctx* ctx, SDL_JoyAxisEvent ev)
+{
+	arcan_event newevent = {
+		.kind = EVENT_IO_AXIS_MOVE,
+		.category = EVENT_IO,
+		.data.io.datatype = EVENT_IDATATYPE_ANALOG,
+		.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
+		.data.io.input.analog.gotrel = false,
+		.data.io.input.analog.devid = ARCAN_JOYIDBASE + ev.which,
+		.data.io.input.analog.subid = ev.axis,
+		.data.io.input.analog.nvalues = 1
+	};
+
+	int ins = ev.value, outs;
+	struct axis_control* ctrl =	&joydev.joys[ ev.which ].axis_control[ ev.which ];
+	if ( ctrl->samplefun(ctrl, 1, &ins, 1, &outs) ){
+		newevent.data.io.input.analog.axisval[0] = outs;
+		newevent.data.io.input.analog.axisval[1] = 0;
+		newevent.data.io.input.analog.axisval[2] = 0;
+		newevent.data.io.input.analog.axisval[3] = 0;
+		arcan_event_enqueue(ctx, &newevent);
+	}
+}
 /* probe devices and generate mapping tables */
 static void init_sdl_events(arcan_evctx* ctx)
 {
@@ -276,20 +342,7 @@ void map_sdl_events(arcan_evctx* ctx)
 				break;
 				
 			case SDL_JOYAXISMOTION:
-				newevent.kind = EVENT_IO_AXIS_MOVE;
-				newevent.data.io.datatype = EVENT_IDATATYPE_ANALOG;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-				
-/* need to filter out "noise" */
-				if (event.jaxis.value < (-1 * joydev.joys[ event.jaxis.which ].threshold) ||
-				        event.jaxis.value > joydev.joys[ event.jaxis.which ].threshold) {
-					newevent.data.io.input.analog.gotrel = false;
-					newevent.data.io.input.analog.devid = ARCAN_JOYIDBASE + event.jaxis.which;
-					newevent.data.io.input.analog.subid = event.jaxis.axis;
-					newevent.data.io.input.analog.nvalues = 1;
-					newevent.data.io.input.analog.axisval[0] = event.jaxis.value;
-					arcan_event_enqueue(ctx, &newevent);
-				}
+				process_axismotion(ctx, event.jaxis);
 			break;
 
 			case SDL_KEYDOWN:
@@ -344,20 +397,11 @@ void map_sdl_events(arcan_evctx* ctx)
 				break;
 
 			case SDL_JOYHATMOTION:
-				if (event.jhat.value & SDL_HAT_UP) {
-					/* Do up stuff here */
-				}
-				/*              SDL_HAT_CENTERED
-				                SDL_HAT_UP
-				                SDL_HAT_RIGHT
-				                SDL_HAT_DOWN
-				                SDL_HAT_LEFT
-				                SDL_HAT_RIGHTUP
-				                SDL_HAT_RIGHTDOWN
-				                SDL_HAT_LEFTUP
-				                SDL_HAT_LEFTDOWN */
-				break;
+				process_hatmotion(ctx, ARCAN_JOYIDBASE + event.jhat.which, event.jhat.hat, event.jhat.value);
+			break;
 
+/* in theory, it should be fine to just manage window resizes by keeping track of a scale factor to the
+ * grid size (window size) specified during launch) */
 			case SDL_ACTIVEEVENT:
 				//newevent.kind = (MOUSEFOCUS, INPUTFOCUS, APPACTIVE(0 = icon, 1 = restored)
 				//if (event->active.state & SDL_APPINPUTFOCUS){
@@ -434,6 +478,25 @@ static unsigned long djb_hash(const char* str)
 	return hash;
 }
 
+static bool default_analogsample(struct axis_control* src, int srcsamples, int* srcbuf, int dstsamples, int* dstbuf)
+{
+	if (src->mode == EVENT_FILTER_ANALOG_ALL) 
+		return false;
+	
+/* first call, initialize cb- specific storage (not needed here) */
+	if (src->buffer == NULL){
+	}
+	if (srcsamples > 0 && dstsamples > 0){
+		if (srcbuf[0] > -32768 &&
+			((srcbuf[0] < -arcan_joythresh || srcbuf[0] > arcan_joythresh))){
+			dstbuf[0] = srcbuf[0];
+			return true;
+		}
+	}
+	
+	return false;
+}
+
 void arcan_event_deinit(arcan_evctx* ctx)
 {
 	if (joydev.joys){
@@ -468,10 +531,28 @@ void arcan_event_init(arcan_evctx* ctx)
 			joydev.joys[i].handle = SDL_JoystickOpen(i);
 			joydev.joys[i].devnum = i;
 			joydev.joys[i].axis = SDL_JoystickNumAxes(joydev.joys[i].handle);
+			joydev.joys[i].axis_control = malloc(joydev.joys[i].axis * sizeof(struct axis_control));
+
+			for (int j = 0; j < joydev.joys[i].axis; j++){
+					struct axis_control defctrl = {
+						.buffer = NULL,
+						.mode = EVENT_FILTER_ANALOG_NONE,
+						.samplefun = default_analogsample
+					};
+				
+					joydev.joys[i].axis_control[j] = defctrl;
+			}
+			
 			joydev.joys[i].buttons = SDL_JoystickNumButtons(joydev.joys[i].handle);
 			joydev.joys[i].balls = SDL_JoystickNumBalls(joydev.joys[i].handle);
 			joydev.joys[i].hats = SDL_JoystickNumHats(joydev.joys[i].handle);
-			joydev.joys[i].threshold = arcan_joythresh;
+
+			if (joydev.joys[i].hats > 0){
+				size_t dst_sz = joydev.joys[i].hats * sizeof(unsigned);
+				
+				joydev.joys[i].hattbls = malloc(dst_sz);
+				memset(joydev.joys[i].hattbls, 0, dst_sz);
+			}
 		}
 	}
 }

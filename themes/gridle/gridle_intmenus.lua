@@ -952,6 +952,35 @@ function screenshot()
 	end
 end
 
+function toggle_record()
+	local tbl = current_game();
+	local lblbase = "movies/" .. tbl.target .. "_" .. tbl.setname;
+	local dst = lblbase .. ".mkv";
+	
+	local ofs = 1;
+
+-- only add sequence number if we already have a screenshot for the game
+	if (resource( lblbase .. ".mkv" ) ) then
+		while resource(lblbase .. "_" .. tostring(ofs) .. ".mkv") do
+			dst = lblbase .. "_" .. tostring(ofs) .. ".mkv";
+			ofs = ofs + 1;
+		end
+	end
+
+-- create an instance of this image to detach and record 
+	local lvid = instance_image(internal_vid);
+-- set it to the top left of the screen
+	image_mask_clear(lvid, MASK_POSITION);
+	move_image(lvid, 0, 0);
+
+-- allocate intermediate storage
+	dstvid = fill_surface(320, 240, 0, 0, 0, 320, 240);
+	resize_image(lvid, 320, 240);
+	
+	show_image(lvid);
+	define_recordtarget(dstvid, dst, "", {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+end
+
 displaymodeptrs = {};
 displaymodeptrs["Custom Shaders..."] = function() 
 	local def = {};
@@ -1180,6 +1209,7 @@ if (#menulbls > 0 and settingslbls) then
 		table.insert(menulbls, "Audio Gain...");
 		table.insert(menulbls, "Cocktail Modes...");
 		table.insert(menulbls, "Screenshot");
+		table.insert(menulbls, "Record Snapshot");
 	end
 	
 	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
@@ -1268,6 +1298,11 @@ if (#menulbls > 0 and settingslbls) then
 		menu_spawnmenu( cocktaillist, cocktailptrs, def);
 	end
 
+	current_menu.ptrs["Record Snapshot"] = function()
+		settings.iodispatch["MENU_ESCAPE"]();
+		toggle_record();
+	end
+	
 	gridlemenu_defaultdispatch();
 	settings.context_menu = nil;
 	

@@ -208,10 +208,11 @@ function gridle()
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
 	system_load("gridle_contmenus.lua")();       -- context menus (quickfilter, database manipulation, ...)
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
+	system_load("gridle_customview.lua")();      -- customizable list view
 	
 -- make sure that the engine API version and the version this theme was tested for, align.
-	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 5) then
-		msg = "Engine/Script API version match, expected 0.5, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
+	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 6) then
+		msg = "Engine/Script API version match, expected 0.6, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
 		error(msg);
 		shutdown();
 	end
@@ -245,7 +246,7 @@ function gridle()
 	load_settings();
 	grab_sysicons();
 	
-if (settings.sortfunctions[settings.sortlbl]) then
+	if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
 	
@@ -261,15 +262,8 @@ if (settings.sortfunctions[settings.sortlbl]) then
 	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
 	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
 	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
-	settings.iodispatch["QUICKSAVE"]    = function(iotbl) 
-end
-
-	settings.iodispatch["QUICKLOAD"]    = function(iotbl)
-		local cg = current_game();
-		if (cg and cg.capabilities.snapshot) then
-			restore_target( cg.capabilities.target .. "_" .. cg.capabilities.setname .. "_quicksave" );
-		end
-	end
+	settings.iodispatch["QUICKSAVE"]    = function(iotbl) end
+	settings.iodispatch["QUICKLOAD"]    = function(iotbl) end
 	
 	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
@@ -300,6 +294,12 @@ end
 		gridle_input = osdkbd_inputcb;
 	end
 
+	settings.iodispatch["LIST_VIEW"] = function(iotbl)
+		play_audio( soundmap["DETAILVIEW_TOGGLE"] );
+		print("listview");
+		gridle_customview();
+	end
+	
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
 		local key = gridledetail_havedetails(gametbl);
@@ -383,6 +383,7 @@ end
 	gridle_keyconf();
 	gridle_ledconf();
 	osdkbd = osdkbd_create();
+	
 end
 
 function set_background(name, tilefw, tilefh, hspeed, vspeed)
@@ -436,7 +437,7 @@ function confirm_shutdown()
 	local valcbs = {};
 	valcbs["YES"] = function() shutdown(); end
 	
-	dialog_option("Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs);
+	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs);
 end
 
 -- also used in intmenus for savestate naming
@@ -566,7 +567,7 @@ end
 
 function gridle_keyconf()
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " LIST_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 	local listlbls = {};
 	local lastofs = 1;
