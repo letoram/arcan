@@ -587,6 +587,8 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 	ffmpegctx.lastfd = BADFD;
 	atexit(encoder_atexit);
 
+	LOG("record session (%s) => (%s) setup\n", resource, keyfile);
+	
 /* main event loop */
 	while (true){
 		arcan_event* ev = arcan_event_poll(&ffmpegctx.inevq);
