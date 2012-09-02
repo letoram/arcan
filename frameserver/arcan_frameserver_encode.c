@@ -98,6 +98,7 @@ static struct resampler* grab_resampler(arcan_aobj_id id, unsigned frequency, un
 	res->resampler = speex_resampler_init(channels, frequency, ffmpegctx.frequency, 3, &errc);
 	res->weight = 1.0; 
 	res->source = id;
+	LOG("resampling, from %d to %d\n", frequency, ffmpegctx.frequency);
 	
 	return res;
 }
@@ -186,7 +187,7 @@ static void encode_audio(bool flush)
 
 /* really no way to recover from this, if we can't mux once, feeding empty audio frames and hoping
  * that the video frame stays intact is a dead race, give up */
-			if (av_write_frame(ffmpegctx.fcontext, &pkt) != 0){
+			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0){
 				LOG("arcan_frameserver(encode_audio) error interleaving frame, giving up.\n");
 				ffmpegctx.acontext = NULL;
 				return;
@@ -249,7 +250,7 @@ void encode_video(bool flush)
 		
 		pkt.size = rs;
 
-		int rv = av_write_frame(ffmpegctx.fcontext, &pkt);
+		int rv = av_interleaved_write_frame(ffmpegctx.fcontext, &pkt);
 	}
 }
 
@@ -320,8 +321,8 @@ static void setup_audiocodec(const char* req)
 	}
 
 /* CODEC_ID_VORBIS would resolve to the internal crappy vorbis implementation in ffmpeg, don't want that */
-	if (!ffmpegctx.acodec)
-		ffmpegctx.acodec = avcodec_find_encoder_by_name("libvorbis"); 
+//	if (!ffmpegctx.acodec)
+//		ffmpegctx.acodec = avcodec_find_encoder_by_name("libvorbis"); 
 	
 	if (!ffmpegctx.acodec){
 		ffmpegctx.acodec = avcodec_find_encoder(CODEC_ID_FLAC);
