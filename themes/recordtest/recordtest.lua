@@ -46,7 +46,7 @@ function recordtest()
 			dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, 320, 240);
 			resize_image(source, VRESW, VRESH);
 			show_image(dstvid);
-			define_recordtarget(dstvid, "testout.mkv", "", {source, a, b, c}, {stat.source_audio}, RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1);
+			define_recordtarget(dstvid, "testout.mkv", "acodec=libmp3lame", {source, a, b, c}, {stat.source_audio}, RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1);
 		end
 	end
 end)

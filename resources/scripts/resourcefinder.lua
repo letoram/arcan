@@ -69,7 +69,7 @@ local function synch_cache(pathkey)
 end
 
 local function resourcefinder_video(game, restbl, cache_results)
-	local vidext  = {"mkv", "mp4", "mpg", "avi"};
+	local vidext  = {"mkv", "webm", "mp4", "mpg", "avi"};
 	local tgtpath = "movies/" .. game.target .. "/";
 	local mvpath  = "movies/";
 
