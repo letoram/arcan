@@ -968,7 +968,7 @@ function toggle_record()
 	end
 
 -- create an instance of this image to detach and record 
-	local lvid = instance_image(internal_vid);
+	local lvid = instance_image( valid_vid(imagery.vector_vid) and imagery.vector_vid or internal_vid );
 -- set it to the top left of the screen
 	image_mask_clear(lvid, MASK_POSITION);
 	move_image(lvid, 0, 0);
@@ -978,7 +978,8 @@ function toggle_record()
 	resize_image(lvid, 320, 240);
 	
 	show_image(lvid);
-	define_recordtarget(dstvid, dst, "", {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+	print("recording to: ", dst); 
+	define_recordtarget(dstvid, dst, "fps=30:abitrate=192:vbitrate=1500", {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
 end
 
 displaymodeptrs = {};

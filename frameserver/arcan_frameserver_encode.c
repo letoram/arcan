@@ -62,15 +62,25 @@ struct {
 	float fps;
 
 /* AUDIO */
+/* containers and metadata */
 	AVCodecContext* acontext;
 	AVCodec* acodec;
-	unsigned frequency;
-	bool float_samples;
 	AVStream* astream;
-	struct resampler* resamplers; /* linked list of resamplers, one for each stream with different rate */
+
+/* samplerate conversions */
+	struct resampler* resamplers; 
+
+/* needed for intermediate buffering and format conversion */
+	bool float_samples;
 	uint8_t* encabuf;
 	float* encfbuf;
+	off_t encabuf_ofs;
 	size_t encabuf_sz;
+	
+/* needed for encode_audio frame settings */
+	int aframe_smplcnt;
+	size_t aframe_sz;
+	unsigned long aframe_cnt;
 
 } ffmpegctx = {0};
 
@@ -95,25 +105,25 @@ static struct resampler* grab_resampler(arcan_aobj_id id, unsigned frequency, un
 	res->next = NULL;
 
 	int errc;
-	res->resampler = speex_resampler_init(channels, frequency, ffmpegctx.frequency, 3, &errc);
+	res->resampler = speex_resampler_init(channels, frequency, ffmpegctx.acontext->sample_rate, 3, &errc);
 	res->weight = 1.0; 
 	res->source = id;
-	LOG("resampling, from %d to %d\n", frequency, ffmpegctx.frequency);
 	
 	return res;
 }
 
-static size_t flush_audbuf()
+/* flush the audio buffer present in the shared memory page as quick as possible,
+ * resample if necessary, then use the intermediate buffer to feed encoder */
+static void flush_audbuf()
 {
 	size_t cur_sz = ffmpegctx.shmcont.addr->abufused;
 	uint8_t* audb = ffmpegctx.audp;
 	uint16_t* auds16b = (uint16_t*) ffmpegctx.encabuf; /* alignment guaranteed by calcofs */
 	
-	off_t ofs = 0;
 	unsigned hdr[5] = {/* src */ 0, /* size_t */ 0, /* frequency */ 0, /* channels */ 0, 0/* 0xfeedface */};
 	
 /* plow through the number of available bytes, these will be gone when stepframe is completed */
-	while(cur_sz > sizeof(hdr) && ofs < ffmpegctx.encabuf_sz){
+	while(cur_sz > sizeof(hdr) && ffmpegctx.encabuf_ofs < ffmpegctx.encabuf_sz){
 		memcpy(&hdr, audb, sizeof(hdr));
 		assert(hdr[4] == 0xfeedface);
 		audb += sizeof(hdr);
@@ -124,9 +134,9 @@ static size_t flush_audbuf()
 		unsigned inlen = hdr[1] >> 2; 
 
 /* same samplerate, no conversion needed, just push */
-		if (hdr[2] == ffmpegctx.frequency){
-			memcpy(&ffmpegctx.encabuf[ofs], audb, hdr[1]);
-			ofs += hdr[1];
+		if (hdr[2] == ffmpegctx.acontext->sample_rate){
+			memcpy(&ffmpegctx.encabuf[ffmpegctx.encabuf_ofs], audb, hdr[1]);
+			ffmpegctx.encabuf_ofs += hdr[1];
 		}
 /* pass through speex resampler before pushing, no mixing of channels happen here */
 		else {
@@ -134,73 +144,115 @@ static size_t flush_audbuf()
 			unsigned int outc = out_sz;
 
 /* note the quirk that outc first represents the size of the buffer, THEN after resampling, it's the number of samples */
-			speex_resampler_process_interleaved_int(rsmp->resampler, (const spx_int16_t*) audb, &inlen, (spx_int16_t*) &ffmpegctx.encabuf[ofs], &outc);
-			ofs += outc << 2;
+			speex_resampler_process_interleaved_int(rsmp->resampler, (const spx_int16_t*) audb, &inlen, (spx_int16_t*) &ffmpegctx.encabuf[ffmpegctx.encabuf_ofs], &outc);
+			ffmpegctx.encabuf_ofs += outc << 2;
 		}
 
 		audb += hdr[1];
 		cur_sz -= hdr[1] + sizeof(hdr); 
 	}
 
-/* convert to float-buffer, if needed by the codec. Internally, we use S16 everywhere. The change in sz (number of bytes) are reflected in encode_audio */
-	if (ffmpegctx.float_samples) {
-		for (int i = 0; i < (ofs >> 1); i++)
-			ffmpegctx.encfbuf[i] = (float)(auds16b[i]) / 65535.0;
-	}
-
-	return ofs;
 }
 
 static void encode_audio(bool flush)
 {
-/* if astream open and abuf, flush abuf into audio codec, feed both into muxer */
-	size_t numb = flush_audbuf();
-	int numf, got_packet;
-
-	if (numb == 0 && !flush)
-		return;
-
-/* will be populated by encoder */
-	do{
-		AVPacket pkt;
-		av_init_packet(&pkt);
-		pkt.data = NULL;
-		pkt.size = 0;
-
-/* fill with result from audio buffer flush */
-		AVFrame frame;
-		avcodec_get_frame_defaults(&frame);
-		frame.nb_samples = numb >> 2;
+	AVCodecContext* ctx = ffmpegctx.acontext;
+	AVFrame* frame;
+	bool forcetog = false;
+	int numf, got_packet = false;
+	off_t base = 0;
 	
-		if (ffmpegctx.float_samples)
-			avcodec_fill_audio_frame(&frame, 2, ffmpegctx.acontext->sample_fmt, (uint8_t*) ffmpegctx.encfbuf, numb * (sizeof(float) / sizeof(uint16_t)), 1); 
-		else	
-			avcodec_fill_audio_frame(&frame, 2, ffmpegctx.acontext->sample_fmt, ffmpegctx.encabuf, numb, 1); 
+/* encode as many frames as possible from the intermediate buffer */
+	while(base + ffmpegctx.aframe_sz <= ffmpegctx.encabuf_ofs){
+		AVPacket pkt = {0};
+		av_init_packet(&pkt);
+		frame = avcodec_alloc_frame();
+		
+		frame->nb_samples     = ffmpegctx.aframe_smplcnt;
+		frame->pts            = ffmpegctx.aframe_cnt;
+		frame->channel_layout = ctx->channel_layout;
+		ffmpegctx.aframe_cnt += ffmpegctx.aframe_smplcnt;
 
-/* encode + send to multiplexer */
-		if ( avcodec_encode_audio2(ffmpegctx.acontext, &pkt, flush ? NULL : &frame, &got_packet) == 0 && got_packet){
-			pkt.flags |= AV_PKT_FLAG_KEY;
-			pkt.stream_index = ffmpegctx.astream->index;
+forceencode:
+/* convert to _FLT format before passing on */
+		if (ffmpegctx.float_samples){
+/* usually not kosher, but addr will be aligned here */
+			int16_t* addr = (int16_t*) &ffmpegctx.encabuf[base];
+			memset(ffmpegctx.encfbuf, 0xaa, ffmpegctx.aframe_sz * 2);
 
-			if (pkt.pts != AV_NOPTS_VALUE)
-				pkt.pts = av_rescale_q(pkt.pts, ffmpegctx.acontext->time_base, ffmpegctx.astream->time_base); 
+			for (int i = 0; i < frame->nb_samples * 2; i++)
+				ffmpegctx.encfbuf[i] = (float)(addr[i]) / 32767.0f;
 
-/* really no way to recover from this, if we can't mux once, feeding empty audio frames and hoping
- * that the video frame stays intact is a dead race, give up */
-			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0){
-				LOG("arcan_frameserver(encode_audio) error interleaving frame, giving up.\n");
-				ffmpegctx.acontext = NULL;
-				return;
-			}
-				
-			av_free_packet(&pkt);
-		} else {
-				LOG("arcan-frameserver(encode_audio) error encoding audio frame, giving up.\n");
-				ffmpegctx.acontext = NULL;
-				return;
+			avcodec_fill_audio_frame(frame, 2, ctx->sample_fmt, (uint8_t*) ffmpegctx.encfbuf, ffmpegctx.aframe_sz * 2, 1);
 		}
+		else
+			avcodec_fill_audio_frame(frame, 2, ctx->sample_fmt, ffmpegctx.encabuf + base, ffmpegctx.aframe_sz, 1);
+
+		int rv = avcodec_encode_audio2(ctx, &pkt, frame, &got_packet);
+		if (0 != rv && !flush){
+			LOG("arcan_frameserver(encode) : encode_audio, couldn't encode, giving up.\n");
+			exit(1);
+		}
+		
+		if (got_packet){
+			if (pkt.pts != AV_NOPTS_VALUE)
+				pkt.pts = av_rescale_q(pkt.pts, ctx->time_base, ffmpegctx.astream->time_base);
+			
+			if (pkt.dts != AV_NOPTS_VALUE)
+				pkt.dts = av_rescale_q(pkt.dts, ctx->time_base, ffmpegctx.astream->time_base);
+			
+			if (pkt.duration > 0)
+				pkt.duration = av_rescale_q(pkt.duration, ctx->time_base, ffmpegctx.astream->time_base);
+			
+			pkt.stream_index = ffmpegctx.astream->index;
+			
+			if (0 != av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) && !flush){
+				LOG("arcan_frameserver(encode) : encode_audio, write_frame failed, giving up.\n");
+				exit(1);
+			}
+		}
+		
+		base += ffmpegctx.aframe_sz;
 	}
-	while (flush && got_packet);
+
+/* for the flush case, we may have a little bit of buffer left, 
+ * CODEC_CAP_DELAY = pframe can be NULL and encode audio is used to flush
+ * CODEC_CAP_SMALL_LAST_FRAME or CODEC_CAP_VARIABLE_FRAME_SIZE = we can the last few buffer bytes can be stored as well otherwise
+ * those will be discarded */
+	if (flush){
+/* setup a partial new frame with as many samples as we can fit, change the expected "frame size" to match
+ * and then re-use the encode / conversion code */
+		if (!forcetog && 
+			((ctx->flags & CODEC_CAP_SMALL_LAST_FRAME) > 0 || (ctx->flags & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)){
+			ffmpegctx.aframe_sz = ffmpegctx.encabuf_ofs - base;
+			frame = avcodec_alloc_frame();
+			frame->nb_samples = ffmpegctx.aframe_sz / 2;
+			frame->pts = ffmpegctx.aframe_cnt;
+			frame->channel_layout = ctx->channel_layout;
+
+			forcetog = true;
+			goto forceencode;
+		}
+	
+		if ( (ctx->flags & CODEC_CAP_DELAY) > 0 ){
+			int gotpkt;
+			do {
+				AVPacket flushpkt = {0};
+				av_init_packet(&flushpkt);
+				if (0 == avcodec_encode_audio2(ctx, &flushpkt, NULL, &gotpkt)){
+					av_interleaved_write_frame(ffmpegctx.fcontext, &flushpkt);
+				}
+			} while (gotpkt);
+		}
+		
+		return;
+	}
+
+/* slide the intermediate buffer offsets */
+	if (base < ffmpegctx.encabuf_ofs)
+		memmove(ffmpegctx.encabuf, (uint8_t*) (ffmpegctx.encabuf) + base, ffmpegctx.encabuf_ofs - base);
+	
+	ffmpegctx.encabuf_ofs -= base;
 }
 
 void encode_video(bool flush)
@@ -223,46 +275,91 @@ void encode_video(bool flush)
 /* ahead by too much? give up */
 	if (delta < -thresh)
 		return;
-		
+	
 /* running behind, need to repeat a frame */
 	if ( delta > thresh )
 		fc += 1 + floor( delta / mspf);
 		
+	if (fc > 1)
+		LOG("behind, double frame: %d\n", fc);
+	
 	int rv = sws_scale(ffmpegctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0, 
 		ffmpegctx.vcontext->height, ffmpegctx.pframe->data, ffmpegctx.pframe->linesize);
 
-	ffmpegctx.framecount += fc;
-		
+/* might repeat the number of frames in order to compensate for poor frame sampling alignment */
 	while (fc--){
 		AVCodecContext* ctx = ffmpegctx.vcontext;
-		AVPacket pkt;
+		AVPacket pkt = {0};
+		int got_outp = false;
 		av_init_packet(&pkt);
-
-		int rs = avcodec_encode_video(ffmpegctx.vcontext, ffmpegctx.encvbuf, ffmpegctx.encvbuf_sz, ffmpegctx.pframe);
 		
-		if (ctx->coded_frame->pts != AV_NOPTS_VALUE)
-			pkt.pts = av_rescale_q(ctx->coded_frame->pts, ctx->time_base, ffmpegctx.vstream->time_base);
-	
-		pkt.stream_index = ffmpegctx.vstream->index;
-		pkt.data = ffmpegctx.encvbuf;
-		if (ctx->coded_frame->key_frame)
-			pkt.flags |= AV_PKT_FLAG_KEY;
+		int rs = avcodec_encode_video2(ffmpegctx.vcontext, &pkt, flush ? NULL : ffmpegctx.pframe, &got_outp);
+		if (rs < 0 && !flush) {
+			LOG("arcan_frameserver(encode) -- encode_video failed, terminating.\n");
+			exit(1);
+		}
 		
-		pkt.size = rs;
-
-		int rv = av_interleaved_write_frame(ffmpegctx.fcontext, &pkt);
+		if (got_outp){
+			if (pkt.pts != AV_NOPTS_VALUE)
+				pkt.pts = av_rescale_q(pkt.pts, ctx->time_base, ffmpegctx.vstream->time_base);
+			
+			if (pkt.dts != AV_NOPTS_VALUE)
+				pkt.dts = av_rescale_q(pkt.dts, ctx->time_base, ffmpegctx.vstream->time_base);
+			
+			if (ctx->coded_frame->key_frame)
+				pkt.flags |= AV_PKT_FLAG_KEY;
+			
+			pkt.stream_index = ffmpegctx.vstream->index;
+			
+			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0 && !flush){
+				LOG("arcan_frameserver(encode) -- writing encoded video failed, terminating.\n");
+				exit(1);
+			}
+		}
+		
+		ffmpegctx.pframe->pts = ffmpegctx.framecount++;
 	}
+	
 }
 
 void arcan_frameserver_stepframe(bool flush)
 {
-	if (ffmpegctx.vcontext)
-		encode_video(flush);
-
-	if (ffmpegctx.acontext)
-		encode_audio(flush);
-
+	flush_audbuf();
 	ffmpegctx.shmcont.addr->abufused = 0;
+	
+/* just empty all buffers into the stream */
+	if (flush){
+		if (ffmpegctx.acontext)
+			encode_audio(flush);
+		
+		encode_video(flush);
+		return;
+	}
+	
+/* calculate this first so we don't overstep audio/video interleaving */
+	double vpts;
+	if (ffmpegctx.vstream)
+		vpts = ffmpegctx.vstream->pts.val * (float)ffmpegctx.vstream->time_base.num / (float)ffmpegctx.vstream->time_base.den;
+	else 
+		vpts = 0.0;
+
+/* interleave audio / video */
+		while(ffmpegctx.astream && ffmpegctx.encabuf_ofs >= ffmpegctx.aframe_sz){ 
+			double apts = ffmpegctx.astream->pts.val * (float)ffmpegctx.astream->time_base.num / (float)ffmpegctx.astream->time_base.den;
+			
+			if (apts < vpts || ffmpegctx.astream->pts.val == AV_NOPTS_VALUE){
+				encode_audio(flush);
+			}
+			else
+				break;
+		}
+		
+	if (ffmpegctx.vstream){
+//		LOG("vframe\n");
+		encode_video(flush);
+	}
+
+/* acknowledge that a frame has been consumed, then return to polling events */
 	arcan_sem_post(ffmpegctx.shmcont.vsem);
 }
 
@@ -321,12 +418,12 @@ static void setup_audiocodec(const char* req)
 	}
 
 /* CODEC_ID_VORBIS would resolve to the internal crappy vorbis implementation in ffmpeg, don't want that */
-//	if (!ffmpegctx.acodec)
-//		ffmpegctx.acodec = avcodec_find_encoder_by_name("libvorbis"); 
+	if (!ffmpegctx.acodec)
+		ffmpegctx.acodec = avcodec_find_encoder_by_name("libvorbis"); 
 	
 	if (!ffmpegctx.acodec){
-		ffmpegctx.acodec = avcodec_find_encoder(CODEC_ID_FLAC);
 		LOG("arcan_frameserver(encode) -- no Vorbis support found, trying FLAC.\n");
+		ffmpegctx.acodec = avcodec_find_encoder(CODEC_ID_FLAC);
 	}
 
 	if (!ffmpegctx.acodec){
@@ -417,7 +514,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	unsigned afreq = 44100;
 	float fps    = 25;
 	unsigned gop = 10;
-/* decode encoding options from the resourcestr */
+/* decode encoding options from the resourcestr * -l */
 	char* base = strdup(resource);
 	char* blockb = base;
 	char* vck = NULL, (* ac) = NULL, (* cont) = NULL;
@@ -437,13 +534,13 @@ static bool setup_ffmpeg_encode(const char* resource)
 /* video bit-rate */
 			LOG("check: %s, %s\n", base, splitp);
 			if (strcmp(base, "vbitrate") == 0)
-				vbr = strtoul(splitp, NULL, 10);
+				vbr = strtoul(splitp, NULL, 10) * 1024;
 			else if (strcmp(base, "vcodec") == 0)
 /* videocodec */
 				vck = splitp;
 			else if (strcmp(base, "abitrate") == 0)
 /* audio bit-rate */
-				abr = strtoul(splitp, NULL, 10);
+				abr = strtoul(splitp, NULL, 10) * 1024;
 			else if (strcmp(base, "acodec") == 0)
 /* audiocodec */
 				ac = splitp;
@@ -490,15 +587,13 @@ static bool setup_ffmpeg_encode(const char* resource)
 /* tend to be among the color formats codec people mess up the least */
 		enum PixelFormat c_pix_fmt = PIX_FMT_YUV420P;
 
-		struct AVRational timebase = {1, fps};
 		AVCodecContext* ctx = avcodec_alloc_context3(ffmpegctx.vcodec);
 	
 		ctx->bit_rate = vbr;
 		ctx->pix_fmt = c_pix_fmt;
 		ctx->gop_size = gop;
-		ctx->time_base = av_d2q(1.0 / fps, 100000); // timebase;
+		ctx->time_base = av_d2q(1.0 / fps, 1000000);
 		ffmpegctx.fps = fps;
-		ffmpegctx.frequency = afreq;
 		ctx->width = shared->storage.w;
 		ctx->height = shared->storage.h;
 	
@@ -537,27 +632,40 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 	if (ffmpegctx.acodec){
 		AVCodecContext* ctx = avcodec_alloc_context3(ffmpegctx.acodec);
-		ctx->sample_rate = afreq;
-		ctx->time_base   = av_d2q(1.0 / ctx->sample_rate, 1000000);
-		ctx->channels    = 2;
-		ctx->sample_fmt  = ffmpegctx.float_samples ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
 		ffmpegctx.acontext = ctx;
+		ctx->bit_rate    = 64000;
+	
+		ctx->channels    = 2;
+		ctx->channel_layout = av_get_default_channel_layout(2);
+
+		ctx->sample_rate = afreq;
+		ctx->sample_fmt  = ffmpegctx.float_samples ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
+		ctx->time_base   = av_d2q(1.0 / (double)afreq, 1000000);
 		
+		if (ffmpegctx.fcontext->oformat->flags & AVFMT_GLOBALHEADER)
+				ctx->flags |= CODEC_FLAG_GLOBAL_HEADER;
+
 		if (avcodec_open2(ffmpegctx.acontext, ffmpegctx.acodec, NULL) < 0){
 			LOG("arcan_frameserver_ffmpeg_encode() -- audio codec open failed.\n");
 			avcodec_close(ctx);
 			ffmpegctx.acodec = NULL;
 		} 
 		else{
-			if (ffmpegctx.fcontext->oformat->flags & AVFMT_GLOBALHEADER)
-				ctx->flags |= CODEC_FLAG_GLOBAL_HEADER;
-			
+		
 /* always used for resampling etc */
-			ffmpegctx.encabuf_sz = SHMPAGE_AUDIOBUF_SIZE * 2;
-			ffmpegctx.encabuf = malloc(ffmpegctx.encabuf_sz);
+			ffmpegctx.encabuf_sz  = SHMPAGE_AUDIOBUF_SIZE * 2;
+			ffmpegctx.encabuf_ofs = 0; 
+			ffmpegctx.encabuf     = malloc(ffmpegctx.encabuf_sz);
 			
+/* feeding audio encoder by this much each time,
+ * frame_size = number of samples per frame, might need to supply the encoder with a fixed amount, each sample covers n channels. */
+			ffmpegctx.aframe_smplcnt = (ctx->codec->capabilities & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0 ? ffmpegctx.acontext->sample_rate / ffmpegctx.fps : ctx->frame_size;
+			ffmpegctx.aframe_sz = 4 * ffmpegctx.aframe_smplcnt; 
+/* aframe_sz is based on S16LE 2ch stereo as this is aligned to the INPUT data, for float conversion, we need to double afterwards */
+			
+/* another intermediate buffer for float- based samples */
 			if (ctx->sample_fmt == AV_SAMPLE_FMT_FLT)
-				ffmpegctx.encfbuf = malloc( SHMPAGE_AUDIOBUF_SIZE * sizeof(float) );
+				ffmpegctx.encfbuf = malloc( ffmpegctx.aframe_sz * 2);
 			
 			ffmpegctx.astream = av_new_stream(ffmpegctx.fcontext, contextc++);
 			ffmpegctx.astream->codec = ffmpegctx.acontext;
@@ -573,7 +681,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			return false;
 	}
 	
-/* signal that we are ready to receive */
+/* signal that we are ready to receive video frames */
 	arcan_sem_post(ffmpegctx.shmcont.vsem);
 	return true;
 }
