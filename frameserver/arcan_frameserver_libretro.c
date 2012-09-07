@@ -224,8 +224,6 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
-	static unsigned base = 22000;
-	
 	if (retroctx.skipframe)
 		return nframes;
 	
@@ -233,7 +231,7 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 
 	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc); 
 	retroctx.shmcont.addr->abufused += ntc; 
-	
+
 	return nframes;
 }
 
@@ -253,6 +251,7 @@ void libretro_audscb(int16_t left, int16_t right)
 static void libretro_pollcb(){}
 
 static bool libretro_setenv(unsigned cmd, void* data){ 
+	char* sysdir;
 	bool rv = false;
 	LOG("arcan_frameserver:libretro) : %d\n", cmd);
 	
@@ -271,7 +270,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: 
-			LOG("(arcan_frameserver:libretro) - system directory requested, likely not able to run.\n");
+			*((const char**) data) = getenv("ARCAN_SYSTEMDIR");
 		break;
 	}
 	
@@ -311,7 +310,8 @@ static int remaptbl[] = {
 	RETRO_DEVICE_ID_JOYPAD_X,
 	RETRO_DEVICE_ID_JOYPAD_Y,
 	RETRO_DEVICE_ID_JOYPAD_L,
-	RETRO_DEVICE_ID_JOYPAD_R
+	RETRO_DEVICE_ID_JOYPAD_R,
+	0
 };
 
 static void ioev_ctxtbl(arcan_event* ioev)
@@ -367,8 +367,10 @@ static inline void targetev(arcan_event* ev)
 {
 	arcan_tgtevent* tgt = &ev->data.target;
 	switch (ev->kind){
-		case TARGET_COMMAND_RESET: retroctx.reset(); break;
-
+		case TARGET_COMMAND_RESET: 
+			retroctx.reset(); 
+		break;
+		
 /* FD transfer has different behavior on Win32 vs UNIX,
  * Win32 has a handle attribute that directly is set as the latest active FD,
  * for UNIX, we read it from the socket connection we have */
@@ -625,7 +627,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 			retroctx.skipframe = !retroctx_sync();
 
-			assert(shared->aready == false && shared->vready == false);
+			assert(shared->aready == false);
+			assert(shared->vready == false);
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
 		

@@ -51,6 +51,7 @@ typedef struct {
 	arcan_aobj_id lastid;
 	unsigned aobjc;
 	
+/* limit on amount of simultaneous active sources */
 	ALuint sample_sources[ARCAN_AUDIO_SLIMIT];
 	
 	arcan_monafunc_cb globalhook;

@@ -257,7 +257,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 			srcbpp = shmpage->storage.bpp;
 			
 			if (srcw == tgt->desc.width && srch == tgt->desc.height && srcbpp == tgt->desc.bpp){
-				rv = push_buffer( tgt, tgt->vidp, mode, srcw, srch, srcbpp, width, height, bpp); 
+				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, srcbpp, width, height, bpp); 
 
 /* in contrast to the framequeue approach, we here need to limit the number of context switches
  * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
@@ -434,7 +434,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
 		frame_cell* current = src->vfq.front_cell;
-		rv = push_buffer( src, current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
+		rv = push_buffer( src, (char*) current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
 		arcan_framequeue_dequeue(&src->vfq);
 	}
 	else if (cmd == ffunc_tick)
@@ -454,7 +454,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 
 /* buffer == 0, shutting down */
 	if (buffer > 0 && src->audb && src->ofs_audb){
-
+		
 /* this function will make sure all monitors etc. gets their chance */
 		SDL_mutexP( src->lock_audb );
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag); 
@@ -520,6 +520,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
+/* FIXME: poll child for events, take valid ones and push unto main queue */
+	
 /* may happen multiple- times */
 	if ( arcan_frameserver_control_chld(src) &&	shmpage && shmpage->resized ){
 		arcan_errc rv;

@@ -94,7 +94,7 @@ arcan_errc arcan_audio_sfeed_ogg(arcan_aobj* aobj, arcan_aobj_id id, ALuint buf,
 			int nr, section;
 			do {
 				/* arg 4 (0: LITTLE ENDIAN, 1: BIG ENDIAN), arg 5 dformat (8 or 16bit samples?), arg 6 signedness */
-				if ((nr = ov_read(&octx->stream, octx->buffer + octx->ofs, ntr, 0, 2, 1, &section)) <= 0){
+				if ((nr = ov_read(&octx->stream, (char*) (octx->buffer + octx->ofs), ntr, 0, 2, 1, &section)) <= 0){
 				  rv = ARCAN_ERRC_EOF;
 				  break;
 			  }
@@ -106,7 +106,7 @@ arcan_errc arcan_audio_sfeed_ogg(arcan_aobj* aobj, arcan_aobj_id id, ALuint buf,
 
 			if (octx->ofs) {
 				if (aobj->monitor)
-					aobj->monitor(id, octx->buffer, octx->ofs, octx->info->channels, octx->info->rate, aobj->tag);
+					aobj->monitor(id, (uint8_t*) octx->buffer, octx->ofs, octx->info->channels, octx->info->rate, aobj->tag);
 				
 				alBufferData(buf, (octx->info->channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16), octx->buffer, octx->ofs, octx->info->rate);
 				octx->ofs = 0;
