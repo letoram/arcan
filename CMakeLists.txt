@@ -175,6 +175,8 @@ set (
  frameserver/arcan_frameserver_encode.c
  frameserver/arcan_frameserver_libretro.h
  frameserver/arcan_frameserver_libretro.c
+ frameserver/arcan_frameserver_encode_presets.c
+ frameserver/arcan_frameserver_encode_presets.h
  frameserver/ntsc/snes_ntsc.h
  frameserver/ntsc/snes_ntsc.c
  arcan_frameserver_shmpage.h

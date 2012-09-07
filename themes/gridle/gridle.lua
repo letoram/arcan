@@ -130,6 +130,11 @@ settings = {
 	ntsc_bleed      =-1.0,
 	ntsc_fringing   =-1.0,
 	
+	record_qual = 10,
+	record_res  = 240,
+	record_fps  = 30,
+	record_format = "WebM (VP8/Vorbis)",
+	
 	imagefilter = "Bilinear",
 	
 -- All settings that pertain to internal- launch fullscreen modes
@@ -1511,12 +1516,18 @@ function gridle_internalinput(iotbl)
 	if (restbl) then
 		for ind, val in pairs(restbl) do
 			if (val == "MENU_ESCAPE" and iotbl.active) then
-				gridle_internalcleanup();
+				if (valid_vid(imagery.record_target)) then
+					disable_record()
+				else	
+					gridle_internalcleanup();
+				end
 
 			elseif (val == "MENU_TOGGLE") then
+				disable_record()
 				gridlemenu_internal(internal_vid, false, true);
 
 			elseif (val == "CONTEXT") then
+				disable_record()
 				gridlemenu_internal(internal_vid, true, false);
 
 -- iotbl.active filter here is just to make sure we don't save twice (press and release) 

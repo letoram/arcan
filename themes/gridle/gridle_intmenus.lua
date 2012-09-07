@@ -952,7 +952,16 @@ function screenshot()
 	end
 end
 
-function toggle_record()
+-- width, height are assumed to be :
+-- % 2 == 0, and LE VRESW, LE VRESH
+function disable_record()
+	if (not valid_vid(imagery.record_target)) then return; end
+
+	delete_image(imagery.record_target);
+	delete_image(imagery.record_indicator);
+end
+
+function enable_record(width, height, args)
 	local tbl = current_game();
 	local lblbase = "movies/" .. tbl.target .. "_" .. tbl.setname;
 	local dst = lblbase .. ".mkv";
@@ -974,12 +983,18 @@ function toggle_record()
 	move_image(lvid, 0, 0);
 
 -- allocate intermediate storage
-	dstvid = fill_surface(320, 240, 0, 0, 0, 320, 240);
-	resize_image(lvid, 320, 240);
-	
+	local dstvid = fill_surface(width, height, 0, 0, 0, width, height);
+	resize_image(lvid, width, height);
+
 	show_image(lvid);
-	print("recording to: ", dst); 
-	define_recordtarget(dstvid, dst, "fps=30:abitrate=192:vbitrate=1500", {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+	
+	imagery.record_target = dstvid;
+	imagery.record_indicator = fill_surface(16, 16, 0, 255, 0);
+	move_image(imagery.record_indicator);
+	image_transform_cycle(imagery.record_indicator, 1);
+	blend_image(imagery.record_indicator, 255.0, 64);
+	blend_image(imagery.record_indicator, 0.0, 64);
 end
 
 displaymodeptrs = {};
@@ -1114,7 +1129,39 @@ crtmenuptrs["Gaussian Profile"] = flip_crttog;
 crtmenuptrs["Oversample"] = flip_crttog;
 crtmenuptrs["Linear Processing"] = flip_crttog;
 
---add_submenu(crtmenulbls, crtmenuptrs, "Shader Toggles", togglelbls, toggleptrs, updatetrigger);
+recordlist = {};
+recordptrs = {};
+add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("record_format", {"WebM (VP8/Vorbis)", "Lossless (FFV1/FLAC)"}, function() end, true));
+add_submenu(recordlist, recordptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
+add_submenu(recordlist, recordptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
+add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
+table.insert(recordlist, "Start");
+
+recordptrs["Start"] = function() 
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"]();
+	
+	local dstvid = valid_vid(imagery.vector_vid) and imagery.vector_vid or internal_vid;
+	local props  = image_surface_initial_properties(dstvid);
+	local width  = props.width;
+	local height = props.height;
+		
+	if (settings.record_res < props.height) then
+		width = ( width / height ) * settings.record_res;
+	end
+
+-- need to be evenly divisible
+	width = math.floor(width);
+	height = math.floor(height);
+	width = (width % 2 == 0) and width or width + 1;
+	height = (height % 2 == 0) and height or height + 1;
+	
+-- compile a string with all the settings- goodness
+	local recstr = settings.record_format == "Lossless (FFV1/FLAC)" and "acodec=flac:vcodec=ffv1" or "acodec=libvorbis:vcodec=libvpx";
+	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
+	
+	enable_record(width, height, recstr);
+end
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 -- copy the old dispatch table, and keep a reference to the previous input handler
@@ -1165,8 +1212,14 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 			
 		elseif (selectlbl == "CRT") then
 			fmts = {};
+
+			if (settings.crt_gaussian) then fmts["Gaussian Profile"] = settings.colourtable.notice_fontstr; end
+			if (settings.crt_linearproc) then fmts["Linear Processing"] = settings.colourtable.notice_fontstr; end
+			if (settings.crt_curvature) then fmts["Curvature"] = settings.colourtable.notice_fontstr; end
+			if (settings.crt_oversample) then fmts["Oversample"] = settings.colourtable.notice_fontstr; end
+
 			menu_spawnmenu(crtmenulbls, crtmenuptrs, fmts);
-			
+
 		elseif (selectlbl == "Vector") then
 			fmts = {}; 
 			menu_spawnmenu(vectormenulbls, vectormenuptrs, fmts);
@@ -1209,11 +1262,13 @@ if (#menulbls > 0 and settingslbls) then
 		table.insert(menulbls, "Input...");
 		table.insert(menulbls, "Audio Gain...");
 		table.insert(menulbls, "Cocktail Modes...");
+		table.insert(menulbls, "Record...");
 		table.insert(menulbls, "Screenshot");
-		table.insert(menulbls, "Record Snapshot");
 	end
-	
-	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
+
+	local fmts = {};
+	fmts["Screenshot"] = [[\b]] .. settings.colourtable.notice_fontstr;
+	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3, fmts);
 	current_menu.ptrs = ptrs;
 	current_menu.parent = nil;
 
@@ -1299,9 +1354,11 @@ if (#menulbls > 0 and settingslbls) then
 		menu_spawnmenu( cocktaillist, cocktailptrs, def);
 	end
 
-	current_menu.ptrs["Record Snapshot"] = function()
-		settings.iodispatch["MENU_ESCAPE"]();
-		toggle_record();
+	
+	current_menu.ptrs["Record..."] = function()
+		local def = {};
+		def["Start"] = [[\b]] .. settings.colourtable.notice_fontstr;
+		menu_spawnmenu( recordlist, recordptrs, def); 
 	end
 	
 	gridlemenu_defaultdispatch();

@@ -3276,6 +3276,7 @@ int arcan_lua_inputfilteranalog(lua_State* ctx)
 {
 	int joyid = luaL_checknumber(ctx, 1);
 	
+	return 0;
 }
 
 int arcan_lua_screenshot(lua_State* ctx)

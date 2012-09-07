@@ -23,6 +23,7 @@
 
 #define ARCAN_ASTREAMBUF_LIMIT 4 
 #define ARCAN_ASAMPLE_LIMIT 1024 * 64
+#define ARCAN_ASTREAMBUF_LLIMIT 2048
 
 struct arcan_aobj_cell;
 
@@ -34,38 +35,52 @@ enum aobj_kind {
 };
 
 typedef struct arcan_aobj {
+/* shared */
 	arcan_aobj_id id;
 	ALuint alid;
 	enum aobj_kind kind;
-	
 	bool active;
 
+/* mixing state */
 	unsigned t_pitch;
-
 	float gain;
-	arcan_again_cb gproxy;
 	unsigned t_gain;
 	float d_gain;
-
 	float pitch;
 	float d_pitch;
 
+/* AOBJ proxy only */
+	arcan_again_cb gproxy;
+	
+/* AOBJ_STREAM only */
 	bool streaming;
 	SDL_RWops* lfeed;
 
+/* AOBJ sample only */
+	enum aobj_atypes atype;
+	uint16_t* samplebuf;
+
+/* openAL Buffering */
 	unsigned char n_streambuf;
 	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
-	uint16_t* samplebuf;
-	
-	enum aobj_atypes atype;
-	
+	short used;
+
+/* used to compensate (if) a streaming source starts feeding
+ * buffer data that is too small (< ASTREAMBUF_LLIMIT) 
+ * not allocated until that happens */
+	struct {
+		char* buf; 
+		off_t ofs;
+		size_t sz;
+	} interim;
+
+/* global hooks */
 	arcan_afunc_cb feed;
 	arcan_monafunc_cb monitor;
 	void* monitortag, (* tag);
-	
 
-	short used;
+/* stored as linked list */
 	struct arcan_aobj* next;
 } arcan_aobj;
 
