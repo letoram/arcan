@@ -22,7 +22,7 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 	ctx->gop_size  = 10;
 
 	AVFrame* pframe = avcodec_alloc_frame();
-	pframe->data[0] = malloc( (base_sz * 3) / 2);
+	pframe->data[0] = av_malloc( (base_sz * 3) / 2);
 	pframe->data[1] = pframe->data[0] + base_sz;
 	pframe->data[2] = pframe->data[1] + base_sz / 4;
 	pframe->linesize[0] = width;
@@ -275,9 +275,11 @@ struct codec_ent encode_getcontainer(const char* const requested, file_handle ds
 	ctx = avformat_alloc_context();
 	ctx->oformat = res.storage.container.format;
 
+/* ugly hack around not having a way of mapping filehandle to fd WITHOUT going through open, sic. */
 	sprintf(fdbuf, "pipe:%d", dst);
 	int rv = avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_WRITE, NULL, NULL);
-
+	ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;
+	
 	res.storage.container.context = ctx;
 	res.setup.muxer = default_format_setup;
 	

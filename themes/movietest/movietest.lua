@@ -42,7 +42,7 @@ function movietest()
 	show_image(debugbar_vid);
 	show_image(debugbar_aid);	
 	
-	vid = load_movie("movietest.avi", FRAMESERVER_LOOP, function(source, statustbl)
+	vid = load_movie("movietest.mkv", FRAMESERVER_LOOP, function(source, statustbl)
 		print("main frameserver_event(",source, statustbl.kind,")"); 
 		show_image(source);
 		play_movie(source);

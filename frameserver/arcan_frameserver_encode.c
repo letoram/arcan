@@ -102,7 +102,7 @@ static struct resampler* grab_resampler(arcan_aobj_id id, unsigned samplerate, u
 	}
 
 /* no match, allocate */
-	res = *ip = malloc( sizeof(struct resampler) );
+	res = *ip = av_malloc( sizeof(struct resampler) );
 	res->next = NULL;
 
 	int errc;
@@ -526,7 +526,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.aframe_sz = 4 * ffmpegctx.aframe_smplcnt;
 			
 			if (ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLT){
-				ffmpegctx.encfbuf = malloc( ffmpegctx.aframe_sz * 2);
+				ffmpegctx.encfbuf = av_malloc( ffmpegctx.aframe_sz * 2);
 				ffmpegctx.float_samples = true;
 				LOG("float sample format.\n");
 			}

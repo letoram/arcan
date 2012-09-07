@@ -54,7 +54,7 @@ typedef struct arcan_ffmpeg_context {
 	AVStream* astream;
 	AVStream* vstream;
 	AVPacket packet;
-	AVFrame* pframe;
+	AVFrame* pframe, (* aframe);
 
 	bool extcc;
 
@@ -67,10 +67,6 @@ typedef struct arcan_ffmpeg_context {
 
 	uint16_t samplerate;
 	uint16_t channels;
-
-/* intermediate story when it can't be avoided */
-	int16_t* audio_buf;
-	uint32_t c_audio_buf;
 
 	uint8_t* video_buf;
 	uint32_t c_video_buf;

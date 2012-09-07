@@ -963,7 +963,7 @@ end
 
 function enable_record(width, height, args)
 	local tbl = current_game();
-	local lblbase = "movies/" .. tbl.target .. "_" .. tbl.setname;
+	local lblbase = "movies/" .. tbl.setname;
 	local dst = lblbase .. ".mkv";
 	
 	local ofs = 1;
