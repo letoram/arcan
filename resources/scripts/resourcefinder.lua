@@ -46,7 +46,9 @@ local function filter_ext(globres, basename, basepath, dsttable, extensions, key
 	if (dsttable[key] == nil) then dsttable[key] = {}; end
 	
 	for ind, val in ipairs(extensions) do
+		print("check: ", basepath, basename, val);
 		if (globres[ basename .. "." .. val ] == true) then
+			print("match: ", basename, val);
 			table.insert(dsttable[key], basepath .. basename .. "." .. val);
 			return true;
 		end
@@ -60,7 +62,7 @@ local function synch_cache(pathkey)
 	if (resourcefinder_cache == nil) then resourcefinder_cache = {}; end
 
 	local pathtbl = resourcefinder_cache[pathkey];
-	if (pathtbl == nil) then
+	if (pathtbl == nil or resourcefinder_cache.invalidate) then
 		pathtbl = glob(pathkey .. "*");
 		resourcefinder_cache[pathkey] = pathtbl;
 	end
@@ -74,6 +76,7 @@ local function resourcefinder_video(game, restbl, cache_results)
 	local mvpath  = "movies/";
 
 	local tgttbl = cache_results and synch_cache(tgtpath) or glob(tgtpath .. game.setname .. ".*");
+
 	if (not filter_ext(tgttbl, game.setname, tgtpath, restbl, vidext, "movies")) then
 		tgttbl = cache_results and synch_cache(mvpath) or glob(mvpath .. game.setname .. ".*");
 		filter_ext(tgttbl, game.setname, mvpath, restbl, vidext, "movies");

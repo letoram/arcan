@@ -292,10 +292,9 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 	
-	if (cmd == ffunc_destroy){
-		;
-	}
-	if (cmd == ffunc_tick)
+	if (cmd == ffunc_destroy)
+		arcan_frameserver_free(state.ptr, false);
+	else if (cmd == ffunc_tick)
 /* done differently since we don't care if the frameserver wants to resize, that's its problem. */
 		arcan_frameserver_control_chld(src);
 
@@ -779,6 +778,7 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 			else {
 				size_t nc = shm->abufused - shm->abufbase;
 				memcpy(dst, movie->audp, nc);
+				shm->abufused = 0;
 				shm->abufbase = 0;
 				shm->aready = false;
 				arcan_sem_post(movie->async);

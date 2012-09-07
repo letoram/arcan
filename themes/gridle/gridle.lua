@@ -675,6 +675,10 @@ function gridle_ledconf()
 	end
 end
 
+function current_game_cellid()
+	return settings.cursor + settings.pageofs + 1;
+end
+
 function current_game()
 	return settings.games[settings.cursor + settings.pageofs + 1];
 end
@@ -1367,6 +1371,13 @@ function gridle_internalcleanup()
 	internal_aid = BADID;
 	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
 	settings.in_internal = false;
+	
+-- since the user might have added screenshots or recorded a snapshot,
+-- we need to invalidate the cache and rescan the globs in question 
+	resourcefinder_cache.invalidate = true;
+		local gameno = current_game_cellid();
+		settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
+	resourcefinder_cache.invalidate = false;
 end
 
 function gridle_internal_status(source, datatbl)

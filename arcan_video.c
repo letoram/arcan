@@ -2112,7 +2112,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					}
 					else{
 						dobj->parent = &current_context->world;
-						printf("changing inheritance\n");
 					}
 				}
 			}

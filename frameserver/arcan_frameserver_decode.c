@@ -13,58 +13,59 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_decode.h"
 
+static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt);
+
+static void synch_audio(arcan_ffmpeg_context* ctx)
+{
+	ctx->shmcont.addr->aready = true;
+	frameserver_semcheck( ctx->shmcont.asem, -1);
+	ctx->shmcont.addr->abufused = 0;
+}
+
+/* decode as much into our shared audio buffer as possible,
+ * when it's full OR we switch to video frames, synch the audio */
 static bool decode_aframe(arcan_ffmpeg_context* ctx)
 {
 	AVPacket cpkg = {
 		.size = ctx->packet.size,
 		.data = ctx->packet.data
 	};
-    
-	uint32_t dts = (ctx->packet.dts != AV_NOPTS_VALUE ? ctx->packet.dts : 0) * av_q2d(ctx->vstream->time_base) * 1000.0;
-    
+  
+	int got_frame = 1;
+	
+	
 	while (cpkg.size > 0) {
 		uint32_t ofs = 0;
-		int ntw = ctx->c_audio_buf;
-		int nts = avcodec_decode_audio3(ctx->acontext, ctx->audio_buf, &ntw, &cpkg);
-
+		avcodec_get_frame_defaults(ctx->aframe);
+		int nts = avcodec_decode_audio4(ctx->acontext, ctx->aframe, &got_frame, &cpkg);
+	
+		if (nts == -1)
+			return false;
+		
 		cpkg.size -= nts;
 		cpkg.data += nts;
 
-		if (nts == -1) {
-			fprintf(stderr, "feeder, avdecode error\n");
-			break;
-		}
-
-		memcpy(ctx->audp, ctx->audio_buf, ntw);
-		ctx->shmcont.addr->abufused = ntw;
-
-/* parent will check if aready, then set to false and post */
-		ctx->shmcont.addr->aready = true;
-		frameserver_semcheck( ctx->shmcont.asem, -1);
-	}
-
-	return true;
-}
-
-static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt)
-{
-	bool planar = (pfmt == PIX_FMT_YUV420P || pfmt == PIX_FMT_YUV422P || pfmt == PIX_FMT_YUV444P || pfmt == PIX_FMT_YUV411P);
-
-	if (planar) { /* need to expand into an interleaved format */
-		/* av_malloc (buf) guarantees alignment */
-		uint32_t* dst = (uint32_t*) buf;
-
-/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct linewidth / height is present */
-		for (int row = 0; row < height; row++)
-			for (int col = 0; col < width; col++) {
-				uint8_t y = frame->data[0][row * frame->linesize[0] + col];
-				uint8_t u = frame->data[1][(row/2) * frame->linesize[1] + (col / 2)];
-				uint8_t v = frame->data[2][(row/2) * frame->linesize[2] + (col / 2)];
-
-				*dst = 0xff | y << 24 | u << 16 | v << 8;
-				dst++;
+		if (got_frame){
+			int plane_size;
+			bool planar = av_sample_fmt_is_planar(ctx->acontext->sample_fmt); 
+			ssize_t ds = av_samples_get_buffer_size(&plane_size, ctx->acontext->channels, ctx->aframe->nb_samples, ctx->acontext->sample_fmt, 1);
+			
+			if (planar && ctx->acontext->channels > 1){
+				LOG("arcan_frameserver(decode) -- unsupported planar audio format detected.\n");
 			}
+			else{
+/* lock / synch before we send more data */
+				if (ctx->shmcont.addr->abufused + plane_size > SHMPAGE_AUDIOBUF_SIZE)
+					synch_audio(ctx);
+				
+				memcpy(ctx->audp + ctx->shmcont.addr->abufused, ctx->aframe->extended_data[0], plane_size);
+				ctx->shmcont.addr->abufused += plane_size;
+			}
+			
+		}
 	}
+	
+	return true;
 }
 
 /* note, if shared + vbufofs is aligned to ffmpeg standards, we could sws_scale directly to it */
@@ -100,12 +101,36 @@ static bool decode_vframe(arcan_ffmpeg_context* ctx)
 	return true;
 }
 
+bool ffmpeg_decode(arcan_ffmpeg_context* ctx)
+{
+	bool fstatus = true;
+	/* Main Decoding sequence */
+	while (fstatus &&
+		av_read_frame(ctx->fcontext, &ctx->packet) >= 0) {
+
+/* got a videoframe */
+		if (ctx->packet.stream_index == ctx->vid){
+			fstatus = decode_vframe(ctx);
+		}
+
+		else if (ctx->packet.stream_index == ctx->aid){
+			fstatus = decode_aframe(ctx);
+			if (ctx->shmcont.addr->abufused)
+				synch_audio(ctx);
+		}
+
+		av_free_packet(&ctx->packet);
+	}
+
+	return fstatus;
+}
+
 void ffmpeg_cleanup(arcan_ffmpeg_context* ctx)
 {
 	if (ctx){
-		free(ctx->audio_buf);
 		free(ctx->video_buf);
 		av_free(ctx->pframe);
+		av_free(ctx->aframe);
 	}
 }
 
@@ -122,9 +147,6 @@ arcan_ffmpeg_context* ffmpeg_preload(const char* fname)
 	if (errc >= 0) {
 		/* locate streams and codecs */
 		int vid,aid;
-
-		dst->c_audio_buf = (AVCODEC_MAX_AUDIO_FRAME_SIZE * 3) / 2;
-		dst->audio_buf = (int16_t*) av_mallocz(dst->c_audio_buf);
 
 		vid = aid = dst->vid = dst->aid = -1;
 
@@ -159,6 +181,7 @@ arcan_ffmpeg_context* ffmpeg_preload(const char* fname)
 				}
 
 		dst->pframe = avcodec_alloc_frame();
+		dst->aframe = avcodec_alloc_frame();
 	}
 	else
 		;
@@ -166,23 +189,25 @@ arcan_ffmpeg_context* ffmpeg_preload(const char* fname)
 	return dst;
 }
 
-bool ffmpeg_decode(arcan_ffmpeg_context* ctx)
+static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt)
 {
-	bool fstatus = true;
-	/* Main Decoding sequence */
-	while (fstatus &&
-		av_read_frame(ctx->fcontext, &ctx->packet) >= 0) {
+	bool planar = (pfmt == PIX_FMT_YUV420P || pfmt == PIX_FMT_YUV422P || pfmt == PIX_FMT_YUV444P || pfmt == PIX_FMT_YUV411P);
 
-/* got a videoframe */
-		if (ctx->packet.stream_index == ctx->vid)
-			fstatus = decode_vframe(ctx);
-		else if (ctx->packet.stream_index == ctx->aid)
-			fstatus = decode_aframe(ctx);
+	if (planar) { /* need to expand into an interleaved format */
+		/* av_malloc (buf) guarantees alignment */
+		uint32_t* dst = (uint32_t*) buf;
 
-		av_free_packet(&ctx->packet);
+/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct linewidth / height is present */
+		for (int row = 0; row < height; row++)
+			for (int col = 0; col < width; col++) {
+				uint8_t y = frame->data[0][row * frame->linesize[0] + col];
+				uint8_t u = frame->data[1][(row/2) * frame->linesize[1] + (col / 2)];
+				uint8_t v = frame->data[2][(row/2) * frame->linesize[2] + (col / 2)];
+
+				*dst = 0xff | y << 24 | u << 16 | v << 8;
+				dst++;
+			}
 	}
-
-	return fstatus;
 }
 
 void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
