@@ -106,7 +106,7 @@ static struct resampler* grab_resampler(arcan_aobj_id id, unsigned samplerate, u
 	res->next = NULL;
 
 	int errc;
-	res->resampler = speex_resampler_init(channels, samplerate, ffmpegctx.acontext->sample_rate, 3, &errc);
+	res->resampler = speex_resampler_init(channels, samplerate, ffmpegctx.acontext->sample_rate, 7, &errc);
 	res->weight = 1.0; 
 	res->source = id;
 	
@@ -420,7 +420,6 @@ static bool setup_ffmpeg_encode(const char* resource)
 		else {
 			*splitp++ = '\0';
 /* video bit-rate */
-			LOG("check: %s, %s\n", base, splitp);
 			if (strcmp(base, "vbitrate") == 0)
 				vbr = strtoul(splitp, NULL, 10) * 1024;
 			else if (strcmp(base, "vpreset")  == 0)

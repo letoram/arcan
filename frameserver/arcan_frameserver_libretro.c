@@ -38,6 +38,10 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "libretro.h"
 
+/* resampling at this level because it seems the linux + openAL + pulse-junk-audio
+ * introduces audible pops on some soundcard / drivers at odd (so poorly tested) sampling rates) */
+#include <speex/speex_resampler.h>
+
 #ifndef MAX_PORTS
 #define MAX_PORTS 4
 #endif
@@ -47,7 +51,7 @@
 #endif
 
 #ifndef MAX_BUTTONS
-#define MAX_BUTTONS 12
+#define MAX_BUTTONS 16
 #endif
 
 static const int NAUDCHAN = 2;
@@ -87,6 +91,7 @@ static struct {
 		struct frameserver_shmcont shmcont;
 		uint8_t* vidp, (* audp);
 		uint8_t* audguardb; /* 0xdead */
+		SpeexResamplerState* resampler;
 		
 		file_handle last_fd;
 		
@@ -227,24 +232,31 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 	if (retroctx.skipframe)
 		return nframes;
 	
-	size_t ntc = nframes * 4; /* 2 channels per frame, 16 bit local endian data */
+	spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE - retroctx.shmcont.addr->abufused;
+	spx_uint32_t nproc = nframes;
 
-	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, data, ntc); 
-	retroctx.shmcont.addr->abufused += ntc; 
+	speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) data, &nproc, (spx_int16_t*) (retroctx.audp + retroctx.shmcont.addr->abufused), &outc);
+	assert(nproc == nframes);	
+	
+	if (outc)
+		retroctx.shmcont.addr->abufused += (outc << 2); /* samples written times channels times bytes per sample */
 
 	return nframes;
 }
-
 
 void libretro_audscb(int16_t left, int16_t right)
 {
 	if (retroctx.skipframe)
 		return;
-	
-	int16_t buf[2] = {left, right};
 
-	memcpy(retroctx.audp + retroctx.shmcont.addr->abufused, buf, 4);
-	retroctx.shmcont.addr->abufused += 4;
+	int16_t buf[2] = {left, right};
+	spx_uint32_t nsamp = 1;
+	spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE - retroctx.shmcont.addr->abufused;
+	
+	speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) buf, &nsamp, (spx_int16_t*) (retroctx.audp + retroctx.shmcont.addr->abufused), &outc);
+
+	if (outc)
+		retroctx.shmcont.addr->abufused += outc << 2;
 }
 
 /* we ignore these since before pushing for a frame, we've already processed the queue */
@@ -270,7 +282,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: 
-			*((const char**) data) = getenv("ARCAN_SYSTEMDIR");
+			*((const char**) data) = getenv("ARCAN_SYSTEMPATH");
 		break;
 	}
 	
@@ -280,21 +292,24 @@ static bool libretro_setenv(unsigned cmd, void* data){
 /* use the context-tables from retroctx in combination with dev / ind / ... 
  * to try and figure out what to return, this table is populated in flush_eventq() */
 static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
-	static bool warned_mouse = false;
-	static bool warned_lightgun = false;
-	
-	assert(ind < MAX_PORTS);
-	assert(id  < MAX_BUTTONS);
+	static bool warned_input = false;
+
+	if (id > MAX_BUTTONS){
+		arcan_warning("arcan_frameserver(libretro) -- unexpectedly high button index (%d:%d) requested, ignoring.\n", ind, id);
+		return 0;
+	}
+
+	assert(port < MAX_PORTS);
 	
 	switch (dev){
 		case RETRO_DEVICE_JOYPAD:
-			return (int16_t) retroctx.inputmatr.joypad[ind][id];
+			return (int16_t) retroctx.inputmatr.joypad[port][id];
 		break;
 		
 		case RETRO_DEVICE_MOUSE:
 		case RETRO_DEVICE_LIGHTGUN:
 		case RETRO_DEVICE_ANALOG:
-			return (int16_t) retroctx.inputmatr.axis[ind][id];
+			return (int16_t) retroctx.inputmatr.axis[port][id];
 		break;
 		
 		default:
@@ -390,7 +405,7 @@ static inline void targetev(arcan_event* ev)
 	
 		break;	
 		
-/* 0 : auto, -1 : disable, > 0 render every n frames. */
+/* 0 : auto, -1 : single-step, > 0 render every n frames. */
 		case TARGET_COMMAND_FRAMESKIP: 
 			retroctx.skipmode = tgt->ioevs[0].iv; 
 		break;
@@ -412,7 +427,7 @@ static inline void targetev(arcan_event* ev)
 		break;
 		
 		case TARGET_COMMAND_STEPFRAME:
-			if (tgt->ioevs[0].iv < 0); /* FIXME: rewind not implemented */
+			if (tgt->ioevs[0].iv < 0);
 				else 
 					while(tgt->ioevs[0].iv--){ retroctx.run(); }
 		break;
@@ -517,6 +532,7 @@ static inline bool retroctx_sync()
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
 	const char* libname  = resource;
+	int errc;
 	LOG("mode_libretro (%s)\n", resource);
 	
 /* abssopath : gamename */
@@ -552,7 +568,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		}
 		
 	gameinf.size = bufsize;
-	
 /* map functions to context structure */
 		retroctx.run = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
@@ -585,14 +600,16 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.ntscconv  = false;
 		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
-		
+	
+		LOG("arcan_frameserver(libretro) -- setting up resampler, %lf => 44100.\n", avinfo.timing.sample_rate);
+		retroctx.resampler = speex_resampler_init(2, avinfo.timing.sample_rate, 44100, 7, &errc);
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 		
 		if (!frameserver_shmpage_resize(&retroctx.shmcont,
 			avinfo.geometry.max_width, 
 			avinfo.geometry.max_height, 4, 2, 
-			avinfo.timing.sample_rate))
+			44100))
 			return;
 		
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );

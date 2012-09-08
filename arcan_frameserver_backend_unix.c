@@ -276,11 +276,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->nopts = true;
 			ctx->autoplay = true;
-			ctx->sz_audb = 1024 * 24;
+			ctx->sz_audb  = 1024 * 6400;
+			ctx->ofs_audb = 0;
 			
 			ctx->audb = malloc( ctx->sz_audb );
+			memset(ctx->audb, 0, ctx->sz_audb );
 			ctx->lock_audb = SDL_CreateMutex();
-			memset(ctx->audb, 0, ctx->ofs_audb);
 		}
 		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "record") == 0)
 		{
@@ -291,8 +292,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
  * thus not how large the intermediate buffer should be to safely accommodate them all */
 			ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
 			ctx->audb = malloc( ctx->sz_audb );
+			memset(ctx->audb, 0, ctx->sz_audb );
 			ctx->lock_audb = SDL_CreateMutex();
-			memset(ctx->audb, 0, ctx->ofs_audb);
 		}
 
 /* hijack works as a 'process parasite' inside the rendering pipeline of other projects,

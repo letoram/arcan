@@ -2626,8 +2626,8 @@ int arcan_lua_targetpostfilterargs(lua_State* ctx)
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int group = luaL_checknumber(ctx, 2);
 	float v1  = luaL_optnumber(ctx, 3, 0.0);
-	float v2  = luaL_optnumber(ctx, 3, 0.0);
-	float v3  = luaL_optnumber(ctx, 3, 0.0);
+	float v2  = luaL_optnumber(ctx, 4, 0.0);
+	float v3  = luaL_optnumber(ctx, 5, 0.0);
 		
 	arcan_event ev = {
 		.category    = EVENT_TARGET,
