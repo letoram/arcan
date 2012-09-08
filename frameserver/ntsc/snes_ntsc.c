@@ -127,10 +127,12 @@ void snes_ntsc_init( snes_ntsc_t* ntsc, snes_ntsc_setup_t const* setup )
 	}
 }
 
+#include <stdio.h>
 void snes_ntsc_update_setup( snes_ntsc_t* ntsc, snes_ntsc_setup_t* dst, int group, float v1, float v2, float v3)
 {
 	switch( group ){
 		case 1:
+			fprintf(stderr, "hue: %f, sat: %f, contr: %f\n", v1, v2, v3);
 			dst->hue = v1;
 			dst->saturation = v2;
 			dst->contrast = v3;
@@ -151,10 +153,10 @@ void snes_ntsc_update_setup( snes_ntsc_t* ntsc, snes_ntsc_setup_t* dst, int grou
 		case 4:
 			dst->fringing = v1;
 /* v2, v3 unused */
-			snes_ntsc_init(ntsc, dst);
 		break;
 	}
-	
+
+	snes_ntsc_init(ntsc, dst);	
 }
 
 #ifndef SNES_NTSC_NO_BLITTERS

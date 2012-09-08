@@ -33,7 +33,6 @@ local function glob(path)
 
 	for ind, val in ipairs(lut) do
 		restbl[val] = true;
-		print("globres", path, val);
 	end
 	
 	return restbl;
@@ -46,9 +45,7 @@ local function filter_ext(globres, basename, basepath, dsttable, extensions, key
 	if (dsttable[key] == nil) then dsttable[key] = {}; end
 	
 	for ind, val in ipairs(extensions) do
-		print("check: ", basepath, basename, val);
 		if (globres[ basename .. "." .. val ] == true) then
-			print("match: ", basename, val);
 			table.insert(dsttable[key], basepath .. basename .. "." .. val);
 			return true;
 		end

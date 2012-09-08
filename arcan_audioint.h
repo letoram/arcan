@@ -21,10 +21,9 @@
 #ifndef _HAVE_ARCAN_AUDIOINT
 #define _HAVE_ARCAN_AUDIOINT
 
-#define ARCAN_ASTREAMBUF_LIMIT 4 
+#define ARCAN_ASTREAMBUF_LIMIT 8 
 #define ARCAN_ASAMPLE_LIMIT 1024 * 64
-#define ARCAN_ASTREAMBUF_LLIMIT 2048
-
+#define ARCAN_ASTREAMBUF_LLIMIT 4096 
 struct arcan_aobj_cell;
 
 enum aobj_kind {
@@ -65,15 +64,6 @@ typedef struct arcan_aobj {
 	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
 	short used;
-
-/* used to compensate (if) a streaming source starts feeding
- * buffer data that is too small (< ASTREAMBUF_LLIMIT) 
- * not allocated until that happens */
-	struct {
-		char* buf; 
-		off_t ofs;
-		size_t sz;
-	} interim;
 
 /* global hooks */
 	arcan_afunc_cb feed;

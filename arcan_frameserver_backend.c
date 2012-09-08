@@ -265,10 +265,10 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 				if (shmpage->aready) {
 					size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ? 
 						(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
-
+						
 					if (shmpage->abufused != ntc)
-						arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun (%d[%d]:%d), %zu\n", 
-						tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused, ntc);
+						arcan_warning("arcan_frameserver(%d:%d) -- audio buffer overrun. Buffer size: %zu, in use: %zu, queued: %d\n", 
+							tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused);
 
 					memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 					tgt->ofs_audb += ntc;
@@ -452,7 +452,7 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 	arcan_frameserver* src = (arcan_frameserver*) tag;
 
 /* buffer == 0, shutting down */
-	if (buffer > 0 && src->audb && src->ofs_audb){
+	if (buffer > 0 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 		
 /* this function will make sure all monitors etc. gets their chance */
 		SDL_mutexP( src->lock_audb );
@@ -566,20 +566,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
  * if we don't maintain a queue (present as soon as possible) */
 		if (src->nopts){
-			if (src->kind == ARCAN_FRAMESERVER_INTERACTIVE && arcan_video_display.vsync) {
-				sprintf(labelbuf, "interactive_%d", (int) src->vid);
-
-/* the difference here is that whenever it reads a video frame into the queue,
- * it also flushes the audio buffer but into the framequeue context (a little hackish) */
-				arcan_framequeue_alloc(&src->vfq, src->vid, 3, 
-					src->desc.width * src->desc.height * src->desc.bpp, 
-					false, arcan_frameserver_shmvidaudcb, labelbuf);
-
-				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
-			}
-/* otherwise, synching is actually up to the frameserver and we can keep the main program nice and reponsive */
-			else 
-				arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
+			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
 
 /* the first time around, we also need to setup the audio mapping */
 			if (src->aid == ARCAN_EID)

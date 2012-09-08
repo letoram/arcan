@@ -209,7 +209,6 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
 	if (LOCK(ctx)){
 		ctx->kbdrepeat = rate;
-		printf("newrate: %d\n", rate);
 		if (rate == 0) 
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else 
