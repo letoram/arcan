@@ -27,7 +27,7 @@
 #define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
 #define MAX_SHMSIZE 9582916
 #ifndef INFINITE
-#define INFINITE = -1
+#define INFINITE -1
 #endif
 
 /* setup a named memory / semaphore mapping with the server */
