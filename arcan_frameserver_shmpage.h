@@ -27,6 +27,8 @@
 #define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
 #define MAX_SHMSIZE 9582916
 
+extern const int INFINITE;
+
 /* setup a named memory / semaphore mapping with the server */
 struct frameserver_shmcont{
 	struct frameserver_shmpage* addr;

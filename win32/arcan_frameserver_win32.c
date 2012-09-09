@@ -24,6 +24,14 @@
 #include "../frameserver/arcan_frameserver_libretro.h"
 #include "../frameserver/arcan_frameserver_decode.h"
 
+#define DST_SAMPLERATE 44100
+#define DST_AUDIOCHAN  2
+#define DST_VIDEOCHAN  4 
+
+const int audio_samplerate = DST_SAMPLERATE;
+const int audio_channels   = DST_AUDIOCHAN;
+const int video_channels   = DST_VIDEOCHAN; /* RGBA */
+
 FILE* logdev = NULL;
 HWND parent = 0;
 sem_handle async, vsync, esync;
