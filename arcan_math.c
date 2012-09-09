@@ -24,6 +24,10 @@
 #include <math.h>
 #include <string.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265
+#endif
+
 #include "arcan_math.h"
 #include <SDL_opengl.h>
 
@@ -85,7 +89,7 @@ quat quat_lookat(vector pos, vector dstpos)
 	float xang = acos( dotp_vector(diff, build_vect(1.0, 0.0, 0.0)) );
 	float yang = acos( dotp_vector(diff, build_vect(0.0, 1.0, 0.0)) );
 	float zang = acos( dotp_vector(diff, build_vect(0.0, 0.0, 1.0)) );
-	
+
 	return build_quat_euler(xang, yang, zang);
 }
 
@@ -96,7 +100,7 @@ void matr_lookat(float* m, vector position, vector dstpos, vector up)
 	fwd  = norm_vector( sub_vector(dstpos, position) );
 	side = norm_vector( crossp_vector( fwd, up ) );
 	rup  = crossp_vector( side, fwd );
-	
+
 	m[0] = side.x;
 	m[1] = rup.x;
 	m[2] = -fwd.x;
@@ -108,9 +112,9 @@ void matr_lookat(float* m, vector position, vector dstpos, vector up)
 	m[8] = side.z;
 	m[9] = rup.z;
 	m[10] = -fwd.z;
-	
+
 	m[15] = 1.0;
-	
+
 	translate_matrix(m, -position.x, -position.y, -position.z);
 }
 
@@ -259,7 +263,7 @@ vector sub_vector(vector a, vector b)
 	vector res = {.x = a.x - b.x,
 	.y = a.y - b.y,
 	.z = a.z - b.z};
-	
+
 	return res;
 }
 

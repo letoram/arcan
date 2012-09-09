@@ -26,8 +26,9 @@
 #define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
 #define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
 #define MAX_SHMSIZE 9582916
-
-extern const int INFINITE;
+#ifndef INFINITE
+#define INFINITE = -1
+#endif
 
 /* setup a named memory / semaphore mapping with the server */
 struct frameserver_shmcont{
@@ -42,18 +43,18 @@ struct frameserver_shmpage {
 	bool loop;
 	bool dms;
 
-/* these are managed / populated by a queue 
+/* these are managed / populated by a queue
  * context in each process, mapped to the same posix semaphore */
 	struct {
 		arcan_event evqueue[ SHMPAGE_QUEUESIZE ];
 		unsigned front, back;
 	} childdevq, parentdevq;
-	
+
 	process_handle parent;
-	
+
 	volatile uint8_t vready;
 	uint32_t vpts;
-	
+
 	struct {
 		bool glsource;
 		uint16_t w, h;
@@ -64,10 +65,10 @@ struct frameserver_shmpage {
 	struct {
 		uint16_t w,h;
 	} display;
-	
+
 /* audio */
 	volatile uint8_t aready;
-	
+
 	uint8_t channels;
 	unsigned samplerate;
 	uint32_t apts;
@@ -82,7 +83,7 @@ struct frameserver_shmpage {
  * while at the same time keeping it out of the frameserver routine in the main app, where
  * that kind of shmcheck is dangerous */
 
-/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately) 
+/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately)
  * this will forcibly exit should any error other than timeout occur.*/
 int frameserver_semcheck(sem_handle semaphore, int timeout);
 
