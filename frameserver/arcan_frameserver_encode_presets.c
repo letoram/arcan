@@ -202,7 +202,7 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
  * prefix setup function */
 		for (int i = 0; i < nmemb; i++)
 			if (tbl[i].name != NULL && strcmp(req, tbl[i].name) == 0){
-				res = tbl[i];
+				//res = tbl[i];
 				res.storage.video.codec = avcodec_find_encoder_by_name(req);
 			}
 
@@ -215,11 +215,11 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 /* if the user didn't supply an explicit codec, or one was not found, search the table for reasonable default */
 	for (int i = 0; i < nmemb && res.storage.video.codec == NULL; i++)
 		if (tbl[i].name != NULL && tbl[i].id == 0){
-			res = tbl[i];
+			//res = tbl[i];
 			res.storage.video.codec = avcodec_find_encoder_by_name(tbl[i].name);
 		}
 		else{
-			res = tbl[i];
+			//res = tbl[i];
 			res.storage.video.codec = avcodec_find_encoder(tbl[i].id);
 		}
 

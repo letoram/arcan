@@ -10,17 +10,18 @@
 #include <ctype.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 #include "getopt.h"
 #include "arcan_math.h"
-#include <openctm.h>
+#include "openctm/openctm.h"
 
 /* msys workaround */
 #ifndef S_IXGRP
 #define S_IXGRP S_IXUSR
 #endif
 
-#ifndef S_IXOTH 
+#ifndef S_IXOTH
 #define S_IXOTH S_IXUSR
 #endif
 
@@ -35,22 +36,22 @@
 struct {
     CTMfloat* vertbuf;
     unsigned cap_vertbuf, ofs_vertbuf;
-    
+
     CTMfloat* texbuf;
     unsigned cap_texbuf, ofs_texbuf;
-    
+
     CTMfloat* normalbuf;
     unsigned cap_normalbuf, ofs_normalbuf;
-    
+
     CTMuint* vertindbuf;
     unsigned cap_vertindbuf, ofs_vertindbuf;
-    
+
     CTMfloat* normindbuf;
     unsigned cap_normindbuf, ofs_normindbuf;
-    
+
     CTMfloat* texindbuf;
     unsigned cap_texindbuf, ofs_texindbuf;
-    
+
     char* basename; /* desired basename to store with */
 	char* filename; /* model output if we have no material set */
 	char* material; /* if a material label is given, we use that +ctm as we need to split on material */
@@ -61,17 +62,17 @@ struct {
 struct {
 	float opacity;
 	float specfact;
-	
+
 	vector diffuse;
 	vector ambient;
 	vector specular;
-	
+
 	char* diffusemap;
 	char* specularmap;
 	char* ambientmap;
 	char* bumpmap;
 	char* groupname;
-	
+
 } globalmat = {
 	.opacity = 1.0
 };
@@ -80,17 +81,17 @@ char* chop(char* str)
 {
     char* endptr = str + strlen(str) - 1;
     while(isspace(*str)) str++;
-    
+
     if(!*str) return str;
-    while(endptr > str && isspace(*endptr)) 
+    while(endptr > str && isspace(*endptr))
         endptr--;
-    
+
     *(endptr+1) = 0;
-    
+
     return str;
 }
 
-/* find v1/v2/(nv==3, v3) in sbuf (0 > sbuf < lim), 
+/* find v1/v2/(nv==3, v3) in sbuf (0 > sbuf < lim),
  * if no math, add.
  * return index
  * assumes n(sbuf) has more space than lim */
@@ -102,22 +103,22 @@ unsigned resolve(CTMfloat* sbuf, unsigned* lim, float v1, float v2, float v3){
     /* check if it already exists */
     unsigned i;
     checkc++;
-    
+
     for (i = 0; i < (*lim); i += 3){
         if (
-            (fabs(sbuf[i+0] - v1) < EPSILON) && 
-            (fabs(sbuf[i+1] - v2) < EPSILON) && 
+            (fabs(sbuf[i+0] - v1) < EPSILON) &&
+            (fabs(sbuf[i+1] - v2) < EPSILON) &&
             (fabs(sbuf[i+2] - v3) < EPSILON)
-            ){        
+            ){
             return i / 3;
         }
     }
-    
+
     missc++;
     sbuf[i+0] = v1;
     sbuf[i+1] = v2;
     sbuf[i+2] = v3;
-    
+
     *lim += 3;
     return i / 3;
 }
@@ -127,9 +128,9 @@ static bool file_exists(const char* fn)
 	struct stat buf;
 	bool rv = false;
 
-	if (fn == NULL) 
+	if (fn == NULL)
 		return false;
-		
+
 	if (stat(fn, &buf) == 0) {
 		rv = S_ISREG(buf.st_mode);
 	}
@@ -142,11 +143,11 @@ static bool file_exists(const char* fn)
  * thus we do a linear filesystem search (assumes there's enough space in dst) */
 static char* addseqn(char* dst, char* base, char* ext){
 	unsigned seqn = 1;
-	
+
 	sprintf(dst, "%s.%s", base, ext);
 	if (!file_exists(dst))
 		return dst;
-	
+
 	do{
 		sprintf(dst, "%s_%i.%s", base, seqn++, ext);
 	} while (file_exists(dst));
@@ -162,15 +163,15 @@ static int write_rep(char* arg, FILE* luafile)
         CTMfloat (* vertbuf), (* normbuf), (* textbuf);
         CTMuint* indbuf;
         unsigned vertbufofs = 0, indbufofs = 0, vertbufind = 0, normbufofs = 0, textbufofs = 0;
-        
+
         /* reindex, rebuffer */
         vertbuf = (CTMfloat*) malloc(global.ofs_vertindbuf * sizeof(float) * 3);
 		textbuf = normbuf = NULL;
         indbuf  = (CTMuint*)  malloc(global.ofs_vertindbuf * sizeof(CTMuint));
-        
+
         for (unsigned i = 0; i < global.ofs_vertindbuf; i++){
             unsigned ind = global.vertindbuf[ i ] * 3;
-            
+
             indbuf[indbufofs++] = resolve(vertbuf, &vertbufofs,
                                           global.vertbuf[ ind   ],
                                           global.vertbuf[ ind+1 ],
@@ -178,12 +179,12 @@ static int write_rep(char* arg, FILE* luafile)
         }
 
 /* we don't store indexed versions of texture coordinates and normals */
-	
+
 		if (global.ofs_normindbuf){
 			normbuf = (CTMfloat*) malloc(global.ofs_normindbuf);
 			memcpy(normbuf, global.normindbuf, global.ofs_normindbuf);
 		}
-		
+
  /* either I've messed up or there's something with CTMFreeContext,
   * but in some border-conditions, it will double-free */
 		char buf[68];
@@ -192,7 +193,7 @@ static int write_rep(char* arg, FILE* luafile)
 		context = ctmNewContext(CTM_EXPORT);
 
         printf("flush: %s, (%i indices %i verts %i normals, %i txcos)\n", buf, indbufofs, global.ofs_vertbuf, global.ofs_normindbuf, global.ofs_texindbuf);
-		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, NULL); 
+		ctmDefineMesh(context, vertbuf, vertbufofs / 3, indbuf, indbufofs / 3, NULL);
 
 		if (global.ofs_texindbuf){
 			textbuf = (CTMfloat*) malloc(global.ofs_texindbuf);
@@ -202,7 +203,7 @@ static int write_rep(char* arg, FILE* luafile)
 				fprintf(stderr, "crmAddUVMap failed, reason: %i\n", ctmGetError(context));
 			}
 		}
-			
+
 		ctmSave(context, buf);
 
 		if (meshcount == 0)
@@ -239,7 +240,7 @@ static void resizebuf(void** dbuf, unsigned* cap, unsigned ofs, unsigned step, u
 }
 
 /* ' ' separated groups of floats (discard initial)
- * allowed num, . and neg. 
+ * allowed num, . and neg.
  * initial character (empty, n or t sets destination group, but all are floats) */
 static void read_vertval(char* arg, char dstgrp)
 {
@@ -249,12 +250,12 @@ static void read_vertval(char* arg, char dstgrp)
 	unsigned* dstofs;
 	CTMfloat* dstbuf;
 	CTMfloat** dstbufp;
-	
+
 	if ((nargs = sscanf(arg, " %f %f %f %f", &v1, &v2, &v3, &v4)) < 2){
 		fprintf(stderr, "Warning, vertex could not be read.\n");
 		v1 = 0.0; v2 = 0.0; v3 = 0.0;
 	}
-    
+
 	switch (dstgrp){
 		case 0 :
 			resizebuf((void**)&global.vertbuf, &global.cap_vertbuf, global.ofs_vertbuf, 3, sizeof(float), "vertbuf");
@@ -262,14 +263,14 @@ static void read_vertval(char* arg, char dstgrp)
 			global.vertbuf[global.ofs_vertbuf++] = v2;
 			global.vertbuf[global.ofs_vertbuf++] = v3;
             break;
-            
+
 		case 'n' :
 			resizebuf((void**)&global.normalbuf, &global.cap_normalbuf, global.ofs_normalbuf, 3, sizeof(float), "normbuf");
 			global.normalbuf[global.ofs_normalbuf++] = v1;
 			global.normalbuf[global.ofs_normalbuf++] = v2;
 			global.normalbuf[global.ofs_normalbuf++] = v3;
             break;
-            
+
 		case 't' :
 			resizebuf((void**)&global.texbuf, &global.cap_texbuf, global.ofs_texbuf, 2, sizeof(float), "texbuf");
 			global.texbuf[global.ofs_texbuf++] = v1;
@@ -290,7 +291,7 @@ static void storeind(signed vert, signed texco, signed norm)
         resizebuf((void**)&global.vertindbuf, &global.cap_vertindbuf, global.ofs_vertindbuf, 3, sizeof(CTMuint), "vertindbuf");
         global.vertindbuf[global.ofs_vertindbuf++] = vert;
     }
-    
+
     if (texco){
         if (texco < 1) texco += global.ofs_vertbuf;
     else texco--;
@@ -302,11 +303,11 @@ static void storeind(signed vert, signed texco, signed norm)
 		global.texindbuf[global.ofs_texindbuf++] = global.texbuf[texco*2+0];
 		global.texindbuf[global.ofs_texindbuf++] = global.texbuf[texco*2+1];
 	}
-    
+
     if (norm){
         if (norm < 1) norm += global.ofs_normalbuf;
         else norm--;
-        resizebuf((void**)&global.normindbuf, &global.cap_normindbuf, global.ofs_normindbuf, 3, sizeof(CTMuint), "normindbuf");    
+        resizebuf((void**)&global.normindbuf, &global.cap_normindbuf, global.ofs_normindbuf, 3, sizeof(CTMuint), "normindbuf");
 		global.normindbuf[global.ofs_normindbuf++] = global.normalbuf[norm*3+0];
 		global.normindbuf[global.ofs_normindbuf++] = global.normalbuf[norm*3+1];
 		global.normindbuf[global.ofs_normindbuf++] = global.normalbuf[norm*3+2];
@@ -339,7 +340,7 @@ void storemat(FILE* dst, char* groupname)
 		globalmat.ambientmap = globalmat.specularmap = globalmat.bumpmap = globalmat.diffusemap = NULL;
 		free(globalmat.groupname);
 		globalmat.groupname = NULL;
-			
+
 		if (groupname)
 			globalmat.groupname = strdup(groupname);
 	}
@@ -351,7 +352,7 @@ static void read_faceval(char* arg)
 {
     unsigned u1, u2, u3, u4, u5, u6, u7, u8, u9;
     char* line = chop(arg);
-    
+
     /* need to know if we should tesselate into tris and how many attributes we have */
     unsigned ngroups = 0, ofs = 0, nelem = 0;
     bool reset = true;
@@ -367,42 +368,42 @@ static void read_faceval(char* arg)
         }
         else
             reset = true;
-        
+
         ofs++;
     }
     if (++ngroups != 3 && ngroups != 4){
         fprintf(stderr, "Warning, couldn't read face from line: (%s)-- unknown size (%i) groups found.\n", line, ngroups);
 		return;
 	}
-    
+
     /* fill buf */
     struct {
         signed vrti, txci, normi;
     } buf[4] = {0};
-    
+
     char* lineofs = line;
-    
+
     if (nelem > 0)
         nelem /= ngroups;
-    
+
     for (unsigned i = 0; i < ngroups; i++){
         while(*lineofs && isspace(*lineofs)) lineofs++;
 
         switch (nelem){
             case 0: sscanf(lineofs, "%d", &buf[i].vrti); /* just vertex indices */
                 break;
-                
-            case 1: 
+
+            case 1:
                 if (strchr(lineofs, '/')[1] == '/')
                     sscanf(lineofs, "%d//%d", &buf[i].vrti, &buf[i].normi);
                 else
                     sscanf(lineofs, "%d/%d", &buf[i].vrti, &buf[i].txci);
                 break;
-                
+
             case 2: sscanf(lineofs, "%d/%d/%d", &buf[i].vrti, &buf[i].txci, &buf[i].normi);
                 break;
         }
-        
+
         while (*lineofs && !isspace(*lineofs))
             lineofs++;
     }
@@ -411,9 +412,9 @@ static void read_faceval(char* arg)
     storeind( buf[0].vrti, buf[0].txci, buf[0].normi );
     storeind( buf[1].vrti, buf[1].txci, buf[1].normi );
     storeind( buf[2].vrti, buf[2].txci, buf[2].normi );
-    
+
     /*    printf("f %d//%d %d//%d %d//%d\n", buf[0].vrti, buf[0].normi, buf[1].vrti, buf[1].normi, buf[2].vrti, buf[2].normi); */
-    if (ngroups == 4){   
+    if (ngroups == 4){
         storeind( buf[0].vrti, buf[0].txci, buf[0].normi );
         storeind( buf[2].vrti, buf[2].txci, buf[2].normi );
         storeind( buf[3].vrti, buf[3].txci, buf[3].normi );
@@ -440,7 +441,7 @@ void parse_mat(FILE* src, FILE* luafile, const char* basename)
 	char line[256];
 	unsigned ofs = 0;
 	vector nullv= {.x = 0.0, .y = 0.0, .z = 0.0};
-	
+
 	while (!feof(src)){
 		fgets(line, sizeof(line), src);
 		char* cmdl = chop(line);
@@ -454,7 +455,7 @@ void parse_mat(FILE* src, FILE* luafile, const char* basename)
 
 		cmdl[ofs] = 0;
 		char* arg = &cmdl[ofs+1];
-		
+
 		if (strcmp(cmdl, "Ka") == 0){
 			if (3 != sscanf(arg, "%f %f %f", &globalmat.ambient.x, &globalmat.ambient.y, &globalmat.ambient.y))
 				globalmat.ambient = nullv;
@@ -486,7 +487,7 @@ void parse_mat(FILE* src, FILE* luafile, const char* basename)
 		else if (strcmp(cmdl, "map_bump") == 0 ||
 			strcmp(cmdl, "bump") == 0)
 			globalmat.bumpmap = strdup(arg);
-		
+
 		else if (strcmp(cmdl, "newmtl") == 0){
 			storemat(luafile, arg);
 		}
@@ -503,7 +504,7 @@ void parse_obj(FILE* src, FILE* luafile, const char* basename)
  	char line[1024];
 	unsigned ofs = 0;
 	vector nullv= {.x = 0.0, .y = 0.0, .z = 0.0};
-	
+
 	while (!feof(src)){
 		fgets(line, sizeof(line), src);
 		char* cmdl = chop(line);
@@ -567,30 +568,30 @@ int main(int argc, char** argv)
 			case 'g' : global.debug = true; break;
 			case 's' : global.split = false; break;
 			default:
-				fprintf(stderr, "Warning, unknown option (%c), ignored.\n", ch);  
+				fprintf(stderr, "Warning, unknown option (%c), ignored.\n", ch);
 		}
 	}
 
 	if (!outputdir)
 		outputdir = "./";
-	
+
 	if (!inputfile || !basename){
 		print_usage();
 		return 0;
 	}
-	
-    
+
+
 	FILE* fpek = fopen(inputfile, "r");
 	FILE* matfpek = NULL;
-	
+
 	if (matfile){
 		matfpek = fopen(matfile, "r");
 		if (!matfpek)
 			fprintf(stderr, "Warning, couldn't open material file (%s), ignoring.\n", matfile);
 	}
-	
+
 	if (!fpek){
-		fprintf(stderr, "Couldn't open input (%s)\n", inputfile); 
+		fprintf(stderr, "Couldn't open input (%s)\n", inputfile);
 		return 1;
 	}
 
@@ -609,23 +610,23 @@ int main(int argc, char** argv)
 #endif
 
 	chdir(outputdir);
-    
+
 	char* luafname = (char*) malloc( (strlen(basename + 5)) * sizeof(char) );
 	sprintf(luafname, "%s.lua", basename);
 	FILE* luadst = fopen(luafname, "w");
 	free(luafname);
-    
+
 	if (!luadst){
 		fprintf(stderr, "Couldn't open output (%s) for writing.\n", argv[2]);
 		return 1;
 	}
-    
+
     global.basename = basename;
     global.cap_normalbuf  = global.cap_texbuf     = global.cap_vertbuf   = 640 * 1024;
     global.cap_normindbuf = global.cap_vertindbuf = global.cap_texindbuf = 640 * 1024;
-    
+
     global.vertbuf    = (CTMfloat*) malloc(global.cap_vertbuf    * sizeof(CTMfloat));
-    global.texbuf     = (CTMfloat*) malloc(global.cap_texbuf     * sizeof(CTMfloat)); 
+    global.texbuf     = (CTMfloat*) malloc(global.cap_texbuf     * sizeof(CTMfloat));
     global.normalbuf  = (CTMfloat*) malloc(global.cap_normalbuf  * sizeof(CTMfloat));
     global.vertindbuf = (CTMuint*)  malloc(global.cap_vertindbuf * sizeof(CTMuint));
     global.texindbuf  = (CTMfloat*) malloc(global.cap_texindbuf  * sizeof(CTMfloat));
@@ -636,10 +637,10 @@ int main(int argc, char** argv)
 	fprintf(luadst, "local function model_material(label, slot)\n\t"
 	"if (model.labels[label] == nil) then model.labels[label] = {}; end\n\t"
 	"table.insert(model.labels[label], slot);\nend\n");
-	
+
     parse_obj(fpek, luadst, basename);
 	global.split = true;
-	
+
 	if (global.ofs_vertindbuf > 0)
         write_rep(NULL, luadst);
 
@@ -670,6 +671,6 @@ int main(int argc, char** argv)
     fprintf(luadst, "return model;\n");
     fclose(fpek);
 	fclose(luadst);
-	
+
 	return 0;
 }
