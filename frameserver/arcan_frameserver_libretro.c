@@ -521,7 +521,7 @@ static inline bool retroctx_sync()
 
 	double avfps  = retroctx.avinfo.timing.sample_rate / retroctx.avinfo.timing.fps;
 	double adelta = (double)retroctx.framecount * avfps - (double) retroctx.aframecount;
-//	LOG(" retroctx.aframecount vs. videoframes: %lf\n", (double)retroctx.aframecount / retroctx.framecount * retroctx.avinfo.timing.fps); 
+	LOG(" retroctx.aframecount vs. videoframes: %lf\n", (double)retroctx.aframecount / retroctx.framecount * retroctx.avinfo.timing.fps); 
 	retroctx.framecount++;
 
 	if (retroctx.skipmode == TARGET_SKIP_NONE) 
