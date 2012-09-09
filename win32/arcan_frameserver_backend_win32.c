@@ -59,16 +59,16 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
 		if (!loop)
 			arcan_audio_stop(src->aid);
-			
+
 		if (src->vfq.alive)
 			arcan_framequeue_free(&src->vfq);
-		
+
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
 
 		if (src->lock_audb)
 			SDL_DestroyMutex(src->lock_audb);
-		
+
 	/* might have died prematurely (framequeue cbs), no reason sending signal */
  		if (src->child_alive) {
 			UINT ec;
@@ -82,7 +82,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);
-		
+
 			if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
 				arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
 
@@ -91,17 +91,17 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			CloseHandle(src->esync);
 			CloseHandle( src->shm.handle );
 			free(src->shm.key);
-			
+
 			src->shm.ptr = NULL;
 		}
-		
+
 		if (!loop){
 			vfunc_state emptys = {0};
 			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
 			memset(src, 0xaa, sizeof(arcan_frameserver));
 			free(src);
 		}
-	
+
 		rv = ARCAN_OK;
 	}
 
@@ -228,7 +228,7 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 	nullsec_attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	nullsec_attr.lpSecurityDescriptor = NULL;
 	nullsec_attr.bInheritHandle = TRUE;
-	
+
 	*dfd = CreateFileMapping(INVALID_HANDLE_VALUE,  /* hack for specifying shm */
 		&nullsec_attr, /* security, want to inherit */
 		PAGE_READWRITE, /* access */
@@ -276,7 +276,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->source = strdup(setup.args.builtin.resource);
 		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 		ctx->aid = ARCAN_EID;
-	} else if (setp.custom_feed == false){
+	} else if (setup.custom_feed == false){
 		vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
 		arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 	}
@@ -291,17 +291,27 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 /* mode- specific options */
 	if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
 		ctx->kind = ARCAN_FRAMESERVER_INPUT;
-	
+
 	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
-		ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
-		ctx->nopts = true;
-		ctx->autoplay = true;
+			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+			ctx->nopts = true;
+			ctx->autoplay = true;
+			ctx->sz_audb  = 1024 * 6400;
+			ctx->ofs_audb = 0;
+			ctx->audb = malloc( ctx->sz_audb );
+			memset(ctx->audb, 0, ctx->sz_audb );
+			ctx->lock_audb = SDL_CreateMutex();
 	}
 	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "record") == 0){
-		ctx->kind     = ARCAN_FRAMESERVER_OUTPUT;
-		ctx->nopts    = true;
+		ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
+		ctx->nopts = true;
 		ctx->autoplay = true;
-		ctx->sz_audb  = 
+/* we don't know how many audio feeds are actually monitored to produce the output,
+ * thus not how large the intermediate buffer should be to safely accommodate them all */
+		ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
+		ctx->audb = malloc( ctx->sz_audb );
+		memset(ctx->audb, 0, ctx->sz_audb );
+		ctx->lock_audb = SDL_CreateMutex();
 	}
 	else if (!setup.use_builtin){
 		arcan_warning("arcan_frameserver(win32) : hijack mode unsupported\n");
@@ -321,11 +331,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->shm.ptr = (void*) shmpage;
 	ctx->shm.shmsize = MAX_SHMSIZE;
 	ctx->shm.handle = shmh;
-	ctx->ofs_audb = 0;
-	ctx->sz_audb = SHMPAGE_AUDBUF_SIZE;
-	ctx->audb = (uint8_t*) malloc( ctx->sz_audb );
-	ctx->lock_audb = SDL_CreateMutex();
-	memset(ctx->audb, 0, ctx->ofs_audb);
 
 	shmpage->parent = handle;
 
@@ -338,7 +343,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
 	ctx->inqueue.front = &(shmpage->parentdevq.front);
 	ctx->inqueue.back = &(shmpage->parentdevq.back);
-		
+
 	ctx->outqueue.local = false;
 	ctx->outqueue.synch.external.shared = ctx->esync;
 	ctx->outqueue.synch.external.killswitch = ctx;
@@ -351,7 +356,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	arcan_event_enqueue(&ctx->outqueue, &test);
 
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh, 
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh,
 		ctx->vsync, ctx->async, ctx->esync, setup.args.builtin.mode);
 
 	PROCESS_INFORMATION pi;
@@ -379,7 +384,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		arcan_sem_post(ctx->vsync);
 
 		return ARCAN_OK;
-	} else 
+	} else
 		arcan_warning("arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
 
 error:
@@ -389,7 +394,7 @@ error:
 	CloseHandle(ctx->esync);
 	free(ctx->audb);
 
-	if (shmpage) 
+	if (shmpage)
 		UnmapViewOfFile((void*) shmpage);
 
 	if (shmh)

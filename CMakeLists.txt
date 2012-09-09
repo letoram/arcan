@@ -34,6 +34,7 @@ set( MAIN_LIBRARIES )
 # --- Step 1, Dependencies
 # paths / locations
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules)
+set(OPENCTM_LIBRARY openctm)
 
 # os specific lib/dep lookup hacks
 if(APPLE)
@@ -47,10 +48,15 @@ elseif(WIN32)
 
 	set(SDL_INCLUDE_DIR ${WININC}\\SDL)
 	set(SDLTTF_INCLUDE_DIR ${WININC}\\SDL)
+	set(SPEEX_INCLUDE_DIR ${WININC}\\SPEEX)
+	set(SPEEX_LIBRARY ${WINLIB}\\libspeex.lib)
+
 	set(ZLIB_INCLUDE_DIR ${WININC})
 	set(BZIP2_INCLUDE_DIR ${WININC})
 	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
+	set(OPENCTM_LIBRARY ${WINLIB}\\openctm.lib)
+
 	set(ZLIB_LIBRARY ${WINLIB}\\zlib1.dll)
 	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
 	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
@@ -75,9 +81,9 @@ FIND_PACKAGE ( SQLITE3 REQUIRED )
 FIND_PACKAGE( Speex REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
 
-LIST (APPEND 
+LIST (APPEND
 	MAIN_LIBRARIES
-	openctm
+	${OPENCTM_LIBRARY}
 	${SDL_LIBRARY}
 	${SDLIMAGE_LIBRARY}
 	${SDLTTF_LIBRARY}
@@ -93,7 +99,7 @@ LIST (APPEND
 )
 
 set (
-FSRV_LIBRARIES 
+FSRV_LIBRARIES
 	${SDL_LIBRARY}
 	${FFMPEG_LIBRARIES}
 	${BZIP2_LIBRARIES}
@@ -101,7 +107,7 @@ FSRV_LIBRARIES
 	${SPEEX_LIBRARIES}
 )
 
-include_directories ( 
+include_directories (
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
 	${SDL_INCLUDE_DIR}
@@ -202,7 +208,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 #
 # the default paths / filenames for OSX default to
 # a bundle for the libs / app / frameserver
-# with ~/.arcan for other resources 
+# with ~/.arcan for other resources
 #
 find_library(IOKIT NAMES IOKit)
 find_library(COREFOUNDATION NAMES CoreFoundation)
@@ -212,7 +218,7 @@ LIST(APPEND SOURCES SDLMain.m hidapi/hid_mac.c hidapi/hidapi.h arcan_target_laun
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 
 # " probe " support not ready, idea is to sweep targets, look at dependencies with the hijack preloaded
-# and figure out which symbols are used and available 
+# and figure out which symbols are used and available
 
 #add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
 #add_library(arcan_hijackprobe SHARED arcan_target_osx.c arcan_frameserver_shmpage.c)
@@ -221,7 +227,7 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 
 add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
 add_library( arcan_hijack SHARED arcan_target_osx.c arcan_frameserver_shmpage.c arcan_event.c frameserver/ntsc/snes_ntsc.c )
- 
+
 target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )
@@ -230,7 +236,7 @@ add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
-# 
+#
 # The default search- order for resources/themes in the main app,
 # should be ENV -> home -> unix "share" -> bundle
 
@@ -259,9 +265,9 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
 	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c)
- 
+
 	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
-	
+
 	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 	set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 	set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
@@ -318,7 +324,7 @@ if (EXISTS "/usr/bin/dpkg")
 	"libavcodec-extra-53 (>= 4:0.7-1), libavformat53 (>= 4:0.7-1) | libavformat-extra-53 (>= 4:0.7-1), libavutil-extra-51 (>= 4:0.7-1), "
 	"libswscale2 (>= 4:0.7-1) | libswscale-extra-2 (>= 4:0.7-1), libavdevice53 (>= 4:0.7-1), libbz2-1.0, libvorbis0a, libogg0, ruby1.9.1, "
 	"libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1, libspeex >= 1.2rc1")
-	
+
 endif(EXISTS "/usr/bin/dpkg")
 
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
@@ -364,7 +370,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 )
 
  # there must be a sane way to do this and actually have it work,
- # add_custom_target on the output seems to do absolutely nothing. 
+ # add_custom_target on the output seems to do absolutely nothing.
 
  add_custom_command(
 	OUTPUT arcan_romman.exe
@@ -406,7 +412,7 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
     AccessControl::GrantOnFile '\$INSTDIR\\\\themes' '(BU)' 'GenericRead + GenericWrite'
 	AccessControl::GrantOnFile '\$INSTDIR\\\\resources' '(BU)' 'GenericRead + GenericWrite'
 	AccessControl::GrantOnFile '\$INSTDIR\\\\savestates' '(BU)' 'GenericRead + GenericWrite'
-	
+
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB.lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --generic --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
     CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
 	CreateDirectory '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests'
@@ -419,9 +425,9 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
     CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Arcan (Dishwater).lnk' '\$INSTDIR\\\\arcan.exe' 'dishwater'
     CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Arcan (Space).lnk' '\$INSTDIR\\\\arcan.exe' 'space'
 ")
-	
+
 SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
-		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Welcome).lnk' 
+		Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Welcome).lnk'
 		   Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Event Test.lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Font Test.lnk'
            Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests\\\\Event Test.lnk'

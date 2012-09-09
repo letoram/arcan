@@ -1,7 +1,10 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <sys/stat.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <unistd.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -13,7 +16,7 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 {
 	AVCodecContext* ctx   = dst->storage.video.context;
 	size_t base_sz = width * height;
-	
+
 	ctx->width     = width;
 	ctx->height    = height;
 	ctx->time_base = av_d2q(1.0 / fps, 1000000);
@@ -28,14 +31,14 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 	pframe->linesize[0] = width;
 	pframe->linesize[1] = width / 2;
 	pframe->linesize[2] = width / 2;
-	
+
 	dst->storage.video.pframe = pframe;
 }
 
 static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
 {
 	AVCodecContext* ctx = dst->storage.video.context;
-	
+
 	assert(width % 2 == 0);
 	assert(height % 2 == 0);
 	assert(fps > 0 && fps <= 60);
@@ -45,16 +48,16 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned
 	if (vbr <= 10){
 		vbr = width * height + (width * height) * ( (float) vbr / 10.0f );
 	}
-	
+
 	ctx->bit_rate = vbr;
-	
+
 	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, NULL) != 0){
 		dst->storage.video.codec   = NULL;
 		dst->storage.video.context = NULL;
 		avcodec_close(dst->storage.video.context);
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -62,7 +65,7 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 {
 	AVCodecContext* ctx = dst->storage.audio.context;
 	AVCodec* codec = dst->storage.audio.codec;
-	
+
 	assert(channels == 2);
 	assert(samplerate > 0 && samplerate <= 48000);
 	assert(codec);
@@ -73,7 +76,7 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000);
 
 	bool float_found = false, sint16_found = false;
-	
+
 	unsigned i = 0;
 /* prefer sint16, but codecs e.g. vorbis requires float */
 	while(codec->sample_fmts[i] != AV_SAMPLE_FMT_NONE){
@@ -87,7 +90,7 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	ctx->sample_fmt  = float_found && !sint16_found ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
 
 /* rough quality estimate */
-	if (abr <= 10) 
+	if (abr <= 10)
 		abr = 1024 * ( 320 - 240 * ((float)(11.0 - abr) / 11.0) );
 	else
 		ctx->bit_rate = abr;
@@ -96,14 +99,14 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	if (avcodec_open2(dst->storage.audio.context, dst->storage.audio.codec, NULL) != 0){
 		avcodec_close(dst->storage.audio.context);
 		dst->storage.audio.context = NULL;
-		dst->storage.audio.codec   = NULL; 
+		dst->storage.audio.codec   = NULL;
 		return false;
 	}
-	
+
 	return true;
 }
 
-static bool default_format_setup(struct codec_ent* ctx) 
+static bool default_format_setup(struct codec_ent* ctx)
 {
 	avformat_write_header(ctx->storage.container.context, NULL);
 	return false;
@@ -115,7 +118,7 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 	AVDictionary* opts = NULL;
 	const char* const lif = fps > 30.0 ? "25" : "16";
 	const char* deadline  = "good";
-	
+
 	vcodec_defaults(dst, width, height, fps, vbr);
 
 /* options we want to set irrespective of bitrate */
@@ -124,13 +127,13 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 		av_dict_set(&opts, "qmax", "54", 0);
 		av_dict_set(&opts, "qmin", "11", 0);
 		av_dict_set(&opts, "vprofile", "1", 0);
-		
+
 	} else if (height > 480){
 		av_dict_set(&opts, "slices", "4", 0);
 		av_dict_set(&opts, "qmax", "54", 0);
 		av_dict_set(&opts, "qmin", "11", 0);
 		av_dict_set(&opts, "vprofile", "1", 0);
-		
+
 	} else if (height > 360){
 		av_dict_set(&opts, "slices", "4", 0);
 		av_dict_set(&opts, "qmax", "54", 0);
@@ -142,33 +145,33 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 		av_dict_set(&opts, "qmin", "0", 0);
 		av_dict_set(&opts, "vprofile", "0", 0);
 	}
-	
+
 	av_dict_set(&opts, "lag-in-frames", lif, 0);
 	av_dict_set(&opts, "g", "120", 0);
-	
-	
+
+
 	if (vbr <= 10){
 /* "HD" */
 		if (height > 360)
-			vbr = 1024 + 1024 * ( (float)(vbr+1) /11.0 * 2.0 ); 
+			vbr = 1024 + 1024 * ( (float)(vbr+1) /11.0 * 2.0 );
 /* "LD" */
-		else 
+		else
 			vbr = 365 + 365 * ( (float)(vbr+1) /11.0 * 2.0 );
-		
+
 		vbr *= 1024; /* to bit/s */
 	}
-	
+
 	av_dict_set(&opts, "quality", "realtime", 0);
-	dst->storage.video.context->bit_rate = vbr; 
-	
+	dst->storage.video.context->bit_rate = vbr;
+
 	LOG("arcan_frameserver(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1024);
 	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
 		dst->storage.video.context = NULL;
-		dst->storage.video.codec   = NULL; 
+		dst->storage.video.codec   = NULL;
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -193,7 +196,7 @@ static struct codec_ent fcodec_tbl[] = {
 static struct codec_ent lookup_default(const char* const req, struct codec_ent* tbl, size_t nmemb)
 {
 	struct codec_ent res = {.name = req};
-	
+
 	if (req){
 /* make sure that if the user supplies a name already in the standard table, that we get the same
  * prefix setup function */
@@ -208,7 +211,7 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 			res.storage.video.codec = avcodec_find_encoder_by_name(req);
 		}
 	}
-	
+
 /* if the user didn't supply an explicit codec, or one was not found, search the table for reasonable default */
 	for (int i = 0; i < nmemb && res.storage.video.codec == NULL; i++)
 		if (tbl[i].name != NULL && tbl[i].id == 0){
@@ -229,32 +232,32 @@ struct codec_ent encode_getvcodec(const char* const req, int flags)
 	LOG("codec setup: %" PRIxPTR "\n", (intptr_t)a.setup.video);
 	if (a.storage.video.codec && !a.setup.video)
 		a.setup.video = default_vcodec_setup;
-	
+
 	if (!a.storage.video.codec)
 		return a;
-	
+
 	a.storage.video.context = avcodec_alloc_context3( a.storage.video.codec );
 	if (flags & AVFMT_GLOBALHEADER)
 		a.storage.video.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
-	
+
 	return a;
 }
 
 struct codec_ent encode_getacodec(const char* const req, int flags)
 {
 	struct codec_ent res = lookup_default(req, acodec_tbl, sizeof(acodec_tbl) / sizeof(acodec_tbl[0]));
-	
+
 	if (res.storage.audio.codec && !res.setup.audio)
 		res.setup.audio = default_acodec_setup;
 
 	if (!res.storage.audio.codec)
 		return res;
-	
+
 	res.storage.audio.context = avcodec_alloc_context3( res.storage.audio.codec );
 	if ( (flags & AVFMT_GLOBALHEADER) > 0){
 		res.storage.audio.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
 	}
-	
+
 	LOG("audio setup, %s\n", res.name);
 	return res;
 }
@@ -264,14 +267,14 @@ struct codec_ent encode_getcontainer(const char* const requested, file_handle ds
 {
 	char fdbuf[16];
 	AVFormatContext* ctx;
-	
+
 	struct codec_ent res = {0};
 	res.storage.container.format = av_guess_format("matroska", NULL, NULL);
-	
+
 	if (!res.storage.container.format){
 		LOG("arcan_frameserver(encode) -- couldn't find a suitable container.\n");
 	}
-	
+
 	ctx = avformat_alloc_context();
 	ctx->oformat = res.storage.container.format;
 
@@ -279,9 +282,9 @@ struct codec_ent encode_getcontainer(const char* const requested, file_handle ds
 	sprintf(fdbuf, "pipe:%d", dst);
 	int rv = avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_WRITE, NULL, NULL);
 	ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;
-	
+
 	res.storage.container.context = ctx;
 	res.setup.muxer = default_format_setup;
-	
+
 	return res;
 }
