@@ -54,8 +54,8 @@
 #define MAX_BUTTONS 16
 #endif
 
-static const int NAUDCHAN = 2;
-static const int NVIDCHAN = 4;
+#define JITTER_COMPENSATION 0 
+const double jitter_comp = JITTER_COMPENSATION;
 
 /* note on synchronization:
  * the async and esync mechanisms will buffer locally and have that buffer flushed by the main application
@@ -63,7 +63,7 @@ static const int NVIDCHAN = 4;
  * whileas the event queue might be a bit more bursty.
  * 
  * however, we will lock to video, meaning that it is the framerate of the frameserver that will decide
- * the actual framerate, that may be locked to VREFRESH (or lower). Thus we also need frameskipping heuristics here.
+ * the actual framerate, that may be locked to VREFRESH (or lower, higher / variable). Thus we also need frameskipping heuristics here.
  */
 
 /* interface for loading many different emulators,
@@ -77,7 +77,11 @@ static struct {
 		long long int basetime;
 		unsigned skipcount;
 		int skipmode; 
-		long long framecount;
+		unsigned long long framecount;
+
+/* number of audio frames delivered, used to determine
+ * if a frame should be doubled or not */
+		unsigned long long aframecount; 
 	
 /* colour conversion / filtering */
 		enum retro_pixel_format colormode;
@@ -90,7 +94,14 @@ static struct {
 /* input-output */
 		struct frameserver_shmcont shmcont;
 		uint8_t* vidp, (* audp);
-		uint8_t* audguardb; /* 0xdead */
+		
+/* set as a canary after audb at a recalc to detect overflow */
+		uint8_t* audguardb; 
+
+/* resample at the last minute when we have all frames associated with a logic run() */
+		int16_t* audbuf;
+		size_t audbuf_sz;
+		off_t audbuf_ofs;
 		SpeexResamplerState* resampler;
 		
 		file_handle last_fd;
@@ -106,8 +117,11 @@ static struct {
 		struct {
 			bool joypad[MAX_PORTS][MAX_BUTTONS];
 			signed axis[MAX_PORTS][MAX_AXES];
+			int16_t mx, my;
 		} inputmatr;
-		
+
+/* timing according to retro */
+		struct retro_system_av_info avinfo;
 		void (*run)();
 		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
@@ -144,6 +158,8 @@ static void* libretro_requirefun(const char* sym)
 static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
 	assert( (uintptr_t)data % 4 == 0 );
+	assert( (video_channels == 4) );
+	
 	uint16_t* interm = retroctx.ntsc_imb;
 		
 	for (int y = 0; y < height; y++){
@@ -192,7 +208,10 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
-	if (!data || retroctx.skipframe) return;
+/* framecount is updated in sync */
+	if (!data || retroctx.skipframe) 
+		return;
+	
 	retroctx.retro_lasth = height; retroctx.retro_lastw = width;
 	unsigned outh = retroctx.ntscconv ? height * 2 : height;
 	unsigned outw = retroctx.ntscconv ? SNES_NTSC_OUT_WIDTH( width ) : width;
@@ -200,7 +219,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (outw != retroctx.shmcont.addr->storage.w || outh != retroctx.shmcont.addr->storage.h){
-		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh, NVIDCHAN, NAUDCHAN, retroctx.shmcont.addr->samplerate);
+		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh, video_channels, audio_channels, audio_samplerate);
 		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
 		
 		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
@@ -227,36 +246,29 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	}
 }
 
-size_t libretro_audcb(const int16_t* data, size_t nframes)
-{
-	if (retroctx.skipframe)
-		return nframes;
-	
-	spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE - retroctx.shmcont.addr->abufused;
-	spx_uint32_t nproc = nframes;
-
-	speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) data, &nproc, (spx_int16_t*) (retroctx.audp + retroctx.shmcont.addr->abufused), &outc);
-	assert(nproc == nframes);	
-	
-	if (outc)
-		retroctx.shmcont.addr->abufused += (outc << 2); /* samples written times channels times bytes per sample */
-
-	return nframes;
-}
 
 void libretro_audscb(int16_t left, int16_t right)
 {
+	retroctx.aframecount++;
+
 	if (retroctx.skipframe)
 		return;
 
-	int16_t buf[2] = {left, right};
-	spx_uint32_t nsamp = 1;
-	spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE - retroctx.shmcont.addr->abufused;
-	
-	speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) buf, &nsamp, (spx_int16_t*) (retroctx.audp + retroctx.shmcont.addr->abufused), &outc);
+	retroctx.audbuf[retroctx.audbuf_ofs++] = left;
+	retroctx.audbuf[retroctx.audbuf_ofs++] = right; 
+}
 
-	if (outc)
-		retroctx.shmcont.addr->abufused += outc << 2;
+size_t libretro_audcb(const int16_t* data, size_t nframes)
+{
+	retroctx.aframecount += nframes;
+
+	if (retroctx.skipframe)
+		return nframes;
+
+	memcpy(&retroctx.audbuf[retroctx.audbuf_ofs], data, nframes << 2); /* 2 bytes per sample, 2 channels */
+	retroctx.audbuf_ofs += nframes * 2; /* audbuf is in int16_t and ofs used as index */
+	
+	return nframes;
 }
 
 /* we ignore these since before pushing for a frame, we've already processed the queue */
@@ -295,7 +307,7 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 	static bool warned_input = false;
 
 	if (id > MAX_BUTTONS){
-		arcan_warning("arcan_frameserver(libretro) -- unexpectedly high button index (%d:%d) requested, ignoring.\n", ind, id);
+		arcan_warning("arcan_frameserver(libretro) -- unexpectedly high button index (dev:%d)(%d:%d) requested, ignoring.\n", ind, id);
 		return 0;
 	}
 
@@ -304,6 +316,9 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 	switch (dev){
 		case RETRO_DEVICE_JOYPAD:
 			return (int16_t) retroctx.inputmatr.joypad[port][id];
+		break;
+	
+		case RETRO_DEVICE_KEYBOARD:
 		break;
 		
 		case RETRO_DEVICE_MOUSE:
@@ -420,6 +435,7 @@ static inline void targetev(arcan_event* ev)
 			retroctx.pause = false; 
 			retroctx.basetime = frameserver_timemillis() + retroctx.framecount * retroctx.mspf;
 			retroctx.framecount = 0;
+			retroctx.aframecount = 0;
 		break;
 		
 		case TARGET_COMMAND_SETIODEV: 
@@ -492,9 +508,8 @@ static inline void flush_eventq(){
  * return false if we're lagging behind */
 static inline bool retroctx_sync()
 {
-	retroctx.framecount++;
+	long long int timestamp = frameserver_timemillis();
 
-	if (retroctx.skipmode == TARGET_SKIP_NONE) return true;
 	if (retroctx.skipmode > TARGET_SKIP_STEP) {
 		if (retroctx.skipcount == 0){
 			retroctx.skipcount = retroctx.skipmode - 1;
@@ -504,15 +519,25 @@ static inline bool retroctx_sync()
 			retroctx.skipcount--;
 	}
 
+	double avfps  = retroctx.avinfo.timing.sample_rate / retroctx.avinfo.timing.fps;
+	double adelta = (double)retroctx.framecount * avfps - (double) retroctx.aframecount;
+//	LOG(" retroctx.aframecount vs. videoframes: %lf\n", (double)retroctx.aframecount / retroctx.framecount * retroctx.avinfo.timing.fps); 
+	retroctx.framecount++;
+
+	if (retroctx.skipmode == TARGET_SKIP_NONE) 
+		return true;
+
+
 /* TARGET_SKIP_AUTO here */
-	long long int now  = frameserver_timemillis() - retroctx.basetime;
+	long long int now  = timestamp - retroctx.basetime;
 	long long int next = floor( (double)retroctx.framecount * retroctx.mspf );
 	int left = next - now;
 	
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
 	if (now < 0 || abs( left ) > retroctx.mspf * 60){
-		retroctx.basetime = frameserver_timemillis();
-		retroctx.framecount = 1;
+		retroctx.basetime = timestamp; 
+		retroctx.framecount  = 1;
+		retroctx.aframecount = 1;
 		return true;
 	}
 
@@ -523,7 +548,7 @@ static inline bool retroctx_sync()
 /* used to measure the elapsed time between frames in order to wake up in time,
  * but frame- distribution didn't get better than this magic value on anything in the test set */
 	if (left > 4)
-		frameserver_delay( left );
+		frameserver_delay( left - 4);
 	
 	return true;
 }
@@ -588,28 +613,35 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		if ( retroctx.load_game( &gameinf ) == false )
 			return;
 
-		struct retro_system_av_info avinfo;
-		( (void(*)(struct retro_system_av_info*)) libretro_requirefun("retro_get_system_av_info"))(&avinfo);
+		( (void(*)(struct retro_system_av_info*)) libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
 		
 /* setup frameserver, synchronization etc. */
-		assert(avinfo.timing.fps > 1);
-		assert(avinfo.timing.sample_rate > 1);
+		assert(retroctx.avinfo.timing.fps > 1);
+		assert(retroctx.avinfo.timing.sample_rate > 1);
 		retroctx.last_fd = BADFD;
-		retroctx.mspf = 1000.0 * (1.0 / avinfo.timing.fps);
+
+		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 		
 		retroctx.ntscconv  = false;
 		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 	
-		LOG("arcan_frameserver(libretro) -- setting up resampler, %lf => 44100.\n", avinfo.timing.sample_rate);
-		retroctx.resampler = speex_resampler_init(2, avinfo.timing.sample_rate, 44100, 7, &errc);
+		LOG("arcan_frameserver(libretro) -- setting up resampler, %lf => %d.\n", retroctx.avinfo.timing.sample_rate, audio_samplerate);
+		retroctx.resampler = speex_resampler_init(audio_channels, retroctx.avinfo.timing.sample_rate, audio_samplerate, 10 /* quality */, &errc);
+
+/* intermediate buffer for resampling and not relying on a well-behaving shmpage */
+		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * sizeof(uint16_t) * 2;
+		retroctx.audbuf = malloc(retroctx.audbuf_sz);
+		memset(retroctx.audbuf, 0, retroctx.audbuf_sz);
+		retroctx.audbuf_ofs = 0; /* initialize with some silence */
+		
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 		
 		if (!frameserver_shmpage_resize(&retroctx.shmcont,
-			avinfo.geometry.max_width, 
-			avinfo.geometry.max_height, 4, 2, 
-			44100))
+			retroctx.avinfo.geometry.max_width, 
+			retroctx.avinfo.geometry.max_height, video_channels, audio_channels, 
+			audio_samplerate))
 			return;
 		
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
@@ -638,12 +670,27 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* the audp/vidp buffers have already been updated in the callbacks */
 			if (retroctx.skipframe == false){
-				shared->aready = shared->vready = true;
-				frameserver_semcheck( retroctx.shmcont.vsem, -1);
+							
+/* possible to add a size lower limit here to maintain a larger resampling buffer than synched to videoframe */
+				if (retroctx.audbuf_ofs){
+					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
+					spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
+
+					speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) retroctx.audbuf, &nsamp, (spx_int16_t*) retroctx.audp, &outc);
+					if (outc)
+						retroctx.shmcont.addr->abufused += outc * audio_channels * sizeof(uint16_t);
+
+					shared->aready = true;
+					retroctx.audbuf_ofs = 0;
+				}
+
+				shared->vready = true;
+				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 			};
 
 			retroctx.skipframe = !retroctx_sync();
-
+			if (retroctx.skipframe) 
+				arcan_warning("skip frame!\n");
 			assert(shared->aready == false);
 			assert(shared->vready == false);
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);

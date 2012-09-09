@@ -22,6 +22,8 @@
 #include "frameserver/arcan_frameserver.h"
 #include "arcan_frameserver_shmpage.h"
 
+const int INFINITE = -1;
+
 /* This little function tries to get around all the insane problems
  * that occur with the fundamentally broken sem_timedwait with named 
  * semaphores and a parent<->child circular dependency (like we have here).
