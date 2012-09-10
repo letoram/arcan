@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
+
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
@@ -14,6 +16,9 @@
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
+
+#undef BADFD
+#define BADFD -1
 
 #include "arcan_frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
@@ -43,7 +48,7 @@ struct {
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq; /* UNUSED */
 	uint8_t* vidp, (* audp);   /* precalc dstptrs into shm */
-	file_handle lastfd;        /* sent from parent */
+	int lastfd;        /* sent from parent */
 
 /* Multiplexing / Output */
 	AVFormatContext* fcontext;
@@ -543,6 +548,10 @@ static bool setup_ffmpeg_encode(const char* resource)
 	return true;
 }
 
+#ifdef _WIN32
+#include <io.h>
+#endif
+
 void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 {
 /* setup shmpage etc. resolution etc. is already in place thanks to the parent */
@@ -552,18 +561,28 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 	ffmpegctx.lastfd = BADFD;
 	atexit(encoder_atexit);
 
-/* main event loop */
 	while (true){
 		arcan_event* ev = arcan_event_poll(&ffmpegctx.inevq);
 
 		if (ev){
 			switch (ev->kind){
+
+/* nothing happens until the first FDtransfer, and consequtive ones should really only be "useful" in streaming
+ * situations, and perhaps not even there, so consider that scenario untested */
 				case TARGET_COMMAND_FDTRANSFER:
 					if (ffmpegctx.lastfd != BADFD)
 						arcan_frameserver_stepframe(true); /* flush */
 
+/* regular file_handle abstraction with the readhandle actually returns a HANDLE on win32,
+ * since that's currently not very workable with avformat (it seems, hard to judge with that "API")
+ * we covert that to a regular POSIX file handle */
 					ffmpegctx.lastframe = frameserver_timemillis();
+
+#ifdef _WIN32
+					ffmpegctx.lastfd = _open_osfhandle( (intptr_t) frameserver_readhandle(ev), _O_APPEND);
+#else
 					ffmpegctx.lastfd = frameserver_readhandle(ev);
+#endif
 					if (!setup_ffmpeg_encode(resource))
 						return;
 				break;

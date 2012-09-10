@@ -73,5 +73,5 @@ struct codec_ent
  */
 struct codec_ent encode_getvcodec(const char* const requested, int flags);
 struct codec_ent encode_getacodec(const char* const requested, int flags);
-struct codec_ent encode_getcontainer(const char* const requested, file_handle fd);
+struct codec_ent encode_getcontainer(const char* const requested, int fd);
 #endif

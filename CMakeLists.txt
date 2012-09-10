@@ -232,7 +232,7 @@ target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )
 add_executable( arcan_frameserver ${FSRV_SOURCES})
-add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
+# add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
@@ -274,7 +274,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
 	add_executable( arcan ${SOURCES})
 	add_executable( arcan_frameserver ${FSRV_SOURCES})
-	add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
+#	add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 	install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 	install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
@@ -307,7 +307,7 @@ set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES})
 add_executable( arcan_frameserver ${FSRV_SOURCES})
-add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
+# add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
@@ -381,7 +381,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 
  add_executable( arcan WIN32 ${SOURCES} arcan_resource.obj arcan_romman.exe)
  add_executable( arcan_frameserver ${FSRV_SOURCES})
- add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
+#  add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
  file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
  install(FILES ${_dlls} DESTINATION ${BIN_DST})
@@ -446,12 +446,12 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
-target_link_libraries( arcan_modelconv openctm m )
+# target_link_libraries( arcan_modelconv openctm m )
 set_target_properties(arcan_frameserver PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
-install(TARGETS arcan_modelconv DESTINATION ${BIN_DST})
+#install(TARGETS arcan_modelconv DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ DESTINATION ${THEME_DST} DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} FILE_PERMISSIONS ${SHARED_PERMISSIONS} PATTERN ".svn" EXCLUDE)

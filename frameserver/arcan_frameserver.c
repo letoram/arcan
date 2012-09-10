@@ -255,7 +255,7 @@ static char* launch_debugparent()
 
 /* inev is part of the argument in order for Win32 and others that can pass handles in a 
  * less hackish way to do so by reusing symbols and cutting down on defines */
-file_handle frameserver_readhandle(arcan_event* inev)
+int frameserver_readhandle(arcan_event* inev)
 {
 	int rv = -1;
 	

@@ -263,7 +263,7 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 }
 
 /* slightly difference scanning function here so can't re-use lookup_default */
-struct codec_ent encode_getcontainer(const char* const requested, file_handle dst)
+struct codec_ent encode_getcontainer(const char* const requested, int dst)
 {
 	char fdbuf[16];
 	AVFormatContext* ctx;

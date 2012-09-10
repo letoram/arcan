@@ -340,7 +340,7 @@ void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz,
 {
 	arcan_frameserver* dst = tag;
 	unsigned hdr[5] = {src, buf_sz, frequency, 2, 0xfeedface};
-	assert(dst->ofs_audb < dst->sz_audb);
+
 /* make sure we don't overflow, store to intermediate buffer as we have many access threads and can't rely on 
  * synching to an untrusted source(the frameserver) here */
 	if (dst->ofs_audb + (channels == 1 ? buf_sz * 2 : buf_sz) + sizeof(hdr) < dst->sz_audb){
