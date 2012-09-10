@@ -223,7 +223,7 @@ static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, 
 		.kind = EVENT_IO_BUTTON_PRESS,
 		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.data.io.input.digital.devid = devid,
+		.data.io.input.digital.devid = ARCAN_JOYIDBASE + devid,
 		.data.io.input.digital.subid = 128 + (hatid * 4)
 	};
 	
@@ -396,7 +396,7 @@ void map_sdl_events(arcan_evctx* ctx)
 				break;
 
 			case SDL_JOYHATMOTION:
-				process_hatmotion(ctx, ARCAN_JOYIDBASE + event.jhat.which, event.jhat.hat, event.jhat.value);
+				process_hatmotion(ctx, event.jhat.which, event.jhat.hat, event.jhat.value);
 			break;
 
 /* in theory, it should be fine to just manage window resizes by keeping track of a scale factor to the

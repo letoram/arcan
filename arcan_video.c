@@ -1322,7 +1322,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 			float xs = (float) vobj->gl_storage.w / (float)arcan_video_display.width;
 			float ys = (float) vobj->gl_storage.h / (float)arcan_video_display.height;
 
-/* since we may likely have a differetly sized FBO, scale it */
+/* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
 		}
 
