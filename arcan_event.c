@@ -220,6 +220,7 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, unsigned value)
 {
 	arcan_event newevent = {
+		.category = EVENT_IO,
 		.kind = EVENT_IO_BUTTON_PRESS,
 		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
 		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
@@ -243,6 +244,8 @@ static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, 
 				arcan_event_enqueue(ctx, &newevent);
 			}
 		}
+		
+		joydev.joys[devid].hattbls[hatid] = value;
 	}
 }
 
