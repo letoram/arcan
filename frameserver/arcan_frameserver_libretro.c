@@ -99,6 +99,7 @@ static struct {
 		uint8_t* audguardb; 
 
 /* resample at the last minute when we have all frames associated with a logic run() */
+
 		int16_t* audbuf;
 		size_t audbuf_sz;
 		off_t audbuf_ofs;
@@ -122,6 +123,8 @@ static struct {
 
 /* timing according to retro */
 		struct retro_system_av_info avinfo;
+		double avfps;
+
 		void (*run)();
 		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
@@ -519,9 +522,6 @@ static inline bool retroctx_sync()
 			retroctx.skipcount--;
 	}
 
-	double avfps  = retroctx.avinfo.timing.sample_rate / retroctx.avinfo.timing.fps;
-	double adelta = (double)retroctx.framecount * avfps - (double) retroctx.aframecount;
-	LOG(" retroctx.aframecount vs. videoframes: %lf\n", (double)retroctx.aframecount / retroctx.framecount * retroctx.avinfo.timing.fps); 
 	retroctx.framecount++;
 
 	if (retroctx.skipmode == TARGET_SKIP_NONE) 
@@ -619,7 +619,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		assert(retroctx.avinfo.timing.fps > 1);
 		assert(retroctx.avinfo.timing.sample_rate > 1);
 		retroctx.last_fd = BADFD;
-
+		retroctx.avfps = retroctx.avinfo.timing.sample_rate / retroctx.avinfo.timing.fps;
 		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 		
 		retroctx.ntscconv  = false;
@@ -670,11 +670,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* the audp/vidp buffers have already been updated in the callbacks */
 			if (retroctx.skipframe == false){
-							
+
 /* possible to add a size lower limit here to maintain a larger resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
 					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
+					
+/* drop or interpolate depending on how badly aligned we are */
+					double adelta = (double)retroctx.framecount * retroctx.avfps - (double) retroctx.aframecount;
 
 					speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) retroctx.audbuf, &nsamp, (spx_int16_t*) retroctx.audp, &outc);
 					if (outc)
@@ -689,8 +692,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			};
 
 			retroctx.skipframe = !retroctx_sync();
-			if (retroctx.skipframe) 
-				arcan_warning("skip frame!\n");
+
 			assert(shared->aready == false);
 			assert(shared->vready == false);
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
