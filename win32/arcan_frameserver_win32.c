@@ -200,19 +200,22 @@ int main(int argc, char* argv[])
 
 	char* resource = argv[0];
 	char* fsrvmode = argv[5];
-	char* shmkey   = argv[1];
+	char* keyfile   = argv[1];
 
 /* seed monotonic timing */
 	QueryPerformanceFrequency(&ticks_pers);
 	QueryPerformanceCounter(&start_ticks);
 
-	LOG("arcan_frameserver(win32) -- initial argcheck OK, %s:%s\n", fsrvmode, resource);
+	
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
-		arcan_frameserver_ffmpeg_run(resource, shmkey);
+		arcan_frameserver_ffmpeg_run(resource, keyfile);
+	
 	else if (strcmp(fsrvmode, "libretro") == 0)
-		arcan_frameserver_libretro_run(resource, shmkey);
-	else if (strcmp(fsrvmode, "streamserve") == 0)
-/*		mode_streamserv(fname, shmh) */ ;
+		arcan_frameserver_libretro_run(resource, keyfile);
+	
+	else if (strcmp(fsrvmode, "record") == 0)
+		arcan_frameserver_ffmpeg_encode(resource, keyfile);
+	
 	else;
 
 	return 0;
