@@ -677,8 +677,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
 					
 /* drop or interpolate depending on how badly aligned we are */
-					double adelta = (double)retroctx.framecount * retroctx.avfps - (double) retroctx.aframecount;
-
+					double adelta = floor( (double)retroctx.framecount * retroctx.avfps - (double) retroctx.aframecount );
+					if (floor(adelta) < 0)
+					
 					speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) retroctx.audbuf, &nsamp, (spx_int16_t*) retroctx.audp, &outc);
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc * audio_channels * sizeof(uint16_t);

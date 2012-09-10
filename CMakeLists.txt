@@ -341,7 +341,7 @@ set(CPACK_RPM_PACKAGE_LICENSE "GNU General Public License (GPL")
 #
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
- add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT)
+ add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
 
  LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c)
  LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan_frameserver_resource.obj)
