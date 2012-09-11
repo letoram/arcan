@@ -74,6 +74,7 @@ static struct {
 		bool skipframe; 
 		bool pause;
 		double mspf;
+		double drift; 
 		long long int basetime;
 		unsigned skipcount;
 		int skipmode; 
@@ -383,6 +384,36 @@ static void ioev_ctxtbl(arcan_event* ioev)
 
 }
 
+/* after a set number of frames, determine the "actual" input sampling rate, and reinitialize the resample */
+static void rescale_audio()
+{
+	static bool reset_resample = false;
+	const int samplethresh     = 20000;
+	const int drift_thresh     = 100;
+	const int deviation_thresh = 200;
+	
+/* since it's only deviation from the exported samplerate from the core that's interesting,
+ * after we've set once, just ignore. */
+	if (reset_resample)
+		return;
+	
+	static double lastrate = 1;
+	double samplerate = (double)retroctx.aframecount / (double)retroctx.framecount * retroctx.avinfo.timing.fps;
+	double drift = lastrate - samplerate;
+	lastrate = samplerate;
+	
+/* after a number of frames, if the clock drift is beneath a threshold and the reported vs. actual
+ * rate deviates too much, reset the resampler with the new rate */
+	if ( retroctx.aframecount > samplethresh && abs(drift) < drift_thresh && 
+		abs(samplerate - retroctx.avinfo.timing.sample_rate) > deviation_thresh){
+		int err;
+		reset_resample = true;
+		speex_resampler_destroy(retroctx.resampler);
+		retroctx.resampler = speex_resampler_init( retroctx.shmcont.addr->channels,
+			floor(samplerate) + drift, retroctx.shmcont.addr->samplerate, 3, &err);
+	}
+}
+
 static void toggle_ntscfilter(int toggle)
 {
 	if (retroctx.ntscconv && toggle == 0){
@@ -627,7 +658,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 	
 		LOG("arcan_frameserver(libretro) -- setting up resampler, %lf => %d.\n", retroctx.avinfo.timing.sample_rate, audio_samplerate);
-		retroctx.resampler = speex_resampler_init(audio_channels, retroctx.avinfo.timing.sample_rate, audio_samplerate, 10 /* quality */, &errc);
+		retroctx.resampler = speex_resampler_init(audio_channels, retroctx.avinfo.timing.sample_rate, audio_samplerate, 3 /* quality */, &errc);
 
 /* intermediate buffer for resampling and not relying on a well-behaving shmpage */
 		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * sizeof(uint16_t) * 2;
@@ -640,7 +671,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		
 		if (!frameserver_shmpage_resize(&retroctx.shmcont,
 			retroctx.avinfo.geometry.max_width, 
-			retroctx.avinfo.geometry.max_height, video_channels, audio_channels, 
+			retroctx.avinfo.geometry.max_height, video_channels, audio_channels,
 			audio_samplerate))
 			return;
 		
@@ -670,16 +701,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* the audp/vidp buffers have already been updated in the callbacks */
 			if (retroctx.skipframe == false){
+				retroctx.skipframe = !retroctx_sync();
 
 /* possible to add a size lower limit here to maintain a larger resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
-					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
+					rescale_audio();
+					
 					spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
-					
-/* drop or interpolate depending on how badly aligned we are */
-					double adelta = floor( (double)retroctx.framecount * retroctx.avfps - (double) retroctx.aframecount );
-					if (floor(adelta) < 0)
-					
+					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) retroctx.audbuf, &nsamp, (spx_int16_t*) retroctx.audp, &outc);
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc * audio_channels * sizeof(uint16_t);
@@ -691,8 +720,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				shared->vready = true;
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 			};
-
-			retroctx.skipframe = !retroctx_sync();
 
 			assert(shared->aready == false);
 			assert(shared->vready == false);
