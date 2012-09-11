@@ -1183,6 +1183,7 @@ function load_settings()
 	load_key_num("internal_again", "internal_again", settings.internal_again);
 	load_key_str("scalemode", "scalemode", settings.scalemode);
 	load_key_num("movieagain", "movieagain", settings.movieagain);
+	load_key_num("moviecooldown", "cooldown_start", settings.cooldown_start);
 	load_key_str("tilebg", "tilebg", settings.tilebg);
 	load_key_str("bgname", "bgname", settings.bgname);
 	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
@@ -1293,7 +1294,7 @@ function gridle_clock_pulse()
 -- the cooldown before loading a movie lowers the number of frameserver launches etc. in
 -- situations with a high repeatrate and a button hold down. It also gives the soundeffect
 -- change to play without being drowned by an audio track in the movie
-	if (settings.cooldown > 0) then
+	if (settings.cooldown > 0 and settings.cooldown_start > 0) then
 		settings.cooldown = settings.cooldown - 1;
 
 -- cooldown reached, check the current cursor position, use that to figure out which movie to launch

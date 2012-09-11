@@ -259,6 +259,7 @@ add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
+add_submenu(settingslbls, settingsptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));
 add_submenu(settingslbls, settingsptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
 add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 

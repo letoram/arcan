@@ -406,6 +406,7 @@ static void rescale_audio()
  * rate deviates too much, reset the resampler with the new rate */
 	if ( retroctx.aframecount > samplethresh && abs(drift) < drift_thresh && 
 		abs(samplerate - retroctx.avinfo.timing.sample_rate) > deviation_thresh){
+		LOG("arcan_frameserver(libretro) swapping audio samplerate from %lf to %lf.\n", retroctx.avinfo.timing.sample_rate, samplerate);
 		int err;
 		reset_resample = true;
 		speex_resampler_destroy(retroctx.resampler);
@@ -699,9 +700,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			flush_eventq();
 			retroctx.run();
 
+			bool lastskip = retroctx.skipframe;
+			retroctx.skipframe = !retroctx_sync();
+
 /* the audp/vidp buffers have already been updated in the callbacks */
-			if (retroctx.skipframe == false){
-				retroctx.skipframe = !retroctx_sync();
+			if (lastskip == false){
 
 /* possible to add a size lower limit here to maintain a larger resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
