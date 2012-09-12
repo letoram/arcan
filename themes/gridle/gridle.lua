@@ -84,6 +84,7 @@ settings = {
 	repeatrate = 250,
 	cell_width = 128,
 	cell_height = 128,
+	cursor_scale = 1.2,
 	
 	cooldown = 15,
 	cooldown_start = 15,
@@ -364,7 +365,7 @@ function gridle()
 
 -- Little star keeping track of games marked as favorites
 	imagery.starimage    = load_image("images/star.png");
-	image_tracetag(imagery.starimage, "favorite star");
+	image_tracetag(imagery.starimage, "favorite icon");
 	
 	imagery.crashimage   = load_image("images/terminated.png");
 	image_tracetag(imagery.crashimage, "terminated");
@@ -702,22 +703,20 @@ function table.find(table, label)
 end
 
 function spawn_magnify( x, y )
-	local vid = instance_image(imagery.magnifyimage);
-	local w = settings.cell_width * 0.1;
-	local h = settings.cell_height * 0.1;
-	
-	image_mask_clear(vid, MASK_SCALE);
-	image_mask_clear(vid, MASK_OPACITY);
-	force_image_blend(vid);
+	local maginst = instance_image(imagery.magnifyimage);
 
-	move_image(vid, x, y, 0);
-	order_image(vid, ICONLAYER);
-	blend_image(vid, 1.0, settings.fadedelay);
-	resize_image(vid, 1, 1, NOW);
-	resize_image(vid, w, h, 10);
-	table.insert(settings.detailvids, vid);
+	image_mask_clear(maginst, MASK_OPACITY);
+	force_image_blend(maginst);
+
+	order_image(maginst, ICONLAYER);
+	show_image(maginst, 1.0);
+	resize_image(maginst, 1, 1, NOW);
+	resize_image(maginst, settings.cell_width * 0.1, settings.cell_width * 0.1, settings.fadedelay);
+	move_image(maginst, x, y, NOW);
 	
-	return vid;
+	table.insert(settings.detailvids, maginst);
+	
+	return maginst;
 end
 
 function spawn_warning( message )
@@ -750,8 +749,9 @@ function spawn_favoritestar( x, y )
 	blend_image(vid, 1.0, settings.fadedelay);
 	resize_image(vid, 1, 1, NOW);
 	resize_image(vid, settings.cell_width * 0.1, settings.cell_height * 0.1, 10);
+
 	table.insert(settings.favvids, vid);
-	
+
 	return vid;
 end
 
@@ -834,7 +834,9 @@ function got_asynchimage(source, status)
 			blend_image(source, 0.3, settings.transitiondelay);
 		end
 		
-		resize_image(source, settings.cell_width, settings.cell_height);
+		local neww = source == cursor_vid() and (settings.cell_width * settings.cursor_scale) or settings.cell_width;
+		local newh = source == cursor_vid() and (settings.cell_height * settings.cursor_scale) or settings.cell_height;
+		resize_image(source, neww, newh);
 	end
 	
 end
@@ -874,12 +876,36 @@ function cursor_bgvid()
 end
 
 function blend_gridcell(val, dt)
-    local gridcell_vid = cursor_vid();
+	local gridcell_vid = cursor_vid();
 
-    if (gridcell_vid) then
-	    instant_image_transform(gridcell_vid);
-	    blend_image(gridcell_vid, val, dt);
-    end
+	if (gridcell_vid) then
+		instant_image_transform(gridcell_vid);
+		blend_image(gridcell_vid, val, dt);
+		
+		if (settings.cursor_scale > 1.0) then
+			if (val < 0.9) then
+				local x,y = cell_coords( math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw) );
+			
+				local neww = settings.cell_width / settings.cursor_scale;
+				local newh = settings.cell_height / settings.cursor_scale;
+				local props = image_surface_properties(gridcell_vid);
+				
+				move_image(gridcell_vid, x, y, dt);
+				resize_image(gridcell_vid, settings.cell_width, settings.cell_height, dt);
+				order_image(gridcell_vid, GRIDLAYER); 
+-- Fading out, reposition / rescale
+			else
+-- Fading in, reposition / rescale
+				local neww  = settings.cell_width * settings.cursor_scale;
+				local newh  = settings.cell_height * settings.cursor_scale;
+				local x,y = cell_coords( math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw) )	;
+				move_image(gridcell_vid, x - 0.5 * (neww - settings.cell_width), y - 0.5 * (newh - settings.cell_height), dt);
+				resize_image(gridcell_vid, settings.cell_width * settings.cursor_scale, settings.cell_height * settings.cursor_scale, dt);
+				order_image(gridcell_vid, max_current_image_order()); 
+			end
+
+		end
+	end
 end
 
 function move_cursor( ofs, absolute )
@@ -1066,12 +1092,7 @@ local function titlestr(msg)
 	local fontstr = settings.colourtable.font .. tostring(fontheight) .. "\\b" .. bgcolor;
 	
 	local vid, lines = render_text(fontstr .. basemsg);
-	resize_image(vid, settings.cell_width, 0);
-	
-	local props = image_surface_properties(vid);
-	if (props.height < 10) then
-		resize_image(vid, settings.cell_width, 10);
-	end
+	resize_image(vid, settings.cell_width, settings.cell_height);
 	
 	return vid;
 end
@@ -1117,7 +1138,7 @@ function build_grid(width, height)
 			end
 
 			if (gridledetail_havedetails( settings.games[gameno] )) then
-				spawn_magnify( cx, cy + settings.cell_height * 0.1 );
+				spawn_magnify(cx, cy + settings.cell_height * 0.1 );
 			end
 		
 			grid[row][col] = vid;
@@ -1281,8 +1302,8 @@ function asynch_movie_ready(source, statustbl)
 			vid,aid = play_movie(source);
 			audio_gain(aid, 0.0);
 			audio_gain(aid, settings.movieagain, settings.fadedelay);
-			blend_image(vid, 1.0, settings.fadedelay);
-			resize_image(vid, settings.cell_width, settings.cell_height);
+
+			copy_image_transform( cursor_vid(), source );
 			blend_image(cursor_vid(), 0.0, settings.fadedelay);
 		end
 	else
@@ -1308,8 +1329,7 @@ function gridle_clock_pulse()
 					local vprop = image_surface_properties( cursor_bgvid() );
 					
 					move_image(imagery.movie, vprop.x, vprop.y);
-					order_image(imagery.movie, GRIDLAYER_MOVIE);
-					props = image_surface_properties(imagery.movie);
+					order_image(imagery.movie, max_current_image_order());
 					return
 				end
 			else

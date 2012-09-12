@@ -263,6 +263,7 @@ add_submenu(settingslbls, settingsptrs, "Movie Playback Cooldown...", "cooldown_
 add_submenu(settingslbls, settingsptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
 add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
+add_submenu(settingslbls, settingsptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
 
 if (LEDCONTROLLERS > 0) then
 	table.insert(settingslbls, "LED display mode...");
@@ -330,7 +331,6 @@ local sortorderlbls = {
 	"Times Played",
 	"Favorites"
 };
-
 
 local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96", "128x96", "96x128", "128x128", "196x128", "128x196", "196x196",
 		"196x256", "256x196", "256x256"};

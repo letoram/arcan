@@ -1793,6 +1793,7 @@ int arcan_lua_getimageresolveprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned dt = luaL_optnumber(ctx, 2, 0);
+/* FIXME: resolve_properties does not take dt into account */
 	surface_properties prop = arcan_video_resolve_properties(id);
 
 	return pushprop(ctx, prop, arcan_video_getzv(id));
