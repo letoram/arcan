@@ -857,9 +857,11 @@ const static char* deffprg =
 "uniform float obj_opacity;\n"
 "void main(){\n"
 "   vec4 col = texture2D(map_diffuse, texco);\n"
+"   if (col.a > 0.999)\n"
+"      discard;\n"
 "   col.a = col.a * obj_opacity;\n"
 "	gl_FragColor = col;\n"
-" }";
+"}";
 
 extern int TTF_Init();
 
@@ -1452,6 +1454,8 @@ static int thread_loader(void* in)
 
 	arcan_event_enqueue(arcan_event_defaultctx(), &result);
 	free(localargs->fname);
+	
+	memset(localargs, 0xba, sizeof(struct thread_loader_args));
 	free(localargs);
 
 	return 0;
@@ -1465,7 +1469,8 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, i
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	arcan_vobject* dstobj = arcan_video_newvobject(&rv);
-
+	assert(dstobj);
+	
 	struct thread_loader_args* args = (struct thread_loader_args*) calloc(sizeof(struct thread_loader_args), 1);
 	args->dstid = rv;
 	args->dst = dstobj;
@@ -1477,9 +1482,9 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, i
 
 	args->fname = strdup(fname);
 	args->tag = tag;
-	args->dst->feed.state.tag = ARCAN_TAG_ASYNCIMG;
-	args->dst->feed.state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
 	args->constraints = constraints;
+	dstobj->feed.state.tag = ARCAN_TAG_ASYNCIMG;
+	dstobj->feed.state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
 
 	return rv;
 }
@@ -2040,8 +2045,9 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* there shouldn't be anything that still references this object, so clean- up fully or "cloned" */
 #ifdef _DEBUG
 	if (vobj->tracetag){
-		arcan_warning("object (%s:%"PRIxVOBJ") about to be deleted, attachments:(%d) framesets:(%d), links: (%d), instances: (%d) \n",
-		vobj->tracetag, vobj->cellid, vobj->extrefc.attachments, vobj->extrefc.framesets, vobj->extrefc.links, vobj->extrefc.instances);
+		arcan_warning("%sobject (%s:%"PRIxVOBJ") about to be deleted, attachments:(%d) framesets:(%d), links: (%d), instances: (%d) \n",
+		vobj->flags.clone ? "clone-" : "", 	vobj->tracetag, vobj->cellid, 
+		vobj->extrefc.attachments, vobj->extrefc.framesets, vobj->extrefc.links, vobj->extrefc.instances);
 	}
 #endif
 
