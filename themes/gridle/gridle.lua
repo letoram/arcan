@@ -836,6 +836,7 @@ function got_asynchimage(source, status)
 		
 		local neww = source == cursor_vid() and (settings.cell_width * settings.cursor_scale) or settings.cell_width;
 		local newh = source == cursor_vid() and (settings.cell_height * settings.cursor_scale) or settings.cell_height;
+		
 		resize_image(source, neww, newh);
 	end
 	

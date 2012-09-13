@@ -48,18 +48,34 @@ local function keyconf_tofront(self)
 end
 
 local function keyconf_destroy(self)
-	expire_image(self.window, 20);
-	blend_image(self.window, 0.0, 20);
-	expire_image(self.border, 20);
-	blend_image(self.border, 0.0, 20);
-	expire_image(self.anchor, 20);
-	delete_image(self.textvid);
+	if (valid_vid(self.window)) then
+		blend_image(self.window, 0.0, 20);
+		expire_image(self.window, 20);
+	end
+	self.window = BADID;
+
+	if (valid_vid(self.border)) then
+		expire_image(self.border, 20);
+		blend_image(self.border, 0.0, 20);
+	end
+	self.border = BADID;
+	
+	if (valid_vid(self.anchor)) then
+		expire_image(self.anchor, 20);
+	end
+	self.anchor = BADID;
+
+	if (valid_vid(self.textvid)) then
+		delete_image(self.textvid);
+	end
+	self.textvid = BADID;
+	
 	self.active = true;
 	self:flush();
 end
 
 local function keyconf_renderline(self, string, size)
-	if (self.textvid) then
+	if (valid_vid(self.textvid)) then
 		delete_image(self.textvid);
 		self.textvid = nil;
 	end
@@ -70,6 +86,8 @@ local function keyconf_renderline(self, string, size)
 
 -- push to front, render text, resize window, align to current resolution 
 	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string);
+	image_tracetag(self.textvid, "keyconfig:text");
+	
 	self.line = string;
 	prop = image_surface_properties(self.textvid);
 
@@ -86,17 +104,21 @@ local function keyconf_renderline(self, string, size)
 	blend_image(self.textvid, 1.0);
 end
 
-
 local function keyconf_new(self)
 	self.used = {};
 	self.table = {};
 	self.to_front = keyconf_tofront;
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
+	image_tracetag(self.anchor, "keyconfig:anchor");
+	
 	move_image(self.anchor, -1, -1);
 		
 	self.border = fill_surface(VRESW * 0.33 + 6, VRESH * 0.33 + 6, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
+	image_tracetag(self.border, "keyconfig:border");
+	
 	self.window = fill_surface(VRESW * 0.33, VRESH * 0.33, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
+	image_tracetag(self.border, "keyconfig:window");
 
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
@@ -130,7 +152,7 @@ local function keyconf_playerline(self)
 	if (self.active_group == 0) then
 		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);
 	elseif (self.active_group == 1) then
-		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffff00]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);	
+		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffff00]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);
 	else
 		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\t\#ffff00]] .. tostring(self.axescount);
 	end
@@ -141,19 +163,17 @@ end
 -- query the user for the next input table,
 -- true on new key
 -- false otherwise
-
 local function keyconf_next_key(self)
 	self.ofs = self.ofs + 1;
 	self.time_lastkey = CLOCK;
 	
 	if (self.ofs <= # self.configlist) then
- 
+		local lbl;
+
 		self.key = self.configlist[self.ofs];
 		self.key_kind = string.sub(self.key, 1, 1);
 		self.key = string.sub(self.key, 2);
 
-		local lbl;
-	
 		lbl = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
 
 		if (self.key_kind == "A" or self.key_kind == "r") then
@@ -172,8 +192,8 @@ local function keyconf_next_key(self)
 		self.label = lbl;
 		keyconf_renderline(self, self.label );
 
-        return false;
-    else
+		return false;
+	else
 -- if we've already configured the player inputs, then we're done. Otherwise, remap temporarily for the "# of players" input..
 		if (self.playerconf) then
 			self:destroy();
@@ -185,11 +205,46 @@ local function keyconf_next_key(self)
 			self.buttoncount  = 0;
 			self.axescount    = 0;
 			
-			self.in_playerconf = true;
 			keyconf_playerline(self);
 			return false;
 		end
 	end
+end
+
+-- extend the current configlist with the desired base player_group, extended with nButtons and nAXES
+local function keyconf_playersel_gen(self)
+	local tmppltbl = {};
+
+-- shallow copy as we can't modify the player_group due to possible reconfigure_player
+	for ind, val in ipairs(self.player_group) do
+		table.insert(tmppltbl, val);
+	end
+	
+-- switch input method, note that we're done with the "playerselect" dialog
+	self.input = self.defaultinput;
+	self.playerconf = true;
+
+-- ofs previously pointed to past end of configlist
+	self.ofs = self.ofs - 1;
+
+	for i=1, self.buttoncount do
+		table.insert(tmppltbl, "rBUTTON" .. tostring(i));
+	end
+
+	for i=1, self.axescount do
+		table.insert(tmppltbl, "aAXIS" .. tostring(i));
+	end
+
+	if (self.playercount > 0 and (self.buttoncount > 0 or self.axescount > 0)) then
+		for i=1,self.playercount do
+			for j=1,#tmppltbl do
+				kind = string.sub(tmppltbl[j], 1, 1);
+				table.insert(self.configlist, kind .. "PLAYER" .. i .. "_" .. string.sub(tmppltbl[j], 2));
+			end
+		end
+	end
+
+	return keyconf_next_key(self);
 end
 
 local function keyconf_inp_playersel(self, inputtable)
@@ -213,30 +268,10 @@ local function keyconf_inp_playersel(self, inputtable)
 			elseif (val == "MENU_RIGHT") then
 				self.active_group = (self.active_group + 1) % 3;
 			elseif (val == "MENU_SELECT") then
-				self.input = self.defaultinput;
-				self.playerconf = true;
-				self.ofs = self.ofs - 1;
-	
-				for i=1, self.buttoncount do
-					table.insert(self.player_group, "rBUTTON" .. tostring(i));
-				end
-
-				for i=1, self.axescount do
-					table.insert(self.player_group, "aAXIS" .. tostring(i));
-				end
-				
-				if (self.playercount > 0 and (self.buttoncount > 0 or self.axescount > 0)) then
-					for i=1,self.playercount do
-						for j=1,#self.player_group do
-							kind = string.sub(self.player_group[j], 1, 1);
-							table.insert(self.configlist, kind .. "PLAYER" .. i .. "_" .. string.sub(self.player_group[j], 2));
-						end
-					end
-				end
-
-				return keyconf_next_key(self);
+				return keyconf_playersel_gen(self);
 			end
 
+-- redraw UI to reflect possible changes 
 			keyconf_playerline(self);
 			return false;
 		end
@@ -371,48 +406,59 @@ local function keyconf_tbltoid(self, inputtable)
     end
 end
 
+local function insert_unique(tbl, key)
+	for key, val in ipairs(tbl) do
+		if val == key then
+			return;
+		end
+	end
+	
+	table.insert(tbl, key);
+end
+
 -- associate 
 local function keyconf_set(self, inputtable)
 
 -- forward lookup: 1..n
-    local id = self:id(inputtable);
+	local id = self:id(inputtable);
+
 	if (self.table[id] == nil) then
 		self.table[id] = {};
-    end
-    
-	table.insert(self.table[id], self.key);
+	end
 
+	insert_unique(self.table[id], self.key);
 	self.table[self.key] = id;
 end
 
 -- return true on more samples needed,
 -- false otherwise.
 local function keyconf_analog(self, inputtable)
-    -- find which axis that is active, sample 'n' numbers
+-- find which axis that is active, sample 'n' numbers
 	table.insert(self.analog_samples, self:id(inputtable));
 
 	self.label = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
-	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t ]] .. tostring(# self.analog_samples) .. " samples grabbed (100+ needed)";
+	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t ]] .. tostring(# self.analog_samples) .. " samples grabbed (" .. 
+	tostring(self.analog_samplelimit) .. "+ needed)";
 
-    counttable = {}
+	counttable = {}
 
 	for i=1,#self.analog_samples do
 		val = counttable[ self.analog_samples[i] ] or 0;
 		counttable[ self.analog_samples[i] ] = val + 1;
-    end
+	end
 
-    max = 1;
-    maxkey = "not found";
+	max = 1;
+	maxkey = "not found";
 
-    for key, value in pairs( counttable ) do
-        if (value > max) then
-           max = value;
-           maxkey = key;
-        end
-    end
+	for key, value in pairs( counttable ) do
+		if (value > max) then
+			max = value;
+			maxkey = key;
+		end
+	end
 
 	self.label = self.label .. [[\n\r dominant device(:axis) is (]] .. maxkey .. ")";
-	if ( #self.analog_samples > 100 and maxkey == self:id(inputtable) ) then
+	if ( #self.analog_samples >= self.analog_samplelimit) then
 		self:set(inputtable);
 		return self:next_key();
     else
@@ -567,6 +613,25 @@ local function keyconf_countbuttons(self, playerind)
 	return count;
 end
 
+local function keyconf_playerreconf(self)
+-- store the states that new would otherwise override
+	local reftbl  = self.table;
+	local usedtbl = self.usedtbl;
+
+	self.active     = false;
+	self.playerconf = false;
+	self.playergroup = {};
+-- then rebuild UI components 
+	self:new();
+
+-- then restore the saved states
+	self.table   = reftbl;
+	self.usedtbl = usedtbl;
+
+	self.ofs = #self.configlist;
+	self:next_key();
+end
+
 -- set the current working table.
 -- for each stored entry, set prefix if defined 
 function keyconf_create(menugroup, playergroup, keyname)
@@ -588,11 +653,12 @@ function keyconf_create(menugroup, playergroup, keyname)
 		n_players = keyconf_countplayers,
 		n_buttons = keyconf_couuntbuttons,
 		n_axes = keyconf_countaxes,
+		reconfigure_players = keyconf_playerreconf,
 		ignore_modifiers = false,
-		in_playerconf = false,
 		keyfile = keyname,
 		input_playersel = keyconf_inp_playersel,
 		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key 
+		analog_samplelimit = 200,
 		time_lastkey = CLOCK,
 	};
 
