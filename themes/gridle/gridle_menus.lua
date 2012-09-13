@@ -164,7 +164,8 @@ local filterlbls = {
 local settingslbls = {
 	"Sort Order...",
 	"Cell Size...",
-	"Reconfigure Keys",
+	"Reconfigure Keys (Full)",
+	"Reconfigure Keys (Players)",
 };
 	
 local backgroundlbls = {
@@ -380,7 +381,7 @@ settingsptrs["Sort Order..."]    = function()
 	menu_spawnmenu(sortorderlbls, sortorderptrs, fmts); 
 end
 
-settingsptrs["Reconfigure Keys"] = function()
+settingsptrs["Reconfigure Keys (Full)"] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
@@ -400,6 +401,20 @@ end
 settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
 	gridle_ledconf();
+end
+
+settingsptrs["Reconfigure Keys (Players)"] = function()
+	keyconfig:reconfigure_players();
+	kbd_repeat(0);
+
+	gridle_input = function(iotbl) -- keyconfig io function hook
+		if (keyconfig:input(iotbl) == true) then
+			keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
+
+			gridle_input = gridle_dispatchinput;
+			kbd_repeat(settings.repeatrate);
+		end
+	end
 end
 
 settingsptrs["Cell Size..."] = function()
