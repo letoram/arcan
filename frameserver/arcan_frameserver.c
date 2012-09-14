@@ -330,9 +330,8 @@ int frameserver_readhandle(arcan_event* inev)
 	
 /* set this env whenever you want to step through the frameserver as launched from the parent */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		arcan_warning("-- frameserver stall activated, won't continue without gdb intervention. Pid: (%d)\n", getpid());
-		volatile int a = 0;
-		while (a == 0);
+		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
+		sleep(10);
 	}
 	
 /* to ease debugging, allow the frameserver to be launched without a parent we 
@@ -353,12 +352,12 @@ int frameserver_readhandle(arcan_event* inev)
 				arcan_fatal("frameserver_debug() -- couldn't get shmkey\n");
 		}
 	}
-#endif
-/*
+#else
 	close(0);
 	close(1);
 	close(2);
-*/
+#endif
+
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	

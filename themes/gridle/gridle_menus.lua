@@ -37,7 +37,7 @@ function gen_tbl_menu(name, tbl, triggerfun, isstring)
 			play_audio(soundmap["MENU_SELECT"]);
 		end
 		
-		if (triggerfun) then triggerfun(); end
+		if (triggerfun) then triggerfun(label); end
 	end
 
 	for key,val in ipairs(tbl) do
@@ -80,6 +80,8 @@ function gen_num_menu(name, base, step, count, triggerfun)
 end
 
 function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
+	if (dstlbls == nil or dstptrs == nil or #lbls == 0) then return; end
+	
 	table.insert(dstlbls, label);
 	
 	dstptrs[label] = function()
@@ -248,7 +250,7 @@ local function launchmodeupdate(label, save)
 end
 
 local backgroundptrs = {};
-add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES, updatebgtrigger));
+add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, updatebgtrigger));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, updatebgtrigger));
 add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, updatebgtrigger));

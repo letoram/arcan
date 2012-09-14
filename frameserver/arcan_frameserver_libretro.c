@@ -210,8 +210,11 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 		push_ntsc(width, height, outp);
 }
 
+static int testcounter = 0;
+
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
+	testcounter++;
 /* framecount is updated in sync */
 	if (!data || retroctx.skipframe) 
 		return;
@@ -298,6 +301,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: 
+			LOG("(arcan_frameserver:libretro) - system directory requested.\n");
 			*((const char**) data) = getenv("ARCAN_SYSTEMPATH");
 		break;
 	}
@@ -308,14 +312,24 @@ static bool libretro_setenv(unsigned cmd, void* data){
 /* use the context-tables from retroctx in combination with dev / ind / ... 
  * to try and figure out what to return, this table is populated in flush_eventq() */
 static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
-	static bool warned_input = false;
+	static bool butn_warning = false;
+	static bool port_warning = false;
 
 	if (id > MAX_BUTTONS){
-		arcan_warning("arcan_frameserver(libretro) -- unexpectedly high button index (dev:%d)(%d:%d) requested, ignoring.\n", ind, id);
+		if (butn_warning == false)
+			arcan_warning("arcan_frameserver(libretro) -- unexpectedly high button index (dev:%u)(%u:%%) requested, ignoring.\n", ind, id);
+		
+		butn_warning = true;
 		return 0;
 	}
 
-	assert(port < MAX_PORTS);
+	if (port > MAX_PORTS){
+		if (port_warning == false)
+			LOG("arcan_frameserver(libretro) -- core requested an unknown port id (%u:%u:%u), ignored.\n", dev, ind, id);
+		
+		port_warning = true;
+		return 0;
+	}
 	
 	switch (dev){
 		case RETRO_DEVICE_JOYPAD:
@@ -382,37 +396,6 @@ static void ioev_ctxtbl(arcan_event* ioev)
 		}
 	}
 
-}
-
-/* after a set number of frames, determine the "actual" input sampling rate, and reinitialize the resample */
-static void rescale_audio()
-{
-	static bool reset_resample = false;
-	const int samplethresh     = 20000;
-	const int drift_thresh     = 100;
-	const int deviation_thresh = 200;
-	
-/* since it's only deviation from the exported samplerate from the core that's interesting,
- * after we've set once, just ignore. */
-	if (reset_resample)
-		return;
-	
-	static double lastrate = 1;
-	double samplerate = (double)retroctx.aframecount / (double)retroctx.framecount * retroctx.avinfo.timing.fps;
-	double drift = lastrate - samplerate;
-	lastrate = samplerate;
-	
-/* after a number of frames, if the clock drift is beneath a threshold and the reported vs. actual
- * rate deviates too much, reset the resampler with the new rate */
-	if ( retroctx.aframecount > samplethresh && abs(drift) < drift_thresh && 
-		abs(samplerate - retroctx.avinfo.timing.sample_rate) > deviation_thresh){
-		LOG("arcan_frameserver(libretro) swapping audio samplerate from %lf to %lf.\n", retroctx.avinfo.timing.sample_rate, samplerate);
-		int err;
-		reset_resample = true;
-		speex_resampler_destroy(retroctx.resampler);
-		retroctx.resampler = speex_resampler_init( retroctx.shmcont.addr->channels,
-			floor(samplerate) + drift, retroctx.shmcont.addr->samplerate, 3, &err);
-	}
 }
 
 static void toggle_ntscfilter(int toggle)
@@ -544,6 +527,7 @@ static inline void flush_eventq(){
 static inline bool retroctx_sync()
 {
 	long long int timestamp = frameserver_timemillis();
+	retroctx.framecount++;
 
 	if (retroctx.skipmode > TARGET_SKIP_STEP) {
 		if (retroctx.skipcount == 0){
@@ -554,11 +538,8 @@ static inline bool retroctx_sync()
 			retroctx.skipcount--;
 	}
 
-	retroctx.framecount++;
-
 	if (retroctx.skipmode == TARGET_SKIP_NONE) 
 		return true;
-
 
 /* TARGET_SKIP_AUTO here */
 	long long int now  = timestamp - retroctx.basetime;
@@ -699,7 +680,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
  * outside of frame frametime measurements */
 			flush_eventq();
 			retroctx.run();
-
+			if (testcounter != 1)
+				LOG("(arcan_frameserver(libretro) -- inconsistent core behavior, expected 1 video frame / run(), got %d\n", testcounter);
+			testcounter = 0;
+				
 			bool lastskip = retroctx.skipframe;
 			retroctx.skipframe = !retroctx_sync();
 
@@ -708,8 +692,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* possible to add a size lower limit here to maintain a larger resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
-					rescale_audio();
-					
 					spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
 					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) retroctx.audbuf, &nsamp, (spx_int16_t*) retroctx.audp, &outc);
