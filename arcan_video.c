@@ -857,8 +857,8 @@ const static char* deffprg =
 "uniform float obj_opacity;\n"
 "void main(){\n"
 "   vec4 col = texture2D(map_diffuse, texco);\n"
-"   if (col.a < 0.001)\n"
-"      discard;\n"
+//"   if (col.a < 0.001)\n"
+//"      discard;\n"
 "   col.a = col.a * obj_opacity;\n"
 "	gl_FragColor = col;\n"
 "}";
