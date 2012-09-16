@@ -44,7 +44,9 @@ local inputmodelist = {
 	"Rotate CCW",
 	"Invert Axis (analog)",
 	"Mirror Axis (analog)",
-	"Filter Opposing"
+	"Filter Opposing",
+	"---",
+	"Reconfigure Keys"
 };
 
 local inputmodeptrs = {};
@@ -73,6 +75,18 @@ inputmodeptrs["Filter Opposing"] = function(label, save)
 
 	if (save) then
 		store_key("filter_opposing", settings.filter_opposing and "1" or "0");
+	end
+end
+
+inputmodeptrs["Reconfigure Keys"] = function()
+	keyconfig:reconfigure_players();
+	kbd_repeat(0);
+
+	gridle_input = function(iotbl) -- keyconfig io function hook
+		if (keyconfig:input(iotbl) == true) then
+			gridle_input = gridle_dispatchinput;
+			kbd_repeat(settings.repeatrate);
+		end
 	end
 end
 
@@ -850,6 +864,34 @@ local function build_savemenu()
 	return reslbls, resptrs, {};
 end
 
+-- assumes current_game()
+function gen_keymap_name( gamespecific )
+	local reslbl = "keymaps/" .. current_game().target;
+
+	if (gamespecific) then
+		reslbl = reslbl .. "_" .. current_game().setname;
+	end
+
+	reslbl = reslbl .. ".lua";
+	return reslbl;
+end
+
+-- quick heuristic, look for a game-specific, then target specific, else just use global
+function set_internal_keymap()
+	if ( resource( gen_keymap_name( true )) ) then
+		local keytbl = system_load( gen_keymap_name(true) )();
+		keyconfig.table = keytbl;
+
+	elseif ( resource( gen_keymap_name( false )) ) then
+		local keytbl = system_load( gen_keymap_name(false) )();
+		keyconfig.table = keytbl;
+
+-- this one is saved / restored every launch/cleanup internal in gridle.lua
+	else
+		keyconfig.table = settings.keyconftbl;
+	end
+end
+
 local function build_loadmenu()
 	local reslbls = {};
 	local resptrs = {};
@@ -873,6 +915,21 @@ local function toggle_shadersetting(label, save)
 	end
 	
 	current_menu:move_cursor(0, 0, true);
+end
+
+local function configure_players(dstname)
+	keyconfig_oldfname = keyconfig.keyfile;
+	keyconfig.keyfile = dstname;
+	
+	keyconfig:reconfigure_players();
+	kbd_repeat(0);
+
+	gridle_input = function(iotbl) -- keyconfig io function hook
+		if (keyconfig:input(iotbl) == true) then
+			gridle_input = gridle_dispatchinput;
+			keyconfig.keyfile = keyconfig_oldfname;
+		end
+	end
 end
 
 local function add_gamelbls( lbltbl, ptrtbl )
@@ -915,6 +972,40 @@ local function add_gamelbls( lbltbl, ptrtbl )
 --			end
 --		end
 --	end
+	
+	print(captbl.dynamic_input);
+	if ( captbl.dynamic_input ) then
+		table.insert(lbltbl, "Local Input...");
+		ptrtbl["Local Input..."] = function(label, store, sound)
+			local lbls = {"Set (Game) Keyconfig", "Set (Target) Keyconfig"};
+			local ptrs = {};
+			
+			ptrs["Set (Game) Keyconfig"]   = function() configure_players( gen_keymap_name( true ) );  end
+			ptrs["Set (Target) Keyconfig"] = function() configure_players( gen_keymap_name( false ) ); end
+
+			if ( resource( gen_keymap_name(true)) ) then
+				table.insert(lbls, "Drop (Game) Keyconfig");
+				ptrs["Drop (Game) Keyconfig"] = function()
+					settings.iodispatch["MENU_ESCAPE"]();
+					settings.iodispatch["MENU_ESCAPE"]();
+					zap_resource( gen_keymap_name( true ) );
+					set_internal_keymap();
+				end
+			end
+
+			if ( resource( gen_keymap_name(false)) ) then
+				table.insert(lbls, "Drop (Target) Keyconfig");
+				ptrs["Drop (Target) Keyconfig"] = function()
+					settings.iodispatch["MENU_ESCAPE"]();
+					settings.iodispatch["MENU_ESCAPE"]();
+					zap_resource( gen_keymap_name( false ) );
+					set_internal_keymap();
+				end
+			end
+			
+			menu_spawnmenu( lbls, ptrs, {} );
+		end
+	end
 	
 	if ( captbl.reset ) then
 		table.insert(lbltbl, "Reset Game");
@@ -1253,7 +1344,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 	end
 
 if (#menulbls > 0 and settingslbls) then
-		table.insert(menulbls, "---------   " );
+		table.insert(menulbls, "-----" );
 	end
 
 	if (settingslbls) then

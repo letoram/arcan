@@ -193,7 +193,6 @@ end
 
 function gridle_launchinternal()
 	play_audio(soundmap["LAUNCH_INTERNAL"]);
-	print("launch: " .. current_game().setname);
 	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -302,7 +301,6 @@ function gridle()
 
 	settings.iodispatch["LIST_VIEW"] = function(iotbl)
 		play_audio( soundmap["DETAILVIEW_TOGGLE"] );
-		print("listview");
 		gridle_customview();
 	end
 	
@@ -512,13 +510,17 @@ end
 	
 function gridle_load_internal_extras()
 	local restbl = current_game().resources
+	local tgt    = current_game().target
 	
 	if (restbl) then
 		if (restbl.bezels and restbl.bezels[1]) then 
 			imagery.bezel = load_image_asynch(restbl.bezels[1]); 
 			image_tracetag(imagery.bezel, "bezel");
+		elseif (resource("bezels/" .. tgt .. ".png")) then
+			imagery.bezel = load_image_asynch("bezels/" .. tgt .. ".png");
+			image_tracetag(imagery.bezel, "bezel");
 		end
-		
+			
 		if (restbl.overlays and restbl.overlays[1]) then
 			imagery.overlay = load_image_asynch(restbl.overlays[1]); 
 			image_mask_clear(imagery.overlay, MASK_LIVING);
@@ -569,6 +571,9 @@ function gridle_setup_internal(video, audio)
 		delete_image(imagery.movie); 
 		imagery.movie = nil; 
 	end
+
+	settings.keyconftbl = keyconfig.table;
+	set_internal_keymap();
 end
 
 function gridle_keyconf()
@@ -1350,7 +1355,8 @@ function gridle_internalcleanup()
 	kbd_repeat(settings.repeatrate);
 	gridle_input = gridle_dispatchinput;
 	hide_image(imagery.crashimage);
-
+	keyconfig.table = settings.keyconftbl;
+	
 	if (settings.in_internal) then
 		gridle_delete_internal_extras();
 		
@@ -1403,8 +1409,6 @@ function gridle_internalcleanup()
 end
 
 function gridle_internal_status(source, datatbl)
-	print(datatbl.kind);
-	
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
 			gridle_setup_internal(source, datatbl.source_audio);

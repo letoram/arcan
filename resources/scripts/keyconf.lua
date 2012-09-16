@@ -393,17 +393,17 @@ end
 local function keyconf_tbltoid(self, inputtable)
 	if (inputtable.kind == "analog") then
 		return "analog:" ..inputtable.devid .. ":" .. inputtable.subid .. ":" .. inputtable.source;
-    end
+	end
 
-		if inputtable.translated then
+	if inputtable.translated then
 		if self.ignore_modifiers then
 			return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym;
 		else
 			return "translated:" .. inputtable.devid .. ":" .. inputtable.keysym .. ":" .. inputtable.modifiers;
 		end
-    else
+	else
 		return "digital:" .. inputtable.devid .. ":" .. inputtable.subid .. ":" .. inputtable.source;
-    end
+	end
 end
 
 local function insert_unique(tbl, key)
@@ -613,6 +613,34 @@ local function keyconf_countbuttons(self, playerind)
 	return count;
 end
 
+local function keyconf_sliceplayers(intbl)
+	local restbl = {};
+	
+	for key, val in pairs(intbl) do
+
+-- need to scan the subtable
+		if (type(val) == "table") then
+			local lbltbl = {};
+			
+			for ind, lbl in ipairs(val) do
+				if (string.match(lbl, "^PLAYER%d.") == nil) then 
+					table.insert(lbltbl, lbl); 
+				end
+			end
+
+			if #lbltbl > 0 then restbl[key] = lbltbl; end
+
+-- just keep the keys that doesn't match the player pattern
+		else
+			if (string.match(key, "^PLAYER%d.") == nil) then
+				restbl[key] = val; 
+			end
+		end
+	end
+
+	return restbl;
+end
+
 local function keyconf_playerreconf(self)
 -- store the states that new would otherwise override
 	local reftbl  = self.table;
@@ -621,12 +649,14 @@ local function keyconf_playerreconf(self)
 	self.active     = false;
 	self.playerconf = false;
 	self.playergroup = {};
--- then rebuild UI components 
+-- then rebuild UI components as a completed keyconf would have it destroyed 
 	self:new();
 
 -- then restore the saved states
-	self.table   = reftbl;
+	self.table   = keyconf_sliceplayers(reftbl);
 	self.usedtbl = usedtbl;
+
+-- remove or extract player inputs from currently configured
 
 	self.ofs = #self.configlist;
 	self:next_key();
