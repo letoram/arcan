@@ -10,10 +10,6 @@
 -- else goes into configuration mode just display listviews of options
 -- and where to place them.
 --
--- the contents of the config data is just a 'label' and a bounding area (x1,y1,x2,y2)
--- stored as relative of the display-size.
---
---
 local grid_stepx = 2;
 local grid_stepy = 2;
 
@@ -27,6 +23,28 @@ customview.in_config = true;
 customview.position_modes  = {"position", "size", "opacity", "orientation"};
 customview.position_marker = 1;
 customview.orderind = 1;
+
+helplbls = {};
+helplbls["position"] = {
+	"Position",
+	"(LIST_VIEW to switch mode)",
+	"(SELECT to save)",
+	"(ESCAPE to cancel)"
+};
+
+helplbls["size"] = {
+	"Scale",
+};
+
+helplbls["opacity"] = {
+	"Blend (LEFT/RIGHT)",
+	"Z-Order (UP/DOWN)"
+};
+
+helplbls["orientation"] = {
+	"Rotate(45) (UP/DOWN)",
+	"Rotate(inc/dec) (LEFT/RIGHT)"
+};
 
 -- populated with data on each added "item" used to build the final customview lualu
 customview.itemlist = {};
@@ -46,14 +64,35 @@ local function cascade_visibility(menu, val)
 		cascade_visibility(menu.parent, val);
 	end
 
+	if (val > 0.9) then
+		if (infowin) then
+			infowin:destroy();
+			customview.position_marker = 1;
+			infowin = nil;
+		end
+	end
+	
 	blend_image(menu.anchor, val);
 	menu:push_to_front();
+end
+
+local function update_infowin()
+	if (infowin) then
+		infowin:destroy();
+	end
+
+-- use a quadrant away from the current item
+	infowin = listview_create( helplbls[customview.position_modes[customview.position_marker]], VRESW / 2, VRESH / 2 );
+	local xpos = (customview.ci.x < VRESW / 2) and (VRESW / 2) or 0;
+	local ypos = (customview.ci.y < VRESH / 2) and (VRESH / 2) or 0;
+	infowin:show();
+	move_image(infowin.anchor, xpos, ypos);
 end
 
 local function position_toggle()
 -- don't allow any other mode to be used except position until we have an upper left boundary
 	customview.position_marker = (customview.position_marker + 1 > #customview.position_modes) and 1 or (customview.position_marker + 1);
-	
+	update_infowin();
 -- FIXME have a label / something that shows WHERE we are
 end
 
@@ -63,6 +102,12 @@ local function update_object(imgvid)
 	blend_image(imgvid, customview.ci.opa);
 	rotate_image(imgvid, customview.ci.ang);
 	order_image(imgvid, customview.ci.zv);
+
+	if (customview.ci.tiled) then
+		local props = image_surface_initial_properties(imgvid);
+		image_scale_txcos(imgvid, customview.ci.width / props.width, customview.ci.height / props.height);
+	end
+	
 end
 
 local function cursor_step(vid, x, y)
@@ -90,21 +135,14 @@ local function orientation_rotate(vid, ang, align)
 		customview.ci.ang = (rest > 22.5) and (customview.ci.ang - rest) or (customview.ci.ang + rest);
 	end
 	
---	if(customview.ci.ang > 360) then
---		customview.ci.ang = customview.ci.ang - 360;
---	end
-	
---	if (customview.ci.ang < -360) then
---		customview.ci.ang = customview.ci.ang + 360;
---	end
-
 	update_object(vid);
 end
 
 local function order_increment(vid, val)
 	customview.ci.zv = customview.ci.zv + val;
 	if (customview.ci.zv < 1) then customview.ci.zv = 1; end
-
+	if (customview.ci.zv >= customview.orderind) then customview.ci.zv = customview.orderind - 1; end
+	
 	update_object(vid);
 end
 
@@ -116,6 +154,7 @@ local function opacity_increment(vid, byval)
 	
 	update_object(vid);
 end
+
 
 local function position_item( key, vid, trigger )
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
@@ -160,11 +199,13 @@ local function position_item( key, vid, trigger )
 	end
 	
 	settings.iodispatch["MENU_ESCAPE"] = function() trigger(false, vid); end
-	settings.iodispatch["LIST_VIEW"]   = function() position_toggle();   end
+	settings.iodispatch["LIST_VIEW"]   = function() position_toggle(); end
 	settings.iodispatch["MENU_SELECT"] = function() trigger(true, vid);  end
+	
+	update_infowin();
 end
 
-local function new_item(vid)
+local function new_item(vid, dstgroup, dstkey)
 	local props = image_surface_properties(vid);
 
 	customview.ci = {};
@@ -197,9 +238,6 @@ local function navigator_toggle(status, x1, y1, x2, y2)
 -- setup and show new menu
 		current_menu:destroy();
 		lbls, ptrs = gen_contents_menu();
---		current_menu = listview_create(lbls, VRESH * 0.9, VRESW / 3);
---		current_menu.ptrs = ptrs;
---		current_menu.parent = nil;
 
 		current_menu:show();
 		move_image(current_menu.anchor, 10, 120, settings.fadedelay);
@@ -213,49 +251,79 @@ local function positionfun(label)
 	vid = load_image("images/" .. label);
 	
 	if (vid ~= BADID) then
-		new_item(vid);
+		new_item(vid, "static_media", label);
 		position_item(nil, vid, save_item);
 	end
 end
 
 local function positiondynamic(label)
-	resvid = fill_surface(VRESW * 0.3, VRESH * 0.3, 0, 255, 0);
-
-	new_item(resvid);
-	position_item(nil, resvid, save_item); 
+-- first try and find a template image based on label (most have special handling)
+	local vid = BADID;
+	
+	if (resource("customview/" .. string.lower(label) .. ".png")) then
+		vid = load_image("customview/" .. string.lower(label) .. ".png");
+	end
+	
+	if (vid == BADID) then
+-- as a fallback, generate a label
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
+		vid = render_text(settings.colourtable.label_fontstr .. label);
+		switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
+		new_item(vid, "dynamic_media", string.lower(label));
+		customview.ci.tiled = true;
+	else
+		new_item(vid, "dynamic_media", string.lower(label));
+		customview.ci.tiled = false;
+	end
+	
+	position_item(nil, vid, save_item);
 end
 
 -- only one navigator allowed, boring list, iconed list etc. use static preview- image. 
 local function positionnavi(label)
+	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
 	local vid = render_text(settings.colourtable.label_fontstr .. label);
-	new_item(vid);
+	switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
+
+	new_item(vid, "navigator", label);
 	customview.ci.tiled = true;
-	position_item(label, vid);
+	position_item(label, vid, save_item);
 end
 
 -- stretch to fit screen, only opa change allowed
 local function positionbg(label)
+	local tiled = false;
 	local vid = load_image("backgrounds/" .. label)
+	local props = image_storage_properties(vid);
 	
-	if (vid ~= BADID) then
-		customview.ci = {};
-		customview.ci.tiled  = false;
-		local props = image_surface_properties(vid);
+	if (vid == BADID) then return; end
+	
+-- slightly hackish as the texmode thing is only on creation
+	if (props.width < VRESW / 2 or props.height < VRESH / 2) then
+		delete_image(vid);
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
+		vid = load_image("backgrounds/" .. label);
+		switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
+		tiled = true;
+	end
+	
+	customview.ci = {};
+	customview.ci.tiled  = tiled;
+	local props = image_surface_properties(vid);
 
 -- threshold for tiling rather than stretching
-		if (props.width < VRESW / 2 or props.height < VRESH / 2) then
-			customview.ci.tiled  = true;
-		end
-
-		customview.ci.width  = VRESW;
-		customview.ci.height = VRESH;
-		customview.ci.zv     = 1;
-		customview.ci.x      = 0;
-		customview.ci.y      = 0;
-		customview.ci.opa    = 1.0;
-		customview.ci.ang    = 0;
-		position_item(label, vid, save_item); 
+	if (props.width < VRESW / 2 or props.height < VRESH / 2) then
+		customview.ci.tiled  = true;
 	end
+
+	customview.ci.width  = VRESW;
+	customview.ci.height = VRESH;
+	customview.ci.zv     = 0;
+	customview.ci.x      = 0;
+	customview.ci.y      = 0;
+	customview.ci.opa    = 1.0;
+	customview.ci.ang    = 0;
+	position_item(label, vid, save_item); 
 
 end
 
@@ -289,7 +357,8 @@ local function show_config()
 
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee"}, positiondynamic));
+	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer"}, positiondynamic));
+	--add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ingore", gen_tbl_menu("ignore", {"Times Played"}
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"List"}, positionnavi));
 	
 	table.insert(mainlbls, "---");

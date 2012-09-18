@@ -2862,7 +2862,7 @@ int arcan_lua_recordset(lua_State* ctx)
 	}
 	
 	if (pollrate == 0){
-		arcan_warning("arcan_lua_recordset(%d) invalid arg 8, expected n < 0 (every n frame) or n > 0 (every n tick)\n");
+		arcan_warning("arcan_lua_recordset(%d) invalid arg 8, expected n < 0 (every n frame) or n > 0 (every n tick)\n", pollrate);
 		return 0;
 	}
 	
@@ -2876,7 +2876,7 @@ int arcan_lua_recordset(lua_State* ctx)
 		}
 	}
 	else{
-		/* FIXME: empty recordset, attach as colour to stdout */
+		arcan_warning("arcan_lua_recordset(%d), empty source vid set -- global capture unimplemented.\n"); 
 		return 0;
 	}
 
@@ -2887,6 +2887,10 @@ int arcan_lua_recordset(lua_State* ctx)
 		aidlocks = malloc(sizeof(arcan_aobj_id) * naids + 1);
 		aidlocks[naids] = 0; /* terminate */
 
+		if (naids > 1){
+			arcan_warning("arcan_lua_recordset(%d), multiple source aid set -- only first source will be considered, mixing currently unimplemented.\n");
+		}
+		
 /* can't hook the monitors until we have the frameserver in place */
 		for (int i = 0; i < naids; i++){
 			lua_rawgeti(ctx, 5, i+1);
@@ -2941,7 +2945,6 @@ int arcan_lua_recordset(lua_State* ctx)
  * it is permitted to close and push another one to the same session */
 		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
 		if (fd){
-			printf("recordtarget(%s/%s/%s) opened to %d\n", arcan_themepath, arcan_themename, resf,  fd);
 			arcan_frameserver_pushfd( mvctx, fd );
 			mvctx->alocks = aidlocks;
 			arcan_aobj_id* base = mvctx->alocks;

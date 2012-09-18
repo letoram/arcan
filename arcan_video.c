@@ -884,11 +884,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) | SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
 	arcan_video_display.screen = SDL_SetVideoMode(width, height, bpp, arcan_video_display.sdlarg);
 
-	if (arcan_video_display.ratelimit != 0 && (arcan_video_display.ratelimit < ARCAN_TIMER_TICK || arcan_video_display.ratelimit > 120)){
-		arcan_warning("arcan_video_init(), Invalid rate limit requested (%d), ignored.\n", arcan_video_display.ratelimit);
-		arcan_video_display.ratelimit = 0;
-	}
-
 	if (arcan_video_display.msasamples && !arcan_video_display.screen){
 		arcan_warning("arcan_video_init(), Couldn't open OpenGL display, attempting without MSAA\n");
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
@@ -901,6 +896,21 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		arcan_warning("arcan_video_init(), SDL_SetVideoMode failed, reason: %s\n", SDL_GetError());
 		return ARCAN_ERRC_BADVMODE;
 	}
+
+/* try to establish the actual GL synch behavior,
+ * align to vsync, time and process a few trames */
+	SDL_GL_SwapBuffers();
+
+	unsigned base = SDL_GetTicks();
+	for (int i = 0; i < 10; i++){
+		SDL_GL_SwapBuffers();
+	}
+	unsigned delta = SDL_GetTicks() - base;
+	arcan_video_display.vsync_timing = (float)delta / 10.0;
+
+/* mspf < 1, got a super display or not actually vsyncing, this will not be particularly accurate
+ * but enough of a measure to guess when the next frame will be and determine if we should actually
+ * flush or update again */
 
 /* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
 	int err;
@@ -1738,6 +1748,7 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj){
+		generate_basic_mapping(vobj->txcos, 1.0, 1.0);
 		vobj->txcos[0] *= sfs; 	vobj->txcos[2] *= sfs; 	vobj->txcos[4] *= sfs; 	vobj->txcos[6] *= sfs;
 		vobj->txcos[1] *= sft; 	vobj->txcos[3] *= sft; 	vobj->txcos[5] *= sft; 	vobj->txcos[7] *= sft;
 
@@ -3203,8 +3214,18 @@ void arcan_video_refresh_GL(float lerp)
 
 void arcan_video_refresh(float tofs)
 {
+	static unsigned lastframe = 0;
 	arcan_video_refresh_GL(tofs);
-	SDL_GL_SwapBuffers();
+	
+	unsigned ctime  = SDL_GetTicks();
+	unsigned delta = ctime - lastframe;
+	
+	if ( arcan_video_display.vsync_timing < 1.0 || /* no vsync, no point here */
+		(ctime < lastframe) || (delta > (0.5 * arcan_video_display.vsync_timing) )) /* "invalid" timing info, update */
+	{
+		SDL_GL_SwapBuffers();
+		lastframe = SDL_GetTicks();
+	}
 }
 
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)
