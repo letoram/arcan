@@ -1419,7 +1419,9 @@ if (#menulbls > 0 and settingslbls) then
 		
 		settings.iodispatch["MENU_ESCAPE"]();
 		local tmpclock = gridle_clock_pulse;
-		local tmpclock_c = 22; -- listview has a fixed 20tick expire
+
+		tmpclock_c = 22; -- listview has a fixed 20tick expire
+		escape_locked = true;
 		suspend_target( target_vid );
 
 -- replace the current timing function with one that only ticks down and then takes a screenshot
@@ -1431,6 +1433,7 @@ if (#menulbls > 0 and settingslbls) then
 				screenshot();
 				resume_target(target_vid);
 				gridle_clock_pulse = tmpclock;
+				escape_locked = false;
 			end
 		end
 	end
