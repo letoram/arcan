@@ -3216,14 +3216,15 @@ void arcan_video_refresh_GL(float lerp)
 void arcan_video_refresh(float tofs)
 {
 	static unsigned lastframe = 0;
-	arcan_video_refresh_GL(tofs);
 	
 	unsigned ctime  = SDL_GetTicks();
 	unsigned delta = ctime - lastframe;
 	
 	if (!arcan_video_display.vsync || arcan_video_display.vsync_timing < 1.0 || /* no vsync, no point here */
 		(ctime < lastframe) || (delta > (0.5 * arcan_video_display.vsync_timing) )) /* "invalid" timing info, update */
-	{ 
+	{
+/* for less interactive / latency sensitive applications the delta > .. with vsync on, the delta > .. could be removed */
+		arcan_video_refresh_GL(tofs);
 		SDL_GL_SwapBuffers();
 		lastframe = SDL_GetTicks();
 	}
