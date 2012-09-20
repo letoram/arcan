@@ -907,6 +907,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	}
 	unsigned delta = SDL_GetTicks() - base;
 	arcan_video_display.vsync_timing = (float)delta / 10.0;
+	arcan_warning("arcan_video_init(), Vsync deadline estimated to ~%f mspf.\n", arcan_video_display.vsync_timing);
 
 /* mspf < 1, got a super display or not actually vsyncing, this will not be particularly accurate
  * but enough of a measure to guess when the next frame will be and determine if we should actually
@@ -3220,9 +3221,9 @@ void arcan_video_refresh(float tofs)
 	unsigned ctime  = SDL_GetTicks();
 	unsigned delta = ctime - lastframe;
 	
-	if ( arcan_video_display.vsync_timing < 1.0 || /* no vsync, no point here */
+	if (!arcan_video_display.vsync || arcan_video_display.vsync_timing < 1.0 || /* no vsync, no point here */
 		(ctime < lastframe) || (delta > (0.5 * arcan_video_display.vsync_timing) )) /* "invalid" timing info, update */
-	{
+	{ 
 		SDL_GL_SwapBuffers();
 		lastframe = SDL_GetTicks();
 	}
