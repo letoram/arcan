@@ -94,7 +94,7 @@ static const struct option longopts[] = {
 
 void usage()
 {
-	printf("usage:\narcan [-whxyfmstptodgavVSr] [theme] [themearguments]\n"
+	printf("usage:\narcan [-whxyfmstptodgavSr] [theme] [themearguments]\n"
 		"-w\t--width       \tdesired width (default: 640)\n"
 		"-h\t--height      \tdesired height (default: 480)\n"
 		"-x\t--winx        \tforce window x position (default: don't set)\n"
