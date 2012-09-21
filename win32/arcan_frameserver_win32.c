@@ -181,13 +181,13 @@ static void toggle_logdev()
 		char timeb[16];
 		time_t t = time(NULL);
 		struct tm* basetime = localtime(&t);
-		strftime(timeb, sizeof(timeb)-1, "%y%m%d%H%M", basetime);
+		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss_pidpid.txt");
+		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss.txt");
 		char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s%d.txt", logdir, timeb, getpid());
-		logdev = fopen(logbuf, "a");
+		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s.txt", logdir, timeb);
+		logdev = freopen(logbuf, "a", stderr);
 	}
 }
 
@@ -233,7 +233,6 @@ int main(int argc, char* argv[])
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev();
 		arcan_frameserver_libretro_run(resource, keyfile);
-	
 	}
 	
 	else if (strcmp(fsrvmode, "record") == 0)

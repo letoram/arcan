@@ -183,15 +183,6 @@ void arcan_frameserver_free(void* dontuse){}
 /* Stream-server is used as a 'reverse' movie mode,
  * i.e. it is the frameserver that reads from the shmpage,
  * feeding whatever comes to ffmpeg */
-static void mode_streamserv(char* resource, char* keyfile)
-{
-	/* incomplete, first version should just take
-	 * a vid (so buffercopy or readback) or an aggregate (render vids to fbo, readback fbo)
-	 * we can't treat this the same as vid), encode and store in a file.
-	 * 
-	 * next step would be to compare this with a more established straming protocol 
-	 */
-}
 
 #ifdef _DEBUG
 static void arcan_simulator(struct frameserver_shmcont* shm){
@@ -305,13 +296,13 @@ static void toggle_logdev()
 		char timeb[16];
 		time_t t = time(NULL);
 		struct tm* basetime = localtime(&t);
-		strftime(timeb, sizeof(timeb)-1, "%y%m%d%H%M", basetime);
+		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss_pidpid.txt");
+		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss.txt");
 		char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s%d.txt", logdir, timeb, getpid());
-		logdev = fopen(logbuf, "a");
+		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s.txt", logdir, timeb);
+		logdev = freopen(logbuf, "a", stderr);
 	}
 }
 
@@ -382,6 +373,7 @@ static void toggle_logdev()
 	
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev();
+		LOG("arcan_frameserver -- launching retrocore with %s\n", resource);
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
 	
