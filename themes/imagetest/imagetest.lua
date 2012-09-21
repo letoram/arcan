@@ -23,6 +23,9 @@ function imagetest()
 	local symfun = system_load("scripts/symtable.lua");
 	symtable = symfun();
 	drawmenu();
+
+	system_load("scripts/3dsupport.lua")();
+	load_shader("test.vShader", "test.fShader", "test", {});
 end
 
 function drawmenu()

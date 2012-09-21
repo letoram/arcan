@@ -35,7 +35,9 @@ generic options:\n\
 \n\
 builddb options:\n\
 (--generic) - Use generic importer for unknown targets\n\
-(--skiptarget) targetname - Don't try to import the specified target\n\
+(--update) - Only add new games, don't rebuild the entire database\n\
+(--skipgroup) groupname - Don't try to import the specified games\group folder (can be used several times)\n\
+(--scangroup) groupname - Only scan the specified games\group folder (can be used several times)\n\
 "
 begin	Importers.Each_importer{|imp|
 		line = imp.usage.join("\n")
@@ -129,9 +131,11 @@ genericopts = [
 	[ '--rompath', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--targetpath', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--generic', GetoptLong::NO_ARGUMENT ],
-	[ '--skiptarget', GetoptLong::REQUIRED_ARGUMENT ],
-	[ '--deletegame', GetoptLong::REQUIRED_ARGUMENT],
-	[ '--deletetarget', GetoptLong::REQUIRED_ARGUMENT],
+	[ '--update', GetoptLong::NO_ARGUMENT ],
+	[ '--skipgroup', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--scangroup', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--deletegame', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--deletetarget', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--showgame', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--gamesbrief', GetoptLong::NO_ARGUMENT ],
 	[ '--execgame', GetoptLong::REQUIRED_ARGUMENT ],
@@ -157,19 +161,21 @@ options = {
 	:generic => false,
 	:rompath => "#{basepath}/../games",
 	:targetpath => "#{basepath}/../targets",
-	:resetdb => true,
+	:resetdb => false,
 	:dbname => "#{basepath}/../arcandb.sqlite",
 	:execlaunch => false,
 	:execmode => "external",
-	:skiptarget => {}
+	:skipgroup => {},
 }
 
+# expand with the options from each found importer
 Importers.Each_importer{|imp|
 	imp.accepted_arguments.each{|arg|
 		genericopts << arg
 	}
 }
 
+# now just map all the set ones into a big table
 opttbl = {}
 GetoptLong.new( *genericopts ).each { |opt, arg|
 	addarg = arg ? arg : opt
@@ -181,7 +187,18 @@ GetoptLong.new( *genericopts ).each { |opt, arg|
 	opttbl[opt] << addarg
 }
 
-# rest is just mapping arguments to opttable
+# map in the pseudo-parsed arguments untop of the default arguments already set,
+opttbl.each_pair{|key, val| 
+	key = key[2..-1].to_sym
+	if (options[key] == nil)
+		next
+	end
+                
+	options[key] = true
+	options[key] = val[0] if val and val.size == 1
+}
+
+# rest is just mapping special arguments to opttable
 # and to corresponding functions in romman_base
 
 if (opttbl["--help"])
@@ -189,20 +206,19 @@ if (opttbl["--help"])
 	exit(0)
 end
 
-if (arg = opttbl["--skiptarget"])
-	options[:skiptarget] = {}
-	arg.each{|skiptgt|
-		options[:skiptarget][skiptgt] = true
+if (arg = opttbl["--scangroup"])
+	options[:scangroup] = []
+
+	arg.each{|scangrp|
+		options[:scangroup] << scangrp
 	}
 end
 
-# map in the pseudo-parsed arguments untop of the 
-# default arguments already set
-opttbl.each_pair{|key, val| 
-	key = key[2..-1].to_sym
-	options[key] = true
-	options[key] = val[0] if val and val.size == 1
-}
+if (arg = opttbl["--skipgroup"])
+	arg.each{|group|
+		options[:skipgroup][group] = true
+	}
+end
 
 if (opttbl["--internal"])
 	options[:execmode] = "internal"
@@ -211,6 +227,11 @@ end
 case cmd
 	when "builddb" then
 		STDOUT.print("[builddb] Scanning importers\n")
+		options[:resetdb] = true
+
+		if (arg = opttbl["--update"])
+			options[:resetdb] = false
+		end
 		
 		Importers.Each_importer{|imp|
 			STDOUT.print("\t#{imp.class}\n")

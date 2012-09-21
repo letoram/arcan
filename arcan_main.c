@@ -258,10 +258,21 @@ int main(int argc, char* argv[])
 		arcan_led_init();
 
 /* MINGW implements putenv, so use this to set the system subpath path (BIOS, ..:) */
-		size_t len = strlen("ARCAN_SYSTEMPATH=") + strlen(arcan_resourcepath) + strlen("/games/system");
-		char* const syspath = malloc(len);
-		sprintf(syspath, "ARCAN_SYSTEMPATH=%s/games/system", arcan_resourcepath);
-		arcan_warning("Notice: Game systempath set to (%s)\n", syspath);
+		if (getenv("ARCAN_SYSTEMPATH") == NULL){
+			size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 1;
+			char* const syspath = malloc(len);
+			sprintf(syspath, "%s/games/system", arcan_resourcepath);
+			arcan_warning("Notice: Using default systempath (%s)\n", syspath);
+			setenv("ARCAN_SYSTEMPATH", syspath, 0); 
+		} else 
+			arcan_warning("Notice: Using systempath from environment (%s)\n", getenv("ARCAN_SYSTEMPATH"));
+		
+		if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
+			size_t len = strlen(arcan_resourcepath) + strlen("/logs") + 1;
+			char* const logpath = malloc(len);
+			sprintf(logpath, "%s/logs", arcan_resourcepath);
+			setenv("ARCAN_FRAMESERVER_LOGDIR", logpath, 0);
+		}
 		
 /* export what we know and load theme */
 		lua_State* luactx = luaL_newstate();

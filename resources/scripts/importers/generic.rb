@@ -3,16 +3,13 @@
 # Sets the name and target executable of the target to <foldername> (so that parameters 
 # can be individualized later on anyhow by a alterdb on the target)
 # --
-# Would be somewhat fun to play around with heuristics + websearchengines and try to
-# automatically deduce reasonable data for each target, but that's for the future ..
-#
 SystemTable = {
 "fceu" => "nes",
 "bnes" => "nes",
 "snes9x" => "snes",
 "n64" => "n64",
 "bsnes" => "snes",
-"mame" => "arcade/multi",
+"mame" => "arcade",
 "mess" => "multi",
 "ume" => "multi",
 "mednafen" => "multi",
@@ -87,20 +84,19 @@ class Generic
 	def check_target(target, targetpath)
 		@genericpath = nil
 		extension = ""
-		execs = ["", ".exe", ".so", ".dll"];
+		execs = ["", ".exe", ".so", ".dll", ".dylib"];
 		libloader = false # for dynamic libraries, we don't accept user supplied arguments, only target + romsetfull
 		
 		execs.each{|ext|
-		           fullname = "#{targetpath}/#{target}#{ext}"
-		           if (File.exists?(fullname))
-		               @genericpath = fullname
-						extension = ext
-						if (ext == ".so" or ext == ".dll")
-							libloader = true
-						end
-		          
-						break
-		           end
+			fullname = "#{targetpath}/#{target}#{ext}"
+			if (File.exists?(fullname))
+				@genericpath = fullname
+				extension = ext
+				if (ext == ".so" or ext == ".dll" or ext == ".dylib")
+					libloader = true
+				end
+				break
+			end
 		}
 		
 		return false if @genericpath == nil 
@@ -108,15 +104,15 @@ class Generic
 		@titles = {}
 		@targetname = target
 		@target = Target.Load(0, @targetname)
-		
+	
+		if (@target == nil)
+			@target = Target.Create(@targetname, "#{@targetname}#{extension}",@gentargets[target])
+		end 
+
 		if (libloader)
 			@gentargets[target] = [ ["[romsetfull]"], [], [] ]
 		end
 		
-		if (@target == nil)
-			@target = Target.Create(@targetname, "#{@targetname}#{extension}",@gentargets[target])
-		end 
-	
 		if (@gentargets[target])
 			@target.arguments = @gentargets[target]
 			@target.store
@@ -153,7 +149,7 @@ class Generic
 		codetbl = {
 			"a" => "Alternate",
 			"b" => "Bad Dump",
-			"BF" => "Bung Fix",
+			"BF"=> "Bung Fix",
 			"c" => "cracked",
 			"f" => "Other Fix",
 			"h" => "hack",
@@ -171,9 +167,14 @@ class Generic
 			else
 				setname = fn[ fn.rindex('/') +1 .. -1 ]
 
-				newgame = Game.new
-				newgame.title = @striptitle ? strip_title(setname) : setname
-				newgame.setname = @genromlist[@targetname] == true ? fn : setname
+				title   = @striptitle ? strip_title(setname) : setname
+				setname = @genromlist[@targetname] == true ? fn : setname
+
+				newgame = Game.LoadSingle(title, setname, @target.pkid)
+				newgame = Game.new unless newgame
+				
+				newgame.setname = setname
+				newgame.title = title
 				newgame.target = @target
 				newgame.system = SystemTable[ @targetname ]
 				if (newgame.system == nil) then

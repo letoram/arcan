@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <strings.h>
 #include <unistd.h>
+#include <time.h>
+
 #include <fcntl.h>
 #include <assert.h>
 #include <Windows.h>
@@ -170,22 +172,41 @@ void frameserver_delay(unsigned long val)
 		Sleep(0); /* yield */
 }
 
+/* by default, we only do this for libretro where it might help
+ * with external troubleshooting */
+static void toggle_logdev()
+{
+	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
+	if (logdir){
+		char timeb[16];
+		time_t t = time(NULL);
+		struct tm* basetime = localtime(&t);
+		strftime(timeb, sizeof(timeb)-1, "%y%m%d%H%M", basetime);
+
+		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss_pidpid.txt");
+		char* logbuf = malloc(logbuf_sz + 1);
+
+		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s%d.txt", logdir, timeb, getpid());
+		logdev = fopen(logbuf, "a");
+	}
+}
+
 int main(int argc, char* argv[])
 {
+	logdev = NULL;
+	
 #ifndef _DEBUG
 /*	_set_invalid_parameter_handler(inval_param_handler) */
 	DWORD dwMode = SetErrorMode(SEM_NOGPFAULTERRORBOX);
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
-
+	
 #else
 /* set this env whenever you want to step through the frameserver as launched from the parent */
-	logdev = fopen("output.log", "w");  
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		arcan_warning("-- frameserver stall activated, won't continue without gdb intervention. Pid: (%d)\n", getpid());
-		volatile int a = 0;
-		while (a == 0);
+		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
+		sleep(10);
 	}
 #endif
 
@@ -205,13 +226,15 @@ int main(int argc, char* argv[])
 /* seed monotonic timing */
 	QueryPerformanceFrequency(&ticks_pers);
 	QueryPerformanceCounter(&start_ticks);
-
 	
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	
-	else if (strcmp(fsrvmode, "libretro") == 0)
+	else if (strcmp(fsrvmode, "libretro") == 0){
+		toggle_logdev();
 		arcan_frameserver_libretro_run(resource, keyfile);
+	
+	}
 	
 	else if (strcmp(fsrvmode, "record") == 0)
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);

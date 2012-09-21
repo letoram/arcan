@@ -73,6 +73,7 @@ class Dql
 @dqltbl = {
 	:get_gameid_by_title => "SELECT gameid FROM game WHERE title = ?",
 	:get_game_by_gameid => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE gameid=?",
+	:get_game_by_title_setname_targetid => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE title=? AND setname=? AND target = ?",
 	:get_game_by_title_exact => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE title=?",
 	:get_game_by_title_wild => "SELECT gameid, title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target FROM game WHERE title LIKE ?",
 	:get_games_by_target => "SELECT gameid FROM game WHERE target = ?",
@@ -252,6 +253,29 @@ class Game < DBObject
 		games.size
 	end
 
+	def Game.FromRow(row)
+		newg = Game.new 
+		newg.pkid    = row[0]
+		newg.title   = row[1]
+		newg.setname = row[2]
+		newg.players = row[3].to_i
+		newg.buttons = row[4].to_i
+		newg.ctrlmask = row[5].to_i
+		newg.genre   = row[6]
+		newg.subgenre= row[7]
+		newg.year    = row[8].to_i
+		newg.manufacturer = row[9]
+		newg.system = row[10]
+		newg.target  = row[11].to_i
+		newg.target  = Target.Load( newg.target, nil )
+		newg
+	end
+	
+	def Game.LoadSingle(title, setname, target)
+		dbres = @@dbconn.execute(DQL[:get_game_by_title_setname_targetid], title, setname, target)
+		dbres.count > 0 ? Game.FromRow(dbres[0]) : nil
+	end
+	
 	def Game.Load(gameid, match = nil)
 		res = []
 		dbres = nil
@@ -269,29 +293,7 @@ class Game < DBObject
 			return res
 		end
 
-		if dbres.size == 0
-			return res
-		end
-
-		res = []
-
-		dbres.each{|row|
-			newg = Game.new 
-			newg.pkid    = row[0]
-			newg.title   = row[1]
-			newg.setname = row[2]
-			newg.players = row[3].to_i
-			newg.buttons = row[4].to_i
-			newg.ctrlmask = row[5].to_i
-			newg.genre   = row[6]
-			newg.subgenre= row[7]
-			newg.year    = row[8].to_i
-			newg.manufacturer = row[9]
-			newg.system = row[10]
-			newg.target  = row[11].to_i
-			newg.target  = Target.Load( newg.target, nil )
-			res << newg
-		}
+		dbres.each{|row| res << Game.FromRow(row) }
 
 		res
 	end
@@ -473,9 +475,9 @@ rescue => er
 	STDOUT.print("Couldn't complete request (reset_db), reason: #{er}\n")
 end
 
-def getdb(options, resetdb)
+def getdb(options)
 	db = nil
-	if (File.exists?(options[:dbname]) == false or resetdb)
+	if (File.exists?(options[:dbname]) == false or options[:resetdb])
 		db = reset_db(options[:dbname])
 	else
 		db = SQLite3::Database.new(options[:dbname])
@@ -485,33 +487,43 @@ def getdb(options, resetdb)
 
 	db
 rescue => er
-	STDOUT.print("couldn't aquire DB connection, #{er}\n");
+	STDOUT.print("couldn't acquire DB connection, #{er}\n");
 end
 
 def import_roms(options)
-# scan ROM folder.. and pass it through the list of found importer classes
-# if there's no match between importer and rompath, and the generic importer
-# option is disabled, ignore the folder
-	STDOUT.print("[builddb] Scanning rompath (#{options[:rompath]}):\n")
-	groups = []
-	Dir[ "#{options[:rompath]}/*" ].each{|entry|
-		entry.slice!( "#{options[:rompath]}/" )
-		groups << entry
-		STDOUT.print("\t#{entry} added\n")
-	}
+# either let the user specify (multiple scanpath arguments)
+# or just glob the entire gamesfolder
+	if (options[:scangroup])
+		groups = []
+		options[:scangroup].each{|group|
+			path = "#{options[:rompath]}/#{group}"
+			if File.exists?(path)
+				groups << group
+			else
+				STDOUT.print("[builddb] Specified group path (#{path}) doesn't exist, ignored.\n")
+			end
+		}
+	else
+		groups = []
+		Dir[ "#{options[:rompath]}/*" ].each{|entry|
+			entry.slice!( "#{options[:rompath]}/" )
+			groups << entry
+			STDOUT.print("\t#{entry} added\n")
+		}
+	end
 
-	db = getdb(options, true)
+	db = getdb(options)
 
-# for each rom group..   
+# for each path (group) to scan, check if it's on the skiplist
+# else sweep importers for one that accepts it, and (as an optional fallback)
+# use the generic one. The importer will yield a number of Game instances
+# as it consumes the group members
 	groups.each{|group|
-		if (options[:skiptarget][group] or group.upcase == "SYSTEM")
+		if (options[:skipgroup][group] or group.upcase == "SYSTEM")
 			STDOUT.print("\tIgnoring #{group}\n" )
 			next
 		end
 
-# note, it is the importers themselves that determine if it will handle the
-# target or not, it is only the generic importer that follows the romname <=>
-# targetname matching to the letter
 		imp = Importers.Find(group)
 		imp = Importers.Find("generic") if (imp == nil and options[:generic])
 
@@ -527,9 +539,7 @@ def import_roms(options)
 			end
 	
 			STDOUT.print("#{imp.to_s} processing\n")
-			# make sure target_opt is pushed into db
 			imp.check_games( "#{options[:rompath]}/#{group}" ){|game|
-				#make sure game is pushed into db
 				game.store
 				STDOUT.print("\t|--> Added : #{game.title}\n")
 			}
@@ -540,9 +550,8 @@ def import_roms(options)
 end
 
 def list(options)
-	options[:resetdb] = false
 	gametitle = ""
-	db = getdb(options, false)
+	db = getdb(options)
 	if (options[:gamesbrief])
 		db.execute(DQL[:get_games_title]).each{|row|
 			STDOUT.print("#{row}\n")
@@ -631,9 +640,8 @@ def addgame(args)
 end
 
 def alterdb(options)
-# perform before any DB operations or it will be reset.
 	options[:resetdb] = false 
-	getdb(options, false)
+	getdb(options)
 	gamequeue = {}
 	ind = 0
 
@@ -716,8 +724,7 @@ def alterdb(options)
 end
 
 def execstr(options)
-	options[:resetdb] = false
-	db = getdb(options, false)
+	db = getdb(options)
 	if (options[:execgame] == nil)
 		STDOUT.print("[Execstr] No game specified.\n")
 		return false

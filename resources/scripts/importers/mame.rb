@@ -2,52 +2,45 @@ class Mame
 	def initialize
 		@categories = {}
 		@series = {}
-		@mameargs = [ [], [], [] ] 
+		@mameargs = [ [], [], [] ]
+		@dbinit = false
 		@target = Target.new
 	end
 
-	def merge_gameinfo(catver)
-		STDERR.print("[MAME importer] processing catver file\n")
+	def accepted_arguments
+		[ 
+			["--mamecatver", GetoptLong::REQUIRED_ARGUMENT],
+			["--mameseries", GetoptLong::REQUIRED_ARGUMENT],
+			["--mameverify", GetoptLong::NO_ARGUMENT ],
+			["--mameargs", GetoptLong::REQUIRED_ARGUMENT],
+			["--mameintargs", GetoptLong::REQUIRED_ARGUMENT],
+			["--mameextargs", GetoptLong::REQUIRED_ARGUMENT],
+			["--mamegood", GetoptLong::NO_ARGUMENT ],
+			["--mameskipclone", GetoptLong::NO_ARGUMENT],
+			["--mameshorttitle", GetoptLong::NO_ARGUMENT]
+		]
+	end
 
-		File.open(catver, File::RDONLY).each_line{|line|
-			break if line[0..9] == "[VerAdded]"
-			name, category = line.split(/\=/)
-			maincat, subcat = category.split(/\//) if category
-			maincat.strip! if maincat
-			subcat.strip! if subcat
-			@categories[name] = [maincat, subcat]
-		}	
-		STDERR.print("[MAME importer::catver], categories loaded\n")	
-		true
-
-	rescue => er
-		STDERR.print("[MAME importer::catver] Couldn't open category file, #{catver} -- #{er}\n")
-		false
-	end 
-
-	def merge_relatives(series)
-		STDERR.print("[MAME importer::series] processing series file\n")
-		gname = ""
-		
-		infile = File.open(series, File::RDONLY).each_line{|line|
-			cline = line.strip
-			next if cline.size == 0
-			
-			if cline =~ /\[(\w|\s)*\]/
-				gname = cline[1..-2]
-			else
-				@series[cline] = gname
-			end
-		}
-		STDERR.print("[MAME importer::series] series processed\n")
-		true
-
-	rescue => er
-		STDERR.print("Couldn't open series file, #{series}\n")
-		false
+	def usage()
+	   [
+		"(--mamecatver) filename - Specify a catver.ini file",
+		"(--mameseries) filename - Specify a series.ini file",
+		"(--mameverify) - Only add games that pass verification",
+		"(--mameargs) - comma-separated list of launch arguments",
+		"(--mameintargs) - comma- separated list of internal- launch arguments",
+		"(--mameextargs) - comma- separated list of external- launch arguments",
+		"(--mamegood) - Only add games where the driver emulation status is good",
+		"(--mameskipclone) - Skip drivers that are marked as clones",
+		"(--mameshorttitle) - Don't store extraneous title data (set,revision,..)"
+		]
 	end
 
 	def set_defaults(basepath, options, cmdopts)
+# keep a reference to these as we want to defer loading catver until
+# the importer is actually run
+		@options  = cmdopts
+		@basepath = basepath
+		
 		@mameargs[0] << "-rompath"
 		@mameargs[0] << "[gamepath]/mame"
 		@mameargs[0] << "-cfg_directory"
@@ -81,24 +74,10 @@ class Mame
 		@mameargs[1] << "-nomaximize"
 		@mameargs[1] << "-multithreading"
 		@mameargs[1] << "-keepaspect"
-		@mameargs[1] << "-resolution"
-		@mameargs[1] << "320x240"
-		
-		if (res = cmdopts["--mamecatver"])
-			merge_gameinfo( res[0] )
-		elsif File.exists?("#{basepath}/importers/catver.ini")
-			merge_gameinfo("#{basepath}/importers/catver.ini")
-		end
 
-		if (res = cmdopts["--mameseries"])
-			merge_relatives( res[0] )
-		elsif File.exists?("#{basepath}/importers/series.ini")
-			merge_relatives("#{basepath}/importers/series.ini")
-		end
-
-		@onlygood = cmdopts["--mamegood"] ? true : false
-		@verify = cmdopts["--mameverify"] ? true : false
-		@skipclone = cmdopts["--mameskipclone"] ? true : false
+		@onlygood   = cmdopts["--mamegood"]       ? true : false
+		@verify     = cmdopts["--mameverify"]     ? true : false
+		@skipclone  = cmdopts["--mameskipclone"]  ? true : false
 		@shorttitle = cmdopts["--mameshorttitle"] ? true : false
 
 		chkargs = ["--mameargs", "--mameintargs", "--mameextargs"]
@@ -117,61 +96,76 @@ class Mame
 		}
 	end
 
-	def accepted_arguments
-		[ 
-			["--mamecatver", GetoptLong::REQUIRED_ARGUMENT],
-			["--mameseries", GetoptLong::REQUIRED_ARGUMENT],
-			["--mameverify", GetoptLong::NO_ARGUMENT ],
-			["--mameargs", GetoptLong::REQUIRED_ARGUMENT],
-			["--mameintargs", GetoptLong::REQUIRED_ARGUMENT],
-			["--mameextargs", GetoptLong::REQUIRED_ARGUMENT],
-			["--mamegood", GetoptLong::NO_ARGUMENT ],
-			["--mameskipclone", GetoptLong::NO_ARGUMENT],
-			["--mameshorttitle", GetoptLong::NO_ARGUMENT]
-		]
+	def merge_gameinfo(catver)
+		STDERR.print("[MAME importer] processing catver file\n")
+
+		File.open(catver, File::RDONLY).each_line{|line|
+			break if line[0..9] == "[VerAdded]"
+			name, category = line.split(/\=/)
+			maincat, subcat = category.split(/\//) if category
+			maincat.strip! if maincat
+			subcat.strip! if subcat
+			@categories[name] = [maincat, subcat]
+		}	
+		STDERR.print("[MAME importer::catver], categories loaded\n")	
+		true
+
+	rescue => er
+		STDERR.print("[MAME importer::catver] Couldn't open category file, #{catver} -- #{er}\n")
+		false
+	end 
+	
+	def merge_relatives(series)
+		STDERR.print("[MAME importer::series] processing series file\n")
+		gname = ""
+		
+		infile = File.open(series, File::RDONLY).each_line{|line|
+			cline = line.strip
+			next if cline.size == 0
+			
+			if cline =~ /\[(\w|\s)*\]/
+				gname = cline[1..-2]
+			else
+				@series[cline] = gname
+			end
+		}
+		STDERR.print("[MAME importer::series] series processed\n")
+		true
+
+	rescue => er
+		STDERR.print("Couldn't open series file, #{series}\n")
+		false
 	end
 
-	def usage()
-	   [
-		"(--mamecatver) filename - Specify a catver.ini file",
-		"(--mameseries) filename - Specify a series.ini file",
-		"(--mameverify) - Only add games that pass verification",
-		"(--mameargs) - comma-separated list of launch arguments",
-		"(--mameintargs) - comma- separated list of internal- launch arguments",
-		"(--mameextargs) - comma- separated list of external- launch arguments",
-		"(--mamegood) - Only add games where the driver emulation status is good",
-		"(--mameskipclone) - Skip drivers that are marked as clones",
-		"(--mameshorttitle) - Don't store extraneous title data (set,revision,..)"
-		]
-	end
-
+# Just launch mame separately, let it scan the romset and then check the return result
 	def checkrom(mamepath, rompath, romset)
 		a = IO.popen("#{mamepath} -rompath #{rompath} -verifyroms #{romset} 1> /dev/null 2>/dev/null")
 		a.readlines
 		a.close
 
-	return $?.exitstatus == 0
+		return $?.exitstatus == 0
 	
 	rescue => ex
 		false
 	end
 
-# wrap new (0.144ish?) "joy -> 4,8, ..." ways into the older version, since that one was heavilly embedded already
+# wrap new (0.144ish?) "joy -> 4,8, ..." ways into the older version, since that one was heavily embedded already
 	def subjoy_str(waylbl, waylbl2)
-	    resstr = waylbl2 ? "doublejoy" : "joy"
-	    case waylbl
-	    when "2"
-	        resstr << "2way"
-	    when "4"
-	        resstr << "4way"
-	    when "8"
-	        resstr << "8way"
-	    when "vertical2"
-	        resstr = "v#{resstr}2way"
-	    else
-	        resstr = nil # silently ignore
-	    end
-	    resstr
+		resstr = waylbl2 ? "doublejoy" : "joy"
+		case waylbl
+			when "2"
+				resstr << "2way"
+			when "4"
+				resstr << "4way"
+			when "8"
+				resstr << "8way"
+			when "vertical2"
+				resstr = "v#{resstr}2way"
+			else
+				resstr = nil # silently ignore
+			end
+
+		resstr
 	end
 
 	def convert_inputtype(inputnode)
@@ -190,8 +184,7 @@ class Mame
 	    res 
 	end
 
-# use the internal gamedb of mame from the verified target,
-# splice subtrees off as separate documents and parse individually,
+# use the internal gamedb of mame from the verified target, splice subtrees off as separate documents and parse individually,
 # mem-usage is insane otherwise.
 	def mame_each
 		status = {}
@@ -222,9 +215,15 @@ class Mame
 			title.strip! if title
 			shorttitle.strip! if title
 			
-			res = Game.new
-			res.target = @target
-			res.title = @shorttitle ? shorttitle : title
+			title = @shorttitle ? shorttitle : title
+			setname = node_tree.root.attributes['name'].value
+
+			res = Game.LoadSingle(title, setname, @target.pkid)
+			res = Game.new unless res
+			
+			res.target  = @target
+			res.title   = title
+			res.setname = setname
 		
 			res.ctrlmask = 0
 			res.year = node_tree.xpath("//game/year").text
@@ -232,7 +231,6 @@ class Mame
 			res.year = 0 if res.year < 1900
 			
 			res.manufacturer = node_tree.xpath("//game/manufacturer").text
-			res.setname = node_tree.root.attributes['name'].value
 			res.system = "Arcade" # It might be possible to parse more out of the description
 			res.family = @series[res.setname]
 			if (@categories[res.setname])
@@ -251,8 +249,7 @@ class Mame
 			res.buttons = res.buttons == nil ? 0 : res.buttons.value
 			res.target  = @target
 
-# note, there can be some "weird" combinations, i.e. paddle + pedal, stick + pedal, stick + padel + pedal
-# and the format as such changes heavilly between version, horray. 
+# currently juust ignored, but there can be seriously weird combinations (wheel + paddle + stick + buttons + ...)
 			node_input.children.each{|child|
 				if (child and child.attributes["type"])
 #				    inputlabel = convert_inputtype(child)
@@ -268,15 +265,19 @@ class Mame
 		@mametarget = nil
 		executable = nil
 
-# TODO Switch to wildcard arguments (regexp e.g. mame%, ..)
-		execs = ["mame", "mame.exe", "ume", "ume.exe"];
+		execs = ["mame", "mame.exe", 
+			"mame64", "mame64.exe", 
+			"ume", "ume.exe",
+			"ume64", "ume64.exe"];
+
 		execs.each{|ext|
-		           fullname = "#{targetpath}/#{ext}"
-		           if (File.exists?(fullname))
-		               @mametarget = fullname
+			fullname = "#{targetpath}/#{ext}"
+			
+			if (File.exists?(fullname))
+				@mametarget = fullname
 				executable = ext	
-			       break
-		           end
+				break
+			end
 		}
 
 		if (@mametarget == nil)
@@ -298,11 +299,29 @@ class Mame
 	def check_games(rompath)
 		romset = {}
 
-		dn = Dir["#{rompath}/*.zip"].each{|romname|
-			basename = romname[ romname.rindex('/')+1 .. romname.rindex('.')-1 ]
-			romset[basename] = true
-		}
+# load these once (the same importer could possibly be used for more targets
+		if @dbinit == false
+			if (res = @options["--mamecatver"])
+				merge_gameinfo( res[0] )
+			elsif File.exists?("#{@basepath}/importers/catver.ini")
+				merge_gameinfo("#{@basepath}/importers/catver.ini")
+			end
 
+			if (res = @options["--mameseries"])
+				merge_relatives( res[0] )
+			elsif File.exists?("#{@basepath}/importers/series.ini")
+				merge_relatives("#{@basepath}/importers/series.ini")
+			end
+			
+			@dbinit = true
+		end
+
+# to limit further, just check directory and the extensions zip, 7z, chd
+		Dir["#{rompath}/*"].each{|fname| romset[ File.basename( fname, File.extname(fname) ) ] = true }
+
+# extract XML from mame, parse it and check each setname against the romset table
+# and propagate to caller if a match was found. optionally, use mame's own checking facility
+# another option would be to have a sane database and just scan the ones found
 		mame_each{|game| 
 			if romset[game.setname] 
 				if (@verify and checkrom(@mametarget, rompath, game.setname) == false)
@@ -313,6 +332,8 @@ class Mame
 			end
 		}
 
+# shold perhaps instead return a list of games for which there were no match (just
+# set to false in romset when used, then iterate table for those still marked as true
 		true
 
 	rescue => er
