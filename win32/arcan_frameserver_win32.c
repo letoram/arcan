@@ -28,7 +28,7 @@
 
 #define DST_SAMPLERATE 44100
 #define DST_AUDIOCHAN  2
-#define DST_VIDEOCHAN  4 
+#define DST_VIDEOCHAN  4
 
 const int audio_samplerate = DST_SAMPLERATE;
 const int audio_channels   = DST_AUDIOCHAN;
@@ -51,9 +51,9 @@ char* arcan_binpath;
 char* arcan_themename;
 
 /*void inval_param_handler(const wchar_t* expression,
-   const wchar_t* function, 
-   const wchar_t* file, 
-   unsigned int line, 
+   const wchar_t* function,
+   const wchar_t* file,
+   unsigned int line,
    uintptr_t pReserved)
 {
    wprintf(L"Invalid parameter detected in function %s."
@@ -65,7 +65,7 @@ char* arcan_themename;
 void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 {
 	void* retb = NULL;
-	
+
 	*ressize = GetFileSize(fh, NULL);
 
 	if (*ressize > 0 /* && sz < THRESHOLD */ )
@@ -84,7 +84,7 @@ void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 				free(retb);
 				retb = NULL;
 				*ressize = -1;
-			} 
+			}
 		}
 
 		CloseHandle(ov.hEvent);
@@ -102,7 +102,7 @@ bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_han
 
 /* facepalm awarded for this function .. */
 	OVERLAPPED ov = {0};
-	DWORD retc; 
+	DWORD retc;
 
 	if (INVALID_HANDLE_VALUE != fh){
 		ov.Offset = 0xFFFFFFFF;
@@ -111,7 +111,7 @@ bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_han
 
 		if (!WriteFile(fh, buf, bufs, &retc, &ov) && GetLastError() == ERROR_IO_PENDING){
 			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
-				LOG("frameserver(win32)_dumprawfile : failed, %ld\n", GetLastError()); 
+				LOG("frameserver(win32)_dumprawfile : failed, %ld\n", GetLastError());
 			}
 		}
 
@@ -163,7 +163,7 @@ file_handle frameserver_readhandle(arcan_event* src)
 
 void frameserver_delay(unsigned long val)
 {
-/* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds) 
+/* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds)
  * just busyloop and count .. */
 
 	unsigned long int start = frameserver_timemillis();
@@ -176,7 +176,10 @@ void frameserver_delay(unsigned long val)
  * with external troubleshooting */
 static void toggle_logdev()
 {
-	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
+	const char* logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
+	if (!logdir)
+        logdir = "resources/logs";
+
 	if (logdir){
 		char timeb[16];
 		time_t t = time(NULL);
@@ -194,19 +197,19 @@ static void toggle_logdev()
 int main(int argc, char* argv[])
 {
 	logdev = NULL;
-	
+
 #ifndef _DEBUG
 /*	_set_invalid_parameter_handler(inval_param_handler) */
 	DWORD dwMode = SetErrorMode(SEM_NOGPFAULTERRORBOX);
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
-	
+
 #else
 /* set this env whenever you want to step through the frameserver as launched from the parent */
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
-		sleep(10);
+		Sleep(10);
 	}
 #endif
 
@@ -226,18 +229,18 @@ int main(int argc, char* argv[])
 /* seed monotonic timing */
 	QueryPerformanceFrequency(&ticks_pers);
 	QueryPerformanceCounter(&start_ticks);
-	
+
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
-	
+
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev();
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
-	
+
 	else if (strcmp(fsrvmode, "record") == 0)
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);
-	
+
 	else;
 
 	return 0;
