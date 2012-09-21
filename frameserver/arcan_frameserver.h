@@ -22,7 +22,7 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
-#define LOG(...) ( (logdev ? fprintf(logdev, __VA_ARGS__) : 0) )
+#define LOG(...) ( (logdev ? (fprintf(logdev, __VA_ARGS__) && fflush(logdev)) : 0) )
 extern const int audio_samplerate;
 extern const int audio_channels;
 extern const int video_channels;
