@@ -62,8 +62,6 @@ extern HANDLE parent;
 
 static inline bool parent_alive()
 {
-/* based on the idea that init inherits an orphaned process,
- * wouldn't surprise me if some GNUish environment would break this .. */
 	return IsWindow(parent);
 }
 

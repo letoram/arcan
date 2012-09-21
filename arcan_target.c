@@ -247,11 +247,6 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 	return requested_mode;
 }
 
-static void update_desfmt()
-{
-	
-}
-
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
 	char* shmsize = getenv("ARCAN_SHMSIZE");
@@ -272,6 +267,8 @@ void ARCAN_target_init(){
 	
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
+
+	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
 }
 
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -287,7 +284,6 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	global.attenuation = 1.0;
 	
 	global.ntsc_opts = snes_ntsc_rgb;
-	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
 	
 	return rc;
 }

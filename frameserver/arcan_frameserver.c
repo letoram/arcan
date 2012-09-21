@@ -296,6 +296,25 @@ int frameserver_readhandle(arcan_event* inev)
 	return rv;
 }
 
+/* by default, we only do this for libretro where it might help
+ * with external troubleshooting */
+static void toggle_logdev()
+{
+	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
+	if (logdir){
+		char timeb[16];
+		time_t t = time(NULL);
+		struct tm* basetime = localtime(&t);
+		strftime(timeb, sizeof(timeb)-1, "%y%m%d%H%M", basetime);
+
+		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss_pidpid.txt");
+		char* logbuf = malloc(logbuf_sz + 1);
+
+		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s%d.txt", logdir, timeb, getpid());
+		logdev = fopen(logbuf, "a");
+	}
+}
+
 /* args accepted;
  * fname
  * keyfile
@@ -310,16 +329,16 @@ int frameserver_readhandle(arcan_event* inev)
 	char* keyfile  = argv[2];
 	char* fsrvmode = argv[3];
 	
-	logdev = stderr;
 	if (argc != 4 || !resource || !keyfile || !fsrvmode){
 #ifdef _DEBUG
 		printf("arcan_frameserver(debug) resource keyfile fsrvmode\n");
 #else
-		printf("arcan_frameserver - Invalid arguments (shouldn't be launched from the commandline).\n");
+		printf("arcan_frameserver - Invalid arguments (shouldn't be launched outside of ARCAN).\n");
 #endif
-
 		return 1;
 	}
+
+	logdev = stderr;
 
 /* this is not passed as a command-line argument in order to reuse code with arcan_target where we don't 
  * have control over argv. furthermore, it requires the FD to be valid from an environment perspective (already open socket that
@@ -361,8 +380,10 @@ int frameserver_readhandle(arcan_event* inev)
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	
-	else if (strcmp(fsrvmode, "libretro") == 0)
+	else if (strcmp(fsrvmode, "libretro") == 0){
+		toggle_logdev();
 		arcan_frameserver_libretro_run(resource, keyfile);
+	}
 	
 	else if (strcmp(fsrvmode, "record") == 0)
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);

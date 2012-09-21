@@ -268,7 +268,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
  * for dropping, delaying or showing frames based on DTS/PTS values */
 		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
 			ctx->kind = ARCAN_FRAMESERVER_INPUT;
-
 /* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
  * each transfer, minimized latency is key. All operations require an intermediate buffer 
  * and are synched to one framequeue */
@@ -331,7 +330,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		
 		if (setup.use_builtin){
 			char* argv[5] = { arcan_binpath, strdup(setup.args.builtin.resource), ctx->shm.key, strdup(setup.args.builtin.mode), NULL };
-
+	
 /* just to help keeping track when there's a lot of them */
 			char vla[ strlen(setup.args.builtin.mode) + 1];
 			snprintf( vla, sizeof(vla), "%s", setup.args.builtin.mode );

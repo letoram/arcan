@@ -293,6 +293,10 @@ static bool libretro_setenv(unsigned cmd, void* data){
 			LOG("(arcan_frameserver:libretro) - colormode switched to (%d).\n", retroctx.colormode);
 		break;
 		
+		case RETRO_ENVIRONMENT_GET_CAN_DUPE:
+			rv = true;
+		break;
+		
 /* ignore for now */
 		case RETRO_ENVIRONMENT_SHUTDOWN: 
 			retroctx.shmcont.addr->dms = true;
@@ -301,8 +305,9 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: 
-			LOG("(arcan_frameserver:libretro) - system directory requested.\n");
+			LOG("(arcan_frameserver:libretro) - system directory set to (%s).\n", getenv("ARCAN_SYSTEMPATH") ? getenv("ARCAN_SYSTEMPATH") : "(missing)");
 			*((const char**) data) = getenv("ARCAN_SYSTEMPATH");
+			rv = true;
 		break;
 	}
 	
