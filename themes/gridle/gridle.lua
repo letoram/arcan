@@ -406,7 +406,6 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	image_tracetag(imagery.bgimage, "background");
 	
 	resize_image(imagery.bgimage, VRESW, VRESH);
-	print(VRESW / (VRESW / tilefw));
 	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
 	image_shader(imagery.bgimage, bgshader);
 	show_image(imagery.bgimage);
