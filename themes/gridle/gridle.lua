@@ -230,7 +230,9 @@ function gridle()
 -- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
 -- instances etc. Tightly minimizing this value help track down leaks as overriding it will trigger a dump.
-	system_context_size( (VRESW * VRESH) / (48 * 48) * 4 );
+	local contextlim = ( VRESW * VRESH ) / (48 * 48) * 4;
+	contextlim = contextlim > 1024 and contextlim or 1024
+	system_context_size(contextlim);
 
 -- make sure the current context runs with the new limit
 	pop_video_context();
@@ -965,10 +967,11 @@ end
 
 -- resourcetbl is quite large, check resourcefinder.lua for more info
 function get_image( resourcetbl, gametbl )
-	local rvid = BADID;
+	local rvid     = BADID;
+	local mediares = resourcetbl:find_identity_image()
 	
-	if ( resourcetbl.screenshots[1] ) then
-		rvid = load_image_asynch( resourcetbl.screenshots[1], got_asynchimage );
+	if ( mediares ) then
+		rvid = load_image_asynch( mediares, got_asynchimage );
 		blend_image(rvid, 0.0); -- don't show until loaded 
 	end
 	

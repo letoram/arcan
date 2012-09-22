@@ -311,7 +311,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 			
 			LOG("(arcan_frameserver:libretro) - system directory set to (%s).\n", sysdir);
 			*((const char**) data) = sysdir;
-			rv = true;
+			rv = sysdir != NULL;
 		break;
 	}
 	
@@ -575,7 +575,9 @@ static inline bool retroctx_sync()
 	return true;
 }
 
-/* map up a libretro compatible library resident at fullpath:game */
+/* map up a libretro compatible library resident at fullpath:game,
+ * if resource is /info, no loading will occur but a dump of the capabilities 
+ * of the core will be sent to stdout. */
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
 	const char* libname  = resource;
@@ -591,6 +593,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	if (*libname == 0) 
 		return;
 
+
 /* map up functions and test version */
 	libretro_h = SDL_LoadObject(libname);
 	void (*initf)() = libretro_requirefun("retro_init");
@@ -603,6 +606,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		struct retro_game_info gameinf = {0};
 		((void(*)(struct retro_system_info*)) libretro_requirefun("retro_get_system_info")) (&sysinf);
 
+/* added as a support to romman etc. so they don't have to load the libs in question */
+		if (strcmp(gamename, "/info") == 0){
+			fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\nversion:%s\nextensions:%s\n/arcan_frameserver(info)", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
+			return;
+		}
+		
 	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
 		
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */

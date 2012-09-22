@@ -180,6 +180,11 @@ static void toggle_logdev()
 	if (!logdir)
         logdir = "resources/logs";
 
+
+/* win32 .. :'( */
+	if (!logdir)
+		logdir = "./resources/logs";
+	
 	if (logdir){
 		char timeb[16];
 		time_t t = time(NULL);

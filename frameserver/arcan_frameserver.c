@@ -373,7 +373,6 @@ static void toggle_logdev()
 	
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev();
-		LOG("arcan_frameserver -- launching retrocore with %s\n", resource);
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
 	
