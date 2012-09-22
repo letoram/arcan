@@ -4,6 +4,8 @@
 # as the main application binaries. Tries to locate the resource folder
 # in use, where the main script is, along with importers.
 
+is_windows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
+
 searchpath = [".", "./scripts", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
 
 searchpath.insert(0, ENV['ARCAN_RESOURCEPATH']) if ENV['ARCAN_RESOURCEPATH']
@@ -37,7 +39,7 @@ builddb options:\n\
 (--generic) - Use generic importer for unknown targets\n\
 (--update) - Only add new games, don't rebuild the entire database\n\
 (--skipgroup) groupname - Don't try to import the specified games\group folder (can be used several times)\n\
-(--scangroup) groupname - Only scan the specified games\group folder (can be used several times)\n\
+(--scangroup) groupname - Only scan the specified games\group folder (can be used several times)\n\n\
 "
 begin	Importers.Each_importer{|imp|
 		line = imp.usage.join("\n")
@@ -163,10 +165,16 @@ options = {
 	:targetpath => "#{basepath}/../targets",
 	:resetdb => false,
 	:dbname => "#{basepath}/../arcandb.sqlite",
+	:frameserver => "./arcan_frameserver",
 	:execlaunch => false,
 	:execmode => "external",
 	:skipgroup => {},
+	:in_windows => is_windows
 }
+
+if (is_windows) 
+	options[:frameserver] = "./arcan_frameserver.exe"
+end
 
 # expand with the options from each found importer
 Importers.Each_importer{|imp|

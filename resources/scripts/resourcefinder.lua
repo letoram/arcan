@@ -103,7 +103,7 @@ end
 local function resourcefinder_graphics(game, restbl, cache_results)
 	local imgext = {"png", "jpg"};
 	
-	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "backdrops", "overlays", "cabinets"};
+	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "backdrops", "overlays", "cabinets", "boxart"};
 
 	for ind, val in ipairs(worktbl) do
 		local tgtpath = val .. "/" .. game.target .. "/";
@@ -151,6 +151,17 @@ function resourcefinder_search( gametable, cache_results )
 		resourcefinder_audio(gametable, restbl, cache_results );
 		resourcefinder_video(gametable, restbl, cache_results );
 		resourcefinder_misc(gametable, restbl, cache_results );
+	end
+
+-- just locate and possible image that can be used to determine what
+-- the game "is", priority goes to boxart -> screenshots, this one
+-- actively ignores "back" boxart
+	restbl.find_identity_image = function(self)
+		if (self.screenshots and self.screenshots[1]) then
+			return self.screenshots[1]
+		elseif self.boxart and self.boxart[1] then
+			return self.boxart[1]
+		end
 	end
 
 -- ugly and used often so hide 'em ;-)

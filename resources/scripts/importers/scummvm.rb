@@ -11,6 +11,7 @@ class ScummVM
 
 	def usage
 		[
+			"ScummVM Importer Arguments:",
 			"(--scummargs) - comma- separated list of launch arguments",
 			"(--scummintargs) - comma- separated list of internal- launch arguments",
 			"(--scummextargs) - comma- separated list of external- launch arguments"

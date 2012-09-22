@@ -977,7 +977,7 @@ void arcan_video_fullscreen()
  * since this function is used extremely often and shuffles a lot of data, furthermore, we would like to split this into
  * a subprocess with lesser privileges due to the .. "varying" quality of image decoding routines. */
 #ifndef ASYNCH_CONCURRENT_THREADS
-#define ASYNCH_CONCURRENT_THREADS 8
+#define ASYNCH_CONCURRENT_THREADS 4 
 #endif
 
 /* copy RGBA src row by row with optional "flip",

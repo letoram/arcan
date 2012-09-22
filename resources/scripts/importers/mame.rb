@@ -23,6 +23,7 @@ class Mame
 
 	def usage()
 	   [
+		"MAME Importer arguments", 
 		"(--mamecatver) filename - Specify a catver.ini file",
 		"(--mameseries) filename - Specify a series.ini file",
 		"(--mameverify) - Only add games that pass verification",
@@ -249,7 +250,7 @@ class Mame
 			res.buttons = res.buttons == nil ? 0 : res.buttons.value
 			res.target  = @target
 
-# currently juust ignored, but there can be seriously weird combinations (wheel + paddle + stick + buttons + ...)
+# currently just ignored, but there can be seriously weird combinations (wheel + paddle + stick + buttons + ...)
 			node_input.children.each{|child|
 				if (child and child.attributes["type"])
 #				    inputlabel = convert_inputtype(child)

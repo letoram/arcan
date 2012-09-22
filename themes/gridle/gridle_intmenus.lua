@@ -1461,5 +1461,5 @@ if (#menulbls > 0 and settingslbls) then
 	current_menu:show();
 	suspend_target(internal_vid);
 	play_audio(soundmap["MENU_TOGGLE"]);
-	move_image(current_menu.anchor, 100, 120, settings.fadedelay);
+	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
 end

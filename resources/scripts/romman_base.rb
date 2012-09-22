@@ -16,7 +16,7 @@ rescue LoadError => ex
 	exit(1)
 end
 
-	require 'getoptlong'
+require 'getoptlong'
 ROMMAN_VERSION = 0.2
 
 DDL = {
