@@ -692,7 +692,7 @@ int arcan_lua_buildstr(lua_State* ctx)
 	arcan_vobj_id id = ARCAN_EID;
 	const char* message = luaL_checkstring(ctx, 1);
 	int vspacing = luaL_optint(ctx, 2, 4);
-	int tspacing = luaL_optint(ctx, 2, 64);
+	int tspacing = luaL_optint(ctx, 3, 64);
 
 	unsigned int nlines = 0;
 	unsigned int* lineheights = NULL;

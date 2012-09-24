@@ -8,7 +8,7 @@ colourtable.dialog_window = {r = 0x00, g = 0x00, b = 0xa4, a = 0.9};
 colourtable.dialog_cursor = {r = 0xff, g = 0xff, b = 0xff, a = 0.5};
 
 colourtable.font            = [[\ffonts/default.ttf,]]
-colourtable.font_size       = 18;
+colourtable.font_size       = VRESH < 320 and 8 or 18;
 colourtable.fontstr         = colourtable.font .. colourtable.font_size;
 colourtable.label_fontstr   = colourtable.fontstr.. [[\b\#ffffff]];
 colourtable.data_fontstr    = colourtable.fontstr .. [[\#ffffff]];

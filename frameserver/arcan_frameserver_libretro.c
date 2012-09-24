@@ -304,8 +304,9 @@ static bool libretro_setenv(unsigned cmd, void* data){
  /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 			sysdir = getenv("ARCAN_SYSTEMPATH");
-			if (!sysdir)
+			if (!sysdir){
 				sysdir = "./resources/games/system";
+			}
 			
 			LOG("(arcan_frameserver:libretro) - system directory set to (%s).\n", sysdir);
 			*((const char**) data) = sysdir;
