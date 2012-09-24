@@ -1146,7 +1146,7 @@ function enable_record(width, height, args)
 	end
 
 -- create an instance of this image to detach and record 
-	local lvid = instance_image( valid_vid(imagery.display_vid) and imagery.display_vid or internal_vid );
+	local lvid = instance_image( internal_vid );
 -- set it to the top left of the screen
 	image_mask_clear(lvid, MASK_POSITION);
 	move_image(lvid, 0, 0);
