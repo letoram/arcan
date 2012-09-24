@@ -168,13 +168,11 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 		
 	for (int y = 0; y < height; y++){
 		for (int x = 0; x < width; x++){
-			uint32_t val = data[x];
-			if (retroctx.ntscconv){
-				uint8_t* quad = (uint8_t*) data;
-				*interm++ = RGB565(quad[3], quad[2], quad[1]);
-			}
+			uint8_t* quad = (uint8_t*) (data + x);
+			if (retroctx.ntscconv)
+				*interm++ = RGB565(quad[0], quad[1], quad[2]);
 			else
-				*outp++ = 0xff | ( val << 8 );
+				*outp++ = 0xff << 24 | quad[0] << 16 | quad[1] << 8 | quad[2]; 
 		}
 
 		data += pitch >> 2;

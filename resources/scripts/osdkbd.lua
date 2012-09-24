@@ -8,12 +8,6 @@
 --
 
 
-local keymap = {  
-	"A", "B", "C", "D", "E", "F", "G", "1", "2", "3", "\n",
-	"H", "I", "J", "K", "L", "M", "N", "4", "5", "6", "\n",
-	"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n",
-	"V", "W", "X", "Y", "Z", " ", "%", "0" };
-
 local function gridxy(chrh, col, row)
 	return ( col * chrh ), ( row * chrh );
 end
@@ -138,11 +132,15 @@ local function osdkbd_buildgrid(self, windw, windh)
 	local ctb = settings.colourtable; -- where's the "using" clause when needed .. 
 	
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
+	image_tracetag(self.anchor, "osdkbd anchor");
 	
 -- will resize these later based on the button grid
 	self.window = fill_surface(1, 1, ctb.dialog_window.r, ctb.dialog_window.g, ctb.dialog_window.b);
+	image_tracetag(self.window, "osdkbd window");
+	
 	self.border = fill_surface(1, 1, ctb.dialog_border.r, ctb.dialog_border.g, ctb.dialog_border.b);
-
+	image_tracetag(self.border, "osdkbd border");
+	
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
 	show_image(self.window);
@@ -162,6 +160,7 @@ local function osdkbd_buildgrid(self, windw, windh)
 		for j=1, #self.rows[i] do
 			if type(self.rows[i][j]) == "string" then
 				vidcol[j] = render_text( [[\ffonts/default.ttf,]] .. chrh .. [[\#ffffff]] .. self.rows[i][j]);
+				image_tracetag(vidcol[j], "osdkbd grid letter");
 			else
 				vidcol[j] = self.rows[i][j];
 				resize_image(vidcol[j], self.chrh * 0.9, self.chrh * 0.9);
@@ -243,13 +242,20 @@ function osdkbd_create(map)
 		currow = 1 
 	};
 	
+	local keymap = {  
+	"A", "B", "C", "D", "E", "F", "G", "1", "2", "3", "\n",
+	"H", "I", "J", "K", "L", "M", "N", "4", "5", "6", "\n",
+	"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n",
+	"V", "W", "X", "Y", "Z", " ", "%", "0" };
+	
 	if (map) then restbl.keymap = map else restbl.keymap = keymap; end
 	if (settings == nil) then settings = {}; end
 	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
 
-	rows  = {};
-	crow  = {};
-	maxcol = 0;
+	local rows  = {};
+	local crow  = {};
+	
+	local maxcol = 0;
 	restbl.symtable   = system_load("scripts/symtable.lua")();
 	restbl.enterimage = load_image("images/ok.png");
 	restbl.leftimage  = load_image("images/remove.png");

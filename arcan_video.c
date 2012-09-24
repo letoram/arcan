@@ -101,8 +101,9 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 		.vitem_ofs = 1,
 		.nalive    = 0,
 		.world = {
+			.tracetag = "(world)",
 			.current  = {
-				.opa = 1.0
+				.opa = 1.0,
 			}
 		}
 	}
@@ -185,8 +186,9 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 			if (current->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 				arcan_video_pushasynch(i);
 
-			if (delete)
+			if (delete){
 				arcan_video_deleteobject(i); /* will also delink from the render list */
+			}
 			else {
 				glDeleteTextures(1, &current->gl_storage.glid);
 				if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && current->feed.state.ptr)
@@ -468,11 +470,13 @@ static void recurse_scan_duplicate(arcan_vobject_litem* base)
 static void integrity_scan(struct rendertarget* src)
 {
 	arcan_vobject_litem* current = src->first;
-
+	unsigned counter = 0;
+	
 /* first, duplicates and linked-list integrity */
 	while (current){
 		recurse_scan_duplicate(current);
 		assert(current->elem);
+		counter++;
 
 		if (current != src->first){
 			assert(current->previous != NULL);
@@ -539,7 +543,7 @@ reevaluate:
 		integrity_scan(&current_context->stdoutp);
 		if ( scan_rtgt(&current_context->stdoutp, src) ){
 			LOGV( printf(" -> found reference in stdoutp.\n") );
-			count++;
+//			count++;
 		}
 
 		for (unsigned int n = 0; n < current_context->n_rtargets; n++){
@@ -578,7 +582,7 @@ reevaluate:
 		assert(count == sum); /* will trigger */
 	else if (count != sum){
 		verbose = true;
-		LOGV( printf(" -- mismatch (count:%d) <-> (refcount:%d) \n", count, sum) );
+		LOGV( printf(" -- mismatch (count:%d) <-> (refcount:%d) (tag: %s) \n", count, sum, src->tracetag ? src->tracetag : "(unknown)") );
 		goto reevaluate;
 	}
 }
@@ -632,8 +636,6 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	if (dst->color){
 		arcan_warning("detach(%s:%lld, %d) from (%s:%lld, %d)\n", src->tracetag, src->cellid, src->extrefc.attachments,
 								dst->color->tracetag, dst->color->cellid, dst->color->extrefc.attachments);
-
-		src->extrefc.attachments--;
 		dst->color->extrefc.attachments--;
 	}
 
@@ -687,7 +689,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 	}
 
 	if (dst->color){
-		arcan_warning("atach(%s:%lld, %d) from (%s:%lld, %d)\n", src->tracetag, src->cellid, src->extrefc.attachments,
+		arcan_warning("attach(%s:%lld, %d) from (%s:%lld, %d)\n", src->tracetag, src->cellid, src->extrefc.attachments,
 								dst->color->tracetag, dst->color->cellid, dst->color->extrefc.attachments);
 
 		src->extrefc.attachments++;
@@ -1967,6 +1969,7 @@ arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 	return rv;
 }
 
+/* remove a video object that is also a rendertarget (FBO) output */
 static void drop_rtarget(arcan_vobject* vobj)
 {
 /* check if vobj is indeed a rendertarget */
@@ -1975,6 +1978,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 	unsigned dstind;
 
+/* linear search for the vobj among rendertargets */
 	for (dstind = 0; dstind < current_context->n_rtargets; dstind++){
 		if (current_context->rtargets[dstind].color == vobj){
 			dst = &current_context->rtargets[dstind];
@@ -1985,25 +1989,30 @@ static void drop_rtarget(arcan_vobject* vobj)
 	if (!dst)
 		return;
 
-/* guaranteed rtarget */
+	integrity_scan(dst);
+/* found one, disassociate with the context */
 	current_context->n_rtargets--;
 	assert(current_context->n_rtargets >= 0);
 
 	if (vobj->tracetag)
 		arcan_warning("(arcan_video_deleteobject(reference-pass) -- remove rendertarget (%s)\n", vobj->tracetag);
 
+/* kill GPU resources */
 	glDeleteFramebuffers(1, &dst->fbo);
 	glDeleteRenderbuffers(1,&dst->depth);
 
+/* PBOs activated for those rendertargets used with readback */
 	if (dst->pbo)
 		glDeleteBuffers(1, &dst->pbo);
 
+/* create a temporary copy of all the elements in the rendertarget */
 	arcan_vobject_litem* current = dst->first;
 	size_t pool_sz = (dst->color->extrefc.attachments + 1) * sizeof(arcan_vobject*);
 	dpool = malloc(pool_sz);
 	memset(dpool, 0, pool_sz);
 	base = dpool;
 
+/* note the contents of the rendertarget as "detached" from the source vobj */
 	while (current){
 		(*base++) = current->elem;
 		vobj->extrefc.attachments--;
@@ -2012,15 +2021,20 @@ static void drop_rtarget(arcan_vobject* vobj)
 		current = current->next;
 		free(last);
 	}
-
+	*base = NULL;
+	
+/* compact the context array of rendertargets */
 	if (dstind+1 < RENDERTARGET_LIMIT)
 		memmove(&current_context->rtargets[dstind], &current_context->rtargets[dstind+1], sizeof(struct rendertarget) * (RENDERTARGET_LIMIT - 1 - dstind));
 
 /* always kill the last element */
 	memset(&current_context->rtargets[RENDERTARGET_LIMIT- 1], 0, sizeof(struct rendertarget));
+
 /* self-reference gone */
 	vobj->extrefc.attachments--;
-
+	assert(vobj->extrefc.attachments == 0);
+	
+/* sweep the list of rendertarget children */
 	base = dpool;
 	while (*base){
 		if ((*base)->owner == dst){
@@ -2048,7 +2062,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
+	
 /* some objects can't be deleted */
 	if (!vobj || id == ARCAN_VIDEO_WORLDID || id == ARCAN_EID){
 		return rv;
@@ -2063,7 +2077,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	}
 #endif
 
-/* step one, disassociate from target */
+/* step one, disassociate from rendertargets,  */
 	detach_fromtarget(&current_context->stdoutp, vobj);
 
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
@@ -2076,10 +2090,10 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			vobj->parent->extrefc.links--;
 		vobj->parent = NULL;
 	}
-
+/* vobj might be a rendertarget itself, so detach all its possible members, free FBO/PBO resources etc. */
 	drop_rtarget(vobj);
-
-/* step four, populate a pool of cascade deletions */
+	
+/* populate a pool of cascade deletions */
 	arcan_vobject** pool = NULL, (** basep);
 	unsigned sum = (vobj->flags.clone ? 0 :
 		vobj->frameset_meta.capacity) + vobj->extrefc.links + vobj->extrefc.framesets + vobj->extrefc.instances;
@@ -2125,7 +2139,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					*basep++ = dobj;
 				}
 				else {
-					assert(vobj->extrefc.links > 0);
+					assert(vobj->extrefc.links);
 					vobj->extrefc.links--;
 					sum--;
 
@@ -3603,7 +3617,6 @@ static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode mode)
 
 	int n_colbuf = 0;
 	glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &n_colbuf);
-	arcan_warning("\tcolor buffer attachments: %d\n", n_colbuf);
 
 	int objectType;
 	int objectId;

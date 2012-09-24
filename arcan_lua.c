@@ -517,7 +517,7 @@ int arcan_lua_orderimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned int zv = luaL_checknumber(ctx, 2);
-
+	
 	arcan_video_setzv(id, zv);
 	
 	return 0;

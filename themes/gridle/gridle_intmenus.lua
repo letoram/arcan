@@ -266,7 +266,7 @@ local function setup_bezel(source)
 		y1 = (y1 / props.height) * VRESH;
 		y2 = (y2 / props.height) * VRESH;
 		
-		local dstvid = valid_vid(imagery.vector_vid) and imagery.vector_vid or internal_vid;
+		local dstvid = valid_vid(imagery.display_vid) and imagery.display_vid or internal_vid;
 	
 		resize_image(dstvid, x2 - x1, y2 - y1);
 		move_image(dstvid, x1, y1);
@@ -319,7 +319,7 @@ function vector_setupblur(targetw, targeth)
 	shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
 	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
 	shader_uniform(blurshader_h, "ampl", "f", PERSIST, settings.vector_hbias);
-	shader_uniform(blurshader_v, "ampl", "f", PERSIST, settings.vector_vbias);	
+	shader_uniform(blurshader_v, "ampl", "f", PERSIST, settings.vector_vbias);
 
 	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
 	local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
@@ -368,6 +368,72 @@ local function merge_compositebuffer(sourcevid, blurvid, targetw, targeth, blurw
 	end
 	
 	return rtgts;
+end
+
+-- "slightly" easier than SMAA ;-)
+function display_fxaa(source, targetw, targeth)
+	local fxaa_shader = load_shader("shaders/fullscreen/default.vShader", "display/fxaa.fShader", "fxaa", {});
+	local node        = instance_image(source);
+	local fxaa_outp   = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	
+	local props = image_surface_properties(source);
+	print(props.width, props.height);
+	
+	shader_uniform(fxaa_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+	hide_image(source);
+	image_shader(node, fxaa_shader);
+	resize_image(node, targetw, targeth);
+	image_mask_clear(node, MASK_POSITION);
+	image_mask_clear(node, MASK_OPACITY);
+	show_image(node);
+		
+	define_rendertarget(fxaa_outp, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(fxaa_outp);
+	return fxaa_outp;
+end
+
+function display_smaa(source, targetw, targeth)
+-- start with edge detection
+	local edge_shader = load_shader("display/smaa_edge.vShader", "display/smaa_edge.fShader", "smaa_edge", {});
+	local node        = instance_image(source);
+	local edge_outp   = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	shader_uniform(edge_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+	hide_image(source);
+	
+	image_shader(node, edge_shader);
+	resize_image(node, targetw, targeth);
+	image_mask_clear(node, MASK_POSITION);
+	image_mask_clear(node, MASK_OPACITY);
+	show_image(node);
+	
+	define_rendertarget(edge_outp, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(edge_outp);
+
+-- return edge_outp; here to verify the edge detection step
+-- the complicated part, generate the blend map by using the edge detection as input,
+-- along with two LUTs (area / search)
+	local blend_shader = load_shader("display/smaa_blend.vShader", "display/smaa_blend.fShader", "smaa_blend", {});
+	shader_uniform(blend_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+	local blend_outp = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+	local blend_comb = fill_surface(targetw, targeth, 1, 1, 1, 2, 2);
+
+	image_framesetsize(blend_comb, 3, FRAMESET_MULTITEXTURE);
+	set_image_as_frame(blend_comb, edge_outp, 0, FRAMESET_DETACH);
+	
+	area   = load_image("display/smaa_area.png");
+	search = load_image("display/smaa_search.png");
+	
+	set_image_as_frame(blend_comb, area, 1, FRAMESET_DETACH);
+	set_image_as_frame(blend_comb, search, 2, FRAMESET_DETACH);
+	image_shader(blend_comb, blend_shader);
+	show_image(blend_outp);
+	show_image(blend_comb);
+	
+	define_rendertarget(blend_outp, {blend_comb}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
+-- last step is instancing source again, combine with blend_outp and the neighbor shader
+-- unfinished
+	return blend_outp;
 end
 
 -- additive blend with blur
@@ -499,7 +565,7 @@ end
 function undo_vectormode()
 	image_shader(internal_vid, "DEFAULT");
 
-	if (valid_vid(imagery.vector_vid)) then
+	if (valid_vid(imagery.display_vid)) then
 		image_framesetsize(internal_vid, 0);
 		image_framecyclemode(internal_vid, 0);
 		image_texfilter(internal_vid, FILTER_BILINEAR);
@@ -507,26 +573,28 @@ function undo_vectormode()
 -- lots of things happening beneath the surface here, killing the vector vid will cascade and drop all detached images
 -- that are part of the render target, EXCEPT for the initial internal vid that has its MASKED_LIVING disabled
 -- this means that it gets reattached to the main pipe instead of deleted
-		delete_image(imagery.vector_vid);
-		imagery.vector_vid = BADID;
+		delete_image(imagery.display_vid);
+		imagery.display_vid = BADID;
 	end
 	
 end
 
-local function toggle_vectormode()
--- should only happen when shutting down internal_launch with vector mode active
-	image_mask_clear(internal_vid, MASK_LIVING);
+local function toggle_vectormode(sourcevid)
 	local props = image_surface_initial_properties(internal_vid);
-	image_texfilter(internal_vid, FILTER_NONE);
+
+	if (sourcevid == internal_vid) then
+		image_mask_clear(internal_vid, MASK_LIVING);
+		image_texfilter(internal_vid, FILTER_NONE);
+	end
 	
 -- activate trails or not?
 	if (settings.vector_glowtrails > 0) then
-		imagery.vector_vid = vector_heavymode(internal_vid, props.width, props.height);
+		imagery.display_vid = vector_heavymode(sourcevid, props.width, props.height);
 	else
-		imagery.vector_vid = vector_lightmode(internal_vid, props.width, props.height);
+		imagery.display_vid = vector_lightmode(sourcevid, props.width, props.height);
 	end
 	
-	order_image(imagery.vector_vid, 1);
+	order_image(imagery.display_vid, 1);
 -- CRT toggle is done through the fullscreen_shader member
 end
 
@@ -570,7 +638,7 @@ local function update_filter(vid, filtermode)
 	end
 end
 
-local function push_ntsc()
+function push_ntsc()
 	target_postfilter_args(internal_vid, 1, settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
 	target_postfilter_args(internal_vid, 2, settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
 	target_postfilter_args(internal_vid, 3, settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
@@ -592,20 +660,26 @@ function gridlemenu_rebuilddisplay()
 -- need to do this twice in order to cover all the basis (upscaler, ...)
 	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
 
+-- begin by antialias the source
+	if (settings.internal_toggles.antialias) then
+		dstvid = display_fxaa(dstvid, windw, windh); 
+		imagery.display_vid = dstvid;
+	end
+	
 -- enable all display options
 	if (settings.internal_toggles.vector) then
 		target_pointsize(dstvid, settings.vector_pointsz);
 		target_linewidth(dstvid, settings.vector_linew);
 
-		toggle_vectormode();
-		dstvid = imagery.vector_vid;
+		toggle_vectormode(dstvid);
+		dstvid = imagery.display_vid;
 	
 	elseif ( (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) or (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) ) then
 		image_mask_clear(internal_vid, MASK_LIVING);
 		
 		dstvid = fill_surface(windw, windh, 1, 1, 1, windw, windh);
-		imagery.vector_vid = dstvid;
-		order_image(imagery.vector_vid, 1);
+		imagery.display_vid = dstvid;
+		order_image(imagery.display_vid, 1);
 		
 		image_tracetag(dstvid, "overlay_backdrop");
 	
@@ -637,6 +711,10 @@ function gridlemenu_rebuilddisplay()
 
 	end
 
+	if (settings.internal_toggles.ntsc) then
+		push_ntsc();
+	end
+	
 -- all the above changes may have reordered the menu 
 	gridlemenu_tofront(current_menu);
 end
@@ -1068,7 +1146,7 @@ function enable_record(width, height, args)
 	end
 
 -- create an instance of this image to detach and record 
-	local lvid = instance_image( valid_vid(imagery.vector_vid) and imagery.vector_vid or internal_vid );
+	local lvid = instance_image( valid_vid(imagery.display_vid) and imagery.display_vid or internal_vid );
 -- set it to the top left of the screen
 	image_mask_clear(lvid, MASK_POSITION);
 	move_image(lvid, 0, 0);
@@ -1138,6 +1216,7 @@ add_displaymodeptr(displaymodelist, displaymodeptrs, "vector", "Vector", gridlem
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay", "Overlay", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop", "Backdrop", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc", "NTSC", push_ntsc);
+add_displaymodeptr(displaymodelist, displaymodeptrs, "antialias", "Antialias", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "crt", "CRT", gridlemenu_rebuilddisplay);
 	
 local vectormenulbls = {};
@@ -1232,7 +1311,7 @@ recordptrs["Start"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
 	
-	local dstvid = valid_vid(imagery.vector_vid) and imagery.vector_vid or internal_vid;
+	local dstvid = valid_vid(imagery.display_vid) and imagery.display_vid or internal_vid;
 	local props  = image_surface_initial_properties(dstvid);
 	local width  = props.width;
 	local height = props.height;
@@ -1314,7 +1393,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 		elseif (selectlbl == "Vector") then
 			fmts = {}; 
 			menu_spawnmenu(vectormenulbls, vectormenuptrs, fmts);
-		
+	
 		elseif (selectlbl == "NTSC") then
 			fmts = {};
 			menu_spawnmenu(ntscmenulbls, ntscmenuptrs, fmts);
@@ -1372,8 +1451,9 @@ if (#menulbls > 0 and settingslbls) then
 		def[ "NTSC" ]    = iconlbl .. (settings.internal_toggles.ntsc   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		def[ "Vector" ]  = iconlbl .. (settings.internal_toggles.vector and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		
-		def[ "Overlay"  ] = 	settings.internal_toggles.overlay  and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
-		def[ "Backdrop" ] = 	settings.internal_toggles.backdrop and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr	
+		def[ "Overlay"  ] = settings.internal_toggles.overlay  and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
+		def[ "Backdrop" ] = settings.internal_toggles.backdrop and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr	
+		def[ "Antialias"] = settings.internal_toggles.antialias and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
 		
 		settings.context_menu = "display modes";
 		menu_spawnmenu(displaymodelist, displaymodeptrs, def );
