@@ -16,17 +16,13 @@ SystemTable = {
 "bsnes"  => "Super Nintendo (SNES)",
 "snes9x" => "Super Nintendo (SNES)",
 	
-"mame"   => "Arcade",
 "mess"   => "Multi",
 "ume"    => "Multi",
-"fba"    => "Arcade",
 
 "2600"   => "Atari 2600",
 	
-"scummvm"=> "Adventure/Multi",
-
 "psx"    => "Sony Playstation",
-	
+
 "tg16"   => "TurboGrafx 16",
 "pce"    => "TurboGrafx 16",
 	
