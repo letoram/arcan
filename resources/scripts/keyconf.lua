@@ -85,7 +85,7 @@ local function keyconf_renderline(self, string, size)
 	end
 
 -- push to front, render text, resize window, align to current resolution 
-	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string);
+	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string, 4, settings.colourtable.font_size * 6);
 	image_tracetag(self.textvid, "keyconfig:text");
 	
 	self.line = string;
@@ -96,7 +96,7 @@ local function keyconf_renderline(self, string, size)
 	image_clip_on(self.textvid);
 
 	move_image(self.anchor, VRESW * 0.5 - prop.width * 0.5, VRESH * 0.5 - (prop.height + 10) * 0.5, 0);
-	resize_image(self.window, prop.width + 10, prop.height + 10 , NOW);
+	resize_image(self.window, prop.width + 10, prop.height + 10, NOW);
 	resize_image(self.border, prop.width + 16, prop.height + 16, NOW);
 
 	move_image(self.textvid, 5, 5, NOW);
@@ -148,13 +148,13 @@ end
 
 
 local function keyconf_playerline(self)
-	line = [[Configure player input (press SELECT to continue):\n\r\t\t#Players\t#Buttons\t#Axes\n\r]]
+	line = [[Configure player input (press SELECT to continue):\n\r#Players\t#Buttons\t#Axes\n\r]]
 	if (self.active_group == 0) then
-		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);
+		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\#ffffff]] .. tostring(self.axescount);
 	elseif (self.active_group == 1) then
-		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffff00]] .. tostring(self.buttoncount) .. [[\t\t\#ffffff]] .. tostring(self.axescount);
+		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\#ffff00]] .. tostring(self.buttoncount) .. [[\t\#ffffff]] .. tostring(self.axescount);
 	else
-		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\t\#ffff00]] .. tostring(self.axescount);
+		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\#ffff00]] .. tostring(self.axescount);
 	end
 
 	keyconf_renderline(self, line);

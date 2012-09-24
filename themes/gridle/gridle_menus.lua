@@ -652,7 +652,7 @@ function gridlemenu_settings()
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 
 -- only rebuild grid if we have to
-		if (current_menu.gamecount ~= #settings.games) then gridlemenu_filterchanged(); end
+		gridlemenu_filterchanged();
 			
 		settings.iodispatch = griddispatch;
 		if (settings.statuslist) then
