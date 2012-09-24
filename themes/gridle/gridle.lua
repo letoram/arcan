@@ -42,9 +42,10 @@ soundmap = {
  BGLAYER = 0;
  GRIDBGLAYER = 1;
  GRIDLAYER = 3;
- GRIDLAYER_MOVIE = 2;
- 
- ICONLAYER = 4;
+ GRIDLAYER_MOVIE = 4;
+ GRIDLAYER_ZOOM  = 5;
+ GRIDLAYER_ZOOM_MOVIE = 6;
+ ICONLAYER = 7;
 
 settings = {
 	filters = {
@@ -140,8 +141,8 @@ settings = {
 	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
-	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false},
-	internal_notoggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false}, -- used by detailview
+	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false},
+	internal_notoggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false}, -- used by detailview
 	
 	flipinputaxis = false,
 	filter_opposing= false, 
@@ -251,7 +252,6 @@ function gridle()
 
 -- use the DB theme-specific key/value store to populate the settings table
 	load_settings();
-	grab_sysicons();
 	
 	if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
@@ -354,31 +354,10 @@ function gridle()
 		end
 	end
 
-	imagery.black = fill_surface(1,1,0,0,0);
-	image_tracetag(imagery.black, "black");
-	
-	imagery.white = fill_surface(1,1,255,255,255);
-	image_tracetag(imagery.white, "white");
-	
--- Animated background
-	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
-
--- Little star keeping track of games marked as favorites
-	imagery.starimage    = load_image("images/star.png");
-	image_tracetag(imagery.starimage, "favorite icon");
-	
-	imagery.crashimage   = load_image("images/terminated.png");
-	image_tracetag(imagery.crashimage, "terminated");
-
-	resize_image(imagery.crashimage, VRESW * 0.5, VRESH * 0.5);
-	move_image(imagery.crashimage, 0.5 * (VRESW - (VRESW * 0.5)), 0.5 * (VRESH - (VRESH * 0.5)));
-
-	imagery.magnifyimage = load_image("images/magnify.png");
-	image_tracetag(imagery.magnifyimage, "detailview icon");
-	
 	if (settings.custom_view) then
 		
 	else
+		setup_gridview();
 		build_grid(settings.cell_width, settings.cell_height);
 	end
 	
@@ -388,12 +367,42 @@ function gridle()
 	
 	gridle_keyconf();
 	gridle_ledconf();
-	osdkbd = osdkbd_create();
 	
 end
 
+-- to save resources when going from customview to grid view
+-- the entire context is poped meaning that all involved resources need to be rebuilt
+function setup_gridview()
+	grab_sysicons();
+
+	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
+
+	imagery.black = fill_surface(1,1,0,0,0);
+	image_tracetag(imagery.black, "black");
+	
+	imagery.white = fill_surface(1,1,255,255,255);
+	image_tracetag(imagery.white, "white");
+	
+-- Little star keeping track of games marked as favorites
+	imagery.starimage    = load_image("images/star.png");
+	image_tracetag(imagery.starimage, "favorite icon");
+
+-- shown when a framserver / internal launch crashes
+	imagery.crashimage   = load_image("images/terminated.png");
+	image_tracetag(imagery.crashimage, "terminated");
+
+	resize_image(imagery.crashimage, VRESW * 0.5, VRESH * 0.5);
+	move_image(imagery.crashimage, 0.5 * (VRESW - (VRESW * 0.5)), 0.5 * (VRESH - (VRESH * 0.5)));
+
+	imagery.magnifyimage = load_image("images/magnify.png");
+	image_tracetag(imagery.magnifyimage, "detailview icon");
+
+	osdkbd = osdkbd_create();
+	osdkbd:hide();
+end
+
 function set_background(name, tilefw, tilefh, hspeed, vspeed)
-	if (imagery.bgimage and imagery.bgimage ~= BADID) then
+	if (imagery.bgimage and valid_vid(imagery.bgimage)) then
 		delete_image(imagery.bgimage);
 		imagery.bgimage = nil;
 	end
@@ -516,7 +525,7 @@ function gridle_load_internal_extras()
 	
 	if (restbl) then
 		if (restbl.bezels and restbl.bezels[1]) then 
-			imagery.bezel = load_image_asynch(restbl.bezels[1]); 
+			imagery.bezel = load_image_asynch(restbl.bezels[1]);
 			image_tracetag(imagery.bezel, "bezel");
 		elseif (resource("bezels/" .. tgt .. ".png")) then
 			imagery.bezel = load_image_asynch("bezels/" .. tgt .. ".png");
@@ -557,8 +566,6 @@ function gridle_setup_internal(video, audio)
 -- remap input function to one that can handle forwarding and have access to context specific menu
 	gridle_oldinput = gridle_input;
 	gridle_input = gridle_internalinput;
-	
-	-- current_game().resources 
 	
 	gridlemenu_rebuilddisplay();
 	
@@ -711,6 +718,7 @@ end
 
 function spawn_magnify( x, y )
 	local maginst = instance_image(imagery.magnifyimage);
+	image_tracetag(maginst, "magnify image instance");
 
 	image_mask_clear(maginst, MASK_OPACITY);
 	force_image_blend(maginst);
@@ -728,7 +736,8 @@ end
 
 function spawn_warning( message )
 -- render message and make sure it is on top
-	local vid = render_text(settings.colourtable.alert_fontstr .. string.gsub(message, "\\", "\\\\") )
+	local vid = render_text(settings.colourtable.alert_fontstr .. string.gsub(message, "\\", "\\\\") );
+	image_tracetag(vid, "warning message");
 	order_image(vid, max_current_image_order() + 1);
 	local props = image_surface_properties(vid);
 
@@ -747,6 +756,8 @@ end
 
 function spawn_favoritestar( x, y )
 	local vid = instance_image(imagery.starimage);
+	image_tracetag(vid, "favorite instance");
+	
 	image_mask_clear(vid, MASK_SCALE);
 	image_mask_clear(vid, MASK_OPACITY);
 	force_image_blend(vid);
@@ -909,7 +920,7 @@ function blend_gridcell(val, dt)
 				local x,y = cell_coords( math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw) )	;
 				move_image(gridcell_vid, x - 0.5 * (neww - settings.cell_width), y - 0.5 * (newh - settings.cell_height), dt);
 				resize_image(gridcell_vid, settings.cell_width * settings.cursor_scale, settings.cell_height * settings.cursor_scale, dt);
-				order_image(gridcell_vid, max_current_image_order()); 
+				order_image(gridcell_vid, GRIDLAYER_ZOOM); 
 			end
 
 		end
@@ -972,6 +983,7 @@ function get_image( resourcetbl, gametbl )
 	
 	if ( mediares ) then
 		rvid = load_image_asynch( mediares, got_asynchimage );
+		image_tracetag(rvid, "get_image(" .. mediares .. ")");
 		blend_image(rvid, 0.0); -- don't show until loaded 
 	end
 	
@@ -989,6 +1001,7 @@ function grab_sysicons()
 			local imgid = load_image("images/systems/" .. val);
 			if (imgid) then
 				imagery.sysicons[sysname] = imgid;
+				image_tracetag(imgid, "system icon");
 			end
 		end
 	end
@@ -1001,7 +1014,7 @@ function zap_whitegrid()
 	
 	for row=0, nch-1 do
 		for col=0, ncw-1 do
-			if (whitegrid[row] and whitegrid[row][col]) then 
+			if (whitegrid[row] and whitegrid[row][col] and valid_vid(whitegrid[row][col])) then 
 				delete_image(whitegrid[row][col]); 
 			end
 		end
@@ -1024,11 +1037,15 @@ function build_whitegrid()
 	
 				if (gametbl and gametbl.system and settings.tilebg == "Sysicons") then
 					local icon = imagery.sysicons[ string.lower(gametbl.system) ];
-					if (icon) then gridbg = instance_image(icon); end
+					if (icon) then 
+						gridbg = instance_image(icon); 
+						image_tracetag(gridbg, "system icon instance");
+					end
 				end
 				
 				if (gridbg == BADID) then
 					gridbg = instance_image(settings.tilebg == "Black" and imagery.black or imagery.white);
+					image_tracetag(gridbg, "background tile instance");
 				end
 				
 				resize_image(gridbg, settings.cell_width, settings.cell_height);
@@ -1102,6 +1119,7 @@ local function titlestr(msg)
 	
 	local vid, lines = render_text(fontstr .. basemsg);
 	resize_image(vid, settings.cell_width, settings.cell_height);
+	image_tracetag(vid, "title_string");
 	
 	return vid;
 end
@@ -1300,6 +1318,8 @@ function asynch_movie_ready(source, statustbl)
 			
 			if (valid_vid(imagery.zoomed)) then
 				local newinst = instance_image(source);
+				image_tracetag(newinst, "movie zoom");
+	
 				image_mask_clear(newinst, MASK_POSITION);
 				copy_image_transform(imagery.zoomed, newinst);
 				reset_image_transform(newinst);
@@ -1338,7 +1358,7 @@ function gridle_clock_pulse()
 					local vprop = image_surface_properties( cursor_bgvid() );
 					
 					move_image(imagery.movie, vprop.x, vprop.y);
-					order_image(imagery.movie, max_current_image_order());
+					order_image(imagery.movie, GRIDLAYER_MOVIE);
 					return
 				end
 			else

@@ -46,8 +46,6 @@ helplbls["orientation"] = {
 	"Rotate(inc/dec) (LEFT/RIGHT)"
 };
 
--- populated with data on each added "item" used to build the final customview lualu
-customview.itemlist = {};
 
 -- set "step size" for moving markers in configuration based on
 -- the dimensions of the display
@@ -215,7 +213,9 @@ local function new_item(vid, dstgroup, dstkey)
 	customview.ci.y     = 0.5 * (VRESH - customview.ci.height);
 	customview.ci.opa   = 1.0;
 	customview.ci.ang   = 0;
-
+	customview.ci.kind  = dstgroup;
+	customview.ci.res   = dstkey;
+	
 	customview.ci.zv    = customview.orderind;
 	customview.orderind = customview.orderind + 1;
 end
@@ -252,6 +252,8 @@ local function positionfun(label)
 	
 	if (vid ~= BADID) then
 		new_item(vid, "static_media", label);
+		customview.ci.res = "images/" .. label;
+
 		position_item(nil, vid, save_item);
 	end
 end
@@ -276,6 +278,8 @@ local function positiondynamic(label)
 		customview.ci.tiled = false;
 	end
 	
+	customview.ci.width = VRESW * 0.1;
+	customview.ci.height = VRESH * 0.4;
 	position_item(nil, vid, save_item);
 end
 
@@ -323,8 +327,48 @@ local function positionbg(label)
 	customview.ci.y      = 0;
 	customview.ci.opa    = 1.0;
 	customview.ci.ang    = 0;
-	position_item(label, vid, save_item); 
+	customview.ci.kind   = "static_media";
+	customview.ci.res    = "backgrounds/" .. label;
 
+	position_item(label, vid, save_item); 
+end
+
+-- take the custom view and dump to a .lua config
+local function save_config()
+	open_rawresource("customview_cfg.lua");
+	write_rawresource("local cview = {};\n");
+	write_rawresource("cview.static = {};\n");
+	write_rawresource("cview.dynamic = {};\n");
+		
+	for ind, val in ipairs(customview.itemlist) do
+		write_rawresource("local item = {};\n");
+		write_rawresource("item.x      = " .. val.x .. ";\n");
+		write_rawresource("item.y      = " .. val.y .. ";\n");
+		write_rawresource("item.order  = " .. val.zv .. ";\n");
+		write_rawresource("item.opa    = " .. val.opa .. ";\n");
+		write_rawresource("item.ang    = " .. val.ang .. ";\n");
+		write_rawresource("item.width  = " .. val.width .. ";\n");
+		write_rawresource("item.height = " .. val.height .. ";\n");
+		write_rawresource("item.tiled  = " .. tostring(val.tiled == true) .. ";\n");
+		
+		if val.kind == "static_media" then
+			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+			write_rawresource("table.insert(cview.static, item);\n");
+
+		elseif val.kind == "dynamic_media" then
+			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+			write_rawresource("table.insert(cview.dynamic, item);\n");
+
+		elseif val.kind == "navigator" then
+			write_rawresource("cview.navigator = item;\n");
+
+		else
+			print("[customview:save_config] warning, unknown kind: " .. val.kind);
+		end
+	end
+	
+	write_rawresource("return cview;\n");
+	close_rawresource();
 end
 
 -- the configure dialog works in that the user first gets to select and position a navigator based on a grid 
@@ -335,7 +379,8 @@ end
 local function show_config()
 	customview_display = settings.iodispatch;
 	settings.iodispatch = {};
-
+	customview.itemlist = {};
+	
 	gridlemenu_defaultdispatch();
 	local escape_menu = function(label, save, sound)
 	
@@ -374,17 +419,36 @@ local function show_config()
 		play_audio(soundmap["MENU_FADE"]);
 		settings.iodispatch = customview_display;
 		pop_video_context();
+		setup_gridview();
+		build_grid(settings.cell_width, settings.cell_height);
 	end
+	
+	mainptrs["Save/Finish"] = save_config;
 	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = mainptrs;
 	current_menu.parent = nil;
 
 	current_menu:show();
-	move_image(current_menu.anchor, 10, 120, settings.fadedelay);
+	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
+end
+
+local function place_item( vid, tbl )
+	move_image(vid, tbl.x, tbl.y);
+	rotate_image(vid, tbl.ang);
+	resize_image(vid, tbl.width, tbl.height );
+	order_image(vid, tbl.order);
+	blend_image(vid, tbl.opa);
 end
 
 local function setup_customview()
+
+	for ind, val in ipairs( customview.current.static ) do
+		print("load", val.res);
+		local vid = load_image( val.res );
+		place_item( vid, val );
+	end
+	
 end
 
 function gridle_customview()
@@ -395,19 +459,19 @@ function gridle_customview()
 -- customview_cfg.lua and reset customview.in_config
 	
 	if (customview.in_config and resource("customview_cfg.lua")) then
-		local cconf = system_load("customview_cfg.lua")();
-		if (cconf and cconf.navigation ~= nil and 
-				type(cconf.list) == "table") then
+		customview.current = system_load("customview_cfg.lua")();
+		
+		if (customview.current) then
 			customview.in_config = false;
-			gridle_customview();
-			return;
+			pop_video_context();
+			setup_customview();
 		end
 
 	elseif (customview.in_config) then
-		push_video_context();
+		pop_video_context();
 		disptbl = show_config();
 	else
-		push_video_context();
+		pop_video_context();
 		disptbl = setup_customview();
 	end
 	

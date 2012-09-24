@@ -156,8 +156,11 @@ class Generic
 					
 					STDOUT.print("[Generic (#{target}) importer] Libretro core found, #{info["library"]} #{info["version"]}\n\t")
 					exts = info["extensions"].split(/\|/)
+
+					STDOUT.print("[Generic (#{target}) importer] Accepted extensions: #{exts}\n")
 					@extensions = {}
-					exts.each{|val| @extensions[val] = true }
+					exts.each{|val| @extensions[val.upcase] = true }
+					@filter_ext = @extensions.size > 0
 	
 				rescue => er
 					STDERR.print("[Generic Importer] couldn't parse frameserver output (#{er}, #{er.backtrace}).\n");
@@ -282,7 +285,10 @@ class Generic
 		}
 		
 		Dir["#{rompath}/*"].each{|fn|
-			if (fn == "." || fn == ".." || fn =~ /\.srm\z/) 
+			ext = fn.index('.') ? fn[fn.rindex('.')+1..-1].upcase : ""
+
+			if (fn == "." || fn == ".." || (@filter_ext and @extensions[ext] != true))
+				STDERR.print("[Generic Importer, unknown extensions: #{fn}, ignored.\n");
 				next
 			else
 				setname = fn[ fn.rindex('/') +1 .. -1 ]
