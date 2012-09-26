@@ -18,7 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
- 
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -38,7 +38,7 @@
 #include "arcan_general.h"
 
 #ifdef __APPLE__
-#include <CoreFoundation/CoreFoundation.h>  
+#include <CoreFoundation/CoreFoundation.h>
 #endif
 
 char* arcan_themepath = NULL;
@@ -58,7 +58,7 @@ static bool is_dir(const char* fn)
 
 	if (fn == NULL)
 		return false;
-	
+
 	if (stat(fn, &buf) == 0) {
 		rv = S_ISDIR(buf.st_mode);
 	}
@@ -71,9 +71,9 @@ static bool file_exists(const char* fn)
 	struct stat buf;
 	bool rv = false;
 
-	if (fn == NULL) 
+	if (fn == NULL)
 		return false;
-		
+
 	if (stat(fn, &buf) == 0) {
 		rv = S_ISREG(buf.st_mode);
 	}
@@ -91,21 +91,21 @@ int fmt_open(int flags, mode_t mode, const char* fmt, ...)
 		cc = vsnprintf(NULL, 0,  fmt, args );
 	va_end( args);
 
-	char* dbuf; 
+	char* dbuf;
 	if (cc > 0 && (dbuf = (char*) malloc(cc + 1)) ) {
 		va_start(args, fmt);
 			vsprintf(dbuf, fmt, args);
 		va_end(args);
-		
+
 		rv = open(dbuf, flags, mode);
 		free(dbuf);
 	}
-	
+
 	return rv;
 }
 
 /* currently " allowed ",
- * likely to block traversal outside resource / theme 
+ * likely to block traversal outside resource / theme
  * in the future though */
 char* strip_traverse(char* input)
 {
@@ -130,7 +130,7 @@ char* arcan_find_resource(const char* label, int searchmask)
 	if (searchmask & ARCAN_RESOURCE_SHARED) {
 		snprintf(playbuf, playbufsize-2, "%s/%s", arcan_resourcepath, label);
 		strip_traverse(playbuf);
-		
+
 		if (file_exists(playbuf))
 			return strdup(playbuf);
 	}
@@ -145,16 +145,16 @@ static bool check_paths()
 		arcan_fatal("Fatal: check_paths(), frameserver not found.\n");
 		return false;
 	}
-	
+
 	if (!arcan_libpath){
 		arcan_warning("Warning: check_paths(), libpath not found (internal support downgraded to partial).\n");
 	}
-	
+
 	if (!arcan_resourcepath){
 		arcan_fatal("Fatal: check_paths(), resourcepath not found.\n");
 		return false;
 	}
-	
+
 	if (!arcan_themepath){
 		arcan_fatal("Fatal: check_paths(), themepath not found.\n");
 	}
@@ -207,7 +207,7 @@ char* arcan_find_resource_path(const char* label, const char* path, int searchma
 	if (searchmask & ARCAN_RESOURCE_THEME) {
 		snprintf(playbuf, playbufsize-2, "%s/%s/%s/%s", arcan_themepath, arcan_themename, path, label);
 		strip_traverse(playbuf);
-		
+
 		if (file_exists(playbuf))
 			return strdup(playbuf);
 	}
@@ -257,7 +257,7 @@ static char* unix_find(const char* fname){
 		"/usr/share/arcan",
 		NULL
 	};
-    
+
 	snprintf(playbuf, playbufsize, "%s/.arcan/%s", getenv("HOME"), fname );
     pathtbl[1] = strdup(playbuf);
 
@@ -269,9 +269,9 @@ static char* unix_find(const char* fname){
             break;
         }
 	}
-    
+
 cleanup:
-    free(pathtbl[1]);	
+    free(pathtbl[1]);
 	return res;
 }
 
@@ -308,7 +308,7 @@ static void setpaths_unix()
 	if (arcan_themepath == NULL)
 		if ( file_exists(getenv("ARCAN_THEMEPATH")) )
 			arcan_themepath = strdup( getenv("ARCAN_THEMEPATH") );
-		else 
+		else
 			arcan_themepath = unix_find("themes");
 }
 
@@ -345,7 +345,7 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		}
 		globfree(&res);
 	}
-	
+
 	return count;
 }
 
@@ -358,11 +358,11 @@ const char* internal_launch_support(){
 bool arcan_setpaths()
 {
 	char* prefix = "";
-	
+
 /* apparently, some launching conditions means that you cannot rely on CWD,
  * so try and figure it out, from a bundle. This is more than a little hackish. */
 	char path[1024] = {0};
-    CFBundleRef bundle  = CFBundleGetMainBundle();  
+    CFBundleRef bundle  = CFBundleGetMainBundle();
 
 /*  command-line launch that cannot be "mapped" to a bundle, so treat as UNIX */
 	if (!bundle){
@@ -396,12 +396,12 @@ bool arcan_setpaths()
 		snprintf(path, sizeof(path) - 1, "%s/Contents/Resources/themes", bundlepath);
 		arcan_themepath = strdup(path);
 	}
-	
+
 	if (!arcan_resourcepath){
 		snprintf(path, sizeof(path) - 1, "%s/Contents/Resources/resources", bundlepath);
 		arcan_resourcepath = strdup(path);
 	}
-	
+
 	return check_paths();
 }
 
@@ -438,13 +438,15 @@ void arcan_warning(const char* msg, ...)
 		freopen(winplaybuf, "a", stdout);
 		stdout_redirected = true;
 	}
-	
+
 	va_list args;
 	va_start( args, msg );
 	vfprintf(stdout,  msg, args );
 	va_end(args);
 	fflush(stdout);
 }
+
+#include "win32/realpath.c"
 
 extern bool stderr_redirected;
 void arcan_fatal(const char* msg, ...)
@@ -460,7 +462,7 @@ void arcan_fatal(const char* msg, ...)
 	va_start(args, msg );
 	vsnprintf(buf, 255, msg, args);
 	va_end(args);
-	
+
 	fprintf(stderr, "%s\n", buf);
 	fflush(stderr);
 	MessageBox(NULL, buf, NULL, MB_OK | MB_ICONERROR | MB_APPLMODAL );
@@ -477,13 +479,13 @@ typedef int8_t(*_invalid_parameter_handler)(const wchar_t*, const wchar_t*, cons
 static void invalid_parameter(const wchar_t* expr,
 	const wchar_t* function,
 	const wchar_t* file,
-	unsigned int line, 
+	unsigned int line,
 	uintptr_t reserved)
 {
 	arcan_fatal("(win32) invalid stdlib parameter (%s) from %s in %s:%d\n", expr, function, file, line);
 }
 
-/* this poorly thought out piece of microsoftism is not exported 
+/* this poorly thought out piece of microsoftism is not exported
  * by the MSVCRT MinGW is based on, but win may or may not call it spuriously,
  * and you seem to have to go through a lot of OO junk to disable the "feature" */
 static void invalid_ph_workaround()
@@ -510,7 +512,7 @@ static void invalid_ph_workaround()
 
 bool arcan_setpaths()
 {
-/* does not "really" belong here but the entry point that could be found without 
+/* does not "really" belong here but the entry point that could be found without
  * adding an additional one	invalid_ph_workaround(); */
 	invalid_ph_workaround();
 
@@ -527,7 +529,7 @@ bool arcan_setpaths()
 
 	if (!arcan_binpath)
 		arcan_binpath = strdup("./arcan_frameserver");
-	
+
 	return true;
 }
 
@@ -543,9 +545,9 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 
 int arcan_sem_timedwait(sem_handle sem, int msecs)
 {
-	if (msecs == -1) 
-		msecs = INFINITE; 
-	
+	if (msecs == -1)
+		msecs = INFINITE;
+
 	DWORD rc = WaitForSingleObject(sem, msecs);
 	int rv = 0;
 
@@ -559,13 +561,13 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 			rv = -1;
 			errno = EAGAIN;
 		break;
-	
+
 		case WAIT_FAILED:
 			rv = -1;
 			errno = EINVAL;
 		break;
 
-		case WAIT_OBJECT_0: 
+		case WAIT_OBJECT_0:
 		break; /* default returnpath */
 
 	default:
@@ -578,10 +580,10 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag){
 	HANDLE findh;
 	WIN32_FIND_DATA finddata;
-    
+
 	unsigned count = 0;
 	char* basepath;
-    
+
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
 		snprintf(playbuf, playbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, strip_traverse(basename));
 
@@ -592,10 +594,10 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 				cb(playbuf, tag);
 				count++;
 			} while (FindNextFile(findh, &finddata));
-		
+
 		FindClose(findh);
 	}
-    
+
 	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
 		snprintf(playbuf, playbufsize, "%s/%s", arcan_resourcepath, strip_traverse(basename));
 
@@ -606,10 +608,10 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 			cb(playbuf, tag);
 			count++;
 		} while (FindNextFile(findh, &finddata));
-		
+
 		FindClose(findh);
 	}
-    
+
 	return count;
 }
 
@@ -637,15 +639,15 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 }
 
 /* this little stinker is a temporary workaround
- * for the problem that depending on OS, kernel version, 
- * alignment of the moons etc. local implementations aren't likely to 
+ * for the problem that depending on OS, kernel version,
+ * alignment of the moons etc. local implementations aren't likely to
  * work as per POSIX :-/ ... */
 #include <time.h>
 
 static int sem_timedwaithack(sem_handle semaphore, int msecs)
 {
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem; 
-	
+	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem;
+
 	if (msecs == 0)
 		return sem_trywait( semaphore );
 
@@ -677,32 +679,32 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 	int fd = -1;
 	pid_t selfpid = getpid();
 	int retrycount = 10;
-	
+
 	while (1){
 		snprintf(playbuf, playbufsize, "/arcan_%i_%im", selfpid, rand());
 		fd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
-	
+
 	/* with EEXIST, we happened to have a name collision, it is unlikely, but may happen.
 	 * for the others however, there is something else going on and there's no point retrying */
 		if (-1 == fd && errno != EEXIST){
 			arcan_warning("arcan_findshmkey(), allocating shared memory, reason: %d\n", errno);
 			return NULL;
 		}
-		
+
 		if (fd > 0){
 			if (!semalloc)
 				break;
-			
+
 			char* work = strdup(playbuf);
 			work[strlen(work) - 1] = 'v';
 			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
-	
+
 			if (SEM_FAILED != vid){
 				work[strlen(work) - 1] = 'a';
-				
+
 				sem_t* aud = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
 				if (SEM_FAILED != aud){
-					
+
 					work[strlen(work) -1] = 'e';
 					sem_t* ev = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
 
@@ -710,15 +712,15 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 						free(work);
 						break;
 					}
-					
+
 					work[strlen(work) -1] = 'a';
 					sem_unlink(work);
 				}
-				
+
 				work[strlen(work) - 1] = 'v';
 				sem_unlink(work);
 			}
-		
+
 		/* semaphores couldn't be created, retry */
 			shm_unlink(playbuf);
 			fd = -1;
@@ -733,7 +735,7 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 
 	if (dfd)
 		*dfd = fd;
-	
+
 	return strdup(playbuf);
 }
 
