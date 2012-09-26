@@ -1,3 +1,5 @@
+#version 120
+
 uniform sampler2D map_diffuse;
 uniform vec2 pixel_size;
 
