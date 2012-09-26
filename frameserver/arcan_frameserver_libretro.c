@@ -282,7 +282,6 @@ static void libretro_pollcb(){}
 static bool libretro_setenv(unsigned cmd, void* data){ 
 	char* sysdir;
 	bool rv = false;
-	LOG("arcan_frameserver:libretro) : %d\n", cmd);
 	
 	switch (cmd){
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: 
@@ -301,12 +300,15 @@ static bool libretro_setenv(unsigned cmd, void* data){
 			LOG("(arcan_frameserver:libretro) - shutdown requested from lib.\n");
 		break;
 		
- /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
+/* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
 		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 			sysdir = getenv("ARCAN_SYSTEMPATH");
 			if (!sysdir){
 				sysdir = "./resources/games/system";
 			}
+
+/* some cores (mednafen-psx, ..) currently breaks on relative paths, so resolve to absolute one for the time being */
+			sysdir = realpath(sysdir, NULL);
 			
 			LOG("(arcan_frameserver:libretro) - system directory set to (%s).\n", sysdir);
 			*((const char**) data) = sysdir;

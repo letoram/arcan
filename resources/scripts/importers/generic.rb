@@ -74,9 +74,16 @@ class Generic
 		chkargs = ["--genargs", "--genintargs", "--genextargs"]
 
 		@options = options
-		if (opts["--genscrape"]) 
-			@gamedb = GamesDB.new
-			@gamedb_media = opts["--genscrapemedia"]
+		if (opts["--genscrape"])
+			begin
+				@gamedb = GamesDB.new
+				@gamedb_media = opts["--genscrapemedia"]
+			rescue => er
+				STDERR.print( "[Generic Importer] GamesDB Scraper not responding (#{er}), scraping disabled.\n");
+				@gamedb = nil
+				@gamedb_media = nil
+				@options["--genscrape"] = nil
+			end
 		end
 		
 		if (opts["--genrompath"] != nil)
@@ -135,6 +142,8 @@ class Generic
 				
 				begin
 					in_block = false
+					STDOUT.print("[Generic (#{target}) importer] Trying to check core extensions with #{args}\n");
+	
 					IO.popen(args).each_line{|line|
 						if (in_block)
 							line = line.strip
@@ -152,8 +161,8 @@ class Generic
 					
 					STDOUT.print("[Generic (#{target}) importer] Libretro core found, #{info["library"]} #{info["version"]}\n\t")
 					exts = info["extensions"].split(/\|/)
-
 					STDOUT.print("[Generic (#{target}) importer] Accepted extensions: #{exts}\n")
+
 					@extensions = {}
 					exts.each{|val| @extensions[val.upcase] = true }
 					@filter_ext = @extensions.size > 0
@@ -161,6 +170,7 @@ class Generic
 				rescue => er
 					STDERR.print("[Generic Importer] couldn't parse frameserver output (#{er}, #{er.backtrace}).\n");
 					@extensions = nil
+					@filter_ext = nil
 				end
 
 			else
@@ -196,7 +206,7 @@ class Generic
 			@target.arguments = @gentargets[target]
 			@target.store
 		end
-
+		
 		true
 	end
 
@@ -227,6 +237,23 @@ class Generic
 
 		if (gameid)
 			game = GamesDBGame.new(gameid[:gid].to_i) 
+			
+			if (@gamedb_media)
+			begin
+				bpth = "#{@options[:rompath]}/../"
+				unless File.exists?("#{bpth}boxart")
+					Dir.mkdir("#{@options[:rompath]}/../boxart")
+				end
+
+				unless File.exists?("#{bpth}/screenshots")
+					Dir.mkdir("#{@options[:rompath]}/../screenshots")
+				end
+
+			rescue => er
+				STDERR.print("[Generic Importer] Scraping media disabled, couldn't create output directories.\n");
+				@gamedb_media = false
+			end
+			end
 			
 			if (game)
 				STDOUT.print("[Generic Importer] Scraping matched (#{title}) to (#{game.title})\n")

@@ -38,10 +38,14 @@ class GamesDB
 	def download_to(dst, path)
 		uri = URI("http://#{@@domain}#{path}")
 		res = Net::HTTP.get_response(uri)
-		
-		open(dst, "wb"){|file| file.write(res.body) }
+	
+		begin
+			open(dst, "wb"){|file| file.write(res.body) }
+		rescue => er 
+			stderr.print("[TheGamesDB scraper], couldn't download #{path} to #{dst} reason: #{er}\n");
+		end	
 	end
-
+		
 	def find_system(arg)
 # two passes, first try absolute match
 		
