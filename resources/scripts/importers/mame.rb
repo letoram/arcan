@@ -276,13 +276,14 @@ class Mame
 			
 			if (File.exists?(fullname))
 				@mametarget = fullname
-				executable = ext	
+				executable = ext
 				break
 			end
 		}
 
 		if (@mametarget == nil)
-			raise "Could not locate mame, giving up (tried #{targetpath}/#{execs.join(', ')}. "
+			STDERR.print("[MAME Importer] Couldn't locate MAME, giving up.\n")
+			return false
 		end
 		
 		@target = Target.Load(0, "mame")

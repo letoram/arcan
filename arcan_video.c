@@ -94,7 +94,6 @@ struct arcan_video_context {
 	struct rendertarget stdoutp;
 };
 
-
 static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 	{
 		.n_rtargets = 0,
@@ -1116,6 +1115,20 @@ void arcan_video_3dorder(bool first){
 		arcan_video_display.late3d = true;
 }
 
+static void rescale_origwh(arcan_vobject* dst, float fx, float fy)
+{
+	vector svect = build_vect(fx, fy, 1.0);
+
+	dst->current.scale = mul_vector( dst->current.scale, svect );
+	surface_transform* current = dst->transform;
+
+	while (current){
+		current->scale.startd = mul_vector(current->scale.startd, svect);
+		current->scale.endd   = mul_vector(current->scale.endd, svect);
+		current = current->next;
+	}
+}
+
 arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enum arcan_framemode mode)
 {
 	arcan_vobject* target = arcan_video_getobject(id);
@@ -1666,8 +1679,14 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		vobj->default_frame.s_raw = 0;
 		vobj->default_frame.raw = NULL;
 
+		float fx = (float)vobj->origw / (float)display.w;
+		float fy = (float)vobj->origh / (float)display.h;
+	
 		vobj->origw = display.w;
-		vobj->origh = display.h;
+		vobj->origh = display.h; 
+	
+		rescale_origwh(vobj, fx, fy);
+		
 		vobj->gl_storage.w = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.w : nexthigher(store.w);
 		vobj->gl_storage.h = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.h : nexthigher(store.h);
 		vobj->default_frame.s_raw = vobj->gl_storage.w * vobj->gl_storage.h * 4;
@@ -1883,6 +1902,20 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	return rv;
 }
 
+arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, enum arcan_vtex_mode modes, enum arcan_vtex_mode modet)
+{
+	arcan_vobject* src = arcan_video_getobject(id);
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (src){
+		src->gl_storage.txu = modes == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+		src->gl_storage.txv = modet == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+		allocate_and_store_globj(src, NULL, 0, 0, true, NULL);
+	}
+
+	return rv;
+}
+
 arcan_errc arcan_video_objectfilter(arcan_vobj_id id, enum arcan_vfilter_mode mode)
 {
 	arcan_vobject* src = arcan_video_getobject(id);
@@ -1931,6 +1964,9 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 		arcan_video_zaptransform(did);
 		dst->transform = dup_chain(src->transform);
 		dst->order = src->order;
+
+/* in order to NOT break resizefeed etc. this copy actually requires a modification of the transformation
+ * chain, as scale is relative origw? */
 		dst->origw = src->origw;
 		dst->origh = src->origh;
 
@@ -1942,28 +1978,12 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 
 arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_errc rv = arcan_video_copytransform(sid, did);
 
-	arcan_vobject* src, (* dst);
-
-	if (sid == did)
-		rv = ARCAN_ERRC_BAD_ARGUMENT;
-
-	src = arcan_video_getobject(sid);
-	dst = arcan_video_getobject(did);
-
-/* remove what's happening in destination, move pointers from source to dest and done. */
-	if (src && dst && src != dst){
-		arcan_video_zaptransform(did);
-
-		memcpy(&dst->current, &src->current, sizeof(surface_properties));
-		dst->transform = src->transform;
+	if (rv == ARCAN_OK){
+		arcan_vobject* src = arcan_video_getobject(sid);
+		arcan_video_zaptransform(sid);
 		src->transform = NULL;
-		dst->order = src->order;
-		dst->origw = src->origw;
-		dst->origh = src->origh;
-
-		rv = ARCAN_OK;
 	}
 
 	return rv;

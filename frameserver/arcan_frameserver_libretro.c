@@ -54,9 +54,6 @@
 #define MAX_BUTTONS 16
 #endif
 
-#define JITTER_COMPENSATION 0 
-const double jitter_comp = JITTER_COMPENSATION;
-
 /* note on synchronization:
  * the async and esync mechanisms will buffer locally and have that buffer flushed by the main application
  * whenever appropriate. For audio, this is likely limited by the buffering capacity of the sound device / pipeline
@@ -135,18 +132,17 @@ static struct {
 		void (*set_ioport)(unsigned, unsigned);
 } retroctx = {0};
 
-static void* libretro_h = NULL;
-static void* libretro_requirefun(const char* sym)
+static void* libretro_requirefun(const char* const sym)
 {
-	void* rfun = NULL;
+	void* res = frameserver_requirefun(sym);
 
-	if (!libretro_h || !(rfun = SDL_LoadFunction(libretro_h, sym)) )
+	if (!res)
 	{
 		LOG("arcan_frameserver(libretro) -- missing library or symbol (%s) during lookup.\n", sym);
 		exit(1);
 	}
 	
-	return rfun;
+	return res;
 }
 
 #define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
@@ -594,9 +590,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	if (*libname == 0) 
 		return;
 
-
 /* map up functions and test version */
-	libretro_h = SDL_LoadObject(libname);
+	if (!frameserver_loadlib(libname)){
+		LOG("arcan_frameserver(libretro) -- couldn't open library (%s), giving up.\n", libname);
+		exit(1);
+	}
+
 	void (*initf)() = libretro_requirefun("retro_init");
 	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
 	( (void(*)(retro_environment_t)) libretro_requirefun("retro_set_environment"))(libretro_setenv);
