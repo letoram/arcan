@@ -34,6 +34,7 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <time.h>
+#include <dlfcn.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -54,7 +55,6 @@ int sockin_fd = -1;
 const int audio_samplerate = DST_SAMPLERATE;
 const int audio_channels   = DST_AUDIOCHAN;
 const int video_channels   = DST_VIDEOCHAN; /* RGBA */
-
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
 
@@ -226,8 +226,6 @@ static char* launch_debugparent()
  * now we can break / step the frameserver with correct synching behavior
  * without the complexity of the main program */
 
-	return key;
-	
 	if ( fork() == 0){
 		struct frameserver_shmcont cont = frameserver_getshm(key, false);
 
@@ -285,6 +283,23 @@ int frameserver_readhandle(arcan_event* inev)
 	}
 	
 	return rv;
+}
+
+/* set currently active library for loading symbols */
+static void* lastlib = NULL;
+bool frameserver_loadlib(const char* const lib)
+{
+	lastlib = dlopen(lib, RTLD_LAZY);
+	return lastlib != NULL;
+}
+
+/* look for a specific symbol in the current library (frameserver_loadlib) */
+void* frameserver_requirefun(const char* const sym)
+{
+	if (!lastlib || !sym)
+		return NULL;
+	
+	dlsym(lastlib, sym);
 }
 
 /* by default, we only do this for libretro where it might help

@@ -45,6 +45,12 @@ file_handle frameserver_readhandle(arcan_event*);
 /* store buf in handle pointed out by file_handle, ressize specifies number of bytes to store */
 int frameserver_pushraw_handle(file_handle, void* buf, size_t ressize);
 
+/* set currently active library for loading symbols */
+bool frameserver_loadlib(const char* const);
+
+/* look for a specific symbol in the current library (frameserver_loadlib) */
+void* frameserver_requirefun(const char* const sym);
+
 /* retrieve a (unassociated), monotonic, reference clock value in millisecond precision */
 long long int frameserver_timemillis();
 

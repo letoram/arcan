@@ -195,7 +195,8 @@ surface_properties arcan_video_initial_properties(arcan_vobj_id id);
 surface_properties arcan_video_current_properties(arcan_vobj_id id);
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks);
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
-arcan_errc arcan_video_objectfilter(arcan_vobj_id id, enum arcan_vfilter_mode mode);
+arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
+arcan_errc arcan_video_objectfilter(arcan_vobj_id id, enum arcan_vfilter_mode filter);
 arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
 arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
 

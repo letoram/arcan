@@ -1564,7 +1564,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 int arcan_lua_imageparent(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	lua_pushnumber( ctx, arcan_video_findparent(id) );
+	arcan_vobj_id pid = arcan_video_findparent(id);
+	arcan_warning("findparentr: %d\n", pid);
+	
+	lua_pushvid( ctx, pid );
 	return 1;
 }
 
@@ -3234,11 +3237,18 @@ int arcan_lua_settexmode(lua_State* ctx)
 {
 	int numa = luaL_checknumber(ctx, 1);
 	int numb = luaL_checknumber(ctx, 2);
-	
+	long int tmpn = luaL_optnumber(ctx, 3, ARCAN_EID);
+
 	if ( (numa == ARCAN_VTEX_CLAMP || numa == ARCAN_VTEX_REPEAT) &&
 		(numb == ARCAN_VTEX_CLAMP || numb == ARCAN_VTEX_REPEAT) ){
-		arcan_video_default_texmode(numa, numb);
+		if (tmpn != ARCAN_EID){
+			arcan_vobj_id dvid = luaL_checkvid(ctx, 3);
+			arcan_video_objecttexmode(dvid, numa, numb);
+		} 
+		else 
+			arcan_video_default_texmode(numa, numb);
 	}
+	
 
 	return 0;
 }

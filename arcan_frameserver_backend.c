@@ -528,7 +528,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
 		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, .bpp = shmpage->storage.bpp};
 		img_cons disp  = {.w = shmpage->display.w, .h = shmpage->display.h}; 
-		
+
 		src->desc.width = store.w; src->desc.height = store.h; src->desc.bpp = store.bpp;
 
 		arcan_framequeue_free(&src->vfq);

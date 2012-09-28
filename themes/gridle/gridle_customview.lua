@@ -1,5 +1,4 @@
 --
---
 -- Configurable view- mode for the Gridle theme
 -- 
 -- Based around the user setting up a mode of navigation and a set of 
@@ -45,7 +44,6 @@ helplbls["orientation"] = {
 	"Rotate(45) (UP/DOWN)",
 	"Rotate(inc/dec) (LEFT/RIGHT)"
 };
-
 
 -- set "step size" for moving markers in configuration based on
 -- the dimensions of the display
@@ -106,6 +104,28 @@ local function update_object(imgvid)
 		image_scale_txcos(imgvid, customview.ci.width / props.width, customview.ci.height / props.height);
 	end
 	
+end
+
+local function update_bgshdr()
+	local dst = nil;
+	
+	if (customview.in_config) then
+		for ind, val in ipairs(customview.itemlist) do
+			if (val.kind == "background") then
+				dst = val.vid;
+				break
+			end
+		end
+	else
+		dst = customview.background;
+	end
+	
+	if (dst) then
+		local props = image_surface_properties(dst);
+		print(props.width, props.height);
+		shader_uniform(customview.bgshader, "display", "ff", PERSIST, props.width, props.height);
+		image_shader(dst, customview.bgshader);
+	end
 end
 
 local function cursor_step(vid, x, y)
@@ -220,17 +240,49 @@ local function new_item(vid, dstgroup, dstkey)
 	customview.orderind = customview.orderind + 1;
 end
 
-local function save_item(state, vid)
-	if (state) then
-		table.insert(customview.itemlist, customview.ci);
-	else
-		delete_image(vid);
-	end
-	
+local function to_menu()
 	customview.ci = nil;
 	settings.iodispatch = position_dispatch;
 	settings.iodispatch["MENU_ESCAPE"]("", false, false);
 	cascade_visibility(current_menu, 1.0);
+end
+
+local function save_item(state, vid)
+	if (state) then
+		customview.ci.vid = vid;
+		table.insert(customview.itemlist, customview.ci);
+	else
+		delete_image(vid);
+	end
+
+	to_menu();
+end
+
+local function save_item_bg(state, vid)
+	if (state == false) then
+		delete_image(vid);
+		to_menu();
+		return;
+	end
+	
+	local found = false;
+	customview.ci.vid = vid;
+	
+-- background and navigator are unique, thus replace old one.
+	for ind, val in ipairs(customview.itemlist) do
+		if val.kind == "background" then
+			delete_image(customview.itemlist[ind].vid);
+			customview.itemlist[ind] = customview.ci; 
+			found = true;
+			break
+		end
+	end
+
+	if (found == false) then
+		table.insert(customview.itemlist, customview.ci);
+	end
+
+	to_menu();
 end
 
 local function navigator_toggle(status, x1, y1, x2, y2)
@@ -256,6 +308,13 @@ local function positionfun(label)
 
 		position_item(nil, vid, save_item);
 	end
+end
+
+local function effecttrig(label)
+	local shdr    = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. label, "bgeffect", {});
+	customview.bgshader = shdr;
+	update_bgshdr();
+	settings.iodispatch["MENU_ESCAPE"]();
 end
 
 local function positiondynamic(label)
@@ -297,19 +356,11 @@ end
 -- stretch to fit screen, only opa change allowed
 local function positionbg(label)
 	local tiled = false;
-	local vid = load_image("backgrounds/" .. label)
-	local props = image_storage_properties(vid);
-	
+	local vid = load_image("backgrounds/" .. label);
 	if (vid == BADID) then return; end
 	
--- slightly hackish as the texmode thing is only on creation
-	if (props.width < VRESW / 2 or props.height < VRESH / 2) then
-		delete_image(vid);
-		switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
-		vid = load_image("backgrounds/" .. label);
-		switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
-		tiled = true;
-	end
+	switch_default_texmode( TEX_REPEAT, TEX_REPEAT, vid );
+	local props = image_storage_properties(vid);
 	
 	customview.ci = {};
 	customview.ci.tiled  = tiled;
@@ -327,10 +378,10 @@ local function positionbg(label)
 	customview.ci.y      = 0;
 	customview.ci.opa    = 1.0;
 	customview.ci.ang    = 0;
-	customview.ci.kind   = "static_media";
+	customview.ci.kind   = "background";
 	customview.ci.res    = "backgrounds/" .. label;
 
-	position_item(label, vid, save_item); 
+	position_item(label, vid, save_item_bg);
 end
 
 -- take the custom view and dump to a .lua config
@@ -360,8 +411,11 @@ local function save_config()
 			write_rawresource("table.insert(cview.dynamic, item);\n");
 
 		elseif val.kind == "navigator" then
+			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
 			write_rawresource("cview.navigator = item;\n");
-
+		elseif val.kind == "background" then
+			write_rawresource("item.res    = \"" .. val.res .."\";\n");
+			write_rawresource("cview.background = item;\n");
 		else
 			print("[customview:save_config] warning, unknown kind: " .. val.kind);
 		end
@@ -401,6 +455,7 @@ local function show_config()
 	local mainptrs = {};
 
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
+	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer"}, positiondynamic));
 	--add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ingore", gen_tbl_menu("ignore", {"Times Played"}
@@ -442,12 +497,22 @@ local function place_item( vid, tbl )
 end
 
 local function setup_customview()
-
+-- lookup / load navigator
+	local background = nil;
+	
 	for ind, val in ipairs( customview.current.static ) do
-		print("load", val.res);
 		local vid = load_image( val.res );
 		place_item( vid, val );
 	end
+
+-- load background effect (assign to first item with order 0)
+	if (customview.current.background) then
+		vid = load_image( customview.current.background.res );
+		place_image(vid, customview.current.background);
+		
+	end
+
+-- remap I/O functions to fit navigator
 	
 end
 
@@ -457,7 +522,6 @@ function gridle_customview()
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
-	
 	if (customview.in_config and resource("customview_cfg.lua")) then
 		customview.current = system_load("customview_cfg.lua")();
 		
@@ -466,13 +530,10 @@ function gridle_customview()
 			pop_video_context();
 			setup_customview();
 		end
-
-	elseif (customview.in_config) then
-		pop_video_context();
-		disptbl = show_config();
+		
 	else
 		pop_video_context();
-		disptbl = setup_customview();
+		disptbl = show_config();
 	end
 	
 end

@@ -1314,8 +1314,13 @@ end
 
 function asynch_movie_ready(source, statustbl)
 	if (imagery.movie == source) then
+
 		if (statustbl.kind == "resized") then
-			
+-- capture loop events .. 
+			if (imagery.playing == source) then
+				return;
+			end
+
 			if (valid_vid(imagery.zoomed)) then
 				local newinst = instance_image(source);
 				image_tracetag(newinst, "movie zoom");
@@ -1324,16 +1329,20 @@ function asynch_movie_ready(source, statustbl)
 				copy_image_transform(imagery.zoomed, newinst);
 				reset_image_transform(newinst);
 				delete_image(imagery.zoomed);
+
 				imagery.zoomed = newinst;
 				gridlemenu_setzoom(newinst, source); -- use new aspect ratio
+				print("setzoom", imagery.zoomed);
 			end
-			
+
 			vid,aid = play_movie(source);
 			audio_gain(aid, 0.0);
 			audio_gain(aid, settings.movieagain, settings.fadedelay);
 
 			copy_image_transform( cursor_vid(), source );
 			blend_image(cursor_vid(), 0.0, settings.fadedelay);
+
+			imagery.playing = vid;
 		end
 	else
 		delete_image(source);
