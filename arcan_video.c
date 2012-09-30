@@ -2829,10 +2829,6 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 	if (force || (vobj->mask & MASK_OPACITY) > 0){
 		dprops->opa *= sprops->opa;
 	}
-
-/*	if (force || (vobj->mask & MASK_SCALE) > 0){
-		dprops->scale = mul_vector(dprops->scale, sprops->scale);
-	} */
 }
 
 /* this is really grounds for some more elaborate caching strategy if CPU- bound.
