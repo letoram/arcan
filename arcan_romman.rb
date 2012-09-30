@@ -171,8 +171,6 @@ options = {
 	:in_windows => is_windows
 }
 
-if (not File.exists(options[:frameserver]))
-
 if (is_windows) 
 	options[:frameserver] = "./arcan_frameserver.exe"
 else
