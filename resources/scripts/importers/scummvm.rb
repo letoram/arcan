@@ -51,11 +51,11 @@ class ScummVM
 		
 		execs = ["", ".exe"];
 		execs.each{|ext|
-		           fullname = "#{targetpath}/#{target}#{ext}"
-		           if (File.exists?(fullname))
-		               @scummpath = fullname
-						break
-		           end
+			fullname = "#{targetpath}/#{target}#{ext}"
+			if (File.exists?(fullname))
+				@scummpath = fullname
+				break
+			end
 		}
 		
 		if (@scummpath == nil)
@@ -100,7 +100,8 @@ class ScummVM
 				setname = fn[ fn.rindex('/') +1 .. -1 ]
 				
 				if (@titles[setname])
-					newgame = Game.new
+					newgame = Game.LoadSingle(@titles[setname], setname, @target.pkid)
+					newgame = Game.new unless newgame
 					newgame.title = @titles[setname]
 					newgame.setname = setname
 					newgame.target = @target

@@ -35,7 +35,7 @@ generic options:\n\
 (--targetpath) (path) - use path as root for finding targets\n\
 \n\
 builddb options:\n\
-(--generic) - Use generic importer for unknown targets\n\
+(--nogeneric) - Don't use generic importer for unknown targets\n\
 (--update) - Only add new games, don't rebuild the entire database\n\
 (--skipgroup) groupname - Don't try to import the specified games\group folder (can be used several times)\n\
 (--scangroup) groupname - Only scan the specified games\group folder (can be used several times)\n\n\
@@ -80,7 +80,7 @@ if (!basepath)
 	STDERR.print("Fatal, could not find romman_base.rb (should reside in resources/scripts)\n")
 	exit(1)
 end
-	
+
 load "#{basepath}/romman_base.rb"
 
 # just split based on ',', allow '\' to make the next character stick
@@ -131,6 +131,7 @@ genericopts = [
 	[ '--dbname', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--rompath', GetoptLong::REQUIRED_ARGUMENT ],
 	[ '--targetpath', GetoptLong::REQUIRED_ARGUMENT ],
+	[ '--nogeneric', GetoptLong::NO_ARGUMENT ],
 	[ '--generic', GetoptLong::NO_ARGUMENT ],
 	[ '--update', GetoptLong::NO_ARGUMENT ],
 	[ '--skipgroup', GetoptLong::REQUIRED_ARGUMENT ],
@@ -159,7 +160,7 @@ genericopts = [
 # rompath/targetpath in the main app as well)
 
 options = {
-	:generic => false,
+	:generic => true,
 	:rompath => "#{basepath}/../games",
 	:targetpath => "#{basepath}/../targets",
 	:resetdb => false,
@@ -220,12 +221,20 @@ if (opttbl["--help"])
 	exit(0)
 end
 
+dbpath = File.exists?(options[:dbname]) ? File.realpath(options[:dbname]) : options[:dname]
+
+STDOUT.print("[Arcan Romman] Settings:\n rompath:\t #{File.realpath(options[:rompath])} \n targetpath:\t #{File.realpath(options[:targetpath])} \n dbpath:\t #{dbpath}\n");
+
 if (arg = opttbl["--scangroup"])
 	options[:scangroup] = []
 
 	arg.each{|scangrp|
 		options[:scangroup] << scangrp
 	}
+end
+
+if (arg = opttbl["--nogeneric"])
+	options[:generic] = false
 end
 
 if (arg = opttbl["--skipgroup"])

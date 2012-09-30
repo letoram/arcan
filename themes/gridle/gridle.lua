@@ -194,8 +194,15 @@ end
 
 function gridle_launchinternal()
 	play_audio(soundmap["LAUNCH_INTERNAL"]);
+
+	if (valid_vid(internal_vid)) then
+		delete_image(internal_vid);
+	end
+	
 	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
+
+error_nogames = nil;
 
 function gridle()
 -- grab all dependencies;
@@ -241,10 +248,10 @@ function gridle()
 -- keep an active list of available games, make sure that we have something to play/show
 -- since we want a custom sort, we'll have to keep a table of all the games (expensive)
 	settings.games = list_games( {} );
-	
+
 	if (not settings.games or #settings.games == 0) then
-		error("There are no games defined in the database.");
-		shutdown();
+		error_nogames();
+		return;
 	end
 
 -- any 3D rendering (models etc.) should happen after any 2D surfaces have been draw
@@ -1631,6 +1638,23 @@ function gridle_dispatchinput(iotbl)
 			end
 		end
 	end
+end
+
+function error_nogames()
+	bg = fill_surface(VRESW, VRESH, 255, 255, 255);
+	dbhelp = load_image("dbhelp.png");
+	
+	local props = image_surface_properties(dbhelp);
+	if (VRESW > props.width and VRESH > props.height) then
+		move_image(dbhelp, 0.5 * (VRESW - props.width), 0.5 * (VRESH - props.height));
+	else
+		resize_image(dbhelp, VRESW, VRESH);
+	end
+	
+	show_image(bg);
+	show_image(dbhelp);
+	
+	gridle_input = nil;
 end
 
 gridle_input = gridle_dispatchinput;

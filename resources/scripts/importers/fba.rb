@@ -78,6 +78,7 @@ class FBA
 		@games[setname][:year]   = args[5].strip	
 		@games[setname][:dev]    = args[6].strip	
 		@games[setname][:sys]    = args[7].strip
+		@games[setname][:setname]= setname
 		count = count + 1
 	}
 		
@@ -136,8 +137,8 @@ class FBA
 		end
 	
 		setname = tbl[:setname]
-		
-		newgame = Game.LoadSingle(title, setname, @target.pkid)
+
+		newgame = Game.LoadSingle(title, filename, @target.pkid)
 		newgame = Game.new unless newgame
 
 # FIXME, status ignored
