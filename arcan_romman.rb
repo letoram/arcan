@@ -3,11 +3,10 @@
 # Simple wrapper / loader script that ought to reside in the same folder 
 # as the main application binaries. Tries to locate the resource folder
 # in use, where the main script is, along with importers.
-
+#
 is_windows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
 
 searchpath = [".", "./scripts", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
-
 searchpath.insert(0, ENV['ARCAN_RESOURCEPATH']) if ENV['ARCAN_RESOURCEPATH']
 
 basepath = nil
@@ -172,8 +171,17 @@ options = {
 	:in_windows => is_windows
 }
 
+if (not File.exists(options[:frameserver]))
+
 if (is_windows) 
 	options[:frameserver] = "./arcan_frameserver.exe"
+else
+	["./arcan_frameserver", "/usr/bin/arcan_frameserver", "/usr/local/bin/arcan_frameserver"].each{|a|
+		if File.exists(a)
+			options[:frameserver] = a
+			break
+		end
+	}
 end
 
 # expand with the options from each found importer
