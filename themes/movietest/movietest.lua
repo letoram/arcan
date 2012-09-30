@@ -42,9 +42,10 @@ function movietest()
 	show_image(debugbar_vid);
 	show_image(debugbar_aid);	
 	
-	vid = load_movie("movietest.mkv", FRAMESERVER_LOOP, function(source, statustbl)
+	vid = load_movie("movietest.avi", FRAMESERVER_LOOP, function(source, statustbl)
 		print("main frameserver_event(",source, statustbl.kind,")"); 
-		show_image(source);
+		show_image(source)
+		resize_image(source, statustbl.width, statustbl.height);
 		play_movie(source);
 	end);
 	img.last = vid;
@@ -67,6 +68,7 @@ function movietest_frameserver_event(source, tbl)
 		resize_image(debugbar_vid, VRESW * (ev.curv / ev.maxv), 64);
 		resize_image(debugbar_aid, VRESW * (ev.cura / ev.maxa), 64);
 	elseif (tbl.kind == "resized") then
+		resize_image(source, tbl.width * 0.3, tbl.height * 0.3);
 		show_image(source);
 		play_movie(source);
 	end	
@@ -81,7 +83,6 @@ function movietest_input( inputtbl )
 			vid, aid = load_movie("movietest.avi");
 			img.last = vid;
 			move_image(vid, cursor.x, cursor.y);
-			scale_image(vid, 0.3, 0.3);
 			show_image(vid);
 			
 		elseif (symtable[ inputtbl.keysym ] == "p") then
