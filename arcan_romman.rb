@@ -175,7 +175,7 @@ if (is_windows)
 	options[:frameserver] = "./arcan_frameserver.exe"
 else
 	["./arcan_frameserver", "/usr/bin/arcan_frameserver", "/usr/local/bin/arcan_frameserver"].each{|a|
-		if File.exists(a)
+		if File.exists?(a)
 			options[:frameserver] = a
 			break
 		end
