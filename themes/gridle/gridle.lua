@@ -1584,7 +1584,6 @@ end
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
-	local addlbl = "";
 	
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 -- the reason for looping the restbl is simply that the iotbl can be set to match several labels
