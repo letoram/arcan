@@ -79,6 +79,9 @@ elseif(WIN32)
 	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
 	set(GLEW_INCLUDE_DIR ${WININC})
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
+
+	set(VPX_LIBRARIES ${WINLIB}\\libspeex.lib)
+	set(VPX_INCLUDE_DIRS ${WININC})
 endif()
 
 FIND_PACKAGE ( SDL REQUIRED )
