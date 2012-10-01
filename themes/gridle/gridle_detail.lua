@@ -371,7 +371,7 @@ function gridledetail_input(iotbl)
 		
 end
 
-function gridledetail_havedetails(gametbl)
+local function gridledetail_checkmodel(setname)
 	if (gridledetail_modellut == nil) then
 		-- since resource() doesn't yield anything for directory entries, and no model is expected to
 -- provide a .lua script for loading, we glob and cache 
@@ -379,7 +379,8 @@ function gridledetail_havedetails(gametbl)
 		gridledetail_modellut = {};
 		gridledetail_neogeosets = {};
 
--- special treatment of neo-geo games (and possibly later on, naomi) 
+-- special treatment of neo-geo games (and possibly later on, naomi), instancing etc. isn't really
+-- implemented for 3D yet, so need to reload even the generic models. 
 		if (resource("neogeo_sets") and open_rawresource("neogeo_sets")) then
 			local setname = read_rawresource();
 			
@@ -397,20 +398,31 @@ function gridledetail_havedetails(gametbl)
 	end
 
 -- we might not have a model, but do we have a gamescript?
-	if (gridledetail_modellut[gametbl.setname] == nil) then
-		if (resource("gamescripts/" .. gametbl.setname .. ".lua")) then
-			return "gamescripts/" .. gametbl.setname .. ".lua";
+	if (gridledetail_modellut[setname] == nil) then
+		if (resource("gamescripts/" .. setname .. ".lua")) then
+			return "gamescripts/" .. setname .. ".lua";
 
 -- should split this to treat more "generic" models (e.g. nintendo, ...) 
-		elseif (gridledetail_neogeosets[gametbl.setname] == true and
+		elseif (gridledetail_neogeosets[setname] == true and
 				gridledetail_modellut["neogeo"]) then
 			return "neogeo";
 		end
 	else
-		return gametbl.setname;
+		return setname;
 	end
 
 	return nil;
+end
+
+function gridledetail_havedetails(gametbl)
+	local res = gridledetail_checkmodel(gametbl.setname);
+
+-- quickhack for ex. fba importer that has mame shortnames but uses the fileextension in the setname
+	if (not res) then
+		res = gridledetail_checkmodel( string.sub(gametbl.setname, 1, -5) );
+	end
+
+	return res;
 end
 
 local function find_detail(step, zout)

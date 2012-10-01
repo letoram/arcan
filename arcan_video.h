@@ -22,17 +22,19 @@
 #ifndef _HAVE_ARCAN_VIDEO
 #define _HAVE_ARCAN_VIDEO
 
-#define RGBPACK(r, g, b, d)\
+#ifndef RGBAPACK
+#define RGBAPACK(r, g, b, a, d)\
 {\
-	((uint32_t *)(d))[0] = (0xff << 24) | (r << 16) | (g << 8) | b;\
+	((uint32_t *)(d))[0] = (a << 24) | (b << 16) | (g << 8) | r;\
 }
+#endif
 
 #ifndef CONTEXT_STACK_LIMIT
 #define CONTEXT_STACK_LIMIT 8
 #endif
 
-/* supposedly, GL_BGRA is more efficient and can be directly transferred without 'swizzling',
- * but it's not implemented in all supported GL environments */
+/* Supposedly, GL_BGRA is more efficient and can be directly transferred without 'swizzling', but seems to
+ * vary heavily between platform and driver. One option would be to actually probe this through timing texture upload times */
 #define GL_PIXEL_FORMAT GL_RGBA
 
 /* video-style enum of potential arcan_video_* outcomes */

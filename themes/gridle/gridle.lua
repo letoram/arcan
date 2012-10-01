@@ -316,7 +316,7 @@ function gridle()
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
 		local key = gridledetail_havedetails(gametbl);
-		
+
 		if (key) then
 			local gameind = 0;
 			blend_image( cursor_vid(), 0.3 );

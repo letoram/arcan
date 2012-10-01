@@ -82,6 +82,17 @@ static const int ORDER_FIRST = CONST_ORDER_FIRST;
 #endif
 static const int ORDER_LAST  = CONST_ORDER_LAST;
 
+#ifndef CONST_MAX_SURFACEW
+#define CONST_MAX_SURFACEW 2048
+#endif
+
+#ifndef CONST_MAX_SURFACEH
+#define CONST_MAX_SURFACEH 2048
+#endif
+
+static const int MAX_SURFACEW = CONST_MAX_SURFACEH;
+static const int MAX_SURFACEH = CONST_MAX_SURFACEW;
+
 static const int FRAMESERVER_LOOP = 1;
 static const int FRAMESERVER_NOLOOP = 0;
 
@@ -1565,7 +1576,6 @@ int arcan_lua_imageparent(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobj_id pid = arcan_video_findparent(id);
-	arcan_warning("findparentr: %d\n", pid);
 	
 	lua_pushvid( ctx, pid );
 	return 1;
@@ -2032,16 +2042,101 @@ int arcan_lua_fillsurface(lua_State* ctx)
 	cons.w = luaL_optnumber(ctx, 6, 8);
 	cons.h = luaL_optnumber(ctx, 7, 8);
 
-	uint8_t* buf = (uint8_t*) malloc(cons.w * cons.h * 4);
-	uint32_t* cptr = (uint32_t*) buf;
+	if (cons.w > 0 && cons.w <= MAX_SURFACEW && 
+		cons.h > 0 && cons.h <= MAX_SURFACEH){
 
-	for (int y = 0; y < cons.h; y++)
-		for (int x = 0; x < cons.w; x++)
-			RGBPACK(b, g, r, cptr++);
+		uint8_t* buf = (uint8_t*) malloc(cons.w * cons.h * 4);
+		if (!buf) 
+			goto error;
 
-	arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, desw, desh, 0);
-	lua_pushvid(ctx, id);
+		uint32_t* cptr = (uint32_t*) buf;
 
+		for (int y = 0; y < cons.h; y++)
+			for (int x = 0; x < cons.w; x++)
+				RGBAPACK(r, g, b, 0xff, cptr++);
+
+		arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, desw, desh, 0);
+		lua_pushvid(ctx, id);
+		return 1;
+	}
+	else {
+		arcan_fatal("arcan_lua_fillsurface(%d, %d) unacceptable surface dimensions, compile time restriction 0 > (w,y) <= (%d,%d)\n", desw, desh, MAX_SURFACEW, MAX_SURFACEH);
+	}
+
+error:
+	return 0;
+}
+
+int arcan_lua_rawsurface(lua_State* ctx)
+{
+	int desw = luaL_checknumber(ctx, 1);
+	int desh = luaL_checknumber(ctx, 2);
+	int bpp  = luaL_checknumber(ctx, 3);
+	
+	if (bpp != 1 && bpp != 3 && bpp != 4)
+		arcan_fatal("arcan_lua_rawsurface(%d) invalid source channel count, accepted values: 1, 2, 4\n", bpp);
+	
+	img_cons cons = {.w = desw, .h = desh, .bpp = 4};
+
+	int nsamples = lua_rawlen(ctx, 4);
+
+	if (nsamples != desw * desh * bpp)
+		arcan_fatal("arcan_lua_rawsurface(%d) number of values doesn't match expected length.\n", nsamples, desw * desh * bpp);
+	
+	unsigned ofs = 1;
+
+	if (desw > 0 && desh > 0 && desw <= MAX_SURFACEW && desh <= MAX_SURFACEH){
+		uint8_t* buf   = malloc(desw * desh * 4);
+		uint32_t* cptr = (uint32_t*) buf;
+
+		for (int y = 0; y < cons.h; y++)
+			for (int x = 0; x < cons.w; x++){
+				unsigned char r, g, b, a;
+
+				switch(bpp){
+					case 1: 
+						lua_rawgeti(ctx, 4, ofs++);
+						r = lua_tonumber(ctx, -1);
+						RGBAPACK( r, r, r, 0xff, cptr++ );
+					break;
+
+					case 3: 
+						lua_rawgeti(ctx, 4, ofs++);
+						r = lua_tonumber(ctx, -1);
+						lua_rawgeti(ctx, 4, ofs++);
+						g = lua_tonumber(ctx, -1);
+						lua_rawgeti(ctx, 4, ofs++);
+						b = lua_tonumber(ctx, -1);
+						RGBAPACK(r, g, b, 0xff, cptr++);
+					break;
+
+					case 4:
+						lua_rawgeti(ctx, 4, ofs++);
+						r = lua_tonumber(ctx, -1);
+						lua_rawgeti(ctx, 4, ofs++);
+						g = lua_tonumber(ctx, -1);
+						lua_rawgeti(ctx, 4, ofs++);
+						b = lua_tonumber(ctx, -1);
+						lua_rawgeti(ctx, 4, ofs++);
+						a = lua_tonumber(ctx, -1);
+						RGBAPACK(r, g, b, a, cptr++);
+					}
+			}
+
+		arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, desw, desh, 0);
+		lua_pushvid(ctx, id);
+		return 1;
+	} 
+	else
+		arcan_fatal("arcan_lua_rawsurface(%d, %d) unacceptable surface dimensions, compile time restriction 0 > (w,y) <= (%d,%d)\n", desw, desh, MAX_SURFACEW, MAX_SURFACEH);
+	
+	return 0;
+}
+
+/* hook up a monitor (either to specific aid or global),
+ * map it to a samplelen float texture */
+int arcan_lua_waveformsurface(lua_State* ctx)
+{
 	return 1;
 }
 
@@ -2063,7 +2158,7 @@ int arcan_lua_randomsurface(lua_State* ctx)
 	for (int y = 0; y < cons.h; y++)
 		for (int x = 0; x < cons.w; x++){
 			unsigned char val = 20 + random() % 235;
-			RGBPACK(val, val, val, cptr++);
+			RGBAPACK(val, val, val, 0xff, cptr++);
 		}
 
 	arcan_vobj_id id = arcan_video_rawobject(buf, desw * desh * 4, cons, desw, desh, 0);
@@ -3468,6 +3563,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "render_text", arcan_lua_buildstr);
 	arcan_lua_register(ctx, "text_dimensions", arcan_lua_strsize);
 	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
+	arcan_lua_register(ctx, "raw_surface", arcan_lua_rawsurface);
+	arcan_lua_register(ctx, "waveform_surface", arcan_lua_waveformsurface);
 	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
 	arcan_lua_register(ctx, "define_recordtarget", arcan_lua_recordset);
 	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);

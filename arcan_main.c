@@ -114,7 +114,7 @@ void usage()
 		"-r\t--scalemode   \tset texture mode:\n\t"
 		"%i(rectangle sized textures, default),\n\t"
 		"%i(scale to power of two)\n\t"
-		"%i(tweak texture coordinates)\n", ARCAN_TIMER_TICK, ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2, ARCAN_VIMAGE_TXCOORD);
+		"%i(tweak texture coordinates)\n", ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2, ARCAN_VIMAGE_TXCOORD);
 }
 
 int main(int argc, char* argv[])

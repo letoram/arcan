@@ -299,7 +299,7 @@ void* frameserver_requirefun(const char* const sym)
 	if (!lastlib || !sym)
 		return NULL;
 	
-	dlsym(lastlib, sym);
+	return dlsym(lastlib, sym);
 }
 
 /* by default, we only do this for libretro where it might help
