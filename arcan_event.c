@@ -50,10 +50,10 @@ const unsigned short arcan_joythresh  = 3200;
 static int64_t arcan_last_frametime = 0;
 static int64_t arcan_tickofset = 0;
 
-/* possibly need different sample methods for different axis. especially as 
+/* possibly need different sample methods for different axis. especially as
  * the controls get increasingly "weird" */
 struct axis_control;
-typedef bool(*sample_cb)(struct axis_control*, int, int*, int, int*); 
+typedef bool(*sample_cb)(struct axis_control*, int, int*, int, int*);
 /* anything needed to rate-limit a specific axis,
  * smoothing buffers, threshold scaling etc. */
 struct axis_control {
@@ -70,14 +70,14 @@ struct arcan_stick {
 	unsigned short threshold;
 	unsigned short axis;
 	struct axis_control* axis_control;
-	
+
 /* these map to digital events */
 	unsigned short buttons;
 	unsigned short balls;
-	
+
 	unsigned* hattbls;
 	unsigned short hats;
-	
+
 	SDL_Joystick* handle;
 };
 
@@ -87,7 +87,7 @@ static struct {
 		unsigned short n_joy;
 		struct arcan_stick* joys;
 } joydev = {0};
-	
+
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static unsigned eventfront = 0, eventback = 0;
 
@@ -124,7 +124,7 @@ static inline bool lock_shared(arcan_evctx* ctx)
 			return false;
 		}
 	}
-	else 
+	else
 		arcan_sem_timedwait(ctx->synch.external.shared, -1);
 	return true;
 }
@@ -146,7 +146,7 @@ static inline bool LOCK(arcan_evctx* ctx)
 	return ctx->local ? lock_local : lock_shared;
 }
 
-#define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx); 
+#define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx);
 
 /* check queue for event, ignores mask */
 arcan_event* arcan_event_poll(arcan_evctx* ctx)
@@ -157,7 +157,7 @@ arcan_event* arcan_event_poll(arcan_evctx* ctx)
 
 			rv = &ctx->eventbuf[ *ctx->front ];
 			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
-		
+
 			UNLOCK();
 		}
 
@@ -209,9 +209,9 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
 	if (LOCK(ctx)){
 		ctx->kbdrepeat = rate;
-		if (rate == 0) 
+		if (rate == 0)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
-		else 
+		else
 			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, ctx->kbdrepeat);
 		UNLOCK();
 	}
@@ -227,7 +227,7 @@ static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, 
 		.data.io.input.digital.devid = ARCAN_JOYIDBASE + devid,
 		.data.io.input.digital.subid = 128 + (hatid * 4)
 	};
-	
+
 	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT, SDL_HAT_RIGHT};
 
 	assert(joydev.n_joy > devid);
@@ -236,7 +236,7 @@ static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, 
 /* shouldn't really ever be the same, but not trusting SDL */
 	if (joydev.joys[devid].hattbls[ hatid ] != value){
 		unsigned oldtbl = joydev.joys[devid].hattbls[hatid];
-	
+
 		for (int i = 0; i < 4; i++){
 			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
 				newevent.data.io.input.digital.subid  = ARCAN_HATBTNBASE + (hatid * 4) + i;
@@ -244,7 +244,7 @@ static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, 
 				arcan_event_enqueue(ctx, &newevent);
 			}
 		}
-		
+
 		joydev.joys[devid].hattbls[hatid] = value;
 	}
 }
@@ -282,18 +282,18 @@ static void init_sdl_events(arcan_evctx* ctx)
 	SDL_ShowCursor(0);
 	SDL_ShowCursor(1);
 	SDL_ShowCursor(0);
-	
+
 	SDL_Event dummy[1];
 /*	SDL_WM_GrabInput( SDL_GRAB_ON ); */
 	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, SDL_EVENTMASK(SDL_MOUSEMOTION)) );
-	
+
 }
 
 void map_sdl_events(arcan_evctx* ctx)
 {
 	SDL_Event event;
 	arcan_event newevent = {.category = EVENT_IO}; /* others will be set upon enqueue */
-	
+
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 			case SDL_MOUSEBUTTONDOWN:
@@ -334,7 +334,7 @@ void map_sdl_events(arcan_evctx* ctx)
 					newevent.data.io.input.analog.axisval[1] = event.motion.xrel;
 					arcan_event_enqueue(ctx, &newevent);
 				}
-				
+
 				if (event.motion.yrel != 0){
 					newevent.data.io.input.analog.subid = 1;
 					newevent.data.io.input.analog.axisval[0] = event.motion.y;
@@ -342,7 +342,7 @@ void map_sdl_events(arcan_evctx* ctx)
 					arcan_event_enqueue(ctx, &newevent);
 				}
 				break;
-				
+
 			case SDL_JOYAXISMOTION:
 				process_axismotion(ctx, event.jaxis);
 			break;
@@ -419,11 +419,11 @@ void map_sdl_events(arcan_evctx* ctx)
 			case SDL_SYSWMEVENT:
 				break;
 				/*
-				 * currently ignoring these events (and a resizeable window frame isn't 
+				 * currently ignoring these events (and a resizeable window frame isn't
 				 * yet supported, although the video- code is capable of handling a rebuild/reinit,
 				 * the lua- scripts themselves all depend quite a bit on VRESH/VRESW, one option
 				 * would be to just calculate a scale factor for the newvresh, newvresw and apply that
-				 * as a translation step when passing the lua<->core border    
+				 * as a translation step when passing the lua<->core border
 					 case SDL_VIDEORESIZE:
 					 break;
 
@@ -451,10 +451,10 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 	arcan_last_frametime = SDL_GetTicks();
 	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
-	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK; 
-	
+	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK;
+
 	int rv = 0;
-	
+
 	/* the logic- clock is necessary, if we got the cycles to spare,
 	 * process audio / video / io. */
 	if (nticks){
@@ -462,7 +462,7 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 		ctx->c_ticks += nticks * ARCAN_TIMER_TICK;
 		arcan_event_enqueue(ctx, &newevent);
 	}
-	
+
 	*dtick = nticks;
 	map_sdl_events(ctx);
 	return fragment;
@@ -482,9 +482,9 @@ static unsigned long djb_hash(const char* str)
 
 static bool default_analogsample(struct axis_control* src, int srcsamples, int* srcbuf, int dstsamples, int* dstbuf)
 {
-	if (src->mode == EVENT_FILTER_ANALOG_ALL) 
+	if (src->mode == EVENT_FILTER_ANALOG_ALL)
 		return false;
-	
+
 /* first call, initialize cb- specific storage (not needed here) */
 	if (src->buffer == NULL){
 	}
@@ -495,7 +495,7 @@ static bool default_analogsample(struct axis_control* src, int srcsamples, int* 
 			return true;
 		}
 	}
-	
+
 	return false;
 }
 
@@ -514,12 +514,12 @@ void arcan_event_init(arcan_evctx* ctx)
 	if (!ctx->local){
 		return;
 	}
-	
+
 	init_sdl_events(ctx);
-	
+
 	ctx->synch.local = SDL_CreateMutex();
  	arcan_tickofset = SDL_GetTicks();
-    
+
 	SDL_Init(SDL_INIT_JOYSTICK);
 	/* enumerate joysticks, try to connect to those available and map their respective axises */
 	SDL_JoystickEventState(SDL_ENABLE);
@@ -541,17 +541,17 @@ void arcan_event_init(arcan_evctx* ctx)
 						.mode = EVENT_FILTER_ANALOG_NONE,
 						.samplefun = default_analogsample
 					};
-				
+
 					joydev.joys[i].axis_control[j] = defctrl;
 			}
-			
+
 			joydev.joys[i].buttons = SDL_JoystickNumButtons(joydev.joys[i].handle);
 			joydev.joys[i].balls = SDL_JoystickNumBalls(joydev.joys[i].handle);
 			joydev.joys[i].hats = SDL_JoystickNumHats(joydev.joys[i].handle);
 
 			if (joydev.joys[i].hats > 0){
 				size_t dst_sz = joydev.joys[i].hats * sizeof(unsigned);
-				
+
 				joydev.joys[i].hattbls = malloc(dst_sz);
 				memset(joydev.joys[i].hattbls, 0, dst_sz);
 			}

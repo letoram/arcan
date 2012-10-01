@@ -161,6 +161,18 @@ file_handle frameserver_readhandle(arcan_event* src)
 	return src->data.target.fh;
 }
 
+static HMODULE lastlib = NULL;
+bool frameserver_loadlib(const char* const name)
+{
+    lastlib = LoadLibrary(name);
+    return lastlib != NULL;
+}
+
+void* frameserver_requirefun(const char* const name)
+{
+    GetProcAddress(lastlib, name);
+}
+
 void frameserver_delay(unsigned long val)
 {
 /* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds)
@@ -177,14 +189,10 @@ void frameserver_delay(unsigned long val)
 static void toggle_logdev()
 {
 	const char* logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
-	if (!logdir)
-        logdir = "resources/logs";
-
-
 /* win32 .. :'( */
 	if (!logdir)
 		logdir = "./resources/logs";
-	
+
 	if (logdir){
 		char timeb[16];
 		time_t t = time(NULL);
@@ -218,10 +226,19 @@ int main(int argc, char* argv[])
 	}
 #endif
 
+/* the convention on windows doesn't include the program name as first argument,
+ * but some execution contexts may use it, e.g. ruby / cygwin / ... so skew the arguments */
+    if (7 == argc){
+        argv++;
+        argc--;
+    }
+
 /* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode),
  * parent is retrieved from shmpage */
-	if (6 != argc)
-		return 1;
+	if (6 != argc){
+	    LOG("arcan_frameserver(win32, parsecmd) -- unexpected number of arguments, giving up.\n");
+        return 1;
+    }
 
 	vsync = (HANDLE) strtoul(argv[2], NULL, 10);
 	async = (HANDLE) strtoul(argv[3], NULL, 10);
