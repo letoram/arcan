@@ -31,6 +31,20 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_E
 
 set( MAIN_LIBRARIES )
 
+# Collective sigh for stupid standard breaking features.
+add_definitions(-std=iso9899:1999 -DBSD_SOURCE)
+
+
+if (CMAKE_BUILD_TYPE STREQUAL "Profile")
+    message("Profile build")
+        add_definitions(-pg)
+endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message("Debug build")
+	add_definitions(-g -D_DEBUG)
+endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
+
 # --- Step 1, Dependencies
 # paths / locations
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules)
@@ -192,18 +206,6 @@ set (
  arcan_general.c
  arcan_event.c
 )
-
-if (CMAKE_BUILD_TYPE STREQUAL "Profile")
-    message("Profile build")
-        add_definitions(-pg)
-endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
-
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Debug build")
-	add_definitions(-g -D_DEBUG)
-endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
-
-add_definitions(-std=c99 -D_BSD_SOURCE )
 
 # OS Specific modifications
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
