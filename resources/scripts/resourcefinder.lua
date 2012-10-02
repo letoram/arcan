@@ -5,18 +5,18 @@
 -- Paths used (first tries path\target\setname.extension and thereafter path\setname.extension if there's no match)
 -- (2D graphics)
 --  screenshots
--- backdrops
+--  backdrops
 --  bezels
 --  marquees
 --  cabinet
 --  overlays
---  artwork (* special, acceptes anything that matches setname_wildcard.extension)
+--  artwork (* special, accepts anything that matches setname_wildcard.extension)
 --  
 -- (Audio)
 --  music (.ogg)
 --  sfx (.wav)
 --
--- (Video extensions: .mpg, .avi, .mp4, .mkv)
+-- (Video extensions: .webm, .mpg, .avi, .mp4, .mkv)
 --  movies  
 -- 
 -- (misc)

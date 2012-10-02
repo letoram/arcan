@@ -152,10 +152,10 @@ typedef struct arcan_vobject {
 	enum arcan_blendfunc blendmode;
 
 	struct {
-		bool in_use; /* must be set for any operation other than allocate to be valid */
-		bool clone;  /* limits the set of allowed operations from those that allocate resources or link */
-		bool cliptoparent;  /* only draw to the parent object surface area */
-		bool asynchdisable; /* don't run any asynchronous loading operations */
+		bool in_use;         /* must be set for any operation other than allocate to be valid */
+		bool clone;          /* limits the set of allowed operations from those that allocate resources or link */
+		bool cliptoparent;   /* only draw to the parent object surface area */
+		bool asynchdisable;  /* don't run any asynchronous loading operations */
 		bool cycletransform; /* when a transform is finished, attach it to the end */
 	} flags;
 	

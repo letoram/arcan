@@ -16,12 +16,25 @@ local stepleft, stepup, stepdown, stepright, show_config, setup_customview;
 
 local customview = {};
 
+-- map resource-finder properties with their respective name in the editor dialog
+local remaptbl = {};
+remaptbl["bezel"]       = "bezels";
+remaptbl["screenshot"]  = "screenshots";
+remaptbl["marquee"]     = "marquees";
+remaptbl["overlay"]     = "overlay";
+remaptbl["bezel"]       = "bezels";
+remaptbl["backdrop"]    = "backdrops";
+remaptbl["movie"]       = "movies";
+remaptbl["controlpanel"]= "controlpanels";
+remaptbl["boxart"]      = "boxart";
+
 customview.in_config = true;
 
 -- list of the currently allowed modes (size, position, opacity, orientation)
 customview.position_modes  = {"position", "size", "opacity", "orientation"};
 customview.position_marker = 1;
 customview.orderind = 1;
+customview.temporary = {};
 
 helplbls = {};
 helplbls["position"] = {
@@ -89,7 +102,6 @@ local function position_toggle()
 -- don't allow any other mode to be used except position until we have an upper left boundary
 	customview.position_marker = (customview.position_marker + 1 > #customview.position_modes) and 1 or (customview.position_marker + 1);
 	update_infowin();
--- FIXME have a label / something that shows WHERE we are
 end
 
 local function update_object(imgvid)
@@ -113,6 +125,7 @@ local function update_bgshdr()
 		for ind, val in ipairs(customview.itemlist) do
 			if (val.kind == "background") then
 				dst = val.vid;
+				val.shader = customview.bgshader_label;
 				break
 			end
 		end
@@ -122,7 +135,6 @@ local function update_bgshdr()
 	
 	if (dst) then
 		local props = image_surface_properties(dst);
-		print(props.width, props.height);
 		shader_uniform(customview.bgshader, "display", "ff", PERSIST, props.width, props.height);
 		image_shader(dst, customview.bgshader);
 	end
@@ -310,9 +322,71 @@ local function positionfun(label)
 	end
 end
 
+local function customview_internal(source, datatbl)
+	if (datatbl.kind == "resized") then
+		if (not settings.in_internal) then
+			gridle_load_internal_extras( resourcefinder_search(customview.gametbl, true), customview.gametbl.target );
+			if (settings.autosave == "On") then internal_statectl("auto", false); end
+			internal_aid = datatbl.source_audio;
+			internal_vid = source;
+					
+			settings.internal_toggles.bezel     = false;
+			settings.internal_toggles.overlay   = false;
+			settings.internal_toggles.backdrops = false;
+
+			audio_gain(internal_aid, settings.internal_again, NOW);
+
+			gridle_input = gridle_internalinput;
+			settings.in_internal = true;
+
+			gridlemenu_rebuilddisplay();
+			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
+		else
+			gridlemenu_rebuilddisplay();
+		end
+	elseif (datatbl.kind == "frameserver_terminated") then
+		pop_video_context();
+		cleanup();
+	end
+end
+
+local function cleanup()
+	if (settings.autosave == "On" and valid_vid(internal_vid)) then 
+		internal_statectl("auto", true); 
+	end
+
+	pop_video_context();
+	settings.iodispatch = customview.dispatchtbl;
+	gridle_input = gridle_dispatchinput;
+	settings.in_internal = false;
+end
+
+local function launch(tbl)
+	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
+	push_video_context();
+
+-- can also be invoked from the context menus
+	if (launch_internal) then
+		play_audio(soundmap["LAUNCH_INTERNAL"]);
+		customview.gametbl = tbl;
+		settings.cleanup_toggle = cleanup;
+		if (valid_vid(internal_vid)) then delete_image(internal_vid); end
+		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
+		gridle_input = nil;
+	else
+		settings.in_internal = false;
+		play_audio(soundmap["LAUNCH_EXTERNAL"]);
+		launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+		pop_video_context();
+	end
+end
+
+
 local function effecttrig(label)
 	local shdr    = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. label, "bgeffect", {});
 	customview.bgshader = shdr;
+	customview.bgshader_label = label;
+
 	update_bgshdr();
 	settings.iodispatch["MENU_ESCAPE"]();
 end
@@ -331,14 +405,15 @@ local function positiondynamic(label)
 		vid = render_text(settings.colourtable.label_fontstr .. label);
 		switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
 		new_item(vid, "dynamic_media", string.lower(label));
-		customview.ci.tiled = true;
+		customview.ci.tiled  = true;
 	else
 		new_item(vid, "dynamic_media", string.lower(label));
 		customview.ci.tiled = false;
 	end
-	
-	customview.ci.width = VRESW * 0.1;
-	customview.ci.height = VRESH * 0.4;
+
+	customview.ci.width  = VRESW * 0.3;
+	customview.ci.height = VRESH * 0.3; 
+		
 	position_item(nil, vid, save_item);
 end
 
@@ -350,6 +425,8 @@ local function positionnavi(label)
 
 	new_item(vid, "navigator", label);
 	customview.ci.tiled = true;
+	customview.ci.width = VRESW * 0.3;
+	customview.ci.height = VRESH * 0.7;
 	position_item(label, vid, save_item);
 end
 
@@ -379,6 +456,7 @@ local function positionbg(label)
 	customview.ci.opa    = 1.0;
 	customview.ci.ang    = 0;
 	customview.ci.kind   = "background";
+	customview.ci.shader = customview.bgshader_label;
 	customview.ci.res    = "backgrounds/" .. label;
 
 	position_item(label, vid, save_item_bg);
@@ -390,7 +468,7 @@ local function save_config()
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
-		
+
 	for ind, val in ipairs(customview.itemlist) do
 		write_rawresource("local item = {};\n");
 		write_rawresource("item.x      = " .. val.x .. ";\n");
@@ -415,6 +493,10 @@ local function save_config()
 			write_rawresource("cview.navigator = item;\n");
 		elseif val.kind == "background" then
 			write_rawresource("item.res    = \"" .. val.res .."\";\n");
+			if (val.shader) then
+				write_rawresource("item.shader = \"" .. val.shader .. "\";\n");
+			end
+			
 			write_rawresource("cview.background = item;\n");
 		else
 			print("[customview:save_config] warning, unknown kind: " .. val.kind);
@@ -493,37 +575,155 @@ local function place_item( vid, tbl )
 	rotate_image(vid, tbl.ang);
 	resize_image(vid, tbl.width, tbl.height );
 	order_image(vid, tbl.order);
-	blend_image(vid, tbl.opa);
+	blend_image(vid, tbl.opa, 10);
+end
+
+local function update_dynamic(newtbl)
+	if (newtbl == nil or newtbl == customview.lasttbl) then
+		return;
+	end
+
+	customview.lasttbl = newtbl;
+	
+	for ind, val in ipairs(customview.temporary) do
+		if (valid_vid(val)) then 
+			expire_image(val, 10);
+		end
+	end
+
+	customview.temporary = {};
+	local restbl = resourcefinder_search( newtbl, true );
+	if (restbl) then
+
+		for ind, val in ipairs(customview.current.dynamic) do
+			reskey = remaptbl[val.res];
+
+			if (reskey and restbl[reskey] and #restbl[reskey] > 0) then
+				if (reskey == "movies") then
+					vid, aid = load_movie(restbl[reskey][1], FRAMESERVER_LOOP, function(source, status)
+						place_item(source, val);
+						play_movie(source);
+					end)
+					table.insert(customview.temporary, vid);	
+				else
+					vid = load_image_asynch(restbl[reskey][1], function(source, status)
+						place_item(source, val);
+					end);
+					table.insert(customview.temporary, vid);
+				end
+	
+			end
+			
+		end
+		
+	end
+end
+
+local function navi_change(navi, navitbl)
+		update_dynamic( navi:current_item() );
+
+		order_image( navi:drawable(), navitbl.order );
+		blend_image( navi:drawable(), navitbl.opa   );
 end
 
 local function setup_customview()
--- lookup / load navigator
 	local background = nil;
-	
 	for ind, val in ipairs( customview.current.static ) do
 		local vid = load_image( val.res );
 		place_item( vid, val );
 	end
 
--- load background effect (assign to first item with order 0)
+-- load background effect 
 	if (customview.current.background) then
 		vid = load_image( customview.current.background.res );
-		place_image(vid, customview.current.background);
-		
+		place_item(vid, customview.current.background);
+		if (customview.current.background.shader) then
+			local shdr    = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. customview.current.background.shader, "bgeffect", {});
+			customview.bgshader = shdr;
+
+			local props = image_surface_properties(vid);
+			shader_uniform(shdr, "display", "ff", PERSIST, props.width, props.height);
+			image_shader(vid, shdr);
+		end
 	end
 
 -- remap I/O functions to fit navigator
+	olddispatch = settings.iodispatch;
+	settings.iodispatch = {};
+	
+	if (customview.current.navigator) then
+		customview.navigator = system_load("customview/" .. customview.current.navigator.res .. ".lua")();
+		local navi = customview.navigator;
+		local navitbl = customview.current.navigator;
+		
+-- dstvid is the clipping region, so shouldn't really shared order etc. as it is invisible
+-- but when it is dropped, it can cascade to the members of the navigator 
+		dstvid = navi:create(navitbl.width, navitbl.height);
+		navi:update_list(settings.games);
+		
+-- order and opacity doesn't apply to anchor, just to drawable
+		move_image(dstvid, navitbl.x, navitbl.y);
+		rotate_image(dstvid, navitbl.ang);
+
+		settings.iodispatch["MENU_UP"]   = function()
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
+			navi:up(1);
+			navi_change(navi, navitbl);
+		end
+
+		settings.iodispatch["MENU_DOWN"] = function() 
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
+			navi:down(1); 
+			navi_change(navi, navitbl);
+		end
+
+		settings.iodispatch["MENU_LEFT"] = function() 
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
+			navi:left(1);
+			navi_change(navi, navitbl);
+		end
+
+		settings.iodispatch["MENU_RIGHT"] = function()
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
+			navi:right(1);
+			navi_change(navi, navitbl);
+		end
+
+		settings.iodispatch["MENU_SELECT"] = function()
+			local res = navi:trigger_selected();
+			if (res ~= nil) then
+				res.capabilities = launch_target_capabilities( res.target )
+				launch(res);
+			else
+				navi_change(navi, navitbl);
+			end
+		end
+		
+		settings.iodispatch["MENU_ESCAPE"] = function()
+			if ( navi:escape() ) then
+				pop_video_context();
+				settings.iodispatch = olddispatch;
+				setup_gridview();
+				build_grid(settings.cell_width, settings.cell_height);
+			else
+				navi_change(navi, navitbl);
+			end
+		end
+
+		customview.dispatchtbl = settings.iodispatch;
+	end
 	
 end
 
 function gridle_customview()
 	local disptbl;
-
+	
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
 	if (customview.in_config and resource("customview_cfg.lua")) then
 		customview.current = system_load("customview_cfg.lua")();
+		imagery.sysicons = nil;
 		
 		if (customview.current) then
 			customview.in_config = false;
