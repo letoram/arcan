@@ -266,7 +266,6 @@ function gridle()
 	
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeatrate);
---	Trace();
 	
 -- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
@@ -374,7 +373,6 @@ function gridle()
 	
 	gridle_keyconf();
 	gridle_ledconf();
-	
 end
 
 -- to save resources when going from customview to grid view
@@ -403,6 +401,8 @@ function setup_gridview()
 
 	imagery.magnifyimage = load_image("images/magnify.png");
 	image_tracetag(imagery.magnifyimage, "detailview icon");
+
+	settings.cleanup_toggle = gridle_internalcleanup;
 
 	osdkbd = osdkbd_create();
 	osdkbd:hide();
@@ -526,10 +526,7 @@ if (valid_vid(imagery.backdrop)) then
 		end
 end
 	
-function gridle_load_internal_extras()
-	local restbl = current_game().resources
-	local tgt    = current_game().target
-	
+function gridle_load_internal_extras(restbl, tgt)
 	if (restbl) then
 		if (restbl.bezels and restbl.bezels[1]) then 
 			imagery.bezel = load_image_asynch(restbl.bezels[1]);
@@ -554,7 +551,7 @@ end
 
 function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
-	gridle_load_internal_extras();
+	gridle_load_internal_extras(current_game().resources, current_game().target);
 	
 	if (settings.autosave == "On") then
 		internal_statectl("auto", false);
@@ -1006,6 +1003,8 @@ function grab_sysicons()
 		for ind, val in ipairs(list) do
 			local sysname = string.sub(val, 1, -5);
 			local imgid = load_image("images/systems/" .. val);
+			print("loaded", sysname);
+			
 			if (imgid) then
 				imagery.sysicons[sysname] = imgid;
 				image_tracetag(imgid, "system icon");
@@ -1594,7 +1593,7 @@ function gridle_internalinput(iotbl)
 				if (valid_vid(imagery.record_target)) then
 					disable_record()
 				elseif escape_locked == nil or escape_locked == false then 
-					gridle_internalcleanup();
+					settings.cleanup_toggle();
 				end
 
 			elseif (val == "MENU_TOGGLE") then

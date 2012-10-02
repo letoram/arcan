@@ -2133,13 +2133,6 @@ int arcan_lua_rawsurface(lua_State* ctx)
 	return 0;
 }
 
-/* hook up a monitor (either to specific aid or global),
- * map it to a samplelen float texture */
-int arcan_lua_waveformsurface(lua_State* ctx)
-{
-	return 1;
-}
-
 #if _WIN32
 /* mingw headers miss this one for some reason, but it's still in the header */
 int random(void);
@@ -3564,7 +3557,6 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "text_dimensions", arcan_lua_strsize);
 	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
 	arcan_lua_register(ctx, "raw_surface", arcan_lua_rawsurface);
-	arcan_lua_register(ctx, "waveform_surface", arcan_lua_waveformsurface);
 	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
 	arcan_lua_register(ctx, "define_recordtarget", arcan_lua_recordset);
 	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);
