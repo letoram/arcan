@@ -455,6 +455,12 @@ static inline void targetev(arcan_event* ev)
 			retroctx.pause = true;
 		break;
 
+/* can safely assume there are no other events in the queue after this one,
+ * more important for encode etc. that need to flush codecs */
+		case TARGET_COMMAND_EXIT:
+			return; 
+		break;
+		
 		case TARGET_COMMAND_UNPAUSE:
 			retroctx.pause = false;
 			retroctx.basetime = frameserver_timemillis() + retroctx.framecount * retroctx.mspf;
@@ -469,7 +475,7 @@ static inline void targetev(arcan_event* ev)
 		case TARGET_COMMAND_STEPFRAME:
 			if (tgt->ioevs[0].iv < 0);
 				else
-					while(tgt->ioevs[0].iv--){ retroctx.run(); }
+					while(tgt->ioevs[0].iv-- && retroctx.shmcont.addr->dms){ retroctx.run(); }
 		break;
 
 /* store / rewind operate on the last FD set through FDtransfer */
@@ -519,12 +525,17 @@ static inline void flush_eventq(){
 	 do
 		while ( (ev = arcan_event_poll(&retroctx.inevq)) ){
 			switch (ev->category){
-				case EVENT_IO: ioev_ctxtbl(ev); break;
-				case EVENT_TARGET: targetev(ev); break;
+				case EVENT_IO:
+					ioev_ctxtbl(ev); 
+				break;
+				
+				case EVENT_TARGET: 
+					targetev(ev); 
+				break;
 			}
 		}
+/* Only pause if the DMS isn't released */
 		while (retroctx.shmcont.addr->dms &&
-/* only pause if the DMS isn't released */
 			retroctx.pause && (frameserver_delay(1), 1));
 }
 

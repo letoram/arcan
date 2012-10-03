@@ -26,13 +26,6 @@
 #define ARCAN_ASTREAMBUF_LLIMIT 4096 
 struct arcan_aobj_cell;
 
-enum aobj_kind {
-	AOBJ_STREAM,
-	AOBJ_SAMPLE,
-	AOBJ_FRAMESTREAM,
-	AOBJ_PROXY
-};
-
 typedef struct arcan_aobj {
 /* shared */
 	arcan_aobj_id id;

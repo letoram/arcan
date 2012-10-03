@@ -407,6 +407,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
 	unsigned vbr = 0, abr = 0, samplerate = 44100, channels = 2;
+	bool noaudio = false;
 	float fps    = 25;
 
 /* decode encoding options from the resourcestr * -l */
@@ -452,6 +453,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 			else if (strcmp(base, "fps") == 0)
 /* videoframes per second */
 				fps = strtof(splitp, NULL);
+			else if (strcmp(base, "noaudio") == 0)
+				noaudio = true;
 
 			else
 				LOG("arcan_frameserver(encode) -- parsing resource string, unknown base : %s\n", base);
@@ -510,11 +513,11 @@ static bool setup_ffmpeg_encode(const char* resource)
 		}
 	}
 
-	if (video.storage.audio.codec){
+	if (!noaudio && video.storage.audio.codec){
 		if ( audio.setup.audio(&audio, channels, samplerate, abr) ){
-			ffmpegctx.encabuf_sz = SHMPAGE_AUDIOBUF_SIZE * 2;
-			ffmpegctx.encabuf_ofs= 0;
-			ffmpegctx.encabuf    = av_malloc(ffmpegctx.encabuf_sz);
+			ffmpegctx.encabuf_sz     = SHMPAGE_AUDIOBUF_SIZE * 2;
+			ffmpegctx.encabuf_ofs    = 0;
+			ffmpegctx.encabuf        = av_malloc(ffmpegctx.encabuf_sz);
 
 			ffmpegctx.astream        = av_new_stream(muxer.storage.container.context, contextc++);
 			ffmpegctx.acontext       = audio.storage.audio.context;

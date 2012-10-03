@@ -8,6 +8,14 @@ restbl.name = "list";
 restbl.create = function(self, width, height) 
 	self.clipregion = fill_surface(width, height, 0, 0, 0);
 	self.selector   = fill_surface(width, settings.colourtable.font_size + 2, 0, 40, 200);
+
+-- icon collections etc. for mame and friends.
+	local tmp = glob_resource("icons/*.ico", ALL_RESOURCES);
+	self.icons = {};
+	for ind,val in ipairs(tmp) do
+		self.icons[val] = true;
+	end
+
 	link_image(self.selector, self.clipregion);
 	image_clip_on(self.selector);
 	image_mask_clear(self.selector, MASK_OPACITY);
@@ -41,7 +49,18 @@ restbl.select_random = function(self, fv)
 end
 
 restbl.get_linestr = function(self, gametbl)
-	return gametbl.title;
+	local res = gametbl.title;
+
+	if self.icons[gametbl.setname .. ".ico"] then
+		res = [[\P16,16,icons/]] .. gametbl.setname .. ".ico," .. res;
+	end 
+
+	print(gametbl.target);
+	if self.icons[gametbl.target .. ".ico"] then
+		res = [[\P16,16,icons/]] .. gametbl.target .. ".ico," .. res;
+	end
+
+	return res;	
 end
 
 restbl.redraw = function(self)

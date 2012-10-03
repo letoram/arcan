@@ -322,6 +322,8 @@ local function positionfun(label)
 	end
 end
 
+local cleanup = nil;
+
 local function customview_internal(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
@@ -351,14 +353,33 @@ local function customview_internal(source, datatbl)
 end
 
 local function cleanup()
-	if (settings.autosave == "On" and valid_vid(internal_vid)) then 
-		internal_statectl("auto", true); 
+
+	local resetview = function()
+		pop_video_context();
+		settings.iodispatch = customview.dispatchtbl;
+		gridle_input = gridle_dispatchinput;
+		settings.in_internal = false;
 	end
 
-	pop_video_context();
-	settings.iodispatch = customview.dispatchtbl;
-	gridle_input = gridle_dispatchinput;
-	settings.in_internal = false;
+-- setup a quick timer, wait 20 ticks for autosave etc. to finish THEN cleanup.
+	if (settings.autosave == "On" and valid_vid(internal_vid)) then 
+		local counter = 20;
+		blend_image(internal_vid, 0.0, 20);
+		audio_gain(internal_aid, 0.0, 20);
+		
+		internal_statectl("auto", true); 
+		gridle_clock_pulse = function() 
+			if counter > 0 then
+				counter = counter - 1;
+			else
+				resetview();
+				gridle_clock_pulse = nil;
+			end
+		end
+	else
+-- no autosave, pop_video_context is safe
+		resetview();
+	end
 end
 
 local function launch(tbl)
@@ -370,9 +391,15 @@ local function launch(tbl)
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		customview.gametbl = tbl;
 		settings.cleanup_toggle = cleanup;
+
 		if (valid_vid(internal_vid)) then delete_image(internal_vid); end
+
+-- replace this one so that file-name, config names etc. are correct when emitted from intmenus
+		current_game = function() return tbl; end
+
 		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
 		gridle_input = nil;
+
 	else
 		settings.in_internal = false;
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -380,7 +407,6 @@ local function launch(tbl)
 		pop_video_context();
 	end
 end
-
 
 local function effecttrig(label)
 	local shdr    = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. label, "bgeffect", {});
@@ -437,6 +463,11 @@ local function positionbg(label)
 	if (vid == BADID) then return; end
 	
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT, vid );
+	if (customview.ci.tiled) then
+		local props = image_surface_initial_properties(imgvid);
+		image_scale_txcos(imgvid, customview.ci.width / props.width, customview.ci.height / props.height);
+	end
+	
 	local props = image_storage_properties(vid);
 	
 	customview.ci = {};
@@ -468,16 +499,17 @@ local function save_config()
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
-
+	write_rawresource("cview.aspect = " .. tostring( VRESW / VRESH ) .. ";\n");
+	
 	for ind, val in ipairs(customview.itemlist) do
 		write_rawresource("local item = {};\n");
-		write_rawresource("item.x      = " .. val.x .. ";\n");
-		write_rawresource("item.y      = " .. val.y .. ";\n");
+		write_rawresource("item.x      = " .. tostring( val.x / VRESW ) .. ";\n");
+		write_rawresource("item.y      = " .. tostring( val.y / VRESH ) .. ";\n");
 		write_rawresource("item.order  = " .. val.zv .. ";\n");
 		write_rawresource("item.opa    = " .. val.opa .. ";\n");
 		write_rawresource("item.ang    = " .. val.ang .. ";\n");
-		write_rawresource("item.width  = " .. val.width .. ";\n");
-		write_rawresource("item.height = " .. val.height .. ";\n");
+		write_rawresource("item.width  = " .. tostring(val.width / VRESW ) .. ";\n");
+		write_rawresource("item.height = " .. tostring(val.height / VRESH ) .. ";\n");
 		write_rawresource("item.tiled  = " .. tostring(val.tiled == true) .. ";\n");
 		
 		if val.kind == "static_media" then
@@ -539,15 +571,15 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer"}, positiondynamic));
+	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart"}, positiondynamic));
 	--add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ingore", gen_tbl_menu("ignore", {"Times Played"}
-	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"List"}, positionnavi));
+	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
 	table.insert(mainlbls, "---");
 	table.insert(mainlbls, "Save/Finish");
-	table.insert(mainlbls, "Quit");
+	table.insert(mainlbls, "Cancel");
 	
-	mainptrs["Quit"] = function(label, save)
+	mainptrs["Cancel"] = function(label, save)
 		while current_menu ~= nil do
 			current_menu:destroy();
 			current_menu = current_menu.parent;
@@ -557,7 +589,6 @@ local function show_config()
 		settings.iodispatch = customview_display;
 		pop_video_context();
 		setup_gridview();
-		build_grid(settings.cell_width, settings.cell_height);
 	end
 	
 	mainptrs["Save/Finish"] = save_config;
@@ -571,9 +602,14 @@ local function show_config()
 end
 
 local function place_item( vid, tbl )
-	move_image(vid, tbl.x, tbl.y);
+	local x = math.floor(tbl.x * VRESW);
+	local y = math.floor(tbl.y * VRESH);
+	local w = math.floor(tbl.width * VRESW);
+	local h = math.floor(tbl.height* VRESH);
+	
+	move_image(vid, x, y);
 	rotate_image(vid, tbl.ang);
-	resize_image(vid, tbl.width, tbl.height );
+	resize_image(vid, w, h);
 	order_image(vid, tbl.order);
 	blend_image(vid, tbl.opa, 10);
 end
@@ -641,7 +677,14 @@ local function setup_customview()
 			local shdr    = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. customview.current.background.shader, "bgeffect", {});
 			customview.bgshader = shdr;
 
-			local props = image_surface_properties(vid);
+			local props  = image_surface_properties(vid);
+			local iprops = image_surface_initial_properties(vid);
+
+			if (customview.current.background.tiled) then
+				switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
+				image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
+			end
+
 			shader_uniform(shdr, "display", "ff", PERSIST, props.width, props.height);
 			image_shader(vid, shdr);
 		end
@@ -658,11 +701,11 @@ local function setup_customview()
 		
 -- dstvid is the clipping region, so shouldn't really shared order etc. as it is invisible
 -- but when it is dropped, it can cascade to the members of the navigator 
-		dstvid = navi:create(navitbl.width, navitbl.height);
+		dstvid = navi:create(math.floor(navitbl.width * VRESW), math.floor(navitbl.height * VRESH));
 		navi:update_list(settings.games);
 		
 -- order and opacity doesn't apply to anchor, just to drawable
-		move_image(dstvid, navitbl.x, navitbl.y);
+		move_image(dstvid, math.floor(navitbl.x * VRESW), math.floor(navitbl.y * VRESH));
 		rotate_image(dstvid, navitbl.ang);
 
 		settings.iodispatch["MENU_UP"]   = function()
@@ -704,7 +747,6 @@ local function setup_customview()
 				pop_video_context();
 				settings.iodispatch = olddispatch;
 				setup_gridview();
-				build_grid(settings.cell_width, settings.cell_height);
 			else
 				navi_change(navi, navitbl);
 			end
@@ -721,9 +763,10 @@ function gridle_customview()
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
-	if (customview.in_config and resource("customview_cfg.lua")) then
+	pop_video_context();
+
+	if (resource("customview_cfg.lua")) then
 		customview.current = system_load("customview_cfg.lua")();
-		imagery.sysicons = nil;
 		
 		if (customview.current) then
 			customview.in_config = false;
@@ -732,7 +775,6 @@ function gridle_customview()
 		end
 		
 	else
-		pop_video_context();
 		disptbl = show_config();
 	end
 	
