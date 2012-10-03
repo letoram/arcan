@@ -364,7 +364,6 @@ function gridle()
 		
 	else
 		setup_gridview();
-		build_grid(settings.cell_width, settings.cell_height);
 	end
 	
 	build_fadefunctions();
@@ -403,7 +402,12 @@ function setup_gridview()
 	image_tracetag(imagery.magnifyimage, "detailview icon");
 
 	settings.cleanup_toggle = gridle_internalcleanup;
+	build_grid(settings.cell_width, settings.cell_height);
 
+	current_game = function() 
+		return settings.games[settings.cursor + settings.pageofs + 1];
+	end
+	
 	osdkbd = osdkbd_create();
 	osdkbd:hide();
 end
@@ -593,6 +597,9 @@ function gridle_keyconf()
 	local keylabels = {
 		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " LIST_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
+
+	local helplabels = {};
+
 	local listlbls = {};
 	local lastofs = 1;
 	
@@ -698,14 +705,9 @@ function current_game_cellid()
 	return settings.cursor + settings.pageofs + 1;
 end
 
-function current_game()
-	return settings.games[settings.cursor + settings.pageofs + 1];
-end
-
 -- ncc (number of cells per page)
 -- num within 1..#settings.games
 -- gives page and offset from page base.
-
 function page_calc(num)
 	num = num - 1;
 	local pageofs = math.floor( num / ncc ) * ncc;
@@ -996,19 +998,16 @@ end
 
 -- load icons used for title "background" (if there's no snapshot handy and that mode is set)
 function grab_sysicons()
-	if (imagery.sysicons == nil and settings.tilebg == "Sysicons") then
-		list = glob_resource("images/systems/*.png", ALL_RESOURCES);
+	list = glob_resource("images/systems/*.png", ALL_RESOURCES);
 
-		imagery.sysicons = {};
-		for ind, val in ipairs(list) do
-			local sysname = string.sub(val, 1, -5);
-			local imgid = load_image("images/systems/" .. val);
-			print("loaded", sysname);
+	imagery.sysicons = {};
+	for ind, val in ipairs(list) do
+		local sysname = string.sub(val, 1, -5);
+		local imgid = load_image("images/systems/" .. val);
 			
-			if (imgid) then
-				imagery.sysicons[sysname] = imgid;
-				image_tracetag(imgid, "system icon");
-			end
+		if (imgid) then
+			imagery.sysicons[sysname] = imgid;
+			image_tracetag(imgid, "system icon");
 		end
 	end
 end

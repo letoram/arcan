@@ -2833,11 +2833,11 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				char* metastr = resourcestr; /* for lib / frameserver targets, we assume that the argumentlist is just [romsetfull] */
 				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){ /* launch_options adds exec path first, we already know that one */
 					size_t arglen = strlen(resourcestr) + 1 + strlen(cmdline.data.strarr[1]) + 1;
-					
+
 					metastr = (char*) malloc( arglen );
 					snprintf(metastr, arglen, "%s:%s", resourcestr, cmdline.data.strarr[1]);
 				}
-			
+
 				arcan_frameserver* intarget = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 				intarget->tag = ref;
 				intarget->nopts = true;
@@ -2848,7 +2848,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					.args.builtin.resource = metastr,
 					.args.builtin.mode = "libretro"
 				};
-				
+
 				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
 					arcan_db_launch_counter_increment(dbhandle, gameid);
@@ -2933,7 +2933,7 @@ int arcan_lua_recordset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	const char* resf  = luaL_checkstring(ctx, 2);
-	const char* argl  = luaL_checkstring(ctx, 3);
+	char* argl        = strdup( luaL_checkstring(ctx, 3) );
 	int nvids         = lua_rawlen(ctx, 4);
 	int naids         = lua_rawlen(ctx, 5);
 	int detach        = luaL_checkint(ctx, 6);
@@ -2944,17 +2944,17 @@ int arcan_lua_recordset(lua_State* ctx)
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 6, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
-		return 0;
+		goto cleanup;
 	}
 	
 	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 7, expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
-		return 0;
+		goto cleanup;
 	}
 	
 	if (pollrate == 0){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 8, expected n < 0 (every n frame) or n > 0 (every n tick)\n", pollrate);
-		return 0;
+		goto cleanup;
 	}
 	
 	if (nvids > 0){
@@ -2967,13 +2967,13 @@ int arcan_lua_recordset(lua_State* ctx)
 		}
 	}
 	else{
-		arcan_warning("arcan_lua_recordset(%d), empty source vid set -- global capture unimplemented.\n"); 
-		return 0;
+		arcan_warning("arcan_lua_recordset(%d), empty source vid set -- global capture unimplemented.\n");
+		goto cleanup;
 	}
 
 	arcan_aobj_id* aidlocks = NULL;
 	unsigned n_aidlocks = abs(naids);
-	
+
 	if (naids > 0){
 		aidlocks = malloc(sizeof(arcan_aobj_id) * naids + 1);
 		aidlocks[naids] = 0; /* terminate */
@@ -2981,15 +2981,28 @@ int arcan_lua_recordset(lua_State* ctx)
 		if (naids > 1){
 			arcan_warning("arcan_lua_recordset(%d), multiple source aid set -- only first source will be considered, mixing currently unimplemented.\n");
 		}
-		
+
 /* can't hook the monitors until we have the frameserver in place */
 		for (int i = 0; i < naids; i++){
 			lua_rawgeti(ctx, 5, i+1);
 			arcan_aobj_id setaid = luaaid_toaid( lua_tonumber(ctx, -1) );
+
+			if (arcan_audio_kind(setaid) != AOBJ_STREAM){
+				arcan_warning("arcan_lua_recordset(%d), unsupported AID source type, only STREAMs currently supported. Audio recording disabled.\n");
+				free(aidlocks);
+				aidlocks = NULL;
+				naids = 0;
+				char* ol = malloc(strlen(argl) + 13 + 1);
+				sprintf(ol, "%s%s", argl, ":noaudio=true");
+				free(argl);
+				argl = ol;
+				break;
+			}
+
 			aidlocks[i] = setaid;
 		}
 	}
-	
+
 /*  in order to stay backward compatible API wise, the load_movie with function callback
  *  will always need to specify loop condition. */
 	if (lua_isfunction(ctx, 8) && !lua_iscfunction(ctx, 8)){
@@ -3022,14 +3035,14 @@ int arcan_lua_recordset(lua_State* ctx)
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
 		shmpage->storage.w = dobj->gl_storage.w;
 		shmpage->storage.h = dobj->gl_storage.h;
-		
+
 /* separate storage and display dimensions to allow for scaling hints, or cropping */
-		shmpage->display.w = dobj->gl_storage.w;
-		shmpage->display.h = dobj->gl_storage.h;
+		shmpage->display.w   = dobj->gl_storage.w;
+		shmpage->display.h   = dobj->gl_storage.h;
 		shmpage->storage.bpp = 4;
-		shmpage->channels = 2;
-		shmpage->samplerate = 44100;
-		
+		shmpage->channels    = 2;
+		shmpage->samplerate  = 44100;
+
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
 /* pushing the file descriptor signals the frameserver to start receiving (and use the proper dimensions),
@@ -3050,6 +3063,8 @@ int arcan_lua_recordset(lua_State* ctx)
 	else 
 		free(mvctx);
 
+cleanup:
+	free(argl);
 	return 0;
 }
 

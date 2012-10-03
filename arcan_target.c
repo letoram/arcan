@@ -446,6 +446,7 @@ static void toggle_ntscfilter()
 	
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 }
+
 void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 {
 	switch (kind)
@@ -458,6 +459,10 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 		case TARGET_COMMAND_VECTOR_POINTSIZE:
 			global.update_vector = true;
 			global.point_size = ev->ioevs[0].fv;
+		break;
+	
+		case TARGET_COMMAND_EXIT:
+			exit(0);
 		break;
 		
 		case TARGET_COMMAND_NTSCFILTER: 
@@ -512,6 +517,7 @@ static void push_ntsc()
 	size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
 /* only draw on every other line, so we can easily mix or blend interleaved */
 	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, width, 0, width, height, global.vidp, linew * 2);
+
 	for (int row = 1; row < height * 2; row += 2)
 		memcpy(&global.vidp[row * linew], &global.vidp[(row-1) * linew], linew);
 }
@@ -614,37 +620,49 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface *
 /* 
  * The OpenGL case is easier, but perhaps a bit pricier .. 
  */
+#define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
+
 void ARCAN_SDL_GL_SwapBuffers()
 {
-	glReadBuffer(GL_BACK_LEFT);
-	/* the assumption as to the performance impact of this is that if it is aligned to the
-	 * buffer swap, we're at a point in any 3d engine where there will be a natural pause
-	 * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
-	 * increase when using PBOs. The 2D-in-GL edgecase could probably get an additional boost
-	 * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
 	trace("CopySurface(GL:pre)\n");
+
 	sem_wait(global.shared.vsem);
-	if (global.shared.addr->dms == false){
-		/* parent dead, quit gracefully */
+	if (!global.shared.addr->dms)
+		return;
+	
+	glReadBuffer(GL_BACK_LEFT);
+/* the assumption as to the performance impact of this is that if it is aligned to the
+ * buffer swap, we're at a point in any 3d engine where there will be a natural pause
+ * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
+ * increase when using PBOs. The 2D-in-GL edgecase could probably get an additional boost
+ * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
+
+	glReadPixels(0, 0, global.width, global.height, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
+
+/* seems like several driver combinations implement readback swizzling in a broken way, use RGBA and convert manually. */
+	if (global.ntscconv){
+		uint16_t* dbuf = global.ntsc_imb;
+		uint8_t*   inb = (uint8_t*) global.vidp;
+	
+		for (int y = 0; y < global.height; y++)
+			for (int x = 0; x < global.width; x++){
+				*dbuf++ = RGB565(inb[2], inb[1], inb[0]);
+				inb += 4;
+			}
+
+		push_ntsc();
 	}
-	else{
+
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-		if (global.ntscconv) {
-			trace("glSwapBuffers(%d, %d) - ntsconv\n", global.width, global.height);
-			glReadPixels(0, 0, global.width, global.height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5_REV, global.ntsc_imb);
-			push_ntsc();
-		}
-		else
-			glReadPixels(0, 0, global.width, global.height, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
-		
-		global.shared.addr->storage.glsource = true;
-		global.shared.addr->vready = true;
-	}
+			
+	global.shared.addr->storage.glsource = true;
+	global.shared.addr->vready = true;
+
 	trace("CopySurface(GL:post)");
 	
-/* can't be done in the target event handler as it might be in a different threading context */
+/* can't be done in the target event handler as it might be in a different thread and thus GL context */
 	if (global.update_vector){
 		forwardtbl.glPointSize(global.point_size);
 		forwardtbl.glLineWidth(global.line_size);

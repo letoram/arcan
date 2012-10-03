@@ -674,7 +674,11 @@ function gridlemenu_settings()
 		movievid = nil;
 	end
 
-	current_menu = listview_create(menulbls, VRESH * 0.9, VRESW / 3);
+	-- add an info window
+	update_status();
+	local props = image_surface_properties(settings.statuslist.border, 5);
+
+	current_menu = listview_create(menulbls, (VRESH - props.height) * 0.9, VRESW / 3);
 	current_menu.ptrs = {};
 	current_menu.ptrs["Game Lists..."] = function() menu_spawnmenu( build_gamelists() ); end
 	current_menu.ptrs["Filters..."]    = function() menu_spawnmenu( update_filterlist() ); end
@@ -684,7 +688,5 @@ function gridlemenu_settings()
 	current_menu.gamecount = #settings.games;
 	current_menu:show();
 	
--- add an info window
-	update_status();
-	move_image(current_menu.anchor, 100, 140, settings.fadedelay);
+	move_image(current_menu.anchor, 5, props.y + props.height + (VRESH - props.height) * 0.09, settings.fadedelay);
 end

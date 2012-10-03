@@ -74,16 +74,27 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
+
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 	
-/* might have died prematurely (framequeue cbs), no reason sending signal */
- 		if (src->child_alive) {
-			kill(src->child, SIGHUP);
+/* might have died prematurely (framequeue cbs), no reason sending signal, even if this is ignored
+ * (say, hijack libraries in processes with installed signal handler, a corresponding exit event
+ * will be in the queue as well, along with the dms trigger */
+		if (src->child_alive) {
+			shmpage->dms = false;
+
+			arcan_event exev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_EXIT
+			};
+
+			arcan_frameserver_pushevent(src, &exev);
+
+			kill(src->child, SIGTERM);
 			src->child_alive = false;
 			waitpid(src->child, NULL, 0);
 			src->child = 0;
 		}
-		
-		struct movie_shmpage* shmpage = (struct movie_shmpage*) src->shm.ptr;
 
 /* unhook audio monitors */
 		arcan_aobj_id* base = src->alocks;
@@ -155,7 +166,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			.iov_base = &empty,
 			.iov_len = 1
 		};
-		
+	
 		struct msghdr msg = {
 			.msg_name = NULL,
 			.msg_namelen = 0,
@@ -165,7 +176,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			.msg_control = &msgbuf,
 			.msg_controllen = sizeof(struct cmsghdr) + sizeof(int)
 		};
-		
+
 		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
 		cmsg->cmsg_len = msg.msg_controllen;
 		cmsg->cmsg_level = SOL_SOCKET;
@@ -226,7 +237,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		work[strlen(work) - 1] = 'e';
 		ctx->esync = sem_open(work, 0);	
 	free(work);
-		
+
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
 	ftruncate(shmfd, shmsize);

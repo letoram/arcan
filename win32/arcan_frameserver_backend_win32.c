@@ -69,8 +69,19 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (src->lock_audb)
 			SDL_DestroyMutex(src->lock_audb);
 
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+
 	/* might have died prematurely (framequeue cbs), no reason sending signal */
  		if (src->child_alive) {
+			shmpage->dms = false;
+			
+			arcan_event exev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_EXIT
+			};
+
+			arcan_frameserver_pushevent(src, &exev);
+			
 			UINT ec;
 			SafeTerminateProcess(src->child, &ec);
 			src->child_alive = false;
@@ -78,7 +89,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		}
 
 		free(src->audb);
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);
@@ -117,22 +127,21 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 	HINSTANCE hKernel = GetModuleHandle("Kernel32");
 	BOOL bSuccess = FALSE;
 	BOOL bDup = DuplicateHandle(GetCurrentProcess(),
-	                            hProcess,
-	                            GetCurrentProcess(),
-	                            &hProcessDup,
-	                            PROCESS_ALL_ACCESS,
-	                            FALSE,
-	                            0);
+		hProcess,
+		GetCurrentProcess(),
+		&hProcessDup,
+		PROCESS_ALL_ACCESS,
+		FALSE,
+		0);
 
-	if (GetExitCodeProcess((bDup) ? hProcessDup : hProcess, &dwCode) &&
-	        (dwCode == STILL_ACTIVE)) {
+	if (GetExitCodeProcess((bDup) ? hProcessDup : hProcess, &dwCode) && (dwCode == STILL_ACTIVE)) {
 		FARPROC pfnExitProc;
 		pfnExitProc = GetProcAddress(hKernel, "ExitProcess");
 		hRT = CreateRemoteThread((bDup) ? hProcessDup : hProcess,
-		                         NULL,
-		                         0,
-		                         (LPTHREAD_START_ROUTINE)pfnExitProc,
-		                         (PVOID)uExitCode, 0, &dwTID);
+			NULL,
+			0,
+			(LPTHREAD_START_ROUTINE)pfnExitProc,
+			(PVOID)uExitCode, 0, &dwTID);
 
 		if (hRT == NULL)
 			dwErr = GetLastError();

@@ -54,15 +54,35 @@ enum ARCAN_EVENT_SYSTEM {
 };
 
 enum ARCAN_TARGET_COMMAND {
+/* notify that the child will be shut down / killed,
+ * this happens in three steps (1) dms is released, (2) exit is enqueued, (3) sigterm is sent. */
+	TARGET_COMMAND_EXIT,
+	
+/* notify that there is a file descriptor to be retrieved and set as the input/output fd for other
+ * command events */
 	TARGET_COMMAND_FDTRANSFER,
+	
+/* hinting event for frameskip modes (auto, process every n frames, singlestep) */
 	TARGET_COMMAND_FRAMESKIP,
-	TARGET_COMMAND_STORE,
-	TARGET_COMMAND_RESTORE,
-	TARGET_COMMAND_RESET,
-	TARGET_COMMAND_PAUSE,
-	TARGET_COMMAND_SETIODEV,
-	TARGET_COMMAND_UNPAUSE,
 	TARGET_COMMAND_STEPFRAME,
+	
+/* hinting event for pushing state to the suggested file-descriptor */
+	TARGET_COMMAND_STORE,
+	
+/* hinting event for restoring state from the suuggested file-descriptor */
+	TARGET_COMMAND_RESTORE,
+	
+/* hinting event for reseting state to the first known initial steady one */
+	TARGET_COMMAND_RESET,
+	
+/* hinting event for attempting to block the entire process until unpause is triggered */
+	TARGET_COMMAND_PAUSE,
+	TARGET_COMMAND_UNPAUSE,
+	
+/* plug in device of a specific kind in a set port */
+	TARGET_COMMAND_SETIODEV,
+	
+/* specialized output hinting */
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
 	TARGET_COMMAND_NTSCFILTER,

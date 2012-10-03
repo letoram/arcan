@@ -25,6 +25,13 @@
 /* TODO: a lot of old cruft in here, should be replaced with sample management and frameserver playback,
  * specific audio format support etc. will be thrown out the door */
 
+enum aobj_kind {
+	AOBJ_INVALID,
+	AOBJ_STREAM,
+	AOBJ_SAMPLE,
+	AOBJ_FRAMESTREAM,
+	AOBJ_PROXY
+};
 struct arcan_aobj;
 
 /* this one is shady at best, patchwork to get audio - movie deps. allover the place
@@ -89,6 +96,8 @@ int arcan_audio_findstreambufslot(arcan_aobj_id id);
  * we don't want to interfere with a targets buffering too much
  * and just implement our transformations client- side */
 arcan_aobj_id arcan_audio_proxy(arcan_again_cb feed, void* tag);
+enum aobj_atypes arcan_audio_kind(arcan_aobj_id);
+
 arcan_aobj_id arcan_audio_alterfeedio_stream(const char* uri, enum aobj_atypes type, arcan_errc* errc);
 
 /* destroy an audio object and everything associated with it */

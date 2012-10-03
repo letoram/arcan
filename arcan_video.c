@@ -2052,7 +2052,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 /* self-reference gone */
 	vobj->extrefc.attachments--;
-	assert(vobj->extrefc.attachments == 0);
+//	assert(vobj->extrefc.attachments == 0);
 	
 /* sweep the list of rendertarget children */
 	base = dpool;
@@ -2217,7 +2217,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	if (vobj->extrefc.attachments + vobj->extrefc.framesets + vobj->extrefc.links + vobj->extrefc.instances > 0 && vobj->tracetag){
 		arcan_warning("-- reference integrity failure on (%s)\n", vobj->tracetag);
 	}
-	assert(vobj->extrefc.attachments == 0);
+
+//	assert(vobj->extrefc.attachments == 0);
 	assert(vobj->extrefc.framesets == 0);
 	assert(vobj->extrefc.links == 0);
 	assert(vobj->extrefc.instances == 0);
