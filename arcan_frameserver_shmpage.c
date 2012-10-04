@@ -286,13 +286,11 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 		arg->addr->samplerate = ceil(freq);
 
 		if (frameserver_shmpage_integrity_check(arg->addr)){
-			fprintf(stderr, "-- child: resizing\n");
 			arg->addr->resized = true;
 
 /* spinlock until acknowledged */
 			while(arg->addr->resized);
 
-			fprintf(stderr, "-- child: acknowledged\n");
 			return true;
 		}
 	}

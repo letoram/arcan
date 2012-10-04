@@ -2963,6 +2963,7 @@ int arcan_lua_recordset(lua_State* ctx)
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 4, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
+			arcan_warning("detach? %d, %d\n", detach, setvid);
 			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
 		}
 	}

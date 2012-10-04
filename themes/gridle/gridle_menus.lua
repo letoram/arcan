@@ -165,7 +165,6 @@ local filterlbls = {
 
 local settingslbls = {
 	"Sort Order...",
-	"Cell Size...",
 	"Reconfigure Keys (Full)",
 	"Reconfigure Keys (Players)",
 };
@@ -249,24 +248,32 @@ local function launchmodeupdate(label, save)
 	end
 end
 
+
 local backgroundptrs = {};
+local gridviewlbls   = {};
+local gridviewptrs   = {};
+
 add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, updatebgtrigger));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, updatebgtrigger));
 add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, updatebgtrigger));
 add_submenu(backgroundlbls, backgroundptrs, "Animate (horizontal)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, updatebgtrigger));
 
+add_submenu(gridviewlbls, gridviewptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
+add_submenu(gridviewlbls, gridviewptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));
+add_submenu(gridviewlbls, gridviewptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
+add_submenu(gridviewlbls, gridviewptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
+add_submenu(gridviewlbls, gridviewptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
+
 local settingsptrs = {};
+
 add_submenu(settingslbls, settingsptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
 add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
-add_submenu(settingslbls, settingsptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
-add_submenu(settingslbls, settingsptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));
-add_submenu(settingslbls, settingsptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
-add_submenu(settingslbls, settingsptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
-add_submenu(settingslbls, settingsptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
+table.insert(settingslbls, "----");
+add_submenu(settingslbls, settingsptrs, "Grid View...", "skip", gridviewlbls, gridviewptrs, {});
 
 if (LEDCONTROLLERS > 0) then
 	table.insert(settingslbls, "LED display mode...");
@@ -419,7 +426,8 @@ settingsptrs["Reconfigure Keys (Players)"] = function()
 	end
 end
 
-settingsptrs["Cell Size..."] = function()
+table.insert(gridviewlbls, "Cell Size...");
+gridviewptrs["Cell Size..."] = function()
 	local fmts = {};
 	fmts[ tostring(settings.cell_width) .. "x" .. tostring(settings.cell_height) ] = settings.colourtable.notice_fontstr;
 	if (get_key("cell_width") and get_key("cell_height")) then

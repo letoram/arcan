@@ -256,7 +256,7 @@ function gridledetail_stopinternal()
 		internal_vidborder = nil;
 	end
 
-	undo_vectormode();
+	undo_displaymodes();
 	
 	if (settings.autosave == "On") then
 		internal_statectl("auto", true);
