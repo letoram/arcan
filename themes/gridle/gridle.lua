@@ -10,8 +10,9 @@ imagery = {
 	black = BADID,
 	white = BADID,
 	bgimage = BADID, 
+	temporary = {}
 };
-
+	
 soundmap = {
 	MENU_TOGGLE       = load_asample("sounds/menu_toggle.wav"),
 	MENU_FADE         = load_asample("sounds/menu_fade.wav"),
@@ -1246,6 +1247,7 @@ function load_settings()
 	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
 	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
 	load_key_str("autosave", "autosave", settings.autosave);
+	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
 
 	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
 	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
@@ -1337,7 +1339,6 @@ function asynch_movie_ready(source, statustbl)
 
 				imagery.zoomed = newinst;
 				gridlemenu_setzoom(newinst, source); -- use new aspect ratio
-				print("setzoom", imagery.zoomed);
 			end
 
 			vid,aid = play_movie(source);
@@ -1406,7 +1407,7 @@ function gridle_internalcleanup()
 		else
 			expire_image(internal_vid, settings.transitiondelay);
 		end
-		undo_vectormode();
+		undo_displaymodes();
 		
 		resize_image(internal_vid, 1, 1, settings.transitiondelay);
 		blend_image(internal_vid, 0.0, settings.transitiondelay);

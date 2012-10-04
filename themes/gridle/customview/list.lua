@@ -55,9 +55,9 @@ restbl.get_linestr = function(self, gametbl)
 		res = [[\P16,16,icons/]] .. gametbl.setname .. ".ico," .. res;
 	end 
 
-	print(gametbl.target);
 	if self.icons[gametbl.target .. ".ico"] then
-		res = [[\P16,16,icons/]] .. gametbl.target .. ".ico," .. res;
+		local fs = tostring(settings.colourtable.font_size);
+		res = "\\P" .. fs .. "," .. fs ..",icons/" .. gametbl.target .. ".ico," .. res;
 	end
 
 	return res;	

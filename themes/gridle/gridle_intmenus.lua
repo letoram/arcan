@@ -375,10 +375,9 @@ function display_fxaa(source, targetw, targeth)
 	local fxaa_shader = load_shader("shaders/fullscreen/default.vShader", "display/fxaa.fShader", "fxaa", {});
 	local node        = instance_image(source);
 	local fxaa_outp   = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
-	
+
 	local props = image_surface_properties(source);
-	print(props.width, props.height);
-	
+
 	shader_uniform(fxaa_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
 	hide_image(source);
 	image_shader(node, fxaa_shader);
@@ -386,9 +385,11 @@ function display_fxaa(source, targetw, targeth)
 	image_mask_clear(node, MASK_POSITION);
 	image_mask_clear(node, MASK_OPACITY);
 	show_image(node);
-		
+
 	define_rendertarget(fxaa_outp, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	show_image(fxaa_outp);
+	order_image(fxaa_outp, 3);
+
 	return fxaa_outp;
 end
 
@@ -524,8 +525,9 @@ function vector_heavymode(source, targetw, targeth)
 
 -- generate textures to use as round-robin store, these need to math the storage size to avoid
 -- a copy/scale each frame
+	local props = image_surface_initial_properties(internal_vid);
 	for i=1,settings.vector_glowtrails do
-		local vid = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
+		local vid = fill_surface(targetw, targeth, 0, 0, 0, props.width, props.height);
 		set_image_as_frame(source, vid, i, FRAMESET_DETACH);
 	end
 
@@ -562,26 +564,32 @@ function gridlemenu_tofront(cur)
 	end
 end
 
-function undo_vectormode()
+function undo_displaymodes()
 	image_shader(internal_vid, "DEFAULT");
 
-	if (valid_vid(imagery.display_vid)) then
-		image_framesetsize(internal_vid, 0);
-		image_framecyclemode(internal_vid, 0);
-		image_texfilter(internal_vid, FILTER_BILINEAR);
+	image_framesetsize(internal_vid, 0);
+	image_framecyclemode(internal_vid, 0);
 		
 -- lots of things happening beneath the surface here, killing the vector vid will cascade and drop all detached images
 -- that are part of the render target, EXCEPT for the initial internal vid that has its MASKED_LIVING disabled
 -- this means that it gets reattached to the main pipe instead of deleted
+	if (valid_vid(imagery.display_vid)) then
 		delete_image(imagery.display_vid);
-		imagery.display_vid = BADID;
 	end
 	
+	for ind,val in ipairs(imagery.temporary) do
+
+		if (valid_vid(val)) then
+			delete_image(val);
+		end
+
+	end
+
+	imagery.temporary = {};
+	imagery.display_vid = BADID;
 end
 
-local function toggle_vectormode(sourcevid)
-	local props = image_surface_initial_properties(internal_vid);
-
+local function toggle_vectormode(sourcevid, windw, windh)
 	if (sourcevid == internal_vid) then
 		image_mask_clear(internal_vid, MASK_LIVING);
 		image_texfilter(internal_vid, FILTER_NONE);
@@ -589,9 +597,9 @@ local function toggle_vectormode(sourcevid)
 	
 -- activate trails or not?
 	if (settings.vector_glowtrails > 0) then
-		imagery.display_vid = vector_heavymode(sourcevid, props.width, props.height);
+		imagery.display_vid = vector_heavymode(sourcevid, windw, windh);
 	else
-		imagery.display_vid = vector_lightmode(sourcevid, props.width, props.height);
+		imagery.display_vid = vector_lightmode(sourcevid, windw, windh);
 	end
 	
 	order_image(imagery.display_vid, 1);
@@ -651,7 +659,7 @@ function push_ntsc()
 end
 
 function gridlemenu_rebuilddisplay()
-	undo_vectormode();
+	undo_displaymodes();
 	update_filter(internal_vid, settings.imagefilter);
 	
 	local props  = image_surface_initial_properties(internal_vid);
@@ -670,23 +678,32 @@ function gridlemenu_rebuilddisplay()
 	if (settings.internal_toggles.vector) then
 		target_pointsize(dstvid, settings.vector_pointsz);
 		target_linewidth(dstvid, settings.vector_linew);
-
-		toggle_vectormode(dstvid);
+		
+		local dstw, dsth;
+		if (props.width > VRESW or props.height > VRESH) then
+			dstw = windw;
+			dsth = windh;
+		else
+			dstw = props.width;
+			dsth = props.height;
+		end
+			
+		toggle_vectormode(dstvid, dstw, dsth);
 		dstvid = imagery.display_vid;
 	
 	elseif ( (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) or (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) ) then
 		image_mask_clear(internal_vid, MASK_LIVING);
 		
-		dstvid = fill_surface(windw, windh, 1, 1, 1, windw, windh);
-		imagery.display_vid = dstvid;
-		order_image(imagery.display_vid, 1);
+		dstbuf = fill_surface(windw, windh, 1, 1, 1, windw, windh);
 		
-		image_tracetag(dstvid, "overlay_backdrop");
+		image_tracetag(dstbuf, "overlay_backdrop");
 	
-		local cbuf = merge_compositebuffer(internal_vid, BADID, windw, windh, 0, 0);
-		define_rendertarget(dstvid, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		local cbuf = merge_compositebuffer(dstvid, BADID, windw, windh, 0, 0);
+		define_rendertarget(dstbuf, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 		
-		blend_image(dstvid, 1);
+		imagery.display_vid = dstbuf;
+		dstvid = dstbuf;
+		blend_image(dstbuf, 1);
 	else
 
 		fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader);
@@ -1051,7 +1068,6 @@ local function add_gamelbls( lbltbl, ptrtbl )
 --		end
 --	end
 	
-	print(captbl.dynamic_input);
 	if ( captbl.dynamic_input ) then
 		table.insert(lbltbl, "Local Input...");
 		ptrtbl["Local Input..."] = function(label, store, sound)
@@ -1137,18 +1153,18 @@ function enable_record(width, height, args)
 	
 	local ofs = 1;
 
--- only add sequence number if we already have a screenshot for the game
-	if (resource( lblbase .. ".mkv" ) ) then
-		while resource(lblbase .. "_" .. tostring(ofs) .. ".mkv") do
-			dst = lblbase .. "_" .. tostring(ofs) .. ".mkv";
-			ofs = ofs + 1;
-		end
+-- only add sequence number if we already have a recording for the game
+	while resource(dst) do
+		dst = lblbase .. "_" .. tostring(ofs) .. ".mkv";
+		ofs = ofs + 1;
 	end
 
 -- create an instance of this image to detach and record 
 	local lvid = instance_image( internal_vid );
 -- set it to the top left of the screen
 	image_mask_clear(lvid, MASK_POSITION);
+	image_mask_clear(lvid, MASK_OPACITY);
+
 	move_image(lvid, 0, 0);
 
 -- allocate intermediate storage
@@ -1159,11 +1175,14 @@ function enable_record(width, height, args)
 	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
 	
 	imagery.record_target = dstvid;
-	imagery.record_indicator = fill_surface(16, 16, 0, 255, 0);
+	imagery.record_indicator = fill_surface(16, 16, 255, 0, 0);
+	
 	move_image(imagery.record_indicator);
 	image_transform_cycle(imagery.record_indicator, 1);
 	blend_image(imagery.record_indicator, 255.0, 64);
 	blend_image(imagery.record_indicator, 0.0, 64);
+	
+	order_image(imagery.record_indicator, max_current_image_order() + 1);
 end
 
 displaymodeptrs = {};
@@ -1192,7 +1211,6 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	ptrs[label] = function(label, save)
 	settings.internal_toggles[key] = not settings.internal_toggles[key];
 
-	print(label, settings.internal_toggles[key]);
 	current_menu.formats[label] = nil; 
 	local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,"	
 
@@ -1311,8 +1329,7 @@ recordptrs["Start"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
 	
-	local dstvid = valid_vid(imagery.display_vid) and imagery.display_vid or internal_vid;
-	local props  = image_surface_initial_properties(dstvid);
+	local props  = image_surface_initial_properties(internal_vid);
 	local width  = props.width;
 	local height = props.height;
 		
