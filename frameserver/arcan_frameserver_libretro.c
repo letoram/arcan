@@ -73,7 +73,6 @@ static struct {
 		double mspf;
 		double drift;
 		long long int basetime;
-		unsigned skipcount;
 		int skipmode;
 		unsigned long long framecount;
 
@@ -247,6 +246,23 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	}
 }
 
+/* the better way would be to just drop the videoframes, buffer the audio, 
+ * calculate the highspeed samplerate and downsample the audio signal */
+static void libretro_skipnframes(unsigned count)
+{
+	retroctx.skipframe = true;
+
+	long long afc = retroctx.aframecount;
+	long long vfc = retroctx.framecount;
+	
+	for (int i = 0; i < count; i++)
+		retroctx.run();
+
+	retroctx.aframecount = afc;
+	retroctx.framecount = vfc;
+
+	retroctx.skipframe = false;
+}
 
 void libretro_audscb(int16_t left, int16_t right)
 {
@@ -476,6 +492,7 @@ static inline void targetev(arcan_event* ev)
 			if (tgt->ioevs[0].iv < 0);
 				else
 					while(tgt->ioevs[0].iv-- && retroctx.shmcont.addr->dms){ retroctx.run(); }
+/* should also emit a corresponding event back with the current framenumber */
 		break;
 
 /* store / rewind operate on the last FD set through FDtransfer */
@@ -545,15 +562,6 @@ static inline bool retroctx_sync()
 {
 	long long int timestamp = frameserver_timemillis();
 	retroctx.framecount++;
-
-	if (retroctx.skipmode > TARGET_SKIP_STEP) {
-		if (retroctx.skipcount == 0){
-			retroctx.skipcount = retroctx.skipmode - 1;
-			return false;
-		}
-		else
-			retroctx.skipcount--;
-	}
 
 	if (retroctx.skipmode == TARGET_SKIP_NONE)
 		return true;
@@ -707,8 +715,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
+			if (retroctx.skipmode >= TARGET_SKIP_STEP)
+				libretro_skipnframes(retroctx.skipmode);
+
 			flush_eventq();
+
+			testcounter = 0;
 			retroctx.run();
+
 			if (testcounter != 1)
 				LOG("(arcan_frameserver(libretro) -- inconsistent core behavior, expected 1 video frame / run(), got %d\n", testcounter);
 			testcounter = 0;

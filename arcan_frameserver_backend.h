@@ -96,6 +96,7 @@ typedef struct arcan_frameserver {
 	enum arcan_playstate playstate;
 	int64_t lastpts;
 	int64_t starttime;
+	int64_t launchedtime;
 	bool loop, autoplay, nopts;
 
 	enum arcan_frameserver_kinds kind;

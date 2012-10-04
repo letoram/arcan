@@ -3,7 +3,7 @@
 # Sets the name and target executable of the target to <foldername> (so that parameters 
 # can be individualized later on anyhow by a alterdb on the target)
 # --
-require_relative 'gamedb.rb'
+require File.join(File.dirname(__FILE__), 'gamedb.rb')
 
 # the end system set will be based on the folder name (remapped by the table below)
 # augmented with the shortname extensions and libretro core
@@ -47,14 +47,16 @@ class Generic
 
 	def usage
 		[
-			"\ngeneric importer, first argument in each --gen*args must match targetname",
+			"Generic importer arguments:",
+			"(first argument in each --gen*args must match targetname",
 			"(--genargs) - comma-separated list of launch arguments",
 			"(--genintargs) - comma- separated list of internal- launch arguments",
 			"(--genextargs) - comma- separated list of external- launch arguments",
 			"(--genrompath) targetname - encodes full rompath (as per --rompath) into the romset",
 			"(--gennostriptitle) try and shrink the game title as much as possible",
 			"(--genscrape) - try and scrape metadata from online sources",
-			"(--genscrapemedia) - download media while scraping (screenshots, boxart, ...)"
+			"(--genscrapemedia) - download media while scraping (screenshots, boxart, ...)",
+			""
 		]
 	end
 

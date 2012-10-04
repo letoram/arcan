@@ -4,6 +4,20 @@
 # as the main application binaries. Tries to locate the resource folder
 # in use, where the main script is, along with importers.
 #
+require 'rbconfig'
+
+unless File.respond_to? :realpath
+	require 'pathname'
+	class File
+		def File.realpath(path)
+			a = Pathname.new(path)
+			a.realpath
+		rescue
+			nil
+		end
+	end
+end
+
 is_windows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
 
 searchpath = [".", "./scripts", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
@@ -221,7 +235,7 @@ if (opttbl["--help"])
 	exit(0)
 end
 
-dbpath = File.exists?(options[:dbname]) ? File.realpath(options[:dbname]) : options[:dname]
+dbpath = File.exists?(options[:dbname]) ? File.realpath(options[:dbname]) : options[:dbname]
 
 STDOUT.print("[Arcan Romman] Settings:\n rompath:\t #{File.realpath(options[:rompath])} \n targetpath:\t #{File.realpath(options[:targetpath])} \n dbpath:\t #{dbpath}\n");
 

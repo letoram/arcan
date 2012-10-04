@@ -308,7 +308,7 @@ function gridle()
 		gridle_input = osdkbd_inputcb;
 	end
 
-	settings.iodispatch["LIST_VIEW"] = function(iotbl)
+	settings.iodispatch["SWITCH_VIEW"] = function(iotbl)
 		play_audio( soundmap["DETAILVIEW_TOGGLE"] );
 		gridle_customview();
 	end
@@ -594,13 +594,38 @@ function gridle_setup_internal(video, audio)
 	set_internal_keymap();
 end
 
+function keyconf_helper(message)
+	if (infowin) then
+		infowin:destroy();
+	end
+
+	if (message == nil) then return; end
+	
+-- use a quadrant away from the current item
+	infowin = listview_create( message, VRESW, VRESH / 2 );
+	infowin:show();
+	infowin:move_cursor(0);
+	
+	hide_image(infowin.cursorvid);
+	local props = image_surface_properties(infowin.border, 100);
+	print("props:", props.width, props.height);
+	move_image(infowin.anchor, math.floor( 0.5 * (VRESW - props.width)), VRESH - props.height);
+end
+
 function gridle_keyconf()
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " LIST_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " SWITCH_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 
 	local helplabels = {};
-
+	helplabels["FLAG_FAVORITE"] = {"(grid-view) Mark game as a favorite.", "(menus) Toggle and save a setting."};
+	helplabels["MENU_TOGGLE"  ] = {"(grid-view) Show global settings, filter options.", "(internal-launch) Show display options, record video, remap keys."};
+	helplabels["CONTEXT"      ] = {"(grid-view) Use selected game as filter, force specific launch-mode.", "(detail view) Zoom in/out, switch between 3D model and full-screen.", "(internal-launch) Show game-specific options, state saving, reconfigure game-specific input."};
+	helplabels["DETAIL_VIEW"  ] = {"(grid-view) If a spyglass icon is present, switch to a 3D model of the selected game."};
+	helplabels["SWITCH_VIEW"  ] = {"(grid-view) Switch to customized view mode.", "(customview-setup) When placing an item, switch active property."};
+	helplabels["OSD_KEYBOARD" ] = {"(grid-view) Use an on-screen keyboard to filter current list of games."};
+	helplabels["RANDOM_GAME"  ] = {"(grid-view, custom-view) Move the cursor to a random location.", "(internal-launch) Toggle fast-forward on/off (where applicable)."};
+	
 	local listlbls = {};
 	local lastofs = 1;
 	
@@ -623,7 +648,7 @@ function gridle_keyconf()
 		if (props.height < VRESH) then
 			move_image(keyconf_labelview.anchor, 0, VRESH * 0.5 - props.height* 0.5);
 		end
-		
+
 		keyconfig:to_front();
 
 -- replace the current input function until we have a working keyconfig
@@ -631,18 +656,21 @@ function gridle_keyconf()
 			if (keyconfig:input(iotbl) == true) then
 				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
 				zap_resource("ledsym.lua"); -- delete this one and retry ledconf
-				
+
 				gridle_input = gridle_dispatchinput;
 				kbd_repeat(settings.repeatrate);
 				if (keyconf_labelview) then keyconf_labelview:destroy(); end
 				gridle_ledconf();
-				
+
 			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
 				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
 					lastofs = keyconfig.ofs;
 					keyconf_labelview:move_cursor(1, 1); 
+					keyconf_helper( helplabels[ keyconf_labelview:select() ] );
+
 				elseif (keyconfig.in_playerconf and keyconf_labelview) then
 					keyconf_labelview:destroy();
+					keyconf_helper();
 					keyconf_labelview = nil;
 				end
 			end
@@ -1327,7 +1355,6 @@ function asynch_movie_ready(source, statustbl)
 			if (imagery.playing == source) then
 				return;
 			end
-
 			if (valid_vid(imagery.zoomed)) then
 				local newinst = instance_image(source);
 				image_tracetag(newinst, "movie zoom");
@@ -1596,6 +1623,9 @@ function gridle_internalinput(iotbl)
 					settings.cleanup_toggle();
 				end
 
+			elseif (val == "RANDOM_GAME") then
+				target_framemode(internal_vid, iotbl.active and 1 or 0);
+	
 			elseif (val == "MENU_TOGGLE") then
 				disable_record()
 				gridlemenu_internal(internal_vid, false, true);

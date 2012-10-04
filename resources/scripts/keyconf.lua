@@ -95,7 +95,7 @@ local function keyconf_renderline(self, string, size)
 	image_mask_clear(self.textvid, MASK_OPACITY);
 	image_clip_on(self.textvid);
 
-	move_image(self.anchor, VRESW * 0.5 - prop.width * 0.5, VRESH * 0.5 - (prop.height + 10) * 0.5, 0);
+	move_image(self.anchor, math.floor(VRESW * 0.5 - prop.width * 0.5), math.floor(VRESH * 0.5 - (prop.height + 10) * 0.5), 0);
 	resize_image(self.window, prop.width + 10, prop.height + 10, NOW);
 	resize_image(self.border, prop.width + 16, prop.height + 16, NOW);
 

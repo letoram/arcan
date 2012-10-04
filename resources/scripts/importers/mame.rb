@@ -23,7 +23,7 @@ class Mame
 
 	def usage()
 	   [
-		"MAME Importer arguments", 
+		"MAME Importer arguments:", 
 		"(--mamecatver) filename - Specify a catver.ini file",
 		"(--mameseries) filename - Specify a series.ini file",
 		"(--mameverify) - Only add games that pass verification",
@@ -32,7 +32,8 @@ class Mame
 		"(--mameextargs) - comma- separated list of external- launch arguments",
 		"(--mamegood) - Only add games where the driver emulation status is good",
 		"(--mameskipclone) - Skip drivers that are marked as clones",
-		"(--mameshorttitle) - Don't store extraneous title data (set,revision,..)"
+		"(--mameshorttitle) - Don't store extraneous title data (set,revision,..)",
+		""
 		]
 	end
 

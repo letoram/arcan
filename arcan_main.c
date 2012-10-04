@@ -27,8 +27,12 @@
 #include <string.h>
 #include <signal.h>
 #include <fcntl.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include <math.h>
 #include <limits.h>
 #include <errno.h>
@@ -107,7 +111,7 @@ void usage()
 		"-o\t--frameserver \tforce frameserver (default: autodetect)\n"
 		"-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
 		"-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
-		"-g\t--debug       \ttoggle debug output (stacktraces, events, etc.)\n"
+		"-g\t--debug       \ttoggle debug output (stacktraces, events, coredumps, etc.)\n"
 		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 		"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
 		"-S\t--nosound     \tdisable audio output\n"
@@ -119,11 +123,11 @@ void usage()
 
 int main(int argc, char* argv[])
 {
-	bool windowed = false;
-	bool fullscreen = false;
+	bool windowed     = false;
+	bool fullscreen   = false;
 	bool conservative = false;
-	bool nosound = false;
-	unsigned char luadebug = 0;
+	bool nosound      = false;
+	unsigned char debuglevel = 0;
 	
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
 	int width = 640;
@@ -134,7 +138,10 @@ int main(int argc, char* argv[])
 	int ch;
 	FILE* errc;
 	char* dbfname = "arcandb.sqlite";
+	
 	srand( time(0) ); 
+	/* VIDs all have a randomized base to provoke crashes in poorly written scripts,
+	 * only -g will make their base and sequence repeatable */
 
 /* start this here since some SDL builds have the nasty (albeit understandable) habit of 
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
@@ -162,7 +169,7 @@ int main(int argc, char* argv[])
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;
 			case 'g' :
-				luadebug++;
+				debuglevel++;
 				srand(0xdeadbeef); 
 				break;
 			case 'r' :
@@ -278,8 +285,24 @@ int main(int argc, char* argv[])
 		lua_State* luactx = luaL_newstate();
 		luaL_openlibs(luactx);
 
+#ifndef _WIN32
+		struct rlimit coresize = {0}; 
+
+/* debuglevel 0, no coredumps etc. */
+		if (debuglevel == 0);
+
+/* debuglevel 1, maximum 1M coredump, should prioritize stack etc. */
+		else if (debuglevel == 1) coresize.rlim_max = 10 * 1024 * 1024;
+		
+/* debuglevel > 1, dump everything */
+		else coresize.rlim_max = RLIM_INFINITY;
+
+		coresize.rlim_cur = coresize.rlim_max;
+		setrlimit(RLIMIT_CORE, &coresize);
+#endif
+
 /* this one also sandboxes os/io functions (just by setting to nil) */
-		arcan_lua_exposefuncs(luactx, luadebug);
+		arcan_lua_exposefuncs(luactx, debuglevel);
 		arcan_lua_pushglobalconsts(luactx);
 
 		if (argc > optind)

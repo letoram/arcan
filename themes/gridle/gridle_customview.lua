@@ -39,7 +39,7 @@ customview.temporary = {};
 helplbls = {};
 helplbls["position"] = {
 	"Position",
-	"(LIST_VIEW to switch mode)",
+	"SWITCH_VIEW to switch mode)",
 	"(SELECT to save)",
 	"(ESCAPE to cancel)"
 };
@@ -185,7 +185,6 @@ local function opacity_increment(vid, byval)
 	update_object(vid);
 end
 
-
 local function position_item( key, vid, trigger )
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
 -- would need state tracking and hook to the clock 
@@ -229,7 +228,7 @@ local function position_item( key, vid, trigger )
 	end
 	
 	settings.iodispatch["MENU_ESCAPE"] = function() trigger(false, vid); end
-	settings.iodispatch["LIST_VIEW"]   = function() position_toggle(); end
+	settings.iodispatch["SWITCH_VIEW"] = function() position_toggle();   end
 	settings.iodispatch["MENU_SELECT"] = function() trigger(true, vid);  end
 	
 	update_infowin();
@@ -461,19 +460,17 @@ local function positionbg(label)
 	local tiled = false;
 	local vid = load_image("backgrounds/" .. label);
 	if (vid == BADID) then return; end
-	
+
+	customview.ci = {};
+	customview.ci.tiled  = tiled;
+	local props = image_surface_properties(vid);
+
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT, vid );
 	if (customview.ci.tiled) then
 		local props = image_surface_initial_properties(imgvid);
 		image_scale_txcos(imgvid, customview.ci.width / props.width, customview.ci.height / props.height);
 	end
 	
-	local props = image_storage_properties(vid);
-	
-	customview.ci = {};
-	customview.ci.tiled  = tiled;
-	local props = image_surface_properties(vid);
-
 -- threshold for tiling rather than stretching
 	if (props.width < VRESW / 2 or props.height < VRESH / 2) then
 		customview.ci.tiled  = true;
@@ -620,6 +617,7 @@ local function update_dynamic(newtbl)
 	end
 
 	customview.lasttbl = newtbl;
+	toggle_led(newtbl.players, newtbl.buttons, "")	;
 	
 	for ind, val in ipairs(customview.temporary) do
 		if (valid_vid(val)) then 
