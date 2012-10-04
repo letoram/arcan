@@ -547,7 +547,7 @@ function vector_heavymode(source, targetw, targeth)
 	image_tracetag(comp_outbuf, "vector(composite)");
 	move_image(blur_vbuf, settings.vector_hblurofs, settings.vector_vblurofs);
 	
-	local cbuf = merge_compositebuffer(blur_vbuf, normal, targetw, targeth, blurw, blurh);
+	local cbuf = merge_compositebuffer(normal, blur_vbuf, targetw, targeth, blurw, blurh);
 	define_rendertarget(comp_outbuf, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 	show_image(comp_outbuf);
 	
@@ -700,7 +700,7 @@ function gridlemenu_rebuilddisplay()
 	
 		local cbuf = merge_compositebuffer(dstvid, BADID, windw, windh, 0, 0);
 		define_rendertarget(dstbuf, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-		
+
 		imagery.display_vid = dstbuf;
 		dstvid = dstbuf;
 		blend_image(dstbuf, 1);

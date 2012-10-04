@@ -238,6 +238,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		ctx->esync = sem_open(work, 0);	
 	free(work);
 
+	ctx->launchedtime = arcan_frametime();
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
 	ftruncate(shmfd, shmsize);

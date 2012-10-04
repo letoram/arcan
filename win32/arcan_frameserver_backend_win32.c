@@ -279,6 +279,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	SDL_GetWMInfo(&wmi);
 	HWND handle = wmi.window;
 
+	ctx->launchedtime = arcan_frametime();
 /* is the ctx in an uninitialized state? */
 	if (ctx->vid == ARCAN_EID) {
 		vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};

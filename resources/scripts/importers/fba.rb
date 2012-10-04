@@ -121,10 +121,12 @@ class FBA
 
 	def usage()
 	   [
+		"Final Burn Alpha, fba (libretro) importer arguments:",
 		"(--fbacatver) filename - Specify a catver.ini file",
 		"(--fbaseries) filename - Specify a series.ini file",
 		"(--fbaskipclone) - Skip drivers that are marked as clones",
-		"(--fbashorttitle) - Don't store extraneous title data (set,revision,..)"
+		"(--fbashorttitle) - Don't store extraneous title data (set,revision,..)",
+		""
 		]
 	end
 

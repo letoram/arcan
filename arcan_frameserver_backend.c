@@ -127,8 +127,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.otag = src->tag
 		};
 
-		if (src->loop){
-//			arcan_audio_pause(src->aid);
+/* prevent looping if the frameserver didn't last more than a second */
+		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
 			arcan_frameserver_free(src, true);
 			src->autoplay = true;
 			sevent.kind = EVENT_FRAMESERVER_LOOPED;
@@ -138,7 +138,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 				.args.builtin.resource = src->source,
 				.args.builtin.mode = "movie"
 			};
-			
+
 			arcan_frameserver_spawn_server(src, args);
 		}
 		else

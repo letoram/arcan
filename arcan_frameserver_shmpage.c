@@ -289,7 +289,7 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 			arg->addr->resized = true;
 
 /* spinlock until acknowledged */
-			while(arg->addr->resized);
+			while(arg->addr->resized && arg->addr->dms);
 
 			return true;
 		}
