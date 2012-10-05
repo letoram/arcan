@@ -352,6 +352,11 @@ local function customview_internal(source, datatbl)
 end
 
 local function cleanup()
+-- since new screenshots /etc. might have appeared, update cache 
+	resourcefinder_cache.invalidate = true;
+		local gameno = current_game_cellid();
+		resourcefinder_search(customview.gametbl, true);
+	resourcefinder_cache.invalidate = false;
 
 	local resetview = function()
 		pop_video_context();
@@ -442,6 +447,12 @@ local function positiondynamic(label)
 	position_item(nil, vid, save_item);
 end
 
+local function positionlabel(label)
+	vid = render_text(settings.colourtable.label_fontstr .. label);
+	new_item(vid, "label", string.lower(label));
+	position_item(nil, vid, save_item);
+end
+
 -- only one navigator allowed, boring list, iconed list etc. use static preview- image. 
 local function positionnavi(label)
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
@@ -496,6 +507,7 @@ local function save_config()
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
+	write_rawresource("cview.dynamic_labels = {};\n");
 	write_rawresource("cview.aspect = " .. tostring( VRESW / VRESH ) .. ";\n");
 	
 	for ind, val in ipairs(customview.itemlist) do
@@ -519,7 +531,14 @@ local function save_config()
 
 		elseif val.kind == "navigator" then
 			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+			write_rawresource("item.font   = \"\\ffonts/default.ttf\";\n");
 			write_rawresource("cview.navigator = item;\n");
+
+		elseif val.kind == "label" then
+			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+			write_rawresource("item.font   = \"\\ffonts/default.ttf\";\n");
+			write_rawresource("table.insert(cview.dynamic_labels, item);\n");
+			
 		elseif val.kind == "background" then
 			write_rawresource("item.res    = \"" .. val.res .."\";\n");
 			if (val.shader) then
@@ -569,7 +588,7 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart"}, positiondynamic));
-	--add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ingore", gen_tbl_menu("ignore", {"Times Played"}
+	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
 	table.insert(mainlbls, "---");

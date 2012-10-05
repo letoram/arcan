@@ -597,6 +597,7 @@ end
 function keyconf_helper(message)
 	if (infowin) then
 		infowin:destroy();
+		print("destroy infowin");
 	end
 
 	if (message == nil) then return; end
@@ -608,7 +609,6 @@ function keyconf_helper(message)
 	
 	hide_image(infowin.cursorvid);
 	local props = image_surface_properties(infowin.border, 100);
-	print("props:", props.width, props.height);
 	move_image(infowin.anchor, math.floor( 0.5 * (VRESW - props.width)), VRESH - props.height);
 end
 
@@ -665,10 +665,11 @@ function gridle_keyconf()
 			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
 				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
 					lastofs = keyconfig.ofs;
+					print(keyconf_labelview.cursor);
 					keyconf_labelview:move_cursor(1, 1); 
 					keyconf_helper( helplabels[ keyconf_labelview:select() ] );
 
-				elseif (keyconfig.in_playerconf and keyconf_labelview) then
+				elseif (keyconfig.playerconf and keyconf_labelview) then
 					keyconf_labelview:destroy();
 					keyconf_helper();
 					keyconf_labelview = nil;
