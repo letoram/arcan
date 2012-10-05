@@ -31,7 +31,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+
+#ifndef _WIN32
 #include <sys/resource.h>
+#endif
 
 #include <math.h>
 #include <limits.h>
