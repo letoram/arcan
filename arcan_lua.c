@@ -1407,6 +1407,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			break;
 
 			default:
+				lua_pushstring(ctx, "unknown");
+				lua_rawset(ctx, top);
 				arcan_warning("Engine -> Script Warning: ignoring IO event: %i\n", ev->kind);
 		}
 

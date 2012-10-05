@@ -14,6 +14,9 @@ Some notes and hints for building / patching / packaging the engine as such.
  * console trace messages are notoriously dodgy, use -1 arcan.stdout -2 arcan.stderr as command-line arguments as a work-around.
 
 [OSX]
+ * Apple seems gung-ho to alienate developers not subscribing to their wall-garden ideology,
+   along with breaking basic stuff every new point release OSX isn't a prioritized target anymore. Should still work for 10.4/10.5, after that, game over.
+
  * Packaging on OSX is a bit of a pain, the current approach is (any CM guy, feel free to fix ;-))
    quite simply to build a package using the make package, will lack dependencies (dylibs and Frameworks). 
    The SDL stuff in particular is not included in a standard OSX installation.
@@ -24,6 +27,7 @@ Some notes and hints for building / patching / packaging the engine as such.
 
 [Linux]
  * Nothing really new or surprising here -- huge dependency-tree,
-   ffmpeg, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL and quite possibly glew, cmake for building along with ruby (gems nokogiri and sqlite3).
+   ffmpeg (with libvpx support), libvpx, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL, glew, cmake for building along with ruby (gems nokogiri and sqlite3).
  
  * OpenCTM for the 3d model management is not included in debian/ubuntu etc. so for packaging, you have to modify the Makefiles for OpenCTM and link static.
+
