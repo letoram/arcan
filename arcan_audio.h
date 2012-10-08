@@ -96,7 +96,7 @@ int arcan_audio_findstreambufslot(arcan_aobj_id id);
  * we don't want to interfere with a targets buffering too much
  * and just implement our transformations client- side */
 arcan_aobj_id arcan_audio_proxy(arcan_again_cb feed, void* tag);
-enum aobj_atypes arcan_audio_kind(arcan_aobj_id);
+enum aobj_kind arcan_audio_kind(arcan_aobj_id);
 
 arcan_aobj_id arcan_audio_alterfeedio_stream(const char* uri, enum aobj_atypes type, arcan_errc* errc);
 

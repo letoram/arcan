@@ -439,7 +439,7 @@ arcan_errc arcan_audio_rebuild(arcan_aobj_id id)
 	return rv;
 }
 
-enum aobj_atypes arcan_audio_kind(arcan_aobj_id id)
+enum aobj_kind arcan_audio_kind(arcan_aobj_id id)
 {
 	arcan_aobj* aobj = arcan_audio_getobj(id);
 	return aobj ? aobj->kind : AOBJ_INVALID;

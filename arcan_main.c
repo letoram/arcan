@@ -20,6 +20,7 @@
  */
 
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -75,28 +76,29 @@ bool stderr_redirected = false;
 bool stdout_redirected = false;
 
 static const struct option longopts[] = {
-	{ "help", no_argument, NULL, '?' },
-	{ "width", required_argument, NULL, 'w' },
-	{ "height", required_argument, NULL, 'h' },
-	{ "winx", required_argument, NULL, 'x' },
-	{ "winy", required_argument, NULL, 'y' },
-	{ "fullscreen", no_argument, NULL, 'f' },
-	{ "windowed", no_argument, NULL, 's' },
-	{ "debug", no_argument, NULL, 'g' },
-	{ "rpath", required_argument, NULL, 'p'},
-	{ "themepath", required_argument, NULL, 't'},
-	{ "hijacklib", required_argument, NULL, 'l'},
-	{ "frameserver", required_argument, NULL, 'o'},
-	{ "conservative", no_argument, NULL, 'm'},
-	{ "database", required_argument, NULL, 'd'},
-	{ "scalemode", required_argument, NULL, 'r'}, 
+	{ "help",         no_argument,       NULL, '?'},
+	{ "width",        required_argument, NULL, 'w'},
+	{ "height",       required_argument, NULL, 'h'},
+	{ "winx",         required_argument, NULL, 'x'},
+	{ "winy",         required_argument, NULL, 'y'},
+	{ "fullscreen",   no_argument,       NULL, 'f'},
+	{ "windowed",     no_argument,       NULL, 's'},
+	{ "debug",        no_argument,       NULL, 'g'},
+	{ "rpath",        required_argument, NULL, 'p'},
+	{ "themepath",    required_argument, NULL, 't'},
+	{ "hijacklib",    required_argument, NULL, 'l'},
+	{ "frameserver",  required_argument, NULL, 'o'},
+	{ "conservative", no_argument,       NULL, 'm'},
+	{ "database",     required_argument, NULL, 'd'},
+	{ "scalemode",    required_argument, NULL, 'r'}, 
 	{ "multisamples", required_argument, NULL, 'a'},
-	{ "nosound", no_argument, NULL, 'S'},
-	{ "novsync", no_argument, NULL, 'v'},
+	{ "interactive",  no_argument,       NULL, 'i'},
+	{ "nosound",      no_argument,       NULL, 'S'},
+	{ "novsync",      no_argument,       NULL, 'v'},
 /* no points guessing which platform forcing this .. */
-	{ "stdout", required_argument, NULL, '1'}, 
-	{ "stderr", required_argument, NULL, '2'},
-	{ NULL, no_argument, NULL, 0 }
+	{ "stdout",       required_argument, NULL, '1'}, 
+	{ "stderr",       required_argument, NULL, '2'},
+	{ NULL,           no_argument,       NULL,  0 }
 };
 
 void usage()
@@ -117,6 +119,7 @@ void usage()
 		"-g\t--debug       \ttoggle debug output (stacktraces, events, coredumps, etc.)\n"
 		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 		"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
+/*		"-i\t--interactive \tadd an interactive shell to stdin\n" */
 		"-S\t--nosound     \tdisable audio output\n"
 		"-r\t--scalemode   \tset texture mode:\n\t"
 		"%i(rectangle sized textures, default),\n\t"
@@ -130,6 +133,8 @@ int main(int argc, char* argv[])
 	bool fullscreen   = false;
 	bool conservative = false;
 	bool nosound      = false;
+	bool interactive  = false;
+
 	unsigned char debuglevel = 0;
 	
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
@@ -150,7 +155,7 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvmsp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvmisp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
 				usage();
@@ -169,6 +174,7 @@ int main(int argc, char* argv[])
 			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 			case 'v' : arcan_video_display.vsync = false; break;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
+			case 'i' : fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); interactive = true; break;
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;
 			case 'g' :
@@ -203,9 +209,8 @@ int main(int argc, char* argv[])
 		arcan_themename = *(argv + optind);
 	else if (check_theme("welcome"))
 		arcan_themename = "welcome";
-	else {
+	else
 		arcan_fatal("No theme found.\n");
-	}
 
 	if (strcmp(arcan_themename, "arcan") == 0){
 		arcan_fatal("Theme name 'arcan' is reserved\n");
@@ -264,7 +269,9 @@ int main(int argc, char* argv[])
 		}
 
 /* setup device polling, cleanup, ... */
-		arcan_event_init( arcan_event_defaultctx() );
+		arcan_evctx* def = arcan_event_defaultctx();
+		def->interactive = interactive;
+		arcan_event_init( def ); 
 		arcan_led_init();
 
 /* MINGW implements putenv, so use this to set the system subpath path (BIOS, ..:) */

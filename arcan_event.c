@@ -20,6 +20,8 @@
  */
 
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/select.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -438,6 +440,16 @@ void map_sdl_events(arcan_evctx* ctx)
 	}
 }
 
+/* this dynamically buffers STDIN until statement termination ';' or newline.
+ * this doesn't "really" match the lua syntax particularly well, and in lieu of a full
+ * parser, this leads to the problem of (shell->partial_statement->event trigger(system_load()))->
+ * parsing errors. Should be known when using the interactive mode (so dev purposes) */
+char* nblk_readln(int fd)
+{
+	arcan_warning("(fixme) interactive mode not completed.\n");
+	return NULL;
+}
+
 int64_t arcan_frametime()
 {
 	return arcan_last_frametime - arcan_tickofset;
@@ -465,6 +477,16 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 
 	*dtick = nticks;
 	map_sdl_events(ctx);
+	
+/* also assumes that fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); is set on stdin */
+	if (ctx->interactive){
+		char* resv = nblk_readln(STDIN_FILENO);
+		if (resv){
+			arcan_event sevent = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EVALCMD, .data.system.data.mesg.dyneval_msg = resv};
+			arcan_event_enqueue(ctx, &sevent);	
+		}
+	}
+	
 	return fragment;
 }
 

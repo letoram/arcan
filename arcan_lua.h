@@ -22,7 +22,8 @@
 #ifndef _HAVE_ARCAN_LUA
 #define _HAVE_ARCAN_LUA
 
-/* add a set of wrapper functions exposing arcan_video_ to the LUA state */
+/* add a set of wrapper functions exposing arcan_video and friends to the LUA state,
+ * debugfuncs corresponds to desired debug level / behavior */
 arcan_errc arcan_lua_exposefuncs(lua_State* dst, unsigned char debugfuncs);
 
 /* wrap lua_pcalls with this (set errc to pcall result) */
@@ -32,6 +33,13 @@ void arcan_lua_setglobalstr(lua_State* ctx, const char* key, const char* val);
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev);
 void arcan_lua_callvoidfun(lua_State* ctx, const char* fun);
 void arcan_lua_pushargv(lua_State* ctx, char** argv);
+
+/* used to implement an interactive shell,
+ * iterate the global (_G) table for a matching prefix, yield callback for each hit,
+ * with (key, type, tag) as the callback arguments */
+void arcan_lua_eachglobal(lua_State* ctx, char* prefix, int (*callback)(const char*, const char*, void*), void* tag);
+
+/* for initialization, update / push all the global constants used */
 void arcan_lua_pushglobalconsts(lua_State* ctx);
 #endif
 

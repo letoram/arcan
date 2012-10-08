@@ -50,7 +50,8 @@ enum ARCAN_EVENT_SYSTEM {
 	EVENT_SYSTEM_INACTIVATE,
 	EVENT_SYSTEM_ACTIVATE,
 	EVENT_SYSTEM_LAUNCH_EXTERNAL,
-	EVENT_SYSTEM_CLEANUP_EXTERNAL
+	EVENT_SYSTEM_CLEANUP_EXTERNAL,
+	EVENT_SYSTEM_EVALCMD 
 };
 
 enum ARCAN_TARGET_COMMAND {
@@ -220,7 +221,15 @@ typedef struct {
 
 typedef struct arcan_sevent {
 	int errcode; /* copy of errno if possible */
-	long long hitag, lotag;	
+	union {
+		struct {
+			long long hitag, lotag;
+		} tagv;
+		struct {
+/* only for dev/dbg purposes, expected scripting frontend to free and not-mask */
+			char* dyneval_msg; 
+		} mesg;
+	} data;
 } arcan_sevent;
 
 typedef struct arcan_tevent {
@@ -261,6 +270,8 @@ typedef struct arcan_event {
 } arcan_event;
 
 struct arcan_evctx {
+	bool interactive; /* should STDIN be processed for command events? */
+	
 	unsigned c_ticks;
 	unsigned c_leaks;
 	unsigned mask_cat_inp;
@@ -271,7 +282,7 @@ struct arcan_evctx {
 /* limit analog sampling rate as to not saturate the event buffer,
  * with rate == 0, all axis events will be emitted 
  * with rate >  0, the upper limit is n samples per second. 
- * with rate <  0, emitt a sample per axis every n milliseconds. */
+ * with rate <  0, emit a sample per axis every n milliseconds. */
 	struct {
 		int rate;
 		
@@ -338,9 +349,7 @@ void arcan_event_setmask(arcan_evctx*, unsigned mask);
 
 int64_t arcan_frametime();
 
-/* call to initialise/deinitialize the current context
- * may occur several times due to external target launch */
-void arcan_event_init(arcan_evctx*);
+void arcan_event_init(arcan_evctx* dstcontext);
 void arcan_event_deinit(arcan_evctx*);
 
 /* call to dump the contents of the queue */

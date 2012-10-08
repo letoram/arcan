@@ -1386,6 +1386,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				lua_rawset(ctx, top);
 			break;
 
+			case EVENT_SYSTEM_EVALCMD: 
+/* FIXME: eval in a safe ("don't crash etc. on error") context */
+				free(ev->data.system.data.mesg.dyneval_msg); 
+			break;
+
 			case EVENT_IO_BUTTON_PRESS:
 			case EVENT_IO_BUTTON_RELEASE:
 			case EVENT_IO_KEYB_PRESS:
@@ -3437,6 +3442,27 @@ int arcan_lua_screenshot(lua_State* ctx)
 		arcan_warning("arcan_lua_screenshot() -- request failed, couldn't allocate memory.\n");
 	
 	return 0;
+}
+
+void arcan_lua_eachglobal(lua_State* ctx)
+{
+/* FIXME: incomplete (planned for the sandboxing / hardening release). 
+ * 1. have a toggle saying that this functionality is desired (as the overhead is notable),
+ * 2. maintain a trie/prefix tree that this functions just maps to
+ * 3. populate the tree with a C version of:
+
+	local metatable = {}
+		setmetatable(_G,{
+    __index    = metatable, -- or a function handling reads
+    __newindex = function(t,k,v)
+     -- k and v will contain table key and table value respectively.
+     rawset(metatable,k, v)
+    end})
+	}
+	
+	this would in essence intercept all global table updates, meaning that we can, at least, use that 
+	as a lookup scope for tab completion etc.
+*/
 }
 
 void arcan_lua_cleanup()
