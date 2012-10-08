@@ -1,14 +1,6 @@
 -- this one is just a mess of tables, all mapping to a
 -- global settings structure, nothing really interesting
 
--- traverse the current menu back up to the root node, set the gamecount to an "impossible" number
--- 
-function menu_resetgcount(node)
-	local node = current_menu;
-	while (node.parent) do node = node.parent; end
-	node.gamecount = -1;
-end
-
 function build_globmenu(globstr, cbfun, globmask)
 	local lists = glob_resource(globstr, globmask);
 	local resptr = {};
@@ -68,7 +60,12 @@ function gen_num_menu(name, base, step, count, triggerfun)
 
 	clbl = base;
 	for i=1,count do
-		if (type(step) == "function") then clbl = step(i); end
+		if (type(step) == "function") then 
+			clbl = step(i); 
+			if (clbl == nil) then 
+				break;
+			end
+		end
 
 		table.insert(reslbl, tostring(clbl));
 		resptr[tostring(clbl)] = basename;
@@ -172,12 +169,7 @@ local settingslbls = {
 local backgroundlbls = {
 };
 
-local function updatebgtrigger()
-	grab_sysicons();
-	zap_whitegrid();
-	build_whitegrid();
-	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh)	
-end
+local updatebgtrigger = nil;
 
 local function setbgfun(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
@@ -206,6 +198,18 @@ local function tilenums(i)
 		return 4 * (i - 1);
 	else
 		return 1;
+	end
+end
+
+local function cellhnum(i)
+	if (i * 32 < VRESH) then
+		return i * 32;
+	end
+end
+
+local function cellwnum(i)
+	if (i * 32 < VRESW) then
+		return i * 32;
 	end
 end
 
@@ -267,6 +271,8 @@ add_submenu(gridviewlbls, gridviewptrs, "Cursor Scale...", "cursor_scale", gen_n
 
 local settingsptrs = {};
 
+add_submenu(gridviewlbls, gridviewptrs, "Cell Width...", "cell_width", gen_num_menu("cell_width", 1, cellwnum, 10));
+add_submenu(gridviewlbls, gridviewptrs, "Cell Height...", "cell_height", gen_num_menu("cell_height", 1, cellhnum, 10));
 add_submenu(settingslbls, settingsptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
 add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
@@ -342,32 +348,11 @@ local sortorderlbls = {
 	"Favorites"
 };
 
-local gridlbls = { "48x48", "48x64", "64x48", "64x64", "96x64", "64x96", "96x96", "128x96", "96x128", "128x128", "196x128", "128x196", "196x196",
-		"196x256", "256x196", "256x256"};
-local gridptrs = {};
-
-local function gridcb(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.cell_width = tonumber( string.sub(label, 1, string.find(label, "x") - 1) );
-	settings.cell_height = tonumber( string.sub(label, string.find(label, "x") + 1, -1) );
-	menu_resetgcount(current_menu);
-
-	if (save) then
-		play_audio(soundmap["MENU_FAVORITE"]);	
-		store_key("cell_width", settings.cell_width);
-		store_key("cell_height", settings.cell_height);
-	else
-		play_audio(soundmap["MENU_SELECT"]);	
-	end
-end
-for ind,val in ipairs(gridlbls) do gridptrs[val] = gridcb; end
-
 local sortorderptrs = {};
+
 local function sortordercb(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.sortlbl = label;
-	
-	menu_resetgcount(current_menu);
 	
 	if (save) then
 		store_key("sortorder", label);
@@ -424,17 +409,6 @@ settingsptrs["Reconfigure Keys (Players)"] = function()
 			kbd_repeat(settings.repeatrate);
 		end
 	end
-end
-
-table.insert(gridviewlbls, "Cell Size...");
-gridviewptrs["Cell Size..."] = function()
-	local fmts = {};
-	fmts[ tostring(settings.cell_width) .. "x" .. tostring(settings.cell_height) ] = settings.colourtable.notice_fontstr;
-	if (get_key("cell_width") and get_key("cell_height")) then
-		fmts[ get_key("cell_width") .. "x" .. get_key("cell_height") ] = settings.colourtable.alert_fontstr;
-	end
-
-	menu_spawnmenu(gridlbls, gridptrs, fmts); 
 end
 
 local function update_status()
@@ -639,7 +613,7 @@ function gridlemenu_filterchanged()
 	move_cursor(1, true);
 end
 
-function gridlemenu_settings()
+function gridlemenu_settings(cleanup_hook, filter_hook)
 -- first, replace all IO handlers
 	griddispatch = settings.iodispatch;
 
@@ -655,13 +629,13 @@ function gridlemenu_settings()
 			if (#settings.games == 0) then
 				settings.games = list_games( {} );
 			end
-		
+
 		play_audio(soundmap["MENU_FADE"]);
 		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
 
 -- only rebuild grid if we have to
-		gridlemenu_filterchanged();
-			
+		cleanup_hook();
+
 		settings.iodispatch = griddispatch;
 		if (settings.statuslist) then
 			settings.statuslist:destroy();
@@ -673,6 +647,7 @@ function gridlemenu_settings()
 	end
 
 	gridlemenu_defaultdispatch();
+	updatebgtrigger = filter_hook;
 	
 -- hide the cursor and all selected elements
 	if (movievid) then
@@ -682,19 +657,18 @@ function gridlemenu_settings()
 		movievid = nil;
 	end
 
-	-- add an info window
+-- add an info window
 	update_status();
 	local props = image_surface_properties(settings.statuslist.border, 5);
 
-	current_menu = listview_create(menulbls, (VRESH - props.height) * 0.9, VRESW / 3);
+	current_menu = listview_create(menulbls, math.floor((VRESH - props.height) * 0.9), VRESW / 3);
 	current_menu.ptrs = {};
 	current_menu.ptrs["Game Lists..."] = function() menu_spawnmenu( build_gamelists() ); end
 	current_menu.ptrs["Filters..."]    = function() menu_spawnmenu( update_filterlist() ); end
 	current_menu.ptrs["Settings..."]   = function() menu_spawnmenu( settingslbls, settingsptrs ); end
 	current_menu.updatecb = update_status;
 	
-	current_menu.gamecount = #settings.games;
 	current_menu:show();
 	
-	move_image(current_menu.anchor, 5, props.y + props.height + (VRESH - props.height) * 0.09, settings.fadedelay);
+	move_image(current_menu.anchor, 5, math.floor(props.y + props.height + (VRESH - props.height) * 0.09), settings.fadedelay);
 end

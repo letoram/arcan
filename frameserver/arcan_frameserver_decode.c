@@ -134,59 +134,90 @@ void ffmpeg_cleanup(arcan_ffmpeg_context* ctx)
 	}
 }
 
-arcan_ffmpeg_context* ffmpeg_preload(const char* fname)
-{
-	av_register_all();
 
+static arcan_ffmpeg_context* ffmpeg_preload(const char* fname, AVInputFormat* iformat)
+{
 	arcan_ffmpeg_context* dst = (arcan_ffmpeg_context*) calloc(sizeof(arcan_ffmpeg_context), 1);
 
-	int errc = avformat_open_input(&dst->fcontext, fname, NULL, NULL);
+	int errc = avformat_open_input(&dst->fcontext, fname, iformat, NULL);
+	if (0 != errc || !dst->fcontext)
+		return NULL;
+	
+	errc = avformat_find_stream_info(dst->fcontext, NULL);
+	
+	if (! (errc >= 0) )
+		return NULL;
+	
+/* locate streams and codecs */
+	int vid,aid;
 
-	errc = av_find_stream_info(dst->fcontext);
+	vid = aid = dst->vid = dst->aid = -1;
 
-	if (errc >= 0) {
-		/* locate streams and codecs */
-		int vid,aid;
-
-		vid = aid = dst->vid = dst->aid = -1;
-
-		/* scan through all video streams, grab the first one,
-		 * find a decoder for it, extract resolution etc. */
-		for (int i = 0; i < dst->fcontext->nb_streams && (vid == -1 || aid == -1); i++)
-			if (dst->fcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO && vid == -1) {
-				dst->vid = vid = i;
-				dst->vcontext = dst->fcontext->streams[vid]->codec;
-				dst->vcodec = avcodec_find_decoder(dst->vcontext->codec_id);
-				dst->vstream = dst->fcontext->streams[vid];
-				avcodec_open(dst->vcontext, dst->vcodec);
-
-				if (dst->vcontext) {
-					dst->width = dst->vcontext->width;
-					dst->bpp = 4;
-					dst->height = dst->vcontext->height;
-					/* dts + dimensions */
-					dst->c_video_buf = (dst->vcontext->width * dst->vcontext->height * dst->bpp);
-					dst->video_buf   = (uint8_t*) av_malloc(dst->c_video_buf);
-				}
+/* scan through all video streams, grab the first one,
+ * find a decoder for it, extract resolution etc. */
+	for (int i = 0; i < dst->fcontext->nb_streams && (vid == -1 || aid == -1); i++)
+		if (dst->fcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO && vid == -1) {
+			dst->vid = vid = i;
+			dst->vcontext  = dst->fcontext->streams[vid]->codec;
+			dst->vcodec    = avcodec_find_decoder(dst->vcontext->codec_id);
+			dst->vstream   = dst->fcontext->streams[vid];
+			avcodec_open2(dst->vcontext, dst->vcodec, NULL);
+			
+			if (dst->vcontext) {
+				dst->width  = dst->vcontext->width;
+				dst->bpp    = 4;
+				dst->height = dst->vcontext->height;
+/* dts + dimensions */
+				dst->c_video_buf = (dst->vcontext->width * dst->vcontext->height * dst->bpp);
+				dst->video_buf   = (uint8_t*) av_malloc(dst->c_video_buf);
 			}
-			else
-				if (dst->fcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO && aid == -1) {
-					dst->aid = aid = i;
-					dst->astream = dst->fcontext->streams[aid];
-					dst->acontext = dst->fcontext->streams[aid]->codec;
-					dst->acodec = avcodec_find_decoder(dst->acontext->codec_id);
-					avcodec_open(dst->acontext, dst->acodec);
-					dst->channels = 2;
-					dst->samplerate = dst->acontext->sample_rate;
-				}
+		}
+		else if (dst->fcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO && aid == -1) {
+			dst->aid      = aid = i;
+			dst->astream  = dst->fcontext->streams[aid];
+			dst->acontext = dst->fcontext->streams[aid]->codec;
+			dst->acodec   = avcodec_find_decoder(dst->acontext->codec_id);
+			avcodec_open(dst->acontext, dst->acodec);
 
-		dst->pframe = avcodec_alloc_frame();
-		dst->aframe = avcodec_alloc_frame();
-	}
-	else
-		;
+/* weak assumption that we always have 2 channels, but the frameserver interface is this simplistic atm. */
+			dst->channels   = 2;
+			dst->samplerate = dst->acontext->sample_rate;
+		}
+
+	dst->pframe = avcodec_alloc_frame();
+	dst->aframe = avcodec_alloc_frame();
 
 	return dst;
+}
+
+#ifndef _WIN32
+#include <sys/types.h>
+#include <sys/stat.h>
+static const char* probe_webcam(unsigned prefind)
+{
+	char arg[16];
+	struct stat fs;
+	
+	for (int i = prefind; i >= 0; i--){
+		snprintf(arg, sizeof(arg)-1, "/dev/video%d", i);
+		if (stat(arg, &fs) == 0) 
+			return strdup(arg);
+	}
+	return NULL;
+}
+#else
+	
+#endif
+	
+static arcan_ffmpeg_context* ffmpeg_webcam(unsigned ind, float fps, unsigned width, unsigned height)
+{
+	const char* fname = probe_webcam(ind);
+	if (!fname)
+		return NULL;
+	
+	avdevice_register_all();
+	AVInputFormat* format = av_find_input_format("video4linux2");
+	return format ? ffmpeg_preload(fname, format) : NULL;
 }
 
 static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt)
@@ -214,14 +245,28 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 {
 	arcan_ffmpeg_context* vidctx;
 	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
-	
-	do {
-/* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
+	av_register_all();
 
-		vidctx = ffmpeg_preload(resource);
+	do {
+/* webcam:ind where ind is a hint to the probing function */
+		if (strncmp(resource, "webcam", 6) == 0){
+			unsigned devind = 0;
+			char* ofs = index(resource, ':');
+			if (ofs && (*++ofs)){
+				unsigned ind = strtoul(ofs, NULL, 10);
+				if (ind < 255)
+					devind = ind;
+			}
+			
+			vidctx = ffmpeg_webcam(devind, 30.0, 640, 480);
+		} else {
+			vidctx = ffmpeg_preload(resource, NULL);
+		}
+		
 		if (!vidctx)
 			break;
 
+/* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
 		vidctx->shmcont = shms;
 		frameserver_semcheck(vidctx->shmcont.asem, -1);
 		frameserver_semcheck(vidctx->shmcont.vsem, -1);

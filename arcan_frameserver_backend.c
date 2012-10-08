@@ -594,7 +594,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
 			src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
 			src->audioclock = 0.0;
-				
+
 /* just to get some kind of trace when threading acts up */
 			snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
 			arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);

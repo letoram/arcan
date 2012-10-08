@@ -92,8 +92,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 			kill(src->child, SIGTERM);
 			src->child_alive = false;
-			waitpid(src->child, NULL, 0);
-			src->child = 0;
+			waitpid(src->child, NULL, WNOHANG);
 		}
 
 /* unhook audio monitors */
@@ -278,8 +277,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	
 /* "movie" mode involves parallell queues of raw, decoded, frames and heuristics 
  * for dropping, delaying or showing frames based on DTS/PTS values */
-		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
+		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0){
 			ctx->kind = ARCAN_FRAMESERVER_INPUT;
+		}
 /* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
  * each transfer, minimized latency is key. All operations require an intermediate buffer 
  * and are synched to one framequeue */

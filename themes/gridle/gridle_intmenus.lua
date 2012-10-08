@@ -1015,11 +1015,11 @@ end
 local function configure_players(dstname)
 	keyconfig_oldfname = keyconfig.keyfile;
 	keyconfig.keyfile = dstname;
-	
+
 	keyconfig:reconfigure_players();
 	kbd_repeat(0);
 
-	gridle_input = function(iotbl) -- keyconfig io function hook
+	gridle_input = function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
 			gridle_input = gridle_dispatchinput;
 			keyconfig.keyfile = keyconfig_oldfname;
