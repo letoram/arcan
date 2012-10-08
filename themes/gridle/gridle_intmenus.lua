@@ -1204,10 +1204,23 @@ function enable_record(width, height, args)
 	if (settings.webcam) then
 		vid, aid = load_movie("webcam:0", FRAMESERVER_NOLOOP, function(source, status) 
 			if (status.kind == "resized") then -- show / reposition
-				play_movie(source);
-				resize_image(source, math.floor(settings.webcam.width / VRESW * width), math.floor(settings.webcam.height / VRESH * height));
+				local props = image_surface_properties( internal_vid ); 
+				local wfact = (settings.webcam.width  / props.width ) * width;
+				local hfact = (settings.webcam.height / props.height) * height;
+				local xfact = (settings.webcam.x - props.y) / (props.width / width);
+				local yfact = (settings.webcam.y - props.x) / (props.height / height);
+				link_image(vid, lvid);
+				
+				print("mainw:", props.width, "neww:", width);
+				print("mainh:", props.height, "newh:", height);
+				print("scalew:", wfact, "scaleh:", hfact);
+				print("origw:", settings.webcam.width, "origh:", settings.webcam.height);
+				
+				print("xfact:", xfact, "yfact:", yfact);
+-- translate to internal_vid coordinate space, and rescale according with destination resolution
+				resize_image(source, math.floor(wfact), math.floor(hfact));
 				blend_image(source,  settings.webcam.opa);
-				move_image(source,   math.floor(settings.webcam.x / VRESW * width), math.floor(settings.webcam.y / VRESH * height));
+				move_image(source,   math.floor(xfact), math.floor(yfact)); 
 				rotate_image(source, settings.webcam.ang);
 				order_image(source, max_current_image_order() + 1);
 			else -- died (likely immediately)
@@ -1229,7 +1242,6 @@ function enable_record(width, height, args)
 	image_transform_cycle(imagery.record_indicator, 1);
 	blend_image(imagery.record_indicator, 255.0, 64);
 	blend_image(imagery.record_indicator, 0.0, 64);
-	
 	order_image(imagery.record_indicator, max_current_image_order() + 1);
 end
 
@@ -1609,5 +1621,5 @@ if (#menulbls > 0 and settingslbls) then
 	current_menu:show();
 	suspend_target(internal_vid);
 	play_audio(soundmap["MENU_TOGGLE"]);
-	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
+	move_image(current_menu.anchor, 10, math.floor(VRESH * 0.1), settings.fadedelay);
 end

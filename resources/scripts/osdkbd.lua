@@ -46,15 +46,15 @@ local function osdkbd_inputkey(self, iotbl)
 		key = string.upper(key);
 		found = nil
 		
-		for i=1,#keymap do
-			if string.upper(keymap[i]) == key then
+		for i=1,#self.keymap do
+			if string.upper(self.keymap[i]) == key then
 				found = i
 				break
 			end
 		end
 		
 		if (found ~= nil) then
-			self.str = self.str .. keymap[found];
+			self.str = self.str .. self.keymap[found];
 			self:update();
 			return;
 		end

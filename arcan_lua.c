@@ -3444,7 +3444,7 @@ int arcan_lua_screenshot(lua_State* ctx)
 	return 0;
 }
 
-void arcan_lua_eachglobal(lua_State* ctx)
+void arcan_lua_eachglobal(lua_State* ctx, char* prefix, int (*callback)(const char*, const char*, void*), void* tag)
 {
 /* FIXME: incomplete (planned for the sandboxing / hardening release). 
  * 1. have a toggle saying that this functionality is desired (as the overhead is notable),
