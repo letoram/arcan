@@ -991,6 +991,11 @@ int arcan_lua_playmovie(lua_State* ctx)
 	return 0;
 }
 
+static bool isspecial(const char* msg)
+{
+	return strncmp(msg, "webcam", 6) == 0;
+}
+
 int arcan_lua_loadmovie(lua_State* ctx)
 {
 	int loop = luaL_optint(ctx, 2, FRAMESERVER_NOLOOP);
@@ -999,13 +1004,16 @@ int arcan_lua_loadmovie(lua_State* ctx)
 		return 0;
 	}
 	
-	char* fname = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
+	const char* farg = luaL_checkstring(ctx, 1);
+	bool special = isspecial(farg);
+	char* fname = special ? strdup(farg) : findresource(farg, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	intptr_t ref = (intptr_t) 0;
 
 	if (!fname){
 		arcan_warning("arcan_lua_loadmovie() -- unknown resource (%s) specified.\n", fname);
 		return 0;
-	}
+	} else 
+		fname = strdup(fname);
 	
 /*  in order to stay backward compatible API wise, the load_movie with function callback
  *  will always need to specify loop condition. */
@@ -1016,7 +1024,8 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	
 	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 	mvctx->loop = loop == FRAMESERVER_LOOP; 
-	
+	mvctx->nopts = special;
+
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = "movie",

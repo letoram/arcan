@@ -531,12 +531,12 @@ local function save_config()
 
 		elseif val.kind == "navigator" then
 			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-			write_rawresource("item.font   = \"\\ffonts/default.ttf\";\n");
+			write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
 			write_rawresource("cview.navigator = item;\n");
 
 		elseif val.kind == "label" then
 			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-			write_rawresource("item.font   = \"\\ffonts/default.ttf\";\n");
+			write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
 			write_rawresource("table.insert(cview.dynamic_labels, item);\n");
 			
 		elseif val.kind == "background" then
@@ -669,6 +669,15 @@ local function update_dynamic(newtbl)
 			
 		end
 		
+		for ind, val in ipairs(customview.current.dynamic_labels) do
+			if (newtbl[val.res] and string.len( newtbl[val.res] ) > 0) then
+				vid = render_text(val.font .. math.floor( VRESH * val.height ) .. newtbl[val.res]); 
+				place_item(vid, val);
+				table.insert(customview.temporary, vid);
+			end
+			
+		end
+		
 	end
 end
 
@@ -743,6 +752,11 @@ local function setup_customview()
 			navi_change(navi, navitbl);
 		end
 
+		settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
+			play_audio(soundmap["MENU_TOGGLE"]);
+			gridlemenu_settings( function() navi:update_list(settings.games); end, function() end); 
+		end
+		
 		settings.iodispatch["MENU_RIGHT"] = function()
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			navi:right(1);

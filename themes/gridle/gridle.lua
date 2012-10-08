@@ -205,6 +205,13 @@ end
 
 error_nogames = nil;
 
+local function menu_bgupdate() 
+	grab_sysicons();
+	zap_whitegrid();
+	build_whitegrid();
+	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh)	
+end
+
 function gridle()
 -- grab all dependencies;
 	settings.colourtable = system_load("scripts/colourtable.lua")();    -- default colour values for windows, text etc.
@@ -218,7 +225,6 @@ function gridle()
 	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
 	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
 	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
-	system_load("gridle_featuremapper.lua")();   -- adds macros for common features ((quick)save / (quick)load / reset) to internal_launch(hijack)
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
 	system_load("gridle_contmenus.lua")();       -- context menus (quickfilter, database manipulation, ...)
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
@@ -341,7 +347,7 @@ function gridle()
 	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
 		play_audio(soundmap["MENU_TOGGLE"]);
-		gridlemenu_settings(); 
+		gridlemenu_settings(menu_bgupdate, gridlemenu_filterchange); 
 	end
 	
 	settings.iodispatch["CONTEXT"] = function(iotbl)
@@ -620,7 +626,11 @@ function gridle_keyconf()
 	local helplabels = {};
 	helplabels["FLAG_FAVORITE"] = {"(grid-view) Mark game as a favorite.", "(menus) Toggle and save a setting."};
 	helplabels["MENU_TOGGLE"  ] = {"(grid-view) Show global settings, filter options.", "(internal-launch) Show display options, record video, remap keys."};
-	helplabels["CONTEXT"      ] = {"(grid-view) Use selected game as filter, force specific launch-mode.", "(detail view) Zoom in/out, switch between 3D model and full-screen.", "(internal-launch) Show game-specific options, state saving, reconfigure game-specific input."};
+	helplabels["CONTEXT"      ] = {"(grid-view) Use selected game as filter, force specific launch-mode.", 
+			"(detail view) Zoom in/out, switch between 3D model and full-screen.", 
+			"(internal-launch) Show game-specific options, state saving, reconfigure game-specific input.",
+			"(internal-launch-menus) (Spyglass options), show option details."
+	};
 	helplabels["DETAIL_VIEW"  ] = {"(grid-view) If a spyglass icon is present, switch to a 3D model of the selected game."};
 	helplabels["SWITCH_VIEW"  ] = {"(grid-view) Switch to customized view mode.", "(customview-setup) When placing an item, switch active property."};
 	helplabels["OSD_KEYBOARD" ] = {"(grid-view) Use an on-screen keyboard to filter current list of games."};

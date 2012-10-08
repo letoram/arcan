@@ -74,18 +74,14 @@ local function keyconf_destroy(self)
 	self:flush();
 end
 
-local function keyconf_renderline(self, string, size)
+local function keyconf_renderline(self, string, tab)
 	if (valid_vid(self.textvid)) then
 		delete_image(self.textvid);
 		self.textvid = nil;
 	end
 
-	if (size == nil) then
-	    size = 18
-	end
-
 -- push to front, render text, resize window, align to current resolution 
-	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string, 4, settings.colourtable.font_size * 6);
+	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string, 4, tab);
 	image_tracetag(self.textvid, "keyconfig:text");
 	
 	self.line = string;
@@ -146,9 +142,10 @@ local function keyconf_new(self)
 	self:to_front();
 end
 
-
 local function keyconf_playerline(self)
 	line = [[Configure player input (press SELECT to continue):\n\r#Players\t#Buttons\t#Axes\n\r]]
+	local w, h = text_dimensions(settings.colourtable.fontstr .. "#Players");
+	
 	if (self.active_group == 0) then
 		line = line .. [[\#ffff00]] .. tostring(self.playercount) .. [[\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\#ffffff]] .. tostring(self.axescount);
 	elseif (self.active_group == 1) then
@@ -157,7 +154,7 @@ local function keyconf_playerline(self)
 		line = line .. [[\#ffffff]] .. tostring(self.playercount) .. [[\t\#ffffff]] .. tostring(self.buttoncount) .. [[\t\#ffff00]] .. tostring(self.axescount);
 	end
 
-	keyconf_renderline(self, line);
+	keyconf_renderline(self, line, w + settings.colourtable.font_size);
 end
 
 -- query the user for the next input table,

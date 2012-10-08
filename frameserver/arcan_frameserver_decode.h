@@ -38,6 +38,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <libavdevice/avdevice.h>
 
 typedef struct arcan_ffmpeg_context {
 	struct frameserver_shmcont shmcont;

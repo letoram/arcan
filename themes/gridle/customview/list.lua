@@ -50,13 +50,11 @@ end
 
 restbl.get_linestr = function(self, gametbl)
 	local res = gametbl.title;
-
+	local fs = tostring(settings.colourtable.font_size);
+	
 	if self.icons[gametbl.setname .. ".ico"] then
-		res = [[\P16,16,icons/]] .. gametbl.setname .. ".ico," .. res;
-	end 
-
-	if self.icons[gametbl.target .. ".ico"] then
-		local fs = tostring(settings.colourtable.font_size);
+		res = "\\P" .. fs .. "," .. fs ..",icons/" .. gametbl.setname .. ".ico," .. res;
+	elseif self.icons[gametbl.target .. ".ico"] then
 		res = "\\P" .. fs .. "," .. fs ..",icons/" .. gametbl.target .. ".ico," .. res;
 	end
 
@@ -127,6 +125,7 @@ restbl.step = function(self, stepv)
 end
 
 restbl.update_list = function(self, gamelist)
+	print("update list", #gamelist);
 	self.list   = gamelist;
 	self.cursor = 1;
 	self.page_size = math.floor( self.height / (settings.colourtable.font_size + 4) );

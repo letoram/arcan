@@ -28,6 +28,7 @@ function movietest()
 	[[\is\t\b\!is\!bpawn movie instance at cursor\n\r]] ..
 	[[p\t\b\!ip\!bause last spawned movie\n\r]] ..
 	[[r\t\b\!ir\!besume playback on last spawned movie\n\r]] ..
+	[[w\t\b\!iw\!bebcam session\n\r]] .. 
 	[[\iESCAPE\t\!ishutdown\n\r]] );
 
 	sprop = image_surface_properties(text_vid);
@@ -41,12 +42,16 @@ function movietest()
 	move_image(debugbar_aid, 0, VRESH - 64,  0);
 	show_image(debugbar_vid);
 	show_image(debugbar_aid);	
+
+	webcam_ind = 0
 	
 	vid = load_movie("movietest.avi", FRAMESERVER_LOOP, function(source, statustbl)
-		print("main frameserver_event(",source, statustbl.kind,")"); 
-		show_image(source)
-		resize_image(source, statustbl.width, statustbl.height);
-		play_movie(source);
+		if (statustbl.kind == "resized") then
+			print("main frameserver_event(",source, statustbl.kind,")"); 
+			show_image(source)
+			resize_image(source, statustbl.width, statustbl.height);
+			play_movie(source);
+		end
 	end);
 	img.last = vid;
 	img.cursor = fill_surface(16, 16, 200, 50, 50);
@@ -87,7 +92,19 @@ function movietest_input( inputtbl )
 			
 		elseif (symtable[ inputtbl.keysym ] == "p") then
 			pause_movie(img.last);
-			
+		
+		elseif (symtable[ inputtbl.keysym ] == "w") then
+			vid, aid = load_movie("webcam:" .. webcam_ind, FRAMESERVER_NOLOOP, 
+function(source, status)
+	print("webcam status:", status.kind);
+	if (status.kind == "resized") then
+		resize_image(source, math.floor(VRESW * 0.3), math.floor(VRESH * 0.3));
+	end
+end );
+			webcam_ind = webcam_ind + 1;
+			move_image(vid, cursor.x, cursor.y);
+			show_image(vid);	
+	
 		elseif (symtable[ inputtbl.keysym] == "r") then
 			resume_movie(img.last);
 		elseif (symtable[ inputtbl.keysym] == "ESCAPE") then
