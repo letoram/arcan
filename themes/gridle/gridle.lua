@@ -347,7 +347,7 @@ function gridle()
 	
 	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
 		play_audio(soundmap["MENU_TOGGLE"]);
-		gridlemenu_settings(menu_bgupdate, gridlemenu_filterchange); 
+		gridlemenu_settings(gridlemenu_filterchanged, menu_bgupdate); 
 	end
 	
 	settings.iodispatch["CONTEXT"] = function(iotbl)

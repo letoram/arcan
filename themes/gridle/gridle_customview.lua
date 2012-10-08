@@ -269,6 +269,35 @@ local function save_item(state, vid)
 	to_menu();
 end
 
+local function save_item_navi(state, vid)
+	if (state == false) then
+		delete_image(vid);
+		to_menu();
+		return;
+	end
+
+	found = false;
+	
+	for ind, val in ipairs(customview.itemlist) do
+		if (val.kind == "navigator") then
+			delete_image(customview.itemlist[ind].vid);
+			customview.ci.vid = vid;
+			customview.itemlist[ind] = customview.ci;
+			found = true;
+			break;
+		end
+	end
+		
+	if (found == false) then
+		customview.ci.vid = vid;
+		table.insert(customview.itemlist, customview.ci);
+		table.insert(customview.root_menu.list, "Save/Finish");
+		customview.root_menu:move_cursor(0, true);
+	end
+		
+	to_menu();
+end
+
 local function save_item_bg(state, vid)
 	if (state == false) then
 		delete_image(vid);
@@ -314,7 +343,7 @@ local function positionfun(label)
 	vid = load_image("images/" .. label);
 	
 	if (vid ~= BADID) then
-		new_item(vid, "static_media", label);
+		customview.new_item(vid, "static_media", label);
 		customview.ci.res = "images/" .. label;
 
 		customview.position_item(vid, save_item);
@@ -435,10 +464,10 @@ local function positiondynamic(label)
 		vid = render_text(settings.colourtable.label_fontstr .. label);
 		
 		switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
-		new_item(vid, "dynamic_media", string.lower(label));
+		customview.new_item(vid, "dynamic_media", string.lower(label));
 		customview.ci.tiled  = true;
 	else
-		new_item(vid, "dynamic_media", string.lower(label));
+		customview.new_item(vid, "dynamic_media", string.lower(label));
 		customview.ci.tiled = false;
 	end
 
@@ -449,7 +478,7 @@ end
 
 local function positionlabel(label)
 	vid = render_text(settings.colourtable.label_fontstr .. label);
-	new_item(vid, "label", string.lower(label));
+	customview.new_item(vid, "label", string.lower(label));
 	customview.position_item(vid, save_item);
 end
 
@@ -459,11 +488,11 @@ local function positionnavi(label)
 	local vid = render_text(settings.colourtable.label_fontstr .. label);
 	switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
 
-	new_item(vid, "navigator", label);
+	customview.new_item(vid, "navigator", label);
 	customview.ci.tiled = true;
 	customview.ci.width = VRESW * 0.3;
 	customview.ci.height = VRESH * 0.7;
-	customview.position_item(vid, save_item);
+	customview.position_item(vid, save_item_navi);
 end
 
 -- stretch to fit screen, only opa change allowed
@@ -553,6 +582,16 @@ local function save_config()
 	
 	write_rawresource("return cview;\n");
 	close_rawresource();
+	
+	while current_menu ~= nil do
+		current_menu:destroy();
+		current_menu = current_menu.parent;
+	end
+		
+	play_audio(soundmap["MENU_FADE"]);
+	settings.iodispatch = customview_display;
+	pop_video_context();
+	gridle_customview();
 end
 
 -- the configure dialog works in that the user first gets to select and position a navigator based on a grid 
@@ -592,7 +631,6 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
 	table.insert(mainlbls, "---");
-	table.insert(mainlbls, "Save/Finish");
 	table.insert(mainlbls, "Cancel");
 	
 	mainptrs["Cancel"] = function(label, save)
@@ -612,6 +650,7 @@ local function show_config()
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = mainptrs;
 	current_menu.parent = nil;
+	customview.root_menu = current_menu;
 
 	current_menu:show();
 	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
@@ -639,9 +678,7 @@ local function update_dynamic(newtbl)
 	toggle_led(newtbl.players, newtbl.buttons, "")	;
 	
 	for ind, val in ipairs(customview.temporary) do
-		if (valid_vid(val)) then 
-			expire_image(val, 10);
-		end
+		if (valid_vid(val)) then delete_image(val); end 
 	end
 
 	customview.temporary = {};
@@ -670,9 +707,22 @@ local function update_dynamic(newtbl)
 		end
 		
 		for ind, val in ipairs(customview.current.dynamic_labels) do
-			if (newtbl[val.res] and string.len( newtbl[val.res] ) > 0) then
-				vid = render_text(val.font .. math.floor( VRESH * val.height ) .. newtbl[val.res]); 
-				place_item(vid, val);
+			local dststr = newtbl[val.res];
+			
+			if (type(dststr) == "number") then dststr = tostring(dststr); end
+			
+			if (dststr and string.len( dststr ) > 0) then
+				local capvid = fill_surface(math.floor( VRESW * val.width), math.floor( VRESH * val.height ), 0, 0, 0);
+				vid = render_text(val.font .. math.floor( VRESH * val.height ) .. " " .. dststr);
+				link_image(vid, capvid);
+				image_mask_clear(vid, MASK_OPACITY);
+				image_clip_on(vid);
+				place_item(capvid, val);
+				hide_image(capvid);
+				show_image(vid);
+				resize_image(vid, 0, VRESH * val.height);
+				order_image(vid, val.order);
+				table.insert(customview.temporary, capvid);
 				table.insert(customview.temporary, vid);
 			end
 			
