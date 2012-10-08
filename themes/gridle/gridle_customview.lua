@@ -14,7 +14,7 @@ local grid_stepy = 2;
 
 local stepleft, stepup, stepdown, stepright, show_config, setup_customview;
 
-local customview = {};
+customview = {};
 
 -- map resource-finder properties with their respective name in the editor dialog
 local remaptbl = {};
@@ -68,7 +68,7 @@ while (VRESH / grid_stepy > 100) do
 	 grid_stepy = grid_stepy + 2;
 end
 
-local function cascade_visibility(menu, val)
+function cascade_visibility(menu, val)
 	if (menu.parent) then
 		cascade_visibility(menu.parent, val);
 	end
@@ -185,7 +185,7 @@ local function opacity_increment(vid, byval)
 	update_object(vid);
 end
 
-local function position_item( key, vid, trigger )
+customview.position_item = function(vid, trigger )
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
 -- would need state tracking and hook to the clock 
 	kbd_repeat(20);
@@ -234,11 +234,11 @@ local function position_item( key, vid, trigger )
 	update_infowin();
 end
 
-local function new_item(vid, dstgroup, dstkey)
+customview.new_item = function(vid, dstgroup, dstkey)
 	local props = image_surface_properties(vid);
 
 	customview.ci = {};
-	customview.ci.width = (props.width > VRESW * 0.5) and VRESW * 0.5 or props.width;
+	customview.ci.width = (props.width  > VRESW * 0.5) and VRESW * 0.5 or props.width;
 	customview.ci.height= (props.height > VRESH * 0.5) and VRESH * 0.5 or props.height;
 	customview.ci.x     = 0.5 * (VRESW - customview.ci.width);
 	customview.ci.y     = 0.5 * (VRESH - customview.ci.height);
@@ -317,7 +317,7 @@ local function positionfun(label)
 		new_item(vid, "static_media", label);
 		customview.ci.res = "images/" .. label;
 
-		position_item(nil, vid, save_item);
+		customview.position_item(vid, save_item);
 	end
 end
 
@@ -433,6 +433,7 @@ local function positiondynamic(label)
 -- as a fallback, generate a label
 		switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
 		vid = render_text(settings.colourtable.label_fontstr .. label);
+		
 		switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
 		new_item(vid, "dynamic_media", string.lower(label));
 		customview.ci.tiled  = true;
@@ -443,14 +444,13 @@ local function positiondynamic(label)
 
 	customview.ci.width  = VRESW * 0.3;
 	customview.ci.height = VRESH * 0.3; 
-		
-	position_item(nil, vid, save_item);
+	customview.position_item(vid, save_item);
 end
 
 local function positionlabel(label)
 	vid = render_text(settings.colourtable.label_fontstr .. label);
 	new_item(vid, "label", string.lower(label));
-	position_item(nil, vid, save_item);
+	customview.position_item(vid, save_item);
 end
 
 -- only one navigator allowed, boring list, iconed list etc. use static preview- image. 
@@ -463,7 +463,7 @@ local function positionnavi(label)
 	customview.ci.tiled = true;
 	customview.ci.width = VRESW * 0.3;
 	customview.ci.height = VRESH * 0.7;
-	position_item(label, vid, save_item);
+	customview.position_item(vid, save_item);
 end
 
 -- stretch to fit screen, only opa change allowed
@@ -498,7 +498,7 @@ local function positionbg(label)
 	customview.ci.shader = customview.bgshader_label;
 	customview.ci.res    = "backgrounds/" .. label;
 
-	position_item(label, vid, save_item_bg);
+	customview.position_item(vid, save_item_bg);
 end
 
 -- take the custom view and dump to a .lua config

@@ -257,12 +257,12 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 				if (ind < 255)
 					devind = ind;
 			}
-			
+	
 			vidctx = ffmpeg_webcam(devind, 30.0, 640, 480);
 		} else {
 			vidctx = ffmpeg_preload(resource, NULL);
 		}
-		
+
 		if (!vidctx)
 			break;
 

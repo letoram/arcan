@@ -1137,11 +1137,39 @@ function screenshot()
 	end
 end
 
+function add_webcam()
+-- this one is part of gridle_customview
+	customview.ci = {};
+	local menudispatch = settings.iodispatch;
+	
+	local placeholdr = fill_surface(VRESW * 0.2, VRESH * 0.2, 255, 255, 0);
+	customview.new_item(placeholdr, "webcam", "webcam");
+	customview.ci.zv = max_current_image_order();
+
+-- if positioned, store the setting of the desired webcam position, when record is toggled
+-- a webcam frameserver will be launched as well, if it loads correctly, and will be positioned
+-- according to the customview result
+	customview.position_item(placeholdr, function(state, vid)
+		if (state) then
+			settings.webcam = customview.ci;
+		else
+			settings.webcam = nil;
+		end
+
+		cascade_visibility(current_menu, 1.0);
+		settings.iodispatch = menudispatch;
+
+		customview.ci = {};
+		delete_image(placeholdr);
+	end)
+end
+
 -- width, height are assumed to be :
 -- % 2 == 0, and LE VRESW, LE VRESH
 function disable_record()
 	if (not valid_vid(imagery.record_target)) then return; end
-
+	if (valid_vid(imagery.webcam)) then delete_image(imagery.webcam); end
+	
 	delete_image(imagery.record_target);
 	delete_image(imagery.record_indicator);
 end
@@ -1170,9 +1198,29 @@ function enable_record(width, height, args)
 -- allocate intermediate storage
 	local dstvid = fill_surface(width, height, 0, 0, 0, width, height);
 	resize_image(lvid, width, height);
-
+	local rectbl = {lvid};
+	
+-- connect a webcam frameserver
+	if (settings.webcam) then
+		vid, aid = load_movie("webcam:0", FRAMESERVER_NOLOOP, function(source, status) 
+			if (status.kind == "resized") then -- show / reposition
+				play_movie(source);
+				resize_image(source, math.floor(settings.webcam.width / VRESW * width), math.floor(settings.webcam.height / VRESH * height));
+				blend_image(source,  settings.webcam.opa);
+				move_image(source,   math.floor(settings.webcam.x / VRESW * width), math.floor(settings.webcam.y / VRESH * height));
+				rotate_image(source, settings.webcam.ang);
+				order_image(source, max_current_image_order() + 1);
+			else -- died (likely immediately)
+				delete_image(source);
+			end
+				settings.webcam = nil;
+		end)
+	
+		if (valid_vid(vid)) then table.insert(rectbl, vid); end
+	end
+	
 	show_image(lvid);
-	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+	define_recordtarget(dstvid, dst, args, rectbl, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
 	
 	imagery.record_target = dstvid;
 	imagery.record_indicator = fill_surface(16, 16, 255, 0, 0);
@@ -1319,10 +1367,13 @@ crtmenuptrs["Linear Processing"] = flip_crttog;
 
 recordlist = {};
 recordptrs = {};
+
 add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("record_format", {"WebM (VP8/Vorbis)", "Lossless (FFV1/FLAC)"}, function() end, true));
 add_submenu(recordlist, recordptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 add_submenu(recordlist, recordptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
 add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
+add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("record_overlay", {"Webcam"}, add_webcam));
+
 table.insert(recordlist, "Start");
 
 recordptrs["Start"] = function() 
