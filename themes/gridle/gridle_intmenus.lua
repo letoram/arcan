@@ -1258,7 +1258,6 @@ displaymodeptrs["Custom Shaders..."] = function()
 	menu_spawnmenu( listl, listp, def ); 
 end
 
-
 -- Don't implement save / favorite for these ones,
 -- want fail-safe as default, and the others mess too much with GPU for that
 displaymodelist = {"Custom Shaders..."};
