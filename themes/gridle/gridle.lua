@@ -151,7 +151,8 @@ settings = {
 	fullscreenshader = "default",
 	in_internal = false,
 	cocktail_mode = "Disabled",
-	autosave = "On" 
+	autosave = "On",
+	view_mode = "Grid",
 };
 
 settings.sortfunctions = {};
@@ -367,18 +368,17 @@ function gridle()
 		end
 	end
 
-	if (settings.custom_view) then
-		
-	else
-		setup_gridview();
-	end
-	
 	build_fadefunctions();
-
 	osd_visible = false;
-	
+
 	gridle_keyconf();
 	gridle_ledconf();
+
+	if (settings.view_mode == "Grid") then
+		setup_gridview();
+	else
+		gridle_customview();
+	end
 end
 
 -- to save resources when going from customview to grid view
@@ -603,7 +603,6 @@ end
 function keyconf_helper(message)
 	if (infowin) then
 		infowin:destroy();
-		print("destroy infowin");
 	end
 
 	if (message == nil) then return; end
@@ -675,7 +674,6 @@ function gridle_keyconf()
 			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
 				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
 					lastofs = keyconfig.ofs;
-					print(keyconf_labelview.cursor);
 					keyconf_labelview:move_cursor(1, 1); 
 					keyconf_helper( helplabels[ keyconf_labelview:select() ] );
 
@@ -711,11 +709,11 @@ function gridle_ledconf()
 		
 		local props = image_surface_properties(ledconf_labelview.window, 5);
 		if (props.height < VRESH) then
-			move_image(ledconf_labelview.anchor, 0, VRESH * 0.5 - props.height* 0.5);
+			move_image(ledconf_labelview.anchor, 0, math.floor(VRESH * 0.5 - props.height* 0.5));
 		end
 
 		ledconfig.lastofs = ledconfig.labelofs;
-		
+
 -- since we have a working symbol/label set by now, use that one
 		gridle_input = function(iotbl)
 			local restbl = keyconfig:match(iotbl);
@@ -735,6 +733,7 @@ function gridle_ledconf()
 				end
 			end
 		end
+
 -- already got working LEDconf
 	else
 		init_leds();
@@ -1264,6 +1263,7 @@ end
 -- (a) the standard settings table (all should be set),
 -- (b) gridle_menus
 function load_settings()
+	load_key_str("view_mode", "view_mode", settings.view_mode);
 	load_key_num("ledmode", "ledmode", settings.ledmode);
 	load_key_num("cell_width", "cell_width", settings.cell_width);
 	load_key_num("cell_height", "cell_height", settings.cell_height);
