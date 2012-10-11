@@ -78,8 +78,16 @@ quat div_quatf(quat a, float b);
 float* matr_quatf(quat a, float* dmatr);
 double* matr_quat(quat a, double* dmatr);
 vector angle_quat(quat a);
-quat nlerp_quat(quat a, quat b, float f);
-quat lerp_quat(quat a, quat b, float f);
+
+/* spherical interpolation between quaternions a and b with the weight of f.
+ * 180/360 separation implies different interpolation paths */
+quat slerp_quat180(quat a, quat b, float f);
+quat slerp_quat360(quat a, quat b, float f);
+
+/* normalized linear interpolation, non-uniform speed. */
+quat nlerp_quat180(quat a, quat b, float f);
+quat nlerp_quat360(quat a, quat b, float f);
+
 quat add_quat(quat a, quat b);
 quat build_quat_euler(float roll, float pitch, float yaw);
 quat quat_lookat(vector viewpos, vector dstpos);
