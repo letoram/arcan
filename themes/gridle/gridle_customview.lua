@@ -484,9 +484,13 @@ end
 
 -- only one navigator allowed, boring list, iconed list etc. use static preview- image. 
 local function positionnavi(label)
-	switch_default_texmode(TEX_REPEAT, TEX_REPEAT);
-	local vid = render_text(settings.colourtable.label_fontstr .. label);
-	switch_default_texmode(TEX_CLAMP, TEX_CLAMP);
+	if (resource("customview/" .. string.lower(label) .. ".png")) then
+		vid = load_image("customview/" .. string.lower(label) .. ".png");
+	end
+
+	if (vid == BADID) then
+		vid = fill_surface(32, 32, 255, 255, 255);
+	end
 
 	customview.new_item(vid, "navigator", label);
 	customview.ci.tiled = true;
@@ -626,7 +630,7 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart"}, positiondynamic));
+	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Webcam"}, positiondynamic));
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
@@ -689,7 +693,10 @@ local function update_dynamic(newtbl)
 			reskey = remaptbl[val.res];
 
 			if (reskey and restbl[reskey] and #restbl[reskey] > 0) then
-				if (reskey == "movies") then
+				if (reskey == "webcam") then
+					vid, aid = load_movie("webcam:0", FRAMESERVER_NOLOOP, function(source, status) place_item(source, val); play_movie(source); end)
+					
+				elseif (reskey == "movies") then
 					vid, aid = load_movie(restbl[reskey][1], FRAMESERVER_LOOP, function(source, status)
 						place_item(source, val);
 						play_movie(source);
@@ -716,8 +723,8 @@ local function update_dynamic(newtbl)
 				vid = render_text(val.font .. math.floor( VRESH * val.height ) .. " " .. dststr);
 				link_image(vid, capvid);
 				image_mask_clear(vid, MASK_OPACITY);
-				image_clip_on(vid);
 				place_item(capvid, val);
+
 				hide_image(capvid);
 				show_image(vid);
 				resize_image(vid, 0, VRESH * val.height);
@@ -775,15 +782,12 @@ local function setup_customview()
 		local navi = customview.navigator;
 		local navitbl = customview.current.navigator;
 		
--- dstvid is the clipping region, so shouldn't really shared order etc. as it is invisible
--- but when it is dropped, it can cascade to the members of the navigator 
-		dstvid = navi:create(math.floor(navitbl.width * VRESW), math.floor(navitbl.height * VRESH));
+		navitbl.width  = math.floor(navitbl.width  * VRESW);
+		navitbl.height = math.floor(navitbl.height * VRESH);
+	
+		navi:create(navitbl);
 		navi:update_list(settings.games);
 		
--- order and opacity doesn't apply to anchor, just to drawable
-		move_image(dstvid, math.floor(navitbl.x * VRESW), math.floor(navitbl.y * VRESH));
-		rotate_image(dstvid, navitbl.ang);
-
 		settings.iodispatch["MENU_UP"]   = function()
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			navi:up(1);
@@ -822,8 +826,12 @@ local function setup_customview()
 				navi_change(navi, navitbl);
 			end
 		end
-		
+	
 		settings.iodispatch["MENU_ESCAPE"] = function()
+		
+		end
+		
+		settings.iodispatch["SWITCH_VIEW"] = function()
 			if ( navi:escape() ) then
 				pop_video_context();
 				settings.iodispatch = olddispatch;
@@ -848,6 +856,7 @@ function gridle_customview()
 
 	if (resource("customview_cfg.lua")) then
 		customview.current = system_load("customview_cfg.lua")();
+		customview.in_customview = true;
 		
 		if (customview.current) then
 			customview.in_config = false;

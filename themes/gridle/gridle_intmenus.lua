@@ -1383,18 +1383,18 @@ add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("
 add_submenu(recordlist, recordptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 add_submenu(recordlist, recordptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
 add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
-add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("record_overlay", {"Webcam"}, add_webcam));
+add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Webcam"}, add_webcam, true));
 
 table.insert(recordlist, "Start");
 
 recordptrs["Start"] = function() 
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
-	
+
 	local props  = image_surface_initial_properties(internal_vid);
 	local width  = props.width;
 	local height = props.height;
-		
+
 	if (settings.record_res < props.height) then
 		width = ( width / height ) * settings.record_res;
 	end
@@ -1404,7 +1404,7 @@ recordptrs["Start"] = function()
 	height = math.floor(height);
 	width = (width % 2 == 0) and width or width + 1;
 	height = (height % 2 == 0) and height or height + 1;
-	
+
 -- compile a string with all the settings- goodness
 	local recstr = settings.record_format == "Lossless (FFV1/FLAC)" and "acodec=flac:vcodec=ffv1" or "acodec=libvorbis:vcodec=libvpx";
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);

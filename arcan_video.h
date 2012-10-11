@@ -195,6 +195,7 @@ img_cons arcan_video_storage_properties(arcan_vobj_id id);
 surface_properties arcan_video_resolve_properties(arcan_vobj_id id);
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
 surface_properties arcan_video_current_properties(arcan_vobj_id id);
+arcan_errc arcan_video_screencoords(arcan_vobj_id, vector*);
 surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks);
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
 arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
@@ -261,6 +262,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, floa
 arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, float df, unsigned int time);
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, float yaw, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
+arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx, float sy, float sz);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);
