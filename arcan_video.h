@@ -109,7 +109,9 @@ enum arcan_blendfunc {
 enum arcan_interp_function {
 	interpolate_linear,
 	interpolate_spherical,
-	interpolate_normalized_linear
+	interpolate_spherical_large,
+	interpolate_normalized_linear,
+	interpolate_normalized_linear_large
 };
 
 enum arcan_imageproc_mode {

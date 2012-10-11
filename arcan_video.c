@@ -2351,11 +2351,15 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 			base->rotate.startt = last->rotate.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->rotate.endt;
 			base->rotate.endt   = base->rotate.startt + tv;
 			base->rotate.starto = bv;
+
 			base->rotate.endo.roll  = roll;
 			base->rotate.endo.pitch = pitch;
 			base->rotate.endo.yaw   = yaw;
 			base->rotate.endo.quaternion = build_quat_euler(roll, pitch, yaw);
-			base->rotate.interp = interpolate_linear;
+
+			base->rotate.interp = (abs(bv.roll - roll) > 180.0 || abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
+				interpolate_normalized_linear : interpolate_normalized_linear_large;
+//				interpolate_spherical : interpolate_spherical_large;
 		}
 	}
 
@@ -2586,6 +2590,17 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	return rv;
 }
 
+static quat interp_rotation(quat* q1, quat* q2, float fract, enum arcan_interp_function fun)
+{
+	switch (fun){
+		case interpolate_linear :
+		case interpolate_normalized_linear:       return nlerp_quat180(*q1, *q2, fract); break;
+		case interpolate_normalized_linear_large: return nlerp_quat360(*q1, *q2, fract); break;
+		case interpolate_spherical:               return slerp_quat180(*q1, *q2, fract); break;
+		case interpolate_spherical_large :        return slerp_quat360(*q1, *q2, fract); break;
+	}
+}	
+
 static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 {
 	bool upd = false;
@@ -2615,8 +2630,8 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			}
 
 			compact_transformation(ci,
-			                       offsetof(surface_transform, blend),
-			                       sizeof(struct transf_blend));
+				offsetof(surface_transform, blend),
+				sizeof(struct transf_blend));
 
 /* only fire event if we've run out of the transform chain for the current value */
 			if (!ci->transform || ci->transform->blend.startt == 0) {
@@ -2643,8 +2658,8 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 					 ci->transform->move.endt - ci->transform->move.startt);
 
 			compact_transformation(ci,
-								   offsetof(surface_transform, move),
-								   sizeof(struct transf_move));
+				offsetof(surface_transform, move),
+				sizeof(struct transf_move));
 
 			if (!ci->transform || ci->transform->move.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_MOVED};
@@ -2663,13 +2678,14 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 
 			if (ci->flags.cycletransform)
 				arcan_video_objectscale(ci->cellid, ci->transform->scale.endd.x,
-																ci->transform->scale.endd.y,
-																ci->transform->scale.endd.z,
-																ci->transform->scale.endt - ci->transform->scale.startt);
+					ci->transform->scale.endd.y,
+					ci->transform->scale.endd.z,
+					ci->transform->scale.endt - ci->transform->scale.startt);
 
 			compact_transformation(ci,
-								   offsetof(surface_transform, scale),
-								   sizeof(struct transf_scale));
+				offsetof(surface_transform, scale),
+				sizeof(struct transf_scale));
+
 			if (!ci->transform || ci->transform->scale.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
 				ev.data.video.source = ci->cellid;
@@ -2681,20 +2697,20 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 	if (ci->transform && ci->transform->rotate.startt) {
 		upd = true;
 		float fract = lerp_fract(ci->transform->rotate.startt, ci->transform->rotate.endt, stamp);
-		ci->current.rotation.quaternion = nlerp_quat(ci->transform->rotate.starto.quaternion, ci->transform->rotate.endo.quaternion, fract);
 
+/* close enough */
 		if (fract > 0.9999f) {
 			ci->current.rotation = ci->transform->rotate.endo;
 			if (ci->flags.cycletransform)
 				arcan_video_objectrotate(ci->cellid,
-																 ci->transform->rotate.endo.roll,
-																 ci->transform->rotate.endo.pitch,
-																 ci->transform->rotate.endo.yaw,
-																 ci->transform->rotate.endt - ci->transform->rotate.startt);
+					ci->transform->rotate.endo.roll,
+					ci->transform->rotate.endo.pitch,
+					ci->transform->rotate.endo.yaw,
+					ci->transform->rotate.endt - ci->transform->rotate.startt);
 
 			compact_transformation(ci,
-								   offsetof(surface_transform, rotate),
-								   sizeof(struct transf_rotate));
+				offsetof(surface_transform, rotate),
+				sizeof(struct transf_rotate));
 
 			if (!ci->transform || ci->transform->rotate.startt == 0) {
 				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_ROTATED};
@@ -2702,6 +2718,9 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 			}
 		}
+		else
+			ci->current.rotation.quaternion = interp_rotation(&ci->transform->rotate.starto.quaternion, 
+				&ci->transform->rotate.endo.quaternion, fract, ci->transform->rotate.interp);
 	}
 
 	return upd;
@@ -2824,7 +2843,8 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
 
 		if (tf->rotate.startt){
-			dprops->rotation.quaternion = nlerp_quat(tf->rotate.starto.quaternion, tf->rotate.endo.quaternion, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
+			dprops->rotation.quaternion = interp_rotation(&tf->rotate.starto.quaternion, &tf->rotate.endo.quaternion,  
+				lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp), tf->rotate.interp);
 
 /* quite expensive, and this data should only really be used internally, the lua resolve properties stuff should do this manually */
 #ifdef _DEBUG
@@ -3529,7 +3549,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 					rv.rotation = current->rotate.starto;
 				else{
 					float fract = lerp_fract(current->rotate.startt, current->rotate.endt, ticks);
-					rv.rotation.quaternion = nlerp_quat(current->rotate.starto.quaternion, current->rotate.endo.quaternion, fract);
+					rv.rotation.quaternion = interp_rotation(&current->rotate.starto.quaternion, &current->rotate.endo.quaternion, fract, current->rotate.interp);
 				}
 			}
 		}

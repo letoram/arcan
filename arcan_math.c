@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <stdbool.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265
@@ -408,17 +409,53 @@ float lerp_val(float a, float b, float fact)
 	return a + fact * (b - a);
 }
 
-quat lerp_quat(quat a, quat b, float fact)
+static inline quat slerp_quatfl(quat a, quat b, float fact, bool r360)
 {
-//	printf("a (%f, %f, %f, %f) -- b (%f, %f, %f, %f) - %f\n", a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w, fact);
-	quat res = add_quat( mul_quatf(a, 1 - fact), mul_quatf(b, fact) );
-	return res;
+	float weight_a, weight_b;
+	bool flip = false;
+
+/* r360 if delta > 180degrees) */ 
+	float ct = dot_quat(a, b);
+	if (r360 && ct < 1.0){
+		ct   = -ct;
+		flip = true;
+	}
+	
+	float th  = acos(ct);
+	float sth = sin(th);
+
+	if (sth > 0.005f){
+		weight_a = sin( (1.0f - fact) * th) / sth;
+		weight_b = sin( fact * th   )       / sth;
+	} else {
+/* small steps, only linear */
+		weight_a = 1.0f - fact;
+		weight_b = fact;
+	}
+	
+	if (flip)
+		weight_b = -weight_b;
+	
+	return add_quat(mul_quatf(a, weight_a), mul_quatf(b, weight_b));
 }
 
-quat nlerp_quat(quat a, quat b, float fact)
+static inline quat nlerp_quatfl(quat a, quat b, float fact, bool r360)
 {
-	return norm_quat(lerp_quat(a, b, fact));
+	float tinv = 1.0f - fact;
+	quat rq;
+	
+	if (r360 && dot_quat(a, b) < 0.0f)
+		rq = add_quat(mul_quatf(a, tinv), mul_quatf(a, -fact));
+	else
+		rq = add_quat(mul_quatf(a, tinv), mul_quatf(b,  fact));
+
+	return norm_quat(rq);
 }
+
+quat slerp_quat180(quat a, quat b, float fact){ return slerp_quatfl(a, b, fact, false); }
+quat slerp_quat360(quat a, quat b, float fact){ return slerp_quatfl(a, b, fact, true ); }
+quat nlerp_quat180(quat a, quat b, float fact){ return nlerp_quatfl(a, b, fact, false); }
+quat nlerp_quat360(quat a, quat b, float fact){ return nlerp_quatfl(a, b, fact, true ); }
 
 float* matr_quatf(quat a, float* dmatr)
 {
