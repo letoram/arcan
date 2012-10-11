@@ -45,7 +45,6 @@ soundmap = {
  GRIDLAYER = 3;
  GRIDLAYER_MOVIE = 4;
  GRIDLAYER_ZOOM  = 5;
- GRIDLAYER_ZOOM_MOVIE = 6;
  ICONLAYER = 7;
 
 settings = {
@@ -215,7 +214,7 @@ end
 
 function gridle()
 -- grab all dependencies;
-	settings.colourtable = system_load("scripts/colourtable.lua")();    -- default colour values for windows, text etc.
+	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
 
 	system_load("scripts/calltrace.lua")();      -- debug features Trace() and Untrace()
 	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
@@ -371,14 +370,12 @@ function gridle()
 	build_fadefunctions();
 	osd_visible = false;
 
-	gridle_keyconf();
-	gridle_ledconf();
-
-	if (settings.view_mode == "Grid") then
-		setup_gridview();
-	else
-		gridle_customview();
-	end
+-- slightly complicated, we cannot activate the respective grid mode in the case of customview etc. 
+-- as it will pop context, manipulate I/O handlers etc. so let the keyconf / ledconf set it all up.
+	local lfun = settings.view_mode == "Grid" and setup_gridview or gridle_customview;
+	
+	gridle_keyconf(lfun);
+	gridle_ledconf(lfun);
 end
 
 -- to save resources when going from customview to grid view
@@ -438,6 +435,7 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
 	image_shader(imagery.bgimage, bgshader);
 	show_image(imagery.bgimage);
+	order_image(imagery.bgimage, GRIDBGLAYER); 
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 end
 
@@ -617,7 +615,7 @@ function keyconf_helper(message)
 	move_image(infowin.anchor, math.floor( 0.5 * (VRESW - props.width)), VRESH - props.height);
 end
 
-function gridle_keyconf()
+function gridle_keyconf(defer_fun)
 	local keylabels = {
 		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " SWITCH_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
@@ -669,7 +667,7 @@ function gridle_keyconf()
 				gridle_input = gridle_dispatchinput;
 				kbd_repeat(settings.repeatrate);
 				if (keyconf_labelview) then keyconf_labelview:destroy(); end
-				gridle_ledconf();
+				gridle_ledconf(defer_fun);
 
 			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
 				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
@@ -685,13 +683,19 @@ function gridle_keyconf()
 			end
 		end
 
+		return false;
+	else
+		return true;
 	end
 end
  
 -- very similar to gridle_keyconf, only real difference is that the labels are a subset
 -- of the output from keyconf (PLAYERn)
-function gridle_ledconf()
-	if (keyconfig.active == false) then return; end -- defer ledconf
+function gridle_ledconf(defer_fun)
+	if (keyconfig.active == false) then 
+		return; 
+	end -- defer ledconf
+
 	local ledconflabels = {};
 
 	for ind, val in ipairs(keyconfig:labels()) do
@@ -725,6 +729,9 @@ function gridle_ledconf()
 					ledconf_labelview:destroy();
 					ledconf_labelview = nil;
 					init_leds();
+					if (defer_fun) then
+						defer_fun();
+					end
 				else -- more input
 					if (ledconfig.lastofs ~= ledconfig.labelofs) then
 							ledconfig.lastofs = ledconfig.labelofs;
@@ -734,9 +741,12 @@ function gridle_ledconf()
 			end
 		end
 
--- already got working LEDconf
+-- already got working LEDconf, or no point in trying to configure one.
 	else
 		init_leds();
+		if (defer_fun) then 
+			defer_fun();
+		end
 	end
 end
 
@@ -899,7 +909,9 @@ function got_asynchimage(source, status)
 		
 		local neww = source == cursor_vid() and (settings.cell_width * settings.cursor_scale) or settings.cell_width;
 		local newh = source == cursor_vid() and (settings.cell_height * settings.cursor_scale) or settings.cell_height;
-		
+
+		order_image(source, GRIDLAYER);
+		order_image(cursor_vid(), GRIDLAYER_ZOOM);
 		resize_image(source, neww, newh);
 	end
 	
@@ -1259,104 +1271,6 @@ function load_key_str(name, val, opt)
 	settings[val] = kval or opt
 end
 
--- these should match those of 
--- (a) the standard settings table (all should be set),
--- (b) gridle_menus
-function load_settings()
-	load_key_str("view_mode", "view_mode", settings.view_mode);
-	load_key_num("ledmode", "ledmode", settings.ledmode);
-	load_key_num("cell_width", "cell_width", settings.cell_width);
-	load_key_num("cell_height", "cell_height", settings.cell_height);
-	load_key_num("fadedelay", "fadedelay", settings.fadedelay);
-	load_key_str("default_launchmode", "default_launchmode", settings.default_launchmode);
-	load_key_num("transitiondelay", "transitiondelay", settings.transitiondelay);
-	load_key_str("sortorder", "sortlbl", settings.sortlbl);
-	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
-	load_key_num("repeatrate", "repeatrate", settings.repeatrate);
-	load_key_num("internal_again", "internal_again", settings.internal_again);
-	load_key_str("scalemode", "scalemode", settings.scalemode);
-	load_key_num("movieagain", "movieagain", settings.movieagain);
-	load_key_num("moviecooldown", "cooldown_start", settings.cooldown_start);
-	load_key_str("tilebg", "tilebg", settings.tilebg);
-	load_key_str("bgname", "bgname", settings.bgname);
-	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
-	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
-	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);
-	load_key_num("bg_speedh", "bg_speedh", settings.bg_speedh);
-	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
-	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
-	load_key_str("autosave", "autosave", settings.autosave);
-	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
-
-	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
-	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
-	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
-	load_key_num("vector_vblurscale", "vector_vblurscale", settings.vector_vblurscale);
-	load_key_num("vector_hblurofs",   "vector_hblurofs",   settings.vector_hblurofs);
-	load_key_num("vector_vblurofs",   "vector_vblurofs",   settings.vector_vblurofs);
-	load_key_num("vector_vbias",      "vector_vbias",      settings.vector_vbias);
-	load_key_num("vector_hbias",      "vector_hbias",      settings.vector_hbias);
-	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
-	load_key_num("vector_trailstep",  "vector_trailstep",  settings.vector_trailstep);
-	load_key_num("vector_trailfall",  "vector_trailfall",  settings.vector_trailfall);
-
-	load_key_num("ntsc_hue",        "ntsc_hue",        settings.ntsc_hue); 
-	load_key_num("ntsc_saturation", "ntsc_saturation", settings.ntsc_saturation);
-	load_key_num("ntsc_contrast",   "ntsc_contrast",   settings.ntsc_contrast);
-	load_key_num("ntsc_brightness", "ntsc_brightness", settings.ntsc_brightness); 
-	load_key_num("ntsc_gamma",      "ntsc_gamma",      settings.ntsc_brightness);
-	load_key_num("ntsc_sharpness",  "ntsc_sharpness",  settings.ntsc_sharpness); 
-	load_key_num("ntsc_resolution", "ntsc_resolution", settings.ntsc_resolution); 
-	load_key_num("ntsc_artifacts",  "ntsc_artifacts",  settings.ntsc_artifacts);
-	load_key_num("ntsc_bleed",      "ntsc_bleed",      settings.ntsc_bleed);
-	load_key_num("ntsc_fringing",   "ntsc_fringing",   settings.ntsc_fringing); 
-
-	load_key_num("crt_gamma",       "crt_gamma",       settings.crt_gamma);
-	load_key_num("crt_mongamma",    "crt_mongamma",    settings.crt_mongamma);
-	load_key_num("crt_hoverscan",   "crt_hoverscan",   settings.crt_hoverscan);
-	load_key_num("crt_voverscan",   "crt_voverscan",   settings.crt_voverscan);
-	load_key_num("crt_haspect",     "crt_haspect",     settings.crt_haspect);
-	load_key_num("crt_vaspect",     "crt_vaspect",     settings.crt_vaspect);
-	load_key_num("crt_curvrad",     "crt_curvrad",     settings.crt_curvrad); 
-	load_key_num("crt_distance",    "crt_distance",    settings.crt_distance);
-	load_key_num("crt_tilth",       "crt_tilth",       settings.crt_tilth); 
-	load_key_num("crt_tiltv",       "crt_tiltv",       settings.crt_tiltv); 
-	load_key_num("crt_cornersz",    "crt_cornersz",    settings.crt_cornersz); 
-	load_key_num("crt_cornersmooth","crt_cornersmooth",settings.crt_cornersmooth); 
-
-	load_key_bool("crt_curvature",   "crt_curvature",   settings.curvature); 
-	load_key_bool("crt_gaussian",    "crt_gaussian",    settings.gaussian); 
-	load_key_bool("crt_oversample",  "crt_oversample",  settings.oversample); 
-	load_key_bool("crt_linearproc",  "crt_linearproc",  settings.linearproc); 
-	
--- special handling for a few settings, modeflag + additional processing
-	local internalinp = get_key("internal_input");
-	if (internalinp ~= nil) then
-		settings.internal_input = internalinp;
-		settings.flipinputaxis = internalinp ~= "Normal";
-	end
-
--- each shader argument is patched into a boolean table of #defines to tiggle
-	local defshdrkey = get_key("defaultshader_defs");
-	if (defshdrkey) then
-		settings.shader_opts = {};
-		if (string.len(defshdrkey) > 0) then
-			local args = string.split(defshdrkey, ",");
-			for ind, val in ipairs(args) do settings.shader_opts[val] = true; end
-		end
-	end
-
--- the list of favorites is stored / restored on every program open/close cycle
-	if ( open_rawresource("lists/favorites") ) then
-		line = read_rawresource();
-		while line ~= nil do
-			line = string.trim(line);
-			table.insert(settings.favorites, line);
-			settings.favorites[line] = true;
-			line = read_rawresource();
-		end
-	end
-end
 
 function asynch_movie_ready(source, statustbl)
 	if (imagery.movie == source) then
@@ -1694,6 +1608,110 @@ function error_nogames()
 	show_image(dbhelp);
 	
 	gridle_input = nil;
+end
+
+-- these should match those of 
+-- (a) the standard settings table (all should be set),
+-- (b) gridle_menus
+function load_settings()
+	load_key_str("view_mode", "view_mode", settings.view_mode);
+	load_key_num("ledmode", "ledmode", settings.ledmode);
+	load_key_num("cell_width", "cell_width", settings.cell_width);
+	load_key_num("cell_height", "cell_height", settings.cell_height);
+	load_key_num("fadedelay", "fadedelay", settings.fadedelay);
+	load_key_str("default_launchmode", "default_launchmode", settings.default_launchmode);
+	load_key_num("transitiondelay", "transitiondelay", settings.transitiondelay);
+	load_key_str("sortorder", "sortlbl", settings.sortlbl);
+	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
+	load_key_num("repeatrate", "repeatrate", settings.repeatrate);
+	load_key_num("internal_again", "internal_again", settings.internal_again);
+	load_key_str("scalemode", "scalemode", settings.scalemode);
+	load_key_num("movieagain", "movieagain", settings.movieagain);
+	load_key_num("moviecooldown", "cooldown_start", settings.cooldown_start);
+	load_key_str("tilebg", "tilebg", settings.tilebg);
+	load_key_str("bgname", "bgname", settings.bgname);
+	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
+	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
+	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);
+	load_key_num("bg_speedh", "bg_speedh", settings.bg_speedh);
+	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
+	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
+	load_key_str("autosave", "autosave", settings.autosave);
+	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
+
+	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
+	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
+	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
+	load_key_num("vector_vblurscale", "vector_vblurscale", settings.vector_vblurscale);
+	load_key_num("vector_hblurofs",   "vector_hblurofs",   settings.vector_hblurofs);
+	load_key_num("vector_vblurofs",   "vector_vblurofs",   settings.vector_vblurofs);
+	load_key_num("vector_vbias",      "vector_vbias",      settings.vector_vbias);
+	load_key_num("vector_hbias",      "vector_hbias",      settings.vector_hbias);
+	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
+	load_key_num("vector_trailstep",  "vector_trailstep",  settings.vector_trailstep);
+	load_key_num("vector_trailfall",  "vector_trailfall",  settings.vector_trailfall);
+
+	load_key_num("ntsc_hue",        "ntsc_hue",        settings.ntsc_hue); 
+	load_key_num("ntsc_saturation", "ntsc_saturation", settings.ntsc_saturation);
+	load_key_num("ntsc_contrast",   "ntsc_contrast",   settings.ntsc_contrast);
+	load_key_num("ntsc_brightness", "ntsc_brightness", settings.ntsc_brightness); 
+	load_key_num("ntsc_gamma",      "ntsc_gamma",      settings.ntsc_brightness);
+	load_key_num("ntsc_sharpness",  "ntsc_sharpness",  settings.ntsc_sharpness); 
+	load_key_num("ntsc_resolution", "ntsc_resolution", settings.ntsc_resolution); 
+	load_key_num("ntsc_artifacts",  "ntsc_artifacts",  settings.ntsc_artifacts);
+	load_key_num("ntsc_bleed",      "ntsc_bleed",      settings.ntsc_bleed);
+	load_key_num("ntsc_fringing",   "ntsc_fringing",   settings.ntsc_fringing); 
+
+	load_key_num("crt_gamma",       "crt_gamma",       settings.crt_gamma);
+	load_key_num("crt_mongamma",    "crt_mongamma",    settings.crt_mongamma);
+	load_key_num("crt_hoverscan",   "crt_hoverscan",   settings.crt_hoverscan);
+	load_key_num("crt_voverscan",   "crt_voverscan",   settings.crt_voverscan);
+	load_key_num("crt_haspect",     "crt_haspect",     settings.crt_haspect);
+	load_key_num("crt_vaspect",     "crt_vaspect",     settings.crt_vaspect);
+	load_key_num("crt_curvrad",     "crt_curvrad",     settings.crt_curvrad); 
+	load_key_num("crt_distance",    "crt_distance",    settings.crt_distance);
+	load_key_num("crt_tilth",       "crt_tilth",       settings.crt_tilth); 
+	load_key_num("crt_tiltv",       "crt_tiltv",       settings.crt_tiltv); 
+	load_key_num("crt_cornersz",    "crt_cornersz",    settings.crt_cornersz); 
+	load_key_num("crt_cornersmooth","crt_cornersmooth",settings.crt_cornersmooth); 
+
+	load_key_bool("crt_curvature",  "crt_curvature",   settings.curvature); 
+	load_key_bool("crt_gaussian",   "crt_gaussian",    settings.gaussian); 
+	load_key_bool("crt_oversample", "crt_oversample",  settings.oversample); 
+	load_key_bool("crt_linearproc", "crt_linearproc",  settings.linearproc); 
+	
+	load_key_str("record_format",   "record_format",   settings.record_format);
+	load_key_num("record_fps",      "record_fps",      settings.record_fps);
+	load_key_num("record_qual",     "record_qual",     settings.record_qual);
+	load_key_num("record_res",      "record_res",      settings.record_res);
+	
+-- special handling for a few settings, modeflag + additional processing
+	local internalinp = get_key("internal_input");
+	if (internalinp ~= nil) then
+		settings.internal_input = internalinp;
+		settings.flipinputaxis = internalinp ~= "Normal";
+	end
+
+-- each shader argument is patched into a boolean table of #defines to tiggle
+	local defshdrkey = get_key("defaultshader_defs");
+	if (defshdrkey) then
+		settings.shader_opts = {};
+		if (string.len(defshdrkey) > 0) then
+			local args = string.split(defshdrkey, ",");
+			for ind, val in ipairs(args) do settings.shader_opts[val] = true; end
+		end
+	end
+
+-- the list of favorites is stored / restored on every program open/close cycle
+	if ( open_rawresource("lists/favorites") ) then
+		line = read_rawresource();
+		while line ~= nil do
+			line = string.trim(line);
+			table.insert(settings.favorites, line);
+			settings.favorites[line] = true;
+			line = read_rawresource();
+		end
+	end
 end
 
 gridle_input = gridle_dispatchinput;

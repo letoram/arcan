@@ -1,5 +1,8 @@
--- this one is just a mess of tables, all mapping to a
--- global settings structure, nothing really interesting
+-- 
+-- This file contains (a) menu helper functions (build_globmenu, gen_tbl_menu, gen_num_menu, spawn_menu, ...)
+-- and the menu setup / spawning for the global settings menus.
+-- quite messy, generalizing to a shared script would be nice.
+-- 
 
 function build_globmenu(globstr, cbfun, globmask)
 	local lists = glob_resource(globstr, globmask);
@@ -12,23 +15,24 @@ function build_globmenu(globstr, cbfun, globmask)
 	return lists, resptr;
 end
 
--- for some menu items we just want to have a list of useful values
--- this little function builds a list of those numbers, with corresponding functions,
--- dispatch handling etc.
+-- name     : settings[name] to store under
+-- tbl      : array of string with labels of possible values
+-- isstring : treat value as string or convert to number before sending to store_key
 function gen_tbl_menu(name, tbl, triggerfun, isstring)
 	local reslbl = {};
 	local resptr = {};
-	
+
 	local basename = function(label, save)
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 		settings[name] = isstring and label or tonumber(label);
+
 		if (save) then
 			play_audio(soundmap["MENU_FAVORITE"]);
-			store_key(name, tonumber(label));
+			store_key(name, isstring and label or tonumber(label));
 		else
 			play_audio(soundmap["MENU_SELECT"]);
 		end
-		
+
 		if (triggerfun) then triggerfun(label); end
 	end
 
@@ -36,10 +40,16 @@ function gen_tbl_menu(name, tbl, triggerfun, isstring)
 		table.insert(reslbl, val);
 		resptr[val] = basename;
 	end
-	
+
 	return reslbl, resptr;
 end
 
+-- automatically generate a menu of numbers
+-- name  : the settings key to store in
+-- base  : start value
+-- step  : value to add to base, or a function that calculates the value using an index
+-- count : number of entries
+-- triggerfun : hook to be called when selected 
 function gen_num_menu(name, base, step, count, triggerfun)
 	local reslbl = {};
 	local resptr = {};
@@ -76,6 +86,12 @@ function gen_num_menu(name, base, step, count, triggerfun)
 	return reslbl, resptr;
 end
 
+-- inject a submenu into a main one
+-- dstlbls : array of strings to insert into
+-- dstptrs : hashtable keyed by label for which to insert the spawn function
+-- label   : to use for dstlbls/dstptrs
+-- lbls    : array of strings used in the submenu (typically from gen_num, gen_tbl)
+-- ptrs    : hashtable keyed by label that acts as triggers (typically from gen_num, gen_tbl)
 function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
 	if (dstlbls == nil or dstptrs == nil or #lbls == 0) then return; end
 	
@@ -96,6 +112,10 @@ function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
 	end
 end
 
+-- create and display a listview setup with the menu defined by the arguments.
+-- list    : array of strings that make up the menu
+-- listptr : hashtable keyed by list labels
+-- fmtlist : hashtable keyed by list labels, on match, will be prepended when rendering (used for icons, highlights etc.)
 function menu_spawnmenu(list, listptr, fmtlist)
 	if (#list < 1) then
 		return nil;
@@ -262,6 +282,11 @@ local function bgtrig()
 	updatebgtrigger();
 end
 
+local function reset_customview()
+	zap_resource("customview_cfg.lua");
+	
+end
+
 add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, bgtrig));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, bgtrig));
@@ -284,6 +309,8 @@ add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_me
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
 table.insert(settingslbls, "----");
+add_submenu(settingslbls, settingsptrs, "Default View Mode...", "view_mode", gen_tbl_menu("view_mode", {"Grid", "Custom"}, function() end, true));
+add_submenu(settingslbls, settingsptrs, "Custom View...", "cview_skip", {"Reset"}, {Reset = reset_customview});
 add_submenu(settingslbls, settingsptrs, "Grid View...", "skip", gridviewlbls, gridviewptrs, {});
 
 if (LEDCONTROLLERS > 0) then

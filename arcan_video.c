@@ -303,11 +303,10 @@ unsigned arcan_video_popcontext()
 
 arcan_vobj_id arcan_video_allocid(bool* status)
 {
-	unsigned i = current_context->vitem_ofs;
+	unsigned i = current_context->vitem_ofs, c = current_context->vitem_limit;
 	*status = false;
 
-/* scan from vofs until full wrap-around */
-	while (i != current_context->vitem_ofs - 1){
+	while (c--){
 		if (i == 0) /* 0 is protected */
 			i = 1;
 
@@ -2316,12 +2315,12 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 		rv = ARCAN_OK;
 
 		/* clear chains for rotate attribute
-		 * if time is set to ovverride and be immediate */
+		 * if time is set to override and be immediate */
 		if (tv == 0) {
 			swipe_chain(vobj->transform, offsetof(surface_transform, rotate), sizeof(struct transf_rotate));
-			vobj->current.rotation.roll = roll;
+			vobj->current.rotation.roll  = roll;
 			vobj->current.rotation.pitch = pitch;
-			vobj->current.rotation.yaw = yaw;
+			vobj->current.rotation.yaw   = yaw;
 			vobj->current.rotation.quaternion = build_quat_euler(roll, pitch, yaw);
 		}
 		else { /* find endpoint to attach at */
@@ -2352,14 +2351,30 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 			base->rotate.startt = last->rotate.endt < arcan_video_display.c_ticks ? arcan_video_display.c_ticks : last->rotate.endt;
 			base->rotate.endt   = base->rotate.startt + tv;
 			base->rotate.starto = bv;
-			base->rotate.endo.roll = roll;
+			base->rotate.endo.roll  = roll;
 			base->rotate.endo.pitch = pitch;
-			base->rotate.endo.yaw = yaw;
+			base->rotate.endo.yaw   = yaw;
 			base->rotate.endo.quaternion = build_quat_euler(roll, pitch, yaw);
 			base->rotate.interp = interpolate_linear;
 		}
 	}
 
+	return rv;
+}
+
+arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx, float sy, float sz)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	
+	if (vobj){
+		vobj->flags.origoofs = true;
+		vobj->origo_ofs.x += sx;
+		vobj->origo_ofs.y += sy;
+		vobj->origo_ofs.z += sz;
+		rv = ARCAN_OK;
+	}
+	
 	return rv;
 }
 
@@ -2793,7 +2808,6 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 {
 	*dprops = vobj->current;
 
-/* apply within own dimensions */
 	if (vobj->transform){
 		surface_transform* tf = vobj->transform;
 		unsigned ct = arcan_video_display.c_ticks;
@@ -2809,8 +2823,17 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		if (tf->blend.startt)
 			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
 
-		if (tf->rotate.startt)
+		if (tf->rotate.startt){
 			dprops->rotation.quaternion = nlerp_quat(tf->rotate.starto.quaternion, tf->rotate.endo.quaternion, lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp));
+
+/* quite expensive, and this data should only really be used internally, the lua resolve properties stuff should do this manually */
+#ifdef _DEBUG
+			vector ang = angle_quat(dprops->rotation.quaternion);
+			dprops->rotation.roll  = ang.x;
+			dprops->rotation.pitch = ang.y;
+			dprops->rotation.yaw   = ang.z;
+#endif
+		}
 
 		if (!sprops)
 			return;
@@ -2825,6 +2848,13 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->rotation.pitch += dprops->rotation.pitch;
 		dprops->rotation.roll  += dprops->rotation.roll;
 		dprops->rotation.quaternion = add_quat(dprops->rotation.quaternion, sprops->rotation.quaternion);
+
+#ifdef _DEBUG
+			vector ang = angle_quat(dprops->rotation.quaternion);
+			dprops->rotation.roll  = ang.x;
+			dprops->rotation.pitch = ang.y;
+			dprops->rotation.yaw   = ang.z;
+#endif
 	}
 
 	if (force || (vobj->mask & MASK_OPACITY) > 0){
@@ -2877,14 +2907,23 @@ static inline void draw_surf(struct rendertarget* dst, surface_properties prop, 
         return;
 
 	float omatr[16], imatr[16], dmatr[16];
+
 	prop.scale.x *= src->origw * 0.5;
 	prop.scale.y *= src->origh * 0.5;
 
-	memcpy(imatr, dst->base, sizeof(imatr));
-	translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+	identity_matrix(imatr);
 	matr_quatf(norm_quat (prop.rotation.quaternion), omatr);
-	multiply_matrix(dmatr, imatr, omatr);
 
+/* rotate around user-defined point rather than own center */
+	if (src->flags.origoofs){
+		translate_matrix(imatr, src->origo_ofs.x, src->origo_ofs.y, 0.0);
+		multiply_matrix(dmatr, imatr, omatr);
+		translate_matrix(dmatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+	} else {
+		translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+		multiply_matrix(dmatr, imatr, omatr);
+	}
+	
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	arcan_shader_envv(OBJ_OPACITY, &prop.opa, sizeof(float));
 
@@ -3272,9 +3311,11 @@ void arcan_video_default_texmode(enum arcan_vtex_mode modes, enum arcan_vtex_mod
 	arcan_video_display.deftxt = modet == ARCAN_VTEX_REPEAT ? GL_REPEAT : GL_CLAMP_TO_EDGE;
 }
 
-bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
+arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res) 
 {
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
+	
 	if (vobj){
 /* get object properties taking inheritance etc. into account */
 		surface_properties dprops = {0};
@@ -3289,19 +3330,29 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		identity_matrix(imatr);
 		matr_quatf(dprops.rotation.quaternion, omatr);
 		translate_matrix(imatr, dprops.position.x + dprops.scale.x, dprops.position.y + dprops.scale.y, 0.0);
-		multiply_matrix(dmatr, omatr, imatr);
+		multiply_matrix(dmatr, imatr, omatr);
 
 		float p[4][3];
 
-/* unproject all 4 vertices, usually very costly but for 4 vertices it's manageable */
-		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[0][0], &p[0][1], &p[0][2]);
-		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[1][0], &p[1][1], &p[1][2]);
-		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[2][0], &p[2][1], &p[2][2]);
-		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &p[3][0], &p[3][1], &p[3][2]);
+/* transform the four vertices of the quad to window */
+		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &res[0].x, &res[0].y, &res[0].z);
+		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &res[1].x, &res[1].y, &res[1].z);
+		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &res[2].x, &res[2].y, &res[2].z);
+		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &res[3].x, &res[3].y, &res[3].z);
 
-		float px[4], py[4];
-		px[0] = p[0][0]; px[1] = p[1][0]; px[2] = p[2][0]; px[3] = p[3][0];
-		py[0] = p[0][1]; py[1] = p[1][1]; py[2] = p[2][1]; py[3] = p[3][1];
+		rv = ARCAN_OK;
+	}
+
+	return rv;
+}
+
+bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
+{
+	vector projv[4];
+
+	if (ARCAN_OK == arcan_video_screencoords(id, projv)){
+		float px[4] = { projv[0].x, projv[1].x, projv[2].x, projv[3].x };
+		float py[4] = { projv[0].y, projv[1].y, projv[2].y, projv[3].x };
 
 /* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
 		return pinpoly(4, px, py, (float) x, (float) arcan_video_display.height - y);

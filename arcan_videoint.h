@@ -157,11 +157,13 @@ typedef struct arcan_vobject {
 		bool cliptoparent;   /* only draw to the parent object surface area */
 		bool asynchdisable;  /* don't run any asynchronous loading operations */
 		bool cycletransform; /* when a transform is finished, attach it to the end */
+		bool origoofs;       /* when the user defines a world-space coordinate as center for rotation */
 	} flags;
 	
 /* position */
 	signed int order;
 	surface_properties current;
+	point origo_ofs;
 	
 	surface_transform* transform;
 	enum arcan_transform_mask mask;

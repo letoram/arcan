@@ -5,10 +5,17 @@
 local restbl = {};
 restbl.name = "list";
 
-restbl.create = function(self, width, height) 
-	self.clipregion = fill_surface(width, height, 0, 0, 0);
-	self.selector   = fill_surface(width, settings.colourtable.font_size + 2, 0, 40, 200);
+restbl.create = function(self, constr)
+	self.clipregion = fill_surface(constr.width, constr.height, 0, 255, 0);
+	self.selector   = fill_surface(constr.width, settings.colourtable.font_size + 2, 0, 40, 200);
 
+-- center-pointed used to calculate origo offset
+	self.cpx = math.floor(constr.width  * 0.5);
+	self.cpy = math.floor(constr.height * 0.5);
+	
+	move_image(self.clipregion, constr.x, constr.y);
+	rotate_image(self.clipregion, constr.ang);
+	
 -- icon collections etc. for mame and friends.
 	local tmp = glob_resource("icons/*.ico", ALL_RESOURCES);
 	self.icons = {};
@@ -16,15 +23,21 @@ restbl.create = function(self, width, height)
 		self.icons[val] = true;
 	end
 
+-- use the requested constraints as a clipping region
 	link_image(self.selector, self.clipregion);
 	image_clip_on(self.selector);
 	image_mask_clear(self.selector, MASK_OPACITY);
 
-	self.width  = width;
-	self.height = height;
+-- switch to default font if we don't have an override
+	self.constr = constr;
+	if not (self.constr.font_size and self.constr.font) then
+		self.constr.font = settings.colourtable.font;
+		self.constr.font_size = settings.colourtable.font_size;
+	end
 
+	blend_image(self.clipregion, 0.5);
 	show_image(self.selector);
-	return self.clipregion;
+	return nil;
 end
 
 restbl.escape = function(self) return true; end
@@ -77,13 +90,23 @@ restbl.redraw = function(self)
 	local menu, lines = render_text( renderstr, 2 );
 	self.menu = menu;
 	self.menu_lines = lines;
+	
+	local props = image_surface_properties(menu);
+	delete_image(menu);
+	menu = fill_surface(props.width, props.height, 255, 0, 0);
+	self.menu = menu;
+	local pcx = props.width  * 0.5;
+	local pcy = props.height * 0.5;
+	local dpx = pcx - self.cpx;
+	local dpy = pcy - self.cpy;
+	image_origo_offset(menu, dpx, dpy, 0);
 
 	link_image(self.menu, self.clipregion);
 	image_mask_clear(self.menu, MASK_OPACITY);
-	image_clip_on(self.menu);
+--	image_clip_on(self.menu);
 
 	order_image(self.menu, max_current_image_order());
-	show_image(self.menu);
+	blend_image(self.menu, 0.5);
 
 	self:move_cursor();
 	return nil;
@@ -128,7 +151,7 @@ restbl.update_list = function(self, gamelist)
 	print("update list", #gamelist);
 	self.list   = gamelist;
 	self.cursor = 1;
-	self.page_size = math.floor( self.height / (settings.colourtable.font_size + 4) );
+	self.page_size = math.floor( self.constr.height / ( self.constr.font_size + 4 ));
 	self:redraw();
 end
 

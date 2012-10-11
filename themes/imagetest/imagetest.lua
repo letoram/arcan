@@ -61,7 +61,7 @@ function zordervidlim(load)
 		local newid;
 		if (load) then
 			 newid = imagefun("imagetest.png", 0);
-			 image_tracetag("new_image");
+			 image_tracetag(newid, "new_image");
 			 move_image(newid, math.random( VRESW - 16), math.random( VRESH - 16), 0);
 			 resize_image(newid, 64, 64, 0);
 		else

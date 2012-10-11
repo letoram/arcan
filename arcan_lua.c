@@ -880,7 +880,7 @@ int arcan_lua_hittest(lua_State* state)
 	unsigned int x = luaL_checkint(state, 2);
 	unsigned int y = luaL_checkint(state, 3);
 
-	lua_pushnumber(state, arcan_video_hittest(id, x, y));
+	lua_pushboolean(state, arcan_video_hittest(id, x, y) != 0);
 
 	return 1;
 }
@@ -1618,7 +1618,6 @@ int arcan_lua_imagechildren(lua_State* ctx)
 	arcan_vobj_id child;
 	unsigned ofs = 0, count = 1;
 
-
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 
@@ -1666,6 +1665,18 @@ int arcan_lua_activeframe(lua_State* ctx)
 	
 	arcan_video_setactiveframe(sid, num);
 
+	return 0;
+}
+
+int arcan_lua_origoofs(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	float xv = luaL_checknumber(ctx, 2);
+	float yv = luaL_checknumber(ctx, 3);
+	float zv = luaL_optnumber(ctx, 4, 0.0);
+	
+	arcan_video_origoshift(sid, xv, yv, zv);
+	
 	return 0;
 }
 
@@ -2507,6 +2518,26 @@ int arcan_lua_resource(lua_State* ctx)
 	lua_pushstring(ctx, res);
 	free(res);
 	return 1;
+}
+
+int arcan_lua_screencoord(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	vector cv[4];
+	
+	if (ARCAN_OK == arcan_video_screencoords(id, cv)){
+		lua_pushnumber(ctx, cv[0].x);
+		lua_pushnumber(ctx, cv[0].y);
+		lua_pushnumber(ctx, cv[1].x);
+		lua_pushnumber(ctx, cv[1].y);
+		lua_pushnumber(ctx, cv[2].x);
+		lua_pushnumber(ctx, cv[2].y);
+		lua_pushnumber(ctx, cv[3].x);
+		lua_pushnumber(ctx, cv[3].y);
+		return 8;
+	}
+		
+	return 0;
 }
 
 void arcan_lua_callvoidfun(lua_State* ctx, const char* fun)
@@ -3581,6 +3612,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "image_framecyclemode", arcan_lua_framesetcycle);
 	arcan_lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
 	arcan_lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
+	arcan_lua_register(ctx, "image_origo_offset", arcan_lua_origoofs);
 	arcan_lua_register(ctx, "expire_image", arcan_lua_setlife);
 	arcan_lua_register(ctx, "reset_image_transform", arcan_lua_resettransform);
 	arcan_lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
@@ -3595,6 +3627,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "image_clip_off", arcan_lua_clipoff);
 	arcan_lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
 	arcan_lua_register(ctx, "image_mask_set", arcan_lua_setmask);
+	arcan_lua_register(ctx, "image_screen_coordinates", arcan_lua_screencoord);
 	arcan_lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
 	arcan_lua_register(ctx, "image_tracetag", arcan_lua_tracetag);
 	arcan_lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);

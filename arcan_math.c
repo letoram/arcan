@@ -179,12 +179,13 @@ int project_matrix(float objx, float objy, float objz,
 	in[0] /= in[3];
 	in[1] /= in[3];
 	in[2] /= in[3];
-	/* Map x, y and z to range 0-1 */
+
+/* Map x, y and z to range 0-1 */
 	in[0] = in[0] * 0.5 + 0.5;
 	in[1] = in[1] * 0.5 + 0.5;
 	in[2] = in[2] * 0.5 + 0.5;
 
-	/* Map x,y to viewport */
+/* Map x,y to viewport */
 	in[0] = in[0] * viewport[2] + viewport[0];
 	in[1] = in[1] * viewport[3] + viewport[1];
 
