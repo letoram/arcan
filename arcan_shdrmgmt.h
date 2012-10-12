@@ -72,7 +72,8 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid);
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag);
 
 /* sweep through the list of stored shared, looking for a matching tag, status sets if the result was found or not */
-arcan_shader_id arcan_shader_lookup(const char* tag, bool* status);
+arcan_shader_id arcan_shader_lookup(const char* tag);
+bool arcan_shader_valid(arcan_shader_id); 
 
 int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 

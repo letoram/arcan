@@ -284,7 +284,14 @@ end
 
 local function reset_customview()
 	zap_resource("customview_cfg.lua");
-	
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+
+	if (customview.in_customview) then
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		settings.iodispatch["SWITCH_VIEW"]();
+		settings.iodispatch["SWITCH_VIEW"]();
+	end
 end
 
 add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));

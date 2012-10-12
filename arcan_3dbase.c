@@ -237,7 +237,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE, 0, base->normals);
 		} else attribs[1] = -1;
 
-		if (attribs[2] != -1){
+		if (attribs[2] != -1 && base->txcos){
 			glEnableVertexAttribArray(attribs[2]);
 			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 		} else attribs[2] = -1;

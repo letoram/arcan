@@ -57,6 +57,7 @@
 #include "arcan_videoint.h"
 
 long long ARCAN_VIDEO_WORLDID = -1;
+static surface_properties empty_surface();
 
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
@@ -100,9 +101,10 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 		.vitem_ofs = 1,
 		.nalive    = 0,
 		.world = {
-			.tracetag = "(world)",
+			.tracetag = "(world)",	
 			.current  = {
 				.opa = 1.0,
+				.rotation.quaternion.w = 1.0
 			}
 		}
 	}
@@ -299,6 +301,13 @@ unsigned arcan_video_popcontext()
 	reallocate_gl_context(current_context);
 
 	return (CONTEXT_STACK_LIMIT - 1) - context_ind;
+}
+
+static inline surface_properties empty_surface()
+{
+	surface_properties res  = {0};
+	res.rotation.quaternion = build_quat_euler(0, 0, 0);
+	return res;
 }
 
 arcan_vobj_id arcan_video_allocid(bool* status)
@@ -2112,10 +2121,11 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* vobj might be a rendertarget itself, so detach all its possible members, free FBO/PBO resources etc. */
 	drop_rtarget(vobj);
 	
-/* populate a pool of cascade deletions */
+/* populate a pool of cascade deletions, none of this applies to instances as they can only really be part
+ * of a rendertarget, and those are handled separately */
 	arcan_vobject** pool = NULL, (** basep);
-	unsigned sum = (vobj->flags.clone ? 0 :
-		vobj->frameset_meta.capacity) + vobj->extrefc.links + vobj->extrefc.framesets + vobj->extrefc.instances;
+	unsigned sum = vobj->flags.clone ? 0 :
+		vobj->frameset_meta.capacity + vobj->extrefc.links + vobj->extrefc.framesets + vobj->extrefc.instances;
 
 	if (sum){
 		basep = pool = malloc(sizeof(arcan_vobject*) * (sum + 1));
@@ -2139,7 +2149,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					else
 						attach_object(&current_context->stdoutp, dobj);
 				}
-
 			}
 
 /* sweep the entire context vobj pool for references */
@@ -2582,7 +2591,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && shid >= 0) {
+	if (vobj && arcan_shader_valid(shid)) {
 		vobj->gl_storage.program = shid;
 		rv = ARCAN_OK;
 	}
@@ -2864,10 +2873,10 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 		dprops->position = add_vector(dprops->position, sprops->position);
 
 	if (force || (vobj->mask & MASK_ORIENTATION) > 0){
-		dprops->rotation.yaw   += dprops->rotation.yaw;
-		dprops->rotation.pitch += dprops->rotation.pitch;
-		dprops->rotation.roll  += dprops->rotation.roll;
-		dprops->rotation.quaternion = add_quat(dprops->rotation.quaternion, sprops->rotation.quaternion);
+		dprops->rotation.yaw   += sprops->rotation.yaw;
+		dprops->rotation.pitch += sprops->rotation.pitch;
+		dprops->rotation.roll  += sprops->rotation.roll;
+		dprops->rotation.quaternion = mul_quat( sprops->rotation.quaternion, dprops->rotation.quaternion );
 
 #ifdef _DEBUG
 			vector ang = angle_quat(dprops->rotation.quaternion);
@@ -2887,7 +2896,7 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props)
 {
 	if (vobj->parent && vobj->parent != &current_context->world){
-		surface_properties dprop = {0};
+		surface_properties dprop = empty_surface();
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
 		apply(vobj, props, lerp, &dprop, false);
 	}
@@ -3045,7 +3054,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			surface_properties* csurf = &elem->current;
 
 /* calculate coordinate system translations, world cannot be masked */
-			surface_properties dprops = {0};
+			surface_properties dprops = empty_surface();
 			arcan_resolve_vidprop(elem, fract, &dprops);
 
 /* don't waste time on objects that aren't supposed to be visible */
@@ -3092,7 +3101,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 /* since we can have hierarchies of partially clipped, we may need to resolve all */
 				while (celem->parent != &current_context->world){
-					surface_properties pprops = {0};
+					surface_properties pprops = empty_surface();
 					arcan_resolve_vidprop(celem->parent, fract, &pprops);
 					if (celem->parent->flags.cliptoparent == false)
 						draw_surf(tgt, pprops, celem->parent, elem->current_frame->txcos);
@@ -3338,7 +3347,7 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 	
 	if (vobj){
 /* get object properties taking inheritance etc. into account */
-		surface_properties dprops = {0};
+		surface_properties dprops = empty_surface();
 		arcan_resolve_vidprop(vobj, 0.0, &dprops);
 		dprops.scale.x *= vobj->origw * 0.5;
 		dprops.scale.y *= vobj->origh * 0.5;
@@ -3360,6 +3369,11 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &res[2].x, &res[2].y, &res[2].z);
 		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, current_context->stdoutp.projection, view, &res[3].x, &res[3].y, &res[3].z);
 
+		res[0].y = arcan_video_display.height - res[0].y;
+		res[1].y = arcan_video_display.height - res[1].y;
+		res[2].y = arcan_video_display.height - res[2].y;
+		res[3].y = arcan_video_display.height - res[3].y;
+
 		rv = ARCAN_OK;
 	}
 
@@ -3375,7 +3389,7 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 		float py[4] = { projv[0].y, projv[1].y, projv[2].y, projv[3].x };
 
 /* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
-		return pinpoly(4, px, py, (float) x, (float) arcan_video_display.height - y);
+		return pinpoly(4, px, py, (float) x, (float) y);
 	}
 
 	return false;
@@ -3439,7 +3453,7 @@ img_cons arcan_video_storage_properties(arcan_vobj_id id)
  * any transformations being applied */
 surface_properties arcan_video_initial_properties(arcan_vobj_id id)
 {
-	surface_properties res = {0};
+	surface_properties res = empty_surface();
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
@@ -3452,7 +3466,7 @@ surface_properties arcan_video_initial_properties(arcan_vobj_id id)
 
 surface_properties arcan_video_resolve_properties(arcan_vobj_id id)
 {
-	surface_properties res = {0};
+	surface_properties res = empty_surface();
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj && id > 0) {
@@ -3466,7 +3480,7 @@ surface_properties arcan_video_resolve_properties(arcan_vobj_id id)
 
 surface_properties arcan_video_current_properties(arcan_vobj_id id)
 {
-	surface_properties rv = {0};
+	surface_properties rv = empty_surface();
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){
@@ -3482,7 +3496,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 {
 	if (ticks == 0)
 		return arcan_video_current_properties(id);
-	surface_properties rv = {0};
+	surface_properties rv = empty_surface();
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){

@@ -205,17 +205,20 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 	return rv;
 }
 
-arcan_shader_id arcan_shader_lookup(const char* tag, bool* status)
+arcan_shader_id arcan_shader_lookup(const char* tag)
 {
-	if (status) *status = true;
-
 		for (int i = 0; i < shdr_global.ofs; i++){
 			if (shdr_global.slots[i].label && strcmp(tag, shdr_global.slots[i].label) == 0)
 				return i + shdr_global.base;
 		}
 
-	if (status) *status = false;
-	return 0;
+		printf("lookup %s failed\n", tag);
+	return -1;
+}
+
+bool arcan_shader_valid(arcan_shader_id id)
+{
+	return (id - shdr_global.base < shdr_global.ofs && id >= 0);
 }
 
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
@@ -329,9 +332,8 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 /* found? then continue, else allocate new and return that loc */
 		if (*current){
 			loc = (*current)->loc;
-			if ((*current)->type != type){
-					arcan_warning("arcan_shader_forceunif(), type mismatch for persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
-			}
+			if ((*current)->type != type)
+				arcan_warning("arcan_shader_forceunif(), type mismatch for persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
 		}
 		else {
 			loc = glGetUniformLocation(slot->prg_container, label);

@@ -1137,23 +1137,23 @@ function screenshot()
 	end
 end
 
-function add_webcam()
+function add_vidcap()
 -- this one is part of gridle_customview
 	customview.ci = {};
 	local menudispatch = settings.iodispatch;
 	
 	local placeholdr = fill_surface(VRESW * 0.2, VRESH * 0.2, 255, 255, 0);
-	customview.new_item(placeholdr, "webcam", "webcam");
+	customview.new_item(placeholdr, "vidcap", "vidcap");
 	customview.ci.zv = max_current_image_order();
 
--- if positioned, store the setting of the desired webcam position, when record is toggled
--- a webcam frameserver will be launched as well, if it loads correctly, and will be positioned
+-- if positioned, store the setting of the desired vidcap position, when record is toggled
+-- a vidcap frameserver will be launched as well, if it loads correctly, and will be positioned
 -- according to the customview result
 	customview.position_item(placeholdr, function(state, vid)
 		if (state) then
-			settings.webcam = customview.ci;
+			settings.vidcap = customview.ci;
 		else
-			settings.webcam = nil;
+			settings.vidcap = nil;
 		end
 
 		cascade_visibility(current_menu, 1.0);
@@ -1168,7 +1168,7 @@ end
 -- % 2 == 0, and LE VRESW, LE VRESH
 function disable_record()
 	if (not valid_vid(imagery.record_target)) then return; end
-	if (valid_vid(imagery.webcam)) then delete_image(imagery.webcam); end
+	if (valid_vid(imagery.vidcap)) then delete_image(imagery.vidcap); end
 	
 	delete_image(imagery.record_target);
 	delete_image(imagery.record_indicator);
@@ -1200,33 +1200,27 @@ function enable_record(width, height, args)
 	resize_image(lvid, width, height);
 	local rectbl = {lvid};
 	
--- connect a webcam frameserver
-	if (settings.webcam) then
-		vid, aid = load_movie("webcam:0", FRAMESERVER_NOLOOP, function(source, status) 
+-- connect a vidcap frameserver
+	if (settings.vidcap) then
+		vid, aid = load_movie("vidcap:0", FRAMESERVER_NOLOOP, function(source, status) 
 			if (status.kind == "resized") then -- show / reposition
 				local props = image_surface_properties( internal_vid ); 
-				local wfact = (settings.webcam.width  / props.width ) * width;
-				local hfact = (settings.webcam.height / props.height) * height;
-				local xfact = (settings.webcam.x - props.y) / (props.width / width);
-				local yfact = (settings.webcam.y - props.x) / (props.height / height);
+				local wfact = (settings.vidcap.width  / props.width ) * width;
+				local hfact = (settings.vidcap.height / props.height) * height;
+				local xfact = (settings.vidcap.x - props.y) / (props.width / width);
+				local yfact = (settings.vidcap.y - props.x) / (props.height / height);
 				link_image(vid, lvid);
 				
-				print("mainw:", props.width, "neww:", width);
-				print("mainh:", props.height, "newh:", height);
-				print("scalew:", wfact, "scaleh:", hfact);
-				print("origw:", settings.webcam.width, "origh:", settings.webcam.height);
-				
-				print("xfact:", xfact, "yfact:", yfact);
 -- translate to internal_vid coordinate space, and rescale according with destination resolution
 				resize_image(source, math.floor(wfact), math.floor(hfact));
-				blend_image(source,  settings.webcam.opa);
+				blend_image(source,  settings.vidcap.opa);
 				move_image(source,   math.floor(xfact), math.floor(yfact)); 
-				rotate_image(source, settings.webcam.ang);
+				rotate_image(source, settings.vidcap.ang);
 				order_image(source, max_current_image_order() + 1);
 			else -- died (likely immediately)
 				delete_image(source);
 			end
-				settings.webcam = nil;
+				settings.vidcap = nil;
 		end)
 	
 		if (valid_vid(vid)) then table.insert(rectbl, vid); end
@@ -1383,7 +1377,7 @@ add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("
 add_submenu(recordlist, recordptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 add_submenu(recordlist, recordptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
 add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
-add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Webcam"}, add_webcam, true));
+add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Vidcap"}, add_vidcap, true));
 
 table.insert(recordlist, "Start");
 

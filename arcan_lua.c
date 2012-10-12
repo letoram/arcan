@@ -134,7 +134,7 @@ static struct {
 } lua_ctx_store = {
 	.lua_vidbase = 0,
 	.rfile = NULL,
-	.debug = false,
+	.debug = 0,
 	.grab = 0
 };
 
@@ -454,7 +454,7 @@ int arcan_lua_transfertransform(lua_State* ctx)
 int arcan_lua_rotateimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	int ang = luaL_checkint(ctx, 2);
+	float ang = luaL_checknumber(ctx, 2);
 	int time = luaL_optint(ctx, 3, 0);
 
 	arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
@@ -658,17 +658,12 @@ int arcan_lua_setshader(lua_State* ctx)
 	arcan_shader_id shid;
 	bool stat;
 
-	if (	lua_type(ctx, 2) == LUA_TSTRING){
-		shid = arcan_shader_lookup(luaL_checkstring(ctx, 2), &stat);
-		if (!stat){
-			shid = arcan_shader_lookup("DEFAULT", &stat);
-			arcan_warning("arcan_lua_setshader: shader lookup (%s) failed, reverting to DEFAULT.\n", luaL_checkstring(ctx, 2));
-		}
-	}
-	else shid = luaL_checknumber(ctx, 2);
-	
-	arcan_video_setprogram(id, shid);
+	shid = lua_type(ctx, 2) == LUA_TSTRING ? 
+		arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 
+	if (ARCAN_OK != arcan_video_setprogram(id, shid))
+		arcan_warning("arcan_video_setprogram() -- couldn't set shader, invalid shader id specified.\n");
+	
 	return 0;
 }
 
@@ -993,7 +988,7 @@ int arcan_lua_playmovie(lua_State* ctx)
 
 static bool isspecial(const char* msg)
 {
-	return strncmp(msg, "webcam", 6) == 0;
+	return strncmp(msg, "vidcap", 6) == 0;
 }
 
 int arcan_lua_loadmovie(lua_State* ctx)
@@ -3749,4 +3744,5 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "NOW", 0);
 	arcan_lua_setglobalint(ctx, "NOPERSIST", 0);
 	arcan_lua_setglobalint(ctx, "PERSIST", 1);
+	arcan_lua_setglobalint(ctx, "DEBUGLEVEL", lua_ctx_store.debug); 
 }
