@@ -230,6 +230,10 @@ function gridle()
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	system_load("gridle_customview.lua")();      -- customizable list view
 	
+	if (DEBUGLEVEL > 1) then
+		Trace();
+	end
+	
 -- make sure that the engine API version and the version this theme was tested for, align.
 	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 6) then
 		msg = "Engine/Script API version match, expected 0.6, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
@@ -261,7 +265,7 @@ function gridle()
 		return;
 	end
 
--- any 3D rendering (models etc.) should happen after any 2D surfaces have been draw
+-- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 
 
 -- use the DB theme-specific key/value store to populate the settings table

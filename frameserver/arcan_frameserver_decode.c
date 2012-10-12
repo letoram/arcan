@@ -193,7 +193,7 @@ static arcan_ffmpeg_context* ffmpeg_preload(const char* fname, AVInputFormat* if
 #ifndef _WIN32
 #include <sys/types.h>
 #include <sys/stat.h>
-static const char* probe_webcam(unsigned prefind)
+static const char* probe_vidcap(unsigned prefind)
 {
 	char arg[16];
 	struct stat fs;
@@ -209,9 +209,9 @@ static const char* probe_webcam(unsigned prefind)
 	
 #endif
 	
-static arcan_ffmpeg_context* ffmpeg_webcam(unsigned ind, float fps, unsigned width, unsigned height)
+static arcan_ffmpeg_context* ffmpeg_vidcap(unsigned ind, float fps, unsigned width, unsigned height)
 {
-	const char* fname = probe_webcam(ind);
+	const char* fname = probe_vidcap(ind);
 	if (!fname)
 		return NULL;
 	
@@ -248,8 +248,8 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	av_register_all();
 
 	do {
-/* webcam:ind where ind is a hint to the probing function */
-		if (strncmp(resource, "webcam", 6) == 0){
+/* vidcap:ind where ind is a hint to the probing function */
+		if (strncmp(resource, "vidcap", 6) == 0){
 			unsigned devind = 0;
 			char* ofs = index(resource, ':');
 			if (ofs && (*++ofs)){
@@ -258,7 +258,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 					devind = ind;
 			}
 	
-			vidctx = ffmpeg_webcam(devind, 30.0, 640, 480);
+			vidctx = ffmpeg_vidcap(devind, 30.0, 640, 480);
 		} else {
 			vidctx = ffmpeg_preload(resource, NULL);
 		}

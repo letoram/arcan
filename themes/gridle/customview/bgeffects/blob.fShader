@@ -29,9 +29,8 @@ void main()
     float r1 =(dot(p-move1,p-move1))*area1;
     float r2 =(dot(p+move2,p+move2))*area2;
 
-    float metaball = 2 * (1.0/r1 + 1.0/r2);
+    float metaball = 2.0 * (1.0/r1 + 1.0/r2);
     float col = falloff * metaball; 
 
-    vec3 txcol = vec3(col, col, col) * texture2D(map_diffuse, texco);
-    gl_FragColor = vec4(txcol, 1.0);
+    gl_FragColor = vec4(col, col, col,1.0) * texture2D(map_diffuse, texco);
 }

@@ -14,7 +14,7 @@ restbl.create = function(self, constr)
 	self.cpy = math.floor(constr.height * 0.5);
 	
 	move_image(self.clipregion, constr.x, constr.y);
-	rotate_image(self.clipregion, constr.ang);
+--	rotate_image(self.clipregion, constr.ang);
 	
 -- icon collections etc. for mame and friends.
 	local tmp = glob_resource("icons/*.ico", ALL_RESOURCES);
@@ -35,7 +35,6 @@ restbl.create = function(self, constr)
 		self.constr.font_size = settings.colourtable.font_size;
 	end
 
-	blend_image(self.clipregion, 0.5);
 	show_image(self.selector);
 	return nil;
 end
@@ -53,7 +52,7 @@ restbl.move_cursor = function(self)
 	local page_beg, page_ofs, page_end = self:curpage();
 
 	instant_image_transform(self.selector);
-	move_image(self.selector, 0, self.menu_lines[page_ofs], 10);
+	move_image(self.selector, 0, self.menu_lines[page_ofs] - 1, 10);
 end
 
 restbl.select_random = function(self, fv)
@@ -92,21 +91,13 @@ restbl.redraw = function(self)
 	self.menu_lines = lines;
 	
 	local props = image_surface_properties(menu);
-	delete_image(menu);
-	menu = fill_surface(props.width, props.height, 255, 0, 0);
-	self.menu = menu;
-	local pcx = props.width  * 0.5;
-	local pcy = props.height * 0.5;
-	local dpx = pcx - self.cpx;
-	local dpy = pcy - self.cpy;
-	image_origo_offset(menu, dpx, dpy, 0);
 
 	link_image(self.menu, self.clipregion);
 	image_mask_clear(self.menu, MASK_OPACITY);
---	image_clip_on(self.menu);
+	image_clip_on(self.menu);
 
-	order_image(self.menu, max_current_image_order());
-	blend_image(self.menu, 0.5);
+	order_image(self.menu, self.constr.order); 
+	blend_image(self.menu, self.constr.opa);
 
 	self:move_cursor();
 	return nil;
@@ -148,10 +139,9 @@ restbl.step = function(self, stepv)
 end
 
 restbl.update_list = function(self, gamelist)
-	print("update list", #gamelist);
 	self.list   = gamelist;
 	self.cursor = 1;
-	self.page_size = math.floor( self.constr.height / ( self.constr.font_size + 4 ));
+	self.page_size = math.floor( (self.constr.height / ( self.constr.font_size + 2)) - 1 );
 	self:redraw();
 end
 

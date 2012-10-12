@@ -8,13 +8,15 @@ local function dialog_nextlabel(self, step)
 	if (self.current < 1) then self.current = #self.options; end
 	if (self.current > #self.options) then self.current = 1; end
 	
-	local vid = render_text(self.optionfont .. self.options[ self.current ]);
-	local props = image_surface_properties(self.window);
-
+	local vid    = render_text(self.optionfont .. self.options[ self.current ]);
+	local props  = image_surface_properties(self.window);
+	local hprops = image_surface_properties(self.header);
+	
 -- position below message string, center and clip to window
 	link_image(vid, self.window);
 	image_clip_on(vid);
-	move_image(vid, 0.5 * (props.width - image_surface_properties(vid).width), self.maxheight / 4 * 3);
+	
+	move_image(vid, math.floor(0.5 * (props.width - image_surface_properties(vid).width)), hprops.y + (hprops.height + 4));
 	order_image(vid, max_current_image_order() + 1);
 	image_mask_clear(vid, MASK_OPACITY);
 	show_image(vid);
@@ -75,8 +77,11 @@ local function dialog_show(self)
 		restable.anchor = fill_surface(1, 1, 0, 0, 0);
 		move_image(restable.anchor, -1, -1);
 		
-		local windw = self.maxwidth; 
-		local padding = windw * 0.3;
+		self.maxheight = math.floor(self.maxheight);
+		self.maxwidth  = math.floor(self.maxwidth);
+		
+		local windw = math.floor(self.maxwidth);
+		local padding = math.floor(windw * 0.3);
 		restable.border = fill_surface(windw + padding + 6, self.maxheight + 26, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
 		restable.window = fill_surface(windw + padding, self.maxheight + 20, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
 
@@ -97,19 +102,20 @@ local function dialog_show(self)
 	local props = image_surface_properties(header);
 	
 	link_image(header, self.window);
-	move_image(header, 0.5 * ( windw - props.width), 12);
+	move_image(header, math.floor(0.5 * ( windw - props.width)), 12);
 	order_image(header, max_current_image_order() + 1);
 	image_mask_clear(header, MASK_OPACITY);
 	image_clip_on(header);
 	show_image(header);
+	restable.header = header;
 	
 	local borderp = image_surface_properties( restable.border );
 	if (self.options) then
 		self:nextlabel(0);
 	end
 	
-	local x = 0.5 * (VRESW - borderp.width);
-	local y = 0.5 * (VRESH - borderp.height);
+	local x = math.floor(0.5 * (VRESW - borderp.width));
+	local y = math.floor(0.5 * (VRESH - borderp.height));
 	
 	if (self.valign == "top") then    y = 0; end
 	if (self.halign == "left") then   x = 0; end
