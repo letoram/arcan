@@ -106,7 +106,7 @@ LIST (APPEND
 	${SDLIMAGE_LIBRARY}
 	${SDLTTF_LIBRARY}
 	${LUA_LIBRARY}
-	${OPENGL_LIBRARY}
+	${OPENGL_gl_LIBRARY}
 	${OPENAL_LIBRARY}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
@@ -235,7 +235,7 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
 add_library( arcan_hijack SHARED arcan_target_osx.c arcan_frameserver_shmpage.c arcan_event.c frameserver/ntsc/snes_ntsc.c )
 
-target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY} )
+target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )
 add_executable( arcan_frameserver ${FSRV_SOURCES})
@@ -273,7 +273,7 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
 	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c)
 
-	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
+	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 	set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
@@ -300,7 +300,7 @@ LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
 add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c)
 add_dependencies(arcan_hijack arcan_target_backend)
-target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_LIBRARY})
+target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 # part of tools to troubleshoot / test hijack for a target (intended for the romman)
 # add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
