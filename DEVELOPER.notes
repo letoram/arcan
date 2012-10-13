@@ -27,7 +27,8 @@ Some notes and hints for building / patching / packaging the engine as such.
 
 [Linux]
  * Nothing really new or surprising here -- huge dependency-tree,
-   ffmpeg (with libvpx support), libvpx, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL, glew, cmake for building along with ruby (gems nokogiri and sqlite3).
+   ffmpeg (with libvpx support), libvpx, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL, GLEW, libusb1.0-dev, cmake for building along with ruby (gems nokogiri and sqlite3).
  
  * OpenCTM for the 3d model management is not included in debian/ubuntu etc. so for packaging, you have to modify the Makefiles for OpenCTM and link static.
 
+ * There was a dependency on libspeex-resampler, but due to speex itself being deprecated by Opus, the resampler is included here.

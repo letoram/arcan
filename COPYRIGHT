@@ -5,6 +5,7 @@ Code included in the project explicitly excluded from the above:
 win32/getopt_win32.c, (c) 2000 The NetBSD Foundation
 win32/SDL_main_win32.c, Public Domain (author, Sam Lantiga)
 SDLMain.*, Part of the SDL-1.2 dependency
+speex/*, libspeex developers (www.speex.org/xiph.org), revised BSD License.
 hidapi/*, (c) 2010 Alan Ott, FreeBSD License
 openCTM/* (c) Marcus Geelnard -- zlib / libpng license
 arcan_renderfun.c:stretchblit derived from SDL_GFX (c) Andreas Schiffler -- BSD- like 
@@ -16,9 +17,11 @@ Dependencies:
  SDL-1.2, SDL-TTF, SDL_Image -- www.libsdl.org, LGPL
  OpenGL -- www.opengl.org, SGI OpenGL License
  OpenAL -- www.openal.org, 1.1 LGPL, > 1.1 proprietary
+ GLEW -- glew.sf.net, Milan Ikits / Marcelo Magallon, Modified BSD, MIT 
  LUA 5.1 -- www.lua.org, MIT License
  Ogg/Vorbis -- www.xiph.org, Individual BSD license, no linking restrictions. 
  SQLite3 -- www.sqlite.org, Public Domain
+ libvpx -- www.webmproject.org, Modified BSD 
  FFMPEG -- www.ffmpeg-org, LGPL 2.1
  BZip2 -- (implicitly used by some dependencies) BSD License
  ZLib -- zlib license

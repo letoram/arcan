@@ -34,7 +34,6 @@ set( MAIN_LIBRARIES )
 # Collective sigh for stupid standard breaking features.
 add_definitions(-std=iso9899:1999 -DBSD_SOURCE)
 
-
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
     message("Profile build")
         add_definitions(-pg)
@@ -62,8 +61,6 @@ elseif(WIN32)
 
 	set(SDL_INCLUDE_DIR ${WININC}\\SDL)
 	set(SDLTTF_INCLUDE_DIR ${WININC}\\SDL)
-	set(SPEEX_INCLUDE_DIR ${WININC}\\SPEEX)
-	set(SPEEX_LIBRARY ${WINLIB}\\libspeex.lib)
 
 	set(ZLIB_INCLUDE_DIR ${WININC})
 	set(BZIP2_INCLUDE_DIR ${WININC})
@@ -80,7 +77,8 @@ elseif(WIN32)
 	set(GLEW_INCLUDE_DIR ${WININC})
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
 
-	set(VPX_LIBRARIES ${WINLIB}\\libspeex.lib)
+# don't need it defined one windows, just map to a preexisting
+	set(VPX_LIBRARIES ${WINLIB}\\glew32s.lib)
 	set(VPX_INCLUDE_DIRS ${WININC})
 endif()
 
@@ -95,7 +93,6 @@ FIND_PACKAGE ( ZLIB REQUIRED )
 FIND_PACKAGE ( FFMPEG REQUIRED )
 FIND_PACKAGE ( VORBIS REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
-FIND_PACKAGE ( Speex REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
 FIND_PACKAGE ( VPX REQUIRED )
 
@@ -122,9 +119,10 @@ FSRV_LIBRARIES
 	${FFMPEG_LIBRARIES}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
-	${SPEEX_LIBRARIES}
 	${VPX_LIBRARIES}
 )
+
+message(${FFMPEG_LIBRARIES})
 
 include_directories (
 	${LUA_INCLUDE_DIR}
@@ -204,6 +202,8 @@ set (
  frameserver/arcan_frameserver_encode_presets.h
  frameserver/ntsc/snes_ntsc.h
  frameserver/ntsc/snes_ntsc.c
+ frameserver/resampler/resample.c
+ frameserver/resampler/speex_resampler.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
  arcan_general.c
@@ -330,7 +330,7 @@ if (EXISTS "/usr/bin/dpkg")
 	"libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libvorbisfile3 (>= 1.1.2), "
 	"libavcodec-extra-53 (>= 4:0.7-1), libavformat53 (>= 4:0.7-1) | libavformat-extra-53 (>= 4:0.7-1), libavutil-extra-51 (>= 4:0.7-1), "
 	"libswscale2 (>= 4:0.7-1) | libswscale-extra-2 (>= 4:0.7-1), libavdevice53 (>= 4:0.7-1), libbz2-1.0, libvorbis0a, libogg0, ruby1.9.1, "
-	"libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1, libspeex >= 1.2rc1")
+	"libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1")
 
 endif(EXISTS "/usr/bin/dpkg")
 
