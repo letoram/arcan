@@ -164,7 +164,7 @@ local function build_shadermenu()
 		local basename = string.sub(vreslist[i], 1, -9);
 		vreslist[basename] = true; 
 	end
-	
+
 	for i = 1, #freslist do
 		local basename = string.sub(freslist[i], 1, -9);
 		if (vreslist[basename]) then 
@@ -1145,6 +1145,7 @@ function add_vidcap()
 	local placeholdr = fill_surface(VRESW * 0.2, VRESH * 0.2, 255, 255, 0);
 	customview.new_item(placeholdr, "vidcap", "vidcap");
 	customview.ci.zv = max_current_image_order();
+	order_image(placeholdr, customview.ci.zv);
 
 -- if positioned, store the setting of the desired vidcap position, when record is toggled
 -- a vidcap frameserver will be launched as well, if it loads correctly, and will be positioned
@@ -1152,6 +1153,7 @@ function add_vidcap()
 	customview.position_item(placeholdr, function(state, vid)
 		if (state) then
 			settings.vidcap = customview.ci;
+			print("vidcap saved to: ", settings.vidcap.x, settings.vidcap.y);
 		else
 			settings.vidcap = nil;
 		end
@@ -1162,6 +1164,8 @@ function add_vidcap()
 		customview.ci = {};
 		delete_image(placeholdr);
 	end)
+
+	settings.iodispatch["MENU_LEFT"]();
 end
 
 -- width, height are assumed to be :
@@ -1207,9 +1211,9 @@ function enable_record(width, height, args)
 				local props = image_surface_properties( internal_vid ); 
 				local wfact = (settings.vidcap.width  / props.width ) * width;
 				local hfact = (settings.vidcap.height / props.height) * height;
-				local xfact = (settings.vidcap.x - props.y) / (props.width / width);
-				local yfact = (settings.vidcap.y - props.x) / (props.height / height);
-				link_image(vid, lvid);
+				local xfact = (settings.vidcap.x - props.x) * (width / props.width);
+				local yfact = (settings.vidcap.y - props.y) * (height / props.height);
+--				link_image(vid, lvid);
 				
 -- translate to internal_vid coordinate space, and rescale according with destination resolution
 				resize_image(source, math.floor(wfact), math.floor(hfact));
@@ -1217,13 +1221,16 @@ function enable_record(width, height, args)
 				move_image(source,   math.floor(xfact), math.floor(yfact)); 
 				rotate_image(source, settings.vidcap.ang);
 				order_image(source, max_current_image_order() + 1);
+				print("x, y:", xfact, yfact, "w, h:", wfact, hfact);
 			else -- died (likely immediately)
 				delete_image(source);
 			end
 				settings.vidcap = nil;
 		end)
 	
-		if (valid_vid(vid)) then table.insert(rectbl, vid); end
+		if (valid_vid(vid)) then
+			table.insert(rectbl, vid);
+		end
 	end
 	
 	show_image(lvid);
@@ -1492,6 +1499,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 			current_menu = nil;
 			settings.iodispatch = griddispatch;
 			gridle_input = gridle_oldinput;
+			toggle_mouse_grab(MOUSE_GRABON);
 		end
 	end
 

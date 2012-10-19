@@ -30,7 +30,6 @@ void arcan_3d_setdefaults();
  * more can be defined for lights, shadows, etc.
  * by associating the camtag with a vobj parent, it will use that for resolving/interpolating position/orientation */
 arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id parent);
-
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens, unsigned nmaps);
 arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
 
@@ -38,7 +37,11 @@ arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
  * then add a hierarchy of meshes to the model */
 arcan_vobj_id arcan_3d_emptymodel();
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned slot);
-arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps);
+arcan_errc arcan_3d_addmesh(arcan_vobj_id    dst, const char* resource, unsigned nmaps);
+
+/* destructive transform,
+ * apply the specified roll / pitch / yaw transform to all the vertices of the model */
+arcan_errc arcan_3d_baseorient(arcan_vobj_id dst, float roll, float pitch, float yaw);
 
 /* scans through the specified model and all its' meshes,
  * rebuild the bounding volume and using that, maps all vertex values

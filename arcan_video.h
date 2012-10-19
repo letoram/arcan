@@ -119,6 +119,12 @@ enum arcan_imageproc_mode {
 	imageproc_fliph
 };
 
+enum arcan_order3d {
+	order3d_none,
+	order3d_first,
+	order3d_last
+};
+
 typedef struct {
 	volatile int tag;
 	void* ptr;
@@ -312,7 +318,7 @@ bool arcan_video_screenshot(void** dptr, size_t* dsize);
 
 /* determine if 3D is going to be processed first (2D mode used as 'HUD' and supplementary imagery') or
  * 'last' (adding partial 3D models to an otherwise 2D scene */
-void arcan_video_3dorder(bool first);
+void arcan_video_3dorder(enum arcan_order3d);
 
 /* somewhat ugly hack to try and pause the objects that rely on timing etc. that might be
  * disturbed by an external launch */

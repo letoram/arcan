@@ -187,6 +187,56 @@ void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask){
 	}
 }
 
+/* drop the specified index and compact everything to the right of it,
+ * assumes the context is already locked, so for large event queues etc. this is subpar */
+static void drop_event(arcan_evctx* ctx, unsigned index)
+{
+	unsigned current  = (index + 1) % ctx->n_eventbuf;
+	unsigned previous = index;
+
+/* compact left until we reach the end, back is actually one after the last cell in use */
+	while (current != *(ctx->back)){
+		memcpy( &ctx->eventbuf[ previous ], &ctx->eventbuf[ current ], sizeof(arcan_event) );
+		previous = current;
+		current  = (index + 1) % ctx->n_eventbuf;
+	}
+
+	*(ctx->back) = previous;
+}
+
+/* this implementation is pretty naive and expensive on a large/filled queue,
+ * partly because this feature was added as an afterthought and the underlying datastructure
+ * isn't optimal for the use, should have been linked or double-linked */
+void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source)
+{
+	unsigned elem = *(ctx->front);
+
+/* ignore unsupported categories */
+	if ( !(category == EVENT_VIDEO || category == EVENT_FRAMESERVER) )
+		return;
+	
+	if (LOCK(ctx)){
+
+		while(elem != *(ctx->back)){
+			bool match = false;
+
+			switch (ctx->eventbuf[elem].category){
+				case EVENT_VIDEO:       match = source == ctx->eventbuf[elem].data.video.source; break;
+				case EVENT_FRAMESERVER: match = source == ctx->eventbuf[elem].data.frameserver.video; break;
+			}
+
+/* slide only if the cell shouldn't be deleted, otherwise it'll be replaced with the next one in line */
+			if (match){
+				drop_event(ctx, elem);
+			}
+			else
+				elem = (elem + 1) % ctx->n_eventbuf;
+		}
+		
+		UNLOCK();
+	}
+}
+
 /* enqueue to current context considering input-masking,
  * unless label is set, assign one based on what kind of event it is */
 void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
@@ -478,12 +528,15 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 	*dtick = nticks;
 	map_sdl_events(ctx);
 	
-/* also assumes that fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); is set on stdin */
+/* also assumes that fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); is set on stdin and that complete LUA statements are parsed,
+ * these would have to have its own parsing context or something to that effect so that the statements we get are fully terminated,
+ * else we risk interleaving .. */ 
 	if (ctx->interactive){
 		char* resv = nblk_readln(STDIN_FILENO);
 		if (resv){
 			arcan_event sevent = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EVALCMD, .data.system.data.mesg.dyneval_msg = resv};
-			arcan_event_enqueue(ctx, &sevent);	
+			arcan_event_enqueue(ctx, &sevent);
+/* FIXME: incomplete due to the reason stated above */
 		}
 	}
 	

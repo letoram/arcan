@@ -47,13 +47,15 @@ typedef struct orientation {
 	float matr[16];
 } orientation;
 
-/* Matrix stuff */
+/* Matrices */
 void scale_matrix(float*, float, float, float);
 void translate_matrix(float*, float, float, float);
 void identity_matrix(float*);
 void multiply_matrix(float* dst, float* a, float* b);
 quat quat_matrix(float* src); 
 void matr_lookat(float* m, vector position, vector dstpos, vector up);
+void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4]);
+void mult_matrix_vec3f(const float matrix[16], const float in[3], float out[3]);
 
 /* Vectors */
 vector build_vect_polar(const float phi, const float theta);
@@ -89,7 +91,7 @@ quat nlerp_quat180(quat a, quat b, float f);
 quat nlerp_quat360(quat a, quat b, float f);
 
 quat add_quat(quat a, quat b);
-quat build_quat_euler(float roll, float pitch, float yaw);
+quat build_quat_taitbryan(float roll, float pitch, float yaw);
 quat quat_lookat(vector viewpos, vector dstpos);
 
 scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
@@ -99,7 +101,8 @@ float lerp_fract(unsigned startt, unsigned endt, float ct);
 
 void build_projection_matrix(float* m, float near, float far, float aspect, float fov);
 void build_orthographic_matrix(float* m, const float left, const float right,
-							  const float bottom, const float top, const float near, const float far);
+	const float bottom, const float top, const float near, const float far);
+
 int project_matrix(float objx, float objy, float objz, const float model[16], const float projection[16], const int viewport[4], float*, float*, float*);
 void update_frustum(float* projection, float* modelview, float dstfrustum[6][4]);
 /* comp.graphics.algorithms DAQ, Randolph Franklin */

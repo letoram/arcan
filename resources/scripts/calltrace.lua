@@ -71,7 +71,7 @@ local function Hook(Event)
       elseif Event == "tail return" then
         RetType = "tail-returning from "
       end
-      io.stderr:write(Indent(Depth), RetType, Running, " to ", Caller,"\n")
+--(uncomment to trace returns)      io.stderr:write(Indent(Depth), RetType, Running, " to ", Caller,"\n")
       Depth = Depth - 1
     end
   end

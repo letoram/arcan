@@ -30,23 +30,23 @@ remaptbl["boxart"]      = "boxart";
 
 -- list of the currently allowed modes (size, position, opacity, orientation)
 customview.position_modes_default  = {"position", "size", "opacity", "orientation"};
-customview.position_modes_3d       = {"position3d", "orient3d"};
+customview.position_modes_3d       = {"position3d", "rotate3d"};
 customview.axis = 0;
 customview.orderind = 1;
 customview.temporary = {};
+customview.temporary_models = {};
 
 helplbls = {};
 helplbls["position"] = {
 	"Position",
-	"(LEFT/RIGHT) to slide along axis",
-	"(UP/DOWN) to switch active axis", 
+	"(LEFT/RIGHT/UP/DOWN) to move",
 	"(SWITCH_VIEW) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
 };
 
 helplbls["position3d"] = {
-	"Position (3D)",
+	"Position (3D), Axis: 0",
 	"(LEFT/RIGHT) to increase/decrease angle",
 	"(UP/DOWN) to switch active axis",
 	"(SWITCH_VIEW) to switch mode",
@@ -54,8 +54,8 @@ helplbls["position3d"] = {
 	"(ESCAPE) to cancel"
 };
 
-helplbls["orient3d"] = {
-	"Rotate (3D)",
+helplbls["rotate3d"] = {
+	"Rotate (3D), Axis: 0",
 	"(SWITCH_VIEW) to switch mode",
 	"(MENU_UP/DOWN) to switch active axis",
 	"(SELECT) to save",
@@ -154,10 +154,7 @@ end
 
 local function update_object3d(model)
 	move3d_model(model, customview.ci.pos[1], customview.ci.pos[2], customview.ci.pos[3]);
-	orient3d_model(model, customview.ci.ang[1], customview.ci.ang[2], customview.ci.ang[3]);
-	print(customview.ci.pos[1], customview.ci.pos[2], customview.ci.pos[3]);
-	print(customview.ci.ang[1], customview.ci.ang[2], customview.ci.ang[3]);
-	show_image(model);
+	rotate3d_model(model, customview.ci.ang[1], customview.ci.ang[2], customview.ci.ang[3], ROTATE_ABSOLUTE);
 end
 
 -- used whenever a shader is toggled for the 'background' label, applied in both edit and view mode.
@@ -175,7 +172,7 @@ local function update_bgshdr()
 	else
 		dst = customview.background;
 	end
-	
+
 	if (dst) then
 		local props = image_surface_properties(dst);
 		shader_uniform(customview.bgshader, "display", "ff", PERSIST, props.width, props.height);
@@ -234,17 +231,20 @@ local function opacity_increment(vid, byval)
 end
 
 local function cursor_rotate3d(model, step)
-	customview.ci.ang[ customview.axis ] = customview.ci.ang[ customview.axis + 1 ] + step;
+	customview.ci.ang[ customview.axis+1 ] = customview.ci.ang[ customview.axis+1 ] + step;
 	update_object3d(model);
 end
 
 local function cursor_position3d(model, step)
-	customview.ci.pos[ customview.axis ] = customview.ci.pos[ customview.axis + 1 ] + step;
+	customview.ci.pos[ customview.axis+1 ] = customview.ci.pos[ customview.axis+1 ] + step;
 	update_object3d(model);
 end
 
 local function cursor_axis3d(model)
 	customview.axis = (customview.axis + 1) % 3;
+	helplbls["position3d"][1] = "Position (3D), Axis: " .. tostring(customview.axis);
+	helplbls["rotate3d"][1] = "Rotate (3D), Axis: " .. tostring(customview.axis);
+	update_infowin();
 	update_object3d(model);
 end
 
@@ -268,8 +268,8 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "orientation") then orientation_rotate(vid,-2, false);
 		elseif (lbl == "opacity")     then opacity_increment(vid, 0.1);
 		elseif (lbl == "position")    then cursor_slide(vid, grid_stepx * -1, 0); 
-		elseif (lbl == "orient3d")    then cursor_rotate3d(vid, -2);
-		elseif (lbl == "position3d")  then cursor_position3d(vid, -1.0);
+		elseif (lbl == "rotate3d")    then cursor_rotate3d(vid, -20);
+		elseif (lbl == "position3d")  then cursor_position3d(vid, -0.2);
 		end
 	end
 
@@ -279,8 +279,8 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "orientation") then orientation_rotate(vid, 2, false);
 		elseif (lbl == "opacity")     then opacity_increment(vid, -0.1);
 		elseif (lbl == "position")    then cursor_slide(vid, grid_stepx, 0);
-		elseif (lbl == "orient3d")    then cursor_rotate3d(vid, 2);
-		elseif (lbl == "position3d")  then cursor_position3d(vid, 1.0);
+		elseif (lbl == "rotate3d")    then cursor_rotate3d(vid, 20);
+		elseif (lbl == "position3d")  then cursor_position3d(vid, 0.2);
 		end
 	end
 
@@ -290,7 +290,7 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "orientation") then orientation_rotate(vid, -45, true);
 		elseif (lbl == "opacity")     then order_increment(vid,1); 
 		elseif (lbl == "position")    then cursor_slide(vid, 0, grid_stepy * -1);
-		elseif (lbl == "orient3d")    then cursor_axis3d(vid);
+		elseif (lbl == "rotate3d")    then cursor_axis3d(vid);
 		elseif (lbl == "position3d")  then cursor_axis3d(vid);
 		end
 	end
@@ -301,7 +301,7 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "orientation") then orientation_rotate(vid, 45, true);
 		elseif (lbl == "opacity")     then order_increment(vid,-1); 
 		elseif (lbl == "position")    then cursor_slide(vid, 0, grid_stepy); 
-		elseif (lbl == "orient3d")    then cursor_axis3d(vid);
+		elseif (lbl == "rotate3d")    then cursor_axis3d(vid);
 		elseif (lbl == "position3d")  then cursor_axis3d(vid);
 		end 
 	end
@@ -335,9 +335,13 @@ customview.new_item3d = function(model, dstgroup, dstkey)
 
 	customview.ci.ang = {0.0, 0.0, 0.0};
 	customview.ci.pos = {-1.0, 0.0, -4.0};
--- not really used, just so infowin have something to position against 
+-- not really used, just so infowin have something to work with 
 	customview.ci.x   = 0;
 	customview.ci.y   = 0;
+	customview.ci.opa = 1.0;
+	
+	customview.ci.zv  = customview.orderind;
+	customview.orderind = customview.orderind + 1;
 	
 	customview.ci.kind = dstgroup;
 	customview.ci.res  = dstkey;
@@ -414,6 +418,7 @@ local function save_item_bg(state, vid)
 		table.insert(customview.itemlist, customview.ci);
 	end
 
+	video_3dorder(ORDER_LAST);
 	to_menu();
 end
 
@@ -443,8 +448,6 @@ local function positionfun(label)
 	end
 end
 
-local cleanup = nil;
-
 local function customview_internal(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
@@ -469,11 +472,11 @@ local function customview_internal(source, datatbl)
 		end
 	elseif (datatbl.kind == "frameserver_terminated") then
 		pop_video_context();
-		cleanup();
+		customview.cleanup();
 	end
 end
 
-local function cleanup()
+customview.cleanup = function()
 -- since new screenshots /etc. might have appeared, update cache 
 	resourcefinder_cache.invalidate = true;
 		local gameno = current_game_cellid();
@@ -485,6 +488,7 @@ local function cleanup()
 		settings.iodispatch = customview.dispatchtbl;
 		gridle_input = gridle_dispatchinput;
 		settings.in_internal = false;
+		video_3dorder(ORDER_LAST);
 	end
 
 -- setup a quick timer, wait 20 ticks for autosave etc. to finish THEN cleanup.
@@ -516,7 +520,7 @@ local function launch(tbl)
 	if (launch_internal) then
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		customview.gametbl = tbl;
-		settings.cleanup_toggle = cleanup;
+		settings.cleanup_toggle = customview.cleanup;
 
 		if (valid_vid(internal_vid)) then delete_image(internal_vid); end
 
@@ -562,18 +566,18 @@ end
 
 local function positiondynamic(label)
 	if (label == "Model") then
-		local vid = new_3dmodel();
-		add_3dmesh(vid, "customview/cube.ctm", 1);
-		image_framesetsize(vid, 1);
-		set_image_as_frame(vid, fill_surface(1, 1, 255, 0, 0), 1, FRAMESET_DETACH);
-		image_shader(vid, default_shader3d);
-	
-		customview.new_item3d(vid, "vidcap", string.lower(label));
-		customview.position_item(vid, save_item, customview.position_modes_3d);
-		update_object3d(vid);
-		return;
+		local model = load_model("placeholder");
+
+		if (model) then
+			local vid = model.vid;
+			customview.new_item3d(vid, "model", string.lower(label));
+			customview.position_item(vid, save_item, customview.position_modes_3d);
+			show_image(vid);
+			update_object3d(vid);
+			return;
+		end
 	end
-	
+		
 	local vid, tiled = get_identimg(label);
 
 	if (label == "Vidcap") then
@@ -656,53 +660,67 @@ local function save_config()
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
+	write_rawresource("cview.models  = {};\n");
 	write_rawresource("cview.dynamic_labels = {};\n");
 	write_rawresource("cview.vidcap = {};\n");
 	write_rawresource("cview.aspect = " .. tostring( VRESW / VRESH ) .. ";\n");
 	
 	for ind, val in ipairs(customview.itemlist) do
-		write_rawresource("local item = {};\n");
-		write_rawresource("item.x      = " .. tostring( val.x / VRESW ) .. ";\n");
-		write_rawresource("item.y      = " .. tostring( val.y / VRESH ) .. ";\n");
-		write_rawresource("item.order  = " .. val.zv .. ";\n");
-		write_rawresource("item.opa    = " .. val.opa .. ";\n");
-		write_rawresource("item.ang    = " .. val.ang .. ";\n");
-		write_rawresource("item.width  = " .. tostring(val.width / VRESW ) .. ";\n");
-		write_rawresource("item.height = " .. tostring(val.height / VRESH ) .. ";\n");
-		write_rawresource("item.tiled  = " .. tostring(val.tiled == true) .. ";\n");
-		
-		if val.kind == "static_media" then
-			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-			write_rawresource("table.insert(cview.static, item);\n");
+		if (val.kind == "model") then
+			write_rawresource("local item = {};\n");
+			write_rawresource("item.pos = {" .. tostring(val.pos[1]) .. ", " .. tostring(val.pos[2]) .. ", " .. tostring(val.pos[3]) .. "};\n");
+			write_rawresource("item.ang = {" .. tostring(val.ang[1]) .. ", " .. tostring(val.ang[2]) .. ", " .. tostring(val.ang[3]) .. "};\n");
 
-		elseif val.kind == "dynamic_media" then
-			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-			write_rawresource("table.insert(cview.dynamic, item);\n");
+-- "options" for each item aren't definable yet, so hard- code in the necessary ones here 
+			write_rawresource("item.dir_light = {1.0, 0.0, 0.0};\n");
+			write_rawresource("item.ambient   = {0.3, 0.3, 0.3};\n");
+			write_rawresource("item.diffuse   = {0.6, 0.6, 0.6};\n");
 
-		elseif val.kind == "vidcap" then
-			write_rawresource("item.index  = " .. val.index .. ";\n");
-			write_rawresource("table.insert(cview.vidcap, item);\n");
-	
-		elseif val.kind == "navigator" then
-			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-			write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
-			write_rawresource("cview.navigator = item;\n");
-
-		elseif val.kind == "label" then
-			write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-			write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
-			write_rawresource("table.insert(cview.dynamic_labels, item);\n");
-			
-		elseif val.kind == "background" then
-			write_rawresource("item.res    = \"" .. val.res .."\";\n");
-			if (val.shader) then
-				write_rawresource("item.shader = \"" .. val.shader .. "\";\n");
-			end
-			
-			write_rawresource("cview.background = item;\n");
+			write_rawresource("table.insert(cview.models, item);\n");
 		else
-			print("[customview:save_config] warning, unknown kind: " .. val.kind);
+			write_rawresource("local item = {};\n");
+			write_rawresource("item.x      = " .. tostring( val.x / VRESW ) .. ";\n");
+			write_rawresource("item.y      = " .. tostring( val.y / VRESH ) .. ";\n");
+			write_rawresource("item.order  = " .. val.zv .. ";\n");
+			write_rawresource("item.opa    = " .. val.opa .. ";\n");
+			write_rawresource("item.ang    = " .. val.ang .. ";\n");
+			write_rawresource("item.width  = " .. tostring(val.width / VRESW ) .. ";\n");
+			write_rawresource("item.height = " .. tostring(val.height / VRESH ) .. ";\n");
+			write_rawresource("item.tiled  = " .. tostring(val.tiled == true) .. ";\n");
+		
+			if val.kind == "static_media" then
+				write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+				write_rawresource("table.insert(cview.static, item);\n");
+
+			elseif val.kind == "dynamic_media" then
+				write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+				write_rawresource("table.insert(cview.dynamic, item);\n");
+
+			elseif val.kind == "vidcap" then
+				write_rawresource("item.index  = " .. val.index .. ";\n");
+				write_rawresource("table.insert(cview.vidcap, item);\n");
+	
+			elseif val.kind == "navigator" then
+				write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+				write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
+				write_rawresource("cview.navigator = item;\n");
+
+			elseif val.kind == "label" then
+				write_rawresource("item.res    = \"" .. val.res .. "\";\n");
+				write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
+				write_rawresource("table.insert(cview.dynamic_labels, item);\n");
+			
+			elseif val.kind == "background" then
+				write_rawresource("item.res    = \"" .. val.res .."\";\n");
+				if (val.shader) then
+					write_rawresource("item.shader = \"" .. val.shader .. "\";\n");
+				end
+				write_rawresource("cview.background = item;\n");
+			else
+				print("[customview:save_config] warning, unknown kind: " .. val.kind);
+			end
 		end
+
 	end
 	
 	write_rawresource("return cview;\n");
@@ -782,16 +800,16 @@ local function show_config()
 end
 
 local function place_item( vid, tbl )
-	local x = math.floor(tbl.x * VRESW);
-	local y = math.floor(tbl.y * VRESH);
+	local x = math.floor(tbl.x     * VRESW);
+	local y = math.floor(tbl.y     * VRESH);
 	local w = math.floor(tbl.width * VRESW);
 	local h = math.floor(tbl.height* VRESH);
-	
-	move_image(vid, x, y);
+
+  move_image(vid, x, y);
 	rotate_image(vid, tbl.ang);
 	resize_image(vid, w, h);
 	order_image(vid, tbl.order);
-	blend_image(vid, tbl.opa, 10);
+	blend_image(vid, tbl.opa);
 end
 
 local function update_dynamic(newtbl)
@@ -801,22 +819,51 @@ local function update_dynamic(newtbl)
 
 	customview.lasttbl = newtbl;
 	toggle_led(newtbl.players, newtbl.buttons, "")	;
-	
+
+-- this table is maintained for every newly selected item, and just tracks everything to delete.
 	for ind, val in ipairs(customview.temporary) do
 		if (valid_vid(val)) then delete_image(val); end 
 	end
 
+-- separate models and 
+	for ind, val in ipairs(customview.temporary_models) do
+		if (valid_vid(val.vid)) then delete_image(val.vid); end
+	end
+	
 	customview.temporary = {};
+	customview.temporary_models = {};
+
 	local restbl = resourcefinder_search( newtbl, true );
+
+	local function place_model(modelid, pos, ang)
+		move3d_model(modelid, pos[1], pos[2], pos[3]);
+		rotate3d_model(modelid, ang[1], ang[2], ang[3]);
+		show_image(modelid);
+	end
+	
 	if (restbl) then
+		if (customview.current.models and #customview.current.models > 0) then
+			local modelstr = find_cabinet_model(newtbl);
+			local model  = modelstr and setup_cabinet_model(modelstr, restbl, {}) or nil;
+			table.insert(customview.temporary_models, model);
+			table.insert(customview.temporary, model.vid);
+
+			if (model) then
+				place_model(model.vid, customview.current.models[1].pos, customview.current.models[1].ang);
+
+-- reuse the model for multiple instances
+				for i=2,#customview.current.models do
+					local nid = instance_image(model.vid);
+					place_model(nid, customview.current.models[i].pos, customview.current.models[i].ang);
+				end
+			end
+		end
 
 		for ind, val in ipairs(customview.current.dynamic) do
 			reskey = remaptbl[val.res];
 			
 			if (reskey and restbl[reskey] and #restbl[reskey] > 0) then
-				if (reskey == "vidcap") then
-					local a = true; -- seriously lua..
-				elseif (reskey == "movies") then
+				if (reskey == "movies") then
 					vid, aid = load_movie(restbl[reskey][1], FRAMESERVER_LOOP, function(source, status)
 						place_item(source, val);
 						play_movie(source);
@@ -830,9 +877,9 @@ local function update_dynamic(newtbl)
 				end
 	
 			end
-			
 		end
-		
+
+
 		for ind, val in ipairs(customview.current.dynamic_labels) do
 			local dststr = newtbl[val.res];
 			
@@ -866,15 +913,13 @@ local function navi_change(navi, navitbl)
 end
 
 local function setup_customview()
-	customview.camera = fill_surface(4, 4, 0, 0, 0);
-	camtag_model(customview.camera, 0);
-
 	local background = nil;
 	for ind, val in ipairs( customview.current.static ) do
 		local vid = load_image( val.res );
 		place_item( vid, val );
 	end
 
+-- video capture devices, can either be instances of the same vidcap OR multiple devices based on index 
 	customview.current.vidcap_instances = {};
 	for ind, val in ipairs( customview.current.vidcap ) do
 		inst = customview.current.vidcap_instances[val.index];
@@ -897,20 +942,20 @@ local function setup_customview()
 	if (customview.current.background) then
 		vid = load_image( customview.current.background.res );
 		customview.background = vid;
+
 		place_item(vid, customview.current.background);
 		customview.bgshader_label = customview.current.background.shader;
 
+		local props  = image_surface_properties(vid);
+		local iprops = image_surface_initial_properties(vid);
+
+		if (customview.current.background.tiled) then
+			switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
+			image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
+		end
+		
 		if (customview.bgshader_label) then
 			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
-
-			local props  = image_surface_properties(vid);
-			local iprops = image_surface_initial_properties(vid);
-
-			if (customview.current.background.tiled) then
-				switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
-				image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
-			end
-
 			update_bgshdr();
 		end
 	end
@@ -952,7 +997,11 @@ local function setup_customview()
 
 		settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
 			play_audio(soundmap["MENU_TOGGLE"]);
-			gridlemenu_settings( function() navi:update_list(settings.games); end, function() end); 
+			video_3dorder(ORDER_NONE);
+			gridlemenu_settings(
+				function() navi:update_list(settings.games);
+				video_3dorder(ORDER_LAST);
+			end, function() end);
 		end
 		
 		settings.iodispatch["MENU_RIGHT"] = function()
@@ -986,6 +1035,7 @@ local function setup_customview()
 			end
 		end
 
+		navi_change(navi, navitbl);
 		customview.dispatchtbl = settings.iodispatch;
 	end
 	
@@ -998,8 +1048,8 @@ function gridle_customview()
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
 	pop_video_context();
+	setup_3dsupport();
 
-	default_shader3d = load_shader("shaders/diffuse_only.vShader", "shaders/diffuse_only.fShader", "default3d");
 	if (resource("customview_cfg.lua")) then
 		customview.background    = nil;
 		customview.bgshader      = nil;
@@ -1008,12 +1058,12 @@ function gridle_customview()
 		if (customview.current) then
 			customview.in_customview = true;
 			customview.in_config = false;
-			pop_video_context();
 			setup_customview();
 		end
 
 	else
 		customview.in_config = true;
+		video_3dorder(ORDER_FIRST);
 		disptbl = show_config();
 	end
 	

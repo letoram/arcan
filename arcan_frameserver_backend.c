@@ -127,7 +127,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.otag = src->tag
 		};
 
-/* prevent looping if the frameserver didn't last more than a second */
+/* prevent looping if the frameserver didn't last more than a second, indicative of it being broken */
 		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
 			arcan_frameserver_free(src, true);
 			src->autoplay = true;

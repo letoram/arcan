@@ -28,7 +28,7 @@
 /* although there's a libswresampler already "handy", speex is used
  * (a) for the simple relief in not having to deal with more ffmpeg "APIs"
  * and (b) for future VoIP features */
-#include <speex/speex_resampler.h>
+#include "resampler/speex_resampler.h"
 
 /* audb contains a list of audio buffers each push,
  * each of these have an associated samplerate and mixweight

@@ -32,20 +32,27 @@
 #include "arcan_math.h"
 #include <SDL_opengl.h>
 
-static void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
+void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
 {
 	int i;
 
-	for (i=0; i<4; i++) {
+	for (i=0; i<4; i++) 
 		out[i] =
 		in[0] * matrix[0*4+i] +
 		in[1] * matrix[1*4+i] +
 		in[2] * matrix[2*4+i] +
 		in[3] * matrix[3*4+i];
-	}
 }
 
-/* good chance for speedup here using SSE intrisics */
+void mult_matrix_vec3f(const float matrix[16], const float in[3], float out[3])
+{
+	for (int i=0; i<3; i++) 
+		out[i] =
+		in[0] * matrix[0*4+i] +
+		in[1] * matrix[1*4+i] +
+		in[2] * matrix[2*4+i]; 
+}
+
 void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
 {
 	for (int i = 0; i < 16; i+= 4)
@@ -59,8 +66,8 @@ void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
 
 void scale_matrix(float* m, float xs, float ys, float zs)
 {
-	m[0] *= xs; m[4] *= ys; m[8] *= zs;
-	m[1] *= xs; m[5] *= ys; m[9] *= zs;
+	m[0] *= xs; m[4] *= ys; m[8]  *= zs;
+	m[1] *= xs; m[5] *= ys; m[9]  *= zs;
 	m[2] *= xs; m[6] *= ys; m[10] *= zs;
 	m[3] *= xs; m[7] *= ys; m[11] *= zs;
 }
@@ -91,7 +98,7 @@ quat quat_lookat(vector pos, vector dstpos)
 	float yang = acos( dotp_vector(diff, build_vect(0.0, 1.0, 0.0)) );
 	float zang = acos( dotp_vector(diff, build_vect(0.0, 0.0, 1.0)) );
 
-	return build_quat_euler(xang, yang, zang);
+	return build_quat_taitbryan(xang, yang, zang);
 }
 
 /* replacement for gluLookAt */
@@ -416,7 +423,7 @@ static inline quat slerp_quatfl(quat a, quat b, float fact, bool r360)
 
 /* r360 if delta > 180degrees) */ 
 	float ct = dot_quat(a, b);
-	if (r360 && ct < 1.0){
+	if (r360 && ct > 1.0){
 		ct   = -ct;
 		flip = true;
 	}
@@ -503,8 +510,12 @@ double* matr_quat(quat a, double* dmatr)
 	return dmatr;
 }
 
-quat build_quat_euler(float roll, float pitch, float yaw)
+quat build_quat_taitbryan(float roll, float pitch, float yaw)
 {
+	roll  = fmodf(roll + 180.f, 360.f) - 180.f;
+	pitch = fmodf(pitch+ 180.f, 360.f) - 180.f;
+	yaw   = fmodf(yaw  + 180.f, 360.f) - 180.f;
+	
 	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0)), build_quat(roll, 0.0, 0.0, 1.0));
 	return res;
 }
@@ -550,38 +561,38 @@ void update_frustum(float* prjm, float* mvm, float frustum[6][4])
 	multiply_matrix(mmr, mvm, prjm);
 
 /* extract and normalize planes */
-	frustum[0][0] = mmr[3] + mmr[0]; // left
-	frustum[0][1] = mmr[7] + mmr[4];
+	frustum[0][0] = mmr[3]  + mmr[0]; // left
+	frustum[0][1] = mmr[7]  + mmr[4];
 	frustum[0][2] = mmr[11] + mmr[8];
 	frustum[0][3] = mmr[15] + mmr[12];
 	normalize_plane(frustum[0]);
 
-	frustum[1][0] = mmr[3] - mmr[0]; // right
-	frustum[1][1] = mmr[7] - mmr[4];
+	frustum[1][0] = mmr[3]  - mmr[0]; // right
+	frustum[1][1] = mmr[7]  - mmr[4];
 	frustum[1][2] = mmr[11] - mmr[8];
 	frustum[1][3] = mmr[15] - mmr[12];
 	normalize_plane(frustum[1]);
 
-	frustum[2][0] = mmr[3] - mmr[1]; // top
-	frustum[2][1] = mmr[7] - mmr[5];
+	frustum[2][0] = mmr[3]  - mmr[1]; // top
+	frustum[2][1] = mmr[7]  - mmr[5];
 	frustum[2][2] = mmr[11] - mmr[9];
 	frustum[2][3] = mmr[15] - mmr[13];
 	normalize_plane(frustum[2]);
 
-	frustum[3][0] = mmr[3] + mmr[1]; // bottom
-	frustum[3][1] = mmr[7] + mmr[5];
+	frustum[3][0] = mmr[3]  + mmr[1]; // bottom
+	frustum[3][1] = mmr[7]  + mmr[5];
 	frustum[3][2] = mmr[11] + mmr[9];
 	frustum[3][3] = mmr[15] + mmr[13];
 	normalize_plane(frustum[3]);
 
-	frustum[4][0] = mmr[3] + mmr[2]; // near
-	frustum[4][1] = mmr[7] + mmr[6];
+	frustum[4][0] = mmr[3]  + mmr[2]; // near
+	frustum[4][1] = mmr[7]  + mmr[6];
 	frustum[4][2] = mmr[11] + mmr[10];
 	frustum[4][3] = mmr[15] + mmr[14];
 	normalize_plane(frustum[4]);
 
-	frustum[5][0] = mmr[3] - mmr[2]; // far
-	frustum[5][1] = mmr[7] - mmr[6];
+	frustum[5][0] = mmr[3]  - mmr[2]; // far
+	frustum[5][1] = mmr[7]  - mmr[6];
 	frustum[5][2] = mmr[11] - mmr[10];
 	frustum[5][3] = mmr[15] - mmr[14];
 	normalize_plane(frustum[5]);

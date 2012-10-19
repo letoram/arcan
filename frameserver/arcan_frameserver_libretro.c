@@ -40,14 +40,14 @@
 
 /* resampling at this level because it seems the linux + openAL + pulse-junk-audio
  * introduces audible pops on some soundcard / drivers at odd (so poorly tested) sampling rates) */
-#include <speex/speex_resampler.h>
+#include "resampler/speex_resampler.h"
 
 #ifndef MAX_PORTS
 #define MAX_PORTS 4
 #endif
 
 #ifndef MAX_AXES
-#define MAX_AXES 2
+#define MAX_AXES 8 
 #endif
 
 #ifndef MAX_BUTTONS
@@ -62,6 +62,15 @@
  * however, we will lock to video, meaning that it is the framerate of the frameserver that will decide
  * the actual framerate, that may be locked to VREFRESH (or lower, higher / variable). Thus we also need frameskipping heuristics here.
  */
+
+
+struct input_port {
+	bool buttons[MAX_BUTTONS];
+	signed axes[MAX_AXES];
+
+/* special offsets into buttons / axes based on device */
+	unsigned cursor_x, cursor_y, cursor_btns[5];
+};
 
 /* interface for loading many different emulators,
  * we assume "resource" points to a dlopen:able library,
@@ -85,7 +94,6 @@ static struct {
 		uint16_t* ntsc_imb;
 		bool ntscconv;
 		snes_ntsc_t ntscctx;
-		unsigned retro_lastw, retro_lasth;
 		snes_ntsc_setup_t ntsc_opts;
 
 /* input-output */
@@ -112,12 +120,10 @@ static struct {
 		struct retro_game_info gameinfo;
 		unsigned state_size;
 
-		struct {
-			bool joypad[MAX_PORTS][MAX_BUTTONS];
-			signed axis[MAX_PORTS][MAX_AXES];
-			int16_t mx, my;
-		} inputmatr;
-
+/* parent uses an event->push model for input, libretro uses a poll one, so
+ * prepare a lookup table that events gets pushed into and libretro can poll */
+		struct input_port input_ports[MAX_PORTS];
+		
 /* timing according to retro */
 		struct retro_system_av_info avinfo;
 		double avfps;
@@ -212,7 +218,6 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	if (!data || retroctx.skipframe)
 		return;
 
-	retroctx.retro_lasth = height; retroctx.retro_lastw = width;
 	unsigned outh = retroctx.ntscconv ? height * 2 : height;
 	unsigned outw = retroctx.ntscconv ? SNES_NTSC_OUT_WIDTH( width ) : width;
 
@@ -353,18 +358,80 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 		return 0;
 	}
 
+	int16_t rv = 0;
+	struct input_port* inp;
+
 	switch (dev){
 		case RETRO_DEVICE_JOYPAD:
-			return (int16_t) retroctx.inputmatr.joypad[port][id];
+			return (int16_t) retroctx.input_ports[port].buttons[id];
 		break;
 
 		case RETRO_DEVICE_KEYBOARD:
 		break;
 
 		case RETRO_DEVICE_MOUSE:
+			if (port == 1) port = 0;
+			inp = &retroctx.input_ports[port];
+			switch (id){
+				case RETRO_DEVICE_ID_MOUSE_LEFT:
+					return inp->buttons[ inp->cursor_btns[0] ];
+
+				case RETRO_DEVICE_ID_MOUSE_RIGHT:
+					return inp->buttons[ inp->cursor_btns[2] ];
+
+				case RETRO_DEVICE_ID_MOUSE_X:
+					rv = inp->axes[ inp->cursor_x ];
+					inp->axes[ inp->cursor_x ] = 0;
+					return rv;
+
+				case RETRO_DEVICE_ID_MOUSE_Y:
+					rv = inp->axes[ inp->cursor_y ];
+					inp->axes[ inp->cursor_y ] = 0;
+					return rv;
+			}
+		break;
+
 		case RETRO_DEVICE_LIGHTGUN:
+			switch (id){
+				case RETRO_DEVICE_ID_LIGHTGUN_X:
+					return (int16_t) retroctx.input_ports[port].axes[
+						retroctx.input_ports[port].cursor_x
+					];
+
+				case RETRO_DEVICE_ID_LIGHTGUN_Y:
+					return (int16_t) retroctx.input_ports[port].axes[
+						retroctx.input_ports[port].cursor_y
+					];
+
+				case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER:
+					return (int16_t) retroctx.input_ports[port].buttons[
+						retroctx.input_ports[port].cursor_btns[0]
+					];
+
+				case RETRO_DEVICE_ID_LIGHTGUN_CURSOR:
+					return (int16_t) retroctx.input_ports[port].buttons[
+						retroctx.input_ports[port].cursor_btns[1]
+					];
+
+				case RETRO_DEVICE_ID_LIGHTGUN_START:
+					return (int16_t) retroctx.input_ports[port].buttons[
+					retroctx.input_ports[port].cursor_btns[2]
+				];
+
+					case RETRO_DEVICE_ID_LIGHTGUN_TURBO:
+					return (int16_t) retroctx.input_ports[port].buttons[
+					retroctx.input_ports[port].cursor_btns[3]
+				];
+
+				case RETRO_DEVICE_ID_LIGHTGUN_PAUSE:
+					return (int16_t) retroctx.input_ports[port].buttons[
+					retroctx.input_ports[port].cursor_btns[4]
+				];
+		}
+		break;
+		
 		case RETRO_DEVICE_ANALOG:
-			return (int16_t) retroctx.inputmatr.axis[port][id];
+			return (int16_t) retroctx.input_ports[port].axes[id];
 		break;
 
 		default:
@@ -384,20 +451,29 @@ static int remaptbl[] = {
 	0
 };
 
-static void ioev_ctxtbl(arcan_event* ioev)
+static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 {
+	size_t remaptbl_sz = sizeof(remaptbl) / sizeof(remaptbl[0]) - 1;
 	int ind, button = -1, axis;
 	char* subtype;
-	signed value = ioev->data.io.datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->data.io.input.translated.active : ioev->data.io.input.digital.active;
+	signed value = ioev->datatype == EVENT_IDATATYPE_TRANSLATED ? ioev->input.translated.active : ioev->input.digital.active;
 
-	if (1 == sscanf(ioev->label, "PLAYER%d_", &ind) && ind > 0 && ind <= MAX_PORTS &&
-		(subtype = strchr(ioev->label, '_')) ){
+	if (1 == sscanf(label, "PLAYER%d_", &ind) && ind > 0 && ind <= MAX_PORTS && (subtype = strchr(label, '_')) ){
 		subtype++;
+	
 		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
 			button--;
-			button = button > sizeof(remaptbl) / sizeof(remaptbl[0]) - 1 ? -1 : remaptbl[button];
-		} else if (1 == sscanf(subtype, "AXIS_%d", &axis) && axis > 0 && axis <= MAX_AXES){
-			retroctx.inputmatr.axis[ind-1][ axis ] = ioev->data.io.input.analog.axisval[0];
+			button = button > remaptbl_sz ? -1 : remaptbl[button];
+		}
+		else if (1 == sscanf(subtype, "AXIS%d", &axis) && axis > 0 && axis <= MAX_AXES){
+			if (ioev->input.analog.gotrel)
+				retroctx.input_ports[ind-1].axes[ axis - 1 ] = ioev->input.analog.axisval[1];
+			else {
+				static bool warned = false;
+				if (!warned)
+					LOG("libretro::analog input(%s), ignored. Absolute input currently unsupported.\n", label);
+				warned = true;
+			}
 		}
 		else if ( strcmp(subtype, "UP") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_UP;
@@ -413,9 +489,8 @@ static void ioev_ctxtbl(arcan_event* ioev)
 			button = RETRO_DEVICE_ID_JOYPAD_START;
 		else;
 
-		if (button >= 0){
-			retroctx.inputmatr.joypad[ind-1][button] = value;
-		}
+		if (button >= 0)
+			retroctx.input_ports[ind-1].buttons[button] = value;
 	}
 
 }
@@ -543,7 +618,7 @@ static inline void flush_eventq(){
 		while ( (ev = arcan_event_poll(&retroctx.inevq)) ){
 			switch (ev->category){
 				case EVENT_IO:
-					ioev_ctxtbl(ev); 
+					ioev_ctxtbl(&(ev->data.io), ev->label);
 				break;
 				
 				case EVENT_TARGET: 
@@ -712,6 +787,18 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* since we might have requests to save state before we die, we use the flush_eventq as an atexit */
 		atexit(flush_eventq);
 
+/* setup standard device remapping tables, these can be changed by the calling process
+ * with a corresponding target event. */
+		for (int i = 0; i < MAX_PORTS; i++){
+			retroctx.input_ports[i].cursor_x = 0;
+			retroctx.input_ports[i].cursor_y = 1;
+			retroctx.input_ports[i].cursor_btns[0] = 0;
+			retroctx.input_ports[i].cursor_btns[1] = 1;
+			retroctx.input_ports[i].cursor_btns[2] = 2;
+			retroctx.input_ports[i].cursor_btns[3] = 3;
+			retroctx.input_ports[i].cursor_btns[4] = 4;
+		}
+
 		while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
@@ -754,6 +841,5 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
 
-/* cleanup of session goes here (i.e. push any autosave slot, ...) */
 	}
 }
