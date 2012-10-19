@@ -320,12 +320,13 @@ function gridle()
 
 	settings.iodispatch["SWITCH_VIEW"] = function(iotbl)
 		play_audio( soundmap["DETAILVIEW_TOGGLE"] );
+		imagery.sysicons = nil;
 		gridle_customview();
 	end
 	
 	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
-		local key = gridledetail_havedetails(gametbl);
+		local key = find_cabinet_model(gametbl);
 
 		if (key) then
 			local gameind = 0;
@@ -386,7 +387,7 @@ end
 -- the entire context is poped meaning that all involved resources need to be rebuilt
 function setup_gridview()
 	grab_sysicons();
-
+	setup_3dsupport();
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 
 	imagery.black = fill_surface(1,1,0,0,0);
@@ -443,7 +444,7 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 end
 
-function dialog_option( message, buttons, samples, canescape, valcbs )
+function dialog_option( message, buttons, samples, canescape, valcbs, cleanuphook )
 	local asamples = {MENU_LEFT = "MENUCURSOR_MOVE", MENU_RIGHT = "MENUCURSOR_MOVE", MENU_ESCAPE = "MENU_FADE", MENU_SELECT = "MENU_FADE"};
 	if (samples == nil) then samples = asamples; end
 	local dialogwin = dialog_create(message, buttons, canescape );
@@ -460,10 +461,17 @@ function dialog_option( message, buttons, samples, canescape, valcbs )
 
 				if (iores ~= nil) then
 					gridle_input = gridle_dispatchinput;
-					if (valcbs[iores]) then valcbs[iores](); end
+					if (valcbs[iores]) then
+						valcbs[iores]();
+					end
+
+					if (cleanuphook) then
+						cleanuphook();
+					end
 				end
 			end
 		end
+
 	end
 
 end
@@ -471,8 +479,9 @@ end
 function confirm_shutdown()
 	local valcbs = {};
 	valcbs["YES"] = function() shutdown(); end
-	
-	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs);
+
+	video_3dorder(ORDER_NONE);
+	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs, function() video_3dorder(ORDER_LAST); end);
 end
 
 -- also used in intmenus for savestate naming
@@ -564,6 +573,8 @@ end
 
 function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
+	toggle_mouse_grab(MOUSE_GRABON);
+
 	gridle_load_internal_extras(current_game().resources, current_game().target);
 	
 	if (settings.autosave == "On") then
@@ -1051,8 +1062,9 @@ function get_image( resourcetbl, gametbl )
 	return rvid;
 end
 
--- load icons used for title "background" (if there's no snapshot handy and that mode is set)
 function grab_sysicons()
+	if (imagery.sysicons ~= nil) then return; end
+
 	list = glob_resource("images/systems/*.png", ALL_RESOURCES);
 
 	imagery.sysicons = {};
@@ -1224,7 +1236,7 @@ function build_grid(width, height)
 				settings.favorites[ settings.games[gameno].title ] = spawn_favoritestar( cx, cy );
 			end
 
-			if (gridledetail_havedetails( settings.games[gameno] )) then
+			if (find_cabinet_model( settings.games[gameno] )) then
 				spawn_magnify(cx, cy + settings.cell_height * 0.1 );
 			end
 		
@@ -1278,7 +1290,6 @@ end
 
 function asynch_movie_ready(source, statustbl)
 	if (imagery.movie == source) then
-
 		if (statustbl.kind == "resized") then
 -- capture loop events .. 
 			if (imagery.playing == source) then
@@ -1297,7 +1308,7 @@ function asynch_movie_ready(source, statustbl)
 				gridlemenu_setzoom(newinst, source); -- use new aspect ratio
 			end
 
-			vid,aid = play_movie(source);
+			vid, aid = play_movie(source);
 			audio_gain(aid, 0.0);
 			audio_gain(aid, settings.movieagain, settings.fadedelay);
 
@@ -1350,6 +1361,7 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 	hide_image(imagery.crashimage);
 	keyconfig.table = settings.keyconftbl;
+	
 	
 	if (settings.in_internal) then
 		gridle_delete_internal_extras();
@@ -1520,11 +1532,11 @@ function gridle_internaltgt_input(val, iotbl)
 		val = rotate_label(val, settings.internal_input == "Rotate CW");
 	end
 
--- now, the iotbl doesn't necessarily correspond to the iotbl, so have keyconfig try
--- to rebuild a useful iotbl.
+-- now, the "new" iotbl doesn't necessarily correspond to the values from the original iotable (think axis values)
+-- so have keyconfig try to rebuild a useful one.
 	if (val) then
 		res = keyconfig:buildtbl(val, iotbl);
-		
+	
 		if (res) then
 			res.label = val;
 			target_input(res, internal_vid);
@@ -1539,7 +1551,7 @@ end
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
-	
+
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 -- the reason for looping the restbl is simply that the iotbl can be set to match several labels
 	
@@ -1558,10 +1570,12 @@ function gridle_internalinput(iotbl)
 			elseif (val == "MENU_TOGGLE") then
 				disable_record()
 				gridlemenu_internal(internal_vid, false, true);
+				toggle_mouse_grab(MOUSE_GRABOFF);
 
 			elseif (val == "CONTEXT") then
 				disable_record()
 				gridlemenu_internal(internal_vid, true, false);
+				toggle_mouse_grab(MOUSE_GRABOFF);
 
 -- iotbl.active filter here is just to make sure we don't save twice (press and release) 
 			elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD") and iotbl.active) then

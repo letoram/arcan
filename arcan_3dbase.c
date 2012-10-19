@@ -92,7 +92,7 @@ typedef struct {
 } arcan_3dscene;
 
 struct geometry {
-    unsigned nmaps;
+	unsigned nmaps;
 	arcan_shader_id program;
 
 	unsigned nverts;
@@ -118,8 +118,8 @@ typedef struct {
 	arcan_shader_id program;
 
 /* AA-BB */
-    vector bbmin;
-    vector bbmax;
+	vector bbmin;
+	vector bbmax;
 
 /* position, opacity etc. are inherited from parent */
 	struct {
@@ -199,20 +199,23 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 		memcpy(wmvm, modelview, sizeof(float) * 16);
 
 	float dmatr[16], omatr[16];
-    float opa = 1.0;
+	float opa   = 1.0;
 
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
 	translate_matrix(wmvm, props.position.x, props.position.y, props.position.z);
 	matr_quatf(props.rotation.quaternion, omatr);
+
 	multiply_matrix(dmatr, wmvm, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 
 	struct geometry* base = src->geometry;
 
 	while (base){
-		if (!base->complete)
+		if (!base->complete){
 			base = base->next;
+			continue;
+		}
 
 		unsigned counter = 0; /* keep track of how many TUs are in use */
 			if (-1 != base->program)
@@ -242,11 +245,15 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 		} else attribs[2] = -1;
 
-/* It's up to arcan_shader to determine if this will actually involve a program switch or not */
+/* It's up to arcan_shader to determine if this will actually involve a program switch or not,
+ * blend states etc. are dictated by the images used as texture,
+ * and with the frameset_multitexture approach, the first one in the set */
 
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj,
  * multiple meshes share the same frameset */
+		bool blendstate    = false;
+
 		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_meta.capacity && i < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i+cframe];
 			if (!frame)
@@ -259,8 +266,14 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			glActiveTexture(GL_TEXTURE0 + i);
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
-		}
 
+			if (blendstate == false){
+				surface_properties dprops = {.opa = vobj->current.opa};
+				arcan_video_setblend(&dprops, frame);
+				blendstate = true;
+			}
+		}
+		
 /* Indexed- or direct mode? */
 		if (base->indices)
 			glDrawElements(GL_TRIANGLES, base->nindices, base->indexformat, base->indices);
@@ -282,8 +295,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 	}
 }
 
-/* the current model uses the associated scaling / blending
- * of the associated vid and applies it uniformly */
 static int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
@@ -311,10 +322,23 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 
 	arcan_vobject_litem* current = cell;
 	while (current){
-		if (current->elem->order >= 0 || !current->elem->feed.state.ptr) break;
+		arcan_vobject* cvo = current->elem;
+
+/* non-negative => 2D part of the pipeline */
+		if (cvo->order >= 0)
+			break;
+
+		if (cvo->flags.clone){
+			assert(cvo->parent);
+		}
+		
+/* use parent if we have an instance.. */
+		arcan_3dmodel* model = cvo->flags.clone ? cvo->parent->feed.state.ptr : cvo->feed.state.ptr;
+
 		surface_properties dprops;
- 		arcan_resolve_vidprop(current->elem, lerp, &dprops);
-		rendermodel(current->elem, (arcan_3dmodel*) current->elem->feed.state.ptr, current->elem->gl_storage.program, dprops, modelview);
+ 		arcan_resolve_vidprop(cvo, lerp, &dprops);
+
+		rendermodel(current->elem, model, current->elem->gl_storage.program, dprops, modelview);
 
 		current = current->next;
 	}
@@ -705,6 +729,45 @@ arcan_vobj_id arcan_3d_emptymodel()
 	return rv;
 }
 
+arcan_errc arcan_3d_baseorient(arcan_vobj_id dst, float roll, float pitch, float yaw)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dst);
+	arcan_errc rv       = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
+		arcan_3dmodel* model = vobj->feed.state.ptr;
+		struct geometry* geom = model->geometry;
+
+/* 1. create the rotation matrix by mapping to a quaternion */
+		quat repr = build_quat_taitbryan(roll, pitch, yaw);
+		float matr[16];
+		matr_quatf(repr, matr);
+
+/* 2. iterate all geometries connected to the model */
+		while (geom){
+			while (!geom->complete);
+	
+			float*  verts = geom->verts;
+
+/* 3. sweep through all the vertexes in the model */
+			for (unsigned i = 0; i < geom->nverts * 3; i += 3){
+				float xyz[4] = {verts[i], verts[i+1], verts[i+2], 1.0};
+				float out[4];
+
+/* 4. transform the current vertex */
+				mult_matrix_vecf(matr, xyz, out);
+				verts[i] = out[0]; verts[i+1] = out[1]; verts[i+2] = out[2];
+			}
+
+			geom = geom->next;
+		}
+
+		rv = ARCAN_OK;
+	}
+
+	return rv;
+}
+
 arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -712,7 +775,7 @@ arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
 	virtobj* vrtobj = find_perspective(camtag);
 
 	if (vrtobj && vobj){
-		vrtobj->parent = vid;
+		vrtobj->parent    = vid;
 		vrtobj->position  = vobj->current.position;
 
 		matr_quatf(vobj->current.rotation.quaternion, vrtobj->direction.matr);
@@ -738,4 +801,3 @@ void arcan_3d_setdefaults()
 	cam->type = virttype_camera;
 	cam->position = build_vect(0, 0, 0);
 }
-

@@ -85,10 +85,14 @@ local function listview_move_cursor(self, step, relative)
 
 -- this one is pretty inefficient as it will always drop / redraw the list 
 	self:redraw();
+
+	local order = image_surface_properties(self.listvid).order;
+	
 -- could be fixed by caching page etc. and see if we land on a new one
 	instant_image_transform(self.cursorvid);
 	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] - 2 + 6, 10);
 	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, settings.colourtable.font_size);
+	order_image(self.cursorvid, order + 1);
 end
 
 local function listview_tofront(self)

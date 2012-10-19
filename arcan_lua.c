@@ -66,21 +66,20 @@
 #include "arcan_lua.h"
 #include "arcan_led.h"
 
-
 /* these take some explaining:
  * to enforce that actual constants are used in LUA scripts and not magic numbers
  * the corresponding binding functions check that the match these global constants (not defines
- * as we want them maintained in DWARF debug data as well), but their actual values are set by
+ * as we want them maintained in debug data as well), but their actual values are set by
  * defines so that they can be swizzled around by the build-system */
-#ifndef CONST_ORDER_FIRST 
-#define CONST_ORDER_FIRST 1
+#ifndef CONST_ROTATE_RELATIVE
+#define CONST_ROTATE_RELATIVE 10
 #endif
-static const int ORDER_FIRST = CONST_ORDER_FIRST;
+static const int ROTATE_RELATIVE = CONST_ROTATE_RELATIVE;
 
-#ifndef CONST_ORDER_LAST
-#define CONST_ORDER_LAST 0
+#ifndef CONST_ROTATE_ABSOLUTE
+#define CONST_ROTATE_ABSOLUTE 5
 #endif
-static const int ORDER_LAST  = CONST_ORDER_LAST;
+static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 
 #ifndef CONST_MAX_SURFACEW
 #define CONST_MAX_SURFACEW 2048
@@ -90,19 +89,30 @@ static const int ORDER_LAST  = CONST_ORDER_LAST;
 #define CONST_MAX_SURFACEH 2048
 #endif
 
+#ifndef CONST_MOUSE_GRAB_ON
+#define CONST_MOUSE_GRAB_ON 20
+#endif
+
+#ifndef CONST_MOUSE_GRAB_OFF
+#define CONST_MOUSE_GRAB_OFF 22
+#endif
+
+static const int MOUSE_GRAB_ON = CONST_MOUSE_GRAB_ON;
+static const int MOUSE_GRAB_OFF= CONST_MOUSE_GRAB_OFF;
+
 static const int MAX_SURFACEW = CONST_MAX_SURFACEH;
 static const int MAX_SURFACEH = CONST_MAX_SURFACEW;
 
-static const int FRAMESERVER_LOOP = 1;
+static const int FRAMESERVER_LOOP   = 1;
 static const int FRAMESERVER_NOLOOP = 0;
 
 static const int FRAMESET_NODETACH = 11;
-static const int FRAMESET_DETACH = 10;
+static const int FRAMESET_DETACH   = 10;
 
-static const int RENDERTARGET_DETACH = 10;
+static const int RENDERTARGET_DETACH   = 10;
 static const int RENDERTARGET_NODETACH = 11;
-static const int RENDERTARGET_SCALE = 20;
-static const int RENDERTARGET_NOSCALE = 21;
+static const int RENDERTARGET_SCALE    = 20;
+static const int RENDERTARGET_NOSCALE  = 21;
 
 static const int BLEND_NONE     = blend_disable;
 static const int BLEND_NORMAL   = blend_normal;
@@ -147,7 +157,8 @@ static inline char* findresource(const char* arg, int searchmask)
 /* since this is invoked extremely frequently and is involved in file-system related stalls,
  * maybe a sort of caching mechanism should be implemented (invalidate / refill every N ticks
  * or have a flag to side-step it, as a lot of resources are quite static and the rest of the
- * API have to handle missing / bad resources anyhow */
+ * API have to handle missing / bad resources anyhow, we also know which subdirectories to attach
+ * to OS specific event monitoring effects */
 
 	if (lua_ctx_store.debug){
 		arcan_warning("Debug, resource lookup for %s, yielded: %s\n", arg, res);
@@ -528,7 +539,7 @@ int arcan_lua_orderimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned int zv = luaL_checknumber(ctx, 2);
-	
+
 	arcan_video_setzv(id, zv);
 	
 	return 0;
@@ -573,7 +584,6 @@ int arcan_lua_imageopacity(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float val = luaL_checknumber(ctx, 2);
 	uint16_t time = luaL_optint(ctx, 3, 0);
-
 	arcan_video_objectopacity(id, val, time);
 	return 0;
 }
@@ -890,6 +900,7 @@ int arcan_lua_deleteimage(lua_State* ctx)
 	 * the feedfunc will be invoked with the cleanup cmd
 	 * which in the movie cause will trigger a full movie cleanup */
 	arcan_errc rv = arcan_video_deleteobject(id);
+	
 	if (rv != ARCAN_OK){
 		if (lua_ctx_store.debug > 0){
 			arcan_warning("%s => arcan_lua_deleteimage(%.0lf=>%d) -- Object could not be deleted, invalid object specified.\n", luaL_lastcaller(ctx), srcid, id);
@@ -1015,10 +1026,11 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
 		lua_pushvalue(ctx, 3);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	}
+	};
 	
 	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
-	mvctx->loop = loop == FRAMESERVER_LOOP; 
+	mvctx->loop     = loop == FRAMESERVER_LOOP;
+	mvctx->autoplay = luaL_optint(ctx, 4, 0) > 0;
 	mvctx->nopts = special;
 
 	struct frameserver_envp args = {
@@ -1172,8 +1184,8 @@ int arcan_lua_targetinput(lua_State* ctx)
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		ev.kind = EVENT_IO_AXIS_MOVE;
 		ev.data.io.devkind = strcmp( intblstr(ctx, tblind, "source"), "mouse") == 0 ? EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
-		ev.data.io.input.analog.devid = intblnum(ctx, tblind, "devid");
-		ev.data.io.input.analog.subid = intblnum(ctx, tblind, "subid");
+		ev.data.io.input.analog.devid  = intblnum(ctx, tblind, "devid");
+		ev.data.io.input.analog.subid  = intblnum(ctx, tblind, "subid");
 		ev.data.io.input.analog.gotrel = ev.data.io.devkind == EVENT_IDEVKIND_MOUSE;
 		
 	/*  sweep the samples subtable, add as many as present (or possible) */
@@ -1341,10 +1353,10 @@ int arcan_lua_scale3dverts(lua_State* ctx)
     return 0;
 }
 
-/* emitt input() call based on a arcan_event,
+/* emit input() call based on a arcan_event,
  * uses a separate format and translation to make it easier
- * for the user to modify. Perhaps one field should've been used
- * to store the actual event, but it wouldn't really help extration. */
+ * for the user to modify. Perhaps one field should have been used
+ * to store the actual event, but it wouldn't really help extraction. */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	if (ev->category == EVENT_SYSTEM && arcan_lua_grabthemefunction(ctx, "system")){
@@ -1367,7 +1379,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				arcan_lua_tblnum(ctx, "subid", ev->data.io.input.analog.subid, top);
 				arcan_lua_tblbool(ctx, "active", true, top); /* always active, just saves a conditional here and there */
 
-			/* "stateful" data? */
+/* "stateful" data? */
 				arcan_lua_tblbool(ctx, "relative", ev->data.io.input.analog.gotrel, top);
 
 				lua_pushstring(ctx, "samples");
@@ -1513,9 +1525,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			
 		switch (ev->kind) {
 		case EVENT_VIDEO_EXPIRE  : arcan_lua_tblstr(ctx, "kind", "expired", top); evmsg = "video_event(expire)"; break;
-		case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top); evmsg = "video_event(scale)"; break;
-		case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top); evmsg = "video_event(move))"; break; 
-		case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); evmsg = "video_event(blend)"; break;
+		case EVENT_VIDEO_SCALED  : arcan_lua_tblstr(ctx, "kind", "scaled", top);  evmsg = "video_event(scale)";  break;
+		case EVENT_VIDEO_MOVED   : arcan_lua_tblstr(ctx, "kind", "moved", top);   evmsg = "video_event(move))";  break;
+		case EVENT_VIDEO_BLENDED : arcan_lua_tblstr(ctx, "kind", "blended", top); evmsg = "video_event(blend)";  break;
 		case EVENT_VIDEO_ROTATED : arcan_lua_tblstr(ctx, "kind", "rotated", top); evmsg = "video_event(rotate)"; break;
 
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
@@ -1690,8 +1702,10 @@ int arcan_lua_imageasframe(lua_State* ctx)
 
 	if (errc == ARCAN_OK)
 		lua_pushvid(ctx, vid != sid ? vid : ARCAN_EID);
-	else
+	else{
+		arcan_warning("arcan_lua_imageasframe(%d) failed, couldn't set (%d) in slot (%d)\n", sid, did, num);
 		lua_pushvid(ctx, ARCAN_EID);
+	}
 	
 	return 1;
 }
@@ -1761,15 +1775,18 @@ static inline int pushprop(lua_State* ctx, surface_properties prop, unsigned sho
 
 int arcan_lua_loadmesh(lua_State* ctx)
 {
-    arcan_vobj_id did = luaL_checkvid(ctx, 1);
-    unsigned nmaps = luaL_optnumber(ctx, 3, 1);
-    char* path = findresource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	unsigned nmaps = luaL_optnumber(ctx, 3, 1);
+	char* path = findresource(luaL_checkstring(ctx, 2), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
-    if (path)
-        arcan_3d_addmesh(did, path, nmaps);
-    
-    free(path);
-    return 0;
+	if (path){
+			arcan_errc rv = arcan_3d_addmesh(did, path, nmaps);
+			if (rv != ARCAN_OK)
+				arcan_warning("arcan_lua_loadmesh(%s) -- Couldn't add mesh to (%d)\n", path, did);
+	}
+	
+	free(path);
+	return 0;
 }
 
 int arcan_lua_buildmodel(lua_State* ctx)
@@ -2007,14 +2024,27 @@ int arcan_lua_kbdrepeat(lua_State* ctx)
 
 int arcan_lua_3dorder(lua_State* ctx)
 {
-	unsigned first = luaL_checknumber(ctx, 1) == ORDER_FIRST;
-	arcan_video_3dorder(-first);
+	int order = luaL_checknumber(ctx, 1);
+
+	if (order != order3d_first && order != order3d_last && order != order3d_none)
+		arcan_fatal("arcan_lua_3dorder(%d) invalid order specified (%d), expected ORDER_FIRST, ORDER_LAST or ORDER_NONE\n");
+	
+	arcan_video_3dorder(order);
 	return 0;
 }
 
 int arcan_lua_mousegrab(lua_State* ctx)
 {
-	lua_ctx_store.grab = !lua_ctx_store.grab;
+	int mode =  luaL_optint( ctx, 1, -1);
+	if (mode != -1 && mode != MOUSE_GRAB_OFF && mode != MOUSE_GRAB_ON)
+		arcan_fatal("arcan_lua_mouusegrab(%d) invalid grabmode specified, expected MOUSE_GRABON, MOUSE_GRABOFF or nil\n");
+
+	switch (mode){
+		case -1 : lua_ctx_store.grab = !lua_ctx_store.grab; break;
+		case MOUSE_GRAB_OFF : lua_ctx_store.grab = false;   break;
+		case MOUSE_GRAB_ON  : lua_ctx_store.grab = true;    break;
+	}
+	
 	SDL_WM_GrabInput( lua_ctx_store.grab ? SDL_GRAB_ON : SDL_GRAB_OFF );
 	return 0;
 }
@@ -2498,8 +2528,12 @@ int arcan_lua_globresource(lua_State* ctx)
 	char* label = (char*) luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(ctx, 2, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 
+	if (mask != ARCAN_RESOURCE_THEME && mask != ARCAN_RESOURCE_SHARED && mask != (ARCAN_RESOURCE_THEME|ARCAN_RESOURCE_SHARED))
+		arcan_fatal("arcan_lua_globresource(%s), invalid mask (%d) specified. Expected: RESOURCE_SHARED or RESOURCE_THEME or nil\n");
+	
 	lua_newtable(ctx);
 	bptr.top = lua_gettop(ctx);
+	
 	arcan_glob(label, mask, globcb, &bptr);
 
 	return 1;
@@ -3241,12 +3275,11 @@ int arcan_lua_scalemodel(lua_State* ctx)
 int arcan_lua_orientmodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
-	double roll = luaL_checknumber(ctx, 2);
-	double pitch = luaL_checknumber(ctx, 3);
-	double yaw = luaL_checknumber(ctx, 4);
-	unsigned int dt = luaL_optnumber(ctx, 5, 0);
+	double roll       = luaL_checknumber(ctx, 2);
+	double pitch      = luaL_checknumber(ctx, 3);
+	double yaw        = luaL_checknumber(ctx, 4);
 
-	arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+	arcan_3d_baseorient(vid, roll, pitch, yaw);
 	return 0;
 }
 
@@ -3329,13 +3362,22 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 int arcan_lua_rotatemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
-	double roll = luaL_checknumber(ctx, 2);
-	double pitch = luaL_checknumber(ctx, 3);
-	double yaw = luaL_checknumber(ctx, 4);
-	unsigned int dt = luaL_optnumber(ctx, 5, 0);
-	
+	double roll       = luaL_checknumber(ctx, 2);
+	double pitch      = luaL_checknumber(ctx, 3);
+	double yaw        = luaL_checknumber(ctx, 4);
+	unsigned int dt   = luaL_optnumber(ctx, 5, 0);
+	int rotate_rel    = luaL_optnumber(ctx, 6, CONST_ROTATE_ABSOLUTE);
+
+	if (rotate_rel != CONST_ROTATE_RELATIVE && rotate_rel != CONST_ROTATE_ABSOLUTE)
+		arcan_fatal("arcan_lua_rotatemodel(%d), invalid rotation base defined, (%d) should be ROTATE_ABSOLUTE or ROTATE_RELATIVE\n");
+
 	surface_properties prop = arcan_video_current_properties(vid);
-	arcan_video_objectrotate(vid, prop.rotation.roll + roll, prop.rotation.pitch + pitch, prop.rotation.yaw + yaw, dt);
+	
+	if (rotate_rel == CONST_ROTATE_RELATIVE)
+		arcan_video_objectrotate(vid, prop.rotation.roll + roll, prop.rotation.pitch + pitch, prop.rotation.yaw + yaw, dt);
+	else
+		arcan_video_objectrotate(vid, roll, pitch, yaw, dt);
+	
 	return 0;
 }
 
@@ -3343,9 +3385,8 @@ int arcan_lua_setimageproc(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
 	
-	if (num >= 0 && num < 2){
+	if (num >= 0 && num < 2)
 		arcan_video_default_imageprocmode(num);
-	}
 
 	return 0;
 }
@@ -3696,6 +3737,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "RENDERTARGET_SCALE", RENDERTARGET_SCALE);
 	arcan_lua_setglobalint(ctx, "RENDERTARGET_NODETACH", RENDERTARGET_NODETACH);
 	arcan_lua_setglobalint(ctx, "RENDERTARGET_DETACH", RENDERTARGET_DETACH);
+	arcan_lua_setglobalint(ctx, "ROTATE_RELATIVE", CONST_ROTATE_RELATIVE);
+	arcan_lua_setglobalint(ctx, "ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE);
 	arcan_lua_setglobalint(ctx, "TEX_REPEAT", ARCAN_VTEX_REPEAT);
 	arcan_lua_setglobalint(ctx, "TEX_CLAMP", ARCAN_VTEX_CLAMP);
 	arcan_lua_setglobalint(ctx, "FILTER_NONE", ARCAN_VFILTER_NONE);
@@ -3728,8 +3771,12 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "MASK_UNPICKABLE", MASK_UNPICKABLE);
 	arcan_lua_setglobalint(ctx, "MASK_FRAMESET", MASK_FRAMESET);
 	arcan_lua_setglobalint(ctx, "MASK_MAPPING", MASK_MAPPING);
-	arcan_lua_setglobalint(ctx, "ORDER_FIRST", ORDER_FIRST);
-	arcan_lua_setglobalint(ctx, "ORDER_LAST", ORDER_LAST);
+	arcan_lua_setglobalint(ctx, "ORDER_FIRST", order3d_first);
+	arcan_lua_setglobalint(ctx, "ORDER_NONE", order3d_none);
+	arcan_lua_setglobalint(ctx, "ORDER_LAST", order3d_last);
+	arcan_lua_setglobalint(ctx, "ORDER_SKIP", order3d_none);
+	arcan_lua_setglobalint(ctx, "MOUSE_GRABON", MOUSE_GRAB_ON);
+	arcan_lua_setglobalint(ctx, "MOUSE_GRABOFF", MOUSE_GRAB_OFF);
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_LOOP", FRAMESERVER_LOOP);
 	arcan_lua_setglobalint(ctx, "FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP);
 	arcan_lua_setglobalint(ctx, "POSTFILTER_NTSC", POSTFILTER_NTSC);

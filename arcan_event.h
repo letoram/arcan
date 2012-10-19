@@ -349,6 +349,18 @@ void arcan_event_setmask(arcan_evctx*, unsigned mask);
 
 int64_t arcan_frametime();
 
+/*
+ * special case, due to the event driven approach of LUA invocation,
+ * we can get situations where we have a queue of events related to a certain vid/aid,
+ * after the user has explicitly asked for it to be deleted.
+ * 
+ * This means the user either has to check for this condition by tracking the object (possibly dangling references etc.)
+ * or that we sweep the queue and erase the tracks of the object in question.
+ *
+ * the default behaviour is to not erase unprocessed events that are made irrelevant due to a deleted object.
+ */
+void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source);
+
 void arcan_event_init(arcan_evctx* dstcontext);
 void arcan_event_deinit(arcan_evctx*);
 

@@ -122,8 +122,6 @@ FSRV_LIBRARIES
 	${VPX_LIBRARIES}
 )
 
-message(${FFMPEG_LIBRARIES})
-
 include_directories (
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}

@@ -197,7 +197,9 @@ struct arcan_vobject_litem {
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
-	bool suspended, text_support, fullscreen, conservative, late3d, vsync;
+	bool suspended, text_support, fullscreen, conservative, vsync;
+	enum arcan_order3d order3d;
+
 	unsigned default_vitemlim;
  
 	arcan_shader_id defaultshdr;
@@ -229,6 +231,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
+void arcan_video_setblend(const surface_properties* dprops, const arcan_vobject* elem);
 
 #ifdef _DEBUG
 void arcan_debug_tracetag_dump();
