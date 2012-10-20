@@ -431,16 +431,20 @@ const char* internal_launch_support(){
 /* sigh, we don't know where we come from so we have to have a separate buffer here */
 extern bool stdout_redirected;
 static char winplaybuf[64 * 1024] = {0};
+static bool winnolog = false;
 
 void arcan_warning(const char* msg, ...)
 {
+	if (winnolog)
+		return;
+
 /* redirection needed for win (SDL etc. also tries to, but we need to handle things)
  * differently, especially for Win/UAC and permissions, thus we can assume resource/theme
  * folder is r/w but nothing else .. */
 	if (!stdout_redirected && arcan_resourcepath != NULL){
 		sprintf(winplaybuf, "%s/logs/arcan_warning.txt", arcan_resourcepath);
 	/* even if this fail, we will not try again */
-		freopen(winplaybuf, "a", stdout);
+		winnolog = freopen(winplaybuf, "a", stdout) == NULL;
 		stdout_redirected = true;
 	}
 
@@ -459,7 +463,7 @@ void arcan_fatal(const char* msg, ...)
 	char buf[256] = {0};
 	if (!stderr_redirected && arcan_resourcepath != NULL){
 		sprintf(winplaybuf, "%s/logs/arcan_fatal.txt", arcan_resourcepath);
-		freopen(winplaybuf, "a", stderr);
+		winnolog = freopen(winplaybuf, "a", stderr) == NULL;
 		stderr_redirected = true;
 	}
 
