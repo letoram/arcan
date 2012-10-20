@@ -30,26 +30,26 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 		.size = ctx->packet.size,
 		.data = ctx->packet.data
 	};
-  
+
 	int got_frame = 1;
-	
-	
+
+
 	while (cpkg.size > 0) {
 		uint32_t ofs = 0;
 		avcodec_get_frame_defaults(ctx->aframe);
 		int nts = avcodec_decode_audio4(ctx->acontext, ctx->aframe, &got_frame, &cpkg);
-	
+
 		if (nts == -1)
 			return false;
-		
+
 		cpkg.size -= nts;
 		cpkg.data += nts;
 
 		if (got_frame){
 			int plane_size;
-			bool planar = av_sample_fmt_is_planar(ctx->acontext->sample_fmt); 
+			bool planar = av_sample_fmt_is_planar(ctx->acontext->sample_fmt);
 			ssize_t ds = av_samples_get_buffer_size(&plane_size, ctx->acontext->channels, ctx->aframe->nb_samples, ctx->acontext->sample_fmt, 1);
-			
+
 			if (planar && ctx->acontext->channels > 1){
 				LOG("arcan_frameserver(decode) -- unsupported planar audio format detected.\n");
 			}
@@ -57,14 +57,14 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 /* lock / synch before we send more data */
 				if (ctx->shmcont.addr->abufused + plane_size > SHMPAGE_AUDIOBUF_SIZE)
 					synch_audio(ctx);
-				
+
 				memcpy(ctx->audp + ctx->shmcont.addr->abufused, ctx->aframe->extended_data[0], plane_size);
 				ctx->shmcont.addr->abufused += plane_size;
 			}
-			
+
 		}
 	}
-	
+
 	return true;
 }
 
@@ -142,12 +142,12 @@ static arcan_ffmpeg_context* ffmpeg_preload(const char* fname, AVInputFormat* if
 	int errc = avformat_open_input(&dst->fcontext, fname, iformat, NULL);
 	if (0 != errc || !dst->fcontext)
 		return NULL;
-	
+
 	errc = avformat_find_stream_info(dst->fcontext, NULL);
-	
+
 	if (! (errc >= 0) )
 		return NULL;
-	
+
 /* locate streams and codecs */
 	int vid,aid;
 
@@ -162,7 +162,7 @@ static arcan_ffmpeg_context* ffmpeg_preload(const char* fname, AVInputFormat* if
 			dst->vcodec    = avcodec_find_decoder(dst->vcontext->codec_id);
 			dst->vstream   = dst->fcontext->streams[vid];
 			avcodec_open2(dst->vcontext, dst->vcodec, NULL);
-			
+
 			if (dst->vcontext) {
 				dst->width  = dst->vcontext->width;
 				dst->bpp    = 4;
@@ -193,28 +193,35 @@ static arcan_ffmpeg_context* ffmpeg_preload(const char* fname, AVInputFormat* if
 #ifndef _WIN32
 #include <sys/types.h>
 #include <sys/stat.h>
-static const char* probe_vidcap(unsigned prefind)
+static const char* probe_vidcap(signed prefind)
 {
 	char arg[16];
 	struct stat fs;
-	
+
 	for (int i = prefind; i >= 0; i--){
 		snprintf(arg, sizeof(arg)-1, "/dev/video%d", i);
-		if (stat(arg, &fs) == 0) 
+		if (stat(arg, &fs) == 0)
 			return strdup(arg);
 	}
 	return NULL;
 }
 #else
-	
+/* for win32 it's a bit more advanced, we need to query the list
+ * of V4L devices push that events up-stream, and wait for a trigger */
+static const char* probe_vidcap(signed prefind)
+{
+
+
+    return NULL;
+}
 #endif
-	
+
 static arcan_ffmpeg_context* ffmpeg_vidcap(unsigned ind, float fps, unsigned width, unsigned height)
 {
 	const char* fname = probe_vidcap(ind);
 	if (!fname)
 		return NULL;
-	
+
 	avdevice_register_all();
 	AVInputFormat* format = av_find_input_format("video4linux2");
 	return format ? ffmpeg_preload(fname, format) : NULL;
@@ -251,13 +258,13 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 /* vidcap:ind where ind is a hint to the probing function */
 		if (strncmp(resource, "vidcap", 6) == 0){
 			unsigned devind = 0;
-			char* ofs = index(resource, ':');
+			char* ofs = strchr(resource, ':');
 			if (ofs && (*++ofs)){
-				unsigned ind = strtoul(ofs, NULL, 10);
+				signed ind = strtol(ofs, NULL, 10);
 				if (ind < 255)
 					devind = ind;
 			}
-	
+
 			vidctx = ffmpeg_vidcap(devind, 30.0, 640, 480);
 		} else {
 			vidctx = ffmpeg_preload(resource, NULL);
@@ -270,7 +277,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		vidctx->shmcont = shms;
 		frameserver_semcheck(vidctx->shmcont.asem, -1);
 		frameserver_semcheck(vidctx->shmcont.vsem, -1);
-	
+
 		if (!frameserver_shmpage_resize(&shms, vidctx->width, vidctx->height, vidctx->bpp, vidctx->channels, vidctx->samplerate))
 		arcan_fatal("arcan_frameserver_ffmpeg_run() -- setup of vid(%d x %d @ %d) aud(%d,%d) failed \n",
 			vidctx->width,
@@ -281,6 +288,6 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		);
 
 		frameserver_shmpage_calcofs(shms.addr, &(vidctx->vidp), &(vidctx->audp) );
-	
+
 	} while (ffmpeg_decode(vidctx) && vidctx->shmcont.addr->loop);
 }
