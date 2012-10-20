@@ -90,13 +90,13 @@ static const struct option longopts[] = {
 	{ "frameserver",  required_argument, NULL, 'o'},
 	{ "conservative", no_argument,       NULL, 'm'},
 	{ "database",     required_argument, NULL, 'd'},
-	{ "scalemode",    required_argument, NULL, 'r'}, 
+	{ "scalemode",    required_argument, NULL, 'r'},
 	{ "multisamples", required_argument, NULL, 'a'},
 	{ "interactive",  no_argument,       NULL, 'i'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "novsync",      no_argument,       NULL, 'v'},
 /* no points guessing which platform forcing this .. */
-	{ "stdout",       required_argument, NULL, '1'}, 
+	{ "stdout",       required_argument, NULL, '1'},
 	{ "stderr",       required_argument, NULL, '2'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
@@ -107,7 +107,7 @@ void usage()
 		"-w\t--width       \tdesired width (default: 640)\n"
 		"-h\t--height      \tdesired height (default: 480)\n"
 		"-x\t--winx        \tforce window x position (default: don't set)\n"
-		"-y\t--winy        \tforce window y position (default: don't set)\n" 
+		"-y\t--winy        \tforce window y position (default: don't set)\n"
 		"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
 		"-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 		"-s\t--windowed    \ttoggle borderless window mode\n"
@@ -136,22 +136,22 @@ int main(int argc, char* argv[])
 	bool interactive  = false;
 
 	unsigned char debuglevel = 0;
-	
+
 	int scalemode = ARCAN_VIMAGE_NOPOW2;
 	int width = 640;
 	int height = 480;
 	int winx = -1;
 	int winy = -1;
-	
+
 	int ch;
 	FILE* errc;
 	char* dbfname = "arcandb.sqlite";
-	
-	srand( time(0) ); 
+
+	srand( time(0) );
 	/* VIDs all have a randomized base to provoke crashes in poorly written scripts,
 	 * only -g will make their base and sequence repeatable */
 
-/* start this here since some SDL builds have the nasty (albeit understandable) habit of 
+/* start this here since some SDL builds have the nasty (albeit understandable) habit of
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -174,12 +174,14 @@ int main(int argc, char* argv[])
 			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 			case 'v' : arcan_video_display.vsync = false; break;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
+#ifndef _WIN32
 			case 'i' : fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); interactive = true; break;
+#endif
 			case 't' : arcan_themepath = strdup(optarg); break;
 			case 'o' : arcan_binpath = strdup(optarg); break;
 			case 'g' :
 				debuglevel++;
-				srand(0xdeadbeef); 
+				srand(0xdeadbeef);
 				break;
 			case 'r' :
 				scalemode = strtol(optarg, NULL, 10);
@@ -204,7 +206,7 @@ int main(int argc, char* argv[])
 
 	if (arcan_setpaths() == false)
 		goto error;
-	
+
 	if (check_theme(*(argv + optind)))
 		arcan_themename = *(argv + optind);
 	else if (check_theme("welcome"))
@@ -215,7 +217,7 @@ int main(int argc, char* argv[])
 	if (strcmp(arcan_themename, "arcan") == 0){
 		arcan_fatal("Theme name 'arcan' is reserved\n");
 	}
-	
+
 	char* dbname = arcan_expand_resource(dbfname, true);
 
 /* try to open the specified database,
@@ -228,7 +230,7 @@ int main(int argc, char* argv[])
 			fclose(fpek);
 			dbhandle = arcan_db_open(dbname, arcan_themename);
 		}
-		
+
 		if (!dbhandle)
 			goto error;
 	}
@@ -239,9 +241,9 @@ int main(int argc, char* argv[])
 		arcan_fatal("SDL_GetVideoInfo() failed, broken display subsystem.");
 		goto error;
 	}
-	
+
 	if (winx != -1 || winy != -1){
-		char windbuf[64] = {0}; 
+		char windbuf[64] = {0};
 		snprintf(windbuf, 63, "SDL_VIDEO_WINDOW_POS=%i,%i", winx >= 0 ? winx : 0, winy >= 0 ? winy : 0);
 		putenv(windbuf);
 	}
@@ -250,12 +252,12 @@ int main(int argc, char* argv[])
 		width = vi->current_w;
 		height = vi->current_h;
 	}
-	
-	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i, VSYNC: %i, MSA: %i\n", 
+
+	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i, VSYNC: %i, MSA: %i\n",
 			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", vi->wm_available ? "yes" : "no", scalemode, arcan_video_display.vsync,
 			arcan_video_display.msasamples);
 	arcan_video_default_scalemode(scalemode);
-    
+
 	if (windowed) {
 		fullscreen = false;
 	}
@@ -271,7 +273,7 @@ int main(int argc, char* argv[])
 /* setup device polling, cleanup, ... */
 		arcan_evctx* def = arcan_event_defaultctx();
 		def->interactive = interactive;
-		arcan_event_init( def ); 
+		arcan_event_init( def );
 		arcan_led_init();
 
 /* MINGW implements putenv, so use this to set the system subpath path (BIOS, ..:) */
@@ -280,30 +282,30 @@ int main(int argc, char* argv[])
 			char* const syspath = malloc(len);
 			sprintf(syspath, "%s/games/system", arcan_resourcepath);
 			arcan_warning("Notice: Using default systempath (%s)\n", syspath);
-			setenv("ARCAN_SYSTEMPATH", syspath, 0); 
-		} else 
+			setenv("ARCAN_SYSTEMPATH", syspath, 0);
+		} else
 			arcan_warning("Notice: Using systempath from environment (%s)\n", getenv("ARCAN_SYSTEMPATH"));
-		
+
 		if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
 			size_t len = strlen(arcan_resourcepath) + strlen("/logs") + 1;
 			char* const logpath = malloc(len);
 			sprintf(logpath, "%s/logs", arcan_resourcepath);
 			setenv("ARCAN_FRAMESERVER_LOGDIR", logpath, 0);
 		}
-		
+
 /* export what we know and load theme */
 		lua_State* luactx = luaL_newstate();
 		luaL_openlibs(luactx);
 
 #ifndef _WIN32
-		struct rlimit coresize = {0}; 
+		struct rlimit coresize = {0};
 
 /* debuglevel 0, no coredumps etc. */
 		if (debuglevel == 0);
 
 /* debuglevel 1, maximum 1M coredump, should prioritize stack etc. */
 		else if (debuglevel == 1) coresize.rlim_max = 10 * 1024 * 1024;
-		
+
 /* debuglevel > 1, dump everything */
 		else coresize.rlim_max = RLIM_INFINITY;
 
@@ -359,7 +361,7 @@ int main(int argc, char* argv[])
 
 /* note that an onslaught of I/O operations can currently
  * saturate tick / video instead of evenly distribute between the two.
- * since these can also propagate to LUA and user scripts, there 
+ * since these can also propagate to LUA and user scripts, there
  * should really be a timing balance here (keep track of avg. time to dispatch
  * event, figure out how many we can handle before we must push a logic- frame */
 			while ((ev = arcan_event_poll(arcan_event_defaultctx()))) {
@@ -369,16 +371,16 @@ int main(int argc, char* argv[])
 					break;
 
 					case EVENT_VIDEO:
-					/* these events can typically be determined in video_tick(), 
+					/* these events can typically be determined in video_tick(),
 					 * however there are so many hierarchical dependencies (linked objs, instances, ...)
 					 * that a full delete is not safe there (e.g. event -> callback -> */
 						if (ev->kind == EVENT_VIDEO_EXPIRE)
 							arcan_video_deleteobject(ev->data.video.source);
-						
+
 						else if (ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOADED ||
 							ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED)
 							arcan_video_pushasynch(ev->data.video.source);
-						
+
 					break;
 
 					case EVENT_SYSTEM:

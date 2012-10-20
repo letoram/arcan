@@ -21,7 +21,6 @@
 
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/select.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -214,7 +213,7 @@ void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category
 /* ignore unsupported categories */
 	if ( !(category == EVENT_VIDEO || category == EVENT_FRAMESERVER) )
 		return;
-	
+
 	if (LOCK(ctx)){
 
 		while(elem != *(ctx->back)){
@@ -232,7 +231,7 @@ void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category
 			else
 				elem = (elem + 1) % ctx->n_eventbuf;
 		}
-		
+
 		UNLOCK();
 	}
 }
@@ -527,10 +526,10 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 
 	*dtick = nticks;
 	map_sdl_events(ctx);
-	
+
 /* also assumes that fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); is set on stdin and that complete LUA statements are parsed,
  * these would have to have its own parsing context or something to that effect so that the statements we get are fully terminated,
- * else we risk interleaving .. */ 
+ * else we risk interleaving .. */
 	if (ctx->interactive){
 		char* resv = nblk_readln(STDIN_FILENO);
 		if (resv){
@@ -539,7 +538,7 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 /* FIXME: incomplete due to the reason stated above */
 		}
 	}
-	
+
 	return fragment;
 }
 
