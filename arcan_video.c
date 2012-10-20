@@ -111,7 +111,6 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 };
 static unsigned context_ind = 0;
 
-#define TRACE_ENABLE
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE

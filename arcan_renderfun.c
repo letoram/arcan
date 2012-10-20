@@ -423,6 +423,7 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 		else if (curr_style->font){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
 			cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
+			arcan_warning("render: %s\n", base);
 		}
 		else{
 			arcan_warning("Warning: arcan_video_renderstring(), broken font specifier.\n");

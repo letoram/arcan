@@ -11,7 +11,6 @@ require File.join(File.dirname(__FILE__), 'gamedb.rb')
 SystemTable = {
 "fceu"   => "Nintendo Entertainment System (NES)",
 "bnes"   => "Nintendo Entertainment System (NES)",
-
 "snes"   => "Super Nintendo (SNES)",
 "bsnes"  => "Super Nintendo (SNES)",
 "snes9x" => "Super Nintendo (SNES)",
@@ -81,7 +80,7 @@ class Generic
 				@gamedb = GamesDB.new
 				@gamedb_media = opts["--genscrapemedia"]
 			rescue => er
-				STDERR.print( "[Generic Importer] GamesDB Scraper not responding (#{er}), scraping disabled.\n");
+				STDERR.print( "\tGamesDB Scraper not responding (#{er}), scraping disabled.\n");
 				@gamedb = nil
 				@gamedb_media = nil
 				@options["--genscrape"] = nil
@@ -144,7 +143,7 @@ class Generic
 				
 				begin
 					in_block = false
-					STDOUT.print("[Generic (#{target}) importer] Trying to check core extensions with #{args}\n");
+					STDOUT.print("\t(#{target}: Trying to check core extensions with #{args}\n");
 	
 					IO.popen(args).each_line{|line|
 						if (in_block)
@@ -161,12 +160,12 @@ class Generic
 						end
 					}
 					
-					STDOUT.print("[Generic (#{target}) importer] Libretro core found, #{info["library"]} #{info["version"]}\n\t")
+					STDOUT.print("\t(#{target}): Libretro core found, #{info["library"]} #{info["version"]}\n\t")
 					exts = info["extensions"].split(/\|/)
-					STDOUT.print("[Generic (#{target}) importer] Accepted extensions: #{exts}\n")
+					STDOUT.print("\t(#{target}): Accepted extensions: #{exts}\n")
 
 					@extensions = {}
-					exts.each{|val| @extensions[val.upcase] = true }
+					exts.each{|val| @extensions[".#{val.upcase}"] = true }
 					@filter_ext = @extensions.size > 0
 	
 				rescue => er
@@ -310,13 +309,13 @@ class Generic
 		}
 		
 		Dir["#{rompath}/*"].each{|fn|
-			ext = fn.index('.') ? fn[fn.rindex('.')+1..-1].upcase : ""
+			ext = File.extname(fn).upcase
 
 			if (fn == "." || fn == ".." || (@filter_ext and @extensions[ext] != true))
-				STDERR.print("[Generic Importer, unknown extensions: #{fn}, ignored.\n");
+				STDERR.print("\tunknown extension (#{ext}), ignored.\n");
 				next
 			else
-				setname = fn[ fn.rindex('/') +1 .. -1 ]
+				setname = File.basename(fn) 
 
 				title   = @striptitle ? strip_title(setname) : setname
 				setname = @genromlist[@targetname] == true ? fn : setname

@@ -74,7 +74,7 @@ void* arcan_audio_ogg_buildtag(arcan_aobj* aobj)
 		odtag->buffer = (char*) malloc(odtag->size);
 	}
 	else {
-		fprintf(stderr, "Warning: arcan_audio_ogg(), couldn't open input, reason: %i\n", ec);
+		arcan_warning("Warning: arcan_audio_ogg(), couldn't open input, reason: %i\n", ec);
 		free(odtag);
 		odtag = NULL;
 	}

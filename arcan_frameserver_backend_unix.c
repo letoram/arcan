@@ -198,24 +198,6 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	return rv;
 }
 
-void arcan_frameserver_dbgdump(FILE* dst, arcan_frameserver* src){
-	if (src){
-		fprintf(dst, "movie source: %s\n"
-		"mapped to: %i, %i\n"
-		"video queue (%s): %i / %i\n"
-		"audio queue (%s): %i / %i\n"
-		"playstate: %i\n",
-		src->shm.key,
-		(int) src->vid, (int) src->aid,
-		src->vfq.alive ? "alive" : "dead", src->vfq.c_cells, src->vfq.n_cells,
-		src->afq.alive ? "alive" : "dead", src->afq.c_cells, src->afq.n_cells,
-		src->playstate
-		);
-	}
-	else
-		fprintf(dst, "arcan_frameserver_dbgdump:\n(null)\n\n");
-}
-
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
 	if (ctx == NULL)
