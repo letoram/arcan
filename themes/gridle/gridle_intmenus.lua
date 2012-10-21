@@ -45,6 +45,7 @@ local inputmodelist = {
 	"Invert Axis (analog)",
 	"Mirror Axis (analog)",
 	"Filter Opposing",
+	"Toggle Mouse Grab",
 	"---",
 	"Reconfigure Keys"
 };
@@ -52,6 +53,12 @@ local inputmodelist = {
 local inputmodeptrs = {};
 local function inputmodechg(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	if (label == "Toggle Mouse Grab") then
+		toggle_mouse_grab();
+		play_audio(soundmap["MENU_SELECT"]);
+		return;
+	end
+	
 	if (save) then
 		store_key("internal_input", label);
 		play_audio(soundmap["MENU_FAVORITE"]);
@@ -90,6 +97,7 @@ inputmodeptrs["Reconfigure Keys"] = function()
 	end
 end
 
+inputmodeptrs["Toggle Mouse Grab"] = inputmodechg;
 inputmodeptrs["Normal"] = inputmodechg;
 inputmodeptrs["Rotate CW"] = inputmodechg;
 inputmodeptrs["Rotate CCW"] = inputmodechg;
@@ -1221,7 +1229,6 @@ function enable_record(width, height, args)
 				move_image(source,   math.floor(xfact), math.floor(yfact)); 
 				rotate_image(source, settings.vidcap.ang);
 				order_image(source, max_current_image_order() + 1);
-				print("x, y:", xfact, yfact, "w, h:", wfact, hfact);
 			else -- died (likely immediately)
 				delete_image(source);
 			end
@@ -1499,7 +1506,6 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 			current_menu = nil;
 			settings.iodispatch = griddispatch;
 			gridle_input = gridle_oldinput;
-			toggle_mouse_grab(MOUSE_GRABON);
 		end
 	end
 
@@ -1560,7 +1566,7 @@ if (#menulbls > 0 and settingslbls) then
 		if (get_key("internal_input")) then
 			def[ get_key("internal_input") ] = settings.colourtable.alert_fontstr;
 		end
-		
+
 		menu_spawnmenu( inputmodelist, inputmodeptrs, def );
 	end
 	

@@ -62,8 +62,6 @@
  * however, we will lock to video, meaning that it is the framerate of the frameserver that will decide
  * the actual framerate, that may be locked to VREFRESH (or lower, higher / variable). Thus we also need frameskipping heuristics here.
  */
-
-
 struct input_port {
 	bool buttons[MAX_BUTTONS];
 	signed axes[MAX_AXES];
@@ -71,6 +69,8 @@ struct input_port {
 /* special offsets into buttons / axes based on device */
 	unsigned cursor_x, cursor_y, cursor_btns[5];
 };
+
+typedef void(*pixconv_fun)(const void* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch);
 
 /* interface for loading many different emulators,
  * we assume "resource" points to a dlopen:able library,
@@ -90,7 +90,7 @@ static struct {
 		unsigned long long aframecount;
 
 /* colour conversion / filtering */
-		enum retro_pixel_format colormode;
+		pixconv_fun converter;
 		uint16_t* ntsc_imb;
 		bool ntscconv;
 		snes_ntsc_t ntscctx;
@@ -151,15 +151,41 @@ static void* libretro_requirefun(const char* const sym)
 }
 
 #define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
- static void push_ntsc(unsigned width, unsigned height, uint32_t* outp)
+ static void push_ntsc(unsigned width, unsigned height, const uint16_t* ntsc_imb, uint32_t* outp)
  {
 		size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
 /* only draw on every other line, so we can easily mix or blend interleaved */
-		snes_ntsc_blit(&retroctx.ntscctx, retroctx.ntsc_imb, width, 0, width, height, outp, linew * 2);
+		snes_ntsc_blit(&retroctx.ntscctx, ntsc_imb, width, 0, width, height, outp, linew * 2);
 		for (int row = 1; row < height * 2; row += 2)
 			memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew);
  }
 
+/* better distribution for conversion (white is white ..) */
+static const uint8_t rgb565_lut5[] = { 0, 8, 16, 25, 33, 41, 49, 58, 66, 74, 82, 90, 99, 107, 115,
+	123, 132, 140, 148, 156, 165, 173, 181, 189,  197, 206, 214, 222, 230, 239, 247, 255};
+
+static const uint8_t rgb565_lut6[] = {0, 4, 8, 12, 16, 20, 24,  28, 32, 36, 40, 45, 49, 53, 57, 61,
+	65, 69, 73, 77, 81, 85, 89, 93, 97, 101,  105, 109, 113, 117, 121, 125, 130, 134, 138, 142, 146,
+ 150, 154, 158, 162, 166,  170, 174, 178, 182, 186, 190, 194, 198, 202, 206, 210, 215, 219, 223,
+ 227, 231,  235, 239, 243, 247, 251, 255};
+
+static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
+{
+/* with NTSC on, the input format is already correct */
+	if (retroctx.ntscconv)
+		push_ntsc(width, height, data, outp);
+	else {
+		for (int y = 0; y < height; y++)
+			for (int x = 0; x < width; x++){
+				uint8_t r = rgb565_lut5[0];
+				uint8_t g = rgb565_lut6[0];
+				uint8_t b = rgb565_lut5[0];
+
+				*outp++ = 0xff << 24 | b << 16 | g << 8 | r;
+			}
+	}
+}
+ 
 static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
 	assert( (uintptr_t)data % 4 == 0 );
@@ -180,20 +206,19 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 	}
 
 	if (retroctx.ntscconv)
-		push_ntsc(width, height, outp);
+		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
 static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
-	assert( (uintptr_t)outp % 4 == 0 );
 	uint16_t* interm = retroctx.ntsc_imb;
 
 	for (int y = 0; y < height; y++){
 		for (int x = 0; x < width; x++){
 			uint16_t val = data[x];
-			uint8_t r = ((val & 0x7c00) >> 10 ) << 3;
-			uint8_t g = ((val & 0x3e0) >> 5) << 3;
-			uint8_t b = (val & 0x1f) << 3;
+			uint8_t r = ((val & 0x7c00) >> 10) << 3;
+			uint8_t g = ((val & 0x03e0) >>  5) << 3;
+			uint8_t b = ( val & 0x001f) <<  3;
 
 /* unsure if the underlying libs assess endianess correct, big-endian untested atm. */
 			if (retroctx.ntscconv)
@@ -206,7 +231,7 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 	}
 
 	if (retroctx.ntscconv)
-		push_ntsc(width, height, outp);
+		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
 static int testcounter = 0;
@@ -231,24 +256,21 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		retroctx.audguardb[0] = 0xde;
 		retroctx.audguardb[1] = 0xad;
 
-/* will be reallocated of needed and not set so just free and unset */
+/* will be reallocated if needed and not set so just free and unset */
 		if (retroctx.ntsc_imb){
 			free(retroctx.ntsc_imb);
 			retroctx.ntsc_imb = NULL;
 		}
 	}
 
-/* intermediate storage for blargg NTSC filter, if toggled */
+/* intermediate storage for blargg NTSC filter, if toggled
+ * ntscconv will be applied by the converter however */
 	if (retroctx.ntscconv && !retroctx.ntsc_imb){
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
-	switch (retroctx.colormode){
-		case RETRO_PIXEL_FORMAT_0RGB1555: libretro_rgb1555_rgba((uint16_t*) data, (uint32_t*) retroctx.vidp, width, height, pitch); break;
-		case RETRO_PIXEL_FORMAT_XRGB8888: libretro_xrgb888_rgba((uint32_t*) data, (uint32_t*) retroctx.vidp, width, height, pitch); break;
-		default:
-			LOG("arcan_frameserver(libretro) -- unknown pixel format (%d) specified.\n", retroctx.colormode);
-	}
+	if (retroctx.converter)
+		retroctx.converter(data, (void*) retroctx.vidp, width, height, pitch);
 }
 
 /* the better way would be to just drop the videoframes, buffer the audio, 
@@ -303,8 +325,13 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	switch (cmd){
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
 			rv = true;
-			retroctx.colormode = *(enum retro_pixel_format*) data;
-			LOG("(arcan_frameserver:libretro) - colormode switched to (%d).\n", retroctx.colormode);
+			switch ( *(enum retro_pixel_format*) data ){
+				case RETRO_PIXEL_FORMAT_0RGB1555: retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba; break;
+				case RETRO_PIXEL_FORMAT_RGB565:   retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;  break;
+				case RETRO_PIXEL_FORMAT_XRGB8888: retroctx.converter = (pixconv_fun) libretro_xrgb888_rgba; break;
+			default:
+				LOG("(arcan_frameserver:libretro) - unknown pixelformat encountered (%d).\n", *(unsigned*)data);
+			}
 		break;
 
 		case RETRO_ENVIRONMENT_GET_CAN_DUPE:
@@ -435,7 +462,8 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 		break;
 
 		default:
-			LOG("(arcan_frameserver:libretro) Unknown device ID specified (%d)\n", dev);
+			LOG("(arcan_frameserver:libretro) Unknown device ID specified (%d), video will be disabled.\n", dev);
+			retroctx.converter = NULL;
 	}
 
 	return 0;
@@ -719,13 +747,16 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 	gameinf.size = bufsize;
 /* map functions to context structure */
-		retroctx.run = (void(*)()) libretro_requirefun("retro_run");
+		retroctx.run   = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
-		retroctx.load_game = (bool(*)(const struct retro_game_info* game)) libretro_requirefun("retro_load_game");
-		retroctx.serialize = (bool(*)(void*, size_t)) libretro_requirefun("retro_serialize");
-		retroctx.deserialize = (bool(*)(const void*, size_t)) libretro_requirefun("retro_unserialize"); /* bah, unmarshal or deserialize.. not unserialize :p */
-		retroctx.serialize_size = (size_t(*)()) libretro_requirefun("retro_serialize_size");
+
+		retroctx.load_game  = (bool(*)(const struct retro_game_info* game)) libretro_requirefun("retro_load_game");
+		retroctx.serialize  = (bool(*)(void*, size_t)) libretro_requirefun("retro_serialize");
 		retroctx.set_ioport = (void(*)(unsigned,unsigned)) libretro_requirefun("retro_set_controller_port_device");
+		retroctx.converter  = (pixconv_fun) libretro_rgb1555_rgba;
+
+		retroctx.deserialize    = (bool(*)(const void*, size_t)) libretro_requirefun("retro_unserialize"); /* bah, unmarshal or deserialize.. not unserialize :p */
+		retroctx.serialize_size = (size_t(*)()) libretro_requirefun("retro_serialize_size");
 
 /* setup callbacks */
 		( (void(*)(retro_video_refresh_t) )libretro_requirefun("retro_set_video_refresh"))(libretro_vidcb);

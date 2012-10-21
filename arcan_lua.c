@@ -2164,6 +2164,8 @@ int arcan_lua_mousegrab(lua_State* ctx)
 {
     int mode =  luaL_optint( ctx, 1, -1);
 
+		printf("mousegrab: %d\n", mode);
+
     if (mode == MOUSE_GRAB_ON)
         lua_ctx_store.grab = true;
     else if (mode == MOUSE_GRAB_OFF)

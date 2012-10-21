@@ -346,14 +346,73 @@ end
 -- 3. group mappers (nintendo, neo-geo, naomi etc.) for common cabinets
 -- 4. generic shared fallback (or none)
 --
+
+local function update_cache()
+	local tmptbl = glob_resource("models/*");
+	support3d_modellut = {};
+	support3d_groupmapper = {};
+
+	for a,b in pairs(tmptbl) do
+		support3d_modellut[b] = true;
+	end
+	
+-- simple format, first line, group name. subsequent lines are sets to map into the group.
+-- an empty line resets the group name.
+-- group1
+-- setname1
+-- setname2
+--
+-- group2
+-- ...
+	if (resource("group_sets") and open_rawresource("group_sets")) then
+		local setname = read_rawresource();
+		local current_group = nil;
+		if (not setname) then
+			return;
+		end
+
+		while (setname ~= nil) do
+
+			if (current_group == nil) then
+				current_group = setname;
+				support3d_groupmapper[setname] = {};
+
+			elseif (setname == "") then
+				current_group = nil;
+			else
+				support3d_groupmapper[setname] = current_group;
+			end
+
+			setname = read_rawresource();
+		end
+	end -- outer if
+
+end
+
 -- returns a string to be used as input for setup_cabinet_model
 function find_cabinet_model(gametbl)
--- quickhack for ex. fba importer that has mame shortnames but uses the fileextension in the setname
---	if (not res) then
---		res = gridledetail_checkmodel( string.sub(gametbl.setname, 1, -5) );
---	end
+	names = {};
 
-	return "neogeo";
+-- setname or setname without extension 
+	table.insert(names, gametbl.setname);
+	local found, len, remainder = string.find(gametbl.setname, "^(.*)%.[^%.]*$")
+	if (found) then table.insert(names, remainder); end
+
+-- group
+	if (support3d_groupmapper and support3d_groupmapper[setname]) then
+		table.insert(names, support3d_groupmapper[setname]);
+	end
+
+	table.insert(names, gametbl.target); 
+	table.insert(names, "default_model");
+
+	for ind, val in ipairs(names) do
+		if support3d_modellut[val] then
+			return val;
+		end
+	end
+
+	return nil;
 end
 
 --
@@ -362,9 +421,10 @@ end
 -- the stack gets pushed and pop:ed
 --
 function setup_3dsupport()
-		support3d.camera = fill_surface(4, 4, 0, 0, 0);
-		camtag_model(support3d.camera);
-		image_tracetag(support3d.camera, "3d camera");
+	update_cache();
+	support3d.camera = fill_surface(4, 4, 0, 0, 0);
+	camtag_model(support3d.camera);
+	image_tracetag(support3d.camera, "3d camera");
 	
 	if (not valid_vid(support3d.hf_noise)) then
 		switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
@@ -373,7 +433,6 @@ function setup_3dsupport()
 		shader_uniform(def3d_txcoscroll, "speedfact", "ff", PERSIST, 12.0, 12.0);
 		image_tracetag(support3d.hf_noise, "3dmodel(noise)");
 	end
-
 end
 
 --

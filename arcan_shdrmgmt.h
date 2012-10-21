@@ -77,7 +77,7 @@ bool arcan_shader_valid(arcan_shader_id);
 
 int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 
-/* subid ignreod for (! n*) types,
+/* subid ignored for (! n*) types,
  * value assumed to have type specified in enumlabel,
  * true if this matched something in the current active shader */
 bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);

@@ -840,15 +840,16 @@ local function update_dynamic(newtbl)
 		rotate3d_model(modelid, ang[1], ang[2], ang[3]);
 		show_image(modelid);
 	end
-	
+
 	if (restbl) then
 		if (customview.current.models and #customview.current.models > 0) then
 			local modelstr = find_cabinet_model(newtbl);
 			local model  = modelstr and setup_cabinet_model(modelstr, restbl, {}) or nil;
-			table.insert(customview.temporary_models, model);
-			table.insert(customview.temporary, model.vid);
 
 			if (model) then
+				table.insert(customview.temporary_models, model);
+				table.insert(customview.temporary, model.vid);
+				image_shader(model.vid, customview.light_shader);
 				place_model(model.vid, customview.current.models[1].pos, customview.current.models[1].ang);
 
 -- reuse the model for multiple instances
@@ -1041,6 +1042,17 @@ local function setup_customview()
 	
 end
 
+local function customview_3dbase()
+	local lshdr = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "cvdef3d");
+	
+	shader_uniform(lshdr, "wlightdir",   "fff", PERSIST, 1.0, 0.0, 0.0);
+	shader_uniform(lshdr, "wambient",    "fff", PERSIST, 0.3, 0.3, 0.3);
+	shader_uniform(lshdr, "wdiffuse",    "fff", PERSIST, 0.6, 0.6, 0.6);
+	shader_uniform(lshdr, "map_diffuse", "i"  , PERSIST, 0);
+
+	customview.light_shader = lshdr;
+end
+
 function gridle_customview()
 	local disptbl;
 	
@@ -1049,6 +1061,7 @@ function gridle_customview()
 -- customview_cfg.lua and reset customview.in_config
 	pop_video_context();
 	setup_3dsupport();
+	customview_3dbase();
 
 	if (resource("customview_cfg.lua")) then
 		customview.background    = nil;

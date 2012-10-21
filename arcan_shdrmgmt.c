@@ -109,7 +109,7 @@ struct shader_cont {
 	struct shaderv* persistvs;
 };
 
-static int sizetbl[7]= {
+static int sizetbl[7] = {
 	sizeof(bool),
 	sizeof(int),
 	sizeof(float),
