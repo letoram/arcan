@@ -324,21 +324,20 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 	while (current){
 		arcan_vobject* cvo = current->elem;
 
-/* non-negative => 2D part of the pipeline */
+/* non-negative => 2D part of the pipeline, there's nothing more after this point */
 		if (cvo->order >= 0)
 			break;
 
 		if (cvo->flags.clone){
 			assert(cvo->parent);
 		}
-		
+
 /* use parent if we have an instance.. */
-		arcan_3dmodel* model = cvo->flags.clone ? cvo->parent->feed.state.ptr : cvo->feed.state.ptr;
-
 		surface_properties dprops;
- 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-
-		rendermodel(current->elem, model, current->elem->gl_storage.program, dprops, modelview);
+		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
+	
+		arcan_resolve_vidprop(cvo, lerp, &dprops);
+		rendermodel(dvo, dvo->feed.state.ptr, dvo->gl_storage.program, dprops, modelview);
 
 		current = current->next;
 	}
@@ -358,7 +357,8 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 		surface_properties dprops = {0};
 		if (parent){
 			arcan_resolve_vidprop(parent, frag, &dprops);
-		/* update local cache */
+
+/* update local cache */
 			base->position  = dprops.position;
 			matr_quatf(dprops.rotation.quaternion, base->direction.matr);
 			base->direction.pitchf = dprops.rotation.pitch;
