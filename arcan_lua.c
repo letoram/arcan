@@ -89,8 +89,8 @@ static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 #define CONST_MAX_SURFACEH 2048
 #endif
 
-static const int MOUSE_GRAB_ON = 20;
-static const int MOUSE_GRAB_OFF=  21;
+static const int MOUSE_GRAB_ON  = 20;
+static const int MOUSE_GRAB_OFF = 21;
 
 static const int MAX_SURFACEW = CONST_MAX_SURFACEH;
 static const int MAX_SURFACEH = CONST_MAX_SURFACEW;
@@ -2028,15 +2028,16 @@ int arcan_lua_3dorder(lua_State* ctx)
 int arcan_lua_mousegrab(lua_State* ctx)
 {
 	int mode =  luaL_optint( ctx, 1, -1);
-	if (mode != -1 && mode != MOUSE_GRAB_OFF && mode != MOUSE_GRAB_ON)
+
+	if (mode == MOUSE_GRAB_OFF)
+		lua_ctx_store.grab = false;
+	else if (mode == MOUSE_GRAB_ON)
+		lua_ctx_store.grab = true;
+	else if (mode == -1)
+		lua_ctx_store.grab = !lua_ctx_store.grab;
+	else
 		arcan_fatal("arcan_lua_mousegrab(%d) invalid grabmode specified, expected MOUSE_GRABON, MOUSE_GRABOFF or nil\n");
 
-	switch (mode){
-		case -1 : lua_ctx_store.grab = !lua_ctx_store.grab; break;
-		case MOUSE_GRAB_OFF : lua_ctx_store.grab = false;   break;
-		case MOUSE_GRAB_ON  : lua_ctx_store.grab = true;    break;
-	}
-	printf("switch mouse grab: %d, %d\n", lua_ctx_store.grab, mode);
 	SDL_WM_GrabInput( lua_ctx_store.grab ? SDL_GRAB_ON : SDL_GRAB_OFF );
 	return 0;
 }
