@@ -2171,9 +2171,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 	}
 	vobj->parent = NULL;
-	if (vobj->flags.clone){
-		arcan_warning("(%d) orphaning clone: %d\n", __LINE__, id);
-	}
 
 /* vobj might be a rendertarget itself, so detach all its possible members, free FBO/PBO resources etc. */
 	drop_rtarget(vobj);
@@ -2225,7 +2222,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 				if (dobj->flags.clone){
 					vobj->extrefc.instances--;
 					dobj->parent = NULL;
-					arcan_warning("%d: orphaning clone: %d\n", __LINE__, dobj->cellid);
 					trace("(deleteobject) remove clone (%d:%s) from (%d:%s), left: %d\n", dobj->cellid, video_tracetag(dobj), vobj->cellid, video_tracetag(vobj), vobj->extrefc.instances);
 					assert(vobj->extrefc.instances >= 0);
 					sum--;
@@ -2242,8 +2238,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					if ( (dobj->mask & MASK_LIVING) > 0){
 						dobj->parent = NULL;
 						pool[cascade_c++] = dobj;
-						if (dobj->flags.clone)
-							arcan_warning("%d: orphaning clone: %d\n", __LINE__, dobj->cellid);
 					}
 					else{
 						dobj->parent = &current_context->world;
@@ -3055,7 +3049,7 @@ static void ffunc_process(arcan_vobject* dst)
 				dst->frameset_meta.counter = abs( dst->frameset_meta.mode );
 				step_active_frame(dst);
 
-				dst = dst->current_frame;
+				cframe = dst->current_frame;
 			}
 		}
 
@@ -3344,7 +3338,7 @@ static void process_readback(struct rendertarget* tgt, float fract)
 	if (req_rb){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
 		glBindTexture(GL_TEXTURE_2D, tgt->color->gl_storage.glid);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0); /* null as PBO is responsible */
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0); /* null as PBO is responsible */
 		tgt->readreq = true;
 	}
 

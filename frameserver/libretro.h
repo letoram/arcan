@@ -161,7 +161,8 @@ extern "C" {
 enum retro_pixel_format
 {
    RETRO_PIXEL_FORMAT_0RGB1555 = 0, // 0RGB1555, native endian. 0 bit must be set to 0.
-   RETRO_PIXEL_FORMAT_XRGB8888      // XRGB8888, native endian. X bits are ignored.
+   RETRO_PIXEL_FORMAT_XRGB8888 = 1, // XRGB8888, native endian. X bits are ignored.
+   RETRO_PIXEL_FORMAT_RGB565   = 2
 };
 
 struct retro_message

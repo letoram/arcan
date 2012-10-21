@@ -230,7 +230,7 @@ function gridle()
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	system_load("gridle_customview.lua")();      -- customizable list view
 	
-	if (DEBUGLEVEL > 1) then
+	if (DEBUGLEVEL > 2) then
 		Trace();
 	end
 	
@@ -573,7 +573,6 @@ end
 
 function gridle_setup_internal(video, audio)
 	settings.in_internal = true;
-	toggle_mouse_grab(MOUSE_GRABON);
 
 	gridle_load_internal_extras(current_game().resources, current_game().target);
 	
@@ -1361,6 +1360,7 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 	hide_image(imagery.crashimage);
 	keyconfig.table = settings.keyconftbl;
+	mouse_grab_toggle(GRAB_OFF);
 	
 	
 	if (settings.in_internal) then
@@ -1570,12 +1570,10 @@ function gridle_internalinput(iotbl)
 			elseif (val == "MENU_TOGGLE") then
 				disable_record()
 				gridlemenu_internal(internal_vid, false, true);
-				toggle_mouse_grab(MOUSE_GRABOFF);
 
 			elseif (val == "CONTEXT") then
 				disable_record()
 				gridlemenu_internal(internal_vid, true, false);
-				toggle_mouse_grab(MOUSE_GRABOFF);
 
 -- iotbl.active filter here is just to make sure we don't save twice (press and release) 
 			elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD") and iotbl.active) then
