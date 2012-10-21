@@ -812,6 +812,12 @@ local function place_item( vid, tbl )
 	blend_image(vid, tbl.opa);
 end
 
+local function place_model(modelid, pos, ang)
+	move3d_model(modelid, pos[1], pos[2], pos[3]);
+	rotate3d_model(modelid, ang[1], ang[2], ang[3]);
+	show_image(modelid);
+end
+
 local function update_dynamic(newtbl)
 	if (newtbl == nil or newtbl == customview.lasttbl) then
 		return;
@@ -825,7 +831,6 @@ local function update_dynamic(newtbl)
 		if (valid_vid(val)) then delete_image(val); end 
 	end
 
--- separate models and 
 	for ind, val in ipairs(customview.temporary_models) do
 		if (valid_vid(val.vid)) then delete_image(val.vid); end
 	end
@@ -835,26 +840,36 @@ local function update_dynamic(newtbl)
 
 	local restbl = resourcefinder_search( newtbl, true );
 
-	local function place_model(modelid, pos, ang)
-		move3d_model(modelid, pos[1], pos[2], pos[3]);
-		rotate3d_model(modelid, ang[1], ang[2], ang[3]);
-		show_image(modelid);
-	end
-
 	if (restbl) then
 		if (customview.current.models and #customview.current.models > 0) then
 			local modelstr = find_cabinet_model(newtbl);
 			local model  = modelstr and setup_cabinet_model(modelstr, restbl, {}) or nil;
 
 			if (model) then
+				local shdr = customview.light_shader;
+	
 				table.insert(customview.temporary_models, model);
 				table.insert(customview.temporary, model.vid);
+
 				image_shader(model.vid, customview.light_shader);
 				place_model(model.vid, customview.current.models[1].pos, customview.current.models[1].ang);
+	
+				local ld = newtbl.dir_light and newtbl.dir_light or {1.0, 0.0, 0.0};
+				shader_uniform(shdr, "wlightdir", "fff", PERSIST, ld[1], ld[2], ld[3]);
+				
+				local la = newtbl.ambient and newtbl.ambient or {0.3, 0.3, 0.3};
+				print(la[1], la[2], la[3]);
+				shader_uniform(shdr, "wambient",  "fff", PERSIST, la[1], la[2], la[3]);
+				
+				ld = newtbl.diffuse and newtbl.diffuse or {0.6, 0.6, 0.6};
+				shader_uniform(shdr, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
 
+	
 -- reuse the model for multiple instances
 				for i=2,#customview.current.models do
 					local nid = instance_image(model.vid);
+					image_mask_clear(nid, MASK_POSITION);
+					image_mask_clear(nid, MASK_ORIENTATION);
 					place_model(nid, customview.current.models[i].pos, customview.current.models[i].ang);
 				end
 			end
@@ -1044,12 +1059,7 @@ end
 
 local function customview_3dbase()
 	local lshdr = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "cvdef3d");
-	
-	shader_uniform(lshdr, "wlightdir",   "fff", PERSIST, 1.0, 0.0, 0.0);
-	shader_uniform(lshdr, "wambient",    "fff", PERSIST, 0.3, 0.3, 0.3);
-	shader_uniform(lshdr, "wdiffuse",    "fff", PERSIST, 0.6, 0.6, 0.6);
 	shader_uniform(lshdr, "map_diffuse", "i"  , PERSIST, 0);
-
 	customview.light_shader = lshdr;
 end
 

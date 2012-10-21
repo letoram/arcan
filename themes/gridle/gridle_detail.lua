@@ -6,10 +6,6 @@ detailview = {
 local function gridledetail_load()
 -- non-visible 3d object as camtag
 	dir_light = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
-	
-	shader_uniform(dir_light, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
-	shader_uniform(dir_light, "wambient", "fff", PERSIST, 0.3, 0.3, 0.3);
-	shader_uniform(dir_light, "wdiffuse", "fff", PERSIST, 0.6, 0.6, 0.6);
 	shader_uniform(dir_light, "map_diffuse", "i", PERSIST, 0);
 end
 
