@@ -89,16 +89,8 @@ static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 #define CONST_MAX_SURFACEH 2048
 #endif
 
-#ifndef CONST_MOUSE_GRAB_ON
-#define CONST_MOUSE_GRAB_ON 20
-#endif
-
-#ifndef CONST_MOUSE_GRAB_OFF
-#define CONST_MOUSE_GRAB_OFF 22
-#endif
-
-static const int MOUSE_GRAB_ON = CONST_MOUSE_GRAB_ON;
-static const int MOUSE_GRAB_OFF= CONST_MOUSE_GRAB_OFF;
+static const int MOUSE_GRAB_ON = 20;
+static const int MOUSE_GRAB_OFF=  21;
 
 static const int MAX_SURFACEW = CONST_MAX_SURFACEH;
 static const int MAX_SURFACEH = CONST_MAX_SURFACEW;
