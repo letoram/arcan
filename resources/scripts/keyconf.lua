@@ -678,7 +678,7 @@ function keyconf_create(menugroup, playergroup, keyname)
 		set = keyconf_set,
 		labels = keyconf_labels,
 		n_players = keyconf_countplayers,
-		n_buttons = keyconf_couuntbuttons,
+		n_buttons = keyconf_countbuttons,
 		n_axes = keyconf_countaxes,
 		reconfigure_players = keyconf_playerreconf,
 		ignore_modifiers = false,

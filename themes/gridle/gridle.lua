@@ -1360,8 +1360,7 @@ function gridle_internalcleanup()
 	gridle_input = gridle_dispatchinput;
 	hide_image(imagery.crashimage);
 	keyconfig.table = settings.keyconftbl;
-	mouse_grab_toggle(GRAB_OFF);
-	
+	toggle_mouse_grab(MOUSE_GRABOFF);
 	
 	if (settings.in_internal) then
 		gridle_delete_internal_extras();
