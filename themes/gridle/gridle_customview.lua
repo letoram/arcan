@@ -851,17 +851,18 @@ local function update_dynamic(newtbl)
 				table.insert(customview.temporary_models, model);
 				table.insert(customview.temporary, model.vid);
 
-				image_shader(model.vid, customview.light_shader);
-				place_model(model.vid, customview.current.models[1].pos, customview.current.models[1].ang);
-	
-				local ld = newtbl.dir_light and newtbl.dir_light or {1.0, 0.0, 0.0};
-				shader_uniform(shdr, "wlightdir", "fff", PERSIST, ld[1], ld[2], ld[3]);
+				local cm = customview.current.models[1];
 				
-				local la = newtbl.ambient and newtbl.ambient or {0.3, 0.3, 0.3};
-				print(la[1], la[2], la[3]);
+				image_shader(model.vid, customview.light_shader);
+				place_model(model.vid, cm.pos, cm.ang);
+
+				local ld = cm.dir_light and cm.dir_light or {1.0, 0.0, 0.0};
+				shader_uniform(shdr, "wlightdir", "fff", PERSIST, ld[1], ld[2], ld[3]);
+
+				local la = cm.ambient and cm.ambient or {0.3, 0.3, 0.3};
 				shader_uniform(shdr, "wambient",  "fff", PERSIST, la[1], la[2], la[3]);
 				
-				ld = newtbl.diffuse and newtbl.diffuse or {0.6, 0.6, 0.6};
+				ld = cm.diffuse and cm.diffuse or {0.6, 0.6, 0.6};
 				shader_uniform(shdr, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
 
 	
