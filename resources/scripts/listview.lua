@@ -90,8 +90,8 @@ local function listview_move_cursor(self, step, relative)
 	
 -- could be fixed by caching page etc. and see if we land on a new one
 	instant_image_transform(self.cursorvid);
-	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] - 2 + 6, 10);
-	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, settings.colourtable.font_size);
+	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] + 4, 10);
+	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, settings.colourtable.font_size + 2);
 	order_image(self.cursorvid, order + 1);
 end
 

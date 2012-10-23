@@ -7,13 +7,16 @@ local function gridledetail_load()
 -- non-visible 3d object as camtag
 	dir_light = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
 	shader_uniform(dir_light, "map_diffuse", "i", PERSIST, 0);
+	shader_uniform(dir_light, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
+	shader_uniform(dir_light, "wambient",  "fff", PERSIST, 0.3, 0.3, 0.3);
+	shader_uniform(dir_light, "wdiffuse",  "fff", PERSIST, 0.3, 0.3, 0.3);
 end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
 	detailview.game  = gametbl;
 	detailview.model = setup_cabinet_model(detailres, gametbl.resources, {});
-	
+
 -- replace the "on load" fullbright shader with a directional lighting one  
 	if (detailview.model) then
 		image_shader(detailview.model.vid, dir_light);
@@ -332,14 +335,12 @@ function gridledetail_show(detailres, gametbl, ind)
 
 			if (launch_internal) then
 				gridle_load_internal_extras();
-	
+
 				internal_vid = launch_target( detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status );
 				if (internal_vid) then
 					if (settings.autosave == "On") then
 						internal_statectl("auto", false);
 					end
-
-					detailview.model:update_display(internal_vid);
 				end
 			else
 				erase_grid(true);

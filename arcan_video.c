@@ -1435,6 +1435,11 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
 	arcan_vobj_id rv = ARCAN_EID;
 
+	if (!dstvobj || !srcvobj){
+		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
+		return rv;
+	}
+	
 	if (dstvobj->flags.clone){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
@@ -3667,9 +3672,9 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 
 bool arcan_video_prepare_external()
 {
-	/* There seems to be no decent, portable, way to minimize + suspend and when child terminates, maximize and be
-	 * sure that OpenGL / SDL context data is restored respectively. Thus we destroy the surface,
-	 * and then rebuild / reupload all textures. */
+/* There seems to be no decent, portable, way to minimize + suspend and when child terminates, maximize and be
+ * sure that OpenGL / SDL context data is restored respectively. Thus we destroy the surface,
+ * and then rebuild / reupload all textures. */
 	if (-1 == arcan_video_pushcontext())
 		return false;
 
@@ -3722,9 +3727,10 @@ void arcan_video_restore_external()
 		SDL_Init(SDL_INIT_VIDEO);
 
 	arcan_video_display.screen = SDL_SetVideoMode(arcan_video_display.width,
-											arcan_video_display.height,
-											arcan_video_display.bpp,
-											arcan_video_display.sdlarg);
+		arcan_video_display.height,
+		arcan_video_display.bpp,
+		arcan_video_display.sdlarg);
+
 	arcan_event_init( arcan_event_defaultctx() );
 	arcan_video_gldefault();
 	arcan_shader_rebuild_all();

@@ -471,8 +471,10 @@ local function customview_internal(source, datatbl)
 			gridlemenu_rebuilddisplay();
 		end
 	elseif (datatbl.kind == "frameserver_terminated") then
-		pop_video_context();
-		customview.cleanup();
+		local term = load_image("images/terminated.png");
+		blend_image(term, 1.0, settings.fadedelay);
+		resize_image(term, VRESW, VRESH);
+		order_image(term, max_current_image_order());
 	end
 end
 
@@ -483,6 +485,8 @@ customview.cleanup = function()
 		resourcefinder_search(customview.gametbl, true);
 	resourcefinder_cache.invalidate = false;
 
+	toggle_mouse_grab(MOUSE_GRABOFF);
+	
 	local resetview = function()
 		pop_video_context();
 		settings.iodispatch = customview.dispatchtbl;
@@ -533,7 +537,7 @@ local function launch(tbl)
 	else
 		settings.in_internal = false;
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
-		launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+		launch_target( tbl.gameid, LAUNCH_EXTERNAL);
 		pop_video_context();
 	end
 end

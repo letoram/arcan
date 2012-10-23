@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -62,6 +63,33 @@
 
 extern char* arcan_binpath;
 
+static void* nanny_thread(void* arg)
+{
+	pid_t* pid = (pid_t*) arg;
+
+	if (pid){
+		int counter = 10;
+		kill(*pid, SIGTERM);
+		
+		while (counter--){
+			int statusfl;
+			int rv = waitpid(*pid, &statusfl, WNOHANG);
+			if (rv > 0)
+				break;
+			else if (counter == 0){
+				kill(*pid, SIGKILL);
+				break;
+			}
+
+			sleep(1);
+		}
+		
+		free(pid);
+	}
+
+	return NULL;
+}
+
 arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -90,9 +118,23 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 			arcan_frameserver_pushevent(src, &exev);
 
-			kill(src->child, SIGTERM);
+/* this one is more complicated than it seems, as we don't want zombies lying around,
+ * yet might be in a context where the child is no-longer trusted. Double-forking and getting the handle
+ * that way is overcomplicated, maintaining a state-table of assumed-alive children until wait says otherwise
+ * and then map may lead to dangling pointers with video_deleteobject or sweeping the full state context etc.
+ * 
+ * Cheapest, it seems, is to actually spawn a guard thread with a sleep + wait cycle, countdown and then send KILL
+ */
+			pid_t* pidptr = malloc(sizeof(pid_t));
+			pthread_t pthr;
+			*pidptr = src->child;
+
+			if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr))
+				kill(src->child, SIGKILL);
+/* panic option anyhow, just forcibly kill */
+
+			src->child = -1;
 			src->child_alive = false;
-			waitpid(src->child, NULL, WNOHANG);
 		}
 
 /* unhook audio monitors */
