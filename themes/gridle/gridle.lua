@@ -386,8 +386,8 @@ end
 -- to save resources when going from customview to grid view
 -- the entire context is poped meaning that all involved resources need to be rebuilt
 function setup_gridview()
-	grab_sysicons();
 	setup_3dsupport();
+	grab_sysicons();
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 
 	imagery.black = fill_surface(1,1,0,0,0);

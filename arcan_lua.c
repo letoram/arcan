@@ -2200,6 +2200,7 @@ int arcan_lua_randomsurface(lua_State* ctx)
 		}
 
 	arcan_vobj_id id = arcan_video_rawobject(buf, desw * desh * 4, cons, desw, desh, 0);
+	arcan_video_objectfilter(id, ARCAN_VFILTER_NONE);
 	lua_pushvid(ctx, id);
 
 	return 1;

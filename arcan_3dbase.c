@@ -609,9 +609,9 @@ static int threadloader(void* arg)
 	if (ctmGetError(ctx) == CTM_NONE){
 		loadmesh(threadarg->geom, ctx);
 
-		SDL_mutexP(threadarg->model->lock);
-			minmax_verts(&threadarg->model->bbmin, &threadarg->model->bbmax, threadarg->geom->verts, threadarg->geom->nverts);
-		SDL_mutexV(threadarg->model->lock);
+//		SDL_mutexP(threadarg->model->lock);
+//			minmax_verts(&threadarg->model->bbmin, &threadarg->model->bbmax, threadarg->geom->verts, threadarg->geom->nverts);
+//		SDL_mutexV(threadarg->model->lock);
 	}
 
 /* nonetheless, unlock the slot for the main rendering loop,

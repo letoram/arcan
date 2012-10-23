@@ -36,8 +36,6 @@
 #include <assert.h>
 #include "arcan_framequeue.h"
 
-#include <sched.h>
-
 /* Slide the destination buffer target */
 void arcan_framequeue_step(frame_queue* queue)
 {

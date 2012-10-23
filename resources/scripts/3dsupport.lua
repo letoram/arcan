@@ -110,17 +110,27 @@ end
 local function snap_loaded(source, statustbl)
 end
 
-local function load_material(modelname, meshname, synth)
-	local rvid = BADID;
+local function find_material(modelname, meshname)
 	local fnameb = "models/" .. modelname .. "/textures/" .. meshname;
 
 	if (resource(fnameb .. ".png")) then
-		rvid = load_image_asynch(fnameb .. ".png", material_loaded);
-		image_tracetag(rvid, "3dmodel("..modelname.."):"..meshname);
+		return fnameb .. ".png";
 	elseif (resource(fnameb .. ".jpg")) then
-		rvid = load_image_asynch(fnameb .. ".jpg", material_loaded);
-		image_tracetag(rvid, "3dmodel("..modelname.."):" ..meshname);
-	elseif (synth) then 
+		return fnameb .. ".jpg";
+	end
+
+	return nil;
+end
+
+local function load_material(modelname, meshname, synth)
+	local rvid = BADID;
+	local mat = find_material(modelname, meshname);
+
+	if (mat) then
+		rvid = load_image_asynch(mat, material_loaded);
+		image_tracetag(rvid, "3dmodel("..modelname.."):mat_" .. meshname);
+
+	elseif (synth) then
 		rvid = fill_surface(8,8, 255, math.random(1,255), math.random(1,255))
 		image_tracetag(rvid, "3dmodel("..modelname.."):placeholder");
 	end
@@ -139,7 +149,7 @@ local function sort_meshes(a, b)
 	end
 end
 
-function load_model_generic(modelname, rndmissing)
+function load_model_generic(modelname, rndmissing, synthtbl)
 	if (rndmissing == nil) then rndmissing = true; end
 
 	local basep  = "models/" .. modelname .. "/";
@@ -174,18 +184,48 @@ function load_model_generic(modelname, rndmissing)
 	table.sort(seqlist, sort_meshes);
 	
 	for i=1, #seqlist do
-		slot = i-1;
-		add_3dmesh(model.vid, basep .. seqlist[i][2], 1);
-		local vid = load_material(modelname, seqlist[i][1], rndmissing);
+		local slot = i-1;
 
+		local meshname = seqlist[i][1];
+		local vid = BADID;
+		
+		add_3dmesh(model.vid, basep .. seqlist[i][2], 1);
 		model.labels[seqlist[i][1]] = slot;
-		model.images[slot] = vid;
 		model.screenview = {};
 		model.default_orientation    = {roll = 0, pitch = 0, yaw = 0};
 		model.screenview.position    = {x    = 0,     y = 0.5, z = 1.0};
 		model.screenview.orientation = {roll = 0, pitch = 0, yaw = 0};
 
-		set_image_as_frame(model.vid, vid, slot, FRAMESET_DETACH);
+-- we don't load anything else for the display as that'll be replaced with broken_display or dynamic media.
+		if (meshname ~= "display") then
+
+-- for each mesh, find a matching texture.
+-- if we're provided with a table of predefined default-color,
+-- we first create a surface with that colour and associate it with the mesh immediately
+-- thereafter we asynchronously load the right material
+		if (synthtbl and synthtbl[meshname]) then
+			local col = synthtbl[ meshname ].col;
+
+			local vid = fill_surface(8, 8, col[1], col[2], col[3]);
+
+			set_image_as_frame(model.vid, vid, slot, FRAMESET_DETACH);
+			local mat = find_material(modelname, meshname);
+			
+			load_image_asynch(mat, function(source, statustbl)
+				if (statustbl.kind ~= "load_failed") then
+					local old = set_image_as_frame(model.vid, source, slot, FRAMESET_DETACH);
+					if (valid_vid(old) and old ~= source) then delete_image(old); end
+				end
+			end);
+
+-- otherwise, if no texture was found, leave it empty or replace with randomized surface
+-- or set material when it have been asynchronously loaded 
+		else
+			vid = load_material(modelname, meshname, rndmissing);
+			set_image_as_frame(model.vid, vid, slot, FRAMESET_DETACH);
+		end
+
+	end
 	end
 	
 	switch_default_imageproc(IMAGEPROC_NORMAL);
@@ -466,7 +506,6 @@ function setup_cabinet_model(modelname, restbl, options)
 			
 -- update the display, free the old resource and invert texture coordinates (possible) in the vertex shader 
 			local rvid = set_image_as_frame(self.vid, vid, self.labels["display"], FRAMESET_DETACH);
-
 			mesh_shader(self.vid, shid, self.labels["display"]);
 	
 			if (valid_vid(rvid) and rvid ~= vid) then
