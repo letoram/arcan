@@ -269,7 +269,6 @@ typedef struct arcan_event {
 
 	char label[16];
 	char category;
-	char used;
 	
 	event_data data;
 } arcan_event;
@@ -295,9 +294,10 @@ struct arcan_evctx {
  * and whenever an sample is to be emitted, the actual value will be based on an average
  * of the smooth buffer. */
 		char smooth_samples;
-	};
+	} analog_filter;
 	
 	unsigned n_eventbuf;
+	unsigned evbuf_used;
 	arcan_event* eventbuf;
 	
 	unsigned* front;
@@ -337,6 +337,12 @@ arcan_event* arcan_event_poll_masked(arcan_evctx*, unsigned mask_cat, unsigned m
 void arcan_event_keyrepeat(arcan_evctx*, unsigned rate);
 
 arcan_evctx* arcan_event_defaultctx();
+
+/* Pushes as many events from srcqueue to dstqueue as possible without over-saturating.
+ * allowed defines which kind of category that will be transferred, other events will be ignored.
+ * The saturation cap is defined in 0..1 range as % of full capacity */
+void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
+	enum ARCAN_EVENT_CATEGORY allowed, float saturation);
 
 /* add an event to the queue,
  * currently thread-unsafe as there's

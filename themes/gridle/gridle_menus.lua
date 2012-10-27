@@ -285,6 +285,7 @@ end
 local function reset_customview()
 	zap_resource("customview_cfg.lua");
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		play_audio(soundmap["MENU_SELECT"]);
 
 	if (customview.in_customview) then
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
@@ -311,8 +312,9 @@ local settingsptrs = {};
 add_submenu(gridviewlbls, gridviewptrs, "Cell Width...", "cell_width", gen_num_menu("cell_width", 1, cellwnum, 10));
 add_submenu(gridviewlbls, gridviewptrs, "Cell Height...", "cell_height", gen_num_menu("cell_height", 1, cellhnum, 10));
 add_submenu(settingslbls, settingsptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
-add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6));
+add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
+add_submenu(settingslbls, settingsptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
 table.insert(settingslbls, "----");

@@ -303,7 +303,7 @@ arcan_errc arcan_audio_teardown()
 	return rv;
 }
 
-arcan_errc arcan_audio_play(arcan_aobj_id id)
+arcan_errc arcan_audio_play(arcan_aobj_id id, bool gain_override, float gain)
 {
 	arcan_aobj* aobj = arcan_audio_getobj(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -318,7 +318,7 @@ arcan_errc arcan_audio_play(arcan_aobj_id id)
 				if (current_acontext->sample_sources[i] == 0){
 					alGenSources(1, &current_acontext->sample_sources[i]);
 					ALint alid = current_acontext->sample_sources[i];
-					alSourcef(alid, AL_GAIN, aobj->gain);
+					alSourcef(alid, AL_GAIN, gain_override ? gain : aobj->gain);
 					_wrap_alError(aobj,"load_sample(alSource)");
 					alSourceQueueBuffers(alid, 1, &aobj->streambuf[0]);
 					_wrap_alError(aobj, "load_sample(alQueue)");
@@ -553,7 +553,7 @@ arcan_errc arcan_audio_resume()
 	arcan_aobj* current = current_acontext->first;
 
 	while (current) {
-		arcan_audio_play(current->id);
+		arcan_audio_play(current->id, false, 1.0);
 		current = current->next;
 	}
 	

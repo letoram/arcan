@@ -193,38 +193,47 @@ static arcan_ffmpeg_context* ffmpeg_preload(const char* fname, AVInputFormat* if
 #ifndef _WIN32
 #include <sys/types.h>
 #include <sys/stat.h>
-static const char* probe_vidcap(signed prefind)
+static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 {
 	char arg[16];
 	struct stat fs;
 
 	for (int i = prefind; i >= 0; i--){
 		snprintf(arg, sizeof(arg)-1, "/dev/video%d", i);
-		if (stat(arg, &fs) == 0)
+		if (stat(arg, &fs) == 0){
+			*dst = av_find_input_format("video4linux2");
 			return strdup(arg);
+		}
 	}
+
+	*dst = NULL;
 	return NULL;
 }
 #else
-/* for win32 it's a bit more advanced, we need to query the list
- * of V4L devices push that events up-stream, and wait for a trigger */
-static const char* probe_vidcap(signed prefind)
+/* for windows, the suggested approach nowadays isn't vfwcap but dshow,
+ * the problem is that we both need to be able to probe and look for a video device
+ * and this enumeration then requires bidirectional communication with the parent */
+static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 {
-
-
-    return NULL;
+	char arg[16];
+	
+	snprintf(arg, sizeof(arg)-1, "%d", prefind);
+	*dst = av_find_input_format("vfwcap");
+	
+	return strdup(arg);
 }
 #endif
 
-static arcan_ffmpeg_context* ffmpeg_vidcap(unsigned ind, float fps, unsigned width, unsigned height)
+static arcan_ffmpeg_context* ffmpeg_vidcap(unsigned ind)
 {
-	const char* fname = probe_vidcap(ind);
-	if (!fname)
+	AVInputFormat* format;
+	avdevice_register_all();
+
+	const char* fname = probe_vidcap(ind, &format);
+	if (!fname || !format)
 		return NULL;
 
-	avdevice_register_all();
-	AVInputFormat* format = av_find_input_format("video4linux2");
-	return format ? ffmpeg_preload(fname, format) : NULL;
+	return ffmpeg_preload(fname, format);
 }
 
 static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt)
@@ -265,7 +274,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 					devind = ind;
 			}
 
-			vidctx = ffmpeg_vidcap(devind, 30.0, 640, 480);
+			vidctx = ffmpeg_vidcap(devind);
 		} else {
 			vidctx = ffmpeg_preload(resource, NULL);
 		}

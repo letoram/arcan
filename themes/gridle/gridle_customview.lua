@@ -253,7 +253,7 @@ end
 customview.position_item = function(vid, trigger, lbls)
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
 -- would need state tracking and hook to the clock 
-	kbd_repeat(20);
+	kbd_repeat(40);
 	cascade_visibility(current_menu, 0.0);
 	
 	customview.position_modes  = lbls and lbls or customview.position_modes_default;
@@ -352,6 +352,7 @@ local function to_menu()
 	settings.iodispatch = position_dispatch;
 	settings.iodispatch["MENU_ESCAPE"]("", false, false);
 	cascade_visibility(current_menu, 1.0);
+	kbd_repeat(settings.repeatrate);
 end
 
 local function save_item(state, vid)
@@ -633,12 +634,8 @@ local function positionbg(label)
 	local props = image_surface_properties(vid);
 
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT, vid );
-	if (customview.ci.tiled) then
-		local props = image_surface_initial_properties(imgvid);
-		image_scale_txcos(imgvid, customview.ci.width / props.width, customview.ci.height / props.height);
-	end
-	
--- threshold for tiling rather than stretching
+
+	-- threshold for tiling rather than stretching
 	if (props.width < VRESW / 2 or props.height < VRESH / 2) then
 		customview.ci.tiled  = true;
 	end
@@ -653,6 +650,11 @@ local function positionbg(label)
 	customview.ci.kind   = "background";
 	customview.ci.shader = customview.bgshader_label;
 	customview.ci.res    = "backgrounds/" .. label;
+
+	if (customview.ci.tiled) then
+		local props = image_surface_initial_properties(vid);
+		image_scale_txcos(vid, customview.ci.width / props.width, customview.ci.height / props.height);
+	end
 
 	update_object(vid);
 	customview.position_item(vid, save_item_bg);
@@ -706,12 +708,12 @@ local function save_config()
 	
 			elseif val.kind == "navigator" then
 				write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-				write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
+				write_rawresource("item.font   = [[\\ffonts/multilang.ttf,]];\n");
 				write_rawresource("cview.navigator = item;\n");
 
 			elseif val.kind == "label" then
 				write_rawresource("item.res    = \"" .. val.res .. "\";\n");
-				write_rawresource("item.font   = [[\\ffonts/default.ttf,]];\n");
+				write_rawresource("item.font   = [[\\ffonts/multilang.ttf,]];\n");
 				write_rawresource("table.insert(cview.dynamic_labels, item);\n");
 			
 			elseif val.kind == "background" then
@@ -789,6 +791,7 @@ local function show_config()
 		play_audio(soundmap["MENU_FADE"]);
 		settings.iodispatch = customview_display;
 		pop_video_context();
+		customview.in_customview = false;
 		setup_gridview();
 	end
 	
@@ -962,6 +965,8 @@ local function setup_customview()
 -- load background effect 
 	if (customview.current.background) then
 		vid = load_image( customview.current.background.res );
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
+
 		customview.background = vid;
 
 		place_item(vid, customview.current.background);
@@ -970,8 +975,8 @@ local function setup_customview()
 		local props  = image_surface_properties(vid);
 		local iprops = image_surface_initial_properties(vid);
 
+
 		if (customview.current.background.tiled) then
-			switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
 			image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
 		end
 		
@@ -1047,6 +1052,7 @@ local function setup_customview()
 		
 		settings.iodispatch["SWITCH_VIEW"] = function()
 			if ( navi:escape() ) then
+				play_audio(soundmap["MENU_FADE"])
 				pop_video_context();
 				settings.iodispatch = olddispatch;
 				customview.in_customview = false; 

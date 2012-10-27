@@ -335,26 +335,21 @@ static void libretro_pollcb(){}
 static bool libretro_setenv(unsigned cmd, void* data){
 	char* sysdir;
 	bool rv = false;
-	LOG("setenv\n");
 
 	switch (cmd){
 		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
-			LOG("set pixel fmt..\n");
 			rv = true;
 
 			switch ( *(enum retro_pixel_format*) data ){
 				case RETRO_PIXEL_FORMAT_0RGB1555:
-					LOG("Core requested pixel format 0RGB1555\n");
 					retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
 				break;
 				
 				case RETRO_PIXEL_FORMAT_RGB565:
-					LOG("Core requested pixel format RGB565\n");
 					retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;
 				break;
 
 				case RETRO_PIXEL_FORMAT_XRGB8888:
-					LOG("Core requested pixel format XRGB888\n");
 					retroctx.converter = (pixconv_fun) libretro_xrgb888_rgba;
 				break;
 
@@ -775,7 +770,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			return;
 		}
 
-	gameinf.size = bufsize;
+		gameinf.size = bufsize;
 /* map functions to context structure */
 		retroctx.run   = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");

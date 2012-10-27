@@ -171,7 +171,7 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 	if (sw != dw || 
 		sh != dh) {
-	
+
 		uint16_t cpy_width  = (dw > sw ? sw : dw);
 		uint16_t cpy_height = (dh > sh ? sh : dh);
 		assert(bpp == dpp);
@@ -633,7 +633,7 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 	src->starttime = arcan_frametime();
 	src->playstate = ARCAN_PLAYING;
 
-	arcan_audio_play(src->aid);
+	arcan_audio_play(src->aid, false, 0.0);
 	return ARCAN_OK;
 }
 

@@ -139,6 +139,15 @@ function listview_show(self)
 	self:push_to_front();
 end
 
+local function window_height(nlines)
+	local heightstr = settings.colourtable.hilight_fontstr;
+	for i=1,nlines do
+		heightstr = heightstr .. " A\\n\\r"
+	end
+	txw, txh = text_dimensions(heightstr);
+	return txh;
+end
+
 function listview_create(elem_list, height, maxw, formatlist)
 	restbl = {};
 	
@@ -154,11 +163,17 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.maxw = math.ceil( maxw );
 
 	restbl.page_size = math.floor( height / (settings.colourtable.font_size + 6) );
+	
 	if (restbl.page_size == 0) then
 		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(settings.colourtable.font_size + 6) .. ")\n");
 		return nil;
 	end
-		
+
+	while (window_height(restbl.page_size) > height) do
+		restbl.page_size = restbl.page_size - 1;
+	end
+	if (restbl.page_size == 0) then restbl.page_size = 1; end
+	
 	restbl.show = listview_show;
 	restbl.destroy = listview_destroy;
 	restbl.move_cursor = listview_move_cursor;

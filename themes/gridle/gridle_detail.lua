@@ -16,7 +16,7 @@ end
 local function gridledetail_buildview(detailres, gametbl )
 	detailview.game  = gametbl;
 	detailview.model = setup_cabinet_model(detailres, gametbl.resources, {});
-
+	
 -- replace the "on load" fullbright shader with a directional lighting one  
 	if (detailview.model) then
 		image_shader(detailview.model.vid, dir_light);
