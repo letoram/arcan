@@ -13,7 +13,7 @@ varying vec2 texco;
 
 void main()
 {
-    vec2 p = -1.0 + 2.0 * gl_FragCoord.xy / display.xy; 
+    vec2 p = -1.0 + 2.0 * gl_FragCoord.xy / display.xy;
     float time = speed * ( float(timestamp)  ) / timestep;
 
 /* oscillate light 1 */

@@ -11,56 +11,94 @@ function table.join(a, b)
 	return a;
 end
 
-function internaltest()
-	system_load("scripts/keyconf.lua")();
-	args = {};
-	print("internal test\n", "target:", arguments[1], "game:", arguments[2]);	
-
-	targets = list_targets();
-	valid_tgts = {};
-
-	print("targets found:\n----------\n");
-	for key,val in pairs(targets) do
-		print(key);
+function target_random_game(target)
+	filter = {};
+	filter["target"] = target;
+	res = list_games( filter );
+	if (#res > 0) then
+		return res[math.random(1, #res)];
+	else
+		print("Couldn't find any games matching target:", target);
+		shutdown();
 	end
-	print("----------");
+end
 
-	if (arguments[1] ~= nil and arguments[2] == nil) then
-		targets = { arguments[1] };
-	end
+function target_game(target, title)
+	filter = {};
+	filter["target"] = target;
+	filter["game"] = title;
 
-	for ind, val in ipairs(targets) do
-		caps = launch_target_capabilities(val);
+	res = list_games( filter );
+	if (#res > 0) then
+		return res[1];
+	else
+		print("Couldn't find any target/game combination matching:", target, title);
+		shutdown();
+	end	
+end
+
+function random_game()
+	local valid_targets = {};
+	
+	for ind, val in ipairs( list_targets() ) do
+		caps = launch_target_capabilities( val );
 		if (caps and caps.internal_launch) then
-			print("target:" .. val .. " got internal launch capabilities, adding.");
-			table.insert(valid_tgts, val);
+			table.insert(valid_targets, val)
 		end
 	end
 
-	if (#valid_tgts == 0) then
-		error("No capable targets found.");
+	if (#valid_targets > 0) then
+		local games = {};
+		
+		for ind, val in ipairs(valid_targets) do
+			list = list_games({ target = val });
+			games = table.join(games, list);
+		end
+
+		if (#games > 0) then
+			return games[math.random(1, #games)];
+		end
+	end
+
+	print("Couldn't find any internal- launch capable targets, giving up.\n");
+	shutdown();
+end
+
+function target_update(source, status)
+	print("update: " .. status.kind );
+	if (status.kind == "resized") then
+		resize_image(target_id, VRESW, VRESH);
+		show_image(target_id);
+	elseif (status.kind == "frameserver_terminated") then
 		shutdown();
 	end
+end
 
-
-	local filters = {target = val};
-	if (arguments[2] ~= nil) then
-		filters.title = arguments[2];
-	end
-
-	games = {};
-	for ind, val in ipairs(valid_tgts) do
-		local tgtgames = list_games( filters );
-		games = table.join(games, tgtgames); 
-	end
-
+function launch_internal(game)
+	caps = launch_target_capabilities( game.target );
+	print(" game picked: " .. game.title);
+	print(" internal_launch: " .. tostring(caps.internal_launch) );
+	print(" snapshot(" .. tostring(caps.snapshot) .. "), suspend("..tostring(caps.suspend)..") ");
 	
-	if (#games == 0) then
-		error("No games matching capable targets found.");
-		shutdown();
+	target_id = launch_target( game.gameid, LAUNCH_INTERNAL, target_update);
+
+	if (not valid_vid(target_id)) then
+		shutdown("couldn't launch, giving up.\n");
 	end
-	
-	game = games[ math.random(1, #games) ];
+end
+
+function internaltest()
+	system_load("scripts/keyconf.lua")();
+	print("Internal Test, arguments:", "target:", arguments[1], "game:", arguments[2]);
+
+	local game = nil;
+	if (arguments[1] ~= nil and arguments[2] == nil) then
+		game = target_random_game(arguments[1]);
+	elseif (arguments[1] == nil and arguments[2] == nil) then
+		game = random_game();
+	else
+		game = target_game(arguments[1], arguments[2]);
+	end
 
 	kbd_repeat(0);
 	keyconfig = keyconf_create(keylabels);
@@ -69,28 +107,13 @@ function internaltest()
 		internaltest_input = function(iotbl)
 			if (keyconfig:input(iotbl) == true) then
 				internaltest_input = dispatch_input;
+				launch_internal(game);
 			end
 		end
-	end	
-
-	caps = launch_target_capabilities( game.target );	
-	print(" game picked: " .. game.title);
-	print(" internal_launch: " .. tostring(caps.internal_launch) );
-	print(" snapshot(" .. tostring(caps.snapshot) .. "), rewind(" .. tostring(caps.rewind) .. "), suspend("..tostring(caps.suspend)..") "); 
+	else
+		launch_internal(game);
+	end 
 	
-	target_id = launch_target( game.gameid, LAUNCH_INTERNAL, target_update);
-	if (target_id == nil) then
-		error("Couldn't launch target, aborting.");
-		shutdown();
-	end
-end
-
-function target_update(source, status)
-	print("update: " .. status.kind );
-	if (status.kind == "resized") then
-		resize_image(target_id, VRESW, VRESH);
-		show_image(target_id);
-	end
 end
 
 function dispatch_input(iotbl)
@@ -110,4 +133,3 @@ function dispatch_input(iotbl)
 end
 
 internaltest_input = dispatch_input;
-

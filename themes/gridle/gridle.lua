@@ -50,7 +50,9 @@ soundmap = {
 settings = {
 	filters = {
 	},
-	
+
+	effect_gain = 1.0,
+
 	bgname = "smstile.png",
 	bg_rh = VRESH / 32,
 	bg_rw = VRESW / 32,
@@ -82,7 +84,7 @@ settings = {
 	detailvids = {},
 	favvids = {},
 	
-	repeatrate = 250,
+	repeatrate = 200,
 	cell_width = 128,
 	cell_height = 128,
 	cursor_scale = 1.2,
@@ -205,6 +207,9 @@ end
 
 error_nogames = nil;
 
+-- we override this function further down so that it universally applies the gain limit
+settings.play_audio = play_audio;
+
 local function menu_bgupdate() 
 	grab_sysicons();
 	zap_whitegrid();
@@ -252,7 +257,7 @@ function gridle()
 	local contextlim = ( VRESW * VRESH ) / (48 * 48) * 4;
 	contextlim = contextlim > 1024 and contextlim or 1024
 	system_context_size(contextlim);
-
+	
 -- make sure the current context runs with the new limit
 	pop_video_context();
 
@@ -1653,6 +1658,7 @@ function load_settings()
 	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
 	load_key_str("autosave", "autosave", settings.autosave);
 	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
+	load_key_num("effect_gain", "effect_gain", settings.effect_gain);
 
 	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
 	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
@@ -1727,6 +1733,10 @@ function load_settings()
 			line = read_rawresource();
 		end
 	end
+end
+
+function play_audio(resname)
+	settings.play_audio(resname, settings.effect_gain);
 end
 
 gridle_input = gridle_dispatchinput;

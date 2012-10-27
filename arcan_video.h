@@ -146,7 +146,6 @@ uint16_t arcan_video_screenh();
 
 /* basic context management functions */
 unsigned arcan_video_popcontext();
-unsigned arcan_video_nfreecontexts();
 unsigned arcan_video_contextusage(unsigned* free);
 
 /* returns # of free context slots left, -1 if context could not be pushed */
@@ -236,6 +235,7 @@ arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
 
 void arcan_video_imgmanmode(enum arcan_vimage_mode mode, bool repeat);
 void arcan_video_contextsize(unsigned newlim);
+unsigned arcan_video_nfreecontexts();
 
 /* change zval (see arcan_video_addobject) for a particular object.
  * return value is an error code */

@@ -262,7 +262,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 
 				arcan_audio_rebuild(movie->aid);
 				arcan_frameserver_resume(movie);
-				arcan_audio_play(movie->aid);
+				arcan_audio_play(movie->aid, false, 0.0);
 			}
 		}
 }

@@ -420,8 +420,10 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
 
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB (full).lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB (update).lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --update --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
-CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
+
 	CreateDirectory '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests'
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Core Comparator.lnk' '\$INSTDIR\\\\arcan.exe' 'corecomp'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'

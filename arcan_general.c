@@ -483,48 +483,8 @@ double round(double x)
 	return floor(x + 0.5);
 }
 
-typedef int8_t(*_invalid_parameter_handler)(const wchar_t*, const wchar_t*, const wchar_t, unsigned int, uintptr_t);
-
-static void invalid_parameter(const wchar_t* expr,
-	const wchar_t* function,
-	const wchar_t* file,
-	unsigned int line,
-	uintptr_t reserved)
-{
-	arcan_fatal("(win32) invalid stdlib parameter (%s) from %s in %s:%d\n", expr, function, file, line);
-}
-
-/* this poorly thought out piece of microsoftism is not exported
- * by the MSVCRT MinGW is based on, but win may or may not call it spuriously,
- * and you seem to have to go through a lot of OO junk to disable the "feature" */
-static void invalid_ph_workaround()
-{
-  _invalid_parameter_handler (*fIPH)(_invalid_parameter_handler) = NULL;
-  HMODULE hmsv = GetModuleHandleA("msvcr80.dll");
-  arcan_warning("tried msvcr80.dll, got: %d\n", hmsv);
-
-  if(!hmsv)
-    hmsv = GetModuleHandleA ("msvcr70.dll");
-  if (!hmsv)
-    hmsv = GetModuleHandleA ("msvcrt.dll");
-  if (!hmsv)
-    hmsv = LoadLibraryA ("msvcrt.dll");
-  if (!hmsv)
-    return;
-
-  fIPH = (_invalid_parameter_handler (*)(_invalid_parameter_handler))
-    GetProcAddress (hmsv, "_set_invalid_parameter_handler");
-  arcan_warning("found fIPH @ %d, hmsv @ %d\n", fIPH);
-  if (fIPH)
-    (*fIPH)(invalid_parameter);
-}
-
 bool arcan_setpaths()
 {
-/* does not "really" belong here but the entry point that could be found without
- * adding an additional one	invalid_ph_workaround(); */
-	invalid_ph_workaround();
-
 /* could add a check of the users path cleanup (that turned out to be a worse mess than before)
  * with AppData etc. from Vista and friends */
 

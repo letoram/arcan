@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <math.h>
 #include <assert.h>
 
 #include <SDL/SDL.h>
@@ -108,6 +109,7 @@ static unsigned alloc_queuecell(arcan_evctx* ctx)
 {
 	unsigned rv = *(ctx->back);
 	*(ctx->back) = ( *(ctx->back) + 1) % ctx->n_eventbuf;
+
 	return rv;
 }
 
@@ -158,7 +160,9 @@ arcan_event* arcan_event_poll(arcan_evctx* ctx)
 
 			rv = &ctx->eventbuf[ *ctx->front ];
 			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
-
+			ctx->evbuf_used--;
+			assert(ctx->evbuf_used >= 0);
+			
 			UNLOCK();
 		}
 
@@ -240,7 +244,8 @@ void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category
  * unless label is set, assign one based on what kind of event it is */
 void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 {
-	/* early-out mask-filter */
+
+/* early-out mask-filter */
 	if (!src || (src->category & ctx->mask_cat_inp))
 		return;
 
@@ -250,9 +255,26 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 		arcan_event* dst = &ctx->eventbuf[ind];
 		*dst = *src;
 		dst->tickstamp = ctx->c_ticks;
-		dst->used = 0xab;
+
+/* track number of dropped events */
+		if (ctx->evbuf_used == ctx->n_eventbuf)
+			ctx->c_leaks++;
+		else
+			ctx->evbuf_used++;
 
 		UNLOCK();
+	}
+}
+
+void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enum ARCAN_EVENT_CATEGORY allowed, float saturation)
+{
+	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.1 ? 0.1 : saturation);
+	
+	while( srcqueue->evbuf_used > 0 &&
+		floor(dstqueue->n_eventbuf * saturation) > dstqueue->evbuf_used){
+		arcan_event* ev = arcan_event_poll(srcqueue);
+		if (ev && ev->category == allowed)
+			arcan_event_enqueue(dstqueue, ev);
 	}
 }
 
@@ -260,10 +282,11 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
 	if (LOCK(ctx)){
 		ctx->kbdrepeat = rate;
+		printf("rate:%d\n", rate);
 		if (rate == 0)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else
-			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, ctx->kbdrepeat);
+			SDL_EnableKeyRepeat(10, ctx->kbdrepeat);
 		UNLOCK();
 	}
 }

@@ -621,7 +621,11 @@ int arcan_lua_pitch(lua_State* ctx)
 int arcan_lua_playaudio(lua_State* ctx)
 {
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
-	arcan_audio_play(id);
+	if (lua_isnumber(ctx, 2))
+		arcan_audio_play(id, true, luaL_checknumber(ctx, 2)); 
+	else 
+		arcan_audio_play(id, false, 0.0);
+
 	return 0;
 }
 
@@ -922,6 +926,7 @@ int arcan_lua_systemcontextsize(lua_State* ctx)
 {
 	unsigned newlim = luaL_checkint(ctx, 1);
 	if (newlim > 1){
+		newlim = newlim > 65536 ? 65536 : newlim;
 		arcan_video_contextsize(newlim);
 	}
 
@@ -1062,7 +1067,9 @@ int arcan_lua_led_intensity(lua_State* ctx)
 	int8_t led = luaL_checkint(ctx, 2);
 	uint8_t intensity = luaL_checkint(ctx, 3);
 
-	lua_pushnumber(ctx, arcan_led_intensity(id, led, intensity));
+	lua_pushnumber(ctx,
+		arcan_led_intensity(id, led, intensity));
+
 	return 1;
 }
 
@@ -2404,8 +2411,9 @@ int arcan_lua_filtergames(lua_State* ctx)
 int arcan_lua_warning(lua_State* ctx)
 {
 	char* msg = (char*) luaL_checkstring(ctx, 1);
+
 	if (strlen(msg) > 0)
-		arcan_warning("%s\n", msg);
+		arcan_warning("(%s) %s\n", arcan_themename, msg);
 	
 	return 0;
 }
@@ -2417,7 +2425,7 @@ int arcan_lua_shutdown(lua_State *ctx)
 
 	const char* str = luaL_optstring(ctx, 1, "");
 	if (strlen(str) > 0)
-		arcan_warning("%s\n", str);
+		arcan_fatal("%s\n", str);
 	
 	return 0;
 }
@@ -2585,8 +2593,8 @@ int arcan_lua_getqueueopts(lua_State* ctx)
 
 int arcan_lua_setqueueopts(lua_State* ctx)
 {
-	unsigned short vcellc = luaL_checknumber(ctx, 1);
-	unsigned short acellc = luaL_checknumber(ctx, 2);
+	unsigned char vcellc = luaL_checknumber(ctx, 1);
+	unsigned char acellc = luaL_checknumber(ctx, 2);
 	unsigned short abufs = luaL_checknumber(ctx, 3);
 	unsigned short presilence = luaL_optnumber(ctx, 4, ARCAN_FRAMESERVER_PRESILENCE);
 	
@@ -3033,7 +3041,6 @@ int arcan_lua_recordset(lua_State* ctx)
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 4, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
-			arcan_warning("detach? %d, %d\n", detach, setvid);
 			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
 		}
 	}
@@ -3322,7 +3329,7 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 					fbuf[1] = luaL_checknumber(ctx, 6);
 					fbuf[2] = luaL_checknumber(ctx, 7);
 					fbuf[3] = luaL_checknumber(ctx, 8);
-					arcan_shader_forceunif(label, shdrvec3, fbuf, persist);
+					arcan_shader_forceunif(label, shdrvec4, fbuf, persist);
 				break;
 
 				case 16:
@@ -3363,7 +3370,7 @@ int arcan_lua_rotatemodel(lua_State* ctx)
 	int rotate_rel    = luaL_optnumber(ctx, 6, CONST_ROTATE_ABSOLUTE);
 
 	if (rotate_rel != CONST_ROTATE_RELATIVE && rotate_rel != CONST_ROTATE_ABSOLUTE)
-		arcan_fatal("arcan_lua_rotatemodel(%d), invalid rotation base defined, (%d) should be ROTATE_ABSOLUTE or ROTATE_RELATIVE\n");
+		arcan_fatal("arcan_lua_rotatemodel(%d), invalid rotation base defined, (%d) should be ROTATE_ABSOLUTE or ROTATE_RELATIVE\n", rotate_rel);
 
 	surface_properties prop = arcan_video_current_properties(vid);
 	
@@ -3378,9 +3385,11 @@ int arcan_lua_rotatemodel(lua_State* ctx)
 int arcan_lua_setimageproc(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
-	
-	if (num >= 0 && num < 2)
+
+	if (num == imageproc_normal || num == imageproc_fliph){
 		arcan_video_default_imageprocmode(num);
+	} else
+		arcan_fatal("arcan_lua_setimageproc(%d), invalid image postprocess specified, expected IMAGEPROC_NORMAL or IMAGEPROC_FLIPH\n", num);
 
 	return 0;
 }
@@ -3447,9 +3456,13 @@ int arcan_lua_tracetag(lua_State* ctx)
 int arcan_lua_setscalemode(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
-	
-	if (num >= 0 && num < 3){
+
+	if (num == ARCAN_VIMAGE_NOPOW2 || num == ARCAN_VIMAGE_TXCOORD ||
+		num == ARCAN_VIMAGE_SCALEPOW2){
 		arcan_video_default_scalemode(num);
+	} else {
+		arcan_fatal("arcan_lua_setscalemode(%d), invalid scale-mode specified. Expecting:"
+		"SCALE_NOPOW2, SCALE_POW2 or SCALE_TXCOORD\n", num);
 	}
 
 	return 0;
@@ -3744,7 +3757,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);
 	arcan_lua_setglobalint(ctx, "IMAGEPROC_NORMAL", imageproc_normal);
 	arcan_lua_setglobalint(ctx, "IMAGEPROC_FLIPH", imageproc_fliph);
-	arcan_lua_setglobalint(ctx, "BLEND_NORMAL", BLEND_NORMAL);
 	arcan_lua_setglobalint(ctx, "WORLDID", ARCAN_VIDEO_WORLDID);
 	arcan_lua_setglobalint(ctx, "BADID", ARCAN_EID);
 	arcan_lua_setglobalint(ctx, "CLOCKRATE", ARCAN_TIMER_TICK);

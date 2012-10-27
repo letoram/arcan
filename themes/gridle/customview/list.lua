@@ -6,8 +6,12 @@ local restbl = {};
 restbl.name = "list";
 
 restbl.create = function(self, constr)
+	if (not constr.font_size) then
+		constr.font_size = settings.colourtable.font_size;
+	end
+
 	self.clipregion = fill_surface(constr.width, constr.height, 0, 255, 0);
-	self.selector   = fill_surface(constr.width, settings.colourtable.font_size + 2, 0, 40, 200);
+	self.selector   = fill_surface(constr.width, constr.font_size + 2, 0, 40, 200);
 
 -- center-pointed used to calculate origo offset
 	self.cpx = math.floor(constr.width  * 0.5);
@@ -30,10 +34,6 @@ restbl.create = function(self, constr)
 
 -- switch to default font if we don't have an override
 	self.constr = constr;
-	if not (self.constr.font_size and self.constr.font) then
-		self.constr.font = settings.colourtable.font;
-		self.constr.font_size = settings.colourtable.font_size;
-	end
 
 	show_image(self.selector);
 	return nil;
@@ -65,7 +65,7 @@ end
 
 restbl.get_linestr = function(self, gametbl)
 	local res = gametbl.title;
-	local fs = tostring(settings.colourtable.font_size);
+	local fs = tostring(self.constr.font_size);
 	
 	if self.icons[gametbl.setname .. ".ico"] then
 		res = "\\P" .. fs .. "," .. fs ..",icons/" .. gametbl.setname .. ".ico," .. res;
@@ -82,7 +82,7 @@ restbl.redraw = function(self)
 	end
 	
 	local page_beg, page_ofs, page_end = self:curpage(); 
-	local renderstr = settings.colourtable.data_fontstr;
+	local renderstr = self.constr.font .. self.constr.font_size.. " ";
 
 -- self.linestr is responsible for padding with icons etc.
 	for ind = page_beg, page_end do
@@ -140,10 +140,28 @@ restbl.step = function(self, stepv)
 	end
 end
 
+local function window_height(fontmsg, nlines)
+	local heightstr = fontmsg;
+	for i=1,nlines do
+		heightstr = heightstr .. " Ag\\n\\r"
+	end
+	txw, txh = text_dimensions(heightstr);
+
+	return txh;
+end
+
 restbl.update_list = function(self, gamelist)
 	self.list   = gamelist;
 	self.cursor = 1;
-	self.page_size = math.floor( (self.constr.height / ( self.constr.font_size + 2)) - 1 );
+	self.page_size = math.floor( (self.constr.height / ( settings.colourtable.font_size + 2)) - 1 );
+	
+	while (self.page_size > 1 and
+		window_height(self.constr.font .. self.constr.font_size .. " ", self.page_size) > self.constr.height) do
+		self.page_size = self.page_size - 1;
+	end
+
+	if (self.page_size < 1) then self.page_size = 0; end
+	
 	self:redraw();
 end
 

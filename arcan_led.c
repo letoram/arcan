@@ -176,7 +176,6 @@ bool arcan_led_rgb(uint8_t device, int8_t led, uint8_t r, uint8_t g, uint8_t b)
 	return rv;
 }
 
-
 led_capabilities arcan_led_capabilities(uint8_t device)
 {
 	led_capabilities rv = {0};
@@ -197,7 +196,6 @@ led_capabilities arcan_led_capabilities(uint8_t device)
 
 	return rv;
 }
-
 
 void arcan_led_cleanup()
 {

@@ -105,7 +105,7 @@ arcan_errc arcan_audio_stop(arcan_aobj_id);
 arcan_aobj_id arcan_audio_stream(const char* uri, enum aobj_atypes type, arcan_errc* errc);
 
 /* initiate playback (i.e. push buffers to OpenAL) */
-arcan_errc arcan_audio_play(arcan_aobj_id);
+arcan_errc arcan_audio_play(arcan_aobj_id, bool gain_override, float gain);
 
 /* Pause might not work satisfactory. If this starts acting weird,
  * consider using the rebuild hack above */
