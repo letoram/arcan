@@ -989,7 +989,7 @@ int arcan_lua_playmovie(lua_State* ctx)
 	return 0;
 }
 
-static bool isspecial(const char* msg)
+static bool is_special_res(const char* msg)
 {
 	return strncmp(msg, "vidcap", 6) == 0;
 }
@@ -1003,7 +1003,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	}
 	
 	const char* farg = luaL_checkstring(ctx, 1);
-	bool special = isspecial(farg);
+	bool special = is_special_res(farg);
 	char* fname = special ? strdup(farg) : findresource(farg, ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	intptr_t ref = (intptr_t) 0;
 
