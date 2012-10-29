@@ -14,6 +14,7 @@ end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
+	video_3dorder(ORDER_LAST);
 	detailview.game  = gametbl;
 	detailview.model = setup_cabinet_model(detailres, gametbl.resources, {});
 	

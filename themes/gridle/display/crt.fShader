@@ -1,3 +1,24 @@
+/*
+    cgwg's CRT shader
+
+    Copyright (C) 2010-2011 cgwg, Themaister
+
+    This program is free software; you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by the Free
+    Software Foundation; either version 2 of the License, or (at your option)
+    any later version.
+
+    (cgwg gave their consent to have their code distributed under the GPL in
+    this message:
+
+        http://board.byuu.org/viewtopic.php?p=26075#p26075
+
+        "Feel free to distribute my shaders under the GPL. After all, the
+        barrel distortion code was taken from the Curvature shader, which is
+        under the GPL."
+    )
+*/
+
 #version 120
 
 // Macros.
@@ -5,14 +26,14 @@
 #define PI 3.141592653589
  
 #ifdef LINEAR_PROCESSING
-#       define TEX2D(c) pow(texture2D(rubyTexture, (c)), vec4(CRTgamma))
+#       define TEX2D(c) pow(texture2D(map_diffuse, (c)), vec4(CRTgamma))
 #else
-#       define TEX2D(c) texture2D(rubyTexture, (c))
+#       define TEX2D(c) texture2D(map_diffuse, (c))
 #endif
  
-uniform sampler2D rubyTexture;
-uniform vec2 rubyInputSize;
-uniform vec2 rubyTextureSize;
+uniform sampler2D map_diffuse;
+uniform vec2 input_size;
+uniform vec2 storage_size;
 uniform float obj_opacity;
 uniform float curv_radius;
 uniform float distance;
@@ -59,14 +80,14 @@ vec2 bkwtrans(vec2 xy)
  
 vec2 transform(vec2 coord)
 {
-  coord *= rubyTextureSize / rubyInputSize;
+  coord *= storage_size / input_size;
   coord = (coord-vec2(0.5))*aspect*stretch.z+stretch.xy;
-  return (bkwtrans(coord)/overscan/aspect+vec2(0.5)) * rubyInputSize / rubyTextureSize;
+  return (bkwtrans(coord)/overscan/aspect+vec2(0.5)) * input_size / storage_size;
 }
  
 float corner(vec2 coord)
 {
-  coord *= rubyTextureSize / rubyInputSize;
+  coord *= storage_size / input_size;
   coord = (coord - vec2(0.5)) * overscan + vec2(0.5);
   coord = min(coord, vec2(1.0)-coord) * aspect;
   vec2 cdist = vec2(cornersize);
@@ -137,14 +158,14 @@ void main()
  
   // Of all the pixels that are mapped onto the texel we are
   // currently rendering, which pixel are we currently rendering?
-  vec2 ratio_scale = xy * rubyTextureSize - vec2(0.5);
+  vec2 ratio_scale = xy * storage_size - vec2(0.5);
 #ifdef OVERSAMPLE
   float filter = fwidth(ratio_scale.y);
 #endif
   vec2 uv_ratio = fract(ratio_scale);
  
   // Snap to the center of the underlying texel.
-  xy = (floor(ratio_scale) + vec2(0.5)) / rubyTextureSize;
+  xy = (floor(ratio_scale) + vec2(0.5)) / storage_size;
  
   // Calculate Lanczos scaling coefficients describing the effect
   // of various neighbour texels in a scanline on the current

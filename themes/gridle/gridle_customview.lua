@@ -476,6 +476,7 @@ local function customview_internal(source, datatbl)
 		blend_image(term, 1.0, settings.fadedelay);
 		resize_image(term, VRESW, VRESH);
 		order_image(term, max_current_image_order());
+	elseif (datatbl.kind == "message") then
 	end
 end
 

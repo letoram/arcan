@@ -1223,9 +1223,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 		return 1;
 	}
 		
-	if (vstate->tag == ARCAN_TAG_FRAMESERV)
-		arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev );
-
+	arcan_frameserver_pushevent( (arcan_frameserver*) vstate->ptr, &ev );
 	lua_pushnumber(ctx, true);
 	return 1;
 }
@@ -1443,10 +1441,60 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 		}
 	}
+	else if (ev->category == EVENT_EXTERNAL){
+		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
+			return;
+
+/* need to jump through a few hoops to get hold of the possible callback function */
+		arcan_vobject* vobj = arcan_video_getobject(ev->data.external.source);
+		assert(vobj->feed.state.tag == ARCAN_TAG_FRAMESERV);
+		assert(vobj->feed.state.ptr);
+
+		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		if (fsrv->tag){
+			intptr_t dst_cb = fsrv->tag;
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
+			lua_pushvid(ctx, ev->data.external.source);
+
+			lua_newtable(ctx);
+			int top = lua_gettop(ctx);
+			switch (ev->kind){
+				case EVENT_EXTERNAL_NOTICE_MESSAGE:
+					arcan_lua_tblstr(ctx, "kind", "message", top);
+					arcan_lua_tblstr(ctx, "message", ev->data.external.message, top);
+				break;
+				case EVENT_EXTERNAL_NOTICE_FAILURE:
+					arcan_lua_tblstr(ctx, "kind", "failure", top);
+					arcan_lua_tblnum(ctx, "code", ev->data.external.code, top);
+				break;
+				case EVENT_EXTERNAL_NOTICE_NEWFRAME:
+					arcan_lua_tblstr(ctx, "kind", "frame", top);
+					arcan_lua_tblnum(ctx, "frame", ev->data.external.framenumber, top);
+				break;
+				default:
+					arcan_lua_tblstr(ctx, "kind", "unknown", top);
+					arcan_lua_tblnum(ctx, "kind_num", ev->kind, top);
+			}
+			
+			lua_ctx_store.cb_source_tag  = ev->data.external.source;
+			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+
+			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+		}
+		
+	}
 	else if (ev->category == EVENT_FRAMESERVER){
 		bool gotfun;
 		intptr_t dst_cb = 0;
-		
+
+/*
+ * drop frameserver events for which the queue object has died,
+ * VID reuse won't actually be a problem unless the user ehrm, allocates/deletes full 32-bit (-context_size) in one go
+ */
+		if (arcan_video_findparent(ev->data.frameserver.video) == ARCAN_EID)
+			return;
+
 		if (arcan_lua_grabthemefunction(ctx, "frameserver_event"))
 			gotfun = true;
 		else

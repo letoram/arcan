@@ -626,10 +626,9 @@ local function toggle_crtmode(vid, props, windw, windh)
 	local sprops = image_storage_properties(internal_vid);
 	settings.fullscreen_shader = shader;
 
-	shader_uniform(shader, "rubyInputSize", "ff", PERSIST, sprops.width, sprops.height);
-	shader_uniform(shader, "rubyOutputSize", "ff", PERSIST, windw, windh); 
-	shader_uniform(shader, "rubyTextureSize", "ff", PERSIST, props.width, props.height);
-	shader_uniform(shader, "rubyTexture", "i", PERSIST, 0);
+	shader_uniform(shader, "input_size", "ff", PERSIST, sprops.width, sprops.height);
+	shader_uniform(shader, "output_size", "ff", PERSIST, windw, windh);
+	shader_uniform(shader, "storage_size", "ff", PERSIST, props.width, props.height);
 	shader_uniform(shader, "CRTgamma", "f", PERSIST, settings.crt_gamma);
 	shader_uniform(shader, "overscan", "ff", PERSIST, settings.crt_hoverscan, settings.crt_voverscan);
 	shader_uniform(shader, "monitorgamma", "f", PERSIST, settings.crt_mongamma);
@@ -714,7 +713,7 @@ function gridlemenu_rebuilddisplay()
 		blend_image(dstbuf, 1);
 	else
 
-		fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader);
+		fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
 	end
 	
 -- redo so that instancing etc. match
@@ -839,11 +838,13 @@ function gridlemenu_resize_fullscreen(source, init_props)
 	return windw, windh;
 end
 
-function gridlemenu_loadshader(basename, dstvid, dstprops, key)
+function gridlemenu_loadshader(basename, dstvid)
 	local vsh = nil;
 	local fsh = nil;
-	if (dstvid == nil) then dstvid = internal_vid; end
-	if (dstprops == nil) then dstprops = image_surface_initial_properties(dstvid); end
+
+	local storprops  = image_storage_properties(dstvid);
+	local dispprops  = image_surface_properties(dstvid);
+	local startprops = image_surface_initial_properties(dstvid);
 	
 	if ( resource("shaders/fullscreen/" .. basename .. ".vShader") ) then
 		vsh = "shaders/fullscreen/" .. basename .. ".vShader";
@@ -860,6 +861,11 @@ function gridlemenu_loadshader(basename, dstvid, dstprops, key)
 	end
 	
 	local resshdr = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
+
+	shader_uniform(resshdr, "ff", "output_size",  PERSIST, dispprops.width,  dispprops.height );
+	shader_uniform(resshdr, "ff", "input_size",   PERSIST, startprops.width, startprops.height);
+	shader_uniform(resshdr, "ff", "storage_size", PERSIST, storprops.width,  storprops.height );
+	
 	image_shader(dstvid, resshdr);
 	
 	return resshdr;

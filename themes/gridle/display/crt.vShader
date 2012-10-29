@@ -1,13 +1,33 @@
+/*
+    cgwg's CRT shader
+
+    Copyright (C) 2010-2011 cgwg, Themaister
+
+    This program is free software; you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by the Free
+    Software Foundation; either version 2 of the License, or (at your option)
+    any later version.
+
+    (cgwg gave their consent to have their code distributed under the GPL in
+    this message:
+
+        http://board.byuu.org/viewtopic.php?p=26075#p26075
+
+        "Feel free to distribute my shaders under the GPL. After all, the
+        barrel distortion code was taken from the Curvature shader, which is
+        under the GPL."
+    )
+*/
+
 #version 120
 
 uniform mat4 modelview;
 uniform mat4 projection;
 
-/* these could be packed into one mat4 should 
- * the overhead of many uniform locations  be too many */
-uniform vec2 rubyInputSize;
-uniform vec2 rubyTextureSize;
-uniform vec2 rubyOutputSize;
+/* these could be packed into one mat4 should the overhead of many uniform locations be too many */
+uniform vec2 input_size;
+uniform vec2 storage_size;
+uniform vec2 output_size;
 uniform float CRTgamma;
 uniform float monitorgamma;
 uniform float distance;
@@ -83,8 +103,8 @@ void main()
   cosangle = cos(tilt_angle);
   stretch = maxscale();
  
-  one = 1.0 / rubyTextureSize;
-  mod_factor = texcoord.x * rubyTextureSize.x * rubyOutputSize.x / rubyInputSize.x;
+  one = 1.0 / storage_size;
+  mod_factor = texcoord.x * storage_size.x * output_size.x / input_size.x;
 
   texCoord = texcoord; 
 }

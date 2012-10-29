@@ -153,7 +153,7 @@ end
 restbl.update_list = function(self, gamelist)
 	self.list   = gamelist;
 	self.cursor = 1;
-	self.page_size = math.floor( (self.constr.height / ( settings.colourtable.font_size + 2)) - 1 );
+	self.page_size = math.floor( self.constr.height / self.constr.font_size );
 	
 	while (self.page_size > 1 and
 		window_height(self.constr.font .. self.constr.font_size .. " ", self.page_size) > self.constr.height) do
