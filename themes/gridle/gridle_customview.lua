@@ -475,6 +475,8 @@ local function customview_internal(source, datatbl)
 		blend_image(term, 1.0, settings.fadedelay);
 		resize_image(term, VRESW, VRESH);
 		order_image(term, max_current_image_order());
+		gridle_input = gridle_internalinput;
+		
 	elseif (datatbl.kind == "message") then
 		spawn_warning(datatbl.message);
 	end
@@ -519,6 +521,10 @@ customview.cleanup = function()
 end
 
 local function launch(tbl)
+	if (tbl.capabilities == nil) then
+		return;
+	end
+	
 	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
 	push_video_context();
 
