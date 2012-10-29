@@ -214,7 +214,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			rv = ARCAN_ERRC_BAD_ARGUMENT;
 		}
 
-		CloseHandle(fdh);
+/*	removed: likely suspect for a Windows Exception in zwClose and friends.	CloseHandle(fdh); */
 		_close(fd);
 	}
 

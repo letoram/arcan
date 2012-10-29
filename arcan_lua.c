@@ -2160,7 +2160,8 @@ int arcan_lua_fillsurface(lua_State* ctx)
 		return 1;
 	}
 	else {
-		arcan_fatal("arcan_lua_fillsurface(%d, %d) unacceptable surface dimensions, compile time restriction 0 > (w,y) <= (%d,%d)\n", desw, desh, MAX_SURFACEW, MAX_SURFACEH);
+		arcan_fatal("arcan_lua_fillsurface(%d, %d) unacceptable surface dimensions, compile time restriction 0 > (%d,%d) <= (%d,%d)\n", 
+			cons.w, cons.h, desw, desh, MAX_SURFACEW, MAX_SURFACEH);
 	}
 
 error:
