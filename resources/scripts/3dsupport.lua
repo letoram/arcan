@@ -210,13 +210,14 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 
 			set_image_as_frame(model.vid, vid, slot, FRAMESET_DETACH);
 			local mat = find_material(modelname, meshname);
-			
-			load_image_asynch(mat, function(source, statustbl)
-				if (statustbl.kind ~= "load_failed") then
-					local old = set_image_as_frame(model.vid, source, slot, FRAMESET_DETACH);
-					if (valid_vid(old) and old ~= source) then delete_image(old); end
-				end
-			end);
+			if (mat) then
+				load_image_asynch(mat, function(source, statustbl)
+					if (statustbl.kind ~= "load_failed") then
+						local old = set_image_as_frame(model.vid, source, slot, FRAMESET_DETACH);
+						if	 (valid_vid(old) and old ~= source) then delete_image(old); end
+					end
+				end);
+			end
 
 -- otherwise, if no texture was found, leave it empty or replace with randomized surface
 -- or set material when it have been asynchronously loaded 
@@ -500,7 +501,6 @@ function setup_cabinet_model(modelname, restbl, options)
 			end
 	
 			if (self.labels["display"] == nil) then
-				print("update_display( no display )");
 				delete_image(vid);
 				return;
 			end
@@ -512,7 +512,6 @@ function setup_cabinet_model(modelname, restbl, options)
 			local rvid = set_image_as_frame(self.vid, vid, self.labels["display"], FRAMESET_DETACH);
 			mesh_shader(self.vid, shid, self.labels["display"]);
 
-			print("update display", rvid, vid);
 			if (valid_vid(rvid) and rvid ~= vid) then
 				expire_image(rvid, 20);
 			end
@@ -552,9 +551,11 @@ function setup_cabinet_model(modelname, restbl, options)
 			mesh_shader(res.vid, def3d_fullbright, res.labels["snapshot"]);
 			
 			if (restbl.screenshots and #restbl.screenshots > 0) then
-				snapvid = load_image_asynch(restbl.screenshots[math.random(1,#restbl.screenshots)], material_loaded);
-				image_tracetag(snapvid, "3dmodel(" .. modelname .. "):display_snap");
-				local rvid = set_image_as_frame(res.vid, snapvid, res.labels["snapshot"], FRAMESET_DETACH);
+				switch_default_imageproc(IMAGEPROC_FLIPH);
+					snapvid = load_image_asynch(restbl.screenshots[math.random(1,#restbl.screenshots)], material_loaded);
+					image_tracetag(snapvid, "3dmodel(" .. modelname .. "):display_snap");
+					local rvid = set_image_as_frame(res.vid, snapvid, res.labels["snapshot"], FRAMESET_DETACH);
+				switch_default_imageproc(IMAGEPROC_NORMAL);
 				if (valid_vid(rvid)) then delete_image(rvid); end
 			end
 		end
@@ -565,11 +566,9 @@ function setup_cabinet_model(modelname, restbl, options)
 			if (restbl.movies and #restbl.movies > 0) then
 				vid, aid = load_movie(restbl.movies[math.random(1,#restbl.movies)], FRAMESERVER_LOOP, function(source, tbl)
 					if (tbl.kind ~= "frameserver_terminated") then
-						print("loop?", tbl.kind);
 						play_movie(source);
 						res:update_display(source, def3d_fullbright_flip);
 					else
-						print("mmm", tbl.kind);
 						res:display_broken();
 					end
 				end);
@@ -579,8 +578,10 @@ function setup_cabinet_model(modelname, restbl, options)
 			elseif (restbl.screenshots and #restbl.screenshots > 0) then
 -- try to reuse already loaded snapshot
 				if (snapvid == nil) then
+					switch_default_imageproc(IMAGEPROC_FLIPH);
 					snapvid = load_image_asynch(restbl.screenshots[math.random(1,#restbl.screenshots)], material_loaded);
 					image_tracetag(snapvid, "3dmodel(" .. modelname .. "):display_ss");
+					switch_default_imageproc(IMAGEPROC_NORMAL);
 				end
 
 				res:update_display(snapvid);
@@ -596,11 +597,15 @@ function setup_cabinet_model(modelname, restbl, options)
 -- even if the model may define these, they can be overridden by having the corresponding media elsewhere
 		if (res.labels["marquee"]) then
 			mesh_shader(res.vid, def3d_backlights, res.labels["marquee"]);
-			if (restbl.marquees and #restbl.marquees > 0) then
-				local marqvid = load_image_asynch(restbl.marquees[math.random(1,#restbl.marquees)], material_loaded);
-				image_tracetag(marqvid, "3dmodel("..modelname.."):marqueeres");
-				local rvid = set_image_as_frame(res.vid, marqvid, res.labels["marquee"], FRAMESET_DETACH);
 
+			if (restbl.marquees and #restbl.marquees > 0) then
+
+				switch_default_imageproc(IMAGEPROC_FLIPH);
+					local marqvid = load_image_asynch(restbl.marquees[math.random(1,#restbl.marquees)], material_loaded);
+					image_tracetag(marqvid, "3dmodel("..modelname.."):marqueeres");
+					local rvid = set_image_as_frame(res.vid, marqvid, res.labels["marquee"], FRAMESET_DETACH);
+				switch_default_imageproc(IMAGEPROC_NORMAL);
+				
 				if (valid_vid(rvid)) then delete_image(rvid); end
 			end
 		end

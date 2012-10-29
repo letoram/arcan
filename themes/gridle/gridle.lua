@@ -825,6 +825,7 @@ function spawn_warning( message )
 	move_image(infowin.anchor, x, y);
 	hide_image(infowin.cursorvid);
 	expire_image(infowin.anchor, 125);
+	blend_image(infowin.window, 0.0, 125);
 	blend_image(infowin.border, 0.0, 125);
 end
 
