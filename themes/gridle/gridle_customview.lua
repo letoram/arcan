@@ -253,7 +253,6 @@ end
 customview.position_item = function(vid, trigger, lbls)
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
 -- would need state tracking and hook to the clock 
-	kbd_repeat(40);
 	cascade_visibility(current_menu, 0.0);
 	
 	customview.position_modes  = lbls and lbls or customview.position_modes_default;
@@ -578,6 +577,7 @@ local function positiondynamic(label)
 		if (model) then
 			local vid = model.vid;
 			customview.new_item3d(vid, "model", string.lower(label));
+			orient3d_model(model.vid, 0, -90, 0);
 			customview.position_item(vid, save_item, customview.position_modes_3d);
 			show_image(vid);
 			update_object3d(vid);
@@ -1099,7 +1099,7 @@ function gridle_customview()
 
 	else
 		customview.in_config = true;
-		video_3dorder(ORDER_FIRST);
+		video_3dorder(ORDER_LAST);
 		disptbl = show_config();
 	end
 	
