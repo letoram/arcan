@@ -9,6 +9,7 @@ settings = {};
 settings.iodispatch = {};
 settings.placeholders = {};
 settings.target_list = {};
+settings.vid_info = {};
 
 corecomp_keyconf = nil;
 corecomp_setuptargets = nil;
@@ -99,10 +100,16 @@ function corecomp_start()
 	end
 	
 	for ind, val in ipairs(settings.placeholders) do delete_image(val); end
+
 	for ind, val in ipairs(settings.target_list) do 
 		vid, aid = launch_target(val.gameid, LAUNCH_INTERNAL, function(source, status)
 		if (status.kind == "resized") then
 			corecomp_updategrid(source, status);
+		elseif (status.kind == "frame") then
+			if (not settings.vid_info[tostring(source)]) then
+				settings.vid_info[tostring(source)] = {};
+			end
+			settings.vid_info[tostring(source)].lastframe = status.frame;
 		end
 	end);
 
@@ -139,6 +146,18 @@ function update_targetsplit()
 		end
 	end
 	
+end
+
+function corecomp_clock_pulse()
+	for ind, val in pairs(settings.vid_info) do
+		if (val.textid) then delete_image(val.textid); end
+		if (val.lastframe) then
+			local props = image_surface_properties(tonumber(ind));
+			val.textid = render_text( settings.colourtable.fontstr .. " " .. tostring(val.lastframe) );
+			show_image(val.textid);
+			move_image(val.textid, props.x, props.y);
+		end
+	end
 end
 
 function setup_game(source)

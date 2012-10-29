@@ -153,7 +153,7 @@ settings = {
 	in_internal = false,
 	cocktail_mode = "Disabled",
 	autosave = "On",
-	view_mode = "Grid",
+	view_mode = "Grid"
 };
 
 settings.sortfunctions = {};
@@ -814,22 +814,18 @@ end
 
 function spawn_warning( message )
 -- render message and make sure it is on top
-	local vid = render_text(settings.colourtable.alert_fontstr .. string.gsub(message, "\\", "\\\\") );
-	image_tracetag(vid, "warning message");
-	order_image(vid, max_current_image_order() + 1);
-	local props = image_surface_properties(vid);
+	local msg         = string.gsub(message, "\\", "\\\\"); 
+	local infowin     = listview_create( {msg}, VRESW / 2, VRESH / 2 );
+	
+	infowin:show();
 
--- long messages, vertical screens
-	if (props.width > VRESW) then 
-		props.width = VRESW;
-		resize_image(vid, VRESW, 0);
-	end
-
--- position and start fading slowly
-	move_image(vid, VRESW * 0.5 - props.width * 0.5, 5, NOW);
-	show_image(vid);
-	expire_image(vid, 125);
-	blend_image(vid, 0.0, 125);
+	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
+	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
+	
+	move_image(infowin.anchor, x, y);
+	hide_image(infowin.cursorvid);
+	expire_image(infowin.anchor, 125);
+	blend_image(infowin.border, 0.0, 125);
 end
 
 function spawn_favoritestar( x, y )
@@ -1439,8 +1435,8 @@ function gridle_internal_status(source, datatbl)
 		if (not settings.in_internal) then
 			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
 		end
-	else
-		print(datatbl.kind);
+	elseif (datatbl.kind == "message") then
+		spawn_warning(datatbl.message);
 	end
 end
 
