@@ -25,12 +25,12 @@ local function listview_redraw(self)
 			local fmt = self.formats[ tmpname ];
 			
 			if (string.sub(tmpname, 1, 3) == "---") then
-				renderstr = renderstr .. settings.colourtable.hilight_fontstr .. tmpname .. [[\n\r]];
+				renderstr = renderstr .. self.hilight_fontstr .. tmpname .. [[\n\r]];
 			else
 				if (fmt) then
 					renderstr = renderstr .. fmt .. tmpname .. [[\n\r]];
 				else
-					renderstr = renderstr .. settings.colourtable.data_fontstr .. tmpname .. [[\n\r]];
+					renderstr = renderstr .. self.data_fontstr .. tmpname .. [[\n\r]];
 				end
 			end
 		end
@@ -91,7 +91,7 @@ local function listview_move_cursor(self, step, relative)
 -- could be fixed by caching page etc. and see if we land on a new one
 	instant_image_transform(self.cursorvid);
 	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] + 4, 10);
-	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, settings.colourtable.font_size + 2);
+	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, self.font_size + 2);
 	order_image(self.cursorvid, order + 1);
 end
 
@@ -119,8 +119,8 @@ end
 function listview_show(self)
 	restbl.anchor    = fill_surface(1, 1, 0, 0, 0);
 	restbl.cursorvid = fill_surface(1, 1, 255, 255, 255);
-	restbl.border    = fill_surface(8, 8, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b);
-	restbl.window    = fill_surface(8, 8, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b);
+	restbl.border    = fill_surface(8, 8, self.dialog_border.r, self.dialog_border.g, self.dialog_border.b);
+	restbl.window    = fill_surface(8, 8, self.dialog_window.r, self.dialog_window.g, self.dialog_window.b);
 
 	move_image(restbl.anchor, -1, -1);
 	blend_image(restbl.anchor, 1.0, settings.fadedelay);
@@ -128,8 +128,8 @@ function listview_show(self)
 	link_image(self.border, restbl.anchor);
 	link_image(self.window, restbl.anchor);
 
-	blend_image(self.window, settings.colourtable.dialog_window.a);
-	blend_image(self.border, settings.colourtable.dialog_border.a);
+	blend_image(self.window, self.dialog_window.a);
+	blend_image(self.border, self.dialog_border.a);
 	
 	link_image(self.cursorvid, restbl.anchor);
 	blend_image(self.cursorvid, 0.3);
@@ -139,8 +139,8 @@ function listview_show(self)
 	self:push_to_front();
 end
 
-local function window_height(nlines)
-	local heightstr = settings.colourtable.hilight_fontstr;
+local function window_height(self, nlines)
+	local heightstr = self.hilight_fontstr;
 	for i=1,nlines do
 		heightstr = heightstr .. " A\\n\\r"
 	end
@@ -162,14 +162,20 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.cursor = 1;
 	restbl.maxw = math.ceil( maxw );
 
-	restbl.page_size = math.floor( height / (settings.colourtable.font_size + 6) );
+	restbl.font_size       = settings.colourtable.font_size;
+	restbl.hilight_fontstr = settings.colourtable.hilight_fontstr;
+	restbl.data_fontstr    = settings.colourtable.data_fontstr;
+	restbl.dialog_border   = settings.colourtable.dialog_border;
+	restbl.dialog_window   = settings.colourtable.dialog_window;
+	
+	restbl.page_size = math.floor( height / (restbl.font_size + 6) );
 	
 	if (restbl.page_size == 0) then
-		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(settings.colourtable.font_size + 6) .. ")\n");
+		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(restbl.font_size + 6) .. ")\n");
 		return nil;
 	end
 
-	while (window_height(restbl.page_size) > height) do
+	while (window_height(restbl, restbl.page_size) > height) do
 		restbl.page_size = restbl.page_size - 1;
 	end
 	if (restbl.page_size == 0) then restbl.page_size = 1; end
