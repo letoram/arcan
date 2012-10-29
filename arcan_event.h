@@ -37,9 +37,12 @@ enum ARCAN_EVENT_CATEGORY {
 	EVENT_TIMER  = 4,
 	EVENT_VIDEO  = 8,
 	EVENT_AUDIO  = 16,
+/* main app -> frameserver */
+
 	EVENT_TARGET = 32,
 	EVENT_FRAMESERVER = 64,
-	EVENT_FRAMESERVER_QUERY = 128
+/* frameserver -> main app */
+	EVENT_EXTERNAL = 128
 };
 
 enum ARCAN_EVENT_SYSTEM {
@@ -120,8 +123,10 @@ enum ARCAN_EVENT_FRAMESERVER {
 	EVENT_FRAMESERVER_LOOPED
 };
 
-enum ARCAN_EVENT_FRAMESERVER_QUERY {
-	EVENT_FRAMESERVER_IDENTIFIER_RESPONSE
+enum ARCAN_EVENT_EXTERNAL {
+	EVENT_EXTERNAL_NOTICE_MESSAGE,
+	EVENT_EXTERNAL_NOTICE_FAILURE,
+	EVENT_EXTERNAL_NOTICE_NEWFRAME
 };
 
 enum ARCAN_EVENT_VIDEO {
@@ -134,11 +139,11 @@ enum ARCAN_EVENT_VIDEO {
 	EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED
 };
 
-enum ARCAN_EVENT_EXTERNAL {
-	EVENT_EXTERNAL_CONNECTED,
-	EVENT_EXTERNAL_DISCONNECTED,
-	EVENT_EXTERNAL_CUSTOMMSG,
-	EVENT_EXTERNAL_INPUTEVENT
+enum ARCAN_EVENT_NET {
+	EVENT_NET_CONNECTED,
+	EVENT_NET_DISCONNECTED,
+	EVENT_NET_CUSTOMMSG,
+	EVENT_NET_INPUTEVENT
 };
 
 enum ARCAN_EVENT_AUDIO {
@@ -252,6 +257,16 @@ typedef struct arcan_tgtevent {
 #endif
 } arcan_tgtevent;
 
+typedef struct arcan_extevent {
+	arcan_vobj_id source;
+
+	union {
+		char message[24];
+		uint32_t code;
+		uint32_t framenumber;
+	};
+} arcan_extevent;
+
 typedef union event_data {
 	arcan_ioevent io;
 	arcan_vevent video;
@@ -260,6 +275,8 @@ typedef union event_data {
 	arcan_tevent timer;
 	arcan_tgtevent target;
 	arcan_fsrvevent frameserver;
+	arcan_extevent external;
+
 	void* other;
 } event_data;
 
@@ -268,7 +285,7 @@ typedef struct arcan_event {
 	unsigned tickstamp;
 
 	char label[16];
-	char category;
+	unsigned char category;
 	
 	event_data data;
 } arcan_event;
@@ -297,7 +314,6 @@ struct arcan_evctx {
 	} analog_filter;
 	
 	unsigned n_eventbuf;
-	unsigned evbuf_used;
 	arcan_event* eventbuf;
 	
 	unsigned* front;
@@ -340,13 +356,15 @@ arcan_evctx* arcan_event_defaultctx();
 
 /* Pushes as many events from srcqueue to dstqueue as possible without over-saturating.
  * allowed defines which kind of category that will be transferred, other events will be ignored.
- * The saturation cap is defined in 0..1 range as % of full capacity */
+ * The saturation cap is defined in 0..1 range as % of full capacity
+ * specifying a source ID (can be ARCAN_EID) will be used for rewrites if the category has a source identifier 
+ */
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
-	enum ARCAN_EVENT_CATEGORY allowed, float saturation);
+	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source);
 
-/* add an event to the queue,
- * currently thread-unsafe as there's
- * no active context-management */
+/* enqueue an event into the specified event-context,
+ * for non-frameserver part of the application, this can be substituted with arcan_event_defaultctx()
+ * thread-safe */
 void arcan_event_enqueue(arcan_evctx*, const arcan_event*);
 
 /* ignore-all on enqueue */

@@ -47,7 +47,7 @@ struct frameserver_shmpage {
  * context in each process, mapped to the same posix semaphore */
 	struct {
 		arcan_event evqueue[ SHMPAGE_QUEUESIZE ];
-		unsigned front, back;
+		uint32_t front, back;
 	} childdevq, parentdevq;
 
 	process_handle parent;
@@ -70,7 +70,7 @@ struct frameserver_shmpage {
 	volatile uint8_t aready;
 
 	uint8_t channels;
-	unsigned samplerate;
+	uint32_t samplerate;
 	uint32_t apts;
 
 /* abufbase is a working buffer offset in how far parent has processed */
@@ -94,9 +94,7 @@ bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 /* calculate video/audio buffers from shmpage as baseaddr */
 void frameserver_shmpage_calcofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr);
 void frameserver_shmpage_forceofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, unsigned height, unsigned bpp);
-
-/* this code is repeated a little too often so sortof fits here but adds a dependency to arcan_event */
-void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_evctx*, arcan_evctx*, bool);
+void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
 
 /* (client use only) using a keyname, setup shmpage (with eventqueues etc.) and semaphores */
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink);

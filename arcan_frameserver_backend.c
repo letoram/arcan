@@ -251,6 +251,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		case ffunc_render:
+			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is detected, just ignore this frame */
 			srcw = shmpage->storage.w;
 			srch = shmpage->storage.h;
@@ -306,7 +307,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) == 0){
 			assert(src->vidp != src->audp);
-			
+
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
 				SDL_mutexP(src->lock_audb);
@@ -371,7 +372,6 @@ void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz,
 	SDL_mutexV(dst->lock_audb);
 	}
 	else; 
-//		arcan_warning("arcan_avfeedmon(frameserver:%d) -- intermediate audio buffer full, (%zu) => %d/%d).\n", src, (channels == 1 ? buf_sz * 2 : buf_sz) + sizeof(hdr), dst->ofs_audb, dst->sz_audb);
 }
 
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)

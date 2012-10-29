@@ -723,8 +723,9 @@ static inline bool retroctx_sync()
  * of the core will be sent to stdout. */
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
-	retroctx.converter  = (pixconv_fun) libretro_rgb1555_rgba;
-	const char* libname  = resource;
+	retroctx.converter    = (pixconv_fun) libretro_rgb1555_rgba;
+	const char* libname   = resource;
+	uint32_t framecounter = 0;
 	int errc;
 	LOG("mode_libretro (%s)\n", resource);
 
@@ -832,8 +833,21 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false);
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 
+/* send some information on what core is actually loaded etc. */
+		arcan_event outev = {
+			.category = EVENT_EXTERNAL,
+			.kind = EVENT_EXTERNAL_NOTICE_MESSAGE
+		};
+
+		snprintf(outev.data.external.message,
+			sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]),
+			"%s %s", sysinf.library_name, sysinf.library_version
+			);
+		arcan_event_enqueue(&retroctx.outevq, &outev);
+		
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
 	* parent event processing as well */
+		outev.data.external.framenumber = 0;
 		retroctx.reset();
 
 /* basetime is used as epoch for all other timing calculations */
@@ -887,6 +901,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					retroctx.audbuf_ofs = 0;
 				}
 
+				outev.kind = EVENT_EXTERNAL_NOTICE_NEWFRAME;
+				outev.data.external.framenumber++;
+				arcan_event_enqueue(&retroctx.outevq, &outev);
+	
 				shared->vready = true;
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 			};

@@ -160,9 +160,7 @@ arcan_event* arcan_event_poll(arcan_evctx* ctx)
 
 			rv = &ctx->eventbuf[ *ctx->front ];
 			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
-			ctx->evbuf_used--;
-			assert(ctx->evbuf_used >= 0);
-			
+
 			UNLOCK();
 		}
 
@@ -244,37 +242,35 @@ void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category
  * unless label is set, assign one based on what kind of event it is */
 void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 {
-
 /* early-out mask-filter */
-	if (!src || (src->category & ctx->mask_cat_inp))
+	if (!src || (src->category & ctx->mask_cat_inp)){
 		return;
-
+	}
+		
 	if (LOCK(ctx)){
 		unsigned ind = alloc_queuecell(ctx);
-
 		arcan_event* dst = &ctx->eventbuf[ind];
 		*dst = *src;
 		dst->tickstamp = ctx->c_ticks;
-
-/* track number of dropped events */
-		if (ctx->evbuf_used == ctx->n_eventbuf)
-			ctx->c_leaks++;
-		else
-			ctx->evbuf_used++;
 
 		UNLOCK();
 	}
 }
 
-void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enum ARCAN_EVENT_CATEGORY allowed, float saturation)
+void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
 {
 	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.1 ? 0.1 : saturation);
-	
-	while( srcqueue->evbuf_used > 0 &&
-		floor(dstqueue->n_eventbuf * saturation) > dstqueue->evbuf_used){
+
+	while( *srcqueue->front != *srcqueue->back &&
+		floor(dstqueue->n_eventbuf * saturation) > abs(*dstqueue->front - *dstqueue->back)){
 		arcan_event* ev = arcan_event_poll(srcqueue);
-		if (ev && ev->category == allowed)
+		if (ev && ev->category == allowed){
+			if (ev->category == EVENT_EXTERNAL)
+				ev->data.external.source = source;
+
 			arcan_event_enqueue(dstqueue, ev);
+		}
+
 	}
 }
 
@@ -282,7 +278,6 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 {
 	if (LOCK(ctx)){
 		ctx->kbdrepeat = rate;
-		printf("rate:%d\n", rate);
 		if (rate == 0)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else

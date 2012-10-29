@@ -462,6 +462,10 @@ end
 --
 function setup_3dsupport()
 	update_cache();
+	if (valid_vid(support3d.camera)) then
+		delete_image(support3d.camera);
+	end
+
 	support3d.camera = fill_surface(4, 4, 0, 0, 0);
 	camtag_model(support3d.camera);
 	image_tracetag(support3d.camera, "3d camera");
@@ -507,7 +511,8 @@ function setup_cabinet_model(modelname, restbl, options)
 -- update the display, free the old resource and invert texture coordinates (possible) in the vertex shader 
 			local rvid = set_image_as_frame(self.vid, vid, self.labels["display"], FRAMESET_DETACH);
 			mesh_shader(self.vid, shid, self.labels["display"]);
-	
+
+			print("update display", rvid, vid);
 			if (valid_vid(rvid) and rvid ~= vid) then
 				expire_image(rvid, 20);
 			end
@@ -560,9 +565,11 @@ function setup_cabinet_model(modelname, restbl, options)
 			if (restbl.movies and #restbl.movies > 0) then
 				vid, aid = load_movie(restbl.movies[math.random(1,#restbl.movies)], FRAMESERVER_LOOP, function(source, tbl)
 					if (tbl.kind ~= "frameserver_terminated") then
+						print("loop?", tbl.kind);
 						play_movie(source);
 						res:update_display(source, def3d_fullbright_flip);
 					else
+						print("mmm", tbl.kind);
 						res:display_broken();
 					end
 				end);

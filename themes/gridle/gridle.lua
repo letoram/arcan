@@ -416,6 +416,10 @@ function setup_gridview()
 	image_tracetag(imagery.magnifyimage, "detailview icon");
 
 	settings.cleanup_toggle = gridle_internalcleanup;
+
+	settings.cell_width  = settings.cell_width  > VRESW and math.floor(VRESW * 0.5) or settings.cell_width;
+	settings.cell_height = settings.cell_height > VRESH and math.floor(VRESH * 0.5) or settings.cell_height;
+	
 	build_grid(settings.cell_width, settings.cell_height);
 
 	current_game = function() 
@@ -1203,9 +1207,10 @@ end
 function build_grid(width, height)
 --  figure out how many full cells we can fit with the current resolution
 	zap_whitegrid();
-	
+
 	ncw = math.floor(VRESW / (width + settings.hspacing));
 	nch = math.floor(VRESH / (height + settings.vspacing));
+
 	ncc = ncw * nch;
 
 --  figure out how much "empty" space we'll have to pad with
@@ -1434,6 +1439,8 @@ function gridle_internal_status(source, datatbl)
 		if (not settings.in_internal) then
 			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
 		end
+	else
+		print(datatbl.kind);
 	end
 end
 
