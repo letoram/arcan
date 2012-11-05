@@ -116,10 +116,15 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh*,
                                      const int gameid);
 
 /* populate a list of viable targets (with games associated) */
-arcan_dbh_res arcan_db_targets(arcan_dbh* handle);
+arcan_dbh_res arcan_db_targets(arcan_dbh*);
 
-bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec);
-char* arcan_db_targetexec(arcan_dbh* dbh, char* targetname);
+bool  arcan_db_targetdata  (arcan_dbh*, int targetid, char** targetname, char** targetexec);
+char* arcan_db_targetexec  (arcan_dbh*, char* targetname);
+
+/* Figure out the actual hijack-lib that would be needed to launch gameid
+ * Added primarily to support a range of hijack libs for specialized targets */
+char* arcan_db_targethijack(arcan_dbh*, char* targetname);
+char* arcan_db_gametgthijack(arcan_dbh* dbh, int gameid);
 
 /* populate a list of genres / subgenres */
 arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
@@ -135,6 +140,8 @@ arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
  * arguments will be inserted in the order (game specific) -> (game generic),
  * if romset hasn't been set at the end, it will be forcibly attached. */
 arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal);
+
+
 long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status);
 
 /* store/update a key/value pair under a theme,

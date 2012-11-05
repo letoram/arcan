@@ -373,9 +373,11 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->order         = pobj->order;
 		nobj->cellid        = rv;
 		nobj->current.scale = pobj->current.scale;
+
 		nobj->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
 		nobj->gl_storage.program = pobj->gl_storage.program;
-
+		generate_basic_mapping(nobj->txcos, 1.0, 1.0);
+		
 		nobj->parent->extrefc.instances++;
 		trace("(clone) new instance of (%d:%s) with ID: %d, total: %d\n", parent, video_tracetag(pobj), nobj->cellid, nobj->parent->extrefc.instances);
 		arcan_video_attachobject(rv);
@@ -433,6 +435,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 		rv->cellid = fid;
 		assert(rv->cellid > 0);
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
+
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION | MASK_FRAMESET | MASK_LIVING;
 	}
@@ -3248,9 +3251,12 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			glBindTexture(GL_TEXTURE_2D, elem->current_frame->gl_storage.glid);
 
 		float* txcos = elem->current_frame->txcos;
+
 		if ( (elem->mask & MASK_MAPPING) > 0)
 			txcos = elem->parent != &current_context->world ? elem->parent->txcos : elem->txcos;
-
+		else if (elem->flags.clone)
+			txcos = elem->txcos;
+		
 		arcan_video_setblend(&dprops, elem);
 		draw_surf(tgt, dprops, elem, txcos);
 

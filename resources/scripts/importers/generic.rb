@@ -128,7 +128,7 @@ class Generic
 				extension = ext
 				if (ext == ".so" or ext == ".dll" or ext == ".dylib")
 					libloader = true
-				end
+				end	          
 				break
 			end
 		}

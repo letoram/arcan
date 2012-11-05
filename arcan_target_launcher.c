@@ -50,6 +50,7 @@
 #include "arcan_frameserver_backend.h"
 #include "arcan_frameserver_shmpage.h"
 #include "arcan_target_launcher.h"
+#include "arcan_db.h"
 
 int arcan_target_launch_external(const char* fname, char** argv)
 {
@@ -90,21 +91,21 @@ static arcan_errc again_feed(float gain, void* tag)
  * and move on. 
  * for other platforms, patch the hijacklib loader to set an infinite while loop on a volatile flag,
  * break the process and manually change the memory of the flag */
-extern char* arcan_libpath;
-arcan_frameserver* arcan_target_launch_internal(const char* fname, char** argv)
+
+arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack, char** argv)
 {
-	if (arcan_libpath == NULL){
+	if (hijack == NULL){
 		arcan_warning("Warning: arcan_target_launch_internal() called without a proper hijack lib.\n");
 		return NULL;
 	}
-	
+
 	arcan_frameserver* res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
 	
 	char shmsize[ 39 ] = {0};
-
+	
 	char* envv[10] = {
-			"LD_PRELOAD", arcan_libpath,
-			"DYLD_INSERT_LIBRARIES", arcan_libpath,
+			"LD_PRELOAD", hijack,
+			"DYLD_INSERT_LIBRARIES", hijack,
 			"ARCAN_SHMKEY", "",
 			"ARCAN_SHMSIZE", "",
 			NULL, NULL
@@ -118,7 +119,7 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname, char** argv)
 	};
 	
 	snprintf(shmsize, 38, "%ui", (unsigned int) MAX_SHMSIZE);
-
+	
 	if (
 		arcan_frameserver_spawn_server(res, args) != ARCAN_OK) {
 		free(res);

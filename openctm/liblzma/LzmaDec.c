@@ -690,7 +690,7 @@ static void LzmaDec_InitRc(CLzmaDec *p, const Byte *data)
   p->needFlush = 0;
 }
 
-void LzmaDec_InitDicAndState(CLzmaDec *p, Bool initDic, Bool initState)
+void LzmaDec_InitDicAndState(CLzmaDec *p, _Bool initDic, _Bool initState)
 {
   p->needFlush = 1;
   p->remainLen = 0;

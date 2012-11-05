@@ -45,6 +45,10 @@
 #include "arcan_frameserver_decode.h"
 #include "arcan_frameserver_encode.h"
 
+#ifdef HAVE_APR
+#include "arcan_frameserver_net.h"
+#endif
+
 FILE* logdev = NULL;
 int sockin_fd = -1;
 
@@ -381,6 +385,11 @@ static void toggle_logdev()
 	close(0);
 	close(1);
 	close(2);
+#endif
+
+#ifdef HAVE_APR 
+	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0)
+		arcan_frameserver_net_run(resource, keyfile);
 #endif
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)

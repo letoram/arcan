@@ -25,7 +25,9 @@
 #define SHMPAGE_QUEUESIZE 64
 #define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
 #define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
-#define MAX_SHMSIZE 9582916
+#define MAX_SHMSIZE 9582916 
+#define MAX_SHMWIDTH 1920
+#define MAX_SHMHEIGHT 1080 
 #ifndef INFINITE
 #define INFINITE -1
 #endif
@@ -74,8 +76,13 @@ struct frameserver_shmpage {
 	uint32_t apts;
 
 /* abufbase is a working buffer offset in how far parent has processed */
-	off_t abufbase;
-	size_t abufused;
+	uint32_t abufbase;
+	uint32_t abufused;
+};
+
+struct arg_arr {
+	char* key;
+	char* value;
 };
 
 /* note, frameserver_semcheck is hidden in arcan_frameserver_shmpage.o,
@@ -101,5 +108,13 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 
 /* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
 bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq);
+
+/* Serializing a bunch of key=val or key args into a string for passing to frameserver args at launch,
+ * added as convenience here to make sure that frameserver and main-app threat these the same */
+struct arg_arr* arg_unpack(const char*);
+
+/* return the value matching a certain key, if ind is larger than 0, it's the n-th result that will be stored in dst */ 
+bool arg_lookup(struct arg_arr* arr, const char* val, unsigned short ind, const char** found);
+void arg_cleanup(struct arg_arr*);
 
 #endif

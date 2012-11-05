@@ -393,7 +393,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 				
 				envv += 2;
 			}
-			
+
 			int rv = execv(setup.args.external.fname, setup.args.external.argv);
 			exit(1);
 		}

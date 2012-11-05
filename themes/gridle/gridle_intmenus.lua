@@ -208,7 +208,9 @@ local cocktaillist = {
 -- vsplit means scale to fit width to height, instance, and rotate 90 -90
 	"V-Split",
 -- same as h-split, but don't rotate 
-	"H-Split SBS"
+	"H-Split SBS",
+-- special one, half the image to the left, haft to the right
+  "H-Split Slice"
 };
 
 local cocktailptrs = {};
@@ -246,9 +248,32 @@ local props = image_surface_properties(source);
 	resize_image(imagery.cocktail_vid, props.width, props.height);
 	show_image(imagery.cocktail_vid);
 
-	if (mode == "H-Split" or mode == "H-Split SBS") then
+	if (mode == "H-Split" or mode == "H-Split SBS" or mode == "H-Split Slice") then
 		if (mode == "H-Split") then 
 			rotate_image(imagery.cocktail_vid, 180); 
+		end
+
+-- for this one, patch the texture coordinates to only show half and half
+		if (mode == "H-Split Slice") then
+			local lary = {};
+			local rary = {};
+
+			local ul = 0.0;
+			for i=1,#settings.internal_txcos do
+				if (settings.internal_txcos[i]) > ul then ul = settings.internal_txcos[i]; end
+			end
+
+			ul = ul * 0.5;
+			
+-- just patch T values, divide the left side by two, the right side by 
+			for i=1,#settings.internal_txcos do
+				lary[i] = (i % 2 == 0) and (settings.internal_txcos[i] * 0.5     ) or settings.internal_txcos[i];
+				rary[i] = (i % 2 == 0) and (settings.internal_txcos[i] * 0.5 + ul) or settings.internal_txcos[i];
+			end
+
+			image_set_txcos(source, lary);
+--			image_mask_clear(imagery.cocktail_vid, MASK_MAPPING);
+			image_set_txcos(imagery.cocktail_vid, rary);
 		end
 		
 		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
@@ -392,6 +417,7 @@ function display_fxaa(source, targetw, targeth)
 	resize_image(node, targetw, targeth);
 	image_mask_clear(node, MASK_POSITION);
 	image_mask_clear(node, MASK_OPACITY);
+	image_mask_set(node, MASK_MAPPING);
 	show_image(node);
 
 	define_rendertarget(fxaa_outp, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
@@ -460,6 +486,7 @@ function vector_lightmode(source, targetw, targeth)
 	
 	resize_image(node, blurw, blurh);
 	show_image(node);
+	image_mask_set(node, MASK_MAPPING);
 	image_tracetag(node, "vector(source:clone)");
 
 	image_tracetag(blur_hbuf, "vector(hblur)");
@@ -527,7 +554,7 @@ function vector_heavymode(source, targetw, targeth)
 	image_framecyclemode(source, settings.vector_trailstep);
 	image_shader(source, mixshader);
 	show_image(source);
-	resize_image(source, blurw, blurh); -- borde inte den vara ehrm, blurw, blurh?
+	resize_image(source, blurw, blurh); 
 	move_image(source, 0, 0);
 	image_mask_set(source, MASK_MAPPING);
 
@@ -1296,7 +1323,7 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	else
 		current_menu.formats[label] = (ctxmenus[label] and iconlbl or "") .. settings.colourtable.data_fontstr;
 	end
-	
+
 	togglecb();
 	current_menu:move_cursor(0, 0, true);
 	gridlemenu_tofront(current_menu);
