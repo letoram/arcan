@@ -125,7 +125,7 @@ static struct {
 	uint16_t format;
 	
 /* keep track of video surface size as it may differ pre/post NTSC */
-	unsigned width, height;
+	unsigned width, height, sourcew, sourceh;
 
 /* merging event pairs to single mouse motion events */
 	int lastmx;
@@ -316,26 +316,31 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 	trace("ARCAN_target_shmsize(%d, %d, %d)\n", w, h, bpp);
 
 /* filter "useless" resolutions */
-	if (w > MAX_SHMWIDTH || h > MAX_SHMHEIGHT || w < 32 || h < 32){
-		fprintf(stderr, "ARCAN Hijack: Couldn't resize (%d, %d) outside build-time tolerance\n", w, h);
+	if (w > MAX_SHMWIDTH || h > MAX_SHMHEIGHT || w < 32 || h < 32)
 		return;
-	}else
-		fprintf(stderr, "resized to : %d, %d\n", w, h);
-	
-	if (global.ntscconv){
+
+/* separate size tracking due to NTSC etc. */
+	global.sourcew = w;
+	global.sourceh = h;
+
+	if (global.ntscconv && SNES_NTSC_OUT_WIDTH(w) <= MAX_SHMWIDTH && h * 2 <= MAX_SHMHEIGHT){
 		trace("rebuilding NTSC settings.\n");
+
 		free(global.ntsc_imb);
 		global.ntsc_imb = malloc(w * h * 2);
 		w = SNES_NTSC_OUT_WIDTH(w);
 		h *= 2;
 	}
 
-	global.width = w;
+	global.width  = w;
 	global.height = h;
+
 	frameserver_shmpage_resize( &(global.shared), w, h, bpp, 0, 0 );
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
 
+/* just make sure the alpha channel is set as the parent process will map it to a texture way before
+ * we have data ready to be stored */
 	memset(global.vidp, 0x000000ff, w * h * 4);
 }
 
@@ -729,7 +734,7 @@ void ARCAN_SDL_GL_SwapBuffers()
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
 	if (!global.shared.addr->storage.glsource){
 		global.shared.addr->storage.glsource = true;
-		ARCAN_target_shmsize(global.width, global.height, 4);
+		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
 	}
 	global.shared.addr->vready = true;
 
@@ -786,7 +791,7 @@ void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable)
 	glXQueryDrawable(dpy, drawable, GLX_WIDTH, &width);
 	glXQueryDrawable(dpy, drawable, GLX_HEIGHT, &height);
 
-	if (width != global.width || height != global.height)
+	if (width != global.sourcew || height != global.sourceh)
 		ARCAN_target_shmsize(width, height, 4);
 	
 	ARCAN_SDL_GL_SwapBuffers();
