@@ -310,7 +310,7 @@ void ARCAN_target_shminit()
 
 void ARCAN_target_shmsize(int w, int h, int bpp)
 {
-	if (global.shared == NULL)
+	if (global.shared.addr == NULL)
 		ARCAN_target_shminit();
 	
 	trace("ARCAN_target_shmsize(%d, %d, %d)\n", w, h, bpp);
