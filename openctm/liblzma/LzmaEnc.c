@@ -337,15 +337,15 @@ typedef struct _CLzmaEnc
 
   unsigned lclp;
 
-  Bool fastMode;
+  _Bool fastMode;
   
   CRangeEnc rc;
 
-  Bool writeEndMark;
+  _Bool writeEndMark;
   UInt64 nowPos64;
   UInt32 matchPriceCount;
-  Bool finished;
-  Bool multiThread;
+  _Bool finished;
+  _Bool multiThread;
 
   SRes result;
   UInt32 dictSize;
@@ -810,7 +810,7 @@ static void LenPriceEnc_UpdateTables(CLenPriceEnc *p, UInt32 numPosStates, UInt3
     LenPriceEnc_UpdateTable(p, posState, ProbPrices);
 }
 
-static void LenEnc_Encode2(CLenPriceEnc *p, CRangeEnc *rc, UInt32 symbol, UInt32 posState, Bool updatePrice, UInt32 *ProbPrices)
+static void LenEnc_Encode2(CLenPriceEnc *p, CRangeEnc *rc, UInt32 symbol, UInt32 posState, _Bool updatePrice, UInt32 *ProbPrices)
 {
   LenEnc_Encode(&p->p, rc, symbol, posState);
   if (updatePrice)
@@ -1146,7 +1146,7 @@ static UInt32 GetOptimum(CLzmaEnc *p, UInt32 position, UInt32 *backRes)
   {
     UInt32 numAvailFull, newLen, numPairs, posPrev, state, posState, startLen;
     UInt32 curPrice, curAnd1Price, matchPrice, repMatchPrice;
-    Bool nextIsChar;
+    _Bool nextIsChar;
     Byte curByte, matchByte;
     const Byte *data;
     COptimal *curOpt;
@@ -1751,7 +1751,7 @@ void LzmaEnc_Destroy(CLzmaEncHandle p, ISzAlloc *alloc, ISzAlloc *allocBig)
   alloc->Free(alloc, p);
 }
 
-static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, Bool useLimits, UInt32 maxPackSize, UInt32 maxUnpackSize)
+static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, _Bool useLimits, UInt32 maxPackSize, UInt32 maxUnpackSize)
 {
   UInt32 nowPos32, startPos32;
   if (p->inStream != 0)
@@ -1919,7 +1919,7 @@ static SRes LzmaEnc_CodeOneBlock(CLzmaEnc *p, Bool useLimits, UInt32 maxPackSize
 static SRes LzmaEnc_Alloc(CLzmaEnc *p, UInt32 keepWindowSize, ISzAlloc *alloc, ISzAlloc *allocBig)
 {
   UInt32 beforeSize = kNumOpts;
-  Bool btMode;
+  _Bool btMode;
   if (!RangeEnc_Alloc(&p->rc, alloc))
     return SZ_ERROR_MEM;
   btMode = (p->matchFinderBase.btMode != 0);
@@ -2106,7 +2106,7 @@ typedef struct _CSeqOutStreamBuf
   ISeqOutStream funcTable;
   Byte *data;
   SizeT rem;
-  Bool overflow;
+  _Bool overflow;
 } CSeqOutStreamBuf;
 
 static size_t MyWrite(void *pp, const void *data, size_t size)
@@ -2136,7 +2136,7 @@ const Byte *LzmaEnc_GetCurBuf(CLzmaEncHandle pp)
   return p->matchFinder.GetPointerToCurrentPos(p->matchFinderObj) - p->additionalOffset;
 }
 
-SRes LzmaEnc_CodeOneMemBlock(CLzmaEncHandle pp, Bool reInit,
+SRes LzmaEnc_CodeOneMemBlock(CLzmaEncHandle pp, _Bool reInit,
     Byte *dest, size_t *destLen, UInt32 desiredPackSize, UInt32 *unpackSize)
 {
   CLzmaEnc *p = (CLzmaEnc *)pp;

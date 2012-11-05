@@ -2925,6 +2925,24 @@ int arcan_lua_targetreset(lua_State* ctx)
 	return 0;
 }
 
+static char* lookup_hijack(int gameid)
+{
+	if (!arcan_libpath)
+		return NULL;
+
+	char* res = arcan_db_gametgthijack(dbhandle, gameid);
+
+/* revert to default if the database doesn't tell us anything */
+	if (!res)
+		res = strdup(LIBNAME);
+
+	char* newstr = malloc(strlen(res) + strlen(arcan_libpath) + 2);
+	sprintf(newstr, "%s/%s", arcan_libpath, res);
+	free(res);
+
+	return newstr;
+}
+
 int arcan_lua_targetlaunch(lua_State* ctx)
 {
 	int gameid = luaL_checknumber(ctx, 1);
@@ -2956,8 +2974,9 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 		}
 	
 		if (internal && resourcestr)
+ /* for lib / frameserver targets, we assume that the argumentlist is just [romsetfull] */
 			if (use_loader(resourcestr)){
-				char* metastr = resourcestr; /* for lib / frameserver targets, we assume that the argumentlist is just [romsetfull] */
+				char* metastr = resourcestr;
 				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){ /* launch_options adds exec path first, we already know that one */
 					size_t arglen = strlen(resourcestr) + 1 + strlen(cmdline.data.strarr[1]) + 1;
 
@@ -2976,6 +2995,8 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					.args.builtin.mode = "libretro"
 				};
 
+				
+				
 				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
 					arcan_db_launch_counter_increment(dbhandle, gameid);
@@ -2984,12 +3005,18 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					lua_pushvid(ctx, ARCAN_EID);
 					free(intarget);
 				}
+
 				free(metastr);
 
 				rv = 1;
 			}
 			else {
-				arcan_frameserver* intarget = arcan_target_launch_internal( resourcestr, cmdline.data.strarr);
+				char* hijacktgt = lookup_hijack( gameid );
+				
+				arcan_frameserver* intarget = arcan_target_launch_internal( resourcestr,
+					lookup_hijack( gameid ), cmdline.data.strarr );
+
+				free(hijacktgt);
 				if (intarget) {
 					intarget->tag = ref;
 					lua_pushvid(ctx, intarget->vid);

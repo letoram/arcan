@@ -20,19 +20,32 @@
 # --- Project metadata
 PROJECT( arcan )
 
-cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 2.8.7 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 2 )
-set(PATCH_LEVEL 1 )
+set(PATCH_LEVEL 2 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
 set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_EXCECUTE WORLD_READ)
 
 set( MAIN_LIBRARIES )
+set( FSRV_BUILD_FLAGS "-Wno-deprecated-declarations")
+
+#
+# for linux/BSD, we can build a 32-bit version of the hi-jack lib as well,
+# and use it for 32-bit targets.
+#
+if( CMAKE_SIZEOF_VOID_P EQUAL 4 )
+	set( HAVE_64_BIT 0 )
+else( CMAKE_SIZEOF_VOID_P EQUAL 4 )
+	set( HAVE_64_BIT 1 )
+endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 
 # Collective sigh for stupid standard breaking features.
-add_definitions(-std=iso9899:1999 -DBSD_SOURCE)
+# Two GNU extensions are used, anonymous inner unions (accepted in C11)
+# and variable size structure member not at end of struct (for Linux/CMSG)
+add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
     message("Profile build")
@@ -95,6 +108,7 @@ FIND_PACKAGE ( VORBIS REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
 FIND_PACKAGE ( VPX REQUIRED )
+FIND_PACKAGE ( APR )
 
 LIST (APPEND
 	MAIN_LIBRARIES
@@ -122,7 +136,8 @@ FSRV_LIBRARIES
 	${VPX_LIBRARIES}
 )
 
-include_directories (
+set (
+INCLUDE_DIRECTORIES
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
 	${SDL_INCLUDE_DIR}
@@ -138,13 +153,6 @@ include_directories (
 
 add_subdirectory( openctm )
 
-# removed, current code has some serious issues
-# if (MPG123_FOUND )
-# message("mpg123 found, enabling mp3 support.")
-# LIST(APPEND MAIN_LIBRARIES ${MPG123_LIBRARY} )
-# # LIST(APPEND include_directories ${MPG123_INCLUDE_DIR} )
-# add_definitions(-D_HAVE_MPG123)
-# endif(MPG123_FOUND)
 # --- Step 2, source files
 set (
  SOURCES
@@ -207,6 +215,32 @@ set (
  arcan_general.c
  arcan_event.c
 )
+
+# add / remove frameserver features based on libraries found
+if (APR_LIBRARIES)
+	LIST (APPEND
+		FSRV_SOURCES
+		frameserver/arcan_frameserver_net.h
+		frameserver/arcan_frameserver_net.c
+	)
+
+	LIST (APPEND
+		FSRV_LIBRARIES
+		${APR_LIBRARIES}
+	)
+
+	LIST (APPEND
+		INCLUDE_DIRECTORIES
+		${APR_INCLUDE_DIR}
+	)
+
+	set(FSRV_BUILD_FLAGS "${FSRV_BUILD_FLAGS} -DHAVE_APR")
+	message("(*) Apache Portable Runtime found, enabling net support.")
+else()
+	message("( ) Apache Portable Runtime not found, net support disabled.")
+endif()
+
+include_directories(${INCLUDE_DIRECTORIES})
 
 # OS Specific modifications
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -315,6 +349,14 @@ add_executable( arcan_frameserver ${FSRV_SOURCES})
 # add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+
+if (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
+	message("(*) 64-bit target detected, building compat. 32-bit hijack library, disable with -DNO_HIJACK32=1")
+	add_library(arcan_hijack32 SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c)
+	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
+ 	target_link_libraries(arcan_hijack32 -m32 -lrt )
+endif (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
+
 install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
 
 if (EXISTS "/usr/bin/dpkg")
@@ -445,13 +487,11 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle).lnk'
 ")
 
-
  SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
-# target_link_libraries( arcan_modelconv openctm m )
-set_target_properties(arcan_frameserver PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations")
+set_target_properties( arcan_frameserver PROPERTIES COMPILE_FLAGS "${FSRV_BUILD_FLAGS}" )
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})

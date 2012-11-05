@@ -581,8 +581,9 @@ function gridle_load_internal_extras(restbl, tgt)
 end
 
 function gridle_setup_internal(video, audio)
-	settings.in_internal = true;
-
+	settings.in_internal    = true;
+	settings.internal_txcos = image_get_txcos(video); -- store a copy of these for the display modes that rely on patched coordinates
+	
 	gridle_load_internal_extras(current_game().resources, current_game().target);
 	
 	if (settings.autosave == "On") then

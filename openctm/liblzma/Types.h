@@ -80,10 +80,8 @@ typedef UInt32 SizeT;
 typedef size_t SizeT;
 #endif
 
-typedef int Bool;
 #define True 1
 #define False 0
-
 
 #ifdef _MSC_VER
 
@@ -208,3 +206,4 @@ typedef struct
 #define IAlloc_Free(p, a) (p)->Free((p), a)
 
 #endif
+

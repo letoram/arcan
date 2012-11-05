@@ -17,12 +17,13 @@ rescue LoadError => ex
 end
 
 require 'getoptlong'
-ROMMAN_VERSION = 0.2
+ROMMAN_VERSION = 0.3
 
 DDL = {
 	:target => "CREATE TABLE target (
  	targetid INTEGER PRIMARY KEY,
 	name TEXT UNIQUE NOT NULL,
+	hijack TEXT,
 	executable TEXT NOT NULL )",
 
 	:game => "CREATE TABLE game (\
@@ -83,9 +84,9 @@ class Dql
 	:get_target_by_name => "SELECT targetid, name, executable FROM target WHERE name = ?",
 	
 	:update_game => "UPDATE game SET setname=?, players=?, buttons=?, ctrlmask=?, genre=?, subgenre=?, year=?, manufacturer=?, system=? WHERE gameid=?",
-	:update_target_by_targetid => "UPDATE target SET name = ?, executable = ? WHERE targetid = ?",
+	:update_target_by_targetid => "UPDATE target SET name = ?, executable = ?, hijack = ? WHERE targetid = ?",
 	:insert_game => "INSERT INTO game (title, setname, players, buttons, ctrlmask, genre, subgenre, year, manufacturer, system, target, launch_counter) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
-	:insert_target => "INSERT INTO target (name, executable) VALUES (?,?)",
+	:insert_target => "INSERT INTO target (name, executable, hijack) VALUES (?,?,?)",
 	:insert_arg => "INSERT INTO target_arguments (target, game, argument, mode) VALUES (?, ?, ?, ?)",
 	
 	:associate_game => "INSERT INTO game_relations (series, gameid) VALUES (?, ?)",
@@ -300,13 +301,14 @@ class Game < DBObject
 end
 
 class Target < DBObject
-	attr_accessor :pkid, :target, :name
+	attr_accessor :pkid, :target, :name, :hijack
 	attr_reader :arguments
 
 	def initialize
 		@pkid = 0
 		@target = ""
 		@name = ""
+		@hijack = nil
 		@arguments = [ [], [], [] ]
 	end
 
@@ -340,8 +342,8 @@ class Target < DBObject
 		@name
 	end
 
-	def Target.Create(name, executable, arguments)
-		@@dbconn.execute(DQL[:insert_target], [name, executable])
+	def Target.Create(name, executable, arguments, hijack = nil)
+		@@dbconn.execute(DQL[:insert_target], [name, executable, hijack])
 		
 		res = Target.new
 		res.pkid = @@dbconn.last_insert_row_id

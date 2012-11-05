@@ -193,10 +193,47 @@ char* arcan_db_targetexec(arcan_dbh* dbh, char* targetname)
 	return rv;
 }
 
+char* arcan_db_gametgthijack(arcan_dbh* dbh, int gameid)
+{
+	char* rv = NULL;
+	sqlite3_stmt* stmt = NULL;
+	const char* baseqry1 = "SELECT hijack FROM target WHERE targetid = (SELECT target FROM game WHERE gameid=? LIMIT 1);";
+	
+	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, gameid);
+
+	while (sqlite3_step(stmt) == SQLITE_ROW){
+		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
+	}
+
+	sqlite3_finalize(stmt);
+	return rv;
+}
+
+char* arcan_db_targethijack(arcan_dbh* dbh, char* targetname)
+{
+	char* rv = NULL;
+	if (!targetname)
+		return NULL;
+
+	const char* baseqry1 = "SELECT hijack FROM target WHERE name=? LIMIT 1;";
+	sqlite3_stmt* stmt = NULL;
+
+	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+	sqlite3_bind_text(stmt, 1, targetname, -1, SQLITE_TRANSIENT);
+
+	while (sqlite3_step(stmt) == SQLITE_ROW){
+		rv = _n_strdup((const char*) sqlite3_column_text(stmt, 0), NULL);
+	}
+
+	sqlite3_finalize(stmt);
+	return rv;
+}
+
 bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec)
 {
 	bool rv = false;
-	const char* baseqry1 = "SELECT name, executable FROM target WHERE targetid=? LIMIT 1;";
+	const char* baseqry1 = "SELECT name, executable, hijack FROM target WHERE targetid=? LIMIT 1;";
 	sqlite3_stmt* stmt = NULL;
 	
 	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
@@ -752,12 +789,13 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 		}
 	}
 
-/* if romset hasn't been defined, just add it last (how else should the target know what to launch..) */
-	if (romset) {
+/* Omitted, previously tracked if we had set romset or not, now it's always up to the db to have proper values */ 
+/*  if (romset) {
 		res.data.strarr[count++] = _n_strdup((char*) romset, "");
 		free(romset);
 		romset = NULL;
 	}
+*/
 
 	res.data.strarr[count] = NULL;
 	res.count = count;
@@ -804,12 +842,18 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 /* check for descriptor table, missing? 
  * that means we have a first- version database, push upgrade */
 	char* valstr = arcan_db_theme_val(dbh, "arcan", "dbversion");
-	if (!valstr || strtoul(valstr, NULL, 10) < 1){
-/* quick hack to avoid problems with outdated databases, a more solid
- * solution is in the works */
-		arcan_db_theme_kv(dbh, "arcan", "dbversion", "1");
-		db_void_query(dbh, "ALTER TABLE game ADD COLUMN system TEXT;");
-		arcan_warning("Upgrading old database to revision 1\n");
+	unsigned vnum = valstr ? strtoul(valstr, NULL, 10) : 0;
+
+	switch (vnum){
+		case 0:
+			arcan_warning("Upgrading old database to revision 2\n");
+			arcan_db_theme_kv(dbh, "arcan", "dbversion", "1");
+			db_void_query(dbh, "ALTER TABLE game ADD COLUMN system TEXT;");
+		break;
+		case 1:
+		arcan_warning("Upgrading old database to revision 2\n");
+			db_void_query(dbh, "ALTER_TABLE target ADD COLUMN hijack TEXT;");
+		break;
 	}
 
 	return true;

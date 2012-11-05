@@ -19,17 +19,9 @@
  *
  */
 
-#ifndef _HAVE_ARCAN_TARGET_LAUNCHER
-#define _HAVE_ARCAN_TARGET_LAUNCHER
+#ifndef HAVE_ARCAN_FRAMESERVER_NET
+#define HAVE_ARCAN_FRAMESERVER_NET
 
-/* launch the target as an external process,
- * and wait for the process to finish. */
-int arcan_target_launch_external(const char* fname, char** argv);
-
-/* fork and exec 'fname' "internally" (with a preloaded library, mapped to a frameserver)
- * hijack points to the hijack-lib to use, default is arcan_libpath, but some targets may override this)
- * argv is a NULL terminated array of strings to the arguments of the program
- */
-arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack, char** argv);
+void arcan_frameserver_net_run(const char* resource, const char* shmkey);
 
 #endif

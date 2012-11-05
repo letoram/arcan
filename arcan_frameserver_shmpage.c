@@ -7,6 +7,7 @@
 #include <time.h>
 #include <limits.h>
 #include <math.h>
+#include <stdarg.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -33,6 +34,7 @@
 
 struct guard_struct {
 	sem_handle semset[3];
+	int parent;
 	bool* dms; /* dead man's switch */
 };
 static void* guard_thread(void* gstruct);
@@ -107,7 +109,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
 /* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
 	struct frameserver_shmcont res = {0};
-
+	force_unlink = false;
+	
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = -1;
 
@@ -172,18 +175,21 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 
 	struct guard_struct gs = {
 		.dms = &res.addr->dms,
-		.semset = { res.asem, res.vsem, res.esem }
+		.semset = { res.asem, res.vsem, res.esem },
+		.parent = res.addr->parent
 	};
+	
 	spawn_guardthread(gs);
 
 	return res;
 }
 
-static inline bool parent_alive()
+#include <signal.h>
+static inline bool parent_alive(struct guard_struct* gs)
 {
 /* based on the idea that init inherits an orphaned process,
- * wouldn't surprise me if some GNUish environment would break this .. */
-	return getppid() != 1;
+ * return getppid() != 1; won't work for hijack targets that fork() fork() */
+	return kill(gs->parent, 0) != -1;
 }
 #endif
 
@@ -193,7 +199,7 @@ static void* guard_thread(void* gs)
 	*(gstr->dms) = true;
 
 	while (true){
-		if (!parent_alive()){
+		if (!parent_alive(gstr)){
 			*(gstr->dms) = false;
 
 			for (int i = 0; i < sizeof(gstr->semset) / sizeof(gstr->semset[0]); i++)
@@ -212,6 +218,7 @@ static void* guard_thread(void* gs)
 }
 
 #include <assert.h>
+#include <apr_poll.h>
 int frameserver_semcheck(sem_handle semaphore, int timeout){
 		return arcan_sem_timedwait(semaphore, timeout);
 }
@@ -275,7 +282,6 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dst
 
 bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq)
 {
-/* need to rethink synchronization a bit before forcing a resize */
 	if (arg->addr){
 		arg->addr->storage.w = width;
 		arg->addr->storage.h = height;
@@ -298,3 +304,96 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 	return false;
 }
 
+struct arg_arr* arg_unpack(const char* resource)
+{
+	int argc = 1;
+	const char* rsstr = resource;
+
+/* unless an empty string, we'll always have 1 */
+	if (strlen(resource) == 0)
+		return NULL;
+
+/* figure out the number of additional arguments we have */
+	do{
+		if (rsstr[argc] == ':')
+			argc++;
+		rsstr++;
+	} while(*rsstr);
+
+/* prepare space */
+	struct arg_arr* argv = malloc( (argc+1) * sizeof(struct arg_arr) );
+	if (!argv)
+		return NULL;
+
+	int curarg = 0;
+	argv[argc].key = argv[argc].value = NULL;
+
+	char* base    = strdup(resource);
+	char* workstr = base;
+
+/* sweep for key=val:key:key style packed arguments */
+	while (curarg < argc){
+		char* endp  = workstr;
+		argv[curarg].key = argv[curarg].value = NULL;
+
+		while (*endp && *endp != ':'){
+/* a==:=a=:a=dd= are disallowed */
+			if (*endp == '=')
+				if (!argv[curarg].key){
+					*endp = 0;
+					argv[curarg].key = strdup(workstr);
+					argv[curarg].value = NULL;
+					workstr = endp + 1;
+				}
+				else{
+					free(argv);
+					argv = NULL;
+					goto cleanup;
+				}
+
+			endp++;
+		}
+
+		if (*endp == ':')
+			*endp = '\0';
+
+		if (argv[curarg].key)
+			argv[curarg].value = strdup( workstr );
+		else
+			argv[curarg].key = strdup( workstr );
+
+		workstr = (++endp);
+		curarg++;
+	}
+
+
+cleanup:
+	free(base);
+
+	return argv;
+}
+
+void arg_cleanup(struct arg_arr* arr)
+{
+	if (!arr)
+		return;
+
+	while (arr->key){
+		free(arr->key);
+		free(arr->value);
+		arr++;
+	}
+}
+
+bool arg_lookup(struct arg_arr* arr, const char* val, unsigned short ind, const char** found)
+{
+	
+	while (arr[ind].key != NULL)
+		if (strcmp(arr[ind].key, val) == 0)
+			if (ind-- == 0){
+				*found = arr[ind].value;
+				return true;
+			}
+
+	return false;
+}

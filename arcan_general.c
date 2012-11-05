@@ -298,11 +298,11 @@ static void setpaths_unix()
 		if (file_exists( getenv("ARCAN_HIJACK") ) )
 			arcan_libpath = strdup( getenv("ARCAN_HIJACK") );
 		else if (file_exists( "./" LIBNAME ) )
-			arcan_libpath = strdup( "./" LIBNAME );
-		else if (file_exists( "/usr/local/lib/" LIBNAME ) )
-			arcan_libpath = strdup( "/usr/local/lib/" LIBNAME );
+			arcan_libpath = realpath( "./", NULL );
+		else if (file_exists( "/usr/local/lib/" LIBNAME) )
+			arcan_libpath = strdup( "/usr/local/lib/");
 		else if (file_exists( "/usr/lib/" LIBNAME) )
-			arcan_libpath = strdup( "/usr/lib/" LIBNAME );
+			arcan_libpath = strdup( "/usr/lib/");
 
 	if (arcan_resourcepath == NULL)
 		if ( file_exists(getenv("ARCAN_RESOURCEPATH")) )

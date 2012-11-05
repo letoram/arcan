@@ -34,11 +34,19 @@
 #include <poll.h>
 #include <signal.h>
 
+#ifdef ENABLE_X11_HIJACK
+#include <X11/X.h>
+#include <X11/Xlib.h>
+#include <X11/Xlibint.h>
+#include <X11/Xutil.h>
+#include <GL/glx.h>
+#else
 #define GL_GLEXT_PROTOTYPES 1
+#include <SDL/SDL_opengl.h>
+#endif
+
 #define clamp(a,min,max) (((a)>(max))?(max):(((a)<(min))?(min):(a)))
 
-#include <SDL/SDL.h>
-#include <SDL/SDL_opengl.h>
 #include <SDL/SDL.h>
 
 #include "arcan_math.h"
@@ -65,6 +73,7 @@ static SDL_PixelFormat PixelFormat_RGBA888 = {
 };
 
 static struct {
+/* SDL */
 	void (*sdl_swapbuffers)(void);
 	SDL_Surface* (*sdl_setvideomode)(int, int, int, Uint32);
 	int (*sdl_pollevent)(SDL_Event*);
@@ -79,9 +88,33 @@ static struct {
 	int (*sdl_flip)(SDL_Surface*);
 	SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int, int, Uint32, Uint32, Uint32, Uint32);
 	int (*audioproxy)(int, int);
+	
 	void (*glLineWidth)(float);
 	void (*glPointSize)(float);
+	void (*glFinish)(void);
+	void (*glFlush)(void);
+
+#ifdef ENABLE_X11_HIJACK
+	XVisualInfo* (*glXChooseVisual)(Display* dpy, int screen, int* attribList);
+	Window (*XCreateWindow)(Display* display, Window parent,int x, int y, unsigned int width, unsigned int height, unsigned int border_width,
+		int depth, unsigned int class, Visual* visual, unsigned long valuemask, XSetWindowAttributes* attributes);
 	
+	Window (*XCreateSimpleWindow)(Display* display, Window parent, int x, int y, unsigned int width, unsigned int height, unsigned int border_width,
+		unsigned long border, unsigned long background);
+
+	void* (*glXGetProcAddress)(const GLubyte* name);
+
+	Bool (*XQueryPointer)(Display* display, Window w, Window* root_return, Window* child_return, int* rxret, int* ryret, int* wxret, int* wyret, unsigned* maskret);
+	Bool (*XGetEventData)(Display*, XGenericEventCookie*);
+	int (*XCheckIfEvent)(Display*, XEvent*, Bool (*predicate)(), XPointer);
+	Bool (*XFilterEvent)(XEvent*, Window);
+	int (*XNextEvent)(Display*, XEvent*);
+	int (*XPeekEvent)(Display*, XEvent*);
+	
+/* could take the CheckMaskEvent, CheckTypedEvent etc. as well as we're just filtering input */
+	
+	void (*glXSwapBuffers)(Display *dpy, GLXDrawable drawable);
+#endif
 } forwardtbl = {0};
 
 static struct {
@@ -103,7 +136,7 @@ static struct {
 
 /* for non-GL accelerated applications, we need to know if the source
  * is doublebuffered or not as it yields a different execution path */
-	bool doublebuffered, glsource;
+	bool doublebuffered, glsource, gotsdl, unlinked;
 	
 /* track the display surface so we know what to work with / convert between */
 	SDL_Surface* mainsrfc;
@@ -259,7 +292,11 @@ void ARCAN_target_init(){
 		fprintf(stderr, "ARCAN Hijack: Bad value in ENV[ARCAN_SHMSIZE], terminating.\n");
 		exit(1);
 	}
-	
+}
+
+void ARCAN_target_shminit()
+{
+	trace("shm_init(%s)\n", global.shmkey);
 	if (global.shmkey == NULL || ( global.shared = frameserver_getshm(global.shmkey, true)).addr == NULL ){
 		fprintf(stderr, "ARCAN Hijack: Couldn't access shm-API, terminating.\n");
 		exit(1);
@@ -269,6 +306,37 @@ void ARCAN_target_init(){
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
 
 	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
+}
+
+void ARCAN_target_shmsize(int w, int h, int bpp)
+{
+	if (global.shared == NULL)
+		ARCAN_target_shminit();
+	
+	trace("ARCAN_target_shmsize(%d, %d, %d)\n", w, h, bpp);
+
+/* filter "useless" resolutions */
+	if (w > MAX_SHMWIDTH || h > MAX_SHMHEIGHT || w < 32 || h < 32){
+		fprintf(stderr, "ARCAN Hijack: Couldn't resize (%d, %d) outside build-time tolerance\n", w, h);
+		return;
+	}else
+		fprintf(stderr, "resized to : %d, %d\n", w, h);
+	
+	if (global.ntscconv){
+		trace("rebuilding NTSC settings.\n");
+		free(global.ntsc_imb);
+		global.ntsc_imb = malloc(w * h * 2);
+		w = SNES_NTSC_OUT_WIDTH(w);
+		h *= 2;
+	}
+
+	global.width = w;
+	global.height = h;
+	frameserver_shmpage_resize( &(global.shared), w, h, bpp, 0, 0 );
+	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
+	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
+
+	memset(global.vidp, 0x000000ff, w * h * 4);
 }
 
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -302,7 +370,10 @@ SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height, int
 SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 {
 	trace("SDL_SetVideoMode(%d, %d, %d, %d)\n", w, h, ncps, flags);
-
+	global.gotsdl = true;
+	
+	ARCAN_target_shminit();
+	
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
 	global.glsource = global.shared.addr->storage.glsource = (flags & SDL_OPENGL) > 0;
@@ -313,25 +384,8 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	}
 		
 /* resize */
-	if (res) {
-		global.width = w;
-		global.height = h;
-	
-/* rebuild if this is a reinitialization */
-		if (global.ntscconv){
-			trace("rebuilding NTSC settings.\n");
-			free(global.ntsc_imb);
-			global.ntsc_imb = malloc(w * h * 2);
-			w = SNES_NTSC_OUT_WIDTH(w);
-			h *= 2;
-		}
-
-		frameserver_shmpage_resize( &(global.shared), w, h, 4, 0, 0 );
-		frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-		frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
-
-		memset(global.vidp, 0x000000ff, w * h * 4);
-	}
+	if (res)
+		ARCAN_target_shmsize(w, h, 4);
 
 	global.mainsrfc = res;
 
@@ -341,13 +395,22 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	return res;
 }
 
-static inline void push_ioevent(arcan_ioevent event){
+#ifdef ENABLE_X11_HIJACK
+/* Will only get called if we build with X11 support
+ * AND SDL hasn't been detected */
+static inline void push_ioevent_x11(arcan_ioevent event)
+{
+
+}
+#endif
+
+static inline void push_ioevent_sdl(arcan_ioevent event){
 	SDL_Event newev = {0};
 	bool active;
 	
 	switch (event.datatype){
 		case EVENT_IDATATYPE_DIGITAL:
-			newev.button.which = event.input.digital.devid;	
+			newev.button.which = event.input.digital.devid;
 				
 			if (event.devkind == EVENT_IDEVKIND_MOUSE){
 				newev.button.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
@@ -490,7 +553,14 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 	
 	while ( (ev = arcan_event_poll(&global.inevq)) ) 
 		switch (ev->category){
-			case EVENT_IO: push_ioevent(ev->data.io); break;
+			case EVENT_IO:
+				if (global.gotsdl)
+					push_ioevent_sdl(ev->data.io);
+#ifdef ENABLE_X11_HIJACK
+				else
+					push_ioevent_x11(ev->data.io);
+#endif
+			break;
 			case EVENT_TARGET: process_targetevent(ev->kind, &ev->data.target); break;
 	}
 
@@ -629,7 +699,7 @@ void ARCAN_SDL_GL_SwapBuffers()
 	sem_wait(global.shared.vsem);
 	if (!global.shared.addr->dms)
 		return;
-	
+
 	glReadBuffer(GL_BACK_LEFT);
 /* the assumption as to the performance impact of this is that if it is aligned to the
  * buffer swap, we're at a point in any 3d engine where there will be a natural pause
@@ -638,7 +708,8 @@ void ARCAN_SDL_GL_SwapBuffers()
  * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
 
 	glReadPixels(0, 0, global.width, global.height, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
-
+	trace("buffer read (%d, %d)\n", global.width, global.height);
+	
 /* seems like several driver combinations implement readback swizzling in a broken way, use RGBA and convert manually. */
 	if (global.ntscconv){
 		uint16_t* dbuf = global.ntsc_imb;
@@ -656,11 +727,13 @@ void ARCAN_SDL_GL_SwapBuffers()
 /* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
  * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-			
-	global.shared.addr->storage.glsource = true;
+	if (!global.shared.addr->storage.glsource){
+		global.shared.addr->storage.glsource = true;
+		ARCAN_target_shmsize(global.width, global.height, 4);
+	}
 	global.shared.addr->vready = true;
 
-	trace("CopySurface(GL:post)");
+	trace("CopySurface(GL:post)\n");
 	
 /* can't be done in the target event handler as it might be in a different thread and thus GL context */
 	if (global.update_vector){
@@ -671,3 +744,80 @@ void ARCAN_SDL_GL_SwapBuffers()
 
 /*	 forwardtbl.sdl_swapbuffers(); */
 }
+
+void ARCAN_glFinish()
+{
+	trace("glFinish()\n");
+	return forwardtbl.glFinish();
+}
+
+void ARCAN_glFlush()
+{
+	trace("glFlush()\n");
+	return forwardtbl.glFlush();
+}
+
+#ifdef ENABLE_X11_HIJACK
+
+int ARCAN_XNextEvent(Display* disp, XEvent* ev)
+{
+	trace("XNextEvent\n");
+	return forwardtbl.XNextEvent(disp, ev);
+}
+
+int ARCAN_XPeekEvent(Display* disp, XEvent* ev)
+{
+	trace("XPeekEvent\n");
+	return forwardtbl.XPeekEvent(disp, ev);
+}
+
+Bool ARCAN_XGetEventData(Display* display, XGenericEventCookie* event)
+{
+	trace("GetEventData\n");
+	return forwardtbl.XGetEventData(display, event);
+}
+
+void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable)
+{
+	if (global.gotsdl)
+		return;
+
+	unsigned int width, height;
+	glXQueryDrawable(dpy, drawable, GLX_WIDTH, &width);
+	glXQueryDrawable(dpy, drawable, GLX_HEIGHT, &height);
+
+	if (width != global.width || height != global.height)
+		ARCAN_target_shmsize(width, height, 4);
+	
+	ARCAN_SDL_GL_SwapBuffers();
+
+//	forwardtbl.glx_swap_buffers(dpy, drawable); 
+}
+
+Bool ARCAN_XQueryPointer(Display* display, Window w, Window* root_return, Window* child_return, int* rxret, int* ryret, int* wxret, int* wyret, unsigned* maskret)
+{
+	bool rv = forwardtbl.XQueryPointer(display, w, root_return, child_return, rxret, ryret, wxret, wyret, maskret);
+	
+	*rxret = global.lastmx;
+	*ryret = global.lastmy;
+
+	return rv;
+}
+
+int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return, Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg)
+{
+	if ( forwardtbl.XCheckIfEvent(display, event_return, predicate, arg) ){
+		trace("got event, %d (%d, %d, %d)\n", event_return->type, KeyPress, KeyRelease, MotionNotify);
+		return true;
+	}
+	return false;
+}
+
+Bool ARCAN_XFilterEvent(XEvent* ev, Window m)
+{
+	return forwardtbl.XFilterEvent(ev, m);
+}
+/* XWarpPointer */
+/* XGrabPointer */
+
+#endif

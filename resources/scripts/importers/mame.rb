@@ -72,6 +72,8 @@ class Mame
 		@mameargs[1] << "-nomaximize"
 		@mameargs[1] << "-multithreading"
 		@mameargs[1] << "-keepaspect"
+		@mameargs[1] << "[romset]"
+		@mameargs[2] << "[romset]"
 
 		@onlygood   = cmdopts["--mamegood"]       ? true : false
 		@verify     = cmdopts["--mameverify"]     ? true : false
