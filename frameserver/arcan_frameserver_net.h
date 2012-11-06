@@ -22,6 +22,9 @@
 #ifndef HAVE_ARCAN_FRAMESERVER_NET
 #define HAVE_ARCAN_FRAMESERVER_NET
 
+#define DEFAULT_DISCOVER_PORT 6680
+#define DEFAULT_CONNECTION_PORT 6681
+
 void arcan_frameserver_net_run(const char* resource, const char* shmkey);
 
 #endif

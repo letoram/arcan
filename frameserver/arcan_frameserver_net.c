@@ -21,7 +21,6 @@
 
 /* Discover port also acts as a gatekeeper, you register through this
  * and at the same time, provide your public key */
-#define DEFAULT_DISCOVER_PORT 6680
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -47,35 +46,46 @@
 /* Overall design / idea:
  * Each frameserver can be launched in either server (1..n connections) or client (1..1 connections).
  *
- * For server mode;
  * a. There's a limited number of simultaneously sessions, which can be either depleting (each validated session decrements
  * the number and is never replenished) or fixed (only ever allow n connections).
  *
- * b. The main loop selects on socket and events, if the socket triggers, it is thrown unto a dispatch thread
+ * b. The main loop selects on socket and events (FD transfer socket can be used, MessageLoop on windows, if the socket triggers, it is thrown unto a dispatch thread
  * and if an event is triggered, the full event queue gets processed and possibly pushed to a thread (with separate event queueing etc.)
  *
- * c. If an event triggers a discover-server requests, a broadcast thread is spawned off (unless one exists already).
- * this one retrieves a database handle via the usual FD transfer means, this one can be shared by multiple frameservers all acting as
- * directories. -- This is controlled via UDP, only ever 
- */
+ * c. If advanced mode is enabled, the main server is not accessible until the client has successfully registered with
+ * a dictionary service, which adds client and public key to a shared database (that the server thread uses for validation) which
+ * also permits blacklisting etc.
+ *
+ * d. The shm-API seems ill fit with the video/audio structure here, but can be made of good monitoring use by
+ * using the audio layer as "severe sound alerts" and render connection / etc. statistics to the video part
+ *
+ * e. Client in 'direct' mode will just connect to a server and start pushing data / event in plaintext.
+ * Client in 'dictionary' mode will try and figure out where to go from either an explicit directory service, or from local broadcasts,
+ * or from an IPv6 multicast / network solicitation discovery */
 
 #define LOCK() (apr_thread_mutex_lock(netcontext.conn_cont_lock));
 #define UNLOCK() (apr_thread_mutex_unlock(netcontext.conn_cont_lock));
+
+enum conn_modes {
+	SERVER_SIMPLE,
+	SERVER_DIRECTORY,
+	SERVER_DIRECTORY_NACL,
+	CLIENT_SIMPLE,
+	CLIENT_DISCOVERY,
+	CLIENT_DISCOVERY_NACL
+};
 	
 struct {
 	struct frameserver_shmcont shmcont;
 	apr_thread_mutex_t* conn_cont_lock;
 	apr_pool_t* mempool;
-	
-/* basic tracking for "rendering" log output */
-	unsigned n_conn;
-	unsigned valid_errors;
 
+	unsigned n_conn;
 } netcontext;
 
 /* these will be running in a multithreaded manner, with a fixed number of slots
  * one thread / socket dispatch */
-static void server_dispatch()
+static void server_dispatch(bool have_directory, bool have_nacl)
 {
 /* require untrusted (just raw),
  * secure (we know the person sending but not who he is)
@@ -91,7 +101,6 @@ static void server_session(int sport, int limit)
 {
 	apr_socket_t* ear_sock;
 	int errc = 0;
-	
 	
 	apr_thread_mutex_create(&netcontext.conn_cont_lock, APR_THREAD_MUTEX_UNNESTED, netcontext.mempool);
 
@@ -120,25 +129,56 @@ static void server_session(int sport, int limit)
 /*
  * if explicit host, send UDP there, wait for response.
  */ 
-static char* host_discover(char* host)
+static char* host_discover(char* host, int* port, bool usenacl)
 {
-		return NULL;
+	return NULL;
 }
 
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
-static void client_session(char* hoststr, int port)
+static void client_session(char* hoststr, int port, enum conn_modes mode)
 {
-	port = port <= 0 ? DEFAULT_DISCOVER_PORT : 0;
+	switch (mode){
+		case SERVER_SIMPLE:
+		case SERVER_DIRECTORY:
+		case SERVER_DIRECTORY_NACL:
+		break;
 
-/* returns the host we're supposed to use for main control */
-	hoststr = host_discover(hoststr);
+		case CLIENT_SIMPLE:
+			if (hoststr == NULL){
+				LOG("arcan_frameserver(net) -- direct client mode specified, but server argument missing, giving up.\n");
+				return;
+			}
 
-	if (!hoststr){
-		LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
-		return;
+			port = port <= 0 ? DEFAULT_CONNECTION_PORT : port;
+		break;
+
+		case CLIENT_DISCOVERY:
+		case CLIENT_DISCOVERY_NACL:
+			hoststr = host_discover(hoststr, &port, mode == CLIENT_DISCOVERY_NACL);
+			if (!hoststr){
+				LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
+				return;
+			}
+		break;
 	}
 
+/* "normal" connect finally */
+	apr_sockaddr_t* sa;
+	apr_socket_t* s;
 
+/* obtain connection */
+	apr_sockaddr_info_get(&sa, hoststr, APR_INET, port, 0, netcontext.mempool);
+	apr_socket_create(&s, sa->family, SOCK_STREAM, APR_PROTO_TCP, netcontext.mempool);
+
+/* connect or time-out? */
+	apr_status_t rc = apr_socket_connect(s, sa);
+
+	while (true){
+/* select on event filedescriptor and apr_socket */
+/* buffer message, decode if NACL mode enabled */
+/* send to arcan_event_unpack */
+/* enqueue in outgoing framequeue */
+	}
 }
 
 /* for the discovery service (if active), we toggle it with an event and a FD push (to a sqlite3 db)
@@ -157,18 +197,27 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	apr_pool_create(&netcontext.mempool, NULL);
 	
 	const char* rk;
-	if (arg_lookup(args, "mode", 0, &rk) &&
-		(rk && strcmp("client", rk) == 0)){
-			char* dsthost = NULL, (* portstr) = NULL;
-			arg_lookup(args, "host", 0, (const char**) &dsthost);
-			arg_lookup(args, "port", 0, (const char**) &portstr);
 
-			client_session(dsthost, portstr ? atoi(portstr) : 0);
-		}
-		else{
-			LOG("arcan_frameserver(net), missing mode argument (client)\n");
-			goto cleanup;
-		}
+	if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("client", rk) == 0)){
+		char* dsthost = NULL, (* portstr) = NULL, (* style) = NULL;
+
+		arg_lookup(args, "host", 0, (const char**) &dsthost);
+		arg_lookup(args, "port", 0, (const char**) &portstr);
+		arg_lookup(args, "style",0, (const char**) &style);
+
+		client_session(dsthost, portstr ? atoi(portstr) : 0, CLIENT_SIMPLE);
+	}
+	else if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("server", rk) == 0)){
+/* sweep list of interfaces to bind to (interface=ip,port) and if none, bind to all of them */
+		char* style = NULL;
+		arg_lookup(args, "style", 0, (const char**) &style);
+		
+		server_session(SERVER_SIMPLE, false);
+	}
+	else {
+		LOG("arcan_frameserver(net), unknown mode specified.\n");
+		goto cleanup;
+	}
 		
 cleanup:
 	apr_pool_destroy(netcontext.mempool);

@@ -2,10 +2,14 @@ Arcan-FE is (c)opyright Björn Ståhl, 2011-2012
 publically licensed under the terms of the GPLv3 agreement (see LICENSE.TXT). 
 
 Code included in the project explicitly excluded from the above:
+
 win32/getopt_win32.c, (c) 2000 The NetBSD Foundation
-win32/SDL_main_win32.c, Public Domain (author, Sam Lantiga)
-SDLMain.*, Part of the SDL-1.2 dependency
-speex/*, libspeex developers (www.speex.org/xiph.org), revised BSD License.
+
+author: Sam Lantiga, Public Domain 
+win32/SDL_main_win32.c
+SDLMain.*
+
+frameserver/resampler/*, libspeex developers (www.speex.org and xiph.org), revised BSD License.
 hidapi/*, (c) 2010 Alan Ott, FreeBSD License
 openCTM/* (c) Marcus Geelnard -- zlib / libpng license
 arcan_renderfun.c:stretchblit derived from SDL_GFX (c) Andreas Schiffler -- BSD- like 
