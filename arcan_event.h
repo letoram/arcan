@@ -395,4 +395,16 @@ void arcan_event_deinit(arcan_evctx*);
 
 /* call to dump the contents of the queue */
 void arcan_event_dumpqueue(arcan_evctx*);
+
+/*
+ * Supply a buffer sizeof(arcan_event) or larger and it'll be packed down to an internal format (XDR) for serialization,
+ * which can be transmitted over the wire and later deserialized again with unpack.
+ * dbuf is dynamically allocated, and the payload is padded by 'pad' byte, final size is stored in sz.
+ * returns false on out of memory or bad in event 
+ */
+bool arcan_event_pack(arcan_event*, int pad, char** dbuf, size_t* sz);
+
+/* takes an input character buffer, unpacks it and stores the result in dst.
+ * returns false if any of the arguments are missing or the buffer contents is invalid */
+arcan_event arcan_event_unpack(arcan_event* dst, char* buf, size_t* bufsz);
 #endif

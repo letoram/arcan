@@ -4,6 +4,9 @@ Some notes and hints for building / patching / packaging the engine as such.
  * Remember to use the "default / standard" resources/themes when building packages, tools, resources, themes will be included in installation binaries as per the build system.
    This includes .lua scripts emitted as part of keyconf / ledconf etc.
 
+ * Ruby1.8 or 1.9 (with nokogiri and sqlite3)
+   needed for the romman tool, without which, the emulator frontend bits are fairly useless (although the engine as such may work)
+
 [Win32]
  * This is the more difficult environment to setup and compile for. 
    Grab MinGW with MSYS, put the headers, .lib/.dll of all deps in relative win32/lib, win32/inc and win32/distr (dll- files to be included in package).
@@ -27,8 +30,16 @@ Some notes and hints for building / patching / packaging the engine as such.
 
 [Linux]
  * Nothing really new or surprising here -- huge dependency-tree,
-   ffmpeg (with libvpx support), libvpx, ogg/vorbis, sdl, sdl_image, sdl_ttf, openAL, openGL, GLEW, libusb1.0-dev, cmake for building along with ruby (gems nokogiri and sqlite3).
- 
- * OpenCTM for the 3d model management is not included in debian/ubuntu etc. so for packaging, you have to modify the Makefiles for OpenCTM and link static.
+   libogg
+   libvorbis
+   libvpx,
+   ffmpeg (with libvpx support), 
+   sdl1.2, (should really be replaced with GLFW as that's pretty much what we use it for except for the hijack bits..)
+   sdl_image1.2,
+   sdl_ttf2.0,
+   openAL,
+   openGL,
+   GLEW,
+   libusb1.0,
+   APR (apache portable runtime)
 
- * There was a dependency on libspeex-resampler, but due to speex itself being deprecated by Opus, the resampler is included here.
