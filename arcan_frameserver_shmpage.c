@@ -387,13 +387,18 @@ void arg_cleanup(struct arg_arr* arr)
 
 bool arg_lookup(struct arg_arr* arr, const char* val, unsigned short ind, const char** found)
 {
+	int pos = 0;
 	
-	while (arr[ind].key != NULL)
-		if (strcmp(arr[ind].key, val) == 0)
+	while (arr[pos].key != NULL){
+/* return only the 'ind'th match */
+		if (strcmp(arr[pos].key, val) == 0)
 			if (ind-- == 0){
-				*found = arr[ind].value;
+				*found = arr[pos].value;
 				return true;
 			}
+
+		pos++;
+	}
 
 	return false;
 }

@@ -31,6 +31,7 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 	pframe->linesize[0] = width;
 	pframe->linesize[1] = width / 2;
 	pframe->linesize[2] = width / 2;
+	pframe->pts = 0;
 
 	dst->storage.video.pframe = pframe;
 }
@@ -75,19 +76,23 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	ctx->sample_rate    = samplerate;
 	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000);
 
-	bool float_found = false, sint16_found = false;
-
 	unsigned i = 0;
 /* prefer sint16, but codecs e.g. vorbis requires float */
 	while(codec->sample_fmts[i] != AV_SAMPLE_FMT_NONE){
-		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16)
-			sint16_found = true;
-		else if (codec->sample_fmts[i] == AV_SAMPLE_FMT_FLT)
-			float_found = true;
+		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16){
+			ctx->sample_fmt = AV_SAMPLE_FMT_S16;
+			break;
+		}
+		else if (codec->sample_fmts[i] == AV_SAMPLE_FMT_FLT){
+			ctx->sample_fmt   = AV_SAMPLE_FMT_FLT;
+			break;
+		}
+		else if (codec->sample_fmts[i] == AV_SAMPLE_FMT_FLTP){
+			ctx->sample_fmt   = AV_SAMPLE_FMT_FLTP;
+			break;
+		}
 		i++;
 	}
-
-	ctx->sample_fmt  = float_found && !sint16_found ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
 
 /* rough quality estimate */
 	if (abr <= 10)
@@ -229,7 +234,7 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 struct codec_ent encode_getvcodec(const char* const req, int flags)
 {
  	struct codec_ent a = lookup_default(req, vcodec_tbl, sizeof(vcodec_tbl) / sizeof(vcodec_tbl[0]));
-	LOG("codec setup: %" PRIxPTR "\n", (intptr_t)a.setup.video);
+	LOG("arcan_frameserver(encode) -- video codec setup: %" PRIxPTR "\n", (intptr_t)a.setup.video);
 	if (a.storage.video.codec && !a.setup.video)
 		a.setup.video = default_vcodec_setup;
 
@@ -258,7 +263,7 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 		res.storage.audio.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
 	}
 
-	LOG("audio setup, %s\n", res.name);
+	LOG("arcan_frameserver(encode) -- audio setup, %s\n", res.name);
 	return res;
 }
 
@@ -267,12 +272,32 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst)
 {
 	char fdbuf[16];
 	AVFormatContext* ctx;
-
 	struct codec_ent res = {0};
-	res.storage.container.format = av_guess_format("matroska", NULL, NULL);
 
+	if (requested && strcmp(requested, "stream") == 0){
+		res.storage.container.format = av_guess_format("rtp", NULL, NULL);
+		if (!res.storage.container.format)
+			LOG("arcan_frameserver(encode) -- couldn't setup rtp output.\n");
+
+			ctx = avformat_alloc_context();
+			ctx->oformat = res.storage.container.format;
+			res.storage.container.context = ctx;
+			res.setup.muxer = default_format_setup;
+			int rv = avio_open2(&ctx->pb, "rtp://127.0.0.1:5000", AVIO_FLAG_WRITE, NULL, NULL);
+		
+		return res;
+	}
+
+	if (requested)
+		res.storage.container.format = av_guess_format(requested, NULL, NULL);
+
+	if (!res.storage.container.format)
+		res.storage.container.format = av_guess_format("matroska", NULL, NULL);
+
+/* no stream, nothing requested that matched and default didn't work. Give up and cascade. */
 	if (!res.storage.container.format){
 		LOG("arcan_frameserver(encode) -- couldn't find a suitable container.\n");
+		return res;
 	}
 
 	ctx = avformat_alloc_context();

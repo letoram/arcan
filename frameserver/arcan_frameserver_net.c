@@ -66,13 +66,17 @@
 #define LOCK() (apr_thread_mutex_lock(netcontext.conn_cont_lock));
 #define UNLOCK() (apr_thread_mutex_unlock(netcontext.conn_cont_lock));
 
-enum conn_modes {
-	SERVER_SIMPLE,
-	SERVER_DIRECTORY,
-	SERVER_DIRECTORY_NACL,
+enum client_modes {
 	CLIENT_SIMPLE,
 	CLIENT_DISCOVERY,
 	CLIENT_DISCOVERY_NACL
+};
+
+enum server_modes {
+	SERVER_SIMPLE,
+	SERVER_SIMPLE_DISCOVERABLE,
+	SERVER_DIRECTORY,
+	SERVER_DIRECTORY_NACL,
 };
 	
 struct {
@@ -80,6 +84,10 @@ struct {
 	apr_thread_mutex_t* conn_cont_lock;
 	apr_pool_t* mempool;
 
+	uint8_t* vidp, (* audp);
+	struct arcan_evctx inevq;
+	struct arcan_evctx outevq;
+	
 	unsigned n_conn;
 } netcontext;
 
@@ -135,14 +143,9 @@ static char* host_discover(char* host, int* port, bool usenacl)
 }
 
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
-static void client_session(char* hoststr, int port, enum conn_modes mode)
+static void client_session(char* hoststr, int port, enum client_modes mode)
 {
 	switch (mode){
-		case SERVER_SIMPLE:
-		case SERVER_DIRECTORY:
-		case SERVER_DIRECTORY_NACL:
-		break;
-
 		case CLIENT_SIMPLE:
 			if (hoststr == NULL){
 				LOG("arcan_frameserver(net) -- direct client mode specified, but server argument missing, giving up.\n");
@@ -164,21 +167,47 @@ static void client_session(char* hoststr, int port, enum conn_modes mode)
 
 /* "normal" connect finally */
 	apr_sockaddr_t* sa;
-	apr_socket_t* s;
+	apr_socket_t* sock;
 
 /* obtain connection */
 	apr_sockaddr_info_get(&sa, hoststr, APR_INET, port, 0, netcontext.mempool);
-	apr_socket_create(&s, sa->family, SOCK_STREAM, APR_PROTO_TCP, netcontext.mempool);
-
+	apr_socket_create(&sock, sa->family, SOCK_STREAM, APR_PROTO_TCP, netcontext.mempool);
+	apr_socket_opt_set(sock, APR_SO_NONBLOCK, 0);
+	apr_socket_timeout_set(sock, 10 * 1000 * 1000); /* microseconds */
+	
 /* connect or time-out? */
-	apr_status_t rc = apr_socket_connect(s, sa);
+	apr_status_t rc = apr_socket_connect(sock, sa);
 
-	while (true){
-/* select on event filedescriptor and apr_socket */
-/* buffer message, decode if NACL mode enabled */
-/* send to arcan_event_unpack */
-/* enqueue in outgoing framequeue */
+/* didn't work, give up (send an event about that) */
+	if (rc != APR_SUCCESS){
+		arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_NORESPONSE };
+		snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
+		arcan_event_enqueue(&netcontext.outevq, &ev);
+		return;
 	}
+
+	arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_CONNECTED };
+	snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
+	arcan_event_enqueue(&netcontext.outevq, &ev);
+
+	apr_pollset_t* pset;
+	apr_pollfd_t pfd = { netcontext.mempool, APR_POLL_SOCKET, APR_POLLIN, 0, { NULL }, NULL };
+/* pr_status_t apr_os_sock_put(apr_socket_t** sock, apr_os_sock_t* thesock, apr_pool_t* cont) (FD to socket) */
+
+	apr_pollset_create(&pset, 2 /* just event- in and socket */, netcontext.mempool, 0);
+	apr_pollset_add(pset, &pfd);
+	
+	while (true){
+		apr_int32_t pnum;
+		const apr_pollfd_t* ret_pfd;
+		apr_status_t status = apr_pollset_poll(pset, -1 /* timeout */, &pnum, &ret_pfd);
+
+		for (int i = 0; i < pnum; i++){
+			void* cb = ret_pfd[i].client_data;
+		}
+	}
+
+	return;
 }
 
 /* for the discovery service (if active), we toggle it with an event and a FD push (to a sqlite3 db)
@@ -190,12 +219,22 @@ static void client_session(char* hoststr, int port, enum conn_modes mode)
 void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 {
 	struct arg_arr* args = arg_unpack(resource);
+
 	if (!args || !shmkey)
 		goto cleanup;
 
+/* using the shared memory context as a graphing / logging window, for event passing,
+ * the sound as a possible alert, but also for the guard thread */
+	netcontext.shmcont = frameserver_getshm(shmkey, true);
+	if (!frameserver_shmpage_resize(&netcontext.shmcont, 256, 256, 4, 0, 0)) return;
+	frameserver_shmpage_calcofs(netcontext.shmcont.addr, &(netcontext.vidp), &(netcontext.audp) );
+	frameserver_shmpage_setevqs(netcontext.shmcont.addr, netcontext.shmcont.esem, &(netcontext.inevq), &(netcontext.outevq), false);
+	frameserver_semcheck(netcontext.shmcont.vsem, -1);
+
+/* APR as a wrapper for all socket communication */
 	apr_initialize();
 	apr_pool_create(&netcontext.mempool, NULL);
-	
+		
 	const char* rk;
 
 	if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("client", rk) == 0)){
