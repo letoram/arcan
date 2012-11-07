@@ -1388,6 +1388,24 @@ add_submenu(crtmenulbls, crtmenuptrs, "Corner Smooth",         "crt_cornersmooth
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)",     "crt_tilth",       gen_tbl_menu("crt_tilth",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 
+local function recdim()
+	local props  = image_surface_initial_properties(internal_vid);
+	local width  = props.width;
+	local height = props.height;
+
+	if (settings.record_res < props.height) then
+		width = ( width / height ) * settings.record_res;
+	end
+
+-- need to be evenly divisible
+	width  = math.floor(width);
+	height = math.floor(height);
+	width  = (width % 2  == 0) and width  or width  + 1;
+	height = (height % 2 == 0) and height or height + 1;
+
+	return width, height;
+end
+
 local function flip_crttog(label, save)
 	local dstkey;
 	
@@ -1427,25 +1445,22 @@ add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("r
 add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Vidcap"}, add_vidcap, true));
 
 table.insert(recordlist, "Start");
+table.insert(recordlist, "Stream");
 
-recordptrs["Start"] = function() 
+recordptrs["Stream"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
+	local width, height = recdim();
+	local recstr = "libvorbis:vcodec=libx264:container=stream:noaudio"
+	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
+	enable_record(width, height, recstr);
+end
 
-	local props  = image_surface_initial_properties(internal_vid);
-	local width  = props.width;
-	local height = props.height;
-
-	if (settings.record_res < props.height) then
-		width = ( width / height ) * settings.record_res;
-	end
-
--- need to be evenly divisible
-	width = math.floor(width);
-	height = math.floor(height);
-	width = (width % 2 == 0) and width or width + 1;
-	height = (height % 2 == 0) and height or height + 1;
-
+recordptrs["Start"] = function()
+	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"]();
+	local width, height = recdim();
+	
 -- compile a string with all the settings- goodness
 	local recstr = settings.record_format == "Lossless (FFV1/FLAC)" and "acodec=flac:vcodec=ffv1" or "acodec=libvorbis:vcodec=libvpx";
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);

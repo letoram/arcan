@@ -78,7 +78,8 @@ struct {
 	struct resampler* resamplers;
 
 /* needed for intermediate buffering and format conversion */
-	bool float_samples;
+	bool float_samples, float_planar;
+
 	uint8_t* encabuf;
 	float* encfbuf;
 	off_t encabuf_ofs;
@@ -187,7 +188,12 @@ forceencode:
 			int16_t* addr = (int16_t*) &ffmpegctx.encabuf[base];
 			memset(ffmpegctx.encfbuf, 0xaa, ffmpegctx.aframe_sz * 2);
 
-			for (int i = 0; i < frame->nb_samples * 2; i++)
+			if (ffmpegctx.float_planar)
+				for (int i = 0, j = 0; i < frame->nb_samples * 2; i+=2, j++){
+					ffmpegctx.encfbuf[j] = (float)(addr[i]) / 32767.0; 
+					ffmpegctx.encfbuf[frame->nb_samples - 1+ j] = (float)(addr[i+1]) / 32767.0;
+				}
+			else for (int i = 0; i < frame->nb_samples * 2; i++)
 				ffmpegctx.encfbuf[i] = (float)(addr[i]) / 32767.0f;
 
 			avcodec_fill_audio_frame(frame, 2, ctx->sample_fmt, (uint8_t*) ffmpegctx.encfbuf, ffmpegctx.aframe_sz * 2, 1);
@@ -299,9 +305,13 @@ void encode_video(bool flush)
 		AVCodecContext* ctx = ffmpegctx.vcontext;
 		AVPacket pkt = {0};
 		int got_outp = false;
+		ffmpegctx.framecount++;
+	
 		av_init_packet(&pkt);
+		ffmpegctx.pframe->pts = ffmpegctx.framecount;
 
 		int rs = avcodec_encode_video2(ffmpegctx.vcontext, &pkt, flush ? NULL : ffmpegctx.pframe, &got_outp);
+
 		if (rs < 0 && !flush) {
 			LOG("arcan_frameserver(encode) -- encode_video failed, terminating.\n");
 			exit(1);
@@ -325,7 +335,6 @@ void encode_video(bool flush)
 			}
 		}
 
-		ffmpegctx.pframe->pts = ffmpegctx.framecount++;
 	}
 
 }
@@ -362,10 +371,8 @@ void arcan_frameserver_stepframe(bool flush)
 				break;
 		}
 
-	if (ffmpegctx.vstream){
-//		LOG("vframe\n");
+	if (ffmpegctx.vstream)
 		encode_video(flush);
-	}
 
 /* acknowledge that a frame has been consumed, then return to polling events */
 	arcan_sem_post(ffmpegctx.shmcont.vsem);
@@ -410,59 +417,21 @@ static bool setup_ffmpeg_encode(const char* resource)
 	bool noaudio = false;
 	float fps    = 25;
 
-/* decode encoding options from the resourcestr * -l */
-	char* base = strdup(resource), (* blockb) = base,
-	(* vck) = NULL, (* ack) = NULL, (* ac) = NULL, (* cont) = NULL;
+	struct arg_arr* args = arg_unpack(resource);
+	const char (* vck) = NULL, (* ack) = NULL, (* cont) = NULL;
 
-/* parse user args and override defaults */
-	while (*blockb){
-		blockb = (blockb = strchr(base, ':')) ? (*blockb = '\0', blockb) : base + strlen(base);
-
-		char* splitp = strchr(base, '=');
-		if (!splitp){
-			LOG("arcan_frameserver(encode) -- couldn't parse resource (%s)\n", resource);
-			break;
-		}
-
-		else {
-			*splitp++ = '\0';
-/* video bit-rate */
-			if (strcmp(base, "vbitrate") == 0)
-				vbr = strtoul(splitp, NULL, 10) * 1024;
-			else if (strcmp(base, "vpreset")  == 0)
-/* video preset overrides bitrate */
-				vbr = ( (vbr = strtoul(splitp, NULL, 10)) > 10 ? 10 : vbr);
-			else if (strcmp(base, "vcodec") == 0 )
-/* videocodec */
-				vck = splitp;
-			else if (strcmp(base, "abitrate") == 0)
-/* audio bit-rate */
-				abr = strtoul(splitp, NULL, 10) * 1024;
-			else if (strcmp(base, "apreset") == 0	)
-/* audio preset overrides bitrate setting */
-				abr = ( (abr = strtoul(splitp, NULL, 10)) > 10 ? 10 : abr);
-			else if (strcmp(base, "acodec") == 0)
-/* audiocodec */
-				ac = splitp;
-/* mux format */
-			else if (strcmp(base, "container") == 0)
-				cont = splitp;
-			else if (strcmp(base, "samplerate") == 0)
-/* audio samples per second */
-				samplerate = strtoul(splitp, NULL, 0);
-			else if (strcmp(base, "fps") == 0)
-/* videoframes per second */
-				fps = strtof(splitp, NULL);
-			else if (strcmp(base, "noaudio") == 0)
-				noaudio = true;
-
-			else
-				LOG("arcan_frameserver(encode) -- parsing resource string, unknown base : %s\n", base);
-		}
-
-		blockb++; /* should now point to new base or NULL */
-		base = blockb;
-	}
+	const char* val;
+	if (arg_lookup(args, "vbitrate", 0, &val)) vbr = strtoul(val, NULL, 10) * 1024;
+	if (arg_lookup(args, "abitrate", 0, &val)) abr = strtoul(val, NULL, 10) * 1024;
+	if (arg_lookup(args, "vpreset",  0, &val)) vbr = ( (vbr = strtoul(val, NULL, 10)) > 10 ? 10 : vbr);
+	if (arg_lookup(args, "apreset",  0, &val)) abr = ( (abr = strtoul(val, NULL, 10)) > 10 ? 10 : abr);
+	if (arg_lookup(args, "samplerate", 0, &val)) samplerate = strtoul(val, NULL, 0);
+	if (arg_lookup(args, "fps", 0, &val)) fps = strtof(val, NULL);
+	if (arg_lookup(args, "noaudio", 0, &val)) noaudio = true;
+	
+	arg_lookup(args, "vcodec", 0, &vck);
+	arg_lookup(args, "acodec", 0, &ack);
+	arg_lookup(args, "container", 0, &cont);
 
 /* sanity- check decoded values */
 	if (fps < 4 || fps > 60){
@@ -471,19 +440,25 @@ static bool setup_ffmpeg_encode(const char* resource)
 	}
 
 	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d b/s), acodec: (%s:%d rate %d b/s), container: (%s)\n",
-			vck?vck:"default",  fps, vbr, ac?ac:"default", samplerate, abr, cont?cont:"default");
+			vck?vck:"default",  fps, vbr, ack?ack:"default", samplerate, abr, cont?cont:"default");
 
+/* overrides some of the other options to provide RDP output etc. */
+	if (cont && strcmp(cont, "stream") == 0){
+		avformat_network_init();
+		cont = "stream";
+	}
+	
 /* locate codecs and containers */
 	struct codec_ent muxer = encode_getcontainer(cont, ffmpegctx.lastfd);
-	if (!muxer.storage.container.format){
-		LOG("arcan_frameserver(encode) -- No muxer configured, aborting.\n");
-		return false;
-	}
-
 	struct codec_ent video = encode_getvcodec(vck, muxer.storage.container.format->flags);
 	struct codec_ent audio = encode_getacodec(ack, muxer.storage.container.format->flags);
 	unsigned contextc      = 0; /* track of which ID the next stream has */
 
+	if (!video.storage.container.context){
+		LOG("arcan_frameserver(encode) -- No valid output container found, aborting.\n");
+		return false;
+	}
+	
 	if (!video.storage.video.codec && !audio.storage.audio.codec){
 		LOG("arcan_frameserver(encode) -- No valid video or audio setup found, aborting.\n");
 		return false;
@@ -523,7 +498,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.acontext       = audio.storage.audio.context;
 			ffmpegctx.acodec         = audio.storage.audio.codec;
 			ffmpegctx.astream->codec = ffmpegctx.acontext;
-			LOG("arcan-frameserver(encode) -- audio setup.\n");
+			LOG("arcan_frameserver(encode) -- audio setup.\n");
 
 /* feeding audio encoder by this much each time,
  * frame_size = number of samples per frame, might need to supply the encoder with a fixed amount, each sample covers n channels.
@@ -533,10 +508,11 @@ static bool setup_ffmpeg_encode(const char* resource)
 				samplerate / fps : ffmpegctx.acontext->frame_size;
 			ffmpegctx.aframe_sz = 4 * ffmpegctx.aframe_smplcnt;
 
-			if (ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLT){
+			LOG("arcan_frameserver(encode) -- audio sample format(%d)\n", ffmpegctx.acontext->sample_fmt);
+			if (ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLT || ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLTP){
 				ffmpegctx.encfbuf = av_malloc( ffmpegctx.aframe_sz * 2);
 				ffmpegctx.float_samples = true;
-				LOG("float sample format.\n");
+				ffmpegctx.float_planar  = ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLTP;
 			}
 
 		}
@@ -546,6 +522,13 @@ static bool setup_ffmpeg_encode(const char* resource)
 	ffmpegctx.fcontext = muxer.storage.container.context;
 	muxer.setup.muxer(&muxer);
 
+/* additional setup for rtp */
+	if (cont && strcmp(cont, "stream") == 0){
+		char* sdpbuffer = malloc(2048);
+		av_sdp_create(&muxer.storage.container.context, 1, sdpbuffer, 2048);
+		LOG("arcan_frameserver(encode) -- SDP: %s\n", sdpbuffer);
+	}
+	
 /* signal that we are ready to receive video frames */
 	arcan_sem_post(ffmpegctx.shmcont.vsem);
 	return true;

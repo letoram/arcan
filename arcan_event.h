@@ -30,19 +30,18 @@
  * i.e. the main process side with a frameserver associated. A failure to get
  * a lock within the set time, will forcibly free the frameserver */
 #define DEFAULT_EVENT_TIMEOUT 500
+#include <apr_poll.h>
 
 enum ARCAN_EVENT_CATEGORY {
-	EVENT_SYSTEM = 1,
-	EVENT_IO     = 2,
-	EVENT_TIMER  = 4,
-	EVENT_VIDEO  = 8,
-	EVENT_AUDIO  = 16,
-/* main app -> frameserver */
-
-	EVENT_TARGET = 32,
+	EVENT_SYSTEM      = 1,
+	EVENT_IO          = 2,
+	EVENT_TIMER       = 4,
+	EVENT_VIDEO       = 8,
+	EVENT_AUDIO       = 16,
+	EVENT_TARGET      = 32,
 	EVENT_FRAMESERVER = 64,
-/* frameserver -> main app */
-	EVENT_EXTERNAL = 128
+	EVENT_EXTERNAL    = 128,
+	EVENT_NET         = 256
 };
 
 enum ARCAN_EVENT_SYSTEM {
@@ -142,6 +141,7 @@ enum ARCAN_EVENT_VIDEO {
 enum ARCAN_EVENT_NET {
 	EVENT_NET_CONNECTED,
 	EVENT_NET_DISCONNECTED,
+	EVENT_NET_NORESPONSE,
 	EVENT_NET_CUSTOMMSG,
 	EVENT_NET_INPUTEVENT
 };
@@ -246,6 +246,16 @@ typedef struct arcan_tevent {
 	long long int pulse_count;
 } arcan_tevent;
 
+typedef struct arcan_netevent{
+	arcan_vobj_id source;
+	unsigned connid;
+	
+	union {
+		char hostaddr[40]; /* max ipv6 textual representation, 39 */
+		char connhandle[4];
+	};
+} arcan_netevent;
+
 typedef struct arcan_tgtevent {
 	enum ARCAN_TARGET_COMMAND command;
 	union {
@@ -268,14 +278,15 @@ typedef struct arcan_extevent {
 } arcan_extevent;
 
 typedef union event_data {
-	arcan_ioevent io;
-	arcan_vevent video;
-	arcan_aevent audio;
-	arcan_sevent system;
-	arcan_tevent timer;
-	arcan_tgtevent target;
+	arcan_ioevent   io;
+	arcan_vevent    video;
+	arcan_aevent    audio;
+	arcan_sevent    system;
+	arcan_tevent    timer;
+	arcan_tgtevent  target;
 	arcan_fsrvevent frameserver;
-	arcan_extevent external;
+	arcan_extevent  external;
+	arcan_netevent  network;
 
 	void* other;
 } event_data;
@@ -285,7 +296,7 @@ typedef struct arcan_event {
 	unsigned tickstamp;
 
 	char label[16];
-	unsigned char category;
+	unsigned short category;
 	
 	event_data data;
 } arcan_event;
