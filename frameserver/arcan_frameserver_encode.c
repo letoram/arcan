@@ -278,7 +278,7 @@ void encode_video(bool flush)
  * the samplerate we're running with that is of interest. Thus compare the current time against the next expected time-slots,
  * if we're running behind, just repeat the last frame N times as to not get out of synch with possible audio. */
 	double mspf = 1000.0 / ffmpegctx.fps;
-	double thresh = mspf * 0.5;
+	double thresh = mspf;
 	long long encb    = frameserver_timemillis();
 	long long cft     = encb - ffmpegctx.lastframe; /* assumed >= 0 */
 	long long nf      = round( mspf * (double)ffmpegctx.framecount );
@@ -293,9 +293,8 @@ void encode_video(bool flush)
 	if ( delta > thresh )
 		fc += 1 + floor( delta / mspf);
 
-	if (fc > 1){
+	if (fc > 1)
 		LOG("arcan_frameserver(encode) jitter: %lld, current time :%lld, ideal: %lld\n", delta, cft, nf);
-	}
 
 	int rv = sws_scale(ffmpegctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0,
 		ffmpegctx.vcontext->height, ffmpegctx.pframe->data, ffmpegctx.pframe->linesize);
@@ -414,7 +413,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
 	unsigned vbr = 0, abr = 0, samplerate = 44100, channels = 2;
-	bool noaudio = false;
+	bool noaudio = false, stream_outp = false;
 	float fps    = 25;
 
 	struct arg_arr* args = arg_unpack(resource);
@@ -445,6 +444,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 /* overrides some of the other options to provide RDP output etc. */
 	if (cont && strcmp(cont, "stream") == 0){
 		avformat_network_init();
+		stream_outp = true;
 		cont = "stream";
 	}
 	
@@ -471,7 +471,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 		unsigned width  = shared->storage.w;
 		unsigned height = shared->storage.h;
 
-		if ( video.setup.video(&video, width, height, fps, vbr) ){
+		if ( video.setup.video(&video, width, height, fps, vbr, stream_outp) ){
 			ffmpegctx.encvbuf_sz = width * height * 4;
 			ffmpegctx.encvbuf    = av_malloc(ffmpegctx.encvbuf_sz);
 			ffmpegctx.ccontext   = sws_getContext(width, height, PIX_FMT_RGBA, width, height, PIX_FMT_YUV420P, SWS_FAST_BILINEAR, NULL, NULL, NULL);

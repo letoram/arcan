@@ -36,7 +36,7 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 	dst->storage.video.pframe = pframe;
 }
 
-static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
+static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVCodecContext* ctx = dst->storage.video.context;
 
@@ -46,11 +46,10 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned
 	assert(ctx);
 
 	vcodec_defaults(dst, width, height, fps, vbr);
+/* terrible */
 	if (vbr <= 10){
 		int npx = width * height;
 		vbr = 150 * 1024;
-		switch (vbr){
-		}
 	}
 
 	ctx->bit_rate = vbr;
@@ -120,7 +119,7 @@ static bool default_format_setup(struct codec_ent* ctx)
 	return false;
 }
 
-static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
+static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVDictionary* opts = NULL;
 	const char* const lif = fps > 30.0 ? "25" : "16";
@@ -128,39 +127,39 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 
 	vcodec_defaults(dst, width, height, fps, vbr);
 	if (vbr == 10){
-		av_dict_set(&opts, "preset", "slower", 0);
-		av_dict_set(&opts, "crf", "4", 0);
-		vbr = vbrf * 1100;
-	} else if (vbr == 9){
-		av_dict_set(&opts, "preset", "slower", 0);
-		av_dict_set(&opts, "crf", "8", 0);
-		vbr = vbrf * 1000;
-	} else if (vbr == 8){
-		av_dict_set(&opts, "preset", "slow", 0);
-		av_dict_set(&opts, "crf", "14", 0);
-		vbr = vbrf * 900;
-	} else if (vbr == 7){
-		av_dict_set(&opts, "preset", "slow", 0);
-		av_dict_set(&opts, "crf", "18", 0);
-		vbr = vbrf * 800; 
-	} else if (vbr == 6){
-		av_dict_set(&opts, "preset", "medium", 0	);
-		av_dict_set(&opts, "crf", "22", 0);
-		vbr = vbrf * 700;
-	} else if (vbr == 5){
-		av_dict_set(&opts, "preset", "medium", 0	);
-		av_dict_set(&opts, "crf", "24", 0);
-		vbr = vbrf * 600;
-	} else if (vbr == 4){
 		av_dict_set(&opts, "preset", "medium", 0);
-		av_dict_set(&opts, "crf", "26", 0);
-		vbr = vbrf * 500;
-	} else if (vbr == 3){
+		av_dict_set(&opts, "crf", "4", 0);
+		vbr = vbrf * 1200;
+	} else if (vbr == 9){
+		av_dict_set(&opts, "preset", "medium", 0);
+		av_dict_set(&opts, "crf", "8", 0);
+		vbr = vbrf * 1100;
+	} else if (vbr == 8){
+		av_dict_set(&opts, "preset", "medium", 0);
+		av_dict_set(&opts, "crf", "14", 0);
+		vbr = vbrf * 1000;
+	} else if (vbr == 7){
+		av_dict_set(&opts, "preset", "medium", 0);
+		av_dict_set(&opts, "crf", "18", 0);
+		vbr = vbrf * 900;
+	} else if (vbr == 6){
 		av_dict_set(&opts, "preset", "fast", 0	);
+		av_dict_set(&opts, "crf", "22", 0);
+		vbr = vbrf * 800;
+	} else if (vbr == 5){
+		av_dict_set(&opts, "preset", "fast", 0	);
+		av_dict_set(&opts, "crf", "24", 0);
+		vbr = vbrf * 700;
+	} else if (vbr == 4){
+		av_dict_set(&opts, "preset", "faster", 0);
+		av_dict_set(&opts, "crf", "26", 0);
+		vbr = vbrf * 600;
+	} else if (vbr == 3){
+		av_dict_set(&opts, "preset", "faster", 0	);
 		av_dict_set(&opts, "crf", "32", 0);
-		vbr = vbrf * 450;
+		vbr = vbrf * 550;
 	} else if (vbr == 2){
-		av_dict_set(&opts, "preset", "fast", 0);
+		av_dict_set(&opts, "preset", "superfast", 0);
 		av_dict_set(&opts, "crf", "36", 0);
 		vbr = vbrf * 400;
 	} else if (vbr == 1){
@@ -175,6 +174,9 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 		av_dict_set(&opts, "preset", "medium", 0);
 		av_dict_set(&opts, "crf", "25", 0);
 	}
+
+	if (stream)
+		av_dict_set(&opts, "preset", "faster", 0);
 
 	dst->storage.video.context->bit_rate = vbr;
 
@@ -191,7 +193,7 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 }
 
 /* would be nice with some decent evaluation of all the parameters and their actual cost / benefit. */
-static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
+static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVDictionary* opts = NULL;
 	const char* const lif = fps > 30.0 ? "25" : "16";

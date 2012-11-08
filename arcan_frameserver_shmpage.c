@@ -259,12 +259,14 @@ void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** ds
 	uint8_t* vidaddr = base + sizeof(struct frameserver_shmpage);
 	uint8_t* audaddr;
 
-	if ( (uintptr_t)vidaddr % 16 != 0)
-		vidaddr += 16 - ( (uintptr_t)vidaddr % 16);
+	const int memalign = 64;
+	
+	if ( (uintptr_t)vidaddr % memalign != 0)
+		vidaddr += memalign - ( (uintptr_t)vidaddr % memalign);
 
 	audaddr = vidaddr + abs(width * height * bpp);
-	if ( (uintptr_t) audaddr % 16 != 0)
-		audaddr += 16 - ( (uintptr_t) audaddr % 16);
+	if ( (uintptr_t) audaddr % memalign != 0)
+		audaddr += memalign - ( (uintptr_t) audaddr % memalign);
 
 	if (audaddr < base || vidaddr < base){
 		*dstvidptr = *dstaudptr = NULL;

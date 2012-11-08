@@ -61,7 +61,7 @@ struct codec_ent
  * unsigned samplerate (> 0, <= 48000)
  * unsigned abr|quality (0..n, n < 10 : quality preset, otherwise bitrate) */
 	union {
-		bool (*video)(struct codec_ent*, unsigned, unsigned, float, unsigned);
+		bool (*video)(struct codec_ent*, unsigned, unsigned, float, unsigned, bool);
 		bool (*audio)(struct codec_ent*, unsigned, unsigned, unsigned);
 		bool (*muxer)(struct codec_ent*); 
 	} setup;
