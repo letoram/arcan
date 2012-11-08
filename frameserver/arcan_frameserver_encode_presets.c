@@ -47,7 +47,10 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned
 
 	vcodec_defaults(dst, width, height, fps, vbr);
 	if (vbr <= 10){
-		vbr = width * height + (width * height) * ( (float) vbr / 10.0f );
+		int npx = width * height;
+		vbr = 150 * 1024;
+		switch (vbr){
+		}
 	}
 
 	ctx->bit_rate = vbr;
@@ -117,6 +120,76 @@ static bool default_format_setup(struct codec_ent* ctx)
 	return false;
 }
 
+static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
+{
+	AVDictionary* opts = NULL;
+	const char* const lif = fps > 30.0 ? "25" : "16";
+	float vbrf = 1000 * (height >= 720 ? 2.0 : 1.0);
+
+	vcodec_defaults(dst, width, height, fps, vbr);
+	if (vbr == 10){
+		av_dict_set(&opts, "preset", "slower", 0);
+		av_dict_set(&opts, "crf", "4", 0);
+		vbr = vbrf * 1100;
+	} else if (vbr == 9){
+		av_dict_set(&opts, "preset", "slower", 0);
+		av_dict_set(&opts, "crf", "8", 0);
+		vbr = vbrf * 1000;
+	} else if (vbr == 8){
+		av_dict_set(&opts, "preset", "slow", 0);
+		av_dict_set(&opts, "crf", "14", 0);
+		vbr = vbrf * 900;
+	} else if (vbr == 7){
+		av_dict_set(&opts, "preset", "slow", 0);
+		av_dict_set(&opts, "crf", "18", 0);
+		vbr = vbrf * 800; 
+	} else if (vbr == 6){
+		av_dict_set(&opts, "preset", "medium", 0	);
+		av_dict_set(&opts, "crf", "22", 0);
+		vbr = vbrf * 700;
+	} else if (vbr == 5){
+		av_dict_set(&opts, "preset", "medium", 0	);
+		av_dict_set(&opts, "crf", "24", 0);
+		vbr = vbrf * 600;
+	} else if (vbr == 4){
+		av_dict_set(&opts, "preset", "medium", 0);
+		av_dict_set(&opts, "crf", "26", 0);
+		vbr = vbrf * 500;
+	} else if (vbr == 3){
+		av_dict_set(&opts, "preset", "fast", 0	);
+		av_dict_set(&opts, "crf", "32", 0);
+		vbr = vbrf * 450;
+	} else if (vbr == 2){
+		av_dict_set(&opts, "preset", "fast", 0);
+		av_dict_set(&opts, "crf", "36", 0);
+		vbr = vbrf * 400;
+	} else if (vbr == 1){
+		av_dict_set(&opts, "preset", "superfast", 0);
+		av_dict_set(&opts, "crf", "44", 0);
+		vbr = vbrf * 350;
+	} else if (vbr == 0){
+		av_dict_set(&opts, "preset", "superfast", 0);
+		av_dict_set(&opts, "crf", "48", 0);
+		vbr = vbrf * 300;
+	} else {
+		av_dict_set(&opts, "preset", "medium", 0);
+		av_dict_set(&opts, "crf", "25", 0);
+	}
+
+	dst->storage.video.context->bit_rate = vbr;
+
+	LOG("arcan_frameserver(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1000);
+	
+	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
+		avcodec_close(dst->storage.video.context);
+		dst->storage.video.context = NULL;
+		dst->storage.video.codec   = NULL;
+		return false;
+	}
+
+	return true;
+}
+
 /* would be nice with some decent evaluation of all the parameters and their actual cost / benefit. */
 static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
 {
@@ -182,20 +255,22 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 
 static struct codec_ent vcodec_tbl[] = {
 	{.kind = CODEC_VIDEO, .name = "libvpx",  .shortname = "VP8",  .id = CODEC_ID_VP8,  .setup.video = setup_cb_vp8},
-	{.kind = CODEC_VIDEO, .name = "libx264", .shortname = "H264", .id = 0,             .setup.video = default_vcodec_setup },
+	{.kind = CODEC_VIDEO, .name = "libx264", .shortname = "H264", .id = 0,             .setup.video = setup_cb_x264},
 	{.kind = CODEC_VIDEO, .name = "ffv1",    .shortname = "FFV1", .id = CODEC_ID_FFV1, .setup.video = default_vcodec_setup },
 };
 
 static struct codec_ent acodec_tbl[] = {
-	{.kind = CODEC_AUDIO, .name = "libvorbis", .shortname = "VORBIS", .id = 0,             .setup.audio = default_acodec_setup },
-	{.kind = CODEC_AUDIO, .name = "FLAC",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup },
-	{.kind = CODEC_AUDIO, .name = "RAWS16LE",  .shortname = "RAW",    .id = 0,             .setup.audio = default_acodec_setup }
+	{.kind = CODEC_AUDIO, .name = "libvorbis", .shortname = "VORBIS", .id = 0,             .setup.audio = default_acodec_setup},
+	{.kind = CODEC_AUDIO, .name = "FLAC",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup},
+	{.kind = CODEC_AUDIO, .name = "RAWS16LE",  .shortname = "RAW",    .id = 0,             .setup.audio = default_acodec_setup},
+	{.kind = CODEC_AUDIO, .name = "libmp3lame",.shortname = "MP3",    .id = 0,             .setup.audio = default_acodec_setup}
 };
 
 static struct codec_ent fcodec_tbl[] = {
 	{.kind = CODEC_FORMAT, .name = "matroska", .shortname = "MKV", .id = 0, .setup.muxer = default_format_setup },
 	{.kind = CODEC_FORMAT, .name = "mpeg4",    .shortname = "MP4", .id = 0, .setup.muxer = default_format_setup },
-	{.kind = CODEC_FORMAT, .name = "avi",      .shortname = "AVI", .id = 0, .setup.muxer = default_format_setup }
+	{.kind = CODEC_FORMAT, .name = "avi",      .shortname = "AVI", .id = 0, .setup.muxer = default_format_setup },
+	{.kind = CODEC_FORMAT, .name = "flv",      .shortname = "FLV", .id = 0, .setup.muxer = default_format_setup }
 };
 
 static struct codec_ent lookup_default(const char* const req, struct codec_ent* tbl, size_t nmemb)
@@ -275,15 +350,15 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst)
 	struct codec_ent res = {0};
 
 	if (requested && strcmp(requested, "stream") == 0){
-		res.storage.container.format = av_guess_format("rtp", NULL, NULL);
+		res.storage.container.format = av_guess_format("flv", NULL, NULL);
 		if (!res.storage.container.format)
-			LOG("arcan_frameserver(encode) -- couldn't setup rtp output.\n");
+			LOG("arcan_frameserver(encode) -- couldn't setup streaming output.\n");
 
 			ctx = avformat_alloc_context();
 			ctx->oformat = res.storage.container.format;
 			res.storage.container.context = ctx;
 			res.setup.muxer = default_format_setup;
-			int rv = avio_open2(&ctx->pb, "rtp://127.0.0.1:5000", AVIO_FLAG_WRITE, NULL, NULL);
+			int rv = avio_open2(&ctx->pb, "rtmp://live-lhr-backup.justin.tv/app/live_37516373_gTSMBCDIpVSxbwy8OTqLqWq9ueJHix", AVIO_FLAG_WRITE, NULL, NULL);
 		
 		return res;
 	}

@@ -1451,7 +1451,7 @@ recordptrs["Stream"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
 	local width, height = recdim();
-	local recstr = "libvorbis:vcodec=libx264:container=stream:noaudio"
+	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame"
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
 	enable_record(width, height, recstr);
 end

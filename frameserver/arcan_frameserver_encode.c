@@ -439,8 +439,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 			fps = 25;
 	}
 
-	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d b/s), acodec: (%s:%d rate %d b/s), container: (%s)\n",
-			vck?vck:"default",  fps, vbr, ack?ack:"default", samplerate, abr, cont?cont:"default");
+	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d %s), acodec: (%s:%d rate %d %s), container: (%s)\n",
+			vck?vck:"default",  fps, vbr, vbr <= 10 ? "qual.lvl" : "b/s", ack?ack:"default", samplerate, abr, abr <= 10 ? "qual.lvl" : "b/s", cont?cont:"default");
 
 /* overrides some of the other options to provide RDP output etc. */
 	if (cont && strcmp(cont, "stream") == 0){
