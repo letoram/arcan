@@ -12,6 +12,7 @@
 -- Popup window for browsing match namespace / Autocomplete (by word, by line),
 -- Template completion (mark words for replacement, stepping in completion word)
 -- Limit on line-history
+--
 
 function string.utf8back(src, ofs)
 	if (ofs > 1 and string.len(src)+1 >= ofs) then
@@ -75,7 +76,7 @@ function string.insert(src, msg, ofs, limit)
 	if ofs + string.len(msg) > limit then
 		msg = string.sub(msg, 1, limit - ofs);
 
-	-- align to the last possible UTF8 char..
+-- align to the last possible UTF8 char..
 		while (string.len(msg) > 0 and utf8kind( string.byte(msg, string.len(msg))) == 2) do
 			msg = string.sub(msg, 1, string.len(msg) - 1);
 		end

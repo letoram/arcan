@@ -254,6 +254,7 @@ customview.position_item = function(vid, trigger, lbls)
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
 -- would need state tracking and hook to the clock 
 	cascade_visibility(current_menu, 0.0);
+	toggle_mouse_grab(MOUSE_GRABON);
 	
 	customview.position_modes  = lbls and lbls or customview.position_modes_default;
 	customview.position_marker = 1;
@@ -261,6 +262,24 @@ customview.position_item = function(vid, trigger, lbls)
 	position_dispatch = settings.iodispatch;
 	settings.iodispatch = {};
 
+	settings.iodispatch["MOUSE_X"] = function(label, tbl)
+		local lbl = customview.position_modes[customview.position_marker];
+		if (tbl.samples[2] == nil or tbl.samples[2] == 0) then return; end
+		if     (lbl == "size")        then cursor_step(vid, tbl.samples[2], 0);
+		elseif (lbl == "orientation") then orientation_rotate(vid, 0.1 * tbl.samples[2], false);
+		elseif (lbl == "position")    then cursor_slide(vid, tbl.samples[2], 0);
+		elseif (lbl == "opacity")     then opacity_increment(vid, 0.01 * tbl.samples[2]);
+		elseif (lbl == "rotate3d")    then cursor_rotate3d(vid, 0.1 * tbl.samples[2], 0);
+		elseif (lbl == "position3d")  then cursor_position3d(vid, 0.01 * tbl.samples[2]); end
+	end
+
+	settings.iodispatch["MOUSE_Y"] = function(label, tbl)
+		local lbl = customview.position_modes[customview.position_marker];
+		if (tbl.samples[2] == nil or tbl.samples[2] == 0) then return; end
+		if     (lbl == "size")        then cursor_step(vid, 0, tbl.samples[2]);
+		elseif (lbl == "position")    then cursor_slide(vid, 0, tbl.samples[2]); end
+	end
+	
 	settings.iodispatch["MENU_LEFT"]   = function()
 		local lbl = customview.position_modes[customview.position_marker];
 		if     (lbl == "size")        then cursor_step(vid, grid_stepx * -1, 0);
@@ -305,9 +324,9 @@ customview.position_item = function(vid, trigger, lbls)
 		end 
 	end
 
-	settings.iodispatch["MENU_ESCAPE"] = function() trigger(false, vid); end
+	settings.iodispatch["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
 	settings.iodispatch["SWITCH_VIEW"] = function() position_toggle();   end
-	settings.iodispatch["MENU_SELECT"] = function() trigger(true, vid);  end
+	settings.iodispatch["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
 
 	update_infowin();
 end

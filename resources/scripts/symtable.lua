@@ -476,17 +476,17 @@ local symtable = {};
  tmptbl[270] = "+";
  tmptbl[271] = nil;
  tmptbl[272] = "=";
-  
- symtable.tochar = function(ind)
-	if (ind >= 32 and ind <= 122) then
-		return symtable[ind];
-	elseif (ind >= 256 and ind <= 265) then
-		return symtable[ (ind - 256) + 48 ];
-	elseif (ind >= 266 and ind <= 272) then
-		return tmptbl[ind];
-	else
-		return nil;
-	end
+
+	symtable.tochar = function(ind)
+		if (ind >= 32 and ind <= 122) then
+			return symtable[ind];
+		elseif (ind >= 256 and ind <= 265) then
+			return symtable[ (ind - 256) + 48 ];
+		elseif (ind >= 266 and ind <= 272) then
+			return tmptbl[ind];
+		else
+			return nil;
+		end
  end
  
 return symtable;

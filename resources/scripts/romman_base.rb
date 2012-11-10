@@ -41,6 +41,7 @@ DDL = {
 	manufacturer TEXT,\
 	system text,\
 	target INT NOT NULL,\
+	ugid INT,\
 	FOREIGN KEY (target) REFERENCES target(targetid) )",
 
 	:broken => "CREATE TABLE broken (\
