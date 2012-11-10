@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <fcntl.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -33,6 +34,7 @@
 
 /* libSDL */
 #include <SDL.h>
+#define SDL_VIDEO_DRIVER_DDRAW
 #include <SDL_syswm.h>
 #include <SDL_mutex.h>
 #include <SDL_types.h>
@@ -74,14 +76,14 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	/* might have died prematurely (framequeue cbs), no reason sending signal */
  		if (src->child_alive) {
 			shmpage->dms = false;
-			
+
 			arcan_event exev = {
 				.category = EVENT_TARGET,
 				.kind = TARGET_COMMAND_EXIT
 			};
 
 			arcan_frameserver_pushevent(src, &exev);
-			
+
 			UINT ec;
 			SafeTerminateProcess(src->child, &ec);
 			src->child_alive = false;

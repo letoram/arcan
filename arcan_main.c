@@ -244,7 +244,7 @@ int main(int argc, char* argv[])
 	if (winx != -1 || winy != -1){
 		char windbuf[64] = {0};
 		snprintf(windbuf, 63, "SDL_VIDEO_WINDOW_POS=%i,%i", winx >= 0 ? winx : 0, winy >= 0 ? winy : 0);
-		putenv(windbuf);
+		putenv(strdup(windbuf));
 	}
 
 	if (width == 0 || height == 0) {
@@ -277,19 +277,19 @@ int main(int argc, char* argv[])
 
 /* MINGW implements putenv, so use this to set the system subpath path (BIOS, ..:) */
 		if (getenv("ARCAN_SYSTEMPATH") == NULL){
-			size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 1;
+			size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 15;
 			char* const syspath = malloc(len);
-			sprintf(syspath, "%s/games/system", arcan_resourcepath);
+			sprintf(syspath, "ARCAN_SYSPATH=%s/games/system", arcan_resourcepath);
 			arcan_warning("Notice: Using default systempath (%s)\n", syspath);
-			setenv("ARCAN_SYSTEMPATH", syspath, 0);
+			putenv(syspath);
 		} else
 			arcan_warning("Notice: Using systempath from environment (%s)\n", getenv("ARCAN_SYSTEMPATH"));
 
 		if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
-			size_t len = strlen(arcan_resourcepath) + strlen("/logs") + 1;
+			size_t len = strlen(arcan_resourcepath) + strlen("/logs") + 27;
 			char* const logpath = malloc(len);
-			sprintf(logpath, "%s/logs", arcan_resourcepath);
-			setenv("ARCAN_FRAMESERVER_LOGDIR", logpath, 0);
+			sprintf(logpath, "ARCAN_FRAMESERVER_LOGDIR=%s/logs", arcan_resourcepath);
+			putenv(logpath);
 		}
 
 /* export what we know and load theme */

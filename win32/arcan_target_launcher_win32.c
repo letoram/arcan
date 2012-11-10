@@ -1,12 +1,17 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <signal.h>
 #include <limits.h>
 
+#include <sys/types.h>
+
 #include <SDL.h>
 #include <SDL_opengl.h>
+
+#define SDL_VIDEO_DRIVER_DDRAW
 #include <SDL_syswm.h>
 
 #include <assert.h>
@@ -36,7 +41,7 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	}
 
 	argv++; /* skip the first fname, UNIX convention and all that */
-		
+
 	arcan_video_prepare_external();
 
 	char** base = argv;
@@ -93,7 +98,7 @@ static arcan_errc again_feed(float gain, void* tag)
 }
 
 extern char* arcan_libpath;
-arcan_frameserver* arcan_target_launch_internal(const char* fname, char** argv)
+arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack, char** argv)
 {
 	return NULL;
 }

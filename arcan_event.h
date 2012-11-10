@@ -30,7 +30,6 @@
  * i.e. the main process side with a frameserver associated. A failure to get
  * a lock within the set time, will forcibly free the frameserver */
 #define DEFAULT_EVENT_TIMEOUT 500
-#include <apr_poll.h>
 
 enum ARCAN_EVENT_CATEGORY {
 	EVENT_SYSTEM      = 1,
@@ -54,38 +53,38 @@ enum ARCAN_EVENT_SYSTEM {
 	EVENT_SYSTEM_ACTIVATE,
 	EVENT_SYSTEM_LAUNCH_EXTERNAL,
 	EVENT_SYSTEM_CLEANUP_EXTERNAL,
-	EVENT_SYSTEM_EVALCMD 
+	EVENT_SYSTEM_EVALCMD
 };
 
 enum ARCAN_TARGET_COMMAND {
 /* notify that the child will be shut down / killed,
  * this happens in three steps (1) dms is released, (2) exit is enqueued, (3) sigterm is sent. */
 	TARGET_COMMAND_EXIT,
-	
+
 /* notify that there is a file descriptor to be retrieved and set as the input/output fd for other
  * command events */
 	TARGET_COMMAND_FDTRANSFER,
-	
+
 /* hinting event for frameskip modes (auto, process every n frames, singlestep) */
 	TARGET_COMMAND_FRAMESKIP,
 	TARGET_COMMAND_STEPFRAME,
-	
+
 /* hinting event for pushing state to the suggested file-descriptor */
 	TARGET_COMMAND_STORE,
-	
+
 /* hinting event for restoring state from the suuggested file-descriptor */
 	TARGET_COMMAND_RESTORE,
-	
+
 /* hinting event for reseting state to the first known initial steady one */
 	TARGET_COMMAND_RESET,
-	
+
 /* hinting event for attempting to block the entire process until unpause is triggered */
 	TARGET_COMMAND_PAUSE,
 	TARGET_COMMAND_UNPAUSE,
-	
+
 /* plug in device of a specific kind in a set port */
 	TARGET_COMMAND_SETIODEV,
-	
+
 /* specialized output hinting */
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
 	TARGET_COMMAND_VECTOR_POINTSIZE,
@@ -188,12 +187,12 @@ typedef union arcan_ioevent_data {
 		uint8_t nvalues;
 		int16_t axisval[4];
 	} analog;
-	
+
 	struct {
 		bool active;
 		uint8_t devid;
 		uint16_t subid;
-		
+
 		uint16_t keysym;
 		uint16_t modifiers;
 		uint8_t scancode;
@@ -204,7 +203,7 @@ typedef union arcan_ioevent_data {
 typedef struct {
 	enum ARCAN_EVENT_IDEVKIND devkind;
 	enum ARCAN_EVENT_IDATATYPE datatype;
-	
+
 	arcan_ioevent_data input;
 } arcan_ioevent;
 
@@ -218,14 +217,14 @@ typedef struct {
 typedef struct {
 	arcan_vobj_id video;
 	arcan_aobj_id audio;
-	
+
 	int width, height;
-	
+
 	unsigned c_abuffer, c_vbuffer;
 	unsigned l_abuffer, l_vbuffer;
 
 	bool glsource;
-	
+
 	intptr_t otag;
 } arcan_fsrvevent;
 
@@ -242,7 +241,7 @@ typedef struct arcan_sevent {
 		} tagv;
 		struct {
 /* only for dev/dbg purposes, expected scripting frontend to free and not-mask */
-			char* dyneval_msg; 
+			char* dyneval_msg;
 		} mesg;
 	} data;
 } arcan_sevent;
@@ -254,7 +253,7 @@ typedef struct arcan_tevent {
 typedef struct arcan_netevent{
 	arcan_vobj_id source;
 	unsigned connid;
-	
+
 	union {
 		char hostaddr[40]; /* max ipv6 textual representation, 39 */
 		char connhandle[4];
@@ -303,13 +302,13 @@ typedef struct arcan_event {
 
 	char label[16];
 	unsigned short category;
-	
+
 	event_data data;
 } arcan_event;
 
 struct arcan_evctx {
 	bool interactive; /* should STDIN be processed for command events? */
-	
+
 	unsigned c_ticks;
 	unsigned c_leaks;
 	unsigned mask_cat_inp;
@@ -318,21 +317,21 @@ struct arcan_evctx {
 	unsigned kbdrepeat;
 
 /* limit analog sampling rate as to not saturate the event buffer,
- * with rate == 0, all axis events will be emitted 
- * with rate >  0, the upper limit is n samples per second. 
+ * with rate == 0, all axis events will be emitted
+ * with rate >  0, the upper limit is n samples per second.
  * with rate <  0, emit a sample per axis every n milliseconds. */
 	struct {
 		int rate;
-		
+
 /* with smooth samples > 0, use a ring-buffer of smooth_samples values per axis,
  * and whenever an sample is to be emitted, the actual value will be based on an average
  * of the smooth buffer. */
 		char smooth_samples;
 	} analog_filter;
-	
+
 	unsigned n_eventbuf;
 	arcan_event* eventbuf;
-	
+
 	unsigned* front;
 	unsigned* back;
 	unsigned cell_aofs;
@@ -340,12 +339,12 @@ struct arcan_evctx {
 	bool local;
 	union {
 		void* local;
-		
+
 		struct {
 			void* killswitch; /* assumed to be NULL or frameserver */
 			sem_handle shared;
 		} external;
-		
+
 	} synch;
 };
 
@@ -353,8 +352,8 @@ typedef struct arcan_evctx arcan_evctx;
 
 /* check timers, poll IO events and timing calculations
  * out : (NOT NULL) storage- container for number of ticks that has passed
- *                   since the last call to arcan_process 
- * ret : range [0 > n < 1] how much time has passed towards the next tick */ 
+ *                   since the last call to arcan_process
+ * ret : range [0 > n < 1] how much time has passed towards the next tick */
 float arcan_event_process(arcan_evctx*, unsigned* nticks);
 
 /* check the queue for events,
@@ -374,7 +373,7 @@ arcan_evctx* arcan_event_defaultctx();
 /* Pushes as many events from srcqueue to dstqueue as possible without over-saturating.
  * allowed defines which kind of category that will be transferred, other events will be ignored.
  * The saturation cap is defined in 0..1 range as % of full capacity
- * specifying a source ID (can be ARCAN_EID) will be used for rewrites if the category has a source identifier 
+ * specifying a source ID (can be ARCAN_EID) will be used for rewrites if the category has a source identifier
  */
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source);
@@ -399,7 +398,7 @@ int64_t arcan_frametime();
  * special case, due to the event driven approach of LUA invocation,
  * we can get situations where we have a queue of events related to a certain vid/aid,
  * after the user has explicitly asked for it to be deleted.
- * 
+ *
  * This means the user either has to check for this condition by tracking the object (possibly dangling references etc.)
  * or that we sweep the queue and erase the tracks of the object in question.
  *
@@ -417,7 +416,7 @@ void arcan_event_dumpqueue(arcan_evctx*);
  * Supply a buffer sizeof(arcan_event) or larger and it'll be packed down to an internal format (XDR) for serialization,
  * which can be transmitted over the wire and later deserialized again with unpack.
  * dbuf is dynamically allocated, and the payload is padded by 'pad' byte, final size is stored in sz.
- * returns false on out of memory or bad in event 
+ * returns false on out of memory or bad in event
  */
 bool arcan_event_pack(arcan_event*, int pad, char** dbuf, size_t* sz);
 
