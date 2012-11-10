@@ -154,7 +154,7 @@ end
 
 local function update_object3d(model)
 	move3d_model(model, customview.ci.pos[1], customview.ci.pos[2], customview.ci.pos[3]);
-	rotate3d_model(model, customview.ci.ang[1], customview.ci.ang[2], customview.ci.ang[3], ROTATE_ABSOLUTE);
+	rotate3d_model(model, customview.ci.ang[1], customview.ci.ang[2], customview.ci.ang[3], 0, ROTATE_ABSOLUTE);
 end
 
 -- used whenever a shader is toggled for the 'background' label, applied in both edit and view mode.
@@ -269,7 +269,7 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "orientation") then orientation_rotate(vid, 0.1 * tbl.samples[2], false);
 		elseif (lbl == "position")    then cursor_slide(vid, tbl.samples[2], 0);
 		elseif (lbl == "opacity")     then opacity_increment(vid, 0.01 * tbl.samples[2]);
-		elseif (lbl == "rotate3d")    then cursor_rotate3d(vid, 0.1 * tbl.samples[2], 0);
+		elseif (lbl == "rotate3d")    then cursor_rotate3d(vid, tbl.samples[2]);
 		elseif (lbl == "position3d")  then cursor_position3d(vid, 0.01 * tbl.samples[2]); end
 	end
 
