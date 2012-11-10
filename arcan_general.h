@@ -32,7 +32,7 @@ extern char* arcan_binpath;
 extern char* arcan_libpath;
 
 //typedef struct arcan_frameserver arcan_frameserver;
-typedef struct frameserver_shmpage frameserver_shmpage; 
+typedef struct frameserver_shmpage frameserver_shmpage;
 
 #define BADFD -1
 
@@ -45,16 +45,11 @@ typedef struct frameserver_shmpage frameserver_shmpage;
 #undef BADFD
 #define BADFD INVALID_HANDLE_VALUE
 
-/* some missing defines that doesn't seem to be included in the 
+/* some missing defines that doesn't seem to be included in the
  * headers of mingw but still exported in the linked libraries, hmm */
 extern char* strdup(const char*);
 extern double round(double x);
-extern int strcasecmp(const char*, const char*);
 
-/* #define snprintf _snprintf
-	#define S_ISREG(x) (((x) & S_IFMT) == S_IFREG)
-	#define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
-	#define strcasecmp stricmp */
 typedef int pipe_handle;
 typedef HANDLE file_handle;
 typedef HANDLE sem_handle;
@@ -153,9 +148,9 @@ enum arcan_resourcemask {
 
 /* try to set the external chars for:
  * arcan_resourcepath
- * arcan_themepath 
+ * arcan_themepath
  * arcan_libpath (hijack)
- * arcan_binpath (frameserver) 
+ * arcan_binpath (frameserver)
  * best run before applying command-line overrides */
 bool arcan_setpaths();
 
@@ -168,13 +163,13 @@ void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
 /* open a file using a format string (fmt + variadic), flags and mode matches regular
- * open() semantics. 
+ * open() semantics.
  * the file_handle wrapper is purposefully not used on this function and for Win32, is expected to
  * be managed by _get_osfhandle */
 int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
 /* wrap the posix-2001 semaphore functions,
- * needs workarounds for some platforms for timed_wait, 
+ * needs workarounds for some platforms for timed_wait,
  * and everything on win32 ;P */
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
@@ -193,7 +188,7 @@ const char* internal_launch_support();
 
 /* fixed limit of allowed events in queue
  * before old gets overwritten */
-#define ARCAN_EVENT_QUEUE_LIM 1024 
+#define ARCAN_EVENT_QUEUE_LIM 1024
 
 #define ARCAN_EID 0
 

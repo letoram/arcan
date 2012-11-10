@@ -110,7 +110,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 /* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
 	struct frameserver_shmcont res = {0};
 	force_unlink = false;
-	
+
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = -1;
 
@@ -178,7 +178,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 		.semset = { res.asem, res.vsem, res.esem },
 		.parent = res.addr->parent
 	};
-	
+
 	spawn_guardthread(gs);
 
 	return res;
@@ -218,7 +218,6 @@ static void* guard_thread(void* gs)
 }
 
 #include <assert.h>
-#include <apr_poll.h>
 int frameserver_semcheck(sem_handle semaphore, int timeout){
 		return arcan_sem_timedwait(semaphore, timeout);
 }
@@ -260,7 +259,7 @@ void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** ds
 	uint8_t* audaddr;
 
 	const int memalign = 64;
-	
+
 	if ( (uintptr_t)vidaddr % memalign != 0)
 		vidaddr += memalign - ( (uintptr_t)vidaddr % memalign);
 
@@ -390,7 +389,7 @@ void arg_cleanup(struct arg_arr* arr)
 bool arg_lookup(struct arg_arr* arr, const char* val, unsigned short ind, const char** found)
 {
 	int pos = 0;
-	
+
 	while (arr[pos].key != NULL){
 /* return only the 'ind'th match */
 		if (strcmp(arr[pos].key, val) == 0)
