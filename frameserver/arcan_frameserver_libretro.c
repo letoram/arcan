@@ -118,7 +118,6 @@ static struct {
 /* libretro states / function pointers */
 		struct retro_system_info sysinfo;
 		struct retro_game_info gameinfo;
-		unsigned state_size;
 
 /* parent uses an event->push model for input, libretro uses a poll one, so
  * prepare a lookup table that events gets pushed into and libretro can poll */
@@ -234,7 +233,6 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 			uint8_t g = ((val & 0x03e0) >>  5) << 3;
 			uint8_t b = ( val & 0x001f) <<  3;
 
-/* unsure if the underlying libs assess endianess correct, big-endian untested atm. */
 			if (retroctx.ntscconv)
 				*interm++ = RGB565(r, g, b);
 			else
@@ -248,8 +246,8 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
-static int testcounter = 0;
-
+/* some cores have been wrongly implemented in the past, yielding > 1 frames for each run() */
+static int testcounter;
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
 	testcounter++;
@@ -868,7 +866,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			retroctx.input_ports[i].cursor_btns[4] = 4;
 		}
 
-		while (retroctx.shmcont.addr->dms){
+/* only now, when a game is loaded and set-up, can we know how large a savestate might possibly be,
+ * the frontend need to know this in order to determine strategy for netplay and for enabling / disabling savestates */
+		outev.kind = EVENT_EXTERNAL_NOTICE_STATESIZE;
+		outev.category = EVENT_EXTERNAL;
+		outev.data.external.state_sz = retroctx.serialize_size();
+		arcan_event_enqueue(&retroctx.outevq, &outev);
+
+	while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
 			if (retroctx.skipmode >= TARGET_SKIP_STEP)
@@ -881,7 +886,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 			if (testcounter != 1)
 				LOG("(arcan_frameserver(libretro) -- inconsistent core behavior, expected 1 video frame / run(), got %d\n", testcounter);
-			testcounter = 0;
 
 			bool lastskip = retroctx.skipframe;
 			retroctx.skipframe = !retroctx_sync();
@@ -901,6 +905,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					retroctx.audbuf_ofs = 0;
 				}
 
+/* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
 				outev.kind = EVENT_EXTERNAL_NOTICE_NEWFRAME;
 				outev.data.external.framenumber++;
 				arcan_event_enqueue(&retroctx.outevq, &outev);

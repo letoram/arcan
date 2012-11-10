@@ -1277,12 +1277,13 @@ function enable_record(width, height, args)
 	define_recordtarget(dstvid, dst, args, rectbl, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
 	
 	imagery.record_target = dstvid;
-	imagery.record_indicator = fill_surface(16, 16, 255, 0, 0);
+	imagery.record_indicator = load_image("images/record.png");
 	
 	move_image(imagery.record_indicator);
 	image_transform_cycle(imagery.record_indicator, 1);
-	blend_image(imagery.record_indicator, 255.0, 64);
-	blend_image(imagery.record_indicator, 0.0, 64);
+	resize_image(imagery.record_indicator, math.floor(VRESW * 0.05), math.floor(VRESW * 0.05));
+	blend_image(imagery.record_indicator, 0.5, 128);
+	blend_image(imagery.record_indicator, 0.0, 128);
 	order_image(imagery.record_indicator, max_current_image_order() + 1);
 end
 
@@ -1442,21 +1443,57 @@ add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("
 add_submenu(recordlist, recordptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 add_submenu(recordlist, recordptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
 add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
-add_submenu(recordlist, recordptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Vidcap"}, add_vidcap, true));
 
-table.insert(recordlist, "Start");
-table.insert(recordlist, "Stream");
+local streammenu = {};
+local streamptrs = {};
 
-recordptrs["Stream"] = function()
+add_submenu(streammenu, streamptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Vidcap"}, add_vidcap, true));
+
+streamptrs["Define Stream..."] = function(label, store)
+		local resstr = nil;
+		local opts = {};
+
+		opts.case_insensitive = false;
+		opts.prefix = "rtmp://";
+		opts.startstr = settings.stream_url;
+		
+		local osdsavekbd = osdkbd_create( osdkbd_extended_table(), opts );
+		osdsavekbd:show();
+		
+-- do this here so we have access to the namespace where osdsavekbd exists
+		gridle_input = function(iotbl)
+			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
+			
+			if (complete) then
+				osdsavekbd:destroy();
+				osdsavekbd = nil;
+				gridle_input = gridle_dispatchinput;
+
+				if (resstr ~= nil and string.len(resstr) > 0) then
+					settings.stream_url = resstr;
+				end
+					
+				settings.iodispatch["MENU_ESCAPE"]();
+				settings.iodispatch["MENU_ESCAPE"]();
+			end
+		end
+	end
+
+-- only if destination has been set up
+add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, {});
+table.insert(streammenu, "Define Stream...");
+table.insert(recordlist, "Start Recording");
+
+streamptrs["Start Streaming"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
 	local width, height = recdim();
-	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame"
+	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamurl=" .. string.gsub(settings.stream_url, ":", "::");
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
 	enable_record(width, height, recstr);
 end
 
-recordptrs["Start"] = function()
+recordptrs["Start Recording"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
 	local width, height = recdim();
@@ -1666,7 +1703,7 @@ if (#menulbls > 0 and settingslbls) then
 	
 	current_menu.ptrs["Record..."] = function()
 		local def = {};
-		def["Start"] = [[\b]] .. settings.colourtable.notice_fontstr;
+		def["Start Recording"] = [[\b]] .. settings.colourtable.notice_fontstr;
 		menu_spawnmenu( recordlist, recordptrs, def); 
 	end
 	

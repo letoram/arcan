@@ -18,6 +18,8 @@ arcan_renderfun.c:stretchblit derived from SDL_GFX (c) Andreas Schiffler -- BSD-
 Furthermore, media included as part of the main distribution resources and themes,
 have individual licensing references (filename extension, .license) where applicable.
 
+The iconset used in resources/images is CC-BY-30-ND-NP courtesy of http://www.visualpharm.com
+
 Dependencies:
  SDL-1.2, SDL-TTF, SDL_Image -- www.libsdl.org, LGPL
  OpenGL -- www.opengl.org, SGI OpenGL License

@@ -143,7 +143,7 @@ settings = {
 	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input = "Normal",
-	internal_toggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false},
+	internal_toggles   = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false},
 	internal_notoggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false}, -- used by detailview
 	
 	flipinputaxis = false,
@@ -495,38 +495,38 @@ end
 
 -- also used in intmenus for savestate naming
 function osdkbd_inputfun(iotbl, dstkbd)
-	if (iotbl.active) then
-		local restbl = keyconfig:match(iotbl);
-		local done   = false;
-		local resstr = nil;
+	local restbl = keyconfig:match(iotbl);
+	local done   = false;
+	local resstr = nil;
 
-		if (restbl) then
-			for ind,val in pairs(restbl) do
-				if (val == "MENU_ESCAPE") then
-					play_audio(soundmap["OSDKBD_HIDE"]);
-					return true, nil
+	if (restbl) then
+		for ind,val in pairs(restbl) do
+			if (val == "MENU_ESCAPE" and iotbl.active) then
+				play_audio(soundmap["OSDKBD_HIDE"]);
+				return true, nil
 
-				elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or 
-					val == "MENU_RIGHT" or val == "MENU_DOWN") then
-					resstr = dstkbd:input(val);
-					
+			elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or
+				val == "MENU_RIGHT" or val == "MENU_DOWN" or val == "CONTEXT") then
+				resstr = dstkbd:input(val, iotbl.active);
+
+				if (iotbl.active) then
 					play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
-							
--- also allow direct keyboard input
-				elseif (iotbl.translated) then
-					resstr = dstkbd:input_key(iotbl);
 				end
+				
+-- also allow direct keyboard input
+			elseif (iotbl.translated) then
+				resstr = dstkbd:input_key(iotbl, iotbl.active);
+			end
 -- stop processing labels immediately after we get a valid filterstring
-			end
-		else -- still need to try and input even if we didn't find a matching value
-			if (iotbl.translated) then
-				resstr = dstkbd:input_key(iotbl);
-			end
 		end
+	else -- still need to try and input even if we didn't find a matching value
+		if (iotbl.translated) then
+			resstr = dstkbd:input_key(iotbl, iotbl.active);
+		end
+	end
 
-		if (resstr) then
-			return true, resstr; 
-		end	
+	if (resstr) then
+		return true, resstr;
 	end
 	
 	return false, nil
@@ -641,7 +641,7 @@ end
 
 function gridle_keyconf(defer_fun)
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " SWITCH_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " SWITCH_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 
 	local helplabels = {};
@@ -1662,6 +1662,7 @@ function load_settings()
 	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
 	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
 	load_key_str("autosave", "autosave", settings.autosave);
+	load_key_str("stream_url", "stream_url", settings.stream_url);
 	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
 	load_key_num("effect_gain", "effect_gain", settings.effect_gain);
 
