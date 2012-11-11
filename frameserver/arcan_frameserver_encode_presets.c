@@ -345,7 +345,7 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 }
 
 /* slightly difference scanning function here so can't re-use lookup_default */
-struct codec_ent encode_getcontainer(const char* const requested, int dst)
+struct codec_ent encode_getcontainer(const char* const requested, int dst, const char* remote)
 {
 	char fdbuf[16];
 	AVFormatContext* ctx;
@@ -353,6 +353,7 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst)
 
 	if (requested && strcmp(requested, "stream") == 0){
 		res.storage.container.format = av_guess_format("flv", NULL, NULL);
+
 		if (!res.storage.container.format)
 			LOG("arcan_frameserver(encode) -- couldn't setup streaming output.\n");
 
@@ -360,8 +361,8 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst)
 			ctx->oformat = res.storage.container.format;
 			res.storage.container.context = ctx;
 			res.setup.muxer = default_format_setup;
-			int rv = avio_open2(&ctx->pb, "rtmp://live-lhr-backup.justin.tv/app/live_37516373_gTSMBCDIpVSxbwy8OTqLqWq9ueJHix", AVIO_FLAG_WRITE, NULL, NULL);
-		
+			int rv = avio_open2(&ctx->pb, remote, AVIO_FLAG_WRITE, NULL, NULL);
+
 		return res;
 	}
 

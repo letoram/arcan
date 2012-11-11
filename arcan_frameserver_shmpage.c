@@ -305,6 +305,20 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width,
 	return false;
 }
 
+static char* strrep(char* dst, char key, char repl)
+{
+	char* src = dst;
+
+	if (dst)
+		while (*dst){
+			if (*dst == key)
+				*dst = repl;
+			dst++;
+		}
+
+		return src;
+}
+
 struct arg_arr* arg_unpack(const char* resource)
 {
 	int argc = 1;
@@ -332,7 +346,8 @@ struct arg_arr* arg_unpack(const char* resource)
 	char* base    = strdup(resource);
 	char* workstr = base;
 
-/* sweep for key=val:key:key style packed arguments */
+/* sweep for key=val:key:key style packed arguments, since this is used in such a limited fashion (RFC 3986 at worst),
+ * we use a replacement token rather than an escape one, so \t becomes : post-process */
 	while (curarg < argc){
 		char* endp  = workstr;
 		argv[curarg].key = argv[curarg].value = NULL;
@@ -342,7 +357,7 @@ struct arg_arr* arg_unpack(const char* resource)
 			if (*endp == '=')
 				if (!argv[curarg].key){
 					*endp = 0;
-					argv[curarg].key = strdup(workstr);
+					argv[curarg].key = strrep(strdup(workstr), '\t', ':');
 					argv[curarg].value = NULL;
 					workstr = endp + 1;
 				}
@@ -359,9 +374,9 @@ struct arg_arr* arg_unpack(const char* resource)
 			*endp = '\0';
 
 		if (argv[curarg].key)
-			argv[curarg].value = strdup( workstr );
+			argv[curarg].value = strrep(strdup( workstr ), '\t', ':');
 		else
-			argv[curarg].key = strdup( workstr );
+			argv[curarg].key = strrep(strdup( workstr ), '\t', ':');
 
 		workstr = (++endp);
 		curarg++;

@@ -293,8 +293,12 @@ void encode_video(bool flush)
 	if ( delta > thresh )
 		fc += 1 + floor( delta / mspf);
 
-	if (fc > 1)
+/* notify parent so a decision can be made as if to reset and change encoding options */
+	if (fc > 1){
 		LOG("arcan_frameserver(encode) jitter: %lld, current time :%lld, ideal: %lld\n", delta, cft, nf);
+		arcan_event ev = {.kind = EVENT_FRAMESERVER_DROPPEDFRAME, .category = EVENT_FRAMESERVER};
+		arcan_event_enqueue(&ffmpegctx.outevq, &ev);
+	}
 
 	int rv = sws_scale(ffmpegctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0,
 		ffmpegctx.vcontext->height, ffmpegctx.pframe->data, ffmpegctx.pframe->linesize);
@@ -417,7 +421,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	float fps    = 25;
 
 	struct arg_arr* args = arg_unpack(resource);
-	const char (* vck) = NULL, (* ack) = NULL, (* cont) = NULL;
+	const char (* vck) = NULL, (* ack) = NULL, (* cont) = NULL, (* streamdst) = NULL;
 
 	const char* val;
 	if (arg_lookup(args, "vbitrate", 0, &val)) vbr = strtoul(val, NULL, 10) * 1024;
@@ -446,10 +450,16 @@ static bool setup_ffmpeg_encode(const char* resource)
 		avformat_network_init();
 		stream_outp = true;
 		cont = "stream";
+
+		if (!arg_lookup(args, "streamdst", 0, &streamdst) || strncmp("rtmp://", streamdst, 7) != 0){
+			printf("arg lookup failed, %s\n", streamdst ? streamdst : "NULL");
+			LOG("arcan_frameserver(encode:args) -- Streaming requested, but no valid streamdst set, giving up.\n");
+			return false;
+		}
 	}
 	
 /* locate codecs and containers */
-	struct codec_ent muxer = encode_getcontainer(cont, ffmpegctx.lastfd);
+	struct codec_ent muxer = encode_getcontainer(cont, ffmpegctx.lastfd, streamdst);
 	struct codec_ent video = encode_getvcodec(vck, muxer.storage.container.format->flags);
 	struct codec_ent audio = encode_getacodec(ack, muxer.storage.container.format->flags);
 	unsigned contextc      = 0; /* track of which ID the next stream has */
@@ -522,13 +532,6 @@ static bool setup_ffmpeg_encode(const char* resource)
 	ffmpegctx.fcontext = muxer.storage.container.context;
 	muxer.setup.muxer(&muxer);
 
-/* additional setup for rtp */
-	if (cont && strcmp(cont, "stream") == 0){
-		char* sdpbuffer = malloc(2048);
-		av_sdp_create(&muxer.storage.container.context, 1, sdpbuffer, 2048);
-		LOG("arcan_frameserver(encode) -- SDP: %s\n", sdpbuffer);
-	}
-	
 /* signal that we are ready to receive video frames */
 	arcan_sem_post(ffmpegctx.shmcont.vsem);
 	return true;
