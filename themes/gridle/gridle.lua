@@ -1560,7 +1560,7 @@ end
 -- slightly different from gridledetails version
 function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
-
+	
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 -- the reason for looping the restbl is simply that the iotbl can be set to match several labels
 	
@@ -1608,9 +1608,10 @@ end
 
 function gridle_dispatchinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
- 
-	if (restbl and iotbl.active) then
+	
+	if (restbl and (iotbl.active or iotbl.kind == "analog")) then
 		for ind,val in pairs(restbl) do
+
 			if (settings.iodispatch[val]) then
 				settings.iodispatch[val](restbl, iotbl);
 			end

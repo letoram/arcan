@@ -1183,7 +1183,8 @@ function add_vidcap()
 	customview.ci = {};
 	local menudispatch = settings.iodispatch;
 	
-	local placeholdr = fill_surface(VRESW * 0.2, VRESH * 0.2, 255, 255, 0);
+	local placeholdr = load_image("customview/vidcap.png");
+
 	customview.new_item(placeholdr, "vidcap", "vidcap");
 	customview.ci.zv = max_current_image_order();
 	order_image(placeholdr, customview.ci.zv);
@@ -1194,7 +1195,6 @@ function add_vidcap()
 	customview.position_item(placeholdr, function(state, vid)
 		if (state) then
 			settings.vidcap = customview.ci;
-			print("vidcap saved to: ", settings.vidcap.x, settings.vidcap.y);
 		else
 			settings.vidcap = nil;
 		end
@@ -1206,7 +1206,7 @@ function add_vidcap()
 		delete_image(placeholdr);
 	end)
 
-	settings.iodispatch["MENU_LEFT"]();
+	settings.iodispatch["MENU_LEFT"](false, false);
 end
 
 -- width, height are assumed to be :
@@ -1471,6 +1471,7 @@ streamptrs["Define Stream..."] = function(label, store)
 
 				if (resstr ~= nil and string.len(resstr) > 0) then
 					settings.stream_url = resstr;
+					store_key("stream_url", resstr);
 				end
 					
 				settings.iodispatch["MENU_ESCAPE"]();
@@ -1482,14 +1483,16 @@ streamptrs["Define Stream..."] = function(label, store)
 -- only if destination has been set up
 add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, {});
 table.insert(streammenu, "Define Stream...");
+table.insert(streammenu, "Start Streaming");
 table.insert(recordlist, "Start Recording");
 
 streamptrs["Start Streaming"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.iodispatch["MENU_ESCAPE"]();
 	local width, height = recdim();
-	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamurl=" .. string.gsub(settings.stream_url, ":", "::");
+	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
+	print("recstr:", recstr)
 	enable_record(width, height, recstr);
 end
 
