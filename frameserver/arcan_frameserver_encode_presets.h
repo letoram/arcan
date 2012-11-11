@@ -47,6 +47,7 @@ struct codec_ent
 		AVCodec* codec;
 		AVCodecContext* context;
 		AVFrame* pframe;
+		int channel_layout; /* copy here for <= v53 */
 		} video, audio;
 		
 		struct {
