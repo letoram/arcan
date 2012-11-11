@@ -74,7 +74,11 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	assert(codec);
 
 	ctx->channels       = channels;
+
+#if LIBAVCODEC_VERSION_MAJOR > 53
 	ctx->channel_layout = av_get_default_channel_layout(channels);
+#endif
+
 	ctx->sample_rate    = samplerate;
 	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000);
 

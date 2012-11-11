@@ -10,6 +10,8 @@
 #include <assert.h>
 
 #include <libavcodec/avcodec.h>
+#include <libavcodec/version.h>
+
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 
@@ -73,7 +75,8 @@ struct {
 	AVCodecContext* acontext;
 	AVCodec* acodec;
 	AVStream* astream;
-
+	int channel_layout;
+	
 /* samplerate conversions */
 	struct resampler* resamplers;
 
@@ -178,7 +181,10 @@ static void encode_audio(bool flush)
 
 		frame->nb_samples     = ffmpegctx.aframe_smplcnt;
 		frame->pts            = ffmpegctx.aframe_cnt;
+#if LIBAVCODEC_VERSION_MAJOR > 53
 		frame->channel_layout = ctx->channel_layout;
+#endif
+		
 		ffmpegctx.aframe_cnt += ffmpegctx.aframe_smplcnt;
 
 forceencode:
@@ -241,7 +247,9 @@ forceencode:
 			frame = avcodec_alloc_frame();
 			frame->nb_samples = ffmpegctx.aframe_sz / 2;
 			frame->pts = ffmpegctx.aframe_cnt;
+#if LIBAVCODEC_VERSION_MAJOR > 53
 			frame->channel_layout = ctx->channel_layout;
+#endif
 
 			forcetog = true;
 			goto forceencode;
@@ -313,6 +321,10 @@ void encode_video(bool flush)
 		av_init_packet(&pkt);
 		ffmpegctx.pframe->pts = ffmpegctx.framecount;
 
+#if LIBAVCODEC_VERSION_MAJOR < 53
+		extern char* dated_ffmpeg_refused_old_build[-1];
+
+#elseif LIBAVCODEC_VERSION_MAJOR > 53 /* and anything older isn't supported */
 		int rs = avcodec_encode_video2(ffmpegctx.vcontext, &pkt, flush ? NULL : ffmpegctx.pframe, &got_outp);
 
 		if (rs < 0 && !flush) {
@@ -337,9 +349,41 @@ void encode_video(bool flush)
 				exit(1);
 			}
 		}
-
 	}
+#else
+/* deprecated API, forced to use with older version though. No note on how large outb is supposed to be (seriously) */
+		static uint8_t* outb  = NULL;
+		static size_t outb_sz = 0;
+		if (!outb){
+		outb_sz = avpicture_get_size(PIX_FMT_YUV420P, ffmpegctx.vcontext->width, ffmpegctx.vcontext->height);
+		outb = malloc(outb_sz);
+		if (!outb)
+			exit(1);
+		}
 
+		int sz = avcodec_encode_video(ffmpegctx.vcontext, outb, outb_sz, flush ? NULL : ffmpegctx.pframe);
+
+		if (sz >= 0){
+			pkt.pts = ffmpegctx.framecount;
+			pkt.dts = ffmpegctx.framecount;
+	
+			if (ctx->coded_frame->pts != AV_NOPTS_VALUE)
+				pkt.pts = av_rescale_q(ctx->coded_frame->pts, ctx->time_base, ffmpegctx.vstream->time_base);
+
+			if (ctx->coded_frame->key_frame)
+				pkt.flags |= AV_PKT_FLAG_KEY;
+
+			pkt.stream_index = ffmpegctx.vstream->index;
+			pkt.data = outb;
+			pkt.size = sz;
+
+			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0 && !flush){
+				LOG("arcan_frameserver(encode) -- writing encoded video failed, terminating.\n");
+				exit(1);
+			}
+		}
+	}
+#endif 
 }
 
 void arcan_frameserver_stepframe(bool flush)
