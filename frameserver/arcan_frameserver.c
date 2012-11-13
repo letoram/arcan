@@ -308,7 +308,7 @@ void* frameserver_requirefun(const char* const sym)
 
 /* by default, we only do this for libretro where it might help
  * with external troubleshooting */
-static void toggle_logdev()
+static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
 	if (logdir){
@@ -317,10 +317,10 @@ static void toggle_logdev()
 		struct tm* basetime = localtime(&t);
 		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + sizeof("/arcan_frameserver_yymmddhhss.txt");
+		size_t logbuf_sz = strlen(logdir) + sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
 		char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, "%s/arcan_frameserver_%s.txt", logdir, timeb);
+		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
 		logdev = freopen(logbuf, "a", stderr);
 	}
 }
@@ -388,20 +388,24 @@ static void toggle_logdev()
 #endif
 
 #ifdef HAVE_APR 
-	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0)
+	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
+		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);
+	}
 #endif
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	
 	else if (strcmp(fsrvmode, "libretro") == 0){
-		toggle_logdev();
+		toggle_logdev("retro");
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
 	
-	else if (strcmp(fsrvmode, "record") == 0)
+	else if (strcmp(fsrvmode, "record") == 0){
+		toggle_logdev("rec");
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);
+	}
 	
 	else;
 

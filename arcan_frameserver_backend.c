@@ -161,6 +161,9 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
+/* possibility, in order to give the frameserver something to select on (mostly a case for the -net ones),
+ * use the FD socketpair as a semaphore mechanism as well, just add a msg to it whenever we have something ready.
+ * for windows, we'd have to find a good WM message though */
 	return rv;
 }
 

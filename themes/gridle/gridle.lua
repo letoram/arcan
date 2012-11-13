@@ -366,6 +366,8 @@ function gridle()
 	end
 	
 	settings.iodispatch["LAUNCH"] = function(iotbl)
+		if (not current_game().capabilities) then return; end
+
 		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
 			and current_game().capabilities.internal_launch;
 
