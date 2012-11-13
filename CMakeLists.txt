@@ -80,7 +80,10 @@ elseif(WIN32)
 	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
 
-	set(VORBIS_LIBRARIES ${WINLIB}\\distr\\libvorbis-0.dll,${WINLIB}\\distr\\libvorbisfile-3.dll,${WINLIB}\\distr\\libogg-0.dll)
+	set(VORBIS_LIBRARIES
+        ${WINLIB}\\distr\\libvorbis-0.dll
+        ${WINLIB}\\distr\\libvorbisfile-3.dll
+        ${WINLIB}\\distr\\libogg-0.dll)
 	set(ZLIB_LIBRARY ${WINLIB}\\distr\\zlib1.dll)
 	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
 	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
