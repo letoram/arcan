@@ -1025,7 +1025,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	};
 	
-	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
+	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 	mvctx->loop     = loop == FRAMESERVER_LOOP;
 	mvctx->autoplay = luaL_optint(ctx, 4, 0) > 0;
 	mvctx->nopts = special;
@@ -2984,7 +2984,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					snprintf(metastr, arglen, "%s:%s", resourcestr, cmdline.data.strarr[1]);
 				}
 
-				arcan_frameserver* intarget = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
+				arcan_frameserver* intarget = arcan_frameserver_alloc();
 				intarget->tag = ref;
 				intarget->nopts = true;
 				intarget->autoplay = true;
@@ -3164,7 +3164,7 @@ int arcan_lua_recordset(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	
-	arcan_frameserver* mvctx = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
+	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 	mvctx->loop = FRAMESERVER_NOLOOP;
 	mvctx->vid  = did;
 	
@@ -3615,6 +3615,84 @@ void arcan_lua_eachglobal(lua_State* ctx, char* prefix, int (*callback)(const ch
 */
 }
 
+static int arcan_lua_net_listen(lua_State* ctx)
+{
+	arcan_frameserver* intarget = arcan_frameserver_alloc();
+
+/* set intarget->tag to callback */
+	intarget->nopts = true;
+	intarget->autoplay = true;
+
+/*
+ * a. option to specify interface:port explicitly, and multiple times (variadic arguments last)
+ * b. simple mode (plaintext, no authentication)
+ * c. normal mode (encryption guaranteeing C.I.A)
+ * d. option to respond to discovery requests, and optionally, act as a directory service
+ * e. option to register with a directory service  
+ */
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.args.builtin.mode = "net",
+		.args.builtin.resource = "server"
+	};
+
+	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK)
+		lua_pushvid(ctx, intarget->vid);
+	else {
+		lua_pushvid(ctx, ARCAN_EID);
+		free(intarget);
+	}
+
+	return 1;
+}
+
+static int arcan_lua_net_open(lua_State* ctx)
+{
+	arcan_frameserver* intarget = arcan_frameserver_alloc();
+	intarget->use_pbo = false;
+	
+/* set intarget->tag to callback */
+	intarget->nopts = true;
+	intarget->autoplay = true;
+
+/*
+ * here it is slightly simpler, if the user doesn't supply a key (optional),
+ * it won't attempt to use NaCL and friends. if the user supplies an IP, then we connect directly,
+ * if the user supplies a single string, we use that as a directory hash-key
+ * and if not, it broadcasts and connects to the first respondent
+ */
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.args.builtin.mode = "net-cl",
+		.args.builtin.resource = "mode=client:host=127.0.0.1:port=6680"
+	};
+
+/*
+	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3))
+		lua_pushvalue(ctx, 3);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	};
+	*/
+
+	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK)
+		lua_pushvid(ctx, intarget->vid);
+	else {
+		lua_pushvid(ctx, ARCAN_EID);
+		free(intarget);
+	}
+
+//	free(metastr);
+	return 1;
+}
+
+/* just a wrapper around open that will launch a low-priority frameserver that
+ * passively scans for discoverable and/or connectable servers */
+static int arcan_lua_net_discover(lua_State* ctx)
+{
+	arcan_fatal("arcan_lua_net_discover() -- not implemented yet and shouldn't be used.\n");
+	return 0;
+}
+
 void arcan_lua_cleanup()
 {
 }
@@ -3792,7 +3870,14 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "input_filter_analog", arcan_lua_inputfilteranalog);
 	arcan_lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
 	arcan_lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
-	
+
+/* the semantics of these functions may well vary with the presence of;
+ * NaCL (not in all builds due to regulations on crypto)
+ * APR  (not expected to be a default dependency until 0.2.3) */
+	arcan_lua_register(ctx, "net_listen", arcan_lua_net_listen);
+	arcan_lua_register(ctx, "net_open", arcan_lua_net_open);
+	arcan_lua_register(ctx, "net_discover", arcan_lua_net_discover);
+
 	atexit(arcan_lua_cleanup);
 	
 	return ARCAN_OK;

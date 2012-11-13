@@ -63,6 +63,8 @@
 
 extern char* arcan_binpath;
 
+/* dislike resorting to these kinds of antics, but it was among the cleaner
+ * solutions given the portability constraints (OSX,Win32) */
 static void* nanny_thread(void* arg)
 {
 	pid_t* pid = (pid_t*) arg;

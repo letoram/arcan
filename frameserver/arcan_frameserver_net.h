@@ -25,6 +25,14 @@
 #define DEFAULT_DISCOVER_PORT 6680
 #define DEFAULT_CONNECTION_PORT 6681
 
+enum NET_TAGS {
+	TAG_NETMSG           = 0, /* client <-> client, client<->server   */
+	TAG_STATE_XFER       = 1, /* server push to client                */
+	TAG_STATE_XFER_REQ   = 2, /* server req. client to push to server */
+	TAG_STATE_XFER_DELTA = 3, /* delta against prev. key-frame, initial is 0 */
+	TAG_NETINPUT         = 4  /* specialized netmsg for input event streams  */
+};
+
 void arcan_frameserver_net_run(const char* resource, const char* shmkey);
 
 #endif

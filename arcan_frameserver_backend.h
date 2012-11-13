@@ -111,6 +111,11 @@ typedef struct arcan_frameserver {
 
 	bool child_alive;
 
+/* not all scenarios dictate a use of PBOs, as the flip-flop approach use
+ * introduces a possible 1-frame latency from upload to display, which requires
+ * an active frameserver for the last frame to be visible */
+	bool use_pbo;
+
 /* precalc offsets into mapped shmpage, calculated at resize */
 	uint8_t* vidp, (* audp);
 
@@ -151,6 +156,9 @@ struct frameserver_envp {
  * or act as a more generic execv of a program that supposedly implements the
  * same shmpage interface and protocol. */
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, struct frameserver_envp);
+
+/* allocate heap memory, reset all members to an empty state and then enforce defaults */
+arcan_frameserver* arcan_frameserver_alloc();
 
 /* enable the forked process to start decoding */
 arcan_errc arcan_frameserver_playback(arcan_frameserver*);
@@ -206,6 +214,8 @@ arcan_errc arcan_frameserver_audioframe(struct arcan_aobj* aobj, arcan_aobj_id i
 int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
 
-/* stop playback and free resources associated with a movie */
+/* stop playback and free resources associated with a movie,
+ * in some cases, this will clear the container. As the frameservers are supposed to be used in conjunction
+ * with their VID reference, refrain from any other manual memory management or aliasing */
 arcan_errc arcan_frameserver_free(arcan_frameserver*, bool loop);
 #endif
