@@ -172,7 +172,6 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 	if (sw != dw ||
 		sh != dh) {
-
 		uint16_t cpy_width  = (dw > sw ? sw : dw);
 		uint16_t cpy_height = (dh > sh ? sh : dh);
 		assert(bpp == dpp);
@@ -184,11 +183,9 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 		return rv;
 	}
 
-/* hack to reduce extraneous copying, afaik. there's also a streaming texture mode and PBOs
- * that might be worth looking into */
 	glBindTexture(GL_TEXTURE_2D, glid);
 
-	if (src->desc.pbo_transfer){
+	if (false && src->desc.pbo_transfer){
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
@@ -257,7 +254,6 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 			srcw = shmpage->storage.w;
 			srch = shmpage->storage.h;
 			srcbpp = shmpage->storage.bpp;
-
 			if (srcw == tgt->desc.width && srch == tgt->desc.height && srcbpp == tgt->desc.bpp){
 				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, srcbpp, width, height, bpp);
 
@@ -550,7 +546,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		if (src->desc.pbo_transfer)
 			glDeleteBuffers(2, src->desc.upload_pbo);
 
-		src->desc.pbo_transfer = true;
+		src->desc.pbo_transfer = src->use_pbo;
 		glGenBuffers(2, src->desc.upload_pbo);
 		for (int i = 0; i < 2; i++){
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
@@ -780,4 +776,15 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 		errno = EINVAL;
 
 	return rv;
+}
+
+arcan_frameserver* arcan_frameserver_alloc()
+{
+	arcan_frameserver* res = malloc(sizeof(arcan_frameserver));
+	if (!res)
+		return NULL;
+
+	memset(res, 0, sizeof(arcan_frameserver));
+	res->use_pbo = true;
+	return res;
 }

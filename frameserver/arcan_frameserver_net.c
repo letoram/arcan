@@ -134,12 +134,104 @@ static void server_session(int sport, int limit)
 	}
 }
 
+/* place-holder, replace with real graphing */
+static void flush_statusimg(uint8_t r, uint8_t g, uint8_t b)
+{
+	uint8_t* canvas = netcontext.vidp;
+	
+	for (int y = 0; y < netcontext.shmcont.addr->storage.h; y++)
+		for (int x = 0; x < netcontext.shmcont.addr->storage.h; x++)
+		{
+			*(canvas++) = r;
+			*(canvas++) = g;
+			*(canvas++) = b;
+			*(canvas++) = 0xff;
+		}
+
+	netcontext.shmcont.addr->vready = true;
+	frameserver_semcheck(netcontext.shmcont.vsem, INFINITE);
+}
+
 /*
  * if explicit host, send UDP there, wait for response.
  */ 
 static char* host_discover(char* host, int* port, bool usenacl)
 {
 	return NULL;
+}
+
+static void client_inevq_process(apr_socket_t* outconn)
+{
+	arcan_event* ev;
+
+	while ( (ev = arcan_event_poll(&netcontext.inevq)) ){
+		LOG("incoming event yet unsupported\n");
+	}
+
+	return;
+}
+
+#ifndef FRAME_HEADER_SIZE
+#define FRAME_HEADER_SIZE 3
+#endif
+
+/* partially unknown number of bytes (>= 1) to process on socket */
+static bool client_data_process(apr_socket_t* inconn)
+{
+/* static as there's only ever 1:1 in our use-case */
+	static char cin_t[65536];
+	static int cin_ofs = 0;
+	apr_size_t nr   = ( sizeof(cin_t) / sizeof(cin_t[0]) ) - cin_ofs;
+	apr_status_t sv = apr_socket_recv(inconn, cin_t + cin_ofs, &nr);
+
+/* attempt to flush */
+	if (nr > 0){
+/* process the data and slide, if we're not in NaCL mode, just treat as 8-bit char (tag) + 16-bit (hi-end) length + val */
+		cin_ofs += nr;
+
+		if (cin_ofs < FRAME_HEADER_SIZE)
+			return true;
+
+		uint16_t len = cin_t[1] | cin_t[2] << 8;
+		if (len > 65536 - FRAME_HEADER_SIZE)
+			return false;
+
+/* full packet */
+		if (len + FRAME_HEADER_SIZE >= cin_ofs){
+			switch (cin_t[0]){
+				case TAG_NETMSG:
+				break;
+
+/* define that the coming package will be a full RLE compressed state */
+				case TAG_STATE_XFER:
+				break;
+
+				case TAG_NETINPUT: break;
+				default:
+					LOG("arcan_frameservernet(client) -- unknown packet type (%d), ignored\n", cin_t[0]);
+			}
+
+/* slide package */
+			if (cin_ofs > len + FRAME_HEADER_SIZE){
+				memmove(cin_t, cin_t + len + FRAME_HEADER_SIZE, len + FRAME_HEADER_SIZE);
+				cin_ofs -= len + FRAME_HEADER_SIZE;
+			}
+			else
+				cin_ofs = 0;
+		}
+		else
+			return true; /* more data needed */
+	}
+
+/* emit disconnect event and shut down */
+	if (sv == APR_EOF){
+		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
+		arcan_event_enqueue(&netcontext.outevq, &ev);
+		flush_statusimg(255, 0, 0);
+		return false;
+	}
+
+	return true;
 }
 
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
@@ -183,27 +275,35 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
 		arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_NORESPONSE };
 		snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
+		flush_statusimg(255, 0, 0);
 		return;
 	}
 
 	arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_CONNECTED };
 	snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
 	arcan_event_enqueue(&netcontext.outevq, &ev);
+	flush_statusimg(0, 255, 0);
 
 	apr_pollset_t* pset;
-	apr_pollfd_t pfd = { netcontext.mempool, APR_POLL_SOCKET, APR_POLLIN, 0, { NULL }, NULL };
+	apr_pollfd_t pfd = { netcontext.mempool, APR_POLL_SOCKET, APR_POLLIN, 0, { NULL }, &sock };
 /* pr_status_t apr_os_sock_put(apr_socket_t** sock, apr_os_sock_t* thesock, apr_pool_t* cont) (FD to socket) */
 
 	apr_pollset_create(&pset, 2 /* just event- in and socket */, netcontext.mempool, 0);
 	apr_pollset_add(pset, &pfd);
 	
 	while (true){
-		apr_int32_t pnum;
 		const apr_pollfd_t* ret_pfd;
+		apr_int32_t pnum;
+
 		apr_status_t status = apr_pollset_poll(pset, -1 /* timeout */, &pnum, &ret_pfd);
 
+/* can just be socket or event-queue, dispatch accordingly */
 		for (int i = 0; i < pnum; i++){
 			void* cb = ret_pfd[i].client_data;
+			if (cb == &sock)
+				client_data_process(sock);
+			else 
+				client_inevq_process(sock);
 		}
 	}
 
@@ -226,10 +326,14 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 /* using the shared memory context as a graphing / logging window, for event passing,
  * the sound as a possible alert, but also for the guard thread */
 	netcontext.shmcont = frameserver_getshm(shmkey, true);
-	if (!frameserver_shmpage_resize(&netcontext.shmcont, 256, 256, 4, 0, 0)) return;
+	
+	if (!frameserver_shmpage_resize(&netcontext.shmcont, 256, 256, 4, 0, 0))
+		return;
+
 	frameserver_shmpage_calcofs(netcontext.shmcont.addr, &(netcontext.vidp), &(netcontext.audp) );
 	frameserver_shmpage_setevqs(netcontext.shmcont.addr, netcontext.shmcont.esem, &(netcontext.inevq), &(netcontext.outevq), false);
 	frameserver_semcheck(netcontext.shmcont.vsem, -1);
+	flush_statusimg(128, 128, 128);
 
 /* APR as a wrapper for all socket communication */
 	apr_initialize();
@@ -238,19 +342,15 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	const char* rk;
 
 	if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("client", rk) == 0)){
-		char* dsthost = NULL, (* portstr) = NULL, (* style) = NULL;
+		char* dsthost = NULL, (* portstr) = NULL;
 
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
 		arg_lookup(args, "port", 0, (const char**) &portstr);
-		arg_lookup(args, "style",0, (const char**) &style);
 
 		client_session(dsthost, portstr ? atoi(portstr) : 0, CLIENT_SIMPLE);
 	}
 	else if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("server", rk) == 0)){
 /* sweep list of interfaces to bind to (interface=ip,port) and if none, bind to all of them */
-		char* style = NULL;
-		arg_lookup(args, "style", 0, (const char**) &style);
-		
 		server_session(SERVER_SIMPLE, false);
 	}
 	else {

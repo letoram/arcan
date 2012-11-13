@@ -48,12 +48,12 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
-    message("Profile build")
+    message("------------------*Profile build*------------------")
         add_definitions(-pg)
 endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Debug build")
+    message("------------------ Debug build --------------------")
 	add_definitions(-g -D_DEBUG)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
@@ -80,7 +80,7 @@ elseif(WIN32)
 	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
 
-    set(VORBIS_LIBRARIES ${WINLIB}\\distr\\libvorbis-0.dll,${WINLIB}\\distr\\libvorbisfile-3.dll,${WINLIB}\\distr\\libogg-0.dll)
+	set(VORBIS_LIBRARIES ${WINLIB}\\distr\\libvorbis-0.dll,${WINLIB}\\distr\\libvorbisfile-3.dll,${WINLIB}\\distr\\libogg-0.dll)
 	set(ZLIB_LIBRARY ${WINLIB}\\distr\\zlib1.dll)
 	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
 	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)

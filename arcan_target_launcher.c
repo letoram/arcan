@@ -99,7 +99,7 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack,
 		return NULL;
 	}
 
-	arcan_frameserver* res = (arcan_frameserver*) calloc(sizeof(arcan_frameserver), 1);
+	arcan_frameserver* res = arcan_frameserver_alloc(); 
 	
 	char shmsize[ 39 ] = {0};
 	

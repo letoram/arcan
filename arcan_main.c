@@ -147,8 +147,8 @@ int main(int argc, char* argv[])
 	char* dbfname = "arcandb.sqlite";
 
 	srand( time(0) );
-	/* VIDs all have a randomized base to provoke crashes in poorly written scripts,
-	 * only -g will make their base and sequence repeatable */
+/* VIDs all have a randomized base to provoke crashes in poorly written scripts,
+ * only -g will make their base and sequence repeatable */
 
 /* start this here since some SDL builds have the nasty (albeit understandable) habit of
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
@@ -223,7 +223,7 @@ int main(int argc, char* argv[])
  * if that fails, warn, try to create an empty database and if that fails, give up. */
 	dbhandle = arcan_db_open(dbname, arcan_themename);
 	if (!dbhandle) {
-		arcan_warning("Couldn't open database (requested: %s), trying to create a new one.\n", dbfname);
+		arcan_warning("Couldn't open database (requested: %s => %s), trying to create a new one.\n", dbfname, dbname);
 		FILE* fpek = fopen(dbname, "a");
 		if (fpek){
 			fclose(fpek);
@@ -370,9 +370,9 @@ int main(int argc, char* argv[])
 					break;
 
 					case EVENT_VIDEO:
-					/* these events can typically be determined in video_tick(),
-					 * however there are so many hierarchical dependencies (linked objs, instances, ...)
-					 * that a full delete is not safe there (e.g. event -> callback -> */
+/* these events can typically be determined in video_tick(),
+ * however there are so many hierarchical dependencies (linked objs, instances, ...)
+ * that a full delete is not safe there (e.g. event -> callback -> */
 						if (ev->kind == EVENT_VIDEO_EXPIRE)
 							arcan_video_deleteobject(ev->data.video.source);
 
@@ -383,7 +383,7 @@ int main(int argc, char* argv[])
 					break;
 
 					case EVENT_SYSTEM:
-					/* note the LUA shutdown() call actually emits this event */
+/* note the LUA shutdown() call actually emits this event */
 						if (ev->kind == EVENT_SYSTEM_EXIT)
 							done = true;
 						else
