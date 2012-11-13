@@ -321,10 +321,12 @@ void encode_video(bool flush)
 		av_init_packet(&pkt);
 		ffmpegctx.pframe->pts = ffmpegctx.framecount;
 
+/* don't build / link to older versions */
 #if LIBAVCODEC_VERSION_MAJOR < 53
 		extern char* dated_ffmpeg_refused_old_build[-1];
+#endif 
 
-#elseif LIBAVCODEC_VERSION_MAJOR > 53 /* and anything older isn't supported */
+#if LIBAVCODEC_VERSION_MAJOR >= 54
 		int rs = avcodec_encode_video2(ffmpegctx.vcontext, &pkt, flush ? NULL : ffmpegctx.pframe, &got_outp);
 
 		if (rs < 0 && !flush) {
@@ -342,6 +344,11 @@ void encode_video(bool flush)
 			if (ctx->coded_frame->key_frame)
 				pkt.flags |= AV_PKT_FLAG_KEY;
 
+			if (pkt.dts > pkt.pts){
+				LOG("arcan_frameserver(encode) dts > pts, clipping.\n");
+				pkt.dts = pkt.pts - 1;
+			}
+			
 			pkt.stream_index = ffmpegctx.vstream->index;
 
 			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0 && !flush){
@@ -350,10 +357,12 @@ void encode_video(bool flush)
 			}
 		}
 	}
-#else
 /* deprecated API, forced to use with older version though. No note on how large outb is supposed to be (seriously) */
+#else
 		static uint8_t* outb  = NULL;
 		static size_t outb_sz = 0;
+		static long int dtsc = 0;
+	
 		if (!outb){
 		outb_sz = avpicture_get_size(PIX_FMT_YUV420P, ffmpegctx.vcontext->width, ffmpegctx.vcontext->height);
 		outb = malloc(outb_sz);
@@ -365,11 +374,19 @@ void encode_video(bool flush)
 
 		if (sz >= 0){
 			pkt.pts = ffmpegctx.framecount;
-			pkt.dts = ffmpegctx.framecount;
-	
+
 			if (ctx->coded_frame->pts != AV_NOPTS_VALUE)
 				pkt.pts = av_rescale_q(ctx->coded_frame->pts, ctx->time_base, ffmpegctx.vstream->time_base);
 
+/* don't want an onslaught of warnings here */
+			static bool flagged = false;
+			if (dtsc > pkt.dts && !flagged){
+				LOG("arcan_frameserver(encode) -- improper PTS/DTS behavior, likely caused by an ffmpeg bug. Upgrade your libraries or try a different codec/container.\n");
+				flagged = true;
+			}
+			else
+				pkt.dts = pkt.pts;
+			
 			if (ctx->coded_frame->key_frame)
 				pkt.flags |= AV_PKT_FLAG_KEY;
 
@@ -486,6 +503,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			fps = 25;
 	}
 
+	LOG("arcan_frameserver(encode) -- Avcodec version: %d.%d\n", LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR);
 	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d %s), acodec: (%s:%d rate %d %s), container: (%s)\n",
 			vck?vck:"default",  fps, vbr, vbr <= 10 ? "qual.lvl" : "b/s", ack?ack:"default", samplerate, abr, abr <= 10 ? "qual.lvl" : "b/s", cont?cont:"default");
 

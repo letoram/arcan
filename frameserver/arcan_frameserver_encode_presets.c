@@ -360,13 +360,15 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 
 		if (!res.storage.container.format)
 			LOG("arcan_frameserver(encode) -- couldn't setup streaming output.\n");
-
+		else {
 			ctx = avformat_alloc_context();
 			ctx->oformat = res.storage.container.format;
 			res.storage.container.context = ctx;
 			res.setup.muxer = default_format_setup;
 			int rv = avio_open2(&ctx->pb, remote, AVIO_FLAG_WRITE, NULL, NULL);
-
+			LOG("arcan_frameserver(encode) attempting to open: %s, result: %d\n", remote, rv);
+		}
+		
 		return res;
 	}
 
