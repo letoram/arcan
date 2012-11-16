@@ -41,7 +41,6 @@
 #include <SDL_types.h>
 #include <SDL_opengl.h>
 #include <SDL_thread.h>
-#include <apr_poll.h>
 
 /* arcan */
 #include "arcan_math.h"
