@@ -41,6 +41,7 @@
 #include <SDL_types.h>
 #include <SDL_opengl.h>
 #include <SDL_thread.h>
+#include <apr_poll.h>
 
 /* arcan */
 #include "arcan_math.h"
@@ -550,18 +551,21 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			glDeleteBuffers(2, src->desc.upload_pbo);
 
 		src->desc.pbo_transfer = src->use_pbo;
-		glGenBuffers(2, src->desc.upload_pbo);
-		for (int i = 0; i < 2; i++){
-			glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
-			glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, NULL, GL_STREAM_DRAW);
-			void* ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
-			if (ptr){
-				memset(ptr, 0, store.w * store.h * store.bpp);
+
+		if (src->use_pbo){
+			glGenBuffers(2, src->desc.upload_pbo);
+			for (int i = 0; i < 2; i++){
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
+				glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, NULL, GL_STREAM_DRAW);
+				void* ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
+				if (ptr){
+					memset(ptr, 0, store.w * store.h * store.bpp);
+				}
+				glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 			}
-			glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+			glBindTexture(GL_TEXTURE_2D, 0);
 		}
-		glBindTexture(GL_TEXTURE_2D, 0);
 
 /* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
  * if we don't maintain a queue (present as soon as possible) */
@@ -790,4 +794,70 @@ arcan_frameserver* arcan_frameserver_alloc()
 	memset(res, 0, sizeof(arcan_frameserver));
 	res->use_pbo = true;
 	return res;
+}
+
+void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp setup)
+{
+	ctx->nopts    = true;
+	ctx->autoplay = true;
+
+/* "movie" mode involves parallel queues of raw, decoded, frames and heuristics
+ * for dropping, delaying or showing frames based on DTS/PTS values */
+	if (setup.use_builtin){
+		if (strcmp(setup.args.builtin.mode, "movie") == 0){
+			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
+			ctx->nopts    = false;
+			ctx->autoplay = false;
+		}
+
+/* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
+ * each transfer, minimising latency is key. All operations require an intermediate buffer
+ * and are synched to one framequeue */
+		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
+			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
+			ctx->sz_audb  = 1024 * 6400;
+			ctx->ofs_audb = 0;
+			ctx->audb     = malloc( ctx->sz_audb );
+			ctx->lock_audb = SDL_CreateMutex();
+		}
+
+/* network client needs less in terms of buffering etc. but instead a different signalling
+ * mechanism for flushing events */
+		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0)
+			ctx->kind  = ARCAN_FRAMESERVER_NETCL;
+		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0)
+			ctx->kind = ARCAN_FRAMESERVER_NETSRV;
+
+/* record instead operates by maintaining up-to-date local buffers, then letting the frameserver
+ * sample whenever necessary */
+		else if (strcmp(setup.args.builtin.mode, "record") == 0){
+			ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
+
+/* we don't know how many audio feeds are actually monitored to produce the output,
+ * thus not how large the intermediate buffer should be to safely accommodate them all */
+			ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
+			ctx->audb = malloc( ctx->sz_audb );
+			ctx->lock_audb = SDL_CreateMutex();
+		}
+	}
+/* hijack works as a 'process parasite' inside the rendering pipeline of other projects,
+ * similar otherwise to libretro except it only deals with videoframes (currently) */
+	else
+		ctx->kind = ARCAN_HIJACKLIB;
+
+	arcan_frameserver_meta vinfo = {0};
+		
+	ctx->child_alive = true;
+	ctx->desc        = vinfo;
+
+/* these are just placeholders, the real ones will be set in tick_control */
+	ctx->desc.width  = 32;
+	ctx->desc.height = 32; 
+	ctx->desc.bpp    = 4;
+	
+/* two separate queues for passing events back and forth between main program and frameserver,
+ * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
+	frameserver_shmpage_setevqs( ctx->shm.ptr, ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
+	ctx->inqueue.synch.external.killswitch = ctx;
+	ctx->outqueue.synch.external.killswitch = ctx;
 }

@@ -46,6 +46,8 @@ enum arcan_frameserver_kinds {
 	ARCAN_FRAMESERVER_INPUT,
 	ARCAN_FRAMESERVER_OUTPUT,
 	ARCAN_FRAMESERVER_INTERACTIVE,
+	ARCAN_FRAMESERVER_NETCL,
+	ARCAN_FRAMESERVER_NETSRV,
 	ARCAN_HIJACKLIB
 };
 
@@ -140,7 +142,7 @@ struct frameserver_envp {
 
 		struct {
 			const char* const resource;
-			const char* const mode; /* movie, libretro */
+			const char* const mode; /* movie, libretro, record, net-cl, net-srv */
 		} builtin;
 
 		struct {
@@ -213,6 +215,13 @@ arcan_errc arcan_frameserver_audioframe(struct arcan_aobj* aobj, arcan_aobj_id i
 /* simplified versions of the above that ignores PTS/DTS and doesn't use the framequeue */
 int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag);
+
+/* PROCEED WITH EXTREME CAUTION, _configure, _spawn, _free etc. are among the more complicated functions
+ * in the entire project, any changes should be thoroughly tested for regressions.
+ * 
+ * part of the spawn_server that is shared between the unix and the win32 implementations,
+ * assumes that shared memory, semaphores etc. are already in place. */
+void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp setup);
 
 /* stop playback and free resources associated with a movie,
  * in some cases, this will clear the container. As the frameservers are supposed to be used in conjunction

@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/time.h>
+#include <sys/signal.h>
 #include <fcntl.h>
 #include <time.h>
 #include <dlfcn.h>
@@ -307,6 +308,16 @@ void* frameserver_requirefun(const char* const sym)
 	return dlsym(lastlib, sym);
 }
 
+/* only used to handle the situation where we already are blocked in poll (frameserver-net),
+ * apr_sigset_wakeup (behind the net_wakeup_call) is reentrant, and should the
+ * signal be lost or ignored, it won't matter much as the parent will soon emit another one if the
+ * event queue is over the set threshold */
+void usr1hand(int signo)
+{
+	if (arcan_frameserver_net_wakeup_call())
+		arcan_frameserver_net_wakeup_call()();
+}
+
 /* by default, we only do this for libretro where it might help
  * with external troubleshooting */
 static void toggle_logdev(const char* prefix)
@@ -391,6 +402,7 @@ static void toggle_logdev(const char* prefix)
 #ifdef HAVE_APR 
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
+		signal(SIGUSR1, usr1hand);
 		arcan_frameserver_net_run(resource, keyfile);
 	}
 #endif
