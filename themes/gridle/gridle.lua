@@ -1117,7 +1117,7 @@ function build_whitegrid()
 	
 				if (gametbl and gametbl.system and settings.tilebg == "Sysicons") then
 					local icon = imagery.sysicons[ string.lower(gametbl.system) ];
-					if (icon) then 
+					if (icon and valid_vid(icon)) then 
 						gridbg = instance_image(icon); 
 						image_tracetag(gridbg, "system icon instance");
 					end

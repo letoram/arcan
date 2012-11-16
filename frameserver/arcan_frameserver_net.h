@@ -22,8 +22,8 @@
 #ifndef HAVE_ARCAN_FRAMESERVER_NET
 #define HAVE_ARCAN_FRAMESERVER_NET
 
-#define DEFAULT_DISCOVER_PORT 6680
-#define DEFAULT_CONNECTION_PORT 6681
+#define DEFAULT_DISCOVER_PORT 6681
+#define DEFAULT_CONNECTION_PORT 6680
 
 enum NET_TAGS {
 	TAG_NETMSG           = 0, /* client <-> client, client<->server   */
@@ -32,7 +32,9 @@ enum NET_TAGS {
 	TAG_STATE_XFER_DELTA = 3, /* delta against prev. key-frame, initial is 0 */
 	TAG_NETINPUT         = 4  /* specialized netmsg for input event streams  */
 };
+typedef void(*wakeup_trigger)();
 
 void arcan_frameserver_net_run(const char* resource, const char* shmkey);
+wakeup_trigger arcan_frameserver_net_wakeup_call();
 
 #endif

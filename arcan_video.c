@@ -947,12 +947,14 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 /* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
 	int err;
 	if ( (err = glewInit()) != GLEW_OK){
-		arcan_fatal("Couldn't initialize GLew: %s\n", glewGetErrorString(err));
+		arcan_fatal("arcan_video_init(), Couldn't initialize GLew: %s\n", glewGetErrorString(err));
 	}
 
-    if (!glewIsSupported("GL_VERSION_2_1  GL_ARB_framebuffer_object")){
-       arcan_fatal("OpenGL context missing FBO support, outdated drivers and/or graphics adapter detected.");
-    }
+	if (!glewIsSupported("GL_VERSION_2_1  GL_ARB_framebuffer_object")){
+		arcan_warning("arcan_video_init(), OpenGL context missing FBO support, outdated drivers and/or graphics adapter detected.");
+		arcan_warning("arcan_video_init(), Continuing without FBOs enabled, this renderpath is to be considered unsupported.");
+		arcan_video_display.fbo_disabled = true;
+	}
 
 	arcan_video_display.width = width;
 	arcan_video_display.height = height;
@@ -962,7 +964,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 
 	if (arcan_video_display.screen) {
 		if (TTF_Init() == -1) {
-			arcan_warning("Warning: arcan_video_init(), Couldn't initialize freetype. Text rendering disabled.\n");
+			arcan_warning("arcan_video_init(), Couldn't initialize freetype. Text rendering disabled.\n");
 			arcan_video_display.text_support = false;
 		}
 		else
@@ -1327,6 +1329,9 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 
 static bool alloc_fbo(struct rendertarget* dst)
 {
+	if (arcan_video_display.fbo_disabled)
+		return false;
+
 	glGenFramebuffers(1, &dst->fbo);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
@@ -2067,8 +2072,10 @@ static void drop_rtarget(arcan_vobject* vobj)
 		arcan_warning("(arcan_video_deleteobject(reference-pass) -- remove rendertarget (%s)\n", vobj->tracetag);
 
 /* kill GPU resources */
-	glDeleteFramebuffers(1, &dst->fbo);
-	glDeleteRenderbuffers(1,&dst->depth);
+	if (arcan_video_display.fbo_disabled == false){
+		glDeleteFramebuffers(1, &dst->fbo);
+		glDeleteRenderbuffers(1,&dst->depth);
+	}
 
 /* PBOs activated for those rendertargets used with readback */
 	if (dst->pbo)
@@ -3362,10 +3369,8 @@ cleanup:
 static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
 void arcan_video_refresh_GL(float lerp)
 {
-	static bool nofbo = false;
-
 /* for performance reasons, we should try and re-use FBOs whenever possible */
-	if (nofbo == false){
+	if (arcan_video_display.fbo_disabled == false){
 		for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
 
@@ -3396,7 +3401,7 @@ void arcan_video_refresh_GL(float lerp)
 				}
 			}
 			else {
-				nofbo = true;
+				arcan_video_display.fbo_disabled = true;
 				arcan_warning("Error using rendertarget(FBO), feature disabled.\n");
 				arcan_debug_curfbostatus(status, tgt->mode);
 			}

@@ -325,7 +325,7 @@ struct arg_arr* arg_unpack(const char* resource)
 	const char* rsstr = resource;
 
 /* unless an empty string, we'll always have 1 */
-	if (strlen(resource) == 0)
+	if (!resource)
 		return NULL;
 
 /* figure out the number of additional arguments we have */
