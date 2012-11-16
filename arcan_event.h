@@ -259,6 +259,7 @@ typedef struct arcan_netevent{
 	union {
 		char hostaddr[40]; /* max ipv6 textual representation, 39 */
 		char connhandle[4];
+		char message[40];
 	};
 } arcan_netevent;
 

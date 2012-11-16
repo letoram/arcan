@@ -259,7 +259,7 @@ error:
 }
 
 
-/* hack around linking shmpage */
+/* unfortunate and temporary (0.2.3 cleanup) hack around linking shmpage */
 sem_handle async, vsync, esync;
 HANDLE parent;
 FILE* logdev = NULL;
@@ -282,6 +282,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	HWND handle = wmi.window;
 
 	ctx->launchedtime = arcan_frametime();
+
 /* is the ctx in an uninitialized state? */
 	if (ctx->vid == ARCAN_EID) {
 		vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
@@ -300,72 +301,13 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	if (!ctx->vsync || !ctx->async ||!ctx->esync)
 		arcan_fatal("arcan_frameserver(win32) couldn't allocate semaphores.\n");
 
-/* mode- specific options */
-	if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0)
-		ctx->kind = ARCAN_FRAMESERVER_INPUT;
-
-	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
-			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
-			ctx->nopts = true;
-			ctx->autoplay = true;
-			ctx->sz_audb  = 1024 * 6400;
-			ctx->ofs_audb = 0;
-			ctx->audb = malloc( ctx->sz_audb );
-			memset(ctx->audb, 0, ctx->sz_audb );
-			ctx->lock_audb = SDL_CreateMutex();
-	}
-	else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "record") == 0){
-		ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
-		ctx->nopts = true;
-		ctx->autoplay = true;
-/* we don't know how many audio feeds are actually monitored to produce the output,
- * thus not how large the intermediate buffer should be to safely accommodate them all */
-		ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
-		ctx->audb = malloc( ctx->sz_audb );
-		memset(ctx->audb, 0, ctx->sz_audb );
-		ctx->lock_audb = SDL_CreateMutex();
-	}
-	else if (!setup.use_builtin){
-		arcan_warning("arcan_frameserver(win32) : hijack mode unsupported\n");
-		ctx->nopts = true;
-		ctx->autoplay = true;
-	}
-
-/* few of these options are actually worth anything here,
- * they will be changed by arcan_frameserver_tick_control when
- * child knows its own structure */
-	ctx->child_alive = true;
-	ctx->desc = vinfo;
-	ctx->desc.width = cons.w;
-	ctx->desc.height = cons.h;
-	ctx->desc.bpp = cons.bpp;
 	ctx->shm.key = strdup("win32_static");
 	ctx->shm.ptr = (void*) shmpage;
 	ctx->shm.shmsize = MAX_SHMSIZE;
 	ctx->shm.handle = shmh;
-
 	shmpage->parent = handle;
 
-/* two separate queues for passing events back and forth between main program and frameserver,
- * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
-	ctx->inqueue.local = false;
-	ctx->inqueue.synch.external.shared = ctx->esync;
-	ctx->inqueue.synch.external.killswitch = ctx;
-	ctx->inqueue.n_eventbuf = sizeof(shmpage->parentdevq.evqueue) / sizeof(shmpage->parentdevq.evqueue[0]);
-	ctx->inqueue.eventbuf = shmpage->parentdevq.evqueue;
-	ctx->inqueue.front = &(shmpage->parentdevq.front);
-	ctx->inqueue.back = &(shmpage->parentdevq.back);
-
-	ctx->outqueue.local = false;
-	ctx->outqueue.synch.external.shared = ctx->esync;
-	ctx->outqueue.synch.external.killswitch = ctx;
-	ctx->outqueue.n_eventbuf = sizeof(shmpage->childdevq.evqueue) / sizeof(shmpage->childdevq.evqueue[0]);
-	ctx->outqueue.eventbuf = shmpage->childdevq.evqueue;
-	ctx->outqueue.front = &(shmpage->childdevq.front);
-	ctx->outqueue.back = &(shmpage->childdevq.back);
-
-	arcan_event test = {0};
-	arcan_event_enqueue(&ctx->outqueue, &test);
+	arcan_frameserver_configure(ctx, setup);
 
 	char cmdline[4196];
 	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh,
@@ -377,30 +319,31 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 
 	si.cb = sizeof(si);
 	if (CreateProcess(
-	            "arcan_frameserver.exe", /* program name, if null it will be extracted from cmdline */
-	            cmdline, /* will be mapped up to argv, frameserver takes; resource(fname), handle */
-	            0, /* don't make the parent process handle inheritable */
-	            0, /* don't make the parent thread handle(s) inheritable */
-	            TRUE, /* inherit the rest (we want semaphore / shm handle) */
-	            CREATE_NO_WINDOW, /* console application, however we don't need a console window spawned with it */
-	            0, /* don't need an ENV[] */
-	            0, /* don't change CWD */
-	            &si, /* Startup info */
-	            &pi /* process-info */)) {
+		"arcan_frameserver.exe", /* program name, if null it will be extracted from cmdline */
+		cmdline, /* will be mapped up to argv, frameserver takes; resource(fname), handle */
+		0, /* don't make the parent process handle inheritable */
+		0, /* don't make the parent thread handle(s) inheritable */
+		TRUE, /* inherit the rest (we want semaphore / shm handle) */
+		CREATE_NO_WINDOW, /* console application, however we don't need a console window spawned with it */
+		0, /* don't need an ENV[] */
+		0, /* don't change CWD */
+		&si, /* Startup info */
+		&pi /* process-info */)) {
 
-/* anything else that can happen to the child at this point is handled in
- * frameserver_tick_control */
+/* anything else that can happen to the child at this point is handled in frameserver_tick_control */
 		ctx->child = pi.hProcess;
 		ctx->childp = pi.dwProcessId;
 
 		arcan_sem_post(ctx->vsync);
 
 		return ARCAN_OK;
-	} else
+	}
+	else
 		arcan_warning("arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
 
 error:
 	arcan_warning("arcan_frameserver(win32): couldn't spawn frameserver session (out of shared memory?)\n");
+
 	CloseHandle(ctx->async);
 	CloseHandle(ctx->vsync);
 	CloseHandle(ctx->esync);

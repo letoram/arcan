@@ -84,6 +84,7 @@ struct {
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
 
+	file_handle tmphandle, restorehandle, storehandle;
 	unsigned n_conn;
 } netcontext = {0};
 
@@ -469,21 +470,54 @@ static void client_data_push(apr_socket_t* addr, char* buf, size_t buf_sz)
 static bool client_inevq_process(apr_socket_t* outconn)
 {
 	arcan_event* ev;
-
+	uint16_t msgsz = sizeof(ev->data.network.message) / sizeof(ev->data.network.message[0]);
+	char outbuf[ msgsz + 3];
+	
 /*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
 	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
+				case EVENT_NET_INPUTEVENT:
+					LOG("arcan_frameserver(net-cl) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
+				break;
+
+				case EVENT_NET_CUSTOMMSG:
+					outbuf[0] = TAG_NETMSG;
+					outbuf[1] = msgsz;
+					outbuf[2] = msgsz >> 8;
+					memcpy(&outbuf[3], ev->data.network.message, msgsz);
+					client_data_push(outconn, outbuf, msgsz + 3);
+				break;
 			}
 		}
 		else if (ev->category == EVENT_TARGET){
 			switch (ev->kind){
+				case TARGET_COMMAND_EXIT:	return false;	break;
+				case TARGET_COMMAND_FDTRANSFER: netcontext.tmphandle = frameserver_readhandle(ev); break;
+				case TARGET_COMMAND_STORE:
+					netcontext.storehandle = netcontext.tmphandle;
+					netcontext.tmphandle = 0;
+				break;
+				case TARGET_COMMAND_RESTORE:
+					netcontext.restorehandle = netcontext.tmphandle;
+					netcontext.tmphandle = 0;
+				break;
+				default:
+					; /* just ignore */
 			}
 		}
 		else;
 
 	return true;
 }
+
+static void pollset_wakeup()
+{
+	if (netcontext.pollset)
+		apr_pollset_wakeup(netcontext.pollset);
+}
+
+static void(*pollset_wakeup_fun)(void) = pollset_wakeup;
 
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
 static void client_session(char* hoststr, int port, enum client_modes mode)
@@ -552,8 +586,10 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
  * we result to just a millisecond timeout on poll
  */
 	int timeout = -1;
-	if (apr_pollset_create(&pset, 1, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL)
-		timeout = 100000; 
+	if (apr_pollset_create(&pset, 1, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
+		pollset_wakeup_fun = NULL;
+		timeout = 100000;
+	}
 
 	apr_pollset_add(pset, &pfd);
 	
@@ -577,12 +613,6 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
 	}
 
 	return;
-}
-
-static void pollset_wakeup()
-{
-	if (netcontext.pollset)
-		apr_pollset_wakeup(netcontext.pollset);
 }
 
 wakeup_trigger arcan_frameserver_net_wakeup_call(){ return pollset_wakeup; }

@@ -89,6 +89,17 @@ static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 #define CONST_MAX_SURFACEH 2048
 #endif
 
+#ifndef CONST_NET_BROADCAST
+#define CONST_NET_BROADCAST 20
+#endif
+
+#ifndef CONST_NET_UNICAST
+#define CONST_NET_UNICAST 25
+#endif
+
+static const int ARCAN_NET_BROADCAST = CONST_NET_BROADCAST;
+static const int ARCAN_NET_UNICAST = CONST_NET_UNICAST;
+
 static const int MOUSE_GRAB_ON  = 20;
 static const int MOUSE_GRAB_OFF = 21;
 
@@ -2994,8 +3005,6 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 					.args.builtin.resource = metastr,
 					.args.builtin.mode = "libretro"
 				};
-
-				
 				
 				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
@@ -3709,6 +3718,17 @@ static int arcan_lua_net_discover(lua_State* ctx)
 	return 0;
 }
 
+static int arcan_lua_net_push(lua_State* ctx)
+{
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+
+/* arg2 can be (string) => NETMSG, (event) => just push */
+	
+	int tgtmode = luaL_optint(ctx, 3, ARCAN_NET_UNICAST);
+
+	return 0;
+}
+
 void arcan_lua_cleanup()
 {
 }
@@ -3893,6 +3913,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "net_listen", arcan_lua_net_listen);
 	arcan_lua_register(ctx, "net_open", arcan_lua_net_open);
 	arcan_lua_register(ctx, "net_discover", arcan_lua_net_discover);
+	arcan_lua_register(ctx, "net_push", arcan_lua_net_push);
 
 	atexit(arcan_lua_cleanup);
 	
@@ -3974,5 +3995,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "NOW", 0);
 	arcan_lua_setglobalint(ctx, "NOPERSIST", 0);
 	arcan_lua_setglobalint(ctx, "PERSIST", 1);
+	arcan_lua_setglobalint(ctx, "NET_BROADCAST", ARCAN_NET_BROADCAST);
 	arcan_lua_setglobalint(ctx, "DEBUGLEVEL", lua_ctx_store.debug); 
 }

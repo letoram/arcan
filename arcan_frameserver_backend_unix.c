@@ -246,9 +246,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
-	
-	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
-	
+
 	size_t shmsize = MAX_SHMSIZE;
 	struct frameserver_shmpage* shmpage;
 	int shmfd = 0;
@@ -284,80 +282,32 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 
 	pid_t child = fork();
 	if (child) {
-		arcan_frameserver_meta vinfo = {0};
 		arcan_errc err;
 		close(sockp[1]);
 		
 /* init- call (different from loop-exec as we need to 
  * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {
+			img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
-			
+
 			ctx->source = strdup(setup.args.builtin.resource);
 			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 			ctx->aid = ARCAN_EID;
-		} else if (setup.custom_feed == false){ 
+		}
+		else if (setup.custom_feed == false){ 
 			vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
 			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
 		}
-	
-/* "movie" mode involves parallell queues of raw, decoded, frames and heuristics 
- * for dropping, delaying or showing frames based on DTS/PTS values */
-		if (setup.use_builtin && strcmp(setup.args.builtin.mode, "movie") == 0){
-			ctx->kind = ARCAN_FRAMESERVER_INPUT;
-		}
-/* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
- * each transfer, minimized latency is key. All operations require an intermediate buffer 
- * and are synched to one framequeue */
-		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "libretro") == 0){
-			ctx->kind = ARCAN_FRAMESERVER_INTERACTIVE;
-			ctx->nopts = true;
-			ctx->autoplay = true;
-			ctx->sz_audb  = 1024 * 6400;
-			ctx->ofs_audb = 0;
-			
-			ctx->audb = malloc( ctx->sz_audb );
-			memset(ctx->audb, 0, ctx->sz_audb );
-			ctx->lock_audb = SDL_CreateMutex();
-		}
-		else if (setup.use_builtin && strcmp(setup.args.builtin.mode, "record") == 0)
-		{
-			ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
-			ctx->nopts = true;
-			ctx->autoplay = true;
-/* we don't know how many audio feeds are actually monitored to produce the output,
- * thus not how large the intermediate buffer should be to safely accommodate them all */
-			ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
-			ctx->audb = malloc( ctx->sz_audb );
-			memset(ctx->audb, 0, ctx->sz_audb );
-			ctx->lock_audb = SDL_CreateMutex();
-		}
 
-/* hijack works as a 'process parasite' inside the rendering pipeline of other projects,
- * similar otherwise to libretro except it only deals with videoframes */
-		else if (!setup.use_builtin){
-			ctx->kind = ARCAN_HIJACKLIB;
-			ctx->nopts = true;
-			ctx->autoplay = true;
-		}
-		
-		ctx->child_alive = true;
-		ctx->desc = vinfo;
-		ctx->child = child;
-		ctx->desc.width = cons.w;
-		ctx->desc.height = cons.h;
-		ctx->desc.bpp = cons.bpp;
-		ctx->shm.ptr = (void*) shmpage;
+		ctx->shm.ptr     = (void*) shmpage;
 		ctx->shm.shmsize = shmsize;
-		ctx->sockout_fd = sockp[0];
-		
-/* two separate queues for passing events back and forth between main program and frameserver,
- * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
-		frameserver_shmpage_setevqs( shmpage, ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
-		ctx->inqueue.synch.external.killswitch = ctx;
-		ctx->outqueue.synch.external.killswitch = ctx;
-	}
-	else if (child == 0) {
+		ctx->sockout_fd  = sockp[0];
+		ctx->child       = child;
+
+		arcan_frameserver_configure(ctx, setup);
+	
+	} else if (child == 0) {
 		char convb[8];
 	
 /* this little thing is used to push file-descriptors between parent and child, as to not expose 
