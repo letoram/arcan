@@ -188,7 +188,7 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 	glBindTexture(GL_TEXTURE_2D, glid);
 
-	if (false && src->desc.pbo_transfer){
+	if (src->desc.pbo_transfer){
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 

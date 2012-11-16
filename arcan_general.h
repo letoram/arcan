@@ -41,6 +41,7 @@ typedef struct frameserver_shmpage frameserver_shmpage;
 #include <Windows.h>
 
 #define LIBNAME "arcan_hijack.dll"
+#define NULFILE "\\Device\\Null"
 
 #undef BADFD
 #define BADFD INVALID_HANDLE_VALUE
@@ -64,6 +65,8 @@ typedef struct {
 } shm_handle;
 
 #else
+
+#define NULFILE "/dev/null"
 
 #if __APPLE__
 	#define LIBNAME "libarcan_hijack.dylib"

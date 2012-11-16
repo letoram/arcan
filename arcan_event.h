@@ -144,6 +144,7 @@ enum ARCAN_EVENT_VIDEO {
 };
 
 enum ARCAN_EVENT_NET {
+	EVENT_NET_BROKEN,
 	EVENT_NET_CONNECTED,
 	EVENT_NET_DISCONNECTED,
 	EVENT_NET_NORESPONSE,
@@ -417,7 +418,7 @@ void arcan_event_dumpqueue(arcan_evctx*);
  * Supply a buffer sizeof(arcan_event) or larger and it'll be packed down to an internal format (XDR) for serialization,
  * which can be transmitted over the wire and later deserialized again with unpack.
  * dbuf is dynamically allocated, and the payload is padded by 'pad' byte, final size is stored in sz.
- * returns false on out of memory or bad in event
+ * returns false on out of memory or unusable event contents  
  */
 bool arcan_event_pack(arcan_event*, int pad, char** dbuf, size_t* sz);
 

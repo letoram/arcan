@@ -3057,6 +3057,11 @@ int arcan_lua_renderset(lua_State* ctx)
 	int detach        = luaL_checkint(ctx, 3);
 	int scale         = luaL_checkint(ctx, 4); 
 
+	if (arcan_video_display.fbo_disabled){
+		arcan_warning("arcan_lua_renderset(%d) FBO support is disabled, cannot setup rendertarget.\n");
+		return 0;
+	}
+	
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
 		arcan_warning("arcan_lua_renderset(%d) invalid arg 3, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		return 0;
@@ -3096,6 +3101,11 @@ int arcan_lua_recordset(lua_State* ctx)
 
 	intptr_t ref = (intptr_t) 0;
 
+	if (arcan_video_display.fbo_disabled){
+		arcan_warning("arcan_lua_recordset(%d) FBO support is disabled, cannot setup recordtarget.\n");
+		goto cleanup;
+	}
+	
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
 		arcan_warning("arcan_lua_recordset(%d) invalid arg 6, expected RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
 		goto cleanup;
@@ -3200,8 +3210,14 @@ int arcan_lua_recordset(lua_State* ctx)
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
 /* pushing the file descriptor signals the frameserver to start receiving (and use the proper dimensions),
- * it is permitted to close and push another one to the same session */
-		int fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
+ * it is permitted to close and push another one to the same session, with special treatment for "dumb" resource names
+ * or streaming sessions */
+		int fd;
+		if (strstr(args.args.builtin.resource, "container=stream") != NULL || strlen(args.args.builtin.resource) == 0)
+			fd = open(NULFILE, O_WRONLY);
+		else	
+			fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
+		
 		if (fd){
 			arcan_frameserver_pushfd( mvctx, fd );
 			mvctx->alocks = aidlocks;
@@ -3632,8 +3648,8 @@ static int arcan_lua_net_listen(lua_State* ctx)
  */
 	struct frameserver_envp args = {
 		.use_builtin = true,
-		.args.builtin.mode = "net",
-		.args.builtin.resource = "server"
+		.args.builtin.mode = "net-srv",
+		.args.builtin.resource = "mode=server"
 	};
 
 	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK)

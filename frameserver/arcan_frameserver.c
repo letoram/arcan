@@ -45,6 +45,7 @@
 #include "arcan_frameserver_decode.h"
 #include "arcan_frameserver_encode.h"
 
+/* APR won't be an explicit requirement until 0.2.3 */
 #ifdef HAVE_APR
 #include "arcan_frameserver_net.h"
 #endif
@@ -59,9 +60,9 @@ int sockin_fd = -1;
 const int audio_samplerate = DST_SAMPLERATE;
 const int audio_channels   = DST_AUDIOCHAN;
 const int video_channels   = DST_VIDEOCHAN; /* RGBA */
+
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
-
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 {
 	int fd;
@@ -133,7 +134,7 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 						LOG("arcan_frameserver(dumprawfile) -- write failed (%d), reason: %s\n", errno, strerror(errno));
 						goto out;
 				}
-				
+
 				ofs += nw;
 			}
 		rv = true;
@@ -315,12 +316,12 @@ static void toggle_logdev(const char* prefix)
 		char timeb[16];
 		time_t t = time(NULL);
 		struct tm* basetime = localtime(&t);
-		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
+		strftime(timeb, sizeof(timeb)-1, "%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
+		size_t logbuf_sz = strlen(logdir) + sizeof("/fsrv__ppppppmmddhhss.txt") + strlen(prefix);
 		char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
+		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%d_%s.txt", logdir, prefix, (uint16_t)getpid(), timeb);
 		logdev = freopen(logbuf, "a", stderr);
 	}
 }
