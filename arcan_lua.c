@@ -1452,6 +1452,52 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: clock pulse");
 		}
 	}
+	else if (ev->category == EVENT_NET){
+		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
+			return;
+
+		arcan_vobject* vobj = arcan_video_getobject(ev->data.network.source);
+		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+		if (fsrv->tag){
+			intptr_t dst_cb = fsrv->tag;
+			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
+			lua_pushvid(ctx, ev->data.network.source);
+
+			lua_newtable(ctx);
+			int top = lua_gettop(ctx);
+			
+			switch (ev->kind){
+				case EVENT_NET_CONNECTED:
+					arcan_lua_tblstr(ctx, "kind", "connected", top);
+					arcan_lua_tblstr(ctx, "host", ev->data.network.hostaddr, top);
+				break;
+
+				case EVENT_NET_DISCONNECTED:
+					arcan_lua_tblstr(ctx, "kind", "client-disconnected", top);
+					arcan_lua_tblnum(ctx, "id", ev->data.network.connid, top);
+				
+				case EVENT_NET_CUSTOMMSG:
+					arcan_lua_tblstr(ctx, "kind", "message", top);
+					arcan_lua_tblstr(ctx, "message", ev->data.network.message, top);
+				break;
+
+				case EVENT_NET_INPUTEVENT:
+					arcan_warning("arcan_lua_pushevent( net_inputevent_not_yet_handled )\n");
+				break;
+
+				default:
+					arcan_warning("arcan_lua_pushevent( net_unknown %d )\n", ev->kind);
+			}
+
+			lua_ctx_store.cb_source_tag  = ev->data.external.source;
+			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+
+			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+		}
+		
+	}
 	else if (ev->category == EVENT_EXTERNAL){
 		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
 			return;
@@ -2997,8 +3043,6 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 
 				arcan_frameserver* intarget = arcan_frameserver_alloc();
 				intarget->tag = ref;
-				intarget->nopts = true;
-				intarget->autoplay = true;
 				
 				struct frameserver_envp args = {
 					.use_builtin = true,
@@ -3643,18 +3687,19 @@ void arcan_lua_eachglobal(lua_State* ctx, char* prefix, int (*callback)(const ch
 static int arcan_lua_net_listen(lua_State* ctx)
 {
 	arcan_frameserver* intarget = arcan_frameserver_alloc();
+  int nargs =	lua_gettop(ctx);
+	intptr_t ref = 0;
+	
+/* slightly more flexible argument management, just find the first callback */
+	for (int i = 1; i <= nargs; i++){
+		if (lua_isfunction(ctx, i)){
+			lua_pushvalue(ctx, i);
+			ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+			break;
+		}
+	}
 
-/* set intarget->tag to callback */
-	intarget->nopts = true;
-	intarget->autoplay = true;
-
-/*
- * a. option to specify interface:port explicitly, and multiple times (variadic arguments last)
- * b. simple mode (plaintext, no authentication)
- * c. normal mode (encryption guaranteeing C.I.A)
- * d. option to respond to discovery requests, and optionally, act as a directory service
- * e. option to register with a directory service  
- */
+	intarget->tag = ref;
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = "net-srv",
@@ -3674,57 +3719,103 @@ static int arcan_lua_net_listen(lua_State* ctx)
 static int arcan_lua_net_open(lua_State* ctx)
 {
 	arcan_frameserver* intarget = arcan_frameserver_alloc();
-	intarget->use_pbo = false;
-	
-/* set intarget->tag to callback */
-	intarget->nopts = true;
-	intarget->autoplay = true;
 
-/*
- * here it is slightly simpler, if the user doesn't supply a key (optional),
- * it won't attempt to use NaCL and friends. if the user supplies an IP, then we connect directly,
- * if the user supplies a single string, we use that as a directory hash-key
- * and if not, it broadcasts and connects to the first respondent
- */
+	const char* host = lua_isstring(ctx, 1) ? luaL_checkstring(ctx, 1) : "127.0.0.1";
+	uint16_t port = luaL_optnumber(ctx, 2, 6680);
+	int nargs = lua_gettop(ctx);
+	intptr_t ref = 0;
+	
+/* slightly more flexible argument management, just find the first callback */
+	for (int i = 1; i <= nargs; i++)
+		if (lua_isfunction(ctx, i)){
+			lua_pushvalue(ctx, i);
+			ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+			break;
+		}
+
+/* populate and escape */
+	char* workstr = strdup(host);
+	char* instr = malloc(strlen(workstr) + strlen("mode=client:host=:port=") + /* 65535NUL */ 8);
+	char* tmpstr = workstr;
+	while (*tmpstr){
+		if (*tmpstr == ':') *tmpstr = '\t';
+		tmpstr++;
+	}
+	
+	sprintf(instr, "mode=client:host=%s:port=%d", workstr, port);
+
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = "net-cl",
-		.args.builtin.resource = "mode=client:host=127.0.0.1:port=6680"
+		.args.builtin.resource = instr 
 	};
 
-/*
-	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3))
-		lua_pushvalue(ctx, 3);
-		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	};
-	*/
-
-	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK)
+	intarget->tag = ref;
+	if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 		lua_pushvid(ctx, intarget->vid);
+	}
 	else {
 		lua_pushvid(ctx, ARCAN_EID);
 		free(intarget);
 	}
 
-//	free(metastr);
+	free(instr);
+	free(workstr);
+
 	return 1;
 }
 
-/* just a wrapper around open that will launch a low-priority frameserver that
- * passively scans for discoverable and/or connectable servers */
-static int arcan_lua_net_discover(lua_State* ctx)
+static int arcan_lua_net_pushcl(lua_State* ctx)
 {
-	arcan_fatal("arcan_lua_net_discover() -- not implemented yet and shouldn't be used.\n");
+	arcan_vobj_id did   = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj = arcan_video_getobject(did);
+	
+/* arg2 can be (string) => NETMSG, (event) => just push */
+	arcan_event outev = {.category = EVENT_NET};
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("arcan_lua_net_pushcl() -- bad arg1, VID is not a frameserver.\n");
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	
+	if (!fsrv->kind == ARCAN_FRAMESERVER_NETCL)
+		arcan_fatal("arcan_lua_net_pushcl() -- bad arg1, specified frameserver is not in client mode (net_open).\n");
+	
+	if (lua_isstring(ctx, 2)){
+		outev.kind = EVENT_NET_CUSTOMMSG;
+
+		const char* msg = luaL_checkstring(ctx, 2);
+		size_t out_sz = sizeof(outev.data.network.message) / sizeof(outev.data.network.message[0]);
+		snprintf(outev.data.network.message, out_sz, "%s", msg);
+	}
+	else if (lua_isnumber(ctx, 2)){
+		arcan_vobj_id tid = luaL_checkvid(ctx, 2);
+		arcan_fatal("arcan_lua_net_pushcl() -- pushing frameserver state not implemented.\n");
+	}
+	else if (lua_istable(ctx, 2))
+		arcan_fatal("arcan_lua_net_pushcl() -- pushing frameserver state not implemented.\n");
+	else
+		arcan_fatal("arcan_lua_net_pushcl() -- unexpected data to push, accepted (string, VID, evtable)\n");
+/* for *NUX, setup a pipe() pair, push the output end to the client, push the input end to the server,
+ * emit FDtransfer messages, flagging that it is going to be used for state-transfer. The last bit
+ * is important to be able to support both sending and receiving states, with compression and deltaframes
+ * in load/store operations. this also requires that the capabilities of the target actually allows for save-states,
+ * by default, they don't. */
+
+	arcan_frameserver_pushevent(fsrv, &outev);
+
 	return 0;
 }
 
-static int arcan_lua_net_push(lua_State* ctx)
+static int arcan_lua_net_pushsrv(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	int dst = luaL_checknumber(ctx, 2);
 
-/* arg2 can be (string) => NETMSG, (event) => just push */
-	
-	int tgtmode = luaL_optint(ctx, 3, ARCAN_NET_UNICAST);
+	if (lua_isstring(ctx, 3)){
+	} else if (lua_isnumber(ctx, 3)){
+	} else if (lua_istable(ctx, 3)){
+	}
 
 	return 0;
 }
@@ -3912,8 +4003,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
  * APR  (not expected to be a default dependency until 0.2.3) */
 	arcan_lua_register(ctx, "net_listen", arcan_lua_net_listen);
 	arcan_lua_register(ctx, "net_open", arcan_lua_net_open);
-	arcan_lua_register(ctx, "net_discover", arcan_lua_net_discover);
-	arcan_lua_register(ctx, "net_push", arcan_lua_net_push);
+	arcan_lua_register(ctx, "net_push", arcan_lua_net_pushcl);
+	arcan_lua_register(ctx, "net_push_srv", arcan_lua_net_pushsrv);
 
 	atexit(arcan_lua_cleanup);
 	

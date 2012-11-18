@@ -144,7 +144,7 @@ typedef struct arcan_vobject {
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;
 	} feed;
-	
+
 	uint8_t ffunc_mask;
 
 /* basic texture mapping, can be overridden (to mirror, skew etc.) */
