@@ -317,6 +317,7 @@ add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_me
 add_submenu(settingslbls, settingsptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
+add_submenu(settingslbls, settingsptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"}, function() end, true))
 table.insert(settingslbls, "----");
 add_submenu(settingslbls, settingsptrs, "Default View Mode...", "view_mode", gen_tbl_menu("view_mode", {"Grid", "Custom"}, function() end, true));
 add_submenu(settingslbls, settingsptrs, "Custom View...", "cview_skip", {"Reset"}, {Reset = reset_customview});

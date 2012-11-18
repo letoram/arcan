@@ -1476,9 +1476,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				case EVENT_NET_DISCONNECTED:
 					arcan_lua_tblstr(ctx, "kind", "client-disconnected", top);
 					arcan_lua_tblnum(ctx, "id", ev->data.network.connid, top);
+					arcan_lua_tblstr(ctx, "host", ev->data.network.hostaddr, top);
 				
 				case EVENT_NET_CUSTOMMSG:
 					arcan_lua_tblstr(ctx, "kind", "message", top);
+					ev->data.network.message[ sizeof(ev->data.network.message) - 1] = 0;
 					arcan_lua_tblstr(ctx, "message", ev->data.network.message, top);
 				break;
 
@@ -1492,7 +1494,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			lua_ctx_store.cb_source_tag  = ev->data.external.source;
 			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_net");
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 		}

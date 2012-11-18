@@ -69,6 +69,9 @@ settings = {
 	fadedelay = 10,
 	transitiondelay = 30,
 
+-- server enabled
+	network_remote = "Disabled",
+	
 -- 0: disable, 1: all on, 2: game (all on), 3: game (press on) 
 	ledmode = 2,
 	
@@ -275,7 +278,10 @@ function gridle()
 
 -- use the DB theme-specific key/value store to populate the settings table
 	load_settings();
-	
+
+-- network remote connection switch on / off
+	network_toggle();
+
 	if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
 	end
@@ -430,6 +436,56 @@ function setup_gridview()
 	
 	osdkbd = osdkbd_create();
 	osdkbd:hide();
+end
+
+function network_onevent(source, tbl)
+	if (tbl.kind == "frameserver_terminated") then
+		delete_image(source);
+		imagery.server = nil;
+-- might be that it wasn't possible to bind a port or whatever, add a slow retry timer if the mode
+-- still is !Disabled
+	elseif (tbl.kind == "resized") then
+		a = 1;
+	elseif (tbl.kind == "connected") then
+		spawn_warning(tbl.host .. " connected.");
+
+	elseif (tbl.kind == "message" and settings.network_remote == "Active") then
+		local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote"};
+		local override = {};
+
+		if (string.sub(tbl.message, 1, 6) == "press:") then
+			faketbl.active = true;
+			
+			table.insert(override, string.sub(tbl.message, 7, -1));
+			gridle_input(faketbl, override)
+
+		elseif (string.sub(tbl.message, 1, 8) == "release:") then
+			table.insert(override, string.sub(tbl.message, 9, -1));
+			faketbl.active = false;
+
+			gridle_input(faketbl, override);
+		end
+	else
+		print("unsupported netevent: ", tbl.kind);
+	end
+end
+
+function network_toggle()
+	if (settings.network_remote == "Passive" or
+		settings.network_remote == "Active") then
+
+		if (not imagery.server) then
+			imagery.server = net_listen(settings.listen_host, network_onevent);
+		end
+		
+	else
+
+		if (imagery.server) then
+			delete_image(imagery.server);
+			imagery.server = nil;
+		end
+
+	end
 end
 
 function set_background(name, tilefw, tilefh, hspeed, vspeed)
@@ -1560,8 +1616,8 @@ function gridle_internaltgt_input(val, iotbl)
 end
 
 -- slightly different from gridledetails version
-function gridle_internalinput(iotbl)
-	local restbl = keyconfig:match(iotbl);
+function gridle_internalinput(iotbl, override)
+	local restbl = override and override or keyconfig:match(iotbl);
 	
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 -- the reason for looping the restbl is simply that the iotbl can be set to match several labels
@@ -1608,8 +1664,8 @@ function gridle_internalinput(iotbl)
 	end
 end
 
-function gridle_dispatchinput(iotbl)
-	local restbl = keyconfig:match(iotbl);
+function gridle_dispatchinput(iotbl, override)
+	local restbl = override and override or keyconfig:match(iotbl);
 	
 	if (restbl and (iotbl.active or iotbl.kind == "analog")) then
 		for ind,val in pairs(restbl) do
@@ -1669,6 +1725,8 @@ function load_settings()
 	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
 	load_key_num("effect_gain", "effect_gain", settings.effect_gain);
 
+	load_key_str("network_remote", "network_remote", settings.network_remote);
+	
 	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
 	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
 	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
