@@ -28,6 +28,10 @@
 #include <math.h>
 #include <assert.h>
 
+#ifndef _WIN32
+#include <signal.h>
+#endif
+
 #include <al.h>
 #include <alc.h>
 
@@ -161,9 +165,11 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* possibility, in order to give the frameserver something to select on (mostly a case for the -net ones),
- * use the FD socketpair as a semaphore mechanism as well, just add a msg to it whenever we have something ready.
- * for windows, we'd have to find a good WM message though */
+#ifndef _WIN32
+	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV)
+		kill(dst->child, SIGUSR1);
+#endif
+
 	return rv;
 }
 
@@ -252,7 +258,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		case ffunc_render:
-			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL, 0.5, tgt->vid);
+			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is detected, just ignore this frame */
 			srcw = shmpage->storage.w;
 			srch = shmpage->storage.h;
@@ -518,8 +524,9 @@ static arcan_errc again_feed(float gain, void* tag)
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-
-/* FIXME: poll child for events, take valid ones and push unto main queue */
+	
+	if (src && shmpage)
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
 
 /* may happen multiple- times */
 	if ( arcan_frameserver_control_chld(src) &&	shmpage && shmpage->resized ){
@@ -550,7 +557,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			glDeleteBuffers(2, src->desc.upload_pbo);
 
 		src->desc.pbo_transfer = src->use_pbo;
-
+		
 		if (src->use_pbo){
 			glGenBuffers(2, src->desc.upload_pbo);
 			for (int i = 0; i < 2; i++){
@@ -822,10 +829,14 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 
 /* network client needs less in terms of buffering etc. but instead a different signalling
  * mechanism for flushing events */
-		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0)
-			ctx->kind  = ARCAN_FRAMESERVER_NETCL;
-		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0)
-			ctx->kind = ARCAN_FRAMESERVER_NETSRV;
+		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
+			ctx->kind    = ARCAN_FRAMESERVER_NETCL;
+			ctx->use_pbo = false;
+		}
+		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
+			ctx->kind    = ARCAN_FRAMESERVER_NETSRV;
+			ctx->use_pbo = false;
+		}
 
 /* record instead operates by maintaining up-to-date local buffers, then letting the frameserver
  * sample whenever necessary */

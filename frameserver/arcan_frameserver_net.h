@@ -32,9 +32,7 @@ enum NET_TAGS {
 	TAG_STATE_XFER_DELTA = 3, /* delta against prev. key-frame, initial is 0 */
 	TAG_NETINPUT         = 4  /* specialized netmsg for input event streams  */
 };
-typedef void(*wakeup_trigger)();
 
 void arcan_frameserver_net_run(const char* resource, const char* shmkey);
-wakeup_trigger arcan_frameserver_net_wakeup_call();
 
 #endif

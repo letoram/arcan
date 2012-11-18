@@ -32,6 +32,7 @@
 #include <assert.h>
 
 #include <SDL/SDL.h>
+#include <apr_poll.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -264,9 +265,12 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enu
 	while( *srcqueue->front != *srcqueue->back &&
 		floor(dstqueue->n_eventbuf * saturation) > abs(*dstqueue->front - *dstqueue->back)){
 		arcan_event* ev = arcan_event_poll(srcqueue);
-		if (ev && ev->category == allowed){
+		if (ev && (ev->category & allowed) > 0 ){
 			if (ev->category == EVENT_EXTERNAL)
 				ev->data.external.source = source;
+
+			else if (ev->category == EVENT_NET)
+				ev->data.network.source = source;
 
 			arcan_event_enqueue(dstqueue, ev);
 		}
@@ -602,10 +606,17 @@ void arcan_event_deinit(arcan_evctx* ctx)
 
 void arcan_event_init(arcan_evctx* ctx)
 {
+/* non-local (i.e. shmpage resident) event queues has a different init approach (see frameserver_shmpage.c) */
 	if (!ctx->local){
 		return;
 	}
 
+/* SIGUSR1 is only used to signal compliant frameservers, starts masked and is inherited that way. */
+	struct sigaction sa;
+	sa.sa_flags   = 0;
+	sa.sa_handler = SIG_IGN;
+	sigaction(SIGUSR1, &sa, NULL);
+	
 	init_sdl_events(ctx);
 
 	ctx->synch.local = SDL_CreateMutex();

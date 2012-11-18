@@ -32,6 +32,7 @@
 #include <apr_strings.h>
 #include <apr_network_io.h>
 #include <apr_poll.h>
+#include <apr_signal.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -93,15 +94,24 @@ struct {
  * otherwise it only emits packets that NaCL guarantees CI on. */
 struct conn_state {
 	apr_socket_t* input;
+
 	bool (*dispatch)(struct conn_state* self, char tag, int len, char* value);
 	bool (*validator)(struct conn_state* self);
 	bool (*flushout)(struct conn_state* self);
+
+	unsigned long long connect_stamp;
 	
 	char* inbuffer;
 	int buf_sz;
 	int buf_ofs;
 	int slot;
 };
+
+static void pollset_wakeup(int n)
+{
+	if (netcontext.pollset)
+		apr_pollset_wakeup(netcontext.pollset); /* reentrant */
+}
 
 static bool err_catcher(struct conn_state* self, char tag, int len, char* value)
 {
@@ -123,7 +133,20 @@ static bool err_catch_flush(struct conn_state* self)
 
 static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value)
 {
-	LOG("tlv: %d, len: %d\n", (uint8_t) tag, len);
+	arcan_event newev = {.category = EVENT_NET};
+	
+	switch(tag){
+		case TAG_NETMSG:
+			newev.kind = EVENT_NET_CUSTOMMSG;
+			snprintf(newev.data.network.message, sizeof(newev.data.network.message)/sizeof(newev.data.network.message[0]), "%s", value);
+			arcan_event_enqueue(&netcontext.outevq, &newev);
+		break;
+		case TAG_NETINPUT: break;
+		case TAG_STATE_XFER: break;
+		default:
+			LOG("arcan_frameserver(net-srv), unknown tag(%d) with %d bytes payload.\n", tag, len);
+	}
+	
 	return true;
 }
 
@@ -133,9 +156,8 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 
 static bool validator_tlv(struct conn_state* self)
 {
-/* static as there's only ever 1:1 in our use-case */
 	apr_size_t nr   = self->buf_sz - self->buf_ofs;
-
+	
 /* if, for some reason, poorly written packages have come this far, well no further */
 	if (nr == 0)
 		return false;
@@ -160,7 +182,7 @@ decode:
 /* full packet */
 			int buflen = len + FRAME_HEADER_SIZE;
 			bool rv = true;
-
+			
 /* invoke next dispatcher, let any failure propagate */
 			if (self->buf_ofs >= buflen){
 				rv = self->dispatch(self, self->inbuffer[0], len, &self->inbuffer[FRAME_HEADER_SIZE]);
@@ -171,6 +193,7 @@ decode:
 				else{
 					memmove(self->inbuffer, &self->inbuffer[buflen], self->buf_ofs - buflen);
 					self->buf_ofs -= buflen;
+
 /* consume everything before returning */
 					if (self->buf_ofs >= FRAME_HEADER_SIZE)
 						goto decode;
@@ -252,10 +275,11 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	}
 
 /* add and setup real callthroughs */
-	active_cons[j].input = newsock;
+	active_cons[j].input     = newsock;
 	active_cons[j].validator = validator_tlv;
 	active_cons[j].dispatch  = dispatch_tlv;
-
+	active_cons[j].connect_stamp = frameserver_timemillis();
+	
 /* add to table, depending on how the pollset was created, this object is copied or a pointer is maintained,
  * the behavior we rely on is that of it being copied */
 	pfd.desc.s      = newsock;
@@ -263,9 +287,20 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	pfd.client_data = &active_cons[j];
 
 	apr_pollset_add(pollset, &pfd);
+
+/* figure out source address, add to event and fire */
+	char* dstaddr = NULL;
+	apr_sockaddr_t* addr;
+
+	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
+	apr_sockaddr_ip_get(&dstaddr, addr);
+	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET};
+	snprintf(outev.data.network.hostaddr, sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]), "%s",
+		dstaddr ? dstaddr : "(unknown)");
+	arcan_event_enqueue(&netcontext.outevq, &outev);
 }
 
-static apr_socket_t* server_prepare_socket(const char* host, int sport, int limit, apr_pollset_t** poll_in, struct conn_state** active_cons)
+static apr_socket_t* server_prepare_socket(const char* host, int sport, int limit, apr_pollset_t** poll_in, struct conn_state** active_cons, int* timeout)
 {
 	apr_socket_t* ear_sock;
 	apr_sockaddr_t* addr;
@@ -304,7 +339,18 @@ static apr_socket_t* server_prepare_socket(const char* host, int sport, int limi
 	};
 
 	const apr_pollfd_t* new_pfd;
-	apr_pollset_create(poll_in, limit + 2, netcontext.mempool, 0);
+	*timeout = -1;
+
+	if (apr_pollset_create(poll_in, limit + 2, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
+		*timeout = 100000;
+	} else {
+#ifdef SIGUSR1
+		apr_signal(SIGUSR1, pollset_wakeup);
+#else
+		*timeout = 10000;
+#endif
+	}
+
 	apr_pollset_add(*poll_in, &pfd);
 
 	if (apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS)
@@ -317,7 +363,7 @@ sock_failure:
 
 static void server_session(const char* host, int sport, int limit)
 {
-	int errc = 0, thd_ofs = 0;
+	int errc = 0, thd_ofs = 0, timeout;
 	apr_status_t rv;
 	apr_pollset_t* poll_in;
 	apr_int32_t pnum;
@@ -328,14 +374,14 @@ static void server_session(const char* host, int sport, int limit)
 	sport = sport ? sport : DEFAULT_CONNECTION_PORT;
 	limit = limit ? limit : 5;
 
-	apr_socket_t* ear_sock = server_prepare_socket(host, sport, limit, &poll_in, &active_cons);
+	apr_socket_t* ear_sock = server_prepare_socket(host, sport, limit, &poll_in, &active_cons, &timeout);
 	if (!ear_sock)
 		return;
 
 	netcontext.pollset = poll_in;
 	
 	while (true){
-		apr_status_t status = apr_pollset_poll(poll_in, -1 /* timeout */, &pnum, &ret_pfd);
+		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
 		for (int i = 0; i < pnum; i++){
 			void* cb = ret_pfd[i].client_data;
 			int evs  = ret_pfd[i].rtnevents;
@@ -511,14 +557,6 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	return true;
 }
 
-static void pollset_wakeup()
-{
-	if (netcontext.pollset)
-		apr_pollset_wakeup(netcontext.pollset);
-}
-
-static void(*pollset_wakeup_fun)(void) = pollset_wakeup;
-
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
 static void client_session(char* hoststr, int port, enum client_modes mode)
 {
@@ -579,16 +617,15 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
 		.client_data = &sock
 	};
 
-/*
- * parent can chose to signal when outgoing event-queue is sufficiently full (not necessarily after just one)
- * on POSIX, we do this through a signal-handler, on Win32 through WM_ message loop, both are mapped to the
- * wakeup_call(void*) callback that the _net.h exposes. If the underlying APR implementation is sufficiently broken,
- * we result to just a millisecond timeout on poll
- */
 	int timeout = -1;
 	if (apr_pollset_create(&pset, 1, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
-		pollset_wakeup_fun = NULL;
 		timeout = 100000;
+	} else {
+#ifdef SIGUSR1
+		apr_signal(SIGUSR1, pollset_wakeup);
+#else
+		timeout = 10000;
+#endif
 	}
 
 	apr_pollset_add(pset, &pfd);
@@ -614,8 +651,6 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
 
 	return;
 }
-
-wakeup_trigger arcan_frameserver_net_wakeup_call(){ return pollset_wakeup; }
 
 /* for the discovery service (if active), we toggle it with an event and a FD push (to a sqlite3 db)
  * we need a udp port bound, a ~4 + 32 byte message (identstr + pubkey) 
