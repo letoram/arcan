@@ -930,7 +930,6 @@ local function update_dynamic(newtbl)
 			end
 		end
 
-
 		for ind, val in ipairs(customview.current.dynamic_labels) do
 			local dststr = newtbl[val.res];
 			

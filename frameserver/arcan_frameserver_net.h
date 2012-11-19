@@ -22,8 +22,21 @@
 #ifndef HAVE_ARCAN_FRAMESERVER_NET
 #define HAVE_ARCAN_FRAMESERVER_NET
 
+#ifndef DEFAULT_DISCOVER_PORT
 #define DEFAULT_DISCOVER_PORT 6681
+#endif
+
+#ifndef DEFAULT_CONNECTION_PORT
 #define DEFAULT_CONNECTION_PORT 6680
+#endif
+
+#ifndef DEFAULT_INBUF_SZ
+#define DEFAULT_INBUF_SZ 65536
+#endif
+
+#ifndef DEFAULT_OUTBUF_SZ
+#define DEFAULT_OUTBUF_SZ 65536
+#endif
 
 enum NET_TAGS {
 	TAG_NETMSG           = 0, /* client <-> client, client<->server   */

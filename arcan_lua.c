@@ -89,17 +89,6 @@ static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 #define CONST_MAX_SURFACEH 2048
 #endif
 
-#ifndef CONST_NET_BROADCAST
-#define CONST_NET_BROADCAST 20
-#endif
-
-#ifndef CONST_NET_UNICAST
-#define CONST_NET_UNICAST 25
-#endif
-
-static const int ARCAN_NET_BROADCAST = CONST_NET_BROADCAST;
-static const int ARCAN_NET_UNICAST = CONST_NET_UNICAST;
-
 static const int MOUSE_GRAB_ON  = 20;
 static const int MOUSE_GRAB_OFF = 21;
 
@@ -3809,18 +3798,49 @@ static int arcan_lua_net_pushcl(lua_State* ctx)
 	return 0;
 }
 
+/* similar to push to client, with the added distinction of broadcast / target,
+ * and thus a more complicated pushFD etc. behavior */
 static int arcan_lua_net_pushsrv(lua_State* ctx)
 {
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
-	int dst = luaL_checknumber(ctx, 2);
+	arcan_vobj_id did   = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj = arcan_video_getobject(did);
+	int domain          = luaL_checknumber(ctx, 3, 0);
+	
+/* arg2 can be (string) => NETMSG, (event) => just push */
+	arcan_event outev = {.category = EVENT_NET, .data.network.sourceid = domain};
 
-	if (lua_isstring(ctx, 3)){
-	} else if (lua_isnumber(ctx, 3)){
-	} else if (lua_istable(ctx, 3)){
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("arcan_lua_net_pushcl() -- bad arg1, VID is not a frameserver.\n");
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	
+	if (!fsrv->kind == ARCAN_FRAMESERVER_NETCL)
+		arcan_fatal("arcan_lua_net_pushcl() -- bad arg1, specified frameserver is not in client mode (net_open).\n");
+	
+	if (lua_isstring(ctx, 2)){
+		outev.kind = EVENT_NET_CUSTOMMSG;
+
+		const char* msg = luaL_checkstring(ctx, 2);
+		size_t out_sz = sizeof(outev.data.network.message) / sizeof(outev.data.network.message[0]);
+		snprintf(outev.data.network.message, out_sz, "%s", msg);
 	}
+	else if (lua_isnumber(ctx, 2)){
+		arcan_vobj_id tid = luaL_checkvid(ctx, 2);
+		arcan_fatal("arcan_lua_net_pushcl() -- pushing frameserver state not implemented.\n");
+	}
+	else if (lua_istable(ctx, 2))
+		arcan_fatal("arcan_lua_net_pushcl() -- pushing frameserver state not implemented.\n");
+	else
+		arcan_fatal("arcan_lua_net_pushcl() -- unexpected data to push, accepted (string, VID, evtable)\n");
+/* for *NUX, setup a pipe() pair, push the output end to the client, push the input end to the server,
+ * emit FDtransfer messages, flagging that it is going to be used for state-transfer. The last bit
+ * is important to be able to support both sending and receiving states, with compression and deltaframes
+ * in load/store operations. this also requires that the capabilities of the target actually allows for save-states,
+ * by default, they don't. */
 
+	arcan_frameserver_pushevent(fsrv, &outev);
 	return 0;
-}
+}	
 
 void arcan_lua_cleanup()
 {
