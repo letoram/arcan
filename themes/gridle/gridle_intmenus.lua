@@ -1245,7 +1245,8 @@ function enable_record(width, height, args)
 	resize_image(lvid, width, height);
 	local rectbl = {lvid};
 	
--- connect a vidcap frameserver
+-- connect a vidcap frameserver,
+-- FIXME, add arguments so that it's possible to (a) probe, (b) specify device, (c) specify resolution, (d) specify framerate
 	if (settings.vidcap) then
 		vid, aid = load_movie("vidcap:0", FRAMESERVER_NOLOOP, function(source, status) 
 			if (status.kind == "resized") then -- show / reposition
@@ -1254,8 +1255,8 @@ function enable_record(width, height, args)
 				local hfact = (settings.vidcap.height / props.height) * height;
 				local xfact = (settings.vidcap.x - props.x) * (width / props.width);
 				local yfact = (settings.vidcap.y - props.y) * (height / props.height);
---				link_image(vid, lvid);
-				
+--			link_image(vid, lvid);
+	
 -- translate to internal_vid coordinate space, and rescale according with destination resolution
 				resize_image(source, math.floor(wfact), math.floor(hfact));
 				blend_image(source,  settings.vidcap.opa);

@@ -190,6 +190,14 @@ function string.split(instr, delim)
 	return res;
 end
 
+function broadcast_game(gametbl, playing)
+	if (imagery.server) then
+		net_push_srv(imagery.server, NET_BROADCAST, gametbl.target);
+		net_push_srv(imagery.server, NET_BROADCAST, gametbl.setname);
+		net_push_srv(imagery.server, NET_BROADCAST, playing and "launched" or "selected");
+	end
+end
+
 function gridle_launchexternal()
 	erase_grid(true);
 	play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -449,21 +457,25 @@ function network_onevent(source, tbl)
 	elseif (tbl.kind == "connected") then
 		spawn_warning(tbl.host .. " connected.");
 
-	elseif (tbl.kind == "message" and settings.network_remote == "Active") then
-		local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote"};
-		local override = {};
+	elseif (tbl.kind == "message") then
+		if (settings.network_remote == "Active") then
+			local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote"};
+			local override = {};
 
-		if (string.sub(tbl.message, 1, 6) == "press:") then
-			faketbl.active = true;
+			if (string.sub(tbl.message, 1, 6) == "press:") then
+				faketbl.active = true;
 			
-			table.insert(override, string.sub(tbl.message, 7, -1));
-			gridle_input(faketbl, override)
+				table.insert(override, string.sub(tbl.message, 7, -1));
+				gridle_input(faketbl, override)
 
-		elseif (string.sub(tbl.message, 1, 8) == "release:") then
-			table.insert(override, string.sub(tbl.message, 9, -1));
-			faketbl.active = false;
+			elseif (string.sub(tbl.message, 1, 8) == "release:") then
+				table.insert(override, string.sub(tbl.message, 9, -1));
+				faketbl.active = false;
 
-			gridle_input(faketbl, override);
+				gridle_input(faketbl, override);
+			end
+		else
+			
 		end
 	else
 		print("unsupported netevent: ", tbl.kind);
@@ -639,9 +651,16 @@ function gridle_load_internal_extras(restbl, tgt)
 end
 
 function gridle_setup_internal(video, audio)
+-- first, tell all remote controls -- title / system have already been transferred */
+	if (imagery.server) then
+		net_push_srv(imagery.server, NET_BROADCAST, "launched");
+	end
+
+-- internal txcos etc. need to be retained for the different display modes 
 	settings.in_internal    = true;
-	settings.internal_txcos = image_get_txcos(video); -- store a copy of these for the display modes that rely on patched coordinates
-	
+	settings.internal_txcos = image_get_txcos(video); 
+
+-- bezels, overlays, backdrops
 	gridle_load_internal_extras(current_game().resources, current_game().target);
 	
 	if (settings.autosave == "On") then
@@ -650,7 +669,7 @@ function gridle_setup_internal(video, audio)
 	
 	internal_aid = audio;
 	internal_vid = video;
-	
+
 	settings.internal_toggles.bezel = false;
 	settings.internal_toggles.overlay = false;
 	settings.internal_toggles.backdrops = false;
@@ -661,7 +680,7 @@ function gridle_setup_internal(video, audio)
 -- remap input function to one that can handle forwarding and have access to context specific menu
 	gridle_oldinput = gridle_input;
 	gridle_input = gridle_internalinput;
-	
+
 	gridlemenu_rebuilddisplay();
 	
 -- don't need these running in the background 
@@ -1094,7 +1113,10 @@ function move_cursor( ofs, absolute )
 	end
 
 	settings.cursorgame = settings.games[settings.gameind];
-	
+
+-- broadcast that this is what we're showing next
+	broadcast_game( settings.cursorgame, false );
+
 -- reset the previous movie
 	if (imagery.movie) then
 		instant_image_transform(imagery.movie);
@@ -1390,7 +1412,7 @@ end
 function gridle_clock_pulse()
 -- the cooldown before loading a movie lowers the number of frameserver launches etc. in
 -- situations with a high repeatrate and a button hold down. It also gives the soundeffect
--- change to play without being drowned by an audio track in the movie
+-- chance to play without being drowned by an audio track in the movie
 	if (settings.cooldown > 0 and settings.cooldown_start > 0) then
 		settings.cooldown = settings.cooldown - 1;
 

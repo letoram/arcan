@@ -93,17 +93,29 @@ struct {
  * validator emits parsed packets to dispatch, in simple mode, these just extract TLV,
  * otherwise it only emits packets that NaCL guarantees CI on. */
 struct conn_state {
-	apr_socket_t* input;
+	apr_socket_t* inout;
 
+/* apr requires us to keep track of this one explicitly in order to flag some poll options
+ * on or off (writable-without-blocking being the most relevant) */
+	apr_pollfd_t poll_state;
+
+/* incoming -> validator -> dispatch,
+ * outgoing -> queueout -> (poll-OUT) -> flushout  */
 	bool (*dispatch)(struct conn_state* self, char tag, int len, char* value);
 	bool (*validator)(struct conn_state* self);
 	bool (*flushout)(struct conn_state* self);
+	bool (*queueout)(struct conn_state* self, char* buf, size_t buf_sz);
 
 	unsigned long long connect_stamp;
 	
 	char* inbuffer;
-	int buf_sz;
+	size_t buf_sz;
 	int buf_ofs;
+
+	char* outbuffer;
+	size_t outbuf_sz;
+	int outbuf_ofs;
+
 	int slot;
 };
 
@@ -127,8 +139,58 @@ static bool err_catch_valid(struct conn_state* self)
 
 static bool err_catch_flush(struct conn_state* self)
 {
-	LOG("arcan_frameserver(net-srv) -- invalid validator invoked, please report.\n");
+	LOG("arcan_frameserver(net-srv) -- invalid flusher invoked, please report.\n");
 	abort();
+}
+
+static bool err_catch_queueout(struct conn_state* self, char* buf, size_t buf_sz)
+{
+	LOG("arcan_frameserver(net-srv) -- invalid queueout invoked, please report.\n");
+	abort();
+}
+
+static bool flushout_default(struct conn_state* self)
+{
+	apr_size_t nts = self->outbuf_ofs;
+	if (nts == 0)
+		return true;
+	
+	apr_status_t sv = apr_socket_send(self->inout, self->outbuffer, &nts);
+	if (nts > 0){
+		if (nts - self->outbuf_ofs == 0){
+			self->outbuf_ofs = 0;
+/* disable POLLOUT until more data has been queued */
+			apr_pollset_remove(netcontext.pollset, &self->poll_state);
+			self->poll_state.reqevents &= !APR_POLLOUT;
+			apr_pollset_add(netcontext.pollset, &self->poll_state);
+		} else {
+/* partial write, slide */
+			memmove(self->outbuffer, &self->outbuffer[nts], self->outbuf_ofs - nts);
+			self->outbuf_ofs -= nts;
+		}
+	}
+	
+	return sv != APR_SUCCESS;
+}
+
+static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
+{
+	if ( (self->outbuf_sz - self->outbuf_ofs) >= buf_sz){
+		memcpy(&self->outbuffer[self->outbuf_ofs], buf, buf_sz);
+		self->outbuf_ofs += buf_sz;
+
+/* if we're not already in a pollout state, enable it */
+		if ((self->poll_state.reqevents & APR_POLLOUT) == 0){
+			apr_pollset_remove(netcontext.pollset, &self->poll_state);
+
+			self->poll_state.reqevents |= APR_POLLOUT;
+			apr_pollset_add(netcontext.pollset, &self->poll_state);
+		}
+		
+		return true;
+	}
+
+	return false;
 }
 
 static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value)
@@ -162,7 +224,7 @@ static bool validator_tlv(struct conn_state* self)
 	if (nr == 0)
 		return false;
 
-	apr_status_t sv = apr_socket_recv(self->input, &self->inbuffer[self->buf_ofs], &nr);
+	apr_status_t sv = apr_socket_recv(self->inout, &self->inbuffer[self->buf_ofs], &nr);
 	
 	if (sv == APR_SUCCESS){
 		if (nr > 0){
@@ -209,12 +271,15 @@ decode:
 /* used for BOTH allocating and cleaning up after a user has disconnected */
 static inline void setup_cell(struct conn_state* conn)
 {
-	conn->input    = NULL;
-	conn->dispatch = err_catcher;
-	conn->validator= err_catch_valid;
-	conn->flushout = err_catch_flush;
-	conn->buf_sz   = 1024 * 64;
-	conn->buf_ofs  = 0;
+	conn->inout     = NULL;
+	conn->dispatch  = err_catcher;
+	conn->validator = err_catch_valid;
+	conn->flushout  = err_catch_flush;
+	conn->queueout  = err_catch_queueout;
+	
+	conn->buf_sz    = DEFAULT_INBUF_SZ;
+	conn->outbuf_sz = DEFAULT_OUTBUF_SZ;
+	conn->buf_ofs   = 0;
 
 	if (conn->inbuffer)
 		memset(conn->inbuffer, '\0', conn->buf_sz);
@@ -266,19 +331,22 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 
 /* find an open spot */
 	int j;
-	for (j = 0; j < limit && active_cons[j].input != NULL; j++);
+	for (j = 0; j < limit && active_cons[j].inout != NULL; j++);
 
 /* house full, ignore and move on */
-	if (active_cons[j].input != NULL){
+	if (active_cons[j].inout != NULL){
 		apr_socket_close(newsock);
 		return;
 	}
 
 /* add and setup real callthroughs */
-	active_cons[j].input     = newsock;
+	active_cons[j].inout     = newsock;
 	active_cons[j].validator = validator_tlv;
 	active_cons[j].dispatch  = dispatch_tlv;
+	active_cons[j].flushout  = flushout_default;
+	active_cons[j].queueout  = queueout_default;
 	active_cons[j].connect_stamp = frameserver_timemillis();
+	active_cons[j].poll_state = pfd;
 	
 /* add to table, depending on how the pollset was created, this object is copied or a pointer is maintained,
  * the behavior we rely on is that of it being copied */
@@ -294,7 +362,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
 	apr_sockaddr_ip_get(&dstaddr, addr);
-	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET};
+	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET, .data.network.connid = (j + 1)};
 	snprintf(outev.data.network.hostaddr, sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]), "%s",
 		dstaddr ? dstaddr : "(unknown)");
 	arcan_event_enqueue(&netcontext.outevq, &outev);
@@ -361,6 +429,69 @@ sock_failure:
 	return NULL;
 }
 
+static void server_queueout_data(struct conn_state* active_cons, int nconns, char* buf, size_t buf_sz, int id)
+{
+	if (id > nconns)
+		return;
+
+/* broadcast */
+	if (id == 0)
+		for(int i = 0; i < nconns; i++){
+			if (active_cons[i].queueout)
+				active_cons[i].queueout(&active_cons[i], buf, buf_sz);
+		}
+/* unicast */
+	else if (active_cons[id].queueout)
+		active_cons[id].queueout(&active_cons[id], buf, buf_sz);
+	else;
+
+	return;
+}
+
+static bool server_process_inevq(struct conn_state* active_cons, int nconns)
+{
+	arcan_event* ev;
+	uint16_t msgsz = sizeof(ev->data.network.message) / sizeof(ev->data.network.message[0]);
+	char outbuf[ msgsz + 3];
+	
+/*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
+	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
+		if (ev->category == EVENT_NET){
+			switch (ev->kind){
+				case EVENT_NET_INPUTEVENT:
+					LOG("arcan_frameserver(net-cl) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
+				break;
+
+				case EVENT_NET_CUSTOMMSG:
+					outbuf[0] = TAG_NETMSG;
+					outbuf[1] = msgsz;
+					outbuf[2] = msgsz >> 8;
+					memcpy(&outbuf[3], ev->data.network.message, msgsz);
+					server_queueout_data(active_cons, nconns, outbuf, msgsz + 3, ev->data.network.connid - 1);
+				break;
+			}
+		}
+		else if (ev->category == EVENT_TARGET){
+			switch (ev->kind){
+				case TARGET_COMMAND_EXIT:	return false; break;
+				case TARGET_COMMAND_FDTRANSFER: netcontext.tmphandle = frameserver_readhandle(ev); break;
+				case TARGET_COMMAND_STORE:
+					netcontext.storehandle = netcontext.tmphandle;
+					netcontext.tmphandle = 0;
+				break;
+				case TARGET_COMMAND_RESTORE:
+					netcontext.restorehandle = netcontext.tmphandle;
+					netcontext.tmphandle = 0;
+				break;
+				default:
+					; /* just ignore */
+			}
+		}
+		else;
+
+	return true;
+}
+
 static void server_session(const char* host, int sport, int limit)
 {
 	int errc = 0, thd_ofs = 0, timeout;
@@ -382,6 +513,11 @@ static void server_session(const char* host, int sport, int limit)
 	
 	while (true){
 		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
+
+/* check event-queue first as it may emit more data to buffers for sockets that just became writable */
+		if (!server_process_inevq(active_cons, limit))
+			break;
+
 		for (int i = 0; i < pnum; i++){
 			void* cb = ret_pfd[i].client_data;
 			int evs  = ret_pfd[i].rtnevents;
@@ -475,9 +611,9 @@ static bool client_data_process(apr_socket_t* inconn)
 /* only one client- connection for the life-time of the process, so this bit
  * is in order to share parsing code between client and server parts */
 	static struct conn_state cs = {0};
-	if (cs.input == NULL){
+	if (cs.inout == NULL){
 		setup_cell(&cs);
-		cs.input = inconn;
+		cs.inout = inconn;
 		cs.dispatch = client_data_tlvdisp;
 	}
 
