@@ -1096,6 +1096,10 @@ int arcan_lua_setled(lua_State* ctx)
 	return 1;
 }
 
+/* NOTE: a currently somewhat serious yet unhandled issue concerns what to do with events fires from
+ * objects that no longer exist, e.g. the case with events in the queue preceeding a push_context, pop_context,
+ * the -- possibly -- safest option would be to completely flush event queues between successful context pops,
+ * in such cases, it should be handled in the LUA layer*/
 int arcan_lua_pushcontext(lua_State* ctx)
 {
 /* make sure that we save one context for launch_external */
@@ -1487,7 +1491,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 		}
-		
+
 	}
 	else if (ev->category == EVENT_EXTERNAL){
 		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
@@ -3804,18 +3808,18 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 {
 	arcan_vobj_id did   = luaL_checkvid(ctx, 1);
 	arcan_vobject* vobj = arcan_video_getobject(did);
-	int domain          = luaL_checknumber(ctx, 3, 0);
+	int domain          = luaL_optnumber(ctx, 3, 0);
 	
 /* arg2 can be (string) => NETMSG, (event) => just push */
-	arcan_event outev = {.category = EVENT_NET, .data.network.sourceid = domain};
+	arcan_event outev = {.category = EVENT_NET, .data.network.connid = domain};
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
-		arcan_fatal("arcan_lua_net_pushcl() -- bad arg1, VID is not a frameserver.\n");
+		arcan_fatal("arcan_lua_net_pushsrv() -- bad arg1, VID is not a frameserver.\n");
 
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 	
-	if (!fsrv->kind == ARCAN_FRAMESERVER_NETCL)
-		arcan_fatal("arcan_lua_net_pushcl() -- bad arg1, specified frameserver is not in client mode (net_open).\n");
+	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
+		arcan_fatal("arcan_lua_net_pushsrv() -- bad arg1, specified frameserver is not in client mode (net_open).\n");
 	
 	if (lua_isstring(ctx, 2)){
 		outev.kind = EVENT_NET_CUSTOMMSG;
@@ -3826,17 +3830,12 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 	}
 	else if (lua_isnumber(ctx, 2)){
 		arcan_vobj_id tid = luaL_checkvid(ctx, 2);
-		arcan_fatal("arcan_lua_net_pushcl() -- pushing frameserver state not implemented.\n");
+		arcan_fatal("arcan_lua_net_pushsrv() -- pushing frameserver state not implemented.\n");
 	}
 	else if (lua_istable(ctx, 2))
-		arcan_fatal("arcan_lua_net_pushcl() -- pushing frameserver state not implemented.\n");
+		arcan_fatal("arcan_lua_net_pushsrv() -- pushing frameserver state not implemented.\n");
 	else
-		arcan_fatal("arcan_lua_net_pushcl() -- unexpected data to push, accepted (string, VID, evtable)\n");
-/* for *NUX, setup a pipe() pair, push the output end to the client, push the input end to the server,
- * emit FDtransfer messages, flagging that it is going to be used for state-transfer. The last bit
- * is important to be able to support both sending and receiving states, with compression and deltaframes
- * in load/store operations. this also requires that the capabilities of the target actually allows for save-states,
- * by default, they don't. */
+		arcan_fatal("arcan_lua_net_pushsrv() -- unexpected data to push, accepted (string, VID, evtable)\n");
 
 	arcan_frameserver_pushevent(fsrv, &outev);
 	return 0;
@@ -4108,6 +4107,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "NOW", 0);
 	arcan_lua_setglobalint(ctx, "NOPERSIST", 0);
 	arcan_lua_setglobalint(ctx, "PERSIST", 1);
-	arcan_lua_setglobalint(ctx, "NET_BROADCAST", ARCAN_NET_BROADCAST);
+	arcan_lua_setglobalint(ctx, "NET_BROADCAST", 0);
 	arcan_lua_setglobalint(ctx, "DEBUGLEVEL", lua_ctx_store.debug); 
 }
