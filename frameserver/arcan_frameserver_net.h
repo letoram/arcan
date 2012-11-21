@@ -26,14 +26,17 @@
 #define DEFAULT_DISCOVER_PORT 6681
 #endif
 
+/* this is just used as a hint (when using discovery mode) */
 #ifndef DEFAULT_CONNECTION_PORT
 #define DEFAULT_CONNECTION_PORT 6680
 #endif
 
+/* should be >= 64k */
 #ifndef DEFAULT_INBUF_SZ
 #define DEFAULT_INBUF_SZ 65536
 #endif
 
+/* should be >= 64k */
 #ifndef DEFAULT_OUTBUF_SZ
 #define DEFAULT_OUTBUF_SZ 65536
 #endif

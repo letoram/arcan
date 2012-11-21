@@ -192,9 +192,9 @@ end
 
 function broadcast_game(gametbl, playing)
 	if (imagery.server) then
-		net_push_srv(imagery.server, NET_BROADCAST, gametbl.target);
-		net_push_srv(imagery.server, NET_BROADCAST, gametbl.setname);
-		net_push_srv(imagery.server, NET_BROADCAST, playing and "launched" or "selected");
+		net_push_srv(imagery.server, gametbl.target);
+		net_push_srv(imagery.server, gametbl.setname);
+		net_push_srv(imagery.server, playing and "launched" or "selected");
 	end
 end
 
@@ -488,6 +488,7 @@ function network_toggle()
 
 		if (not imagery.server) then
 			imagery.server = net_listen(settings.listen_host, network_onevent);
+			print("listening:", imagery.server);
 		end
 		
 	else
@@ -653,7 +654,7 @@ end
 function gridle_setup_internal(video, audio)
 -- first, tell all remote controls -- title / system have already been transferred */
 	if (imagery.server) then
-		net_push_srv(imagery.server, NET_BROADCAST, "launched");
+		net_push_srv(imagery.server, "launched");
 	end
 
 -- internal txcos etc. need to be retained for the different display modes 

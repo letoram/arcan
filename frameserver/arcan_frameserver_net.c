@@ -119,6 +119,8 @@ struct conn_state {
 	int slot;
 };
 
+/* this one screws with GDB a fair bit,
+ * SIGUSR1 from parent => pollset_wakeup => SIGINT and it starts interpreting most things as a breakpoint */
 static void pollset_wakeup(int n)
 {
 	if (netcontext.pollset)
@@ -152,25 +154,41 @@ static bool err_catch_queueout(struct conn_state* self, char* buf, size_t buf_sz
 static bool flushout_default(struct conn_state* self)
 {
 	apr_size_t nts = self->outbuf_ofs;
-	if (nts == 0)
+	if (nts == 0){
+		static bool flush_warn = false;
+
+/* don't terminate on this issue, as there might be a platform/pollset combination where this
+ * is broken yet will only yield higher CPU usage */
+		if (!flush_warn){
+			LOG("arcan_frameserver(net-srv) -- flush requested on empty conn_state, possibly broken poll.\n");
+			flush_warn = true;
+		}
+
 		return true;
+	}
 	
 	apr_status_t sv = apr_socket_send(self->inout, self->outbuffer, &nts);
+
 	if (nts > 0){
-		if (nts - self->outbuf_ofs == 0){
+		if (self->outbuf_ofs - nts == 0){
 			self->outbuf_ofs = 0;
 /* disable POLLOUT until more data has been queued */
 			apr_pollset_remove(netcontext.pollset, &self->poll_state);
-			self->poll_state.reqevents &= !APR_POLLOUT;
-			apr_pollset_add(netcontext.pollset, &self->poll_state);
+			self->poll_state.reqevents  = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
+			self->poll_state.rtnevents  = 0;
+			apr_status_t ps2 = apr_pollset_add(netcontext.pollset, &self->poll_state);
 		} else {
 /* partial write, slide */
 			memmove(self->outbuffer, &self->outbuffer[nts], self->outbuf_ofs - nts);
 			self->outbuf_ofs -= nts;
 		}
+	} else {
+		char errbuf[64];
+		apr_strerror(sv, errbuf, 64);
+		LOG("arcan_frameserver(net-srv) -- send failed, %s\n", errbuf);
 	}
 	
-	return sv != APR_SUCCESS;
+	return sv == APR_SUCCESS;
 }
 
 static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
@@ -182,8 +200,9 @@ static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
 /* if we're not already in a pollout state, enable it */
 		if ((self->poll_state.reqevents & APR_POLLOUT) == 0){
 			apr_pollset_remove(netcontext.pollset, &self->poll_state);
-
-			self->poll_state.reqevents |= APR_POLLOUT;
+			self->poll_state.reqevents  = APR_POLLIN | APR_POLLOUT | APR_POLLERR | APR_POLLHUP;
+			self->poll_state.desc.s     = self->inout;
+			self->poll_state.rtnevents  = 0;
 			apr_pollset_add(netcontext.pollset, &self->poll_state);
 		}
 		
@@ -264,7 +283,10 @@ decode:
 		}
 		return true;
 	}
-	
+
+	char errbuf[64];
+	apr_strerror(sv, errbuf, 64);
+	LOG("arcan_frameserver(net-srv) -- error receiving data (%s), giving up.\n", errbuf);
 	return false;
 }
 
@@ -285,9 +307,17 @@ static inline void setup_cell(struct conn_state* conn)
 		memset(conn->inbuffer, '\0', conn->buf_sz);
 	else
 		conn->inbuffer = malloc(conn->buf_sz);
-		
+
+	if (conn->outbuffer)
+		memset(conn->outbuffer, '\0', conn->outbuf_sz);
+	else
+		conn->outbuffer = malloc(conn->outbuf_sz);
+	
 	if (!conn->inbuffer)
 		conn->buf_sz = 0;
+
+	if (!conn->outbuffer)
+		conn->outbuf_sz = 0;
 }
 
 static struct conn_state* init_conn_states(int limit)
@@ -310,6 +340,8 @@ static struct conn_state* init_conn_states(int limit)
 static void client_socket_close(struct conn_state* state)
 {
 	arcan_event rv = {.kind = EVENT_NET_DISCONNECTED, .category = EVENT_NET};
+	LOG("arcan_frameserver(net-srv) -- disconnecting client. %d\n", state->slot);
+
 	setup_cell(state);
 	arcan_event_enqueue(&netcontext.outevq, &rv);
 }
@@ -317,15 +349,6 @@ static void client_socket_close(struct conn_state* state)
 static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_pollset_t* pollset, struct conn_state* active_cons)
 {
 	apr_socket_t* newsock;
-
-	apr_pollfd_t pfd = {
-		.p           = netcontext.mempool,
-		.desc.s      = ear_sock,
-		.desc_type   = APR_POLL_SOCKET,
-		.reqevents   = APR_POLLIN | APR_POLLHUP | APR_POLLERR, 
-		.rtnevents   = 0
-	};
-
 	if (apr_socket_accept(&newsock, ear_sock, netcontext.mempool) != APR_SUCCESS)
 		return;
 
@@ -346,15 +369,17 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	active_cons[j].flushout  = flushout_default;
 	active_cons[j].queueout  = queueout_default;
 	active_cons[j].connect_stamp = frameserver_timemillis();
-	active_cons[j].poll_state = pfd;
-	
-/* add to table, depending on how the pollset was created, this object is copied or a pointer is maintained,
- * the behavior we rely on is that of it being copied */
-	pfd.desc.s      = newsock;
-	pfd.desc_type   = APR_POLL_SOCKET;
-	pfd.client_data = &active_cons[j];
 
-	apr_pollset_add(pollset, &pfd);
+	apr_pollfd_t* pfd = &active_cons[j].poll_state;
+	
+	pfd->desc.s      = newsock;
+	pfd->desc_type   = APR_POLL_SOCKET;
+	pfd->client_data = &active_cons[j];
+	pfd->reqevents   = APR_POLLHUP | APR_POLLERR | APR_POLLIN;
+	pfd->rtnevents   = 0;
+	pfd->p           = netcontext.mempool;
+
+	apr_pollset_add(pollset, pfd); 
 
 /* figure out source address, add to event and fire */
 	char* dstaddr = NULL;
@@ -397,19 +422,9 @@ static apr_socket_t* server_prepare_socket(const char* host, int sport, int limi
 	if (!(*active_cons))
 		goto sock_failure;
 
-	apr_pollfd_t pfd = {
-		.p      = netcontext.mempool,
-		.desc.s = ear_sock,
-		.desc_type = APR_POLL_SOCKET,
-		.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR,
-		.rtnevents = 0,
-		.client_data = ear_sock
-	};
-
-	const apr_pollfd_t* new_pfd;
 	*timeout = -1;
 
-	if (apr_pollset_create(poll_in, limit + 2, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
+	if (apr_pollset_create(poll_in, limit + 2, netcontext.mempool, APR_POLLSET_WAKEABLE | APR_POLLSET_NOCOPY) == APR_ENOTIMPL){
 		*timeout = 100000;
 	} else {
 #ifdef SIGUSR1
@@ -419,10 +434,13 @@ static apr_socket_t* server_prepare_socket(const char* host, int sport, int limi
 #endif
 	}
 
-	apr_pollset_add(*poll_in, &pfd);
-
-	if (apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS)
+if (apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS){
+/* always a bit of a balance if this should be used or not,
+ * but given the more common scenario of the main-app being terminated and launched in quick succession,
+ * it means less troubleshooting on behalf of the user */
+		apr_socket_opt_set(ear_sock, APR_SO_REUSEADDR, 1);
 		return ear_sock;
+	}
 
 sock_failure:
 	apr_socket_close(ear_sock);
@@ -431,17 +449,17 @@ sock_failure:
 
 static void server_queueout_data(struct conn_state* active_cons, int nconns, char* buf, size_t buf_sz, int id)
 {
-	if (id > nconns)
+	if (id > nconns || id < 0)
 		return;
-
+	
 /* broadcast */
 	if (id == 0)
 		for(int i = 0; i < nconns; i++){
-			if (active_cons[i].queueout)
+			if (active_cons[i].inout)
 				active_cons[i].queueout(&active_cons[i], buf, buf_sz);
 		}
 /* unicast */
-	else if (active_cons[id].queueout)
+	else if (active_cons[id].inout)
 		active_cons[id].queueout(&active_cons[id], buf, buf_sz);
 	else;
 
@@ -459,21 +477,25 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
 				case EVENT_NET_INPUTEVENT:
-					LOG("arcan_frameserver(net-cl) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
+					LOG("arcan_frameserver(net-srv) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
 				break;
 
 				case EVENT_NET_CUSTOMMSG:
+					LOG("arcan_frameserver(net-srv) broadcast %s\n", ev->data.network.message);
 					outbuf[0] = TAG_NETMSG;
 					outbuf[1] = msgsz;
 					outbuf[2] = msgsz >> 8;
 					memcpy(&outbuf[3], ev->data.network.message, msgsz);
-					server_queueout_data(active_cons, nconns, outbuf, msgsz + 3, ev->data.network.connid - 1);
+					server_queueout_data(active_cons, nconns, outbuf, msgsz + 3, ev->data.network.connid);
 				break;
 			}
 		}
 		else if (ev->category == EVENT_TARGET){
 			switch (ev->kind){
-				case TARGET_COMMAND_EXIT:	return false; break;
+				case TARGET_COMMAND_EXIT:
+					LOG("arcan_frameserver(net-srv) parent requested termination, giving up.\n");
+					return false;
+				break;
 				case TARGET_COMMAND_FDTRANSFER: netcontext.tmphandle = frameserver_readhandle(ev); break;
 				case TARGET_COMMAND_STORE:
 					netcontext.storehandle = netcontext.tmphandle;
@@ -509,11 +531,23 @@ static void server_session(const char* host, int sport, int limit)
 	if (!ear_sock)
 		return;
 
+	LOG("arcan_frameserver(net-srv) -- listening interface up on %s:%d\n", host, sport);
 	netcontext.pollset = poll_in;
+
+	apr_pollfd_t pfd = {
+		.p      = netcontext.mempool,
+		.desc.s = ear_sock,
+		.desc_type = APR_POLL_SOCKET,
+		.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR,
+		.rtnevents = 0,
+		.client_data = ear_sock
+	};
+
+	apr_pollset_add(poll_in, &pfd);
 	
 	while (true){
 		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
-
+		
 /* check event-queue first as it may emit more data to buffers for sockets that just became writable */
 		if (!server_process_inevq(active_cons, limit))
 			break;
@@ -524,9 +558,9 @@ static void server_session(const char* host, int sport, int limit)
 
 			if (cb == ear_sock){
 				if ((evs & APR_POLLHUP) > 0 || (evs & APR_POLLERR) > 0){
-/* broken, give up */
 					arcan_event errc = {.kind = EVENT_NET_BROKEN, .category = EVENT_NET};
 					arcan_event_enqueue(&netcontext.outevq, &errc);
+					LOG("arcan_frameserver(net-srv) -- error on listening interface during poll, giving up.\n");
 					return;
 				}
 
@@ -536,7 +570,7 @@ static void server_session(const char* host, int sport, int limit)
 	
 /* always process incoming data first, as there can still be something in buffer when HUP / ERR is triggered */
 			bool res = true;
-			struct conn_state* state = ret_pfd[i].client_data;
+			struct conn_state* state = cb;
 			
 			if ((evs & APR_POLLIN) > 0)
 				res = state->validator(state);
@@ -547,6 +581,7 @@ static void server_session(const char* host, int sport, int limit)
 				res = state->flushout(state);
 			
 			if ( !res || (ret_pfd[i].rtnevents & APR_POLLHUP) > 0 || (ret_pfd[i].rtnevents & APR_POLLERR) > 0){
+				LOG("arcan_frameserver(net-srv) -- (%s), terminating client connection (%d).\n", res ? "HUP/ERR" : "flush failed", i);
 				apr_socket_close(ret_pfd[i].desc.s);
 				client_socket_close(ret_pfd[i].client_data);
 				apr_pollset_remove(poll_in, &ret_pfd[i]);
@@ -556,6 +591,7 @@ static void server_session(const char* host, int sport, int limit)
 		;
 	}
 
+	apr_socket_close(ear_sock);
 	return;
 }
 
@@ -590,6 +626,8 @@ static bool client_data_tlvdisp(struct conn_state* self, char tag, int len, char
 
 	switch (tag){
 		case TAG_NETMSG:
+			printf("netmsg: %s\n", val);
+			LOG("netmsg: %s\n", val);
 		break;
 
 /* divert coming len bytes to the designated stream output */
@@ -621,6 +659,7 @@ static bool client_data_process(apr_socket_t* inconn)
 
 	if (!rv){
 		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
+		LOG("arcan_frameserver(net-cl) -- validator failed, shutting down.\n");
 		apr_socket_close(inconn);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
 		flush_statusimg(255, 0, 0);
@@ -642,7 +681,7 @@ static void client_data_push(apr_socket_t* addr, char* buf, size_t buf_sz)
 		apr_size_t ds = buf_sz - ofs;
 		apr_status_t rv = apr_socket_send(addr, &buf[ofs], &ds);
 		ofs += ds;
-
+		
 /* failure will trigger HUP/ERR/something on next poll */
 		if (rv != APR_SUCCESS)
 			break;
@@ -654,6 +693,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	arcan_event* ev;
 	uint16_t msgsz = sizeof(ev->data.network.message) / sizeof(ev->data.network.message[0]);
 	char outbuf[ msgsz + 3];
+	outbuf[msgsz + 2] = 0;
 	
 /*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
 	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
@@ -664,6 +704,9 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				break;
 
 				case EVENT_NET_CUSTOMMSG:
+					if (strlen(ev->data.network.message) + 1 < msgsz)
+						msgsz = strlen(ev->data.network.message) + 1;
+
 					outbuf[0] = TAG_NETMSG;
 					outbuf[1] = msgsz;
 					outbuf[2] = msgsz >> 8;
