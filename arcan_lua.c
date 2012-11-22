@@ -3839,7 +3839,26 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 
 	arcan_frameserver_pushevent(fsrv, &outev);
 	return 0;
-}	
+}
+
+/* inform the frameserver that from here-on, all state operations on the target ID (or everyone)
+ * gets a fixed block size. 0 disables state- operations altogether. */
+static int arcan_lua_net_statepolicy(lua_State* ctx)
+{
+	return 0;
+}
+
+/* inform the frameserver to push the state present in one client to all or a specific one of them. */
+static int arcan_lua_net_statetransfer(lua_State* ctx)
+{
+	return 0;
+}
+
+/* set up a connection between net-client and frameserver for state serialization */
+static int arcan_lua_net_statercpt(lua_State* ctx)
+{
+	return 0;
+}
 
 void arcan_lua_cleanup()
 {
@@ -4026,6 +4045,9 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "net_open", arcan_lua_net_open);
 	arcan_lua_register(ctx, "net_push", arcan_lua_net_pushcl);
 	arcan_lua_register(ctx, "net_push_srv", arcan_lua_net_pushsrv);
+	arcan_lua_register(ctx, "net_srv_statepolicy", arcan_lua_net_statepolicy);
+	arcan_lua_register(ctx, "net_srv_statetransfer", arcan_lua_net_statetransfer);
+	arcan_lua_register(ctx, "net_statercpt", arcan_lua_net_statercpt);
 
 	atexit(arcan_lua_cleanup);
 	

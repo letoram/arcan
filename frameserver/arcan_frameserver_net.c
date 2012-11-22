@@ -77,6 +77,8 @@ enum server_modes {
 
 struct {
 	struct frameserver_shmcont shmcont;
+	unsigned long long basestamp;
+
 	apr_thread_mutex_t* conn_cont_lock;
 	apr_pool_t* mempool;
 	apr_pollset_t* pollset;
@@ -85,8 +87,10 @@ struct {
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
 
-	file_handle tmphandle, restorehandle, storehandle;
+	file_handle tmphandle;
+	apr_file_t* state_out, (* state_in);
 	unsigned n_conn;
+	size_t state_globsz;
 } netcontext = {0};
 
 /* single-threaded multiplexing server with a fixed limit on number of connections,
@@ -106,8 +110,10 @@ struct conn_state {
 	bool (*flushout)(struct conn_state* self);
 	bool (*queueout)(struct conn_state* self, char* buf, size_t buf_sz);
 
-	unsigned long long connect_stamp;
-	
+/* PING/PONG (for TCP) is bound to other messages */
+	unsigned long long connect_stamp, last_ping;
+	int delay;
+
 	char* inbuffer;
 	size_t buf_sz;
 	int buf_ofs;
@@ -116,6 +122,9 @@ struct conn_state {
 	size_t outbuf_sz;
 	int outbuf_ofs;
 
+/* a client may maintain 0..1 state-table that can be pushed between clients */
+	char* statebuffer;
+	size_t state_sz;
 	int slot;
 };
 
@@ -298,7 +307,9 @@ static inline void setup_cell(struct conn_state* conn)
 	conn->validator = err_catch_valid;
 	conn->flushout  = err_catch_flush;
 	conn->queueout  = err_catch_queueout;
-	
+
+/* any future command that wish to change these values are expected to
+ * realloc/resize appropriately */
 	conn->buf_sz    = DEFAULT_INBUF_SZ;
 	conn->outbuf_sz = DEFAULT_OUTBUF_SZ;
 	conn->buf_ofs   = 0;
@@ -318,6 +329,23 @@ static inline void setup_cell(struct conn_state* conn)
 
 	if (!conn->outbuffer)
 		conn->outbuf_sz = 0;
+
+	if (conn->statebuffer){
+		free(conn->statebuffer);
+		conn->statebuffer = NULL;
+		conn->state_sz = 0;
+	}
+
+/* scenario specific, some may enforce the same state size for everyone,
+ * some unique per client */
+	if (netcontext.state_globsz){
+		conn->state_sz    = netcontext.state_globsz;
+		conn->statebuffer = malloc(conn->state_sz);
+		if (conn->statebuffer)
+			memset(conn->statebuffer, '\0', conn->state_sz);
+		else
+			conn->state_sz = 0;
+	}
 }
 
 static struct conn_state* init_conn_states(int limit)
@@ -391,6 +419,15 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	snprintf(outev.data.network.hostaddr, sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]), "%s",
 		dstaddr ? dstaddr : "(unknown)");
 	arcan_event_enqueue(&netcontext.outevq, &outev);
+}
+
+/* gatekeeper always depend on a working _prepare_socket */
+static apr_socket_t* server_prepare_gatekeeper(const char* host, int sport)
+{
+	apr_socket_t* ear_sock;
+	apr_sockaddr_t* addr;
+
+	return NULL;
 }
 
 static apr_socket_t* server_prepare_socket(const char* host, int sport, int limit, apr_pollset_t** poll_in, struct conn_state** active_cons, int* timeout)
@@ -496,13 +533,18 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					LOG("arcan_frameserver(net-srv) parent requested termination, giving up.\n");
 					return false;
 				break;
-				case TARGET_COMMAND_FDTRANSFER: netcontext.tmphandle = frameserver_readhandle(ev); break;
+
+				case TARGET_COMMAND_FDTRANSFER:
+					netcontext.tmphandle = frameserver_readhandle(ev);
+				break;
+
 				case TARGET_COMMAND_STORE:
-					netcontext.storehandle = netcontext.tmphandle;
+					netcontext.state_out = NULL;
 					netcontext.tmphandle = 0;
 				break;
+
 				case TARGET_COMMAND_RESTORE:
-					netcontext.restorehandle = netcontext.tmphandle;
+					netcontext.state_in = NULL;
 					netcontext.tmphandle = 0;
 				break;
 				default:
@@ -534,6 +576,8 @@ static void server_session(const char* host, int sport, int limit)
 	LOG("arcan_frameserver(net-srv) -- listening interface up on %s:%d\n", host, sport);
 	netcontext.pollset = poll_in;
 
+/* the pollset is created noting that we have the responsibility for assuring that the descriptors involved
+ * stay in scope, thus pfd needs to be here or dynamically allocated */
 	apr_pollfd_t pfd = {
 		.p      = netcontext.mempool,
 		.desc.s = ear_sock,
@@ -544,7 +588,7 @@ static void server_session(const char* host, int sport, int limit)
 	};
 
 	apr_pollset_add(poll_in, &pfd);
-	
+
 	while (true){
 		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
 		
@@ -626,14 +670,24 @@ static bool client_data_tlvdisp(struct conn_state* self, char tag, int len, char
 
 	switch (tag){
 		case TAG_NETMSG:
-			printf("netmsg: %s\n", val);
-			LOG("netmsg: %s\n", val);
+			outev.kind = EVENT_NET;
+			outev.category = EVENT_NET_CUSTOMMSG;
+			snprintf(outev.data.network.message,
+				sizeof(outev.data.network.message) / sizeof(outev.data.network.message[0]), "%s", val);
+			arcan_event_enqueue(&netcontext.outevq, &outev);
 		break;
 
-/* divert coming len bytes to the designated stream output */
+/* RLE compressed keyframe */ 
 		case TAG_STATE_XFER:
 		break;
 
+/* XOR with previous frame */
+		case TAG_STATE_XFER_DELTA:
+		break;
+
+		case TAG_STATE_XFER_META:
+		break;
+		
 /* unpack arcan_event */
 		case TAG_NETINPUT: break;
 
@@ -717,8 +771,12 @@ static bool client_inevq_process(apr_socket_t* outconn)
 		}
 		else if (ev->category == EVENT_TARGET){
 			switch (ev->kind){
-				case TARGET_COMMAND_EXIT:	return false;	break;
-				case TARGET_COMMAND_FDTRANSFER: netcontext.tmphandle = frameserver_readhandle(ev); break;
+				case TARGET_COMMAND_EXIT: return false; break;
+/* in order to re-use the FD transfer mechanisms used for libretro etc. 
+				case TARGET_COMMAND_FDTRANSFER:
+					netcontext.tmphandle = frameserver_readhandle(ev);
+				break;
+
 				case TARGET_COMMAND_STORE:
 					netcontext.storehandle = netcontext.tmphandle;
 					netcontext.tmphandle = 0;
@@ -726,7 +784,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				case TARGET_COMMAND_RESTORE:
 					netcontext.restorehandle = netcontext.tmphandle;
 					netcontext.tmphandle = 0;
-				break;
+				break; */
 				default:
 					; /* just ignore */
 			}
@@ -831,12 +889,6 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
 	return;
 }
 
-/* for the discovery service (if active), we toggle it with an event and a FD push (to a sqlite3 db)
- * we need a udp port bound, a ~4 + 32 byte message (identstr + pubkey) 
- * which returns a corresponding reply (and really, track dst in a DB
- * that also has known pubkeys / IDs, blacklisted ones and a temporary
- * table that is dropped every oh so often that counts number of replies
- * to outgoing IPs and stops after n tries. */
 void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 {
 	struct arg_arr* args = arg_unpack(resource);
@@ -859,6 +911,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 /* APR as a wrapper for all socket communication */
 	apr_initialize();
 	apr_pool_create(&netcontext.mempool, NULL);
+	netcontext.basestamp = frameserver_timemillis();
 	
 	const char* rk;
 
