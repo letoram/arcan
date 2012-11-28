@@ -3715,8 +3715,7 @@ static int arcan_lua_net_open(lua_State* ctx)
 {
 	arcan_frameserver* intarget = arcan_frameserver_alloc();
 
-	const char* host = lua_isstring(ctx, 1) ? luaL_checkstring(ctx, 1) : "127.0.0.1";
-	uint16_t port = luaL_optnumber(ctx, 2, 6680);
+	const char* host = lua_isstring(ctx, 1) ? luaL_checkstring(ctx, 1) : NULL;
 	int nargs = lua_gettop(ctx);
 	intptr_t ref = 0;
 	
@@ -3729,15 +3728,23 @@ static int arcan_lua_net_open(lua_State* ctx)
 		}
 
 /* populate and escape */
-	char* workstr = strdup(host);
-	char* instr = malloc(strlen(workstr) + strlen("mode=client:host=:port=") + /* 65535NUL */ 8);
-	char* tmpstr = workstr;
-	while (*tmpstr){
-		if (*tmpstr == ':') *tmpstr = '\t';
-		tmpstr++;
+
+	char* workstr = NULL;
+	size_t work_sz = 0;
+
+	if (host){
+		workstr = strdup(host);
+		char* tmpstr = workstr;
+		while (*tmpstr){
+			if (*tmpstr == ':') *tmpstr = '\t';
+			tmpstr++;
+		}
+
+		work_sz = strlen(workstr);
 	}
-	
-	sprintf(instr, "mode=client:host=%s:port=%d", workstr, port);
+
+	char* instr = malloc(work_sz + strlen("mode=client:host="));
+	sprintf(instr, "mode=client%s%s", host ? ":host=" : "", workstr ? workstr : "");
 
 	struct frameserver_envp args = {
 		.use_builtin = true,

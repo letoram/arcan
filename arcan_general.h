@@ -23,7 +23,8 @@
 #define _HAVE_ARCAN_GENERAL
 
 #define ARCAN_VERSION_MAJOR 0
-#define ARCAN_VERSION_MINOR 1
+#define ARCAN_VERSION_MINOR 2
+#define ARCAN_VERSION_PATCH 2
 
 extern char* arcan_themename;
 extern char* arcan_resourcepath;
