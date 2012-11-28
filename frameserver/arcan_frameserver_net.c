@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include <apr_general.h>
 #include <apr_file_io.h>
@@ -33,6 +34,7 @@
 #include <apr_network_io.h>
 #include <apr_poll.h>
 #include <apr_signal.h>
+#include <apr_portable.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -61,6 +63,17 @@
  * Client in 'dictionary' mode will try and figure out where to go from either an explicit directory service, or from local broadcasts,
  * or from an IPv6 multicast / network solicitation discovery
  */
+
+#ifndef DEFAULT_CLIENT_TIMEOUT
+#define DEFAULT_CLIENT_TIMEOUT 2000000
+#endif
+
+/* IDENT:PKEY:ADDR (port is a compile-time constant)
+ * max addr is ipv6 textual representation + strsep + port */
+#define IDENT_SIZE 4
+#define MAX_PUBLIC_KEY_SIZE 64
+#define MAX_ADDR_SIZE 45 
+#define MAX_HEADER_SIZE 128
 
 enum client_modes {
 	CLIENT_SIMPLE,
@@ -181,7 +194,7 @@ static bool flushout_default(struct conn_state* self)
 	if (nts > 0){
 		if (self->outbuf_ofs - nts == 0){
 			self->outbuf_ofs = 0;
-/* disable POLLOUT until more data has been queued */
+/* disable POLLOUT until more data has been queued (also check for a 'refill' function) */
 			apr_pollset_remove(netcontext.pollset, &self->poll_state);
 			self->poll_state.reqevents  = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 			self->poll_state.rtnevents  = 0;
@@ -414,74 +427,129 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	apr_sockaddr_t* addr;
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
-	apr_sockaddr_ip_get(&dstaddr, addr);
 	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET, .data.network.connid = (j + 1)};
-	snprintf(outev.data.network.hostaddr, sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]), "%s",
-		dstaddr ? dstaddr : "(unknown)");
+	size_t out_sz = sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]);
+	apr_sockaddr_ip_getbuf(outev.data.network.hostaddr, out_sz, addr);
+	
 	arcan_event_enqueue(&netcontext.outevq, &outev);
 }
 
-/* gatekeeper always depend on a working _prepare_socket */
-static apr_socket_t* server_prepare_gatekeeper(const char* host, int sport)
+static uint32_t version_magic(bool req)
 {
-	apr_socket_t* ear_sock;
-	apr_sockaddr_t* addr;
+	char buf[32], (* ch) = buf;
+	sprintf(buf, "%s_ARCAN_%d_%d_%d", req ? "REQ" : "REP", ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR, ARCAN_VERSION_PATCH);
+	
+	uint32_t hash = 5381;
+	int c;
 
-	return NULL;
+	while ((c = *(ch++)))
+		hash = ((hash << 5) + hash) + c; 
+
+	return hash;
 }
 
-static apr_socket_t* server_prepare_socket(const char* host, int sport, int limit, apr_pollset_t** poll_in, struct conn_state** active_cons, int* timeout)
+/* something to read on gk_sock, silent discard if it's not a valid discover message.
+ * gk_redir is a srcaddr:port to which the recipient should try and connect.
+ * IF this is set to 0.0.0.0, the recipient is expected to just use the source address.
+ *
+ * the explicit alternative to this (as gk_sock may be INADDR_ANY etc. would be to send a garbage message first,
+ * enable IP_PKTINFO/IP_RECVDSTADDR on the socket and check CMSG for a response, then send the real response using that.
+ * It's not particularly portable though, but a relevant side-note
+ */
+static void server_gatekeeper_message(apr_socket_t* gk_sock, const char* gk_redir)
 {
+/* partial reads etc. are just ignored, client have to resend. */
+	char gk_inbuf[MAX_HEADER_SIZE], gk_outbuf[MAX_HEADER_SIZE];
+	apr_size_t ntr = MAX_HEADER_SIZE;
+	apr_sockaddr_t src_addr;
+
+	if (strlen(gk_redir) >= MAX_ADDR_SIZE)
+		return;
+
+/* with matching cookie, use public key (or plaintext if 0) */
+	if (apr_socket_recvfrom(&src_addr, gk_sock, 0, gk_inbuf, &ntr) == APR_SUCCESS && ntr == MAX_HEADER_SIZE){
+		uint32_t srcmagic;
+		memcpy(&srcmagic, gk_inbuf, IDENT_SIZE);
+
+		if (version_magic(true) == ntohl(srcmagic)){
+			char pkey[64];
+			memcpy(pkey, &gk_inbuf[IDENT_SIZE], MAX_PUBLIC_KEY_SIZE);
+
+/* construct reply dynamically to allow different gk_redirections (honeypots etc.) and different public keys */
+			uint32_t repmagic = htonl(version_magic(false));
+			memcpy(gk_outbuf, &repmagic, sizeof(uint32_t));
+			memset(&gk_outbuf[IDENT_SIZE], 0, MAX_PUBLIC_KEY_SIZE);
+			memcpy(&gk_outbuf[IDENT_SIZE + MAX_PUBLIC_KEY_SIZE], gk_redir, strlen(gk_redir));
+
+/* shortread, shortwrite etc. are all ignored, assumes that OS will just gladly accept without blocking (too long),
+ * it's ~128bytes so ... */
+			apr_size_t tosend = MAX_HEADER_SIZE;
+			src_addr.port = DEFAULT_DISCOVER_RESP_PORT;
+			apr_socket_sendto(gk_sock, &src_addr, 0, gk_outbuf, &tosend);
+		}
+		else;
+
+	}
+}
+
+static apr_socket_t* server_prepare_socket(const char* host, apr_sockaddr_t* althost, int sport, bool tcp)
+{
+	char errbuf[64];
 	apr_socket_t* ear_sock;
 	apr_sockaddr_t* addr;
 	apr_status_t rv;
-	
+
+	if (althost)
+		addr = althost;
+	else {
 /* we bind here rather than parent => xfer(FD) as this is never supposed to use privileged ports. */
-	rv = apr_sockaddr_info_get(&addr, host, APR_INET, sport, 0, netcontext.mempool);
-	if (rv != APR_SUCCESS){
-		LOG("arcan_frameserver(net-srv) -- couldn't setup host (%s):%d, giving up.\n", host ? host : "(DEFAULT)", sport);
-		goto sock_failure;
+		rv = apr_sockaddr_info_get(&addr, host, APR_INET, sport, 0, netcontext.mempool);
+		if (rv != APR_SUCCESS){
+			LOG("arcan_frameserver(net) -- couldn't setup host (%s):%d, giving up.\n", host ? host : "(DEFAULT)", sport);
+			goto sock_failure;
+		}
 	}
 
-	rv = apr_socket_create(&ear_sock, addr->family, SOCK_STREAM, APR_PROTO_TCP, netcontext.mempool);
+	rv = apr_socket_create(&ear_sock, addr->family, tcp ? SOCK_STREAM : SOCK_DGRAM, tcp ? APR_PROTO_TCP : APR_PROTO_UDP, netcontext.mempool);
 	if (rv != APR_SUCCESS){
-		LOG("arcan_frameserver(net-srv) -- couldn't create listening socket, on (%s):%d, giving up.\n", host ? host: "(DEFAULT)", sport);
+		LOG("arcan_frameserver(net) -- couldn't create listening socket, on (%s):%d, giving up.\n", host ? host: "(DEFAULT)", sport);
 		goto sock_failure;
 	}
 
 	rv = apr_socket_bind(ear_sock, addr);
 	if (rv != APR_SUCCESS){
-		LOG("arcan_frameserver(net-srv) -- couldn't bind to socket, giving up.\n");
+		LOG("arcan_frameserver(net) -- couldn't bind to socket, giving up.\n");
 		goto sock_failure;
 	}
-	
-	*active_cons = init_conn_states(limit);
-	if (!(*active_cons))
-		goto sock_failure;
 
-	*timeout = -1;
+	apr_socket_opt_set(ear_sock, APR_SO_REUSEADDR, 1);
 
-	if (apr_pollset_create(poll_in, limit + 2, netcontext.mempool, APR_POLLSET_WAKEABLE | APR_POLLSET_NOCOPY) == APR_ENOTIMPL){
-		*timeout = 100000;
-	} else {
-#ifdef SIGUSR1
-		apr_signal(SIGUSR1, pollset_wakeup);
+/* apparently only fixed in APR1.5 and beyond, while the one in ubuntu and friends are 1.4 */
+	if (!tcp){
+#ifndef APR_SO_BROADCAST
+		int sockdesc, one = 1;
+		apr_os_sock_get(&sockdesc, ear_sock);
+		setsockopt(sockdesc, SOL_SOCKET, SO_BROADCAST, (void *)&one, sizeof(int));
 #else
-		*timeout = 10000;
+		apr_socket_opt_set(ear_sock, APR_SO_BROADCAST, 1);
 #endif
 	}
-
-if (apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS){
-/* always a bit of a balance if this should be used or not,
- * but given the more common scenario of the main-app being terminated and launched in quick succession,
- * it means less troubleshooting on behalf of the user */
-		apr_socket_opt_set(ear_sock, APR_SO_REUSEADDR, 1);
+	
+	if (!tcp || apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS)
 		return ear_sock;
-	}
 
 sock_failure:
+	apr_strerror(rv, errbuf, 64);
+	LOG("arcan_frameserver(net) -- preparing listening socket failed, reason: %s\n", errbuf);
+	
 	apr_socket_close(ear_sock);
 	return NULL;
+}
+
+static apr_socket_t* server_prepare_gatekeeper(char* host)
+{
+/* encryption, key storage etc. missing from here */
+	return server_prepare_socket(host, NULL, DEFAULT_DISCOVER_REQ_PORT, false);
 }
 
 static void server_queueout_data(struct conn_state* active_cons, int nconns, char* buf, size_t buf_sz, int id)
@@ -556,24 +624,40 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 	return true;
 }
 
-static void server_session(const char* host, int sport, int limit)
+static void server_session(const char* host, int limit)
 {
-	int errc = 0, thd_ofs = 0, timeout;
+	int errc = 0, thd_ofs = 0;
 	apr_status_t rv;
 	apr_pollset_t* poll_in;
 	apr_int32_t pnum;
 	const apr_pollfd_t* ret_pfd;
 	struct conn_state* active_cons;
 
-	host  = host  ? host  : "0.0.0.0";
-	sport = sport ? sport : DEFAULT_CONNECTION_PORT;
+	host  = host  ? host  : APR_ANYADDR;
 	limit = limit ? limit : 5;
 
-	apr_socket_t* ear_sock = server_prepare_socket(host, sport, limit, &poll_in, &active_cons, &timeout);
+	active_cons = init_conn_states(limit);
+	if (!active_cons)
+		return;
+
+/* we need 1 for each connection (limit) one for the gatekeeper and finally one for
+ * each IP (multihomed) */
+	int timeout = -1;
+	if (apr_pollset_create(&poll_in, limit + 3, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
+		timeout = 100000;
+	} else {
+#ifdef SIGUSR1
+		apr_signal(SIGUSR1, pollset_wakeup);
+#else
+		timeout = 100000;
+#endif
+	}
+
+	apr_socket_t* ear_sock = server_prepare_socket(host, NULL, DEFAULT_CONNECTION_PORT, true);
 	if (!ear_sock)
 		return;
 
-	LOG("arcan_frameserver(net-srv) -- listening interface up on %s:%d\n", host, sport);
+	LOG("arcan_frameserver(net-srv) -- listening interface up on %s\n", host ? host : "(global)");
 	netcontext.pollset = poll_in;
 
 /* the pollset is created noting that we have the responsibility for assuring that the descriptors involved
@@ -585,8 +669,21 @@ static void server_session(const char* host, int sport, int limit)
 		.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR,
 		.rtnevents = 0,
 		.client_data = ear_sock
-	};
+	}, gkpfd;
 
+/* should be solved in a pretty per host etc. manner and for that matter, IPv6 */
+	apr_socket_t* gk_sock = server_prepare_gatekeeper("0.0.0.0");
+	if (gk_sock){
+		LOG("arcan_frameserver(net-srv) -- gatekeeper listening on broadcast for %s\n", host ? host : "(global)");
+		gkpfd.p = netcontext.mempool;
+		gkpfd.desc.s = gk_sock;
+		gkpfd.rtnevents = 0;
+		gkpfd.reqevents = APR_POLLIN;
+		gkpfd.desc_type = APR_POLL_SOCKET;
+		gkpfd.client_data = gk_sock;
+		apr_pollset_add(poll_in, &gkpfd);
+	}
+	
 	apr_pollset_add(poll_in, &pfd);
 
 	while (true){
@@ -608,9 +705,14 @@ static void server_session(const char* host, int sport, int limit)
 					return;
 				}
 
-				server_accept_connection(limit, ear_sock, poll_in, active_cons);
+				server_accept_connection(limit, ret_pfd[i].desc.s, poll_in, active_cons);
 				continue;
 			}
+			else if (cb == gk_sock){
+				server_gatekeeper_message(gk_sock, "0.0.0.0");
+				continue;
+			}
+			else;
 	
 /* always process incoming data first, as there can still be something in buffer when HUP / ERR is triggered */
 			bool res = true;
@@ -657,9 +759,73 @@ static void flush_statusimg(uint8_t r, uint8_t g, uint8_t b)
 	frameserver_semcheck(netcontext.shmcont.vsem, INFINITE);
 }
 
-/* place-holder, replace with full server/client mode */
-static char* host_discover(char* host, int* port, bool usenacl)
+/*
+ * broadcast (or send to specific discover host)
+ * wait for responses. If daemon, just push/pop events in between runs,
+ * else return with the first legitimate response.
+ */
+static char* host_discover(char* host, bool usenacl)
 {
+	const int addr_maxlen = 45; /* RFC4291 */
+	char reqmsg[ MAX_HEADER_SIZE ], repmsg[ MAX_HEADER_SIZE ];
+	
+	memset(reqmsg, 0, MAX_HEADER_SIZE);
+	uint32_t mv = htonl( version_magic(true) );
+	memcpy(reqmsg, &mv, sizeof(uint32_t));
+
+	apr_status_t rv;
+	apr_sockaddr_t* addr;
+
+/* specific, single, redirector host OR IPV4 broadcast */
+	apr_sockaddr_info_get(&addr, host ? host : "255.255.255.255", APR_INET, DEFAULT_DISCOVER_REQ_PORT, 0, netcontext.mempool);
+	apr_socket_t* broadsock = server_prepare_socket("0.0.0.0", NULL, DEFAULT_DISCOVER_RESP_PORT, false);
+	if (!broadsock){
+		LOG("arcan_frameserver(net-cl) -- host discover failed, couldn't prepare listening socket.\n");
+		return NULL;
+	}
+
+	apr_socket_timeout_set(broadsock, DEFAULT_CLIENT_TIMEOUT);
+	
+	while (true){
+		apr_size_t nts = MAX_HEADER_SIZE, ntr;
+		apr_sockaddr_t recaddr;
+
+		if ( ( rv = apr_socket_sendto(broadsock, addr, 0, reqmsg, &nts) ) != APR_SUCCESS)
+			break;
+
+retry:
+		ntr = MAX_HEADER_SIZE;
+		rv  = apr_socket_recvfrom(&recaddr, broadsock, 0, repmsg, &ntr);
+
+		if (rv == APR_SUCCESS)
+			if (ntr == MAX_HEADER_SIZE){
+				uint32_t magic, rmagic;
+				memcpy(&magic, repmsg, 4);
+				rmagic = ntohl(magic);
+
+/* we might receive our own request, which should be ignored */
+				if (version_magic(false) == rmagic){
+					if (strncmp(&repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE], "0.0.0.0", 7) == 0){
+						char strbuf[MAX_ADDR_SIZE];
+						apr_sockaddr_ip_getbuf(strbuf, MAX_ADDR_SIZE, &recaddr);
+						return strdup(strbuf);
+					}
+					else 
+						return strdup(&repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]);
+				}
+				else;
+	
+			}
+			else
+				goto retry;
+		
+		sleep(10);
+	}
+
+	char errbuf[64];
+	apr_strerror(rv, errbuf, 64);
+	LOG("arcan_frameserver(net-cl) -- send failed during discover, %s\n", errbuf);
+		
 	return NULL;
 }
 
@@ -795,26 +961,14 @@ static bool client_inevq_process(apr_socket_t* outconn)
 }
 
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
-static void client_session(char* hoststr, int port, enum client_modes mode)
+static void client_session(char* hoststr, enum client_modes mode)
 {
-	switch (mode){
-		case CLIENT_SIMPLE:
-			if (hoststr == NULL){
-				LOG("arcan_frameserver(net) -- direct client mode specified, but server argument missing, giving up.\n");
-				return;
-			}
-
-			port = port <= 0 ? DEFAULT_CONNECTION_PORT : port;
-		break;
-
-		case CLIENT_DISCOVERY:
-		case CLIENT_DISCOVERY_NACL:
-			hoststr = host_discover(hoststr, &port, mode == CLIENT_DISCOVERY_NACL);
-			if (!hoststr){
-				LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
-				return;
-			}
-		break;
+	if (mode == CLIENT_DISCOVERY || mode == CLIENT_DISCOVERY_NACL || hoststr == NULL){
+		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL);
+		if (!hoststr){
+			LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
+			return;
+		}
 	}
 
 /* "normal" connect finally */
@@ -822,10 +976,10 @@ static void client_session(char* hoststr, int port, enum client_modes mode)
 	apr_socket_t* sock;
 
 /* obtain connection */
-	apr_sockaddr_info_get(&sa, hoststr, APR_INET, port, 0, netcontext.mempool);
+	apr_sockaddr_info_get(&sa, hoststr, APR_INET, DEFAULT_CONNECTION_PORT, 0, netcontext.mempool);
 	apr_socket_create(&sock, sa->family, SOCK_STREAM, APR_PROTO_TCP, netcontext.mempool);
 	apr_socket_opt_set(sock, APR_SO_NONBLOCK, 0);
-	apr_socket_timeout_set(sock, 10 * 1000 * 1000); /* microseconds */
+	apr_socket_timeout_set(sock, DEFAULT_CLIENT_TIMEOUT);
 	
 /* connect or time-out? */
 	apr_status_t rc = apr_socket_connect(sock, sa);
@@ -916,20 +1070,18 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	const char* rk;
 
 	if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("client", rk) == 0)){
-		char* dsthost = NULL, (* portstr) = NULL;
+		char* dsthost = NULL;
 
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
-		arg_lookup(args, "port", 0, (const char**) &portstr);
 
-		client_session(dsthost, portstr ? atoi(portstr) : 0, CLIENT_SIMPLE);
+		client_session(dsthost, CLIENT_SIMPLE);
 	}
 	else if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("server", rk) == 0)){
 /* sweep list of interfaces to bind to (interface=ip,port) and if none, bind to all of them */
-		char* listenhost = NULL, (* portstr) = NULL;
+		char* listenhost = NULL;
 		arg_lookup(args, "host", 0, (const char**) &listenhost);
-		arg_lookup(args, "port", 0, (const char**) &portstr);
 
-		server_session(listenhost, portstr ? atoi(portstr) : 0, false);
+		server_session(listenhost, false);
 	}
 	else {
 		LOG("arcan_frameserver(net), unknown mode specified.\n");

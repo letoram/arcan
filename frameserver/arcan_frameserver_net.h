@@ -22,8 +22,12 @@
 #ifndef HAVE_ARCAN_FRAMESERVER_NET
 #define HAVE_ARCAN_FRAMESERVER_NET
 
-#ifndef DEFAULT_DISCOVER_PORT
-#define DEFAULT_DISCOVER_PORT 6681
+#ifndef DEFAULT_DISCOVER_REQ_PORT
+#define DEFAULT_DISCOVER_REQ_PORT 6681
+#endif
+
+#ifndef DEFAULT_DISCOVER_RESP_PORT
+#define DEFAULT_DISCOVER_RESP_PORT 6682
 #endif
 
 /* this is just used as a hint (when using discovery mode) */
