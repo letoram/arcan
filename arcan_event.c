@@ -5,7 +5,7 @@
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
+ * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
 
  * This program is distributed in the hope that it will be useful,
@@ -258,24 +258,31 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 	}
 }
 
+static inline int queue_used(arcan_evctx* dq)
+{
+	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - *(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+	return rv;
+}
+
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
 {
-	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.1 ? 0.1 : saturation);
+	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
 
+/* limited so a single frameserver can't storm the parent with events, DOSing others */
 	while( *srcqueue->front != *srcqueue->back &&
-		floor(dstqueue->n_eventbuf * saturation) > abs(*dstqueue->front - *dstqueue->back)){
+		floor((float)dstqueue->n_eventbuf * saturation) > queue_used(dstqueue) ){
 		arcan_event* ev = arcan_event_poll(srcqueue);
+
 		if (ev && (ev->category & allowed) > 0 ){
 			if (ev->category == EVENT_EXTERNAL)
 				ev->data.external.source = source;
 
 			else if (ev->category == EVENT_NET)
 				ev->data.network.source = source;
-
 			arcan_event_enqueue(dstqueue, ev);
 		}
-
 	}
+
 }
 
 void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
