@@ -92,6 +92,119 @@ while (VRESH / grid_stepy > 100) do
 	 grid_stepy = grid_stepy + 2;
 end
 
+-- inject a submenu into a main one
+-- dstlbls : array of strings to insert into
+-- dstptrs : hashtable keyed by label for which to insert the spawn function
+-- label   : to use for dstlbls/dstptrs
+-- lbls    : array of strings used in the submenu (typically from gen_num, gen_tbl)
+-- ptrs    : hashtable keyed by label that acts as triggers (typically from gen_num, gen_tbl)
+function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
+	if (dstlbls == nil or dstptrs == nil or #lbls == 0) then return; end
+	
+	table.insert(dstlbls, label);
+	
+	dstptrs[label] = function()
+		local fmts = {};
+		local ind = tostring(settings[key]);
+	
+		if (ind) then
+			fmts[ ind ] = settings.colourtable.notice_fontstr;
+			if(get_key(key)) then
+				fmts[ get_key(key) ] = settings.colourtable.alert_fontstr;
+			end
+		end
+		
+		menu_spawnmenu(lbls, ptrs, fmts);
+	end
+end
+
+-- create and display a listview setup with the menu defined by the arguments.
+-- list    : array of strings that make up the menu
+-- listptr : hashtable keyed by list labels
+-- fmtlist : hashtable keyed by list labels, on match, will be prepended when rendering (used for icons, highlights etc.)
+function menu_spawnmenu(list, listptr, fmtlist)
+	if (#list < 1) then
+		return nil;
+	end
+
+	local parent = current_menu;
+	local props = image_surface_resolve_properties(current_menu.cursorvid);
+	local windsize = VRESH;
+
+	local yofs = 0;
+	if (props.y + windsize > VRESH) then
+		yofs = VRESH - windsize;
+	end
+
+	current_menu = listview_create(list, windsize, VRESW / 3, fmtlist);
+	current_menu.parent = parent;
+	current_menu.ptrs = listptr;
+	current_menu.updatecb = parent.updatecb;
+	current_menu:show();
+	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
+	
+	local xofs = 0;
+	local yofs = 0;
+	
+-- figure out where the window is going to be.
+	local aprops_l = image_surface_properties(current_menu.anchor, settings.fadedelay);
+	local wprops_l = image_surface_properties(current_menu.window, settings.fadedelay);
+	local dx = aprops_l.x;
+	local dy = aprops_l.y;
+	
+	local winw = wprops_l.width;
+	local winh = wprops_l.height;
+	
+	if (dx + winw > VRESW) then
+		dx = dx + (VRESW - (dx + winw));
+	end
+	
+	if (dy + winh > VRESH) then
+		dy = dy + (VRESH - (dy + winh));
+	end
+
+	move_image( current_menu.anchor, math.floor(dx), math.floor(dy), settings.fadedelay );
+	return current_menu;
+end
+
+function build_globmenu(globstr, cbfun, globmask)
+	local lists = glob_resource(globstr, globmask);
+	local resptr = {};
+	
+	for i = 1, #lists do
+		resptr[ lists[i] ] = cbfun;
+	end
+	
+	return lists, resptr;
+end
+
+-- name     : settings[name] to store under
+-- tbl      : array of string with labels of possible values
+-- isstring : treat value as string or convert to number before sending to store_key
+function gen_tbl_menu(name, tbl, triggerfun, isstring)
+	local reslbl = {};
+	local resptr = {};
+
+	local basename = function(label, save)
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		settings[name] = isstring and label or tonumber(label);
+
+		if (save) then
+			store_key(name, isstring and label or tonumber(label));
+		else
+		end
+
+		if (triggerfun) then triggerfun(label); end
+	end
+
+	for key,val in ipairs(tbl) do
+		table.insert(reslbl, val);
+		resptr[val] = basename;
+	end
+
+	return reslbl, resptr;
+end
+
 -- traversed to root node, updating visibility for each menu on the way
 function cascade_visibility(menu, val)
 	if (menu.parent) then
@@ -416,108 +529,6 @@ local function positionfun(label)
 	end
 end
 
-local function customview_internal(source, datatbl)
-	if (datatbl.kind == "resized") then
-		if (not settings.in_internal) then
-			gridle_load_internal_extras( resourcefinder_search(customview.gametbl, true), customview.gametbl.target );
-			if (settings.autosave == "On") then internal_statectl("auto", false); end
-			internal_aid = datatbl.source_audio;
-			internal_vid = source;
-					
-			settings.internal_toggles.bezel     = false;
-			settings.internal_toggles.overlay   = false;
-			settings.internal_toggles.backdrops = false;
-
-			audio_gain(internal_aid, settings.internal_again, NOW);
-
-			gridle_input = gridle_internalinput;
-			settings.in_internal = true;
-
-			gridlemenu_rebuilddisplay();
-			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
-		else
-			gridlemenu_rebuilddisplay();
-		end
-	elseif (datatbl.kind == "frameserver_terminated") then
-		local term = load_image("images/terminated.png");
-		blend_image(term, 1.0, settings.fadedelay);
-		resize_image(term, VRESW, VRESH);
-		order_image(term, max_current_image_order());
-		gridle_input = gridle_internalinput;
-		
-	elseif (datatbl.kind == "message") then
-		spawn_warning(datatbl.message);
-	end
-end
-
-customview.cleanup = function()
--- since new screenshots /etc. might have appeared, update cache 
-	resourcefinder_cache.invalidate = true;
-		local gameno = current_game_cellid();
-		resourcefinder_search(customview.gametbl, true);
-	resourcefinder_cache.invalidate = false;
-
-	toggle_mouse_grab(MOUSE_GRABOFF);
-	
-	local resetview = function()
-		pop_video_context();
-		settings.iodispatch = customview.dispatchtbl;
-		gridle_input = gridle_dispatchinput;
-		settings.in_internal = false;
-		video_3dorder(ORDER_LAST);
-	end
-
--- setup a quick timer, wait 20 ticks for autosave etc. to finish THEN cleanup.
-	if (settings.autosave == "On" and valid_vid(internal_vid)) then 
-		local counter = 20;
-		blend_image(internal_vid, 0.0, 20);
-		audio_gain(internal_aid, 0.0, 20);
-		
-		internal_statectl("auto", true); 
-		gridle_clock_pulse = function() 
-			if counter > 0 then
-				counter = counter - 1;
-			else
-				resetview();
-				gridle_clock_pulse = nil;
-			end
-		end
-	else
--- no autosave, pop_video_context is safe
-		resetview();
-	end
-end
-
-local function launch(tbl)
-	if (tbl.capabilities == nil) then
-		return;
-	end
-	
-	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
-	push_video_context();
-
--- can also be invoked from the context menus
-	if (launch_internal) then
-		play_audio(soundmap["LAUNCH_INTERNAL"]);
-		customview.gametbl = tbl;
-		settings.cleanup_toggle = customview.cleanup;
-
-		if (valid_vid(internal_vid)) then delete_image(internal_vid); end
-
--- replace this one so that file-name, config names etc. are correct when emitted from intmenus
-		current_game = function() return tbl; end
-
-		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
-		gridle_input = nil;
-
-	else
-		settings.in_internal = false;
-		play_audio(soundmap["LAUNCH_EXTERNAL"]);
-		launch_target( tbl.gameid, LAUNCH_EXTERNAL);
-		pop_video_context();
-	end
-end
-
 local function effecttrig(label)
 	local shdr = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. label, "bgeffect", {});
 	customview.bgshader = shdr;
@@ -621,7 +632,7 @@ end
 
 -- take the custom view and dump to a .lua config
 local function save_config()
-	open_rawresource("customview_cfg.lua");
+	open_rawresource("remote_cfg.lua");
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
@@ -691,10 +702,69 @@ local function save_config()
 		current_menu = current_menu.parent;
 	end
 		
-	play_audio(soundmap["MENU_FADE"]);
 	settings.iodispatch = customview_display;
 	pop_video_context();
-	gridle_customview();
+	gridleremote_customview();
+end
+
+-- reuse by other menu functions
+function menu_defaultdispatch()
+	if (not settings.iodispatch["MENU_UP"]) then
+		settings.iodispatch["MENU_UP"] = function(iotbl) 
+			current_menu:move_cursor(-1, true); 
+		end
+	end
+
+	if (not settings.iodispatch["MENU_DOWN"]) then
+			settings.iodispatch["MENU_DOWN"] = function(iotbl)
+			current_menu:move_cursor(1, true); 
+		end
+	end
+	
+	if (not settings.iodispatch["MENU_SELECT"]) then
+		settings.iodispatch["MENU_SELECT"] = function(iotbl)
+			selectlbl = current_menu:select();
+			if (current_menu.ptrs[selectlbl]) then
+				current_menu.ptrs[selectlbl](selectlbl, false);
+				if (current_menu and current_menu.updatecb) then
+					current_menu.updatecb();
+				end
+			end
+		end
+	end
+	
+-- figure out if we should modify the settings table
+	if (not settings.iodispatch["FLAG_FAVORITE"]) then
+		settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
+				selectlbl = current_menu:select();
+				if (current_menu.ptrs[selectlbl]) then
+					current_menu.ptrs[selectlbl](selectlbl, true);
+					if (current_menu and current_menu.updatecb) then
+						current_menu.updatecb();
+					end
+				end
+			end
+	end
+	
+	if (not (settings.iodispatch["MENU_ESCAPE"])) then
+		settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+		current_menu:destroy();
+
+		if (current_menu.parent ~= nil) then
+			current_menu = current_menu.parent;
+		else -- top level
+			settings.iodispatch = griddispatch;
+		end
+		end
+	end
+	
+	if (not settings.iodispatch["MENU_RIGHT"]) then
+		settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
+	end
+	
+	if (not settings.iodispatch["MENU_LEFT"]) then
+		settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
+	end
 end
 
 local function show_config()
@@ -702,15 +772,12 @@ local function show_config()
 	settings.iodispatch = {};
 	customview.itemlist = {};
 	
-	gridlemenu_defaultdispatch();
+	menu_defaultdispatch();
 	local escape_menu = function(label, save, sound)
 	
 		if (current_menu.parent ~= nil) then
 			current_menu:destroy();
 			current_menu = current_menu.parent;
-			if (sound == nil or sound == false) then 
-				play_audio(soundmap["MENU_FADE"]); 
-			end
 		end
 		
 	end
@@ -723,27 +790,26 @@ local function show_config()
 
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
+	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Vidcap", "Model"}, positiondynamic));
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
 	
 	table.insert(mainlbls, "---");
-	table.insert(mainlbls, "Cancel");
+	table.insert(mainlbls, "Save");
 	
 	mainptrs["Cancel"] = function(label, save)
 		while current_menu ~= nil do
 			current_menu:destroy();
 			current_menu = current_menu.parent;
 		end
-		
-		play_audio(soundmap["MENU_FADE"]);
+
 		settings.iodispatch = customview_display;
 		pop_video_context();
 		customview.in_customview = false;
 		setup_gridview();
 	end
 	
-	mainptrs["Save/Finish"] = save_config;
+	mainptrs["Save"] = save_config;
 	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = mainptrs;
@@ -934,7 +1000,6 @@ local function setup_customview()
 		confirm_shutdown();
 	end
 		
-	navi_change(navi, navitbl);
 	customview.dispatchtbl = settings.iodispatch;
 end
 
@@ -944,7 +1009,7 @@ local function customview_3dbase()
 	customview.light_shader = lshdr;
 end
 
-function gridle_customview()
+function gridleremote_customview()
 	local disptbl;
 	
 -- try to load a preexisting configuration file, if no one is found

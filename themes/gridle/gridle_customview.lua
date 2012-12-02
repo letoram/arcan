@@ -512,6 +512,7 @@ customview.cleanup = function()
 	
 	local resetview = function()
 		pop_video_context();
+		imagery.server = nil;
 		settings.iodispatch = customview.dispatchtbl;
 		gridle_input = gridle_dispatchinput;
 		settings.in_internal = false;
@@ -819,6 +820,7 @@ local function show_config()
 		settings.iodispatch = customview_display;
 		pop_video_context();
 		customview.in_customview = false;
+		imagery.server = nil;
 		setup_gridview();
 	end
 	

@@ -192,9 +192,18 @@ end
 
 function broadcast_game(gametbl, playing)
 	if (imagery.server) then
-		net_push_srv(imagery.server, gametbl.target);
-		net_push_srv(imagery.server, gametbl.setname);
-		net_push_srv(imagery.server, playing and "launched" or "selected");
+		net_push_srv(imagery.server, "begin_item");
+
+		for key, val in pairs(gametbl) do
+			if (type(val) == "string") then
+				net_push_srv(imagery.server, "key");
+				net_push_srv(imagery.server, key);
+				net_push_srv(imagery.server, "value");
+				net_push_srv(imagery.server, val);
+			end
+		end
+
+		net_push_srv(imagery.server, "end_item");
 	end
 end
 

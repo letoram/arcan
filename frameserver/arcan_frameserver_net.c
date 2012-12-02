@@ -5,7 +5,7 @@
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
+ * as published by the Free Software Foundation; either version 3 
  * of the License, or (at your option) any later version.
 
  * This program is distributed in the hope that it will be useful,
@@ -18,9 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
-
-/* Discover port also acts as a gatekeeper, you register through this
- * and at the same time, provide your public key */
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -43,26 +40,7 @@
 #include "arcan_frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_net.h"
-
-/* Overall design / idea:
- * Each frameserver can be launched in either server (1..n connections) or client (1..1 connections) in either simple or advanced mode.
- *
- * a. There's a fixed limited number of simultaneous n connections
- *
- * b. The main loop polls on socket (FD transfer socket can be used), this can be externally interrupted through the wakeup_call callback,
- * and between polls the incoming eventqueue is flushed
- *
- * c. If advanced mode is enabled, the main server is not accessible until the client has successfully registered with
- * a dictionary service (which should also permit blacklisting) which returns whatever public key the client is supposed to use when connecting
- * (client -> LIST/DISCOVER -> server -> PUBKEY response -> client -> LIST/REGISTER (own PUBKEY encrypted) -> server -> REGISTER/DST (pubkey to use))
- * --> server response size should never be larger than client request size <--
- *
- * d. The shm-API may seem like an ill fit with the video/audio structure here, but is used for pushing monitoring graphs and/or aural alarms
- *
- * e. Client in 'direct' mode will just connect to a server and start pushing data / event in plaintext.
- * Client in 'dictionary' mode will try and figure out where to go from either an explicit directory service, or from local broadcasts,
- * or from an IPv6 multicast / network solicitation discovery
- */
+#include "graphing/net_graph.h"
 
 #ifndef DEFAULT_CLIENT_TIMEOUT
 #define DEFAULT_CLIENT_TIMEOUT 2000000
@@ -90,6 +68,8 @@ enum server_modes {
 
 struct {
 	struct frameserver_shmcont shmcont;
+	struct graph_context* graphing;
+	
 	unsigned long long basestamp;
 
 	apr_thread_mutex_t* conn_cont_lock;
@@ -116,7 +96,7 @@ struct conn_state {
  * on or off (writable-without-blocking being the most relevant) */
 	apr_pollfd_t poll_state;
 
-/* incoming -> validator -> dispatch,
+/* (poll-IN) -> incoming -> validator -> dispatch,
  * outgoing -> queueout -> (poll-OUT) -> flushout  */
 	bool (*dispatch)(struct conn_state* self, char tag, int len, char* value);
 	bool (*validator)(struct conn_state* self);
@@ -138,6 +118,8 @@ struct conn_state {
 /* a client may maintain 0..1 state-table that can be pushed between clients */
 	char* statebuffer;
 	size_t state_sz;
+	bool state_in;
+
 	int slot;
 };
 
@@ -237,6 +219,7 @@ static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
 static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value)
 {
 	arcan_event newev = {.category = EVENT_NET};
+	LOG("arcan_frameserver(net), TLV frame received (%d:%d)\n", tag, len);
 	
 	switch(tag){
 		case TAG_NETMSG:
@@ -247,7 +230,7 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 		case TAG_NETINPUT: break;
 		case TAG_STATE_XFER: break;
 		default:
-			LOG("arcan_frameserver(net-srv), unknown tag(%d) with %d bytes payload.\n", tag, len);
+			LOG("arcan_frameserver(net-cl), unknown tag(%d) with %d bytes payload.\n", tag, len);
 	}
 	
 	return true;
@@ -634,7 +617,6 @@ static void server_session(const char* host, int limit)
 	struct conn_state* active_cons;
 
 	host  = host  ? host  : APR_ANYADDR;
-	limit = limit ? limit : 5;
 
 	active_cons = init_conn_states(limit);
 	if (!active_cons)
@@ -741,24 +723,6 @@ static void server_session(const char* host, int limit)
 	return;
 }
 
-/* place-holder, replace with real graphing */
-static void flush_statusimg(uint8_t r, uint8_t g, uint8_t b)
-{
-	uint8_t* canvas = netcontext.vidp;
-	
-	for (int y = 0; y < netcontext.shmcont.addr->storage.h; y++)
-		for (int x = 0; x < netcontext.shmcont.addr->storage.h; x++)
-		{
-			*(canvas++) = r;
-			*(canvas++) = g;
-			*(canvas++) = b;
-			*(canvas++) = 0xff;
-		}
-
-	netcontext.shmcont.addr->vready = true;
-	frameserver_semcheck(netcontext.shmcont.vsem, INFINITE);
-}
-
 /*
  * broadcast (or send to specific discover host)
  * wait for responses. If daemon, just push/pop events in between runs,
@@ -834,10 +798,11 @@ static bool client_data_tlvdisp(struct conn_state* self, char tag, int len, char
 {
 	arcan_event outev;
 
+/*GRAPH HOOK: OK DATA */
 	switch (tag){
 		case TAG_NETMSG:
-			outev.kind = EVENT_NET;
-			outev.category = EVENT_NET_CUSTOMMSG;
+			outev.category = EVENT_NET;
+			outev.kind = EVENT_NET_CUSTOMMSG;
 			snprintf(outev.data.network.message,
 				sizeof(outev.data.network.message) / sizeof(outev.data.network.message[0]), "%s", val);
 			arcan_event_enqueue(&netcontext.outevq, &outev);
@@ -875,14 +840,15 @@ static bool client_data_process(apr_socket_t* inconn)
 		cs.dispatch = client_data_tlvdisp;
 	}
 
+	printf("client_data_process\n");
 	bool rv = validator_tlv(&cs);
-
+	printf("validator? %d\n", rv);
+	
 	if (!rv){
 		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
 		LOG("arcan_frameserver(net-cl) -- validator failed, shutting down.\n");
 		apr_socket_close(inconn);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
-		flush_statusimg(255, 0, 0);
 	}
 
 	return rv;
@@ -915,7 +881,12 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	char outbuf[ msgsz + 3];
 	outbuf[msgsz + 2] = 0;
 	
-/*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
+/* since we flush the entire eventqueue at once, it means that multiple
+ * messages may possible be interleaved in one push (up to the 64k buffer) before
+ * getting sent of to the TCP layer (thus not as wasteful as it might initially seem).
+ *
+ * The real issue is buffer overruns though, which currently means that data gets lost (for custommsg)
+ * State transfers won't ever overflow and are only ever tucked on at the end */
 	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
@@ -989,14 +960,12 @@ static void client_session(char* hoststr, enum client_modes mode)
 		arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_NORESPONSE };
 		snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
-		flush_statusimg(255, 0, 0);
 		return;
 	}
 
 	arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_CONNECTED };
 	snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
 	arcan_event_enqueue(&netcontext.outevq, &ev);
-	flush_statusimg(0, 255, 0);
 
 	apr_pollset_t* pset;
 	apr_pollfd_t pfd = {
@@ -1052,7 +1021,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 
 /* using the shared memory context as a graphing / logging window, for event passing,
  * the sound as a possible alert, but also for the guard thread*/
-	netcontext.shmcont = frameserver_getshm(shmkey, true);
+	netcontext.shmcont  = frameserver_getshm(shmkey, true);
 	
 	if (!frameserver_shmpage_resize(&netcontext.shmcont, 256, 256, 4, 0, 0))
 		return;
@@ -1060,7 +1029,6 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	frameserver_shmpage_calcofs(netcontext.shmcont.addr, &(netcontext.vidp), &(netcontext.audp) );
 	frameserver_shmpage_setevqs(netcontext.shmcont.addr, netcontext.shmcont.esem, &(netcontext.inevq), &(netcontext.outevq), false);
 	frameserver_semcheck(netcontext.shmcont.vsem, -1);
-	flush_statusimg(128, 128, 128);
 
 /* APR as a wrapper for all socket communication */
 	apr_initialize();
@@ -1073,15 +1041,24 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		char* dsthost = NULL;
 
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
-
 		client_session(dsthost, CLIENT_SIMPLE);
 	}
 	else if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("server", rk) == 0)){
 /* sweep list of interfaces to bind to (interface=ip,port) and if none, bind to all of them */
 		char* listenhost = NULL;
-		arg_lookup(args, "host", 0, (const char**) &listenhost);
+		char* limstr = NULL;
 
-		server_session(listenhost, false);
+		arg_lookup(args, "host", 0, (const char**) &listenhost);
+		arg_lookup(args, "limit", 0, (const char**) &limstr);
+
+		long int limv = DEFAULT_CONNECTION_CAP;
+		if (limstr){
+			limv = strtol(limstr, NULL, 10);
+			if (limv <= 0 || limv > DEFAULT_CONNECTION_CAP)
+				limv = DEFAULT_CONNECTION_CAP;
+		}
+
+		server_session(listenhost, limv);
 	}
 	else {
 		LOG("arcan_frameserver(net), unknown mode specified.\n");
