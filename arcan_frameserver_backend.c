@@ -804,16 +804,15 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
-	ctx->nopts    = true;
-	ctx->autoplay = true;
-
 /* "movie" mode involves parallel queues of raw, decoded, frames and heuristics
  * for dropping, delaying or showing frames based on DTS/PTS values */
 	if (setup.use_builtin){
 		if (strcmp(setup.args.builtin.mode, "movie") == 0){
 			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
-			ctx->nopts    = false;
-			ctx->autoplay = false;
+/*	These values are expected defaults but can be overridden in special cases
+ *			ctx->nopts    = false;
+ *			ctx->autoplay = false;
+*/
 		}
 
 /* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer

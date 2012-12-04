@@ -1027,9 +1027,9 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	
 	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 	mvctx->loop     = loop == FRAMESERVER_LOOP;
-	mvctx->autoplay = luaL_optint(ctx, 4, 0) > 0;
-	mvctx->nopts = special;
-
+	mvctx->autoplay = luaL_optint(ctx, 4, 0) > 0 || special;
+	mvctx->nopts    = special;
+	
 	struct frameserver_envp args = {
 		.use_builtin = true,
 		.args.builtin.mode = "movie",
@@ -1499,9 +1499,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 /* need to jump through a few hoops to get hold of the possible callback function */
 		arcan_vobject* vobj = arcan_video_getobject(ev->data.external.source);
-		assert(vobj->feed.state.tag == ARCAN_TAG_FRAMESERV);
-		assert(vobj->feed.state.ptr);
 
+/* edge case, dangling event with frameserver that died during initialization
+ * but wasn't pruned from the eventqueue */
+		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
+			return;
+		
 		arcan_frameserver* fsrv = vobj->feed.state.ptr;
 		if (fsrv->tag){
 			intptr_t dst_cb = fsrv->tag;
