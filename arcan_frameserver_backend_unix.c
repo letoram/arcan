@@ -1,8 +1,8 @@
 /* Arcan-fe, scriptable front-end engine
- *
+ 
  * Arcan-fe is the legal property of its developers, please refer
  * to the COPYRIGHT file distributed with this source distribution.
- *
+ 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 3
@@ -98,7 +98,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	
 	if (src) {
 		src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
-			
+
 		if (src->vfq.alive)
 			arcan_framequeue_free(&src->vfq);
 		
@@ -250,7 +250,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	size_t shmsize = MAX_SHMSIZE;
 	struct frameserver_shmpage* shmpage;
 	int shmfd = 0;
-	
+
 	ctx->shm.key = arcan_findshmkey(&shmfd, true);
 	char* work = strdup(ctx->shm.key);
 		work[strlen(work) - 1] = 'v';
@@ -284,7 +284,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	if (child) {
 		arcan_errc err;
 		close(sockp[1]);
-		
+
 /* init- call (different from loop-exec as we need to 
  * keep the vid / aud as they are external references into the scripted state-space */
 		if (ctx->vid == ARCAN_EID) {

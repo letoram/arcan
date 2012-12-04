@@ -1641,7 +1641,7 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb, vfunc_stat
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-
+	
 	if (vobj && vobj->flags.clone)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
@@ -2448,7 +2448,6 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 
 			base->rotate.interp = (abs(bv.roll - roll) > 180.0 || abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
 				interpolate_normalized_linear : interpolate_normalized_linear_large;
-//				interpolate_spherical : interpolate_spherical_large;
 		}
 	}
 
@@ -3319,7 +3318,7 @@ static void process_readback(struct rendertarget* tgt, float fract)
 	bool req_rb = false;
 
 /* check if there's data ready to be copied
-   TODO: this doesn't accept stencil / depth readback */
+	TODO: this doesn't accept stencil / depth readback */
 	if (tgt->readreq){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
 		GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
