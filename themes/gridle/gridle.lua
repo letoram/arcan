@@ -194,6 +194,13 @@ function broadcast_game(gametbl, playing)
 	if (imagery.server) then
 		net_push_srv(imagery.server, "begin_item");
 
+		count = 0
+		for key, val in pairs(gametbl) do
+			count = count + 1
+		end
+
+		net_push_srv(imagery.server, count);
+		
 		for key, val in pairs(gametbl) do
 			if (type(val) == "string") then
 				net_push_srv(imagery.server, "key");
@@ -203,7 +210,6 @@ function broadcast_game(gametbl, playing)
 			end
 		end
 
-		net_push_srv(imagery.server, "end_item");
 	end
 end
 

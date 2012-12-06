@@ -14,6 +14,21 @@ settings = {
 --
 --
 
+function string.split(instr, delim)
+	local res = {};
+	local strt = 1;
+	local delim_pos, delim_stp = string.find(instr, delim, strt);
+	
+	while delim_pos do
+		table.insert(res, string.sub(instr, strt, delim_pos-1));
+		strt = delim_stp + 1;
+		delim_pos, delim_stp = string.find(instr, delim, strt);
+	end
+	
+	table.insert(res, string.sub(instr, strt));
+	return res;
+end
+
 net_dispatch = {};
 net_dispatch["key"] = function() settings.next_key = nil; end
 net_dispatch["value"] = function() end
@@ -24,11 +39,12 @@ end
 
 function net_event(source, tbl)
 	if (tbl.kind == "message") then
-		if (tbl.message == "begin_item") then
+		if (tbl.message == "begin_item:") then
+			
 			settings.cur_item = {};
-		elseif (tbl.message
-		
-	end
+			settings.item_count = nil;
+		end
+
 end
 
 function gridle_remote()
