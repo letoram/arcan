@@ -839,13 +839,13 @@ local function place_model(modelid, pos, ang)
 	show_image(modelid);
 end
 
-local function update_dynamic(newtbl)
+function gridleremote_updatedynamic(newtbl)
 	if (newtbl == nil or newtbl == customview.lasttbl) then
 		return;
 	end
 
 	customview.lasttbl = newtbl;
-	toggle_led(newtbl.players, newtbl.buttons, "")	;
+--	toggle_led(newtbl.players, newtbl.buttons, "")	;
 
 -- this table is maintained for every newly selected item, and just tracks everything to delete.
 	for ind, val in ipairs(customview.temporary) do
@@ -885,7 +885,6 @@ local function update_dynamic(newtbl)
 				
 				ld = cm.diffuse and cm.diffuse or {0.6, 0.6, 0.6};
 				shader_uniform(shdr, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
-
 	
 -- reuse the model for multiple instances
 				for i=2,#customview.current.models do

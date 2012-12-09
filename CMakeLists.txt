@@ -48,14 +48,19 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
-    message("------------------*Profile build*------------------")
-        add_definitions(-pg)
+	message("------------------*Profile Build*------------------")
+	add_definitions(-pg)
 endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("------------------ Debug build --------------------")
+	message("------------------*Debug Build*--------------------")
 	add_definitions(-g -D_DEBUG)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
+
+if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
+	message("-------------- *Debug Tracing Build* --------------")
+	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
+endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 
 # --- Step 1, Dependencies
 # paths / locations

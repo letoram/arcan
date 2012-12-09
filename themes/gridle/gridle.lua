@@ -191,22 +191,24 @@ function string.split(instr, delim)
 end
 
 function broadcast_game(gametbl, playing)
+-- there might be other stuff in gametbl than provided by the initial list_games
+-- so just send the strings/numbers
+
 	if (imagery.server) then
-		net_push_srv(imagery.server, "begin_item");
 
 		count = 0
 		for key, val in pairs(gametbl) do
-			count = count + 1
+			if (type(val) == "string" or type(val) == "number") then
+				count = count + 1
+			end
 		end
 
-		net_push_srv(imagery.server, count);
+		net_push_srv(imagery.server, "begin_item:" .. tostring(count));
 		
 		for key, val in pairs(gametbl) do
-			if (type(val) == "string") then
-				net_push_srv(imagery.server, "key");
+			if (type(val) == "string" or type(val) == "number") then
 				net_push_srv(imagery.server, key);
-				net_push_srv(imagery.server, "value");
-				net_push_srv(imagery.server, val);
+				net_push_srv(imagery.server, tostring(val));
 			end
 		end
 

@@ -914,8 +914,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 			};
 
-			assert(shared->aready == false);
-			assert(shared->vready == false);
+/*			assert(shared->aready == false);
+			assert(shared->vready == false); */
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
 
