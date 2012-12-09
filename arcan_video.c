@@ -111,6 +111,9 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 };
 static unsigned context_ind = 0;
 
+static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
+static void attach_object(struct rendertarget* dst, arcan_vobject* src);
+
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
@@ -198,15 +201,20 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool dele
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &(context->vitems_pool[i]);
 
-			/* before doing any modification, wait for any async load calls to finish(!) */
+/* before doing any modification, wait for any async load calls to finish(!),
+ * question is IF this should invalidate or not */
 			if (current->feed.state.tag == ARCAN_TAG_ASYNCIMG)
 				arcan_video_pushasynch(i);
 
+/* deleteobject will take persistent objects into account and NOT delete them until we are
+ * at the layer in which the object was declared (!) */
 			if (delete){
-				arcan_video_deleteobject(i); /* will also delink from the render list */
+				arcan_video_deleteobject(i);
 			}
-			else {
+/* deallocating GL resources on the other hand should not be done, same comes with RESTORING them */
+			else if (current->flags.persist == false){
 				glDeleteTextures(1, &current->gl_storage.glid);
+
 				if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && current->feed.state.ptr)
 					arcan_frameserver_pause((arcan_frameserver*) current->feed.state.ptr, true);
 			}
@@ -242,11 +250,12 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &context->vitems_pool[i];
 
-			if (current->flags.clone)
+			if (current->flags.clone || current->flags.persist)
 				continue;
 
-		/* conservative means that we do not keep a copy of the originally decoded memory,
-		 * essentially halving memory consumption but increasing cost of pop() and push() */
+/* conservative means that we do not keep a copy of the originally decoded memory,
+ * essentially cutting memory consumption in half but increasing cost of pop() and push()
+ * will be made obsolete after hardening when "caching" is up to the imageserver */
 			if (arcan_video_display.conservative && (char)current->feed.state.tag == ARCAN_TAG_IMAGE){
 				assert(current->default_frame.source );
 				char* fname = strdup( current->default_frame.source ); /* copy the original filename */
@@ -272,6 +281,36 @@ unsigned arcan_video_nfreecontexts()
 		return CONTEXT_STACK_LIMIT - 1 - context_ind;
 }
 
+/* Sweeps src and matches 1:1 with cells in dst if they are set as "persistent",
+ * if such a relation exists, copy it downwards and reset the cell so its resources won't be deallocated */
+static void transfer_persists(struct arcan_video_context* src, struct arcan_video_context* dst, bool delsrc)
+{
+/* for delsrc (pop), the item needs to exist and be persistent in BOTH src and dst,
+ * otherwise (push) dst can be assumed empty */
+	for (int i = 1; i < src->vitem_limit - 1; i++){
+		if (src->vitems_pool[i].flags.in_use && src->vitems_pool[i].flags.persist &&
+			(!delsrc || (dst->vitems_pool[i].flags.in_use && dst->vitems_pool[i].flags.persist))){
+
+			memcpy(&dst->vitems_pool[i], &src->vitems_pool[i], sizeof(arcan_vobject));
+
+/* cross- referencing world- outside context isn't permitted */
+		dst->vitems_pool[i].parent = &dst->world;
+		
+			if (delsrc){
+				detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
+				memset(&src->vitems_pool[i], 0, sizeof(arcan_vobject));
+			}
+			else{
+				dst->nalive++;
+				src->vitems_pool[i].owner = NULL;
+				attach_object(&dst->stdoutp, &src->vitems_pool[i]);
+			}
+
+		}
+	}
+	
+}
+
 signed arcan_video_pushcontext()
 {
 	arcan_vobject empty_vobj = {.current = {.position = {0}, .opa = 1.0} };
@@ -279,7 +318,7 @@ signed arcan_video_pushcontext()
 	if (context_ind + 1 == CONTEXT_STACK_LIMIT)
 		return -1;
 
-	/* copy everything then manually reset some fields */
+/* copy everything then manually reset some fields */
 	memcpy(&context_stack[ ++context_ind ], current_context, sizeof(struct arcan_video_context));
 	deallocate_gl_context(current_context, false);
 
@@ -299,13 +338,20 @@ signed arcan_video_pushcontext()
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
 	current_context->rtargets[0].first = NULL;
 
+/* propagate persistent flagged objects upwards */
+	transfer_persists(&context_stack[ context_ind - 1], current_context, false);
+	
 	return arcan_video_nfreecontexts();
 }
 
 unsigned arcan_video_popcontext()
 {
+/* propagate persistent flagged objects downwards */
+	if (context_ind > 0)
+		transfer_persists(current_context, &context_stack[context_ind-1], true);
+	
 	deallocate_gl_context(current_context, true);
-
+	
 	if (context_ind > 0){
 		context_ind--;
 		current_context = &context_stack[ context_ind ];
@@ -354,7 +400,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	arcan_vobject* pobj = arcan_video_getobject(parent);
 	arcan_vobj_id rv = ARCAN_EID;
 
-	if (pobj == NULL || pobj->flags.clone)
+	if (pobj == NULL || pobj->flags.clone || pobj->flags.persist)
 		return rv;
 
 	bool status;
@@ -1166,7 +1212,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 	if (!target)
 		return rv;
 
-	if (target->flags.clone)
+	if (target->flags.clone || target->flags.persist)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
 /* we need to drop the current frameset before defining a new one */
@@ -1449,7 +1495,7 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 		return rv;
 	}
 	
-	if (dstvobj->flags.clone){
+	if (dstvobj->flags.clone || dstvobj->flags.persist || srcvobj->flags.persist){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
 		return rv;
@@ -2148,6 +2194,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 /* by far, the most involved and dangerous function in this .o, hence the many safe-guards checks and tracing output,
  * the simplest of objects (just an image or whatnot) should have a minimal cost, with everything going up from there.
  * Things to consider:
+ * persistence (existing in multiple stack layers, only allowed to be deleted IF it doesn't exist at a lower layer
  * cloning (instances of an object),
  * rendertargets (objects that gets rendered to)
  * links (objects linked to others to be deleted in a cascading fashion)
@@ -2160,12 +2207,19 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	int cascade_c = 0;
-
+	
 /* some objects can't be deleted */
 	if (!vobj || id == ARCAN_VIDEO_WORLDID || id == ARCAN_EID){
 		return rv;
 	}
 
+/* when a persist is defined in a lower layer, we know that the lowest layer is the last on to have the persistflag) */
+	if (vobj->flags.persist &&
+		(context_ind > 0 && context_stack[context_ind - 1].vitems_pool[vobj->cellid].flags.persist)){
+		rv = ARCAN_ERRC_UNACCEPTED_STATE;
+		return rv;
+	}
+	
 /* step one, disassociate from ALL rendertargets,  */
 	detach_fromtarget(&current_context->stdoutp, vobj);
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
@@ -2902,6 +2956,25 @@ arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon)
 	if (vobj){
 		vobj->flags.cliptoparent = toggleon;
 		rv = ARCAN_OK;
+	}
+
+	return rv;
+}
+
+arcan_errc arcan_video_persistobject(arcan_vobj_id id)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (vobj){
+		if (vobj->flags.clone == false &&
+			vobj->frameset_meta.capacity == 0 &&
+			vobj->parent == &current_context->world){
+			vobj->flags.persist = true;
+			rv = ARCAN_OK;
+		}
+		else
+			rv = ARCAN_ERRC_UNACCEPTED_STATE;
 	}
 
 	return rv;
@@ -3730,6 +3803,14 @@ unsigned arcan_video_contextusage(unsigned* free)
 
 void arcan_video_contextsize(unsigned newlim)
 {
+/* this change isn't allowed when the shrink/expand operation would
+ * change persistent objects in the stack */
+	if (newlim < arcan_video_display.default_vitemlim)
+		for (unsigned i = 1; i < current_context->vitem_limit-1; i++)
+			if (current_context->vitems_pool[i].flags.in_use &&
+				current_context->vitems_pool[i].flags.persist)
+				return;
+
 	arcan_video_display.default_vitemlim = newlim;
 }
 

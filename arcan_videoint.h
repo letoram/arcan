@@ -158,6 +158,11 @@ typedef struct arcan_vobject {
 		bool asynchdisable;  /* don't run any asynchronous loading operations */
 		bool cycletransform; /* when a transform is finished, attach it to the end */
 		bool origoofs;       /* when the user defines a world-space coordinate as center for rotation */
+
+/* with this flag set, the object will be maintained in every "higher" context position, and only deleted if
+ * pop:ed off without existing in a lower layer. They can't be rendertargets, nor be instanced or linked (anything
+ * that would allow for dangling references) primary use is for frameserver connections */
+		bool persist;
 	} flags;
 	
 /* position */
