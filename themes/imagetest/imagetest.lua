@@ -28,11 +28,8 @@ function imagetest()
 --	load_shader("test.vShader", "test.fShader", "test", {});
 end
 
+-- Using persist, so draw once and present in all contexts.
 function drawmenu()
-	if (valid_vid(text_vid)) then
-		delete_image(text_vid);
-	end
-
 	local total, used = current_context_usage();
 	
 	text_vid = render_text( [[\ffonts/default.ttf,14\#ffffff\bImagetest:\n\r]] ..
@@ -50,6 +47,8 @@ function drawmenu()
 	move_image(text_vid, VRESW - sprop.width - 10, 0, 0);
 	show_image(text_vid);
 	order_image(text_vid, 255);
+
+	print("persisting menu, status: ", tostring(persist_image(text_vid)));
 end
 
 function zordervidlim(load) 
@@ -135,18 +134,14 @@ function imagetest_input(inputtbl)
 			order_image(vid, 0);
 			show_image(vid);
 		elseif (symtable[ inputtbl.keysym ] == "s") then
-			delete_image(text_vid);
 			text_vid = BADID;
 			print("Stack push => " .. tostring ( push_video_context() ) );
 		elseif (symtable[ inputtbl.keysym ] == "p") then
-			delete_image(text_vid);
 			print("Stack pop => " .. tostring ( pop_video_context() ) );
 		elseif (symtable[inputtbl.keysym] == "a") then
 			print("Switching image mode\n");
 			imagefun = imagefun == load_image and load_image_asynch or load_image
 		end
-
-		drawmenu();
 	end
 end
 

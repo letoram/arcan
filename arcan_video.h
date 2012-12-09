@@ -174,6 +174,7 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb feed, vfunc_state state);
 arcan_errc arcan_video_changefilter(arcan_vobj_id id, enum arcan_vfilter_mode);
+arcan_errc arcan_video_persistobject(arcan_vobj_id id);
 
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
 arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display, bool mirror);

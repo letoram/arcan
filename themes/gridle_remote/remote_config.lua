@@ -941,7 +941,7 @@ function gridleremote_updatedynamic(newtbl)
 	end
 end
 
-local function setup_customview()
+local function setup_customview(triggerfun)
 	local background = nil;
 	for ind, val in ipairs( customview.current.static ) do
 		local vid = load_image( val.res );
@@ -980,7 +980,6 @@ local function setup_customview()
 		local props  = image_surface_properties(vid);
 		local iprops = image_surface_initial_properties(vid);
 
-
 		if (customview.current.background.tiled) then
 			image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
 		end
@@ -995,10 +994,6 @@ local function setup_customview()
 	olddispatch = settings.iodispatch;
 	settings.iodispatch = {};
 	
-	settings.iodispatch["MENU_ESCAPE"] = function()
-		confirm_shutdown();
-	end
-		
 	customview.dispatchtbl = settings.iodispatch;
 end
 
@@ -1008,7 +1003,7 @@ local function customview_3dbase()
 	customview.light_shader = lshdr;
 end
 
-function gridleremote_customview()
+function gridleremote_customview(triggerfun)
 	local disptbl;
 	
 -- try to load a preexisting configuration file, if no one is found

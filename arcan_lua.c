@@ -571,6 +571,13 @@ int arcan_lua_forceblend(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_imagepersist(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	lua_pushboolean(ctx, arcan_video_persistobject(id) == ARCAN_OK);
+	return 1;
+}
+
 int arcan_lua_imageopacity(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -3975,6 +3982,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "scale_image", arcan_lua_scaleimage);
 	arcan_lua_register(ctx, "resize_image", arcan_lua_scaleimage2);
 	arcan_lua_register(ctx, "blend_image", arcan_lua_imageopacity);
+	arcan_lua_register(ctx, "persist_image", arcan_lua_imagepersist);
 	arcan_lua_register(ctx, "image_parent", arcan_lua_imageparent);
 	arcan_lua_register(ctx, "image_children", arcan_lua_imagechildren);
 	arcan_lua_register(ctx, "order_image", arcan_lua_orderimage);
