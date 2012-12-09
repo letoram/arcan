@@ -819,6 +819,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
  * each transfer, minimising latency is key. All operations require an intermediate buffer
  * and are synched to one framequeue */
 		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
+			ctx->nopts    = true;
+			ctx->autoplay = true;
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->sz_audb  = 1024 * 6400;
 			ctx->ofs_audb = 0;

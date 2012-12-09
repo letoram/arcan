@@ -30,15 +30,6 @@
 #include <math.h>
 #include <assert.h>
 
-#ifdef EGL
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-static EGLDisplay egl_display;
-static EGLDisplay egl_config;
-static EGLDisplay egl_context;
-static EGLDisplay egl_surface;
-#endif
-
 #define GLEW_STATIC
 #define NO_SDL_GLEXT
 #include <glew.h>
@@ -905,48 +896,6 @@ const static char* deffprg =
 
 extern int TTF_Init();
 
-#ifdef EGL
-/* temporary (NASTY) workaround for raspberry PI, will be replaced with GLFW(3.0 for RPI) */
-arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool, frames, bool conservative)
-{
-	const EGLint s_configAttribs[] =
-	{
-		EGL_RED_SIZE,   8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE,  8,
-		EGL_ALPHA_SIZE, 8,
-		EGL_DEPTH_SIZE, 16,
-		EGL_STENCIL_SIZE, 1,
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_SAMPLE_BUFFERS, 1,
-		EGL_NONE
-	};
-	
-	arcan_video_display.fullscreen = fs;
-	arcan_video_display.screen = (void*) 0x01; /* so we avoid if(..) tests yet get a seg to debug */
-	egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-
-	if (!egl_display)
-		return ARCAN_ERRC_BADVMODE;
-
-	if (!eglInitialize(egl_display))
-		return ARCAN_ERRC_BADVMODE;
-
-	EGLint num_config;
-	if (!eglSaneChooseConfigBRCM(egl_display, s_configAttribs, &egl_config, 1, &num_config))
-		return ARCAN_ERRC_BADVMODE;
-
-	if ( (egl_context = eglCreateContext(egl_display, egl_config, NULL, NULL)) == EGL_NO_CONTEXT )
-		return ARCAN_ERRC_BADVMODE;
-
-	if ( (egl_surface = eglCreateWindowSurface(egl_display, egl_config, TYPE, NULL)) == EGL_NO_SURFACE )
-		return ARCAN_ERRC_BADVMODE;
-
-	eglMakeCurrent(egl_display, egl_suface, egl_surface, egl_context);
-	
-	return ARCAN_OK;
-}
-#else
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
 {
 /* some GL attributes have to be set before creating the video-surface */
@@ -1032,7 +981,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 
 	return arcan_video_display.screen ? ARCAN_OK : ARCAN_ERRC_BADVMODE;
 }
-#endif
 
 uint16_t arcan_video_screenw()
 {
@@ -3483,11 +3431,7 @@ void arcan_video_refresh(float tofs)
 /* for less interactive / latency sensitive applications the delta > .. with vsync on, the delta > .. could be removed */
 		arcan_video_refresh_GL(tofs);
 
-#ifdef EGL
-		eglSwapBuffers(egl_display, egl_surface);
-#else
 		SDL_GL_SwapBuffers();
-#endif
 		lastframe = SDL_GetTicks();
 	}
 }

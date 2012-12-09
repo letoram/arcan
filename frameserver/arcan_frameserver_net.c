@@ -840,9 +840,7 @@ static bool client_data_process(apr_socket_t* inconn)
 		cs.dispatch = client_data_tlvdisp;
 	}
 
-	printf("client_data_process\n");
 	bool rv = validator_tlv(&cs);
-	printf("validator? %d\n", rv);
 	
 	if (!rv){
 		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};

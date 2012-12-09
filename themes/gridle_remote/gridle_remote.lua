@@ -39,12 +39,29 @@ end
 
 function net_event(source, tbl)
 	if (tbl.kind == "message") then
-		if (tbl.message == "begin_item:") then
-			
+-- format matches broadcast_game in gridle.lua
+		nitem = string.split(tbl.message, ":")
+
+		if (nitem[1] == "begin_item") then
 			settings.cur_item = {};
-			settings.item_count = nil;
+			settings.item_count = tonumber(nitem[2]);
+			last_key = nil;
+
+		elseif (settings.item_count) then
+			if (last_key == nil) then
+				last_key = tbl.message;
+			else
+				settings.cur_item[last_key] = tbl.message;
+				last_key = nil;
+				settings.item_count = settings.item_count - 1;
+				if (settings.item_count <= 0) then
+					settings.item_count = nil;
+					gridleremote_updatedynamic(settings.cur_item);
+				end
+			end
 		end
 
+	end
 end
 
 function gridle_remote()

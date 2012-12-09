@@ -1,5 +1,16 @@
 Some notes and hints for building / patching / packaging the engine as such.
 
+[Targetted Platform]
+ Language: C99 -- no 89 workarounds planned or allowed, no C11 features planned or allowed. 
+                  GNU extensions will be killed on sight.
+
+ System API: * POSIX2008 -- Linux extensions only allowed when there's no reasonable alternatives.
+               win32/osx breakage workarounds should be split of into separate objects.
+             
+             * gradually transition to APR
+
+ Hardware:   * OpenGL 2.1 / GLES2.0 compatible acceleration, only RGBA8888 as texture format.
+
 [All]
  * Remember to use the "default / standard" resources/themes when building packages, tools, resources, themes will be included in installation binaries as per the build system.
    This includes .lua scripts emitted as part of keyconf / ledconf etc.
