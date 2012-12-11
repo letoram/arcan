@@ -304,6 +304,7 @@ static void transfer_persists(struct arcan_video_context* src, struct arcan_vide
 				dst->nalive++;
 				src->vitems_pool[i].owner = NULL;
 				attach_object(&dst->stdoutp, &src->vitems_pool[i]);
+				trace("context_stack_push() : transfer-attach: %s\n", src->vitems_pool[i].tracetag);
 			}
 
 		}
@@ -3597,20 +3598,6 @@ img_cons arcan_video_dimensions(uint16_t w, uint16_t h)
 {
 	img_cons res = {w, h};
 	return res;
-}
-
-void arcan_video_dumppipe()
-{
-	arcan_vobject_litem* current = current_context->stdoutp.first;
-	uint32_t count = 0;
-	printf("-----------\n");
-	if (current)
-		do {
-			printf("[%i] #(%i) - (ID:%u) (Order:%i) (Dimensions: %f, %f - %f, %f) (Opacity:%f)\n", current->elem->flags.in_use, count++, (unsigned) current->elem->cellid, current->elem->order,
-			       current->elem->current.position.x, current->elem->current.position.y, current->elem->current.scale.x, current->elem->current.scale.y, current->elem->current.opa);
-		}
-		while ((current = current->next) != NULL);
-	printf("-----------\n");
 }
 
 /* the actual storage dimensions,

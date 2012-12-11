@@ -483,6 +483,7 @@ local function customview_internal(source, datatbl)
 
 			gridle_input = gridle_internalinput;
 			settings.in_internal = true;
+			settings.internal_txcos = image_get_txcos(source);
 
 			gridlemenu_rebuilddisplay();
 			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
@@ -511,7 +512,7 @@ customview.cleanup = function()
 	toggle_mouse_grab(MOUSE_GRABOFF);
 	
 	local resetview = function()
-		pop_video_context();
+		print("pop", pop_video_context());
 		imagery.server = nil;
 		settings.iodispatch = customview.dispatchtbl;
 		gridle_input = gridle_dispatchinput;
@@ -767,7 +768,7 @@ local function save_config()
 		
 	play_audio(soundmap["MENU_FADE"]);
 	settings.iodispatch = customview_display;
-	pop_video_context();
+	print("pop", pop_video_context());
 	gridle_customview();
 end
 
@@ -818,7 +819,7 @@ local function show_config()
 		
 		play_audio(soundmap["MENU_FADE"]);
 		settings.iodispatch = customview_display;
-		pop_video_context();
+		print("pop", pop_video_context());
 		customview.in_customview = false;
 		imagery.server = nil;
 		setup_gridview();
@@ -1081,7 +1082,10 @@ local function setup_customview()
 		settings.iodispatch["SWITCH_VIEW"] = function()
 			if ( navi:escape() ) then
 				play_audio(soundmap["MENU_FADE"])
+-- delete all "new" resources
 				pop_video_context();
+-- then copy the server vid again
+				push_video_context();
 				settings.iodispatch = olddispatch;
 				customview.in_customview = false; 
 				setup_gridview();
@@ -1108,7 +1112,9 @@ function gridle_customview()
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
-	pop_video_context();
+	print("pop", pop_video_context());
+	push_video_context();
+
 	setup_3dsupport();
 	customview_3dbase();
 

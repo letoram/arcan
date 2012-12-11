@@ -429,7 +429,7 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "position3d")  then cursor_axis3d(vid);
 		end 
 	end
-
+	
 	settings.iodispatch["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
 	settings.iodispatch["SWITCH_VIEW"] = function() position_toggle();   end
 	settings.iodispatch["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
@@ -704,7 +704,7 @@ local function save_config()
 		
 	settings.iodispatch = customview_display;
 	pop_video_context();
-	gridleremote_customview();
+	gridleremote_customview(lasttrigger);
 end
 
 -- reuse by other menu functions
@@ -796,18 +796,6 @@ local function show_config()
 	
 	table.insert(mainlbls, "---");
 	table.insert(mainlbls, "Save");
-	
-	mainptrs["Cancel"] = function(label, save)
-		while current_menu ~= nil do
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		end
-
-		settings.iodispatch = customview_display;
-		pop_video_context();
-		customview.in_customview = false;
-		setup_gridview();
-	end
 	
 	mainptrs["Save"] = save_config;
 	
@@ -1005,11 +993,11 @@ end
 
 function gridleremote_customview(triggerfun)
 	local disptbl;
+	lasttrigger = triggerfun;
 	
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
-	pop_video_context();
 	setup_3dsupport();
 	customview_3dbase();
 
@@ -1022,6 +1010,7 @@ function gridleremote_customview(triggerfun)
 			customview.in_customview = true;
 			customview.in_config = false;
 			setup_customview();
+			triggerfun();
 		end
 
 	else

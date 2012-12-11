@@ -620,6 +620,7 @@ function undo_displaymodes()
 
 	end
 
+	image_set_txcos(internal_vid, settings.internal_txcos);
 	imagery.temporary = {};
 	imagery.display_vid = BADID;
 end
