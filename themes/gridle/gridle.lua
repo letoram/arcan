@@ -193,7 +193,6 @@ end
 function broadcast_game(gametbl, playing)
 -- there might be other stuff in gametbl than provided by the initial list_games
 -- so just send the strings/numbers
-
 	if (imagery.server) then
 
 		count = 0
@@ -305,7 +304,11 @@ function gridle()
 	load_settings();
 
 -- network remote connection switch on / off
-	network_toggle();
+	if ( network_toggle() ) then
+		push_video_context();
+	end
+
+-- we actually want the network toggle to live in a separate context, so that it can't be deleted.
 
 	if (settings.sortfunctions[settings.sortlbl]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
@@ -465,10 +468,8 @@ end
 
 function network_onevent(source, tbl)
 	if (tbl.kind == "frameserver_terminated") then
-		delete_image(source);
-		imagery.server = nil;
--- might be that it wasn't possible to bind a port or whatever, add a slow retry timer if the mode
--- still is !Disabled
+-- As this one is toggled persistent, it is not entirely sure that we're in a context where
+-- delete_image will work 
 	elseif (tbl.kind == "resized") then
 		a = 1;
 	elseif (tbl.kind == "connected") then
@@ -505,16 +506,11 @@ function network_toggle()
 
 		if (not imagery.server) then
 			imagery.server = net_listen(settings.listen_host, network_onevent);
-			print("listening:", imagery.server);
-		end
-		
-	else
-
-		if (imagery.server) then
-			delete_image(imagery.server);
-			imagery.server = nil;
+			print("network server persistent:", tostring(persist_image(imagery.server)));
+			image_tracetag(imagery.server, "network server");
 		end
 
+		return true;
 	end
 end
 

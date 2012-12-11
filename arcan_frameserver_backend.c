@@ -853,9 +853,12 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 	}
 /* hijack works as a 'process parasite' inside the rendering pipeline of other projects,
  * similar otherwise to libretro except it only deals with videoframes (currently) */
-	else
+	else{
 		ctx->kind = ARCAN_HIJACKLIB;
-
+		ctx->autoplay = true;
+		ctx->nopts = true;
+	}
+	
 	arcan_frameserver_meta vinfo = {0};
 		
 	ctx->child_alive = true;

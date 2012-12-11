@@ -18,7 +18,13 @@ function string.split(instr, delim)
 end
 
 function net_event(source, tbl)
-	if (tbl.kind == "message") then
+	print("tbl.kind:", tbl.kind);
+	
+	if (tbl.kind == "connected") then
+		spawn_warning("Connected", 125);
+		settings.iodispatch = {};
+
+	elseif (tbl.kind == "message") then
 -- format matches broadcast_game in gridle.lua
 		nitem = string.split(tbl.message, ":")
 
@@ -44,6 +50,32 @@ function net_event(source, tbl)
 	end
 end
 
+function spawn_warning( message, expiration )
+-- render message and make sure it is on top
+	if (settings.infowin) then
+		delete_image(settings.infowin.anchor);
+		settings.infowin = nil;
+	end
+	
+	local msg         = string.gsub(message, "\\", "\\\\"); 
+	local infowin     = listview_create( {msg}, VRESW / 2, VRESH / 2 );
+	infowin:show();
+
+	if (expiration == nil) then
+		settings.infowin = infowin;
+	else
+		expire_image(infowin.anchor, 125);
+		blend_image(infowin.window, 0.0, 125);
+		blend_image(infowin.border, 0.0, 125);
+	end
+
+	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
+	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
+	
+	move_image(infowin.anchor, x, y);
+	hide_image(infowin.cursorvid);
+end
+
 --
 -- Callback that shows the main connect menu etc.
 -- Used as "safe-state" so also triggered if the network connection dies
@@ -51,7 +83,7 @@ end
 function setup_complete()
 	menu_defaultdispatch();
 
-	local mainlbls     = {"Settings...", "Connection...", "Quit"};
+	local mainlbls     = {};
 	local settingslbls = {"Reset Keyconfig", "Reset Layout"};
 	local connectlbls  = {"Local Discovery", "Specify Server"};
 	
@@ -60,7 +92,11 @@ function setup_complete()
 	local settingsptrs = {};
 
 	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs);
-	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", settingslbls, settingsptrs);
+	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", connectlbls, connectptrs);
+	
+	table.insert(mainlbls, "----");
+	table.insert(mainlbls, "Quit");
+
 	mainptrs["Quit"] = function() shutdown(); end
 
 	settingsptrs["Reset Layout"] = function()
@@ -71,6 +107,8 @@ function setup_complete()
 			current_menu = current_menu.parent;
 		end
 
+		pop_video_context();
+		settings.server = nil;
 		gridleremote_customview( setup_complete );
 	end
 
@@ -81,12 +119,25 @@ function setup_complete()
 
 	connectptrs["Local Discovery"] = function()
 		settings.connect_method = "local discovery";
-		if (valid_vid(settings.server)) then delete_image(settings.server); end
+
+		if (valid_vid(settings.server)) then
+			delete_image(settings.server);
+		end
+
+		settings.connection = "connecting";
+		spawn_warning("Looking for local server...");
 		settings.server = net_open(net_event);
+
+		while current_menu ~= nil do
+			current_menu:destroy();
+			current_menu = current_menu.parent;
+		end
+
 	end
 
 	connectptrs["Specify Server"] = function()
--- spawn OSD and upon completion, explicit connection 	
+-- spawn OSD and upon completion, explicit connection
+		
 	end
 
 	if (valid_vid(settings.server)) then
@@ -109,6 +160,7 @@ function setup_complete()
 	current_menu:show();
 	move_image(current_menu.anchor, 10, VRESH * 0.1, 10);
 
+
 --	settings.server = net_open(net_event);
 end
 
@@ -117,10 +169,11 @@ function gridle_remote()
 	system_load("scripts/keyconf.lua")();
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/listview.lua")();
+	system_load("scripts/osdkbd.lua")();
 	system_load("remote_config.lua")();
 
 -- rREMOTE_ESCAPE gets remapped to MENU_ESCAPE
-	local keylabels = { "rLOCAL_MENU", "rMENU_TOGGLE", "rREMOTE_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH",
+	local keylabels = { "rLOCAL_MENU", "rMENU_TOGGLE", "rREMOTE_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rSWITCH_VIEW", "rLAUNCH",
 		"aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
 
 -- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
@@ -148,10 +201,6 @@ function setup_keys( trigger )
 
 end
 
---
--- until certain objects can be set to be "PERSISTENT" across push/pop,
--- some combinations don't really work for switching views back and forth..
--- 
 function gridle_remote_dispatchinput(iotbl, override)
 	local restbl = override and override or keyconfig:match(iotbl);
 	
