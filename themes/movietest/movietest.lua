@@ -94,7 +94,7 @@ function movietest_input( inputtbl )
 			pause_movie(img.last);
 		
 		elseif (symtable[ inputtbl.keysym ] == "w") then
-			vid, aid = load_movie("webcam:" .. webcam_ind, FRAMESERVER_NOLOOP, 
+			vid, aid = load_movie("vidcap:" .. webcam_ind, FRAMESERVER_NOLOOP, 
 function(source, status)
 	print("webcam status:", status.kind);
 	if (status.kind == "resized") then
