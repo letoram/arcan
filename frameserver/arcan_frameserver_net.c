@@ -68,22 +68,34 @@ enum server_modes {
 
 struct {
 	struct frameserver_shmcont shmcont;
+
+/* callback driven struct, basic one is just colors matching
+ * some state of the server/client */
 	struct graph_context* graphing;
-	
+
+/* for future time-synchronization (ping/pongs interleaved 
+ * with regular messages */
 	unsigned long long basestamp;
 
-	apr_thread_mutex_t* conn_cont_lock;
 	apr_pool_t* mempool;
 	apr_pollset_t* pollset;
-	
+
+/* SHM-API interface */
 	uint8_t* vidp, (* audp);
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
 
+/* intermediate storage (1:1 statechange vs. event msg),
+ * this can be transferred to a connection */
 	file_handle tmphandle;
-	apr_file_t* state_out, (* state_in);
+
 	unsigned n_conn;
+	
+/* used to force a specific state-transfer size to child,
+ * for those cases where we work with blocks rather than streams */
 	size_t state_globsz;
+	char* rledec_buf;
+	size_t rledec_sz;
 } netcontext = {0};
 
 /* single-threaded multiplexing server with a fixed limit on number of connections,
@@ -104,9 +116,10 @@ struct conn_state {
 	bool (*queueout)(struct conn_state* self, char* buf, size_t buf_sz);
 
 /* PING/PONG (for TCP) is bound to other messages */
-	unsigned long long connect_stamp, last_ping;
+	unsigned long long connect_stamp, last_ping, last_pong;
 	int delay;
 
+/* DEFAULT_OUTBUF_SZ / DEFAULT_INBUF_SZ */
 	char* inbuffer;
 	size_t buf_sz;
 	int buf_ofs;
@@ -114,12 +127,14 @@ struct conn_state {
 	char* outbuffer;
 	size_t outbuf_sz;
 	int outbuf_ofs;
-
+	bool (*state_store)(unsigned long ofset, char* buf, int len);
+	
 /* a client may maintain 0..1 state-table that can be pushed between clients */
 	char* statebuffer;
 	size_t state_sz;
 	bool state_in;
 
+/* magic connection ID, XOR with cookie or something */
 	int slot;
 };
 
@@ -216,6 +231,60 @@ static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
 	return false;
 }
 
+static bool state_decode(struct conn_state* self, int len, char* data)
+{
+/* first char, transfer mode */
+	char mode = data[0];
+	uint32_t repc;
+	uint64_t ofs;
+	size_t block_sz;
+	int nbpb, block_cnt = 0;
+
+	memcpy(&ofs, &data[1], sizeof(uint64_t));
+
+/* self must be able to manage a datawrite at ofs + data */
+	switch (mode){
+		case STATE_RAWBLOCK:
+			if (!self->state_store(ofs, &data[1 + sizeof(uint64_t)], len))
+				return false;
+		break;
+
+/* data contains counter and remaining of block is pattern.
+ * self must be able to manage ( len-(11 bytes) ) * counter
+ * this expands in 64k- sized (aligned against blocksize) writes 
+ * through the state_store */
+		case STATE_RLEBLOCK:
+/* extract counter */
+			memcpy(&repc, &data[1 + sizeof(uint64_t)], sizeof(uint32_t));
+			block_sz = len - 1 - sizeof(uint64_t) - sizeof(uint32_t);
+
+/* fill the rledec buffer with number of repetitions of pattern that can fit
+ * in the decode buffer (or if the number requested is smaller than what we can fit, cap) */
+			nbpb = netcontext.rledec_sz / block_sz;
+			if (netcontext.rledec_sz > repc * block_sz)
+				nbpb = repc * block_sz;
+
+			if (block_sz == 1)
+				memset(netcontext.rledec_buf, data[len - block_sz], nbpb);
+			else
+				for (int i = 0; i < nbpb; i++)
+					memcpy(&netcontext.rledec_buf[i * block_sz], &data[len - block_sz], block_sz);
+				
+/* flush (using rledec_buf), repc repetitions of data to store */
+			while (repc){
+				int ntc = repc > nbpb ? nbpb : repc;
+				if (!self->state_store(ofs + block_sz * block_cnt, netcontext.rledec_buf, ntc * block_sz))
+					return false;
+
+				block_cnt += ntc;
+				repc -= ntc;
+			}
+
+		break;
+	}
+	
+}
+
 static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value)
 {
 	arcan_event newev = {.category = EVENT_NET};
@@ -224,11 +293,52 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 	switch(tag){
 		case TAG_NETMSG:
 			newev.kind = EVENT_NET_CUSTOMMSG;
-			snprintf(newev.data.network.message, sizeof(newev.data.network.message)/sizeof(newev.data.network.message[0]), "%s", value);
+			snprintf(newev.data.network.message, 
+				sizeof(newev.data.network.message)/sizeof(newev.data.network.message[0]),
+			"%s", value);
 			arcan_event_enqueue(&netcontext.outevq, &newev);
 		break;
-		case TAG_NETINPUT: break;
-		case TAG_STATE_XFER: break;
+
+		case TAG_NETINPUT: 
+/* need to implement proper serialization of event structure first */
+		break;
+		
+		case TAG_NETPING:
+			if (len == 4){
+				uint32_t inl;
+				memcpy(&inl, value, sizeof(uint32_t));
+				inl = ntohl(inl);
+				self->last_ping = inl;
+				
+				char outbuf[5];
+				outbuf[0] = TAG_NETPONG;
+				inl = htonl(frameserver_timemillis());
+				memcpy(&outbuf[1], &inl, sizeof(uint32_t));
+			} 
+			else
+				return false; /* Protocol ERROR */
+
+/* four bytes, unsigned, big-endian */
+		break;
+		
+		case TAG_NETPONG:
+			if (len == 4){
+				uint32_t inl;
+				memcpy(&inl, value, sizeof(uint32_t));
+				inl = ntohl(inl);
+				self->last_pong = inl;
+			}
+			else
+				return false; /* Protocol ERROR */
+		break;
+/*
+ * first byte decode_mode, unsigned 4 bytes (ofs) then (len) data 
+ * decode mode can be 0(raw) 1(xor), 2(rle), 3(rlexor)
+ */
+		case TAG_STATE_XFER:
+			return state_decode(self, len, value);
+		break;
+		
 		default:
 			LOG("arcan_frameserver(net-cl), unknown tag(%d) with %d bytes payload.\n", tag, len);
 	}
@@ -589,13 +699,13 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					netcontext.tmphandle = frameserver_readhandle(ev);
 				break;
 
+/* use last FD transfer as state recipient / state- storage,
+ * separate command sets active storage slot, and these force an update */
 				case TARGET_COMMAND_STORE:
-					netcontext.state_out = NULL;
 					netcontext.tmphandle = 0;
 				break;
 
 				case TARGET_COMMAND_RESTORE:
-					netcontext.state_in = NULL;
 					netcontext.tmphandle = 0;
 				break;
 				default:
@@ -626,6 +736,7 @@ static void server_session(const char* host, int limit)
  * each IP (multihomed) */
 	int timeout = -1;
 	if (apr_pollset_create(&poll_in, limit + 3, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
+		apr_pollset_create(&poll_in, limit + 3, netcontext.mempool, 0);
 		timeout = 100000;
 	} else {
 #ifdef SIGUSR1
@@ -811,13 +922,6 @@ static bool client_data_tlvdisp(struct conn_state* self, char tag, int len, char
 /* RLE compressed keyframe */ 
 		case TAG_STATE_XFER:
 		break;
-
-/* XOR with previous frame */
-		case TAG_STATE_XFER_DELTA:
-		break;
-
-		case TAG_STATE_XFER_META:
-		break;
 		
 /* unpack arcan_event */
 		case TAG_NETINPUT: break;
@@ -907,19 +1011,21 @@ static bool client_inevq_process(apr_socket_t* outconn)
 		else if (ev->category == EVENT_TARGET){
 			switch (ev->kind){
 				case TARGET_COMMAND_EXIT: return false; break;
-/* in order to re-use the FD transfer mechanisms used for libretro etc. 
+
+				case TARGET_COMMAND_STATESZ:
+					netcontext.state_globsz = ev->data.target.ioevs[0].iv;
+				break;
+
 				case TARGET_COMMAND_FDTRANSFER:
 					netcontext.tmphandle = frameserver_readhandle(ev);
 				break;
 
 				case TARGET_COMMAND_STORE:
-					netcontext.storehandle = netcontext.tmphandle;
 					netcontext.tmphandle = 0;
 				break;
 				case TARGET_COMMAND_RESTORE:
-					netcontext.restorehandle = netcontext.tmphandle;
 					netcontext.tmphandle = 0;
-				break; */
+				break; 
 				default:
 					; /* just ignore */
 			}
@@ -1032,6 +1138,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	apr_initialize();
 	apr_pool_create(&netcontext.mempool, NULL);
 	netcontext.basestamp = frameserver_timemillis();
+	netcontext.rledec_sz = DEFAULT_RLEDEC_SZ;
+	netcontext.rledec_buf = malloc(netcontext.rledec_sz);
 	
 	const char* rk;
 

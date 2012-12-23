@@ -30,6 +30,10 @@
 #define DEFAULT_DISCOVER_RESP_PORT 6682
 #endif
 
+#ifndef DEFAULT_RLEDEC_SZ 
+#define DEFAULT_RLEDEC_SZ 65536
+#endif
+
 /* this is just used as a hint (when using discovery mode) */
 #ifndef DEFAULT_CONNECTION_PORT
 #define DEFAULT_CONNECTION_PORT 6680
@@ -63,6 +67,11 @@ enum NET_TAGS {
 	TAG_NETINPUT         = 4, /* specialized netmsg for input event streams  */
 	TAG_NETPING          = 5,
 	TAG_NETPONG          = 6  
+};
+
+enum NET_STATES {
+	STATE_RAWBLOCK = 0,
+	STATE_RLEBLOCK = 1
 };
 
 /* Overall design / idea:

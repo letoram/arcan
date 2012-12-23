@@ -64,10 +64,13 @@ enum ARCAN_TARGET_COMMAND {
 /* notify that there is a file descriptor to be retrieved and set as the input/output fd for other
  * command events */
 	TARGET_COMMAND_FDTRANSFER,
-
+	
 /* hinting event for frameskip modes (auto, process every n frames, singlestep) */
 	TARGET_COMMAND_FRAMESKIP,
 	TARGET_COMMAND_STEPFRAME,
+
+/* hint about how large the stateblock size will be */
+	TARGET_COMMAND_STATESZ,
 
 /* hinting event for pushing state to the suggested file-descriptor */
 	TARGET_COMMAND_STORE,
