@@ -3,8 +3,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <sys/types.h>
 
 #include "net_graph.h"
+#include "../../arcan_math.h"
+#include "../../arcan_general.h"
 #include "../arcan_frameserver.h"
 
 struct event_bucket {
@@ -20,10 +23,10 @@ struct graph_context {
 	uint32_t grid_vval;
 	uint32_t solid_c;
 
-	struct buckets {
+	struct {
 		int n_buckets;
 		struct event_bucket* buckets;
-	};
+	} buckets;
 	
 	enum graphing_mode mode;
 };
@@ -95,8 +98,8 @@ static bool graph_refresh_server(struct graph_context* ctx)
 static bool graph_refresh_client(struct graph_context* ctx)
 {
 	long long int ts = frameserver_timemillis();
-	if (ctx->buckets.active == 0)
-		return false;
+/*	if (ctx->buckets.active == 0)
+		return false; */
 	
 	clear_tocol(ctx, ctx->bgval);
 	
@@ -105,10 +108,11 @@ static bool graph_refresh_client(struct graph_context* ctx)
 
 bool graph_refresh(struct graph_context* ctx)
 {
-	if (ctx->render_mode == GRAPH_NET_SERVER)
+/*	if (ctx->render_mode == GRAPH_NET_SERVER)
 		return graph_refresh_server(ctx);
 	else 
-		return graph_refresh_client(ctx);
+		return graph_refresh_client(ctx); */
+    return NULL;
 }
 
 /* setup basic context (history buffer etc.)

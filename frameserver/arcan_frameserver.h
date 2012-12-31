@@ -42,7 +42,7 @@ void* frameserver_getrawfile_handle(file_handle, ssize_t* ressize);
 bool frameserver_dumprawfile_handle(const void* const sbuf, size_t ssize, file_handle, bool finalize);
 
 /* block until parent has supplied us with a file_handle valid in this process */
-file_handle frameserver_readhandle(arcan_event*);
+file_handle frameserver_readhandle(struct arcan_event*);
 
 /* store buf in handle pointed out by file_handle, ressize specifies number of bytes to store */
 int frameserver_pushraw_handle(file_handle, void* buf, size_t ressize);

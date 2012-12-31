@@ -512,7 +512,7 @@ customview.cleanup = function()
 	toggle_mouse_grab(MOUSE_GRABOFF);
 	
 	local resetview = function()
-		print("pop", pop_video_context());
+		pop_video_context();
 		imagery.server = nil;
 		settings.iodispatch = customview.dispatchtbl;
 		gridle_input = gridle_dispatchinput;
@@ -572,7 +572,8 @@ local function launch(tbl)
 end
 
 local function effecttrig(label)
-	local shdr = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. label, "bgeffect", {});
+	print("background shader:", "shaders/bgeffects/" .. label);
+	local shdr = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. label, "bgeffect", {});
 	customview.bgshader = shdr;
 	customview.bgshader_label = label;
 
@@ -583,8 +584,8 @@ end
 local function get_identimg(label)
 	local vid = BADID;
 	
-	if (resource("customview/" .. string.lower(label) .. ".png")) then
-		vid = load_image("customview/" .. string.lower(label) .. ".png");
+	if (resource("images/placeholders/" .. string.lower(label) .. ".png")) then
+		vid = load_image("images/placeholders/" .. string.lower(label) .. ".png");
 	end
 	
 	if (vid == BADID) then
@@ -637,8 +638,8 @@ end
 
 -- only one navigator allowed, boring list, iconed list etc. use static preview- image. 
 local function positionnavi(label)
-	if (resource("customview/" .. string.lower(label) .. ".png")) then
-		vid = load_image("customview/" .. string.lower(label) .. ".png");
+	if (resource("images/placeholders/" .. string.lower(label) .. ".png")) then
+		vid = load_image("images/placeholders/" .. string.lower(label) .. ".png");
 	end
 
 	if (vid == BADID) then
@@ -768,7 +769,7 @@ local function save_config()
 		
 	play_audio(soundmap["MENU_FADE"]);
 	settings.iodispatch = customview_display;
-	print("pop", pop_video_context());
+	pop_video_context();
 	gridle_customview();
 end
 
@@ -802,7 +803,7 @@ local function show_config()
 	local mainptrs = {};
 
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
+	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("shaders/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Vidcap", "Model"}, positiondynamic));
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
@@ -819,7 +820,7 @@ local function show_config()
 		
 		play_audio(soundmap["MENU_FADE"]);
 		settings.iodispatch = customview_display;
-		print("pop", pop_video_context());
+		pop_video_context();
 		customview.in_customview = false;
 		imagery.server = nil;
 		setup_gridview();
@@ -1010,7 +1011,7 @@ local function setup_customview()
 		end
 		
 		if (customview.bgshader_label) then
-			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
+			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
 			update_bgshdr();
 		end
 	end
@@ -1112,7 +1113,7 @@ function gridle_customview()
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
-	print("pop", pop_video_context());
+	pop_video_context();
 	push_video_context();
 
 	setup_3dsupport();
