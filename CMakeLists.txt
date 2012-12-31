@@ -246,9 +246,9 @@ if (APR_LIBRARIES)
 
 	set(FSRV_BUILD_FLAGS "${FSRV_BUILD_FLAGS} -DHAVE_APR")
 	message("(*) Apache Portable Runtime found, enabling net support.")
-else()
+else(APR_LIBRARIES)
 	message("( ) Apache Portable Runtime not found, net support disabled.")
-endif()
+endif(APR_LIBRARIES)
 
 include_directories(${INCLUDE_DIRECTORIES})
 
@@ -365,6 +365,7 @@ if (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
 	add_library(arcan_hijack32 SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c)
 	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
  	target_link_libraries(arcan_hijack32 -m32 -lrt )
+	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
 
 install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
@@ -383,16 +384,12 @@ endif(EXISTS "/usr/bin/dpkg")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Packages;.*\\\\.cmake;install_manifest.txt;CMakeCache.txt;${CMAKE_PACKAGE_NAME}.*\\\\.(tar\\\\.gz|tar\\\\.bz2|deb);Makefile;")
 
-set(CPACK_RPM_PACKAGE_NAME ${CPACK_DEBIAN_PACKAGE_DESCRIPTION})
-set(CPACK_RPM_PACKAGE_DESCRIPTION ${CPACK_DEBIAN_PACKAGE_DESCRIPTION})
-set(CPACK_RPM_PACKAGE_LICENSE "GNU General Public License (GPL")
 #
 #
 #
 # ----------------------- WINDOWS --------------------------
 #
 #
-
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
 
@@ -453,7 +450,6 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  SET(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
  SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
  SET(CPACK_PACKAGE_INSTALL_DIRECTORY "Arcan")
-# SET(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}\\\\InstallIcon.bmp") -- horrible scaling
 
 # try to autoinstall OpenAL (if needed)
 SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
@@ -469,6 +465,8 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB (full).lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB (update).lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --update --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle Remote).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle_remote'
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Streamer).lnk' '\$INSTDIR\\\\arcan.exe' 'streamer'
 
 	CreateDirectory '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Core Comparator.lnk' '\$INSTDIR\\\\arcan.exe' 'corecomp'
@@ -491,6 +489,8 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 	RMDir '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Tests'
 	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Build DB.lnk'
 	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle).lnk'
+	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle Remote).lnk'
+	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Streamer).lnk'
 ")
 
  SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")

@@ -30,9 +30,9 @@
 #include <errno.h>
 #include <math.h>
 #include <assert.h>
+#include <signal.h>
 
 #include <SDL/SDL.h>
-#include <apr_poll.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"

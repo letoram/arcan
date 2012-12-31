@@ -676,11 +676,11 @@ function gridle_setup_internal(video, audio)
 
 -- bezels, overlays, backdrops
 	gridle_load_internal_extras(current_game().resources, current_game().target);
-	
+
 	if (settings.autosave == "On") then
 		internal_statectl("auto", false);
 	end
-	
+
 	internal_aid = audio;
 	internal_vid = video;
 
@@ -696,7 +696,7 @@ function gridle_setup_internal(video, audio)
 	gridle_input = gridle_internalinput;
 
 	gridlemenu_rebuilddisplay();
-	
+
 -- don't need these running in the background 
 	erase_grid(true);
 	zap_whitegrid();
