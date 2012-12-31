@@ -1943,10 +1943,14 @@ int arcan_lua_camtag(lua_State* ctx)
 int arcan_lua_getimageprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	unsigned dt = luaL_optnumber(ctx, 2, 0);
+	long long dt = luaL_optnumber(ctx, 2, 0);
 	surface_properties prop;
-	prop = dt > 0 ? arcan_video_properties_at(id, dt) : arcan_video_current_properties(id);
 
+	if (dt < 0)
+		dt = LONG_MAX;
+	
+	prop = dt > 0 ? arcan_video_properties_at(id, dt) : arcan_video_current_properties(id);
+	
 	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 

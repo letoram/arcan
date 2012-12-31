@@ -230,6 +230,8 @@ if (APR_LIBRARIES)
 		FSRV_SOURCES
 		frameserver/arcan_frameserver_net.h
 		frameserver/arcan_frameserver_net.c
+		frameserver/graphing/net_graph.c
+		frameserver/graphing/net_graph.h
 	)
 
 	LIST (APPEND

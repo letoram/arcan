@@ -62,23 +62,22 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_EXIT,
 
 /* notify that there is a file descriptor to be retrieved and set as the input/output fd for other
- * command events */
+ * command events, additional ievs define destionation slot (net-srv), mode (state, res, ...) 
+ * and size */
 	TARGET_COMMAND_FDTRANSFER,
 	
-/* hinting event for frameskip modes (auto, process every n frames, singlestep) */
+/* libretro/hijack: hinting event for frameskip modes (auto, process every n frames, singlestep) */
 	TARGET_COMMAND_FRAMESKIP,
 	TARGET_COMMAND_STEPFRAME,
 
-/* hint about how large the stateblock size will be */
-	TARGET_COMMAND_STATESZ,
-
-/* hinting event for pushing state to the suggested file-descriptor */
+/* libretro: store to last FDTRANSFER FD 
+ * net-cl: read from FD, package and send to srv */
 	TARGET_COMMAND_STORE,
 
-/* hinting event for restoring state from the suuggested file-descriptor */
+/* libretro: restore from last FD */
 	TARGET_COMMAND_RESTORE,
 
-/* hinting event for reseting state to the first known initial steady one */
+/* libretro/hijack: hinting event for reseting state to the first known initial steady one */
 	TARGET_COMMAND_RESET,
 
 /* hinting event for attempting to block the entire process until unpause is triggered */
@@ -152,7 +151,8 @@ enum ARCAN_EVENT_NET {
 	EVENT_NET_DISCONNECTED,
 	EVENT_NET_NORESPONSE,
 	EVENT_NET_CUSTOMMSG,
-	EVENT_NET_INPUTEVENT
+	EVENT_NET_INPUTEVENT,
+	EVENT_NET_GRAPHREFRESH
 };
 
 enum ARCAN_EVENT_AUDIO {

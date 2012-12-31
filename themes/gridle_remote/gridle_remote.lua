@@ -203,7 +203,9 @@ end
 
 function gridle_remote_dispatchinput(iotbl, override)
 	local restbl = override and override or keyconfig:match(iotbl);
-	
+
+-- FIXME: analog won't work here  due to pairs(restbl)
+
 	if (restbl or iotbl.kind == "analog") then
 		for ind,val in pairs(restbl) do
 

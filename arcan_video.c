@@ -851,14 +851,17 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 	arcan_vobject* src = arcan_video_getobject(srcid);
 	arcan_vobject* dst = arcan_video_getobject(parentid);
 
+/* link to self always means link to world */
 	if (srcid == parentid || parentid == 0)
 		dst = &current_context->world;
 
+/* can't relink clone to another object */
 	if (src && src->flags.clone)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	else if (src && dst) {
 		arcan_vobject* current = dst;
 
+/* traverse destination and make sure we don't create cycles */
 		while (current) {
 			if (current->parent == src)
 				return ARCAN_ERRC_CLONE_NOT_PERMITTED;
@@ -866,6 +869,16 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 				current = current->parent;
 		}
 
+		rv = ARCAN_OK;
+
+/* already linked to dst? do nothing */
+		if (src->parent == dst)
+			return rv;
+/* otherwise, first decrement parent counter */
+		else if (src->parent != &current_context->world)
+			src->parent->extrefc.links--;
+
+/* create link connection, and update counter */
 		src->parent = dst;
 		if (src->parent != &current_context->world){
 			src->parent->extrefc.links++;
@@ -873,11 +886,12 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enu
 				dst->cellid, dst->tracetag ? "(unknown)" : dst->tracetag, src->parent->extrefc.links);
 		}
 
+/* reset all transformations as they don't make sense in the new coordinate space */
 		swipe_chain(src->transform, offsetof(surface_transform, blend), sizeof(struct transf_blend));
 		swipe_chain(src->transform, offsetof(surface_transform, move), sizeof(struct transf_move));
 		swipe_chain(src->transform, offsetof(surface_transform, scale), sizeof(struct transf_scale));
 		swipe_chain(src->transform, offsetof(surface_transform, rotate), sizeof(struct transf_rotate));
-		rv = ARCAN_OK;
+
 		src->mask = mask;
 	}
 

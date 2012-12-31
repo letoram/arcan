@@ -19,6 +19,9 @@
  *
  */
 
+#ifndef HAVE_NET_GRAPH
+#define HAVE_NET_GRAPH
+
 struct graph_context;
 
 enum graphing_mode {
@@ -28,26 +31,32 @@ enum graphing_mode {
 
 /* allocate and populate a context structure based on the desired graphing mode,
  * note that these graphs are streaming, any history buffer etc. is left as an exercise
- * for whatever frontend is using these. */
+ * for whatever frontend is using these. If the resolution etc. should be changed, then 
+ * a new context will need to be allocated */
 struct graph_context* graphing_new(enum graphing_mode, int width, int height, uint32_t* vidp);
 
-void graph_limits(struct graph_context*, int n_connections);
+/* for GRAPH_NET_SERVER, set Y scale (number of connections allowed)
+ * for GRAPH_NET_SERVER and GRAPH_NET_CLIENT, time_window set the number of miliseconds that
+ * should be tracked */
+void graph_limits(struct graph_context*, int n_connections, int time_window);
 
-/* change graphing options, refresh rate etc. planar or interleaved view etc. */
-/* void graph_hinting(struct graph_context*, unsigned time_resolution, bool cycle, bool labels); */
-
-/* push an update to the graphing buffer,
- * true if internal video buffer should be populated
- * false if there's no update */
+/* update context video buffer,
+ * true if there's data to push to parent, invoke frequently */ 
 bool graph_refresh(struct graph_context*);
 
-/* indicate that a client has connected to a server,
- * label is any identification tag that might be rendered or not (depending on text state) */
-void graph_log_connection(struct graph_context*, const char* label);
-void graph_log_disconnect(struct graph_context*, const char* label);
+/* client session events */
+void graph_log_connecting(struct graph_context*, char* label);
+void graph_log_connected(struct graph_context*, char* label);
 
-/* some kind of data packet has arrived,
- * timestamp is to determine horizontal- scale based on history buffer
- * stateid allows different grouping / colour
- */
-void graph_log_message(struct graph_context*, unsigned long timestamp, size_t pkg_sz, int stateid, bool oob);
+/* server session events */
+void graph_log_connection(struct graph_context*, unsigned id, const char* label);
+
+/* shared events */
+void graph_log_discover_req(struct graph_context*, unsigned id, const char* label);
+void graph_log_discover_rep(struct graph_context*, unsigned id, const char* label);
+void graph_log_disconnect(struct graph_context*, unsigned id, const char* label);
+void graph_log_tlv_in(struct graph_context*, unsigned id, const char* label, unsigned tag, unsigned len);
+void graph_log_tlv_out(struct graph_context*, unsigned id, const char* label, unsigned tag, unsigned len);
+void graph_log_conn_error(struct graph_context*, unsigned id, const char* label);
+
+#endif
