@@ -75,7 +75,7 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 		return NULL;
 	}
 	
-	if (-1 == (fd = open(fname, O_RDWR)))
+	if (-1 == (fd = open(fname, O_RDONLY)))
 	{
 		LOG("arcan_frameserver(get_rawfile) open (%s) failed, reason: %d:%s\n", fname, errno, strerror(errno));
 		return NULL;

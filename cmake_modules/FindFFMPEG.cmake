@@ -49,7 +49,7 @@ MACRO(FFMPEG_FIND varname shortname headername)
     # so try to find lib${shortname}/header in include directory
     IF(NOT FFMPEG_${varname}_INCLUDE_DIRS)
         FIND_PATH(FFMPEG_${varname}_INCLUDE_DIRS lib${shortname}/${headername}
-            ${FFMPEG_ROOT}/include
+	    ${FFMPEG_ROOT}/include
             $ENV{FFMPEG_DIR}/include
             $ENV{OSGDIR}/include
             $ENV{OSG_ROOT}/include
@@ -71,6 +71,7 @@ MACRO(FFMPEG_FIND varname shortname headername)
     FIND_LIBRARY(FFMPEG_${varname}_LIBRARIES
         NAMES ${shortname}
         PATHS
+        ./ffmpeg/lib
         ${FFMPEG_ROOT}/lib
         $ENV{FFMPEG_DIR}/lib
         $ENV{OSGDIR}/lib

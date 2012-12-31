@@ -14,10 +14,21 @@
 ----------------------------------------------------------------------
 
 local function listview_redraw(self)
-	if (valid_vid(self.listvid)) then	delete_image(self.listvid); end
-	
 --	figure out the interval to place in the list
 	self.page_beg, self.page_ofs, self.page_end = self:calcpage(self.cursor, self.page_size, #self.list);
+
+-- no need to redraw
+	if (self.page_beg == self.last_beg and self.page_end == self.last_end) then
+		return false;
+	end
+
+	if (valid_vid(self.listvid)) then 
+		delete_image(self.listvid); 
+	end
+	
+	self.last_beg = self.page_beg;
+	self.last_end = self.page_end;
+	
 	renderstr = "";
 	
     for ind = self.page_beg, self.page_end do
@@ -41,7 +52,7 @@ local function listview_redraw(self)
 	link_image(self.listvid, self.window);
 	image_clip_on(self.listvid);
 	show_image(self.listvid);
-	
+
 	local props = image_surface_properties(self.listvid);
 	props.width = (props.width + 10 > 0) and (props.width + 10) or self.maxw;
 
@@ -49,6 +60,11 @@ local function listview_redraw(self)
 	resize_image(self.window, props.width - 6, props.height - 6, 5);
 
 	order_image(self.listvid, image_surface_properties(self.window).order + 1);
+end
+
+local function listview_invalidate(self)
+	self.last_beg = nil;
+	self.last_ofs = nil;
 end
 
 local function listview_destroy(self)
@@ -69,13 +85,16 @@ end
 
 local function listview_move_cursor(self, step, relative)
 	local itempos = relative and (self.cursor + step) or step;
-	
+
+-- start with wrapping around
 	if (itempos < 1) then
 		itempos = #self.list;
 	elseif (itempos > #self.list) then
 		itempos = 1;
 	end
 
+-- Special treatment, three dashes means skip (and draw whatever
+-- separator glyph in use
 	self.cursor = itempos;
 	if (string.sub( self.list[ self.cursor ], 1, 3) == "---" ) then
 		if (step ~= 0) then 
@@ -83,14 +102,24 @@ local function listview_move_cursor(self, step, relative)
 		end
 	end
 
--- this one is pretty inefficient as it will always drop / redraw the list 
+-- self will only be redrawn if we've landed on a different page / offset than before 
+-- (or if the datamodel has changed) 
 	self:redraw();
 
+-- maintain order rather than revert 
 	local order = image_surface_properties(self.listvid).order;
+
+-- cursor behavior changed (r431 and beyond),
+-- now it leaves a quickly fading trail rather than moving around ..
+	expire_image(self.cursorvid, 20);
+	blend_image(self.cursorvid, 0.0, 20);
+	self.cursorvid = nil;
 	
--- could be fixed by caching page etc. and see if we land on a new one
-	instant_image_transform(self.cursorvid);
-	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] + 4, 10);
+-- create a new cursor
+	self.cursorvid = fill_surface(1, 1, 255, 255, 255);
+	link_image(self.cursorvid, self.anchor);
+	blend_image(self.cursorvid, 0.3);
+	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] + 2);
 	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, self.font_size + 2);
 	order_image(self.cursorvid, order + 1);
 end
@@ -117,24 +146,26 @@ local function listview_calcpage(self, number, size, limit)
 end
 
 function listview_show(self)
-	restbl.anchor    = fill_surface(1, 1, 0, 0, 0);
-	restbl.cursorvid = fill_surface(1, 1, 255, 255, 255);
-	restbl.border    = fill_surface(8, 8, self.dialog_border.r, self.dialog_border.g, self.dialog_border.b);
-	restbl.window    = fill_surface(8, 8, self.dialog_window.r, self.dialog_window.g, self.dialog_window.b);
+	self.anchor    = fill_surface(1, 1, 0, 0, 0);
+	self.cursorvid = fill_surface(1, 1, 255, 255, 255);
+	self.border    = fill_surface(8, 8, self.dialog_border.r, self.dialog_border.g, self.dialog_border.b);
+	self.window    = fill_surface(8, 8, self.dialog_window.r, self.dialog_window.g, self.dialog_window.b);
 
-	move_image(restbl.anchor, -1, -1);
-	blend_image(restbl.anchor, 1.0, settings.fadedelay);
+	move_image(self.anchor, -1, -1);
+	blend_image(self.anchor, 1.0, settings.fadedelay);
 	
-	link_image(self.border, restbl.anchor);
-	link_image(self.window, restbl.anchor);
+	link_image(self.border, self.anchor);
+	link_image(self.window, self.anchor);
 
 	blend_image(self.window, self.dialog_window.a);
 	blend_image(self.border, self.dialog_border.a);
 	
-	link_image(self.cursorvid, restbl.anchor);
+	link_image(self.cursorvid, self.anchor);
 	blend_image(self.cursorvid, 0.3);
 	move_image(self.window, 3, 3);
 
+-- "bounce" expand-contract amination
+	
 	self:move_cursor(0, true);
 	self:push_to_front();
 end
@@ -146,6 +177,10 @@ local function window_height(self, nlines)
 	end
 	txw, txh = text_dimensions(heightstr);
 	return txh;
+end
+
+local function listview_cursor_input(self, av1, av2)
+	return nil;
 end
 
 function listview_create(elem_list, height, maxw, formatlist)
@@ -183,12 +218,14 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.show = listview_show;
 	restbl.destroy = listview_destroy;
 	restbl.move_cursor = listview_move_cursor;
+	restbl.analog_input = listview_cursor_input;
 	restbl.push_to_front = listview_tofront;
 	restbl.redraw = listview_redraw;
 	restbl.select = listview_select;
 	restbl.calcpage = listview_calcpage;
 	restbl.formats = formatlist;
-
+	restbl.invalidate = listview_invalidate;
+	
 	if (restbl.formats == nil) then restbl.formats = {}; end
 	return restbl;
 end
