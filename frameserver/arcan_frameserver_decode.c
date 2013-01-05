@@ -50,18 +50,34 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 			bool planar = av_sample_fmt_is_planar(ctx->acontext->sample_fmt);
 			ssize_t ds = av_samples_get_buffer_size(&plane_size, ctx->acontext->channels, ctx->aframe->nb_samples, ctx->acontext->sample_fmt, 1);
 
-			if (planar && ctx->acontext->channels > 1){
-				LOG("arcan_frameserver(decode) -- unsupported planar audio format detected.\n");
-			}
-			else{
-/* lock / synch before we send more data */
-				if (ctx->shmcont.addr->abufused + plane_size > SHMPAGE_AUDIOBUF_SIZE)
-					synch_audio(ctx);
-
+/* wait for parent to consume before copying if the entire buffer doesn't fit, afterwards the
+ * buffer should be abe to contain any raw sample that ffmpeg can emitt (so weird audioformats shouldn't overflow ) */
+			if (ctx->shmcont.addr->abufused + ( planar ? plane_size * ctx->acontext->channels : plane_size) > SHMPAGE_AUDIOBUF_SIZE)
+				synch_audio(ctx);
+	
+			if ( (planar && ctx->acontext->channels == 1) || !planar && ctx->acontext->channels <= 2){
 				memcpy(ctx->audp + ctx->shmcont.addr->abufused, ctx->aframe->extended_data[0], plane_size);
 				ctx->shmcont.addr->abufused += plane_size;
 			}
-
+			else if (planar && ctx->acontext->channels == 2){
+/* sweep plane_size / 2, copy two bytes from plane(1), two bytes from plane(2) */
+				uint8_t* dbuf = &ctx->audp[ ctx->shmcont.addr->abufused ];
+				for (int i = 0; i < plane_size; i += 2){
+					*(dbuf++) = ctx->aframe->extended_data[0][i];
+					*(dbuf++) = ctx->aframe->extended_data[0][i+1];
+					*(dbuf++) = ctx->aframe->extended_data[1][i];
+					*(dbuf++) = ctx->aframe->extended_data[1][i+1];
+				}
+				ctx->shmcont.addr->abufused += plane_size * 2;
+			}
+			else{
+				static bool afmt_warned = false;
+				if (!afmt_warned){
+					LOG("arcan_frameserver(decode) -- unsupported audio format (planar:%d, channels:%d)\n", planar,ctx->acontext->channels);
+					afmt_warned = true;
+				}
+			}
+	
 		}
 	}
 
