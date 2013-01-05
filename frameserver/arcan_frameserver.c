@@ -173,6 +173,10 @@ void frameserver_delay(unsigned long val)
 	req.tv_nsec = val * 1000000;
 	
 	while( nanosleep(&req, &rem) == -1 ){
+		assert(errno != EINVAL);
+		if (errno == EFAULT)
+			break;
+		
 /* sweeping EINTR introduces an error rate that can grow large,
  * check if the remaining time is less than a threshold */
 		if (errno == EINTR) {
