@@ -103,7 +103,7 @@ function(source, status)
 end );
 			webcam_ind = webcam_ind + 1;
 			move_image(vid, cursor.x, cursor.y);
-			show_image(vid);	
+			show_image(vid);
 	
 		elseif (symtable[ inputtbl.keysym] == "r") then
 			resume_movie(img.last);
