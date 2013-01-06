@@ -33,7 +33,6 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 
 	int got_frame = 1;
 
-
 	while (cpkg.size > 0) {
 		uint32_t ofs = 0;
 		avcodec_get_frame_defaults(ctx->aframe);
