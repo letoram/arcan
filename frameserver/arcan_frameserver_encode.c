@@ -536,6 +536,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 		return false;
 	}
 
+	LOG("arcan_frameserver(encode) -- Encoder setup, video: %s, audio: %s\n", video.name ? video.name : "(not set)", audio.name ? audio.name : "(not set)");
+	
 /* some feasible combination found, prepare memory page */
 	frameserver_shmpage_calcofs(shared, &(ffmpegctx.vidp), &(ffmpegctx.audp) );
 

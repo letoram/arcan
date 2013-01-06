@@ -267,9 +267,9 @@ static struct codec_ent vcodec_tbl[] = {
 
 static struct codec_ent acodec_tbl[] = {
 	{.kind = CODEC_AUDIO, .name = "libvorbis", .shortname = "VORBIS", .id = 0,             .setup.audio = default_acodec_setup},
+	{.kind = CODEC_AUDIO, .name = "libmp3lame",.shortname = "MP3",    .id = 0,             .setup.audio = default_acodec_setup},
 	{.kind = CODEC_AUDIO, .name = "FLAC",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "RAWS16LE",  .shortname = "RAW",    .id = 0,             .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "libmp3lame",.shortname = "MP3",    .id = 0,             .setup.audio = default_acodec_setup}
+	{.kind = CODEC_AUDIO, .name = "RAWS16LE",  .shortname = "RAW",    .id = 0,             .setup.audio = default_acodec_setup}
 };
 
 static struct codec_ent fcodec_tbl[] = {
@@ -279,34 +279,35 @@ static struct codec_ent fcodec_tbl[] = {
 	{.kind = CODEC_FORMAT, .name = "flv",      .shortname = "FLV", .id = 0, .setup.muxer = default_format_setup }
 };
 
-static struct codec_ent lookup_default(const char* const req, struct codec_ent* tbl, size_t nmemb)
+static struct codec_ent lookup_default(const char* const req, struct codec_ent* tbl, size_t nmemb, bool audio)
 {
 	struct codec_ent res = {.name = req};
-
+	AVCodec** dst = audio ? &res.storage.audio.codec : &res.storage.video.codec;
+	
 	if (req){
 /* make sure that if the user supplies a name already in the standard table, that we get the same
  * prefix setup function */
 		for (int i = 0; i < nmemb; i++)
 			if (tbl[i].name != NULL && strcmp(req, tbl[i].name) == 0){
 				memcpy(&res, &tbl[i], sizeof(struct codec_ent));
-				res.storage.video.codec = avcodec_find_encoder_by_name(req);
+				*dst = avcodec_find_encoder_by_name(req);
 			}
 
 /* if the codec specified is unknown (to us) then let avcodec try and sort it up, return default setup */
-		if (res.storage.video.codec == NULL){
-			res.storage.video.codec = avcodec_find_encoder_by_name(req);
+		if (*dst == NULL){
+			*dst = avcodec_find_encoder_by_name(req);
 		}
 	}
 
 /* if the user didn't supply an explicit codec, or one was not found, search the table for reasonable default */
-	for (int i = 0; i < nmemb && res.storage.video.codec == NULL; i++)
+	for (int i = 0; i < nmemb && *dst == NULL; i++)
 		if (tbl[i].name != NULL && tbl[i].id == 0){
 			memcpy(&res, &tbl[i], sizeof(struct codec_ent));
-			res.storage.video.codec = avcodec_find_encoder_by_name(tbl[i].name);
+			*dst = avcodec_find_encoder_by_name(tbl[i].name);
 		}
 		else{
 			memcpy(&res, &tbl[i], sizeof(struct codec_ent));
-			res.storage.video.codec = avcodec_find_encoder(tbl[i].id);
+			*dst = avcodec_find_encoder(tbl[i].id);
 		}
 
 	return res;
@@ -314,7 +315,7 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 
 struct codec_ent encode_getvcodec(const char* const req, int flags)
 {
- 	struct codec_ent a = lookup_default(req, vcodec_tbl, sizeof(vcodec_tbl) / sizeof(vcodec_tbl[0]));
+ 	struct codec_ent a = lookup_default(req, vcodec_tbl, sizeof(vcodec_tbl) / sizeof(vcodec_tbl[0]), false);
 	LOG("arcan_frameserver(encode) -- video codec setup: %" PRIxPTR "\n", (intptr_t)a.setup.video);
 	if (a.storage.video.codec && !a.setup.video)
 		a.setup.video = default_vcodec_setup;
@@ -331,7 +332,7 @@ struct codec_ent encode_getvcodec(const char* const req, int flags)
 
 struct codec_ent encode_getacodec(const char* const req, int flags)
 {
-	struct codec_ent res = lookup_default(req, acodec_tbl, sizeof(acodec_tbl) / sizeof(acodec_tbl[0]));
+	struct codec_ent res = lookup_default(req, acodec_tbl, sizeof(acodec_tbl) / sizeof(acodec_tbl[0]), true);
 
 	if (res.storage.audio.codec && !res.setup.audio)
 		res.setup.audio = default_acodec_setup;
