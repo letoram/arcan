@@ -246,7 +246,7 @@ end
 
 local function keyconf_inp_playersel(self, inputtable)
 	local lbl = self:match(inputtable);
-
+	
 	if (inputtable.active and lbl) then
 		for ind, val in pairs(lbl) do 
 			if (val == "MENU_UP" or val == "MENU_DOWN") then

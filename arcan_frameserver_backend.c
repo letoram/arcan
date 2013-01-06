@@ -809,8 +809,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 	if (setup.use_builtin){
 		if (strcmp(setup.args.builtin.mode, "movie") == 0){
 			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
-			ctx->nopts    = false;
-			ctx->autoplay = false;
+/* nopts / autoplay is preset from the calling context */
 		}
 
 /* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer

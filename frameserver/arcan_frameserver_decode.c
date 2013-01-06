@@ -55,7 +55,7 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 			if (ctx->shmcont.addr->abufused + ( planar ? plane_size * ctx->acontext->channels : plane_size) > SHMPAGE_AUDIOBUF_SIZE)
 				synch_audio(ctx);
 	
-			if ( (planar && ctx->acontext->channels == 1) || !planar && ctx->acontext->channels <= 2){
+			if ( ctx->acontext->channels == 1 || (planar == false && ctx->acontext->channels == 2) ){
 				memcpy(ctx->audp + ctx->shmcont.addr->abufused, ctx->aframe->extended_data[0], plane_size);
 				ctx->shmcont.addr->abufused += plane_size;
 			}
