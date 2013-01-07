@@ -22,7 +22,7 @@ static void synch_audio(arcan_ffmpeg_context* ctx)
 	ctx->shmcont.addr->abufused = 0;
 }
 
-static ssize_t dbl_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, double* ch_l, double* ch_r)
+static ssize_t dbl_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, double* ch_l, double* ch_r)
 {
 	size_t rv = 0;
 	
@@ -42,7 +42,7 @@ static ssize_t dbl_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, double* 
 	return rv * sizeof(int16_t);
 }
 
-static ssize_t flt_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, float* ch_l, float* ch_r)
+static ssize_t flt_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, float* ch_l, float* ch_r)
 {
 	size_t rv = 0;
 	
@@ -62,7 +62,7 @@ static ssize_t flt_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, float* c
 	return rv * sizeof(int16_t);
 }
 
-static ssize_t s32_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, int32_t* ch_l, int32_t* ch_r)
+static ssize_t s32_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, int32_t* ch_l, int32_t* ch_r)
 {
 	size_t rv = 0;
 	
@@ -82,7 +82,7 @@ static ssize_t s32_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, int32_t*
 	return rv * sizeof(int16_t);
 }
 
-static ssize_t s16_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, int16_t* ch_l, int16_t* ch_r)
+static ssize_t s16_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, int16_t* ch_l, int16_t* ch_r)
 {
 	size_t rv = 0;
 
@@ -102,7 +102,7 @@ static ssize_t s16_s16conv(uint16_t* dbuf, ssize_t plane_size, int nch, int16_t*
 	return rv * sizeof(int16_t);
 }
 
-static ssize_t conv_fmt(uint16_t* dbuf, size_t plane_size, int nch, int afmt, uint8_t** aplanes)
+static ssize_t conv_fmt(int16_t* dbuf, size_t plane_size, int nch, int afmt, uint8_t** aplanes)
 {
 	ssize_t rv = -1;
 
@@ -181,7 +181,6 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 					SHMPAGE_AUDIOBUF_SIZE - *abufused : plane_size;
 
 				memcpy(&ctx->audp[*abufused], ofbuf, ntc);
-
 				*abufused += ntc;
 				plane_size -= ntc;
 				ofbuf += ntc;
