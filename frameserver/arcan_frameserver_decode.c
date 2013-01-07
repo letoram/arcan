@@ -26,6 +26,9 @@ static void synch_audio(arcan_ffmpeg_context* ctx)
  * when it's full OR we switch to video frames, synch the audio */
 static bool decode_aframe(arcan_ffmpeg_context* ctx)
 {
+	static char* afr_sconv = NULL;
+	static size_t afr_sconv_sz = 0;
+	
 	AVPacket cpkg = {
 		.size = ctx->packet.size,
 		.data = ctx->packet.data
@@ -46,36 +49,44 @@ static bool decode_aframe(arcan_ffmpeg_context* ctx)
 
 		if (got_frame){
 			int plane_size;
-			bool planar = av_sample_fmt_is_planar(ctx->acontext->sample_fmt);
-			ssize_t ds = av_samples_get_buffer_size(&plane_size, ctx->acontext->channels, ctx->aframe->nb_samples, ctx->acontext->sample_fmt, 1);
+			ssize_t ds = av_samples_get_buffer_size(&plane_size, 
+				ctx->acontext->channels, ctx->aframe->nb_samples, ctx->acontext->sample_fmt, 1);
 
-/* wait for parent to consume before copying if the entire buffer doesn't fit, afterwards the
- * buffer should be abe to contain any raw sample that ffmpeg can emitt (so weird audioformats shouldn't overflow ) */
-			if (ctx->shmcont.addr->abufused + ( planar ? plane_size * ctx->acontext->channels : plane_size) > SHMPAGE_AUDIOBUF_SIZE)
-				synch_audio(ctx);
+/* skip packets with broken sample formats (shouldn't happen) */
+			if (ds < 0)
+				continue;
 	
-			if ( ctx->acontext->channels == 1 || (planar == false && ctx->acontext->channels == 2) ){
-				memcpy(ctx->audp + ctx->shmcont.addr->abufused, ctx->aframe->extended_data[0], plane_size);
-				ctx->shmcont.addr->abufused += plane_size;
+/* there's an av_convert, but unfortunately isn't exported properly or implement all that we need */
+			if (afr_sconv_sz < ds){
+				free(afr_sconv);
+				afr_sconv = malloc( ds );
+				if (afr_sconv == NULL)
+					abort();
+
+				afr_sconv_sz = ds;
 			}
-			else if (planar && ctx->acontext->channels == 2){
-/* sweep plane_size / 2, copy two bytes from plane(1), two bytes from plane(2) */
-				uint8_t* dbuf = &ctx->audp[ ctx->shmcont.addr->abufused ];
-				for (int i = 0; i < plane_size; i += 2){
-					*(dbuf++) = ctx->aframe->extended_data[0][i];
-					*(dbuf++) = ctx->aframe->extended_data[0][i+1];
-					*(dbuf++) = ctx->aframe->extended_data[1][i];
-					*(dbuf++) = ctx->aframe->extended_data[1][i+1];
-				}
-				ctx->shmcont.addr->abufused += plane_size * 2;
-			}
-			else{
-				static bool afmt_warned = false;
-				if (!afmt_warned){
-					LOG("arcan_frameserver(decode) -- unsupported audio format (planar:%d, channels:%d)\n", planar,ctx->acontext->channels);
-					afmt_warned = true;
-				}
-			}
+
+/* Convert incoming sample format to something we can use. Returns the number of bytes to flush,
+ * everytime our output buffer is full, synch! */
+			plane_size = conv_fmt((int16_t*) afr_sconv, plane_size, ctx->aframe->channels, 
+				ctx->aframe->format, ctx->aframe->extended_data);
+
+			if (plane_size == -1)
+				continue;
+
+			char* ofbuf = afr_sconv;
+			size_t ntc;
+
+			do {
+				ntc = plane_size > SHMPAGE_AUDIOBUF_SIZE - ctx->abufused ? SHMPAGE_AUDIOBUF_SIZE - ctx->abufused : plane_size;
+				memcpy(ctx->audp + ctx->abufused, ofbuf, ntc);
+				plane_size -= ntc;
+				ofbuf += ntc;
+
+				if (ctx->abufused == SHMPAGE_AUDIOBUF_SIZE)
+					synch_audio(ctx);
+
+			} while (plane_size);
 	
 		}
 	}

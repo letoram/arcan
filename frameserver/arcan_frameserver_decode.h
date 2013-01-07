@@ -36,6 +36,7 @@
 
 /* libFFMPEG */
 #include <libavcodec/avcodec.h>
+#include <libavutil/audioconvert.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 #include <libavdevice/avdevice.h>
