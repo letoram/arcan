@@ -46,6 +46,12 @@
 #define DEFAULT_CLIENT_TIMEOUT 2000000
 #endif
 
+#ifndef CLIENT_DISCOVER_DELAY
+#define CLIENT_DISCOVER_DELAY 10
+#endif
+
+static const int discover_delay = CLIENT_DISCOVER_DELAY;
+
 /* IDENT:PKEY:ADDR (port is a compile-time constant)
  * max addr is ipv6 textual representation + strsep + port */
 #define IDENT_SIZE 4
@@ -682,8 +688,9 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				break;
 
 				case EVENT_NET_GRAPHREFRESH:
-					if (netcontext.shmcont.addr->vready == false && graph_refresh(netcontext.graphing))
+					if (netcontext.shmcont.addr->vready == false && graph_refresh(netcontext.graphing)){
 						netcontext.shmcont.addr->vready = true;
+					}
 				break;
 				
 				case EVENT_NET_CUSTOMMSG:
@@ -911,7 +918,7 @@ retry:
 				goto retry;
 			}
 
-		sleep(10);
+		sleep(discover_delay);
 	}
 
 	char errbuf[64];
@@ -1155,13 +1162,13 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	const char* rk;
 	uint32_t* gbufptr = NULL;
 	
-	if (arg_lookup(args, "width", 0, &rk) == 0){
+	if (arg_lookup(args, "width", 0, &rk) ){
 		unsigned neww = strtoul(rk, NULL, 10);
 		if (neww > 0 && neww <= MAX_SHMWIDTH)
 			gwidth = neww;
 	}
 		
-	if (arg_lookup(args, "height", 0, &rk) == 0){
+	if (arg_lookup(args, "height", 0, &rk) ){
 		unsigned newh = strtoul(rk, NULL, 10);
 		if (newh > 0 && newh <= MAX_SHMHEIGHT)
 			gheight = newh;
@@ -1187,15 +1194,15 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	netcontext.basestamp = frameserver_timemillis();
 	netcontext.rledec_sz = DEFAULT_RLEDEC_SZ;
 	netcontext.rledec_buf = malloc(netcontext.rledec_sz);
-	
-	if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("client", rk) == 0)){
+
+	if (arg_lookup(args, "mode", 0, &rk) && strcmp("client", rk) == 0){
 		char* dsthost = NULL;
 
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
 		netcontext.graphing = graphing_new(GRAPH_NET_CLIENT, gwidth, gheight, gbufptr);
 		client_session(dsthost, CLIENT_SIMPLE);
 	}
-	else if (arg_lookup(args, "mode", 0, &rk) && (rk && strcmp("server", rk) == 0)){
+	else if (arg_lookup(args, "mode", 0, &rk) && strcmp("server", rk) == 0){
 /* sweep list of interfaces to bind to (interface=ip,port) and if none, bind to all of them */
 		char* listenhost = NULL;
 		char* limstr = NULL;

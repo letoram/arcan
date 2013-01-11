@@ -26,6 +26,8 @@ struct graph_context;
 
 enum graphing_mode {
 	GRAPH_NET_SERVER,
+	GRAPH_NET_SERVER_SPLIT,
+	GRAPH_NET_SERVER_SINGLE,
 	GRAPH_NET_CLIENT
 };
 

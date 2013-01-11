@@ -830,10 +830,14 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETCL;
 			ctx->use_pbo = false;
+			ctx->nopts   = false;
+			ctx->autoplay= true;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETSRV;
 			ctx->use_pbo = false;
+			ctx->nopts   = false;
+			ctx->autoplay= true;
 		}
 
 /* record instead operates by maintaining up-to-date local buffers, then letting the frameserver
