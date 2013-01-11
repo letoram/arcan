@@ -3869,6 +3869,27 @@ static int arcan_lua_net_statepolicy(lua_State* ctx)
 	return 0;
 }
 
+/* quite expensive pushes and not that everyone has a use-case for this, so we separate it out
+ * and if the user wants working graphing, have him or her push refreshes */
+static int arcan_lua_net_refresh(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_NET_GRAPHREFRESH};
+	
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	if (!fsrv)
+		return 0;
+	
+	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
+		arcan_fatal("arcan_lua_net_pushsrv() -- bad arg1, specified frameserver is not in client mode (net_open).\n");
+
+	arcan_frameserver_pushevent(fsrv, &outev);
+	
+	return 0;
+}
+
 /* inform the frameserver to push the state present in one client to all or a specific one of them. */
 static int arcan_lua_net_statetransfer(lua_State* ctx)
 {
@@ -4070,6 +4091,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "net_srv_statepolicy", arcan_lua_net_statepolicy);
 	arcan_lua_register(ctx, "net_srv_statetransfer", arcan_lua_net_statetransfer);
 	arcan_lua_register(ctx, "net_statercpt", arcan_lua_net_statercpt);
+	arcan_lua_register(ctx, "net_refresh", arcan_lua_net_refresh);
 
 	atexit(arcan_lua_cleanup);
 	
