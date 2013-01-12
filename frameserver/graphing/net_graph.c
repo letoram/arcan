@@ -181,7 +181,22 @@ static void draw_text(struct graph_context* ctx, const char* msg, int x, int y, 
 
 static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, int x, int y, int w, int h)
 {
+/* with labels toggled, the issue is if labels should be placed closed to the datapoint,
+ * or if separate space should be allocated beneath the grid and use colors to map */
+	draw_vline(ctx, x, y, h, ctx->colors.border);
+	draw_hline(ctx, x, y, w, ctx->colors.border);
 
+	int step_sz = (src->maxv - src->minv) / y;
+/* we use the bucket midpoint as 0 for y axis, it should be <= minv */
+
+	switch (src->mode){
+		case PLOT_XY_POINT: break;
+		case PLOT_XY_LERP:  break;
+		case PLOT_XY_ROW:   break;
+		default:
+			LOG("net_graph(draw_bucket) -- unknown mode specified (%d)\n", src->mode);
+			abort();
+	}
 }
 
 /* These two functions traverses the history buffer, drops the elements that are outside the current time-window,
@@ -189,7 +204,7 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, int
 static bool graph_refresh_server(struct graph_context* ctx)
 {
 	switch (ctx->mode){
-/* just draw discover- sever and one client, similar to client mode */
+/* just draw discover- server and one client, similar to client mode */
 		case GRAPH_NET_SERVER_SINGLE:
 
 		break;
