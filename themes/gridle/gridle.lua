@@ -12,7 +12,7 @@ imagery = {
 	bgimage = BADID, 
 	temporary = {}
 };
-	
+
 soundmap = {
 	MENU_TOGGLE       = load_asample("sounds/menu_toggle.wav"),
 	MENU_FADE         = load_asample("sounds/menu_fade.wav"),
