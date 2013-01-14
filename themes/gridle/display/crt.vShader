@@ -97,7 +97,7 @@ vec3 maxscale()
  
 void main()
 {
-  gl_Position = (projection * modelview) * vertex; 
+  gl_Position = (projection * modelview) * vertex;
 
   sinangle = sin(tilt_angle);
   cosangle = cos(tilt_angle);
