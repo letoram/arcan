@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <assert.h>
 
 #include "net_graph.h"
 #include "../../arcan_math.h"
@@ -49,6 +50,8 @@
 static const int pxfont_width = PXFONT_WIDTH;
 static const int pxfont_height = PXFONT_HEIGHT;
 
+#define GRAPH_SERVER(X) ( (X) >= GRAPH_NET_SERVER && (X) < GRAPH_NET_CLIENT )
+
 enum plot_mode {
 	PLOT_XY_POINT,
 	PLOT_XY_LERP,
@@ -56,9 +59,11 @@ enum plot_mode {
 };
 
 struct datapoint {
-	const char* label;
-	char type_id; 
-	
+	long long int timestamp; 
+	const char* label; /* optional */
+	bool continuous;   /* part of the regular dataflow or should be treated as an alarm */
+
+	char type_id;      /* union selector */
 	union {
 		int ival;
 		float fval;
@@ -72,7 +77,7 @@ struct event_bucket {
 	
 /* data model -- ring-buffer of datapoints, these and scales are
  * modified dynamically based on the domain- specific events further below */
-	int poll_sz, buf_front, buf_back;
+	int ringbuf_sz, buf_front, buf_back;
 	struct datapoint* ringbuf;
 
 /* x scale */
@@ -187,10 +192,18 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, int
 	draw_hline(ctx, x, y, w, ctx->colors.border);
 
 	int step_sz = (src->maxv - src->minv) / y;
+	int i = src->buf_back;
 /* we use the bucket midpoint as 0 for y axis, it should be <= minv */
 
 	switch (src->mode){
-		case PLOT_XY_POINT: break;
+		case PLOT_XY_POINT:
+			while (i != src->buf_front){
+				int xv, yv;
+				uint32_t col;
+				draw_square(ctx, xv, yv, 4, col);
+				i = (i + 1) % src->ringbuf_sz;
+			}
+		break;
 		case PLOT_XY_LERP:  break;
 		case PLOT_XY_ROW:   break;
 		default:
@@ -267,63 +280,111 @@ struct graph_context* graphing_new(enum graphing_mode mode, int width, int heigh
 	return rctx;
 }
 
+void graph_tick(struct graph_context* ctx, long long int timestamp)
+{
+	assert(ctx);
+
+	/* rescale time-window for all buckets and throw away those that fall outside */
+}
+
 /* all these events are simply translated to a data-point and inserted into the related bucket */
 void graph_log_connected(struct graph_context* ctx, char* label)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	} else {
 	}
+	
 }
 
 void graph_log_connecting(struct graph_context* ctx, char* label)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
 	}
+	else {
+	}
+
 }
 
 void graph_log_connection(struct graph_context* ctx, unsigned id, const char* label)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_disconnect(struct graph_context* ctx, unsigned id, const char* label)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_discover_req(struct graph_context* ctx, unsigned id, const char* label)
 {
-	if (ctx){
+	assert(ctx);
+	
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_discover_rep(struct graph_context* ctx, unsigned id, const char* label)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_tlv_in(struct graph_context* ctx, unsigned id, const char* label, unsigned tag, unsigned len)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_tlv_out(struct graph_context* ctx, unsigned id, const char* label, unsigned tag, unsigned len)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_conn_error(struct graph_context* ctx, unsigned id, const char* label)
 {
-	if (ctx){
+	assert(ctx);
+
+	if (GRAPH_SERVER(ctx->mode)){
+	}
+	else {
 	}
 }
 
 void graph_log_message(struct graph_context* ctx, unsigned long timestamp, size_t pkg_sz, int stateid, bool oob)
 {
-	if (ctx){
+	assert(ctx);
+	
+	if (GRAPH_SERVER(ctx->mode)){
 	}
+	else {
+	}	
 }

@@ -24,8 +24,9 @@
 
 struct graph_context;
 
+/* assumed internally to be GRAPH_NET_CLIENT > GRAPH_NET_SERVER >= 0 */
 enum graphing_mode {
-	GRAPH_NET_SERVER,
+	GRAPH_NET_SERVER = 0,
 	GRAPH_NET_SERVER_SPLIT,
 	GRAPH_NET_SERVER_SINGLE,
 	GRAPH_NET_CLIENT
@@ -37,14 +38,15 @@ enum graphing_mode {
  * a new context will need to be allocated */
 struct graph_context* graphing_new(enum graphing_mode, int width, int height, uint32_t* vidp);
 
-/* for GRAPH_NET_SERVER, set Y scale (number of connections allowed)
- * for GRAPH_NET_SERVER and GRAPH_NET_CLIENT, time_window set the number of miliseconds that
- * should be tracked */
-void graph_limits(struct graph_context*, int n_connections, int time_window);
+/* ALL context references below this point are silently assumed to be from a valid graphing_new call. */
 
 /* update context video buffer,
  * true if there's data to push to parent, invoke frequently */ 
 bool graph_refresh(struct graph_context*);
+
+/* timestamps are assumed to increase monotonically,
+ * this function makes sure that internal storage gets flushed out over time */
+void graph_tick(struct graph_context* ctx, long long int timestamp);
 
 /* client session events */
 void graph_log_connecting(struct graph_context*, char* label);

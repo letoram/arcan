@@ -642,6 +642,17 @@ local function toggle_vectormode(sourcevid, windw, windh)
 -- CRT toggle is done through the fullscreen_shader member
 end
 
+--
+-- factor is 1..5, will return vid, newwidth, newheight, actual factor
+-- mode is upscaler mode (sabr only currently)
+--
+local function toggle_upscaler(sourcevid, init_props, mode, factor)
+	if (mode == "sabr") then
+		local shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
+		
+	end
+end
+
 local function toggle_crtmode(vid, props, windw, windh)
 	local shaderopts = {};
 -- CURVATURE, OVERSAMPLE, LINEAR_PROCESSING, USEGAUSSIAN
