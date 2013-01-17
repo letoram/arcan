@@ -2226,8 +2226,8 @@ int arcan_lua_fillsurface(lua_State* ctx)
 		return 1;
 	}
 	else {
-		arcan_fatal("arcan_lua_fillsurface(%d, %d) unacceptable surface dimensions, compile time restriction 0 > (%d,%d) <= (%d,%d)\n", 
-			cons.w, cons.h, desw, desh, MAX_SURFACEW, MAX_SURFACEH);
+		arcan_fatal("arcan_lua_fillsurface(%d, %d) failed, unacceptable surface dimensions. Compile time restriction (%d,%d)\n", 
+			desw, desh, MAX_SURFACEW, MAX_SURFACEH);
 	}
 
 error:
@@ -3448,7 +3448,14 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 	const char* fmtstr = luaL_checkstring(ctx, 3);
 	bool persist = luaL_checknumber(ctx, 4) != 0;
 	arcan_shader_activate(sid);
+	
+	if (!label) 
+		label = "unknown";
 
+	if (strcmp(label, "ff") == 0){
+		abort();
+	}
+	
 	if (fmtstr[0] == 'b'){
 		bool fmt = luaL_checknumber(ctx, 5) != 0;
 		arcan_shader_forceunif(label, shdrbool, &fmt, persist);
@@ -3494,10 +3501,10 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 						
 				break;
 				default:
-					arcan_warning("arcan_lua_shader_uniform(), unsupported format string accepted f counts are 1..4 and 16\n");
+					arcan_warning("arcan_lua_shader_uniform(%s), unsupported format string accepted f counts are 1..4 and 16\n", label);
 		}
 		else
-			arcan_warning("arcan_lua_shader_uniform(), unspported format string (%s)\n", fmtstr);
+			arcan_warning("arcan_lua_shader_uniform(%s), unspported format string (%s)\n", label, fmtstr);
 	}
 	
 	/* shdrbool : b
@@ -4107,6 +4114,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalint(ctx, "VRESH", arcan_video_screenh());
 	arcan_lua_setglobalint(ctx, "VRESW", arcan_video_screenw());
+	arcan_lua_setglobalint(ctx, "MAX_SURFACEW", MAX_SURFACEW);
+	arcan_lua_setglobalint(ctx, "MAX_SURFACEH", MAX_SURFACEH);
 	arcan_lua_setglobalint(ctx, "STACK_MAXCOUNT", CONTEXT_STACK_LIMIT);
 	arcan_lua_setglobalint(ctx, "FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT);
 	arcan_lua_setglobalint(ctx, "FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE);
