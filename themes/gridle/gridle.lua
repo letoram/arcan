@@ -97,6 +97,10 @@ settings = {
 	
 	default_launchmode = "Internal",
 
+-- DISPLAY MODE PRESETS (can be overridden from load_settings
+	internal_toggles = {crt = false, vector = false, backdrop = false, 
+	ntsc = false, upscale = false, overlay = false, antialias = false},
+
 	crt_gamma = 2.4,
 	crt_mongamma = 2.2,
 	crt_hoverscan = 1.02,
@@ -137,6 +141,9 @@ settings = {
 	ntsc_bleed      =-1.0,
 	ntsc_fringing   =-1.0,
 	
+	upscale_method = "sabr",
+	upscale_factor = 2,
+	
 	record_qual = 10,
 	record_res  = 240,
 	record_fps  = 30,
@@ -145,17 +152,15 @@ settings = {
 	imagefilter = "Bilinear",
 	
 -- All settings that pertain to internal- launch fullscreen modes
-	internal_input = "Normal",
-	internal_toggles   = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false},
-	internal_notoggles = {crt = false, vector = false, backdrop = false, ntsc = false, upscale = false, overlay = false, antialias = false}, -- used by detailview
-	
-	flipinputaxis = false,
-	filter_opposing= false, 
-	internal_again = 1.0,
+	internal_input   = "Normal",
+	flipinputaxis    = false,
+	filter_opposing  = false, 
+	internal_again   = 1.0,
 	fullscreenshader = "default",
-	in_internal = false,
-	cocktail_mode = "Disabled",
-	autosave = "On",
+	in_internal      = false,
+	cocktail_mode    = "Disabled",
+	autosave         = "On",
+
 	view_mode = "Grid"
 };
 
@@ -1803,12 +1808,15 @@ function load_settings()
 	load_key_bool("crt_gaussian",   "crt_gaussian",    settings.gaussian); 
 	load_key_bool("crt_oversample", "crt_oversample",  settings.oversample); 
 	load_key_bool("crt_linearproc", "crt_linearproc",  settings.linearproc); 
-	
+
+	load_key_num("upscale_factor",  "upscale_factor",  settings.upscale_factor);
+	load_key_str("upscale_method",  "upscale_method",  settings.upscale_method);
+		
 	load_key_str("record_format",   "record_format",   settings.record_format);
 	load_key_num("record_fps",      "record_fps",      settings.record_fps);
 	load_key_num("record_qual",     "record_qual",     settings.record_qual);
 	load_key_num("record_res",      "record_res",      settings.record_res);
-	
+
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");
 	if (internalinp ~= nil) then

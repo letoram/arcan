@@ -78,7 +78,8 @@ inputmodeptrs["Filter Opposing"] = function(label, save)
 		current_menu.formats[ label ] = nil; 
 	end
 	
-	current_menu:move_cursor(0, 0, true);
+	current_menu:invalidate();
+	current_menu:redraw();
 
 	if (save) then
 		store_key("filter_opposing", settings.filter_opposing and "1" or "0");
@@ -203,14 +204,10 @@ end
 
 local cocktaillist = {
 	"Disabled",
--- horizontal split, means scale to fit width, instance and flip instance 180
-	"H-Split",
--- vsplit means scale to fit width to height, instance, and rotate 90 -90
-	"V-Split",
--- same as h-split, but don't rotate 
-	"H-Split SBS",
--- special one, half the image to the left, haft to the right
-  "H-Split Slice"
+	"H-Split",       -- horizontal split, means scale to fit width, instance and flip instance 180
+	"V-Split",       -- vsplit means scale to fit width to height, instance, and rotate 90 -90
+	"H-Split SBS",   -- same as h-split, but don't rotate 
+  "H-Split Slice"  -- special one, half the image to the left, haft to the right
 };
 
 local cocktailptrs = {};
@@ -483,7 +480,7 @@ function vector_lightmode(source, targetw, targeth)
 	show_image(source);
 	
 	local node = instance_image(source);
-	
+
 	resize_image(node, blurw, blurh);
 	show_image(node);
 	image_mask_set(node, MASK_MAPPING);
@@ -613,11 +610,9 @@ function undo_displaymodes()
 	end
 	
 	for ind,val in ipairs(imagery.temporary) do
-
 		if (valid_vid(val)) then
 			delete_image(val);
 		end
-
 	end
 
 	image_set_txcos(internal_vid, settings.internal_txcos);
@@ -643,14 +638,51 @@ local function toggle_vectormode(sourcevid, windw, windh)
 end
 
 --
--- factor is 1..5, will return vid, newwidth, newheight, actual factor
+-- factor is 2+, will return vid, newwidth, newheight, actual factor
 -- mode is upscaler mode (sabr only currently)
 --
 local function toggle_upscaler(sourcevid, init_props, mode, factor)
+-- there's compile time limitations to custom surfaces
+	local neww = init_props.width  * factor;
+	local newh = init_props.height * factor;
+	
+	while ((neww >= VRESW or newh >= VRESH) and factor > 1) do
+		factor = factor - 1;
+		neww = init_props.width * factor;
+		newh = init_props.height * factor;
+	end
+	
+	-- don't activate if there's no need or if we outsize
+	if ( neww >= MAX_SURFACEW or newh >= MAX_SURFACEH or factor < 2) then return nil; end
+	
+-- one pass, factor agnostic. 
 	if (mode == "sabr") then
 		local shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
+		shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
+		shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
+		local workvid = instance_image(sourcevid);
+		image_mask_clear(workvid, MASK_POSITION);
+		image_mask_clear(workvid, MASK_OPACITY);
+		image_shader(workvid, shader);
+		image_tracetag(workvid, "(upscale_internal)");
+		show_image(workvid);
 		
+		upscale = fill_surface(neww, newh, 0, 0, 0, neww, newh);
+		define_rendertarget(upscale, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		show_image(upscale);
+		resize_image(workvid, neww, newh);
+		move_image(workvid, 0, 0);
+		image_texfilter(workvid, FILTER_NONE);
+		image_texfilter(upscale, FILTER_NONE);
+
+		image_tracetag(upscale, "(upscale_output)");
+		table.insert(imagery.temporary, workvid);
+		table.insert(imagery.temporary, upscale);
+
+		return upscale;
 	end
+	
+	return nil;
 end
 
 local function toggle_crtmode(vid, props, windw, windh)
@@ -662,7 +694,7 @@ local function toggle_crtmode(vid, props, windw, windh)
 	if (settings.crt_oversample) then shaderopts["OVERSAMPLE"] = true; end
 	
 	local shader = load_shader("display/crt.vShader", "display/crt.fShader", "crt", shaderopts); 
-	local sprops = image_storage_properties(internal_vid);
+	local sprops = image_storage_properties(vid);
 	settings.fullscreen_shader = shader;
 
 	shader_uniform(shader, "input_size", "ff", PERSIST, sprops.width, sprops.height);
@@ -704,23 +736,38 @@ function push_ntsc()
 	resume_target(internal_vid);
 end
 
+--
+-- Needs to be done to all changes to the original video source,
+--
+-- (upscale) -> (antialias) -> (final_scaler -> (vector) -> (crt) -> (cocktail)
+-- NTSC prefilter is enabled in the source frameserver so not included here
+--
 function gridlemenu_rebuilddisplay()
 	undo_displaymodes();
+	
+-- default filter preference isn't guaranteed to work as higher priority display mode 
+-- options can well override them.
 	update_filter(internal_vid, settings.imagefilter);
 	
 	local props  = image_surface_initial_properties(internal_vid);
 	local dstvid = internal_vid;
-	
--- need to do this twice in order to cover all the basis (upscaler, ...)
+
+	print(settings.upscale_factor, settings.upscale_method, settings.internal_toggles.upscaler);
+	if (settings.internal_toggles.upscaler) then
+		local upscale = toggle_upscaler(internal_vid, props, settings.upscale_method, settings.upscale_factor);
+		if (upscale ~= nil) then
+			dstvid = upscale;
+			props = image_surface_initial_properties(dstvid);
+		end
+	end
+
 	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
 
--- begin by antialias the source
 	if (settings.internal_toggles.antialias) then
 		dstvid = display_fxaa(dstvid, windw, windh); 
 		imagery.display_vid = dstvid;
 	end
 	
--- enable all display options
 	if (settings.internal_toggles.vector) then
 		target_pointsize(dstvid, settings.vector_pointsz);
 		target_linewidth(dstvid, settings.vector_linew);
@@ -737,7 +784,8 @@ function gridlemenu_rebuilddisplay()
 		toggle_vectormode(dstvid, dstw, dsth);
 		dstvid = imagery.display_vid;
 	
-	elseif ( (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) or (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) ) then
+	elseif ( (settings.internal_toggles.overlay and
+		valid_vid(imagery.overlay)) or (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) ) then
 		image_mask_clear(internal_vid, MASK_LIVING);
 		
 		dstbuf = fill_surface(windw, windh, 1, 1, 1, windw, windh);
@@ -901,9 +949,9 @@ function gridlemenu_loadshader(basename, dstvid)
 	
 	local resshdr = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
 
-	shader_uniform(resshdr, "ff", "output_size",  PERSIST, dispprops.width,  dispprops.height );
-	shader_uniform(resshdr, "ff", "input_size",   PERSIST, startprops.width, startprops.height);
-	shader_uniform(resshdr, "ff", "storage_size", PERSIST, storprops.width,  storprops.height );
+	shader_uniform(resshdr, "output_size",  "ff", PERSIST, dispprops.width,  dispprops.height );
+	shader_uniform(resshdr, "input_size",   "ff", PERSIST, startprops.width, startprops.height);
+	shader_uniform(resshdr, "storage_size", "ff", PERSIST, storprops.width,  storprops.height );
 	
 	image_shader(dstvid, resshdr);
 	
@@ -1061,8 +1109,9 @@ local function toggle_shadersetting(label, save)
 		current_menu.formats[ label ] = settings.colourtable.notice_fontstr;
 		settings.shader_opts[label] = true;
 	end
-	
-	current_menu:move_cursor(0, 0, true);
+
+	current_menu:invalidate();
+	current_menu:redraw();
 end
 
 local function configure_players(dstname)
@@ -1319,7 +1368,7 @@ end
 displaymodelist = {"Custom Shaders..."};
 
 local function add_displaymodeptr(list, ptrs, key, label, togglecb)
-	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, NTSC = true, Vector = true};
+	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, NTSC = true, Vector = true, Upscaler = true};
 	
 	table.insert(list, label);
 	
@@ -1340,11 +1389,13 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	end
 
 	togglecb();
-	current_menu:move_cursor(0, 0, true);
+	current_menu:invalidate();
+	current_menu:redraw();
 	gridlemenu_tofront(current_menu);
 	end
 end
 
+add_displaymodeptr(displaymodelist, displaymodeptrs, "upscaler", "Upscaler", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "vector", "Vector", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay", "Overlay", gridlemenu_rebuilddisplay);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop", "Backdrop", gridlemenu_rebuilddisplay);
@@ -1360,6 +1411,8 @@ local ntscmenulbls   = {};
 local ntscmenuptrs   = {};
 local filtermenulbls = {};
 local filtermenuptrs = {};
+local scalerlbls     = {};
+local scalerptrs     = {};
 
 local function updatetrigger()
 	gridlemenu_rebuilddisplay();
@@ -1389,19 +1442,22 @@ add_submenu(vectormenulbls,  vectormenuptrs,  "Glow Trails...",       "vector_gl
 add_submenu(vectormenulbls,  vectormenuptrs,  "Trail Step...",        "vector_trailstep",  gen_num_menu("vector_trailstep",   -1,  -1, 12, updatetrigger));
 add_submenu(vectormenulbls,  vectormenuptrs,  "Trail Falloff...",     "vector_trailfall",  gen_num_menu("vector_trailfall",    0,   1,  9, updatetrigger));
 
-add_submenu(crtmenulbls, crtmenuptrs, "CRT Gamma",             "crt_gamma",       gen_num_menu("crt_gamma",       1.8, 0.2 , 5, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Monitor Gamma",         "crt_mongamma",    gen_num_menu("crt_mongamma",    1.8, 0.2 , 5, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Curvature Radius",      "crt_curvrad",     gen_num_menu("crt_curvrad",     1.4, 0.1 , 8, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Distance",              "crt_distance",    gen_num_menu("crt_distance",    1.0, 0.2 , 5, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Overscan (Horizontal)", "crt_hoverscan",   gen_num_menu("crt_hoverscan",   1.0, 0.02, 5, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Overscan (Vertical)",   "crt_voverscan",   gen_num_menu("crt_voverscan",   1.0, 0.02, 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "CRT Gamma...",             "crt_gamma",       gen_num_menu("crt_gamma",       1.8, 0.2 , 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Monitor Gamma...",         "crt_mongamma",    gen_num_menu("crt_mongamma",    1.8, 0.2 , 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Curvature Radius...",      "crt_curvrad",     gen_num_menu("crt_curvrad",     1.4, 0.1 , 8, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Distance...",              "crt_distance",    gen_num_menu("crt_distance",    1.0, 0.2 , 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Overscan (Horizontal)...", "crt_hoverscan",   gen_num_menu("crt_hoverscan",   1.0, 0.02, 5, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Overscan (Vertical)...",   "crt_voverscan",   gen_num_menu("crt_voverscan",   1.0, 0.02, 5, updatetrigger));
 
-add_submenu(crtmenulbls, crtmenuptrs, "Aspect (Horizontal)",   "crt_haspect",     gen_tbl_menu("crt_haspect",     {0.75, 1.0, 1.25}, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Aspect (Vertical)",     "crt_vaspect",     gen_tbl_menu("crt_vaspect",     {0.75, 1.0, 1.25}, updatetrigger)); 
-add_submenu(crtmenulbls, crtmenuptrs, "Corner Size",           "crt_cornersz",    gen_tbl_menu("crt_cornersz",    {0.001, 0.01, 0.03, 0.05, 0.07, .1}, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Corner Smooth",         "crt_cornersmooth",gen_tbl_menu("crt_cornersmooth",{80.0, 1000.0, 1500.0}, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)",     "crt_tilth",       gen_tbl_menu("crt_tilth",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
-add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Aspect (Horizontal)...",   "crt_haspect",     gen_tbl_menu("crt_haspect",     {0.75, 1.0, 1.25}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Aspect (Vertical)...",     "crt_vaspect",     gen_tbl_menu("crt_vaspect",     {0.75, 1.0, 1.25}, updatetrigger)); 
+add_submenu(crtmenulbls, crtmenuptrs, "Corner Size...",           "crt_cornersz",    gen_tbl_menu("crt_cornersz",    {0.001, 0.01, 0.03, 0.05, 0.07, .1}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Corner Smooth...",         "crt_cornersmooth",gen_tbl_menu("crt_cornersmooth",{80.0, 1000.0, 1500.0}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)...",     "crt_tilth",       gen_tbl_menu("crt_tilth",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
+add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)...",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
+
+add_submenu(scalerlbls, scalerptrs, "Factor...", "upscale_factor", gen_tbl_menu("upscale_factor", {2, 3, 4, 5}, updatetrigger));
+add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr"}, updatetrigger, true));
 
 local function recdim()
 	local props  = image_surface_initial_properties(internal_vid);
@@ -1439,12 +1495,16 @@ local function flip_crttog(label, save)
 	end
 
 	current_menu.formats[label] = settings[dstkey] and settings.colourtable.notice_fontstr or nil;
-	current_menu:move_cursor(0,0,true);
-	
+	current_menu:invalidate();
+	current_menu:redraw();
+		
 	gridlemenu_rebuilddisplay();
 end
 
-table.insert(crtmenulbls, "Curvature"); table.insert(crtmenulbls, "Gaussian Profile"); table.insert(crtmenulbls, "Oversample"); table.insert(crtmenulbls, "Linear Processing");
+table.insert(crtmenulbls, "Curvature"); 
+table.insert(crtmenulbls, "Gaussian Profile"); 
+table.insert(crtmenulbls, "Oversample"); 
+table.insert(crtmenulbls, "Linear Processing");
 crtmenuptrs["Curvature"] = flip_crttog;
 crtmenuptrs["Gaussian Profile"] = flip_crttog;
 crtmenuptrs["Oversample"] = flip_crttog;
@@ -1569,13 +1629,16 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 				menu_spawnmenu(labels, ptrs, fmts);
 			end
 			
+		elseif (selectlbl == "Upscaler") then
+			menu_spawnmenu(scalerlbls, scalerptrs, {});
+			
 		elseif (selectlbl == "CRT") then
 			fmts = {};
 
-			if (settings.crt_gaussian) then fmts["Gaussian Profile"] = settings.colourtable.notice_fontstr; end
+			if (settings.crt_gaussian)   then fmts["Gaussian Profile"]  = settings.colourtable.notice_fontstr; end
 			if (settings.crt_linearproc) then fmts["Linear Processing"] = settings.colourtable.notice_fontstr; end
-			if (settings.crt_curvature) then fmts["Curvature"] = settings.colourtable.notice_fontstr; end
-			if (settings.crt_oversample) then fmts["Oversample"] = settings.colourtable.notice_fontstr; end
+			if (settings.crt_curvature)  then fmts["Curvature"]         = settings.colourtable.notice_fontstr; end
+			if (settings.crt_oversample) then fmts["Oversample"]        = settings.colourtable.notice_fontstr; end
 
 			menu_spawnmenu(crtmenulbls, crtmenuptrs, fmts);
 
@@ -1636,13 +1699,13 @@ if (#menulbls > 0 and settingslbls) then
 		local gottog = false;
 		local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,";
 		
-		def[ "CRT" ]     = iconlbl .. (settings.internal_toggles.crt    and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
-		def[ "NTSC" ]    = iconlbl .. (settings.internal_toggles.ntsc   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
-		def[ "Vector" ]  = iconlbl .. (settings.internal_toggles.vector and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
-		
-		def[ "Overlay"  ] = settings.internal_toggles.overlay  and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
-		def[ "Backdrop" ] = settings.internal_toggles.backdrop and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr	
-		def[ "Antialias"] = settings.internal_toggles.antialias and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
+		def["CRT"      ] = iconlbl .. (settings.internal_toggles.crt    and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def["NTSC"     ] = iconlbl .. (settings.internal_toggles.ntsc   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def["Vector"   ] = iconlbl .. (settings.internal_toggles.vector and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def["Upscaler" ] = iconlbl .. (settings.internal_toggles.upscaler and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def["Overlay"  ] = settings.internal_toggles.overlay  and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
+		def["Backdrop" ] = settings.internal_toggles.backdrop and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr	
+		def["Antialias"] = settings.internal_toggles.antialias and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
 		
 		settings.context_menu = "display modes";
 		menu_spawnmenu(displaymodelist, displaymodeptrs, def );
