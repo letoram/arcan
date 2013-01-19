@@ -3848,12 +3848,15 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 	
 	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
 		arcan_fatal("arcan_lua_net_pushsrv() -- bad arg1, specified frameserver is not in client mode (net_open).\n");
-	
+
+/* we clean this as to not expose stack trash */
+	size_t out_sz = sizeof(outev.data.network.message) / sizeof(outev.data.network.message[0]);
+	memset(outev.data.network.message, 0, out_sz);
+		
 	if (lua_isstring(ctx, 2)){
 		outev.kind = EVENT_NET_CUSTOMMSG;
 
 		const char* msg = luaL_checkstring(ctx, 2);
-		size_t out_sz = sizeof(outev.data.network.message) / sizeof(outev.data.network.message[0]);
 		snprintf(outev.data.network.message, out_sz, "%s", msg);
 	}
 	else if (lua_isnumber(ctx, 2)){

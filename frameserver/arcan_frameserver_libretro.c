@@ -884,6 +884,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			testcounter = 0;
 			retroctx.run();
 
+/* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
+			outev.kind = EVENT_EXTERNAL_NOTICE_NEWFRAME;
+			outev.data.external.framenumber++;
+			arcan_event_enqueue(&retroctx.outevq, &outev);
+	
 			if (testcounter != 1)
 				LOG("(arcan_frameserver(libretro) -- inconsistent core behavior, expected 1 video frame / run(), got %d\n", testcounter);
 
@@ -905,11 +910,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					retroctx.audbuf_ofs = 0;
 				}
 
-/* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
-				outev.kind = EVENT_EXTERNAL_NOTICE_NEWFRAME;
-				outev.data.external.framenumber++;
-				arcan_event_enqueue(&retroctx.outevq, &outev);
-	
 				shared->vready = true;
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 			};
