@@ -389,7 +389,9 @@ static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_
 void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 {
 	arcan_ffmpeg_context* vidctx;
+	struct arg_arr* args = arg_unpack(resource);
 	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
+	
 	av_register_all();
 
 	do {

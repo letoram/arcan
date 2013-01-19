@@ -1457,9 +1457,9 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			return;
 
 		arcan_vobject* vobj = arcan_video_getobject(ev->data.network.source);
-		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		arcan_frameserver* fsrv = vobj ? vobj->feed.state.ptr : NULL;
 
-		if (fsrv->tag){
+		if (fsrv && fsrv->tag){
 			intptr_t dst_cb = fsrv->tag;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_pushvid(ctx, ev->data.network.source);
@@ -3837,7 +3837,7 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 	arcan_vobj_id did   = luaL_checkvid(ctx, 1);
 	arcan_vobject* vobj = arcan_video_getobject(did);
 	int domain          = luaL_optnumber(ctx, 3, 0);
-	
+
 /* arg2 can be (string) => NETMSG, (event) => just push */
 	arcan_event outev = {.category = EVENT_NET, .data.network.connid = domain};
 

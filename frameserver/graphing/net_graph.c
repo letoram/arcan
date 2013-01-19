@@ -156,7 +156,7 @@ static inline void draw_square(struct graph_context* ctx, int x, int y, int side
 {
 	int lx = x - side >= 0 ? x - side : 0;
 	int ly = y - side >= 0 ? y - side : 0;
-	int ux = x + side >= ctx->width ? ctx->width - 1 : x + side;
+	int ux = x + side >= ctx->width  ? ctx->width  - 1 : x + side;
 	int uy = y + side >= ctx->height ? ctx->height - 1 : y + side;
 
 	for (int cy = ly; cy != uy; cy++)
@@ -246,9 +246,9 @@ static bool graph_refresh_client(struct graph_context* ctx)
 			draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, bucketh);
 			draw_bucket(ctx, &ctx->buckets[1], 0, 10 + bucketh, ctx->width, bucketh * 2);
 		break;
-		default:
+/*		default:
 			LOG("graphing(graph_refresh_client) : draw failed, unhandled number of buckets (%d)\n", ctx->n_buckets);
-			abort();
+			abort(); */
 	}
 
 	return true;
@@ -276,7 +276,10 @@ struct graph_context* graphing_new(enum graphing_mode mode, int width, int heigh
 			.colors.bg = 0xffffffff, .colors.border = 0xff000000, .colors.grid = 0xffaaaaaa, .colors.gridalign = 0xffff4444,
 			.colors.data = 0xff00ff00, .colors.alert = 0xffff0000, .colors.notice = 0xff0000ff };
 			*rctx = rv;
+			
+		
 	}
+
 	return rctx;
 }
 

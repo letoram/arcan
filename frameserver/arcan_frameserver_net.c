@@ -50,6 +50,11 @@
 #define CLIENT_DISCOVER_DELAY 10
 #endif
 
+#ifndef OUTBUF_CAP
+#define OUTBUF_CAP 65536
+#endif
+
+static const int outbuf_cap = OUTBUF_CAP;
 static const int discover_delay = CLIENT_DISCOVER_DELAY;
 
 /* IDENT:PKEY:ADDR (port is a compile-time constant)
@@ -378,7 +383,7 @@ decode:
 /* check if header is broken */
 			len = (uint8_t)self->inbuffer[1] | ((uint8_t)self->inbuffer[2] << 8);
 			
-			if (len > 65536 - FRAME_HEADER_SIZE)
+			if (len > outbuf_cap - FRAME_HEADER_SIZE)
 				return false;
 
 /* full packet */
@@ -666,8 +671,8 @@ static void server_queueout_data(struct conn_state* active_cons, int nconns, cha
 				active_cons[i].queueout(&active_cons[i], buf, buf_sz);
 		}
 /* unicast */
-	else if (active_cons[id].inout)
-		active_cons[id].queueout(&active_cons[id], buf, buf_sz);
+	else if (active_cons[id-1].inout)
+		active_cons[id-1].queueout(&active_cons[id-1], buf, buf_sz);
 	else;
 
 	return;
@@ -1015,7 +1020,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * messages may possible be interleaved in one push (up to the 64k buffer) before
  * getting sent of to the TCP layer (thus not as wasteful as it might initially seem).
  *
- * The real issue is buffer overruns though, which currently means that data gets lost (for custommsg)
+ * The real issue is buffer overruns though, which currently means that data gets lost (for custommsg) or truncated
  * State transfers won't ever overflow and are only ever tucked on at the end */
 	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
 		if (ev->category == EVENT_NET){
@@ -1069,7 +1074,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 /* Missing hoststr means we broadcast our request and bonds with the first/best session to respond */
 static void client_session(char* hoststr, enum client_modes mode)
 {
-	if (mode == CLIENT_DISCOVERY || mode == CLIENT_DISCOVERY_NACL || hoststr == NULL){
+	if ( (mode == CLIENT_DISCOVERY && hoststr == NULL) || mode == CLIENT_DISCOVERY_NACL){
 		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL);
 		if (!hoststr){
 			LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
