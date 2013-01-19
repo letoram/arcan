@@ -175,7 +175,7 @@ SDL_Surface* text_loadimage(const char* const infn, img_cons constraints)
 			SDL_Surface* basecanv = SDL_ConvertSurface(res, stretchcanv->format, SDL_SWSURFACE);
 			SDL_FreeSurface(res);
 			if (!basecanv){
-				arcan_warning("Warning: arcan_video_renderstring(9, couldn't perform colorspace conversion.\n");
+				arcan_warning("Warning: arcan_video_renderstring(), couldn't perform colorspace conversion.\n");
 				SDL_FreeSurface(stretchcanv);
 				free(fname);
 				return NULL;

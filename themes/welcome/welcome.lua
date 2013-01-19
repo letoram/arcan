@@ -43,9 +43,9 @@ function welcome()
 	-v      \tdisable VSYNC\n\r
 	-x winx \tset window start x coordinate\n\r
 	-y winy \tset window start y coordinate\n\r
-	-f      \tswitch resolution\n\r
+	-f      \tswitch resolution (fullscreen)\n\r
 	-m      \tconservative memory profile\n\r
-	-s      \twindowed fullscreen\n\r
+	-s      \tdisable window borders\n\r
 	-p pname\tforce resource path\n\r
 	-t tname\tforce theme path\n\r
 	-o fname\tforce frameserver\n\r
@@ -81,4 +81,4 @@ function welcome_input( inputtbl )
 		end
 	end
 end
-	
+
