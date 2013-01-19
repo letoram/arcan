@@ -22,6 +22,7 @@ function netsrv_status()
 
 	msg = msg .. ( ticking and [[\bt\!b\t stop broadcasting tick\n\r]] or [[\bt\!b\t start broadcasting tick\n\r]]);
 	status_img = render_text(msg);
+	show_image(status_img);
 end
 
 function netsrv()
@@ -56,10 +57,11 @@ function add_msg(str)
 end
 
 function seqmsg(num)
-	local seqmsg = "SEQMSG:" .. tostring( seqn );
+	local smsg = "SEQMSG:" .. tostring( seqn );
 	seqn = seqn + 1;
-
-	net_push_srv(server, seqmsg, num);
+	print("send to slot:", num);
+	
+	net_push_srv(server, smsg, num);
 end
 
 function netsrv_input(iotbl)
