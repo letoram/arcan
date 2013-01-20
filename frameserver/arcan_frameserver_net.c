@@ -5,7 +5,7 @@
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3 
+ * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
 
  * This program is distributed in the hope that it will be useful,
@@ -61,8 +61,16 @@ static const int discover_delay = CLIENT_DISCOVER_DELAY;
  * max addr is ipv6 textual representation + strsep + port */
 #define IDENT_SIZE 4
 #define MAX_PUBLIC_KEY_SIZE 64
-#define MAX_ADDR_SIZE 45 
+#define MAX_ADDR_SIZE 45
 #define MAX_HEADER_SIZE 128
+
+#ifdef WIN32
+/* Doesn't seem like mingw/apr actually gets the TransmitFile symbol so stub it here */
+#define sleep(X) (Sleep(X * 1000))
+BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps, LPOVERLAPPED lpo, LPTRANSMIT_FILE_BUFFERS lpTransmitBuffers, DWORD dfl){
+    return false;
+}
+#endif
 
 enum client_modes {
 	CLIENT_SIMPLE,
@@ -83,9 +91,9 @@ struct {
 /* callback driven struct, basic one is just colors matching
  * some state of the server/client */
 	struct graph_context* graphing;
-	unsigned graphrate; 
+	unsigned graphrate;
 
-/* for future time-synchronization (ping/pongs interleaved 
+/* for future time-synchronization (ping/pongs interleaved
  * with regular messages */
 	unsigned long long basestamp;
 
@@ -140,7 +148,7 @@ struct conn_state {
 	size_t outbuf_sz;
 	int outbuf_ofs;
 	bool (*state_store)(unsigned long ofset, char* buf, int len);
-	
+
 /* a client may maintain 0..1 state-table that can be pushed between clients */
 	char* statebuffer;
 	size_t state_sz;
@@ -197,7 +205,7 @@ static bool flushout_default(struct conn_state* self)
 
 		return true;
 	}
-	
+
 	apr_status_t sv = apr_socket_send(self->inout, self->outbuffer, &nts);
 
 	if (nts > 0){
@@ -218,7 +226,7 @@ static bool flushout_default(struct conn_state* self)
 		apr_strerror(sv, errbuf, 64);
 		LOG("arcan_frameserver(net-srv) -- send failed, %s\n", errbuf);
 	}
-	
+
 	return sv == APR_SUCCESS;
 }
 
@@ -236,7 +244,7 @@ static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
 			self->poll_state.rtnevents  = 0;
 			apr_pollset_add(netcontext.pollset, &self->poll_state);
 		}
-		
+
 		return true;
 	}
 
@@ -264,7 +272,7 @@ static bool state_decode(struct conn_state* self, int len, char* data)
 
 /* data contains counter and remaining of block is pattern.
  * self must be able to manage ( len-(11 bytes) ) * counter
- * this expands in 64k- sized (aligned against blocksize) writes 
+ * this expands in 64k- sized (aligned against blocksize) writes
  * through the state_store */
 		case STATE_RLEBLOCK:
 /* extract counter */
@@ -282,7 +290,7 @@ static bool state_decode(struct conn_state* self, int len, char* data)
 			else
 				for (int i = 0; i < nbpb; i++)
 					memcpy(&netcontext.rledec_buf[i * block_sz], &data[len - block_sz], block_sz);
-				
+
 /* flush (using rledec_buf), repc repetitions of data to store */
 			while (repc){
 				int ntc = repc > nbpb ? nbpb : repc;
@@ -303,38 +311,38 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 {
 	arcan_event newev = {.category = EVENT_NET};
 	LOG("arcan_frameserver(net), TLV frame received (%d:%d)\n", tag, len);
-	
+
 	switch(tag){
 		case TAG_NETMSG:
 			newev.kind = EVENT_NET_CUSTOMMSG;
-			snprintf(newev.data.network.message, 
+			snprintf(newev.data.network.message,
 				sizeof(newev.data.network.message)/sizeof(newev.data.network.message[0]),
 			"%s", value);
 			arcan_event_enqueue(&netcontext.outevq, &newev);
 		break;
 
-		case TAG_NETINPUT: 
+		case TAG_NETINPUT:
 /* need to implement proper serialization of event structure first */
 		break;
-		
+
 		case TAG_NETPING:
 			if (len == 4){
 				uint32_t inl;
 				memcpy(&inl, value, sizeof(uint32_t));
 				inl = ntohl(inl);
 				self->last_ping = inl;
-				
+
 				char outbuf[5];
 				outbuf[0] = TAG_NETPONG;
 				inl = htonl(frameserver_timemillis());
 				memcpy(&outbuf[1], &inl, sizeof(uint32_t));
-			} 
+			}
 			else
 				return false; /* Protocol ERROR */
 
 /* four bytes, unsigned, big-endian */
 		break;
-		
+
 		case TAG_NETPONG:
 			if (len == 4){
 				uint32_t inl;
@@ -349,11 +357,11 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 		case TAG_STATE_XFER:
 			return state_decode(self, len, value);
 		break;
-		
+
 		default:
 			LOG("arcan_frameserver(net-cl), unknown tag(%d) with %d bytes payload.\n", tag, len);
 	}
-	
+
 	return true;
 }
 
@@ -364,13 +372,13 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 static bool validator_tlv(struct conn_state* self)
 {
 	apr_size_t nr   = self->buf_sz - self->buf_ofs;
-	
+
 /* if, for some reason, poorly written packages have come this far, well no further */
 	if (nr == 0)
 		return false;
 
 	apr_status_t sv = apr_socket_recv(self->inout, &self->inbuffer[self->buf_ofs], &nr);
-	
+
 	if (sv == APR_SUCCESS){
 		if (nr > 0){
 			uint16_t len;
@@ -382,14 +390,14 @@ static bool validator_tlv(struct conn_state* self)
 decode:
 /* check if header is broken */
 			len = (uint8_t)self->inbuffer[1] | ((uint8_t)self->inbuffer[2] << 8);
-			
+
 			if (len > outbuf_cap - FRAME_HEADER_SIZE)
 				return false;
 
 /* full packet */
 			int buflen = len + FRAME_HEADER_SIZE;
 			bool rv = true;
-			
+
 /* invoke next dispatcher, let any failure propagate */
 			if (self->buf_ofs >= buflen){
 				rv = self->dispatch(self, self->inbuffer[0], len, &self->inbuffer[FRAME_HEADER_SIZE]);
@@ -440,7 +448,7 @@ static inline void setup_cell(struct conn_state* conn)
 		memset(conn->outbuffer, '\0', conn->outbuf_sz);
 	else
 		conn->outbuffer = malloc(conn->outbuf_sz);
-	
+
 	if (!conn->inbuffer)
 		conn->buf_sz = 0;
 
@@ -468,7 +476,7 @@ static inline void setup_cell(struct conn_state* conn)
 static struct conn_state* init_conn_states(int limit)
 {
 	struct conn_state* active_cons = malloc(sizeof(struct conn_state) * limit);
-	
+
 	if (!active_cons)
 		return NULL;
 
@@ -517,7 +525,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	active_cons[j].connect_stamp = frameserver_timemillis();
 
 	apr_pollfd_t* pfd = &active_cons[j].poll_state;
-	
+
 	pfd->desc.s      = newsock;
 	pfd->desc_type   = APR_POLL_SOCKET;
 	pfd->client_data = &active_cons[j];
@@ -525,7 +533,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	pfd->rtnevents   = 0;
 	pfd->p           = netcontext.mempool;
 
-	apr_pollset_add(pollset, pfd); 
+	apr_pollset_add(pollset, pfd);
 
 /* figure out source address, add to event and fire */
 	char* dstaddr = NULL;
@@ -535,7 +543,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET, .data.network.connid = (j + 1)};
 	size_t out_sz = sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]);
 	apr_sockaddr_ip_getbuf(outev.data.network.hostaddr, out_sz, addr);
-	
+
 	arcan_event_enqueue(&netcontext.outevq, &outev);
 	graph_log_connection(netcontext.graphing, active_cons[j].slot, outev.data.network.hostaddr);
 }
@@ -544,12 +552,12 @@ static uint32_t version_magic(bool req)
 {
 	char buf[32], (* ch) = buf;
 	sprintf(buf, "%s_ARCAN_%d_%d_%d", req ? "REQ" : "REP", ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR, ARCAN_VERSION_PATCH);
-	
+
 	uint32_t hash = 5381;
 	int c;
 
 	while ((c = *(ch++)))
-		hash = ((hash << 5) + hash) + c; 
+		hash = ((hash << 5) + hash) + c;
 
 	return hash;
 }
@@ -641,14 +649,14 @@ static apr_socket_t* server_prepare_socket(const char* host, apr_sockaddr_t* alt
 		apr_socket_opt_set(ear_sock, APR_SO_BROADCAST, 1);
 #endif
 	}
-	
+
 	if (!tcp || apr_socket_listen(ear_sock, SOMAXCONN) == APR_SUCCESS)
 		return ear_sock;
 
 sock_failure:
 	apr_strerror(rv, errbuf, 64);
 	LOG("arcan_frameserver(net) -- preparing listening socket failed, reason: %s\n", errbuf);
-	
+
 	apr_socket_close(ear_sock);
 	return NULL;
 }
@@ -663,7 +671,7 @@ static void server_queueout_data(struct conn_state* active_cons, int nconns, cha
 {
 	if (id > nconns || id < 0)
 		return;
-	
+
 /* broadcast */
 	if (id == 0)
 		for(int i = 0; i < nconns; i++){
@@ -683,7 +691,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 	arcan_event* ev;
 	uint16_t msgsz = sizeof(ev->data.network.message) / sizeof(ev->data.network.message[0]);
 	char outbuf[ msgsz + 3];
-	
+
 /*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
 	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
 		if (ev->category == EVENT_NET){
@@ -697,7 +705,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 						netcontext.shmcont.addr->vready = true;
 					}
 				break;
-				
+
 				case EVENT_NET_CUSTOMMSG:
 					LOG("arcan_frameserver(net-srv) broadcast %s\n", ev->data.network.message);
 					outbuf[0] = TAG_NETMSG;
@@ -705,7 +713,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					outbuf[2] = msgsz >> 8;
 					memcpy(&outbuf[3], ev->data.network.message, msgsz);
 					server_queueout_data(active_cons, nconns, outbuf, msgsz + 3, ev->data.network.connid);
-					graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message, TAG_NETMSG, msgsz);    
+					graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message, TAG_NETMSG, msgsz);
 				break;
 			}
 		}
@@ -796,12 +804,12 @@ static void server_session(const char* host, int limit)
 		gkpfd.client_data = gk_sock;
 		apr_pollset_add(poll_in, &gkpfd);
 	}
-	
+
 	apr_pollset_add(poll_in, &pfd);
 
 	while (true){
 		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
-		
+
 /* check event-queue first as it may emit more data to buffers for sockets that just became writable */
 		if (!server_process_inevq(active_cons, limit))
 			break;
@@ -827,11 +835,11 @@ static void server_session(const char* host, int limit)
 				continue;
 			}
 			else;
-	
+
 /* always process incoming data first, as there can still be something in buffer when HUP / ERR is triggered */
 			bool res = true;
 			struct conn_state* state = cb;
-			
+
 			if ((evs & APR_POLLIN) > 0)
 				res = state->validator(state);
 
@@ -839,7 +847,7 @@ static void server_session(const char* host, int limit)
  * connected clients, and until finally flushed, they'd get APR_POLLOUT enabled */
 			if ((evs & APR_POLLOUT) > 0)
 				res = state->flushout(state);
-			
+
 			if ( !res || (ret_pfd[i].rtnevents & APR_POLLHUP) > 0 || (ret_pfd[i].rtnevents & APR_POLLERR) > 0){
 				LOG("arcan_frameserver(net-srv) -- (%s), terminating client connection (%d).\n", res ? "HUP/ERR" : "flush failed", i);
 				apr_socket_close(ret_pfd[i].desc.s);
@@ -865,12 +873,12 @@ static char* host_discover(char* host, bool usenacl)
 {
 	const int addr_maxlen = 45; /* RFC4291 */
 	char reqmsg[ MAX_HEADER_SIZE ], repmsg[ MAX_HEADER_SIZE + 1 ];
-	
+
 	memset(reqmsg, 0, MAX_HEADER_SIZE);
 	uint32_t mv = htonl( version_magic(true) );
 	memcpy(reqmsg, &mv, sizeof(uint32_t));
 	repmsg[MAX_HEADER_SIZE] = '\0';
-	
+
 	apr_status_t rv;
 	apr_sockaddr_t* addr;
 
@@ -883,7 +891,7 @@ static char* host_discover(char* host, bool usenacl)
 	}
 
 	apr_socket_timeout_set(broadsock, DEFAULT_CLIENT_TIMEOUT);
-	
+
 	while (true){
 		apr_size_t nts = MAX_HEADER_SIZE, ntr;
 		apr_sockaddr_t recaddr;
@@ -891,7 +899,7 @@ static char* host_discover(char* host, bool usenacl)
 		if ( ( rv = apr_socket_sendto(broadsock, addr, 0, reqmsg, &nts) ) != APR_SUCCESS)
 			break;
 		graph_log_discover_req(netcontext.graphing, mv, host ? host : "broadcast");
-		
+
 retry:
 		ntr = MAX_HEADER_SIZE;
 		rv  = apr_socket_recvfrom(&recaddr, broadsock, 0, repmsg, &ntr);
@@ -911,8 +919,8 @@ retry:
 
 						return strdup(strbuf);
 					}
-					else{ 
-						graph_log_discover_rep(netcontext.graphing, rmagic, &repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]); 
+					else{
+						graph_log_discover_rep(netcontext.graphing, rmagic, &repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]);
 						return strdup(&repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]);
 					}
 				}
@@ -930,7 +938,7 @@ retry:
 	apr_strerror(rv, errbuf, 64);
 	LOG("arcan_frameserver(net-cl) -- send failed during discover, %s\n", errbuf);
 	graph_log_conn_error(netcontext.graphing, 0, "UDP sendto failed");
-	
+
 	return NULL;
 }
 
@@ -950,18 +958,18 @@ static bool client_data_tlvdisp(struct conn_state* self, char tag, int len, char
 			graph_log_tlv_in(netcontext.graphing, 0, outev.data.network.message, TAG_NETMSG, len);
 		break;
 
-/* RLE compressed keyframe */ 
+/* RLE compressed keyframe */
 		case TAG_STATE_XFER:
 			graph_log_tlv_in(netcontext.graphing, 0, "state", TAG_STATE_XFER, len);
 		break;
-		
+
 /* unpack arcan_event */
 		case TAG_NETINPUT: break;
 
 		default:
-			LOG("arcan_frameserver_net(client) -- unknown packet type (%d), ignored\n", (int)tag); 
+			LOG("arcan_frameserver_net(client) -- unknown packet type (%d), ignored\n", (int)tag);
 	}
-	
+
 	return true;
 }
 
@@ -977,7 +985,7 @@ static bool client_data_process(apr_socket_t* inconn)
 	}
 
 	bool rv = validator_tlv(&cs);
-	
+
 	if (!rv){
 		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
 		LOG("arcan_frameserver(net-cl) -- validator failed, shutting down.\n");
@@ -989,7 +997,7 @@ static bool client_data_process(apr_socket_t* inconn)
 	return rv;
 }
 
-/* *blocking* data- transfer, no intermediate buffering etc. 
+/* *blocking* data- transfer, no intermediate buffering etc.
  * addr   : destination socket
  * buf    : output buffer, assumed to already have TLV headers etc.
  * buf_sz : size of buffer
@@ -1002,7 +1010,7 @@ static void client_data_push(apr_socket_t* addr, char* buf, size_t buf_sz)
 		apr_size_t ds = buf_sz - ofs;
 		apr_status_t rv = apr_socket_send(addr, &buf[ofs], &ds);
 		ofs += ds;
-		
+
 /* failure will trigger HUP/ERR/something on next poll */
 		if (rv != APR_SUCCESS)
 			break;
@@ -1015,7 +1023,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	uint16_t msgsz = sizeof(ev->data.network.message) / sizeof(ev->data.network.message[0]);
 	char outbuf[ msgsz + 3];
 	outbuf[msgsz + 2] = 0;
-	
+
 /* since we flush the entire eventqueue at once, it means that multiple
  * messages may possible be interleaved in one push (up to the 64k buffer) before
  * getting sent of to the TCP layer (thus not as wasteful as it might initially seem).
@@ -1041,7 +1049,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 
 					graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message, TAG_NETMSG, msgsz);
 				break;
- 
+
 				case EVENT_NET_GRAPHREFRESH:
 					if (netcontext.shmcont.addr->vready == false && graph_refresh(netcontext.graphing))
 						netcontext.shmcont.addr->vready = true;
@@ -1061,7 +1069,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				break;
 				case TARGET_COMMAND_RESTORE:
 					netcontext.tmphandle = 0;
-				break; 
+				break;
 				default:
 					; /* just ignore */
 			}
@@ -1091,7 +1099,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 	apr_socket_create(&sock, sa->family, SOCK_STREAM, APR_PROTO_TCP, netcontext.mempool);
 	apr_socket_opt_set(sock, APR_SO_NONBLOCK, 0);
 	apr_socket_timeout_set(sock, DEFAULT_CLIENT_TIMEOUT);
-	
+
 /* connect or time-out? */
 	apr_status_t rc = apr_socket_connect(sock, sa);
 
@@ -1108,7 +1116,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 	snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
 	arcan_event_enqueue(&netcontext.outevq, &ev);
 	graph_log_connected(netcontext.graphing, hoststr);
-	
+
 	apr_pollset_t* pset;
 	apr_pollfd_t pfd = {
 		.p = netcontext.mempool,
@@ -1131,7 +1139,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 	}
 
 	apr_pollset_add(pset, &pfd);
-	
+
 	while (true){
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
@@ -1167,23 +1175,23 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	unsigned gwidth = 256, gheight = 256;
 	const char* rk;
 	uint32_t* gbufptr = NULL;
-	
+
 	if (arg_lookup(args, "width", 0, &rk) ){
 		unsigned neww = strtoul(rk, NULL, 10);
 		if (neww > 0 && neww <= MAX_SHMWIDTH)
 			gwidth = neww;
 	}
-		
+
 	if (arg_lookup(args, "height", 0, &rk) ){
 		unsigned newh = strtoul(rk, NULL, 10);
 		if (newh > 0 && newh <= MAX_SHMHEIGHT)
 			gheight = newh;
 	}
-		
+
 /* using the shared memory context as a graphing / logging window, for event passing,
  * the sound as a possible alert, but also for the guard thread*/
 	netcontext.shmcont  = frameserver_getshm(shmkey, true);
-	
+
 	if (!frameserver_shmpage_resize(&netcontext.shmcont, gwidth, gheight, 4, 0, 0))
 		return;
 
@@ -1192,8 +1200,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	frameserver_semcheck(netcontext.shmcont.vsem, -1);
 
 /* resize guarantees at least 32bit alignment (possibly 64, 128) */
-	gbufptr = (uint32_t*) netcontext.vidp; 
-	
+	gbufptr = (uint32_t*) netcontext.vidp;
+
 /* APR as a wrapper for all socket communication */
 	apr_initialize();
 	apr_pool_create(&netcontext.mempool, NULL);
@@ -1230,7 +1238,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		LOG("arcan_frameserver(net), unknown mode specified.\n");
 		goto cleanup;
 	}
-		
+
 cleanup:
 	apr_pool_destroy(netcontext.mempool);
 	arg_cleanup(args);

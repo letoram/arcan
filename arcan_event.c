@@ -247,7 +247,7 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 	if (!src || (src->category & ctx->mask_cat_inp)){
 		return;
 	}
-		
+
 	if (LOCK(ctx)){
 		unsigned ind = alloc_queuecell(ctx);
 		arcan_event* dst = &ctx->eventbuf[ind];
@@ -618,12 +618,14 @@ void arcan_event_init(arcan_evctx* ctx)
 		return;
 	}
 
+#ifndef WIN32
 /* SIGUSR1 is only used to signal compliant frameservers, starts masked and is inherited that way. */
 	struct sigaction sa;
 	sa.sa_flags   = 0;
 	sa.sa_handler = SIG_IGN;
 	sigaction(SIGUSR1, &sa, NULL);
-	
+#endif
+
 	init_sdl_events(ctx);
 
 	ctx->synch.local = SDL_CreateMutex();

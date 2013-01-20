@@ -91,6 +91,11 @@ elseif(WIN32)
         ${WINLIB}\\distr\\libogg-0.dll)
 	set(ZLIB_LIBRARY ${WINLIB}\\distr\\zlib1.dll)
 	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
+
+# APR seems to complex for this solution, build separately in MINGW
+# and install into MSys
+    set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
+    set(APR_INCLUDE_DIR ${WININC}\\apr)
 	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
 	set(SQLITE3_INCLUDE_DIR ${WININC})
 	set(SQLITE3_LIBRARY_RELEASE ${WINLIB}\\distr\\sqlite3.dll)
