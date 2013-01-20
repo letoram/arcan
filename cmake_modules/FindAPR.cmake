@@ -5,9 +5,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-# 
+#
 #   http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -27,6 +27,7 @@
 # APR first.
 
 FIND_PATH(APR_INCLUDE_DIR apr.h
+/usr/local/apr/include/apr-1
 /usr/local/include/apr-1
 /usr/local/include/apr-1.0
 /usr/include/apr-1
@@ -36,7 +37,7 @@ FIND_PATH(APR_INCLUDE_DIR apr.h
 SET(APR_NAMES ${APR_NAMES} apr-1)
 FIND_LIBRARY(APR_LIBRARY
   NAMES ${APR_NAMES}
-  PATHS /usr/lib /usr/local/lib
+  PATHS /usr/lib /usr/local/lib /usr/local/apr/lib
   )
 
 IF (APR_LIBRARY AND APR_INCLUDE_DIR)
@@ -73,6 +74,7 @@ FIND_PATH(APRUTIL_INCLUDE_DIR apu.h
 /usr/local/include/apr-1.0
 /usr/include/apr-1
 /usr/include/apr-1.0
+/usr/local/aprutil
 )
 
 SET(APRUTIL_NAMES ${APRUTIL_NAMES} aprutil-1)

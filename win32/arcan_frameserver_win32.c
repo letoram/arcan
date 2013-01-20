@@ -26,6 +26,11 @@
 #include "../frameserver/arcan_frameserver_libretro.h"
 #include "../frameserver/arcan_frameserver_decode.h"
 
+/* APR won't be an explicit requirement until 0.2.3 */
+#ifdef HAVE_APR
+#include "../frameserver/arcan_frameserver_net.h"
+#endif
+
 #define DST_SAMPLERATE 44100
 #define DST_AUDIOCHAN  2
 #define DST_VIDEOCHAN  4
@@ -219,12 +224,12 @@ int main(int argc, char* argv[])
 #else
 /* set this env whenever you want to step through the frameserver as launched from the parent */
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
+#endif
 
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
 		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
 		Sleep(10);
 	}
-#endif
 
 /* the convention on windows doesn't include the program name as first argument,
  * but some execution contexts may use it, e.g. ruby / cygwin / ... so skew the arguments */
@@ -254,7 +259,12 @@ int main(int argc, char* argv[])
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
-
+#ifdef HAVE_APR
+	else if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
+		toggle_logdev("net");
+		arcan_frameserver_net_run(resource, keyfile);
+	}
+#endif
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev("retro");
 		arcan_frameserver_libretro_run(resource, keyfile);
