@@ -129,6 +129,7 @@ typedef struct arcan_frameserver {
 
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
+	uint16_t watch_const; 
 } arcan_frameserver;
 
 /* contains both structures for managing movie- playback,

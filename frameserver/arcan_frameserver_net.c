@@ -1137,6 +1137,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 		apr_int32_t pnum;
 
 		apr_status_t status = apr_pollset_poll(pset, timeout, &pnum, &ret_pfd);
+		printf("status: %d\n", status);
 		if (status != APR_SUCCESS && status != APR_EINTR){
 			LOG("arcan_frameserver(net-cl) -- broken poll, giving up.\n");
 			graph_log_conn_error(netcontext.graphing, 0, "pollset_poll");
