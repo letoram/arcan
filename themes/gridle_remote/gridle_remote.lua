@@ -1,5 +1,6 @@
 settings = {
-	repeatrate = 200
+	repeatrate = 200,
+	connected = false
 };
 
 function string.split(instr, delim)
@@ -21,8 +22,9 @@ function net_event(source, tbl)
 	print("tbl.kind:", tbl.kind);
 	
 	if (tbl.kind == "connected") then
-		spawn_warning("Connected", 125);
 		settings.iodispatch = {};
+		settings.connected = true;
+		spawn_warning("Connected", 125);
 
 	elseif (tbl.kind == "message") then
 -- format matches broadcast_game in gridle.lua
@@ -204,22 +206,18 @@ end
 function gridle_remote_dispatchinput(iotbl, override)
 	local restbl = override and override or keyconfig:match(iotbl);
 
--- FIXME: analog won't work here  due to pairs(restbl)
-
-	if (restbl or iotbl.kind == "analog") then
+	if (restbl) then
 		for ind,val in pairs(restbl) do
-
 			if (settings.iodispatch[val] and iotbl.active) then
 				settings.iodispatch[val](restbl, iotbl);
-
-			elseif settings.server then
+			elseif settings.connected then
 				local msgstr = iotbl.active and "press:" or "release:";
 				msgstr = msgstr .. val;
 				net_push(settings.server, msgstr);
 			end
-
 		end
 	end
+	
 end
 
 gridle_remote_input = gridle_remote_dispatchinput;

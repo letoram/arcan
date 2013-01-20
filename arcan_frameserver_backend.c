@@ -799,6 +799,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 	memset(res, 0, sizeof(arcan_frameserver));
 	res->use_pbo = true;
+	res->watch_const = 0xdead;
 	return res;
 }
 
