@@ -36,7 +36,10 @@
 /* quick debugging hack */
 static char* lastsym;
 
-/* keep track of the symbols we've remapped, for debugging purposes and for messing with WINE */
+/* linked list of hijacked symbols,
+ * sym - symbol name
+ * ptr - function pointer to the redirected function
+ * bounce - function pointer to the original function */
 struct symentry {
 	char* sym;
 	void* ptr;
@@ -99,7 +102,7 @@ static struct symentry* find_symbol(const char* sym)
 
 __attribute__((constructor))
 static void hijack_init(void){
-	forwardtbl.sdl_grabinput = lookupsym("SDL_WM_GrabInput",ARCAN_SDL_WM_GrabInput, true);
+  forwardtbl.sdl_grabinput = lookupsym("SDL_WM_GrabInput",ARCAN_SDL_WM_GrabInput, true);
 	forwardtbl.sdl_openaudio = lookupsym("SDL_OpenAudio",ARCAN_SDL_OpenAudio, true);
 	forwardtbl.sdl_peepevents = lookupsym("SDL_PeepEvents",NULL, true);
 	forwardtbl.sdl_pollevent = lookupsym("SDL_PollEvent",ARCAN_SDL_PollEvent, true);

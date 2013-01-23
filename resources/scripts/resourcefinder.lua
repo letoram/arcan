@@ -42,6 +42,7 @@ end
 -- look for (basename.{extensions}) add first result to globres as 
 -- basepath .. basename . .. extension as a subtable defined by 'key'
 local function filter_ext(globres, basename, basepath, dsttable, extensions, key )
+	if (basename == nil) then return; end
 	if (dsttable[key] == nil) then dsttable[key] = {}; end
 	
 	for ind, val in ipairs(extensions) do

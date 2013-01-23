@@ -363,7 +363,8 @@ int main(int argc, char* argv[])
  * since these can also propagate to LUA and user scripts, there
  * should really be a timing balance here (keep track of avg. time to dispatch
  * event, figure out how many we can handle before we must push a logic- frame */
-			while ((ev = arcan_event_poll(arcan_event_defaultctx()))) {
+			arcan_errc evstat;
+			while ((ev = arcan_event_poll(arcan_event_defaultctx(), &evstat)) && evstat == ARCAN_OK) {
 
 				switch (ev->category) {
 					case EVENT_IO:

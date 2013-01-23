@@ -693,7 +693,8 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 	char outbuf[ msgsz + 3];
 
 /*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
-	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
+	arcan_errc evstat;
+	while ( (ev = arcan_event_poll(&netcontext.inevq, &evstat)) )
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
 				case EVENT_NET_INPUTEVENT:
@@ -1030,7 +1031,8 @@ static bool client_inevq_process(apr_socket_t* outconn)
  *
  * The real issue is buffer overruns though, which currently means that data gets lost (for custommsg) or truncated
  * State transfers won't ever overflow and are only ever tucked on at the end */
-	while ( (ev = arcan_event_poll(&netcontext.inevq)) )
+	arcan_errc evstat;
+	while ( (ev = arcan_event_poll(&netcontext.inevq, &evstat)) )
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
 				case EVENT_NET_INPUTEVENT:

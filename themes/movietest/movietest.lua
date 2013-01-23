@@ -45,7 +45,7 @@ function movietest()
 
 	webcam_ind = 0
 	
-	vid = load_movie("movietest.mp3", FRAMESERVER_LOOP, function(source, statustbl)
+	vid = load_movie("movietest.avi", FRAMESERVER_LOOP, function(source, statustbl)
 		if (statustbl.kind == "resized") then
 			print("main frameserver_event(",source, statustbl.kind,")"); 
 			show_image(source)

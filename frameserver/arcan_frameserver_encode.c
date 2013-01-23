@@ -615,7 +615,12 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 	atexit(encoder_atexit);
 
 	while (true){
-		arcan_event* ev = arcan_event_poll(&ffmpegctx.inevq);
+		arcan_errc evstat;
+
+/* fail here means there's something wrong with frameserver - main app connection */
+		arcan_event* ev = arcan_event_poll(&ffmpegctx.inevq, &evstat);
+		if (evstat != ARCAN_OK)
+			break;
 
 		if (ev){
 			switch (ev->kind){

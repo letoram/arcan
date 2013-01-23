@@ -39,7 +39,7 @@
 #include "libretro.h"
 
 /* resampling at this level because it seems the linux + openAL + pulse-junk-audio
- * introduces audible pops on some soundcard / drivers at odd (so poorly tested) sampling rates) */
+ * introduces audible pops in addition to the terrible latency  */
 #include "resampler/speex_resampler.h"
 
 #ifndef MAX_PORTS
@@ -70,7 +70,7 @@ struct input_port {
 	unsigned cursor_x, cursor_y, cursor_btns[5];
 };
 
-typedef void(*pixconv_fun)(const void* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch);
+typedef void(*pixconv_fun)(const void* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch, bool postfilter);
 
 /* interface for loading many different emulators,
  * we assume "resource" points to a dlopen:able library,
@@ -222,18 +222,20 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
-static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
+static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch, bool postfilter)
 {
 	uint16_t* interm = retroctx.ntsc_imb;
-
-	for (int y = 0; y < height; y++){
-		for (int x = 0; x < width; x++){
+	unsigned dh = height >= MAX_SHMHEIGHT ? MAX_SHMHEIGHT : height;
+	unsigned dw =  width >=  MAX_SHMWIDTH ?  MAX_SHMWIDTH : width;
+	
+	for (int y = 0; y < dh; y++){
+		for (int x = 0; x < dw; x++){
 			uint16_t val = data[x];
 			uint8_t r = ((val & 0x7c00) >> 10) << 3;
 			uint8_t g = ((val & 0x03e0) >>  5) << 3;
 			uint8_t b = ( val & 0x001f) <<  3;
 
-			if (retroctx.ntscconv)
+			if (postfilter)
 				*interm++ = RGB565(r, g, b);
 			else
 				*outp++ = (0xff) << 24 | b << 16 | g << 8 | r;
@@ -242,11 +244,12 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 		data += pitch >> 1;
 	}
 
-	if (retroctx.ntscconv)
+	if (postfilter)
 		push_ntsc(width, height, retroctx.ntsc_imb, outp);
 }
 
-/* some cores have been wrongly implemented in the past, yielding > 1 frames for each run() */
+/* some cores have been wrongly implemented in the past, yielding > 1 frames for each run(),
+ * so this is reset and checked after each retro_run() */
 static int testcounter;
 static void libretro_vidcb(const void* data, unsigned width, unsigned height, size_t pitch)
 {
@@ -255,9 +258,23 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	if (!data || retroctx.skipframe)
 		return;
 
-	unsigned outh = retroctx.ntscconv ? height * 2 : height;
-	unsigned outw = retroctx.ntscconv ? SNES_NTSC_OUT_WIDTH( width ) : width;
+/* width / height can be changed without notice, so we have to be ready for the fact that
+ * the cost of conversion can suddenly move outside the allowed boundaries, then NTSC is ignored */
+	unsigned outw = width;
+	unsigned outh = height;
+	bool ntscconv = retroctx.ntscconv;
 
+	if (ntscconv && SNES_NTSC_OUT_WIDTH(width)<= MAX_SHMWIDTH
+		&& height * 2 <= MAX_SHMHEIGHT){
+		outh = outh << 1;
+		outw = SNES_NTSC_OUT_WIDTH( width );
+	}
+	else {
+		outw = width;
+		outh = height;
+		ntscconv = false;
+	}
+	
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (outw != retroctx.shmcont.addr->storage.w || outh != retroctx.shmcont.addr->storage.h){
@@ -275,14 +292,14 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		}
 	}
 
-/* intermediate storage for blargg NTSC filter, if toggled
- * ntscconv will be applied by the converter however */
-	if (retroctx.ntscconv && !retroctx.ntsc_imb){
+/* intermediate storage for blargg NTSC filter, if toggled, ntscconv will be applied by the converter however */
+	if (ntscconv && !retroctx.ntsc_imb){
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
+/* lastly, convert / blit, this will possibly clip */
 	if (retroctx.converter)
-		retroctx.converter(data, (void*) retroctx.vidp, width, height, pitch);
+		retroctx.converter(data, (void*) retroctx.vidp, width, height, pitch, ntscconv);
 }
 
 /* the better way would be to just drop the videoframes, buffer the audio, 
@@ -663,9 +680,10 @@ static inline void targetev(arcan_event* ev)
 /* we also process requests to save state, shutdown, reset, plug/unplug input, here */
 static inline void flush_eventq(){
 	 arcan_event* ev;
+	 arcan_errc evstat;
 
 	 do
-		while ( (ev = arcan_event_poll(&retroctx.inevq)) ){
+		while ( (ev = arcan_event_poll(&retroctx.inevq, &evstat)) ){
 			switch (ev->category){
 				case EVENT_IO:
 					ioev_ctxtbl(&(ev->data.io), ev->label);
@@ -715,6 +733,16 @@ static inline bool retroctx_sync()
 
 	return true;
 }
+
+/* a big issue is that the libretro- modules are not guaranteed to act in a nice library way,
+ * meaning that they (among other things) install signal handlers, spawn threads, change working directory,
+ * work with file-system etc. etc. There are a few ideas for how this can be handled:
+ * (1) use PIN to intercept all syscalls in the loaded library (x86/x86-64 only though)
+ * (2) using a small loader and PTRACE-TRACEME PTRACE_O_TRACESYSGOOD then patch the syscalls so they redirect through a jumptable
+ *     trigger on installation of signal handlers etc. 
+ * (3) use FUSE as a means of intercepting file-system related syscalls
+ * (4) LD_PRELOAD ourselves, replacing the usual batch of open/close/,... wrappers 
+ */
 
 /* map up a libretro compatible library resident at fullpath:game,
  * if resource is /info, no loading will occur but a dump of the capabilities
@@ -914,8 +942,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 			};
 
-/*			assert(shared->aready == false);
-			assert(shared->vready == false); */
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
 
