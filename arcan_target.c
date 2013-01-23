@@ -553,10 +553,11 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 {
 	SDL_Event gevent;
 	arcan_event* ev;
+	arcan_errc rv;
 	
 	trace("SDL_PollEvent()\n");
 	
-	while ( (ev = arcan_event_poll(&global.inevq)) ) 
+	while ( (ev = arcan_event_poll(&global.inevq, &rv)) && rv == ARCAN_OK ) 
 		switch (ev->category){
 			case EVENT_IO:
 				if (global.gotsdl)
