@@ -194,9 +194,9 @@ class Generic
 				STDOUT.print("[Generic Importer] Mapped #{target} to #{@gamedb_sys}\n")
 			end
 		end
-		
+
 		if (@target == nil)
-			@target = Target.Create(@targetname, "#{@targetname}#{extension}",@gentargets[target])
+			@target = Target.Create(@targetname, "#{@targetname}#{extension}", @gentargets[target])
 		end 
 
 		if (libloader)

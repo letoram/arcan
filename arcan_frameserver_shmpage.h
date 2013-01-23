@@ -90,12 +90,11 @@ struct arg_arr {
  * while at the same time keeping it out of the frameserver routine in the main app, where
  * that kind of shmcheck is dangerous */
 
-/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately)
- * this will forcibly exit should any error other than timeout occur.*/
+/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately) this will forcibly exit should any error other than timeout occur.
+ * on some platforms, this unfortunately will end up in a sleep -> check -> sleep | return loop, which is jittery and wasteful */
 int frameserver_semcheck(sem_handle semaphore, int timeout);
 
-/* returns true of the contents of the shmpage seems sound (unless this passes,
- * the server will likely kill or ignore the client */
+/* returns true if the contents of the shmpage seems sound (unless this passes, the server will likely kill or ignore the client */
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 
 /* calculate video/audio buffers from shmpage as baseaddr */

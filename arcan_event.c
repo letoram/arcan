@@ -130,6 +130,7 @@ static inline bool lock_shared(arcan_evctx* ctx)
 	}
 	else
 		arcan_sem_timedwait(ctx->synch.external.shared, -1);
+
 	return true;
 }
 
@@ -147,45 +148,52 @@ static inline bool unlock_shared(arcan_evctx* ctx)
 
 static inline bool LOCK(arcan_evctx* ctx)
 {
-	return ctx->local ? lock_local : lock_shared;
+	return ctx->local ? lock_local(ctx) : lock_shared(ctx);
 }
 
-#define UNLOCK() if (ctx->local) unlock_local(ctx); else unlock_shared(ctx);
+static inline bool UNLOCK(arcan_evctx* ctx)
+{
+	return ctx->local ? unlock_local(ctx) : unlock_shared(ctx);
+}
 
 /* check queue for event, ignores mask */
-arcan_event* arcan_event_poll(arcan_evctx* ctx)
+arcan_event* arcan_event_poll(arcan_evctx* ctx, arcan_errc* status)
 {
 	arcan_event* rv = NULL;
 
-		if (*ctx->front != *ctx->back && LOCK(ctx)){
-
-			rv = &ctx->eventbuf[ *ctx->front ];
-			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
-
-			UNLOCK();
+		if (!LOCK(ctx)){
+			*status = ARCAN_ERRC_UNACCEPTED_STATE; /* possibly dead frameserver */
+			return NULL;
 		}
 
+		*status = ARCAN_OK;
+		if (*ctx->front != *ctx->back){
+			rv = &ctx->eventbuf[ *ctx->front ];
+			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
+		}
+
+	UNLOCK(ctx);
 	return rv;
 }
 
 void arcan_event_maskall(arcan_evctx* ctx){
 	if ( LOCK(ctx) ){
 		ctx->mask_cat_inp = 0xffffffff;
-		UNLOCK();
+		UNLOCK(ctx);
 	}
 }
 
 void arcan_event_clearmask(arcan_evctx* ctx){
 	if ( LOCK(ctx) ){
 		ctx->mask_cat_inp = 0;
-	UNLOCK();
+	UNLOCK(ctx);
 	}
 }
 
 void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask){
 	if (LOCK(ctx)){
 		ctx->mask_cat_inp = mask;
-		UNLOCK();
+		UNLOCK(ctx);
 	}
 }
 
@@ -235,7 +243,7 @@ void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category
 				elem = (elem + 1) % ctx->n_eventbuf;
 		}
 
-		UNLOCK();
+		UNLOCK(ctx);
 	}
 }
 
@@ -254,7 +262,7 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 		*dst = *src;
 		dst->tickstamp = ctx->c_ticks;
 
-		UNLOCK();
+		UNLOCK(ctx);
 	}
 }
 
@@ -266,12 +274,18 @@ static inline int queue_used(arcan_evctx* dq)
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
 {
+	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front) || (srcqueue && !srcqueue->back))
+		return;
+
 	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
 
-/* limited so a single frameserver can't storm the parent with events, DOSing others */
-	while( *srcqueue->front != *srcqueue->back &&
-		floor((float)dstqueue->n_eventbuf * saturation) > queue_used(dstqueue) ){
-		arcan_event* ev = arcan_event_poll(srcqueue);
+	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
+			floor((float)dstqueue->n_eventbuf * saturation) > queue_used(dstqueue) ){
+
+		arcan_errc status;
+		arcan_event* ev = arcan_event_poll(srcqueue, &status);
+		if (status != ARCAN_OK)
+			break;
 
 		if (ev && (ev->category & allowed) > 0 ){
 			if (ev->category == EVENT_EXTERNAL)
@@ -279,6 +293,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enu
 
 			else if (ev->category == EVENT_NET)
 				ev->data.network.source = source;
+
 			arcan_event_enqueue(dstqueue, ev);
 		}
 	}
@@ -293,7 +308,7 @@ void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else
 			SDL_EnableKeyRepeat(10, ctx->kbdrepeat);
-		UNLOCK();
+		UNLOCK(ctx);
 	}
 }
 

@@ -966,13 +966,13 @@ int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitc
 			dp->b = (((t2 - t1) * ey) >> 16) + t1;
 			t1 = ((((c01->a - c00->a) * ex) >> 16) + c00->a) & 0xff;
 			t2 = ((((c11->a - c10->a) * ex) >> 16) + c10->a) & 0xff;
-			dp->a = (((t2 - t1) * ey) >> 16) + t1;				
+			dp->a = (((t2 - t1) * ey) >> 16) + t1;
 
 			salast = csax;
 			csax++;
 			sstep = (*csax >> 16) - (*salast >> 16);
 			sp += sstep;
-				
+
 			dp++;
 		}
 		

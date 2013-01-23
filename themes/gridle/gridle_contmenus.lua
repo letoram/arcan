@@ -172,18 +172,20 @@ function gridlemenu_context( gametbl )
 		parent_escapefun(key, store, silent);
 	end
 	settings.iodispatch["MENU_LEFT"] = settings.iodispatch["MENU_ESCAPE"];
-	
-	if (gametbl.capabilities.external_launch and gametbl.capabilities.internal_launch) then
-		table.insert(mainlbls, "Launch...");
-		ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end
-	elseif (gametbl.capabilities.external_launch) then 
-		table.insert(mainlbls, "Launch External");
-		ptrs[ "Launch External" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchexternal(); end 
-	else
-		table.insert(mainlbls, "Launch Internal");
-		ptrs[ "Launch Internal" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchinternal(); end
+
+	if (gametbl.capabilities) then
+		if (gametbl.capabilities.external_launch and gametbl.capabilities.internal_launch) then
+			table.insert(mainlbls, "Launch...");
+			ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end
+		elseif (gametbl.capabilities.external_launch) then 
+			table.insert(mainlbls, "Launch External");
+			ptrs[ "Launch External" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchexternal(); end 
+		else
+			table.insert(mainlbls, "Launch Internal");
+			ptrs[ "Launch Internal" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchinternal(); end
+		end
 	end
-	
+
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = ptrs;
 	current_menu.parent = nil;

@@ -364,11 +364,11 @@ float arcan_event_process(arcan_evctx*, unsigned* nticks);
 /* check the queue for events,
  * don't attempt to run this one-
  * on more than one thread */
-arcan_event* arcan_event_poll(arcan_evctx*);
+arcan_event* arcan_event_poll(arcan_evctx*, arcan_errc* status);
 
 /* similar to event poll, but will only
  * return events matching masked event */
-arcan_event* arcan_event_poll_masked(arcan_evctx*, unsigned mask_cat, unsigned mask_ev);
+arcan_event* arcan_event_poll_masked(arcan_evctx*, unsigned mask_cat, unsigned mask_ev, arcan_errc* status);
 
 /* force a keyboard repeat- rate */
 void arcan_event_keyrepeat(arcan_evctx*, unsigned rate);

@@ -211,7 +211,8 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 		}
 		
 		unsigned evc = 0;
-		while ( arcan_event_poll( &inevq ) != NULL ) evc++;
+		arcan_errc evstat; 
+		while ( arcan_event_poll( &inevq, &evstat) != NULL ) evc++;
 
 /* if nothing has happened, the frameserver is probably not set up right yet, sleep a little */
 		struct timespec tv = {.tv_sec = 0, .tv_nsec = 10000000L};
