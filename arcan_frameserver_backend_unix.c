@@ -217,7 +217,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			.msg_iovlen = 1,
 			.msg_flags = 0,
 			.msg_control = &msgbuf,
-			.msg_controllen = sizeof(struct cmsghdr) + sizeof(int)
+			.msg_controllen = CMSG_LEN(sizeof(int))
 		};
 
 		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
