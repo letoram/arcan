@@ -1136,7 +1136,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 #ifdef SIGUSR1
 		apr_signal(SIGUSR1, pollset_wakeup);
 #else
-		timeout = 10000;
+		timeout = 100000;
 #endif
 	}
 
@@ -1145,10 +1145,9 @@ static void client_session(char* hoststr, enum client_modes mode)
 	while (true){
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
-
 		apr_status_t status = apr_pollset_poll(pset, timeout, &pnum, &ret_pfd);
-		printf("status: %d\n", status);
-		if (status != APR_SUCCESS && status != APR_EINTR){
+		
+		if (status != APR_SUCCESS && status != APR_EINTR && status != APR_TIMEUP){
 			LOG("arcan_frameserver(net-cl) -- broken poll, giving up.\n");
 			graph_log_conn_error(netcontext.graphing, 0, "pollset_poll");
 			break;

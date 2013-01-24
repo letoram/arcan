@@ -166,8 +166,9 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
 #ifndef _WIN32
-	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV)
+	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV){
 		kill(dst->child, SIGUSR1);
+	}
 #endif
 
 	return rv;
