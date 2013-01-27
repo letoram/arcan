@@ -409,7 +409,6 @@ retry:
 	return prev;
 }
 
-
 static inline void currstyle_cnode(struct text_format* curr_style, const char* const base, struct rcell* cnode, bool sizeonly)
 {
 	if (!sizeonly){
