@@ -1529,9 +1529,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					arcan_lua_tblstr(ctx, "kind", "failure", top);
 					arcan_lua_tblnum(ctx, "code", ev->data.external.code, top);
 				break;
-				case EVENT_EXTERNAL_NOTICE_NEWFRAME:
+				case EVENT_EXTERNAL_NOTICE_FRAMESTATUS:
 					arcan_lua_tblstr(ctx, "kind", "frame", top);
-					arcan_lua_tblnum(ctx, "frame", ev->data.external.framenumber, top);
+					arcan_lua_tblnum(ctx, "frame", ev->data.external.framestatus.framenumber, top);
+/* FIXME: extract input bitfields, and expose those as well */
 				break;
 				default:
 					arcan_lua_tblstr(ctx, "kind", "unknown", top);
