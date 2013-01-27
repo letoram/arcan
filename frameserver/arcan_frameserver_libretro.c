@@ -873,7 +873,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
 	* parent event processing as well */
-		outev.data.external.framenumber = 0;
+		outev.data.external.framestatus.framenumber = 0;
 		retroctx.reset();
 
 /* basetime is used as epoch for all other timing calculations */
@@ -913,13 +913,15 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			retroctx.run();
 
 /* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
-			outev.kind = EVENT_EXTERNAL_NOTICE_NEWFRAME;
-			outev.data.external.framenumber++;
+			outev.kind = EVENT_EXTERNAL_NOTICE_FRAMESTATUS;
+			outev.data.external.framestatus.framenumber++;
 			arcan_event_enqueue(&retroctx.outevq, &outev);
-	
+
 			if (testcounter != 1)
 				LOG("(arcan_frameserver(libretro) -- inconsistent core behavior, expected 1 video frame / run(), got %d\n", testcounter);
 
+/* frameskipping here is a simple adaptive thing, if we're too out of alignment against the next deadline,
+ * drop the transfer / parent synch */
 			bool lastskip = retroctx.skipframe;
 			retroctx.skipframe = !retroctx_sync();
 

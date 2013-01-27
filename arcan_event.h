@@ -131,7 +131,7 @@ enum ARCAN_EVENT_FRAMESERVER {
 enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_NOTICE_MESSAGE,
 	EVENT_EXTERNAL_NOTICE_FAILURE,
-	EVENT_EXTERNAL_NOTICE_NEWFRAME,
+	EVENT_EXTERNAL_NOTICE_FRAMESTATUS,
 	EVENT_EXTERNAL_NOTICE_STATESIZE,
 };
 
@@ -283,7 +283,15 @@ typedef struct arcan_extevent {
 		char message[24];
 		int32_t state_sz;
 		uint32_t code;
-		uint32_t framenumber;
+
+/* emitted as a verification / debugging / synchronization primitive,
+ * EVENT_EXTERNAL_NOTICE_FRAMESTATUS, emitted once for each port actually sampled */
+		struct {
+			uint32_t framenumber;
+			char port;
+			char input_bitf[4];
+			signed axes_samples[8];
+		} framestatus;
 	};
 } arcan_extevent;
 
