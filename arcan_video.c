@@ -1456,7 +1456,6 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 		if (scale){
 			float xs = (float) vobj->gl_storage.w / (float)arcan_video_display.width;
 			float ys = (float) vobj->gl_storage.h / (float)arcan_video_display.height;
-
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
 		}
@@ -3115,7 +3114,7 @@ static inline void draw_surf(struct rendertarget* dst, surface_properties prop, 
 	prop.scale.x *= src->origw * 0.5;
 	prop.scale.y *= src->origh * 0.5;
 
-	identity_matrix(imatr);
+	memcpy(imatr, dst->base, sizeof(float) * 16);
 	matr_quatf(norm_quat (prop.rotation.quaternion), omatr);
 
 /* rotate around user-defined point rather than own center */
