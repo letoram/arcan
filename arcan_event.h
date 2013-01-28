@@ -146,13 +146,18 @@ enum ARCAN_EVENT_VIDEO {
 };
 
 enum ARCAN_EVENT_NET {
+/* server -> parent */
 	EVENT_NET_BROKEN,
 	EVENT_NET_CONNECTED,
 	EVENT_NET_DISCONNECTED,
 	EVENT_NET_NORESPONSE,
+	EVENT_NET_DISCOVERED,
+/* parent -> server */
+	EVENT_NET_GRAPHREFRESH,
+	EVENT_NET_CONNECT,
+/* bidirectional */
 	EVENT_NET_CUSTOMMSG,
 	EVENT_NET_INPUTEVENT,
-	EVENT_NET_GRAPHREFRESH
 };
 
 enum ARCAN_EVENT_AUDIO {
@@ -260,8 +265,12 @@ typedef struct arcan_netevent{
 	unsigned connid;
 
 	union {
-		char hostaddr[40]; /* max ipv6 textual representation, 39 */
-		char message[40];
+		struct {
+			char key[32];
+			char addr[46]; /* max ipv6 textual representation, 39 */
+		} host;
+
+		char message[78];
 	};
 } arcan_netevent;
 

@@ -78,6 +78,38 @@ function spawn_warning( message, expiration )
 	hide_image(infowin.cursorvid);
 end
 
+-- plucked from gridle, removing the soundmap calls
+function osdkbd_inputfun(iotbl, dstkbd)
+	local restbl = keyconfig:match(iotbl);
+	local done   = false;
+	local resstr = nil;
+
+	if (restbl) then
+		for ind,val in pairs(restbl) do
+			if (val == "MENU_ESCAPE" and iotbl.active) then
+				return true, nil
+			elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or
+				val == "MENU_RIGHT" or val == "MENU_DOWN" or val == "CONTEXT") then
+				resstr = dstkbd:input(val, iotbl.active);
+-- also allow direct keyboard input
+			elseif (iotbl.translated) then
+				resstr = dstkbd:input_key(iotbl, iotbl.active);
+			end
+-- stop processing labels immediately after we get a valid filterstring
+		end
+	else -- still need to try and input even if we didn't find a matching value
+		if (iotbl.translated) then
+			resstr = dstkbd:input_key(iotbl, iotbl.active);
+		end
+	end
+
+	if (resstr) then
+		return true, resstr;
+	end
+	
+	return false, nil
+end
+
 --
 -- Callback that shows the main connect menu etc.
 -- Used as "safe-state" so also triggered if the network connection dies
@@ -139,7 +171,23 @@ function setup_complete()
 
 	connectptrs["Specify Server"] = function()
 -- spawn OSD and upon completion, explicit connection
-		
+		osdkbd:show();
+-- do this here so we have access to the namespace where osdsavekbd exists
+		gridle_remote_input = function(iotbl)
+			complete, resstr = osdkbd_inputfun(iotbl, osdkbd);
+			
+			if (complete) then
+				osdkbd:hide();
+				gridle_input = gridle_remote_dispatchinput;
+
+				if (resstr ~= nil and string.len(resstr) > 0) then
+					print("DUMP!");
+				end
+					
+				settings.iodispatch["MENU_ESCAPE"]();
+				settings.iodispatch["MENU_ESCAPE"]();
+			end
+		end
 	end
 
 	if (valid_vid(settings.server)) then
@@ -181,6 +229,15 @@ function gridle_remote()
 -- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
 	keyconfig = keyconf_create(keylabels);
 
+-- OSD keyboard for specifying target IP
+	local keymap = {
+		"7", "8", "9", "a", "b", "\n",
+		"4", "5", "6", "c", "d", "\n",
+		"1", "2", "3", "e", "f", "\n",
+		"", "0", ".", ":", "\n" };
+
+	osdkbd = osdkbd_create(keymap);
+	
 -- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
 -- depending on settings) 
 	setup_keys( function() gridleremote_customview( setup_complete ) end );
