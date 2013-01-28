@@ -85,6 +85,14 @@ enum server_modes {
 	SERVER_DIRECTORY_NACL,
 };
 
+enum connection_state {
+	CONN_OFFLINE = 0,
+	CONN_DISCOVERING, 
+	CONN_CONNECTING,
+	CONN_CONNECTED,
+	CONN_AUTHENTICATED
+};
+
 struct {
 	struct frameserver_shmcont shmcont;
 
@@ -116,6 +124,9 @@ struct {
 	size_t state_globsz;
 	char* rledec_buf;
 	size_t rledec_sz;
+
+/* some incoming events are only valid in certain states (i.e. authenticated etc.) */
+	enum connection_state connstate;
 } netcontext = {0};
 
 /* single-threaded multiplexing server with a fixed limit on number of connections,
@@ -541,11 +552,11 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
 	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET, .data.network.connid = (j + 1)};
-	size_t out_sz = sizeof(outev.data.network.hostaddr) / sizeof(outev.data.network.hostaddr[0]);
-	apr_sockaddr_ip_getbuf(outev.data.network.hostaddr, out_sz, addr);
+	size_t out_sz = sizeof(outev.data.network.host.addr) / sizeof(outev.data.network.host.addr[0]);
+	apr_sockaddr_ip_getbuf(outev.data.network.host.addr, out_sz, addr);
 
 	arcan_event_enqueue(&netcontext.outevq, &outev);
-	graph_log_connection(netcontext.graphing, active_cons[j].slot, outev.data.network.hostaddr);
+	graph_log_connection(netcontext.graphing, active_cons[j].slot, outev.data.network.host.addr);
 }
 
 static uint32_t version_magic(bool req)
@@ -865,12 +876,18 @@ static void server_session(const char* host, int limit)
 	return;
 }
 
-/*
- * broadcast (or send to specific discover host)
- * wait for responses. If daemon, just push/pop events in between runs,
- * else return with the first legitimate response.
+/* Client Discovery Protocol Implementation
+ * ----------
+ * Every (discover_delay) seconds, the client sends a UDP packet to either a IPv4 broadcast or a dictionary server.
+ * The request packet is comprised of a MAX_HEADER_SIZE packet, with a 4 byte network byte order magic value that
+ * encodes the version number and if it is a request or response (see version_magic function) along with a MAX_PUBLIC_KEY_SIZE
+ * public key (NaCL generated) and the rest of the packet will be ignored (req/rep are the same size to prevent magnification)
+ * Servers responds with 1..n similar packets, but are encrypted with the public key of the client and contains a public key
+ * and destination host (port is hardcoded at build time, see DEFAULT_DISCOVER_*_PORT).
+ *
+ * if passive, the event interface will be used to propagate info on servers up to the FE
  */
-static char* host_discover(char* host, bool usenacl)
+static char* host_discover(char* host, bool usenacl, bool passive)
 {
 	const int addr_maxlen = 45; /* RFC4291 */
 	char reqmsg[ MAX_HEADER_SIZE ], repmsg[ MAX_HEADER_SIZE + 1 ];
@@ -892,7 +909,8 @@ static char* host_discover(char* host, bool usenacl)
 	}
 
 	apr_socket_timeout_set(broadsock, DEFAULT_CLIENT_TIMEOUT);
-
+	netcontext.connstate = CONN_DISCOVERING;
+	
 	while (true){
 		apr_size_t nts = MAX_HEADER_SIZE, ntr;
 		apr_sockaddr_t recaddr;
@@ -918,7 +936,25 @@ retry:
 						apr_sockaddr_ip_getbuf(strbuf, MAX_ADDR_SIZE, &recaddr);
 						graph_log_discover_rep(netcontext.graphing, rmagic, strbuf);
 
-						return strdup(strbuf);
+/* passive, will background scan until the FE terminate */
+						if (!passive){
+							apr_socket_close(broadsock);
+							return strdup(strbuf);
+						}
+						else {
+							arcan_errc sc;
+							arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCOVERED};
+							arcan_event* dev;
+
+							strncpy(ev.data.network.host.addr, strbuf, MAX_ADDR_SIZE);
+							arcan_event_enqueue(&netcontext.outevq, &ev);
+
+							while ( (dev = arcan_event_poll(&netcontext.outevq, &sc)) && sc == ARCAN_OK ){
+								if (dev->category == EVENT_TARGET && dev->kind == TARGET_COMMAND_EXIT)
+									return NULL;
+							}
+						}
+
 					}
 					else{
 						graph_log_discover_rep(netcontext.graphing, rmagic, &repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]);
@@ -1040,6 +1076,9 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				break;
 
 				case EVENT_NET_CUSTOMMSG:
+					if (netcontext.connstate < CONN_CONNECTED)
+						break;
+
 					if (strlen(ev->data.network.message) + 1 < msgsz)
 						msgsz = strlen(ev->data.network.message) + 1;
 
@@ -1085,7 +1124,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 static void client_session(char* hoststr, enum client_modes mode)
 {
 	if ( (mode == CLIENT_DISCOVERY && hoststr == NULL) || mode == CLIENT_DISCOVERY_NACL){
-		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL);
+		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL, false);
 		if (!hoststr){
 			LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
 			return;
@@ -1108,14 +1147,14 @@ static void client_session(char* hoststr, enum client_modes mode)
 /* didn't work, give up (send an event about that) */
 	if (rc != APR_SUCCESS){
 		arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_NORESPONSE };
-		snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
+		snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
 		graph_log_conn_error(netcontext.graphing, 0, hoststr);
 		return;
 	}
 
 	arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_CONNECTED };
-	snprintf(ev.data.network.hostaddr, 40, "%s", hoststr);
+	snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 	arcan_event_enqueue(&netcontext.outevq, &ev);
 	graph_log_connected(netcontext.graphing, hoststr);
 

@@ -632,7 +632,7 @@ end
 
 -- take the custom view and dump to a .lua config
 local function save_config()
-	open_rawresource("remote_cfg.lua");
+	open_rawresource("layout_cfg.lua");
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
@@ -1001,10 +1001,10 @@ function gridleremote_customview(triggerfun)
 	setup_3dsupport();
 	customview_3dbase();
 
-	if (resource("remote_cfg.lua")) then
+	if (resource("layout_cfg.lua")) then
 		customview.background    = nil;
 		customview.bgshader      = nil;
-		customview.current       = system_load("remote_cfg.lua")();
+		customview.current       = system_load("layout_cfg.lua")();
 	
 		if (customview.current) then
 			customview.in_customview = true;
