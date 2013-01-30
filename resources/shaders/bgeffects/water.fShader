@@ -2,6 +2,7 @@
  * from "Shader Toy" compilation */
 
 uniform sampler2D map_diffuse;
+uniform float obj_opacity;
 
 uniform int timestamp;
 
@@ -60,6 +61,6 @@ void main(void)
     c1.x += dx;
     c1.y = -(c1.y+dy);
 
-    float alpha = 1.+dot(dx,dy)*intence;
+    float alpha = 1.+dot(dx,dy)*intence*obj_opacity;
     gl_FragColor = texture2D(map_diffuse,c1)*(alpha);
 }

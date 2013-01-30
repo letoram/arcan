@@ -20,6 +20,10 @@ have individual licensing references (filename extension, .license) where applic
 
 The iconset used in resources/images is CC-BY-30-ND-NP courtesy of http://www.visualpharm.com
 
+Gridle disconnected icon is CC-BY-30-NP courtesy of Mazeni77, http://mazeni77.deviantart.com
+
+The shaders included in resources/shaders/bgeffects are from "ShaderToy", http://www.iquilezles.org/apps/shadertoy/ 
+
 Dependencies:
  SDL-1.2, SDL-TTF, SDL_Image -- www.libsdl.org, LGPL
  OpenGL -- www.opengl.org, SGI OpenGL License

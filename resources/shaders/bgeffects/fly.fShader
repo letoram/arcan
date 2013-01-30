@@ -6,6 +6,8 @@ uniform int timestamp;
 uniform vec2 display;
 
 uniform sampler2D map_diffuse;
+uniform float obj_opacity;
+
 varying vec2 texco;
 
 const float speed = 0.4;

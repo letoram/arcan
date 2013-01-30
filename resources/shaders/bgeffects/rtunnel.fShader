@@ -6,6 +6,8 @@ uniform int timestamp;
 uniform vec2 display;
 
 uniform sampler2D map_diffuse;
+uniform float obj_opacity;
+
 varying vec2 texco;
 
 const float speed = 0.4;
@@ -34,6 +36,6 @@ void main()
 	ao = smoothstep(0.0, 0.4, ao) - smoothstep(0.4, 0.7, ao);
 	ao = 1.0 - 0.5 * ao * r;
 
-	gl_FragColor = vec4(col * w * ao, 1.0);
+	gl_FragColor = vec4(col * w * ao, obj_opacity);
 }
 

@@ -125,6 +125,8 @@ static inline bool lock_shared(arcan_evctx* ctx)
 	if (ctx->synch.external.killswitch){
 		if (-1 == arcan_sem_timedwait(ctx->synch.external.shared, DEFAULT_EVENT_TIMEOUT)){
 			arcan_frameserver_free( (arcan_frameserver*) ctx->synch.external.killswitch, false );
+			ctx->synch.external.killswitch = NULL;
+
 			return false;
 		}
 	}

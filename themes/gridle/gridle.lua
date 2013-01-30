@@ -443,6 +443,13 @@ function setup_gridview()
 	imagery.white = fill_surface(1,1,255,255,255);
 	image_tracetag(imagery.white, "white");
 	
+	imagery.disconnected = load_image("images/disconnected.png");
+	image_tracetag(imagery.disconnected, "disconnected");
+	local props = image_surface_properties(imagery.disconnected);
+	if (props.width > VRESW) then props.width = VRESW; end
+	if (props.height > VRESH) then props.height = VRESH; end
+	resize_image(imagery.disconnected, props.width, props.height);
+	
 -- Little star keeping track of games marked as favorites
 	imagery.starimage    = load_image("images/star.png");
 	image_tracetag(imagery.starimage, "favorite icon");
@@ -476,6 +483,12 @@ function network_onevent(source, tbl)
 	if (tbl.kind == "frameserver_terminated") then
 -- As this one is toggled persistent, it is not entirely sure that we're in a context where
 -- delete_image will work 
+		settings.server = nil;
+		settings.network_remote = "Disabled";
+		show_image(imagery.disconnected);
+		order_image(imagery.disconnected, max_current_image_order());
+		blend_image(imagery.disconnected, 0.0, 40);
+		
 	elseif (tbl.kind == "resized") then
 		a = 1;
 	elseif (tbl.kind == "connected") then

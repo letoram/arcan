@@ -146,8 +146,9 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 
 			arcan_frameserver_spawn_server(src, args);
 		}
-		else
-			arcan_frameserver_free(src, false);
+/* Removed (0.2.2), calling free with the video object still alive is not accepted 
+ * else
+			arcan_frameserver_free(src, false); */
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 		return false;
@@ -233,7 +234,6 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 
 			case ffunc_destroy:
 				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
-				state.ptr = NULL;
 			break;
 
 			default:
@@ -263,10 +263,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 			return shmpage->vready;
 		break;
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
-		case ffunc_destroy:
-			arcan_frameserver_free( tgt, false );
-			state.ptr = NULL;
-		break;
+		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 		
 		case ffunc_render:
 			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
