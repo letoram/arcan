@@ -165,6 +165,9 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
+/* NOTE: this is temporary, event transfer should be moved to the same domain socket that
+ * is used for FD transfers (since CMSG is handled separate from transfer buffer)
+ * but requires the rework planned for 0.2.3 */
 #ifndef _WIN32
 	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV){
 		kill(dst->child, SIGUSR1);
@@ -195,6 +198,8 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 	glBindTexture(GL_TEXTURE_2D, glid);
 
+/* flip-floping PBOs, simply using one risks the chance of turning a PBO operation
+ * synchronous, eliminating much of the point in using them in the first place */
 	if (src->desc.pbo_transfer){
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
@@ -228,6 +233,7 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 
 			case ffunc_destroy:
 				arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+				state.ptr = NULL;
 			break;
 
 			default:
@@ -257,7 +263,11 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 			return shmpage->vready;
 		break;
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
-		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
+		case ffunc_destroy:
+			arcan_frameserver_free( tgt, false );
+			state.ptr = NULL;
+		break;
+		
 		case ffunc_render:
 			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is detected, just ignore this frame */

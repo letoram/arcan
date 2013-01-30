@@ -801,9 +801,9 @@ local function show_config()
 	
 	local mainlbls = {};
 	local mainptrs = {};
-
+	
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("shaders/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
+	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("shaders/bgeffects/*.fShader", effecttrig, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Vidcap", "Model"}, positiondynamic));
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));

@@ -1,3 +1,7 @@
+/* modified version of Adrian Boeings "Metablob"
+ * from "Shader Toy" collection
+ */
+
 uniform int timestamp;
 uniform vec2 display;
 
