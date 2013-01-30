@@ -1,7 +1,104 @@
 settings = {
 	repeatrate = 200,
-	connected = false
+	connected = false,
+	iodispatch = {}
 };
+
+function spawn_mainmenu()
+-- Default Global Menus (and their triggers)
+	local mainlbls     = {};
+	local settingslbls = {"Reset Keyconfig", "Reset Layout"};
+	local connectlbls  = {"Local Discovery", "Specify Server"};
+	
+	local connectptrs  = {};
+	local mainptrs     = {};
+	local settingsptrs = {};
+
+	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs);
+	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", connectlbls, connectptrs);
+	
+	table.insert(mainlbls, "----");
+	table.insert(mainlbls, "Quit");
+
+	mainptrs["Quit"] = function() 
+		shutdown(); 
+	end
+
+	settingsptrs["Reset Layout"] = function()
+		zap_resource("layout_cfg.lua");
+
+		while current_menu ~= nil do
+			current_menu:destroy();
+			current_menu = current_menu.parent;
+		end
+
+		pop_video_context();
+		settings.server = nil;
+		gridleremote_customview( setup_complete );
+	end
+
+	settingsptrs["Reset Keyconfig"] = function()
+		zap_resource("keysym.lua");
+		setup_keys( setup_complete );
+	end
+
+	connectptrs["Local Discovery"] = function()
+		settings.connect_method = "local discovery";
+
+		if (valid_vid(settings.server)) then
+			delete_image(settings.server);
+		end
+
+		settings.connection = "connecting";
+		spawn_warning("Looking for local server...");
+		settings.iodispatch = {};
+		settings.iodispatch["MENU_ESCAPE"] = reset_connection;
+		settings.server = net_open(net_event);
+		
+		while current_menu ~= nil do
+			current_menu:destroy();
+			current_menu = current_menu.parent;
+		end
+	end
+
+	connectptrs["Specify Server"] = function()
+-- spawn OSD and upon completion, explicit connection
+		osdkbd:show();
+-- do this here so we have access to the namespace where osdsavekbd exists
+		gridle_remote_input = function(iotbl)
+			complete, resstr = osdkbd_inputfun(iotbl, osdkbd);
+			
+			if (complete) then
+				osdkbd:hide();
+				gridle_remote_input = gridle_remote_dispatchinput;
+				print("reset input");
+				if (resstr ~= nil and string.len(resstr) > 0) then
+					print("DUMP!");
+				end
+			end
+		end
+	end
+
+	if (valid_vid(settings.server)) then
+		table.insert(connectlbls, "Autoconnect (On)");
+		table.insert(connectlbls, "Autoconnect (Off)");
+		connectptrs["Autoconnect (On)"] = function() store_key("autoconnect", settings.connect_method); end
+		connectptrs["Autoconnect (Off)"] = function() delete_key("autoconnect"); end
+	end
+	
+-- when we have a valid connection, this entry is visible
+-- and can be used to set an autoconnect on launch rather than spawning the menu
+	connectptrs["Autoconnect"] = function()
+	end
+	
+	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
+	current_menu.ptrs = mainptrs;
+	current_menu.parent = nil;
+	root_menu = current_menu;
+
+	current_menu:show();
+	move_image(current_menu.anchor, 10, VRESH * 0.1, 10);
+end
 
 function string.split(instr, delim)
 	local res = {};
@@ -19,8 +116,6 @@ function string.split(instr, delim)
 end
 
 function net_event(source, tbl)
-	print("tbl.kind:", tbl.kind);
-	
 	if (tbl.kind == "connected") then
 		settings.iodispatch = {};
 		settings.connected = true;
@@ -49,7 +144,28 @@ function net_event(source, tbl)
 			end
 		end
 
+	elseif (tbl.kind == "frameserver_terminated") then
+		settings.connected = false;
+		gridleremote_customview( setup_complete );
+	else
 	end
+	
+end
+
+function reset_connection()
+	if (valid_vid(settings.server)) then
+		delete_image(settings.server);
+		settings.server = nil;
+	end
+	
+	if (settings.infowin) then
+		delete_image(settings.infowin.anchor);
+		settings.infowin = nil;
+	end
+
+	reset_iodispatch();
+	spawn_mainmenu();
+	spawn_warning("Networking session terminated", 50);
 end
 
 function spawn_warning( message, expiration )
@@ -114,102 +230,29 @@ end
 -- Callback that shows the main connect menu etc.
 -- Used as "safe-state" so also triggered if the network connection dies
 -- 
-function setup_complete()
+function reset_iodispatch()
+	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+		if (current_menu and current_menu.parent ~= nil) then
+			current_menu:destroy();
+			current_menu = current_menu.parent;
+		else -- top level
+		end
+	end
+		
 	menu_defaultdispatch();
+end
 
-	local mainlbls     = {};
-	local settingslbls = {"Reset Keyconfig", "Reset Layout"};
-	local connectlbls  = {"Local Discovery", "Specify Server"};
+function setup_complete()
+	reset_iodispatch();
+	spawn_mainmenu();
 	
-	local connectptrs  = {};
-	local mainptrs     = {};
-	local settingsptrs = {};
+	local keymap = {
+		"7", "8", "9", "a", "b", "\n",
+		"4", "5", "6", "c", "d", "\n",
+		"1", "2", "3", "e", "f", "\n",
+		".", "0", ":", "\n" };
 
-	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs);
-	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", connectlbls, connectptrs);
-	
-	table.insert(mainlbls, "----");
-	table.insert(mainlbls, "Quit");
-
-	mainptrs["Quit"] = function() shutdown(); end
-
-	settingsptrs["Reset Layout"] = function()
-		zap_resource("remote_cfg.lua");
-
-			while current_menu ~= nil do
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		end
-
-		pop_video_context();
-		settings.server = nil;
-		gridleremote_customview( setup_complete );
-	end
-
-	settingsptrs["Reset Keyconfig"] = function()
-		zap_resource("keysym.lua");
-		setup_keys( setup_complete );
-	end
-
-	connectptrs["Local Discovery"] = function()
-		settings.connect_method = "local discovery";
-
-		if (valid_vid(settings.server)) then
-			delete_image(settings.server);
-		end
-
-		settings.connection = "connecting";
-		spawn_warning("Looking for local server...");
-		settings.server = net_open(net_event);
-
-		while current_menu ~= nil do
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		end
-
-	end
-
-	connectptrs["Specify Server"] = function()
--- spawn OSD and upon completion, explicit connection
-		osdkbd:show();
--- do this here so we have access to the namespace where osdsavekbd exists
-		gridle_remote_input = function(iotbl)
-			complete, resstr = osdkbd_inputfun(iotbl, osdkbd);
-			
-			if (complete) then
-				osdkbd:hide();
-				gridle_input = gridle_remote_dispatchinput;
-
-				if (resstr ~= nil and string.len(resstr) > 0) then
-					print("DUMP!");
-				end
-					
-				settings.iodispatch["MENU_ESCAPE"]();
-				settings.iodispatch["MENU_ESCAPE"]();
-			end
-		end
-	end
-
-	if (valid_vid(settings.server)) then
-		table.insert(connectlbls, "Autoconnect (On)");
-		table.insert(connectlbls, "Autoconnect (Off)");
-		connectptrs["Autoconnect (On)"] = function() store_key("autoconnect", settings.connect_method); end
-		connectptrs["Autoconnect (Off)"] = function() delete_key("autoconnect"); end
-	end
-	
--- when we have a valid connection, this entry is visible
--- and can be used to set an autoconnect on launch rather than spawning the menu
-	connectptrs["Autoconnect"] = function()
-	end
-	
-	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
-	current_menu.ptrs = mainptrs;
-	current_menu.parent = nil;
-	root_menu = current_menu;
-
-	current_menu:show();
-	move_image(current_menu.anchor, 10, VRESH * 0.1, 10);
-
+	osdkbd = osdkbd_create(keymap);
 
 --	settings.server = net_open(net_event);
 end
@@ -228,15 +271,6 @@ function gridle_remote()
 
 -- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
 	keyconfig = keyconf_create(keylabels);
-
--- OSD keyboard for specifying target IP
-	local keymap = {
-		"7", "8", "9", "a", "b", "\n",
-		"4", "5", "6", "c", "d", "\n",
-		"1", "2", "3", "e", "f", "\n",
-		"", "0", ".", ":", "\n" };
-
-	osdkbd = osdkbd_create(keymap);
 	
 -- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
 -- depending on settings) 
@@ -262,7 +296,6 @@ end
 
 function gridle_remote_dispatchinput(iotbl, override)
 	local restbl = override and override or keyconfig:match(iotbl);
-
 	if (restbl) then
 		for ind,val in pairs(restbl) do
 			if (settings.iodispatch[val] and iotbl.active) then

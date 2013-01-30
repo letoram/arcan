@@ -530,7 +530,7 @@ local function positionfun(label)
 end
 
 local function effecttrig(label)
-	local shdr = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. label, "bgeffect", {});
+	local shdr = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. label, "bgeffect", {});
 	customview.bgshader = shdr;
 	customview.bgshader_label = label;
 
@@ -541,8 +541,8 @@ end
 local function get_identimg(label)
 	local vid = BADID;
 	
-	if (resource("customview/" .. string.lower(label) .. ".png")) then
-		vid = load_image("customview/" .. string.lower(label) .. ".png");
+	if (resource("images/placeholders/" .. string.lower(label) .. ".png")) then
+		vid = load_image("images/placeholders/" .. string.lower(label) .. ".png");
 	end
 	
 	if (vid == BADID) then
@@ -774,12 +774,10 @@ local function show_config()
 	
 	menu_defaultdispatch();
 	local escape_menu = function(label, save, sound)
-	
 		if (current_menu.parent ~= nil) then
 			current_menu:destroy();
 			current_menu = current_menu.parent;
 		end
-		
 	end
 	
 	settings.iodispatch["MENU_LEFT"]   = escape_menu;
@@ -789,7 +787,7 @@ local function show_config()
 	local mainptrs = {};
 
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("customview/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
+	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("shaders/bgeffects/*.fShader", effecttrig, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, THEME_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Vidcap", "Model"}, positiondynamic));
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
@@ -973,7 +971,7 @@ local function setup_customview(triggerfun)
 		end
 		
 		if (customview.bgshader_label) then
-			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "customview/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
+			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
 			update_bgshdr();
 		end
 	end

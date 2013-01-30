@@ -1254,7 +1254,10 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
 		netcontext.graphing = graphing_new(GRAPH_NET_CLIENT, gwidth, gheight, gbufptr);
-		client_session(dsthost, CLIENT_SIMPLE);
+		if (dsthost)
+			client_session(dsthost, CLIENT_SIMPLE);
+		else
+			client_session(dsthost, CLIENT_DISCOVERY);
 	}
 	else if (arg_lookup(args, "mode", 0, &rk) && strcmp("server", rk) == 0){
 /* sweep list of interfaces to bind to (interface=ip,port) and if none, bind to all of them */

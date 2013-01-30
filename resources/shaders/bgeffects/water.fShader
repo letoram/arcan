@@ -1,3 +1,6 @@
+/* modified version of Viktor Korsuns Water,
+ * from "Shader Toy" compilation */
+
 uniform sampler2D map_diffuse;
 
 uniform int timestamp;

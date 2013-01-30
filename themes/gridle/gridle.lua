@@ -54,6 +54,7 @@ settings = {
 	effect_gain = 1.0,
 
 	bgname = "smstile.png",
+	bgeffect = "none.fShader",
 	bg_rh = VRESH / 32,
 	bg_rw = VRESW / 32,
 	bg_speedh = 64,
@@ -525,9 +526,17 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 		imagery.bgimage = nil;
 	end
 
+	local bgshader = nil;
+
+	if ((settings.bgeffect and settings.bgeffect == "none.fShader") or settings.bgeffect == nil) then
 -- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
-	local bgshader = load_shader("shaders/anim_txco.vShader", "shaders/anim_txco.fShader", "background");
-	shader_uniform(bgshader, "speedfact", "ff", PERSIST, hspeed, vspeed);
+		bgshader = load_shader("shaders/anim_txco.vShader", "shaders/anim_txco.fShader", "background");
+		shader_uniform(bgshader, "speedfact", "ff", PERSIST, hspeed, vspeed);
+	else
+		print("load_shader", "shaders/bgeffects/" .. settings.bgeffect);
+		bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. settings.bgeffect, "background", {});
+		shader_uniform(bgshader, "display", "ff", PERSIST, VRESW, VRESH);
+	end
 	
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
 
@@ -1755,6 +1764,7 @@ function load_settings()
 	load_key_num("moviecooldown", "cooldown_start", settings.cooldown_start);
 	load_key_str("tilebg", "tilebg", settings.tilebg);
 	load_key_str("bgname", "bgname", settings.bgname);
+	load_key_str("bgeffect", "bgeffect", settings.bgeffect);
 	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
 	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
 	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);

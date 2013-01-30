@@ -295,11 +295,28 @@ local function reset_customview()
 	end
 end
 
+local function efftrigger(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.bgeffect = label;
+	updatebgtrigger();
+	
+	if (save) then
+		store_key("bgeffect", settings.bgeffect);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+	
+end
+
+local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
+
 add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
+add_submenu(backgroundlbls, backgroundptrs, "Background Effects...", "bgeffect", bgeffmen, bgeffdesc);
 add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, bgtrig));
 add_submenu(backgroundlbls, backgroundptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, bgtrig));
-add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, bgtrig));
-add_submenu(backgroundlbls, backgroundptrs, "Animate (horizontal)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, bgtrig));
+add_submenu(backgroundlbls, backgroundptrs, "Animate (horizontal)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, bgtrig));
+add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, bgtrig));
 
 add_submenu(gridviewlbls, gridviewptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
 add_submenu(gridviewlbls, gridviewptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));

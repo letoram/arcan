@@ -2353,8 +2353,13 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* full- object specific clean-up */
 	if (vobj->flags.clone == false){
-		if (vobj->feed.ffunc)
+		if (vobj->feed.ffunc){
 			vobj->feed.ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->feed.state);
+
+			vobj->feed.state.ptr = NULL;
+			vobj->feed.ffunc = NULL;
+			vobj->feed.state.tag = ARCAN_TAG_NONE;
+		}
 
 /* synchronize with the threadloader so we don't get a race */
 		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)

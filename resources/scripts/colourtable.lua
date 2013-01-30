@@ -12,8 +12,8 @@ colourtable.font_size = math.ceil( 8 * (VRESH / 320) );
 colourtable.fontstr         = colourtable.font .. colourtable.font_size;
 colourtable.label_fontstr   = colourtable.fontstr.. [[\b\#ffffff]];
 colourtable.data_fontstr    = colourtable.fontstr .. [[\#ffffff]];
-colourtable.hilight_fontstr = colourtable.fontstr .. [[\#00ffaa]];
-colourtable.alert_fontstr   = colourtable.fontstr .. [[\#aa0000]];
-colourtable.notice_fontstr  = colourtable.fontstr .. [[\#55aa00]];
+colourtable.hilight_fontstr = colourtable.fontstr .. [[\#00ff00]];
+colourtable.alert_fontstr   = colourtable.fontstr .. [[\#ffff00]];
+colourtable.notice_fontstr  = colourtable.fontstr .. [[\#00ff00]];
 
 return colourtable;
