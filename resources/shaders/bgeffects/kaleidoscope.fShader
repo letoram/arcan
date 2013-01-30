@@ -6,6 +6,8 @@ uniform int timestamp;
 uniform vec2 display;
 
 uniform sampler2D map_diffuse;
+uniform float obj_opacity;
+
 varying vec2 texco;
 
 const float speed = 0.4;
@@ -25,7 +27,7 @@ void main()
 	float w = 0.5 + 0.5 * (sin(time + 7.0 * r) + 0.7 * cos(time + 7.0*a));
 	
 	vec3 col = texture2D(map_diffuse, uv * 0.5).xyz;
-	gl_FragColor = vec4(col * w, 1.0);
+	gl_FragColor = vec4(col * w, obj_opacity);
 
 }
 

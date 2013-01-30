@@ -6,6 +6,8 @@ uniform int timestamp;
 uniform vec2 display;
 
 uniform sampler2D map_diffuse;
+uniform float obj_opacity;
+
 varying vec2 texco;
 
 #define speed 0.5
@@ -36,5 +38,5 @@ void main()
     float metaball = 2.0 * (1.0/r1 + 1.0/r2);
     float col = falloff * metaball; 
 
-    gl_FragColor = vec4(col, col, col,1.0) * texture2D(map_diffuse, texco);
+    gl_FragColor = vec4(col, col, col, obj_opacity) * texture2D(map_diffuse, texco);
 }

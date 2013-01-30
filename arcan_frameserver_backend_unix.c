@@ -165,7 +165,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (!loop){
 			vfunc_state emptys = {0};
 			arcan_audio_stop(src->aid);
-			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
+			arcan_video_alterfeed(src->vid, NULL, emptys);
 			memset(src, 0xaa, sizeof(arcan_frameserver));
 			free(src);
 		}

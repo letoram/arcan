@@ -1706,17 +1706,12 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb, vfunc_stat
 	if (vobj && vobj->flags.clone)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
-	if (vobj && id > 0) {
-		if (cb) {
-			vobj->feed.state = state;
-			vobj->feed.ffunc = cb;
-			rv = ARCAN_OK;
-			if (state.tag == ARCAN_TAG_3DOBJ){
-				vobj->order = abs(vobj->order) * -1;
-			} else vobj->order = abs(vobj->order);
-		}
-		else
-			rv = ARCAN_ERRC_BAD_ARGUMENT;
+	if (vobj) {
+		vobj->feed.state = state;
+		vobj->feed.ffunc = cb;
+		vobj->order = abs(vobj->order) * (state.tag == ARCAN_TAG_3DOBJ ? -1 : 1);
+
+		rv = ARCAN_OK;
 	}
 
 	return rv;
