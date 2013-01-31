@@ -50,8 +50,11 @@ end
 
 
 function netcl()
+	argl = nil
+
 	if (#arguments > 0) then
-		print("Disabling discovery mode, connecting directly.\n");
+		print("Disabling discovery mode, connecting directly. " .. arguments[1] .. "\n");
+		argl = arguments[1]
 	end
 	
 	cli = net_open(argl, function(source, data)
