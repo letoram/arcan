@@ -2,12 +2,13 @@ msglist = {};
 ticking = false;
 
 function netev(source, status)
+	print("event");
 	if (status.kind == "frameserver_terminated") then
 		add_msg("server died");
 	elseif (status.kind == "message") then
 		add_msg(tostring(status.connid) .. ":" .. string.gsub(status.message, "\\", "\\\\"));
 	else
-		add_msg(status.kind);
+		add_msg("unknown:" .. status.kind);
 	end
 end
 

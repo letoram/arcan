@@ -29,7 +29,7 @@
 #include <assert.h>
 
 #ifndef _WIN32
-#include <signal.h>
+#include <sys/socket.h>
 #endif
 
 #include <al.h>
@@ -166,12 +166,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* NOTE: this is temporary, event transfer should be moved to the same domain socket that
- * is used for FD transfers (since CMSG is handled separate from transfer buffer)
- * but requires the rework planned for 0.2.3 */
 #ifndef _WIN32
 	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV){
-		kill(dst->child, SIGUSR1);
+		int sn = 0;
+		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT); 
 	}
 #endif
 

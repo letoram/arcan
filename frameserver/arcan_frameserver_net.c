@@ -107,6 +107,7 @@ struct {
 
 	apr_pool_t* mempool;
 	apr_pollset_t* pollset;
+	apr_socket_t* evsock; /* used as signaling / polling mechanism */
 
 /* SHM-API interface */
 	uint8_t* vidp, (* audp);
@@ -169,14 +170,6 @@ struct conn_state {
 	int slot;
 };
 
-/* this one screws with GDB a fair bit,
- * SIGUSR1 from parent => pollset_wakeup => SIGINT and it starts interpreting most things as a breakpoint */
-static void pollset_wakeup(int n)
-{
-	if (netcontext.pollset)
-		apr_pollset_wakeup(netcontext.pollset); /* reentrant */
-}
-
 static bool err_catcher(struct conn_state* self, char tag, int len, char* value)
 {
 	LOG("arcan_frameserver(net-srv) -- invalid dispatcher invoked, please report.\n");
@@ -223,7 +216,7 @@ static bool flushout_default(struct conn_state* self)
 		if (self->outbuf_ofs - nts == 0){
 			self->outbuf_ofs = 0;
 /* disable POLLOUT until more data has been queued (also check for a 'refill' function) */
-			apr_pollset_remove(netcontext.pollset, &self->poll_state);
+		apr_pollset_remove(netcontext.pollset, &self->poll_state);
 			self->poll_state.reqevents  = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 			self->poll_state.rtnevents  = 0;
 			apr_status_t ps2 = apr_pollset_add(netcontext.pollset, &self->poll_state);
@@ -775,15 +768,9 @@ static void server_session(const char* host, int limit)
 /* we need 1 for each connection (limit) one for the gatekeeper and finally one for
  * each IP (multihomed) */
 	int timeout = -1;
-	if (apr_pollset_create(&poll_in, limit + 3, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
-		apr_pollset_create(&poll_in, limit + 3, netcontext.mempool, 0);
-		timeout = 100000;
-	} else {
-#ifdef SIGUSR1
-		apr_signal(SIGUSR1, pollset_wakeup);
-#else
-		timeout = 100000;
-#endif
+	if (apr_pollset_create(&poll_in, limit + 4, netcontext.mempool, 0) != APR_SUCCESS){
+			LOG("arcan_frameserver(net) -- Couldn't create server pollset, giving up.\n");
+			return;
 	}
 
 	apr_socket_t* ear_sock = server_prepare_socket(host, NULL, DEFAULT_CONNECTION_PORT, true);
@@ -1169,16 +1156,11 @@ static void client_session(char* hoststr, enum client_modes mode)
 	};
 
 	int timeout = -1;
-	if (apr_pollset_create(&pset, 1, netcontext.mempool, APR_POLLSET_WAKEABLE) == APR_ENOTIMPL){
-		timeout = 100000;
-	} else {
-#ifdef SIGUSR1
-		apr_signal(SIGUSR1, pollset_wakeup);
-#else
-		timeout = 100000;
-#endif
+	if (apr_pollset_create(&pset, 1, netcontext.mempool, 0) != APR_SUCCESS){
+		LOG("arcan_frameserver(net) -- couldn't allocate pollset. Giving up.\n");
+		return;
 	}
-
+	
 	apr_pollset_add(pset, &pfd);
 
 	while (true){
@@ -1215,7 +1197,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	unsigned gwidth = 256, gheight = 256;
 	const char* rk;
 	uint32_t* gbufptr = NULL;
-
+	
 	if (arg_lookup(args, "width", 0, &rk) ){
 		unsigned neww = strtoul(rk, NULL, 10);
 		if (neww > 0 && neww <= MAX_SHMWIDTH)
@@ -1249,6 +1231,22 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	netcontext.rledec_sz = DEFAULT_RLEDEC_SZ;
 	netcontext.rledec_buf = malloc(netcontext.rledec_sz);
 
+/* for win32, we transfer the first one in the HANDLE of the shmpage */
+#ifdef _WIN32
+#else
+	if (getenv("ARCAN_SOCKIN_FD")){
+		int sockin_fd;
+		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
+		if (apr_os_sock_put(&netcontext.evsock, &sockin_fd, netcontext.mempool) != APR_SUCCESS){
+			LOG("arcan_frameserver(net) -- Couldn't convert FD socket to APR, giving up.\n");
+		}
+	}
+	else {
+		LOG("arcan_frameserver(net) -- No event socket found, giving up.\n");
+		goto cleanup;
+	}
+#endif
+	
 	if (arg_lookup(args, "mode", 0, &rk) && strcmp("client", rk) == 0){
 		char* dsthost = NULL;
 

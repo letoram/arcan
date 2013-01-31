@@ -1,9 +1,11 @@
 settings = {
 	repeatrate = 200,
 	connected = false,
-	iodispatch = {}
+	iodispatch = {},
 };
 
+imagery = {};
+	
 function spawn_mainmenu()
 -- Default Global Menus (and their triggers)
 	local mainlbls     = {};
@@ -49,7 +51,6 @@ function spawn_mainmenu()
 			delete_image(settings.server);
 		end
 
-		settings.connection = "connecting";
 		spawn_warning("Looking for local server...");
 		settings.iodispatch = {};
 		settings.iodispatch["MENU_ESCAPE"] = reset_connection;
@@ -71,9 +72,17 @@ function spawn_mainmenu()
 			if (complete) then
 				osdkbd:hide();
 				gridle_remote_input = gridle_remote_dispatchinput;
-				print("reset input");
+
 				if (resstr ~= nil and string.len(resstr) > 0) then
-					print("DUMP!");
+					while current_menu ~= nil do
+						current_menu:destroy();
+						current_menu = current_menu.parent;
+					end
+
+					settings.iodispatch = {};
+					settings.iodispatch["MENU_ESCAPE"] = reset_connection;
+					settings.server = net_open(resstr, net_event);
+					spawn_warning("Connecting to " .. resstr);
 				end
 			end
 		end
@@ -120,7 +129,8 @@ function net_event(source, tbl)
 		settings.iodispatch = {};
 		settings.connected = true;
 		spawn_warning("Connected", 125);
-
+		gridle_remote_input = gridle_remote_dispatchinput;
+		
 	elseif (tbl.kind == "message") then
 -- format matches broadcast_game in gridle.lua
 		nitem = string.split(tbl.message, ":")
@@ -146,7 +156,10 @@ function net_event(source, tbl)
 
 	elseif (tbl.kind == "frameserver_terminated") then
 		settings.connected = false;
+		show_image(imagery.disconnected);
+		blend_image(imagery.disconnected, 0, 40);
 		gridleremote_customview( setup_complete );
+		settings.server = nil;
 	else
 	end
 	
@@ -245,6 +258,10 @@ end
 function setup_complete()
 	reset_iodispatch();
 	spawn_mainmenu();
+	imagery.disconnected = load_image("images/disconnected.png");
+	local props = image_surface_properties(imagery.disconnected);
+	if (props.width > VRESW) then props.width = VRESW; end
+	if (props.height > VRESH) then props.height = VRESH; end
 	
 	local keymap = {
 		"7", "8", "9", "a", "b", "\n",
@@ -253,8 +270,6 @@ function setup_complete()
 		".", "0", ":", "\n" };
 
 	osdkbd = osdkbd_create(keymap);
-
---	settings.server = net_open(net_event);
 end
 
 function gridle_remote()
@@ -296,8 +311,10 @@ end
 
 function gridle_remote_dispatchinput(iotbl, override)
 	local restbl = override and override or keyconfig:match(iotbl);
+	
 	if (restbl) then
 		for ind,val in pairs(restbl) do
+			print(val);
 			if (settings.iodispatch[val] and iotbl.active) then
 				settings.iodispatch[val](restbl, iotbl);
 			elseif settings.connected then
