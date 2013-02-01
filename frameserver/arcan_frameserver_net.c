@@ -30,7 +30,6 @@
 #include <apr_strings.h>
 #include <apr_network_io.h>
 #include <apr_poll.h>
-#include <apr_signal.h>
 #include <apr_portable.h>
 
 #include "../arcan_math.h"
@@ -791,6 +790,15 @@ static void server_session(const char* host, int limit)
 		.client_data = ear_sock
 	}, gkpfd;
 
+	apr_pollfd_t epfd = {
+		.p      = netcontext.mempool,
+		.desc.s = netcontext.evsock,
+		.desc_type = APR_POLL_SOCKET,
+		.reqevents = APR_POLLIN,
+		.rtnevents = 0,
+		.client_data = netcontext.evsock
+	};
+
 /* should be solved in a pretty per host etc. manner and for that matter, IPv6 */
 	apr_socket_t* gk_sock = server_prepare_gatekeeper("0.0.0.0");
 	if (gk_sock){
@@ -805,13 +813,10 @@ static void server_session(const char* host, int limit)
 	}
 
 	apr_pollset_add(poll_in, &pfd);
+	apr_pollset_add(poll_in, &epfd);
 
 	while (true){
 		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
-
-/* check event-queue first as it may emit more data to buffers for sockets that just became writable */
-		if (!server_process_inevq(active_cons, limit))
-			break;
 
 		for (int i = 0; i < pnum; i++){
 			void* cb = ret_pfd[i].client_data;
@@ -831,6 +836,17 @@ static void server_session(const char* host, int limit)
 			}
 			else if (cb == gk_sock){
 				server_gatekeeper_message(gk_sock, "0.0.0.0");
+				continue;
+			}
+/* this socket is used for OOB FD transfers and as a pollable semaphore */
+			else if (cb == netcontext.evsock){
+				char flushb[256];
+				apr_size_t szv = 256;
+
+				apr_socket_recv(netcontext.evsock, flushb, &szv);
+				if (!server_process_inevq(active_cons, limit))
+					break;
+
 				continue;
 			}
 			else;
@@ -1140,11 +1156,14 @@ static void client_session(char* hoststr, enum client_modes mode)
 		return;
 	}
 
+/* connection completed */
 	arcan_event ev = { .category = EVENT_NET, .kind = EVENT_NET_CONNECTED };
 	snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 	arcan_event_enqueue(&netcontext.outevq, &ev);
 	graph_log_connected(netcontext.graphing, hoststr);
+	netcontext.connstate = CONN_CONNECTED;
 
+/* setup a pollset for incoming / outgoing and for event notification */
 	apr_pollset_t* pset;
 	apr_pollfd_t pfd = {
 		.p = netcontext.mempool,
@@ -1155,14 +1174,25 @@ static void client_session(char* hoststr, enum client_modes mode)
 		.client_data = &sock
 	};
 
+	apr_pollfd_t epfd = {
+		.p = netcontext.mempool,
+		.desc.s = netcontext.evsock,
+		.desc_type = APR_POLL_SOCKET,
+		.reqevents = APR_POLLIN,
+		.rtnevents = 0,
+		.client_data = &netcontext.evsock
+	};
+
 	int timeout = -1;
 	if (apr_pollset_create(&pset, 1, netcontext.mempool, 0) != APR_SUCCESS){
 		LOG("arcan_frameserver(net) -- couldn't allocate pollset. Giving up.\n");
 		return;
 	}
-	
+
+	apr_pollset_add(pset, &epfd);
 	apr_pollset_add(pset, &pfd);
 
+/* main client loop */
 	while (true){
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
@@ -1175,9 +1205,17 @@ static void client_session(char* hoststr, enum client_modes mode)
 		}
 
 /* can just be socket or event-queue, dispatch accordingly */
-		if (pnum > 0)
-			if (ret_pfd[0].client_data == &sock)
+		for (int i = 0; i < pnum; i++)
+			if (ret_pfd[i].client_data == &sock)
 				client_data_process(sock);
+			else if (ret_pfd[i].client_data == &netcontext.evsock){
+				char flushb[256];
+				apr_size_t szv = 256;
+
+				apr_socket_recv(netcontext.evsock, flushb, &szv);
+				if (!client_inevq_process(sock))
+					break;
+			}
 
 /* graph rebuilds are initiated as program- side events */
 		if (!client_inevq_process(sock))
