@@ -20,6 +20,14 @@ local scalemodelist = {
 	"Bezel"
 };
 
+local codectbl = {};
+local codeclbls = {"Lossless (MKV/FFV1/RAW)", "Lossless (MKV/FFV1/FLAC)", "WebM (MKV/VP8/OGG)", "H264 (MP4/H264/MP3)"};
+codectbl["Lossless (MKV/FFV1/RAW)"]  = "acodec=RAWS16LE:vcodec=ffv1:container=matroska";
+codectbl["Lossless (MKV/FFV1/FLAC)"] = "acodec=FLAC:vcodec=ffv1:container=matroska";
+codectbl["WebM (MKV/VP8/OGG)"]       = "acodec=libvorbis:vcodec=libvpx:container=matroska";
+codectbl["H264 (MP4/H264/MP3)"]      = "acodec=libmp3lame:vcodec=libx264:container=mpeg4";
+
+local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 local scalemodeptrs = {};
 
 local function scalemodechg(label, save)
@@ -645,6 +653,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 -- there's compile time limitations to custom surfaces
 	local neww = init_props.width  * factor;
 	local newh = init_props.height * factor;
+	local upscaler = nil;
 	
 	while ((neww >= VRESW or newh >= VRESH) and factor > 1) do
 		factor = factor - 1;
@@ -654,7 +663,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	
 	-- don't activate if there's no need or if we outsize
 	if ( neww >= MAX_SURFACEW or newh >= MAX_SURFACEH or factor < 2) then return nil; end
-	
+
 -- one pass, factor agnostic. 
 	if (mode == "sabr") then
 		local shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
@@ -667,22 +676,35 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 		image_tracetag(workvid, "(upscale_internal)");
 		show_image(workvid);
 		
-		upscale = fill_surface(neww, newh, 0, 0, 0, neww, newh);
-		define_rendertarget(upscale, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-		show_image(upscale);
+		upscaler = fill_surface(neww, newh, 0, 0, 0, neww, newh);
+		define_rendertarget(upscaler, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		show_image(upscaler);
 		resize_image(workvid, neww, newh);
 		move_image(workvid, 0, 0);
 		image_texfilter(workvid, FILTER_NONE);
-		image_texfilter(upscale, FILTER_NONE);
+		image_texfilter(upscaler, FILTER_NONE);
 
-		image_tracetag(upscale, "(upscale_output)");
+		image_tracetag(upscaler, "(upscale_output)");
 		table.insert(imagery.temporary, workvid);
-		table.insert(imagery.temporary, upscale);
+		table.insert(imagery.temporary, upscaler);
+	end
 
-		return upscale;
+-- optional additional postprocessor
+	local use_ddt = true;
+	if (use_ddt and upscaler) then
+		local shader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
+		shader_uniform(shader, "texture_size", "ff", PERSIST, neww, newh);
+		ddt_surf = fill_surface(neww, newh, 0, 0, 0, neww, newh);
+		show_image(ddt_surf);
+		define_rendertarget(ddt_surf, {upscaler}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		resize_image(ddt_surf, neww, newh);
+		image_texfilter(ddt_surf, FILTER_NONE);
+			
+		table.insert(imagery.temporary, ddt_surf);
+		upscaler = ddt_surf;
 	end
 	
-	return nil;
+	return upscaler;
 end
 
 local function toggle_crtmode(vid, props, windw, windh)
@@ -1244,7 +1266,7 @@ function add_vidcap()
 	customview.ci = {};
 	local menudispatch = settings.iodispatch;
 	
-	local placeholdr = load_image("customview/vidcap.png");
+	local placeholdr = load_image("images/placeholders/vidcap.png");
 
 	customview.new_item(placeholdr, "vidcap", "vidcap");
 	customview.ci.zv = max_current_image_order();
@@ -1513,7 +1535,7 @@ crtmenuptrs["Linear Processing"] = flip_crttog;
 recordlist = {};
 recordptrs = {};
 
-add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("record_format", {"WebM (VP8/Vorbis)", "Lossless (FFV1/FLAC)"}, function() end, true));
+add_submenu(recordlist, recordptrs, "Format...", "record_format", gen_tbl_menu("record_format", codeclbls, function() end, true));
 add_submenu(recordlist, recordptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 add_submenu(recordlist, recordptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
 add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
@@ -1548,8 +1570,6 @@ streamptrs["Define Stream..."] = function(label, store)
 					store_key("stream_url", resstr);
 				end
 					
-				settings.iodispatch["MENU_ESCAPE"]();
-				settings.iodispatch["MENU_ESCAPE"]();
 			end
 		end
 	end
@@ -1566,7 +1586,8 @@ streamptrs["Start Streaming"] = function()
 	local width, height = recdim();
 	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
-	print("recstr:", recstr)
+	spawn_warning("Streaming to: " .. string.gsub(settings.stream_url and settings.stream_url or "", "\\", "\\\\"));
+
 	enable_record(width, height, recstr);
 end
 
@@ -1576,7 +1597,7 @@ recordptrs["Start Recording"] = function()
 	local width, height = recdim();
 	
 -- compile a string with all the settings- goodness
-	local recstr = settings.record_format == "Lossless (FFV1/FLAC)" and "acodec=flac:vcodec=ffv1" or "acodec=libvorbis:vcodec=libvpx";
+	local recstr = codectbl[settings.record_format];
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
 	
 	enable_record(width, height, recstr);
