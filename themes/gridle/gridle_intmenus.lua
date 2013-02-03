@@ -242,11 +242,13 @@ for i=1,6 do
 end
 
 local function setup_cocktail(mode, source, vresw, vresh)
-local props = image_surface_properties(source);
+	local props = image_surface_properties(source);
 	
 	imagery.cocktail_vid = instance_image(source);
 	image_tracetag(imagery.cocktail_vid, "cocktail");
-	image_shader(imagery.cocktail_vid, fullscreen_shader);
+	if (settings.fullscreen_shader ~= nil) then
+		image_shader(imagery.cocktail_vid, settings.fullscreen_shader);
+	end
 	
 	image_mask_clear(imagery.cocktail_vid, MASK_OPACITY);
 	image_mask_clear(imagery.cocktail_vid, MASK_ORIENTATION);
@@ -653,7 +655,6 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 -- there's compile time limitations to custom surfaces
 	local neww = init_props.width  * factor;
 	local newh = init_props.height * factor;
-	local upscaler = nil;
 	
 	while ((neww >= VRESW or newh >= VRESH) and factor > 1) do
 		factor = factor - 1;
@@ -665,10 +666,24 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	if ( neww >= MAX_SURFACEW or newh >= MAX_SURFACEH or factor < 2) then return nil; end
 
 -- one pass, factor agnostic. 
-	if (mode == "sabr") then
-		local shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
-		shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
-		shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
+	if (mode == "sabr" or mode == "xbr") then
+		shader = nil;
+		
+		if (mode == "sabr") then
+			shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
+			shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
+			shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
+		else
+			local definen = "SCALEF" .. tostring(factor);
+			local definetbl = {};
+			definetbl[definen] = true;
+			definetbl["METHOD_C"] = true;
+
+			shader = load_shader("display/xbr.vShader", "display/xbr.fShader", "xbr", definetbl);
+			shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
+		end
+
+		hide_image(sourcevid);
 		local workvid = instance_image(sourcevid);
 		image_mask_clear(workvid, MASK_POSITION);
 		image_mask_clear(workvid, MASK_OPACITY);
@@ -690,20 +705,26 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	end
 
 -- optional additional postprocessor
-	local use_ddt = true;
-	if (use_ddt and upscaler) then
-		local shader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
-		shader_uniform(shader, "texture_size", "ff", PERSIST, neww, newh);
-		ddt_surf = fill_surface(neww, newh, 0, 0, 0, neww, newh);
-		show_image(ddt_surf);
-		define_rendertarget(ddt_surf, {upscaler}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-		resize_image(ddt_surf, neww, newh);
-		image_texfilter(ddt_surf, FILTER_NONE);
+	if (settings.upscale_ddt and upscaler) then
+		local ddtsrc = instance_image(upscaler);
+		image_mask_clear(ddtsrc, MASK_POSITION);
+		image_mask_clear(ddtsrc, MASK_OPACITY);
+	--	show_image(ddtsrc);
+		hide_image(upscaler);
+
+		local ddtshader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
+		shader_uniform(ddtshader, "texture_size", "ff", PERSIST, neww, newh);
+		ddtsurf = fill_surface(neww, newh, 0, 0, 0, neww, newh);
+		image_shader(ddtsurf, ddtshader);
+		image_tracetag(ddtsrc, "(upscale DDT input)");
+		image_tracetag(ddtsurf, "(upscale DDT filter)");
+
+		define_rendertarget(ddtsurf, {ddtsrc}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 			
-		table.insert(imagery.temporary, ddt_surf);
-		upscaler = ddt_surf;
+		table.insert(imagery.temporary, ddtsurf);
+		return ddtsurf;
 	end
-	
+
 	return upscaler;
 end
 
@@ -774,7 +795,6 @@ function gridlemenu_rebuilddisplay()
 	local props  = image_surface_initial_properties(internal_vid);
 	local dstvid = internal_vid;
 
-	print(settings.upscale_factor, settings.upscale_method, settings.internal_toggles.upscaler);
 	if (settings.internal_toggles.upscaler) then
 		local upscale = toggle_upscaler(internal_vid, props, settings.upscale_method, settings.upscale_factor);
 		if (upscale ~= nil) then
@@ -822,7 +842,7 @@ function gridlemenu_rebuilddisplay()
 		blend_image(dstbuf, 1);
 	else
 
-		fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
+		settings.fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
 	end
 	
 -- redo so that instancing etc. match
@@ -1435,6 +1455,8 @@ local filtermenulbls = {};
 local filtermenuptrs = {};
 local scalerlbls     = {};
 local scalerptrs     = {};
+local xbrlbls = {};
+local xbrptrs = {};
 
 local function updatetrigger()
 	gridlemenu_rebuilddisplay();
@@ -1478,8 +1500,10 @@ add_submenu(crtmenulbls, crtmenuptrs, "Corner Smooth...",         "crt_cornersmo
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)...",     "crt_tilth",       gen_tbl_menu("crt_tilth",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)...",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 
+add_submenu(xbrlbls, xbrptrs, "Variant", "xbr_variant", gen_tbl_menu("xbr_variant", {"Rounded", "Semi-Rounded", "Square"}, updatetrigger, true));
+
 add_submenu(scalerlbls, scalerptrs, "Factor...", "upscale_factor", gen_tbl_menu("upscale_factor", {2, 3, 4, 5}, updatetrigger));
-add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr"}, updatetrigger, true));
+add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr", "xbr"}, updatetrigger, true));
 
 local function recdim()
 	local props  = image_surface_initial_properties(internal_vid);
@@ -1499,6 +1523,7 @@ local function recdim()
 	return width, height;
 end
 
+-- Special treatment for CRT toggle lables, and Upscaler toggle labels
 local function flip_crttog(label, save)
 	local dstkey;
 	
@@ -1522,6 +1547,28 @@ local function flip_crttog(label, save)
 		
 	gridlemenu_rebuilddisplay();
 end
+
+local function flip_scalertog(label, save)
+	local dstkey;
+	if (label == "DDT") then dstkey = "upscale_ddt"; end
+	settings[dstkey] = not settings[dstkey];
+
+	if (save) then
+		store_key(dstkey, settings[dstkey] and 1 or 0);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+
+	current_menu.formats[label] = settings[dstkey] and settings.colourtable.notice_fontstr or nil;
+	current_menu:invalidate();
+	current_menu:redraw();
+
+	gridlemenu_rebuilddisplay();
+end
+
+table.insert(scalerlbls, "DDT");
+scalerptrs["DDT"] = flip_scalertog;
 
 table.insert(crtmenulbls, "Curvature"); 
 table.insert(crtmenulbls, "Gaussian Profile"); 

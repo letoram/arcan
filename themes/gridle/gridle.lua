@@ -117,7 +117,7 @@ settings = {
 	crt_curvature = true,
 	crt_gaussian = true,
 	crt_oversample = true,
-	crt_linearproc = false,
+	crt_linearproc = true,
 	
 	vector_linew = 1,
 	vector_pointsz = 2,
@@ -144,6 +144,7 @@ settings = {
 	
 	upscale_method = "sabr",
 	upscale_factor = 2,
+	upscale_ddt = false,
 	
 	record_qual = 10,
 	record_res  = 240,
@@ -1406,7 +1407,7 @@ function load_key_bool(name, val, opt)
 	if (kval) then
 		settings[val] = tonumber(kval) > 0;
 	else
-		settings[val] = false;
+		settings[val] = opt;
 	end
 end
 
@@ -1827,10 +1828,10 @@ function load_settings()
 	load_key_num("crt_cornersz",    "crt_cornersz",    settings.crt_cornersz); 
 	load_key_num("crt_cornersmooth","crt_cornersmooth",settings.crt_cornersmooth); 
 
-	load_key_bool("crt_curvature",  "crt_curvature",   settings.curvature); 
-	load_key_bool("crt_gaussian",   "crt_gaussian",    settings.gaussian); 
-	load_key_bool("crt_oversample", "crt_oversample",  settings.oversample); 
-	load_key_bool("crt_linearproc", "crt_linearproc",  settings.linearproc); 
+	load_key_bool("crt_curvature",  "crt_curvature",   settings.crt_curvature); 
+	load_key_bool("crt_gaussian",   "crt_gaussian",    settings.crt_gaussian); 
+	load_key_bool("crt_oversample", "crt_oversample",  settings.crt_oversample); 
+	load_key_bool("crt_linearproc", "crt_linearproc",  settings.crt_linearproc); 
 
 	load_key_num("upscale_factor",  "upscale_factor",  settings.upscale_factor);
 	load_key_str("upscale_method",  "upscale_method",  settings.upscale_method);
