@@ -663,46 +663,53 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	end
 	
 	-- don't activate if there's no need or if we outsize
-	if ( neww >= MAX_SURFACEW or newh >= MAX_SURFACEH or factor < 2) then return nil; end
+	if ( neww >= MAX_SURFACEW or newh >= MAX_SURFACEH or factor < 2) then
+		return nil;
+	end
 
--- one pass, factor agnostic. 
-	if (mode == "sabr" or mode == "xbr") then
-		shader = nil;
+	local shader = nil;
+	if (mode == "sabr") then
+		shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
+	else
+		local definetbl = {};
 		
-		if (mode == "sabr") then
-			shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
-			shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
-			shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
-		else
-			local definen = "SCALEF" .. tostring(factor);
-			local definetbl = {};
-			definetbl[definen] = true;
+		if (mode == "xbr-rounded") then
+			definetbl["METHOD_A"] = true;
+		elseif (mode == "xbr-semi-rounded") then
+			definetbl["METHOD_B"] = true;
+		elseif (mode == "xbr-square") then
 			definetbl["METHOD_C"] = true;
-
-			shader = load_shader("display/xbr.vShader", "display/xbr.fShader", "xbr", definetbl);
-			shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
 		end
 
-		hide_image(sourcevid);
-		local workvid = instance_image(sourcevid);
-		image_mask_clear(workvid, MASK_POSITION);
-		image_mask_clear(workvid, MASK_OPACITY);
-		image_shader(workvid, shader);
-		image_tracetag(workvid, "(upscale_internal)");
-		show_image(workvid);
-		
-		upscaler = fill_surface(neww, newh, 0, 0, 0, neww, newh);
-		define_rendertarget(upscaler, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-		show_image(upscaler);
-		resize_image(workvid, neww, newh);
-		move_image(workvid, 0, 0);
-		image_texfilter(workvid, FILTER_NONE);
-		image_texfilter(upscaler, FILTER_NONE);
-
-		image_tracetag(upscaler, "(upscale_output)");
-		table.insert(imagery.temporary, workvid);
-		table.insert(imagery.temporary, upscaler);
+		shader = load_shader("display/xbr.vShader", "display/xbr.fShader", "xbr", definetbl);
 	end
+
+	if (mode ~= "sabr") then
+		shader_uniform(shader, "deltav", "f", PERSIST, settings.upscale_delta);
+	end
+
+	shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
+	shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
+	
+	hide_image(sourcevid);
+	local workvid = instance_image(sourcevid);
+	image_mask_clear(workvid, MASK_POSITION);
+	image_mask_clear(workvid, MASK_OPACITY);
+	image_shader(workvid, shader);
+	image_tracetag(workvid, "(upscale_internal)");
+	show_image(workvid);
+		
+	upscaler = fill_surface(neww, newh, 0, 0, 0, neww, newh);
+	define_rendertarget(upscaler, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	show_image(upscaler);
+	resize_image(workvid, neww, newh);
+	move_image(workvid, 0, 0);
+	image_texfilter(workvid, FILTER_NONE);
+	image_texfilter(upscaler, FILTER_NONE);
+
+	image_tracetag(upscaler, "(upscale_output)");
+	table.insert(imagery.temporary, workvid);
+	table.insert(imagery.temporary, upscaler);
 
 -- optional additional postprocessor
 	if (settings.upscale_ddt and upscaler) then
@@ -762,6 +769,7 @@ local filterlut = {None = FILTER_NONE,
 
 local function update_filter(vid, filtermode)
 	local modeval = filterlut[filtermode];
+	
 	if (modeval) then
 		image_texfilter(vid, modeval);
 	end
@@ -1379,7 +1387,10 @@ function enable_record(width, height, args)
 	end
 	
 	show_image(lvid);
-	define_recordtarget(dstvid, dst, args, rectbl, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1);
+	define_recordtarget(dstvid, dst, args, rectbl, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
+		print("record callback", status.kind);
+	end
+);
 	
 	imagery.record_target = dstvid;
 	imagery.record_indicator = load_image("images/record.png");
@@ -1500,10 +1511,9 @@ add_submenu(crtmenulbls, crtmenuptrs, "Corner Smooth...",         "crt_cornersmo
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)...",     "crt_tilth",       gen_tbl_menu("crt_tilth",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)...",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 
-add_submenu(xbrlbls, xbrptrs, "Variant", "xbr_variant", gen_tbl_menu("xbr_variant", {"Rounded", "Semi-Rounded", "Square"}, updatetrigger, true));
-
 add_submenu(scalerlbls, scalerptrs, "Factor...", "upscale_factor", gen_tbl_menu("upscale_factor", {2, 3, 4, 5}, updatetrigger));
-add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr", "xbr"}, updatetrigger, true));
+add_submenu(scalerlbls, scalerptrs, "Delta Value (xbr)", "upscale_delta", gen_num_menu("upscale_delta", 0.1, 0.1, 6, updatetrigger));
+add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr", "xbr-rounded", "xbr-semi-rounded", "xbr-square"}, updatetrigger, true));
 
 local function recdim()
 	local props  = image_surface_initial_properties(internal_vid);
@@ -1847,7 +1857,6 @@ if (#menulbls > 0 and settingslbls) then
 		
 		menu_spawnmenu( cocktaillist, cocktailptrs, def);
 	end
-
 	
 	current_menu.ptrs["Record..."] = function()
 		local def = {};

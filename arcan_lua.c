@@ -3233,8 +3233,8 @@ int arcan_lua_recordset(lua_State* ctx)
 
 /*  in order to stay backward compatible API wise, the load_movie with function callback
  *  will always need to specify loop condition. */
-	if (lua_isfunction(ctx, 8) && !lua_iscfunction(ctx, 8)){
-		lua_pushvalue(ctx, 8);
+	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
+		lua_pushvalue(ctx, 9);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 	
