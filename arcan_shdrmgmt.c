@@ -384,7 +384,9 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 	*vprg = glCreateShader(GL_VERTEX_SHADER);
 	*fprg = glCreateShader(GL_FRAGMENT_SHADER);
 
-	arcan_debug_pumpglwarnings("shdrmgmt:pre:build_shader");
+	if (arcan_debug_pumpglwarnings("shdrmgmt:pre:build_shader") == -1){
+		arcan_warning("|--> When attempting to build (%s)\n", label);
+	}
 
 	glShaderSource(*vprg, 1, &vprogram, NULL);
 	glShaderSource(*fprg, 1, &fprogram, NULL);
