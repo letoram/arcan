@@ -656,7 +656,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	local neww = init_props.width  * factor;
 	local newh = init_props.height * factor;
 	
-	while ((neww >= VRESW or newh >= VRESH) and factor > 1) do
+	while ((neww > VRESW or newh > VRESH) and factor > 1) do
 		factor = factor - 1;
 		neww = init_props.width * factor;
 		newh = init_props.height * factor;
@@ -713,21 +713,14 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 -- optional additional postprocessor
 	if (settings.upscale_ddt and upscaler) then
-		local ddtsrc = instance_image(upscaler);
-		image_mask_clear(ddtsrc, MASK_POSITION);
-		image_mask_clear(ddtsrc, MASK_OPACITY);
-	--	show_image(ddtsrc);
-		hide_image(upscaler);
-
 		local ddtshader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
 		shader_uniform(ddtshader, "texture_size", "ff", PERSIST, neww, newh);
-		ddtsurf = fill_surface(neww, newh, 0, 0, 0, neww, newh);
-		image_shader(ddtsurf, ddtshader);
-		image_tracetag(ddtsrc, "(upscale DDT input)");
-		image_tracetag(ddtsurf, "(upscale DDT filter)");
 
-		define_rendertarget(ddtsurf, {ddtsrc}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-			
+		ddtsurf = fill_surface(neww, newh, 0, 0, 0, neww, newh);
+		define_rendertarget(ddtsurf, {upscaler}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		image_shader(ddtsurf, ddtshader);
+		image_tracetag(ddtsurf, "(upscale DDT filter)");
+		
 		table.insert(imagery.temporary, ddtsurf);
 		return ddtsurf;
 	end
@@ -849,7 +842,6 @@ function gridlemenu_rebuilddisplay()
 		dstvid = dstbuf;
 		blend_image(dstbuf, 1);
 	else
-
 		settings.fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
 	end
 	
@@ -996,16 +988,17 @@ function gridlemenu_loadshader(basename, dstvid)
 		warning("Refusing to load shader(" .. basename .."), missing .fShader");
 		return nil;
 	end
-	
-	local resshdr = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
 
-	shader_uniform(resshdr, "output_size",  "ff", PERSIST, dispprops.width,  dispprops.height );
-	shader_uniform(resshdr, "input_size",   "ff", PERSIST, startprops.width, startprops.height);
-	shader_uniform(resshdr, "storage_size", "ff", PERSIST, storprops.width,  storprops.height );
+	if (settings.shader_opts) then
+		local resshdr = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
+
+		shader_uniform(resshdr, "output_size",  "ff", PERSIST, dispprops.width,  dispprops.height );
+		shader_uniform(resshdr, "input_size",   "ff", PERSIST, startprops.width, startprops.height);
+		shader_uniform(resshdr, "storage_size", "ff", PERSIST, storprops.width,  storprops.height );
 	
-	image_shader(dstvid, resshdr);
-	
-	return resshdr;
+		image_shader(dstvid, resshdr);
+		return resshdr;
+	end
 end
 
 local function get_saveslist(gametbl)
