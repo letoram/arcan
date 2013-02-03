@@ -144,6 +144,7 @@ settings = {
 	
 	upscale_method = "sabr",
 	upscale_factor = 2,
+	upscale_delta = 0.4,
 	upscale_ddt = false,
 	
 	record_qual = 10,
@@ -1835,7 +1836,10 @@ function load_settings()
 
 	load_key_num("upscale_factor",  "upscale_factor",  settings.upscale_factor);
 	load_key_str("upscale_method",  "upscale_method",  settings.upscale_method);
-		
+	load_key_num("upscale_delta",   "upscale_delta",   settings.upscale_delta);
+	
+	load_key_str("imagefilter", "imagefilter", settings.imagefilter);
+	
 	load_key_str("record_format",   "record_format",   settings.record_format);
 	load_key_num("record_fps",      "record_fps",      settings.record_fps);
 	load_key_num("record_qual",     "record_qual",     settings.record_qual);
