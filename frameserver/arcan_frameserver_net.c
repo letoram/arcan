@@ -816,8 +816,10 @@ static void server_session(const char* host, int limit)
 		apr_pollset_add(poll_in, &gkpfd);
 	}
 
-	apr_pollset_add(poll_in, &pfd);
+#ifndef _WIN32
 	apr_pollset_add(poll_in, &epfd);
+#endif
+	apr_pollset_add(poll_in, &pfd);
 
 	while (true){
 		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
@@ -1205,7 +1207,10 @@ static void client_session(char* hoststr, enum client_modes mode)
 		return;
 	}
 
+#ifndef _WIN32
 	apr_pollset_add(pset, &epfd);
+#endif
+
 	apr_pollset_add(pset, &pfd);
 
 /* main client loop */

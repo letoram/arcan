@@ -228,8 +228,9 @@ int main(int argc, char* argv[])
 #endif
 
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
-		Sleep(10);
+		LOG("frameserver_debugstall, attach and unset volatile on pid: %d\n", (int) getpid());
+        volatile bool a = false;
+        while (!a){};
 	}
 
 /* the convention on windows doesn't include the program name as first argument,
