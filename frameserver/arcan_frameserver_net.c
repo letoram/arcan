@@ -63,7 +63,7 @@ static const int discover_delay = CLIENT_DISCOVER_DELAY;
 #define MAX_ADDR_SIZE 45
 #define MAX_HEADER_SIZE 128
 
-#ifdef WIN32
+#ifdef _WIN32
 /* Doesn't seem like mingw/apr actually gets the TransmitFile symbol so stub it here */
 #define sleep(X) (Sleep(X * 1000))
 BOOL PASCAL TransmitFile(SOCKET hs, HANDLE hf, DWORD nbtw, DWORD nbps, LPOVERLAPPED lpo, LPTRANSMIT_FILE_BUFFERS lpTransmitBuffers, DWORD dfl){
@@ -86,7 +86,7 @@ enum server_modes {
 
 enum connection_state {
 	CONN_OFFLINE = 0,
-	CONN_DISCOVERING, 
+	CONN_DISCOVERING,
 	CONN_CONNECTING,
 	CONN_CONNECTED,
 	CONN_AUTHENTICATED
@@ -767,6 +767,10 @@ static void server_session(const char* host, int limit)
 /* we need 1 for each connection (limit) one for the gatekeeper and finally one for
  * each IP (multihomed) */
 	int timeout = -1;
+#ifdef _WIN32
+   timeout = 100000;
+#endif
+
 	if (apr_pollset_create(&poll_in, limit + 4, netcontext.mempool, 0) != APR_SUCCESS){
 			LOG("arcan_frameserver(net) -- Couldn't create server pollset, giving up.\n");
 			return;
@@ -872,9 +876,16 @@ static void server_session(const char* host, int limit)
 			}
 			;
 		}
+
+/* Win32 workaround, the approach of using an OS primitive that blends with a pollset
+ * is a bit messy in windows as apparently Semaphores didn't work, Winsock is just terrible and
+ * the parent process doesn't link / use APR, so we fall back to an aggressive timeout */
+		if (!server_process_inevq(active_cons, limit))
+            break;
 		;
 	}
 
+    LOG("arcan_frameserver(net-srv) -- shutting down server session.\n");
 	apr_socket_close(ear_sock);
 	return;
 }
@@ -913,7 +924,7 @@ static char* host_discover(char* host, bool usenacl, bool passive)
 
 	apr_socket_timeout_set(broadsock, DEFAULT_CLIENT_TIMEOUT);
 	netcontext.connstate = CONN_DISCOVERING;
-	
+
 	while (true){
 		apr_size_t nts = MAX_HEADER_SIZE, ntr;
 		apr_sockaddr_t recaddr;
@@ -1184,6 +1195,11 @@ static void client_session(char* hoststr, enum client_modes mode)
 	};
 
 	int timeout = -1;
+
+#ifdef _WIN32
+    timeout = 100000;
+#endif
+
 	if (apr_pollset_create(&pset, 1, netcontext.mempool, 0) != APR_SUCCESS){
 		LOG("arcan_frameserver(net) -- couldn't allocate pollset. Giving up.\n");
 		return;
@@ -1197,7 +1213,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
 		apr_status_t status = apr_pollset_poll(pset, timeout, &pnum, &ret_pfd);
-		
+
 		if (status != APR_SUCCESS && status != APR_EINTR && status != APR_TIMEUP){
 			LOG("arcan_frameserver(net-cl) -- broken poll, giving up.\n");
 			graph_log_conn_error(netcontext.graphing, 0, "pollset_poll");
@@ -1222,6 +1238,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 			break;
 	}
 
+    LOG("arcan_frameserver(net-cl) -- shutting down client session.\n");
 	return;
 }
 
@@ -1235,7 +1252,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	unsigned gwidth = 256, gheight = 256;
 	const char* rk;
 	uint32_t* gbufptr = NULL;
-	
+
 	if (arg_lookup(args, "width", 0, &rk) ){
 		unsigned neww = strtoul(rk, NULL, 10);
 		if (neww > 0 && neww <= MAX_SHMWIDTH)
@@ -1284,7 +1301,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		goto cleanup;
 	}
 #endif
-	
+
 	if (arg_lookup(args, "mode", 0, &rk) && strcmp("client", rk) == 0){
 		char* dsthost = NULL;
 

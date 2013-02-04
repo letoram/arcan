@@ -295,7 +295,7 @@ static void transfer_persists(struct arcan_video_context* src, struct arcan_vide
 
 /* cross- referencing world- outside context isn't permitted */
 		dst->vitems_pool[i].parent = &dst->world;
-		
+
 			if (delsrc){
 				detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
 				memset(&src->vitems_pool[i], 0, sizeof(arcan_vobject));
@@ -309,7 +309,7 @@ static void transfer_persists(struct arcan_video_context* src, struct arcan_vide
 
 		}
 	}
-	
+
 }
 
 signed arcan_video_pushcontext()
@@ -341,7 +341,7 @@ signed arcan_video_pushcontext()
 
 /* propagate persistent flagged objects upwards */
 	transfer_persists(&context_stack[ context_ind - 1], current_context, false);
-	
+
 	return arcan_video_nfreecontexts();
 }
 
@@ -350,9 +350,9 @@ unsigned arcan_video_popcontext()
 /* propagate persistent flagged objects downwards */
 	if (context_ind > 0)
 		transfer_persists(current_context, &context_stack[context_ind-1], true);
-	
+
 	deallocate_gl_context(current_context, true);
-	
+
 	if (context_ind > 0){
 		context_ind--;
 		current_context = &context_stack[ context_ind ];
@@ -424,7 +424,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
 		nobj->gl_storage.program = pobj->gl_storage.program;
 		generate_basic_mapping(nobj->txcos, 1.0, 1.0);
-		
+
 		nobj->parent->extrefc.instances++;
 		trace("(clone) new instance of (%d:%s) with ID: %d, total: %d\n", parent, video_tracetag(pobj), nobj->cellid, nobj->parent->extrefc.instances);
 		arcan_video_attachobject(rv);
@@ -1508,7 +1508,7 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 		*errc = ARCAN_ERRC_NO_SUCH_OBJECT;
 		return rv;
 	}
-	
+
 	if (dstvobj->flags.clone || dstvobj->flags.persist || srcvobj->flags.persist){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
@@ -1702,7 +1702,7 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb, vfunc_stat
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	
+
 	if (vobj && vobj->flags.clone)
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
@@ -2216,7 +2216,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 	int cascade_c = 0;
-	
+
 /* some objects can't be deleted */
 	if (!vobj || id == ARCAN_VIDEO_WORLDID || id == ARCAN_EID){
 		return rv;
@@ -2228,7 +2228,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		rv = ARCAN_ERRC_UNACCEPTED_STATE;
 		return rv;
 	}
-	
+
 /* step one, disassociate from ALL rendertargets,  */
 	detach_fromtarget(&current_context->stdoutp, vobj);
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
@@ -3350,7 +3350,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			txcos = elem->parent != &current_context->world ? elem->parent->txcos : elem->txcos;
 		else if (elem->flags.clone)
 			txcos = elem->txcos;
-		
+
 		arcan_video_setblend(&dprops, elem);
 		draw_surf(tgt, dprops, elem, txcos);
 
@@ -3507,12 +3507,13 @@ void arcan_video_refresh_GL(float lerp)
 
 void arcan_video_refresh(float tofs)
 {
+    const unsigned int minimum_broken_vsync = 4.0;
 	static unsigned lastframe = 0;
 
 	unsigned ctime  = SDL_GetTicks();
 	unsigned delta = ctime - lastframe;
 
-	if (!arcan_video_display.vsync || arcan_video_display.vsync_timing < 1.0 || /* no vsync, no point here */
+	if (!arcan_video_display.vsync || arcan_video_display.vsync_timing < minimum_broken_vsync || /* no vsync, no point here */
 		(ctime < lastframe) || (delta > (0.5 * arcan_video_display.vsync_timing) )) /* "invalid" timing info, update */
 	{
 /* for less interactive / latency sensitive applications the delta > .. with vsync on, the delta > .. could be removed */

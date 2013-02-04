@@ -146,9 +146,6 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 
 			arcan_frameserver_spawn_server(src, args);
 		}
-/* Removed (0.2.2), calling free with the video object still alive is not accepted 
- * else
-			arcan_frameserver_free(src, false); */
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 		return false;
@@ -169,7 +166,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 #ifndef _WIN32
 	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV){
 		int sn = 0;
-		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT); 
+		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
 	}
 #endif
 
@@ -222,7 +219,17 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 	return FFUNC_RV_NOUPLOAD;
 }
 
-int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state){
+int8_t arcan_frameserver_dummyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
+{
+    if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr && cmd == ffunc_destroy){
+        arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+    }
+
+    return FFUNC_RV_NOFRAME;
+}
+
+int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
+{
 
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 		switch (cmd){
@@ -238,7 +245,7 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 				break;
 		}
 
-	return 0;
+	return FFUNC_RV_NOFRAME;
 }
 
 int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state)
@@ -262,7 +269,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		break;
 		case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
-		
+
 		case ffunc_render:
 			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is detected, just ignore this frame */
@@ -307,9 +314,14 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 
 	if (cmd == ffunc_destroy)
 		arcan_frameserver_free(state.ptr, false);
-	else if (cmd == ffunc_tick)
+	else if (cmd == ffunc_tick){
 /* done differently since we don't care if the frameserver wants to resize, that's its problem. */
-		arcan_frameserver_control_chld(src);
+		if (!arcan_frameserver_control_chld(src)){
+            vfunc_state cstate = *arcan_video_feedstate(src->vid);
+            arcan_video_alterfeed(src->vid, arcan_frameserver_dummyframe, cstate);
+            return;
+        }
+    }
 
 /* if the frameserver isn't ready to receive (semaphore unlocked) then the frame will be dropped,
  * a warning noting that the frameserver isn't fast enough to deal with the data (allowed to duplicate
@@ -530,12 +542,17 @@ static arcan_errc again_feed(float gain, void* tag)
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-	
-	if (src && shmpage)
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
+
+    if (!arcan_frameserver_control_chld(src) || !src || !shmpage){
+		vfunc_state cstate = *arcan_video_feedstate(src->vid);
+		arcan_video_alterfeed(src->vid, arcan_frameserver_dummyframe, cstate);
+        return;
+    }
+
+	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
 
 /* may happen multiple- times */
-	if ( arcan_frameserver_control_chld(src) &&	shmpage && shmpage->resized ){
+	if ( shmpage->resized ){
 		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -563,7 +580,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			glDeleteBuffers(2, src->desc.upload_pbo);
 
 		src->desc.pbo_transfer = src->use_pbo;
-		
+
 		if (src->use_pbo){
 			glGenBuffers(2, src->desc.upload_pbo);
 			for (int i = 0; i < 2; i++){
@@ -866,7 +883,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 		ctx->autoplay = true;
 		ctx->nopts = true;
 	}
-	
+
 	arcan_frameserver_meta vinfo = {0};
 
 	ctx->child_alive = true;
@@ -874,9 +891,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 
 /* these are just placeholders, the real ones will be set in tick_control */
 	ctx->desc.width  = 32;
-	ctx->desc.height = 32; 
+	ctx->desc.height = 32;
 	ctx->desc.bpp    = 4;
-	
+
 /* two separate queues for passing events back and forth between main program and frameserver,
  * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
 	frameserver_shmpage_setevqs( ctx->shm.ptr, ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);

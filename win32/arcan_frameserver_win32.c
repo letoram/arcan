@@ -215,6 +215,7 @@ static void toggle_logdev(const char* prefix)
 int main(int argc, char* argv[])
 {
 	logdev = NULL;
+    toggle_logdev("main");
 
 #ifndef _DEBUG
 /*	_set_invalid_parameter_handler(inval_param_handler) */
