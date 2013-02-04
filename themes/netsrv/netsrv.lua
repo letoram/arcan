@@ -2,7 +2,7 @@ msglist = {};
 ticking = false;
 
 function netev(source, status)
-	print("event");
+	print("server event: ", tostring(status.kind));
 	if (status.kind == "frameserver_terminated") then
 		add_msg("server died");
 	elseif (status.kind == "message") then
@@ -17,7 +17,7 @@ function netsrv_status()
 		delete_image(status_img);
 		status_img = nil;
 	end
-	
+
 	msg = [[\n\r\ffonts/default.ttf,14\bCommands:\!b\n\r
 	\ffonts/default.ttf,12\n\r
 	\b1..9\!b\t send seq-message to client ind (n)\n\r
@@ -50,10 +50,10 @@ function add_msg(str)
 	if (#msglist > 10) then table.remove(msglist, 1); end
 	for i=1,#msglist do
 		renderstr = renderstr .. string.gsub(msglist[i], "\\", "\\\\") .. [[\n\r]];
-	end	
-	
+	end
+
 	delete_image(msgtbl);
-	
+
 	msgtbl = render_text(renderstr);
 	move_image(msgtbl, math.floor(VRESW * 0.5), 0);
 	show_image(msgtbl);
@@ -63,7 +63,7 @@ function seqmsg(num)
 	local smsg = "SEQMSG:" .. tostring( seqn );
 	seqn = seqn + 1;
 	print("send to slot:", num);
-	
+
 	net_push_srv(server, smsg, num);
 end
 
@@ -71,7 +71,7 @@ function netsrv_input(iotbl)
 	if (iotbl.active and iotbl.kind == "digital" and iotbl.translated and symtbl[iotbl.keysym]) then
 		if (symtbl[iotbl.keysym] == "b") then
 			seqmsg(0);
-			
+
 		elseif (symtbl[iotbl.keysym] == "t") then
 			ticking = not ticking;
 
