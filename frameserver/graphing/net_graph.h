@@ -22,6 +22,10 @@
 #ifndef HAVE_NET_GRAPH
 #define HAVE_NET_GRAPH
 
+#define PXFONT font8x8_basic
+#define PXFONT_WIDTH 8
+#define PXFONT_HEIGHT 8
+
 struct graph_context;
 
 enum graphing_mode {
@@ -37,6 +41,7 @@ enum graphing_mode {
  * for whatever frontend is using these. If the resolution etc. should be changed, then 
  * a new context will need to be allocated */
 struct graph_context* graphing_new(enum graphing_mode, int width, int height, uint32_t* vidp);
+void graphing_destroy(struct graph_context*);
 
 /* ALL context references below this point are silently assumed to be from a valid graphing_new call. */
 
