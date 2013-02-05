@@ -44,9 +44,6 @@
  * convert -resize 8x8\! -font Name-Family-Style -pointsize num label:CodePoint outp.xbm
  * sweep through the desired codepoints and build the outer array, dump to header and replace */
 #include "font_8x8.h"
-#define PXFONT font8x8_basic
-#define PXFONT_WIDTH 8
-#define PXFONT_HEIGHT 8
 
 static const int pxfont_width = PXFONT_WIDTH;
 static const int pxfont_height = PXFONT_HEIGHT;
@@ -301,6 +298,14 @@ struct graph_context* graphing_new(enum graphing_mode mode, int width, int heigh
 	}
 
 	return rctx;
+}
+
+void graphing_destroy(struct graph_context* ctx)
+{
+		if (ctx){
+			memset(ctx, 0, sizeof(struct graph_context));
+			free(ctx);
+		}
 }
 
 void graph_tick(struct graph_context* ctx, long long int timestamp)

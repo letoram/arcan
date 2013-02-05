@@ -34,8 +34,9 @@
 
 #include "arcan_frameserver.h"
 #include "arcan_frameserver_libretro.h"
-#include "./ntsc/snes_ntsc.h"
 #include "../arcan_frameserver_shmpage.h"
+#include "./ntsc/snes_ntsc.h"
+#include "./graphing/net_graph.h"
 #include "libretro.h"
 
 /* resampling at this level because it seems the linux + openAL + pulse-junk-audio
@@ -99,7 +100,9 @@ static struct {
 /* input-output */
 		struct frameserver_shmcont shmcont;
 		uint8_t* vidp, (* audp);
-
+		struct graph_context* graphing;
+		int graphmode;
+		
 /* set as a canary after audb at a recalc to detect overflow */
 		uint8_t* audguardb;
 
@@ -280,6 +283,8 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	if (outw != retroctx.shmcont.addr->storage.w || outh != retroctx.shmcont.addr->storage.h){
 		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh, video_channels, audio_channels, audio_samplerate);
 		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
+		graphing_destroy(retroctx.graphing);
+		retroctx.graphing = graphing_new(GRAPH_MANUAL, outw, outh, (uint32_t*) retroctx.vidp);
 
 		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
 		retroctx.audguardb[0] = 0xde;
@@ -591,6 +596,10 @@ static inline void targetev(arcan_event* ev)
 			LOG("arcan_frameserver(libretro) - descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 
+		case TARGET_COMMAND_GRAPHMODE:
+			retroctx.graphmode = tgt->ioevs[0].iv;
+		break;
+		
 		case TARGET_COMMAND_NTSCFILTER:
 			toggle_ntscfilter(tgt->ioevs[0].iv);
 		break;
@@ -735,6 +744,18 @@ static inline bool retroctx_sync()
 	return true;
 }
 
+static void push_stats(const char* msg)
+{
+	char scratch[64];
+	int yv = 0;
+	draw_text(retroctx.graphing, msg, 0, 0, 0xffffffff);
+	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
+	draw_text(retroctx.graphing, retroctx.ntscconv ? "NTSC filter enabled" : "NTSC filter disabled", 0, yv, 0xffffffff);
+	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
+
+	snprintf(scratch, 64, "%lld audioframes", retroctx.aframecount);
+}
+
 /* a big issue is that the libretro- modules are not guaranteed to act in a nice library way,
  * meaning that they (among other things) install signal handlers, spawn threads, change working directory,
  * work with file-system etc. etc. There are a few ideas for how this can be handled:
@@ -751,6 +772,7 @@ static inline bool retroctx_sync()
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
 	retroctx.converter    = (pixconv_fun) libretro_rgb1555_rgba;
+	const char* bootmsg = "nisse";
 	const char* libname   = resource;
 	uint32_t framecounter = 0;
 	int errc;
@@ -853,6 +875,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			return;
 
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
+		retroctx.graphing = graphing_new(GRAPH_MANUAL, retroctx.avinfo.geometry.max_width,
+			retroctx.avinfo.geometry.max_height, (uint32_t*) retroctx.vidp);
 		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
 		retroctx.audguardb[0] = 0xde;
 		retroctx.audguardb[1] = 0xad;
@@ -940,6 +964,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					shared->aready = true;
 					retroctx.audbuf_ofs = 0;
 				}
+
+/* possibly overlay as much tracking / debugging data we can muster */
+				if (retroctx.graphmode > 0)
+					push_stats(bootmsg);
 
 				shared->vready = true;
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
