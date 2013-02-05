@@ -80,7 +80,7 @@ static struct {
 		bool skipframe;
 		bool pause;
 		double mspf;
-		double drift;
+		
 		long long int basetime;
 		int skipmode;
 		unsigned long long framecount;
@@ -716,6 +716,7 @@ static inline bool retroctx_sync()
 
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
 	if (now < 0 || abs( left ) > retroctx.mspf * 60){
+		LOG("arcan_frameserver(libretro) -- stall detected, resetting timers.\n");
 		retroctx.basetime = timestamp;
 		retroctx.framecount  = 1;
 		retroctx.aframecount = 1;
