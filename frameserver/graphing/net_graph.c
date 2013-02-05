@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <apr_poll.h>
 
 #include "net_graph.h"
 #include "../../arcan_math.h"
@@ -114,7 +115,22 @@ struct graph_context {
 	enum graphing_mode mode;
 };
 
-static inline void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col)
+static inline uint32_t px_blend(const uint32_t p1, const uint32_t p2, float fact)
+{
+	uint32_t rv;
+/* shift out individual components, res = (p1.n * 1.0 - fact) + (p2.n * fact), pack and return */
+	return rv;
+}
+
+void blend_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact)
+{
+}
+
+void blend_vline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact)
+{
+}
+
+void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col)
 {
 /* clip */
 	if (y < 0 || y >= ctx->height)
@@ -129,7 +145,7 @@ static inline void draw_hline(struct graph_context* ctx, int x, int y, int width
 		*(buf++) = col;
 }
 
-static inline void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t col)
+void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t col)
 {
 	if (x < 0 || x >= ctx->width)
 		return;
@@ -145,14 +161,14 @@ static inline void draw_vline(struct graph_context* ctx, int x, int y, int heigh
 	}
 }
 
-static inline void clear_tocol(struct graph_context* ctx, uint32_t col)
+void clear_tocol(struct graph_context* ctx, uint32_t col)
 {
 	int ntc = ctx->width * ctx->height;
 	for (int i = 0; i < ntc; i++)
 		ctx->vidp[i] = col;
 }
 
-static inline void draw_square(struct graph_context* ctx, int x, int y, int side, uint32_t col)
+void draw_square(struct graph_context* ctx, int x, int y, int side, uint32_t col)
 {
 	int lx = x - side >= 0 ? x - side : 0;
 	int ly = y - side >= 0 ? y - side : 0;
@@ -165,7 +181,7 @@ static inline void draw_square(struct graph_context* ctx, int x, int y, int side
 }
 
 /* use the included 8x8 bitmap font to draw simple 7-bit ASCII messages */
-static void draw_text(struct graph_context* ctx, const char* msg, int x, int y, uint32_t txcol)
+void draw_text(struct graph_context* ctx, const char* msg, int x, int y, uint32_t txcol)
 {
 	if (y + pxfont_height >= ctx->height)
 		return;
@@ -216,6 +232,9 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, int
  * and converts the others to draw-calls, layout is different for server (1:n) and client (1:1). */
 static bool graph_refresh_server(struct graph_context* ctx)
 {
+	if (ctx->mode == GRAPH_MANUAL)
+		return false;
+	
 	switch (ctx->mode){
 /* just draw discover- server and one client, similar to client mode */
 		case GRAPH_NET_SERVER_SINGLE:
@@ -234,6 +253,9 @@ static bool graph_refresh_server(struct graph_context* ctx)
  * render each event-bucket based on the graph- profile of the bucket */
 static bool graph_refresh_client(struct graph_context* ctx)
 {
+	if (ctx->mode == GRAPH_MANUAL)
+		return false;
+
 	long long int ts = arcan_timemillis();
 	int bucketh = (ctx->height - 10) / 3;
 
@@ -276,8 +298,6 @@ struct graph_context* graphing_new(enum graphing_mode mode, int width, int heigh
 			.colors.bg = 0xffffffff, .colors.border = 0xff000000, .colors.grid = 0xffaaaaaa, .colors.gridalign = 0xffff4444,
 			.colors.data = 0xff00ff00, .colors.alert = 0xffff0000, .colors.notice = 0xff0000ff };
 			*rctx = rv;
-			
-		
 	}
 
 	return rctx;
