@@ -961,7 +961,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 {
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, arcan_video_display.vsync == true ? 1 : 0);
+	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1); /* arcan_video_display.vsync == true ? 1 : 0); */
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 
@@ -993,11 +993,11 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
  * align to vsync, time and process a few trames */
 	SDL_GL_SwapBuffers();
 
-	unsigned base = SDL_GetTicks();
+	unsigned base = arcan_timemillis();
 	for (int i = 0; i < 10; i++){
 		SDL_GL_SwapBuffers();
 	}
-	unsigned delta = SDL_GetTicks() - base;
+	unsigned delta = arcan_timemillis() - base;
 	arcan_video_display.vsync_timing = (float)delta / 10.0;
 	arcan_warning("arcan_video_init(), Vsync deadline estimated to ~%f mspf.\n", arcan_video_display.vsync_timing);
 
@@ -3505,23 +3505,12 @@ void arcan_video_refresh_GL(float lerp)
 		process_readback(&current_context->stdoutp, lerp);
 }
 
-void arcan_video_refresh(float tofs)
+void arcan_video_refresh(float tofs, bool synch)
 {
-    const unsigned int minimum_broken_vsync = 4.0;
-	static unsigned lastframe = 0;
-
-	unsigned ctime  = SDL_GetTicks();
-	unsigned delta = ctime - lastframe;
-
-	if (!arcan_video_display.vsync || arcan_video_display.vsync_timing < minimum_broken_vsync || /* no vsync, no point here */
-		(ctime < lastframe) || (delta > (0.5 * arcan_video_display.vsync_timing) )) /* "invalid" timing info, update */
-	{
 /* for less interactive / latency sensitive applications the delta > .. with vsync on, the delta > .. could be removed */
-		arcan_video_refresh_GL(tofs);
-
+	arcan_video_refresh_GL(tofs);
+	if (synch)
 		SDL_GL_SwapBuffers();
-		lastframe = SDL_GetTicks();
-	}
 }
 
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)

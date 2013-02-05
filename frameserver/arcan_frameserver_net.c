@@ -337,7 +337,7 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 
 				char outbuf[5];
 				outbuf[0] = TAG_NETPONG;
-				inl = htonl(frameserver_timemillis());
+				inl = htonl(arcan_timemillis());
 				memcpy(&outbuf[1], &inl, sizeof(uint32_t));
 			}
 			else
@@ -525,7 +525,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	active_cons[j].dispatch  = dispatch_tlv;
 	active_cons[j].flushout  = flushout_default;
 	active_cons[j].queueout  = queueout_default;
-	active_cons[j].connect_stamp = frameserver_timemillis();
+	active_cons[j].connect_stamp = arcan_timemillis();
 
 	apr_pollfd_t* pfd = &active_cons[j].poll_state;
 
@@ -1287,7 +1287,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 /* APR as a wrapper for all socket communication */
 	apr_initialize();
 	apr_pool_create(&netcontext.mempool, NULL);
-	netcontext.basestamp = frameserver_timemillis();
+	netcontext.basestamp = arcan_timemillis();
 	netcontext.rledec_sz = DEFAULT_RLEDEC_SZ;
 	netcontext.rledec_buf = malloc(netcontext.rledec_sz);
 

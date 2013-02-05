@@ -554,15 +554,12 @@ int64_t arcan_frametime()
  * been setup, kindof */
 float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 {
-	arcan_last_frametime = SDL_GetTicks();
+	arcan_last_frametime = arcan_timemillis();
 	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK;
-
 	int rv = 0;
 
-	/* the logic- clock is necessary, if we got the cycles to spare,
-	 * process audio / video / io. */
 	if (nticks){
 		arcan_event newevent = {.category = EVENT_TIMER, .kind = 0, .data.timer.pulse_count = nticks};
 		ctx->c_ticks += nticks * ARCAN_TIMER_TICK;
@@ -638,7 +635,7 @@ void arcan_event_init(arcan_evctx* ctx)
 	init_sdl_events(ctx);
 
 	ctx->synch.local = SDL_CreateMutex();
- 	arcan_tickofset = SDL_GetTicks();
+ 	arcan_tickofset = arcan_timemillis();
 
 	SDL_Init(SDL_INIT_JOYSTICK);
 	/* enumerate joysticks, try to connect to those available and map their respective axises */

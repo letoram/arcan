@@ -340,36 +340,43 @@ int main(int argc, char* argv[])
 		arcan_lua_callvoidfun(luactx, "show");
 
 		bool done = false;
+		float lastfrag = 0.0f;
+		
 		while (!done) {
 			arcan_event* ev;
-
 			unsigned nticks;
+
 			float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
 
 /* priority is always in maintaining logical clock and event processing */
 			if (nticks > 0){
 				arcan_video_tick(nticks);
 				arcan_audio_tick(nticks);
-			}
-			else{
-/* we separate the ffunc per-frame update and the video refresh */
-				arcan_video_pollfeed();
-				arcan_video_refresh(frag);
-				arcan_audio_refresh();
+				lastfrag = 0.0f;
+
+				arcan_video_refresh(frag, false);
+			} else {
+/* we are running ahead of time, if this is by a lot, consider yielding if not, interpolate */
+				if (fabs(frag - lastfrag) > 0.1){
+					arcan_audio_refresh();
+					arcan_video_refresh(frag, true);
+					lastfrag = frag;
+				}
+/* seems like this behavior works poorly with windows scheduling */
+				 else 
+					arcan_timesleep( 0.1 * (1.0f / ARCAN_TIMER_TICK) );
 			}
 
-/* note that an onslaught of I/O operations can currently
- * saturate tick / video instead of evenly distribute between the two.
- * since these can also propagate to LUA and user scripts, there
- * should really be a timing balance here (keep track of avg. time to dispatch
- * event, figure out how many we can handle before we must push a logic- frame */
+/* pollfeed drives frameservers, which in turn can synch events and should
+ * be processed before main event flush */
+			arcan_video_pollfeed();
+
+/* might be better if this terminates if we're closing in on a deadline as to not be
+ * saturated with an onslaught of I/O events. */
 			arcan_errc evstat;
 			while ((ev = arcan_event_poll(arcan_event_defaultctx(), &evstat)) && evstat == ARCAN_OK) {
 
 				switch (ev->category) {
-					case EVENT_IO:
-					break;
-
 					case EVENT_VIDEO:
 /* these events can typically be determined in video_tick(),
  * however there are so many hierarchical dependencies (linked objs, instances, ...)
@@ -380,7 +387,6 @@ int main(int argc, char* argv[])
 						else if (ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOADED ||
 							ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED)
 							arcan_video_pushasynch(ev->data.video.source);
-
 					break;
 
 					case EVENT_SYSTEM:

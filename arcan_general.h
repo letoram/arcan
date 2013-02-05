@@ -163,6 +163,10 @@ char* arcan_expand_resource(const char* label, bool global);
 char* arcan_find_resource_path(const char* label, const char* path, int searchmask);
 char* arcan_find_resource(const char* label, int searchmask);
 char* arcan_findshmkey(int* dhd, bool semalloc);
+
+long long int arcan_timemillis();
+void arcan_timesleep(unsigned long);
+
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 

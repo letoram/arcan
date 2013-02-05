@@ -621,7 +621,7 @@ static inline void targetev(arcan_event* ev)
 		
 		case TARGET_COMMAND_UNPAUSE:
 			retroctx.pause = false;
-			retroctx.basetime = frameserver_timemillis() + retroctx.framecount * retroctx.mspf;
+			retroctx.basetime = arcan_timemillis() + retroctx.framecount * retroctx.mspf;
 			retroctx.framecount = 0;
 			retroctx.aframecount = 0;
 		break;
@@ -696,14 +696,14 @@ static inline void flush_eventq(){
 		}
 /* Only pause if the DMS isn't released */
 		while (retroctx.shmcont.addr->dms &&
-			retroctx.pause && (frameserver_delay(1), 1));
+			retroctx.pause && (arcan_timesleep(1), 1));
 }
 
 /* return true if we're in synch (may sleep),
  * return false if we're lagging behind */
 static inline bool retroctx_sync()
 {
-	long long int timestamp = frameserver_timemillis();
+	long long int timestamp = arcan_timemillis();
 	retroctx.framecount++;
 
 	if (retroctx.skipmode == TARGET_SKIP_NONE)
@@ -729,7 +729,7 @@ static inline bool retroctx_sync()
 /* used to measure the elapsed time between frames in order to wake up in time,
  * but frame- distribution didn't get better than this magic value on anything in the test set */
 	if (left > 4)
-		frameserver_delay( left - 4);
+		arcan_timesleep( left - 4);
 
 	return true;
 }
@@ -877,7 +877,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.reset();
 
 /* basetime is used as epoch for all other timing calculations */
-		retroctx.basetime = frameserver_timemillis();
+		retroctx.basetime = arcan_timemillis();
 
 /* since we might have requests to save state before we die, we use the flush_eventq as an atexit */
 		atexit(flush_eventq);
