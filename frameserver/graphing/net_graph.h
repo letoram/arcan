@@ -24,9 +24,9 @@
 
 struct graph_context;
 
-/* assumed internally to be GRAPH_NET_CLIENT > GRAPH_NET_SERVER >= 0 */
 enum graphing_mode {
-	GRAPH_NET_SERVER = 0,
+	GRAPH_MANUAL = 0,
+	GRAPH_NET_SERVER,
 	GRAPH_NET_SERVER_SPLIT,
 	GRAPH_NET_SERVER_SINGLE,
 	GRAPH_NET_CLIENT
@@ -40,6 +40,9 @@ struct graph_context* graphing_new(enum graphing_mode, int width, int height, ui
 
 /* ALL context references below this point are silently assumed to be from a valid graphing_new call. */
 
+
+/* ------------------------------------- Higher Level control functions -------------------------------------------*/
+
 /* update context video buffer,
  * true if there's data to push to parent, invoke frequently */ 
 bool graph_refresh(struct graph_context*);
@@ -48,6 +51,8 @@ bool graph_refresh(struct graph_context*);
  * this function makes sure that internal storage gets flushed out over time */
 void graph_tick(struct graph_context* ctx, long long int timestamp);
 
+
+/* ------------------------------------- Domain Specific Mapping --------------------------------------------------*/
 /* client session events */
 void graph_log_connecting(struct graph_context*, char* label);
 void graph_log_connected(struct graph_context*, char* label);
@@ -63,4 +68,15 @@ void graph_log_tlv_in(struct graph_context*, unsigned id, const char* label, uns
 void graph_log_tlv_out(struct graph_context*, unsigned id, const char* label, unsigned tag, unsigned len);
 void graph_log_conn_error(struct graph_context*, unsigned id, const char* label);
 
+
+/* ----------------------------------- Lower Level drawing functions ----------------------------------------------*/
+void   draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col);
+void   draw_vline(struct graph_context* ctx, int x, int y, int width, uint32_t col);
+void  draw_aaline(struct graph_context* ctx, int x, int y, int width, uint32_t col);
+void  draw_square(struct graph_context* ctx, int x, int y, int side,  uint32_t col);
+void blend_square(struct graph_context* ctx, int x, int y, int side,  uint32_t col, float fact);
+void  blend_vline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact);
+void  blend_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact);
+void    draw_text(struct graph_context* ctx, const char* msg, int x, int y, uint32_t col);
+void   blend_text(struct graph_context* ctx, const char* msg, int x, int y, uint32_t col, float fact);
 #endif

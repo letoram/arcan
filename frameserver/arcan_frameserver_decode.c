@@ -13,6 +13,12 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_decode.h"
 
+#define AUD_VIS_HRES 512
+#define AUD_VIS_VRES 256
+
+const int audio_vis_width  = AUD_VIS_HRES;
+const int audio_vis_height = AUD_VIS_VRES;
+
 static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt);
 
 static void synch_audio(arcan_ffmpeg_context* ctx)
@@ -244,8 +250,11 @@ bool ffmpeg_decode(arcan_ffmpeg_context* ctx)
 /* or audioframe, not that currently both audio and video synch separately */
 		else if (ctx->packet.stream_index == ctx->aid){
 			fstatus = decode_aframe(ctx);
-			if (ctx->shmcont.addr->abufused)
+			
+			if (ctx->shmcont.addr->abufused){
+				
 				synch_audio(ctx);
+			}
 		}
 
 		av_free_packet(&ctx->packet);
@@ -413,6 +422,12 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		if (!vidctx)
 			break;
 
+		if (!vidctx->vcontext){
+			vidctx->width  = audio_vis_height;
+			vidctx->height = audio_vis_width;
+			vidctx->bpp    = 4;
+		}
+		
 /* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
 		vidctx->shmcont = shms;
 		frameserver_semcheck(vidctx->shmcont.asem, -1);
