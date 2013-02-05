@@ -53,10 +53,4 @@ bool frameserver_loadlib(const char* const);
 /* look for a specific symbol in the current library (frameserver_loadlib) */
 void* frameserver_requirefun(const char* const sym);
 
-/* retrieve a (unassociated), monotonic, reference clock value in millisecond precision */
-long long int frameserver_timemillis();
-
-/* try to waste (approximately) delay milliseconds. */
-void frameserver_delay(unsigned long delay);
-
 #endif

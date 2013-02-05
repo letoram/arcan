@@ -319,7 +319,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 		if (!arcan_frameserver_control_chld(src)){
             vfunc_state cstate = *arcan_video_feedstate(src->vid);
             arcan_video_alterfeed(src->vid, arcan_frameserver_dummyframe, cstate);
-            return;
+            return FFUNC_RV_NOFRAME;
         }
     }
 

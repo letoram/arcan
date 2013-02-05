@@ -287,7 +287,7 @@ void encode_video(bool flush)
  * if we're running behind, just repeat the last frame N times as to not get out of synch with possible audio. */
 	double mspf = 1000.0 / ffmpegctx.fps;
 	double thresh = mspf;
-	long long encb    = frameserver_timemillis();
+	long long encb    = arcan_timemillis(); 
 	long long cft     = encb - ffmpegctx.lastframe; /* assumed >= 0 */
 	long long nf      = round( mspf * (double)ffmpegctx.framecount );
 	long long delta   = cft - nf;
@@ -634,7 +634,7 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 /* regular file_handle abstraction with the readhandle actually returns a HANDLE on win32,
  * since that's currently not very workable with avformat (it seems, hard to judge with that "API")
  * we covert that to a regular POSIX file handle */
-					ffmpegctx.lastframe = frameserver_timemillis();
+					ffmpegctx.lastframe = arcan_timemillis();
 
 #ifdef _WIN32
 					ffmpegctx.lastfd = _open_osfhandle( (intptr_t) frameserver_readhandle(ev), _O_APPEND);
@@ -656,6 +656,6 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 			}
 		}
 
-		frameserver_delay(1);
+		arcan_timesleep(1);
 	}
 }

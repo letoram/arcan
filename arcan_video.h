@@ -91,7 +91,6 @@ enum arcan_ffunc_cmd {
 };
 
 enum arcan_ffunc_rv {
-	FFUNC_RV_FAILURE = -1,
 	FFUNC_RV_NOFRAME = 0,
 	FFUNC_RV_GOTFRAME = 1,
 	FFUNC_RV_COPIED = 2,
@@ -328,7 +327,7 @@ void arcan_video_restore_external();
 
 /* fragment represents how much time left until the next timestep,
  * used to interpolate movements / fades */
-void arcan_video_refresh(float fragment);
+void arcan_video_refresh(float fragment, bool synch);
 void arcan_video_pollfeed();
 
 void arcan_video_shutdown();

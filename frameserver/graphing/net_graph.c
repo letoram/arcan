@@ -234,7 +234,7 @@ static bool graph_refresh_server(struct graph_context* ctx)
  * render each event-bucket based on the graph- profile of the bucket */
 static bool graph_refresh_client(struct graph_context* ctx)
 {
-	long long int ts = frameserver_timemillis();
+	long long int ts = arcan_timemillis();
 	int bucketh = (ctx->height - 10) / 3;
 
 /* two buckets, one (height / 3) for discovery domain data, one for main domain */

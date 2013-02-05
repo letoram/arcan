@@ -146,21 +146,6 @@ void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 	return res;
 }
 
-static LARGE_INTEGER ticks_pers;
-static LARGE_INTEGER start_ticks;
-
-long long int frameserver_timemillis()
-{
-	LARGE_INTEGER ticksnow;
-	QueryPerformanceCounter(&ticksnow);
-
-	ticksnow.QuadPart -= start_ticks.QuadPart;
-	ticksnow.QuadPart *= 1000;
-	ticksnow.QuadPart /= ticks_pers.QuadPart;
-
-	return ticksnow.QuadPart;
-}
-
 file_handle frameserver_readhandle(arcan_event* src)
 {
 	return src->data.target.fh;
@@ -178,16 +163,6 @@ void* frameserver_requirefun(const char* const name)
     GetProcAddress(lastlib, name);
 }
 
-void frameserver_delay(unsigned long val)
-{
-/* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds)
- * just busyloop and count .. */
-
-	unsigned long int start = frameserver_timemillis();
-
-	while (val > (frameserver_timemillis() - start))
-		Sleep(0); /* yield */
-}
 
 /* by default, we only do this for libretro where it might help
  * with external troubleshooting */
@@ -254,10 +229,6 @@ int main(int argc, char* argv[])
 	char* resource = argv[0];
 	char* fsrvmode = argv[5];
 	char* keyfile   = argv[1];
-
-/* seed monotonic timing */
-	QueryPerformanceFrequency(&ticks_pers);
-	QueryPerformanceCounter(&start_ticks);
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);

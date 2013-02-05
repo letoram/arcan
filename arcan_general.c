@@ -595,7 +595,79 @@ char* arcan_findshmkey(int* dfd, bool semalloc)
 	/* unused for win32, we inherit */
 }
 
+long long int frameserver_timemillis()
+{
+	static LARGE_INTEGER ticks_pers;
+	static LARGE_INTEGER start_ticks;
+	static bool seeded = false;
+
+	if (!seeded){
+/* seed monotonic timing */
+		QueryPerformanceFrequency(&ticks_pers);
+		QueryPerformanceCounter(&start_ticks);
+	}
+	
+	LARGE_INTEGER ticksnow;
+	QueryPerformanceCounter(&ticksnow);
+
+	ticksnow.QuadPart -= start_ticks.QuadPart;
+	ticksnow.QuadPart *= 1000;
+	ticksnow.QuadPart /= ticks_pers.QuadPart;
+
+	return ticksnow.QuadPart;
+}
+
+void arcan_timesleep(unsigned long val)
+{
+/* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds)
+ * just busyloop and count .. */
+
+	unsigned long int start = frameserver_timemillis();
+
+	while (val > (frameserver_timemillis() - start))
+		Sleep(0); /* yield */
+}
+
+
 #else
+#include <assert.h>
+
+long long int arcan_timemillis()
+{
+	struct timespec tp;
+#if _POSIX_TIMERS > 0
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+#else
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	tp.tv_sec = tp.tv_sec;
+	tp.tv_nsec = tv.tv_usec * 1000;
+#endif
+
+	return (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
+}
+
+void arcan_timesleep(unsigned long val)
+{
+	struct timespec req, rem;
+	req.tv_sec = floor(val / 1000);
+	val -= req.tv_sec * 1000;
+	req.tv_nsec = val * 1000000;
+	
+	while( nanosleep(&req, &rem) == -1 ){
+		assert(errno != EINVAL);
+		if (errno == EFAULT)
+			break;
+		
+/* sweeping EINTR introduces an error rate that can grow large,
+ * check if the remaining time is less than a threshold */
+		if (errno == EINTR) {
+			req = rem;
+			if (rem.tv_sec * 1000 + (1 + req.tv_nsec) / 1000000 < 4)
+				break;
+		} 
+	}
+}
 
 int arcan_sem_post(sem_handle sem)
 {

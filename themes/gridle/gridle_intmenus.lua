@@ -1505,7 +1505,7 @@ add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Horizontal)...",     "crt_tilth",  
 add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)...",       "crt_tiltv",       gen_tbl_menu("crt_tiltv",       {-0.15, -0.05, 0.01, 0.05, 0.15}, updatetrigger));
 
 add_submenu(scalerlbls, scalerptrs, "Factor...", "upscale_factor", gen_tbl_menu("upscale_factor", {2, 3, 4, 5}, updatetrigger));
-add_submenu(scalerlbls, scalerptrs, "Delta Value (xbr)", "upscale_delta", gen_num_menu("upscale_delta", 0.1, 0.1, 6, updatetrigger));
+add_submenu(scalerlbls, scalerptrs, "Delta Value (xbr)...", "upscale_delta", gen_num_menu("upscale_delta", 0.1, 0.1, 6, updatetrigger));
 add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr", "xbr-rounded", "xbr-semi-rounded", "xbr-square"}, updatetrigger, true));
 
 local function recdim()
