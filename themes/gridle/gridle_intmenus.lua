@@ -680,6 +680,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 			definetbl["METHOD_B"] = true;
 		elseif (mode == "xbr-square") then
 			definetbl["METHOD_C"] = true;
+			definetbl["REVAA_HYBRID"] = true;
 		end
 
 		shader = load_shader("display/xbr.vShader", "display/xbr.fShader", "xbr", definetbl);

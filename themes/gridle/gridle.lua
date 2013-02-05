@@ -143,7 +143,7 @@ settings = {
 	ntsc_fringing   =-1.0,
 	
 	upscale_method = "sabr",
-	upscale_factor = 2,
+	upscale_factor = 5,
 	upscale_delta = 0.4,
 	upscale_ddt = false,
 	
