@@ -17,6 +17,7 @@ local scalemodelist = {
 	"Stretch",
 	"Rotate CW",
 	"Rotate CCW",
+	"Rotate 180",
 	"Bezel"
 };
 
