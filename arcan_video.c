@@ -140,6 +140,8 @@ static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsign
 		glBindTexture(GL_TEXTURE_2D, *dstid);
 	}
 
+	assert(dst->gl_storage.txu != 0);
+	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
 
@@ -419,6 +421,8 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->origh         = pobj->origh;
 		nobj->order         = pobj->order;
 		nobj->cellid        = rv;
+		nobj->gl_storage.txu = pobj->gl_storage.txu;
+		nobj->gl_storage.txv = pobj->gl_storage.txv;
 		nobj->current.scale = pobj->current.scale;
 
 		nobj->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
@@ -466,6 +470,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 	if (status) {
 		rv = current_context->vitems_pool + fid;
 		rv->current_frame = rv;
+	
 		rv->gl_storage.txu = arcan_video_display.deftxs;
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
@@ -989,16 +994,16 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		return ARCAN_ERRC_BADVMODE;
 	}
 
-/* try to establish the actual GL synch behavior,
- * align to vsync, time and process a few trames */
+
+/* kept for documentation, attempt at discovering if we're actually vsynched or not 
 	SDL_GL_SwapBuffers();
 
 	unsigned base = arcan_timemillis();
 	for (int i = 0; i < 10; i++){
 		SDL_GL_SwapBuffers();
 	}
-	unsigned delta = arcan_timemillis() - base;
-	arcan_video_display.vsync_timing = (float)delta / 10.0;
+	unsigned delta = arcan_timemillis() - base; */
+	arcan_video_display.vsync_timing = 16.0;
 	arcan_warning("arcan_video_init(), Vsync deadline estimated to ~%f mspf.\n", arcan_video_display.vsync_timing);
 
 /* mspf < 1, got a super display or not actually vsyncing, this will not be particularly accurate
@@ -2382,7 +2387,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* lots of default values are assumed to be 0, so reset the entire object to be sure.
  * will help leak detectors as well */
 	memset(vobj, 0, sizeof(arcan_vobject));
-
+	
 	for (int i = 0; i < cascade_c; i++)
 		if (pool[i] && pool[i]->flags.in_use)
 		arcan_video_deleteobject(pool[i]->cellid);
