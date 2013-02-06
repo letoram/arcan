@@ -744,17 +744,21 @@ static inline bool retroctx_sync()
 	return true;
 }
 
+#define STEPMSG(X) \
+	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
+	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
 static void push_stats(const char* msg)
 {
 	char scratch[64];
 	int yv = 0;
-	draw_text(retroctx.graphing, msg, 0, 0, 0xffffffff);
-	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
-	draw_text(retroctx.graphing, retroctx.ntscconv ? "NTSC filter enabled" : "NTSC filter disabled", 0, yv, 0xffffffff);
-	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
 
+	STEPMSG(msg);
+	STEPMSG(retroctx.ntscconv ? "NTSC filter enabled" : "NTSC filter disabled");
+
+	
 	snprintf(scratch, 64, "%lld audioframes", retroctx.aframecount);
 }
+#undef STEPMSG
 
 /* a big issue is that the libretro- modules are not guaranteed to act in a nice library way,
  * meaning that they (among other things) install signal handlers, spawn threads, change working directory,
