@@ -966,7 +966,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 {
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, 1); /* arcan_video_display.vsync == true ? 1 : 0); */
+	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, arcan_video_display.vsync == true ? 1 : 0);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 

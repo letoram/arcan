@@ -97,6 +97,7 @@ static const struct option longopts[] = {
 /* no points guessing which platform forcing this .. */
 	{ "stdout",       required_argument, NULL, '1'},
 	{ "stderr",       required_argument, NULL, '2'},
+	{ "nowait",       no_argument,       NULL, 'V'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
@@ -118,6 +119,7 @@ void usage()
 		"-g\t--debug       \ttoggle debug output (stacktraces, events, coredumps, etc.)\n"
 		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 		"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
+		"-V\t--nowait      \tdisable sleeping between superflous frames\n"
 /*		"-i\t--interactive \tadd an interactive shell to stdin\n" */
 		"-S\t--nosound     \tdisable audio output\n"
 		"-r\t--scalemode   \tset texture mode:\n\t"
@@ -133,6 +135,7 @@ int main(int argc, char* argv[])
 	bool conservative = false;
 	bool nosound      = false;
 	bool interactive  = false;
+	bool waitsleep    = true;
 
 	unsigned char debuglevel = 0;
 
@@ -154,7 +157,7 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvmisp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
 				usage();
@@ -172,6 +175,7 @@ int main(int argc, char* argv[])
 			case 'S' : nosound = true; break;
 			case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 			case 'v' : arcan_video_display.vsync = false; break;
+			case 'V' : waitsleep = false; break;
 			case 'p' : arcan_resourcepath = strdup(optarg); break;
 #ifndef _WIN32
 			case 'i' : fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); interactive = true; break;
@@ -360,7 +364,7 @@ int main(int argc, char* argv[])
 				arcan_video_refresh(frag, false);
 			} else {
 /* we are running ahead of time, if this is by a lot, consider yielding if not, interpolate */
-				if (fabs(frag - lastfrag) > 0.1){
+				if (!waitsleep || fabs(frag - lastfrag) > 0.1){
 					arcan_audio_refresh();
 					arcan_video_refresh(frag, true);
 					lastfrag = frag;

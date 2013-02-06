@@ -133,7 +133,7 @@ static int framequeue_loop(void* data)
 		}
 		
 		else if (nr == -1 && errno == EAGAIN)
-			SDL_Delay(1);
+			arcan_timesleep(1);
 		else
 			break;
 	}

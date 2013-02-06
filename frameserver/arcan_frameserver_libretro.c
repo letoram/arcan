@@ -81,10 +81,13 @@ static struct {
 		bool skipframe;
 		bool pause;
 		double mspf;
-		
+
 		long long int basetime;
 		int skipmode;
 		unsigned long long framecount;
+
+/* statistics */
+		int rebasecount, frameskips, transfercost;
 
 /* number of audio frames delivered, used to determine
  * if a frame should be doubled or not */
@@ -128,7 +131,6 @@ static struct {
 		
 /* timing according to retro */
 		struct retro_system_av_info avinfo;
-		double avfps;
 
 		void (*run)();
 		void (*reset)();
@@ -166,14 +168,15 @@ static void push_ntsc(unsigned width, unsigned height, const uint16_t* ntsc_imb,
 
 /* better distribution for conversion (white is white ..) */
 static const uint8_t rgb565_lut5[] = {
-	  0,   8,  16,  25,  33,  41,  49,  58,  66,   74,  82,  90,  99, 107, 115,
-	123, 132, 140, 148, 156, 165, 173, 181, 189,  197, 206, 214, 222, 230, 239, 247, 255
+  0,   8,  16,  25,  33,  41,  49,  58,  66,   74,  82,  90,  99, 107, 115, 123,
+132, 140, 148, 156, 165, 173, 181, 189,  197, 206, 214, 222, 230, 239, 247, 255
 };
 
-static const uint8_t rgb565_lut6[] = {0, 4, 8, 12, 16, 20, 24,  28, 32, 36, 40, 45, 49, 53, 57, 61,
-	65, 69, 73, 77, 81, 85, 89, 93, 97, 101,  105, 109, 113, 117, 121, 125, 130, 134, 138, 142, 146,
- 150, 154, 158, 162, 166,  170, 174, 178, 182, 186, 190, 194, 198, 202, 206, 210, 215, 219, 223,
- 227, 231,  235, 239, 243, 247, 251, 255
+static const uint8_t rgb565_lut6[] = {
+  0,   4,   8,  12,  16,  20,  24,  28,  32,  36,  40,  45,  49,  53,  57,  61,  65,  69,  73,
+ 77,  81,  85,  89,  93,  97, 101, 105, 109, 113, 117, 121, 125, 130, 134, 138, 142, 146, 150,
+154, 158, 162, 166, 170, 174, 178, 182, 186, 190, 194, 198, 202, 206, 210, 215, 219, 223, 227,
+231, 235, 239, 243, 247, 251, 255
 };
 
 static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
@@ -320,7 +323,8 @@ static void libretro_skipnframes(unsigned count)
 		retroctx.run();
 
 	retroctx.aframecount = afc;
-	retroctx.framecount = vfc;
+	retroctx.framecount  = vfc;
+	retroctx.frameskips += count;
 
 	retroctx.skipframe = false;
 }
@@ -729,12 +733,16 @@ static inline bool retroctx_sync()
 		retroctx.basetime = timestamp;
 		retroctx.framecount  = 1;
 		retroctx.aframecount = 1;
+		retroctx.frameskips  = 0;
+		retroctx.rebasecount++;
 		return true;
 	}
 
 /* more than a frame behind? just skip */
-	if ( left < -1 * retroctx.mspf )
+	if ( left < -1 * retroctx.mspf ){
+		retroctx.frameskips++;
 		return false;
+	}
 
 /* used to measure the elapsed time between frames in order to wake up in time,
  * but frame- distribution didn't get better than this magic value on anything in the test set */
@@ -745,19 +753,46 @@ static inline bool retroctx_sync()
 }
 
 #define STEPMSG(X) \
+	draw_box(retroctx.graphing, 0, yv, PXFONT_WIDTH * strlen(X), PXFONT_HEIGHT, 0x000000ff);\
 	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
 	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
-static void push_stats(const char* msg)
+
+static void push_stats()
 {
 	char scratch[64];
 	int yv = 0;
 
-	STEPMSG(msg);
-	STEPMSG(retroctx.ntscconv ? "NTSC filter enabled" : "NTSC filter disabled");
+/* timing statistics */
+	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "%lf fps, %lf Hz", retroctx.avinfo.timing.fps, retroctx.avinfo.timing.sample_rate);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "(A,V - A/V) %lld, - %lld/%lld", retroctx.aframecount, retroctx.framecount, retroctx.aframecount / retroctx.framecount);
+	STEPMSG(scratch);
 
+	long long int timestamp = arcan_timemillis();
+	snprintf(scratch, 64, "Real (Hz): %lf\n", 1000.0 * (double) retroctx.aframecount / (double)(timestamp - retroctx.basetime));
+	STEPMSG(scratch);
+
+	snprintf(scratch, 64, "Frametransfer: %d ms\n", retroctx.transfercost);
+	STEPMSG(scratch);
 	
-	snprintf(scratch, 64, "%lld audioframes", retroctx.aframecount);
+	if (retroctx.skipmode == TARGET_SKIP_AUTO){
+		STEPMSG("Frameskip: Auto");
+		snprintf(scratch, 64, "%d skipped", retroctx.frameskips);
+		STEPMSG(scratch);
+	}
+	else if (retroctx.skipmode == TARGET_SKIP_NONE){
+		STEPMSG("Frameskip: None");
+	}
+	else if (retroctx.skipmode == TARGET_SKIP_STEP){
+		snprintf(scratch, 64, "%d skipped, step: %d\n", retroctx.frameskips, retroctx.skipmode);
+		STEPMSG(scratch);
+	}
+	
+/* waveform generation */
 }
+
 #undef STEPMSG
 
 /* a big issue is that the libretro- modules are not guaranteed to act in a nice library way,
@@ -776,7 +811,6 @@ static void push_stats(const char* msg)
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
 	retroctx.converter    = (pixconv_fun) libretro_rgb1555_rgba;
-	const char* bootmsg = "nisse";
 	const char* libname   = resource;
 	uint32_t framecounter = 0;
 	int errc;
@@ -803,28 +837,28 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* get the lib up and running */
 	if ( (initf(), true) && apiver() == RETRO_API_VERSION){
-		struct retro_system_info sysinf = {0};
-		struct retro_game_info gameinf = {0};
-		((void(*)(struct retro_system_info*)) libretro_requirefun("retro_get_system_info")) (&sysinf);
+		((void(*)(struct retro_system_info*)) libretro_requirefun("retro_get_system_info")) (&retroctx.sysinfo);
 
 /* added as a support to romman etc. so they don't have to load the libs in question */
 		if (strcmp(gamename, "/info") == 0){
-			fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\nversion:%s\nextensions:%s\n/arcan_frameserver(info)", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
+			fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\nversion:%s\nextensions:%s\n/arcan_frameserver(info)",
+				retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, retroctx.sysinfo.valid_extensions);
 			return;
 		}
 
-	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n", sysinf.library_name, sysinf.library_version, sysinf.valid_extensions);
-
+	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
+			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, retroctx.sysinfo.valid_extensions);
+	
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
 		ssize_t bufsize;
-		gameinf.path = strdup( gamename );
-		gameinf.data = frameserver_getrawfile(gamename, &bufsize);
+		retroctx.gameinfo.path = strdup( gamename );
+		retroctx.gameinfo.data = frameserver_getrawfile(gamename, &bufsize);
 		if (bufsize == -1){
 			LOG("libretro(%s), couldn't load data, giving up.\n", gamename);
 			return;
 		}
 
-		gameinf.size = bufsize;
+		retroctx.gameinfo.size = bufsize;
 /* map functions to context structure */
 		retroctx.run   = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
@@ -844,7 +878,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
 
 /* load the game, and if that fails, give up */
-		if ( retroctx.load_game( &gameinf ) == false )
+		if ( retroctx.load_game( &retroctx.gameinfo ) == false )
 			return;
 
 		( (void(*)(struct retro_system_av_info*)) libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
@@ -853,7 +887,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		assert(retroctx.avinfo.timing.fps > 1);
 		assert(retroctx.avinfo.timing.sample_rate > 1);
 		retroctx.last_fd = BADFD;
-		retroctx.avfps = retroctx.avinfo.timing.sample_rate / retroctx.avinfo.timing.fps;
 		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 
 		retroctx.ntscconv  = false;
@@ -896,7 +929,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		snprintf(outev.data.external.message,
 			sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]),
-			"%s %s", sysinf.library_name, sysinf.library_version
+			"%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version
 			);
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 		
@@ -970,11 +1003,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				}
 
 /* possibly overlay as much tracking / debugging data we can muster */
-				if (retroctx.graphmode > 0)
-					push_stats(bootmsg);
+				if (retroctx.graphmode)
+					push_stats();
 
+				long long int start = arcan_timemillis();
 				shared->vready = true;
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
+				long long int stop = arcan_timemillis();
+				retroctx.transfercost = stop - start;
 			};
 
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
