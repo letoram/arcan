@@ -270,7 +270,7 @@ function gridle()
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	system_load("gridle_customview.lua")();      -- customizable list view
 	
-	if (DEBUGLEVEL > 2) then
+	if (DEBUGLEVEL == 5) then
 		Trace();
 	end
 	
@@ -1547,6 +1547,10 @@ end
 function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
+			if (DEBUGLEVEL > 2) then
+				target_graphmode(source, 1);
+			end
+			
 			gridle_setup_internal(source, datatbl.source_audio);
 			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
 		else

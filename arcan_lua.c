@@ -2811,6 +2811,22 @@ int arcan_lua_targetportcfg(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_targetgraph(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	unsigned ioval = luaL_checkinteger(ctx, 2);
+
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind     = TARGET_COMMAND_GRAPHMODE,
+		.data.target.ioevs[0].iv = ioval
+	};
+
+	tgtevent(tgt, ev);
+	
+	return 0;
+}
+
 int arcan_lua_targetskipmodecfg(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
@@ -3974,6 +3990,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "target_pointsize", arcan_lua_targetpointsize);
 	arcan_lua_register(ctx, "target_linewidth", arcan_lua_targetlinewidth);
 	arcan_lua_register(ctx, "target_postfilter", arcan_lua_targetpostfilter);
+	arcan_lua_register(ctx, "target_graphmode", arcan_lua_targetgraph);
 	arcan_lua_register(ctx, "target_postfilter_args", arcan_lua_targetpostfilterargs);
 	arcan_lua_register(ctx, "stepframe_target", arcan_lua_targetstepframe);
 	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);

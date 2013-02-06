@@ -87,7 +87,7 @@ static struct {
 		unsigned long long framecount;
 
 /* statistics */
-		int rebasecount, frameskips, transfercost;
+		int rebasecount, frameskips, transfercost, framecost;
 
 /* number of audio frames delivered, used to determine
  * if a frame should be doubled or not */
@@ -767,14 +767,14 @@ static void push_stats()
 	STEPMSG(scratch);
 	snprintf(scratch, 64, "%lf fps, %lf Hz", retroctx.avinfo.timing.fps, retroctx.avinfo.timing.sample_rate);
 	STEPMSG(scratch);
-	snprintf(scratch, 64, "(A,V - A/V) %lld, - %lld/%lld", retroctx.aframecount, retroctx.framecount, retroctx.aframecount / retroctx.framecount);
+	snprintf(scratch, 64, "(A,V - A/V) %lld,%lld - %lld", retroctx.aframecount, retroctx.framecount, retroctx.aframecount / retroctx.framecount);
 	STEPMSG(scratch);
 
 	long long int timestamp = arcan_timemillis();
 	snprintf(scratch, 64, "Real (Hz): %lf\n", 1000.0 * (double) retroctx.aframecount / (double)(timestamp - retroctx.basetime));
 	STEPMSG(scratch);
 
-	snprintf(scratch, 64, "Frametransfer: %d ms\n", retroctx.transfercost);
+	snprintf(scratch, 64, "Frame/Transfer: %d, %d ms\n", retroctx.framecost, retroctx.transfercost);
 	STEPMSG(scratch);
 	
 	if (retroctx.skipmode == TARGET_SKIP_AUTO){
@@ -789,7 +789,9 @@ static void push_stats()
 		snprintf(scratch, 64, "%d skipped, step: %d\n", retroctx.frameskips, retroctx.skipmode);
 		STEPMSG(scratch);
 	}
-	
+
+/* input "matrix" */
+/* frame alignment vs. ideal */
 /* waveform generation */
 }
 
@@ -962,7 +964,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		outev.category = EVENT_EXTERNAL;
 		outev.data.external.state_sz = retroctx.serialize_size();
 		arcan_event_enqueue(&retroctx.outevq, &outev);
-
+		long long int start, stop;
+		
 	while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
@@ -972,7 +975,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			flush_eventq();
 
 			testcounter = 0;
+
+			start = arcan_timemillis();
 			retroctx.run();
+			stop = arcan_timemillis();
+			retroctx.framecost = stop - start;
 
 /* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
 			outev.kind = EVENT_EXTERNAL_NOTICE_FRAMESTATUS;
@@ -1006,10 +1013,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				if (retroctx.graphmode)
 					push_stats();
 
-				long long int start = arcan_timemillis();
+				start = arcan_timemillis();
 				shared->vready = true;
 				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
-				long long int stop = arcan_timemillis();
+				stop = arcan_timemillis();
 				retroctx.transfercost = stop - start;
 			};
 
