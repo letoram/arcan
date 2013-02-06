@@ -348,6 +348,9 @@ int main(int argc, char* argv[])
 
 			float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
 
+			if (debuglevel > 2)
+				arcan_warning("main() event_process (%d.%f)\n", nticks, frag);
+			
 /* priority is always in maintaining logical clock and event processing */
 			if (nticks > 0){
 				arcan_video_tick(nticks);

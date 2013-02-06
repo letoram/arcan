@@ -1002,9 +1002,10 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	for (int i = 0; i < 10; i++){
 		SDL_GL_SwapBuffers();
 	}
-	unsigned delta = arcan_timemillis() - base; */
-	arcan_video_display.vsync_timing = 16.0;
+	unsigned delta = arcan_timemillis() - base;
 	arcan_warning("arcan_video_init(), Vsync deadline estimated to ~%f mspf.\n", arcan_video_display.vsync_timing);
+*/
+	arcan_video_display.vsync_timing = 16.0;
 
 /* mspf < 1, got a super display or not actually vsyncing, this will not be particularly accurate
  * but enough of a measure to guess when the next frame will be and determine if we should actually

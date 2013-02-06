@@ -554,8 +554,17 @@ int64_t arcan_frametime()
  * been setup, kindof */
 float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 {
+	static const int rebase_timer_threshold = ARCAN_TIMER_TICK * 1000;
+
 	arcan_last_frametime = arcan_timemillis();
 	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
+
+/* compensate for a massive stall, non-monotonic clock or first time initialization */
+	if (ctx->c_ticks == 0 || delta == 0 || delta > rebase_timer_threshold){
+		ctx->c_ticks = arcan_last_frametime;
+		delta = 1;
+	}
+	
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK;
 	int rv = 0;
