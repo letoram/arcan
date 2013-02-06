@@ -75,10 +75,13 @@ void graph_log_conn_error(struct graph_context*, unsigned id, const char* label)
 
 
 /* ----------------------------------- Lower Level drawing functions ----------------------------------------------*/
+/* assumed sanitized inputs
+ */
 void   draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col);
 void   draw_vline(struct graph_context* ctx, int x, int y, int width, uint32_t col);
 void  draw_aaline(struct graph_context* ctx, int x, int y, int width, uint32_t col);
 void  draw_square(struct graph_context* ctx, int x, int y, int side,  uint32_t col);
+void     draw_box(struct graph_context* ctx, int x, int y, int width, int height, uint32_t col);
 void blend_square(struct graph_context* ctx, int x, int y, int side,  uint32_t col, float fact);
 void  blend_vline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact);
 void  blend_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact);

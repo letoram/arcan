@@ -129,6 +129,8 @@ void blend_vline(struct graph_context* ctx, int x, int y, int width, uint32_t co
 
 void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col)
 {
+	width = abs(width);
+	
 /* clip */
 	if (y < 0 || y >= ctx->height)
 		return;
@@ -144,6 +146,8 @@ void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col
 
 void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t col)
 {
+	height = abs(height);
+
 	if (x < 0 || x >= ctx->width)
 		return;
 
@@ -165,13 +169,31 @@ void clear_tocol(struct graph_context* ctx, uint32_t col)
 		ctx->vidp[i] = col;
 }
 
+void draw_box(struct graph_context* ctx, int x, int y, int width, int height, uint32_t col)
+{
+	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
+		return;
+
+	width  = abs(width);
+	height = abs(height);
+	
+	int ux = x + width  >= ctx->width  ?  ctx->width - 1 : x + width;
+	int uy = y + height >= ctx->height ? ctx->height - 1 : y + height;
+
+	for (int cy = y; cy != uy; cy++)
+		for (int cx = x; cx != ux; cx++)
+			ctx->vidp[ cy * ctx->width + cx ] = col;
+}
+
 void draw_square(struct graph_context* ctx, int x, int y, int side, uint32_t col)
 {
+	side = abs(side);
+
 	int lx = x - side >= 0 ? x - side : 0;
 	int ly = y - side >= 0 ? y - side : 0;
 	int ux = x + side >= ctx->width  ? ctx->width  - 1 : x + side;
 	int uy = y + side >= ctx->height ? ctx->height - 1 : y + side;
-
+	
 	for (int cy = ly; cy != uy; cy++)
 		for (int cx = lx; cx != ux; cx++)
 			ctx->vidp[ cy * ctx->width + cx ] = col;
