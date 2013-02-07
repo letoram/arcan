@@ -88,6 +88,8 @@ static struct {
 
 /* statistics */
 		int rebasecount, frameskips, transfercost, framecost;
+		long long int frame_ringbuf[1024];
+		short int ringbuf_ofs;
 
 /* number of audio frames delivered, used to determine
  * if a frame should be doubled or not */
@@ -414,7 +416,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 /* use the context-tables from retroctx in combination with dev / ind / ...
  * to try and figure out what to return, this table is populated in flush_eventq() */
-static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id){
+static inline int16_t libretro_inputmain(unsigned port, unsigned dev, unsigned ind, unsigned id){
 	static bool butn_warning = false;
 	static bool port_warning = false;
 
@@ -515,6 +517,13 @@ static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, un
 	}
 
 	return 0;
+}
+
+static int16_t libretro_inputstate(unsigned port, unsigned dev, unsigned ind, unsigned id)
+{
+	int16_t rv = libretro_inputmain(port, dev, ind, id);
+/* indirection to be used for debug graphing what inputs the core actually requested */
+	return rv;
 }
 
 static int remaptbl[] = {
@@ -791,8 +800,13 @@ static void push_stats()
 	}
 
 /* input "matrix" */
-/* frame alignment vs. ideal */
-/* waveform generation */
+
+/* frame alignment vs. ideal. Need a history ring buffer of timing to generate from */
+	
+
+/* waveform alignment, fill remaining area --
+ * vertically, just float each channel into 0..1
+ * horizontaly */
 }
 
 #undef STEPMSG
@@ -980,6 +994,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			retroctx.run();
 			stop = arcan_timemillis();
 			retroctx.framecost = stop - start;
+
+/* finished frames and their alignment is what actually matters */
+			retroctx.frame_ringbuf[retroctx.ringbuf_ofs] = stop;
+			retroctx.ringbuf_ofs = (retroctx.ringbuf_ofs + 1) % 
+				(sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf[0]));
 
 /* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
 			outev.kind = EVENT_EXTERNAL_NOTICE_FRAMESTATUS;
