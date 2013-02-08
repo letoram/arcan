@@ -264,7 +264,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	ctx->launchedtime = arcan_frametime();
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
-	ftruncate(shmfd, shmsize);
+	int rc = ftruncate(shmfd, shmsize);
+	if (-1 == rc){
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating (%d) shared memory failed (%d).\n", shmsize, errno);
+		goto error_cleanup;
+	}
+	
 	shmpage = (void*) mmap(NULL, shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
 	close(shmfd);
 

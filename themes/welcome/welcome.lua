@@ -41,6 +41,7 @@ function welcome()
 	-w res  \t(default: 640)\n\r
 	-h res  \t(default: 480)\n\r
 	-v      \tdisable VSYNC\n\r
+	-V      \tdisable WaitSleep (use with -v)\n\r
 	-x winx \tset window start x coordinate\n\r
 	-y winy \tset window start y coordinate\n\r
 	-f      \tswitch resolution (fullscreen)\n\r

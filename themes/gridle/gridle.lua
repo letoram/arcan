@@ -83,6 +83,7 @@ settings = {
 	pageofs  = 0,
 	gameind  = 1,
 	movieagain = 1.0,
+	graph_mode = 0,
 
 	favorites = {},
 	detailvids = {},
@@ -269,6 +270,10 @@ function gridle()
 	system_load("gridle_contmenus.lua")();       -- context menus (quickfilter, database manipulation, ...)
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	system_load("gridle_customview.lua")();      -- customizable list view
+	
+	if (DEBUGLEVEL > 2) then
+		settings.graph_mode = 1;
+	end
 	
 	if (DEBUGLEVEL == 5) then
 		Trace();
@@ -1547,10 +1552,7 @@ end
 function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
-			if (DEBUGLEVEL > 2) then
-				target_graphmode(source, 1);
-			end
-			
+			target_graphmode(source, settings.graph_mode);
 			gridle_setup_internal(source, datatbl.source_audio);
 			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
 		else
