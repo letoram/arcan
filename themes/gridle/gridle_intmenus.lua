@@ -17,7 +17,6 @@ local scalemodelist = {
 	"Stretch",
 	"Rotate CW",
 	"Rotate CCW",
-	"Rotate 180",
 	"Bezel"
 };
 
@@ -1177,11 +1176,11 @@ end
 local function add_gamelbls( lbltbl, ptrtbl )
 	local cg = current_game();
 	local captbl = cg.capabilities;
-	
+		
 	if not (captbl.snapshot or captbl.reset) then
 			return false;
 	end
-
+	
 	if (captbl.snapshot) then
 		if ( (# get_saveslist( cg )) > 0 ) then
 			table.insert(lbltbl, "Load State...");
@@ -1197,7 +1196,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 			menu_spawnmenu( lbls, ptrs, fmt );
 		end
 	end
-	
+
 -- fixme; generate menus for all the different kinds of "frame-stepping" options we'd like to have
 -- (auto, draw every n frames, rewind n frames, ...)
 	
@@ -1246,6 +1245,20 @@ local function add_gamelbls( lbltbl, ptrtbl )
 			
 			menu_spawnmenu( lbls, ptrs, {} );
 		end
+	end
+	
+	advtbl = { "Toggle Debugmode" };
+	advptrs = {};
+	advptrs["Toggle Debugmode"] = function()
+		settings.graph_mode = settings.graph_mode == 1 and 0 or 1;
+		target_graphmode(internal_vid, settings.graph_mode);
+		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"]();
+	end
+	
+	table.insert(lbltbl, "Advanced...");
+	ptrtbl[ "Advanced..." ] = function(label, store) 
+		menu_spawnmenu(advtbl, advptrs, {}); 
 	end
 	
 	if ( captbl.reset ) then

@@ -756,7 +756,7 @@ static inline bool retroctx_sync()
 /* used to measure the elapsed time between frames in order to wake up in time,
  * but frame- distribution didn't get better than this magic value on anything in the test set */
 	if (left > 4)
-		arcan_timesleep( left - 4);
+		arcan_timesleep( left - 4 );
 
 	return true;
 }

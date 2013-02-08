@@ -361,7 +361,7 @@ int main(int argc, char* argv[])
 				arcan_audio_tick(nticks);
 				lastfrag = 0.0f;
 
-				arcan_video_refresh(frag, false);
+				arcan_video_refresh(frag, true);
 			} else {
 /* we are running ahead of time, if this is by a lot, consider yielding if not, interpolate */
 				if (!waitsleep || fabs(frag - lastfrag) > 0.1){

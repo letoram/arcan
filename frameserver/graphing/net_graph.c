@@ -253,15 +253,22 @@ static bool graph_refresh_server(struct graph_context* ctx)
 {
 	if (ctx->mode == GRAPH_MANUAL)
 		return false;
-	
-	switch (ctx->mode){
-/* just draw discover- server and one client, similar to client mode */
-		case GRAPH_NET_SERVER_SINGLE:
 
+/* these are responsible for allocating buckets based on mode, only relevant for GRAPH_NET class */
+	switch (ctx->mode){
+		case GRAPH_NET_SERVER_SPLIT:
+		break;
+		
+		case GRAPH_NET_SERVER_SINGLE:
 		break;
 
+		case GRAPH_NET_CLIENT:
+		break;
+		
 		case GRAPH_NET_SERVER:
-
+		break;
+		
+		case GRAPH_MANUAL:
 		break;
 	}
 	
