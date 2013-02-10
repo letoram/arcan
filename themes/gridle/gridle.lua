@@ -75,7 +75,7 @@ settings = {
 	
 -- 0: disable, 1: all on, 2: game (all on), 3: game (press on) 
 	ledmode = 2,
-	
+
 	vspacing = 4,
 	hspacing = 4,
 	cursor   = 0,
@@ -85,13 +85,20 @@ settings = {
 	movieagain = 1.0,
 	graph_mode = 0,
 
-	favorites = {},
-	detailvids = {},
-	favvids = {},
+-- frameskipping / debugging
+	frame_align = 4,
+	preaud      = 0,
+	jitterstep  = 0,
+	jitterxfer  = 0,
+	skip_mode   = "Automatic",
 	
-	repeatrate = 200,
-	cell_width = 128,
-	cell_height = 128,
+	favorites  = {},
+	detailvids = {},
+	favvids    = {},
+	
+	repeatrate   = 200,
+	cell_width   = 128,
+	cell_height  = 128,
 	cursor_scale = 1.2,
 	
 	cooldown = 15,
@@ -101,22 +108,22 @@ settings = {
 
 -- DISPLAY MODE PRESETS (can be overridden from load_settings
 	internal_toggles = {crt = false, vector = false, backdrop = false, 
-	ntsc = false, upscale = false, overlay = false, antialias = false},
+	ntsc = false, upscaler = false, overlay = false, antialias = false},
 
-	crt_gamma = 2.4,
-	crt_mongamma = 2.2,
+	crt_gamma     = 2.4,
+	crt_mongamma  = 2.2,
 	crt_hoverscan = 1.02,
 	crt_voverscan = 1.02,
-	crt_haspect = 1.0,
-	crt_vaspect = 0.75,
-	crt_curvrad = 1.5, 
-	crt_distance = 2.0,
-	crt_tilth = 0.0,
-	crt_tiltv = -0.15, 
-	crt_cornersz = 0.03,
+	crt_haspect   = 1.0,
+	crt_vaspect   = 0.75,
+	crt_curvrad   = 1.5, 
+	crt_distance  = 2.0,
+	crt_tilth     = 0.0,
+	crt_tiltv     = -0.15, 
+	crt_cornersz  = 0.03,
 	crt_cornersmooth = 1000,
 	crt_curvature = true,
-	crt_gaussian = true,
+	crt_gaussian  = true,
 	crt_oversample = true,
 	crt_linearproc = true,
 	
@@ -151,7 +158,7 @@ settings = {
 	record_qual = 10,
 	record_res  = 240,
 	record_fps  = 30,
-	record_format = "WebM (VP8/Vorbis)",
+	record_format = "WebM (MKV/VP8/OGG)",
 	
 	imagefilter = "Bilinear",
 	
@@ -167,6 +174,26 @@ settings = {
 
 	view_mode = "Grid"
 };
+
+skipremap = {};
+skiptbl = {};
+skipremap["Automatic"] = 0;
+skipremap["None"] = -1;
+skipremap["Every (1) Frames"] = 1;
+skipremap["Every (2) Frames"] = 2;
+skipremap["Every (3) Frames"] = 3;
+skipremap["Every (4) Frames"] = 4;
+skipremap["Every (5) Frames"] = 5;
+skipremap["Fast Forward (1)"] = 10;
+skipremap["Fast Forward (2)"] = 11;
+skipremap["Fast Forward (3)"] = 12;
+skipremap["Fast Forward (4)"] = 13;
+
+for key, val in pairs(skipremap) do
+	table.insert(skiptbl, key);
+end
+
+table.sort(skiptbl, nil);
 
 settings.sortfunctions = {};
 settings.sortfunctions["Ascending"]    = function(a,b) return string.lower(a.title) < string.lower(b.title) end 
@@ -237,7 +264,7 @@ function gridle_launchinternal()
 	if (valid_vid(internal_vid)) then
 		delete_image(internal_vid);
 	end
-	
+
 	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -696,55 +723,6 @@ function gridle_load_internal_extras(restbl, tgt)
 			image_tracetag(imagery.backdrop, "backdrop");
 		end
 	end
-end
-
-function gridle_setup_internal(video, audio)
--- first, tell all remote controls -- title / system have already been transferred */
-	if (imagery.server) then
-		net_push_srv(imagery.server, "launched");
-	end
-
--- internal txcos etc. need to be retained for the different display modes 
-	settings.in_internal    = true;
-	settings.internal_txcos = image_get_txcos(video); 
-
--- bezels, overlays, backdrops
-	gridle_load_internal_extras(current_game().resources, current_game().target);
-
-	if (settings.autosave == "On") then
-		internal_statectl("auto", false);
-	end
-
-	internal_aid = audio;
-	internal_vid = video;
-
-	settings.internal_toggles.bezel = false;
-	settings.internal_toggles.overlay = false;
-	settings.internal_toggles.backdrops = false;
-
-	order_image(internal_vid, max_current_image_order());
-	audio_gain(internal_aid, settings.internal_again, NOW);
-
--- remap input function to one that can handle forwarding and have access to context specific menu
-	gridle_oldinput = gridle_input;
-	gridle_input = gridle_internalinput;
-
-	gridlemenu_rebuilddisplay();
-
--- don't need these running in the background 
-	erase_grid(true);
-	zap_whitegrid();
-
-	blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
-	blend_image(video, 1.0, settings.transitiondelay);
-	
-	if (imagery.movie and imagery.movie ~= BADID) then 
-		delete_image(imagery.movie); 
-		imagery.movie = nil; 
-	end
-
-	settings.keyconftbl = keyconfig.table;
-	set_internal_keymap();
 end
 
 function keyconf_helper(message)
@@ -1422,7 +1400,6 @@ function load_key_str(name, val, opt)
 	settings[val] = kval or opt
 end
 
-
 function asynch_movie_ready(source, statustbl)
 	if (imagery.movie == source) then
 		if (statustbl.kind == "resized") then
@@ -1549,20 +1526,70 @@ function gridle_internalcleanup()
 	resourcefinder_cache.invalidate = false;
 end
 
+-- shared setup foreplay used in both customview and gridview
+function gridle_internal_setup(source, datatbl, gametbl)
+-- per session settings
+	if (not settings.in_internal) then
+-- first, tell all remote controls -- title / system have already been transferred */
+		if (imagery.server) then
+			net_push_srv(imagery.server, "launched");
+		end
+
+		if (settings.autosave == "On") then
+			internal_statectl("auto", false);
+		end
+
+		target_graphmode(source, settings.graph_mode);
+		target_framemode(internal_vid, skipremap[ settings.skip_mode ], settings.frame_align,
+			settings.preaud, settings.jitterstep, settings.jitterxfer);
+
+		settings.in_internal    = true;
+		internal_aid = datatbl.source_audio;
+		internal_vid = source;
+
+--	settings.internal_toggles.bezel     = false;
+--	settings.internal_toggles.overlay   = false;
+--	settings.internal_toggles.backdrops = false;
+		gridle_load_internal_extras( resourcefinder_search(gametbl, true), gametbl.target );
+--	order_image(internal_vid, max_current_image_order());
+		image_tracetag(source, "internal_launch(" .. gametbl.title ..")");
+		audio_gain(internal_aid, settings.internal_again, NOW);
+		settings.keyconftbl = keyconfig.table;
+		set_internal_keymap();
+	end
+
+-- video specific "every resize" settings
+	settings.internal_txcos = image_get_txcos(source);
+	settings.internal_mirror = datatbl.mirrored;
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
+end
+
 function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
-		if (not settings.in_internal) then
-			target_graphmode(source, settings.graph_mode);
-			gridle_setup_internal(source, datatbl.source_audio);
-			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
-		else
 
-			gridlemenu_rebuilddisplay();
+		if (not settings.in_internal) then
+			erase_grid(true);
+			zap_whitegrid();
+-- CROSSFADE --
+			blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
+			blend_image(source, 1.0, settings.transitiondelay);
+			if (imagery.movie and imagery.movie ~= BADID) then
+				expire_image(imagery.movie, settings.transitiondelay);
+				blend_image(imagery.movie, 0.0, settings.transitiondelay);
+				imagery.movie = nil; 
+			end
+-- remap input function to one that can handle forwarding and have access to context specific menu
+			gridle_oldinput = gridle_input;
+			gridle_input = gridle_internalinput;
 		end
-			
+
+		gridle_internal_setup(source, datatbl, current_game());
+
+-- it's up to the user to press escape
 	elseif (datatbl.kind == "frameserver_terminated") then
 		order_image(imagery.crashimage, max_current_image_order());
 		blend_image(imagery.crashimage, 0.8);
+
 		if (not settings.in_internal) then
 			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
 		end
@@ -1850,6 +1877,12 @@ function load_settings()
 	load_key_num("record_fps",      "record_fps",      settings.record_fps);
 	load_key_num("record_qual",     "record_qual",     settings.record_qual);
 	load_key_num("record_res",      "record_res",      settings.record_res);
+
+	load_key_num("frame_align",     "frame_align",     settings.frame_align);
+	load_key_str("skip_mode",       "skip_mode",       settings.skip_mode);
+	load_key_num("preaud",          "preaud",          settings.preaud);
+	load_key_num("jitterstep",      "jitterstep",      settings.jitterstep);
+	load_key_num("jitterxfer",      "jitterxfer",      settings.jitterxfer);
 
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");

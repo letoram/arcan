@@ -28,6 +28,7 @@ uniform mat4 modelview;
 uniform mat4 projection;
 
 uniform vec2 storage_size;
+uniform bool mirrored;
 
 varying vec2 tc;
 varying vec4 xyp_1_2_3;
@@ -45,8 +46,8 @@ void main() {
 
     float x = one.x;
     float y = one.y;
-
-    tc = texcoord;
+ 
+    tc = mirrored ? vec2(texcoord.s, 1.0 - texcoord.t) : vec2(texcoord.s, texcoord.t);
 
     xyp_1_2_3    = tc.xxxy + vec4(      -x, 0.0,   x, -2.0 * y);
     xyp_6_7_8    = tc.xxxy + vec4(      -x, 0.0,   x,       -y);

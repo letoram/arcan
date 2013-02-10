@@ -177,10 +177,18 @@ enum ARCAN_EVENTFILTER_ANALOG {
 	EVENT_FILTER_ANALOG_SPECIFIC
 };
 
+enum ARCAN_TARGET_AUDIOCONTROL {
+	TARGET_AUDIO_NOTRANSFER = 0,
+	TARGET_AUDIO_NORESAMPLE = 1,
+	TARGET_AUDIO_RESAMPLEQ_MIN = 2,
+	TARGET_AUDIO_RESAMPLEQ_MAX = 4
+};
+
 enum ARCAN_TARGET_SKIPMODE {
 	TARGET_SKIP_AUTO = 0,
 	TARGET_SKIP_NONE = -1,
-	TARGET_SKIP_STEP = 1
+	TARGET_SKIP_STEP = 1,
+	TARGET_SKIP_FASTFWD = 10
 };
 
 typedef union arcan_ioevent_data {
@@ -280,7 +288,7 @@ typedef struct arcan_tgtevent {
 	union {
 		int iv;
 		float fv;
-	} ioevs[4];
+	} ioevs[6];
 #ifdef _WIN32
 	HANDLE fh;
 #endif

@@ -39,8 +39,6 @@
 #include "./graphing/net_graph.h"
 #include "libretro.h"
 
-/* resampling at this level because it seems the linux + openAL + pulse-junk-audio
- * introduces audible pops in addition to the terrible latency  */
 #include "resampler/speex_resampler.h"
 
 #ifndef MAX_PORTS
@@ -73,27 +71,26 @@ struct input_port {
 
 typedef void(*pixconv_fun)(const void* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch, bool postfilter);
 
-/* interface for loading many different emulators,
- * we assume "resource" points to a dlopen:able library,
- * that can be handled by SDLs library management functions. */
 static struct {
 /* frame management */
-		bool skipframe;
-		bool pause;
-		double mspf;
+		bool skipframe_a, skipframe_v; /* flag for rendering callbacks, should the frame be processed or not */
 
-		long long int basetime;
-		int skipmode;
-		unsigned long long framecount;
+		bool pause;     /* event toggle frame, are we paused */
+		double mspf;    /* static for each run, 1000/fps */
 
+		long long int basetime;             /* when did we last seed gameplay timing */
+		int jitterstep, jitterxfer;         /* for debugging / testing, added extra jitter to the cost for the different stages */
+		int preaudiogen;                    /* add 'n' frames pseudoskipping to populate audiobuffers */
+		int skipmode;                       /* user changeable variable, how synching should be treated */
+		int prewake;                        /* for frameskip auto to compensate for jitter in transfer etc. */
+		unsigned long long vframecount;     /* how many video frames have we processed, used to calculate when next frame is supposed to be used */
+		unsigned long long aframecount;     /* audio frame counter, used to determine jitter in samplerate */
+		struct retro_system_av_info avinfo; /* timing according to libretro */
+		
 /* statistics */
 		int rebasecount, frameskips, transfercost, framecost;
 		long long int frame_ringbuf[1024];
 		short int ringbuf_ofs;
-
-/* number of audio frames delivered, used to determine
- * if a frame should be doubled or not */
-		unsigned long long aframecount;
 
 /* colour conversion / filtering */
 		pixconv_fun converter;
@@ -102,26 +99,23 @@ static struct {
 		snes_ntsc_t ntscctx;
 		snes_ntsc_setup_t ntsc_opts;
 
-/* input-output */
+/* SHM- API input /output */
 		struct frameserver_shmcont shmcont;
 		uint8_t* vidp, (* audp);
 		struct graph_context* graphing;
 		int graphmode;
+		file_handle last_fd; /* state management */
+		struct arcan_evctx inevq;
+		struct arcan_evctx outevq;
 		
 /* set as a canary after audb at a recalc to detect overflow */
 		uint8_t* audguardb;
 
-/* resample at the last minute when we have all frames associated with a logic run() */
-
+/* internal resampling */
 		int16_t* audbuf;
 		size_t audbuf_sz;
 		off_t audbuf_ofs;
 		SpeexResamplerState* resampler;
-
-		file_handle last_fd;
-
-		struct arcan_evctx inevq;
-		struct arcan_evctx outevq;
 
 /* libretro states / function pointers */
 		struct retro_system_info sysinfo;
@@ -131,9 +125,6 @@ static struct {
  * prepare a lookup table that events gets pushed into and libretro can poll */
 		struct input_port input_ports[MAX_PORTS];
 		
-/* timing according to retro */
-		struct retro_system_av_info avinfo;
-
 		void (*run)();
 		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
@@ -141,7 +132,7 @@ static struct {
 		bool (*serialize)(void*, size_t);
 		bool (*deserialize)(const void*, size_t);
 		void (*set_ioport)(unsigned, unsigned);
-} retroctx = {0};
+} retroctx = {.prewake = 4, .preaudiogen = 0};
 
 static void* libretro_requirefun(const char* const sym)
 {
@@ -263,7 +254,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 {
 	testcounter++;
 /* framecount is updated in sync */
-	if (!data || retroctx.skipframe)
+	if (!data || retroctx.skipframe_v)
 		return;
 
 /* width / height can be changed without notice, so we have to be ready for the fact that
@@ -312,30 +303,52 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		retroctx.converter(data, (void*) retroctx.vidp, width, height, pitch, ntscconv);
 }
 
+static void do_preaudio()
+{
+	if (retroctx.preaudiogen == 0)
+		return;
+
+	retroctx.skipframe_v = true;
+	retroctx.skipframe_a = false;
+
+	int afc = retroctx.aframecount;
+	int vfc = retroctx.vframecount;
+
+	for (int i = 0; i < retroctx.preaudiogen; i++)
+		retroctx.run();
+
+	retroctx.aframecount = afc;
+	retroctx.vframecount = vfc;
+}
+
 /* the better way would be to just drop the videoframes, buffer the audio, 
  * calculate the highspeed samplerate and downsample the audio signal */
-static void libretro_skipnframes(unsigned count)
+static void libretro_skipnframes(unsigned count, bool fastfwd)
 {
-	retroctx.skipframe = true;
-
+	retroctx.skipframe_v = true;
+	retroctx.skipframe_a = fastfwd;
+	
 	long long afc = retroctx.aframecount;
-	long long vfc = retroctx.framecount;
 	
 	for (int i = 0; i < count; i++)
 		retroctx.run();
 
-	retroctx.aframecount = afc;
-	retroctx.framecount  = vfc;
-	retroctx.frameskips += count;
+	if (fastfwd){
+		retroctx.aframecount = afc;
+		retroctx.frameskips += count;
+	}
+	else
+		retroctx.vframecount += count;
 
-	retroctx.skipframe = false;
+	retroctx.skipframe_a = false;
+	retroctx.skipframe_v = false;
 }
 
 void libretro_audscb(int16_t left, int16_t right)
 {
 	retroctx.aframecount++;
 
-	if (retroctx.skipframe)
+	if (retroctx.skipframe_a)
 		return;
 
 	retroctx.audbuf[retroctx.audbuf_ofs++] = left;
@@ -346,11 +359,11 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	retroctx.aframecount += nframes;
 
-	if (retroctx.skipframe)
+	if (retroctx.skipframe_a)
 		return nframes;
 
 	memcpy(&retroctx.audbuf[retroctx.audbuf_ofs], data, nframes << 2); /* 2 bytes per sample, 2 channels */
-	retroctx.audbuf_ofs += nframes * 2; /* audbuf is in int16_t and ofs used as index */
+	retroctx.audbuf_ofs += nframes << 1; /* audbuf is in int16_t and ofs used as index */
 
 	return nframes;
 }
@@ -624,9 +637,17 @@ static inline void targetev(arcan_event* ev)
 
 		break;
 
-/* 0 : auto, -1 : single-step, > 0 render every n frames. */
+/* 0 : auto, -1 : single-step, > 0 render every n frames.
+ * with 0, the second ioev defines pre-wake. -1 (last frame cost), 0 (whatever), 1..mspf-1
+ * ioev[2] audio preemu- frames, whenever the counter is reset, perform n extra run() passes to populate audiobuffer -- increases latency but reduces pops..
+ * ioev[3] debugging options -- added emulation cost ms (0 default, +n constant n ms, -n 1..abs(n) random)
+ */
 		case TARGET_COMMAND_FRAMESKIP:
-			retroctx.skipmode = tgt->ioevs[0].iv;
+			retroctx.skipmode    = tgt->ioevs[0].iv;
+			retroctx.prewake     = tgt->ioevs[1].iv;
+			retroctx.preaudiogen = tgt->ioevs[2].iv;
+			retroctx.jitterstep  = tgt->ioevs[3].iv;
+			retroctx.jitterxfer  = tgt->ioevs[4].iv;
 		break;
 
 /* any event not being UNPAUSE is ignored, no frames are processed
@@ -643,9 +664,10 @@ static inline void targetev(arcan_event* ev)
 		
 		case TARGET_COMMAND_UNPAUSE:
 			retroctx.pause = false;
-			retroctx.basetime = arcan_timemillis() + retroctx.framecount * retroctx.mspf;
-			retroctx.framecount = 0;
+			retroctx.basetime = arcan_timemillis() + retroctx.vframecount * retroctx.mspf;
+			retroctx.vframecount = 0;
 			retroctx.aframecount = 0;
+			do_preaudio();
 		break;
 
 		case TARGET_COMMAND_SETIODEV:
@@ -726,21 +748,22 @@ static inline void flush_eventq(){
 static inline bool retroctx_sync()
 {
 	long long int timestamp = arcan_timemillis();
-	retroctx.framecount++;
+	retroctx.vframecount++;
 
 	if (retroctx.skipmode == TARGET_SKIP_NONE)
 		return true;
 
 /* TARGET_SKIP_AUTO here */
 	long long int now  = timestamp - retroctx.basetime;
-	long long int next = floor( (double)retroctx.framecount * retroctx.mspf );
+	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
 
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
-	if (now < 0 || abs( left ) > retroctx.mspf * 60){
+	if (now < 0 || abs( left ) > retroctx.mspf * 60.0){
 		LOG("arcan_frameserver(libretro) -- stall detected, resetting timers.\n");
 		retroctx.basetime = timestamp;
-		retroctx.framecount  = 1;
+		do_preaudio();
+		retroctx.vframecount = 1;
 		retroctx.aframecount = 1;
 		retroctx.frameskips  = 0;
 		retroctx.rebasecount++;
@@ -753,16 +776,20 @@ static inline bool retroctx_sync()
 		return false;
 	}
 
-/* used to measure the elapsed time between frames in order to wake up in time,
- * but frame- distribution didn't get better than this magic value on anything in the test set */
-	if (left > 4)
-		arcan_timesleep( left - 4 );
+	int prewake = retroctx.prewake;
+	if (retroctx.prewake < 0)
+		prewake = retroctx.framecost;
+	else if (retroctx.prewake > 0)
+		prewake = retroctx.prewake > retroctx.mspf ? retroctx.mspf : retroctx.prewake;
+	
+	if (left > prewake )
+		arcan_timesleep( left - prewake );
 
 	return true;
 }
 
 #define STEPMSG(X) \
-	draw_box(retroctx.graphing, 0, yv, PXFONT_WIDTH * strlen(X), PXFONT_HEIGHT, 0x000000ff);\
+	draw_box(retroctx.graphing, 0, yv, PXFONT_WIDTH * strlen(X), PXFONT_HEIGHT, 0xff000000);\
 	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
 	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
 
@@ -771,19 +798,20 @@ static void push_stats()
 	char scratch[64];
 	int yv = 0;
 
-/* timing statistics */
 	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 	STEPMSG(scratch);
 	snprintf(scratch, 64, "%lf fps, %lf Hz", retroctx.avinfo.timing.fps, retroctx.avinfo.timing.sample_rate);
 	STEPMSG(scratch);
-	snprintf(scratch, 64, "(A,V - A/V) %lld,%lld - %lld", retroctx.aframecount, retroctx.framecount, retroctx.aframecount / retroctx.framecount);
+	snprintf(scratch, 64, "%d mode, %d preaud, %d/%d jitter", retroctx.skipmode, retroctx.preaudiogen, retroctx.jitterstep, retroctx.jitterxfer);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "(A,V - A/V) %lld,%lld - %lld", retroctx.aframecount, retroctx.vframecount, retroctx.aframecount / retroctx.vframecount);
 	STEPMSG(scratch);
 
 	long long int timestamp = arcan_timemillis();
 	snprintf(scratch, 64, "Real (Hz): %lf\n", 1000.0 * (double) retroctx.aframecount / (double)(timestamp - retroctx.basetime));
 	STEPMSG(scratch);
 
-	snprintf(scratch, 64, "Frame/Transfer: %d, %d ms\n", retroctx.framecost, retroctx.transfercost);
+	snprintf(scratch, 64, "cost,wake,xfer: %d, %d, %d ms\n", retroctx.framecost, retroctx.prewake, retroctx.transfercost);
 	STEPMSG(scratch);
 	
 	if (retroctx.skipmode == TARGET_SKIP_AUTO){
@@ -794,15 +822,18 @@ static void push_stats()
 	else if (retroctx.skipmode == TARGET_SKIP_NONE){
 		STEPMSG("Frameskip: None");
 	}
-	else if (retroctx.skipmode == TARGET_SKIP_STEP){
-		snprintf(scratch, 64, "%d skipped, step: %d\n", retroctx.frameskips, retroctx.skipmode);
+	else if (retroctx.skipmode >= TARGET_SKIP_STEP && retroctx.skipmode < TARGET_SKIP_FASTFWD){
+		snprintf(scratch, 64, "Frameskip: Step (%d)\n", retroctx.frameskips, retroctx.skipmode);
+		STEPMSG(scratch);
+	}
+	else if (retroctx.skipmode == TARGET_SKIP_FASTFWD){
+		snprintf(scratch, 64, "Frameskip: Fast-Fwd (%d)\n", retroctx.skipmode - TARGET_SKIP_FASTFWD);
 		STEPMSG(scratch);
 	}
 
 /* input "matrix" */
 
 /* frame alignment vs. ideal. Need a history ring buffer of timing to generate from */
-	
 
 /* waveform alignment, fill remaining area --
  * vertically, just float each channel into 0..1
@@ -810,6 +841,14 @@ static void push_stats()
 }
 
 #undef STEPMSG
+
+void add_jitter(int num)
+{
+	if (num < 0)
+		arcan_timesleep( rand() % abs(num) );
+	else if (num > 0)
+		arcan_timesleep( num );
+}
 
 /* a big issue is that the libretro- modules are not guaranteed to act in a nice library way,
  * meaning that they (among other things) install signal handlers, spawn threads, change working directory,
@@ -862,7 +901,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			return;
 		}
 
-	LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
+		LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, retroctx.sysinfo.valid_extensions);
 	
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
@@ -979,18 +1018,24 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		outev.data.external.state_sz = retroctx.serialize_size();
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 		long long int start, stop;
-		
+
+		do_preaudio();
 	while (retroctx.shmcont.addr->dms){
+
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
-			if (retroctx.skipmode >= TARGET_SKIP_STEP)
-				libretro_skipnframes(retroctx.skipmode);
+			if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
+				libretro_skipnframes(retroctx.skipmode - TARGET_SKIP_FASTFWD + 1, true);
+			else if (retroctx.skipmode >= TARGET_SKIP_STEP)
+				libretro_skipnframes(retroctx.skipmode - TARGET_SKIP_STEP, false);
+			else ;
 
 			flush_eventq();
 
 			testcounter = 0;
 
 			start = arcan_timemillis();
+			add_jitter(retroctx.jitterstep);
 			retroctx.run();
 			stop = arcan_timemillis();
 			retroctx.framecost = stop - start;
@@ -1010,8 +1055,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* frameskipping here is a simple adaptive thing, if we're too out of alignment against the next deadline,
  * drop the transfer / parent synch */
-			bool lastskip = retroctx.skipframe;
-			retroctx.skipframe = !retroctx_sync();
+			bool lastskip = retroctx.skipframe_v;
+			retroctx.skipframe_a = false;
+			retroctx.skipframe_v = !retroctx_sync();
 
 /* the audp/vidp buffers have already been updated in the callbacks */
 			if (lastskip == false){
@@ -1028,14 +1074,17 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					retroctx.audbuf_ofs = 0;
 				}
 
-/* possibly overlay as much tracking / debugging data we can muster */
+/* Possibly overlay as much tracking / debugging data we can muster */
 				if (retroctx.graphmode)
 					push_stats();
 
+/* Frametransfer step */
 				start = arcan_timemillis();
-				shared->vready = true;
-				frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
+					add_jitter(retroctx.jitterxfer);
+					shared->vready = true;
+					frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 				stop = arcan_timemillis();
+
 				retroctx.transfercost = stop - start;
 			};
 
