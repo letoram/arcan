@@ -40,7 +40,7 @@ helplbls = {};
 helplbls["position"] = {
 	"Position",
 	"(LEFT/RIGHT/UP/DOWN) to move",
-	"(SWITCH_VIEW) to switch mode",
+	"(DETAIL VIEW) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
 };
@@ -49,14 +49,14 @@ helplbls["position3d"] = {
 	"Position (3D), Axis: 0",
 	"(LEFT/RIGHT) to increase/decrease angle",
 	"(UP/DOWN) to switch active axis",
-	"(SWITCH_VIEW) to switch mode",
+	"(DETAIL_VIEW) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
 };
 
 helplbls["rotate3d"] = {
 	"Rotate (3D), Axis: 0",
-	"(SWITCH_VIEW) to switch mode",
+	"(DETAIL_VIEW) to switch mode",
 	"(MENU_UP/DOWN) to switch active axis",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
@@ -66,7 +66,7 @@ helplbls["size"] = {
 	"Scale",
 	"(RIGHT/DOWN) to increase size",
 	"(LEFT/UP) to decrease size",
-	"(SWITCH_VIEW) to switch mode",
+	"(DETAIL_VIEW) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
 };
@@ -75,7 +75,7 @@ helplbls["opacity"] = {
 	"Blend",
 	"(LEFT/RIGHT) increase / decrease opacity",
 	"(UP/DOWN) increase / decrease Z-order",
-	"(SWITCH_VIEW) to switch mode",
+	"(DETAIL_VIEW) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
 };
@@ -84,7 +84,7 @@ helplbls["orientation"] = {
 	"Rotate",
 	"(UP/DOWN) aligned step (45 deg.)",
 	"(LEFT/RIGHT) increase / decrease angle",
-	"(SWITCH_VIEW) to switch mode",
+	"(DETAIL_VIEW) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
 };
@@ -325,7 +325,7 @@ customview.position_item = function(vid, trigger, lbls)
 	end
 
 	settings.iodispatch["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
-	settings.iodispatch["SWITCH_VIEW"] = function() position_toggle();   end
+	settings.iodispatch["DETAIL_VIEW"] = function() position_toggle();   end
 	settings.iodispatch["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
 
 	update_infowin();
@@ -469,27 +469,13 @@ end
 
 local function customview_internal(source, datatbl)
 	if (datatbl.kind == "resized") then
-		if (not settings.in_internal) then
-			gridle_load_internal_extras( resourcefinder_search(customview.gametbl, true), customview.gametbl.target );
-			if (settings.autosave == "On") then internal_statectl("auto", false); end
-			internal_aid = datatbl.source_audio;
-			internal_vid = source;
-					
-			settings.internal_toggles.bezel     = false;
-			settings.internal_toggles.overlay   = false;
-			settings.internal_toggles.backdrops = false;
 
-			audio_gain(internal_aid, settings.internal_again, NOW);
-
+		if (settings.in_internal == false) then
 			gridle_input = gridle_internalinput;
-			settings.in_internal = true;
-			settings.internal_txcos = image_get_txcos(source);
-
-			gridlemenu_rebuilddisplay();
-			image_tracetag(source, "internal_launch(" .. current_game().title ..")");
-		else
-			gridlemenu_rebuilddisplay();
 		end
+
+		gridle_internal_setup(source, datatbl, customview.gametbl);
+
 	elseif (datatbl.kind == "frameserver_terminated") then
 		local term = load_image("images/terminated.png");
 		blend_image(term, 1.0, settings.fadedelay);

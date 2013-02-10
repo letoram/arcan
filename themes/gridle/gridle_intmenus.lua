@@ -15,8 +15,8 @@ local scalemodelist = {
 	"Original Size",
 	"2X",
 	"Stretch",
-	"Rotate CW",
-	"Rotate CCW",
+	"Rotate 90 CW",
+	"Rotate 90 CCW",
 	"Bezel"
 };
 
@@ -40,7 +40,7 @@ local function scalemodechg(label, save)
 		play_audio(soundmap["MENU_SELECT"]);
 	end
 
-	gridlemenu_rebuilddisplay();
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
 for ind, val in ipairs(scalemodelist) do scalemodeptrs[val] = scalemodechg; end
@@ -48,8 +48,8 @@ for ind, val in ipairs(scalemodelist) do scalemodeptrs[val] = scalemodechg; end
 local inputmodelist = {
 -- revert all manipulation to default settings
 	"Normal",
-	"Rotate CW",
-	"Rotate CCW",
+	"Rotate 90 CW",
+	"Rotate 90 CCW",
 	"Invert Axis (analog)",
 	"Mirror Axis (analog)",
 	"Filter Opposing",
@@ -138,9 +138,8 @@ end
 local function select_shaderfun(label, store)
 	settings.iodispatch["MENU_ESCAPE"]();
 	settings.fullscreenshader = label;
-	settings.internal_toggles = {};
 	
-	gridlemenu_rebuilddisplay();
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
 	
 	if (store) then
 		store_key("defaultshader", label);
@@ -207,7 +206,7 @@ local function cocktailmodechg(label, save)
 	end
 	
 	settings.cocktail_mode = label;
-	gridlemenu_rebuilddisplay();
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
 local cocktaillist = {
@@ -250,7 +249,6 @@ local function setup_cocktail(mode, source, vresw, vresh)
 		image_shader(imagery.cocktail_vid, settings.fullscreen_shader);
 	end
 	
-	image_mask_clear(imagery.cocktail_vid, MASK_OPACITY);
 	image_mask_clear(imagery.cocktail_vid, MASK_ORIENTATION);
 	resize_image(imagery.cocktail_vid, props.width, props.height);
 	show_image(imagery.cocktail_vid);
@@ -691,6 +689,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 	shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
 	shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
+	shader_uniform(shader, "mirrored", "b", PERSIST, settings.internal_mirror);
 	
 	hide_image(sourcevid);
 	local workvid = instance_image(sourcevid);
@@ -769,7 +768,7 @@ local function update_filter(vid, filtermode)
 	end
 end
 
-function push_ntsc()
+function push_ntsc(noresume)
 	target_postfilter_args(internal_vid, 1, settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
 	target_postfilter_args(internal_vid, 2, settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
 	target_postfilter_args(internal_vid, 3, settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
@@ -778,7 +777,9 @@ function push_ntsc()
 	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
 
 -- for the argument changes to be reflected, we need the video rolling
-	resume_target(internal_vid);
+	if (noresume == nil or noresume == false) then
+		resume_target(internal_vid);
+	end
 end
 
 --
@@ -787,7 +788,11 @@ end
 -- (upscale) -> (antialias) -> (final_scaler -> (vector) -> (crt) -> (cocktail)
 -- NTSC prefilter is enabled in the source frameserver so not included here
 --
-function gridlemenu_rebuilddisplay()
+function gridlemenu_rebuilddisplay(toggles)	
+	if (toggles == nil) then
+		toggles = {};
+	end
+	
 	undo_displaymodes();
 	
 -- default filter preference isn't guaranteed to work as higher priority display mode 
@@ -797,7 +802,7 @@ function gridlemenu_rebuilddisplay()
 	local props  = image_surface_initial_properties(internal_vid);
 	local dstvid = internal_vid;
 
-	if (settings.internal_toggles.upscaler) then
+	if (toggles.upscaler) then
 		local upscale = toggle_upscaler(internal_vid, props, settings.upscale_method, settings.upscale_factor);
 		if (upscale ~= nil) then
 			dstvid = upscale;
@@ -807,12 +812,12 @@ function gridlemenu_rebuilddisplay()
 
 	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
 
-	if (settings.internal_toggles.antialias) then
+	if (toggles.antialias) then
 		dstvid = display_fxaa(dstvid, windw, windh); 
 		imagery.display_vid = dstvid;
 	end
 	
-	if (settings.internal_toggles.vector) then
+	if (toggles.vector) then
 		target_pointsize(dstvid, settings.vector_pointsz);
 		target_linewidth(dstvid, settings.vector_linew);
 		
@@ -828,8 +833,8 @@ function gridlemenu_rebuilddisplay()
 		toggle_vectormode(dstvid, dstw, dsth);
 		dstvid = imagery.display_vid;
 	
-	elseif ( (settings.internal_toggles.overlay and
-		valid_vid(imagery.overlay)) or (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) ) then
+	elseif ( (toggles.overlay and
+		valid_vid(imagery.overlay)) or (toggles.backdrop and valid_vid(imagery.backdrop)) ) then
 		image_mask_clear(internal_vid, MASK_LIVING);
 		
 		dstbuf = fill_surface(windw, windh, 1, 1, 1, windw, windh);
@@ -855,7 +860,7 @@ function gridlemenu_rebuilddisplay()
 	update_filter(dstvid, settings.imagefilter);
 	
 -- crt is always last
-	if (settings.internal_toggles.crt) then
+	if (toggles.crt) then
 
 -- special case with cocktail modes
 		toggle_crtmode(dstvid, props, windw, windh);
@@ -865,12 +870,13 @@ function gridlemenu_rebuilddisplay()
 
 	end
 
-	if (settings.internal_toggles.ntsc) then
+	if (toggles.ntsc) then
 		push_ntsc();
 	end
 	
 -- all the above changes may have reordered the menu 
 	gridlemenu_tofront(current_menu);
+	push_ntsc(true);
 end
 
 function gridlemenu_resize_fullscreen(source, init_props)
@@ -1026,8 +1032,8 @@ local function grab_shaderconf(basename)
 	local rescond = {};
 	
 -- remap the tables into hash/LUT, doesn't separate namespaces in v/f shaders 
-	for ind, val in ipairs( vdef ) do resdef[val] = true; end
-	for ind, val in ipairs( fdef ) do resdef[val] = true; end
+	for ind, val in ipairs( vdef )  do resdef[val]  = true; end
+	for ind, val in ipairs( fdef )  do resdef[val]  = true; end
 	for ind, val in ipairs( vcond ) do rescond[val] = true; end
 	for ind, val in ipairs( fcond ) do rescond[val] = true; end
 
@@ -1246,9 +1252,22 @@ local function add_gamelbls( lbltbl, ptrtbl )
 			menu_spawnmenu( lbls, ptrs, {} );
 		end
 	end
-	
+
 	advtbl = { "Toggle Debugmode" };
 	advptrs = {};
+
+	local function aligntrig()
+		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"]();
+		target_framemode(internal_vid, skipremap[settings.skip_mode], settings.frame_align, settings.preaud, settings.jitterstep, settings.jitterxfer);
+	end
+
+	add_submenu(advtbl, advptrs, "Frame Alignment...",    "frame_align", gen_num_menu("frame_align", -1,  2, 6,  aligntrig));
+	add_submenu(advtbl, advptrs, "Skip Method...",        "skip_mode",   gen_tbl_menu("skip_mode", skiptbl, aligntrig, true));
+	add_submenu(advtbl, advptrs, "Pre-audio (frames)...", "preaud",      gen_num_menu("preaud",       0,  1, 4,  aligntrig));
+	add_submenu(advtbl, advptrs, "Emulation jitter...",   "jitterstep",  gen_num_menu("jitterstep",  -28, 4, 14, aligntrig));
+	add_submenu(advtbl, advptrs, "Transfer jitter...",    "jitterxfer",  gen_num_menu("jitterxfer",  -28, 4, 14, aligntrig));
+	
 	advptrs["Toggle Debugmode"] = function()
 		settings.graph_mode = settings.graph_mode == 1 and 0 or 1;
 		target_graphmode(internal_vid, settings.graph_mode);
@@ -1456,14 +1475,18 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	end
 end
 
-add_displaymodeptr(displaymodelist, displaymodeptrs, "upscaler", "Upscaler", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "vector", "Vector", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay", "Overlay", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop", "Backdrop", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc", "NTSC", push_ntsc);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "antialias", "Antialias", gridlemenu_rebuilddisplay);
-add_displaymodeptr(displaymodelist, displaymodeptrs, "crt", "CRT", gridlemenu_rebuilddisplay);
-	
+local function updatetrigger()
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
+end
+
+add_displaymodeptr(displaymodelist, displaymodeptrs, "upscaler",  "Upscaler",  updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "vector",    "Vector",    updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay",   "Overlay",   updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop",  "Backdrop",  updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "antialias", "Antialias", updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "crt",       "CRT",       updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc",      "NTSC",      push_ntsc);
+
 local vectormenulbls = {};
 local vectormenuptrs = {};
 local crtmenulbls    = {};
@@ -1476,10 +1499,6 @@ local scalerlbls     = {};
 local scalerptrs     = {};
 local xbrlbls = {};
 local xbrptrs = {};
-
-local function updatetrigger()
-	gridlemenu_rebuilddisplay();
-end
 
 add_submenu(ntscmenulbls, ntscmenuptrs, "Hue...",        "ntsc_hue",        gen_tbl_menu("ntsc_hue",        {-0.1, -0.05, 0, 0.05, 0.1}, push_ntsc));
 add_submenu(ntscmenulbls, ntscmenuptrs, "Saturation...", "ntsc_saturation", gen_tbl_menu("ntsc_saturation", {-1, -0.5, 0, 0.5, 1}, push_ntsc));
@@ -1563,7 +1582,7 @@ local function flip_crttog(label, save)
 	current_menu:invalidate();
 	current_menu:redraw();
 		
-	gridlemenu_rebuilddisplay();
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
 local function flip_scalertog(label, save)

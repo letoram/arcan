@@ -81,11 +81,8 @@ end
 -- switch between running with fullscreen and running with cabinet zoomed in
 local function gridledetail_switchfs()
 	if (detailview.fullscreen) then
-		detail_toggles = settings.internal_toggles;
-		settings.internal_toggles = settings.internal_notoggles;
-
 -- undo vectordisplay etc. remove the "black image" used to block background
-		gridlemenu_rebuilddisplay(); 
+		gridlemenu_rebuilddisplay();
 		hide_image(internal_vid);
 		delete_image(internal_vidborder); 
 
@@ -99,7 +96,6 @@ local function gridledetail_switchfs()
 		detailview.fullscreen = false;
 	else
 		hide_image(detailview.model.vid);
-		settings.internal_toggles = detail_toggles;
 
 -- setup black frame around output, then initialze effects etc.
 		internal_vidborder = instance_image( imagery.black );
@@ -109,7 +105,7 @@ local function gridledetail_switchfs()
 		resize_image(internal_vidborder, VRESW, VRESH);
 		show_image(internal_vidborder);
 
-		gridlemenu_rebuilddisplay();
+		gridlemenu_rebuilddisplay(settings.internal_toggles);
 	end
 end
 
@@ -339,6 +335,8 @@ function gridledetail_show(detailres, gametbl, ind)
 
 				internal_vid = launch_target( detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status );
 				if (internal_vid) then
+					settings.internal_txcos = image_get_txcos(internal_vid);
+
 					if (settings.autosave == "On") then
 						internal_statectl("auto", false);
 					end

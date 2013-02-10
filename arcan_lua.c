@@ -2831,7 +2831,12 @@ int arcan_lua_targetskipmodecfg(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int skipval       = luaL_checkinteger(ctx, 2);
-	if (skipval < -1) return 0;	
+	int skiparg       = luaL_optinteger(ctx, 3, 0);
+	int preaud        = luaL_optinteger(ctx, 4, 0);
+	int skipdbg1      = luaL_optinteger(ctx, 5, 0);
+	int skipdbg2      = luaL_optinteger(ctx, 6, 0);
+	
+	if (skipval < -1) return 0;
 	
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -2839,6 +2844,11 @@ int arcan_lua_targetskipmodecfg(lua_State* ctx)
 	};
 
 	ev.data.target.ioevs[0].iv = skipval;
+	ev.data.target.ioevs[1].iv = skiparg;
+	ev.data.target.ioevs[2].iv = preaud;
+	ev.data.target.ioevs[3].iv = skipdbg1;
+	ev.data.target.ioevs[4].iv = skipdbg2;
+	
 	tgtevent(tgt, ev);
 	
 	return 0;
