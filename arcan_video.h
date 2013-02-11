@@ -64,7 +64,7 @@ enum arcan_vfilter_mode {
 };
 
 enum arcan_vimage_mode {
-	ARCAN_VIMAGE_NOPOW2 = 0, 
+	ARCAN_VIMAGE_NOPOW2 = 0,
 	ARCAN_VIMAGE_TXCOORD = 1,
 	ARCAN_VIMAGE_SCALEPOW2 = 2
 };
@@ -166,7 +166,7 @@ signed arcan_video_pushcontext();
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv);
 
 /* tag will be stored in the asynchimg event when the image has been loaded */
-arcan_vobj_id arcan_video_loadimageasynch(const char* fname, img_cons constraints, intptr_t tag); 
+arcan_vobj_id arcan_video_loadimageasynch(const char* fname, img_cons constraints, intptr_t tag);
 arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
 arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv);
@@ -248,9 +248,9 @@ unsigned short arcan_video_getzv(arcan_vobj_id id);
  * and fires a corresponding event */
 arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
 
-/* removes an object immediately, regardless of masks, life-cycles left etc. 
+/* removes an object immediately, regardless of masks, life-cycles left etc.
  * readback == 0, no readback will be performed
- * readback <  0, readback will occur every abs(readback) frames 
+ * readback <  0, readback will occur every abs(readback) frames
  * readback >  0, readback will occur every tick frames */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool scale);
@@ -272,7 +272,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, f
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
 arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx, float sy, float sz);
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
-arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst); 
+arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
 arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did);

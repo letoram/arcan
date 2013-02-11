@@ -5,7 +5,7 @@
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 3 
+ * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
 
  * This program is distributed in the hope that it will be useful,
@@ -33,11 +33,11 @@
 #include "../../arcan_general.h"
 #include "../arcan_frameserver.h"
 
-/* 
+/*
  * allocate context -> depending on type, different buckets are set up. Each bucket maintain separate data-tracking,
  * can have different rendering modes etc. Buckets are populated indirectly through calling the exported higher-abstraction
  * functions ("connected", "sending tlv", ...) and the rendering mode of the context define how the buckets are setup,
- * scaling, refreshes etc. 
+ * scaling, refreshes etc.
  */
 
 /* can be created by taking a TTF font,
@@ -57,7 +57,7 @@ enum plot_mode {
 };
 
 struct datapoint {
-	long long int timestamp; 
+	long long int timestamp;
 	const char* label; /* optional */
 	bool continuous;   /* part of the regular dataflow or should be treated as an alarm */
 
@@ -71,8 +71,8 @@ struct datapoint {
 struct event_bucket {
 	bool labels;   /* render possibly attached labels */
 	bool absolute; /* should basev/maxv/minv be relative to window or accumulate */
-	enum plot_mode mode; 
-	
+	enum plot_mode mode;
+
 /* data model -- ring-buffer of datapoints, these and scales are
  * modified dynamically based on the domain- specific events further below */
 	int ringbuf_sz, buf_front, buf_back;
@@ -106,7 +106,7 @@ struct graph_context {
 /* data storage */
 	int n_buckets;
 	struct event_bucket* buckets;
-	
+
 /* mode is determined on context creation, and determines how logged entries
  * will be stored and presented */
 	enum graphing_mode mode;
@@ -130,14 +130,14 @@ void blend_vline(struct graph_context* ctx, int x, int y, int width, uint32_t co
 void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col)
 {
 	width = abs(width);
-	
+
 /* clip */
 	if (y < 0 || y >= ctx->height)
 		return;
 
 	if (x + width > ctx->width)
 		width = ctx->width - x;
-	
+
 	uint32_t* buf = &ctx->vidp[y * ctx->width + x];
 
 	while (--width > 0)
@@ -146,7 +146,7 @@ void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col
 
 void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t col)
 {
-	int dir;  
+	int dir;
 	int length = abs(height);
 
 	if (x < 0 || x >= ctx->width || height == 0)
@@ -162,13 +162,13 @@ void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t co
 		if (y + height >= ctx->height)
 			length = ctx->height - y - 1;
 	}
-	
+
 	uint32_t* buf = &ctx->vidp[y * ctx->width + x];
 	int step = dir * ctx->width;
-	
+
 	while (--length > 0){
 		*buf = col;
-		buf += step; 
+		buf += step;
 	}
 }
 
@@ -183,12 +183,12 @@ void draw_box(struct graph_context* ctx, int x, int y, int width, int height, ui
 {
 	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
 		return;
-	
+
 	width  = abs(width);
 	height = abs(height);
-	
-	int ux = x + width  >= ctx->width  ?  ctx->width - 1 : x + width;
-	int uy = y + height >= ctx->height ? ctx->height - 1 : y + height;
+
+	int ux = x + width  >= ctx->width  ?  ctx->width : x + width;
+	int uy = y + height >= ctx->height ? ctx->height : y + height;
 
 	for (int cy = y; cy != uy; cy++)
 		for (int cx = x; cx != ux; cx++)
@@ -203,7 +203,7 @@ void draw_square(struct graph_context* ctx, int x, int y, int side, uint32_t col
 	int ly = y - side >= 0 ? y - side : 0;
 	int ux = x + side >= ctx->width  ? ctx->width  - 1 : x + side;
 	int uy = y + side >= ctx->height ? ctx->height - 1 : y + side;
-	
+
 	for (int cy = ly; cy != uy; cy++)
 		for (int cx = lx; cx != ux; cx++)
 			ctx->vidp[ cy * ctx->width + cx ] = col;
@@ -268,20 +268,20 @@ static bool graph_refresh_server(struct graph_context* ctx)
 	switch (ctx->mode){
 		case GRAPH_NET_SERVER_SPLIT:
 		break;
-		
+
 		case GRAPH_NET_SERVER_SINGLE:
 		break;
 
 		case GRAPH_NET_CLIENT:
 		break;
-		
+
 		case GRAPH_NET_SERVER:
 		break;
-		
+
 		case GRAPH_MANUAL:
 		break;
 	}
-	
+
 	return true;
 }
 
@@ -297,10 +297,10 @@ static bool graph_refresh_client(struct graph_context* ctx)
 
 /* two buckets, one (height / 3) for discovery domain data, one for main domain */
 	clear_tocol(ctx, ctx->colors.bg);
-	
+
 	switch (ctx->n_buckets){
 		case 1: draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, ctx->height); break;
-		case 2: 
+		case 2:
 			draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, bucketh);
 			draw_bucket(ctx, &ctx->buckets[1], 0, 10 + bucketh, ctx->width, bucketh * 2);
 		break;
@@ -316,8 +316,8 @@ bool graph_refresh(struct graph_context* ctx)
 {
 	if (ctx->mode != GRAPH_NET_CLIENT)
 		return graph_refresh_server(ctx);
-	else 
-		return graph_refresh_client(ctx); 
+	else
+		return graph_refresh_client(ctx);
 }
 
 /* setup basic context (history buffer etc.)
@@ -328,7 +328,7 @@ struct graph_context* graphing_new(enum graphing_mode mode, int width, int heigh
 		return NULL;
 
 	struct graph_context* rctx = malloc( sizeof(struct graph_context) );
-	
+
 	if (rctx){
 		struct graph_context rv = { .mode = mode, .width = width, .height = height, .vidp = vidp,
 			.colors.bg = 0xffffffff, .colors.border = 0xff000000, .colors.grid = 0xffaaaaaa, .colors.gridalign = 0xffff4444,
@@ -362,7 +362,7 @@ void graph_log_connected(struct graph_context* ctx, char* label)
 	if (GRAPH_SERVER(ctx->mode)){
 	} else {
 	}
-	
+
 }
 
 void graph_log_connecting(struct graph_context* ctx, char* label)
@@ -399,7 +399,7 @@ void graph_log_disconnect(struct graph_context* ctx, unsigned id, const char* la
 void graph_log_discover_req(struct graph_context* ctx, unsigned id, const char* label)
 {
 	assert(ctx);
-	
+
 	if (GRAPH_SERVER(ctx->mode)){
 	}
 	else {
@@ -449,9 +449,9 @@ void graph_log_conn_error(struct graph_context* ctx, unsigned id, const char* la
 void graph_log_message(struct graph_context* ctx, unsigned long timestamp, size_t pkg_sz, int stateid, bool oob)
 {
 	assert(ctx);
-	
+
 	if (GRAPH_SERVER(ctx->mode)){
 	}
 	else {
-	}	
+	}
 }
