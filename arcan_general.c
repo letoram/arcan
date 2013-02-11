@@ -622,9 +622,9 @@ void arcan_timesleep(unsigned long val)
 /* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds)
  * just busyloop and count .. */
 
-	unsigned long int start = frameserver_timemillis();
+	unsigned long int start = arcan_timemillis();
 
-	while (val > (frameserver_timemillis() - start))
+	while (val > (arcan_timemillis() - start))
 		Sleep(0); /* yield */
 }
 
