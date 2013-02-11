@@ -595,7 +595,7 @@ char* arcan_findshmkey(int* dfd, bool semalloc)
 	/* unused for win32, we inherit */
 }
 
-long long int frameserver_timemillis()
+long long int arcan_timemillis()
 {
 	static LARGE_INTEGER ticks_pers;
 	static LARGE_INTEGER start_ticks;

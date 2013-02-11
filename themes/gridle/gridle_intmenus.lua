@@ -1042,13 +1042,13 @@ end
 
 local function load_savestate(label, store)
 	settings.iodispatch["MENU_ESCAPE"]();
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	internal_statectl(label, false);
 end
 
 local function save_savestate(label, store)
 	settings.iodispatch["MENU_ESCAPE"]();
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	internal_statectl(label, true);
 end
 
@@ -1094,7 +1094,7 @@ local function build_savemenu()
 				end
 					
 				settings.iodispatch["MENU_ESCAPE"]();
-				settings.iodispatch["MENU_ESCAPE"]();
+				settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 			end
 		end
 	end
@@ -1102,7 +1102,7 @@ local function build_savemenu()
 -- just grab the last num found, increment by one and use as prefix
 	resptrs["(New)"] = function(label, store)
 		settings.iodispatch["MENU_ESCAPE"]();
-		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 		spawn_warning("state saved as (" .. tostring( highind + 1) .. ")");
 		internal_statectl(highind + 1, true);
 	end
@@ -1233,7 +1233,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				table.insert(lbls, "Drop (Game) Keyconfig");
 				ptrs["Drop (Game) Keyconfig"] = function()
 					settings.iodispatch["MENU_ESCAPE"]();
-					settings.iodispatch["MENU_ESCAPE"]();
+					settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 					zap_resource( gen_keymap_name( true ) );
 					set_internal_keymap();
 				end
@@ -1243,7 +1243,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				table.insert(lbls, "Drop (Target) Keyconfig");
 				ptrs["Drop (Target) Keyconfig"] = function()
 					settings.iodispatch["MENU_ESCAPE"]();
-					settings.iodispatch["MENU_ESCAPE"]();
+					settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 					zap_resource( gen_keymap_name( false ) );
 					set_internal_keymap();
 				end
@@ -1258,7 +1258,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 
 	local function aligntrig()
 		settings.iodispatch["MENU_ESCAPE"]();
-		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 		target_framemode(internal_vid, skipremap[settings.skip_mode], settings.frame_align, settings.preaud, settings.jitterstep, settings.jitterxfer);
 	end
 
@@ -1272,7 +1272,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 		settings.graph_mode = settings.graph_mode == 1 and 0 or 1;
 		target_graphmode(internal_vid, settings.graph_mode);
 		settings.iodispatch["MENU_ESCAPE"]();
-		settings.iodispatch["MENU_ESCAPE"]();
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	end
 	
 	table.insert(lbltbl, "Advanced...");
