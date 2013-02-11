@@ -89,8 +89,9 @@ static struct {
 		
 /* statistics */
 		int rebasecount, frameskips, transfercost, framecost;
-		long long int frame_ringbuf[1024];
-		short int ringbuf_ofs;
+		long long int frame_ringbuf[160];
+		long long int drop_ringbuf[40];
+		short int framebuf_ofs, dropbuf_ofs;
 
 /* colour conversion / filtering */
 		pixconv_fun converter;
@@ -351,15 +352,18 @@ void libretro_audscb(int16_t left, int16_t right)
 	if (retroctx.skipframe_a)
 		return;
 
-	retroctx.audbuf[retroctx.audbuf_ofs++] = left;
-	retroctx.audbuf[retroctx.audbuf_ofs++] = right;
+/* can happen if we skip a lot and never transfer */
+	if (retroctx.audbuf_ofs + 2 < retroctx.audbuf_sz * 2){
+		retroctx.audbuf[retroctx.audbuf_ofs++] = left;
+		retroctx.audbuf[retroctx.audbuf_ofs++] = right;
+	}
 }
 
 size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	retroctx.aframecount += nframes;
 
-	if (retroctx.skipframe_a)
+	if (retroctx.skipframe_a || (retroctx.audbuf_ofs + nframes << 1) + (nframes << 2) > retroctx.audbuf_sz )
 		return nframes;
 
 	memcpy(&retroctx.audbuf[retroctx.audbuf_ofs], data, nframes << 2); /* 2 bytes per sample, 2 channels */
@@ -773,13 +777,17 @@ static inline bool retroctx_sync()
 /* more than a frame behind? just skip */
 	if ( left < -1 * retroctx.mspf ){
 		retroctx.frameskips++;
+		retroctx.drop_ringbuf[retroctx.dropbuf_ofs] = timestamp;
+		retroctx.dropbuf_ofs = (retroctx.dropbuf_ofs + 1) % (sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]));
 		return false;
 	}
 
+/* since we have to align the transfer with the parent, and it's better to under- than overshoot-
+ * a deadline in that respect, prewake tries to compensate lightly for scheduling jitter etc. */
 	int prewake = retroctx.prewake;
 	if (retroctx.prewake < 0)
-		prewake = retroctx.framecost;
-	else if (retroctx.prewake > 0)
+		prewake = retroctx.framecost; /* use last frame cost as an estimate */
+	else if (retroctx.prewake > 0) /* or just a constant number */
 		prewake = retroctx.prewake > retroctx.mspf ? retroctx.mspf : retroctx.prewake;
 	
 	if (left > prewake )
@@ -831,15 +839,63 @@ static void push_stats()
 		STEPMSG(scratch);
 	}
 
-/* input "matrix" */
+/* color-coded frame timing / alignment, starting at the far right with the next intended frame,
+ * horizontal resolution is 2 px / ms */
 
-/* frame alignment vs. ideal. Need a history ring buffer of timing to generate from */
+	int dw = retroctx.shmcont.addr->storage.w;
+	float hscale = 2.0;
+	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
+	draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
+	draw_hline(retroctx.graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
 
+/* first, ideal deadlines, now() is at the end of the X scale */
+	int stepc = 0;
+	double current = arcan_timemillis();
+	double minp    = current - dw;
+	double mspf    = retroctx.mspf;
+	double startp  = (double) current - modf(current, &mspf);
+	
+	while ( startp - (stepc * retroctx.mspf) >= minp ){
+		draw_vline(retroctx.graphing, startp - (stepc * retroctx.mspf) - minp, yv + PXFONT_HEIGHT - 1, -(PXFONT_HEIGHT-1), 0xff00ff00);
+		stepc++;
+	}
+
+/* second, actual frames, plot against ideal, step back etc. until we land outside range */
+	size_t cellsz = sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf[0]);
+
+#define STEPBACK(X) ( (X) > 0 ? (X) - 1 : cellsz - 1)
+	
+	int ofs = STEPBACK(retroctx.framebuf_ofs);
+
+	while (true){
+		if (retroctx.frame_ringbuf[ofs] >= minp)
+			draw_vline(retroctx.graphing, current - retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff00ffff);
+		else
+			break;
+
+		ofs = STEPBACK(ofs);
+		if (retroctx.frame_ringbuf[ofs] >= minp)
+			draw_vline(retroctx.graphing, current - retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff00aaaa);
+		else
+			break;
+
+		ofs = STEPBACK(ofs);
+	}
+
+	cellsz = sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]);
+	ofs = STEPBACK(retroctx.dropbuf_ofs);
+
+	while (retroctx.drop_ringbuf[ofs] >= minp){
+		draw_vline(retroctx.graphing, current - retroctx.drop_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff0000ff);
+		ofs = STEPBACK(ofs);
+	}
+	
 /* waveform alignment, fill remaining area --
  * vertically, just float each channel into 0..1
  * horizontaly */
 }
 
+#undef STEPBACK
 #undef STEPMSG
 
 void add_jitter(int num)
@@ -1041,9 +1097,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			retroctx.framecost = stop - start;
 
 /* finished frames and their alignment is what actually matters */
-			retroctx.frame_ringbuf[retroctx.ringbuf_ofs] = stop;
-			retroctx.ringbuf_ofs = (retroctx.ringbuf_ofs + 1) % 
-				(sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf[0]));
+			size_t stepsz = sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf)[0];
+			retroctx.frame_ringbuf[retroctx.framebuf_ofs] = start;
+			retroctx.framebuf_ofs = (retroctx.framebuf_ofs + 1) % stepsz;
+
+			retroctx.frame_ringbuf[retroctx.framebuf_ofs] = stop;
+			retroctx.framebuf_ofs = (retroctx.framebuf_ofs + 1) % stepsz;
 
 /* some FE applications need a grasp of "where" we are frame-wise, particularly for single-stepping etc. */
 			outev.kind = EVENT_EXTERNAL_NOTICE_FRAMESTATUS;

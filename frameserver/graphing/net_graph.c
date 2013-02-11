@@ -146,19 +146,29 @@ void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col
 
 void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t col)
 {
-	height = abs(height);
+	int dir;  
+	int length = abs(height);
 
-	if (x < 0 || x >= ctx->width)
+	if (x < 0 || x >= ctx->width || height == 0)
 		return;
 
-	if (y + height > ctx->height)
-		height = ctx->height - y;
+/* direction and clip */
+	if (height < 0){
+		dir = -1;
+		if (y - height < 0)
+			length = y;
+	} else {
+		dir = 1;
+		if (y + height >= ctx->height)
+			length = ctx->height - y - 1;
+	}
 	
 	uint32_t* buf = &ctx->vidp[y * ctx->width + x];
+	int step = dir * ctx->width;
 	
-	while (--height > 0){
+	while (--length > 0){
 		*buf = col;
-		buf += ctx->width;
+		buf += step; 
 	}
 }
 
@@ -173,7 +183,7 @@ void draw_box(struct graph_context* ctx, int x, int y, int width, int height, ui
 {
 	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
 		return;
-
+	
 	width  = abs(width);
 	height = abs(height);
 	
