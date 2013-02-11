@@ -144,6 +144,7 @@ int main(int argc, char* argv[])
 	int height = 480;
 	int winx = -1;
 	int winy = -1;
+	long long int lastflip = 0;
 
 	int ch;
 	FILE* errc;
@@ -345,7 +346,7 @@ int main(int argc, char* argv[])
 
 		bool done = false;
 		float lastfrag = 0.0f;
-		
+
 		while (!done) {
 			arcan_event* ev;
 			unsigned nticks;
@@ -354,7 +355,7 @@ int main(int argc, char* argv[])
 
 			if (debuglevel == 4)
 				arcan_warning("main() event_process (%d.%f)\n", nticks, frag);
-			
+
 /* priority is always in maintaining logical clock and event processing */
 			if (nticks > 0){
 				arcan_video_tick(nticks);
@@ -362,16 +363,20 @@ int main(int argc, char* argv[])
 				lastfrag = 0.0f;
 
 				arcan_video_refresh(frag, true);
+				lastflip = arcan_timemillis();
 			} else {
 /* we are running ahead of time, if this is by a lot, consider yielding if not, interpolate */
-				if (!waitsleep || fabs(frag - lastfrag) > 0.1){
+				if (!waitsleep || fabs(frag - lastfrag) > INTERP_MINSTEP){
 					arcan_audio_refresh();
-					arcan_video_refresh(frag, true);
+					if (arcan_video_display.vsync == false || (arcan_timemillis() - lastflip) % 16 > 8){
+						arcan_video_refresh(frag, true);
+						lastflip = arcan_timemillis();
+					}
+
 					lastfrag = frag;
 				}
-/* seems like this behavior works poorly with windows scheduling */
-				 else 
-					arcan_timesleep( 0.1 * (1.0f / ARCAN_TIMER_TICK) );
+				 else
+					arcan_timesleep( 0.1f * (float) ARCAN_TIMER_TICK );
 			}
 
 /* pollfeed drives frameservers, which in turn can synch events and should

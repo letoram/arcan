@@ -189,19 +189,17 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 
 const char* internal_launch_support();
 
-/* update rate of 25 ms / tick,
- * which amounts to a logical time-span of
- * 40 fps */
+/* update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,
+ * for lower power devices, this can be raised signifantly, just adjust INTERP_MINSTEP
+ * accordingly */
 #define ARCAN_TIMER_TICK 25
+#define INTERP_MINSTEP 0.15
 
-/* fixed limit of allowed events in queue
- * before old gets overwritten */
+/* fixed limit of allowed events in queue before old gets overwritten */
 #define ARCAN_EVENT_QUEUE_LIM 1024
 
 #define ARCAN_EID 0
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
-
-/* max accepted vidres (1080p, 4bpp) + synch & structures + max audioframesize according to ffmpeg */
 
 #endif

@@ -260,21 +260,21 @@ static char* unix_find(const char* fname){
 
 	if (getenv("HOME")){
 		size_t len = strlen( getenv("HOME") ) + 9;
-		pathtbl[1] = malloc(len); 
+		pathtbl[1] = malloc(len);
 		snprintf(pathtbl[1], len, "%s/.arcan", getenv("HOME") );
-	} 
+	}
 	else
 		pathtbl[1] = strdup("");
 
 	for (char** base = pathtbl; *base != NULL; base++){
 		snprintf(playbuf, playbufsize, "%s/%s", *base, fname );
-		
+
 		if (is_dir(playbuf)){
 			res = strdup(playbuf);
 			break;
 		}
 	}
-    
+
 cleanup:
 	free(pathtbl[1]);
 	return res;
@@ -605,8 +605,9 @@ long long int arcan_timemillis()
 /* seed monotonic timing */
 		QueryPerformanceFrequency(&ticks_pers);
 		QueryPerformanceCounter(&start_ticks);
+        seeded = true;
 	}
-	
+
 	LARGE_INTEGER ticksnow;
 	QueryPerformanceCounter(&ticksnow);
 
@@ -619,15 +620,25 @@ long long int arcan_timemillis()
 
 void arcan_timesleep(unsigned long val)
 {
-/* since sleep precision sucks, timers won't help and it's typically a short amount we need to waste (3-7ish miliseconds)
- * just busyloop and count .. */
+	static bool sleepSeed = false;
+	static bool spinLock = false;
+
+/* try to force sleep timer resolution to 1 ms, should possible
+ * be reset upon exit, doubt windows still enforces that though */
+	if (sleepSeed == false){
+		spinLock = !(timeBeginPeriod(1) == TIMERR_NOERROR);
+		sleepSeed = true;
+	}
 
 	unsigned long int start = arcan_timemillis();
 
-	while (val > (arcan_timemillis() - start))
-		Sleep(0); /* yield */
+	arcan_warning("sleep(%d), start: %ld\n", val, start);
+	while (val > (arcan_timemillis() - start)){
+        Sleep( spinLock ? 0 : val );
+		arcan_warning("pass done.\n");
+	}
+	arcan_warning("sleep(%d), stop: %ld\n", val, arcan_timemillis());
 }
-
 
 #else
 #include <assert.h>
@@ -653,19 +664,19 @@ void arcan_timesleep(unsigned long val)
 	req.tv_sec = floor(val / 1000);
 	val -= req.tv_sec * 1000;
 	req.tv_nsec = val * 1000000;
-	
+
 	while( nanosleep(&req, &rem) == -1 ){
 		assert(errno != EINVAL);
 		if (errno == EFAULT)
 			break;
-		
+
 /* sweeping EINTR introduces an error rate that can grow large,
  * check if the remaining time is less than a threshold */
 		if (errno == EINTR) {
 			req = rem;
 			if (rem.tv_sec * 1000 + (1 + req.tv_nsec) / 1000000 < 4)
 				break;
-		} 
+		}
 	}
 }
 

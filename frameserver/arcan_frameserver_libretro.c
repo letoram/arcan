@@ -46,7 +46,7 @@
 #endif
 
 #ifndef MAX_AXES
-#define MAX_AXES 8 
+#define MAX_AXES 8
 #endif
 
 #ifndef MAX_BUTTONS
@@ -86,12 +86,13 @@ static struct {
 		unsigned long long vframecount;     /* how many video frames have we processed, used to calculate when next frame is supposed to be used */
 		unsigned long long aframecount;     /* audio frame counter, used to determine jitter in samplerate */
 		struct retro_system_av_info avinfo; /* timing according to libretro */
-		
+
 /* statistics */
 		int rebasecount, frameskips, transfercost, framecost;
 		long long int frame_ringbuf[160];
 		long long int drop_ringbuf[40];
-		short int framebuf_ofs, dropbuf_ofs;
+		int xfer_ringbuf[MAX_SHMWIDTH];
+		short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
 
 /* colour conversion / filtering */
 		pixconv_fun converter;
@@ -108,7 +109,7 @@ static struct {
 		file_handle last_fd; /* state management */
 		struct arcan_evctx inevq;
 		struct arcan_evctx outevq;
-		
+
 /* set as a canary after audb at a recalc to detect overflow */
 		uint8_t* audguardb;
 
@@ -125,7 +126,7 @@ static struct {
 /* parent uses an event->push model for input, libretro uses a poll one, so
  * prepare a lookup table that events gets pushed into and libretro can poll */
 		struct input_port input_ports[MAX_PORTS];
-		
+
 		void (*run)();
 		void (*reset)();
 		bool (*load_game)(const struct retro_game_info* game);
@@ -195,10 +196,10 @@ static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp, unsigned 
 
 	if (retroctx.ntscconv)
 		push_ntsc(width, height, retroctx.ntsc_imb, outp);
-	
+
 	return;
 }
- 
+
 static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
 	assert( (uintptr_t)data % 4 == 0 );
@@ -227,7 +228,7 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned
 	uint16_t* interm = retroctx.ntsc_imb;
 	unsigned dh = height >= MAX_SHMHEIGHT ? MAX_SHMHEIGHT : height;
 	unsigned dw =  width >=  MAX_SHMWIDTH ?  MAX_SHMWIDTH : width;
-	
+
 	for (int y = 0; y < dh; y++){
 		for (int x = 0; x < dw; x++){
 			uint16_t val = data[x];
@@ -274,7 +275,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 		outh = height;
 		ntscconv = false;
 	}
-	
+
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (outw != retroctx.shmcont.addr->storage.w || outh != retroctx.shmcont.addr->storage.h){
@@ -322,15 +323,15 @@ static void do_preaudio()
 	retroctx.vframecount = vfc;
 }
 
-/* the better way would be to just drop the videoframes, buffer the audio, 
+/* the better way would be to just drop the videoframes, buffer the audio,
  * calculate the highspeed samplerate and downsample the audio signal */
 static void libretro_skipnframes(unsigned count, bool fastfwd)
 {
 	retroctx.skipframe_v = true;
 	retroctx.skipframe_a = fastfwd;
-	
+
 	long long afc = retroctx.aframecount;
-	
+
 	for (int i = 0; i < count; i++)
 		retroctx.run();
 
@@ -345,6 +346,16 @@ static void libretro_skipnframes(unsigned count, bool fastfwd)
 	retroctx.skipframe_v = false;
 }
 
+static void reset_timing()
+{
+	retroctx.basetime = arcan_timemillis();
+	do_preaudio();
+	retroctx.vframecount = 1;
+	retroctx.aframecount = 1;
+	retroctx.frameskips  = 0;
+	retroctx.rebasecount++;
+}
+
 void libretro_audscb(int16_t left, int16_t right)
 {
 	retroctx.aframecount++;
@@ -353,7 +364,7 @@ void libretro_audscb(int16_t left, int16_t right)
 		return;
 
 /* can happen if we skip a lot and never transfer */
-	if (retroctx.audbuf_ofs + 2 < retroctx.audbuf_sz * 2){
+	if (retroctx.audbuf_ofs + 2 < retroctx.audbuf_sz >> 1){
 		retroctx.audbuf[retroctx.audbuf_ofs++] = left;
 		retroctx.audbuf[retroctx.audbuf_ofs++] = right;
 	}
@@ -387,7 +398,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 				case RETRO_PIXEL_FORMAT_0RGB1555:
 					retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
 				break;
-				
+
 				case RETRO_PIXEL_FORMAT_RGB565:
 					retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;
 				break;
@@ -524,7 +535,7 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev, unsigned i
 				];
 		}
 		break;
-		
+
 		case RETRO_DEVICE_ANALOG:
 			return (int16_t) retroctx.input_ports[port].axes[id];
 		break;
@@ -562,7 +573,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 
 	if (1 == sscanf(label, "PLAYER%d_", &ind) && ind > 0 && ind <= MAX_PORTS && (subtype = strchr(label, '_')) ){
 		subtype++;
-	
+
 		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
 			button--;
 			button = button > remaptbl_sz ? -1 : remaptbl[button];
@@ -629,7 +640,7 @@ static inline void targetev(arcan_event* ev)
 		case TARGET_COMMAND_GRAPHMODE:
 			retroctx.graphmode = tgt->ioevs[0].iv;
 		break;
-		
+
 		case TARGET_COMMAND_NTSCFILTER:
 			toggle_ntscfilter(tgt->ioevs[0].iv);
 		break;
@@ -652,6 +663,7 @@ static inline void targetev(arcan_event* ev)
 			retroctx.preaudiogen = tgt->ioevs[2].iv;
 			retroctx.jitterstep  = tgt->ioevs[3].iv;
 			retroctx.jitterxfer  = tgt->ioevs[4].iv;
+			reset_timing();
 		break;
 
 /* any event not being UNPAUSE is ignored, no frames are processed
@@ -663,15 +675,12 @@ static inline void targetev(arcan_event* ev)
 /* can safely assume there are no other events in the queue after this one,
  * more important for encode etc. that need to flush codecs */
 		case TARGET_COMMAND_EXIT:
-			return; 
+			return;
 		break;
-		
+
 		case TARGET_COMMAND_UNPAUSE:
 			retroctx.pause = false;
-			retroctx.basetime = arcan_timemillis() + retroctx.vframecount * retroctx.mspf;
-			retroctx.vframecount = 0;
-			retroctx.aframecount = 0;
-			do_preaudio();
+			reset_timing();
 		break;
 
 		case TARGET_COMMAND_SETIODEV:
@@ -736,9 +745,9 @@ static inline void flush_eventq(){
 				case EVENT_IO:
 					ioev_ctxtbl(&(ev->data.io), ev->label);
 				break;
-				
-				case EVENT_TARGET: 
-					targetev(ev); 
+
+				case EVENT_TARGET:
+					targetev(ev);
 				break;
 			}
 		}
@@ -754,10 +763,6 @@ static inline bool retroctx_sync()
 	long long int timestamp = arcan_timemillis();
 	retroctx.vframecount++;
 
-	if (retroctx.skipmode == TARGET_SKIP_NONE)
-		return true;
-
-/* TARGET_SKIP_AUTO here */
 	long long int now  = timestamp - retroctx.basetime;
 	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	int left = next - now;
@@ -765,17 +770,12 @@ static inline bool retroctx_sync()
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
 	if (now < 0 || abs( left ) > retroctx.mspf * 60.0){
 		LOG("arcan_frameserver(libretro) -- stall detected, resetting timers.\n");
-		retroctx.basetime = timestamp;
-		do_preaudio();
-		retroctx.vframecount = 1;
-		retroctx.aframecount = 1;
-		retroctx.frameskips  = 0;
-		retroctx.rebasecount++;
+		reset_timing();
 		return true;
 	}
 
 /* more than a frame behind? just skip */
-	if ( left < -1 * retroctx.mspf ){
+	if ( retroctx.skipmode == TARGET_SKIP_AUTO && left < -1 * retroctx.mspf ){
 		retroctx.frameskips++;
 		retroctx.drop_ringbuf[retroctx.dropbuf_ofs] = timestamp;
 		retroctx.dropbuf_ofs = (retroctx.dropbuf_ofs + 1) % (sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]));
@@ -789,7 +789,7 @@ static inline bool retroctx_sync()
 		prewake = retroctx.framecost; /* use last frame cost as an estimate */
 	else if (retroctx.prewake > 0) /* or just a constant number */
 		prewake = retroctx.prewake > retroctx.mspf ? retroctx.mspf : retroctx.prewake;
-	
+
 	if (left > prewake )
 		arcan_timesleep( left - prewake );
 
@@ -808,7 +808,7 @@ static void push_stats()
 
 	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 	STEPMSG(scratch);
-	snprintf(scratch, 64, "%lf fps, %lf Hz", retroctx.avinfo.timing.fps, retroctx.avinfo.timing.sample_rate);
+	snprintf(scratch, 64, "%f fps, %f Hz", (float)retroctx.avinfo.timing.fps, (float)retroctx.avinfo.timing.sample_rate);
 	STEPMSG(scratch);
 	snprintf(scratch, 64, "%d mode, %d preaud, %d/%d jitter", retroctx.skipmode, retroctx.preaudiogen, retroctx.jitterstep, retroctx.jitterxfer);
 	STEPMSG(scratch);
@@ -816,12 +816,12 @@ static void push_stats()
 	STEPMSG(scratch);
 
 	long long int timestamp = arcan_timemillis();
-	snprintf(scratch, 64, "Real (Hz): %lf\n", 1000.0 * (double) retroctx.aframecount / (double)(timestamp - retroctx.basetime));
+	snprintf(scratch, 64, "Real (Hz): %f\n", 1000.0f * (float) retroctx.aframecount / (float)(timestamp - retroctx.basetime));
 	STEPMSG(scratch);
 
 	snprintf(scratch, 64, "cost,wake,xfer: %d, %d, %d ms\n", retroctx.framecost, retroctx.prewake, retroctx.transfercost);
 	STEPMSG(scratch);
-	
+
 	if (retroctx.skipmode == TARGET_SKIP_AUTO){
 		STEPMSG("Frameskip: Auto");
 		snprintf(scratch, 64, "%d skipped", retroctx.frameskips);
@@ -854,7 +854,7 @@ static void push_stats()
 	double minp    = current - dw;
 	double mspf    = retroctx.mspf;
 	double startp  = (double) current - modf(current, &mspf);
-	
+
 	while ( startp - (stepc * retroctx.mspf) >= minp ){
 		draw_vline(retroctx.graphing, startp - (stepc * retroctx.mspf) - minp, yv + PXFONT_HEIGHT - 1, -(PXFONT_HEIGHT-1), 0xff00ff00);
 		stepc++;
@@ -864,7 +864,7 @@ static void push_stats()
 	size_t cellsz = sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf[0]);
 
 #define STEPBACK(X) ( (X) > 0 ? (X) - 1 : cellsz - 1)
-	
+
 	int ofs = STEPBACK(retroctx.framebuf_ofs);
 
 	while (true){
@@ -889,10 +889,39 @@ static void push_stats()
 		draw_vline(retroctx.graphing, current - retroctx.drop_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff0000ff);
 		ofs = STEPBACK(ofs);
 	}
-	
-/* waveform alignment, fill remaining area --
- * vertically, just float each channel into 0..1
- * horizontaly */
+
+/* lastly, the transfer costs, sweep twice, first for Y scale then for drawing */
+	cellsz = sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]);
+	ofs = STEPBACK(retroctx.xferbuf_ofs);
+	int maxv = 0, count = 0;
+
+	while( count < retroctx.shmcont.addr->storage.w ){
+		if (retroctx.xfer_ringbuf[ ofs ] > maxv)
+			maxv = retroctx.xfer_ringbuf[ ofs ];
+
+		count++;
+		ofs = STEPBACK(ofs);
+	}
+
+	if (maxv > 0){
+		yv += PXFONT_HEIGHT * 2;
+		float yscale = (float)(PXFONT_HEIGHT * 2) / (float) maxv;
+		ofs = STEPBACK(retroctx.xferbuf_ofs);
+		count = 0;
+		draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
+
+		while (count < dw){
+			int sample = retroctx.xfer_ringbuf[ofs];
+
+			if (sample > -1)
+				draw_vline(retroctx.graphing, dw - count - 1, yv + (PXFONT_HEIGHT * 2), -1 * yscale * sample, 0xff00ff00);
+			else
+				draw_vline(retroctx.graphing, dw - count - 1, yv + (PXFONT_HEIGHT * 2), -1 * PXFONT_HEIGHT * 2, 0xff0000ff);
+
+			ofs = STEPBACK(ofs);
+			count++;
+		}
+	}
 }
 
 #undef STEPBACK
@@ -911,9 +940,9 @@ void add_jitter(int num)
  * work with file-system etc. etc. There are a few ideas for how this can be handled:
  * (1) use PIN to intercept all syscalls in the loaded library (x86/x86-64 only though)
  * (2) using a small loader and PTRACE-TRACEME PTRACE_O_TRACESYSGOOD then patch the syscalls so they redirect through a jumptable
- *     trigger on installation of signal handlers etc. 
+ *     trigger on installation of signal handlers etc.
  * (3) use FUSE as a means of intercepting file-system related syscalls
- * (4) LD_PRELOAD ourselves, replacing the usual batch of open/close/,... wrappers 
+ * (4) LD_PRELOAD ourselves, replacing the usual batch of open/close/,... wrappers
  */
 
 /* map up a libretro compatible library resident at fullpath:game,
@@ -959,7 +988,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, retroctx.sysinfo.valid_extensions);
-	
+
 /* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
 		ssize_t bufsize;
 		retroctx.gameinfo.path = strdup( gamename );
@@ -1004,7 +1033,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 
-		LOG("arcan_frameserver(libretro) -- setting up resampler, %lf => %d.\n", retroctx.avinfo.timing.sample_rate, audio_samplerate);
+		LOG("arcan_frameserver(libretro) -- video timing: %f fps (%f ms), audio samplerate: %f Hz\n", (float)retroctx.avinfo.timing.sample_rate,
+			(float)retroctx.mspf, (float)retroctx.avinfo.timing.sample_rate);
+
+		LOG("arcan_frameserver(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, audio_samplerate);
 		retroctx.resampler = speex_resampler_init(audio_channels, retroctx.avinfo.timing.sample_rate, audio_samplerate, 3 /* quality */, &errc);
 
 /* intermediate buffer for resampling and not relying on a well-behaving shmpage */
@@ -1043,7 +1075,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			"%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version
 			);
 		arcan_event_enqueue(&retroctx.outevq, &outev);
-		
+
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
 	* parent event processing as well */
 		outev.data.external.framestatus.framenumber = 0;
@@ -1077,7 +1109,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		do_preaudio();
 	while (retroctx.shmcont.addr->dms){
-
 /* since pause and other timing anomalies are part of the eventq flush, take care of it
  * outside of frame frametime measurements */
 			if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
@@ -1145,8 +1176,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				stop = arcan_timemillis();
 
 				retroctx.transfercost = stop - start;
-			};
+				retroctx.xfer_ringbuf[ retroctx.xferbuf_ofs ] = retroctx.transfercost;
+			}
+			else
+				retroctx.xfer_ringbuf[ retroctx.xferbuf_ofs ] = -1;
 
+			retroctx.xferbuf_ofs = (retroctx.xferbuf_ofs + 1) % ( sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]) );
 			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
 		}
 
