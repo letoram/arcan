@@ -110,7 +110,7 @@ struct shader_cont {
 };
 
 static int sizetbl[7] = {
-	sizeof(bool),
+	sizeof(int),
 	sizeof(int),
 	sizeof(float),
 	sizeof(float) * 2,

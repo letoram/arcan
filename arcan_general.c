@@ -632,12 +632,9 @@ void arcan_timesleep(unsigned long val)
 
 	unsigned long int start = arcan_timemillis();
 
-	arcan_warning("sleep(%d), start: %ld\n", val, start);
 	while (val > (arcan_timemillis() - start)){
         Sleep( spinLock ? 0 : val );
-		arcan_warning("pass done.\n");
 	}
-	arcan_warning("sleep(%d), stop: %ld\n", val, arcan_timemillis());
 }
 
 #else
