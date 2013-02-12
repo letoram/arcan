@@ -1,6 +1,6 @@
 /*
   Hyllian's (1..5)xBR(A..C) Shader
- 
+
   Copyright (C) 2011/2012 Hyllian/Jararaca - sergiogdb@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -194,6 +194,11 @@ void main()
 	vec4 final60 = vec4(nc60)*fx60;
 
 	vec4 maximo = max(max(final30, final60), final45);
+
+	pix1 = texture2D(map_diffuse, tc).rgb;
+	pix2 = pix1;
+	blend1 = 1.0;
+	blend2 = 1.0;
 
 	if (nc.x) {pix1 = px.x ? F : H; blend1 = maximo.x;}
 	else if (nc.y) {pix1 = px.y ? B : F; blend1 = maximo.y;}

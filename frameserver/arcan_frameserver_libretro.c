@@ -259,7 +259,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	if (!data || retroctx.skipframe_v)
 		return;
 
-/* width / height can be changed without notice, so we have to be ready for the fact that
+/* width / height can be changed without notice, so we retuave to be ready for the fact that
  * the cost of conversion can suddenly move outside the allowed boundaries, then NTSC is ignored */
 	unsigned outw = width;
 	unsigned outh = height;
