@@ -1539,6 +1539,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					arcan_lua_tblstr(ctx, "kind", "state_size", top);
 					arcan_lua_tblnum(ctx, "state_size", ev->data.external.state_sz, top);
 				break;
+				case EVENT_EXTERNAL_NOTICE_RESOURCE:
+					arcan_lua_tblstr(ctx, "kind", "resource_status", top);
+					arcan_lua_tblstr(ctx, "message", ev->data.external.message, top);
+				break;
 				default:
 					arcan_lua_tblstr(ctx, "kind", "unknown", top);
 					arcan_lua_tblnum(ctx, "kind_num", ev->kind, top);

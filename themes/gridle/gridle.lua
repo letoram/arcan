@@ -509,9 +509,18 @@ function setup_gridview()
 	
 	imagery.white = fill_surface(1,1,255,255,255);
 	image_tracetag(imagery.white, "white");
+
+	imagery.loading = load_image("images/colourwheel.png");
+	resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
+	move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1));
+	image_tracetag(imagery.loading, "loading");
 	
+	imagery.nosave  = load_image("images/brokensave.png");
+	image_tracetag(imagery.nosave, "nosave");
+
 	imagery.disconnected = load_image("images/disconnected.png");
 	image_tracetag(imagery.disconnected, "disconnected");
+
 	local props = image_surface_properties(imagery.disconnected);
 	if (props.width > VRESW) then props.width = VRESW; end
 	if (props.height > VRESH) then props.height = VRESH; end
@@ -1598,6 +1607,23 @@ function gridle_internal_setup(source, datatbl, gametbl)
 	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
+function remove_loaded()
+	status_loading = false;
+	delete_image(imagery.loadingbg);
+	hide_image(imagery.loading);
+end
+
+function show_loading()
+	status_loading = true;
+	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
+	blend_image(imagery.loadingbg, 0.6, 10);
+	order_image(imagery.loadingbg, max_current_image_order());
+	order_image(imagery.loading, max_current_image_order() + 1);
+	blend_image(imagery.loading, 1.0, 10);
+	rotate_image(imagery.loading, 0);
+	rotate_image(imagery.loading, 2048, 200);
+end
+
 function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
 
@@ -1621,6 +1647,10 @@ function gridle_internal_status(source, datatbl)
 
 -- it's up to the user to press escape
 	elseif (datatbl.kind == "frameserver_terminated") then
+		if (status_loading) then
+			remove_loaded();
+		end
+	
 		order_image(imagery.crashimage, max_current_image_order());
 		blend_image(imagery.crashimage, 0.8);
 
@@ -1632,9 +1662,22 @@ function gridle_internal_status(source, datatbl)
 
 	elseif (datatbl.kind == "state_size") then
 		if (datatbl.state_size <= 0) then
-			settings.capabilities.snapshot = false;
+		settings.capabilities.snapshot = false;
+		local vid = instance_image(imagery.nosave);
+		image_mask_clear(vid, MASK_OPACITY);
+		show_image(vid);
+		order_image(vid, max_current_image_order());
+		expire_image(vid, 50);
+		blend_image(vid, 0.0, 50);
 		end
-	else
+	elseif (datatbl.kind == "frame") then
+-- just ignore
+	elseif (datatbl.kind == "resource_status") then
+		if (datatbl.message == "loading") then
+			show_loading();
+		elseif( datatbl.message == "loaded" or "failed") then
+			remove_loaded();
+		end
 	end
 end
 

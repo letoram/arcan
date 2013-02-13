@@ -1017,9 +1017,28 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		( (void(*)(retro_input_poll_t)) libretro_requirefun("retro_set_input_poll"))(libretro_pollcb);
 		( (void(*)(retro_input_state_t)) libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
 
+/* for event enqueue, shared memory interface is needed */
+		retroctx.shmcont = frameserver_getshm(keyfile, true);
+		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
+		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false);
+		
 /* load the game, and if that fails, give up */
-		if ( retroctx.load_game( &retroctx.gameinfo ) == false )
+		arcan_event outev = {.category = EVENT_EXTERNAL,
+			.kind = EVENT_EXTERNAL_NOTICE_RESOURCE
+		};
+		size_t msgsz = sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]);
+
+		snprintf(outev.data.external.message, msgsz, "loading");
+		arcan_event_enqueue(&retroctx.outevq, &outev);
+		
+		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
+			snprintf(outev.data.external.message, msgsz, "failed");
+			arcan_event_enqueue(&retroctx.outevq, &outev);
 			return;
+		}
+
+		snprintf(outev.data.external.message, msgsz, "loaded");
+		arcan_event_enqueue(&retroctx.outevq, &outev);
 
 		( (void(*)(struct retro_system_av_info*)) libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
 
@@ -1043,10 +1062,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * sizeof(uint16_t) * 2;
 		retroctx.audbuf = malloc(retroctx.audbuf_sz);
 		memset(retroctx.audbuf, 0, retroctx.audbuf_sz);
-		retroctx.audbuf_ofs = 0; /* initialize with some silence */
-
-		retroctx.shmcont = frameserver_getshm(keyfile, true);
-		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 
 		if (!frameserver_shmpage_resize(&retroctx.shmcont,
 			retroctx.avinfo.geometry.max_width,
@@ -1061,19 +1076,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.audguardb[0] = 0xde;
 		retroctx.audguardb[1] = 0xad;
 
-		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false);
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 
 /* send some information on what core is actually loaded etc. */
-		arcan_event outev = {
-			.category = EVENT_EXTERNAL,
-			.kind = EVENT_EXTERNAL_NOTICE_MESSAGE
-		};
-
-		snprintf(outev.data.external.message,
-			sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]),
-			"%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version
-			);
+		outev.kind = EVENT_EXTERNAL_NOTICE_MESSAGE;
+		snprintf(outev.data.external.message, msgsz, "%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
