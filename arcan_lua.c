@@ -1535,6 +1535,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					arcan_lua_tblnum(ctx, "frame", ev->data.external.framestatus.framenumber, top);
 /* FIXME: extract input bitfields, and expose those as well */
 				break;
+				case EVENT_EXTERNAL_NOTICE_STATESIZE:
+					arcan_lua_tblstr(ctx, "kind", "state_size", top);
+					arcan_lua_tblnum(ctx, "state_size", ev->data.external.state_sz, top);
+				break;
 				default:
 					arcan_lua_tblstr(ctx, "kind", "unknown", top);
 					arcan_lua_tblnum(ctx, "kind_num", ev->kind, top);
@@ -1569,17 +1573,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		int top = lua_gettop(ctx);
 
 		switch(ev->kind){
-#ifdef _DEBUG
-/* this little hack will emit (in debug builds) high frequent status events each time a video or audio frame is requested */
-			case EVENT_FRAMESERVER_BUFFERSTATUS:
-				arcan_lua_tblstr(ctx, "kind", "bufferstatus", top);
-				arcan_lua_tblnum(ctx, "maxv", ev->data.frameserver.l_vbuffer, top);
-				arcan_lua_tblnum(ctx, "maxa", ev->data.frameserver.l_abuffer, top);
-				arcan_lua_tblnum(ctx, "curv", ev->data.frameserver.c_vbuffer, top);
-				arcan_lua_tblnum(ctx, "cura", ev->data.frameserver.c_abuffer, top);
-			break;
-#endif
-
 			case EVENT_FRAMESERVER_LOOPED :
 				arcan_lua_tblstr(ctx, "kind", "frameserver_loop", top);
 				dst_cb = ev->data.frameserver.otag;

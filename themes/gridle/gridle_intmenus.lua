@@ -1180,12 +1180,8 @@ local function configure_players(dstname)
 end
 
 local function add_gamelbls( lbltbl, ptrtbl )
+	local captbl = settings.capabilities;
 	local cg = current_game();
-	local captbl = cg.capabilities;
-
-	if not (captbl.snapshot or captbl.reset) then
-			return false;
-	end
 
 	if (captbl.snapshot) then
 		if ( (# get_saveslist( cg )) > 0 ) then
