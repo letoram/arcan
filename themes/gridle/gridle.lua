@@ -13,31 +13,33 @@ imagery = {
 	temporary = {}
 };
 
-soundmap = {
-	MENU_TOGGLE       = load_asample("sounds/menu_toggle.wav"),
-	MENU_FADE         = load_asample("sounds/menu_fade.wav"),
-	MENU_SELECT       = load_asample("sounds/menu_select.wav"),
-	MENU_FAVORITE     = load_asample("sounds/launch_external.wav"),
-	MENUCURSOR_MOVE   = load_asample("sounds/move.wav"),
-	GRIDCURSOR_MOVE   = load_asample("sounds/gridcursor_move.wav"),
-	GRID_NEWPAGE      = load_asample("sounds/grid_newpage.wav"),
-	GRID_RANDOM       = load_asample("sounds/click.wav"),
-	SUBMENU_TOGGLE    = load_asample("sounds/menu_toggle.wav"),
-	SUBMENU_FADE      = load_asample("sounds/menu_fade.wav"),
-	LAUNCH_INTERNAL   = load_asample("sounds/launch_internal.wav"),
-	LAUNCH_EXTERNAL   = load_asample("sounds/launch_external.wav"),
-	SWITCH_GAME       = load_asample("sounds/switch_game.wav"),
-	DETAILVIEW_TOGGLE = load_asample("sounds/detailview_toggle.wav"),
-	DETAILVIEW_FADE   = load_asample("sounds/detailview_fade.wav"),
-	DETAILVIEW_SWITCH = load_asample("sounds/detailview_switch.wav");
-	SET_FAVORITE      = load_asample("sounds/set_favorite.wav"),
-	CLEAR_FAVORITE    = load_asample("sounds/clear_favorite.wav"),
-	OSDKBD_TOGGLE     = load_asample("sounds/osdkbd_show.wav"),
-	OSDKBD_MOVE       = load_asample("sounds/gridcursor_move.wav"),
-	OSDKBD_ENTER      = load_asample("sounds/osdkb.wav"),
-	OSDKBD_ERASE      = load_asample("sounds/click.wav"),
-	OSDKBD_SELECT     = load_asample("sounds/osdkbd_select.wav"),
-	OSDKBD_HIDE       = load_asample("sounds/osdkbd_hide.wav")
+soundmap = {};
+
+soundmap_triggers = {
+	MENU_TOGGLE       = "menu_toggle.wav",
+	MENU_FADE         = "menu_fade.wav",
+	MENU_SELECT       = "menu_select.wav",
+	MENU_FAVORITE     = "launch_external.wav",
+	MENUCURSOR_MOVE   = "move.wav",
+	GRIDCURSOR_MOVE   = "gridcursor_move.wav",
+	GRID_NEWPAGE      = "grid_newpage.wav",
+	GRID_RANDOM       = "click.wav",
+	SUBMENU_TOGGLE    = "menu_toggle.wav",
+	SUBMENU_FADE      = "menu_fade.wav",
+	LAUNCH_INTERNAL   = "launch_internal.wav",
+	LAUNCH_EXTERNAL   = "launch_external.wav",
+	SWITCH_GAME       = "switch_game.wav",
+	DETAILVIEW_TOGGLE = "detailview_toggle.wav",
+	DETAILVIEW_FADE   = "detailview_fade.wav",
+	DETAILVIEW_SWITCH = "detailview_switch.wav";
+	SET_FAVORITE      = "set_favorite.wav",
+	CLEAR_FAVORITE    = "clear_favorite.wav",
+	OSDKBD_TOGGLE     = "osdkbd_show.wav",
+	OSDKBD_MOVE       = "gridcursor_move.wav",
+	OSDKBD_ENTER      = "osdkb.wav",
+	OSDKBD_ERASE      = "click.wav",
+	OSDKBD_SELECT     = "osdkbd_select.wav",
+	OSDKBD_HIDE       = "osdkbd_hide.wav"
 };
 
  BGLAYER = 0;
@@ -53,6 +55,8 @@ settings = {
 
 	effect_gain = 1.0,
 
+	soundmap = "8bit",
+	
 	bgname = "smstile.png",
 	bgeffect = "none.fShader",
 	bg_rh = VRESH / 32,
@@ -175,6 +179,9 @@ settings = {
 	view_mode = "Grid"
 };
 
+sysicon_remap = {};
+sysicon_remap["Super Nintendo (SNES)"] = "snes";
+
 skipremap = {};
 skiptbl = {};
 skipremap["Automatic"] = 0;
@@ -250,6 +257,30 @@ function broadcast_game(gametbl, playing)
 	end
 end
 
+function load_soundmap(name)
+
+	for key, val in pairs(soundmap) do
+		if (val ~= nil and val ~= BADID) then
+			delete_audio(val);
+		end
+	end
+
+	soundmap = {};
+	
+	for key, val in pairs(soundmap_triggers) do
+		local resstr = "soundmaps/" .. name .. "/" .. val;
+
+		if resource(resstr, ALL_RESOURCES) then
+			soundmap[key] = load_asample(resstr);
+		elseif resource("soundmaps/default/" .. val) then
+			soundmap[key] = load_asample(resstr);
+		else
+			soundmap[key] = BADID;
+		end
+	end
+	
+end
+
 function gridle_launchexternal()
 	erase_grid(true);
 	play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -265,6 +296,7 @@ function gridle_launchinternal()
 		delete_image(internal_vid);
 	end
 
+	settings.capabilities = current_game().capabilities;
 	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -274,10 +306,10 @@ error_nogames = nil;
 settings.play_audio = play_audio;
 
 local function menu_bgupdate() 
-	grab_sysicons();
 	zap_whitegrid();
-	build_whitegrid();
+	grab_sysicons();
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh)	
+	build_whitegrid();
 end
 
 function gridle()
@@ -342,7 +374,8 @@ function gridle()
 
 -- use the DB theme-specific key/value store to populate the settings table
 	load_settings();
-
+	load_soundmap(settings.soundmap);
+	
 -- network remote connection switch on / off
 	if ( network_toggle() ) then
 		push_video_context();
@@ -441,7 +474,7 @@ function gridle()
 	
 	settings.iodispatch["LAUNCH"] = function(iotbl)
 		if (not current_game().capabilities) then return; end
-
+		
 		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
 			and current_game().capabilities.internal_launch;
 
@@ -1220,7 +1253,8 @@ function build_whitegrid()
 				local gridbg = BADID;
 	
 				if (gametbl and gametbl.system and settings.tilebg == "Sysicons") then
-					local icon = imagery.sysicons[ string.lower(gametbl.system) ];
+					local syslbl = sysicon_remap[ gametbl.system ] and sysicon_remap[ gametbl.system ] or string.lower(gametbl.system);
+					local icon = imagery.sysicons[ syslbl ];
 					if (icon and valid_vid(icon)) then 
 						gridbg = instance_image(icon); 
 						image_tracetag(gridbg, "system icon instance");
@@ -1595,6 +1629,12 @@ function gridle_internal_status(source, datatbl)
 		end
 	elseif (datatbl.kind == "message") then
 		spawn_warning(datatbl.message);
+
+	elseif (datatbl.kind == "state_size") then
+		if (datatbl.state_size <= 0) then
+			settings.capabilities.snapshot = false;
+		end
+	else
 	end
 end
 
@@ -1813,6 +1853,8 @@ function load_settings()
 	load_key_str("tilebg", "tilebg", settings.tilebg);
 	load_key_str("bgname", "bgname", settings.bgname);
 	load_key_str("bgeffect", "bgeffect", settings.bgeffect);
+	load_key_str("soundmap", "soundmap", settings.soundmap);
+	
 	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
 	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
 	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);

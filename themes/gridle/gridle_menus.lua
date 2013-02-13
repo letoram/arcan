@@ -309,6 +309,20 @@ local function efftrigger(label, save)
 	
 end
 
+local function setsndfun(label, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.soundmap = label;
+
+	if (save) then
+		store_key("soundmap", settings.soundmap);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
+	end
+
+	load_soundmap(label);
+end
+
 local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
 
 add_submenu(backgroundlbls, backgroundptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
@@ -317,9 +331,9 @@ add_submenu(backgroundlbls, backgroundptrs, "Tile (vertical)...", "bg_rh", gen_n
 add_submenu(backgroundlbls, backgroundptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, bgtrig));
 add_submenu(backgroundlbls, backgroundptrs, "Animate (horizontal)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, bgtrig));
 add_submenu(backgroundlbls, backgroundptrs, "Animate (vertical)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, bgtrig));
+add_submenu(backgroundlbls, backgroundptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
+add_submenu(backgroundlbls, backgroundptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));
 
-add_submenu(gridviewlbls, gridviewptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
-add_submenu(gridviewlbls, gridviewptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));
 add_submenu(gridviewlbls, gridviewptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
 add_submenu(gridviewlbls, gridviewptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
 add_submenu(gridviewlbls, gridviewptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
@@ -331,6 +345,7 @@ add_submenu(gridviewlbls, gridviewptrs, "Cell Height...", "cell_height", gen_num
 add_submenu(settingslbls, settingsptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
 add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
+add_submenu(settingslbls, settingsptrs, "Soundmaps...", "soundmap", build_globmenu("soundmaps/*", setsndfun, ALL_RESOURCES));
 add_submenu(settingslbls, settingsptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 

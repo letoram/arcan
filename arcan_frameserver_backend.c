@@ -420,18 +420,6 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		if (src->nopts && src->vfq.front_cell != NULL)
 			return FFUNC_RV_GOTFRAME;
 
-	#ifdef _DDEBUG
-		arcan_event ev = {.kind = EVENT_FRAMESERVER_BUFFERSTATUS,
-			.category = EVENT_FRAMESERVER,
-			.data.frameserver.c_vbuffer = src->vfq.c_cells,
-			.data.frameserver.c_abuffer = src->afq.c_cells,
-			.data.frameserver.l_vbuffer = src->vfq.n_cells,
-			.data.frameserver.l_abuffer = src->afq.n_cells,
-			.data.frameserver.otag = src->tag
-		};
-
-		arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-#endif
 		if (src->vfq.front_cell) {
 			int64_t now = arcan_frametime() - src->starttime;
 

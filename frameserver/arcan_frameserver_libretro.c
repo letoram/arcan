@@ -775,7 +775,7 @@ static inline bool retroctx_sync()
 	}
 
 /* more than a frame behind? just skip */
-	if ( retroctx.skipmode == TARGET_SKIP_AUTO && left < -1 * retroctx.mspf ){
+	if ( retroctx.skipmode == TARGET_SKIP_AUTO && left < -retroctx.mspf ){
 		retroctx.frameskips++;
 		retroctx.drop_ringbuf[retroctx.dropbuf_ofs] = timestamp;
 		retroctx.dropbuf_ofs = (retroctx.dropbuf_ofs + 1) % (sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]));
@@ -927,7 +927,7 @@ static void push_stats()
 #undef STEPBACK
 #undef STEPMSG
 
-void add_jitter(int num)
+static inline void add_jitter(int num)
 {
 	if (num < 0)
 		arcan_timesleep( rand() % abs(num) );
@@ -1079,7 +1079,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
 	* parent event processing as well */
 		outev.data.external.framestatus.framenumber = 0;
-		retroctx.reset();
+//		retroctx.reset();
 
 /* basetime is used as epoch for all other timing calculations */
 		retroctx.basetime = arcan_timemillis();
