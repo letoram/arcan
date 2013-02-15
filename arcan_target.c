@@ -320,20 +320,8 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 		return;
 
 /* separate size tracking due to NTSC etc. */
-	global.sourcew = w;
-	global.sourceh = h;
-
-	if (global.ntscconv && SNES_NTSC_OUT_WIDTH(w) <= MAX_SHMWIDTH && h * 2 <= MAX_SHMHEIGHT){
-		trace("rebuilding NTSC settings.\n");
-
-		free(global.ntsc_imb);
-		global.ntsc_imb = malloc(w * h * 2);
-		w = SNES_NTSC_OUT_WIDTH(w);
-		h *= 2;
-	}
-
-	global.width  = w;
-	global.height = h;
+	global.width = global.sourcew = w;
+	global.height = global.sourceh = h;
 
 	frameserver_shmpage_resize( &(global.shared), w, h, bpp, 0, 0 );
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
@@ -341,7 +329,10 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 
 /* just make sure the alpha channel is set as the parent process will map it to a texture way before
  * we have data ready to be stored */
-	memset(global.vidp, 0x000000ff, w * h * 4);
+	uint32_t px = 0xff000000;
+	uint32_t* vidp = (uint32_t*) global.vidp;
+	for (int i = 0; i < w * h * 4; i++)
+		*vidp = px;
 }
 
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
@@ -486,7 +477,6 @@ static void toggle_ntscfilter()
 {
 	if (global.ntscconv){
 		trace("toggle NTSC off.\n");
-
 /* these need to lock as we can't assume video rendering is coming 
  * from the same threading context */
 		sem_wait(global.shared.vsem);
@@ -506,7 +496,7 @@ static void toggle_ntscfilter()
 		global.ntscconv = true;
 		global.desfmt = PixelFormat_RGB565;
 		frameserver_shmpage_resize( &(global.shared), 
-		SNES_NTSC_OUT_WIDTH(global.width), global.height * 2, 4, 0, 0 );
+		SNES_NTSC_OUT_WIDTH(global.width), global.height * sizeof(uint16_t), 4, 0, 0 );
 		global.ntsc_imb = malloc(global.width * global.height * 2);
 		
 		sem_post(global.shared.vsem);
@@ -797,7 +787,9 @@ void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable)
 	
 	ARCAN_SDL_GL_SwapBuffers();
 
-//	forwardtbl.glx_swap_buffers(dpy, drawable); 
+/* uncommenting this would allow the target application to render as usual
+ *	forwardtbl.glx_swap_buffers(dpy, drawable);
+ */
 }
 
 Bool ARCAN_XQueryPointer(Display* display, Window w, Window* root_return, Window* child_return, int* rxret, int* ryret, int* wxret, int* wyret, unsigned* maskret)

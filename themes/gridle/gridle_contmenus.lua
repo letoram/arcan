@@ -25,7 +25,7 @@ local launchlbls = {
 };
 
 local launchptrs = {};
-launchptrs["External"] = function() 
+launchptrs["External"] = function()
 	settings.iodispatch["MENU_ESCAPE"](false, nil, true); 
 	settings.iodispatch["MENU_ESCAPE"](false, nil, true); 
 	gridle_launchexternal(); 
@@ -112,12 +112,8 @@ end
 function gridlemenu_context( gametbl )
 	local mainlbls = {"Quickfilter"};
 	
-	griddispatch = settings.iodispatch;
-	settings.iodispatch = {};
-	gridle_oldinput = gridle_input;
-	gridle_input = gridle_dispatchinput;
-	
-	gridlemenu_defaultdispatch();
+	local itbl = {};
+	gridlemenu_defaultdispatch(itbl);
 
 -- we'll resort to the aspect ratio of the cursor_vid() no matter what,
 -- if we have a loaded movie though, we'll instance that
@@ -162,16 +158,19 @@ function gridlemenu_context( gametbl )
 		menu_spawnmenu(restbl, resptr, {});
 	end
 
-	parent_escapefun = settings.iodispatch["MENU_ESCAPE"];
-	settings.iodispatch["MENU_ESCAPE"] = function(key, store, silent)
+	itbl["MENU_ESCAPE"] = function(key, store, silent)
+		current_menu:destroy();
+		
 		if (current_menu.parent == nil) then
 			blend_image(imagery.zoomed, 0.0, settings.fadedelay);
 			expire_image(imagery.zoomed, settings.fadedelay);
 			imagery.zoomed = BADID;
+			dispatch_pop();
+		else
+			current_menu = current_menu.parent;
 		end
-		parent_escapefun(key, store, silent);
+		
 	end
-	settings.iodispatch["MENU_LEFT"] = settings.iodispatch["MENU_ESCAPE"];
 
 	if (gametbl.capabilities) then
 		if (gametbl.capabilities.external_launch and gametbl.capabilities.internal_launch) then
@@ -179,17 +178,24 @@ function gridlemenu_context( gametbl )
 			ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end
 		elseif (gametbl.capabilities.external_launch) then 
 			table.insert(mainlbls, "Launch External");
-			ptrs[ "Launch External" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchexternal(); end 
+			ptrs[ "Launch External" ] = function()
+				settings.iodispatch["MENU_ESCAPE"](false, nil, true);
+				gridle_launchexternal();
+		end
 		else
 			table.insert(mainlbls, "Launch Internal");
-			ptrs[ "Launch Internal" ] = function() settings.iodispatch["MENU_ESCAPE"](false, nil, true); gridle_launchinternal(); end
+			ptrs[ "Launch Internal" ] = function()
+				settings.iodispatch["MENU_ESCAPE"](false, nil, true);
+				gridle_launchinternal();
+			end
 		end
 	end
 
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = ptrs;
 	current_menu.parent = nil;
-	
+
+	dispatch_push(itbl, "context_menu");
 	current_menu:show();
 	move_image(current_menu.anchor, 10, 120, settings.fadedelay);	
 end

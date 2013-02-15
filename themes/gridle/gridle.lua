@@ -20,7 +20,6 @@ soundmap_triggers = {
 	MENU_FADE         = "menu_fade.wav",
 	MENU_SELECT       = "menu_select.wav",
 	MENU_FAVORITE     = "launch_external.wav",
-	MENUCURSOR_MOVE   = "move.wav",
 	GRIDCURSOR_MOVE   = "gridcursor_move.wav",
 	GRID_NEWPAGE      = "grid_newpage.wav",
 	GRID_RANDOM       = "click.wav",
@@ -70,6 +69,7 @@ settings = {
 	viewmode = "Grid",
 	scalemode = "Keep Aspect",
 	iodispatch = {},
+	dispatch_stack = {},
 
 	fadedelay = 10,
 	transitiondelay = 30,
@@ -130,7 +130,7 @@ settings = {
 	crt_gaussian  = true,
 	crt_oversample = true,
 	crt_linearproc = true,
-	
+
 	vector_linew = 1,
 	vector_pointsz = 2,
 	vector_hblurscale = 0.6,
@@ -218,6 +218,38 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
+function dispatch_push(tbl, name, triggerfun)
+	local newtbl = {};
+	newtbl.table = tbl;
+	newtbl.name = name;
+	newtbl.dispfun = triggerfun and triggerfun or gridle_dispatchinput;
+	
+	table.insert(settings.dispatch_stack, newtbl);
+	settings.iodispatch = tbl;
+	gridle_input = newtbl.dispfun;
+	
+--	print("push:")
+--	for ind, val in ipairs(settings.dispatch_stack) do
+--		print(val.name);
+--	end
+--	print("/push")
+end
+
+function dispatch_pop()
+	if (#settings.dispatch_stack <= 1) then
+		settings.dispatch = {};
+		gridle_input = gridle_dispatchinput;
+	else
+		table.remove(settings.dispatch_stack, #settings.dispatch_stack);
+		local last = settings.dispatch_stack[#settings.dispatch_stack];
+
+--		print("stack pop, revert to:", last.name);
+		settings.iodispatch = last.table;
+		gridle_input = last.dispfun;
+	end
+
+end
+
 function string.split(instr, delim)
 	local res = {};
 	local strt = 1;
@@ -297,6 +329,12 @@ function gridle_launchinternal()
 	end
 
 	settings.capabilities = current_game().capabilities;
+	settings.last_message = "";
+
+	local tmptbl = {};
+	tmptbl["MENU_ESCAPE"] = settings.iodispatch["MENU_ESCAPE"];
+	dispatch_push(tmptbl, "internal loading");
+
 	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -363,6 +401,16 @@ function gridle()
 -- keep an active list of available games, make sure that we have something to play/show
 -- since we want a custom sort, we'll have to keep a table of all the games (expensive)
 	settings.games = list_games( {} );
+	settings.internal_targets = {};
+
+	local tgtlist = list_targets();
+	for	ind, val in ipairs(tgtlist) do
+		local caps = launch_target_capabilities( val );
+
+		if (caps.internal_launch) then
+			table.insert(settings.internal_targets, val);
+		end
+	end
 
 	if (not settings.games or #settings.games == 0) then
 		error_nogames();
@@ -389,19 +437,20 @@ function gridle()
 	
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
 	kbd_repeat(settings.repeatrate);
-	
+
+	local imenu = {};
 -- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
-	settings.iodispatch["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
-	settings.iodispatch["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
-	settings.iodispatch["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
-	settings.iodispatch["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
-	settings.iodispatch["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
-	settings.iodispatch["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
-	settings.iodispatch["QUICKSAVE"]    = function(iotbl) end
-	settings.iodispatch["QUICKLOAD"]    = function(iotbl) end
+	imenu["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
+	imenu["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
+	imenu["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
+	imenu["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
+	imenu["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
+	imenu["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
+	imenu["QUICKSAVE"]    = function(iotbl) end
+	imenu["QUICKLOAD"]    = function(iotbl) end
 	
-	settings.iodispatch["FLAG_FAVORITE"]= function(iotbl)
+	imenu["FLAG_FAVORITE"]= function(iotbl)
 		local ind = table.find(settings.favorites, current_game().title);
 		
 		if (ind == nil) then -- flag
@@ -423,20 +472,19 @@ function gridle()
 		end
 	end
 
-	settings.iodispatch["OSD_KEYBOARD"]  = function(iotbl)
+	imenu["OSD_KEYBOARD"]  = function(iotbl)
 		play_audio(soundmap["OSDKBD_TOGGLE"]);
 		osdkbd:show();
-		settings.inputfun = gridle_input;
-		gridle_input = osdkbd_inputcb;
+		dispatch_push({}, "osd keyboard", osdkbd_inputcb);
 	end
 
-	settings.iodispatch["SWITCH_VIEW"] = function(iotbl)
+	imenu["SWITCH_VIEW"] = function(iotbl)
 		play_audio( soundmap["DETAILVIEW_TOGGLE"] );
 		imagery.sysicons = nil;
 		gridle_customview();
 	end
 	
-	settings.iodispatch["DETAIL_VIEW"]  = function(iotbl)
+	imenu["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
 		local key = find_cabinet_model(gametbl);
 
@@ -462,17 +510,17 @@ function gridle()
 		end
 	end
 	
-	settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
+	imenu["MENU_TOGGLE"]  = function(iotbl)
 		play_audio(soundmap["MENU_TOGGLE"]);
 		gridlemenu_settings(gridlemenu_filterchanged, menu_bgupdate); 
 	end
 	
-	settings.iodispatch["CONTEXT"] = function(iotbl)
+	imenu["CONTEXT"] = function(iotbl)
 		play_audio(soundmap["MENU_TOGGLE"]);
 		gridlemenu_context( current_game() );
 	end
 	
-	settings.iodispatch["LAUNCH"] = function(iotbl)
+	imenu["LAUNCH"] = function(iotbl)
 		if (not current_game().capabilities) then return; end
 		
 		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
@@ -486,6 +534,7 @@ function gridle()
 		end
 	end
 
+	dispatch_push(imenu, "default handler");
 	build_fadefunctions();
 	osd_visible = false;
 
@@ -512,7 +561,7 @@ function setup_gridview()
 
 	imagery.loading = load_image("images/colourwheel.png");
 	resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
-	move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1));
+	move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
 	image_tracetag(imagery.loading, "loading");
 	
 	imagery.nosave  = load_image("images/brokensave.png");
@@ -557,17 +606,18 @@ end
 
 function network_onevent(source, tbl)
 	if (tbl.kind == "frameserver_terminated") then
--- As this one is toggled persistent, it is not entirely sure that we're in a context where
--- delete_image will work 
+-- Caveat: As this one is toggled persistent, it is not entirely sure that we're in a context where delete_image will work
 		settings.server = nil;
 		settings.network_remote = "Disabled";
 		show_image(imagery.disconnected);
 		order_image(imagery.disconnected, max_current_image_order());
 		blend_image(imagery.disconnected, 0.0, 40);
-		
+
 	elseif (tbl.kind == "resized") then
-		a = 1;
+		local a = true; -- seriously lua..
+
 	elseif (tbl.kind == "connected") then
+-- FIXME: disconnect if remote is Disabled
 		spawn_warning(tbl.host .. " connected.");
 
 	elseif (tbl.kind == "message") then
@@ -640,36 +690,40 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 end
 
-function dialog_option( message, buttons, samples, canescape, valcbs, cleanuphook )
-	local asamples = {MENU_LEFT = "MENUCURSOR_MOVE", MENU_RIGHT = "MENUCURSOR_MOVE", MENU_ESCAPE = "MENU_FADE", MENU_SELECT = "MENU_FADE"};
-	if (samples == nil) then samples = asamples; end
-	local dialogwin = dialog_create(message, buttons, canescape );
-	
-	play_audio(soundmap["MENU_TOGGLE"]);
-	dialogwin:show();
-	
-	gridle_input = function(iotbl)
-		local restbl = keyconfig:match(iotbl);
-		if (restbl and iotbl.active) then
-			for ind, val in pairs(restbl) do
-				if (samples[ val ]) then play_audio(soundmap[samples[val]]); end
-				local iores = dialogwin:input(val);
+function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
+	local dialogwin = dialog_create(message, buttons);
+	local imenu = {};
 
-				if (iores ~= nil) then
-					gridle_input = gridle_dispatchinput;
-					if (valcbs[iores]) then
-						valcbs[iores]();
-					end
-
-					if (cleanuphook) then
-						cleanuphook();
-					end
-				end
-			end
-		end
-
+	imenu["MENU_LEFT"] = function()
+		dialogwin:input("MENU_LEFT");
+		play_audio(soundmap["GRIDCURSOR_MOVE"]);
 	end
 
+	imenu["MENU_RIGHT"] = function()
+		dialogwin:input("MENU_RIGHT");
+		play_audio(soundmap["GRIDCURSOR_MOVE"]);
+	end
+
+	imenu["MENU_SELECT"] = function()
+		local res = dialogwin:input("MENU_SELECT");
+		play_audio(soundmap["MENU_SELECT"]);
+		if (valcbs[res]) then valcbs[res](); end
+		if (cleanuphook) then cleanuphook(); end
+		dispatch_pop();
+	end
+
+	if (canescape) then
+		imenu["MENU_ESCAPE"] = function()
+			dialogwin:input("MENU_ESCAPE");
+			play_audio(soundmap["MENU_FADE"]);
+			if (cleanuphook) then cleanuphook(); end
+			dispatch_pop();
+		end
+	end
+
+	play_audio(soundmap["MENU_TOGGLE"]);
+	dispatch_push(imenu, "message dialog");
+	dialogwin:show();
 end
 
 function confirm_shutdown()
@@ -677,7 +731,7 @@ function confirm_shutdown()
 	valcbs["YES"] = function() shutdown(); end
 
 	video_3dorder(ORDER_NONE);
-	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, nil, true, valcbs, function() video_3dorder(ORDER_LAST); end);
+	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, true, valcbs, function() video_3dorder(ORDER_LAST); end);
 end
 
 -- also used in intmenus for savestate naming
@@ -685,7 +739,7 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	local restbl = keyconfig:match(iotbl);
 	local done   = false;
 	local resstr = nil;
-
+	
 	if (restbl) then
 		for ind,val in pairs(restbl) do
 			if (val == "MENU_ESCAPE" and iotbl.active) then
@@ -724,6 +778,7 @@ function osdkbd_inputcb(iotbl)
 	
 	if (complete) then
 		osdkbd_filter(resstr);
+		dispatch_pop();
 	end
 end
 
@@ -958,7 +1013,7 @@ function spawn_magnify( x, y )
 	return maginst;
 end
 
-function spawn_warning( message )
+function spawn_warning( message, persist )
 -- render message and make sure it is on top
 	local msg         = string.gsub(message, "\\", "\\\\"); 
 	local infowin     = listview_create( {msg}, VRESW / 2, VRESH / 2 );
@@ -967,12 +1022,18 @@ function spawn_warning( message )
 
 	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
 	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
-	
+
 	move_image(infowin.anchor, x, y);
 	hide_image(infowin.cursorvid);
-	expire_image(infowin.anchor, 125);
-	blend_image(infowin.window, 0.0, 125);
-	blend_image(infowin.border, 0.0, 125);
+	if (persist == nil or persist == false) then
+		expire_image(infowin.anchor, 125);
+		blend_image(infowin.window, 1.0, 50);
+		blend_image(infowin.border, 1.0, 50);
+		blend_image(infowin.window, 0.0, 25);
+		blend_image(infowin.border, 0.0, 25);
+	end
+
+	return infowin;
 end
 
 function spawn_favoritestar( x, y )
@@ -998,7 +1059,6 @@ end
 -- alongside other filters and user-set sort order
 function osdkbd_filter(msg)
 	osdkbd:hide();
-	gridle_input = settings.inputfun;
 	
 	if (msg ~= nil) then
 		local titlecpy = settings.filters.title;
@@ -1513,7 +1573,8 @@ end
 
 function gridle_internalcleanup()
 	kbd_repeat(settings.repeatrate);
-	gridle_input = gridle_dispatchinput;
+	dispatch_pop();
+
 	hide_image(imagery.crashimage);
 	keyconfig.table = settings.keyconftbl;
 	toggle_mouse_grab(MOUSE_GRABOFF);
@@ -1552,6 +1613,7 @@ function gridle_internalcleanup()
 		end
 
 		build_grid(settings.cell_width, settings.cell_height);
+		dispatch_pop();
 	else
 		delete_image(internal_vid);
 	end
@@ -1639,8 +1701,7 @@ function gridle_internal_status(source, datatbl)
 				imagery.movie = nil; 
 			end
 -- remap input function to one that can handle forwarding and have access to context specific menu
-			gridle_oldinput = gridle_input;
-			gridle_input = gridle_internalinput;
+			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput);
 		end
 
 		gridle_internal_setup(source, datatbl, current_game());
@@ -1658,7 +1719,7 @@ function gridle_internal_status(source, datatbl)
 			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
 		end
 	elseif (datatbl.kind == "message") then
-		spawn_warning(datatbl.message);
+		settings.last_message = datatbl.message;
 
 	elseif (datatbl.kind == "state_size") then
 		if (datatbl.state_size <= 0) then
@@ -1675,12 +1736,12 @@ function gridle_internal_status(source, datatbl)
 	elseif (datatbl.kind == "resource_status") then
 		if (datatbl.message == "loading") then
 			show_loading();
+			spawn_warning(settings.last_message);
 		elseif( datatbl.message == "loaded" or "failed") then
 			remove_loaded();
 		end
 	end
 end
-
 
 function internal_statectl(suffix, save)
 	local cg = current_game();
@@ -1805,38 +1866,42 @@ function gridle_internalinput(iotbl, override)
 	
 	if (restbl) then
 		for ind, val in pairs(restbl) do
-			if (val == "MENU_ESCAPE" and iotbl.active) then
-				if (valid_vid(imagery.record_target)) then
+			found = false;
+
+			if (iotbl.active) then
+				if (val == "MENU_ESCAPE") then
+					foudn = true;
+					if (valid_vid(imagery.record_target)) then
+						disable_record()
+					elseif escape_locked == nil or escape_locked == false then 
+						settings.cleanup_toggle();
+					end
+
+				elseif (val == "MENU_TOGGLE") then
+					found = true;
 					disable_record()
-				elseif escape_locked == nil or escape_locked == false then 
-					settings.cleanup_toggle();
+					gridlemenu_internal(internal_vid, false, true);
+
+				elseif (val == "CONTEXT") then
+					found = true;
+					disable_record()
+					gridlemenu_internal(internal_vid, true, false);
+
+				elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD")) then
+					found = true;
+					internal_statectl("quicksave", val == "QUICKSAVE");
 				end
+			end
 
-			elseif (val == "RANDOM_GAME") then
-				target_framemode(internal_vid, iotbl.active and 1 or 0);
-	
-			elseif (val == "MENU_TOGGLE") then
-				disable_record()
-				gridlemenu_internal(internal_vid, false, true);
-
-			elseif (val == "CONTEXT") then
-				disable_record()
-				gridlemenu_internal(internal_vid, true, false);
-
--- iotbl.active filter here is just to make sure we don't save twice (press and release) 
-			elseif ( (val == "QUICKSAVE" or val == "QUICKLOAD") and iotbl.active) then
-				internal_statectl("quicksave", val == "QUICKSAVE");
-
--- since we want similar behavior in detailview, the rest is split.
-			else
-
-				if (iotbl.kind == "analog") then 
+-- input the translated label (if we're in a setting where those matters, some hijacks just use the raw table) 
+			if (not found) then
+				if (iotbl.kind == "analog") then
 					gridle_internaltgt_analoginput(val, iotbl);
 				else
 					gridle_internaltgt_input(val, iotbl);
 				end
-
 			end
+
 		end
 	else
 -- default behavior is to forward even unmapped keys, the frameserver will simply ignore
@@ -1999,6 +2064,7 @@ function load_settings()
 end
 
 function play_audio(resname)
+	if (resname == nil) then return; end
 	settings.play_audio(resname, settings.effect_gain);
 end
 

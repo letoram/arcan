@@ -615,23 +615,23 @@ function build_gamelists()
 end
 
 -- reuse by other menu functions
-function gridlemenu_defaultdispatch()
-	if (not settings.iodispatch["MENU_UP"]) then
-		settings.iodispatch["MENU_UP"] = function(iotbl) 
-			play_audio(soundmap["MENUCURSOR_MOVE"]); 
+function gridlemenu_defaultdispatch(dst)
+	if (not dst["MENU_UP"]) then
+		dst["MENU_UP"] = function(iotbl)
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			current_menu:move_cursor(-1, true); 
 		end
 	end
 
-	if (not settings.iodispatch["MENU_DOWN"]) then
-			settings.iodispatch["MENU_DOWN"] = function(iotbl)
-			play_audio(soundmap["MENUCURSOR_MOVE"]); 
+	if (not dst["MENU_DOWN"]) then
+			dst["MENU_DOWN"] = function(iotbl)
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			current_menu:move_cursor(1, true); 
 		end
 	end
 	
-	if (not settings.iodispatch["MENU_SELECT"]) then
-		settings.iodispatch["MENU_SELECT"] = function(iotbl)
+	if (not dst["MENU_SELECT"]) then
+		dst["MENU_SELECT"] = function(iotbl)
 			selectlbl = current_menu:select();
 			if (current_menu.ptrs[selectlbl]) then
 				current_menu.ptrs[selectlbl](selectlbl, false);
@@ -643,8 +643,8 @@ function gridlemenu_defaultdispatch()
 	end
 	
 -- figure out if we should modify the settings table
-	if (not settings.iodispatch["FLAG_FAVORITE"]) then
-		settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
+	if (not dst["FLAG_FAVORITE"]) then
+		dst["FLAG_FAVORITE"] = function(iotbl)
 				selectlbl = current_menu:select();
 				if (current_menu.ptrs[selectlbl]) then
 					current_menu.ptrs[selectlbl](selectlbl, true);
@@ -655,26 +655,26 @@ function gridlemenu_defaultdispatch()
 			end
 	end
 	
-	if (not (settings.iodispatch["MENU_ESCAPE"])) then
-		settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
-		current_menu:destroy();
+	if (not dst["MENU_ESCAPE"]) then
+		dst["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+			current_menu:destroy();
 
-		if (current_menu.parent ~= nil) then
-			if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
-			current_menu = current_menu.parent;
-		else -- top level
-			play_audio(soundmap["MENU_FADE"]);
-			settings.iodispatch = griddispatch;
-		end
+			if (current_menu.parent ~= nil) then
+				if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
+				current_menu = current_menu.parent;
+			else -- top level
+				play_audio(soundmap["MENU_FADE"]);
+				dispatch_pop();
+			end
 		end
 	end
 	
-	if (not settings.iodispatch["MENU_RIGHT"]) then
-		settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
+	if (not dst["MENU_RIGHT"]) then
+		dst["MENU_RIGHT"] = dst["MENU_SELECT"];
 	end
 	
-	if (not settings.iodispatch["MENU_LEFT"]) then
-		settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
+	if (not dst["MENU_LEFT"]) then
+		dst["MENU_LEFT"]  = dst["MENU_ESCAPE"];
 	end
 end
 
@@ -689,11 +689,9 @@ end
 
 function gridlemenu_settings(cleanup_hook, filter_hook)
 -- first, replace all IO handlers
-	griddispatch = settings.iodispatch;
-
-	settings.iodispatch = {};
-
-	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+	local imenu = {};
+	
+	imenu["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		if (current_menu.parent ~= nil) then
 			if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
@@ -709,8 +707,8 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 
 -- only rebuild grid if we have to
 		cleanup_hook();
+		dispatch_pop();
 
-		settings.iodispatch = griddispatch;
 		if (settings.statuslist) then
 			settings.statuslist:destroy();
 			settings.statuslist = nil;
@@ -720,7 +718,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 		init_leds();
 	end
 
-	gridlemenu_defaultdispatch();
+	gridlemenu_defaultdispatch(imenu);
 	updatebgtrigger = filter_hook;
 	
 -- hide the cursor and all selected elements
@@ -743,6 +741,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 	current_menu.updatecb = update_status;
 	
 	current_menu:show();
+	dispatch_push(imenu);
 	
 	move_image(current_menu.anchor, 5, math.floor(props.y + props.height + (VRESH - props.height) * 0.09), settings.fadedelay);
 end

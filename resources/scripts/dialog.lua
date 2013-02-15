@@ -29,12 +29,15 @@ local function dialog_input(self, label )
 	if (not self.visible) then return nil; end
 	if (label == "MENU_LEFT") then
 		self:nextlabel(-1);
+
 	elseif (label == "MENU_RIGHT") then
 		self:nextlabel(1);
+
 	elseif (label == "MENU_SELECT") then
 		resstr = self.options[ self.current ];
 		self:destroy();
-	elseif (label == "MENU_ESCAPE" and self.canescape) then
+
+	elseif (label == "MENU_ESCAPE") then
 		resstr = "MENU_ESCAPE";
 		self:destroy();
 	end
@@ -68,6 +71,7 @@ local function dialog_free(self, timer)
 	
 	if (self.anchor) then
 		expire_image(self.anchor, time);
+		self.anchor = nil;
 	end
 end
 
@@ -75,6 +79,7 @@ local function dialog_show(self)
 -- take anchor and place it one element outside of view, then all inherited properties (position, opacity etc.) can be retained
 	if (restable.anchor == nil) then
 		restable.anchor = fill_surface(1, 1, 0, 0, 0);
+		image_tracetag(restable.anchor, "dialog::anchor");
 		move_image(restable.anchor, -1, -1);
 		
 		self.maxheight = math.floor(self.maxheight);
@@ -83,7 +88,10 @@ local function dialog_show(self)
 		local windw = math.floor(self.maxwidth);
 		local padding = math.floor(windw * 0.3);
 		restable.border = fill_surface(windw + padding + 6, self.maxheight + 26, settings.colourtable.dialog_border.r, settings.colourtable.dialog_border.g, settings.colourtable.dialog_border.b );
+		image_tracetag(restable.border, "dialog::border");
+		
 		restable.window = fill_surface(windw + padding, self.maxheight + 20, settings.colourtable.dialog_window.r, settings.colourtable.dialog_window.g, settings.colourtable.dialog_window.b );
+		image_tracetag(restable.window, "dialog::window");
 
 		link_image(restable.border, restable.anchor);
 		link_image(restable.window, restable.anchor);
@@ -127,7 +135,7 @@ local function dialog_show(self)
 	self.visible = true;
 end
 
-function dialog_create(message, options, canescape)
+function dialog_create(message, options)
 	if (settings == nil) then settings = {}; end
 	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
 
@@ -145,7 +153,6 @@ function dialog_create(message, options, canescape)
 	if (options ~= nil and #options > 0) then
 		restable.input = dialog_input;
 		restable.nextlabel = dialog_nextlabel;
-		restable.canescape = canescape;
 	end
 
 	dialog_sizewindow(restable);

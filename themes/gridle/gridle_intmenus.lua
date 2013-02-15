@@ -1315,8 +1315,6 @@ end
 function add_vidcap()
 -- this one is part of gridle_customview
 	customview.ci = {};
-	local menudispatch = settings.iodispatch;
-
 	local placeholdr = load_image("images/placeholders/vidcap.png");
 
 	customview.new_item(placeholdr, "vidcap", "vidcap");
@@ -1334,7 +1332,7 @@ function add_vidcap()
 		end
 
 		cascade_visibility(current_menu, 1.0);
-		settings.iodispatch = menudispatch;
+		dispatch_pop();
 
 		customview.ci = {};
 		delete_image(placeholdr);
@@ -1684,9 +1682,6 @@ recordptrs["Start Recording"] = function()
 end
 
 function gridlemenu_internal(target_vid, contextlbls, settingslbls)
--- copy the old dispatch table, and keep a reference to the previous input handler
--- replace it with the one used for these menus (check iodispatch for MENU_ESCAPE for the handover)
-
 	if (not (contextlbls or settingslbls)) then return; end
 
 	local menulbls = {};
@@ -1697,14 +1692,8 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 		if (#menulbls == 0 and not settingslbls) then return; end
 	end
 
-	griddispatch = settings.iodispatch;
-	settings.iodispatch = {};
-	gridle_oldinput = gridle_input;
-	gridle_input = gridle_dispatchinput;
-
-	gridlemenu_destvid = target_vid;
-
-	settings.iodispatch["CONTEXT"] = function(iotbl)
+	local imenu = {};
+	imenu["CONTEXT"] = function(iotbl)
 		selectlbl = current_menu:select()
 
 		if (settings.context_menu == "custom shaders") then
@@ -1753,7 +1742,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 		end
 	end
 
-	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+	imenu["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
 		settings.context_menu = nil;
 
@@ -1770,8 +1759,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 
 			resume_target(internal_vid);
 			current_menu = nil;
-			settings.iodispatch = griddispatch;
-			gridle_input = gridle_oldinput;
+			dispatch_pop();
 		end
 	end
 
@@ -1887,7 +1875,10 @@ if (#menulbls > 0 and settingslbls) then
 		menu_spawnmenu( recordlist, recordptrs, def);
 	end
 
-	gridlemenu_defaultdispatch();
+	gridlemenu_defaultdispatch(imenu);
+	print("menu push");
+	dispatch_push(imenu);
+	
 	settings.context_menu = nil;
 
 	current_menu:show();
