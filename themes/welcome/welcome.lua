@@ -12,6 +12,11 @@ function welcome()
 	move_image(titlestr, VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width)); 
 	show_image(titlestr);
 
+	intrstr = render_text( [[\ffonts/default.ttf,12\bUsage: \!b arcan <cmdline arguments> themename <theme arguments>]] )
+
+	move_image(intrstr, VRESW * 0.5 - (0.5 * image_surface_properties(intrstr).width), 24 );
+	show_image(intrstr);
+
 	welcomestr = [[\n\r
 	\ffonts/default.ttf,14\bPoints of reference:\!b\n\r\ffonts/default.ttf,12
 	http://arcanfe.wordpress.com - Main Site\n\r
@@ -57,8 +62,8 @@ function welcome()
 	-S      \t0dB global audio output\n\r
 	-r num  \tset texture scale mode: (0, 1, 2)\n\t]] );
 
-	move_image(datawindow, VRESW - image_surface_properties(argwindow).width, 24);
-	move_image(argwindow, 10, 24);
+	move_image(datawindow, VRESW - image_surface_properties(argwindow).width, 38);
+	move_image(argwindow, 10, 38);
 		
 	for i=0,LEDCONTROLLERS-1 do
 		j = 0;

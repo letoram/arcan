@@ -5,6 +5,13 @@ require 'singleton'
 require 'uri'
 require 'nokogiri'
 
+$HAVE_RMAGIC = false
+begin
+    require 'RMagick'
+    $HAVE_RMAGIC = true
+rescue
+end
+
 # Wrapper around TheGamesDB.net system
 class GamesDB
 	@@domain = "thegamesdb.net"
@@ -145,21 +152,46 @@ class GamesDBGame < GamesDB
 
 	end
 
+	def thumbnail( path, ext, width = nil)
+	    width = 256 if (width == nil)
+
+	    if ($HAVE_RMAGIC) then
+		im = Magick::ImageList.new(path)
+
+		if (im) then
+		    if (im.columns < width) then
+			 return nil 
+		    end
+
+		    ar   = im.columns / im.rows
+		    newh = width / ar
+		    im.resize!(width, newh)
+		    im.write("#{path}_thumb.#{ext}")
+		end
+	    end
+
+	rescue => er 
+	    STDERR.print("[TheGamesDB] -- Couldn't generate thumbnail for #{path}")
+	end
+
 	def store_boxart( destination )
 		if @boxart_front then
 			ext = @boxart_front[ @boxart_front.rindex('.') .. -1 ]
 			download_to( "#{destination}#{ext}", @@urls[:art_base] + @boxart_front ) if File.exist?("#{destination}#{ext}") == false
+			thumbnail(destination, ext)
 		end
 		
 		if @boxart_back then
 			ext = @boxart_back[ @boxart_back.rindex('.') .. -1 ]
 			download_to( "#{destination}_back#{ext}", @@urls[:art_base] + @boxart_back ) if File.exist?("#{destination}_back#{ext}") == false
+			thumbnail("#{destination}_back", ext)
 		end
 	end
 	
 	def store_screenshot( destination, ofs = 0 )
 		if (@screenshot[ofs])
 			download_to( "#{destination}#{ext}", @@urls[:art_base] + @screenshots[ofs] ) if File.exist?("#{destination}#{ext}") == false
+			thumbnail(destination, ext)
 		end
 	rescue
 	end

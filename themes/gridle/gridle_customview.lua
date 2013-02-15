@@ -258,11 +258,10 @@ customview.position_item = function(vid, trigger, lbls)
 	
 	customview.position_modes  = lbls and lbls or customview.position_modes_default;
 	customview.position_marker = 1;
-	
-	position_dispatch = settings.iodispatch;
-	settings.iodispatch = {};
 
-	settings.iodispatch["MOUSE_X"] = function(label, tbl)
+	local imenu = {};
+
+	imenu["MOUSE_X"] = function(label, tbl)
 		local lbl = customview.position_modes[customview.position_marker];
 		if (tbl.samples[2] == nil or tbl.samples[2] == 0) then return; end
 		if     (lbl == "size")        then cursor_step(vid, tbl.samples[2], 0);
@@ -273,14 +272,14 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "position3d")  then cursor_position3d(vid, 0.01 * tbl.samples[2]); end
 	end
 
-	settings.iodispatch["MOUSE_Y"] = function(label, tbl)
+	imenu["MOUSE_Y"] = function(label, tbl)
 		local lbl = customview.position_modes[customview.position_marker];
 		if (tbl.samples[2] == nil or tbl.samples[2] == 0) then return; end
 		if     (lbl == "size")        then cursor_step(vid, 0, tbl.samples[2]);
 		elseif (lbl == "position")    then cursor_slide(vid, 0, tbl.samples[2]); end
 	end
 	
-	settings.iodispatch["MENU_LEFT"]   = function()
+	imenu["MENU_LEFT"]   = function()
 		local lbl = customview.position_modes[customview.position_marker];
 		if     (lbl == "size")        then cursor_step(vid, grid_stepx * -1, 0);
 		elseif (lbl == "orientation") then orientation_rotate(vid,-2, false);
@@ -291,7 +290,7 @@ customview.position_item = function(vid, trigger, lbls)
 		end
 	end
 
-	settings.iodispatch["MENU_RIGHT"]  = function() 
+	imenu["MENU_RIGHT"]  = function()
 		local lbl = customview.position_modes[customview.position_marker];
 		if     (lbl == "size")        then cursor_step(vid,grid_stepx, 0);
 		elseif (lbl == "orientation") then orientation_rotate(vid, 2, false);
@@ -302,7 +301,7 @@ customview.position_item = function(vid, trigger, lbls)
 		end
 	end
 
-	settings.iodispatch["MENU_UP"]     = function()
+	imenu["MENU_UP"]     = function()
 		local lbl = customview.position_modes[customview.position_marker];
 		if     (lbl == "size")        then cursor_step(vid,0, grid_stepy * -1);
 		elseif (lbl == "orientation") then orientation_rotate(vid, -45, true);
@@ -313,7 +312,7 @@ customview.position_item = function(vid, trigger, lbls)
 		end
 	end
 
-	settings.iodispatch["MENU_DOWN"]   = function() 
+	imenu["MENU_DOWN"]   = function()
 		local lbl = customview.position_modes[customview.position_marker];
 		if     (lbl == "size")        then cursor_step(vid,0, grid_stepy);
 		elseif (lbl == "orientation") then orientation_rotate(vid, 45, true);
@@ -324,9 +323,9 @@ customview.position_item = function(vid, trigger, lbls)
 		end 
 	end
 
-	settings.iodispatch["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
-	settings.iodispatch["DETAIL_VIEW"] = function() position_toggle();   end
-	settings.iodispatch["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
+	imenu["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
+	imenu["DETAIL_VIEW"] = function() position_toggle();   end
+	imenu["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
 
 	update_infowin();
 end
@@ -367,7 +366,7 @@ end
 
 local function to_menu()
 	customview.ci = nil;
-	settings.iodispatch = position_dispatch;
+	dispatch_pop();
 	settings.iodispatch["MENU_ESCAPE"]("", false, false);
 	cascade_visibility(current_menu, 1.0);
 	kbd_repeat(settings.repeatrate);
@@ -451,7 +450,7 @@ local function navigator_toggle(status, x1, y1, x2, y2)
 		move_image(current_menu.anchor, 10, 120, settings.fadedelay);
 	else 
 		show_image(current_menu.anchor);
-		settings.iodispatch = position_dispatch;
+		dispatch_push(position_dispatch);
 	end
 end
 
@@ -471,7 +470,7 @@ local function customview_internal(source, datatbl)
 	if (datatbl.kind == "resized") then
 
 		if (settings.in_internal == false) then
-			gridle_input = gridle_internalinput;
+			dispatch_push(settings.iodispatch, "(custom) internal_input", gridle_internalinput);
 		end
 
 		gridle_internal_setup(source, datatbl, customview.gametbl);
@@ -481,7 +480,7 @@ local function customview_internal(source, datatbl)
 		blend_image(term, 1.0, settings.fadedelay);
 		resize_image(term, VRESW, VRESH);
 		order_image(term, max_current_image_order());
-		gridle_input = gridle_internalinput;
+		dispatch_pop();
 		
 	elseif (datatbl.kind == "message") then
 		spawn_warning(datatbl.message);
@@ -500,8 +499,7 @@ customview.cleanup = function()
 	local resetview = function()
 		pop_video_context();
 		imagery.server = nil;
-		settings.iodispatch = customview.dispatchtbl;
-		gridle_input = gridle_dispatchinput;
+		dispatch_pop();
 		settings.in_internal = false;
 		video_3dorder(ORDER_LAST);
 	end
@@ -541,14 +539,14 @@ local function launch(tbl)
 		customview.gametbl = tbl;
 		settings.cleanup_toggle = customview.cleanup;
 
-		if (valid_vid(internal_vid)) then delete_image(internal_vid); end
+		if (valid_vid(internal_vid)) then
+			delete_image(internal_vid);
+		end
 
 -- replace this one so that file-name, config names etc. are correct when emitted from intmenus
 		current_game = function() return tbl; end
 
 		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
-		gridle_input = nil;
-
 	else
 		settings.in_internal = false;
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -564,7 +562,7 @@ local function effecttrig(label)
 	customview.bgshader_label = label;
 
 	update_bgshdr();
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"]("", false, false);
 end
 
 local function get_identimg(label)
@@ -754,7 +752,7 @@ local function save_config()
 	end
 		
 	play_audio(soundmap["MENU_FADE"]);
-	settings.iodispatch = customview_display;
+	dispatch_pop();
 	pop_video_context();
 	gridle_customview();
 end
@@ -765,11 +763,10 @@ end
 -- if two media types share the exact same space, they are mutually exclusive and the order of placement (first->last)
 -- determines priority, i.e. if one is found, the other won't be loaded.
 local function show_config()
-	customview_display = settings.iodispatch;
-	settings.iodispatch = {};
+	local imenu = {};
 	customview.itemlist = {};
 	
-	gridlemenu_defaultdispatch();
+	gridlemenu_defaultdispatch(imenu);
 	local escape_menu = function(label, save, sound)
 	
 		if (current_menu.parent ~= nil) then
@@ -782,8 +779,8 @@ local function show_config()
 		
 	end
 	
-	settings.iodispatch["MENU_LEFT"]   = escape_menu;
-	settings.iodispatch["MENU_ESCAPE"] = escape_menu;
+	imenu["MENU_LEFT"]   = escape_menu;
+	imenu["MENU_ESCAPE"] = escape_menu;
 	
 	local mainlbls = {};
 	local mainptrs = {};
@@ -805,10 +802,9 @@ local function show_config()
 		end
 		
 		play_audio(soundmap["MENU_FADE"]);
-		settings.iodispatch = customview_display;
+		dispatch_pop();
 		pop_video_context();
 		customview.in_customview = false;
-		imagery.server = nil;
 		setup_gridview();
 	end
 	
@@ -820,6 +816,7 @@ local function show_config()
 	customview.root_menu = current_menu;
 
 	current_menu:show();
+	dispatch_push(imenu);
 	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
 end
 
@@ -1002,10 +999,7 @@ local function setup_customview()
 		end
 	end
 
--- remap I/O functions to fit navigator
-	olddispatch = settings.iodispatch;
-	settings.iodispatch = {};
-	
+	local imenu = {};
 	if (customview.current.navigator) then
 		customview.navigator = system_load("customview/" .. customview.current.navigator.res .. ".lua")();
 		local navi = customview.navigator;
@@ -1019,25 +1013,25 @@ local function setup_customview()
 		navi:create(navitbl);
 		navi:update_list(settings.games);
 		
-		settings.iodispatch["MENU_UP"]   = function()
+		imenu["MENU_UP"]   = function()
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			navi:up(1);
 			navi_change(navi, navitbl);
 		end
 
-		settings.iodispatch["MENU_DOWN"] = function() 
+		imenu["MENU_DOWN"] = function()
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			navi:down(1); 
 			navi_change(navi, navitbl);
 		end
 
-		settings.iodispatch["MENU_LEFT"] = function() 
+		imenu["MENU_LEFT"] = function()
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			navi:left(1);
 			navi_change(navi, navitbl);
 		end
 
-		settings.iodispatch["MENU_TOGGLE"]  = function(iotbl) 
+		imenu["MENU_TOGGLE"]  = function(iotbl)
 			play_audio(soundmap["MENU_TOGGLE"]);
 			video_3dorder(ORDER_NONE);
 			gridlemenu_settings(
@@ -1046,13 +1040,13 @@ local function setup_customview()
 			end, function() end);
 		end
 		
-		settings.iodispatch["MENU_RIGHT"] = function()
+		imenu["MENU_RIGHT"] = function()
 			play_audio(soundmap["GRIDCURSOR_MOVE"]);
 			navi:right(1);
 			navi_change(navi, navitbl);
 		end
 
-		settings.iodispatch["MENU_SELECT"] = function()
+		imenu["MENU_SELECT"] = function()
 			local res = navi:trigger_selected();
 			if (res ~= nil) then
 				res.capabilities = launch_target_capabilities( res.target )
@@ -1062,18 +1056,18 @@ local function setup_customview()
 			end
 		end
 	
-		settings.iodispatch["MENU_ESCAPE"] = function()
+		imenu["MENU_ESCAPE"] = function()
 				confirm_shutdown();
 		end
 		
-		settings.iodispatch["SWITCH_VIEW"] = function()
+		imenu["SWITCH_VIEW"] = function()
 			if ( navi:escape() ) then
 				play_audio(soundmap["MENU_FADE"])
 -- delete all "new" resources
 				pop_video_context();
 -- then copy the server vid again
 				push_video_context();
-				settings.iodispatch = olddispatch;
+				dispatch_pop();
 				customview.in_customview = false; 
 				setup_gridview();
 			else
@@ -1082,9 +1076,9 @@ local function setup_customview()
 		end
 
 		navi_change(navi, navitbl);
-		customview.dispatchtbl = settings.iodispatch;
 	end
-	
+
+	dispatch_push(imenu, "customview");
 end
 
 local function customview_3dbase()

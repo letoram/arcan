@@ -329,7 +329,7 @@ static void libretro_skipnframes(unsigned count, bool fastfwd)
 {
 	retroctx.skipframe_v = true;
 	retroctx.skipframe_a = fastfwd;
-
+	
 	long long afc = retroctx.aframecount;
 
 	for (int i = 0; i < count; i++)
@@ -831,14 +831,13 @@ static void push_stats()
 		STEPMSG("Frameskip: None");
 	}
 	else if (retroctx.skipmode >= TARGET_SKIP_STEP && retroctx.skipmode < TARGET_SKIP_FASTFWD){
-		snprintf(scratch, 64, "Frameskip: Step (%d)\n", retroctx.frameskips, retroctx.skipmode);
+		snprintf(scratch, 64, "Frameskip: Step (%d)\n", retroctx.skipmode);
 		STEPMSG(scratch);
 	}
 	else if (retroctx.skipmode == TARGET_SKIP_FASTFWD){
 		snprintf(scratch, 64, "Frameskip: Fast-Fwd (%d)\n", retroctx.skipmode - TARGET_SKIP_FASTFWD);
 		STEPMSG(scratch);
 	}
-
 /* color-coded frame timing / alignment, starting at the far right with the next intended frame,
  * horizontal resolution is 2 px / ms */
 
@@ -1021,13 +1020,15 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.shmcont = frameserver_getshm(keyfile, true);
 		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false);
+
+/* send some information on what core is actually loaded etc. */
+		arcan_event outev = {.category = EVENT_EXTERNAL, .kind = EVENT_EXTERNAL_NOTICE_MESSAGE};
+		size_t msgsz = sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]);
+		snprintf(outev.data.external.message, msgsz, "%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
+		arcan_event_enqueue(&retroctx.outevq, &outev);
 		
 /* load the game, and if that fails, give up */
-		arcan_event outev = {.category = EVENT_EXTERNAL,
-			.kind = EVENT_EXTERNAL_NOTICE_RESOURCE
-		};
-		size_t msgsz = sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]);
-
+		outev.kind = EVENT_EXTERNAL_NOTICE_RESOURCE;
 		snprintf(outev.data.external.message, msgsz, "loading");
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 		
@@ -1078,11 +1079,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 
-/* send some information on what core is actually loaded etc. */
-		outev.kind = EVENT_EXTERNAL_NOTICE_MESSAGE;
-		snprintf(outev.data.external.message, msgsz, "%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
-		arcan_event_enqueue(&retroctx.outevq, &outev);
-
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
 	* parent event processing as well */
 		outev.data.external.framestatus.framenumber = 0;
@@ -1121,7 +1117,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
 				libretro_skipnframes(retroctx.skipmode - TARGET_SKIP_FASTFWD + 1, true);
 			else if (retroctx.skipmode >= TARGET_SKIP_STEP)
-				libretro_skipnframes(retroctx.skipmode - TARGET_SKIP_STEP, false);
+				libretro_skipnframes(retroctx.skipmode - TARGET_SKIP_STEP + 1, false);
 			else ;
 
 			flush_eventq();
