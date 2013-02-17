@@ -327,6 +327,7 @@ customview.position_item = function(vid, trigger, lbls)
 	imenu["DETAIL_VIEW"] = function() position_toggle();   end
 	imenu["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
 
+	dispatch_push(imenu, "customview (position)");
 	update_infowin();
 end
 
@@ -766,7 +767,6 @@ local function show_config()
 	local imenu = {};
 	customview.itemlist = {};
 	
-	gridlemenu_defaultdispatch(imenu);
 	local escape_menu = function(label, save, sound)
 	
 		if (current_menu.parent ~= nil) then
@@ -816,6 +816,7 @@ local function show_config()
 	customview.root_menu = current_menu;
 
 	current_menu:show();
+	gridlemenu_defaultdispatch(imenu);
 	dispatch_push(imenu);
 	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
 end

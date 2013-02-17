@@ -881,7 +881,14 @@ end
 
 function gridlemenu_resize_fullscreen(source, init_props)
 -- rotations are not allowed for H-Split / H-Split SBS and V-Split needs separate treatment
-	local rotate = (settings.scalemode == "Rotate CW" or settings.scalemode == "Rotate CCW") and (settings.cocktail_mode == "Disabled");
+	local rotate = nil;
+
+	if (settings.scalemode == "Rotate 90 CW") then
+		rotate = 90;
+	elseif (settings.scalemode == "Rotate 90 CCW") then
+		rotate = -90;
+	end
+
 	local scalemode = settings.scalemode;
 	local cocktailmode = settings.cocktail_mode;
 
@@ -963,8 +970,8 @@ function gridlemenu_resize_fullscreen(source, init_props)
 	if (settings.cocktail_mode ~= "Disabled") then
 		setup_cocktail(settings.cocktail_mode, source, windw, windh);
 	else
-		if (rotate) then
-			rotate_image(source, settings.scalemode == "Rotate CW" and -90 or 90);
+		if (rotate ~= nil) then
+			rotate_image(source, rotate);
 			move_image(source, 0.5 * (windh - props.width), 0.5 * (windw - props.height));
 		elseif (scalemode ~= "Bezel") then
 			move_image(source, 0.5 * (windw - props.width), 0.5 * (windh - props.height));
@@ -1080,23 +1087,26 @@ local function build_savemenu()
 		osdsavekbd:show();
 
 -- do this here so we have access to the namespace where osdsavekbd exists
-		gridle_input = function(iotbl)
+		
+		local osdkbd_input = function(iotbl)
 			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
 
 			if (complete) then
 				osdsavekbd:destroy();
 				osdsavekbd = nil;
-				gridle_input = gridle_dispatchinput;
 
 				if (resstr ~= nil and string.len(resstr) > 0) then
 					internal_statectl(resstr, true);
 					spawn_warning("state saved as (" .. resstr .. ")");
 				end
 
+				dispatch_pop();
 				settings.iodispatch["MENU_ESCAPE"]();
 				settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 			end
 		end
+	
+		dispatch_push({}, "(internal) osd keyboard", osdkbd_input);
 	end
 
 -- just grab the last num found, increment by one and use as prefix
@@ -1106,7 +1116,7 @@ local function build_savemenu()
 		spawn_warning("state saved as (" .. tostring( highind + 1) .. ")");
 		internal_statectl(highind + 1, true);
 	end
-
+	
 	return reslbls, resptrs, {};
 end
 
@@ -1261,8 +1271,11 @@ local function add_gamelbls( lbltbl, ptrtbl )
 	add_submenu(advtbl, advptrs, "Frame Alignment...",    "frame_align", gen_num_menu("frame_align", -1,  2, 6,  aligntrig));
 	add_submenu(advtbl, advptrs, "Skip Method...",        "skip_mode",   gen_tbl_menu("skip_mode", skiptbl, aligntrig, true));
 	add_submenu(advtbl, advptrs, "Pre-audio (frames)...", "preaud",      gen_num_menu("preaud",       0,  1, 4,  aligntrig));
-	add_submenu(advtbl, advptrs, "Emulation jitter...",   "jitterstep",  gen_num_menu("jitterstep",  -28, 4, 14, aligntrig));
-	add_submenu(advtbl, advptrs, "Transfer jitter...",    "jitterxfer",  gen_num_menu("jitterxfer",  -28, 4, 14, aligntrig));
+	
+	if (DEBUGLEVEL > 0) then
+		add_submenu(advtbl, advptrs, "Emulation jitter...", "jitterstep",  gen_num_menu("jitterstep",  -28, 4, 14, aligntrig));
+		add_submenu(advtbl, advptrs, "Transfer jitter...", "jitterxfer",  gen_num_menu("jitterxfer",  -28, 4, 14, aligntrig));
+	end
 
 	advptrs["Toggle Debugmode"] = function()
 		settings.graph_mode = settings.graph_mode == 1 and 0 or 1;

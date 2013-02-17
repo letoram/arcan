@@ -1994,11 +1994,25 @@ int arcan_lua_getimagestorageprop(lua_State* ctx)
 
 int arcan_lua_storekey(lua_State* ctx)
 {
-	const char* key = luaL_checkstring(ctx, 1);
-	const char* name = luaL_checkstring(ctx, 2);
+	if (lua_type(ctx, 1) == LUA_TTABLE){
+		lua_pushnil(ctx);
 
-	arcan_db_theme_kv(dbhandle, arcan_themename, key, name);
+		while (lua_next(ctx, 1) != 0){
+			const char* key = lua_tostring(ctx, -2);
+			const char* val = lua_tostring(ctx, -1);
+			arcan_db_kv(dbhandle, key, val);
+			lua_pop(ctx, 1);
+		}
 
+/* end transaction */
+		arcan_db_kv(dbhandle, NULL, NULL);
+
+	} else {
+		const char* key = luaL_checkstring(ctx, 1);
+		const char* name = luaL_checkstring(ctx, 2);
+		arcan_db_theme_kv(dbhandle, arcan_themename, key, name);
+	}
+	
 	return 0;
 }
 

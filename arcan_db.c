@@ -46,6 +46,13 @@ extern char* arcan_resourcepath;
 
 struct arcan_dbh {
 	sqlite3* dbh;
+
+/* cached theme name used for the DBHandle, although
+ * some special functions may use a different one, none outside _db.c should */
+	char* themename;
+	sqlite3_stmt* update_kv;
+	sqlite3_stmt* insert_kv;
+	bool intrans;
 };
 
 char* _n_strdup(const char* instr, const char* alt)
@@ -128,8 +135,14 @@ static void db_void_query(arcan_dbh* dbh, const char* qry)
 	if (!qry || !dbh)
 		return;
 	
-	if ( sqlite3_prepare_v2(dbh->dbh, qry, strlen(qry), &stmt, NULL) )
-		sqlite3_step(stmt);
+	int rc = sqlite3_prepare_v2(dbh->dbh, qry, strlen(qry), &stmt, NULL);
+	if (rc == SQLITE_OK){
+		rc = sqlite3_step(stmt);
+	}
+
+	if (rc != SQLITE_OK){
+		arcan_warning("db_void_query(failed) on %s -- reason: %d\n", qry, rc);
+	}
 	
 	sqlite3_finalize(stmt);
 }
@@ -645,6 +658,68 @@ bool arcan_db_clear_launch_counter(arcan_dbh* dbh)
 	return rv;
 }
 
+bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
+{
+	if (!dbh)
+		return false;
+	
+/* empty key terminates transaction status */
+	if (!key && dbh->intrans){
+		char* err = NULL;
+		int rc = sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, &err);
+		if (err){
+			arcan_warning("arcan_db_kv() -- couldn't finalize transaction (%s).\n", err);
+			sqlite3_free(err);
+		}
+		else
+			dbh->intrans = false;
+		
+		return true;
+	}
+	
+	if (!key || !value)
+		return false;
+	
+/* firsrt time, create dbh unique prepared statements */
+	if (!dbh->update_kv){
+		int nw; 
+		nw = snprintf(wbuf, wbufsize, "UPDATE theme_%s SET value=? WHERE key=?;", dbh->themename);
+		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->update_kv, NULL);
+		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) VALUES(?, ?);", dbh->themename);
+		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->insert_kv, NULL);
+	}
+	
+	sqlite3_stmt* stmt;
+
+/* usage pattern is that the caller should set false on the last entry to false and the rest to true
+ * if there will be a series of KVs to set, because of the synchronous nature of sqlite3 transactions */
+	if (!dbh->intrans){
+		char* err = NULL;
+		int rc = sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, &err);
+		if (err){
+			arcan_warning("arcan_db_kv() -- couldn't begin transaction (%s).\n", err);
+		}
+		else
+			dbh->intrans = true;
+	}
+	
+/* insert or update based on if the value already exists */
+	stmt = dbh->insert_kv;
+	sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
+
+	int errc;
+	if ( (errc = sqlite3_step(stmt) ) == SQLITE_DONE){
+		sqlite3_reset(stmt);
+		return true;
+	}
+	else{
+		arcan_warning("arcan_db_kv(%s, %s), intrans: %d => %d\n", key, value, dbh->intrans, errc);
+		return false;
+	}
+}
+
+/* deprecated, externally themes should use arcan_db_kv class functions instead */
 bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, const char* value)
 {
 	bool rv = false;
@@ -655,23 +730,23 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, c
 
 	char* okey = arcan_db_theme_val(dbh, themename, key);
 	sqlite3_stmt* stmt = NULL;
-
+	
 	if (okey) {
 		nw = snprintf(wbuf, wbufsize, "UPDATE theme_%s SET value=? WHERE key=?;", themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
+		sqlite3_bind_text(stmt, 2, key,   -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 2, key, -1, SQLITE_TRANSIENT);
 		free(okey);
 	}
 	else {
 		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) VALUES(?, ?);", themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
-		sqlite3_bind_text(stmt, 1, (char*) key, -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 2, (char*) value, -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
+		sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
 	}
 
 	rv = sqlite3_step(stmt) == SQLITE_DONE;
-
+	
 	sqlite3_finalize(stmt);
 
 	return rv;
@@ -851,8 +926,9 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 			db_void_query(dbh, "ALTER TABLE game ADD COLUMN system TEXT;");
 		break;
 		case 1:
-		arcan_warning("Upgrading old database to revision 2\n");
+			arcan_warning("Upgrading old database to revision 2\n");
 			db_void_query(dbh, "ALTER_TABLE target ADD COLUMN hijack TEXT;");
+			arcan_db_theme_kv(dbh, "arcan", "dbversion", "2");
 		break;
 	}
 
@@ -872,6 +948,9 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 		atexit(sqliteexit);
 		assert(rv == SQLITE_OK);
 	}
+
+	if (!themename)
+		themename = "_default";
 	
 	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL)) == SQLITE_OK) {
 		arcan_dbh* res = (arcan_dbh*) calloc(sizeof(arcan_dbh), 1);
@@ -884,15 +963,14 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 			return NULL;
 		}
 
+		res->themename = strdup(themename);
 		const char* sqqry = "SELECT Count(*) FROM ";
 		snprintf(wbuf, wbufsize, "%s%s", sqqry, "target");
 		int tc = db_num_query(res, wbuf, NULL);
 
 		snprintf(wbuf, wbufsize, "%s%s", sqqry, "game");
 		int gc = db_num_query(res, wbuf, NULL);
-
-		if (themename)
-			create_theme_group(res, themename);
+		create_theme_group(res, res->themename);
 
 		arcan_warning("Notice: arcan_db_open(), # targets: %i, # games: %i\n", tc, gc);
 		return res;

@@ -4,6 +4,40 @@
 -- quite messy, generalizing to a shared script would be nice.
 -- 
 
+local function update_status()
+-- show # games currently in list, current filter or gamelist
+
+	list = {};
+	table.insert(list, "# games: " .. tostring(#settings.games));
+	table.insert(list, "grid dimensions: " .. settings.cell_width .. "x" .. settings.cell_height);
+	table.insert(list, "sort order: " .. settings.sortorder);
+	table.insert(list, "repeat rate: " .. settings.repeatrate);
+	
+	filterstr = "filters: ";
+	if (settings.filters.title)   then filterstr = filterstr .. " title("    .. settings.filters.title .. ")"; end
+	if (settings.filters.genre)   then filterstr = filterstr .. " genre("    .. settings.filters.genre .. ")"; end
+	if (settings.filters.subgenre)then filterstr = filterstr .. " subgenre(" .. settings.filters.subgenre .. ")"; end
+	if (settings.filters.target)  then filterstr = filterstr .. " target("   .. settings.filters.target .. ")"; end
+	if (settings.filters.year)    then filterstr = filterstr .. " year("     .. tostring(settings.filters.year) .. ")"; end
+	if (settings.filters.players) then filterstr = filterstr .. " players("  .. tostring(settings.filters.players) .. ")"; end
+	if (settings.filters.buttons) then filterstr = filterstr .. " buttons("  .. tostring(settings.filters.buttons) .. ")"; end
+	if (settings.filters.system)  then filterstr = filterstr .. " system(" .. tostring(settings.filters.system) .. ")"; end
+	if (settings.filters.manufacturer) then filterstr = filterstr .. " manufacturer(" .. tostring(settings.filters.manufacturer) .. ")"; end
+
+	table.insert(list, filterstr);
+	if (settings.statuslist == nil) then
+		settings.statuslist = listview_create(list, VRESH * 0.9, VRESW * 0.75);
+		settings.statuslist:show();
+		move_image(settings.statuslist.anchor, 5, settings.fadedelay);
+		hide_image(settings.statuslist.cursorvid);
+	else
+		settings.statuslist.list = list;
+		settings.statuslist:invalidate();
+		settings.statuslist:redraw();
+	end
+end
+
+
 function build_globmenu(globstr, cbfun, globmask)
 	local lists = glob_resource(globstr, globmask);
 	local resptr = {};
@@ -17,6 +51,7 @@ end
 
 -- name     : settings[name] to store under
 -- tbl      : array of string with labels of possible values
+-- trggerfun: when selected, this function will be called (useful for activating whatever setting changed)
 -- isstring : treat value as string or convert to number before sending to store_key
 function gen_tbl_menu(name, tbl, triggerfun, isstring)
 	local reslbl = {};
@@ -181,7 +216,6 @@ local filterlbls = {
 };
 
 local settingslbls = {
-	"Sort Order...",
 	"Reconfigure Keys (Full)",
 	"Reconfigure Keys (Players)",
 };
@@ -285,13 +319,13 @@ end
 local function reset_customview()
 	zap_resource("customview_cfg.lua");
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		play_audio(soundmap["MENU_SELECT"]);
+	play_audio(soundmap["MENU_SELECT"]);
 
 	if (customview.in_customview) then
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		settings.iodispatch["SWITCH_VIEW"]();
-		settings.iodispatch["SWITCH_VIEW"]();
+		settings.iodispatch["SWITCH_VIEW"](nil, nil, true);
+		settings.iodispatch["SWITCH_VIEW"](nil, nil, true);
 	end
 end
 
@@ -337,27 +371,37 @@ add_submenu(backgroundlbls, backgroundptrs, "Movie Playback Cooldown...", "coold
 add_submenu(gridviewlbls, gridviewptrs, "Background...", "bgname", backgroundlbls, backgroundptrs);
 add_submenu(gridviewlbls, gridviewptrs, "Tile Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
 add_submenu(gridviewlbls, gridviewptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
-
-local settingsptrs = {};
-
 add_submenu(gridviewlbls, gridviewptrs, "Cell Width...", "cell_width", gen_num_menu("cell_width", 1, cellwnum, 10));
 add_submenu(gridviewlbls, gridviewptrs, "Cell Height...", "cell_height", gen_num_menu("cell_height", 1, cellhnum, 10));
+
+local settingsptrs = {};
+local soundptrs = {};
+local soundlbls = {};
+
+add_submenu(soundlbls, soundptrs, "Soundmaps...", "soundmap", build_globmenu("soundmaps/*", setsndfun, ALL_RESOURCES));
+add_submenu(soundlbls, soundptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
+add_submenu(soundlbls, soundptrs, "Background Music...", "bgmusic", gen_tbl_menu("bgmusic", {"Disabled", "Menu Only", "Always"}, function() end, true));
+add_submenu(soundlbls, soundptrs, "Background Gain...", "bgmusic_gain", gen_num_menu("bgmusic_gain", 0.0, 0.1, 11));
+
+local inputptrs = {};
+local inputlbls = {};
+add_submenu(inputptrs, inputptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
+add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"}, function() end, true))
+
+add_submenu(settingslbls, settingsptrs, "Sound / Music...", "skip", soundlbls, soundptrs, {});
 add_submenu(settingslbls, settingsptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
-add_submenu(settingslbls, settingsptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
 add_submenu(settingslbls, settingsptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
-add_submenu(settingslbls, settingsptrs, "Soundmaps...", "soundmap", build_globmenu("soundmaps/*", setsndfun, ALL_RESOURCES));
-add_submenu(settingslbls, settingsptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
 add_submenu(settingslbls, settingsptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 add_submenu(settingslbls, settingsptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
-add_submenu(settingslbls, settingsptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"}, function() end, true))
+
 table.insert(settingslbls, "----");
 add_submenu(settingslbls, settingsptrs, "Default View Mode...", "view_mode", gen_tbl_menu("view_mode", {"Grid", "Custom"}, function() end, true));
 add_submenu(settingslbls, settingsptrs, "Custom View...", "cview_skip", {"Reset"}, {Reset = reset_customview});
 add_submenu(settingslbls, settingsptrs, "Grid View...", "skip", gridviewlbls, gridviewptrs, {});
 
 if (LEDCONTROLLERS > 0) then
-	table.insert(settingslbls, "LED display mode...");
-	table.insert(settingslbls, "Reconfigure LEDs");
+	table.insert(inputlbls, "LED display mode...");
+	table.insert(inputlbls, "Reconfigure LEDs");
 end
 	
 local ledmodelbls = {
@@ -415,40 +459,9 @@ ledmodeptrs["Game setting (on push)"] = function(label, save)
 	end
 end
 
-local sortorderlbls = {
-	"Ascending",
-	"Descending",
-	"Times Played",
-	"Favorites"
-};
-
-local sortorderptrs = {};
-
-local function sortordercb(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.sortlbl = label;
+add_submenu(settingslbls, settingsptrs, "Sort Order...", "sortorder", 
+	gen_tbl_menu("sortorder", {"Ascending", "Descending", "Times Played", "Favorites"}, update_status,  true));
 	
-	if (save) then
-		store_key("sortorder", label);
-		play_audio(soundmap["MENU_FAVORITE"]);	
-	else
-		play_audio(soundmap["MENU_SELECT"]);	
-	end
-end
-for key, val in ipairs(sortorderlbls) do sortorderptrs[val] = sortordercb; end
-
--- These submenus all follow the same pattern,
--- lookup label matches the name of the entry, force a different formatting (cyan) for the current value,
--- and set the "favorite" (default / stored) value to green
-settingsptrs["Sort Order..."]    = function() 
-	local fmts = {};
-	fmts[ settings.sortlbl ] = settings.colourtable.notice_fontstr;
-	if ( get_key("sortorder") ) then
-		fmts[ get_key("sortorder") ] = settings.colourtable.alert_fontstr; 
-	end
-	menu_spawnmenu(sortorderlbls, sortorderptrs, fmts); 
-end
-
 settingsptrs["Reconfigure Keys (Full)"] = function()
 	zap_resource("keysym.lua");
 	gridle_keyconf();
@@ -464,7 +477,6 @@ settingsptrs["LED display mode..."] = function()
 	
 	menu_spawnmenu(ledmodelbls, ledmodeptrs, fmts); 
 end
-
 
 settingsptrs["Reconfigure LEDs"] = function()
 	zap_resource("ledsym.lua");
@@ -482,38 +494,6 @@ settingsptrs["Reconfigure Keys (Players)"] = function()
 			gridle_input = gridle_dispatchinput;
 			kbd_repeat(settings.repeatrate);
 		end
-	end
-end
-
-local function update_status()
--- show # games currently in list, current filter or gamelist
-
-	list = {};
-	table.insert(list, "# games: " .. tostring(#settings.games));
-	table.insert(list, "grid dimensions: " .. settings.cell_width .. "x" .. settings.cell_height);
-	table.insert(list, "sort order: " .. settings.sortlbl);
-	table.insert(list, "repeat rate: " .. settings.repeatrate);
-	
-	filterstr = "filters: ";
-	if (settings.filters.title)   then filterstr = filterstr .. " title("    .. settings.filters.title .. ")"; end
-	if (settings.filters.genre)   then filterstr = filterstr .. " genre("    .. settings.filters.genre .. ")"; end
-	if (settings.filters.subgenre)then filterstr = filterstr .. " subgenre(" .. settings.filters.subgenre .. ")"; end
-	if (settings.filters.target)  then filterstr = filterstr .. " target("   .. settings.filters.target .. ")"; end
-	if (settings.filters.year)    then filterstr = filterstr .. " year("     .. tostring(settings.filters.year) .. ")"; end
-	if (settings.filters.players) then filterstr = filterstr .. " players("  .. tostring(settings.filters.players) .. ")"; end
-	if (settings.filters.buttons) then filterstr = filterstr .. " buttons("  .. tostring(settings.filters.buttons) .. ")"; end
-	if (settings.filters.system)  then filterstr = filterstr .. " system(" .. tostring(settings.filters.system) .. ")"; end
-	if (settings.filters.manufacturer) then filterstr = filterstr .. " manufacturer(" .. tostring(settings.filters.manufacturer) .. ")"; end
-
-	table.insert(list, filterstr);
-	if (settings.statuslist == nil) then
-		settings.statuslist = listview_create(list, VRESH * 0.9, VRESW * 0.75);
-		settings.statuslist:show();
-		move_image(settings.statuslist.anchor, 5, settings.fadedelay);
-		hide_image(settings.statuslist.cursorvid);
-	else
-		settings.statuslist.list = list;
-		settings.statuslist:redraw();
 	end
 end
 
@@ -658,7 +638,6 @@ function gridlemenu_defaultdispatch(dst)
 	if (not dst["MENU_ESCAPE"]) then
 		dst["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 			current_menu:destroy();
-
 			if (current_menu.parent ~= nil) then
 				if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
 				current_menu = current_menu.parent;
@@ -693,6 +672,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 	
 	imenu["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
+
 		if (current_menu.parent ~= nil) then
 			if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
 			current_menu = current_menu.parent;
@@ -703,7 +683,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 			end
 
 		play_audio(soundmap["MENU_FADE"]);
-		table.sort(settings.games, settings.sortfunctions[ settings.sortlbl ]);
+		table.sort(settings.games, settings.sortfunctions[ settings.sortorder ]);
 
 -- only rebuild grid if we have to
 		cleanup_hook();
@@ -711,6 +691,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 
 		if (settings.statuslist) then
 			settings.statuslist:destroy();
+			current_menu.updatecb = false;
 			settings.statuslist = nil;
 		end
 	end

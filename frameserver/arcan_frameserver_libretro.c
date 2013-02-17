@@ -211,7 +211,7 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 		for (int x = 0; x < width; x++){
 			uint8_t* quad = (uint8_t*) (data + x);
 			if (retroctx.ntscconv)
-				*interm++ = RGB565(quad[0], quad[1], quad[2]);
+				*interm++ = RGB565(quad[2], quad[1], quad[0]);
 			else
 				*outp++ = 0xff << 24 | quad[0] << 16 | quad[1] << 8 | quad[2];
 		}
@@ -396,19 +396,22 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 			switch ( *(enum retro_pixel_format*) data ){
 				case RETRO_PIXEL_FORMAT_0RGB1555:
+					LOG("arcan_frameserver(libretro) -- pixel format set to RGB1555\n");
 					retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
 				break;
 
 				case RETRO_PIXEL_FORMAT_RGB565:
+					LOG("arcan_frameserver(libretro) -- pixel format set to RGB565\n");
 					retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;
 				break;
 
 				case RETRO_PIXEL_FORMAT_XRGB8888:
+					LOG("arcan_frameserver(libretro) -- pixel format set to XRGB8888\n");
 					retroctx.converter = (pixconv_fun) libretro_xrgb888_rgba;
 				break;
 
 			default:
-				LOG("(arcan_frameserver:libretro) - unknown pixelformat encountered (%d).\n", *(unsigned*)data);
+				LOG("(arcan_frameserver:libretro) -- unknown pixelformat encountered (%d).\n", *(unsigned*)data);
 				retroctx.converter = NULL;
 			}
 		break;
@@ -420,7 +423,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 /* ignore for now */
 		case RETRO_ENVIRONMENT_SHUTDOWN:
 			retroctx.shmcont.addr->dms = true;
-			LOG("(arcan_frameserver:libretro) - shutdown requested from lib.\n");
+			LOG("(arcan_frameserver:libretro) -- shutdown requested from lib.\n");
 		break;
 
 /* unsure how we'll handle this when privsep is working, possibly through chroot to garbage dir */
@@ -433,7 +436,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 /* some cores (mednafen-psx, ..) currently breaks on relative paths, so resolve to absolute one for the time being */
 			sysdir = realpath(sysdir, NULL);
 
-			LOG("(arcan_frameserver:libretro) - system directory set to (%s).\n", sysdir);
+			LOG("(arcan_frameserver:libretro) -- system directory set to (%s).\n", sysdir);
 			*((const char**) data) = sysdir;
 			rv = sysdir != NULL;
 		break;
@@ -634,7 +637,7 @@ static inline void targetev(arcan_event* ev)
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER:
 			retroctx.last_fd = frameserver_readhandle( ev );
-			LOG("arcan_frameserver(libretro) - descriptor transferred, %d\n", retroctx.last_fd);
+			LOG("arcan_frameserver(libretro) -- descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
@@ -719,8 +722,10 @@ static inline void targetev(arcan_event* ev)
 				ssize_t dstsize = -1;
 
 				void* buf = frameserver_getrawfile_handle( retroctx.last_fd, &dstsize );
-				if (buf != NULL && dstsize > 0)
+				if (buf != NULL && dstsize > 0){
 					retroctx.deserialize( buf, dstsize );
+					reset_timing();
+				}
 
 				retroctx.last_fd = BADFD;
 			}

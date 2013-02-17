@@ -141,12 +141,12 @@ arcan_dbh_res arcan_db_genres(arcan_dbh*, bool sub);
  * if romset hasn't been set at the end, it will be forcibly attached. */
 arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal);
 
-
 long int arcan_db_gameid(arcan_dbh* dbh, const char* title, arcan_errc* status);
 
-/* store/update a key/value pair under a theme,
- * for theme_val, the resulting string (or NULL) should be
- * freed after use */
+/* specialized case, assumes the keys pushed doesn't exist, and needs to be terminated with an empty call */
+bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value);
+
+/* these two are fairly rigid, calls can take hundres of ms to complete due to synchronous transfers */
 bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, const char* value);
 char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key);
 

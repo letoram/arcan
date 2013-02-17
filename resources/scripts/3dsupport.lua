@@ -440,8 +440,8 @@ function find_cabinet_model(gametbl)
 	if (found) then table.insert(names, remainder); end
 
 -- group
-	if (support3d_groupmapper and support3d_groupmapper[setname]) then
-		table.insert(names, support3d_groupmapper[setname]);
+	if (support3d_groupmapper and support3d_groupmapper[gametbl.setname]) then
+		table.insert(names, support3d_groupmapper[gametbl.setname]);
 	end
 
 	table.insert(names, gametbl.target); 

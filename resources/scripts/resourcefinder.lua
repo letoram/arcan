@@ -50,6 +50,7 @@ local function filter_ext(globres, basename, basepath, dsttable, extensions, key
 			table.insert(dsttable[key], basepath .. basename .. "." .. val);
 			return true;
 		end
+		
 	end
 	
 	return false;
@@ -74,7 +75,7 @@ local function resourcefinder_video(game, restbl, cache_results)
 	local mvpath  = "movies/";
 
 	local tgttbl = cache_results and synch_cache(tgtpath) or glob(tgtpath .. game.setname .. ".*");
-
+	
 	if (not filter_ext(tgttbl, game.setname, tgtpath, restbl, vidext, "movies")) then
 		tgttbl = cache_results and synch_cache(mvpath) or glob(mvpath .. game.setname .. ".*");
 		filter_ext(tgttbl, game.setname, mvpath, restbl, vidext, "movies");
@@ -102,18 +103,29 @@ local function resourcefinder_audio(game, restbl, cache_results)
 end
 
 local function resourcefinder_graphics(game, restbl, cache_results)
+-- the order is important here, as the first match will be added and only that
 	local imgext = {"png", "jpg"};
-	
+
+-- paths to scan, although all results will be inserted, the find functions set up in the table
+-- will take the first result matched
+	paths = {};
+	table.insert(paths, "/" .. game.target .."/");
+	table.insert(paths, "/");
+
 	worktbl = {"screenshots", "bezels", "marquees", "controlpanels", "backdrops", "overlays", "cabinets", "boxart"};
 
-	for ind, val in ipairs(worktbl) do
-		local tgtpath = val .. "/" .. game.target .. "/";
-		local grppath = val .. "/";
-
-		local tgttbl = cache_results and synch_cache(tgtpath) or glob(tgtpath .. game.setname .. ".*");
-		if (not filter_ext(tgttbl, game.setname, tgtpath, restbl, imgext, val)) then
-			tgttbl = cache_results and synch_cache(grppath) or glob(grppath .. game.setname .. ".*");
+	for pind, path in ipairs(paths) do
+		for ind, val in ipairs(worktbl) do
+			local grppath = val .. path;
+			local tgttbl = cache_results and synch_cache(grppath) or glob(grppath .. game.setname .. "*.*");
 			filter_ext(tgttbl, game.setname, grppath, restbl, imgext, val);
+			filter_ext(tgttbl, game.setname .. "_thumb", grppath, restbl, imgext, val);
+
+			if (val == "boxart") then
+				filter_ext(tgttbl, game.setname .. "_back_thumb", grppath, restbl, imgext, val)	
+				filter_ext(tgttbl, game.setname .. "_back_thumb", grppath, restbl, imgext, val);
+				filter_ext(tgttbl, game.setname .. "_insert_thumb", grppath, restbl, imgext, val);
+			end
 		end
 	end
 	
@@ -154,31 +166,39 @@ function resourcefinder_search( gametable, cache_results )
 		resourcefinder_misc(gametable, restbl, cache_results );
 	end
 
--- just locate and possible image that can be used to determine what
--- the game "is", priority goes to boxart -> screenshots, this one
--- actively ignores "back" boxart
-	restbl.find_identity_image = function(self)
-		if (self.screenshots and self.screenshots[1]) then
-			return self.screenshots[1]
-		elseif self.boxart and self.boxart[1] then
-			return self.boxart[1]
+-- the filter is used for a preferred filter, on no match, it still
+-- will return whatever is there 
+	restbl.find_identity_image = function(self, filter)
+		local res = self:find_boxart(true, filter);
+		if (res == nil) then
+			res = self:find_screenshot(filter);
 		end
+		return res;
 	end
 
+	restbl.find_boxart = function(self, front, filter)
+		if (self.boxart and #self.boxart > 0) then
+			
+			for ind, val in ipairs(self.boxart) do
+				if (string.match(val, filter)) then
+					return val;
+				end
+			end
+			
+			return self.boxart[1];
+		end
+	end
+		
 -- ugly and used often so hide 'em ;-)
 	restbl.find_screenshot = function(self)
-		if (self and self.screenshots and self.screenshots[1]) then
-			return self.screenshots[1];
-		else
-			return nil;
+		if (self.screenshots and #self.screenshots > 0) then
+			return self.screenshots[math.random(1, #self.screenshots)];
 		end
 	end
 	
 	restbl.find_movie = function(self)
-		if (self and self.movies and self.movies[1]) then
+		if (self.movies and #self.movies > 0) then 
 			return self.movies[1];
-		else
-			return nil;
 		end
 	end
 	
