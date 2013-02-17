@@ -55,7 +55,8 @@ settings = {
 	effect_gain = 1.0,
 
 	soundmap = "8bit",
-	
+	bgmusic = "Disabled",
+	bgmusic_gain = 1.0,
 	bgname = "smstile.png",
 	bgeffect = "none.fShader",
 	bg_rh = VRESH / 32,
@@ -65,7 +66,7 @@ settings = {
 	tilebg = "Sysicons",
 	
 	borderstyle = "Normal", 
-	sortlbl = "Ascending",
+	sortorder = "Ascending",
 	viewmode = "Grid",
 	scalemode = "Keep Aspect",
 	iodispatch = {},
@@ -175,12 +176,24 @@ settings = {
 	in_internal      = false,
 	cocktail_mode    = "Disabled",
 	autosave         = "On",
+	stream_url       = "rtmp://",
 
 	view_mode = "Grid"
 };
 
+-- make sure that the names from theGamesDB scraping match to the system icons 
 sysicon_remap = {};
 sysicon_remap["Super Nintendo (SNES)"] = "snes";
+sysicon_remap["Nintendo Entertainment System (NES)"] = "nes";
+sysicon_remap["Sega Dreamcast"] = "dreamcast";
+sysicon_remap["Nintendo Game Boy"] = "gb";
+sysicon_remap["Nintendo Game Boy Advance"] = "gba";
+sysicon_remap["Nintendo Wii"] = "wii";
+sysicon_remap["Nintendo DS"] = "nds";
+sysicon_remap["Sega Genesis"] = "genesis";
+sysicon_remap["Sega Mega Drive"] = "genesis";
+sysicon_remap["Sony Playstation"] = "psx";
+sysicon_remap["Sony PSP"] = "psp";
 
 skipremap = {};
 skiptbl = {};
@@ -431,8 +444,8 @@ function gridle()
 
 -- we actually want the network toggle to live in a separate context, so that it can't be deleted.
 
-	if (settings.sortfunctions[settings.sortlbl]) then
-		table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
+	if (settings.sortfunctions[settings.sortorder]) then
+		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
 	end
 	
 -- enable key-repeat events AFTER we've done possible configuration of label->key mapping
@@ -1068,8 +1081,8 @@ function osdkbd_filter(msg)
 		if (gamelist and #gamelist > 0) then
 			settings.games = gamelist;
 		
-			if (settings.sortfunctions[settings.sortlbl]) then
-				table.sort(settings.games, settings.sortfunctions[settings.sortlbl]);
+			if (settings.sortfunctions[settings.sortorder]) then
+				table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
 			end
 
 			erase_grid(false);
@@ -1265,7 +1278,7 @@ end
 -- resourcetbl is quite large, check resourcefinder.lua for more info
 function get_image( resourcetbl, gametbl )
 	local rvid     = BADID;
-	local mediares = resourcetbl:find_identity_image()
+	local mediares = resourcetbl:find_identity_image(".+thumb[.]%a+$")
 	
 	if ( mediares ) then
 		rvid = load_image_asynch( mediares, got_asynchimage );
@@ -1481,10 +1494,12 @@ end
 
 function load_key_num(name, val, opt)
 	local kval = get_key(name);
+
 	if (kval) then
 		settings[val] = tonumber(kval);
 	else
 		settings[val] = opt;
+		key_queue[name] = tostring(opt);
 	end
 end
 
@@ -1492,15 +1507,22 @@ function load_key_bool(name, val, opt)
 	local kval = get_key(name);
 	
 	if (kval) then
-		settings[val] = tonumber(kval) > 0;
+		settings[val] = tonumber(kval) ~= 0;
 	else
 		settings[val] = opt;
+		key_queue[name] = opt and "1" or "0";
 	end
 end
 
 function load_key_str(name, val, opt)
 	local kval = get_key(name);
-	settings[val] = kval or opt
+
+	if (kval) then
+		settings[val] = kval;
+	else
+		settings[val] = opt;
+		key_queue[name] = opt;
+	end
 end
 
 function asynch_movie_ready(source, statustbl)
@@ -1944,14 +1966,18 @@ end
 -- (a) the standard settings table (all should be set),
 -- (b) gridle_menus
 function load_settings()
+	key_queue = {};
+
 	load_key_str("view_mode", "view_mode", settings.view_mode);
 	load_key_num("ledmode", "ledmode", settings.ledmode);
 	load_key_num("cell_width", "cell_width", settings.cell_width);
 	load_key_num("cell_height", "cell_height", settings.cell_height);
 	load_key_num("fadedelay", "fadedelay", settings.fadedelay);
 	load_key_str("default_launchmode", "default_launchmode", settings.default_launchmode);
+	load_key_str("bgmusic", "bgmusic", settings.bgmusic);
+	load_key_num("bgmusic_gain", "bgmusic_gain", settings.bgmusic_gain);
 	load_key_num("transitiondelay", "transitiondelay", settings.transitiondelay);
-	load_key_str("sortorder", "sortlbl", settings.sortlbl);
+	load_key_str("sortorder", "sortorder", settings.sortorder);
 	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
 	load_key_num("repeatrate", "repeatrate", settings.repeatrate);
 	load_key_num("internal_again", "internal_again", settings.internal_again);
@@ -1962,7 +1988,6 @@ function load_settings()
 	load_key_str("bgname", "bgname", settings.bgname);
 	load_key_str("bgeffect", "bgeffect", settings.bgeffect);
 	load_key_str("soundmap", "soundmap", settings.soundmap);
-	
 	load_key_num("bg_rh", "bg_rh", settings.bg_rh);
 	load_key_num("bg_rw", "bg_rw", settings.bg_rw);
 	load_key_num("bg_speedv", "bg_speedv", settings.bg_speedv);
@@ -1973,9 +1998,7 @@ function load_settings()
 	load_key_str("stream_url", "stream_url", settings.stream_url);
 	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
 	load_key_num("effect_gain", "effect_gain", settings.effect_gain);
-
 	load_key_str("network_remote", "network_remote", settings.network_remote);
-	
 	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
 	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
 	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
@@ -1987,7 +2010,6 @@ function load_settings()
 	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
 	load_key_num("vector_trailstep",  "vector_trailstep",  settings.vector_trailstep);
 	load_key_num("vector_trailfall",  "vector_trailfall",  settings.vector_trailfall);
-
 	load_key_num("ntsc_hue",        "ntsc_hue",        settings.ntsc_hue); 
 	load_key_num("ntsc_saturation", "ntsc_saturation", settings.ntsc_saturation);
 	load_key_num("ntsc_contrast",   "ntsc_contrast",   settings.ntsc_contrast);
@@ -1998,7 +2020,6 @@ function load_settings()
 	load_key_num("ntsc_artifacts",  "ntsc_artifacts",  settings.ntsc_artifacts);
 	load_key_num("ntsc_bleed",      "ntsc_bleed",      settings.ntsc_bleed);
 	load_key_num("ntsc_fringing",   "ntsc_fringing",   settings.ntsc_fringing); 
-
 	load_key_num("crt_gamma",       "crt_gamma",       settings.crt_gamma);
 	load_key_num("crt_mongamma",    "crt_mongamma",    settings.crt_mongamma);
 	load_key_num("crt_hoverscan",   "crt_hoverscan",   settings.crt_hoverscan);
@@ -2011,29 +2032,32 @@ function load_settings()
 	load_key_num("crt_tiltv",       "crt_tiltv",       settings.crt_tiltv); 
 	load_key_num("crt_cornersz",    "crt_cornersz",    settings.crt_cornersz); 
 	load_key_num("crt_cornersmooth","crt_cornersmooth",settings.crt_cornersmooth); 
-
 	load_key_bool("crt_curvature",  "crt_curvature",   settings.crt_curvature); 
 	load_key_bool("crt_gaussian",   "crt_gaussian",    settings.crt_gaussian); 
 	load_key_bool("crt_oversample", "crt_oversample",  settings.crt_oversample); 
 	load_key_bool("crt_linearproc", "crt_linearproc",  settings.crt_linearproc); 
-
 	load_key_num("upscale_factor",  "upscale_factor",  settings.upscale_factor);
 	load_key_str("upscale_method",  "upscale_method",  settings.upscale_method);
 	load_key_num("upscale_delta",   "upscale_delta",   settings.upscale_delta);
-	
 	load_key_str("imagefilter", "imagefilter", settings.imagefilter);
-	
 	load_key_str("record_format",   "record_format",   settings.record_format);
 	load_key_num("record_fps",      "record_fps",      settings.record_fps);
 	load_key_num("record_qual",     "record_qual",     settings.record_qual);
 	load_key_num("record_res",      "record_res",      settings.record_res);
-
 	load_key_num("frame_align",     "frame_align",     settings.frame_align);
 	load_key_str("skip_mode",       "skip_mode",       settings.skip_mode);
 	load_key_num("preaud",          "preaud",          settings.preaud);
-	load_key_num("jitterstep",      "jitterstep",      settings.jitterstep);
-	load_key_num("jitterxfer",      "jitterxfer",      settings.jitterxfer);
 
+-- load key * will update a global table of missing keys, filled with default values
+-- these are stored and flushed as a transaction due to the cost in storing keys
+	local count = 0;
+	for ind, val in pairs(key_queue) do
+		count = count + 1;
+	end
+	if (count > 0) then
+		store_key(key_queue);
+	end
+	
 -- special handling for a few settings, modeflag + additional processing
 	local internalinp = get_key("internal_input");
 	if (internalinp ~= nil) then

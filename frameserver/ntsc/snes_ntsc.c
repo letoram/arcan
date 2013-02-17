@@ -132,7 +132,6 @@ void snes_ntsc_update_setup( snes_ntsc_t* ntsc, snes_ntsc_setup_t* dst, int grou
 {
 	switch( group ){
 		case 1:
-			fprintf(stderr, "hue: %f, sat: %f, contr: %f\n", v1, v2, v3);
 			dst->hue = v1;
 			dst->saturation = v2;
 			dst->contrast = v3;

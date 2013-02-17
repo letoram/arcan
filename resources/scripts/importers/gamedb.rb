@@ -45,6 +45,7 @@ class GamesDB
 	def download_to(dst, path)
 		uri = URI("http://#{@@domain}#{path}")
 		res = Net::HTTP.get_response(uri)
+		STDOUT.print("[GamesDB] Retrieving #{@@domain}#{path}\n")
 	
 		begin
 			open(dst, "wb"){|file| file.write(res.body) }
@@ -153,45 +154,45 @@ class GamesDBGame < GamesDB
 	end
 
 	def thumbnail( path, ext, width = nil)
-	    width = 256 if (width == nil)
+	  width = 256 if (width == nil)
 
-	    if ($HAVE_RMAGIC) then
-		im = Magick::ImageList.new(path)
+	  if ($HAVE_RMAGIC) then
+		im = Magick::ImageList.new("#{path}#{ext}")
 
 		if (im) then
 		    if (im.columns < width) then
 			 return nil 
 		    end
 
-		    ar   = im.columns / im.rows
-		    newh = width / ar
+		    ar   = im.columns.to_f / im.rows.to_f
+		    newh = width.to_f / ar
 		    im.resize!(width, newh)
-		    im.write("#{path}_thumb.#{ext}")
+		    im.write("#{path}_thumb.png")
 		end
 	    end
 
 	rescue => er 
-	    STDERR.print("[TheGamesDB] -- Couldn't generate thumbnail for #{path}")
+	    STDERR.print("[TheGamesDB] -- Couldn't generate thumbnail for #{path}, Reason: #{er}")
 	end
 
 	def store_boxart( destination )
 		if @boxart_front then
 			ext = @boxart_front[ @boxart_front.rindex('.') .. -1 ]
-			download_to( "#{destination}#{ext}", @@urls[:art_base] + @boxart_front ) if File.exist?("#{destination}#{ext}") == false
-			thumbnail(destination, ext)
+			download_to( "#{destination}#{ext}", @@urls[:art_base] + @boxart_front ) unless File.exist?("#{destination}#{ext}")
+			thumbnail(destination, ext) unless File.exist?("#{destination}_thumb.png")
 		end
 		
 		if @boxart_back then
 			ext = @boxart_back[ @boxart_back.rindex('.') .. -1 ]
-			download_to( "#{destination}_back#{ext}", @@urls[:art_base] + @boxart_back ) if File.exist?("#{destination}_back#{ext}") == false
-			thumbnail("#{destination}_back", ext)
+			download_to( "#{destination}_back#{ext}", @@urls[:art_base] + @boxart_back ) unless File.exist?("#{destination}_back#{ext}")
+			thumbnail("#{destination}_back", ext) unless File.exist?("#{destination}_back_thumb.png")
 		end
 	end
 	
 	def store_screenshot( destination, ofs = 0 )
 		if (@screenshot[ofs])
-			download_to( "#{destination}#{ext}", @@urls[:art_base] + @screenshots[ofs] ) if File.exist?("#{destination}#{ext}") == false
-			thumbnail(destination, ext)
+			download_to( "#{destination}#{ext}", @@urls[:art_base] + @screenshots[ofs] ) unless File.exist?("#{destination}#{ext}")
+			thumbnail(destination, ext) unless File.exist?("#{destination}_thumb.png")
 		end
 	rescue
 	end

@@ -291,9 +291,9 @@ function gridledetail_show(detailres, gametbl, ind)
 	gridclock = gridle_clock_pulse;
 	
 	gridle_video_event = gridledetail_video_event;
-	gridle_input = gridledetail_input;
 	gridle_clock_pulse = gridledetail_clock_pulse;
-
+	dispatch_push({}, "gridle_detail", gridledetail_input);
+	
 	detailview.curind = ind;
 	detailview.curgame = gametbl;
 	detailview.cooldown = 0;
@@ -354,11 +354,11 @@ function gridledetail_show(detailres, gametbl, ind)
 		gridledetail_freeview(1, -6.0);
 
 		gridle_clock_pulse = gridclock;
-		gridle_input = gridle_dispatchinput;
 		gridle_video_event = gridvideo;
 		
 		detailview.iodispatch = griddispatch;
 		kbd_repeat(settings.repeatrate);
 		move_cursor(0);
+		dispatch_pop();
 	end
 end
