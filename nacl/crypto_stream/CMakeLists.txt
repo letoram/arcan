@@ -1,0 +1,5 @@
+add_subdirectory(salsa20)
+add_subdirectory(aes128ctr)
+add_subdirectory(salsa2012)
+add_subdirectory(xsalsa20)
+add_subdirectory(salsa208)

@@ -1,0 +1,1 @@
+add_subdirectory(edwards25519sha512batch)
