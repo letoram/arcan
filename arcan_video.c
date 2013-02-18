@@ -995,17 +995,19 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	}
 
 
-/* kept for documentation, attempt at discovering if we're actually vsynched or not 
-	SDL_GL_SwapBuffers();
+/* flip a few frames to try and get a grasp of the upper timing for a swap buffer */
+	arcan_video_display.vsync_timing = 0;
 
-	unsigned base = arcan_timemillis();
-	for (int i = 0; i < 10; i++){
+	SDL_GL_SwapBuffers();
+	for (int i = 0; i < 4; i++){
+		long long int start = arcan_timemillis();
 		SDL_GL_SwapBuffers();
+		long long int stop = arcan_timemillis();
+		if (stop - start > arcan_video_display.vsync_timing)
+			arcan_video_display.vsync_timing = stop - start;
 	}
-	unsigned delta = arcan_timemillis() - base;
-	arcan_warning("arcan_video_init(), Vsync deadline estimated to ~%f mspf.\n", arcan_video_display.vsync_timing);
-*/
-	arcan_video_display.vsync_timing = 16.0;
+
+	arcan_warning("arcan_video_init(), Upper video deadline set to ~%f mspf.\n", arcan_video_display.vsync_timing);
 
 /* mspf < 1, got a super display or not actually vsyncing, this will not be particularly accurate
  * but enough of a measure to guess when the next frame will be and determine if we should actually

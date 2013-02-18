@@ -98,6 +98,7 @@ static const struct option longopts[] = {
 	{ "stdout",       required_argument, NULL, '1'},
 	{ "stderr",       required_argument, NULL, '2'},
 	{ "nowait",       no_argument,       NULL, 'V'},
+	{ "vsync-falign", required_argument, NULL, 'F'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
@@ -120,6 +121,7 @@ void usage()
 		"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 		"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
 		"-V\t--nowait      \tdisable sleeping between superflous frames\n"
+		"-F\t--vsync-falign\t (0..1, default: 0.6) balance processing vs. CPU usage\n"
 /*		"-i\t--interactive \tadd an interactive shell to stdin\n" */
 		"-S\t--nosound     \tdisable audio output\n"
 		"-r\t--scalemode   \tset texture mode:\n\t"
@@ -136,6 +138,7 @@ int main(int argc, char* argv[])
 	bool nosound      = false;
 	bool interactive  = false;
 	bool waitsleep    = true;
+	float vfalign     = 0.6;
 
 	unsigned char debuglevel = 0;
 
@@ -144,7 +147,6 @@ int main(int argc, char* argv[])
 	int height = 480;
 	int winx = -1;
 	int winy = -1;
-	long long int lastflip = 0;
 
 	int ch;
 	FILE* errc;
@@ -158,7 +160,7 @@ int main(int argc, char* argv[])
  * redirecting STDIN / STDOUT, and we might want to do that ourselves */
 	SDL_Init(SDL_INIT_VIDEO);
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:t:o:l:a:d:1:2:gr:S", longopts, NULL)) != -1){
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:t:o:l:a:d:F:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
 				usage();
@@ -169,6 +171,7 @@ int main(int argc, char* argv[])
 			case 'm' : conservative = true; break;
 			case 'x' : winx = strtol(optarg, NULL, 10); break;
 			case 'y' : winy = strtol(optarg, NULL, 10); break;
+			case 'F' : vfalign = strtof(optarg, NULL); break;
 			case 'f' : fullscreen = true; break;
 			case 's' : windowed = true; break;
 			case 'l' : arcan_libpath = strdup(optarg); break;
@@ -222,6 +225,11 @@ int main(int argc, char* argv[])
 		arcan_fatal("Theme name 'arcan' is reserved\n");
 	}
 
+	if (vfalign > 1.0 || vfalign < 0.0){
+		arcan_warning("Argument Error (-F, --vsync-falign): bad range specified (%f), reverting to default (0.6)\n", vfalign);
+		vfalign = 0.6;
+	}
+	
 	char* dbname = arcan_expand_resource(dbfname, true);
 
 /* try to open the specified database,
@@ -346,53 +354,23 @@ int main(int argc, char* argv[])
 
 		bool done = false;
 		float lastfrag = 0.0f;
-
+		long long int lastflip = arcan_timemillis();
+		
 		while (!done) {
 			arcan_event* ev;
-			unsigned nticks;
 
-			float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
-
-			if (debuglevel == 4)
-				arcan_warning("main() event_process (%d.%f)\n", nticks, frag);
-
-/* priority is always in maintaining logical clock and event processing */
-			if (nticks > 0){
-				arcan_video_tick(nticks);
-				arcan_audio_tick(nticks);
-				lastfrag = 0.0f;
-
-				arcan_video_refresh(frag, true);
-				lastflip = arcan_timemillis();
-			} else {
-/* we are running ahead of time, if this is by a lot, consider yielding if not, interpolate */
-				if (!waitsleep || fabs(frag - lastfrag) > INTERP_MINSTEP){
-					arcan_audio_refresh();
-					if (arcan_video_display.vsync == false || (arcan_timemillis() - lastflip) % 16 > 8){
-						arcan_video_refresh(frag, true);
-						lastflip = arcan_timemillis();
-					}
-
-					lastfrag = frag;
-				}
-				 else
-					arcan_timesleep( 0.1f * (float) ARCAN_TIMER_TICK );
-			}
-
-/* pollfeed drives frameservers, which in turn can synch events and should
- * be processed before main event flush */
+/* pollfeed can actually populate event-loops, assuming we don't exceed a compile- time threshold */
 			arcan_video_pollfeed();
 
-/* might be better if this terminates if we're closing in on a deadline as to not be
- * saturated with an onslaught of I/O events. */
+/* might be better if this terminates if we're closing in on a deadline as to not be saturated with an onslaught of I/O events. */
 			arcan_errc evstat;
 			while ((ev = arcan_event_poll(arcan_event_defaultctx(), &evstat)) && evstat == ARCAN_OK) {
-
 				switch (ev->category) {
 					case EVENT_VIDEO:
+
 /* these events can typically be determined in video_tick(),
  * however there are so many hierarchical dependencies (linked objs, instances, ...)
- * that a full delete is not safe there (e.g. event -> callback -> */
+ * that a full delete is not really safe there (e.g. event -> callback -> */
 						if (ev->kind == EVENT_VIDEO_EXPIRE)
 							arcan_video_deleteobject(ev->data.video.source);
 
@@ -415,6 +393,50 @@ int main(int argc, char* argv[])
 				}
 
 				arcan_lua_pushevent(luactx, ev);
+			}
+
+			unsigned nticks;
+			float frag = arcan_event_process(arcan_event_defaultctx(), &nticks);
+
+			if (debuglevel == 4)
+				arcan_warning("main() event_process (%d, %f)\n", nticks, frag);
+
+/* priority is always in maintaining logical clock and event processing */
+			if (nticks > 0){
+				arcan_video_tick(nticks);
+				arcan_audio_tick(nticks);
+				lastfrag = 0.0;
+			}
+
+/* difficult decision, should we flip or not?
+ * a full- redraw can be costly, so should only really be done if enough things have changed
+ * or if we're closing in on the next deadline for the unknown video clock
+ * this also depends on if the user favors energy saving (waitsleep) or responsiveness. */
+			const int min_respthresh = 9;
+
+/* only render if there's enough relevant changes */
+			if (nticks > 0 || frag - lastfrag > INTERP_MINSTEP){
+
+/* separate between cheap (possibly vsync off or triple buffering) flip cost and expensive (vsync on) */
+				if (arcan_video_display.vsync_timing < 8.0){
+					arcan_video_refresh(frag, true);
+					
+					int delta = arcan_timemillis() - lastflip;
+					lastflip += delta;
+					
+					if (waitsleep && delta < min_respthresh){
+						arcan_timesleep(min_respthresh - delta);
+					} 
+				}
+				else {
+					int delta = arcan_timemillis() - lastflip;
+					if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
+						arcan_video_refresh(frag, true);
+						lastflip += delta;
+					}
+				}
+
+				arcan_audio_refresh();
 			}
 		}
 
