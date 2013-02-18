@@ -1295,14 +1295,11 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				valcbs = {};
 				valcbs["YES"] = function()
 					reset_target(internal_vid);
-					settings.iodispatch["MENU_ESCAPE"]();
 				end
 
-				valcbs["NO"]  = function()
-					settings.iodispatch["MENU_ESCAPE"]();
-				end
+				valcbs["NO"]  = function()	end
 
-				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, nil, true, valcbs);
+				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, true, valcbs);
 			end
 		end
 
@@ -1889,7 +1886,6 @@ if (#menulbls > 0 and settingslbls) then
 	end
 
 	gridlemenu_defaultdispatch(imenu);
-	print("menu push");
 	dispatch_push(imenu);
 	
 	settings.context_menu = nil;
