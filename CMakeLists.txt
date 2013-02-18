@@ -19,6 +19,19 @@
 #
 # --- Project metadata
 PROJECT( arcan )
+include(ExternalProject)
+
+ExternalProject_Add(
+ nacl
+ SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+ STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/stamp
+ TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/tmp
+ DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+ INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+
+ BUILD_IN_SOURCE 1
+ INSTALL_COMMAND ""
+)
 
 cmake_minimum_required(VERSION 2.8.7 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
@@ -94,8 +107,8 @@ elseif(WIN32)
 
 # APR seems to complex for this solution, build separately in MINGW
 # and install into MSys
-    set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
-    set(APR_INCLUDE_DIR ${WININC}\\apr)
+	set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
+	set(APR_INCLUDE_DIR ${WININC}\\apr)
 	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
 	set(SQLITE3_INCLUDE_DIR ${WININC})
 	set(SQLITE3_LIBRARY_RELEASE ${WINLIB}\\distr\\sqlite3.dll)
@@ -147,6 +160,8 @@ FSRV_LIBRARIES
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
 	${VPX_LIBRARIES}
+	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
+	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
 )
 
 set (
@@ -162,6 +177,7 @@ INCLUDE_DIRECTORIES
 	${VORBIS_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIRS}
 	"frameserver/ntsc"
+	"nacl/include"
 )
 
 add_subdirectory( openctm )
@@ -504,6 +520,8 @@ endif()
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
 set_target_properties( arcan_frameserver PROPERTIES COMPILE_FLAGS "${FSRV_BUILD_FLAGS}" )
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
+
+add_dependencies( arcan_frameserver nacl )
 
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
 #install(TARGETS arcan_modelconv DESTINATION ${BIN_DST})
