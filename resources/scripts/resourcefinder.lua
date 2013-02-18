@@ -122,9 +122,8 @@ local function resourcefinder_graphics(game, restbl, cache_results)
 			filter_ext(tgttbl, game.setname .. "_thumb", grppath, restbl, imgext, val);
 
 			if (val == "boxart") then
-				filter_ext(tgttbl, game.setname .. "_back_thumb", grppath, restbl, imgext, val)	
+				filter_ext(tgttbl, game.setname .. "_back", grppath, restbl, imgext, val)	
 				filter_ext(tgttbl, game.setname .. "_back_thumb", grppath, restbl, imgext, val);
-				filter_ext(tgttbl, game.setname .. "_insert_thumb", grppath, restbl, imgext, val);
 			end
 		end
 	end
@@ -176,8 +175,18 @@ function resourcefinder_search( gametable, cache_results )
 		return res;
 	end
 
-	restbl.find_boxart = function(self, front, filter)
+	restbl.find_boxart = function(self, front, thumb)
 		if (self.boxart and #self.boxart > 0) then
+			local filter = front and "" or "_back";
+
+			if (type(front) == "string") then
+				filter = front;
+			else
+				if (thumb) then
+					filter = filter .. "_thumb";
+				end
+				filter = filter .. "[.](%a+)$";
+			end
 			
 			for ind, val in ipairs(self.boxart) do
 				if (string.match(val, filter)) then
@@ -185,7 +194,6 @@ function resourcefinder_search( gametable, cache_results )
 				end
 			end
 			
-			return self.boxart[1];
 		end
 	end
 		

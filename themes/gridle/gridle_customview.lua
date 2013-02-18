@@ -18,15 +18,16 @@ customview = {};
 
 -- map resource-finder properties with their respective name in the editor dialog
 local remaptbl = {};
-remaptbl["bezel"]       = "bezels";
-remaptbl["screenshot"]  = "screenshots";
-remaptbl["marquee"]     = "marquees";
-remaptbl["overlay"]     = "overlay";
-remaptbl["bezel"]       = "bezels";
-remaptbl["backdrop"]    = "backdrops";
-remaptbl["movie"]       = "movies";
-remaptbl["controlpanel"]= "controlpanels";
-remaptbl["boxart"]      = "boxart";
+remaptbl["bezel"]        = "bezels";
+remaptbl["screenshot"]   = "screenshots";
+remaptbl["marquee"]      = "marquees";
+remaptbl["overlay"]      = "overlay";
+remaptbl["bezel"]        = "bezels";
+remaptbl["backdrop"]     = "backdrops";
+remaptbl["movie"]        = "movies";
+remaptbl["controlpanel"] = "controlpanels";
+remaptbl["boxart"]       = "boxart";
+remaptbl["boxart (back)"]= "boxart (back)";
 
 -- list of the currently allowed modes (size, position, opacity, orientation)
 customview.position_modes_default  = {"position", "size", "opacity", "orientation"};
@@ -538,6 +539,7 @@ local function launch(tbl)
 	if (launch_internal) then
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		customview.gametbl = tbl;
+		settings.capabilities = tbl.capabilities;
 		settings.cleanup_toggle = customview.cleanup;
 
 		if (valid_vid(internal_vid)) then
@@ -788,7 +790,7 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Backgrounds...", "ignore", build_globmenu("backgrounds/*.png", positionbg, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Background Effects...", "ignore", build_globmenu("shaders/bgeffects/*.fShader", effecttrig, ALL_RESOURCES));
 	add_submenu(mainlbls, mainptrs, "Images...", "ignore", build_globmenu("images/*.png", positionfun, ALL_RESOURCES));
-	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Vidcap", "Model"}, positiondynamic));
+	add_submenu(mainlbls, mainptrs, "Dynamic Media...", "ignore", gen_tbl_menu("ignore",	{"Screenshot", "Movie", "Bezel", "Marquee", "Flyer", "Boxart", "Boxart (back)", "Vidcap", "Model"}, positiondynamic));
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
@@ -899,22 +901,29 @@ local function update_dynamic(newtbl)
 		end
 
 		for ind, val in ipairs(customview.current.dynamic) do
+			local vid = nil;
 			reskey = remaptbl[val.res];
 			
-			if (reskey and restbl[reskey] and #restbl[reskey] > 0) then
-				if (reskey == "movies") then
-					vid, aid = load_movie(restbl[reskey][1], FRAMESERVER_LOOP, function(source, status)
-						place_item(source, val);
+			if (reskey == "movies") then
+				local res = restbl:find_movie();
+				if (res) then
+					vid, aid = load_movie(restbl[reskey][1], FRAMESERVER_LOOP, 
+						function(source, status) place_item(source, val);
 						play_movie(source);
-					end)
-					table.insert(customview.temporary, vid);	
-				else
-					vid = load_image_asynch(restbl[reskey][1], function(source, status)
-						place_item(source, val);
-					end);
-					table.insert(customview.temporary, vid);
+						end)
 				end
-	
+			elseif (reskey == "boxart" or reskey == "boxart (back)") then
+				local res = restbl:find_boxart(reskey == "boxart");
+				if (res) then
+					vid = load_image_asynch(res, function(source, status) place_item(source, val); end);
+				end
+
+			elseif (restbl[reskey] and #restbl[reskey] > 0) then
+				vid = load_image_asynch(restbl[reskey][1], function(source, status) place_item(source, val); end);
+			end
+
+			if (vid and vid ~= BADID) then
+				table.insert(customview.temporary, vid);
 			end
 		end
 

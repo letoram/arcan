@@ -720,9 +720,9 @@ function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
 	imenu["MENU_SELECT"] = function()
 		local res = dialogwin:input("MENU_SELECT");
 		play_audio(soundmap["MENU_SELECT"]);
-		if (valcbs[res]) then valcbs[res](); end
-		if (cleanuphook) then cleanuphook(); end
 		dispatch_pop();
+		if (valcbs and valcbs[res]) then valcbs[res](); end
+		if (cleanuphook) then cleanuphook(); end
 	end
 
 	if (canescape) then
