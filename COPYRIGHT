@@ -13,6 +13,7 @@ frameserver/resampler/*, libspeex developers (www.speex.org and xiph.org), revis
 hidapi/*, (c) 2010 Alan Ott, FreeBSD License
 openCTM/* (c) Marcus Geelnard -- zlib / libpng license
 lodepng/* (c) 2005-2012 Lode Vandevenne -- BSD-like
+nacl/* Public Domain, courtesy of Daniel Bernstein, Tanja Lange and the CACE project.
 arcan_renderfun.c:stretchblit derived from SDL_GFX (c) Andreas Schiffler -- BSD- like 
 
 Furthermore, media included as part of the main distribution resources and themes,
