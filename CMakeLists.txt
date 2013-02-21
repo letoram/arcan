@@ -235,6 +235,9 @@ set (
  frameserver/arcan_frameserver_libretro.c
  frameserver/arcan_frameserver_encode_presets.c
  frameserver/arcan_frameserver_encode_presets.h
+ frameserver/graphing/font_8x8.h
+ frameserver/graphing/net_graph.h
+ frameserver/graphing/net_graph.c
  frameserver/ntsc/snes_ntsc.h
  frameserver/ntsc/snes_ntsc.c
  frameserver/resampler/resample.c

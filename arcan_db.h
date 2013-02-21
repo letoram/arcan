@@ -74,6 +74,7 @@ enum ARCAN_DB_INPUTMASK {
  * if themename is not null, make sure there is a table for the specified theme 
  * returns null IF fname can't be opened/read OR sanity check fails */
 arcan_dbh* arcan_db_open(const char* fname, const char* themename);
+void arcan_db_close(arcan_dbh*);
 
 /* populate a filtered list of results,
  * year (< 0 for all)

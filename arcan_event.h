@@ -45,6 +45,7 @@ enum ARCAN_EVENT_CATEGORY {
 
 enum ARCAN_EVENT_SYSTEM {
 	EVENT_SYSTEM_EXIT = 0,
+	EVENT_SYSTEM_SWITCHTHEME,
 	EVENT_SYSTEM_VIDEO_FAIL,
 	EVENT_SYSTEM_AUDIO_FAIL,
 	EVENT_SYSTEM_IO_FAIL,
@@ -260,6 +261,7 @@ typedef struct arcan_sevent {
 /* only for dev/dbg purposes, expected scripting frontend to free and not-mask */
 			char* dyneval_msg;
 		} mesg;
+		char message[64];
 	} data;
 } arcan_sevent;
 

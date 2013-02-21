@@ -156,10 +156,6 @@ int main(int argc, char* argv[])
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
 
-/* start this here since some SDL builds have the nasty (albeit understandable) habit of
- * redirecting STDIN / STDOUT, and we might want to do that ourselves */
-	SDL_Init(SDL_INIT_VIDEO);
-
 	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:t:o:l:a:d:F:1:2:gr:S", longopts, NULL)) != -1){
 		switch (ch) {
 			case '?' :
@@ -229,7 +225,10 @@ int main(int argc, char* argv[])
 		arcan_warning("Argument Error (-F, --vsync-falign): bad range specified (%f), reverting to default (0.6)\n", vfalign);
 		vfalign = 0.6;
 	}
-	
+
+/* also used as restart point for switiching themes */
+themeswitch:
+	SDL_Init(SDL_INIT_VIDEO);
 	char* dbname = arcan_expand_resource(dbfname, true);
 
 /* try to open the specified database,
@@ -265,7 +264,7 @@ int main(int argc, char* argv[])
 		height = vi->current_h;
 	}
 
-	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i, VSYNC: %i, MSA: %i\n",
+	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, window manager: %s, scalemode: %i, VSYNC: %i, MSAA: %i\n",
 			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", vi->wm_available ? "yes" : "no", scalemode, arcan_video_display.vsync,
 			arcan_video_display.msasamples);
 	arcan_video_default_scalemode(scalemode);
@@ -383,6 +382,18 @@ int main(int argc, char* argv[])
 /* note the LUA shutdown() call actually emits this event */
 						if (ev->kind == EVENT_SYSTEM_EXIT)
 							done = true;
+						else if (ev->kind == EVENT_SYSTEM_SWITCHTHEME){
+							lua_close(luactx);
+							arcan_video_shutdown();
+							arcan_audio_teardown();
+							arcan_event_deinit(arcan_event_defaultctx());
+							arcan_led_cleanup();
+							arcan_db_close(dbhandle);
+	
+							arcan_themename = strdup(ev->data.system.data.message);
+							goto themeswitch;
+						}	
+/* don't want to propagate these */
 						else
 							if (ev->kind == EVENT_SYSTEM_LAUNCH_EXTERNAL) {}
 							else

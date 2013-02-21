@@ -935,6 +935,15 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 	return true;
 }
 
+void arcan_db_close(arcan_dbh* ctx)
+{
+	if (!ctx)
+		return;
+
+	sqlite3_close(ctx->dbh);
+	free(ctx);
+}
+
 arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 {
 	sqlite3* dbh;
