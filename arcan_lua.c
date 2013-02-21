@@ -2553,7 +2553,18 @@ int arcan_lua_shutdown(lua_State *ctx)
 
 	const char* str = luaL_optstring(ctx, 1, "");
 	if (strlen(str) > 0)
-		arcan_fatal("%s\n", str);
+		arcan_warning("%s\n", str);
+
+	return 0;
+}
+
+int arcan_lua_switchtheme(lua_State *ctx)
+{
+	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHTHEME};
+	const char* newtheme = luaL_optstring(ctx, 1, arcan_themename);
+	
+	snprintf(ev.data.system.data.message, sizeof(ev.data.system.data.message) / sizeof(ev.data.system.data.message[0]), "%s", newtheme);
+	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
 	return 0;
 }
@@ -4029,6 +4040,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "switch_default_imageproc", arcan_lua_setimageproc);
 	arcan_lua_register(ctx, "switch_default_texfilter", arcan_lua_settexfilter);
 	arcan_lua_register(ctx, "shutdown", arcan_lua_shutdown);
+	arcan_lua_register(ctx, "switch_theme", arcan_lua_switchtheme);
 	arcan_lua_register(ctx, "warning", arcan_lua_warning);
 	arcan_lua_register(ctx, "valid_vid", arcan_lua_validvid);
 	arcan_lua_register(ctx, "store_key", arcan_lua_storekey);

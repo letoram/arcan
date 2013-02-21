@@ -231,6 +231,10 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
+function string.trim(s)
+	return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
 function dispatch_push(tbl, name, triggerfun)
 	local newtbl = {};
 	newtbl.table = tbl;
@@ -364,6 +368,9 @@ local function menu_bgupdate()
 end
 
 function gridle()
+-- updates settings namespace, needed for some load-time options in gridle_menus etc.
+	load_settings();
+	
 -- grab all dependencies;
 	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
 
@@ -434,7 +441,6 @@ function gridle()
 	video_3dorder(ORDER_LAST); 
 
 -- use the DB theme-specific key/value store to populate the settings table
-	load_settings();
 	load_soundmap(settings.soundmap);
 	
 -- network remote connection switch on / off

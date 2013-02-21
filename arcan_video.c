@@ -995,23 +995,44 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	}
 
 
-/* flip a few frames to try and get a grasp of the upper timing for a swap buffer */
+/* flip twice (back->front->display) to hopefully wash out initial jitter */
 	arcan_video_display.vsync_timing = 0;
-
 	SDL_GL_SwapBuffers();
-	for (int i = 0; i < 4; i++){
+	SDL_GL_SwapBuffers();
+	int retrycount;
+	
+/* try to get a decent measurement of actual timing, this is not really used for
+ * synchronization but rather as a guess of we're actually vsyncing and how other
+ * processing should be scheduled in relation to vsync, or if we should yield at 
+ * appropriate times */
+	long long int samples[10], sample_sum;
+retry:
+	sample_sum = 0;
+	for (int i = 0; i < 10; i++){
 		long long int start = arcan_timemillis();
 		SDL_GL_SwapBuffers();
 		long long int stop = arcan_timemillis();
-		if (stop - start > arcan_video_display.vsync_timing)
-			arcan_video_display.vsync_timing = stop - start;
+		samples[i] = stop - start;
+		sample_sum += samples[i];
 	}
 
-	arcan_warning("arcan_video_init(), Upper video deadline set to ~%f mspf.\n", arcan_video_display.vsync_timing);
-
-/* mspf < 1, got a super display or not actually vsyncing, this will not be particularly accurate
- * but enough of a measure to guess when the next frame will be and determine if we should actually
- * flush or update again */
+	float mean = (float) sample_sum / (float) 10;
+	float variance = 0.0;
+	for (int i = 0; i < 10; i++){
+		variance += powf(mean - (float)samples[i], 2);
+	}
+	float stddev = sqrtf(variance / (float) 10);
+	if (stddev > 0.5){
+		retrycount++;
+		if (retrycount > 10)
+			arcan_video_display.vsync_timing = 16.667; /* terribly instable, just default to 60Hz */
+		else
+			goto retry;
+	}
+	else
+		arcan_video_display.vsync_timing = mean;
+	
+	arcan_warning("arcan_video_init(), timing estimate (mean: %f, deviation: %f, samples used: %d)\n", mean, stddev, 10 * (retrycount + 1));
 
 /* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
 	int err;
@@ -3837,6 +3858,9 @@ void arcan_video_shutdown()
 	while ( lastctxc != (lastctxa = arcan_video_popcontext()) )
 		lastctxc = lastctxa;
 
+	arcan_shader_unload_all();
+
+	SDL_FreeSurface(arcan_video_display.screen);
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
