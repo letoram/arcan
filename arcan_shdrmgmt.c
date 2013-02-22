@@ -447,6 +447,17 @@ void arcan_shader_flush()
 
 		kill_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment);
 		cur->prg_container = cur->obj_vertex = cur->obj_fragment;
+		
+		struct shaderv* first = cur->persistvs;
+		while (first){
+			struct shaderv* last = first;
+			free(first->label);
+			first = first->next;
+			memset(last, 0, sizeof(struct shaderv));
+			free(last);
+		}
+		
+		memset(cur, 0, sizeof(struct shader_cont));
 	}
 
 	shdr_global.ofs = 0;

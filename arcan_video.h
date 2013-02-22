@@ -309,6 +309,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, /* string to render 
                                        unsigned int* lines, /* [out]-> number of lines processed */
                                        unsigned int** lineheights); /* [out]-> height of each line, needs to be freed */
 
+void arcan_video_reset_fontcache();
 void arcan_video_dumppipe();
 
 /* allocate buffer, readback current front buffer and return buffer ptr in *dptr with buffer size in dsize.

@@ -83,8 +83,7 @@ end
 function welcome_input( inputtbl ) 
 	if (inputtbl.kind == "digital" and inputtbl.translated and inputtbl.active) then
 		if (symtable[ inputtbl.keysym ] == "ESCAPE") then
-			switch_theme("gridle");
-	--		shutdown();
+			shutdown();
 		end
 	end
 end

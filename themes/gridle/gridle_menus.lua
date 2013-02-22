@@ -25,9 +25,11 @@ function gen_tbl_menu(name, tbl, triggerfun, isstring)
 
 	local basename = function(label, save)
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		settings[name] = isstring and label or tonumber(label);
+		if (name ~= nil) then
+			settings[name] = isstring and label or tonumber(label);
+		end
 
-		if (save) then
+		if (save and name ~= nil) then
 			play_audio(soundmap["MENU_FAVORITE"]);
 			store_key(name, isstring and label or tonumber(label));
 		else
@@ -316,7 +318,18 @@ local gamelbls = {};
 
 local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
 
-if (settings.view_mode == "Grid") then
+local function flip_viewmode()
+	print("settings.viewmode:", settings.viewmode);
+	print("current key:", get_key("viewmode"));
+	if (settings.viewmode == "Grid") then
+		store_key("viewmode", "Custom");
+	else
+		store_key("viewmode", "Grid");
+	end
+	switch_theme("gridle");
+end
+
+if (settings.viewmode == "Grid") then
 	add_submenu(displbls, dispptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
 	add_submenu(displbls, dispptrs, "Background Effects...", "bgeffect", bgeffmen, bgeffdesc);
 	add_submenu(displbls, dispptrs, "Cell Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
@@ -335,7 +348,7 @@ add_submenu(displbls, dispptrs, "Movie Playback Cooldown...", "cooldown_start", 
 add_submenu(displbls, dispptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
 add_submenu(displbls, dispptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
 
-add_submenu(displbls, dispptrs, "Default View Mode...", "view_mode", gen_tbl_menu("view_mode", {"Grid", "Custom"}, function() 
+add_submenu(displbls, dispptrs, "Default View Mode...", nil, gen_tbl_menu(nil, {"Switch"}, function() 
 	dialog_option( "Changing view mode requires a restart, proceed?", {"Yes", "No"}, false, {Yes = flip_viewmode}, nil );
 end, true));
 

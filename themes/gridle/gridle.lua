@@ -177,8 +177,6 @@ settings = {
 	cocktail_mode    = "Disabled",
 	autosave         = "On",
 	stream_url       = "rtmp://",
-
-	view_mode = "Grid"
 };
 
 -- make sure that the names from theGamesDB scraping match to the system icons 
@@ -290,7 +288,7 @@ function broadcast_game(gametbl, playing)
 		count = 0
 		for key, val in pairs(gametbl) do
 			if (type(val) == "string" or type(val) == "number") then
-				count = count + 1
+				count = count + 1;
 			end
 		end
 
@@ -443,10 +441,15 @@ function gridle()
 -- use the DB theme-specific key/value store to populate the settings table
 	load_soundmap(settings.soundmap);
 	
--- network remote connection switch on / off
-	if ( network_toggle() ) then
-		push_video_context();
-	end
+-- network remote connection, always on but can allow / disallow connections based on user settings
+	imagery.server = net_listen(settings.listen_host, network_onevent);
+	imagery.disconnected = load_image("images/disconnected.png");
+	image_tracetag(imagery.disconnected, "disconnected");
+	persist_image(imagery.server);
+
+	image_tracetag(imagery.server, "network server");
+	persist_image(imagery.server);
+	push_video_context();
 
 -- we actually want the network toggle to live in a separate context, so that it can't be deleted.
 
@@ -497,12 +500,6 @@ function gridle()
 		dispatch_push({}, "osd keyboard", osdkbd_inputcb);
 	end
 
-	imenu["SWITCH_VIEW"] = function(iotbl)
-		play_audio( soundmap["DETAILVIEW_TOGGLE"] );
-		imagery.sysicons = nil;
-		gridle_customview();
-	end
-	
 	imenu["DETAIL_VIEW"]  = function(iotbl)
 		local gametbl = current_game();
 		local key = find_cabinet_model(gametbl);
@@ -559,7 +556,7 @@ function gridle()
 
 -- slightly complicated, we cannot activate the respective grid mode in the case of customview etc. 
 -- as it will pop context, manipulate I/O handlers etc. so let the keyconf / ledconf set it all up.
-	local lfun = settings.view_mode == "Grid" and setup_gridview or gridle_customview;
+	local lfun = settings.viewmode == "Grid" and setup_gridview or gridle_customview;
 	
 	gridle_keyconf(lfun);
 	gridle_ledconf(lfun);
@@ -586,13 +583,16 @@ function setup_gridview()
 	imagery.nosave  = load_image("images/brokensave.png");
 	image_tracetag(imagery.nosave, "nosave");
 
-	imagery.disconnected = load_image("images/disconnected.png");
-	image_tracetag(imagery.disconnected, "disconnected");
+	if (imagery.disconnected == nil) then
+		imagery.disconnected = load_image("images/disconnected.png");
+		image_tracetag(imagery.disconnected, "disconnected");
+	end
 
 	local props = image_surface_properties(imagery.disconnected);
 	if (props.width > VRESW) then props.width = VRESW; end
 	if (props.height > VRESH) then props.height = VRESH; end
 	resize_image(imagery.disconnected, props.width, props.height);
+	move_image(imagery.disconnected, VRESW - props.width, VRESH - props.height);
 	
 -- Little star keeping track of games marked as favorites
 	imagery.starimage    = load_image("images/star.png");
@@ -626,11 +626,17 @@ end
 function network_onevent(source, tbl)
 	if (tbl.kind == "frameserver_terminated") then
 -- Caveat: As this one is toggled persistent, it is not entirely sure that we're in a context where delete_image will work
-		settings.server = nil;
-		settings.network_remote = "Disabled";
+		if (valid_vid(settings.server)) then
+			delete_image(settings.server);
+		else
+			settings.network_remote = "Disabled";
+		end
+
 		show_image(imagery.disconnected);
 		order_image(imagery.disconnected, max_current_image_order());
-		blend_image(imagery.disconnected, 0.0, 40);
+		blend_image(imagery.disconnected, 1.0, 30);
+		blend_image(imagery.disconnected, 0.0, 10);
+		settings.server = nil;
 
 	elseif (tbl.kind == "resized") then
 		local a = true; -- seriously lua..
@@ -641,40 +647,34 @@ function network_onevent(source, tbl)
 
 	elseif (tbl.kind == "message") then
 		if (settings.network_remote == "Active") then
-			local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote"};
+			local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote", external = true};
 			local override = {};
 
 			if (string.sub(tbl.message, 1, 6) == "press:") then
 				faketbl.active = true;
-			
-				table.insert(override, string.sub(tbl.message, 7, -1));
-				gridle_input(faketbl, override)
+				local label = string.sub(tbl.message, 7, -1);
+
+-- we currently filter switch view as its going to be refactored out, but still in there for a 
+-- customview corner-case
+				if (label ~= "SWITCH_VIEW") then
+					faketbl.label = label;
+					gridle_input(faketbl);
+				end
 
 			elseif (string.sub(tbl.message, 1, 8) == "release:") then
-				table.insert(override, string.sub(tbl.message, 9, -1));
+				local label = string.sub(tbl.message, 9, -1);
 				faketbl.active = false;
 
-				gridle_input(faketbl, override);
+				if (override ~= "SWITCH_VIEW") then
+					faketbl.label = label;
+					gridle_input(faketbl);
+				end
 			end
 		else
 			
 		end
 	else
 		print("unsupported netevent: ", tbl.kind);
-	end
-end
-
-function network_toggle()
-	if (settings.network_remote == "Passive" or
-		settings.network_remote == "Active") then
-
-		if (not imagery.server) then
-			imagery.server = net_listen(settings.listen_host, network_onevent);
-			print("network server persistent:", tostring(persist_image(imagery.server)));
-			image_tracetag(imagery.server, "network server");
-		end
-
-		return true;
 	end
 end
 
@@ -872,7 +872,6 @@ function gridle_keyconf(defer_fun)
 			"(internal-launch-menus) (Spyglass options), show option details."
 	};
 	helplabels["DETAIL_VIEW"  ] = {"(grid-view) If a spyglass icon is present, switch to a 3D model of the selected game."};
-	helplabels["SWITCH_VIEW"  ] = {"(grid-view) Switch to customized view mode.", "(customview-setup) When placing an item, switch active property."};
 	helplabels["OSD_KEYBOARD" ] = {"(grid-view) Use an on-screen keyboard to filter current list of games."};
 	helplabels["RANDOM_GAME"  ] = {"(grid-view, custom-view) Move the cursor to a random location.", "(internal-launch) Toggle fast-forward on/off (where applicable)."};
 	
@@ -1886,9 +1885,9 @@ function gridle_internaltgt_input(val, iotbl)
 end
 
 -- slightly different from gridledetails version
-function gridle_internalinput(iotbl, override)
-	local restbl = override and override or keyconfig:match(iotbl);
-	
+function gridle_internalinput(iotbl)
+	local restbl = keyconfig:match(iotbl);
+
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
 -- the reason for looping the restbl is simply that the iotbl can be set to match several labels
 	
@@ -1939,7 +1938,7 @@ function gridle_internalinput(iotbl, override)
 end
 
 function gridle_dispatchinput(iotbl, override)
-	local restbl = override and override or keyconfig:match(iotbl);
+	local restbl = keyconfig:match(iotbl);
 	
 	if (restbl and (iotbl.active or iotbl.kind == "analog")) then
 		for ind,val in pairs(restbl) do
@@ -1974,7 +1973,7 @@ end
 function load_settings()
 	key_queue = {};
 
-	load_key_str("view_mode", "view_mode", settings.view_mode);
+	load_key_str("viewmode", "viewmode", settings.viewmode);
 	load_key_num("ledmode", "ledmode", settings.ledmode);
 	load_key_num("cell_width", "cell_width", settings.cell_width);
 	load_key_num("cell_height", "cell_height", settings.cell_height);

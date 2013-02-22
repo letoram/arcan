@@ -5,9 +5,11 @@
 local grid_stepx = 2;
 local grid_stepy = 2;
 
-local stepleft, stepup, stepdown, stepright, show_config, setup_customview;
+local stepleft, stepup, stepdown, stepright, show_config, setup_layouted;
 
-customview = {};
+layouted = {
+	layoutfile = "layouts/default.cfg"
+};
 
 -- map resource-finder properties with their respective name in the editor dialog
 local remaptbl = {};
@@ -22,12 +24,12 @@ remaptbl["controlpanel"]= "controlpanels";
 remaptbl["boxart"]      = "boxart";
 
 -- list of the currently allowed modes (size, position, opacity, orientation)
-customview.position_modes_default  = {"position", "size", "opacity", "orientation"};
-customview.position_modes_3d       = {"position3d", "rotate3d"};
-customview.axis = 0;
-customview.orderind = 1;
-customview.temporary = {};
-customview.temporary_models = {};
+layouted.position_modes_default  = {"position", "size", "opacity", "orientation"};
+layouted.position_modes_3d       = {"position3d", "rotate3d"};
+layouted.axis = 0;
+layouted.orderind = 1;
+layouted.temporary = {};
+layouted.temporary_models = {};
 
 helplbls = {};
 helplbls["position"] = {
@@ -229,9 +231,9 @@ local function update_infowin()
 	end
 
 -- used in the setup/edit/mode. Position a quadrant away from the current item, and show the appropriate help text 
-	infowin = listview_create( helplbls[customview.position_modes[customview.position_marker]], VRESW / 2, VRESH / 2 );
-	local xpos = (customview.ci.x < VRESW / 2) and (VRESW / 2) or 0;
-	local ypos = (customview.ci.y < VRESH / 2) and (VRESH / 2) or 0;
+	infowin = listview_create( helplbls[layouted.position_modes[layouted.position_marker]], VRESW / 2, VRESH / 2 );
+	local xpos = (layouted.ci.x < VRESW / 2) and (VRESW / 2) or 0;
+	local ypos = (layouted.ci.y < VRESH / 2) and (VRESH / 2) or 0;
 	infowin:show();
 	move_image(infowin.anchor, math.floor(xpos), math.floor(ypos));
 end
@@ -239,79 +241,79 @@ end
 -- used in the setup/edit/mode.
 local function position_toggle()
 -- don't allow any other mode to be used except position until we have an upper left boundary
-	customview.position_marker = (customview.position_marker + 1 > #customview.position_modes) and 1 or (customview.position_marker + 1);
+	layouted.position_marker = (layouted.position_marker + 1 > #layouted.position_modes) and 1 or (layouted.position_marker + 1);
 	update_infowin();
 end
 
 -- used in the setup/edit mode, whenever user-input changes the state of the current item
 local function update_object(imgvid)
-	resize_image(imgvid, customview.ci.width, customview.ci.height);
-	move_image(imgvid, customview.ci.x, customview.ci.y);
-	blend_image(imgvid, customview.ci.opa);
-	rotate_image(imgvid, customview.ci.ang);
-	order_image(imgvid, customview.ci.zv);
+	resize_image(imgvid, layouted.ci.width, layouted.ci.height);
+	move_image(imgvid, layouted.ci.x, layouted.ci.y);
+	blend_image(imgvid, layouted.ci.opa);
+	rotate_image(imgvid, layouted.ci.ang);
+	order_image(imgvid, layouted.ci.zv);
 
-	if (customview.ci.tiled) then
+	if (layouted.ci.tiled) then
 		local props = image_surface_initial_properties(imgvid);
-		image_scale_txcos(imgvid, customview.ci.width / props.width, customview.ci.height / props.height);
+		image_scale_txcos(imgvid, layouted.ci.width / props.width, layouted.ci.height / props.height);
 	end
 	
 end
 
 local function update_object3d(model)
-	move3d_model(model, customview.ci.pos[1], customview.ci.pos[2], customview.ci.pos[3]);
-	rotate3d_model(model, customview.ci.ang[1], customview.ci.ang[2], customview.ci.ang[3], 0, ROTATE_ABSOLUTE);
+	move3d_model(model, layouted.ci.pos[1], layouted.ci.pos[2], layouted.ci.pos[3]);
+	rotate3d_model(model, layouted.ci.ang[1], layouted.ci.ang[2], layouted.ci.ang[3], 0, ROTATE_ABSOLUTE);
 end
 
 -- used whenever a shader is toggled for the 'background' label, applied in both edit and view mode.
 local function update_bgshdr()
 	local dst = nil;
 	
-	if (customview.in_config) then
-		for ind, val in ipairs(customview.itemlist) do
+	if (layouted.in_config) then
+		for ind, val in ipairs(layouted.itemlist) do
 			if (val.kind == "background") then
 				dst = val.vid;
-				val.shader = customview.bgshader_label;
+				val.shader = layouted.bgshader_label;
 				break
 			end
 		end
 	else
-		dst = customview.background;
+		dst = layouted.background;
 	end
 
 	if (dst) then
 		local props = image_surface_properties(dst);
-		shader_uniform(customview.bgshader, "display", "ff", PERSIST, props.width, props.height);
-		image_shader(dst, customview.bgshader);
+		shader_uniform(layouted.bgshader, "display", "ff", PERSIST, props.width, props.height);
+		image_shader(dst, layouted.bgshader);
 	end
 end
 
 -- used in edit / scale 
 local function cursor_step(vid, x, y)
-	customview.ci.width  = customview.ci.width + x;
-	customview.ci.height = customview.ci.height + y;
+	layouted.ci.width  = layouted.ci.width + x;
+	layouted.ci.height = layouted.ci.height + y;
 
-	if (customview.ci.width <= 0)  then customview.ci.width  = 1; end
-	if (customview.ci.height <= 0) then customview.ci.height = 1; end
+	if (layouted.ci.width <= 0)  then layouted.ci.width  = 1; end
+	if (layouted.ci.height <= 0) then layouted.ci.height = 1; end
 	
 	update_object(vid);
 end
 
 -- used in edit / positioning 
 local function cursor_slide(vid, x, y)
-	customview.ci.x = customview.ci.x + x;
-	customview.ci.y = customview.ci.y + y;
+	layouted.ci.x = layouted.ci.x + x;
+	layouted.ci.y = layouted.ci.y + y;
 	
 	update_object(vid);
 end
 
 -- used in edit / rotate
 local function orientation_rotate(vid, ang, align)
-	customview.ci.ang = customview.ci.ang + ang;
+	layouted.ci.ang = layouted.ci.ang + ang;
 
 	if (align) then
-		local rest = customview.ci.ang % 45;
-		customview.ci.ang = (rest > 22.5) and (customview.ci.ang - rest) or (customview.ci.ang + rest);
+		local rest = layouted.ci.ang % 45;
+		layouted.ci.ang = (rest > 22.5) and (layouted.ci.ang - rest) or (layouted.ci.ang + rest);
 	end
 	
 	update_object(vid);
@@ -319,57 +321,55 @@ end
 
 -- used in edit / blend
 local function order_increment(vid, val)
-	customview.ci.zv = customview.ci.zv + val;
-	if (customview.ci.zv < 1) then customview.ci.zv = 1; end
-	if (customview.ci.zv >= customview.orderind) then customview.ci.zv = customview.orderind - 1; end
+	layouted.ci.zv = layouted.ci.zv + val;
+	if (layouted.ci.zv < 1) then layouted.ci.zv = 1; end
+	if (layouted.ci.zv >= layouted.orderind) then layouted.ci.zv = layouted.orderind - 1; end
 	
 	update_object(vid);
 end
 
 -- used in edit / blend
 local function opacity_increment(vid, byval)
-	customview.ci.opa = customview.ci.opa + byval;
+	layouted.ci.opa = layouted.ci.opa + byval;
 	
-	if (customview.ci.opa < 0.0) then customview.ci.opa = 0.0; end
-	if (customview.ci.opa > 1.0) then customview.ci.opa = 1.0; end
+	if (layouted.ci.opa < 0.0) then layouted.ci.opa = 0.0; end
+	if (layouted.ci.opa > 1.0) then layouted.ci.opa = 1.0; end
 	
 	update_object(vid);
 end
 
 local function cursor_rotate3d(model, step)
-	customview.ci.ang[ customview.axis+1 ] = customview.ci.ang[ customview.axis+1 ] + step;
+	layouted.ci.ang[ layouted.axis+1 ] = layouted.ci.ang[ layouted.axis+1 ] + step;
 	update_object3d(model);
 end
 
 local function cursor_position3d(model, step)
-	customview.ci.pos[ customview.axis+1 ] = customview.ci.pos[ customview.axis+1 ] + step;
+	layouted.ci.pos[ layouted.axis+1 ] = layouted.ci.pos[ layouted.axis+1 ] + step;
 	update_object3d(model);
 end
 
 local function cursor_axis3d(model)
-	customview.axis = (customview.axis + 1) % 3;
-	helplbls["position3d"][1] = "Position (3D), Axis: " .. tostring(customview.axis);
-	helplbls["rotate3d"][1] = "Rotate (3D), Axis: " .. tostring(customview.axis);
+	layouted.axis = (layouted.axis + 1) % 3;
+	helplbls["position3d"][1] = "Position (3D), Axis: " .. tostring(layouted.axis);
+	helplbls["rotate3d"][1] = "Rotate (3D), Axis: " .. tostring(layouted.axis);
 	update_infowin();
 	update_object3d(model);
 end
 
 -- used in edit mode, depending on source object type etc. a list of acceptable labels
 -- is set to position modes, this function connects these to the regular menu input labels
-customview.position_item = function(vid, trigger, lbls)
+layouted.position_item = function(vid, trigger, lbls)
 -- as the step size is rather small, enable keyrepeat (won't help for game controllers though,
 -- would need state tracking and hook to the clock 
 	cascade_visibility(current_menu, 0.0);
 	toggle_mouse_grab(MOUSE_GRABON);
 	
-	customview.position_modes  = lbls and lbls or customview.position_modes_default;
-	customview.position_marker = 1;
+	layouted.position_modes  = lbls and lbls or layouted.position_modes_default;
+	layouted.position_marker = 1;
 	
-	position_dispatch = settings.iodispatch;
-	settings.iodispatch = {};
-
-	settings.iodispatch["MOUSE_X"] = function(label, tbl)
-		local lbl = customview.position_modes[customview.position_marker];
+	local imenu = {};
+	imenu["MOUSE_X"] = function(label, tbl)
+		local lbl = layouted.position_modes[layouted.position_marker];
 		if (tbl.samples[2] == nil or tbl.samples[2] == 0) then return; end
 		if     (lbl == "size")        then cursor_step(vid, tbl.samples[2], 0);
 		elseif (lbl == "orientation") then orientation_rotate(vid, 0.1 * tbl.samples[2], false);
@@ -379,15 +379,15 @@ customview.position_item = function(vid, trigger, lbls)
 		elseif (lbl == "position3d")  then cursor_position3d(vid, 0.01 * tbl.samples[2]); end
 	end
 
-	settings.iodispatch["MOUSE_Y"] = function(label, tbl)
-		local lbl = customview.position_modes[customview.position_marker];
+	imenu["MOUSE_Y"] = function(label, tbl)
+		local lbl = layouted.position_modes[layouted.position_marker];
 		if (tbl.samples[2] == nil or tbl.samples[2] == 0) then return; end
 		if     (lbl == "size")        then cursor_step(vid, 0, tbl.samples[2]);
 		elseif (lbl == "position")    then cursor_slide(vid, 0, tbl.samples[2]); end
 	end
 	
-	settings.iodispatch["MENU_LEFT"]   = function()
-		local lbl = customview.position_modes[customview.position_marker];
+	imenu["MENU_LEFT"]   = function()
+		local lbl = layouted.position_modes[layouted.position_marker];
 		if     (lbl == "size")        then cursor_step(vid, grid_stepx * -1, 0);
 		elseif (lbl == "orientation") then orientation_rotate(vid,-2, false);
 		elseif (lbl == "opacity")     then opacity_increment(vid, 0.1);
@@ -397,8 +397,8 @@ customview.position_item = function(vid, trigger, lbls)
 		end
 	end
 
-	settings.iodispatch["MENU_RIGHT"]  = function() 
-		local lbl = customview.position_modes[customview.position_marker];
+	imenu["MENU_RIGHT"]  = function() 
+		local lbl = layouted.position_modes[layouted.position_marker];
 		if     (lbl == "size")        then cursor_step(vid,grid_stepx, 0);
 		elseif (lbl == "orientation") then orientation_rotate(vid, 2, false);
 		elseif (lbl == "opacity")     then opacity_increment(vid, -0.1);
@@ -408,8 +408,8 @@ customview.position_item = function(vid, trigger, lbls)
 		end
 	end
 
-	settings.iodispatch["MENU_UP"]     = function()
-		local lbl = customview.position_modes[customview.position_marker];
+	imenu["MENU_UP"]     = function()
+		local lbl = layouted.position_modes[layouted.position_marker];
 		if     (lbl == "size")        then cursor_step(vid,0, grid_stepy * -1);
 		elseif (lbl == "orientation") then orientation_rotate(vid, -45, true);
 		elseif (lbl == "opacity")     then order_increment(vid,1); 
@@ -419,8 +419,8 @@ customview.position_item = function(vid, trigger, lbls)
 		end
 	end
 
-	settings.iodispatch["MENU_DOWN"]   = function() 
-		local lbl = customview.position_modes[customview.position_marker];
+	imenu["MENU_DOWN"]   = function() 
+		local lbl = layouted.position_modes[layouted.position_marker];
 		if     (lbl == "size")        then cursor_step(vid,0, grid_stepy);
 		elseif (lbl == "orientation") then orientation_rotate(vid, 45, true);
 		elseif (lbl == "opacity")     then order_increment(vid,-1); 
@@ -430,59 +430,61 @@ customview.position_item = function(vid, trigger, lbls)
 		end 
 	end
 	
-	settings.iodispatch["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
-	settings.iodispatch["SWITCH_VIEW"] = function() position_toggle();   end
-	settings.iodispatch["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid);  end
+	imenu["MENU_ESCAPE"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(false, vid); end
+	imenu["SWITCH_VIEW"] = function() position_toggle();   end
+	imenu["MENU_SELECT"] = function() toggle_mouse_grab(MOUSE_GRABOFF); trigger(true, vid); end
 
+	dispatch_push(imenu, "layout editor");
 	update_infowin();
 end
 
-customview.new_item = function(vid, dstgroup, dstkey)
+layouted.new_item = function(vid, dstgroup, dstkey)
 	local props = image_surface_properties(vid);
 
-	customview.ci = {};
-	customview.ci.width = (props.width  > VRESW * 0.5) and VRESW * 0.5 or props.width;
-	customview.ci.height= (props.height > VRESH * 0.5) and VRESH * 0.5 or props.height;
-	customview.ci.x     = 0.5 * (VRESW - customview.ci.width);
-	customview.ci.y     = 0.5 * (VRESH - customview.ci.height);
-	customview.ci.opa   = 1.0;
-	customview.ci.ang   = 0;
-	customview.ci.kind  = dstgroup;
-	customview.ci.res   = dstkey;
+	layouted.ci = {};
+	layouted.ci.width = (props.width  > VRESW * 0.5) and VRESW * 0.5 or props.width;
+	layouted.ci.height= (props.height > VRESH * 0.5) and VRESH * 0.5 or props.height;
+	layouted.ci.x     = 0.5 * (VRESW - layouted.ci.width);
+	layouted.ci.y     = 0.5 * (VRESH - layouted.ci.height);
+	layouted.ci.opa   = 1.0;
+	layouted.ci.ang   = 0;
+	layouted.ci.kind  = dstgroup;
+	layouted.ci.res   = dstkey;
 	
-	customview.ci.zv    = customview.orderind;
-	customview.orderind = customview.orderind + 1;
+	layouted.ci.zv    = layouted.orderind;
+	layouted.orderind = layouted.orderind + 1;
 end
 
-customview.new_item3d = function(model, dstgroup, dstkey)
-	customview.ci = {};
+layouted.new_item3d = function(model, dstgroup, dstkey)
+	layouted.ci = {};
 
-	customview.ci.ang = {0.0, 0.0, 0.0};
-	customview.ci.pos = {-1.0, 0.0, -4.0};
+	layouted.ci.ang = {0.0, 0.0, 0.0};
+	layouted.ci.pos = {-1.0, 0.0, -4.0};
 -- not really used, just so infowin have something to work with 
-	customview.ci.x   = 0;
-	customview.ci.y   = 0;
-	customview.ci.opa = 1.0;
+	layouted.ci.x   = 0;
+	layouted.ci.y   = 0;
+	layouted.ci.opa = 1.0;
 	
-	customview.ci.zv  = customview.orderind;
-	customview.orderind = customview.orderind + 1;
+	layouted.ci.zv  = layouted.orderind;
+	layouted.orderind = layouted.orderind + 1;
 	
-	customview.ci.kind = dstgroup;
-	customview.ci.res  = dstkey;
+	layouted.ci.kind = dstgroup;
+	layouted.ci.res  = dstkey;
 end
 
 local function to_menu()
-	customview.ci = nil;
-	settings.iodispatch = position_dispatch;
+	layouted.ci = nil;
 	settings.iodispatch["MENU_ESCAPE"]("", false, false);
+	
+	dispatch_pop();
 	cascade_visibility(current_menu, 1.0);
 	kbd_repeat(settings.repeatrate);
 end
 
 local function save_item(state, vid)
 	if (state) then
-		customview.ci.vid = vid;
-		table.insert(customview.itemlist, customview.ci);
+		layouted.ci.vid = vid;
+		table.insert(layouted.itemlist, layouted.ci);
 	else
 		delete_image(vid);
 	end
@@ -498,19 +500,19 @@ local function save_item_bg(state, vid)
 	end
 	
 	local found = false;
-	customview.ci.vid = vid;
+	layouted.ci.vid = vid;
 	
-	for ind, val in ipairs(customview.itemlist) do
+	for ind, val in ipairs(layouted.itemlist) do
 		if val.kind == "background" then
-			delete_image(customview.itemlist[ind].vid);
-			customview.itemlist[ind] = customview.ci; 
+			delete_image(layouted.itemlist[ind].vid);
+			layouted.itemlist[ind] = layouted.ci; 
 			found = true;
 			break
 		end
 	end
 
 	if (found == false) then
-		table.insert(customview.itemlist, customview.ci);
+		table.insert(layouted.itemlist, layouted.ci);
 	end
 
 	video_3dorder(ORDER_LAST);
@@ -521,18 +523,18 @@ local function positionfun(label)
 	vid = load_image("images/" .. label);
 	
 	if (vid ~= BADID) then
-		customview.new_item(vid, "static_media", label);
-		customview.ci.res = "images/" .. label;
+		layouted.new_item(vid, "static_media", label);
+		layouted.ci.res = "images/" .. label;
 
 		update_object(vid);
-		customview.position_item(vid, save_item);
+		layouted.position_item(vid, save_item);
 	end
 end
 
 local function effecttrig(label)
 	local shdr = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. label, "bgeffect", {});
-	customview.bgshader = shdr;
-	customview.bgshader_label = label;
+	layouted.bgshader = shdr;
+	layouted.bgshader_label = label;
 
 	update_bgshdr();
 	settings.iodispatch["MENU_ESCAPE"]();
@@ -561,9 +563,9 @@ local function positiondynamic(label)
 
 		if (model) then
 			local vid = model.vid;
-			customview.new_item3d(vid, "model", string.lower(label));
+			layouted.new_item3d(vid, "model", string.lower(label));
 			orient3d_model(model.vid, 0, -90, 0);
-			customview.position_item(vid, save_item, customview.position_modes_3d);
+			layouted.position_item(vid, save_item, layouted.position_modes_3d);
 			show_image(vid);
 			update_object3d(vid);
 			return;
@@ -573,24 +575,24 @@ local function positiondynamic(label)
 	local vid, tiled = get_identimg(label);
 
 	if (label == "Vidcap") then
-		customview.new_item(vid, "vidcap", string.lower(label));
-		customview.ci.index = 0;
+		layouted.new_item(vid, "vidcap", string.lower(label));
+		layouted.ci.index = 0;
 	else
-		customview.new_item(vid, "dynamic_media", string.lower(label));
+		layouted.new_item(vid, "dynamic_media", string.lower(label));
 	end
 
-	customview.ci.tiled = tiled;
-	customview.ci.width  = VRESW * 0.3;
-	customview.ci.height = VRESH * 0.3;
+	layouted.ci.tiled = tiled;
+	layouted.ci.width  = VRESW * 0.3;
+	layouted.ci.height = VRESH * 0.3;
 	update_object(vid);
-	customview.position_item(vid, save_item);
+	layouted.position_item(vid, save_item);
 end
 
 local function positionlabel(label)
 	vid = render_text(settings.colourtable.label_fontstr .. label);
-	customview.new_item(vid, "label", string.lower(label));
+	layouted.new_item(vid, "label", string.lower(label));
 	update_object(vid);
-	customview.position_item(vid, save_item);
+	layouted.position_item(vid, save_item);
 end
 
 -- stretch to fit screen, only opa change allowed
@@ -599,40 +601,40 @@ local function positionbg(label)
 	local vid = load_image("backgrounds/" .. label);
 	if (vid == BADID) then return; end
 
-	customview.ci = {};
-	customview.ci.tiled  = tiled;
+	layouted.ci = {};
+	layouted.ci.tiled  = tiled;
 	local props = image_surface_properties(vid);
 
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT, vid );
 
 	-- threshold for tiling rather than stretching
 	if (props.width < VRESW / 2 or props.height < VRESH / 2) then
-		customview.ci.tiled  = true;
+		layouted.ci.tiled  = true;
 	end
 
-	customview.ci.width  = VRESW;
-	customview.ci.height = VRESH;
-	customview.ci.zv     = 0;
-	customview.ci.x      = 0;
-	customview.ci.y      = 0;
-	customview.ci.opa    = 1.0;
-	customview.ci.ang    = 0;
-	customview.ci.kind   = "background";
-	customview.ci.shader = customview.bgshader_label;
-	customview.ci.res    = "backgrounds/" .. label;
+	layouted.ci.width  = VRESW;
+	layouted.ci.height = VRESH;
+	layouted.ci.zv     = 0;
+	layouted.ci.x      = 0;
+	layouted.ci.y      = 0;
+	layouted.ci.opa    = 1.0;
+	layouted.ci.ang    = 0;
+	layouted.ci.kind   = "background";
+	layouted.ci.shader = layouted.bgshader_label;
+	layouted.ci.res    = "backgrounds/" .. label;
 
-	if (customview.ci.tiled) then
+	if (layouted.ci.tiled) then
 		local props = image_surface_initial_properties(vid);
-		image_scale_txcos(vid, customview.ci.width / props.width, customview.ci.height / props.height);
+		image_scale_txcos(vid, layouted.ci.width / props.width, layouted.ci.height / props.height);
 	end
 
 	update_object(vid);
-	customview.position_item(vid, save_item_bg);
+	layouted.position_item(vid, save_item_bg);
 end
 
 -- take the custom view and dump to a .lua config
-local function save_config()
-	open_rawresource("layout_cfg.lua");
+local function save_layout()
+	open_rawresource(layouted.layoutfile);
 	write_rawresource("local cview = {};\n");
 	write_rawresource("cview.static = {};\n");
 	write_rawresource("cview.dynamic = {};\n");
@@ -641,7 +643,7 @@ local function save_config()
 	write_rawresource("cview.vidcap = {};\n");
 	write_rawresource("cview.aspect = " .. tostring( VRESW / VRESH ) .. ";\n");
 	
-	for ind, val in ipairs(customview.itemlist) do
+	for ind, val in ipairs(layouted.itemlist) do
 		if (val.kind == "model") then
 			write_rawresource("local item = {};\n");
 			write_rawresource("item.pos = {" .. tostring(val.pos[1]) .. ", " .. tostring(val.pos[2]) .. ", " .. tostring(val.pos[3]) .. "};\n");
@@ -688,7 +690,7 @@ local function save_config()
 				end
 				write_rawresource("cview.background = item;\n");
 			else
-				print("[customview:save_config] warning, unknown kind: " .. val.kind);
+				print("[layouted:save_layout] warning, unknown kind: " .. val.kind);
 			end
 		end
 
@@ -701,28 +703,29 @@ local function save_config()
 		current_menu:destroy();
 		current_menu = current_menu.parent;
 	end
-		
-	settings.iodispatch = customview_display;
+
+-- save and load
+	dispatch_pop();
 	pop_video_context();
-	gridleremote_customview(lasttrigger);
+	gridleremote_layouted(lasttrigger);
 end
 
 -- reuse by other menu functions
-function menu_defaultdispatch()
-	if (not settings.iodispatch["MENU_UP"]) then
-		settings.iodispatch["MENU_UP"] = function(iotbl) 
+function menu_defaultdispatch(tbl)
+	if (not tbl["MENU_UP"]) then
+		tbl["MENU_UP"] = function(iotbl) 
 			current_menu:move_cursor(-1, true); 
 		end
 	end
 
-	if (not settings.iodispatch["MENU_DOWN"]) then
-			settings.iodispatch["MENU_DOWN"] = function(iotbl)
+	if (not tbl["MENU_DOWN"]) then
+			tbl["MENU_DOWN"] = function(iotbl)
 			current_menu:move_cursor(1, true); 
 		end
 	end
 	
-	if (not settings.iodispatch["MENU_SELECT"]) then
-		settings.iodispatch["MENU_SELECT"] = function(iotbl)
+	if (not tbl["MENU_SELECT"]) then
+		tbl["MENU_SELECT"] = function(iotbl)
 			selectlbl = current_menu:select();
 			if (current_menu.ptrs[selectlbl]) then
 				current_menu.ptrs[selectlbl](selectlbl, false);
@@ -734,8 +737,8 @@ function menu_defaultdispatch()
 	end
 	
 -- figure out if we should modify the settings table
-	if (not settings.iodispatch["FLAG_FAVORITE"]) then
-		settings.iodispatch["FLAG_FAVORITE"] = function(iotbl)
+	if (not tbl["FLAG_FAVORITE"]) then
+		tbl["FLAG_FAVORITE"] = function(iotbl)
 				selectlbl = current_menu:select();
 				if (current_menu.ptrs[selectlbl]) then
 					current_menu.ptrs[selectlbl](selectlbl, true);
@@ -746,42 +749,42 @@ function menu_defaultdispatch()
 			end
 	end
 	
-	if (not (settings.iodispatch["MENU_ESCAPE"])) then
-		settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
-		current_menu:destroy();
+	if (not tbl["MENU_ESCAPE"]) then
+		tbl["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+			current_menu:destroy();
 
-		if (current_menu.parent ~= nil) then
-			current_menu = current_menu.parent;
-		else -- top level
-			settings.iodispatch = griddispatch;
+			if (current_menu.parent ~= nil) then
+				current_menu = current_menu.parent;
+			else -- top level
+				dispatch_pop();
+			end
 		end
-		end
+
 	end
 	
-	if (not settings.iodispatch["MENU_RIGHT"]) then
-		settings.iodispatch["MENU_RIGHT"] = settings.iodispatch["MENU_SELECT"];
+	if (not tbl["MENU_RIGHT"]) then
+		tbl["MENU_RIGHT"] = tbl["MENU_SELECT"];
 	end
 	
-	if (not settings.iodispatch["MENU_LEFT"]) then
-		settings.iodispatch["MENU_LEFT"]  = settings.iodispatch["MENU_ESCAPE"];
+	if (not tbl["MENU_LEFT"]) then
+		tbl["MENU_LEFT"]  = tbl["MENU_ESCAPE"];
 	end
 end
 
 local function show_config()
-	customview_display = settings.iodispatch;
-	settings.iodispatch = {};
-	customview.itemlist = {};
+	layouted_display = settings.iodispatch;
+	layouted.itemlist = {};
 	
-	menu_defaultdispatch();
-	local escape_menu = function(label, save, sound)
+	local imenu = {};
+	menu_defaultdispatch(imenu);
+	
+	imenu["MENU_LEFT"] = function(label, save, sound)
 		if (current_menu.parent ~= nil) then
 			current_menu:destroy();
 			current_menu = current_menu.parent;
 		end
 	end
-	
-	settings.iodispatch["MENU_LEFT"]   = escape_menu;
-	settings.iodispatch["MENU_ESCAPE"] = escape_menu;
+	imenu["MENU_ESCAPE"] = imenu["MENU_LEFT"];
 	
 	local mainlbls = {};
 	local mainptrs = {};
@@ -795,15 +798,16 @@ local function show_config()
 	table.insert(mainlbls, "---");
 	table.insert(mainlbls, "Save");
 	
-	mainptrs["Save"] = save_config;
+	mainptrs["Save"] = save_layout;
 	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = mainptrs;
 	current_menu.parent = nil;
-	customview.root_menu = current_menu;
+	layouted.root_menu = current_menu;
 
 	current_menu:show();
 	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
+	dispatch_push(imenu, "layout menu");
 end
 
 local function place_item( vid, tbl )
@@ -826,41 +830,41 @@ local function place_model(modelid, pos, ang)
 end
 
 function gridleremote_updatedynamic(newtbl)
-	if (newtbl == nil or newtbl == customview.lasttbl) then
+	if (newtbl == nil or newtbl == layouted.lasttbl) then
 		return;
 	end
 
-	customview.lasttbl = newtbl;
+	layouted.lasttbl = newtbl;
 --	toggle_led(newtbl.players, newtbl.buttons, "")	;
 
 -- this table is maintained for every newly selected item, and just tracks everything to delete.
-	for ind, val in ipairs(customview.temporary) do
+	for ind, val in ipairs(layouted.temporary) do
 		if (valid_vid(val)) then delete_image(val); end 
 	end
 
-	for ind, val in ipairs(customview.temporary_models) do
+	for ind, val in ipairs(layouted.temporary_models) do
 		if (valid_vid(val.vid)) then delete_image(val.vid); end
 	end
 	
-	customview.temporary = {};
-	customview.temporary_models = {};
+	layouted.temporary = {};
+	layouted.temporary_models = {};
 
 	local restbl = resourcefinder_search( newtbl, true );
 
 	if (restbl) then
-		if (customview.current.models and #customview.current.models > 0) then
+		if (layouted.current.models and #layouted.current.models > 0) then
 			local modelstr = find_cabinet_model(newtbl);
 			local model  = modelstr and setup_cabinet_model(modelstr, restbl, {}) or nil;
 
 			if (model) then
-				local shdr = customview.light_shader;
+				local shdr = layouted.light_shader;
 	
-				table.insert(customview.temporary_models, model);
-				table.insert(customview.temporary, model.vid);
+				table.insert(layouted.temporary_models, model);
+				table.insert(layouted.temporary, model.vid);
 
-				local cm = customview.current.models[1];
+				local cm = layouted.current.models[1];
 				
-				image_shader(model.vid, customview.light_shader);
+				image_shader(model.vid, layouted.light_shader);
 				place_model(model.vid, cm.pos, cm.ang);
 
 				local ld = cm.dir_light and cm.dir_light or {1.0, 0.0, 0.0};
@@ -873,16 +877,16 @@ function gridleremote_updatedynamic(newtbl)
 				shader_uniform(shdr, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
 	
 -- reuse the model for multiple instances
-				for i=2,#customview.current.models do
+				for i=2,#layouted.current.models do
 					local nid = instance_image(model.vid);
 					image_mask_clear(nid, MASK_POSITION);
 					image_mask_clear(nid, MASK_ORIENTATION);
-					place_model(nid, customview.current.models[i].pos, customview.current.models[i].ang);
+					place_model(nid, layouted.current.models[i].pos, layouted.current.models[i].ang);
 				end
 			end
 		end
 
-		for ind, val in ipairs(customview.current.dynamic) do
+		for ind, val in ipairs(layouted.current.dynamic) do
 			reskey = remaptbl[val.res];
 			
 			if (reskey and restbl[reskey] and #restbl[reskey] > 0) then
@@ -891,18 +895,18 @@ function gridleremote_updatedynamic(newtbl)
 						place_item(source, val);
 						play_movie(source);
 					end)
-					table.insert(customview.temporary, vid);	
+					table.insert(layouted.temporary, vid);	
 				else
 					vid = load_image_asynch(restbl[reskey][1], function(source, status)
 						place_item(source, val);
 					end);
-					table.insert(customview.temporary, vid);
+					table.insert(layouted.temporary, vid);
 				end
 	
 			end
 		end
 
-		for ind, val in ipairs(customview.current.dynamic_labels) do
+		for ind, val in ipairs(layouted.current.dynamic_labels) do
 			local dststr = newtbl[val.res];
 			
 			if (type(dststr) == "number") then dststr = tostring(dststr); end
@@ -918,8 +922,8 @@ function gridleremote_updatedynamic(newtbl)
 				show_image(vid);
 				resize_image(vid, 0, VRESH * val.height);
 				order_image(vid, val.order);
-				table.insert(customview.temporary, capvid);
-				table.insert(customview.temporary, vid);
+				table.insert(layouted.temporary, capvid);
+				table.insert(layouted.temporary, vid);
 			end
 			
 		end
@@ -927,17 +931,17 @@ function gridleremote_updatedynamic(newtbl)
 	end
 end
 
-local function setup_customview(triggerfun)
+local function setup_layouted(triggerfun)
 	local background = nil;
-	for ind, val in ipairs( customview.current.static ) do
+	for ind, val in ipairs( layouted.current.static ) do
 		local vid = load_image( val.res );
 		place_item( vid, val );
 	end
 
 -- video capture devices, can either be instances of the same vidcap OR multiple devices based on index 
-	customview.current.vidcap_instances = {};
-	for ind, val in ipairs( customview.current.vidcap ) do
-		inst = customview.current.vidcap_instances[val.index];
+	layouted.current.vidcap_instances = {};
+	for ind, val in ipairs( layouted.current.vidcap ) do
+		inst = layouted.current.vidcap_instances[val.index];
 		
 		if (valid_vid(inst)) then
 			inst = instance_image(inst);
@@ -949,72 +953,67 @@ local function setup_customview(triggerfun)
 				play_movie(source);
 			end);
 		
-			customview.current.vidcap_instances[val.index] = vid;
+			layouted.current.vidcap_instances[val.index] = vid;
 		end
 	end
 
 -- load background effect 
-	if (customview.current.background) then
-		vid = load_image( customview.current.background.res );
+	if (layouted.current.background) then
+		vid = load_image( layouted.current.background.res );
 		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
 
-		customview.background = vid;
+		layouted.background = vid;
 
-		place_item(vid, customview.current.background);
-		customview.bgshader_label = customview.current.background.shader;
+		place_item(vid, layouted.current.background);
+		layouted.bgshader_label = layouted.current.background.shader;
 
 		local props  = image_surface_properties(vid);
 		local iprops = image_surface_initial_properties(vid);
 
-		if (customview.current.background.tiled) then
+		if (layouted.current.background.tiled) then
 			image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
 		end
 		
-		if (customview.bgshader_label) then
-			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
+		if (layouted.bgshader_label) then
+			layouted.bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. layouted.bgshader_label, "bgeffect", {});
 			update_bgshdr();
 		end
 	end
 
--- remap I/O functions to fit navigator
-	olddispatch = settings.iodispatch;
-	settings.iodispatch = {};
-	
-	customview.dispatchtbl = settings.iodispatch;
 end
 
-local function customview_3dbase()
+local function layouted_3dbase()
 	local lshdr = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "cvdef3d");
 	shader_uniform(lshdr, "map_diffuse", "i"  , PERSIST, 0);
-	customview.light_shader = lshdr;
+	layouted.light_shader = lshdr;
 end
 
-function gridleremote_customview(triggerfun)
+function gridleremote_layouted(triggerfun, layoutname)
 	local disptbl;
 	lasttrigger = triggerfun;
+	layouted.layoutfile = "layouts/" .. layoutname;
 	
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
--- customview_cfg.lua and reset customview.in_config
+-- layouted_cfg.lua and reset layouted.in_config
 	setup_3dsupport();
-	customview_3dbase();
+	layouted_3dbase();
 
-	if (resource("layout_cfg.lua")) then
-		customview.background    = nil;
-		customview.bgshader      = nil;
-		customview.current       = system_load("layout_cfg.lua")();
+	if (resource(layouted.layoutfile)) then
+		layouted.background    = nil;
+		layouted.bgshader      = nil;
+		layouted.current       = system_load(resource("layouts/" .. layoutname))();
 	
-		if (customview.current) then
-			customview.in_customview = true;
-			customview.in_config = false;
-			setup_customview();
+		if (layouted.current) then
+			layouted.in_layouted = true;
+			layouted.in_config = false;
+			setup_layouted();
 			triggerfun();
 		end
 
 	else
-		customview.in_config = true;
+		layouted.in_config = true;
 		video_3dorder(ORDER_LAST);
 		disptbl = show_config();
 	end
-	
 end

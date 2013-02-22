@@ -365,7 +365,6 @@ struct arcan_evctx {
 
 	unsigned* front;
 	unsigned* back;
-	unsigned cell_aofs;
 
 	bool local;
 	union {
