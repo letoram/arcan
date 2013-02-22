@@ -152,9 +152,9 @@ local function get_unique(list, field)
 	for i=1,#res do
 		resptr[res[i]] = function(lbl)
 			settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
-			update_status();
 			settings.filters[string.lower(current_menu:select())] = lbl;
 			settings.games = list_games(settings.filters);
+			update_status();
 		end
 	end
 
@@ -244,6 +244,11 @@ function gridlemenu_context( gametbl )
 
 	itbl["MENU_ESCAPE"] = function(key, store, silent)
 		current_menu:destroy();
+		if (current_menu.background) then
+			expire_image(current_menu.background, settings.fadedelay);
+			blend_image(current_menu.background, 0.0, settings.fadedelay);
+			current_menu.background = nil;
+		end
 		
 		if (current_menu.parent == nil) then
 			blend_image(imagery.zoomed, 0.0, settings.fadedelay);

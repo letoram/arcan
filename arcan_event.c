@@ -630,7 +630,8 @@ void arcan_event_deinit(arcan_evctx* ctx)
 		free(joydev.joys);
 		joydev.joys = 0;
 	}
-
+	
+	eventfront = eventback = 0;
 	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }
 

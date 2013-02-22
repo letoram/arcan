@@ -148,6 +148,16 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 	return font_cache[i].data;
 }
 
+void arcan_video_reset_fontcache()
+{
+	for (int i = 0; i < ARCAN_FONT_CACHE_LIMIT; i++)
+		if (font_cache[i].data){
+			TTF_CloseFont(font_cache[i].data);
+			free(font_cache[i].identifier);
+			memset(&font_cache[i], '\0', sizeof(font_cache[0])); 
+		}
+}
+
 SDL_Surface* text_loadimage(const char* const infn, img_cons constraints)
 {
 	SDL_Surface* res = NULL;

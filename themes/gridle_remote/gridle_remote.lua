@@ -2,10 +2,58 @@ settings = {
 	repeatrate = 200,
 	connected = false,
 	iodispatch = {},
+	dispatch_stack = {}
 };
 
 imagery = {};
+
+function gridle_remote()
+	system_load("scripts/resourcefinder.lua")();
+	system_load("scripts/keyconf.lua")();
+	system_load("scripts/3dsupport.lua")();
+	system_load("scripts/listview.lua")();
+	system_load("scripts/osdkbd.lua")();
+	system_load("remote_config.lua")();
+
+-- rREMOTE_ESCAPE gets remapped to MENU_ESCAPE
+	local keylabels = { "rLOCAL_MENU", "rREMOTE_MENU", "rREMOTE_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH",
+		"aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
+
+-- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
+	keyconfig = keyconf_create(keylabels);
 	
+-- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
+-- depending on settings) 
+	dispatch_push({}, "default_input", gridle_remote_dispatchinput);
+	
+	setup_keys( function() gridleremote_layouted( setup_complete, "default.lua" ) end );
+end
+
+function dispatch_push(tbl, name, triggerfun)
+	local newtbl = {};
+	newtbl.table = tbl;
+	newtbl.name = name;
+	newtbl.dispfun = triggerfun and triggerfun or gridle_remote_dispatchinput;
+	
+	table.insert(settings.dispatch_stack, newtbl);
+	settings.iodispatch = tbl;
+	gridle_remote_input = newtbl.dispfun;
+end
+
+function dispatch_pop()
+	if (#settings.dispatch_stack <= 1) then
+		settings.dispatch = {};
+		gridle_remote_input = gridle_dispatchinput;
+	else
+		table.remove(settings.dispatch_stack, #settings.dispatch_stack);
+		local last = settings.dispatch_stack[#settings.dispatch_stack];
+
+		settings.iodispatch = last.table;
+		gridle_remote_input = last.dispfun;
+	end
+
+end
+
 function spawn_mainmenu()
 -- Default Global Menus (and their triggers)
 	local mainlbls     = {};
@@ -46,46 +94,23 @@ function spawn_mainmenu()
 
 	connectptrs["Local Discovery"] = function()
 		settings.connect_method = "local discovery";
-
-		if (valid_vid(settings.server)) then
-			delete_image(settings.server);
-		end
-
-		spawn_warning("Looking for local server...");
-		settings.iodispatch = {};
-		settings.iodispatch["MENU_ESCAPE"] = reset_connection;
-		settings.server = net_open(net_event);
-		
-		while current_menu ~= nil do
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		end
+		open_connection();
+		settings.iodispatch["MENU_ESCAPE"]();
 	end
 
 	connectptrs["Specify Server"] = function()
 -- spawn OSD and upon completion, explicit connection
 		osdkbd:show();
 -- do this here so we have access to the namespace where osdsavekbd exists
-		gridle_remote_input = function(iotbl)
+		dispatch_push({}, "osd keyboard", function(iotbl)
 			complete, resstr = osdkbd_inputfun(iotbl, osdkbd);
-			
+
 			if (complete) then
 				osdkbd:hide();
-				gridle_remote_input = gridle_remote_dispatchinput;
-
-				if (resstr ~= nil and string.len(resstr) > 0) then
-					while current_menu ~= nil do
-						current_menu:destroy();
-						current_menu = current_menu.parent;
-					end
-
-					settings.iodispatch = {};
-					settings.iodispatch["MENU_ESCAPE"] = reset_connection;
-					settings.server = net_open(resstr, net_event);
-					spawn_warning("Connecting to " .. resstr);
-				end
+				dispatch_pop();
+				open_connection(resstr);
 			end
-		end
+		end);
 	end
 
 	if (valid_vid(settings.server)) then
@@ -93,11 +118,6 @@ function spawn_mainmenu()
 		table.insert(connectlbls, "Autoconnect (Off)");
 		connectptrs["Autoconnect (On)"] = function() store_key("autoconnect", settings.connect_method); end
 		connectptrs["Autoconnect (Off)"] = function() delete_key("autoconnect"); end
-	end
-	
--- when we have a valid connection, this entry is visible
--- and can be used to set an autoconnect on launch rather than spawning the menu
-	connectptrs["Autoconnect"] = function()
 	end
 	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
@@ -124,35 +144,38 @@ function string.split(instr, delim)
 	return res;
 end
 
-function net_event(source, tbl)
-	if (tbl.kind == "connected") then
-		settings.iodispatch = {};
-		settings.connected = true;
-		spawn_warning("Connected", 125);
-		gridle_remote_input = gridle_remote_dispatchinput;
-		
-	elseif (tbl.kind == "message") then
+function decode_message(msg)
 -- format matches broadcast_game in gridle.lua
-		nitem = string.split(tbl.message, ":")
+	nitem = string.split(msg, ":")
 
-		if (nitem[1] == "begin_item") then
-			settings.cur_item = {};
-			settings.item_count = tonumber(nitem[2]);
+	if (nitem[1] == "begin_item") then
+		settings.cur_item = {};
+		settings.item_count = tonumber(nitem[2]);
+		last_key = nil;
+
+	elseif (settings.item_count) then
+		if (last_key == nil) then
+			last_key = msg;
+		else
+			settings.cur_item[last_key] = msg;
 			last_key = nil;
-
-		elseif (settings.item_count) then
-			if (last_key == nil) then
-				last_key = tbl.message;
-			else
-				settings.cur_item[last_key] = tbl.message;
-				last_key = nil;
-				settings.item_count = settings.item_count - 1;
-				if (settings.item_count <= 0) then
-					settings.item_count = nil;
-					gridleremote_updatedynamic(settings.cur_item);
-				end
+			settings.item_count = settings.item_count - 1;
+			if (settings.item_count <= 0) then
+				settings.item_count = nil;
+				gridleremote_updatedynamic(settings.cur_item);
 			end
 		end
+	end
+
+end
+
+function net_event(source, tbl)
+	if (tbl.kind == "connected") then
+		settings.connected = true;
+		spawn_warning("Connected", 125);
+
+	elseif (tbl.kind == "message") then
+		decode_message(tbl.message);
 
 	elseif (tbl.kind == "frameserver_terminated") then
 		settings.connected = false;
@@ -239,25 +262,9 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	return false, nil
 end
 
---
--- Callback that shows the main connect menu etc.
--- Used as "safe-state" so also triggered if the network connection dies
--- 
-function reset_iodispatch()
-	settings.iodispatch["MENU_ESCAPE"] = function(iotbl, restbl, silent)
-		if (current_menu and current_menu.parent ~= nil) then
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		else -- top level
-		end
-	end
-		
-	menu_defaultdispatch();
-end
-
 function setup_complete()
-	reset_iodispatch();
 	spawn_mainmenu();
+
 	imagery.disconnected = load_image("images/disconnected.png");
 	local props = image_surface_properties(imagery.disconnected);
 	if (props.width > VRESW) then props.width = VRESW; end
@@ -272,59 +279,32 @@ function setup_complete()
 	osdkbd = osdkbd_create(keymap);
 end
 
-function gridle_remote()
-	system_load("scripts/resourcefinder.lua")();
-	system_load("scripts/keyconf.lua")();
-	system_load("scripts/3dsupport.lua")();
-	system_load("scripts/listview.lua")();
-	system_load("scripts/osdkbd.lua")();
-	system_load("remote_config.lua")();
-
--- rREMOTE_ESCAPE gets remapped to MENU_ESCAPE
-	local keylabels = { "rLOCAL_MENU", "rMENU_TOGGLE", "rREMOTE_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rSWITCH_VIEW", "rLAUNCH",
-		"aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
-
--- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
-	keyconfig = keyconf_create(keylabels);
-	
--- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
--- depending on settings) 
-	setup_keys( function() gridleremote_customview( setup_complete ) end );
-end
-
 function setup_keys( trigger )
 -- if active, then there's nothing needed to be done, else we need a UI to help.
 	if (keyconfig.active == false) then
 		keyconfig:to_front();
-		oldinput = gridle_remote_input;
-		gridle_remote_input = function(iotbl)
+		dispatch_push({}, "key config", function(iotbl)
 			if (keyconfig:input(iotbl) == true) then
-				gridle_remote_input = oldinput;
+				dispatch_pop();
 				trigger();
 			end
-			end;
+		end);
+
 	else
 		trigger();
 	end
 
 end
 
-function gridle_remote_dispatchinput(iotbl, override)
-	local restbl = override and override or keyconfig:match(iotbl);
+function gridle_remote_dispatchinput(iotbl)
+	local restbl = keyconfig:match(iotbl);
 	
 	if (restbl) then
 		for ind,val in pairs(restbl) do
-			print(val);
 			if (settings.iodispatch[val] and iotbl.active) then
 				settings.iodispatch[val](restbl, iotbl);
-			elseif settings.connected then
-				local msgstr = iotbl.active and "press:" or "release:";
-				msgstr = msgstr .. val;
-				net_push(settings.server, msgstr);
 			end
 		end
 	end
 	
 end
-
-gridle_remote_input = gridle_remote_dispatchinput;

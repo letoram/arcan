@@ -316,6 +316,13 @@ local function keyconf_match(self, input, label)
 		return nil;
 	end
 
+-- used for overrides à networked remotes etc.
+	if (input.external) then
+		kv = {};
+		table.insert(kv, input.label);
+		return kv;
+	end
+	
 	if (type(input) == "table") then
 		kv = self.table[ self:id(input) ];
 	else

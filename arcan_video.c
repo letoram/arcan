@@ -3788,7 +3788,7 @@ bool arcan_video_prepare_external()
 
 /* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
 	arcan_event_deinit(arcan_event_defaultctx());
-	arcan_shader_unload_all();
+	arcan_shader_flush();
 
 	return true;
 }
@@ -3859,7 +3859,10 @@ void arcan_video_shutdown()
 		lastctxc = lastctxa;
 
 	arcan_shader_unload_all();
-
+	deallocate_gl_context(current_context, true);
+	arcan_video_reset_fontcache();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	SDL_GL_SwapBuffers();
 	SDL_FreeSurface(arcan_video_display.screen);
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
