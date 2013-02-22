@@ -860,7 +860,7 @@ end
 
 function gridle_keyconf(defer_fun)
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " SWITCH_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 
 	local helplabels = {};

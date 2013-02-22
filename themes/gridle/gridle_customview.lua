@@ -535,6 +535,11 @@ local function launch(tbl)
 	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
 	push_video_context();
 
+-- replace this one so that file-name, config names etc. are correct when emitted from intmenus
+		current_game = function()
+			return tbl;
+		end
+
 -- can also be invoked from the context menus
 	if (launch_internal) then
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
@@ -545,9 +550,6 @@ local function launch(tbl)
 		if (valid_vid(internal_vid)) then
 			delete_image(internal_vid);
 		end
-
--- replace this one so that file-name, config names etc. are correct when emitted from intmenus
-		current_game = function() return tbl; end
 
 		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
 	else
@@ -823,6 +825,21 @@ local function show_config()
 	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
 end
 
+local function reset_customview()
+	if ( navi:escape() ) then
+		play_audio(soundmap["MENU_FADE"])
+-- delete all "new" resources
+		pop_video_context();
+-- then copy the server vid again
+		push_video_context();
+		dispatch_pop();
+		customview.in_customview = false;
+		setup_gridview();
+	else
+		navi_change(navi, navitbl);
+	end
+end
+
 local function place_item( vid, tbl )
 	local x = math.floor(tbl.x     * VRESW);
 	local y = math.floor(tbl.y     * VRESH);
@@ -889,7 +906,6 @@ local function update_dynamic(newtbl)
 				ld = cm.diffuse and cm.diffuse or {0.6, 0.6, 0.6};
 				shader_uniform(shdr, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
 
-	
 -- reuse the model for multiple instances
 				for i=2,#customview.current.models do
 					local nid = instance_image(model.vid);
@@ -913,7 +929,7 @@ local function update_dynamic(newtbl)
 						end)
 				end
 			elseif (reskey == "boxart" or reskey == "boxart (back)") then
-				local res = restbl:find_boxart(reskey == "boxart");
+				local res = restbl:find_boxart(reskey == "boxart", val.width < 512 or val.height < 512);
 				if (res) then
 					vid = load_image_asynch(res, function(source, status) place_item(source, val); end);
 				end
@@ -1069,25 +1085,10 @@ local function setup_customview()
 		imenu["MENU_ESCAPE"] = function()
 				confirm_shutdown();
 		end
-		
-		imenu["SWITCH_VIEW"] = function()
-			if ( navi:escape() ) then
-				play_audio(soundmap["MENU_FADE"])
--- delete all "new" resources
-				pop_video_context();
--- then copy the server vid again
-				push_video_context();
-				dispatch_pop();
-				customview.in_customview = false; 
-				setup_gridview();
-			else
-				navi_change(navi, navitbl);
-			end
-		end
 
 		navi_change(navi, navitbl);
 	end
-
+	
 	dispatch_push(imenu, "customview");
 end
 
