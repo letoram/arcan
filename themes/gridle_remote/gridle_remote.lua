@@ -24,9 +24,12 @@ function gridle_remote()
 	
 -- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
 -- depending on settings) 
-	dispatch_push({}, "default_input", gridle_remote_dispatchinput);
 	
-	setup_keys( function() gridleremote_layouted( setup_complete, "default.lua" ) end );
+	setup_keys( function() gridleremote_layouted( setup_complete ) end );
+end
+
+function open_connection(dst)
+	
 end
 
 function dispatch_push(tbl, name, triggerfun)
@@ -75,7 +78,7 @@ function spawn_mainmenu()
 	end
 
 	settingsptrs["Reset Layout"] = function()
-		zap_resource("layout_cfg.lua");
+		zap_resource(layouted.layoutfile);
 
 		while current_menu ~= nil do
 			current_menu:destroy();
@@ -83,8 +86,9 @@ function spawn_mainmenu()
 		end
 
 		pop_video_context();
+
 		settings.server = nil;
-		gridleremote_customview( setup_complete );
+		gridleremote_layouted( setup_complete );
 	end
 
 	settingsptrs["Reset Keyconfig"] = function()
@@ -127,6 +131,10 @@ function spawn_mainmenu()
 
 	current_menu:show();
 	move_image(current_menu.anchor, 10, VRESH * 0.1, 10);
+
+	local imenu = {};
+	menu_defaultdispatch(imenu);
+	dispatch_push( imenu, "connection menu" );
 end
 
 function string.split(instr, delim)

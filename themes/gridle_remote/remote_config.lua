@@ -8,7 +8,7 @@ local grid_stepy = 2;
 local stepleft, stepup, stepdown, stepright, show_config, setup_layouted;
 
 layouted = {
-	layoutfile = "layouts/default.cfg"
+	layoutfile = "layouts/default.lua"
 };
 
 -- map resource-finder properties with their respective name in the editor dialog
@@ -474,9 +474,9 @@ end
 
 local function to_menu()
 	layouted.ci = nil;
-	settings.iodispatch["MENU_ESCAPE"]("", false, false);
-	
 	dispatch_pop();
+
+	settings.iodispatch["MENU_ESCAPE"]("", false, false);
 	cascade_visibility(current_menu, 1.0);
 	kbd_repeat(settings.repeatrate);
 end
@@ -797,7 +797,9 @@ local function show_config()
 	
 	table.insert(mainlbls, "---");
 	table.insert(mainlbls, "Save");
-	
+	table.insert(mainlbls, "Exit");
+
+	mainptrs["Exit"] = function() shutdown(); end
 	mainptrs["Save"] = save_layout;
 	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
@@ -991,7 +993,9 @@ end
 function gridleremote_layouted(triggerfun, layoutname)
 	local disptbl;
 	lasttrigger = triggerfun;
-	layouted.layoutfile = "layouts/" .. layoutname;
+	if (layoutname) then
+		layouted.layoutfile = "layouts/" .. layoutname;
+	end
 	
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
@@ -1002,7 +1006,7 @@ function gridleremote_layouted(triggerfun, layoutname)
 	if (resource(layouted.layoutfile)) then
 		layouted.background    = nil;
 		layouted.bgshader      = nil;
-		layouted.current       = system_load(resource("layouts/" .. layoutname))();
+		layouted.current       = system_load(layouted.layoutfile)();
 	
 		if (layouted.current) then
 			layouted.in_layouted = true;

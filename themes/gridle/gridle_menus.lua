@@ -259,15 +259,18 @@ end
 
 local function reset_customview()
 	zap_resource("customview_cfg.lua");
+
+-- despawn menu
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	play_audio(soundmap["MENU_SELECT"]);
 
-	if (customview.in_customview) then
-		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		settings.iodispatch["SWITCH_VIEW"](nil, nil, true);
-		settings.iodispatch["SWITCH_VIEW"](nil, nil, true);
-	end
+-- get rid of menus etc.
+	pop_video_context();
+
+-- keep server session
+	push_video_context();
+
+	gridle_customview();
 end
 
 local function efftrigger(label, save)
