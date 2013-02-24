@@ -4,12 +4,6 @@
 -- just patching dispatchinput, a lot of string/functiontbls and calls to
 -- spawn_menu. 
 --
---
--- Filter 
--- Launch Mode
--- Admin
---
-
 local filterlbls = {
 	"Manufacturer",
 	"System",
@@ -38,14 +32,6 @@ launchptrs["Internal"] = function()
 end
 
 local filterptrs = {};
-
-local function dofilter()
-	settings.iodispatch["MENU_ESCAPE"](false, nil, false);
-	settings.iodispatch["MENU_ESCAPE"](false, nil, true);
-
-	table.sort(settings.games, settings.sortfunctions[ settings.sortorder ]);
-	gridlemenu_filterchanged();
-end
 
 local function update_status()
 -- show # games currently in list, current filter or gamelist
@@ -78,6 +64,34 @@ local function update_status()
 	end
 end
 
+local function apply_gamefilter(listname)
+	local reslist = {};
+	local filter = {};
+
+	open_rawresource("./lists/" .. listname .. ".txt");
+	line = read_rawresource();
+
+	while (line) do
+			filter["title"] = line;
+			local dblookup = list_games( filter )
+
+			if dblookup and #dblookup > 0 then
+				table.insert(reslist, dblookup[1]);
+			end
+
+			line = read_rawresource();
+		end
+	close_rawresource();
+
+	if (#reslist == 0) then
+			spawn_warning("No games from gamelist( " .. listname .. ") could be found.");
+			return false;
+	else
+		settings.games = reslist;
+		return true;
+	end
+end
+
 local function build_gamelists()
 	local lists = glob_resource("lists/*.txt", THEME_RESOURCE);
 	local res = {};
@@ -85,7 +99,15 @@ local function build_gamelists()
 
 	for i=1, #lists do
 			res[i] = string.sub(lists[i], 1, -5);
-			resptr[ res[i] ] = function(lbl) settings.iodispatch["MENU_ESCAPE"](nil, nil, false); apply_gamefilter(lbl); settings.filters = {}; end
+			resptr[ res[i] ] = function(lbl)
+				settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
+				settings.filters = {};
+
+				if (apply_gamefilter(lbl)) then
+					filters_changed = true;
+				end
+
+			end
 	end
 
 	return res, resptr;
@@ -93,7 +115,7 @@ end
 
 -- we know there's a family list available with 1..n titles where n >= 1.
 local function gridlemenu_familyfilter(source, target, sound)
-	namelist = game_family( current_game().gameid );
+	namelist = game_family( current_game.gameid );
 	settings.games = {};
 	settings.filters = {};
 	
@@ -107,18 +129,23 @@ local function gridlemenu_familyfilter(source, target, sound)
 		end
 	end
 
-	dofilter(); 
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
+	filters_changed = true;
 end
 
 local function gridlemenu_resetfilter(source, target, sound)
 	settings.filters = {};
 	settings.games = list_games(settings.filters);
-	dofilter();
+
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
+	filters_changed = true;
 end
 
 local function gridlemenu_quickfilter(source, target, sound)
 	local filters = {};
-	filters[source] = current_game()[source];
+	filters[source] = current_game[source];
 
 	local gl = list_games(filters);
 	if (gl == nil) then
@@ -127,8 +154,10 @@ local function gridlemenu_quickfilter(source, target, sound)
 		settings.games = gl;
 		settings.filters = filters;
 	end
-	
-	dofilter();
+
+	filters_changed = true;
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
 end
 
 local function get_unique(list, field)
@@ -154,6 +183,8 @@ local function get_unique(list, field)
 			settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
 			settings.filters[string.lower(current_menu:select())] = lbl;
 			settings.games = list_games(settings.filters);
+			filters_changed = true;
+
 			update_status();
 		end
 	end
@@ -169,6 +200,8 @@ local function update_filterlist()
 	filterresptr["Reset"] = function()
 		settings.filters = {};
 		settings.games = list_games( {} );
+		filters_changed = true;
+		update_status();
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, false);
 	end
 
@@ -207,30 +240,29 @@ function gridlemenu_setzoom( source, reference )
 end
 
 -- change launch mode for this particular game
-function gridlemenu_context( gametbl )
+function gridlemenu_context( cleanup_trigger, display_image )
 	local mainlbls = {"Game Lists...", "Filters...", "Quickfilter..."};
-	
 	local itbl = {};
+	filters_changed = false;
 
 -- split the screen in half, resize the current screenshot / movie to fit the rightmost half
 
 -- derive the menu based on the current game
 	local ptrs = {};
 	ptrs["Quickfilter..."] = function()
-		local gametbl = current_game();
 		local restbl = {};
 		local resptr = {};
 		
 		for ind, val in ipairs(filterlbls) do
 			local key = string.lower( val );
-			if (gametbl[key] and string.len(gametbl[key]) > 0) and
-				(key ~= "year" or tonumber(gametbl[key]) > 0) then
+			if (current_game[key] and string.len(current_game[key]) > 0) and
+				(key ~= "year" or tonumber(current_game[key]) > 0) then
 				table.insert(restbl, key);
 				resptr[ key ] = gridlemenu_quickfilter;
 			end	
 		end
 	
-		local famtbl = game_family( gametbl.gameid );
+		local famtbl = game_family( current_game.gameid );
 		if (#famtbl > 0) then
 			table.insert(restbl, "family");
 			resptr[ "family" ] = gridlemenu_familyfilter;
@@ -244,6 +276,7 @@ function gridlemenu_context( gametbl )
 
 	itbl["MENU_ESCAPE"] = function(key, store, silent)
 		current_menu:destroy();
+
 		if (current_menu.background) then
 			expire_image(current_menu.background, settings.fadedelay);
 			blend_image(current_menu.background, 0.0, settings.fadedelay);
@@ -251,9 +284,11 @@ function gridlemenu_context( gametbl )
 		end
 		
 		if (current_menu.parent == nil) then
-			blend_image(imagery.zoomed, 0.0, settings.fadedelay);
-			expire_image(imagery.zoomed, settings.fadedelay);
-			imagery.zoomed = BADID;
+			if (valid_vid(imagery.zoomed)) then
+				blend_image(imagery.zoomed, 0.0, settings.fadedelay);
+				expire_image(imagery.zoomed, settings.fadedelay);
+				imagery.zoomed = BADID;
+			end
 		
 			if (settings.statuslist) then
 				settings.statuslist:destroy();
@@ -264,7 +299,16 @@ function gridlemenu_context( gametbl )
 			if (silent == nil or silent == false) then
 				play_audio(soundmap["MENU_FADE"]);
 			end
+
 			dispatch_pop();
+			if (filters_changed == true) then
+				table.sort(settings.games, settings.sortfunctions[ settings.sortorder ]);
+			end
+
+			if (cleanup_trigger) then
+				cleanup_trigger(filters_changed);
+			end
+	
 		else
 			current_menu = current_menu.parent;
 			if (silent == nil or silent == false) then
@@ -274,11 +318,11 @@ function gridlemenu_context( gametbl )
 		
 	end
 
-	if (gametbl.capabilities) then
-		if (gametbl.capabilities.external_launch and gametbl.capabilities.internal_launch) then
+	if (current_game.capabilities) then
+		if (current_game.capabilities.external_launch and current_game.capabilities.internal_launch) then
 			table.insert(mainlbls, "Launch...");
 			ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end
-		elseif (gametbl.capabilities.external_launch) then 
+		elseif (current_game.capabilities.external_launch) then
 			table.insert(mainlbls, "Launch External");
 			ptrs[ "Launch External" ] = function()
 				settings.iodispatch["MENU_ESCAPE"](false, nil, false);
@@ -297,7 +341,8 @@ function gridlemenu_context( gametbl )
 	ptrs["Filters..."]    = function() menu_spawnmenu( update_filterlist() ); end
 
 	add_submenu(mainlbls, ptrs, "Sort Order...", "sortorder", 
-		gen_tbl_menu("sortorder", {"Ascending", "Descending", "Times Played", "Favorites"}, update_status,  true));
+		gen_tbl_menu("sortorder", {"Ascending", "Descending", "Times Played", "Favorites"},
+		function() update_status(); filters_changed = true; end, true));
 
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = ptrs;
@@ -306,17 +351,21 @@ function gridlemenu_context( gametbl )
 	current_menu.background = fill_surface(VRESW, VRESH, 0, 0, 0);
 	blend_image(current_menu.background, 0.8, settings.transitiondelay);
 	order_image(current_menu.background, max_current_image_order() + 1);
-	
-	imagery.zoomed = cursor_vid();
-	image_pushasynch( imagery.zoomed ); 
 
-	if (valid_vid( imagery.movie )) then 
-		imagery.zoomed = imagery.movie; 
-	end 
+	if (display_image) then
+		imagery.zoomed = display_image;
+		image_pushasynch( imagery.zoomed ); 
 
-	imagery.zoomed = instance_image( imagery.zoomed );
-	image_mask_clear( imagery.zoomed, MASK_POSITION );
-	gridlemenu_setzoom( imagery.zoomed, imagery.zoomed );
+		if (valid_vid( imagery.movie )) then 
+			imagery.zoomed = imagery.movie; 
+		end
+
+		imagery.zoomed = instance_image( imagery.zoomed );
+		image_mask_clear( imagery.zoomed, MASK_POSITION );
+		gridlemenu_setzoom( imagery.zoomed, imagery.zoomed );
+	else
+		imagery.zoomed = BADID;
+	end
 
 	update_status();
 	local props = image_surface_properties(settings.statuslist.border, 5);

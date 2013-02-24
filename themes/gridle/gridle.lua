@@ -331,7 +331,7 @@ end
 function gridle_launchexternal()
 	erase_grid(true);
 	play_audio(soundmap["LAUNCH_EXTERNAL"]);
-	launch_target( current_game().gameid, LAUNCH_EXTERNAL);
+	launch_target( current_game.gameid, LAUNCH_EXTERNAL);
 	move_cursor(0);
 	build_grid(settings.cell_width, settings.cell_height);
 end
@@ -343,14 +343,14 @@ function gridle_launchinternal()
 		delete_image(internal_vid);
 	end
 
-	settings.capabilities = current_game().capabilities;
+	settings.capabilities = current_game.capabilities;
 	settings.last_message = "";
 
 	local tmptbl = {};
 	tmptbl["MENU_ESCAPE"] = settings.iodispatch["MENU_ESCAPE"];
 	dispatch_push(tmptbl, "internal loading");
 
-	internal_vid = launch_target( current_game().gameid, LAUNCH_INTERNAL, gridle_internal_status );
+	internal_vid = launch_target( current_game.gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
 error_nogames = nil;
@@ -473,20 +473,20 @@ function gridle()
 	imenu["QUICKLOAD"]    = function(iotbl) end
 	
 	imenu["FLAG_FAVORITE"]= function(iotbl)
-		local ind = table.find(settings.favorites, current_game().title);
+		local ind = table.find(settings.favorites, current_game.title);
 		
 		if (ind == nil) then -- flag
-			table.insert(settings.favorites, current_game().title);
+			table.insert(settings.favorites, current_game.title);
 			local props = image_surface_properties( cursor_bgvid() );
-			settings.favorites[current_game().title] = spawn_favoritestar(props.x, props.y);
+			settings.favorites[current_game.title] = spawn_favoritestar(props.x, props.y);
 			play_audio(soundmap["SET_FAVORITE"]);
 
 		else -- unflag
-			fvid = settings.favorites[current_game().title];
+			fvid = settings.favorites[current_game.title];
 			if (valid_vid(fvid)) then
 				blend_image(fvid, 0.0, settings.fadedelay);
 				expire_image(fvid, settings.fadedelay);
-				settings.favorites[current_game().title] = nil;
+				settings.favorites[current_game.title] = nil;
 			end
 			
 			table.remove(settings.favorites, ind);
@@ -501,8 +501,7 @@ function gridle()
 	end
 
 	imenu["DETAIL_VIEW"]  = function(iotbl)
-		local gametbl = current_game();
-		local key = find_cabinet_model(gametbl);
+		local key = find_cabinet_model(current_game);
 
 		if (key) then
 			local gameind = 0;
@@ -511,7 +510,7 @@ function gridle()
 			
 -- cache curind so we don't have to search if we're switching game inside detail view 
 			for ind = 1, #settings.games do
-				if (settings.games[ind].title == gametbl.title) then
+				if (settings.games[ind].title == current_game.title) then
 					gameind = ind;
 					break;
 				end
@@ -521,26 +520,33 @@ function gridle()
 				delete_image(imagery.movie); 
 				imagery.movie = nil; 
 			end
-			
-			gridledetail_show(key, gametbl, gameind);
+
+			gridledetail_show(key, current_game, gameind);
 		end
 	end
 	
 	imenu["MENU_TOGGLE"]  = function(iotbl)
 		play_audio(soundmap["MENU_TOGGLE"]);
-		gridlemenu_settings(gridlemenu_filterchanged, menu_bgupdate); 
+		gridlemenu_settings(menu_bgupdate);
 	end
 	
 	imenu["CONTEXT"] = function(iotbl)
 		play_audio(soundmap["MENU_TOGGLE"]);
-		gridlemenu_context( current_game() );
+		gridlemenu_context( function(upd)
+			if (not upd) then return; end
+			settings.cursor = 0;
+			settings.pageofs = 0;
+			erase_grid(false);
+			build_grid(settings.cell_width, settings.cell_height);
+			move_cursor(1, true);
+		end, cursor_vid() );
 	end
 	
 	imenu["LAUNCH"] = function(iotbl)
-		if (not current_game().capabilities) then return; end
+		if (not current_game.capabilities) then return; end
 		
-		local launch_internal = (settings.default_launchmode == "Internal" or current_game().capabilities.external_launch == false)
-			and current_game().capabilities.internal_launch;
+		local launch_internal = (settings.default_launchmode == "Internal" or current_game.capabilities.external_launch == false)
+			and current_game.capabilities.internal_launch;
 
 -- can also be invoked from the context menus
 		if (launch_internal) then
@@ -615,10 +621,6 @@ function setup_gridview()
 	
 	build_grid(settings.cell_width, settings.cell_height);
 
-	current_game = function() 
-		return settings.games[settings.cursor + settings.pageofs + 1];
-	end
-	
 	osdkbd = osdkbd_create();
 	osdkbd:hide();
 end
@@ -1258,10 +1260,10 @@ function move_cursor( ofs, absolute )
 		build_grid(settings.cell_width, settings.cell_height);
 	end
 
-	settings.cursorgame = settings.games[settings.gameind];
+	current_game = settings.games[settings.gameind];
 
 -- broadcast that this is what we're showing next
-	broadcast_game( settings.cursorgame, false );
+	broadcast_game( current_game, false );
 
 -- reset the previous movie
 	if (imagery.movie) then
@@ -1273,7 +1275,7 @@ function move_cursor( ofs, absolute )
 
 -- just sweeps the matching PLAYERX_BUTTONY pattern, a more refined approach would take all the weird little
 -- arcade game control quirks into proper account
-	toggle_led(settings.cursorgame.players, settings.cursorgame.buttons, "");
+	toggle_led(current_game.players, current_game.buttons, "");
 
 -- reset the cooldown that triggers movie playback
 	settings.cooldown = settings.cooldown_start;
@@ -1572,9 +1574,9 @@ function gridle_clock_pulse()
 		settings.cooldown = settings.cooldown - 1;
 
 -- cooldown reached, check the current cursor position, use that to figure out which movie to launch
-		if (settings.cooldown == 0 and settings.cursorgame and settings.cursorgame.resources
-		and settings.cursorgame.resources.movies[1]) then
-			local moviefile = settings.cursorgame.resources.movies[1];
+		if (settings.cooldown == 0 and current_game and current_game.resources
+		and current_game.resources.movies[1]) then
+			local moviefile = current_game.resources.movies[1];
 
 			if (moviefile and cursor_vid() ) then
 				imagery.movie = load_movie( moviefile, FRAMESERVER_LOOP, asynch_movie_ready);
@@ -1731,7 +1733,7 @@ function gridle_internal_status(source, datatbl)
 			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput);
 		end
 
-		gridle_internal_setup(source, datatbl, current_game());
+		gridle_internal_setup(source, datatbl, current_game);
 
 -- it's up to the user to press escape
 	elseif (datatbl.kind == "frameserver_terminated") then
@@ -1771,10 +1773,8 @@ function gridle_internal_status(source, datatbl)
 end
 
 function internal_statectl(suffix, save)
-	local cg = current_game();
-
-	if (cg and cg.capabilities.snapshot) then
-		local label = cg.target .. "_" .. cg.setname .. "_" .. suffix;
+	if (settings.capabilities.snapshot) then
+		local label = current_game.target .. "_" .. current_game.setname .. "_" .. suffix;
 		if (save) then
 			snapshot_target( internal_vid, label );
 		else

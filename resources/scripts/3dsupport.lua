@@ -506,7 +506,6 @@ function setup_cabinet_model(modelname, restbl, options)
 			end
 
 			shid = shid and shid or def3d_fullbright;
-			flip = (flip == nil or flip == false) and 0 or 1;
 			
 -- update the display, free the old resource and invert texture coordinates (possible) in the vertex shader 
 			local rvid = set_image_as_frame(self.vid, vid, self.labels["display"], FRAMESET_DETACH);

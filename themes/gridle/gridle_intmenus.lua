@@ -1062,7 +1062,7 @@ end
 local function build_savemenu()
 	local reslbls = {};
 	local resptrs = {};
-	local saveslist = get_saveslist( current_game() );
+	local saveslist = get_saveslist( current_game );
 	local highind = 0;
 
 	for key, val in pairs(saveslist) do
@@ -1120,12 +1120,11 @@ local function build_savemenu()
 	return reslbls, resptrs, {};
 end
 
--- assumes current_game()
 function gen_keymap_name( gamespecific )
-	local reslbl = "keymaps/" .. current_game().target;
+	local reslbl = "keymaps/" .. current_game.target;
 
 	if (gamespecific) then
-		reslbl = reslbl .. "_" .. current_game().setname;
+		reslbl = reslbl .. "_" .. current_game.setname;
 	end
 
 	reslbl = reslbl .. ".lua";
@@ -1151,7 +1150,7 @@ end
 local function build_loadmenu()
 	local reslbls = {};
 	local resptrs = {};
-	local saveslist = get_saveslist( current_game() );
+	local saveslist = get_saveslist( current_game );
 
 	for key, val in pairs(saveslist) do
 		table.insert(reslbls, val);
@@ -1191,10 +1190,9 @@ end
 
 local function add_gamelbls( lbltbl, ptrtbl )
 	local captbl = settings.capabilities;
-	local cg = current_game();
 
 	if (captbl.snapshot) then
-		if ( (# get_saveslist( cg )) > 0 ) then
+		if ( (# get_saveslist( current_game )) > 0 ) then
 			table.insert(lbltbl, "Load State...");
 			ptrtbl[ "Load State..." ] = function(label, store)
 				local lbls, ptrs, fmt = build_loadmenu();
@@ -1307,8 +1305,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 end
 
 function screenshot()
-	local tbl = current_game();
-	local lblbase = "screenshots/" .. tbl.target .. "_" .. tbl.setname;
+	local lblbase = "screenshots/" .. current_game.target .. "_" .. current_game.setname;
 	local ofs = 1;
 
 -- only add sequence number if we already have a screenshot for the game
@@ -1362,8 +1359,7 @@ function disable_record()
 end
 
 function enable_record(width, height, args)
-	local tbl = current_game();
-	local lblbase = "movies/" .. tbl.setname;
+	local lblbase = "movies/" .. current_game.setname;
 	local dst = lblbase .. ".mkv";
 
 	local ofs = 1;
@@ -1846,8 +1842,6 @@ if (#menulbls > 0 and settingslbls) then
 
 -- trickier than expected, as we don't want the game to progress and we don't want any UI elements involved */
 	current_menu.ptrs["Screenshot"] = function()
-		local tbl = current_game();
-
 		settings.iodispatch["MENU_ESCAPE"]();
 		local tmpclock = gridle_clock_pulse;
 
