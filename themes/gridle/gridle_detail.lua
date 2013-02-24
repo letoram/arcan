@@ -5,23 +5,25 @@ detailview = {
 
 local function gridledetail_load()
 -- non-visible 3d object as camtag
-	dir_light = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
-	shader_uniform(dir_light, "map_diffuse", "i", PERSIST, 0);
-	shader_uniform(dir_light, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
-	shader_uniform(dir_light, "wambient",  "fff", PERSIST, 0.3, 0.3, 0.3);
-	shader_uniform(dir_light, "wdiffuse",  "fff", PERSIST, 0.3, 0.3, 0.3);
+	detailview.dir_light = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "default3d");
+	shader_uniform(detailview.dir_light, "map_diffuse", "i", PERSIST, 0);
+	shader_uniform(detailview.dir_light, "wlightdir", "fff", PERSIST, 1.0, 0.0, 0.0);
+	shader_uniform(detailview.dir_light, "wambient",  "fff", PERSIST, 0.3, 0.3, 0.3);
+	shader_uniform(detailview.dir_light, "wdiffuse",  "fff", PERSIST, 0.3, 0.3, 0.3);
+	detailview.loaded = true;
 end
 
 -- figure out what to show based on a "source data string" (detailres, dependency to havedetails) and a gametable
 local function gridledetail_buildview(detailres, gametbl )
 	video_3dorder(ORDER_LAST);
+
 	detailview.game  = gametbl;
 	detailview.model = setup_cabinet_model(detailres, gametbl.resources, {});
 	
 -- replace the "on load" fullbright shader with a directional lighting one  
 	if (detailview.model) then
-		image_shader(detailview.model.vid, dir_light);
-
+		image_shader(detailview.model.vid, detailview.dir_light);
+		
 -- we can hardcode these values because the "scale vertices" part forces the actual value range of any model hierarchy to -1..1
 		detailview.startpos = {x = -1.0, y = 0.0, z = -4.0};
 		detailview.startang = {roll = 0, pitch = 0, yaw = 0};
@@ -62,7 +64,7 @@ end
 
 function gridledetail_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
-		detailview.model:update_display(instance_image(source), nil, datatbl.mirrored);
+		detailview.model:update_display(instance_image(source));
 		audio_gain(datatbl.source_audio, settings.internal_again, NOW);
 
 		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
@@ -254,7 +256,7 @@ local function find_detail(step, zout)
 		gridledetail_freeview(2, 6.0);
 		gridledetail_buildview(detailres, settings.games[ nextind ])
 
--- start "far away" and quickly zoom in, while that happens, prevent some keys from being used ("cooldown") 
+-- start "far away" and quickly zoom in, while that happens, prevent some keys from being used ("cooldown")
 		show_image(detailview.model.vid);
 		move3d_model(detailview.model.vid, -1.0, 0.0, zout);
 		move3d_model(detailview.model.vid, -1.0, 0.0, -4.0, settings.transitiondelay);
@@ -268,6 +270,7 @@ end
 
 function gridledetail_show(detailres, gametbl, ind)
 	if (detailview.loaded == false) then
+		print("first time load");
 		gridledetail_load();
 	end
 
@@ -283,7 +286,7 @@ function gridledetail_show(detailres, gametbl, ind)
 
 -- repeat-rate is ignored here
 	kbd_repeat(0);
-	
+
 	detailview.fullscreen = false;
 	detail_toggles = settings.internal_toggles;
 	
@@ -329,8 +332,9 @@ function gridledetail_show(detailres, gametbl, ind)
 	detailview.iodispatch["LAUNCH"] = function(iotbl)
 		local captbl = launch_target_capabilities( detailview.game.target )
 		local launch_internal = (settings.default_launchmode == "Internal" or captbl.external_launch == false) and captbl.internal_launch;
-
+		
 			if (launch_internal) then
+			settings.capabilities = captbl;
 				gridle_load_internal_extras();
 
 				internal_vid = launch_target( detailview.game.gameid, LAUNCH_INTERNAL, gridledetail_internal_status );

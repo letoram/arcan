@@ -471,32 +471,6 @@ inputptrs["Reconfigure Keys (Players)"] = function()
 	end
 end
 
-function apply_gamefilter(listname)
-	local reslist = {};
-	local filter = {};
-
-	open_rawresource("./lists/" .. listname .. ".txt");
-	line = read_rawresource();
-
-	while (line) do
-			filter["title"] = line;
-			local dblookup = list_games( filter )
-
-			if dblookup and #dblookup > 0 then
-				table.insert(reslist, dblookup[1]);
-			end
-
-			line = read_rawresource();
-		end
-	close_rawresource();
-
-	if (#reslist == 0) then
-			spawn_warning("No games from gamelist( " .. listname .. ") could be found.");
-	else
-		settings.games = reslist;
-	end
-end
-
 -- reuse by other menu functions
 function gridlemenu_defaultdispatch(dst)
 	if (not dst["MENU_UP"]) then
@@ -560,16 +534,7 @@ function gridlemenu_defaultdispatch(dst)
 	end
 end
 
-function gridlemenu_filterchanged()
-	settings.cursor = 0;
-	settings.pageofs = 0;
-
-	erase_grid(false);
-	build_grid(settings.cell_width, settings.cell_height);
-	move_cursor(1, true);
-end
-
-function gridlemenu_settings(cleanup_hook, filter_hook)
+function gridlemenu_settings(cleanup_hook)
 -- first, replace all IO handlers
 	local imenu = {};
 	
@@ -588,7 +553,10 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 		table.sort(settings.games, settings.sortfunctions[ settings.sortorder ]);
 
 -- only rebuild grid if we have to
-		cleanup_hook();
+		if (cleanup_hook) then
+			cleanup_hook();
+		end
+
 		dispatch_pop();
 	end
 

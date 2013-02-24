@@ -535,11 +535,6 @@ local function launch(tbl)
 	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
 	push_video_context();
 
--- replace this one so that file-name, config names etc. are correct when emitted from intmenus
-		current_game = function()
-			return tbl;
-		end
-
 -- can also be invoked from the context menus
 	if (launch_internal) then
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
@@ -992,7 +987,7 @@ local function setup_customview()
 			image_mask_clearall(inst);
 			place_item( inst, val );
 		else
-			local vid = load_movie("vidcap:" .. tostring(val.index), FRAMESERVER_LOOP, function(source, status)
+			local vid = load_movie("capture:device=" .. tostring(val.index), FRAMESERVER_LOOP, function(source, status)
 				place_item(source, val);
 				play_movie(source);
 			end);
@@ -1072,9 +1067,23 @@ local function setup_customview()
 			navi_change(navi, navitbl);
 		end
 
+		imenu["CONTEXT"] = function()
+			local res = navi:trigger_selected();
+			if (res ~= nil) then
+				current_game = res;
+				play_audio(soundmap["MENU_TOGGLE"]);
+				video_3dorder(ORDER_NONE);
+				gridlemenu_context(function(upd)
+					if (upd) then navi:update_list(settings.games); end
+					video_3dorder(ORDER_LAST);
+				end);
+			end
+		end
+		
 		imenu["MENU_SELECT"] = function()
 			local res = navi:trigger_selected();
 			if (res ~= nil) then
+				current_game = res;
 				res.capabilities = launch_target_capabilities( res.target )
 				launch(res);
 			else
