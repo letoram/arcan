@@ -132,12 +132,14 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.otag = src->tag
 		};
 
-/* prevent looping if the frameserver didn't last more than a second, indicative of it being broken */
+/* prevent looping if the frameserver didn't last more than a second, indicative of it being broken,
+ * rapid relaunching could result in triggering alarm systems etc. for fork() bombs */
 		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
 			arcan_frameserver_free(src, true);
 			src->autoplay = true;
 			sevent.kind = EVENT_FRAMESERVER_LOOPED;
 
+			printf("autoplay respawn!\n");
 			struct frameserver_envp args = {
 				.use_builtin = true,
 				.args.builtin.resource = src->source,

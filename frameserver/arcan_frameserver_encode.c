@@ -209,7 +209,7 @@ forceencode:
 
 		int rv = avcodec_encode_audio2(ctx, &pkt, frame, &got_packet);
 		if (0 != rv && !flush){
-			LOG("arcan_frameserver(encode) : encode_audio, couldn't encode, giving up.\n");
+			LOG("(encode) : encode_audio, couldn't encode, giving up.\n");
 			exit(1);
 		}
 
@@ -226,7 +226,7 @@ forceencode:
 			pkt.stream_index = ffmpegctx.astream->index;
 
 			if (0 != av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) && !flush){
-				LOG("arcan_frameserver(encode) : encode_audio, write_frame failed, giving up.\n");
+				LOG("(encode) : encode_audio, write_frame failed, giving up.\n");
 				exit(1);
 			}
 		}
@@ -303,7 +303,7 @@ void encode_video(bool flush)
 
 /* notify parent so a decision can be made as if to reset and change encoding options */
 	if (fc > 1){
-		LOG("arcan_frameserver(encode) jitter: %lld, current time :%lld, ideal: %lld\n", delta, cft, nf);
+		LOG("(encode) jitter: %lld, current time :%lld, ideal: %lld\n", delta, cft, nf);
 		arcan_event ev = {.kind = EVENT_FRAMESERVER_DROPPEDFRAME, .category = EVENT_FRAMESERVER};
 		arcan_event_enqueue(&ffmpegctx.outevq, &ev);
 	}
@@ -330,7 +330,7 @@ void encode_video(bool flush)
 		int rs = avcodec_encode_video2(ffmpegctx.vcontext, &pkt, flush ? NULL : ffmpegctx.pframe, &got_outp);
 
 		if (rs < 0 && !flush) {
-			LOG("arcan_frameserver(encode) -- encode_video failed, terminating.\n");
+			LOG("(encode) -- encode_video failed, terminating.\n");
 			exit(1);
 		}
 
@@ -345,14 +345,14 @@ void encode_video(bool flush)
 				pkt.flags |= AV_PKT_FLAG_KEY;
 
 			if (pkt.dts > pkt.pts){
-				LOG("arcan_frameserver(encode) dts > pts, clipping.\n");
+				LOG("(encode) dts > pts, clipping.\n");
 				pkt.dts = pkt.pts - 1;
 			}
 			
 			pkt.stream_index = ffmpegctx.vstream->index;
 
 			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0 && !flush){
-				LOG("arcan_frameserver(encode) -- writing encoded video failed, terminating.\n");
+				LOG("(encode) -- writing encoded video failed, terminating.\n");
 				exit(1);
 			}
 		}
@@ -381,7 +381,7 @@ void encode_video(bool flush)
 /* don't want an onslaught of warnings here */
 			static bool flagged = false;
 			if (dtsc > pkt.dts && !flagged){
-				LOG("arcan_frameserver(encode) -- improper PTS/DTS behavior, likely caused by an ffmpeg bug. Upgrade your libraries or try a different codec/container.\n");
+				LOG("(encode) -- improper PTS/DTS behavior, likely caused by an ffmpeg bug. Upgrade your libraries or try a different codec/container.\n");
 				flagged = true;
 			}
 			else
@@ -395,7 +395,7 @@ void encode_video(bool flush)
 			pkt.size = sz;
 
 			if (av_interleaved_write_frame(ffmpegctx.fcontext, &pkt) != 0 && !flush){
-				LOG("arcan_frameserver(encode) -- writing encoded video failed, terminating.\n");
+				LOG("(encode) -- writing encoded video failed, terminating.\n");
 				exit(1);
 			}
 		}
@@ -463,7 +463,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	static bool initialized = false;
 
 	if (shared->storage.w % 2 != 0 || shared->storage.h % 2 != 0){
-		LOG("arcan_frameserver(encode) -- source image format (%dx%d) must be evenly disible by 2.\n",
+		LOG("(encode) -- source image format (%dx%d) must be evenly disible by 2.\n",
 			shared->storage.w, shared->storage.h);
 
 		return false;
@@ -499,12 +499,12 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 /* sanity- check decoded values */
 	if (fps < 4 || fps > 60){
-			LOG("arcan_frameserver(encode:%s) -- bad framerate (fps) argument, defaulting to 25.0fps\n", resource);
+			LOG("(encode:%s) -- bad framerate (fps) argument, defaulting to 25.0fps\n", resource);
 			fps = 25;
 	}
 
-	LOG("arcan_frameserver(encode) -- Avcodec version: %d.%d\n", LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR);
-	LOG("arcan_frameserver(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d %s), acodec: (%s:%d rate %d %s), container: (%s)\n",
+	LOG("(encode) -- Avcodec version: %d.%d\n", LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR);
+	LOG("(encode:args) -- Parsing complete, values:\nvcodec: (%s:%f fps @ %d %s), acodec: (%s:%d rate %d %s), container: (%s)\n",
 			vck?vck:"default",  fps, vbr, vbr <= 10 ? "qual.lvl" : "b/s", ack?ack:"default", samplerate, abr, abr <= 10 ? "qual.lvl" : "b/s", cont?cont:"default");
 
 /* overrides some of the other options to provide RDP output etc. */
@@ -515,7 +515,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 		if (!arg_lookup(args, "streamdst", 0, &streamdst) || strncmp("rtmp://", streamdst, 7) != 0){
 			printf("arg lookup failed, %s\n", streamdst ? streamdst : "NULL");
-			LOG("arcan_frameserver(encode:args) -- Streaming requested, but no valid streamdst set, giving up.\n");
+			LOG("(encode:args) -- Streaming requested, but no valid streamdst set, giving up.\n");
 			return false;
 		}
 	}
@@ -527,16 +527,16 @@ static bool setup_ffmpeg_encode(const char* resource)
 	unsigned contextc      = 0; /* track of which ID the next stream has */
 
 	if (!video.storage.container.context){
-		LOG("arcan_frameserver(encode) -- No valid output container found, aborting.\n");
+		LOG("(encode) -- No valid output container found, aborting.\n");
 		return false;
 	}
 	
 	if (!video.storage.video.codec && !audio.storage.audio.codec){
-		LOG("arcan_frameserver(encode) -- No valid video or audio setup found, aborting.\n");
+		LOG("(encode) -- No valid video or audio setup found, aborting.\n");
 		return false;
 	}
 
-	LOG("arcan_frameserver(encode) -- Encoder setup, video: %s, audio: %s\n", video.name ? video.name : "(not set)", audio.name ? audio.name : "(not set)");
+	LOG("(encode) -- Encoder setup, video: %s, audio: %s\n", video.name ? video.name : "(not set)", audio.name ? audio.name : "(not set)");
 	
 /* some feasible combination found, prepare memory page */
 	frameserver_shmpage_calcofs(shared, &(ffmpegctx.vidp), &(ffmpegctx.audp) );
@@ -558,7 +558,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.vstream->codec = ffmpegctx.vcontext;
 			ffmpegctx.fps = fps;
 
-			LOG("arcan_frameserver(encode) -- video setup. (%d, %d)\n", width, height);
+			LOG("(encode) -- video setup. (%d, %d)\n", width, height);
 		}
 	}
 
@@ -572,7 +572,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.acontext       = audio.storage.audio.context;
 			ffmpegctx.acodec         = audio.storage.audio.codec;
 			ffmpegctx.astream->codec = ffmpegctx.acontext;
-			LOG("arcan_frameserver(encode) -- audio setup.\n");
+			LOG("(encode) -- audio setup.\n");
 
 /* feeding audio encoder by this much each time,
  * frame_size = number of samples per frame, might need to supply the encoder with a fixed amount, each sample covers n channels.
@@ -582,7 +582,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 				samplerate / fps : ffmpegctx.acontext->frame_size;
 			ffmpegctx.aframe_sz = 4 * ffmpegctx.aframe_smplcnt;
 
-			LOG("arcan_frameserver(encode) -- audio sample format(%d)\n", ffmpegctx.acontext->sample_fmt);
+			LOG("(encode) -- audio sample format(%d)\n", ffmpegctx.acontext->sample_fmt);
 			if (ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLT || ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLTP){
 				ffmpegctx.encfbuf = av_malloc( ffmpegctx.aframe_sz * 2);
 				ffmpegctx.float_samples = true;

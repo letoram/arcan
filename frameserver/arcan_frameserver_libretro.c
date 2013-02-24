@@ -142,7 +142,7 @@ static void* libretro_requirefun(const char* const sym)
 
 	if (!res)
 	{
-		LOG("arcan_frameserver(libretro) -- missing library or symbol (%s) during lookup.\n", sym);
+		LOG("(libretro) -- missing library or symbol (%s) during lookup.\n", sym);
 		exit(1);
 	}
 
@@ -396,17 +396,17 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 			switch ( *(enum retro_pixel_format*) data ){
 				case RETRO_PIXEL_FORMAT_0RGB1555:
-					LOG("arcan_frameserver(libretro) -- pixel format set to RGB1555\n");
+					LOG("(libretro) -- pixel format set to RGB1555\n");
 					retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
 				break;
 
 				case RETRO_PIXEL_FORMAT_RGB565:
-					LOG("arcan_frameserver(libretro) -- pixel format set to RGB565\n");
+					LOG("(libretro) -- pixel format set to RGB565\n");
 					retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;
 				break;
 
 				case RETRO_PIXEL_FORMAT_XRGB8888:
-					LOG("arcan_frameserver(libretro) -- pixel format set to XRGB8888\n");
+					LOG("(libretro) -- pixel format set to XRGB8888\n");
 					retroctx.converter = (pixconv_fun) libretro_xrgb888_rgba;
 				break;
 
@@ -461,7 +461,7 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev, unsigned i
 
 	if (port > MAX_PORTS){
 		if (port_warning == false)
-			LOG("arcan_frameserver(libretro) -- core requested an unknown port id (%u:%u:%u), ignored.\n", dev, ind, id);
+			LOG("(libretro) -- core requested an unknown port id (%u:%u:%u), ignored.\n", dev, ind, id);
 
 		port_warning = true;
 		return 0;
@@ -637,7 +637,7 @@ static inline void targetev(arcan_event* ev)
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER:
 			retroctx.last_fd = frameserver_readhandle( ev );
-			LOG("arcan_frameserver(libretro) -- descriptor transferred, %d\n", retroctx.last_fd);
+			LOG("(libretro) -- descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
@@ -774,7 +774,7 @@ static inline bool retroctx_sync()
 
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
 	if (now < 0 || abs( left ) > retroctx.mspf * 60.0){
-		LOG("arcan_frameserver(libretro) -- stall detected, resetting timers.\n");
+		LOG("(libretro) -- stall detected, resetting timers.\n");
 		reset_timing();
 		return true;
 	}
@@ -971,7 +971,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* map up functions and test version */
 	if (!frameserver_loadlib(libname)){
-		LOG("arcan_frameserver(libretro) -- couldn't open library (%s), giving up.\n", libname);
+		LOG("(libretro) -- couldn't open library (%s), giving up.\n", libname);
 		exit(1);
 	}
 
@@ -1058,10 +1058,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 
-		LOG("arcan_frameserver(libretro) -- video timing: %f fps (%f ms), audio samplerate: %f Hz\n", (float)retroctx.avinfo.timing.sample_rate,
+		LOG("(libretro) -- video timing: %f fps (%f ms), audio samplerate: %f Hz\n", (float)retroctx.avinfo.timing.sample_rate,
 			(float)retroctx.mspf, (float)retroctx.avinfo.timing.sample_rate);
 
-		LOG("arcan_frameserver(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, audio_samplerate);
+		LOG("(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, audio_samplerate);
 		retroctx.resampler = speex_resampler_init(audio_channels, retroctx.avinfo.timing.sample_rate, audio_samplerate, 3 /* quality */, &errc);
 
 /* intermediate buffer for resampling and not relying on a well-behaving shmpage */

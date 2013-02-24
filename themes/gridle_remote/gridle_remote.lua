@@ -16,20 +16,35 @@ function gridle_remote()
 	system_load("remote_config.lua")();
 
 -- rREMOTE_ESCAPE gets remapped to MENU_ESCAPE
-	local keylabels = { "rLOCAL_MENU", "rREMOTE_MENU", "rREMOTE_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH",
-		"aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
+	local keylabels = { "", "rMENU_TOGGLE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", 
+		"rREMOTE_MENU", "rREMOTE_ESCAPE", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
 
 -- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
 	keyconfig = keyconf_create(keylabels);
 	
 -- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
 -- depending on settings) 
+	local imenu = {};
+	imenu["MENU_TOGGLE"] = function()
+		spawn_mainmenu();
+	end
+	
+	imenu["MENU_ESCAPE"] = function()
+		shutdown();
+	end
+
+	dispatch_push(imenu, "default", gridleremote_netinput);
 	
 	setup_keys( function() gridleremote_layouted( setup_complete ) end );
 end
 
 function open_connection(dst)
+	if (valid_vid(server.connection)) then
+		delete_image(server.connection);
+	end
 	
+	spawn_warning("Connection To: " .. ( (dst == nil) and "local discovery" or dst), 100);
+	server.connection = net_open(dst, net_event);
 end
 
 function dispatch_push(tbl, name, triggerfun)
@@ -70,7 +85,7 @@ function spawn_mainmenu()
 	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs);
 	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", connectlbls, connectptrs);
 	
-	table.insert(mainlbls, "----");
+	table.insert(mainlbls, "---");
 	table.insert(mainlbls, "Quit");
 
 	mainptrs["Quit"] = function() 
@@ -180,6 +195,7 @@ end
 function net_event(source, tbl)
 	if (tbl.kind == "connected") then
 		settings.connected = true;
+		net_push(source, "players:", keyconfig.player_count);
 		spawn_warning("Connected", 125);
 
 	elseif (tbl.kind == "message") then
@@ -187,10 +203,13 @@ function net_event(source, tbl)
 
 	elseif (tbl.kind == "frameserver_terminated") then
 		settings.connected = false;
+		delete_image(settings.connection);
+		settings.connection = nil;
+
 		show_image(imagery.disconnected);
-		blend_image(imagery.disconnected, 0, 40);
+		blend_image(imagery.disconnected, 1.0, 30);
+		blend_image(imagery.disconnected, 0.0, 10);
 		gridleremote_customview( setup_complete );
-		settings.server = nil;
 	else
 	end
 	
@@ -226,9 +245,9 @@ function spawn_warning( message, expiration )
 	if (expiration == nil) then
 		settings.infowin = infowin;
 	else
-		expire_image(infowin.anchor, 125);
-		blend_image(infowin.window, 0.0, 125);
-		blend_image(infowin.border, 0.0, 125);
+		expire_image(infowin.anchor, expiration);
+		blend_image(infowin.window, 1.0, expiration * 0.8);
+		blend_image(infowin.window, 0.0, expiration * 0.2);
 	end
 
 	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
@@ -279,12 +298,11 @@ function setup_complete()
 	if (props.height > VRESH) then props.height = VRESH; end
 	
 	local keymap = {
-		"7", "8", "9", "a", "b", "\n",
-		"4", "5", "6", "c", "d", "\n",
-		"1", "2", "3", "e", "f", "\n",
-		".", "0", ":", "\n" };
+		"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "7", "8", "9", "\n",
+		"A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "4", "5", "6", "\n",
+		"Z", "X", "C", "V", "B", "N", "M", ".", "_", "0", "1", "2", "3", "\n"};
 
-	osdkbd = osdkbd_create(keymap);
+	osdkbd = osdkbd_create( keymap, {case_insensitive = false} ); --keymap);
 end
 
 function setup_keys( trigger )
@@ -300,6 +318,22 @@ function setup_keys( trigger )
 
 	else
 		trigger();
+	end
+
+end
+
+function gridleremote_netinput(iotbl)
+	local restbl = keyconfig:match(iotbl);
+
+	if (restbl) then
+		for ind, val in pairs(restbl) do
+			if (settings.iodispatch[val]) then
+				settings.iodispatch[val]();
+
+			elseif valid_vid(settings.connection) then
+				net_push(settings.connection, iotbl.active and ("pressed:" .. val) or ("released:" .. val));
+			end
+		end
 	end
 
 end
