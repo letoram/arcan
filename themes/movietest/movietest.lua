@@ -94,11 +94,15 @@ function movietest_input( inputtbl )
 			pause_movie(img.last);
 		
 		elseif (symtable[ inputtbl.keysym ] == "w") then
-			vid, aid = load_movie("vidcap:" .. webcam_ind, FRAMESERVER_NOLOOP, 
+			width = 128 + math.random(1024);
+			height = 128 + math.random(1024);
+			print("Requesting:", "capture:" .. webcam_ind, tostring(width) .. "x" .. tostring(height));
+vid, aid = load_movie("capture:device=" .. webcam_ind .. ":width=" .. tostring(width) .. ":height=" .. tostring(height), FRAMESERVER_NOLOOP, 
 function(source, status)
 	print("webcam status:", status.kind);
 	if (status.kind == "resized") then
-		resize_image(source, math.floor(VRESW * 0.3), math.floor(VRESH * 0.3));
+		print("resize to: ", status.width, status.height);
+		resize_image(source, status.width, status.height);
 	end
 end );
 			webcam_ind = webcam_ind + 1;

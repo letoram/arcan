@@ -263,7 +263,7 @@ local function osdkbd_buildgrid(self, windw, windh)
 				image_tracetag(vidcol[j], "osdkbd grid letter");
 			else
 				vidcol[j] = self.rows[i][j]:load(self);
-				resize_image(vidcol[j], self.chrh * 0.9, self.chrh * 0.9);
+				resize_image(vidcol[j], math.floor(self.chrh * 0.9), math.floor(self.chrh * 0.9));
 			end
 
 			link_image(vidcol[j], self.window);
@@ -271,7 +271,7 @@ local function osdkbd_buildgrid(self, windw, windh)
 			local cellp = image_surface_properties(vidcol[j]);
 
 -- center in grid square
-			move_image(vidcol[j], x + 0.5 * (self.chrh - cellp.width), y + 2);
+			move_image(vidcol[j], math.floor(x + 0.5 * (self.chrh - cellp.width)), math.floor(y + 2));
 			show_image(vidcol[j]);
 			image_clip_on(vidcol[j]);
 			order_image(vidcol[j], max_current_image_order());

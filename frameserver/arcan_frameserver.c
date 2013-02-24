@@ -22,10 +22,12 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <strings.h>
+#include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
 #include <assert.h>
+
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -364,19 +366,18 @@ static void toggle_logdev(const char* prefix)
 	}
 #endif
 
-	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
+	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
+		toggle_logdev("dec");
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
-	
+	}
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev("retro");
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
-	
 	else if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("rec");
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);
 	}
-	
 	else;
 
 	return 0;

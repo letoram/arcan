@@ -1001,9 +1001,12 @@ int arcan_lua_playmovie(lua_State* ctx)
 	return 0;
 }
 
+/* NOTE: the is_special_res / loadmovie hack is slated to be replaced for the 
+ * hardening 0.3 branch, where the nopts / framequeue solution is dropped altogether
+ * in favor of doing synchronization work in frameserver- rather than in- core */
 static bool is_special_res(const char* msg)
 {
-	return strncmp(msg, "vidcap", 6) == 0;
+	return strncmp(msg, "device", 6) == 0 || strncmp(msg, "stream", 6) == 0 || strncmp(msg, "capture", 7) == 0;
 }
 
 int arcan_lua_loadmovie(lua_State* ctx)
@@ -1025,8 +1028,8 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	} else
 		fname = strdup(fname);
 
-/*  in order to stay backward compatible API wise, the load_movie with function callback
- *  will always need to specify loop condition. */
+/* in order to stay backward compatible API wise, the load_movie with function callback
+ * will always need to specify loop condition. */
 	if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
 		lua_pushvalue(ctx, 3);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
@@ -3708,7 +3711,6 @@ int arcan_lua_screenshot(lua_State* ctx)
 	size_t bufs;
 
 	if (arcan_video_screenshot(&databuf, &bufs)){
-/* FIXME(sandboxing) */
 		char* fname = arcan_find_resource(resstr, ARCAN_RESOURCE_THEME);
 		if (!fname){
 			fname = arcan_expand_resource(resstr, false);
@@ -3798,8 +3800,7 @@ static int arcan_lua_net_open(lua_State* ctx)
 			break;
 		}
 
-/* populate and escape */
-
+/* populate and escape, due to IPv6 addresses etc. actively using :: */
 	char* workstr = NULL;
 	size_t work_sz = 0;
 

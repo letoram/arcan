@@ -171,25 +171,25 @@ struct conn_state {
 
 static bool err_catcher(struct conn_state* self, char tag, int len, char* value)
 {
-	LOG("arcan_frameserver(net-srv) -- invalid dispatcher invoked, please report.\n");
+	LOG("(net-srv) -- invalid dispatcher invoked, please report.\n");
 	abort();
 }
 
 static bool err_catch_valid(struct conn_state* self)
 {
-	LOG("arcan_frameserver(net-srv) -- invalid validator invoked, please report.\n");
+	LOG("(net-srv) -- invalid validator invoked, please report.\n");
 	abort();
 }
 
 static bool err_catch_flush(struct conn_state* self)
 {
-	LOG("arcan_frameserver(net-srv) -- invalid flusher invoked, please report.\n");
+	LOG("(net-srv) -- invalid flusher invoked, please report.\n");
 	abort();
 }
 
 static bool err_catch_queueout(struct conn_state* self, char* buf, size_t buf_sz)
 {
-	LOG("arcan_frameserver(net-srv) -- invalid queueout invoked, please report.\n");
+	LOG("(net-srv) -- invalid queueout invoked, please report.\n");
 	abort();
 }
 
@@ -202,7 +202,7 @@ static bool flushout_default(struct conn_state* self)
 /* don't terminate on this issue, as there might be a platform/pollset combination where this
  * is broken yet will only yield higher CPU usage */
 		if (!flush_warn){
-			LOG("arcan_frameserver(net-srv) -- flush requested on empty conn_state, possibly broken poll.\n");
+			LOG("(net-srv) -- flush requested on empty conn_state, possibly broken poll.\n");
 			flush_warn = true;
 		}
 
@@ -227,7 +227,7 @@ static bool flushout_default(struct conn_state* self)
 	} else {
 		char errbuf[64];
 		apr_strerror(sv, errbuf, 64);
-		LOG("arcan_frameserver(net-srv) -- send failed, %s\n", errbuf);
+		LOG("(net-srv) -- send failed, %s\n", errbuf);
 	}
 
 	return sv == APR_SUCCESS;
@@ -313,7 +313,7 @@ static bool state_decode(struct conn_state* self, int len, char* data)
 static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value)
 {
 	arcan_event newev = {.category = EVENT_NET};
-	LOG("arcan_frameserver(net), TLV frame received (%d:%d)\n", tag, len);
+	LOG("(net), TLV frame received (%d:%d)\n", tag, len);
 
 	switch(tag){
 		case TAG_NETMSG:
@@ -362,7 +362,7 @@ static bool dispatch_tlv(struct conn_state* self, char tag, int len, char* value
 		break;
 
 		default:
-			LOG("arcan_frameserver(net-cl), unknown tag(%d) with %d bytes payload.\n", tag, len);
+			LOG("(net-cl), unknown tag(%d) with %d bytes payload.\n", tag, len);
 	}
 
 	return true;
@@ -423,7 +423,7 @@ decode:
 
 	char errbuf[64];
 	apr_strerror(sv, errbuf, 64);
-	LOG("arcan_frameserver(net-srv) -- error receiving data (%s), giving up.\n", errbuf);
+	LOG("(net-srv) -- error receiving data (%s), giving up.\n", errbuf);
 	return false;
 }
 
@@ -496,7 +496,7 @@ static struct conn_state* init_conn_states(int limit)
 static void client_socket_close(struct conn_state* state)
 {
 	arcan_event rv = {.kind = EVENT_NET_DISCONNECTED, .category = EVENT_NET};
-	LOG("arcan_frameserver(net-srv) -- disconnecting client. %d\n", state->slot);
+	LOG("(net-srv) -- disconnecting client. %d\n", state->slot);
 
 	setup_cell(state);
 	arcan_event_enqueue(&netcontext.outevq, &rv);
@@ -623,20 +623,20 @@ static apr_socket_t* server_prepare_socket(const char* host, apr_sockaddr_t* alt
 /* we bind here rather than parent => xfer(FD) as this is never supposed to use privileged ports. */
 		rv = apr_sockaddr_info_get(&addr, host, APR_INET, sport, 0, netcontext.mempool);
 		if (rv != APR_SUCCESS){
-			LOG("arcan_frameserver(net) -- couldn't setup host (%s):%d, giving up.\n", host ? host : "(DEFAULT)", sport);
+			LOG("(net) -- couldn't setup host (%s):%d, giving up.\n", host ? host : "(DEFAULT)", sport);
 			goto sock_failure;
 		}
 	}
 
 	rv = apr_socket_create(&ear_sock, addr->family, tcp ? SOCK_STREAM : SOCK_DGRAM, tcp ? APR_PROTO_TCP : APR_PROTO_UDP, netcontext.mempool);
 	if (rv != APR_SUCCESS){
-		LOG("arcan_frameserver(net) -- couldn't create listening socket, on (%s):%d, giving up.\n", host ? host: "(DEFAULT)", sport);
+		LOG("(net) -- couldn't create listening socket, on (%s):%d, giving up.\n", host ? host: "(DEFAULT)", sport);
 		goto sock_failure;
 	}
 
 	rv = apr_socket_bind(ear_sock, addr);
 	if (rv != APR_SUCCESS){
-		LOG("arcan_frameserver(net) -- couldn't bind to socket, giving up.\n");
+		LOG("(net) -- couldn't bind to socket, giving up.\n");
 		goto sock_failure;
 	}
 
@@ -658,7 +658,7 @@ static apr_socket_t* server_prepare_socket(const char* host, apr_sockaddr_t* alt
 
 sock_failure:
 	apr_strerror(rv, errbuf, 64);
-	LOG("arcan_frameserver(net) -- preparing listening socket failed, reason: %s\n", errbuf);
+	LOG("(net) -- preparing listening socket failed, reason: %s\n", errbuf);
 
 	apr_socket_close(ear_sock);
 	return NULL;
@@ -701,7 +701,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
 				case EVENT_NET_INPUTEVENT:
-					LOG("arcan_frameserver(net-srv) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
+					LOG("(net-srv) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
 				break;
 
 				case EVENT_NET_GRAPHREFRESH:
@@ -711,7 +711,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				break;
 
 				case EVENT_NET_CUSTOMMSG:
-					LOG("arcan_frameserver(net-srv) broadcast %s\n", ev->data.network.message);
+					LOG("(net-srv) broadcast %s\n", ev->data.network.message);
 					outbuf[0] = TAG_NETMSG;
 					outbuf[1] = msgsz;
 					outbuf[2] = msgsz >> 8;
@@ -724,7 +724,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 		else if (ev->category == EVENT_TARGET){
 			switch (ev->kind){
 				case TARGET_COMMAND_EXIT:
-					LOG("arcan_frameserver(net-srv) parent requested termination, giving up.\n");
+					LOG("(net-srv) parent requested termination, giving up.\n");
 					return false;
 				break;
 
@@ -772,7 +772,7 @@ static void server_session(const char* host, int limit)
 #endif
 
 	if (apr_pollset_create(&poll_in, limit + 4, netcontext.mempool, 0) != APR_SUCCESS){
-			LOG("arcan_frameserver(net) -- Couldn't create server pollset, giving up.\n");
+			LOG("(net) -- Couldn't create server pollset, giving up.\n");
 			return;
 	}
 
@@ -780,7 +780,7 @@ static void server_session(const char* host, int limit)
 	if (!ear_sock)
 		return;
 
-	LOG("arcan_frameserver(net-srv) -- listening interface up on %s\n", host ? host : "(global)");
+	LOG("(net-srv) -- listening interface up on %s\n", host ? host : "(global)");
 	netcontext.pollset = poll_in;
 
 /* the pollset is created noting that we have the responsibility for assuring that the descriptors involved
@@ -806,7 +806,7 @@ static void server_session(const char* host, int limit)
 /* should be solved in a pretty per host etc. manner and for that matter, IPv6 */
 	apr_socket_t* gk_sock = server_prepare_gatekeeper("0.0.0.0");
 	if (gk_sock){
-		LOG("arcan_frameserver(net-srv) -- gatekeeper listening on broadcast for %s\n", host ? host : "(global)");
+		LOG("(net-srv) -- gatekeeper listening on broadcast for %s\n", host ? host : "(global)");
 		gkpfd.p = netcontext.mempool;
 		gkpfd.desc.s = gk_sock;
 		gkpfd.rtnevents = 0;
@@ -832,7 +832,7 @@ static void server_session(const char* host, int limit)
 				if ((evs & APR_POLLHUP) > 0 || (evs & APR_POLLERR) > 0){
 					arcan_event errc = {.kind = EVENT_NET_BROKEN, .category = EVENT_NET};
 					arcan_event_enqueue(&netcontext.outevq, &errc);
-					LOG("arcan_frameserver(net-srv) -- error on listening interface during poll, giving up.\n");
+					LOG("(net-srv) -- error on listening interface during poll, giving up.\n");
 					graph_log_conn_error(netcontext.graphing, 0, "listen");
 					return;
 				}
@@ -870,7 +870,7 @@ static void server_session(const char* host, int limit)
 				res = state->flushout(state);
 
 			if ( !res || (ret_pfd[i].rtnevents & APR_POLLHUP) > 0 || (ret_pfd[i].rtnevents & APR_POLLERR) > 0){
-				LOG("arcan_frameserver(net-srv) -- (%s), terminating client connection (%d).\n", res ? "HUP/ERR" : "flush failed", i);
+				LOG("(net-srv) -- (%s), terminating client connection (%d).\n", res ? "HUP/ERR" : "flush failed", i);
 				apr_socket_close(ret_pfd[i].desc.s);
 				client_socket_close(ret_pfd[i].client_data);
 				apr_pollset_remove(poll_in, &ret_pfd[i]);
@@ -887,7 +887,7 @@ static void server_session(const char* host, int limit)
 		;
 	}
 
-    LOG("arcan_frameserver(net-srv) -- shutting down server session.\n");
+    LOG("(net-srv) -- shutting down server session.\n");
 	apr_socket_close(ear_sock);
 	return;
 }
@@ -920,7 +920,7 @@ static char* host_discover(char* host, bool usenacl, bool passive)
 	apr_sockaddr_info_get(&addr, host ? host : "255.255.255.255", APR_INET, DEFAULT_DISCOVER_REQ_PORT, 0, netcontext.mempool);
 	apr_socket_t* broadsock = server_prepare_socket("0.0.0.0", NULL, DEFAULT_DISCOVER_RESP_PORT, false);
 	if (!broadsock){
-		LOG("arcan_frameserver(net-cl) -- host discover failed, couldn't prepare listening socket.\n");
+		LOG("(net-cl) -- host discover failed, couldn't prepare listening socket.\n");
 		return NULL;
 	}
 
@@ -989,7 +989,7 @@ retry:
 
 	char errbuf[64];
 	apr_strerror(rv, errbuf, 64);
-	LOG("arcan_frameserver(net-cl) -- send failed during discover, %s\n", errbuf);
+	LOG("(net-cl) -- send failed during discover, %s\n", errbuf);
 	graph_log_conn_error(netcontext.graphing, 0, "UDP sendto failed");
 
 	return NULL;
@@ -1041,7 +1041,7 @@ static bool client_data_process(apr_socket_t* inconn)
 
 	if (!rv){
 		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
-		LOG("arcan_frameserver(net-cl) -- validator failed, shutting down.\n");
+		LOG("(net-cl) -- validator failed, shutting down.\n");
 		apr_socket_close(inconn);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
 		graph_log_conn_error(netcontext.graphing, 0, "broken validation");
@@ -1088,7 +1088,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 		if (ev->category == EVENT_NET){
 			switch (ev->kind){
 				case EVENT_NET_INPUTEVENT:
-					LOG("arcan_frameserver(net-cl) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
+					LOG("(net-cl) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
 				break;
 
 				case EVENT_NET_CUSTOMMSG:
@@ -1142,7 +1142,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 	if ( (mode == CLIENT_DISCOVERY && hoststr == NULL) || mode == CLIENT_DISCOVERY_NACL){
 		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL, false);
 		if (!hoststr){
-			LOG("arcan_frameserver(net) -- couldn't find any Arcan- compatible server.\n");
+			LOG("(net) -- couldn't find any Arcan- compatible server.\n");
 			return;
 		}
 	}
@@ -1203,7 +1203,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 #endif
 
 	if (apr_pollset_create(&pset, 1, netcontext.mempool, 0) != APR_SUCCESS){
-		LOG("arcan_frameserver(net) -- couldn't allocate pollset. Giving up.\n");
+		LOG("(net) -- couldn't allocate pollset. Giving up.\n");
 		return;
 	}
 
@@ -1220,7 +1220,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 		apr_status_t status = apr_pollset_poll(pset, timeout, &pnum, &ret_pfd);
 
 		if (status != APR_SUCCESS && status != APR_EINTR && status != APR_TIMEUP){
-			LOG("arcan_frameserver(net-cl) -- broken poll, giving up.\n");
+			LOG("(net-cl) -- broken poll, giving up.\n");
 			graph_log_conn_error(netcontext.graphing, 0, "pollset_poll");
 			break;
 		}
@@ -1243,7 +1243,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 			break;
 	}
 
-    LOG("arcan_frameserver(net-cl) -- shutting down client session.\n");
+    LOG("(net-cl) -- shutting down client session.\n");
 	return;
 }
 
@@ -1298,11 +1298,11 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		int sockin_fd;
 		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
 		if (apr_os_sock_put(&netcontext.evsock, &sockin_fd, netcontext.mempool) != APR_SUCCESS){
-			LOG("arcan_frameserver(net) -- Couldn't convert FD socket to APR, giving up.\n");
+			LOG("(net) -- Couldn't convert FD socket to APR, giving up.\n");
 		}
 	}
 	else {
-		LOG("arcan_frameserver(net) -- No event socket found, giving up.\n");
+		LOG("(net) -- No event socket found, giving up.\n");
 		goto cleanup;
 	}
 #endif
@@ -1336,7 +1336,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		server_session(listenhost, limv);
 	}
 	else {
-		LOG("arcan_frameserver(net), unknown mode specified.\n");
+		LOG("(net), unknown mode specified.\n");
 		goto cleanup;
 	}
 

@@ -27,7 +27,7 @@ function recordtest()
 	move_image(b, VRESW - 32, 0, 20);
 	move_image(c, 0, VRESH - 32, 20);
 
-	game = list_games({title = "Chrono %"})
+	game = list_games({title = "%"})
 
 	if (game == nil) then
 		error("game not found, giving up.");
