@@ -435,9 +435,6 @@ function gridle()
 		return;
 	end
 
--- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
-	video_3dorder(ORDER_LAST); 
-
 -- use the DB theme-specific key/value store to populate the settings table
 	load_soundmap(settings.soundmap);
 	
@@ -445,11 +442,14 @@ function gridle()
 	imagery.server = net_listen(settings.listen_host, network_onevent);
 	imagery.disconnected = load_image("images/disconnected.png");
 	image_tracetag(imagery.disconnected, "disconnected");
-	persist_image(imagery.server);
+	persist_image(imagery.disconnected);
 
 	image_tracetag(imagery.server, "network server");
 	persist_image(imagery.server);
 	push_video_context();
+
+-- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
+	video_3dorder(ORDER_LAST); 
 
 -- we actually want the network toggle to live in a separate context, so that it can't be deleted.
 
