@@ -52,6 +52,7 @@ local function update_status()
 	if (settings.filters.manufacturer) then filterstr = filterstr .. " manufacturer(" .. tostring(settings.filters.manufacturer) .. ")"; end
 
 	table.insert(list, filterstr);
+
 	if (settings.statuslist == nil) then
 		settings.statuslist = listview_create(list, VRESH * 0.9, VRESW * 0.75);
 		settings.statuslist:show();

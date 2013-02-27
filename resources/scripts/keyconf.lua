@@ -661,7 +661,6 @@ local function keyconf_playerreconf(self)
 	self.usedtbl = usedtbl;
 
 -- remove or extract player inputs from currently configured
-
 	self.ofs = #self.configlist;
 	self:next_key();
 end

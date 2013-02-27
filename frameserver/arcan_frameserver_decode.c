@@ -244,7 +244,7 @@ static bool decode_aframe()
 				ofbuf += ntc;
 
 				if (*abufused == SHMPAGE_AUDIOBUF_SIZE)
-					synch_audio(decctx);
+					synch_audio();
 
 			} while (plane_size);
 	

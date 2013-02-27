@@ -502,7 +502,7 @@ function vector_lightmode(source, targetw, targeth)
 
 	blend_image(blur_vbuf, 0.99);
 	force_image_blend(blur_vbuf, BLEND_ADD);
-	order_image(blur_vbuf, max_current_image_order() + 1);
+	order_image(blur_vbuf, max_current_image_order() + 1); -- no problem doing this here as it's constrained to rendertarget
 
 	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
 	image_tracetag(comp_outbuf, "vector(composite)");
@@ -852,7 +852,7 @@ function gridlemenu_rebuilddisplay(toggles)
 	end
 
 -- redo so that instancing etc. match
-	order_image(dstvid, max_current_image_order() + 1);
+	order_image(dstvid, INGAMELAYER_DISPLAY);
 	show_image(dstvid);
 
 -- redo resize so it covers possible FBO rendertargets
@@ -1297,7 +1297,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 
 				valcbs["NO"]  = function()	end
 
-				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, true, valcbs);
+				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, true, valcbs, function() settings.iodispatch["MENU_ESCAPE"](nil, nil, true); end );
 			end
 		end
 
@@ -1317,35 +1317,6 @@ function screenshot()
 	else
 		save_screenshot(lblbase .. ".png");
 	end
-end
-
-function add_vidcap()
--- this one is part of gridle_customview
-	customview.ci = {};
-	local placeholdr = load_image("images/placeholders/vidcap.png");
-
-	customview.new_item(placeholdr, "vidcap", "vidcap");
-	customview.ci.zv = max_current_image_order();
-	order_image(placeholdr, customview.ci.zv);
-
--- if positioned, store the setting of the desired vidcap position, when record is toggled
--- a vidcap frameserver will be launched as well, if it loads correctly, and will be positioned
--- according to the customview result
-	customview.position_item(placeholdr, function(state, vid)
-		if (state) then
-			settings.vidcap = customview.ci;
-		else
-			settings.vidcap = nil;
-		end
-
-		cascade_visibility(current_menu, 1.0);
-		dispatch_pop();
-
-		customview.ci = {};
-		delete_image(placeholdr);
-	end)
-
-	settings.iodispatch["MENU_LEFT"](false, false);
 end
 
 -- width, height are assumed to be :
@@ -1382,39 +1353,9 @@ function enable_record(width, height, args)
 -- allocate intermediate storage
 	local dstvid = fill_surface(width, height, 0, 0, 0, width, height);
 	resize_image(lvid, width, height);
-	local rectbl = {lvid};
-
--- connect a vidcap frameserver,
--- FIXME, add arguments so that it's possible to (a) probe, (b) specify device, (c) specify resolution, (d) specify framerate
-	if (settings.vidcap) then
-		vid, aid = load_movie("vidcap:0", FRAMESERVER_NOLOOP, function(source, status)
-			if (status.kind == "resized") then -- show / reposition
-				local props = image_surface_properties( internal_vid );
-				local wfact = (settings.vidcap.width  / props.width ) * width;
-				local hfact = (settings.vidcap.height / props.height) * height;
-				local xfact = (settings.vidcap.x - props.x) * (width / props.width);
-				local yfact = (settings.vidcap.y - props.y) * (height / props.height);
---			link_image(vid, lvid);
-
--- translate to internal_vid coordinate space, and rescale according with destination resolution
-				resize_image(source, math.floor(wfact), math.floor(hfact));
-				blend_image(source,  settings.vidcap.opa);
-				move_image(source,   math.floor(xfact), math.floor(yfact));
-				rotate_image(source, settings.vidcap.ang);
-				order_image(source, max_current_image_order() + 1);
-			else -- died (likely immediately)
-				delete_image(source);
-			end
-				settings.vidcap = nil;
-		end)
-
-		if (valid_vid(vid)) then
-			table.insert(rectbl, vid);
-		end
-	end
-
 	show_image(lvid);
-	define_recordtarget(dstvid, dst, args, rectbl, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
+
+	define_recordtarget(dstvid, dst, args, lvid, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
 		print("record callback", status.kind);
 	end
 );
@@ -1626,8 +1567,6 @@ add_submenu(recordlist, recordptrs, "Quality...", "record_qual", gen_tbl_menu("r
 
 local streammenu = {};
 local streamptrs = {};
-
-add_submenu(streammenu, streamptrs, "Overlay Feed...", "record_overlay", gen_tbl_menu("ignore", {"Vidcap"}, add_vidcap, true));
 
 streamptrs["Define Stream..."] = function(label, store)
 		local resstr = nil;

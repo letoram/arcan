@@ -2402,10 +2402,13 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		glDeleteTextures(1, &vobj->gl_storage.glid);
 	}
 
-	assert(vobj->extrefc.attachments == 0);
-	assert(vobj->extrefc.framesets   == 0);
-	assert(vobj->extrefc.links       == 0);
-	assert(vobj->extrefc.instances   == 0);
+	if (vobj->extrefc.attachments | vobj->extrefc.framesets | vobj->extrefc.links | vobj->extrefc.instances){
+		arcan_warning("[BUG] Broken reference counters for expiring objects, tracetag? (%s)\n", vobj->tracetag ? vobj->tracetag : "(NO TAG)");
+#ifdef _DEBUG
+		abort();
+#endif
+	}
+	
 	free(vobj->tracetag);
 
 /* lots of default values are assumed to be 0, so reset the entire object to be sure.
@@ -2974,9 +2977,12 @@ static void tick_rendertarget(struct rendertarget* tgt)
 
 unsigned arcan_video_tick(unsigned steps)
 {
+	if (steps == 0)
+		return 0;
+
 	unsigned now = arcan_frametime();
 
-	while(steps--){
+	do {
 		update_object(&current_context->world, arcan_video_display.c_ticks);
 
 		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, sizeof(arcan_video_display.c_ticks));
@@ -2986,7 +2992,8 @@ unsigned arcan_video_tick(unsigned steps)
 
 		tick_rendertarget(&current_context->stdoutp);
 		arcan_video_display.c_ticks++;
-	}
+		steps = steps - 1;
+	} while (steps);
 
 	return arcan_frametime() - now;
 }

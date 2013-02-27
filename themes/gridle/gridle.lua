@@ -13,6 +13,7 @@ imagery = {
 	temporary = {}
 };
 
+gameflags = {};
 soundmap = {};
 
 soundmap_triggers = {
@@ -47,6 +48,10 @@ soundmap_triggers = {
  GRIDLAYER_MOVIE = 4;
  GRIDLAYER_ZOOM  = 5;
  ICONLAYER = 7;
+
+ INGAMELAYER_BACKGROUND = 8;
+ INGAMELAYER_DISPLAY = 9;
+ INGAMELAYER_OVERLAY = 10;
 
 settings = {
 	filters = {
@@ -338,7 +343,8 @@ end
 
 function gridle_launchinternal()
 	play_audio(soundmap["LAUNCH_INTERNAL"]);
-
+	gameflags = {};
+	
 	if (valid_vid(internal_vid)) then
 		delete_image(internal_vid);
 	end
@@ -440,9 +446,6 @@ function gridle()
 	
 -- network remote connection, always on but can allow / disallow connections based on user settings
 	imagery.server = net_listen(settings.listen_host, network_onevent);
-	imagery.disconnected = load_image("images/disconnected.png");
-	image_tracetag(imagery.disconnected, "disconnected");
-	persist_image(imagery.disconnected);
 
 	image_tracetag(imagery.server, "network server");
 	persist_image(imagery.server);
@@ -634,24 +637,31 @@ function network_onevent(source, tbl)
 			settings.network_remote = "Disabled";
 		end
 
-		show_image(imagery.disconnected);
-		order_image(imagery.disconnected, max_current_image_order());
-		blend_image(imagery.disconnected, 1.0, 30);
-		blend_image(imagery.disconnected, 0.0, 10);
+		if (valid_vid(imagery.disconnected)) then
+			show_image(imagery.disconnected);
+			order_image(imagery.disconnected, INGAMELAYER_OVERLAY); 
+			blend_image(imagery.disconnected, 1.0, 30);
+			blend_image(imagery.disconnected, 0.0, 10);
+		end
+
 		settings.server = nil;
 
 	elseif (tbl.kind == "resized") then
 		local a = true; -- seriously lua..
 
 	elseif (tbl.kind == "connected") then
--- FIXME: disconnect if remote is Disabled
-		spawn_warning(tbl.host .. " connected.");
+		if (settings.network_remote == "Disabled") then
+			net_disconnect(settings.server, tbl.id);
+		else
+			spawn_warning(tbl.host .. " connected.");
+		end
 
 	elseif (tbl.kind == "message") then
 		if (settings.network_remote == "Active") then
 			local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote", external = true};
 			local override = {};
 
+			print(tbl.message, string.sub(tbl.message, 1, 6));
 			if (string.sub(tbl.message, 1, 6) == "press:") then
 				faketbl.active = true;
 				local label = string.sub(tbl.message, 7, -1);
@@ -671,7 +681,11 @@ function network_onevent(source, tbl)
 					faketbl.label = label;
 					gridle_input(faketbl);
 				end
+			elseif (string.sub(tbl.message, 1, 5) == "move:") then
+					faketbl.kind = "analog";
+					faketbl.samples = {};
 			end
+
 		else
 			
 		end
@@ -1689,6 +1703,11 @@ function gridle_internal_setup(source, datatbl, gametbl)
 		image_tracetag(source, "internal_launch(" .. gametbl.title ..")");
 		audio_gain(internal_aid, settings.internal_again, NOW);
 		settings.keyconftbl = keyconfig.table;
+
+		if (settings.capabilities.snapshot == false) then
+			disable_snapshot();
+		end
+
 		set_internal_keymap();
 	end
 
@@ -1708,11 +1727,27 @@ function show_loading()
 	status_loading = true;
 	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
 	blend_image(imagery.loadingbg, 0.6, 10);
-	order_image(imagery.loadingbg, max_current_image_order());
-	order_image(imagery.loading, max_current_image_order() + 1);
+	order_image(imagery.loadingbg, INGAMELAYER_BACKGROUND);
+	order_image(imagery.loading, INGAMELAYER_OVERLAY);
 	blend_image(imagery.loading, 1.0, 10);
 	rotate_image(imagery.loading, 0);
 	rotate_image(imagery.loading, 2048, 200);
+end
+
+function disable_snapshot()
+	if (gameflags.snapshot_warning == true) then
+		return;
+	end
+
+	gameflags.snapshot_warning = true;
+	settings.capabilities.snapshot = false;
+	local vid = instance_image(imagery.nosave);
+	image_mask_clear(vid, MASK_OPACITY);
+	show_image(vid);
+	order_image(vid, INGAMELAYER_OVERLAY);
+	expire_image(vid, 50);
+	blend_image(vid, 1.0, 40);
+	blend_image(vid, 0.0, 10);
 end
 
 function gridle_internal_status(source, datatbl)
@@ -1741,7 +1776,7 @@ function gridle_internal_status(source, datatbl)
 			remove_loaded();
 		end
 	
-		order_image(imagery.crashimage, max_current_image_order());
+		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
 		blend_image(imagery.crashimage, 0.8);
 
 		if (not settings.in_internal) then
@@ -1752,13 +1787,7 @@ function gridle_internal_status(source, datatbl)
 
 	elseif (datatbl.kind == "state_size") then
 		if (datatbl.state_size <= 0) then
-		settings.capabilities.snapshot = false;
-		local vid = instance_image(imagery.nosave);
-		image_mask_clear(vid, MASK_OPACITY);
-		show_image(vid);
-		order_image(vid, max_current_image_order());
-		expire_image(vid, 50);
-		blend_image(vid, 0.0, 50);
+			disable_snapshot();
 		end
 	elseif (datatbl.kind == "frame") then
 -- just ignore

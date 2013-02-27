@@ -24,27 +24,27 @@ function gridle_remote()
 	
 -- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
 -- depending on settings) 
-	local imenu = {};
-	imenu["MENU_TOGGLE"] = function()
+	default_dispatch = {};
+	default_dispatch["MENU_TOGGLE"] = function()
 		spawn_mainmenu();
 	end
 	
-	imenu["MENU_ESCAPE"] = function()
+	default_dispatch["MENU_ESCAPE"] = function()
 		shutdown();
 	end
 
-	dispatch_push(imenu, "default", gridleremote_netinput);
+	dispatch_push(default_dispatch, "default", gridleremote_netinput);
 	
 	setup_keys( function() gridleremote_layouted( setup_complete ) end );
 end
 
 function open_connection(dst)
-	if (valid_vid(server.connection)) then
-		delete_image(server.connection);
+	if (valid_vid(settings.connection)) then
+		delete_image(settings.connection);
 	end
 	
-	spawn_warning("Connection To: " .. ( (dst == nil) and "local discovery" or dst), 100);
-	server.connection = net_open(dst, net_event);
+	spawn_warning("Connecting To: " .. ( (dst == nil) and "local discovery" or dst), 70, math.floor(VRESH * 0.3));
+	settings.connection = net_open(dst, net_event);
 end
 
 function dispatch_push(tbl, name, triggerfun)
@@ -86,9 +86,9 @@ function spawn_mainmenu()
 	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", connectlbls, connectptrs);
 	
 	table.insert(mainlbls, "---");
-	table.insert(mainlbls, "Quit");
+	table.insert(mainlbls, "Shutdown");
 
-	mainptrs["Quit"] = function() 
+	mainptrs["Shutdown"] = function()
 		shutdown(); 
 	end
 
@@ -192,9 +192,21 @@ function decode_message(msg)
 
 end
 
+function drop_menu()
+	dispatch_pop();
+
+	while current_menu ~= nil do
+		current_menu:destroy();
+		current_menu = current_menu.parent;
+	end
+end
+
 function net_event(source, tbl)
 	if (tbl.kind == "connected") then
 		settings.connected = true;
+		drop_menu();
+		dispatch_push(default_dispatch, "network input", gridleremote_netinput);
+
 		net_push(source, "players:", keyconfig.player_count);
 		spawn_warning("Connected", 125);
 
@@ -209,7 +221,8 @@ function net_event(source, tbl)
 		show_image(imagery.disconnected);
 		blend_image(imagery.disconnected, 1.0, 30);
 		blend_image(imagery.disconnected, 0.0, 10);
-		gridleremote_customview( setup_complete );
+
+		spawn_mainmenu();
 	else
 	end
 	
@@ -231,7 +244,7 @@ function reset_connection()
 	spawn_warning("Networking session terminated", 50);
 end
 
-function spawn_warning( message, expiration )
+function spawn_warning( message, expiration, yv )
 -- render message and make sure it is on top
 	if (settings.infowin) then
 		delete_image(settings.infowin.anchor);
@@ -251,7 +264,7 @@ function spawn_warning( message, expiration )
 	end
 
 	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
-	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
+	local y = (yv ~= nil) and yv or math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
 	
 	move_image(infowin.anchor, x, y);
 	hide_image(infowin.cursorvid);
@@ -294,7 +307,7 @@ function setup_complete()
 
 	imagery.disconnected = load_image("images/disconnected.png");
 	local props = image_surface_properties(imagery.disconnected);
-	if (props.width > VRESW) then props.width = VRESW; end
+	if (props.width > VRESW)  then props.width = VRESW;  end
 	if (props.height > VRESH) then props.height = VRESH; end
 	
 	local keymap = {
@@ -331,7 +344,13 @@ function gridleremote_netinput(iotbl)
 				settings.iodispatch[val]();
 
 			elseif valid_vid(settings.connection) then
-				net_push(settings.connection, iotbl.active and ("pressed:" .. val) or ("released:" .. val));
+
+				if (iotbl.kind == "analog") then
+					net_push(settings.connection, "move:" .. val .. ":" .. tostring(iotbl.samples[1]));
+				else
+					net_push(settings.connection, iotbl.active and ("press:" .. val) or ("release:" .. val));
+				end
+
 			end
 		end
 	end

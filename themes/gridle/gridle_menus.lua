@@ -372,8 +372,8 @@ add_submenu(mainlbls, mainptrs, "Sound / Music...", nil, soundlbls, soundptrs, {
 
 local gamelbls = {};
 local gameptrs = {};
-add_submenu(gamelbls, gameptrs, "Launch Mode...", "default_launchmode", {"Internal", "External"}, {Internal = launchmodeupdate, External = launchmodeupdate});
-add_submenu(gamelbls, gameptrs, "Autosave...", "autosave", {"On", "Off"}, {On = autosaveupd, Off = autosaveupd}); 
+add_submenu(gamelbls, gameptrs, "Launch Mode...", "default_launchmode", gen_tbl_menu("default_launchmode", {"Internal", "External"}, function() end, true));
+add_submenu(gamelbls, gameptrs, "Autosave...", "autosave", gen_tbl_menu("autosave", {"On", "On (No Warning)", "Off"}, function() end, true));
 add_submenu(mainlbls, mainptrs, "Gaming...", nil, gamelbls, gameptrs);
 
 if (LEDCONTROLLERS > 0) then
