@@ -56,14 +56,6 @@
 FILE* logdev = NULL;
 int sockin_fd = -1;
 
-#define DST_SAMPLERATE 44100
-#define DST_AUDIOCHAN  2
-#define DST_VIDEOCHAN  4 
-
-const int audio_samplerate = DST_SAMPLERATE;
-const int audio_channels   = DST_AUDIOCHAN;
-const int video_channels   = DST_VIDEOCHAN; /* RGBA */
-
 /* arcan_general functions assumes these are valid for searchpaths etc.
  * since we want to use some of those functions, we need a linkerhack or two */
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)

@@ -106,7 +106,7 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	else
 		ctx->bit_rate = abr;
 
-	LOG("arcan_frameserver(encode) -- audio setup @ %d hz, %d kbit/s\n", samplerate, abr);
+	LOG("(encode) -- audio setup @ %d hz, %d kbit/s\n", samplerate, abr);
 	if (avcodec_open2(dst->storage.audio.context, dst->storage.audio.codec, NULL) != 0){
 		avcodec_close(dst->storage.audio.context);
 		dst->storage.audio.context = NULL;
@@ -184,7 +184,7 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 
 	dst->storage.video.context->bit_rate = vbr;
 
-	LOG("arcan_frameserver(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1000);
+	LOG("(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1000);
 	
 	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
@@ -248,7 +248,7 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 	av_dict_set(&opts, "quality", "realtime", 0);
 	dst->storage.video.context->bit_rate = vbr;
 
-	LOG("arcan_frameserver(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1024);
+	LOG("(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1024);
 	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
 		dst->storage.video.context = NULL;
@@ -268,8 +268,8 @@ static struct codec_ent vcodec_tbl[] = {
 static struct codec_ent acodec_tbl[] = {
 	{.kind = CODEC_AUDIO, .name = "libvorbis", .shortname = "VORBIS", .id = 0,             .setup.audio = default_acodec_setup},
 	{.kind = CODEC_AUDIO, .name = "libmp3lame",.shortname = "MP3",    .id = 0,             .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "FLAC",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "RAWS16LE",  .shortname = "RAW",    .id = 0,             .setup.audio = default_acodec_setup}
+	{.kind = CODEC_AUDIO, .name = "flac",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup},
+	{.kind = CODEC_AUDIO, .name = "pcm_s16le_planar", .shortname = "RAW",    .id = 0,      .setup.audio = default_acodec_setup}
 };
 
 static struct codec_ent fcodec_tbl[] = {
@@ -288,9 +288,9 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 /* make sure that if the user supplies a name already in the standard table, that we get the same
  * prefix setup function */
 		for (int i = 0; i < nmemb; i++)
-			if (tbl[i].name != NULL && strcmp(req, tbl[i].name) == 0){
+			if (tbl[i].name != NULL && (strcmp(req, tbl[i].name) == 0 || strcmp(req, tbl[i].shortname) == 0) ){
 				memcpy(&res, &tbl[i], sizeof(struct codec_ent));
-				*dst = avcodec_find_encoder_by_name(req);
+				*dst = avcodec_find_encoder_by_name(res.name);
 			}
 
 /* if the codec specified is unknown (to us) then let avcodec try and sort it up, return default setup */
@@ -316,7 +316,6 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 struct codec_ent encode_getvcodec(const char* const req, int flags)
 {
  	struct codec_ent a = lookup_default(req, vcodec_tbl, sizeof(vcodec_tbl) / sizeof(vcodec_tbl[0]), false);
-	LOG("arcan_frameserver(encode) -- video codec setup: %" PRIxPTR "\n", (intptr_t)a.setup.video);
 	if (a.storage.video.codec && !a.setup.video)
 		a.setup.video = default_vcodec_setup;
 
@@ -345,7 +344,6 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 		res.storage.audio.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
 	}
 
-	LOG("arcan_frameserver(encode) -- audio setup, %s\n", res.name);
 	return res;
 }
 
@@ -360,14 +358,14 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 		res.storage.container.format = av_guess_format("flv", NULL, NULL);
 
 		if (!res.storage.container.format)
-			LOG("arcan_frameserver(encode) -- couldn't setup streaming output.\n");
+			LOG("(encode) -- couldn't setup streaming output.\n");
 		else {
 			ctx = avformat_alloc_context();
 			ctx->oformat = res.storage.container.format;
 			res.storage.container.context = ctx;
 			res.setup.muxer = default_format_setup;
 			int rv = avio_open2(&ctx->pb, remote, AVIO_FLAG_WRITE, NULL, NULL);
-			LOG("arcan_frameserver(encode) attempting to open: %s, result: %d\n", remote, rv);
+			LOG("(encode) attempting to open: %s, result: %d\n", remote, rv);
 		}
 		
 		return res;
@@ -381,7 +379,7 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 
 /* no stream, nothing requested that matched and default didn't work. Give up and cascade. */
 	if (!res.storage.container.format){
-		LOG("arcan_frameserver(encode) -- couldn't find a suitable container.\n");
+		LOG("(encode) -- couldn't find a suitable container.\n");
 		return res;
 	}
 

@@ -22,12 +22,12 @@ local scalemodelist = {
 
 local codectbl = {};
 local codeclbls = {"Lossless (MKV/FFV1/RAW)", "Lossless (MKV/FFV1/FLAC)", "WebM (MKV/VP8/OGG)", "H264 (MP4/H264/MP3)"};
-codectbl["Lossless (MKV/FFV1/RAW)"]  = "acodec=RAWS16LE:vcodec=ffv1:container=matroska";
-codectbl["Lossless (MKV/FFV1/FLAC)"] = "acodec=FLAC:vcodec=ffv1:container=matroska";
-codectbl["WebM (MKV/VP8/OGG)"]       = "acodec=libvorbis:vcodec=libvpx:container=matroska";
-codectbl["H264 (MP4/H264/MP3)"]      = "acodec=libmp3lame:vcodec=libx264:container=mpeg4";
+codectbl["Lossless (MKV/FFV1/RAW)"]  = "acodec=RAW:vcodec=FFV1:container=matroska";
+codectbl["Lossless (MKV/FFV1/FLAC)"] = "acodec=FLAC:vcodec=FFV1:container=matroska";
+codectbl["WebM (MKV/VP8/OGG)"]       = "acodec=VORBIS:vcodec=VP8:container=matroska";
+codectbl["H264 (MP4/H264/MP3)"]      = "acodec=MP3:vcodec=H264:container=mpeg4";
 
-local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
+local recstr = "libvorbis:vcodec=H264:container=stream:acodec=MP3:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 local scalemodeptrs = {};
 
 local function scalemodechg(label, save)
@@ -1355,7 +1355,7 @@ function enable_record(width, height, args)
 	resize_image(lvid, width, height);
 	show_image(lvid);
 
-	define_recordtarget(dstvid, dst, args, lvid, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
+	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
 		print("record callback", status.kind);
 	end
 );

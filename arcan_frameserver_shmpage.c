@@ -166,11 +166,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 /* step 2, buffer all set-up, map it to the addr structure */
 /*	res.addr->w = 0;
 	res.addr->h = 0; */
-	res.addr->storage.bpp = 4;
 	res.addr->vready = false;
 	res.addr->aready = false;
-	res.addr->channels = 0;
-	res.addr->samplerate = 0;
 	res.addr->dms = true;
 
 	struct guard_struct gs = {
@@ -278,19 +275,17 @@ void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** ds
 
 void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
-	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, shmp->storage.w, shmp->storage.h, shmp->storage.bpp);
+	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, shmp->storage.w, shmp->storage.h, SHMPAGE_VCHANNELCOUNT);
 }
 
-bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq)
+bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height)
 {
 	if (arg->addr){
 		arg->addr->storage.w = width;
 		arg->addr->storage.h = height;
+
 		arg->addr->display.w = width;
 		arg->addr->display.h = height;
-		arg->addr->storage.bpp = bpp;
-		arg->addr->channels = nchan;
-		arg->addr->samplerate = ceil(freq);
 
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			arg->addr->resized = true;
