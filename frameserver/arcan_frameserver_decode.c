@@ -21,11 +21,15 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_encode.h"
 
-/* libFFMPEG */
+/* LibFFMPEG
+ * A possible option for future versions not constrained to a single arcan_frameserver,
+ * is to make this into a small:ish patch for ffplay.c instead rather than maintaining a separate
+ * player as is the case now */
 #include <libavcodec/avcodec.h>
 #include <libavutil/audioconvert.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 #include <libavdevice/avdevice.h>
 
 static void flush_eventq();
@@ -37,6 +41,8 @@ struct {
 	struct arcan_evctx outevq;
 	
 	struct SwsContext* ccontext;
+	struct SwrContext* rcontext;
+
 	AVFormatContext* fcontext;
 	AVCodecContext* acontext;
 	AVCodecContext* vcontext;
@@ -80,105 +86,6 @@ static inline void synch_audio()
 	decctx.shmcont.addr->abufused = 0;
 }
 
-static ssize_t dbl_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, double* ch_l, double* ch_r)
-{
-	size_t rv = 0;
-	
-	if (nch == 1 || (nch == 2 && ch_r == NULL))
-		while (plane_size > 0){
-			dbuf[rv++] = *(ch_l++) * INT16_MAX;
-			plane_size -= sizeof(double);
-		}
-	else if (nch == 2 && ch_r)
-		while (plane_size > 0){
-			dbuf[rv++] = *(ch_l++) * INT16_MAX;
-			dbuf[rv++] = *(ch_r++) * INT16_MAX;
-			plane_size -= sizeof(double);
-		}
-	else;
-
-	return rv * sizeof(int16_t);
-}
-
-static ssize_t flt_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, float* ch_l, float* ch_r)
-{
-	size_t rv = 0;
-	
-	if (nch == 1 || (nch == 2 && ch_r == NULL))
-		while (plane_size > 0){
-			dbuf[rv++] = *(ch_l++) * INT16_MAX;
-			plane_size -= sizeof(float);
-		}
-	else if (nch == 2 && ch_r)
-		while (plane_size > 0){
-			dbuf[rv++] = *(ch_l++) * INT16_MAX;
-			dbuf[rv++] = *(ch_r++) * INT16_MAX;
-			plane_size -= sizeof(float);
-		}
-	else;
-
-	return rv * sizeof(int16_t);
-}
-
-static ssize_t s32_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, int32_t* ch_l, int32_t* ch_r)
-{
-	size_t rv = 0;
-	
-	if (nch == 1 || (nch == 2 && ch_r == NULL))
-		while (plane_size > 0){
-			dbuf[rv++] = (float)(*ch_l++) / (float)INT32_MAX * (float)INT16_MAX;
-			plane_size -= sizeof(int32_t);
-		}
-	else if (nch == 2 && ch_r)
-		while (plane_size > 0){
-			dbuf[rv++] = (float)(*ch_l++) / (float)INT32_MAX * (float)INT16_MAX;
-			dbuf[rv++] = (float)(*ch_r++) / (float)INT32_MAX * (float)INT16_MAX;
-			plane_size -= sizeof(int32_t);
-		}
-	else;
-
-	return rv * sizeof(int16_t);
-}
-
-static ssize_t s16_s16conv(int16_t* dbuf, ssize_t plane_size, int nch, int16_t* ch_l, int16_t* ch_r)
-{
-	size_t rv = 0;
-
-	if (nch == 1 || (nch == 2 && ch_r == NULL))
-		while (plane_size > 0){
-			dbuf[rv++] = *ch_l++;
-			plane_size -= sizeof(int16_t);
-		}
-	else if (nch == 2 && ch_r)
-		while (plane_size > 0){
-			dbuf[rv++] = *ch_l++;
-			dbuf[rv++] = *ch_r++;
-			plane_size -= sizeof(int16_t);
-		}
-	else;
-
-	return rv * sizeof(int16_t);
-}
-
-static ssize_t conv_fmt(int16_t* dbuf, size_t plane_size, int nch, int afmt, uint8_t** aplanes)
-{
-	ssize_t rv = -1;
-
-		switch (afmt){
-			case AV_SAMPLE_FMT_DBLP: rv = dbl_s16conv(dbuf, plane_size, nch, (double*) aplanes[0], (double*) aplanes[1]); break;
-			case AV_SAMPLE_FMT_DBL : rv = dbl_s16conv(dbuf, plane_size, nch, (double*) aplanes[0], (double*) NULL);       break;
-			case AV_SAMPLE_FMT_FLTP: rv = flt_s16conv(dbuf, plane_size, nch, (float* ) aplanes[0], (float* ) aplanes[1]); break;
-			case AV_SAMPLE_FMT_FLT : rv = flt_s16conv(dbuf, plane_size, nch, (float* ) aplanes[0], (float* ) NULL);       break;
-			case AV_SAMPLE_FMT_S32 : rv = s32_s16conv(dbuf, plane_size, nch, (int32_t*)aplanes[0], (int32_t*)NULL);       break;
-			case AV_SAMPLE_FMT_S32P: rv = s32_s16conv(dbuf, plane_size, nch, (int32_t*)aplanes[0], (int32_t*)aplanes[1]); break;
-			case AV_SAMPLE_FMT_S16 : rv = s16_s16conv(dbuf, plane_size, nch, (int16_t*)aplanes[0], (int16_t*)NULL);       break;
-			case AV_SAMPLE_FMT_S16P: rv = s16_s16conv(dbuf, plane_size, nch, (int16_t*)aplanes[0], (int16_t*)aplanes[1]); break;
-			default: break;
-		}
-
-	return rv;
-}
-
 /* decode as much into our shared audio buffer as possible,
  * when it's full OR we switch to video frames, synch the audio */
 static bool decode_aframe()
@@ -206,48 +113,60 @@ static bool decode_aframe()
 
 		if (got_frame){
 			int plane_size;
-			ssize_t ds = av_samples_get_buffer_size(&plane_size, decctx.acontext->channels, decctx.aframe->nb_samples, decctx.acontext->sample_fmt, 1);
-			
+			ssize_t ds = av_samples_get_buffer_size(&plane_size,
+				decctx.acontext->channels, decctx.aframe->nb_samples, decctx.acontext->sample_fmt, 1);
+
 /* skip packets with broken sample formats (shouldn't happen) */
 			if (ds < 0)
 				continue;
 	
-/* there's an av_convert, but unfortunately isn't exported properly or implement all that we need, maintain a scratch buffer and
- * flush / convert there */
-			if (afr_sconv_sz < ds){
-				free(afr_sconv);
-				afr_sconv = malloc( ds );
-				if (afr_sconv == NULL)
-					abort();
+			int64_t dlayout = (decctx.aframe->channel_layout && decctx.aframe->channels == av_get_channel_layout_nb_channels(decctx.aframe->channel_layout)) ?
+				decctx.aframe->channel_layout : av_get_default_channel_layout(decctx.aframe->channels);
 
-				afr_sconv_sz = ds;
-			}
+/* should we resample? */
+				if (decctx.aframe->format != AV_SAMPLE_FMT_S16 || decctx.aframe->channels != SHMPAGE_ACHANNELCOUNT || decctx.aframe->sample_rate != SHMPAGE_SAMPLERATE){
+					uint8_t* outb[] = {decctx.audp, NULL};
+					unsigned nsamples = (unsigned)(SHMPAGE_AUDIOBUF_SIZE - decctx.shmcont.addr->abufused) >> 2;
+					outb[0] += decctx.shmcont.addr->abufused;
 
-/* Convert incoming sample format to something we can use. Returns the number of bytes to flush,
- * everytime our output buffer is full, synch! */
-			plane_size = conv_fmt((int16_t*) afr_sconv, plane_size, decctx.aframe->channels, decctx.aframe->format, decctx.aframe->extended_data);
+					if (!decctx.rcontext){
+						decctx.rcontext = swr_alloc_set_opts(decctx.rcontext, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, SHMPAGE_SAMPLERATE,
+							dlayout, decctx.aframe->format, decctx.aframe->sample_rate, 0, NULL);
+						swr_init(decctx.rcontext);
+						LOG("(decode) resampler initialized, (%d) => (%d)\n", decctx.aframe->sample_rate, SHMPAGE_SAMPLERATE);
+					}
+					
+					int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) decctx.aframe->extended_data, decctx.aframe->nb_samples);
+					if (-1 == rc)
+						LOG("(decode) swr_convert failed\n");
 
-			if (plane_size == -1)
-				continue;
+					if (rc == nsamples){
+						LOG("(decode) resample buffer overflow\n");
+						swr_init(decctx.rcontext);
+					}
 
-			char* ofbuf = afr_sconv;
-			uint32_t* abufused = &decctx.shmcont.addr->abufused;
-			size_t ntc;
+					decctx.shmcont.addr->abufused += rc << 2;
+				} else{
+					uint8_t* ofbuf = decctx.aframe->extended_data[0];
+					uint32_t* abufused = &decctx.shmcont.addr->abufused;
+					size_t ntc;
 
-			do {
-				ntc = plane_size > SHMPAGE_AUDIOBUF_SIZE - *abufused ?
-					SHMPAGE_AUDIOBUF_SIZE - *abufused : plane_size;
+/* flush the entire buffer to parent before continuing */
+					do {
+						ntc = plane_size > SHMPAGE_AUDIOBUF_SIZE - *abufused ?
+						SHMPAGE_AUDIOBUF_SIZE - *abufused : plane_size;
 
-				memcpy(&decctx.audp[*abufused], ofbuf, ntc);
-				*abufused += ntc;
-				plane_size -= ntc;
-				ofbuf += ntc;
+						memcpy(&decctx.audp[*abufused], ofbuf, ntc);
+						*abufused += ntc;
+						plane_size -= ntc;
+						ofbuf += ntc;
 
-				if (*abufused == SHMPAGE_AUDIOBUF_SIZE)
-					synch_audio();
+						if (*abufused == SHMPAGE_AUDIOBUF_SIZE)
+							synch_audio();
 
-			} while (plane_size);
-	
+					} while (plane_size > 0);
+				}
+			;
 		}
 	}
 
@@ -549,7 +468,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		frameserver_semcheck(decctx.shmcont.asem, -1);
 		frameserver_semcheck(decctx.shmcont.vsem, -1);
 		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, &(decctx.inevq), &(decctx.outevq), false);
-		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height, decctx.bpp, decctx.channels, decctx.samplerate)){
+		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height)){
 			LOG("arcan_frameserver(decode) shmpage setup failed, requested: (%d x %d @ %d) aud(%d,%d)\n", decctx.width,
 				decctx.height, decctx.bpp, decctx.channels, decctx.samplerate);
 			return;

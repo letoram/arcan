@@ -277,9 +277,9 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 /* as we don't really "synch on resize", if one is detected, just ignore this frame */
 			srcw = shmpage->storage.w;
 			srch = shmpage->storage.h;
-			srcbpp = shmpage->storage.bpp;
-			if (srcw == tgt->desc.width && srch == tgt->desc.height && srcbpp == tgt->desc.bpp){
-				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, srcbpp, width, height, bpp);
+	
+			if (srcw == tgt->desc.width && srch == tgt->desc.height){
+				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 4, width, height, 4);
 
 /* in contrast to the framequeue approach, we here need to limit the number of context switches
  * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
@@ -546,7 +546,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, .bpp = shmpage->storage.bpp};
+		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, .bpp = SHMPAGE_VCHANNELCOUNT};
 		img_cons disp  = {.w = shmpage->display.w, .h = shmpage->display.h};
 
 		src->desc.width = store.w; src->desc.height = store.h; src->desc.bpp = store.bpp;
@@ -555,8 +555,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_framequeue_free(&src->afq);
 
 /* resize the source vid in a way that won't propagate to user scripts */
-		src->desc.samplerate = shmpage->samplerate;
-		src->desc.channels = shmpage->channels;
+		src->desc.samplerate = SHMPAGE_SAMPLERATE;
+		src->desc.channels = SHMPAGE_ACHANNELCOUNT;
 		arcan_event_maskall(arcan_event_defaultctx());
 		arcan_event_clearmask(arcan_event_defaultctx());
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
@@ -607,8 +607,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize, &presilence);
 			if (acachelim == 0 || abufsize == 0){
 				float mspvf = 1000.0 / 30.0;
-				float mspaf = 1000.0 / (float)shmpage->samplerate;
-				abufsize = ceilf( (mspvf / mspaf) * shmpage->channels * 2);
+				float mspaf = 1000.0 / (float) SHMPAGE_SAMPLERATE;
+				abufsize = ceilf( (mspvf / mspaf) * SHMPAGE_ACHANNELCOUNT * 2);
 				acachelim = vcachelim * 2;
 			}
 

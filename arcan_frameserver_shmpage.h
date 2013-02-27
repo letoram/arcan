@@ -24,10 +24,16 @@
 
 #define SHMPAGE_QUEUESIZE 64
 #define SHMPAGE_MAXAUDIO_FRAMESIZE 192000
+#define SHMPAGE_SAMPLERATE 44100
+
+#define SHMPAGE_ACHANNELCOUNT 2
+#define SHMPAGE_VCHANNELCOUNT 4
 #define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
-#define MAX_SHMSIZE 9582916 
+
+#define MAX_SHMSIZE 9582916
 #define MAX_SHMWIDTH 1920
-#define MAX_SHMHEIGHT 1080 
+#define MAX_SHMHEIGHT 1080
+
 #ifndef INFINITE
 #define INFINITE -1
 #endif
@@ -60,7 +66,6 @@ struct frameserver_shmpage {
 	struct {
 		bool glsource;
 		uint16_t w, h;
-		uint8_t bpp;
 	} storage;
 
 /* if the source wants the input to be stretched in some way */
@@ -70,9 +75,6 @@ struct frameserver_shmpage {
 
 /* audio */
 	volatile uint8_t aready;
-
-	uint8_t channels;
-	uint32_t samplerate;
 	uint32_t apts;
 
 /* abufbase is a working buffer offset in how far parent has processed */
@@ -106,7 +108,7 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_
 struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink);
 
 /* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
-bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height, unsigned bpp, unsigned nchan, float freq);
+bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height);
 
 /* Serializing a bunch of key=val or key args into a string for passing to frameserver args at launch,
  * added as convenience here to make sure that frameserver and main-app threat these the same */

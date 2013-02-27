@@ -3322,9 +3322,6 @@ int arcan_lua_recordset(lua_State* ctx)
 /* separate storage and display dimensions to allow for scaling hints, or cropping */
 		shmpage->display.w   = dobj->gl_storage.w;
 		shmpage->display.h   = dobj->gl_storage.h;
-		shmpage->storage.bpp = 4;
-		shmpage->channels    = 2;
-		shmpage->samplerate  = 44100;
 
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 

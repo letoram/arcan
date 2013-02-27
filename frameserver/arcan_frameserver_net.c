@@ -1305,7 +1305,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
  * the sound as a possible alert, but also for the guard thread*/
 	netcontext.shmcont  = frameserver_getshm(shmkey, true);
 
-	if (!frameserver_shmpage_resize(&netcontext.shmcont, gwidth, gheight, 4, 0, 0))
+	if (!frameserver_shmpage_resize(&netcontext.shmcont, gwidth, gheight))
 		return;
 
 	frameserver_shmpage_calcofs(netcontext.shmcont.addr, &(netcontext.vidp), &(netcontext.audp) );

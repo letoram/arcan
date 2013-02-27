@@ -93,6 +93,7 @@ static struct {
 		long long int drop_ringbuf[40];
 		int xfer_ringbuf[MAX_SHMWIDTH];
 		short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
+		const char* colorspace;
 
 /* colour conversion / filtering */
 		pixconv_fun converter;
@@ -177,6 +178,7 @@ static const uint8_t rgb565_lut6[] = {
 static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
 	uint16_t* interm = retroctx.ntsc_imb;
+	retroctx.colorspace = "RGB565->RGBA";
 
 /* with NTSC on, the input format is already correct */
 	for (int y = 0; y < height; y++){
@@ -203,7 +205,7 @@ static void libretro_rgb565_rgba(const uint16_t* data, uint32_t* outp, unsigned 
 static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch)
 {
 	assert( (uintptr_t)data % 4 == 0 );
-	assert( (video_channels == 4) );
+	retroctx.colorspace = "XRGB888->RGBA";
 
 	uint16_t* interm = retroctx.ntsc_imb;
 
@@ -226,6 +228,8 @@ static void libretro_xrgb888_rgba(const uint32_t* data, uint32_t* outp, unsigned
 static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp, unsigned width, unsigned height, size_t pitch, bool postfilter)
 {
 	uint16_t* interm = retroctx.ntsc_imb;
+	retroctx.colorspace = "RGB1555->RGBA";
+
 	unsigned dh = height >= MAX_SHMHEIGHT ? MAX_SHMHEIGHT : height;
 	unsigned dw =  width >=  MAX_SHMWIDTH ?  MAX_SHMWIDTH : width;
 
@@ -279,7 +283,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions and toggle resize flag */
 	if (outw != retroctx.shmcont.addr->storage.w || outh != retroctx.shmcont.addr->storage.h){
-		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh, video_channels, audio_channels, audio_samplerate);
+		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh);
 		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
 		graphing_destroy(retroctx.graphing);
 		retroctx.graphing = graphing_new(GRAPH_MANUAL, outw, outh, (uint32_t*) retroctx.vidp);
@@ -813,6 +817,8 @@ static void push_stats()
 
 	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 	STEPMSG(scratch);
+	snprintf(scratch, 64, "%s", retroctx.colorspace);
+	STEPMSG(scratch);
 	snprintf(scratch, 64, "%f fps, %f Hz", (float)retroctx.avinfo.timing.fps, (float)retroctx.avinfo.timing.sample_rate);
 	STEPMSG(scratch);
 	snprintf(scratch, 64, "%d mode, %d preaud, %d/%d jitter", retroctx.skipmode, retroctx.preaudiogen, retroctx.jitterstep, retroctx.jitterxfer);
@@ -1061,8 +1067,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		LOG("(libretro) -- video timing: %f fps (%f ms), audio samplerate: %f Hz\n", (float)retroctx.avinfo.timing.sample_rate,
 			(float)retroctx.mspf, (float)retroctx.avinfo.timing.sample_rate);
 
-		LOG("(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, audio_samplerate);
-		retroctx.resampler = speex_resampler_init(audio_channels, retroctx.avinfo.timing.sample_rate, audio_samplerate, 3 /* quality */, &errc);
+		LOG("(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE);
+		retroctx.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE, 5 /* quality */, &errc);
 
 /* intermediate buffer for resampling and not relying on a well-behaving shmpage */
 		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * sizeof(uint16_t) * 2;
@@ -1071,8 +1077,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		if (!frameserver_shmpage_resize(&retroctx.shmcont,
 			retroctx.avinfo.geometry.max_width,
-			retroctx.avinfo.geometry.max_height, video_channels, audio_channels,
-			audio_samplerate))
+			retroctx.avinfo.geometry.max_height))
 			return;
 
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
@@ -1166,7 +1171,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					speex_resampler_process_interleaved_int(retroctx.resampler, (const spx_int16_t*) retroctx.audbuf, &nsamp, (spx_int16_t*) retroctx.audp, &outc);
 					if (outc)
-						retroctx.shmcont.addr->abufused += outc * audio_channels * sizeof(uint16_t);
+						retroctx.shmcont.addr->abufused += outc * SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
 
 					shared->aready = true;
 					retroctx.audbuf_ofs = 0;

@@ -477,7 +477,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
-	unsigned vbr = 0, abr = 0, samplerate = 44100, channels = 2;
+	unsigned vbr = 0, abr = 0, samplerate = SHMPAGE_SAMPLERATE, channels = 2;
 	bool noaudio = false, stream_outp = false;
 	float fps    = 25;
 
@@ -536,8 +536,6 @@ static bool setup_ffmpeg_encode(const char* resource)
 		return false;
 	}
 
-	LOG("(encode) -- Encoder setup, video: %s, audio: %s\n", video.name ? video.name : "(not set)", audio.name ? audio.name : "(not set)");
-	
 /* some feasible combination found, prepare memory page */
 	frameserver_shmpage_calcofs(shared, &(ffmpegctx.vidp), &(ffmpegctx.audp) );
 
@@ -558,7 +556,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.vstream->codec = ffmpegctx.vcontext;
 			ffmpegctx.fps = fps;
 
-			LOG("(encode) -- video setup. (%d, %d)\n", width, height);
+			LOG("(encode) -- Video encoder setup. %dx%d@%f fps using %s\n", width, height, fps, video.name ? video.name : "(unknown)");
 		}
 	}
 
@@ -572,7 +570,6 @@ static bool setup_ffmpeg_encode(const char* resource)
 			ffmpegctx.acontext       = audio.storage.audio.context;
 			ffmpegctx.acodec         = audio.storage.audio.codec;
 			ffmpegctx.astream->codec = ffmpegctx.acontext;
-			LOG("(encode) -- audio setup.\n");
 
 /* feeding audio encoder by this much each time,
  * frame_size = number of samples per frame, might need to supply the encoder with a fixed amount, each sample covers n channels.
@@ -582,13 +579,13 @@ static bool setup_ffmpeg_encode(const char* resource)
 				samplerate / fps : ffmpegctx.acontext->frame_size;
 			ffmpegctx.aframe_sz = 4 * ffmpegctx.aframe_smplcnt;
 
-			LOG("(encode) -- audio sample format(%d)\n", ffmpegctx.acontext->sample_fmt);
 			if (ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLT || ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLTP){
 				ffmpegctx.encfbuf = av_malloc( ffmpegctx.aframe_sz * 2);
 				ffmpegctx.float_samples = true;
 				ffmpegctx.float_planar  = ffmpegctx.acontext->sample_fmt == AV_SAMPLE_FMT_FLTP;
 			}
 
+			LOG("(encode) -- Audio encoder setup. format# %d, planar: %d, float: %d using %s\n", ffmpegctx.acontext->sample_fmt, ffmpegctx.float_planar, ffmpegctx.float_samples, audio.name ? audio.name : "unknown");
 		}
 	}
 
