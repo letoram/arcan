@@ -1,1 +1,0 @@
-add_subdirectory(curve25519xsalsa20poly1305)

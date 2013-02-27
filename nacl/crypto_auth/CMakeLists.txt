@@ -1,2 +1,0 @@
-add_subdirectory(hmacsha256)
-add_subdirectory(hmacsha512256)
