@@ -1,1 +1,0 @@
-add_subdirectory(amd64_xmm6)

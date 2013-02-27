@@ -1,1 +1,0 @@
-add_subdirectory(xsalsa20poly1305)
