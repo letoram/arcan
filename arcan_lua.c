@@ -47,6 +47,7 @@
 #include <SDL_opengl.h>
 #include <SDL_ttf.h>
 #include <assert.h>
+#include <apr_poll.h>
 
 #include "lodepng/lodepng.h"
 #include "arcan_math.h"
@@ -1473,6 +1474,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			switch (ev->kind){
 				case EVENT_NET_CONNECTED:
 					arcan_lua_tblstr(ctx, "kind", "connected", top);
+					arcan_lua_tblnum(ctx, "id", ev->data.network.connid, top);
 					arcan_lua_tblstr(ctx, "host", ev->data.network.host.addr, top);
 				break;
 
@@ -3208,6 +3210,8 @@ int arcan_lua_recordset(lua_State* ctx)
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	const char* resf  = luaL_checkstring(ctx, 2);
 	char* argl        = strdup( luaL_checkstring(ctx, 3) );
+
+	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int nvids         = lua_rawlen(ctx, 4);
 	int naids         = lua_rawlen(ctx, 5);
 	int detach        = luaL_checkint(ctx, 6);
@@ -3912,10 +3916,10 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 	}
 	else if (lua_isnumber(ctx, 2)){
 		arcan_vobj_id tid = luaL_checkvid(ctx, 2);
-		arcan_fatal("arcan_lua_net_pushsrv() -- pushing frameserver state not implemented.\n");
+		arcan_fatal("arcan_lua_net_pushsrv() -- pushing VID (image, frameserver, ...) not implemented.\n");
 	}
 	else if (lua_istable(ctx, 2))
-		arcan_fatal("arcan_lua_net_pushsrv() -- pushing frameserver state not implemented.\n");
+		arcan_fatal("arcan_lua_net_pushsrv() -- pushing event table not implemented.\n");
 	else
 		arcan_fatal("arcan_lua_net_pushsrv() -- unexpected data to push, accepted (string, VID, evtable)\n");
 
@@ -3923,10 +3927,63 @@ static int arcan_lua_net_pushsrv(lua_State* ctx)
 	return 0;
 }
 
-/* inform the frameserver that from here-on, all state operations on the target ID (or everyone)
- * gets a fixed block size. 0 disables state- operations altogether. */
-static int arcan_lua_net_statepolicy(lua_State* ctx)
+static inline arcan_frameserver* luaL_checknet(lua_State* ctx, bool server, const char* prefix)
 {
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj = arcan_video_getobject(did);
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("%s -- VID is not a frameserver.\n", prefix);
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	if (server && fsrv->kind != ARCAN_FRAMESERVER_NETSRV)
+		arcan_fatal("%s -- Frameserver connected to VID is not in server mode (net_open vs net_listen)\n", prefix);
+
+	else if (!server && fsrv->kind != ARCAN_FRAMESERVER_NETCL)
+		arcan_fatal("%s -- Frameserver connected to VID is not in client mode (net_open vs net_listen)\n", prefix);
+	
+	return fsrv;
+}
+
+static int arcan_lua_net_accept(lua_State* ctx)
+{
+	arcan_frameserver* fsrv = luaL_checknet(ctx, true, "arcan_lua_net_accept(vid, connid)");
+
+	int domain = luaL_checkint(ctx, 2);
+
+	if (domain == 0)
+		arcan_fatal("arcan_lua_net_accept(vid, connid) -- NET_BROADCAST is not allowed for accept call\n");
+
+	arcan_event outev = {.category = EVENT_NET, .data.network.connid = domain};
+	arcan_frameserver_pushevent(fsrv, &outev);
+
+	return 0;
+}
+
+static int arcan_lua_net_disconnect(lua_State* ctx)
+{
+	arcan_frameserver* fsrv = luaL_checknet(ctx, true, "arcan_lua_net_disconnect(vid, connid)");
+
+	int domain = luaL_checkint(ctx, 2);
+
+	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_TARGET, .data.network.connid = domain};
+	arcan_frameserver_pushevent(fsrv, &outev);
+	
+	return 0;
+}
+
+static int arcan_lua_net_authenticate(lua_State* ctx)
+{
+	arcan_frameserver* fsrv = luaL_checknet(ctx, true, "arcan_lua_net_authenticate(vid, connid)");
+
+	int domain = luaL_checkint(ctx, 2);
+	if (domain == 0)
+		arcan_fatal("arcan_lua_net_authenticate(vid, connid) -- NET_BROADCAST is not allowed for accept call\n");
+
+	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_NET_AUTHENTICATE, .data.network.connid = domain};
+	arcan_frameserver_pushevent(fsrv, &outev);
+	
 	return 0;
 }
 
@@ -3948,18 +4005,6 @@ static int arcan_lua_net_refresh(lua_State* ctx)
 
 	arcan_frameserver_pushevent(fsrv, &outev);
 
-	return 0;
-}
-
-/* inform the frameserver to push the state present in one client to all or a specific one of them. */
-static int arcan_lua_net_statetransfer(lua_State* ctx)
-{
-	return 0;
-}
-
-/* set up a connection between net-client and frameserver for state serialization */
-static int arcan_lua_net_statercpt(lua_State* ctx)
-{
 	return 0;
 }
 
@@ -4144,16 +4189,18 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
 	arcan_lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
 
-/* the semantics of these functions may well vary with the presence of;
- * NaCL (not in all builds due to regulations on crypto)
- * APR  (not expected to be a default dependency until 0.2.3) */
-	arcan_lua_register(ctx, "net_listen", arcan_lua_net_listen);
+/* networking client- functions */
 	arcan_lua_register(ctx, "net_open", arcan_lua_net_open);
 	arcan_lua_register(ctx, "net_push", arcan_lua_net_pushcl);
+
+/* networking server functions */
+	arcan_lua_register(ctx, "net_listen", arcan_lua_net_listen);
 	arcan_lua_register(ctx, "net_push_srv", arcan_lua_net_pushsrv);
-	arcan_lua_register(ctx, "net_srv_statepolicy", arcan_lua_net_statepolicy);
-	arcan_lua_register(ctx, "net_srv_statetransfer", arcan_lua_net_statetransfer);
-	arcan_lua_register(ctx, "net_statercpt", arcan_lua_net_statercpt);
+	arcan_lua_register(ctx, "net_disconnect", arcan_lua_net_disconnect);
+	arcan_lua_register(ctx, "net_authenticate", arcan_lua_net_authenticate);
+
+/* networking shared functions */
+	arcan_lua_register(ctx, "net_accept", arcan_lua_net_accept);
 	arcan_lua_register(ctx, "net_refresh", arcan_lua_net_refresh);
 
 	atexit(arcan_lua_cleanup);

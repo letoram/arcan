@@ -25,7 +25,7 @@
 #ifndef RGBAPACK
 #define RGBAPACK(r, g, b, a, d)\
 {\
-	((uint32_t *)(d))[0] = (a << 24) | (b << 16) | (g << 8) | r;\
+	((uint32_t *)(d))[0] = ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r;\
 }
 #endif
 

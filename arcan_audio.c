@@ -49,7 +49,6 @@ typedef struct {
 	bool al_active;
 
 	arcan_aobj_id lastid;
-	unsigned aobjc;
 	
 /* limit on amount of simultaneous active sources */
 	ALuint sample_sources[ARCAN_AUDIO_SLIMIT];
@@ -237,7 +236,6 @@ arcan_errc arcan_audio_free(arcan_aobj_id id)
 		memset(current, 0, sizeof(arcan_aobj));
 		free(current);
 		
-		current_acontext->aobjc--;
 		rv = ARCAN_OK;
 	}
 	

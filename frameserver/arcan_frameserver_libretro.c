@@ -374,7 +374,7 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	retroctx.aframecount += nframes;
 
-	if (retroctx.skipframe_a || (retroctx.audbuf_ofs + nframes << 1) + (nframes << 2) > retroctx.audbuf_sz )
+	if (retroctx.skipframe_a || (retroctx.audbuf_ofs + (nframes << 1) + (nframes << 2)) > retroctx.audbuf_sz )
 		return nframes;
 
 	memcpy(&retroctx.audbuf[retroctx.audbuf_ofs], data, nframes << 2); /* 2 bytes per sample, 2 channels */

@@ -354,7 +354,7 @@ struct arg_arr* arg_unpack(const char* resource)
 
 		while (*endp && *endp != ':'){
 /* a==:=a=:a=dd= are disallowed */
-			if (*endp == '=')
+			if (*endp == '='){
 				if (!argv[curarg].key){
 					*endp = 0;
 					argv[curarg].key = strrep(strdup(workstr), '\t', ':');
@@ -366,6 +366,7 @@ struct arg_arr* arg_unpack(const char* resource)
 					argv = NULL;
 					goto cleanup;
 				}
+			}
 
 			endp++;
 		}

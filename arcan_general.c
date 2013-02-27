@@ -282,7 +282,7 @@ cleanup:
 
 static void setpaths_unix()
 {
-	if (arcan_binpath == NULL)
+	if (arcan_binpath == NULL){
 		if (file_exists( getenv("ARCAN_FRAMESERVER") ) )
 			arcan_binpath = strdup( getenv("ARCAN_FRAMESERVER") );
 		else if (file_exists( "./arcan_frameserver") )
@@ -292,9 +292,10 @@ static void setpaths_unix()
 		else if (file_exists( "/usr/bin/arcan_frameserver" ))
 			arcan_binpath = strdup("/usr/bin/arcan_frameserver");
 		else ;
+	}
 
 	/* thereafter, the hijack-  lib */
-	if (arcan_libpath == NULL)
+	if (arcan_libpath == NULL){
 		if (file_exists( getenv("ARCAN_HIJACK") ) )
 			arcan_libpath = strdup( getenv("ARCAN_HIJACK") );
 		else if (file_exists( "./" LIBNAME ) )
@@ -303,18 +304,21 @@ static void setpaths_unix()
 			arcan_libpath = strdup( "/usr/local/lib/");
 		else if (file_exists( "/usr/lib/" LIBNAME) )
 			arcan_libpath = strdup( "/usr/lib/");
+	}
 
-	if (arcan_resourcepath == NULL)
+	if (arcan_resourcepath == NULL){
 		if ( file_exists(getenv("ARCAN_RESOURCEPATH")) )
 			arcan_resourcepath = strdup( getenv("ARCAN_RESOURCEPATH") );
 		else
 			arcan_resourcepath = unix_find("resources");
+	}
 
-	if (arcan_themepath == NULL)
+	if (arcan_themepath == NULL){
 		if ( file_exists(getenv("ARCAN_THEMEPATH")) )
 			arcan_themepath = strdup( getenv("ARCAN_THEMEPATH") );
 		else
 			arcan_themepath = unix_find("themes");
+	}
 }
 
 #include <glob.h>

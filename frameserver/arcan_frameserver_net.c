@@ -89,8 +89,11 @@ enum connection_state {
 	CONN_DISCOVERING,
 	CONN_CONNECTING,
 	CONN_CONNECTED,
+	CONN_DISCONNECTING,
 	CONN_AUTHENTICATED
 };
+
+int idcookie = 0;
 
 struct {
 	struct frameserver_shmcont shmcont;
@@ -160,12 +163,13 @@ struct conn_state {
 	int outbuf_ofs;
 	bool (*state_store)(unsigned long ofset, char* buf, int len);
 
-/* a client may maintain 0..1 state-table that can be pushed between clients */
+/* a client may maintain 0..1 state-table that can be pushed between clients, these
+ * can be notably large ( think disk/vbox image transfer ) */
 	char* statebuffer;
 	size_t state_sz;
 	bool state_in;
 
-/* magic connection ID, XOR with cookie or something */
+/* magic connection ID, XOR with idcookie */ 
 	int slot;
 };
 
@@ -487,7 +491,7 @@ static struct conn_state* init_conn_states(int limit)
 
 	for (int i = 0; i < limit; i++){
 		setup_cell( &active_cons[i] );
-		active_cons->slot = i;
+		active_cons->slot = i ^ idcookie;
 	}
 
 	return active_cons;
@@ -543,7 +547,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	apr_sockaddr_t* addr;
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
-	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET, .data.network.connid = (j + 1)};
+	arcan_event outev = {.kind = EVENT_NET_CONNECTED, .category = EVENT_NET, .data.network.connid = active_cons[j].slot};
 	size_t out_sz = sizeof(outev.data.network.host.addr) / sizeof(outev.data.network.host.addr[0]);
 	apr_sockaddr_ip_getbuf(outev.data.network.host.addr, out_sz, addr);
 
@@ -642,7 +646,7 @@ static apr_socket_t* server_prepare_socket(const char* host, apr_sockaddr_t* alt
 
 	apr_socket_opt_set(ear_sock, APR_SO_REUSEADDR, 1);
 
-/* apparently only fixed in APR1.5 and beyond, while the one in ubuntu and friends are 1.4 */
+/* apparently only fixed in APR1.5 and beyond, while the one in ubuntu and friends is 1.4 */
 	if (!tcp){
 #ifndef APR_SO_BROADCAST
 		int sockdesc, one = 1;
@@ -681,6 +685,7 @@ static void server_queueout_data(struct conn_state* active_cons, int nconns, cha
 			if (active_cons[i].inout)
 				active_cons[i].queueout(&active_cons[i], buf, buf_sz);
 		}
+
 /* unicast */
 	else if (active_cons[id-1].inout)
 		active_cons[id-1].queueout(&active_cons[id-1], buf, buf_sz);
@@ -689,9 +694,20 @@ static void server_queueout_data(struct conn_state* active_cons, int nconns, cha
 	return;
 }
 
+static inline struct conn_state* lookup_connection(struct conn_state* active_cons, int nconns, int id)
+{
+	for (int i = 0; i < nconns; i++)
+		if (active_cons[i].slot == (id ^ idcookie))
+			return &active_cons[i];
+
+	return NULL;
+}
+
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
 	arcan_event* ev;
+	struct conn_state* target_con;
+	
 	uint16_t msgsz = sizeof(ev->data.network.message) / sizeof(ev->data.network.message[0]);
 	char outbuf[ msgsz + 3];
 
@@ -704,6 +720,17 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					LOG("(net-srv) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
 				break;
 
+				case EVENT_NET_DISCONNECT:
+					target_con = lookup_connection(active_cons, nconns, ev->data.network.connid);
+					if (target_con){
+						apr_socket_close(target_con->inout);
+						apr_pollset_remove(netcontext.pollset, &target_con->poll_state);
+						setup_cell(target_con);
+					}
+
+					graph_log_disconnect(netcontext.graphing, ev->data.network.connid, "forced");
+				break;
+				
 				case EVENT_NET_GRAPHREFRESH:
 					if (netcontext.shmcont.addr->vready == false && graph_refresh(netcontext.graphing)){
 						netcontext.shmcont.addr->vready = true;
@@ -939,7 +966,7 @@ retry:
 		ntr = MAX_HEADER_SIZE;
 		rv  = apr_socket_recvfrom(&recaddr, broadsock, 0, repmsg, &ntr);
 
-		if (rv == APR_SUCCESS)
+		if (rv == APR_SUCCESS){
 			if (ntr == MAX_HEADER_SIZE){
 				uint32_t magic, rmagic;
 				memcpy(&magic, repmsg, 4);
@@ -977,12 +1004,13 @@ retry:
 						return strdup(&repmsg[MAX_PUBLIC_KEY_SIZE + IDENT_SIZE]);
 					}
 				}
-				else; /* our own request */
+				else; /* our own request or bad response */
 			}
-			else{ /* short read or, more likely, broken / purposely malformed */
-				graph_log_conn_error(netcontext.graphing, mv, "resp. mismatch");
-				goto retry;
-			}
+		}
+		else{ /* short read or, more likely, broken / purposely malformed */
+			graph_log_conn_error(netcontext.graphing, mv, "resp. mismatch");
+			goto retry;
+		}
 
 		sleep(discover_delay);
 	}
@@ -1253,6 +1281,9 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	if (!args || !shmkey)
 		goto cleanup;
 
+	srand(0xfeedface);
+	idcookie = rand();
+	
 /* default graphing output overrides? */
 	unsigned gwidth = 256, gheight = 256;
 	const char* rk;
