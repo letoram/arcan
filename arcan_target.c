@@ -323,7 +323,7 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 	global.width = global.sourcew = w;
 	global.height = global.sourceh = h;
 
-	frameserver_shmpage_resize( &(global.shared), w, h, bpp, 0, 0 );
+	frameserver_shmpage_resize( &(global.shared), w, h);
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
 
@@ -485,7 +485,7 @@ static void toggle_ntscfilter()
 			global.ntsc_imb = NULL;
 			global.ntscconv = false;
 			global.desfmt = PixelFormat_RGBA888;
-			frameserver_shmpage_resize( &(global.shared), global.width, global.height, 4, 0, 0 );
+			frameserver_shmpage_resize( &(global.shared), global.width, global.height);
 		
 		sem_post(global.shared.vsem);
 	}
@@ -496,7 +496,8 @@ static void toggle_ntscfilter()
 		global.ntscconv = true;
 		global.desfmt = PixelFormat_RGB565;
 		frameserver_shmpage_resize( &(global.shared), 
-		SNES_NTSC_OUT_WIDTH(global.width), global.height * sizeof(uint16_t), 4, 0, 0 );
+		SNES_NTSC_OUT_WIDTH(global.width), global.height * 2);
+
 		global.ntsc_imb = malloc(global.width * global.height * 2);
 		
 		sem_post(global.shared.vsem);

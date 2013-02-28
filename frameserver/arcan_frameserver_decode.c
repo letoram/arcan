@@ -135,7 +135,7 @@ static bool decode_aframe()
 						swr_init(decctx.rcontext);
 						LOG("(decode) resampler initialized, (%d) => (%d)\n", decctx.aframe->sample_rate, SHMPAGE_SAMPLERATE);
 					}
-					
+	
 					int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) decctx.aframe->extended_data, decctx.aframe->nb_samples);
 					if (-1 == rc)
 						LOG("(decode) swr_convert failed\n");

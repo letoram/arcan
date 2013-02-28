@@ -366,36 +366,15 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
 {
 	arcan_frameserver* dst = tag;
-	unsigned hdr[5] = {src, buf_sz, frequency, 2, 0xfeedface};
 
 /* make sure we don't overflow, store to intermediate buffer as we have many access threads and can't rely on
  * synching to an untrusted source(the frameserver) here */
-	if (dst->ofs_audb + (channels == 1 ? buf_sz * 2 : buf_sz) + sizeof(hdr) < dst->sz_audb){
-	SDL_mutexP(dst->lock_audb);
 
-/* store header */
-		memcpy(dst->audb + dst->ofs_audb, hdr, sizeof(hdr));
-		dst->ofs_audb += sizeof(hdr);
-
-/* just convert to stereo right here */
-		if (channels == 1){
-			for (int i = 0; i < buf_sz; i+=2){
-				dst->audb[dst->ofs_audb + (i*2)]   = buf[i];
-				dst->audb[dst->ofs_audb + (i*2)+1] = buf[i+1];
-				dst->audb[dst->ofs_audb + (i*2)+2] = buf[i];
-				dst->audb[dst->ofs_audb + (i*2)+3] = buf[i+1];
-			}
-			dst->ofs_audb += buf_sz * 2;
-		}
-/* already "right" format, just copy */
-		else if (channels == 2) {
+	if (dst->ofs_audb + buf_sz < dst->sz_audb){
+		SDL_mutexP(dst->lock_audb);
 			memcpy(dst->audb + dst->ofs_audb, buf, buf_sz);
 			dst->ofs_audb += buf_sz;
-		}
-		else
-			arcan_warning("arcan_avfeedmon(frameserver:%d) -- illegal number of channels %d (1,2 supported)\n", channels);
-
-	SDL_mutexV(dst->lock_audb);
+		SDL_mutexV(dst->lock_audb);
 	}
 	else;
 }

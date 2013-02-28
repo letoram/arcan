@@ -81,25 +81,21 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 
 	ctx->sample_rate    = samplerate;
 	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000);
+	ctx->sample_fmt     = codec->sample_fmts[0];
 
-	unsigned i = 0;
-/* prefer sint16, but codecs e.g. vorbis requires float */
-	while(codec->sample_fmts[i] != AV_SAMPLE_FMT_NONE){
-		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16){
-			ctx->sample_fmt = AV_SAMPLE_FMT_S16;
-			break;
-		}
-		else if (codec->sample_fmts[i] == AV_SAMPLE_FMT_FLT){
-			ctx->sample_fmt   = AV_SAMPLE_FMT_FLT;
-			break;
-		}
-		else if (codec->sample_fmts[i] == AV_SAMPLE_FMT_FLTP){
-			ctx->sample_fmt   = AV_SAMPLE_FMT_FLTP;
-			break;
-		}
-		i++;
+/* kept for documentation, now we assume the swr_convert just handles all sample formats for us,
+ * if we prefer or require a certain on in the future, the following code shows how: 
+	for (int i = 0; codec->sample_fmts[i] != -1 && ctx->sample_fmt == AV_SAMPLE_FMT_NONE; i++){
+		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16 || codec->sample_fmts[i] == AV_SAMPLE_FMT_FLTP)
+			ctx->sample_fmt = codec->sample_fmts[i];
 	}
 
+	if (ctx->sample_fmt == AV_SAMPLE_FMT_NONE){
+		LOG("(encoder) Couldn't find supported matching sample format for codec, giving up.\n");
+		return false;
+	}
+*/
+	
 /* rough quality estimate */
 	if (abr <= 10)
 		abr = 1024 * ( 320 - 240 * ((float)(11.0 - abr) / 11.0) );
