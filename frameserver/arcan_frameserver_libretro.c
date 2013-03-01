@@ -263,7 +263,7 @@ static void libretro_vidcb(const void* data, unsigned width, unsigned height, si
 	if (!data || retroctx.skipframe_v)
 		return;
 
-/* width / height can be changed without notice, so we retuave to be ready for the fact that
+/* width / height can be changed without notice, so we have to be ready for the fact that
  * the cost of conversion can suddenly move outside the allowed boundaries, then NTSC is ignored */
 	unsigned outw = width;
 	unsigned outh = height;
@@ -327,8 +327,6 @@ static void do_preaudio()
 	retroctx.vframecount = vfc;
 }
 
-/* the better way would be to just drop the videoframes, buffer the audio,
- * calculate the highspeed samplerate and downsample the audio signal */
 static void libretro_skipnframes(unsigned count, bool fastfwd)
 {
 	retroctx.skipframe_v = true;
@@ -378,7 +376,7 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	retroctx.aframecount += nframes;
 
-	if (retroctx.skipframe_a || (retroctx.audbuf_ofs + (nframes << 1) + (nframes << 2)) > retroctx.audbuf_sz )
+	if (retroctx.skipframe_a || (retroctx.audbuf_ofs << 1) + (nframes << 1) + (nframes << 2) > retroctx.audbuf_sz )
 		return nframes;
 
 	memcpy(&retroctx.audbuf[retroctx.audbuf_ofs], data, nframes << 2); /* 2 bytes per sample, 2 channels */
