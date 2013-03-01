@@ -43,6 +43,7 @@
 
 #include <SDL_opengl.h>
 #include <SDL_byteorder.h>
+#include <apr_poll.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -85,6 +86,7 @@ struct arcan_video_context {
 	unsigned vitem_ofs;
 	unsigned vitem_limit;
 	long int nalive;
+	arcan_tickv last_tickstamp;
 
 	arcan_vobject world;
 	arcan_vobject* vitems_pool;
@@ -113,6 +115,7 @@ static unsigned context_ind = 0;
 
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
+static void rebase_transform(struct surface_transform*, arcan_tickv);
 
 static inline void trace(const char* msg, ...)
 {
@@ -252,9 +255,15 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 		if (context->vitems_pool[i].flags.in_use){
 			arcan_vobject* current = &context->vitems_pool[i];
 
-			if (current->flags.clone || current->flags.persist)
+			if (current->flags.persist)
 				continue;
 
+			if (current->flags.clone)
+				continue;
+
+ 			if (current->transform && arcan_video_display.c_ticks > context->last_tickstamp)
+				rebase_transform(current->transform, arcan_video_display.c_ticks - context->last_tickstamp);
+	
 /* conservative means that we do not keep a copy of the originally decoded memory,
  * essentially cutting memory consumption in half but increasing cost of pop() and push()
  * will be made obsolete after hardening when "caching" is up to the imageserver */
@@ -281,6 +290,27 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 unsigned arcan_video_nfreecontexts()
 {
 		return CONTEXT_STACK_LIMIT - 1 - context_ind;
+}
+
+static void rebase_transform(struct surface_transform* current, arcan_tickv ofset)
+{
+	if (current->move.startt){
+		current->move.startt += ofset;
+		current->move.endt += ofset;
+	}
+
+	if (current->rotate.startt){
+		current->rotate.startt += ofset;
+		current->rotate.endt += ofset;
+	}
+
+	if (current->scale.startt){
+		current->scale.startt += ofset;
+		current->scale.endt += ofset;
+	}
+	
+	if (current->next)
+		rebase_transform(current->next, ofset);
 }
 
 /* Sweeps src and matches 1:1 with cells in dst if they are set as "persistent",
@@ -321,6 +351,8 @@ signed arcan_video_pushcontext()
 	if (context_ind + 1 == CONTEXT_STACK_LIMIT)
 		return -1;
 
+	current_context->last_tickstamp = arcan_video_display.c_ticks;
+	
 /* copy everything then manually reset some fields */
 	memcpy(&context_stack[ ++context_ind ], current_context, sizeof(struct arcan_video_context));
 	deallocate_gl_context(current_context, false);
@@ -340,7 +372,7 @@ signed arcan_video_pushcontext()
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
 	current_context->rtargets[0].first = NULL;
-
+	
 /* propagate persistent flagged objects upwards */
 	transfer_persists(&context_stack[ context_ind - 1], current_context, false);
 
@@ -999,7 +1031,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	arcan_video_display.vsync_timing = 0;
 	SDL_GL_SwapBuffers();
 	SDL_GL_SwapBuffers();
-	int retrycount;
+	int retrycount = 0;
 	
 /* try to get a decent measurement of actual timing, this is not really used for
  * synchronization but rather as a guess of we're actually vsyncing and how other
