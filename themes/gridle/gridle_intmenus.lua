@@ -385,25 +385,25 @@ local function merge_compositebuffer(sourcevid, blurvid, targetw, targeth, blurw
 
 	table.insert(rtgts, sourcevid);
 
-	if (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) then
-		local backdrop = instance_image(imagery.backdrop);
-		image_mask_clear(backdrop, MASK_OPACITY);
-		order_image(backdrop, 1);
-		blend_image(backdrop, 0.95);
-		resize_image(backdrop, targetw, targeth);
-		table.insert(rtgts, backdrop);
-		force_image_blend(sourcevid, BLEND_ADD);
-	end
+--	if (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) then
+--		local backdrop = instance_image(imagery.backdrop);
+--		image_mask_clear(backdrop, MASK_OPACITY);
+--		order_image(backdrop, 1);
+--		blend_image(backdrop, 0.95);
+--		resize_image(backdrop, targetw, targeth);
+--		table.insert(rtgts, backdrop);
+--		force_image_blend(sourcevid, BLEND_ADD);
+--	end
 
-	if (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) then
-		local overlay = instance_image(imagery.overlay);
-		image_mask_clear(overlay, MASK_OPACITY);
-		resize_image(overlay, targetw, targeth);
-		show_image(overlay);
-		order_image(overlay, 4);
-		force_image_blend(overlay, BLEND_MULTIPLY);
-		table.insert(rtgts, overlay);
-	end
+--	if (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) then
+--		local overlay = instance_image(imagery.overlay);
+--		image_mask_clear(overlay, MASK_OPACITY);
+--		resize_image(overlay, targetw, targeth);
+--		show_image(overlay);
+--		order_image(overlay, 4);
+--		force_image_blend(overlay, BLEND_MULTIPLY);
+--		table.insert(rtgts, overlay);
+--	end
 
 	return rtgts;
 end
@@ -513,6 +513,20 @@ function vector_lightmode(source, targetw, targeth)
 	show_image(comp_outbuf);
 
 	return comp_outbuf;
+end
+
+local function get_blendcopy(srcvid, resvid, blendmode)
+	local tmpover = instance_image(srcvid);
+	image_mask_clear(tmpover, MASK_OPACITY);
+	image_mask_clear(tmpover, MASK_POSITION);
+
+	copy_surface_properties(resvid, tmpover);
+	order_image(tmpover, INGAMELAYER_DISPLAY);
+	force_image_blend(tmpover, blendmode);
+	show_image(tmpover);
+
+	table.insert(imagery.temporary, tmpover);
+	return tmpover;
 end
 
 --
@@ -832,24 +846,9 @@ function gridlemenu_rebuilddisplay(toggles)
 
 		toggle_vectormode(dstvid, dstw, dsth);
 		dstvid = imagery.display_vid;
-
-	elseif ( (toggles.overlay and
-		valid_vid(imagery.overlay)) or (toggles.backdrop and valid_vid(imagery.backdrop)) ) then
-		image_mask_clear(internal_vid, MASK_LIVING);
-
-		dstbuf = fill_surface(windw, windh, 1, 1, 1, windw, windh);
-
-		image_tracetag(dstbuf, "overlay_backdrop");
-
-		local cbuf = merge_compositebuffer(dstvid, BADID, windw, windh, 0, 0);
-		define_rendertarget(dstbuf, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-
-		imagery.display_vid = dstbuf;
-		dstvid = dstbuf;
-		blend_image(dstbuf, 1);
 	else
 		settings.fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
-	end
+	end	
 
 -- redo so that instancing etc. match
 	order_image(dstvid, INGAMELAYER_DISPLAY);
@@ -861,7 +860,6 @@ function gridlemenu_rebuilddisplay(toggles)
 
 -- crt is always last
 	if (toggles.crt) then
-
 -- special case with cocktail modes
 		toggle_crtmode(dstvid, props, windw, windh);
 		if ( valid_vid(imagery.cocktail_vid) ) then
@@ -870,6 +868,23 @@ function gridlemenu_rebuilddisplay(toggles)
 
 	end
 
+	if (toggles.backdrop and valid_vid(imagery.backdrop)) then
+		get_blendcopy(imagery.backdrop, dstvid, BLEND_ADD);
+		
+		if (valid_vid(imagery.cocktail_vid)) then
+			local cockt_cpy = get_blendcopy(imagery.backdrop, imagery.cocktail_vid, BLEND_ADD);
+		end
+	end
+
+	if (toggles.overlay and valid_vid(imagery.overlay)) then
+		get_blendcopy(imagery.overlay, dstvid, BLEND_MULTIPLY);
+		
+		if (valid_vid(imagery.cocktail_vid)) then
+			local cockt_cpy = get_blendcopy(imagery.overlay, imagery.cocktail_vid, BLEND_MULTIPLY);
+		end
+	end
+
+-- with NTSC rolling, we need to keep updating to get the changes to be reflected, thus the "noresume" thing.
 	if (toggles.ntsc) then
 		push_ntsc();
 	end
@@ -1598,9 +1613,9 @@ streamptrs["Define Stream..."] = function(label, store)
 	end
 
 -- only if destination has been set up
-add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, {});
 table.insert(streammenu, "Define Stream...");
 table.insert(streammenu, "Start Streaming");
+add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, {});
 table.insert(recordlist, "Start Recording");
 
 streamptrs["Start Streaming"] = function()

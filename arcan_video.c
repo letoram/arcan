@@ -116,6 +116,7 @@ static unsigned context_ind = 0;
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static void rebase_transform(struct surface_transform*, arcan_tickv);
+static bool alloc_fbo(struct rendertarget* dst);
 
 static inline void trace(const char* msg, ...)
 {
@@ -1405,9 +1406,37 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constrai
  *
  * to free, BindBuffer, UnmapBuffer, BindBuffer0, DeleteBuffers*/
 
+static arcan_errc attach_readback(arcan_vobj_id src)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* dstobj = arcan_video_getobject(src);
+	
+	if (dstobj){
+		if (dstobj->gl_storage.w != arcan_video_screenw() || dstobj->gl_storage.h != arcan_video_screenh()){
+			return ARCAN_ERRC_BAD_ARGUMENT;
+		}
+
+		current_context->stdoutp.color = dstobj;
+
+		if (current_context->stdoutp.fbo == 0){
+			if (!alloc_fbo(&current_context->stdoutp)){
+				current_context->stdoutp.color = NULL;
+				rv = ARCAN_ERRC_UNACCEPTED_STATE;
+			}
+			else
+				rv = ARCAN_OK;
+		}
+
+	}
+	
+	return rv;
+}
 
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src, bool detach)
 {
+	if (src == ARCAN_VIDEO_WORLDID)
+		return attach_readback(did);
+	
 	arcan_vobject* dstobj = arcan_video_getobject(did);
 	arcan_vobject* srcobj = arcan_video_getobject(src);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1481,6 +1510,26 @@ static bool alloc_fbo(struct rendertarget* dst)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	return true;
+}
+
+arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
+{
+	if (did == ARCAN_VIDEO_WORLDID){
+		current_context->stdoutp.readback = readback;
+		return ARCAN_OK;
+	}
+	
+	arcan_vobject* vobj = arcan_video_getobject(did);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* rtgt = find_rendertarget(vobj);
+	if (rtgt){
+		rtgt->readback = readback;
+		return ARCAN_OK;
+	}
+		
+	return ARCAN_ERRC_UNACCEPTED_STATE;
 }
 
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool scale)
@@ -2115,6 +2164,36 @@ arcan_errc arcan_video_transformcycle(arcan_vobj_id sid, bool flag)
 	return rv;
 }
 
+arcan_errc arcan_video_copyprops ( arcan_vobj_id sid, arcan_vobj_id did )
+{
+	if (sid == did)
+		return ARCAN_OK;
+
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	arcan_vobject* src = arcan_video_getobject(sid);
+	arcan_vobject* dst = arcan_video_getobject(did);
+
+	if (src && dst){
+		surface_properties newprop;
+		arcan_resolve_vidprop(src, 0.0, &newprop);
+		
+		dst->current = newprop;
+/* we need to translate scale */
+		if (newprop.scale.x > 0 && newprop.scale.y > 0){
+			int dstw = newprop.scale.x * src->origw;
+			int dsth = newprop.scale.y * src->origh;
+	
+			dst->current.scale.x = (float) dstw / (float) dst->origw;
+			dst->current.scale.y = (float) dsth / (float) dst->origh;
+		}
+		
+		rv = ARCAN_OK;
+	}
+
+	return rv;
+}
+
 arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -2290,6 +2369,13 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		return rv;
 	}
 
+	if (current_context->stdoutp.color == vobj){
+		current_context->stdoutp.color = NULL;
+		glBindBuffer(GL_FRAMEBUFFER, 0);
+		glDeleteFramebuffers(1, &current_context->stdoutp.fbo);
+		current_context->stdoutp.fbo = 0;
+	}
+	
 /* step one, disassociate from ALL rendertargets,  */
 	detach_fromtarget(&current_context->stdoutp, vobj);
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
@@ -3332,7 +3418,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			arcan_resolve_vidprop(elem, fract, &dprops);
 
 /* don't waste time on objects that aren't supposed to be visible */
-			if ( dprops.opa < EPSILON){
+			if ( dprops.opa < EPSILON || elem == current_context->stdoutp.color){
 				current = current->next;
 				continue;
 			}
@@ -3565,12 +3651,24 @@ void arcan_video_refresh_GL(float lerp)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
-	process_rendertarget(&current_context->stdoutp, lerp);
-
-/* this facility isn't designed for screenshots (that'd be just a stalling glReadPixels from the framebuffer without any fuss),
- * so this feature is for movie recording and streaming game */
-	if (current_context->stdoutp.readback != 0)
-		process_readback(&current_context->stdoutp, lerp);
+/* use MRT to populate a possible "capture" FBO, the process_rendertarget function will make sure to not render the color
+ * target (reading + writing to the same texture is undefined behavior), although it can be "circumvented" with instancing */
+	if (current_context->stdoutp.color){
+		GLenum buffers[] = {GL_BACK, GL_COLOR_ATTACHMENT0};
+		arcan_debug_pumpglwarnings("mrt");
+//		glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
+//		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, current_context->stdoutp.color->gl_storage.glid, 0);
+//	glDrawBuffers(2, buffers);
+		process_rendertarget(&current_context->stdoutp, lerp);
+		arcan_debug_pumpglwarnings("mrtpost");
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+		if (current_context->stdoutp.readback != 0){
+//			process_readback(&current_context->stdoutp, lerp);
+		}
+	}
+	else 
+		process_rendertarget(&current_context->stdoutp, lerp);
 }
 
 void arcan_video_refresh(float tofs, bool synch)
