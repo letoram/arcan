@@ -258,6 +258,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 /* Attach src to rendertarget did,
  * if detach is set to true, the rendertarget will be the new owner of the object */
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src, bool detach);
+arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
 
 /* move, scale and so on all works in a similar fashion,
  * you enter the desired values whatever attribute you wish to be changed, then
@@ -277,6 +278,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id);
 arcan_errc arcan_video_transfertransform(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did);
+arcan_errc arcan_video_copyprops(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
 
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);

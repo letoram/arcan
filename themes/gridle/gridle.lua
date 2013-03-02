@@ -447,9 +447,14 @@ function gridle()
 -- network remote connection, always on but can allow / disallow connections based on user settings
 	imagery.server = net_listen(settings.listen_host, network_onevent);
 
+-- global
 	image_tracetag(imagery.server, "network server");
 	persist_image(imagery.server);
 	push_video_context();
+
+--	recres = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
+--	define_recordtarget(recres, "rest.mkv", "acodec=VORBIS:vcodec=VP8:container=matroska", {WORLDID}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status) end);
+--	image_tracetag(recres, "recres");
 
 -- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 

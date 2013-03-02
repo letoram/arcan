@@ -247,8 +247,7 @@ static inline arcan_vobj_id luavid_tovid(lua_Number innum)
 
 	if (innum != ARCAN_EID && innum != ARCAN_VIDEO_WORLDID)
 		res = (arcan_vobj_id) innum - lua_ctx_store.lua_vidbase;
-
-	if (res < 0)
+	else if (innum != res)
 		res = ARCAN_EID;
 
 	return res;
@@ -1997,6 +1996,16 @@ int arcan_lua_getimagestorageprop(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_copyimageprop(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+
+	arcan_video_copyprops(sid, did);
+
+	return 0;
+}
+
 int arcan_lua_storekey(lua_State* ctx)
 {
 	if (lua_type(ctx, 1) == LUA_TTABLE){
@@ -3241,12 +3250,32 @@ int arcan_lua_recordset(lua_State* ctx)
 	}
 
 	if (nvids > 0){
-		arcan_video_setuprendertarget(did, pollrate, scale == RENDERTARGET_SCALE);
+		bool rtsetup = false;
 
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 4, i+1);
-			arcan_vobj_id setvid = luavid_tovid( lua_tonumber(ctx, -1) );
-			arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
+			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
+			
+			if (setvid == ARCAN_VIDEO_WORLDID){
+				if (nvids != 1)
+					arcan_fatal("arcan_lua_recordset(), with WORLDID in recordset, no other entries are allowed.\n");
+
+				if (arcan_video_attachtorendertarget(did, setvid, false) != ARCAN_OK){
+					arcan_warning("arcan_lua_recordset() -- global capture failed, setvid dimensions must match VRESW, VRESH\n");
+					return 0;
+				}
+
+/* since the worldid attach is a special case, some rendertarget bound options need to be set manually */
+				arcan_video_alterreadback(ARCAN_VIDEO_WORLDID, pollrate);
+				break;
+			}
+			else {
+				if (!rtsetup)
+					rtsetup = (arcan_video_setuprendertarget(did, pollrate, scale == RENDERTARGET_SCALE), true);
+				
+				arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
+			}
+			
 		}
 	}
 	else{
@@ -4131,6 +4160,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "image_transform_cycle", arcan_lua_cycletransform);
 	arcan_lua_register(ctx, "copy_image_transform", arcan_lua_copytransform);
 	arcan_lua_register(ctx, "transfer_image_transform", arcan_lua_transfertransform);
+	arcan_lua_register(ctx, "copy_surface_properties", 	arcan_lua_copyimageprop);
 	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
 	arcan_lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
 	arcan_lua_register(ctx, "image_texfilter", arcan_lua_changetexfilter);
