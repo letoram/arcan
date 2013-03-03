@@ -24,6 +24,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include <apr_general.h>
 #include <apr_file_io.h>
@@ -169,7 +170,6 @@ struct conn_state {
 	size_t state_sz;
 	bool state_in;
 
-/* magic connection ID, XOR with idcookie */ 
 	int slot;
 };
 
@@ -696,9 +696,10 @@ static void server_queueout_data(struct conn_state* active_cons, int nconns, cha
 
 static inline struct conn_state* lookup_connection(struct conn_state* active_cons, int nconns, int id)
 {
-	for (int i = 0; i < nconns; i++)
-		if (active_cons[i].slot == (id ^ idcookie))
+	for (int i = 0; i < nconns; i++){
+		if (active_cons[i].slot == id)
 			return &active_cons[i];
+	}
 
 	return NULL;
 }

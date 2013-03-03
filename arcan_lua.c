@@ -3993,9 +3993,9 @@ static int arcan_lua_net_disconnect(lua_State* ctx)
 
 	int domain = luaL_checkint(ctx, 2);
 
-	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_TARGET, .data.network.connid = domain};
+	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECT, .data.network.connid = domain};
+
 	arcan_frameserver_pushevent(fsrv, &outev);
-	
 	return 0;
 }
 

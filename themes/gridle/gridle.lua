@@ -638,6 +638,7 @@ function network_onevent(source, tbl)
 -- Caveat: As this one is toggled persistent, it is not entirely sure that we're in a context where delete_image will work
 		if (valid_vid(settings.server)) then
 			delete_image(settings.server);
+			settings.server = nil;
 		else
 			settings.network_remote = "Disabled";
 		end
@@ -656,7 +657,7 @@ function network_onevent(source, tbl)
 
 	elseif (tbl.kind == "connected") then
 		if (settings.network_remote == "Disabled") then
-			net_disconnect(settings.server, tbl.id);
+			net_disconnect(source, tbl.id);
 		else
 			spawn_warning(tbl.host .. " connected.");
 		end
