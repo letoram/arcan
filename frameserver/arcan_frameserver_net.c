@@ -85,13 +85,17 @@ enum server_modes {
 	SERVER_DIRECTORY_NACL,
 };
 
+/* Used for both listening and outgoing sessions.
+ * Important is (CONN_OFFLINE -> CONN_CONNECTED -> (parent app authenticates) -> CONN_AUTHENTICATED, then loop between
+ * STATEXFER and AUTHENTICATED), each step can transition back into OFFLINE */
 enum connection_state {
 	CONN_OFFLINE = 0,
 	CONN_DISCOVERING,
 	CONN_CONNECTING,
 	CONN_CONNECTED,
 	CONN_DISCONNECTING,
-	CONN_AUTHENTICATED
+	CONN_AUTHENTICATED,
+	CONN_STATEXFER
 };
 
 int idcookie = 0;
@@ -129,8 +133,8 @@ struct {
 	char* rledec_buf;
 	size_t rledec_sz;
 
-/* some incoming events are only valid in certain states (i.e. authenticated etc.) */
 	enum connection_state connstate;
+/* some incoming events are only valid in certain states (i.e. authenticated etc.) */
 } netcontext = {0};
 
 /* single-threaded multiplexing server with a fixed limit on number of connections,
@@ -138,6 +142,7 @@ struct {
  * otherwise it only emits packets that NaCL guarantees CI on. */
 struct conn_state {
 	apr_socket_t* inout;
+	enum connection_state connstate;
 
 /* apr requires us to keep track of this one explicitly in order to flag some poll options
  * on or off (writable-without-blocking being the most relevant) */
@@ -530,6 +535,7 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock, apr_poll
 	active_cons[j].flushout  = flushout_default;
 	active_cons[j].queueout  = queueout_default;
 	active_cons[j].connect_stamp = arcan_timemillis();
+	active_cons[j].connstate = CONN_CONNECTED;
 
 	apr_pollfd_t* pfd = &active_cons[j].poll_state;
 
@@ -704,6 +710,29 @@ static inline struct conn_state* lookup_connection(struct conn_state* active_con
 	return NULL;
 }
 
+static void disconnect(struct conn_state* active_cons, int nconns, int slot)
+{
+	printf("disconnect (%d) \n", slot);
+	if (slot == 0){
+		for (int i = 0; i < nconns; i++)
+			if (active_cons[i].connstate > CONN_OFFLINE){
+				printf("mass disconnect (%i, %i)\n", i, active_cons[i].slot);
+				apr_socket_close(active_cons[i].inout);
+				apr_pollset_remove(netcontext.pollset, &active_cons[i].poll_state);
+				setup_cell(&active_cons[i]);
+			}
+	}
+	else {
+		struct conn_state* target_con = lookup_connection(active_cons, nconns, slot);
+		if (target_con && target_con->connstate > CONN_OFFLINE){
+			apr_socket_close(target_con->inout);
+			apr_pollset_remove(netcontext.pollset, &target_con->poll_state);
+			setup_cell(target_con);
+			graph_log_disconnect(netcontext.graphing, slot, "forced");
+		}
+	}
+}
+
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
 	arcan_event* ev;
@@ -721,16 +750,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					LOG("(net-srv) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
 				break;
 
-				case EVENT_NET_DISCONNECT:
-					target_con = lookup_connection(active_cons, nconns, ev->data.network.connid);
-					if (target_con){
-						apr_socket_close(target_con->inout);
-						apr_pollset_remove(netcontext.pollset, &target_con->poll_state);
-						setup_cell(target_con);
-					}
-
-					graph_log_disconnect(netcontext.graphing, ev->data.network.connid, "forced");
-				break;
+				case EVENT_NET_DISCONNECT: disconnect(active_cons, nconns, ev->data.network.connid); break;
 				
 				case EVENT_NET_GRAPHREFRESH:
 					if (netcontext.shmcont.addr->vready == false && graph_refresh(netcontext.graphing)){
@@ -953,7 +973,6 @@ static char* host_discover(char* host, bool usenacl, bool passive)
 	}
 
 	apr_socket_timeout_set(broadsock, DEFAULT_CLIENT_TIMEOUT);
-	netcontext.connstate = CONN_DISCOVERING;
 
 	while (true){
 		apr_size_t nts = MAX_HEADER_SIZE, ntr;

@@ -322,8 +322,6 @@ local gamelbls = {};
 local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
 
 local function flip_viewmode()
-	print("settings.viewmode:", settings.viewmode);
-	print("current key:", get_key("viewmode"));
 	if (settings.viewmode == "Grid") then
 		store_key("viewmode", "Custom");
 	else
@@ -362,7 +360,11 @@ add_submenu(soundlbls, soundptrs, "Background Music...", "bgmusic", gen_tbl_menu
 add_submenu(soundlbls, soundptrs, "Background Gain...", "bgmusic_gain", gen_num_menu("bgmusic_gain", 0.0, 0.1, 11));
 
 add_submenu(inputlbls, inputptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
-add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"}, function() end, true))
+add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"},	function(label)
+	if (label == "Disabled" and valid_vid(imagery.server)) then
+		net_disconnect(imagery.server, 0);
+	end
+end, true))
 
 local mainlbls = {};
 local mainptrs = {};
