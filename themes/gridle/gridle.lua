@@ -636,9 +636,9 @@ end
 function network_onevent(source, tbl)
 	if (tbl.kind == "frameserver_terminated") then
 -- Caveat: As this one is toggled persistent, it is not entirely sure that we're in a context where delete_image will work
-		if (valid_vid(settings.server)) then
-			delete_image(settings.server);
-			settings.server = nil;
+		if (valid_vid(imagery.server)) then
+			delete_image(imagery.server);
+			imagery.server = nil;
 		else
 			settings.network_remote = "Disabled";
 		end
@@ -650,7 +650,7 @@ function network_onevent(source, tbl)
 			blend_image(imagery.disconnected, 0.0, 10);
 		end
 
-		settings.server = nil;
+		imagery.server = nil;
 
 	elseif (tbl.kind == "resized") then
 		local a = true; -- seriously lua..
