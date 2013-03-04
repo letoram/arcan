@@ -1591,6 +1591,19 @@ streamptrs["Define Stream..."] = function(label, store)
 		opts.prefix = "rtmp://";
 		opts.startstr = settings.stream_url;
 
+		print("string_url:", settings.stream_url, tostring(resource("stream.key")));
+
+-- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
+		if (settings.stream_url == "rtmp://" and resource("stream.key")) then
+			if (open_rawresource("stream.key")) then
+				local line = read_rawresource();
+				if (line ~= nil and string.len(line) > 0) then
+					opts.startstr = line;
+				end
+				close_rawresource();
+			end
+		end
+
 		local osdsavekbd = osdkbd_create( osdkbd_extended_table(), opts );
 		osdsavekbd:show();
 
@@ -1615,7 +1628,9 @@ streamptrs["Define Stream..."] = function(label, store)
 -- only if destination has been set up
 table.insert(streammenu, "Define Stream...");
 table.insert(streammenu, "Start Streaming");
-add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, {});
+local tmpfmt = {};
+tmpfmt["Start Streaming"] = "\\b" .. settings.colourtable.notice_fontstr;
+add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, tmpfmt);
 table.insert(recordlist, "Start Recording");
 
 streamptrs["Start Streaming"] = function()

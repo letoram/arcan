@@ -15,6 +15,42 @@ function build_globmenu(globstr, cbfun, globmask)
 	return lists, resptr;
 end
 
+function gen_glob_menu(name, globstr, globmask, triggerfun, failtrig)
+	local resptr = {};
+
+	local togglefun = function(label, save)
+		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+		if (name ~= nil) then
+			settings[name] = label;
+		end
+
+		if (save and name ~= nil) then
+			play_audio(soundmap["MENU_FAVORITE"]);
+			store_key(name, label);
+		else
+			play_audio(soundmap["MENU_SELECT"]);
+		end
+
+		if (triggerfun) then
+			triggerfun(label);
+		end
+	end
+	
+	local lists = glob_resource(globstr, globmask);
+	if (lists == nil or #lists == 0) then
+		if (failtrig ~= nil) then
+			failtrig();
+		end
+		return;
+	end
+
+	for i = 1, #lists do
+		resptr[lists[i]] = togglefun;
+	end
+
+	return lists, resptr;
+end
+
 -- name     : settings[name] to store under
 -- tbl      : array of string with labels of possible values
 -- trggerfun: when selected, this function will be called (useful for activating whatever setting changed)
@@ -95,18 +131,22 @@ end
 -- label   : to use for dstlbls/dstptrs
 -- lbls    : array of strings used in the submenu (typically from gen_num, gen_tbl)
 -- ptrs    : hashtable keyed by label that acts as triggers (typically from gen_num, gen_tbl)
-function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs)
-	if (dstlbls == nil or dstptrs == nil or #lbls == 0) then return; end
-	
-	table.insert(dstlbls, label);
+function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs, fmt)
+	if (dstlbls == nil or dstptrs == nil or lbls == nil or #lbls == 0) then return; end
+
+	if (not table.find(dstlbls, label)) then
+		table.insert(dstlbls, label);
+	end
 	
 	dstptrs[label] = function()
 		local fmts = {};
 		
 		if (key ~= nil) then
 			local ind = tostring(settings[key]);
-	
-			if (ind) then
+
+			if (fmt ~= nil) then
+				fmts = fmt;
+			elseif (ind) then
 				fmts[ ind ] = settings.colourtable.notice_fontstr;
 				if(get_key(key)) then
 					fmts[ get_key(key) ] = settings.colourtable.alert_fontstr;
@@ -356,8 +396,41 @@ end, true));
 add_submenu(soundlbls, soundptrs, "Soundmaps...", "soundmap", build_globmenu("soundmaps/*", setsndfun, ALL_RESOURCES));
 add_submenu(soundlbls, soundptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
 add_submenu(soundlbls, soundptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
-add_submenu(soundlbls, soundptrs, "Background Music...", "bgmusic", gen_tbl_menu("bgmusic", {"Disabled", "Menu Only", "Always"}, function() end, true));
+
+local bgmusiclbls = {};
+local bgmusicptrs = {};
+
+add_submenu(bgmusiclbls, bgmusicptrs, "Playback...", "bgmusic", gen_tbl_menu("bgmusic", {"Disabled", "Menu Only", "Always"},
+	function(label)
+		if (label == "Disabled") then
+			if (valid_vid(imagery.musicplayer)) then
+				delete_image(imagery.musicplayer);
+			end
+		else
+			gridle_startbgmusic(settings.bgmusic_playlist);
+		end
+	end, true));
+
+add_submenu(bgmusiclbls, bgmusicptrs, "Order...", "bgmusic_order", gen_tbl_menu("bgmusic_order", {"Sequential", "Randomized"}, function(label)
+	if (label == "Sequential") then
+		gridle_loadplaylist(settings.bgmusic_playlist);
+	else
+		gridle_randomizeplaylist();
+	end
+end, true));
+
 add_submenu(soundlbls, soundptrs, "Background Gain...", "bgmusic_gain", gen_num_menu("bgmusic_gain", 0.0, 0.1, 11));
+add_submenu(soundlbls, soundptrs, "Background Music...", nil, bgmusiclbls, bgmusicptrs);
+
+local tmpfun = soundptrs["Background Music..."];
+soundptrs["Background Music..."] = function()
+add_submenu(bgmusiclbls, bgmusicptrs, "Playlists...", "bgmusic_playlist", gen_glob_menu("bgmusic_playlist", "music/playlists/*.m3u", ALL_RESOURCES, nil,
+		function()
+			spawn_warning({"No playlists could be found", "check resources/music/playlists for .m3us"})
+		end));
+
+	tmpfun();
+end
 
 add_submenu(inputlbls, inputptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
 add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"},	function(label)
@@ -536,7 +609,7 @@ function gridlemenu_defaultdispatch(dst)
 	end
 end
 
-function gridlemenu_settings(cleanup_hook)
+function gridlemenu_settings(cleanup_hook, filter_hook)
 -- first, replace all IO handlers
 	local imenu = {};
 	
@@ -566,7 +639,11 @@ function gridlemenu_settings(cleanup_hook)
 	end
 
 	gridlemenu_defaultdispatch(imenu);
-	updatebgtrigger = filter_hook;
+	if (filter_hook) then
+		updatebgtrigger = filter_hook;
+	else
+		updatebgtrigger = function() end;
+	end
 	
 -- hide the cursor and all selected elements
 	if (movievid) then

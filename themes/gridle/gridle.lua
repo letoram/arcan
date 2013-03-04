@@ -62,6 +62,8 @@ settings = {
 	soundmap = "8bit",
 	bgmusic = "Disabled",
 	bgmusic_gain = 1.0,
+	bgmusic_order = "Sequential",
+	
 	bgname = "smstile.png",
 	bgeffect = "none.fShader",
 	bg_rh = VRESH / 32,
@@ -333,6 +335,101 @@ function load_soundmap(name)
 	
 end
 
+function gridle_loadplaylist(playlist)
+	settings.playlist = {};
+
+	if (playlist == nil or string.len(playlist) == 0) then
+		return false;
+	end
+
+	if (open_rawresource("music/playlists/" .. playlist)) then
+		local line = read_rawresource();
+		
+		while line do
+			local ch = string.sub(line, 1, 1);
+
+			if (ch ~= "" and ch ~= "#") then
+				table.insert(settings.playlist, line);
+			end
+			line = read_rawresource();
+		end
+
+		close_rawresource();
+		return true;
+	end
+end
+
+function gridle_randomizeplaylist()
+	print("RANDOMIZE");
+end
+
+function gridle_nextsong(reccount)
+	if (reccount == 0) then
+		spawn_warning("Music Player: Couldn't find next track to play, empty or broken playlist?");
+		return nil;
+	end
+	
+	settings.playlist_ofs = settings.playlist_ofs + 1;
+
+	if (settings.playlist_ofs > #settings.playlist) then
+		settings.playlist_ofs = 1;
+	end
+
+	local label = settings.playlist[settings.playlist_ofs];
+	if (resource(label)) then
+		return label;
+	elseif (resource("music/" .. label)) then
+		return "music/" .. label;
+	elseif (resource("music/playlists/" .. label)) then
+		return "music/playlists/" .. label;
+	end
+
+	return gridle_nextsong(reccount - 1);
+end
+
+function gridle_startbgmusic(playlist)
+	if (not gridle_loadplaylist(playlist) or settings.bgmusic == "Disabled" ) then
+		return;
+	end
+
+	settings.playlist_ofs = 1;
+	if (settings.bgmusic_order == "Randomized") then
+		gridle_randomizeplaylist();
+	end
+
+	if (valid_vid(imagery.musicplayer)) then
+		delete_image(imagery.musicplayer);
+	end
+
+	local function musicplayer_trigger(source, status)
+		if (status.kind == "frameserver_terminated") then
+			delete_image(imagery.musicplayer);
+
+			local song = gridle_nextsong( #settings.playlist );
+			if (song == nil) then
+				imagery.musicplayer = nil;
+			end
+
+			imagery.musicplayer = load_movie(song,  FRAMESERVER_NOLOOP, musicplayer_trigger);
+			image_tracetag(imagery.musicplayer, "music player");
+		
+		elseif (status.kind == "resized") then
+			audio_gain(status.source_audio, 0.0);
+			audio_gain(status.source_audio, settings.bgmusic_gain, settings.transitiondelay);
+			play_movie(source);
+		end
+	end
+
+	if (#settings.playlist > 0) then
+		local song = gridle_nextsong( #settings.playlist );
+		if (song ~= nil) then
+			settings.playlist_ofs = 1;
+			imagery.musicplayer = load_movie(gridle_nextsong(), FRAMESERVER_NOLOOP, musicplayer_trigger);
+			image_tracetag(imagery.musicplayer, "music player");
+		end
+	end
+end
+
 function gridle_launchexternal()
 	erase_grid(true);
 	play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -451,7 +548,7 @@ function gridle()
 	image_tracetag(imagery.server, "network server");
 	persist_image(imagery.server);
 	push_video_context();
-
+	
 --	recres = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 --	define_recordtarget(recres, "rest.mkv", "acodec=VORBIS:vcodec=VP8:container=matroska", {WORLDID}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status) end);
 --	image_tracetag(recres, "recres");
@@ -459,8 +556,7 @@ function gridle()
 -- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 
 
--- we actually want the network toggle to live in a separate context, so that it can't be deleted.
-
+	gridle_startbgmusic(settings.bgmusic_playlist);
 	if (settings.sortfunctions[settings.sortorder]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
 	end
@@ -535,7 +631,10 @@ function gridle()
 	
 	imenu["MENU_TOGGLE"]  = function(iotbl)
 		play_audio(soundmap["MENU_TOGGLE"]);
-		gridlemenu_settings(menu_bgupdate);
+		gridlemenu_settings( function() menu_bgupdate();
+		erase_grid(false);
+		build_grid(settings.cell_width, settings.cell_height);
+		end , menu_bgupdate);
 	end
 	
 	imenu["CONTEXT"] = function(iotbl)
@@ -729,6 +828,12 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	show_image(imagery.bgimage);
 	order_image(imagery.bgimage, GRIDBGLAYER); 
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+end
+
+function load_m3u(resname)
+	if (open_rawresource(resname)) then
+-- ignore lines with # 
+	end
 end
 
 function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
@@ -1055,9 +1160,18 @@ end
 
 function spawn_warning( message, persist )
 -- render message and make sure it is on top
-	local msg         = string.gsub(message, "\\", "\\\\"); 
-	local infowin     = listview_create( {msg}, VRESW / 2, VRESH / 2 );
+	local msg = {};
+	local exptime = 100;
+
+	if (type(message) == "table") then
+		exptime = exptime * #message;
+		msg = message;
+	else
+		local msgstr = string.gsub(message, "\\", "\\\\");
+		table.insert(msg, msgstr);
+	end
 	
+	local infowin     = listview_create( msg, VRESW / 2, VRESH / 2 );
 	infowin:show();
 
 	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
@@ -1066,11 +1180,11 @@ function spawn_warning( message, persist )
 	move_image(infowin.anchor, x, y);
 	hide_image(infowin.cursorvid);
 	if (persist == nil or persist == false) then
-		expire_image(infowin.anchor, 125);
+		expire_image(infowin.anchor, exptime);
 		blend_image(infowin.window, 1.0, 50);
 		blend_image(infowin.border, 1.0, 50);
-		blend_image(infowin.window, 0.0, 25);
-		blend_image(infowin.border, 0.0, 25);
+		blend_image(infowin.window, 0.0, exptime - 50 - 25);
+		blend_image(infowin.border, 0.0, exptime - 50 - 25);
 	end
 
 	return infowin;
@@ -1672,6 +1786,10 @@ function gridle_internalcleanup()
 	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
 	settings.in_internal = false;
 	
+	if ((valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only")) then
+		resume_movie(imagery.musicplayer);
+	end
+	
 -- since the user might have added screenshots or recorded a snapshot,
 -- we need to invalidate the cache and rescan the globs in question 
 	resourcefinder_cache.invalidate = true;
@@ -1698,6 +1816,11 @@ function gridle_internal_setup(source, datatbl, gametbl)
 			settings.preaud, settings.jitterstep, settings.jitterxfer);
 
 		settings.in_internal    = true;
+
+		if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
+			pause_movie(imagery.musicplayer);
+		end
+		
 		internal_aid = datatbl.source_audio;
 		internal_vid = source;
 
@@ -2039,6 +2162,10 @@ function load_settings()
 	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
 	load_key_num("effect_gain", "effect_gain", settings.effect_gain);
 	load_key_str("network_remote", "network_remote", settings.network_remote);
+	load_key_str("bgmusic_playlist", "bgmusic_playlist", nil);
+	load_key_num("bgmusic_gain", "bgmusic_gain", settings.bgmusic_gain);
+	load_key_str("bgmusic_order", "bgmusic_order", settings.bgmusic_order);
+	load_key_str("bgmusic", "bgmusic", settings.bgmusic);
 	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
 	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
 	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
