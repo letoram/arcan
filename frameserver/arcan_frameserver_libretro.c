@@ -137,6 +137,9 @@ static struct {
 		void (*set_ioport)(unsigned, unsigned);
 } retroctx = {.prewake = 4, .preaudiogen = 0};
 
+/* render statistics unto *vidp, at the very end of this .c file */
+static void push_stats();
+
 static void* libretro_requirefun(const char* const sym)
 {
 	void* res = frameserver_requirefun(sym);
@@ -803,138 +806,6 @@ static inline bool retroctx_sync()
 	return true;
 }
 
-#define STEPMSG(X) \
-	draw_box(retroctx.graphing, 0, yv, PXFONT_WIDTH * strlen(X), PXFONT_HEIGHT, 0xff000000);\
-	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
-	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
-
-static void push_stats()
-{
-	char scratch[64];
-	int yv = 0;
-
-	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "%s", retroctx.colorspace);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "%f fps, %f Hz", (float)retroctx.avinfo.timing.fps, (float)retroctx.avinfo.timing.sample_rate);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "%d mode, %d preaud, %d/%d jitter", retroctx.skipmode, retroctx.preaudiogen, retroctx.jitterstep, retroctx.jitterxfer);
-	STEPMSG(scratch);
-	snprintf(scratch, 64, "(A,V - A/V) %lld,%lld - %lld", retroctx.aframecount, retroctx.vframecount, retroctx.aframecount / retroctx.vframecount);
-	STEPMSG(scratch);
-
-	long long int timestamp = arcan_timemillis();
-	snprintf(scratch, 64, "Real (Hz): %f\n", 1000.0f * (float) retroctx.aframecount / (float)(timestamp - retroctx.basetime));
-	STEPMSG(scratch);
-
-	snprintf(scratch, 64, "cost,wake,xfer: %d, %d, %d ms\n", retroctx.framecost, retroctx.prewake, retroctx.transfercost);
-	STEPMSG(scratch);
-
-	if (retroctx.skipmode == TARGET_SKIP_AUTO){
-		STEPMSG("Frameskip: Auto");
-		snprintf(scratch, 64, "%d skipped", retroctx.frameskips);
-		STEPMSG(scratch);
-	}
-	else if (retroctx.skipmode == TARGET_SKIP_NONE){
-		STEPMSG("Frameskip: None");
-	}
-	else if (retroctx.skipmode >= TARGET_SKIP_STEP && retroctx.skipmode < TARGET_SKIP_FASTFWD){
-		snprintf(scratch, 64, "Frameskip: Step (%d)\n", retroctx.skipmode);
-		STEPMSG(scratch);
-	}
-	else if (retroctx.skipmode == TARGET_SKIP_FASTFWD){
-		snprintf(scratch, 64, "Frameskip: Fast-Fwd (%d)\n", retroctx.skipmode - TARGET_SKIP_FASTFWD);
-		STEPMSG(scratch);
-	}
-/* color-coded frame timing / alignment, starting at the far right with the next intended frame,
- * horizontal resolution is 2 px / ms */
-
-	int dw = retroctx.shmcont.addr->storage.w;
-	float hscale = 2.0;
-	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
-	draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
-	draw_hline(retroctx.graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
-
-/* first, ideal deadlines, now() is at the end of the X scale */
-	int stepc = 0;
-	double current = arcan_timemillis();
-	double minp    = current - dw;
-	double mspf    = retroctx.mspf;
-	double startp  = (double) current - modf(current, &mspf);
-
-	while ( startp - (stepc * retroctx.mspf) >= minp ){
-		draw_vline(retroctx.graphing, startp - (stepc * retroctx.mspf) - minp, yv + PXFONT_HEIGHT - 1, -(PXFONT_HEIGHT-1), 0xff00ff00);
-		stepc++;
-	}
-
-/* second, actual frames, plot against ideal, step back etc. until we land outside range */
-	size_t cellsz = sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf[0]);
-
-#define STEPBACK(X) ( (X) > 0 ? (X) - 1 : cellsz - 1)
-
-	int ofs = STEPBACK(retroctx.framebuf_ofs);
-
-	while (true){
-		if (retroctx.frame_ringbuf[ofs] >= minp)
-			draw_vline(retroctx.graphing, current - retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff00ffff);
-		else
-			break;
-
-		ofs = STEPBACK(ofs);
-		if (retroctx.frame_ringbuf[ofs] >= minp)
-			draw_vline(retroctx.graphing, current - retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff00aaaa);
-		else
-			break;
-
-		ofs = STEPBACK(ofs);
-	}
-
-	cellsz = sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]);
-	ofs = STEPBACK(retroctx.dropbuf_ofs);
-
-	while (retroctx.drop_ringbuf[ofs] >= minp){
-		draw_vline(retroctx.graphing, current - retroctx.drop_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff0000ff);
-		ofs = STEPBACK(ofs);
-	}
-
-/* lastly, the transfer costs, sweep twice, first for Y scale then for drawing */
-	cellsz = sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]);
-	ofs = STEPBACK(retroctx.xferbuf_ofs);
-	int maxv = 0, count = 0;
-
-	while( count < retroctx.shmcont.addr->storage.w ){
-		if (retroctx.xfer_ringbuf[ ofs ] > maxv)
-			maxv = retroctx.xfer_ringbuf[ ofs ];
-
-		count++;
-		ofs = STEPBACK(ofs);
-	}
-
-	if (maxv > 0){
-		yv += PXFONT_HEIGHT * 2;
-		float yscale = (float)(PXFONT_HEIGHT * 2) / (float) maxv;
-		ofs = STEPBACK(retroctx.xferbuf_ofs);
-		count = 0;
-		draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
-
-		while (count < dw){
-			int sample = retroctx.xfer_ringbuf[ofs];
-
-			if (sample > -1)
-				draw_vline(retroctx.graphing, dw - count - 1, yv + (PXFONT_HEIGHT * 2), -1 * yscale * sample, 0xff00ff00);
-			else
-				draw_vline(retroctx.graphing, dw - count - 1, yv + (PXFONT_HEIGHT * 2), -1 * PXFONT_HEIGHT * 2, 0xff0000ff);
-
-			ofs = STEPBACK(ofs);
-			count++;
-		}
-	}
-}
-
-#undef STEPBACK
-#undef STEPMSG
-
 static inline void add_jitter(int num)
 {
 	if (num < 0)
@@ -1088,9 +959,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 
 /* since we're guaranteed to get at least one input callback each run(), call, we multiplex
-	* parent event processing as well */
+ * parent event processing as well */
 		outev.data.external.framestatus.framenumber = 0;
-//		retroctx.reset();
+/* some cores die on this kind of reset, retroctx.reset() e.g. NXengine */
 
 /* basetime is used as epoch for all other timing calculations */
 		retroctx.basetime = arcan_timemillis();
@@ -1198,3 +1069,136 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 	}
 }
+
+/* ---- Long and tedious statistics output follows, nothing to see here ---- */
+#define STEPMSG(X) \
+	draw_box(retroctx.graphing, 0, yv, PXFONT_WIDTH * strlen(X), PXFONT_HEIGHT, 0xff000000);\
+	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
+	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
+
+static void push_stats()
+{
+	char scratch[64];
+	int yv = 0;
+
+	snprintf(scratch, 64, "%s, %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "%s", retroctx.colorspace);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "%f fps, %f Hz", (float)retroctx.avinfo.timing.fps, (float)retroctx.avinfo.timing.sample_rate);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "%d mode, %d preaud, %d/%d jitter", retroctx.skipmode, retroctx.preaudiogen, retroctx.jitterstep, retroctx.jitterxfer);
+	STEPMSG(scratch);
+	snprintf(scratch, 64, "(A,V - A/V) %lld,%lld - %lld", retroctx.aframecount, retroctx.vframecount, retroctx.aframecount / retroctx.vframecount);
+	STEPMSG(scratch);
+
+	long long int timestamp = arcan_timemillis();
+	snprintf(scratch, 64, "Real (Hz): %f\n", 1000.0f * (float) retroctx.aframecount / (float)(timestamp - retroctx.basetime));
+	STEPMSG(scratch);
+
+	snprintf(scratch, 64, "cost,wake,xfer: %d, %d, %d ms\n", retroctx.framecost, retroctx.prewake, retroctx.transfercost);
+	STEPMSG(scratch);
+
+	if (retroctx.skipmode == TARGET_SKIP_AUTO){
+		STEPMSG("Frameskip: Auto");
+		snprintf(scratch, 64, "%d skipped", retroctx.frameskips);
+		STEPMSG(scratch);
+	}
+	else if (retroctx.skipmode == TARGET_SKIP_NONE){
+		STEPMSG("Frameskip: None");
+	}
+	else if (retroctx.skipmode >= TARGET_SKIP_STEP && retroctx.skipmode < TARGET_SKIP_FASTFWD){
+		snprintf(scratch, 64, "Frameskip: Step (%d)\n", retroctx.skipmode);
+		STEPMSG(scratch);
+	}
+	else if (retroctx.skipmode == TARGET_SKIP_FASTFWD){
+		snprintf(scratch, 64, "Frameskip: Fast-Fwd (%d)\n", retroctx.skipmode - TARGET_SKIP_FASTFWD);
+		STEPMSG(scratch);
+	}
+/* color-coded frame timing / alignment, starting at the far right with the next intended frame,
+ * horizontal resolution is 2 px / ms */
+
+	int dw = retroctx.shmcont.addr->storage.w;
+	float hscale = 2.0;
+	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
+	draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
+	draw_hline(retroctx.graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
+
+/* first, ideal deadlines, now() is at the end of the X scale */
+	int stepc = 0;
+	double current = arcan_timemillis();
+	double minp    = current - dw;
+	double mspf    = retroctx.mspf;
+	double startp  = (double) current - modf(current, &mspf);
+
+	while ( startp - (stepc * retroctx.mspf) >= minp ){
+		draw_vline(retroctx.graphing, startp - (stepc * retroctx.mspf) - minp, yv + PXFONT_HEIGHT - 1, -(PXFONT_HEIGHT-1), 0xff00ff00);
+		stepc++;
+	}
+
+/* second, actual frames, plot against ideal, step back etc. until we land outside range */
+	size_t cellsz = sizeof(retroctx.frame_ringbuf) / sizeof(retroctx.frame_ringbuf[0]);
+
+#define STEPBACK(X) ( (X) > 0 ? (X) - 1 : cellsz - 1)
+
+	int ofs = STEPBACK(retroctx.framebuf_ofs);
+
+	while (true){
+		if (retroctx.frame_ringbuf[ofs] >= minp)
+			draw_vline(retroctx.graphing, current - retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff00ffff);
+		else
+			break;
+
+		ofs = STEPBACK(ofs);
+		if (retroctx.frame_ringbuf[ofs] >= minp)
+			draw_vline(retroctx.graphing, current - retroctx.frame_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff00aaaa);
+		else
+			break;
+
+		ofs = STEPBACK(ofs);
+	}
+
+	cellsz = sizeof(retroctx.drop_ringbuf) / sizeof(retroctx.drop_ringbuf[0]);
+	ofs = STEPBACK(retroctx.dropbuf_ofs);
+
+	while (retroctx.drop_ringbuf[ofs] >= minp){
+		draw_vline(retroctx.graphing, current - retroctx.drop_ringbuf[ofs], yv + PXFONT_HEIGHT + 1, PXFONT_HEIGHT - 1, 0xff0000ff);
+		ofs = STEPBACK(ofs);
+	}
+
+/* lastly, the transfer costs, sweep twice, first for Y scale then for drawing */
+	cellsz = sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]);
+	ofs = STEPBACK(retroctx.xferbuf_ofs);
+	int maxv = 0, count = 0;
+
+	while( count < retroctx.shmcont.addr->storage.w ){
+		if (retroctx.xfer_ringbuf[ ofs ] > maxv)
+			maxv = retroctx.xfer_ringbuf[ ofs ];
+
+		count++;
+		ofs = STEPBACK(ofs);
+	}
+
+	if (maxv > 0){
+		yv += PXFONT_HEIGHT * 2;
+		float yscale = (float)(PXFONT_HEIGHT * 2) / (float) maxv;
+		ofs = STEPBACK(retroctx.xferbuf_ofs);
+		count = 0;
+		draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
+
+		while (count < dw){
+			int sample = retroctx.xfer_ringbuf[ofs];
+
+			if (sample > -1)
+				draw_vline(retroctx.graphing, dw - count - 1, yv + (PXFONT_HEIGHT * 2), -1 * yscale * sample, 0xff00ff00);
+			else
+				draw_vline(retroctx.graphing, dw - count - 1, yv + (PXFONT_HEIGHT * 2), -1 * PXFONT_HEIGHT * 2, 0xff0000ff);
+
+			ofs = STEPBACK(ofs);
+			count++;
+		}
+	}
+}
+
+#undef STEPBACK
+#undef STEPMSG

@@ -1,213 +1,6 @@
--- 
--- This file contains (a) menu helper functions (build_globmenu, gen_tbl_menu, gen_num_menu, spawn_menu, ...)
--- and the menu setup / spawning for the global settings menus.
--- quite messy, generalizing to a shared script would be nice.
 --
-
-function build_globmenu(globstr, cbfun, globmask)
-	local lists = glob_resource(globstr, globmask);
-	local resptr = {};
-	
-	for i = 1, #lists do
-		resptr[ lists[i] ] = cbfun;
-	end
-	
-	return lists, resptr;
-end
-
-function gen_glob_menu(name, globstr, globmask, triggerfun, failtrig)
-	local resptr = {};
-
-	local togglefun = function(label, save)
-		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		if (name ~= nil) then
-			settings[name] = label;
-		end
-
-		if (save and name ~= nil) then
-			play_audio(soundmap["MENU_FAVORITE"]);
-			store_key(name, label);
-		else
-			play_audio(soundmap["MENU_SELECT"]);
-		end
-
-		if (triggerfun) then
-			triggerfun(label);
-		end
-	end
-	
-	local lists = glob_resource(globstr, globmask);
-	if (lists == nil or #lists == 0) then
-		if (failtrig ~= nil) then
-			failtrig();
-		end
-		return;
-	end
-
-	for i = 1, #lists do
-		resptr[lists[i]] = togglefun;
-	end
-
-	return lists, resptr;
-end
-
--- name     : settings[name] to store under
--- tbl      : array of string with labels of possible values
--- trggerfun: when selected, this function will be called (useful for activating whatever setting changed)
--- isstring : treat value as string or convert to number before sending to store_key
-function gen_tbl_menu(name, tbl, triggerfun, isstring)
-	local reslbl = {};
-	local resptr = {};
-
-	local basename = function(label, save)
-		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		if (name ~= nil) then
-			settings[name] = isstring and label or tonumber(label);
-		end
-
-		if (save and name ~= nil) then
-			play_audio(soundmap["MENU_FAVORITE"]);
-			store_key(name, isstring and label or tonumber(label));
-		else
-			play_audio(soundmap["MENU_SELECT"]);
-		end
-
-		if (triggerfun) then triggerfun(label); end
-	end
-
-	for key,val in ipairs(tbl) do
-		table.insert(reslbl, val);
-		resptr[val] = basename;
-	end
-
-	return reslbl, resptr;
-end
-
--- automatically generate a menu of numbers
--- name  : the settings key to store in
--- base  : start value
--- step  : value to add to base, or a function that calculates the value using an index
--- count : number of entries
--- triggerfun : hook to be called when selected 
-function gen_num_menu(name, base, step, count, triggerfun)
-	local reslbl = {};
-	local resptr = {};
-	local clbl = base;
-	
-	local basename = function(label, save)
-		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		settings[name] = tonumber(label);
-		if (save) then
-			play_audio(soundmap["MENU_FAVORITE"]);
-			store_key(name, tonumber(label));
-		else
-			play_audio(soundmap["MENU_SELECT"]);
-		end
-		
-		if (triggerfun) then triggerfun(); end
-	end
-
-	clbl = base;
-	for i=1,count do
-		if (type(step) == "function") then 
-			clbl = step(i); 
-			if (clbl == nil) then 
-				break;
-			end
-		end
-
-		table.insert(reslbl, tostring(clbl));
-		resptr[tostring(clbl)] = basename;
-		
-		if (type(step) == "number") then clbl = clbl + step; end
-	end
-
-	return reslbl, resptr;
-end
-
--- inject a submenu into a main one
--- dstlbls : array of strings to insert into
--- dstptrs : hashtable keyed by label for which to insert the spawn function
--- label   : to use for dstlbls/dstptrs
--- lbls    : array of strings used in the submenu (typically from gen_num, gen_tbl)
--- ptrs    : hashtable keyed by label that acts as triggers (typically from gen_num, gen_tbl)
-function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs, fmt)
-	if (dstlbls == nil or dstptrs == nil or lbls == nil or #lbls == 0) then return; end
-
-	if (not table.find(dstlbls, label)) then
-		table.insert(dstlbls, label);
-	end
-	
-	dstptrs[label] = function()
-		local fmts = {};
-		
-		if (key ~= nil) then
-			local ind = tostring(settings[key]);
-
-			if (fmt ~= nil) then
-				fmts = fmt;
-			elseif (ind) then
-				fmts[ ind ] = settings.colourtable.notice_fontstr;
-				if(get_key(key)) then
-					fmts[ get_key(key) ] = settings.colourtable.alert_fontstr;
-				end
-			end
-		end
-		
-		menu_spawnmenu(lbls, ptrs, fmts);
-	end -- of function
-end
-
--- create and display a listview setup with the menu defined by the arguments.
--- list    : array of strings that make up the menu
--- listptr : hashtable keyed by list labels
--- fmtlist : hashtable keyed by list labels, on match, will be prepended when rendering (used for icons, highlights etc.)
-function menu_spawnmenu(list, listptr, fmtlist)
-	if (#list < 1) then
-		return nil;
-	end
-
-	local parent = current_menu;
-	local props = image_surface_resolve_properties(current_menu.cursorvid);
-	local windsize = VRESH;
-
-	local yofs = 0;
-	if (props.y + windsize > VRESH) then
-		yofs = VRESH - windsize;
-	end
-
-	current_menu = listview_create(list, windsize, VRESW / 3, fmtlist);
-	current_menu.parent = parent;
-	current_menu.ptrs = listptr;
-	current_menu.updatecb = parent.updatecb;
-	current_menu:show();
-	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
-	
-	local xofs = 0;
-	local yofs = 0;
-	
--- figure out where the window is going to be.
-	local aprops_l = image_surface_properties(current_menu.anchor, settings.fadedelay);
-	local wprops_l = image_surface_properties(current_menu.window, settings.fadedelay);
-	local dx = aprops_l.x;
-	local dy = aprops_l.y;
-	
-	local winw = wprops_l.width;
-	local winh = wprops_l.height;
-	
-	if (dx + winw > VRESW) then
-		dx = dx + (VRESW - (dx + winw));
-	end
-	
-	if (dy + winh > VRESH) then
-		dy = dy + (VRESH - (dy + winh));
-	end
-
-	move_image( current_menu.anchor, math.floor(dx), math.floor(dy), settings.fadedelay );
-	
-	play_audio(soundmap["SUBMENU_TOGGLE"]);
-	return current_menu;
-end
+-- global (and view-local) configuration menus
+--
 
 local updatebgtrigger = nil;
 
@@ -361,15 +154,6 @@ local gamelbls = {};
 
 local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
 
-local function flip_viewmode()
-	if (settings.viewmode == "Grid") then
-		store_key("viewmode", "Custom");
-	else
-		store_key("viewmode", "Grid");
-	end
-	switch_theme("gridle");
-end
-
 if (settings.viewmode == "Grid") then
 	add_submenu(displbls, dispptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
 	add_submenu(displbls, dispptrs, "Background Effects...", "bgeffect", bgeffmen, bgeffdesc);
@@ -412,11 +196,11 @@ add_submenu(bgmusiclbls, bgmusicptrs, "Playback...", "bgmusic", gen_tbl_menu("bg
 	end, true));
 
 add_submenu(bgmusiclbls, bgmusicptrs, "Order...", "bgmusic_order", gen_tbl_menu("bgmusic_order", {"Sequential", "Randomized"}, function(label)
-	if (label == "Sequential") then
-		gridle_loadplaylist(settings.bgmusic_playlist);
-	else
-		gridle_randomizeplaylist();
+	music_load_playlist(settings.bgmusic_playlist);
+	if (label == "Randomized") then
+		music_randomize_playlist();
 	end
+	
 end, true));
 
 add_submenu(soundlbls, soundptrs, "Background Gain...", "bgmusic_gain", gen_num_menu("bgmusic_gain", 0.0, 0.1, 11));

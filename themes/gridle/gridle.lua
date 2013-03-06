@@ -236,57 +236,6 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
-function string.trim(s)
-	return (s:gsub("^%s*(.-)%s*$", "%1"))
-end
-
-function dispatch_push(tbl, name, triggerfun)
-	local newtbl = {};
-	newtbl.table = tbl;
-	newtbl.name = name;
-	newtbl.dispfun = triggerfun and triggerfun or gridle_dispatchinput;
-	
-	table.insert(settings.dispatch_stack, newtbl);
-	settings.iodispatch = tbl;
-	gridle_input = newtbl.dispfun;
-	
---	print("push:")
---	for ind, val in ipairs(settings.dispatch_stack) do
---		print(val.name);
---	end
---	print("/push")
-end
-
-function dispatch_pop()
-	if (#settings.dispatch_stack <= 1) then
-		settings.dispatch = {};
-		gridle_input = gridle_dispatchinput;
-	else
-		table.remove(settings.dispatch_stack, #settings.dispatch_stack);
-		local last = settings.dispatch_stack[#settings.dispatch_stack];
-
---		print("stack pop, revert to:", last.name);
-		settings.iodispatch = last.table;
-		gridle_input = last.dispfun;
-	end
-
-end
-
-function string.split(instr, delim)
-	local res = {};
-	local strt = 1;
-	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
-	while delim_pos do
-		table.insert(res, string.sub(instr, strt, delim_pos-1));
-		strt = delim_stp + 1;
-		delim_pos, delim_stp = string.find(instr, delim, strt);
-	end
-	
-	table.insert(res, string.sub(instr, strt));
-	return res;
-end
-
 function broadcast_game(gametbl, playing)
 -- there might be other stuff in gametbl than provided by the initial list_games
 -- so just send the strings/numbers
@@ -335,101 +284,6 @@ function load_soundmap(name)
 	
 end
 
-function gridle_loadplaylist(playlist)
-	settings.playlist = {};
-
-	if (playlist == nil or string.len(playlist) == 0) then
-		return false;
-	end
-
-	if (open_rawresource("music/playlists/" .. playlist)) then
-		local line = read_rawresource();
-		
-		while line do
-			local ch = string.sub(line, 1, 1);
-
-			if (ch ~= "" and ch ~= "#") then
-				table.insert(settings.playlist, line);
-			end
-			line = read_rawresource();
-		end
-
-		close_rawresource();
-		return true;
-	end
-end
-
-function gridle_randomizeplaylist()
-	print("RANDOMIZE");
-end
-
-function gridle_nextsong(reccount)
-	if (reccount == 0) then
-		spawn_warning("Music Player: Couldn't find next track to play, empty or broken playlist?");
-		return nil;
-	end
-	
-	settings.playlist_ofs = settings.playlist_ofs + 1;
-
-	if (settings.playlist_ofs > #settings.playlist) then
-		settings.playlist_ofs = 1;
-	end
-
-	local label = settings.playlist[settings.playlist_ofs];
-	if (resource(label)) then
-		return label;
-	elseif (resource("music/" .. label)) then
-		return "music/" .. label;
-	elseif (resource("music/playlists/" .. label)) then
-		return "music/playlists/" .. label;
-	end
-
-	return gridle_nextsong(reccount - 1);
-end
-
-function gridle_startbgmusic(playlist)
-	if (not gridle_loadplaylist(playlist) or settings.bgmusic == "Disabled" ) then
-		return;
-	end
-
-	settings.playlist_ofs = 1;
-	if (settings.bgmusic_order == "Randomized") then
-		gridle_randomizeplaylist();
-	end
-
-	if (valid_vid(imagery.musicplayer)) then
-		delete_image(imagery.musicplayer);
-	end
-
-	local function musicplayer_trigger(source, status)
-		if (status.kind == "frameserver_terminated") then
-			delete_image(imagery.musicplayer);
-
-			local song = gridle_nextsong( #settings.playlist );
-			if (song == nil) then
-				imagery.musicplayer = nil;
-			end
-
-			imagery.musicplayer = load_movie(song,  FRAMESERVER_NOLOOP, musicplayer_trigger);
-			image_tracetag(imagery.musicplayer, "music player");
-		
-		elseif (status.kind == "resized") then
-			audio_gain(status.source_audio, 0.0);
-			audio_gain(status.source_audio, settings.bgmusic_gain, settings.transitiondelay);
-			play_movie(source);
-		end
-	end
-
-	if (#settings.playlist > 0) then
-		local song = gridle_nextsong( #settings.playlist );
-		if (song ~= nil) then
-			settings.playlist_ofs = 1;
-			imagery.musicplayer = load_movie(gridle_nextsong(), FRAMESERVER_NOLOOP, musicplayer_trigger);
-			image_tracetag(imagery.musicplayer, "music player");
-		end
-	end
-end
-
 function gridle_launchexternal()
 	erase_grid(true);
 	play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -450,9 +304,12 @@ function gridle_launchinternal()
 	settings.last_message = "";
 
 	local tmptbl = {};
-	tmptbl["MENU_ESCAPE"] = settings.iodispatch["MENU_ESCAPE"];
-	dispatch_push(tmptbl, "internal loading");
+	tmptbl["MENU_ESCAPE"] = function()
+		dispatch_push({}, "internal_terminated"); -- cleanup will pop twice
+		gridle_internal_cleanup(gridview_cleanuphook, true);
+	end
 
+	dispatch_push(tmptbl, "internal loading");
 	internal_vid = launch_target( current_game.gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -470,22 +327,24 @@ end
 
 function gridle()
 -- updates settings namespace, needed for some load-time options in gridle_menus etc.
+	system_load("gridle_shared.lua")();          -- functions for managing menus, background music etc. ...
 	load_settings();
 	
 -- grab all dependencies;
-	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
-
 	system_load("scripts/calltrace.lua")();      -- debug features Trace() and Untrace()
+	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
 	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
-	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
 	system_load("scripts/dialog.lua")();         -- dialog used for confirmations 
 	system_load("scripts/keyconf.lua")();        -- input configuration dialoges
 	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
 	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
-	system_load("scripts/3dsupport.lua")();      -- used by detailview, simple model/material/shader loader
+	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
+	system_load("scripts/3dsupport.lua")();      -- used by detailview / customview, simple model/material/shader loader
 	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
+
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
-	system_load("gridle_contmenus.lua")();       -- context menus (quickfilter, database manipulation, ...)
+	system_load("gridle_contextmenus.lua")();    -- context menus (quickfilter, database manipulation, ...)
+	system_load("gridle_internal.lua")();        -- internal launch, any arcan controllable emulator
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	system_load("gridle_customview.lua")();      -- customizable list view
 	
@@ -543,7 +402,7 @@ function gridle()
 	
 -- network remote connection, always on but can allow / disallow connections based on user settings
 	imagery.server = net_listen(settings.listen_host, network_onevent);
-
+	
 -- global
 	image_tracetag(imagery.server, "network server");
 	persist_image(imagery.server);
@@ -556,7 +415,7 @@ function gridle()
 -- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 
 
-	gridle_startbgmusic(settings.bgmusic_playlist);
+	music_start_bgmusic(settings.bgmusic_playlist);
 	if (settings.sortfunctions[settings.sortorder]) then
 		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
 	end
@@ -721,7 +580,7 @@ function setup_gridview()
 	imagery.magnifyimage = load_image("images/magnify.png");
 	image_tracetag(imagery.magnifyimage, "detailview icon");
 
-	settings.cleanup_toggle = gridle_internalcleanup;
+	settings.cleanup_toggle = function() gridle_internal_cleanup(gridview_cleanuphook, false); end
 
 	settings.cell_width  = settings.cell_width  > VRESW and math.floor(VRESW * 0.5) or settings.cell_width;
 	settings.cell_height = settings.cell_height > VRESH and math.floor(VRESH * 0.5) or settings.cell_height;
@@ -734,12 +593,15 @@ end
 
 function network_onevent(source, tbl)
 	if (tbl.kind == "frameserver_terminated") then
--- Caveat: As this one is toggled persistent, it is not entirely sure that we're in a context where delete_image will work
 		if (valid_vid(imagery.server)) then
-			delete_image(imagery.server);
 			imagery.server = nil;
 		else
 			settings.network_remote = "Disabled";
+		end
+
+		if (not valid_vid(imagery.disconnected)) then
+			imagery.disconnected = load_image("images/disconnected.png");
+			image_tracetag(imagery.disconnected, "disconnected");
 		end
 
 		if (valid_vid(imagery.disconnected)) then
@@ -748,8 +610,6 @@ function network_onevent(source, tbl)
 			blend_image(imagery.disconnected, 1.0, 30);
 			blend_image(imagery.disconnected, 0.0, 10);
 		end
-
-		imagery.server = nil;
 
 	elseif (tbl.kind == "resized") then
 		local a = true; -- seriously lua..
@@ -830,57 +690,16 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 end
 
-function load_m3u(resname)
-	if (open_rawresource(resname)) then
--- ignore lines with # 
+function flip_viewmode()
+	if (settings.viewmode == "Grid") then
+		store_key("viewmode", "Custom");
+	else
+		store_key("viewmode", "Grid");
 	end
+	switch_theme("gridle");
 end
 
-function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
-	local dialogwin = dialog_create(message, buttons);
-	local imenu = {};
-
-	imenu["MENU_LEFT"] = function()
-		dialogwin:input("MENU_LEFT");
-		play_audio(soundmap["GRIDCURSOR_MOVE"]);
-	end
-
-	imenu["MENU_RIGHT"] = function()
-		dialogwin:input("MENU_RIGHT");
-		play_audio(soundmap["GRIDCURSOR_MOVE"]);
-	end
-
-	imenu["MENU_SELECT"] = function()
-		local res = dialogwin:input("MENU_SELECT");
-		play_audio(soundmap["MENU_SELECT"]);
-		dispatch_pop();
-		if (valcbs and valcbs[res]) then valcbs[res](); end
-		if (cleanuphook) then cleanuphook(); end
-	end
-
-	if (canescape) then
-		imenu["MENU_ESCAPE"] = function()
-			dialogwin:input("MENU_ESCAPE");
-			play_audio(soundmap["MENU_FADE"]);
-			if (cleanuphook) then cleanuphook(); end
-			dispatch_pop();
-		end
-	end
-
-	play_audio(soundmap["MENU_TOGGLE"]);
-	dispatch_push(imenu, "message dialog");
-	dialogwin:show();
-end
-
-function confirm_shutdown()
-	local valcbs = {};
-	valcbs["YES"] = function() shutdown(); end
-
-	video_3dorder(ORDER_NONE);
-	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, true, valcbs, function() video_3dorder(ORDER_LAST); end);
-end
-
--- also used in intmenus for savestate naming
+-- also used in intmenus for savestate naming, stream resource spec. 
 function osdkbd_inputfun(iotbl, dstkbd)
 	local restbl = keyconfig:match(iotbl);
 	local done   = false;
@@ -929,20 +748,33 @@ function osdkbd_inputcb(iotbl)
 end
 
 function gridle_delete_internal_extras()
-if (valid_vid(imagery.backdrop)) then 
-			delete_image(imagery.backdrop); 
-			imagery.backdrop = BADID;
-		end
-	
-		if (valid_vid(imagery.overlay)) then 
-			delete_image(imagery.overlay); 
-			imagery.overlay = BADID;
-		end
+	if (valid_vid(imagery.backdrop)) then 
+		blend_image(imagery.backdrop, 0.0, settings.transitiondelay);
+		expire_image(imagery.backdrop, settings.transitiondelay);
+		imagery.backdrop = BADID;
+	end
+
+	if (valid_vid(imagery.overlay)) then
+		blend_image(imagery.overlay, 0.0, settings.transitiondelay);
+		expire_image(imagery.overlay, settings.transitiondelay);
+		imagery.overlay = BADID;
+	end
 		
-		if (valid_vid(imagery.bezel)) then
-			delete_image(imagery.bezel);
-			imagery.bezel = BADID;
-		end
+	if (valid_vid(imagery.bezel)) then
+		blend_image(imagery.bezel, 0.0, settings.transitiondelay);
+		expire_image(imagery.bezel, settings.transitiondelay);
+		imagery.bezel = BADID;
+	end
+		
+	if (valid_vid(imagery.cocktail_vid)) then
+		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
+		expire_image(imagery.cocktail_vid, settings.transitiondelay);
+		resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
+		blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
+		move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+		imagery.cocktail_vid = BADID;
+	end
+
 end
 	
 function gridle_load_internal_extras(restbl, tgt)
@@ -1005,8 +837,6 @@ function gridle_keyconf(defer_fun)
 	local listlbls = {};
 	local lastofs = 1;
 	
-	system_load("gridle_intmenus.lua")();
-
 	for ind, key in ipairs(keylabels) do
 		table.insert(listlbls, string.sub(key, 2));
 	end
@@ -1156,38 +986,6 @@ function spawn_magnify( x, y )
 	table.insert(settings.detailvids, maginst);
 	
 	return maginst;
-end
-
-function spawn_warning( message, persist )
--- render message and make sure it is on top
-	local msg = {};
-	local exptime = 100;
-
-	if (type(message) == "table") then
-		exptime = exptime * #message;
-		msg = message;
-	else
-		local msgstr = string.gsub(message, "\\", "\\\\");
-		table.insert(msg, msgstr);
-	end
-	
-	local infowin     = listview_create( msg, VRESW / 2, VRESH / 2 );
-	infowin:show();
-
-	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
-	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
-
-	move_image(infowin.anchor, x, y);
-	hide_image(infowin.cursorvid);
-	if (persist == nil or persist == false) then
-		expire_image(infowin.anchor, exptime);
-		blend_image(infowin.window, 1.0, 50);
-		blend_image(infowin.border, 1.0, 50);
-		blend_image(infowin.window, 0.0, exptime - 50 - 25);
-		blend_image(infowin.border, 0.0, exptime - 50 - 25);
-	end
-
-	return infowin;
 end
 
 function spawn_favoritestar( x, y )
@@ -1734,57 +1532,66 @@ function gridle_clock_pulse()
 	end
 end
 
-function gridle_internalcleanup()
-	kbd_repeat(settings.repeatrate);
-	dispatch_pop();
-
-	hide_image(imagery.crashimage);
-	keyconfig.table = settings.keyconftbl;
-	toggle_mouse_grab(MOUSE_GRABOFF);
-	
+-- shared between grid/customview, finishedhook is called when user has confirmed or the shared parts have been deleted
+-- forced is initially false, this is done in order to confirm shutdown if the state can't be saved
+function gridle_internal_cleanup(finishedhook, forced)
 	if (settings.in_internal) then
-		gridle_delete_internal_extras();
-		
-		if (settings.autosave == "On") then
--- note, this is currently not blocking, and the frameserver termination can be quite
--- aggressive, so there is a possibility for a race-condition here, hacking a safeguard in the meantime.
--- the real solution would be to wait for frameserver to flush event buffer or 'n' seconds, whatever comes first. 
+		if (settings.autosave == "On" or settings.autosave == "On (No Warning)") then
+			if ((settings.capabilities.snapshot == false or settings.capabilities.snapshot == nil) and forced ~= true) then
+				local confirmcmd = {};
+				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); end
+				dialog_option(settings.colourtable.fontstr .. "Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
+				return false;
+			end
+
 			internal_statectl("auto", true);
 			expire_image(internal_vid, 20);
-		else
-			expire_image(internal_vid, settings.transitiondelay);
-		end
-		undo_displaymodes();
-		
-		resize_image(internal_vid, 1, 1, settings.transitiondelay);
-		blend_image(internal_vid, 0.0, settings.transitiondelay);
-		audio_gain(internal_aid, 0.0, settings.transitiondelay);
-		move_image(internal_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
 
-		if (valid_vid(imagery.bezel)) then
-			blend_image(imagery.bezel, 0.0, settings.transitiondelay);
-			expire_image(imagery.bezel, settings.transitiondelay);
+-- hack around keyconfig being called "per game"
+			keyconfig.table = settings.keyconftbl;
 		end
-		
-		if (valid_vid(imagery.cocktail_vid)) then
-			image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
-			expire_image(imagery.cocktail_vid, settings.transitiondelay);
-			resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
-			blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
-			move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
-			imagery.cocktail_vid = BADID;
-		end
-
-		build_grid(settings.cell_width, settings.cell_height);
-		dispatch_pop();
-	else
-		delete_image(internal_vid);
-	end
 	
+		undo_displaymodes();
+		gridle_delete_internal_extras();
+
+-- since new screenshots /etc. might have appeared, update cache 
+		resourcefinder_cache.invalidate = true;
+		local gameno = current_game_cellid();
+		resourcefinder_search(customview.gametbl, true);
+		resourcefinder_cache.invalidate = false;
+		settings.in_internal = false;
+	end
+
+	toggle_mouse_grab(MOUSE_GRABOFF);
+	kbd_repeat(settings.repeatrate);
+
+	local disp = "";
+
+	repeat
+		disp = dispatch_pop();
+	until disp ~= "" and disp ~= "internal loading";
+		
+	finishedhook();
+end
+
+function gridview_cleanuphook()
+	expire_image(internal_vid, 1, 1, settings.transitiondelay);
+	resize_image(internal_vid, 1, 1, settings.transitiondelay);
+	blend_image(internal_vid, 0.0, settings.transitiondelay);
+	audio_gain(internal_aid, 0.0, settings.transitiondelay);
+	move_image(internal_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+	hide_image(imagery.crashimage);
+
 	internal_vid = BADID;
 	internal_aid = BADID;
+
+	if (settings.status_loading) then
+		remove_loaded();
+	else
+		build_grid(settings.cell_width, settings.cell_height);
+	end
+	
 	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
-	settings.in_internal = false;
 	
 	if ((valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only")) then
 		resume_movie(imagery.musicplayer);
@@ -1824,6 +1631,7 @@ function gridle_internal_setup(source, datatbl, gametbl)
 		internal_aid = datatbl.source_audio;
 		internal_vid = source;
 
+-- (reset toggles? NOTE: do this on a per game basis)  
 --	settings.internal_toggles.bezel     = false;
 --	settings.internal_toggles.overlay   = false;
 --	settings.internal_toggles.backdrops = false;
@@ -1847,13 +1655,13 @@ function gridle_internal_setup(source, datatbl, gametbl)
 end
 
 function remove_loaded()
-	status_loading = false;
+	settings.status_loading = false;
 	delete_image(imagery.loadingbg);
 	hide_image(imagery.loading);
 end
 
 function show_loading()
-	status_loading = true;
+	settings.status_loading = true;
 	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
 	blend_image(imagery.loadingbg, 0.6, 10);
 	order_image(imagery.loadingbg, INGAMELAYER_BACKGROUND);
@@ -1881,7 +1689,6 @@ end
 
 function gridle_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
-
 		if (not settings.in_internal) then
 			erase_grid(true);
 			zap_whitegrid();
@@ -1901,8 +1708,9 @@ function gridle_internal_status(source, datatbl)
 
 -- it's up to the user to press escape
 	elseif (datatbl.kind == "frameserver_terminated") then
-		if (status_loading) then
+		if (settings.status_loading) then
 			remove_loaded();
+			dispatch_pop();
 		end
 	
 		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
@@ -2059,7 +1867,7 @@ function gridle_internalinput(iotbl)
 					if (valid_vid(imagery.record_target)) then
 						disable_record()
 					elseif escape_locked == nil or escape_locked == false then 
-						settings.cleanup_toggle();
+						return settings.cleanup_toggle();
 					end
 
 				elseif (val == "MENU_TOGGLE") then
@@ -2092,19 +1900,6 @@ function gridle_internalinput(iotbl)
 -- default behavior is to forward even unmapped keys, the frameserver will simply ignore
 -- and hijack target then allows for local use even when input hasn't been set up correctly
 		target_input(iotbl, internal_vid);
-	end
-end
-
-function gridle_dispatchinput(iotbl, override)
-	local restbl = keyconfig:match(iotbl);
-	
-	if (restbl and (iotbl.active or iotbl.kind == "analog")) then
-		for ind,val in pairs(restbl) do
-
-			if (settings.iodispatch[val]) then
-				settings.iodispatch[val](restbl, iotbl);
-			end
-		end
 	end
 end
 
@@ -2254,9 +2049,8 @@ function load_settings()
 	end
 end
 
+-- virtualize to filter out bad resnames
 function play_audio(resname)
 	if (resname == nil) then return; end
 	settings.play_audio(resname, settings.effect_gain);
 end
-
-gridle_input = gridle_dispatchinput;

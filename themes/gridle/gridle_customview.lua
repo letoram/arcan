@@ -470,7 +470,8 @@ end
 
 local function customview_internal(source, datatbl)
 	if (datatbl.kind == "resized") then
-
+		hide_image(imagery.loading);
+		
 		if (settings.in_internal == false) then
 			dispatch_push(settings.iodispatch, "(custom) internal_input", gridle_internalinput);
 		end
@@ -478,52 +479,45 @@ local function customview_internal(source, datatbl)
 		gridle_internal_setup(source, datatbl, customview.gametbl);
 
 	elseif (datatbl.kind == "frameserver_terminated") then
+
+		pop_video_context();
 		local term = load_image("images/terminated.png");
-		blend_image(term, 1.0, settings.fadedelay);
+		image_tracetag(term, "terminated");
+		show_image(term);
+		blend_image(term, 1.0, 50);
 		resize_image(term, VRESW, VRESH);
 		order_image(term, max_current_image_order());
+		blend_image(term, 0.0, 20);
 		dispatch_pop();
-		
+
 	elseif (datatbl.kind == "message") then
 		spawn_warning(datatbl.message);
 	end
 end
 
-customview.cleanup = function()
+local function cleanup()
 -- since new screenshots /etc. might have appeared, update cache 
 	resourcefinder_cache.invalidate = true;
 		local gameno = current_game_cellid();
 		resourcefinder_search(customview.gametbl, true);
 	resourcefinder_cache.invalidate = false;
 
-	toggle_mouse_grab(MOUSE_GRABOFF);
-	
-	local resetview = function()
-		pop_video_context();
-		imagery.server = nil;
-		dispatch_pop();
-		settings.in_internal = false;
-		video_3dorder(ORDER_LAST);
-	end
-
--- setup a quick timer, wait 20 ticks for autosave etc. to finish THEN cleanup.
-	if (settings.autosave == "On" and valid_vid(internal_vid)) then 
+	if ( (settings.autosave == "On" or (settings.autosave == "On (No Warning)")) and valid_vid(internal_vid)) then
 		local counter = 20;
+		local old_clock = gridle_clock_pulse;
 		blend_image(internal_vid, 0.0, 20);
 		audio_gain(internal_aid, 0.0, 20);
 		
-		internal_statectl("auto", true); 
-		gridle_clock_pulse = function() 
+		gridle_clock_pulse = function()
 			if counter > 0 then
 				counter = counter - 1;
 			else
-				resetview();
-				gridle_clock_pulse = nil;
+				pop_video_context();
+				gridle_clock_pulse = old_clock;
 			end
 		end
 	else
--- no autosave, pop_video_context is safe
-		resetview();
+		pop_video_context();
 	end
 end
 
@@ -533,25 +527,40 @@ local function launch(tbl)
 	end
 	
 	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
-	push_video_context();
 
 -- can also be invoked from the context menus
 	if (launch_internal) then
+		push_video_context();
+
+-- load the standard icons needed to show internal launch info
+		imagery.loading = load_image("images/colourwheel.png");
+		image_tracetag(imagery.loading, "loading");
+		resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
+		move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+		show_image(imagery.loading);
+		rotate_image(imagery.loading, 0);
+		rotate_image(imagery.loading, 2048, 200);
+	
+		imagery.nosave  = load_image("images/brokensave.png");
+		image_tracetag(imagery.nosave, "nosave");
+
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		customview.gametbl = tbl;
 		settings.capabilities = tbl.capabilities;
 		settings.cleanup_toggle = customview.cleanup;
 
-		if (valid_vid(internal_vid)) then
-			delete_image(internal_vid);
+		local tmptbl = {};
+		tmptbl["MENU_ESCAPE"] = function()
+			pop_video_context();
+			dispatch_pop();
 		end
 
+		dispatch_push(tmptbl, "internal loading");
 		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
 	else
 		settings.in_internal = false;
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
 		launch_target( tbl.gameid, LAUNCH_EXTERNAL);
-		pop_video_context();
 	end
 end
 
@@ -792,19 +801,10 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
 	table.insert(mainlbls, "---");
-	table.insert(mainlbls, "Cancel");
+	table.insert(mainlbls, "Switch to Gridview");
 	
-	mainptrs["Cancel"] = function(label, save)
-		while current_menu ~= nil do
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		end
-		
-		play_audio(soundmap["MENU_FADE"]);
-		dispatch_pop();
-		pop_video_context();
-		customview.in_customview = false;
-		setup_gridview();
+	mainptrs["Switch to Gridview"] = function(label, save)
+		flip_viewmode();
 	end
 	
 	mainptrs["Save/Finish"] = save_config;
@@ -828,8 +828,6 @@ local function reset_customview()
 -- then copy the server vid again
 		push_video_context();
 		dispatch_pop();
-		customview.in_customview = false;
-		setup_gridview();
 	else
 		navi_change(navi, navitbl);
 	end
@@ -974,6 +972,7 @@ local function setup_customview()
 	local background = nil;
 	for ind, val in ipairs( customview.current.static ) do
 		local vid = load_image( val.res );
+		image_tracetag(vid, "static(" .. val.res ..")");
 		place_item( vid, val );
 	end
 
@@ -1107,6 +1106,10 @@ local function customview_3dbase()
 	customview.light_shader = lshdr;
 end
 
+customview.cleanup = function()
+		gridle_internal_cleanup(cleanup, false);
+end
+
 function gridle_customview()
 	local disptbl;
 	
@@ -1119,11 +1122,13 @@ function gridle_customview()
 	setup_3dsupport();
 	customview_3dbase();
 
+	gridle_startbgmusic();
+
 	if (resource("customview_cfg.lua")) then
 		customview.background    = nil;
 		customview.bgshader      = nil;
 		customview.current       = system_load("customview_cfg.lua")();
-	
+		
 		if (customview.current) then
 			customview.in_customview = true;
 			customview.in_config = false;
