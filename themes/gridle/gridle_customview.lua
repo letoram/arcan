@@ -478,6 +478,11 @@ local function customview_internal(source, datatbl)
 
 		gridle_internal_setup(source, datatbl, customview.gametbl);
 
+	elseif (datatbl.kind == "state_size") then
+		if (datatbl.state_size <= 0) then
+			disable_snapshot();
+		end
+	
 	elseif (datatbl.kind == "frameserver_terminated") then
 
 		pop_video_context();
@@ -569,7 +574,7 @@ local function effecttrig(label)
 	local shdr = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. label, "bgeffect", {});
 	customview.bgshader = shdr;
 	customview.bgshader_label = label;
-
+	
 	update_bgshdr();
 	settings.iodispatch["MENU_ESCAPE"]("", false, false);
 end
@@ -1070,8 +1075,22 @@ local function setup_customview()
 			local res = navi:trigger_selected();
 			if (res ~= nil) then
 				current_game = res;
+				current_game.capabilities = launch_target_capabilities( res.target );
 				play_audio(soundmap["MENU_TOGGLE"]);
 				video_3dorder(ORDER_NONE);
+
+				gridle_launchexternal = function()
+					play_audio(soundmap["LAUNCH_EXTERNAL"]);
+					launch_target( current_game.gameid, LAUNCH_EXTERNAL);
+				end
+
+				gridle_launchinternal = function()
+					local old_mode = settings.default_launchmode;
+					settings.default_launchmode = "Internal";
+					launch(current_game);
+					settings.default_launchmode = old_mode;
+				end
+	 
 				gridlemenu_context(function(upd)
 					if (upd) then navi:update_list(settings.games); end
 					video_3dorder(ORDER_LAST);
@@ -1083,7 +1102,7 @@ local function setup_customview()
 			local res = navi:trigger_selected();
 			if (res ~= nil) then
 				current_game = res;
-				res.capabilities = launch_target_capabilities( res.target )
+				res.capabilities = launch_target_capabilities( res.target );
 				launch(res);
 			else
 				navi_change(navi, navitbl);
