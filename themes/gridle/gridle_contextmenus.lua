@@ -328,6 +328,7 @@ function gridlemenu_context( cleanup_trigger, display_image )
 		if (current_game.capabilities.external_launch and current_game.capabilities.internal_launch) then
 			table.insert(mainlbls, "Launch...");
 			ptrs[ "Launch..." ] = function() menu_spawnmenu(launchlbls, launchptrs, {}); end
+
 		elseif (current_game.capabilities.external_launch) then
 			table.insert(mainlbls, "Launch External");
 			ptrs[ "Launch External" ] = function()
