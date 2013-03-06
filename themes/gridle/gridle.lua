@@ -261,7 +261,6 @@ function broadcast_game(gametbl, playing)
 end
 
 function load_soundmap(name)
-
 	for key, val in pairs(soundmap) do
 		if (val ~= nil and val ~= BADID) then
 			delete_audio(val);
@@ -281,7 +280,6 @@ function load_soundmap(name)
 			soundmap[key] = BADID;
 		end
 	end
-	
 end
 
 function gridle_launchexternal()
@@ -747,59 +745,6 @@ function osdkbd_inputcb(iotbl)
 	end
 end
 
-function gridle_delete_internal_extras()
-	if (valid_vid(imagery.backdrop)) then 
-		blend_image(imagery.backdrop, 0.0, settings.transitiondelay);
-		expire_image(imagery.backdrop, settings.transitiondelay);
-		imagery.backdrop = BADID;
-	end
-
-	if (valid_vid(imagery.overlay)) then
-		blend_image(imagery.overlay, 0.0, settings.transitiondelay);
-		expire_image(imagery.overlay, settings.transitiondelay);
-		imagery.overlay = BADID;
-	end
-		
-	if (valid_vid(imagery.bezel)) then
-		blend_image(imagery.bezel, 0.0, settings.transitiondelay);
-		expire_image(imagery.bezel, settings.transitiondelay);
-		imagery.bezel = BADID;
-	end
-		
-	if (valid_vid(imagery.cocktail_vid)) then
-		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
-		expire_image(imagery.cocktail_vid, settings.transitiondelay);
-		resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
-		blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
-		move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
-		imagery.cocktail_vid = BADID;
-	end
-
-end
-	
-function gridle_load_internal_extras(restbl, tgt)
-	if (restbl) then
-		if (restbl.bezels and restbl.bezels[1]) then 
-			imagery.bezel = load_image_asynch(restbl.bezels[1]);
-			image_tracetag(imagery.bezel, "bezel");
-		elseif (resource("bezels/" .. tgt .. ".png")) then
-			imagery.bezel = load_image_asynch("bezels/" .. tgt .. ".png");
-			image_tracetag(imagery.bezel, "bezel");
-		end
-			
-		if (restbl.overlays and restbl.overlays[1]) then
-			imagery.overlay = load_image_asynch(restbl.overlays[1]); 
-			image_mask_clear(imagery.overlay, MASK_LIVING);
-			image_tracetag(imagery.overlay, "overlay");
-		end 
-		if (restbl.backdrops and restbl.backdrops[1]) then
-			imagery.backdrop = load_image_asynch(restbl.backdrops[1]);
-			image_mask_clear(imagery.backdrop, MASK_LIVING);
-			image_tracetag(imagery.backdrop, "backdrop");
-		end
-	end
-end
-
 function keyconf_helper(message)
 	if (infowin) then
 		infowin:destroy();
@@ -858,33 +803,36 @@ function gridle_keyconf(defer_fun)
 		keyconfig:to_front();
 
 -- replace the current input function until we have a working keyconfig
-		gridle_input = function(iotbl) -- keyconfig io function hook
-			if (keyconfig:input(iotbl) == true) then
-				keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
-				zap_resource("ledsym.lua"); -- delete this one and retry ledconf
+	dispatch_push({}, "keyconfig (full)", function(iotbl)
+		if (keyconfig:input(iotbl) == true) then
+			keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
+			zap_resource("ledsym.lua"); -- delete this one and retry ledconf
+			kbd_repeat(settings.repeatrate);
+			dispatch_pop();
+			
+			if (keyconf_labelview) then
+				keyconf_labelview:destroy();
+			end
 
-				gridle_input = gridle_dispatchinput;
-				kbd_repeat(settings.repeatrate);
-				if (keyconf_labelview) then keyconf_labelview:destroy(); end
-				gridle_ledconf(defer_fun);
+			gridle_ledconf(defer_fun);
 
-			else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
-				if (keyconfig.ofs ~= lastofs and keyconf_labelview) then 
-					lastofs = keyconfig.ofs;
-					keyconf_labelview:move_cursor(1, 1); 
-					keyconf_helper( helplabels[ keyconf_labelview:select() ] );
+		else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
+			if (keyconfig.ofs ~= lastofs and keyconf_labelview) then
+				lastofs = keyconfig.ofs;
+				keyconf_labelview:move_cursor(1, 1);
+				keyconf_helper( helplabels[ keyconf_labelview:select() ] );
 
-				elseif (keyconfig.playerconf and keyconf_labelview) then
-					keyconf_labelview:destroy();
-					keyconf_helper();
-					keyconf_labelview = nil;
-				end
+			elseif (keyconfig.playerconf and keyconf_labelview) then
+				keyconf_labelview:destroy();
+				keyconf_helper();
+				keyconf_labelview = nil;
 			end
 		end
+	end);
 
-		return false;
-	else
-		return true;
+	return false;
+else
+	return true;
 	end
 end
  

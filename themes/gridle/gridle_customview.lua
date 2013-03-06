@@ -815,7 +815,7 @@ local function show_config()
 	customview.root_menu = current_menu;
 
 	current_menu:show();
-	gridlemenu_defaultdispatch(imenu);
+	menu_defaultdispatch(imenu);
 	dispatch_push(imenu);
 	move_image(current_menu.anchor, 10, VRESH * 0.1, settings.fadedelay);
 end
@@ -1122,7 +1122,7 @@ function gridle_customview()
 	setup_3dsupport();
 	customview_3dbase();
 
-	gridle_startbgmusic();
+	music_start_bgmusic();
 
 	if (resource("customview_cfg.lua")) then
 		customview.background    = nil;

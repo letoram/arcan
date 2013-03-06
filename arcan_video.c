@@ -3925,7 +3925,7 @@ bool arcan_video_prepare_external()
 
 /* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
 	arcan_event_deinit(arcan_event_defaultctx());
-	arcan_shader_flush();
+	arcan_shader_unload_all();
 
 	return true;
 }

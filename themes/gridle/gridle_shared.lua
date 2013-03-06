@@ -515,3 +515,69 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	play_audio(soundmap["SUBMENU_TOGGLE"]);
 	return current_menu;
 end
+
+--
+-- populate a dispatch table for working with a current_menu global
+-- will not override currently defined symbols
+--
+function menu_defaultdispatch(dst)
+	if (not dst["MENU_UP"]) then
+		dst["MENU_UP"] = function(iotbl)
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
+			current_menu:move_cursor(-1, true); 
+		end
+	end
+
+	if (not dst["MENU_DOWN"]) then
+			dst["MENU_DOWN"] = function(iotbl)
+			play_audio(soundmap["GRIDCURSOR_MOVE"]);
+			current_menu:move_cursor(1, true); 
+		end
+	end
+	
+	if (not dst["MENU_SELECT"]) then
+		dst["MENU_SELECT"] = function(iotbl)
+			selectlbl = current_menu:select();
+			if (current_menu.ptrs[selectlbl]) then
+				current_menu.ptrs[selectlbl](selectlbl, false);
+				if (current_menu and current_menu.updatecb) then
+					current_menu.updatecb();
+				end
+			end
+		end
+	end
+	
+-- figure out if we should modify the settings table
+	if (not dst["FLAG_FAVORITE"]) then
+		dst["FLAG_FAVORITE"] = function(iotbl)
+				selectlbl = current_menu:select();
+				if (current_menu.ptrs[selectlbl]) then
+					current_menu.ptrs[selectlbl](selectlbl, true);
+					if (current_menu and current_menu.updatecb) then
+						current_menu.updatecb();
+					end
+				end
+			end
+	end
+	
+	if (not dst["MENU_ESCAPE"]) then
+		dst["MENU_ESCAPE"] = function(iotbl, restbl, silent)
+			current_menu:destroy();
+			if (current_menu.parent ~= nil) then
+				if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
+				current_menu = current_menu.parent;
+			else -- top level
+				play_audio(soundmap["MENU_FADE"]);
+				dispatch_pop();
+			end
+		end
+	end
+	
+	if (not dst["MENU_RIGHT"]) then
+		dst["MENU_RIGHT"] = dst["MENU_SELECT"];
+	end
+	
+	if (not dst["MENU_LEFT"]) then
+		dst["MENU_LEFT"]  = dst["MENU_ESCAPE"];
+	end
+end

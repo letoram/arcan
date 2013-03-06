@@ -4,20 +4,6 @@
 
 local updatebgtrigger = nil;
 
-local function setbgfun(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
-	settings.bgname = label;
-
-	if (save) then 
-		store_key("bgname", label);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-	
-  updatebgtrigger();
-end
-
 local function animnums(i)
 	if (i > 1) then
 		return math.pow(2, i);
@@ -46,45 +32,6 @@ local function cellwnum(i)
 	end
 end
 
-local function bgtileupdate(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.tilebg = label;
-
-	if (save) then 
-		store_key("tilebg", label);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-	
-  updatebgtrigger();
-end
-
-local function autosaveupd(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.autosave = label;
-	
-	if (save) then
-		store_key("autosave", label);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-	
-end
-
-local function launchmodeupdate(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.default_launchmode = label;
-	
-	if (save) then
-		store_key("default_launchmode", label);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-end
-
 -- hack around scoping and upvalue
 local function bgtrig()
 	updatebgtrigger();
@@ -104,34 +51,6 @@ local function reset_customview()
 	push_video_context();
 
 	gridle_customview();
-end
-
-local function efftrigger(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.bgeffect = label;
-	updatebgtrigger();
-	
-	if (save) then
-		store_key("bgeffect", settings.bgeffect);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-	
-end
-
-local function setsndfun(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.soundmap = label;
-
-	if (save) then
-		store_key("soundmap", settings.soundmap);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-
-	load_soundmap(label);
 end
 
 local dispptrs = {};
@@ -155,9 +74,9 @@ local gamelbls = {};
 local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
 
 if (settings.viewmode == "Grid") then
-	add_submenu(displbls, dispptrs, "Image...", "bgname", build_globmenu("backgrounds/*.png", setbgfun, ALL_RESOURCES));
-	add_submenu(displbls, dispptrs, "Background Effects...", "bgeffect", bgeffmen, bgeffdesc);
-	add_submenu(displbls, dispptrs, "Cell Background...", "tilebg", {"None", "White", "Black", "Sysicons"}, {None = bgtileupdate, White = bgtileupdate, Black = bgtileupdate, Sysicons = bgtileupdate});
+	add_submenu(displbls, dispptrs, "Image...", "bgname", gen_glob_menu("bgname", "backgrounds/*.png", ALL_RESOURCES, bgtrig, nil));
+	add_submenu(displbls, dispptrs, "Background Effects...", "bgeffect", gen_glob_menu("bgeffect", "shaders/bgeffects/*.fShader", ALL_RESOURCES, bgtrig, nil));
+	add_submenu(displbls, dispptrs, "Cell Background...", "tilebg", gen_tbl_menu("tilebg", {"None", "White", "Black", "Sysicons"}, bgtrig, true));
 	add_submenu(displbls, dispptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
 	add_submenu(displbls, dispptrs, "Cell Width...", "cell_width", gen_num_menu("cell_width", 1, cellwnum, 10));
 	add_submenu(displbls, dispptrs, "Cell Height...", "cell_height", gen_num_menu("cell_height", 1, cellhnum, 10));
@@ -177,7 +96,7 @@ add_submenu(displbls, dispptrs, "Default View Mode...", nil, gen_tbl_menu(nil, {
 	dialog_option( "Changing view mode requires a restart, proceed?", {"Yes", "No"}, false, {Yes = flip_viewmode}, nil );
 end, true));
 
-add_submenu(soundlbls, soundptrs, "Soundmaps...", "soundmap", build_globmenu("soundmaps/*", setsndfun, ALL_RESOURCES));
+add_submenu(soundlbls, soundptrs, "Soundmaps...", "soundmap", gen_glob_menu("soundmap", "soundmaps/*", ALL_RESOURCES, function(label) load_soundmap(label); end, nil));
 add_submenu(soundlbls, soundptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
 add_submenu(soundlbls, soundptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
 
@@ -320,77 +239,13 @@ inputptrs["Reconfigure Keys (Players)"] = function()
 	keyconfig:reconfigure_players();
 	kbd_repeat(0);
 
-	gridle_input = function(iotbl) -- keyconfig io function hook
+	dispatch_push({}, "reconfigure player keys", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
 			keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
-
-			gridle_input = gridle_dispatchinput;
 			kbd_repeat(settings.repeatrate);
+			dispatch_pop();
 		end
-	end
-end
-
--- reuse by other menu functions
-function gridlemenu_defaultdispatch(dst)
-	if (not dst["MENU_UP"]) then
-		dst["MENU_UP"] = function(iotbl)
-			play_audio(soundmap["GRIDCURSOR_MOVE"]);
-			current_menu:move_cursor(-1, true); 
-		end
-	end
-
-	if (not dst["MENU_DOWN"]) then
-			dst["MENU_DOWN"] = function(iotbl)
-			play_audio(soundmap["GRIDCURSOR_MOVE"]);
-			current_menu:move_cursor(1, true); 
-		end
-	end
-	
-	if (not dst["MENU_SELECT"]) then
-		dst["MENU_SELECT"] = function(iotbl)
-			selectlbl = current_menu:select();
-			if (current_menu.ptrs[selectlbl]) then
-				current_menu.ptrs[selectlbl](selectlbl, false);
-				if (current_menu and current_menu.updatecb) then
-					current_menu.updatecb();
-				end
-			end
-		end
-	end
-	
--- figure out if we should modify the settings table
-	if (not dst["FLAG_FAVORITE"]) then
-		dst["FLAG_FAVORITE"] = function(iotbl)
-				selectlbl = current_menu:select();
-				if (current_menu.ptrs[selectlbl]) then
-					current_menu.ptrs[selectlbl](selectlbl, true);
-					if (current_menu and current_menu.updatecb) then
-						current_menu.updatecb();
-					end
-				end
-			end
-	end
-	
-	if (not dst["MENU_ESCAPE"]) then
-		dst["MENU_ESCAPE"] = function(iotbl, restbl, silent)
-			current_menu:destroy();
-			if (current_menu.parent ~= nil) then
-				if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
-				current_menu = current_menu.parent;
-			else -- top level
-				play_audio(soundmap["MENU_FADE"]);
-				dispatch_pop();
-			end
-		end
-	end
-	
-	if (not dst["MENU_RIGHT"]) then
-		dst["MENU_RIGHT"] = dst["MENU_SELECT"];
-	end
-	
-	if (not dst["MENU_LEFT"]) then
-		dst["MENU_LEFT"]  = dst["MENU_ESCAPE"];
-	end
+	end);
 end
 
 function gridlemenu_settings(cleanup_hook, filter_hook)
@@ -422,7 +277,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 		init_leds();
 	end
 
-	gridlemenu_defaultdispatch(imenu);
+	menu_defaultdispatch(imenu);
 	if (filter_hook) then
 		updatebgtrigger = filter_hook;
 	else
