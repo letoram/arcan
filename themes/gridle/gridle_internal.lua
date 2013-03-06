@@ -98,12 +98,12 @@ inputmodeptrs["Reconfigure Keys"] = function()
 	keyconfig:reconfigure_players();
 	kbd_repeat(0);
 
-	gridle_input = function(iotbl) -- keyconfig io function hook
+	dispatch_push({}, "reconfigure keys (player, in game)", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
-			gridle_input = gridle_dispatchinput;
+			dispatch_pop();
 			kbd_repeat(settings.repeatrate);
 		end
-	end
+	end);
 end
 
 inputmodeptrs["Toggle Mouse Grab"] = inputmodechg;
@@ -1195,12 +1195,12 @@ local function configure_players(dstname)
 	keyconfig:reconfigure_players();
 	kbd_repeat(0);
 
-	gridle_input = function(iotbl)
+	dispatch_push({}, "reconfigure players (" .. tostring(dstname) ..")", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
-			gridle_input = gridle_dispatchinput;
+			dispatch_pop();
 			keyconfig.keyfile = keyconfig_oldfname;
 		end
-	end
+	end);
 end
 
 local function add_gamelbls( lbltbl, ptrtbl )
@@ -1591,8 +1591,6 @@ streamptrs["Define Stream..."] = function(label, store)
 		opts.prefix = "rtmp://";
 		opts.startstr = settings.stream_url;
 
-		print("string_url:", settings.stream_url, tostring(resource("stream.key")));
-
 -- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
 		if (settings.stream_url == "rtmp://" and resource("stream.key")) then
 			if (open_rawresource("stream.key")) then
@@ -1608,22 +1606,20 @@ streamptrs["Define Stream..."] = function(label, store)
 		osdsavekbd:show();
 
 -- do this here so we have access to the namespace where osdsavekbd exists
-		gridle_input = function(iotbl)
+		dispatch_push({}, "osdkbd (streaming)", function(iotbl)
 			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
-
 			if (complete) then
 				osdsavekbd:destroy();
 				osdsavekbd = nil;
-				gridle_input = gridle_dispatchinput;
-
+				dispatch_pop();
 				if (resstr ~= nil and string.len(resstr) > 0) then
 					settings.stream_url = resstr;
 					store_key("stream_url", resstr);
 				end
-
 			end
 		end
-	end
+		);
+end
 
 -- only if destination has been set up
 table.insert(streammenu, "Define Stream...");
@@ -1848,7 +1844,7 @@ if (#menulbls > 0 and settingslbls) then
 		menu_spawnmenu( recordlist, recordptrs, def);
 	end
 
-	gridlemenu_defaultdispatch(imenu);
+	menu_defaultdispatch(imenu);
 	dispatch_push(imenu);
 	
 	settings.context_menu = nil;
@@ -1858,3 +1854,56 @@ if (#menulbls > 0 and settingslbls) then
 	play_audio(soundmap["MENU_TOGGLE"]);
 	move_image(current_menu.anchor, 10, math.floor(VRESH * 0.1), settings.fadedelay);
 end
+
+function gridle_load_internal_extras(restbl, tgt)
+	if (restbl) then
+		if (restbl.bezels and restbl.bezels[1]) then 
+			imagery.bezel = load_image_asynch(restbl.bezels[1]);
+			image_tracetag(imagery.bezel, "bezel");
+		elseif (resource("bezels/" .. tgt .. ".png")) then
+			imagery.bezel = load_image_asynch("bezels/" .. tgt .. ".png");
+			image_tracetag(imagery.bezel, "bezel");
+		end
+			
+		if (restbl.overlays and restbl.overlays[1]) then
+			imagery.overlay = load_image_asynch(restbl.overlays[1]); 
+			image_mask_clear(imagery.overlay, MASK_LIVING);
+			image_tracetag(imagery.overlay, "overlay");
+		end 
+		if (restbl.backdrops and restbl.backdrops[1]) then
+			imagery.backdrop = load_image_asynch(restbl.backdrops[1]);
+			image_mask_clear(imagery.backdrop, MASK_LIVING);
+			image_tracetag(imagery.backdrop, "backdrop");
+		end
+	end
+end
+
+function gridle_delete_internal_extras()
+	if (valid_vid(imagery.backdrop)) then 
+		blend_image(imagery.backdrop, 0.0, settings.transitiondelay);
+		expire_image(imagery.backdrop, settings.transitiondelay);
+		imagery.backdrop = BADID;
+	end
+
+	if (valid_vid(imagery.overlay)) then
+		blend_image(imagery.overlay, 0.0, settings.transitiondelay);
+		expire_image(imagery.overlay, settings.transitiondelay);
+		imagery.overlay = BADID;
+	end
+		
+	if (valid_vid(imagery.bezel)) then
+		blend_image(imagery.bezel, 0.0, settings.transitiondelay);
+		expire_image(imagery.bezel, settings.transitiondelay);
+		imagery.bezel = BADID;
+	end
+		
+	if (valid_vid(imagery.cocktail_vid)) then
+		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
+		expire_image(imagery.cocktail_vid, settings.transitiondelay);
+		resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
+		blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
+		move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+		imagery.cocktail_vid = BADID;
+	end
+end
+	

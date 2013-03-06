@@ -376,7 +376,7 @@ function gridlemenu_context( cleanup_trigger, display_image )
 	update_status();
 	local props = image_surface_properties(settings.statuslist.border, 5);
 
-	gridlemenu_defaultdispatch(itbl);
+	menu_defaultdispatch(itbl);
 	dispatch_push(itbl, "context_menu");
 	current_menu:show();
 
