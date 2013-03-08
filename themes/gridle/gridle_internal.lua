@@ -1311,7 +1311,6 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				end
 
 				valcbs["NO"]  = function()	end
-
 				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, true, valcbs, function() settings.iodispatch["MENU_ESCAPE"](nil, nil, true); end );
 			end
 		end

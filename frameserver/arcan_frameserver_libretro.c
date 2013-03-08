@@ -159,10 +159,10 @@ static void push_ntsc(unsigned width, unsigned height, const uint16_t* ntsc_imb,
 	size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
 
 /* only draw on every other line, so we can easily mix or blend interleaved (or just duplicate) */
-	snes_ntsc_blit(&retroctx.ntscctx, ntsc_imb, width, 0, width, height, outp, linew * 2);
+	snes_ntsc_blit(&retroctx.ntscctx, ntsc_imb, width, 0, width, height, outp, linew);
 
 	for (int row = 1; row < height * 2; row += 2)
-		memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew);
+	memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew); 
 }
 
 /* better distribution for conversion (white is white ..) */
@@ -937,7 +937,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			(float)retroctx.mspf, (float)retroctx.avinfo.timing.sample_rate);
 
 		LOG("(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE);
-		retroctx.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE, 5 /* quality */, &errc);
+		retroctx.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
 
 /* intermediate buffer for resampling and not relying on a well-behaving shmpage */
 		retroctx.audbuf_sz = retroctx.avinfo.timing.sample_rate * sizeof(uint16_t) * 2;
@@ -1180,7 +1180,7 @@ static void push_stats()
 	}
 
 	if (maxv > 0){
-		yv += PXFONT_HEIGHT * 2;
+			yv += PXFONT_HEIGHT * 2;
 		float yscale = (float)(PXFONT_HEIGHT * 2) / (float) maxv;
 		ofs = STEPBACK(retroctx.xferbuf_ofs);
 		count = 0;
@@ -1198,6 +1198,7 @@ static void push_stats()
 			count++;
 		}
 	}
+
 }
 
 #undef STEPBACK

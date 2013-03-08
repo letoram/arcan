@@ -277,6 +277,10 @@ endif(APR_LIBRARIES)
 include_directories(${INCLUDE_DIRECTORIES})
 
 # OS Specific modifications
+#
+# This is mostly out of date, although it should be possible to get up to speed without
+# much effort, it still requires someone taking on that job for OSX
+#
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 #
 # the default paths / filenames for OSX default to
@@ -337,8 +341,8 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
-	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c)
-
+	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)
+	set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
 	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
@@ -363,9 +367,8 @@ LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 LIST(APPEND FSRV_LIBRARIES -lrt -lm)
 
-add_custom_target(arcan_target_backend DEPENDS "arcan_target.c")
-add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c)
-add_dependencies(arcan_hijack arcan_target_backend)
+add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)
+set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 # part of tools to troubleshoot / test hijack for a target (intended for the romman)

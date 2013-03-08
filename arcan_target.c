@@ -34,6 +34,8 @@
 #include <poll.h>
 #include <signal.h>
 
+#include "frameserver/resampler/speex_resampler.h"
+
 #ifdef ENABLE_X11_HIJACK
 #include <X11/X.h>
 #include <X11/Xlib.h>
@@ -119,13 +121,14 @@ static struct {
 
 static struct {
 /* audio */
+	bool redirect_audio;
 	float attenuation;
 	uint16_t frequency;
 	uint8_t channels;
 	uint16_t format;
+	SpeexResamplerState* resampler;
 	
-/* keep track of video surface size as it may differ pre/post NTSC */
-	unsigned width, height, sourcew, sourceh;
+	unsigned sourcew, sourceh;
 
 /* merging event pairs to single mouse motion events */
 	int lastmx;
@@ -226,22 +229,6 @@ void arcan_warning(const char* msg, ...)
  * respective target.
  */
 
-static void(*acbfun)(void*, uint8_t*, int) = NULL;
-static void audiocb(void *userdata, uint8_t *stream, int len)
-{
-	if (acbfun) {
-		acbfun(userdata, stream, len);
-		int16_t* samples = (int16_t*)stream;
-
-		len /= 2;
-		for (; len; len--, samples++) {
-			int vl = *samples * (int)(255.0 * global.attenuation) >> 8;
-			*samples = clamp(vl, SHRT_MIN, SHRT_MAX);
-		}
-	}
-}
-
-/* select friends from arcan_general as we don't want to take the entire .o in */
 #include <time.h>
 static inline bool parent_alive()
 {
@@ -258,7 +245,7 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return sem_unlink(key);
 }
 
-/* left for legacy reasons, old timedwait used timedwait which 
+/* left for legacy reasons, old timedwait used timedwait which
  * was broken on a lot of platforms. Now shmget spawns a guardthread instead */
 int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
 {
@@ -266,6 +253,35 @@ int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
 		return sem_trywait(semaphore);
 	else
 		return sem_wait(semaphore);
+}
+
+static void(*acbfun)(void*, uint8_t*, int) = NULL;
+static void audiocb(void *userdata, uint8_t *stream, int len)
+{
+/* NOTE: incomplete still;
+ * 1. need to convert mono or !S16int input to S16INT stereo before speeding,
+ * 2. how does speex manage same in-out rate?
+ * 3. might need an intermediate buffer to dump to and flush that when synchronizing video */
+	if (global.redirect_audio){
+		spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
+		spx_uint32_t nsamp = len >> 1;
+		speex_resampler_process_interleaved_int(global.resampler, (const spx_int16_t*) stream, &nsamp,
+			(spx_int16_t*) (global.audp + global.shared.addr->abufused), &outc);
+
+		if (outc){
+			global.shared.addr->abufused += outc * SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
+			global.shared.addr->aready = true;
+		}
+	} else if (acbfun) {
+		acbfun(userdata, stream, len);
+		int16_t* samples = (int16_t*)stream;
+
+		len /= 2;
+		for (; len; len--, samples++) {
+			int vl = *samples * (int)(255.0 * global.attenuation) >> 8;
+			*samples = clamp(vl, SHRT_MIN, SHRT_MAX);
+		}
+	}
 }
 
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
@@ -283,52 +299,61 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
 	char* shmsize = getenv("ARCAN_SHMSIZE");
-	
-	trace("ARCAN_target_init(%s, s)\n", global.shmkey, shmsize);
-	
-	unsigned bufsize = strtoul(shmsize, NULL, 10);
+	unsigned bufsize = shmsize ? strtoul(shmsize, NULL, 10) : 0;
 
-	if (errno == ERANGE || errno == EINVAL){
-		fprintf(stderr, "ARCAN Hijack: Bad value in ENV[ARCAN_SHMSIZE], terminating.\n");
+
+	if (bufsize == 0 || errno == ERANGE || errno == EINVAL){
+		fprintf(stderr, "arcan hijack: bad value in env[arcan_shmsize], terminating.\n");
 		exit(1);
 	}
-}
 
-void ARCAN_target_shminit()
-{
-	trace("shm_init(%s)\n", global.shmkey);
-	if (global.shmkey == NULL || ( global.shared = frameserver_getshm(global.shmkey, true)).addr == NULL ){
-		fprintf(stderr, "ARCAN Hijack: Couldn't access shm-API, terminating.\n");
+	global.shared = frameserver_getshm(global.shmkey, true);
+	if (!global.shared.addr){
+		fprintf(stderr, "arcan hijack: couldn't allocate shared memory, terminating.\n");
 		exit(1);
 	}
+
+/* set this env whenever you want to step through the frameserver as launched from the parent */
+	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
+		fprintf(stderr, "frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
+		sleep(10);
+	}
 	
+	frameserver_shmpage_resize( &(global.shared), 32, 32);
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false); 
+	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
 
 	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
 }
 
 void ARCAN_target_shmsize(int w, int h, int bpp)
 {
-	if (global.shared.addr == NULL)
-		ARCAN_target_shminit();
-	
 	trace("ARCAN_target_shmsize(%d, %d, %d)\n", w, h, bpp);
 
 /* filter "useless" resolutions */
 	if (w > MAX_SHMWIDTH || h > MAX_SHMHEIGHT || w < 32 || h < 32)
 		return;
 
-/* separate size tracking due to NTSC etc. */
-	global.width = global.sourcew = w;
-	global.height = global.sourceh = h;
+	global.sourcew = w;
+	global.sourceh = h;
 
+	if (global.ntscconv && SNES_NTSC_OUT_WIDTH(w) < MAX_SHMWIDTH && h * 2 < MAX_SHMHEIGHT){
+		w  = SNES_NTSC_OUT_WIDTH(w);
+		h *= 2;
+		if (global.ntsc_imb)
+			free(global.ntsc_imb);
+	
+		global.ntsc_imb = malloc(global.sourcew * global.sourceh * sizeof(int16_t)); 
+	} else {
+		if (global.ntsc_imb){
+			free(global.ntsc_imb);
+			global.ntsc_imb = NULL;
+		}
+	}
+	
 	frameserver_shmpage_resize( &(global.shared), w, h);
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
 
-/* just make sure the alpha channel is set as the parent process will map it to a texture way before
- * we have data ready to be stored */
 	uint32_t px = 0xff000000;
 	uint32_t* vidp = (uint32_t*) global.vidp;
 	for (int i = 0; i < w * h * 4; i++)
@@ -343,9 +368,13 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 
 	trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
 	global.frequency = obtained->freq;
-	global.channels = obtained->channels;
-	global.format = obtained->format;
+	global.channels  = obtained->channels;
+	global.format    = obtained->format;
 	global.attenuation = 1.0;
+	if (global.frequency != SHMPAGE_SAMPLERATE){
+		int errc; 
+		global.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, global.frequency, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
+	}
 	
 	global.ntsc_opts = snes_ntsc_rgb;
 	
@@ -367,8 +396,6 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 {
 	trace("SDL_SetVideoMode(%d, %d, %d, %d)\n", w, h, ncps, flags);
 	global.gotsdl = true;
-	
-	ARCAN_target_shminit();
 	
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
@@ -473,39 +500,6 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 	}
 }
 
-static void toggle_ntscfilter()
-{
-	if (global.ntscconv){
-		trace("toggle NTSC off.\n");
-/* these need to lock as we can't assume video rendering is coming 
- * from the same threading context */
-		sem_wait(global.shared.vsem);
-		
-			free(global.ntsc_imb);
-			global.ntsc_imb = NULL;
-			global.ntscconv = false;
-			global.desfmt = PixelFormat_RGBA888;
-			frameserver_shmpage_resize( &(global.shared), global.width, global.height);
-		
-		sem_post(global.shared.vsem);
-	}
-	else {
-		trace("toggle NTSC on.\n");
-		sem_wait(global.shared.vsem);
-		
-		global.ntscconv = true;
-		global.desfmt = PixelFormat_RGB565;
-		frameserver_shmpage_resize( &(global.shared), 
-		SNES_NTSC_OUT_WIDTH(global.width), global.height * 2);
-
-		global.ntsc_imb = malloc(global.width * global.height * 2);
-		
-		sem_post(global.shared.vsem);
-	}
-	
-	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-}
-
 void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 {
 	switch (kind)
@@ -524,13 +518,15 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 			exit(0);
 		break;
 		
-		case TARGET_COMMAND_NTSCFILTER: 
-			if (ev->ioevs[0].iv){
-				if (!global.ntscconv) 
-					toggle_ntscfilter();
-			} 
-			else if (global.ntscconv) 
-				toggle_ntscfilter();
+		case TARGET_COMMAND_NTSCFILTER:
+			if (ev->ioevs[0].iv == 0 && global.ntscconv == true){
+				global.ntscconv = false;
+				ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
+			}
+			else if (ev->ioevs[0].iv == 1 && global.ntscconv == false){
+				global.ntscconv = true;
+				ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
+			}
 		break;
 		
 		case TARGET_COMMAND_NTSCFILTER_ARGS:
@@ -575,18 +571,19 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 	return evs;
 }
 
+/* blit/convert the ntsc_intermediatebuffer to the shared memory page */
 static void push_ntsc()
 {
-	unsigned width = global.width;
-	unsigned height = global.height;
 	trace("push_ntsc()\n");
-	
-	size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
-/* only draw on every other line, so we can easily mix or blend interleaved */
-	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, width, 0, width, height, global.vidp, linew * 2);
 
-	for (int row = 1; row < height * 2; row += 2)
-		memcpy(&global.vidp[row * linew], &global.vidp[(row-1) * linew], linew);
+	size_t line_sz = SNES_NTSC_OUT_WIDTH(global.sourcew) * 4;
+
+/* only draw on every other line, so we can easily mix or blend interleaved */
+	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, global.sourcew, 0, global.sourcew, global.sourceh, global.vidp, line_sz * 2);
+
+/* just line-double for now */
+	for (int row = 1; row < global.sourceh * 2; row += 2)
+		memcpy(&global.vidp[row * line_sz], &global.vidp[(row-1) * line_sz], line_sz);
 }
 
 static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
@@ -692,28 +689,36 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface *
 void ARCAN_SDL_GL_SwapBuffers()
 {
 	trace("CopySurface(GL:pre)\n");
-
+/* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
+ * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
+ * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
+	if (!global.shared.addr->storage.glsource){
+		trace("Toggle GL surface support");
+		global.shared.addr->storage.glsource = true;
+		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
+	}
+	
 	sem_wait(global.shared.vsem);
 	if (!global.shared.addr->dms)
 		return;
 
 	glReadBuffer(GL_BACK_LEFT);
 /* the assumption as to the performance impact of this is that if it is aligned to the
- * buffer swap, we're at a point in any 3d engine where there will be a natural pause
+ * buffer swap, we're at a point in most engines targeted (so no AAA) where there will be a natural pause
  * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
  * increase when using PBOs. The 2D-in-GL edgecase could probably get an additional boost
  * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
 
-	glReadPixels(0, 0, global.width, global.height, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
-	trace("buffer read (%d, %d)\n", global.width, global.height);
+	glReadPixels(0, 0, global.sourcew, global.sourceh, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
+	trace("buffer read (%d, %d)\n", global.sourcew, global.sourceh);
 	
 /* seems like several driver combinations implement readback swizzling in a broken way, use RGBA and convert manually. */
-	if (global.ntscconv){
+	if (global.ntscconv && global.ntsc_imb){
 		uint16_t* dbuf = global.ntsc_imb;
 		uint8_t*   inb = (uint8_t*) global.vidp;
 	
-		for (int y = 0; y < global.height; y++)
-			for (int x = 0; x < global.width; x++){
+		for (int y = 0; y < global.sourcew; y++)
+			for (int x = 0; x < global.sourceh; x++){
 				*dbuf++ = RGB565(inb[2], inb[1], inb[0]);
 				inb += 4;
 			}
@@ -721,13 +726,6 @@ void ARCAN_SDL_GL_SwapBuffers()
 		push_ntsc();
 	}
 
-/* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
- * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
- * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
-	if (!global.shared.addr->storage.glsource){
-		global.shared.addr->storage.glsource = true;
-		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
-	}
 	global.shared.addr->vready = true;
 
 	trace("CopySurface(GL:post)\n");
@@ -783,8 +781,10 @@ void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable)
 	glXQueryDrawable(dpy, drawable, GLX_WIDTH, &width);
 	glXQueryDrawable(dpy, drawable, GLX_HEIGHT, &height);
 
-	if (width != global.sourcew || height != global.sourceh)
+	if (width != global.sourcew || height != global.sourceh){
+		trace("glXSwapBuffers, resizing");
 		ARCAN_target_shmsize(width, height, 4);
+	}
 	
 	ARCAN_SDL_GL_SwapBuffers();
 
