@@ -167,7 +167,10 @@ function confirm_shutdown()
 	end
 
 	video_3dorder(ORDER_NONE);
+	kbd_repeat(0);
+
 	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, true, valcbs, function()
+		kbd_repeat(settings.repeatrate);
 		video_3dorder(ORDER_LAST);
 	end);
 end

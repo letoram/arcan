@@ -1488,6 +1488,7 @@ function gridle_internal_cleanup(finishedhook, forced)
 			if ((settings.capabilities.snapshot == false or settings.capabilities.snapshot == nil) and forced ~= true) then
 				local confirmcmd = {};
 				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); end
+				kbd_repeat(0);
 				dialog_option(settings.colourtable.fontstr .. "Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
 				return false;
 			end
