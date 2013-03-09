@@ -121,11 +121,12 @@ static struct {
 
 static struct {
 /* audio */
-	bool redirect_audio;
 	float attenuation;
 	uint16_t frequency;
 	uint8_t channels;
 	uint16_t format;
+	int16_t* encabuf;
+	size_t encabuf_sz;
 	SpeexResamplerState* resampler;
 	
 	unsigned sourcew, sourceh;
@@ -256,31 +257,109 @@ int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
 }
 
 static void(*acbfun)(void*, uint8_t*, int) = NULL;
+
+/* Note; we always let the target application DRIVE the playback, we may, however, copy the output data in order
+ * for it to be available for analysis / recording, etc.
+ * 
+ * (parent) -> (attenuation request) -> [target: we're here] alters audio buffers in situ to reflect attenuation,
+ * resamples output into shared memory buffer (unless full) -> (parent) -> drops audio or pushes it to whatever is monitoring.
+ */
+
+/* convert, attenuate (0..1), buffer copy to parent,
+ * can't be certain about correctly aligned input --
+ * branch-predict + any decent -O step + intrisics should reduce this to barely nothing though */
+static inline int process_sample(uint8_t* stream, int ofs, float attenuate)
+{
+	int counter = 1;
+
+	for (int i = 0; i < global.channels; i++){
+		int16_t tmp_a;
+		uint16_t tmp_b;
+		
+		switch (global.format){
+			case AUDIO_U8:
+				*stream = (uint8_t)( (float) *stream * attenuate);
+				global.encabuf[ofs++] = ((*stream) << 8) - 0x7ff;
+				if (global.channels == 1){
+					global.encabuf[ofs] = global.encabuf[ofs - 1];
+					ofs++;
+				}
+			break;
+
+			case AUDIO_S8:
+				*stream = (int8_t)( (float) *((int8_t*)stream) * attenuate);
+			break;
+
+			case AUDIO_U16:
+				memcpy(&tmp_b, stream, 2);
+
+				tmp_a = tmp_b - 32768;
+				global.encabuf[ofs++] = tmp_a;
+				if (global.channels == 1)
+					global.encabuf[ofs++] = tmp_a;
+
+				tmp_b = (int16_t) ((float) tmp_b * global.attenuation); 
+				memcpy(stream, &tmp_b, 2);
+				counter = 2;
+			break;
+
+			case AUDIO_S16:
+				memcpy(&tmp_a, stream, 2);
+				global.encabuf[ofs++] = tmp_a;
+
+				if (global.channels == 1)
+					global.encabuf[ofs++] = tmp_a;
+
+				tmp_a = (int16_t) ((float) tmp_a * global.attenuation);
+				memcpy(stream, &tmp_a, 2);
+				counter = 2;
+			break;
+			
+			default:
+				fprintf(stderr, "hijack process sample; Big Endian not supported by this hijack library");
+				abort();
+		}
+
+		stream += counter;
+	}
+
+	return counter * global.channels;
+}
+
 static void audiocb(void *userdata, uint8_t *stream, int len)
 {
-/* NOTE: incomplete still;
- * 1. need to convert mono or !S16int input to S16INT stereo before speeding,
- * 2. how does speex manage same in-out rate?
- * 3. might need an intermediate buffer to dump to and flush that when synchronizing video */
-	if (global.redirect_audio){
-		spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
-		spx_uint32_t nsamp = len >> 1;
+	if (!acbfun)
+		return;
+
+/* let the "real" part of the process populate */
+	acbfun(userdata, stream, len);
+
+/* apply attenuation, convert to s16 2ch and add to global buffer */
+	int ofs = 0;
+	size_t ntc = 0;
+
+	while (ofs < len){
+		ofs += process_sample(stream + ofs, ntc, global.attenuation);
+		ntc += 4; /* 2 channels, 2 bytes per channel */
+	}
+
+/* if we need to resample, do that with encbuf -> abuf + abufused,
+ * otherwise just memcpy, we piggyback on the rendering thread and synchronization, so nothing extra is needed */
+	if (SHMPAGE_AUDIOBUF_SIZE - global.shared.addr->abufused < ntc)
+		return;
+
+	if (global.frequency != SHMPAGE_SAMPLERATE){
+		spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; 
+		spx_uint32_t nsamp = ntc >> 1;
 		speex_resampler_process_interleaved_int(global.resampler, (const spx_int16_t*) stream, &nsamp,
 			(spx_int16_t*) (global.audp + global.shared.addr->abufused), &outc);
-
-		if (outc){
-			global.shared.addr->abufused += outc * SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
-			global.shared.addr->aready = true;
-		}
-	} else if (acbfun) {
-		acbfun(userdata, stream, len);
-		int16_t* samples = (int16_t*)stream;
-
-		len /= 2;
-		for (; len; len--, samples++) {
-			int vl = *samples * (int)(255.0 * global.attenuation) >> 8;
-			*samples = clamp(vl, SHRT_MIN, SHRT_MAX);
-		}
+		global.shared.addr->abufused += outc;
+		global.shared.addr->aready = true;
+	}
+	else {
+		memcpy(global.audp + global.shared.addr->abufused, global.encabuf, ntc);
+		global.shared.addr->abufused += ntc;
+		global.shared.addr->aready = true;
 	}
 }
 
@@ -362,20 +441,33 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 {
+	trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
+
 	acbfun = desired->callback;
 	desired->callback = audiocb;
 	int rc = forwardtbl.sdl_openaudio(desired, obtained);
 
-	trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
-	global.frequency = obtained->freq;
-	global.channels  = obtained->channels;
-	global.format    = obtained->format;
-	global.attenuation = 1.0;
-	if (global.frequency != SHMPAGE_SAMPLERATE){
-		int errc; 
-		global.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, global.frequency, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
-	}
+	SDL_AudioSpec* res = obtained != NULL ? obtained : desired;
 	
+	global.frequency = res->freq;
+	global.channels  = res->channels;
+	global.format    = res->format;
+	global.attenuation = 1.0;
+
+	if (global.encabuf)
+		global.encabuf = (free(global.encabuf), NULL);
+
+	if (global.resampler)
+		global.resampler = (speex_resampler_destroy(global.resampler), NULL);
+	
+	if (global.frequency != SHMPAGE_SAMPLERATE){
+		int errc;
+	
+		global.encabuf_sz = res->size * 2;
+		global.encabuf    = malloc(global.encabuf_sz);
+		global.resampler  = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, global.frequency, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
+	}
+
 	global.ntsc_opts = snes_ntsc_rgb;
 	
 	return rc;
@@ -517,6 +609,10 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 		case TARGET_COMMAND_EXIT:
 			exit(0);
 		break;
+
+		case TARGET_COMMAND_ATTENUATE:
+			global.attenuation = ev->ioevs[0].fv > 1.0 ? 1.0 : ( ev->ioevs[0].fv < 0.0 ? 0.0 : ev->ioevs[0].fv);
+		break;
 		
 		case TARGET_COMMAND_NTSCFILTER:
 			if (ev->ioevs[0].iv == 0 && global.ntscconv == true){
@@ -596,29 +692,39 @@ static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
 
 static void copysurface(SDL_Surface* src){
 	trace("CopySurface(noGL)\n");
-	char* destp = global.ntscconv ? (char*)global.ntsc_imb : (char*)global.vidp;
+	if (src->w != global.sourcew || src->h != global.sourceh)
+		ARCAN_target_shmsize(src->w, src->h, 4);
 	
-	if ( cmpfmt(src->format, &global.desfmt) ){
-		trace("don't convert surface, just copy\n"); 
+	if (global.ntsc_imb && global.ntscconv){
+		if (cmpfmt(src->format, &PixelFormat_RGB565)){
 			SDL_LockSurface(src);
-			memcpy(destp, 
-				   src->pixels, 
-				   src->w * src->h * global.desfmt.BytesPerPixel);
+			memcpy(global.ntsc_imb, src->pixels, src->w * src->h * sizeof(int16_t));
 			SDL_UnlockSurface(src);
-	} else {
-		trace("convert surface\n");
-		SDL_Surface* surf = SDL_ConvertSurface(src, &global.desfmt, SDL_SWSURFACE);
-		SDL_LockSurface(surf);
-		memcpy(destp,
-			   surf->pixels, 
-			   surf->w * surf->h * global.desfmt.BytesPerPixel);
-		SDL_UnlockSurface(surf);
-		SDL_FreeSurface(surf);
+		}
+		else {
+			SDL_Surface* surf = SDL_ConvertSurface(src, &PixelFormat_RGB565, SDL_SWSURFACE);
+			SDL_LockSurface(surf);
+			memcpy(global.ntsc_imb, surf->pixels, surf->w * surf->h * sizeof(int16_t));
+			SDL_UnlockSurface(surf);
+			SDL_FreeSurface(surf);
+		}
+
+		push_ntsc();
+	}
+	else {
+		if (cmpfmt(src->format, &PixelFormat_RGBA888)){
+			SDL_LockSurface(src);
+			memcpy(global.vidp, src->pixels, src->w * src->h * sizeof(int32_t));
+			SDL_UnlockSurface(src);
+		} else {
+			SDL_Surface* surf = SDL_ConvertSurface(src, &PixelFormat_RGBA888, SDL_SWSURFACE);
+			SDL_LockSurface(surf);
+			memcpy(global.vidp, surf->pixels, surf->w * surf->h * sizeof(int32_t));
+			SDL_UnlockSurface(surf);
+			SDL_FreeSurface(surf);
+		}
 	}
 
-	if (global.ntscconv)
-		push_ntsc();
-	
 	global.shared.addr->storage.glsource = false;
 	global.shared.addr->vready = true;
 }
@@ -657,6 +763,7 @@ int ARCAN_SDL_Flip(SDL_Surface* screen)
 
 void ARCAN_SDL_UpdateRect(SDL_Surface* screen, Sint32 x, Sint32 y, Uint32 w, Uint32 h){
 	forwardtbl.sdl_updaterect(screen, x, y, w, h);
+
 	if (!global.doublebuffered && 
 		screen == global.mainsrfc)
 			copysurface(screen);

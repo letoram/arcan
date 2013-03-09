@@ -90,20 +90,6 @@ static void flush_audbuf()
 	recctx.encabuf_ofs += ntc;
 }
 
-static uint8_t* s16toflt(uint8_t* inbuf)
-{
-	static float* convbuf = NULL;
-	int16_t* sinbuf = (int16_t*) inbuf;
-	
-	if (!convbuf)
-		av_malloc(recctx.aframe_sz);
-	
-	for (int i = 0; i < recctx.aframe_smplcnt * SHMPAGE_ACHANNELCOUNT; i++)
-		convbuf[i] = (float)sinbuf[i] / 32768.0;
-
-	return (uint8_t*) convbuf;
-}
-
 static uint8_t* s16swrconv(uint8_t* inbuf, int* size)
 {
 	static struct SwrContext* resampler = NULL;

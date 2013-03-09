@@ -720,7 +720,11 @@ void arcan_audio_buffer(arcan_aobj* aobj, ALuint buffer, void* audbuf, size_t ab
 	if (current_acontext->globalhook)
 		current_acontext->globalhook(aobj->id, audbuf, abufs, channels, samplerate, current_acontext->global_hooktag);
 
-	alBufferData(buffer, channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, audbuf, abufs, samplerate);
+	if (aobj->gproxy == false)
+		alBufferData(buffer, channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, audbuf, abufs, samplerate);
+	else
+		printf("added %d to proxy\n", abufs);
+
 }
 
 int arcan_audio_findstreambufslot(arcan_aobj_id id)
@@ -814,8 +818,11 @@ void arcan_audio_refresh()
 
 	while(current){
 		if (current->kind == AOBJ_STREAM ||
-			current->kind == AOBJ_FRAMESTREAM )
+			current->kind == AOBJ_FRAMESTREAM ){
 			arcan_astream_refill(current);
+		}
+		else if (current->kind == AOBJ_PROXY && current->feed)
+			current->feed(current, current->alid, 0, current->tag);
 
 		_wrap_alError(current, "audio_refresh()");
 		current = current->next;
@@ -832,7 +839,7 @@ void arcan_audio_tick(uint8_t ntt)
 	if (alcGetCurrentContext() != current_acontext->context)
 		alcMakeContextCurrent(current_acontext->context);
 
-	arcan_audio_refresh(); /* only guarantee we have this is ever run during high loads */
+	arcan_audio_refresh();
 	
 	while (ntt-- > 0) {
 		arcan_aobj* current = current_acontext->first;

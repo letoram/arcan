@@ -88,6 +88,9 @@ enum ARCAN_TARGET_COMMAND {
 /* plug in device of a specific kind in a set port */
 	TARGET_COMMAND_SETIODEV,
 
+/* used when audio playback is in the frameserver (so hijacked targets) */
+	TARGET_COMMAND_ATTENUATE,
+	
 /* specialized output hinting */
 	TARGET_COMMAND_GRAPHMODE,
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
@@ -176,13 +179,6 @@ enum ARCAN_EVENTFILTER_ANALOG {
 	EVENT_FILTER_ANALOG_NONE,
 	EVENT_FILTER_ANALOG_ALL,
 	EVENT_FILTER_ANALOG_SPECIFIC
-};
-
-enum ARCAN_TARGET_AUDIOCONTROL {
-	TARGET_AUDIO_NOTRANSFER = 0,
-	TARGET_AUDIO_NORESAMPLE = 1,
-	TARGET_AUDIO_RESAMPLEQ_MIN = 2,
-	TARGET_AUDIO_RESAMPLEQ_MAX = 4
 };
 
 enum ARCAN_TARGET_SKIPMODE {
@@ -286,7 +282,6 @@ typedef struct arcan_netevent{
 } arcan_netevent;
 
 typedef struct arcan_tgtevent {
-	enum ARCAN_TARGET_COMMAND command;
 	union {
 		int iv;
 		float fv;
