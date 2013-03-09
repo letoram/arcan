@@ -112,10 +112,10 @@ class ScummVM
 					newgame.pkid = 0
 					newgame.genre = "Adventure"
 					newgame.year = 0
-					newgame.system = "Multi"
+					newgame.system = "(SCUMM)"
 					newgame.manufacturer = ""
-					newgame.arguments[1] = ["-F"]
-					newgame.arguments[2] = ["-f"]
+					newgame.arguments[1] = ["-F", "#{setname}"]
+					newgame.arguments[2] = ["-f", "#{setname}"]
 					newgame.arguments[0] = ["-n", "-p", "[gamepath]/scummvm/#{setname}"]
 
 					yield newgame

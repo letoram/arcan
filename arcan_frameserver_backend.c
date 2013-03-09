@@ -288,10 +288,6 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 					size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
 						(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
-					if (shmpage->abufused != ntc)
-						arcan_warning("arcan_frameserver(%d:%d) -- audio buffer overrun. Buffer size: %zu, in use: %zu, queued: %d\n",
-							tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused);
-
 					memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 					tgt->ofs_audb += ntc;
 
@@ -499,7 +495,9 @@ static arcan_errc again_feed(float gain, void* tag)
 	if (target){
 		arcan_event ev = {
 			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_RESTORE };
+			.kind = TARGET_COMMAND_ATTENUATE,
+			.data.target.ioevs[0].fv = gain
+		};
 		arcan_frameserver_pushevent( target, &ev );
 
 		return ARCAN_OK;
@@ -571,9 +569,14 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
 
 /* the first time around, we also need to setup the audio mapping */
-			if (src->aid == ARCAN_EID)
-				src->aid = src->kind == ARCAN_HIJACKLIB ? arcan_audio_proxy(again_feed, src) :
-					arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+			if (src->aid == ARCAN_EID){
+				if (src->kind == ARCAN_HIJACKLIB){
+					src->aid = arcan_audio_proxy(again_feed, src);
+					arcan_audio_alterfeed(src->aid, arcan_frameserver_audioframe_direct);
+				}
+				else
+					src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
+			}
 		}
 		else {
 			if (src->aid == ARCAN_EID)
@@ -851,6 +854,13 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 		ctx->kind = ARCAN_HIJACKLIB;
 		ctx->autoplay = true;
 		ctx->nopts = true;
+
+/* although audio playback is still done through the process parasite,
+ * it can duplicate the audio for monitoring purposes */
+		ctx->sz_audb  = 1024 * 6400;
+		ctx->ofs_audb = 0;
+		ctx->audb     = malloc( ctx->sz_audb );
+		ctx->lock_audb = SDL_CreateMutex();
 	}
 
 	arcan_frameserver_meta vinfo = {0};
