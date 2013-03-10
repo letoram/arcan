@@ -281,12 +281,14 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 			if (srcw == tgt->desc.width && srch == tgt->desc.height){
 				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 4, width, height, 4);
 
-/* in contrast to the framequeue approach, we here need to limit the number of context switches
- * and especially synchronizations to as few as possible. Due to OpenAL shoddyness, we use
- * an intermediate buffer for this */
 				if (shmpage->aready) {
 					size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
 						(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
+
+					if (ntc == 0){
+						arcan_warning("frameserver_videoframe_direct(), incoming buffer overflow for: %d, resetting.\n", tgt->vid);
+						tgt->ofs_audb = 0;
+					}
 
 					memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 					tgt->ofs_audb += ntc;
@@ -312,6 +314,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 
 	if (cmd == ffunc_destroy)
 		arcan_frameserver_free(state.ptr, false);
+
 	else if (cmd == ffunc_tick){
 /* done differently since we don't care if the frameserver wants to resize, that's its problem. */
 		if (!arcan_frameserver_control_chld(src)){
@@ -328,7 +331,6 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
  */
 	else if (cmd == ffunc_rendertarget_readback){
 		if ( arcan_sem_timedwait(src->vsync, 0) == 0){
-			assert(src->vidp != src->audp);
 
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
@@ -356,15 +358,10 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 	return 0;
 }
 
-/* attach buffer to frameserver associated with tag, format in buf is always S16LE
- * this may be invoked multiple times from different sources in short succession, hence we use a little tag/len/val format
- * to link these together and just keep on buffering until the videoframe- part forces a flush that's accepted by the frameserver */
+/* hooks to local audio feeds that mix / buffer before passing onwards */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
 {
 	arcan_frameserver* dst = tag;
-
-/* make sure we don't overflow, store to intermediate buffer as we have many access threads and can't rely on
- * synching to an untrusted source(the frameserver) here */
 
 	if (dst->ofs_audb + buf_sz < dst->sz_audb){
 		SDL_mutexP(dst->lock_audb);
@@ -442,9 +439,13 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 
 /* buffer == 0, shutting down */
 	if (buffer > 0 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
-
+/*		static FILE* fpekka;
+		if (!fpekka)
+			fpekka = fopen("test.raw", "w+");
+	*/	
 /* this function will make sure all monitors etc. gets their chance */
 		SDL_mutexP( src->lock_audb );
+//		fwrite(src->audb, 1, src->ofs_audb, fpekka);
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
 		SDL_mutexV( src->lock_audb );
 
@@ -475,7 +476,10 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, unsi
 
 /* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
 			if (dc < 60.0){
-				arcan_audio_buffer(aobj, buffer, src->afq.front_cell->buf, buffers, src->desc.channels, src->desc.samplerate, tag);
+				SDL_mutexP( src->lock_audb );
+					arcan_audio_buffer(aobj, buffer, src->afq.front_cell->buf, buffers, src->desc.channels, src->desc.samplerate, tag);
+				SDL_mutexV( src->lock_audb );
+
 				arcan_framequeue_dequeue(&src->afq);
 				rv = ARCAN_OK;
 				break;
@@ -815,7 +819,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 			ctx->nopts    = true;
 			ctx->autoplay = true;
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
-			ctx->sz_audb  = 1024 * 6400;
+			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
 			ctx->audb     = malloc( ctx->sz_audb );
 			ctx->lock_audb = SDL_CreateMutex();
@@ -857,7 +861,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 
 /* although audio playback is still done through the process parasite,
  * it can duplicate the audio for monitoring purposes */
-		ctx->sz_audb  = 1024 * 6400;
+		ctx->sz_audb  = 1024 * 64;
 		ctx->ofs_audb = 0;
 		ctx->audb     = malloc( ctx->sz_audb );
 		ctx->lock_audb = SDL_CreateMutex();

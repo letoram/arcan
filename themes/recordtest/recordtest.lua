@@ -27,7 +27,7 @@ function recordtest()
 	move_image(b, VRESW - 32, 0, 20);
 	move_image(c, 0, VRESH - 32, 20);
 
-	game = list_games({target = "nes"})
+	game = list_games({target = "scummvm"});
 
 	if (game == nil) then
 		error("game not found, giving up.");
@@ -52,3 +52,8 @@ function recordtest()
 end)
 
 end
+
+function recordtest_input(iotbl)
+	target_input(vid, iotbl);
+end
+

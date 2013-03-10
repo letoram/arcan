@@ -3222,11 +3222,27 @@ int arcan_lua_recordset(lua_State* ctx)
 
 	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int nvids         = lua_rawlen(ctx, 4);
-	int naids         = lua_rawlen(ctx, 5);
+
 	int detach        = luaL_checkint(ctx, 6);
 	int scale         = luaL_checkint(ctx, 7);
 	int pollrate      = luaL_checkint(ctx, 8);
 
+	int naids;
+	bool global_monitor = false;
+
+	if (lua_type(ctx, 5) == LUA_TTABLE)
+		naids         = lua_rawlen(ctx, 5);
+	else if (lua_type(ctx, 5) == LUA_TNUMBER){
+		naids         = 1;
+		arcan_vobj_id did = luaL_checkvid(ctx, 5);
+		if (did != ARCAN_VIDEO_WORLDID){
+			arcan_warning("arcan_lua_recordset(%d) Unexpected value for audio, only a table of selected AID streams or single WORLDID (global monitor) allowed.\n");
+			goto cleanup;
+		}
+
+		global_monitor = true;
+	}
+	
 	intptr_t ref = (intptr_t) 0;
 
 	if (arcan_video_display.fbo_disabled){
@@ -3286,20 +3302,16 @@ int arcan_lua_recordset(lua_State* ctx)
 	arcan_aobj_id* aidlocks = NULL;
 	unsigned n_aidlocks = abs(naids);
 
-	if (naids > 0){
+	if (naids > 0 && global_monitor == false){
 		aidlocks = malloc(sizeof(arcan_aobj_id) * naids + 1);
 		aidlocks[naids] = 0; /* terminate */
-
-		if (naids > 1){
-			arcan_warning("arcan_lua_recordset(%d), multiple source aid set -- only first source will be considered, mixing currently unimplemented.\n");
-		}
 
 /* can't hook the monitors until we have the frameserver in place */
 		for (int i = 0; i < naids; i++){
 			lua_rawgeti(ctx, 5, i+1);
 			arcan_aobj_id setaid = luaaid_toaid( lua_tonumber(ctx, -1) );
 
-			if (arcan_audio_kind(setaid) != AOBJ_STREAM){
+			if (arcan_audio_kind(setaid) != AOBJ_STREAM && arcan_audio_kind(setaid) != AOBJ_PROXY){
 				arcan_warning("arcan_lua_recordset(%d), unsupported AID source type, only STREAMs currently supported. Audio recording disabled.\n");
 				free(aidlocks);
 				aidlocks = NULL;
