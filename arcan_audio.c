@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <limits.h>
 
 #include <SDL.h>
 #include <al.h>
@@ -722,9 +723,6 @@ void arcan_audio_buffer(arcan_aobj* aobj, ALuint buffer, void* audbuf, size_t ab
 
 	if (aobj->gproxy == false)
 		alBufferData(buffer, channels == 2 ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, audbuf, abufs, samplerate);
-	else
-		printf("added %d to proxy\n", abufs);
-
 }
 
 int arcan_audio_findstreambufslot(arcan_aobj_id id)
@@ -822,7 +820,7 @@ void arcan_audio_refresh()
 			arcan_astream_refill(current);
 		}
 		else if (current->kind == AOBJ_PROXY && current->feed)
-			current->feed(current, current->alid, 0, current->tag);
+			current->feed(current, current->alid, UINT_MAX, current->tag);
 
 		_wrap_alError(current, "audio_refresh()");
 		current = current->next;
