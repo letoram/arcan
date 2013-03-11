@@ -361,7 +361,7 @@ function vector_setupblur(targetw, targeth)
 	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
 	shader_uniform(blurshader_h, "ampl", "f", PERSIST, settings.vector_hbias);
 	shader_uniform(blurshader_v, "ampl", "f", PERSIST, settings.vector_vbias);
-
+	
 	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
 	local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
 
@@ -387,26 +387,6 @@ local function merge_compositebuffer(sourcevid, blurvid, targetw, targeth, blurw
 	force_image_blend(sourcevid, BLEND_ADD);
 
 	table.insert(rtgts, sourcevid);
-
---	if (settings.internal_toggles.backdrop and valid_vid(imagery.backdrop)) then
---		local backdrop = instance_image(imagery.backdrop);
---		image_mask_clear(backdrop, MASK_OPACITY);
---		order_image(backdrop, 1);
---		blend_image(backdrop, 0.95);
---		resize_image(backdrop, targetw, targeth);
---		table.insert(rtgts, backdrop);
---		force_image_blend(sourcevid, BLEND_ADD);
---	end
-
---	if (settings.internal_toggles.overlay and valid_vid(imagery.overlay)) then
---		local overlay = instance_image(imagery.overlay);
---		image_mask_clear(overlay, MASK_OPACITY);
---		resize_image(overlay, targetw, targeth);
---		show_image(overlay);
---		order_image(overlay, 4);
---		force_image_blend(overlay, BLEND_MULTIPLY);
---		table.insert(rtgts, overlay);
---	end
 
 	return rtgts;
 end
@@ -640,7 +620,7 @@ function undo_displaymodes()
 		end
 	end
 
-	image_set_txcos(internal_vid, settings.internal_txcos);
+	image_set_txcos_default(internal_vid, settings.internal_mirror);
 	imagery.temporary = {};
 	imagery.display_vid = BADID;
 end
@@ -706,7 +686,6 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 	shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
 	shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
-	shader_uniform(shader, "mirrored", "b", PERSIST, settings.internal_mirror);
 
 	hide_image(sourcevid);
 	local workvid = instance_image(sourcevid);
@@ -715,6 +694,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	image_shader(workvid, shader);
 	image_tracetag(workvid, "(upscale_internal)");
 	show_image(workvid);
+	image_set_txcos_default(workvid, settings.internal_mirror);
 
 	upscaler = fill_surface(neww, newh, 0, 0, 0, neww, newh);
 	define_rendertarget(upscaler, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
@@ -1360,7 +1340,8 @@ function enable_record(width, height, args)
 
 -- create an instance of this image to detach and record
 	local lvid = instance_image( internal_vid );
-
+	image_set_txcos_default(lvid, settings.internal_mirror);
+	
 -- set it to the top left of the screen
 	image_mask_clear(lvid, MASK_POSITION);
 	image_mask_clear(lvid, MASK_OPACITY);
@@ -1633,7 +1614,9 @@ table.insert(recordlist, "Start Recording");
 
 streamptrs["Start Streaming"] = function()
 	settings.iodispatch["MENU_ESCAPE"]();
-	settings.iodispatch["MENU_ESCAPE"]();
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+
 	local width, height = recdim();
 	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);

@@ -65,6 +65,7 @@ struct {
 	AVCodec* acodec;
 	AVStream* astream;
 	int channel_layout;
+	int silence_samples; /* used to dynamically drop or insert silence bytes in buffer_flush */
 	
 /* needed for intermediate buffering and format conversion */
 	bool float_samples;
@@ -85,10 +86,35 @@ struct {
 static void flush_audbuf()
 {
 	size_t ntc = recctx.shmcont.addr->abufused;
+	uint8_t* dataptr = recctx.audp;
+	
 	if (!recctx.acontext){
 		recctx.shmcont.addr->abufused = 0;
 		return;
 	}
+
+/* parent events can modify this buffer to compensate for streaming desynch,
+ * extra work for sample size alignment as shm api calculates bytes and allows truncating (terrible) */
+	if (recctx.silence_samples > 0){ /* insert n 0- level samples */
+		size_t nti = (recctx.silence_samples << 2) > recctx.encabuf_sz - recctx.encabuf_ofs ?
+			recctx.encabuf_sz - recctx.encabuf_ofs : recctx.silence_samples << 2;
+		nti = nti - (nti % 4); 
+	
+		memset(recctx.encabuf + recctx.encabuf_ofs, 0, nti);
+		recctx.encabuf_ofs += nti;
+		recctx.silence_samples = nti >> 2;
+		
+	} else if (recctx.silence_samples < 0){ /* drop n samples */
+		size_t ntd = (ntc >> 2) > recctx.silence_samples ? recctx.silence_samples << 2 : ntc;
+		if (ntd == ntc){
+			recctx.silence_samples -= recctx.silence_samples << 2;
+			recctx.shmcont.addr->abufused = 0;
+			return;
+		}
+
+		dataptr += ntd;
+		ntc -= ntd;
+	} else ;
 	
 	if (ntc + recctx.encabuf_ofs > recctx.encabuf_sz){
 		ntc = recctx.encabuf_sz - recctx.encabuf_ofs;
@@ -100,7 +126,7 @@ static void flush_audbuf()
 		}
 	}
 
-	memcpy(&recctx.encabuf[recctx.encabuf_ofs], recctx.audp, ntc);
+	memcpy(&recctx.encabuf[recctx.encabuf_ofs], dataptr, ntc);
 	recctx.encabuf_ofs += ntc;
 
 /* worst case, we get overflown buffers and need to dorp sound */
@@ -364,6 +390,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	struct frameserver_shmpage* shared = recctx.shmcont.addr;
 	assert(shared);
 
+	av_log_set_level( AV_LOG_WARNING );
 	static bool initialized = false;
 
 	if (shared->storage.w % 2 != 0 || shared->storage.h % 2 != 0){
@@ -381,7 +408,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
-	unsigned vbr = 5, abr = 5, samplerate = SHMPAGE_SAMPLERATE, channels = 2;
+	unsigned vbr = 5, abr = 5, samplerate = SHMPAGE_SAMPLERATE, channels = 2, presilence = 0;
 	bool noaudio = false, stream_outp = false;
 	float fps    = 25;
 
@@ -399,6 +426,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 	if (arg_lookup(args, "apreset",  0, &val)) abr = ( (abr = strtoul(val, NULL, 10)) > 10 ? 10 : abr);
 	if (arg_lookup(args, "fps", 0, &val)) fps = strtof(val, NULL);
 	if (arg_lookup(args, "noaudio", 0, &val)) noaudio = true;
+	if (arg_lookup(args, "presilence", 0, &val)) presilence = ( (presilence = strtoul(val, NULL, 10)) > 0 ? presilence : 0);
 	
 	arg_lookup(args, "vcodec", 0, &vck);
 	arg_lookup(args, "acodec", 0, &ack);
@@ -501,6 +529,14 @@ static bool setup_ffmpeg_encode(const char* resource)
 		return false;
 	}
 
+	if (presilence > 0 && recctx.acontext)
+	{
+		 presilence *= (float)SHMPAGE_SAMPLERATE / 1000.0;
+		 if (presilence > recctx.encabuf_sz >> 2)
+			 presilence = recctx.encabuf_sz >> 2;
+			recctx.silence_samples = presilence;
+	}
+	
 /* signal that we are ready to receive video frames */
 	arcan_sem_post(recctx.shmcont.vsem);
 	return true;
@@ -509,6 +545,11 @@ static bool setup_ffmpeg_encode(const char* resource)
 #ifdef _WIN32
 #include <io.h>
 #endif
+
+static inline int ms_to_samples(int inv)
+{
+	return ( (double)SHMPAGE_SAMPLERATE / 1000.0) * inv;
+}
 
 void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 {
@@ -548,6 +589,11 @@ void arcan_frameserver_ffmpeg_encode(const char* resource, const char* keyfile)
 				case TARGET_COMMAND_EXIT:
 					LOG("(encode) parent requested termination, quitting.\n");
 					exit(EXIT_SUCCESS);
+				break;
+
+				case TARGET_COMMAND_AUDDELAY:
+					LOG("(encode) adjust audio buffering, %d milliseconds.\n", ev->data.target.ioevs[0].iv);
+					recctx.silence_samples += (double) (SHMPAGE_SAMPLERATE / 1000.0) * ev->data.target.ioevs[0].iv;
 				break;
 
 				case TARGET_COMMAND_STEPFRAME:

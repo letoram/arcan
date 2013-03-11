@@ -683,7 +683,7 @@ static inline void targetev(arcan_event* ev)
 /* can safely assume there are no other events in the queue after this one,
  * more important for encode etc. that need to flush codecs */
 		case TARGET_COMMAND_EXIT:
-			return;
+			exit(EXIT_SUCCESS);
 		break;
 
 		case TARGET_COMMAND_UNPAUSE:

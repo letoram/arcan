@@ -90,6 +90,9 @@ enum ARCAN_TARGET_COMMAND {
 
 /* used when audio playback is in the frameserver (so hijacked targets) */
 	TARGET_COMMAND_ATTENUATE,
+
+/* for audio / video synchronization in video decode/encode (ioevs[0] -> samples per channel) */
+	TARGET_COMMAND_AUDDELAY,
 	
 /* specialized output hinting */
 	TARGET_COMMAND_GRAPHMODE,
