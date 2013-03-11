@@ -93,81 +93,71 @@ static bool decode_aframe()
 	static char* afr_sconv = NULL;
 	static size_t afr_sconv_sz = 0;
 	
-	AVPacket cpkg = {
-		.size = decctx.packet.size,
-		.data = decctx.packet.data
-	};
-
 	int got_frame = 1;
 
-	while (cpkg.size > 0) {
-		uint32_t ofs = 0;
-		avcodec_get_frame_defaults(decctx.aframe);
-		int nts = avcodec_decode_audio4(decctx.acontext, decctx.aframe, &got_frame, &cpkg);
+	uint32_t ofs = 0;
+	avcodec_get_frame_defaults(decctx.aframe);
+	int nts = avcodec_decode_audio4(decctx.acontext, decctx.aframe, &got_frame, &decctx.packet);
 
-		if (nts == -1)
-			return false;
+	if (nts == -1)
+		return false;
 
-		cpkg.size -= nts;
-		cpkg.data += nts;
-
-		if (got_frame){
-			int plane_size;
-			ssize_t ds = av_samples_get_buffer_size(&plane_size,
-				decctx.acontext->channels, decctx.aframe->nb_samples, decctx.acontext->sample_fmt, 1);
+	if (got_frame){
+		int plane_size;
+		ssize_t ds = av_samples_get_buffer_size(&plane_size,
+			decctx.acontext->channels, decctx.aframe->nb_samples, decctx.acontext->sample_fmt, 1);
 
 /* skip packets with broken sample formats (shouldn't happen) */
-			if (ds < 0)
-				continue;
+		if (ds < 0)
+			return true;
 	
-			int64_t dlayout = (decctx.aframe->channel_layout && decctx.aframe->channels == av_get_channel_layout_nb_channels(decctx.aframe->channel_layout)) ?
-				decctx.aframe->channel_layout : av_get_default_channel_layout(decctx.aframe->channels);
+		int64_t dlayout = (decctx.aframe->channel_layout && decctx.aframe->channels == av_get_channel_layout_nb_channels(decctx.aframe->channel_layout)) ?
+			decctx.aframe->channel_layout : av_get_default_channel_layout(decctx.aframe->channels);
 
 /* should we resample? */
-				if (decctx.aframe->format != AV_SAMPLE_FMT_S16 || decctx.aframe->channels != SHMPAGE_ACHANNELCOUNT || decctx.aframe->sample_rate != SHMPAGE_SAMPLERATE){
-					uint8_t* outb[] = {decctx.audp, NULL};
-					unsigned nsamples = (unsigned)(SHMPAGE_AUDIOBUF_SIZE - decctx.shmcont.addr->abufused) >> 2;
-					outb[0] += decctx.shmcont.addr->abufused;
+			if (decctx.aframe->format != AV_SAMPLE_FMT_S16 || decctx.aframe->channels != SHMPAGE_ACHANNELCOUNT || decctx.aframe->sample_rate != SHMPAGE_SAMPLERATE){
+				uint8_t* outb[] = {decctx.audp, NULL};
+				unsigned nsamples = (unsigned)(SHMPAGE_AUDIOBUF_SIZE - decctx.shmcont.addr->abufused) >> 2;
+				outb[0] += decctx.shmcont.addr->abufused;
 
-					if (!decctx.rcontext){
-						decctx.rcontext = swr_alloc_set_opts(decctx.rcontext, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, SHMPAGE_SAMPLERATE,
-							dlayout, decctx.aframe->format, decctx.aframe->sample_rate, 0, NULL);
-						swr_init(decctx.rcontext);
-						LOG("(decode) resampler initialized, (%d) => (%d)\n", decctx.aframe->sample_rate, SHMPAGE_SAMPLERATE);
-					}
+				if (!decctx.rcontext){
+					decctx.rcontext = swr_alloc_set_opts(decctx.rcontext, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, SHMPAGE_SAMPLERATE,
+						dlayout, decctx.aframe->format, decctx.aframe->sample_rate, 0, NULL);
+					swr_init(decctx.rcontext);
+					LOG("(decode) resampler initialized, (%d) => (%d)\n", decctx.aframe->sample_rate, SHMPAGE_SAMPLERATE);
+				}
 	
-					int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) decctx.aframe->extended_data, decctx.aframe->nb_samples);
-					if (-1 == rc)
-						LOG("(decode) swr_convert failed\n");
+				int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) decctx.aframe->extended_data, decctx.aframe->nb_samples);
+				if (-1 == rc)
+					LOG("(decode) swr_convert failed\n");
 
-					if (rc == nsamples){
-						LOG("(decode) resample buffer overflow\n");
-						swr_init(decctx.rcontext);
-					}
+				if (rc == nsamples){
+					LOG("(decode) resample buffer overflow\n");
+					swr_init(decctx.rcontext);
+				}
 
-					decctx.shmcont.addr->abufused += rc << 2;
-				} else{
-					uint8_t* ofbuf = decctx.aframe->extended_data[0];
-					uint32_t* abufused = &decctx.shmcont.addr->abufused;
-					size_t ntc;
+				decctx.shmcont.addr->abufused += rc << 2;
+			} else{
+				uint8_t* ofbuf = decctx.aframe->extended_data[0];
+				uint32_t* abufused = &decctx.shmcont.addr->abufused;
+				size_t ntc;
 
 /* flush the entire buffer to parent before continuing */
-					do {
-						ntc = plane_size > SHMPAGE_AUDIOBUF_SIZE - *abufused ?
-						SHMPAGE_AUDIOBUF_SIZE - *abufused : plane_size;
+				do {
+					ntc = plane_size > SHMPAGE_AUDIOBUF_SIZE - *abufused ?
+					SHMPAGE_AUDIOBUF_SIZE - *abufused : plane_size;
 
-						memcpy(&decctx.audp[*abufused], ofbuf, ntc);
-						*abufused += ntc;
-						plane_size -= ntc;
-						ofbuf += ntc;
+					memcpy(&decctx.audp[*abufused], ofbuf, ntc);
+					*abufused += ntc;
+					plane_size -= ntc;
+					ofbuf += ntc;
 
-						if (*abufused == SHMPAGE_AUDIOBUF_SIZE)
-							synch_audio();
+					if (*abufused == SHMPAGE_AUDIOBUF_SIZE)
+						synch_audio();
 
-					} while (plane_size > 0);
-				}
-			;
-		}
+				} while (plane_size > 0);
+			}
+		;
 	}
 
 	return true;
@@ -178,7 +168,7 @@ static bool decode_vframe()
 {
 	int complete_frame = 0;
 
-	avcodec_decode_video2(decctx.vcontext, decctx.pframe, &complete_frame, &(decctx.packet));
+	avcodec_decode_video2(decctx.vcontext, decctx.pframe, &complete_frame, &decctx.packet);
 	if (complete_frame) {
 		uint8_t* dstpl[4] = {NULL, NULL, NULL, NULL};
 		int dststr[4] = {0, 0, 0, 0};
@@ -206,6 +196,10 @@ static bool decode_vframe()
 bool ffmpeg_decode()
 {
 	bool fstatus = true;
+	av_init_packet(&decctx.packet);
+	decctx.packet.data = 0;
+	decctx.packet.size = 0;
+
 	/* Main Decoding sequence */
 	while (fstatus &&
 		av_read_frame(decctx.fcontext, &decctx.packet) >= 0) {

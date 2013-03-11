@@ -3373,7 +3373,7 @@ int arcan_lua_recordset(lua_State* ctx)
 		if (strstr(args.args.builtin.resource, "container=stream") != NULL || strlen(args.args.builtin.resource) == 0)
 			fd = open(NULFILE, O_WRONLY);
 		else
-			fd = fmt_open(O_CREAT | O_WRONLY, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
+			fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/%s/%s", arcan_themepath, arcan_themename, resf);
 
 		if (fd){
 			arcan_frameserver_pushfd( mvctx, fd );

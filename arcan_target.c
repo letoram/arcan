@@ -440,6 +440,7 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 
 	acbfun = desired->callback;
 	desired->callback = audiocb;
+
 	int rc = forwardtbl.sdl_openaudio(desired, obtained);
 
 	SDL_AudioSpec* res = obtained != NULL ? obtained : desired;
@@ -461,7 +462,7 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	if (global.samplerate != SHMPAGE_SAMPLERATE){
 		int errc;
 	
-		global.encabuf_sz = 32 * 1024;
+		global.encabuf_sz = 120 * 1024;
 		global.encabuf    = malloc(global.encabuf_sz);
 		global.resampler  = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, global.samplerate, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
 	}
