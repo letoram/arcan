@@ -745,6 +745,22 @@ int arcan_lua_scaletxcos(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_settxcos_default(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobject* dst = arcan_video_getobject(id);
+	bool mirror = luaL_optinteger(ctx, 2, 0) != 0;
+	
+	if (dst){
+		if (mirror)
+			generate_mirror_mapping(dst->txcos, 1.0, 1.0);
+		else
+			generate_basic_mapping(dst->txcos, 1.0, 1.0);
+	}
+	
+	return 0;
+}
+
 int arcan_lua_settxcos(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -4175,6 +4191,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "copy_surface_properties", 	arcan_lua_copyimageprop);
 	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
 	arcan_lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
+	arcan_lua_register(ctx, "image_set_txcos_default", arcan_lua_settxcos_default);
 	arcan_lua_register(ctx, "image_texfilter", arcan_lua_changetexfilter);
 	arcan_lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
 	arcan_lua_register(ctx, "image_clip_on", arcan_lua_clipon);

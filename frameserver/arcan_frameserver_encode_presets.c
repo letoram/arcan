@@ -113,9 +113,9 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	return true;
 }
 
-static bool default_format_setup(struct codec_ent* ctx)
+static bool default_format_setup(struct codec_ent* dst)
 {
-	int rc = avformat_write_header(ctx->storage.container.context, NULL);
+	int rc = avformat_write_header(dst->storage.container.context, NULL);
 	LOG("(encode) header status (%d)\n", rc);
 	return rc == 0;
 }
@@ -384,8 +384,7 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 		return res;
 	}
 
-	ctx = avformat_alloc_context();
-	ctx->oformat = res.storage.container.format;
+	avformat_alloc_output_context2(&ctx, res.storage.container.format, NULL, NULL);
 
 /* ugly hack around not having a way of mapping filehandle to fd WITHOUT going through open, sic. */
 	sprintf(fdbuf, "pipe:%d", dst);

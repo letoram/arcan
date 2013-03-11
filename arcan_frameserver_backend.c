@@ -543,7 +543,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 /* this will also emit the resize event */
-		arcan_video_resizefeed(src->vid, store, disp, shmpage->storage.glsource);
+		arcan_video_resizefeed(src->vid, store, disp);
 
 /* for PBO transfers, new buffers etc. need to be prepared */
 		glBindTexture(GL_TEXTURE_2D, arcan_video_getobject(src->vid)->gl_storage.glid);

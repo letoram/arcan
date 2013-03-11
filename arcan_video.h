@@ -176,7 +176,7 @@ arcan_errc arcan_video_changefilter(arcan_vobj_id id, enum arcan_vfilter_mode);
 arcan_errc arcan_video_persistobject(arcan_vobj_id id);
 
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display, bool mirror);
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display);
 arcan_vfunc_cb arcan_video_emptyffunc();
 
 /* spawn an instance of the particular vobj,

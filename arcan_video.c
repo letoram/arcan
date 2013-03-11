@@ -1877,7 +1877,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc, img_cons constraints, 
 
 /* some targets like to change size dynamically (thanks for that),
  * thus, drop the allocated buffers, generate new one and tweak txcos */
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display, bool mirror)
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -1919,11 +1919,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		glDeleteTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, false, vobj->default_frame.raw);
-
-		if (mirror)
-			generate_mirror_mapping(vobj->txcos, hx, hy);
-		else
-			generate_basic_mapping(vobj->txcos, hx, hy);
+		generate_basic_mapping(vobj->txcos, hx, hy);
 
 		glBindTexture(GL_TEXTURE_2D, 0);
 		rv = ARCAN_OK;

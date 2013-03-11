@@ -8,6 +8,6 @@ varying vec2 texco;
 
 void main(void)
 {
-	texco = texcoord;
+	texco = texcoord;	
 	gl_Position = (projection * modelview) * vertex;
 }
