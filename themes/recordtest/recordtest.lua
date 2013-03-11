@@ -27,7 +27,8 @@ function recordtest()
 	move_image(b, VRESW - 32, 0, 20);
 	move_image(c, 0, VRESH - 32, 20);
 
-	game = list_games({target = "scummvm"});
+	game = list_games({title = "Asterix%"});
+	game = game[math.random(1, #game)];
 
 	if (game == nil) then
 		error("game not found, giving up.");
@@ -36,17 +37,19 @@ function recordtest()
 
 	recording = false
 
-	vid = launch_target(game[2].gameid, LAUNCH_INTERNAL, function(source, stat)
+	vid = launch_target(42, LAUNCH_INTERNAL, function(source, stat)
 	if (stat.kind == "resized") then
 		resize_image(source, VRESW, VRESH);
+		image_texfilter(vid, FILTER_NONE);
 		show_image(source);
+		audio_gain(stat.source_audio, 0.2);
 		
 		if (not recording) then
 			recording = true
 			dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, 320, 240);
 			resize_image(source, VRESW, VRESH);
 			show_image(dstvid);
-			define_recordtarget(dstvid, "testout.mkv", "acodec=VORBIS:vcodec=FFV1:fps=50:vpreset=8", {source, a, b, c}, {stat.source_audio}, RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1);
+			define_recordtarget(dstvid, "testout.mp4", "container=mp4:acodec=AAC:vcodec=H264:fps=60:vpreset=8", {source, a, b, c}, {stat.source_audio}, RENDERTARGET_DETACH, RENDERTARGET_SCALE, -1);
 		end
 	end
 end)

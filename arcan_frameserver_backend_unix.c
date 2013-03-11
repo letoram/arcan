@@ -68,10 +68,9 @@ extern char* arcan_binpath;
 static void* nanny_thread(void* arg)
 {
 	pid_t* pid = (pid_t*) arg;
-
+	
 	if (pid){
 		int counter = 10;
-		kill(*pid, SIGTERM);
 		
 		while (counter--){
 			int statusfl;

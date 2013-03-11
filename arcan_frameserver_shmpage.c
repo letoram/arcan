@@ -205,7 +205,7 @@ static void* guard_thread(void* gs)
 
 			sleep(5);
 			arcan_warning("frameserver::guard_thread -- couldn't shut down gracefully, exiting.\n");
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
 
 		sleep(5);

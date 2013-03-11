@@ -22,8 +22,8 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 	ctx->time_base = av_d2q(1.0 / fps, 1000000);
 	ctx->bit_rate  = vbr;
 	ctx->pix_fmt   = PIX_FMT_YUV420P;
-	ctx->gop_size  = 10;
-
+	ctx->gop_size  = 12;
+	
 	AVFrame* pframe = avcodec_alloc_frame();
 	pframe->data[0] = av_malloc( (base_sz * 3) / 2);
 	pframe->data[1] = pframe->data[0] + base_sz;
@@ -74,13 +74,10 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	assert(codec);
 
 	ctx->channels       = channels;
-
-#if LIBAVCODEC_VERSION_MAJOR > 53
 	ctx->channel_layout = av_get_default_channel_layout(channels);
-#endif
 
 	ctx->sample_rate    = samplerate;
-	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000);
+	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000); 
 	ctx->sample_fmt     = codec->sample_fmts[0];
 
 /* kept for documentation, now we assume the swr_convert just handles all sample formats for us,
@@ -95,14 +92,17 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 		return false;
 	}
 */
-	
+
 /* rough quality estimate */
 	if (abr <= 10)
-		abr = 1024 * ( 320 - 240 * ((float)(11.0 - abr) / 11.0) );
+		ctx->bit_rate = 1024 * ( 320 - 240 * ((float)(11.0 - abr) / 11.0) );
 	else
 		ctx->bit_rate = abr;
 
-	LOG("(encode) -- audio setup @ %d hz, %d kbit/s\n", samplerate, abr);
+/* AAC may need this */
+	ctx->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
+	
+	LOG("(encode) audio encoder setup @ %d hz, requested quality: %d, got %d kbit/s using %s\n", samplerate, abr, ctx->bit_rate / 1000, codec->name);
 	if (avcodec_open2(dst->storage.audio.context, dst->storage.audio.codec, NULL) != 0){
 		avcodec_close(dst->storage.audio.context);
 		dst->storage.audio.context = NULL;
@@ -115,8 +115,9 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 
 static bool default_format_setup(struct codec_ent* ctx)
 {
-	avformat_write_header(ctx->storage.container.context, NULL);
-	return false;
+	int rc = avformat_write_header(ctx->storage.container.context, NULL);
+	LOG("(encode) header status (%d)\n", rc);
+	return rc == 0;
 }
 
 static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
@@ -180,7 +181,7 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 
 	dst->storage.video.context->bit_rate = vbr;
 
-	LOG("(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1000);
+	LOG("(encode) video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1000);
 	
 	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
@@ -244,7 +245,7 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 	av_dict_set(&opts, "quality", "realtime", 0);
 	dst->storage.video.context->bit_rate = vbr;
 
-	LOG("(encode) -- video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1024);
+	LOG("(encode) video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1024);
 	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
 		dst->storage.video.context = NULL;
@@ -257,7 +258,7 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 
 static struct codec_ent vcodec_tbl[] = {
 	{.kind = CODEC_VIDEO, .name = "libvpx",  .shortname = "VP8",  .id = CODEC_ID_VP8,  .setup.video = setup_cb_vp8},
-	{.kind = CODEC_VIDEO, .name = "libx264", .shortname = "H264", .id = 0,             .setup.video = setup_cb_x264},
+	{.kind = CODEC_VIDEO, .name = "libx264", .shortname = "H264", .id = CODEC_ID_H264, .setup.video = setup_cb_x264},
 	{.kind = CODEC_VIDEO, .name = "ffv1",    .shortname = "FFV1", .id = CODEC_ID_FFV1, .setup.video = default_vcodec_setup },
 };
 
@@ -265,6 +266,7 @@ static struct codec_ent acodec_tbl[] = {
 	{.kind = CODEC_AUDIO, .name = "libvorbis", .shortname = "VORBIS", .id = 0,             .setup.audio = default_acodec_setup},
 	{.kind = CODEC_AUDIO, .name = "libmp3lame",.shortname = "MP3",    .id = 0,             .setup.audio = default_acodec_setup},
 	{.kind = CODEC_AUDIO, .name = "flac",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup},
+	{.kind = CODEC_AUDIO, .name = "aac",       .shortname = "AAC",    .id = CODEC_ID_AAC,  .setup.audio = default_acodec_setup},
 	{.kind = CODEC_AUDIO, .name = "pcm_s16le_planar", .shortname = "RAW",    .id = 0,      .setup.audio = default_acodec_setup}
 };
 
@@ -354,7 +356,7 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 		res.storage.container.format = av_guess_format("flv", NULL, NULL);
 
 		if (!res.storage.container.format)
-			LOG("(encode) -- couldn't setup streaming output.\n");
+			LOG("(encode) couldn't setup streaming output.\n");
 		else {
 			ctx = avformat_alloc_context();
 			ctx->oformat = res.storage.container.format;
@@ -370,12 +372,15 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 	if (requested)
 		res.storage.container.format = av_guess_format(requested, NULL, NULL);
 
-	if (!res.storage.container.format)
+	if (!res.storage.container.format){
+		LOG("(encode) couldn't find a suitable container matching (%s), reverting to matroska (MKV)\n", requested);
 		res.storage.container.format = av_guess_format("matroska", NULL, NULL);
+	} else
+		LOG("(encode) requested container (%s) found.\n", requested);
 
 /* no stream, nothing requested that matched and default didn't work. Give up and cascade. */
 	if (!res.storage.container.format){
-		LOG("(encode) -- couldn't find a suitable container.\n");
+		LOG("(encode) couldn't find a suitable container.\n");
 		return res;
 	}
 
@@ -384,7 +389,7 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 
 /* ugly hack around not having a way of mapping filehandle to fd WITHOUT going through open, sic. */
 	sprintf(fdbuf, "pipe:%d", dst);
-	int rv = avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_WRITE, NULL, NULL);
+	int rv = avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_READ_WRITE, NULL, NULL);
 	ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;
 
 	res.storage.container.context = ctx;
