@@ -93,6 +93,11 @@ static void flush_audbuf()
 		return;
 	}
 
+	if ( (recctx.encabuf_ofs << 2) < recctx.aframe_sz && recctx.shmcont.addr->abufused == 0){
+		LOG("(encode) audio buffer underflow\n");
+		return;
+	}
+	
 /* parent events can modify this buffer to compensate for streaming desynch,
  * extra work for sample size alignment as shm api calculates bytes and allows truncating (terrible) */
 	if (recctx.silence_samples > 0){ /* insert n 0- level samples */

@@ -1919,8 +1919,9 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		glDeleteTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, false, vobj->default_frame.raw);
-		generate_basic_mapping(vobj->txcos, hx, hy);
 
+		arcan_warning("resizefeed( %d, %d)\n", display.w, display.h);
+		
 		glBindTexture(GL_TEXTURE_2D, 0);
 		rv = ARCAN_OK;
 	}
