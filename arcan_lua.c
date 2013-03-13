@@ -1542,6 +1542,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
 			switch (ev->kind){
+				case EVENT_EXTERNAL_NOTICE_IDENT:
+					arcan_lua_tblstr(ctx, "kind", "ident", top);
+					arcan_lua_tblstr(ctx, "message", ev->data.external.message, top);
+				break;
 				case EVENT_EXTERNAL_NOTICE_MESSAGE:
 					arcan_lua_tblstr(ctx, "kind", "message", top);
 					arcan_lua_tblstr(ctx, "message", ev->data.external.message, top);

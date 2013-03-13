@@ -25,11 +25,7 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "../frameserver/arcan_frameserver_libretro.h"
 #include "../frameserver/arcan_frameserver_decode.h"
-
-/* APR won't be an explicit requirement until 0.2.3 */
-#ifdef HAVE_APR
 #include "../frameserver/arcan_frameserver_net.h"
-#endif
 
 #define DST_SAMPLERATE 44100
 #define DST_AUDIOCHAN  2

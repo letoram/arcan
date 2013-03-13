@@ -36,7 +36,7 @@ local function listview_redraw(self)
 			local fmt = self.formats[ tmpname ];
 			
 			if (string.sub(tmpname, 1, 3) == "---") then
-				renderstr = renderstr .. self.hilight_fontstr .. tmpname .. [[\n\r]];
+				renderstr = renderstr .. self.hilight_fontstr .. string.sub(tmpname, 4) .. [[\n\r]];
 			else
 				if (fmt) then
 					renderstr = renderstr .. fmt .. tmpname .. [[\n\r]];

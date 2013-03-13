@@ -569,7 +569,10 @@ static int remaptbl[] = {
 	RETRO_DEVICE_ID_JOYPAD_Y,
 	RETRO_DEVICE_ID_JOYPAD_L,
 	RETRO_DEVICE_ID_JOYPAD_R,
-	0
+	RETRO_DEVICE_ID_JOYPAD_L2,
+	RETRO_DEVICE_ID_JOYPAD_R2,
+	RETRO_DEVICE_ID_JOYPAD_L3,
+	RETRO_DEVICE_ID_JOYPAD_R3
 };
 
 static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
@@ -582,9 +585,9 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 	if (1 == sscanf(label, "PLAYER%d_", &ind) && ind > 0 && ind <= MAX_PORTS && (subtype = strchr(label, '_')) ){
 		subtype++;
 
-		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - 6){
+		if (1 == sscanf(subtype, "BUTTON%d", &button) && button > 0 && button <= MAX_BUTTONS - remaptbl_sz){
 			button--;
-			button = button > remaptbl_sz ? -1 : remaptbl[button];
+			button = remaptbl[button];
 		}
 		else if (1 == sscanf(subtype, "AXIS%d", &axis) && axis > 0 && axis <= MAX_AXES){
 			if (ioev->input.analog.gotrel)
@@ -902,7 +905,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		frameserver_shmpage_setevqs(retroctx.shmcont.addr, retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false);
 
 /* send some information on what core is actually loaded etc. */
-		arcan_event outev = {.category = EVENT_EXTERNAL, .kind = EVENT_EXTERNAL_NOTICE_MESSAGE};
+		arcan_event outev = {.category = EVENT_EXTERNAL, .kind = EVENT_EXTERNAL_NOTICE_IDENT};
 		size_t msgsz = sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]);
 		snprintf(outev.data.external.message, msgsz, "%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_event_enqueue(&retroctx.outevq, &outev);

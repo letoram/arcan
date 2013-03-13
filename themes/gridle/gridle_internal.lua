@@ -57,7 +57,7 @@ local inputmodelist = {
 	"Mirror Axis (analog)",
 	"Filter Opposing",
 	"Toggle Mouse Grab",
-	"---",
+	"---Permanent",
 	"Reconfigure Keys"
 };
 
@@ -1175,12 +1175,25 @@ local function configure_players(dstname)
 	keyconfig_oldfname = keyconfig.keyfile;
 	keyconfig.keyfile = dstname;
 
-	keyconfig:reconfigure_players();
+	local gametbl = retrohelper_lookup(settings.internal_ident);
+-- NOTE: could show background / helper image here as well
+
+	if (gametbl) then
+		keyconfig:reconfigure_players(gametbl.buttons, gametbl.axes, gametbl.ident);
+	else
+		keyconfig:reconfigure_players();
+	end
+	
 	kbd_repeat(0);
 
 	dispatch_push({}, "reconfigure players (" .. tostring(dstname) ..")", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
 			dispatch_pop();
+
+			if (gametbl) then
+				gametbl:destroy();
+			end
+			
 			keyconfig.keyfile = keyconfig_oldfname;
 		end
 	end);
@@ -1720,7 +1733,7 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 	end
 
 if (#menulbls > 0 and settingslbls) then
-		table.insert(menulbls, "-----" );
+		table.insert(menulbls, "---" );
 	end
 
 	if (settingslbls) then
