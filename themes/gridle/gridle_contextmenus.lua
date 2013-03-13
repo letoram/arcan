@@ -38,10 +38,11 @@ local function update_status()
 	local maxw = math.floor(VRESW * 0.7 / settings.colourtable.font_size);
 	
 	list = {};
+	table.insert(list, "---Currently Selected:");
 	table.insert(list, "Title: " .. string.gsub(tostring(current_game.title), 1, maxw));
 	table.insert(list, "System: " .. string.gsub(tostring(current_game.system), 1, maxw));
 	table.insert(list, "Target(ID): " .. tostring(current_game.target) .. "(" .. string.gsub(tostring(current_game.gameid), 1, maxw) .. ")");
-	table.insert(list, "---");
+	table.insert(list, "---Filtering:");
 	table.insert(list, "# Games: " .. tostring(#settings.games));
 	table.insert(list, "Sort Order: " .. settings.sortorder);
 	

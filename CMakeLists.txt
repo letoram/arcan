@@ -134,7 +134,7 @@ FIND_PACKAGE ( VORBIS REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
 FIND_PACKAGE ( VPX REQUIRED )
-FIND_PACKAGE ( APR )
+FIND_PACKAGE ( APR REQUIRED )
 
 LIST (APPEND
 	MAIN_LIBRARIES
@@ -159,6 +159,7 @@ FSRV_LIBRARIES
 	${FFMPEG_LIBRARIES}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
+	${APR_LIBRARIES}
 	${VPX_LIBRARIES}
 	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
 	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
@@ -166,6 +167,7 @@ FSRV_LIBRARIES
 
 set (
 INCLUDE_DIRECTORIES
+	${APR_INCLUDE_DIR}
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
 	${SDL_INCLUDE_DIR}
@@ -235,6 +237,8 @@ set (
  frameserver/arcan_frameserver_libretro.c
  frameserver/arcan_frameserver_encode_presets.c
  frameserver/arcan_frameserver_encode_presets.h
+ frameserver/arcan_frameserver_net.h
+ frameserver/arcan_frameserver_net.c
  frameserver/graphing/font_8x8.h
  frameserver/graphing/net_graph.h
  frameserver/graphing/net_graph.c
@@ -247,32 +251,6 @@ set (
  arcan_general.c
  arcan_event.c
 )
-
-# add / remove frameserver features based on libraries found
-if (APR_LIBRARIES)
-	LIST (APPEND
-		FSRV_SOURCES
-		frameserver/arcan_frameserver_net.h
-		frameserver/arcan_frameserver_net.c
-		frameserver/graphing/net_graph.c
-		frameserver/graphing/net_graph.h
-	)
-
-	LIST (APPEND
-		FSRV_LIBRARIES
-		${APR_LIBRARIES}
-	)
-
-	LIST (APPEND
-		INCLUDE_DIRECTORIES
-		${APR_INCLUDE_DIR}
-	)
-
-	set(FSRV_BUILD_FLAGS "${FSRV_BUILD_FLAGS} -DHAVE_APR")
-	message("(*) Apache Portable Runtime found, enabling net support.")
-else(APR_LIBRARIES)
-	message("( ) Apache Portable Runtime not found, net support disabled.")
-endif(APR_LIBRARIES)
 
 include_directories(${INCLUDE_DIRECTORIES})
 

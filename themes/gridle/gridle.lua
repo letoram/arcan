@@ -299,7 +299,7 @@ function gridle_launchinternal()
 	end
 
 	settings.capabilities = current_game.capabilities;
-	settings.last_message = "";
+	settings.internal_ident = "";
 
 	local tmptbl = {};
 	tmptbl["MENU_ESCAPE"] = function()
@@ -345,6 +345,7 @@ function gridle()
 	system_load("gridle_internal.lua")();        -- internal launch, any arcan controllable emulator
 	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
 	system_load("gridle_customview.lua")();      -- customizable list view
+	system_load("retrohelper.lua")();            -- libretro- / arcan namespace input mapping translation tables
 	
 	if (DEBUGLEVEL > 2) then
 		settings.graph_mode = 1;
@@ -366,7 +367,7 @@ function gridle()
 	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested (minimum 240x180). Check -w / -h arguments.");
 	end
 
--- We'll reduce stack layers (since we don't use them) and increase number of elements on the default one
+-- We'll reduce stack layers (since we barely use them) and increase number of elements on the default one
 -- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
 -- instances etc. Tightly minimizing this value help track down leaks as overriding it will trigger a dump.
 	local contextlim = ( VRESW * VRESH ) / (48 * 48) * 4;
@@ -1669,8 +1670,11 @@ function gridle_internal_status(source, datatbl)
 			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
 		end
 	elseif (datatbl.kind == "message") then
-		settings.last_message = datatbl.message;
+		spawn_warning(datatbl.message);
 
+	elseif (datatbl.kind == "ident") then
+		settings.internal_ident = datatbl.message;
+		
 	elseif (datatbl.kind == "state_size") then
 		if (datatbl.state_size <= 0) then
 			disable_snapshot();
@@ -1680,7 +1684,7 @@ function gridle_internal_status(source, datatbl)
 	elseif (datatbl.kind == "resource_status") then
 		if (datatbl.message == "loading") then
 			show_loading();
-			spawn_warning(settings.last_message);
+			spawn_warning(settings.internal_ident);
 		elseif( datatbl.message == "loaded" or "failed") then
 			remove_loaded();
 		end

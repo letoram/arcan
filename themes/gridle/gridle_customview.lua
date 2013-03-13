@@ -805,7 +805,7 @@ local function show_config()
 	add_submenu(mainlbls, mainptrs, "Dynamic Labels...", "ignore", gen_tbl_menu("ignore", {"Title", "Year", "Players", "Target", "Genre", "Subgenre", "Setname", "Buttons", "Manufacturer", "System"}, positionlabel));
 	add_submenu(mainlbls, mainptrs, "Navigators...", "ignore", gen_tbl_menu("ignore", {"list"}, positionnavi));
 	
-	table.insert(mainlbls, "---");
+	table.insert(mainlbls, "---Actions");
 	table.insert(mainlbls, "Switch to Gridview");
 	
 	mainptrs["Switch to Gridview"] = function(label, save)

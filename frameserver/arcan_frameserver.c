@@ -48,10 +48,7 @@
 #include "arcan_frameserver_decode.h"
 #include "arcan_frameserver_encode.h"
 
-/* APR won't be an explicit requirement until 0.2.3 */
-#ifdef HAVE_APR
 #include "arcan_frameserver_net.h"
-#endif
 
 FILE* logdev = NULL;
 int sockin_fd = -1;
@@ -351,14 +348,11 @@ static void toggle_logdev(const char* prefix)
 	close(2);
 #endif
 
-#ifdef HAVE_APR 
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);
 	}
-#endif
-
-	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
+	else if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("dec");
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	}
