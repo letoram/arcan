@@ -1906,7 +1906,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		vobj->origh = display.h;
 
 		rescale_origwh(vobj, fx, fy);
-
+	
 		vobj->gl_storage.w = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.w : nexthigher(store.w);
 		vobj->gl_storage.h = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.h : nexthigher(store.h);
 		vobj->default_frame.s_raw = vobj->gl_storage.w * vobj->gl_storage.h * 4;
@@ -1920,8 +1920,6 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		allocate_and_store_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, vobj->gl_storage.h, false, vobj->default_frame.raw);
 
-		arcan_warning("resizefeed( %d, %d)\n", display.w, display.h);
-		
 		glBindTexture(GL_TEXTURE_2D, 0);
 		rv = ARCAN_OK;
 	}

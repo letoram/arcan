@@ -7,7 +7,9 @@
 -- can convert to different targets (generating 
 -- configurations) for external launch,
 -- or used for conversion in internal launch.
--- modify the possible entries as you see fit, these are only helpers. 
+-- modify the possible entries as you see fit, these are only helpers.
+--
+-- This should really have a more "gaming related" version, and good DA/AD mapping / calibration tools.
 ----------------------------------------------------------
 
 -- first char is directive, 
@@ -80,29 +82,33 @@ local function keyconf_renderline(self, string, tab)
 		self.textvid = nil;
 	end
 
--- push to front, render text, resize window, align to current resolution 
+-- push to front, render text, resize window, align to current resolution
 	self.textvid = render_text( settings.colourtable.fontstr .. " " .. string, 4, tab);
 	image_tracetag(self.textvid, "keyconfig:text");
 	
 	self.line = string;
 	prop = image_surface_properties(self.textvid);
 
+	local vofs = 0;
+	
 	link_image(self.textvid, self.window);
 	image_mask_clear(self.textvid, MASK_OPACITY);
 	image_clip_on(self.textvid);
 
 	move_image(self.anchor, math.floor(VRESW * 0.5 - prop.width * 0.5), math.floor(VRESH * 0.5 - (prop.height + 10) * 0.5), 0);
-	resize_image(self.window, prop.width + 10, prop.height + 10, NOW);
-	resize_image(self.border, prop.width + 16, prop.height + 16, NOW);
+	resize_image(self.window, prop.width + 10, prop.height + 10 + vofs, NOW);
+	resize_image(self.border, prop.width + 16, prop.height + 16 + vofs, NOW);
 
 	move_image(self.textvid, 5, 5, NOW);
 	order_image(self.textvid, image_surface_properties(self.window).order + 1);
-	blend_image(self.textvid, 1.0);
+	show_image(self.textvid);
+
 end
 
 local function keyconf_new(self)
 	self.used = {};
 	self.table = {};
+	self.ident = {};
 	self.to_front = keyconf_tofront;
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
@@ -180,10 +186,17 @@ local function keyconf_next_key(self)
 		end
 
 		if (self.key_kind == "a" or self.key_kind == "A") then
-			lbl = lbl .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t 0 samples grabbed]];
+			local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
+			lbl = lbl .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. keylbl .. [[\t 0 samples grabbed]];
 			self.analog_samples = {};
 		else
-			lbl = lbl .. "Please press a button for " .. self.key;
+			local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
+			lbl = lbl .. "Please press a button for " .. keylbl; 
+		end
+
+		if (self.ident and self.ident[self.key] and self.ident[self.key].icon) then
+			local fz = tostring(settings.colourtable.font_size) * 2;
+			lbl = string.format("%s   \\P%d,%d,%s,", lbl, fz, fz, self.ident[self.key].icon);
 		end
 
 		self.label = lbl;
@@ -197,11 +210,7 @@ local function keyconf_next_key(self)
 			return true;
 		else
 			self.input = self.input_playersel;
-			self.active_group = 0;
-			self.playercount  = 0;
-			self.buttoncount  = 0;
-			self.axescount    = 0;
-			
+
 			keyconf_playerline(self);
 			return false;
 		end
@@ -223,9 +232,11 @@ local function keyconf_playersel_gen(self)
 
 -- ofs previously pointed to past end of configlist
 	self.ofs = self.ofs - 1;
-
+	self.plvid_lut = {};
+	
 	for i=1, self.buttoncount do
-		table.insert(tmppltbl, "rBUTTON" .. tostring(i));
+		local key = "rBUTTON" .. tostring(i);
+		table.insert(tmppltbl, key);
 	end
 
 	for i=1, self.axescount do
@@ -440,8 +451,9 @@ local function keyconf_analog(self, inputtable)
 -- find which axis that is active, sample 'n' numbers
 	table.insert(self.analog_samples, self:id(inputtable));
 
+	local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
 	self.label = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
-	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. self.key .. [[\t ]] .. tostring(# self.analog_samples) .. " samples grabbed (" .. 
+	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. keylbl .. [[\t ]] .. tostring(# self.analog_samples) .. " samples grabbed (" ..
 	tostring(self.analog_samplelimit) .. "+ needed)";
 
 	counttable = {}
@@ -645,14 +657,19 @@ local function keyconf_sliceplayers(intbl)
 	return restbl;
 end
 
-local function keyconf_playerreconf(self)
+local function keyconf_playerreconf(self, nbuttons, naxes, identtbl)
 -- store the states that new would otherwise override
 	local reftbl  = self.table;
 	local usedtbl = self.usedtbl;
 
-	self.active     = false;
-	self.playerconf = false;
+	self.active      = false;
+	self.playerconf  = false;
 	self.playergroup = {};
+	self.ident       = identtbl;
+	self.playercount = (self.player_count == nil) and 1 or self.player_count;
+	self.buttoncount = (nbuttons == nil) and self:n_buttons(1) or nbuttons;
+	self.axescount   = (naxes == nil) and self:n_axes(1) or naxes;
+
 -- then rebuild UI components as a completed keyconf would have it destroyed 
 	self:new();
 
@@ -693,6 +710,10 @@ function keyconf_create(menugroup, playergroup, keyname)
 		cooldown = 200, -- default is 25ms/tick, 200 * 25 = minimum 500ms between each key 
 		analog_samplelimit = 200,
 		time_lastkey = CLOCK,
+		active_group = 0,
+		playercount = 0,
+		buttoncount = 0,
+		axescount = 0
 	};
 
 	if (settings == nil) then settings = {}; end

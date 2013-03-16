@@ -2670,7 +2670,7 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 			dump_stack(ctx);
 
 		if (!(lua_ctx_store.debug > 2))
-			arcan_fatal("Fatal: arcan_lua_wraperr()\n");
+;//			arcan_fatal("Fatal: arcan_lua_wraperr()\n");
 
 	}
 	else{

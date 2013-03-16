@@ -11,6 +11,14 @@ function string.trim(s)
 	return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
+function table.find(table, label)
+	for a,b in pairs(table) do
+		if (b == label) then return a end
+	end
+
+	return nil;  
+end
+
 function string.split(instr, delim)
 	local res = {};
 	local strt = 1;
@@ -63,16 +71,15 @@ function dispatch_push(tbl, name, triggerfun)
 	local input_key = string.lower(THEMENAME) .. "_input";
 	_G[input_key] = newtbl.dispfun;
 	
---	print("push:", tostring(tbl));
---	for ind, val in ipairs(settings.dispatch_stack) do
---		print(val.name);
---	end
---	print("/push")
+	print("push:", tostring(tbl));
+	for ind, val in ipairs(settings.dispatch_stack) do
+		print(val.name);
+	end
+	print("/push")
 end
 
 function dispatch_pop()
 	if (#settings.dispatch_stack <= 1) then
-		settings.dispatch = {};
 		gridle_input = gridle_dispatchinput;
 		return "";
 	else
@@ -81,7 +88,7 @@ function dispatch_pop()
 
 		settings.iodispatch = last.table;
 		gridle_input = last.dispfun;
---		print("pop to: ", last.name);
+		print("pop to: ", last.name);
 		return last.name;
 	end
 end
@@ -517,6 +524,55 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	
 	play_audio(soundmap["SUBMENU_TOGGLE"]);
 	return current_menu;
+end
+
+-- default handler that sets up all shared members etc. needed for gridle_internal functions,
+-- used by both custom, detail and grid view.
+function internallaunch_event(source, datatbl)
+	if (datatbl.kind == "resized") then
+		if (not settings.in_internal) then
+-- remap input function to one that can handle forwarding and have access to context specific menu
+			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput);
+		end
+
+		gridle_internal_setup(source, datatbl, current_game);
+
+	elseif (datatbl.kind == "frameserver_terminated") then
+		if (settings.status_loading) then
+			remove_loaded();
+			dispatch_pop();
+		end
+	
+		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
+		blend_image(imagery.crashimage, 0.8);
+
+		if (not settings.in_internal) then
+			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
+		end
+
+	elseif (datatbl.kind == "message") then
+		spawn_warning(datatbl.message);
+
+	elseif (datatbl.kind == "ident") then
+		settings.internal_ident = datatbl.message;
+		
+	elseif (datatbl.kind == "state_size") then
+		if (datatbl.state_size <= 0) then
+			disable_snapshot();
+		end
+
+	elseif (datatbl.kind == "frame") then
+-- just ignore
+
+	elseif (datatbl.kind == "resource_status") then
+		if (datatbl.message == "loading") then
+			show_loading();
+			spawn_warning(settings.internal_ident);
+		elseif( datatbl.message == "loaded" or "failed") then
+			remove_loaded();
+		end
+	end
+
 end
 
 --

@@ -134,7 +134,7 @@ settings = {
 	crt_tiltv     = -0.15, 
 	crt_cornersz  = 0.03,
 	crt_cornersmooth = 1000,
-	crt_curvature = true,
+	crt_curvature = false,
 	crt_gaussian  = true,
 	crt_oversample = true,
 	crt_linearproc = true,
@@ -307,7 +307,6 @@ function gridle_launchinternal()
 		gridle_internal_cleanup(gridview_cleanuphook, true);
 	end
 
-	dispatch_push(tmptbl, "internal loading");
 	internal_vid = launch_target( current_game.gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -425,8 +424,8 @@ function gridle()
 	local imenu = {};
 -- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
-	imenu["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 * ncw); end
-	imenu["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( ncw ); end
+	imenu["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 *settings.ncw); end
+	imenu["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor(settings.ncw ); end
 	imenu["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
 	imenu["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
 	imenu["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
@@ -489,9 +488,12 @@ function gridle()
 	
 	imenu["MENU_TOGGLE"]  = function(iotbl)
 		play_audio(soundmap["MENU_TOGGLE"]);
-		gridlemenu_settings( function() menu_bgupdate();
-		erase_grid(false);
-		build_grid(settings.cell_width, settings.cell_height);
+		gridlemenu_settings( function(upd)
+			if (not upd) then return; end
+			erase_grid(false);
+			menu_bgupdate();
+			recalc_scale();
+			build_grid(settings.cell_width, settings.cell_height);
 		end , menu_bgupdate);
 	end
 	
@@ -522,6 +524,8 @@ function gridle()
 	end
 
 	dispatch_push(imenu, "default handler");
+	settings.grid_dispatch = imenu;
+	
 	build_fadefunctions();
 	osd_visible = false;
 
@@ -583,7 +587,8 @@ function setup_gridview()
 
 	settings.cell_width  = settings.cell_width  > VRESW and math.floor(VRESW * 0.5) or settings.cell_width;
 	settings.cell_height = settings.cell_height > VRESH and math.floor(VRESH * 0.5) or settings.cell_height;
-	
+
+	recalc_scale();
 	build_grid(settings.cell_width, settings.cell_height);
 
 	osdkbd = osdkbd_create();
@@ -625,7 +630,6 @@ function network_onevent(source, tbl)
 			local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote", external = true};
 			local override = {};
 
-			print(tbl.message, string.sub(tbl.message, 1, 6));
 			if (string.sub(tbl.message, 1, 6) == "press:") then
 				faketbl.active = true;
 				local label = string.sub(tbl.message, 7, -1);
@@ -902,21 +906,24 @@ function current_game_cellid()
 	return settings.cursor + settings.pageofs + 1;
 end
 
--- ncc (number of cells per page)
+function recalc_scale()
+	settings.ncw = math.floor(VRESW / (settings.cell_width + settings.hspacing));
+	settings.nch = math.floor(VRESH / (settings.cell_height + settings.vspacing));
+
+	settings.ncc = settings.ncw * settings.nch;
+
+--  figure out how much "empty" space we'll have to pad with
+	settings.borderw = VRESW % (settings.cell_width + settings.hspacing);
+	settings.borderh = VRESH % (settings.cell_height + settings.vspacing);
+end
+
+--settings.ncc (number of cells per page)
 -- num within 1..#settings.games
 -- gives page and offset from page base.
 function page_calc(num)
 	num = num - 1;
-	local pageofs = math.floor( num / ncc ) * ncc;
+	local pageofs = math.floor( num /settings.ncc ) *settings.ncc;
 	return pageofs, num - pageofs;
-end
-
-function table.find(table, label)
-	for a,b in pairs(table) do
-		if (b == label) then return a end
-	end
-
-	return nil;  
 end
 
 function spawn_magnify( x, y )
@@ -985,7 +992,7 @@ function osdkbd_filter(msg)
 end
 
 function cell_coords(x, y)
-    return (0.5 * borderw) + x * (settings.cell_width + settings.hspacing), (0.5 * borderh) + y * (settings.cell_height + settings.vspacing);
+    return (0.5 * settings.borderw) + x * (settings.cell_width + settings.hspacing), (0.5 * settings.borderh) + y * (settings.cell_height + settings.vspacing);
 end
 
 function build_fadefunctions()
@@ -1015,7 +1022,7 @@ function build_fadefunctions()
 	table.insert(fadefunctions, function(vid, col, row)
 		local props = image_surface_properties(vid);
 		if (row % 2 > 0) then
-			move_image(vid, -1 * (ncw-col) * props.width, props.y, settings.transitiondelay);
+			move_image(vid, -1 * (settings.ncw-col) * props.width, props.y, settings.transitiondelay);
 		else
 			move_image(vid, (col * props.width) + VRESW + props.width, props.y, settings.transitiondelay);
 		end
@@ -1024,7 +1031,7 @@ function build_fadefunctions()
 end
 
 function got_asynchimage(source, status)
-	local cursor_row = math.floor(settings.cursor / ncw);
+	local cursor_row = math.floor(settings.cursor / settings.ncw);
 	local gridcell_vid = cursor_vid();
 	
 	if (status.kind == "loaded") then
@@ -1069,13 +1076,15 @@ function toggle_led(players, buttons, label, pressed)
 end
 
 function cursor_vid()
-	local cursor_row = math.floor( settings.cursor / ncw);
-	return grid[cursor_row][settings.cursor - cursor_row * ncw ];
+	local cursor_row = math.floor( settings.cursor / settings.ncw );
+	print(cursor_row, settings.ncw, settings.cursor, settings.cursor - cursor_row * settings.ncw);
+	
+	return grid[cursor_row][settings.cursor - cursor_row * settings.ncw ];
 end
 
 function cursor_bgvid()
-	local cursor_row = math.floor( settings.cursor / ncw );
-	return whitegrid[cursor_row][settings.cursor - cursor_row * ncw];
+	local cursor_row = math.floor( settings.cursor /settings.ncw );
+	return whitegrid[cursor_row][settings.cursor - cursor_row *settings.ncw];
 end
 
 function blend_gridcell(val, dt)
@@ -1087,7 +1096,7 @@ function blend_gridcell(val, dt)
 		
 		if (settings.cursor_scale > 1.0) then
 			if (val < 0.9) then
-				local x,y = cell_coords( math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw) );
+				local x,y = cell_coords( math.floor(settings.cursor %settings.ncw), math.floor(settings.cursor /settings.ncw) );
 			
 				local neww = settings.cell_width / settings.cursor_scale;
 				local newh = settings.cell_height / settings.cursor_scale;
@@ -1101,7 +1110,7 @@ function blend_gridcell(val, dt)
 -- Fading in, reposition / rescale
 				local neww  = settings.cell_width * settings.cursor_scale;
 				local newh  = settings.cell_height * settings.cursor_scale;
-				local x,y = cell_coords( math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw) )	;
+				local x,y = cell_coords( math.floor(settings.cursor %settings.ncw), math.floor(settings.cursor /settings.ncw) )	;
 				move_image(gridcell_vid, x - 0.5 * (neww - settings.cell_width), y - 0.5 * (newh - settings.cell_height), dt);
 				resize_image(gridcell_vid, settings.cell_width * settings.cursor_scale, settings.cell_height * settings.cursor_scale, dt);
 				order_image(gridcell_vid, GRIDLAYER_ZOOM); 
@@ -1131,7 +1140,7 @@ function move_cursor( ofs, absolute )
 	settings.pageofs, settings.cursor = page_calc( settings.gameind );
 
 	local x,y = cell_coords(
-		math.floor(settings.cursor % ncw), math.floor(settings.cursor / ncw)
+		math.floor(settings.cursor %settings.ncw), math.floor(settings.cursor /settings.ncw)
 	);
 
 -- reload images of the page has changed
@@ -1199,8 +1208,8 @@ function zap_whitegrid()
 		return; 
 	end
 	
-	for row=0, nch-1 do
-		for col=0, ncw-1 do
+	for row=0,settings.nch-1 do
+		for col=0,settings.ncw-1 do
 			if (whitegrid[row] and whitegrid[row][col] and valid_vid(whitegrid[row][col])) then 
 				delete_image(whitegrid[row][col]); 
 			end
@@ -1213,12 +1222,12 @@ end
 function build_whitegrid()
 	whitegrid = {};
 	
-	for row=0, nch-1 do
+	for row=0,settings.nch-1 do
 		whitegrid[row] = {};
-		for col=0, ncw-1 do
+		for col=0,settings.ncw-1 do
 -- only build new cells if there's a corresponding one in the grid 
 			if (grid[row][col] ~= nil and grid[row][col] > 0) then
-				local gameno = (row * ncw + col + settings.pageofs + 1);
+				local gameno = (row *settings.ncw + col + settings.pageofs + 1);
 				local gametbl = settings.games[gameno];
 				local gridbg = BADID;
 	
@@ -1258,8 +1267,9 @@ function build_whitegrid()
 end
 
 function erase_grid(rebuild)
+	settings.grid_alive = false;
 	settings.cellcount = 0;
-
+	
 	for ind,vid in pairs(settings.favvids) do
 		expire_image(vid, settings.fadedelay);
 		blend_image(vid, 0.0, settings.fadedelay);
@@ -1275,8 +1285,8 @@ function erase_grid(rebuild)
 	
 	local fadefunc = fadefunctions[ math.random(1,#fadefunctions) ];
 	
-	for row=0, nch-1 do
-		for col=0, ncw-1 do
+	for row=0,settings.nch-1 do
+		for col=0,settings.ncw-1 do
 			if (grid[row][col]) then
 				if (rebuild) then
 					delete_image(grid[row][col]);
@@ -1314,22 +1324,15 @@ end
 
 function build_grid(width, height)
 --  figure out how many full cells we can fit with the current resolution
+	if (settings.grid_alive) then return; end
+	settings.grid_alive = true;
 	zap_whitegrid();
 
-	ncw = math.floor(VRESW / (width + settings.hspacing));
-	nch = math.floor(VRESH / (height + settings.vspacing));
-
-	ncc = ncw * nch;
-
---  figure out how much "empty" space we'll have to pad with
-	borderw = VRESW % (width + settings.hspacing);
-	borderh = VRESH % (height + settings.vspacing);
-	
-	for row=0, nch-1 do
+	for row = 0, settings.nch - 1 do
 		grid[row] = {};
 
-		for col=0, ncw-1 do
-			local gameno = (row * ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
+		for col= 0,settings.ncw - 1 do
+			local gameno = (row *settings.ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
 			local cx, cy = cell_coords(col, row);
 
 			if (settings.games[gameno] == nil) then break; end
@@ -1553,6 +1556,12 @@ function gridview_cleanuphook()
 		local gameno = current_game_cellid();
 		settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
 	resourcefinder_cache.invalidate = false;
+
+	repeat
+		disp = dispatch_pop();
+	until disp == "";
+
+	dispatch_push(settings.grid_dispatch, "default handler");
 end
 
 -- shared setup foreplay used in both customview and gridview
@@ -1637,58 +1646,23 @@ function disable_snapshot()
 	blend_image(vid, 0.0, 10);
 end
 
-function gridle_internal_status(source, datatbl)
-	if (datatbl.kind == "resized") then
+function gridle_internal_status(source, tbl)
+	if (tbl.kind == "resized") then
 		if (not settings.in_internal) then
 			erase_grid(true);
 			zap_whitegrid();
--- CROSSFADE --
 			blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
 			blend_image(source, 1.0, settings.transitiondelay);
 			if (imagery.movie and imagery.movie ~= BADID) then
 				expire_image(imagery.movie, settings.transitiondelay);
 				blend_image(imagery.movie, 0.0, settings.transitiondelay);
-				imagery.movie = nil; 
+				imagery.movie = nil;
 			end
--- remap input function to one that can handle forwarding and have access to context specific menu
-			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput);
 		end
 
-		gridle_internal_setup(source, datatbl, current_game);
-
--- it's up to the user to press escape
-	elseif (datatbl.kind == "frameserver_terminated") then
-		if (settings.status_loading) then
-			remove_loaded();
-			dispatch_pop();
-		end
-	
-		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
-		blend_image(imagery.crashimage, 0.8);
-
-		if (not settings.in_internal) then
-			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
-		end
-	elseif (datatbl.kind == "message") then
-		spawn_warning(datatbl.message);
-
-	elseif (datatbl.kind == "ident") then
-		settings.internal_ident = datatbl.message;
-		
-	elseif (datatbl.kind == "state_size") then
-		if (datatbl.state_size <= 0) then
-			disable_snapshot();
-		end
-	elseif (datatbl.kind == "frame") then
--- just ignore
-	elseif (datatbl.kind == "resource_status") then
-		if (datatbl.message == "loading") then
-			show_loading();
-			spawn_warning(settings.internal_ident);
-		elseif( datatbl.message == "loaded" or "failed") then
-			remove_loaded();
-		end
 	end
+
+	internallaunch_event(source, tbl);
 end
 
 function internal_statectl(suffix, save)

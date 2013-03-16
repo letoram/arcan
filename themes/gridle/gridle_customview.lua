@@ -469,35 +469,14 @@ local function positionfun(label)
 end
 
 local function customview_internal(source, datatbl)
-	if (datatbl.kind == "resized") then
-		hide_image(imagery.loading);
-		
-		if (settings.in_internal == false) then
-			dispatch_push(settings.iodispatch, "(custom) internal_input", gridle_internalinput);
-		end
-
-		gridle_internal_setup(source, datatbl, customview.gametbl);
-
-	elseif (datatbl.kind == "state_size") then
-		if (datatbl.state_size <= 0) then
-			disable_snapshot();
-		end
-	
-	elseif (datatbl.kind == "frameserver_terminated") then
-
+	if (datatbl.kind == "frameserver_terminated") then
 		pop_video_context();
-		local term = load_image("images/terminated.png");
-		image_tracetag(term, "terminated");
-		show_image(term);
-		blend_image(term, 1.0, 50);
-		resize_image(term, VRESW, VRESH);
-		order_image(term, max_current_image_order());
-		blend_image(term, 0.0, 20);
+		imagery.crashimage = load_image("images/terminated.png");
+		image_tracetag(imagery.crashimage, "terminated");
 		dispatch_pop();
-
-	elseif (datatbl.kind == "message") then
-		spawn_warning(datatbl.message);
 	end
+
+	internallaunch_event(source, datatbl);
 end
 
 local function cleanup()
@@ -560,6 +539,7 @@ local function launch(tbl)
 			dispatch_pop();
 		end
 
+		settings.internal_ident = "";
 		dispatch_push(tmptbl, "internal loading");
 		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
 	else
