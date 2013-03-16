@@ -7,41 +7,44 @@
 
 -- identstr comes from the first "message" event sent to the event handler
 local function retrohelper_psx(porttype)
-	restbl.max_buttons = 4 + 4;
-	restbl.max_axes = 2;
+	restbl.buttons = 4 + 4;
+	restbl.axes = 2;
 
 	restbl.ident = {};
 
-	local x = load_image("icons/ps_x.png");
-	if (not valid_vid(x)) then
-		x = fill_surface(32, 32, 141, 187, 243);
+	local add = function(key, icon, label)
+		restbl.ident[key] = {};
+		restbl.ident[key].icon = icon;
+		restbl.ident[key].label = label;
 	end
 
-	local square = load_image("icons/ps_square.png");
-	if (not valid_vid(square)) then
-		square = fill_surface(32, 32, 246, 136, 212);
-	end
+	add("PLAYER1_BUTTON1","icons/ps_circle.png", "Player 1, Circle");
+	add("PLAYER1_BUTTON2","icons/ps_x.png", "Player 1, Cross");
+	add("PLAYER1_BUTTON3","icons/ps_tri.png", "Player 1, Triangle");
+	add("PLAYER1_BUTTON4","icons/ps_square.png", "Player 1, Square");
+	add("PLAYER1_BUTTON5","icons/ps_l1.png", "Player 1, L1");
+	add("PLAYER1_BUTTON6","icons/ps_r1.png", "Player 1, R1");
+	add("PLAYER1_BUTTON7","icons/ps_l2.png", "Player 1, L2");
+	add("PLAYER1_BUTTON8","icons/ps_r2.png", "Player 1, R2");
 
-	local circle = load_image("icons/ps_circle.png");
-	if (not valid_vid(circle)) then
-		circle = fill_surface(32, 32, 255, 89, 77);
-	end
+	add("PLAYER1_AXIS1", nil, "Player 1, Left Stick (X)");
+	add("PLAYER1_AXIS2", nil, "Player 1, Left Stick (Y)");
+	add("PLAYER1_AXIS3", nil, "Player 1, Right Stick (X)");
+	add("PLAYER1_AXIS4", nil, "Player 1, Right Stick (Y)");
 
-	local triangle = load_image("icons/ps_tri.png");
-	if (not valid_vid(triangle)) then
-		triangle = fill_surface(32, 32, 0, 202, 185);
-	end
+	add("PLAYER2_BUTTON1","icons/ps_circle.png", "Player 2, Circle");
+	add("PLAYER2_BUTTON2","icons/ps_x.png", "Player 2, Cross");
+	add("PLAYER2_BUTTON3","icons/ps_tri.png", "Player 2, Triangle");
+	add("PLAYER2_BUTTON4","icons/ps_square.png", "Player 2, Square");
+	add("PLAYER2_BUTTON5","icons/ps_l1.png", "Player 2, L1");
+	add("PLAYER2_BUTTON6","icons/ps_r1.png", "Player 2, R1");
+	add("PLAYER2_BUTTON7","icons/ps_l2.png", "Player 2, L2");
+	add("PLAYER2_BUTTON8","icons/ps_r2.png", "Player 2, R2");
 
-	table.insert(restbl.ident, circle);
-	table.insert(restbl.ident, x);
-	table.insert(restbl.ident, triangle);
-	table.insert(restbl.ident, square);
-	
-	restbl.destroy = function()
-		for ind, val in ipairs(restbl.identimg) do
-			delete_image(val);
-		end
-	end
+	add("PLAYER2_AXIS1", nil, "Player 2, Left Stick (X)");
+	add("PLAYER2_AXIS2", nil, "Player 2, Left Stick (Y)");
+	add("PLAYER2_AXIS3", nil, "Player 2, Right Stick (X)");
+	add("PLAYER2_AXIS3", nil, "Player 2, Right Stick (Y)");
 
 	return restbl;
 end

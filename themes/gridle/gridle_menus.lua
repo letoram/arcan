@@ -72,14 +72,19 @@ local gameptrs = {};
 local gamelbls = {};
 
 local bgeffmen, bgeffdesc = build_globmenu("shaders/bgeffects/*.fShader", efftrigger, ALL_RESOURCES);
+local rebuild_grid = false;
+
+local function forcerebuild()
+	rebuild_grid = true;
+end
 
 if (settings.viewmode == "Grid") then
 	add_submenu(displbls, dispptrs, "Image...", "bgname", gen_glob_menu("bgname", "backgrounds/*.png", ALL_RESOURCES, bgtrig, nil));
 	add_submenu(displbls, dispptrs, "Background Effects...", "bgeffect", gen_glob_menu("bgeffect", "shaders/bgeffects/*.fShader", ALL_RESOURCES, bgtrig, nil));
 	add_submenu(displbls, dispptrs, "Cell Background...", "tilebg", gen_tbl_menu("tilebg", {"None", "White", "Black", "Sysicons"}, bgtrig, true));
 	add_submenu(displbls, dispptrs, "Cursor Scale...", "cursor_scale", gen_num_menu("cursor_scale", 1.0, 0.1, 5));
-	add_submenu(displbls, dispptrs, "Cell Width...", "cell_width", gen_num_menu("cell_width", 1, cellwnum, 10));
-	add_submenu(displbls, dispptrs, "Cell Height...", "cell_height", gen_num_menu("cell_height", 1, cellhnum, 10));
+	add_submenu(displbls, dispptrs, "Cell Width...", "cell_width", gen_num_menu("cell_width", 1, cellwnum, 10, forcerebuild));
+	add_submenu(displbls, dispptrs, "Cell Height...", "cell_height", gen_num_menu("cell_height", 1, cellhnum, 10, forcerebuild));
 	add_submenu(displbls, dispptrs, "Tile (vertical)...", "bg_rh", gen_num_menu("bg_rh", 1, tilenums, 8, bgtrig));
 	add_submenu(displbls, dispptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, bgtrig));
 	add_submenu(displbls, dispptrs, "Animate (horizontal)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, bgtrig));
@@ -110,7 +115,7 @@ add_submenu(bgmusiclbls, bgmusicptrs, "Playback...", "bgmusic", gen_tbl_menu("bg
 				delete_image(imagery.musicplayer);
 			end
 		else
-			gridle_startbgmusic(settings.bgmusic_playlist);
+			music_start_bgmusic(settings.bgmusic_playlist);
 		end
 	end, true));
 
@@ -251,6 +256,7 @@ end
 function gridlemenu_settings(cleanup_hook, filter_hook)
 -- first, replace all IO handlers
 	local imenu = {};
+	rebuild_grid = false;
 	
 	imenu["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 		current_menu:destroy();
@@ -268,7 +274,7 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 
 -- only rebuild grid if we have to
 		if (cleanup_hook) then
-			cleanup_hook();
+			cleanup_hook(rebuild_grid);
 		end
 
 		dispatch_pop();

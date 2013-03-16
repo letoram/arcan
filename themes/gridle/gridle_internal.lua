@@ -710,6 +710,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 -- optional additional postprocessor
 	if (settings.upscale_ddt and upscaler) then
+		print("enable ddt");
 		local ddtshader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
 		shader_uniform(ddtshader, "texture_size", "ff", PERSIST, neww, newh);
 
@@ -746,7 +747,12 @@ local function toggle_crtmode(vid, props, windw, windh)
 	shader_uniform(shader, "aspect", "ff", PERSIST, settings.crt_haspect, settings.crt_vaspect);
 	shader_uniform(shader, "distance", "f", PERSIST, settings.crt_distance);
 	shader_uniform(shader, "curv_radius", "f", PERSIST, settings.crt_curvrad);
-	shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv);
+	if (settings.internal_mirror) then
+		shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv * -1);
+	else
+		shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv);
+	end
+
 	shader_uniform(shader, "cornersize", "f", PERSIST, settings.crt_cornersz);
 	shader_uniform(shader, "cornersmooth", "f", PERSIST, settings.crt_cornersmooth);
 
@@ -1174,7 +1180,6 @@ end
 local function configure_players(dstname)
 	keyconfig_oldfname = keyconfig.keyfile;
 	keyconfig.keyfile = dstname;
-
 	local gametbl = retrohelper_lookup(settings.internal_ident);
 -- NOTE: could show background / helper image here as well
 
@@ -1538,8 +1543,7 @@ local function flip_crttog(label, save)
 end
 
 local function flip_scalertog(label, save)
-	local dstkey;
-	if (label == "DDT") then dstkey = "upscale_ddt"; end
+	local dstkey = "upscale_ddt";
 	settings[dstkey] = not settings[dstkey];
 
 	if (save) then
@@ -1553,7 +1557,7 @@ local function flip_scalertog(label, save)
 	current_menu:invalidate();
 	current_menu:redraw();
 
-	gridlemenu_rebuilddisplay();
+	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
 table.insert(scalerlbls, "DDT");
