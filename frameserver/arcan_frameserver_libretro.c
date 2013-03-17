@@ -936,7 +936,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 
-		LOG("(libretro) -- video timing: %f fps (%f ms), audio samplerate: %f Hz\n", (float)retroctx.avinfo.timing.sample_rate,
+		LOG("(libretro) -- video timing: %f fps (%f ms), audio samplerate: %f Hz\n", (float)retroctx.avinfo.timing.fps,
 			(float)retroctx.mspf, (float)retroctx.avinfo.timing.sample_rate);
 
 		LOG("(libretro) -- setting up resampler, %f => %d.\n", (float)retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE);

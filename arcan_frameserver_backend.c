@@ -538,12 +538,12 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* resize the source vid in a way that won't propagate to user scripts */
 		src->desc.samplerate = SHMPAGE_SAMPLERATE;
 		src->desc.channels = SHMPAGE_ACHANNELCOUNT;
-		arcan_event_maskall(arcan_event_defaultctx());
-		arcan_event_clearmask(arcan_event_defaultctx());
-		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
+		arcan_event_maskall(arcan_event_defaultctx());
 /* this will also emit the resize event */
 		arcan_video_resizefeed(src->vid, store, disp);
+		arcan_event_clearmask(arcan_event_defaultctx());
+		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 /* for PBO transfers, new buffers etc. need to be prepared */
 		glBindTexture(GL_TEXTURE_2D, arcan_video_getobject(src->vid)->gl_storage.glid);

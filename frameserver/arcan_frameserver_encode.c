@@ -93,11 +93,6 @@ static void flush_audbuf()
 		return;
 	}
 
-	if ( (recctx.encabuf_ofs << 2) < recctx.aframe_sz && recctx.shmcont.addr->abufused == 0){
-		LOG("(encode) audio buffer underflow\n");
-		return;
-	}
-	
 /* parent events can modify this buffer to compensate for streaming desynch,
  * extra work for sample size alignment as shm api calculates bytes and allows truncating (terrible) */
 	if (recctx.silence_samples > 0){ /* insert n 0- level samples */
@@ -133,6 +128,13 @@ static void flush_audbuf()
 
 	memcpy(&recctx.encabuf[recctx.encabuf_ofs], dataptr, ntc);
 	recctx.encabuf_ofs += ntc;
+
+/* if we don't have enough for a frame, audio may be lagging behind or not being captured
+ * properly, fill as silence frame to be sure */
+	if ( recctx.encabuf_ofs < recctx.aframe_insz ){
+		memset(recctx.encabuf, 0, recctx.aframe_insz);
+		recctx.encabuf_ofs += recctx.aframe_insz;
+	}
 
 /* worst case, we get overflown buffers and need to dorp sound */
 	recctx.shmcont.addr->abufused = 0;
