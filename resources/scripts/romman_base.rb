@@ -81,8 +81,9 @@ class Dql
 	:get_games_by_target => "SELECT gameid FROM game WHERE target = ?",
 	:get_games_title => "SELECT title FROM game",
 	:get_arg_by_id_mode => "SELECT argument FROM target_arguments WHERE target = ? AND mode = ? AND game = 0",
-	:get_target_by_id => "SELECT targetid, name, executable FROM target WHERE targetid = ?",
-	:get_target_by_name => "SELECT targetid, name, executable FROM target WHERE name = ?",
+	:get_target_by_id => "SELECT targetid, name, executable, hijack FROM target WHERE targetid = ?",
+	:get_target_by_name => "SELECT targetid, name, executable, hijack FROM target WHERE name = ?",
+	:get_target_ids => "SELECT name, executable FROM target",
 	
 	:update_game => "UPDATE game SET setname=?, players=?, buttons=?, ctrlmask=?, genre=?, subgenre=?, year=?, manufacturer=?, system=? WHERE gameid=?",
 	:update_target_by_targetid => "UPDATE target SET name = ?, executable = ?, hijack = ? WHERE targetid = ?",
@@ -114,12 +115,22 @@ end
 
 DQL = Dql.new
 
+# Wrapped for getting a minimalistic query trace
+module DBWrapper
+	def execute(qry, *args)
+		STDOUT.print("should execute: #{qry}\n")
+		super(qry, args)
+	end
+end
+
 class DBObject
 	@@dbconn = nil
 
 	def DBObject.openDB(o)
 		@@dbconn = o
+		@@dbconn.extend DBWrapper
 	end
+
 end
 
 class Game < DBObject
@@ -226,7 +237,7 @@ class Game < DBObject
 		"(#{@pkid}) #{title} => #{@target}"
 	end
 
-	def execstr(internal, targetpath)
+	def execstr(internal, targetpath, rompath)
 		resstr = "#{targetpath}/#{@target.target}"
 # got game arguments override? 
 
@@ -237,11 +248,17 @@ class Game < DBObject
 		end
 
 		repl = false
+		
 		while ( ind = arglist.index("[romset]") ) 
 			arglist[ind] = @setname
 			repl = true
 		end
 
+		while ( ind = arglist.index("[romsetfull]") )
+			arglist[ind] = "#{rompath}#{@setname}"
+			repl = true
+		end
+		
 		arglist.each{|arg| resstr << " #{arg}" }
 
 		resstr << " #{@setname}" unless repl
@@ -332,8 +349,8 @@ class Target < DBObject
 	end
 
 	def store
-		@@dbconn.execute(DQL[:update_target_by_targetid], [@name, @target, @pkid])
-		store_args
+		@@dbconn.execute(DQL[:update_target_by_targetid], [@name, @target, @pkid, @hijack])
+		store_args()
 		
 	rescue => dberr
 		STDOUT.print("Target(#{@target})::store -- database error, #{dberr}\n")
@@ -375,17 +392,9 @@ class Target < DBObject
 	end
 
 	def Target.All
-		dbres = []
-		ids = []
 		res = @@dbconn.execute(DQL[:get_target_ids]).each{|row|
-			ids << row[0].to_i
+			yield row[0].to_s
 		}
-
-		ids.each{|pkid|
-			dbres << Target.Load(pkid)
-		}
-		
-		dbres
 	end
 	
 	def Target.Load(pkid, name = nil)
@@ -403,7 +412,8 @@ class Target < DBObject
 		res.pkid = dbres[0][0].to_i
 		res.name =  dbres[0][1]
 		res.target = dbres[0][2]
-
+		res.hijack = dbres[0][3]
+		
 		3.times{|modev|
 			@@dbconn.execute(DQL[:get_arg_by_id_mode], [res.pkid, modev] ).each{|row|
 				res.arguments[modev] << row[0]
@@ -417,11 +427,11 @@ end
 
 module Importers
 	@@required_symbols = [
-		:set_default,
+		:set_defaults,
 		:accepted_arguments,
 		:usage,
 		:check_target,
-		:check_rom 
+		:check_games
 	]
 	
 	def Importers.Each_importer()
@@ -448,7 +458,6 @@ module Importers
 		@@instances = {}
 		Dir["#{path}/importers/*.rb"].each{|imp|
 			modname = imp[imp.rindex('/')+1..-4]
-			
 			begin
 				load imp
 				Importers.Find( modname )
@@ -553,8 +562,10 @@ def import_roms(options)
 end
 
 def list(options)
+
 	gametitle = ""
 	db = getdb(options)
+
 	if (options[:gamesbrief])
 		db.execute(DQL[:get_games_title]).each{|row|
 			STDOUT.print("#{row}\n")
@@ -562,7 +573,7 @@ def list(options)
 	end
 
 	if (options[:targets])
-		Targets.All{|target|
+		Target.All{|target|
 			STDOUT.print("#{target}\n")
 		}
 	end
@@ -582,7 +593,8 @@ def list(options)
 			Buttons: #{game.buttons}\n\
 			Controllers: #{game.mask_str}\n\
 			Genre / Subgenre: #{game.genre}#{game.subgenre and game.subgenre.size > 0? "/" : ""}#{game.subgenre}\n\
-			Manufactured: #{game.manufacturer} (#{game.year})\n")
+			Manufactured: #{game.manufacturer} (#{game.year})\n\
+			Target: #{game.target.name}\n")
 		}
 	end
 	
@@ -734,14 +746,14 @@ def execstr(options)
 	end
 
 	execstr = ""
-	games = Game.Load(0, options[:execgame])
+	games = Game.Load(options[:execgame].to_i, nil)
 	if (games.size == 0)
 		STDOUT.print("No matching title (#{options[:execgame]})")
 	elsif (games.size > 1)
 		STDOUT.print("Multiple titles found: \n")
 		games.each{|game| STDOUT.print("\t#{game.title}\n") }
 	else	
-		execstr = games[0].execstr(options[:execmode] == "internal", options[:targetpath])
+		execstr = games[0].execstr(options[:execmode] == "internal", options[:targetpath], options[:rompath])
 	end
 
 	STDOUT.print("#{execstr}\n")

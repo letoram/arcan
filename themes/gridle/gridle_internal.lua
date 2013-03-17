@@ -710,7 +710,6 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 -- optional additional postprocessor
 	if (settings.upscale_ddt and upscaler) then
-		print("enable ddt");
 		local ddtshader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
 		shader_uniform(ddtshader, "texture_size", "ff", PERSIST, neww, newh);
 

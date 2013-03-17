@@ -526,6 +526,78 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	return current_menu;
 end
 
+function remove_loaded()
+	if (settings.status_loading == false) then
+		return;
+	end
+
+	settings.status_loading = false;
+	delete_image(imagery.loadingbg);
+	hide_image(imagery.loading);
+end
+
+function show_loading()
+	settings.status_loading = true;
+	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
+	blend_image(imagery.loadingbg, 0.6, 10);
+	order_image(imagery.loadingbg, INGAMELAYER_BACKGROUND);
+	order_image(imagery.loading, INGAMELAYER_OVERLAY);
+	blend_image(imagery.loading, 1.0, 10);
+	rotate_image(imagery.loading, 0);
+	rotate_image(imagery.loading, 2048, 200);
+	local imenu = {};
+	
+	imenu["MENU_ESCAPE"] = function()
+		gridle_internal_cleanup(nil, true);
+		dispatch_pop();
+	end
+
+	dispatch_push(imenu, "internal loading");
+end
+
+-- shared between grid/customview, finishedhook is called when user has confirmed or the shared parts have been deleted
+-- forced is initially false, this is done in order to confirm shutdown if the state can't be saved
+function gridle_internal_cleanup(finishedhook, forced)
+	if (settings.in_internal) then
+		if (settings.autosave == "On" or settings.autosave == "On (No Warning)") then
+			if ((settings.capabilities.snapshot == false or settings.capabilities.snapshot == nil) and forced ~= true) then
+				local confirmcmd = {};
+				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); kbd_repeat(settings.repeatrate); end
+				kbd_repeat(0);
+				dialog_option(settings.colourtable.fontstr .. "Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
+				return false;
+			end
+
+			internal_statectl("auto", true);
+			expire_image(internal_vid, 20);
+
+-- hack around keyconfig being called "per game"
+			keyconfig.table = settings.keyconftbl;
+		end
+	
+		undo_displaymodes();
+		gridle_delete_internal_extras();
+
+-- since new screenshots /etc. might have appeared, update cache 
+		resourcefinder_cache.invalidate = true;
+		local gameno = current_game_cellid();
+		resourcefinder_search(customview.gametbl, true);
+		resourcefinder_cache.invalidate = false;
+		settings.in_internal = false;
+	end
+
+	toggle_mouse_grab(MOUSE_GRABOFF);
+	kbd_repeat(settings.repeatrate);
+
+	local disp = "";
+
+	repeat
+		disp = dispatch_pop();
+	until disp ~= "" and disp ~= "internal loading";
+		
+	finishedhook();
+end
+
 -- default handler that sets up all shared members etc. needed for gridle_internal functions,
 -- used by both custom, detail and grid view.
 function internallaunch_event(source, datatbl)
@@ -568,6 +640,7 @@ function internallaunch_event(source, datatbl)
 		if (datatbl.message == "loading") then
 			show_loading();
 			spawn_warning(settings.internal_ident);
+
 		elseif( datatbl.message == "loaded" or "failed") then
 			remove_loaded();
 		end

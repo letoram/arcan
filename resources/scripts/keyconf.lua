@@ -108,7 +108,10 @@ end
 local function keyconf_new(self)
 	self.used = {};
 	self.table = {};
-	self.ident = {};
+	if (self.ident == nil) then
+		self.ident = {};
+	end
+
 	self.to_front = keyconf_tofront;
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
@@ -665,7 +668,7 @@ local function keyconf_playerreconf(self, nbuttons, naxes, identtbl)
 	self.active      = false;
 	self.playerconf  = false;
 	self.playergroup = {};
-	self.ident       = identtbl;
+	self.ident       = identtbl; 
 	self.playercount = (self.player_count == nil) and 1 or self.player_count;
 	self.buttoncount = (nbuttons == nil) and self:n_buttons(1) or nbuttons;
 	self.axescount   = (naxes == nil) and self:n_axes(1) or naxes;
