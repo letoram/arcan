@@ -1072,8 +1072,6 @@ end
 
 function cursor_vid()
 	local cursor_row = math.floor( settings.cursor / settings.ncw );
-	print(cursor_row, settings.ncw, settings.cursor, settings.cursor - cursor_row * settings.ncw);
-	
 	return grid[cursor_row][settings.cursor - cursor_row * settings.ncw ];
 end
 

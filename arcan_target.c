@@ -198,6 +198,9 @@ static struct {
 		.line_size  = 1.0
 };
 
+
+#define TRACE_ENABLE
+
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE 
@@ -215,24 +218,6 @@ void arcan_warning(const char* msg, ...)
 		vfprintf(stderr, msg, args),
 	va_end(args);
 }
-
-/* lots of funky little details when it comes to video,
- * there may be multiple calls to video init (resizing windows etc.)
- * which subsequently leads to a synch in buffer sizes on both this side and
- * on the controlling node, which may, depending on transfer mode, require a re-allocation
- * of shared memory pages etc. Some of the conversions are done simply 
- * to have the option of getting rid of SDL entirely in favor of a GL- only solution */
-
-/*
- * audio on the other hand,
- * we have several mixer options for hijacking, OR the more raw layers of SDL.
- * a viable option is to have a "light" and a "heavy" hijack mode for audio,
- * where light simply translated control commands (changing gain) and mapping
- * to corresponding SDL gain changes. This can be done with the control channel.
- * we might also need target- specific hijacks, thus these little dylibs
- * should be tossed in a folder of their own and force name to match their
- * respective target.
- */
 
 #include <time.h>
 static inline bool parent_alive()
@@ -326,8 +311,10 @@ static inline int process_sample(uint8_t* stream, float attenuate)
 		}
 
 /* buffer overrun, throw away */
-		if (global.encabuf_ofs * 2 >= global.encabuf_sz)
+		if (global.encabuf_ofs * 2 >= global.encabuf_sz){
+			trace("process_sample failed, overflow (%d vs %d)\n", global.encabuf_ofs * 2, global.encabuf_sz);
 			global.encabuf_ofs = 0;
+		}
 		
 		stream += counter;
 	}
@@ -337,6 +324,7 @@ static inline int process_sample(uint8_t* stream, float attenuate)
 
 static void audiocb(void *userdata, uint8_t *stream, int len)
 {
+	trace("SDL audio callback\n");
 	if (!acbfun)
 		return;
 
@@ -356,6 +344,8 @@ static void audiocb(void *userdata, uint8_t *stream, int len)
 			ofs += process_sample(stream + ofs, global.attenuation);
 	}
 	SDL_mutexV(global.abuf_synch);
+
+	trace("samples converted, @ %d\n", ofs);
 }
 
 SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
@@ -554,6 +544,7 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 			newev.key.state           = event.input.translated.active ? SDL_PRESSED : SDL_RELEASED;
 			newev.key.type            = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
 
+			trace("got key: %c\n", newev.key.keysym.sym);
 			forwardtbl.sdl_pushevent(&newev);
 		break;
 		

@@ -319,7 +319,11 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		close(sockp[0]);
 		sprintf(convb, "%i", sockp[1]);
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
-		
+
+/* we need to mask this signal as when debugging parent process, GDB pushes SIGINT to children, killing them and changing
+ * the behavior in the core process */
+		signal(SIGINT, SIG_IGN);
+	
 		if (setup.use_builtin){
 			char* argv[5] = { arcan_binpath, strdup(setup.args.builtin.resource), ctx->shm.key, strdup(setup.args.builtin.mode), NULL };
 	
