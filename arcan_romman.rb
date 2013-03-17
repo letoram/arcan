@@ -227,9 +227,10 @@ GetoptLong.new( *genericopts ).each { |opt, arg|
 # map in the pseudo-parsed arguments untop of the default arguments already set,
 opttbl.each_pair{|key, val| 
 	key = key[2..-1].to_sym
-	if (options[key] == nil)
-		next
-	end
+
+#if (options[key] == nil)
+#ext
+#end
                 
 	options[key] = true
 	options[key] = val[0] if val and val.size == 1

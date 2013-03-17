@@ -379,15 +379,10 @@ function gridle()
 -- keep an active list of available games, make sure that we have something to play/show
 -- since we want a custom sort, we'll have to keep a table of all the games (expensive)
 	settings.games = list_games( {} );
-	settings.internal_targets = {};
 
 	local tgtlist = list_targets();
 	for	ind, val in ipairs(tgtlist) do
 		local caps = launch_target_capabilities( val );
-
-		if (caps.internal_launch) then
-			table.insert(settings.internal_targets, val);
-		end
 	end
 
 	if (not settings.games or #settings.games == 0) then
@@ -1484,49 +1479,6 @@ function gridle_clock_pulse()
 	end
 end
 
--- shared between grid/customview, finishedhook is called when user has confirmed or the shared parts have been deleted
--- forced is initially false, this is done in order to confirm shutdown if the state can't be saved
-function gridle_internal_cleanup(finishedhook, forced)
-	if (settings.in_internal) then
-		if (settings.autosave == "On" or settings.autosave == "On (No Warning)") then
-			if ((settings.capabilities.snapshot == false or settings.capabilities.snapshot == nil) and forced ~= true) then
-				local confirmcmd = {};
-				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); kbd_repeat(settings.repeatrate); end
-				kbd_repeat(0);
-				dialog_option(settings.colourtable.fontstr .. "Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
-				return false;
-			end
-
-			internal_statectl("auto", true);
-			expire_image(internal_vid, 20);
-
--- hack around keyconfig being called "per game"
-			keyconfig.table = settings.keyconftbl;
-		end
-	
-		undo_displaymodes();
-		gridle_delete_internal_extras();
-
--- since new screenshots /etc. might have appeared, update cache 
-		resourcefinder_cache.invalidate = true;
-		local gameno = current_game_cellid();
-		resourcefinder_search(customview.gametbl, true);
-		resourcefinder_cache.invalidate = false;
-		settings.in_internal = false;
-	end
-
-	toggle_mouse_grab(MOUSE_GRABOFF);
-	kbd_repeat(settings.repeatrate);
-
-	local disp = "";
-
-	repeat
-		disp = dispatch_pop();
-	until disp ~= "" and disp ~= "internal loading";
-		
-	finishedhook();
-end
-
 function gridview_cleanuphook()
 	expire_image(internal_vid, 1, 1, settings.transitiondelay);
 	resize_image(internal_vid, 1, 1, settings.transitiondelay);
@@ -1611,23 +1563,6 @@ function gridle_internal_setup(source, datatbl, gametbl)
 	settings.internal_txcos = image_get_txcos(source);
 	settings.internal_mirror = datatbl.mirrored;
 	gridlemenu_rebuilddisplay(settings.internal_toggles);
-end
-
-function remove_loaded()
-	settings.status_loading = false;
-	delete_image(imagery.loadingbg);
-	hide_image(imagery.loading);
-end
-
-function show_loading()
-	settings.status_loading = true;
-	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
-	blend_image(imagery.loadingbg, 0.6, 10);
-	order_image(imagery.loadingbg, INGAMELAYER_BACKGROUND);
-	order_image(imagery.loading, INGAMELAYER_OVERLAY);
-	blend_image(imagery.loading, 1.0, 10);
-	rotate_image(imagery.loading, 0);
-	rotate_image(imagery.loading, 2048, 200);
 end
 
 function disable_snapshot()

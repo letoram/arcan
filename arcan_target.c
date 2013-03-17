@@ -375,7 +375,6 @@ void ARCAN_target_init(){
 	char* shmsize = getenv("ARCAN_SHMSIZE");
 	unsigned bufsize = shmsize ? strtoul(shmsize, NULL, 10) : 0;
 
-
 	if (bufsize == 0 || errno == ERANGE || errno == EINVAL){
 		fprintf(stderr, "arcan hijack: bad value in env[arcan_shmsize], terminating.\n");
 		exit(1);
@@ -397,6 +396,7 @@ void ARCAN_target_init(){
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
 	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
 
+	global.ntsc_opts = snes_ntsc_rgb;
 	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
 }
 
@@ -458,16 +458,14 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 
 	if (global.resampler)
 		global.resampler = (speex_resampler_destroy(global.resampler), NULL);
-	
+
+	global.encabuf_sz = 120 * 1024;
+	global.encabuf    = malloc(global.encabuf_sz);
+		
 	if (global.samplerate != SHMPAGE_SAMPLERATE){
-		int errc;
-	
-		global.encabuf_sz = 120 * 1024;
-		global.encabuf    = malloc(global.encabuf_sz);
+		int errc;	
 		global.resampler  = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, global.samplerate, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
 	}
-
-	global.ntsc_opts = snes_ntsc_rgb;
 	
 	return rc;
 }
