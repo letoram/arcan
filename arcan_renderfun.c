@@ -111,41 +111,43 @@ struct rcell {
 /* Simple font-cache */
 static TTF_Font* grab_font(const char* fname, uint8_t size)
 {
-	int leasti = 0, i;
+	int leasti = 0, i, leastv = -1;
 	const int nchannels_rgba = 4;
 
 	if (!fname || !arcan_video_display.text_support)
 		return NULL;
 
-	for (i = 0; i < font_cache_size; i++) {
-		/* (a) no need to look further, either empty slot or no font found. */
-		if (font_cache[i].data == NULL)
-			break;
-		if (strcmp(fname, font_cache[i].identifier) == 0 &&
-		        font_cache[i].size == size) {
+	for (i = 0; i < font_cache_size && font_cache[i].data != NULL; i++){
+		if (font_cache[i].usecount < leastv){
+			leasti = i;
+			leastv = font_cache[i].usecount;
+		}
+		if (font_cache[i].size == size && strcmp(font_cache[i].identifier, fname) == 0){
 			font_cache[i].usecount++;
 			return font_cache[i].data;
 		}
-
-		if (font_cache[i].usecount < font_cache[leasti].usecount)
-			leasti = i;
 	}
 
-	/* (b) no match, no empty slot. */
-	if (font_cache[i].data != NULL) {
+/* try to load */
+	TTF_Font* font = TTF_OpenFont(fname, size);
+	if (!font){
+		arcan_warning("grab_font(), Open Font (%s,%d) failed: %s\n", fname, size, TTF_GetError());
+		return NULL;
+	}
+	
+/* replace? */	
+	if (i == font_cache_size){
+		i = leasti;
 		free(font_cache[leasti].identifier);
 		TTF_CloseFont(font_cache[leasti].data);
 	}
-	else
-		i = leasti;
-
-	/* load in new font */
-	font_cache[i].data = TTF_OpenFont(fname, size);
+	
 	font_cache[i].identifier = strdup(fname);
-	font_cache[i].usecount = 1;
+	font_cache[i].usecount++;
 	font_cache[i].size = size;
+	font_cache[i].data = font;
 
-	return font_cache[i].data;
+	return font;
 }
 
 void arcan_video_reset_fontcache()
@@ -266,7 +268,6 @@ static char* extract_font(struct text_format* prev, char* base){
 		}
 /* load font */
 		else if ((font = grab_font(fname, strtoul(numbase, NULL, 10))) == NULL){
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't open font (%s) (%s)\n", fname, orig);
 			free(fname);
 			return NULL;
 		}
