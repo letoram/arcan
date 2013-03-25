@@ -587,20 +587,6 @@ int arcan_lua_imageopacity(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_prepare_astream(lua_State* ctx)
-{
-	arcan_errc errc;
-	char* path = findresource(
-		luaL_checkstring(ctx, 1),
-		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME
-	);
-
-	arcan_aobj_id id = arcan_audio_stream(path, 0, &errc);
-	lua_pushaid(ctx, id);
-	free(path);
-	return 1;
-}
-
 int arcan_lua_dropaudio(lua_State* ctx)
 {
 	arcan_audio_stop( luaL_checkaid(ctx, 1) );
@@ -675,7 +661,7 @@ int arcan_lua_setshader(lua_State* ctx)
 		arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 
 	if (ARCAN_OK != arcan_video_setprogram(id, shid))
-		arcan_warning("arcan_video_setprogram() -- couldn't set shader, invalid shader id specified.\n");
+		arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader, invalid vobj or shader id specified.\n", id, shid);
 
 	return 0;
 }
@@ -4155,7 +4141,6 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "game_info", arcan_lua_getgame);
 	arcan_lua_register(ctx, "game_family", arcan_lua_gamefamily);
 	arcan_lua_register(ctx, "game_genres", arcan_lua_getgenres);
-	arcan_lua_register(ctx, "stream_audio", arcan_lua_prepare_astream);
 	arcan_lua_register(ctx, "play_audio", arcan_lua_playaudio);
 	arcan_lua_register(ctx, "pause_audio", arcan_lua_pauseaudio);
 	arcan_lua_register(ctx, "delete_audio", arcan_lua_dropaudio);

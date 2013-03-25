@@ -69,38 +69,6 @@ static arcan_acontext* current_acontext = &_current_acontext;
 static arcan_aobj* arcan_audio_getobj(arcan_aobj_id);
 static arcan_errc arcan_audio_free(arcan_aobj_id);
 
-/* This little stinker came to be as much as a curiousity towards
- * how various IDE suites actually handed it than some balanced and insightful design choice */
-#include "arcan_audio_ogg.c"
-
-#ifdef _HAVE_MPG123
-#include "arcan_audio_mp3.c"
-#endif
-
-static arcan_aobj* arcan_audio_prepare_format(enum aobj_atypes type, arcan_afunc_cb* cb, arcan_aobj* aobj)
-{
-	switch (type) {
-		case OGG:
-			aobj->tag = arcan_audio_ogg_buildtag(aobj);
-			*cb = arcan_audio_sfeed_ogg;
-			return aobj;
-			break;
-
-#ifdef _HAVE_MPG123
-		case MP3:
-			rv = arcan_audio_mp3_buildtag(input, tag);
-			*cb = arcan_audio_sfeed_mp3;
-			break;
-#endif
-
-		default:
-			arcan_warning("Warning: arcan_audio_prepare_format(), unknown audio type: %i\n", type);
-			break;
-	}
-
-	return NULL;
-}
-
 static ALuint load_wave(const char* fname){
 	ALuint rv = 0;
 	SDL_AudioSpec spec;
@@ -488,43 +456,6 @@ static enum aobj_atypes find_type(const char* path)
 	}
 
 	return -1;
-}
-
-arcan_aobj_id arcan_audio_stream(const char* fname, enum aobj_atypes type, arcan_errc* errc)
-{
-	arcan_aobj_id rid = ARCAN_EID;
-	arcan_afunc_cb cb = NULL;
-	arcan_aobj* aobj;
-	void* dtag;
-	
-	if (!fname)
-		return rid;
-
-	SDL_RWops* fpek = SDL_RWFromFile(fname, "rb");
-	if (!fpek)
-		return rid;
-	
-	rid = arcan_audio_alloc(&aobj);
-	aobj->lfeed = fpek;
-	type = find_type(fname);
-
-	if (rid != ARCAN_EID){
-		if (arcan_audio_prepare_format(type, &cb, aobj) ){
-			aobj->streaming = true;
-			aobj->n_streambuf = ARCAN_ASTREAMBUF_LIMIT;
-			aobj->feed = cb;
-			aobj->kind = AOBJ_STREAM;
-			alGenBuffers(aobj->n_streambuf, aobj->streambuf);
-			_wrap_alError(aobj, "audio_stream(genBuffers)");
-		}
-		else{
-			SDL_RWclose(fpek);
-			arcan_audio_free(rid); 
-			rid = ARCAN_EID;
-		}
-	}
-	
-	return rid;
 }
 
 arcan_errc arcan_audio_suspend()

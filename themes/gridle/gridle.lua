@@ -303,10 +303,10 @@ function gridle_launchinternal()
 
 	local tmptbl = {};
 	tmptbl["MENU_ESCAPE"] = function()
-		dispatch_push({}, "internal_terminated"); -- cleanup will pop twice
 		gridle_internal_cleanup(gridview_cleanuphook, true);
 	end
-
+	
+	dispatch_push(tmptbl, "launch_internal", nil, 0); 
 	internal_vid = launch_target( current_game.gameid, LAUNCH_INTERNAL, gridle_internal_status );
 end
 
@@ -332,7 +332,7 @@ function gridle()
 	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
 	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
 	system_load("scripts/dialog.lua")();         -- dialog used for confirmations 
-	system_load("scripts/keyconf.lua")();        -- input configuration dialoges
+	system_load("scripts/keyconf.lua")();        -- input configuration dialogs
 	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
 	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
 	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
@@ -400,7 +400,8 @@ function gridle()
 	image_tracetag(imagery.server, "network server");
 	persist_image(imagery.server);
 	push_video_context();
-	
+
+-- test layout for fullscreen recording, something not working right with MRT however
 --	recres = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 --	define_recordtarget(recres, "rest.mkv", "acodec=VORBIS:vcodec=VP8:container=matroska", {WORLDID}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status) end);
 --	image_tracetag(recres, "recres");
@@ -413,9 +414,18 @@ function gridle()
 		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
 	end
 	
--- enable key-repeat events AFTER we've done possible configuration of label->key mapping
-	kbd_repeat(settings.repeatrate);
+	build_fadefunctions();
+	osd_visible = false;
 
+-- slightly complicated, we cannot activate the respective grid mode in the case of customview etc. 
+-- as it will pop context, manipulate I/O handlers etc. so let the keyconf / ledconf set it all up.
+	local lfun = settings.viewmode == "Grid" and setup_gridview or gridle_customview;
+	
+	gridle_keyconf(lfun);
+	gridle_ledconf(lfun);
+end
+
+function gridview_input()
 	local imenu = {};
 -- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
@@ -453,7 +463,7 @@ function gridle()
 	imenu["OSD_KEYBOARD"]  = function(iotbl)
 		play_audio(soundmap["OSDKBD_TOGGLE"]);
 		osdkbd:show();
-		dispatch_push({}, "osd keyboard", osdkbd_inputcb);
+		dispatch_push({}, "osd keyboard", osdkbd_inputcb, -1);
 	end
 
 	imenu["DETAIL_VIEW"]  = function(iotbl)
@@ -518,27 +528,19 @@ function gridle()
 		end
 	end
 
-	dispatch_push(imenu, "default handler");
+	while dispath_pop() ~= "" do end
+	dispatch_push(imenu, "default handler", nil, -1);
 	settings.grid_dispatch = imenu;
-	
-	build_fadefunctions();
-	osd_visible = false;
-
--- slightly complicated, we cannot activate the respective grid mode in the case of customview etc. 
--- as it will pop context, manipulate I/O handlers etc. so let the keyconf / ledconf set it all up.
-	local lfun = settings.viewmode == "Grid" and setup_gridview or gridle_customview;
-	
-	gridle_keyconf(lfun);
-	gridle_ledconf(lfun);
 end
 
 -- to save resources when going from customview to grid view
 -- the entire context is poped meaning that all involved resources need to be rebuilt
 function setup_gridview()
+	gridview_input();
 	setup_3dsupport();
 	grab_sysicons();
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
-
+	
 	imagery.black = fill_surface(1,1,0,0,0);
 	image_tracetag(imagery.black, "black");
 	
@@ -789,8 +791,6 @@ function gridle_keyconf(defer_fun)
 	keyconfig = keyconf_create(keylabels);
 	
 	if (keyconfig.active == false) then
-		kbd_repeat(0);
-
 -- keep a listview in the left-side behind the dialog to show all the labels left to configure
 		keyconf_labelview = listview_create(listlbls, VRESH * 0.9, VRESW / 4);
 		keyconf_labelview:show();
@@ -807,7 +807,6 @@ function gridle_keyconf(defer_fun)
 		if (keyconfig:input(iotbl) == true) then
 			keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
 			zap_resource("ledsym.lua"); -- delete this one and retry ledconf
-			kbd_repeat(settings.repeatrate);
 			dispatch_pop();
 			
 			if (keyconf_labelview) then
@@ -828,7 +827,7 @@ function gridle_keyconf(defer_fun)
 				keyconf_labelview = nil;
 			end
 		end
-	end);
+	end, 0);
 
 	return false;
 else
@@ -1506,12 +1505,6 @@ function gridview_cleanuphook()
 		local gameno = current_game_cellid();
 		settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
 	resourcefinder_cache.invalidate = false;
-
-	repeat
-		disp = dispatch_pop();
-	until disp == "";
-
-	dispatch_push(settings.grid_dispatch, "default handler");
 end
 
 -- shared setup foreplay used in both customview and gridview
