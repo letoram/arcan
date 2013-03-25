@@ -129,13 +129,6 @@ static void flush_audbuf()
 	memcpy(&recctx.encabuf[recctx.encabuf_ofs], dataptr, ntc);
 	recctx.encabuf_ofs += ntc;
 
-/* if we don't have enough for a frame, audio may be lagging behind or not being captured
- * properly, fill as silence frame to be sure */
-	if ( recctx.encabuf_ofs < recctx.aframe_insz ){
-		memset(recctx.encabuf, 0, recctx.aframe_insz);
-		recctx.encabuf_ofs += recctx.aframe_insz;
-	}
-
 /* worst case, we get overflown buffers and need to dorp sound */
 	recctx.shmcont.addr->abufused = 0;
 }

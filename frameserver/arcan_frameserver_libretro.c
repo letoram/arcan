@@ -159,7 +159,7 @@ static void push_ntsc(unsigned width, unsigned height, const uint16_t* ntsc_imb,
 	size_t linew = SNES_NTSC_OUT_WIDTH(width) * 4;
 
 /* only draw on every other line, so we can easily mix or blend interleaved (or just duplicate) */
-	snes_ntsc_blit(&retroctx.ntscctx, ntsc_imb, width, 0, width, height, outp, linew);
+	snes_ntsc_blit(&retroctx.ntscctx, ntsc_imb, width, 0, width, height, outp, linew * 2);
 
 	for (int row = 1; row < height * 2; row += 2)
 	memcpy(&retroctx.vidp[row * linew], &retroctx.vidp[(row-1) * linew], linew); 

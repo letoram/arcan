@@ -62,5 +62,5 @@ void main(void)
     c1.y = -(c1.y+dy);
 
     float alpha = 1.+dot(dx,dy)*intence*obj_opacity;
-    gl_FragColor = texture2D(map_diffuse,c1)*(alpha);
+    gl_FragColor = texture2D(map_diffuse,texco)*(alpha);
 }

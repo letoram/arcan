@@ -23,12 +23,10 @@ local scalemodelist = {
 -- NOTE; H264 encoding seems to yield broken MOV
 local codectbl = {};
 local codeclbls = {"Lossless (MKV/FFV1/RAW)", "Lossless (MKV/FFV1/FLAC)", "WebM (MKV/VP8/OGG)", "H264 (MKV/H264/MP3)"};
---, "H264 (MP4/H264/MP3)"}; 
 codectbl["Lossless (MKV/FFV1/RAW)"]  = "acodec=RAW:vcodec=FFV1:container=matroska";
 codectbl["Lossless (MKV/FFV1/FLAC)"] = "acodec=FLAC:vcodec=FFV1:container=matroska";
 codectbl["WebM (MKV/VP8/OGG)"]       = "acodec=VORBIS:vcodec=VP8:container=matroska";
 codectbl["H264 (MKV/H264/MP3)"]      = "acodec=MP3:vcodec=H264:container=matroska";
---codectbl["H264 (MP4/H264/AAC)"]      = "acodec=AAC:vcodec=H264:container=mp4";
 
 local recstr = "libvorbis:vcodec=H264:container=stream:acodec=MP3:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 local scalemodeptrs = {};
@@ -106,7 +104,7 @@ inputmodeptrs["Reconfigure Keys"] = function()
 			dispatch_pop();
 			kbd_repeat(settings.repeatrate);
 		end
-	end);
+	end, 0);
 end
 
 inputmodeptrs["Toggle Mouse Grab"] = inputmodechg;
@@ -1109,7 +1107,7 @@ local function build_savemenu()
 			end
 		end
 	
-		dispatch_push({}, "(internal) osd keyboard", osdkbd_input);
+		dispatch_push({}, "(internal) osd keyboard", osdkbd_input, -1);
 	end
 
 -- just grab the last num found, increment by one and use as prefix
@@ -1200,7 +1198,7 @@ local function configure_players(dstname)
 			
 			keyconfig.keyfile = keyconfig_oldfname;
 		end
-	end);
+	end, 0);
 end
 
 local function add_gamelbls( lbltbl, ptrtbl )
@@ -1617,7 +1615,7 @@ streamptrs["Define Stream..."] = function(label, store)
 				end
 			end
 		end
-		);
+		, -1);
 end
 
 -- only if destination has been set up
@@ -1846,7 +1844,7 @@ if (#menulbls > 0 and settingslbls) then
 	end
 
 	menu_defaultdispatch(imenu);
-	dispatch_push(imenu);
+	dispatch_push(imenu, "internal_shared", nil, -1);
 	
 	settings.context_menu = nil;
 

@@ -53,8 +53,8 @@ end
 -- replace the current input handling routine with the specified triggerfun (dispatchinput if nil)
 -- with the specified dispatch table (tbl)
 -- 'name' is used to assist tracing/debugging
--- 
-function dispatch_push(tbl, name, triggerfun)
+-- rrate is either -1 or 0,where 0 indicates no keyboard repeat allowed, -1 sets it to user setting
+function dispatch_push(tbl, name, triggerfun, rrate)
 	if (settings.dispatch_stack == nil) then
 		settings.dispatch_stack = {};
 	end
@@ -63,6 +63,7 @@ function dispatch_push(tbl, name, triggerfun)
 
 	newtbl.table = tbl;
 	newtbl.name = name;
+	newtbl.rrate = rrate ~= nil and rrate or -1 -- negative one will be replaced with settings.repeatrate
 	newtbl.dispfun = triggerfun and triggerfun or dispatch_input;
 	
 	table.insert(settings.dispatch_stack, newtbl);
@@ -70,6 +71,8 @@ function dispatch_push(tbl, name, triggerfun)
 
 	local input_key = string.lower(THEMENAME) .. "_input";
 	_G[input_key] = newtbl.dispfun;
+
+	kbd_repeat(newtbl.rrate == -1 and settings.repeatrate or newtbl.rrate);
 	
 	print("push:", tostring(tbl));
 	for ind, val in ipairs(settings.dispatch_stack) do
@@ -88,6 +91,8 @@ function dispatch_pop()
 
 		settings.iodispatch = last.table;
 		gridle_input = last.dispfun;
+		kbd_repeat(last.rrate == -1 and settings.repeatrate or last.rrate);
+
 		print("pop to: ", last.name);
 		return last.name;
 	end
@@ -161,7 +166,7 @@ function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
 	end
 
 	play_audio(soundmap["MENU_TOGGLE"]);
-	dispatch_push(imenu, "message dialog");
+	dispatch_push(imenu, "message dialog", nil, 0);
 	dialogwin:show();
 end
 
@@ -174,10 +179,8 @@ function confirm_shutdown()
 	end
 
 	video_3dorder(ORDER_NONE);
-	kbd_repeat(0);
 
 	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, true, valcbs, function()
-		kbd_repeat(settings.repeatrate);
 		video_3dorder(ORDER_LAST);
 	end);
 end
@@ -541,18 +544,11 @@ function show_loading()
 	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
 	blend_image(imagery.loadingbg, 0.6, 10);
 	order_image(imagery.loadingbg, INGAMELAYER_BACKGROUND);
-	order_image(imagery.loading, INGAMELAYER_OVERLAY);
+	order_image(imagery.loading, INGAMELAYER_BACKGROUND);
 	blend_image(imagery.loading, 1.0, 10);
 	rotate_image(imagery.loading, 0);
 	rotate_image(imagery.loading, 2048, 200);
 	local imenu = {};
-	
-	imenu["MENU_ESCAPE"] = function()
-		gridle_internal_cleanup(nil, true);
-		dispatch_pop();
-	end
-
-	dispatch_push(imenu, "internal loading");
 end
 
 -- shared between grid/customview, finishedhook is called when user has confirmed or the shared parts have been deleted
@@ -560,10 +556,10 @@ end
 function gridle_internal_cleanup(finishedhook, forced)
 	if (settings.in_internal) then
 		if (settings.autosave == "On" or settings.autosave == "On (No Warning)") then
+
 			if ((settings.capabilities.snapshot == false or settings.capabilities.snapshot == nil) and forced ~= true) then
 				local confirmcmd = {};
-				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); kbd_repeat(settings.repeatrate); end
-				kbd_repeat(0);
+				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); end
 				dialog_option(settings.colourtable.fontstr .. "Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
 				return false;
 			end
@@ -587,15 +583,16 @@ function gridle_internal_cleanup(finishedhook, forced)
 	end
 
 	toggle_mouse_grab(MOUSE_GRABOFF);
-	kbd_repeat(settings.repeatrate);
 
 	local disp = "";
 
-	repeat
+	while disp ~= "default handler" do
 		disp = dispatch_pop();
-	until disp ~= "" and disp ~= "internal loading";
-		
-	finishedhook();
+	end
+
+	if (finishedhook) then
+		finishedhook();
+	end
 end
 
 -- default handler that sets up all shared members etc. needed for gridle_internal functions,
@@ -604,7 +601,7 @@ function internallaunch_event(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
 -- remap input function to one that can handle forwarding and have access to context specific menu
-			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput);
+			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput, 0);
 		end
 
 		gridle_internal_setup(source, datatbl, current_game);
