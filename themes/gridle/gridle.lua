@@ -528,7 +528,7 @@ function gridview_input()
 		end
 	end
 
-	while dispath_pop() ~= "" do end
+	while dispatch_pop() ~= "" do end
 	dispatch_push(imenu, "default handler", nil, -1);
 	settings.grid_dispatch = imenu;
 end
