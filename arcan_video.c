@@ -997,6 +997,8 @@ extern int TTF_Init();
 
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool fs, bool frames, bool conservative)
 {
+	static char caption[64];
+
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_SWAP_CONTROL, arcan_video_display.vsync == true ? 1 : 0);
@@ -1008,7 +1010,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, arcan_video_display.msasamples);
 	}
 
-	SDL_WM_SetCaption("Arcan", "Arcan");
+	snprintf(caption, 64, "Arcan - %s", arcan_themename);
+	SDL_WM_SetCaption(caption, "Arcan");
 
 	arcan_video_display.fullscreen = fs;
 	arcan_video_display.sdlarg = (fs ? SDL_FULLSCREEN : 0) | SDL_OPENGL | (frames ? SDL_NOFRAME : 0);
