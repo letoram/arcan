@@ -383,7 +383,7 @@ local function gen_modify_menu(self, mod)
 	menu_spawnmenu(lbls, ptrs, fmts);
 end
 
-local function cancel_quit(self)
+local function cancel_quit(self, status)
 	while current_menu ~= nil do
 		local last = current_menu;
 		current_menu:destroy();
@@ -398,8 +398,12 @@ local function cancel_quit(self)
 	end
 
 	self.items = nil;
-
 	dispatch_pop();
+
+	if (self.finalizer ~= nil) then
+		self.finalizer(status);
+	end
+	
 end
 
 local function place_item( vid, tbl )
@@ -447,8 +451,8 @@ local function show(self)
 	end
 
 	local actionptrs = {};
-	actionptrs["Save/Quit"] = function() self:store(); cancel_quit(self); end
-	actionptrs["Cancel"]    = function()               cancel_quit(self); end
+	actionptrs["Save/Quit"] = function() self:store(); cancel_quit(self, true ); end
+	actionptrs["Cancel"]    = function()               cancel_quit(self, false); end
 
 	table.insert(mainlbls, "----------");
 	table.insert(mainlbls, "Modify...");
@@ -909,6 +913,7 @@ function layout_new(name)
 		position = position_item,
 		find_remove = find_remove,
 		post_save_hook = nil,
+		finalizer = nil,
 		fontind = 1,
 		items = {}, 
 		groups = {}
