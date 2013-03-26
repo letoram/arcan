@@ -392,6 +392,14 @@ function osdkbd_restricted_table()
 	"V", "W", "X", "Y", "Z", " ", "%", "-", "0", "_", "\n" };
 end
 
+function osdkbd_alphanum_table()
+	return {
+	"A", "B", "C", "D", "E", "F", "G", "1", "2", "3", "\n", -- SHIFT
+	"H", "I", "J", "K", "L", "M", "N", "4", "5", "6", "\n", -- ERASE
+	"O", "P", "Q", "R", "S", "T", "U", "7", "8", "9", "\n", -- OK
+	"V", "W", "X", "Y", "Z", " ", nil, "-", "0", "_", "\n" };
+end
+
 function osdkbd_create(map, opts)
 	local restbl = {
 		cursor = 0,
