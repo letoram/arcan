@@ -16,25 +16,6 @@ local stepleft, stepup, stepdown, stepright, show_config, setup_customview;
 
 customview = {};
 
-layout = layout_load(name);
-if (layout) then
-	layout.resources["Navigator"].instance = system_load( layout.resources["Navigator"].resource )();
-	
-else
-	layout = layout_new(name);
-	layout:add_resource("Bezel", "bezel.png",           LAYRES_IMAGE, false);
-	layout:add_resource("Screenshot", "screenshot.png", LAYRES_IMAGE, false);
-	layout:add_resource("Marquee", "marquee.png",       LAYRES_IMAGE, false);
-	layout:add_resource("Overlay", "overlay.png",       LAYRES_IMAGE, false);
-	layout:add_resource("Backdrop", "backdrop.png",     LAYRES_IMAGE, false);
-	layout:add_resource("Snapshot", "snapshot.png",     LAYRES_FRAMESERVER, false);
-	layout:add_resource("Vidcap", "vidcap.png",         LAYRES_FRAMESERVER, false);
-	layout:add_resource("Model", "placeholder",         LAYRES_MODEL, false);
-	layout:add_resource("Background", "background.png", LAYRES_STATIC, true, function() return glob("backgrounds/*"); end
-	layout:add_resource("Navigator", "navigator.png",   LAYRES_NAVIGATOR, true, function() return glob("navigators/*.lua"); end
-	layout:add_resource("Background Shader", nil, LAYRES_
-end
-
 local function customview_internal(source, datatbl)
 	if (datatbl.kind == "frameserver_terminated") then
 		pop_video_context();
