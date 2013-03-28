@@ -450,18 +450,33 @@ local function show(self)
 		end
 	end
 
-	local actionptrs = {};
-	actionptrs["Save/Quit"] = function() self:store(); cancel_quit(self, true ); end
-	actionptrs["Cancel"]    = function()               cancel_quit(self, false); end
-
 	table.insert(mainlbls, "----------");
 	table.insert(mainlbls, "Modify...");
 	table.insert(mainlbls, "Delete...");
+	table.insert(mainlbls, "Action...");
+
 	mainptrs["Modify..."] = function() gen_modify_menu(self, true); end
 	mainptrs["Delete..."] = function() gen_modify_menu(self, false); end
-	
-	add_submenu(mainlbls, mainptrs, "Action...", nil, {"Save/Quit", "Cancel"}, actionptrs, {}); 
-	
+	mainptrs["Action..."] = function()
+		local have_sq = true;
+		
+		if (self.validation_hook ~= nil) then
+			have_sq = self:validation_hook();
+		end
+
+		local lbls = nil;
+		if (have_sq) then
+			lbls = {"Save/Quit", "Cancel"};
+		else
+			lbls = {"Cancel"};
+		end
+
+		local ptrs = {};
+		ptrs["Save/Quit"] = function() self:store(); cancel_quit(self, true ); end
+		ptrs["Cancel"]    = function()               cancel_quit(self, false); end
+		menu_spawnmenu(lbls, ptrs, {});
+	end
+
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu:show();
 	move_image(current_menu.anchor, 10, math.floor(VRESH * 0.1));

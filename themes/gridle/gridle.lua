@@ -172,7 +172,7 @@ settings = {
 	record_fps  = 30,
 	record_format = "WebM (MKV/VP8/OGG)",
 	
-	imagefilter = "Bilinear",
+	imagefilter = "None",
 	
 -- All settings that pertain to internal- launch fullscreen modes
 	internal_input   = "Normal",
@@ -1375,39 +1375,6 @@ function gridle_shutdown()
 	end
 end
 
-function load_key_num(name, val, opt)
-	local kval = get_key(name);
-
-	if (kval) then
-		settings[val] = tonumber(kval);
-	else
-		settings[val] = opt;
-		key_queue[name] = tostring(opt);
-	end
-end
-
-function load_key_bool(name, val, opt)
-	local kval = get_key(name);
-	
-	if (kval) then
-		settings[val] = tonumber(kval) ~= 0;
-	else
-		settings[val] = opt;
-		key_queue[name] = opt and "1" or "0";
-	end
-end
-
-function load_key_str(name, val, opt)
-	local kval = get_key(name);
-
-	if (kval) then
-		settings[val] = kval;
-	else
-		settings[val] = opt;
-		key_queue[name] = opt;
-	end
-end
-
 function asynch_movie_ready(source, statustbl)
 	if (imagery.movie == source) then
 		if (statustbl.kind == "resized") then
@@ -1505,55 +1472,6 @@ function gridview_cleanuphook()
 		local gameno = current_game_cellid();
 		settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
 	resourcefinder_cache.invalidate = false;
-end
-
--- shared setup foreplay used in both customview and gridview
-function gridle_internal_setup(source, datatbl, gametbl)
--- per session settings
-	if (not settings.in_internal) then
--- first, tell all remote controls -- title / system have already been transferred */
-		if (imagery.server) then
-			net_push_srv(imagery.server, "launched");
-		end
-
-		if (settings.autosave == "On") then
-			internal_statectl("auto", false);
-		end
-
-		target_graphmode(source, settings.graph_mode);
-		target_framemode(internal_vid, skipremap[ settings.skip_mode ], settings.frame_align,
-			settings.preaud, settings.jitterstep, settings.jitterxfer);
-
-		settings.in_internal    = true;
-
-		if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
-			pause_movie(imagery.musicplayer);
-		end
-		
-		internal_aid = datatbl.source_audio;
-		internal_vid = source;
-
--- (reset toggles? NOTE: do this on a per game basis)  
---	settings.internal_toggles.bezel     = false;
---	settings.internal_toggles.overlay   = false;
---	settings.internal_toggles.backdrops = false;
-		gridle_load_internal_extras( resourcefinder_search(gametbl, true), gametbl.target );
---	order_image(internal_vid, max_current_image_order());
-		image_tracetag(source, "internal_launch(" .. gametbl.title ..")");
-		audio_gain(internal_aid, settings.internal_again, NOW);
-		settings.keyconftbl = keyconfig.table;
-
-		if (settings.capabilities.snapshot == false) then
-			disable_snapshot();
-		end
-
-		set_internal_keymap();
-	end
-
--- video specific "every resize" settings
-	settings.internal_txcos = image_get_txcos(source);
-	settings.internal_mirror = datatbl.mirrored;
-	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
 function disable_snapshot()

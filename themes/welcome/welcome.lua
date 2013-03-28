@@ -47,6 +47,7 @@ function welcome()
 	-h res  \t(default: 480)\n\r
 	-v      \tdisable VSYNC\n\r
 	-V      \tdisable WaitSleep (use with -v)\n\r
+	-F      \t(default: 0.6) Prewake vs. VSYNC \n\r"
 	-x winx \tset window start x coordinate\n\r
 	-y winy \tset window start y coordinate\n\r
 	-f      \tswitch resolution (fullscreen)\n\r

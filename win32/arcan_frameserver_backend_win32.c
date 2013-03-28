@@ -68,9 +68,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
 
-		if (src->lock_audb)
-			SDL_DestroyMutex(src->lock_audb);
-
 		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
 
 	/* might have died prematurely (framequeue cbs), no reason sending signal */
@@ -99,6 +96,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 		free(src->audb);
 
+		if (src->lock_audb)
+			SDL_DestroyMutex(src->lock_audb);
+		
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);
 
@@ -117,7 +117,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (!loop){
 			vfunc_state emptys = {0};
 			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
-			memset(src, 0xaa, sizeof(arcan_frameserver));
+			memset(src, 0x00, sizeof(arcan_frameserver));
 			free(src);
 		}
 

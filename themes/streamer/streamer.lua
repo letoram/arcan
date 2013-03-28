@@ -205,11 +205,15 @@ function define_layout()
 		if (complete) then
 			osdsavekbd:destroy();
 			osdsavekbd = nil;
-				
+
 			dispatch_pop();
 			if (resstr ~= nil and string.len(resstr) > 0) then
-			lay_setup(resstr);
+				if (string.sub(resstr, -4, -1) ~= ".lay") then
+					resstr = resstr .. ".lay";
+				end
+				lay_setup("layouts/" .. resstr);
 			end
+
 		end
 
 	end, -1);
@@ -220,9 +224,9 @@ function gen_layout_menu()
 	local layfmt = {};
 
 	table.insert(laymenu, 1, "New Layout");
+	table.insert(laymenu, 2, "----------");
 	layptrs["New Layout"] = define_layout;
-	layfmt["New Layout"]  = [[\b]];
-
+	layfmt["New Layout"]  = [[\b\#00ff00]];
 	menu_spawnmenu(laymenu, layptrs, layfmt);
 end
 
@@ -298,7 +302,17 @@ function lay_setup(layname)
 	layout:add_resource("internal", "internal", "Internal Launch", "Input Feeds...", LAYRES_FRAMESERVER, false, load_image("images/placeholders/internal.png"));
 	layout:add_resource("vidcap", "vidcap", "Video Capture", "Input Feeds...", LAYRES_FRAMESERVER, false, load_image("images/placeholders/vidcap.png"));
 	layout.post_save_hook = hookfun;
-	layout.finalizer = toggle_main_menu; 
+	layout.finalizer = toggle_main_menu;
+	layout.validation_hook = function()
+		for ind, val in ipairs(layout.items) do
+			if (val.idtag == "internal" or val.idtag == "vidcap") then
+				return true;
+			end
+		end
+
+		return false;
+	end
+
 	layout:show();
 end
 

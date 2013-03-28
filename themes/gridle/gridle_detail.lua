@@ -65,8 +65,8 @@ end
 function gridledetail_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
 		detailview.model:update_display(instance_image(source));
+	
 		audio_gain(datatbl.source_audio, settings.internal_again, NOW);
-
 		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);
 		rotate3d_model(detailview.model.vid, detailview.zoomang.roll, detailview.zoomang.pitch, detailview.zoomang.yaw, 20, ROTATE_ABSOLUTE);
 	end
@@ -103,7 +103,7 @@ local function gridledetail_switchfs()
 		internal_vidborder = instance_image( imagery.black );
 		detailview.fullscreen = true;
 		image_mask_clearall(internal_vidborder);
-		order_image(internal_vidborder, max_current_image_order());
+		order_image(internal_vidborder, INGAMELAYER_BACKGROUND);
 		resize_image(internal_vidborder, VRESW, VRESH);
 		show_image(internal_vidborder);
 
