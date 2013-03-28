@@ -32,15 +32,13 @@ enum codec_kind {
 	CODEC_FORMAT
 };
 
-struct codec_ent; 
-
 struct codec_ent
 {
 	enum codec_kind kind;
 	
 	const char* const name;
 	const char* const shortname;
-	enum CodecID id;
+	int id;
 	
 	union {
 		struct {

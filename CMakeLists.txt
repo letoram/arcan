@@ -35,8 +35,8 @@ ExternalProject_Add(
 
 cmake_minimum_required(VERSION 2.8.7 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
-set(MINOR_VERSION 2 )
-set(PATCH_LEVEL 2 )
+set(MINOR_VERSION 3 )
+set(PATCH_LEVEL 0 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -67,7 +67,7 @@ endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 	message("------------------*Debug Build*--------------------")
-	add_definitions(-g -D_DEBUG)
+	add_definitions(-g -D_DEBUG -fno-omit-frame-pointer)
 endif (CMAKE_BUILD_TYPE STREQUAL "Debug")
 
 if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")

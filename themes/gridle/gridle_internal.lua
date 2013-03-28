@@ -243,53 +243,55 @@ end
 
 local function setup_cocktail(mode, source, vresw, vresh)
 	local props = image_surface_properties(source);
+	image_set_txcos_default(source, settings.internal_mirror);
+	local cv = instance_image(source);
 
-	imagery.cocktail_vid = instance_image(source);
-	image_tracetag(imagery.cocktail_vid, "cocktail");
+	imagery.cocktail_vid = cv;
+	table.insert(imagery.temporary, cv);
+	show_image(cv);
+	image_tracetag(cv, "cocktail");
+	image_mask_clear(cv, MASK_ORIENTATION);
+
 	if (settings.fullscreen_shader ~= nil) then
-		image_shader(imagery.cocktail_vid, settings.fullscreen_shader);
+		image_shader(cv, settings.fullscreen_shader);
 	end
 
-	image_mask_clear(imagery.cocktail_vid, MASK_ORIENTATION);
-	resize_image(imagery.cocktail_vid, props.width, props.height);
-	show_image(imagery.cocktail_vid);
-
 	if (mode == "H-Split" or mode == "H-Split SBS" or mode == "H-Split Slice") then
+		image_mask_clear(cv, MASK_POSITION);
+	
 		if (mode == "H-Split") then
-			rotate_image(imagery.cocktail_vid, 180);
+			rotate_image(cv, 180);
 		end
 
 -- for this one, patch the texture coordinates to only show half and half
 		if (mode == "H-Split Slice") then
 			local lary = {};
 			local rary = {};
-
+			local txcos = image_get_txcos(source);
+			
 			local ul = 0.0;
-			for i=1,#settings.internal_txcos do
-				if (settings.internal_txcos[i]) > ul then ul = settings.internal_txcos[i]; end
+			for i=1,#txcos do
+				if (txcos[i] > ul) then ul = txcos[i]; end
 			end
 
 			ul = ul * 0.5;
-
--- just patch T values, divide the left side by two, the right side by
-			for i=1,#settings.internal_txcos do
-				lary[i] = (i % 2 == 0) and (settings.internal_txcos[i] * 0.5     ) or settings.internal_txcos[i];
-				rary[i] = (i % 2 == 0) and (settings.internal_txcos[i] * 0.5 + ul) or settings.internal_txcos[i];
+			
+			for i=1,#txcos do
+				lary[i] = (i % 2 == 0) and (txcos[i] * 0.5     ) or txcos[i];
+				rary[i] = (i % 2 == 0) and (txcos[i] * 0.5 + ul) or txcos[i];
 			end
 
 			image_set_txcos(source, lary);
---			image_mask_clear(imagery.cocktail_vid, MASK_MAPPING);
-			image_set_txcos(imagery.cocktail_vid, rary);
+			image_set_txcos(cv,     rary);
 		end
 
-		image_mask_clear(imagery.cocktail_vid, MASK_POSITION);
-		move_image(source, 0.5 * (vresw - props.width), 0.5 * (vresh - props.height));
-		move_image(imagery.cocktail_vid, vresw + 0.5 * (vresw - props.width), 0.5 * (vresh - props.height));
+		move_image(source,     math.floor(0.5 * (vresw - props.width)), math.floor(0.5 * (vresh - props.height)) );
+		move_image(cv, vresw + math.floor(0.5 * (vresw - props.width)), math.floor(0.5 * (vresh - props.height)) );
 
 	elseif (mode == "V-Split") then
-		move_image(source, 0.5 * (vresh - props.width), 0.5 * (vresw - props.height))
-		move_image(imagery.cocktail_vid, vresh, 0);
-		rotate_image(imagery.cocktail_vid, -90);
+		move_image(source, math.floor(0.5 * (vresh - props.width)), math.floor(0.5 * (vresw - props.height)));
+		move_image(cv, vresh, 0);
+		rotate_image(cv,    -90);
 		rotate_image(source, 90);
 	end
 end
@@ -726,39 +728,39 @@ end
 local function toggle_crtmode(vid, props, windw, windh)
 	local shaderopts = {};
 -- CURVATURE, OVERSAMPLE, LINEAR_PROCESSING, USEGAUSSIAN
-	if (settings.crt_curvature) then shaderopts["CURVATURE"] = true; end
-	if (settings.crt_gaussian)  then shaderopts["USEGAUSSIAN"] = true; end
+	if (settings.crt_curvature)  then shaderopts["CURVATURE"]         = true; end
+	if (settings.crt_gaussian)   then shaderopts["USEGAUSSIAN"]       = true; end
 	if (settings.crt_linearproc) then shaderopts["LINEAR_PROCESSING"] = true; end
-	if (settings.crt_oversample) then shaderopts["OVERSAMPLE"] = true; end
+	if (settings.crt_oversample) then shaderopts["OVERSAMPLE"]        = true; end
 
 	local shader = load_shader("display/crt.vShader", "display/crt.fShader", "crt", shaderopts);
 	local sprops = image_storage_properties(vid);
 	settings.fullscreen_shader = shader;
 
-	shader_uniform(shader, "input_size", "ff", PERSIST, sprops.width, sprops.height);
-	shader_uniform(shader, "output_size", "ff", PERSIST, windw, windh);
-	shader_uniform(shader, "storage_size", "ff", PERSIST, props.width, props.height);
-	shader_uniform(shader, "CRTgamma", "f", PERSIST, settings.crt_gamma);
-	shader_uniform(shader, "overscan", "ff", PERSIST, settings.crt_hoverscan, settings.crt_voverscan);
-	shader_uniform(shader, "monitorgamma", "f", PERSIST, settings.crt_mongamma);
-	shader_uniform(shader, "aspect", "ff", PERSIST, settings.crt_haspect, settings.crt_vaspect);
-	shader_uniform(shader, "distance", "f", PERSIST, settings.crt_distance);
-	shader_uniform(shader, "curv_radius", "f", PERSIST, settings.crt_curvrad);
+	shader_uniform(shader, "input_size",   "ff", PERSIST, props.width, props.height);
+	shader_uniform(shader, "output_size",  "ff", PERSIST, props.width, props.height);
+	shader_uniform(shader, "storage_size", "ff", PERSIST, sprops.width, sprops.height);
+	shader_uniform(shader, "CRTgamma",      "f", PERSIST, settings.crt_gamma);
+	shader_uniform(shader, "overscan",     "ff", PERSIST, settings.crt_hoverscan, settings.crt_voverscan);
+	shader_uniform(shader, "monitorgamma",  "f", PERSIST, settings.crt_mongamma);
+	shader_uniform(shader, "aspect",       "ff", PERSIST, settings.crt_haspect, settings.crt_vaspect);
+	shader_uniform(shader, "distance",      "f", PERSIST, settings.crt_distance);
+	shader_uniform(shader, "curv_radius",   "f", PERSIST, settings.crt_curvrad);
 	if (settings.internal_mirror) then
 		shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv * -1);
 	else
 		shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv);
 	end
 
-	shader_uniform(shader, "cornersize", "f", PERSIST, settings.crt_cornersz);
-	shader_uniform(shader, "cornersmooth", "f", PERSIST, settings.crt_cornersmooth);
+	shader_uniform(shader, "cornersize",   "f",  PERSIST, settings.crt_cornersz);
+	shader_uniform(shader, "cornersmooth", "f",  PERSIST, settings.crt_cornersmooth);
 
 	image_shader(vid, shader);
 end
 
 local filterlut = {None = FILTER_NONE,
-		Linear   = FILTER_LINEAR,
-		Bilinear = FILTER_BILINEAR};
+		Linear      = FILTER_LINEAR,
+		Bilinear    = FILTER_BILINEAR};
 
 local function update_filter(vid, filtermode)
 	local modeval = filterlut[filtermode];
@@ -811,9 +813,10 @@ function gridlemenu_rebuilddisplay(toggles)
 	end
 
 	local windw, windh = gridlemenu_resize_fullscreen(dstvid, props);
-
+	local props = image_surface_properties(dstvid);
+	
 	if (toggles.antialias) then
-		dstvid = display_fxaa(dstvid, windw, windh);
+		dstvid = display_fxaa(dstvid, props.width, props.height);
 		imagery.display_vid = dstvid;
 	end
 
@@ -870,20 +873,40 @@ function gridlemenu_rebuilddisplay(toggles)
 		end
 	end
 
--- with NTSC rolling, we need to keep updating to get the changes to be reflected, thus the "noresume" thing.
+--
+-- with NTSC rolling, we need to keep updating to get the changes to be reflected, thus the "noresume" thing,
+-- this can unfortunately lead to a resize event and thereafter, a new call to this function
+--
 	if (toggles.ntsc) then
 		push_ntsc();
 	end
 
 -- all the above changes may have reordered the menu
 	gridlemenu_tofront(current_menu);
-	push_ntsc(true);
+--	push_ntsc(true);
 end
 
+local function match_aspect(sourcew, sourceh, destw, desth)
+	local ar = sourcew / sourceh;
+	local wr = sourcew / destw;
+	local hr = sourceh / desth;
+
+	if (hr > wr) then
+		return math.floor(desth * ar), desth;
+	else
+		return destw, math.floor(ar / destw);
+	end
+end
+
+--
+-- Figure out how much workspace surface we have, combine that with the current scalemode and apply to source.
+-- Returns the final workspace surface
+-- 
 function gridlemenu_resize_fullscreen(source, init_props)
 -- rotations are not allowed for H-Split / H-Split SBS and V-Split needs separate treatment
 	local rotate = nil;
-
+	imagery.cocktail_vid = nil;
+	
 	if (settings.scalemode == "Rotate 90 CW") then
 		rotate = 90;
 	elseif (settings.scalemode == "Rotate 90 CCW") then
@@ -897,14 +920,10 @@ function gridlemenu_resize_fullscreen(source, init_props)
 	local windh = VRESH;
 	rotate_image(source, 0);
 
-	if (valid_vid(imagery.cocktail_vid)) then
-		delete_image(imagery.cocktail_vid);
-		imagery.cocktail_vid = BADID;
-	end
-
 	local props = init_props;
 
-	if (rotate) then
+-- since rotate isn't a toggle flag, assume rotate means rotate + keep aspect
+	if (rotate ~= nil) then
 		local tmp = windw;
 		windw = windh;
 		windh = tmp;
@@ -940,45 +959,35 @@ function gridlemenu_resize_fullscreen(source, init_props)
 
 	elseif (scalemode == "2X") then
 		resize_image(source, props.width * 2, props.height * 2);
-
+		
 	elseif (scalemode == "Keep Aspect") then
-		local step = 0;
-		local ar = props.width / props.height;
-		while ( (step < windw) and (step / ar < windh) ) do
-			step = step + 1;
-		end
-
-		resize_image(source, step, math.ceil(step / ar) );
+		local neww, newh = match_aspect(props.width, props.height, windw, windh);
+		resize_image(source, neww, newh);
 
 	elseif (scalemode == "Stretch") then
 		resize_image(source, windw, windh);
 	end
 
--- some operations overshoot, just step down
+-- some operations overshoot, aspect match the possible stretched source
 	props = image_surface_properties(source);
 	if (props.width > windw or props.height > windw) then
-		local ar = props.width / props.height;
-		local step = windw;
-
-		while ( (step > windw ) or (step / ar > windh) ) do
-			step = step - 1;
-		end
-		resize_image(source, step, math.ceil(step / ar) );
+		local neww, newh = match_aspect(props.width, props.height, windw, windh);
+		resize_image(source, neww, newh);
 	end
 
--- update all the values to the result of calculations
+-- rotate / reposition
 	props = image_surface_properties(source);
 	if (settings.cocktail_mode ~= "Disabled") then
 		setup_cocktail(settings.cocktail_mode, source, windw, windh);
 	else
 		if (rotate ~= nil) then
 			rotate_image(source, rotate);
-			move_image(source, 0.5 * (windh - props.width), 0.5 * (windw - props.height));
+			move_image(source, math.floor(0.5 * (windh - props.width)), math.floor(0.5 * (windw - props.height)) );
 		elseif (scalemode ~= "Bezel") then
-			move_image(source, 0.5 * (windw - props.width), 0.5 * (windh - props.height));
+			move_image(source, math.floor(0.5 * (windw - props.width)), math.floor(0.5 * (windh - props.height)) );
 		end
 	end
-
+	
 	return windw, windh;
 end
 
@@ -1369,7 +1378,6 @@ function enable_record(width, height, args)
 	show_image(lvid);
 
 	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
-		print("record callback", status.kind);
 	end
 );
 

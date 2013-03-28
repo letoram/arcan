@@ -139,7 +139,6 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 			src->autoplay = true;
 			sevent.kind = EVENT_FRAMESERVER_LOOPED;
 
-			printf("autoplay respawn!\n");
 			struct frameserver_envp args = {
 				.use_builtin = true,
 				.args.builtin.resource = src->source,
@@ -516,7 +515,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
     if (!arcan_frameserver_control_chld(src) || !src || !shmpage){
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		arcan_video_alterfeed(src->vid, arcan_frameserver_dummyframe, cstate);
+		arcan_video_alterfeed(src->vid, arcan_frameserver_emptyframe, cstate);
         return;
     }
 
