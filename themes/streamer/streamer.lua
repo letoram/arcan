@@ -5,12 +5,13 @@ settings = {
 	stream_url  = "rtmp://",
 	record_fps  = 30,
 	record_qual = 8,
-	record_res  = 480
+	record_res  = 480,
+	vpts_ofset  = 0
 };
 
 soundmap = {};
 
-local recstr = "libvorbis:vcodec=H264:container=stream:acodec=MP3:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
+local recstr = "libvorbis:vcodec=H264:vptsofs=0:aptsofs=0:container=stream:acodec=MP3:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 
 function streamer()
 --listview.lua, osdkbd.lua, dialog.lua, colourtable.lu	
@@ -102,6 +103,7 @@ function toggle_main_menu()
 	add_submenu(streammenu, streamptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 	add_submenu(streammenu, streamptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
 	add_submenu(streammenu, streamptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
+	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts", gen_num_menu("record_vpts", 0, 4, 12, function() end));
 	table.insert(streammenu, "Define Stream...");
 	
 	add_submenu(menulbls, menuptrs, "Settings...", nil, streammenu, streamptrs, {});
