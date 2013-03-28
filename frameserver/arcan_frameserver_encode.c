@@ -53,6 +53,7 @@ struct {
 	AVCodec* vcodec;
 	uint8_t* encvbuf;
 	size_t encvbuf_sz;
+	int vpts_ofs; /* used to rougly displace A/V synchronisation in encoded frames */
 
 /* Timing (shared) */
 	long long starttime;       /* monotonic clock time-stamp */
@@ -65,6 +66,7 @@ struct {
 	AVCodec* acodec;
 	AVStream* astream;
 	int channel_layout;
+	int apts_ofs; /* used to roughly displace A/V synchronisation in encoded frames */
 	int silence_samples; /* used to dynamically drop or insert silence bytes in buffer_flush */
 	
 /* needed for intermediate buffering and format conversion */
@@ -198,7 +200,7 @@ forceencode:
 		exit(EXIT_FAILURE);
 	}
 
-	frame->pts = recctx.aframe_ptscnt;
+	frame->pts = recctx.apts_ofs + recctx.aframe_ptscnt;
 	recctx.aframe_ptscnt += frame->nb_samples;
 	
 	int rv = avcodec_encode_audio2(ctx, &pkt, frame, &got_packet);
@@ -288,7 +290,7 @@ int encode_video(bool flush)
 	int got_outp = false;
 
 	av_init_packet(&pkt);
-	recctx.pframe->pts = recctx.framecount++;
+	recctx.pframe->pts = recctx.vpts_ofs + recctx.framecount++;
 
 	int rs = avcodec_encode_video2(recctx.vcontext, &pkt, flush ? NULL : recctx.pframe, &got_outp);
 
@@ -427,6 +429,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 	if (arg_lookup(args, "fps", 0, &val)) fps = strtof(val, NULL);
 	if (arg_lookup(args, "noaudio", 0, &val)) noaudio = true;
 	if (arg_lookup(args, "presilence", 0, &val)) presilence = ( (presilence = strtoul(val, NULL, 10)) > 0 ? presilence : 0);
+	if (arg_lookup(args, "vptsofs", 0, &val)) recctx.vpts_ofs = ( strtoul(val, NULL, 10) );
+	if (arg_lookup(args, "aptsofs", 0, &val)) recctx.apts_ofs = ( strtoul(val, NULL, 10) );
 	
 	arg_lookup(args, "vcodec", 0, &vck);
 	arg_lookup(args, "acodec", 0, &ack);
