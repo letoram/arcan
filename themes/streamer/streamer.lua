@@ -34,12 +34,12 @@ function streamer()
 		dispatch_push({}, "keyconfig (full)", function(iotbl)
 			if (keyconfig:input(iotbl) == true) then
 				dispatch_pop();
-				toggle_main_menu();
+				toggle_main_menu(false, 0);
 			end
 		end, 0);
 
 	else
-		toggle_main_menu();
+		toggle_main_menu(false, 0);
 	end
 
 end
@@ -83,11 +83,25 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	return false, nil;
 end
 
--- this parses the currently active layout (if any) and generates the appropriate menu entries 
-function toggle_main_menu()
-	if (current_menu) then
+--
+-- show helper icons
+-- (a) is there a layout?
+-- (b) are there any input sources?
+-- (c) have a stream been set up?
+--
+function show_helper()
+	print("show helper");
+end
+
+--
+-- this parses the currently active layout (if any) and generates the appropriate menu entries
+-- depends on current layout (if any), target in layout, vidcap feeds in layout
+--
+function toggle_main_menu(target, nvc)
+	while current_menu ~= nil do
 		current_menu:destroy();
-		current_menu = nil;
+		dispatch_pop();
+		current_menu = current_menu.parent;
 	end
 	
 	local menulbls = {"Layouts...", };
@@ -151,11 +165,16 @@ function toggle_main_menu()
 	add_submenu(menulbls, menuptrs, "Streaming...", streammenu, streamptrs, {});
 
 -- need a layout set in order to know what to define the different slots as
-	if (settings.layout) then
+	if (target) then
+--		add_submenu(menulbls, menuptrs, "Setup Game...",
+	end
+
+	if (nvc > 0) then
+		
 	end
 
 -- without stream
-	if (settings.stream_dst) then
+	if (settings.ready) then
 	end
 
 	table.insert(menulbls, "--------");
@@ -190,10 +209,66 @@ function toggle_main_menu()
 	dispatch_push(imenu, "streamer_main", nil, -1);
 
 	current_menu:show();
+	show_helper();
+end
+
+--
+-- Will be triggered everytime the layout editor rebuilds its view
+-- Mostly expect the script to resolve a full resource description based on type and idtag
+-- Although some properties could be altered "in flight" and LAYRES_SPECIAL are even expected to be
+--
+function load_cb(restype, lay)
+	if (restype == LAYRES_STATIC) then
+		if (lay.idtag == "background") then
+			return "backgrounds/" .. lay.res;
+			
+		elseif (lay.idtag == "image") then
+			return "images/" .. lay.res;
+		end
+	end
+
+-- don't progress until we have a data-source set
+	if (settings.restbl == nil) then
+		return nil;
+	end
+
+	if (restype == LAYRES_IMAGE) then
+		local locfun = settings.restbl["find_" .. restype.idtag];
+		if (locfun ~= nil) then
+			return locfun();
+		end
+		
+	elseif (restype == LAYRES_TEXT) then
+		return settings.gametbl[restype.idtag];
+	end
+
+end
+
+function list_targetgames(label)
+	gamelist = {};
+	games = list_games({target = label});
+
+	if not games or #games == 0 then return; end
+	for ind, tbl in ipairs(games) do table.insert(gamelist, tbl.title); end
+	
+	settings.current_target = label;
+	lbls, ptrs = gen_tbl_menu(nil, gamelist, setup_game, true);
+	menu_spawnmenu(lbls, ptrs, {});
 end
 
 function load_layout(lay)
-	print("switch to: ", lay);
+	if (settings.layout) then
+		settings.layout:destroy();
+		settings.layout = nil;
+	end
+
+	settings.layout = layout_load("layouts/" .. lay, load_cb);
+	if (settings.layout ~= nil) then
+		toggle_main_menu(#settings.layout["internal"] > 0, settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
+	else
+		spawn_warning("Couldn't load layout: " .. lay);
+		toggle_main_menu(false, 0);
+	end
 end
 
 function define_layout()
@@ -304,7 +379,15 @@ function lay_setup(layname)
 	layout:add_resource("internal", "internal", "Internal Launch", "Input Feeds...", LAYRES_FRAMESERVER, false, load_image("images/placeholders/internal.png"));
 	layout:add_resource("vidcap", "vidcap", "Video Capture", "Input Feeds...", LAYRES_FRAMESERVER, false, load_image("images/placeholders/vidcap.png"));
 	layout.post_save_hook = hookfun;
-	layout.finalizer = toggle_main_menu;
+
+	layout.finalizer = function(state)
+		if (state) then
+			load_layout(string.sub(layname, 9));
+		else
+			toggle_main_menu(false, 0);
+		end
+	end
+
 	layout.validation_hook = function()
 		for ind, val in ipairs(layout.items) do
 			if (val.idtag == "internal" or val.idtag == "vidcap") then

@@ -452,32 +452,36 @@ end
 -- false otherwise.
 local function keyconf_analog(self, inputtable)
 -- find which axis that is active, sample 'n' numbers
-	table.insert(self.analog_samples, self:id(inputtable));
-
-	local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
-	self.label = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
-	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. keylbl .. [[\t ]] .. tostring(# self.analog_samples) .. " samples grabbed (" ..
-	tostring(self.analog_samplelimit) .. "+ needed)";
-
-	counttable = {}
-
-	for i=1,#self.analog_samples do
-		val = counttable[ self.analog_samples[i] ] or 0;
-		counttable[ self.analog_samples[i] ] = val + 1;
+	local idstr = self:id(inputtable);
+	
+	if (self.analog_samples[idstr] == nil) then
+		self.analog_samples[idstr] = {};
+		table.insert(self.analog_samples[idstr], inputtable);
+	else
+-- last inserted sample value should deviate from the previous one by value to prevent noise devices from dominating 
+		if (self.analog_samples[idstr][#self.analog_samples[idstr]].samples[1] ~= inputtable.samples[1]) then
+			table.insert(self.analog_samples[idstr], inputtable);
+		end
 	end
+	
+	local maxkey = "";
+	local smpls  = 0;
 
-	max = 1;
-	maxkey = "not found";
-
-	for key, value in pairs( counttable ) do
-		if (value > max) then
-			max = value;
+	for key, val in pairs(self.analog_samples) do
+		print(key, #val);
+		if smpls < #val then 
 			maxkey = key;
+			smpls  = #val;
 		end
 	end
 
+	local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
+	self.label = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
+	self.label = self.label .. [[ Please provide input along \ione \!iaxis on an analog device for:\n\r ]] .. keylbl .. [[\t ]] .. tostring( smpls ) .. " samples grabbed (" ..
+	tostring(self.analog_samplelimit) .. "+ needed)";
+	
 	self.label = self.label .. [[\n\r dominant device(:axis) is (]] .. maxkey .. ")";
-	if ( #self.analog_samples >= self.analog_samplelimit) then
+	if ( smpls >= self.analog_samplelimit) then
 		self:set(inputtable);
 		return self:next_key();
     else
