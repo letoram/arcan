@@ -168,6 +168,7 @@ end
 local function update_infowin(self, item)
 	if (self.infowin) then
 		self.infowin:destroy();
+		self.infowin = nil;
 	end
 
 	local fmts = {};
@@ -511,8 +512,10 @@ local function save(self)
 
 	open_rawresource(fname);
 	write_rawresource("local layout = {};\n");
-	write_rawresource("layout.types = {};\n");
+	write_rawresource(string.format("layout.orig_w = %d;\n", VRESW));
+	write_rawresource(string.format("layout.orig_h = %d;\n", VRESH));
 
+	write_rawresource("layout.types = {};\n");
 	for ind, val in ipairs(LAYRES_CONVTBL) do
 		write_rawresource("layout.types[\"" .. val .. "\"] = {};\n");
 	end
@@ -522,7 +525,8 @@ local function save(self)
 	end
 
 	write_rawresource("return layout;\n");
-	close_rawresource(fname);
+	close_rawresource();
+	print("flushed", fname);
 end
 
 local function rotate(self, ang, align)
@@ -634,10 +638,11 @@ local function new_3ditem(restbl)
 		write_rawresource(string.format("itbl.type = \"%s\";\n", LAYRES_CONVTBL[self.kind]));
 		write_rawresource(string.format("itbl.pos  = {%f, %f, %f};\n", self.pos[1], self.pos[2], self.pos[3]));
 		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
+		write_rawresource(string.format("itbl.zv   = %d;\n", self.zv));
 		write_rawresource(string.format("itbl.ang  = {%f, %f, %f};\n", self.ang[1], self.ang[2], self.ang[3]));
 		write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
 		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
-		write_rawresource("table.insert(layout[itbl.type], itbl);\n");
+		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
 	end
 	
 	restbl.ang  = {0.0, -90.0, 0.0};
@@ -722,11 +727,11 @@ local function new_textitem(msg, parent)
 		modes = position_modes_text, 
 		opa = 1.0,
 		ang = 0,
-		zv = 0,
 		tile_h = 1,
 		tile_v = 1,
 		fontind = 1,
 		fontsz  = 24,
+		zv = 1,
 		x = 0,
 		y = 0,
 		invalidate = true,
@@ -737,21 +742,23 @@ local function new_textitem(msg, parent)
 		return string.format("\\ffonts/%s,%d%s%s\\#%02x%02x%02x %s", self.font,
 			self.fontsz, self.bold and "\\b" or "\\!b", self.italic and "\\i" or "\\!i", self.col[1], self.col[2], self.col[3], msg);
 	end
-	
+
 	restbl.store = function(self)
 		write_rawresource("local itbl = {};\n");
 		write_rawresource(string.format("itbl.res  = \"%s\";\n", self.res));
 		write_rawresource(string.format("itbl.type = \"%s\";\n", LAYRES_CONVTBL[self.kind]));
-		write_rawresource(string.format("itbl.size = {%d, %d};\n", self.width, self.height));
-		write_rawresource(string.format("itbl.pos  = {%d, %d};\n", self.x, self.y));
+		write_rawresource(string.format("itbl.size = %d;\n", self.fontsz));
 		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
 		write_rawresource(string.format("itbl.ang  = %d;\n", self.ang));
+		write_rawresource(string.format("itbl.zv   = %d;\n", self.zv));
+		write_rawresource(string.format("itbl.pos  = {%d, %d};\n", self.x, self.y));
 		write_rawresource(string.format("itbl.col  = {%d, %d, %d};\n", self.col[1], self.col[2], self.col[3]));
 		write_rawresource(string.format("itbl.maxlen = %d;\n", self.maxlen));
+		write_rawresource(string.format("itbl.idtag = \"%s\";", self.idtag));
 		write_rawresource(string.format("itbl.fontstr = [[%s]];\n", self:fontstr("")));
 		write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
 		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
-		write_rawresource("table.insert(layout[itbl.type], itbl);\n");
+		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
 	end
 	
 	restbl.vid  = fill_surface(1, 1, 0, 0, 0);
@@ -779,20 +786,6 @@ local function new_2ditem(vid)
 		update = update_object
 	};
 
-	restbl.store = function(self)
-		write_rawresource("local itbl = {};\n");
-		write_rawresource(string.format("itbl.res  = \"%s\";\n", self.res));
-		write_rawresource(string.format("itbl.type = \"%s\";\n", LAYRES_CONVTBL[self.kind]));
-		write_rawresource(string.format("itbl.size = {%d, %d};\n", self.width, self.height));
-		write_rawresource(string.format("itbl.pos  = {%d, %d};\n", self.x, self.y));
-		write_rawresource(string.format("itbl.tile = {%d, %d};\n", self.tile_v, self.tile_h));
-		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
-		write_rawresource(string.format("itbl.ang  = %d;\n", self.ang));
-		write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
-		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
-		write_rawresource("table.insert(layout[itbl.type], itbl);\n");
-	end
-	
 	restbl.width  = (props.width > VRESW * 0.5) and math.floor(VRESW * 0.5) or props.width;
 	restbl.height = (props.height > VRESW * 0.5) and math.floor(VRESW * 0.5) or props.height;
 
@@ -802,12 +795,50 @@ local function new_2ditem(vid)
 	return restbl;
 end
 
+local function default_store(self)
+	write_rawresource("local itbl = {};\n");
+	write_rawresource(string.format("itbl.res  = \"%s\";\n", self.res));
+	write_rawresource(string.format("itbl.type = \"%s\";\n", LAYRES_CONVTBL[self.kind]));
+	write_rawresource(string.format("itbl.idtag = \"%s\"\n;", self.idtag));
+	
+	if (self.zv ~= nil) then
+		write_rawresource(string.format("itbl.zv = %d;\n", self.zv));
+	end
+
+	if (self.width ~= nil and self.height ~= nil) then
+		write_rawresource(string.format("itbl.size = {%d, %d};\n", self.width, self.height));
+	end
+
+	if (self.x ~= nil and self.y ~= nil) then
+		write_rawresource(string.format("itbl.pos  = {%d, %d};\n", self.x, self.y));
+	end
+
+	if (self.tile_v ~= nil and self.tile_h ~= nil) then
+		write_rawresource(string.format("itbl.tile = {%d, %d};\n", self.tile_v, self.tile_h));
+	end
+
+	if (self.opa ~= nil) then
+		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
+	end
+
+	if (self.ang ~= nil) then
+		write_rawresource(string.format("itbl.ang  = %d;\n", self.ang));
+	end
+	
+	write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
+	write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
+	write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
+end
+
 local function add_new(self, idtag, label, kind, exclusive, identity)
 	local positem = nil;
 	local lbls = nil;
 	
 	if (type(identity) == "function") then
 		identity = identity(label);
+	elseif (valid_vid(identity)) then
+		identity = instance_image(identity);
+		image_mask_clearall(identity);
 	end
 
 -- for items that shouldn't / can't be positioned / placed 
@@ -817,13 +848,18 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 		positem.kind  = kind;
 		positem.res   = label;
 		positem.idtag = idtag;
+
 		if (positem.owner.post_save_hook ~= nil) then
 			positem.owner.post_save_hook(positem);
 		end
 
+		if (positem.store == nil) then
+			positem.store = default_store;
+		end
+
 		table.insert(positem.owner.items, positem);
-		
 		return nil;
+	
 	elseif (kind == LAYRES_TEXT) then
 		positem = new_textitem(label, self);
 
@@ -842,6 +878,11 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 	positem.kind  = kind;
 	positem.res   = label;
 	positem.zv    = self.orderind;
+
+	if (positem.store == nil) then
+		positem.store = default_store;
+	end
+	
 	self.orderind = self.orderind + 1;
 	
 	if (exclusive) then
@@ -912,6 +953,118 @@ local function find_remove(self, identifier)
 		end
 	end
 
+end
+
+local function layout_cleanup(self)
+	if (not self.loaded) then return; end
+	self.loaded = false;
+
+	for ind,val in ipairs(self.temporary_dynamic) do
+		self.expire_trigger(val);
+	end
+end
+
+local function layout_imagepos(self, src, val)
+	order_image(src, val.zv);
+	move_image(src, val.pos[1], val.pos[2]);
+	rotate_image(src, val.ang);
+
+	if (val.tile ~= nil) then
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, src);
+		image_scale_txcos(src, val.tile[1], val.tile[2]);
+	end
+				
+	self.show_trigger(src, val.opa);
+end
+
+local function layout_show(self)
+	self.temporary = {};
+	self.temporary_static = {};
+
+	if (self.static_loaded == nil) then
+		for ind, val in ipairs(self.types["static"]) do
+			local res = self.trigger(LAYRES_STATIC, val);
+			if (res) then
+				table.insert(self.temporary_static, load_image_asynch(res, function(src, stat)
+					if (stat.kind == "loaded") then
+						layout_imagepos(self, src, val);
+					end
+				end));
+			end
+
+		end
+		self.static_loaded = true;
+	end
+
+	for ind, val in ipairs(self.types["image"]) do
+		local res = self.trigger(LAYRES_IMAGE, val);
+		if (res) then
+			table.insert(self.temporary, load_image_async(res, function(src, stat)
+				if (stat.kind == "loaded") then
+					layout_imagepos(self, src, val);
+				end
+			end));
+		end
+	end
+	
+	for ind, val in ipairs(self.types["fsrv"]) do
+		print("fsrv!!");
+	end
+
+	for ind, val in ipairs(self.types["model"]) do
+		print("3dmodel!!");
+	end
+
+	for ind, val in ipairs(self.types["text"]) do
+		local msg = self.trigger(LAYRES_TEXT, val);
+		if (msg ~= nil) then
+			if (string.len(msg) > val.maxlen) then
+				msg = string.sub(msg, 1, val.maxlen);
+			end
+
+			local vid = render_text( val.fontstr .. msg );
+		
+			move_image(vid, val.pos[1], val.pos[2]);
+			self.show_trigger(vid, val.opa);
+			table.insert(self.temporary, vid);
+		end
+	end
+	
+end
+
+--
+-- Convenience helper around a finished layout
+-- taking care of loading / cleanup
+--
+-- callback is expected a format with (self, type, itemtbl) that returns a vid or nil
+-- lifetime management of the returned vid is left to the layout helper
+--
+function layout_load(name, callback)
+	if (not resource(name)) then
+		print("bad resource", name, resource(name));
+		return nil;
+	end
+
+	local restbl = system_load(name)();
+	if (restbl.types == nil) then
+		print("missing types");
+		return nil;
+	end
+
+	restbl.destroy = layout_cleanup;
+	restbl.show    = layout_show;
+	restbl.trigger = callback;
+
+	restbl.show_trigger = function(vid, opa)
+		blend_image(vid, opa, 10);
+	end
+
+	restbl.expire_trigger = function(vid)
+		blend_image(vid, 0.0, 10);
+		expire_image(vid, 10);
+	end
+	
+	return restbl;
 end
 
 function layout_new(name)

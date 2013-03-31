@@ -74,11 +74,11 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 
 	kbd_repeat(newtbl.rrate == -1 and settings.repeatrate or newtbl.rrate);
 	
-	print("push:", tostring(name));
-	for ind, val in ipairs(settings.dispatch_stack) do
-		print(val.name);
-	end
-	print("/push")
+--	print("push:", tostring(name));
+--	for ind, val in ipairs(settings.dispatch_stack) do
+--		print(val.name);
+--	end
+--	print("/push")
 end
 
 function dispatch_current()
@@ -99,7 +99,7 @@ function dispatch_pop()
 
 		kbd_repeat(last.rrate == -1 and settings.repeatrate or last.rrate);
 
-		print("pop to: ", last.name);
+--		print("pop to: ", last.name);
 		return last.name;
 	end
 end
