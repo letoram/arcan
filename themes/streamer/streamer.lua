@@ -95,7 +95,82 @@ end
 -- (c) have a stream been set up?
 --
 function show_helper()
-	print(settings.gametbl);
+	if (settings.infowin) then
+		settings.infowin:destroy();
+		settings.infowin = nil;
+	end
+
+	local status = {};
+
+	if (settings.layout) then
+		table.insert(status, string.format("Layout (%s) Loaded", settings.layout_name));
+		
+		if (settings.layout["internal"] ~= nil) then
+			if (settings.gametbl) then
+				table.insert(status, "Game:" .. settings.gametbl.title);
+			else
+				table.insert(status, "No Game Defined");
+			end
+		else
+			table.insert(status, "\tNo Internal Slot");
+		end
+
+		if (settings.layout["vidcap"] ~= nil) then
+			table.insert(status, tostring(#settings.layout["vidcap"]) .. " Video Feed Slots");
+			local str = "Slots: ";
+			
+			for ind, val in ipairs(settings.vidcap) do
+				str = str .. string.format("(%d) => (%d)", ind, val);
+			end
+
+			table.insert(status, str);
+		end
+		
+		if (settings.stream_url ~= "rtmp://") then
+			table.insert(status, "Stream to:" .. settings.stream_url);
+		else
+			table.insert(status, "No Stream Defined");
+		end
+
+	else
+		table.insert(status, "No Layout");
+	end
+
+	settings.infowin = listview_create( status, VRESW / 2, VRESH / 2, {} );
+	settings.infowin:show();
+	hide_image(settings.infowin.cursorvid);
+	move_image(settings.infowin.anchor, VRESW * 0.5, 0);
+end
+
+--
+-- game should already be running,
+-- load and add video capture devices based on the mapping in settings
+-- populate static / dynamic images into a shared recordtarget
+--
+function start_streaming()
+-- allocate intermediate storage
+	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
+
+	local recordset = {};
+	for ind,val in ipairs(settings.layout.temporary) do
+		table.insert(recordset, val);
+	end
+
+	for ind, val in ipairs(settings.layout.temporary_static) do
+		table.insert(recordset, val);
+	end
+	
+	define_recordtarget(dstvid, dst, args, recordset, {}, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
+		print(status.kind);
+	end);
+
+	dispatch_push({}, "runtime_input", function(iotbl)
+		local restbl = keyconfig:match(iotbl);
+		if (restbl) then
+
+		end
+	end);
+	
 end
 
 --
@@ -164,6 +239,7 @@ function toggle_main_menu(target, nvc)
 					settings.stream_url = resstr;
 					store_key("stream_url", resstr);
 				end
+				toggle_main_menu(target, nvc);
 			end
 		end
 		, -1);
@@ -179,19 +255,23 @@ function toggle_main_menu(target, nvc)
 	if (nvc > 0) then
 		local ptrs = {};
 		local lbls = {};
-		settings.vidcap = {};
 
 		for num=1, nvc do
-			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, gen_num_menu(nil, 1, 1, 10, function(lbl) settings.vidcap[nvc] = tonumber(bl); end ));
+			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, gen_num_menu(nil, 1, 1, 10, function(lbl)
+				settings.vidcap[num] = tonumber(lbl);
+				settings.ready = settings.stream_url ~= "rtmp://";
+				toggle_main_menu(target, nvc);
+			end ));
 		end
 		
 		add_submenu(menulbls, menuptrs, "Video Feeds...", nil, lbls, ptrs, {});
 	end
 
 -- if everything is set up correctly, let the user start 
-	if (settings.ready) then 
+	if (settings.ready) then
 		table.insert(menulbls, "Start Streaming");
 		menufmts["Start Streaming"] = [[\b\#00ff00]];
+		menuptrs["Start Streaming"] = start_streaming;
 	end
 
 	table.insert(menulbls, "--------");
@@ -291,6 +371,7 @@ function setup_game(label)
 		local restbl = resourcefinder_search(settings.gametbl, true );
 		settings.restbl = restbl;
 		run_view();
+		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
 	end
 end
 
@@ -313,6 +394,11 @@ function load_layout(lay)
 	end
 
 	settings.layout = layout_load("layouts/" .. lay, load_cb);
+	settings.layout_name = lay;
+	settings.vidcap = {};
+	settings.restbl = nil;
+	settings.gametbl = nil;
+
 	if (settings.layout ~= nil) then
 		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
 	else

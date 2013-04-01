@@ -1634,7 +1634,7 @@ function gridle_internalinput(iotbl)
 
 			if (iotbl.active) then
 				if (val == "MENU_ESCAPE") then
-					foudn = true;
+					found = true;
 					if (valid_vid(imagery.record_target)) then
 						disable_record()
 					elseif escape_locked == nil or escape_locked == false then 

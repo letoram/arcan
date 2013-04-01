@@ -526,7 +526,6 @@ local function save(self)
 
 	write_rawresource("return layout;\n");
 	close_rawresource();
-	print("flushed", fname);
 end
 
 local function rotate(self, ang, align)
@@ -975,8 +974,6 @@ local function layout_cleanup(self)
 end
 
 local function layout_imagepos(self, src, val)
-	print(val.idtag, val.zv, val.pos[1], val.pos[2], val.ang);
-
 	order_image(src, val.zv);
 	move_image(src, val.pos[1], val.pos[2]);
 	rotate_image(src, val.ang);
@@ -1045,7 +1042,6 @@ local function layout_show(self)
 		local res = self.trigger(LAYRES_FRAMESERVER, val);
 		if (res) then
 			table.insert(self.temporary, load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat)
-			print(stat.kind);
 				play_movie(src);
 				layout_imagepos(self, src, val);
 			end));
@@ -1080,13 +1076,11 @@ end
 --
 function layout_load(name, callback)
 	if (not resource(name)) then
-		print("bad resource", name, resource(name));
 		return nil;
 	end
 
 	local restbl = system_load(name)();
 	if (restbl.types == nil) then
-		print("missing types");
 		return nil;
 	end
 
