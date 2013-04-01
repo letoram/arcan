@@ -446,7 +446,7 @@ function osdkbd_create(map, opts)
 
 	oktbl = {};
 	oktbl.load = function(self, parent)
-		local res = load_image("images/ok.png");
+		local res = load_image("images/icons/ok.png");
 		force_image_blend(res);
 		return res;
 	end
@@ -459,7 +459,7 @@ function osdkbd_create(map, opts)
 	local erasetbl = {};
 
 	erasetbl.load = function(self, parent)
-		local res = load_image("images/remove.png");
+		local res = load_image("images/icons/remove.png");
 		force_image_blend(res);
 		return res;
 	end
@@ -477,7 +477,7 @@ function osdkbd_create(map, opts)
 		restbl.uppercase = true;
 
 		shifttbl.load = function(self, parent)
-			local res = parent.uppercase and load_image("images/osd_shift_down.png") or load_image("images/osd_shift_up.png");
+			local res = parent.uppercase and load_image("images/icons/osd_shift_down.png") or load_image("images/icons/osd_shift_up.png");
 			force_image_blend(res);
 			return res;
 		end

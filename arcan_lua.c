@@ -267,6 +267,12 @@ static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
 	return luavid_tovid(res);
 }
 
+static inline arcan_vobj_id luaL_optvid(lua_State* ctx, int slot, arcan_vobj_id optnum)
+{
+	arcan_vobj_id num = luaL_optnumber(ctx, slot, optnum);
+	return luavid_tovid(num);
+}
+
 static inline arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
 {
 	return luaL_checknumber(ctx, num);
@@ -694,15 +700,18 @@ int arcan_lua_strsize(lua_State* ctx)
 
 int arcan_lua_buildstr(lua_State* ctx)
 {
-	arcan_vobj_id id = ARCAN_EID;
+	arcan_vobj_id id  = ARCAN_EID;
+	arcan_vobj_id did = luaL_optvid(ctx, 4, ARCAN_EID);
+
 	const char* message = luaL_checkstring(ctx, 1);
 	int vspacing = luaL_optint(ctx, 2, 4);
 	int tspacing = luaL_optint(ctx, 3, 64);
-
+	
 	unsigned int nlines = 0;
 	unsigned int* lineheights = NULL;
 
-	id = arcan_video_renderstring(message, vspacing, tspacing, NULL, &nlines, &lineheights);
+	id = arcan_video_renderstring(message, vspacing, tspacing, NULL, &nlines, &lineheights, did);
+
 	lua_pushvid(ctx, id);
 
 	lua_newtable(ctx);

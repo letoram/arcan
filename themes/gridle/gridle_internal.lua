@@ -1382,7 +1382,7 @@ function enable_record(width, height, args)
 );
 
 	imagery.record_target = dstvid;
-	imagery.record_indicator = load_image("images/record.png");
+	imagery.record_indicator = load_image("images/icons/record.png");
 
 	move_image(imagery.record_indicator);
 	image_transform_cycle(imagery.record_indicator, 1);
@@ -1418,7 +1418,7 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	settings.internal_toggles[key] = not settings.internal_toggles[key];
 
 	current_menu.formats[label] = nil;
-	local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,"
+	local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/icons/magnify.png,"
 
 	if (ctxmenus[label]) then
 		current_menu.formats[label] = iconlbl;
@@ -1764,7 +1764,7 @@ if (#menulbls > 0 and settingslbls) then
 	current_menu.ptrs["Display Modes..."] = function()
 		local def = {};
 		local gottog = false;
-		local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/magnify.png,";
+		local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/icons/magnify.png,";
 
 		def["CRT"      ] = iconlbl .. (settings.internal_toggles.crt    and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		def["NTSC"     ] = iconlbl .. (settings.internal_toggles.ntsc   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);

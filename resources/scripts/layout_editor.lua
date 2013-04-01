@@ -799,7 +799,7 @@ local function default_store(self)
 	write_rawresource("local itbl = {};\n");
 	write_rawresource(string.format("itbl.res  = \"%s\";\n", self.res));
 	write_rawresource(string.format("itbl.type = \"%s\";\n", LAYRES_CONVTBL[self.kind]));
-	write_rawresource(string.format("itbl.idtag = \"%s\"\n;", self.idtag));
+	write_rawresource(string.format("itbl.idtag = \"%s\";\n", self.idtag));
 	
 	if (self.zv ~= nil) then
 		write_rawresource(string.format("itbl.zv = %d;\n", self.zv));
@@ -818,11 +818,11 @@ local function default_store(self)
 	end
 
 	if (self.opa ~= nil) then
-		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
+		write_rawresource(string.format("itbl.opa  = %f;\n", self.opa));
 	end
 
 	if (self.ang ~= nil) then
-		write_rawresource(string.format("itbl.ang  = %d;\n", self.ang));
+		write_rawresource(string.format("itbl.ang  = %f;\n", self.ang));
 	end
 	
 	write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
@@ -956,19 +956,36 @@ local function find_remove(self, identifier)
 end
 
 local function layout_cleanup(self)
-	if (not self.loaded) then return; end
-	self.loaded = false;
-
-	for ind,val in ipairs(self.temporary_dynamic) do
-		self.expire_trigger(val);
+	if (self.temporary) then
+	for ind,val in ipairs(self.temporary) do
+		if (valid_vid(val)) then
+			self.expire_trigger(val);
+		end
 	end
+	end
+
+	if (self.temporary_static) then
+	for ind,val in ipairs(self.temporary_static) do
+		if (valid_vid(val)) then
+			self.expire_trigger(val);
+		end
+	end
+	end
+
 end
 
 local function layout_imagepos(self, src, val)
+	print(val.idtag, val.zv, val.pos[1], val.pos[2], val.ang);
+
 	order_image(src, val.zv);
 	move_image(src, val.pos[1], val.pos[2]);
 	rotate_image(src, val.ang);
-
+	show_image(src);
+	
+	if (type(val.size) == "table") then
+		resize_image(src, val.size[1], val.size[2]);
+	end
+		
 	if (val.tile ~= nil) then
 		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, src);
 		image_scale_txcos(src, val.tile[1], val.tile[2]);
@@ -977,38 +994,62 @@ local function layout_imagepos(self, src, val)
 	self.show_trigger(src, val.opa);
 end
 
-local function layout_show(self)
-	self.temporary = {};
-	self.temporary_static = {};
+--
+-- Sweep through the layout, delete any previously loaded imagery (except the static flagged, no use reloading that)
+-- Query the calling script in what resource it wants mapped based in type / etc.
+-- trigger() can also return a function pointer if it needs a callback with the resulting vid
+--
 
-	if (self.static_loaded == nil) then
-		for ind, val in ipairs(self.types["static"]) do
-			local res = self.trigger(LAYRES_STATIC, val);
-			if (res) then
-				table.insert(self.temporary_static, load_image_asynch(res, function(src, stat)
-					if (stat.kind == "loaded") then
-						layout_imagepos(self, src, val);
-					end
-				end));
+local function layout_show(self)
+	if (self.temporary) then
+		for ind, val in ipairs(self.temporary) do
+			delete_image(val);
+		end
+	end
+
+	self.temporary = {};
+
+	local imgproc = function(dsttbl, trigtype, val)
+		local res, cback = self.trigger(trigtype, val);
+		if (res) then
+			local vid = load_image_asynch(res, function(src, stat)
+				if (stat.kind == "loaded") then
+					layout_imagepos(self, src, val);
+				end
+			end);
+
+			if (valid_vid(vid) and cback) then
+				cback(vid);
 			end
 
+			table.insert(dsttbl, vid);
 		end
+
+	end
+	
+	if (self.static_loaded == nil) then
+		self.temporary_static = {};
+
+		for ind, val in ipairs(self.types["static"]) do
+			imgproc(self.temporary_static, LAYRES_STATIC, val);
+		end
+
 		self.static_loaded = true;
 	end
 
 	for ind, val in ipairs(self.types["image"]) do
-		local res = self.trigger(LAYRES_IMAGE, val);
-		if (res) then
-			table.insert(self.temporary, load_image_async(res, function(src, stat)
-				if (stat.kind == "loaded") then
-					layout_imagepos(self, src, val);
-				end
-			end));
-		end
+		imgproc(self.temporary, LAYRES_IMAGE, val);
 	end
 	
 	for ind, val in ipairs(self.types["fsrv"]) do
-		print("fsrv!!");
+		local res = self.trigger(LAYRES_FRAMESERVER, val);
+		if (res) then
+			table.insert(self.temporary, load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat)
+			print(stat.kind);
+				play_movie(src);
+				layout_imagepos(self, src, val);
+			end));
+		end
 	end
 
 	for ind, val in ipairs(self.types["model"]) do
@@ -1023,13 +1064,11 @@ local function layout_show(self)
 			end
 
 			local vid = render_text( val.fontstr .. msg );
-		
-			move_image(vid, val.pos[1], val.pos[2]);
-			self.show_trigger(vid, val.opa);
+			layout_imagepos(self, vid, val);
 			table.insert(self.temporary, vid);
 		end
 	end
-	
+
 end
 
 --
@@ -1054,6 +1093,10 @@ function layout_load(name, callback)
 	restbl.destroy = layout_cleanup;
 	restbl.show    = layout_show;
 	restbl.trigger = callback;
+	restbl.add_imagevid = function(self, vid, postbl)
+			layout_imagepos(restbl, vid, postbl);
+			table.insert(self.temporary, vid);
+	end
 
 	restbl.show_trigger = function(vid, opa)
 		blend_image(vid, opa, 10);
@@ -1069,19 +1112,19 @@ end
 
 function layout_new(name)
 	local layout_cfg = {
-		current_axis = 0,
-		orderind = 1,
-		add_resource = add_resource,
-		show = show,
+		add_new = add_new,
 		slide = slide,
 		scale = scale,
 		store = save,
 		layname = name,
-		add_new = add_new,
+		current_axis = 0,
+		orderind = 1,
+		add_resource = add_resource,
 		position = position_item,
 		find_remove = find_remove,
 		post_save_hook = nil,
 		finalizer = nil,
+		show = show,
 		fontind = 1,
 		items = {}, 
 		groups = {}

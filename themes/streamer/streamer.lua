@@ -4,23 +4,29 @@
 settings = {
 	stream_url  = "rtmp://",
 	record_fps  = 30,
-	record_qual = 8,
+	record_qual = 6,
 	record_res  = 480,
-	vpts_ofset  = 0
+	record_vpts = 0
 };
 
 soundmap = {};
 
-local recstr = "libvorbis:vcodec=H264:vptsofs=0:aptsofs=0:container=stream:acodec=MP3:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
+function get_recstr()
+	local recstr    = "libvorbis:vcodec=H264:container=stream:acodec=MP3:fps=%d:apreset=%d:vpreset=%d:streamdst=";
+	local streamdst = string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
+	
+	return string.format(recstr, settings.fps, settings.record_qual, settings.record_qual, streamdst);
+end
 
 function streamer()
 --listview.lua, osdkbd.lua, dialog.lua, colourtable.lu	
 	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
 	system_load("scripts/keyconf.lua")();        -- input configuration dialogs
-	system_load("scripts/3dsupport.lua")();     
+	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/layout_editor.lua")();  -- used to define layouts
 	system_load("scripts/osdkbd.lua")();         -- for defining stream destination
 	system_load("scripts/calltrace.lua")();
+	system_load("scripts/resourcefinder.lua")(); 
 
 	system_load("shared.lua")();
 
@@ -41,7 +47,6 @@ function streamer()
 	else
 		toggle_main_menu(false, 0);
 	end
-
 end
 
 -- copied from gridle
@@ -90,7 +95,7 @@ end
 -- (c) have a stream been set up?
 --
 function show_helper()
-	print("show helper");
+	print(settings.gametbl);
 end
 
 --
@@ -119,9 +124,11 @@ function toggle_main_menu(target, nvc)
 	add_submenu(streammenu, streamptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
 	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts", gen_num_menu("record_vpts", 0, 4, 12, function() end));
 	table.insert(streammenu, "Define Stream...");
-	
-	add_submenu(menulbls, menuptrs, "Settings...", nil, streammenu, streamptrs, {});
-	
+
+	if (settings.layout ~= nil) then
+		add_submenu(menulbls, menuptrs, "Streaming Settings...", nil, streammenu, streamptrs, {});
+	end
+
 -- copied from gridle internal
 	streamptrs["Define Stream..."] = function(label, store)
 		local resstr = nil;
@@ -166,26 +173,31 @@ function toggle_main_menu(target, nvc)
 
 -- need a layout set in order to know what to define the different slots as
 	if (target) then
---		add_submenu(menulbls, menuptrs, "Setup Game...",
+		add_submenu(menulbls, menuptrs, "Setup Game...", nil, gen_tbl_menu(nil, list_targets(), list_targetgames, true));
 	end
 
 	if (nvc > 0) then
+		local ptrs = {};
+		local lbls = {};
+		settings.vidcap = {};
+
+		for num=1, nvc do
+			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, gen_num_menu(nil, 1, 1, 10, function(lbl) settings.vidcap[nvc] = tonumber(bl); end ));
+		end
 		
+		add_submenu(menulbls, menuptrs, "Video Feeds...", nil, lbls, ptrs, {});
 	end
 
--- without stream
-	if (settings.ready) then
+-- if everything is set up correctly, let the user start 
+	if (settings.ready) then 
+		table.insert(menulbls, "Start Streaming");
+		menufmts["Start Streaming"] = [[\b\#00ff00]];
 	end
 
 	table.insert(menulbls, "--------");
 	table.insert(menulbls, "Quit");
 	menuptrs["Quit"] = shutdown;
-	
--- if everything is set up correctly, let the user start 
-	if (settings.layout and settings.stream_url ~= "rtmp://") then
-		table.insert(menulbls, "Start Streaming");
-		streamfmts["Start Streaming"] = [[\b\#00ff00]];
-	end
+	menufmts["Quit"] = [[\#ff0000]];
 	
 -- finally, activate (but don't allow escape to terminate)
 	local imenu = {};
@@ -220,7 +232,7 @@ end
 function load_cb(restype, lay)
 	if (restype == LAYRES_STATIC) then
 		if (lay.idtag == "background") then
-			return "backgrounds/" .. lay.res;
+			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
 			
 		elseif (lay.idtag == "image") then
 			return "images/" .. lay.res;
@@ -232,16 +244,54 @@ function load_cb(restype, lay)
 		return nil;
 	end
 
-	if (restype == LAYRES_IMAGE) then
-		local locfun = settings.restbl["find_" .. restype.idtag];
+	if (restype == LAYRES_IMAGE or restype == LAYRES_FRAMESERVER) then
+
+		local locfun = settings.restbl["find_" .. lay.idtag];
 		if (locfun ~= nil) then
-			return locfun();
+			return locfun(settings.restbl);
 		end
-		
+
 	elseif (restype == LAYRES_TEXT) then
-		return settings.gametbl[restype.idtag];
+		return settings.gametbl[lay.idtag];
 	end
 
+end
+
+function run_view()
+	settings.layout:show();
+
+-- NOTE:For creating the record-set, the temporary and temporary_static tables are swept
+-- and just re-added. When (if?) MRT or WORLDID recordsets are working, we'll switch to that
+--
+	if (settings.layout["internal"] and #settings.layout["internal"] > 0) then
+		local internal_vid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) end);
+		settings.layout:add_imagevid(internal_vid, settings.layout["internal"][1]);
+
+-- reuse the VID if we have clones, same with models and "display" ID
+		if (#settings.layout["internal"] > 1) then
+			for i=2, #settings.layout["internal"] do
+				local newvid = instance_image(internal_vid);
+				image_mask_clearall(newvid);
+				settings.layout:add_imagevid(newvid, settings.layout["internal"][i]);
+			end
+		end
+
+	end
+
+	if (settings.layout["bgeffect"]) then
+		update_shader(settings.layout["bgeffect"][1].res);
+	end
+end
+
+function setup_game(label)
+	local game = list_games({target = settings.current_target, game = label});
+
+	if (game and game[1]) then
+		settings.gametbl = game[1];
+		local restbl = resourcefinder_search(settings.gametbl, true );
+		settings.restbl = restbl;
+		run_view();
+	end
 end
 
 function list_targetgames(label)
@@ -264,7 +314,7 @@ function load_layout(lay)
 
 	settings.layout = layout_load("layouts/" .. lay, load_cb);
 	if (settings.layout ~= nil) then
-		toggle_main_menu(#settings.layout["internal"] > 0, settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
+		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
 	else
 		spawn_warning("Couldn't load layout: " .. lay);
 		toggle_main_menu(false, 0);

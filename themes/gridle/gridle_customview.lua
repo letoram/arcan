@@ -19,7 +19,7 @@ customview = {};
 local function customview_internal(source, datatbl)
 	if (datatbl.kind == "frameserver_terminated") then
 		pop_video_context();
-		imagery.crashimage = load_image("images/terminated.png");
+		imagery.crashimage = load_image("images/icons/terminated.png");
 		image_tracetag(imagery.crashimage, "terminated");
 		dispatch_pop();
 	end
@@ -65,10 +65,10 @@ local function launch(tbl)
 		push_video_context();
 
 -- load the standard icons needed to show internal launch info
-		imagery.loading = load_image("images/colourwheel.png");
+		imagery.loading = load_image("images/icons/colourwheel.png");
 		image_tracetag(imagery.loading, "loading");
 	
-		imagery.nosave  = load_image("images/brokensave.png");
+		imagery.nosave  = load_image("images/icons/brokensave.png");
 		image_tracetag(imagery.nosave, "nosave");
 
 		play_audio(soundmap["LAUNCH_INTERNAL"]);

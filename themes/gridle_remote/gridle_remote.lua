@@ -305,7 +305,7 @@ end
 function setup_complete()
 	spawn_mainmenu();
 
-	imagery.disconnected = load_image("images/disconnected.png");
+	imagery.disconnected = load_image("images/icons/disconnected.png");
 	local props = image_surface_properties(imagery.disconnected);
 	if (props.width > VRESW)  then props.width = VRESW;  end
 	if (props.height > VRESH) then props.height = VRESH; end
