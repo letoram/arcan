@@ -120,7 +120,7 @@ local function osdkbd_inputkey(self, iotbl, active)
 		found = nil
 
 		for i=1,#self.keymap do
-			if string.upper(self.keymap[i]) == mk then
+			if self.keymap[i] and string.upper(self.keymap[i]) == mk then
 				found = i
 				break
 			end
