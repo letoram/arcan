@@ -167,7 +167,7 @@ settings = {
 	upscale_delta = 0.4,
 	upscale_ddt = false,
 	
-	record_qual = 10,
+	record_qual = 6,
 	record_res  = 240,
 	record_fps  = 30,
 	record_format = "WebM (MKV/VP8/OGG)",
@@ -547,16 +547,16 @@ function setup_gridview()
 	imagery.white = fill_surface(1,1,255,255,255);
 	image_tracetag(imagery.white, "white");
 
-	imagery.loading = load_image("images/colourwheel.png");
+	imagery.loading = load_image("images/icons/colourwheel.png");
 	resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
 	move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
 	image_tracetag(imagery.loading, "loading");
 	
-	imagery.nosave  = load_image("images/brokensave.png");
+	imagery.nosave  = load_image("images/icons/brokensave.png");
 	image_tracetag(imagery.nosave, "nosave");
 
 	if (imagery.disconnected == nil) then
-		imagery.disconnected = load_image("images/disconnected.png");
+		imagery.disconnected = load_image("images/icons/disconnected.png");
 		image_tracetag(imagery.disconnected, "disconnected");
 	end
 
@@ -567,17 +567,17 @@ function setup_gridview()
 	move_image(imagery.disconnected, VRESW - props.width, VRESH - props.height);
 	
 -- Little star keeping track of games marked as favorites
-	imagery.starimage    = load_image("images/star.png");
+	imagery.starimage    = load_image("images/icons/star.png");
 	image_tracetag(imagery.starimage, "favorite icon");
 
 -- shown when a framserver / internal launch crashes
-	imagery.crashimage   = load_image("images/terminated.png");
+	imagery.crashimage   = load_image("images/icons/terminated.png");
 	image_tracetag(imagery.crashimage, "terminated");
 
 	resize_image(imagery.crashimage, VRESW * 0.5, VRESH * 0.5);
 	move_image(imagery.crashimage, 0.5 * (VRESW - (VRESW * 0.5)), 0.5 * (VRESH - (VRESH * 0.5)));
 
-	imagery.magnifyimage = load_image("images/magnify.png");
+	imagery.magnifyimage = load_image("images/icons/magnify.png");
 	image_tracetag(imagery.magnifyimage, "detailview icon");
 
 	settings.cleanup_toggle = function() gridle_internal_cleanup(gridview_cleanuphook, false); end
@@ -601,7 +601,7 @@ function network_onevent(source, tbl)
 		end
 
 		if (not valid_vid(imagery.disconnected)) then
-			imagery.disconnected = load_image("images/disconnected.png");
+			imagery.disconnected = load_image("images/icons/disconnected.png");
 			image_tracetag(imagery.disconnected, "disconnected");
 		end
 

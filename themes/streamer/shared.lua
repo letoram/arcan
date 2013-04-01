@@ -422,15 +422,18 @@ function gen_num_menu(name, base, step, count, triggerfun)
 	
 	local basename = function(label, save)
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		settings[name] = tonumber(label);
-		if (save) then
-			play_audio(soundmap["MENU_FAVORITE"]);
-			store_key(name, tonumber(label));
-		else
-			play_audio(soundmap["MENU_SELECT"]);
+		if (name ~= nil) then
+			settings[name] = tonumber(label);
+
+			if (save) then
+				play_audio(soundmap["MENU_FAVORITE"]);
+				store_key(name, tonumber(label));
+			else
+				play_audio(soundmap["MENU_SELECT"]);
+			end
 		end
-		
-		if (triggerfun) then triggerfun(); end
+
+		if (triggerfun) then triggerfun(label); end
 	end
 
 	clbl = base;

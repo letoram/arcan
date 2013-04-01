@@ -672,7 +672,7 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8
 }
 	
 /* note: currently does not obey restrictions placed on texturemode (i.e. everything is padded to power of two and txco hacked) */
-arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, unsigned int** lineheights)
+arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, unsigned int** lineheights, arcan_vobj_id did)
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	if (!message)
@@ -733,7 +733,14 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		
 		/* (C) */
 		/* prepare structures */
-		arcan_vobject* vobj = arcan_video_newvobject(&rv);
+		arcan_vobject* vobj = NULL;
+		if (did != ARCAN_EID){
+			glDeleteTextures(1, &vobj->gl_storage.glid);
+			free(vobj->default_frame.raw);
+			vobj = arcan_video_getobject(did);
+		}
+		else vobj = arcan_video_newvobject(&rv);
+
 		if (!vobj){
 			arcan_fatal("Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
 		}

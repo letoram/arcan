@@ -305,11 +305,13 @@ uint32_t arcan_video_pick_detailed(uint32_t* dst, uint32_t count, uint16_t x, ui
 
 void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh);
 arcan_vobj_id arcan_video_renderstring(const char* message, /* string to render */
-                                       int8_t line_spacing, /* default spacing between lines */
-                                       int8_t tab_spacing,  /* default spacing between tabs */
-                                       unsigned int* tabs,  /* specific tab widths (null-terminated) */
-                                       unsigned int* lines, /* [out]-> number of lines processed */
-                                       unsigned int** lineheights); /* [out]-> height of each line, needs to be freed */
+	int8_t line_spacing, /* default spacing between lines */
+	int8_t tab_spacing,  /* default spacing between tabs */
+	unsigned int* tabs,  /* specific tab widths (null-terminated) */
+	unsigned int* lines, /* [out]-> number of lines processed */
+	unsigned int** lineheights,
+	arcan_vobj_id did  /* EID or did will be reused rather than allocating a new one */
+); /* [out]-> height of each line, needs to be freed */
 
 void arcan_video_reset_fontcache();
 void arcan_video_dumppipe();
