@@ -328,8 +328,8 @@ function gridle()
 	load_settings();
 	
 -- grab all dependencies;
-	system_load("scripts/calltrace.lua")();      -- debug features Trace() and Untrace()
 	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
+	system_load("scripts/calltrace.lua")();      -- debug features Trace() and Untrace()
 	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
 	system_load("scripts/dialog.lua")();         -- dialog used for confirmations 
 	system_load("scripts/keyconf.lua")();        -- input configuration dialogs
@@ -338,7 +338,7 @@ function gridle()
 	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
 	system_load("scripts/3dsupport.lua")();      -- used by detailview / customview, simple model/material/shader loader
 	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
-
+	system_load("scripts/layout_editor.lua")();  -- layout editor for customview
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
 	system_load("gridle_contextmenus.lua")();    -- context menus (quickfilter, database manipulation, ...)
 	system_load("gridle_internal.lua")();        -- internal launch, any arcan controllable emulator
