@@ -453,7 +453,6 @@ static bool setup_ffmpeg_encode(const char* resource)
 		cont = "stream";
 
 		if (!arg_lookup(args, "streamdst", 0, &streamdst) || strncmp("rtmp://", streamdst, 7) != 0){
-			printf("arg lookup failed, %s\n", streamdst ? streamdst : "NULL");
 			LOG("(encode:args) Streaming requested, but no valid streamdst set, giving up.\n");
 			return false;
 		}

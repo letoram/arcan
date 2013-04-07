@@ -114,6 +114,14 @@ arcan_errc arcan_audio_pause(arcan_aobj_id);
 /* Might only be applicable for some aobjs */
 arcan_errc arcan_audio_rewind(arcan_aobj_id);
 
+/* get a null- terminated list of available capture devices */
+const char** arcan_audio_capturelist();
+
+/* try and get a lock on a specific capture device (matching arcan_audio_capturelist)
+ * if no identifier is given or identifier is given, not found and exact isn't set, the default (according to OpenAL)
+ * capture device will be used */
+arcan_aobj_id arcan_audio_capturefeed(const char* identifier, bool exact);
+
 /* Time component is similar to video management.
  * However, the fades are currently only linear (oops) */
 arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time);
