@@ -12,8 +12,6 @@
 local grid_stepx = 2;
 local grid_stepy = 2;
 
-local stepleft, stepup, stepdown, stepright, show_config, setup_customview;
-
 customview = {};
 
 local function customview_internal(source, datatbl)
@@ -27,8 +25,10 @@ local function customview_internal(source, datatbl)
 	internallaunch_event(source, datatbl);
 end
 
+--
+-- called whenever an internal launch has terminated: update caches, reset timers, restore context.
+--
 local function cleanup()
--- since new screenshots /etc. might have appeared, update cache 
 	resourcefinder_cache.invalidate = true;
 		local gameno = current_game_cellid();
 		resourcefinder_search(customview.gametbl, true);
@@ -97,7 +97,7 @@ local function reset_customview()
 		play_audio(soundmap["MENU_FADE"])
 -- delete all "new" resources
 		pop_video_context();
--- then copy the server vid again
+-- then copy the server vid again as it resides on the first layer
 		push_video_context();
 		dispatch_pop();
 	else
@@ -105,181 +105,19 @@ local function reset_customview()
 	end
 end
 
-local function place_model(modelid, pos, ang)
-	move3d_model(modelid, pos[1], pos[2], pos[3]);
-	rotate3d_model(modelid, ang[1], ang[2], ang[3]);
-	show_image(modelid);
-end
-
-local function update_dynamic(newtbl)
-	if (newtbl == nil or newtbl == customview.lasttbl) then
-		return;
-	end
-
-	customview.lasttbl = newtbl;
-	toggle_led(newtbl.players, newtbl.buttons, "")	;
-
--- this table is maintained for every newly selected item, and just tracks everything to delete.
-	for ind, val in ipairs(customview.temporary) do
-		if (valid_vid(val)) then delete_image(val); end 
-	end
-
-	for ind, val in ipairs(customview.temporary_models) do
-		if (valid_vid(val.vid)) then delete_image(val.vid); end
-	end
-	
-	customview.temporary = {};
-	customview.temporary_models = {};
-
-	local restbl = resourcefinder_search( newtbl, true );
-
-	if (restbl) then
-		if (customview.current.models and #customview.current.models > 0) then
-			local modelstr = find_cabinet_model(newtbl);
-			local model  = modelstr and setup_cabinet_model(modelstr, restbl, {}) or nil;
-
-			if (model) then
-				local shdr = customview.light_shader;
-	
-				table.insert(customview.temporary_models, model);
-				table.insert(customview.temporary, model.vid);
-
-				local cm = customview.current.models[1];
-				
-				image_shader(model.vid, customview.light_shader);
-				place_model(model.vid, cm.pos, cm.ang);
-
-				local ld = cm.dir_light and cm.dir_light or {1.0, 0.0, 0.0};
-				shader_uniform(shdr, "wlightdir", "fff", PERSIST, ld[1], ld[2], ld[3]);
-
-				local la = cm.ambient and cm.ambient or {0.3, 0.3, 0.3};
-				shader_uniform(shdr, "wambient",  "fff", PERSIST, la[1], la[2], la[3]);
-				
-				ld = cm.diffuse and cm.diffuse or {0.6, 0.6, 0.6};
-				shader_uniform(shdr, "wdiffuse",  "fff", PERSIST, 0.6, 0.6, 0.6);
-
--- reuse the model for multiple instances
-				for i=2,#customview.current.models do
-					local nid = instance_image(model.vid);
-					image_mask_clear(nid, MASK_POSITION);
-					image_mask_clear(nid, MASK_ORIENTATION);
-					place_model(nid, customview.current.models[i].pos, customview.current.models[i].ang);
-				end
-			end
-		end
-
-		for ind, val in ipairs(customview.current.dynamic) do
-			local vid = nil;
-			reskey = remaptbl[val.res];
-			
-			if (reskey == "movies") then
-				local res = restbl:find_movie();
-				if (res) then
-					vid, aid = load_movie(restbl[reskey][1], FRAMESERVER_LOOP, 
-						function(source, status) place_item(source, val);
-						play_movie(source);
-						end)
-				end
-			elseif (reskey == "boxart" or reskey == "boxart (back)") then
-				local res = restbl:find_boxart(reskey == "boxart", val.width < 512 or val.height < 512);
-				if (res) then
-					vid = load_image_asynch(res, function(source, status) place_item(source, val); end);
-				end
-
-			elseif (restbl[reskey] and #restbl[reskey] > 0) then
-				vid = load_image_asynch(restbl[reskey][1], function(source, status) place_item(source, val); end);
-			end
-
-			if (vid and vid ~= BADID) then
-				table.insert(customview.temporary, vid);
-			end
-		end
-
-		for ind, val in ipairs(customview.current.dynamic_labels) do
-			local dststr = newtbl[val.res];
-			
-			if (type(dststr) == "number") then dststr = tostring(dststr); end
-			
-			if (dststr and string.len( dststr ) > 0) then
-				local capvid = fill_surface(math.floor( VRESW * val.width), math.floor( VRESH * val.height ), 0, 0, 0);
-				vid = render_text(val.font .. math.floor( VRESH * val.height ) .. " " .. dststr);
-				link_image(vid, capvid);
-				image_mask_clear(vid, MASK_OPACITY);
-				place_item(capvid, val);
-
-				hide_image(capvid);
-				show_image(vid);
-				resize_image(vid, 0, VRESH * val.height);
-				order_image(vid, val.order);
-				table.insert(customview.temporary, capvid);
-				table.insert(customview.temporary, vid);
-			end
-			
-		end
-		
-	end
-end
-
 local function navi_change(navi, navitbl)
-		update_dynamic( navi:current_item() );
+	layout:show();
+	update_dynamic( navi:current_item() );
 
-		order_image( navi:drawable(), navitbl.order );
-		blend_image( navi:drawable(), navitbl.opa   );
+-- we override some of the navigator settings
+	order_image( navi:drawable(), navitbl.order );
+	blend_image( navi:drawable(), navitbl.opa   );
 end
 
 local function setup_customview()
-	local background = nil;
-	for ind, val in ipairs( customview.current.static ) do
-		local vid = load_image( val.res );
-		image_tracetag(vid, "static(" .. val.res ..")");
-		place_item( vid, val );
-	end
-
--- video capture devices, can either be instances of the same vidcap OR multiple devices based on index 
-	customview.current.vidcap_instances = {};
-	for ind, val in ipairs( customview.current.vidcap ) do
-		inst = customview.current.vidcap_instances[val.index];
-		
-		if (valid_vid(inst)) then
-			inst = instance_image(inst);
-			image_mask_clearall(inst);
-			place_item( inst, val );
-		else
-			local vid = load_movie("capture:device=" .. tostring(val.index), FRAMESERVER_LOOP, function(source, status)
-				place_item(source, val);
-				play_movie(source);
-			end);
-		
-			customview.current.vidcap_instances[val.index] = vid;
-		end
-	end
-
--- load background effect 
-	if (customview.current.background) then
-		vid = load_image( customview.current.background.res );
-		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, vid);
-
-		customview.background = vid;
-
-		place_item(vid, customview.current.background);
-		customview.bgshader_label = customview.current.background.shader;
-
-		local props  = image_surface_properties(vid);
-		local iprops = image_surface_initial_properties(vid);
-
-
-		if (customview.current.background.tiled) then
-			image_scale_txcos(vid, props.width / iprops.width, props.height / iprops.height);
-		end
-		
-		if (customview.bgshader_label) then
-			customview.bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. customview.bgshader_label, "bgeffect", {});
-			update_bgshdr();
-		end
-	end
-
 	local imenu = {};
-	if (customview.current.navigator) then
+	
+	if (layout["navigator"]) then
 		customview.navigator = system_load("customview/" .. customview.current.navigator.res .. ".lua")();
 		local navi = customview.navigator;
 		local navitbl = customview.current.navigator;
@@ -383,35 +221,115 @@ customview.cleanup = function()
 		gridle_internal_cleanup(cleanup, false);
 end
 
-function gridle_customview()
-	local disptbl;
+function update_shader(resname)
+-- (when here, something goes bad?!)	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+	shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
+
+	if (valid_vid(settings.background)) then
+		image_shader(settings.background, settings.shader);
+	end
+end
+
+--
+-- special treatment for background / shadereffects when added to the layout
+-- 
+local function hookfun(newitem)
+-- autotile!
+	if (newitem.idtag == "background") then
+		local props = image_surface_initial_properties(newitem.vid);
+		if (props.width / VRESW < 0.3 and newitem.tile_h == 1) then
+			newitem.tile_h = math.ceil(VRESW / props.width);
+		end
+
+		if (props.height / VRESH < 0.3 and newitem.tile_v == 1) then
+			newitem.tile_v = math.ceil(VRESH / props.height);
+		end
+
+		newitem.zv = 1;
+		newitem.x  = 0;
+		newitem.y  = 0;
+		newitem.width  = VRESW;
+		newitem.height = VRESH;
+		settings.background = newitem.vid;
+
+		print(settings.shader);
+		if (settings.shader) then
+			image_shader(settings.background, settings.shader);
+		end
 	
+		newitem:update();
+
+	elseif (newitem.idtag == "bgeffect") then
+		for ind, val in ipairs(layout.items) do
+			if (val.idtag == "bgeffect") then
+				table.remove(layout.items, ind);
+			end
+		end
+
+		update_shader(newitem.res);
+	end
+end
+
+function gridle_customview()
 -- try to load a preexisting configuration file, if no one is found
 -- launch in configuration mode -- to reset this procedure, delete any 
 -- customview_cfg.lua and reset customview.in_config
 	pop_video_context();
 	push_video_context();
-
+	
 	setup_3dsupport();
 	customview_3dbase();
 
-	music_start_bgmusic();
+	layout = layout_load("customview_cfg");
 
-	if (resource("customview_cfg.lua")) then
-		customview.background    = nil;
-		customview.bgshader      = nil;
-		customview.current       = system_load("customview_cfg.lua")();
+-- 
+-- If the default layout cannot be found (menu/config will simply zap the customview_cfg and call _customview() again)
+-- Setup an edit session, this is a slightly different version of what's present in "streamer" (no internal launch, no vidcap, ...)
+-- Instead, a "navigator" group is added (se navigators/*.lua) that determines what is currently "selected"
+--
+	if (not layout) then
+		layout = layout_new(layname);
 		
-		if (customview.current) then
-			customview.in_customview = true;
-			customview.in_config = false;
-			setup_customview();
+		local identtext  = function(key) return render_text(settings.colourtable.label_fontstr .. key); end
+		local identphold = function(key) return load_image("images/placeholders/" .. string.lower(key) .. ".png"); end
+	
+		layout:add_resource("background", "Background...", function() return glob_resource("backgrounds/*.png"); end, nil, LAYRES_STATIC, true, function(key) return load_image("backgrounds/" .. key); end);
+		layout:add_resource("bgeffect", "Background Effect...", function() return glob_resource("shaders/bgeffects/*.fShader"); end, nil, LAYRES_SPECIAL, true, nil);
+		layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", LAYRES_FRAMESERVER, false, identphold);
+		layout:add_resource("image", "Image...", function() return glob_resource("images/*.png"); end, nil, LAYRES_STATIC, false, function(key) return load_image("images/" .. key); end);
+
+		for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
+			layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
 		end
 
-	else
-		customview.in_config = true;
-		video_3dorder(ORDER_LAST);
-		disptbl = show_config();
-	end
+		layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
+
+		for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
+			layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
+		end
+
+--
+-- post_save is triggered whenever an item is added
+--
+	layout.post_save_hook = hookfun;
+	layout.finalizer = gridle_customview;
 	
+--
+-- until this function evaulates true, the user is not allowed to save
+--
+		layout.validation_hook = function()
+			for ind, val in ipairs(layout.items) do
+				if (val.idtag == "navigator") then
+					return true;
+				end
+			end
+			return false;
+		end
+
+		layout:show();
+	else
+		layout:show();
+		music_start_bgmusic();
+	end
 end
