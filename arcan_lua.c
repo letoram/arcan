@@ -628,6 +628,32 @@ int arcan_lua_playaudio(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_captureaudio(lua_State* ctx)
+{
+/* match against arcan_audio_capturelist,
+ * wrap to arcan_audio_setupcapture,
+ * return AID */
+	return 0;
+}
+
+int arcan_lua_capturelist(lua_State* ctx)
+{
+	const char** cptlist = arcan_audio_capturelist();
+	int count = 1;
+	
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+
+	while(*cptlist){
+		lua_pushnumber(ctx, count++);
+		lua_pushstring(ctx, *cptlist);
+		lua_rawset(ctx, top);
+		cptlist++;
+	}
+	
+	return 1;
+}
+
 int arcan_lua_loadasample(lua_State* ctx)
 {
 	const char* rname = luaL_checkstring(ctx, 1);
@@ -4155,6 +4181,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "delete_audio", arcan_lua_dropaudio);
 	arcan_lua_register(ctx, "load_asample", arcan_lua_loadasample);
 	arcan_lua_register(ctx, "audio_gain", arcan_lua_gain);
+	arcan_lua_register(ctx, "capture_audio", arcan_lua_captureaudio);
+	arcan_lua_register(ctx, "list_audio_inputs", arcan_lua_capturelist);
 	arcan_lua_register(ctx, "load_image", arcan_lua_loadimage);
 	arcan_lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
 	arcan_lua_register(ctx, "image_loaded", arcan_lua_imageloaded);

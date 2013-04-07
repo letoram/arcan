@@ -12,10 +12,10 @@ settings = {
 soundmap = {};
 
 function get_recstr()
-	local recstr    = "libvorbis:vcodec=H264:container=stream:acodec=MP3:fps=%d:apreset=%d:vpreset=%d:streamdst=";
+	local recstr    = "vcodec=H264:container=stream:acodec=MP3:fps=%d:apreset=%d:vpreset=%d:streamdst=%s";
 	local streamdst = string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
 	
-	return string.format(recstr, settings.fps, settings.record_qual, settings.record_qual, streamdst);
+	return string.format(recstr, settings.record_fps, settings.record_qual, settings.record_qual, streamdst);
 end
 
 function streamer()
@@ -27,12 +27,13 @@ function streamer()
 	system_load("scripts/osdkbd.lua")();         -- for defining stream destination
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/resourcefinder.lua")(); 
-
 	system_load("shared.lua")();
 
 	dispatch_push({}, "default", nil, 200);
 	setup_3dsupport();
 
+	settings.adevs = list_audio_inputs();
+	
 -- regular setup patterns for the necessary inputs
 	keyconfig = keyconf_create({"rMENU_ESCAPE", "rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_SELECT", "rCONTEXT", "aMOUSE_X", "aMOUSE_Y"});
 	if (keyconfig.active == false) then
@@ -88,12 +89,6 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	return false, nil;
 end
 
---
--- show helper icons
--- (a) is there a layout?
--- (b) are there any input sources?
--- (c) have a stream been set up?
---
 function show_helper()
 	if (settings.infowin) then
 		settings.infowin:destroy();
@@ -150,7 +145,8 @@ end
 function start_streaming()
 -- allocate intermediate storage
 	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
-
+	image_tracetag(dstvid, "[streaming source]");
+	
 	local recordset = {};
 	for ind,val in ipairs(settings.layout.temporary) do
 		table.insert(recordset, val);
@@ -159,17 +155,67 @@ function start_streaming()
 	for ind, val in ipairs(settings.layout.temporary_static) do
 		table.insert(recordset, val);
 	end
+
+-- recordlocal override
+	local recdst = ""; --"nisse.mkv";
+-- local recstr = "vcodec=H264:acodec=MP3:fps=50:vpreset=6:apreset=4";
+	local audset = {};
 	
-	define_recordtarget(dstvid, dst, args, recordset, {}, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
-		print(status.kind);
+	define_recordtarget(dstvid, recdst, get_recstr() .. ( #audset == 0 and ":noaudio" or "" ), recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
+		print("recordtarget status", status.kind);
 	end);
 
+	while (current_menu ~= nil) do
+		current_menu:destroy();
+		current_menu = current_menu.parent;
+	end
+
+	if (settings.infowin) then
+		settings.infowin:destroy();
+		settings.infowin = nil;
+	end
+	
+-- hide menu, cascade, go!
 	dispatch_push({}, "runtime_input", function(iotbl)
 		local restbl = keyconfig:match(iotbl);
+		
 		if (restbl) then
-
+			for ind, val in pairs(restbl) do
+				if (val and valid_vid(settings.target)) then
+					res = keyconfig:buildtbl(val, iotbl);
+	
+					if (res) then
+						res.label = val;
+						target_input(res, settings.target);
+					else
+						iotbl.label = val;
+						target_input(iotbl, settings.target);
+					end
+				end
+			end
 		end
+
 	end);
+	
+end
+
+
+function get_audio_toggles()
+	local lbls = {};
+	local fmts = {};
+
+	local function toggle_audio(lbl)
+	end
+	
+	for ind, val in ipairs(settings.adevs) do
+		table.insert(lbls, val);
+		ptrs[val] = toggle_audio;
+
+		if (settings.atoggles[val]) then
+			fmts[ key ] = settings.colourtable.notice_fontstr;
+		end
+	end
+
 	
 end
 
@@ -202,6 +248,9 @@ function toggle_main_menu(target, nvc)
 
 	if (settings.layout ~= nil) then
 		add_submenu(menulbls, menuptrs, "Streaming Settings...", nil, streammenu, streamptrs, {});
+
+		table.insert(menulbls, "Audio Sources...");
+		menuptrs["Audio Sources..."] = get_audio_toggles();
 	end
 
 -- copied from gridle internal
@@ -346,7 +395,8 @@ function run_view()
 	if (settings.layout["internal"] and #settings.layout["internal"] > 0) then
 		local internal_vid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) end);
 		settings.layout:add_imagevid(internal_vid, settings.layout["internal"][1]);
-
+		settings.target = internal_vid;
+		
 -- reuse the VID if we have clones, same with models and "display" ID
 		if (#settings.layout["internal"] > 1) then
 			for i=2, #settings.layout["internal"] do
@@ -370,6 +420,7 @@ function setup_game(label)
 		settings.gametbl = game[1];
 		local restbl = resourcefinder_search(settings.gametbl, true );
 		settings.restbl = restbl;
+		settings.ready = settings.stream_url ~= "rtmp://";
 		run_view();
 		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
 	end
@@ -398,6 +449,7 @@ function load_layout(lay)
 	settings.vidcap = {};
 	settings.restbl = nil;
 	settings.gametbl = nil;
+	settings.atoggles = {};
 
 	if (settings.layout ~= nil) then
 		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
@@ -412,6 +464,7 @@ function define_layout()
 	osdsavekbd:show();
 
 -- do this here so we have access to the namespace where osdsavekbd exists
+	if (1 == 1) then return true; end
 	dispatch_push({}, "osdkbd (layout)", function(iotbl)
 		complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
 	

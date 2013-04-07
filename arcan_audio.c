@@ -738,6 +738,54 @@ arcan_warning("cleaning up\n");
 	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 }
 
+const char** arcan_audio_capturelist()
+{
+	static char** capturelist;
+
+/* free possibly previous result */
+	if (capturelist){
+		char** cur = capturelist;
+		while (*cur){
+			free(*cur);
+			*cur = NULL;
+			cur++;
+		}
+		
+		free(capturelist);
+	}
+
+/* convert from ALs list format to NULL terminated array of strings */
+	const ALchar* list = alcGetString(NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
+	const ALchar* base = list;
+
+	int elemc = 0;
+
+	while (*list) {
+		size_t len = strlen(list);
+		if (len)
+			elemc++;
+
+		list += len + 1;
+	};
+
+	capturelist = malloc(sizeof(char*) * (elemc + 1));
+	elemc = 0;
+
+	list = base;
+	while (*list){
+		size_t len = strlen(list);
+		if (len){
+			capturelist[elemc] = strdup(list);
+			elemc++;
+		}
+
+		list += len + 1;
+	}
+
+	capturelist[elemc] = NULL;
+	return capturelist;
+}
+
 void arcan_audio_refresh()
 {
 	if (!current_acontext->context || !current_acontext->al_active)
