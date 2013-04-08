@@ -106,8 +106,9 @@ local function reset_customview()
 end
 
 local function navi_change(navi, navitbl)
+	settings.gametbl = navi:current_item();
+
 	layout:show();
-	update_dynamic( navi:current_item() );
 
 -- we override some of the navigator settings
 	order_image( navi:drawable(), navitbl.order );
@@ -118,15 +119,20 @@ local function setup_customview()
 	local imenu = {};
 	
 	if (layout["navigator"]) then
-		customview.navigator = system_load("customview/" .. customview.current.navigator.res .. ".lua")();
+		local navitbl = layout["navigator"][1];
+		navitbl.width = navitbl.size[1];
+		navitbl.height = navitbl.size[2];
+
+--
+-- Current layout editor do not allow navigator to set font / fontsize
+		if (not navitbl.font) then
+			navitbl.font_size = 12;
+			navitbl.font = "\\ffonts/multilang.ttf,";
+		end
+
+		customview.navigator = system_load("customview/" .. navitbl.res)();
 		local navi = customview.navigator;
-		local navitbl = customview.current.navigator;
-		
-		navitbl.width  = math.floor(navitbl.width  * VRESW);
-		navitbl.height = math.floor(navitbl.height * VRESH);
-		navitbl.x      = math.floor(navitbl.x * VRESW);
-		navitbl.y      = math.floor(navitbl.y * VRESH);
-		
+	
 		navi:create(navitbl);
 		navi:update_list(settings.games);
 		
@@ -231,6 +237,33 @@ function update_shader(resname)
 	end
 end
 
+local function load_cb(restype, lay)
+	if (restype == LAYRES_STATIC) then
+		if (lay.idtag == "background") then
+			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
+			
+		elseif (lay.idtag == "image") then
+			return "images/" .. lay.res;
+		end
+	end
+
+-- don't progress until we have a data-source set
+	if (settings.restbl == nil) then
+		return nil;
+	end
+
+	if (restype == LAYRES_IMAGE or restype == LAYRES_FRAMESERVER) then
+
+		local locfun = settings.restbl["find_" .. lay.idtag];
+		if (locfun ~= nil) then
+			return locfun(settings.restbl);
+		end
+
+	elseif (restype == LAYRES_TEXT) then
+		return settings.gametbl[lay.idtag];
+	end
+end
+
 --
 -- special treatment for background / shadereffects when added to the layout
 -- 
@@ -253,7 +286,6 @@ local function hookfun(newitem)
 		newitem.height = VRESH;
 		settings.background = newitem.vid;
 
-		print(settings.shader);
 		if (settings.shader) then
 			image_shader(settings.background, settings.shader);
 		end
@@ -281,33 +313,39 @@ function gridle_customview()
 	setup_3dsupport();
 	customview_3dbase();
 
-	layout = layout_load("customview_cfg");
-
+	layout = layout_load("customview.lay", load_cb);
+	if (layout) then
+		setup_customview();
+		layout:show();
+		music_start_bgmusic();
+		return true;
+	end
+	
 -- 
 -- If the default layout cannot be found (menu/config will simply zap the customview_cfg and call _customview() again)
 -- Setup an edit session, this is a slightly different version of what's present in "streamer" (no internal launch, no vidcap, ...)
 -- Instead, a "navigator" group is added (se navigators/*.lua) that determines what is currently "selected"
 --
-	if (not layout) then
-		layout = layout_new(layname);
+	layout = layout_new("customview.lay");
 		
-		local identtext  = function(key) return render_text(settings.colourtable.label_fontstr .. key); end
-		local identphold = function(key) return load_image("images/placeholders/" .. string.lower(key) .. ".png"); end
+	local identtext  = function(key) return render_text(settings.colourtable.label_fontstr .. key); end
+	local identphold = function(key) return load_image("images/placeholders/" .. string.lower(key) .. ".png"); end
 	
-		layout:add_resource("background", "Background...", function() return glob_resource("backgrounds/*.png"); end, nil, LAYRES_STATIC, true, function(key) return load_image("backgrounds/" .. key); end);
-		layout:add_resource("bgeffect", "Background Effect...", function() return glob_resource("shaders/bgeffects/*.fShader"); end, nil, LAYRES_SPECIAL, true, nil);
-		layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", LAYRES_FRAMESERVER, false, identphold);
-		layout:add_resource("image", "Image...", function() return glob_resource("images/*.png"); end, nil, LAYRES_STATIC, false, function(key) return load_image("images/" .. key); end);
+	layout:add_resource("background", "Background...", function() return glob_resource("backgrounds/*.png"); end, nil, LAYRES_STATIC, true, function(key) return load_image("backgrounds/" .. key); end);
+	layout:add_resource("bgeffect", "Background Effect...", function() return glob_resource("shaders/bgeffects/*.fShader"); end, nil, LAYRES_SPECIAL, true, nil);
+	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", LAYRES_FRAMESERVER, false, identphold);
+	layout:add_resource("image", "Image...", function() return glob_resource("images/*.png"); end, nil, LAYRES_STATIC, false, function(key) return load_image("images/" .. key); end);
+	layout:add_resource("navigator", "Navigators...", function() return glob_resource("customview/*.lua"); end, nil, LAYRES_SPECIAL, true, function(key) return load_image("images/placeholders/" .. key .. ".png"); end);
+		
+	for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
+		layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
+	end
 
-		for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
-			layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
-		end
+	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
 
-		layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
-
-		for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
-			layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
-		end
+	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
+		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
+	end
 
 --
 -- post_save is triggered whenever an item is added
@@ -318,18 +356,14 @@ function gridle_customview()
 --
 -- until this function evaulates true, the user is not allowed to save
 --
-		layout.validation_hook = function()
-			for ind, val in ipairs(layout.items) do
-				if (val.idtag == "navigator") then
-					return true;
-				end
+	layout.validation_hook = function()
+		for ind, val in ipairs(layout.items) do
+			if (val.idtag == "navigator") then
+				return true;
 			end
-			return false;
 		end
-
-		layout:show();
-	else
-		layout:show();
-		music_start_bgmusic();
+		return false;
 	end
+
+	layout:show();
 end
