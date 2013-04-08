@@ -445,7 +445,7 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 	}
 
 /* just figure out the dimensions */
-	else {
+	else if (curr_style->font){
 		TTF_SetFontStyle(curr_style->font, curr_style->style);
 		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
 		
