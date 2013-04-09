@@ -51,7 +51,6 @@ end
 restbl.move_cursor = function(self)
 	local page_beg, page_ofs, page_end = self:curpage();
 	
-	print(self.selector, self.menu);
 	instant_image_transform(self.selector);
 	move_image(self.selector, 0, self.menu_lines[page_ofs] - 1, 10);
 	blend_image(self.selector, 0.5);

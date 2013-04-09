@@ -72,7 +72,6 @@ local function launch(tbl)
 		image_tracetag(imagery.nosave, "nosave");
 
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
-		customview.gametbl = tbl;
 		settings.capabilities = tbl.capabilities;
 		settings.cleanup_toggle = customview.cleanup;
 
@@ -107,12 +106,14 @@ end
 
 local function navi_change(navi, navitbl)
 	settings.gametbl = navi:current_item();
+	settings.restbl  = resourcefinder_search(settings.gametbl, true);
 
 	layout:show();
 
 -- we override some of the navigator settings
 	order_image( navi:drawable(), navitbl.zv    );
 	blend_image( navi:drawable(), navitbl.opa   );
+	 move_image( navi.clipregion, navitbl.pos[1], navitbl.pos[2] );
 end
 
 local function setup_customview()
@@ -248,7 +249,7 @@ local function load_cb(restype, lay)
 	end
 
 -- don't progress until we have a data-source set
-	if (settings.restbl == nil) then
+	if (settings.gametbl == nil) then
 		return nil;
 	end
 
