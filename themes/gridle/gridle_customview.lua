@@ -111,7 +111,7 @@ local function navi_change(navi, navitbl)
 	layout:show();
 
 -- we override some of the navigator settings
-	order_image( navi:drawable(), navitbl.order );
+	order_image( navi:drawable(), navitbl.zv    );
 	blend_image( navi:drawable(), navitbl.opa   );
 end
 
