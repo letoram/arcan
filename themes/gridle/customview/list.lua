@@ -55,8 +55,8 @@ restbl.move_cursor = function(self)
 	instant_image_transform(self.selector);
 	move_image(self.selector, 0, self.menu_lines[page_ofs] - 1, 10);
 	blend_image(self.selector, 0.5);
-	order_image(self.selector, self.constr.order);
-	order_image(self.menu, self.constr.order);
+	order_image(self.selector, self.constr.zv);
+	order_image(self.menu, self.constr.zv);
 end
 
 restbl.select_random = function(self, fv)
