@@ -115,7 +115,7 @@ arcan_errc arcan_audio_pause(arcan_aobj_id);
 arcan_errc arcan_audio_rewind(arcan_aobj_id);
 
 /* get a null- terminated list of available capture devices */
-const char** arcan_audio_capturelist();
+char** arcan_audio_capturelist();
 
 /* try and get a lock on a specific capture device (matching arcan_audio_capturelist)
  * if no identifier is given or identifier is given, not found and exact isn't set, the default (according to OpenAL)

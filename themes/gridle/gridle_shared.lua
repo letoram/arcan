@@ -73,17 +73,25 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 	_G[input_key] = newtbl.dispfun;
 
 	kbd_repeat(newtbl.rrate == -1 and settings.repeatrate or newtbl.rrate);
+
+	if (DEBUGLEVEL > 0) then
+		print("dispatch_push(), adding ", tostring(tbl));
 	
-	print("push:", tostring(tbl));
-	for ind, val in ipairs(settings.dispatch_stack) do
-		print(val.name);
+		for ind, val in ipairs(settings.dispatch_stack) do
+			print(val.name);
+		end
+		print("/dispatch_push()")
 	end
-	print("/push")
 end
 
 function dispatch_pop()
 	if (#settings.dispatch_stack <= 1) then
-		gridle_input = gridle_dispatchinput;
+		local input_key = string.lower(THEMENAME) .. "_input";
+		_G[input_key] = dispatch_input;
+		if (DEBUGLEVEL > 0) then
+			print("dispatch_pop(), already at max level.");
+		end
+		
 		return "";
 	else
 		table.remove(settings.dispatch_stack, #settings.dispatch_stack);
@@ -93,7 +101,10 @@ function dispatch_pop()
 		gridle_input = last.dispfun;
 		kbd_repeat(last.rrate == -1 and settings.repeatrate or last.rrate);
 
-		print("pop to: ", last.name);
+		if (DEBUGLEVEL > 0) then
+			print("pop to: ", last.name);
+		end
+
 		return last.name;
 	end
 end
@@ -789,5 +800,12 @@ function load_key_str(name, val, opt)
 	else
 		settings[val] = opt;
 		key_queue[name] = opt;
+	end
+end
+
+local old_play = play_audio;
+function play_audio(res)
+	if (res) then
+		old_play(res);
 	end
 end

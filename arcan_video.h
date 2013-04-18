@@ -145,10 +145,14 @@ uint16_t arcan_video_screenh();
 
 /* basic context management functions */
 unsigned arcan_video_popcontext();
-unsigned arcan_video_contextusage(unsigned* free);
-
-/* returns # of free context slots left, -1 if context could not be pushed */
 signed arcan_video_pushcontext();
+
+/* The extended push/pop context functions creates a video object in the newly activated context.
+ * This object, the ID of which is stored in *dst (or EID if the namespace is already full) is
+ * comprised of the result of a single renderpass into a temporary FBO */ 
+unsigned arcan_video_extpopcontext(arcan_vobj_id* dst);
+signed arcan_video_extpushcontext(arcan_vobj_id* dst);
+unsigned arcan_video_contextusage(unsigned* free);
 
 /* create a video object with a desired end-position and measurements
  * rloc = resource location, most commonly just a file. loading might be asynchronous. can be null.

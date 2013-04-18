@@ -638,7 +638,7 @@ int arcan_lua_captureaudio(lua_State* ctx)
 
 int arcan_lua_capturelist(lua_State* ctx)
 {
-	const char** cptlist = arcan_audio_capturelist();
+	char** cptlist = arcan_audio_capturelist();
 	int count = 1;
 	
 	lua_newtable(ctx);
