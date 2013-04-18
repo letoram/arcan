@@ -1772,7 +1772,7 @@ function load_settings()
 	load_key_num("upscale_factor",  "upscale_factor",  settings.upscale_factor);
 	load_key_str("upscale_method",  "upscale_method",  settings.upscale_method);
 	load_key_num("upscale_delta",   "upscale_delta",   settings.upscale_delta);
-	load_key_str("imagefilter", "imagefilter", settings.imagefilter);
+	load_key_str("imagefilter",      "imagefilter",    settings.imagefilter);
 	load_key_str("record_format",   "record_format",   settings.record_format);
 	load_key_num("record_fps",      "record_fps",      settings.record_fps);
 	load_key_num("record_qual",     "record_qual",     settings.record_qual);
@@ -1783,11 +1783,7 @@ function load_settings()
 
 -- load key * will update a global table of missing keys, filled with default values
 -- these are stored and flushed as a transaction due to the cost in storing keys
-	local count = 0;
-	for ind, val in pairs(key_queue) do
-		count = count + 1;
-	end
-	if (count > 0) then
+	if #key_queue > 0 then
 		store_key(key_queue);
 	end
 	

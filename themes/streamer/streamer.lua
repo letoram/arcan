@@ -464,7 +464,6 @@ function define_layout()
 	osdsavekbd:show();
 
 -- do this here so we have access to the namespace where osdsavekbd exists
-	if (1 == 1) then return true; end
 	dispatch_push({}, "osdkbd (layout)", function(iotbl)
 		complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
 	

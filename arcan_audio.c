@@ -738,7 +738,7 @@ arcan_warning("cleaning up\n");
 	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
 }
 
-const char** arcan_audio_capturelist()
+char** arcan_audio_capturelist()
 {
 	static char** capturelist;
 

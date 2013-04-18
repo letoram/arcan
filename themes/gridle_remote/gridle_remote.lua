@@ -2,10 +2,22 @@ settings = {
 	repeatrate = 200,
 	connected = false,
 	iodispatch = {},
-	dispatch_stack = {}
+	dispatch_stack = {},
+
+-- persistent settings
+	autoconnect   = "Off",
+	connect_host  = "Local Discovery",
+	menu_layout   = nil,
+	ingame_layout = nil,
 };
 
 imagery = {};
+soundmap = {};
+
+local network_keymap = {
+	"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "7", "8", "9", "\n",
+	"A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "4", "5", "6", "\n",
+	"Z", "X", "C", "V", "B", "N", "M", ".", "_", "0", "1", "2", "3", "\n"};
 
 function gridle_remote()
 	system_load("scripts/resourcefinder.lua")();
@@ -13,17 +25,20 @@ function gridle_remote()
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/listview.lua")();
 	system_load("scripts/osdkbd.lua")();
-	system_load("remote_config.lua")();
+	system_load("gridle_shared.lua")();
+	system_load("scripts/layout_editor.lua")();
 
--- rREMOTE_ESCAPE gets remapped to MENU_ESCAPE
-	local keylabels = { "", "rMENU_TOGGLE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", 
-		"rREMOTE_MENU", "rREMOTE_ESCAPE", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
-
--- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
-	keyconfig = keyconf_create(keylabels);
+	load_keys();
 	
--- will either spawn the setup layout first or, if there already is one, spawn menu (which may or may not just autoconnect
--- depending on settings) 
+	imagery.disconnected = load_image("images/icons/disconnected.png");
+	image_tracetag(imagery.disconnected, "network disconnected");
+
+	local props = image_surface_properties(imagery.disconnected);
+	if (props.width > VRESW)  then props.width = VRESW;  end
+	if (props.height > VRESH) then props.height = VRESH; end
+
+-- will either spawn the setup layout first or, if there already is one, spawn menu 
+-- (which may or may not just autoconnect depending on settings)
 	default_dispatch = {};
 	default_dispatch["MENU_TOGGLE"] = function()
 		spawn_mainmenu();
@@ -34,8 +49,7 @@ function gridle_remote()
 	end
 
 	dispatch_push(default_dispatch, "default", gridleremote_netinput);
-	
-	setup_keys( function() gridleremote_layouted( setup_complete ) end );
+	setup_keys(spawn_mainmenu);
 end
 
 function open_connection(dst)
@@ -47,70 +61,78 @@ function open_connection(dst)
 	settings.connection = net_open(dst, net_event);
 end
 
-function dispatch_push(tbl, name, triggerfun)
-	local newtbl = {};
-	newtbl.table = tbl;
-	newtbl.name = name;
-	newtbl.dispfun = triggerfun and triggerfun or gridle_remote_dispatchinput;
-	
-	table.insert(settings.dispatch_stack, newtbl);
-	settings.iodispatch = tbl;
-	gridle_remote_input = newtbl.dispfun;
-end
+function set_layout(layname, target, save)
+	if (target == "menu") then
+		settings.menu_layout = layname;
+		if (save) then
+			store_key("menu_layout", layname);
+		end
 
-function dispatch_pop()
-	if (#settings.dispatch_stack <= 1) then
-		settings.dispatch = {};
-		gridle_remote_input = gridle_dispatchinput;
-	else
-		table.remove(settings.dispatch_stack, #settings.dispatch_stack);
-		local last = settings.dispatch_stack[#settings.dispatch_stack];
-
-		settings.iodispatch = last.table;
-		gridle_remote_input = last.dispfun;
+	elseif (target == "ingame") then
+		settings.ingame_layout = layname;
+		if (save) then
+			store_key("ingame_layout", layname);
+		end
 	end
-
 end
 
 function spawn_mainmenu()
+	while current_menu do
+		current_menu:destroy();
+		current_menu = current_menu.parent;
+	end
+	
 -- Default Global Menus (and their triggers)
 	local mainlbls     = {};
-	local settingslbls = {"Reset Keyconfig", "Reset Layout"};
+	local settingslbls = {"Reset Keyconfig"}; 
 	local connectlbls  = {"Local Discovery", "Specify Server"};
 	
 	local connectptrs  = {};
 	local mainptrs     = {};
 	local settingsptrs = {};
-
-	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs);
-	add_submenu(mainlbls, mainptrs, "Connection...", "_nokey", connectlbls, connectptrs);
+	local settingsfmts = {};
+	local laylbls      = {"Create New"};
+	local layptrs      = {};
+	layptrs["Create New"] = define_layout;
 	
-	table.insert(mainlbls, "---");
+	add_submenu(mainlbls, mainptrs, "Layouts...", "_nokey", laylbls, layptrs);
+	add_submenu(mainlbls, mainptrs, "Connection Method...", "_nokey", connectlbls, connectptrs);
+	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs, settingsfmts);
+	
+	local globlbl, globptrs = build_globmenu("layouts/*.lay", nil, THEME_RESOURCE);
+	local globfmt = {};
+	
+	if (#globlbl > 0) then
+		local ptrsa = {};
+		local ptrsb = {};
+		for ind, val in ipairs(globlbl) do
+			ptrsa[val] = function(lbl, save) set_layout(val, "menu",   save); end
+			ptrsb[val] = function(lbl, save) set_layout(val, "ingame", save); end
+		end
+	
+		table.insert(laylbls, "Menu Layout...");
+		table.insert(laylbls, "Ingame Layout...");
+
+		layptrs["Menu Layout..."]   = function() menu_spawnmenu(globlbl, ptrsa, {}); end 
+		layptrs["Ingame Layout..."] = function() menu_spawnmenu(globlbl, ptrsb, {}); end
+	end
+	
+	add_submenu(settingslbls, settingsptrs, "Autoconnect...", "autoconnect", gen_tbl_menu("autoconnect", {"On", "Off"}, nil, true));
+
+	table.insert(mainlbls, "-------");
 	table.insert(mainlbls, "Shutdown");
 
 	mainptrs["Shutdown"] = function()
 		shutdown(); 
 	end
 
-	settingsptrs["Reset Layout"] = function()
-		zap_resource(layouted.layoutfile);
-
-		while current_menu ~= nil do
-			current_menu:destroy();
-			current_menu = current_menu.parent;
-		end
-
-		pop_video_context();
-
-		settings.server = nil;
-		gridleremote_layouted( setup_complete );
-	end
-
 	settingsptrs["Reset Keyconfig"] = function()
+		keyconfig:destroy();
 		zap_resource("keysym.lua");
-		setup_keys( setup_complete );
+		setup_keys(spawn_mainmenu);
 	end
-
+	settingsfmts["Reset Keyconfig"] = "\\b" .. settings.colourtable.alert_fontstr;
+	
 	connectptrs["Local Discovery"] = function()
 		settings.connect_method = "local discovery";
 		open_connection();
@@ -119,15 +141,22 @@ function spawn_mainmenu()
 
 	connectptrs["Specify Server"] = function()
 -- spawn OSD and upon completion, explicit connection
-		osdkbd:show();
+		local osdconnkbd = osdkbd_create( osdkbd_extended_table(), opts );
+		osdconnkbd:show();
+
 -- do this here so we have access to the namespace where osdsavekbd exists
 		dispatch_push({}, "osd keyboard", function(iotbl)
-			complete, resstr = osdkbd_inputfun(iotbl, osdkbd);
-
+			complete, resstr = osdkbd_inputfun(iotbl, osdconnkbd);
+			print("osd keyboard");
+			
 			if (complete) then
-				osdkbd:hide();
+				osdconnkbd:destroy();
 				dispatch_pop();
-				open_connection(resstr);
+				print("popped");
+				
+				if (resstr) then
+					open_connection(resstr);
+				end
 			end
 		end);
 	end
@@ -150,21 +179,6 @@ function spawn_mainmenu()
 	local imenu = {};
 	menu_defaultdispatch(imenu);
 	dispatch_push( imenu, "connection menu" );
-end
-
-function string.split(instr, delim)
-	local res = {};
-	local strt = 1;
-	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
-	while delim_pos do
-		table.insert(res, string.sub(instr, strt, delim_pos-1));
-		strt = delim_stp + 1;
-		delim_pos, delim_stp = string.find(instr, delim, strt);
-	end
-	
-	table.insert(res, string.sub(instr, strt));
-	return res;
 end
 
 function decode_message(msg)
@@ -192,19 +206,9 @@ function decode_message(msg)
 
 end
 
-function drop_menu()
-	dispatch_pop();
-
-	while current_menu ~= nil do
-		current_menu:destroy();
-		current_menu = current_menu.parent;
-	end
-end
-
 function net_event(source, tbl)
 	if (tbl.kind == "connected") then
 		settings.connected = true;
-		drop_menu();
 		dispatch_push(default_dispatch, "network input", gridleremote_netinput);
 
 		net_push(source, "players:", keyconfig.player_count);
@@ -244,32 +248,6 @@ function reset_connection()
 	spawn_warning("Networking session terminated", 50);
 end
 
-function spawn_warning( message, expiration, yv )
--- render message and make sure it is on top
-	if (settings.infowin) then
-		delete_image(settings.infowin.anchor);
-		settings.infowin = nil;
-	end
-	
-	local msg         = string.gsub(message, "\\", "\\\\"); 
-	local infowin     = listview_create( {msg}, VRESW / 2, VRESH / 2 );
-	infowin:show();
-
-	if (expiration == nil) then
-		settings.infowin = infowin;
-	else
-		expire_image(infowin.anchor, expiration);
-		blend_image(infowin.window, 1.0, expiration * 0.8);
-		blend_image(infowin.window, 0.0, expiration * 0.2);
-	end
-
-	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
-	local y = (yv ~= nil) and yv or math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
-	
-	move_image(infowin.anchor, x, y);
-	hide_image(infowin.cursorvid);
-end
-
 -- plucked from gridle, removing the soundmap calls
 function osdkbd_inputfun(iotbl, dstkbd)
 	local restbl = keyconfig:match(iotbl);
@@ -278,8 +256,10 @@ function osdkbd_inputfun(iotbl, dstkbd)
 
 	if (restbl) then
 		for ind,val in pairs(restbl) do
+			print(val);
 			if (val == "MENU_ESCAPE" and iotbl.active) then
 				return true, nil
+
 			elseif (val == "MENU_SELECT" or val == "MENU_UP" or val == "MENU_LEFT" or
 				val == "MENU_RIGHT" or val == "MENU_DOWN" or val == "CONTEXT") then
 				resstr = dstkbd:input(val, iotbl.active);
@@ -302,25 +282,17 @@ function osdkbd_inputfun(iotbl, dstkbd)
 	return false, nil
 end
 
-function setup_complete()
-	spawn_mainmenu();
-
-	imagery.disconnected = load_image("images/icons/disconnected.png");
-	local props = image_surface_properties(imagery.disconnected);
-	if (props.width > VRESW)  then props.width = VRESW;  end
-	if (props.height > VRESH) then props.height = VRESH; end
-	
-	local keymap = {
-		"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "7", "8", "9", "\n",
-		"A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "4", "5", "6", "\n",
-		"Z", "X", "C", "V", "B", "N", "M", ".", "_", "0", "1", "2", "3", "\n"};
-
-	osdkbd = osdkbd_create( keymap, {case_insensitive = false} ); --keymap);
-end
-
 function setup_keys( trigger )
--- if active, then there's nothing needed to be done, else we need a UI to help.
-	if (keyconfig.active == false) then
+-- rREMOTE_ESCAPE gets remapped to MENU_ESCAPE
+	local keylabels = { "", "rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_SELECT", "rMENU_TOGGLE", 
+		"rREMOTE_MENU", "rREMOTE_ESCAPE", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", " FLAG_FAVORITE", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD"};
+
+-- prepare a keyconfig that support the specified set of labels (could be nil and get a default one)
+	keyconfig = keyconf_create(keylabels);
+
+	if (keyconfig.active) then
+		trigger();
+	else
 		keyconfig:to_front();
 		dispatch_push({}, "key config", function(iotbl)
 			if (keyconfig:input(iotbl) == true) then
@@ -328,11 +300,21 @@ function setup_keys( trigger )
 				trigger();
 			end
 		end);
-
-	else
-		trigger();
 	end
 
+end
+
+function load_keys()
+	key_queue = {};
+	
+	load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
+	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
+	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);
+	load_key_str("connect_host",  "connect_host",  settings.connect_host);
+	
+	if #key_queue > 0 then
+		store_key(key_queue);
+	end
 end
 
 function gridleremote_netinput(iotbl)
@@ -355,6 +337,115 @@ function gridleremote_netinput(iotbl)
 		end
 	end
 
+end
+
+function define_layout()
+	local osdsavekbd = osdkbd_create( osdkbd_alphanum_table(), opts );
+	osdsavekbd:show();
+
+-- do this here so we have access to the namespace where osdsavekbd exists
+	dispatch_push({}, "osdkbd (layout)", function(iotbl)
+		complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
+	
+		if (complete) then
+			osdsavekbd:destroy();
+			osdsavekbd = nil;
+
+			dispatch_pop();
+			if (resstr ~= nil and string.len(resstr) > 0) then
+				if (string.sub(resstr, -4, -1) ~= ".lay") then
+					resstr = resstr .. ".lay";
+				end
+				lay_setup("layouts/" .. resstr);
+			end
+
+		end
+
+	end, -1);
+end
+
+function lay_setup(layname)
+	while current_menu ~= nil do
+		current_menu:destroy();
+		current_menu = current_menu.parent;
+	end
+
+	local identtext = function(key)
+		vid = render_text(settings.colourtable.label_fontstr .. key);
+		return vid;
+	end
+
+	local identphold = function(key)
+		vid = load_image("images/placeholders/" .. string.lower(key) .. ".png");
+		if (not valid_vid(vid)) then
+			vid = fill_surface(64, 64, math.random(128), math.random(128), math.random(128));
+			image_tracetag(vid, "placeholder" .. key);
+		end
+		return vid;
+	end
+	
+	layout = layout_new(layname);
+	layout:add_resource("background", "Background...", function() return glob_resource("backgrounds/*.png"); end, nil, LAYRES_STATIC, true, function(key) return load_image("backgrounds/" .. key); end);
+	layout:add_resource("bgeffect", "Background Effect...", function() return glob_resource("shaders/bgeffects/*.fShader"); end, nil, LAYRES_SPECIAL, true, nil);
+	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", LAYRES_FRAMESERVER, false, identphold);
+	layout:add_resource("image", "Image...", function() return glob_resource("images/*.png"); end, nil, LAYRES_STATIC, false, function(key) return load_image("images/" .. key); end);
+	for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
+		layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
+	end
+
+	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
+
+	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
+		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
+	end
+	
+	layout.post_save_hook = hookfun;
+
+	layout.finalizer = function(state)
+		if (state) then
+			load_layout(string.sub(layname, 9));
+		else
+			toggle_main_menu(false, 0);
+		end
+	end
+
+	layout.validation_hook = function() return true; end
+
+	layout:show();
+end
+
+function hookfun(newitem)
+-- autotile!
+	if (newitem.idtag == "background") then
+		local props = image_surface_initial_properties(newitem.vid);
+		if (props.width / VRESW < 0.3 and newitem.tile_h == 1) then
+			newitem.tile_h = math.ceil(VRESW / props.width);
+		end
+
+		if (props.height / VRESH < 0.3 and newitem.tile_v == 1) then
+			newitem.tile_v = math.ceil(VRESH / props.height);
+		end
+
+		newitem.zv = 1;
+		newitem.x  = 0;
+		newitem.y  = 0;
+		newitem.width  = VRESW;
+		newitem.height = VRESH;
+		settings.background = newitem.vid;
+		newitem:update();
+
+	elseif (newitem.idtag == "bgeffect") then
+		update_shader(newitem.res);
+	end
+end
+
+function update_shader(resname)
+-- (when here, something goes bad?!)	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+	if (valid_vid(settings.background)) then
+		settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+		image_shader(settings.background, settings.shader);
+		shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
+	end
 end
 
 function gridle_remote_dispatchinput(iotbl)
