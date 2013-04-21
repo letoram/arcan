@@ -91,11 +91,14 @@ function spawn_mainmenu()
 	local mainptrs     = {};
 	local settingsptrs = {};
 	local settingsfmts = {};
-	local laylbls      = {"Create New"};
+	local laylbls      = {"New Layout"};
 	local layptrs      = {};
-	layptrs["Create New"] = define_layout;
+	local layfmts      = {};
+
+	layptrs["New Layout"] = define_layout;
+	layfmts["New Layout"] = "\\b" .. settings.colourtable.notice_fontstr;
 	
-	add_submenu(mainlbls, mainptrs, "Layouts...", "_nokey", laylbls, layptrs);
+	add_submenu(mainlbls, mainptrs, "Layouts...", "_nokey", laylbls, layptrs, layfmts);
 	add_submenu(mainlbls, mainptrs, "Connection Method...", "_nokey", connectlbls, connectptrs);
 	add_submenu(mainlbls, mainptrs, "Settings...", "_nokey", settingslbls, settingsptrs, settingsfmts);
 	
@@ -105,9 +108,11 @@ function spawn_mainmenu()
 	if (#globlbl > 0) then
 		local ptrsa = {};
 		local ptrsb = {};
+
+		table.insert(laylbls, "------");
 		for ind, val in ipairs(globlbl) do
-			ptrsa[val] = function(lbl, save) set_layout(val, "menu",   save); end
-			ptrsb[val] = function(lbl, save) set_layout(val, "ingame", save); end
+			ptrsa[val] = function(lbl, save) set_layout(val, "menu");   end
+			ptrsb[val] = function(lbl, save) set_layout(val, "ingame"); end
 		end
 	
 		table.insert(laylbls, "Menu Layout...");
@@ -134,8 +139,8 @@ function spawn_mainmenu()
 	settingsfmts["Reset Keyconfig"] = "\\b" .. settings.colourtable.alert_fontstr;
 	
 	connectptrs["Local Discovery"] = function()
-		settings.connect_method = "local discovery";
-		open_connection();
+		settings.connect_method = "Local Discovery";
+		store_key("connect_method", settings.connect_method); 
 		settings.iodispatch["MENU_ESCAPE"]();
 	end
 
@@ -147,15 +152,15 @@ function spawn_mainmenu()
 -- do this here so we have access to the namespace where osdsavekbd exists
 		dispatch_push({}, "osd keyboard", function(iotbl)
 			complete, resstr = osdkbd_inputfun(iotbl, osdconnkbd);
-			print("osd keyboard");
 			
 			if (complete) then
 				osdconnkbd:destroy();
 				dispatch_pop();
-				print("popped");
 				
 				if (resstr) then
-					open_connection(resstr);
+					settings.connect_method = resstr;
+					store_key("connect_method", settings.connect_method); 
+					settings.iodispatch["MENU_ESCAPE"]();
 				end
 			end
 		end);
@@ -164,7 +169,7 @@ function spawn_mainmenu()
 	if (valid_vid(settings.server)) then
 		table.insert(connectlbls, "Autoconnect (On)");
 		table.insert(connectlbls, "Autoconnect (Off)");
-		connectptrs["Autoconnect (On)"] = function() store_key("autoconnect", settings.connect_method); end
+		connectptrs["Autoconnect (On)"] = function() store_key("autoconnect", true); end
 		connectptrs["Autoconnect (Off)"] = function() delete_key("autoconnect"); end
 	end
 	
@@ -178,6 +183,9 @@ function spawn_mainmenu()
 
 	local imenu = {};
 	menu_defaultdispatch(imenu);
+	local def_esc = imenu["MENU_ESCAPE"];
+	imenu["MENU_ESCAPE"] = function() if (current_menu.parent == nil) then return; else def_esc(); end end
+	imenu["MENU_LEFT"] = imenu["MENU_ESCAPE"];
 	dispatch_push( imenu, "connection menu" );
 end
 
@@ -256,7 +264,6 @@ function osdkbd_inputfun(iotbl, dstkbd)
 
 	if (restbl) then
 		for ind,val in pairs(restbl) do
-			print(val);
 			if (val == "MENU_ESCAPE" and iotbl.active) then
 				return true, nil
 
@@ -402,11 +409,7 @@ function lay_setup(layname)
 	layout.post_save_hook = hookfun;
 
 	layout.finalizer = function(state)
-		if (state) then
-			load_layout(string.sub(layname, 9));
-		else
-			toggle_main_menu(false, 0);
-		end
+		spawn_mainmenu();
 	end
 
 	layout.validation_hook = function() return true; end

@@ -85,8 +85,9 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 end
 
 function dispatch_pop()
+	local input_key = string.lower(THEMENAME) .. "_input";
+	
 	if (#settings.dispatch_stack <= 1) then
-		local input_key = string.lower(THEMENAME) .. "_input";
 		_G[input_key] = dispatch_input;
 		if (DEBUGLEVEL > 0) then
 			print("dispatch_pop(), already at max level.");
@@ -98,7 +99,8 @@ function dispatch_pop()
 		local last = settings.dispatch_stack[#settings.dispatch_stack];
 
 		settings.iodispatch = last.table;
-		gridle_input = last.dispfun;
+		_G[input_key] = last.dispfun;
+
 		kbd_repeat(last.rrate == -1 and settings.repeatrate or last.rrate);
 
 		if (DEBUGLEVEL > 0) then
@@ -191,7 +193,7 @@ function confirm_shutdown()
 
 	video_3dorder(ORDER_NONE);
 
-	dialog_option(settings.colourtable.fontstr .. "Shutdown Arcan/Gridle?", {"NO", "YES"}, true, valcbs, function()
+	dialog_option(settings.colourtable.fontstr .. "Shutdown?", {"NO", "YES"}, true, valcbs, function()
 		video_3dorder(ORDER_LAST);
 	end);
 end
@@ -512,14 +514,15 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	current_menu.ptrs = listptr;
 	current_menu.updatecb = parent.updatecb;
 	current_menu:show();
+
 	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
-	
+
 	local xofs = 0;
 	local yofs = 0;
 	
 -- figure out where the window is going to be.
-	local aprops_l = image_surface_properties(current_menu.anchor, settings.fadedelay);
-	local wprops_l = image_surface_properties(current_menu.window, settings.fadedelay);
+	local aprops_l = image_surface_properties(current_menu.anchor, -1);
+	local wprops_l = image_surface_properties(current_menu.window, -1);
 	local dx = aprops_l.x;
 	local dy = aprops_l.y;
 	
@@ -527,6 +530,7 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	local winh = wprops_l.height;
 	
 	if (dx + winw > VRESW) then
+		print(dx, winw);
 		dx = dx + (VRESW - (dx + winw));
 	end
 	
@@ -550,6 +554,35 @@ function remove_loaded()
 	hide_image(imagery.loading);
 end
 
+function send_gamedata(gametbl, ingame, target)
+-- there might be other stuff in gametbl than provided by the initial list_games
+-- so just send the strings/numbers, the messaging layer may crop though
+	if (gametbl == nil) then
+		gametbl = send_lasttbl;
+	else
+		send_lasttbl = gametbl;
+	end
+
+	if (imagery.server) then
+		count = 0;
+		for key, val in pairs(gametbl) do
+			if (type(val) == "string" or type(val) == "number") then
+				count = count + 1;
+			end
+		end
+
+		net_push_srv(imagery.server, (ingame and "playing:" or "selected:") .. tostring(count), target);
+
+		for key, val in pairs(gametbl) do
+			if (type(val) == "string" or type(val) == "number") then
+				net_push_srv(imagery.server, key);
+				net_push_srv(imagery.server, tostring(val));
+			end
+		end
+	end
+
+end
+
 function show_loading()
 	settings.status_loading = true;
 	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
@@ -567,9 +600,7 @@ function gridle_internal_setup(source, datatbl, gametbl)
 -- per session settings
 	if (not settings.in_internal) then
 -- first, tell all remote controls -- title / system have already been transferred */
-		if (imagery.server) then
-			net_push_srv(imagery.server, "launched");
-		end
+		send_gamedata(datatbl, true);
 
 		if (settings.autosave == "On") then
 			internal_statectl("auto", false);
@@ -579,8 +610,8 @@ function gridle_internal_setup(source, datatbl, gametbl)
 		target_framemode(internal_vid, skipremap[ settings.skip_mode ], settings.frame_align,
 			settings.preaud, settings.jitterstep, settings.jitterxfer);
 
-		settings.in_internal    = true;
-
+		settings.in_internal = true;
+		
 		if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
 			pause_movie(imagery.musicplayer);
 		end
