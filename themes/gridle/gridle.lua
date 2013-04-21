@@ -236,30 +236,6 @@ settings.sortfunctions["Favorites"]    = function(a,b)
 	end
 end
 
-function broadcast_game(gametbl, playing)
--- there might be other stuff in gametbl than provided by the initial list_games
--- so just send the strings/numbers
-	if (imagery.server) then
-
-		count = 0
-		for key, val in pairs(gametbl) do
-			if (type(val) == "string" or type(val) == "number") then
-				count = count + 1;
-			end
-		end
-
-		net_push_srv(imagery.server, "begin_item:" .. tostring(count));
-		
-		for key, val in pairs(gametbl) do
-			if (type(val) == "string" or type(val) == "number") then
-				net_push_srv(imagery.server, key);
-				net_push_srv(imagery.server, tostring(val));
-			end
-		end
-
-	end
-end
-
 function load_soundmap(name)
 	for key, val in pairs(soundmap) do
 		if (val ~= nil and val ~= BADID) then
@@ -620,6 +596,7 @@ function network_onevent(source, tbl)
 			net_disconnect(source, tbl.id);
 		else
 			spawn_warning(tbl.host .. " connected.");
+			send_gamedata(nil, settings.in_internal, tbl.id);
 		end
 
 	elseif (tbl.kind == "message") then
@@ -1118,7 +1095,7 @@ function move_cursor( ofs, absolute )
 
 	settings.gameind = settings.gameind + ofs;
 	if (absolute) then settings.gameind = ofs; end
-	
+
 -- refit inside range
 	while (settings.gameind < 1) do 
 		settings.gameind = #settings.games + settings.gameind;
@@ -1145,7 +1122,7 @@ function move_cursor( ofs, absolute )
 	current_game = settings.games[settings.gameind];
 
 -- broadcast that this is what we're showing next
-	broadcast_game( current_game, false );
+	send_gamedata( current_game, false );
 
 -- reset the previous movie
 	if (imagery.movie) then
@@ -1425,7 +1402,7 @@ function gridle_clock_pulse()
 				imagery.movie = load_movie( moviefile, FRAMESERVER_LOOP, asynch_movie_ready);
 				if (imagery.movie) then
 					local vprop = image_surface_properties( cursor_bgvid() );
-					
+
 					move_image(imagery.movie, vprop.x, vprop.y);
 					order_image(imagery.movie, GRIDLAYER_MOVIE);
 					return

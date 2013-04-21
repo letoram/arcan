@@ -3830,6 +3830,9 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 {
 	if (ticks == 0)
 		return arcan_video_current_properties(id);
+
+	bool fullprocess = ticks == UINT_MAX;
+
 	surface_properties rv = empty_surface();
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
@@ -3838,12 +3841,14 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 /* if there's no transform defined, then the ticks will be the same */
 		if (vobj->transform){
 /* translate ticks from relative to absolute */
-			ticks += arcan_video_display.c_ticks;
+			if (!fullprocess)
+				ticks += arcan_video_display.c_ticks;
+
 /* check if there is a transform for each individual attribute, and find the one that
  * defines a timeslot within the range of the desired value */
 			surface_transform* current = vobj->transform;
 			if (current->move.startt){
-				while (current->move.endt < ticks && current->next && current->next->move.startt)
+				while ( (current->move.endt < ticks || fullprocess) && current->next && current->next->move.startt)
 					current = current->next;
 
 				if (current->move.endt <= ticks)
@@ -3858,7 +3863,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 
 			current = vobj->transform;
 			if (current->scale.startt){
-				while (current->scale.endt < ticks && current->next && current->next->scale.startt)
+				while ( (current->scale.endt < ticks || fullprocess) && current->next && current->next->scale.startt)
 					current = current->next;
 
 				if (current->scale.endt <= ticks)
@@ -3873,7 +3878,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 
 			current = vobj->transform;
 			if (current->blend.startt){
-				while (current->blend.endt < ticks && current->next && current->next->blend.startt)
+				while ( (current->blend.endt < ticks || fullprocess) && current->next && current->next->blend.startt)
 					current = current->next;
 
 				if (current->blend.endt <= ticks)
@@ -3888,7 +3893,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 
 			current = vobj->transform;
 			if (current->rotate.startt){
-				while (current->rotate.endt < ticks && current->next && current->next->rotate.startt)
+				while ( (current->rotate.endt < ticks || fullprocess) && current->next && current->next->rotate.startt)
 					current = current->next;
 
 				if (current->rotate.endt <= ticks)

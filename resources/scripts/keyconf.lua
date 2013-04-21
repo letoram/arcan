@@ -133,7 +133,7 @@ local function keyconf_new(self)
 	order_image(self.anchor, 0);
 	move_image(self.window, 3, 3);
 	
-	keyconf_renderline(self, [[Welcome to Arcan keyconfig!\r\nPlease press a button for MENU_ESCAPE (required)]], 18);
+	keyconf_renderline(self, [[Welcome to Arcan keyconfig!\r\nPlease press a button for\r\n MENU_ESCAPE (required)]], 18);
 	self.label = [[Please press a button for MENU_ESCAPE (required)]];
 
 	self.key = "MENU_ESCAPE";
@@ -194,7 +194,7 @@ local function keyconf_next_key(self)
 			self.analog_samples = {};
 		else
 			local keylbl = (self.ident[self.key] and self.ident[self.key].label) and self.ident[self.key].label or self.key;
-			lbl = lbl .. "Please press a button for " .. keylbl; 
+			lbl = lbl .. "Please press a button for:\\n\\r " .. keylbl; 
 		end
 
 		if (self.ident and self.ident[self.key] and self.ident[self.key].icon) then

@@ -39,7 +39,7 @@ local function listview_redraw(self)
 				renderstr = renderstr .. self.hilight_fontstr .. string.sub(tmpname, 4) .. [[\n\r]];
 			else
 				if (fmt) then
-					renderstr = renderstr .. fmt .. tmpname .. [[\n\r]];
+					renderstr = renderstr .. fmt .. tmpname .. [[\!b\!i\n\r]];
 				else
 					renderstr = renderstr .. self.data_fontstr .. tmpname .. [[\n\r]];
 				end
@@ -58,6 +58,9 @@ local function listview_redraw(self)
 
 	resize_image(self.border, props.width, props.height, 5);
 	resize_image(self.window, props.width - 6, props.height - 6, 5);
+
+	print("width:", props.width);
+	print("final:", image_surface_properties(self.window, -1).width);
 
 	order_image(self.listvid, image_surface_properties(self.window).order + 1);
 end
