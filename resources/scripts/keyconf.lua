@@ -468,7 +468,6 @@ local function keyconf_analog(self, inputtable)
 	local smpls  = 0;
 
 	for key, val in pairs(self.analog_samples) do
-		print(key, #val);
 		if smpls < #val then 
 			maxkey = key;
 			smpls  = #val;

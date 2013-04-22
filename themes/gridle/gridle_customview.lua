@@ -107,7 +107,8 @@ end
 local function navi_change(navi, navitbl)
 	settings.gametbl = navi:current_item();
 	settings.restbl  = resourcefinder_search(settings.gametbl, true);
-
+	send_gamedata(settings.gametbl, false);
+	
 	layout:show();
 
 -- we override some of the navigator settings

@@ -1074,7 +1074,11 @@ end
 -- callback is expected a format with (self, type, itemtbl) that returns a vid or nil
 -- lifetime management of the returned vid is left to the layout helper
 --
-function layout_load(name, callback)
+function layout_load(name, callback, options)
+	if (options == nil) then
+		options = {};
+	end
+	
 	if (not resource(name)) then
 		return nil;
 	end
@@ -1087,6 +1091,7 @@ function layout_load(name, callback)
 	restbl.destroy = layout_cleanup;
 	restbl.show    = layout_show;
 	restbl.trigger = callback;
+
 	restbl.add_imagevid = function(self, vid, postbl)
 			layout_imagepos(restbl, vid, postbl);
 			table.insert(self.temporary, vid);
