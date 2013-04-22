@@ -29,6 +29,7 @@ function gridle_remote()
 	system_load("scripts/layout_editor.lua")();
 
 	load_keys();
+	draw_infowin();
 	
 	imagery.disconnected = load_image("images/icons/disconnected.png");
 	image_tracetag(imagery.disconnected, "network disconnected");
@@ -52,28 +53,69 @@ function gridle_remote()
 	setup_keys(spawn_mainmenu);
 end
 
-function open_connection(dst)
+function open_connection()
+	if (current_menu) then
+		while (current_menu ~= nil) do 
+			current_menu:destroy();
+			current_menu = current_menu.parent;
+		end
+		dispatch_pop();
+	end
+	
 	if (valid_vid(settings.connection)) then
 		delete_image(settings.connection);
 	end
+
+	local dst = nil;
+	if (settings.connect_host == "Local Discovery") then
+		spawn_warning("Looking for hosts on the local network", math.floor(VRESW * 0.8), math.floor(VRESH * 0.3));
+		dst = nil;
+	else
+		spawn_warning("Trying to connect to: ", settings.connect_host, math-floor(VRESW * 0.8), math.floor(VRESH * 0.3));
+		dst = settings.connect_host;
+	end
 	
-	spawn_warning("Connecting To: " .. ( (dst == nil) and "local discovery" or dst), 70, math.floor(VRESH * 0.3));
 	settings.connection = net_open(dst, net_event);
 end
 
+function draw_infowin()
+	if (settings.infowin ~= nil) then
+		settings.infowin:destroy();
+	end
+
+	local status = {};
+	local undefline = "\\#ff0000Undefined\\#ffffff";
+	
+	table.insert(status, "Menu Layout:\\t ( " .. (settings.menu_layout ~= nil and settings.menu_layout or undefline) .. " )");
+	table.insert(status, "Ingame Layout:\\t ( " .. (settings.ingame_layout ~= nil and settings.ingame_layout or undefline) .. " )");	
+	table.insert(status, "Connection Method:\\t ( " .. (settings.connect_host ~= nil and settings.connect_host or undefline) .. " )");
+
+		load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
+	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
+	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);
+	load_key_str("connect_host",  "connect_host",  settings.connect_host);
+	
+	settings.infowin = listview_create( status, VRESW * 0.5, VRESH * 0.5, {} );
+	settings.infowin.gsub_ignore = true;
+
+	settings.infowin:show();
+	hide_image(settings.infowin.cursorvid);
+	move_image(settings.infowin.anchor, math.floor(VRESW * 0.5), math.floor(VRESH * 0.5));
+end
+
 function set_layout(layname, target, save)
+	
 	if (target == "menu") then
 		settings.menu_layout = layname;
-		if (save) then
-			store_key("menu_layout", layname);
-		end
+		store_key("menu_layout", layname);
 
 	elseif (target == "ingame") then
 		settings.ingame_layout = layname;
-		if (save) then
-			store_key("ingame_layout", layname);
-		end
+		store_key("ingame_layout", layname);
 	end
+	
+	draw_infowin();
+	settings.iodispatch["MENU_ESCAPE"]();
 end
 
 function spawn_mainmenu()
@@ -125,6 +167,11 @@ function spawn_mainmenu()
 	add_submenu(settingslbls, settingsptrs, "Autoconnect...", "autoconnect", gen_tbl_menu("autoconnect", {"On", "Off"}, nil, true));
 
 	table.insert(mainlbls, "-------");
+	if (settings.ingame_layout and settings.menu_layout and settings.connect_host) then
+		table.insert(mainlbls, "Connect");
+		mainptrs["Connect"] = open_connection;
+	end
+	
 	table.insert(mainlbls, "Shutdown");
 
 	mainptrs["Shutdown"] = function()
@@ -139,9 +186,10 @@ function spawn_mainmenu()
 	settingsfmts["Reset Keyconfig"] = "\\b" .. settings.colourtable.alert_fontstr;
 	
 	connectptrs["Local Discovery"] = function()
-		settings.connect_method = "Local Discovery";
-		store_key("connect_method", settings.connect_method); 
+		settings.connect_host = "Local Discovery";
+		store_key("connect_host", settings.connect_host); 
 		settings.iodispatch["MENU_ESCAPE"]();
+		draw_infowin();
 	end
 
 	connectptrs["Specify Server"] = function()
@@ -158,9 +206,10 @@ function spawn_mainmenu()
 				dispatch_pop();
 				
 				if (resstr) then
-					settings.connect_method = resstr;
-					store_key("connect_method", settings.connect_method); 
+					settings.connect_host = resstr;
+					store_key("connect_host", settings.connect_host); 
 					settings.iodispatch["MENU_ESCAPE"]();
+					draw_infowin();
 				end
 			end
 		end);
@@ -189,11 +238,53 @@ function spawn_mainmenu()
 	dispatch_push( imenu, "connection menu" );
 end
 
+function load_cb(restype, lay, laytbl)
+	if (restype == LAYRES_STATIC) then
+		if (lay.idtag == "background") then
+			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
+			
+		elseif (lay.idtag == "image") then
+			return "images/" .. lay.res;
+		end
+	end
+
+-- don't progress until we have a data-source set
+	if (laytbl == nil) then
+		return nil;
+	end
+
+	if (restype == LAYRES_IMAGE or restype == LAYRES_FRAMESERVER) then
+		local locfun = laytbl.restbl["find_" .. lay.idtag];
+		if (locfun ~= nil) then
+			return locfun(laytbl.restbl);
+		end
+
+	elseif (restype == LAYRES_TEXT) then
+		return laytbl[lay.idtag];
+	end
+
+end
+
+
+function activate_layout(laytgt, cur_item)
+	if (imagery.layout ~= nil) then
+		imagery.layout:destroy();
+		imagery.layout = nil;
+	end
+	
+	local restbl = resourcefinder_search(cur_item, true);
+	cur_item.restbl = restbl;
+	
+	imagery.layout = layout_load("layouts/" .. laytgt, function(restype, lay) load_cb(restype, laytgt, cur_item); end);
+end
+
 function decode_message(msg)
 -- format matches broadcast_game in gridle.lua
 	nitem = string.split(msg, ":")
 
-	if (nitem[1] == "begin_item") then
+	if (nitem[1] == "playing" or nitem[1] == "selected") then
+		dstlay = nitem[1] == "playing" and settings.ingame_layout or settings.menu_layout;
+		
 		settings.cur_item = {};
 		settings.item_count = tonumber(nitem[2]);
 		last_key = nil;
@@ -207,7 +298,7 @@ function decode_message(msg)
 			settings.item_count = settings.item_count - 1;
 			if (settings.item_count <= 0) then
 				settings.item_count = nil;
-				gridleremote_updatedynamic(settings.cur_item);
+				activate_layout(dstlay, settings.cur_item);
 			end
 		end
 	end
@@ -313,7 +404,7 @@ end
 
 function load_keys()
 	key_queue = {};
-	
+
 	load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
 	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
 	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);

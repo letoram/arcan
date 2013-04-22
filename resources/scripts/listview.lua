@@ -32,7 +32,7 @@ local function listview_redraw(self)
 	renderstr = "";
 	
     for ind = self.page_beg, self.page_end do
-			local tmpname = string.gsub(self.list[ind], "\\", "\\\\");
+			local tmpname = self.gsub_ignore and self.list[ind] or string.gsub(self.list[ind], "\\", "\\\\");
 			local fmt = self.formats[ tmpname ];
 			
 			if (string.sub(tmpname, 1, 3) == "---") then
@@ -58,9 +58,6 @@ local function listview_redraw(self)
 
 	resize_image(self.border, props.width, props.height, 5);
 	resize_image(self.window, props.width - 6, props.height - 6, 5);
-
-	print("width:", props.width);
-	print("final:", image_surface_properties(self.window, -1).width);
 
 	order_image(self.listvid, image_surface_properties(self.window).order + 1);
 end
@@ -205,6 +202,7 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.data_fontstr    = settings.colourtable.data_fontstr;
 	restbl.dialog_border   = settings.colourtable.dialog_border;
 	restbl.dialog_window   = settings.colourtable.dialog_window;
+	restbl.gsub_ignore     = false;
 	
 	restbl.page_size = math.floor( height / (restbl.font_size + 6) );
 	
