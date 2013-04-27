@@ -58,10 +58,10 @@ function netcl()
 	end
 	
 	cli = net_open(argl, function(source, data)
+		print("netevent, source:", source, data.kind);
+
 		if (data.kind == "message") then
 			push_message(data.message);
-		else
-			print("event:", data.kind);
 		end
 	end );
 

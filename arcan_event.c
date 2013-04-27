@@ -284,17 +284,20 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enu
 	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
 			floor((float)dstqueue->n_eventbuf * saturation) > queue_used(dstqueue) ){
 
+
 		arcan_errc status;
 		arcan_event* ev = arcan_event_poll(srcqueue, &status);
+	
 		if (status != ARCAN_OK)
 			break;
-
+		
 		if (ev && (ev->category & allowed) > 0 ){
 			if (ev->category == EVENT_EXTERNAL)
 				ev->data.external.source = source;
 
-			else if (ev->category == EVENT_NET)
+			else if (ev->category == EVENT_NET){
 				ev->data.network.source = source;
+			}
 
 			arcan_event_enqueue(dstqueue, ev);
 		}

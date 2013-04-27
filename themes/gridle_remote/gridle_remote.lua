@@ -42,6 +42,7 @@ function gridle_remote()
 -- (which may or may not just autoconnect depending on settings)
 	default_dispatch = {};
 	default_dispatch["MENU_TOGGLE"] = function()
+		reset_connection();
 		spawn_mainmenu();
 	end
 	
@@ -73,10 +74,10 @@ function open_connection()
 
 	local dst = nil;
 	if (settings.connect_host == "Local Discovery") then
-		warning_win = spawn_warning("Looking for hosts on the local network", 1);
+		settings.warningwin = spawn_warning("Looking for hosts on the local network", 1);
 		dst = nil;
 	else
-		warning_win = spawn_warning("Trying to connect to: " .. settings.connect_host, 1);
+		settings.warningwin = spawn_warning("Trying to connect to: " .. settings.connect_host, 1);
 		dst = settings.connect_host;
 	end
 	
@@ -316,12 +317,12 @@ function decode_message(msg)
 end
 
 function net_event(source, tbl)
-	if (warning_win) then
-		warning_win:destroy();
-		warning_win = nil;
-	end
-	
 	if (tbl.kind == "connected") then
+		if (settings.warningwin) then
+			settings.warningwin:destroy();
+			settings.warningwin = nil;
+		end
+	
 		settings.connected = true;
 		dispatch_push(default_dispatch, "network input", gridleremote_netinput);
 
@@ -332,24 +333,21 @@ function net_event(source, tbl)
 		decode_message(tbl.message);
 
 	elseif (tbl.kind == "frameserver_terminated") then
-		settings.connected = false;
-		delete_image(settings.connection);
-		settings.connection = nil;
-
-		show_image(imagery.disconnected);
-		blend_image(imagery.disconnected, 1.0, 30);
-		blend_image(imagery.disconnected, 0.0, 10);
-
-		spawn_mainmenu();
+		reset_connection();
 	else
+		print(tbl.kind);
 	end
 	
 end
 
 function reset_connection()
-	if (valid_vid(settings.server)) then
-		delete_image(settings.server);
-		settings.server = nil;
+	if (valid_vid(settings.connection)) then
+		delete_image(settings.connection);
+	end
+
+	if (settings.warningwin) then
+		settings.warningwin:destroy();
+		settings.warningwin = nil;
 	end
 	
 	if (settings.infowin) then
@@ -357,9 +355,15 @@ function reset_connection()
 		settings.infowin = nil;
 	end
 
-	reset_iodispatch();
+	show_image(imagery.disconnected);
+	blend_image(imagery.disconnected, 1.0, 30);
+	blend_image(imagery.disconnected, 0.0, 10);
+
+	settings.connection = nil;
+	settings.connected = false;
+	
 	spawn_mainmenu();
-	spawn_warning("Networking session terminated", 50);
+	spawn_warning("Networking session terminated");
 end
 
 -- plucked from gridle, removing the soundmap calls
