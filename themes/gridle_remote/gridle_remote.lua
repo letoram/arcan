@@ -62,16 +62,21 @@ function open_connection()
 		dispatch_pop();
 	end
 	
+	if (settings.infowin) then
+		settings.infowin:destroy();
+		settings.infowin = nil;
+	end
+	
 	if (valid_vid(settings.connection)) then
 		delete_image(settings.connection);
 	end
 
 	local dst = nil;
 	if (settings.connect_host == "Local Discovery") then
-		spawn_warning("Looking for hosts on the local network", math.floor(VRESW * 0.8), math.floor(VRESH * 0.3));
+		warning_win = spawn_warning("Looking for hosts on the local network", 1);
 		dst = nil;
 	else
-		spawn_warning("Trying to connect to: ", settings.connect_host, math-floor(VRESW * 0.8), math.floor(VRESH * 0.3));
+		warning_win = spawn_warning("Trying to connect to: " .. settings.connect_host, 1);
 		dst = settings.connect_host;
 	end
 	
@@ -254,6 +259,7 @@ function load_cb(restype, lay, laytbl)
 	end
 
 	if (restype == LAYRES_IMAGE or restype == LAYRES_FRAMESERVER) then
+		print(lay, lay.idtag);
 		local locfun = laytbl.restbl["find_" .. lay.idtag];
 		if (locfun ~= nil) then
 			return locfun(laytbl.restbl);
@@ -265,7 +271,6 @@ function load_cb(restype, lay, laytbl)
 
 end
 
-
 function activate_layout(laytgt, cur_item)
 	if (imagery.layout ~= nil) then
 		imagery.layout:destroy();
@@ -275,13 +280,17 @@ function activate_layout(laytgt, cur_item)
 	local restbl = resourcefinder_search(cur_item, true);
 	cur_item.restbl = restbl;
 	
-	imagery.layout = layout_load("layouts/" .. laytgt, function(restype, lay) load_cb(restype, laytgt, cur_item); end);
+	imagery.layout = layout_load("layouts/" .. laytgt, function(restype, lay) load_cb(restype, lay, cur_item); end);
+	if (imagery.layout) then
+		imagery.layout:show();
+	end
+
 end
 
 function decode_message(msg)
 -- format matches broadcast_game in gridle.lua
 	nitem = string.split(msg, ":")
-
+	
 	if (nitem[1] == "playing" or nitem[1] == "selected") then
 		dstlay = nitem[1] == "playing" and settings.ingame_layout or settings.menu_layout;
 		
@@ -296,6 +305,7 @@ function decode_message(msg)
 			settings.cur_item[last_key] = msg;
 			last_key = nil;
 			settings.item_count = settings.item_count - 1;
+	
 			if (settings.item_count <= 0) then
 				settings.item_count = nil;
 				activate_layout(dstlay, settings.cur_item);
@@ -306,12 +316,17 @@ function decode_message(msg)
 end
 
 function net_event(source, tbl)
+	if (warning_win) then
+		warning_win:destroy();
+		warning_win = nil;
+	end
+	
 	if (tbl.kind == "connected") then
 		settings.connected = true;
 		dispatch_push(default_dispatch, "network input", gridleremote_netinput);
 
 		net_push(source, "players:", keyconfig.player_count);
-		spawn_warning("Connected", 125);
+		spawn_warning("Connected");
 
 	elseif (tbl.kind == "message") then
 		decode_message(tbl.message);
@@ -424,10 +439,10 @@ function gridleremote_netinput(iotbl)
 				settings.iodispatch[val]();
 
 			elseif valid_vid(settings.connection) then
-
 				if (iotbl.kind == "analog") then
 					net_push(settings.connection, "move:" .. val .. ":" .. tostring(iotbl.samples[1]));
 				else
+					print("push:", val);
 					net_push(settings.connection, iotbl.active and ("press:" .. val) or ("release:" .. val));
 				end
 

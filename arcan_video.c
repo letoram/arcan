@@ -380,6 +380,37 @@ signed arcan_video_pushcontext()
 	return arcan_video_nfreecontexts();
 }
 
+unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
+{
+	struct rendertarget tgt = current_context->stdoutp;
+	tgt.fbo = tgt.pbo = 0;
+
+/* this is a no-op on the outmost layer */
+	if (context_ind == 0 || !alloc_fbo(&tgt))
+		arcan_video_popcontext();
+
+	tgt.color = arcan_video_newvobject(dst);
+
+	if (arcan_video_display.fbo_disabled){
+		*dst = ARCAN_EID;
+		return arcan_video_popcontext();
+	}
+	
+	/* do we have enough space in the old context to save the current? */
+	
+	
+	/* if so, create a fbo, and if that goes well, do a lsat fbo renderpass into
+	 * that rendertarget, clean everything up, inject and store vobj in dst */
+	
+	int nfc = arcan_video_popcontext();
+	
+}
+
+signed arcan_video_extpushcontext(arcan_vobj_id* dst)
+{
+	return arcan_video_popcontext();
+}
+
 unsigned arcan_video_popcontext()
 {
 /* propagate persistent flagged objects downwards */
