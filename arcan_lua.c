@@ -1515,10 +1515,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				break;
 
 				case EVENT_NET_DISCONNECTED:
-					arcan_lua_tblstr(ctx, "kind", "client-disconnected", top);
+					arcan_lua_tblstr(ctx, "kind", "disconnected", top);
 					arcan_lua_tblnum(ctx, "id", ev->data.network.connid, top);
 					arcan_lua_tblstr(ctx, "host", ev->data.network.host.addr, top);
-
+				break;
+					
 				case EVENT_NET_CUSTOMMSG:
 					arcan_lua_tblstr(ctx, "kind", "message", top);
 					ev->data.network.message[ sizeof(ev->data.network.message) - 1] = 0;

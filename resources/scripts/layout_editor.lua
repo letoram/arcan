@@ -1004,7 +1004,8 @@ local function layout_show(self)
 		end
 	end
 
-	self.temporary = {};
+	self.temporary = {}; -- contains resource VIDs that need to be cleared
+	self.temporary_reuse = {}; -- contains a map of resource VIDs for instancing to re-use costly resources
 
 	local imgproc = function(dsttbl, trigtype, val)
 		local res, cback = self.trigger(trigtype, val);
@@ -1041,15 +1042,23 @@ local function layout_show(self)
 	for ind, val in ipairs(self.types["fsrv"]) do
 		local res = self.trigger(LAYRES_FRAMESERVER, val);
 		if (res) then
-			table.insert(self.temporary, load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat)
-				play_movie(src);
-				layout_imagepos(self, src, val);
-			end));
-		end
+			if valid_vid(self.temporary_reuse[res]) then
+				local vid = instance_image(self.temporary_reuse[res]);
+				image_mask_clearall(vid); -- clones can't live past their parent so nothing more to do
+				layout_imagepos(self, vid, val);
+			else
+				local vid = load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat) play_movie(src); end);
+				if valid_vid(vid) then
+					layout_imagepos(self, vid, val);
+					self.temporary_reuse[res] = vid;
+					table.insert(self.temporary, vid);
+				end
+			end
+		end -- loop
 	end
 
 	for ind, val in ipairs(self.types["model"]) do
-		print("3dmodel!!");
+		
 	end
 
 	for ind, val in ipairs(self.types["text"]) do

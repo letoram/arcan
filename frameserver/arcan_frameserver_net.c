@@ -239,7 +239,7 @@ static bool flushout_default(struct conn_state* self)
 		LOG("(net-srv) -- send failed, %s\n", errbuf);
 	}
 
-	return sv == APR_SUCCESS;
+	return (sv == APR_SUCCESS) && !APR_STATUS_IS_EOF(sv);
 }
 
 static bool queueout_default(struct conn_state* self, char* buf, size_t buf_sz)
@@ -390,7 +390,9 @@ static bool validator_tlv(struct conn_state* self)
 		return false;
 
 	apr_status_t sv = apr_socket_recv(self->inout, &self->inbuffer[self->buf_ofs], &nr);
-
+	if (APR_STATUS_IS_EOF(sv))
+		return false;
+	
 	if (sv == APR_SUCCESS){
 		if (nr > 0){
 			uint16_t len;
@@ -750,7 +752,10 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					LOG("(net-srv) inputevent unfinished, implement event_pack()/unpack(), ignored\n");
 				break;
 
-				case EVENT_NET_DISCONNECT: disconnect(active_cons, nconns, ev->data.network.connid); break;
+/* don't confuse this one with EVENT_NET_DISCONNECTED, which is a notification rather than a command */
+				case EVENT_NET_DISCONNECT:
+					disconnect(active_cons, nconns, ev->data.network.connid);
+				break;
 				
 				case EVENT_NET_GRAPHREFRESH:
 					if (netcontext.shmcont.addr->vready == false && graph_refresh(netcontext.graphing)){
@@ -977,12 +982,12 @@ static char* host_discover(char* host, bool usenacl, bool passive)
 	while (true){
 		apr_size_t nts = MAX_HEADER_SIZE, ntr;
 		apr_sockaddr_t recaddr;
+retry:
 
 		if ( ( rv = apr_socket_sendto(broadsock, addr, 0, reqmsg, &nts) ) != APR_SUCCESS)
 			break;
 		graph_log_discover_req(netcontext.graphing, mv, host ? host : "broadcast");
 
-retry:
 		ntr = MAX_HEADER_SIZE;
 		rv  = apr_socket_recvfrom(&recaddr, broadsock, 0, repmsg, &ntr);
 
@@ -1074,8 +1079,10 @@ static bool client_data_tlvdisp(struct conn_state* self, char tag, int len, char
 	return true;
 }
 
-static bool client_data_process(apr_socket_t* inconn)
+static bool client_data_process(apr_socket_t* inconn, const apr_pollfd_t* desc)
 {
+	static arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
+	
 /* only one client- connection for the life-time of the process, so this bit
  * is in order to share parsing code between client and server parts */
 	static struct conn_state cs = {0};
@@ -1085,17 +1092,24 @@ static bool client_data_process(apr_socket_t* inconn)
 		cs.dispatch = client_data_tlvdisp;
 	}
 
-	bool rv = validator_tlv(&cs);
-
-	if (!rv){
-		arcan_event ev = {.category = EVENT_NET, .kind = EVENT_NET_DISCONNECTED};
+	if (desc->rtnevents & (APR_POLLHUP | APR_POLLERR | APR_POLLNVAL)){
+		LOG("(net-cl) -- poll on socket failed, shutting down.\n");
+		apr_socket_close(inconn);
+		arcan_event_enqueue(&netcontext.outevq, &ev);
+		graph_log_conn_error(netcontext.graphing, 0, "broken poll");
+		
+		return false;
+	}
+	
+	if (!validator_tlv(&cs)){
 		LOG("(net-cl) -- validator failed, shutting down.\n");
 		apr_socket_close(inconn);
 		arcan_event_enqueue(&netcontext.outevq, &ev);
 		graph_log_conn_error(netcontext.graphing, 0, "broken validation");
+		return false;
 	}
 
-	return rv;
+	return true;
 }
 
 /* *blocking* data- transfer, no intermediate buffering etc.
@@ -1103,19 +1117,20 @@ static bool client_data_process(apr_socket_t* inconn)
  * buf    : output buffer, assumed to already have TLV headers etc.
  * buf_sz : size of buffer
  * returns false if the data couldn't be sent */
-static void client_data_push(apr_socket_t* addr, char* buf, size_t buf_sz)
+static bool client_data_push(apr_socket_t* addr, char* buf, size_t buf_sz)
 {
 	apr_size_t ofs = 0;
 
 	while (ofs != buf_sz){
 		apr_size_t ds = buf_sz - ofs;
 		apr_status_t rv = apr_socket_send(addr, &buf[ofs], &ds);
+		if (APR_STATUS_IS_EOF(rv) || rv != APR_SUCCESS)
+			return false;
+			
 		ofs += ds;
-
-/* failure will trigger HUP/ERR/something on next poll */
-		if (rv != APR_SUCCESS)
-			break;
 	}
+
+	return true;
 }
 
 static bool client_inevq_process(apr_socket_t* outconn)
@@ -1150,9 +1165,12 @@ static bool client_inevq_process(apr_socket_t* outconn)
 					outbuf[1] = msgsz;
 					outbuf[2] = msgsz >> 8;
 					memcpy(&outbuf[3], ev->data.network.message, msgsz);
-					client_data_push(outconn, outbuf, msgsz + 3);
-
-					graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message, TAG_NETMSG, msgsz);
+					if (client_data_push(outconn, outbuf, msgsz + 3)){
+						graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message, TAG_NETMSG, msgsz);
+					}
+					else
+						return false;
+	
 				break;
 
 				case EVENT_NET_GRAPHREFRESH:
@@ -1230,7 +1248,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 		.p = netcontext.mempool,
 		.desc.s = sock,
 		.desc_type = APR_POLL_SOCKET,
-		.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR,
+		.reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR | APR_POLLNVAL,
 		.rtnevents = 0,
 		.client_data = &sock
 	};
@@ -1275,8 +1293,10 @@ static void client_session(char* hoststr, enum client_modes mode)
 
 /* can just be socket or event-queue, dispatch accordingly */
 		for (int i = 0; i < pnum; i++)
-			if (ret_pfd[i].client_data == &sock)
-				client_data_process(sock);
+			if (ret_pfd[i].client_data == &sock){
+				if (!client_data_process(sock, &ret_pfd[i]))
+					goto giveup;
+			}
 			else if (ret_pfd[i].client_data == &netcontext.evsock){
 				char flushb[256];
 				apr_size_t szv = 256;
@@ -1291,6 +1311,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 			break;
 	}
 
+giveup:
     LOG("(net-cl) -- shutting down client session.\n");
 	return;
 }

@@ -117,6 +117,10 @@ local function navi_change(navi, navitbl)
 	 move_image( navi.clipregion, navitbl.pos[1], navitbl.pos[2] );
 end
 
+--
+-- Load and configure navigator,
+-- Generate functions for mapping input to navigator
+--
 local function setup_customview()
 	local imenu = {};
 	

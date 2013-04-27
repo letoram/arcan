@@ -1,14 +1,19 @@
 msglist = {};
 ticking = false;
+conntrack = {};
 
 function netev(source, status)
 	print("server event: ", tostring(status.kind));
 	if (status.kind == "frameserver_terminated") then
 		add_msg("server died");
+
+	elseif (status.kind == "connected") then
+		table.insert(conntrack, status.id);				
+
 	elseif (status.kind == "message") then
-		add_msg(tostring(status.connid) .. ":" .. string.gsub(status.message, "\\", "\\\\"));
+		add_msg(tostring(status.id) .. ":" .. string.gsub(status.message, "\\", "\\\\"));
 	else
-		add_msg("unknown:" .. status.kind);
+		add_msg("unknown(" .. tostring(status.id) .. ") " .. status.kind);
 	end
 end
 
@@ -21,6 +26,8 @@ function netsrv_status()
 	msg = [[\n\r\ffonts/default.ttf,14\bCommands:\!b\n\r
 	\ffonts/default.ttf,12\n\r
 	\b1..9\!b\t send seq-message to client ind (n)\n\r
+	\ba..l\!b\t disconnect client ind (n)\n\r
+	\bz\!b\t disconnect all\n\r
 	\bb\!b\t broadcast message to all\n\r]]
 
 	msg = msg .. ( ticking and [[\bt\!b\t stop broadcasting tick\n\r]] or [[\bt\!b\t start broadcasting tick\n\r]]);
@@ -72,11 +79,20 @@ function netsrv_input(iotbl)
 		if (symtbl[iotbl.keysym] == "b") then
 			seqmsg(0);
 
+		elseif (string.match(symtbl[iotbl.keysym], "F%d+") ~= nil) then
+			id = tonumber(string.sub(iotbl.keysym, 2));
+			if (conntrack[id]) then
+				net_disconnect(server, conntrack[id]);
+			end
+
+		elseif (symtbl[iotbl.keysym] == "z") then
+			net_disconnect(server, 0);	
+
 		elseif (symtbl[iotbl.keysym] == "t") then
 			ticking = not ticking;
 
 		elseif (tonumber(symtbl[iotbl.keysym]) ) then
-			seqmsg(tonumber(symtbl[iotbl.keysym]))
+			seqmsg(tonumber(symtbl[iotbl.keysym]));
 		else
 		end
 	end

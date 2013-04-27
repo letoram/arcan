@@ -131,7 +131,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.audio = src->aid,
 		.data.frameserver.otag = src->tag
 		};
-
+		
 /* prevent looping if the frameserver didn't last more than a second, indicative of it being broken,
  * rapid relaunching could result in triggering alarm systems etc. for fork() bombs */
 		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
@@ -148,6 +148,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 			arcan_frameserver_spawn_server(src, args);
 		}
 
+/* force flush beforehand */
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 		return false;
 	}
