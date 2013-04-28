@@ -329,7 +329,7 @@ function gridledetail_show(detailres, gametbl, ind)
 	end
 
 -- launch based on current preferences and target capabilities 
-	detailview.iodispatch["LAUNCH"] = function(iotbl)
+	detailview.iodispatch["MENU_SELECT"] = function(iotbl)
 		local captbl = launch_target_capabilities( detailview.game.target )
 		local launch_internal = (settings.default_launchmode == "Internal" or captbl.external_launch == false) and captbl.internal_launch;
 		

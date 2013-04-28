@@ -220,6 +220,10 @@ ledmodeptrs["Game setting (on push)"] = function(label, save)
 end
 
 inputptrs["Reconfigure Keys (Full)"] = function()
+	if (settings.privileged ~= true) then
+		return;
+	end
+	
 	zap_resource("keysym.lua");
 	gridle_keyconf();
 end
@@ -241,6 +245,10 @@ inputptrs["Reconfigure LEDs"] = function()
 end
 
 inputptrs["Reconfigure Keys (Players)"] = function()
+	if (settings.privileged ~= true) then
+		return;
+	end
+	
 	keyconfig:reconfigure_players();
 	kbd_repeat(0);
 

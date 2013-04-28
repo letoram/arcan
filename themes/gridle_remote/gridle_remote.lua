@@ -445,7 +445,7 @@ function gridleremote_netinput(iotbl)
 				settings.iodispatch[val]();
 
 			elseif valid_vid(settings.connection) then
-				if (val == "REMOTE_MENU") then val = "MENU_TOGGLE"; end
+				if (val == "REMOTE_MENU")   then val = "MENU_TOGGLE"; end
 				if (val == "REMOTE_ESCAPE") then val = "MENU_ESCAPE"; end
 				
 				if (iotbl.kind == "analog") then
