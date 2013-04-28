@@ -1047,7 +1047,14 @@ local function layout_show(self)
 				image_mask_clearall(vid); -- clones can't live past their parent so nothing more to do
 				layout_imagepos(self, vid, val);
 			else
-				local vid = load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat) play_movie(src); end);
+				local vid = load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat)
+					if (stat.source_audio ~= nil) then
+						audio_gain(stat.source_audio, self.default_gain);
+					end
+				
+					play_movie(src); 
+				end);
+
 				if valid_vid(vid) then
 					layout_imagepos(self, vid, val);
 					self.temporary_reuse[res] = vid;
@@ -1134,6 +1141,7 @@ function layout_new(name)
 		finalizer = nil,
 		show = show,
 		fontind = 1,
+		default_gain = 1,
 		items = {}, 
 		groups = {}
 	};

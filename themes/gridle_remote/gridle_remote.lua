@@ -31,16 +31,10 @@ function gridle_remote()
 	load_keys();
 	draw_infowin();
 	
-	imagery.disconnected = load_image("images/icons/disconnected.png");
-	image_tracetag(imagery.disconnected, "network disconnected");
-
-	local props = image_surface_properties(imagery.disconnected);
-	if (props.width > VRESW)  then props.width = VRESW;  end
-	if (props.height > VRESH) then props.height = VRESH; end
-
 -- will either spawn the setup layout first or, if there already is one, spawn menu 
 -- (which may or may not just autoconnect depending on settings)
 	default_dispatch = {};
+
 	default_dispatch["MENU_TOGGLE"] = function()
 		reset_connection();
 		spawn_mainmenu();
@@ -260,7 +254,6 @@ function load_cb(restype, lay, laytbl)
 	end
 
 	if (restype == LAYRES_IMAGE or restype == LAYRES_FRAMESERVER) then
-		print(lay, lay.idtag);
 		local locfun = laytbl.restbl["find_" .. lay.idtag];
 		if (locfun ~= nil) then
 			return locfun(laytbl.restbl);
@@ -273,17 +266,20 @@ function load_cb(restype, lay, laytbl)
 end
 
 function activate_layout(laytgt, cur_item)
-	if (imagery.layout ~= nil) then
-		imagery.layout:destroy();
-		imagery.layout = nil;
+	if (settings.layout ~= nil) then
+		settings.layout:destroy();
+		settings.layout = nil;
 	end
 	
 	local restbl = resourcefinder_search(cur_item, true);
 	cur_item.restbl = restbl;
 	
-	imagery.layout = layout_load("layouts/" .. laytgt, function(restype, lay) load_cb(restype, lay, cur_item); end);
-	if (imagery.layout) then
-		imagery.layout:show();
+	settings.layout = layout_load("layouts/" .. laytgt, function(restype, lay)
+		return load_cb(restype, lay, cur_item); 
+	end);
+	
+	if (settings.layout) then
+		settings.layout:show();
 	end
 
 end
@@ -351,14 +347,15 @@ function reset_connection()
 	end
 	
 	if (settings.infowin) then
-		delete_image(settings.infowin.anchor);
+		settings.infowin:destroy();
 		settings.infowin = nil;
 	end
 
-	show_image(imagery.disconnected);
-	blend_image(imagery.disconnected, 1.0, 30);
-	blend_image(imagery.disconnected, 0.0, 10);
-
+	if (settings.layout) then
+		settings.layout:destroy();
+		settings.layout = nil;
+	end
+	
 	settings.connection = nil;
 	settings.connected = false;
 	
@@ -421,6 +418,8 @@ function setup_keys( trigger )
 
 end
 
+-- the load_key_* functions doesn't store immediately, but cache whatever is not "found" etc.
+-- in a key_cache which is pushed simulatenously, since the database function syncs(!)
 function load_keys()
 	key_queue = {};
 
@@ -437,16 +436,21 @@ end
 function gridleremote_netinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
 
+-- since "local" menu and "remote" menu are mutually exclusive, we can re-use the bindings for those,
+-- thus then "netinput" is pushed unto the dispatch stack, all the regular "local menu" keys are dropped from their
+-- dispatch table
 	if (restbl) then
 		for ind, val in pairs(restbl) do
 			if (settings.iodispatch[val]) then
 				settings.iodispatch[val]();
 
 			elseif valid_vid(settings.connection) then
+				if (val == "REMOTE_MENU") then val = "MENU_TOGGLE"; end
+				if (val == "REMOTE_ESCAPE") then val = "MENU_ESCAPE"; end
+				
 				if (iotbl.kind == "analog") then
 					net_push(settings.connection, "move:" .. val .. ":" .. tostring(iotbl.samples[1]));
 				else
-					print("push:", val);
 					net_push(settings.connection, iotbl.active and ("press:" .. val) or ("release:" .. val));
 				end
 

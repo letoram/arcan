@@ -600,7 +600,7 @@ function gridle_internal_setup(source, datatbl, gametbl)
 -- per session settings
 	if (not settings.in_internal) then
 -- first, tell all remote controls -- title / system have already been transferred */
-		send_gamedata(datatbl, true);
+		send_gamedata(gametbl, true);
 
 		if (settings.autosave == "On") then
 			internal_statectl("auto", false);
