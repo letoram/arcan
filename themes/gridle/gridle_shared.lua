@@ -563,7 +563,7 @@ function send_gamedata(gametbl, ingame, target)
 		send_lasttbl = gametbl;
 	end
 
-	if (imagery.server) then
+	if (imagery.server and gametbl) then
 		count = 0;
 		for key, val in pairs(gametbl) do
 			if (type(val) == "string" or type(val) == "number") then

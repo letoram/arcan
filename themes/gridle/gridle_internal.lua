@@ -96,6 +96,10 @@ inputmodeptrs["Filter Opposing"] = function(label, save)
 end
 
 inputmodeptrs["Reconfigure Keys"] = function()
+	if (settings.privileged ~= true) then
+		return;
+	end
+	
 	keyconfig:reconfigure_players();
 	kbd_repeat(0);
 
@@ -1184,6 +1188,10 @@ local function toggle_shadersetting(label, save)
 end
 
 local function configure_players(dstname)
+	if (settings.privileged ~= true) then
+		return;
+	end
+	
 	keyconfig_oldfname = keyconfig.keyfile;
 	keyconfig.keyfile = dstname;
 	local gametbl = retrohelper_lookup(settings.internal_ident);
@@ -1257,6 +1265,7 @@ local function add_gamelbls( lbltbl, ptrtbl )
 
 			if ( resource( gen_keymap_name(true)) ) then
 				table.insert(lbls, "Drop (Game) Keyconfig");
+				
 				ptrs["Drop (Game) Keyconfig"] = function()
 					settings.iodispatch["MENU_ESCAPE"]();
 					settings.iodispatch["MENU_ESCAPE"](nil, nil, true);

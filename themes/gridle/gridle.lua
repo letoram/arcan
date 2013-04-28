@@ -85,6 +85,10 @@ settings = {
 -- server enabled
 	network_remote = "Disabled",
 	
+-- Keyboard reconfigurations are considered "privileged" and can't be 
+-- triggered from remote
+	privileged = true, 
+	
 -- 0: disable, 1: all on, 2: game (all on), 3: game (press on) 
 	ledmode = 2,
 
@@ -490,7 +494,7 @@ function gridview_input()
 		end, cursor_vid() );
 	end
 	
-	imenu["LAUNCH"] = function(iotbl)
+	imenu["MENU_SELECT"] = function(iotbl)
 		if (not current_game.capabilities) then return; end
 		
 		local launch_internal = (settings.default_launchmode == "Internal" or current_game.capabilities.external_launch == false)
@@ -607,22 +611,20 @@ function network_onevent(source, tbl)
 			if (string.sub(tbl.message, 1, 6) == "press:") then
 				faketbl.active = true;
 				local label = string.sub(tbl.message, 7, -1);
-
--- we currently filter switch view as its going to be refactored out, but still in there for a 
--- customview corner-case
-				if (label ~= "SWITCH_VIEW") then
-					faketbl.label = label;
-					gridle_input(faketbl);
-				end
-
+				faketbl.label = label;
+				settings.privileged = false;
+				gridle_input(faketbl);
+				settings.privileged = true;
+				
 			elseif (string.sub(tbl.message, 1, 8) == "release:") then
 				local label = string.sub(tbl.message, 9, -1);
 				faketbl.active = false;
 
-				if (override ~= "SWITCH_VIEW") then
-					faketbl.label = label;
-					gridle_input(faketbl);
-				end
+				faketbl.label = label;
+				settings.privleged = false;
+				gridle_input(faketbl);
+				settings.privileged = true;
+	
 			elseif (string.sub(tbl.message, 1, 5) == "move:") then
 					faketbl.kind = "analog";
 					faketbl.samples = {};
@@ -743,7 +745,7 @@ end
 
 function gridle_keyconf(defer_fun)
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "rLAUNCH", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
 		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
 
 	local helplabels = {};
