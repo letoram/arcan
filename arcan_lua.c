@@ -1520,6 +1520,11 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					arcan_lua_tblstr(ctx, "host", ev->data.network.host.addr, top);
 				break;
 					
+				case EVENT_NET_NORESPONSE:
+					arcan_lua_tblstr(ctx, "kind", "noresponse", top);
+					arcan_lua_tblstr(ctx, "host", ev->data.network.host.addr, top);
+				break;
+				
 				case EVENT_NET_CUSTOMMSG:
 					arcan_lua_tblstr(ctx, "kind", "message", top);
 					ev->data.network.message[ sizeof(ev->data.network.message) - 1] = 0;

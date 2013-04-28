@@ -109,6 +109,7 @@ local function navi_change(navi, navitbl)
 	settings.restbl  = resourcefinder_search(settings.gametbl, true);
 	send_gamedata(settings.gametbl, false);
 	
+	layout.default_gain = settings.movieagain;
 	layout:show();
 
 -- we override some of the navigator settings
@@ -244,6 +245,7 @@ function update_shader(resname)
 end
 
 local function load_cb(restype, lay)
+	print(lay.idtag);
 	if (restype == LAYRES_STATIC) then
 		if (lay.idtag == "background") then
 			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
@@ -322,6 +324,7 @@ function gridle_customview()
 	layout = layout_load("customview.lay", load_cb);
 	if (layout) then
 		setup_customview();
+		layout.default_gain = settings.movieagain;
 		layout:show();
 		music_start_bgmusic();
 		return true;
@@ -371,5 +374,6 @@ function gridle_customview()
 		return false;
 	end
 
+	layout.default_gain = settings.movieagain;
 	layout:show();
 end

@@ -596,7 +596,7 @@ function network_onevent(source, tbl)
 			net_disconnect(source, tbl.id);
 		else
 			spawn_warning(tbl.host .. " connected.");
-			send_gamedata(nil, settings.in_internal, tbl.id);
+			send_gamedata(current_game, false);
 		end
 
 	elseif (tbl.kind == "message") then
