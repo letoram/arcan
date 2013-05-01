@@ -35,7 +35,9 @@ function streamer()
 	settings.adevs = list_audio_inputs();
 	
 -- regular setup patterns for the necessary inputs
-	keyconfig = keyconf_create({"rMENU_ESCAPE", "rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_SELECT", "rCONTEXT", "aMOUSE_X", "aMOUSE_Y"});
+	keyconfig = keyconf_create({"rMENU_ESCAPE", "rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", 
+		"rMENU_RIGHT", "rMENU_SELECT", "rCONTEXT", "aMOUSE_X", "aMOUSE_Y"});
+
 	if (keyconfig.active == false) then
 		keyconfig:to_front();
 		dispatch_push({}, "keyconfig (full)", function(iotbl)
@@ -46,7 +48,7 @@ function streamer()
 		end, 0);
 
 	else
-		toggle_main_menu(false, 0);
+		toggle_main_menu();
 	end
 end
 
@@ -174,9 +176,16 @@ function start_streaming()
 		settings.infowin:destroy();
 		settings.infowin = nil;
 	end
+
+	local resetfun = function()
+		settings.layout:destroy();
+		settings.layout = nil;
+	end
 	
+--
 -- hide menu, cascade, go!
-	dispatch_push({}, "runtime_input", function(iotbl)
+--
+	dispatch_push({MENU_ESCAPE = resetfun}, "runtime_input", function(iotbl)
 		local restbl = keyconfig:match(iotbl);
 		
 		if (restbl) then
@@ -202,6 +211,7 @@ end
 
 function get_audio_toggles()
 	local lbls = {};
+	local ptrs = {};
 	local fmts = {};
 
 	local function toggle_audio(lbl)
@@ -223,7 +233,12 @@ end
 -- this parses the currently active layout (if any) and generates the appropriate menu entries
 -- depends on current layout (if any), target in layout, vidcap feeds in layout
 --
-function toggle_main_menu(target, nvc)
+function toggle_main_menu()
+	ready = settings.stream_url ~= "rtmp://";
+
+	target = (settings.layout and settings.layout["internal"] ~= nil) and (#settings.layout["internal"] > 0) or nil;
+	nvc = (settings.layout and settings.layout["vidcap"]) and #settings.layout["vidcap"] or 0;
+	
 	while current_menu ~= nil do
 		current_menu:destroy();
 		dispatch_pop();
@@ -288,7 +303,7 @@ function toggle_main_menu(target, nvc)
 					settings.stream_url = resstr;
 					store_key("stream_url", resstr);
 				end
-				toggle_main_menu(target, nvc);
+				toggle_main_menu();
 			end
 		end
 		, -1);
@@ -308,8 +323,7 @@ function toggle_main_menu(target, nvc)
 		for num=1, nvc do
 			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, gen_num_menu(nil, 1, 1, 10, function(lbl)
 				settings.vidcap[num] = tonumber(lbl);
-				settings.ready = settings.stream_url ~= "rtmp://";
-				toggle_main_menu(target, nvc);
+				toggle_main_menu();
 			end ));
 		end
 		
@@ -317,7 +331,7 @@ function toggle_main_menu(target, nvc)
 	end
 
 -- if everything is set up correctly, let the user start 
-	if (settings.ready) then
+	if (ready) then
 		table.insert(menulbls, "Start Streaming");
 		menufmts["Start Streaming"] = [[\b\#00ff00]];
 		menuptrs["Start Streaming"] = start_streaming;
@@ -407,6 +421,23 @@ function run_view()
 		end
 
 	end
+	
+--
+-- for each vidcap, check if the user has specified a mapping,
+-- if he has, check if there's already a session running (most capture devices don't permit sharing)
+-- and if so, instance, otherwise spawn a new one
+--
+	if (settings.layout["vidcap"] and #settings.layout["vidcap"] > 0) then
+		for i=1,#settings.layout["vidcap"] do
+			if (settings.vidcap[i] ~= nil) then
+				if (settings.vidcaps[ settings.vidcap[i] ] ~= nil) then
+				else
+					settings.vidcaps[ settings.vidcap[i] ] = load_movie( string.format("capture:device=%d,width=%d,height=%d"); FRAMESERVER_NOLOOP, function(source, status) end );
+				end
+			end
+		end
+
+	end
 
 	if (settings.layout["bgeffect"]) then
 		update_shader(settings.layout["bgeffect"][1].res);
@@ -420,9 +451,8 @@ function setup_game(label)
 		settings.gametbl = game[1];
 		local restbl = resourcefinder_search(settings.gametbl, true );
 		settings.restbl = restbl;
-		settings.ready = settings.stream_url ~= "rtmp://";
 		run_view();
-		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
+		toggle_main_menu();
 	end
 end
 
@@ -450,6 +480,7 @@ function load_layout(lay)
 	settings.restbl = nil;
 	settings.gametbl = nil;
 	settings.atoggles = {};
+	settings.vidcaps = {};
 
 	if (settings.layout ~= nil) then
 		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
@@ -462,7 +493,7 @@ end
 function define_layout()
 	local osdsavekbd = osdkbd_create( osdkbd_alphanum_table(), opts );
 	osdsavekbd:show();
-
+	
 -- do this here so we have access to the namespace where osdsavekbd exists
 	dispatch_push({}, "osdkbd (layout)", function(iotbl)
 		complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
@@ -536,6 +567,16 @@ function lay_setup(layname)
 		current_menu = current_menu.parent;
 	end
 
+	if (settings.infowin) then
+		settings.infowin:destroy();
+		settings.infowin = nil;
+	end
+
+	if (settings.layout) then
+		settings.layout:destroy();
+		settings.layout = nil;
+	end
+	
 	local identtext = function(key)
 		vid = render_text(settings.colourtable.label_fontstr .. key);
 		return vid;
@@ -572,13 +613,13 @@ function lay_setup(layname)
 		if (state) then
 			load_layout(string.sub(layname, 9));
 		else
-			toggle_main_menu(false, 0);
+			toggle_main_menu();
 		end
 	end
 
 	layout.validation_hook = function()
 		for ind, val in ipairs(layout.items) do
-			if (val.idtag == "internal" or val.idtag == "vidcap") then
+			if (val.idtag == "internal" or val.idtag == "vidcap.") then
 				return true;
 			end
 		end
