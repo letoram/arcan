@@ -323,9 +323,14 @@ local function setup_bezel(source)
 	end
 end
 
--- generate a special "mix shader" for multitexturing purposes,
--- where input frames is an array of weights e.g {1.0, 0.8, 0.6}
-function create_weighted_fbo( frames )
+--
+-- generates a shader with the purpose of mixing together history frames 
+-- with the help of a set of weighhts
+-- frames : array of #of frames and textures to be used
+-- delta  : don't mix "everything" just the changes versus the first texture
+-- deltaonly : only output the changes relative to the first frame (use with delta)
+--
+function create_weighted_fbo( frames, delta, deltaonly )
 	local resshader = {};
 	table.insert(resshader, "varying vec2 texco;");
 
@@ -334,12 +339,17 @@ function create_weighted_fbo( frames )
 	end
 
 	table.insert(resshader, "void main(){");
+	table.insert(resshader, "vec4 col0 = texture2D(map_tu0, texco);");
+		
+	mixl = "";
+	for i=1,#frames-1 do
+		if (delta) then
+			table.insert(resshader, "vec4 col" .. tostring(i) .. " = clamp(col0 - texture2D(map_tu" .. tostring(i) .. ", texco), 0.0, 0.5);");
+		else
+			table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i) .. ", texco);")
+		end
 
-	local mixl = "gl_FragColor = "
-	for i=0,#frames-1 do
-		table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i) .. ", texco);");
-
-		local strv = tostring(frames[i+1]);
+		local strv = tostring(frames[i]);
 		local coll = "vec4(" .. strv .. ", " .. strv .. ", " .. strv .. ", 1.0)";
 		mixl = mixl .. "col" .. tostring(i) .. " * " .. coll;
 
@@ -350,21 +360,24 @@ function create_weighted_fbo( frames )
 		end
 	end
 
-	table.insert(resshader, mixl);
+	if (delta and deltaonly) then
+		table.insert(resshader, "gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0) + " ..mixl);
+	else
+		table.insert(resshader, "gl_FragColor = col0 + " ..mixl);
+	end
+	
 	return resshader;
 end
 
 -- configure shaders for the blur / glow / bloom effect
-function vector_setupblur(targetw, targeth)
+function vector_setupblur(targetw, targeth, blurw, blurh, hbias, vbias)
 	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
 	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
-	local blurw = targetw * settings.vector_hblurscale;
-	local blurh = targeth * settings.vector_vblurscale;
 
 	shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
 	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
-	shader_uniform(blurshader_h, "ampl", "f", PERSIST, settings.vector_hbias);
-	shader_uniform(blurshader_v, "ampl", "f", PERSIST, settings.vector_vbias);
+	shader_uniform(blurshader_h, "ampl", "f", PERSIST, hbias);
+	shader_uniform(blurshader_v, "ampl", "f", PERSIST, vbias);
 	
 	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
 	local blur_vbuf = fill_surface(targetw, targeth, 1, 1, 1, blurw, blurh);
@@ -376,23 +389,6 @@ function vector_setupblur(targetw, targeth)
 	show_image(blur_vbuf);
 
 	return blur_hbuf, blur_vbuf;
-end
-
-local function merge_compositebuffer(sourcevid, blurvid, targetw, targeth, blurw, burh)
-	local rtgts = {};
-
-	if (valid_vid(blurvid)) then
-		order_image(blurvid, 2);
-		force_image_blend(blurvid, BLEND_ADD);
-		table.insert(rtgts, blurvid);
-	end
-
-	order_image(sourcevid, 3);
-	force_image_blend(sourcevid, BLEND_ADD);
-
-	table.insert(rtgts, sourcevid);
-
-	return rtgts;
 end
 
 -- "slightly" easier than SMAA ;-)
@@ -463,45 +459,6 @@ function display_smaa(source, targetw, targeth)
 	return blend_outp;
 end
 
--- additive blend with blur
-function vector_lightmode(source, targetw, targeth)
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth);
-	local blurw = targetw * settings.vector_hblurscale;
-	local blurh = targeth * settings.vector_vblurscale;
-
--- undo / ignore everything put in place by the normal resize
-	move_image(source, 0, 0);
-	resize_image(source, targetw, targeth);
-	show_image(source);
-
-	local node = instance_image(source);
-
-	resize_image(node, blurw, blurh);
-	show_image(node);
-	image_mask_set(node, MASK_MAPPING);
-	image_tracetag(node, "vector(source:clone)");
-
-	image_tracetag(blur_hbuf, "vector(hblur)");
-	image_tracetag(blur_vbuf, "vector(vblur)");
-
-	define_rendertarget(blur_hbuf, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-
-	blend_image(blur_vbuf, 0.99);
-	force_image_blend(blur_vbuf, BLEND_ADD);
-	order_image(blur_vbuf, max_current_image_order() + 1); -- no problem doing this here as it's constrained to rendertarget
-
-	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
-	image_tracetag(comp_outbuf, "vector(composite)");
-	move_image(blur_vbuf, settings.vector_hblurofs, settings.vector_vblurofs);
-
-	local cbuf = merge_compositebuffer(source, blur_vbuf, targetw, targeth, blurw, blurh);
-	define_rendertarget(comp_outbuf, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	show_image(comp_outbuf);
-
-	return comp_outbuf;
-end
-
 local function get_blendcopy(srcvid, resvid, blendmode)
 	local tmpover = instance_image(srcvid);
 	image_mask_clear(tmpover, MASK_OPACITY);
@@ -517,82 +474,123 @@ local function get_blendcopy(srcvid, resvid, blendmode)
 end
 
 --
--- additive blend with blur, base image for blur as a weighted blend of previous images
--- creates lots of little FBOs container resources that needs to be cleaned up
+-- Set up a number of "spare" textures that act as storage for previous frames in the 'source' vid.
+-- Will return the vid of the output rendertarget
+-- trails    : number of history frames
+-- trailstep : number of frames between each "step"
+-- trailfall : >=0..9 (1.0-n then step to 0.1), 1+ exponential fade
+-- targetw / targeth: down or upscale the output
 --
-function vector_heavymode(source, targetw, targeth)
-	local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth);
-	image_tracetag(blur_hbuf, "vector(hblur)");
-	image_tracetag(blur_vbuf, "vector(vblur)");
-
-	local blurw = targetw * settings.vector_hblurscale;
-	local blurh = targeth * settings.vector_vblurscale;
-
-	local normal = instance_image(source);
-	image_mask_set(normal, MASK_FRAMESET);
-	show_image(normal);
-	resize_image(normal, targetw, targeth);
-	image_mask_set(normal, MASK_MAPPING);
-
+function add_historybuffer(source, trails, trailstep, trailfall, targetw, targeth)
 	local frames = {};
 	local base = 1.0;
-
--- generate a list of weights as input to code-generator for mix- shader
-	local ul = settings.vector_glowtrails + 1;
-
-	if (settings.vector_trailfall == 0) then
--- linear
-		local step = 1.0 / ul;
-		for i=1, ul do
-			frames[i] = (ul - (i + 1)) * step;
+	
+	print("history", trailfall);
+	if (trailfall > 0) then
+		local startv = 0.9 - (math.abs(trailfall) / 10.0);
+		local endv   = 0.1;
+		local step   = (startv - endv) / trails;
+		
+		for i=0, trails do
+			frames[i+1] = startv - (step * i);
+			print(frames[i+1]);
 		end
 	else
+		trailfall = math.abs(trailfall);
 -- exponential
-		for i=1, ul do
-			frames[i] = 1.0 / math.exp( settings.vector_trailfall * ((i-1) / ul) );
+		for i=0, trails do
+			frames[i+1] = 1.0 / math.exp( trailfall * (i / trails) );
+			print(frames[i+1]);
 		end
 	end
-
--- set frameset for parent to work as around robin with multitexture,
--- build a shader that blends the frames according with user-defined weights
-	local mixshader = load_shader("shaders/fullscreen/default.vShader", create_weighted_fbo(frames) , "history_mix", {});
+	print("/history");
+	
+-- dynamically generate a shader that multitextures and blends using the above weights
+	local fshader;
+	if (settings.vector_deltamethod == "Off") then
+		fshader = create_weighted_fbo(frames, false, false);
+	elseif (settings.vector_deltamethod == "On") then
+		fshader = create_weighted_fbo(frames, true, false);
+	else
+		fshader = create_weighted_fbo(frames, true, true);
+	end
+	
+	local mixshader = load_shader("shaders/fullscreen/default.vShader", fshader, "history_mix", {});
 	image_framesetsize(source, #frames, FRAMESET_MULTITEXTURE);
-	image_framecyclemode(source, settings.vector_trailstep);
+	image_framecyclemode(source, trailstep);
 	image_shader(source, mixshader);
 	show_image(source);
-	resize_image(source, blurw, blurh);
 	move_image(source, 0, 0);
 	image_mask_set(source, MASK_MAPPING);
-
--- generate textures to use as round-robin store, these need to math the storage size to avoid
--- a copy/scale each frame
+	
+-- generate textures to use as round-robin store, these need to match the storage size to avoid  a copy/scale each frame
 	local props = image_surface_initial_properties(internal_vid);
-	for i=1,settings.vector_glowtrails do
+	for i=1,trails do
 		local vid = fill_surface(targetw, targeth, 0, 0, 0, props.width, props.height);
+		image_texfilter(vid, FILTER_NONE);
 		set_image_as_frame(source, vid, i, FRAMESET_DETACH);
 	end
 
-	rendertgt = fill_surface(blurw, blurh, 0, 0, 0, blurw, blurh);
+	image_texfilter(source, FILTER_NONE);
+	rendertgt = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
+	image_texfilter(rendertgt, FILTER_NONE);
 	define_rendertarget(rendertgt, {source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	resize_image(source, targetw, targeth);
 	show_image(rendertgt);
 	image_tracetag(rendertgt, "vector(trailblur)");
 
-	define_rendertarget(blur_hbuf, {rendertgt}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	return rendertgt;
+end
 
-	blend_image(blur_vbuf, 0.99);
-	force_image_blend(blur_vbuf, BLEND_ADD);
-	order_image(blur_vbuf, max_current_image_order() + 1);
+function display_defects(source, targetw, targeth, blur, trails)
+	local hbuffer = source;
+	
+	if (trails) then
+		hbuffer = add_historybuffer(source, settings.vector_glowtrails, 
+			settings.vector_trailstep, settings.vector_trailfall, targetw, targeth);
+	end
+	
+	if (blur) then
+-- clone the source and use as "normal" overlay
+		local normal = instance_image(source);
+		image_mask_set(normal, MASK_FRAMESET);
+		show_image(normal);
+		resize_image(normal, targetw, targeth);
+		image_mask_set(normal, MASK_MAPPING);
 
-	local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
-	image_tracetag(comp_outbuf, "vector(composite)");
-	move_image(blur_vbuf, settings.vector_hblurofs, settings.vector_vblurofs);
+-- add a gaussian blur
+		local blurw = targetw * settings.vector_hblurscale;
+		local blurh = targeth * settings.vector_vblurscale;
+		local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 
+			settings.vector_hbias, settings.vector_vbias);
 
-	local cbuf = merge_compositebuffer(normal, blur_vbuf, targetw, targeth, blurw, blurh);
-	define_rendertarget(comp_outbuf, cbuf, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-	show_image(comp_outbuf);
+		image_tracetag(blur_hbuf, "vector(hblur)");
+		image_tracetag(blur_vbuf, "vector(vblur)");
+		move_image(hbuffer, 0, 0);
+		resize_image(hbuffer, blurw, blurh);
+		
+		define_rendertarget(blur_hbuf, {hbuffer},   RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
-	return comp_outbuf;
+-- do a weighted additive blend into an output target, possibly offset as well, 
+-- rescale and filter as needed
+		local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+		blend_image(blur_vbuf, 0.99);
+		force_image_blend(blur_vbuf, BLEND_ADD);
+		resize_image(blur_vbuf, targetw, targeth);
+		order_image(blur_vbuf, max_current_image_order() + 1);
+		image_tracetag(comp_outbuf, "vector(composite)");
+
+		force_image_blend(blur_vbuf, BLEND_ADD);
+		force_image_blend(normal, BLEND_ADD); 
+		order_image(blur_vbuf, 2);
+		order_image(normal, 3);
+		define_rendertarget(comp_outbuf, {blur_vbuf, normal}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		show_image(comp_outbuf);
+		hbuffer = comp_outbuf;
+	end
+
+	return hbuffer;
 end
 
 function gridlemenu_tofront(cur)
@@ -629,21 +627,20 @@ function undo_displaymodes()
 	imagery.display_vid = BADID;
 end
 
-local function toggle_vectormode(sourcevid, windw, windh)
+local function toggle_displaydefects(sourcevid, windw, windh)
 	if (sourcevid == internal_vid) then
 		image_mask_clear(internal_vid, MASK_LIVING);
 		image_texfilter(internal_vid, FILTER_NONE);
 	end
 
--- activate trails or not?
-	if (settings.vector_glowtrails > 0) then
-		imagery.display_vid = vector_heavymode(sourcevid, windw, windh);
-	else
-		imagery.display_vid = vector_lightmode(sourcevid, windw, windh);
-	end
+	imagery.display_vid = display_defects(sourcevid, windw, windh, 
+		settings.internal_toggles.glow, settings.internal_toggles.trails);
 
 	order_image(imagery.display_vid, 1);
--- CRT toggle is done through the fullscreen_shader member
+
+-- CRT toggle is done through the fullscreen_shader member (should be refactored but
+-- that goes for this whole display toggle mess, there's just too many permutations 
+-- at the moment...
 end
 
 --
@@ -791,8 +788,10 @@ end
 --
 -- Needs to be done to all changes to the original video source,
 --
--- (upscale) -> (antialias) -> (final_scaler -> (vector) -> (crt) -> (cocktail)
+-- (upscale) -> (antialias) -> (final_scaler -> (vector | gameboy) -> (crt) -> (cocktail)
 -- NTSC prefilter is enabled in the source frameserver so not included here
+-- There's also a NTSC shader by themaister that could be considered, but the "switch" is really 
+-- dependent on how heavy the GPU load already is
 --
 function gridlemenu_rebuilddisplay(toggles)
 	if (toggles == nil) then
@@ -823,8 +822,8 @@ function gridlemenu_rebuilddisplay(toggles)
 		dstvid = display_fxaa(dstvid, props.width, props.height);
 		imagery.display_vid = dstvid;
 	end
-
-	if (toggles.vector) then
+	
+	if (settings.internal_toggles.glow or settings.internal_toggles.trails) then
 		target_pointsize(dstvid, settings.vector_pointsz);
 		target_linewidth(dstvid, settings.vector_linew);
 
@@ -837,7 +836,7 @@ function gridlemenu_rebuilddisplay(toggles)
 			dsth = props.height;
 		end
 
-		toggle_vectormode(dstvid, dstw, dsth);
+		toggle_displaydefects(dstvid, dstw, dsth);
 		dstvid = imagery.display_vid;
 	else
 		settings.fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
@@ -854,11 +853,10 @@ function gridlemenu_rebuilddisplay(toggles)
 -- crt is always last
 	if (toggles.crt) then
 -- special case with cocktail modes
-		toggle_crtmode(dstvid, props, windw, windh);
+		toggle_crtmode(dstvid, image_surface_initial_properties(dstvid), windw, windh);
 		if ( valid_vid(imagery.cocktail_vid) ) then
 			image_shader(imagery.cocktail_vid, settings.fullscreen_shader);
 		end
-
 	end
 
 	if (toggles.backdrop and valid_vid(imagery.backdrop)) then
@@ -1414,12 +1412,15 @@ displaymodeptrs["Custom Shaders..."] = function()
 	menu_spawnmenu( listl, listp, def );
 end
 
--- Don't implement save / favorite for these ones,
--- want fail-safe as default, and the others mess too much with GPU for that
+-- Don't implement save / favorite for these ones without serious long-term testing
+-- As we have no automated heuristics (which would mean creating reference images, doing an FBO, read back,
+-- compare output with reference and determine if it's "stable" or not) and GPU failures
+-- are still very much treated like a full on crash.
 displaymodelist = {"Custom Shaders..."};
 
 local function add_displaymodeptr(list, ptrs, key, label, togglecb)
-	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, NTSC = true, Vector = true, Upscaler = true};
+	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, 
+		NTSC = true, Glow = true, Trails = true, Upscaler = true};
 
 	table.insert(list, label);
 
@@ -1451,15 +1452,18 @@ local function updatetrigger()
 end
 
 add_displaymodeptr(displaymodelist, displaymodeptrs, "upscaler",  "Upscaler",  updatetrigger );
-add_displaymodeptr(displaymodelist, displaymodeptrs, "vector",    "Vector",    updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "glow",      "Glow",      updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "trails",    "Trails",    updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay",   "Overlay",   updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop",  "Backdrop",  updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "antialias", "Antialias", updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "crt",       "CRT",       updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc",      "NTSC",      push_ntsc);
 
-local vectormenulbls = {};
-local vectormenuptrs = {};
+local glowlbls       = {};
+local glowptrs       = {};
+local traillbls      = {};
+local trailptrs      = {};
 local crtmenulbls    = {};
 local crtmenuptrs    = {};
 local ntscmenulbls   = {};
@@ -1483,17 +1487,20 @@ add_submenu(ntscmenulbls, ntscmenuptrs, "Bleed...",      "ntsc_bleed",      gen_
 add_submenu(ntscmenulbls, ntscmenuptrs, "Fringing...",   "ntsc_fringing",   gen_tbl_menu("ntsc_fringing",   {-1, 0, 1}, push_ntsc))
 
 add_submenu(displaymodelist, displaymodeptrs, "Filtering...",         "imagefilter",       gen_tbl_menu("imagefilter", {"None", "Linear", "Bilinear"}, updatetrigger, true));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Line Width...",        "vector_linew",      gen_num_menu("vector_linew",        1, 0.5,  6, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Point Size...",        "vector_pointsz",    gen_num_menu("vector_pointsz",      1, 0.5,  6, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Blur Scale (X)...",    "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1,  9, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Blur Scale (Y)...",    "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1,  9, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Vertical Offset...",   "vector_vblurofs",   gen_num_menu("vector_vblurofs",    -6,   1, 13, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Horizontal Offset...", "vector_hblurofs",   gen_num_menu("vector_hblurofs",    -6,   1, 13, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Vertical Bias...",     "vector_vbias",      gen_num_menu("vector_vbias",      0.6, 0.1, 13, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Horizontal Bias...",   "vector_hbias",      gen_num_menu("vector_hbias",      0.6, 0.1, 13, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Glow Trails...",       "vector_glowtrails", gen_num_menu("vector_glowtrails",   0,   1,  8, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Trail Step...",        "vector_trailstep",  gen_num_menu("vector_trailstep",   -1,  -1, 12, updatetrigger));
-add_submenu(vectormenulbls,  vectormenuptrs,  "Trail Falloff...",     "vector_trailfall",  gen_num_menu("vector_trailfall",    0,   1,  9, updatetrigger));
+
+add_submenu(glowlbls, glowptrs, "Line Width...",         "vector_linew",      gen_num_menu("vector_linew",        1, 0.5,  6, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Point Size...",         "vector_pointsz",    gen_num_menu("vector_pointsz",      1, 0.5,  6, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Blur Scale (X)...",     "vector_hblurscale", gen_num_menu("vector_hblurscale", 0.2, 0.1,  9, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Blur Scale (Y)...",     "vector_vblurscale", gen_num_menu("vector_vblurscale", 0.2, 0.1,  9, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Vertical Bias...",      "vector_vbias",      gen_num_menu("vector_vbias",      0.6, 0.1, 13, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Horizontal Bias...",    "vector_hbias",      gen_num_menu("vector_hbias",      0.6, 0.1, 13, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Vertical Offset...",    "vector_vblurofs",   gen_num_menu("vector_vblurofs",    -6,   1, 13, updatetrigger));
+add_submenu(glowlbls, glowptrs, "Horizontal Offset...",  "vector_hblurofs",   gen_num_menu("vector_hblurofs",    -6,   1, 13, updatetrigger));
+
+add_submenu(traillbls, trailptrs, "Glow Trails...",       "vector_glowtrails", gen_num_menu("vector_glowtrails",   0,   1,  8, updatetrigger));
+add_submenu(traillbls, trailptrs, "Delta Match...",       "vector_deltamethod",gen_tbl_menu("vector_deltamethod", {"Off", "On", "Delta Only"}, updatetrigger, true));
+add_submenu(traillbls, trailptrs, "Trail Falloff...",     "vector_trailfall",  gen_num_menu("vector_trailfall",   -4,   1,  9, updatetrigger));
+add_submenu(traillbls, trailptrs, "Trail Step...",        "vector_trailstep",  gen_tbl_menu("vector_trailstep",   {-4,-3,-2,-1,1,2,3,4}, updatetrigger, false));
 
 add_submenu(crtmenulbls, crtmenuptrs, "CRT Gamma...",             "crt_gamma",       gen_num_menu("crt_gamma",       1.8, 0.2 , 5, updatetrigger));
 add_submenu(crtmenulbls, crtmenuptrs, "Monitor Gamma...",         "crt_mongamma",    gen_num_menu("crt_mongamma",    1.8, 0.2 , 5, updatetrigger));
@@ -1719,13 +1726,12 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 
 			menu_spawnmenu(crtmenulbls, crtmenuptrs, fmts);
 
-		elseif (selectlbl == "Vector") then
-			fmts = {};
-			menu_spawnmenu(vectormenulbls, vectormenuptrs, fmts);
-
+		elseif (selectlbl == "Trails") then
+			menu_spawnmenu(traillbls, trailptrs, {});
+		elseif (selectlbl == "Glow") then
+			menu_spawnmenu(glowlbls, glowptrs, {});
 		elseif (selectlbl == "NTSC") then
-			fmts = {};
-			menu_spawnmenu(ntscmenulbls, ntscmenuptrs, fmts);
+			menu_spawnmenu(ntscmenulbls, ntscmenuptrs, {});
 		end
 	end
 
@@ -1777,7 +1783,8 @@ if (#menulbls > 0 and settingslbls) then
 
 		def["CRT"      ] = iconlbl .. (settings.internal_toggles.crt    and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		def["NTSC"     ] = iconlbl .. (settings.internal_toggles.ntsc   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
-		def["Vector"   ] = iconlbl .. (settings.internal_toggles.vector and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def["Trails"   ] = iconlbl .. (settings.internal_toggles.trails and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
+		def["Glow"     ] = iconlbl .. (settings.internal_toggles.glow   and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		def["Upscaler" ] = iconlbl .. (settings.internal_toggles.upscaler and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr);
 		def["Overlay"  ] = settings.internal_toggles.overlay  and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr;
 		def["Backdrop" ] = settings.internal_toggles.backdrop and settings.colourtable.notice_fontstr or settings.colourtable.data_fontstr

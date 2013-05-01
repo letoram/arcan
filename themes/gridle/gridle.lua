@@ -123,7 +123,7 @@ settings = {
 	default_launchmode = "Internal",
 
 -- DISPLAY MODE PRESETS (can be overridden from load_settings
-	internal_toggles = {crt = false, vector = false, backdrop = false, 
+	internal_toggles = {crt = false, trails = false, glow = false, backdrop = false, 
 	ntsc = false, upscaler = false, overlay = false, antialias = false},
 
 	crt_gamma     = 2.4,
@@ -151,9 +151,10 @@ settings = {
 	vector_hblurofs = 0,
 	vector_vbias = 1.0,
 	vector_hbias = 1.2,
-	vector_trailstep = -4,
+	vector_trailstep = 2,
 	vector_trailfall = 1,
 	vector_glowtrails = 0,
+	vector_deltamethod = "Off",
 
 	ntsc_hue        = 0.0,
 	ntsc_saturation = 0.0,
@@ -1722,6 +1723,8 @@ function load_settings()
 	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
 	load_key_num("vector_trailstep",  "vector_trailstep",  settings.vector_trailstep);
 	load_key_num("vector_trailfall",  "vector_trailfall",  settings.vector_trailfall);
+	load_key_str("vector_deltamethod","vector_deltamethod",settings.vector_deltamethod);
+
 	load_key_num("ntsc_hue",        "ntsc_hue",        settings.ntsc_hue); 
 	load_key_num("ntsc_saturation", "ntsc_saturation", settings.ntsc_saturation);
 	load_key_num("ntsc_contrast",   "ntsc_contrast",   settings.ntsc_contrast);
