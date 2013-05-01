@@ -1,8 +1,9 @@
 /*
-  Hyllian's (1..5)xBR(A..C) Shader
+  Hyllian's (1..5)xBR(A..D) Shader
 
   Copyright (C) 2011/2012 Hyllian/Jararaca - sergiogdb@gmail.com
-
+	Integration / Translation / Refactor - letoram@gmail.com
+  
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License
   as published by the Free Software Foundation; either version 2
@@ -25,6 +26,7 @@
 uniform sampler2D map_diffuse;
 uniform vec2 texture_size;
 uniform float deltav;
+uniform vec4 eq_threshold;
 uniform float obj_opacity;
 
 varying vec2 tc;
@@ -38,7 +40,6 @@ varying vec4 t6;
 varying vec4 t7;
 
 const float coef          = 2.0;
-const vec4 eq_threshold   = vec4(15.0);
 const float y_weight      = 48.0;
 const float u_weight      = 7.0;
 const float v_weight      = 6.0;
@@ -59,6 +60,11 @@ float c_df(const vec3 c1, const vec3 c2)
 bvec4 eq(const vec4 A, const vec4 B)
 {
 	return lessThan(df(A, B), eq_threshold);
+}
+
+bvec4 eq2(const vec4 A, const vec4 B)
+{
+	return lessThan(df(A, B), vec4(2.0));
 }
 
 bvec4 and(const bvec4 A, const bvec4 B)
@@ -84,7 +90,14 @@ void main()
 	vec4 fx, fx_left, fx_up, final_fx; // inequations of straight lines.
 	vec3 res1, res2, pix1, pix2;
 	float blend1, blend2;
+	vec4 delta = vec4(deltav);
 
+#ifdef LEVEL_3A
+	bvec4 interp_restriction_lv3_left, interp_restriction_lv3_up, edr3_left, edr3_up;
+	bvec4 nc15, nc75;
+	vec4 fx3_left, fx3_up;
+#endif
+	
 	vec2 fp = fract(tc * texture_size);
 
 	vec3 A1 = texture2D(map_diffuse, t1.xw).rgb;
@@ -128,6 +141,13 @@ void main()
 	vec4 i5 = yuv_weighted[0] * mat4x3(I5, C4, A1, G0);
 	vec4 h5 = yuv_weighted[0] * mat4x3(H5, F4, B1, D0);
 	vec4 f4 = h5.yzwx;
+	
+#ifdef LEVEL_3A
+	vec4 c1 = i4.yzwx;
+	vec4 g0 = i5.wxyz;
+	vec4 b1 = h5.zwxy;
+	vec4 d0 = h5.wxyz;
+#endif
 
 	vec4 Ao = vec4( 1.0, -1.0, -1.0,  1.0 );
 	vec4 Bo = vec4( 1.0,  1.0, -1.0, -1.0 );
@@ -139,11 +159,20 @@ void main()
 	vec4 By = vec4( 2.0,  0.5, -2.0, -0.5 );
 	vec4 Cy = vec4( 2.0,  0.0, -1.0,  0.5 );
 
+#ifdef LEVEL_3A
+	vec4 Az = vec4( 6.0, -2.0, -6.0,  2.0 );
+	vec4 Bz = vec4( 2.0,  6.0, -2.0, -6.0 );
+	vec4 Cz = vec4( 5.0,  3.0, -3.0, -1.0 );
+	vec4 Aw = vec4( 2.0, -6.0, -2.0,  6.0 );
+	vec4 Bw = vec4( 6.0,  2.0, -6.0, -2.0 );
+	vec4 Cw = vec4( 5.0, -1.0, -3.0,  3.0 );	
+#endif
+	
 	// These inequations define the line below which interpolation occurs.
 	fx      = (Ao*fp.y+Bo*fp.x);
 	fx_left = (Ax*fp.y+Bx*fp.x);
 	fx_up   = (Ay*fp.y+By*fp.x);
-
+	
 #ifdef METHOD_A
     interp_restriction_lv1      = and(notEqual(e,f), notEqual(e,h));
 #endif
@@ -165,14 +194,33 @@ void main()
 	interp_restriction_lv1      = and( and(notEqual(e,f), notEqual(e,h)), extexpr );
 #endif
 
+#ifdef LEVEL_3A
+	interp_restriction_lv3_left = and( eq2(g,g0), not(eq2(d0,g0)) );
+	interp_restriction_lv3_up   = and( eq2(c,c1), not(eq2(b1,c1)) );
+
+	bvec4 expra = and(notEqual(e, f), notEqual(e, h));
+	bvec4 exprb = or(or(and(and(or(and(not(eq(f,b)), not(eq(h,d))), eq(e,i)), not(eq(f,i4))), not(eq(h, i5)) ), eq(e,g)), eq(e,c));
+	bvec4 exprc = and(or(or(or(and(or(and(notEqual(f,f4), notEqual(f,i)), notEqual(h, h5)), 
+		notEqual(h, i)), notEqual(h,g)), notEqual(f, c)), eq(b,c1)), eq(d,g0));
+
+	interp_restriction_lv1 = and( and(expra, exprb), exprc);
+
+	fx3_left = (Az * fp.y + Bz * fp.x);
+	fx3_up   = (Aw * fp.y + Bw * fp.x);
+#endif
+	
 	interp_restriction_lv2_left = and(notEqual(e, g), notEqual(d,g));
 	interp_restriction_lv2_up   = and(notEqual(e, c), notEqual(b,c));
 
-	vec4 delta = vec4(deltav);
 	vec4 fx45 = smoothstep(Co - delta, Co + delta, fx);
 	vec4 fx30 = smoothstep(Cx - delta, Cx + delta, fx_left);
 	vec4 fx60 = smoothstep(Cy - delta, Cy + delta, fx_up);
 
+#ifdef LEVEL_3A
+	vec4 fx15 = smoothstep(Cz - delta, Cz + delta, fx3_left);
+	vec4 fx75 = smoothstep(Cw - delta, Cw + delta, fx3_up);
+#endif
+	
 	edr      = and(
 		lessThan(weighted_distance( e, c, g, i, h5, f4, h, f),
 						 weighted_distance( h, d, i5, f, i4, b, e, i))
@@ -185,16 +233,31 @@ void main()
 	nc30 = and(and(edr, edr_left), bvec4(fx30));
 	nc60 = and(and(edr, edr_up  ), bvec4(fx60));
 
-	px = lessThanEqual(df(e,f), df(e,h));
-
+#ifdef LEVEL_3A
+	edr3_left = interp_restriction_lv3_left;
+	edr3_up   = interp_restriction_lv3_up;
+	nc15 = and( and(edr, edr_left), and(edr3_left, bvec4(fx15)) );
+	nc75 = and( and(edr, edr_up),   and(edr3_up,   bvec4(fx75)) );
+	nc   =  or( nc75, or(nc15, or(or(nc30, nc60), nc45)));
+	
+	vec4 final15 = vec4(nc15) * fx15; 
+	vec4 final75 = vec4(nc75) * fx75;
+#else
 	nc = or(or(nc30, nc60), nc45);
+#endif
+	
+	px = lessThanEqual(df(e,f), df(e,h));
 
 	vec4 final45 = vec4(nc45)*fx45;
 	vec4 final30 = vec4(nc30)*fx30;
-	vec4 final60 = vec4(nc60)*fx60;
+	vec4 final60 = vec4(nc60)*fx60;	 
 
+#ifdef LEVEL_3A
+	vec4 maximo = max(max(max(final15, final75), max(final30, final60)), final45);
+#else
 	vec4 maximo = max(max(final30, final60), final45);
-
+#endif
+	
 	pix1 = texture2D(map_diffuse, tc).rgb;
 	pix2 = pix1;
 	blend1 = 1.0;

@@ -676,6 +676,8 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 		elseif (mode == "xbr-square") then
 			definetbl["METHOD_C"] = true;
 			definetbl["REVAA_HYBRID"] = true;
+		elseif (mode == "xbr-l3") then
+			definetbl["LEVEL_3A"] = true;
 		end
 
 		shader = load_shader("display/xbr.vShader", "display/xbr.fShader", "xbr", definetbl);
@@ -683,6 +685,8 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 	if (mode ~= "sabr") then
 		shader_uniform(shader, "deltav", "f", PERSIST, settings.upscale_delta);
+		shader_uniform(shader, "eq_threshold","ffff", PERSIST, settings.upscale_ineq, settings.upscale_ineq, 
+			settings.upscale_ineq, settings.upscale_ineq);
 	end
 
 	shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
@@ -1518,7 +1522,7 @@ add_submenu(crtmenulbls, crtmenuptrs, "Tilt (Vertical)...",       "crt_tiltv",  
 
 add_submenu(scalerlbls, scalerptrs, "Factor...", "upscale_factor", gen_tbl_menu("upscale_factor", {2, 3, 4, 5}, updatetrigger));
 add_submenu(scalerlbls, scalerptrs, "Delta Value (xbr)...", "upscale_delta", gen_num_menu("upscale_delta", 0.1, 0.1, 6, updatetrigger));
-add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr", "xbr-rounded", "xbr-semi-rounded", "xbr-square"}, updatetrigger, true));
+add_submenu(scalerlbls, scalerptrs, "Method...", "upscale_method", gen_tbl_menu("upscale_method", {"sabr", "xbr-rounded", "xbr-semi-rounded", "xbr-square", "xbr-l3"}, updatetrigger, true));
 
 local function recdim()
 	local props  = image_surface_initial_properties(internal_vid);

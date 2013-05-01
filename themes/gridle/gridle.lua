@@ -169,8 +169,9 @@ settings = {
 	
 	upscale_method = "sabr",
 	upscale_factor = 5,
-	upscale_delta = 0.4,
-	upscale_ddt = false,
+	upscale_delta  = 0.4,
+	upscale_ddt    = false,
+	upscale_ineq   = 15.0,
 	
 	record_qual = 6,
 	record_res  = 240,
