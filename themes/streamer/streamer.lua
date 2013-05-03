@@ -145,6 +145,7 @@ end
 -- populate static / dynamic images into a shared recordtarget
 --
 function start_streaming()
+	run_view(true);
 -- allocate intermediate storage
 	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 	image_tracetag(dstvid, "[streaming source]");
@@ -217,16 +218,20 @@ function get_audio_toggles()
 	local function toggle_audio(lbl)
 	end
 	
-	for ind, val in ipairs(settings.adevs) do
-		table.insert(lbls, val);
-		ptrs[val] = toggle_audio;
+	
+	
+	if (#settings.adevs > 0) then
+		for ind, val in ipairs(settings.adevs) do
+			table.insert(lbls, val);
+			ptrs[val] = toggle_audio;
 
-		if (settings.atoggles[val]) then
-			fmts[ key ] = settings.colourtable.notice_fontstr;
+			if (settings.atoggles[val]) then
+				fmts[ key ] = settings.colourtable.notice_fontstr;
+			end
 		end
 	end
 
-	
+	return lbls, ptrs, fmts;
 end
 
 --
@@ -265,7 +270,9 @@ function toggle_main_menu()
 		add_submenu(menulbls, menuptrs, "Streaming Settings...", nil, streammenu, streamptrs, {});
 
 		table.insert(menulbls, "Audio Sources...");
-		menuptrs["Audio Sources..."] = get_audio_toggles();
+		menuptrs["Audio Sources..."] = function() 
+			menu_spawnmenu(get_audio_toggles());
+		end
 	end
 
 -- copied from gridle internal
@@ -400,9 +407,10 @@ function load_cb(restype, lay)
 
 end
 
-function run_view()
+function run_view(dry_run)
 	settings.layout:show();
-
+-- with a dry_run, just use placeholders for all "dynamic" sources
+	
 -- NOTE:For creating the record-set, the temporary and temporary_static tables are swept
 -- and just re-added. When (if?) MRT or WORLDID recordsets are working, we'll switch to that
 --
@@ -432,7 +440,7 @@ function run_view()
 			if (settings.vidcap[i] ~= nil) then
 				if (settings.vidcaps[ settings.vidcap[i] ] ~= nil) then
 				else
-					settings.vidcaps[ settings.vidcap[i] ] = load_movie( string.format("capture:device=%d,width=%d,height=%d"); FRAMESERVER_NOLOOP, function(source, status) end );
+					settings.vidcaps[ settings.vidcap[i] ] = load_movie( string.format("capture:device=%d,width=%d,height=%d"), FRAMESERVER_NOLOOP, function(source, status) end );
 				end
 			end
 		end
@@ -451,7 +459,6 @@ function setup_game(label)
 		settings.gametbl = game[1];
 		local restbl = resourcefinder_search(settings.gametbl, true );
 		settings.restbl = restbl;
-		run_view();
 		toggle_main_menu();
 	end
 end
