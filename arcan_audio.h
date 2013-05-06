@@ -30,6 +30,7 @@ enum aobj_kind {
 	AOBJ_STREAM,
 	AOBJ_SAMPLE,
 	AOBJ_FRAMESTREAM,
+	AOBJ_CAPTUREFEED,
 	AOBJ_PROXY
 };
 struct arcan_aobj;
@@ -46,18 +47,6 @@ typedef arcan_errc(*arcan_afunc_cb)(struct arcan_aobj* aobj, arcan_aobj_id id, u
  * the buffer into separate streams and perform samplerate conversion / mixing there. */
 typedef void(*arcan_monafunc_cb)(arcan_aobj_id id, uint8_t* buf, size_t bytes, unsigned channels, unsigned frequency, void* tag);
 typedef arcan_errc(*arcan_again_cb)(float gain, void* tag);
-
-enum aobj_atypes {
-	AUTO = 0,
-	PCM  = 1,
-	WAV  = 2,
-	AIFF = 3,
-	OGG  = 4,
-	MP3  = 5,
-	FLAC = 6,
-	AAC  = 7,
-	MP4  = 8
-};
 
 arcan_errc arcan_audio_setup(bool nosound);
 
@@ -98,11 +87,8 @@ int arcan_audio_findstreambufslot(arcan_aobj_id id);
 arcan_aobj_id arcan_audio_proxy(arcan_again_cb feed, void* tag);
 enum aobj_kind arcan_audio_kind(arcan_aobj_id);
 
-arcan_aobj_id arcan_audio_alterfeedio_stream(const char* uri, enum aobj_atypes type, arcan_errc* errc);
-
 /* destroy an audio object and everything associated with it */
 arcan_errc arcan_audio_stop(arcan_aobj_id);
-arcan_aobj_id arcan_audio_stream(const char* uri, enum aobj_atypes type, arcan_errc* errc);
 
 /* initiate playback (i.e. push buffers to OpenAL) */
 arcan_errc arcan_audio_play(arcan_aobj_id, bool gain_override, float gain);
@@ -117,10 +103,9 @@ arcan_errc arcan_audio_rewind(arcan_aobj_id);
 /* get a null- terminated list of available capture devices */
 char** arcan_audio_capturelist();
 
-/* try and get a lock on a specific capture device (matching arcan_audio_capturelist)
- * if no identifier is given or identifier is given, not found and exact isn't set, the default (according to OpenAL)
- * capture device will be used */
-arcan_aobj_id arcan_audio_capturefeed(const char* identifier, bool exact);
+/* try and get a lock on a specific capture device (matching arcan_audio_capturelist),
+ * actual sampled data is dropped silently unless there's a monitor attached */
+arcan_aobj_id arcan_audio_capturefeed(const char* identifier);
 
 /* Time component is similar to video management.
  * However, the fades are currently only linear (oops) */

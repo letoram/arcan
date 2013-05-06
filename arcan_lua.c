@@ -630,9 +630,20 @@ int arcan_lua_playaudio(lua_State* ctx)
 
 int arcan_lua_captureaudio(lua_State* ctx)
 {
-/* match against arcan_audio_capturelist,
- * wrap to arcan_audio_setupcapture,
- * return AID */
+	char** cptlist = arcan_audio_capturelist();
+	const char* luach = luaL_checkstring(ctx, 1);
+	
+	bool match = false;
+	while (*cptlist && !match)
+		match = strcmp(*cptlist++, luach) == 0;
+	
+	if (match){
+		printf("found %s\n", luach);
+		lua_pushaid(ctx, arcan_audio_capturefeed(luach) );
+		
+		return 1;
+	}
+
 	return 0;
 }
 
@@ -3358,7 +3369,7 @@ int arcan_lua_recordset(lua_State* ctx)
 			lua_rawgeti(ctx, 5, i+1);
 			arcan_aobj_id setaid = luaaid_toaid( lua_tonumber(ctx, -1) );
 
-			if (arcan_audio_kind(setaid) != AOBJ_STREAM && arcan_audio_kind(setaid) != AOBJ_PROXY){
+			if (arcan_audio_kind(setaid) != AOBJ_STREAM && arcan_audio_kind(setaid) != AOBJ_CAPTUREFEED){
 				arcan_warning("arcan_lua_recordset(%d), unsupported AID source type, only STREAMs currently supported. Audio recording disabled.\n");
 				free(aidlocks);
 				aidlocks = NULL;
@@ -3425,11 +3436,20 @@ int arcan_lua_recordset(lua_State* ctx)
 		if (fd){
 			arcan_frameserver_pushfd( mvctx, fd );
 			mvctx->alocks = aidlocks;
+
+/* lastly, lock each audio object and forcibly attach the frameserver as a monitor. NOTE that this currently
+ * doesn't handle the case where we we set up multiple recording sessions sharing audio objects. */
 			arcan_aobj_id* base = mvctx->alocks;
 			while(base && *base){
 				void* hookfun;
 				arcan_audio_hookfeed(*base++, mvctx, arcan_frameserver_avfeedmon, &hookfun);
 			}
+
+/* if we have several input audio sources, we need to set up an intermediate mixing system, 
+ * that accumulates samples from each audio source monitor, and emitts a mixed buffer. This requires that
+ * the audio sources operate at the same rate and buffering will converge on the biggest- buffer audio source */
+			if (naids > 1)
+				arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks, NULL);
 		}
 		else
 			arcan_warning("arcan_lua_recordset(%s/%s/%s) -- couldn't create output.\n", arcan_themepath, arcan_themename, resf);

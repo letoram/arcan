@@ -75,6 +75,19 @@ typedef struct {
 	
 } arcan_frameserver_meta;
 
+struct frameserver_audsrc {
+	float inbuf[4096];
+	off_t inofs;
+	arcan_aobj_id src_aid;
+	float weight, gain;
+};
+
+struct frameserver_audmix {
+	unsigned n_aids;
+	size_t max_bufsz;
+	struct frameserver_audsrc* inaud;
+};
+
 typedef struct arcan_frameserver {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
@@ -93,6 +106,12 @@ typedef struct arcan_frameserver {
 /* for monitoring hooks, NULL term. */
 	arcan_aobj_id* alocks;
 	arcan_vobj_id vid;
+
+	struct {
+		unsigned n_aids;
+		size_t max_bufsz;
+		struct frameserver_audsrc* inaud;
+	}  amixer;
 
 /* used for playing, pausing etc. */
 	enum arcan_playstate playstate;
@@ -205,6 +224,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 
 /* used as monitor hook for frameserver audio feeds */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
+void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources, arcan_aobj_id* sources, float* gains);
 
 /* return a callback function for retrieving appropriate video-feeds */
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state);

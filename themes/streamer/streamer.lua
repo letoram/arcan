@@ -98,6 +98,7 @@ function show_helper()
 	end
 
 	local status = {};
+	local statusfmt = {};
 
 	if (settings.layout) then
 		table.insert(status, string.format("Layout (%s) Loaded", settings.layout_name));
@@ -107,33 +108,37 @@ function show_helper()
 				table.insert(status, "Game:" .. settings.gametbl.title);
 			else
 				table.insert(status, "No Game Defined");
+				statusfmt["No Game Defined"] = "\\b\\#ff9999";
 			end
 		else
-			table.insert(status, "\tNo Internal Slot");
+			table.insert(status, "No Internal Slot");
 		end
 
 		if (settings.layout["vidcap"] ~= nil) then
 			table.insert(status, tostring(#settings.layout["vidcap"]) .. " Video Feed Slots");
-			local str = "Slots: ";
+			local str = "Feeds: ";
 			
-			for ind, val in ipairs(settings.vidcap) do
-				str = str .. string.format("(%d) => (%d)", ind, val);
+			for ind, val in ipairs(settings.layout["vidcap"]) do
+				str = str .. string.format("(%d) => (%d)", ind, settings.vidcap[ind] ~= nil and settings.vidcap[ind] or 0);
 			end
 
 			table.insert(status, str);
 		end
 		
 		if (settings.stream_url ~= "rtmp://") then
-			table.insert(status, "Stream to:" .. settings.stream_url);
+			local streamlbl = "Stream to:" .. settings.stream_url;
+			table.insert(status, streamlbl);
+			statusfmt[streamlbl] = "\\b\\#99ff99";
 		else
 			table.insert(status, "No Stream Defined");
+			statusfmt["No Stream Defined"] = "\\b\\#ff9999";
 		end
 
 	else
 		table.insert(status, "No Layout");
 	end
 
-	settings.infowin = listview_create( status, VRESW / 2, VRESH / 2, {} );
+	settings.infowin = listview_create( status, VRESW / 2, VRESH / 2, statusfmt );
 	settings.infowin:show();
 	hide_image(settings.infowin.cursorvid);
 	move_image(settings.infowin.anchor, VRESW * 0.5, 0);
@@ -329,6 +334,7 @@ function toggle_main_menu()
 
 		for num=1, nvc do
 			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, gen_num_menu(nil, 1, 1, 10, function(lbl)
+				print("setting slot:", num, "to:", lbl);
 				settings.vidcap[num] = tonumber(lbl);
 				toggle_main_menu();
 			end ));
@@ -414,8 +420,14 @@ function run_view(dry_run)
 -- NOTE:For creating the record-set, the temporary and temporary_static tables are swept
 -- and just re-added. When (if?) MRT or WORLDID recordsets are working, we'll switch to that
 --
-	if (settings.layout["internal"] and #settings.layout["internal"] > 0) then
-		local internal_vid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) end);
+	if (settings.layout["internal"] and #settings.layout["internal"] > 0 and settings.gametbl) then
+		local internal_vid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) 
+			if (status == "resized") then
+				play_audio(status.source_audio);
+			end
+		end);
+		
+		show_image(internal_vid);
 		settings.layout:add_imagevid(internal_vid, settings.layout["internal"][1]);
 		settings.target = internal_vid;
 		
@@ -439,8 +451,14 @@ function run_view(dry_run)
 		for i=1,#settings.layout["vidcap"] do
 			if (settings.vidcap[i] ~= nil) then
 				if (settings.vidcaps[ settings.vidcap[i] ] ~= nil) then
+					local newvid = instance_image(settings.vidcaps[ settings.vidcap[i] ]);
+					image_mask_clearall(newvid);
+					settings.layout:add_imagevid(newvid, settings.layout["vidcap"][i]);
 				else
-					settings.vidcaps[ settings.vidcap[i] ] = load_movie( string.format("capture:device=%d,width=%d,height=%d"), FRAMESERVER_NOLOOP, function(source, status) end );
+					local elem = settings.layout["vidcap"][i];
+					local reqstr = string.format("capture:device=%d:width=%d:height=%d", 1, elem.size[1], elem.size[2]);
+					settings.vidcaps[ settings.vidcap[i] ] = load_movie(reqstr, FRAMESERVER_NOLOOP, function(source, status) end );
+					settings.layout:add_imagevid(settings.vidcaps[ settings.vidcap[i] ], settings.layout["vidcap"][i]);
 				end
 			end
 		end

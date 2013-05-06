@@ -441,7 +441,7 @@ function gen_num_menu(name, base, step, count, triggerfun)
 			play_audio(soundmap["MENU_SELECT"]);
 		end
 		
-		if (triggerfun) then triggerfun(); end
+		if (triggerfun) then triggerfun(label); end
 	end
 
 	clbl = base;

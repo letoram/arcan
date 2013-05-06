@@ -49,7 +49,6 @@ typedef struct arcan_aobj {
 	SDL_RWops* lfeed;
 
 /* AOBJ sample only */
-	enum aobj_atypes atype;
 	uint16_t* samplebuf;
 
 /* openAL Buffering */
