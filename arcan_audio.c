@@ -40,6 +40,7 @@
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
 #include "arcan_event.h"
+#include "arcan_frameserver_shmpage.h"
 
 typedef struct {
 /* linked list of audio sources,
@@ -58,7 +59,7 @@ typedef struct {
 	void* global_hooktag;
 } arcan_acontext;
 
-static void _wrap_alError(arcan_aobj*, char*);
+static bool _wrap_alError(arcan_aobj*, char*);
 
 /* context management here is quite different from 
  * video (no push / pop / etc. openAL volatility alongside
@@ -431,33 +432,6 @@ arcan_aobj_id arcan_audio_proxy(arcan_again_cb proxy, void* tag)
 	return rid;
 }
 
-
-static enum aobj_atypes find_type(const char* path)
-{
-	static char* atypetbl[] = {
-		"PCM", "WAV", "AIFF", "OGG", "MP3", "FLAC", "AAC", "MP4", NULL
-	};
-	static int ainttypetbl[] = {
-		PCM, WAV, AIFF, OGG, MP3, FLAC, AAC, MP4, 0
-	};
-
-	char* extension = strrchr(path, '.');
-	if (extension && *extension) {
-		extension++;
-		char** cur = atypetbl;
-		int ofs = 0;
-
-		while (cur[ofs]) {
-			if (strcasecmp(cur[ofs], extension) == 0)
-				return ainttypetbl[ofs];
-
-			ofs++;
-		}
-	}
-
-	return -1;
-}
-
 arcan_errc arcan_audio_suspend()
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
@@ -786,6 +760,75 @@ char** arcan_audio_capturelist()
 	return capturelist;
 }
 
+/* default feed function for capture devices,
+ * it just maps to the buffer refill/capture used elsewhere,
+ * then it's up to the monitoring function of the recording frameserver to do the mixing */
+static arcan_errc capturefeed(arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+{
+	arcan_errc rv = ARCAN_ERRC_NOTREADY;
+	if (buffer > 0){
+/* though a single capture buffer is shared, we don't want it allocated statically as 
+ * some AL implementations behaved incorrectly and overflowed into other members making it
+ * more difficult to track down than necessary */
+		static int16_t* capturebuf;
+		if (!capturebuf)
+			capturebuf = malloc(1024 * 4); 
+		
+		ALCint sample;
+		ALCdevice* dev = (ALCdevice*) tag;
+
+		alcGetIntegerv(dev, ALC_CAPTURE_SAMPLES, (ALCsizei)sizeof(ALint), &sample);
+		sample = sample > 1024 ? 1024 : sample;
+
+		if (sample > 0){
+			alcCaptureSamples(dev, (ALCvoid *)capturebuf, sample); 
+			
+			if (aobj->monitor)
+				aobj->monitor(aobj->id, (char*) capturebuf, sample << 2, SHMPAGE_ACHANNELCOUNT, SHMPAGE_SAMPLERATE, aobj->monitortag);
+
+			if (current_acontext->globalhook)
+				current_acontext->globalhook(aobj->id, (char*) capturebuf, sample << 2, SHMPAGE_ACHANNELCOUNT, SHMPAGE_SAMPLERATE, current_acontext->global_hooktag);
+		}
+	}
+	
+	return rv;
+}
+
+arcan_aobj_id arcan_audio_capturefeed(const char* dev)
+{
+	arcan_aobj* dstobj = NULL;
+	ALCdevice* capture = alcCaptureOpenDevice(dev, SHMPAGE_SAMPLERATE, AL_FORMAT_STEREO16, 65536);
+	arcan_audio_alloc(&dstobj);
+
+/* we let OpenAL maintain the capture buffer, we flush it like other feeds
+ * and resend it back into the playback chain, so that monitoring etc. gets reused */
+	if (_wrap_alError(dstobj, "capture-device") && dstobj){
+		printf("setup streaming\n");
+		dstobj->streaming = true;
+		dstobj->gain = 1.0;
+		dstobj->kind = AOBJ_CAPTUREFEED;
+		dstobj->n_streambuf = ARCAN_ASTREAMBUF_LIMIT;
+		dstobj->feed = capturefeed;
+		dstobj->tag = capture;
+	
+		alGenBuffers(dstobj->n_streambuf, dstobj->streambuf);
+		alcCaptureStart(capture);
+		return dstobj->id;
+	}
+	else{
+		printf("could get audio lock\n");
+		if (capture){
+			alcCaptureStop(capture);
+			alcCaptureCloseDevice(capture);
+		}
+		
+		if (dstobj)
+			arcan_audio_free(dstobj->id);
+	}
+	
+	return ARCAN_EID;
+}
+
 void arcan_audio_refresh()
 {
 	if (!current_acontext->context || !current_acontext->al_active)
@@ -795,7 +838,8 @@ void arcan_audio_refresh()
 
 	while(current){
 		if (current->kind == AOBJ_STREAM ||
-			current->kind == AOBJ_FRAMESTREAM ){
+			current->kind == AOBJ_FRAMESTREAM ||
+			current->kind == AOBJ_CAPTUREFEED){
 			arcan_astream_refill(current);
 		}
 		else if (current->kind == AOBJ_PROXY && current->feed)
@@ -880,7 +924,7 @@ void arcan_audio_tick(uint8_t ntt)
 }	
 
 
-static void _wrap_alError(arcan_aobj* obj, char* prefix)
+static bool _wrap_alError(arcan_aobj* obj, char* prefix)
 {
 	ALenum errc = alGetError();
 	arcan_aobj empty = {.id = 0, .alid = 0};
@@ -909,7 +953,8 @@ static void _wrap_alError(arcan_aobj* obj, char* prefix)
 			default:
 				arcan_warning("(%u:%u), %s - undefined error\n", obj->id, obj->alid, prefix);
 		}
-
-		
+		return false;
 	}
+	
+	return true;
 }
