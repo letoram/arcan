@@ -150,7 +150,7 @@ end
 -- populate static / dynamic images into a shared recordtarget
 --
 function start_streaming()
-	run_view(true);
+	run_view(false);
 -- allocate intermediate storage
 	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 	image_tracetag(dstvid, "[streaming source]");
@@ -164,19 +164,22 @@ function start_streaming()
 		table.insert(recordset, val);
 	end
 
--- recordlocal override
-	local recdst = "nisse.mkv";
- local recstr = "vcodec=H264:acodec=MP3:fps=50:vpreset=6:apreset=4";
+--	local recdst = "nisse.mkv";
+--	local recstr = "vcodec=H264:acodec=MP3:fps=50:vpreset=6:apreset=4";
 	local audset = {};
 	
 	for ind, val in pairs(settings.atoggles) do
-		local cap = capture_audio(val);
+		local cap = capture_audio(ind);
 		if (cap ~= nil and cap ~= BADID) then
-			table.insert(audset);
+			table.insert(audset, cap);
 		end
 	end
 
-	define_recordtarget(dstvid, recdst, get_recstr() .. ( #audset == 0 and ":noaudio" or "" ), recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
+	if (internal_aid) then
+		table.insert(audset, internal_aid);
+	end
+	
+	define_recordtarget(dstvid, "stream", get_recstr() .. ( #audset == 0 and ":noaudio" or "" ), recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
 		print("recordtarget status", status.kind);
 	end);
 
@@ -429,13 +432,14 @@ end
 
 function run_view(dry_run)
 	settings.layout:show();
--- with a dry_run, just use placeholders for all "dynamic" sources
-	
+--
+-- NOTE: missing: with a dry_run, just use placeholders for all "dynamic" sources
+--	
 -- NOTE:For creating the record-set, the temporary and temporary_static tables are swept
 -- and just re-added. When (if?) MRT or WORLDID recordsets are working, we'll switch to that
 --
 	if (settings.layout["internal"] and #settings.layout["internal"] > 0 and settings.gametbl) then
-		local internal_vid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) 
+		local internal_vid, internal_aid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) 
 			if (status == "resized") then
 				play_audio(status.source_audio);
 			end
