@@ -21,17 +21,17 @@
 PROJECT( arcan )
 include(ExternalProject)
 
-ExternalProject_Add(
- nacl
- SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
- STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/stamp
- TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/tmp
- DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
- INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+#ExternalProject_Add(
+# nacl
+# SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+# STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/stamp
+# TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/tmp
+# DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+# INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
 
- BUILD_IN_SOURCE 1
- INSTALL_COMMAND ""
-)
+# BUILD_IN_SOURCE 1
+# INSTALL_COMMAND ""
+#)
 
 cmake_minimum_required(VERSION 2.8.7 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
@@ -155,8 +155,8 @@ FSRV_LIBRARIES
 	${ZLIB_LIBRARY}
 	${APR_LIBRARIES}
 	${VPX_LIBRARIES}
-	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
-	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
+#	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
+#	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
 )
 
 set (
@@ -172,7 +172,7 @@ INCLUDE_DIRECTORIES
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIRS}
 	"frameserver/ntsc"
-	"nacl/include"
+#	"nacl/include"
 )
 
 add_subdirectory( openctm )
@@ -498,7 +498,7 @@ target_link_libraries( arcan ${MAIN_LIBRARIES} )
 set_target_properties( arcan_frameserver PROPERTIES COMPILE_FLAGS "${FSRV_BUILD_FLAGS}" )
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
-add_dependencies( arcan_frameserver nacl )
+# add_dependencies( arcan_frameserver nacl )
 
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
 #install(TARGETS arcan_modelconv DESTINATION ${BIN_DST})
