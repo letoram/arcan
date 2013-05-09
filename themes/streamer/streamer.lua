@@ -154,7 +154,7 @@ function start_streaming()
 -- allocate intermediate storage
 	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 	image_tracetag(dstvid, "[streaming source]");
-	
+
 	local recordset = {};
 	for ind,val in ipairs(settings.layout.temporary) do
 		table.insert(recordset, val);
@@ -165,10 +165,17 @@ function start_streaming()
 	end
 
 -- recordlocal override
-	local recdst = ""; --"nisse.mkv";
--- local recstr = "vcodec=H264:acodec=MP3:fps=50:vpreset=6:apreset=4";
+	local recdst = "nisse.mkv";
+ local recstr = "vcodec=H264:acodec=MP3:fps=50:vpreset=6:apreset=4";
 	local audset = {};
 	
+	for ind, val in pairs(settings.atoggles) do
+		local cap = capture_audio(val);
+		if (cap ~= nil and cap ~= BADID) then
+			table.insert(audset);
+		end
+	end
+
 	define_recordtarget(dstvid, recdst, get_recstr() .. ( #audset == 0 and ":noaudio" or "" ), recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
 		print("recordtarget status", status.kind);
 	end);
@@ -220,10 +227,17 @@ function get_audio_toggles()
 	local ptrs = {};
 	local fmts = {};
 
-	local function toggle_audio(lbl)
+	local function toggle_audio(label)
+		if (settings.atoggles[label] == nil) then
+			settings.atoggles[label] = true;
+		else
+			settings.atoggles[label] = not settings.atoggles[label];
+		end
+			
+		current_menu.formats[label] = settings.atoggles[label] and settings.colourtable.notice_fontstr or nil;
+		current_menu:invalidate();
+		current_menu:redraw();
 	end
-	
-	
 	
 	if (#settings.adevs > 0) then
 		for ind, val in ipairs(settings.adevs) do
@@ -231,7 +245,7 @@ function get_audio_toggles()
 			ptrs[val] = toggle_audio;
 
 			if (settings.atoggles[val]) then
-				fmts[ key ] = settings.colourtable.notice_fontstr;
+				fmts[ val] = settings.colourtable.notice_fontstr;
 			end
 		end
 	end
@@ -644,7 +658,7 @@ function lay_setup(layname)
 
 	layout.validation_hook = function()
 		for ind, val in ipairs(layout.items) do
-			if (val.idtag == "internal" or val.idtag == "vidcap.") then
+			if (val.idtag == "internal" or val.idtag == "vidcap") then
 				return true;
 			end
 		end

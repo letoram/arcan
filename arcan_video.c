@@ -382,6 +382,7 @@ signed arcan_video_pushcontext()
 
 unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 {
+	/* NOTE: incomplete */
 	struct rendertarget tgt = current_context->stdoutp;
 	tgt.fbo = tgt.pbo = 0;
 
@@ -403,7 +404,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	 * that rendertarget, clean everything up, inject and store vobj in dst */
 	
 	int nfc = arcan_video_popcontext();
-	
+		return nfc;
 }
 
 signed arcan_video_extpushcontext(arcan_vobj_id* dst)

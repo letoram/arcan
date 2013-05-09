@@ -638,7 +638,6 @@ int arcan_lua_captureaudio(lua_State* ctx)
 		match = strcmp(*cptlist++, luach) == 0;
 	
 	if (match){
-		printf("found %s\n", luach);
 		lua_pushaid(ctx, arcan_audio_capturefeed(luach) );
 		
 		return 1;
@@ -1100,14 +1099,16 @@ int arcan_lua_loadmovie(lua_State* ctx)
 
 		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
 		lua_pushvid(ctx, mvctx->vid);
+		lua_pushaid(ctx, mvctx->aid);
 	} else {
 		free(mvctx);
+		lua_pushvid(ctx, ARCAN_EID);
 		lua_pushvid(ctx, ARCAN_EID);
 	}
 
 	free(fname);
 
-	return 1;
+	return 2;
 }
 
 int arcan_lua_n_leds(lua_State* ctx)
@@ -3183,16 +3184,18 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 
 				if (arcan_frameserver_spawn_server(intarget, args) == ARCAN_OK){
 					lua_pushvid(ctx, intarget->vid);
+					lua_pushaid(ctx, intarget->aid);
 					arcan_db_launch_counter_increment(dbhandle, gameid);
 				}
 				else {
 					lua_pushvid(ctx, ARCAN_EID);
+					lua_pushaid(ctx, ARCAN_EID);
 					free(intarget);
 				}
 
 				free(metastr);
 
-				rv = 1;
+				rv = 2;
 			}
 			else {
 				char* hijacktgt = lookup_hijack( gameid );
@@ -3204,8 +3207,9 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 				if (intarget) {
 					intarget->tag = ref;
 					lua_pushvid(ctx, intarget->vid);
+					lua_pushaid(ctx, intarget->aid);
 					arcan_db_launch_counter_increment(dbhandle, gameid);
-					rv = 1;
+					rv = 2;
 				} else {
 					arcan_db_failed_launch(dbhandle, gameid);
 				}

@@ -30,8 +30,7 @@ enum aobj_kind {
 	AOBJ_STREAM,
 	AOBJ_SAMPLE,
 	AOBJ_FRAMESTREAM,
-	AOBJ_CAPTUREFEED,
-	AOBJ_PROXY
+	AOBJ_CAPTUREFEED
 };
 struct arcan_aobj;
 
@@ -79,12 +78,6 @@ arcan_aobj_id arcan_audio_load_sample(const char* fname, float gain, arcan_errc*
 arcan_aobj_id arcan_audio_feed(arcan_afunc_cb feed, void* tag, arcan_errc* errc);
 arcan_errc arcan_audio_alterfeed(arcan_aobj_id id, arcan_afunc_cb feed);
 int arcan_audio_findstreambufslot(arcan_aobj_id id);
-
-/* setup a proxy object for some commands (gain, ...),
- * used particularly in internal target launch mode when
- * we don't want to interfere with a targets buffering too much
- * and just implement our transformations client- side */
-arcan_aobj_id arcan_audio_proxy(arcan_again_cb feed, void* tag);
 enum aobj_kind arcan_audio_kind(arcan_aobj_id);
 
 /* destroy an audio object and everything associated with it */
