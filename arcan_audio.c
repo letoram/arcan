@@ -784,10 +784,10 @@ static arcan_errc capturefeed(arcan_aobj* aobj, arcan_aobj_id id, unsigned buffe
 			alcCaptureSamples(dev, (ALCvoid *)capturebuf, sample); 
 			
 			if (aobj->monitor)
-				aobj->monitor(aobj->id, (char*) capturebuf, sample << 2, SHMPAGE_ACHANNELCOUNT, SHMPAGE_SAMPLERATE, aobj->monitortag);
+				aobj->monitor(aobj->id, (uint8_t*) capturebuf, sample << 2, SHMPAGE_ACHANNELCOUNT, SHMPAGE_SAMPLERATE, aobj->monitortag);
 
 			if (current_acontext->globalhook)
-				current_acontext->globalhook(aobj->id, (char*) capturebuf, sample << 2, SHMPAGE_ACHANNELCOUNT, SHMPAGE_SAMPLERATE, current_acontext->global_hooktag);
+				current_acontext->globalhook(aobj->id, (uint8_t*) capturebuf, sample << 2, SHMPAGE_ACHANNELCOUNT, SHMPAGE_SAMPLERATE, current_acontext->global_hooktag);
 		}
 	}
 	

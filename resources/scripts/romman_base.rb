@@ -118,7 +118,7 @@ DQL = Dql.new
 # Wrapped for getting a minimalistic query trace
 module DBWrapper
 	def execute(qry, *args)
-		STDOUT.print("should execute: #{qry}\n")
+#		STDOUT.print("should execute: #{qry}\n")
 		super(qry, args)
 	end
 end

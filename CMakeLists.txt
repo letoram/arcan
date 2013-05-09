@@ -375,7 +375,7 @@ if (EXISTS "/usr/bin/dpkg")
 	set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
 	set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION})
 	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Bjorn Stahl")
-	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.4), libglu1-mesa | libglu1, liblua5.1-0, libopenal1, libsdl-image1.2 (>= 1.2.10), libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libvorbisfile3 (>= 1.1.2), libavcodec-extra-53 (>= 4:0.7-1), libavformat53 (>= 4:0.7-1) | libavformat-extra-53 (>= 4:0.7-1), libavutil-extra-51 (>= 4:0.7-1), libswscale2 (>= 4:0.7-1) | libswscale-extra-2 (>= 4:0.7-1), libavdevice53 (>= 4:0.7-1), libbz2-1.0, libvorbis0a, libx264, librtmp, libogg0, ruby1.9.1, libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.4), libglu1-mesa | libglu1, liblua5.1-0, libopenal1, libsdl-image1.2 (>= 1.2.10), libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libavcodec54 (>= 8:1.0.0), libavformat54 (>= 8:1.0-0), libavutil51 (>= 8:1.0.0, libswscale2 (>= 8:1.0.0), libavdevice54 (>= 8:1.0-0), libswresample0 (>= 8:1.0.0), libbz2-1.0, x264, librtmp0, ruby1.9.1, libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1, librmagick-ruby")
 
 endif(EXISTS "/usr/bin/dpkg")
 
