@@ -415,23 +415,6 @@ enum aobj_kind arcan_audio_kind(arcan_aobj_id id)
 	return aobj ? aobj->kind : AOBJ_INVALID;
 }
 
-arcan_aobj_id arcan_audio_proxy(arcan_again_cb proxy, void* tag)
-{
-	arcan_aobj_id rid = ARCAN_EID;
-
-	if (proxy) {
-		arcan_aobj* aobj;
-		rid = arcan_audio_alloc(&aobj);
-		aobj->kind = AOBJ_PROXY;
-		aobj->tag = tag;
-		aobj->feed = NULL;
-		aobj->gproxy = proxy;
-		aobj->gain = 1.0;
-	}
-
-	return rid;
-}
-
 arcan_errc arcan_audio_suspend()
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
@@ -842,8 +825,6 @@ void arcan_audio_refresh()
 			current->kind == AOBJ_CAPTUREFEED){
 			arcan_astream_refill(current);
 		}
-		else if (current->kind == AOBJ_PROXY && current->feed)
-			current->feed(current, current->alid, UINT_MAX, current->tag);
 
 		_wrap_alError(current, "audio_refresh()");
 		current = current->next;

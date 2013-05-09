@@ -524,13 +524,9 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 
 /* buffer == 0, shutting down */
 	if (buffer > 0 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
-/*		static FILE* fpekka;
-		if (!fpekka)
-			fpekka = fopen("test.raw", "w+");
-	*/	
+
 /* this function will make sure all monitors etc. gets their chance */
 		SDL_mutexP( src->lock_audb );
-//		fwrite(src->audb, 1, src->ofs_audb, fpekka);
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
 		SDL_mutexV( src->lock_audb );
 
@@ -656,21 +652,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
  * if we don't maintain a queue (present as soon as possible) */
 		if (src->nopts){
 			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
-
-/* the first time around, we also need to setup the audio mapping */
-			if (src->aid == ARCAN_EID){
-				if (src->kind == ARCAN_HIJACKLIB){
-					src->aid = arcan_audio_proxy(again_feed, src);
-					arcan_audio_alterfeed(src->aid, arcan_frameserver_audioframe_direct);
-				}
-				else
-					src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, src, &rv);
-			}
 		}
 		else {
-			if (src->aid == ARCAN_EID)
-				src->aid = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, src, &rv);
-
 			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
 
 /* otherwise, figure out reasonable buffer sizes (or user-defined overrides) */
@@ -889,11 +872,14 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp setup)
 {
+	arcan_errc errc;
+	
 /* "movie" mode involves parallel queues of raw, decoded, frames and heuristics
  * for dropping, delaying or showing frames based on DTS/PTS values */
 	if (setup.use_builtin){
 		if (strcmp(setup.args.builtin.mode, "movie") == 0){
-			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
+			ctx->kind  = ARCAN_FRAMESERVER_INPUT;
+			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, ctx, &errc);
 /* nopts / autoplay is preset from the calling context */
 		}
 
@@ -903,6 +889,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->nopts    = true;
 			ctx->autoplay = true;
+			ctx->aid      = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
