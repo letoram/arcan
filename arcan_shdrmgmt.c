@@ -339,8 +339,8 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 			loc = glGetUniformLocation(slot->prg_container, label);
 			*current = (struct shaderv*) malloc( sizeof(struct shaderv) );
 			(*current)->label = strdup(label);
-			(*current)->loc = loc;
-			(*current)->type = type;
+			(*current)->loc   = loc;
+			(*current)->type  = type;
 			(*current)->next  = NULL;
 		}
 

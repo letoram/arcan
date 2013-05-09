@@ -401,7 +401,7 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, int16_t* bu
 				work_sample += dst->amixer.inaud[i].inbuf[sc] - (work_sample * dst->amixer.inaud[i].inbuf[sc]);
 			}
 /* clip output */
-			int16_t sample_conv = work_sample >= 1.0 ? 32767.0 : (work_sample < -1.0 ? -32768.0 : work_sample * 32767.0);
+			int16_t sample_conv = work_sample >= 1.0 ? 32767.0 : (work_sample < -1.0 ? -32768 : work_sample * 32767);
 			memcpy(&dst->audb[dst->ofs_audb], &sample_conv, sizeof(int16_t));
 			dst->ofs_audb += sizeof(int16_t);
 		}

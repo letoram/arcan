@@ -344,7 +344,7 @@ function create_weighted_fbo( frames, delta, deltaonly )
 	mixl = "";
 	for i=1,#frames-1 do
 		if (delta) then
-			table.insert(resshader, "vec4 col" .. tostring(i) .. " = clamp(col0 - texture2D(map_tu" .. tostring(i) .. ", texco), 0.0, 0.5);");
+			table.insert(resshader, "vec4 col" .. tostring(i) .. " = clamp(col0 - texture2D(map_tu" .. tostring(i) .. ", texco), 0.0, 1.0);");
 		else
 			table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i) .. ", texco);")
 		end
