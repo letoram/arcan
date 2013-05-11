@@ -270,7 +270,6 @@ end
 
 function gridledetail_show(detailres, gametbl, ind)
 	if (detailview.loaded == false) then
-		print("first time load");
 		gridledetail_load();
 	end
 

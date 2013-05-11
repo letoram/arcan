@@ -39,7 +39,8 @@ local function cleanup()
 		local old_clock = gridle_clock_pulse;
 		blend_image(internal_vid, 0.0, 20);
 		audio_gain(internal_aid, 0.0, 20);
-		
+
+-- should be removed when save-state cleanup in libretro frameserver is less .. "dumb" 
 		gridle_clock_pulse = function()
 			if counter > 0 then
 				counter = counter - 1;
@@ -66,6 +67,10 @@ local function launch(tbl)
 
 -- load the standard icons needed to show internal launch info
 		imagery.loading = load_image("images/icons/colourwheel.png");
+		resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
+		move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+		order_image(imagery.loading, INGAMELAYER_OVERLAY);
+		
 		image_tracetag(imagery.loading, "loading");
 	
 		imagery.nosave  = load_image("images/icons/brokensave.png");
@@ -88,19 +93,6 @@ local function launch(tbl)
 		settings.in_internal = false;
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
 		launch_target( tbl.gameid, LAUNCH_EXTERNAL);
-	end
-end
-
-local function reset_customview()
-	if ( navi:escape() ) then
-		play_audio(soundmap["MENU_FADE"])
--- delete all "new" resources
-		pop_video_context();
--- then copy the server vid again as it resides on the first layer
-		push_video_context();
-		dispatch_pop();
-	else
-		navi_change(navi, navitbl);
 	end
 end
 
@@ -245,7 +237,6 @@ function update_shader(resname)
 end
 
 local function load_cb(restype, lay)
-	print(lay.idtag);
 	if (restype == LAYRES_STATIC) then
 		if (lay.idtag == "background") then
 			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
@@ -326,7 +317,7 @@ function gridle_customview()
 		setup_customview();
 		layout.default_gain = settings.movieagain;
 		layout:show();
-		music_start_bgmusic();
+		music_start_bgmusic(settings.bgmusic_playlist);
 		return true;
 	end
 	

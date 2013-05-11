@@ -391,11 +391,6 @@ function gridle()
 -- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 
 
-	music_start_bgmusic(settings.bgmusic_playlist);
-	if (settings.sortfunctions[settings.sortorder]) then
-		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
-	end
-	
 	build_fadefunctions();
 	osd_visible = false;
 
@@ -521,6 +516,12 @@ function setup_gridview()
 	gridview_input();
 	setup_3dsupport();
 	grab_sysicons();
+	
+	music_start_bgmusic(settings.bgmusic_playlist);
+	if (settings.sortfunctions[settings.sortorder]) then
+		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
+	end
+	
 	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 	
 	imagery.black = fill_surface(1,1,0,0,0);

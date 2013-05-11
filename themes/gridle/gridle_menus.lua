@@ -38,7 +38,7 @@ local function bgtrig()
 end
 
 local function reset_customview()
-	zap_resource("customview_cfg.lua");
+	zap_resource("customview.lay");
 
 -- despawn menu
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
