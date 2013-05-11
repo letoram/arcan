@@ -422,6 +422,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		break;
 
 		case RETRO_ENVIRONMENT_GET_CAN_DUPE:
+			*((bool*) data) = true;
 			rv = true;
 		break;
 

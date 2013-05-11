@@ -84,6 +84,10 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 	end
 end
 
+function dispatch_current()
+	return settings.dispatch_stack[#settings.dispatch_stack];
+end
+
 function dispatch_pop()
 	local input_key = string.lower(THEMENAME) .. "_input";
 	
@@ -266,13 +270,19 @@ function music_next_song(reccount)
 	return gridle_nextsong(reccount - 1);
 end
 
--- create a persistant frameserver connection responsible for streaming a song,
+--
+-- Create a persistant frameserver connection responsible for streaming a song,
 -- whenever that finishes, traverse the playlist to find a new one etc.
+-- This can be called repeatedly and tracks state between changes (using settings.bgmusic
+-- and playlist as argument)
+--
 function music_start_bgmusic(playlist)
-	if (not music_load_playlist(playlist) or settings.bgmusic == "Disabled" ) then
+	if (settings.last_playlist == playlist) or 
+		(not music_load_playlist(playlist) or settings.bgmusic == "Disabled") then
 		return;
 	end
 
+	settings.last_playlist = playlist;
 	settings.playlist_ofs = 1;
 	if (settings.bgmusic_order == "Randomized") then
 		music_randomize_playlist();
@@ -661,6 +671,10 @@ function gridle_internal_cleanup(finishedhook, forced)
 			internal_statectl("auto", true);
 			expire_image(internal_vid, 20);
 
+			if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
+				resume_movie(imagery.musicplayer);
+			end
+			
 -- hack around keyconfig being called "per game"
 			keyconfig.table = settings.keyconftbl;
 		end
