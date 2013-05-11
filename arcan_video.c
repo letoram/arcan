@@ -145,7 +145,7 @@ static void allocate_and_store_globj(arcan_vobject* dst, unsigned* dstid, unsign
 	}
 
 	assert(dst->gl_storage.txu != 0);
-	
+
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
 
@@ -264,7 +264,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 
  			if (current->transform && arcan_video_display.c_ticks > context->last_tickstamp)
 				rebase_transform(current->transform, arcan_video_display.c_ticks - context->last_tickstamp);
-	
+
 /* conservative means that we do not keep a copy of the originally decoded memory,
  * essentially cutting memory consumption in half but increasing cost of pop() and push()
  * will be made obsolete after hardening when "caching" is up to the imageserver */
@@ -309,7 +309,7 @@ static void rebase_transform(struct surface_transform* current, arcan_tickv ofse
 		current->scale.startt += ofset;
 		current->scale.endt += ofset;
 	}
-	
+
 	if (current->next)
 		rebase_transform(current->next, ofset);
 }
@@ -353,7 +353,7 @@ signed arcan_video_pushcontext()
 		return -1;
 
 	current_context->last_tickstamp = arcan_video_display.c_ticks;
-	
+
 /* copy everything then manually reset some fields */
 	memcpy(&context_stack[ ++context_ind ], current_context, sizeof(struct arcan_video_context));
 	deallocate_gl_context(current_context, false);
@@ -373,7 +373,7 @@ signed arcan_video_pushcontext()
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
 	current_context->vitems_pool = (arcan_vobject*) calloc(sizeof(arcan_vobject), current_context->vitem_limit);
 	current_context->rtargets[0].first = NULL;
-	
+
 /* propagate persistent flagged objects upwards */
 	transfer_persists(&context_stack[ context_ind - 1], current_context, false);
 
@@ -396,13 +396,13 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 		*dst = ARCAN_EID;
 		return arcan_video_popcontext();
 	}
-	
+
 	/* do we have enough space in the old context to save the current? */
-	
-	
+
+
 	/* if so, create a fbo, and if that goes well, do a lsat fbo renderpass into
 	 * that rendertarget, clean everything up, inject and store vobj in dst */
-	
+
 	int nfc = arcan_video_popcontext();
 		return nfc;
 }
@@ -535,7 +535,7 @@ arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id)
 	if (status) {
 		rv = current_context->vitems_pool + fid;
 		rv->current_frame = rv;
-	
+
 		rv->gl_storage.txu = arcan_video_display.deftxs;
 		rv->gl_storage.txv = arcan_video_display.deftxt;
 		rv->gl_storage.scale = arcan_video_display.scalemode;
@@ -1068,10 +1068,10 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, bool f
 	SDL_GL_SwapBuffers();
 	SDL_GL_SwapBuffers();
 	int retrycount = 0;
-	
+
 /* try to get a decent measurement of actual timing, this is not really used for
  * synchronization but rather as a guess of we're actually vsyncing and how other
- * processing should be scheduled in relation to vsync, or if we should yield at 
+ * processing should be scheduled in relation to vsync, or if we should yield at
  * appropriate times */
 	long long int samples[10], sample_sum;
 retry:
@@ -1099,7 +1099,7 @@ retry:
 	}
 	else
 		arcan_video_display.vsync_timing = mean;
-	
+
 	arcan_warning("arcan_video_init(), timing estimate (mean: %f, deviation: %f, samples used: %d)\n", mean, stddev, 10 * (retrycount + 1));
 
 /* need to be called AFTER we have a valid GL context, else we get the "No GL version" */
@@ -1445,7 +1445,7 @@ static arcan_errc attach_readback(arcan_vobj_id src)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* dstobj = arcan_video_getobject(src);
-	
+
 	if (dstobj){
 		if (dstobj->gl_storage.w != arcan_video_screenw() || dstobj->gl_storage.h != arcan_video_screenh()){
 			return ARCAN_ERRC_BAD_ARGUMENT;
@@ -1463,7 +1463,7 @@ static arcan_errc attach_readback(arcan_vobj_id src)
 		}
 
 	}
-	
+
 	return rv;
 }
 
@@ -1471,7 +1471,7 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 {
 	if (src == ARCAN_VIDEO_WORLDID)
 		return attach_readback(did);
-	
+
 	arcan_vobject* dstobj = arcan_video_getobject(did);
 	arcan_vobject* srcobj = arcan_video_getobject(src);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1553,7 +1553,7 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 		current_context->stdoutp.readback = readback;
 		return ARCAN_OK;
 	}
-	
+
 	arcan_vobject* vobj = arcan_video_getobject(did);
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1563,7 +1563,7 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 		rtgt->readback = readback;
 		return ARCAN_OK;
 	}
-		
+
 	return ARCAN_ERRC_UNACCEPTED_STATE;
 }
 
@@ -1941,7 +1941,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons dis
 		vobj->origh = display.h;
 
 		rescale_origwh(vobj, fx, fy);
-	
+
 		vobj->gl_storage.w = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.w : nexthigher(store.w);
 		vobj->gl_storage.h = vobj->gl_storage.scale == ARCAN_VIMAGE_NOPOW2 ? store.h : nexthigher(store.h);
 		vobj->default_frame.s_raw = vobj->gl_storage.w * vobj->gl_storage.h * 4;
@@ -2207,17 +2207,17 @@ arcan_errc arcan_video_copyprops ( arcan_vobj_id sid, arcan_vobj_id did )
 	if (src && dst){
 		surface_properties newprop;
 		arcan_resolve_vidprop(src, 0.0, &newprop);
-		
+
 		dst->current = newprop;
 /* we need to translate scale */
 		if (newprop.scale.x > 0 && newprop.scale.y > 0){
 			int dstw = newprop.scale.x * src->origw;
 			int dsth = newprop.scale.y * src->origh;
-	
+
 			dst->current.scale.x = (float) dstw / (float) dst->origw;
 			dst->current.scale.y = (float) dsth / (float) dst->origh;
 		}
-		
+
 		rv = ARCAN_OK;
 	}
 
@@ -2405,7 +2405,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		glDeleteFramebuffers(1, &current_context->stdoutp.fbo);
 		current_context->stdoutp.fbo = 0;
 	}
-	
+
 /* step one, disassociate from ALL rendertargets,  */
 	detach_fromtarget(&current_context->stdoutp, vobj);
 	for (unsigned int i = 0; i < current_context->n_rtargets && vobj->extrefc.attachments; i++)
@@ -2556,13 +2556,13 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		abort();
 #endif
 	}
-	
+
 	free(vobj->tracetag);
 
 /* lots of default values are assumed to be 0, so reset the entire object to be sure.
  * will help leak detectors as well */
 	memset(vobj, 0, sizeof(arcan_vobject));
-	
+
 	for (int i = 0; i < cascade_c; i++)
 		if (pool[i] && pool[i]->flags.in_use)
 		arcan_video_deleteobject(pool[i]->cellid);
@@ -3692,12 +3692,12 @@ void arcan_video_refresh_GL(float lerp)
 		process_rendertarget(&current_context->stdoutp, lerp);
 		arcan_debug_pumpglwarnings("mrtpost");
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
+
 		if (current_context->stdoutp.readback != 0){
 //			process_readback(&current_context->stdoutp, lerp);
 		}
 	}
-	else 
+	else
 		process_rendertarget(&current_context->stdoutp, lerp);
 }
 
@@ -3960,7 +3960,6 @@ bool arcan_video_prepare_external()
 
 /* We need to kill of large parts of SDL as it may hold locks on other resources that the external launch might need */
 	arcan_event_deinit(arcan_event_defaultctx());
-	arcan_shader_unload_all();
 
 	return true;
 }
@@ -4030,7 +4029,7 @@ void arcan_video_shutdown()
 	while ( lastctxc != (lastctxa = arcan_video_popcontext()) )
 		lastctxc = lastctxa;
 
-	arcan_shader_unload_all();
+	arcan_shader_flush();
 	deallocate_gl_context(current_context, true);
 	arcan_video_reset_fontcache();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

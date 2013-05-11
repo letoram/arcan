@@ -11,7 +11,7 @@
 #endif
 
 #define GL_GLEXT_PROTOTYPES 1
-/*#define SHADER_TRACE*/
+#define SHADER_TRACE
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -61,6 +61,7 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrmat4x4, /* texturem */
 
 	shdrfloat, /* obj_opacity */
+
 	shdrfloat, /* fract_timestamp */
 	shdrint /* timestamp */
 };
@@ -139,7 +140,7 @@ static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg);
 static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, const char* program)
 {
 #ifdef SHADER_TRACE
-	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n", loc, typestrtbl[kind], kind, id, program); 
+	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n", loc, typestrtbl[kind], kind, id, program);
 #endif
 
 #ifdef _DEBUG
@@ -182,23 +183,27 @@ static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, cons
 
 arcan_errc arcan_shader_activate(arcan_shader_id shid)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	
+	if (!arcan_shader_valid(shid))
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
 	shid -= shdr_global.base;
- 	if (shid < shdr_global.ofs && shid != shdr_global.active_prg){
+
+ 	if (shid != shdr_global.active_prg){
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
 
 #ifdef SHADER_TRACE
-		arcan_warning("[shader] shid(%d) => (%d), activate.\n", shid, cur->prg_container);
+		arcan_warning("[shader] shid(%d) => (%d), activate %s\n", shid, cur->prg_container, cur->label);
 #endif
 
+/* NOTE: optimization opportunity; since we cache the data in each persistv, only activate those
+ * that have changed since last push. */
 /* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
  * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0)
-				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i], typestrtbl[i], cur->label);
+				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i], symtbl[i], cur->label);
 		}
 
 /* activate any persistant values */
@@ -207,21 +212,14 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 			setv(current->loc, current->type, (void*) current->data, current->label, cur->label);
 			current = current->next;
 		}
-
-		rv = ARCAN_OK;
 	}
-#ifdef SHADER_TRACE
-	else if (shid != shdr_global.active_prg) {
-		arcan_warning("[shader] couldn't map (%d) to a useful shader.\n", shid);
-	}
-#endif
 
-	return rv;
+	return ARCAN_OK;
 }
 
 arcan_shader_id arcan_shader_lookup(const char* tag)
 {
-		for (int i = 0; i < shdr_global.ofs; i++){
+		for (int i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++){
 			if (shdr_global.slots[i].label && strcmp(tag, shdr_global.slots[i].label) == 0)
 				return i + shdr_global.base;
 		}
@@ -231,78 +229,106 @@ arcan_shader_id arcan_shader_lookup(const char* tag)
 
 bool arcan_shader_valid(arcan_shader_id id)
 {
-	return (id - shdr_global.base < shdr_global.ofs && id >= 0);
+	id -= shdr_global.base;
+	return (id >= 0 && id < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]) && shdr_global.slots[id].label != NULL);
 }
 
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
 {
-	arcan_shader_id rv = ARCAN_EID;
+	int slot_lim = sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]);
 	bool overwrite = false;
 	int dstind = -1;
 
 /* first, look for a preexisting tag */
-	for (unsigned i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++)
-		if ( !shdr_global.slots[i].label )
-			break;
-		else if (strcmp( shdr_global.slots[i].label, tag ) == 0){
+	for (unsigned i = 0; i < slot_lim; i++)
+		if (shdr_global.slots[i].label && strcmp(shdr_global.slots[i].label, tag) == 0){
 			dstind = i;
 			overwrite = true;
 			break;
 		}
 
-/* didn't get a match? take the next free slot,
- * else deallocate the current shader and replace it with the new ones */
-	if (-1 == dstind)
-		dstind = shdr_global.ofs++;
-	else{
-		kill_shader(&shdr_global.slots[dstind].prg_container, &shdr_global.slots[dstind].obj_vertex, &shdr_global.slots[dstind].obj_fragment);
-		free(shdr_global.slots[dstind].vertex);
-		free(shdr_global.slots[dstind].fragment);
-		free(shdr_global.slots[dstind].label);
-		memset(&shdr_global.slots[dstind], 0, sizeof(struct shader_cont));
-		memset(&shdr_global.slots[dstind].locations, -1, sizeof(ofstbl) / sizeof(ofstbl[0]) * sizeof(GLint));
+/* no match, find a free slot */
+	if (dstind == -1){
+		shdr_global.ofs = (shdr_global.ofs + 1) % slot_lim;
+		if (!shdr_global.slots[shdr_global.ofs].label)
+			dstind = shdr_global.ofs;
+		else
+			for (unsigned i = 0; i < slot_lim; i++)
+				if (!shdr_global.slots[i].label){
+					dstind = i;
+					break;
+				}
 	}
 
-/* copy label, programs, send to GL, resolve shared uniforms etc.
- * keep the data even if the build fails */
-	if (dstind >= 0 && dstind < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0])){
-		struct shader_cont* cur = shdr_global.slots + dstind;
-		memset(cur, 0, sizeof(struct shader_cont));
-		cur->label = strdup(tag);
-		cur->vertex = strdup(vert);
-		cur->fragment = strdup(frag);
+/* still no match? means we're overallocated on shaders, bad program/script */
+	if (dstind == -1)
+		return ARCAN_EID;
 
-		if (build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag) == false){
-			if (overwrite == false)
-				shdr_global.ofs--;
-			return ARCAN_EID;
+	struct shader_cont* cur = &shdr_global.slots[dstind];
+
+/* obliterate the last one first */
+	if (overwrite){
+		kill_shader(&cur->prg_container, &cur->obj_fragment, &cur->obj_vertex);
+		free(cur->vertex);
+		free(cur->fragment);
+		free(cur->label);
+
+/* drop all persistant values */
+		struct shaderv* first = cur->persistvs;
+		while (first){
+			struct shaderv* last = first;
+			free(first->label);
+			first = first->next;
+			memset(last, 0, sizeof(struct shaderv));
+			free(last);
 		}
+
+/* reset everything to NULL */
+		memset(cur, 0, sizeof(struct shader_cont));
+	}
+
+/* always reset locations tbl */
+	int global_lim = sizeof(ofstbl) / sizeof(ofstbl[0]);
+	for (int i = 0; i < global_lim; i++)
+		cur->locations[i] = -1;
+
+	if (build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag) == false)
+		return ARCAN_EID;
+
+	cur->label    = strdup(tag);
+	cur->vertex   = strdup(vert);
+	cur->fragment = strdup(frag);
+
 #ifdef _DEBUG
 			arcan_warning("arcan_shader_build(%s) -- new ID : (%i)\n", tag, cur->prg_container);
 #endif
 
-		glUseProgram(cur->prg_container);
-		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
-			assert(symtbl[i] != NULL);
-			cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
+/* preset global symbol mappings */
+	glUseProgram(cur->prg_container);
+	for (unsigned i = 0; i < global_lim; i++){
+		assert(symtbl[i] != NULL);
+		cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
 #ifdef _DEBUG
-            if(cur->locations[i] != -1)
+		if(cur->locations[i] != -1)
 				arcan_warning("arcan_shader_build(%s)(%d), resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
 #endif
-        }
-
-		for (unsigned i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
-			cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
-#ifdef _DEBUG
-            if (cur->attributes[i] != -1)
-				arcan_warning("arcan_shader_build(%s)(%d), resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
-#endif
-		}
-
-		rv = dstind + shdr_global.base;
 	}
 
-	return rv;
+/* same treatment for attributes */
+	for (unsigned i = 0; i < sizeof(attrsymtbl) / sizeof(attrsymtbl[0]); i++){
+		cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
+#ifdef _DEBUG
+	if (cur->attributes[i] != -1)
+				arcan_warning("arcan_shader_build(%s)(%d), resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
+#endif
+	}
+
+/* revert to last used program! */
+	if (shdr_global.active_prg != -1)
+		glUseProgram(shdr_global.active_prg);
+
+/* we use a variable base to prevent hardcoded values */
+	return dstind + shdr_global.base;
 }
 
 bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
@@ -316,7 +342,7 @@ bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 #ifdef SHADER_TRACE
 	arcan_warning("[shader] global envv global update.\n");
 #endif
-	
+
 	/* reflect change in current active shader */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
@@ -455,8 +481,10 @@ const char* arcan_shader_symtype(enum arcan_shader_envts env)
 
 void arcan_shader_flush()
 {
-	for (unsigned i = 0; i < shdr_global.ofs; i++){
+	for (unsigned i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++){
 		struct shader_cont* cur = shdr_global.slots + i;
+		if (cur->label == NULL)
+			continue;
 
 		free( cur->label );
 		free( cur->vertex );
@@ -464,7 +492,7 @@ void arcan_shader_flush()
 
 		kill_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment);
 		cur->prg_container = cur->obj_vertex = cur->obj_fragment;
-		
+
 		struct shaderv* first = cur->persistvs;
 		while (first){
 			struct shaderv* last = first;
@@ -473,26 +501,19 @@ void arcan_shader_flush()
 			memset(last, 0, sizeof(struct shaderv));
 			free(last);
 		}
-		
+
 		memset(cur, 0, sizeof(struct shader_cont));
 	}
 
 	shdr_global.ofs = 0;
 }
 
-void arcan_shader_unload_all()
-{
-	for (unsigned i = 0; i < shdr_global.ofs; i++){
-		struct shader_cont* cur = shdr_global.slots + i;
-		kill_shader(&cur->prg_container, &cur->obj_vertex, &cur->obj_fragment);
-	}
-
-}
-
 void arcan_shader_rebuild_all()
 {
-	for (unsigned i = 0; i < shdr_global.ofs; i++){
+	for (unsigned i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++){
 		struct shader_cont* cur = shdr_global.slots + i;
+		if (cur->label == NULL)
+			continue;
 
 		build_shader(cur->label, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment,
 			cur->vertex, cur->fragment);

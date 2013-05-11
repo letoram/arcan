@@ -632,14 +632,14 @@ int arcan_lua_captureaudio(lua_State* ctx)
 {
 	char** cptlist = arcan_audio_capturelist();
 	const char* luach = luaL_checkstring(ctx, 1);
-	
+
 	bool match = false;
 	while (*cptlist && !match)
 		match = strcmp(*cptlist++, luach) == 0;
-	
+
 	if (match){
 		lua_pushaid(ctx, arcan_audio_capturefeed(luach) );
-		
+
 		return 1;
 	}
 
@@ -650,7 +650,7 @@ int arcan_lua_capturelist(lua_State* ctx)
 {
 	char** cptlist = arcan_audio_capturelist();
 	int count = 1;
-	
+
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 
@@ -660,7 +660,7 @@ int arcan_lua_capturelist(lua_State* ctx)
 		lua_rawset(ctx, top);
 		cptlist++;
 	}
-	
+
 	return 1;
 }
 
@@ -742,7 +742,7 @@ int arcan_lua_buildstr(lua_State* ctx)
 	const char* message = luaL_checkstring(ctx, 1);
 	int vspacing = luaL_optint(ctx, 2, 4);
 	int tspacing = luaL_optint(ctx, 3, 64);
-	
+
 	unsigned int nlines = 0;
 	unsigned int* lineheights = NULL;
 
@@ -781,14 +781,14 @@ int arcan_lua_settxcos_default(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobject* dst = arcan_video_getobject(id);
 	bool mirror = luaL_optinteger(ctx, 2, 0) != 0;
-	
+
 	if (dst){
 		if (mirror)
 			generate_mirror_mapping(dst->txcos, 1.0, 1.0);
 		else
 			generate_basic_mapping(dst->txcos, 1.0, 1.0);
 	}
-	
+
 	return 0;
 }
 
@@ -1048,7 +1048,7 @@ int arcan_lua_playmovie(lua_State* ctx)
 	return 0;
 }
 
-/* NOTE: the is_special_res / loadmovie hack is slated to be replaced for the 
+/* NOTE: the is_special_res / loadmovie hack is slated to be replaced for the
  * hardening 0.3 branch, where the nopts / framequeue solution is dropped altogether
  * in favor of doing synchronization work in frameserver- rather than in- core */
 static bool is_special_res(const char* msg)
@@ -1531,12 +1531,12 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					arcan_lua_tblnum(ctx, "id", ev->data.network.connid, top);
 					arcan_lua_tblstr(ctx, "host", ev->data.network.host.addr, top);
 				break;
-					
+
 				case EVENT_NET_NORESPONSE:
 					arcan_lua_tblstr(ctx, "kind", "noresponse", top);
 					arcan_lua_tblstr(ctx, "host", ev->data.network.host.addr, top);
 				break;
-				
+
 				case EVENT_NET_CUSTOMMSG:
 					arcan_lua_tblstr(ctx, "kind", "message", top);
 					ev->data.network.message[ sizeof(ev->data.network.message) - 1] = 0;
@@ -2085,7 +2085,7 @@ int arcan_lua_storekey(lua_State* ctx)
 		const char* name = luaL_checkstring(ctx, 2);
 		arcan_db_theme_kv(dbhandle, arcan_themename, key, name);
 	}
-	
+
 	return 0;
 }
 
@@ -2635,7 +2635,7 @@ int arcan_lua_switchtheme(lua_State *ctx)
 {
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHTHEME};
 	const char* newtheme = luaL_optstring(ctx, 1, arcan_themename);
-	
+
 	snprintf(ev.data.system.data.message, sizeof(ev.data.system.data.message) / sizeof(ev.data.system.data.message[0]), "%s", newtheme);
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
 
@@ -3304,7 +3304,7 @@ int arcan_lua_recordset(lua_State* ctx)
 
 		global_monitor = true;
 	}
-	
+
 	intptr_t ref = (intptr_t) 0;
 
 	if (arcan_video_display.fbo_disabled){
@@ -3333,7 +3333,7 @@ int arcan_lua_recordset(lua_State* ctx)
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 4, i+1);
 			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
-			
+
 			if (setvid == ARCAN_VIDEO_WORLDID){
 				if (nvids != 1)
 					arcan_fatal("arcan_lua_recordset(), with WORLDID in recordset, no other entries are allowed.\n");
@@ -3350,10 +3350,10 @@ int arcan_lua_recordset(lua_State* ctx)
 			else {
 				if (!rtsetup)
 					rtsetup = (arcan_video_setuprendertarget(did, pollrate, scale == RENDERTARGET_SCALE), true);
-				
+
 				arcan_video_attachtorendertarget(did, setvid, detach == RENDERTARGET_DETACH);
 			}
-			
+
 		}
 	}
 	else{
@@ -3449,7 +3449,7 @@ int arcan_lua_recordset(lua_State* ctx)
 				arcan_audio_hookfeed(*base++, mvctx, arcan_frameserver_avfeedmon, &hookfun);
 			}
 
-/* if we have several input audio sources, we need to set up an intermediate mixing system, 
+/* if we have several input audio sources, we need to set up an intermediate mixing system,
  * that accumulates samples from each audio source monitor, and emitts a mixed buffer. This requires that
  * the audio sources operate at the same rate and buffering will converge on the biggest- buffer audio source */
 			if (naids > 1)
@@ -3613,7 +3613,11 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 	const char* label = luaL_checkstring(ctx, 2);
 	const char* fmtstr = luaL_checkstring(ctx, 3);
 	bool persist = luaL_checknumber(ctx, 4) != 0;
-	arcan_shader_activate(sid);
+
+	if (arcan_shader_activate(sid) != ARCAN_OK){
+		arcan_warning("arcan_lua_shader_uniform(), shader (%d) failed to activate.\n", sid);
+		return 0;
+	}
 
 	if (!label)
 		label = "unknown";
@@ -4051,7 +4055,7 @@ static inline arcan_frameserver* luaL_checknet(lua_State* ctx, bool server, cons
 
 	else if (!server && fsrv->kind != ARCAN_FRAMESERVER_NETCL)
 		arcan_fatal("%s -- Frameserver connected to VID is not in client mode (net_open vs net_listen)\n", prefix);
-	
+
 	return fsrv;
 }
 
@@ -4092,7 +4096,7 @@ static int arcan_lua_net_authenticate(lua_State* ctx)
 
 	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_NET_AUTHENTICATE, .data.network.connid = domain};
 	arcan_frameserver_pushevent(fsrv, &outev);
-	
+
 	return 0;
 }
 
