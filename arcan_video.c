@@ -4040,11 +4040,13 @@ void arcan_video_shutdown()
 }
 
 int arcan_debug_pumpglwarnings(const char* src){
+#ifdef _DEBUG
 	GLenum errc = glGetError();
 	if (errc != GL_NO_ERROR){
 		arcan_warning("GLError detected (%s) GL error, code: %d\n", src, errc);
 		return -1;
 	}
+#endif
 	return 1;
 }
 
