@@ -485,7 +485,6 @@ function add_historybuffer(source, trails, trailstep, trailfall, targetw, target
 	local frames = {};
 	local base = 1.0;
 	
-	print("history", trailfall);
 	if (trailfall > 0) then
 		local startv = 0.9 - (math.abs(trailfall) / 10.0);
 		local endv   = 0.1;
@@ -493,17 +492,14 @@ function add_historybuffer(source, trails, trailstep, trailfall, targetw, target
 		
 		for i=0, trails do
 			frames[i+1] = startv - (step * i);
-			print(frames[i+1]);
 		end
 	else
 		trailfall = math.abs(trailfall);
 -- exponential
 		for i=0, trails do
 			frames[i+1] = 1.0 / math.exp( trailfall * (i / trails) );
-			print(frames[i+1]);
 		end
 	end
-	print("/history");
 	
 -- dynamically generate a shader that multitextures and blends using the above weights
 	local fshader;

@@ -11,6 +11,7 @@
 #endif
 
 #define GL_GLEXT_PROTOTYPES 1
+/*#define SHADER_TRACE*/
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -137,6 +138,10 @@ static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg);
 
 static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, const char* program)
 {
+#ifdef SHADER_TRACE
+	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n", loc, typestrtbl[kind], kind, id, program); 
+#endif
+
 #ifdef _DEBUG
 	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:pre") == -1){
 		arcan_warning("setv() -> errors found when pumping context.\n");
@@ -170,7 +175,7 @@ static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, cons
 			printf("\t [%i] %s : %i\n", i, symtbl[i], src->locations[i]);
 		}
 
-        abort();
+      abort();
     }
 #endif
 }
@@ -178,12 +183,16 @@ static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, cons
 arcan_errc arcan_shader_activate(arcan_shader_id shid)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
+	
 	shid -= shdr_global.base;
  	if (shid < shdr_global.ofs && shid != shdr_global.active_prg){
 		struct shader_cont* cur = shdr_global.slots + shid;
 		glUseProgram(cur->prg_container);
  		shdr_global.active_prg = shid;
+
+#ifdef SHADER_TRACE
+		arcan_warning("[shader] shid(%d) => (%d), activate.\n", shid, cur->prg_container);
+#endif
 
 /* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
  * we use the index as a lookup for value and type */
@@ -201,6 +210,11 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 
 		rv = ARCAN_OK;
 	}
+#ifdef SHADER_TRACE
+	else if (shid != shdr_global.active_prg) {
+		arcan_warning("[shader] couldn't map (%d) to a useful shader.\n", shid);
+	}
+#endif
 
 	return rv;
 }
@@ -212,7 +226,6 @@ arcan_shader_id arcan_shader_lookup(const char* tag)
 				return i + shdr_global.base;
 		}
 
-		printf("lookup %s failed\n", tag);
 	return -1;
 }
 
@@ -300,6 +313,10 @@ bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 
 	int glloc = shdr_global.slots[ shdr_global.active_prg].locations[slot];
 
+#ifdef SHADER_TRACE
+	arcan_warning("[shader] global envv global update.\n");
+#endif
+	
 	/* reflect change in current active shader */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
