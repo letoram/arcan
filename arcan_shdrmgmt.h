@@ -34,7 +34,7 @@ enum shdrutype {
 
 /* all the currently supported value slots,
  * type- encoded in name, the 'n' prefix used
- * means it supports multiple slots for that type */ 
+ * means it supports multiple slots for that type */
 enum arcan_shader_envts{
 /* packed matrices */
 	MODELVIEW_MATR  = 0,
@@ -44,7 +44,7 @@ enum arcan_shader_envts{
 	OBJ_OPACITY     = 3,
 
 /* system values, don't change this order */
-	FRACT_TIMESTAMP_F = 4, 
+	FRACT_TIMESTAMP_F = 4,
 	TIMESTAMP_D       = 5,
 };
 
@@ -70,10 +70,11 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid);
 
 /* pack into a new texture and just return an index to use */
 arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag);
+bool arcan_shader_destroy(arcan_shader_id shid);
 
 /* sweep through the list of stored shared, looking for a matching tag, status sets if the result was found or not */
 arcan_shader_id arcan_shader_lookup(const char* tag);
-bool arcan_shader_valid(arcan_shader_id); 
+bool arcan_shader_valid(arcan_shader_id);
 
 int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 

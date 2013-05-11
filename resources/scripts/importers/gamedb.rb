@@ -1,4 +1,4 @@
-# small script to scrape web-services for metadata 
+# small script to scrape web-services for metadata
 #
 require 'net/http'
 require 'singleton'
@@ -9,13 +9,13 @@ $HAVE_RMAGIC = false
 begin
     require 'RMagick'
     $HAVE_RMAGIC = true
-rescue
+rescue LoadError
 end
 
 # Wrapper around TheGamesDB.net system
 class GamesDB
 	@@domain = "thegamesdb.net"
-	
+
 	@@urls = {
 		:get_platforms => "/api/GetPlatformsList.php",
 		:search_games  => "/api/GetGamesList.php",
@@ -23,10 +23,10 @@ class GamesDB
 		:get_Artwork   => "/api/GetArt.php",
 		:art_base      => "/banners/"
 	}
-	
+
 	def initialize
 	@platforms = {}
-		
+
 # populate a list of platforms
 		xmlsess = parse_url(@@urls[:get_platforms], {})
 		if (xmlsess)
@@ -40,36 +40,36 @@ class GamesDB
 			raise Exception.new("Couldn't access/parse URL: http://#{@@domain}/#{@@urls[:get_platforms]}")
 		end
 	end
-	
+
 # grab a media file and store it to dst (typically resources/mediatype/target/basename)
 	def download_to(dst, path)
 		uri = URI("http://#{@@domain}#{path}")
 		res = Net::HTTP.get_response(uri)
 		STDOUT.print("[GamesDB] Retrieving #{@@domain}#{path}\n")
-	
+
 		begin
 			open(dst, "wb"){|file| file.write(res.body) }
-		rescue => er 
+		rescue => er
 			stderr.print("[TheGamesDB scraper], couldn't download #{path} to #{dst} reason: #{er}\n");
-		end	
+		end
 	end
-		
+
 	def find_system(arg)
 # two passes, first try absolute match
-		
-		@platforms.each_pair{|sysalias, tbl| 
-		return tbl[:name] if (sysalias == arg or tbl[:name] == arg) 
+
+		@platforms.each_pair{|sysalias, tbl|
+		return tbl[:name] if (sysalias == arg or tbl[:name] == arg)
 		}
 
 		@platforms.each_pair{|sysalias, tbl| return tbl[:name] if (sysalias.match(arg) != nil or tbl[:name].match(arg) != nil) }
 		nil
 	end
-	
+
 	def find_game(game, sysdesc)
 		sysdesc = find_system(sysdesc)
 		args = { "name" => game}
 		args["platform"] = sysdesc if sysdesc
-		
+
 		xmlsess = parse_url(@@urls[:search_games], args)
 		if (xmlsess) then
 			res = {}
@@ -82,7 +82,7 @@ class GamesDB
 		else
 			nil
 		end
-	
+
 	rescue
 		nil
 	end
@@ -97,18 +97,18 @@ class GamesDB
 		STDERR.print("GamesDB::parse_url(#{basepath}) failed (#{er})\n")
 		nil
 	end
-	
+
 	def lookup(title, system)
 		dstgame
 	end
-	
+
 	private :download_to, :parse_url
 end
 
 class GamesDBGame < GamesDB
 	attr_accessor :platform, :genres, :title, :publisher, :developer, :rlsdate, :players
 	attr_accessor :screenshots, :boxart_front, :boxart_back
-	
+
 	def initialize(gid)
 		arg = {}
 		arg["id"] = gid
@@ -122,20 +122,20 @@ class GamesDBGame < GamesDB
 			@platform  = xmlsess.xpath("/Data/Game/Platform").text.strip
 			@rlsdate   = xmlsess.xpath("/Data/Game/ReleaseDate").text.strip
 			@players   = xmlsess.xpath("/Data/Game/Players").text.strip
-		
+
 			@genres      = []
 			@screenshots = []
-			boxart      = {} 
-			
+			boxart      = {}
+
 			genrenode = xmlsess.xpath("/Data/Game/Genres")
 			genrenode.children.each{|child| genres << child.text.strip if child.text } if genrenode and genrenode.children
 
 			boxartnode = xmlsess.xpath("/Data/Game/Images/boxart")
-			
+
 			if (boxartnode)
 					boxartnode.each{|child|
-					boxart[child['side']] = child.text.strip if child.text 
-				} 
+					boxart[child['side']] = child.text.strip if child.text
+				}
 			end
 
 			ssnode = xmlsess.xpath("/Data/Game/Images/screenshot/original")
@@ -144,7 +144,7 @@ class GamesDBGame < GamesDB
 					@screenshots << child.text.strip if child.text
 				}
 			end
-			
+
 			if (boxart.size > 0)
 				@boxart_front = boxart["front"]
 				@boxart_back = boxart["back"]
@@ -161,7 +161,7 @@ class GamesDBGame < GamesDB
 
 		if (im) then
 		    if (im.columns < width) then
-			 return nil 
+			 return nil
 		    end
 
 		    ar   = im.columns.to_f / im.rows.to_f
@@ -171,7 +171,7 @@ class GamesDBGame < GamesDB
 		end
 	    end
 
-	rescue => er 
+	rescue => er
 	    STDERR.print("[TheGamesDB] -- Couldn't generate thumbnail for #{path}, Reason: #{er}")
 	end
 
@@ -181,14 +181,14 @@ class GamesDBGame < GamesDB
 			download_to( "#{destination}#{ext}", @@urls[:art_base] + @boxart_front ) unless File.exist?("#{destination}#{ext}")
 			thumbnail(destination, ext) unless File.exist?("#{destination}_thumb.png")
 		end
-		
+
 		if @boxart_back then
 			ext = @boxart_back[ @boxart_back.rindex('.') .. -1 ]
 			download_to( "#{destination}_back#{ext}", @@urls[:art_base] + @boxart_back ) unless File.exist?("#{destination}_back#{ext}")
 			thumbnail("#{destination}_back", ext) unless File.exist?("#{destination}_back_thumb.png")
 		end
 	end
-	
+
 	def store_screenshot( destination, ofs = 0 )
 		if (@screenshot[ofs])
 			download_to( "#{destination}#{ext}", @@urls[:art_base] + @screenshots[ofs] ) unless File.exist?("#{destination}#{ext}")
@@ -196,7 +196,7 @@ class GamesDBGame < GamesDB
 		end
 	rescue
 	end
-	
+
 	def to_s
 "Game: #{@title}
 Released: #{@rlsdate}

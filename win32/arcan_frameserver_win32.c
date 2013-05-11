@@ -228,12 +228,10 @@ int main(int argc, char* argv[])
 
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
-#ifdef HAVE_APR
 	else if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);
 	}
-#endif
 	else if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev("retro");
 		arcan_frameserver_libretro_run(resource, keyfile);

@@ -83,13 +83,9 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	res.asem = async;
 	res.vsem = vsync;
 	res.esem = esync;
-/*res.addr->w = 0;
-	res.addr->h = 0; */
-	res.addr->storage.bpp = 4;
+
 	res.addr->vready = false;
 	res.addr->aready = false;
-/*	res.addr->channels = 0;
-	res.addr->samplerate = 0; */
 	res.addr->dms = true;
 
 	parent = res.addr->parent;
