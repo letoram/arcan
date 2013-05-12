@@ -533,6 +533,7 @@ function setup_gridview()
 	imagery.loading = load_image("images/icons/colourwheel.png");
 	resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
 	move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+	order_image(imagery.loading, INGAMELAYER_OVERLAY); 
 	image_tracetag(imagery.loading, "loading");
 	
 	imagery.nosave  = load_image("images/icons/brokensave.png");
