@@ -602,7 +602,7 @@ function show_loading()
 	imagery.loadingbg = fill_surface(VRESW, VRESH, 0, 0, 0);
 	blend_image(imagery.loadingbg, 0.6, 10);
 	order_image(imagery.loadingbg, INGAMELAYER_BACKGROUND);
-	order_image(imagery.loading, INGAMELAYER_BACKGROUND);
+	order_image(imagery.loading, INGAMELAYER_BACKGROUND + 1);
 	blend_image(imagery.loading, 1.0, 10);
 	rotate_image(imagery.loading, 0);
 	rotate_image(imagery.loading, 2048, 200);

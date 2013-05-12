@@ -11,7 +11,6 @@
 #endif
 
 #define GL_GLEXT_PROTOTYPES 1
-#define SHADER_TRACE
 
 #include <SDL.h>
 #include <SDL_opengl.h>
@@ -324,8 +323,9 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 	}
 
 /* revert to last used program! */
-	if (shdr_global.active_prg != -1)
-		glUseProgram(shdr_global.active_prg);
+	if (shdr_global.active_prg != -1){
+		glUseProgram(shdr_global.slots[shdr_global.active_prg].prg_container);
+	}
 
 /* we use a variable base to prevent hardcoded values */
 	return dstind + shdr_global.base;
@@ -346,7 +346,7 @@ bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 	/* reflect change in current active shader */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
-		setv(glloc, typetbl[slot], value, typestrtbl[slot], shdr_global.slots[ shdr_global.active_prg].label );
+		setv(glloc, typetbl[slot], value, symtbl[slot], shdr_global.slots[ shdr_global.active_prg].label );
 		return true;
 	}
 
@@ -506,6 +506,7 @@ void arcan_shader_flush()
 	}
 
 	shdr_global.ofs = 0;
+	shdr_global.active_prg = -1;
 }
 
 void arcan_shader_rebuild_all()
