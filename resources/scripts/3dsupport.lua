@@ -165,6 +165,7 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 -- however it provides a reference point for other vid operations (i.e.
 -- instancing, linking etc.)
 	model.vid = new_3dmodel();
+	image_shader(model.vid, def3d_fullbright); 
 	image_tracetag(model.vid, "3dmodel(" .. modelname ..")");
 	
 	if (model.vid == BADID) then return nil end

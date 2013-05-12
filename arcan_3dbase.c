@@ -208,6 +208,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 
 	multiply_matrix(dmatr, wmvm, omatr);
 	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
+	arcan_shader_envv(OBJ_OPACITY, &props.opa, sizeof(float));
 
 	struct geometry* base = src->geometry;
 
