@@ -825,13 +825,23 @@ static void server_session(const char* host, int limit)
 #endif
 
 	if (apr_pollset_create(&poll_in, limit + 4, netcontext.mempool, 0) != APR_SUCCESS){
-			LOG("(net) -- Couldn't create server pollset, giving up.\n");
+			LOG("(net-srv) -- Couldn't create server pollset, giving up.\n");
 			return;
 	}
 
-	apr_socket_t* ear_sock = server_prepare_socket(host, NULL, DEFAULT_CONNECTION_PORT, true);
+	int sleeptime = 5 * 1000; 
+	int retrycount = 10;
+	apr_socket_t* ear_sock;
+	
+retry:
+	ear_sock = server_prepare_socket(host, NULL, DEFAULT_CONNECTION_PORT, true);
 	if (!ear_sock)
-		return;
+		if (retrycount--){
+			LOG("(net-srv) -- Couldn't prepare listening socket, retrying %d more times in %d seconds.\n", retrycount + 1, sleeptime / 10);
+			goto retry;
+		}
+		else
+			return;
 
 	LOG("(net-srv) -- listening interface up on %s\n", host ? host : "(global)");
 	netcontext.pollset = poll_in;

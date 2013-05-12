@@ -83,6 +83,14 @@ function draw_infowin()
 		settings.infowin:destroy();
 	end
 
+	if (not resource("layouts/" .. settings.menu_layout)) then
+		settings.menu_layout = nil;
+	end
+	
+	if (not resource("layouts/" .. settings.ingame_layout)) then
+		settings.ingame_layout = nil;
+	end
+	
 	local status = {};
 	local undefline = "\\#ff0000Undefined\\#ffffff";
 	
@@ -105,11 +113,11 @@ end
 
 function set_layout(layname, target, save)
 	
-	if (target == "menu") then
+	if (target == "menu" and resource("layouts/" .. layname)) then
 		settings.menu_layout = layname;
 		store_key("menu_layout", layname);
 
-	elseif (target == "ingame") then
+	elseif (target == "ingame" and resource("layouts/" .. layname)) then
 		settings.ingame_layout = layname;
 		store_key("ingame_layout", layname);
 	end
@@ -427,7 +435,7 @@ function load_keys()
 	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
 	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);
 	load_key_str("connect_host",  "connect_host",  settings.connect_host);
-	
+		
 	if #key_queue > 0 then
 		store_key(key_queue);
 	end

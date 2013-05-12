@@ -113,8 +113,8 @@ end
 
 inputmodeptrs["Toggle Mouse Grab"] = inputmodechg;
 inputmodeptrs["Normal"] = inputmodechg;
-inputmodeptrs["Rotate CW"] = inputmodechg;
-inputmodeptrs["Rotate CCW"] = inputmodechg;
+inputmodeptrs["Rotate 90 CW"] = inputmodechg;
+inputmodeptrs["Rotate 90 CCW"] = inputmodechg;
 inputmodeptrs["Invert Axis (analog)"] = inputmodechg;
 inputmodeptrs["Mirror Axis (analog)"] = inputmodechg;
 
