@@ -176,7 +176,7 @@ bool check_theme(const char* theme)
 
 	snprintf(playbuf, playbufsize-1, "%s/%s/%s.lua", arcan_themepath, theme, theme);
 	if (!file_exists(playbuf)) {
-		arcan_warning("Warning: theme check failed, script %s.lua not found.\n", playbuf);
+		arcan_warning("Warning: theme check failed, script %s not found.\n", playbuf);
 		return false;
 	}
 

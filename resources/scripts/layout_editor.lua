@@ -179,6 +179,7 @@ local function update_infowin(self, item)
 
 	local xpos = (item.x < VRESW / 2) and (VRESW / 2) or 0;
 	local ypos = (item.y < VRESH / 2) and (VRESH / 2) or 0;
+	
 	self.infowin:show();
 	video_3dorder(ORDER_LAST);
 	move_image(self.infowin.anchor, math.floor(xpos), math.floor(ypos));
@@ -639,6 +640,7 @@ local function new_3ditem(restbl)
 		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
 		write_rawresource(string.format("itbl.zv   = %d;\n", self.zv));
 		write_rawresource(string.format("itbl.ang  = {%f, %f, %f};\n", self.ang[1], self.ang[2], self.ang[3]));
+		write_rawresource(string.format("itbl.idtag = \"%s\";", self.idtag));
 		write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
 		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
 		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
@@ -973,6 +975,16 @@ local function layout_cleanup(self)
 
 end
 
+local function layout_imagepos3d(self, src, val)
+	order_image(src.vid, val.zv);
+	move3d_model(src.vid, val.pos[1], val.pos[2], val.pos[3]);
+	rotate3d_model(src.vid, val.ang[1], val.ang[2], val.ang[3]);
+	image_shader(src.vid, "3dsupp_fullbright");
+	show_image(src.vid);
+	
+--	self.show_trigger(src.vid, val.opa);
+end
+
 local function layout_imagepos(self, src, val)
 	order_image(src, val.zv);
 	move_image(src, val.pos[1], val.pos[2]);
@@ -1031,7 +1043,7 @@ local function layout_show(self)
 		for ind, val in ipairs(self.types["static"]) do
 			imgproc(self.temporary_static, LAYRES_STATIC, val);
 		end
-
+		
 		self.static_loaded = true;
 	end
 
@@ -1065,7 +1077,12 @@ local function layout_show(self)
 	end
 
 	for ind, val in ipairs(self.types["model"]) do
-		
+		local msg = self.trigger(LAYRES_MODEL, val);
+	
+		if (msg ~= nil and msg.vid) then
+			table.insert(self.temporary, msg.vid);
+			layout_imagepos3d(self, msg, val);
+		end
 	end
 
 	for ind, val in ipairs(self.types["text"]) do

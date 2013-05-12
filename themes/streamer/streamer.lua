@@ -27,6 +27,7 @@ function streamer()
 	system_load("scripts/osdkbd.lua")();         -- for defining stream destination
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/resourcefinder.lua")(); 
+	system_load("scripts/calltrace.lua")();
 	system_load("shared.lua")();
 
 	dispatch_push({}, "default", nil, 200);
@@ -150,7 +151,11 @@ end
 -- populate static / dynamic images into a shared recordtarget
 --
 function start_streaming()
-	run_view(false);
+	if (not run_view(false)) then
+		toggle_main_menu();
+		return;
+	end
+	
 -- allocate intermediate storage
 	local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 	image_tracetag(dstvid, "[streaming source]");
@@ -221,9 +226,10 @@ function start_streaming()
 		end
 
 	end);
-	
-end
 
+	setup_3dsupport();
+	video_3dorder(ORDER_LAST);
+end
 
 function get_audio_toggles()
 	local lbls = {};
@@ -403,12 +409,19 @@ end
 -- Although some properties could be altered "in flight" and LAYRES_SPECIAL are even expected to be
 --
 function load_cb(restype, lay)
-	if (restype == LAYRES_STATIC) then
+	print("lay.idtag:", lay.idtag);
+
+	if (restype == LAYRES_STATIC or restype == LAYRES_MODEL) then
 		if (lay.idtag == "background") then
 			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
 			
 		elseif (lay.idtag == "image") then
 			return "images/" .. lay.res;
+
+		elseif (lay.idtag == "static_model") then
+			return load_model(lay.res);
+		else
+			warning("load_cb(), unknown idtag: " .. tostring(lay.idtag));
 		end
 	end
 
@@ -440,11 +453,16 @@ function run_view(dry_run)
 --
 	if (settings.layout["internal"] and #settings.layout["internal"] > 0 and settings.gametbl) then
 		local internal_vid, internal_aid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) 
-			if (status == "resized") then
-				play_audio(status.source_audio);
-			end
-		end);
-		
+				if (status == "resized") then
+					play_audio(status.source_audio);
+				end
+			end);
+	
+		if (not valid_vid(internal_vid)) then
+			spawn_warning("Coudln't launch game, giving up.");
+			return false;
+		end
+			
 		show_image(internal_vid);
 		settings.layout:add_imagevid(internal_vid, settings.layout["internal"][1]);
 		settings.target = internal_vid;
@@ -486,6 +504,8 @@ function run_view(dry_run)
 	if (settings.layout["bgeffect"]) then
 		update_shader(settings.layout["bgeffect"][1].res);
 	end
+	
+	return true;
 end
 
 function setup_game(label)
@@ -643,7 +663,8 @@ function lay_setup(layname)
 	end
 
 	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
-
+	layout:add_resource("static_model", "Model...", function() return glob_resource("models/*"); end , "Static Media...", LAYRES_MODEL, false, function(key) return load_model(key); end );
+	
 	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
 		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
 	end
