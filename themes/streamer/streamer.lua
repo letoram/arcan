@@ -227,7 +227,6 @@ function start_streaming()
 
 	end);
 
-	setup_3dsupport();
 	video_3dorder(ORDER_LAST);
 end
 

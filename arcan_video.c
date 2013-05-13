@@ -2002,11 +2002,11 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img
 
 	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus, constraints.bpp)) > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
-		vobj->order = zv;
+		vobj->order = abs(zv);
 		vobj->feed.state = state;
 
 		if (state.tag == ARCAN_TAG_3DOBJ)
-			vobj->order = -1 * zv;
+			vobj->order *= -1;
 
 		arcan_video_attachobject(rv);
 	}
@@ -2068,6 +2068,8 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 
 /* attach also works like an insertion sort */
 		vobj->order = newzv;
+		if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
+			vobj->order *= -1;
 
 		if (owner){
 			detach_fromtarget(owner, vobj);
@@ -2321,7 +2323,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 		vobj->extrefc.attachments--;
 		base->extrefc.attachments--;
 
-		trace("(deleteobject::drop_rtarget) remove (%d:%s) from rendertarget (%d:%s), left: %d:%d\n",
+		trace("(deleteobject::drop_rtarget) remove attached (%d:%s) from rendertarget (%d:%s), left: %d:%d\n",
 			current->elem->cellid, video_tracetag(current->elem), vobj->cellid, video_tracetag(vobj), vobj->extrefc.attachments, base->extrefc.attachments);
 		assert(base->extrefc.attachments >= 0);
 		assert(vobj->extrefc.attachments >= 0);

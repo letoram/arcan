@@ -981,7 +981,6 @@ local function layout_imagepos3d(self, src, val)
 	rotate3d_model(src.vid, val.ang[1], val.ang[2], val.ang[3]);
 	image_shader(src.vid, "3dsupp_fullbright");
 	show_image(src.vid);
-	
 --	self.show_trigger(src.vid, val.opa);
 end
 
