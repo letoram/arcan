@@ -244,8 +244,10 @@ local function load_cb(restype, lay)
 		elseif (lay.idtag == "image") then
 			return "images/" .. lay.res;
 		end
+	elseif (restype == LAYRES_MODEL and lay.idtag == "static_model") then
+		return lay.res;
 	end
-
+		
 -- don't progress until we have a data-source set
 	if (settings.gametbl == nil) then
 		return nil;
@@ -258,6 +260,13 @@ local function load_cb(restype, lay)
 			return locfun(settings.restbl);
 		end
 
+	elseif (restype == LAYRES_MODEL) then
+		local model = find_cabinet_model(settings.gametbl);
+		if (model) then
+			return load_model(model);
+		else
+			return nil;
+		end
 	elseif (restype == LAYRES_TEXT) then
 		return settings.gametbl[lay.idtag];
 	end

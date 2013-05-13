@@ -89,13 +89,17 @@ if (settings.viewmode == "Grid") then
 	add_submenu(displbls, dispptrs, "Tile (horizontal)...", "bg_rw", gen_num_menu("bg_rw", 1, tilenums, 8, bgtrig));
 	add_submenu(displbls, dispptrs, "Animate (horizontal)...", "bg_speedv", gen_num_menu("bg_speedv", 1, animnums, 8, bgtrig));
 	add_submenu(displbls, dispptrs, "Animate (vertical)...", "bg_speedh", gen_num_menu("bg_speedh", 1, animnums, 8, bgtrig));
-else
-	add_submenu(displbls, dispptrs, "Reset Configuration...", nil, {"Reset"}, {Reset = reset_customview});
 end
 
 add_submenu(displbls, dispptrs, "Movie Playback Cooldown...", "cooldown_start", gen_num_menu("cooldown_start", 0, 15, 5));
+
 add_submenu(displbls, dispptrs, "Fade Delay...", "fadedelay", gen_num_menu("fadedelay", 5, 5, 10));
 add_submenu(displbls, dispptrs, "Transition Delay...", "transitiondelay", gen_num_menu("transitiondelay", 5, 5, 10));
+
+-- we want to avoid having Reset first as a menu -> hold right would be destructive 
+if (settings.viewmode ~= "Grid") then
+	add_submenu(displbls, dispptrs, "Reset Configuration...", nil, {"Reset"}, {Reset = reset_customview});
+end
 
 add_submenu(displbls, dispptrs, "Default View Mode...", nil, gen_tbl_menu(nil, {"Switch"}, function() 
 	dialog_option( "Changing view mode requires a restart, proceed?", {"Yes", "No"}, false, {Yes = flip_viewmode}, nil );

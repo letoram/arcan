@@ -3599,7 +3599,6 @@ int arcan_lua_orientmodel(lua_State* ctx)
 	double roll       = luaL_checknumber(ctx, 2);
 	double pitch      = luaL_checknumber(ctx, 3);
 	double yaw        = luaL_checknumber(ctx, 4);
-
 	arcan_3d_baseorient(vid, roll, pitch, yaw);
 	return 0;
 }
@@ -3699,7 +3698,7 @@ int arcan_lua_rotatemodel(lua_State* ctx)
 	double yaw        = luaL_checknumber(ctx, 4);
 	unsigned int dt   = luaL_optnumber(ctx, 5, 0);
 	int rotate_rel    = luaL_optnumber(ctx, 6, CONST_ROTATE_ABSOLUTE);
-
+	
 	if (rotate_rel != CONST_ROTATE_RELATIVE && rotate_rel != CONST_ROTATE_ABSOLUTE)
 		arcan_fatal("arcan_lua_rotatemodel(%d), invalid rotation base defined, (%d) should be ROTATE_ABSOLUTE or ROTATE_RELATIVE\n", rotate_rel);
 
