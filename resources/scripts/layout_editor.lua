@@ -646,13 +646,19 @@ local function new_3ditem(restbl)
 		write_rawresource(string.format("itbl.opa  = %d;\n", self.opa));
 		write_rawresource(string.format("itbl.zv   = %d;\n", self.zv));
 		write_rawresource(string.format("itbl.ang  = {%f, %f, %f};\n", self.ang[1], self.ang[2], self.ang[3]));
+		write_rawresource(string.format("itbl.dirlight = {%f, %f, %f};\n", self.dirlight[1], self.dirlight[2], self.dirlight[3]));
+		write_rawresource(string.format("itbl.ambient  = {%f, %f, %f};\n", self.ambient[1], self.ambient[2], self.ambient[3]));
+		write_rawresource(string.format("itbl.diffuse  = {%f, %f, %f};\n", self.diffuse[1], self.diffuse[2], self.diffuse[3]));
 		write_rawresource(string.format("itbl.idtag = \"%s\";", self.idtag));
 		write_rawresource(string.format("if (layout[\"%s\"] == nil) then layout[\"%s\"] = {}; end\n", self.idtag, self.idtag));
 		write_rawresource(string.format("table.insert(layout[\"%s\"], itbl);\n", self.idtag));
 		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
 	end
 	
-	restbl.ang  = {0.0,  0.0,  0.0};
+	restbl.dirlight = {1.0, 0.0, 0.0};
+	restbl.ambient  = {0.3, 0.3, 0.3};
+	restbl.diffuse  = {0.3, 0.3, 0.3};
+	restbl.ang  = {0.0,  0.0,  0.0};	
 	restbl.pos  = {-1.0, 0.0, -4.0};
 	restbl.x    = 0;
 	restbl.y    = 0;
@@ -986,7 +992,6 @@ local function layout_imagepos3d(self, src, val)
 	order_image(src.vid, val.zv);
 	move3d_model(src.vid, val.pos[1], val.pos[2], val.pos[3]);
 	rotate3d_model(src.vid, val.ang[1], val.ang[2], val.ang[3], 0, ROTATE_ABSOLUTE);
-	image_shader(src.vid, "3dsupp_fullbright");
 	show_image(src.vid);
 --	self.show_trigger(src.vid, val.opa);
 end
@@ -1035,7 +1040,7 @@ local function layout_show(self)
 			end);
 
 			if (valid_vid(vid) and cback) then
-				cback(vid);
+				cback(vid, val);
 			end
 
 			table.insert(dsttbl, vid);
@@ -1083,11 +1088,15 @@ local function layout_show(self)
 	end
 
 	for ind, val in ipairs(self.types["model"]) do
-		local msg = self.trigger(LAYRES_MODEL, val);
+		local msg, cback = self.trigger(LAYRES_MODEL, val);
 	
 		if (msg ~= nil and msg.vid) then
 			table.insert(self.temporary, msg.vid);
 			layout_imagepos3d(self, msg, val);
+			if (cback) then
+				cback(msg, val);
+			end
+
 		end
 	end
 

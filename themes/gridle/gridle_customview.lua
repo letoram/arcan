@@ -262,8 +262,9 @@ local function load_cb(restype, lay)
 
 	elseif (restype == LAYRES_MODEL) then
 		local model = find_cabinet_model(settings.gametbl);
+		
 		if (model) then
-			return load_model(model);
+			return setup_cabinet_model(model, settings.restbl, {});
 		else
 			return nil;
 		end
