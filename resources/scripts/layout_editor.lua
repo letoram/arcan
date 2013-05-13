@@ -70,7 +70,8 @@ helplbls["position3d"] = {
 
 helplbls["rotate3d"] = {
 	"Rotate (3D), Axis: 0",
-	"(MENU_UP/DOWN) to switch active axis",
+	"(LEFT/RIGHT) to increment/decrement position",
+	"(UP/DOWN) to switch active axis",
 	"(CONTEXT) to switch mode",
 	"(SELECT) to save",
 	"(ESCAPE) to cancel"
@@ -263,7 +264,8 @@ end
 -- .
 local function position_item(self, vid, trigger)
 	cascade_visibility(current_menu, 0.0, self);
-
+	video_3dorder(ORDER_LAST);
+	
 	local marker = 1;
 	local imenu = {};
 
@@ -362,8 +364,12 @@ local function gen_modify_menu(self, mod)
 			table.insert(lbls, lbl);
 			if (mod) then
 				ptrs[lbl] = function()
-					if (valid_vid(self.items[ind].vid)) then
-						self:position(self.items[ind], function() dispatch_pop(); cascade_visibility(current_menu, 1.0, self); settings.iodispatch["MENU_ESCAPE"](); end);
+					if (valid_vid(tbl.vid)) then
+						self:position(tbl, function()
+							video_3dorder(ORDER_NONE);
+							dispatch_pop(); 
+							cascade_visibility(current_menu, 1.0, self); settings.iodispatch["MENU_ESCAPE"](); 
+						end);
 					end
 				end
 			else
@@ -617,7 +623,7 @@ local function axisstep(self, step)
 	end
 	
 	helplbls["position3d"][1] = "Position (3D), Axis: " .. tostring(self.axis);
-	helplbls["rotate3d"][1]   = "Position (3D), Rotate: " .. tostring(self.axis);
+	helplbls["rotate3d"][1]   = "Rotate (3D), Rotate: " .. tostring(self.axis);
 	self:update();
 end
 
@@ -646,7 +652,7 @@ local function new_3ditem(restbl)
 		write_rawresource("table.insert(layout.types[itbl.type], itbl);\n");
 	end
 	
-	restbl.ang  = {0.0, -90.0, 0.0};
+	restbl.ang  = {0.0,  0.0,  0.0};
 	restbl.pos  = {-1.0, 0.0, -4.0};
 	restbl.x    = 0;
 	restbl.y    = 0;
@@ -902,6 +908,7 @@ local function add_new(self, idtag, label, kind, exclusive, identity)
 		end
 		
 		dispatch_pop();
+		video_3dorder(ORDER_NONE);
 		cascade_visibility(current_menu, 1.0, self);
 	end);
 end
@@ -966,11 +973,11 @@ local function layout_cleanup(self)
 	end
 
 	if (self.temporary_static) then
-	for ind,val in ipairs(self.temporary_static) do
-		if (valid_vid(val)) then
-			self.expire_trigger(val);
+		for ind,val in ipairs(self.temporary_static) do
+			if (valid_vid(val)) then
+				self.expire_trigger(val);
+			end
 		end
-	end
 	end
 
 end
@@ -978,7 +985,7 @@ end
 local function layout_imagepos3d(self, src, val)
 	order_image(src.vid, val.zv);
 	move3d_model(src.vid, val.pos[1], val.pos[2], val.pos[3]);
-	rotate3d_model(src.vid, val.ang[1], val.ang[2], val.ang[3]);
+	rotate3d_model(src.vid, val.ang[1], val.ang[2], val.ang[3], 0, ROTATE_ABSOLUTE);
 	image_shader(src.vid, "3dsupp_fullbright");
 	show_image(src.vid);
 --	self.show_trigger(src.vid, val.opa);
