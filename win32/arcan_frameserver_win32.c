@@ -226,8 +226,10 @@ int main(int argc, char* argv[])
 	char* fsrvmode = argv[5];
 	char* keyfile   = argv[1];
 
-	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0)
+	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
+		toggle_logdev("decode");
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
+	}
 	else if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);

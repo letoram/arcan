@@ -7,9 +7,10 @@ require 'nokogiri'
 
 $HAVE_RMAGIC = false
 begin
-    require 'RMagick'
+#    require 'RMagick'
     $HAVE_RMAGIC = true
 rescue LoadError
+	STDERR.print("RMagick module could not be found, thumbnail support disabled.\n")
 end
 
 # Wrapper around TheGamesDB.net system

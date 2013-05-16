@@ -564,6 +564,9 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		if (findh != INVALID_HANDLE_VALUE)
 			do{
 				snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+				if (strcmp(playbuf, ".") == 0 || strcmp(playbuf, "..") == 0)
+					continue;
+
 				cb(playbuf, tag);
 				count++;
 			} while (FindNextFile(findh, &finddata));
@@ -578,6 +581,9 @@ unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), vo
 		if (findh != INVALID_HANDLE_VALUE)
 		do{
 			snprintf(playbuf, playbufsize, "%s", finddata.cFileName);
+			if (strcmp(playbuf, ".") == 0 || strcmp(playbuf, "..") == 0)
+					continue;
+
 			cb(playbuf, tag);
 			count++;
 		} while (FindNextFile(findh, &finddata));
