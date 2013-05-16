@@ -1416,7 +1416,7 @@ end
 -- As we have no automated heuristics (which would mean creating reference images, doing an FBO, read back,
 -- compare output with reference and determine if it's "stable" or not) and GPU failures
 -- are still very much treated like a full on crash.
-displaymodelist = {"Custom Shaders..."};
+displaymodelist = {}; -- {"Custom Shaders..."};
 
 local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, 
@@ -1454,11 +1454,11 @@ end
 add_displaymodeptr(displaymodelist, displaymodeptrs, "upscaler",  "Upscaler",  updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "glow",      "Glow",      updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "trails",    "Trails",    updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "crt",       "CRT",       updatetrigger );
+add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc",      "NTSC",      push_ntsc);
 add_displaymodeptr(displaymodelist, displaymodeptrs, "overlay",   "Overlay",   updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "backdrop",  "Backdrop",  updatetrigger );
 add_displaymodeptr(displaymodelist, displaymodeptrs, "antialias", "Antialias", updatetrigger );
-add_displaymodeptr(displaymodelist, displaymodeptrs, "crt",       "CRT",       updatetrigger );
-add_displaymodeptr(displaymodelist, displaymodeptrs, "ntsc",      "NTSC",      push_ntsc);
 
 local glowlbls       = {};
 local glowptrs       = {};
@@ -1475,6 +1475,9 @@ local scalerptrs     = {};
 local xbrlbls = {};
 local xbrptrs = {};
 
+add_submenu(ntscmenulbls, ntscmenuptrs, "Artifacts...",  "ntsc_artifacts",  gen_tbl_menu("ntsc_artifacts",  {-1, -0.5, -0.2, 0}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Bleed...",      "ntsc_bleed",      gen_tbl_menu("ntsc_bleed",      {-1, -0.5, -0.2, 0}, push_ntsc));
+add_submenu(ntscmenulbls, ntscmenuptrs, "Fringing...",   "ntsc_fringing",   gen_tbl_menu("ntsc_fringing",   {-1, 0, 1}, push_ntsc))
 add_submenu(ntscmenulbls, ntscmenuptrs, "Hue...",        "ntsc_hue",        gen_tbl_menu("ntsc_hue",        {-0.1, -0.05, 0, 0.05, 0.1}, push_ntsc));
 add_submenu(ntscmenulbls, ntscmenuptrs, "Saturation...", "ntsc_saturation", gen_tbl_menu("ntsc_saturation", {-1, -0.5, 0, 0.5, 1}, push_ntsc));
 add_submenu(ntscmenulbls, ntscmenuptrs, "Contrast...",   "ntsc_contrast",   gen_tbl_menu("ntsc_contrast",   {-0.5, 0, 0.5}, push_ntsc));
@@ -1482,9 +1485,6 @@ add_submenu(ntscmenulbls, ntscmenuptrs, "Brightness...", "ntsc_brightness", gen_
 add_submenu(ntscmenulbls, ntscmenuptrs, "Gamma...",      "ntsc_gamma",      gen_tbl_menu("ntsc_gamma",      {-0.5, -0.2, 0, 0.2, 0.5}, push_ntsc));
 add_submenu(ntscmenulbls, ntscmenuptrs, "Sharpness...",  "ntsc_sharpness",  gen_tbl_menu("ntsc_sharpness",  {-1, 0, 1}, push_ntsc));
 add_submenu(ntscmenulbls, ntscmenuptrs, "Resolution...", "ntsc_resolution", gen_tbl_menu("ntsc_resolution", {0, 0.2, 0.5, 0.7}, push_ntsc));
-add_submenu(ntscmenulbls, ntscmenuptrs, "Artifacts...",  "ntsc_artifacts",  gen_tbl_menu("ntsc_artifacts",  {-1, -0.5, -0.2, 0}, push_ntsc));
-add_submenu(ntscmenulbls, ntscmenuptrs, "Bleed...",      "ntsc_bleed",      gen_tbl_menu("ntsc_bleed",      {-1, -0.5, -0.2, 0}, push_ntsc));
-add_submenu(ntscmenulbls, ntscmenuptrs, "Fringing...",   "ntsc_fringing",   gen_tbl_menu("ntsc_fringing",   {-1, 0, 1}, push_ntsc))
 
 add_submenu(displaymodelist, displaymodeptrs, "Filtering...",         "imagefilter",       gen_tbl_menu("imagefilter", {"None", "Linear", "Bilinear"}, updatetrigger, true));
 
