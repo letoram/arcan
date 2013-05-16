@@ -234,18 +234,23 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, AVDictiona
 	memset(&decctx, 0, sizeof(decctx)); 
 
 	int errc = avformat_open_input(&decctx.fcontext, fname, iformat, NULL);
-	if (0 != errc || !decctx.fcontext)
+	if (0 != errc || !decctx.fcontext){
+		LOG("(decode) avformat_open_input() couldn't open fcontext for resource (%s)\n", fname);
 		return false;
+	}
 
 	errc = avformat_find_stream_info(decctx.fcontext, NULL);
 
-	if (! (errc >= 0) )
+	if (! (errc >= 0) ){
+		LOG("(decode) avformat_find_stream_info() didn't return any useful data.\n");
 		return NULL;
+	}
 
 /* locate streams and codecs */
 	int vid,aid;
 
 	vid = aid = decctx.vid = decctx.aid = -1;
+	LOG("(decode) %d streams found in container.\n", decctx.fcontext->nb_streams);
 
 /* scan through all video streams, grab the first one,
  * find a decoder for it, extract resolution etc. */
@@ -303,13 +308,18 @@ static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 #else
 /* for windows, the suggested approach nowadays isn't vfwcap but dshow,
  * the problem is that we both need to be able to probe and look for a video device
- * and this enumeration then requires bidirectional communication with the parent */
+ * and this enumeration then requires bidirectional communication with the parent,
+ * in a way frameserver_decode was not prepared for, so pending a larger refactoring,
+ * just hack it by index and vfw */
 static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 {
 	char arg[16];
+	if (prefind > 0) 
+		prefind--;
 	
 	snprintf(arg, sizeof(arg)-1, "%d", prefind);
 	*dst = av_find_input_format("vfwcap");
+	LOG("(decode) win32:probe_vidcap, find input format yielded %" PRIxPTR "\n", *dst);
 	
 	return strdup(arg);
 }
