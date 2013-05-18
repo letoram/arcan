@@ -123,7 +123,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes with the structure to provoke a vulnerability,
  * frameserver dying or timing out, ... */
 	if (frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
-		(src->child && -1 == check_child(src) && errno == EINVAL))
+		(src->child_alive && src->child && -1 == check_child(src) && errno == EINVAL))
 	{
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,

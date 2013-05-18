@@ -78,6 +78,7 @@ function retrohelper_nx(porttype)
 	restbl.buttons = 6;
 	restbl.axes    = 0;
 	restbl.players = 1;
+	restbl.ident   = {};
 
 	add(restbl, "PLAYER1_COIN1",   nil, "(Reserved)", function() return nil; end);
 	add(restbl, "PLAYER1_START",   nil, "Inventory");
@@ -96,8 +97,10 @@ function retrohelper_lookup(identstr, porttype)
 
 	if (string.match(identstr, "Mednafen.*PSX")) then
 		return retrohelper_psx(porttype);
-	elseif (identstr == "NXEngine") then
+	elseif (string.match(identstr, "NXEngine")) then
 		return retrohelper_nx(porttype);
+	elseif (string.match(identstr, "bSNES")) then
+		return retrohelper_bsnes(porttype);
 	else
 		return nil;
 	end

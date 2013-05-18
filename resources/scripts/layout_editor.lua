@@ -189,6 +189,8 @@ local function update_infowin(self, item)
 end
 
 local function update_object3d(model)
+-- we keep this mostly translucent as not to occlude UI elements	
+	blend_image(model.vid, 0.3);
 	move3d_model(model.vid, model.pos[1], model.pos[2], model.pos[3]);
 	rotate3d_model(model.vid, model.ang[1], model.ang[2], model.ang[3], 0, ROTATE_ABSOLUTE);
 end
