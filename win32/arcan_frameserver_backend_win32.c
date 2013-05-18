@@ -34,7 +34,6 @@
 
 /* libSDL */
 #include <SDL.h>
-#define SDL_VIDEO_DRIVER_DDRAW
 #include <SDL_syswm.h>
 #include <SDL_mutex.h>
 #include <SDL_types.h>
@@ -84,7 +83,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			UINT ec;
 			SafeTerminateProcess(src->child, &ec);
 			src->child_alive = false;
-			src->child = 0;
+			src->child = -1;
 		}
 
 /* unhook audio monitors */
@@ -93,7 +92,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			arcan_audio_hookfeed(*base, NULL, NULL, NULL);
 			base++;
 		}
-
 		free(src->audb);
 
 		if (src->lock_audb)
@@ -116,6 +114,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 		if (!loop){
 			vfunc_state emptys = {0};
+			arcan_audio_stop(src->aid);
 			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
 			memset(src, 0x00, sizeof(arcan_frameserver));
 			free(src);

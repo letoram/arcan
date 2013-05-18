@@ -539,17 +539,6 @@ function setup_gridview()
 	imagery.nosave  = load_image("images/icons/brokensave.png");
 	image_tracetag(imagery.nosave, "nosave");
 
-	if (imagery.disconnected == nil) then
-		imagery.disconnected = load_image("images/icons/disconnected.png");
-		image_tracetag(imagery.disconnected, "disconnected");
-	end
-
-	local props = image_surface_properties(imagery.disconnected);
-	if (props.width > VRESW) then props.width = VRESW; end
-	if (props.height > VRESH) then props.height = VRESH; end
-	resize_image(imagery.disconnected, props.width, props.height);
-	move_image(imagery.disconnected, VRESW - props.width, VRESH - props.height);
-	
 -- Little star keeping track of games marked as favorites
 	imagery.starimage    = load_image("images/icons/star.png");
 	image_tracetag(imagery.starimage, "favorite icon");
@@ -584,16 +573,15 @@ function network_onevent(source, tbl)
 			settings.network_remote = "Disabled";
 		end
 
-		if (not valid_vid(imagery.disconnected)) then
-			imagery.disconnected = load_image("images/icons/disconnected.png");
-			image_tracetag(imagery.disconnected, "disconnected");
-		end
-
-		if (valid_vid(imagery.disconnected)) then
-			show_image(imagery.disconnected);
-			order_image(imagery.disconnected, INGAMELAYER_OVERLAY); 
-			blend_image(imagery.disconnected, 1.0, 30);
-			blend_image(imagery.disconnected, 0.0, 10);
+		local dvid = load_image("images/icons/disconnected.png");
+		if (dvid ~= BADID) then
+			print("show disconnect image");
+			show_image(dvid);
+			order_image(dvid, INGAMELAYER_OVERLAY);
+			blend_image(dvid, 1.0, 5);
+			blend_image(dvid, 1.0, 25);
+			blend_image(dvid, 0.0, 10);
+			expire_image(dvid, 40);	
 		end
 
 	elseif (tbl.kind == "resized") then

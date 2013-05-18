@@ -227,7 +227,6 @@ customview.cleanup = function()
 end
 
 function update_shader(resname)
--- (when here, something goes bad?!)	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
 	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
 	shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
 
@@ -264,13 +263,12 @@ local function load_cb(restype, lay)
 		local model = find_cabinet_model(settings.gametbl);
 		model = model and setup_cabinet_model(model, settings.restbl, {}) or nil;
 		if (model) then
-			image_shader(model.vid, customview.light_shader); 
 			shader_uniform(customview.light_shader, "wlightdir", "fff", PERSIST, lay.dirlight[1], lay.dirlight[2], lay.dirlight[3]);
 			shader_uniform(customview.light_shader, "wambient",  "fff", PERSIST, lay.ambient[1], lay.ambient[2], lay.ambient[3]);
 			shader_uniform(customview.light_shader, "wdiffuse",  "fff", PERSIST, lay.diffuse[1], lay.diffuse[2], lay.diffuse[3]);
-			return model;
+			image_shader(model.vid, customview.light_shader);
 		end
-		
+		return model;
 	elseif (restype == LAYRES_TEXT) then
 		return settings.gametbl[lay.idtag];
 	end
