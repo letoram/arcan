@@ -261,6 +261,50 @@ function get_audio_toggles()
 	return lbls, ptrs, fmts;
 end
 
+function query_destination(file)
+		local resstr = nil;
+		local opts = {};
+
+		if (file) then
+		else
+			opts.case_insensitive = false;
+			opts.prefix = "rtmp://";
+			opts.startstr = settings.stream_url;
+
+-- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
+			if (settings.stream_url == "rtmp://" and resource("stream.key")) then
+				if (open_rawresource("stream.key")) then
+					local line = read_rawresource();
+					if (line ~= nil and string.len(line) > 0) then
+						opts.startstr = line;
+					end
+					close_rawresource();
+				end
+			end
+		end
+
+		local osdsavekbd = osdkbd_create( osdkbd_extended_table(), opts );
+		osdsavekbd:show();
+
+-- do this here so we have access to the namespace where osdsavekbd exists
+		dispatch_push({}, "osdkbd (streaming)", function(iotbl)
+			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
+	
+			if (complete) then
+				osdsavekbd:destroy();
+				osdsavekbd = nil;
+				dispatch_pop();
+				if (resstr ~= nil and string.len(resstr) > 0) then
+					settings.stream_url = resstr;
+					store_key("stream_url", resstr);
+				end
+				toggle_main_menu();
+			end
+		end
+		, -1);
+	end
+	
+
 --
 -- this parses the currently active layout (if any) and generates the appropriate menu entries
 -- depends on current layout (if any), target in layout, vidcap feeds in layout
@@ -304,43 +348,7 @@ function toggle_main_menu()
 
 -- copied from gridle internal
 	streamptrs["Define Stream..."] = function(label, store)
-		local resstr = nil;
-		local opts = {};
-
-		opts.case_insensitive = false;
-		opts.prefix = "rtmp://";
-		opts.startstr = settings.stream_url;
-
--- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
-		if (settings.stream_url == "rtmp://" and resource("stream.key")) then
-			if (open_rawresource("stream.key")) then
-				local line = read_rawresource();
-				if (line ~= nil and string.len(line) > 0) then
-					opts.startstr = line;
-				end
-				close_rawresource();
-			end
-		end
-
-		local osdsavekbd = osdkbd_create( osdkbd_extended_table(), opts );
-		osdsavekbd:show();
-
--- do this here so we have access to the namespace where osdsavekbd exists
-		dispatch_push({}, "osdkbd (streaming)", function(iotbl)
-			complete, resstr = osdkbd_inputfun(iotbl, osdsavekbd);
-	
-			if (complete) then
-				osdsavekbd:destroy();
-				osdsavekbd = nil;
-				dispatch_pop();
-				if (resstr ~= nil and string.len(resstr) > 0) then
-					settings.stream_url = resstr;
-					store_key("stream_url", resstr);
-				end
-				toggle_main_menu();
-			end
-		end
-		, -1);
+		query_destination(false);
 	end
 	
 	add_submenu(menulbls, menuptrs, "Streaming...", streammenu, streamptrs, {});
@@ -615,6 +623,9 @@ function hookfun(newitem)
 		newitem.width  = VRESW;
 		newitem.height = VRESH;
 		settings.background = newitem.vid;
+		
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, newitem.vid);
+			
 		newitem:update();
 
 	elseif (newitem.idtag == "bgeffect") then
@@ -661,8 +672,10 @@ function lay_setup(layname)
 		layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
 	end
 
-	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
-	layout:add_resource("static_model", "Model...", function() return glob_resource("models/*"); end , "Static Media...", LAYRES_MODEL, false, function(key) return load_model(key); end );
+-- 3D models currently not enabled due to a problem with
+-- models in recordsets / FBOs, will sort itself out when the 3D pipeline gets more focus
+--	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
+--	layout:add_resource("static_model", "Model...", function() return glob_resource("models/*"); end , "Static Media...", LAYRES_MODEL, false, function(key) return load_model(key); end );
 	
 	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
 		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
