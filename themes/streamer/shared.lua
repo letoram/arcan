@@ -715,16 +715,16 @@ function internallaunch_event(source, datatbl)
 		gridle_internal_setup(source, datatbl, current_game);
 
 	elseif (datatbl.kind == "frameserver_terminated") then
-		if (settings.status_loading) then
-			remove_loaded();
-			dispatch_pop();
-		end
-	
 		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
 		blend_image(imagery.crashimage, 0.8);
 
-		if (not settings.in_internal) then
-			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
+		if (settings.status_loading) then
+			remove_loaded();
+			dispatch_pop();
+
+		elseif (not settings.in_internal) then
+			dispatch_pop();
+			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 20);
 		end
 
 	elseif (datatbl.kind == "message") then

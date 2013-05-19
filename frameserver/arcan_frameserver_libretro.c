@@ -872,16 +872,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		LOG("libretro(%s), version %s loaded. Accepted extensions: %s\n",
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, retroctx.sysinfo.valid_extensions);
 
-/* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
-		ssize_t bufsize;
-		retroctx.gameinfo.path = strdup( gamename );
-		retroctx.gameinfo.data = frameserver_getrawfile(gamename, &bufsize);
-		if (bufsize == -1){
-			LOG("libretro(%s), couldn't load data, giving up.\n", gamename);
-			return;
-		}
-
-		retroctx.gameinfo.size = bufsize;
 /* map functions to context structure */
 		retroctx.run   = (void(*)()) libretro_requirefun("retro_run");
 		retroctx.reset = (void(*)()) libretro_requirefun("retro_reset");
@@ -910,6 +900,24 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		size_t msgsz = sizeof(outev.data.external.message) / sizeof(outev.data.external.message[0]);
 		snprintf(outev.data.external.message, msgsz, "%s %s", retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_event_enqueue(&retroctx.outevq, &outev);
+
+/* load the rom, either by letting the emulator acts as loader, or by mmaping and handing that segment over */
+		ssize_t bufsize;
+
+		if (retroctx.sysinfo.need_fullpath){
+			LOG("libretro(%s), core requires fullpath, resolved to (%s).\n", retroctx.sysinfo.library_name, gamename); 
+			retroctx.gameinfo.data = NULL;
+			retroctx.gameinfo.path = strdup( gamename );
+		} else {
+			retroctx.gameinfo.path = strdup( gamename );
+			retroctx.gameinfo.data = frameserver_getrawfile(gamename, &bufsize);
+			if (bufsize == -1){
+				LOG("libretro(%s), couldn't map data, giving up.\n", gamename);
+				return;
+			}
+		}	
+
+		retroctx.gameinfo.size = bufsize;
 		
 /* load the game, and if that fails, give up */
 		outev.kind = EVENT_EXTERNAL_NOTICE_RESOURCE;

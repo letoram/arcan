@@ -2,20 +2,34 @@
 -- Development test-script for the layout config tool
 --
 settings = {
-	stream_url  = "rtmp://",
+	out_url     = "rtmp://",
 	record_fps  = 30,
-	record_qual = 6,
+	record_vqual= 6,
+	record_aqual= 4,
 	record_res  = 480,
-	record_vpts = 0
+	record_vpts = 12,
+	record_apts = 0
 };
 
 soundmap = {};
 
 function get_recstr()
-	local recstr    = "vcodec=H264:container=stream:acodec=MP3:fps=%d:apreset=%d:vpreset=%d:streamdst=%s";
-	local streamdst = string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
-	
-	return string.format(recstr, settings.record_fps, settings.record_qual, settings.record_qual, streamdst);
+	local recstr = "vcodec=H264:container=%s:acodec=MP3:fps=%d:apreset=%d:vpreset=%d:vptsofs=%d:aptsofs=%d%s";
+	local fname  = "";
+	local args   = "";
+
+	if (string.sub(settings.out_url, 1, 7) == "rtmp://") then
+		fname = "stream";
+		args  = string.format(recstr, "stream", settings.record_fps, settings.record_aqual, settings.record_vqual,
+			settings.record_vpts, settings.record_apts, ":streamdst=" .. string.gsub(settings.out_url, ":", "\t"));
+
+	elseif (string.sub(settings.out_url, 1, 7) == "file://") then
+		fname = string.sub(settings.out_url, 8);
+		args  = string.format(recstr, "MKV", settings.record_fps, settings.record_aqual, settings.record_vqual,
+			settings.record_vpts, settings.record_apts, ""); 
+	end
+
+	return fname, args;
 end
 
 function streamer()
@@ -126,8 +140,8 @@ function show_helper()
 			table.insert(status, str);
 		end
 		
-		if (settings.stream_url ~= "rtmp://") then
-			local streamlbl = "Stream to:" .. settings.stream_url;
+		if (settings.out_url ~= "rtmp://") then
+			local streamlbl = "Stream to:" .. settings.out_url;
 			table.insert(status, streamlbl);
 			statusfmt[streamlbl] = "\\b\\#99ff99";
 		else
@@ -169,8 +183,6 @@ function start_streaming()
 		table.insert(recordset, val);
 	end
 
---	local recdst = "nisse.mkv";
---	local recstr = "vcodec=H264:acodec=MP3:fps=50:vpreset=6:apreset=4";
 	local audset = {};
 	
 	for ind, val in pairs(settings.atoggles) do
@@ -183,10 +195,16 @@ function start_streaming()
 	if (internal_aid) then
 		table.insert(audset, internal_aid);
 	end
+
+	local outfn, outurl = get_recstr();
+	if (#audset == 0) then
+		outurl = outurl .. ":noaudio";
+	end
 	
-	define_recordtarget(dstvid, "stream", get_recstr() .. ( #audset == 0 and ":noaudio" or "" ), recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, function(source, status)
-		print("recordtarget status", status.kind);
-	end);
+	define_recordtarget(dstvid, outfn, outurl, recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, 
+		function(source, status)
+			print("recordtarget status", status.kind);
+		end);
 
 	while (current_menu ~= nil) do
 		current_menu:destroy();
@@ -266,13 +284,16 @@ function query_destination(file)
 		local opts = {};
 
 		if (file) then
+			opts.case_insensitive = false;
+			opts.prefix = "file://";
+			opts.startstr = "";
 		else
 			opts.case_insensitive = false;
 			opts.prefix = "rtmp://";
-			opts.startstr = settings.stream_url;
+			opts.startstr = settings.out_url;
 
 -- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
-			if (settings.stream_url == "rtmp://" and resource("stream.key")) then
+			if (settings.out_url == "rtmp://" and resource("stream.key")) then
 				if (open_rawresource("stream.key")) then
 					local line = read_rawresource();
 					if (line ~= nil and string.len(line) > 0) then
@@ -295,8 +316,8 @@ function query_destination(file)
 				osdsavekbd = nil;
 				dispatch_pop();
 				if (resstr ~= nil and string.len(resstr) > 0) then
-					settings.stream_url = resstr;
-					store_key("stream_url", resstr);
+					settings.out_url = resstr;
+					store_key("out_url", resstr);
 				end
 				toggle_main_menu();
 			end
@@ -310,7 +331,7 @@ function query_destination(file)
 -- depends on current layout (if any), target in layout, vidcap feeds in layout
 --
 function toggle_main_menu()
-	ready = settings.stream_url ~= "rtmp://";
+	ready = settings.out_url ~= "rtmp://";
 
 	target = (settings.layout and settings.layout["internal"] ~= nil) and (#settings.layout["internal"] > 0) or nil;
 	nvc = (settings.layout and settings.layout["vidcap"]) and #settings.layout["vidcap"] or 0;
@@ -333,9 +354,12 @@ function toggle_main_menu()
 
 	add_submenu(streammenu, streamptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
 	add_submenu(streammenu, streamptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
-	add_submenu(streammenu, streamptrs, "Quality...", "record_qual", gen_tbl_menu("record_qual", {2, 4, 6, 8, 10}, function() end));
+	add_submenu(streammenu, streamptrs, "Video Quality...", "record_vqual", gen_tbl_menu("record_vqual", {2, 4, 6, 8, 10}, function() end));
+	add_submenu(streammenu, streamptrs, "Audio Quality...", "record_aqual", gen_tbl_menu("record_aqual", {2, 4, 6, 8, 10}, function() end));
 	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts", gen_num_menu("record_vpts", 0, 4, 12, function() end));
+	add_submenu(streammenu, streamptrs, "APTS offset...", "record_apts", gen_num_menu("record_apts", 0, 4, 12, function() end));
 	table.insert(streammenu, "Define Stream...");
+	table.insert(streammenu, "Define File...");
 
 	if (settings.layout ~= nil) then
 		add_submenu(menulbls, menuptrs, "Streaming Settings...", nil, streammenu, streamptrs, {});
@@ -350,8 +374,12 @@ function toggle_main_menu()
 	streamptrs["Define Stream..."] = function(label, store)
 		query_destination(false);
 	end
+
+	streamptrs["Define File..."] = function(label, store)
+		query_destination(true);
+	end
 	
-	add_submenu(menulbls, menuptrs, "Streaming...", streammenu, streamptrs, {});
+	add_submenu(menulbls, menuptrs, "Destination...", streammenu, streamptrs, {});
 
 -- need a layout set in order to know what to define the different slots as
 	if (target) then
