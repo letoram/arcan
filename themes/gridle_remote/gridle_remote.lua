@@ -98,7 +98,7 @@ function draw_infowin()
 	table.insert(status, "Ingame Layout:\\t ( " .. (settings.ingame_layout ~= nil and settings.ingame_layout or undefline) .. " )");	
 	table.insert(status, "Connection Method:\\t ( " .. (settings.connect_host ~= nil and settings.connect_host or undefline) .. " )");
 
-		load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
+	load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
 	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
 	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);
 	load_key_str("connect_host",  "connect_host",  settings.connect_host);
@@ -498,6 +498,11 @@ function lay_setup(layname)
 		current_menu:destroy();
 		current_menu = current_menu.parent;
 	end
+	
+	if settings.infowin then
+		settings.infowin:destroy();
+		settings.infowin = nil;
+	end
 
 	local identtext = function(key)
 		vid = render_text(settings.colourtable.label_fontstr .. key);
@@ -522,7 +527,7 @@ function lay_setup(layname)
 		layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
 	end
 
-	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
+--	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
 
 	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
 		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
@@ -556,6 +561,8 @@ function hookfun(newitem)
 		newitem.y  = 0;
 		newitem.width  = VRESW;
 		newitem.height = VRESH;
+
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, newitem.vid);
 		settings.background = newitem.vid;
 		newitem:update();
 

@@ -227,6 +227,10 @@ customview.cleanup = function()
 end
 
 function update_shader(resname)
+	if (not resname) then
+		return;
+	end
+	
 	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
 	shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
 
@@ -296,6 +300,8 @@ local function hookfun(newitem)
 		newitem.height = VRESH;
 		settings.background = newitem.vid;
 
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, newitem.vid);
+	
 		if (settings.shader) then
 			image_shader(settings.background, settings.shader);
 		end
@@ -328,6 +334,7 @@ function gridle_customview()
 		setup_customview();
 		layout.default_gain = settings.movieagain;
 		layout:show();
+		update_shader(layout["bgeffect"][1] and layout["bgeffect"][1].res);
 		music_start_bgmusic(settings.bgmusic_playlist);
 		return true;
 	end

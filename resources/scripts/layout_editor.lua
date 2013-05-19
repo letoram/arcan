@@ -801,7 +801,7 @@ local function new_2ditem(vid)
 		update = update_object
 	};
 
-	restbl.width  = (props.width > VRESW * 0.5) and math.floor(VRESW * 0.5) or props.width;
+	restbl.width  =  (props.width > VRESW * 0.5) and math.floor(VRESW * 0.5) or props.width;
 	restbl.height = (props.height > VRESW * 0.5) and math.floor(VRESW * 0.5) or props.height;
 
 	restbl.x = math.floor( 0.5 * (VRESW - restbl.width) );
@@ -994,8 +994,8 @@ local function layout_imagepos3d(self, src, val)
 	order_image(src.vid, val.zv);
 	move3d_model(src.vid, val.pos[1], val.pos[2], val.pos[3]);
 	rotate3d_model(src.vid, val.ang[1], val.ang[2], val.ang[3], 0, ROTATE_ABSOLUTE);
-	show_image(src.vid);
---	self.show_trigger(src.vid, val.opa);
+--	show_image(src.vid);
+	self.show_trigger(src.vid, val.opa);
 end
 
 local function layout_imagepos(self, src, val)
