@@ -83,11 +83,11 @@ function draw_infowin()
 		settings.infowin:destroy();
 	end
 
-	if (not resource("layouts/" .. settings.menu_layout)) then
+	if (settings.menu_layout and not resource("layouts/" .. settings.menu_layout)) then
 		settings.menu_layout = nil;
 	end
 	
-	if (not resource("layouts/" .. settings.ingame_layout)) then
+	if (settings.ingame_layout and not resource("layouts/" .. settings.ingame_layout)) then
 		settings.ingame_layout = nil;
 	end
 	
