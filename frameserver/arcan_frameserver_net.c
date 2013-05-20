@@ -1276,7 +1276,7 @@ static void client_session(char* hoststr, enum client_modes mode)
 	int timeout = -1;
 
 #ifdef _WIN32
-    timeout = 100000;
+    timeout = 1000;
 #endif
 
 	if (apr_pollset_create(&pset, 1, netcontext.mempool, 0) != APR_SUCCESS){

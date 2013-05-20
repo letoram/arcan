@@ -5,10 +5,8 @@ settings = {
 	dispatch_stack = {},
 
 -- persistent settings
-	autoconnect   = "Off",
 	connect_host  = "Local Discovery",
-	menu_layout   = nil,
-	ingame_layout = nil,
+	autoconnect   = "Off"
 };
 
 imagery = {};
@@ -29,8 +27,7 @@ function gridle_remote()
 	system_load("scripts/layout_editor.lua")();
 
 	load_keys();
-	draw_infowin();
-	
+
 -- will either spawn the setup layout first or, if there already is one, spawn menu 
 -- (which may or may not just autoconnect depending on settings)
 	default_dispatch = {};
@@ -45,7 +42,13 @@ function gridle_remote()
 	end
 
 	dispatch_push(default_dispatch, "default", gridleremote_netinput);
-	setup_keys(spawn_mainmenu);
+	setup_keys(function()
+		if (settings.autoconnect == "On") then
+			open_connection();
+		else
+			spawn_mainmenu();
+		end
+	end);
 end
 
 function open_connection()
@@ -98,11 +101,6 @@ function draw_infowin()
 	table.insert(status, "Ingame Layout:\\t ( " .. (settings.ingame_layout ~= nil and settings.ingame_layout or undefline) .. " )");	
 	table.insert(status, "Connection Method:\\t ( " .. (settings.connect_host ~= nil and settings.connect_host or undefline) .. " )");
 
-	load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
-	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
-	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);
-	load_key_str("connect_host",  "connect_host",  settings.connect_host);
-	
 	settings.infowin = listview_create( status, VRESW * 0.5, VRESH * 0.5, {} );
 	settings.infowin.gsub_ignore = true;
 
@@ -112,7 +110,6 @@ function draw_infowin()
 end
 
 function set_layout(layname, target, save)
-	
 	if (target == "menu" and resource("layouts/" .. layname)) then
 		settings.menu_layout = layname;
 		store_key("menu_layout", layname);
@@ -131,6 +128,8 @@ function spawn_mainmenu()
 		current_menu:destroy();
 		current_menu = current_menu.parent;
 	end
+
+	draw_infowin();
 	
 -- Default Global Menus (and their triggers)
 	local mainlbls     = {};
@@ -172,11 +171,13 @@ function spawn_mainmenu()
 		layptrs["Ingame Layout..."] = function() menu_spawnmenu(globlbl, ptrsb, {}); end
 	end
 	
-	add_submenu(settingslbls, settingsptrs, "Autoconnect...", "autoconnect", gen_tbl_menu("autoconnect", {"On", "Off"}, nil, true));
+	add_submenu(settingslbls, settingsptrs, "Autoconnect...", "autoconnect", gen_tbl_menu("autoconnect", {"On", "Off"}, function(lbl)
+		store_key("autoconnect", lbl); end, true));
 
 	table.insert(mainlbls, "-------");
 	if (settings.ingame_layout and settings.menu_layout and settings.connect_host) then
 		table.insert(mainlbls, "Connect");
+		print("layout:", settings.ingame_layout, settings.menu_layout, settings.connect_host);
 		mainptrs["Connect"] = open_connection;
 	end
 	
@@ -223,13 +224,6 @@ function spawn_mainmenu()
 		end);
 	end
 
-	if (valid_vid(settings.server)) then
-		table.insert(connectlbls, "Autoconnect (On)");
-		table.insert(connectlbls, "Autoconnect (Off)");
-		connectptrs["Autoconnect (On)"] = function() store_key("autoconnect", true); end
-		connectptrs["Autoconnect (Off)"] = function() delete_key("autoconnect"); end
-	end
-	
 	current_menu = listview_create(mainlbls, VRESH * 0.9, VRESW / 3);
 	current_menu.ptrs = mainptrs;
 	current_menu.parent = nil;
@@ -433,7 +427,7 @@ function load_keys()
 
 	load_key_str("menu_layout",   "menu_layout",   settings.menu_layout);
 	load_key_str("ingame_layout", "ingame_layout", settings.ingame_layout);
-	load_key_bool("autoconnect",  "autoconnect",   settings.autoconnect);
+	load_key_str("autoconnect",  "autoconnect",   settings.autoconnect);
 	load_key_str("connect_host",  "connect_host",  settings.connect_host);
 		
 	if #key_queue > 0 then

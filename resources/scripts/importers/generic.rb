@@ -319,14 +319,15 @@ class Generic
 
 				title   = @striptitle ? strip_title(setname) : setname
 				setname = @genromlist[@targetname] == true ? fn : setname
-
 				newgame = Game.LoadSingle(title, setname, @target.pkid)
-				newgame = Game.new unless newgame
+				if (not newgame) then
+					newgame = Game.new
+		    end
 				
 				newgame.setname = setname
 				newgame.title = title
 				newgame.target = @target
-		                        
+                   
 				if @gamedb_sys
 					newgame.system = @gamedb_sys
 					scrape_data(title, newgame)

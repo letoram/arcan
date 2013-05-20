@@ -162,6 +162,9 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
+/* NOTE: when arcan_event_serialize(*buffer) is implemented,
+ * the queue should be stripped from the shmpage entirely and only transferred
+ * over the socket(!) */
 	if (dst && ev)
 		rv = dst->child_alive ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
