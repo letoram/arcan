@@ -119,6 +119,7 @@ DQL = Dql.new
 module DBWrapper
 	def execute(qry, *args)
 #		STDOUT.print("should execute: #{qry}\n")
+#		args.each{|arg| STDOUT.print("\t#{arg}\n") } 
 		super(qry, args)
 	end
 end
@@ -177,7 +178,7 @@ class Game < DBObject
 		last = nil
 		if (@pkid > 0)
 			@@dbconn.execute(DQL[:update_game], 
-				last = [@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
+				last = [@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @pkid])
 		else
 			@@dbconn.execute(DQL[:insert_game],
 				last = [@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
