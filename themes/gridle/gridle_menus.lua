@@ -107,7 +107,7 @@ end, true));
 
 add_submenu(soundlbls, soundptrs, "Soundmaps...", "soundmap", gen_glob_menu("soundmap", "soundmaps/*", ALL_RESOURCES, function(label) load_soundmap(label); end, nil));
 add_submenu(soundlbls, soundptrs, "Sample Gain...", "effect_gain", gen_num_menu("effect_gain", 0.0, 0.1, 11));
-add_submenu(soundlbls, soundptrs, "Movie Audio Gain...", "movieagain", gen_num_menu("movieagain", 0, 0.1, 11));
+add_submenu(soundlbls, soundptrs, "Movie Audio Gain...", "movie_gain", gen_num_menu("movie_gain", 0.0, 0.1, 11));
 
 local bgmusiclbls = {};
 local bgmusicptrs = {};
@@ -117,6 +117,7 @@ add_submenu(bgmusiclbls, bgmusicptrs, "Playback...", "bgmusic", gen_tbl_menu("bg
 		if (label == "Disabled") then
 			if (valid_vid(imagery.musicplayer)) then
 				delete_image(imagery.musicplayer);
+        imagery.source_audio = nil;
 			end
 		else
 			music_start_bgmusic(settings.bgmusic_playlist);
@@ -131,15 +132,18 @@ add_submenu(bgmusiclbls, bgmusicptrs, "Order...", "bgmusic_order", gen_tbl_menu(
 	
 end, true));
 
-add_submenu(soundlbls, soundptrs, "Background Gain...", "bgmusic_gain", gen_num_menu("bgmusic_gain", 0.0, 0.1, 11));
+add_submenu(soundlbls, soundptrs, "Background Gain...", "bgmusic_gain", gen_num_menu("bgmusic_gain", 0.0, 0.1, 11, function()
+  if (imagery.source_audio ~= nil) then
+    audio_gain(imagery.source_audio, settings.bgmusic_gain);
+  end
+end ));
 add_submenu(soundlbls, soundptrs, "Background Music...", nil, bgmusiclbls, bgmusicptrs);
 
 local tmpfun = soundptrs["Background Music..."];
 soundptrs["Background Music..."] = function()
-add_submenu(bgmusiclbls, bgmusicptrs, "Playlists...", "bgmusic_playlist", gen_glob_menu("bgmusic_playlist", "music/playlists/*.m3u", ALL_RESOURCES, nil,
-		function()
-			spawn_warning({"No playlists could be found", "check resources/music/playlists for .m3us"})
-		end));
+add_submenu(bgmusiclbls, bgmusicptrs, "Playlists...", "bgmusic_playlist", gen_glob_menu("bgmusic_playlist", "music/playlists/*.m3u", ALL_RESOURCES, 
+	function() music_start_bgmusic(settings.bgmusic_playlist); end, 
+	function() spawn_warning({"No playlists could be found", "check resources/music/playlists for .m3us"}); end));
 
 	tmpfun();
 end

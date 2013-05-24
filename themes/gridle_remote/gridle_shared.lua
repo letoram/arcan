@@ -279,6 +279,10 @@ end
 function music_start_bgmusic(playlist)
 	if (settings.last_playlist == playlist) or 
 		(not music_load_playlist(playlist) or settings.bgmusic == "Disabled") then
+    if (imagery.source_audio) then
+      audio_gain(imagery.source_audio, settings.bgmusic_gain);
+    end
+
 		return;
 	end
 
@@ -296,10 +300,12 @@ function music_start_bgmusic(playlist)
 	local function musicplayer_trigger(source, status)
 		if (status.kind == "frameserver_terminated") then
 			delete_image(imagery.musicplayer);
+      imagery.source_audio = nil;
 
 			local song = music_next_song( #settings.playlist );
 			if (song == nil) then
 				imagery.musicplayer = nil;
+        imagery.source_audio = nil;
 			end
 
 			imagery.musicplayer = load_movie(song,  FRAMESERVER_NOLOOP, musicplayer_trigger);
@@ -307,8 +313,8 @@ function music_start_bgmusic(playlist)
 			image_tracetag(imagery.musicplayer, "music player");
 		
 		elseif (status.kind == "resized") then
-			audio_gain(status.source_audio, 0.0);
-			audio_gain(status.source_audio, settings.bgmusic_gain, settings.transitiondelay);
+			audio_gain(status.source_audio, settings.bgmusic_gain);
+      imagery.source_audio = status.source_audio;
 			play_movie(source);
 		end
 	end
@@ -633,14 +639,17 @@ function gridle_internal_setup(source, datatbl, gametbl)
 		internal_aid = datatbl.source_audio;
 		internal_vid = source;
 
--- (reset toggles? NOTE: do this on a per game basis)  
---	settings.internal_toggles.bezel     = false;
---	settings.internal_toggles.overlay   = false;
---	settings.internal_toggles.backdrops = false;
+-- (reset toggles? Future NOTE: do this on a per game basis, so track id + toggles)  
+--
+--  	settings.internal_toggles.bezel     = false;
+--  	settings.internal_toggles.overlay   = false;
+--  	settings.internal_toggles.backdrops = false;
+--
+
 		gridle_load_internal_extras( resourcefinder_search(gametbl, true), gametbl.target );
 --	order_image(internal_vid, max_current_image_order());
 		image_tracetag(source, "internal_launch(" .. gametbl.title ..")");
-		audio_gain(internal_aid, settings.internal_again, NOW);
+		audio_gain(internal_aid, settings.internal_gain);
 		settings.keyconftbl = keyconfig.table;
 
 		if (settings.capabilities.snapshot == false) then
@@ -715,16 +724,16 @@ function internallaunch_event(source, datatbl)
 		gridle_internal_setup(source, datatbl, current_game);
 
 	elseif (datatbl.kind == "frameserver_terminated") then
-		if (settings.status_loading) then
-			remove_loaded();
-			dispatch_pop();
-		end
-	
 		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
 		blend_image(imagery.crashimage, 0.8);
 
-		if (not settings.in_internal) then
-			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 10);
+		if (settings.status_loading) then
+			remove_loaded();
+			dispatch_pop();
+
+		elseif (not settings.in_internal) then
+			dispatch_pop();
+			blend_image(imagery.crashimage, 0.0, settings.fadedelay + 20);
 		end
 
 	elseif (datatbl.kind == "message") then
@@ -855,6 +864,6 @@ end
 local old_play = play_audio;
 function play_audio(res)
 	if (res) then
-		old_play(res);
+		old_play(res, settings.sample_gain);
 	end
 end

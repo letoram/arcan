@@ -106,7 +106,7 @@ function draw_infowin()
 
 	settings.infowin:show();
 	hide_image(settings.infowin.cursorvid);
-	move_image(settings.infowin.anchor, math.floor(VRESW * 0.5), math.floor(VRESH * 0.5));
+	move_image(settings.infowin.anchor, math.floor(VRESW * 0.2), math.floor(VRESH * 0.5));
 end
 
 function set_layout(layname, target, save)
@@ -175,11 +175,8 @@ function spawn_mainmenu()
 		store_key("autoconnect", lbl); end, true));
 
 	table.insert(mainlbls, "-------");
-	if (settings.ingame_layout and settings.menu_layout and settings.connect_host) then
-		table.insert(mainlbls, "Connect");
-		print("layout:", settings.ingame_layout, settings.menu_layout, settings.connect_host);
-		mainptrs["Connect"] = open_connection;
-	end
+	table.insert(mainlbls, "Connect");
+	mainptrs["Connect"] = open_connection;
 	
 	table.insert(mainlbls, "Shutdown");
 
@@ -268,22 +265,34 @@ function load_cb(restype, lay, laytbl)
 end
 
 function activate_layout(laytgt, cur_item)
-	if (settings.layout ~= nil) then
-		settings.layout:destroy();
-		settings.layout = nil;
+	if (laytgt == nil or cur_item == nil) then
+		return;
 	end
 	
 	local restbl = resourcefinder_search(cur_item, true);
 	cur_item.restbl = restbl;
-	
-	settings.layout = layout_load("layouts/" .. laytgt, function(restype, lay)
-		return load_cb(restype, lay, cur_item); 
-	end);
-	
-	if (settings.layout) then
-		settings.layout:show();
+
+-- load a new layout if we have to
+	if (settings.layout ~= nil and laytgt ~= settings.lastlayout) then
+		settings.layout:destroy();
+		settings.layout = nil;
 	end
 
+-- need to create from scratch
+	if (settings.layout == nil) then
+		settings.lastlayout = "layouts/" .. laytgt;	
+		settings.layout = layout_load(settings.lastlayout, function(restype, lay)
+			return load_cb(restype, lay, cur_item); 
+			end);
+	end
+
+-- :show takes care of updating what is necessary
+	if (settings.layout) then
+		settings.layout:show();
+		if (settings.layout["bgeffect"]) then 
+			update_shader(settings.layout["bgeffect"][1] and settings.layout["bgeffect"][1].res);
+		end
+	end
 end
 
 function decode_message(msg)
@@ -566,11 +575,16 @@ function hookfun(newitem)
 end
 
 function update_shader(resname)
--- (when here, something goes bad?!)	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+	if (not resname) then
+		return;
+	end
+
+	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+	image_shader(settings.background, settings.shader);
+	shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
+	
 	if (valid_vid(settings.background)) then
-		settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
 		image_shader(settings.background, settings.shader);
-		shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
 	end
 end
 

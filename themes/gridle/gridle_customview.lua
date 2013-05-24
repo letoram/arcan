@@ -101,7 +101,7 @@ local function navi_change(navi, navitbl)
 	settings.restbl  = resourcefinder_search(settings.gametbl, true);
 	send_gamedata(settings.gametbl, false);
 	
-	layout.default_gain = settings.movieagain;
+	layout.default_gain = settings.movie_gain;
 	layout:show();
 
 -- we override some of the navigator settings
@@ -332,15 +332,18 @@ function gridle_customview()
 	layout = layout_load("customview.lay", load_cb);
 	if (layout) then
 		setup_customview();
-		layout.default_gain = settings.movieagain;
+		layout.default_gain = settings.movie_gain;
 		layout:show();
-		update_shader(layout["bgeffect"][1] and layout["bgeffect"][1].res);
+    if (layout["bgeffect"]) then
+  		update_shader(layout["bgeffect"][1] and layout["bgeffect"][1].res);
+    end
+
 		music_start_bgmusic(settings.bgmusic_playlist);
 		return true;
 	end
 	
 -- 
--- If the default layout cannot be found (menu/config will simply zap the customview_cfg and call _customview() again)
+-- If the default layout cannot be found (menu/config will simply zap the customview_cfg and call _customview() gain)
 -- Setup an edit session, this is a slightly different version of what's present in "streamer" (no internal launch, no vidcap, ...)
 -- Instead, a "navigator" group is added (se navigators/*.lua) that determines what is currently "selected"
 --
@@ -383,6 +386,6 @@ function gridle_customview()
 		return false;
 	end
 
-	layout.default_gain = settings.movieagain;
+	layout.default_gain = settings.movie_gain;
 	layout:show();
 end

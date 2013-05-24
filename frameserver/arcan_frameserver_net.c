@@ -821,7 +821,7 @@ static void server_session(const char* host, int limit)
  * each IP (multihomed) */
 	int timeout = -1;
 #ifdef _WIN32
-   timeout = 100000;
+   timeout = 10000;
 #endif
 
 	if (apr_pollset_create(&poll_in, limit + 4, netcontext.mempool, 0) != APR_SUCCESS){

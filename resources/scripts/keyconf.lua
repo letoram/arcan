@@ -180,6 +180,10 @@ local function keyconf_next_key(self)
 		self.key_kind = string.sub(self.key, 1, 1);
 		self.key = string.sub(self.key, 2);
 
+    if (self.ident[self.key] and self.ident[self.key].skip ~= nil) then
+      return self:next_key(self);
+    end
+
 		lbl = "(".. tostring(self.ofs) .. " / " ..tostring(# self.configlist) ..")";
 
 		if (self.key_kind == "A" or self.key_kind == "r") then
