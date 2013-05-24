@@ -144,7 +144,7 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 
 	if (GetExitCodeProcess((bDup) ? hProcessDup : hProcess, &dwCode) && (dwCode == STILL_ACTIVE)) {
 		FARPROC pfnExitProc;
-		pfnExitProc = GetProcAddress(hKernel, "ExitProcess");
+		pfnExitProc = GetProcAddress(hKernel, "exit");
 		hRT = CreateRemoteThread((bDup) ? hProcessDup : hProcess,
 			NULL,
 			0,

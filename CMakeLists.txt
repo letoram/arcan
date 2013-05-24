@@ -435,6 +435,7 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
  install(FILES ${_dlls} DESTINATION ${BIN_DST})
  install(FILES arcan_romman.exe DESTINATION ${BIN_DST})
  install(FILES winicon.ico DESTINATION ${BIN_DST})
+ install(FILES COPYRIGHT DESTINATION ${BIN_DST})
  install(FILES oalinst.exe DESTINATION ${BIN_DST})
 
 # overwrite to reduce hassle on Vista++, only affects themes/resources

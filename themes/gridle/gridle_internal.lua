@@ -107,7 +107,7 @@ inputmodeptrs["Reconfigure Keys"] = function()
 		if (keyconfig:input(iotbl) == true) then
 			dispatch_pop();
 			kbd_repeat(settings.repeatrate);
-		end
+    end	
 	end, 0);
 end
 
@@ -1206,13 +1206,13 @@ local function configure_players(dstname)
 	dispatch_push({}, "reconfigure players (" .. tostring(dstname) ..")", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
 			dispatch_pop();
-
-			if (gametbl) then
+			
+      if (gametbl) then
 				gametbl:destroy();
 			end
 			
 			keyconfig.keyfile = keyconfig_oldfname;
-		end
+    end
 	end, 0);
 end
 
@@ -1258,8 +1258,15 @@ local function add_gamelbls( lbltbl, ptrtbl )
 			local lbls = {"Set (Game) Keyconfig", "Set (Target) Keyconfig"};
 			local ptrs = {};
 
-			ptrs["Set (Game) Keyconfig"]   = function() configure_players( gen_keymap_name( true ) );  end
-			ptrs["Set (Target) Keyconfig"] = function() configure_players( gen_keymap_name( false ) ); end
+			ptrs["Set (Game) Keyconfig"]   = function() 
+        settings.iodispatch["MENU_ESCAPE"]();
+        configure_players( gen_keymap_name( true ) );  
+      end
+
+			ptrs["Set (Target) Keyconfig"] = function() 
+        settings.iodispatch["MENU_ESCAPE"]();
+        configure_players( gen_keymap_name( false ) ); 
+      end
 
 			if ( resource( gen_keymap_name(true)) ) then
 				table.insert(lbls, "Drop (Game) Keyconfig");
@@ -1497,7 +1504,7 @@ add_submenu(glowlbls, glowptrs, "Horizontal Bias...",    "vector_hbias",      ge
 add_submenu(glowlbls, glowptrs, "Vertical Offset...",    "vector_vblurofs",   gen_num_menu("vector_vblurofs",    -6,   1, 13, updatetrigger));
 add_submenu(glowlbls, glowptrs, "Horizontal Offset...",  "vector_hblurofs",   gen_num_menu("vector_hblurofs",    -6,   1, 13, updatetrigger));
 
-add_submenu(traillbls, trailptrs, "Glow Trails...",       "vector_glowtrails", gen_num_menu("vector_glowtrails",   0,   1,  8, updatetrigger));
+add_submenu(traillbls, trailptrs, "Glow Trails...",       "vector_glowtrails", gen_num_menu("vector_glowtrails",   1,   1,  8, updatetrigger));
 add_submenu(traillbls, trailptrs, "Delta Match...",       "vector_deltamethod",gen_tbl_menu("vector_deltamethod", {"Off", "On", "Delta Only"}, updatetrigger, true));
 add_submenu(traillbls, trailptrs, "Trail Falloff...",     "vector_trailfall",  gen_num_menu("vector_trailfall",   -4,   1,  9, updatetrigger));
 add_submenu(traillbls, trailptrs, "Trail Step...",        "vector_trailstep",  gen_tbl_menu("vector_trailstep",   {-4,-3,-2,-1,1,2,3,4}, updatetrigger, false));

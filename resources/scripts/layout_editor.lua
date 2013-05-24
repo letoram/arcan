@@ -1138,6 +1138,7 @@ function layout_load(name, callback, options)
 		return nil;
 	end
 
+	restbl.default_gain = 1;
 	restbl.destroy = layout_cleanup;
 	restbl.show    = layout_show;
 	restbl.trigger = callback;

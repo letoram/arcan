@@ -3,11 +3,11 @@
 -- mapping between PLAYERn_BUTTONm vs. target/game specific
 --
 
-local add = function(restbl, key, icon, label, remap)
+local add = function(restbl, key, icon, label, skip)
     restbl.ident[key] = {};
     restbl.ident[key].icon = icon;
     restbl.ident[key].label = label;
-		restbl.ident[key].dynamic = remap;
+		restbl.ident[key].skip  = skip;
 end
 
 -- identstr comes from the first "message" event sent to the event handler
@@ -17,7 +17,7 @@ local function retrohelper_psx(porttype)
 	restbl.players = 2;
 	restbl.ident = {};
 
-	add(restbl, "PLAYER1_COIN1", nil, "(Not Used)", function() return nil; end);
+	add(restbl, "PLAYER1_COIN1", nil, "(Not Used)", true);
 	add(restbl, "PLAYER1_BUTTON1","icons/ps_circle.png", "Player 1, Circle");
 	add(restbl, "PLAYER1_BUTTON2","icons/ps_x.png", "Player 1, Cross");
 	add(restbl, "PLAYER1_BUTTON3","icons/ps_tri.png", "Player 1, Triangle");
@@ -31,7 +31,7 @@ local function retrohelper_psx(porttype)
 	add(restbl, "PLAYER1_AXIS3", nil, "Player 1, Right Stick (X)");
 	add(restbl, "PLAYER1_AXIS4", nil, "Player 1, Right Stick (Y)");
 
-	add(restbl, "PLAYER2_COIN1", nil, "(Not Used)", function() return nil; end);
+	add(restbl, "PLAYER2_COIN1", nil, "(Not Used)", true); 
 	add(restbl, "PLAYER2_BUTTON1","icons/ps_circle.png", "Player 2, Circle");
 	add(restbl, "PLAYER2_BUTTON2","icons/ps_x.png", "Player 2, Cross");
 	add(restbl, "PLAYER2_BUTTON3","icons/ps_tri.png", "Player 2, Triangle");
@@ -49,13 +49,13 @@ local function retrohelper_psx(porttype)
 end
 
 -- porttype for multitaps etc.?
-function retrohelper_bsnes(identstr, porttype)
+function retrohelper_bsnes(porttype)
 	restbl.buttons = 6;
 	restbl.axes    = 0;
 	restbl.players = 2;
 	restbl.ident  = {};
 
-	add(restbl, "PLAYER1_COIN1", nil, "(not used)", function() return nil; end);
+	add(restbl, "PLAYER1_COIN1", nil, "(not used)", true); 
 	add(restbl, "PLAYER1_BUTTON1", "icons/snes_a.png", "Player 1, A Button");
 	add(restbl, "PLAYER1_BUTTON2", "icons/snes_b.png", "Player 1, B Button");
 	add(restbl, "PLAYER1_BUTTON3", "icons/snes_x.png", "Player 1, X Button");
@@ -63,7 +63,7 @@ function retrohelper_bsnes(identstr, porttype)
 	add(restbl, "PLAYER1_BUTTON5", "icons/ps_l1.png", "Player 1, L Button");
 	add(restbl, "PLAYER1_BUTTON6", "icons/ps_r1.png", "Player 1, R Button");
 
-	add(restbl, "PLAYER2_COIN1", nil, "(not used)", function() return nil; end);
+	add(restbl, "PLAYER2_COIN1", nil, "(not used)", true); 
 	add(restbl, "PLAYER2_BUTTON1", "icons/snes_a.png", "Player 2, A Button");
 	add(restbl, "PLAYER2_BUTTON2", "icons/snes_b.png", "Player 2, B Button");
 	add(restbl, "PLAYER2_BUTTON3", "icons/snes_x.png", "Player 2, X Button");
@@ -74,16 +74,31 @@ function retrohelper_bsnes(identstr, porttype)
 	return restbl;
  end
 
+function retrohelper_gambatte(porttype)
+	restbl.buttons = 2;
+	restbl.axes    = 0;
+	restbl.players = 1;
+	restbl.ident   = {};
+	
+	add(restbl, "PLAYER1_COIN1",   nil, "(not used)", true);
+	add(restbl, "PLAYER1_BUTTON1", nil, "A Button");
+	add(restbl, "PLAYER1_BUTTON2", nil, "B Button");
+	add(restbl, "PLAYER1_START",   nil, "Start");
+	add(restbl, "PLAYER1_SELECT",  nil, "Select");
+
+	return restbl;
+end
+
 function retrohelper_nx(porttype)
 	restbl.buttons = 6;
 	restbl.axes    = 0;
 	restbl.players = 1;
 	restbl.ident   = {};
 
-	add(restbl, "PLAYER1_COIN1",   nil, "(Reserved)", function() return nil; end);
+	add(restbl, "PLAYER1_COIN1",   nil, "(Reserved)", true); 
 	add(restbl, "PLAYER1_START",   nil, "Inventory");
 	add(restbl, "PLAYER1_SELECT",  nil, "System Settings");
-	add(restbl, "PLAYER1_BUTTON1", nil, "(Reserved)", function() return nil; end);
+	add(restbl, "PLAYER1_BUTTON1", nil, "(Reserved)", true); 
 	add(restbl, "PLAYER1_BUTTON2", nil, "Jump");
 	add(restbl, "PLAYER1_BUTTON3", nil, "Map");
 	add(restbl, "PLAYER1_BUTTON4", nil, "Fire");
@@ -99,8 +114,10 @@ function retrohelper_lookup(identstr, porttype)
 		return retrohelper_psx(porttype);
 	elseif (string.match(identstr, "NXEngine")) then
 		return retrohelper_nx(porttype);
-	elseif (string.match(identstr, "bSNES")) then
+	elseif (string.match(identstr, "bSNES") or string.match(identstr, "SNES9x")) then
 		return retrohelper_bsnes(porttype);
+	elseif (string.match(identstr, "gambatte")) then
+		return retrohelper_gambatte(porttype);
 	else
 		return nil;
 	end

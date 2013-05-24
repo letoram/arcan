@@ -25,6 +25,11 @@ Gridle disconnected icon is CC-BY-30-NP courtesy of Mazeni77, http://mazeni77.de
 
 The shaders included in resources/shaders/bgeffects are from "ShaderToy", http://www.iquilezles.org/apps/shadertoy/ 
 
+The shaders used as display-effect for Gridle/Internal-Launch/Display Modes can be found in
+themes/gridle/display/* and are individually tagged with their respective authors.
+
+Additional thanks go out to the libretro project (libretro.org) and associated developers.
+
 Dependencies:
  SDL-1.2, SDL-TTF, SDL_Image -- www.libsdl.org, LGPL
  OpenGL -- www.opengl.org, SGI OpenGL License

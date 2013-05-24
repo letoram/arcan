@@ -58,6 +58,7 @@ settings = {
 	},
 
 	effect_gain = 1.0,
+	movie_gain = 1.0,
 
 	soundmap = "8bit",
 	bgmusic = "Disabled",
@@ -98,7 +99,6 @@ settings = {
 	cellcount= 0,
 	pageofs  = 0,
 	gameind  = 1,
-	movieagain = 1.0,
 	graph_mode = 0,
 
 -- frameskipping / debugging
@@ -184,7 +184,7 @@ settings = {
 	internal_input   = "Normal",
 	flipinputaxis    = false,
 	filter_opposing  = false, 
-	internal_again   = 1.0,
+	internal_gain    = 1.0,
 	fullscreenshader = "default",
 	in_internal      = false,
 	cocktail_mode    = "Disabled",
@@ -836,13 +836,13 @@ function gridle_ledconf(defer_fun)
 		ledconfig.lastofs = ledconfig.labelofs;
 
 -- since we have a working symbol/label set by now, use that one
-		gridle_input = function(iotbl)
+	  dispatch_push({}, "ledconfig", function(iotbl) 
 			local restbl = keyconfig:match(iotbl);
 
 -- just push input until all labels are covered
 			if (iotbl.active and restbl and restbl[1]) then 
 				if (ledconfig:input(restbl[1]) == true) then
-					gridle_input = gridle_dispatchinput;
+		      dispatch_pop();
 					ledconf_labelview:destroy();
 					ledconf_labelview = nil;
 					init_leds();
@@ -856,7 +856,7 @@ function gridle_ledconf(defer_fun)
 					end
 				end
 			end
-		end
+		end)
 
 -- already got working LEDconf, or no point in trying to configure one.
 	else
@@ -1368,7 +1368,9 @@ function asynch_movie_ready(source, statustbl)
 
 			vid, aid = play_movie(source);
 			audio_gain(aid, 0.0);
-			audio_gain(aid, settings.movieagain, settings.fadedelay);
+      if (settings.movie_gain > 0.01) then
+  			audio_gain(aid, settings.movie_gain, settings.fadedelay);
+      end
 
 			copy_image_transform( cursor_vid(), source );
 			blend_image(cursor_vid(), 0.0, settings.fadedelay);
@@ -1680,9 +1682,9 @@ function load_settings()
 	load_key_str("sortorder", "sortorder", settings.sortorder);
 	load_key_str("defaultshader", "fullscreenshader", settings.fullscreenshader);
 	load_key_num("repeatrate", "repeatrate", settings.repeatrate);
-	load_key_num("internal_again", "internal_again", settings.internal_again);
+	load_key_num("internal_gain", "internal_gain", settings.internal_gain);
 	load_key_str("scalemode", "scalemode", settings.scalemode);
-	load_key_num("movieagain", "movieagain", settings.movieagain);
+	load_key_num("movie_gain", "movie_gain", settings.movie_gain);
 	load_key_num("moviecooldown", "cooldown_start", settings.cooldown_start);
 	load_key_str("tilebg", "tilebg", settings.tilebg);
 	load_key_str("bgname", "bgname", settings.bgname);
