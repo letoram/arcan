@@ -106,7 +106,7 @@ static struct arcan_video_context context_stack[CONTEXT_STACK_LIMIT] = {
 			.tracetag = "(world)",
 			.current  = {
 				.opa = 1.0,
-				.rotation.quaternion.w = 1.0
+.rotation.quaternion.w = 1.0
 			}
 		}
 	}
@@ -382,29 +382,27 @@ signed arcan_video_pushcontext()
 
 unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 {
-	/* NOTE: incomplete */
 	struct rendertarget tgt = current_context->stdoutp;
+	int dstind = (int)context_ind - 1 < 0 ? 0 : context_ind - 1;
+	struct arcan_video_context* dstctx = &context_stack[dstind];
 	tgt.fbo = tgt.pbo = 0;
 
-/* this is a no-op on the outmost layer */
-	if (context_ind == 0 || !alloc_fbo(&tgt))
-		arcan_video_popcontext();
-
-	tgt.color = arcan_video_newvobject(dst);
-
-	if (arcan_video_display.fbo_disabled){
+/* this is a a no-op on the outermost layer
+ * failure to alloc a FBO is still threated as a valid op */
+	if (context_ind == 0 || arcan_video_display.fbo_disabled || !alloc_fbo(&tgt) ||
+		dstctx->nalive >= dstctx->vitem_limit - 1){
 		*dst = ARCAN_EID;
 		return arcan_video_popcontext();
 	}
 
+	tgt.color = arcan_video_newvobject(dst);
 	/* do we have enough space in the old context to save the current? */
 
 
-	/* if so, create a fbo, and if that goes well, do a lsat fbo renderpass into
-	 * that rendertarget, clean everything up, inject and store vobj in dst */
-
+/* if so, create a fbo, and if that goes well, do a last fbo renderpass into
+ * that rendertarget, clean everything up, inject and store vobj in dst */
 	int nfc = arcan_video_popcontext();
-		return nfc;
+	return nfc;
 }
 
 signed arcan_video_extpushcontext(arcan_vobj_id* dst)
@@ -1512,6 +1510,46 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 	}
 
 	return rv;
+}
+
+static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
+static bool activate_fbo(struct rendertarget* dst)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+
+	if (dst->mode == RENDERTARGET_DEPTH){
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+			GL_TEXTURE_2D, dst->depth, 0);
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+	}
+	else{ /* RENDERTARGET_COLOR */
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+			GL_TEXTURE_2D, dst->color->gl_storage.glid, 0);
+		
+		if (dst->mode > RENDERTARGET_COLOR)
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+				GL_RENDERBUFFER, dst->depth);
+
+		if (dst->mode > RENDERTARGET_COLOR_DEPTH)
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+				GL_RENDERBUFFER, dst->depth);
+	}
+
+/* basic error handling / status checking
+ * may be possible that we should cache this in the 
+ * rendertarget and only call when / if something changes as
+ * it's not certain that drivers won't stall the pipeline on this */
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	
+	if (status == GL_FRAMEBUFFER_COMPLETE)
+		return true;
+	else {
+		arcan_video_display.fbo_disabled = true;
+		arcan_warning("Error using rendertarget (FBO), feature disabled.\n");
+		arcan_debug_curfbostatus(status, dst->mode);
+		return false;
+	}
 }
 
 static bool alloc_fbo(struct rendertarget* dst)
@@ -3637,50 +3675,20 @@ cleanup:
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
-/* assumes working orthographic projection matrix based on current resolution,
- * redraw the entire scene and linearly interpolate transformations */
-static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
 void arcan_video_refresh_GL(float lerp)
 {
 /* for performance reasons, we should try and re-use FBOs whenever possible */
-	if (arcan_video_display.fbo_disabled == false){
+	if (!arcan_video_display.fbo_disabled){
 		for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
-
-			glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
-
-			if (tgt->mode == RENDERTARGET_DEPTH){
-					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tgt->depth, 0);
-/* unsure if these ONLY EVER apply to the active FBO, assume that they do. */
-					glDrawBuffer(GL_NONE);
-					glReadBuffer(GL_NONE);
-			}
-			else { /* RENDERTARGET_COLOR */
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tgt->color->gl_storage.glid, 0);
-
-				if (tgt->mode > RENDERTARGET_COLOR)
-					glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, tgt->depth);
-
-				if (tgt->mode > RENDERTARGET_COLOR_DEPTH)
-					glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, tgt->depth);
-			}
-
-			GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-			if (status == GL_FRAMEBUFFER_COMPLETE){
+			bool active_fbo = activate_fbo(tgt);
+			
+			if (active_fbo){
 				process_rendertarget(tgt, lerp);
-				if (tgt->readback != 0){
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-					process_readback(tgt, false);
-				}
-			}
-			else {
-				arcan_video_display.fbo_disabled = true;
-				arcan_warning("Error using rendertarget(FBO), feature disabled.\n");
-				arcan_debug_curfbostatus(status, tgt->mode);
-			}
+				process_readback(tgt, false);
+			}	
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 /* use MRT to populate a possible "capture" FBO, the process_rendertarget function will make sure to not render the color
