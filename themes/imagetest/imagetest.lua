@@ -41,6 +41,8 @@ function drawmenu()
 	[[\b\!i(p)\t\!bstack pop\n\r]] ..
 	[[\b\!i(l)\t\!bload image into context\n\r]] ..
 	[[\b\!i(a)\t\!btoggle asynchronous image_load\n\r]] ..
+	[[\b\!i(d)\t\!bstack push store\n\r]] ..
+	[[\b\!i(f)\t\!bstack pop store\n\r]] ..
 	[[\iESCAPE\t\!ishutdown\n\r]] );
 
 	sprop = image_surface_properties(text_vid);
@@ -136,6 +138,13 @@ function imagetest_input(inputtbl)
 		elseif (symtable[ inputtbl.keysym ] == "s") then
 			text_vid = BADID;
 			print("Stack push => " .. tostring ( push_video_context() ) );
+		elseif (symtable[ inputtbl.keysym ] == "d") then
+			num, vid = storepush_video_context();
+			print("Stack push store => " .. tostring(num) .. " => " .. tostring(vid)); 
+		elseif (symtable[ inputtbl.keysym ] == "f") then
+			num, vid = storepop_video_context();
+			show_image(vid);
+			print("Stack pop store => " .. tostring(num) .. " => "  .. tostring(vid));			
 		elseif (symtable[ inputtbl.keysym ] == "p") then
 			print("Stack pop => " .. tostring ( pop_video_context() ) );
 		elseif (symtable[inputtbl.keysym] == "a") then
