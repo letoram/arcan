@@ -1155,10 +1155,12 @@ int arcan_lua_setled(lua_State* ctx)
 	return 1;
 }
 
-/* NOTE: a currently somewhat serious yet unhandled issue concerns what to do with events fires from
- * objects that no longer exist, e.g. the case with events in the queue preceeding a push_context, pop_context,
- * the -- possibly -- safest option would be to completely flush event queues between successful context pops,
- * in such cases, it should be handled in the LUA layer*/
+/* NOTE: a currently somewhat serious yet unhandled issue concerns what to do
+ * with events fires from objects that no longer exist, e.g. the case with 
+ * events in the queue preceeding a push_context, pop_context,
+ * the -- possibly -- safest option would be to completely flush event queues 
+ * between successful context pops, in such cases, it should be handled in the 
+ * LUA layer */
 int arcan_lua_pushcontext(lua_State* ctx)
 {
 /* make sure that we save one context for launch_external */
@@ -1169,6 +1171,28 @@ int arcan_lua_pushcontext(lua_State* ctx)
 		lua_pushinteger(ctx, -1);
 
 	return 1;
+}
+
+int arcan_lua_popcontext_ext(lua_State* ctx)
+{
+	arcan_vobj_id newid = ARCAN_EID;
+
+	lua_pushinteger(ctx, arcan_video_nfreecontexts() > 1 ?
+		arcan_video_extpopcontext(&newid) : -1);
+	lua_pushvid(ctx, newid);	
+	
+	return 2;
+}
+
+int arcan_lua_pushcontext_ext(lua_State* ctx)
+{
+	arcan_vobj_id newid = ARCAN_EID;
+
+	lua_pushinteger(ctx, arcan_video_nfreecontexts() > 1 ?
+		arcan_video_extpushcontext(&newid) : -1);
+	lua_pushvid(ctx, newid);	
+	
+	return 2;
 }
 
 int arcan_lua_popcontext(lua_State* ctx)
@@ -2307,7 +2331,8 @@ int arcan_lua_fillsurface(lua_State* ctx)
 			for (int x = 0; x < cons.w; x++)
 				RGBAPACK(r, g, b, 0xff, cptr++);
 
-		arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, desw, desh, 0);
+		arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, 
+			desw, desh, 0);
 		lua_pushvid(ctx, id);
 		return 1;
 	}
@@ -3389,8 +3414,9 @@ int arcan_lua_recordset(lua_State* ctx)
 		}
 	}
 
-/*  in order to stay backward compatible API wise, the load_movie with function callback
- *  will always need to specify loop condition. */
+/* in order to stay backward compatible API wise, 
+ * the load_movie with function callback will always need to specify 
+ * loop condition. (or we can switch to heuristic stack management) */
 	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
 		lua_pushvalue(ctx, 9);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
@@ -4279,6 +4305,8 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "random_surface", arcan_lua_randomsurface);
 	arcan_lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
 	arcan_lua_register(ctx, "push_video_context", arcan_lua_pushcontext);
+	arcan_lua_register(ctx, "storepush_video_context", arcan_lua_pushcontext_ext);
+	arcan_lua_register(ctx, "storepop_video_context", arcan_lua_popcontext_ext);
 	arcan_lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
 	arcan_lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
   arcan_lua_register(ctx, "new_3dmodel", arcan_lua_buildmodel);

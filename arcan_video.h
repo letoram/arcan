@@ -36,6 +36,7 @@
 /* Supposedly, GL_BGRA is more efficient and can be directly transferred without 'swizzling', but seems to
  * vary heavily between platform and driver. One option would be to actually probe this through timing texture upload times */
 #define GL_PIXEL_FORMAT GL_RGBA
+#define GL_PIXEL_BPP 4
 
 /* video-style enum of potential arcan_video_* outcomes */
 
