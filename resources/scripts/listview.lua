@@ -86,12 +86,12 @@ local function listview_redraw(self)
 		move_image(self.scrollbar, props.width - self.borderw, 0);
 		order_image(self.scrollbar, image_surface_properties(self.window).order + 4);
 		show_image(self.scrollbar);
-end
+	end
 
 	move_image(self.window, self.borderw, self.borderw);
-	resize_image(self.border, props.width + self.borderw, 
+	resize_image(self.border, props.width + self.borderw * 2, 
 		props.height + self.borderw, 5);
-	resize_image(self.window, props.width - self.borderw, 
+	resize_image(self.window, props.width,
 		props.height - self.borderw, 5);
 	order_image(self.listvid, image_surface_properties(self.window).order + 1);
 end

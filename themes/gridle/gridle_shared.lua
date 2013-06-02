@@ -50,10 +50,13 @@ local function dispatch_input(iotbl, override)
 end
 
 --
--- replace the current input handling routine with the specified triggerfun (dispatchinput if nil)
+-- replace the current input handling routine with the specified triggerfun 
+-- (dispatchinput if nil)
 -- with the specified dispatch table (tbl)
 -- 'name' is used to assist tracing/debugging
--- rrate is either -1 or 0,where 0 indicates no keyboard repeat allowed, -1 sets it to user setting
+-- rrate is either -1 or 0,where 0 indicates no keyboard repeat allowed, 
+-- -1 sets it to user setting
+-- 
 function dispatch_push(tbl, name, triggerfun, rrate)
 	if (settings.dispatch_stack == nil) then
 		settings.dispatch_stack = {};
@@ -522,27 +525,21 @@ function menu_spawnmenu(list, listptr, fmtlist)
 
 	local parent = current_menu;
 	local props = image_surface_resolve_properties(current_menu.cursorvid);
-	local windsize = VRESH;
 
-	local yofs = 0;
-	if (props.y + windsize > VRESH) then
-		yofs = VRESH - windsize;
-	end
-
-	current_menu = listview_create(list, windsize, VRESW / 3, fmtlist);
+	current_menu = listview_create(list, math.floor(VRESH * 0.7), math.floor(VRESW / 3), fmtlist);
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
 	current_menu.updatecb = parent.updatecb;
 	current_menu:show();
 
-	move_image( current_menu.anchor, props.x + props.width + 6, props.y);
+	move_image( current_menu.anchor, props.x + props.width + 3, props.y);
 
 	local xofs = 0;
 	local yofs = 0;
 	
 -- figure out where the window is going to be.
 	local aprops_l = image_surface_properties(current_menu.anchor, -1);
-	local wprops_l = image_surface_properties(current_menu.window, -1);
+	local wprops_l = image_surface_properties(current_menu.border, -1);
 	local dx = aprops_l.x;
 	local dy = aprops_l.y;
 	

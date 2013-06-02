@@ -350,6 +350,8 @@ function create_weighted_fbo( frames, delta, deltaonly )
 		end
 
 		local strv = tostring(frames[i]);
+		strv = string.gsub(strv, ",", "."); -- workaround for a bug in some versions of lua..
+
 		local coll = "vec4(" .. strv .. ", " .. strv .. ", " .. strv .. ", 1.0)";
 		mixl = mixl .. "col" .. tostring(i) .. " * " .. coll;
 

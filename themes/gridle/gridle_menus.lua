@@ -148,12 +148,33 @@ add_submenu(bgmusiclbls, bgmusicptrs, "Playlists...", "bgmusic_playlist", gen_gl
 	tmpfun();
 end
 
-add_submenu(inputlbls, inputptrs, "Repeat Rate...", "repeatrate", gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
-add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote", gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"},	function(label)
-	if (label == "Disabled" and valid_vid(imagery.server)) then
-		net_disconnect(imagery.server, 0);
+add_submenu(inputlbls, inputptrs, "Repeat Rate...", "repeatrate", 
+	gen_num_menu("repeatrate", 0, 100, 6, function() kbd_repeat(settings.repeatrate); end));
+
+add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote", 
+	gen_tbl_menu("network_remote", {"Disabled", "Passive", "Active"},	function(label)
+		if (label == "Disabled" and valid_vid(imagery.server)) then
+			net_disconnect(imagery.server, 0);
+		end
+	end, true));
+
+local mnavlbls = {"On", "Off"};
+local mnavptrs = {};
+mnavptrs["On"] = function(lbl, save)
+	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
+	settings.mouse_enabled = lbl == "On";
+	if (save) then 
+		store_key("mouse_trails", lbl == "On" and 1 or 0);
+		play_audio(soundmap["MENU_FAVORITE"]);
+	else
+		play_audio(soundmap["MENU_SELECT"]);
 	end
-end, true))
+	
+end
+mnavptrs["Off"] = mnavptrs["On"];
+
+add_submenu(inputlbls, inputptrs, "Mouse Navigation...", mnavlbls, mnavptrs, {});
+add_submenu(inputlbls, inputptrs, "Mouse Trails...", gen_num_menu("mouse_trails", 0, 10, 5, function() end, true));
 
 local mainlbls = {};
 local mainptrs = {};
@@ -181,50 +202,27 @@ local ledmodelbls = {
 if INTERNALMODE ~= "NO SUPPORT" then
 	table.insert(ledmodelbls, "Game setting (on push)");
 end
+
+local ledmodelut = {};
+ledmodelut["Disabled"] = 0;
+ledmodelut["All toggle"] = 1;
+ledmodelut["Game setting (always on)"] = 2;
+ledmodelut["Game setting (on push)"] = 3;
 	
-local ledmodeptrs = {}
-	ledmodeptrs["Disabled"] = function(label, save) 
+local ledmodeptrs = {};
+local ledmodefun = function(label, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
-	settings.ledmode = 0;
+	settings.ledmode = ledmodelut[label];
 	if (save) then 
-		store_key("ledmode", 0);
+		store_key("ledmode", settings.ledmode);
 		play_audio(soundmap["MENU_FAVORITE"]);
 	else
 		play_audio(soundmap["MENU_SELECT"]);
 	end
 end
 
-ledmodeptrs["All toggle"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-	settings.ledmode = 1;
-	if (save) then 
-		store_key("ledmode", 1);
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-end
-
-ledmodeptrs["Game setting (always on)"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
-	settings.ledmode = 2; 
-	if (save) then
-		store_key("ledmode", 2); 
-		play_audio(soundmap["MENU_FAVORITE"])
-	else
-		play_audio(soundmap["MENU_SELECT"]);
-	end
-end
-
-ledmodeptrs["Game setting (on push)"] = function(label, save)
-	settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
-	settings.ledmode = 3; 
-	if (save) then 
-		store_key("ledmode", 3); 
-		play_audio(soundmap["MENU_FAVORITE"]);
-	else
-		play_audio(soundmap["MENU_SELECT"])	
-	end
+for key, val in pairs(ledmodelut) do
+	ledmodeptrs[key] = ledmodefun;
 end
 
 inputptrs["Reconfigure Keys (Full)"] = function()
