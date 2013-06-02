@@ -25,7 +25,8 @@
 #ifndef RGBAPACK
 #define RGBAPACK(r, g, b, a, d)\
 {\
-	((uint32_t *)(d))[0] = ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)g << 8) | (uint32_t)r;\
+	((uint32_t *)(d))[0] = ((uint32_t)a << 24) | ((uint32_t)b << 16) |\
+		((uint32_t)g << 8) | (uint32_t)r;\
 }
 #endif
 
@@ -33,13 +34,14 @@
 #define CONTEXT_STACK_LIMIT 8
 #endif
 
-/* Supposedly, GL_BGRA is more efficient and can be directly transferred without 'swizzling', but seems to
- * vary heavily between platform and driver. One option would be to actually probe this through timing texture upload times */
+/* Supposedly, GL_BGRA is more efficient and can be directly transferred 
+ * without 'swizzling', but seems to vary heavily between platform and driver.
+ * One option would be to actually probe this through timing texture 
+ * upload times */
 #define GL_PIXEL_FORMAT GL_RGBA
 #define GL_PIXEL_BPP 4
 
 /* video-style enum of potential arcan_video_* outcomes */
-
 enum arcan_vrtypes {
 	ARCAN_VRTYPE_IMAGE,
 	ARCAN_VRTYPE_VIDEO,
@@ -54,7 +56,7 @@ enum arcan_framemode {
 
 enum arcan_vtex_mode {
 	ARCAN_VTEX_REPEAT = 0,
-	ARCAN_VTEX_CLAMP = 1
+	ARCAN_VTEX_CLAMP  = 1
 };
 
 enum arcan_vfilter_mode {
@@ -71,30 +73,30 @@ enum arcan_vimage_mode {
 };
 
 enum arcan_transform_mask {
-	MASK_NONE = 0,
-	MASK_POSITION = 1,
-	MASK_SCALE = 2,
-	MASK_OPACITY = 4,
-	MASK_LIVING = 8,
+	MASK_NONE        = 0,
+	MASK_POSITION    = 1,
+	MASK_SCALE       = 2,
+	MASK_OPACITY     = 4,
+	MASK_LIVING      = 8,
 	MASK_ORIENTATION = 16,
-	MASK_UNPICKABLE = 32,
-	MASK_FRAMESET = 64,
-	MASK_MAPPING = 128,
-	MASK_ALL = 255
+	MASK_UNPICKABLE  = 32,
+	MASK_FRAMESET    = 64,
+	MASK_MAPPING     = 128,
+	MASK_ALL         = 255
 };
 
 enum arcan_ffunc_cmd {
-	ffunc_poll = 0,
-	ffunc_render = 1,
-	ffunc_tick = 2,
+	ffunc_poll    = 0,
+	ffunc_render  = 1,
+	ffunc_tick    = 2,
 	ffunc_destroy = 3,
 	ffunc_rendertarget_readback = 4
 };
 
 enum arcan_ffunc_rv {
-	FFUNC_RV_NOFRAME = 0,
+	FFUNC_RV_NOFRAME  = 0,
 	FFUNC_RV_GOTFRAME = 1,
-	FFUNC_RV_COPIED = 2,
+	FFUNC_RV_COPIED   = 2,
 	FFUNC_RV_NOUPLOAD = 64
 };
 
@@ -148,11 +150,12 @@ uint16_t arcan_video_screenh();
 unsigned arcan_video_popcontext();
 signed arcan_video_pushcontext();
 
-/* The extended push/pop context functions creates a video object in the newly activated context.
- * This object, the ID of which is stored in *dst (or EID if the namespace is already full) is
- * comprised of the result of a single renderpass into a temporary FBO */ 
+/* The extended push/pop context functions creates a video object in the 
+ * newly activated context. This object, the ID of which is stored in *dst 
+ * (or EID if the namespace is already full) is comprised of the result of a 
+ * single renderpass into a temporary FBO */ 
 unsigned arcan_video_extpopcontext(arcan_vobj_id* dst);
-signed arcan_video_extpushcontext(arcan_vobj_id* dst);
+signed   arcan_video_extpushcontext(arcan_vobj_id* dst);
 unsigned arcan_video_contextusage(unsigned* free);
 
 /* create a video object with a desired end-position and measurements
@@ -167,21 +170,30 @@ unsigned arcan_video_contextusage(unsigned* free);
 /* use a prepared buffer to generate the video object.
  * buf* will be managed internally.
  * assumes constraints are a valid texture size (power of two),
- * and that the data is in RGBA format*/
-arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, img_cons constraints, float origw, float origh, unsigned short zv);
+ * and that the data is in RGBA format */
+arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, 
+	img_cons constraints, float origw, float origh, unsigned short zv);
 
 /* tag will be stored in the asynchimg event when the image has been loaded */
-arcan_vobj_id arcan_video_loadimageasynch(const char* fname, img_cons constraints, intptr_t tag);
-arcan_vobj_id arcan_video_loadimage(const char* fname, img_cons constraints, unsigned short zv);
+arcan_vobj_id arcan_video_loadimageasynch(const char* fname, 
+	img_cons constraints, intptr_t tag);
+arcan_vobj_id arcan_video_loadimage(const char* fname, 
+	img_cons constraints, unsigned short zv);
+arcan_vobj_id arcan_video_fromvid(arcan_vobj_id, 
+	img_cons constraints, unsigned short zv);
+
 arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
-arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv);
+arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, 
+	vfunc_state state, img_cons constraints, unsigned short zv);
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
-arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb feed, vfunc_state state);
+arcan_errc arcan_video_alterfeed(arcan_vobj_id id, 
+	arcan_vfunc_cb feed, vfunc_state state);
 arcan_errc arcan_video_changefilter(arcan_vobj_id id, enum arcan_vfilter_mode);
 arcan_errc arcan_video_persistobject(arcan_vobj_id id);
 
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, img_cons display);
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, 
+	img_cons display);
 arcan_vfunc_cb arcan_video_emptyffunc();
 
 /* spawn an instance of the particular vobj,

@@ -314,13 +314,15 @@ function gridlemenu_settings(cleanup_hook, filter_hook)
 		movievid = nil;
 	end
 
-	current_menu = listview_create(mainlbls, math.floor(VRESH * 0.9), math.floor(VRESW / 3));
+	current_menu = listview_create(mainlbls, math.floor(VRESH * 0.9), 
+		math.floor(VRESW / 2));
 	current_menu.ptrs = mainptrs;
 	
 	current_menu:show();
 	dispatch_push(imenu);
 	
-	local spawny = VRESH * 0.5 - image_surface_properties(current_menu.border).height;
+	local spawny = VRESH * 0.5 - 
+		image_surface_properties(current_menu.border, -1).height;
 	spawny = spawny > 0 and spawny or 0;
 
 	move_image(current_menu.anchor, 10, (VRESH * 0.5), 0);

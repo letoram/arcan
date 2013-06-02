@@ -318,14 +318,11 @@ int arcan_lua_pushrawstr(lua_State* ctx)
 	return 1;
 }
 
-/* Expects:
- * string - filename
- * adds ID unto the stack if successfull, ARCAN_EID otherwise
- */
 int arcan_lua_loadimage(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
-	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	char* path = findresource(luaL_checkstring(ctx, 1), 
+		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 	uint8_t prio = luaL_optint(ctx, 2, 0);
 	unsigned desw = luaL_optint(ctx, 3, 0);
 	unsigned desh = luaL_optint(ctx, 4, 0);
