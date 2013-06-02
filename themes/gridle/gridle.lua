@@ -13,8 +13,23 @@ imagery = {
 	temporary = {}
 };
 
+-- [mapped to clock_pulse]
+-- each key entry is expected to have a subtable with
+-- trigger, current_value, seed_value
+-- [trigger] invoked when current_value <= 0
+-- [seed_value == 0] and the timer will be removed when current_value has expired
+clock_timers = {};
+
+-- source table used when mouse trails are activated,
+-- populated with [mouse_trails] randomized samples from icons/* forcescaled to 32x32
+-- will be instanced at a fixed clock rate up to an upper limit
+mouse_trails = {
+};
+mouse_x = math.floor(VRESW * 0.5);
+mouse_y = math.floor(VRESH * 0.5);
+
 gameflags = {};
-soundmap = {};
+soundmap  = {};
 
 soundmap_triggers = {
 	MENU_TOGGLE       = "menu_toggle.wav",
@@ -57,27 +72,31 @@ settings = {
 	filters = {
 	},
 
-	effect_gain = 1.0,
-	movie_gain = 1.0,
+	effect_gain   = 1.0,
+	movie_gain    = 1.0,
 
-	soundmap = "8bit",
-	bgmusic = "Disabled",
-	bgmusic_gain = 1.0,
+	mouse_enabled = true,
+	mouse_trails  = 0,
+
+	soundmap      = "8bit",
+	bgmusic       = "Disabled",
+	bgmusic_gain  = 1.0,
 	bgmusic_order = "Sequential",
 	
-	bgname = "smstile.png",
-	bgeffect = "none.fShader",
-	bg_rh = VRESH / 32,
-	bg_rw = VRESW / 32,
+	bgname    = "smstile.png",
+	bgeffect  = "none.fShader",
+	bg_rh     = VRESH / 32,
+	bg_rw     = VRESW / 32,
 	bg_speedh = 64,
 	bg_speedv = 64,
-	tilebg = "Sysicons",
+	tilebg    = "Sysicons",
 	
-	borderstyle = "Normal", 
-	sortorder = "Ascending",
-	viewmode = "Grid",
-	scalemode = "Keep Aspect",
-	iodispatch = {},
+	borderstyle  = "Normal", 
+	sortorder    = "Ascending",
+	viewmode     = "Grid",
+	scalemode    = "Keep Aspect",
+
+	iodispatch     = {},
 	dispatch_stack = {},
 
 	fadedelay = 10,
@@ -318,8 +337,8 @@ function gridle()
 	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
 	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
 	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
-	system_load("scripts/3dsupport.lua")();      -- used by detailview / customview, simple model/material/shader loader
-	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard using only MENU_UP/DOWN/LEFT/RIGHT/SELECT/ESCAPE
+	system_load("scripts/3dsupport.lua")();      -- used by detailview / customview, model/material/shader loader
+	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard 
 	system_load("scripts/layout_editor.lua")();  -- layout editor for customview
 	system_load("gridle_menus.lua")();           -- in-frontend configuration options
 	system_load("gridle_contextmenus.lua")();    -- context menus (quickfilter, database manipulation, ...)
@@ -345,13 +364,15 @@ function gridle()
 
 -- make sure that we don't have any weird resolution configurations
 	if (VRESW < 240 or VRESH < 180) then
-	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. ") requested (minimum 240x180). Check -w / -h arguments.");
+	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. 
+			") requested (minimum 240x180). Check -w / -h arguments.");
 	end
 
--- We'll reduce stack layers (since we barely use them) and increase number of elements on the default one
--- make sure that it fits the resolution of the screen with the minimum grid-cell size, including the white "background"
--- instances etc. Tightly minimizing this value help track down leaks as overriding it will trigger a dump.
-	local contextlim = ( VRESW * VRESH ) / (48 * 48) * 4;
+-- We'll reduce stack layers (since we barely use them) and increase number 
+-- of elements on the default one make sure that it fits the resolution of 
+-- the screen with the minimum grid-cell size, including the white "background"
+-- instances etc. Tightly minimizing this value help track down leaks. 
+	local contextlim = ( VRESW * VRESH ) / (48 * 48) * 4 + (64 * 2);
 	contextlim = contextlim > 1024 and contextlim or 1024
 	system_context_size(contextlim);
 	
@@ -384,9 +405,14 @@ function gridle()
 	push_video_context();
 
 -- test layout for fullscreen recording, something not working right with MRT however
---	recres = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
---	define_recordtarget(recres, "rest.mkv", "acodec=VORBIS:vcodec=VP8:container=matroska", {WORLDID}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status) end);
---	image_tracetag(recres, "recres");
+-- setting this one up and making it persistant should allow for recording a full session
+-- (particularly useful for demo recording)
+--
+-- the global monitoring isn't good enough for it to be working however.
+-- recres = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
+-- define_recordtarget(recres, "rest.mkv", "acodec=VORBIS:vcodec=VP8:container=matroska", {WORLDID}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status) end);
+-- image_tracetag(recres, "recres");
+--
 
 -- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 
@@ -404,8 +430,11 @@ end
 
 function gridview_input()
 	local imenu = {};
--- the dispatchtable will be manipulated throughout the theme, simply used as a label <-> function pointer lookup table
+-- the dispatchtable will be manipulated throughout the theme, 
+-- simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
+	imenu["MOUSE_X"]      = function(luttbl, iotbl) mouse_movement(iotbl.samples[1], 0); end 
+	imenu["MOUSE_Y"]      = function(luttbl, iotbl) mouse_movement(0, iotbl.samples[1]); end
 	imenu["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 *settings.ncw); end
 	imenu["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor(settings.ncw ); end
 	imenu["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
@@ -508,6 +537,23 @@ function gridview_input()
 	while dispatch_pop() ~= "" do end
 	dispatch_push(imenu, "default handler", nil, -1);
 	settings.grid_dispatch = imenu;
+end
+
+function mouse_movement(dx, dy)
+	if (settings.mouse_enabled) then
+		mouse_x = mouse_x + dx;
+		mouse_y = mouse_y + dy;
+		move_image(imagery.mouse_cursor, mouse_x, mouse_y);
+
+-- [1] check the current dispatch handler and figure out if we're in
+--     the shared menus, the grid view or the OSD keyboard
+--
+-- [2a]for grid view, check if we're selecting something in the grid
+--     or if we are closer to any of the control buttons
+--
+-- [2b]for menus or OSD, just forward the event to the corresponding listview/osdkbd
+-- 
+	end
 end
 
 -- to save resources when going from customview to grid view
@@ -1150,19 +1196,24 @@ function get_image( resourcetbl, gametbl )
 end
 
 function grab_sysicons()
-	if (imagery.sysicons ~= nil) then return; end
+	if (imagery.sysicons == nil) then
+		list = glob_resource("images/systems/*.png", ALL_RESOURCES);
 
-	list = glob_resource("images/systems/*.png", ALL_RESOURCES);
-
-	imagery.sysicons = {};
-	for ind, val in ipairs(list) do
-		local sysname = string.sub(val, 1, -5);
-		local imgid = load_image("images/systems/" .. val);
+		imagery.sysicons = {};
+		for ind, val in ipairs(list) do
+			local sysname = string.sub(val, 1, -5);
+			local imgid = load_image("images/systems/" .. val);
 			
-		if (imgid) then
-			imagery.sysicons[sysname] = imgid;
-			image_tracetag(imgid, "system icon");
+			if (imgid) then
+				imagery.sysicons[sysname] = imgid;
+				image_tracetag(imgid, "system icon");
+			end
 		end
+	end
+
+	if (imagery.mouse_cursor == nil) then
+		imagery.mouse_cursor = load_image("images/icons/mouse_cursor.png");
+		image_tracetag(imagery.mouse_cursor, "mouse cursor");
 	end
 end
 
@@ -1696,6 +1747,8 @@ function load_settings()
 	load_key_num("bg_speedh", "bg_speedh", settings.bg_speedh);
 	load_key_str("cocktail_mode", "cocktail_mode", settings.cocktail_mode);
 	load_key_bool("filter_opposing", "filter_opposing", settings.filter_opposing);
+	load_key_bool("mouse_enabled", "mouse_enabled", settings.mouse_enabled);
+	load_key_num("mouse_trails", "mouse_trails", settings.mouse_trails);
 	load_key_str("autosave", "autosave", settings.autosave);
 	load_key_str("stream_url", "stream_url", settings.stream_url);
 	load_key_num("cursor_scale", "cursor_scale", settings.cursor_scale);
