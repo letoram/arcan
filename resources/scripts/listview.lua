@@ -15,7 +15,8 @@
 
 local function listview_redraw(self)
 --	figure out the interval to place in the list
-	self.page_beg, self.page_ofs, self.page_end = self:calcpage(self.cursor, self.page_size, #self.list);
+	self.page_beg, self.page_ofs, self.page_end = self:calcpage(self.cursor, 
+		self.page_size, #self.list);
 
 -- no need to redraw
 	if (self.page_beg == self.last_beg and self.page_end == self.last_end) then
@@ -25,6 +26,12 @@ local function listview_redraw(self)
 	if (valid_vid(self.listvid)) then 
 		delete_image(self.listvid); 
 	end
+
+-- the others (scrollpos, scrollbtn) are anchored to scrollbar
+	if (valid_vid(self.scrollbar)) then
+		delete_image(self.scrollbar);
+		self.scrollbar = BADID;
+	end
 	
 	self.last_beg = self.page_beg;
 	self.last_end = self.page_end;
@@ -32,11 +39,13 @@ local function listview_redraw(self)
 	renderstr = "";
 	
     for ind = self.page_beg, self.page_end do
-			local tmpname = self.gsub_ignore and self.list[ind] or string.gsub(self.list[ind], "\\", "\\\\");
+			local tmpname = self.gsub_ignore and self.list[ind] or 
+				string.gsub(self.list[ind], "\\", "\\\\");
 			local fmt = self.formats[ tmpname ];
 			
 			if (string.sub(tmpname, 1, 3) == "---") then
-				renderstr = renderstr .. self.hilight_fontstr .. string.sub(tmpname, 4) .. [[\n\r]];
+				renderstr = renderstr .. self.hilight_fontstr .. 
+				string.sub(tmpname, 4) .. [[\n\r]];
 			else
 				if (fmt) then
 					renderstr = renderstr .. fmt .. tmpname .. [[\!b\!i\n\r]];
@@ -53,12 +62,37 @@ local function listview_redraw(self)
 	image_clip_on(self.listvid);
 	show_image(self.listvid);
 
-	local props = image_surface_properties(self.listvid);
-	props.width = (props.width + 10 > 0) and (props.width + 10) or self.maxw;
+--
+-- Possibly switch [16] with whatever the font width is for one character
+--
+	local scroll  = self.vscroll and self.page_size < #self.list;
+	local props   = image_surface_properties(self.listvid);
+	self.padding  = scroll and 18 or 2; 
+	props.width   = (props.width + self.padding);  --< self.maxw)
+--		and (props.width + self.padding) or self.maxw; 
 
-	resize_image(self.border, props.width, props.height, 5);
-	resize_image(self.window, props.width - 6, props.height - 6, 5);
+--
+-- If scrolling is enabled, adjust the window size,
+-- add a scroll list and corresponding buttons
+--
+	if (scroll) then
+		local wcol = settings.colourtable.dialog_window;
+		local cr = wcol.r * 0.5; 
+		local cg = wcol.g * 0.5;
+		local cb = wcol.b * 0.5;
+		self.scrollbar = fill_surface(self.padding, 
+			props.height - self.borderw, cr, cg, cb);
+		link_image(self.scrollbar, self.window);
+		move_image(self.scrollbar, props.width - self.borderw, 0);
+		order_image(self.scrollbar, image_surface_properties(self.window).order + 4);
+		show_image(self.scrollbar);
+end
 
+	move_image(self.window, self.borderw, self.borderw);
+	resize_image(self.border, props.width + self.borderw, 
+		props.height + self.borderw, 5);
+	resize_image(self.window, props.width - self.borderw, 
+		props.height - self.borderw, 5);
 	order_image(self.listvid, image_surface_properties(self.window).order + 1);
 end
 
@@ -83,6 +117,15 @@ local function listview_select(self)
 	return self.list[self.cursor];
 end
 
+-- 
+-- Used to implement mouse movement
+-- translate mouse coordinate into listview space and pass as rely
+-- this function will then look up in list-lines and convert into
+--  
+--
+local function listview_cursor_toline(self, rely)
+end
+
 local function listview_move_cursor(self, step, relative)
 	local itempos = relative and (self.cursor + step) or step;
 
@@ -102,8 +145,8 @@ local function listview_move_cursor(self, step, relative)
 		end
 	end
 
--- self will only be redrawn if we've landed on a different page / offset than before 
--- (or if the datamodel has changed) 
+-- self will only be redrawn if we've landed on a different page 
+-- / offset than before (or if the datamodel has changed) 
 	self:redraw();
 
 -- maintain order rather than revert 
@@ -116,20 +159,26 @@ local function listview_move_cursor(self, step, relative)
 	self.cursorvid = nil;
 	
 -- create a new cursor
-	self.cursorvid = fill_surface(1, 1, 255, 255, 255);
-	link_image(self.cursorvid, self.anchor);
+	self.cursorvid = fill_surface(image_surface_properties(self.window, 5).width, 
+		self.font_size + 2, 255, 255, 255);
+	link_image(self.cursorvid, self.listvid);
 	blend_image(self.cursorvid, 0.3);
-	move_image(self.cursorvid, 3, self.list_lines[self.page_ofs] + 2);
-	resize_image(self.cursorvid, image_surface_properties(self.window, 5).width, self.font_size + 2);
+	move_image(self.cursorvid, 0, self.list_lines[self.page_ofs] );
 	order_image(self.cursorvid, order + 1);
 end
 
-local function listview_tofront(self)
-	local base = max_current_image_order();
-	order_image(self.border, base + 1); 
-	order_image(self.window, base + 2); 
-	order_image(self.listvid, base + 3); 
+local function listview_tofront(self, base)
+	if (base == nil) then
+		base = max_current_image_order();
+	end
+	
+	order_image(self.border,    base + 1); 
+	order_image(self.window,    base + 2); 
+	order_image(self.listvid,   base + 3); 
 	order_image(self.cursorvid, base + 4);
+	if (self.scrollbar) then
+		order_image(self.scrollbar, base + 3);
+	end
 end
 
 -- Need this wholeheartedly to get around the headache of 1-indexed vs ofset. 
@@ -148,8 +197,10 @@ end
 function listview_show(self)
 	self.anchor    = fill_surface(1, 1, 0, 0, 0);
 	self.cursorvid = fill_surface(1, 1, 255, 255, 255);
-	self.border    = fill_surface(8, 8, self.dialog_border.r, self.dialog_border.g, self.dialog_border.b);
-	self.window    = fill_surface(8, 8, self.dialog_window.r, self.dialog_window.g, self.dialog_window.b);
+	self.border    = fill_surface(8, 8, self.dialog_border.r, 
+		self.dialog_border.g, self.dialog_border.b);
+	self.window    = fill_surface(8, 8, self.dialog_window.r, 
+		self.dialog_window.g, self.dialog_window.b);
 
 	move_image(self.anchor, -1, -1);
 	blend_image(self.anchor, 1.0, settings.fadedelay);
@@ -162,10 +213,9 @@ function listview_show(self)
 	
 	link_image(self.cursorvid, self.anchor);
 	blend_image(self.cursorvid, 0.3);
-	move_image(self.window, 3, 3);
+	move_image(self.window, self.borderw * 0.5, self.borderw * 0.5);
 
 -- "bounce" expand-contract amination
-	
 	self:move_cursor(0, true);
 	self:push_to_front();
 end
@@ -179,23 +229,33 @@ local function window_height(self, nlines)
 	return txh;
 end
 
-local function listview_cursor_input(self, av1, av2)
-	return nil;
-end
-
 function listview_create(elem_list, height, maxw, formatlist)
-	restbl = {};
+	restbl = {
+		show          = listview_show,
+		destroy       = listview_destroy,
+		move_cursor   = listview_move_cursor,
+		push_to_front = listview_tofront,
+		redraw        = listview_redraw,
+		select        = listview_select,
+  	calcpage      = listview_calcpage,
+    invalidate    = listview_invalidate   
+	};
 	
--- we associate with an anchor used for movement so that we can clip to
--- window rather than border
-	if (settings == nil) then settings = {}; end
-	if (settings.colourtable == nil) then settings.colourtable = system_load("scripts/colourtable.lua")(); end
+	if (settings == nil) then 
+		settings = {};
+	end
+
+	if (settings.colourtable == nil) then 
+		settings.colourtable = system_load("scripts/colourtable.lua")(); 
+	end
 	
-	restbl.height = height;
-	restbl.list = elem_list;
-	restbl.width = 1;
-	restbl.cursor = 1;
-	restbl.maxw = math.ceil( maxw );
+	restbl.height  = height;
+	restbl.list    = elem_list;
+	restbl.width   = 1;
+	restbl.cursor  = 1;
+	restbl.borderw = 4;
+	restbl.vscroll = false;
+	restbl.maxw    = maxw and math.ceil( maxw ) or VRESW;
 
 	restbl.font_size       = settings.colourtable.font_size;
 	restbl.hilight_fontstr = settings.colourtable.hilight_fontstr;
@@ -204,10 +264,10 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.dialog_window   = settings.colourtable.dialog_window;
 	restbl.gsub_ignore     = false;
 	
-	restbl.page_size = math.floor( height / (restbl.font_size + 6) );
+	restbl.page_size = math.floor( height / (restbl.font_size + restbl.borderw) );
 	
 	if (restbl.page_size == 0) then
-		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(restbl.font_size + 6) .. ")\n");
+		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(restbl.font_size + restbl.borderw) .. ")\n");
 		return nil;
 	end
 
@@ -215,17 +275,6 @@ function listview_create(elem_list, height, maxw, formatlist)
 		restbl.page_size = restbl.page_size - 1;
 	end
 	if (restbl.page_size == 0) then restbl.page_size = 1; end
-	
-	restbl.show = listview_show;
-	restbl.destroy = listview_destroy;
-	restbl.move_cursor = listview_move_cursor;
-	restbl.analog_input = listview_cursor_input;
-	restbl.push_to_front = listview_tofront;
-	restbl.redraw = listview_redraw;
-	restbl.select = listview_select;
-	restbl.calcpage = listview_calcpage;
-	restbl.formats = formatlist;
-	restbl.invalidate = listview_invalidate;
 	
 	if (restbl.formats == nil) then restbl.formats = {}; end
 	return restbl;

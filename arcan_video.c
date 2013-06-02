@@ -972,7 +972,8 @@ arcan_errc arcan_video_transformmask(arcan_vobj_id id, enum arcan_transform_mask
 	return rv;
 }
 
-arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, enum arcan_transform_mask mask)
+arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid, 
+	enum arcan_transform_mask mask)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* src = arcan_video_getobject(srcid);
@@ -1243,35 +1244,39 @@ static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int swidt
 			memcpy(&dst[row * dwidth], &src[row * swidth], swidth * 4);
 }
 
-arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc)
+arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, 
+	arcan_vstorage* dstframe, img_cons forced, bool asynchsrc)
 {
 	static SDL_sem* asynchsynch = NULL;
 	if (!asynchsynch)
 		asynchsynch = SDL_CreateSemaphore(ASYNCH_CONCURRENT_THREADS);
 
-/* with asynchsynch, it's likely that we get a storm of requests and we'd likely suffer
- * thrashing, so limit this. */
+/* with asynchsynch, it's likely that we get a storm of requests 
+ * and we'd likely suffer thrashing, so limit this. */
 	SDL_SemWait(asynchsynch);
 
-    arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
+	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	SDL_Surface* res = IMG_Load(fname);
 
 	if (res) {
 		dst->origw = res->w;
 		dst->origh = res->h;
 
-	/* the thread_loader will take care of converting the asynchsrc to an image once its completely done */
+/* the thread_loader will take care of converting the asynchsrc 
+ * to an image once its completely done */
 		if (!asynchsrc)
 			dst->feed.state.tag = ARCAN_TAG_IMAGE;
 
 		dstframe->source = strdup(fname);
 
-	/* let SDL do byte-order conversion and make sure we have BGRA, ... */
+/* let SDL do byte-order conversion and make sure we have BGRA, ... */
 		SDL_Surface* gl_image =
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
-		    SDL_CreateRGBSurface(SDL_SWSURFACE, res->w, res->h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
+			SDL_CreateRGBSurface(SDL_SWSURFACE, res->w, res->h, 32, 
+				0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
 #else
-		    SDL_CreateRGBSurface(SDL_SWSURFACE, res->w, res->h, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+			SDL_CreateRGBSurface(SDL_SWSURFACE, res->w, res->h, 32,
+				0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
 #endif
 		SDL_SetAlpha(res, 0, SDL_ALPHA_TRANSPARENT);
 		SDL_BlitSurface(res, NULL, gl_image, NULL);
@@ -1280,9 +1285,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vst
 		enum arcan_vimage_mode desm = dst->gl_storage.scale;
 
 /* the user requested specific dimensions,
- * so wer force the rescale texture mode for mismatches and set the dimensions accordingly */
-		if (forced.h > 0 && forced.w > 0)
-		{
+ * so we force the rescale texture mode for mismatches and set 
+ * dimensions accordingly */
+		if (forced.h > 0 && forced.w > 0){
 			if (desm == ARCAN_VIMAGE_SCALEPOW2 || desm == ARCAN_VIMAGE_TXCOORD){
 				neww = nexthigher(forced.w);
 				newh = nexthigher(forced.h);
@@ -1313,24 +1318,27 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vst
 			if (desm == ARCAN_VIMAGE_SCALEPOW2){
 /* for stretch blit, we use the interpolated upscaler from SDL_gfx/rotozoom,
  * as gluScaleImage is not present in GLES and not thread-safe (sigh) */
-				stretchblit(gl_image, (uint32_t*) dstframe->raw, neww, newh, neww * 4, dst->gl_storage.imageproc == imageproc_fliph);
+				stretchblit(gl_image, (uint32_t*) dstframe->raw, neww, newh, neww * 4, 
+					dst->gl_storage.imageproc == imageproc_fliph);
 			}
 			else if (desm == ARCAN_VIMAGE_TXCOORD){
 				memset(dstframe->raw, 0, dstframe->s_raw); /* black 0 alpha "border" */
 /* dst is aligned with the nearest power of 2 of the dimensions of source */
 				imagecopy((uint32_t*) dstframe->raw, gl_image->pixels,
-									neww, gl_image->w, gl_image->h, dst->gl_storage.imageproc == imageproc_fliph);
+					neww, gl_image->w, gl_image->h, 
+					dst->gl_storage.imageproc == imageproc_fliph);
 
 /* Patch texture coordinates */
 				float hx = (float)dst->origw / (float)dst->gl_storage.w;
 				float hy = (float)dst->origh / (float)dst->gl_storage.h;
 				generate_basic_mapping(dst->txcos, hx, hy);
 			}
-
 		}
-		else{ /* src and dst match, only do line- by line copy if flip is needed */
+/* src and dst match, only do line- by line copy if flip is needed */
+		else{ 
 			if (dst->gl_storage.imageproc == imageproc_fliph)
-				imagecopy((uint32_t*)dstframe->raw, gl_image->pixels, neww, neww, newh, true);
+				imagecopy((uint32_t*)dstframe->raw, gl_image->pixels, 
+					neww, neww, newh, true);
 			else
 				memcpy(dstframe->raw, gl_image->pixels, dstframe->s_raw);
 		}
@@ -2089,7 +2097,8 @@ arcan_vobj_id arcan_video_loadimageasynch(const char* rloc, img_cons constraints
 	return rv;
 }
 
-arcan_vobj_id arcan_video_loadimage(const char* rloc, img_cons constraints, unsigned short zv)
+arcan_vobj_id arcan_video_loadimage(const char* rloc, 
+	img_cons constraints, unsigned short zv)
 {
 	arcan_vobj_id rv = loadimage((char*) rloc, constraints, NULL);
 

@@ -131,8 +131,8 @@ function spawn_warning( message, persist )
 	local infowin     = listview_create( msg, VRESW / 2, VRESH / 2 );
 	infowin:show();
 
-	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, 100).width)  );
-	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, 100).height) );
+	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, -1).width)  );
+	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, -1).height) );
 
 	move_image(infowin.anchor, x, y);
 	hide_image(infowin.cursorvid);
