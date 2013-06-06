@@ -3876,17 +3876,42 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 	return false;
 }
 
+unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, int y)
+{
+	if (count == 0)
+		return 0;
+
+/* skip to last item, then scan backwards */
+	arcan_vobject_litem* current = current_context->stdoutp.first;
+	unsigned base = 0;
+
+	while (current->next)
+		current = current->next;
+
+	while (current && base < count){
+		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && 
+			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y))
+				dst[base++] = current->elem->cellid;
+
+		current = current->previous;
+	}
+
+	return base;
+}
+
 unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int y)
 {
 	if (count == 0)
 		return 0;
 
 	arcan_vobject_litem* current = current_context->stdoutp.first;
-	uint32_t base = 0;
+	unsigned base = 0;
 
 	while (current && base < count) {
-		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y))
-			dst[base++] = current->elem->cellid;
+		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && 
+			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y))
+				dst[base++] = current->elem->cellid;
+
 		current = current->next;
 	}
 

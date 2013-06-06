@@ -308,10 +308,13 @@ unsigned arcan_video_tick(unsigned steps);
 
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y);
 
-/* perform a simple 'pick' query,
- * gathering up to 'count' items ordered by Z and storing in 'dst' if they match the specified coordinates
- * returns number picked. O(n) */
+/* 
+ * populate the previous allocated vid array (dst), limited by (count) elements,
+ * with VIDs in the active context / visible pipeline currently hit by (x,y) tuple.
+ * the (r)pick reverses the order, more usefull in UI situations 
+ * returns number picked, O(n) cost. */ 
 unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int y);
+unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, int y);
 
 /* a more precise pick-query (the first is implemented as a detailed pick with some fixed parameters.
  * zval_low and zval_high sets a threshold interval for items to be considered,
