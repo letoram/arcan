@@ -907,9 +907,14 @@ int arcan_lua_pick(lua_State* ctx)
 {
 	int x = luaL_checkint(ctx, 1);
 	int y = luaL_checkint(ctx, 2);
+	bool reverse = luaL_optint(ctx, 3, 0) != 0;
+
 	unsigned int limit = luaL_optint(ctx, 3, 8);
+
 	arcan_vobj_id* pickbuf = (arcan_vobj_id*) malloc(limit * sizeof(arcan_vobj_id));
-	unsigned int count = arcan_video_pick(pickbuf, limit, x, y);
+
+	unsigned int count = reverse ? arcan_video_rpick(pickbuf, limit, x, y) : 
+		arcan_video_pick(pickbuf, limit, x, y);
 	unsigned int ofs = 1;
 
 	lua_newtable(ctx);
