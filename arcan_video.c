@@ -3861,16 +3861,38 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 	return rv;
 }
 
+static inline int isign(int p1_x, int p1_y, int p2_x, int p2_y, int p3_x, int p3_y)
+{
+	return (p1_x - p3_x) * (p2_y - p3_y) - (p2_x - p3_x) * (p1_y - p3_y);
+}
+
+static inline bool itri(int x, int y, int t[6])
+{
+	bool b1, b2, b3;
+
+	b1 = isign(x, y, t[0], t[1], t[2], t[3]) < 0;
+	b2 = isign(x, y, t[2], t[3], t[4], t[5]) < 0;
+  b3 = isign(x, y, t[4], t[5], t[0], t[1]) < 0;
+
+	return (b1 == b2) && (b2 == b3);
+}
+
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
 	vector projv[4];
-
+	
 	if (ARCAN_OK == arcan_video_screencoords(id, projv)){
-		float px[4] = { projv[0].x, projv[1].x, projv[2].x, projv[3].x };
-		float py[4] = { projv[0].y, projv[1].y, projv[2].y, projv[3].x };
+		int t1[] =
+			{ projv[0].x, projv[0].y,
+			  projv[1].x, projv[1].y,
+			  projv[2].x, projv[2].y};
+		
+		int t2[] = 
+			{ projv[2].x, projv[2].y, 
+				projv[3].x, projv[3].y, 
+				projv[0].x, projv[0].y };
 
-/* now we have a convex n-gone poly (0 -> 1 -> 2 -> 0) */
-		return pinpoly(4, px, py, (float) x, (float) y);
+		return itri(x, y, t1) || itri(x, y, t2);	
 	}
 
 	return false;
@@ -3890,8 +3912,9 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, in
 
 	while (current && base < count){
 		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && 
-			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y))
+			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y)){
 				dst[base++] = current->elem->cellid;
+		}
 
 		current = current->previous;
 	}
