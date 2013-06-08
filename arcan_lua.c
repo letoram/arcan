@@ -409,7 +409,7 @@ int arcan_lua_nudgeimage(lua_State* ctx)
 	if (argtype == LUA_TNUMBER){
 		arcan_vobj_id id = luaL_checkvid(ctx, 1);
 		surface_properties props = arcan_video_current_properties(id);
-		arcan_video_objectmove(id, props.position.x + newx, props.position + newy, 1.0, time);
+		arcan_video_objectmove(id, props.position.x + newx, props.position.y + newy, 1.0, time);
 	}
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);

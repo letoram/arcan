@@ -12,6 +12,12 @@ sysicons = {};
 imagery  = {};
 colortable = {};
 
+groupicn = "awbicons/drawer.png";
+groupselicn = "awbicons/drawer_open.png";
+deffont = "fonts/topaz8.ttf";
+deffont_sz = 12;
+mfact = 0.2;
+
 colortable.bgcolor = {0, 85, 169};
 
 x_spawnpos = 20;
@@ -32,6 +38,7 @@ ORDER_MOUSE     = 255;
 
 function awb()
 	symtable = system_load("scripts/symtable.lua")();
+	system_load("scripts/3dsupport.lua")();
 -- note; colourtable in this theme overrides the one in the global namespace 
 	settings.colourtable = system_load("scripts/colourtable.lua")();
 	system_load("awb_window.lua")();
@@ -50,16 +57,40 @@ function awb()
 		fullscreen = true,
 		border = false,
 		borderw = 0,
-		mode = "iconview"
+		mode = "iconview",
+		iconalign = "right"
 	});
 
-	rootwnd:add_bar("top", function() return fill_surface(1,1, 230, 230, 230); end, nil, 24);
+	rootwnd:add_bar("top", function() return fill_surface(1,1, 230, 230, 230);
+		end, nil, 24);
+	rootwnd:add_icon("Systems",   groupicn, groupselicn, deffont, deffont_sz, sfn);
+	rootwnd:add_icon("Games",     groupicn, groupselicn, deffont, deffont_sz, sfn);
+	rootwnd:add_icon("History",   groupicn, groupselicn, deffont, deffont_sz, sfn);
+	rootwnd:add_icon("Favorites", groupicn, groupselicn, deffont, deffont_sz, sfn);
 	rootwnd:show();
+	spawn_boing();
+	spawn_boing();
 	a = spawn_window();
-	b = spawn_window();
+--b = spawn_window();
+end
+
+--
+-- A little hommage to the original, shader is from rendertoy
+--
+function spawn_boing()
+	local a = spawn_window();
+	local boing = load_shader("shaders/fullscreen/default.vShader", 
+		"shaders/boing.fShader", "boing", {}); 
+	local props = image_surface_properties(a.canvas);
+	shader_uniform(boing, "display", "ff", PERSIST, props.width, props.height); 
+	image_shader(a.canvas, boing); 
 end
 
 function focus_window(wnd)
+	if (wnd == rootwnd or wnd == wlist.focus) then
+		return;
+	end
+
 	if (wlist.focus) then
 		wlist.focus:active(false);
 		wlist.focus:reorder(ORDER_WDW);
@@ -88,7 +119,7 @@ function spawn_window(wtype)
 	});
 
 	wcont.cursor_input = function() end
-	wcont.table_input = function() end
+	wcont.table_input  = function() end
 
 	wcont:add_bar("top", "awbicons/border.png", nil, 16);
 	wcont:show();
@@ -126,12 +157,7 @@ end
 
 local function hit_handler(window, label, vid, buttonind)
 -- always focus
-	if (wlist.focus) then
-		wlist.focus:active(false);
-		wlist.focus:reorder(ORDER_WDW);
-	end
-
-	wlist.focus = window;
+	focus_window(window);
 
 -- dragging action
 	if (buttonind == 1 and label == "top") then
@@ -185,6 +211,7 @@ end
 
 function awb_input(iotbl)
 	if (iotbl.kind == "analog" and iotbl.source == "mouse") then
+		iotbl.samples[2] = iotbl.samples[2] * mfact;
 		if (iotbl.subid == 1) then
 			nudge_image(imagery.cursor, 0, iotbl.samples[2]);
 			clamp_cursor();
