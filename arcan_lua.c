@@ -370,28 +370,63 @@ int arcan_lua_imageloaded(lua_State* ctx)
 
 int arcan_lua_moveimage(lua_State* ctx)
 {
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
 	if (time < 0) time = 0;
 
-	arcan_video_objectmove(id, newx, newy, 1.0, time);
+/* array of VIDs or single VID */
+	int argtype = lua_type(ctx, 1);
+	if (argtype == LUA_TNUMBER){
+		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_video_objectmove(id, newx, newy, 1.0, time);
+	}
+	else if (argtype == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		for (int i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_video_objectmove(id, newx, newy, 1.0, time);
+			lua_pop(ctx, 1);
+		}
+	}
+	else
+		arcan_fatal("arcan_lua_moveimage(), invalid argument (1) "
+			"expected VID or indexed table of VIDs\n");
+
 	return 0;
 }
 
 int arcan_lua_nudgeimage(lua_State* ctx)
 {
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
-
-	surface_properties props = arcan_video_current_properties(id);
-
 	int time = luaL_optint(ctx, 4, 0);
 	if (time < 0) time = 0;
 
-	arcan_video_objectmove(id, props.position.x + newx, props.position.y + newy, 1.0, time);
+	int argtype = lua_type(ctx, 1);
+	if (argtype == LUA_TNUMBER){
+		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		surface_properties props = arcan_video_current_properties(id);
+		arcan_video_objectmove(id, newx, newy, 1.0, time);
+	}
+	else if (argtype == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		for (int i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			surface_properties props = arcan_video_current_properties(id);
+			arcan_video_objectmove(id, props.position.x + newx, 
+				props.position.y + newy, 1.0, time);
+			lua_pop(ctx, 1);
+		}
+	}
+	else
+		arcan_fatal("arcan_lua_nudgeimage(), invalid argument (1) "
+			"expected VID or indexed table of VIDs\n");
+
 	return 0;
 }
 
@@ -459,11 +494,26 @@ int arcan_lua_transfertransform(lua_State* ctx)
 
 int arcan_lua_rotateimage(lua_State* ctx)
 {
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float ang = luaL_checknumber(ctx, 2);
 	int time = luaL_optint(ctx, 3, 0);
 
-	arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
+	int argtype = lua_type(ctx, 1);
+	if (argtype == LUA_TNUMBER){
+		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
+	}
+	else if (argtype == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		for (int i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
+			lua_pop(ctx, 1);
+		}
+	}
+	arcan_fatal("arcan_lua_rotateimage(), invalid argument (1) "
+		"expected VID or indexed table of VIDs\n");
 
 	return 0;
 }
@@ -546,19 +596,47 @@ int arcan_lua_maxorderimage(lua_State* ctx)
 	return 1;
 }
 
+static inline void massopacity(lua_State* ctx, 
+	float val, const char* caller)
+{
+	float time = luaL_optint(ctx, 2, 0); 
+
+	int argtype = lua_type(ctx, 1);
+	if (argtype == LUA_TNUMBER){
+		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_video_objectopacity(id, val, time);
+	}
+	else if (argtype == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		for (int i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_video_objectopacity(id, val, time);
+			lua_pop(ctx, 1);
+		}
+	}
+	else
+		arcan_fatal("%s(), invalid argument (1) "
+			"expected VID or indexed table of VIDs\n", caller);
+}
+
+int arcan_lua_imageopacity(lua_State* ctx)
+{
+	float val = luaL_checknumber(ctx, 2);
+	massopacity(ctx, val, "arcan_lua_imageopacity");
+	return 0;
+}
+
 int arcan_lua_showimage(lua_State* ctx)
 {
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_video_objectopacity(id, 1.0f, 0);
-
+	massopacity(ctx, 1.0, "arcan_lua_showimage");
 	return 0;
 }
 
 int arcan_lua_hideimage(lua_State* ctx)
 {
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_video_objectopacity(id, 0.0f, 0);
-
+	massopacity(ctx, 0.0, "arcan_lua_hideimage");
 	return 0;
 }
 
@@ -579,15 +657,6 @@ int arcan_lua_imagepersist(lua_State* ctx)
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	lua_pushboolean(ctx, arcan_video_persistobject(id) == ARCAN_OK);
 	return 1;
-}
-
-int arcan_lua_imageopacity(lua_State* ctx)
-{
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	float val = luaL_checknumber(ctx, 2);
-	uint16_t time = luaL_optint(ctx, 3, 0);
-	arcan_video_objectopacity(id, val, time);
-	return 0;
 }
 
 int arcan_lua_dropaudio(lua_State* ctx)
