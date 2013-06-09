@@ -20,21 +20,26 @@ local function awbwnd_show(self)
 	end
 
 	show_image(self.canvas);
+	self:resize(self.width, self.height);
 end
 
 local function awbwnd_reorder(self, orderv)
-	order_image(self.bordert, orderv);
-	order_image(self.borderd, orderv);
-	order_image(self.borderl, orderv);
-	order_image(self.borderr, orderv);
-	order_image(self.canvas, orderv);
+	order_image({self.bordert, self.borderd, 
+		self.borderl, self.borderr, self.canvas}, orderv);
 
 	for key, val in pairs(self.directions) do
 			val:reorder(orderv);
 	end
+
+	if (self.mode == "iconview") then
+		for ind, val in ipairs(self.icons) do
+			order_image({val.main, val.mainsel, val.label}, orderv);
+		end
+	end
 end
 
-local function awbwnd_hide()
+local function awbwnd_hide(self)
+	hide_image(self.root);
 end
 
 local function awbwnd_alloc(self)
@@ -71,8 +76,6 @@ local function awbwnd_alloc(self)
 		move_image(s.borderd, 0, s.height - bw);
 	end
 
-	self:resize_border();
-	
 	local cwidth  = self.width  - self.borderw * 2;
 	local cheight = self.height - self.borderw * 2;
 	local cx      = self.borderw;
@@ -107,6 +110,7 @@ local function awbwnd_alloc(self)
 		link_image(self.canvas, self.anchor);
 	end
 
+	self:resize(self.width, self.height);
 	return self;
 end
 
@@ -127,7 +131,7 @@ local function awbwbar_refresh(self)
 		
 		if (self.parent.directions["top"]) then
 			local thick = self.parent.directions["top"].thickness;
-			nudge_image(self.root, 0, thick);
+			move_image(self.root, 0, thick);
 			props.height = props.height - thick; 
 		end
 		
@@ -153,8 +157,14 @@ local function awbwnd_setwbar(dsttbl, active)
 	end
 
 -- stretch and tile
-	dsttbl.activeid = (type(active) == "function") and active() or 
-		load_image(tostring(active), asynch_show);
+	if (type(active) == "function") then
+		dsttbl.activeid = active();
+	else
+		dsttbl.activeid = load_image(tostring(active));
+		local props = image_surface_properties(dsttbl.activeid);
+		switch_default_texmode(TEX_REPEAT, TEX_REPEAT, dsttbl.activeid);
+		image_scale_txcos(dsttbl.activeid, dsttbl.parent.width / props.width, 1.0); 
+	end
 
 	show_image(dsttbl.activeid);
 	dsttbl:refresh();
@@ -179,28 +189,44 @@ end
 local function awbwnd_resize(self, neww, newh)
 	local minh_pad = 0;
 	local minw_pad = 0;
+	local cx = self.border and self.borderw or 0;
+	local cy = self.border and self.borderw or 0;
+	local cw = self.border and (neww - self.borderw * 2) or neww;
+	local ch = self.border and (newh - self.borderw * 2) or newh;
 
--- maintain contraints;
+	local left  = self.directions["left"  ];
+	local right = self.directions["right" ];
+	local top   = self.directions["top"   ];
+	local bottom= self.directions["bottom"]; 
+
+-- maintain constraints;
 -- based on which bar-slots are available, make
 -- sure that we accompany minimum thickness and height
-	if (self.directions["left"] ~= nil) then 
-		minw_pad = minw_pad + self.directions["left"].thickness;
-		minh_pad = minh_pad + self.directions["left"].minheight;
+-- and calculate final canvas contraints at the same time
+	if (left) then
+		minw_pad = minw_pad + left.thickness; 
+		minh_pad = minh_pad + left.minheight;
+		cx = cx + left.thickness;
+		cw = cw - left.thickness;
 	end
 
-	if (self.directions["right"] ~= nil) then
-		minw_pad = minw_pad + self.directions["right"].thickness;
-		minh_pad = minh_pad + self.directions["right"].minheight;
+	if (right) then
+		minw_pad = minw_pad + right.thickness;
+		minh_pad = minh_pad + right.minheight;
+		cw = cw - right.thickness;
 	end
 
-	if (self.directions["top"] ~= nil) then
-		minh_pad = minh_pad + self.directions["top"].thickness;
-		minw_pad = minw_pad + self.directions["top"].minheight;
+	if (top) then
+		minh_pad = minh_pad + top.thickness;
+		minw_pad = minw_pad + top.minheight;
+		cy = cy + top.thickness;
+		ch = ch - top.thickness;
 	end
 
-	if (self.directions["bottom"] ~= nil) then
-		minh_pad = minh_pad + self.directions["bottom"].thickness;
-		minw_pad = minw_pad + self.directions["bottom"].minwidth;
+	if (bottom) then
+		minh_pad = minh_pad + bottom.thickness;
+		minw_pad = minw_pad + bottom.minwidth;
+		ch = ch - bottom.thickness;
 	end
 
 	if (self.minw < minw_pad * 2) then
@@ -218,11 +244,27 @@ local function awbwnd_resize(self, neww, newh)
 	if (newh < self.minh) then
 		newh = self.minh;
 	end
+	
+	self.width  = neww;
+	self.height = newh;
 
--- FIXME: reposisition / resize buttons
+-- reposition / resize bars (and buttons)
+	for key, val in pairs(self.directions) do
+		val:refresh();
+	end
+
+	move_image(self.canvas, cx, cy);
+	resize_image(self.canvas, cw, ch); 
+-- reposition / rescale icons
+	if (self.mode == "iconview") then
+		self:refresh_icons();
+	end	
+
+	self:resize_border();
 end
 
-local function awbwnd_addbar(self, direction, active_resdescr, inactive_resdescr, thickness)
+local function awbwnd_addbar(self, direction, active_resdescr, 
+	inactive_resdescr, thickness)
 	if (direction ~= "top" and direction ~= "bottom"
 		and direction ~= "left" and direction ~= "right") or thickness < 1 then
 		return false;
@@ -230,7 +272,9 @@ local function awbwnd_addbar(self, direction, active_resdescr, inactive_resdescr
 
 	if (self.directions[direction]) then
 		delete_image(self.directions[direction].root);
-		delete_image(self.directions[direction].state);
+		if (valid_vid(self.directions[direction].state)) then
+			delete_image(self.directions[direction].state);
+		end
 	end
 
 	local newdir = {};
@@ -251,6 +295,7 @@ local function awbwnd_addbar(self, direction, active_resdescr, inactive_resdescr
 	awbwnd_setwbar(newdir, newdir.activeres);
 
 	self.directions[direction] = newdir;
+	self:resize(self.width, self.height);
 
 	return true;
 end
@@ -264,18 +309,20 @@ local function awbwnd_newpos(self, newx, newy)
 end
 
 local function awbwnd_active(self, active)
-
 	for key, val in pairs(self.directions) do
-		local active_inactive = val.active and val.activeres or
-			(val.inactvres and val.inactvres or val.activeres);
-		val.activestate = active;
+		local active_res = val.activeres;
+		if (active == false and val.inactvres) then
+			active_res = val.inactvres;
+		end
 
-		awbwnd_setwbar(val, active_inactive);
+		val.activestate = active;
+		awbwnd_setwbar(val, active_res);
+		self:reorder(ORDER_FOCUSWDW);
 	end
 end
 
 -- 
--- only bars (and their buttons) are clickable
+-- only bars (and their buttons) and icons are clickable
 --
 local function awbwnd_own(self, vid)
 	for ind, val in pairs(self.directions) do
@@ -285,79 +332,221 @@ local function awbwnd_own(self, vid)
 		end 
 	end
 
+	if (self.mode == "iconview") then
+		a = self:sample_icons();
+		for key, val in ipairs(a) do	
+			if (vid == val.active or vid == val.label) then
+				return val;
+			end
+		end
+	end
+
 	if (vid == self.canvas) then
 		return "canvas";
 	end
 end
 
-local function awbwnd_refreshicons(self)
 --
--- based on orientation, "flood fill" with icons
--- until we run out of space
--- 
-	local max_y  = self.height;
-	local max_x  = self.width;
-	local step_row;
-	local step_col;
-	local start_x = 0;
-	local start_y = 0;
+-- Quite involved, based on desired icon layout, number of icons
+-- and window mode, try to evenly divide the set of defined icons
+-- across the available space
+--
+local function icons_poslbl(val, cx, cy, ralign, balign, order)
+	local lprops = image_surface_properties(val.label );
+	local sprops = image_surface_properties(val.active);
+
+	if (ralign) then
+		cx = cx - sprops.width;
+	end
+
+	if (balign) then
+		cy = cy - lprops.height - sprops.height;
+	end
+
+	move_image(val.main, cx, cy);
+	order_image({val.active, val.label}, order);
+	show_image({val.active, val.label});
+
+	return sprops.width, (lprops.height + sprops.height);
+end
+
+local function icons_halign(self, sx, sy, ex, ey, hstep, order)
+	local cx_x = sx;
+	local cx_y = sy;
+	local iconset = self:sample_icons();
+	local mwidth = 0;
+
+	for i=1,#iconset do
+		local lw, lh = icons_poslbl(iconset[i], cx_x, 
+			cx_y, hstep == -1, false, order);
 	
-	if (self.iconalign == "top") then
-		step_col = {self.spacing, 0};
-		step_row = {0, self.spacing};
+		if (lw > mwidth) then
+			mwidth = lw;
+		end
 
-	elseif (self.iconalign == "bottom") then
-		step_col = {0, self.spacing};
-		step_row = {-self.spacing, 0};
-		start_y  = max_y;
+-- only calculate next coords if relevant
+		if (i < #iconset) then
+			local aprops = image_surface_properties(iconset[i+1].active, -1);
+			local lprops = image_surface_properties(iconset[i+1].label,  -1);
+		
+			cx_y = cx_y + lh + self.spacing;
+	
+-- use next icon as basis for dimensions as they can have different sizes
+-- padding is embedded in ex/ey, as is adding margins against borders
+			if ( cx_y + aprops.height + lprops.height >= ey ) then
+				cx_y = sy;
+				cx_x = cx_x + (hstep * mwidth); 
+				mwidth = 0;
+	
+				if ((hstep == 1 and cx_x >= ex) or
+					(hstep == -1 and cx_x <= ex)) then
+					break;
+				end
+			end
+		
+		end
+	end
 
-	elseif (self.iconalign == "left") then
-		step_col = {0, self.spacing};
-		step_row = {self.spacing, 0};
+end
+
+local function awbwnd_refreshicons(self)
+	local cprops = image_surface_properties(self.canvas, -1);
+
+	local mx = cprops.width - self.spacing;
+	local my = cprops.height - self.spacing; 
+
+	local orderv = cprops.order; 
+
+--
+-- just repetitions of the same theme / code,
+-- merging them didn't bring much more compact code, but 
+-- notably more messy 
+--
+	if (self.iconalign == "left") then
+		icons_halign(self, self.spacing, self.spacing, mx, my, 1, orderv);
 
 	elseif (self.iconalign == "right") then
-		step_col = {0, self.spacing};
-		step_row = {-self.spacing, 0};
-		start_x  = max_x; 
+		icons_halign(self, cprops.width, self.spacing, 0, my, -1, orderv);
+	end
+end
 
+local function awbwnd_iconsoff(self)
+	for ind, val in ipairs(self.icons) do
+		val:forceoff();
+	end
+end
+
+local function awbwnd_activeicon(self)
+	local worder = image_surface_properties(self.active).order;
+	local active = self.active == self.mainsel;
+
+-- only allow one selected?
+	if (self.parent.singleselect) then
+		self.parent:iconsoff();
+	end
+
+	if (active) then
+		self:forceoff();
+		if (self.trigger) then
+			self:trigger();
+		end
 	else
-		warning("awbwnd_refreshicons() -- poor icon alignment specified.");
-	end
-
-	for ind, val in pairs(self.icons) do
-		local aprops = image_surface_properties(val.active);
-		local lprops = image_surface_properties(val.label);
-		local mwidth = aprops.width > lprops.width 
-			and aprops.width or lprops.width;
-		local mheight= aprops.height > lprops.height
-			and aprops.height or lprops.height;
-
--- left and right need to be shifted based on their height	
-		show_image({val.active, val.label});
-		move_image(val.active, curx, cury);
+		self:forceon();
 	end
 end
 
+local function awbwnd_selon(self)
+	local order = image_surface_properties(self.parent.canvas).order;
+	hide_image(self.main);
+	show_image(self.mainsel);
+	self.active = self.mainsel;
+	order_image(self.mainsel, order);
+end
+
+local function awbwnd_seloff(self)
+	if (self.active ~= self.mainsel) then
+		return;
+	end
+
+	local order = image_surface_properties(self.parent.canvas).order;
+	copy_image_transform(self.active, self.mainsel);
+	hide_image(self.mainsel);
+	show_image(self.main);
+	order_image(self.main, order);
+	self.active = self.main;
+end
+
+-- 
+-- active refers current vid (main or main_sel if active)
+-- mainsel and label are linked to main (but not sharing opacity)
+-- we force mainsel and main to have the same properties
+--
 local function awbwnd_addicon(self, name, img, imga, font, fontsz, trigger)
-	if (self.icons[name] ~= nil) then
-		delete_image(self.icons[name].main);
-		delete_image(self.icons[name].mainsel);
+	local newent   = {};
+	newent.main    = type(img) == "string" and load_image(img)  or img;
+	local mprops   = image_surface_properties(newent.main);
+
+	newent.mainsel = type(img) == "string" and load_image(imga) or imga;
+	resize_image(newent.mainsel, mprops.width, mprops.height);
+
+	if (not (valid_vid(newent.main) and valid_vid(newent.mainsel))) then
+		warning(string.format("awbwnd_addicon() couldn't add %s,%s to %s"),
+			name, img, imga);
+		return;
 	end
 
-	local newent   = {};
-	newent.main    = type(img) == "string" and load_image(img) or img;
-	newent.mainsel = type(img) == "string" and load_image(imga) or img;
 	newent.active  = newent.main;
-	newent.label   = render_text(string.format("\\f%s,%d %s", font, 
-		fontsz, name)); 
+	newent.name    = name; 
 	newent.trigger = trigger;
-	
-	self.icons[name] = newent;
-	local props = image_surface_properties(newent.main);	
+	newent.parent  = self;
+	newent.toggle  = awbwnd_activeicon;
+	newent.forceon = awbwnd_selon;
+	newent.forceoff= awbwnd_seloff;
+	newent.label   = render_text(string.format("\\f%s,%d %s", font, 
+		fontsz, name));
 
-	self:refresh_icons();
+	local lprops = image_surface_properties(newent.label);
+
+	link_image(newent.main,    self.canvas);
+	link_image(newent.mainsel, newent.main);
+	link_image(newent.label,   newent.main);	
+
+	image_clip_on(newent.main);
+	image_clip_on(newent.mainsel);
+	image_clip_on(newent.label);
+
+	move_image(newent.label, math.floor(0.5 * (mprops.width 
+	- lprops.width)), mprops.height); 
+	image_mask_clear(newent.mainsel, MASK_OPACITY);
+	image_mask_clear(newent.label,   MASK_OPACITY);
+
+	table.insert(self.icons, newent);
 end
 
+--
+-- replace in table to implement paging etc.
+--
+local function awbicons_sampleicons(self)
+	local maxa = self.width * self.height * 4;
+	local res = {};
+	
+	for ind, val in ipairs(self.icons) do
+		local props = image_surface_properties(val.active);
+		maxa = maxa - props.width * props.height; 
+		table.insert(res, val);
+		if (maxa < 0) then 
+			break;
+		end
+	end
+
+	return res;
+end
+
+--
+-- Replacing the canvas vid is a bit complicated for 
+-- Iconview / Listview since there's a bunch of other
+-- things possibly anchored to it
+--
 local function awbwnd_canvas(self, newvid)
 	if (self.mode == "container") then
 		a = true;
@@ -369,44 +558,68 @@ local function awbwnd_canvas(self, newvid)
 	end
 end
 
+function awbwnd_destroy(self)
+	delete_image(self.anchor);
+end
+
 function awbwnd_create(options)
 	local restbl = {
 		show    = awbwnd_show,
 		hide    = awbwnd_hide,
 		active  = awbwnd_active,
 		add_bar = awbwnd_addbar, 
-		resize  = awbwnd_newsize,
+		resize  = awbwnd_resize,
 		move    = awbwnd_newpos,
 		own     = awbwnd_own,
 		reorder = awbwnd_reorder,
-		update_canvas = awbwand_canvas,
+		destroy = awbwnd_destroy,
+		update_canvas = awbwnd_canvas,
 
 -- static default properties
 		mode = "container", -- {container, container_managed, iconview, listview} 
 		fullscreen = false,
 		border = true,
 		borderw = 2,
+		width = math.floor(VRESW * 0.3),
+		height = math.floor(VRESH * 0.3),
 		minw = 0,
 		minh = 0,
-		spacing = 16,
+		spacing = 12,
 		activestate = true,
 
 -- dynamic default properties
 		x = 0, 
 		y = 0,
+		iconalign = "right",
 		minimized = false,
+		singleselect = true,
 		directions = {}
 	};
 
+-- 
+-- project the option table over the default
+-- 
 	if options ~= nil then 
 		for key, val in pairs(options) do
 			restbl[key] = val;
 		end
 	end
 
+--
+-- static controls for bad arguments
+--
+	if (restbl.mode ~= "iconview" and 
+		restbl.mode ~= "container" and restbl.mode ~=
+		restbl.mode ~= "container_managed") then
+			warning("awbwnd_canvas(), bad mode in optionstable");
+		return nil;
+	end
+ 
 	if (restbl.mode == "iconview") then
 		restbl.add_icon = awbwnd_addicon;
 		restbl.refresh_icons = awbwnd_refreshicons;
+		restbl.sample_icons = awbicons_sampleicons;
+		restbl.iconsoff = awbwnd_iconsoff;
 		restbl.icons = {};
 	end
 

@@ -38,6 +38,8 @@ ORDER_MOUSE     = 255;
 
 function awb()
 	symtable = system_load("scripts/symtable.lua")();
+	system_load("scripts/calltrace.lua")();
+
 	system_load("scripts/3dsupport.lua")();
 -- note; colourtable in this theme overrides the one in the global namespace 
 	settings.colourtable = system_load("scripts/colourtable.lua")();
@@ -61,29 +63,56 @@ function awb()
 		iconalign = "right"
 	});
 
-	rootwnd:add_bar("top", function() return fill_surface(1,1, 230, 230, 230);
-		end, nil, 24);
-	rootwnd:add_icon("Systems",   groupicn, groupselicn, deffont, deffont_sz, sfn);
-	rootwnd:add_icon("Games",     groupicn, groupselicn, deffont, deffont_sz, sfn);
-	rootwnd:add_icon("History",   groupicn, groupselicn, deffont, deffont_sz, sfn);
-	rootwnd:add_icon("Favorites", groupicn, groupselicn, deffont, deffont_sz, sfn);
+	local wbarcb = function() return fill_surface(VRESW, 24, 230, 230, 230); end
+	rootwnd:add_bar("top", wbarcb, wbarcb, 24);
+	
+	rootwnd:add_icon("Systems", groupicn, groupselicn, deffont, deffont_sz, sysgrp);
+	rootwnd:add_icon("Saves", groupicn, groupselicn, deffont, deffont_sz, sfn);
+	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
+	rootwnd:refresh_icons();
+
 	rootwnd:show();
-	spawn_boing();
-	spawn_boing();
-	a = spawn_window();
---b = spawn_window();
+end
+
+function prggrp(caller)
+	prggrp_window = spawn_window("iconview");
+	prggrp_window:add_icon("Boing", fill_surface(70, 20, 128, 0, 0), 
+		fill_surface(70, 20, 64, 128, 0), deffont, deffont_sz, spawn_boing);
+	prggrp_window:refresh_icons();
+end
+
+function sysgame(caller)
+	local gamelist = list_games({target = caller.name});
+end
+
+function sysgrp(caller)
+	sysgroup_window = spawn_window("iconview");
+	local tgtlist = list_targets();
+	for ind, val in ipairs(tgtlist) do
+		if (resource("icons/" .. val)) then
+			sysgroup_window:add_icon(val, "icons/" .. val, "icons/" .. val, 
+				deffont, deffont_sz, sysgame);
+		else -- FIXME defaulticon
+			local active = fill_surface(80, 20, 255, 0, 0);
+			local inactive = fill_surface(80, 20, 0, 255, 0);
+			sysgroup_window:add_icon(val, active, inactive, deffont, deffont_sz, sysgame);
+		end
+	end
+	sysgroup_window:refresh_icons();
 end
 
 --
 -- A little hommage to the original, shader is from rendertoy
 --
 function spawn_boing()
-	local a = spawn_window();
+	local int oval = math.random(1,100);
+	local a = spawn_window("container");
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
-		"shaders/boing.fShader", "boing", {}); 
+		"shaders/boing.fShader", "boing" .. oval, {}); 
 	local props = image_surface_properties(a.canvas);
 	shader_uniform(boing, "display", "ff", PERSIST, props.width, props.height); 
-	image_shader(a.canvas, boing); 
+	shader_uniform(boing, "offset", "i", PERSIST, oval); 
+	image_shader(a.canvas, boing);
 end
 
 function focus_window(wnd)
@@ -93,11 +122,14 @@ function focus_window(wnd)
 
 	if (wlist.focus) then
 		wlist.focus:active(false);
+		if (wlist.focus.iconsoff) then
+			wlist.focus:iconsoff();
+		end
 		wlist.focus:reorder(ORDER_WDW);
 	end
 
 	wlist.focus = wnd;
-	wnd:reorder(ORDER_FOCUSWDW);
+	wlist.focus:active(true);
 end
 
 --
@@ -106,7 +138,7 @@ end
 --
 function spawn_window(wtype)
 	wcont = awbwnd_create({
-		mode = "container",
+		mode = wtype,
 
 		fullscreen = false,
 		border  = true,
@@ -121,7 +153,7 @@ function spawn_window(wtype)
 	wcont.cursor_input = function() end
 	wcont.table_input  = function() end
 
-	wcont:add_bar("top", "awbicons/border.png", nil, 16);
+	wcont:add_bar("top", "awbicons/border.png", "awbicons/border_inactive.png", 16);
 	wcont:show();
 		
 	x_spawnpos = x_spawnpos + 20;
@@ -155,7 +187,19 @@ local function clamp_cursor()
 	end
 end
 
-local function hit_handler(window, label, vid, buttonind)
+local function hit_handler(pressed, buttonind, window, label, vid)
+--
+-- special handler for buttons
+--
+	if (type(label) == "table") then
+		if (pressed) then
+			focus_window(label.parent);
+			label:toggle();
+		end
+
+		return;	
+	end	
+
 -- always focus
 	focus_window(window);
 
@@ -167,8 +211,6 @@ local function hit_handler(window, label, vid, buttonind)
 		local mprops = image_surface_properties(imagery.cursor);
 		cursor_drag.pxofs = mprops.x - props.x;
 		cursor_drag.pyofs = mprops.y - props.y;
-	else
-		print("hit handler", vid, label, buttonind);
 	end
 end
 
@@ -198,13 +240,13 @@ local function cursor_mouseinput(active, buttonind)
 			for wind, wval in ipairs(wlist.windows) do
 				local rv = wval:own(val);
 				if (rv) then
-					return hit_handler(wval, rv, val, buttonind);
+					return hit_handler(active, buttonind, wval, rv, val);
 				end
 			end
 			
 			local rv = rootwnd:own(val);
 			if (rv) then
-				return hit_handler(rootwnd, rv, val, buttonind);
+				return hit_handler(active, buttonind, rootwnd, rv, val);
 		end
 	end
 end
@@ -227,7 +269,9 @@ function awb_input(iotbl)
 	elseif (iotbl.kind == "digital" and iotbl.active and iotbl.translated) then
 		if (symtable[iotbl.keysym] == "LCTRL") then
 			toggle_mouse_grab();
-		end
+		elseif (symtable[iotbl.keysym] == "ESCAPE") then
+			shutdown();
+		end	
 	elseif (wlist.focus) then
 		wlist.focus:table_input(iotbl);
 	end

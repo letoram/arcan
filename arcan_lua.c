@@ -409,7 +409,8 @@ int arcan_lua_nudgeimage(lua_State* ctx)
 	if (argtype == LUA_TNUMBER){
 		arcan_vobj_id id = luaL_checkvid(ctx, 1);
 		surface_properties props = arcan_video_current_properties(id);
-		arcan_video_objectmove(id, props.position.x + newx, props.position.y + newy, 1.0, time);
+		arcan_video_objectmove(id, props.position.x + newx, 
+			props.position.y + newy, 1.0, time);
 	}
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
@@ -512,7 +513,7 @@ int arcan_lua_rotateimage(lua_State* ctx)
 			lua_pop(ctx, 1);
 		}
 	}
-	arcan_fatal("arcan_lua_rotateimage(), invalid argument (1) "
+	else arcan_fatal("arcan_lua_rotateimage(), invalid argument (1) "
 		"expected VID or indexed table of VIDs\n");
 
 	return 0;
@@ -582,10 +583,27 @@ int arcan_lua_scaleimage(lua_State* ctx)
 
 int arcan_lua_orderimage(lua_State* ctx)
 {
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned int zv = luaL_checknumber(ctx, 2);
 
-	arcan_video_setzv(id, zv);
+/* array of VIDs or single VID */
+	int argtype = lua_type(ctx, 1);
+	if (argtype == LUA_TNUMBER){
+		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_video_setzv(id, zv);
+	}
+	else if (argtype == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		for (int i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_video_setzv(id, zv);
+			lua_pop(ctx, 1);
+		}
+	}
+	else
+		arcan_fatal("arcan_lua_orderimage(), invalid argument (1) "
+			"expected VID or indexed table of VIDs\n");
 
 	return 0;
 }
