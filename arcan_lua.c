@@ -617,7 +617,7 @@ int arcan_lua_maxorderimage(lua_State* ctx)
 static inline void massopacity(lua_State* ctx, 
 	float val, const char* caller)
 {
-	float time = luaL_optint(ctx, 2, 0); 
+	float time = luaL_optint(ctx, 3, 0); 
 
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
