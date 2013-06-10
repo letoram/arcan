@@ -35,7 +35,9 @@ local function awbwnd_reorder(self, orderv)
 		for ind, val in ipairs(self.icons) do
 			order_image({val.main, val.mainsel, val.label}, orderv);
 		end
-	end
+	elseif (self.mode == "listview") then
+		order_image(val.cursorvid, orderv);
+	end	
 end
 
 local function awbwnd_hide(self)
@@ -108,6 +110,9 @@ local function awbwnd_alloc(self)
 		self.canvas = fill_surface(cwidth, cheight, wcol.r, wcol.g, wcol.b);
 		move_image(self.canvas, cx, cy); 
 		link_image(self.canvas, self.anchor);
+		self.cursorvid = fill_surface(cwidth, cheight, 
+			wcol.r * 1.2, wcol.g * 1.2, wcol.b * 1.2);
+		link_image(self.cursorvid, self.canvas);
 	end
 
 	self:resize(self.width, self.height);
@@ -409,7 +414,7 @@ local function icons_halign(self, sx, sy, ex, ey, hstep, order)
 
 end
 
-local function awbwnd_refreshicons(self)
+local function awbicn_refreshicons(self)
 	local cprops = image_surface_properties(self.canvas, -1);
 
 	local mx = cprops.width - self.spacing;
@@ -430,13 +435,13 @@ local function awbwnd_refreshicons(self)
 	end
 end
 
-local function awbwnd_iconsoff(self)
+local function awbicn_iconsoff(self)
 	for ind, val in ipairs(self.icons) do
 		val:forceoff();
 	end
 end
 
-local function awbwnd_activeicon(self)
+local function awbicn_activeicon(self)
 	local worder = image_surface_properties(self.active).order;
 	local active = self.active == self.mainsel;
 
@@ -455,7 +460,7 @@ local function awbwnd_activeicon(self)
 	end
 end
 
-local function awbwnd_selon(self)
+local function awbicn_selon(self)
 	local order = image_surface_properties(self.parent.canvas).order;
 	hide_image(self.main);
 	show_image(self.mainsel);
@@ -463,7 +468,7 @@ local function awbwnd_selon(self)
 	order_image(self.mainsel, order);
 end
 
-local function awbwnd_seloff(self)
+local function awbicn_seloff(self)
 	if (self.active ~= self.mainsel) then
 		return;
 	end
@@ -481,7 +486,7 @@ end
 -- mainsel and label are linked to main (but not sharing opacity)
 -- we force mainsel and main to have the same properties
 --
-local function awbwnd_addicon(self, name, img, imga, font, fontsz, trigger)
+local function awbicn_addicon(self, name, img, imga, font, fontsz, trigger)
 	local newent   = {};
 	newent.main    = type(img) == "string" and load_image(img)  or img;
 	local mprops   = image_surface_properties(newent.main);
@@ -499,9 +504,9 @@ local function awbwnd_addicon(self, name, img, imga, font, fontsz, trigger)
 	newent.name    = name; 
 	newent.trigger = trigger;
 	newent.parent  = self;
-	newent.toggle  = awbwnd_activeicon;
-	newent.forceon = awbwnd_selon;
-	newent.forceoff= awbwnd_seloff;
+	newent.toggle  = awbicn_activeicon;
+	newent.forceon = awbicn_selon;
+	newent.forceoff= awbicn_seloff;
 	newent.label   = render_text(string.format("\\f%s,%d %s", font, 
 		fontsz, name));
 
@@ -526,7 +531,7 @@ end
 --
 -- replace in table to implement paging etc.
 --
-local function awbicons_sampleicons(self)
+local function awbicn_sampleicons(self)
 	local maxa = self.width * self.height * 4;
 	local res = {};
 	
@@ -556,6 +561,25 @@ local function awbwnd_canvas(self, newvid)
 		self.mode == "listview") then
 		a = true;
 	end
+end
+
+local function awblst_update(self, newlist)
+	if (self.cursor == -1) then
+		self.cursor = 1;
+	end
+
+end
+
+local function awblst_sample(self)
+	local res = {};
+
+	if (self.activelist) then
+		for ind, val in ipairs(self.activelist) do
+			table.insert(res, val);
+		end
+	end
+
+	return res;
 end
 
 function awbwnd_destroy(self)
@@ -616,11 +640,16 @@ function awbwnd_create(options)
 	end
  
 	if (restbl.mode == "iconview") then
-		restbl.add_icon = awbwnd_addicon;
-		restbl.refresh_icons = awbwnd_refreshicons;
-		restbl.sample_icons = awbicons_sampleicons;
-		restbl.iconsoff = awbwnd_iconsoff;
+		restbl.add_icon = awbicn_addicon;
+		restbl.refresh_icons = awbicn_refreshicons;
+		restbl.sample_icons = awbicn_sampleicons;
+		restbl.iconsoff = awbicn_iconsoff;
 		restbl.icons = {};
+
+	elseif (restbl.mode ==" listview") then
+		restbl.update_list = awblst_update;
+		restbl.sample_list = awblst_sample;
+		restbl.cursor_pos  = -1;
 	end
 
 	if (restbl.fullscreen) then

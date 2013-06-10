@@ -81,23 +81,54 @@ function prggrp(caller)
 	prggrp_window:refresh_icons();
 end
 
+function attrstr(self)
+	return self.title;
+end
+
 function sysgame(caller)
 	local gamelist = list_games({target = caller.name});
+
+	syslist = spawn_window("listview");
+	if (#gamelist) then
+		for ind, val in ipairs(gamelist) do
+			val.caption = attrstr;	
+		end
+
+		syslist:update_list(gamelist, gametoggle);
+		syslist.target = launch_target(LAUNCH_INTERNAL, 
+	end
+end
+
+function gamefsrv_status(source, stattbl)
+	if  (stattbl.kind == "loading") then
+	elseif (stattbl.kind == "resized") then
+	else
+		print("unhandled status:", stattbl.kind);
+	end
+end
+
+function gametoggle(caller)
+	local gamewin = spawn_window("container_managed");
+	gamewin:update_canvas(
 end
 
 function sysgrp(caller)
 	sysgroup_window = spawn_window("iconview");
 	local tgtlist = list_targets();
+
 	for ind, val in ipairs(tgtlist) do
-		if (resource("icons/" .. val)) then
-			sysgroup_window:add_icon(val, "icons/" .. val, "icons/" .. val, 
-				deffont, deffont_sz, sysgame);
-		else -- FIXME defaulticon
-			local active = fill_surface(80, 20, 255, 0, 0);
-			local inactive = fill_surface(80, 20, 0, 255, 0);
-			sysgroup_window:add_icon(val, active, inactive, deffont, deffont_sz, sysgame);
+		local caps = launch_target_capabilities(val);
+		if (caps.internal_launch) then
+			if (resource("icons/" .. val)) then
+				sysgroup_window:add_icon(val, "icons/" .. val, "icons/" .. val, 
+					deffont, deffont_sz, sysgame);
+			else -- FIXME defaulticon
+				local active = fill_surface(80, 20, 255, 0, 0);
+				local inactive = fill_surface(80, 20, 0, 255, 0);
+				sysgroup_window:add_icon(val, active, inactive, deffont,
+					deffont_sz, sysgame);
+			end
 		end
-	end
 	sysgroup_window:refresh_icons();
 end
 
