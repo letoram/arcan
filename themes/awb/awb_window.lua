@@ -90,14 +90,11 @@ local function awbwnd_alloc(self)
 -- attached to the anchor due to instancing requirements, canvas is just
 -- a placeholder, the :container(vid) method will do the rest 
 --
-	if (self.mode == "container") then
+	if (self.mode == "container" or self.mode == "container_managed") then
 		self.canvas = fill_surface(cwidth, cheight, 0, 0, 0); 
 		move_image(self.canvas, cx, cy);
 		link_image(self.canvas, self.anchor);
 		show_image(self.canvas);	
-
-	elseif (self.mode == "container_managed") then
-		self.canvas = fill_surface(1, 1, 0, 0, 0);
 
 -- these require scrollbars
 	elseif (self.mode == "iconview") then
@@ -495,8 +492,8 @@ local function awbicn_addicon(self, name, img, imga, font, fontsz, trigger)
 	resize_image(newent.mainsel, mprops.width, mprops.height);
 
 	if (not (valid_vid(newent.main) and valid_vid(newent.mainsel))) then
-		warning(string.format("awbwnd_addicon() couldn't add %s,%s to %s"),
-			name, img, imga);
+		warning(string.format("awbwnd_addicon() couldn't add %s, %s to %s",
+			name and name or "", img and img or "", imga and imga or ""));
 		return;
 	end
 
@@ -526,6 +523,7 @@ local function awbicn_addicon(self, name, img, imga, font, fontsz, trigger)
 	image_mask_clear(newent.label,   MASK_OPACITY);
 
 	table.insert(self.icons, newent);
+	return newent;
 end
 
 --
@@ -556,7 +554,20 @@ local function awbwnd_canvas(self, newvid)
 	if (self.mode == "container") then
 		a = true;
 	elseif (self.mode == "container_managed") then
-		a = true;
+		local props = image_surface_properties(self.canvas);
+
+		if (self.canvas ~= newvid) then
+			delete_image(self.canvas);
+		end		
+		
+		self.canvas = newvid;
+		link_image(self.canvas, self.anchor);
+		blend_image(self.canvas, props.opacity);
+		move_image(self.canvas, props.x, props.y);
+		rotate_image(self.canvas, props.angle);
+		resize_image(self.canvas, props.width, props.height);
+		order_image(self.canvas, props.order);
+
 	elseif (self.mode == "iconview" or 
 		self.mode == "listview") then
 		a = true;
@@ -633,9 +644,10 @@ function awbwnd_create(options)
 -- static controls for bad arguments
 --
 	if (restbl.mode ~= "iconview" and 
-		restbl.mode ~= "container" and restbl.mode ~=
-		restbl.mode ~= "container_managed") then
-			warning("awbwnd_canvas(), bad mode in optionstable");
+		restbl.mode ~= "container" and 
+		restbl.mode ~= "container_managed" and
+		restbl.mode ~= "listview") then
+			warning("awbwnd_canvas(), bad mode in optionstable : " .. restbl.mode);
 		return nil;
 	end
  
