@@ -69,13 +69,15 @@ function awb()
 	rootwnd:add_icon("Systems", groupicn, groupselicn, deffont, deffont_sz, sysgrp);
 	rootwnd:add_icon("Saves", groupicn, groupselicn, deffont, deffont_sz, sfn);
 	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
+	rootwnd:add_icon("Videos", groupicn, groupselicn, deffont, deffont_sz, vidgrp);
+	
 	rootwnd:refresh_icons();
 
 	rootwnd:show();
 end
 
 function prggrp(caller)
-	prggrp_window = spawn_window("iconview");
+	prggrp_window = spawn_window("iconview")
 	prggrp_window:add_icon("Boing", fill_surface(70, 20, 128, 0, 0), 
 		fill_surface(70, 20, 64, 128, 0), deffont, deffont_sz, spawn_boing);
 	prggrp_window:refresh_icons();
@@ -87,41 +89,77 @@ end
 
 function sysgame(caller)
 	local gamelist = list_games({target = caller.name});
+	local gametbl = gamelist[math.random(1, #gamelist)];
+	local gamewin = spawn_window("container_managed");
 
-	syslist = spawn_window("listview");
-	if (#gamelist) then
-		for ind, val in ipairs(gamelist) do
-			val.caption = attrstr;	
+	gamewin.active_vid = launch_target(gametbl.gameid, LAUNCH_INTERNAL, function(source, status)
+		if (status.kind == "resized") then
+			gamewin:update_canvas(source);
 		end
+	end);
 
-		syslist:update_list(gamelist, gametoggle);
-		syslist.target = launch_target(LAUNCH_INTERNAL, 
-	end
-end
+--	syslist = spawn_window("listview");
+--	if (#gamelist) then
+--		for ind, val in ipairs(gamelist) do
+--			val.caption = attrstr;	
+--		end
 
-function gamefsrv_status(source, stattbl)
-	if  (stattbl.kind == "loading") then
-	elseif (stattbl.kind == "resized") then
-	else
-		print("unhandled status:", stattbl.kind);
-	end
+--		syslist:update_list(gamelist, gametoggle);
+--		syslist.target = launch_target(LAUNCH_INTERNAL, gamefsrv_status);
+--	end
 end
 
 function gametoggle(caller)
-	local gamewin = spawn_window("container_managed");
-	gamewin:update_canvas(
+		
+end
+
+function sysvid(caller)
+	local vidwin = spawn_window("container_managed");
+	vidwin.active_vid =	load_movie("videos/" .. caller.res, FRAMESERVER_NOLOOP, function(source, status) 
+		if (status.kind == "resized") then
+			vidwin.vid, vidwin.aid = play_movie(source);
+			vidwin:update_canvas(source);
+		end
+
+	end);
+end
+
+function vidgrp(caller)
+	local res = glob_resource("videos/*", THEME_RESOURCE);
+	if (res and #res > 0) then
+		local newvid = spawn_window("iconview");
+		newvid.iconalignment = "left";
+		icnfun = function() return fill_surface(32, 32, 128, 128, 0); end
+
+		for ind, val in ipairs(res) do
+			local ent = newvid:add_icon(val, fill_surface(32, 32, 128, 128,0),
+				fill_surface(32, 32, 128, 128, 0), 
+				deffont, deffont_sz, sysvid);
+
+			ent.res = val;
+		end
+
+		newvid:refresh_icons();
+	end	
 end
 
 function sysgrp(caller)
 	sysgroup_window = spawn_window("iconview");
+	sysgroup_window.iconalign = "left";
+
 	local tgtlist = list_targets();
 
 	for ind, val in ipairs(tgtlist) do
 		local caps = launch_target_capabilities(val);
-		if (caps.internal_launch) then
-			if (resource("icons/" .. val)) then
-				sysgroup_window:add_icon(val, "icons/" .. val, "icons/" .. val, 
-					deffont, deffont_sz, sysgame);
+		if (caps and caps.internal_launch) then
+
+			local resa = "images/systems/" .. val .. ".png";
+			local resb = "icons/" .. val .. ".ico";
+			
+			if (resource(resa)) then
+				sysgroup_window:add_icon(val, resa, resa, deffont, deffont_sz, sysgame);
+			elseif (resource(resb)) then
+				sysgroup_window:add_icon(val, resb, resb, deffont, deffont_sz, sysgame);
 			else -- FIXME defaulticon
 				local active = fill_surface(80, 20, 255, 0, 0);
 				local inactive = fill_surface(80, 20, 0, 255, 0);
@@ -129,6 +167,8 @@ function sysgrp(caller)
 					deffont_sz, sysgame);
 			end
 		end
+	end
+
 	sysgroup_window:refresh_icons();
 end
 
