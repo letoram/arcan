@@ -116,9 +116,44 @@ local function awbwnd_alloc(self)
 	return self;
 end
 
+local function awbbar_addicon(self, imgres, align, trigger)
+	if (align ~= "left" and align ~= "right" and align ~= "fill") then
+		return nil;
+	end
+	
+	local image_icn = BADID;
+	if (type(imgres) == "number") then
+		image_icn = imgres;
+	else
+		image_icn = load_image(imgres);
+end
+
+-- only one item in the "fill" slot
+	if (valid_vid(image_icn)) then
+		local icntbl   = {};
+		icntbl.vid     = image_icn;
+		icntbl.trigger = trigger;
+		icntbl.identity= "awbbar_icon";
+
+		if (align == "fill") then
+			if self.fill ~= nil then
+				delete_image(self.fill.vid);
+			end
+			self.fill = icntbl;
+		else
+			table.insert(self[align], icntbl);
+		end
+
+		link_image(icntbl.vid, self.activeid);
+		show_image(icntbl.vid);
+		self:refresh();
+	end
+end
+
 local function awbwbar_refresh(self)
 -- align against border while maintaining set "thickness"
 	local bstep = self.parent.border and self.parent.borderw or 0;
+	local wbarw = 0;
 
 	local bx = self.direction == "right" and 
 		(self.parent.width - self.thickness - bstep) or bstep;
@@ -129,8 +164,8 @@ local function awbwbar_refresh(self)
 
 -- then adjust based on other available bars, priority to top/bottom
 	if (self.vertical) then
-		local props  = image_surface_properties(self.parent.borderr, -1);
-		
+		local props  = image_surface_properties(self.parent.borderr, -1);	
+	
 		if (self.parent.directions["top"]) then
 			local thick = self.parent.directions["top"].thickness;
 			move_image(self.root, 0, thick);
@@ -141,15 +176,62 @@ local function awbwbar_refresh(self)
 			props.height = props.height - self.parent.directions["bottom"].thickness;
 		end
 
+		wbarw = props.height;
 		resize_image(self.activeid, self.thickness, props.height);
 	else
-		local wbarw = image_surface_properties(self.parent.borderd, -1).width;
-		wbarw = wbarw - self.parent.borderw * 2;	
+		wbarw = image_surface_properties(self.parent.borderd, -1).width;
+		wbarw = wbarw - self.parent.borderw * 2;
 		resize_image(self.activeid, wbarw, self.thickness);
 	end
 
 	link_image(self.activeid, self.root);
 	image_mask_clear(self.activeid, MASK_OPACITY);
+	show_image(self.activeid);
+
+	local lofs = 0;
+	local rofs = wbarw;
+	for ind, val in ipairs(self.left) do
+			local props = image_surface_properties(val.vid);
+			link_image(val.vid, self.parent.bordert);
+			image_mask_clear(val.vid, MASK_OPACITY);
+			resize_image(val.vid, 0, self.thickness);
+
+			if (self.vertical) then
+				wbarw = wbarw - props.height; 
+				move_image(val.vid, self.parent.borderw, lofs);
+				lofs = lofs + props.height; 
+			else
+				wbarw = wbarw - props.width;
+				move_image(val.vid, lofs, self.parent.borderw);
+				lofs = lofs + props.width;
+			end
+	end
+
+	for ind, val in ipairs(self.right) do
+		local props = image_surface_properties(val.vid);
+		link_image(val.vid, self.parent.bordert);
+		image_mask_clear(val.vid, MASK_OPACITY);
+		resize_image(val.vid, self.thickness, 0);
+		
+		if (self.vertical) then
+			wbarw = wbarw - props.height;
+			rofs = rofs - props.height;
+			move_image(val.vid, self.parent.borderw, rofs);
+		else
+			wbarw = wbarw - props.width;
+			rofs = rofs - props.height;
+			move_image(val.vid, rofs, self.parent.borderw);
+		end
+
+-- fill is a bit troublesome in that some cases (e.g. scrollbar)
+-- we'd like it to stretch the remaining surface (and have it contain)
+-- subobjects like position indicator. For other cases (e.g. caption)
+-- others (caption) we need to regenerate or clip or overdraw but not
+-- stretch
+	end
+
+	if (self.fill ~= nil) then
+	end
 end
 
 local function awbwnd_setwbar(dsttbl, active)
@@ -177,7 +259,21 @@ local function awbbar_own(self, vid)
 		return self.direction;
 	end
 
--- FIXME: sweep for buttons here
+	for ind, val in ipairs(self.left) do
+		if (val.vid == vid) then
+			return val;
+		end
+	end
+
+	for ind, val in ipairs(self.right) do
+		if (val.vid == vid) then
+			return val;
+		end
+	end
+
+	if (self.fill and self.fill.vid == vid) then
+		return self.fill;
+	end
 end
 
 local function awbbar_reorder(self, order)
@@ -185,7 +281,17 @@ local function awbbar_reorder(self, order)
 		order_image(self.activeid, order);
 	end
 
--- FIXME: sweep for buttons, set order+1
+	for ind, val in ipairs(self.left) do
+		order_image(val.vid, order);
+	end
+	
+	for ind, val in ipairs(self.right) do
+		order_image(val.vid, order);
+	end
+
+	if (self.fill) then
+		order_image(self.fill.vid, order);
+	end
 end
 
 local function awbwnd_resize(self, neww, newh)
@@ -249,6 +355,8 @@ local function awbwnd_resize(self, neww, newh)
 	
 	self.width  = neww;
 	self.height = newh;
+	
+	self:resize_border();
 
 -- reposition / resize bars (and buttons)
 	for key, val in pairs(self.directions) do
@@ -261,8 +369,6 @@ local function awbwnd_resize(self, neww, newh)
 	if (self.mode == "iconview") then
 		self:refresh_icons();
 	end	
-
-	self:resize_border();
 end
 
 local function awbwnd_addbar(self, direction, active_resdescr, 
@@ -292,6 +398,10 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	newdir.direction = direction;
 	newdir.own       = awbbar_own;
 	newdir.reorder   = awbbar_reorder;
+	newdir.add_icon  = awbbar_addicon;
+	newdir.identity  = "awbwnd_bar";
+	newdir.left  = {}; -- "relative"
+	newdir.right = {}; 
 
 	link_image(newdir.root, self.bordert);
 	awbwnd_setwbar(newdir, newdir.activeres);
@@ -299,7 +409,7 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	self.directions[direction] = newdir;
 	self:resize(self.width, self.height);
 
-	return true;
+	return newdir;
 end
 
 local function awbwnd_newpos(self, newx, newy)

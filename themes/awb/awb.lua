@@ -36,6 +36,11 @@ ORDER_MOUSE     = 255;
 -- console_window
 --   group_window
 
+function menulbl(text)
+	return render_text(string.format("\\#000000\\ffonts/%s,%d %s", 
+		deffont, deffont_sz, text));
+end
+
 function awb()
 	symtable = system_load("scripts/symtable.lua")();
 	system_load("scripts/calltrace.lua")();
@@ -64,7 +69,8 @@ function awb()
 	});
 
 	local wbarcb = function() return fill_surface(VRESW, 24, 230, 230, 230); end
-	rootwnd:add_bar("top", wbarcb, wbarcb, 24);
+	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 24);
+	topbar:add_icon("File", menulbl_text, "left", spawnfile);
 	
 	rootwnd:add_icon("Systems", groupicn, groupselicn, deffont, deffont_sz, sysgrp);
 	rootwnd:add_icon("Saves", groupicn, groupselicn, deffont, deffont_sz, sfn);
@@ -78,8 +84,8 @@ end
 
 function prggrp(caller)
 	prggrp_window = spawn_window("iconview")
-	prggrp_window:add_icon("Boing", fill_surface(70, 20, 128, 0, 0), 
-		fill_surface(70, 20, 64, 128, 0), deffont, deffont_sz, spawn_boing);
+	prggrp_window:add_icon("Boing", "awbicons/boing.png", 
+		"awbicons/boing.png", deffont, deffont_sz, spawn_boing);
 	prggrp_window:refresh_icons();
 end
 
@@ -92,7 +98,8 @@ function sysgame(caller)
 	local gametbl = gamelist[math.random(1, #gamelist)];
 	local gamewin = spawn_window("container_managed");
 
-	gamewin.active_vid = launch_target(gametbl.gameid, LAUNCH_INTERNAL, function(source, status)
+	gamewin.active_vid = launch_target(gametbl.gameid, LAUNCH_INTERNAL, 
+		function(source, status)
 		if (status.kind == "resized") then
 			gamewin:update_canvas(source);
 		end
@@ -203,6 +210,10 @@ function focus_window(wnd)
 	wlist.focus:active(true);
 end
 
+function closewin(self)
+	print("should close");
+end
+
 --
 -- Allocate, Setup, Register and Position a new Window
 -- These always start out focused
@@ -224,7 +235,12 @@ function spawn_window(wtype)
 	wcont.cursor_input = function() end
 	wcont.table_input  = function() end
 
-	wcont:add_bar("top", "awbicons/border.png", "awbicons/border_inactive.png", 16);
+	local bar = wcont:add_bar("top", "awbicons/border.png", 
+		"awbicons/border_inactive.png", 16);
+
+	bar:add_icon("awbicons/close.png",   "left",  closewin);
+	bar:add_icon("awbicons/enlarge.png", "right", closewin);
+	bar:add_icon("awbicons/shrink.png",  "right", closewin);
 	wcont:show();
 		
 	x_spawnpos = x_spawnpos + 20;
@@ -264,8 +280,12 @@ local function hit_handler(pressed, buttonind, window, label, vid)
 --
 	if (type(label) == "table") then
 		if (pressed) then
-			focus_window(label.parent);
-			label:toggle();
+			if (label.identity == "awbbar_icon") then
+				label:trigger();
+			else
+				focus_window(label.parent);
+				label:toggle();
+			end
 		end
 
 		return;	
