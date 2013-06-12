@@ -37,8 +37,8 @@ ORDER_MOUSE     = 255;
 --   group_window
 
 function menulbl(text)
-	return render_text(string.format("\\#000000\\ffonts/%s,%d %s", 
-		deffont, deffont_sz, text));
+	return render_text(string.format("\\#0055a9\\f%s,%d %s", 
+		deffont, 10, text));
 end
 
 function awb()
@@ -68,22 +68,24 @@ function awb()
 		iconalign = "right"
 	});
 
-	local wbarcb = function() return fill_surface(VRESW, 24, 230, 230, 230); end
-	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 24);
-	topbar:add_icon("File", menulbl_text, "left", spawnfile);
-	
+	local wbarcb = function() return fill_surface(VRESW, 24, 210, 210, 210); end
+	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 20);
+	local tbl = topbar:add_icon(menulbl("Arcan Workbench"), "left", nil);
+	tbl.yofs = 6;
+	tbl.xofs = 6;
+	tbl.stretch = false;	
+
 	rootwnd:add_icon("Systems", groupicn, groupselicn, deffont, deffont_sz, sysgrp);
 	rootwnd:add_icon("Saves", groupicn, groupselicn, deffont, deffont_sz, sfn);
 	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
 	rootwnd:add_icon("Videos", groupicn, groupselicn, deffont, deffont_sz, vidgrp);
 	
 	rootwnd:refresh_icons();
-
 	rootwnd:show();
 end
 
 function prggrp(caller)
-	prggrp_window = spawn_window("iconview")
+	prggrp_window = spawn_window("iconview", "left")
 	prggrp_window:add_icon("Boing", "awbicons/boing.png", 
 		"awbicons/boing.png", deffont, deffont_sz, spawn_boing);
 	prggrp_window:refresh_icons();
@@ -122,7 +124,8 @@ end
 
 function sysvid(caller)
 	local vidwin = spawn_window("container_managed");
-	vidwin.active_vid =	load_movie("videos/" .. caller.res, FRAMESERVER_NOLOOP, function(source, status) 
+	vidwin.active_vid =	load_movie("videos/" .. caller.res, 
+		FRAMESERVER_NOLOOP, function(source, status) 
 		if (status.kind == "resized") then
 			vidwin.vid, vidwin.aid = play_movie(source);
 			vidwin:update_canvas(source);
@@ -134,14 +137,11 @@ end
 function vidgrp(caller)
 	local res = glob_resource("videos/*", THEME_RESOURCE);
 	if (res and #res > 0) then
-		local newvid = spawn_window("iconview");
-		newvid.iconalignment = "left";
-		icnfun = function() return fill_surface(32, 32, 128, 128, 0); end
+		local newvid = spawn_window("iconview", "left");
 
 		for ind, val in ipairs(res) do
-			local ent = newvid:add_icon(val, fill_surface(32, 32, 128, 128,0),
-				fill_surface(32, 32, 128, 128, 0), 
-				deffont, deffont_sz, sysvid);
+			local ent = newvid:add_icon(val, "awbicons/floppy.png", 
+				"awbicons/floppysel.png", deffont, deffont_sz, sysvid);
 
 			ent.res = val;
 		end
@@ -151,9 +151,7 @@ function vidgrp(caller)
 end
 
 function sysgrp(caller)
-	sysgroup_window = spawn_window("iconview");
-	sysgroup_window.iconalign = "left";
-
+	sysgroup_window = spawn_window("iconview", "left");
 	local tgtlist = list_targets();
 
 	for ind, val in ipairs(tgtlist) do
@@ -170,8 +168,8 @@ function sysgrp(caller)
 			else -- FIXME defaulticon
 				local active = fill_surface(80, 20, 255, 0, 0);
 				local inactive = fill_surface(80, 20, 0, 255, 0);
-				sysgroup_window:add_icon(val, active, inactive, deffont,
-					deffont_sz, sysgame);
+				sysgroup_window:add_icon(val, "awbicons/floppy.png", 
+					"awbicons/floppysel.png", deffont, deffont_sz, sysgame);
 			end
 		end
 	end
@@ -185,11 +183,13 @@ end
 function spawn_boing()
 	local int oval = math.random(1,100);
 	local a = spawn_window("container");
+
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
 		"shaders/boing.fShader", "boing" .. oval, {}); 
 	local props = image_surface_properties(a.canvas);
 	shader_uniform(boing, "display", "ff", PERSIST, props.width, props.height); 
 	shader_uniform(boing, "offset", "i", PERSIST, oval); 
+
 	image_shader(a.canvas, boing);
 end
 
@@ -211,17 +211,34 @@ function focus_window(wnd)
 end
 
 function closewin(self)
-	print("should close");
+	for ind, val in ipairs(wlist.windows) do
+		if (val == self.parent.parent) then
+			table.remove(wlist.windows, ind);
+			if (wlist.focus == val) then
+				wlist.focus = nil;
+			end
+			break;
+		end
+
+	end
+	
+	self.parent.parent:destroy();
+end
+
+function sendtoback(self)
+end
+
+function maximize(self)
 end
 
 --
 -- Allocate, Setup, Register and Position a new Window
 -- These always start out focused
 --
-function spawn_window(wtype)
+function spawn_window(wtype, ialign)
 	wcont = awbwnd_create({
 		mode = wtype,
-
+		iconalign = ialign,
 		fullscreen = false,
 		border  = true,
 		borderw = 2,
@@ -239,8 +256,8 @@ function spawn_window(wtype)
 		"awbicons/border_inactive.png", 16);
 
 	bar:add_icon("awbicons/close.png",   "left",  closewin);
-	bar:add_icon("awbicons/enlarge.png", "right", closewin);
-	bar:add_icon("awbicons/shrink.png",  "right", closewin);
+	bar:add_icon("awbicons/enlarge.png", "right", maximize);
+	bar:add_icon("awbicons/shrink.png",  "right", sendtoback);
 	wcont:show();
 		
 	x_spawnpos = x_spawnpos + 20;
@@ -281,7 +298,9 @@ local function hit_handler(pressed, buttonind, window, label, vid)
 	if (type(label) == "table") then
 		if (pressed) then
 			if (label.identity == "awbbar_icon") then
-				label:trigger();
+				if (label.trigger) then 
+					label:trigger();
+				end
 			else
 				focus_window(label.parent);
 				label:toggle();

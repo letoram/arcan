@@ -128,13 +128,17 @@ local function awbbar_addicon(self, imgres, align, trigger)
 		image_icn = load_image(imgres);
 end
 
--- only one item in the "fill" slot
 	if (valid_vid(image_icn)) then
 		local icntbl   = {};
 		icntbl.vid     = image_icn;
 		icntbl.trigger = trigger;
 		icntbl.identity= "awbbar_icon";
+		icntbl.xofs    = 0; 
+		icntbl.yofs    = 0; 
+		icntbl.parent  = self;
+		icntbl.stretch = true;
 
+-- only one item in the "fill" slot
 		if (align == "fill") then
 			if self.fill ~= nil then
 				delete_image(self.fill.vid);
@@ -146,7 +150,7 @@ end
 
 		link_image(icntbl.vid, self.activeid);
 		show_image(icntbl.vid);
-		self:refresh();
+		return icntbl;
 	end
 end
 
@@ -194,15 +198,18 @@ local function awbwbar_refresh(self)
 			local props = image_surface_properties(val.vid);
 			link_image(val.vid, self.parent.bordert);
 			image_mask_clear(val.vid, MASK_OPACITY);
-			resize_image(val.vid, 0, self.thickness);
+
+			if (val.stretch) then
+				resize_image(val.vid, 0, self.thickness);
+			end
 
 			if (self.vertical) then
 				wbarw = wbarw - props.height; 
-				move_image(val.vid, self.parent.borderw, lofs);
+				move_image(val.vid, self.parent.borderw + val.xofs, lofs + val.yofs);
 				lofs = lofs + props.height; 
 			else
 				wbarw = wbarw - props.width;
-				move_image(val.vid, lofs, self.parent.borderw);
+				move_image(val.vid, lofs + val.xofs, self.parent.borderw + val.yofs);
 				lofs = lofs + props.width;
 			end
 	end
@@ -211,16 +218,20 @@ local function awbwbar_refresh(self)
 		local props = image_surface_properties(val.vid);
 		link_image(val.vid, self.parent.bordert);
 		image_mask_clear(val.vid, MASK_OPACITY);
-		resize_image(val.vid, self.thickness, 0);
 		
+		move_image(val.vid, self.xofs, self.yofs);
+		if (val.stretch) then
+			resize_image(val.vid, 0, self.thickness);
+		end
+
 		if (self.vertical) then
 			wbarw = wbarw - props.height;
 			rofs = rofs - props.height;
-			move_image(val.vid, self.parent.borderw, rofs);
+			move_image(val.vid, self.parent.borderw + val.xofs, rofs + val.yofs);
 		else
 			wbarw = wbarw - props.width;
 			rofs = rofs - props.height;
-			move_image(val.vid, rofs, self.parent.borderw);
+			move_image(val.vid, rofs + val.xofs, self.parent.borderw + val.yofs);
 		end
 
 -- fill is a bit troublesome in that some cases (e.g. scrollbar)
@@ -260,18 +271,18 @@ local function awbbar_own(self, vid)
 	end
 
 	for ind, val in ipairs(self.left) do
-		if (val.vid == vid) then
+		if (val.vid == vid and val.trigger) then
 			return val;
 		end
 	end
 
 	for ind, val in ipairs(self.right) do
-		if (val.vid == vid) then
+		if (val.vid == vid and val.trigger) then
 			return val;
 		end
 	end
 
-	if (self.fill and self.fill.vid == vid) then
+	if (self.fill and self.fill.trigger and self.fill.vid == vid) then
 		return self.fill;
 	end
 end
@@ -501,13 +512,14 @@ local function icons_halign(self, sx, sy, ex, ey, hstep, order)
 			local aprops = image_surface_properties(iconset[i+1].active, -1);
 			local lprops = image_surface_properties(iconset[i+1].label,  -1);
 		
-			cx_y = cx_y + lh + self.spacing;
+			cx_y = cx_y + lh + self.vspacing;
 	
 -- use next icon as basis for dimensions as they can have different sizes
 -- padding is embedded in ex/ey, as is adding margins against borders
 			if ( cx_y + aprops.height + lprops.height >= ey ) then
 				cx_y = sy;
-				cx_x = cx_x + (hstep * mwidth); 
+				cx_x = cx_x + (hstep * (mwidth >
+					self.hspacing and mwidth or self.hspacing)); 
 				mwidth = 0;
 	
 				if ((hstep == 1 and cx_x >= ex) or
@@ -524,8 +536,8 @@ end
 local function awbicn_refreshicons(self)
 	local cprops = image_surface_properties(self.canvas, -1);
 
-	local mx = cprops.width - self.spacing;
-	local my = cprops.height - self.spacing; 
+	local mx = cprops.width - self.borderw;
+	local my = cprops.height - self.borderw; 
 
 	local orderv = cprops.order; 
 
@@ -535,10 +547,12 @@ local function awbicn_refreshicons(self)
 -- notably more messy 
 --
 	if (self.iconalign == "left") then
-		icons_halign(self, self.spacing, self.spacing, mx, my, 1, orderv);
+		icons_halign(self, self.hspacing, 
+		self.borderw, mx, my, 1, orderv);
 
 	elseif (self.iconalign == "right") then
-		icons_halign(self, cprops.width, self.spacing, 0, my, -1, orderv);
+		icons_halign(self, cprops.width - self.borderw,
+		 self.borderw, 0, my, -1, orderv);
 	end
 end
 
@@ -729,7 +743,8 @@ function awbwnd_create(options)
 		height = math.floor(VRESH * 0.3),
 		minw = 0,
 		minh = 0,
-		spacing = 12,
+		hspacing = 80,
+		vspacing = 5,
 		activestate = true,
 
 -- dynamic default properties
