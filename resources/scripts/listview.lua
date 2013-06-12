@@ -42,7 +42,7 @@ local function listview_redraw(self)
 			local tmpname = self.gsub_ignore and self.list[ind] or 
 				string.gsub(self.list[ind], "\\", "\\\\");
 			local fmt = self.formats[ tmpname ];
-			
+	
 			if (string.sub(tmpname, 1, 3) == "---") then
 				renderstr = renderstr .. self.hilight_fontstr .. 
 				string.sub(tmpname, 4) .. [[\n\r]];
@@ -256,6 +256,7 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.borderw = 4;
 	restbl.vscroll = false;
 	restbl.maxw    = maxw and math.ceil( maxw ) or VRESW;
+	restbl.formats = formatlist;
 
 	restbl.font_size       = settings.colourtable.font_size;
 	restbl.hilight_fontstr = settings.colourtable.hilight_fontstr;
