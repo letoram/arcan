@@ -1971,6 +1971,14 @@ int arcan_lua_origoofs(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_orderinherit(lua_State* ctx)
+{
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	bool origo = lua_toboolean(ctx, 2);
+	arcan_video_inheritorder(sid, origo);
+	return 0;
+}
+
 int arcan_lua_imageasframe(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
@@ -4356,6 +4364,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
 	arcan_lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
 	arcan_lua_register(ctx, "image_origo_offset", arcan_lua_origoofs);
+	arcan_lua_register(ctx, "image_inherit_order", arcan_lua_orderinherit);
 	arcan_lua_register(ctx, "expire_image", arcan_lua_setlife);
 	arcan_lua_register(ctx, "reset_image_transform", arcan_lua_resettransform);
 	arcan_lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);

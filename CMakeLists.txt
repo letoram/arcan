@@ -33,6 +33,18 @@ include(ExternalProject)
 # INSTALL_COMMAND ""
 #)
 
+#ExternalProject_Add(
+#	libjpeg-turbo
+#	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo
+#	STAMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/stamp
+#	TMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/tmp
+#	DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo
+#	SVN_REPOSITORY svn://svn.code.sf.net/p/libjpeg-turbo/code/tags/1.3.0
+#	UPDATE_COMMAND ""
+#	INSTALL_COMMAND ""
+#	BUILD_IN_SOURCE 1
+#)
+
 cmake_minimum_required(VERSION 2.8.7 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 3 )
@@ -157,6 +169,7 @@ FSRV_LIBRARIES
 	${VPX_LIBRARIES}
 #	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
 #	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
+#	${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/include
 )
 
 set (
@@ -173,6 +186,7 @@ INCLUDE_DIRECTORIES
 	${GLEW_INCLUDE_DIRS}
 	"frameserver/ntsc"
 #	"nacl/include"
+#	"libjpeg-turbo/include"
 )
 
 add_subdirectory( openctm )
@@ -332,11 +346,16 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 #
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
+set_source_files_properties( ctags.output PROPERTIES GENERATED true )
+add_custom_command( OUTPUT ctags.output
+	COMMAND ctags -R --fields=+iaS --extra=+q -o ctags.output .
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
+LIST(APPEND SOURCES ctags.output)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
-LIST(APPEND MAIN_LIBRARIES usb-1.0 rt)
+LIST(APPEND MAIN_LIBRARIES usb-1.0 rt m)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
-LIST(APPEND FSRV_LIBRARIES -lrt -lm)
+LIST(APPEND FSRV_LIBRARIES rt m dl)
 
 add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)
 set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
@@ -352,7 +371,7 @@ set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
-add_executable( arcan ${SOURCES})
+add_executable( arcan ${SOURCES} )
 add_executable( arcan_frameserver ${FSRV_SOURCES})
 # add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 

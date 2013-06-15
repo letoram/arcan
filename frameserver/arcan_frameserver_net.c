@@ -835,7 +835,7 @@ static void server_session(const char* host, int limit)
 	
 retry:
 	ear_sock = server_prepare_socket(host, NULL, DEFAULT_CONNECTION_PORT, true);
-	if (!ear_sock)
+	if (!ear_sock){
 		if (retrycount--){
 			LOG("(net-srv) -- Couldn't prepare listening socket, retrying %d more times in %d seconds.\n", retrycount + 1, sleeptime / 1000);
 			arcan_timesleep(sleeptime);
@@ -843,6 +843,7 @@ retry:
 		}
 		else
 			return;
+	}
 
 	LOG("(net-srv) -- listening interface up on %s\n", host ? host : "(global)");
 	netcontext.pollset = poll_in;

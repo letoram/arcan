@@ -160,6 +160,7 @@ add_submenu(inputlbls, inputptrs, "Network Remote...", "network_remote",
 
 local mnavlbls = {"On", "Off"};
 local mnavptrs = {};
+local mnavfmts = {};
 mnavptrs["On"] = function(lbl, save)
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 	settings.mouse_enabled = lbl == "On";
@@ -173,8 +174,16 @@ mnavptrs["On"] = function(lbl, save)
 end
 mnavptrs["Off"] = mnavptrs["On"];
 
-add_submenu(inputlbls, inputptrs, "Mouse Navigation...", mnavlbls, mnavptrs, {});
-add_submenu(inputlbls, inputptrs, "Mouse Trails...", gen_num_menu("mouse_trails", 0, 10, 5, function() end, true));
+if (get_key("mouse_enabled")) then
+	mnavfmts["On"] = settings.colourtable.notice_fontstr;
+else
+	mnavfmts["Off"] = settings.colourtable.notice_fontstr;
+end
+
+add_submenu(inputlbls, inputptrs, "Mouse Navigation...", "mouse_enabled", 
+	mnavlbls, mnavptrs, mnavfmts);
+add_submenu(inputlbls, inputptrs, "Mouse Trails...", "mouse_trails", 
+	gen_num_menu("mouse_trails", 0, 10, 5, function() end, true));
 
 local mainlbls = {};
 local mainptrs = {};
