@@ -289,6 +289,12 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, float d
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, float yaw, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, unsigned int time);
 arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx, float sy, float sz);
+
+/* Sets if the order of an object should be relative to that of its parent.
+ * Default is off, as it increases the complexity of setzv from O(n) to O(2(n+m))
+ * Overflows above the allowed order range will be clamped. */
+arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val);
+
 arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst);
 arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid);

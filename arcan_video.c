@@ -947,6 +947,26 @@ static surface_transform* dup_chain(surface_transform* base)
 	return res;
 }
 
+arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	
+	if (vobj && id != ARCAN_VIDEO_WORLDID){
+		rv = ARCAN_OK;
+		if (vobj->flags.orderofs != val){
+			if (vobj->flags.orderofs == false && vobj->owner && vobj->parent->order > vobj->order){
+				vobj->order = vobj->parent->order;
+				struct rendertarget* own = vobj->owner;
+				detach_fromtarget(own, vobj);
+				attach_object(own, vobj);
+			}
+			vobj->flags.orderofs = val;
+		}
+	}
+	
+	return rv;
+}
 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
 {
@@ -2185,17 +2205,61 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 
 	if (vobj && newzv > 0 && newzv != vobj->order) {
 		struct rendertarget* owner = vobj->owner;
+		assert(owner);
+		
+/* calculate order relative to parent if that's toggled */
+		if (vobj->parent->order > 0 && vobj->flags.orderofs) {
+			newzv = newzv + abs(vobj->parent->order);
+		}
+	
+/* might have children with order relative to own order,
+ * and this is a somewhat expensive operation. First,
+ * if there are any children, use that as a maximum limit for 
+ * a buffer (we need to store references and then do the attach / detatch.
+ *
+ * a natural constraint is this that parent->order <= child->order */
+		int n_related = vobj->extrefc.instances + vobj->extrefc.links;
+		int n_reorder = 0;
+		arcan_vobject_litem* current = current_context->stdoutp.first;
+		arcan_vobject** relbuf = n_related > 0 ? 
+			malloc(sizeof(arcan_vobject*) * n_related) : NULL;
+		
+		while (n_related && current && current->elem){
+			arcan_vobject* elem = current->elem;
 
-/* attach also works like an insertion sort */
+			if (elem->parent == vobj) {
+				n_related--;
+				if (elem->flags.orderofs){
+					unsigned int newzv = (abs(elem->order) - abs(elem->parent->order)) + newzv;
+					newzv = newzv > 65535 ? 65535 : newzv;
+					relbuf[n_reorder] = elem;
+					elem->order = newzv;
+					n_reorder++;
+				}
+			}
+			current = current->next;
+		}
+	
+/* attach also works like an insertion sort where  the insertion criterion is <= n */
 		vobj->order = newzv;
+		
 		if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
 			vobj->order *= -1;
 
-		if (owner){
+		if (vobj->owner){
 			detach_fromtarget(owner, vobj);
 			attach_object(owner, vobj);
-		}
 
+/* lastly, insert all the related children with their new orders */
+			for (int i = 0; i < n_reorder; i++){
+				detach_fromtarget(owner, relbuf[i]);
+				attach_object(owner, relbuf[i]);
+			}
+		}
+		
+		if (relbuf)
+			free(relbuf);
+		
 		rv = ARCAN_OK;
 	}
 

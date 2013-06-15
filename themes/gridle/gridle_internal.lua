@@ -1437,17 +1437,16 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 	settings.internal_toggles[key] = not settings.internal_toggles[key];
 
 	current_menu.formats[label] = nil;
-	local iconlbl = " \\P" .. settings.colourtable.font_size .. "," .. settings.colourtable.font_size .. ",images/icons/magnify.png,"
+	local fz = settings.colourtable.font_size;
+	local iconlbl = string.format("\\P%d,%d,%s,", fz, fz, "images/icons/magnify.png");
 
 	if (ctxmenus[label]) then
 		current_menu.formats[label] = iconlbl;
 	end
 
-	if (settings.internal_toggles[key]) then
-		current_menu.formats[label] = (ctxmenus[label] and iconlbl or "") .. settings.colourtable.notice_fontstr;
-	else
-		current_menu.formats[label] = (ctxmenus[label] and iconlbl or "") .. settings.colourtable.data_fontstr;
-	end
+	current_menu.formats[label] = string.format("%s%s", ctxmenus[label] and iconlbl or "",
+		settings.internal_toggles[key] and settings.colourtable.notice_fontstr or 
+		settings.colourtable.data_fontstr);
 
 	togglecb();
 	current_menu:invalidate();

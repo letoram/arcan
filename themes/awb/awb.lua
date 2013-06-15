@@ -42,31 +42,20 @@ function menulbl(text)
 end
 
 function awb()
+	settings.colourtable = system_load("scripts/colourtable.lua")();
 	symtable = system_load("scripts/symtable.lua")();
 	system_load("scripts/calltrace.lua")();
-
 	system_load("scripts/3dsupport.lua")();
--- note; colourtable in this theme overrides the one in the global namespace 
-	settings.colourtable = system_load("scripts/colourtable.lua")();
+
+	system_load("awb_mouse.lua")();
 	system_load("awb_window.lua")();
 
 --
 -- the other icons are just referenced by string since they're managed by 
 -- their respective windows
 -- 
-	imagery.background = fill_surface(VRESW, VRESH, 0, 0, 0);
-	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
-
 	move_image(imagery.cursor, math.floor(VRESW * 0.5), math.floor(VRESW * 0.5));
 	show_image(imagery.cursor);
-
-	rootwnd = awbwnd_create({
-		fullscreen = true,
-		border = false,
-		borderw = 0,
-		mode = "iconview",
-		iconalign = "right"
-	});
 
 	local wbarcb = function() return fill_surface(VRESW, 24, 210, 210, 210); end
 	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 20);
@@ -75,14 +64,29 @@ function awb()
 	tbl.xofs = 6;
 	tbl.stretch = false;	
 
-	rootwnd:add_icon("Systems", groupicn, groupselicn, deffont, deffont_sz, sysgrp);
-	rootwnd:add_icon("Saves", groupicn, groupselicn, deffont, deffont_sz, sfn);
-	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
-	rootwnd:add_icon("Videos", groupicn, groupselicn, deffont, deffont_sz, vidgrp);
-	
+
 	rootwnd:refresh_icons();
 	rootwnd:show();
 end
+
+function awb_desktop_setup()
+	imagery.background = fill_surface(VRESW, VRESH, 0, 0, 0);
+	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
+
+	rootwnd = awbwnd_create({
+		fullscreen = true,
+		border     = false,
+		borderw    = 0,
+		mode       = "iconview",
+		iconalign  = "right"
+	});
+
+	rootwnd:add_icon("Systems",  groupicn, groupselicn, deffont, deffont_sz, sysgrp);
+	rootwnd:add_icon("Saves",    groupicn, groupselicn, deffont, deffont_sz, sfn);
+	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
+	rootwnd:add_icon("Videos",   groupicn, groupselicn, deffont, deffont_sz, vidgrp);	
+end
+
 
 function prggrp(caller)
 	prggrp_window = spawn_window("iconview", "left")

@@ -47,13 +47,12 @@ local function listview_redraw(self)
 				renderstr = renderstr .. self.hilight_fontstr .. 
 				string.sub(tmpname, 4) .. [[\n\r]];
 			else
-				if (fmt) then
-					renderstr = renderstr .. fmt .. tmpname .. [[\!b\!i\n\r]];
-				else
-					renderstr = renderstr .. self.data_fontstr .. tmpname .. [[\n\r]];
-				end
+				renderstr = string.format("%s%s%s\\!b\\!i\\n\\r", renderstr, fmt and fmt or
+					self.data_fontstr, tmpname);
 			end
 		end
+
+	renderstr = string.gsub(renderstr, "^%s*(.-)%s*$", "%1");
 
 -- self.list_lines is GCed, .list is "not"
 	self.listvid, self.list_lines = render_text(renderstr, self.vspace);
@@ -253,7 +252,7 @@ function listview_create(elem_list, height, maxw, formatlist)
 	restbl.list    = elem_list;
 	restbl.width   = 1;
 	restbl.cursor  = 1;
-	restbl.borderw = 4;
+	restbl.borderw = 2;
 	restbl.vscroll = false;
 	restbl.maxw    = maxw and math.ceil( maxw ) or VRESW;
 	restbl.formats = formatlist;

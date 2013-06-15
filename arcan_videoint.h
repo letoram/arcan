@@ -158,6 +158,7 @@ typedef struct arcan_vobject {
 		bool asynchdisable;  /* don't run any asynchronous loading operations */
 		bool cycletransform; /* when a transform is finished, attach it to the end */
 		bool origoofs;       /* when the user defines a world-space coordinate as center for rotation */
+		bool orderofs;       /* ofset is relative parent */
 
 /* with this flag set, the object will be maintained in every "higher" context position, and only deleted if
  * pop:ed off without existing in a lower layer. They can't be rendertargets, nor be instanced or linked (anything
@@ -215,7 +216,7 @@ struct arcan_video_display {
 	enum arcan_vfilter_mode filtermode;
 	
 	unsigned deftxs, deftxt;
-    	bool mipmap;
+	bool mipmap;
 	
 	SDL_Surface* screen;
 	uint32_t sdlarg;
