@@ -994,7 +994,7 @@ int arcan_lua_pick(lua_State* ctx)
 {
 	int x = luaL_checkint(ctx, 1);
 	int y = luaL_checkint(ctx, 2);
-	bool reverse = luaL_optint(ctx, 3, 0) != 0;
+	bool reverse = luaL_optint(ctx, 4, 0) != 0;
 
 	unsigned int limit = luaL_optint(ctx, 3, 8);
 
@@ -4264,10 +4264,20 @@ void arcan_lua_pushargv(lua_State* ctx, char** argv)
 	lua_setglobal(ctx, "arguments");
 }
 
-static void arcan_lua_register(lua_State* ctx, const char* name, lua_CFunction fun)
+static void arcan_lua_register_tbl(lua_State* ctx, const luaL_reg* funtbl) 
+{
+	while(funtbl->name != NULL){
+		lua_pushstring(ctx, funtbl->name);
+		lua_pushcclosure(ctx, funtbl->func, 1);
+		lua_setglobal(ctx, funtbl->name);
+		funtbl++;
+	}
+}
+
+static void arcan_lua_register(lua_State* ctx, const char* name, lua_CFunction func) 
 {
 	lua_pushstring(ctx, name);
-	lua_pushcclosure(ctx, fun, 1);
+	lua_pushcclosure(ctx, func, 1);
 	lua_setglobal(ctx, name);
 }
 
@@ -4284,248 +4294,325 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 	arcan_warning("lua_exposefuncs() -- videobase is set to %d\n", lua_ctx_store.lua_vidbase);
 #endif
 
-	arcan_lua_register(ctx, "resource", arcan_lua_resource);
-	arcan_lua_register(ctx, "glob_resource", arcan_lua_globresource);
-	arcan_lua_register(ctx, "zap_resource", arcan_lua_zapresource);
-	arcan_lua_register(ctx, "open_rawresource", arcan_lua_rawresource);
-	arcan_lua_register(ctx, "write_rawresource", arcan_lua_pushrawstr);
-	arcan_lua_register(ctx, "close_rawresource", arcan_lua_rawclose);
-	arcan_lua_register(ctx, "read_rawresource", arcan_lua_readrawresource);
-	arcan_lua_register(ctx, "save_screenshot", arcan_lua_screenshot);
-	arcan_lua_register(ctx, "launch_target", arcan_lua_targetlaunch);
-	arcan_lua_register(ctx, "launch_target_capabilities", arcan_lua_targetlaunch_capabilities);
-	arcan_lua_register(ctx, "target_input", arcan_lua_targetinput);
-	arcan_lua_register(ctx, "input_target", arcan_lua_targetinput);
-	arcan_lua_register(ctx, "suspend_target", arcan_lua_targetsuspend);
-	arcan_lua_register(ctx, "resume_target", arcan_lua_targetresume);
-	arcan_lua_register(ctx, "target_portconfig", arcan_lua_targetportcfg);
-	arcan_lua_register(ctx, "target_framemode", arcan_lua_targetskipmodecfg);
-	arcan_lua_register(ctx, "target_pointsize", arcan_lua_targetpointsize);
-	arcan_lua_register(ctx, "target_linewidth", arcan_lua_targetlinewidth);
-	arcan_lua_register(ctx, "target_postfilter", arcan_lua_targetpostfilter);
-	arcan_lua_register(ctx, "target_graphmode", arcan_lua_targetgraph);
-	arcan_lua_register(ctx, "target_postfilter_args", arcan_lua_targetpostfilterargs);
-	arcan_lua_register(ctx, "stepframe_target", arcan_lua_targetstepframe);
-	arcan_lua_register(ctx, "snapshot_target", arcan_lua_targetsnapshot);
-	arcan_lua_register(ctx, "restore_target", arcan_lua_targetrestore);
-	arcan_lua_register(ctx, "reset_target", arcan_lua_targetreset);
-	arcan_lua_register(ctx, "kbd_repeat", arcan_lua_kbdrepeat);
-	arcan_lua_register(ctx, "video_3dorder", arcan_lua_3dorder);
- 	arcan_lua_register(ctx, "toggle_mouse_grab", arcan_lua_mousegrab);
-	arcan_lua_register(ctx, "system_load", arcan_lua_dofile);
-	arcan_lua_register(ctx, "system_context_size", arcan_lua_systemcontextsize);
-	arcan_lua_register(ctx, "default_movie_queueopts", arcan_lua_getqueueopts);
-	arcan_lua_register(ctx, "default_movie_queueopts_override", arcan_lua_setqueueopts);
-	arcan_lua_register(ctx, "switch_default_scalemode", arcan_lua_setscalemode);
-	arcan_lua_register(ctx, "switch_default_texmode", arcan_lua_settexmode);
-	arcan_lua_register(ctx, "switch_default_imageproc", arcan_lua_setimageproc);
-	arcan_lua_register(ctx, "switch_default_texfilter", arcan_lua_settexfilter);
-	arcan_lua_register(ctx, "shutdown", arcan_lua_shutdown);
-	arcan_lua_register(ctx, "switch_theme", arcan_lua_switchtheme);
-	arcan_lua_register(ctx, "warning", arcan_lua_warning);
-	arcan_lua_register(ctx, "valid_vid", arcan_lua_validvid);
-	arcan_lua_register(ctx, "store_key", arcan_lua_storekey);
-	arcan_lua_register(ctx, "get_key", arcan_lua_getkey);
-	arcan_lua_register(ctx, "game_cmdline", arcan_lua_getcmdline);
-	arcan_lua_register(ctx, "list_games", arcan_lua_filtergames);
-	arcan_lua_register(ctx, "list_targets", arcan_lua_gettargets);
-	arcan_lua_register(ctx, "game_info", arcan_lua_getgame);
-	arcan_lua_register(ctx, "game_family", arcan_lua_gamefamily);
-	arcan_lua_register(ctx, "game_genres", arcan_lua_getgenres);
-	arcan_lua_register(ctx, "play_audio", arcan_lua_playaudio);
-	arcan_lua_register(ctx, "pause_audio", arcan_lua_pauseaudio);
-	arcan_lua_register(ctx, "delete_audio", arcan_lua_dropaudio);
-	arcan_lua_register(ctx, "load_asample", arcan_lua_loadasample);
-	arcan_lua_register(ctx, "audio_gain", arcan_lua_gain);
-	arcan_lua_register(ctx, "capture_audio", arcan_lua_captureaudio);
-	arcan_lua_register(ctx, "list_audio_inputs", arcan_lua_capturelist);
-	arcan_lua_register(ctx, "load_image", arcan_lua_loadimage);
-	arcan_lua_register(ctx, "load_image_asynch", arcan_lua_loadimageasynch);
-	arcan_lua_register(ctx, "image_loaded", arcan_lua_imageloaded);
-	arcan_lua_register(ctx, "delete_image", arcan_lua_deleteimage);
-	arcan_lua_register(ctx, "show_image", arcan_lua_showimage);
-	arcan_lua_register(ctx, "hide_image", arcan_lua_hideimage);
-	arcan_lua_register(ctx, "move_image", arcan_lua_moveimage);
-	arcan_lua_register(ctx, "nudge_image", arcan_lua_nudgeimage);
-	arcan_lua_register(ctx, "rotate_image", arcan_lua_rotateimage);
-	arcan_lua_register(ctx, "scale_image", arcan_lua_scaleimage);
-	arcan_lua_register(ctx, "resize_image", arcan_lua_scaleimage2);
-	arcan_lua_register(ctx, "blend_image", arcan_lua_imageopacity);
-	arcan_lua_register(ctx, "persist_image", arcan_lua_imagepersist);
-	arcan_lua_register(ctx, "image_parent", arcan_lua_imageparent);
-	arcan_lua_register(ctx, "image_children", arcan_lua_imagechildren);
-	arcan_lua_register(ctx, "order_image", arcan_lua_orderimage);
-	arcan_lua_register(ctx, "max_current_image_order", arcan_lua_maxorderimage);
-	arcan_lua_register(ctx, "instance_image", arcan_lua_instanceimage);
-	arcan_lua_register(ctx, "link_image", arcan_lua_linkimage);
-	arcan_lua_register(ctx, "set_image_as_frame", arcan_lua_imageasframe);
-	arcan_lua_register(ctx, "image_framesetsize", arcan_lua_framesetalloc);
-	arcan_lua_register(ctx, "image_framecyclemode", arcan_lua_framesetcycle);
-	arcan_lua_register(ctx, "image_pushasynch", arcan_lua_pushasynch);
-	arcan_lua_register(ctx, "image_active_frame", arcan_lua_activeframe);
-	arcan_lua_register(ctx, "image_origo_offset", arcan_lua_origoofs);
-	arcan_lua_register(ctx, "image_inherit_order", arcan_lua_orderinherit);
-	arcan_lua_register(ctx, "expire_image", arcan_lua_setlife);
-	arcan_lua_register(ctx, "reset_image_transform", arcan_lua_resettransform);
-	arcan_lua_register(ctx, "instant_image_transform", arcan_lua_instanttransform);
-	arcan_lua_register(ctx, "image_transform_cycle", arcan_lua_cycletransform);
-	arcan_lua_register(ctx, "copy_image_transform", arcan_lua_copytransform);
-	arcan_lua_register(ctx, "transfer_image_transform", arcan_lua_transfertransform);
-	arcan_lua_register(ctx, "copy_surface_properties", 	arcan_lua_copyimageprop);
-	arcan_lua_register(ctx, "image_set_txcos", arcan_lua_settxcos);
-	arcan_lua_register(ctx, "image_get_txcos", arcan_lua_gettxcos);
-	arcan_lua_register(ctx, "image_set_txcos_default", arcan_lua_settxcos_default);
-	arcan_lua_register(ctx, "image_texfilter", arcan_lua_changetexfilter);
-	arcan_lua_register(ctx, "image_scale_txcos", arcan_lua_scaletxcos);
-	arcan_lua_register(ctx, "image_clip_on", arcan_lua_clipon);
-	arcan_lua_register(ctx, "image_clip_off", arcan_lua_clipoff);
-	arcan_lua_register(ctx, "image_mask_toggle", arcan_lua_togglemask);
-	arcan_lua_register(ctx, "image_mask_set", arcan_lua_setmask);
-	arcan_lua_register(ctx, "image_screen_coordinates", arcan_lua_screencoord);
-	arcan_lua_register(ctx, "image_mask_clear", arcan_lua_clearmask);
-	arcan_lua_register(ctx, "image_tracetag", arcan_lua_tracetag);
-	arcan_lua_register(ctx, "image_mask_clearall", arcan_lua_clearall);
-	arcan_lua_register(ctx, "image_surface_properties", arcan_lua_getimageprop);
-	arcan_lua_register(ctx, "image_surface_initial_properties", arcan_lua_getimageinitprop);
-	arcan_lua_register(ctx, "image_surface_resolve_properties", arcan_lua_getimageresolveprop);
-	arcan_lua_register(ctx, "image_storage_properties", arcan_lua_getimagestorageprop);
-	arcan_lua_register(ctx, "image_shader", arcan_lua_setshader);
-	arcan_lua_register(ctx, "mesh_shader", arcan_lua_setmeshshader);
-	arcan_lua_register(ctx, "build_shader", arcan_lua_buildshader);
-	arcan_lua_register(ctx, "shader_uniform", arcan_lua_shader_uniform);
-	arcan_lua_register(ctx, "render_text", arcan_lua_buildstr);
-	arcan_lua_register(ctx, "text_dimensions", arcan_lua_strsize);
-	arcan_lua_register(ctx, "fill_surface", arcan_lua_fillsurface);
-	arcan_lua_register(ctx, "raw_surface", arcan_lua_rawsurface);
-	arcan_lua_register(ctx, "define_rendertarget", arcan_lua_renderset);
-	arcan_lua_register(ctx, "define_recordtarget", arcan_lua_recordset);
-	arcan_lua_register(ctx, "image_borderscan", arcan_lua_borderscan);
-	arcan_lua_register(ctx, "random_surface", arcan_lua_randomsurface);
-	arcan_lua_register(ctx, "force_image_blend", arcan_lua_forceblend);
-	arcan_lua_register(ctx, "push_video_context", arcan_lua_pushcontext);
-	arcan_lua_register(ctx, "storepush_video_context", arcan_lua_pushcontext_ext);
-	arcan_lua_register(ctx, "storepop_video_context", arcan_lua_popcontext_ext);
-	arcan_lua_register(ctx, "pop_video_context", arcan_lua_popcontext);
-	arcan_lua_register(ctx, "current_context_usage", arcan_lua_contextusage);
-  arcan_lua_register(ctx, "new_3dmodel", arcan_lua_buildmodel);
-	arcan_lua_register(ctx, "add_3dmesh", arcan_lua_loadmesh);
-	arcan_lua_register(ctx, "move3d_model", arcan_lua_movemodel);
-	arcan_lua_register(ctx, "rotate3d_model", arcan_lua_rotatemodel);
-	arcan_lua_register(ctx, "orient3d_model", arcan_lua_orientmodel);
-	arcan_lua_register(ctx, "scale3d_model", arcan_lua_scalemodel);
-	arcan_lua_register(ctx, "camtag_model", arcan_lua_camtag);
-	arcan_lua_register(ctx, "build_3dplane", arcan_lua_buildplane);
-	arcan_lua_register(ctx, "scale_3dvertices", arcan_lua_scale3dverts);
-	arcan_lua_register(ctx, "play_movie", arcan_lua_playmovie);
-	arcan_lua_register(ctx, "load_movie", arcan_lua_loadmovie);
-	arcan_lua_register(ctx, "pause_movie", arcan_lua_pausemovie);
-	arcan_lua_register(ctx, "resume_movie", arcan_lua_resumemovie);
-	arcan_lua_register(ctx, "image_hit", arcan_lua_hittest);
-	arcan_lua_register(ctx, "pick_items", arcan_lua_pick);
-	arcan_lua_register(ctx, "set_led", arcan_lua_setled);
-	arcan_lua_register(ctx, "led_intensity", arcan_lua_led_intensity);
-	arcan_lua_register(ctx, "set_led_rgb", arcan_lua_led_rgb);
-	arcan_lua_register(ctx, "controller_leds", arcan_lua_n_leds);
-	arcan_lua_register(ctx, "input_filter_analog", arcan_lua_inputfilteranalog);
-	arcan_lua_register(ctx, "utf8kind", arcan_lua_utf8kind);
-	arcan_lua_register(ctx, "decode_modifiers", arcan_lua_decodemod);
+/* these defines / tables are also scriptably extracted and 
+ * mapped to build / documentation / static verification to ensure
+ * coverage in the API binding -- so keep this format (down to the
+ * whitespacing, simple regexs used. */
+#define EXT_MAPTBL_RESOURCE
+static const luaL_reg resfuns[] = {
+{"resource",          arcan_lua_resource        },
+{"glob_resource",     arcan_lua_globresource    },
+{"zap_resource",      arcan_lua_zapresource     },
+{"open_rawresource",  arcan_lua_rawresource     },
+{"close_rawresource", arcan_lua_rawclose        },
+{"write_rawresource", arcan_lua_pushrawstr      },
+{"read_rawresource",  arcan_lua_readrawresource },
+{"save_screenshot",   arcan_lua_screenshot      },
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_RESOURCE
+	arcan_lua_register_tbl(ctx, resfuns);
 
-/* networking client- functions */
-	arcan_lua_register(ctx, "net_open", arcan_lua_net_open);
-	arcan_lua_register(ctx, "net_push", arcan_lua_net_pushcl);
+#define EXT_MAPTBL_TARGETCONTROL
+static const luaL_reg tgtfuns[] = {
+{"launch_target",              arcan_lua_targetlaunch             },
+{"launch_target_capabilities", arcan_lua_targetlaunch_capabilities},
+{"target_input",               arcan_lua_targetinput              },
+{"input_target",               arcan_lua_targetinput              },
+{"suspend_target",             arcan_lua_targetsuspend            },
+{"resume_target",              arcan_lua_targetresume             },
+{"target_portconfig",          arcan_lua_targetportcfg            },
+{"target_framemode",           arcan_lua_targetskipmodecfg        },
+{"target_pointsize",           arcan_lua_targetpointsize          },
+{"target_linewidth",           arcan_lua_targetlinewidth          },
+{"target_postfilter",          arcan_lua_targetpostfilter         },
+{"target_graphmode",           arcan_lua_targetgraph              },
+{"target_postfilter_args",     arcan_lua_targetpostfilterargs     },
+{"stepframe_target",           arcan_lua_targetstepframe          },
+{"snapshot_target",            arcan_lua_targetsnapshot           },
+{"restore_target",             arcan_lua_targetrestore            },
+{"reset_target",               arcan_lua_targetreset              },
+{"define_rendertarget",        arcan_lua_renderset                },
+{"define_recordtarget",        arcan_lua_recordset                },
+{"play_movie",                 arcan_lua_playmovie                },
+{"load_movie",                 arcan_lua_loadmovie                },
+{"pause_movie",                arcan_lua_pausemovie               },
+{"resume_movie",               arcan_lua_resumemovie              },
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_TARGETCONTROL
+	arcan_lua_register_tbl(ctx, tgtfuns);
 
-/* networking server functions */
-	arcan_lua_register(ctx, "net_listen", arcan_lua_net_listen);
-	arcan_lua_register(ctx, "net_push_srv", arcan_lua_net_pushsrv);
-	arcan_lua_register(ctx, "net_disconnect", arcan_lua_net_disconnect);
-	arcan_lua_register(ctx, "net_authenticate", arcan_lua_net_authenticate);
+#define EXT_MAPTBL_DATABASE
+static const luaL_reg dbfuns[] = {
+{"store_key",    arcan_lua_storekey   },
+{"get_key",      arcan_lua_getkey     },
+{"game_cmdline", arcan_lua_getcmdline },
+{"list_games",   arcan_lua_filtergames},
+{"list_targets", arcan_lua_gettargets },
+{"game_info",    arcan_lua_getgame    },
+{"game_family",  arcan_lua_gamefamily },
+{"game_genres",  arcan_lua_getgenres  },
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_DATABASE
+	arcan_lua_register_tbl(ctx, dbfuns);
 
-/* networking shared functions */
-	arcan_lua_register(ctx, "net_accept", arcan_lua_net_accept);
-	arcan_lua_register(ctx, "net_refresh", arcan_lua_net_refresh);
+#define EXT_MAPTBL_AUDIO
+static const luaL_reg audfuns[] = {
+{"play_audio",        arcan_lua_playaudio   },
+{"pause_audio",       arcan_lua_pauseaudio  },
+{"delete_audio",      arcan_lua_dropaudio   },
+{"load_asample",      arcan_lua_loadasample },
+{"audio_gain",        arcan_lua_gain        },
+{"capture_audio",     arcan_lua_captureaudio},
+{"list_audio_inputs", arcan_lua_capturelist },
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_AUDIO
+	arcan_lua_register_tbl(ctx, audfuns);
+	
+#define EXT_MAPTBL_IMAGE
+static const luaL_reg imgfuns[] = {
+{"load_image",               arcan_lua_loadimage          },
+{"load_image_asynch",        arcan_lua_loadimageasynch    },
+{"image_loaded",             arcan_lua_imageloaded        },
+{"delete_image",             arcan_lua_deleteimage        },
+{"show_image",               arcan_lua_showimage          },
+{"hide_image",               arcan_lua_hideimage          },
+{"move_image",               arcan_lua_moveimage          },
+{"nudge_image",              arcan_lua_nudgeimage         },
+{"rotate_image",             arcan_lua_rotateimage        },
+{"scale_image",              arcan_lua_scaleimage         },
+{"resize_image",             arcan_lua_scaleimage2        },
+{"blend_image",              arcan_lua_imageopacity       },
+{"persist_image",            arcan_lua_imagepersist       },
+{"image_parent",             arcan_lua_imageparent        },
+{"image_children",           arcan_lua_imagechildren      },
+{"order_image",              arcan_lua_orderimage         },
+{"max_current_image_order",  arcan_lua_maxorderimage      },
+{"instance_image",           arcan_lua_instanceimage      },
+{"link_image",               arcan_lua_linkimage          },
+{"set_image_as_frame",       arcan_lua_imageasframe       },
+{"image_framesetsize",       arcan_lua_framesetalloc      },
+{"image_framecyclemode",     arcan_lua_framesetcycle      },
+{"image_pushasynch",         arcan_lua_pushasynch         },
+{"image_active_frame",       arcan_lua_activeframe        },
+{"image_origo_offset",       arcan_lua_origoofs           },
+{"image_inherit_order",      arcan_lua_orderinherit       },
+{"expire_image",             arcan_lua_setlife            },
+{"reset_image_transform",    arcan_lua_resettransform     },
+{"instant_image_transform",  arcan_lua_instanttransform   },
+{"image_transform_cycle",    arcan_lua_cycletransform     },
+{"copy_image_transform",     arcan_lua_copytransform      },
+{"transfer_image_transform", arcan_lua_transfertransform  },
+{"copy_surface_properties",  arcan_lua_copyimageprop      },
+{"image_set_txcos",          arcan_lua_settxcos           },
+{"image_get_txcos",          arcan_lua_gettxcos           },
+{"image_set_txcos_default",  arcan_lua_settxcos_default   },
+{"image_texfilter",          arcan_lua_changetexfilter    },
+{"image_scale_txcos",        arcan_lua_scaletxcos         },
+{"image_clip_on",            arcan_lua_clipon             },
+{"image_clip_off",           arcan_lua_clipoff            },
+{"image_mask_toggle",        arcan_lua_togglemask         },
+{"image_mask_set",           arcan_lua_setmask            },
+{"image_screen_coordinates", arcan_lua_screencoord        },
+{"image_mask_clear",         arcan_lua_clearmask          },
+{"image_tracetag",           arcan_lua_tracetag           },
+{"image_mask_clearall",      arcan_lua_clearall           },
+{"image_shader",             arcan_lua_setshader          },
+{"fill_surface",             arcan_lua_fillsurface        },
+{"raw_surface",              arcan_lua_rawsurface         },
+{"image_surface_properties", arcan_lua_getimageprop       },
+{"image_storage_properties", arcan_lua_getimagestorageprop},
+{"render_text",              arcan_lua_buildstr           },
+{"text_dimensions",          arcan_lua_strsize            },
+{"image_borderscan",         arcan_lua_borderscan         },
+{"random_surface",           arcan_lua_randomsurface      },
+{"force_image_blend",        arcan_lua_forceblend         },
+{"image_hit",                arcan_lua_hittest            },
+{"pick_items",               arcan_lua_pick               },
+{"image_surface_initial_properties", arcan_lua_getimageinitprop   },
+{"image_surface_resolve_properties", arcan_lua_getimageresolveprop},
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_IMAGE
+	arcan_lua_register_tbl(ctx, imgfuns);
+
+#define EXT_MAPTBL_3D
+static const luaL_reg threedfuns[] = {
+{"new_3dmodel",      arcan_lua_buildmodel   },
+{"add_3dmesh",       arcan_lua_loadmesh     },
+{"move3d_model",     arcan_lua_movemodel    },
+{"rotate3d_model",   arcan_lua_rotatemodel  },
+{"orient3d_model",   arcan_lua_orientmodel  },
+{"scale3d_model",    arcan_lua_scalemodel   },
+{"camtag_model",     arcan_lua_camtag       },
+{"build_3dplane",    arcan_lua_buildplane   },
+{"scale_3dvertices", arcan_lua_scale3dverts },
+{"mesh_shader",      arcan_lua_setmeshshader},
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_3D
+	arcan_lua_register_tbl(ctx, threedfuns);
+
+#define EXT_MAPTBL_SYSTEM
+static const luaL_reg sysfuns[] = {
+{"shutdown",            arcan_lua_shutdown         },
+{"switch_theme",        arcan_lua_switchtheme      },
+{"warning",             arcan_lua_warning          },
+{"system_load",         arcan_lua_dofile           },
+{"system_context_size", arcan_lua_systemcontextsize},
+{"utf8kind",            arcan_lua_utf8kind         },
+{"decode_modifiers",    arcan_lua_decodemod        },
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_SYSTEM
+	arcan_lua_register_tbl(ctx, sysfuns);
+
+#define EXT_MAPTBL_IODEV
+static const luaL_reg iofuns[] = {
+{"kbd_repeat",          arcan_lua_kbdrepeat        },
+{"toggle_mouse_grab",   arcan_lua_mousegrab        },
+{"set_led",             arcan_lua_setled           },
+{"led_intensity",       arcan_lua_led_intensity    },
+{"set_led_rgb",         arcan_lua_led_rgb          },
+{"controller_leds",     arcan_lua_n_leds           },
+{"input_filter_analog", arcan_lua_inputfilteranalog},
+{NULL, NULL},
+};
+#undef EXT_MAPTBL_IODEV
+	arcan_lua_register_tbl(ctx, iofuns);
+
+#define EXT_MAPTBL_VIDSYS
+static const luaL_reg vidsysfuns[] = {
+{"switch_default_scalemode",         arcan_lua_setscalemode   },
+{"switch_default_texmode",           arcan_lua_settexmode     },
+{"switch_default_imageproc",         arcan_lua_setimageproc   },
+{"switch_default_texfilter",         arcan_lua_settexfilter   },
+{"video_3dorder",                    arcan_lua_3dorder        },
+{"default_movie_queueopts",          arcan_lua_getqueueopts   },
+{"default_movie_queueopts_override", arcan_lua_setqueueopts   },
+{"build_shader",                     arcan_lua_buildshader    },
+{"valid_vid",                        arcan_lua_validvid       },
+{"shader_uniform",                   arcan_lua_shader_uniform },
+{"push_video_context",               arcan_lua_pushcontext    },
+{"storepush_video_context",          arcan_lua_pushcontext_ext},
+{"storepop_video_context",           arcan_lua_popcontext_ext },
+{"pop_video_context",                arcan_lua_popcontext     },
+{"current_context_usage",            arcan_lua_contextusage   },
+{NULL, NULL},
+};
+#undef EXT_MAPTBL_VIDSYS
+	arcan_lua_register_tbl(ctx, vidsysfuns);
+
+#define EXT_MAPTBL_NETWORK
+static const luaL_reg netfuns[] = {
+{"net_open",         arcan_lua_net_open        },
+{"net_push",         arcan_lua_net_pushcl      },
+{"net_listen",       arcan_lua_net_listen      },
+{"net_push_srv",     arcan_lua_net_pushsrv     },
+{"net_disconnect",   arcan_lua_net_disconnect  },
+{"net_authenticate", arcan_lua_net_authenticate},
+{"net_accept",       arcan_lua_net_accept      },
+{"net_refresh",      arcan_lua_net_refresh     },
+{NULL, NULL},
+};
+#undef EXT_MAPTBL_NETWORK
+	arcan_lua_register_tbl(ctx, netfuns);
 
 	atexit(arcan_lua_cleanup);
-
 	return ARCAN_OK;
 }
 
-/* category: tableformats */
-/* table: */
-/* table: */
-
-/* category: constants */
-
 void arcan_lua_pushglobalconsts(lua_State* ctx){
-	arcan_lua_setglobalint(ctx, "VRESH", arcan_video_screenh());
-	arcan_lua_setglobalint(ctx, "VRESW", arcan_video_screenw());
-	arcan_lua_setglobalint(ctx, "MAX_SURFACEW", MAX_SURFACEW);
-	arcan_lua_setglobalint(ctx, "MAX_SURFACEH", MAX_SURFACEH);
-	arcan_lua_setglobalint(ctx, "STACK_MAXCOUNT", CONTEXT_STACK_LIMIT);
-	arcan_lua_setglobalint(ctx, "FRAMESET_SPLIT", ARCAN_FRAMESET_SPLIT);
-	arcan_lua_setglobalint(ctx, "FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE);
-	arcan_lua_setglobalint(ctx, "FRAMESET_NODETACH", FRAMESET_NODETACH);
-	arcan_lua_setglobalint(ctx, "FRAMESET_DETACH", FRAMESET_DETACH);
-	arcan_lua_setglobalint(ctx, "BLEND_NONE", BLEND_NONE);
-	arcan_lua_setglobalint(ctx, "BLEND_ADD", BLEND_ADD);
-	arcan_lua_setglobalint(ctx, "BLEND_MULTIPLY", BLEND_MULTIPLY);
-	arcan_lua_setglobalint(ctx, "BLEND_NORMAL", BLEND_NORMAL);
-	arcan_lua_setglobalint(ctx, "RENDERTARGET_NOSCALE", RENDERTARGET_NOSCALE);
-	arcan_lua_setglobalint(ctx, "RENDERTARGET_SCALE", RENDERTARGET_SCALE);
-	arcan_lua_setglobalint(ctx, "RENDERTARGET_NODETACH", RENDERTARGET_NODETACH);
-	arcan_lua_setglobalint(ctx, "RENDERTARGET_DETACH", RENDERTARGET_DETACH);
-	arcan_lua_setglobalint(ctx, "ROTATE_RELATIVE", CONST_ROTATE_RELATIVE);
-	arcan_lua_setglobalint(ctx, "ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE);
-	arcan_lua_setglobalint(ctx, "TEX_REPEAT", ARCAN_VTEX_REPEAT);
-	arcan_lua_setglobalint(ctx, "TEX_CLAMP", ARCAN_VTEX_CLAMP);
-	arcan_lua_setglobalint(ctx, "FILTER_NONE", ARCAN_VFILTER_NONE);
-	arcan_lua_setglobalint(ctx, "FILTER_LINEAR", ARCAN_VFILTER_LINEAR);
-	arcan_lua_setglobalint(ctx, "FILTER_BILINEAR", ARCAN_VFILTER_BILINEAR);
-	arcan_lua_setglobalint(ctx, "FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR);
-	arcan_lua_setglobalint(ctx, "SCALE_NOPOW2", ARCAN_VIMAGE_NOPOW2);
-	arcan_lua_setglobalint(ctx, "SCALE_TXCOORD", ARCAN_VIMAGE_TXCOORD);
-	arcan_lua_setglobalint(ctx, "SCALE_POW2", ARCAN_VIMAGE_SCALEPOW2);
-	arcan_lua_setglobalint(ctx, "IMAGEPROC_NORMAL", imageproc_normal);
-	arcan_lua_setglobalint(ctx, "IMAGEPROC_FLIPH", imageproc_fliph);
-	arcan_lua_setglobalint(ctx, "WORLDID", ARCAN_VIDEO_WORLDID);
-	arcan_lua_setglobalint(ctx, "BADID", ARCAN_EID);
-	arcan_lua_setglobalint(ctx, "CLOCKRATE", ARCAN_TIMER_TICK);
-	arcan_lua_setglobalint(ctx, "CLOCK", 0);
-	arcan_lua_setglobalint(ctx, "JOYSTICKS", SDL_NumJoysticks());
-	arcan_lua_setglobalint(ctx, "THEME_RESOURCE", ARCAN_RESOURCE_THEME);
-	arcan_lua_setglobalint(ctx, "SHARED_RESOURCE", ARCAN_RESOURCE_SHARED);
-	arcan_lua_setglobalint(ctx, "ALL_RESOURCES", ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
-	arcan_lua_setglobalint(ctx, "API_VERSION_MAJOR", 0);
-	arcan_lua_setglobalint(ctx, "API_VERSION_MINOR", 6);
-	arcan_lua_setglobalint(ctx, "LAUNCH_EXTERNAL", 0);
-	arcan_lua_setglobalint(ctx, "LAUNCH_INTERNAL", 1);
-	arcan_lua_setglobalint(ctx, "MASK_LIVING", MASK_LIVING);
-	arcan_lua_setglobalint(ctx, "MASK_ORIENTATION", MASK_ORIENTATION);
-	arcan_lua_setglobalint(ctx, "MASK_OPACITY", MASK_OPACITY);
-	arcan_lua_setglobalint(ctx, "MASK_POSITION", MASK_POSITION);
-	arcan_lua_setglobalint(ctx, "MASK_SCALE", MASK_SCALE);
-	arcan_lua_setglobalint(ctx, "MASK_UNPICKABLE", MASK_UNPICKABLE);
-	arcan_lua_setglobalint(ctx, "MASK_FRAMESET", MASK_FRAMESET);
-	arcan_lua_setglobalint(ctx, "MASK_MAPPING", MASK_MAPPING);
-	arcan_lua_setglobalint(ctx, "ORDER_FIRST", order3d_first);
-	arcan_lua_setglobalint(ctx, "ORDER_NONE", order3d_none);
-	arcan_lua_setglobalint(ctx, "ORDER_LAST", order3d_last);
-	arcan_lua_setglobalint(ctx, "ORDER_SKIP", order3d_none);
-	arcan_lua_setglobalint(ctx, "MOUSE_GRABON", MOUSE_GRAB_ON);
-	arcan_lua_setglobalint(ctx, "MOUSE_GRABOFF", MOUSE_GRAB_OFF);
-	arcan_lua_setglobalint(ctx, "FRAMESERVER_LOOP", FRAMESERVER_LOOP);
-	arcan_lua_setglobalint(ctx, "FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP);
-	arcan_lua_setglobalint(ctx, "POSTFILTER_NTSC", POSTFILTER_NTSC);
-	arcan_lua_setglobalint(ctx, "POSTFILTER_OFF", POSTFILTER_OFF);
-	arcan_lua_setglobalstr(ctx, "THEMENAME", arcan_themename);
-	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath);
-	arcan_lua_setglobalstr(ctx, "THEMEPATH", arcan_themepath);
-	arcan_lua_setglobalstr(ctx, "BINPATH", arcan_binpath);
-	arcan_lua_setglobalstr(ctx, "LIBPATH", arcan_libpath);
+#define EXT_CONSTTBL_GLOBINT
+	struct { const char* key; int val; } consttbl[] = {
+{"VRESH", arcan_video_screenh()},
+{"VRESW", arcan_video_screenw()},
+{"MAX_SURFACEW",   MAX_SURFACEW        },
+{"MAX_SURFACEH",   MAX_SURFACEH        },
+{"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT },
+{"FRAMESET_SPLIT",        ARCAN_FRAMESET_SPLIT       },
+{"FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE},
+{"FRAMESET_NODETACH",     FRAMESET_NODETACH          },
+{"FRAMESET_DETACH",       FRAMESET_DETACH            },
+{"BLEND_NONE",     BLEND_NONE    },
+{"BLEND_ADD",      BLEND_ADD     },
+{"BLEND_MULTIPLY", BLEND_MULTIPLY},
+{"BLEND_NORMAL",   BLEND_NORMAL  },
+{"RENDERTARGET_NOSCALE",  RENDERTARGET_NOSCALE },
+{"RENDERTARGET_SCALE",    RENDERTARGET_SCALE   },
+{"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
+{"RENDERTARGET_DETACH",   RENDERTARGET_DETACH  },
+{"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
+{"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
+{"TEX_REPEAT",       ARCAN_VTEX_REPEAT      },
+{"TEX_CLAMP",        ARCAN_VTEX_CLAMP       },
+{"FILTER_NONE",      ARCAN_VFILTER_NONE     },
+{"FILTER_LINEAR",    ARCAN_VFILTER_LINEAR   },
+{"FILTER_BILINEAR",  ARCAN_VFILTER_BILINEAR },
+{"FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR},
+{"SCALE_NOPOW2",     ARCAN_VIMAGE_NOPOW2},
+{"SCALE_TXCOORD",    ARCAN_VIMAGE_TXCOORD},
+{"SCALE_POW2",       ARCAN_VIMAGE_SCALEPOW2},
+{"IMAGEPROC_NORMAL", imageproc_normal},
+{"IMAGEPROC_FLIPH",  imageproc_fliph },
+{"WORLDID", ARCAN_VIDEO_WORLDID},
+{"BADID",   ARCAN_EID         },
+{"CLOCKRATE", ARCAN_TIMER_TICK},
+{"CLOCK",     0               },
+{"THEME_RESOURCE",    ARCAN_RESOURCE_THEME                        },
+{"SHARED_RESOURCE",   ARCAN_RESOURCE_SHARED                       },
+{"ALL_RESOURCES",     ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED},
+{"API_VERSION_MAJOR", 0},
+{"API_VERSION_MINOR", 6},
+{"LAUNCH_EXTERNAL",   0},
+{"LAUNCH_INTERNAL",   1},
+{"MASK_LIVING",      MASK_LIVING     },
+{"MASK_ORIENTATION", MASK_ORIENTATION},
+{"MASK_OPACITY",     MASK_OPACITY    },
+{"MASK_POSITION",    MASK_POSITION   },
+{"MASK_SCALE",       MASK_SCALE      },
+{"MASK_UNPICKABLE",  MASK_UNPICKABLE },
+{"MASK_FRAMESET",    MASK_FRAMESET   },
+{"MASK_MAPPING",     MASK_MAPPING    },
+{"ORDER_FIRST",      order3d_first   },
+{"ORDER_NONE",       order3d_none    },
+{"ORDER_LAST",       order3d_last    },
+{"ORDER_SKIP",       order3d_none    },
+{"MOUSE_GRABON",       MOUSE_GRAB_ON      },
+{"MOUSE_GRABOFF",      MOUSE_GRAB_OFF     },
+{"FRAMESERVER_LOOP",   FRAMESERVER_LOOP   },
+{"FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP },
+{"POSTFILTER_NTSC",    POSTFILTER_NTSC    },
+{"POSTFILTER_OFF",     POSTFILTER_OFF     },
+{"LEDCONTROLLERS",     arcan_led_controllers()},
+{"JOYSTICKS",          SDL_NumJoysticks()     },
+{"NOW",           0},
+{"NOPERSIST",     0},
+{"PERSIST",       1},
+{"NET_BROADCAST", 0},
+{"DEBUGLEVEL",    lua_ctx_store.debug}	
+};
+#undef EXT_CONSTTBL_GLOBINT
+
+	for (int i = 0; i < sizeof(consttbl) / sizeof(consttbl[0]); i++)
+		arcan_lua_setglobalint(ctx, consttbl[i].key, consttbl[i].val);
+
+	arcan_lua_setglobalstr(ctx, "THEMENAME",    arcan_themename          );
+	arcan_lua_setglobalstr(ctx, "RESOURCEPATH", arcan_resourcepath       );
+	arcan_lua_setglobalstr(ctx, "THEMEPATH",    arcan_themepath          );
+	arcan_lua_setglobalstr(ctx, "BINPATH",      arcan_binpath            );
+	arcan_lua_setglobalstr(ctx, "LIBPATH",      arcan_libpath            );
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
-	arcan_lua_setglobalint(ctx, "LEDCONTROLLERS", arcan_led_controllers());
-	arcan_lua_setglobalint(ctx, "NOW", 0);
-	arcan_lua_setglobalint(ctx, "NOPERSIST", 0);
-	arcan_lua_setglobalint(ctx, "PERSIST", 1);
-	arcan_lua_setglobalint(ctx, "NET_BROADCAST", 0);
-	arcan_lua_setglobalint(ctx, "DEBUGLEVEL", lua_ctx_store.debug);
+}
+
+void arcan_lua_statesnap(FILE* dst)
+{
+}
+
+void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* dst)
+{
+
 }

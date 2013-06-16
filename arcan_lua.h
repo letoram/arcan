@@ -37,9 +37,20 @@ void arcan_lua_pushargv(lua_State* ctx, char** argv);
 /* used to implement an interactive shell,
  * iterate the global (_G) table for a matching prefix, yield callback for each hit,
  * with (key, type, tag) as the callback arguments */
-void arcan_lua_eachglobal(lua_State* ctx, char* prefix, int (*callback)(const char*, const char*, void*), void* tag);
+void arcan_lua_eachglobal(lua_State* ctx, char* prefix, 
+	int (*callback)(const char*, const char*, void*), void* tag);
 
 /* for initialization, update / push all the global constants used */
 void arcan_lua_pushglobalconsts(lua_State* ctx);
+
+/* serialize a LUA- parseable snapshot of the various mapped subsystems 
+ * and resources into the (dst) filestream. Since it's streaming, the blocks
+ * will be separated with a #ENDBLOCK\n tag and fsynched. */ 
+void arcan_lua_statesnap(FILE* dst);
+
+/* block/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
+ * parse this and push it into the lua_State as the first and only argument
+ * to the function pointed out with (dstfun). */
+void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* dst);
 #endif
 

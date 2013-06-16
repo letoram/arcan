@@ -66,7 +66,6 @@ local function awbwnd_alloc(self)
 	if (self.border) then
 		show_image(self.bordert);
 	end
-
 	self.resize_border = function(s)
 		local bw = s.borderw;
 		resize_image(s.bordert, s.width,           bw);
