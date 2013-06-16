@@ -4610,9 +4610,70 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 
 void arcan_lua_statesnap(FILE* dst)
 {
+	fprintf(dst, "local testtbl = { 1, 2, 3, 4}; \n return testtbl; \n");
+	fprintf(dst, "#ENDBLOCK\n");
+	fflush(dst);
 }
 
-void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* dst)
+void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* src)
 {
+/* maintaing a growing buffer that is just populated with lines read 
+ * from (src). When we uncover an endblock, we do a pcall and then 
+ * push the value to the stack. */
+	static char* statebuf;
+	static size_t statebuf_sz, statebuf_ofs;
+	ssize_t nread;
+	size_t len;
+	char* line = NULL;
+	bool done = false;
 
+	if (!statebuf){
+		statebuf = malloc(1024);
+		statebuf_sz = 1024;
+	}
+	
+	while ((nread = getline(&line, &len, src)) !=  -1){
+		if(strcmp(line, "#ENDBLOCK") == 0){
+			done = true;
+			break;
+		}
+		else {
+			if (statebuf_ofs + nread > statebuf_sz - 1){
+				statebuf_sz *= 2;
+				char* newbuf = realloc(statebuf, statebuf_sz);
+				if (!newbuf){
+					free(statebuf);
+					statebuf = NULL;
+					arcan_warning("arcan_lua_stategrab(), "
+						"buffering failed, giving up.\n");
+					goto cleanup;
+				}
+				statebuf = newbuf;
+			}
+			
+			memcpy(statebuf + statebuf_ofs, line, nread);
+			statebuf_ofs = statebuf_ofs + nread;
+		}
+	}
+
+	if (done){
+/* buffering done, parse and propagate */
+		statebuf[statebuf_ofs] = '\0';
+
+		lua_getglobal(ctx, "sample");
+		if (!lua_isfunction(ctx, -1)){
+			lua_pop(ctx, 1);
+			arcan_warning("arcan_lua_stategrab(), couldn't find "
+				"function 'sample' in debugscript. Sample ignored.\n");
+		} else {
+			luaL_loadstring(ctx, statebuf);
+			int top = lua_gettop(ctx);
+			lua_call(ctx, 0, LUA_MULTRET);
+			int nr = lua_gettop(ctx) - top;
+			lua_call(ctx, nr, 0);
+		}
+	}
+
+cleanup:
+	free(line);
 }

@@ -36,6 +36,7 @@
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #endif
 
 #include <math.h>
@@ -260,24 +261,31 @@ int main(int argc, char* argv[])
 			int pair[2];
 			char scriptfnbuf[256] = {0};
 			snprintf(scriptfnbuf, 255, "scripts/monitor/%s", monitor_arg);
-			script_override = arcan_find_resource(scriptfnbuf, ARCAN_RESOURCE_SHARED);
-			if (script_override == NULL)
+			char* tmpscript = arcan_find_resource(scriptfnbuf, ARCAN_RESOURCE_SHARED);
+			if (tmpscript == NULL)
 				arcan_fatal("Missing monitor script: %s\n", scriptfnbuf);
 			
+			pid_t p1;
+			
 			socketpair(PF_LOCAL, SOCK_STREAM, 0, pair);
-			if (fork() == 0){
+			if ( (p1 = fork()) == 0){
 				close(pair[0]);
 				monitor_parent = false;
+				if (fork() != 0)
+					exit(0);
+
 				monitor_outf = fdopen(pair[1], "r");
+				script_override = tmpscript;
 			} else {
+				int status;
 				close(pair[1]);
 				monitor_parent = true;
 				monitor_outf = fdopen(pair[0], "w");
+				waitpid(p1, &status, 0);
 			}
 		}
 		
 		fullscreen = false;
-		windowed = true;
 	}
 #endif
 	
@@ -401,7 +409,7 @@ themeswitch:
 			"overridescript: (%s)\n", script_override);
 		goto error;
 	} 
-	else {
+	else if (!script_override) {
 		char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
 		sprintf(themescr, "%s.lua", arcan_themename);
 		char* fn = arcan_find_resource(themescr, ARCAN_RESOURCE_THEME);
