@@ -3974,9 +3974,11 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, in
 	while (current->next)
 		current = current->next;
 
+	printf("begin rpick.. (%d)\n", count);
 	while (current && base < count){
 		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && 
 			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y)){
+				printf("match found (%d)\n", current->elem->cellid);
 				dst[base++] = current->elem->cellid;
 		}
 

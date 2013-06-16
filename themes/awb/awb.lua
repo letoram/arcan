@@ -53,25 +53,19 @@ function awb()
 --
 -- the other icons are just referenced by string since they're managed by 
 -- their respective windows
--- 
+--
+	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
 	move_image(imagery.cursor, math.floor(VRESW * 0.5), math.floor(VRESW * 0.5));
 	show_image(imagery.cursor);
+	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
+	mouse_acceleration(1.5);
+	spawn_boing();
 
-	local wbarcb = function() return fill_surface(VRESW, 24, 210, 210, 210); end
-	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 20);
-	local tbl = topbar:add_icon(menulbl("Arcan Workbench"), "left", nil);
-	tbl.yofs = 6;
-	tbl.xofs = 6;
-	tbl.stretch = false;	
-
-
-	rootwnd:refresh_icons();
-	rootwnd:show();
+	awb_desktop_setup();
 end
 
 function awb_desktop_setup()
 	imagery.background = fill_surface(VRESW, VRESH, 0, 0, 0);
-	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
 
 	rootwnd = awbwnd_create({
 		fullscreen = true,
@@ -85,8 +79,17 @@ function awb_desktop_setup()
 	rootwnd:add_icon("Saves",    groupicn, groupselicn, deffont, deffont_sz, sfn);
 	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
 	rootwnd:add_icon("Videos",   groupicn, groupselicn, deffont, deffont_sz, vidgrp);	
-end
 
+	local wbarcb = function() return fill_surface(VRESW, 24, 210, 210, 210); end
+	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 20);
+	local tbl = topbar:add_icon(menulbl("Arcan Workbench"), "left", nil);
+	tbl.yofs = 6;
+	tbl.xofs = 6;
+	tbl.stretch = false;	
+
+	rootwnd:refresh_icons();
+	rootwnd:show();
+end
 
 function prggrp(caller)
 	prggrp_window = spawn_window("iconview", "left")
@@ -186,7 +189,7 @@ end
 --
 function spawn_boing()
 	local int oval = math.random(1,100);
-	local a = spawn_window("container");
+	local a = spawn_window("container", "left", "BOING!");
 
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
 		"shaders/boing.fShader", "boing" .. oval, {}); 
@@ -225,21 +228,16 @@ function closewin(self)
 		end
 
 	end
-	
+
+	mouse_droplistener(self);
 	self.parent.parent:destroy();
-end
-
-function sendtoback(self)
-end
-
-function maximize(self)
 end
 
 --
 -- Allocate, Setup, Register and Position a new Window
 -- These always start out focused
 --
-function spawn_window(wtype, ialign)
+function spawn_window(wtype, ialign, caption)
 	wcont = awbwnd_create({
 		mode = wtype,
 		iconalign = ialign,
@@ -253,13 +251,43 @@ function spawn_window(wtype, ialign)
 		y    = y_spawnpos
 	});
 
-	wcont.cursor_input = function() end
-	wcont.table_input  = function() end
+-- overload destroy to deregister mouse handler
+	local tmpfun = wcont.destroy;
+	local function wdestroy(self) 
+		mouse_droplistener(self);
+		tmpfun(self);
+	end
 
 	local bar = wcont:add_bar("top", "awbicons/border.png", 
 		"awbicons/border_inactive.png", 16);
-
 	bar:add_icon("awbicons/close.png",   "left",  closewin);
+
+	if (caption) then	
+		local captxt = menulbl(caption);
+		local props  = image_surface_properties(captxt);
+		local bg = fill_surface(math.floor(props.width * 0.1) + props.width, 16, 230, 230, 230);
+--		link_image(captxt, bg);
+--		image_inherit_order(captxt, true);
+--		order_image(captxt, 1);
+		show_image({bg});
+-- don't want these to interfere with bar drag 
+--		image_mask_set(captxt, MASK_UNPICKABLE);
+		print(bg);
+		image_mask_clear(bg, MASK_UNPICKABLE);
+		bar:add_icon(bg, "left", nil);
+	end
+
+	bar.drag = function(self, vid, x, y)
+		local props = image_surface_resolve_properties(self.root);
+		wcont:move(props.x + x, props.y + y); 
+	end
+ 
+	bar.doubleclick = function(self, vid, x, y)
+		print("doubleclick");
+	end
+
+	mouse_addlistener(bar, {"drag", "doubleclick"});
+
 	bar:add_icon("awbicons/enlarge.png", "right", maximize);
 	bar:add_icon("awbicons/shrink.png",  "right", sendtoback);
 	wcont:show();
@@ -277,108 +305,17 @@ function spawn_window(wtype, ialign)
 	return wcont;
 end
 
---
--- Prevent moving the mouse-cursor too far off screen
---
-local function clamp_cursor()
-	local props = image_surface_properties(imagery.cursor);
-	local x = props.x < 0 and 0 or props.x;
-	local y = props.y < 0 and 0 or props.y;
-	
-	x = props.x > VRESW and VRESW-1 or x; 
-	y = props.y > VRESH and VRESH-1 or y; 
-
-	move_image(imagery.cursor, x, y);
-
-	if (cursor_drag) then
-		cursor_drag:move(x - cursor_drag.pxofs, y - cursor_drag.pyofs);
-	end
-end
-
-local function hit_handler(pressed, buttonind, window, label, vid)
---
--- special handler for buttons
---
-	if (type(label) == "table") then
-		if (pressed) then
-			if (label.identity == "awbbar_icon") then
-				if (label.trigger) then 
-					label:trigger();
-				end
-			else
-				focus_window(label.parent);
-				label:toggle();
-			end
-		end
-
-		return;	
-	end	
-
--- always focus
-	focus_window(window);
-
--- dragging action
-	if (buttonind == 1 and label == "top") then
-		cursor_drag = window;
-		local props = image_surface_resolve_properties(
-			window.directions["top"].activeid);
-		local mprops = image_surface_properties(imagery.cursor);
-		cursor_drag.pxofs = mprops.x - props.x;
-		cursor_drag.pyofs = mprops.y - props.y;
-	end
-end
-
---
--- Handle this separately from awb_input as there's several cases that
--- should be covered (dragging, pressing buttons, context menus etc.)
---
-local function cursor_mouseinput(active, buttonind)
-	local props = image_surface_properties(imagery.cursor);
-
--- special case, stop dragging when the first button is released 
-	if (buttonind == 1) then
-		if (active == false) then
-			if (cursor_drag) then
-				cursor_drag = nil;
-				return;
-			end
-		end
-	end
-
---
--- else sweep the windows and (lastly) the root window 
--- for the topmost triggered item
--- 
-	local items = pick_items(props.x, props.y, 5, 1); 
-		for ind, val in ipairs(items) do
-			for wind, wval in ipairs(wlist.windows) do
-				local rv = wval:own(val);
-				if (rv) then
-					return hit_handler(active, buttonind, wval, rv, val);
-				end
-			end
-			
-			local rv = rootwnd:own(val);
-			if (rv) then
-				return hit_handler(active, buttonind, rootwnd, rv, val);
-		end
-	end
-end
-
+minputtbl = {false, false, false};
 function awb_input(iotbl)
 	if (iotbl.kind == "analog" and iotbl.source == "mouse") then
-		iotbl.samples[2] = iotbl.samples[2] * mfact;
-		if (iotbl.subid == 1) then
-			nudge_image(imagery.cursor, 0, iotbl.samples[2]);
-			clamp_cursor();
-		elseif (iotbl.subid == 0) then
-			nudge_image(imagery.cursor, iotbl.samples[2], 0);
-			clamp_cursor();
-		else
-			a = a;
-		end
+		mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0, 
+			iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);
+
 	elseif (iotbl.kind == "digital" and iotbl.source == "mouse") then
-		cursor_mouseinput(iotbl.active, iotbl.subid);
+		if (iotbl.subid > 0 and iotbl.subid <= 3) then
+			minputtbl[iotbl.subid] = iotbl.active;
+			mouse_input(0, 0, minputtbl);
+		end
 	
 	elseif (iotbl.kind == "digital" and iotbl.active and iotbl.translated) then
 		if (symtable[iotbl.keysym] == "LCTRL") then
@@ -387,9 +324,10 @@ function awb_input(iotbl)
 			shutdown();
 		end	
 	elseif (wlist.focus) then
-		wlist.focus:table_input(iotbl);
+		a = 1
 	end
 end
 
 function awb_clock_pulse(stamp, nticks)
+	mouse_tick(1);
 end

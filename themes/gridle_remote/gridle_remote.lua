@@ -232,7 +232,7 @@ function spawn_mainmenu()
 	local imenu = {};
 	menu_defaultdispatch(imenu);
 	local def_esc = imenu["MENU_ESCAPE"];
-	imenu["MENU_ESCAPE"] = function() if (current_menu.parent == nil) then return; else def_esc(); end end
+	imenu["MENU_ESCAPE"] = function() if (not current_menu or current_menu.parent == nil) then return; else def_esc(); end end
 	imenu["MENU_LEFT"] = imenu["MENU_ESCAPE"];
 	dispatch_push( imenu, "connection menu" );
 end

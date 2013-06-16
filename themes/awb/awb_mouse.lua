@@ -35,20 +35,29 @@ end
 
 local function linear_find_vid(table, vid)
 	for a,b in pairs(table) do
-		if (b.vid ~= nil and b.vid == vid) then
+		if (b:own(vid)) then
 			return b;
 		end
 	end
 end
 
-local function mouse_cursorupd()
-	local x = mstate.x < 0 and 0 or mstate.x;
-	local y = mstate.y < 0 and 0 or mstate.y;
-	
+local function mouse_cursorupd(x, y)
+	x = x * mstate.accel;
+	y = y * mstate.accel;
+
+	lmx = mstate.x;
+	lmy = mstate.y;
+
+	mstate.x = mstate.x + x; 
+	mstate.y = mstate.y + y; 
+		
+	mstate.x = mstate.x < 0 and 0 or mstate.x;
+	mstate.y = mstate.y < 0 and 0 or mstate.y;
 	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x; 
 	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y; 
 	
 	move_image(mstate.cursor, mstate.x, mstate.y);
+	return (mstate.x - lmx), (mstate.y - lmy);
 end
 
 --
@@ -57,14 +66,14 @@ end
 -- cicon(string) : path to valid resource for cursor 
 -- clayer(uint)  : which ordervalue for cursor to have
 --
-function mouse_setup(cvid, clayer)
+function mouse_setup(cvid, clayer, pickdepth)
 	mstate.cursor = cvid; 
 	mstate.x = math.floor(VRESW * 0.5);
 	mstate.y = math.floor(VRESH * 0.5);
+	mstate.pickdepth = pickdepth;
 	order_image(cvid, clayer);
 	image_mask_set(cvid, MASK_UNPICKABLE);
-	print(cvid);
-	mouse_cursorupd();
+	mouse_cursorupd(0, 0);
 end
 
 --
@@ -86,7 +95,7 @@ local function rmbhandler(hists, press)
 		for key, val in pairs(hists) do
 			local res = linear_find_vid(mstate.handlers.rclick, val);
 			if (res) then
-				res:rclick(mstate.x, mstate.y);
+				res:rclick(val, mstate.x, mstate.y);
 			end
 		end
 	end		
@@ -104,9 +113,9 @@ local function lmbhandler(hists, press)
 	else -- release
 		if (mstate.drag) then -- already dragging, check if dropped
 			for key, val in pairs(mstate.drag.list) do
-				local res = linear_find_vid(mstate.handlers.drag, val);
+				local res = linear_find_vid(mstate.handlers.drop, val);
 				if (res) then
-					res:drop(mstate.x, mstate.y);
+					res:drop(val, mstate.x, mstate.y);
 				end
 			end
 -- only click if we havn't started dragging
@@ -114,7 +123,7 @@ local function lmbhandler(hists, press)
 			for key, val in pairs(hists) do
 				local res = linear_find_vid(mstate.handlers.click, val);
 				if (res) then
-					res:click(mstate.x, mstate.y);
+					res:click(val, mstate.x, mstate.y);
 				end
 			end
 
@@ -123,7 +132,7 @@ local function lmbhandler(hists, press)
 				for key, val in pairs(hists) do
 					local res = linear_find_vid(mstate.handlers.dblclick, val);
 					if (res) then
-						res:dblclick(mstate.x, mstate.y);
+						res:dblclick(val, mstate.x, mstate.y);
 					end
 				end
 			end
@@ -136,21 +145,18 @@ local function lmbhandler(hists, press)
 end
 
 function mouse_input(x, y, state)
-	mstate.x = mstate.x + (x * mstate.accel);
-	mstate.y = mstate.y + (y * mstate.accel);
-	mouse_cursorupd();
+	x, y = mouse_cursorupd(x, y);
 
 -- look for new mouse over objects
 -- not that over/out do not filter drag/drop targets, that's up to the owner
-	local hists = pick_items(mstate.x, mstate.y, 100, 1);
+	local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
 	for i=1,#hists do
+		print(hists[i]);
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
 			table.insert(mstate.cur_over, hists[i]);
-
-			for key,val in pairs(mstate.handlers.over) do
-				if (val.vid == hists[i]) then
-					val:over(mstate.x, mstate.y);
-				end
+			local res = linear_find_vid(mstate.handlers.over, hists[i]);
+			if (res) then
+					res:over(hists[i], mstate.x, mstate.y);
 			end
 		end
 	end
@@ -159,11 +165,10 @@ function mouse_input(x, y, state)
 	for i=#mstate.cur_over,1,-1 do
 		vid = linear_find(hists, mstate.cur_over[i]);
 		if (vid == nil) then
-				for key, val in pairs(mstate.handlers.out) do
-					if (val.vid == mstate.cur_over[i]) then
-						val:out(mstate.x, mstate.y);
-					end
-				end
+			local res = linear_find_vid(mstate.handlers.out, hists[i]);
+			if (res) then 
+				res:out(hists[i], mstate.x, mstate.y);
+			end
 			table.remove(mstate.cur_over, i);
 		end
 	end
@@ -192,7 +197,7 @@ function mouse_input(x, y, state)
 			for key, val in pairs(mstate.drag.list) do
 				local res = linear_find_vid(mstate.handlers.drag, val);
 				if (res) then
-					res:drag(mstate.x, mstate.y);
+					res:drag(val, x, y);
 				end
 			end
 		end
