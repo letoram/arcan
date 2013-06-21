@@ -55,22 +55,21 @@ function awb()
 -- their respective windows
 --
 	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
+	image_tracetag(imagery.cursor, "mouse cursor");
 	move_image(imagery.cursor, math.floor(VRESW * 0.5), math.floor(VRESW * 0.5));
 	show_image(imagery.cursor);
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
-	mouse_acceleration(1.5);
+	mouse_acceleration(0.5);
 	spawn_boing();
 
 	awb_desktop_setup();
 end
 
 function awb_desktop_setup()
-	imagery.background = fill_surface(VRESW, VRESH, 0, 0, 0);
-
 	rootwnd = awbwnd_create({
 		fullscreen = true,
 		border     = false,
-		borderw    = 0,
+		borderw    = 2,
 		mode       = "iconview",
 		iconalign  = "right"
 	});
@@ -190,7 +189,7 @@ end
 function spawn_boing()
 	local int oval = math.random(1,100);
 	local a = spawn_window("container", "left", "BOING!");
-
+	a.name = "boingwnd";
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
 		"shaders/boing.fShader", "boing" .. oval, {}); 
 	local props = image_surface_properties(a.canvas);
@@ -244,7 +243,6 @@ function spawn_window(wtype, ialign, caption)
 		fullscreen = false,
 		border  = true,
 		borderw = 2,
-
 		width   = 320,
 		height  = 200,
 		x    = x_spawnpos,
@@ -265,15 +263,19 @@ function spawn_window(wtype, ialign, caption)
 	if (caption) then	
 		local captxt = menulbl(caption);
 		local props  = image_surface_properties(captxt);
-		local bg = fill_surface(math.floor(props.width * 0.1) + props.width, 16, 230, 230, 230);
---		link_image(captxt, bg);
---		image_inherit_order(captxt, true);
---		order_image(captxt, 1);
-		show_image({bg});
--- don't want these to interfere with bar drag 
---		image_mask_set(captxt, MASK_UNPICKABLE);
-		print(bg);
-		image_mask_clear(bg, MASK_UNPICKABLE);
+		local bg = fill_surface(math.floor(props.width * 0.1) + props.width, 
+			16, 230, 230, 230);
+		link_image(captxt, bg);
+		image_inherit_order(captxt, true);
+		order_image(captxt, 1);
+		image_tracetag(bg, "capbg");
+		image_mask_set(bg, MASK_UNPICKABLE);
+		show_image({captxt, bg});
+		blend_image(bg, 0.5);
+		move_image(captxt, 4, 4);
+		image_tracetag(captxt, "captxt");
+-- don't want thee to interfere with bar drag 
+		image_mask_set(captxt, MASK_UNPICKABLE);
 		bar:add_icon(bg, "left", nil);
 	end
 
@@ -282,11 +284,11 @@ function spawn_window(wtype, ialign, caption)
 		wcont:move(props.x + x, props.y + y); 
 	end
  
-	bar.doubleclick = function(self, vid, x, y)
+	bar.dblclick = function(self, vid, x, y)
 		print("doubleclick");
 	end
 
-	mouse_addlistener(bar, {"drag", "doubleclick"});
+	mouse_addlistener(bar, {"drag", "dblclick"});
 
 	bar:add_icon("awbicons/enlarge.png", "right", maximize);
 	bar:add_icon("awbicons/shrink.png",  "right", sendtoback);

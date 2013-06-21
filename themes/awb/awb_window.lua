@@ -49,6 +49,7 @@ local function awbwnd_alloc(self)
 	local wcol = settings.colourtable.dialog_window;
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
+	image_tracetag(self.anchor, self.name .. "_anchor");
 
 --
 -- we split the border into 4 objs to limit wasted fillrate,
@@ -56,12 +57,14 @@ local function awbwnd_alloc(self)
 --
 	self.bordert = fill_surface(1, 1, bcol.r, bcol.g, bcol.b);
 	self.borderr = instance_image(self.bordert);
-	show_image(self.borderr);
 	self.borderl = instance_image(self.bordert);
-	show_image(self.borderl);
 	self.borderd = instance_image(self.bordert);
-	show_image(self.borderd);
+	image_tracetag(self.bordert, self.name .. "_border_top");
+	image_tracetag(self.borderr, self.name .. "_border_right");
+	image_tracetag(self.borderl, self.name .. "_border_left");
+	image_tracetag(self.borderd, self.name .. "_border_down");
 	link_image(self.bordert, self.anchor);
+	show_image({self.borderd, self.borderr, self.borderl});
 
 	if (self.border) then
 		show_image(self.bordert);
@@ -101,6 +104,7 @@ local function awbwnd_alloc(self)
 		move_image(self.canvas, cx, cy);
 		link_image(self.canvas, self.anchor);
 		show_image(self.canvas);
+		image_mask_set(self.canvas, MASK_UNPICKABLE);
 
 	elseif (self.mode == "listview") then
 		self.canvas = fill_surface(cwidth, cheight, wcol.r, wcol.g, wcol.b);
@@ -109,8 +113,10 @@ local function awbwnd_alloc(self)
 		self.cursorvid = fill_surface(cwidth, cheight, 
 			wcol.r * 1.2, wcol.g * 1.2, wcol.b * 1.2);
 		link_image(self.cursorvid, self.canvas);
+		image_mask_set(self.canvas, MASK_UNPICKABLE);
 	end
-
+		
+	image_tracetag(self.canvas, self.name .. "_" .. self.mode .. "_canvas");
 	self:resize(self.width, self.height);
 	return self;
 end
@@ -125,7 +131,7 @@ local function awbbar_addicon(self, imgres, align, trigger)
 		image_icn = imgres;
 	else
 		image_icn = load_image(imgres);
-end
+	end
 
 	if (valid_vid(image_icn)) then
 		local icntbl   = {};
@@ -136,7 +142,7 @@ end
 		icntbl.yofs    = 0; 
 		icntbl.parent  = self;
 		icntbl.stretch = true;
-
+--	image_tracetag(image_icn, self.parent.name .. "_icon_" .. imgres);
 -- only one item in the "fill" slot
 		if (align == "fill") then
 			if self.fill ~= nil then
@@ -146,7 +152,6 @@ end
 		else
 			table.insert(self[align], icntbl);
 		end
-
 		link_image(icntbl.vid, self.activeid);
 		show_image(icntbl.vid);
 		return icntbl;
@@ -260,6 +265,8 @@ local function awbwnd_setwbar(dsttbl, active)
 		image_scale_txcos(dsttbl.activeid, dsttbl.parent.width / props.width, 1.0); 
 	end
 
+	image_tracetag(dsttbl.activeid, dsttbl.parent.name .. "_bar_" .. 
+		dsttbl.direction .. "_" .. tostring(active) );
 	show_image(dsttbl.activeid);
 	dsttbl:refresh();
 end
@@ -365,7 +372,7 @@ local function awbwnd_resize(self, neww, newh)
 	
 	self.width  = neww;
 	self.height = newh;
-	
+
 	self:resize_border();
 
 -- reposition / resize bars (and buttons)
@@ -412,7 +419,8 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	newdir.identity  = "awbwnd_bar";
 	newdir.left  = {}; -- "relative"
 	newdir.right = {}; 
-
+	
+	image_tracetag(newdir.root, self.name .. "_bar_" .. direction .. "_root");
 	link_image(newdir.root, self.bordert);
 	awbwnd_setwbar(newdir, newdir.activeres);
 
@@ -752,6 +760,7 @@ function awbwnd_create(options)
 		iconalign = "right",
 		minimized = false,
 		singleselect = true,
+		name = "",
 		directions = {}
 	};
 

@@ -437,7 +437,8 @@ int arcan_lua_instanceimage(lua_State* ctx)
 	arcan_vobj_id newid = arcan_video_cloneobject(id);
 
 	if (newid != ARCAN_EID){
-		enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION;
+		enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY 
+			| MASK_POSITION | MASK_ORIENTATION;
 		arcan_video_transformmask(newid, lmask);
 
 		lua_pushvid(ctx, newid);
@@ -947,6 +948,44 @@ int arcan_lua_clearall(lua_State* ctx)
 	return 0;
 }
 
+static char* maskstr(enum arcan_transform_mask mask)
+{
+	char maskstr[72] = "";
+
+	if ( (mask & MASK_POSITION) > 0)
+		strcat(maskstr, "position ");
+
+	if ( (mask & MASK_SCALE) > 0)
+		strcat(maskstr, "scale ");
+
+	if ( (mask & MASK_OPACITY) > 0)
+		strcat(maskstr, "opacity ");
+
+	if ( (mask & MASK_LIVING) > 0)
+		strcat(maskstr, "living ");
+
+	if ( (mask & MASK_ORIENTATION) > 0)
+		strcat(maskstr, "orientation ");
+
+	if ( (mask & MASK_UNPICKABLE) > 0)
+		strcat(maskstr, "unpickable ");
+
+	if ( (mask & MASK_FRAMESET) > 0)
+		strcat(maskstr, "frameset ");
+
+	if ( (mask & MASK_MAPPING) > 0)
+		strcat(maskstr, "mapping ");
+
+	return strdup(maskstr);
+}
+
+void dumpmask(arcan_vobj_id id)
+{
+	char* mask = maskstr( arcan_video_getmask(id) );
+	arcan_warning("(%d:%s) => %s\n", id, arcan_video_readtag(id), mask);
+	free(mask);
+}
+
 int arcan_lua_clearmask(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -964,14 +1003,15 @@ int arcan_lua_clearmask(lua_State* ctx)
 int arcan_lua_setmask(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	unsigned val = luaL_checknumber(ctx, 2);
+	enum arcan_transform_mask val = luaL_checknumber(ctx, 2);
 
 	if ( (val & !(MASK_ALL)) == 0){
 		enum arcan_transform_mask mask = arcan_video_getmask(id);
 		mask |= val;
 		arcan_video_transformmask(id, mask);
 	} else
-		arcan_warning("Script Warning: image_mask_set(), bad mask specified (%i)\n", val);
+		arcan_warning("Script Warning: image_mask_set(),"
+			"	bad mask specified (%i)\n", val);
 
 	return 0;
 }
@@ -2006,9 +2046,11 @@ int arcan_lua_linkimage(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
-	enum arcan_transform_mask lmask = MASK_SCALE | MASK_OPACITY | MASK_POSITION | MASK_ORIENTATION | MASK_LIVING;
 
-	arcan_errc rv = arcan_video_linkobjs(sid, did, lmask);
+	enum arcan_transform_mask smask = arcan_video_getmask(sid);
+	smask |= MASK_LIVING;
+
+	arcan_errc rv = arcan_video_linkobjs(sid, did, smask);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 
 	return 1;

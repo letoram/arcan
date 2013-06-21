@@ -955,7 +955,8 @@ arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val)
 	if (vobj && id != ARCAN_VIDEO_WORLDID){
 		rv = ARCAN_OK;
 		if (vobj->flags.orderofs != val){
-			if (vobj->flags.orderofs == false && vobj->owner && vobj->parent->order > vobj->order){
+			if (vobj->flags.orderofs == false && vobj->owner && 
+					vobj->parent->order > vobj->order){
 				vobj->order = vobj->parent->order;
 				struct rendertarget* own = vobj->owner;
 				detach_fromtarget(own, vobj);
@@ -979,7 +980,15 @@ enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
 	return mask;
 }
 
-arcan_errc arcan_video_transformmask(arcan_vobj_id id, enum arcan_transform_mask mask)
+
+const char* const arcan_video_readtag(arcan_vobj_id id)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	return vobj ? vobj->tracetag : NULL;
+}
+
+arcan_errc arcan_video_transformmask(arcan_vobj_id id, 
+	enum arcan_transform_mask mask)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -2208,16 +2217,17 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 		assert(owner);
 		
 /* calculate order relative to parent if that's toggled */
-		if (vobj->parent->order > 0 && vobj->flags.orderofs) {
+		if (vobj->parent->order >= 0 && vobj->flags.orderofs) {
 			newzv = newzv + abs(vobj->parent->order);
 		}
-	
-/* might have children with order relative to own order,
+
+/*
+ * might have children with order relative to own order,
  * and this is a somewhat expensive operation. First,
  * if there are any children, use that as a maximum limit for 
  * a buffer (we need to store references and then do the attach / detatch.
- *
- * a natural constraint is this that parent->order <= child->order */
+ * a natural constraint is this that parent->order <= child->order 
+ */
 		int n_related = vobj->extrefc.instances + vobj->extrefc.links;
 		int n_reorder = 0;
 		arcan_vobject_litem* current = current_context->stdoutp.first;
@@ -2230,17 +2240,18 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 			if (elem->parent == vobj) {
 				n_related--;
 				if (elem->flags.orderofs){
-					unsigned int newzv = (abs(elem->order) - abs(elem->parent->order)) + newzv;
-					newzv = newzv > 65535 ? 65535 : newzv;
+					unsigned czv = (abs(elem->order) - abs(elem->parent->order)) + newzv;
+					czv = czv > 65535 ? 65535 : czv;
 					relbuf[n_reorder] = elem;
-					elem->order = newzv;
+					elem->order = czv;
 					n_reorder++;
 				}
 			}
 			current = current->next;
 		}
 	
-/* attach also works like an insertion sort where  the insertion criterion is <= n */
+/* attach also works like an insertion sort where 
+ * the insertion criterion is <= n */
 		vobj->order = newzv;
 		
 		if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
@@ -3962,7 +3973,8 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 	return false;
 }
 
-unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, int y)
+unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, 
+								int x, int y)
 {
 	if (count == 0)
 		return 0;
@@ -3974,11 +3986,13 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, in
 	while (current->next)
 		current = current->next;
 
-	printf("begin rpick.. (%d)\n", count);
 	while (current && base < count){
-		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && 
-			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y)){
-				printf("match found (%d)\n", current->elem->cellid);
+		if (current->elem->cellid && (current->elem->mask & MASK_UNPICKABLE) == 0 && 
+			current->elem->current.opa > EPSILON 
+			&& arcan_video_hittest(current->elem->cellid, x, y)){
+/*				printf("match found (%d, mask: %d):(%s)\n", current->elem->cellid,
+				current->elem->mask, 
+				current->elem->tracetag ? current->elem->tracetag : "(null)"); */
 				dst[base++] = current->elem->cellid;
 		}
 
@@ -3988,7 +4002,8 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count, int x, in
 	return base;
 }
 
-unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int y)
+unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, 
+								int x, int y)
 {
 	if (count == 0)
 		return 0;
@@ -3997,8 +4012,9 @@ unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, int x, int
 	unsigned base = 0;
 
 	while (current && base < count) {
-		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) && 
-			current->elem->current.opa > EPSILON && arcan_video_hittest(current->elem->cellid, x, y))
+		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) &&	
+			current->elem->current.opa > EPSILON && 
+			arcan_video_hittest(current->elem->cellid, x, y))
 				dst[base++] = current->elem->cellid;
 
 		current = current->next;
@@ -4091,11 +4107,12 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 			if (!fullprocess)
 				ticks += arcan_video_display.c_ticks;
 
-/* check if there is a transform for each individual attribute, and find the one that
- * defines a timeslot within the range of the desired value */
+/* check if there is a transform for each individual attribute, and find 
+ * the one that defines a timeslot within the range of the desired value */
 			surface_transform* current = vobj->transform;
 			if (current->move.startt){
-				while ( (current->move.endt < ticks || fullprocess) && current->next && current->next->move.startt)
+				while ( (current->move.endt < ticks || fullprocess) && current->next 
+					&& current->next->move.startt)
 					current = current->next;
 
 				if (current->move.endt <= ticks)
