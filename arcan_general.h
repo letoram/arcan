@@ -32,7 +32,6 @@ extern char* arcan_themepath;
 extern char* arcan_binpath;
 extern char* arcan_libpath;
 
-//typedef struct arcan_frameserver arcan_frameserver;
 typedef struct frameserver_shmpage frameserver_shmpage;
 
 #define BADFD -1
@@ -105,27 +104,32 @@ extern long long ARCAN_VIDEO_WORLDID;
 extern long long ARCAN_VIDEO_BADID;
 
 enum arcan_vobj_tags {
-	ARCAN_TAG_NONE      = 0,  /* "don't touch" -- rawobjects, uninitialized etc. */
-	ARCAN_TAG_IMAGE     = 1,  /* images from an external source, need to be able to grab by internal video_getimage function */
-	ARCAN_TAG_TEXT      = 2,  /* specialized form of RAWOBJECT */
-	ARCAN_TAG_FRAMESERV = 3,  /* got a connection to an external resource (frameserver) */
-	ARCAN_TAG_3DOBJ     = 5,  /* got a corresponding entry in arcan_3dbase, ffunc is used to control the behavior of the 3d part */
-	ARCAN_TAG_ASYNCIMG  = 6   /* intermediate state, means that getimage is still loading, don't touch objects in this state, wait for them to switch to TAG_IMAGE */
+ARCAN_TAG_NONE      = 0,/* "don't touch" -- rawobjects, uninitialized etc.        */
+ARCAN_TAG_IMAGE     = 1,/* images from an external source, need to be able to grab*/
+												/* by internal video_getimage function                    */
+ARCAN_TAG_TEXT      = 2,/* specialized form of RAWOBJECT                          */
+ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external resource (frameserver) */
+ARCAN_TAG_3DOBJ     = 5,/* got a corresponding entry in arcan_3dbase, ffunc is    */
+												/* used to control the behavior of the 3d part            */
+ARCAN_TAG_ASYNCIMG  = 6 /* intermediate state, means that getimage is still       */
+											  /* loading, don't touch objects in this state, wait for   */
+												/* them to switch to TAG_IMAGE                            */
 };
 
 enum arcan_errors {
-	ARCAN_OK = 0,
-	ARCAN_ERRC_NOT_IMPLEMENTED = -1,
-	ARCAN_ERRC_CLONE_NOT_PERMITTED = -2,
-	ARCAN_ERRC_EOF = -3,
-	ARCAN_ERRC_UNACCEPTED_STATE = -4,
-	ARCAN_ERRC_BAD_ARGUMENT = -5,
-	ARCAN_ERRC_OUT_OF_SPACE = -6,
-	ARCAN_ERRC_NO_SUCH_OBJECT = -7,
-	ARCAN_ERRC_BAD_RESOURCE = -8,
-	ARCAN_ERRC_BADVMODE = -9,
-	ARCAN_ERRC_NOTREADY = -10,
-	ARCAN_ERRC_NOAUDIO = -11
+	ARCAN_OK                       =   0,
+	ARCAN_ERRC_NOT_IMPLEMENTED     =  -1,
+	ARCAN_ERRC_CLONE_NOT_PERMITTED =  -2,
+	ARCAN_ERRC_EOF                 =  -3,
+	ARCAN_ERRC_UNACCEPTED_STATE    =  -4,
+	ARCAN_ERRC_BAD_ARGUMENT        =  -5,
+	ARCAN_ERRC_OUT_OF_SPACE        =  -6,
+	ARCAN_ERRC_NO_SUCH_OBJECT      =  -7,
+	ARCAN_ERRC_BAD_RESOURCE        =  -8,
+	ARCAN_ERRC_BADVMODE            =  -9,
+	ARCAN_ERRC_NOTREADY            = -10,
+	ARCAN_ERRC_NOAUDIO             = -11,
+	ARCAN_ERRC_UNSUPPORTED_FORMAT  = -12
 };
 
 typedef struct {
@@ -144,6 +148,19 @@ typedef struct {
 	unsigned int w, h;
 	uint8_t bpp;
 } img_cons;
+
+typedef struct {
+	char* ptr;
+	size_t sz;
+	bool mmap;
+} map_region;
+
+typedef struct {
+	file_handle fd;
+	off_t start;
+	off_t len;
+	char* source;
+} data_source;
 
 enum arcan_resourcemask {
 	ARCAN_RESOURCE_THEME = 1,
@@ -164,34 +181,44 @@ char* arcan_find_resource_path(const char* label, const char* path, int searchma
 char* arcan_find_resource(const char* label, int searchmask);
 char* arcan_findshmkey(int* dhd, bool semalloc);
 
+/*
+ * Open and map a resource description (from _expand, _find category of functions)
+ * and return in data_source structure.
+ * On failure, fd will be BADFD and source NULL
+ */
+data_source arcan_open_resource(const char* uri);
+map_region arcan_map_resource(data_source* source, bool wr); 
+bool arcan_map_release(map_region region);
+
 long long int arcan_timemillis();
+
 void arcan_timesleep(unsigned long);
 
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
 
-/* open a file using a format string (fmt + variadic), flags and mode matches regular
- * open() semantics.
- * the file_handle wrapper is purposefully not used on this function and for Win32, is expected to
- * be managed by _get_osfhandle */
+/* open a file using a format string (fmt + variadic), flags and mode 
+ * matches regular open() semantics.
+ * the file_handle wrapper is purposefully not used on this function and for Win32, 
+ * is expected to be managed by _get_osfhandle */
 int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
-/* wrap the posix-2001 semaphore functions,
- * needs workarounds for some platforms for timed_wait,
- * and everything on win32 ;P */
+/* wrap the posix-2001 semaphore functions, needs workarounds for some platforms 
+ * for timed_wait and everything on win32 */
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
 int arcan_sem_timedwait(sem_handle sem, int msecs);
 
 /* since mingw does not export a glob.h,
  * we have to write a lightweight globber */
-unsigned arcan_glob(char* basename, int searchmask, void (*cb)(char*, void*), void* tag);
+unsigned arcan_glob(char* basename, int searchmask, 
+	void (*cb)(char*, void*), void* tag);
 
 const char* internal_launch_support();
 
 /* update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,
- * for lower power devices, this can be raised signifantly, just adjust INTERP_MINSTEP
- * accordingly */
+ * for lower power devices, this can be raised signifantly, 
+ * just adjust INTERP_MINSTEP accordingly */
 #define ARCAN_TIMER_TICK 25
 #define INTERP_MINSTEP 0.15
 

@@ -49,7 +49,6 @@
 #include <assert.h>
 #include <apr_poll.h>
 
-#include "lodepng/lodepng.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -66,6 +65,7 @@
 #include "arcan_target_launcher.h"
 #include "arcan_lua.h"
 #include "arcan_led.h"
+#include "arcan_img.h"
 
 /* these take some explaining:
  * to enforce that actual constants are used in LUA scripts and not magic numbers
@@ -3995,14 +3995,19 @@ int arcan_lua_screenshot(lua_State* ctx)
 		char* fname = arcan_find_resource(resstr, ARCAN_RESOURCE_THEME);
 		if (!fname){
 			fname = arcan_expand_resource(resstr, false);
-
-			if (lodepng_encode32_file(fname, databuf, arcan_video_screenw(), arcan_video_screenh()))
-				arcan_warning("arcan_lua_screenshot() -- write failed, empty or truncated screenshot.\n");
+			int fd = open(fname, O_CREAT | O_RDWR, 0600);
+			if (-1 != fd){
+				arcan_rgba32_pngfile(fd, databuf, arcan_video_display.width,
+					arcan_video_display.height);
+			}
+			else
+				arcan_warning("arcan_lua_screenshot() -- couldn't open (%s) for writing.\n", fname);
 
 		}
 		else{
 			arcan_warning("arcan_lua_screenshot() -- refusing to overwrite existing (%s)\n", fname);
 		}
+	
 		free(fname);
 		free(databuf);
 	}
@@ -4650,10 +4655,65 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
 }
 
+static inline void dump_vobject(FILE* dst, arcan_vobject* src)
+{
+	fprintf(dst,
+"local vobj = {\
+	};");
+}
+
 void arcan_lua_statesnap(FILE* dst)
 {
-	fprintf(dst, "local testtbl = { 1, 2, 3, 4}; \n return testtbl; \n");
-	fprintf(dst, "#ENDBLOCK\n");
+/* display global settings, wrap to local ptr for shorthand */
+	struct arcan_video_display* disp = &arcan_video_display;
+fprintf(dst, 
+"local restbl = {\
+	display = {\
+		width = %d,\
+		height = %d,\
+		conservative = %d,\
+		vsync = %d,\
+		msasamples = %d,\
+		ticks = %lld,\
+		default_vitemlim = %d,\
+		imageproc = %d,\
+		scalemode = %d,\
+		filtermode = %d,\
+	},\
+	vcontexts = {}\
+};\
+", disp->width, disp->height, disp->conservative ? 1 : 0, disp->vsync ? 1 : 0, 
+	(int)disp->msasamples, (long long int)disp->c_ticks, (int)disp->default_vitemlim,
+	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
+
+/* foreach context, header */
+fprintf(dst,
+"local ctx = {\
+	vobjs = {},\
+};");
+	
+	int cctx = vcontext_ind;
+	while (cctx >= 0){
+		fprintf(dst, 
+"ctx.ind = %d;\
+ctx.alive = %d;\
+ctx.limit = %d;\
+ctx.tickstamp = %lld;", 1, 1, 1, (long long int)1);
+		cctx--;
+	}
+
+/* foreach context, footer */
+fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
+
+/* sweep context stack, foreach context add header (inc. colour outp),
+ * then each separate rendertarget
+ * then the standard rendertarget
+ * sweep the context twice (shallow / deep) and split by 3d/2d part and by 
+ * frameserver/normal for shallow pass, skip framesets / links / inheritance and do 
+ * that in the deep pass when we know the table is populated. 
+ * and for each, do a complete object dump (transformation chain etc.) */
+
+	fprintf(dst, "return restbl;\n#ENDBLOCK\n");
 	fflush(dst);
 }
 
@@ -4674,8 +4734,8 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* src)
 		statebuf_sz = 1024;
 	}
 	
-	while ((nread = getline(&line, &len, src)) !=  -1){
-		if(strcmp(line, "#ENDBLOCK") == 0){
+	while ((nread = getline(&line, &len, src)) != -1){
+		if(strcmp(line, "#ENDBLOCK\n") == 0){
 			done = true;
 			break;
 		}
@@ -4697,23 +4757,28 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* src)
 			statebuf_ofs = statebuf_ofs + nread;
 		}
 	}
-
+	arcan_warning("nread: %d\n", nread);
+	
 	if (done){
 /* buffering done, parse and propagate */
 		statebuf[statebuf_ofs] = '\0';
-
+		arcan_warning("got\n");
+		
 		lua_getglobal(ctx, "sample");
 		if (!lua_isfunction(ctx, -1)){
 			lua_pop(ctx, 1);
 			arcan_warning("arcan_lua_stategrab(), couldn't find "
 				"function 'sample' in debugscript. Sample ignored.\n");
 		} else {
-			luaL_loadstring(ctx, statebuf);
 			int top = lua_gettop(ctx);
+			luaL_loadstring(ctx, statebuf);
 			lua_call(ctx, 0, LUA_MULTRET);
 			int nr = lua_gettop(ctx) - top;
 			lua_call(ctx, nr, 0);
+			statebuf_ofs = 0;
 		}
+	} else {
+		arcan_warning("%s", strerror(errno));
 	}
 
 cleanup:

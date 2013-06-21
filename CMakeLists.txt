@@ -45,7 +45,7 @@ include(ExternalProject)
 #	BUILD_IN_SOURCE 1
 #)
 
-cmake_minimum_required(VERSION 2.8.7 FATAL_ERROR)
+cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 3 )
 set(PATCH_LEVEL 0 )
@@ -70,7 +70,7 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 # Collective sigh for stupid standard breaking features.
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
-add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu)
+add_definitions(-std=iso9899:1999 -DBSD_SOURCE)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")
@@ -103,7 +103,6 @@ elseif(WIN32)
 	set(CMAKE_LIBRARY_PATH ${WINLIB} /usr/local/lib)
 
 	set(SDL_INCLUDE_DIR ${WININC}\\SDL)
-	set(SDLTTF_INCLUDE_DIR ${WININC}\\SDL)
 
 	set(ZLIB_INCLUDE_DIR ${WININC})
 	set(BZIP2_INCLUDE_DIR ${WININC})
@@ -113,7 +112,7 @@ elseif(WIN32)
 	set(ZLIB_LIBRARY ${WINLIB}\\distr\\zlib1.dll)
 	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
 
-# APR seems to complex for this solution, build separately in MINGW
+# APR seems too complex for this solution, build separately in MINGW
 # and install into MSys
 	set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
 	set(APR_INCLUDE_DIR ${WININC}\\apr)
@@ -130,10 +129,12 @@ elseif(WIN32)
 endif()
 
 FIND_PACKAGE ( SDL REQUIRED )
-FIND_PACKAGE ( SDL_image REQUIRED )
-FIND_PACKAGE ( SDL_ttf REQUIRED )
+FIND_PACKAGE ( SDL_image )
+FIND_PACKAGE ( PNG REQUIRED )
+FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( OpenAL REQUIRED )
+FIND_PACKAGE ( PNG REQUIRED )
 FIND_PACKAGE ( Lua51 REQUIRED )
 FIND_PACKAGE ( BZip2 REQUIRED )
 FIND_PACKAGE ( ZLIB REQUIRED )
@@ -147,8 +148,7 @@ LIST (APPEND
 	MAIN_LIBRARIES
 	${OPENCTM_LIBRARY}
 	${SDL_LIBRARY}
-	${SDLIMAGE_LIBRARY}
-	${SDLTTF_LIBRARY}
+	${FREETYPE_LIBRARY}
 	${LUA_LIBRARY}
 	${OPENGL_gl_LIBRARY}
 	${OPENAL_LIBRARY}
@@ -157,6 +157,7 @@ LIST (APPEND
 	${ASSERT_LIBRARY}
 	${SQLITE3_LIBRARIES}
 	${GLEW_LIBRARIES}
+	${PNG_LIBRARIES}
 )
 
 set (
@@ -173,13 +174,13 @@ FSRV_LIBRARIES
 )
 
 set (
-INCLUDE_DIRECTORIES
+INCLUDE_DIRS
 	${APR_INCLUDE_DIR}
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
 	${SDL_INCLUDE_DIR}
-	${SDLIMAGE_INCLUDE_DIR}
-	${SDLTTF_INCLUDE_DIR}
+	${PNG_INCLUDE_DIR}
+	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
 	${FFMPEG_INCLUDE_DIR}
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
@@ -188,6 +189,13 @@ INCLUDE_DIRECTORIES
 #	"nacl/include"
 #	"libjpeg-turbo/include"
 )
+
+if (${SDLIMAGE_FOUND})
+	message("--> SDL_Image found, enabling (use -DCMAKE_DISABLE_FIND_PACKAGE_SDL_image to force off).")
+	list(APPEND MAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
+	list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
+	add_definitions(-DSDLIMAGE)
+endif(${SDLIMAGE_FOUND}) 
 
 add_subdirectory( openctm )
 
@@ -206,6 +214,8 @@ set (
  arcan_3dbase.c
  arcan_math.c
  arcan_audio.c
+ arcan_ttf.c
+ arcan_img.c
  arcan_audioint.h
  arcan_framequeue.h
  arcan_event.h
@@ -225,14 +235,7 @@ set (
  arcan_shdrmgmt.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
-# external projections included in the codebase
- lodepng/lodepng.h
- lodepng/lodepng.c
 )
-
-# plan is to have a separate image server part of the frameserver that
-# deals with maintaining caching, protection against source-changes during
-# execution, dump SDL_image and just have lodepng + jpglib embedded
 
 set (
  FSRV_SOURCES
@@ -259,7 +262,7 @@ set (
  arcan_event.c
 )
 
-include_directories(${INCLUDE_DIRECTORIES})
+include_directories(${INCLUDE_DIRS})
 
 # OS Specific modifications
 #

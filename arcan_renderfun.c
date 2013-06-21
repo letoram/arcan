@@ -33,25 +33,25 @@
 #endif
 
 #include <SDL.h>
-#include <SDL_image.h>
 #include <SDL_opengl.h>
-#include <SDL_ttf.h>
 #include <SDL_byteorder.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "arcan_ttf.h"
+#include "arcan_img.h"
 
 struct text_format {
 /* font specification */
 	TTF_Font* font;
-	SDL_Color col;
+	TTF_Color col;
 	int style;
 	uint8_t alpha;
 
 /* for forced loading of images */
-	SDL_Surface* image;
+	TTF_Surface* image;
 	img_cons imgcons;
 
 /* pointer into line of text where the format was extracted,
@@ -81,10 +81,11 @@ static struct font_entry font_cache[ARCAN_FONT_CACHE_LIMIT] = {0};
 /*
  * This one is a mess,
  * (a) begin by splitting the input string into a linked list of data elements.
- * each element can EITHER modfiy to current cursor position OR represent a rendered surface.
+ * each element can EITHER modfiy to current cursor position OR represent 
+ * a rendered surface.
 
- * (b) take the linked list, sweep through it and figure out which dimensions it requires,
- * allocate a corresponding storage object.
+ * (b) take the linked list, sweep through it and figure out which dimensions 
+ * it requires, allocate a corresponding storage object.
 
  * (c) sweep the list yet again, render to the storage object.
 */
@@ -96,7 +97,7 @@ struct rcell {
 	unsigned int height;
 
 	union {
-		SDL_Surface* surf;
+		TTF_Surface* surf;
 
 		struct {
 			uint8_t newline;
@@ -131,7 +132,7 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 /* try to load */
 	TTF_Font* font = TTF_OpenFont(fname, size);
 	if (!font){
-		arcan_warning("grab_font(), Open Font (%s,%d) failed: %s\n", fname, size, TTF_GetError());
+		arcan_warning("grab_font(), Open Font (%s,%d) failed\n", fname, size);
 		return NULL;
 	}
 	
@@ -160,54 +161,9 @@ void arcan_video_reset_fontcache()
 		}
 }
 
-SDL_Surface* text_loadimage(const char* const infn, img_cons constraints)
+TTF_Surface* text_loadimage(const char* const infn, img_cons constraints)
 {
-	SDL_Surface* res = NULL;
-	char* fname = arcan_find_resource(infn, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);	
-	
-	if (fname && (res = IMG_Load(fname) )){
-/* Might've specified a forced scale */
-		if (constraints.w > 0 && constraints.h > 0){
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-			SDL_Surface* stretchcanv = SDL_CreateRGBSurface(SDL_SWSURFACE, constraints.w, constraints.h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
-#else
-			SDL_Surface* stretchcanv = SDL_CreateRGBSurface(SDL_SWSURFACE, constraints.w, constraints.h, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
-#endif
-
-/* Can't allocate intermediate buffers? cleanup */
-			if (!stretchcanv){
-				arcan_warning("Warning: arcan_video_renderstring(), couldn't create intermediate stretchblit buffers, poor dimensions? (%d, %d)\n", res->w, res->h);
-
-				if (stretchcanv) SDL_FreeSurface(stretchcanv);
-				free(fname);
-				return NULL;
-			}
-
-/* convert colourspace */
-			SDL_Surface* basecanv = SDL_ConvertSurface(res, stretchcanv->format, SDL_SWSURFACE);
-			SDL_FreeSurface(res);
-			if (!basecanv){
-				arcan_warning("Warning: arcan_video_renderstring(), couldn't perform colorspace conversion.\n");
-				SDL_FreeSurface(stretchcanv);
-				free(fname);
-				return NULL;
-			}
-
-			stretchblit(basecanv, stretchcanv->pixels, constraints.w, constraints.h, constraints.w * 4, false);
-			SDL_FreeSurface(basecanv);
-			
-			res = stretchcanv;
-		}
-	}
-	else
-		arcan_warning("Warning: arcan_video_renderstring(), couldn't render image (IMG_Load failed on %s)\n", fname ? fname : infn);
-	
-
-	if (res)
-		SDL_SetAlpha(res, 0, SDL_ALPHA_TRANSPARENT);
-
-	free(fname);
-	return res;
+	return NULL;
 }
 
 static char* extract_color(struct text_format* prev, char* base){
@@ -216,7 +172,8 @@ static char* extract_color(struct text_format* prev, char* base){
 /* scan 6 characters to the right, check for valid hex */
 	for (int i = 0; i < 6; i++) {
 		if (!isxdigit(*base++)){
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
+			arcan_warning("Warning: arcan_video_renderstring(),"
+				"couldn't scan font colour directive (#rrggbb, 0-9, a-f)\n");
 			return NULL;
 		}
 	}
@@ -240,7 +197,8 @@ static char* extract_font(struct text_format* prev, char* base){
 /* find fontname vs fontsize separator */
 	while (*base != ',') {
 		if (*base == 0) {
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font directive '%s (%s)'\n", fontbase, orig);
+			arcan_warning("Warning: arcan_video_renderstring(), couldn't scan font "
+				"directive '%s (%s)'\n", fontbase, orig);
 			return NULL;
 		}
 		base++;
@@ -254,16 +212,20 @@ static char* extract_font(struct text_format* prev, char* base){
 	
 /* error state, no size specifier */
 	if (numbase == base)
-		arcan_warning("Warning: arcan_video_renderstring(), missing size argument in font specification (%s).\n", orig);
+		arcan_warning("Warning: arcan_video_renderstring(), missing size argument "
+			"in font specification (%s).\n", orig);
 	else {
 		char ch = *base;
 		*base = 0;
 
 /* resolve resource */
-		char* fname = arcan_find_resource(fontbase, ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+		char* fname = arcan_find_resource(fontbase, ARCAN_RESOURCE_SHARED | 
+			ARCAN_RESOURCE_THEME);
+
 		TTF_Font* font = NULL;
 		if (!fname){
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't find font (%s) (%s)\n", fontbase, orig);
+			arcan_warning("Warning: arcan_video_renderstring(), couldn't find "
+				"font (%s) (%s)\n", fontbase, orig);
 			return NULL;
 		}
 /* load font */
@@ -292,8 +254,8 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 		prev->imgcons.w = prev->imgcons.h = 0;
 		prev->image = text_loadimage(wbase, prev->imgcons);
 		if (prev->image){
-			prev->imgcons.w = prev->image->w;
-			prev->imgcons.h = prev->image->h;
+			prev->imgcons.w = prev->image->width;
+			prev->imgcons.h = prev->image->height;
 		}
 		
 		return base;
@@ -313,12 +275,15 @@ static char* extract_image(struct text_format* prev, char* base)
 	if (*base && strlen(widbase) > 0) 
 		*base++ = 0;
 	else {
-		arcan_warning("Warning: arcan_video_renderstring(), width scan failed, premature end in sized image scan directive (%s)\n", widbase);
+		arcan_warning("Warning: arcan_video_renderstring(), width scan failed,"
+			" premature end in sized image scan directive (%s)\n", widbase);
 		return NULL;
 	}
 	forcew = strtol(widbase, 0, 10);
 	if (forcew <= 0 || forcew > 1024){
-		arcan_warning("Warning: arcan_video_renderstring(), width scan failed, unreasonable width (%d) specified in sized image scan directive (%s)\n", forcew, widbase);
+		arcan_warning("Warning: arcan_video_renderstring(), width scan failed,"
+			" unreasonable width (%d) specified in sized image scan "
+			"directive (%s)\n", forcew, widbase);
 		return NULL;
 	}
 	
@@ -327,12 +292,15 @@ static char* extract_image(struct text_format* prev, char* base)
 	if (*base && strlen(hghtbase) > 0)
 		*base++ = 0;
 	else {
-		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, premature end in sized image scan directive (%s)\n", hghtbase);
+		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, "
+			"premature end in sized image scan directive (%s)\n", hghtbase);
 		return NULL;
 	}
 	forceh = strtol(hghtbase, 0, 10);
 	if (forceh <= 0 || forceh > 1024){
-		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, unreasonable height (%d) specified in sized image scan directive (%s)\n", forceh, hghtbase);
+		arcan_warning("Warning: arcan_video_renderstring(), height scan failed, "
+			"unreasonable height (%d) specified in sized image scan "
+			"directive (%s)\n", forceh, hghtbase);
 		return NULL;
 	}
 
@@ -342,7 +310,8 @@ static char* extract_image(struct text_format* prev, char* base)
 		*base++ = 0;
 	}
 	else {
-		arcan_warning("Warning: arcan_video_renderstring(), missing resource name terminator (,) in sized image scan directive (%s)\n", wbase);
+		arcan_warning("Warning: arcan_video_renderstring(), missing resource name"
+			" terminator (,) in sized image scan directive (%s)\n", wbase);
 		return NULL;
 	}
 	
@@ -351,8 +320,8 @@ static char* extract_image(struct text_format* prev, char* base)
 		prev->imgcons.h = forceh;
 		prev->image = text_loadimage(wbase, prev->imgcons);
 		if (prev->image){
-			prev->imgcons.w = prev->image->w;
-			prev->imgcons.h = prev->image->h;
+			prev->imgcons.w = prev->image->width;
+			prev->imgcons.h = prev->image->height;
 		}
 		
 		return base;
@@ -363,7 +332,8 @@ static char* extract_image(struct text_format* prev, char* base)
 	}
 }
 
-static struct text_format formatend(char* base, struct text_format prev, char* orig, bool* ok) {
+static struct text_format formatend(char* base, struct text_format prev, 
+	char* orig, bool* ok) {
 	struct text_format failed = {0};
 	prev.newline = prev.tab = prev.cr = 0; /* don't carry caret modifiers */
 	bool inv = false;
@@ -387,22 +357,26 @@ retry:
 		
 		switch (cmd){
 /* the ! prefix is a special case, meaning that we invert the next character */
-			case '!': inv = true; base--; *base = '\\'; goto retry; break;
-			case 't': prev.tab++; break;
-			case 'n': prev.newline++; break;
-			case 'r': prev.cr = true; break;
-			case 'u': prev.style = (inv ? prev.style & TTF_STYLE_UNDERLINE : prev.style | TTF_STYLE_UNDERLINE); break;
-			case 'b': prev.style = (inv ? prev.style & !TTF_STYLE_BOLD : prev.style | TTF_STYLE_BOLD); break;
-			case 'i': prev.style = (inv ? prev.style & !TTF_STYLE_ITALIC : prev.style | TTF_STYLE_ITALIC); break;
-			case 'p': base = extract_image_simple(&prev, base); break;
-			case 'P': base = extract_image(&prev, base); break;
-			case '#': base = extract_color(&prev, base); break;
-			case 'f': base = extract_font(&prev, base); break;
+		case '!': inv = true; base--; *base = '\\'; goto retry; break;
+		case 't': prev.tab++; break;
+		case 'n': prev.newline++; break;
+		case 'r': prev.cr = true; break;
+		case 'u': prev.style = (inv ? prev.style & TTF_STYLE_UNDERLINE : 
+				prev.style | TTF_STYLE_UNDERLINE); break;
+		case 'b': prev.style = (inv ? prev.style & !TTF_STYLE_BOLD :
+				prev.style | TTF_STYLE_BOLD); break;
+		case 'i': prev.style = (inv ? prev.style & !TTF_STYLE_ITALIC :
+				 prev.style | TTF_STYLE_ITALIC); break;
+		case 'p': base = extract_image_simple(&prev, base); break;
+		case 'P': base = extract_image(&prev, base); break;
+		case '#': base = extract_color(&prev, base); break;
+		case 'f': base = extract_font(&prev, base); break;
 
-			default:
-				arcan_warning("Warning: arcan_video_renderstring(), unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
-				*ok = false;
-				return failed;
+		default:
+			arcan_warning("Warning: arcan_video_renderstring(), "
+				"unknown escape sequence: '\\%c' (%s)\n", *(base+1), orig);
+			*ok = false;
+			return failed;
 		}
 		
 		if (!base){
@@ -432,22 +406,21 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 		}
 		else if (curr_style->font){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
+			cnode->data.surf = TTF_RenderUTF8(curr_style->font, base, curr_style->col);
 		}
 		else{
 			arcan_warning("Warning: arcan_video_renderstring(), broken font specifier.\n");
 		}
 
 		if (!cnode->data.surf)
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't render text, possible reason: %s\n", TTF_GetError());
-		else 
-			SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
+			arcan_warning("Warning: arcan_video_renderstring(), couldn't render node.\n");
 	}
 
 /* just figure out the dimensions */
 	else if (curr_style->font){
 		TTF_SetFontStyle(curr_style->font, curr_style->style);
-		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
+		TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, 
+			(int*) &cnode->height);
 		
 /* load only if we don't have a dimension specifier */
 		if (curr_style->imgcons.w && curr_style->imgcons.h){
@@ -455,7 +428,6 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 			cnode->height = curr_style->imgcons.h;
 		}
 	}
-
 }
 
 /* a */
@@ -487,7 +459,8 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 /* render surface and slide window */
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
 					if (!curr_style->font) {
-						arcan_warning("Warning: arcan_video_renderstring(), no font specified / found.\n");
+						arcan_warning("Warning: arcan_video_renderstring(),"
+							" no font specified / found.\n");
 						return -1;
 					}
 
@@ -502,7 +475,8 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 				if (!okstatus)
 					return -1;
 
-/* caret modifiers need to be separately chained to avoid (three?) nasty little basecases */
+/* caret modifiers need to be separately chained to avoid (three?) nasty
+ * little edge conditions */
 				if (curr_style->newline || curr_style->tab || curr_style->cr) {
 					cnode->surface = false;
 					rv += curr_style->newline;
@@ -518,8 +492,9 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 				}
 
 				current = base = curr_style->endofs;
+/* note, may this be a condition for a break rather than a return? */
 				if (current == NULL)
-					return -1; /* note, may this be a condition for a break rather than a return? */
+					return -1; 
 
 				msglen = 0;
 			}
@@ -530,19 +505,20 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 		}
 	}
 
-	/* last element .. */
+/* last element .. */
 	if (msglen && curr_style->font) {
 		cnode->next = NULL;
 
 		if (sizeonly){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width, (int*) &cnode->height);
+			TTF_SizeUTF8(curr_style->font, base, (int*) &cnode->width,
+				(int*) &cnode->height);
 		}
 		else{
 			cnode->surface = true;
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8_Blended(curr_style->font, base, curr_style->col);
-			SDL_SetAlpha(cnode->data.surf, 0, SDL_ALPHA_TRANSPARENT);
+			cnode->data.surf = TTF_RenderUTF8(curr_style->font, base, 
+				curr_style->col);
 		}
 	}
 
@@ -561,21 +537,26 @@ static unsigned int round_mult(unsigned num, unsigned int mult)
 	return remain ? num + mult - remain : num;
 }
 
-/* tabs are messier still,
+/*
+ * tabs are messier still,
  * for each format segment, there may be 'tabc' number of tabsteps,
- * these concern only the current text block and are thus calculated from a fixed offset. */
-static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing, unsigned int* tabs)
+ * these concern only the current text block and are thus calculated 
+ * from a fixed offset. 
+ * */
+static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing, 
+	unsigned int* tabs)
 {
 	if (!tabs || *tabs == 0) /* tabc will always be >= 1 */
-		return tab_spacing ? round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset;
+		return tab_spacing ? 
+			round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset;
 
 	unsigned int lastofs = offset;
 
-	/* find last matching tab pos first */
+/* find last matching tab pos first */
 	while (*tabs && *tabs < offset)
 		lastofs = *tabs++;
 
-	/* matching tab found */
+/* matching tab found */
 	if (*tabs) {
 		offset = *tabs;
 		tabc--;
@@ -585,7 +566,8 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing, unsigne
 		if (*tabs)
 			offset = *tabs++;
 		else
-			offset += round_mult(offset, tab_spacing); /* out of defined tabs, pad with default spacing */
+			offset += round_mult(offset, tab_spacing); 
+/* out of defined tabs, pad with default spacing */
 
 	}
 
@@ -601,13 +583,15 @@ static void dumptchain(struct rcell* node)
 			printf("[%i] image surface\n", count++);
 		}
 		else {
-			printf("[%i] format (%i lines, %i tabs, %i cr)\n", count++, node->data.format.newline, node->data.format.tab, node->data.format.cr);
+			printf("[%i] format (%i lines, %i tabs, %i cr)\n", count++, 
+				node->data.format.newline, node->data.format.tab, node->data.format.cr);
 		}
 		node = node->next;
 	}
 }
 
-void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh)
+void arcan_video_stringdimensions(const char* message, int8_t line_spacing, 
+	int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh)
 {
 	if (!message)
 		return;
@@ -670,9 +654,24 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing, int8
 	
 	free(work);
 }
+
+/* assumes surf dimensions fit within dst without clipping */	
+static inline void copy_rect(TTF_Surface* surf, uint32_t* dst, int pitch, int x, int y)
+{
+	uint32_t* wrk = (uint32_t*) surf->data;
+
+	for (int row = 0; row < surf->height; row++)
+		for (int col = 0; col < surf->width; col++)
+			dst[ (y + row) * pitch + x + col ] = wrk[row * surf->width + col ];
+}
 	
-/* note: currently does not obey restrictions placed on texturemode (i.e. everything is padded to power of two and txco hacked) */
-arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, unsigned int** lineheights, arcan_vobj_id did)
+/* note: currently does not obey restrictions placed on texturemode 
+ * (i.e. everything is padded to power of two and txco hacked),
+ * partly because this is all planned to be transformed to using proper
+ * text-texture packing and more clever antialiasing */
+arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, 
+	int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, 
+	unsigned int** lineheights, arcan_vobj_id did)
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	if (!message)
@@ -688,8 +687,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 	last_style.cr = false;
 
 	if ((chainlines = build_textchain(work, root, false)) > 0) {
-		/* (B) */
-		/*		dumptchain(&root); */
+/* (B) */
 		struct rcell* cnode = root;
 		unsigned int linecount = 0;
 		bool flushed = false;
@@ -698,17 +696,18 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		int lineh = 0;
 		int curw = 0;
 		int curh = 0;
-		/* note, linecount is overflow */
-		unsigned int* lines = (unsigned int*) calloc(sizeof(unsigned int), chainlines + 1);
+/* note, linecount is overflow */
+		unsigned int* lines = (unsigned int*) calloc(sizeof(unsigned int), 
+			chainlines + 1);
 		unsigned int* curr_line = lines;
 
 		while (cnode) {
 			if (cnode->surface) {
 				assert(cnode->data.surf != NULL);
-				if (cnode->data.surf->h > lineh + line_spacing)
-					lineh = cnode->data.surf->h;
+				if (cnode->data.surf->height > lineh + line_spacing)
+					lineh = cnode->data.surf->height;
 
-				curw += cnode->data.surf->w;
+				curw += cnode->data.surf->width;
 			}
 			else {
 				if (cnode->data.format.cr)
@@ -731,18 +730,22 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 			cnode = cnode->next;
 		}
 		
-		/* (C) */
-		/* prepare structures */
+/* (C) */
+/* prepare structures */
 		arcan_vobject* vobj = NULL;
 		if (did != ARCAN_EID){
 			glDeleteTextures(1, &vobj->gl_storage.glid);
 			free(vobj->default_frame.raw);
 			vobj = arcan_video_getobject(did);
 		}
-		else vobj = arcan_video_newvobject(&rv);
+		else 
+			vobj = arcan_video_newvobject(&rv);
 
 		if (!vobj){
-			arcan_fatal("Fatal: arcan_video_renderstring(), couldn't allocate video object. Out of Memory or out of IDs in current context. There is likely a resource leak in the scripts of the current theme.\n");
+			arcan_fatal("Fatal: arcan_video_renderstring(), "
+				"couldn't allocate video object. Out of Memory or out of IDs in current "
+				"context. There is likely a resource leak in the scripts of the current "
+				"theme.\n");
 		}
 
 		int storw = nexthigher(maxw);
@@ -760,27 +763,21 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-		/* find dimensions and cleanup */
+/* find dimensions and cleanup */
 		cnode = root;
 		curw = 0;
 		int yofs = 0;
 
-		SDL_Surface* canvas =
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-		    SDL_CreateRGBSurface(SDL_SWSURFACE, storw, storh, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
-#else
-		    SDL_CreateRGBSurface(SDL_SWSURFACE, storw, storh, 32, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
-#endif
-		if (canvas == NULL)
-			arcan_fatal("Fatal: arcan_video_renderstring(); couldn't build canvas.\n\t Input string (%d x %d) is probably unreasonably large wide (len: %zi curw: %i)\n", storw, storh, strlen(message), curw);
+		uint32_t* canvas = (uint32_t*) vobj->default_frame.raw;
+		uint32_t* cwrk   = canvas;
+		memset(canvas, '\0', storw * storh * 4);
 
 		int line = 0;
 
 		while (cnode) {
 			if (cnode->surface) {
-				SDL_Rect dstrect = {.x = curw, .y = lines[line]};
-				SDL_BlitSurface(cnode->data.surf, 0, canvas, &dstrect);
-				curw += cnode->data.surf->w;
+				copy_rect(cnode->data.surf, canvas, storw, curw, lines[line]);
+				curw += cnode->data.surf->width;
 			}
 			else {
 				if (cnode->data.format.tab > 0)
@@ -797,9 +794,9 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 			cnode = cnode->next;
 		}
 	
-	/* upload */
-		memcpy(vobj->default_frame.raw, canvas->pixels, canvas->w * canvas->h * 4);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, canvas->w, canvas->h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
+/* upload */
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, storw, storh, 0, 
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->default_frame.raw);
 		glBindTexture(GL_TEXTURE_2D, 0);
 
 		float wv = (float)maxw / (float)vobj->gl_storage.w;
@@ -808,8 +805,6 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		generate_basic_mapping(vobj->txcos, wv, hv);
 		arcan_video_attachobject(rv);
 		
-		SDL_FreeSurface(canvas);
-
 		if (n_lines)
 			*n_lines = linecount;
 
@@ -826,7 +821,7 @@ cleanup:
 	while (current){
 		assert(current != (void*) 0xdeadbeef);
 		if (current->surface && current->data.surf)
-			SDL_FreeSurface(current->data.surf);
+			free(current->data.surf);
 			
 		struct rcell* prev = current;
 		current = current->next;
