@@ -151,7 +151,6 @@ function mouse_input(x, y, state)
 -- not that over/out do not filter drag/drop targets, that's up to the owner
 	local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
 	for i=1,#hists do
-		print(hists[i]);
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
 			table.insert(mstate.cur_over, hists[i]);
 			local res = linear_find_vid(mstate.handlers.over, hists[i]);
