@@ -109,34 +109,32 @@ static const struct option longopts[] = {
 
 void usage()
 {
-	printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
-	"-w\t--width       \tdesired width (default: 640)\n"
-	"-h\t--height      \tdesired height (default: 480)\n"
-	"-x\t--winx        \tforce window x position (default: don't set)\n"
-	"-y\t--winy        \tforce window y position (default: don't set)\n"
-	"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
-	"-m\t--conservative\ttoggle conservative memory management (default: off)\n"
+printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
+"-w\t--width       \tdesired width (default: 640)\n"
+"-h\t--height      \tdesired height (default: 480)\n"
+"-x\t--winx        \tforce window x position (default: don't set)\n"
+"-y\t--winy        \tforce window y position (default: don't set)\n"
+"-f\t--fullscreen  \ttoggle fullscreen mode ON (default: off)\n"
+"-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 #ifndef _WIN32
-	"-M\t--monitor     \tsplit open a debug arcan session that monitors the main one\n"
-	"-O\t--monitor-out \tLOG or script.lua (resourcepath/scripts/monitors)\n"
+"-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
+"-O\t--monitor-out \tLOG or script.lua (resourcepath/scripts/monitors)\n"
 #endif
-	"-s\t--windowed    \ttoggle borderless window mode\n"
-	"-p\t--rpath       \tchange path for resources (default: autodetect)\n"
-	"-t\t--themepath   \tchange path for themes (default: autodetect)\n"
-	"-o\t--frameserver \tforce frameserver (default: autodetect)\n"
-	"-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
-	"-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
-	"-g\t--debug       \ttoggle debug output (stacktraces, events, coredumps, etc.)\n"
-	"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
-	"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
-	"-V\t--nowait      \tdisable sleeping between superflous frames\n"
-	"-F\t--vsync-falign\t (0..1, default: 0.6) balance processing vs. CPU usage\n"
-	"-S\t--nosound     \tdisable audio output\n"
-	"-r\t--scalemode   \tset texture mode:\n\t"
-	"%i(rectangle sized textures, default),\n\t"
-	"%i(scale to power of two)\n\t"
-	"%i(tweak texture coordinates)\n", ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2,
-		ARCAN_VIMAGE_TXCOORD);
+"-s\t--windowed    \ttoggle borderless window mode\n"
+"-p\t--rpath       \tchange path for resources (default: autodetect)\n"
+"-t\t--themepath   \tchange path for themes (default: autodetect)\n"
+"-o\t--frameserver \tforce frameserver (default: autodetect)\n"
+"-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
+"-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
+"-g\t--debug       \ttoggle debug output (stacktraces, events, coredumps, etc.)\n"
+"-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
+"-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
+"-V\t--nowait      \tdisable sleeping between superflous frames\n"
+"-F\t--vsync-falign\t (0..1, default: 0.6) balance processing vs. CPU usage\n"
+"-S\t--nosound     \tdisable audio output\n"
+"-r\t--scalemode   \tset texture mode:\n\t"
+"%i(rectangle sized textures, default),\n\t"
+"%i(scale to power of two)\n\t", ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2);
 }
 
 int main(int argc, char* argv[])
@@ -175,57 +173,57 @@ int main(int argc, char* argv[])
 
 	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:"
 		"t:M:O:o:l:a:d:F:1:2:gr:S", longopts, NULL)) != -1){
-		switch (ch) {
-		case '?' :
-			usage();
-			exit(1);
-		break;
-		case 'w' : width = strtol(optarg, NULL, 10); break;
-		case 'h' : height = strtol(optarg, NULL, 10); break;
-		case 'm' : conservative = true; break;
-		case 'x' : winx = strtol(optarg, NULL, 10); break;
-		case 'y' : winy = strtol(optarg, NULL, 10); break;
-		case 'F' : vfalign = strtof(optarg, NULL); break;
-		case 'f' : fullscreen = true; break;
-		case 's' : windowed = true; break;
-		case 'l' : arcan_libpath = strdup(optarg); break;
-		case 'd' : dbfname = strdup(optarg); break;
-		case 'S' : nosound = true; break;
-		case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
-		case 'v' : arcan_video_display.vsync = false; break;
-		case 'V' : waitsleep = false; break;
-		case 'p' : arcan_resourcepath = strdup(optarg); break;
+	switch (ch) {
+	case '?' :
+		usage();
+		exit(1);
+	break;
+	case 'w' : width = strtol(optarg, NULL, 10); break;
+	case 'h' : height = strtol(optarg, NULL, 10); break;
+	case 'm' : conservative = true; break;
+	case 'x' : winx = strtol(optarg, NULL, 10); break;
+	case 'y' : winy = strtol(optarg, NULL, 10); break;
+	case 'F' : vfalign = strtof(optarg, NULL); break;
+	case 'f' : fullscreen = true; break;
+	case 's' : windowed = true; break;
+	case 'l' : arcan_libpath = strdup(optarg); break;
+	case 'd' : dbfname = strdup(optarg); break;
+	case 'S' : nosound = true; break;
+	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
+	case 'v' : arcan_video_display.vsync = false; break;
+	case 'V' : waitsleep = false; break;
+	case 'p' : arcan_resourcepath = strdup(optarg); break;
 #ifndef _WIN32
-		case 'i' : fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); interactive = true; break;
-		case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
-		case 'O' : monitor_arg = strdup( optarg ); break; 
+	case 'i' : fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); interactive = true; break;
+	case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
+	case 'O' : monitor_arg = strdup( optarg ); break; 
 #endif
-		case 't' : arcan_themepath = strdup(optarg); break;
-		case 'o' : arcan_binpath = strdup(optarg); break;
-		case 'g' :
-			debuglevel++;
-			srand(0xdeadbeef);
-			break;
-		case 'r' :
-			scalemode = strtol(optarg, NULL, 10);
-			if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode != 
-				ARCAN_VIMAGE_SCALEPOW2 && scalemode != ARCAN_VIMAGE_TXCOORD){
-				arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
-				scalemode = ARCAN_VIMAGE_SCALEPOW2;
-			}
+	case 't' : arcan_themepath = strdup(optarg); break;
+	case 'o' : arcan_binpath = strdup(optarg); break;
+	case 'g' :
+		debuglevel++;
+		srand(0xdeadbeef);
 		break;
-		case '1' :
-			stdout_redirected = true;
-			errc = freopen(optarg, "a", stdout);
-			break;
-		case '2' :
-			stderr_redirected = true;
-			errc = freopen(optarg, "a", stderr);
-			break;
-
-		default:
-			break;
+	case 'r' :
+		scalemode = strtol(optarg, NULL, 10);
+		if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode != 
+			ARCAN_VIMAGE_SCALEPOW2 && scalemode){
+			arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
+			scalemode = ARCAN_VIMAGE_SCALEPOW2;
 		}
+	break;
+	case '1' :
+		stdout_redirected = true;
+		errc = freopen(optarg, "a", stdout);
+		break;
+	case '2' :
+		stderr_redirected = true;
+		errc = freopen(optarg, "a", stderr);
+		break;
+
+	default:
+		break;
+	}
 	}
 
 	if (arcan_setpaths() == false)
@@ -266,22 +264,22 @@ int main(int argc, char* argv[])
 				arcan_fatal("Missing monitor script: %s\n", scriptfnbuf);
 			
 			pid_t p1;
-			
-			socketpair(PF_LOCAL, SOCK_STREAM, 0, pair);
+
+			pipe(pair);
 			if ( (p1 = fork()) == 0){
-				close(pair[0]);
+				close(pair[1]);
 				monitor_parent = false;
 				if (fork() != 0)
-					exit(0);
+					exit(0); 
 
-				monitor_outf = fdopen(pair[1], "r");
+				monitor_outf = fdopen(pair[0], "r");
 				script_override = tmpscript;
 			} else {
 				int status;
-				close(pair[1]);
+				close(pair[0]);
 				monitor_parent = true;
-				monitor_outf = fdopen(pair[0], "w");
-				waitpid(p1, &status, 0);
+				monitor_outf = fdopen(pair[1], "w");
+				waitpid(p1, &status, 0); 
 			}
 		}
 		
@@ -498,9 +496,11 @@ themeswitch:
 			lastfrag = 0.0;
 				
 			if (monitor){
-				if (monitor_parent && --monitor_counter == 0){
-					monitor_counter = monitor;
-					arcan_lua_statesnap(monitor_outf);
+				if (monitor_parent){
+					if (--monitor_counter == 0){
+						monitor_counter = monitor;
+						arcan_lua_statesnap(monitor_outf);
+					}
 				} 
 				else 
 					arcan_lua_stategrab(luactx, "sample", monitor_outf);

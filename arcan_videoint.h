@@ -229,7 +229,32 @@ struct arcan_video_display {
 	float vsync_timing;
 };
 
+/* these all represent a subset of the current context that is to be drawn.
+ * if (dest != NULL) this means that the vid actually represents a rendertarget, 
+ * e.g. FBO. The mode defines which output buffers (color, depth, ...) 
+ * that should be stored. Readback defines if we want a PBO- or glReadPixels style 
+ * readback into the .raw buffer of the target. reset defines if any of the intermediate 
+ * buffers should be cleared beforehand. first refers to the first object in the subset.
+ * if first and dest are null, stop processing the list of rendertargets. */
+struct arcan_video_context {
+	unsigned vitem_ofs;
+	unsigned vitem_limit;
+	long int nalive;
+	arcan_tickv last_tickstamp;
+
+	arcan_vobject world;
+	arcan_vobject* vitems_pool;
+
+	struct rendertarget rtargets[RENDERTARGET_LIMIT];
+	ssize_t n_rtargets;
+
+	struct rendertarget stdoutp;
+};
+
+extern struct arcan_video_context vcontext_stack[];
+extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
+
 int arcan_debug_pumpglwarnings(const char* src);
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props);
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
@@ -248,6 +273,13 @@ uint16_t nexthigher(uint16_t k);
 
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
+
+/*
+ * To split between GLFX/EGL/SDL/etc. All relevant settings are predefined in
+ * arcan_video_display, and these just implement the necessary foreplay
+ */ 
+bool arcan_videodev_init();
+void arcan_videodev_deinit();
 
 void arcan_3d_setdefaults();
 
