@@ -35,12 +35,12 @@ enum shdrutype {
 /* all the currently supported value slots,
  * type- encoded in name, the 'n' prefix used
  * means it supports multiple slots for that type */
+
 enum arcan_shader_envts{
 /* packed matrices */
 	MODELVIEW_MATR  = 0,
 	PROJECTION_MATR = 1,
 	TEXTURE_MATR    = 2,
-
 	OBJ_OPACITY     = 3,
 
 /* system values, don't change this order */
@@ -58,10 +58,12 @@ enum shader_vertex_attributes {
 /* delete and forget all allocated shaders */
 void arcan_shader_flush();
 
-/* keep the meta-structure, but delete all OpenGL resources associated with a shader */
+/* keep the meta-structure, but delete all OpenGL resources 
+ * associated with a shader */
 void arcan_shader_unload_all();
 
-/* allocate new OpenGL resources for all allocated shaders, when reinitializing visual context etc. */
+/* allocate new OpenGL resources for all allocated shaders, 
+ * when reinitializing visual context etc. */
 void arcan_shader_rebuild_all();
 
 /* set a specific shader as the current active one,
@@ -69,11 +71,16 @@ void arcan_shader_rebuild_all();
 arcan_errc arcan_shader_activate(arcan_shader_id shid);
 
 /* pack into a new texture and just return an index to use */
-arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag);
+arcan_shader_id arcan_shader_build(const char* tag, const char* geom, 
+	const char* vert, const char* frag);
 bool arcan_shader_destroy(arcan_shader_id shid);
 
-/* sweep through the list of stored shared, looking for a matching tag, status sets if the result was found or not */
+/* sweep through the list of stored shared, looking for a 
+ * matching tag, status sets if the result was found or not */
 arcan_shader_id arcan_shader_lookup(const char* tag);
+const char* arcan_shader_lookuptag(arcan_shader_id id);
+bool arcan_shader_lookupprgs(arcan_shader_id id, 
+	const char** vert, const char** frag);
 bool arcan_shader_valid(arcan_shader_id);
 
 int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
@@ -87,6 +94,7 @@ const char* arcan_shader_symtype(enum arcan_shader_envts env);
 
 /* update a specific uniformslot that will map to whatever shader is active,
  * discarded when another shader is deactivated */
-void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value, bool persist);
+void arcan_shader_forceunif(const char* label, 
+	enum shdrutype type, void* value, bool persist);
 
 #endif
