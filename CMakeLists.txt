@@ -52,7 +52,8 @@ set(PATCH_LEVEL 0 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
-set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_EXCECUTE WORLD_READ)
+set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
+		GROUP_READ WORLD_EXCECUTE WORLD_READ)
 
 set( MAIN_LIBRARIES )
 set( FSRV_BUILD_FLAGS "-Wno-deprecated-declarations")
@@ -70,7 +71,8 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 # Collective sigh for stupid standard breaking features.
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
-add_definitions(-std=iso9899:1999 -DBSD_SOURCE)
+add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu
+	-DGL_HEADERS="arcan_glheaders_sdl.h")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")
@@ -235,6 +237,7 @@ set (
  arcan_shdrmgmt.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
+ arcan_glheaders_sdl.h
 )
 
 set (
@@ -266,8 +269,9 @@ include_directories(${INCLUDE_DIRS})
 
 # OS Specific modifications
 #
-# This is mostly out of date, although it should be possible to get up to speed without
-# much effort, it still requires someone taking on that job for OSX
+# This is mostly out of date, although it should be possible to get 
+# up to speed without much effort, it still requires someone taking on
+# that job for OSX
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 #
@@ -279,7 +283,12 @@ find_library(IOKIT NAMES IOKit)
 find_library(COREFOUNDATION NAMES CoreFoundation)
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
-LIST(APPEND SOURCES SDLMain.m hidapi/hid_mac.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+LIST(APPEND SOURCES 
+	SDLMain.m 
+	hidapi/hid_mac.c 
+	hidapi/hidapi.h 
+	arcan_target_launcher.c 
+	arcan_frameserver_backend_unix.c)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 
 # " probe " support not ready, idea is to sweep targets, look at dependencies with the hijack preloaded

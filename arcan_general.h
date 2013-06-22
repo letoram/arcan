@@ -187,8 +187,9 @@ char* arcan_findshmkey(int* dhd, bool semalloc);
  * On failure, fd will be BADFD and source NULL
  */
 data_source arcan_open_resource(const char* uri);
+void arcan_release_resource(data_source* sptr);
 map_region arcan_map_resource(data_source* source, bool wr); 
-bool arcan_map_release(map_region region);
+bool arcan_release_map(map_region region);
 
 long long int arcan_timemillis();
 

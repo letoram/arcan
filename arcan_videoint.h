@@ -261,7 +261,8 @@ arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
+arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
+	arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
 void arcan_video_setblend(const surface_properties* dprops, const arcan_vobject* elem);
 
 #ifdef _DEBUG
@@ -283,9 +284,12 @@ void arcan_videodev_deinit();
 
 void arcan_3d_setdefaults();
 
-/* sweep the glstor and bind the corresponding texture units (unless we hit the imit that is) */
-unsigned int arcan_video_pushglids(struct storage_info_t* glstor, unsigned ofs);
-arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell, float frag, unsigned int destination);
+/* sweep the glstor and bind the corresponding 
+ * texture units (unless we hit the limit that is) */
+unsigned int arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
+arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, 
+	arcan_vobject_litem* cell, float frag, unsigned int destination);
 
-int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitch, int flipy);
+int stretchblit(char* src, int srcw, int srch,
+	uint32_t* dst, int dstw, int dsth, int flipy);
 #endif

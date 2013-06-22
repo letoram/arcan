@@ -77,45 +77,43 @@ static data_source* alloc_datasource()
 	return res;	
 }
 
-void arcan_release_resource(data_source** sptr)
+void arcan_release_resource(data_source* sptr)
 {
 /* relying on a working close() is bad form,
  * unfortunately recovery options are few */
-	if (-1 != (*sptr)->fd){
+	if (-1 != sptr->fd){
 		int trycount = 10;
 		while (trycount--){
-			if (close((*sptr)->fd) == 0)
+			if (close(sptr->fd) == 0)
 				break;
 		}
 
 /* don't want this one free:d */
-	if ( (*sptr)->source == tag_resleak )
-		(*sptr)->source = NULL;
+	if ( sptr->source == tag_resleak )
+		sptr->source = NULL;
 
 /* something broken with the file-descriptor, 
  * not many recovery options but purposefully leak
  * the memory so that it can be found in core dumps etc. */
 		if (trycount){
-			free( (*sptr)->source );
+			free( sptr->source );
 			snprintf(playbuf, playbufsize, "broken_fd(%d:%s)", 
-				(*sptr)->fd, (*sptr)->source);
-			(*sptr)->source = strdup(playbuf);
+				sptr->fd, sptr->source);
+			sptr->source = strdup(playbuf);
 		} else {
 /* make the released memory distinguishable from a broken 
  * descriptor from a memory analysis perspective */
-			free( (*sptr)->source );
-			(*sptr)->source = NULL;
-			(*sptr)->fd     = -1;
-			(*sptr)->start  = -1;
-			(*sptr)->len    = -1;
+			free( sptr->source );
+			sptr->fd     = -1;
+			sptr->start  = -1;
+			sptr->len    = -1;
 		}
-	} 
-	else if ( (*sptr)->source){
-		free((*sptr)->source);
-		(*sptr)->source = NULL;
 	}
 
-	*sptr = NULL;
+	if (sptr->source){
+		free(sptr->source);
+		sptr->source = NULL;
+	}
 }
 
 static bool is_dir(const char* fn)
@@ -214,13 +212,15 @@ char* arcan_find_resource(const char* label, int searchmask)
  */
 data_source arcan_open_resource(const char* url)
 {
-	data_source res;
+	data_source res = {.fd = BADFD};
 
-	res.fd = open(url, O_RDONLY);
-	if (res.fd != -1){
-		res.start  = 0;
-		res.source = strdup(url);
-		res.len    = 0; /* map resource can figure it out */ 
+	if (url){
+		res.fd = open(url, O_RDONLY);
+		if (res.fd != -1){
+			res.start  = 0;
+			res.source = strdup(url);
+			res.len    = 0; /* map resource can figure it out */ 
+		}
 	}
 	else 
 		res.fd = BADFD;
@@ -610,17 +610,14 @@ memread:
  */
 		bool rstatus = true;
 		if (source->start > 0 && -1 == lseek(source->fd, SEEK_SET, source->start)){
-			arcan_warning("couldn't seek(!), skip %d bytes\n", source->start);
 			rstatus = read_safe(source->fd, source->start, 8192, NULL);
 		}
 		
 		if (rstatus){
-			arcan_warning("try and buffer..%d data\n", source->len); 
 			rstatus = read_safe(source->fd, source->len, 8192, rv.ptr);	
 		}
 
 		if (!rstatus){
-			arcan_warning("arcan_map_resource() failed -- buffer population failed.\n");
 			free(rv.ptr);
 			rv.ptr = NULL;
 			rv.sz  = 0;
