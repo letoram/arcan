@@ -211,7 +211,8 @@ static inline int TTF_Glyph_strikethrough_top_row(TTF_Font *font, c_glyph *glyph
 	return TTF_strikethrough_top_row(font) - font->ascent + glyph->maxy;
 }
 
-static void TTF_initLineMectrics(const TTF_Font *font, const TTF_Surface *textbuf, const int row, uint8_t **pdst, int *pheight)
+static void TTF_initLineMectrics(const TTF_Font *font,const TTF_Surface 
+	*textbuf, const int row, uint8_t **pdst, int *pheight)
 {
 	uint8_t *dst;
 	int height;
@@ -230,10 +231,12 @@ static void TTF_initLineMectrics(const TTF_Font *font, const TTF_Surface *textbu
 	*pheight = height;
 }
 
-static void TTF_drawLine(const TTF_Font *font, const TTF_Surface *textbuf, const int row, const uint32_t color)
+static void TTF_drawLine(const TTF_Font *font, const TTF_Surface *textbuf,
+	const int row, const uint32_t color)
 {
 	int line;
-	uint32_t *dst_check = (uint32_t*)textbuf->data + textbuf->width * textbuf->height;
+	uint32_t *dst_check = (uint32_t*)textbuf->data + 
+		textbuf->width * textbuf->height;
 	uint8_t *dst8; /* destination, byte version */
 	uint32_t *dst;
 	int height;
@@ -311,7 +314,8 @@ int TTF_Init( void )
 	return status;
 }
 
-static unsigned long ft_read(FT_Stream stream, unsigned long ofs, unsigned char* buf, unsigned long count)
+static unsigned long ft_read(FT_Stream stream, unsigned long ofs, 
+	unsigned char* buf, unsigned long count)
 {
 	FILE* fpek = stream->descriptor.pointer;
 	fseek(fpek, (int) ofs, SEEK_SET);
@@ -383,10 +387,14 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	found = 0;
 	for (i = 0; i < face->num_charmaps; i++) {
 		FT_CharMap charmap = face->charmaps[i];
-		if ((charmap->platform_id == 3 && charmap->encoding_id == 1) /* Windows Unicode */
-		 || (charmap->platform_id == 3 && charmap->encoding_id == 0) /* Windows Symbol */
-		 || (charmap->platform_id == 2 && charmap->encoding_id == 1) /* ISO Unicode */
-		 || (charmap->platform_id == 0)) { /* Apple Unicode */
+/* Windows Unicode */
+		if ((charmap->platform_id == 3 && charmap->encoding_id == 1) 
+/* Windows Symbol */
+		 || (charmap->platform_id == 3 && charmap->encoding_id == 0)
+/* ISO Unicode */
+		 || (charmap->platform_id == 2 && charmap->encoding_id == 1)
+/* Apple Unicode */
+		 || (charmap->platform_id == 0)) { 
 			found = charmap;
 			break;
 		}
@@ -413,8 +421,10 @@ TTF_Font* TTF_OpenFontIndexRW( FILE* src, int freesrc, int ptsize, long index )
 	  font->descent = FT_CEIL(FT_MulFix(face->descender, scale));
 	  font->height  = font->ascent - font->descent + /* baseline */ 1;
 	  font->lineskip = FT_CEIL(FT_MulFix(face->height, scale));
-	  font->underline_offset = FT_FLOOR(FT_MulFix(face->underline_position, scale));
-	  font->underline_height = FT_FLOOR(FT_MulFix(face->underline_thickness, scale));
+	  font->underline_offset = FT_FLOOR(
+			FT_MulFix(face->underline_position, scale));
+	  font->underline_height = FT_FLOOR(
+			FT_MulFix(face->underline_thickness, scale));
 
 	} else {
 		/* Non-scalable font case.  ptsize determines which family
@@ -520,7 +530,8 @@ static void Flush_Cache( TTF_Font* font )
 	}
 }
 
-static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch, c_glyph* cached, int want )
+static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch, 
+	c_glyph* cached, int want )
 {
 	FT_Face face;
 	FT_Error error;
@@ -568,7 +579,8 @@ static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch, c_glyph* cached, int wa
 			cached->minx = FT_FLOOR(metrics->horiBearingX);
 			cached->maxx = cached->minx + FT_CEIL(metrics->horiAdvance);
 			cached->maxy = FT_FLOOR(metrics->horiBearingY);
-			cached->miny = cached->maxy - FT_CEIL(face->available_sizes[font->font_size_family].height);
+			cached->miny = cached->maxy - FT_CEIL(
+				face->available_sizes[font->font_size_family].height);
 			cached->yoffset = 0;
 			cached->advance = FT_CEIL(metrics->horiAdvance);
 		}
@@ -611,11 +623,13 @@ static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch, c_glyph* cached, int wa
 			if( error ) {
 				return error;
 			}
-			FT_Stroker_Set( stroker, font->outline * 64, FT_STROKER_LINECAP_ROUND, FT_STROKER_LINEJOIN_ROUND, 0 ); 
-			FT_Glyph_Stroke( &bitmap_glyph, stroker, 1 /* delete the original glyph */ );
+			FT_Stroker_Set( stroker, font->outline * 64, FT_STROKER_LINECAP_ROUND, 
+				FT_STROKER_LINEJOIN_ROUND, 0 ); 
+			FT_Glyph_Stroke( &bitmap_glyph, stroker, 1 /*delete the original glyph*/);
 			FT_Stroker_Done( stroker );
 			/* Render the glyph */
-			error = FT_Glyph_To_Bitmap( &bitmap_glyph, mono ? ft_render_mode_mono : ft_render_mode_normal, 0, 1 );
+			error = FT_Glyph_To_Bitmap( &bitmap_glyph, mono ? 
+				ft_render_mode_mono : ft_render_mode_normal, 0, 1 );
 			if( error ) {
 				FT_Done_Glyph( bitmap_glyph );
 				return error;
@@ -623,7 +637,8 @@ static FT_Error Load_Glyph( TTF_Font* font, uint16_t ch, c_glyph* cached, int wa
 			src = &((FT_BitmapGlyph)bitmap_glyph)->bitmap;
 		} else {
 			/* Render the glyph */
-			error = FT_Render_Glyph( glyph, mono ? ft_render_mode_mono : ft_render_mode_normal );
+			error = FT_Render_Glyph( glyph, mono ?
+				ft_render_mode_mono : ft_render_mode_normal );
 			if( error ) {
 				return error;
 			}
@@ -1267,7 +1282,8 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 	if (!textbuf)
 	    return NULL;
 
-/* Initialze, align and precalculate upper-bound for additional overflow constraint */
+/* Initialze, align and precalculate upper-bound for
+ * additional overflow constraint */
 	textbuf->width  = width;
 	textbuf->height = height;
 	textbuf->bpp    = 4;
@@ -1276,7 +1292,8 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 	textbuf->data  += ((uintptr_t)textbuf->data) % (sizeof(uintptr_t));
 
 	dst = (uint32_t*) textbuf->data;
-	dst_check = (uint32_t*) textbuf->data + (textbuf->width * textbuf->height * textbuf->bpp);
+	dst_check = (uint32_t*) textbuf->data + (textbuf->width *
+		textbuf->height * textbuf->bpp);
 
 /* check kerning */
 	use_kerning = FT_HAS_KERNING( font->face ) && font->kerning;

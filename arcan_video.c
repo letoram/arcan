@@ -33,18 +33,14 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-#define GLEW_STATIC
-#define NO_SDL_GLEXT
-#include <glew.h>
-
-#define GL_GLEXT_PROTOTYPES 1
-
 #define CLAMP(x, l, h) (((x) > (h)) ? (h) : (((x) < (l)) ? (l) : (x)))
 
-#include <SDL.h>
+#ifndef ASYNCH_CONCURRENT_THREADS
+#define ASYNCH_CONCURRENT_THREADS 12 
+#endif
 
-#include <SDL_opengl.h>
-#include <SDL_byteorder.h>
+#include GL_HEADERS
+
 #include <apr_poll.h>
 
 #include "arcan_math.h"
@@ -67,6 +63,7 @@
 
 long long ARCAN_VIDEO_WORLDID = -1;
 static surface_properties empty_surface();
+static sem_t asynchsynch;
 
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
@@ -345,7 +342,8 @@ static void transfer_persists(struct arcan_video_context* src,
 				dst->nalive++;
 				src->vitems_pool[i].owner = NULL;
 				attach_object(&dst->stdoutp, &src->vitems_pool[i]);
-				trace("vcontext_stack_push() : transfer-attach: %s\n", src->vitems_pool[i].tracetag);
+				trace("vcontext_stack_push() : transfer-attach: %s\n", 
+					src->vitems_pool[i].tracetag);
 			}
 		}
 /* of loop */
@@ -1134,6 +1132,13 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, bool conservative)
 {
 	static char caption[64];
+	static bool firstinit = true;
+
+/* might be called multiple times so.. */
+	if (firstinit){
+		sem_init(&asynchsynch, 0, ASYNCH_CONCURRENT_THREADS);
+		firstinit = false;
+	}
 
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -1287,40 +1292,50 @@ void arcan_video_fullscreen()
 	SDL_WM_ToggleFullScreen(arcan_video_display.screen);
 }
 
-#ifndef ASYNCH_CONCURRENT_THREADS
-#define ASYNCH_CONCURRENT_THREADS 12 
-#endif
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst, 
 	arcan_vstorage* dstframe, img_cons forced, bool asynchsrc)
 {
-	static SDL_sem* asynchsynch = NULL;
-	if (!asynchsynch)
-		asynchsynch = SDL_CreateSemaphore(ASYNCH_CONCURRENT_THREADS);
-
 /* 
  * with asynchsynch, it's likely that we get a storm of requests 
  * and we'd likely suffer thrashing, so limit this. 
  * also, look into using pthread_setschedparam and switch to 
  * pthreads exclusively 
  */
-	SDL_SemWait(asynchsynch);
-
+	sem_wait(&asynchsynch);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
 	char* imgbuf = NULL;
 	int inw, inh;
 
+/* try- open */
 	data_source inres = arcan_open_resource(fname);
-	map_region  inmem = arcan_map_resource(&inres, false);
+	if (inres.fd == BADFD)
+		return ARCAN_ERRC_BAD_RESOURCE;
+
+/* mmap (preferred) or buffer (mmap not working / 
+ * useful due to alignment) */
+	map_region inmem = arcan_map_resource(&inres, false);
+	if (inmem.ptr == NULL){
+		arcan_release_resource(&inres);
+		return ARCAN_ERRC_BAD_RESOURCE;
+	}
 
 	rv = arcan_img_decode(fname, inmem.ptr, inmem.sz, &imgbuf, &inw, &inh,
 	dst->gl_storage.imageproc == imageproc_fliph, malloc);
 
-	if (rv == ARCAN_OK) {
+	arcan_release_map(inmem);
+	arcan_release_resource(&inres);
+
+	if (rv == ARCAN_OK){
 		uint16_t neww, newh;
 	
+/* store this so we can maintain aspect ratios etc. while still
+ * possibly aligning to next power of two */
 		dst->origw = inw;
 		dst->origh = inh;
+
+		neww = inw;
+		newh = inh;
 
 /* the thread_loader will take care of converting the asynchsrc 
  * to an image once its completely done */
@@ -1336,17 +1351,32 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 /* the user requested specific dimensions,
  * so we force the rescale texture mode for mismatches and set 
  * dimensions accordingly */
-		if (forced.h > 0 && forced.w > 0 && desm == ARCAN_VIMAGE_SCALEPOW2){
-			neww = nexthigher(forced.w);
-			newh = nexthigher(forced.h);
-			if (neww != inw || newh != inh){
-/* for stretch blit, we use the interpolated upscaler from SDL_gfx/rotozoom,
- * as gluScaleImage is not present in GLES and not thread-safe (sigh)
-				stretchblit(gl_image, (uint32_t*) dstframe->raw, neww, newh, neww * 4, 
-					dst->gl_storage.imageproc == imageproc_fliph); */
+		if (forced.h > 0 && forced.w > 0){
+			neww = forced.w;
+			newh = forced.h;
+			if (desm != ARCAN_VIMAGE_SCALEPOW2){
+				dstframe->s_raw = neww * newh * GL_PIXEL_BPP;
+				dstframe->raw   = malloc(dstframe->s_raw); 
+				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->raw, neww, newh, 
+					dst->gl_storage.imageproc == imageproc_fliph);
+				free(imgbuf);
  			}
+		}
+		
+/* rescale, otherwise just reuse the decode buffer to save a copy */
+		if (desm == ARCAN_VIMAGE_SCALEPOW2){
+			neww = nexthigher(neww);
+			newh = nexthigher(newh);
+
+			if (neww != inw || newh != inh){
+				dstframe->s_raw = neww * newh * GL_PIXEL_BPP;
+				dstframe->raw = malloc(dstframe->s_raw);
+				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->raw, neww, newh, 
+					dst->gl_storage.imageproc == imageproc_fliph);
+				free(imgbuf);
+			}
 		} 
-		else {
+		else if (forced.w == 0 || forced.h == 0){
 			neww = inw; 
 			newh = inh;
 			dstframe->raw   = (uint8_t*) imgbuf;
@@ -1358,13 +1388,13 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 /* for the asynch case, we need to do this separately as we're in a different
  * thread and forcibly assigning the glcontext to another thread is expensive */
-		if (!asynchsrc)
+		if (!asynchsrc){
 			push_globj(dst, &dst->gl_storage.glid, 
 				dst->gl_storage.w, dst->gl_storage.h, false, dstframe->raw);
-
+		}
+		else if (arcan_video_display.conservative){
 /* in conservative mode, we never keep the raw data used to generate a glimage
  * so refill with a memory scan friendly pattern and then free */
-		if (!asynchsrc && arcan_video_display.conservative){
 #ifdef DEBUG
 			memset(dst->default_frame.raw, 0x50, dst->default_frame.s_raw);
 #endif
@@ -1373,7 +1403,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 		}
 	}
 
-	SDL_SemPost(asynchsynch);
+	sem_post(&asynchsynch);
 	return rv;
 }
 
@@ -1395,7 +1425,8 @@ static void rescale_origwh(arcan_vobject* dst, float fx, float fy)
 	}
 }
 
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enum arcan_framemode mode)
+arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
+	enum arcan_framemode mode)
 {
 	arcan_vobject* target = arcan_video_getobject(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1434,7 +1465,8 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity, enu
 		for (int i = 0; i < capacity; i++){
 			target->frameset[i] = target;
 			target->frameset[i]->extrefc.framesets++;
-			trace("(allocframe) self-attached to (%d:%s)\n", target->cellid, video_tracetag(target) );
+			trace("(allocframe) self-attached to (%d:%s)\n", target->cellid, 
+				video_tracetag(target) );
 		}
 
 		target->frameset_meta.current = 0;
@@ -1545,8 +1577,8 @@ static arcan_errc attach_readback(arcan_vobj_id src)
 	return rv;
 }
 
-arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src,
-	bool detach)
+arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, 
+	arcan_vobj_id src, bool detach)
 {
 	if (src == ARCAN_VIDEO_WORLDID)
 		return attach_readback(did);
@@ -1577,12 +1609,15 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, arcan_vobj_id src
 				attach_object(&current_context->rtargets[ind], srcobj);
 
 				if (c)
-					arcan_warning("detach: (%s) from owner.\n", srcobj->tracetag, dstobj->tracetag);
+					arcan_warning("detach: (%s) from owner.\n", srcobj->tracetag, 
+						dstobj->tracetag);
 
 				if (a)
-					arcan_warning("detach: (%s) from rendertarget (%s).\n", srcobj->tracetag, dstobj->tracetag);
+					arcan_warning("detach: (%s) from rendertarget (%s).\n", 
+						srcobj->tracetag, dstobj->tracetag);
 
-				arcan_warning("attach: (%s) to rendertarget (%s).\n", srcobj->tracetag, dstobj->tracetag);
+				arcan_warning("attach: (%s) to rendertarget (%s).\n", srcobj->tracetag,
+					dstobj->tracetag);
 
 				rv = ARCAN_OK;
 			}
@@ -1634,7 +1669,7 @@ static bool activate_fbo(struct rendertarget* dst)
 }
 
 /* 
- * Allocate an FBO and set ut up to receive a combination of(DEPTH,STENCIL,COLOR)
+ * Allocate an FBO and set ut up to receive a combination of(DPTH,STENCIL,COLOR)
  * The destination storage is predefined in (dst->color) 
  */
 static bool alloc_fbo(struct rendertarget* dst)
@@ -1695,7 +1730,8 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 	return ARCAN_ERRC_UNACCEPTED_STATE;
 }
 
-arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool scale)
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, 
+	int readback, bool scale)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
@@ -1704,7 +1740,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 
 	bool is_rtgt = find_rendertarget(vobj) != NULL;
 	if (is_rtgt){
-		arcan_warning("arcan_video_setuprendertarget() source vid already is a rendertarget\n");
+		arcan_warning("arcan_video_setuprendertarget() source vid"
+			"already is a rendertarget\n");
 		rv = ARCAN_ERRC_BAD_ARGUMENT;
 		return rv;
 	}
@@ -1719,11 +1756,14 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 		dst->color    = vobj;
 
 		vobj->extrefc.attachments++;
-		trace("(setuprendertarget), (%d:%s) defined as rendertarget. attachments: %d\n", vobj->cellid, video_tracetag(vobj), vobj->extrefc.attachments);
+		trace("(setuprendertarget), (%d:%s) defined as rendertarget."
+			"attachments: %d\n", vobj->cellid, video_tracetag(vobj), 
+			vobj->extrefc.attachments);
 
-/* alter projection so the GL texture gets stored in the way the images are rendered in normal mode,
- * with 0,0 being upper left */
-		build_orthographic_matrix(dst->projection, 0, arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
+/* alter projection so the GL texture gets stored in the way 
+ * the images are rendered in normal mode, with 0,0 being upper left */
+		build_orthographic_matrix(dst->projection, 0, arcan_video_display.width, 0, 
+			arcan_video_display.height, 0, 1);
 		identity_matrix(dst->base);
 
 		if (scale){
@@ -1742,7 +1782,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, bool s
 
 			glGenBuffers(1, &dst->pbo);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
-			glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w * vobj->gl_storage.h * vobj->gl_storage.bpp, NULL, GL_STREAM_READ);
+			glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w*vobj->gl_storage.h*
+				vobj->gl_storage.bpp, NULL, GL_STREAM_READ);
 			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 		}
 
@@ -1763,15 +1804,17 @@ arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid)
 		if (dstvobj->flags.clone)
 			dstvobj->frameset = dstvobj->parent->frameset;
 
-		dstvobj->frameset_meta.current = fid < dstvobj->frameset_meta.capacity ? fid : 0;
-		dstvobj->current_frame = dstvobj->frameset[ dstvobj->frameset_meta.current ];
+		dstvobj->frameset_meta.current = fid < 
+			dstvobj->frameset_meta.capacity ? fid : 0;
+		dstvobj->current_frame = dstvobj->frameset[dstvobj->frameset_meta.current];
 		rv = ARCAN_OK;
 	}
 
 	return rv;
 }
 
-arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsigned fid, bool detach, arcan_errc* errc)
+arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, 
+	unsigned fid, bool detach, arcan_errc* errc)
 {
 	arcan_vobject* dstvobj = arcan_video_getobject(dst);
 	arcan_vobject* srcvobj = arcan_video_getobject(src);
@@ -1791,15 +1834,23 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 	if (dstvobj && srcvobj){
 		if (dstvobj->frameset && fid < dstvobj->frameset_meta.capacity){
 
-/* if we want to manage the frame entirely through this object, we can detach src and stop worrying about deleting it */
+/* 
+ * if we want to manage the frame entirely through this object, 
+ * we can detach src and stop worrying about deleting it 
+ */
 			if (detach && srcvobj != dstvobj && srcvobj->owner)
 				detach_fromtarget(srcvobj->owner, srcvobj);
 
-/* if there already is an object in the desired slot, return the management responsibility to the user*/
+/* 
+ * if there already is an object in the desired slot, 
+ * return the management responsibility to the user
+ * */
 			arcan_vobject* frame = dstvobj->frameset[fid];
 
 			frame->extrefc.framesets--;
-			trace("(setasframe) detatched (%d:%s) from (%d:%s), left: %d\n", frame->cellid, video_tracetag(frame), dstvobj->cellid, video_tracetag(dstvobj), frame->extrefc.framesets);
+			trace("(setasframe) detatched (%d:%s) from (%d:%s), left: %d\n", 
+				frame->cellid, video_tracetag(frame), dstvobj->cellid, 
+				video_tracetag(dstvobj), frame->extrefc.framesets);
 			assert(frame->extrefc.framesets >= 0);
 
 			if (frame != dstvobj)
@@ -1807,7 +1858,9 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, unsig
 
 			dstvobj->frameset[fid] = srcvobj;
 			srcvobj->extrefc.framesets++;
-			trace("(setasframe) attached (%d:%s) in frameset (%d:%s) slot (%d)\n", srcvobj->cellid, video_tracetag(srcvobj), dstvobj->cellid, video_tracetag(dstvobj), fid);
+			trace("(setasframe) attached (%d:%s) in frameset (%d:%s) slot (%d)\n", 
+				srcvobj->cellid, video_tracetag(srcvobj), dstvobj->cellid, 
+				video_tracetag(dstvobj), fid);
 
 			if (errc)
 				*errc = ARCAN_OK;
@@ -1832,15 +1885,18 @@ struct thread_loader_args {
 
 /* if the loading failed, we'll add a small black image in its stead,
  * and emit a failed video event */
-static int thread_loader(void* in)
+static void* thread_loader(void* in)
 {
 	arcan_event result;
 	struct thread_loader_args* localargs = (struct thread_loader_args*) in;
 	arcan_vobject* dst = localargs->dst;
 
-/* while this happens, the following members of the struct are not to be touched elsewhere:
- * origw / origh, default_frame->tag/source, gl_storage */
-	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, &dst->default_frame, localargs->constraints, true);
+/* 
+ * while this happens, the following members of the struct are not to be touched
+ * elsewhere: origw / origh, default_frame->tag/source, gl_storage 
+ */
+	arcan_errc rc = arcan_video_getimage(localargs->fname, dst, 
+		&dst->default_frame, localargs->constraints, true);
 	result.data.video.data = localargs->tag;
 
 	if (rc == ARCAN_OK){ /* emit OK event */
@@ -1872,20 +1928,22 @@ static int thread_loader(void* in)
 	memset(localargs, 0xba, sizeof(struct thread_loader_args));
 	free(localargs);
 
-	return 0;
+
+	return NULL;
 }
 
 /* create a new vobj, fill it out with enough vals that we can treat it
  * as any other, but while the ASYNCIMG tag is active, it will be skipped in
  * rendering (linking, instancing etc. sortof works) but any external (script)
  * using the object before receiving a LOADED event may give undefined results */
-static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, intptr_t tag)
+static arcan_vobj_id loadimage_asynch(const char* fname, 
+	img_cons constraints, intptr_t tag)
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	arcan_vobject* dstobj = arcan_video_newvobject(&rv);
 	assert(dstobj);
 
-	struct thread_loader_args* args = (struct thread_loader_args*) calloc(sizeof(struct thread_loader_args), 1);
+	struct thread_loader_args* args = calloc(sizeof(struct thread_loader_args),1);
 	args->dstid = rv;
 	args->dst = dstobj;
 
@@ -1898,7 +1956,8 @@ static arcan_vobj_id loadimage_asynch(const char* fname, img_cons constraints, i
 	args->tag = tag;
 	args->constraints = constraints;
 	dstobj->feed.state.tag = ARCAN_TAG_ASYNCIMG;
-	dstobj->feed.state.ptr = (void*) SDL_CreateThread(thread_loader, (void*) args);
+	dstobj->feed.state.ptr = malloc(sizeof(pthread_t));
+	pthread_create((pthread_t*) dstobj->feed.state.ptr, NULL, thread_loader, (void*) args);
 
 	return rv;
 }
@@ -1911,8 +1970,10 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 	if (vobj){
 		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG){
 		/* protect us against premature invocation */
-			int status;
-			SDL_WaitThread((SDL_Thread*)vobj->feed.state.ptr, &status);
+			pthread_join(*(pthread_t*) vobj->feed.state.ptr, NULL);
+			free(vobj->feed.state.ptr);
+			vobj->feed.state.ptr = NULL;
+
 			push_globj(vobj, &vobj->gl_storage.glid, vobj->gl_storage.w, 
 				vobj->gl_storage.h, false, vobj->default_frame.raw);
 
@@ -2127,12 +2188,14 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,
 	return rv;
 }
 
-arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state, img_cons constraints, unsigned short zv)
+arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed, vfunc_state state,
+	img_cons constraints, unsigned short zv)
 {
 	arcan_vobj_id rv;
 	const int feed_ntus = 1;
 
-	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus, constraints.bpp)) > 0) {
+	if ((rv = arcan_video_setupfeed(feed, constraints, feed_ntus,
+		constraints.bpp)) > 0) {
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		vobj->order = abs(zv);
 		vobj->feed.state = state;
@@ -2153,8 +2216,10 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 
 	if (vobj){
 		generate_basic_mapping(vobj->txcos, 1.0, 1.0);
-		vobj->txcos[0] *= sfs; 	vobj->txcos[2] *= sfs; 	vobj->txcos[4] *= sfs; 	vobj->txcos[6] *= sfs;
-		vobj->txcos[1] *= sft; 	vobj->txcos[3] *= sft; 	vobj->txcos[5] *= sft; 	vobj->txcos[7] *= sft;
+		vobj->txcos[0] *= sfs; 	vobj->txcos[2] *= sfs; 	
+		vobj->txcos[4] *= sfs; 	vobj->txcos[6] *= sfs;
+		vobj->txcos[1] *= sft; 	vobj->txcos[3] *= sft; 	
+		vobj->txcos[5] *= sft; 	vobj->txcos[7] *= sft;
 
 		rv = ARCAN_OK;
 	}
@@ -2714,8 +2779,11 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 
 /* synchronize with the threadloader so we don't get a race */
-		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
-			SDL_WaitThread( vobj->feed.state.ptr, NULL );
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG){
+			pthread_join(*(pthread_t*) vobj->feed.state.ptr, NULL);
+			free(vobj->feed.state.ptr);
+			vobj->feed.state.ptr = NULL;
+		}
 
 		free(vobj->frameset);
 		vobj->frameset = NULL;

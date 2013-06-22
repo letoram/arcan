@@ -3952,12 +3952,11 @@ int arcan_lua_setscalemode(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
 
-	if (num == ARCAN_VIMAGE_NOPOW2 || num == ARCAN_VIMAGE_TXCOORD ||
-		num == ARCAN_VIMAGE_SCALEPOW2){
+	if (num == ARCAN_VIMAGE_NOPOW2 || num == ARCAN_VIMAGE_SCALEPOW2){
 		arcan_video_default_scalemode(num);
 	} else {
 		arcan_fatal("arcan_lua_setscalemode(%d), invalid scale-mode specified. Expecting:"
-		"SCALE_NOPOW2, SCALE_POW2 or SCALE_TXCOORD\n", num);
+		"SCALE_NOPOW2, SCALE_POW2 \n", num);
 	}
 
 	return 0;
@@ -4601,7 +4600,6 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FILTER_BILINEAR",  ARCAN_VFILTER_BILINEAR },
 {"FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR},
 {"SCALE_NOPOW2",     ARCAN_VIMAGE_NOPOW2},
-{"SCALE_TXCOORD",    ARCAN_VIMAGE_TXCOORD},
 {"SCALE_POW2",       ARCAN_VIMAGE_SCALEPOW2},
 {"IMAGEPROC_NORMAL", imageproc_normal},
 {"IMAGEPROC_FLIPH",  imageproc_fliph },

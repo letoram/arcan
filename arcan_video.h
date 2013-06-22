@@ -73,8 +73,7 @@ enum arcan_vfilter_mode {
 
 enum arcan_vimage_mode {
 	ARCAN_VIMAGE_NOPOW2 = 0,
-	ARCAN_VIMAGE_TXCOORD = 1,
-	ARCAN_VIMAGE_SCALEPOW2 = 2
+	ARCAN_VIMAGE_SCALEPOW2 = 1 
 };
 
 enum arcan_transform_mask {

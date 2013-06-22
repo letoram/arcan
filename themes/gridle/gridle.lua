@@ -1708,11 +1708,15 @@ function error_nogames()
 	else
 		resize_image(dbhelp, VRESW, VRESH);
 	end
-	
+
+	dispatch_push({}, "nogames", function(iotbl)
+		if (iotbl.kind == "digital" and iotbl.active) then
+			shutdown();
+		end
+	end, 0); 
+
 	show_image(bg);
 	show_image(dbhelp);
-	
-	gridle_input = nil;
 end
 
 -- these should match those of 

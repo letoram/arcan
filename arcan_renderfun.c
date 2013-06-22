@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
  *
  */
 #include <stdint.h>
@@ -32,9 +32,7 @@
 #define ARCAN_FONT_CACHE_LIMIT 8
 #endif
 
-#include <SDL.h>
-#include <SDL_opengl.h>
-#include <SDL_byteorder.h>
+#include GL_HEADERS
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -161,8 +159,69 @@ void arcan_video_reset_fontcache()
 		}
 }
 
-TTF_Surface* text_loadimage(const char* const infn, img_cons constraints)
+#ifndef TEXT_EMBEDDEDICON_MAXW 
+#define TEXT_EMBEDDEDICON_MAXW 256
+#endif
+
+#ifndef TEXT_EMBEDDEDICON_MAXH
+#define TEXT_EMBEDDEDICON_MAXH 256
+#endif
+
+TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 {
+	char* path = arcan_find_resource(infn, 
+		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
+	
+	data_source inres = arcan_open_resource(path);
+
+	free(path);
+	if (inres.fd == BADFD)
+		return NULL; 
+
+	map_region inmem = arcan_map_resource(&inres, false);
+	if (inmem.ptr == NULL){
+		arcan_release_resource(&inres);
+		return NULL;
+	}
+
+	char* imgbuf = NULL;
+	int inw, inh;
+
+	arcan_errc rv = arcan_img_decode(infn,inmem.ptr,inmem.sz,&imgbuf,&inw,&inh,
+		false, malloc);
+
+/* stretchblit is assumed to deal with the edgecase of 
+ * w ^ h being 0 */
+	if (cons.w > TEXT_EMBEDDEDICON_MAXW || inw > TEXT_EMBEDDEDICON_MAXW)
+		cons.w = TEXT_EMBEDDEDICON_MAXW;
+
+	if (cons.h > TEXT_EMBEDDEDICON_MAXH || inh > TEXT_EMBEDDEDICON_MAXH)
+		cons.h = TEXT_EMBEDDEDICON_MAXH;
+	
+	arcan_release_map(inmem);
+	arcan_release_resource(&inres);
+	
+	if (imgbuf && rv == ARCAN_OK){
+		TTF_Surface* res = malloc(sizeof(TTF_Surface));
+		res->bpp    = GL_PIXEL_BPP;
+		
+		if ((cons.w != 0 && cons.h != 0) && (inw != cons.w || inh != cons.h)){
+			uint32_t* scalebuf = malloc(cons.w * cons.h * GL_PIXEL_BPP);
+			stretchblit(imgbuf, inw, inh, scalebuf, cons.w, cons.h, false); 
+			free(imgbuf);
+			res->width  = cons.w;
+			res->height = cons.h;
+			res->data   = (char*) scalebuf;
+		} else {
+			res->width  = inw;
+			res->height = inh;
+			res->data   = imgbuf;
+		}	
+			
+		res->stride = res->width * GL_PIXEL_BPP;
+		return res;
+	}
+
 	return NULL;
 }
 
@@ -261,7 +320,8 @@ static char* extract_image_simple(struct text_format* prev, char* base){
 		return base;
 	}
 	else{
-		arcan_warning("Warning: arcan_video_renderstring(), missing resource name.\n");
+		arcan_warning("Warning: arcan_video_renderstring(),"
+		"	missing resource name.\n");
 		return NULL;
 	}
 }
@@ -327,7 +387,8 @@ static char* extract_image(struct text_format* prev, char* base)
 		return base;
 	}
 	else{
-		arcan_warning("Warning: arcan_video_renderstring(), missing resource name.\n");
+		arcan_warning("Warning: arcan_video_renderstring()"
+		", missing resource name.\n");
 		return NULL;
 	}
 }
@@ -335,7 +396,8 @@ static char* extract_image(struct text_format* prev, char* base)
 static struct text_format formatend(char* base, struct text_format prev, 
 	char* orig, bool* ok) {
 	struct text_format failed = {0};
-	prev.newline = prev.tab = prev.cr = 0; /* don't carry caret modifiers */
+/* don't carry caret modifiers */
+	prev.newline = prev.tab = prev.cr = 0; 
 	bool inv = false;
 	while (*base) {
 /* skip whitespace */
@@ -345,9 +407,9 @@ static struct text_format formatend(char* base, struct text_format prev,
 		if (*base != '\\') { prev.endofs = base; break; }
 
 /* all the supported formatting characters;
- * b = bold, i = italic, u = underline, n = newline, r = carriage return, t = tab
- * ! = inverse (bold,italic,underline), #rrggbb = setcolor, fpath,size = setfont,
- * Pwidth,height,fname(, or NULL) extract 
+ * b = bold, i = italic, u = underline, n = newline, r = carriage return,
+ * t = tab ! = inverse (bold,italic,underline), #rrggbb = setcolor, 
+ * fpath,size = setfont, Pwidth,height,fname(, or NULL) extract 
  * pwidth,height = embedd image (width, height optional) */
 	char cmd;
 
@@ -394,7 +456,8 @@ retry:
 	return prev;
 }
 
-static inline void currstyle_cnode(struct text_format* curr_style, const char* const base, struct rcell* cnode, bool sizeonly)
+static inline void currstyle_cnode(struct text_format* curr_style, 
+	const char* const base, struct rcell* cnode, bool sizeonly)
 {
 	if (!sizeonly){
 		cnode->surface = true;
@@ -406,14 +469,16 @@ static inline void currstyle_cnode(struct text_format* curr_style, const char* c
 		}
 		else if (curr_style->font){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			cnode->data.surf = TTF_RenderUTF8(curr_style->font, base, curr_style->col);
+			cnode->data.surf = TTF_RenderUTF8(curr_style->font,base,curr_style->col);
 		}
 		else{
-			arcan_warning("Warning: arcan_video_renderstring(), broken font specifier.\n");
+			arcan_warning("Warning: arcan_video_renderstring()"
+				", broken font specifier.\n");
 		}
 
 		if (!cnode->data.surf)
-			arcan_warning("Warning: arcan_video_renderstring(), couldn't render node.\n");
+			arcan_warning("Warning: arcan_video_renderstring()"
+			", couldn't render node.\n");
 	}
 
 /* just figure out the dimensions */
@@ -591,7 +656,7 @@ static void dumptchain(struct rcell* node)
 }
 
 void arcan_video_stringdimensions(const char* message, int8_t line_spacing, 
-	int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, unsigned int* maxh)
+	int8_t tab_spacing, unsigned* tabs, unsigned* maxw, unsigned* maxh)
 {
 	if (!message)
 		return;
@@ -656,7 +721,8 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
 }
 
 /* assumes surf dimensions fit within dst without clipping */	
-static inline void copy_rect(TTF_Surface* surf, uint32_t* dst, int pitch, int x, int y)
+static inline void copy_rect(TTF_Surface* surf, uint32_t* dst, 
+	int pitch, int x, int y)
 {
 	uint32_t* wrk = (uint32_t*) surf->data;
 
@@ -669,7 +735,7 @@ static inline void copy_rect(TTF_Surface* surf, uint32_t* dst, int pitch, int x,
  * (i.e. everything is padded to power of two and txco hacked),
  * partly because this is all planned to be transformed to using proper
  * text-texture packing and more clever antialiasing */
-arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, 
+arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 	int8_t tab_spacing, unsigned int* tabs, unsigned int* n_lines, 
 	unsigned int** lineheights, arcan_vobj_id did)
 {
@@ -743,8 +809,8 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 
 		if (!vobj){
 			arcan_fatal("Fatal: arcan_video_renderstring(), "
-				"couldn't allocate video object. Out of Memory or out of IDs in current "
-				"context. There is likely a resource leak in the scripts of the current "
+				"couldn't allocate video object. Out of Memory or out of IDs in current"
+				"context. There is likely a resource leak in the scripts of the current"
 				"theme.\n");
 		}
 
@@ -876,7 +942,8 @@ typedef struct tColorY {
 	Uint8 y;
 } tColorY;
 
-int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitch, int flipy)
+int stretchblit(char* src, int inw, int inh, 
+	uint32_t* dst, int dstw, int dsth, int flipy)
 {
 	int x, y, sx, sy, ssx, ssy, *sax, *say, *csax, *csay, *salast;
 	int csx, csy, ex, ey, cx, cy, sstep, sstepx, sstepy;
@@ -894,16 +961,16 @@ int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitc
 		return (-1);
 	}
 
-	spixelw = (src->w - 1);
-	spixelh = (src->h - 1);
+	spixelw = (inw - 1);
+	spixelh = (inh - 1);
 	sx = (int) (65536.0 * (float) spixelw / (float) (dstw - 1));
 	sy = (int) (65536.0 * (float) spixelh / (float) (dsth - 1));
 	
-	/* Maximum scaled source size */
-	ssx = (src->w << 16) - 1;
-	ssy = (src->h << 16) - 1;
+/* Maximum scaled source size */
+	ssx = (inw << 16) - 1;
+	ssy = (inh << 16) - 1;
 	
-	/* Precalculate horizontal row increments */
+/* Precalculate horizontal row increments */
 	csx = 0;
 	csax = sax;
 	for (x = 0; x <= dstw; x++) {
@@ -911,13 +978,13 @@ int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitc
 		csax++;
 		csx += sx;
 		
-		/* Guard from overflows */
+/* Guard from overflows */
 		if (csx > ssx) { 
 			csx = ssx; 
 		}
 	}
 	 
-	/* Precalculate vertical row increments */
+/* Precalculate vertical row increments */
 	csy = 0;
 	csay = say;
 	for (y = 0; y <= dsth; y++) {
@@ -925,18 +992,20 @@ int stretchblit(SDL_Surface* src, uint32_t* dst, int dstw, int dsth, int dstpitc
 		csay++;
 		csy += sy;
 		
-		/* Guard from overflows */
+/* Guard from overflows */
 		if (csy > ssy) {
 			csy = ssy;
 		}
 	}
 
-	sp = (tColorRGBA *) src->pixels;
+	sp = (tColorRGBA *) src;
 	dp = (tColorRGBA *) dst;
-	dgap = dstpitch - dstw * 4;
-	spixelgap = src->pitch/4;
 
-	if (flipy) sp += (spixelgap * spixelh);
+	dgap = 0;
+	spixelgap = inw;
+
+	if (flipy) 
+		sp += (spixelgap * spixelh);
 
 	csay = say;
 	for (y = 0; y < dsth; y++) {

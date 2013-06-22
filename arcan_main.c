@@ -206,6 +206,7 @@ int main(int argc, char* argv[])
 		break;
 	case 'r' :
 		scalemode = strtol(optarg, NULL, 10);
+		printf("scalemode: %d\n", scalemode);
 		if (scalemode != ARCAN_VIMAGE_NOPOW2 && scalemode != 
 			ARCAN_VIMAGE_SCALEPOW2 && scalemode){
 			arcan_warning("Warning: main(), -r, invalid scalemode. Ignoring.\n");
