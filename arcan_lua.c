@@ -4916,6 +4916,7 @@ glstore_h = %d,\
 glstore_bpp = %d,\
 glstore_txu = %d,\
 glstore_txv = %d,\
+glstore_prg = [[%s]],\
 scalemode  = [[%s]],\
 imageproc = [[%s]],\
 filtermode = [[%s]],\
@@ -4923,41 +4924,41 @@ flags = \"%s\",\
 mask = \"%s\",\
 tracetag = [[%s]],\
 };",
-	(int) src->origw,
-	(int) src->origh,
-	(int) src->order,
-	(int) src->last_updated,
-	(int) src->lifetime,
-	(int) src->cellid,
-	(int) src->frameset_meta.capacity,
-	(int) src->frameset_meta.mode,
-	(int) src->frameset_meta.counter,
-	(int) src->frameset_meta.current,
-	(int) src->extrefc.framesets,
-	(int) src->extrefc.instances,
-	(int) src->extrefc.attachments,
-	(int) src->extrefc.links,
-	src->default_frame.source ? src->default_frame.source : "unknown",
-	(int) src->default_frame.s_raw,
-	(int) src->gl_storage.glid,
-	(int) src->gl_storage.w,
-	(int) src->gl_storage.h,
-	(int) src->gl_storage.bpp,
-	(int) src->gl_storage.txu,
-	(int) src->gl_storage.txv,
-	lut_scale(src->scale),
-	lut_imageproc(src->imageproc),
-	lut_filtermode(src->filtermode),
-	vobj_flags(src), 
-	mask,
-	src->tracetag ? src->tracetag : "no tag");
+(int) src->origw,
+(int) src->origh,
+(int) src->order,
+(int) src->last_updated,
+(int) src->lifetime,
+(int) src->cellid,
+(int) src->frameset_meta.capacity,
+(int) src->frameset_meta.mode,
+(int) src->frameset_meta.counter,
+(int) src->frameset_meta.current,
+(int) src->extrefc.framesets,
+(int) src->extrefc.instances,
+(int) src->extrefc.attachments,
+(int) src->extrefc.links,
+src->default_frame.source ? src->default_frame.source : "unknown",
+(int) src->default_frame.s_raw,
+(int) src->gl_storage.glid,
+(int) src->gl_storage.w,
+(int) src->gl_storage.h,
+(int) src->gl_storage.bpp,
+(int) src->gl_storage.txu,
+(int) src->gl_storage.txv,
+arcan_shader_lookuptag(src->gl_storage.program),
+lut_scale(src->gl_storage.scale),
+lut_imageproc(src->gl_storage.imageproc),
+lut_filtermode(src->gl_storage.filtermode),
+vobj_flags(src), 
+mask,
+src->tracetag ? src->tracetag : "no tag");
 
 	free(mask);
 }
 
 /*
  * missing;
- *  gl_storage info (shader etc.)
  *  frameset_framemode
  *  transform_chains
  *  texture_coordinates
@@ -4989,7 +4990,8 @@ fprintf(dst,
 	vcontexts = {}\
 };\
 ", disp->width, disp->height, disp->conservative ? 1 : 0, disp->vsync ? 1 : 0, 
-	(int)disp->msasamples, (long long int)disp->c_ticks, (int)disp->default_vitemlim,
+	(int)disp->msasamples, (long long int)disp->c_ticks, 
+	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
 
 /* foreach context, header */

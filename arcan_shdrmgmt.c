@@ -133,10 +133,12 @@ static struct {
 } shdr_global = {.base = 10000, .active_prg = -1, .guard = 64};
 
 
-static bool build_shader(const char*, GLuint*, GLuint*, GLuint*, const char*, const char*);
+static bool build_shader(const char*, GLuint*, GLuint*, GLuint*, 
+	const char*, const char*);
 static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg);
 
-static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, const char* program)
+static void setv(GLint loc, enum shdrutype kind, void* val, 
+	const char* id, const char* program)
 {
 #ifdef SHADER_TRACE
 	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n", loc, typestrtbl[kind], kind, id, program);
@@ -146,21 +148,28 @@ static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, cons
 	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:pre") == -1){
 		arcan_warning("setv() -> errors found when pumping context.\n");
         abort();
-    }
+  }
 
 #endif
 /* add more as needed, just match the current shader_envts */
 	switch (kind){
-		case shdrbool:
-		case shdrint:
-			glUniform1i(loc, *(GLint*) val); break;
+	case shdrbool:
+	case shdrint:
+		glUniform1i(loc, *(GLint*) val); break;
 
-		case shdrfloat: glUniform1f(loc, ((GLfloat*) val)[0]); break;
-		case shdrvec2:  glUniform2f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1]); break;
-		case shdrvec3:  glUniform3f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1], ((GLfloat*) val)[2]); break;
-		case shdrvec4:  glUniform4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1], ((GLfloat*) val)[2], ((GLfloat*) val)[3]); break;
-
-		case shdrmat4x4: glUniformMatrix4fv(loc, 1, false, (GLfloat*) val); break;
+	case shdrfloat : glUniform1f(loc, ((GLfloat*) val)[0]);
+									 break;
+	case shdrvec2  : glUniform2f(loc, ((GLfloat*) val)[0], 
+																	  ((GLfloat*) val)[1]); 
+									 break;
+	case shdrvec3  : glUniform3f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1],
+																	  ((GLfloat*) val)[2]); 
+									 break;
+	case shdrvec4  : glUniform4f(loc, ((GLfloat*) val)[0], ((GLfloat*) val)[1], 
+																	  ((GLfloat*) val)[2], ((GLfloat*) val)[3]); 
+									 break;
+	case shdrmat4x4: glUniformMatrix4fv(loc, 1, false, (GLfloat*) val); 
+									 break;
 	}
 
 #ifdef _DEBUG
@@ -168,7 +177,8 @@ static void setv(GLint loc, enum shdrutype kind, void* val, const char* id, cons
 		int progno;
 		glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
 
-		printf("failed operation: store type(%i:%s) into slot(%i:%s) on program(%i:%s)\n", kind, typestrtbl[kind], loc, id, progno, program);
+		printf("failed operation: store type(%i:%s) into slot(%i:%s)"
+		"	on program(%i:%s)\n", kind, typestrtbl[kind], loc, id, progno, program);
 		struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
 		printf("last active shader: (%s), locals: \n", src->label);
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
@@ -193,22 +203,25 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
  		shdr_global.active_prg = shid;
 
 #ifdef SHADER_TRACE
-		arcan_warning("[shader] shid(%d) => (%d), activate %s\n", shid, cur->prg_container, cur->label);
+		arcan_warning("[shader] shid(%d) => (%d), activate %s\n", 
+			shid, cur->prg_container, cur->label);
 #endif
 
-/* NOTE: optimization opportunity; since we cache the data in each persistv, only activate those
- * that have changed since last push. */
+/* NOTE: optimization opportunity; since we cache the data in each persistv, 
+ * only activate those that have changed since last push. */
 /* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
  * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
 			if (cur->locations[i] >= 0)
-				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context) + ofstbl[i], symtbl[i], cur->label);
+				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context)
+					+ ofstbl[i], symtbl[i], cur->label);
 		}
 
 /* activate any persistant values */
 		struct shaderv* current = cur->persistvs;
 		while (current){
-			setv(current->loc, current->type, (void*) current->data, current->label, cur->label);
+			setv(current->loc, current->type, (void*) current->data, 
+				current->label, cur->label);
 			current = current->next;
 		}
 	}
@@ -218,21 +231,48 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 
 arcan_shader_id arcan_shader_lookup(const char* tag)
 {
-		for (int i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++){
-			if (shdr_global.slots[i].label && strcmp(tag, shdr_global.slots[i].label) == 0)
+		for (int i = 0; i < sizeof(shdr_global.slots) / 
+			sizeof(shdr_global.slots[0]); i++){
+			if (shdr_global.slots[i].label && 
+				strcmp(tag, shdr_global.slots[i].label) == 0)
 				return i + shdr_global.base;
 		}
 
 	return -1;
 }
 
+const char* arcan_shader_lookuptag(arcan_shader_id id)
+{
+	if (!arcan_shader_valid(id))
+		return NULL;
+
+	return shdr_global.slots[id - shdr_global.base].label;
+}
+
+bool arcan_shader_lookupprgs(arcan_shader_id id, 
+	const char** vert, const char** frag)
+{
+	if (!arcan_shader_valid(id))
+		return false;
+
+	if (vert)
+		*vert = shdr_global.slots[id - shdr_global.base].vertex;
+
+	if (frag)
+		*frag = shdr_global.slots[id - shdr_global.base].fragment;
+
+	return true;
+}
+
 bool arcan_shader_valid(arcan_shader_id id)
 {
 	id -= shdr_global.base;
-	return (id >= 0 && id < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]) && shdr_global.slots[id].label != NULL);
+	return (id >= 0 && id < sizeof(shdr_global.slots) / 
+		sizeof(shdr_global.slots[0]) && shdr_global.slots[id].label != NULL);
 }
 
-arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char* vert, const char* frag)
+arcan_shader_id arcan_shader_build(const char* tag, const char* geom, 
+	const char* vert, const char* frag)
 {
 	int slot_lim = sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]);
 	bool overwrite = false;
@@ -240,7 +280,8 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 
 /* first, look for a preexisting tag */
 	for (unsigned i = 0; i < slot_lim; i++)
-		if (shdr_global.slots[i].label && strcmp(shdr_global.slots[i].label, tag) == 0){
+		if (shdr_global.slots[i].label && 
+			strcmp(shdr_global.slots[i].label, tag) == 0){
 			dstind = i;
 			overwrite = true;
 			break;
@@ -291,7 +332,8 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 	for (int i = 0; i < global_lim; i++)
 		cur->locations[i] = -1;
 
-	if (build_shader(tag, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment, vert, frag) == false)
+	if (build_shader(tag, &cur->prg_container, &cur->obj_vertex, 
+			&cur->obj_fragment, vert, frag) == false)
 		return ARCAN_EID;
 
 	cur->label    = strdup(tag);
@@ -299,7 +341,8 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 	cur->fragment = strdup(frag);
 
 #ifdef _DEBUG
-			arcan_warning("arcan_shader_build(%s) -- new ID : (%i)\n", tag, cur->prg_container);
+	arcan_warning("arcan_shader_build(%s) -- new ID : (%i)\n", 
+		tag, cur->prg_container);
 #endif
 
 /* preset global symbol mappings */
@@ -309,7 +352,8 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 		cur->locations[i] = glGetUniformLocation(cur->prg_container, symtbl[i]);
 #ifdef _DEBUG
 		if(cur->locations[i] != -1)
-				arcan_warning("arcan_shader_build(%s)(%d), resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
+				arcan_warning("arcan_shader_build(%s)(%d), "
+				"resolving uniform: %s to %i\n", tag, i, symtbl[i], cur->locations[i]);
 #endif
 	}
 
@@ -318,7 +362,8 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom, const char
 		cur->attributes[i] = glGetAttribLocation(cur->prg_container, attrsymtbl[i]);
 #ifdef _DEBUG
 	if (cur->attributes[i] != -1)
-				arcan_warning("arcan_shader_build(%s)(%d), resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
+		arcan_warning("arcan_shader_build(%s)(%d), "
+			"resolving attribute: %s to %i\n", tag, i, attrsymtbl[i], cur->attributes[i]);
 #endif
 	}
 
@@ -346,7 +391,8 @@ bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 	/* reflect change in current active shader */
 	if (glloc != -1){
 		assert(size == sizetbl[ typetbl[slot] ]);
-		setv(glloc, typetbl[slot], value, symtbl[slot], shdr_global.slots[ shdr_global.active_prg].label );
+		setv(glloc, typetbl[slot], value, symtbl[slot], 
+			shdr_global.slots[ shdr_global.active_prg].label );
 		return true;
 	}
 
@@ -358,13 +404,15 @@ GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
 	return shdr_global.slots[ shdr_global.active_prg ].attributes[ attr ];
 }
 
-void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value, bool persist)
+void arcan_shader_forceunif(const char* label, enum shdrutype type, 
+	void* value, bool persist)
 {
 	GLint loc;
 	assert(shdr_global.active_prg != -1);
 	struct shader_cont* slot = &shdr_global.slots[shdr_global.active_prg];
 
-/* try to find a matching label, if one is found, just replace the loc and copy the value */
+/* try to find a matching label, if one is found, just replace 
+ * the loc and copy the value */
 	if (persist) {
 /* linear search */
 		struct shaderv** current = &(slot->persistvs);
@@ -376,7 +424,8 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 		if (*current){
 			loc = (*current)->loc;
 			if ((*current)->type != type)
-				arcan_warning("arcan_shader_forceunif(), type mismatch for persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
+				arcan_warning("arcan_shader_forceunif(), type mismatch for "
+					"persistant shader uniform (%s:%i=>%i), ignored.\n", label, loc, type);
 		}
 		else {
 			loc = glGetUniformLocation(slot->prg_container, label);
@@ -396,12 +445,14 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type, void* value,
 	if (loc >= 0){
 		setv(loc, type, value, label, slot->label);
 #ifdef DEBUG
-		arcan_warning("arcan_shader_forceunif(): setting uniform %s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
+		arcan_warning("arcan_shader_forceunif(): setting uniform %s in"
+			"	shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
 #endif
 	}
 #ifdef DEBUG
 	else
-		arcan_warning("arcan_shader_forceunif(): no matching location found for %s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
+		arcan_warning("arcan_shader_forceunif(): no matching location found for"
+			"%s in shader: %s\n", label, shdr_global.slots[shdr_global.active_prg].label);
 #endif
 }
 
@@ -418,7 +469,8 @@ static void kill_shader(GLuint* dprg, GLuint* vprg, GLuint* fprg){
 	*dprg = *vprg = *fprg = 0;
 }
 
-static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
+static bool build_shader(const char* label, GLuint* dprg, 
+	GLuint* vprg, GLuint* fprg, const char* vprogram, const char* fprogram)
 {
 	char buf[256];
 	int rlen;
@@ -440,13 +492,15 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 	glGetShaderInfoLog(*vprg, 256, &rlen, buf);
 
 	if (rlen){
-		arcan_warning("Warning: Couldn't compile Shader vertex program(%s): %s\n", label, buf);
+		arcan_warning("Warning: Couldn't compile Shader vertex"
+			"	program(%s): %s\n", label, buf);
 		arcan_warning("Vertex Program: %s\n", vprogram);
 	}
 	glGetShaderInfoLog(*fprg, 256, &rlen, buf);
 
 	if (rlen){
-		arcan_warning("Warning: Couldn't compile Shader fragment Program(%s): %s\n", label, buf);
+		arcan_warning("Warning: Couldn't compile Shader fragment "
+			"Program(%s): %s\n", label, buf);
 		arcan_warning("Fragment Program: %s\n", fprogram);
 	}
 
@@ -464,7 +518,8 @@ static bool build_shader(const char* label, GLuint* dprg, GLuint* vprg, GLuint* 
 			glGetProgramInfoLog(*dprg, 256, &rlen, buf);
 
 			if (rlen)
-				arcan_warning("Warning: Problem linking Shader Program(%s): %s\n", label, buf);
+				arcan_warning("Warning: Problem linking Shader "
+					"Program(%s): %s\n", label, buf);
 
 			kill_shader(dprg, vprg, fprg);
 			return false;
@@ -481,7 +536,8 @@ const char* arcan_shader_symtype(enum arcan_shader_envts env)
 
 void arcan_shader_flush()
 {
-	for (unsigned i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++){
+	for (unsigned i = 0; i < sizeof(shdr_global.slots) 
+		/ sizeof(shdr_global.slots[0]); i++){
 		struct shader_cont* cur = shdr_global.slots + i;
 		if (cur->label == NULL)
 			continue;
@@ -511,13 +567,14 @@ void arcan_shader_flush()
 
 void arcan_shader_rebuild_all()
 {
-	for (unsigned i = 0; i < sizeof(shdr_global.slots) / sizeof(shdr_global.slots[0]); i++){
+	for (unsigned i = 0; i < sizeof(shdr_global.slots) /
+			sizeof(shdr_global.slots[0]); i++){
 		struct shader_cont* cur = shdr_global.slots + i;
 		if (cur->label == NULL)
 			continue;
 
-		build_shader(cur->label, &cur->prg_container, &cur->obj_vertex, &cur->obj_fragment,
-			cur->vertex, cur->fragment);
+		build_shader(cur->label, &cur->prg_container, &cur->obj_vertex, 
+			&cur->obj_fragment, cur->vertex, cur->fragment);
 	}
 }
 
