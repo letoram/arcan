@@ -38,7 +38,8 @@ struct arcan_vobject_litem;
 struct arcan_vobject;
 
 struct rendertarget {
-/* depth and stencil are combined as stencil_index formats have poor driver support */
+/* depth and stencil are combined as stencil_index 
+ * formats have poor driver support */
 	unsigned fbo, depth;
 
 /* only used / allocated if readback != 0 */ 
@@ -48,17 +49,20 @@ struct rendertarget {
 	float base[16];  
 	float projection[16];
 	
-/* readback == 0, no readback. Otherwise, a readback is requested every abs(readback) frames
- * if readback is negative, or readback ticks if it is positive */
+/* readback == 0, no readback. Otherwise, a readback is requested 
+ * every abs(readback) frames. if readback is negative, 
+ * or readback ticks if it is positive */
 	int readback;
 	long long readcnt;
 
-/* flagged after a PBO readback has been issued, cleared when buffer have been mapped */
+/* flagged after a PBO readback has been issued, 
+ * cleared when buffer have been mapped */
 	bool readreq; 
 
 	enum rendertarget_mode mode;
 
-/* color representes the attached vid, first is the pipeline (subset of context vid pool) */
+/* color representes the attached vid, 
+ * first is the pipeline (subset of context vid pool) */
 	struct arcan_vobject* color;
 	struct arcan_vobject_litem* first;
 };
@@ -121,7 +125,8 @@ struct storage_info_t {
 
 typedef struct arcan_vobject {
 /* image-storage / reference,
- * current_frame is set to default_frame, but could well reference another object (frameset) */
+ * current_frame is set to default_frame, but could well reference 
+ * another object (frameset) */
 	arcan_vstorage default_frame;
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
@@ -152,17 +157,18 @@ typedef struct arcan_vobject {
 	enum arcan_blendfunc blendmode;
 
 	struct {
-		bool in_use;         /* must be set for any operation other than allocate to be valid */
-		bool clone;          /* limits the set of allowed operations from those that allocate resources or link */
+		bool in_use;         /* must be set for any operation other than allocate */
+		bool clone;          /* limited features, inherits from another obj */ 
 		bool cliptoparent;   /* only draw to the parent object surface area */
 		bool asynchdisable;  /* don't run any asynchronous loading operations */
-		bool cycletransform; /* when a transform is finished, attach it to the end */
-		bool origoofs;       /* when the user defines a world-space coordinate as center for rotation */
+		bool cycletransform; /* when a transform is finished, attach it to the end*/
+		bool origoofs;       /* use world-space coordinate as center for rotation */
 		bool orderofs;       /* ofset is relative parent */
 
-/* with this flag set, the object will be maintained in every "higher" context position, and only deleted if
- * pop:ed off without existing in a lower layer. They can't be rendertargets, nor be instanced or linked (anything
- * that would allow for dangling references) primary use is for frameserver connections */
+/* with this flag set, the object will be maintained in every "higher" context
+ * position, and only deleted if pop:ed off without existing in a lower layer.
+ * They can't be rendertargets, nor be instanced or linked (anything that would
+ * allow for dangling references) primary use is for frameserver connections */
 		bool persist;
 	} flags;
 	
@@ -183,7 +189,8 @@ typedef struct arcan_vobject {
 	struct rendertarget* owner;
 	arcan_vobj_id cellid;
 
-/* for integrity checks, a destructive operation on a !0 reference count is a terminal state */
+/* for integrity checks, a destructive operation on a 
+ * !0 reference count is a terminal state */
 	struct {
 		signed framesets;
 		signed instances;
@@ -230,12 +237,13 @@ struct arcan_video_display {
 };
 
 /* these all represent a subset of the current context that is to be drawn.
- * if (dest != NULL) this means that the vid actually represents a rendertarget, 
+ * if (dest != NULL) this means that the vid actually represents a rendertarget,
  * e.g. FBO. The mode defines which output buffers (color, depth, ...) 
- * that should be stored. Readback defines if we want a PBO- or glReadPixels style 
- * readback into the .raw buffer of the target. reset defines if any of the intermediate 
- * buffers should be cleared beforehand. first refers to the first object in the subset.
- * if first and dest are null, stop processing the list of rendertargets. */
+ * that should be stored. Readback defines if we want a PBO- or glReadPixels 
+ * style  readback into the .raw buffer of the target. reset defines if any of 
+ * the intermediate buffers should be cleared beforehand. first refers to the
+ * first object in the subset. if first and dest are null, stop processing
+ * the list of rendertargets. */
 struct arcan_video_context {
 	unsigned vitem_ofs;
 	unsigned vitem_limit;
@@ -256,14 +264,16 @@ extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
 
 int arcan_debug_pumpglwarnings(const char* src);
-void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props);
+void arcan_resolve_vidprop(arcan_vobject* vobj, 
+	float lerp, surface_properties* props);
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
-void arcan_video_setblend(const surface_properties* dprops, const arcan_vobject* elem);
+void arcan_video_setblend(const surface_properties* dprops, 
+	const arcan_vobject* elem);
 
 #ifdef _DEBUG
 void arcan_debug_tracetag_dump();

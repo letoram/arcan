@@ -4833,12 +4833,140 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
 }
 
+static const char* const vobj_flags(arcan_vobject* src)
+{
+	static char fbuf[64];
+	fbuf[0] = '\0';
+	if (src->flags.persist)
+		strcat(fbuf, "persist ");
+	if (src->flags.clone)
+		strcat(fbuf, "clone ");
+	if (src->flags.cliptoparent)
+		strcat(fbuf, "clip ");
+	if (src->flags.asynchdisable)
+		strcat(fbuf, "noasynch ");
+	if (src->flags.cycletransform)
+		strcat(fbuf, "cycletransform ");
+	if (src->flags.origoofs)
+		strcat(fbuf, "origo ");
+	if (src->flags.orderofs)
+		strcat(fbuf, "order ");
+	return fbuf;
+}
+
+static inline char* lut_filtermode(enum arcan_vfilter_mode mode)
+{
+	switch(mode){
+	case ARCAN_VFILTER_NONE     : return "none";
+	case ARCAN_VFILTER_LINEAR   : return "linear";
+	case ARCAN_VFILTER_BILINEAR : return "bilinear";
+	case ARCAN_VFILTER_TRILINEAR: return "trilinear";
+	}
+}
+
+static inline char* lut_imageproc(enum arcan_imageproc_mode mode)
+{
+	switch(mode){
+	case imageproc_normal: return "normal";
+	case imageproc_fliph : return "vflip";
+	}
+}
+
+static inline char* lut_scale(enum arcan_vimage_mode mode)
+{
+	switch(mode){
+	case ARCAN_VIMAGE_NOPOW2    : return "nopow2";
+	case ARCAN_VIMAGE_SCALEPOW2 : return "scalepow2"; 
+	}
+}
+
+static inline char* lut_framemode(enum arcan_framemode mode)
+{
+	switch(mode){
+	case ARCAN_FRAMESET_SPLIT        : return "split";
+	case ARCAN_FRAMESET_MULTITEXTURE : return "multitexture";
+	}
+}
+
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 {
+	char* mask = maskstr(src->mask);
+
 	fprintf(dst,
 "local vobj = {\
-	};");
+origw = %d,\
+origh = %d,\
+order = %d,\
+last_updated = %d,\
+lifetime = %d,\
+cellid = %d,\
+frameset_capacity = %d,\
+frameset_mode = %d,\
+frameset_counter = %d,\
+frameset_current = %d,\
+extrefc_framesets = %d,\
+extrefc_instances = %d,\
+extrefc_attachments = %d,\
+extrefc_links = %d,\
+storage_source = [[%s]],\
+storage_size = %d,\
+glstore_id = %d,\
+glstore_w = %d,\
+glstore_h = %d,\
+glstore_bpp = %d,\
+glstore_txu = %d,\
+glstore_txv = %d,\
+scalemode  = [[%s]],\
+imageproc = [[%s]],\
+filtermode = [[%s]],\
+flags = \"%s\",\
+mask = \"%s\",\
+tracetag = [[%s]],\
+};",
+	(int) src->origw,
+	(int) src->origh,
+	(int) src->order,
+	(int) src->last_updated,
+	(int) src->lifetime,
+	(int) src->cellid,
+	(int) src->frameset_meta.capacity,
+	(int) src->frameset_meta.mode,
+	(int) src->frameset_meta.counter,
+	(int) src->frameset_meta.current,
+	(int) src->extrefc.framesets,
+	(int) src->extrefc.instances,
+	(int) src->extrefc.attachments,
+	(int) src->extrefc.links,
+	src->default_frame.source ? src->default_frame.source : "unknown",
+	(int) src->default_frame.s_raw,
+	(int) src->gl_storage.glid,
+	(int) src->gl_storage.w,
+	(int) src->gl_storage.h,
+	(int) src->gl_storage.bpp,
+	(int) src->gl_storage.txu,
+	(int) src->gl_storage.txv,
+	lut_scale(src->scale),
+	lut_imageproc(src->imageproc),
+	lut_filtermode(src->filtermode),
+	vobj_flags(src), 
+	mask,
+	src->tracetag ? src->tracetag : "no tag");
+
+	free(mask);
 }
+
+/*
+ * missing;
+ *  gl_storage info (shader etc.)
+ *  frameset_framemode
+ *  transform_chains
+ *  texture_coordinates
+ *  blendmode
+ *  frameset
+ *  ffunc mask
+ *  current_frame reference
+ *  default_frame values
+ */
 
 void arcan_lua_statesnap(FILE* dst)
 {
@@ -4868,30 +4996,42 @@ fprintf(dst,
 fprintf(dst,
 "local ctx = {\
 	vobjs = {},\
+	rtargets = {}\
 };");
 	
 	int cctx = vcontext_ind;
 	while (cctx >= 0){
+		struct arcan_video_context* ctx = &vcontext_stack[cctx];
 		fprintf(dst, 
 "ctx.ind = %d;\
 ctx.alive = %d;\
 ctx.limit = %d;\
-ctx.tickstamp = %lld;", 1, 1, 1, (long long int)1);
+ctx.tickstamp = %lld;", 
+(int) cctx,
+(int) ctx->nalive,
+(int) ctx->vitem_limit,
+(long long int) ctx->last_tickstamp
+);
+
+		for (int i = 0; i < ctx->vitem_limit; i++){
+			if (ctx->vitems_pool[i].flags.in_use == false)
+				continue;
+
+			dump_vobject(dst, ctx->vitems_pool + i);
+			fprintf(dst, "\
+vobj.cellid_translated = %ld;\
+ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
+		}
+
+/* missing, rendertarget dump */
+
 		cctx--;
 	}
 
 /* foreach context, footer */
 fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
 
-/* sweep context stack, foreach context add header (inc. colour outp),
- * then each separate rendertarget
- * then the standard rendertarget
- * sweep the context twice (shallow / deep) and split by 3d/2d part and by 
- * frameserver/normal for shallow pass, skip framesets / links / inheritance 
- * and do that in the deep pass when we know the table is populated. 
- * and for each, do a complete object dump (transformation chain etc.) */
-
-	fprintf(dst, "return restbl;\n#ENDBLOCK\n");
+ 	fprintf(dst, "return restbl;\n#ENDBLOCK\n");
 	fflush(dst);
 }
 
@@ -4940,7 +5080,6 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* src)
 	if (done){
 /* buffering done, parse and propagate */
 		statebuf[statebuf_ofs] = '\0';
-		arcan_warning("got\n");
 		
 		lua_getglobal(ctx, "sample");
 		if (!lua_isfunction(ctx, -1)){
