@@ -1021,7 +1021,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 		dst = &current_context->world;
 
 /* can't relink clone to another object */
-	if (src && src->flags.clone)
+	if (src && (src->flags.clone || src->flags.persist))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 	else if (src && dst) {
 		arcan_vobject* current = dst;
@@ -2592,7 +2592,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 		vobj->cellid, video_tracetag(vobj));
 	assert(vobj->extrefc.attachments == 0);
 
-/* sweep the list of rendertarget children, and see if we have the responsibility of cleaning it up */
+/* sweep the list of rendertarget children, and see if we have the 
+ * responsibility of cleaning it up */
 	for (int i = 0; i < cascade_c; i++)
 		if (pool[i] && pool[i]->flags.in_use && pool[i]->owner == dst){
 			pool[i]->owner = NULL;
@@ -2606,8 +2607,10 @@ static void drop_rtarget(arcan_vobject* vobj)
 
 /* lightweight detach */
 //			(*base)->extrefc.attachments--;
-//			trace("(deleteobject::drop_rtarget) remove rendertarget (%d:%s) reference from (%d:%s)\n",
-//				vobj->cellid, video_tracetag(vobj), (*base)->cellid, video_tracetag(*base));
+//			trace("(deleteobject::drop_rtarget) remove rendertarget 
+//			(%d:%s) reference from (%d:%s)\n",
+//				vobj->cellid, video_tracetag(vobj), (*base)->cellid, 
+//				video_tracetag(*base));
 //			assert( (*base)->extrefc.attachments >= 0);
 
 /* revert to stdout */
@@ -2615,17 +2618,22 @@ static void drop_rtarget(arcan_vobject* vobj)
 	free(pool);
 }
 
-/* by far, the most involved and dangerous function in this .o, hence the many safe-guards checks and tracing output,
- * the simplest of objects (just an image or whatnot) should have a minimal cost, with everything going up from there.
+/* by far, the most involved and dangerous function in this .o, 
+ * hence the many safe-guards checks and tracing output,
+ * the simplest of objects (just an image or whatnot) should have a minimal cost, 
+ * with everything going up from there.
  * Things to consider:
- * persistence (existing in multiple stack layers, only allowed to be deleted IF it doesn't exist at a lower layer
+ * persistence (existing in multiple stack layers, only allowed to be deleted 
+ * IF it doesn't exist at a lower layer
  * cloning (instances of an object),
  * rendertargets (objects that gets rendered to)
  * links (objects linked to others to be deleted in a cascading fashion)
- * frameset (object with a n links to other objects that are used to determine what to draw currently).
+ * frameset (object with a n links to other objects that are used to determine 
+ * what to draw currently).
  *
- * an object can belong to either a parent object (ultimately, WORLD), one or more rendertargets, one or more framesets at
- * the same time, and these deletions should also sustain a full context wipe */
+ * an object can belong to either a parent object (ultimately, WORLD), 
+ * one or more rendertargets, one or more framesets at the same time, 
+ * and these deletions should also sustain a full context wipe */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;

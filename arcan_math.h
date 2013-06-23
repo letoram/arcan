@@ -15,16 +15,18 @@
  
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
  *
  */
 
 #ifndef _HAVE_ARCAN_MATH
 #define _HAVE_ARCAN_MATH
 
-/* I know it's dumb to roll your own mathlib by now,
+/*
+ * I know it's dumb to roll your own mathlib by now,
  * replace with something quick at your own leisure -- 
- * I use this as a refresher-course ;-) */
+ * I use this as a refresher-course ;-) 
+ */
 
 #define EPSILON 0.000001f
 #define DEG2RAD(X) (X * M_PI / 180)
@@ -99,13 +101,17 @@ void update_view(orientation* dst, float roll, float pitch, float yaw);
 float lerp_val(float a, float b, float f);
 float lerp_fract(unsigned startt, unsigned endt, float ct);
 
-void build_projection_matrix(float* m, float near, float far, float aspect, float fov);
+void build_projection_matrix(float* m, float near, float far, 
+	float aspect, float fov);
 void build_orthographic_matrix(float* m, const float left, const float right,
 	const float bottom, const float top, const float near, const float far);
 
-int project_matrix(float objx, float objy, float objz, const float model[16], const float projection[16], const int viewport[4], float*, float*, float*);
-void update_frustum(float* projection, float* modelview, float dstfrustum[6][4]);
+int project_matrix(float objx, float objy, float objz, const float model[16],
+	const float projection[16], const int viewport[4], float*, float*, float*);
+
+void update_frustum(float* projection, 
+	float* modelview, float dstfrustum[6][4]);
+
 /* comp.graphics.algorithms DAQ, Randolph Franklin */
 int pinpoly(int, float*, float*, float, float);
-
 #endif

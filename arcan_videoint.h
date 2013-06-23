@@ -15,8 +15,7 @@
  * 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
  */
 
 #ifndef _HAVE_ARCAN_VIDEOINT
@@ -91,9 +90,11 @@ struct transf_rotate{
 	surface_orientation starto, endo;
 };
 
-/* these are arranged in a linked list of slots,
+/* 
+ * these are arranged in a linked list of slots,
  * where one slot may contain one of each transform categories
- * and will be packed "to the left" each time any one of them finishes */
+ * and will be packed "to the left" each time any one of them finishes
+ */
 typedef struct surface_transform {
 
 	struct transf_move move;
@@ -124,20 +125,22 @@ struct storage_info_t {
 };
 
 typedef struct arcan_vobject {
-/* image-storage / reference,
+/*
+ * image-storage / reference,
  * current_frame is set to default_frame, but could well reference 
- * another object (frameset) */
+ * another object (frameset) 
+ */
 	arcan_vstorage default_frame;
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
 
 	struct arcan_vobject** frameset;
 	struct {
-		unsigned short capacity; /* only allowed to grow */
-		signed short mode; /* automatic cycling, > 0 per tick, < 0 per frame */
-		unsigned short counter; /* keeps track on steps left until cycle */
-		unsigned short current; /* current frame, might be "dst" */
-		enum arcan_framemode framemode; /* multitexture or just active frame */
+		unsigned short capacity;        /* only allowed to grow                   */
+		signed short mode;              /* cycling, > 0 per tick, < 0 per frame   */
+		unsigned short counter;         /* keeps track on steps left until cycle  */
+		unsigned short current;         /* current frame, might be "dst"          */
+		enum arcan_framemode framemode; /* multitexture or just active frame      */
 	} frameset_meta;
 	
 	struct storage_info_t gl_storage;
@@ -158,12 +161,12 @@ typedef struct arcan_vobject {
 
 	struct {
 		bool in_use;         /* must be set for any operation other than allocate */
-		bool clone;          /* limited features, inherits from another obj */ 
-		bool cliptoparent;   /* only draw to the parent object surface area */
-		bool asynchdisable;  /* don't run any asynchronous loading operations */
+		bool clone;          /* limited features, inherits from another obj       */
+		bool cliptoparent;   /* only draw to the parent object surface area       */
+		bool asynchdisable;  /* don't run any asynchronous loading operations     */
 		bool cycletransform; /* when a transform is finished, attach it to the end*/
 		bool origoofs;       /* use world-space coordinate as center for rotation */
-		bool orderofs;       /* ofset is relative parent */
+		bool orderofs;       /* ofset is relative parent                          */
 
 /* with this flag set, the object will be maintained in every "higher" context
  * position, and only deleted if pop:ed off without existing in a lower layer.
