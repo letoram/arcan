@@ -24,7 +24,7 @@
 
 #define ARCAN_VERSION_MAJOR 0
 #define ARCAN_VERSION_MINOR 3 
-#define ARCAN_VERSION_PATCH 0
+#define ARCAN_VERSION_PATCH 1 
 
 extern char* arcan_themename;
 extern char* arcan_resourcepath;
@@ -100,20 +100,18 @@ typedef int arcan_shader_id;
 typedef long arcan_aobj_id;
 typedef unsigned int arcan_tickv;
 
-extern long long ARCAN_VIDEO_WORLDID;
-extern long long ARCAN_VIDEO_BADID;
-
 enum arcan_vobj_tags {
-ARCAN_TAG_NONE      = 0,/* "don't touch" -- rawobjects, uninitialized etc.        */
-ARCAN_TAG_IMAGE     = 1,/* images from an external source, need to be able to grab*/
-												/* by internal video_getimage function                    */
-ARCAN_TAG_TEXT      = 2,/* specialized form of RAWOBJECT                          */
-ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external resource (frameserver) */
-ARCAN_TAG_3DOBJ     = 5,/* got a corresponding entry in arcan_3dbase, ffunc is    */
-												/* used to control the behavior of the 3d part            */
-ARCAN_TAG_ASYNCIMG  = 6 /* intermediate state, means that getimage is still       */
-											  /* loading, don't touch objects in this state, wait for   */
-												/* them to switch to TAG_IMAGE                            */
+ARCAN_TAG_NONE      = 0,/* "don't touch" -- rawobjects, uninitialized etc.    */
+ARCAN_TAG_IMAGE     = 1,/* images from an external source, need to be able 
+													 to grab by internal video_getimage function        */
+ARCAN_TAG_TEXT      = 2,/* specialized form of RAWOBJECT                      */
+ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external 
+													 resource (frameserver)                             */
+ARCAN_TAG_3DOBJ     = 5,/* got a corresponding entry in arcan_3dbase, ffunc is
+												   used to control the behavior of the 3d part        */
+ARCAN_TAG_ASYNCIMG  = 6 /* intermediate state, means that getimage is still
+											     loading, don't touch objects in this state, wait for
+												   them to switch to TAG_IMAGE                        */
 };
 
 enum arcan_errors {
@@ -177,13 +175,14 @@ bool arcan_setpaths();
 
 bool check_theme(const char*);
 char* arcan_expand_resource(const char* label, bool global);
-char* arcan_find_resource_path(const char* label, const char* path, int searchmask);
+char* arcan_find_resource_path(const char* label, 
+	const char* path, int searchmask);
 char* arcan_find_resource(const char* label, int searchmask);
 char* arcan_findshmkey(int* dhd, bool semalloc);
 
 /*
- * Open and map a resource description (from _expand, _find category of functions)
- * and return in data_source structure.
+ * Open and map a resource description (from _expand, _find category 
+ * of functions) and return in data_source structure.
  * On failure, fd will be BADFD and source NULL
  */
 data_source arcan_open_resource(const char* uri);
@@ -200,12 +199,12 @@ void arcan_fatal(const char* msg, ...);
 
 /* open a file using a format string (fmt + variadic), flags and mode 
  * matches regular open() semantics.
- * the file_handle wrapper is purposefully not used on this function and for Win32, 
- * is expected to be managed by _get_osfhandle */
+ * the file_handle wrapper is purposefully not used on this function 
+ * and for Win32, is expected to be managed by _get_osfhandle */
 int fmt_open(int flags, mode_t mode, const char* fmt, ...);
 
-/* wrap the posix-2001 semaphore functions, needs workarounds for some platforms 
- * for timed_wait and everything on win32 */
+/* wrap the posix-2001 semaphore functions, needs workarounds for some 
+ * platforms for timed_wait and everything on win32 */
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
 int arcan_sem_timedwait(sem_handle sem, int msecs);
@@ -229,5 +228,4 @@ const char* internal_launch_support();
 #define ARCAN_EID 0
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
-
 #endif

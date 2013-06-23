@@ -136,6 +136,9 @@ typedef struct {
 	void* ptr;
 } vfunc_state;
 
+extern arcan_vobj_id ARCAN_VIDEO_WORLDID;
+extern arcan_vobj_id ARCAN_VIDEO_BADID;
+
 typedef int8_t(*arcan_vfunc_cb)(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned int mode, vfunc_state state);

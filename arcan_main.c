@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
  *
  */
 #include <stdlib.h>
@@ -126,7 +126,8 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-o\t--frameserver \tforce frameserver (default: autodetect)\n"
 "-l\t--hijacklib   \tforce library for internal launch (default: autodetect)\n"
 "-d\t--database    \tsqlite database (default: arcandb.sqlite)\n"
-"-g\t--debug       \ttoggle debug output (stacktraces, events, coredumps, etc.)\n"
+"-g\t--debug       \ttoggle debug output (stacktraces, events,"
+" coredumps, etc.)\n"
 "-a\t--multisamples\tset number of multisamples (default 4, disable 0)\n"
 "-v\t--novsync     \tdisable synch to video refresh (default, vsync on)\n"
 "-V\t--nowait      \tdisable sleeping between superflous frames\n"
@@ -159,6 +160,7 @@ int main(int argc, char* argv[])
 /* only used when monitor mode is activated, where we want some 
  * of the global paths etc. accessible, but not *all* of them */
 	FILE* monitor_outf    = NULL;
+	int monitor_outfd     = -1;
 	int monitor           = 0;
 	bool monitor_parent   = true;
 	char* monitor_arg     = "LOG";
@@ -273,14 +275,24 @@ int main(int argc, char* argv[])
 				if (fork() != 0)
 					exit(0); 
 
-				monitor_outf = fdopen(pair[0], "r");
+				monitor_outfd   = pair[0]; 
 				script_override = tmpscript;
+				arcan_themename = strdup(monitor_arg);
+				char* tmp = strchr(arcan_themename, '.');
+				if (tmp)
+					*tmp = '\0';
 			} else {
 				int status;
+/* close these as they occlude data from the monitor session
+ * ideally, the lua warning/etc. should be mapped to go as messages
+ * to the monitoring session, as should a perror/atexit handler */
 				close(pair[0]);
+				fclose(stdout);
+				fclose(stderr);
 				monitor_parent = true;
 				monitor_outf = fdopen(pair[1], "w");
-				waitpid(p1, &status, 0); 
+				waitpid(p1, &status, 0);
+			 	signal(SIGPIPE, SIG_IGN);	
 			}
 		}
 		
@@ -293,8 +305,11 @@ themeswitch:
 	SDL_Init(SDL_INIT_VIDEO);
 	char* dbname = arcan_expand_resource(dbfname, true);
 
-/* try to open the specified database,
- * if that fails, warn, try to create an empty database and if that fails, give up. */
+/*
+ * try to open the specified database,
+ * if that fails, warn, try to create an empty 
+ * database and if that fails, give up. 
+ */
 	dbhandle = arcan_db_open(dbname, arcan_themename);
 	if (!dbhandle) {
 		arcan_warning("Couldn't open database (requested: %s => %s),"
@@ -357,7 +372,10 @@ themeswitch:
 	arcan_event_init( def );
 	arcan_led_init();
 
-/* MINGW implements putenv, so use this to set the system subpath path (BIOS, ..) */
+/*
+ * MINGW implements putenv, so use this to set
+ * the system subpath path (BIOS, ..) 
+ */
 	if (getenv("ARCAN_SYSTEMPATH") == NULL){
 		size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 15;
 		char* const syspath = malloc(len);
@@ -444,11 +462,15 @@ themeswitch:
 
 /* NOTE: might be better if this terminates if we're closing in on a 
  * deadline as to not be saturated with an onslaught of I/O events. */
-		while ((ev = arcan_event_poll(arcan_event_defaultctx(), &evstat)) && evstat == ARCAN_OK){
+		while ((ev = arcan_event_poll(arcan_event_defaultctx(), 
+			&evstat)) && evstat == ARCAN_OK){
 
-/* these events can typically be determined in video_tick(),
- * however there are so many hierarchical dependencies (linked objs, instances, ...)
- * that a full delete is not really safe there (e.g. event -> callback -> */
+/*
+ * these events can typically be determined in video_tick(),
+ * however there are so many hierarchical dependencies 
+ * (linked objs, instances, ...)
+ * that a full delete is not really safe there (e.g. event -> callback -> 
+ */
 			switch (ev->category){
 			case EVENT_VIDEO:
 				if (ev->kind == EVENT_VIDEO_EXPIRE)
@@ -496,22 +518,26 @@ themeswitch:
 			arcan_audio_tick(nticks);
 			lastfrag = 0.0;
 				
-			if (monitor){
-				if (monitor_parent){
-					if (--monitor_counter == 0){
-						monitor_counter = monitor;
-						arcan_lua_statesnap(monitor_outf);
-					}
-				} 
-				else 
-					arcan_lua_stategrab(luactx, "sample", monitor_outf);
-			}
+			if (monitor && monitor_parent){
+				if (--monitor_counter == 0){
+					monitor_counter = monitor;
+					arcan_lua_statesnap(monitor_outf);
+				}
+			} 
 		}
 
-/* difficult decision, should we flip or not?
- * a full- redraw can be costly, so should only really be done if enough things have changed
- * or if we're closing in on the next deadline for the unknown video clock
- * this also depends on if the user favors energy saving (waitsleep) or responsiveness. */
+/* this is internally buffering and non-blocking, hence the fd use compared
+ * to arcan_lua_statesnap above */
+		if (monitor && !monitor_parent)
+			arcan_lua_stategrab(luactx, "sample", monitor_outfd);
+	
+/*
+ * difficult decision, should we flip or not?
+ * a full- redraw can be costly, so should only really be done if 
+ * enough things have changed or if we're closing in on the next 
+ * deadline for the unknown video clock, this also depends on if 
+ * the user favors energy saving (waitsleep) or responsiveness. 
+ */
 		const int min_respthresh = 9;
 
 /* only render if there's enough relevant changes */

@@ -48,9 +48,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx);
  * will be separated with a #ENDBLOCK\n tag and fsynched. */ 
 void arcan_lua_statesnap(FILE* dst);
 
-/* block/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
+/* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the lua_State as the first and only argument
  * to the function pointed out with (dstfun). */
-void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* dst);
+void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int fd);
 #endif
 

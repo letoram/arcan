@@ -43,11 +43,9 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include <SDL.h>
-#include <SDL_opengl.h>
-#include <SDL_ttf.h>
 #include <assert.h>
-#include <apr_poll.h>
+
+#include GL_HEADERS
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -66,6 +64,7 @@
 #include "arcan_lua.h"
 #include "arcan_led.h"
 #include "arcan_img.h"
+#include "arcan_ttf.h"
 
 /* these take some explaining:
  * to enforce that actual constants are used in LUA scripts and not magic 
@@ -4833,6 +4832,13 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	arcan_lua_setglobalstr(ctx, "INTERNALMODE", internal_launch_support());
 }
 
+/* 
+ * What follows is just the mass of coded needed to serialize
+ * as much of the internal state of the engine as possible
+ * over a FILE* stream in a form that can be decoded and used
+ * by a monitoring script to help debugging and performance
+ * optimizations
+ */
 static const char* const vobj_flags(arcan_vobject* src)
 {
 	static char fbuf[64];
@@ -4888,6 +4894,21 @@ static inline char* lut_framemode(enum arcan_framemode mode)
 	}
 }
 
+static inline void dump_props(FILE* dst, surface_properties props)
+{	
+	fprintf(dst,"\
+props.position = {%lf, %lf, %lf};\
+props.scale = {%lf, %lf, %lf};\
+props.opa = %f;\
+props.rotation = {%lf, %lf, %lf};\
+", 
+(double)props.position.x, (double)props.position.y, (double)props.position.z,
+(double)props.scale.x, (double)props.scale.y, (double)props.scale.z,
+(float)props.opa,
+(double)props.rotation.roll, (double)props.rotation.pitch, 
+(double)props.rotation.yaw);
+}
+
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 {
 	char* mask = maskstr(src->mask);
@@ -4922,6 +4943,8 @@ imageproc = [[%s]],\
 filtermode = [[%s]],\
 flags = \"%s\",\
 mask = \"%s\",\
+origoofs = {%lf, %lf, %lf},\
+frameset = {},\
 tracetag = [[%s]],\
 };",
 (int) src->origw,
@@ -4952,7 +4975,22 @@ lut_imageproc(src->gl_storage.imageproc),
 lut_filtermode(src->gl_storage.filtermode),
 vobj_flags(src), 
 mask,
+(double) src->origo_ofs.x, 
+(double) src->origo_ofs.y, 
+(double) src->origo_ofs.z,
 src->tracetag ? src->tracetag : "no tag");
+
+	for (int i = 0; i < src->frameset_meta.capacity; i++)
+	{
+		fprintf(dst, "vobj.frameset[%d] = %"PRIxVOBJ";\n", i + 1,
+			src->frameset[i] ? src->frameset[i]->cellid : ARCAN_EID);
+	}
+
+	if (src->parent->cellid == ARCAN_VIDEO_WORLDID){
+		fprintf(dst, "vobj.parent = \"WORLD\";\n");
+	} else {
+		fprintf(dst, "vobj.parent = %"PRIxVOBJ";\n", src->parent->cellid);
+	}
 
 	free(mask);
 }
@@ -4971,7 +5009,11 @@ src->tracetag ? src->tracetag : "no tag");
 
 void arcan_lua_statesnap(FILE* dst)
 {
-/* display global settings, wrap to local ptr for shorthand */
+/*
+ * display global settings, wrap to local ptr for shorthand */
+/* missing shaders,
+ * missing event-queues
+ */
 	struct arcan_video_display* disp = &arcan_video_display;
 fprintf(dst, 
 "local restbl = {\
@@ -5014,7 +5056,6 @@ ctx.tickstamp = %lld;",
 (int) ctx->vitem_limit,
 (long long int) ctx->last_tickstamp
 );
-
 		for (int i = 0; i < ctx->vitem_limit; i++){
 			if (ctx->vitems_pool[i].flags.in_use == false)
 				continue;
@@ -5031,75 +5072,85 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 	}
 
 /* foreach context, footer */
-fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
-
+	fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
  	fprintf(dst, "return restbl;\n#ENDBLOCK\n");
 	fflush(dst);
 }
 
-void arcan_lua_stategrab(lua_State* ctx, char* dstfun, FILE* src)
+#include <poll.h>
+/* this assumes a trusted (src), as injected \0 could make the strstr fail
+ * and buffer indefinately (so if this assumption breaks in the future,
+ * scan and strip the input dataset for \0s */
+void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 {
 /* maintaing a growing buffer that is just populated with lines read 
  * from (src). When we uncover an endblock, we do a pcall and then 
  * push the value to the stack. */
 	static char* statebuf;
 	static size_t statebuf_sz, statebuf_ofs;
+	static struct pollfd inpoll;
+
 	ssize_t nread;
 	size_t len;
 	char* line = NULL;
 	bool done = false;
 
+/* initial setup */
 	if (!statebuf){
-		statebuf = malloc(1024);
-		statebuf_sz = 1024;
-	}
-	
-	while ((nread = getline(&line, &len, src)) != -1){
-		if(strcmp(line, "#ENDBLOCK\n") == 0){
-			done = true;
-			break;
-		}
-		else {
-			if (statebuf_ofs + nread > statebuf_sz - 1){
-				statebuf_sz *= 2;
-				char* newbuf = realloc(statebuf, statebuf_sz);
-				if (!newbuf){
-					free(statebuf);
-					statebuf = NULL;
-					arcan_warning("arcan_lua_stategrab(), "
-						"buffering failed, giving up.\n");
-					goto cleanup;
-				}
-				statebuf = newbuf;
-			}
-			
-			memcpy(statebuf + statebuf_ofs, line, nread);
-			statebuf_ofs = statebuf_ofs + nread;
-		}
-	}
-	arcan_warning("nread: %d\n", nread);
-	
-	if (done){
-/* buffering done, parse and propagate */
-		statebuf[statebuf_ofs] = '\0';
-		
-		lua_getglobal(ctx, "sample");
-		if (!lua_isfunction(ctx, -1)){
-			lua_pop(ctx, 1);
-			arcan_warning("arcan_lua_stategrab(), couldn't find "
-				"function 'sample' in debugscript. Sample ignored.\n");
-		} else {
-			int top = lua_gettop(ctx);
-			luaL_loadstring(ctx, statebuf);
-			lua_call(ctx, 0, LUA_MULTRET);
-			int nr = lua_gettop(ctx) - top;
-			lua_call(ctx, nr, 0);
-			statebuf_ofs = 0;
-		}
-	} else {
-		arcan_warning("%s", strerror(errno));
+		statebuf      = malloc(1024);
+		statebuf_sz   = 1024;
+		inpoll.fd     = src;
+		inpoll.events = POLLIN;
+		memset(statebuf, '\0', statebuf_sz);
 	}
 
-cleanup:
-	free(line);
+/* flush read into buffer, parse buffer for \n#ENDBLOCK\n pattern */
+	if (poll(&inpoll, 1, 0) > 0){
+		int ntr = statebuf_sz - 1 - statebuf_ofs;
+		int nr = read(src, statebuf + statebuf_ofs, ntr);
+
+		if (nr > 0){
+			statebuf_ofs += nr;
+			char* substrp = strstr(statebuf, "\n#ENDBLOCK\n");
+/* got one? parse then slide */
+			if (substrp){
+				substrp[1] = '\0';
+				lua_getglobal(ctx, "sample");
+				if (!lua_isfunction(ctx, -1)){
+					lua_pop(ctx, 1);
+					arcan_warning("arcan_lua_stategrab(), couldn't find "
+						"function 'sample' in debugscript. Sample ignored.\n");
+				} else {
+					int top = lua_gettop(ctx);
+					luaL_loadstring(ctx, statebuf);
+					lua_call(ctx, 0, LUA_MULTRET);
+					int narg = lua_gettop(ctx) - top;
+					lua_call(ctx, narg, 0);
+				}
+				
+/* statebuf:****substrp\n#ENDBLOCK\n(11)****(statebuf_ofs) **** statebufsz-1 \0*/
+				substrp += 11; 
+				int ntm = statebuf_ofs - (substrp - statebuf);
+				if (ntm > 0){
+					memmove(statebuf, substrp, ntm);
+					statebuf_ofs = ntm; 
+				} else {
+					statebuf_ofs = 0;
+				}
+				memset(statebuf + statebuf_ofs, '\0', statebuf_sz - statebuf_ofs);
+			}
+/* need more data, buffer or possibly realloc */	
+		}
+
+		if (statebuf_ofs == statebuf_sz - 1){
+			statebuf_sz <<= 1;
+			char* newp = realloc(statebuf, statebuf_sz);
+			if (newp)
+				statebuf = newp;
+			else 
+				statebuf_sz >>= 1;
+		}
+		
+	}
+
 }

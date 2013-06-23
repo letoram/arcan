@@ -46,8 +46,8 @@ function awb()
 	symtable = system_load("scripts/symtable.lua")();
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")();
+	system_load("scripts/mouse.lua")();
 
-	system_load("awb_mouse.lua")();
 	system_load("awb_window.lua")();
 
 --
