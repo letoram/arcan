@@ -61,7 +61,7 @@ function awb()
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
 	spawn_boing();
-
+	spawn_boing();
 	awb_desktop_setup();
 end
 

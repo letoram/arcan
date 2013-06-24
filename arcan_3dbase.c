@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
  *
  */
 
@@ -37,9 +37,7 @@
  #include <glew.h>
 #endif
 
-#include <SDL/SDL.h>
-#include <SDL/SDL_opengl.h>
-#include <SDL/SDL_thread.h>
+#include GL_HEADERS
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -53,8 +51,10 @@
 extern struct arcan_video_display arcan_video_display;
 static arcan_shader_id default_3dprog;
 
-/* since the 3d is planned as a secondary feature, rather than the primary one,
- * things work slightly different as each 3d object is essentially coupled to 1..n of 2D
+/* 
+ * since the 3d is planned as a secondary feature, rather than the primary one,
+ * things work slightly different as each 3d object is essentially 
+ * coupled to 1..n of 2D, thus more complex models 
  */
 enum virttype{
 	virttype_camera = 0,
@@ -65,7 +65,8 @@ enum virttype{
 };
 
 struct virtobj {
-/* inherits orientation from this object (if it resolves else revert to cached) */
+/* inherits orientation from this object 
+ * (if it resolves else revert to cached) */
 	arcan_vobj_id parent;
 
 /* cached orientation */
@@ -179,7 +180,8 @@ static void freemodel(arcan_3dmodel* src)
 /*
  * Render-loops, Pass control, Initialization
  */
-static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id baseprog, surface_properties props, float* modelview)
+static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, 
+	arcan_shader_id baseprog, surface_properties props, float* modelview)
 {
 	assert(vobj);
 
@@ -218,13 +220,15 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			continue;
 		}
 
-		unsigned counter = 0; /* keep track of how many TUs are in use */
+ /* keep track of how many TUs are in use */
+		unsigned counter = 0;
 			if (-1 != base->program)
 				arcan_shader_activate(base->program);
 			else
 				arcan_shader_activate(baseprog);
 
-	/* make sure the current program actually uses the attributes that the mesh has */
+	/* make sure the current program actually uses 
+	 * the attributes that the mesh has */
 		int attribs[3] = {arcan_shader_vattribute_loc(ATTRIBUTE_VERTEX),
 			arcan_shader_vattribute_loc(ATTRIBUTE_NORMAL),
 			arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)};
@@ -238,7 +242,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 
 		if (attribs[1] != -1 && base->normals){
 			glEnableVertexAttribArray(attribs[1]);
-			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE, 0, base->normals);
+			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0,base->normals);
 		} else attribs[1] = -1;
 
 		if (attribs[2] != -1 && base->txcos){
@@ -246,16 +250,18 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 		} else attribs[2] = -1;
 
-/* It's up to arcan_shader to determine if this will actually involve a program switch or not,
- * blend states etc. are dictated by the images used as texture,
- * and with the frameset_multitexture approach, the first one in the set */
+/* It's up to arcan_shader to determine if this will actually involve 
+ * a program switch or not, blend states etc. are dictated by the images 
+ * used as texture, and with the frameset_multitexture approach, 
+ * the first one in the set */
 
 /* Map up all texture-units required,
  * if there are corresponding frames and capacity in the parent vobj,
  * multiple meshes share the same frameset */
 		bool blendstate    = false;
 
-		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < vobj->frameset_meta.capacity && i < base->nmaps; i++){
+		for (unsigned i = 0; i < GL_MAX_TEXTURE_UNITS && (i+cframe) < 
+			vobj->frameset_meta.capacity && i < base->nmaps; i++){
 			arcan_vobject* frame = vobj->frameset[i+cframe];
 			if (!frame)
 				continue;
@@ -263,7 +269,8 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 			if (frame->flags.clone)
 				frame = frame->parent;
 
-/* only allocate set a sampler if there's a map and a corresponding map- slot in the shader */
+/* only allocate set a sampler if there's a map and a 
+ * corresponding map- slot in the shader */
 			glActiveTexture(GL_TEXTURE0 + i);
 			glEnable(GL_TEXTURE_2D);
 			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
@@ -277,7 +284,8 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 		
 /* Indexed- or direct mode? */
 		if (base->indices)
-			glDrawElements(GL_TRIANGLES, base->nindices, base->indexformat, base->indices);
+			glDrawElements(GL_TRIANGLES, base->nindices,
+				base->indexformat, base->indices);
 		else
 			glDrawArrays(GL_TRIANGLES, 0, base->nverts);
 
@@ -296,27 +304,30 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src, arcan_shader_id
 	}
 }
 
-static int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
+static int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, 
+	uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
 		switch (cmd){
-			case ffunc_tick:
-			break;
+		case ffunc_tick:
+		break;
 
-			case ffunc_destroy:
-				freemodel( (arcan_3dmodel*) state.ptr );
-			break;
+		case ffunc_destroy:
+			freemodel( (arcan_3dmodel*) state.ptr );
+		break;
 
-			default:
-			break;
+		default:
+		break;
 		}
 	}
 
 	return 0;
 }
 
-/* Simple one- off rendering pass, no exotic sorting, culling structures, projections or other */
-static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* modelview, float* projection)
+/* Simple one- off rendering pass, no exotic sorting, 
+ * culling structures, projections or other */
+static void process_scene_normal(arcan_vobject_litem* cell, float lerp, 
+	float* modelview, float* projection)
 {
 	glEnable(GL_DEPTH_TEST);
 	glCullFace(GL_BACK);
@@ -325,7 +336,8 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 	while (current){
 		arcan_vobject* cvo = current->elem;
 
-/* non-negative => 2D part of the pipeline, there's nothing more after this point */
+/* non-negative => 2D part of the pipeline, there's nothing 
+ * more after this point */
 		if (cvo->order >= 0)
 			break;
 
@@ -338,14 +350,17 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp, float* m
 		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
 	
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(dvo, dvo->feed.state.ptr, dvo->gl_storage.program, dprops, modelview);
+		rendermodel(dvo, dvo->feed.state.ptr, dvo->gl_storage.program, 
+			dprops, modelview);
 
 		current = current->next;
 	}
 }
 
-/* Chained to the video-pass in arcan_video, stop at the first non-negative order value */
-arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell, float frag, unsigned int destination)
+/* Chained to the video-pass in arcan_video, stop at the 
+ * first non-negative order value */
+arcan_vobject_litem* arcan_refresh_3d(unsigned camtag,arcan_vobject_litem* cell,
+	float frag, unsigned int destination)
 {
 	virtobj* base = find_perspective(camtag);
 
@@ -371,15 +386,18 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 				arcan_shader_envv(PROJECTION_MATR, base->projmatr, sizeof(float) * 16);
 				identity_matrix(matr);
 				multiply_matrix(dmatr, matr, base->direction.matr);
-				translate_matrix(dmatr, base->position.x, base->position.y, base->position.z);
+				translate_matrix(dmatr, base->position.x, 
+					base->position.y, base->position.z);
 				process_scene_normal(cell, frag, dmatr, base->projmatr);
 
 			case virttype_dirlight   : break;
 			case virttype_pointlight : break;
-/* camera with inverted Y, add a stencil at clipping plane and (optionally) render to texture (for water) */
+/* camera with inverted Y, add a stencil at clipping plane and (optionally) 
+ * render to texture (for water) */
 			case virttype_reflection : break;
-/* depends on caster source, treat pointlights separately, for infinite dirlights use ortographic projection, else
- * have a caster-specific perspective projection */
+/* depends on caster source, treat pointlights separately, for infinite
+ * dirlights use ortographic projection, elsehave a caster-specific 
+ * perspective projection */
 			case virttype_shadow : break;
 		}
 	}
@@ -387,7 +405,8 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, arcan_vobject_litem* cell
 	return cell;
 }
 
-static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigned nverts)
+static void minmax_verts(vector* minp, vector* maxp, 
+	const float* verts, unsigned nverts)
 {
 	for (unsigned i = 0; i < nverts * 3; i += 3){
 		vector a = {.x = verts[i], .y = verts[i+1], .z = verts[i+2]};
@@ -400,8 +419,9 @@ static void minmax_verts(vector* minp, vector* maxp, const float* verts, unsigne
 	}
 }
 
-/* Go through the indices of a model and reverse the winding- order of its indices or verts so
- * that front/back facing attribute of each triangle is inverted */
+/* Go through the indices of a model and reverse the winding- 
+ * order of its indices or verts so that front/back facing attribute of 
+ * each triangle is inverted */
 arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
@@ -436,7 +456,8 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, float maxy, float maxz){
+arcan_vobj_id arcan_3d_buildbox(float minx, float miny, 
+	float minz, float maxx, float maxy, float maxz){
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
@@ -455,7 +476,8 @@ arcan_vobj_id arcan_3d_buildbox(float minx, float miny, float minz, float maxx, 
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz, float y, float wdens, float ddens, unsigned nmaps){
+arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
+	float y, float wdens, float ddens, unsigned nmaps){
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
@@ -482,8 +504,10 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, float maxz
 
 		(*nextslot)->nmaps = nmaps;
 		newmodel->geometry = *nextslot;
-		build_hplane(minp, maxp, step, &newmodel->geometry->verts, (unsigned int**)&newmodel->geometry->indices,
-					 &newmodel->geometry->txcos, &newmodel->geometry->nverts, &newmodel->geometry->nindices);
+		build_hplane(minp, maxp, step, &newmodel->geometry->verts, 
+			(unsigned int**)&newmodel->geometry->indices,
+					 &newmodel->geometry->txcos, &newmodel->geometry->nverts, 
+					 &newmodel->geometry->nindices);
 
 		newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
 		arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
@@ -517,7 +541,8 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	dst->verts = (float*) malloc(vrtsize);
 	dst->program = -1;
 
-/*	arcan_warning("mesh loaded, %d vertices, %d triangles, %d texture maps\n", dst->nverts, dst->ntris, uvmaps); */
+/*	arcan_warning("mesh loaded, %d vertices, %d triangles, %d texture maps\n"
+ *	dst->nverts, dst->ntris, uvmaps); */
 	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
 	const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
@@ -572,7 +597,8 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	}
 }
 
-arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, arcan_shader_id shid, unsigned slot)
+arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, 
+	arcan_shader_id shid, unsigned slot)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -610,7 +636,8 @@ static int threadloader(void* arg)
 		loadmesh(threadarg->geom, ctx);
 
 //		SDL_mutexP(threadarg->model->lock);
-//			minmax_verts(&threadarg->model->bbmin, &threadarg->model->bbmax, threadarg->geom->verts, threadarg->geom->nverts);
+//			minmax_verts(&threadarg->model->bbmin, &threadarg->model->bbmax, 
+//			threadarg->geom->verts, threadarg->geom->nverts);
 //		SDL_mutexV(threadarg->model->lock);
 	}
 
@@ -623,16 +650,18 @@ static int threadloader(void* arg)
 	return 0;
 }
 
-arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, const char* resource, unsigned nmaps)
+arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, 
+	const char* resource, unsigned nmaps)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/* 2d frameset and set of vids associated as textures with models are weakly linked */
+/* 2d frameset and set of vids associated as textures 
+ * with models are weakly linked */
 	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
 	{
 		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
-		struct threadarg* arg = (struct threadarg*) malloc(sizeof(struct threadarg));
+		struct threadarg* arg = (struct threadarg*)malloc(sizeof(struct threadarg));
 		arg->model = dst;
 		arg->resource = strdup(resource);
 
@@ -659,7 +688,8 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	/* 2d frameset and set of vids associated as textures with models are weakly linked */
+	/* 2d frameset and set of vids associated as textures 
+	 * with models are weakly linked */
 	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
 	{
 		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
@@ -729,7 +759,8 @@ arcan_vobj_id arcan_3d_emptymodel()
 	return rv;
 }
 
-arcan_errc arcan_3d_baseorient(arcan_vobj_id dst, float roll, float pitch, float yaw)
+arcan_errc arcan_3d_baseorient(arcan_vobj_id dst, 
+	float roll, float pitch, float yaw)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv       = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -792,9 +823,11 @@ void arcan_3d_setdefaults()
 	current_scene.perspectives = calloc( sizeof(virtobj), 1);
 	virtobj* cam = current_scene.perspectives;
 
-	float aspect = (float) arcan_video_display.width / (float) arcan_video_display.height;
+	float aspect = (float) arcan_video_display.width / 
+		(float) arcan_video_display.height;
 	if (aspect < 1.0)
-		aspect = (float) arcan_video_display.height / (float) arcan_video_display.width;
+		aspect = (float) arcan_video_display.height / 
+			(float) arcan_video_display.width;
 
 	build_projection_matrix(cam->projmatr, 0.1, 100.0, aspect, 45.0);
 

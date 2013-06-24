@@ -1301,7 +1301,7 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 /* Load and render each character */
 	xstart = 0;
 	swapped = TTF_byteswapped;
-	pixel = (fg.r<<16) | (fg.g<<8) | fg.b;
+	pixel = (fg.b<<16) | (fg.g<<8) | fg.r;
 
 /* Fill background color */
 	for (int row = 0; row < textbuf->height; row++)
