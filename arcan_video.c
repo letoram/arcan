@@ -3446,8 +3446,10 @@ bool arcan_video_visible(arcan_vobj_id id)
 	return rv;
 }
 
-/* take sprops, apply them to the coordinates in vobj with proper masking (or force to ignore mask), store the results in dprops */
-static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, surface_properties* sprops, bool force)
+/* take sprops, apply them to the coordinates in vobj with proper 
+ * masking (or force to ignore mask), store the results in dprops */
+static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, 
+	surface_properties* sprops, bool force)
 {
 	*dprops = vobj->current;
 
@@ -3461,16 +3463,21 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 				lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp));
 
 		if (tf->scale.startt)
-			dprops->scale = lerp_vector(tf->scale.startd, tf->scale.endd, lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp));
+			dprops->scale = lerp_vector(tf->scale.startd, tf->scale.endd, 
+				lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp));
 
 		if (tf->blend.startt)
-			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
+			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, 
+				lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
 
 		if (tf->rotate.startt){
-			dprops->rotation.quaternion = interp_rotation(&tf->rotate.starto.quaternion, &tf->rotate.endo.quaternion,
-				lerp_fract(tf->rotate.startt, tf->rotate.endt, (float)ct + lerp), tf->rotate.interp);
+			dprops->rotation.quaternion = interp_rotation(
+				&tf->rotate.starto.quaternion, &tf->rotate.endo.quaternion,
+				lerp_fract(tf->rotate.startt, tf->rotate.endt, 
+					(float)ct + lerp), tf->rotate.interp);
 
-/* quite expensive, and this data should only really be used internally, the lua resolve properties stuff should do this manually */
+/* quite expensive, and this data should only really be used internally, 
+ * the lua resolve properties should do this manually */
 #ifdef _DEBUG
 			vector ang = angle_quat(dprops->rotation.quaternion);
 			dprops->rotation.roll  = ang.x;
@@ -3506,9 +3513,11 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp, s
 	}
 }
 
-/* this is really grounds for some more elaborate caching strategy if CPU- bound.
- * using some frame- specific tag so that we don't repeatedly resolve with this complexity. */
-void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* props)
+/* this is really grounds for some more elaborate caching 
+ * strategy if CPU- bound. using some frame- specific tag so that
+ * we don't repeatedly resolve with this complexity. */
+void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, 
+	surface_properties* props)
 {
 	if (vobj->parent && vobj->parent != &current_context->world){
 		surface_properties dprop = empty_surface();
@@ -3520,7 +3529,8 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, surface_properties* 
 	}
 }
 
-static inline void draw_vobj(float x, float y, float x2, float y2, float zv, float* txcos)
+static inline void draw_vobj(float x, float y, float x2, float y2, float zv,
+	float* txcos)
 {
 	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
 
@@ -3545,7 +3555,8 @@ static inline void draw_vobj(float x, float y, float x2, float y2, float zv, flo
 	}
 }
 
-static inline void draw_surf(struct rendertarget* dst, surface_properties prop, arcan_vobject* src, float* txcos)
+static inline void draw_surf(struct rendertarget* dst, surface_properties prop,
+	arcan_vobject* src, float* txcos)
 {
     if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
         return;
@@ -3562,9 +3573,11 @@ static inline void draw_surf(struct rendertarget* dst, surface_properties prop, 
 	if (src->flags.origoofs){
 		translate_matrix(imatr, src->origo_ofs.x, src->origo_ofs.y, 0.0);
 		multiply_matrix(dmatr, imatr, omatr);
-		translate_matrix(dmatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+		translate_matrix(dmatr, prop.position.x + prop.scale.x, 
+			prop.position.y + prop.scale.y, 0.0);
 	} else {
-		translate_matrix(imatr, prop.position.x + prop.scale.x, prop.position.y + prop.scale.y, 0.0);
+		translate_matrix(imatr, prop.position.x + prop.scale.x, 
+			prop.position.y + prop.scale.y, 0.0);
 		multiply_matrix(dmatr, imatr, omatr);
 	}
 
@@ -3602,20 +3615,28 @@ static void ffunc_process(arcan_vobject* dst)
 		cframe->gl_storage.glid,
 		dst->feed.state);
 
-/* special "hack" for situations where the ffunc can do the gl-calls without an additional
- * memtransfer (some video/targets, particularly in no POW2 Textures), this interface should
- * really be changed to use glBufferData + GL_STREAM_COPY or GL_DYNAMIC_COPY */
+/*
+ * special "hack" for situations where the ffunc can do the 
+ * gl-calls without an additional memtransfer (some video/targets, 
+ * particularly in no POW2 Textures), this interface should really be
+ * changed to use glBufferData + GL_STREAM_COPY or GL_DYNAMIC_COPY 
+*/
 		if (funcres == FFUNC_RV_COPIED){
 			glBindTexture(GL_TEXTURE_2D, cframe->gl_storage.glid);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, cframe->default_frame.raw);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, cframe->gl_storage.w, 
+				cframe->gl_storage.h, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 
+				cframe->default_frame.raw);
 		}
 	}
 
 	return;
 }
 
-/* scan all 'feed objects' (possible optimization, keep these tracked in a separate list and run prior to all other rendering,
- * might gain something when other pseudo-asynchronous operations (e.g. PBO) are concerned */
+/*
+ * scan all 'feed objects' (possible optimization, keep these tracked
+ * in a separate list and run prior to all other rendering, might gain 
+ * something when other pseudo-asynchronous operations (e.g. PBO) are concerned
+ */
 static void poll_list(arcan_vobject_litem* current)
 {
 	while(current && current->elem){
@@ -3705,13 +3726,14 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			arcan_resolve_vidprop(elem, fract, &dprops);
 
 /* don't waste time on objects that aren't supposed to be visible */
-			if ( dprops.opa < EPSILON || elem == current_context->stdoutp.color){
+			if ( dprops.opa < EPSILON || elem == 
+				current_context->stdoutp.color){
 				current = current->next;
 				continue;
 			}
 
-/* special safeguards, current_frame could've been deleted and replaced leaving a dangling pointer here,
- * or frameset location might've moved */
+/* special safeguards, current_frame could've been deleted and replaced 
+ * leaving a dangling pointer here,or frameset location might've moved */
 			if (elem->flags.clone){
 				if ( (elem->mask & MASK_FRAMESET) > 0 ){
 					enum arcan_framemode mode = elem->frameset_meta.framemode;
@@ -3724,7 +3746,8 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 					elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
 
 					assert(elem->parent && elem->parent != &current_context->world);
-					elem->current_frame = (elem->parent->frameset_meta.capacity > 0 && elem->parent->frameset[ elem->frameset_meta.current ]) ?
+					elem->current_frame = (elem->parent->frameset_meta.capacity > 0 &&
+						elem->parent->frameset[ elem->frameset_meta.current ]) ?
 					elem->parent->frameset[elem->frameset_meta.current] : elem->parent->current_frame;
 				}
 			}

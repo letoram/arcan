@@ -93,7 +93,7 @@ local function awbwnd_alloc(self)
 -- a placeholder, the :container(vid) method will do the rest 
 --
 	if (self.mode == "container" or self.mode == "container_managed") then
-		self.canvas = fill_surface(cwidth, cheight, 0, 0, 0); 
+		self.canvas = fill_surface(cwidth, cheight, 0, 0, 0);
 		move_image(self.canvas, cx, cy);
 		link_image(self.canvas, self.anchor);
 		show_image(self.canvas);	
@@ -131,6 +131,7 @@ local function awbbar_addicon(self, imgres, align, trigger)
 		image_icn = imgres;
 	else
 		image_icn = load_image(imgres);
+		image_tracetag(image_icn, self.parent.name .. "_icon_" .. imgres);
 	end
 
 	if (valid_vid(image_icn)) then
@@ -142,7 +143,6 @@ local function awbbar_addicon(self, imgres, align, trigger)
 		icntbl.yofs    = 0; 
 		icntbl.parent  = self;
 		icntbl.stretch = true;
---	image_tracetag(image_icn, self.parent.name .. "_icon_" .. imgres);
 -- only one item in the "fill" slot
 		if (align == "fill") then
 			if self.fill ~= nil then
@@ -160,6 +160,7 @@ end
 
 local function awbwbar_refresh(self)
 -- align against border while maintaining set "thickness"
+	print("refresh");
 	local bstep = self.parent.border and self.parent.borderw or 0;
 	local wbarw = 0;
 
@@ -299,15 +300,15 @@ local function awbbar_reorder(self, order)
 	end
 
 	for ind, val in ipairs(self.left) do
-		order_image(val.vid, order);
+		order_image(val.vid, order + 1);
 	end
 	
 	for ind, val in ipairs(self.right) do
-		order_image(val.vid, order);
+		order_image(val.vid, order + 1);
 	end
 
 	if (self.fill) then
-		order_image(self.fill.vid, order);
+		order_image(self.fill.vid, order + 1);
 	end
 end
 

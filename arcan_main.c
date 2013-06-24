@@ -287,8 +287,8 @@ int main(int argc, char* argv[])
  * ideally, the lua warning/etc. should be mapped to go as messages
  * to the monitoring session, as should a perror/atexit handler */
 				close(pair[0]);
-				fclose(stdout);
-				fclose(stderr);
+			/*	fclose(stdout);
+				fclose(stderr); */
 				monitor_parent = true;
 				monitor_outf = fdopen(pair[1], "w");
 				waitpid(p1, &status, 0);

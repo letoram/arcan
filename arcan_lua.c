@@ -4992,6 +4992,10 @@ src->tracetag ? src->tracetag : "no tag");
 		fprintf(dst, "vobj.parent = %"PRIxVOBJ";\n", src->parent->cellid);
 	}
 
+	fprintf(dst, "local props = {};\n");
+	dump_props(dst, src->current);
+	fprintf(dst, "vobj.props = props;\n"); 
+
 	free(mask);
 }
 
@@ -5036,17 +5040,17 @@ fprintf(dst,
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
 
+	int cctx = vcontext_ind;
+	while (cctx >= 0){
 /* foreach context, header */
 fprintf(dst,
 "local ctx = {\
 	vobjs = {},\
 	rtargets = {}\
 };");
-	
-	int cctx = vcontext_ind;
-	while (cctx >= 0){
-		struct arcan_video_context* ctx = &vcontext_stack[cctx];
-		fprintf(dst, 
+
+	struct arcan_video_context* ctx = &vcontext_stack[cctx];
+	fprintf(dst, 
 "ctx.ind = %d;\
 ctx.alive = %d;\
 ctx.limit = %d;\
@@ -5056,6 +5060,7 @@ ctx.tickstamp = %lld;",
 (int) ctx->vitem_limit,
 (long long int) ctx->last_tickstamp
 );
+
 		for (int i = 0; i < ctx->vitem_limit; i++){
 			if (ctx->vitems_pool[i].flags.in_use == false)
 				continue;
@@ -5067,12 +5072,11 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 		}
 
 /* missing, rendertarget dump */
-
+		fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
 		cctx--;
 	}
 
 /* foreach context, footer */
-	fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
  	fprintf(dst, "return restbl;\n#ENDBLOCK\n");
 	fflush(dst);
 }

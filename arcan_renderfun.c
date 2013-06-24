@@ -824,6 +824,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing,
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
+		vobj->default_frame.source = strdup(message);
 		glGenTextures(1, &vobj->gl_storage.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->gl_storage.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
