@@ -423,7 +423,7 @@ themeswitch:
 
 	if (script_override && luaL_dofile(luactx, script_override) == 1){
 		arcan_fatal("Fatal: main(), Error loading"
-			"overridescript: (%s)\n", script_override);
+			" override: (%s)\n", script_override);
 		goto error;
 	} 
 	else if (!script_override) {
