@@ -11,12 +11,13 @@ function setup_sample_view(smpl)
 
 -- global display settings
 	img = render_text(string.format("\\ffonts/default.ttf,12" .. 
-" Ticks:\\t%d\n\r" .. 
-" Dimensions:\\t%d x %d\n\r" ..
-, smpl.display.ticks, smpl.display.width, smpl.display.height));
+" Ticks:\\t%d\\n\\r" .. 
+" Dimensions:\\t%d x %d\\n\\r" ..
+"", smpl.display.ticks, smpl.display.width, smpl.display.height));
 	local props = image_surface_properties(img);
 	move_image(img,VRESW - props.width, 0);
 	show_image(img);
+	sample_root = img;
 end 
 
 function sample(sampletbl)
