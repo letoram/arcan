@@ -46,7 +46,6 @@ typedef struct arcan_aobj {
 	
 /* AOBJ_STREAM only */
 	bool streaming;
-	SDL_RWops* lfeed;
 
 /* AOBJ sample only */
 	uint16_t* samplebuf;
