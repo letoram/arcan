@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
  *
  */
 #include <stdint.h>
@@ -36,16 +36,7 @@
 #include <al.h>
 #include <alc.h>
 
-#define GL_GLEXT_PROTOTYPES
-#define GLEW_STATIC
-#define NO_SDL_GLEXT
-#include <glew.h>
-
-/* libSDL */
-#include <SDL.h>
-#include <SDL_types.h>
-#include <SDL_opengl.h>
-#include <SDL_thread.h>
+#include GL_HEADERS
 
 /* arcan */
 #include "arcan_math.h"
@@ -77,7 +68,9 @@ static struct {
 	.presilence = ARCAN_FRAMESERVER_PRESILENCE
 };
 
-void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned short abufsize, unsigned short acellcount, unsigned short presilence)
+void arcan_frameserver_queueopts_override(unsigned short vcellcount,
+	unsigned short abufsize, unsigned short acellcount, 
+	unsigned short presilence)
 {
 	queueopts.vcellcount = vcellcount;
 	queueopts.abufsize = abufsize;
@@ -85,7 +78,9 @@ void arcan_frameserver_queueopts_override(unsigned short vcellcount, unsigned sh
 	queueopts.presilence = presilence;
 }
 
-void arcan_frameserver_queueopts(unsigned short* vcellcount, unsigned short* acellcount, unsigned short* abufsize, unsigned short* presilence){
+void arcan_frameserver_queueopts(unsigned short* vcellcount, 
+	unsigned short* acellcount, unsigned short* abufsize, 
+	unsigned short* presilence){
 	if (vcellcount)
 		*vcellcount = queueopts.vcellcount;
 
@@ -114,16 +109,17 @@ void arcan_frameserver_dropsemaphores_keyed(char* key)
 
 void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 	if (src && src->shm.key && src->shm.ptr){
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+		struct frameserver_shmpage* shmpage = src->shm.ptr;
 		arcan_frameserver_dropsemaphores_keyed(src->shm.key);
 	}
 }
 
 bool arcan_frameserver_control_chld(arcan_frameserver* src){
-/* bunch of terminating conditions -- frameserver messes with the structure to provoke a vulnerability,
- * frameserver dying or timing out, ... */
+/* bunch of terminating conditions -- frameserver messes with the structure to 
+ * provoke a vulnerability, frameserver dying or timing out, ... */
 	if (frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
-		(src->child_alive && src->child && -1 == check_child(src) && errno == EINVAL))
+		(src->child_alive && src->child && -1 == 
+		 check_child(src) && errno == EINVAL))
 	{
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,
@@ -133,8 +129,11 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.otag = src->tag
 		};
 		
-/* prevent looping if the frameserver didn't last more than a second, indicative of it being broken,
- * rapid relaunching could result in triggering alarm systems etc. for fork() bombs */
+/*
+ * prevent looping if the frameserver didn't last more than a second, 
+ * indicative of it being broken, rapid relaunching could result in triggering 
+ * alarm systems etc. for fork() bombs 
+ */
 		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
 			arcan_frameserver_free(src, true);
 			src->autoplay = true;
@@ -150,7 +149,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		}
 
 /* force flush beforehand */
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
+			EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 		return false;
 	}
@@ -171,7 +171,8 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst, arcan_event* ev)
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
 #ifndef _WIN32
-	if (dst->kind == ARCAN_FRAMESERVER_NETCL || dst->kind == ARCAN_FRAMESERVER_NETSRV){
+	if (dst->kind == ARCAN_FRAMESERVER_NETCL || 
+		dst->kind == ARCAN_FRAMESERVER_NETSRV){
 		int sn = 0;
 		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
 	}
@@ -201,15 +202,19 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 	glBindTexture(GL_TEXTURE_2D, glid);
 
-/* flip-floping PBOs, simply using one risks the chance of turning a PBO operation
- * synchronous, eliminating much of the point in using them in the first place */
+/* flip-floping PBOs, simply using one risks the chance of turning a PBO 
+ * operation synchronous, eliminating much of the point in using them
+ * in the first place */
 	if (src->desc.pbo_transfer){
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 
+			src->desc.upload_pbo[src->desc.pbo_index]);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
 		src->desc.pbo_index = 1 - src->desc.pbo_index;
 
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, src->desc.upload_pbo[src->desc.pbo_index]);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 
+			src->desc.upload_pbo[src->desc.pbo_index]);
 		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
 
 		if (ptr)
@@ -219,14 +224,17 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
 	else
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	return FFUNC_RV_NOUPLOAD;
 }
 
-int8_t arcan_frameserver_dummyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
+int8_t arcan_frameserver_dummyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
+	unsigned mode, vfunc_state state)
 {
     if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr && cmd == ffunc_destroy){
         arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
@@ -235,7 +243,9 @@ int8_t arcan_frameserver_dummyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
     return FFUNC_RV_NOFRAME;
 }
 
-int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode, vfunc_state state)
+int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
+	unsigned mode, vfunc_state state)
 {
 
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
@@ -255,7 +265,9 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return FFUNC_RV_NOFRAME;
 }
 
-int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state)
+int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, 
+	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
+	unsigned int mode, vfunc_state state)
 {
 	int8_t rv = 0;
 	if (state.tag != ARCAN_TAG_FRAMESERV || !state.ptr)
@@ -263,7 +275,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 
 	arcan_frameserver* tgt = state.ptr;
 	arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
-	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->shm.ptr;
+	struct frameserver_shmpage* shmpage = tgt->shm.ptr;
 	unsigned srcw, srch, srcbpp;
 
 	switch (cmd){
@@ -278,20 +290,24 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 		case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
 
 		case ffunc_render:
-			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
-/* as we don't really "synch on resize", if one is detected, just ignore this frame */
+			arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, 
+				EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
+/* as we don't really "synch on resize", if one is 
+ * detected, just ignore this frame */
 			srcw = shmpage->storage.w;
 			srch = shmpage->storage.h;
 	
 			if (srcw == tgt->desc.width && srch == tgt->desc.height){
-				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 4, width, height, 4);
+				rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 
+					4, width, height, 4);
 
 				if (shmpage->aready) {
 					size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
 						(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
 					if (ntc == 0){
-						arcan_warning("frameserver_videoframe_direct(), incoming buffer overflow for: %d, resetting.\n", tgt->vid);
+						arcan_warning("frameserver_videoframe_direct(), incoming buffer "
+							"overflow for: %d, resetting.\n", tgt->vid);
 						tgt->ofs_audb = 0;
 					}
 
@@ -302,7 +318,8 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 					shmpage->aready = false;
 				}
 			}
-/* interactive frameserver blocks on vsemaphore only, so set monitor flags and wake up */
+/* interactive frameserver blocks on vsemaphore only, 
+ * so set monitor flags and wake up */
 			shmpage->vready = false;
 			arcan_sem_post( tgt->vsync );
 		break;
@@ -311,7 +328,9 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, uint8_t* bu
 	return rv;
 }
 
-int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned int mode, vfunc_state state)
+int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
+	unsigned mode, vfunc_state state)
 {
 	assert(state.ptr);
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
@@ -321,17 +340,20 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 		arcan_frameserver_free(state.ptr, false);
 
 	else if (cmd == ffunc_tick){
-/* done differently since we don't care if the frameserver wants to resize, that's its problem. */
+/* done differently since we don't care if the frameserver wants 
+ * to resize, that's its problem. */
 		if (!arcan_frameserver_control_chld(src)){
             vfunc_state cstate = *arcan_video_feedstate(src->vid);
-            arcan_video_alterfeed(src->vid, arcan_frameserver_dummyframe, cstate);
+            arcan_video_alterfeed(src->vid,arcan_frameserver_dummyframe,cstate);
             return FFUNC_RV_NOFRAME;
         }
     }
 
-/* if the frameserver isn't ready to receive (semaphore unlocked) then the frame will be dropped,
- * a warning noting that the frameserver isn't fast enough to deal with the data (allowed to duplicate
- * frame to maintain framerate, it can catch up reasonably by using less CPU intensive frame format.
+/* 
+ * if the frameserver isn't ready to receive (semaphore unlocked) then the frame
+ * will be dropped, a warning noting that the frameserver isn't fast enough to
+ * deal with the data (allowed to duplicate frame to maintain framerate, 
+ * it can catch up reasonably by using less CPU intensive frame format.
  * Audio will keep on buffering until overflow,
  */
 	else if (cmd == ffunc_rendertarget_readback){
@@ -339,15 +361,16 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
-				SDL_mutexP(src->lock_audb);
+				sem_wait(&src->lock_audb);
 					memcpy(src->audp, src->audb, src->ofs_audb);
 					src->shm.ptr->abufused = src->ofs_audb;
 					src->ofs_audb = 0;
-				SDL_mutexV(src->lock_audb);
+				sem_post(&src->lock_audb);
 			}
 
-/* it is possible that we deliver more videoframes than we can legitimately encode in the target
- * framerate, it is up to the frameserver to determine when to drop and when to double frames */
+/* it is possible that we deliver more videoframes than we can legitimately 
+ * encode in the target framerate, it is up to the frameserver to determine when
+ * to drop and when to double frames */
 			arcan_event ev  = {
 				.kind = TARGET_COMMAND_STEPFRAME,
 				.category = EVENT_TARGET,
@@ -366,14 +389,16 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uin
 /* assumptions:
  * buf_sz doesn't contain partial samples (% (bytes per sample * channels))
  * dst->amixer inaud is allocated and allocation count matches n_aids */
-static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, int16_t* buf, int nsamples)
+static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, 
+	int16_t* buf, int nsamples)
 {
 /* formats; nsamples (samples in, 2 samples / frame)
  * cur->inbuf; samples converted to float with gain, 2 samples / frame)
  * dst->outbuf; SINT16, in bytes, ofset in bytes */
 	size_t minv = INT_MAX;
 	
-/* 1. Convert to float and buffer. Find the lowest common number of samples buffered. Truncate if needed. */
+/* 1. Convert to float and buffer. Find the lowest common number of samples
+ * buffered. Truncate if needed. */
 	for (int i = 0; i < dst->amixer.n_aids; i++){
 		struct frameserver_audsrc* cur = dst->amixer.inaud + i;
 		if (cur->src_aid == srcid){
@@ -389,8 +414,11 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, int16_t* bu
 			minv = cur->inofs;
 	}
 
-/* 2. If number of samples exceeds some threshold, mix (minv) samples together and store in dst->outb */
-/*    Formulae used: A = float(sampleA) * gainA. B = float(sampleB) * gainB. Z = A + B - A * B */
+/*
+ * 2. If number of samples exceeds some threshold, mix (minv) samples together 
+ * and store in dst->outb Formulae used: A = float(sampleA) * gainA. 
+ * B = float(sampleB) * gainB. Z = A + B - A * B 
+ */
 		if (minv != INT_MAX && minv > 512 && dst->sz_audb - dst->ofs_audb > 0){
 
 /* clamp */
@@ -401,10 +429,12 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, int16_t* bu
 				float work_sample = 0;
 	
 			for (int i = 0; i < dst->amixer.n_aids; i++){
-				work_sample += dst->amixer.inaud[i].inbuf[sc] - (work_sample * dst->amixer.inaud[i].inbuf[sc]);
+				work_sample += dst->amixer.inaud[i].inbuf[sc] - (work_sample * 
+					dst->amixer.inaud[i].inbuf[sc]);
 			}
 /* clip output */
-			int16_t sample_conv = work_sample >= 1.0 ? 32767.0 : (work_sample < -1.0 ? -32768 : work_sample * 32767);
+			int16_t sample_conv = work_sample >= 1.0 ? 32767.0 : 
+				(work_sample < -1.0 ? -32768 : work_sample * 32767);
 			memcpy(&dst->audb[dst->ofs_audb], &sample_conv, sizeof(int16_t));
 			dst->ofs_audb += sizeof(int16_t);
 		}
@@ -412,7 +442,8 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, int16_t* bu
 		for (int j = 0; j < dst->amixer.n_aids; j++){
 			struct frameserver_audsrc* cur = dst->amixer.inaud + j;
 			if (cur->inofs > minv){
-				memmove(cur->inbuf, &cur->inbuf[minv], (cur->inofs - minv) * sizeof(float));
+				memmove(cur->inbuf, &cur->inbuf[minv], (cur->inofs - minv) *
+					sizeof(float));
 				cur->inofs -= minv;
 			}
 			else
@@ -422,14 +453,16 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid, int16_t* bu
 
 }
 
-void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources, arcan_aobj_id* sources, float* gains)
+void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources, 
+	arcan_aobj_id* sources, float* gains)
 {
 	assert(sources != NULL && dst != NULL && n_sources > 0);
 	
 	if (dst->amixer.n_aids)
 		free(dst->amixer.inaud);
 		
-	dst->amixer.inaud = malloc(n_sources * sizeof(struct frameserver_audsrc) * n_sources);
+	dst->amixer.inaud = malloc(n_sources * sizeof(struct frameserver_audsrc) 
+		* n_sources);
 	for (int i = 0; i < n_sources; i++){
 		dst->amixer.inaud[i].gain    = gains ? *gains++ : 1.0;
 		dst->amixer.inaud[i].inofs   = 0;
@@ -440,15 +473,19 @@ void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources, arcan
 	dst->amixer.n_aids = n_sources;
 }
 
-void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz, unsigned channels, unsigned frequency, void* tag)
+void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz,
+	unsigned channels, unsigned frequency, void* tag)
 {
 	arcan_frameserver* dst = tag;
 	assert((intptr_t)(buf) % 4 == 0);
 	
-/* with no mixing setup (lowest latency path), we just feed the sync buffer shared with the frameserver.
- * otherwise we forward to the amixer that is responsible for pushing as much as has been generated by
- * all the defined sources */
-	SDL_mutexP(dst->lock_audb);
+/* 
+ * with no mixing setup (lowest latency path), we just feed the sync buffer
+ * shared with the frameserver. otherwise we forward to the amixer that is 
+ * responsible for pushing as much as has been generated by all the defined 
+ * sources 
+ * */
+	sem_wait(&dst->lock_audb);
 	if (dst->amixer.n_aids > 0){
 		feed_amixer(dst, src, (int16_t*) buf, buf_sz >> 1);
 	} else  
@@ -457,10 +494,12 @@ void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, size_t buf_sz,
 			dst->ofs_audb += buf_sz;
 	}
 	else;
-	SDL_mutexV(dst->lock_audb);
+	sem_post(&dst->lock_audb);
 }
 
-int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned gltarget, vfunc_state vstate)
+int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
+	unsigned gltarget, vfunc_state vstate)
 {
 	enum arcan_ffunc_rv rv = FFUNC_RV_NOFRAME;
 
@@ -468,9 +507,10 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	assert(vstate.tag == ARCAN_TAG_FRAMESERV);
 
 	arcan_frameserver* src = (arcan_frameserver*) vstate.ptr;
-/* PEEK -
-	 * > 0 if there are frames to render
-	*/
+/* 
+ * PEEK -
+ * > 0 if there are frames to render
+ */
 	if (cmd == ffunc_poll) {
 		if (src->shm.ptr && src->shm.ptr->resized)
 			arcan_frameserver_tick_control(src);
@@ -485,29 +525,33 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 		if (src->vfq.front_cell) {
 			int64_t now = arcan_frametime() - src->starttime;
 
-		/* if frames are too old, just ignore them */
+/* if frames are too old, just ignore them */
 			while (src->vfq.front_cell &&
-				(now - (int64_t)src->vfq.front_cell->tag > (int64_t) src->desc.vskipthresh)){
+				(now - (int64_t)src->vfq.front_cell->tag > (int64_t) 
+				 	src->desc.vskipthresh)){
 				src->lastpts = src->vfq.front_cell->tag;
 				arcan_framequeue_dequeue(&src->vfq);
 			}
 
-		/* if there are any frames left, check if the difference between then and now is acceptible */
+/* if there are any frames left, check if the difference 
+ * between then and now is acceptible */
 			if (src->vfq.front_cell != NULL &&
-				abs((int64_t)src->vfq.front_cell->tag - now) < (int64_t) src->desc.vskipthresh){
+				abs((int64_t)src->vfq.front_cell->tag - now) < (int64_t)
+					src->desc.vskipthresh){
 					src->lastpts = src->vfq.front_cell->tag;
 					return FFUNC_RV_GOTFRAME;
 			}
 			else;
 		}
-/* no videoframes, but we have audioframes? might be the sounddrivers that have given up,
- * last resort workaround */
+/* no videoframes, but we have audioframes? might be the 
+ * sounddrivers that have given up, last resort workaround */
 	}
 
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
 		frame_cell* current = src->vfq.front_cell;
-		rv = push_buffer( src, (char*) current->buf, gltarget, src->desc.width, src->desc.height, src->desc.bpp, width, height, bpp);
+		rv = push_buffer( src, (char*) current->buf, gltarget, src->desc.width, 
+			src->desc.height, src->desc.bpp, width, height, bpp);
 		arcan_framequeue_dequeue(&src->vfq);
 	}
 	else if (cmd == ffunc_tick)
@@ -520,7 +564,8 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint
 	return rv;
 }
 
-arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, 
+	arcan_aobj_id id, unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
@@ -529,9 +574,10 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 	if (buffer > 0 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
 
 /* this function will make sure all monitors etc. gets their chance */
-		SDL_mutexP( src->lock_audb );
-			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, src->desc.channels, src->desc.samplerate, tag);
-		SDL_mutexV( src->lock_audb );
+		sem_wait(&src->lock_audb);
+			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, 
+				src->desc.channels, src->desc.samplerate, tag);
+		sem_post(&src->lock_audb);
 
 		src->ofs_audb = 0;
 
@@ -541,7 +587,8 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, arcan_aobj_id i
 	return rv;
 }
 
-arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, unsigned buffer, void* tag)
+arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, 
+	unsigned buffer, void* tag)
 {
 	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
@@ -554,15 +601,18 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, unsi
 
 /* as there are latencies introduced by the audiocard etc. as well,
  * it is actually somewhat beneficial to lie a few ms ahead of the videotimer */
-			size_t buffers = src->afq.cell_size - (src->afq.cell_size - src->afq.front_cell->ofs);
+			size_t buffers = src->afq.cell_size - (src->afq.cell_size - 
+				src->afq.front_cell->ofs);
 			double dc = (double)src->lastpts - src->audioclock;
 			src->audioclock += src->bpms * (double)buffers;
 
-/* not more than 60ms and not severe desynch? send the audio, else we drop and continue */
+/* not more than 60ms and not severe desynch? send the audio, 
+ * else we drop and continue */
 			if (dc < 60.0){
-				SDL_mutexP( src->lock_audb );
-					arcan_audio_buffer(aobj, buffer, src->afq.front_cell->buf, buffers, src->desc.channels, src->desc.samplerate, tag);
-				SDL_mutexV( src->lock_audb );
+				sem_wait(&src->lock_audb);
+					arcan_audio_buffer(aobj, buffer, src->afq.front_cell->buf, buffers, 
+						src->desc.channels, src->desc.samplerate, tag);
+				sem_post(&src->lock_audb);
 
 				arcan_framequeue_dequeue(&src->afq);
 				rv = ARCAN_OK;
@@ -596,7 +646,7 @@ static arcan_errc again_feed(float gain, void* tag)
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
-	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+	struct frameserver_shmpage* shmpage = src->shm.ptr;
 
     if (!arcan_frameserver_control_chld(src) || !src || !shmpage){
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -604,17 +654,21 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
         return;
     }
 
-	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
+	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
+		EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
 
 /* may happen multiple- times */
 	if ( shmpage->resized ){
 		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, .bpp = SHMPAGE_VCHANNELCOUNT};
+		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, 
+			.bpp = SHMPAGE_VCHANNELCOUNT};
 		img_cons disp  = {.w = shmpage->display.w, .h = shmpage->display.h};
 
-		src->desc.width = store.w; src->desc.height = store.h; src->desc.bpp = store.bpp;
+		src->desc.width = store.w; 
+		src->desc.height = store.h; 
+		src->desc.bpp = store.bpp;
 
 		arcan_framequeue_free(&src->vfq);
 		arcan_framequeue_free(&src->afq);
@@ -630,7 +684,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 /* for PBO transfers, new buffers etc. need to be prepared */
-		glBindTexture(GL_TEXTURE_2D, arcan_video_getobject(src->vid)->gl_storage.glid);
+		glBindTexture(GL_TEXTURE_2D, 
+			arcan_video_getobject(src->vid)->gl_storage.glid);
 		if (src->desc.pbo_transfer)
 			glDeleteBuffers(2, src->desc.upload_pbo);
 
@@ -640,7 +695,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			glGenBuffers(2, src->desc.upload_pbo);
 			for (int i = 0; i < 2; i++){
 				glBindBuffer(GL_PIXEL_PACK_BUFFER, src->desc.upload_pbo[i]);
-				glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, NULL, GL_STREAM_DRAW);
+				glBufferData(GL_PIXEL_PACK_BUFFER, store.w * store.h * store.bpp, 
+					NULL, GL_STREAM_DRAW);
 				void* ptr = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_WRITE_ONLY);
 				if (ptr){
 					memset(ptr, 0, store.w * store.h * store.bpp);
@@ -651,17 +707,21 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-/* with a resize, our framequeues are possibly invalid, dump them and rebuild, slightly different
- * if we don't maintain a queue (present as soon as possible) */
+/*
+ * with a resize, our framequeues are possibly invalid, dump them and rebuild,
+ * slightly different if we don't maintain a queue (present as soon as possible)
+ */
 		if (src->nopts){
-			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe_direct, cstate);
+			arcan_video_alterfeed(src->vid, 
+				arcan_frameserver_videoframe_direct, cstate);
 		}
 		else {
 			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
 
 /* otherwise, figure out reasonable buffer sizes (or user-defined overrides) */
 			unsigned short acachelim, vcachelim, abufsize, presilence;
-			arcan_frameserver_queueopts(&vcachelim, &acachelim, &abufsize, &presilence);
+			arcan_frameserver_queueopts(&vcachelim, &acachelim, 
+				&abufsize, &presilence);
 			if (acachelim == 0 || abufsize == 0){
 				float mspvf = 1000.0 / 30.0;
 				float mspaf = 1000.0 / (float) SHMPAGE_SAMPLERATE;
@@ -670,17 +730,21 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			}
 
 /* tolerance margins for PTS deviations */
-			src->bpms = (1000.0 / (double)src->desc.samplerate) / (double)src->desc.channels * 0.5;
+			src->bpms = (1000.0 / (double)src->desc.samplerate) / 
+				(double)src->desc.channels * 0.5;
 			src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
 			src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
 			src->audioclock = 0.0;
 
 /* just to get some kind of trace when threading acts up */
 			snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
-			arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, arcan_frameserver_shmaudcb, labelbuf);
+			arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize, true, 
+				arcan_frameserver_shmaudcb, labelbuf);
 
 			snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
-			arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width * src->desc.height * src->desc.bpp, false, arcan_frameserver_shmvidcb, labelbuf);
+			arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, src->desc.width *
+				src->desc.height * src->desc.bpp, false, 
+				arcan_frameserver_shmvidcb, labelbuf);
 		}
 
 		arcan_event rezev = {
@@ -752,11 +816,11 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 	ssize_t rv = -1;
 	vfunc_state* state = arcan_video_feedstate(fd);
 
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && ((arcan_frameserver*)state->ptr)->child_alive) {
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
+		((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
-		struct frameserver_shmpage* shm = (struct frameserver_shmpage*) movie->shm.ptr;
+		struct frameserver_shmpage* shm = movie->shm.ptr;
 
-/* SDL mutex protects the shm- page for freeing etc. */
 			if (shm->vready) {
 				frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
 				current->tag = shm->vpts;
@@ -779,9 +843,10 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr)
 	ssize_t rv = -1;
 	vfunc_state* state = arcan_video_feedstate(fd);
 
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && ((arcan_frameserver*)state->ptr)->child_alive) {
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
+		((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* tgt = (arcan_frameserver*) state->ptr;
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) tgt->shm.ptr;
+		struct frameserver_shmpage* shmpage = tgt->shm.ptr;
 
 /* SDL mutex protects the shm- page for freeing etc. */
 			if (shmpage->vready) {
@@ -798,15 +863,16 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr)
 
 #ifdef _DEBUG
 				if (shmpage->abufused != ntc)
-					arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun (%d[%d]:%d), %zu\n",
-					tgt->vid, tgt->aid, tgt->sz_audb, tgt->ofs_audb, shmpage->abufused, ntc);
+					arcan_warning("arcan_frameserver(%d:%d) -- buffer overrun"
+						"	(%d[%d]:%d), %zu\n", tgt->vid, tgt->aid, tgt->sz_audb,
+						tgt->ofs_audb, shmpage->abufused, ntc);
 #endif
 
 /* main- thread may be pushing this one onto the sound lib */
-				SDL_mutexP( tgt->lock_audb );
+				sem_wait(&tgt->lock_audb);
 					memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 					tgt->ofs_audb += ntc;
-				SDL_mutexV( tgt->lock_audb );
+				sem_post(&tgt->lock_audb);
 
 				shmpage->abufused = 0;
 				shmpage->aready = false;
@@ -829,7 +895,8 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 	vfunc_state* state = arcan_video_feedstate(fd);
 	ssize_t rv = -1;
 
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && ((arcan_frameserver*)state->ptr)->child_alive) {
+	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
+		((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
 		struct frameserver_shmpage* shm = (struct frameserver_shmpage*)movie->shm.ptr;
 
@@ -873,7 +940,8 @@ arcan_frameserver* arcan_frameserver_alloc()
 	return res;
 }
 
-void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp setup)
+void arcan_frameserver_configure(arcan_frameserver* ctx, 
+	struct frameserver_envp setup)
 {
 	arcan_errc errc;
 	
@@ -882,26 +950,28 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 	if (setup.use_builtin){
 		if (strcmp(setup.args.builtin.mode, "movie") == 0){
 			ctx->kind  = ARCAN_FRAMESERVER_INPUT;
-			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe, ctx, &errc);
+			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) 
+											arcan_frameserver_audioframe, ctx, &errc);
 /* nopts / autoplay is preset from the calling context */
 		}
 
-/* "libretro" (or rather, interactive mode) treats a single pair of videoframe+audiobuffer
- * each transfer, minimising latency is key. All operations require an intermediate buffer
- * and are synched to one framequeue */
+/* "libretro" (or rather, interactive mode) treats a single pair of 
+ * videoframe+audiobuffer each transfer, minimising latency is key. 
+ * All operations require an intermediate buffer and are synched 
+ * to one framequeue */
 		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->nopts    = true;
 			ctx->autoplay = true;
-			ctx->aid      = arcan_audio_feed((arcan_afunc_cb) arcan_frameserver_audioframe_direct, ctx, &errc);
+			ctx->aid      = arcan_audio_feed((arcan_afunc_cb) 
+												arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
 			ctx->audb     = malloc( ctx->sz_audb );
-			ctx->lock_audb = SDL_CreateMutex();
 		}
 
-/* network client needs less in terms of buffering etc. but instead a different signalling
- * mechanism for flushing events */
+/* network client needs less in terms of buffering etc. but instead a 
+ * different signalling mechanism for flushing events */
 		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETCL;
 			ctx->use_pbo = false;
@@ -915,20 +985,21 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 			ctx->autoplay= true;
 		}
 
-/* record instead operates by maintaining up-to-date local buffers, then letting the frameserver
- * sample whenever necessary */
+/* record instead operates by maintaining up-to-date local buffers, 
+ * then letting the frameserver sample whenever necessary */
 		else if (strcmp(setup.args.builtin.mode, "record") == 0){
 			ctx->kind = ARCAN_FRAMESERVER_OUTPUT;
 
-/* we don't know how many audio feeds are actually monitored to produce the output,
- * thus not how large the intermediate buffer should be to safely accommodate them all */
+/* we don't know how many audio feeds are actually monitored to produce the
+ * output, thus not how large the intermediate buffer should be to 
+ * safely accommodate them all */
 			ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
 			ctx->audb = malloc( ctx->sz_audb );
-			ctx->lock_audb = SDL_CreateMutex();
 		}
 	}
-/* hijack works as a 'process parasite' inside the rendering pipeline of other projects,
- * similar otherwise to libretro except it only deals with videoframes (currently) */
+/* hijack works as a 'process parasite' inside the rendering pipeline of 
+ * other projects, similar otherwise to libretro except it only deals 
+ * with videoframes (currently) */
 	else{
 		ctx->kind = ARCAN_HIJACKLIB;
 		ctx->autoplay = true;
@@ -939,9 +1010,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 		ctx->sz_audb  = 1024 * 64;
 		ctx->ofs_audb = 0;
 		ctx->audb     = malloc( ctx->sz_audb );
-		ctx->lock_audb = SDL_CreateMutex();
 	}
 
+	sem_init(&ctx->lock_audb, 0, 1);
 	arcan_frameserver_meta vinfo = {0};
 
 	ctx->child_alive = true;
@@ -952,9 +1023,11 @@ void arcan_frameserver_configure(arcan_frameserver* ctx, struct frameserver_envp
 	ctx->desc.height = 32;
 	ctx->desc.bpp    = 4;
 
-/* two separate queues for passing events back and forth between main program and frameserver,
- * set the buffer pointers to the relevant offsets in backend_shmpage, and semaphores from the sem_open calls */
-	frameserver_shmpage_setevqs( ctx->shm.ptr, ctx->esync, &(ctx->inqueue), &(ctx->outqueue), true);
+/* two separate queues for passing events back and forth between main program
+ * and frameserver, set the buffer pointers to the relevant offsets in 
+ * backend_shmpage, and semaphores from the sem_open calls */
+	frameserver_shmpage_setevqs( ctx->shm.ptr, ctx->esync, 
+		&(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.external.killswitch = ctx;
 	ctx->outqueue.synch.external.killswitch = ctx;
 }

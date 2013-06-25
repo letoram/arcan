@@ -29,14 +29,6 @@
 
 #include "openctm/openctm.h"
 
-#define GL_GLEXT_PROTOTYPES 1
-
-#ifdef POOR_GL_SUPPORT
- #define GLEW_STATIC
- #define NO_SDL_GLEXT
- #include <glew.h>
-#endif
-
 #include GL_HEADERS
 
 #include "arcan_math.h"

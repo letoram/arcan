@@ -44,9 +44,9 @@ typedef struct frame_queue {
 	frame_cell* da_cells;
 	unsigned int ni;
 
-	SDL_Thread* iothread;
-	SDL_mutex* framesync;
-	SDL_cond* framecond;
+	pthread_t iothread;
+	pthread_mutex_t framesync;
+	pthread_cond_t framecond;
 	bool alive, vcs;
 
 	int fd;
@@ -59,8 +59,11 @@ typedef struct frame_queue {
  * connect it asyncronously to [fd]
  * allocate [cell_count] slots with [cell_size] buffer to each cell
  * specify if the data to queue is fixed or variable
- * if rfunc is NULL, it defaults to read() on fd, tag queue with idlabel for tracing */
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc, char* idlabel);
+ * if rfunc is NULL, it defaults to read() on fd, 
+ * tag queue with idlabel for tracing */
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, 
+	unsigned int cell_count, unsigned int cell_size, bool variable, 
+	arcan_rfunc rfunc, char* idlabel);
 
 /* cleanup,
  * free all the related buffers and terminate any ongoing AIO calls. */

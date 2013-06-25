@@ -30,7 +30,6 @@
 #endif
 
 #include "arcan_math.h"
-#include <SDL_opengl.h>
 
 void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
 {
