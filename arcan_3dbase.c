@@ -24,7 +24,9 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h>
 #include <unistd.h>
+
 #include <assert.h>
 
 #include "openctm/openctm.h"
@@ -101,12 +103,12 @@ struct geometry {
 /* nnormals == nverts */
 	float* normals;
 
-	SDL_Thread* worker;
+	pthread_t worker;
 	struct geometry* next;
 };
 
 typedef struct {
-	SDL_mutex* lock;
+	pthread_mutex_t lock;
 	struct geometry* geometry;
 	arcan_shader_id program;
 
@@ -164,7 +166,7 @@ static void freemodel(arcan_3dmodel* src)
 			free(last);
 		}
 
-		SDL_DestroyMutex(src->lock);
+		pthread_mutex_destroy(&src->lock);
 		free(src);
 	}
 }
@@ -618,7 +620,7 @@ struct threadarg{
 	char* resource;
 };
 
-static int threadloader(void* arg)
+static void* threadloader(void* arg)
 {
 	struct threadarg* threadarg = (struct threadarg*) arg;
 	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
@@ -626,11 +628,6 @@ static int threadloader(void* arg)
 
 	if (ctmGetError(ctx) == CTM_NONE){
 		loadmesh(threadarg->geom, ctx);
-
-//		SDL_mutexP(threadarg->model->lock);
-//			minmax_verts(&threadarg->model->bbmin, &threadarg->model->bbmax, 
-//			threadarg->geom->verts, threadarg->geom->nverts);
-//		SDL_mutexV(threadarg->model->lock);
 	}
 
 /* nonetheless, unlock the slot for the main rendering loop,
@@ -639,7 +636,7 @@ static int threadloader(void* arg)
 	ctmFreeContext(ctx);
 	free(threadarg->resource);
 	free(threadarg);
-	return 0;
+	return NULL;
 }
 
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, 
@@ -666,7 +663,7 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 
 		(*nextslot)->nmaps = nmaps;
 		arg->geom = *nextslot;
-		SDL_CreateThread(threadloader, (void*) arg);
+		pthread_create(&arg->geom->worker, NULL, threadloader, (void*) arg);
 
 		rv = ARCAN_OK;
 	} else
@@ -743,8 +740,7 @@ arcan_vobj_id arcan_3d_emptymodel()
 
 	if (rv != ARCAN_EID){
 		newmodel->parent = arcan_video_getobject(rv);
-		newmodel->lock = SDL_CreateMutex();
-
+		pthread_mutex_init(&newmodel->lock, NULL);
 	} else
 		free(newmodel);
 

@@ -31,8 +31,7 @@
 #include <math.h>
 #include <assert.h>
 #include <signal.h>
-
-#include <SDL/SDL.h>
+#include <pthread.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -42,54 +41,10 @@
 #include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
 
-/* code is quite old and dodgy design at best.
- * The plan was initially to be able to get rid of SDL at some point,
- * and stop the stupid specialization of all these different device types,
- * just a bunch of digital inputs (aka buttons) and analog ones (aka axises)
- * as there's no stable and portable way of distingushing between mouse1..n, keyb1..n, joy1..n ...
- * all in all, this is still a small subsystem and deserves a rewrite .. */
-
-const unsigned short arcan_joythresh  = 3200;
 static int64_t arcan_last_frametime = 0;
 static int64_t arcan_tickofset = 0;
 
-/* possibly need different sample methods for different axis. especially as
- * the controls get increasingly "weird" */
-struct axis_control;
-typedef bool(*sample_cb)(struct axis_control*, int, int*, int, int*);
-/* anything needed to rate-limit a specific axis,
- * smoothing buffers, threshold scaling etc. */
-struct axis_control {
-	enum ARCAN_EVENTFILTER_ANALOG mode;
-	void* buffer;
-	sample_cb samplefun;
-};
-
-struct arcan_stick {
-	char label[256];
-	unsigned long hashid;
-
-	unsigned short devnum;
-	unsigned short threshold;
-	unsigned short axis;
-	struct axis_control* axis_control;
-
-/* these map to digital events */
-	unsigned short buttons;
-	unsigned short balls;
-
-	unsigned* hattbls;
-	unsigned short hats;
-
-	SDL_Joystick* handle;
-};
-
 typedef struct queue_cell queue_cell;
-
-static struct {
-		unsigned short n_joy;
-		struct arcan_stick* joys;
-} joydev = {0};
 
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static unsigned eventfront = 0, eventback = 0;
@@ -116,15 +71,17 @@ static unsigned alloc_queuecell(arcan_evctx* ctx)
 
 static inline bool lock_local(arcan_evctx* ctx)
 {
-	SDL_LockMutex(ctx->synch.local);
+	pthread_mutex_lock(&ctx->synch.local);
 	return true;
 }
 
 static inline bool lock_shared(arcan_evctx* ctx)
 {
 	if (ctx->synch.external.killswitch){
-		if (-1 == arcan_sem_timedwait(ctx->synch.external.shared, DEFAULT_EVENT_TIMEOUT)){
-			arcan_frameserver_free( (arcan_frameserver*) ctx->synch.external.killswitch, false );
+		if (-1 == arcan_sem_timedwait(ctx->synch.external.shared, 
+			DEFAULT_EVENT_TIMEOUT)){
+			arcan_frameserver_free( (arcan_frameserver*) 
+				ctx->synch.external.killswitch, false );
 			ctx->synch.external.killswitch = NULL;
 
 			return false;
@@ -138,7 +95,7 @@ static inline bool lock_shared(arcan_evctx* ctx)
 
 static inline bool unlock_local(arcan_evctx* ctx)
 {
-	SDL_UnlockMutex(ctx->synch.local);
+	pthread_mutex_unlock(&ctx->synch.local);
 	return true;
 }
 
@@ -200,15 +157,18 @@ void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask){
 }
 
 /* drop the specified index and compact everything to the right of it,
- * assumes the context is already locked, so for large event queues etc. this is subpar */
+ * assumes the context is already locked, so for large event queues etc.
+ * this is subpar */
 static void drop_event(arcan_evctx* ctx, unsigned index)
 {
 	unsigned current  = (index + 1) % ctx->n_eventbuf;
 	unsigned previous = index;
 
-/* compact left until we reach the end, back is actually one after the last cell in use */
+/* compact left until we reach the end, back is actually
+ * one after the last cell in use */
 	while (current != *(ctx->back)){
-		memcpy( &ctx->eventbuf[ previous ], &ctx->eventbuf[ current ], sizeof(arcan_event) );
+		memcpy( &ctx->eventbuf[ previous ], &ctx->eventbuf[ current ], 
+			sizeof(arcan_event) );
 		previous = current;
 		current  = (index + 1) % ctx->n_eventbuf;
 	}
@@ -216,10 +176,14 @@ static void drop_event(arcan_evctx* ctx, unsigned index)
 	*(ctx->back) = previous;
 }
 
-/* this implementation is pretty naive and expensive on a large/filled queue,
- * partly because this feature was added as an afterthought and the underlying datastructure
- * isn't optimal for the use, should have been linked or double-linked */
-void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source)
+/*
+ * this implementation is pretty naive and expensive on a large/filled queue,
+ * partly because this feature was added as an afterthought and the underlying
+ * datastructure isn't optimal for the use, should have been linked or 
+ * double-linked 
+ */
+void arcan_event_erase_vobj(arcan_evctx* ctx, 
+	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source)
 {
 	unsigned elem = *(ctx->front);
 
@@ -233,11 +197,16 @@ void arcan_event_erase_vobj(arcan_evctx* ctx, enum ARCAN_EVENT_CATEGORY category
 			bool match = false;
 
 			switch (ctx->eventbuf[elem].category){
-				case EVENT_VIDEO:       match = source == ctx->eventbuf[elem].data.video.source; break;
-				case EVENT_FRAMESERVER: match = source == ctx->eventbuf[elem].data.frameserver.video; break;
+			case EVENT_VIDEO: match = source == 
+				ctx->eventbuf[elem].data.video.source; 
+			break;
+			case EVENT_FRAMESERVER: match = source == 
+				ctx->eventbuf[elem].data.frameserver.video; 
+			break;
 			}
 
-/* slide only if the cell shouldn't be deleted, otherwise it'll be replaced with the next one in line */
+/* slide only if the cell shouldn't be deleted, 
+ * otherwise it'll be replaced with the next one in line */
 			if (match){
 				drop_event(ctx, elem);
 			}
@@ -270,20 +239,22 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 
 static inline int queue_used(arcan_evctx* dq)
 {
-	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - *(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - 
+		*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
 	return rv;
 }
 
-void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
+void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, 
+	enum ARCAN_EVENT_CATEGORY allowed, float saturation, arcan_vobj_id source)
 {
-	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front) || (srcqueue && !srcqueue->back))
+	if (!srcqueue || !dstqueue || (srcqueue && !srcqueue->front) 
+		|| (srcqueue && !srcqueue->back))
 		return;
 
 	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
 
 	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
 			floor((float)dstqueue->n_eventbuf * saturation) > queue_used(dstqueue) ){
-
 
 		arcan_errc status;
 		arcan_event* ev = arcan_event_poll(srcqueue, &status);
@@ -305,246 +276,13 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, enu
 
 }
 
-void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned int rate)
+extern void platform_key_repeat(arcan_evctx* ctx, unsigned rate);
+void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
 {
 	if (LOCK(ctx)){
-		ctx->kbdrepeat = rate;
-		if (rate == 0)
-			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
-		else
-			SDL_EnableKeyRepeat(10, ctx->kbdrepeat);
+		platform_key_repeat(ctx, rate);
 		UNLOCK(ctx);
 	}
-}
-
-static void process_hatmotion(arcan_evctx* ctx, unsigned devid, unsigned hatid, unsigned value)
-{
-	arcan_event newevent = {
-		.category = EVENT_IO,
-		.kind = EVENT_IO_BUTTON_PRESS,
-		.data.io.datatype = EVENT_IDATATYPE_DIGITAL,
-		.data.io.devkind = EVENT_IDEVKIND_GAMEDEV,
-		.data.io.input.digital.devid = ARCAN_JOYIDBASE + devid,
-		.data.io.input.digital.subid = 128 + (hatid * 4)
-	};
-
-	static unsigned hattbl[4] = {SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT, SDL_HAT_RIGHT};
-
-	assert(joydev.n_joy > devid);
-	assert(joydev.joys[devid].hats > hatid);
-
-/* shouldn't really ever be the same, but not trusting SDL */
-	if (joydev.joys[devid].hattbls[ hatid ] != value){
-		unsigned oldtbl = joydev.joys[devid].hattbls[hatid];
-
-		for (int i = 0; i < 4; i++){
-			if ( (oldtbl & hattbl[i]) != (value & hattbl[i]) ){
-				newevent.data.io.input.digital.subid  = ARCAN_HATBTNBASE + (hatid * 4) + i;
-				newevent.data.io.input.digital.active = (value & hattbl[i]) > 0;
-				arcan_event_enqueue(ctx, &newevent);
-			}
-		}
-
-		joydev.joys[devid].hattbls[hatid] = value;
-	}
-}
-
-static void process_axismotion(arcan_evctx* ctx, SDL_JoyAxisEvent ev)
-{
-	arcan_event newevent = {
-		.kind = EVENT_IO_AXIS_MOVE,
-		.category = EVENT_IO,
-		.data.io.datatype = EVENT_IDATATYPE_ANALOG,
-		.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV,
-		.data.io.input.analog.gotrel = false,
-		.data.io.input.analog.devid = ARCAN_JOYIDBASE + ev.which,
-		.data.io.input.analog.subid = ev.axis,
-		.data.io.input.analog.nvalues = 1
-	};
-
-	int ins = ev.value, outs;
-	struct axis_control* ctrl =	&joydev.joys[ ev.which ].axis_control[ ev.which ];
-	if ( ctrl->samplefun(ctrl, 1, &ins, 1, &outs) ){
-		newevent.data.io.input.analog.axisval[0] = outs;
-		newevent.data.io.input.analog.axisval[1] = 0;
-		newevent.data.io.input.analog.axisval[2] = 0;
-		newevent.data.io.input.analog.axisval[3] = 0;
-		arcan_event_enqueue(ctx, &newevent);
-	}
-}
-/* probe devices and generate mapping tables */
-static void init_sdl_events(arcan_evctx* ctx)
-{
-	SDL_EnableUNICODE(1);
-	arcan_event_keyrepeat(ctx, ctx->kbdrepeat);
-
-/* OSX hack */
-	SDL_ShowCursor(0);
-	SDL_ShowCursor(1);
-	SDL_ShowCursor(0);
-
-	SDL_Event dummy[1];
-/*	SDL_WM_GrabInput( SDL_GRAB_ON ); */
-	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, SDL_EVENTMASK(SDL_MOUSEMOTION)) );
-}
-
-void map_sdl_events(arcan_evctx* ctx)
-{
-	SDL_Event event;
-	arcan_event newevent = {.category = EVENT_IO}; /* others will be set upon enqueue */
-
-	while (SDL_PollEvent(&event)) {
-		switch (event.type) {
-			case SDL_MOUSEBUTTONDOWN:
-				newevent.kind = EVENT_IO_BUTTON_PRESS;
-				newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-				newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE + event.motion.which; /* no multimouse.. */
-				newevent.data.io.input.digital.subid = event.button.button;
-				newevent.data.io.input.digital.active = true;
-				snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i", event.motion.which);
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-			case SDL_MOUSEBUTTONUP:
-				newevent.kind = EVENT_IO_BUTTON_RELEASE;
-				newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-				newevent.data.io.input.digital.devid = ARCAN_MOUSEIDBASE + event.motion.which; /* no multimouse.. */
-				newevent.data.io.input.digital.subid = event.button.button;
-				newevent.data.io.input.digital.active = false;
-				snprintf(newevent.label, sizeof(newevent.label) - 1, "mouse%i", event.motion.which);
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-			case SDL_MOUSEMOTION: /* map to axis event */
-				newevent.kind = EVENT_IO_AXIS_MOVE;
-				newevent.data.io.datatype = EVENT_IDATATYPE_ANALOG;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_MOUSE;
-				newevent.data.io.input.analog.devid = ARCAN_MOUSEIDBASE + event.motion.which;
-				newevent.data.io.input.analog.nvalues = 2;
-				newevent.data.io.input.analog.gotrel = true;
-				snprintf(newevent.label, sizeof(newevent.label)-1, "mouse%i", event.motion.which);
-
-/* split into two axis events, internal_launch targets might wish to merge again locally however */
-				if (event.motion.xrel != 0){
-					newevent.data.io.input.analog.subid = 0;
-					newevent.data.io.input.analog.axisval[0] = event.motion.x;
-					newevent.data.io.input.analog.axisval[1] = event.motion.xrel;
-					arcan_event_enqueue(ctx, &newevent);
-				}
-
-				if (event.motion.yrel != 0){
-					newevent.data.io.input.analog.subid = 1;
-					newevent.data.io.input.analog.axisval[0] = event.motion.y;
-					newevent.data.io.input.analog.axisval[1] = event.motion.yrel;
-					arcan_event_enqueue(ctx, &newevent);
-				}
-				break;
-
-			case SDL_JOYAXISMOTION:
-				process_axismotion(ctx, event.jaxis);
-			break;
-
-			case SDL_KEYDOWN:
-				newevent.kind  = EVENT_IO_KEYB_PRESS;
-				newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-				newevent.data.io.input.translated.devid = event.key.which;
-				newevent.data.io.input.translated.keysym = event.key.keysym.sym;
-				newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
-				newevent.data.io.input.translated.scancode = event.key.keysym.scancode;
-				newevent.data.io.input.translated.subid = event.key.keysym.unicode;
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-			case SDL_KEYUP: /* should check timer for keypress ... */
-				newevent.kind  = EVENT_IO_KEYB_RELEASE;
-				newevent.data.io.datatype = EVENT_IDATATYPE_TRANSLATED;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_KEYBOARD;
-				newevent.data.io.input.translated.devid = event.key.which;
-				newevent.data.io.input.translated.keysym = event.key.keysym.sym;
-				newevent.data.io.input.translated.modifiers = event.key.keysym.mod;
-				newevent.data.io.input.translated.scancode = event.key.keysym.scancode;
-				newevent.data.io.input.translated.subid = event.key.keysym.unicode;
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-			case SDL_JOYBUTTONDOWN:
-				newevent.kind = EVENT_IO_BUTTON_PRESS;
-				newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-				newevent.data.io.input.digital.devid = ARCAN_JOYIDBASE + event.jbutton.which; /* no multimouse.. */
-				newevent.data.io.input.digital.subid = event.jbutton.button;
-				newevent.data.io.input.digital.active = true;
-				snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i", event.jbutton.which);
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-			case SDL_JOYBUTTONUP:
-				newevent.kind = EVENT_IO_BUTTON_RELEASE;
-				newevent.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
-				newevent.data.io.devkind  = EVENT_IDEVKIND_GAMEDEV;
-				newevent.data.io.input.digital.devid = ARCAN_JOYIDBASE + event.jbutton.which; /* no multimouse.. */
-				newevent.data.io.input.digital.subid = event.jbutton.button;
-				newevent.data.io.input.digital.active = false;
-				snprintf(newevent.label, sizeof(newevent.label)-1, "joystick%i", event.jbutton.which);
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-/* don't got any devices that actually use this to test with,
- * but should really just be translated into analog/digital events */
-			case SDL_JOYBALLMOTION:
-				break;
-
-			case SDL_JOYHATMOTION:
-				process_hatmotion(ctx, event.jhat.which, event.jhat.hat, event.jhat.value);
-			break;
-
-/* in theory, it should be fine to just manage window resizes by keeping track of a scale factor to the
- * grid size (window size) specified during launch) */
-			case SDL_ACTIVEEVENT:
-				//newevent.kind = (MOUSEFOCUS, INPUTFOCUS, APPACTIVE(0 = icon, 1 = restored)
-				//if (event->active.state & SDL_APPINPUTFOCUS){
-				//	SDL_SetModState(KMOD_NONE);
-				break;
-
-			case SDL_QUIT:
-				newevent.category = EVENT_SYSTEM;
-				newevent.kind = EVENT_SYSTEM_EXIT;
-				arcan_event_enqueue(ctx, &newevent);
-				break;
-
-			case SDL_SYSWMEVENT:
-				break;
-				/*
-				 * currently ignoring these events (and a resizeable window frame isn't
-				 * yet supported, although the video- code is capable of handling a rebuild/reinit,
-				 * the lua- scripts themselves all depend quite a bit on VRESH/VRESW, one option
-				 * would be to just calculate a scale factor for the newvresh, newvresw and apply that
-				 * as a translation step when passing the lua<->core border
-					 case SDL_VIDEORESIZE:
-					 break;
-
-					 case SDL_VIDEOEXPOSE:
-					 break;
-
-					 case SDL_ACTIVEEVENT:
-					 break;
-
-					 case SDL_ */
-		}
-	}
-}
-
-/* this dynamically buffers STDIN until statement termination ';' or newline.
- * this doesn't "really" match the lua syntax particularly well, and in lieu of a full
- * parser, this leads to the problem of (shell->partial_statement->event trigger(system_load()))->
- * parsing errors. Should be known when using the interactive mode (so dev purposes) */
-char* nblk_readln(int fd)
-{
-	arcan_warning("(fixme) interactive mode not completed.\n");
-	return NULL;
 }
 
 int64_t arcan_frametime()
@@ -552,9 +290,9 @@ int64_t arcan_frametime()
 	return arcan_last_frametime - arcan_tickofset;
 }
 
-/* the main usage case is simply to alternate
- * between process and poll after a scene has
- * been setup, kindof */
+/* the main usage case is simply to alternate between process and poll 
+ * after a scene has been setup */
+extern void platform_event_process(arcan_evctx* ctx);
 float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 {
 	static const int rebase_timer_threshold = ARCAN_TIMER_TICK * 1000;
@@ -562,129 +300,56 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 	arcan_last_frametime = arcan_timemillis();
 	unsigned delta  = arcan_last_frametime - ctx->c_ticks;
 
-/* compensate for a massive stall, non-monotonic clock or first time initialization */
+/*
+ * compensate for a massive stall, non-monotonic clock
+ * or first time initialization 
+ */
 	if (ctx->c_ticks == 0 || delta == 0 || delta > rebase_timer_threshold){
 		ctx->c_ticks = arcan_last_frametime;
 		delta = 1;
 	}
 	
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
-	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) / (float) ARCAN_TIMER_TICK;
+	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) /
+		(float) ARCAN_TIMER_TICK;
 	int rv = 0;
 
 	if (nticks){
-		arcan_event newevent = {.category = EVENT_TIMER, .kind = 0, .data.timer.pulse_count = nticks};
+		arcan_event newevent = {.category = EVENT_TIMER, 
+			.kind = 0, 
+			.data.timer.pulse_count = nticks
+		};
+
 		ctx->c_ticks += nticks * ARCAN_TIMER_TICK;
 		arcan_event_enqueue(ctx, &newevent);
 	}
 
 	*dtick = nticks;
-	map_sdl_events(ctx);
-
-/* also assumes that fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); is set on stdin and that complete LUA statements are parsed,
- * these would have to have its own parsing context or something to that effect so that the statements we get are fully terminated,
- * else we risk interleaving .. */
-	if (ctx->interactive){
-		char* resv = nblk_readln(STDIN_FILENO);
-		if (resv){
-			arcan_event sevent = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EVALCMD, .data.system.data.mesg.dyneval_msg = resv};
-			arcan_event_enqueue(ctx, &sevent);
-/* FIXME: incomplete due to the reason stated above */
-		}
-	}
+	platform_event_process(ctx);
 
 	return fragment;
 }
 
-/* afaik, this function has been placed in the public domain by daniel bernstein */
-static unsigned long djb_hash(const char* str)
-{
-	unsigned long hash = 5381;
-	int c;
-
-	while ((c = *(str++)))
-		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-
-	return hash;
-}
-
-static bool default_analogsample(struct axis_control* src, int srcsamples, int* srcbuf, int dstsamples, int* dstbuf)
-{
-	if (src->mode == EVENT_FILTER_ANALOG_ALL)
-		return false;
-
-/* first call, initialize cb- specific storage (not needed here) */
-	if (src->buffer == NULL){
-	}
-	if (srcsamples > 0 && dstsamples > 0){
-		if (srcbuf[0] > -32768 &&
-			((srcbuf[0] < -arcan_joythresh || srcbuf[0] > arcan_joythresh))){
-			dstbuf[0] = srcbuf[0];
-			return true;
-		}
-	}
-
-	return false;
-}
-
+extern void platform_event_deinit(arcan_evctx* ctx);
 void arcan_event_deinit(arcan_evctx* ctx)
 {
-	if (joydev.joys){
-		free(joydev.joys);
-		joydev.joys = 0;
-	}
-	
+	platform_event_deinit(ctx);
 	eventfront = eventback = 0;
-	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }
 
+extern void platform_event_init(arcan_evctx* ctx);
 void arcan_event_init(arcan_evctx* ctx)
 {
-/* non-local (i.e. shmpage resident) event queues has a different init approach (see frameserver_shmpage.c) */
+/*
+ * non-local (i.e. shmpage resident) event queues has a different 
+ * init approach (see frameserver_shmpage.c) 
+ */
 	if (!ctx->local){
 		return;
 	}
 
-	init_sdl_events(ctx);
+	pthread_mutex_init(&ctx->synch.local, NULL);
+	platform_event_init(ctx);
 
-	ctx->synch.local = SDL_CreateMutex();
  	arcan_tickofset = arcan_timemillis();
-
-	SDL_Init(SDL_INIT_JOYSTICK);
-	/* enumerate joysticks, try to connect to those available and map their respective axises */
-	SDL_JoystickEventState(SDL_ENABLE);
-	joydev.n_joy = SDL_NumJoysticks();
-
-	if (joydev.n_joy > 0) {
-		joydev.joys = (struct arcan_stick*) calloc(sizeof(struct arcan_stick), joydev.n_joy);
-		for (int i = 0; i < joydev.n_joy; i++) {
-			strncpy(joydev.joys[i].label, SDL_JoystickName(i), 255);
-			joydev.joys[i].hashid = djb_hash(SDL_JoystickName(i));
-			joydev.joys[i].handle = SDL_JoystickOpen(i);
-			joydev.joys[i].devnum = i;
-			joydev.joys[i].axis = SDL_JoystickNumAxes(joydev.joys[i].handle);
-			joydev.joys[i].axis_control = malloc(joydev.joys[i].axis * sizeof(struct axis_control));
-
-			for (int j = 0; j < joydev.joys[i].axis; j++){
-					struct axis_control defctrl = {
-						.buffer = NULL,
-						.mode = EVENT_FILTER_ANALOG_NONE,
-						.samplefun = default_analogsample
-					};
-
-					joydev.joys[i].axis_control[j] = defctrl;
-			}
-
-			joydev.joys[i].buttons = SDL_JoystickNumButtons(joydev.joys[i].handle);
-			joydev.joys[i].balls = SDL_JoystickNumBalls(joydev.joys[i].handle);
-			joydev.joys[i].hats = SDL_JoystickNumHats(joydev.joys[i].handle);
-
-			if (joydev.joys[i].hats > 0){
-				size_t dst_sz = joydev.joys[i].hats * sizeof(unsigned);
-
-				joydev.joys[i].hattbls = malloc(dst_sz);
-				memset(joydev.joys[i].hattbls, 0, dst_sz);
-			}
-		}
-	}
 }
