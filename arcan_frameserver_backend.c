@@ -848,7 +848,6 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr)
 		arcan_frameserver* tgt = (arcan_frameserver*) state->ptr;
 		struct frameserver_shmpage* shmpage = tgt->shm.ptr;
 
-/* SDL mutex protects the shm- page for freeing etc. */
 			if (shmpage->vready) {
 				frame_cell* current = &(tgt->vfq.da_cells[ tgt->vfq.ni ]);
 				current->tag = shmpage->vpts;

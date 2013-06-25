@@ -72,7 +72,7 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
 add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu
-	-DGL_HEADERS="arcan_glheaders_sdl.h")
+	-DGL_HEADERS="platform/sdl/glheaders.h")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")
@@ -236,7 +236,6 @@ set (
  arcan_shdrmgmt.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
- arcan_glheaders_sdl.h
 )
 
 set (
@@ -367,6 +366,7 @@ platform/posix/sem.c
 platform/posix/shm.c
 platform/posix/time.c
 platform/posix/warning.c
+platform/sdl/event.c
 )
 
 set (FSERV_PLATFORM_SOURCES
@@ -374,6 +374,7 @@ platform/posix/warning.c
 platform/posix/time.c
 platform/posix/sem.c
 platform/posix/shm.c
+platform/sdl/event.c
 )
 
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
@@ -390,7 +391,13 @@ LIST(APPEND MAIN_LIBRARIES usb-1.0 rt m)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c ${FSERV_PLATFORM_SOURCES})
 LIST(APPEND FSRV_LIBRARIES rt m dl)
 
-add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)
+add_library(arcan_hijack SHARED 
+	arcan_target_unix.c 
+	arcan_event.c 
+	arcan_frameserver_shmpage.c 
+	frameserver/ntsc/snes_ntsc.c
+ 	frameserver/resampler/resample.c)
+
 set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
@@ -412,7 +419,12 @@ install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
 if (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
 	message("(*) 64-bit target detected, building compat. 32-bit hijack library, disable with -DNO_HIJACK32=1")
-	add_library(arcan_hijack32 SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c)
+	add_library(arcan_hijack32 SHARED 
+		arcan_target_unix.c 
+		arcan_event.c 
+		arcan_frameserver_shmpage.c 
+		frameserver/ntsc/snes_ntsc.c)
+	
 	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
  	target_link_libraries(arcan_hijack32 -m32 -lrt )
 	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
