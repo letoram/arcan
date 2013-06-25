@@ -4,16 +4,7 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#ifdef POOR_GL_SUPPORT
-#define GLEW_STATIC
-#define NO_SDL_GLEXT
-#include <glew.h>
-#endif
-
-#define GL_GLEXT_PROTOTYPES 1
-
-#include <SDL.h>
-#include <SDL_opengl.h>
+#include GL_HEADERS
 
 #include <sys/stat.h>
 

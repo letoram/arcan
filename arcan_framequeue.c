@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
  *
  */
 
@@ -28,8 +28,7 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include <SDL.h>
-#include <SDL_thread.h>
+#include <pthread.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -41,13 +40,10 @@ void arcan_framequeue_step(frame_queue* queue)
 {
 	frame_cell* current = &queue->da_cells[ queue->ni ];
 
-	SDL_LockMutex(queue->framesync);
-
-/* Condition variable guarded area */
+	pthread_mutex_lock(&queue->framesync);
 	while (queue->alive && 
-		queue->n_cells + 1 == queue->c_cells) {
-		SDL_CondWait(queue->framecond, queue->framesync);
-	}
+		queue->n_cells + 1 == queue->c_cells) 
+			pthread_cond_wait(&queue->framecond, &queue->framesync);
 
 	if (queue->alive){
 		current->wronly = false;
@@ -59,8 +55,7 @@ void arcan_framequeue_step(frame_queue* queue)
 		queue->n_cells++;
 	}
 
-	SDL_UnlockMutex(queue->framesync);
-/* End of Condition variable guarded area */
+	pthread_mutex_unlock(&queue->framesync);
 }
 
 /* This is one of few major synchpoints between MT and other threads,
@@ -70,7 +65,7 @@ frame_cell* arcan_framequeue_dequeue(frame_queue* src)
 	frame_cell* rcell = NULL;
 
 	if (src->front_cell) {
-		int lv = SDL_LockMutex(src->framesync);
+		int lv = pthread_mutex_lock(&src->framesync);
 
 		rcell = src->front_cell;
 		src->front_cell = src->front_cell->next;
@@ -83,9 +78,9 @@ frame_cell* arcan_framequeue_dequeue(frame_queue* src)
 
 		if (src->front_cell == NULL)
 			src->current_cell = &src->front_cell;
-		
-		SDL_CondSignal(src->framecond);
-		SDL_UnlockMutex(src->framesync);
+
+		pthread_cond_signal(&src->framecond);
+		pthread_mutex_unlock(&src->framesync);	
 	}
 
 	return rcell;
@@ -98,11 +93,11 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 
 	if (queue) {
 		queue->alive = false;
-		int statusfl;
-		SDL_CondSignal(queue->framecond);
-		SDL_WaitThread(queue->iothread, &statusfl);
-		SDL_DestroyCond(queue->framecond);
-		SDL_DestroyMutex(queue->framesync);
+		pthread_cond_signal(&queue->framecond);
+		pthread_join(queue->iothread, NULL);
+		pthread_cond_destroy(&queue->framecond);
+		pthread_mutex_destroy(&queue->framesync);
+
 		free(queue->label);
 		if (queue->da_cells) {
 			free(queue->da_cells[0].buf);
@@ -116,7 +111,7 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 	return rv;
 }
 
-static int framequeue_loop(void* data)
+static void* framequeue_loop(void* data)
 {
 	frame_queue* queue = (frame_queue*) data;
 
@@ -142,7 +137,9 @@ static int framequeue_loop(void* data)
 	return 0;
 }
 
-arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_count, unsigned int cell_size, bool variable, arcan_rfunc rfunc, char* label)
+arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, 
+	unsigned int cell_count, unsigned int cell_size, bool variable, 
+	arcan_rfunc rfunc, char* label)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
@@ -171,10 +168,10 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, unsigned int cell_
 
 		queue->fd = fd;
 		queue->label = label ? strdup(label) : strdup("(unlabeled)");
-		queue->framesync = SDL_CreateMutex();
-		queue->framecond = SDL_CreateCond();
+		pthread_mutex_init(&queue->framesync, NULL);
+		pthread_cond_init(&queue->framecond, NULL);
 		queue->alive = true;
-		queue->iothread = SDL_CreateThread(framequeue_loop, (void*) queue);
+		pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue); 
 
 		rv = ARCAN_OK;
 	}

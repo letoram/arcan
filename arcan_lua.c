@@ -19,10 +19,6 @@
 *
 */
 
-#ifdef LUA_51
-	#define lua_rawlen(x, y) lua_objlen(x, y)
-#endif
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -65,6 +61,11 @@
 #include "arcan_led.h"
 #include "arcan_img.h"
 #include "arcan_ttf.h"
+
+
+#if LUA_VERSION_NUM == 501
+	#define lua_rawlen(x, y) lua_objlen(x, y)
+#endif
 
 /* these take some explaining:
  * to enforce that actual constants are used in LUA scripts and not magic 
@@ -2338,7 +2339,7 @@ static int get_linenumber(lua_State* ctx)
 
 static void dump_call_trace(lua_State* ctx)
 {
-#ifdef LUA_51
+#if LUA_VERSION_NUM == 501
 		printf("-- call trace -- \n");
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
@@ -4487,7 +4488,7 @@ void arcan_lua_pushargv(lua_State* ctx, char** argv)
 	lua_setglobal(ctx, "arguments");
 }
 
-static void arcan_lua_register_tbl(lua_State* ctx, const luaL_reg* funtbl) 
+static void arcan_lua_register_tbl(lua_State* ctx, const luaL_Reg* funtbl) 
 {
 	while(funtbl->name != NULL){
 		lua_pushstring(ctx, funtbl->name);
@@ -4524,7 +4525,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
  * coverage in the API binding -- so keep this format (down to the
  * whitespacing, simple regexs used. */
 #define EXT_MAPTBL_RESOURCE
-static const luaL_reg resfuns[] = {
+static const luaL_Reg resfuns[] = {
 {"resource",          arcan_lua_resource        },
 {"glob_resource",     arcan_lua_globresource    },
 {"zap_resource",      arcan_lua_zapresource     },
@@ -4539,7 +4540,7 @@ static const luaL_reg resfuns[] = {
 	arcan_lua_register_tbl(ctx, resfuns);
 
 #define EXT_MAPTBL_TARGETCONTROL
-static const luaL_reg tgtfuns[] = {
+static const luaL_Reg tgtfuns[] = {
 {"launch_target",              arcan_lua_targetlaunch             },
 {"launch_target_capabilities", arcan_lua_targetlaunch_capabilities},
 {"target_input",               arcan_lua_targetinput              },
@@ -4569,7 +4570,7 @@ static const luaL_reg tgtfuns[] = {
 	arcan_lua_register_tbl(ctx, tgtfuns);
 
 #define EXT_MAPTBL_DATABASE
-static const luaL_reg dbfuns[] = {
+static const luaL_Reg dbfuns[] = {
 {"store_key",    arcan_lua_storekey   },
 {"get_key",      arcan_lua_getkey     },
 {"game_cmdline", arcan_lua_getcmdline },
@@ -4584,7 +4585,7 @@ static const luaL_reg dbfuns[] = {
 	arcan_lua_register_tbl(ctx, dbfuns);
 
 #define EXT_MAPTBL_AUDIO
-static const luaL_reg audfuns[] = {
+static const luaL_Reg audfuns[] = {
 {"play_audio",        arcan_lua_playaudio   },
 {"pause_audio",       arcan_lua_pauseaudio  },
 {"delete_audio",      arcan_lua_dropaudio   },
@@ -4598,7 +4599,7 @@ static const luaL_reg audfuns[] = {
 	arcan_lua_register_tbl(ctx, audfuns);
 	
 #define EXT_MAPTBL_IMAGE
-static const luaL_reg imgfuns[] = {
+static const luaL_Reg imgfuns[] = {
 {"load_image",               arcan_lua_loadimage          },
 {"load_image_asynch",        arcan_lua_loadimageasynch    },
 {"image_loaded",             arcan_lua_imageloaded        },
@@ -4665,7 +4666,7 @@ static const luaL_reg imgfuns[] = {
 	arcan_lua_register_tbl(ctx, imgfuns);
 
 #define EXT_MAPTBL_3D
-static const luaL_reg threedfuns[] = {
+static const luaL_Reg threedfuns[] = {
 {"new_3dmodel",      arcan_lua_buildmodel   },
 {"add_3dmesh",       arcan_lua_loadmesh     },
 {"move3d_model",     arcan_lua_movemodel    },
@@ -4682,7 +4683,7 @@ static const luaL_reg threedfuns[] = {
 	arcan_lua_register_tbl(ctx, threedfuns);
 
 #define EXT_MAPTBL_SYSTEM
-static const luaL_reg sysfuns[] = {
+static const luaL_Reg sysfuns[] = {
 {"shutdown",            arcan_lua_shutdown         },
 {"switch_theme",        arcan_lua_switchtheme      },
 {"warning",             arcan_lua_warning          },
@@ -4696,7 +4697,7 @@ static const luaL_reg sysfuns[] = {
 	arcan_lua_register_tbl(ctx, sysfuns);
 
 #define EXT_MAPTBL_IODEV
-static const luaL_reg iofuns[] = {
+static const luaL_Reg iofuns[] = {
 {"kbd_repeat",          arcan_lua_kbdrepeat        },
 {"toggle_mouse_grab",   arcan_lua_mousegrab        },
 {"set_led",             arcan_lua_setled           },
@@ -4710,7 +4711,7 @@ static const luaL_reg iofuns[] = {
 	arcan_lua_register_tbl(ctx, iofuns);
 
 #define EXT_MAPTBL_VIDSYS
-static const luaL_reg vidsysfuns[] = {
+static const luaL_Reg vidsysfuns[] = {
 {"switch_default_scalemode",         arcan_lua_setscalemode   },
 {"switch_default_texmode",           arcan_lua_settexmode     },
 {"switch_default_imageproc",         arcan_lua_setimageproc   },
@@ -4732,7 +4733,7 @@ static const luaL_reg vidsysfuns[] = {
 	arcan_lua_register_tbl(ctx, vidsysfuns);
 
 #define EXT_MAPTBL_NETWORK
-static const luaL_reg netfuns[] = {
+static const luaL_Reg netfuns[] = {
 {"net_open",         arcan_lua_net_open        },
 {"net_push",         arcan_lua_net_pushcl      },
 {"net_listen",       arcan_lua_net_listen      },

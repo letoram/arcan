@@ -229,7 +229,6 @@ set (
  arcan_util.h
  arcan_audio.h
  arcan_target_launcher.h
- arcan_general.c
  arcan_led.c
  arcan_led.h
  arcan_general.h
@@ -261,7 +260,6 @@ set (
  frameserver/resampler/speex_resampler.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
- arcan_general.c
  arcan_event.c
 )
 
@@ -357,6 +355,27 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 #
 #
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+set (PLATFORM_SOURCES
+platform/posix/fmt_open.c
+platform/posix/glob.c
+platform/posix/map_resource.c
+platform/posix/resource_io.c
+platform/posix/ilaunch.c
+platform/posix/strip_traverse.c
+platform/posix/paths.c
+platform/posix/sem.c
+platform/posix/shm.c
+platform/posix/time.c
+platform/posix/warning.c
+)
+
+set (FSERV_PLATFORM_SOURCES
+platform/posix/warning.c
+platform/posix/time.c
+platform/posix/sem.c
+platform/posix/shm.c
+)
+
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 set_source_files_properties( ctags.output PROPERTIES GENERATED true )
 add_custom_command( OUTPUT ctags.output
@@ -365,8 +384,10 @@ add_custom_command( OUTPUT ctags.output
 LIST(APPEND SOURCES ctags.output)
 
 LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+LIST(APPEND SOURCES ${PLATFORM_SOURCES})
+
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt m)
-LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
+LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c ${FSERV_PLATFORM_SOURCES})
 LIST(APPEND FSRV_LIBRARIES rt m dl)
 
 add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_frameserver_shmpage.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)

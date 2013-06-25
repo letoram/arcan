@@ -631,7 +631,7 @@ bool arcan_db_launch_counter_increment(arcan_dbh* dbh, int gameid)
 {
 	bool rv = false;
 	
-	if (dbh > 0){
+	if (dbh != NULL){
 		sqlite3_stmt* stmt = NULL;
 		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = launch_counter + 1 WHERE gameid=?");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);

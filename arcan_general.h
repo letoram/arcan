@@ -22,6 +22,13 @@
 #ifndef _HAVE_ARCAN_GENERAL
 #define _HAVE_ARCAN_GENERAL
 
+/*
+ * Some of these functions are shared between different platforms
+ * and are implemented in arcan_general.c but are also cherry-picked
+ * on a "function by function" bases from the corresponding names
+ * in platform/system/functionname.c 
+ */
+
 #define ARCAN_VERSION_MAJOR 0
 #define ARCAN_VERSION_MINOR 3 
 #define ARCAN_VERSION_PATCH 1 
@@ -179,7 +186,7 @@ char* arcan_find_resource_path(const char* label,
 	const char* path, int searchmask);
 char* arcan_find_resource(const char* label, int searchmask);
 char* arcan_findshmkey(int* dhd, bool semalloc);
-
+char* strip_traverse(char* in);
 /*
  * Open and map a resource description (from _expand, _find category 
  * of functions) and return in data_source structure.

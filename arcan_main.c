@@ -451,7 +451,7 @@ themeswitch:
 	float lastfrag = 0.0f;
 	long long int lastflip = arcan_timemillis();
 	int monitor_counter = monitor;
-		
+
 	while (!done) {
 		arcan_event* ev;
 		arcan_errc evstat;
@@ -558,7 +558,7 @@ themeswitch:
 				if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
 					arcan_video_refresh(frag, true);
 					lastflip += delta;
-				}
+				} 
 			}
 		}
 

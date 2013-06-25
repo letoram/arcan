@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -43,10 +44,6 @@
 /* openAL */
 #include <al.h>
 #include <alc.h>
-
-/* libSDL */
-#include <SDL.h>
-#include <SDL_types.h>
 
 /* arcan */
 #include "arcan_math.h"
@@ -146,8 +143,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		}
 		free(src->audb);
 
-		if (src->lock_audb)
-			SDL_DestroyMutex(src->lock_audb);
+		sem_destroy(&src->lock_audb);
 
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);
