@@ -2501,12 +2501,6 @@ int arcan_lua_getgenres(lua_State* ctx)
 	return rv;
 }
 
-int arcan_lua_togglefs(lua_State* ctx)
-{
-	arcan_video_fullscreen();
-	return 0;
-}
-
 int arcan_lua_fillsurface(lua_State* ctx)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};

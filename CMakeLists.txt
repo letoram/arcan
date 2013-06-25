@@ -367,6 +367,7 @@ platform/posix/shm.c
 platform/posix/time.c
 platform/posix/warning.c
 platform/sdl/event.c
+platform/sdl/video.c
 )
 
 set (FSERV_PLATFORM_SOURCES
