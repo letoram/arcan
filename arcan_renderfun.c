@@ -113,7 +113,7 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 	int leasti = 0, i, leastv = -1;
 	const int nchannels_rgba = 4;
 
-	if (!fname || !arcan_video_display.text_support)
+	if (!fname) 
 		return NULL;
 
 	for (i = 0; i < font_cache_size && font_cache[i].data != NULL; i++){

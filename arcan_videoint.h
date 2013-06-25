@@ -7,7 +7,7 @@
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 3
  * of the License, or (at your option) any later version.
- * 
+ KD
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -213,7 +213,7 @@ struct arcan_vobject_litem {
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
-	bool suspended, text_support, fullscreen, conservative, vsync, fbo_disabled;
+	bool suspended, fullscreen, conservative, vsync, fbo_disabled;
 	enum arcan_order3d order3d;
 
 	unsigned default_vitemlim;
@@ -228,7 +228,6 @@ struct arcan_video_display {
 	unsigned deftxs, deftxt;
 	bool mipmap;
 	
-	SDL_Surface* screen;
 	uint32_t sdlarg;
 	
 	unsigned char bpp;
