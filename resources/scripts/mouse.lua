@@ -138,9 +138,10 @@ local function lmbhandler(hists, press)
 			end
 		end
 
-		mstate.counter   = 0; 
+		mstate.counter   = 0;
 		mstate.predrag   = nil;
 		mstate.drag      = nil;	
+		
 	end 
 end
 
@@ -181,10 +182,9 @@ function mouse_input(x, y, state)
 -- otherwise we have motion, if we havn't exceeded predrag threshold,
 -- start with that
 		if (mstate.predrag) then
-				mstate.predrag.x = mstate.predrag.x - math.abs(
-					mstate.predrag.x - x);
-				mstate.predrag.y = mstate.predrag.y - math.abs(
-				mstate.predrag.y - y);
+
+				mstate.predrag.x = mstate.predrag.x - math.abs( x );
+				mstate.predrag.y = mstate.predrag.y - math.abs( y ); 
 
 			if (mstate.predrag.x <= 0 and mstate.predrag.y <= 0) then
 				mstate.drag = mstate.predrag;

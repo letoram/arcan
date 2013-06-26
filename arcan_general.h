@@ -202,6 +202,12 @@ bool arcan_release_map(map_region region);
 
 long long int arcan_timemillis();
 
+/* 
+ * Somewhat ad-hoc, mainly just used for mouse grab- style
+ * global state changes for now.
+ */
+void arcan_device_lock(int devind, bool state);
+
 void arcan_timesleep(unsigned long);
 
 void arcan_warning(const char* msg, ...);
