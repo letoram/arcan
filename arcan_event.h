@@ -114,19 +114,22 @@ enum ARCAN_EVENT_IO {
 	EVENT_IO_BUTTON_RELEASE,
 	EVENT_IO_KEYB_PRESS,
 	EVENT_IO_KEYB_RELEASE,
-	EVENT_IO_AXIS_MOVE
+	EVENT_IO_AXIS_MOVE,
+	EVENT_IO_TOUCH
 };
 
 enum ARCAN_EVENT_IDEVKIND {
 	EVENT_IDEVKIND_KEYBOARD,
 	EVENT_IDEVKIND_MOUSE,
-	EVENT_IDEVKIND_GAMEDEV
+	EVENT_IDEVKIND_GAMEDEV,
+	EVENT_IDEVKIND_TOUCHDISP
 };
 
 enum ARCAN_EVENT_IDATATYPE {
 	EVENT_IDATATYPE_ANALOG,
 	EVENT_IDATATYPE_DIGITAL,
-	EVENT_IDATATYPE_TRANSLATED
+	EVENT_IDATATYPE_TRANSLATED,
+	EVENT_IDATATYPE_TOUCH
 };
 
 enum ARCAN_EVENT_FRAMESERVER {
@@ -215,6 +218,13 @@ typedef union arcan_ioevent_data {
 		uint8_t nvalues;
 		int16_t axisval[4];
 	} analog;
+
+	struct {
+		uint8_t devid;
+		uint8_t subid;
+		int16_t x, y;
+		float pressure, size;
+	} touch;
 
 	struct {
 		bool active;
@@ -351,6 +361,25 @@ typedef struct arcan_event {
 
 	event_data data;
 } arcan_event;
+
+#ifndef _SDL_keysym_h
+/* matches those that libraries such as SDL uses */
+typedef enum {
+	KMOD_NONE  = 0x0000,
+	KMOD_LSHIFT= 0x0001,
+	KMOD_RSHIFT= 0x0002,
+	KMOD_LCTRL = 0x0040,
+	KMOD_RCTRL = 0x0080,
+	KMOD_LALT  = 0x0100,
+	KMOD_RALT  = 0x0200,
+	KMOD_LMETA = 0x0400,
+	KMOD_RMETA = 0x0800,
+	KMOD_NUM   = 0x1000,
+	KMOD_CAPS  = 0x2000,
+	KMOD_MODE  = 0x4000,
+	KMOD_RESERVED = 0x8000
+} key_modifiers;
+#endif
 
 struct arcan_evctx {
 	bool interactive; /* should STDIN be processed for command events? */

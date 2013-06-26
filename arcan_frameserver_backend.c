@@ -28,13 +28,14 @@
 #include <math.h>
 #include <assert.h>
 #include <limits.h>
+#include <pthread.h>
 
 #ifndef _WIN32
 #include <sys/socket.h>
 #endif
 
-#include <al.h>
-#include <alc.h>
+#include <AL/al.h>
+#include <AL/alc.h>
 
 #include GL_HEADERS
 
@@ -50,7 +51,6 @@
 #include "arcan_frameserver_backend.h"
 #include "arcan_frameserver_shmpage.h"
 #include "arcan_event.h"
-#include "arcan_util.h"
 
 #define INCR(X, C) ( (X = (X + 1) % C) )
 
@@ -224,7 +224,7 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
 	else
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, buf);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -934,7 +934,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 		return NULL;
 
 	memset(res, 0, sizeof(arcan_frameserver));
-	res->use_pbo = true;
+	res->use_pbo = arcan_video_display.pbo_support;
 	res->watch_const = 0xdead;
 	return res;
 }

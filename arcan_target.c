@@ -509,6 +509,7 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 	bool active;
 	
 	switch (event.datatype){
+		case EVENT_IDATATYPE_TOUCH: break;
 		case EVENT_IDATATYPE_DIGITAL:
 			newev.button.which = event.input.digital.devid;
 				

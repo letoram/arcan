@@ -71,8 +71,9 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 # Collective sigh for stupid standard breaking features.
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
-add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu
-	-DGL_HEADERS="platform/sdl/glheaders.h")
+add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu 
+-DGL_HEADERS="platform/sdl/glheaders.h" 
+-DPLATFORM_HEADER="platform/posix/platform.h")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")

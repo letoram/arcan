@@ -21,40 +21,45 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <math.h>
-#include <stdio.h>
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <time.h>
 
 #include <android/log.h>
 
-#include "arcan_general.h"
+#include "../../arcan_math.h"
+#include "../../arcan_general.h"
+
+static char* tag_resleak = "resource_leak";
+static data_source* alloc_datasource()
+{
+	data_source* res = malloc(sizeof(data_source));
+	res->fd     = -1;
+	res->start  =  0;
+	res->len    =  0;
+
+/* trace for this value to track down leaks */
+	res->source = tag_resleak;
+	
+	return res;
+}
 
 /* just map to wrapping implementations in arcan_androidmain.c.
  * the "full" lookup scope is;
  * [RESOURCES] -> APK -> common-searchpaths
  * [THEME]     -> APK -> Application-specific store with themename as subdir */
-extern int android_aman_scanraw(const char* const, off_t* outofs, off_t* outlen);
+extern int android_aman_scanraw(const char* const, off_t* outofs, 
+	off_t* outlen);
 
 /* no advanced scanning in use currently,
  * just open explicitly and if it succeeds, close fd again and return the match */
-char* arcan_resolve_resource(const char* name, const char* const path, int searchmask)
+char* arcan_find_resource_path(const char* name, const char* path,
+	int searchmask)
 {
-	arcan_warning("arcan_resolve_resource(%s)\n", name);
-	off_t ofs;
-	off_t len;
+	off_t ofs, len;
 	int fd = android_aman_scanraw(name, &ofs, &len); 
 
-	arcan_warning("arcan_resolve_resource() fd from lookup: %d\n", fd);
-	
 	if (-1 != fd){
 		close(fd);
 		return strdup(name); 
@@ -63,7 +68,12 @@ char* arcan_resolve_resource(const char* name, const char* const path, int searc
 		return NULL;
 }
 
-data_source* arcan_find_resource(const char* const key)
+char* arcan_find_resource(const char* name, int searchmask)
+{
+	return arcan_find_resource_path(name, NULL, searchmask);
+}
+
+data_source* aarcan_find_resource(const char* const key)
 {
 	arcan_warning("arcan_find_resource(%s)\n", key);
 	data_source* res = alloc_datasource();
@@ -71,7 +81,7 @@ data_source* arcan_find_resource(const char* const key)
 	res->fd = android_aman_scanraw(key, &res->start, &res->len);
 	
 	if (-1 == res->fd)
-		arcan_release_resource(&res);
+		arcan_release_resource(res);
 
 	return res;	
 }
@@ -86,18 +96,26 @@ char* arcan_expand_resource(const char* label, bool global)
 	return NULL;
 }
 
-char* arcan_find_resource_path(const char* label, const char* path, int searchmask, off_t* ofs)
+char* arcan_themepath    = "./";
+char* arcan_resourcepath = "./";
+char* arcan_libpath      = NULL;
+char* arcan_binpath      = "./ale_frameserver";
+char* arcan_fontpath     = "/system/fonts";
+char* arcan_themename    = "default";
+
+const char* internal_launch_support()
 {
-	return NULL;
+	return "NO SUPPORT";
+}
+
+unsigned arcan_glob(char* basename, int searchmask,
+	void (*cb)(char*, void*), void* tag)
+{
+		return 0;
 }
 
 bool arcan_setpaths()
 {
-	arcan_themepath    = "./";
-	arcan_resourcepath = "./";
-	arcan_binpath      = "./ale_frameserver";
-	arcan_fontpath     = "/system/fonts";
-	arcan_themename    = "default";
-
 	return true; /* all other checks can be done at the APK level */
 }
+

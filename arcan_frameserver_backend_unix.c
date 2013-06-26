@@ -39,11 +39,10 @@
 
 #include <signal.h>
 #include <errno.h>
-#include <aio.h>
 
 /* openAL */
-#include <al.h>
-#include <alc.h>
+#include <AL/al.h>
+#include <AL/alc.h>
 
 /* arcan */
 #include "arcan_math.h"
@@ -53,7 +52,6 @@
 #include "arcan_video.h"
 #include "arcan_audio.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_util.h"
 #include "arcan_frameserver_shmpage.h"
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )

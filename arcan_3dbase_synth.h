@@ -1,38 +1,6 @@
 /* Included by arcan_3dbase.h to move the lengthier
  * "geometry generation" routines */
 
-static inline void wireframe_box(float minx, float miny, float minz, float maxx, float maxy, float maxz)
-{
-	glColor3f(0.2, 1.0, 0.2);
-	glBegin(GL_LINES);
-	glVertex3f(minx, miny, minz); // back
-	glVertex3f(minx, maxy, minz);
-	glVertex3f(minx, miny, maxz);
-	glVertex3f(minx, maxy, maxz);
-	glVertex3f(minx, miny, minz);
-	glVertex3f(maxx, miny, minz);
-	glVertex3f(maxx, miny, minz);
-	glVertex3f(maxx, maxy, minz);
-	glVertex3f(maxx, maxy, minz);
-	glVertex3f(minx, maxy, minz);
-	glVertex3f(minx, miny, maxz); // front
-	glVertex3f(maxx, miny, maxz);
-	glVertex3f(maxx, miny, maxz);
-	glVertex3f(maxx, maxy, maxz);
-	glVertex3f(maxx, maxy, maxz);
-	glVertex3f(minx, maxy, maxz);
-	glVertex3f(minx, miny, minz); // left
-	glVertex3f(minx, miny, maxz);
-	glVertex3f(minx, maxy, minz);
-	glVertex3f(minx, maxy, maxz);
-	glVertex3f(maxx, miny, minz); // right
-	glVertex3f(maxx, miny, maxz);
-	glVertex3f(maxx, maxy, minz);
-	glVertex3f(maxx, maxy, maxz);
-	glEnd();
-	glColor3f(1.0, 1.0, 1.0);
-}
-
 static void build_quadbox(float n, float p, float** verts, float** txcos, unsigned* nverts)
 {
 	float lut[6][12] = {

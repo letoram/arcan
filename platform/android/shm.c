@@ -19,7 +19,8 @@
  *
  */
 
-#include <stdbool>
+#include <stdlib.h>
+#include <stdbool.h>
 
 char* arcan_findshmkey(int* dfd, bool semalloc){
 	*dfd = 0;

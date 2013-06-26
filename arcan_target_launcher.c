@@ -20,6 +20,7 @@
  */
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -31,11 +32,9 @@
 #include <sys/ipc.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include <errno.h>
-
-#include <SDL.h>
-#include <SDL_opengl.h>
 
 #include <assert.h>
 #include <errno.h>
