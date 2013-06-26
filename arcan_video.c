@@ -41,8 +41,6 @@
 
 #include GL_HEADERS
 
-#include <apr_poll.h>
-
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_video.h"
@@ -139,8 +137,12 @@ static void push_globj(arcan_vobject* dst, unsigned* dstid,
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dst->gl_storage.txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dst->gl_storage.txv);
 
+#ifndef GL_GENERATE_MIPMAP
+	glGenerateMipmap(GL_TEXTURE_2D);
+#else
 	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, 
 		arcan_video_display.mipmap ? GL_TRUE : GL_FALSE);
+#endif
 
 	switch (dst->gl_storage.filtermode){
 	case ARCAN_VFILTER_NONE:
@@ -703,81 +705,6 @@ static void verify_pool()
 	assert(broken == false);
 }
 
-static void verify_owner(arcan_vobject* src)
-{
-	struct rendertarget* owner = src->owner;
-
-/* if the verify pass fails, this is repeated with a verbose setting, 
- * giving more printout on who owns what */
-	bool verbose = false;
-#define LOGV(X) if (verbose) (X);
-	unsigned count;
-
-reevaluate:
-	count = 0;
-	LOGV( printf("verify (%" PRIxPTR ") : (%d instances, %d attachments, "
-		"%d framesets, %d links) -- parent: %d, clone: %d\n",
-		(intptr_t) src, src->extrefc.instances, src->extrefc.attachments, 
-		src->extrefc.framesets, src->extrefc.links, src->parent != NULL && 
-		src->parent != &current_context->world, src->flags.clone) );
-
-	if (src->default_frame.source)
-		LOGV( printf("-> %s\n", src->default_frame.source) );
-
-	if (src){
-		integrity_scan(&current_context->stdoutp);
-		if ( scan_rtgt(&current_context->stdoutp, src) ){
-			LOGV( printf(" -> found reference in stdoutp.\n") );
-//			count++;
-		}
-
-		for (unsigned int n = 0; n < current_context->n_rtargets; n++){
-			integrity_scan(&current_context->rtargets[n]);
-
-			if ( scan_rtgt(&current_context->rtargets[n], src) ){
-			LOGV( printf(" -> found reference in rendertarget"
-				"	(%"PRIxPTR":%"PRIxVOBJ")\n", (intptr_t) &current_context->rtargets[n],
-			 	current_context->rtargets[n].color->cellid) );
-				count++;
-			}
-		}
-	}
-
-/* check each object that is not the source, if it has a frameset assigned,
- * check that one for any references to src->cellid */
-	for (unsigned int n = 0; n < current_context->vitem_limit; n++){
-		arcan_vobject* vobj = &current_context->vitems_pool[n];
-
-		if (vobj->parent == src){
-			LOGV( printf("-> worldpool: child found (%"PRIxPTR":%"PRIxVOBJ"), "
-				"clone? (%d)\n", (intptr_t) vobj, vobj->cellid, vobj->flags.clone) );
-			count++;
-		}
-
-		if (vobj->flags.in_use && vobj->frameset && vobj->flags.clone == false)
-			for (unsigned int cell = 0; cell < vobj->frameset_meta.capacity; cell++){
-				if (vobj->frameset[cell] == src){
-					LOGV( printf("->worldpool: found in frameset (%"PRIxPTR":%"PRIxVOBJ")"
-						"cell: %d\n", (intptr_t)vobj, vobj->cellid, count) );
-					count++;
-				}
-			}
-	}
-
-	int sum = src->extrefc.attachments + src->extrefc.framesets + 
-		src->extrefc.instances + src->extrefc.links;
-
-	if (verbose)
-		assert(count == sum); /* will trigger */
-	else if (count != sum){
-		verbose = true;
-		LOGV( printf(" -- mismatch (count:%d) <-> (refcount:%d) (tag: %s) \n", 
-			count, sum, src->tracetag ? src->tracetag : "(unknown)") );
-		goto reevaluate;
-	}
-}
-#undef LOGV
-
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 {
 	arcan_vobject_litem* torem;
@@ -1073,14 +1000,13 @@ static void arcan_video_gldefault()
 {
 	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_SCISSOR_TEST);
-	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_LIGHTING);
-	glDisable(GL_FOG);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+#ifdef GL_MULTISAMPLE
 	if (arcan_video_display.msasamples)
 		glEnable(GL_MULTISAMPLE);
+#endif
 
 	glEnable(GL_BLEND);
 	glClearColor(0.0, 0.0, 0.0, 1.0f);
@@ -1561,7 +1487,6 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	return rv;
 }
 
-static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode);
 static bool activate_fbo(struct rendertarget* dst)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
@@ -1594,9 +1519,8 @@ static bool activate_fbo(struct rendertarget* dst)
 	if (status == GL_FRAMEBUFFER_COMPLETE)
 		return true;
 	else {
-		arcan_video_display.fbo_disabled = true;
+		arcan_video_display.fbo_support = false;
 		arcan_warning("Error using rendertarget (FBO), feature disabled.\n");
-		arcan_debug_curfbostatus(status, dst->mode);
 		return false;
 	}
 }
@@ -1607,7 +1531,7 @@ static bool activate_fbo(struct rendertarget* dst)
  */
 static bool alloc_fbo(struct rendertarget* dst)
 {
-	if (arcan_video_display.fbo_disabled)
+	if (!arcan_video_display.fbo_support)
 		return false;
 
 /* assert is leak-trigger here */
@@ -1713,11 +1637,16 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 			dst->readback     = readback;
 			dst->readcnt      = abs(readback);
 
-			glGenBuffers(1, &dst->pbo);
-			glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
-			glBufferData(GL_PIXEL_PACK_BUFFER, vobj->gl_storage.w*vobj->gl_storage.h*
+			if (arcan_video_display.pbo_support){
+				glGenBuffers(1, &dst->pbo);
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
+				glBufferData(GL_PIXEL_PACK_BUFFER, 
+					vobj->gl_storage.w*vobj->gl_storage.h*
 				vobj->gl_storage.bpp, NULL, GL_STREAM_READ);
-			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+			}
+			else
+				arcan_warning("PBO readback missing, alternate support fixme.\n");
 		}
 
 		rv = ARCAN_OK;
@@ -2502,7 +2431,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 			"remove rendertarget (%s)\n", vobj->tracetag);
 
 /* kill GPU resources */
-	if (arcan_video_display.fbo_disabled == false){
+	if (arcan_video_display.fbo_support){
 		glDeleteFramebuffers(1, &dst->fbo);
 		glDeleteRenderbuffers(1,&dst->depth);
 	}
@@ -3920,7 +3849,7 @@ static void process_readback(struct rendertarget* tgt, float fract)
 
 /* check if there's data ready to be copied
 	TODO: this doesn't accept stencil / depth readback */
-	if (tgt->readreq){
+	if (tgt->readreq && arcan_video_display.pbo_support){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
 		GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
 
@@ -3956,10 +3885,11 @@ static void process_readback(struct rendertarget* tgt, float fract)
 	}
 
 /* check if we should request new data */
-	if (req_rb){
+	if (req_rb && arcan_video_display.pbo_support){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
 		glBindTexture(GL_TEXTURE_2D, tgt->color->gl_storage.glid);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0); 
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+
 /* null as PBO is responsible */
 		tgt->readreq = true;
 	}
@@ -3971,7 +3901,7 @@ cleanup:
 void arcan_video_refresh_GL(float lerp)
 {
 /* for performance reasons, we should try and re-use FBOs whenever possible */
-	if (!arcan_video_display.fbo_disabled){
+	if (arcan_video_display.fbo_support){
 		for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
 			bool active_fbo = activate_fbo(tgt);
@@ -4235,7 +4165,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 	if (ticks == 0)
 		return arcan_video_current_properties(id);
 
-	bool fullprocess = ticks == UINT_MAX;
+	bool fullprocess = ticks == (unsigned int) -1;
 
 	surface_properties rv = empty_surface();
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -4428,135 +4358,6 @@ int arcan_debug_pumpglwarnings(const char* src){
 	return 1;
 }
 
-static char fbobuf[64];
-static char* renderbuf_parameters(GLuint id)
-{
-	int w, h, format;
-
-	glBindRenderbuffer(GL_RENDERBUFFER, id);
-	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &w);
-	glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &h);
-	glGetRenderbufferParameteriv(GL_RENDERBUFFER, 
-		GL_RENDERBUFFER_INTERNAL_FORMAT, &format);
-	glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-	snprintf(fbobuf, 64, "%d * %d @ %d\n", w, h, format);
-
-	return fbobuf;
-}
-
-static char* texture_parameters(GLuint id)
-{
-	int w, h, format;
-
-	glBindTexture(GL_TEXTURE_2D, id);
-
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
-	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, 
-		GL_TEXTURE_INTERNAL_FORMAT, &format);
-
-	glBindTexture(GL_TEXTURE_2D, 0);
-
-	snprintf(fbobuf, 64, "%d * %d @ %d\n", w, h, format);
-	return fbobuf;
-}
-
-/* assume an active / bound FBO,
- * enumerate all available attachments, 
- * decode the format of each detached object */
-static void arcan_debug_curfbostatus(GLenum status, enum rendertarget_mode mode)
-{
-	arcan_warning("FBO status:\n----------\n");
-		switch (mode){
-		case RENDERTARGET_COLOR : arcan_warning("mode: color\n"); break;
-		case RENDERTARGET_COLOR_DEPTH : arcan_warning("mode: color, depth\n"); 
-		break;
-		case RENDERTARGET_COLOR_DEPTH_STENCIL: 
-			arcan_warning("mode: color, depth, stencil\n"); 
-		break;
-		case RENDERTARGET_DEPTH : arcan_warning("mode: depth\n"); break;
-		}
-
-	switch (status){
-	case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT: 
-		arcan_warning("error: incomplete attachment\n"); break;
-	case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: 
-		arcan_warning("error: incomplete / missing attachment\n"); break;
-	case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER: 
-		arcan_warning("error: incomplete draw buffer\n"); break;
-	case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER: 
-		arcan_warning("error: incomplete read buffer\n"); break;
-	case GL_FRAMEBUFFER_UNSUPPORTED: 
-		arcan_warning("error: GPU FBO implementation doesn't support the "
-			"requested configuration.\n"); break;
-		default:
-			arcan_warning("error: unknown code(%d)\n", status);
-	}
-
-	int n_colbuf = 0;
-	glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &n_colbuf);
-
-	int objectType;
-	int objectId;
-
-	for(int i = 0; i < n_colbuf; ++i){
-		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
-			GL_COLOR_ATTACHMENT0+i,
-			GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
-			&objectType);
-
-		if(objectType != GL_NONE){
-			glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
-				GL_COLOR_ATTACHMENT0+i,
-				GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
-				&objectId);
-
-			arcan_warning("\tcolor attachment(%d):\n", i);
-			if(objectType == GL_TEXTURE)
-				arcan_warning("\t\ttexture: %s\n", texture_parameters(objectId));
-			else if(objectType == GL_RENDERBUFFER)
-				arcan_warning("\t\trenderbuffer: %d\n", renderbuf_parameters(objectId));
-		}
-	}
-
-	glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
-		GL_DEPTH_ATTACHMENT,
-		GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
-		&objectType);
-
-	if(objectType != GL_NONE){
-		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,
-			GL_DEPTH_ATTACHMENT,
-			GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
-			&objectId);
-
-		arcan_warning("\tdepth attachment:\n");
-		switch(objectType){
-		case GL_TEXTURE: arcan_warning("\t\ttexture: %s\n", 
-			texture_parameters(objectId)); break;
-		case GL_RENDERBUFFER: arcan_warning("\t\trenderbuffer: %s\n", 
-			renderbuf_parameters(objectId)); break;
-    }
-	}
-
-	glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, 
-		GL_STENCIL_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &objectType);
-	if(objectType != GL_NONE){
-		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, 
-			GL_STENCIL_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &objectId);
-
-		arcan_warning("\tstencil attachment:\n");
-		switch(objectType){
-		case GL_TEXTURE: arcan_warning("\t\ttexture: %s\n", 
-			texture_parameters(objectId)); break;
-		case GL_RENDERBUFFER: arcan_warning("\t\trenderbuffer: %s\n", 
-			renderbuf_parameters(objectId)); break;
-		}
-	}
-
-}
-
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -4571,14 +4372,4 @@ arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
 	}
 
 	return rv;
-}
-
-void arcan_debug_tracetag_dump()
-{
-	for (unsigned int id = 0; id < current_context->vitem_limit; id++)
-		if (current_context->vitems_pool[id].tracetag){
-			arcan_warning("[%d] => tracetag(%s), rendertarget: %d\n", 
-				id, current_context->vitems_pool[id].tracetag, 
-				&current_context->vitems_pool[id] != NULL);
-		}
 }

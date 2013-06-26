@@ -95,8 +95,10 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 		arcan_warning("arcan_video_init(), Continuing without FBOs enabled, "
 			"this renderpath is to be considered unsupported.");
-		arcan_video_display.fbo_disabled = true;
+		arcan_video_display.fbo_support = false;
 	}
+	else
+		arcan_video_display.pbo_support = arcan_video_display.fbo_support = true;
 
 	arcan_video_display.width  = width;
 	arcan_video_display.height = height;

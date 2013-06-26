@@ -37,6 +37,7 @@ char* arcan_resourcepath   = NULL;
 char* arcan_themename      = "welcome";
 char* arcan_binpath        = NULL;
 char* arcan_libpath        = NULL;
+char* arcan_fontpath       = "fonts/";
 
 static inline bool is_dir(const char* fn)
 {

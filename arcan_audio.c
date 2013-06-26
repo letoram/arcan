@@ -29,9 +29,10 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <limits.h>
+#include <pthread.h>
 
-#include <al.h>
-#include <alc.h>
+#include <AL/al.h>
+#include <AL/alc.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"

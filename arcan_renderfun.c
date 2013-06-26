@@ -22,6 +22,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <stddef.h>
@@ -933,14 +934,14 @@ Andreas Schiffler -- aschiffler at ferzkopp dot net
 */
 
 typedef struct tColorRGBA {
-	Uint8 r;
-	Uint8 g;
-	Uint8 b;
-	Uint8 a;
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+	uint8_t a;
 } tColorRGBA;
 
 typedef struct tColorY {
-	Uint8 y;
+	uint8_t y;
 } tColorY;
 
 int stretchblit(char* src, int inw, int inh, 
@@ -954,10 +955,10 @@ int stretchblit(char* src, int inw, int inh,
 	
 	int spixelgap, spixelw, spixelh, dgap, t1, t2;
 
-	if ((sax = (int *) malloc((dstw + 1) * sizeof(Uint32))) == NULL) {
+	if ((sax = (int *) malloc((dstw + 1) * sizeof(uint32_t))) == NULL) {
 		return (-1);
 	}
-	if ((say = (int *) malloc((dsth + 1) * sizeof(Uint32))) == NULL) {
+	if ((say = (int *) malloc((dsth + 1) * sizeof(uint32_t))) == NULL) {
 		free(sax);
 		return (-1);
 	}
@@ -1068,7 +1069,7 @@ int stretchblit(char* src, int inw, int inh,
 			sp = csp + sstep;
 		}
 
-		dp = (tColorRGBA *) ((Uint8 *) dp + dgap);
+		dp = (tColorRGBA *) ((uint8_t *) dp + dgap);
 	}
 
 	free(sax);

@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
+#include <pthread.h>
+#include <ctype.h>
 
 #include <string.h>
 #include <fcntl.h>
@@ -58,7 +60,11 @@
 #include "arcan_target_const.h"
 #include "arcan_target_launcher.h"
 #include "arcan_lua.h"
+
+#ifndef ARCAN_LUA_NOLED
 #include "arcan_led.h"
+#endif
+
 #include "arcan_img.h"
 #include "arcan_ttf.h"
 
@@ -1262,6 +1268,7 @@ int arcan_lua_loadmovie(lua_State* ctx)
 	return 2;
 }
 
+#ifndef ARCAN_LUA_NOLED
 int arcan_lua_n_leds(lua_State* ctx)
 {
 	uint8_t id = luaL_checkint(ctx, 1);
@@ -1305,6 +1312,7 @@ int arcan_lua_setled(lua_State* ctx)
 
 	return 1;
 }
+#endif
 
 /* NOTE: a currently somewhat serious yet unhandled issue concerns what to do
  * with events fires from objects that no longer exist, e.g. the case with 
@@ -2462,17 +2470,6 @@ int arcan_lua_mousegrab(lua_State* ctx)
 {
 	int mode =  luaL_optint( ctx, 1, -1);
 
-	if (mode == MOUSE_GRAB_OFF)
-		lua_ctx_store.grab = false;
-	else if (mode == MOUSE_GRAB_ON)
-		lua_ctx_store.grab = true;
-	else if (mode == -1)
-		lua_ctx_store.grab = !lua_ctx_store.grab;
-	else
-		arcan_fatal("arcan_lua_mousegrab(%d) invalid grabmode specified, "
-		"	expected MOUSE_GRABON, MOUSE_GRABOFF or nil\n");
-
-	SDL_WM_GrabInput( lua_ctx_store.grab ? SDL_GRAB_ON : SDL_GRAB_OFF );
 	return 0;
 }
 
@@ -2922,8 +2919,6 @@ void arcan_lua_panic(lua_State* ctx)
 	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
 }
 
-extern void arcan_debug_tracetag_dump();
-
 void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (errc == 0)
@@ -2932,8 +2927,6 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
 	if (lua_ctx_store.debug){
 		arcan_warning("Warning: arcan_lua_wraperr((), %s, from %s\n", mesg, src);
-
-		arcan_debug_tracetag_dump();
 
 		if (lua_ctx_store.debug > 1)
 			dump_call_trace(ctx);
@@ -3498,7 +3491,7 @@ int arcan_lua_renderset(lua_State* ctx)
 	int detach        = luaL_checkint(ctx, 3);
 	int scale         = luaL_checkint(ctx, 4);
 
-	if (arcan_video_display.fbo_disabled){
+	if (!arcan_video_display.fbo_support){
 		arcan_warning("arcan_lua_renderset(%d) FBO support is disabled,"
 			"	cannot setup rendertarget.\n");
 		return 0;
@@ -3567,7 +3560,7 @@ int arcan_lua_recordset(lua_State* ctx)
 
 	intptr_t ref = (intptr_t) 0;
 
-	if (arcan_video_display.fbo_disabled){
+	if (!arcan_video_display.fbo_support){
 		arcan_warning("arcan_lua_recordset(%d) FBO support is disabled, "
 			"cannot setup recordtarget.\n");
 		goto cleanup;
@@ -4694,10 +4687,12 @@ static const luaL_Reg sysfuns[] = {
 static const luaL_Reg iofuns[] = {
 {"kbd_repeat",          arcan_lua_kbdrepeat        },
 {"toggle_mouse_grab",   arcan_lua_mousegrab        },
+#ifndef ARCAN_LUA_NOLED
 {"set_led",             arcan_lua_setled           },
 {"led_intensity",       arcan_lua_led_intensity    },
 {"set_led_rgb",         arcan_lua_led_rgb          },
 {"controller_leds",     arcan_lua_n_leds           },
+#endif
 {"input_filter_analog", arcan_lua_inputfilteranalog},
 {NULL, NULL},
 };
@@ -4806,8 +4801,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP },
 {"POSTFILTER_NTSC",    POSTFILTER_NTSC    },
 {"POSTFILTER_OFF",     POSTFILTER_OFF     },
+#ifndef ARCAN_LUA_NOLED
 {"LEDCONTROLLERS",     arcan_led_controllers()},
-{"JOYSTICKS",          SDL_NumJoysticks()     },
+#endif
 {"NOW",           0},
 {"NOPERSIST",     0},
 {"PERSIST",       1},

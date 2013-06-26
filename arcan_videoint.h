@@ -45,7 +45,7 @@ struct rendertarget {
 	unsigned pbo;
 	
 /* think of base as identity matrix, sometimes with added scale */
-	float base[16];  
+	float base[16];
 	float projection[16];
 	
 /* readback == 0, no readback. Otherwise, a readback is requested 
@@ -213,7 +213,8 @@ struct arcan_vobject_litem {
 typedef struct arcan_vobject_litem arcan_vobject_litem;
 
 struct arcan_video_display {
-	bool suspended, fullscreen, conservative, vsync, fbo_disabled;
+	bool suspended, fullscreen, conservative;
+	bool vsync, fbo_support, pbo_support;
 	enum arcan_order3d order3d;
 
 	unsigned default_vitemlim;

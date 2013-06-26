@@ -33,6 +33,10 @@
 
 #include GL_HEADERS
 
+#ifndef GL_MAX_TEXTURE_UNITS
+#define GL_MAX_TEXTURE_UNITS 4
+#endif
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"

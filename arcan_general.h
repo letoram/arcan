@@ -38,8 +38,11 @@ extern char* arcan_resourcepath;
 extern char* arcan_themepath;
 extern char* arcan_binpath;
 extern char* arcan_libpath;
+extern char* arcan_fontpath;
 
 typedef struct frameserver_shmpage frameserver_shmpage;
+
+#include PLATFORM_HEADER
 
 #define BADFD -1
 
