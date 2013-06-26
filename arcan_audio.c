@@ -73,12 +73,32 @@ static arcan_errc arcan_audio_free(arcan_aobj_id);
 static ALuint load_wave(const char* fname){
 	ALuint rv = 0;
 
+	data_source inres = arcan_open_resource(fname);
+	if (inres.fd == BADFD)
+		return rv; 
+
+	map_region inmem = arcan_map_resource(&inres, false);
+	if (inmem.ptr == NULL){
+		arcan_release_resource(&inres);
+		return rv; 
+	}
+
+/* only accept WAVE -> PCM(8,16bit)(1,2channels) */
+	if (memcmp(inmem.ptr + 8, "WAVE", 4) != 0)
+		goto cleanup;
+
+	uint16_t kv = 0x1234;
+	bool le = (*(char*)&kv) == 0x12;
+	
+	uint16_t afmt;
+	memcpy(&afmt, inmem.ptr + 20, 2);
+
 /* a. map resource / file as per usual */
 /* b. read header; (RIFX BE, RIFF LE)
  * Endian, Ofs, Name, Size
  * BE        0,  CID,    4
  * LE        4,  CSz,    4
- * BE        8,  Fmt,    4 (WAVE)
+ * --        8,  Fmt,    4 (WAVE)
  * --- chunk 1 ---
  * BE       12,  CID,    4
  * LE       16,  CSz,    4
@@ -104,7 +124,11 @@ static ALuint load_wave(const char* fname){
 		
 		SDL_FreeWAV(abuf);
 	} */
-	
+
+cleanup:
+	arcan_release_map(inmem);
+	arcan_release_resource(&inres);
+
 	return rv;
 }
 

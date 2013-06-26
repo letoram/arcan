@@ -189,7 +189,7 @@ end
 function spawn_boing()
 	local int oval = math.random(1,100);
 	local a = spawn_window("container", "left", "BOING!");
-	a.name = "boingwnd";
+	a.name = "boingwnd" .. tostring(oval);
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
 		"shaders/boing.fShader", "boing" .. oval, {}); 
 	local props = image_surface_properties(a.canvas);
@@ -200,17 +200,23 @@ function spawn_boing()
 end
 
 function focus_window(wnd)
+	print("focus:", wnd);
+
 	if (wnd == rootwnd or wnd == wlist.focus) then
 		return;
 	end
 
 	if (wlist.focus) then
+		print("wlist focus deactive?");
+
 		wlist.focus:active(false);
 		if (wlist.focus.iconsoff) then
 			wlist.focus:iconsoff();
 		end
 		wlist.focus:reorder(ORDER_WDW);
 	end
+
+	print("wnd:", wnd, "focus:", wlist.focus);
 
 	wlist.focus = wnd;
 	wlist.focus:active(true);
@@ -245,6 +251,7 @@ function spawn_window(wtype, ialign, caption)
 		borderw = 2,
 		width   = 320,
 		height  = 200,
+		name = caption,
 		x    = x_spawnpos,
 		y    = y_spawnpos
 	});
@@ -281,14 +288,31 @@ function spawn_window(wtype, ialign, caption)
 
 	bar.drag = function(self, vid, x, y)
 		local props = image_surface_resolve_properties(self.root);
-		wcont:move(props.x + x, props.y + y); 
+		focus_window(self.parent);
+		self.parent:move(props.x + x, props.y + y);
+		print("drag:", props.x + x, props.y + y);
 	end
  
 	bar.dblclick = function(self, vid, x, y)
-		print("doubleclick");
+		print(self.parent.name, "doubleclick");
 	end
 
-	mouse_addlistener(bar, {"drag", "dblclick"});
+	bar.click = function(self, vid, x, y)
+		print(self.parent.name, "click");
+		focus_window(self.parent);
+	end
+
+	local canvaseh = {};
+	canvaseh.own = function(self, vid)
+		return vid == wcont.canvas;
+	end
+
+	canvaseh.click = function(self, vid, x, y)
+		focus_window(wcont);
+	end
+
+	mouse_addlistener(bar, {"drag", "click", "dblclick"});
+	mouse_addlistener(canvaseh, {"click"});
 
 	bar:add_icon("awbicons/enlarge.png", "right", maximize);
 	bar:add_icon("awbicons/shrink.png",  "right", sendtoback);

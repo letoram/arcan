@@ -2469,7 +2469,15 @@ int arcan_lua_3dorder(lua_State* ctx)
 int arcan_lua_mousegrab(lua_State* ctx)
 {
 	int mode =  luaL_optint( ctx, 1, -1);
+	
+	if (mode == -1)
+		lua_ctx_store.grab = !lua_ctx_store.grab;
+	else if (mode == MOUSE_GRAB_ON)
+		lua_ctx_store.grab = true;
+	else if (mode == MOUSE_GRAB_OFF)
+		lua_ctx_store.grab = false;
 
+	arcan_device_lock(0, lua_ctx_store.grab);
 	return 0;
 }
 
