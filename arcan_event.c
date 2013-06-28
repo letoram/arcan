@@ -353,3 +353,10 @@ void arcan_event_init(arcan_evctx* ctx)
 
  	arcan_tickofset = arcan_timemillis();
 }
+
+extern void platform_device_lock(int lockdev, bool lockstate);
+void arcan_device_lock(int lockdev, bool lockstate)
+{
+    platform_device_lock(lockdev, lockstate);
+}
+

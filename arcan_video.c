@@ -29,6 +29,7 @@
 #include <stddef.h>
 #include <math.h>
 #include <assert.h>
+#include <errno.h>
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -98,6 +99,8 @@ unsigned vcontext_ind = 0;
  */ 
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
+static void reorder_object(struct rendertarget* dst, arcan_vobject* src);
+
 static void rebase_transform(struct surface_transform*, arcan_tickv);
 static bool alloc_fbo(struct rendertarget* dst);
 static bool activate_fbo(struct rendertarget* dst);
@@ -114,6 +117,27 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 #endif
 }
+
+/*void verify_rtarget(struct rendertarget* own, char* tag)
+{
+	arcan_vobject_litem* current = own->first;
+	int corder = 0;
+
+	arcan_warning("begin (%s) \n", tag);
+	while (current && current->elem){
+		arcan_warning("order : %d, %s\n", current->elem->order, current->elem->tracetag);
+
+		if (corder > current->elem->order)
+			abort();
+		else
+			corder = current->elem->order;
+
+		current = current->next;	
+	}
+
+	arcan_warning("end (%s) \n", tag);
+}
+*/
 
 static const char* video_tracetag(arcan_vobject* src)
 {
@@ -581,14 +605,23 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		rv->gl_storage.scale      = arcan_video_display.scalemode;
 		rv->gl_storage.imageproc  = arcan_video_display.imageproc;
 		rv->gl_storage.filtermode = arcan_video_display.filtermode;
+		rv->order = 0;
 
 		rv->blendmode = blend_normal;
 		rv->flags.cliptoparent = false;
+
 		rv->current.scale.x = 1.0;
 		rv->current.scale.y = 1.0;
 		rv->current.scale.z = 1.0;
+
+		rv->current.position.x = 0;
+		rv->current.position.y = 0;
+		rv->current.position.z = 0;
+		
 		rv->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
+		
 		rv->current.opa = 0.0;
+		
 		rv->cellid = fid;
 		assert(rv->cellid > 0);
 		generate_basic_mapping(rv->txcos, 1.0, 1.0);
@@ -622,87 +655,6 @@ arcan_vobject* arcan_video_getobject(arcan_vobj_id id)
 		}
 
 	return rc;
-}
-
-static void dumptgt_list(struct rendertarget*);
-
-/* check for duplicates */
-static void recurse_scan_duplicate(arcan_vobject_litem* base)
-{
-	arcan_vobject_litem* nextp = base->next;
-
-	while (nextp){
-/* collision */
-		if (nextp == base || nextp->elem == base->elem)
-			abort();
-
-		nextp = nextp->next;
-	}
-}
-
-/*
- * this is a quick heuristic scan to grab most undesired states for the pipe,
- * meaning invalid fwd/back references or duplicates in the pipe.
- * to use in gdb, define a macro like:
- * def vn
- * call integrity_scan(&current_context->stdoutp)
- * next
- * end
- *
- * set breakpoint and use vn to step */
-static void integrity_scan(struct rendertarget* src)
-{
-	arcan_vobject_litem* current = src->first;
-	unsigned counter = 0;
-
-/* first, duplicates and linked-list integrity */
-	while (current){
-		recurse_scan_duplicate(current);
-		assert(current->elem);
-		counter++;
-
-		if (current != src->first){
-			assert(current->previous != NULL);
-			assert(current->previous->next == current);
-		}
-
-		if (current->next)
-			assert(current->next->previous == current);
-
-		current = current->next;
-	}
-}
-
-/* assuming the object is not an orphan,
- * sweep through all rendertargets, count references and compare to refcount */
-static bool scan_rtgt(struct rendertarget* src, arcan_vobject* cell)
-{
-	arcan_vobject_litem* current = src->first;
-
-	while (current){
-		if (current->elem == cell)
-			return true;
-
-		current = current->next;
-	}
-
-	return false;
-}
-
-static void verify_pool()
-{
-	bool broken = false;
-
-	for (unsigned int i = 1; i < current_context->vitem_limit; i++){
-		if (current_context->vitems_pool[i].flags.in_use &&
-			current_context->vitems_pool[i].cellid != i){
-			arcan_warning("verify_pool(debug) -- cell (%d) doesn't" 
-				"match object (tag: %s)\n",i,current_context->vitems_pool[i].tracetag);
-			broken = true;
-		}
-	}
-
-	assert(broken == false);
 }
 
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
@@ -765,7 +717,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 		trace("(detach) (%ld:%s) removed from stdout, attached to: %d\n", 
 		src->cellid, video_tracetag(src), src->extrefc.attachments);
 	}
-
+	
 	return true;
 }
 
@@ -837,6 +789,7 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 
 	if (src){
 /* make sure that there isn't already one attached */
+
 		detach_fromtarget(&current_context->stdoutp, src);
 		attach_object(&current_context->stdoutp, src);
 		rv = ARCAN_OK;
@@ -886,18 +839,23 @@ arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	
-	if (vobj && id != ARCAN_VIDEO_WORLDID){
+
+	if (vobj && id != ARCAN_VIDEO_WORLDID && vobj->order >= 0){
 		rv = ARCAN_OK;
-		if (vobj->flags.orderofs != val){
-			if (vobj->flags.orderofs == false && vobj->owner && 
-					vobj->parent->order > vobj->order){
-				vobj->order = vobj->parent->order;
+		vobj->flags.orderofs = val;
+
+/* if the object has gone from non-inherited order to inherited,
+ * and they belong to the same rendertarget as primary, then
+ * set it's new value relative to that of its parent */
+	if (val && vobj->parent && 
+			vobj->owner == vobj->parent->owner && 
+			vobj->order < vobj->parent->order){
+				int dv = vobj->parent->order - vobj->order;
+				vobj->order = vobj->parent->order + dv;
 				struct rendertarget* own = vobj->owner;
+
 				detach_fromtarget(own, vobj);
 				attach_object(own, vobj);
-			}
-			vobj->flags.orderofs = val;
 		}
 	}
 	
@@ -1168,8 +1126,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 /* try- open */
 	data_source inres = arcan_open_resource(fname);
-	if (inres.fd == BADFD)
+	if (inres.fd == BADFD){
 		return ARCAN_ERRC_BAD_RESOURCE;
+	}
 
 /* mmap (preferred) or buffer (mmap not working / 
  * useful due to alignment) */
@@ -1211,19 +1170,16 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * so we force the rescale texture mode for mismatches and set 
  * dimensions accordingly */
 		if (forced.h > 0 && forced.w > 0){
-			neww = forced.w;
-			newh = forced.h;
-			if (desm != ARCAN_VIMAGE_SCALEPOW2){
-				dstframe->s_raw = neww * newh * GL_PIXEL_BPP;
-				dstframe->raw   = malloc(dstframe->s_raw); 
-				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->raw, neww, newh, 
-					dst->gl_storage.imageproc == imageproc_fliph);
-				free(imgbuf);
- 			}
+			neww = ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.w) : forced.w;
+			newh = ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.h) : forced.h;
+				
+			dstframe->s_raw = neww * newh * GL_PIXEL_BPP;
+			dstframe->raw   = malloc(dstframe->s_raw); 
+			stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->raw, neww, newh, 
+				dst->gl_storage.imageproc == imageproc_fliph);
+			free(imgbuf);
 		}
-		
-/* rescale, otherwise just reuse the decode buffer to save a copy */
-		if (desm == ARCAN_VIMAGE_SCALEPOW2){
+		else if (desm == ARCAN_VIMAGE_SCALEPOW2){
 			neww = nexthigher(neww);
 			newh = nexthigher(newh);
 
@@ -1233,9 +1189,13 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->raw, neww, newh, 
 					dst->gl_storage.imageproc == imageproc_fliph);
 				free(imgbuf);
+			} 
+			else {
+				dstframe->s_raw = neww * newh * GL_PIXEL_BPP;
+				dstframe->raw = (uint8_t*) imgbuf;
 			}
 		} 
-		else if (forced.w == 0 || forced.h == 0){
+		else { 
 			neww = inw; 
 			newh = inh;
 			dstframe->raw   = (uint8_t*) imgbuf;
@@ -1382,7 +1342,8 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, newvobj->default_frame.raw);
 
 		glBindTexture(GL_TEXTURE_2D, 0);
-		newvobj->order = 0;
+		newvobj->order = zv;
+	
 		arcan_video_attachobject(rv);
 	}
 
@@ -1871,14 +1832,8 @@ static arcan_vobj_id loadimage(const char* fname, img_cons constraints,
 	arcan_errc rc = arcan_video_getimage(fname, newvobj, &newvobj->default_frame,
 		constraints, false);
 
-	if (rc == ARCAN_OK) {
-		newvobj->current.position.x = 0;
-		newvobj->current.position.y = 0;
-		newvobj->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
-	}
-	else{
+	if (rc != ARCAN_OK) 
 		arcan_video_deleteobject(rv);
-	}
 
 	if (errcode != NULL)
 		*errcode = rc;
@@ -1910,7 +1865,6 @@ arcan_errc arcan_video_alterfeed(arcan_vobj_id id, arcan_vfunc_cb cb,
 	if (vobj) {
 		vobj->feed.state = state;
 		vobj->feed.ffunc = cb;
-		vobj->order = abs(vobj->order) * (state.tag == ARCAN_TAG_3DOBJ ? -1 : 1);
 
 		rv = ARCAN_OK;
 	}
@@ -2141,69 +2095,70 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj && newzv > 0 && newzv != vobj->order) {
-		struct rendertarget* owner = vobj->owner;
-		assert(owner);
-		
-/* calculate order relative to parent if that's toggled */
-		if (vobj->parent->order >= 0 && vobj->flags.orderofs) {
-			newzv = newzv + abs(vobj->parent->order);
-		}
 
-/*
- * might have children with order relative to own order,
- * and this is a somewhat expensive operation. First,
- * if there are any children, use that as a maximum limit for 
- * a buffer (we need to store references and then do the attach / detatch.
- * a natural constraint is this that parent->order <= child->order 
- */
-		int n_related = vobj->extrefc.instances + vobj->extrefc.links;
-		int n_reorder = 0;
-		arcan_vobject_litem* current = current_context->stdoutp.first;
-		arcan_vobject** relbuf = n_related > 0 ? 
-			malloc(sizeof(arcan_vobject*) * n_related) : NULL;
-		
-		while (n_related && current && current->elem){
-			arcan_vobject* elem = current->elem;
-
-			if (elem->parent == vobj) {
-				n_related--;
-				if (elem->flags.orderofs){
-					unsigned czv = (abs(elem->order) - abs(elem->parent->order)) + newzv;
-					czv = czv > 65535 ? 65535 : czv;
-					relbuf[n_reorder] = elem;
-					elem->order = czv;
-					n_reorder++;
-				}
-			}
-			current = current->next;
-		}
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 	
-/* attach also works like an insertion sort where 
- * the insertion criterion is <= n */
-		vobj->order = newzv;
-		
-		if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
-			vobj->order *= -1;
+	struct rendertarget* owner = vobj->owner;
 
-		if (vobj->owner){
-			detach_fromtarget(owner, vobj);
-			attach_object(owner, vobj);
+	if (!owner) 
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* lastly, insert all the related children with their new orders */
-			for (int i = 0; i < n_reorder; i++){
-				detach_fromtarget(owner, relbuf[i]);
-				attach_object(owner, relbuf[i]);
-			}
-		}
+/* calculate order relative to parent if that's toggled
+ * clip to 16bit US and ignore if the parent is a 3dobj */
+	if (vobj->flags.orderofs){
+		arcan_warning("reorder inherited one (%s)\n", vobj->tracetag);
+
+		if (vobj->parent->order < 0)
+			return ARCAN_ERRC_UNACCEPTED_STATE;
 		
-		if (relbuf)
-			free(relbuf);
-		
-		rv = ARCAN_OK;
+		int newv = newzv + vobj->parent->order;
+		newzv = newv > 65535 ? 65535 : newv;
 	}
 
-	return rv;
+/*
+ * Might have children with order relative to our own
+ * Track them separately, calculate their new order value
+ * and set afterwards. This only happens if they're primarily
+ * associated with the same rendertarget(!) 
+ */
+	int n_related = vobj->extrefc.instances + vobj->extrefc.links;
+	int n_reorder = 0;
+	arcan_vobject* relbuf[n_related];
+	arcan_vobject_litem* current = owner->first; 
+	while(n_related && current && current->elem){
+		arcan_vobject* elem = current->elem;
+
+		if (elem->parent == vobj){
+			n_related--;
+
+			if (elem->flags.orderofs && elem->owner == owner)
+				relbuf[n_reorder++] = elem;
+		}
+
+		current = current->next;
+	}
+	
+/* attach also works like an insertion sort where 
+ * the insertion criterion is <= order, to aid dynamic 
+ * corruption checks, any modifications to order is done
+ * either when the vobj is detached or through the 
+ * reorder_obj call */
+	int oldv = vobj->order;
+	detach_fromtarget(owner, vobj);
+		vobj->order = newzv;
+		if (vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
+			vobj->order *= -1;
+	attach_object(owner, vobj);
+
+	for (int i = 0; i < n_reorder; i++){
+		int distance = relbuf[i]->order - oldv;	
+		detach_fromtarget(owner, relbuf[i]);
+			relbuf[i]->order = newzv + distance; 
+		attach_object(owner, relbuf[i]);
+	}
+
+	return ARCAN_OK;
 }
 
 /* forcibly kill videoobject after n cycles,
@@ -2374,7 +2329,14 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 
 		arcan_video_zaptransform(did);
 		dst->transform = dup_chain(src->transform);
-		dst->order = src->order;
+		if (dst->owner){
+			struct rendertarget* own = dst->owner;
+			detach_fromtarget(own, dst);
+				dst->order = src->order;
+			attach_object(own, dst);
+		} 
+		else
+			dst->order = src->order;
 
 /* in order to NOT break resizefeed etc. this copy actually 
  * requires a modification of the transformation
@@ -3941,6 +3903,7 @@ void arcan_video_refresh(float tofs, bool synch)
 {
 /* for less interactive / latency sensitive applications the delta > .. 
  * with vsync on, the delta > .. could be removed */
+
 	arcan_video_refresh_GL(tofs);
 	if (synch)
 		platform_video_bufferswap();

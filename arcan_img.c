@@ -227,7 +227,6 @@ arcan_errc arcan_png_rgba32(char* inbuf, size_t inbuf_sz,
 cleanup:
 	png_destroy_read_struct(&png_ptr, info_ptr ? &info_ptr : NULL, NULL); 
 	free(rowdec);
-
 	return rv;
 
 /* 
@@ -239,7 +238,7 @@ cleanup:
 
 /* 
  * provided only for backwards compatiblity (particularly for those
- * depending on .ico) and SDL_Image is to be deprecated / removed in this project 
+ * depending on .ico) and SDL_Image is to be deprecated / removed in this prj 
  * there are notable preconditions to fulfill beforehand 
  */
 #ifdef _SDL_IMAGE_H
@@ -294,7 +293,7 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
  * always try LibPNG / LibTurboJPEG first, then resort to whatever
  * other native image library that might be available as fallbacks below
  */	
-		
+
 	if (len >= 3){
 		if (strcasecmp(hint + (len - 3), "PNG") == 0){
 			rv = arcan_png_rgba32(inbuf, inbuf_sz, outbuf, outw, outh, vflip,imalloc);

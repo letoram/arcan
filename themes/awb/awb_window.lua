@@ -27,10 +27,6 @@ local function awbwnd_reorder(self, orderv)
 	order_image({self.bordert, self.borderd, 
 		self.borderl, self.borderr, self.canvas}, orderv);
 
-	for key, val in pairs(self.directions) do
-			val:reorder(orderv);
-	end
-
 	if (self.mode == "iconview") then
 		for ind, val in ipairs(self.icons) do
 			order_image({val.main, val.mainsel, val.label}, orderv);
@@ -38,6 +34,10 @@ local function awbwnd_reorder(self, orderv)
 	elseif (self.mode == "listview") then
 		order_image(val.cursorvid, orderv);
 	end	
+
+	for key, val in pairs(self.directions) do
+			val:reorder(orderv);
+	end
 end
 
 local function awbwnd_hide(self)
@@ -158,11 +158,11 @@ local function awbbar_addicon(self, imgres, align, trigger)
 	end
 end
 
-local function awbwbar_refresh(self)
+local function awbbar_refresh(self)
 -- align against border while maintaining set "thickness"
-	print("refresh");
 	local bstep = self.parent.border and self.parent.borderw or 0;
 	local wbarw = 0;
+	local corder = image_surface_properties(self.activeid).order;
 
 	local bx = self.direction == "right" and 
 		(self.parent.width - self.thickness - bstep) or bstep;
@@ -203,6 +203,7 @@ local function awbwbar_refresh(self)
 			local props = image_surface_properties(val.vid);
 			link_image(val.vid, self.parent.bordert);
 			image_mask_clear(val.vid, MASK_OPACITY);
+			order_image(val.vid, corder + 1);
 
 			if (val.stretch) then
 				resize_image(val.vid, 0, self.thickness);
@@ -223,7 +224,7 @@ local function awbwbar_refresh(self)
 		local props = image_surface_properties(val.vid);
 		link_image(val.vid, self.parent.bordert);
 		image_mask_clear(val.vid, MASK_OPACITY);
-		
+		order_image(val.vid, corder + 1);
 		move_image(val.vid, self.xofs, self.yofs);
 		if (val.stretch) then
 			resize_image(val.vid, 0, self.thickness);
@@ -251,7 +252,10 @@ local function awbwbar_refresh(self)
 end
 
 local function awbwnd_setwbar(dsttbl, active)
+	local lastordr = -1;
+
 	if (dsttbl.activeid) then
+		lastordr = image_surface_properties(dsttbl.activeid).order;
 		delete_image(dsttbl.activeid);
 		dsttbl.activeid = nil;
 	end
@@ -300,15 +304,15 @@ local function awbbar_reorder(self, order)
 	end
 
 	for ind, val in ipairs(self.left) do
-		order_image(val.vid, order + 1);
+		order_image(val.vid, order+1);
 	end
 	
 	for ind, val in ipairs(self.right) do
-		order_image(val.vid, order + 1);
+		order_image(val.vid, order+1);
 	end
 
 	if (self.fill) then
-		order_image(self.fill.vid, order + 1);
+		order_image(self.fill.vid, order+1);
 	end
 end
 
@@ -411,7 +415,7 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	newdir.thickness = thickness;
 	newdir.minwidth  = 0;
 	newdir.minheight = 0;
-	newdir.refresh   = awbwbar_refresh;
+	newdir.refresh   = awbbar_refresh;
 	newdir.vertical  = direction == "left" or direction == "right";
 	newdir.direction = direction;
 	newdir.own       = awbbar_own;
@@ -439,7 +443,8 @@ local function awbwnd_newpos(self, newx, newy)
 	move_image(self.anchor, newx, newy);
 end
 
-local function awbwnd_active(self, active)
+local function awbwnd_active(self, active, order)
+
 	for key, val in pairs(self.directions) do
 		local active_res = val.activeres;
 		if (active == false and val.inactvres) then
@@ -448,8 +453,9 @@ local function awbwnd_active(self, active)
 
 		val.activestate = active;
 		awbwnd_setwbar(val, active_res);
-		self:reorder(ORDER_FOCUSWDW);
 	end
+
+	self:reorder(order);
 end
 
 -- 

@@ -107,8 +107,9 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
  * for unaligned reads (or in-place modifiable memory) 
  * we manually read the file into a buffer 
  */
-	if (source->start % sysconf(_SC_PAGE_SIZE) != 0 || allowwrite)
+	if (source->start % sysconf(_SC_PAGE_SIZE) != 0 || allowwrite){
 		goto memread;
+	}
 
 /* 
  * The use-cases for most resources mapped in this manner relies on
@@ -130,8 +131,9 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 			rv.ptr = NULL;
 			rv.sz  = 0;
 		} 
-		else 
+		else{ 
 			rv.mmap = true;
+		}
 	}
 	return rv;
 
