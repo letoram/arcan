@@ -1624,6 +1624,18 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		lua_pushstring(ctx, "kind");
 
 		switch (ev->kind) {
+		case EVENT_IO_TOUCH:
+			lua_pushstring(ctx, "touch");
+			lua_rawset(ctx, top);
+
+			tblnum(ctx, "devid",    ev->data.io.input.touch.devid,    top);
+			tblnum(ctx, "subid",    ev->data.io.input.touch.subid,    top);
+			tblnum(ctx, "pressure", ev->data.io.input.touch.pressure, top);
+			tblnum(ctx, "size",     ev->data.io.input.touch.size,     top);
+			tblnum(ctx, "x",        ev->data.io.input.touch.x,        top);
+			tblnum(ctx, "y",        ev->data.io.input.touch.y,        top);
+		break;
+
 		case EVENT_IO_AXIS_MOVE:
 			lua_pushstring(ctx, "analog");
 			lua_rawset(ctx, top);

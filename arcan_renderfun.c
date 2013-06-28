@@ -122,7 +122,8 @@ static TTF_Font* grab_font(const char* fname, uint8_t size)
 			leasti = i;
 			leastv = font_cache[i].usecount;
 		}
-		if (font_cache[i].size == size && strcmp(font_cache[i].identifier, fname) == 0){
+		if (font_cache[i].size == size && strcmp(font_cache[i].identifier, 
+		fname) == 0){
 			font_cache[i].usecount++;
 			return font_cache[i].data;
 		}

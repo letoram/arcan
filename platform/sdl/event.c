@@ -318,6 +318,11 @@ void platform_event_deinit(arcan_evctx* ctx)
 	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }
 
+void platform_device_lock(int devind, bool state)
+{
+	SDL_WM_GrabInput( state ? SDL_GRAB_ON : SDL_GRAB_OFF );
+}
+
 void platform_event_init(arcan_evctx* ctx)
 {
 	SDL_EnableUNICODE(1);
@@ -329,7 +334,6 @@ void platform_event_init(arcan_evctx* ctx)
 	SDL_ShowCursor(0);
 
 	SDL_Event dummy[1];
-/*	SDL_WM_GrabInput( SDL_GRAB_ON ); */
 	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, 
 		SDL_EVENTMASK(SDL_MOUSEMOTION)) );
 			

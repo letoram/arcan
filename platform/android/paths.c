@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -70,18 +71,63 @@ char* arcan_find_resource_path(const char* name, const char* path,
 
 char* arcan_find_resource(const char* name, int searchmask)
 {
-	return arcan_find_resource_path(name, NULL, searchmask);
+	return arcan_find_resource_path(name, "", searchmask);
 }
 
-data_source* aarcan_find_resource(const char* const key)
+void arcan_release_resource(data_source* sptr)
 {
-	arcan_warning("arcan_find_resource(%s)\n", key);
-	data_source* res = alloc_datasource();
-	res->source = strdup(key);
-	res->fd = android_aman_scanraw(key, &res->start, &res->len);
-	
-	if (-1 == res->fd)
-		arcan_release_resource(res);
+    char playbuf[4096];
+    playbuf[4095] = '\0';
+
+/* relying on a working close() is bad form,
+ * unfortunately recovery options are few */
+	if (-1 != sptr->fd){
+		int trycount = 10;
+		while (trycount--){
+			if (close(sptr->fd) == 0)
+				break;
+		}
+
+/* don't want this one free:d */
+	if ( sptr->source == tag_resleak )
+		sptr->source = NULL;
+
+/* something broken with the file-descriptor, 
+ * not many recovery options but purposefully leak
+ * the memory so that it can be found in core dumps etc. */
+		if (trycount){
+			free( sptr->source );
+			snprintf(playbuf, sizeof(playbuf) - 1, "broken_fd(%d:%s)", 
+				sptr->fd, sptr->source);
+			sptr->source = strdup(playbuf);
+		} else {
+/* make the released memory distinguishable from a broken 
+ * descriptor from a memory analysis perspective */
+			free( sptr->source );
+			sptr->fd     = -1;
+			sptr->start  = -1;
+			sptr->len    = -1;
+		}
+	}
+
+	if (sptr->source){
+		free(sptr->source);
+		sptr->source = NULL;
+	}
+}
+
+data_source arcan_open_resource(const char* key)
+{
+	data_source res = {.fd = BADFD};
+
+	if (key){
+		res.fd = android_aman_scanraw(key, &res.start, &res.len);
+		if (res.fd != -1){
+			res.source = strdup(key);
+		}
+	}
+	else
+		res.fd = BADFD;
 
 	return res;	
 }

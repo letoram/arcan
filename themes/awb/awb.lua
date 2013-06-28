@@ -200,26 +200,19 @@ function spawn_boing()
 end
 
 function focus_window(wnd)
-	print("focus:", wnd);
-
 	if (wnd == rootwnd or wnd == wlist.focus) then
 		return;
 	end
 
 	if (wlist.focus) then
-		print("wlist focus deactive?");
-
-		wlist.focus:active(false);
+		wlist.focus:active(false, ORDER_WDW);
 		if (wlist.focus.iconsoff) then
 			wlist.focus:iconsoff();
 		end
-		wlist.focus:reorder(ORDER_WDW);
 	end
 
-	print("wnd:", wnd, "focus:", wlist.focus);
-
 	wlist.focus = wnd;
-	wlist.focus:active(true);
+	wlist.focus:active(true, ORDER_FOCUSWDW);
 end
 
 function closewin(self)
@@ -239,11 +232,38 @@ function closewin(self)
 end
 
 --
+-- Generate default action handlers for the window titlebar
+--
+function wbar_ahandlers(wnd, bar)
+	bar.drag = function(self, vid, x, y)
+		local props = image_surface_resolve_properties(self.root);
+		focus_window(wnd);
+		wnd:move(props.x + x, props.y + y);
+	end
+ 
+	bar.dblclick = function(self, vid, x, y)
+		print(self.parent.name, "doubleclick");
+	end
+
+	bar.drop = function(self, vid, x, y)
+		local props = image_surface_resolve_properties(self.root);
+		wnd:move(math.floor(props.x), math.floor(props.y));
+	end
+
+	bar.click = function(self, vid, x, y)
+		print(self.parent.name, "click");
+		focus_window(wnd);
+	end
+
+	mouse_addlistener(bar, {"drag", "drop", "click", "dblclick"});
+end
+
+--
 -- Allocate, Setup, Register and Position a new Window
 -- These always start out focused
 --
 function spawn_window(wtype, ialign, caption)
-	wcont = awbwnd_create({
+	local wcont = awbwnd_create({
 		mode = wtype,
 		iconalign = ialign,
 		fullscreen = false,
@@ -269,37 +289,24 @@ function spawn_window(wtype, ialign, caption)
 
 	if (caption) then	
 		local captxt = menulbl(caption);
+		image_tracetag(captxt, "captxt(" ..caption .. ")");
+	
 		local props  = image_surface_properties(captxt);
 		local bg = fill_surface(math.floor(props.width * 0.1) + props.width, 
 			16, 230, 230, 230);
+		image_tracetag(bg, "capbg");
+
 		link_image(captxt, bg);
 		image_inherit_order(captxt, true);
-		order_image(captxt, 1);
-		image_tracetag(bg, "capbg");
 		image_mask_set(bg, MASK_UNPICKABLE);
 		show_image({captxt, bg});
 		blend_image(bg, 0.5);
 		move_image(captxt, 4, 4);
-		image_tracetag(captxt, "captxt");
+
+		order_image(captxt, 1);
 -- don't want thee to interfere with bar drag 
 		image_mask_set(captxt, MASK_UNPICKABLE);
 		bar:add_icon(bg, "left", nil);
-	end
-
-	bar.drag = function(self, vid, x, y)
-		local props = image_surface_resolve_properties(self.root);
-		focus_window(self.parent);
-		self.parent:move(props.x + x, props.y + y);
-		print("drag:", props.x + x, props.y + y);
-	end
- 
-	bar.dblclick = function(self, vid, x, y)
-		print(self.parent.name, "doubleclick");
-	end
-
-	bar.click = function(self, vid, x, y)
-		print(self.parent.name, "click");
-		focus_window(self.parent);
 	end
 
 	local canvaseh = {};
@@ -311,13 +318,14 @@ function spawn_window(wtype, ialign, caption)
 		focus_window(wcont);
 	end
 
-	mouse_addlistener(bar, {"drag", "click", "dblclick"});
 	mouse_addlistener(canvaseh, {"click"});
 
 	bar:add_icon("awbicons/enlarge.png", "right", maximize);
 	bar:add_icon("awbicons/shrink.png",  "right", sendtoback);
 	wcont:show();
 		
+	wbar_ahandlers(wcont, bar);
+
 	x_spawnpos = x_spawnpos + 20;
 	y_spawnpos = y_spawnpos + 20;
 	
