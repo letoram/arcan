@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h>
 
 #include <string.h>
 #include <signal.h>
@@ -528,8 +529,10 @@ themeswitch:
 
 /* this is internally buffering and non-blocking, hence the fd use compared
  * to arcan_lua_statesnap above */
+#ifndef _WIN32
 		if (monitor && !monitor_parent)
 			arcan_lua_stategrab(luactx, "sample", monitor_outfd);
+#endif
 	
 /*
  * difficult decision, should we flip or not?

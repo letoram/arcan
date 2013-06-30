@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h>
 #include <string.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -31,7 +32,6 @@
 #include <math.h>
 #include <assert.h>
 #include <signal.h>
-#include <pthread.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"

@@ -44,45 +44,16 @@ typedef struct frameserver_shmpage frameserver_shmpage;
 
 #include PLATFORM_HEADER
 
-#define BADFD -1
-
-/* OS specific definitions */
-#if _WIN32
-#include <Windows.h>
-
-#define LIBNAME "arcan_hijack.dll"
-#define NULFILE "\\Device\\Null"
-
-#undef BADFD
-#define BADFD INVALID_HANDLE_VALUE
-
-/* some missing defines that doesn't seem to be included in the
- * headers of mingw but still exported in the linked libraries, hmm */
-extern char* strdup(const char*);
-extern double round(double x);
-
-typedef int pipe_handle;
-typedef HANDLE file_handle;
-typedef HANDLE sem_handle;
-
-typedef void* process_handle;
-typedef struct {
-	struct frameserver_shmpage* ptr;
-	void* handle;
-	void* synch;
-	char* key;
-	size_t shmsize;
-} shm_handle;
-
-#else
-
-#define NULFILE "/dev/null"
+#ifndef _WIN32
 
 #if __APPLE__
 	#define LIBNAME "libarcan_hijack.dylib"
 #else
 	#define LIBNAME "libarcan_hijack.so"
 #endif
+
+#define BADFD -1
+#define NULFILE "/dev/null"
 
 #include <semaphore.h>
 #include <getopt.h>

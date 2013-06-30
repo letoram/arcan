@@ -41,6 +41,7 @@
 /* arcan */
 #include "../arcan_math.h"
 #include "../arcan_general.h"
+
 #include "../arcan_framequeue.h"
 #include "../arcan_video.h"
 #include "../arcan_audio.h"
@@ -83,7 +84,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			UINT ec;
 			SafeTerminateProcess(src->child, &ec);
 			src->child_alive = false;
-			src->child = -1;
+			src->child = NULL;
 		}
 
 /* unhook audio monitors */
@@ -94,8 +95,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		}
 		free(src->audb);
 
-		if (src->lock_audb)
-			SDL_DestroyMutex(src->lock_audb);
+		sem_destroy(&src->lock_audb);
 		
 		if (shmpage){
 			arcan_frameserver_dropsemaphores(src);

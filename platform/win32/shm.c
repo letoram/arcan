@@ -21,21 +21,10 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <math.h>
-#include <stdio.h>
 #include <stdbool.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <time.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
+#include "../../arcan_math.h"
+#include "../../arcan_general.h"
 
 char* arcan_findshmkey(int* dfd, bool semalloc)
 {

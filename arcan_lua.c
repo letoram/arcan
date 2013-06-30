@@ -5092,9 +5092,11 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 	fflush(dst);
 }
 
+#ifndef _WIN32
 #include <poll.h>
-/* this assumes a trusted (src), as injected \0 could make the strstr fail
- * and buffer indefinately (so if this assumption breaks in the future,
+/* this assumes a trusted (src), as injected \0 could make the 
+ * strstr fail and buffer indefinately
+ * (so if this assumption breaks in the future,
  * scan and strip the input dataset for \0s */
 void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 {
@@ -5169,3 +5171,5 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 	}
 
 }
+#endif
+

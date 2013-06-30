@@ -1,4 +1,3 @@
-/* stdlib */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -12,7 +11,6 @@
 #include <Windows.h>
 #include <tchar.h>
 
-/* libFFMPEG */
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
