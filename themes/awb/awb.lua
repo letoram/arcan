@@ -7,7 +7,10 @@ wlist    = {
 	windows = {};
 };
 
-settings = {};
+settings = {
+	mfact = 0.2,
+	mvol  = 1.0
+};
 sysicons = {};
 imagery  = {};
 colortable = {};
@@ -16,7 +19,6 @@ groupicn = "awbicons/drawer.png";
 groupselicn = "awbicons/drawer_open.png";
 deffont = "fonts/topaz8.ttf";
 deffont_sz = 12;
-mfact = 0.2;
 
 colortable.bgcolor = {0, 85, 169};
 
@@ -27,7 +29,16 @@ ORDER_BGLAYER   = 1;
 ORDER_ICONLAYER = 2;
 ORDER_WDW       = 10;
 ORDER_FOCUSWDW  = 30;
+ORDER_OVERLAY   = 50;
 ORDER_MOUSE     = 255;
+
+kbdbinds = {};
+kbdbinds["LCTRL"]  = toggle_mouse_grab;
+kbdbinds["ESCAPE"] = shutdown;
+kbdbinds["F11"]    = function() mouse_accellstep(-1); end
+kbdbinds["F12"]    = function() mouse_accellstep(1);  end
+kbdbinds["F9"]     = function() volume_step(-1);      end
+kbdbinds["F10"]    = function() volume_step(1);       end
 
 --  window (focus, minimize, maximize, close)
 --  border (always visible, content (when not drag))
@@ -47,9 +58,10 @@ function awb()
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/mouse.lua")();
-
 	system_load("awb_window.lua")();
 
+	settings.defwinw = math.floor(VRESW * 0.25);
+	settings.defwinh = math.floor(VRESH * 0.25);
 --
 -- the other icons are just referenced by string since they're managed by 
 -- their respective windows
@@ -99,6 +111,84 @@ end
 
 function attrstr(self)
 	return self.title;
+end
+
+--
+-- Spawn an overlay dialog that quickly expires,
+-- used for presenting a numeric value (0..1) relative
+-- to an icon or label 
+-- 
+function progress_notify(msg, rowheight, bwidth, level)
+	if (lastnotify ~= nil and
+		lastnotify ~= msg) then
+		delete_image(infodlg);
+	end
+
+	if (valid_vid(infodlg)) then
+		show_image(infodlg);
+	else
+		infodlg = fill_surface(bwidth, rowheight + deffont_sz + 10, 40, 40, 40);
+		infobar = fill_surface(bwidth - 10, rowheight, 80, 80, 80);
+		progbar = fill_surface(1, 1, 220, 35, 35);
+		iconimg = render_text(string.format([[\ffonts/topaz8.ttf,%d\#dc2323 %s]],
+			deffont_sz, msg));
+		lastnotify = msg;
+		move_image(infodlg, math.floor(VRESW * 0.5 - 0.5 * bwidth),
+			math.floor(VRESH * 0.5 - 0.5 * rowheight));
+
+		order_image(infodlg, ORDER_OVERLAY);
+		order_image(iconimg, ORDER_OVERLAY);
+		order_image(infobar, ORDER_OVERLAY);
+		order_image(progbar, ORDER_OVERLAY);
+
+		move_image(infobar, 5, deffont_sz + 5);
+		move_image(iconimg, 5, 5);
+
+		link_image(infobar, infodlg);
+		link_image(progbar, infobar);
+		link_image(iconimg, infodlg);
+
+		show_image({infodlg, infobar, progbar, iconimg});
+	end
+
+-- reset timer, change the progress value
+	expire_image(infodlg, 60);
+	blend_image(infodlg, 1.0, 50);
+	blend_image(infodlg, 0.0, 10);
+	local props = image_surface_properties(infobar);
+	if (level < 0.001) then
+		hide_image(progbar);
+	else
+		show_image(progbar);
+		resize_image(progbar, math.floor(props.width * level), props.height);
+	end
+end
+
+function volume_step(direction)
+	settings.mvol = settings.mvol + (0.1 * direction);
+	settings.mvol = settings.mvol >= 0.01 and settings.mvol or 0.0;
+	settings.mvol = settings.mvol <  1.0  and settings.mvol or 1.0;
+
+	local mwidth = deffont_sz * 13 + 10;
+	mwidth = (VRESW*0.3) > mwidth and math.floor(VRESW * 0.3) or mwidth;
+	progress_notify("Master Volume", 20, mwidth, settings.mvol);
+
+-- 
+-- calculate how this affects the individual audio sources and
+-- change accordingly? (or expand the interface to cover listener vol)
+--
+end
+
+function mouse_accellstep(direction)
+	settings.mfact = settings.mfact + (0.1 * direction);
+	settings.mfact = settings.mfact >= 0.01 and settings.mfact or 0.0;
+	settings.mfact = settings.mfact <   2.0 and settings.mfact or 2.0;
+
+	local mwidth = deffont_sz * 12 + 10;
+	mwidth = (VRESW*0.3) > mwidth and math.floor(VRESW * 0.3) or mwidth;
+	progress_notify("Acceleration", 20, mwidth, settings.mfact / 2.0);
+
+	mouse_acceleration(settings.mfact);
 end
 
 function sysgame(caller)
@@ -242,7 +332,19 @@ function wbar_ahandlers(wnd, bar)
 	end
  
 	bar.dblclick = function(self, vid, x, y)
-		print(self.parent.name, "doubleclick");
+		if (self.maximized) then
+			wnd:move(self.oldx, self.oldy);
+			wnd:resize(self.oldw, self.oldh);
+			self.maximized = false;
+		else
+			self.maximized = true;
+			self.oldx = wnd.x;
+			self.oldy = wnd.y;
+			self.oldw = wnd.width;
+			self.oldh = wnd.height;
+			wnd:move(0, 20);
+			wnd:resize(VRESW, VRESH - 20);
+		end
 	end
 
 	bar.drop = function(self, vid, x, y)
@@ -269,8 +371,8 @@ function spawn_window(wtype, ialign, caption)
 		fullscreen = false,
 		border  = true,
 		borderw = 2,
-		width   = 320,
-		height  = 200,
+		width   = settings.defwinw,
+		height  = settings.defwinh,
 		name = caption,
 		x    = x_spawnpos,
 		y    = y_spawnpos
@@ -282,6 +384,16 @@ function spawn_window(wtype, ialign, caption)
 		mouse_droplistener(self);
 		tmpfun(self);
 	end
+
+-- for windows without a scrollbar (say canvas / stretch)
+-- and no fullscreen, we add the resize button as linked to the border
+	local rzimg = load_image("awbicons/resize.png");
+	local props = image_surface_properties(rzimg);
+	link_image(rzimg, wcont.borderr);
+	image_inherit_order(rzimg, true);
+	order_image(rzimg, 2);
+	move_image(rzimg, -props.width, settings.defwinh - props.height - 2); 
+	show_image(rzimg);
 
 	local bar = wcont:add_bar("top", "awbicons/border.png", 
 		"awbicons/border_inactive.png", 16);
@@ -351,12 +463,9 @@ function awb_input(iotbl)
 			mouse_input(0, 0, minputtbl);
 		end
 	
-	elseif (iotbl.kind == "digital" and iotbl.active and iotbl.translated) then
-		if (symtable[iotbl.keysym] == "LCTRL") then
-			toggle_mouse_grab();
-		elseif (symtable[iotbl.keysym] == "ESCAPE") then
-			shutdown();
-		end	
+	elseif (iotbl.kind == "digital" and iotbl.active 
+	 and iotbl.translated and kbdbinds[ symtable[iotbl.keysym] ]) then
+	 	kbdbinds[ symtable[iotbl.keysym] ]();
 	elseif (wlist.focus) then
 		a = 1
 	end
