@@ -540,11 +540,14 @@ add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
  SET(CPACK_GENERATOR ${CPACK_GENERATOR};NSIS)
  SET(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
  SET(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/winicon.ico")
+ SET(CPACK_NSIS_MUI_PRODUCT "Arcan")
  SET(CPACK_PACKAGE_INSTALL_DIRECTORY "Arcan")
+ SET(CPACK_PACKAGE_VENDOR "Arcan Frontend")
 
 # try to autoinstall OpenAL (if needed)
-SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
-ExecWait '\\\"$INSTDIR\\\\oalinst.exe\\\" /s'" )
+SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS} 
+WriteRegStr HKLM 'Software\\\\Arcan Frontend\\\\Arcan' 'InstallDir' '\$INSTDIR'
+ExecWait '\\\"$INSTDIR\\\\oalinst.exe\\\" /s' ")
 
 SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
 
