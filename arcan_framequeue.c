@@ -91,7 +91,7 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (queue) {
+	if (queue && queue->alive) {
 		queue->alive = false;
 		pthread_cond_signal(&queue->framecond);
 		pthread_join(queue->iothread, NULL);

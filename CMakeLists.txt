@@ -72,8 +72,7 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
 add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu 
--DGL_HEADERS="platform/sdl/glheaders.h" 
--DPLATFORM_HEADER="platform/posix/platform.h")
+-DGL_HEADERS="platform/sdl/glheaders.h")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")
@@ -111,12 +110,13 @@ elseif(WIN32)
 	set(BZIP2_INCLUDE_DIR ${WININC})
 	set(OPENAL_LIBRARY ${WINLIB}\\OpenAL32.lib)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
+	set(PNG_PNG_INCLUDE_DIR ${WININC})
 
+	set(FREETYPE_LIBRARY ${WINLIB}\\distr\\libfreetype-6.dll)
+	set(PNG_LIBRARY ${WINLIB}\\distr\\libpng15-15.dll)
 	set(ZLIB_LIBRARY ${WINLIB}\\distr\\zlib1.dll)
 	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
 
-# APR seems too complex for this solution, build separately in MINGW
-# and install into MSys
 	set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
 	set(APR_INCLUDE_DIR ${WININC}\\apr)
 	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
@@ -126,7 +126,8 @@ elseif(WIN32)
 	set(GLEW_INCLUDE_DIR ${WININC})
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
 
-# don't need it defined one windows, just map to a preexisting
+# don't need it defined on windows, just map to a preexisting
+# lib to fool the FIND_ script
 	set(VPX_LIBRARIES ${WINLIB}\\glew32s.lib)
 	set(VPX_INCLUDE_DIRS ${WININC})
 endif()
@@ -379,6 +380,7 @@ platform/posix/shm.c
 platform/sdl/event.c
 )
 
+add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 set_source_files_properties( ctags.output PROPERTIES GENERATED true )
 add_custom_command( OUTPUT ctags.output
@@ -455,10 +457,34 @@ set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Pa
 #
 #
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
- add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
+set (PLATFORM_SOURCES
+platform/posix/strip_traverse.c
+platform/posix/fmt_open.c
+platform/win32/sem.c
+platform/win32/shm.c
+platform/win32/time.c
+platform/win32/glob.c
+platform/win32/paths.c
+platform/win32/resource_io.c
+platform/win32/warning.c
+platform/win32/map_resource.c
+platform/sdl/event.c
+platform/sdl/video.c
+)
 
- LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c)
- LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan_frameserver_resource.obj)
+set (FSERV_PLATFORM_SOURCES
+platform/win32/warning.c
+platform/win32/time.c
+platform/win32/sem.c
+platform/win32/shm.c
+platform/win32/realpath.c
+platform/sdl/event.c
+)
+ 
+add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
+ add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
+ LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c ${PLATFORM_SOURCES})
+ LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan_frameserver_resource.obj ${FSERV_PLATFORM_SOURCES})
 
  LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm)
  LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)

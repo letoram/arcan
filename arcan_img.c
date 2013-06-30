@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <assert.h>
+#include <stdio.h>
 #include <stdbool.h>
 
 #include "arcan_math.h"
@@ -196,8 +197,8 @@ arcan_errc arcan_png_rgba32(char* inbuf, size_t inbuf_sz,
 			cspace = PNG_COLOR_TYPE_RGB;
 		}
 /* expand greyscale to 8bits */
-  if (cspace == PNG_COLOR_TYPE_GRAY && bd < 8) 
-		png_set_gray_1_2_4_to_8(png_ptr); 
+/*  if (cspace == PNG_COLOR_TYPE_GRAY && bd < 8) 
+		png_set_gray_1_2_4_to_8(png_ptr);  */
 
 /* maintain greyscale transparency */
 	if (png_get_valid(png_ptr, info_ptr,

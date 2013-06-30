@@ -43,7 +43,7 @@ static char* tag_resleak = "resource_leak";
 static data_source* alloc_datasource()
 {
 	data_source* res = malloc(sizeof(data_source));
-	res->fd     = -1;
+	res->fd     =  BADFD;
 	res->start  =  0;
 	res->len    =  0;
 

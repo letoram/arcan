@@ -20,7 +20,13 @@
  */
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <unistd.h>
+
+#include "../../arcan_math.h"
+#include "../../arcan_general.h"
 
 long long int arcan_timemillis()
 {

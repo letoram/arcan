@@ -5,12 +5,15 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <limits.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #include <sys/types.h>
 
 #include <SDL.h>
 #include <SDL_opengl.h>
 
+#undef SDL_VIDEO_DRIVER_DDRAW
 #define SDL_VIDEO_DRIVER_DDRAW
 #include <SDL_syswm.h>
 
@@ -19,9 +22,10 @@
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
+
+#include "../arcan_event.h"
 #include "../arcan_video.h"
 #include "../arcan_audio.h"
-#include "../arcan_event.h"
 #include "../arcan_framequeue.h"
 #include "../arcan_frameserver_backend.h"
 #include "../arcan_target_const.h"
