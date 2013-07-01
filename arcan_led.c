@@ -27,7 +27,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "hidapi/hidapi.h"
+#include "external/hidapi/hidapi.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_led.h"
