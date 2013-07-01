@@ -139,13 +139,14 @@ class Generic
 			if File.exists?(@options[:frameserver])
 				info  = {}
 				args  = @options[:in_windows] ? "nokey 0 0 0 libretro" : "nokey libretro"
-				args  = "#{@options[:frameserver]} #{targetpath}/#{target}#{extension}:/info #{args}"
+				args  = "#{@options[:frameserver]} #{targetpath}/#{target}#{extension}*/info #{args}"
 				
 				begin
 					in_block = false
 					STDOUT.print("\t(#{target}: Trying to check core extensions with #{args}\n");
 	
 					IO.popen(args).each_line{|line|
+						p line
 						if (in_block)
 							line = line.strip
 							if (line != "/arcan_frameserver(info)")
@@ -307,7 +308,7 @@ class Generic
 			"x" => "Bad Checksum",
 			"\!" => "Verified Good Dump"
 		}
-		
+	
 		Dir["#{rompath}/*"].each{|fn|
 			ext = File.extname(fn).upcase
 

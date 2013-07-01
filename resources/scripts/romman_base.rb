@@ -403,11 +403,11 @@ class Target < DBObject
 
 		if (pkid > 0)
 			dbres = @@dbconn.execute(DQL[:get_target_by_id], [pkid])
-		else
+		elsif (name != nil)
 			dbres = @@dbconn.execute(DQL[:get_target_by_name], [name])
 		end
 
-		return nil if (dbres.size == 0)
+		return nil if (dbres == nil or dbres.size == 0)
 
 		res = Target.new
 		res.pkid = dbres[0][0].to_i

@@ -840,7 +840,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	LOG("mode_libretro (%s)\n", resource);
 
 /* abssopath : gamename */
-	char* gamename = strchr(resource, ':');
+	char* gamename = strrchr(resource, '*');
 	if (!gamename) return;
 	*gamename = 0;
 	gamename++;

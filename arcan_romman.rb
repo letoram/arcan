@@ -296,3 +296,7 @@ case cmd
 		execstr(options)
 end
 
+if (is_windows)
+	STDOUT.print("Press Enter To Close...\n");
+	STDIN.getc	
+end
