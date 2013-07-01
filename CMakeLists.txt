@@ -330,11 +330,37 @@ install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISS
 SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-	add_definitions(-DLUA_51 -D__UNIX -D_LIBUSB_BSD)
+set (PLATFORM_SOURCES
+platform/posix/fmt_open.c
+platform/posix/glob.c
+platform/posix/map_resource.c
+platform/posix/resource_io.c
+platform/posix/ilaunch.c
+platform/posix/strip_traverse.c
+platform/posix/paths.c
+platform/posix/sem.c
+platform/posix/shm.c
+platform/posix/time.c
+platform/posix/warning.c
+platform/sdl/event.c
+platform/sdl/video.c
+)
 
+set (FSERV_PLATFORM_SOURCES
+platform/posix/warning.c
+platform/posix/time.c
+platform/posix/sem.c
+platform/posix/shm.c
+platform/sdl/event.c
+)
+
+	add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
+	add_definitions(-DLUA_51 -D__UNIX -D_LIBUSB_BSD -D_POSIX_C_SOURCE)
+
+	LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 	LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
 	LIST(APPEND MAIN_LIBRARIES usb rt)
-	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
+	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c ${FSERV_PLATFORM_SOURCES})
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
 	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)
@@ -482,53 +508,73 @@ platform/sdl/event.c
 )
  
 add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
- add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
- LIST(APPEND SOURCES hidapi/hid_win32.cpp hidapi/hidapi.h win32/arcan_target_launcher_win32.c win32/arcan_frameserver_backend_win32.c win32/getopt_win32.c win32/getopt.h win32/sdl_win32_main.c ${PLATFORM_SOURCES})
- LIST(APPEND FSRV_SOURCES win32/arcan_frameserver_win32.c arcan_frameserver_resource.obj ${FSERV_PLATFORM_SOURCES})
+add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
 
- LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm)
- LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)
+# the win32/ folder should be merged with the platform sources
+LIST(APPEND SOURCES 
+hidapi/hid_win32.cpp 
+hidapi/hidapi.h 
+win32/arcan_target_launcher_win32.c
+win32/arcan_frameserver_backend_win32.c 
+win32/getopt_win32.c 
+win32/getopt.h 
+win32/sdl_win32_main.c 
+${PLATFORM_SOURCES})
 
- set(BIN_DST ".")
- set(RESOURCES_DST "./resources")
- set(THEME_DST "./themes")
+LIST(APPEND FSRV_SOURCES 
+win32/arcan_frameserver_win32.c 
+arcan_frameserver_resource.obj 
+${FSERV_PLATFORM_SOURCES})
 
- add_custom_command(
-	OUTPUT arcan_resource.obj
-	DEPENDS arcan.rc
-	COMMAND windres.exe
-	ARGS -o arcan_resource.obj
-	-iarcan.rc
+LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm)
+LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)
+
+set(BIN_DST ".")
+set(RESOURCES_DST "./resources")
+set(THEME_DST "./themes")
+
+add_custom_command(
+OUTPUT arcan_resource.obj
+DEPENDS arcan.rc
+COMMAND windres.exe
+ARGS -o arcan_resource.obj
+-iarcan.rc
 )
 
- add_custom_command(
-	OUTPUT arcan_frameserver_resource.obj
-	DEPENDS win32/arcan_frameserver.rc
-	COMMAND windres.exe
-	ARGS -o arcan_frameserver_resource.obj
-	-iarcan_frameserver.rc
+add_custom_command(
+OUTPUT arcan_frameserver_resource.obj
+DEPENDS win32/arcan_frameserver.rc
+COMMAND windres.exe
+ARGS -o arcan_frameserver_resource.obj
+-iarcan_frameserver.rc
 )
 
- # there must be a sane way to do this and actually have it work,
- # add_custom_target on the output seems to do absolutely nothing.
-
- add_custom_command(
-	OUTPUT arcan_romman.exe
-	DEPENDS ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
-	COMMAND ocra
-	ARGS --output arcan_romman.exe ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
+# there must be a sane way to do this and actually have it work,
+# add_custom_target on the output seems to do absolutely nothing.
+add_custom_command(
+OUTPUT arcan_romman.exe
+DEPENDS ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
+COMMAND ocra
+ARGS --output arcan_romman.exe ${CMAKE_SOURCE_DIR}/arcan_romman.rb ${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
 )
 
- add_executable( arcan WIN32 ${SOURCES} arcan_resource.obj arcan_romman.exe)
- add_executable( arcan_frameserver ${FSRV_SOURCES})
-#  add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
+add_executable( arcan WIN32 ${SOURCES} arcan_resource.obj arcan_romman.exe)
+add_executable( arcan_frameserver ${FSRV_SOURCES})
 
+# ------------- Win32 Arcan Launcher Tool -----------
+include_external_msproject(ArcanLauncher ${CMAKE_SOURCE_DIR}/win32/ArcanLauncher/ArcanLauncher/ArcanLauncher.csproj
+	TYPE 1FC6864D-77E3-4AE9-AB3F-3E450B4335E4
+	PLATFORM "Any CPU"
+	)
+
+# ------------- Win32 Installer ------------
  file (GLOB _dlls "${CMAKE_SOURCE_DIR}/win32/lib/distr/*.dll")
  install(FILES ${_dlls} DESTINATION ${BIN_DST})
  install(FILES arcan_romman.exe DESTINATION ${BIN_DST})
  install(FILES winicon.ico DESTINATION ${BIN_DST})
  install(FILES COPYRIGHT DESTINATION ${BIN_DST})
  install(FILES oalinst.exe DESTINATION ${BIN_DST})
+ install(FILES "${CMAKE_SOURCE_DIR}/win32/ArcanLauncher/ArcanLauncher/bin/Release/ArcanLauncher.exe" DESTINATION ${BIN_DST})
 
 # overwrite to reduce hassle on Vista++, only affects themes/resources
 # doesn't seem to have the desired effect however ..
@@ -550,24 +596,15 @@ WriteRegStr HKLM 'Software\\\\Arcan Frontend\\\\Arcan' 'InstallDir' '\$INSTDIR'
 ExecWait '\\\"$INSTDIR\\\\oalinst.exe\\\" /s' ")
 
 SET(CPACK_NSIS_CREATE_ICONS "CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Welcome).lnk' '\$INSTDIR\\\\arcan.exe' 'welcome'")
-
 SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
 	AccessControl::GrantOnFile '\$INSTDIR\\\\themes' '(BU)' 'GenericRead + GenericWrite'
 	AccessControl::GrantOnFile '\$INSTDIR\\\\resources' '(BU)' 'GenericRead + GenericWrite'
-
+	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\ArcanLauncher.lnk' '\$INSTDIR\\\\ArcanLauncher.exe' ''
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Build DB (full).lnk' '\$INSTDIR\\\\arcan_romman.exe' 'builddb --mamegood --mameskipclone --mameshorttitle --dbname ./resources/arcandb.sqlite --rompath ./resources/games --targetpath ./resources/targets'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle Remote).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle_remote'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Streamer).lnk' '\$INSTDIR\\\\arcan.exe' '-V -v streamer'
-
-	CreateDirectory '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Core Comparator.lnk' '\$INSTDIR\\\\arcan.exe' 'corecomp'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Font Test.lnk' '\$INSTDIR\\\\arcan.exe' 'fonttest'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Event Test.lnk' '\$INSTDIR\\\\arcan.exe' 'eventtest'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Sound Test.lnk' '\$INSTDIR\\\\arcan.exe' 'soundtest'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Image Test.lnk' '\$INSTDIR\\\\arcan.exe' 'imagetest'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Tests\\\\Movie Test.lnk' '\$INSTDIR\\\\arcan.exe' 'movietest'
+  WriteINIStr '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Help (online).url' 'InternetShortcut' 'URL' 'http://sourceforge.net/p/arcanfe/wiki/Home/'
 ")
 
 SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
@@ -584,6 +621,8 @@ SET(CPACK_NSIS_DELETE_ICONS_EXTRA "
 	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle).lnk'
 	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Gridle Remote).lnk'
 	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Arcan (Streamer).lnk'
+	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\ArcanLauncher.lnk'
+	Delete '\$SMPROGRAMS\\\\$MUI_TEMP\\\\Help (online).url'
 ")
 
  SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ".")

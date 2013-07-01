@@ -156,7 +156,7 @@ int main(int argc, char* argv[])
 	int height    = 480;
 	int winx      = -1;
 	int winy      = -1;
-	float vfalign     = 0.6;
+	float vfalign = 0.6;
 	
 /* only used when monitor mode is activated, where we want some 
  * of the global paths etc. accessible, but not *all* of them */
@@ -304,14 +304,19 @@ int main(int argc, char* argv[])
 /* also used as restart point for switiching themes */
 themeswitch:
 	SDL_Init(SDL_INIT_VIDEO);
-	char* dbname = arcan_expand_resource(dbfname, true);
+	char* dbname = NULL;
 
 /*
  * try to open the specified database,
  * if that fails, warn, try to create an empty 
  * database and if that fails, give up. 
  */
-	dbhandle = arcan_db_open(dbname, arcan_themename);
+	dbhandle = arcan_db_open(dbfname, arcan_themename);
+	if (!dbhandle){
+		dbname = arcan_expand_resource(dbfname, true);
+		dbhandle = arcan_db_open(dbfname, arcan_themename);
+	}
+
 	if (!dbhandle) {
 		arcan_warning("Couldn't open database (requested: %s => %s),"
 			"trying to create a new one.\n", dbfname, dbname);
