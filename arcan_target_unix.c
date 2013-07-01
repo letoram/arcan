@@ -31,7 +31,6 @@
 
 #include <dlfcn.h>
 #include _TARGET_BASE
-#include "openctm/liblzma/Types.h"
 
 /* quick debugging hack */
 static char* lastsym;

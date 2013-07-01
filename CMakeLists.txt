@@ -15,12 +15,13 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,USA.
 #
 # --- Project metadata
 PROJECT( arcan )
 include(ExternalProject)
 
+set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 #ExternalProject_Add(
 # nacl
 # SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
@@ -48,7 +49,7 @@ include(ExternalProject)
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 3 )
-set(PATCH_LEVEL 0 )
+set(PATCH_LEVEL 1 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -201,7 +202,7 @@ if (${SDLIMAGE_FOUND})
 	add_definitions(-DSDLIMAGE)
 endif(${SDLIMAGE_FOUND}) 
 
-add_subdirectory( openctm )
+add_subdirectory( external/openctm )
 
 # --- Step 2, source files
 set (
@@ -284,8 +285,8 @@ LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
 LIST(APPEND SOURCES 
 	SDLMain.m 
-	hidapi/hid_mac.c 
-	hidapi/hidapi.h 
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_mac.c 
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h 
 	arcan_target_launcher.c 
 	arcan_frameserver_backend_unix.c)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
@@ -358,13 +359,26 @@ platform/sdl/event.c
 	add_definitions(-DLUA_51 -D__UNIX -D_LIBUSB_BSD -D_POSIX_C_SOURCE)
 
 	LIST(APPEND SOURCES ${PLATFORM_SOURCES})
-	LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+	LIST(APPEND SOURCES 
+		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
+		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+ 		arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+
 	LIST(APPEND MAIN_LIBRARIES usb rt)
-	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c ${FSERV_PLATFORM_SOURCES})
+	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c 
+					${FSERV_PLATFORM_SOURCES})
 	LIST(APPEND FSRV_LIBRARIES -lrt)
 
-	add_library(arcan_hijack SHARED arcan_target_unix.c arcan_event.c arcan_target.c frameserver/ntsc/snes_ntsc.c frameserver/resampler/resample.c)
-	set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
+	add_library(arcan_hijack SHARED 
+		arcan_target_unix.c
+	 	arcan_event.c 
+		arcan_target.c 
+		frameserver/ntsc/snes_ntsc.c 
+		frameserver/resampler/resample.c
+	)
+
+	set_property(SOURCE arcan_target_unix.c 
+		APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
 	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
@@ -414,7 +428,12 @@ add_custom_command( OUTPUT ctags.output
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
 LIST(APPEND SOURCES ctags.output)
 
-LIST(APPEND SOURCES hidapi/hid_linux.c hidapi/hidapi.h arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+LIST(APPEND SOURCES 
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
+	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+ 	arcan_target_launcher.c 
+	arcan_frameserver_backend_unix.c
+)
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 
 LIST(APPEND MAIN_LIBRARIES usb-1.0 rt m)

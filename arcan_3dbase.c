@@ -29,7 +29,7 @@
 
 #include <assert.h>
 
-#include "openctm/openctm.h"
+#include "external/openctm/openctm.h"
 
 #include GL_HEADERS
 

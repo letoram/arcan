@@ -32,6 +32,9 @@
 
 #include <png.h>
 
+#ifdef TJPEG
+#endif
+
 #ifdef SDLIMAGE
 #include <SDL_image.h>
 #endif
