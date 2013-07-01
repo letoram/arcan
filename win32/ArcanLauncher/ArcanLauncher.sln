@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Express 2012 for Windows Desktop
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcanLauncher", "WindowsFormsApplication1\ArcanLauncher.csproj", "{1FC6864D-77E3-4AE9-AB3F-3E450B4335E4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcanLauncher", "ArcanLauncher\ArcanLauncher.csproj", "{1FC6864D-77E3-4AE9-AB3F-3E450B4335E4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

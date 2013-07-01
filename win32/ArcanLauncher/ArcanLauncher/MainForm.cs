@@ -52,8 +52,8 @@ namespace ArcanLauncher
 
         public void RebuildCmdLine()
         {
-            CMDLine.Text = String.Format("-w {0} -h {1} -F {2} -x {3} -y {4}", WidthSelector.Value, HeightSelector.Value, 
-                PrewakeSelector.Value, xSelector.Value, ySelector.Value);
+            CMDLine.Text = String.Format("-w {0} -h {1} -F {2} -x {3} -y {4} -d \"{5}\"", WidthSelector.Value, HeightSelector.Value, 
+                PrewakeSelector.Value, xSelector.Value, ySelector.Value, DatabaseTB.Text);
             if (NoBorderCB.Checked)
                 CMDLine.Text += " -s";
 
