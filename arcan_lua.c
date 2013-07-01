@@ -3432,7 +3432,7 @@ int arcan_lua_targetlaunch(lua_State* ctx)
 						strlen(cmdline.data.strarr[1]) + 1;
 
 					metastr = (char*) malloc( arglen );
-					snprintf(metastr, arglen, "%s:%s", resourcestr, 
+					snprintf(metastr, arglen, "%s*%s", resourcestr, 
 						cmdline.data.strarr[1]);
 				}
 

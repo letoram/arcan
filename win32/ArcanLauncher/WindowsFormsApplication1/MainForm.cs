@@ -15,17 +15,18 @@ namespace ArcanLauncher
 {
     public partial class LauncherForm : Form
     {
+        String baseDir;
+        
         public LauncherForm()
         {
             InitializeComponent();
-            String baseDir;
 
             Object baseDirObj = Registry.GetValue("HKEY_LOCAL_MACHINE\\Software\\Wow6432Node\\Arcan", "InstallationDirectory", null);
             if (baseDirObj == null)
                 baseDirObj = Registry.GetValue("HKEY_LOCAL_MACHINE\\Software\\Arcan", "InstallationDirectory", null);
 
             if (baseDirObj == null){
-                baseDir = "C:\\Arcan";
+                baseDir = "C:\\Arcan30";
             } else
                 baseDir = (string) baseDirObj;
 
@@ -97,9 +98,12 @@ namespace ArcanLauncher
 
         private void LaunchArcanBTN_Click(object sender, EventArgs e)
         {
+            OutputErrLB.Items.Clear();
+            outputLB.Items.Clear();
+
             Process aProc = new Process();
-            aProc.StartInfo.FileName = "C:\\arcan30\\arcan.exe";
-            aProc.StartInfo.WorkingDirectory = "C:\\arcan30";
+            aProc.StartInfo.FileName = baseDir + "\\arcan.exe";
+            aProc.StartInfo.WorkingDirectory = baseDir;
             aProc.StartInfo.Arguments = CMDLine.Text;
             aProc.StartInfo.CreateNoWindow = true;
             aProc.StartInfo.RedirectStandardError = true;
@@ -108,11 +112,20 @@ namespace ArcanLauncher
             aProc.ErrorDataReceived  += ErrorReceived;
             aProc.OutputDataReceived += DataReceived;
 
-            aProc.Start();
-            aProc.BeginErrorReadLine();
-            aProc.BeginOutputReadLine();
-            aProc.WaitForExit();
+            try
+            {
+                aProc.Start();
+                aProc.BeginErrorReadLine();
+                aProc.BeginOutputReadLine();
+                aProc.WaitForExit();
+            }
+            finally
+            {
+                aProc.Close();
+            }
         }
+
+        delegate void LogPrinter(string p);
 
         private void ErrorReceived(object sender, DataReceivedEventArgs e)
         {
@@ -154,5 +167,118 @@ namespace ArcanLauncher
             RebuildCmdLine();
         }
 
+        private void GroupsChanged()
+        {
+            TargetsLB.Items.Clear();
+            
+            foreach (FileInfo fileinf in (new DirectoryInfo(resPathTB.Text + "\\targets").EnumerateFiles()))
+            {
+                String basename = Path.GetFileNameWithoutExtension(fileinf.FullName);
+                if (Directory.Exists(resPathTB.Text + "\\games\\" + basename))
+                    TargetsLB.Items.Add(basename);
+            }
+        }
+
+        private void MainTab_TabIndexChanged(object sender, EventArgs e)
+        {
+            if (MainTab.SelectedIndex == 1)
+            {
+                if (TargetDatabaseTB.Text.Length == 0)
+                    TargetDatabaseTB.Text = DatabaseTB.Text;
+
+                if (resPathTB.Text.Length == 0)
+                    resPathTB.Text = ResourcePathTB.Text;
+
+                GroupsChanged();
+            }
+        }
+
+        private void DbResBTN_Click(object sender, EventArgs e)
+        {
+            folderSelector.SelectedPath = resPathTB.Text;
+            DialogResult res = folderSelector.ShowDialog();
+
+            if (res == DialogResult.OK)
+            {
+                resPathTB.Text = folderSelector.SelectedPath;
+                GroupsChanged();
+            }
+        }
+
+        private void DBTgtDbBTN_Click(object sender, EventArgs e)
+        {
+            newdbSelector.FileName = TargetDatabaseTB.Text;
+            DialogResult res = newdbSelector.ShowDialog();
+
+            if (res == DialogResult.OK)
+            {
+                TargetDatabaseTB.Text = newdbSelector.FileName;
+            }
+        }
+
+        private void BuildBTN_Click(object sender, EventArgs e)
+        {
+            string CmdLine = String.Format("builddb --dbname \"{0}\" --rompath \"{1}\" --targetpath \"{2}\"",
+                TargetDatabaseTB.Text.Replace(@"\", "/"), (resPathTB.Text + "\\games").Replace(@"\", "/"), (resPathTB.Text + "\\targets").Replace(@"\", "/"));
+
+            if (DisableGenericCB.Checked)
+                CmdLine += " --nogeneric";
+
+            if (UpdateOnlyCB.Checked)
+                CmdLine += " --update";
+
+            if (TargetsLB.SelectedItems.Count > 0)
+            {
+                String basev = scanRB.Checked ? " --scangroup" : " --skipgroup";
+                foreach (String val in TargetsLB.SelectedItems)
+                {
+                    CmdLine += basev + " " + val;
+                }
+            }
+
+            if (!DisableGenericCB.Checked && NoStripCB.Checked)
+                CmdLine += " --gennostriptitle";
+
+            if (!DisableGenericCB.Checked && ScrapeMeta.Checked)
+                CmdLine += " --genscrape";
+
+            if (!DisableGenericCB.Checked && ScrapeMetaMedia.Checked)
+                CmdLine += " --genscrapemedia";
+
+            if (TargetsLB.Items.Contains("mame") || TargetsLB.Items.Contains("ume"))
+            {
+                if (forceVerifyCB.Checked)
+                    CmdLine += " --mameverify";
+
+                if (MameSkipCloneCB.Checked)
+                    CmdLine += " --mameskipclone";
+
+                if (MameGoodCB.Checked)
+                    CmdLine += " --mamegood";
+
+                if (ShortenTitlesCB.Checked)
+                    CmdLine += " --mameshorttitle";
+            }
+
+            OutputErrLB.Items.Clear();
+            outputLB.Items.Clear();
+
+            Process aProc = new Process();
+            aProc.StartInfo.FileName = baseDir + "\\arcan_romman.exe";
+            aProc.StartInfo.WorkingDirectory = baseDir;
+            aProc.StartInfo.Arguments = CmdLine;
+            aProc.StartInfo.CreateNoWindow = false;
+            aProc.StartInfo.RedirectStandardError = false;
+            aProc.StartInfo.UseShellExecute = true;
+            aProc.StartInfo.RedirectStandardOutput = false;
+            MessageBox.Show(CmdLine);
+            aProc.Start();
+            aProc.WaitForExit();
+        }
+
+        private void label2_Click(object sender, EventArgs e)
+        {
+
+        }
     }
 }

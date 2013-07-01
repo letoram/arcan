@@ -57,39 +57,39 @@
             this.NoBorderCB = new System.Windows.Forms.CheckBox();
             this.FullscreenCB = new System.Windows.Forms.CheckBox();
             this.DatabaseTP = new System.Windows.Forms.TabPage();
+            this.DBTgtDbBTN = new System.Windows.Forms.Button();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.groupsLV = new System.Windows.Forms.ListView();
+            this.TargetsLB = new System.Windows.Forms.ListBox();
             this.skipRB = new System.Windows.Forms.RadioButton();
             this.scanRB = new System.Windows.Forms.RadioButton();
-            this.checkBox2 = new System.Windows.Forms.CheckBox();
-            this.checkBox1 = new System.Windows.Forms.CheckBox();
+            this.UpdateOnlyCB = new System.Windows.Forms.CheckBox();
+            this.DisableGenericCB = new System.Windows.Forms.CheckBox();
             this.tabPage3 = new System.Windows.Forms.TabPage();
-            this.checkBox5 = new System.Windows.Forms.CheckBox();
-            this.checkBox4 = new System.Windows.Forms.CheckBox();
-            this.checkBox3 = new System.Windows.Forms.CheckBox();
+            this.ScrapeMetaMedia = new System.Windows.Forms.CheckBox();
+            this.ScrapeMeta = new System.Windows.Forms.CheckBox();
             this.NoStripCB = new System.Windows.Forms.CheckBox();
             this.tabPage4 = new System.Windows.Forms.TabPage();
-            this.textBox1 = new System.Windows.Forms.TextBox();
             this.MameGoodCB = new System.Windows.Forms.CheckBox();
             this.ShortenTitlesCB = new System.Windows.Forms.CheckBox();
             this.MameSkipCloneCB = new System.Windows.Forms.CheckBox();
-            this.checkBox6 = new System.Windows.Forms.CheckBox();
+            this.forceVerifyCB = new System.Windows.Forms.CheckBox();
             this.tabPage5 = new System.Windows.Forms.TabPage();
+            this.ShortenTitles = new System.Windows.Forms.CheckBox();
+            this.FBSkipClonesCB = new System.Windows.Forms.CheckBox();
             this.label4 = new System.Windows.Forms.Label();
-            this.button3 = new System.Windows.Forms.Button();
+            this.DbResBTN = new System.Windows.Forms.Button();
             this.resPathTB = new System.Windows.Forms.TextBox();
-            this.button2 = new System.Windows.Forms.Button();
+            this.BuildBTN = new System.Windows.Forms.Button();
             this.label3 = new System.Windows.Forms.Label();
-            this.DatabaseCMDLine = new System.Windows.Forms.TextBox();
-            this.label2 = new System.Windows.Forms.Label();
-            this.button1 = new System.Windows.Forms.Button();
-            this.gamePathTB = new System.Windows.Forms.TextBox();
+            this.TargetDatabaseTB = new System.Windows.Forms.TextBox();
             this.OutputTP = new System.Windows.Forms.TabPage();
+            this.label2 = new System.Windows.Forms.Label();
+            this.OutputErrLB = new System.Windows.Forms.ListBox();
             this.outputLB = new System.Windows.Forms.ListBox();
             this.folderSelector = new System.Windows.Forms.FolderBrowserDialog();
             this.dbSelector = new System.Windows.Forms.OpenFileDialog();
-            this.OutputErrLB = new System.Windows.Forms.ListBox();
+            this.newdbSelector = new System.Windows.Forms.OpenFileDialog();
             this.MainTab.SuspendLayout();
             this.ArcanTP.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.PrewakeSelector)).BeginInit();
@@ -102,6 +102,7 @@
             this.tabPage1.SuspendLayout();
             this.tabPage3.SuspendLayout();
             this.tabPage4.SuspendLayout();
+            this.tabPage5.SuspendLayout();
             this.OutputTP.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -116,6 +117,7 @@
             this.MainTab.Size = new System.Drawing.Size(618, 314);
             this.MainTab.SizeMode = System.Windows.Forms.TabSizeMode.FillToRight;
             this.MainTab.TabIndex = 0;
+            this.MainTab.SelectedIndexChanged += new System.EventHandler(this.MainTab_TabIndexChanged);
             // 
             // ArcanTP
             // 
@@ -291,7 +293,7 @@
             this.HeightSelector.Size = new System.Drawing.Size(61, 20);
             this.HeightSelector.TabIndex = 22;
             this.HeightSelector.Value = new decimal(new int[] {
-            200,
+            480,
             0,
             0,
             0});
@@ -327,7 +329,7 @@
             this.WidthSelector.Size = new System.Drawing.Size(61, 20);
             this.WidthSelector.TabIndex = 20;
             this.WidthSelector.Value = new decimal(new int[] {
-            320,
+            640,
             0,
             0,
             0});
@@ -479,16 +481,14 @@
             // 
             // DatabaseTP
             // 
+            this.DatabaseTP.Controls.Add(this.DBTgtDbBTN);
             this.DatabaseTP.Controls.Add(this.tabControl1);
             this.DatabaseTP.Controls.Add(this.label4);
-            this.DatabaseTP.Controls.Add(this.button3);
+            this.DatabaseTP.Controls.Add(this.DbResBTN);
             this.DatabaseTP.Controls.Add(this.resPathTB);
-            this.DatabaseTP.Controls.Add(this.button2);
+            this.DatabaseTP.Controls.Add(this.BuildBTN);
             this.DatabaseTP.Controls.Add(this.label3);
-            this.DatabaseTP.Controls.Add(this.DatabaseCMDLine);
-            this.DatabaseTP.Controls.Add(this.label2);
-            this.DatabaseTP.Controls.Add(this.button1);
-            this.DatabaseTP.Controls.Add(this.gamePathTB);
+            this.DatabaseTP.Controls.Add(this.TargetDatabaseTB);
             this.DatabaseTP.Location = new System.Drawing.Point(4, 22);
             this.DatabaseTP.Name = "DatabaseTP";
             this.DatabaseTP.Padding = new System.Windows.Forms.Padding(3);
@@ -496,6 +496,16 @@
             this.DatabaseTP.TabIndex = 1;
             this.DatabaseTP.Text = "Database";
             this.DatabaseTP.UseVisualStyleBackColor = true;
+            // 
+            // DBTgtDbBTN
+            // 
+            this.DBTgtDbBTN.Location = new System.Drawing.Point(224, 20);
+            this.DBTgtDbBTN.Name = "DBTgtDbBTN";
+            this.DBTgtDbBTN.Size = new System.Drawing.Size(75, 23);
+            this.DBTgtDbBTN.TabIndex = 10;
+            this.DBTgtDbBTN.Text = "Change...";
+            this.DBTgtDbBTN.UseVisualStyleBackColor = true;
+            this.DBTgtDbBTN.Click += new System.EventHandler(this.DBTgtDbBTN_Click);
             // 
             // tabControl1
             // 
@@ -511,11 +521,11 @@
             // 
             // tabPage1
             // 
-            this.tabPage1.Controls.Add(this.groupsLV);
+            this.tabPage1.Controls.Add(this.TargetsLB);
             this.tabPage1.Controls.Add(this.skipRB);
             this.tabPage1.Controls.Add(this.scanRB);
-            this.tabPage1.Controls.Add(this.checkBox2);
-            this.tabPage1.Controls.Add(this.checkBox1);
+            this.tabPage1.Controls.Add(this.UpdateOnlyCB);
+            this.tabPage1.Controls.Add(this.DisableGenericCB);
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
             this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
@@ -524,14 +534,14 @@
             this.tabPage1.Text = "Generic Options";
             this.tabPage1.UseVisualStyleBackColor = true;
             // 
-            // groupsLV
+            // TargetsLB
             // 
-            this.groupsLV.HideSelection = false;
-            this.groupsLV.Location = new System.Drawing.Point(447, 0);
-            this.groupsLV.Name = "groupsLV";
-            this.groupsLV.Size = new System.Drawing.Size(139, 158);
-            this.groupsLV.TabIndex = 5;
-            this.groupsLV.UseCompatibleStateImageBehavior = false;
+            this.TargetsLB.FormattingEnabled = true;
+            this.TargetsLB.Location = new System.Drawing.Point(441, 6);
+            this.TargetsLB.Name = "TargetsLB";
+            this.TargetsLB.SelectionMode = System.Windows.Forms.SelectionMode.MultiSimple;
+            this.TargetsLB.Size = new System.Drawing.Size(139, 160);
+            this.TargetsLB.TabIndex = 4;
             // 
             // skipRB
             // 
@@ -555,31 +565,30 @@
             this.scanRB.Text = "Scan";
             this.scanRB.UseVisualStyleBackColor = true;
             // 
-            // checkBox2
+            // UpdateOnlyCB
             // 
-            this.checkBox2.AutoSize = true;
-            this.checkBox2.Location = new System.Drawing.Point(6, 29);
-            this.checkBox2.Name = "checkBox2";
-            this.checkBox2.Size = new System.Drawing.Size(85, 17);
-            this.checkBox2.TabIndex = 1;
-            this.checkBox2.Text = "Update Only";
-            this.checkBox2.UseVisualStyleBackColor = true;
+            this.UpdateOnlyCB.AutoSize = true;
+            this.UpdateOnlyCB.Location = new System.Drawing.Point(6, 29);
+            this.UpdateOnlyCB.Name = "UpdateOnlyCB";
+            this.UpdateOnlyCB.Size = new System.Drawing.Size(85, 17);
+            this.UpdateOnlyCB.TabIndex = 1;
+            this.UpdateOnlyCB.Text = "Update Only";
+            this.UpdateOnlyCB.UseVisualStyleBackColor = true;
             // 
-            // checkBox1
+            // DisableGenericCB
             // 
-            this.checkBox1.AutoSize = true;
-            this.checkBox1.Location = new System.Drawing.Point(6, 6);
-            this.checkBox1.Name = "checkBox1";
-            this.checkBox1.Size = new System.Drawing.Size(185, 17);
-            this.checkBox1.TabIndex = 0;
-            this.checkBox1.Text = "Disable Generic Fallback Importer";
-            this.checkBox1.UseVisualStyleBackColor = true;
+            this.DisableGenericCB.AutoSize = true;
+            this.DisableGenericCB.Location = new System.Drawing.Point(6, 6);
+            this.DisableGenericCB.Name = "DisableGenericCB";
+            this.DisableGenericCB.Size = new System.Drawing.Size(185, 17);
+            this.DisableGenericCB.TabIndex = 0;
+            this.DisableGenericCB.Text = "Disable Generic Fallback Importer";
+            this.DisableGenericCB.UseVisualStyleBackColor = true;
             // 
             // tabPage3
             // 
-            this.tabPage3.Controls.Add(this.checkBox5);
-            this.tabPage3.Controls.Add(this.checkBox4);
-            this.tabPage3.Controls.Add(this.checkBox3);
+            this.tabPage3.Controls.Add(this.ScrapeMetaMedia);
+            this.tabPage3.Controls.Add(this.ScrapeMeta);
             this.tabPage3.Controls.Add(this.NoStripCB);
             this.tabPage3.Location = new System.Drawing.Point(4, 22);
             this.tabPage3.Name = "tabPage3";
@@ -589,35 +598,25 @@
             this.tabPage3.Text = "Generic Importer";
             this.tabPage3.UseVisualStyleBackColor = true;
             // 
-            // checkBox5
+            // ScrapeMetaMedia
             // 
-            this.checkBox5.AutoSize = true;
-            this.checkBox5.Location = new System.Drawing.Point(6, 75);
-            this.checkBox5.Name = "checkBox5";
-            this.checkBox5.Size = new System.Drawing.Size(119, 17);
-            this.checkBox5.TabIndex = 3;
-            this.checkBox5.Text = "Don\'t Shorten Titles";
-            this.checkBox5.UseVisualStyleBackColor = true;
+            this.ScrapeMetaMedia.AutoSize = true;
+            this.ScrapeMetaMedia.Location = new System.Drawing.Point(6, 52);
+            this.ScrapeMetaMedia.Name = "ScrapeMetaMedia";
+            this.ScrapeMetaMedia.Size = new System.Drawing.Size(149, 17);
+            this.ScrapeMetaMedia.TabIndex = 2;
+            this.ScrapeMetaMedia.Text = "Scrape Media (GamesDB)";
+            this.ScrapeMetaMedia.UseVisualStyleBackColor = true;
             // 
-            // checkBox4
+            // ScrapeMeta
             // 
-            this.checkBox4.AutoSize = true;
-            this.checkBox4.Location = new System.Drawing.Point(6, 52);
-            this.checkBox4.Name = "checkBox4";
-            this.checkBox4.Size = new System.Drawing.Size(149, 17);
-            this.checkBox4.TabIndex = 2;
-            this.checkBox4.Text = "Scrape Media (GamesDB)";
-            this.checkBox4.UseVisualStyleBackColor = true;
-            // 
-            // checkBox3
-            // 
-            this.checkBox3.AutoSize = true;
-            this.checkBox3.Location = new System.Drawing.Point(6, 29);
-            this.checkBox3.Name = "checkBox3";
-            this.checkBox3.Size = new System.Drawing.Size(165, 17);
-            this.checkBox3.TabIndex = 1;
-            this.checkBox3.Text = "Scrape Metadata (GamesDB)";
-            this.checkBox3.UseVisualStyleBackColor = true;
+            this.ScrapeMeta.AutoSize = true;
+            this.ScrapeMeta.Location = new System.Drawing.Point(6, 29);
+            this.ScrapeMeta.Name = "ScrapeMeta";
+            this.ScrapeMeta.Size = new System.Drawing.Size(165, 17);
+            this.ScrapeMeta.TabIndex = 1;
+            this.ScrapeMeta.Text = "Scrape Metadata (GamesDB)";
+            this.ScrapeMeta.UseVisualStyleBackColor = true;
             // 
             // NoStripCB
             // 
@@ -631,24 +630,16 @@
             // 
             // tabPage4
             // 
-            this.tabPage4.Controls.Add(this.textBox1);
             this.tabPage4.Controls.Add(this.MameGoodCB);
             this.tabPage4.Controls.Add(this.ShortenTitlesCB);
             this.tabPage4.Controls.Add(this.MameSkipCloneCB);
-            this.tabPage4.Controls.Add(this.checkBox6);
+            this.tabPage4.Controls.Add(this.forceVerifyCB);
             this.tabPage4.Location = new System.Drawing.Point(4, 22);
             this.tabPage4.Name = "tabPage4";
             this.tabPage4.Size = new System.Drawing.Size(586, 167);
             this.tabPage4.TabIndex = 2;
             this.tabPage4.Text = "MAME Importer";
             this.tabPage4.UseVisualStyleBackColor = true;
-            // 
-            // textBox1
-            // 
-            this.textBox1.Location = new System.Drawing.Point(118, 16);
-            this.textBox1.Name = "textBox1";
-            this.textBox1.Size = new System.Drawing.Size(100, 20);
-            this.textBox1.TabIndex = 4;
             // 
             // MameGoodCB
             // 
@@ -686,18 +677,20 @@
             this.MameSkipCloneCB.Text = "Skip Clones";
             this.MameSkipCloneCB.UseVisualStyleBackColor = true;
             // 
-            // checkBox6
+            // forceVerifyCB
             // 
-            this.checkBox6.AutoSize = true;
-            this.checkBox6.Location = new System.Drawing.Point(14, 16);
-            this.checkBox6.Name = "checkBox6";
-            this.checkBox6.Size = new System.Drawing.Size(82, 17);
-            this.checkBox6.TabIndex = 0;
-            this.checkBox6.Text = "Force Verify";
-            this.checkBox6.UseVisualStyleBackColor = true;
+            this.forceVerifyCB.AutoSize = true;
+            this.forceVerifyCB.Location = new System.Drawing.Point(14, 16);
+            this.forceVerifyCB.Name = "forceVerifyCB";
+            this.forceVerifyCB.Size = new System.Drawing.Size(82, 17);
+            this.forceVerifyCB.TabIndex = 0;
+            this.forceVerifyCB.Text = "Force Verify";
+            this.forceVerifyCB.UseVisualStyleBackColor = true;
             // 
             // tabPage5
             // 
+            this.tabPage5.Controls.Add(this.ShortenTitles);
+            this.tabPage5.Controls.Add(this.FBSkipClonesCB);
             this.tabPage5.Location = new System.Drawing.Point(4, 22);
             this.tabPage5.Name = "tabPage5";
             this.tabPage5.Size = new System.Drawing.Size(586, 167);
@@ -705,86 +698,87 @@
             this.tabPage5.Text = "FBA (libretro) Importer";
             this.tabPage5.UseVisualStyleBackColor = true;
             // 
+            // ShortenTitles
+            // 
+            this.ShortenTitles.AutoSize = true;
+            this.ShortenTitles.Checked = true;
+            this.ShortenTitles.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.ShortenTitles.Location = new System.Drawing.Point(6, 26);
+            this.ShortenTitles.Name = "ShortenTitles";
+            this.ShortenTitles.Size = new System.Drawing.Size(91, 17);
+            this.ShortenTitles.TabIndex = 1;
+            this.ShortenTitles.Text = "Shorten Titles";
+            this.ShortenTitles.UseVisualStyleBackColor = true;
+            // 
+            // FBSkipClonesCB
+            // 
+            this.FBSkipClonesCB.AutoSize = true;
+            this.FBSkipClonesCB.Checked = true;
+            this.FBSkipClonesCB.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.FBSkipClonesCB.Location = new System.Drawing.Point(6, 3);
+            this.FBSkipClonesCB.Name = "FBSkipClonesCB";
+            this.FBSkipClonesCB.Size = new System.Drawing.Size(82, 17);
+            this.FBSkipClonesCB.TabIndex = 0;
+            this.FBSkipClonesCB.Text = "Skip Clones";
+            this.FBSkipClonesCB.UseVisualStyleBackColor = true;
+            // 
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(311, 46);
+            this.label4.Location = new System.Drawing.Point(8, 46);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(81, 13);
             this.label4.TabIndex = 8;
             this.label4.Text = "Resource Path:";
             // 
-            // button3
+            // DbResBTN
             // 
-            this.button3.Location = new System.Drawing.Point(527, 60);
-            this.button3.Name = "button3";
-            this.button3.Size = new System.Drawing.Size(75, 23);
-            this.button3.TabIndex = 7;
-            this.button3.Text = "Change...";
-            this.button3.UseVisualStyleBackColor = true;
+            this.DbResBTN.Location = new System.Drawing.Point(224, 60);
+            this.DbResBTN.Name = "DbResBTN";
+            this.DbResBTN.Size = new System.Drawing.Size(75, 23);
+            this.DbResBTN.TabIndex = 7;
+            this.DbResBTN.Text = "Change...";
+            this.DbResBTN.UseVisualStyleBackColor = true;
+            this.DbResBTN.Click += new System.EventHandler(this.DbResBTN_Click);
             // 
             // resPathTB
             // 
             this.resPathTB.Enabled = false;
-            this.resPathTB.Location = new System.Drawing.Point(314, 62);
+            this.resPathTB.Location = new System.Drawing.Point(11, 63);
             this.resPathTB.Name = "resPathTB";
             this.resPathTB.Size = new System.Drawing.Size(207, 20);
             this.resPathTB.TabIndex = 6;
             // 
-            // button2
+            // BuildBTN
             // 
-            this.button2.Location = new System.Drawing.Point(527, 20);
-            this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(75, 23);
-            this.button2.TabIndex = 5;
-            this.button2.Text = "Go ...";
-            this.button2.UseVisualStyleBackColor = true;
+            this.BuildBTN.Location = new System.Drawing.Point(492, 63);
+            this.BuildBTN.Name = "BuildBTN";
+            this.BuildBTN.Size = new System.Drawing.Size(103, 23);
+            this.BuildBTN.TabIndex = 5;
+            this.BuildBTN.Text = "Build Database";
+            this.BuildBTN.UseVisualStyleBackColor = true;
+            this.BuildBTN.Click += new System.EventHandler(this.BuildBTN_Click);
             // 
             // label3
             // 
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(8, 7);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(80, 13);
+            this.label3.Size = new System.Drawing.Size(90, 13);
             this.label3.TabIndex = 4;
-            this.label3.Text = "Command Line:";
+            this.label3.Text = "Target Database:";
             // 
-            // DatabaseCMDLine
+            // TargetDatabaseTB
             // 
-            this.DatabaseCMDLine.Enabled = false;
-            this.DatabaseCMDLine.Location = new System.Drawing.Point(11, 23);
-            this.DatabaseCMDLine.Name = "DatabaseCMDLine";
-            this.DatabaseCMDLine.Size = new System.Drawing.Size(510, 20);
-            this.DatabaseCMDLine.TabIndex = 3;
-            // 
-            // label2
-            // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(8, 46);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(63, 13);
-            this.label2.TabIndex = 2;
-            this.label2.Text = "Game Path:";
-            // 
-            // button1
-            // 
-            this.button1.Location = new System.Drawing.Point(224, 59);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(75, 23);
-            this.button1.TabIndex = 1;
-            this.button1.Text = "Change...";
-            this.button1.UseVisualStyleBackColor = true;
-            // 
-            // gamePathTB
-            // 
-            this.gamePathTB.Enabled = false;
-            this.gamePathTB.Location = new System.Drawing.Point(11, 62);
-            this.gamePathTB.Name = "gamePathTB";
-            this.gamePathTB.Size = new System.Drawing.Size(207, 20);
-            this.gamePathTB.TabIndex = 0;
+            this.TargetDatabaseTB.Enabled = false;
+            this.TargetDatabaseTB.Location = new System.Drawing.Point(11, 23);
+            this.TargetDatabaseTB.Name = "TargetDatabaseTB";
+            this.TargetDatabaseTB.Size = new System.Drawing.Size(207, 20);
+            this.TargetDatabaseTB.TabIndex = 3;
             // 
             // OutputTP
             // 
+            this.OutputTP.Controls.Add(this.label2);
             this.OutputTP.Controls.Add(this.OutputErrLB);
             this.OutputTP.Controls.Add(this.outputLB);
             this.OutputTP.Location = new System.Drawing.Point(4, 22);
@@ -794,25 +788,42 @@
             this.OutputTP.Text = "Output";
             this.OutputTP.UseVisualStyleBackColor = true;
             // 
+            // label2
+            // 
+            this.label2.AutoSize = true;
+            this.label2.Location = new System.Drawing.Point(319, 0);
+            this.label2.Name = "label2";
+            this.label2.Size = new System.Drawing.Size(58, 13);
+            this.label2.TabIndex = 2;
+            this.label2.Text = "(STDERR)";
+            this.label2.Click += new System.EventHandler(this.label2_Click);
+            // 
+            // OutputErrLB
+            // 
+            this.OutputErrLB.FormattingEnabled = true;
+            this.OutputErrLB.Location = new System.Drawing.Point(300, 15);
+            this.OutputErrLB.Name = "OutputErrLB";
+            this.OutputErrLB.ScrollAlwaysVisible = true;
+            this.OutputErrLB.Size = new System.Drawing.Size(310, 277);
+            this.OutputErrLB.TabIndex = 1;
+            // 
             // outputLB
             // 
             this.outputLB.FormattingEnabled = true;
-            this.outputLB.Location = new System.Drawing.Point(-4, 0);
+            this.outputLB.Location = new System.Drawing.Point(-4, 15);
             this.outputLB.Name = "outputLB";
-            this.outputLB.Size = new System.Drawing.Size(302, 290);
+            this.outputLB.ScrollAlwaysVisible = true;
+            this.outputLB.Size = new System.Drawing.Size(302, 277);
             this.outputLB.TabIndex = 0;
             // 
             // dbSelector
             // 
             this.dbSelector.FileName = "openFileDialog1";
             // 
-            // OutputErrLB
+            // newdbSelector
             // 
-            this.OutputErrLB.FormattingEnabled = true;
-            this.OutputErrLB.Location = new System.Drawing.Point(304, -2);
-            this.OutputErrLB.Name = "OutputErrLB";
-            this.OutputErrLB.Size = new System.Drawing.Size(310, 290);
-            this.OutputErrLB.TabIndex = 1;
+            this.newdbSelector.CheckFileExists = false;
+            this.newdbSelector.FileName = "openFileDialog1";
             // 
             // LauncherForm
             // 
@@ -842,7 +853,10 @@
             this.tabPage3.PerformLayout();
             this.tabPage4.ResumeLayout(false);
             this.tabPage4.PerformLayout();
+            this.tabPage5.ResumeLayout(false);
+            this.tabPage5.PerformLayout();
             this.OutputTP.ResumeLayout(false);
+            this.OutputTP.PerformLayout();
             this.ResumeLayout(false);
 
         }
@@ -879,37 +893,37 @@
         private System.Windows.Forms.TabPage tabPage4;
         private System.Windows.Forms.TabPage tabPage5;
         private System.Windows.Forms.Label label4;
-        private System.Windows.Forms.Button button3;
+        private System.Windows.Forms.Button DbResBTN;
         private System.Windows.Forms.TextBox resPathTB;
-        private System.Windows.Forms.Button button2;
+        private System.Windows.Forms.Button BuildBTN;
         private System.Windows.Forms.Label label3;
-        private System.Windows.Forms.TextBox DatabaseCMDLine;
-        private System.Windows.Forms.Label label2;
-        private System.Windows.Forms.Button button1;
-        private System.Windows.Forms.TextBox gamePathTB;
+        private System.Windows.Forms.TextBox TargetDatabaseTB;
         private System.Windows.Forms.TextBox ThemePathTB;
         private System.Windows.Forms.TextBox ResourcePathTB;
         private System.Windows.Forms.TextBox DatabaseTB;
         private System.Windows.Forms.NumericUpDown PrewakeSelector;
         private System.Windows.Forms.Label label7;
         private System.Windows.Forms.ListBox ThemeList;
-        private System.Windows.Forms.ListView groupsLV;
         private System.Windows.Forms.RadioButton skipRB;
         private System.Windows.Forms.RadioButton scanRB;
-        private System.Windows.Forms.CheckBox checkBox2;
-        private System.Windows.Forms.CheckBox checkBox1;
-        private System.Windows.Forms.CheckBox checkBox5;
-        private System.Windows.Forms.CheckBox checkBox4;
-        private System.Windows.Forms.CheckBox checkBox3;
+        private System.Windows.Forms.CheckBox UpdateOnlyCB;
+        private System.Windows.Forms.CheckBox DisableGenericCB;
+        private System.Windows.Forms.CheckBox ScrapeMetaMedia;
+        private System.Windows.Forms.CheckBox ScrapeMeta;
         private System.Windows.Forms.CheckBox NoStripCB;
-        private System.Windows.Forms.TextBox textBox1;
         private System.Windows.Forms.CheckBox MameGoodCB;
         private System.Windows.Forms.CheckBox ShortenTitlesCB;
         private System.Windows.Forms.CheckBox MameSkipCloneCB;
-        private System.Windows.Forms.CheckBox checkBox6;
+        private System.Windows.Forms.CheckBox forceVerifyCB;
         private System.Windows.Forms.TabPage OutputTP;
         private System.Windows.Forms.ListBox outputLB;
         private System.Windows.Forms.ListBox OutputErrLB;
+        private System.Windows.Forms.Button DBTgtDbBTN;
+        private System.Windows.Forms.OpenFileDialog newdbSelector;
+        private System.Windows.Forms.ListBox TargetsLB;
+        private System.Windows.Forms.CheckBox ShortenTitles;
+        private System.Windows.Forms.CheckBox FBSkipClonesCB;
+        private System.Windows.Forms.Label label2;
     }
 }
 
