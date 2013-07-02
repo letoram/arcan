@@ -60,8 +60,8 @@ function awb()
 	system_load("scripts/mouse.lua")();
 	system_load("awb_window.lua")();
 
-	settings.defwinw = math.floor(VRESW * 0.25);
-	settings.defwinh = math.floor(VRESH * 0.25);
+	settings.defwinw = math.floor(VRESW * 0.35);
+	settings.defwinh = math.floor(VRESH * 0.35);
 --
 -- the other icons are just referenced by string since they're managed by 
 -- their respective windows
@@ -105,7 +105,7 @@ function awb_desktop_setup()
 
 	rootwnd.click = function(self, vid, x, y)
 		local tbl = self:own(vid);
-		if (tbl) then
+		if (tbl and tbl.toggle) then
 			tbl:toggle();
 		end
 	end
@@ -116,19 +116,20 @@ function awb_desktop_setup()
 	rootwnd:show();
 end
 
+function defgrp_click(self, vid, x, y)
+	local icn = self:own(vid);
+	if (icn) then
+		icn:toggle();
+	end
+end
+
 function prggrp(caller)
 	prggrp_window = spawn_window("iconview", "left")
 	prggrp_window:add_icon("Boing", "awbicons/boing.png", 
-		"awbicons/boingsel.png", deffont, deffont_sz, spawn_boing);
+		nil, deffont, deffont_sz, spawn_boing);
 	prggrp_window:refresh_icons();
 
-	prggrp_window.click = function(self, vid, x, y)
-		local icn = self:own(vid);
-		if (icn) then
-			icn:toggle();
-		end
-	end
-
+	prggrp_window.click = defgrp_click; 
 	mouse_addlistener(prggrp_window, {"click"});
 end
 
@@ -225,6 +226,8 @@ function sysgame(caller)
 			gamewin:update_canvas(source);
 		end
 	end);
+	image_tracetag(gamewin.active_vid, "internal_launch(" .. 
+		tostring(gametbl.gameid) .. ")");
 
 --	syslist = spawn_window("listview");
 --	if (#gamelist) then
@@ -254,23 +257,25 @@ function sysvid(caller)
 end
 
 function vidgrp(caller)
-	local res = glob_resource("videos/*", THEME_RESOURCE);
-	if (res and #res > 0) then
-		local newvid = spawn_window("iconview", "left");
+	local res = glob_resource("videos/*", ALL_RESOURCES);
+	local newvid = spawn_window("iconview", "left", "Videos");
 
+	if (res and #res > 0) then
 		for ind, val in ipairs(res) do
 			local ent = newvid:add_icon(val, "awbicons/floppy.png", 
-				"awbicons/floppysel.png", deffont, deffont_sz, sysvid);
+				nil, deffont, deffont_sz, sysvid);
 
 			ent.res = val;
 		end
-
 		newvid:refresh_icons();
-	end	
+	end
+
+	newvid.click = defgrp_click; 
+	mouse_addlistener(newvid, {"click"});
 end
 
 function sysgrp(caller)
-	sysgroup_window = spawn_window("iconview", "left");
+	sysgroup_window = spawn_window("iconview", "left", "Systems");
 	local tgtlist = list_targets();
 
 	for ind, val in ipairs(tgtlist) do
@@ -281,19 +286,24 @@ function sysgrp(caller)
 			local resb = "icons/" .. val .. ".ico";
 			
 			if (resource(resa)) then
-				sysgroup_window:add_icon(val, resa, resa, deffont, deffont_sz, sysgame);
+				sysgroup_window:add_icon(val, resa, resa, 
+					deffont, deffont_sz, sysgame);
 			elseif (resource(resb)) then
-				sysgroup_window:add_icon(val, resb, resb, deffont, deffont_sz, sysgame);
+				sysgroup_window:add_icon(val, resb, resb, 
+					deffont, deffont_sz, sysgame);
+
 			else -- FIXME defaulticon
 				local active = fill_surface(80, 20, 255, 0, 0);
 				local inactive = fill_surface(80, 20, 0, 255, 0);
 				sysgroup_window:add_icon(val, "awbicons/floppy.png", 
-					"awbicons/floppysel.png", deffont, deffont_sz, sysgame);
+					nil, deffont, deffont_sz, sysgame);
 			end
 		end
 	end
 
 	sysgroup_window:refresh_icons();
+	sysgroup_window.click = defgrp_click; 
+	mouse_addlistener(sysgroup_window, {"click"});
 end
 
 --
@@ -383,6 +393,10 @@ function wbar_ahandlers(wnd, bar)
 	mouse_addlistener(bar, {"drag", "drop", "click", "dblclick"});
 end
 
+function resizewnd(self, vid, x, y)
+	self.parent:resize(self.parent.width + x, self.parent.height + y);
+end
+
 --
 -- Allocate, Setup, Register and Position a new Window
 -- These always start out focused
@@ -415,8 +429,14 @@ function spawn_window(wtype, ialign, caption)
 	local props = image_surface_properties(rzimg);
 	link_image(rzimg, wcont.bordert);
 	image_inherit_order(rzimg, true);
-	order_image(rzimg, 2);
+	order_image(rzimg, 1);
 	image_tracetag(rzimg, "resizebtn");
+	wcont.rztbl = {};
+	wcont.rztbl.vid  = rzimg;
+	wcont.rztbl.drag = resizewnd;
+	wcont.rztbl.parent = wcont;
+	wcont.rztbl.own  = function(self, vid) return vid == self.vid; end 
+	mouse_addlistener(wcont.rztbl, {"drag"});
 
 -- overload resize to cover the resize button
 	local rzfun = wcont.resize;

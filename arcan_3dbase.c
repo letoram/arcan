@@ -621,14 +621,29 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 struct threadarg{
 	arcan_3dmodel* model;
 	struct geometry* geom;
-	char* resource;
+	data_source resource;
+	map_region datamap;
+	off_t readofs;
 };
+
+static CTMuint ctm_readfun(void* abuf, CTMuint acount, void* userdata)
+{
+	struct threadarg* reg = userdata;
+	size_t ntr = acount > reg->datamap.sz - reg->readofs ? 
+		reg->datamap.sz - reg->readofs : acount;
+
+	memcpy(abuf, reg->datamap.ptr + reg->readofs, ntr);
+	reg->readofs += ntr;
+
+	return ntr;
+}
 
 static void* threadloader(void* arg)
 {
 	struct threadarg* threadarg = (struct threadarg*) arg;
+
 	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
-	ctmLoad(ctx, threadarg->resource);
+	ctmLoadCustom(ctx, ctm_readfun, threadarg); 
 
 	if (ctmGetError(ctx) == CTM_NONE){
 		loadmesh(threadarg->geom, ctx);
@@ -638,13 +653,14 @@ static void* threadloader(void* arg)
  * or free ( which is locking deferred ) */
 	threadarg->geom->complete = true;
 	ctmFreeContext(ctx);
-	free(threadarg->resource);
+
 	free(threadarg);
+	
 	return NULL;
 }
 
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, 
-	const char* resource, unsigned nmaps)
+	data_source resource, unsigned nmaps)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -655,8 +671,15 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	{
 		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
 		struct threadarg* arg = (struct threadarg*)malloc(sizeof(struct threadarg));
+
 		arg->model = dst;
-		arg->resource = strdup(resource);
+		arg->resource = resource;
+		arg->readofs = 0;
+		arg->datamap = arcan_map_resource(&arg->resource, false);
+		if (arg->datamap.ptr == NULL){
+			free(arg);
+			return rv;
+		}
 
 /* find last elem and add */
 		struct geometry** nextslot = &(dst->geometry);

@@ -9,6 +9,9 @@
 -- table <= awbwnd_create(options)
 -- possible options
 --
+
+local awb_inv_shader = nil;
+
 local function awbwnd_show(self)
 	show_image(self.anchor);
 	resize_image(self.anchor, 0, 0);
@@ -604,6 +607,15 @@ local function awbicn_selon(self)
 	hide_image(self.main);
 	show_image(self.mainsel);
 	self.active = self.mainsel;
+
+-- 
+-- if we don't have an explicit "selected" item, use a
+-- shader to invert the current one
+--
+	if (self.selshdr) then
+		image_shader(self.mainsel, awb_inv_shader);
+	end
+
 	order_image(self.mainsel, order);
 end
 
@@ -616,6 +628,11 @@ local function awbicn_seloff(self)
 	copy_image_transform(self.active, self.mainsel);
 	hide_image(self.mainsel);
 	show_image(self.main);
+
+	if (self.selshdr) then
+		image_shader(self.mainsel, "default");
+	end
+
 	order_image(self.main, order);
 	self.active = self.main;
 end
@@ -627,11 +644,20 @@ end
 --
 local function awbicn_addicon(self, name, img, imga, font, fontsz, trigger)
 	local newent   = {};
-	newent.main    = type(img) == "string" and load_image(img)  or img;
-	local mprops   = image_surface_properties(newent.main);
 
-	newent.mainsel = type(img) == "string" and load_image(imga) or imga;
-	resize_image(newent.mainsel, mprops.width, mprops.height);
+	if (img == nil) then
+		return;
+	end
+
+	newent.main  = load_image(img); 
+	local mprops = image_surface_properties(newent.main);
+
+	if (imga ~= nil) then
+		newent.mainsel = load_image(imga); 
+	else
+		newent.mainsel = load_image(img); 
+		newent.selshdr = true;
+	end
 
 	if (not (valid_vid(newent.main) and valid_vid(newent.mainsel))) then
 		warning(string.format("awbwnd_addicon() couldn't add %s, %s to %s",
@@ -709,7 +735,7 @@ local function awbwnd_canvas(self, newvid)
 		rotate_image(self.canvas, props.angle);
 		resize_image(self.canvas, props.width, props.height);
 		image_inherit_order(self.canvas, true);
-		order_image(self.canvas, 1);
+		order_image(self.canvas, 2);
 
 	elseif (self.mode == "iconview" or 
 		self.mode == "listview") then
@@ -737,7 +763,9 @@ local function awblst_sample(self)
 end
 
 function awbwnd_destroy(self)
-	delete_image(self.anchor);
+	if (valid_vid(self.anchor)) then 
+		delete_image(self.anchor);
+	end
 end
 
 function awbwnd_create(options)
@@ -775,6 +803,37 @@ function awbwnd_create(options)
 		name = "",
 		directions = {}
 	};
+
+	if (awb_inv_shader == nil) then
+		local vprog = [[
+uniform mat4 modelview;
+uniform mat4 projection;
+
+attribute vec4 vertex;
+attribute vec2 texcoord;
+
+varying vec2 texco;
+
+void main(void)
+{
+	texco = texcoord;	
+	gl_Position = (projection * modelview) * vertex;
+}
+		]];
+
+		local fprog = [[
+uniform sampler2D map_diffuse;
+uniform float obj_opacity;
+
+varying vec2 texco;
+
+void main(){
+  vec4 col = texture2D(map_diffuse, texco);
+  gl_FragColor = vec4(1.0 - col.r, 1.0 - col.g, 1.0 - col.b, col.a * obj_opacity);
+}
+		]];
+		awb_inv_shader = build_shader(vprog, fprog, "inverted_selection");
+	end
 
 -- 
 -- project the option table over the default

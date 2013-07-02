@@ -2193,10 +2193,14 @@ int arcan_lua_loadmesh(lua_State* ctx)
 		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
 
 	if (path){
-			arcan_errc rv = arcan_3d_addmesh(did, path, nmaps);
-			if (rv != ARCAN_OK)
-				arcan_warning("arcan_lua_loadmesh(%s) -- "
-					"Couldn't add mesh to (%d)\n", path, did);
+			data_source indata = arcan_open_resource(path);
+			if (indata.fd != BADFD){
+				arcan_errc rv = arcan_3d_addmesh(did, indata, nmaps);
+				if (rv != ARCAN_OK)
+					arcan_warning("arcan_lua_loadmesh(%s) -- "
+						"Couldn't add mesh to (%d)\n", path, did);
+				arcan_release_resource(&indata);
+			}
 	}
 
 	free(path);

@@ -67,8 +67,8 @@ static sem_t asynchsynch;
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
-	.scalemode = ARCAN_VIMAGE_SCALEPOW2,
-	.filtermode = ARCAN_VFILTER_TRILINEAR,
+	.scalemode = ARCAN_VIMAGE_NOPOW2,
+	.filtermode = ARCAN_VFILTER_BILINEAR,
 	.suspended = false,
 	.vsync = true,
 	.msasamples = 4,
@@ -1111,6 +1111,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 /* try- open */
 	data_source inres = arcan_open_resource(fname);
 	if (inres.fd == BADFD){
+		sem_post(&asynchsynch);
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
 
@@ -1118,6 +1119,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * useful due to alignment) */
 	map_region inmem = arcan_map_resource(&inres, false);
 	if (inmem.ptr == NULL){
+		sem_post(&asynchsynch);
 		arcan_release_resource(&inres);
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
