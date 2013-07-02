@@ -108,6 +108,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract);
 static arcan_vobject* new_vobject(arcan_vobj_id* id, 
 	struct arcan_video_context* dctx);
 
+
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
@@ -117,27 +118,6 @@ static inline void trace(const char* msg, ...)
 	va_end( args);
 #endif
 }
-
-/*void verify_rtarget(struct rendertarget* own, char* tag)
-{
-	arcan_vobject_litem* current = own->first;
-	int corder = 0;
-
-	arcan_warning("begin (%s) \n", tag);
-	while (current && current->elem){
-		arcan_warning("order : %d, %s\n", current->elem->order, current->elem->tracetag);
-
-		if (corder > current->elem->order)
-			abort();
-		else
-			corder = current->elem->order;
-
-		current = current->next;	
-	}
-
-	arcan_warning("end (%s) \n", tag);
-}
-*/
 
 static const char* video_tracetag(arcan_vobject* src)
 {
@@ -905,9 +885,13 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 	if (srcid == parentid || parentid == 0)
 		dst = &current_context->world;
 
-/* can't relink clone to another object */
+/* can't relink clone to another object, or link an object to a clone */
 	if (src && (src->flags.clone || src->flags.persist))
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
+
+	if (dst && (dst->flags.clone || dst->flags.persist))
+		return ARCAN_ERRC_CLONE_NOT_PERMITTED; 
+
 	else if (src && dst) {
 		arcan_vobject* current = dst;
 
