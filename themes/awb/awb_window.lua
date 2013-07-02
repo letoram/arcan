@@ -97,6 +97,8 @@ local function awbwnd_alloc(self)
 		move_image(self.canvas, cx, cy);
 		link_image(self.canvas, self.anchor);
 		show_image(self.canvas);	
+		image_inherit_order(self.canvas, true);
+		order_image(self.canvas, 1);
 
 -- these require scrollbars
 	elseif (self.mode == "iconview") then
@@ -283,13 +285,13 @@ local function awbbar_own(self, vid)
 
 	for ind, val in ipairs(self.left) do
 		if (val.vid == vid and val.trigger) then
-			return val;
+			val:trigger();
 		end
 	end
 
 	for ind, val in ipairs(self.right) do
 		if (val.vid == vid and val.trigger) then
-			return val;
+			val:trigger();
 		end
 	end
 
@@ -421,6 +423,7 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	newdir.own       = awbbar_own;
 	newdir.reorder   = awbbar_reorder;
 	newdir.add_icon  = awbbar_addicon;
+	newdir.reset_icons = awbbar_reseticon;
 	newdir.identity  = "awbwnd_bar";
 	newdir.left  = {}; -- "relative"
 	newdir.right = {}; 
@@ -471,6 +474,7 @@ local function awbwnd_own(self, vid)
 
 	if (self.mode == "iconview") then
 		a = self:sample_icons();
+
 		for key, val in ipairs(a) do	
 			if (vid == val.active or vid == val.label) then
 				return val;
@@ -704,7 +708,8 @@ local function awbwnd_canvas(self, newvid)
 		move_image(self.canvas, props.x, props.y);
 		rotate_image(self.canvas, props.angle);
 		resize_image(self.canvas, props.width, props.height);
-		order_image(self.canvas, props.order);
+		image_inherit_order(self.canvas, true);
+		order_image(self.canvas, 1);
 
 	elseif (self.mode == "iconview" or 
 		self.mode == "listview") then
@@ -792,10 +797,10 @@ function awbwnd_create(options)
 	end
  
 	if (restbl.mode == "iconview") then
-		restbl.add_icon = awbicn_addicon;
+		restbl.add_icon      = awbicn_addicon;
 		restbl.refresh_icons = awbicn_refreshicons;
-		restbl.sample_icons = awbicn_sampleicons;
-		restbl.iconsoff = awbicn_iconsoff;
+		restbl.sample_icons  = awbicn_sampleicons;
+		restbl.iconsoff      = awbicn_iconsoff;
 		restbl.icons = {};
 
 	elseif (restbl.mode ==" listview") then

@@ -72,8 +72,7 @@ function awb()
 	show_image(imagery.cursor);
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
-	spawn_boing();
-	spawn_boing();
+
 	awb_desktop_setup();
 end
 
@@ -86,10 +85,16 @@ function awb_desktop_setup()
 		iconalign  = "right"
 	});
 
-	rootwnd:add_icon("Systems",  groupicn, groupselicn, deffont, deffont_sz, sysgrp);
-	rootwnd:add_icon("Saves",    groupicn, groupselicn, deffont, deffont_sz, sfn);
-	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, deffont_sz, prggrp);
-	rootwnd:add_icon("Videos",   groupicn, groupselicn, deffont, deffont_sz, vidgrp);	
+	rootwnd:add_icon("Systems",  groupicn, groupselicn, deffont, 
+		deffont_sz, sysgrp);
+	rootwnd:add_icon("Saves",    groupicn, groupselicn, deffont, 
+		deffont_sz, sfn);
+	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, 
+		deffont_sz, prggrp);
+	rootwnd:add_icon("Videos",   groupicn, groupselicn, deffont, 
+		deffont_sz, vidgrp);	
+	rootwnd:add_icon("Models",   groupicn, groupselicn, deffont,
+		deffont_sz, modelgrp);
 
 	local wbarcb = function() return fill_surface(VRESW, 24, 210, 210, 210); end
 	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 20);
@@ -98,6 +103,15 @@ function awb_desktop_setup()
 	tbl.xofs = 6;
 	tbl.stretch = false;	
 
+	rootwnd.click = function(self, vid, x, y)
+		local tbl = self:own(vid);
+		if (tbl) then
+			tbl:toggle();
+		end
+	end
+
+	mouse_addlistener(rootwnd, {"click", "dblclick"});
+
 	rootwnd:refresh_icons();
 	rootwnd:show();
 end
@@ -105,8 +119,17 @@ end
 function prggrp(caller)
 	prggrp_window = spawn_window("iconview", "left")
 	prggrp_window:add_icon("Boing", "awbicons/boing.png", 
-		"awbicons/boing.png", deffont, deffont_sz, spawn_boing);
+		"awbicons/boingsel.png", deffont, deffont_sz, spawn_boing);
 	prggrp_window:refresh_icons();
+
+	prggrp_window.click = function(self, vid, x, y)
+		local icn = self:own(vid);
+		if (icn) then
+			icn:toggle();
+		end
+	end
+
+	mouse_addlistener(prggrp_window, {"click"});
 end
 
 function attrstr(self)
@@ -365,12 +388,12 @@ end
 -- These always start out focused
 --
 function spawn_window(wtype, ialign, caption)
-	local wcont = awbwnd_create({
-		mode = wtype,
-		iconalign = ialign,
+	local wcont  = awbwnd_create({
+		iconalign  = ialign,
 		fullscreen = false,
 		border  = true,
 		borderw = 2,
+		mode    = wtype,
 		width   = settings.defwinw,
 		height  = settings.defwinh,
 		name = caption,
@@ -380,8 +403,9 @@ function spawn_window(wtype, ialign, caption)
 
 -- overload destroy to deregister mouse handler
 	local tmpfun = wcont.destroy;
-	local function wdestroy(self) 
+	local function wdestroy(self)
 		mouse_droplistener(self);
+		mouse_droplistener(self.top);
 		tmpfun(self);
 	end
 
@@ -389,11 +413,19 @@ function spawn_window(wtype, ialign, caption)
 -- and no fullscreen, we add the resize button as linked to the border
 	local rzimg = load_image("awbicons/resize.png");
 	local props = image_surface_properties(rzimg);
-	link_image(rzimg, wcont.borderr);
+	link_image(rzimg, wcont.bordert);
 	image_inherit_order(rzimg, true);
 	order_image(rzimg, 2);
-	move_image(rzimg, -props.width, settings.defwinh - props.height - 2); 
-	show_image(rzimg);
+	image_tracetag(rzimg, "resizebtn");
+
+-- overload resize to cover the resize button
+	local rzfun = wcont.resize;
+	wcont.resize = function(self, newx, newy)
+		rzfun(self, newx, newy);
+		local bprops = image_surface_properties(self.canvas);
+		move_image(rzimg, bprops.width - props.width + 2, bprops.height); 
+		show_image(rzimg);
+	end
 
 	local bar = wcont:add_bar("top", "awbicons/border.png", 
 		"awbicons/border_inactive.png", 16);
