@@ -27,20 +27,7 @@ local function awbwnd_show(self)
 end
 
 local function awbwnd_reorder(self, orderv)
-	order_image({self.bordert, self.borderd, 
-		self.borderl, self.borderr, self.canvas}, orderv);
-
-	if (self.mode == "iconview") then
-		for ind, val in ipairs(self.icons) do
-			order_image({val.main, val.mainsel, val.label}, orderv);
-		end
-	elseif (self.mode == "listview") then
-		order_image(val.cursorvid, orderv);
-	end	
-
-	for key, val in pairs(self.directions) do
-			val:reorder(orderv);
-	end
+	order_image(self.anchor, orderv);
 end
 
 local function awbwnd_hide(self)
@@ -62,6 +49,11 @@ local function awbwnd_alloc(self)
 	self.borderr = instance_image(self.bordert);
 	self.borderl = instance_image(self.bordert);
 	self.borderd = instance_image(self.bordert);
+	image_inherit_order(self.bordert, true);
+	image_inherit_order(self.borderr, true);
+	image_inherit_order(self.borderl, true);
+	image_inherit_order(self.borderd, true);
+
 	image_tracetag(self.bordert, self.name .. "_border_top");
 	image_tracetag(self.borderr, self.name .. "_border_right");
 	image_tracetag(self.borderl, self.name .. "_border_left");
@@ -157,17 +149,24 @@ local function awbbar_addicon(self, imgres, align, trigger)
 		else
 			table.insert(self[align], icntbl);
 		end
+
 		link_image(icntbl.vid, self.activeid);
+		image_inherit_order(icntbl.vid, true);
+		order_image(icntbl.vid, 1);
 		show_image(icntbl.vid);
+
 		return icntbl;
 	end
 end
 
 local function awbbar_refresh(self)
 -- align against border while maintaining set "thickness"
-	local bstep = self.parent.border and self.parent.borderw or 0;
-	local wbarw = 0;
+	local bstep  = self.parent.border and self.parent.borderw or 0;
+	local wbarw  = 0;
 	local corder = image_surface_properties(self.activeid).order;
+	local storew = image_surface_initial_properties(self.activeid).width;
+
+	image_scale_txcos(self.activeid, self.parent.width / storew, 1.0);
 
 	local bx = self.direction == "right" and 
 		(self.parent.width - self.thickness - bstep) or bstep;
@@ -199,7 +198,7 @@ local function awbbar_refresh(self)
 	end
 
 	link_image(self.activeid, self.root);
-	image_mask_clear(self.activeid, MASK_OPACITY);
+	show_image(self.root);
 	show_image(self.activeid);
 
 	local lofs = 0;
@@ -207,8 +206,6 @@ local function awbbar_refresh(self)
 	for ind, val in ipairs(self.left) do
 			local props = image_surface_properties(val.vid);
 			link_image(val.vid, self.parent.bordert);
-			image_mask_clear(val.vid, MASK_OPACITY);
-			order_image(val.vid, corder + 1);
 
 			if (val.stretch) then
 				resize_image(val.vid, 0, self.thickness);
@@ -228,8 +225,6 @@ local function awbbar_refresh(self)
 	for ind, val in ipairs(self.right) do
 		local props = image_surface_properties(val.vid);
 		link_image(val.vid, self.parent.bordert);
-		image_mask_clear(val.vid, MASK_OPACITY);
-		order_image(val.vid, corder + 1);
 		move_image(val.vid, self.xofs, self.yofs);
 		if (val.stretch) then
 			resize_image(val.vid, 0, self.thickness);
@@ -278,6 +273,7 @@ local function awbwnd_setwbar(dsttbl, active)
 	image_tracetag(dsttbl.activeid, dsttbl.parent.name .. "_bar_" .. 
 		dsttbl.direction .. "_" .. tostring(active) );
 	show_image(dsttbl.activeid);
+
 	dsttbl:refresh();
 end
 
@@ -304,21 +300,6 @@ local function awbbar_own(self, vid)
 end
 
 local function awbbar_reorder(self, order)
-	if (valid_vid(self.activeid)) then
-		order_image(self.activeid, order);
-	end
-
-	for ind, val in ipairs(self.left) do
-		order_image(val.vid, order+1);
-	end
-	
-	for ind, val in ipairs(self.right) do
-		order_image(val.vid, order+1);
-	end
-
-	if (self.fill) then
-		order_image(self.fill.vid, order+1);
-	end
 end
 
 local function awbwnd_resize(self, neww, newh)
@@ -432,7 +413,9 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	newdir.right = {}; 
 	
 	image_tracetag(newdir.root, self.name .. "_bar_" .. direction .. "_root");
-	link_image(newdir.root, self.bordert);
+	link_image(newdir.root, self.anchor);
+	show_image(self.bordert);
+
 	awbwnd_setwbar(newdir, newdir.activeres);
 
 	self.directions[direction] = newdir;
@@ -508,7 +491,6 @@ local function icons_poslbl(val, cx, cy, ralign, balign, order)
 	end
 
 	move_image(val.main, cx, cy);
-	order_image({val.active, val.label}, order);
 	show_image({val.active, val.label});
 
 	return sprops.width, (lprops.height + sprops.height);
@@ -604,9 +586,14 @@ end
 
 local function awbicn_selon(self)
 	local order = image_surface_properties(self.parent.canvas).order;
+	copy_image_transform(self.main, self.mainsel);
+	link_image(self.label, self.mainsel);
+
 	hide_image(self.main);
-	show_image(self.mainsel);
 	self.active = self.mainsel;
+
+	image_inherit_order(self.active, true);
+	show_image(self.mainsel);
 
 -- 
 -- if we don't have an explicit "selected" item, use a
@@ -615,8 +602,6 @@ local function awbicn_selon(self)
 	if (self.selshdr) then
 		image_shader(self.mainsel, awb_inv_shader);
 	end
-
-	order_image(self.mainsel, order);
 end
 
 local function awbicn_seloff(self)
@@ -624,8 +609,9 @@ local function awbicn_seloff(self)
 		return;
 	end
 
-	local order = image_surface_properties(self.parent.canvas).order;
 	copy_image_transform(self.active, self.mainsel);
+	link_image(self.label, self.main);
+
 	hide_image(self.mainsel);
 	show_image(self.main);
 
@@ -633,7 +619,6 @@ local function awbicn_seloff(self)
 		image_shader(self.mainsel, "default");
 	end
 
-	order_image(self.main, order);
 	self.active = self.main;
 end
 
@@ -678,17 +663,21 @@ local function awbicn_addicon(self, name, img, imga, font, fontsz, trigger)
 	local lprops = image_surface_properties(newent.label);
 
 	link_image(newent.main,    self.canvas);
-	link_image(newent.mainsel, newent.main);
+	link_image(newent.mainsel, self.canvas);
 	link_image(newent.label,   newent.main);	
 
 	image_clip_on(newent.main);
 	image_clip_on(newent.mainsel);
 	image_clip_on(newent.label);
 
+	image_inherit_order(newent.main, true);
+	image_inherit_order(newent.mainsel, true);
+	image_inherit_order(newent.label, true);
+
+	order_image({newent.main, newent.mainsel, newent.label}, 1);
+
 	move_image(newent.label, math.floor(0.5 * (mprops.width 
 	- lprops.width)), mprops.height); 
-	image_mask_clear(newent.mainsel, MASK_OPACITY);
-	image_mask_clear(newent.label,   MASK_OPACITY);
 
 	table.insert(self.icons, newent);
 	return newent;
@@ -722,20 +711,15 @@ local function awbwnd_canvas(self, newvid)
 	if (self.mode == "container") then
 		a = true;
 	elseif (self.mode == "container_managed") then
-		local props = image_surface_properties(self.canvas);
+		copy_image_transform(self.canvas, newvid);
 
 		if (self.canvas ~= newvid) then
 			delete_image(self.canvas);
 		end		
 		
 		self.canvas = newvid;
+
 		link_image(self.canvas, self.anchor);
-		blend_image(self.canvas, props.opacity);
-		move_image(self.canvas, props.x, props.y);
-		rotate_image(self.canvas, props.angle);
-		resize_image(self.canvas, props.width, props.height);
-		image_inherit_order(self.canvas, true);
-		order_image(self.canvas, 2);
 
 	elseif (self.mode == "iconview" or 
 		self.mode == "listview") then
@@ -762,9 +746,18 @@ local function awblst_sample(self)
 	return res;
 end
 
-function awbwnd_destroy(self)
-	if (valid_vid(self.anchor)) then 
-		delete_image(self.anchor);
+function awbwnd_opacity(self, val, num)
+	blend_image(self.anchor, val, num);
+end
+
+function awbwnd_destroy(self, num)
+	if (valid_vid(self.anchor)) then
+		if (num) then
+			expire_image(self.anchor, num);
+			self:opacity(0.0, num-1);
+		else
+			delete_image(self.anchor);
+		end
 	end
 end
 
@@ -779,6 +772,7 @@ function awbwnd_create(options)
 		own     = awbwnd_own,
 		reorder = awbwnd_reorder,
 		destroy = awbwnd_destroy,
+		opacity = awbwnd_opacity,
 		update_canvas = awbwnd_canvas,
 
 -- static default properties

@@ -15,8 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor Boston, MA 02110-1301, USA.
- *
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor Boston,MA 02110-1301,USA
  */
 
 #include <stdint.h>
@@ -99,11 +98,13 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		if (src->afq.alive)
 			arcan_framequeue_free(&src->afq);
 
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
+		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) 
+			src->shm.ptr;
 	
-/* might have died prematurely (framequeue cbs), no reason sending signal, even if this is ignored
- * (say, hijack libraries in processes with installed signal handler, a corresponding exit event
- * will be in the queue as well, along with the dms trigger */
+/* might have died prematurely (framequeue cbs), no reason sending signal, 
+ * even if this is ignored (say, hijack libraries in processes with installed
+ * signal handler, a corresponding exit event will be in the queue as well,
+ * along with the dms trigger */
 		if (src->child_alive) {
 			shmpage->dms = false;
 
@@ -114,12 +115,16 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 			arcan_frameserver_pushevent(src, &exev);
 
-/* this one is more complicated than it seems, as we don't want zombies lying around,
- * yet might be in a context where the child is no-longer trusted. Double-forking and getting the handle
- * that way is overcomplicated, maintaining a state-table of assumed-alive children until wait says otherwise
- * and then map may lead to dangling pointers with video_deleteobject or sweeping the full state context etc.
+/* 
+ * this one is more complicated than it seems, as we don't want zombies 
+ * lying around, yet might be in a context where the child is no-longer 
+ * trusted. Double-forking and getting the handle that way is 
+ * overcomplicated, maintaining a state-table of assumed-alive children 
+ * until wait says otherwise and then map may lead to dangling pointers
+ * with video_deleteobject or sweeping the full state context etc.
  * 
- * Cheapest, it seems, is to actually spawn a guard thread with a sleep + wait cycle, countdown and then send KILL
+ * Cheapest, it seems, is to actually spawn a guard thread with a 
+ * sleep + wait cycle, countdown and then send KILL
  */
 			pid_t* pidptr = malloc(sizeof(pid_t));
 			pthread_t pthr;
@@ -127,8 +132,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 			if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr))
 				kill(src->child, SIGKILL);
-/* panic option anyhow, just forcibly kill */
 
+/* panic option anyhow, just forcibly kill */
 			src->child = -1;
 			src->child_alive = false;
 		}
@@ -147,7 +152,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			arcan_frameserver_dropsemaphores(src);
 		
 			if (src->shm.ptr && -1 == munmap((void*) shmpage, src->shm.shmsize))
-				arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
+				arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n",
+					strerror(errno));
 			
 			shm_unlink( src->shm.key );
 			free(src->shm.key);
@@ -173,8 +179,9 @@ int check_child(arcan_frameserver* movie){
 	int rv = -1, status;
 
 /* this will be called on any attached video source with a tag of TAG_MOVIE,
- * return EAGAIN to continue, EINVAL implies that the child frameserver died somehow.
- * When a movie is in between states, the child pid might not be set yet */
+ * return EAGAIN to continue, EINVAL implies that the child frameserver 
+ * died somehow. When a movie is in between states, the child pid might not
+ * be set yet */
 	int ec = waitpid(movie->child, &status, WNOHANG);
 	if (ec == movie->child){
 		movie->child_alive = false;
@@ -229,13 +236,15 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			arcan_frameserver_pushevent( fsrv, &ev );
 		}
 		else
-			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", fd, fsrv->sockout_fd, errno, strerror(errno));
+			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", 
+				fd, fsrv->sockout_fd, errno, strerror(errno));
 	}
 	
 	return rv;
 }
 
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
+	struct frameserver_envp setup)
 {
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
@@ -259,15 +268,18 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 * start with max, then truncate down to whatever is actually used */
 	int rc = ftruncate(shmfd, shmsize);
 	if (-1 == rc){
-		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating (%d) shared memory failed (%d).\n", shmsize, errno);
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating"
+		"	(%d) shared memory failed (%d).\n", shmsize, errno);
 		goto error_cleanup;
 	}
 	
-	shmpage = (void*) mmap(NULL, shmsize, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
+	shmpage = (void*) mmap(NULL, shmsize, PROT_READ | PROT_WRITE, 
+		MAP_SHARED, shmfd, 0);
 	close(shmfd);
 
 	if (MAP_FAILED == shmpage){
-		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't allocate shmpage\n");
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
+			"allocate shmpage\n");
 		goto error_cleanup;
 	}
 
@@ -275,7 +287,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 
 	int sockp[2] = {-1, -1};
 	if ( socketpair(PF_UNIX, SOCK_DGRAM, 0, sockp) < 0 ){
-		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't get socket pair\n");
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
+			"get socket pair\n");
 	}
 
 	pid_t child = fork();
@@ -283,19 +296,25 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		arcan_errc err;
 		close(sockp[1]);
 
-/* init- call (different from loop-exec as we need to 
- * keep the vid / aud as they are external references into the scripted state-space */
+/* 
+ * init- call (different from loop-exec as we need to 
+ * keep the vid / aud as they are external references into the 
+ * scripted state-space 
+ */
 		if (ctx->vid == ARCAN_EID) {
 			img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
 
 			ctx->source = strdup(setup.args.builtin.resource);
-			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
+			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
+				arcan_frameserver_emptyframe, state, cons, 0);
 			ctx->aid = ARCAN_EID;
 		}
 		else if (setup.custom_feed == false){ 
 			vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
-			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
+			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)
+				arcan_frameserver_emptyframe, *cstate); 
+/* revert back to empty vfunc? */
 		}
 
 		ctx->shm.ptr     = (void*) shmpage;
@@ -308,18 +327,29 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	} else if (child == 0) {
 		char convb[8];
 	
-/* this little thing is used to push file-descriptors between parent and child, as to not expose 
- * child to parents namespace, and to improve privilege separation */
+/*
+ * this little thing is used to push file-descriptors between 
+ * parent and child, as to not expose child to parents namespace, 
+ * and to improve privilege separation 
+ */
 		close(sockp[0]);
 		sprintf(convb, "%i", sockp[1]);
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
 
-/* we need to mask this signal as when debugging parent process, GDB pushes SIGINT to children, killing them and changing
- * the behavior in the core process */
+/*
+ * we need to mask this signal as when debugging parent process, 
+ * GDB pushes SIGINT to children, killing them and changing
+ * the behavior in the core process 
+ */
 		signal(SIGINT, SIG_IGN);
 	
 		if (setup.use_builtin){
-			char* argv[5] = { arcan_binpath, strdup(setup.args.builtin.resource), ctx->shm.key, strdup(setup.args.builtin.mode), NULL };
+			char* argv[5] = { 
+				arcan_binpath, 
+				strdup(setup.args.builtin.resource), 
+				ctx->shm.key, 
+				strdup(setup.args.builtin.mode), 
+			NULL};
 	
 /* just to help keeping track when there's a lot of them */
 			char vla[ strlen(setup.args.builtin.mode) + 1];
@@ -327,8 +357,10 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 			argv[0] = vla;
 
 			int rv = execv(arcan_binpath, argv);
-			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", arcan_binpath, 
-									setup.args.builtin.mode, setup.args.builtin.resource, strerror(errno));
+			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
+				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", 
+				arcan_binpath, setup.args.builtin.mode, 
+				setup.args.builtin.resource, strerror(errno));
 			exit(1);
 		} else {
 /* hijack lib */

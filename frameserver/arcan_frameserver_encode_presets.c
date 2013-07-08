@@ -12,7 +12,8 @@
 #include "arcan_frameserver.h"
 #include "arcan_frameserver_encode_presets.h"
 
-static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr)
+static void vcodec_defaults(struct codec_ent* dst, unsigned width, 
+	unsigned height, float fps, unsigned vbr)
 {
 	AVCodecContext* ctx   = dst->storage.video.context;
 	size_t base_sz = width * height;
@@ -36,7 +37,8 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width, unsigned heig
 	dst->storage.video.pframe = pframe;
 }
 
-static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
+static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, 
+	unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVCodecContext* ctx = dst->storage.video.context;
 
@@ -54,7 +56,8 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned
 
 	ctx->bit_rate = vbr;
 
-	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, NULL) != 0){
+	if (avcodec_open2(dst->storage.video.context, 
+		dst->storage.video.codec, NULL) != 0){
 		dst->storage.video.codec   = NULL;
 		dst->storage.video.context = NULL;
 		avcodec_close(dst->storage.video.context);
@@ -64,7 +67,8 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width, unsigned
 	return true;
 }
 
-static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsigned samplerate, unsigned abr)
+static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, 
+	unsigned samplerate, unsigned abr)
 {
 	AVCodecContext* ctx = dst->storage.audio.context;
 	AVCodec* codec = dst->storage.audio.codec;
@@ -80,15 +84,20 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 	ctx->time_base      = av_d2q(1.0 / (double) samplerate, 1000000); 
 	ctx->sample_fmt     = codec->sample_fmts[0];
 
-/* kept for documentation, now we assume the swr_convert just handles all sample formats for us,
- * if we prefer or require a certain on in the future, the following code shows how: 
-	for (int i = 0; codec->sample_fmts[i] != -1 && ctx->sample_fmt == AV_SAMPLE_FMT_NONE; i++){
-		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16 || codec->sample_fmts[i] == AV_SAMPLE_FMT_FLTP)
+/* kept for documentation, now we assume the swr_convert just 
+ * handles all sample formats for us,
+ * if we prefer or require a certain on in the future, the following code
+ * shows how: 
+	for (int i = 0; codec->sample_fmts[i] != -1 && ctx->sample_fmt == 
+	AV_SAMPLE_FMT_NONE; i++){
+		if (codec->sample_fmts[i] == AV_SAMPLE_FMT_S16 || 
+		codec->sample_fmts[i] == AV_SAMPLE_FMT_FLTP)
 			ctx->sample_fmt = codec->sample_fmts[i];
 	}
 
 	if (ctx->sample_fmt == AV_SAMPLE_FMT_NONE){
-		LOG("(encoder) Couldn't find supported matching sample format for codec, giving up.\n");
+		LOG("(encoder) Couldn't find supported matching sample format for 
+		codec, giving up.\n");
 		return false;
 	}
 */
@@ -102,8 +111,12 @@ static bool default_acodec_setup(struct codec_ent* dst, unsigned channels, unsig
 /* AAC may need this */
 	ctx->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
 	
-	LOG("(encode) audio encoder setup @ %d hz, requested quality: %d, got %d kbit/s using %s\n", samplerate, abr, ctx->bit_rate / 1000, codec->name);
-	if (avcodec_open2(dst->storage.audio.context, dst->storage.audio.codec, NULL) != 0){
+	LOG("(encode) audio encoder setup @ %d hz, requested quality: %d, "
+		"got %d kbit/s using %s\n", samplerate, abr, 
+		ctx->bit_rate / 1000, codec->name);
+
+	if (avcodec_open2(dst->storage.audio.context, 
+		dst->storage.audio.codec, NULL) != 0){
 		avcodec_close(dst->storage.audio.context);
 		dst->storage.audio.context = NULL;
 		dst->storage.audio.codec   = NULL;
@@ -120,7 +133,8 @@ static bool default_format_setup(struct codec_ent* dst)
 	return rc == 0;
 }
 
-static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
+static bool setup_cb_x264(struct codec_ent* dst, unsigned width, 
+	unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVDictionary* opts = NULL;
 	const char* const lif = fps > 30.0 ? "25" : "16";
@@ -181,9 +195,11 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 
 	dst->storage.video.context->bit_rate = vbr;
 
-	LOG("(encode) video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1000);
+	LOG("(encode) video setup @ %d * %d, %f fps, %d kbit / s.\n", 
+		width, height, fps, vbr / 1000);
 	
-	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
+	if (avcodec_open2(dst->storage.video.context, 
+		dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
 		dst->storage.video.context = NULL;
 		dst->storage.video.codec   = NULL;
@@ -193,8 +209,10 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width, unsigned height
 	return true;
 }
 
-/* would be nice with some decent evaluation of all the parameters and their actual cost / benefit. */
-static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height, float fps, unsigned vbr, bool stream)
+/* would be nice with some decent evaluation of all the parameters and 
+ * their actual cost / benefit. */
+static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, 
+	unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVDictionary* opts = NULL;
 	const char* const lif = fps > 30.0 ? "25" : "16";
@@ -245,8 +263,10 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 	av_dict_set(&opts, "quality", "realtime", 0);
 	dst->storage.video.context->bit_rate = vbr;
 
-	LOG("(encode) video setup @ %d * %d, %f fps, %d kbit / s.\n", width, height, fps, vbr / 1024);
-	if (avcodec_open2(dst->storage.video.context, dst->storage.video.codec, &opts) != 0){
+	LOG("(encode) video setup @ %d * %d, %f fps, %d kbit / s.\n", 
+		width, height, fps, vbr / 1024);
+	if (avcodec_open2(dst->storage.video.context, 
+		dst->storage.video.codec, &opts) != 0){
 		avcodec_close(dst->storage.video.context);
 		dst->storage.video.context = NULL;
 		dst->storage.video.codec   = NULL;
@@ -257,47 +277,107 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width, unsigned height,
 }
 
 static struct codec_ent vcodec_tbl[] = {
-	{.kind = CODEC_VIDEO, .name = "libvpx",  .shortname = "VP8",  .id = CODEC_ID_VP8,  .setup.video = setup_cb_vp8},
-	{.kind = CODEC_VIDEO, .name = "libx264", .shortname = "H264", .id = CODEC_ID_H264, .setup.video = setup_cb_x264},
-	{.kind = CODEC_VIDEO, .name = "ffv1",    .shortname = "FFV1", .id = CODEC_ID_FFV1, .setup.video = default_vcodec_setup },
+	{.kind = CODEC_VIDEO, 
+					.name = "libvpx",  
+					.shortname = "VP8",  
+					.id = CODEC_ID_VP8,  
+					.setup.video = setup_cb_vp8},
+
+	{.kind = CODEC_VIDEO, 
+					.name = "libx264", 
+					.shortname = "H264", 
+					.id = CODEC_ID_H264, 
+					.setup.video = setup_cb_x264},
+
+	{.kind = CODEC_VIDEO,
+				 	.name = "ffv1",
+					.shortname = "FFV1",
+				 	.id = CODEC_ID_FFV1,
+				 	.setup.video = default_vcodec_setup },
 };
 
 static struct codec_ent acodec_tbl[] = {
-	{.kind = CODEC_AUDIO, .name = "libvorbis", .shortname = "VORBIS", .id = 0,             .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "libmp3lame",.shortname = "MP3",    .id = 0,             .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "flac",      .shortname = "FLAC",   .id = CODEC_ID_FLAC, .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "aac",       .shortname = "AAC",    .id = CODEC_ID_AAC,  .setup.audio = default_acodec_setup},
-	{.kind = CODEC_AUDIO, .name = "pcm_s16le_planar", .shortname = "RAW",    .id = 0,      .setup.audio = default_acodec_setup}
+	{.kind = CODEC_AUDIO, .name = "libvorbis", 
+					.shortname = "VORBIS", 
+					.id = 0,
+					.setup.audio = default_acodec_setup},
+
+	{.kind = CODEC_AUDIO,
+				 	.name = "libmp3lame",
+					.shortname = "MP3",    
+					.id = 0,             
+					.setup.audio = default_acodec_setup},
+
+	{.kind = CODEC_AUDIO, 
+					.name = "flac",
+					.shortname = "FLAC",
+			 		.id = CODEC_ID_FLAC,
+				 	.setup.audio = default_acodec_setup},
+
+	{.kind = CODEC_AUDIO,
+				 	.name = "aac",
+	 				.shortname = "AAC",
+					.id = CODEC_ID_AAC,
+					.setup.audio = default_acodec_setup},
+
+	{.kind = CODEC_AUDIO,
+				 	.name = "pcm_s16le_planar",
+				 	.shortname = "RAW",
+					.id = 0,
+					.setup.audio = default_acodec_setup}
 };
 
 static struct codec_ent fcodec_tbl[] = {
-	{.kind = CODEC_FORMAT, .name = "matroska", .shortname = "MKV", .id = 0, .setup.muxer = default_format_setup },
-	{.kind = CODEC_FORMAT, .name = "mpeg4",    .shortname = "MP4", .id = 0, .setup.muxer = default_format_setup },
-	{.kind = CODEC_FORMAT, .name = "avi",      .shortname = "AVI", .id = 0, .setup.muxer = default_format_setup },
-	{.kind = CODEC_FORMAT, .name = "flv",      .shortname = "FLV", .id = 0, .setup.muxer = default_format_setup }
+	{.kind = CODEC_FORMAT, 
+					.name = "matroska",
+				 	.shortname = "MKV",
+				 	.id = 0,
+				 	.setup.muxer = default_format_setup },
+
+	{.kind = CODEC_FORMAT,
+				 	.name = "mpeg4",
+					.shortname = "MP4",
+				 	.id = 0,
+				 	.setup.muxer = default_format_setup },
+
+	{.kind = CODEC_FORMAT,
+				 	.name = "avi",
+					.shortname = "AVI",
+				 	.id = 0,
+				 	.setup.muxer = default_format_setup },
+
+	{.kind = CODEC_FORMAT,
+				 	.name = "flv",
+					.shortname = "FLV",
+				 	.id = 0,
+				 	.setup.muxer = default_format_setup }
 };
 
-static struct codec_ent lookup_default(const char* const req, struct codec_ent* tbl, size_t nmemb, bool audio)
+static struct codec_ent lookup_default(const char* const req, 
+	struct codec_ent* tbl, size_t nmemb, bool audio)
 {
 	struct codec_ent res = {.name = req};
 	AVCodec** dst = audio ? &res.storage.audio.codec : &res.storage.video.codec;
 	
 	if (req){
-/* make sure that if the user supplies a name already in the standard table, that we get the same
- * prefix setup function */
+/* make sure that if the user supplies a name already in the standard table, 
+ * that we get the same prefix setup function */
 		for (int i = 0; i < nmemb; i++)
-			if (tbl[i].name != NULL && (strcmp(req, tbl[i].name) == 0 || strcmp(req, tbl[i].shortname) == 0) ){
+			if (tbl[i].name != NULL && (strcmp(req, tbl[i].name) == 0 ||
+				strcmp(req, tbl[i].shortname) == 0) ){
 				memcpy(&res, &tbl[i], sizeof(struct codec_ent));
 				*dst = avcodec_find_encoder_by_name(res.name);
 			}
 
-/* if the codec specified is unknown (to us) then let avcodec try and sort it up, return default setup */
+/* if the codec specified is unknown (to us) then let 
+ * avcodec try and sort it up, return default setup */
 		if (*dst == NULL){
 			*dst = avcodec_find_encoder_by_name(req);
 		}
 	}
 
-/* if the user didn't supply an explicit codec, or one was not found, search the table for reasonable default */
+/* if the user didn't supply an explicit codec, or one was not found, 
+ * search the table for reasonable default */
 	for (int i = 0; i < nmemb && *dst == NULL; i++)
 		if (tbl[i].name != NULL && tbl[i].id == 0){
 			memcpy(&res, &tbl[i], sizeof(struct codec_ent));
@@ -313,7 +393,8 @@ static struct codec_ent lookup_default(const char* const req, struct codec_ent* 
 
 struct codec_ent encode_getvcodec(const char* const req, int flags)
 {
- 	struct codec_ent a = lookup_default(req, vcodec_tbl, sizeof(vcodec_tbl) / sizeof(vcodec_tbl[0]), false);
+ 	struct codec_ent a = lookup_default(req, vcodec_tbl, 
+		sizeof(vcodec_tbl) / sizeof(vcodec_tbl[0]), false);
 	if (a.storage.video.codec && !a.setup.video)
 		a.setup.video = default_vcodec_setup;
 
@@ -329,7 +410,8 @@ struct codec_ent encode_getvcodec(const char* const req, int flags)
 
 struct codec_ent encode_getacodec(const char* const req, int flags)
 {
-	struct codec_ent res = lookup_default(req, acodec_tbl, sizeof(acodec_tbl) / sizeof(acodec_tbl[0]), true);
+	struct codec_ent res = lookup_default(req, acodec_tbl, 
+		sizeof(acodec_tbl) / sizeof(acodec_tbl[0]), true);
 
 	if (res.storage.audio.codec && !res.setup.audio)
 		res.setup.audio = default_acodec_setup;
@@ -337,7 +419,7 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 	if (!res.storage.audio.codec)
 		return res;
 
-	res.storage.audio.context = avcodec_alloc_context3( res.storage.audio.codec );
+	res.storage.audio.context = avcodec_alloc_context3( res.storage.audio.codec);
 	if ( (flags & AVFMT_GLOBALHEADER) > 0){
 		res.storage.audio.context->flags |= CODEC_FLAG_GLOBAL_HEADER;
 	}
@@ -346,7 +428,8 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 }
 
 /* slightly difference scanning function here so can't re-use lookup_default */
-struct codec_ent encode_getcontainer(const char* const requested, int dst, const char* remote)
+struct codec_ent encode_getcontainer(const char* const requested, 
+	int dst, const char* remote)
 {
 	char fdbuf[16];
 	AVFormatContext* ctx;
@@ -373,20 +456,24 @@ struct codec_ent encode_getcontainer(const char* const requested, int dst, const
 		res.storage.container.format = av_guess_format(requested, NULL, NULL);
 
 	if (!res.storage.container.format){
-		LOG("(encode) couldn't find a suitable container matching (%s), reverting to matroska (MKV)\n", requested);
+		LOG("(encode) couldn't find a suitable container matching (%s),"
+			"	reverting to matroska (MKV)\n", requested);
 		res.storage.container.format = av_guess_format("matroska", NULL, NULL);
 	} else
 		LOG("(encode) requested container (%s) found.\n", requested);
 
-/* no stream, nothing requested that matched and default didn't work. Give up and cascade. */
+/* no stream, nothing requested that matched and default didn't work. 
+ * Give up and cascade. */
 	if (!res.storage.container.format){
 		LOG("(encode) couldn't find a suitable container.\n");
 		return res;
 	}
 
-	avformat_alloc_output_context2(&ctx, res.storage.container.format, NULL, NULL);
+	avformat_alloc_output_context2(&ctx, res.storage.container.format, 
+	NULL, NULL);
 
-/* ugly hack around not having a way of mapping filehandle to fd WITHOUT going through open, sic. */
+/* ugly hack around not having a way of mapping filehandle to fd
+ * WITHOUT going through open, sic. */
 	sprintf(fdbuf, "pipe:%d", dst);
 	int rv = avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_READ_WRITE, NULL, NULL);
 	ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;

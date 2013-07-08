@@ -28,9 +28,10 @@
  * semaphores and a parent<->child circular dependency (like we have here).
  *
  * Sleep a fixed amount of seconds, wake up and check if parent is alive.
- * If that's true, go back to sleep -- otherwise -- wake up, pop open all semaphores
- * set the disengage flag and go back to a longer sleep that it shouldn't wake up from.
- * Show this sleep be engaged anyhow, shut down forcefully. */
+ * If that's true, go back to sleep -- otherwise -- wake up, pop open 
+ * all semaphores set the disengage flag and go back to a longer sleep
+ * that it shouldn't wake up from. Show this sleep be engaged anyhow, 
+ * shut down forcefully. */
 
 struct guard_struct {
 	sem_handle semset[3];
@@ -41,7 +42,7 @@ static void* guard_thread(void* gstruct);
 
 static void spawn_guardthread(struct guard_struct gs)
 {
-	struct guard_struct* hgs = (struct guard_struct*) malloc(sizeof(struct guard_struct));
+	struct guard_struct* hgs = malloc(sizeof(struct guard_struct));
 	*hgs = gs;
 
 	pthread_t pth;
@@ -67,15 +68,19 @@ static inline bool parent_alive()
 	return IsWindow(parent);
 }
 
-/* force_unlink isn't used here as the semaphores are passed as inherited handles */
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
+/* force_unlink isn't used here as the semaphores are 
+ * passed as inherited handles */
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, 
+	bool force_unlink){
 	struct frameserver_shmcont res = {0};
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
-	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
+	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, 
+		FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
 
 	if ( res.addr == NULL ) {
-		arcan_warning("fatal: Couldn't map the allocated shared memory buffer (%i) => error: %i\n", shmkey, GetLastError());
+		arcan_warning("fatal: Couldn't map the allocated shared "
+			"memory buffer (%i) => error: %i\n", shmkey, GetLastError());
 		CloseHandle(shmh);
 		return res;
 	}
@@ -101,21 +106,23 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 }
 #else
 #include <sys/mman.h>
-
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink){
-/* step 1, use the fd (which in turn is set up by the parent to point to a mmaped "tempfile" */
+struct frameserver_shmcont frameserver_getshm(const char* shmkey, 
+	bool force_unlink){
+/* step 1, use the fd (which in turn is set up by the parent 
+ * to point to a mmaped "tempfile" */
 	struct frameserver_shmcont res = {0};
 	force_unlink = false;
 
 	unsigned bufsize = MAX_SHMSIZE;
 	int fd = -1;
 
-/* little hack to get around some implementations not accepting a shm_open on a named shm already
- * mapped in the same process (?!) */
+/* little hack to get around some implementations not accepting a 
+ * shm_open on a named shm already mapped in the same process (?!) */
 	fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd) {
-		arcan_warning("arcan_frameserver(getshm) -- couldn't open keyfile (%s), reason: %s\n", shmkey, strerror(errno));
+		arcan_warning("arcan_frameserver(getshm) -- couldn't open "
+			"keyfile (%s), reason: %s\n", shmkey, strerror(errno));
 		return res;
 	}
 
@@ -131,11 +138,13 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	if (force_unlink) shm_unlink(shmkey);
 
 	if (res.addr == MAP_FAILED){
-		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile (%s), reason: %s\n", shmkey, strerror(errno));
+		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile"
+			"	(%s), reason: %s\n", shmkey, strerror(errno));
 		return res;
 	}
 
-	arcan_warning("arcan_frameserver(getshm) -- mapped to %" PRIxPTR " \n", (uintptr_t) res.addr);
+	arcan_warning("arcan_frameserver(getshm) -- mapped to %" PRIxPTR
+		" \n", (uintptr_t) res.addr);
 
 /* step 2, semaphore handles */
 	char* work = strdup(shmkey);
@@ -155,7 +164,8 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unl
 	if (res.asem == 0x0 ||
 		res.esem == 0x0 ||
 		res.vsem == 0x0 ){
-		arcan_warning("arcan_frameserver_shmpage(getshm) -- couldn't map semaphores (basekey: %s), giving up.\n", shmkey);
+		arcan_warning("arcan_frameserver_shmpage(getshm) -- couldn't "
+			"map semaphores (basekey: %s), giving up.\n", shmkey);
 		return res;
 	}
 
@@ -200,7 +210,8 @@ static void* guard_thread(void* gs)
 					arcan_sem_post(gstr->semset[i]);
 
 			sleep(5);
-			arcan_warning("frameserver::guard_thread -- couldn't shut down gracefully, exiting.\n");
+			arcan_warning("frameserver::guard_thread -- couldn't shut"
+				"	down gracefully, exiting.\n");
 			exit(EXIT_FAILURE);
 		}
 
@@ -220,7 +231,8 @@ bool frameserver_shmpage_integrity_check(struct frameserver_shmpage* shmp)
 	return true;
 }
 
-void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, sem_handle esem, arcan_evctx* inq, arcan_evctx* outq, bool parent)
+void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, 
+	sem_handle esem, arcan_evctx* inq, arcan_evctx* outq, bool parent)
 {
 	if (parent){
 		arcan_evctx* tmp = inq;
@@ -245,7 +257,9 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, sem_handle ese
 	outq->n_eventbuf = sizeof(dst->parentdevq.evqueue) / sizeof(arcan_event);
 }
 
-void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, unsigned height, unsigned bpp)
+void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, 
+	uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, 
+	unsigned height, unsigned bpp)
 {
 	uint8_t* base = (uint8_t*) shmp;
 	uint8_t* vidaddr = base + sizeof(struct frameserver_shmpage);
@@ -269,12 +283,15 @@ void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, uint8_t** ds
 	}
 }
 
-void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, uint8_t** dstvidptr, uint8_t** dstaudptr)
+void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, 
+	uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
-	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, shmp->storage.w, shmp->storage.h, SHMPAGE_VCHANNELCOUNT);
+	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, 
+		shmp->storage.w, shmp->storage.h, SHMPAGE_VCHANNELCOUNT);
 }
 
-bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, unsigned width, unsigned height)
+bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, 
+	unsigned width, unsigned height)
 {
 	if (arg->addr){
 		arg->addr->storage.w = width;
@@ -337,8 +354,11 @@ struct arg_arr* arg_unpack(const char* resource)
 	char* base    = strdup(resource);
 	char* workstr = base;
 
-/* sweep for key=val:key:key style packed arguments, since this is used in such a limited fashion (RFC 3986 at worst),
- * we use a replacement token rather than an escape one, so \t becomes : post-process */
+/* sweep for key=val:key:key style packed arguments, 
+ * since this is used in such a limited fashion (RFC 3986 at worst),
+ * we use a replacement token rather than an escape one, 
+ * so \t becomes : post-process 
+ */
 	while (curarg < argc){
 		char* endp  = workstr;
 		argv[curarg].key = argv[curarg].value = NULL;
@@ -393,7 +413,8 @@ void arg_cleanup(struct arg_arr* arr)
 	}
 }
 
-bool arg_lookup(struct arg_arr* arr, const char* val, unsigned short ind, const char** found)
+bool arg_lookup(struct arg_arr* arr, const char* val, 
+	unsigned short ind, const char** found)
 {
 	int pos = 0;
 

@@ -39,7 +39,8 @@ void* frameserver_getrawfile(const char* resource, ssize_t* ressize);
 /* similar to above, but use a preopened file-handle for the operation */
 void* frameserver_getrawfile_handle(file_handle, ssize_t* ressize);
 
-bool frameserver_dumprawfile_handle(const void* const sbuf, size_t ssize, file_handle, bool finalize);
+bool frameserver_dumprawfile_handle(const void* const sbuf, size_t ssize, 
+	file_handle, bool finalize);
 
 /* block until parent has supplied us with a file_handle valid in this process */
 file_handle frameserver_readhandle(struct arcan_event*);
