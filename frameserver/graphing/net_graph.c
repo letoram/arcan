@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,MA 02110-1301,USA.
  *
  */
 
@@ -34,15 +34,19 @@
 #include "../arcan_frameserver.h"
 
 /*
- * allocate context -> depending on type, different buckets are set up. Each bucket maintain separate data-tracking,
- * can have different rendering modes etc. Buckets are populated indirectly through calling the exported higher-abstraction
- * functions ("connected", "sending tlv", ...) and the rendering mode of the context define how the buckets are setup,
+ * allocate context -> depending on type, different buckets are set up.
+ * Each bucket maintain separate data-tracking,
+ * can have different rendering modes etc. Buckets are populated indirectly
+ * through calling the exported higher-abstraction
+ * functions ("connected", "sending tlv", ...) and the rendering mode
+ * of the context define how the buckets are setup,
  * scaling, refreshes etc.
  */
 
 /* can be created by taking a TTF font,
- * convert -resize 8x8\! -font Name-Family-Style -pointsize num label:CodePoint outp.xbm
- * sweep through the desired codepoints and build the outer array, dump to header and replace */
+ * convert -resize 8x8\! -font Name-Family-Style -pointsize num 
+ * label:CodePoint outp.xbm sweep through the desired codepoints and 
+ * build the outer array, dump to header and replace */
 #include "font_8x8.h"
 
 static const int pxfont_width = PXFONT_WIDTH;
@@ -59,7 +63,8 @@ enum plot_mode {
 struct datapoint {
 	long long int timestamp;
 	const char* label; /* optional */
-	bool continuous;   /* part of the regular dataflow or should be treated as an alarm */
+/* part of the regular dataflow or should be treated as an alarm */
+	bool continuous; 
 
 	char type_id;      /* union selector */
 	union {
@@ -70,7 +75,8 @@ struct datapoint {
 
 struct event_bucket {
 	bool labels;   /* render possibly attached labels */
-	bool absolute; /* should basev/maxv/minv be relative to window or accumulate */
+	bool absolute; 
+/* should basev/maxv/minv be relative to window or accumulate */
 	enum plot_mode mode;
 
 /* data model -- ring-buffer of datapoints, these and scales are
@@ -112,22 +118,27 @@ struct graph_context {
 	enum graphing_mode mode;
 };
 
-static inline uint32_t px_blend(const uint32_t p1, const uint32_t p2, float fact)
+static inline uint32_t px_blend(const uint32_t p1, 
+	const uint32_t p2, float fact)
 {
 	uint32_t rv;
-/* shift out individual components, res = (p1.n * 1.0 - fact) + (p2.n * fact), pack and return */
+/* shift out individual components, res = (p1.n * 1.0 - fact) + 
+ * (p2.n * fact), pack and return */
 	return rv;
 }
 
-void blend_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact)
+void blend_hline(struct graph_context* ctx, int x, int y, 
+	int width, uint32_t col, float fact)
 {
 }
 
-void blend_vline(struct graph_context* ctx, int x, int y, int width, uint32_t col, float fact)
+void blend_vline(struct graph_context* ctx, int x, int y, 
+	int width, uint32_t col, float fact)
 {
 }
 
-void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col)
+void draw_hline(struct graph_context* ctx, int x, int y, 
+	int width, uint32_t col)
 {
 	width = abs(width);
 
@@ -144,7 +155,8 @@ void draw_hline(struct graph_context* ctx, int x, int y, int width, uint32_t col
 		*(buf++) = col;
 }
 
-void draw_vline(struct graph_context* ctx, int x, int y, int height, uint32_t col)
+void draw_vline(struct graph_context* ctx, int x, int y, 
+	int height, uint32_t col)
 {
 	int dir;
 	int length = abs(height);
@@ -179,7 +191,8 @@ void clear_tocol(struct graph_context* ctx, uint32_t col)
 		ctx->vidp[i] = col;
 }
 
-void draw_box(struct graph_context* ctx, int x, int y, int width, int height, uint32_t col)
+void draw_box(struct graph_context* ctx, int x, int y, 
+	int width, int height, uint32_t col)
 {
 	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
 		return;
@@ -195,7 +208,8 @@ void draw_box(struct graph_context* ctx, int x, int y, int width, int height, ui
 			ctx->vidp[ cy * ctx->width + cx ] = col;
 }
 
-void draw_square(struct graph_context* ctx, int x, int y, int side, uint32_t col)
+void draw_square(struct graph_context* ctx, int x, int y, 
+	int side, uint32_t col)
 {
 	side = abs(side);
 
@@ -210,7 +224,8 @@ void draw_square(struct graph_context* ctx, int x, int y, int side, uint32_t col
 }
 
 /* use the included 8x8 bitmap font to draw simple 7-bit ASCII messages */
-void draw_text(struct graph_context* ctx, const char* msg, int x, int y, uint32_t txcol)
+void draw_text(struct graph_context* ctx, const char* msg, 
+	int x, int y, uint32_t txcol)
 {
 	if (y + pxfont_height >= ctx->height)
 		return;
@@ -229,10 +244,12 @@ void draw_text(struct graph_context* ctx, const char* msg, int x, int y, uint32_
 	}
 }
 
-static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, int x, int y, int w, int h)
+static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, 
+	int x, int y, int w, int h)
 {
-/* with labels toggled, the issue is if labels should be placed closed to the datapoint,
- * or if separate space should be allocated beneath the grid and use colors to map */
+/* with labels toggled, the issue is if labels should be 
+ * placed closed to the datapoint, or if separate space should be 
+ * allocated beneath the grid and use colors to map */
 	draw_vline(ctx, x, y, h, ctx->colors.border);
 	draw_hline(ctx, x, y, w, ctx->colors.border);
 
@@ -257,35 +274,39 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, int
 	}
 }
 
-/* These two functions traverses the history buffer, drops the elements that are outside the current time-window,
- * and converts the others to draw-calls, layout is different for server (1:n) and client (1:1). */
+/* These two functions traverses the history buffer, 
+ * drops the elements that are outside the current time-window,
+ * and converts the others to draw-calls, layout is different 
+ * for server (1:n) and client (1:1). */
 static bool graph_refresh_server(struct graph_context* ctx)
 {
 	if (ctx->mode == GRAPH_MANUAL)
 		return false;
 
-/* these are responsible for allocating buckets based on mode, only relevant for GRAPH_NET class */
+/* these are responsible for allocating buckets based on mode, 
+ * only relevant for GRAPH_NET class */
 	switch (ctx->mode){
-		case GRAPH_NET_SERVER_SPLIT:
-		break;
+	case GRAPH_NET_SERVER_SPLIT:
+	break;
 
-		case GRAPH_NET_SERVER_SINGLE:
-		break;
+	case GRAPH_NET_SERVER_SINGLE:
+	break;
 
-		case GRAPH_NET_CLIENT:
-		break;
+	case GRAPH_NET_CLIENT:
+	break;
 
-		case GRAPH_NET_SERVER:
-		break;
+	case GRAPH_NET_SERVER:
+	break;
 
-		case GRAPH_MANUAL:
-		break;
+	case GRAPH_MANUAL:
+	break;
 	}
 
 	return true;
 }
 
-/* divide Y- res based on number of event- buckets in time-window (client should really just have one or two)
+/* divide Y- res based on number of event- buckets in 
+ * time-window (client should really just have one or two)
  * render each event-bucket based on the graph- profile of the bucket */
 static bool graph_refresh_client(struct graph_context* ctx)
 {
@@ -295,17 +316,21 @@ static bool graph_refresh_client(struct graph_context* ctx)
 	long long int ts = arcan_timemillis();
 	int bucketh = (ctx->height - 10) / 3;
 
-/* two buckets, one (height / 3) for discovery domain data, one for main domain */
+/* two buckets, one (height / 3) for discovery 
+ * domain data, one for main domain */
 	clear_tocol(ctx, ctx->colors.bg);
 
 	switch (ctx->n_buckets){
-		case 1: draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, ctx->height); break;
-		case 2:
-			draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, bucketh);
-			draw_bucket(ctx, &ctx->buckets[1], 0, 10 + bucketh, ctx->width, bucketh * 2);
-		break;
+	case 1: draw_bucket(ctx, &ctx->buckets[0], 0, 
+		0, ctx->width, ctx->height); break;
+	case 2:
+		draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, bucketh);
+		draw_bucket(ctx, &ctx->buckets[1], 0, 10 + bucketh, 
+		ctx->width, bucketh * 2);
+	break;
 /*		default:
-			LOG("graphing(graph_refresh_client) : draw failed, unhandled number of buckets (%d)\n", ctx->n_buckets);
+			LOG("graphing(graph_refresh_client) : draw failed, 
+				unhandled number of buckets (%d)\n", ctx->n_buckets);
 			abort(); */
 	}
 
@@ -322,7 +347,8 @@ bool graph_refresh(struct graph_context* ctx)
 
 /* setup basic context (history buffer etc.)
  * along with colours etc. to some defaults. */
-struct graph_context* graphing_new(enum graphing_mode mode, int width, int height, uint32_t* vidp)
+struct graph_context* graphing_new(enum graphing_mode mode,
+	int width, int height, uint32_t* vidp)
 {
 	if (width * height == 0)
 		return NULL;
@@ -330,9 +356,15 @@ struct graph_context* graphing_new(enum graphing_mode mode, int width, int heigh
 	struct graph_context* rctx = malloc( sizeof(struct graph_context) );
 
 	if (rctx){
-		struct graph_context rv = { .mode = mode, .width = width, .height = height, .vidp = vidp,
-			.colors.bg = 0xffffffff, .colors.border = 0xff000000, .colors.grid = 0xffaaaaaa, .colors.gridalign = 0xffff4444,
-			.colors.data = 0xff00ff00, .colors.alert = 0xffff0000, .colors.notice = 0xff0000ff };
+		struct graph_context rv = { 
+						.mode = mode, .width = width, .height = height, .vidp = vidp,
+			.colors.bg = 0xffffffff, 
+			.colors.border = 0xff000000,
+		 	.colors.grid = 0xffaaaaaa,
+		 	.colors.gridalign = 0xffff4444,
+			.colors.data = 0xff00ff00,
+		 	.colors.alert = 0xffff0000,
+		 	.colors.notice = 0xff0000ff };
 			*rctx = rv;
 	}
 
@@ -351,10 +383,12 @@ void graph_tick(struct graph_context* ctx, long long int timestamp)
 {
 	assert(ctx);
 
-	/* rescale time-window for all buckets and throw away those that fall outside */
+	/* rescale time-window for all buckets and
+	 * throw away those that fall outside */
 }
 
-/* all these events are simply translated to a data-point and inserted into the related bucket */
+/* all these events are simply translated to a data-point and 
+ * inserted into the related bucket */
 void graph_log_connected(struct graph_context* ctx, char* label)
 {
 	assert(ctx);
@@ -376,7 +410,8 @@ void graph_log_connecting(struct graph_context* ctx, char* label)
 
 }
 
-void graph_log_connection(struct graph_context* ctx, unsigned id, const char* label)
+void graph_log_connection(struct graph_context* ctx, 
+	unsigned id, const char* label)
 {
 	assert(ctx);
 
@@ -386,7 +421,8 @@ void graph_log_connection(struct graph_context* ctx, unsigned id, const char* la
 	}
 }
 
-void graph_log_disconnect(struct graph_context* ctx, unsigned id, const char* label)
+void graph_log_disconnect(struct graph_context* ctx, 
+	unsigned id, const char* label)
 {
 	assert(ctx);
 
@@ -396,7 +432,8 @@ void graph_log_disconnect(struct graph_context* ctx, unsigned id, const char* la
 	}
 }
 
-void graph_log_discover_req(struct graph_context* ctx, unsigned id, const char* label)
+void graph_log_discover_req(struct graph_context* ctx, 
+	unsigned id, const char* label)
 {
 	assert(ctx);
 
@@ -406,7 +443,8 @@ void graph_log_discover_req(struct graph_context* ctx, unsigned id, const char* 
 	}
 }
 
-void graph_log_discover_rep(struct graph_context* ctx, unsigned id, const char* label)
+void graph_log_discover_rep(struct graph_context* ctx, 
+	unsigned id, const char* label)
 {
 	assert(ctx);
 
@@ -416,7 +454,8 @@ void graph_log_discover_rep(struct graph_context* ctx, unsigned id, const char* 
 	}
 }
 
-void graph_log_tlv_in(struct graph_context* ctx, unsigned id, const char* label, unsigned tag, unsigned len)
+void graph_log_tlv_in(struct graph_context* ctx, unsigned id, 
+	const char* label, unsigned tag, unsigned len)
 {
 	assert(ctx);
 
@@ -426,7 +465,8 @@ void graph_log_tlv_in(struct graph_context* ctx, unsigned id, const char* label,
 	}
 }
 
-void graph_log_tlv_out(struct graph_context* ctx, unsigned id, const char* label, unsigned tag, unsigned len)
+void graph_log_tlv_out(struct graph_context* ctx, unsigned id, 
+	const char* label, unsigned tag, unsigned len)
 {
 	assert(ctx);
 
@@ -436,7 +476,8 @@ void graph_log_tlv_out(struct graph_context* ctx, unsigned id, const char* label
 	}
 }
 
-void graph_log_conn_error(struct graph_context* ctx, unsigned id, const char* label)
+void graph_log_conn_error(struct graph_context* ctx, 
+	unsigned id, const char* label)
 {
 	assert(ctx);
 
@@ -446,7 +487,8 @@ void graph_log_conn_error(struct graph_context* ctx, unsigned id, const char* la
 	}
 }
 
-void graph_log_message(struct graph_context* ctx, unsigned long timestamp, size_t pkg_sz, int stateid, bool oob)
+void graph_log_message(struct graph_context* ctx, unsigned long timestamp, 
+	size_t pkg_sz, int stateid, bool oob)
 {
 	assert(ctx);
 

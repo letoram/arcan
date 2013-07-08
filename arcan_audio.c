@@ -61,6 +61,10 @@ typedef struct {
 
 static bool _wrap_alError(arcan_aobj*, char*);
 
+#ifndef CONST_MAX_ASAMPLESZ
+#define CONST_MAX_ASAMPLESZ 1048756  
+#endif
+
 /* context management here is quite different from 
  * video (no push / pop / etc. openAL volatility alongside
  * hardware buffering problems etc. make it too much of a hazzle */
@@ -83,25 +87,30 @@ static ALuint load_wave(const char* fname){
 		return rv; 
 	}
 
-/* only accept WAVE -> PCM(8,16bit)(1,2channels) */
-	if (memcmp(inmem.ptr + 8, "WAVE", 4) != 0)
+/* only accept well-formed headers */
+	if (memcmp(inmem.ptr + 0, "RIFF", 4) != 0 &&
+		(arcan_warning("load_wave() -- missing RIFF header identifier\n"), true))
+		goto cleanup;
+
+	if (memcmp(inmem.ptr + 8, "WAVE", 4) != 0 &&
+		(arcan_warning("load_wave() -- missing WAVE format identifier\n"), true))
 		goto cleanup;
 
 	uint16_t kv = 0x1234;
-	bool le = (*(char*)&kv) == 0x12;
-	
-	uint16_t afmt;
-	memcpy(&afmt, inmem.ptr + 20, 2);
+	bool le = (*(char*)&kv) == 0x34;
+	if (!le && (arcan_warning(
+		"load_wave(BE) -- big endian swap unimplemented\n"), true))
+	goto cleanup;
 
 /* a. map resource / file as per usual */
 /* b. read header; (RIFX BE, RIFF LE)
  * Endian, Ofs, Name, Size
  * BE        0,  CID,    4
- * LE        4,  CSz,    4
+ * LE        4,  CSz,    4 Whole-chunk Size 
  * --        8,  Fmt,    4 (WAVE)
  * --- chunk 1 ---
  * BE       12,  CID,    4
- * LE       16,  CSz,    4
+ * LE       16,  CSz,    4 (subchunk size)
  * LE       20, AFMt,    2 (PCM: 0x0001) 
  * LE       22,  NCh,    2
  * LE       24, SRte,    4
@@ -114,16 +123,79 @@ static ALuint load_wave(const char* fname){
  * LE       44,  data    *
  * 8bit are unsigned, 16bit are 2compl. signed,
  * stereo are planar (rch then lch) */
+	int16_t  fmt;
+	int16_t  nch;
+	uint16_t bits_ps;
+	uint16_t smplrte;
+	int32_t  nofs;
+	
+	if (memcmp(inmem.ptr + 12, "fmt ", 4) != 0 && 
+		(arcan_warning("load_wave() -- missing format chuck ID\n"), true))
+		goto cleanup;
 
-	/*
-		if (alfmt != AL_NONE){
-			alGenBuffers(1, &rv);
-			alBufferData(rv, alfmt, abuf, abuflen, spec.freq);
-			_wrap_alError(NULL, "load_wave(bufferData)");
+	memcpy(&fmt,     inmem.ptr + 20, 2);
+	memcpy(&nch,     inmem.ptr + 22, 2);
+	memcpy(&smplrte, inmem.ptr + 24, 4);
+	memcpy(&bits_ps, inmem.ptr + 34, 2);
+	memcpy(&nofs,    inmem.ptr + 16, 4);
+	nofs += 20;
+
+	if (fmt != 0x001 && (arcan_warning(
+		"load_wave() -- unsupported encoding (%d),only PCM accepted.\n", fmt), true))
+		goto cleanup;
+
+	if (nch != 1 && nch != 2 && (arcan_warning(
+		"load_wave() -- unexpected number of channels (%d).\n", nch), true))
+		goto cleanup;
+
+	if (bits_ps != 8 && bits_ps != 16 && (arcan_warning(
+		"load_wave() -- unsupported bitdepth (%d)\n", bits_ps), true))
+		goto cleanup;
+
+	if (smplrte != 44100 && smplrte != 22050 && smplrte != 11025)
+		arcan_warning("load_wave() -- unconventional samplerate (%d).\n", smplrte);
+
+	if (memcmp(inmem.ptr + nofs, "data", 4) != 0 && 
+		(arcan_warning("load_wave() -- data chunk not found\n"), true))
+		goto cleanup;
+	
+	int32_t nb;
+	memcpy(&nb, inmem.ptr + nofs + 4, 4);
+	if (nb > CONST_MAX_ASAMPLESZ){
+		arcan_warning("load_wave() -- sample exceeds compile time limit "
+			" (CONST_MAX_ASAMPLESZ %d), truncating.\n", CONST_MAX_ASAMPLESZ);
+		nb = CONST_MAX_ASAMPLESZ;	
+	}
+	
+	if (nb > (inmem.sz - nofs - 4) && (arcan_warning(
+	 "load wave() -- total sample size is larger than the mapped input.\n"), true))
+		goto cleanup;
+
+	int alfmt = 0;
+	off_t ofs = nofs + 8;
+	int32_t innb = nb;
+
+	uint8_t* samplebuf = malloc(nb);
+
+	if (bits_ps == 8){
+		alfmt = nch == 1 ? AL_FORMAT_MONO8 : AL_FORMAT_STEREO8;
+		memcpy(samplebuf, inmem.ptr + ofs, nb);
+	}
+	else if (bits_ps == 16){
+		alfmt = nch == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
+		int16_t* s16_samplebuf = (int16_t*) samplebuf;
+
+		while( nb > 0){	
+			memcpy(s16_samplebuf++, inmem.ptr + ofs, 2);
+			ofs += 2;
+			nb -= 2;
 		}
-		
-		SDL_FreeWAV(abuf);
-	} */
+	}
+
+	alGenBuffers(1, &rv);
+	alBufferData(rv, alfmt, samplebuf, innb, smplrte);
+	_wrap_alError(NULL, "load_wave(bufferData)");
+	free(samplebuf);
 
 cleanup:
 	arcan_release_map(inmem);

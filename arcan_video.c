@@ -2093,8 +2093,6 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 /* calculate order relative to parent if that's toggled
  * clip to 16bit US and ignore if the parent is a 3dobj */
 	if (vobj->flags.orderofs){
-		arcan_warning("reorder inherited one (%s)\n", vobj->tracetag);
-
 		if (vobj->parent->order < 0)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 		

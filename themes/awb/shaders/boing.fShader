@@ -3,6 +3,7 @@
 uniform vec2 display;
 uniform int timestamp;
 uniform int offset;
+uniform float obj_opacity;
 const float timestep = 25.0;
 
 varying vec2 texco;
@@ -55,6 +56,6 @@ void main(void)
     float t = -b-sqrt(t1);
 	vec3 nor = normalize(ro+rd*t)*mRot;
 	vec2 tuv = floor(vec2(atan(nor.x,nor.z)/PI+((floor((timev*-dir)*60.0)/60.0)*0.5),acos(nor.y)/PI)*8.0);
-	gl_FragColor = vec4(mix(bgcol,mix(cRed,cWhite,clamp(mod(tuv.x+tuv.y,2.0),0.0,1.0)),1.0-step(t1,0.0)),1.0);
+	gl_FragColor = obj_opacity * ( vec4(mix(bgcol,mix(cRed,cWhite,clamp(mod(tuv.x+tuv.y,2.0),0.0,1.0)),1.0-step(t1,0.0)),1.0) );
 }
 

@@ -249,10 +249,9 @@ function sysvid(caller)
 	vidwin.active_vid =	load_movie("videos/" .. caller.res, 
 		FRAMESERVER_NOLOOP, function(source, status) 
 		if (status.kind == "resized") then
-			vidwin.vid, vidwin.aid = play_movie(source);
+			play_movie(source);
 			vidwin:update_canvas(source);
 		end
-
 	end);
 end
 
@@ -351,7 +350,7 @@ function closewin(self)
 	end
 
 	mouse_droplistener(self);
-	self.parent.parent:destroy();
+	self.parent.parent:destroy(15);
 end
 
 --
@@ -411,6 +410,8 @@ function spawn_window(wtype, ialign, caption)
 		width   = settings.defwinw,
 		height  = settings.defwinh,
 		name = caption,
+		minw = 50,
+		minh = 24, 
 		x    = x_spawnpos,
 		y    = y_spawnpos
 	});
@@ -429,7 +430,7 @@ function spawn_window(wtype, ialign, caption)
 	local props = image_surface_properties(rzimg);
 	link_image(rzimg, wcont.bordert);
 	image_inherit_order(rzimg, true);
-	order_image(rzimg, 1);
+	order_image(rzimg, 2);
 	image_tracetag(rzimg, "resizebtn");
 	wcont.rztbl = {};
 	wcont.rztbl.vid  = rzimg;
@@ -456,20 +457,22 @@ function spawn_window(wtype, ialign, caption)
 		image_tracetag(captxt, "captxt(" ..caption .. ")");
 	
 		local props  = image_surface_properties(captxt);
+
 		local bg = fill_surface(math.floor(props.width * 0.1) + props.width, 
 			16, 230, 230, 230);
 		image_tracetag(bg, "capbg");
 
 		link_image(captxt, bg);
 		image_inherit_order(captxt, true);
+		move_image(captxt, 4, 4);
+
 		image_mask_set(bg, MASK_UNPICKABLE);
 		show_image({captxt, bg});
 		blend_image(bg, 0.5);
-		move_image(captxt, 4, 4);
 
-		order_image(captxt, 1);
 -- don't want thee to interfere with bar drag 
 		image_mask_set(captxt, MASK_UNPICKABLE);
+		wcont.minw = props.width + 24;
 		bar:add_icon(bg, "left", nil);
 	end
 

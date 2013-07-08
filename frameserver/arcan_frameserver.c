@@ -15,7 +15,7 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor,Boston, MA 02110-1301,USA.
  *
  */
 
@@ -62,19 +62,24 @@ void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 	*dstsize = -1;
 
 	if (-1 == stat(fname, &filedat)){
-		LOG("arcan_frameserver(get_rawfile) stat (%s) failed, reason: %d,%s\n", fname, errno, strerror(errno));
+		LOG("arcan_frameserver(get_rawfile) stat (%s) failed, reason: %d,%s\n", 
+			fname, errno, strerror(errno));
 		return NULL;
 	}
 	
 	if (-1 == (fd = open(fname, O_RDONLY)))
 	{
-		LOG("arcan_frameserver(get_rawfile) open (%s) failed, reason: %d:%s\n", fname, errno, strerror(errno));
+		LOG("arcan_frameserver(get_rawfile) open (%s) failed, reason: %d:%s\n", 
+			fname, errno, strerror(errno));
 		return NULL;
 	}
 	
-	void* buf = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	void* buf = mmap(NULL, filedat.st_size, PROT_READ | 
+		PROT_WRITE, MAP_PRIVATE, fd, 0);
+
 	if (buf == MAP_FAILED){
-		LOG("arcan_frameserver(get_rawfile) mmap (%s) failed (fd: %d, size: %zd)\n", fname, fd, (ssize_t) filedat.st_size);
+		LOG("arcan_frameserver(get_rawfile) mmap (%s) failed"
+			" (fd: %d, size: %zd)\n", fname, fd, (ssize_t) filedat.st_size);
 		close(fd);
 		return NULL;
 	}
@@ -90,13 +95,16 @@ void* frameserver_getrawfile_handle(file_handle fd, ssize_t* dstsize)
 	*dstsize = -1;
 	
 	if (-1 == fstat(fd, &filedat)){
-		LOG("arcan_frameserver(get_rawfile) stat (%d) failed, reason: %d,%s\n", fd, errno, strerror(errno));
+		LOG("arcan_frameserver(get_rawfile) stat (%d) failed, reason: %d,%s\n", 
+			fd, errno, strerror(errno));
 		goto error;
 	}
 	
-	void* buf = mmap(NULL, filedat.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+	void* buf = mmap(NULL, filedat.st_size, PROT_READ | 
+		PROT_WRITE, MAP_PRIVATE, fd, 0);
 	if (buf == MAP_FAILED){
-		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zd)\n", fd, (ssize_t) filedat.st_size);
+		LOG("arcan_frameserver(get_rawfile) mmap failed (fd: %d, size: %zd)\n", 
+			fd, (ssize_t) filedat.st_size);
 		goto error;
 	}
 
@@ -107,7 +115,8 @@ error:
 	return rv;
 }
 
-bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file_handle dst, bool finalize)
+bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, 
+	file_handle dst, bool finalize)
 {
 	bool rv = false;
 	
@@ -120,15 +129,16 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 			nw = write(dst, ((char*) data) + ofs, sz_data - ofs);
 			if (-1 == nw)
 				switch (errno){
-					case EAGAIN: continue;
-					case EINTR: continue;
-					default:
-						LOG("arcan_frameserver(dumprawfile) -- write failed (%d), reason: %s\n", errno, strerror(errno));
-						goto out;
-				}
-
-				ofs += nw;
+				case EAGAIN: continue;
+				case EINTR: continue;
+				default:
+					LOG("arcan_frameserver(dumprawfile) -- write failed (%d),"
+					"	reason: %s\n", errno, strerror(errno));
+					goto out;
 			}
+
+			ofs += nw;
+		}
 		rv = true;
 		
 		out:
@@ -136,7 +146,8 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, file
 			close(dst);
 	}
 	 else
-		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid file handle ignored, no output set by parent.\n");
+		 LOG("arcan_frameserver(dumprawfile) -- request to dump to invalid "
+			"file handle ignored, no output set by parent.\n");
 	
 	return rv;
 }
@@ -151,7 +162,8 @@ void arcan_frameserver_free(void* dontuse){}
 #ifdef _DEBUG
 static void arcan_simulator(struct frameserver_shmcont* shm){
 	arcan_evctx inevq, outevq;
-	frameserver_shmpage_setevqs(shm->addr, shm->esem, &inevq, &outevq, true /*parent*/ );
+	frameserver_shmpage_setevqs(shm->addr, shm->esem, 
+		&inevq, &outevq, true /*parent*/ );
 
 	while( getppid() != 1 ){
 		if (shm->addr->vready){
@@ -168,8 +180,12 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 		arcan_errc evstat; 
 		while ( arcan_event_poll( &inevq, &evstat) != NULL ) evc++;
 
-/* if nothing has happened, the frameserver is probably not set up right yet, sleep a little */
-		struct timespec tv = {.tv_sec = 0, .tv_nsec = 10000000L};
+/* if nothing has happened, the frameserver is probably not 
+ * set up right yet, sleep a little */
+		struct timespec tv = {
+						.tv_sec = 0,
+					 	.tv_nsec = 10000000L
+		};
 		if (!(shm->addr->vready || shm->addr->aready || evc > 0))
 			nanosleep(&tv, NULL);
 	}
@@ -201,14 +217,16 @@ static char* launch_debugparent()
 		exit(1);
 	}
 	else{
-		sleep(1); /* make sure the parent has been able to setup keys by now so we can unlink */
+		sleep(1); /* make sure the parent has been able to 
+								 setup keys by now so we can unlink */
 		return key;
 	}
 }
 #endif
 
-/* inev is part of the argument in order for Win32 and others that can pass handles in a 
- * less hackish way to do so by reusing symbols and cutting down on defines */
+/* inev is part of the argument in order for Win32 and others that can 
+ * pass handles in a less hackish way to do so by reusing symbols and
+ * cutting down on defines */
 int frameserver_readhandle(arcan_event* inev)
 {
 	int rv = -1;
@@ -278,7 +296,8 @@ static void toggle_logdev(const char* prefix)
 		struct tm* basetime = localtime(&t);
 		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
+		size_t logbuf_sz = strlen(logdir) + 
+			sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
 		char* logbuf = malloc(logbuf_sz + 1);
 
 		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
@@ -290,8 +309,8 @@ static void toggle_logdev(const char* prefix)
  * fname
  * keyfile
  * these are set-up by the parent before exec, so is the sempage.
- * all of these are derived from the keyfile (last char replaced with v, a, e for sems) 
- * and we release vid (within a few seconds or get killed).
+ * all of these are derived from the keyfile (last char replaced with
+ * v, a, e for sems) and we release vid (within a few seconds or get killed).
  */
 
  int main(int argc, char** argv)
@@ -304,23 +323,29 @@ static void toggle_logdev(const char* prefix)
 #ifdef _DEBUG
 		printf("arcan_frameserver(debug) resource keyfile fsrvmode\n");
 #else
-		printf("arcan_frameserver - Invalid arguments (shouldn't be launched outside of ARCAN).\n");
+		printf("arcan_frameserver - Invalid arguments (shouldn't be "
+			"launched outside of ARCAN).\n");
 #endif
 		return 1;
 	}
 
 	logdev = stderr;
 
-/* this is not passed as a command-line argument in order to reuse code with arcan_target where we don't 
- * have control over argv. furthermore, it requires the FD to be valid from an environment perspective (already open socket that
- * can pass file-descriptors */
+/* this is not passed as a command-line argument in order to reuse code with 
+ * arcan_target where we don't have control over argv. furthermore, 
+ * it requires the FD to be valid from an environment perspective 
+ * (already open socket that can pass file-descriptors */
 	if (getenv("ARCAN_SOCKIN_FD")){
 		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
 	}
 	
-/* set this env whenever you want to step through the frameserver as launched from the parent */
+/*
+ * set this env whenever you want to step through the 
+ * frameserver as launched from the parent 
+ */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
+		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n",
+			(int) getpid());
 		sleep(10);
 	}
 	
@@ -368,3 +393,4 @@ static void toggle_logdev(const char* prefix)
 
 	return 0;
 }
+

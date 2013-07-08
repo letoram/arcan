@@ -22,9 +22,9 @@
 #include "arcan_frameserver_encode.h"
 
 /* LibFFMPEG
- * A possible option for future versions not constrained to a single arcan_frameserver,
- * is to make this into a small:ish patch for ffplay.c instead rather than maintaining a separate
- * player as is the case now */
+ * A possible option for future versions not constrained to a single 
+ * arcan_frameserver, is to make this into a small:ish patch for ffplay.c 
+ * instead rather than maintaining a separate player as is the case now */
 #include <libavcodec/avcodec.h>
 #include <libavutil/audioconvert.h>
 #include <libavformat/avformat.h>
@@ -76,7 +76,8 @@ struct {
 const int audio_vis_width  = AUD_VIS_HRES;
 const int audio_vis_height = AUD_VIS_VRES;
 
-static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt);
+static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
+	uint16_t width, uint16_t height, enum PixelFormat pfmt);
 
 static inline void synch_audio()
 {
@@ -99,7 +100,8 @@ static bool decode_aframe()
 	int got_frame = 1;
 
 	uint32_t ofs = 0;
-	int nts = avcodec_decode_audio4(decctx.acontext, aframe, &got_frame, &decctx.packet);
+	int nts = avcodec_decode_audio4(decctx.acontext, aframe, 
+		&got_frame, &decctx.packet);
 
 	if (nts == -1)
 		return false;
@@ -107,29 +109,38 @@ static bool decode_aframe()
 	if (got_frame){
 		int plane_size;
 		ssize_t ds = av_samples_get_buffer_size(&plane_size,
-			decctx.acontext->channels, aframe->nb_samples, decctx.acontext->sample_fmt, 1);
+			decctx.acontext->channels, aframe->nb_samples, 
+			decctx.acontext->sample_fmt, 1);
 
 /* skip packets with broken sample formats (shouldn't happen) */
 		if (ds < 0)
 			return true;
 	
-		int64_t dlayout = (aframe->channel_layout && aframe->channels == av_get_channel_layout_nb_channels(aframe->channel_layout)) ?
+		int64_t dlayout = (aframe->channel_layout && aframe->channels == 
+			av_get_channel_layout_nb_channels(aframe->channel_layout)) ?
 			aframe->channel_layout : av_get_default_channel_layout(aframe->channels);
 
 /* should we resample? */
-			if (aframe->format != AV_SAMPLE_FMT_S16 || aframe->channels != SHMPAGE_ACHANNELCOUNT || aframe->sample_rate != SHMPAGE_SAMPLERATE){
+			if (aframe->format != AV_SAMPLE_FMT_S16 || aframe->channels !=
+				SHMPAGE_ACHANNELCOUNT || aframe->sample_rate != SHMPAGE_SAMPLERATE){
 				uint8_t* outb[] = {decctx.audp, NULL};
-				unsigned nsamples = (unsigned)(SHMPAGE_AUDIOBUF_SIZE - decctx.shmcont.addr->abufused) >> 2;
+				unsigned nsamples = (unsigned)(SHMPAGE_AUDIOBUF_SIZE - 
+					decctx.shmcont.addr->abufused) >> 2;
+	
 				outb[0] += decctx.shmcont.addr->abufused;
 
 				if (!decctx.rcontext){
-					decctx.rcontext = swr_alloc_set_opts(decctx.rcontext, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, SHMPAGE_SAMPLERATE,
+					decctx.rcontext = swr_alloc_set_opts(decctx.rcontext, 
+						AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, SHMPAGE_SAMPLERATE, 
 						dlayout, aframe->format, aframe->sample_rate, 0, NULL);
+	
 					swr_init(decctx.rcontext);
-					LOG("(decode) resampler initialized, (%d) => (%d)\n", aframe->sample_rate, SHMPAGE_SAMPLERATE);
+					LOG("(decode) resampler initialized, (%d) => (%d)\n", 
+						aframe->sample_rate, SHMPAGE_SAMPLERATE);
 				}
 	
-				int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) aframe->extended_data, aframe->nb_samples);
+				int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) 
+					aframe->extended_data, aframe->nb_samples);
 				if (-1 == rc)
 					LOG("(decode) swr_convert failed\n");
 
@@ -165,7 +176,8 @@ static bool decode_aframe()
 	return true;
 }
 
-/* note, if shared + vbufofs is aligned to ffmpeg standards, we could sws_scale directly to it */
+/* note, if shared + vbufofs is aligned to ffmpeg standards, 
+ * we could sws_scale directly to it */
 static bool decode_vframe()
 {
 	int complete_frame = 0;
@@ -174,21 +186,26 @@ static bool decode_vframe()
 	if (vframe == NULL)
 		vframe = avcodec_alloc_frame();
 
-	avcodec_decode_video2(decctx.vcontext, vframe, &complete_frame, &decctx.packet);
+	avcodec_decode_video2(decctx.vcontext, vframe, 
+		&complete_frame, &decctx.packet);
 	if (complete_frame) {
 		uint8_t* dstpl[4] = {NULL, NULL, NULL, NULL};
 		int dststr[4] = {0, 0, 0, 0};
 		dststr[0] = decctx.width * decctx.bpp;
 		dstpl[0] = decctx.video_buf;
 		if (!decctx.ccontext) {
-			decctx.ccontext = sws_getContext(decctx.vcontext->width, decctx.vcontext->height, decctx.vcontext->pix_fmt,
-				decctx.vcontext->width, decctx.vcontext->height, PIX_FMT_BGR32, SWS_FAST_BILINEAR, NULL, NULL, NULL);
+			decctx.ccontext = sws_getContext(decctx.vcontext->width, 
+				decctx.vcontext->height, decctx.vcontext->pix_fmt,
+				decctx.vcontext->width, decctx.vcontext->height, PIX_FMT_BGR32, 
+					SWS_FAST_BILINEAR, NULL, NULL, NULL);
 		}
 
-		sws_scale(decctx.ccontext, (const uint8_t* const*) vframe->data, vframe->linesize, 0, decctx.vcontext->height, dstpl, dststr);
+		sws_scale(decctx.ccontext, (const uint8_t* const*) vframe->data, 
+			vframe->linesize, 0, decctx.vcontext->height, dstpl, dststr);
 
 /* SHM-CHG-PT */
-		decctx.shmcont.addr->vpts = (decctx.packet.dts != AV_NOPTS_VALUE ? decctx.packet.dts : 0) * av_q2d(decctx.vstream->time_base) * 1000.0;
+		decctx.shmcont.addr->vpts = (decctx.packet.dts != AV_NOPTS_VALUE ? 
+			decctx.packet.dts : 0) * av_q2d(decctx.vstream->time_base) * 1000.0;
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
 		decctx.shmcont.addr->vready = true;
@@ -229,20 +246,23 @@ bool ffmpeg_decode()
 	return fstatus;
 }
 
-static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, AVDictionary** opts)
+static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, 
+	AVDictionary** opts)
 {
 	memset(&decctx, 0, sizeof(decctx)); 
 
 	int errc = avformat_open_input(&decctx.fcontext, fname, iformat, NULL);
 	if (0 != errc || !decctx.fcontext){
-		LOG("(decode) avformat_open_input() couldn't open fcontext for resource (%s)\n", fname);
+		LOG("(decode) avformat_open_input() couldn't open fcontext"
+			"	for resource (%s)\n", fname);
 		return false;
 	}
 
 	errc = avformat_find_stream_info(decctx.fcontext, NULL);
 
 	if (! (errc >= 0) ){
-		LOG("(decode) avformat_find_stream_info() didn't return any useful data.\n");
+		LOG("(decode) avformat_find_stream_info() didn't return"
+			"	any useful data.\n");
 		return NULL;
 	}
 
@@ -250,12 +270,14 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, AVDictiona
 	int vid,aid;
 
 	vid = aid = decctx.vid = decctx.aid = -1;
-	LOG("(decode) %d streams found in container.\n", decctx.fcontext->nb_streams);
+	LOG("(decode) %d streams found in container.\n",decctx.fcontext->nb_streams);
 
 /* scan through all video streams, grab the first one,
  * find a decoder for it, extract resolution etc. */
-	for (int i = 0; i < decctx.fcontext->nb_streams && (vid == -1 || aid == -1); i++)
-		if (decctx.fcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO && vid == -1) {
+	for (int i = 0; i < decctx.fcontext->nb_streams && 
+		(vid == -1 || aid == -1); i++)
+		if (decctx.fcontext->streams[i]->codec->codec_type == 
+			AVMEDIA_TYPE_VIDEO && vid == -1) {
 			decctx.vid = vid = i;
 			decctx.vcontext  = decctx.fcontext->streams[vid]->codec;
 			decctx.vcodec    = avcodec_find_decoder(decctx.vcontext->codec_id);
@@ -267,18 +289,21 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, AVDictiona
 				decctx.bpp    = 4;
 				decctx.height = decctx.vcontext->height;
 /* dts + dimensions */
-				decctx.c_video_buf = (decctx.vcontext->width * decctx.vcontext->height * decctx.bpp);
+				decctx.c_video_buf = (decctx.vcontext->width * 
+					decctx.vcontext->height * decctx.bpp);
 				decctx.video_buf   = (uint8_t*) av_malloc(decctx.c_video_buf);
 			}
 		}
-		else if (decctx.fcontext->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO && aid == -1) {
+		else if (decctx.fcontext->streams[i]->codec->codec_type == 
+			AVMEDIA_TYPE_AUDIO && aid == -1) {
 			decctx.aid      = aid = i;
 			decctx.astream  = decctx.fcontext->streams[aid];
 			decctx.acontext = decctx.fcontext->streams[aid]->codec;
 			decctx.acodec   = avcodec_find_decoder(decctx.acontext->codec_id);
 			avcodec_open2(decctx.acontext, decctx.acodec, opts);
 
-/* weak assumption that we always have 2 channels, but the frameserver interface is this simplistic atm. */
+/* weak assumption that we always have 2 channels, but the frameserver 
+ * interface is this simplistic atm. */
 			decctx.channels   = 2;
 			decctx.samplerate = decctx.acontext->sample_rate;
 		}
@@ -307,10 +332,10 @@ static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 }
 #else
 /* for windows, the suggested approach nowadays isn't vfwcap but dshow,
- * the problem is that we both need to be able to probe and look for a video device
- * and this enumeration then requires bidirectional communication with the parent,
- * in a way frameserver_decode was not prepared for, so pending a larger refactoring,
- * just hack it by index and vfw */
+ * the problem is that we both need to be able to probe and look for a 
+ * video device and this enumeration then requires bidirectional communication
+ * with the parent, in a way frameserver_decode was not prepared for, so 
+ * pending a larger refactoring, just hack it by index and vfw */
 static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 {
 	char arg[16];
@@ -319,7 +344,8 @@ static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 	
 	snprintf(arg, sizeof(arg)-1, "%d", prefind);
 	*dst = av_find_input_format("vfwcap");
-	LOG("(decode) win32:probe_vidcap, find input format yielded %" PRIxPTR "\n", *dst);
+	LOG("(decode) win32:probe_vidcap, find input format yielded %" 
+		PRIxPTR "\n", *dst);
 	
 	return strdup(arg);
 }
@@ -341,9 +367,11 @@ static bool ffmpeg_vidcap(unsigned ind, int desw, int desh, float fps)
 		snprintf(cbuf, sizeof(cbuf), "%dx%d", desw, desh);
 		av_dict_set(&opts, "video_size", cbuf, 0);
 	}
-/* supported options: standard, channel, video_size, pixel_format, list_formats, framerate */
+/* supported options: standard, channel, video_size, pixel_format, 
+ * list_formats, framerate */
 
-	LOG("(decode) scanning for capture device (requested: %dx%d @ %f fps)\n", desw, desh, fps);
+	LOG("(decode) scanning for capture device (requested: %dx%d @ %f fps)\n",
+		desw, desh, fps);
 	const char* fname = probe_vidcap(ind, &format);
 	if (!fname || !format)
 		return NULL;
@@ -351,15 +379,18 @@ static bool ffmpeg_vidcap(unsigned ind, int desw, int desh, float fps)
 	return ffmpeg_preload(fname, format, &opts);
 }
 
-static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, uint16_t width, uint16_t height, enum PixelFormat pfmt)
+static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
+	uint16_t width, uint16_t height, enum PixelFormat pfmt)
 {
-	bool planar = (pfmt == PIX_FMT_YUV420P || pfmt == PIX_FMT_YUV422P || pfmt == PIX_FMT_YUV444P || pfmt == PIX_FMT_YUV411P);
+	bool planar = (pfmt == PIX_FMT_YUV420P || pfmt == PIX_FMT_YUV422P || 
+		pfmt == PIX_FMT_YUV444P || pfmt == PIX_FMT_YUV411P);
 
 	if (planar) { /* need to expand into an interleaved format */
 		/* av_malloc (buf) guarantees alignment */
 		uint32_t* dst = (uint32_t*) buf;
 
-/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct linewidth / height is present */
+/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct 
+ * linewidth / height is present */
 		for (int row = 0; row < height; row++)
 			for (int col = 0; col < width; col++) {
 				uint8_t y = frame->data[0][row * frame->linesize[0] + col];
@@ -382,20 +413,23 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		default:
-			arcan_warning("frameserver(decode), unknown target event (%d), ignored.\n", ev->kind);
+			arcan_warning("frameserver(decode), unknown target event "
+				"(%d), ignored.\n", ev->kind);
 	}
 }
 
 /* use labels etc. for trying to populate the context table */
-/* we also process requests to save state, shutdown, reset, plug/unplug input, here */
+/* we also process requests to save state, shutdown, reset, 
+ * plug/unplug input, here */
 static inline void flush_eventq(){
 	 arcan_event* ev;
 	 arcan_errc evstat;
 
-	while ( (ev = arcan_event_poll(&decctx.inevq, &evstat)) && evstat == ARCAN_OK){
+	while ( (ev = arcan_event_poll(&decctx.inevq, &evstat)) 
+		&& evstat == ARCAN_OK){
 		switch (ev->category){
-			case EVENT_IO: break;
-			case EVENT_TARGET: targetev(ev); break;
+		case EVENT_IO: break;
+		case EVENT_TARGET: targetev(ev); break;
 		}
 	}
 
@@ -445,7 +479,8 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 			statusfl = ffmpeg_vidcap(devind, desw, desh, fps);
 		}
 		else
-/* as to not entirely break the API, we revert to default-treat resource as a filename */
+/* as to not entirely break the API, we revert to default-treat 
+ * resource as a filename */
 			statusfl = ffmpeg_preload(resource, NULL, NULL);
 
 		if (!statusfl)
@@ -458,18 +493,23 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 			decctx.bpp    = 4;
 		}
 		
-/* initialize both semaphores to 0 => render frame (wait for parent to signal) => regain lock */
+/* initialize both semaphores to 0 => render frame (wait for 
+ * parent to signal) => regain lock */
 		decctx.shmcont = shms;
 		frameserver_semcheck(decctx.shmcont.asem, -1);
 		frameserver_semcheck(decctx.shmcont.vsem, -1);
-		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, &(decctx.inevq), &(decctx.outevq), false);
+		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
+			&(decctx.inevq), &(decctx.outevq), false);
 		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height)){
-			LOG("arcan_frameserver(decode) shmpage setup failed, requested: (%d x %d @ %d) aud(%d,%d)\n", decctx.width,
-				decctx.height, decctx.bpp, decctx.channels, decctx.samplerate);
+			LOG("arcan_frameserver(decode) shmpage setup failed, "
+				"requested: (%d x %d @ %d)	aud(%d,%d)\n", 
+				decctx.width, decctx.height, decctx.bpp, 
+				decctx.channels, decctx.samplerate);
 			return;
 		}
 		
-		decctx.graphing = graphing_new(GRAPH_MANUAL, decctx.width, decctx.height, (uint32_t*) decctx.vidp);
+		decctx.graphing = graphing_new(GRAPH_MANUAL, decctx.width, 
+			decctx.height, (uint32_t*) decctx.vidp);
 		frameserver_shmpage_calcofs(shms.addr, &(decctx.vidp), &(decctx.audp) );
 
 	} while (ffmpeg_decode() && decctx.shmcont.addr->loop);
