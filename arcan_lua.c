@@ -3037,12 +3037,14 @@ int arcan_lua_screencoord(lua_State* ctx)
 	return 0;
 }
 
-void arcan_lua_callvoidfun(lua_State* ctx, const char* fun)
+void arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 {
 	if ( arcan_lua_grabthemefunction(ctx, fun) )
 		arcan_lua_wraperr(ctx,
 	                  lua_pcall(ctx, 0, 0, 0),
 	                  fun);
+	else if (warn)
+		arcan_warning("missing expected symbol ( %s )\n", fun);
 }
 
 int arcan_lua_getqueueopts(lua_State* ctx)

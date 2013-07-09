@@ -100,7 +100,7 @@ unsigned vcontext_ind = 0;
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static void reorder_object(struct rendertarget* dst, arcan_vobject* src);
-
+static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
 static void rebase_transform(struct surface_transform*, arcan_tickv);
 static bool alloc_fbo(struct rendertarget* dst);
 static bool activate_fbo(struct rendertarget* dst);
@@ -824,21 +824,9 @@ arcan_errc arcan_video_inheritorder(arcan_vobj_id id, bool val)
 		rv = ARCAN_OK;
 		vobj->flags.orderofs = val;
 
-/* if the object has gone from non-inherited order to inherited,
- * and they belong to the same rendertarget as primary, then
- * set it's new value relative to that of its parent */
-	if (val && vobj->parent && 
-			vobj->owner == vobj->parent->owner && 
-			vobj->order < vobj->parent->order){
-				int dv = vobj->parent->order - vobj->order;
-				vobj->order = vobj->parent->order + dv;
-				struct rendertarget* own = vobj->owner;
-
-				detach_fromtarget(own, vobj);
-				attach_object(own, vobj);
-		}
+		update_zv(vobj, vobj->parent->order);
 	}
-	
+
 	return rv;
 }
 
@@ -921,6 +909,9 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 				dst->cellid, dst->tracetag ? "(unknown)" : dst->tracetag, 
 				src->parent->extrefc.links);
 		}
+
+		if (src->flags.orderofs)
+			update_zv(src, src->parent->order);
 
 /* reset all transformations as they don't make sense in this space */
 		swipe_chain(src->transform, offsetof(surface_transform, blend),
@@ -2074,31 +2065,14 @@ unsigned short arcan_video_getzv(arcan_vobj_id id)
 	return rv;
 }
 
-/* change zval (see arcan_video_addobject) for a particular object.
- * return value is an error code */
-arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
+/* no parent resolve performed */
+static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-	arcan_vobject* vobj = arcan_video_getobject(id);
-
-
-	if (!vobj)
-		return ARCAN_ERRC_NO_SUCH_OBJECT;
 	
 	struct rendertarget* owner = vobj->owner;
 
 	if (!owner) 
 		return ARCAN_ERRC_UNACCEPTED_STATE;
-
-/* calculate order relative to parent if that's toggled
- * clip to 16bit US and ignore if the parent is a 3dobj */
-	if (vobj->flags.orderofs){
-		if (vobj->parent->order < 0)
-			return ARCAN_ERRC_UNACCEPTED_STATE;
-		
-		int newv = newzv + vobj->parent->order;
-		newzv = newv > 65535 ? 65535 : newv;
-	}
 
 /*
  * Might have children with order relative to our own
@@ -2109,25 +2083,29 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 	int n_related = vobj->extrefc.instances + vobj->extrefc.links;
 	int n_reorder = 0;
 	arcan_vobject* relbuf[n_related];
-	arcan_vobject_litem* current = owner->first; 
+	arcan_vobject_litem* current = owner->first;
+
 	while(n_related && current && current->elem){
 		arcan_vobject* elem = current->elem;
 
 		if (elem->parent == vobj){
 			n_related--;
 
-			if (elem->flags.orderofs && elem->owner == owner)
+			if (elem->flags.orderofs && elem->owner == owner){
+							if (elem->order < vobj->order)
+											arcan_warning("broken object (%s)\n", elem->tracetag);
 				relbuf[n_reorder++] = elem;
+			}
 		}
 
 		current = current->next;
 	}
 	
-/* attach also works like an insertion sort where 
+/*
+ * attach also works like an insertion sort where 
  * the insertion criterion is <= order, to aid dynamic 
- * corruption checks, any modifications to order is done
- * either when the vobj is detached or through the 
- * reorder_obj call */
+ * corruption checks
+ */
 	int oldv = vobj->order;
 	detach_fromtarget(owner, vobj);
 		vobj->order = newzv;
@@ -2135,12 +2113,40 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 			vobj->order *= -1;
 	attach_object(owner, vobj);
 
+/* 
+ * unfortunately, we need to do this recursively AND
+ * take account for the fact that we may relatively speaking shrink
+ * the distance between our orderv vs. parent 
+ */
 	for (int i = 0; i < n_reorder; i++){
-		int distance = relbuf[i]->order - oldv;	
-		detach_fromtarget(owner, relbuf[i]);
-			relbuf[i]->order = newzv + distance; 
-		attach_object(owner, relbuf[i]);
+		int distance = relbuf[i]->order - oldv;
+		update_zv(relbuf[i], newzv + distance);
 	}
+
+	return ARCAN_OK;
+}
+
+/* change zval (see arcan_video_addobject) for a particular object.
+ * return value is an error code */
+arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
+{
+	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+/* calculate order relative to parent if that's toggled
+ * clip to 16bit US and ignore if the parent is a 3dobj */
+	if (vobj->flags.orderofs){
+		if (vobj->parent->order < 0)
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+	
+		int newv = newzv + vobj->parent->order;
+		newzv = newv > 65535 ? 65535 : newv;
+	}
+	
+	update_zv(vobj, newzv);
 
 	return ARCAN_OK;
 }

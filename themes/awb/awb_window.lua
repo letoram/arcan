@@ -40,6 +40,7 @@ local function awbwnd_alloc(self)
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
 	image_tracetag(self.anchor, self.name .. "_anchor");
+	image_inherit_order(self.anchor, true);
 
 --
 -- we split the border into 4 objs to limit wasted fillrate,
@@ -101,7 +102,6 @@ local function awbwnd_alloc(self)
 		move_image(self.canvas, cx, cy);
 		link_image(self.canvas, self.anchor);
 		show_image(self.canvas);
-		image_mask_set(self.canvas, MASK_UNPICKABLE);
 
 	elseif (self.mode == "listview") then
 		self.canvas = fill_surface(cwidth, cheight, wcol.r, wcol.g, wcol.b);
@@ -110,7 +110,6 @@ local function awbwnd_alloc(self)
 		self.cursorvid = fill_surface(cwidth, cheight, 
 			wcol.r * 1.2, wcol.g * 1.2, wcol.b * 1.2);
 		link_image(self.cursorvid, self.canvas);
-		image_mask_set(self.canvas, MASK_UNPICKABLE);
 	end
 		
 	image_tracetag(self.canvas, self.name .. "_" .. self.mode .. "_canvas");
@@ -152,7 +151,7 @@ local function awbbar_addicon(self, imgres, align, trigger)
 
 		link_image(icntbl.vid, self.activeid);
 		image_inherit_order(icntbl.vid, true);
-		order_image(icntbl.vid, 1);
+		order_image(icntbl.vid, 2);
 		show_image(icntbl.vid);
 
 		return icntbl;
@@ -270,6 +269,8 @@ local function awbwnd_setwbar(dsttbl, active)
 		image_scale_txcos(dsttbl.activeid, dsttbl.parent.width / props.width, 1.0); 
 	end
 
+	image_inherit_order(dsttbl.activeid, true);
+	order_image(dsttbl.activeid, 1);
 	image_tracetag(dsttbl.activeid, dsttbl.parent.name .. "_bar_" .. 
 		dsttbl.direction .. "_" .. tostring(active) );
 	show_image(dsttbl.activeid);
@@ -297,9 +298,6 @@ local function awbbar_own(self, vid)
 	if (self.fill and self.fill.trigger and self.fill.vid == vid) then
 		return self.fill;
 	end
-end
-
-local function awbbar_reorder(self, order)
 end
 
 local function awbwnd_resize(self, neww, newh)
@@ -405,7 +403,6 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	newdir.vertical  = direction == "left" or direction == "right";
 	newdir.direction = direction;
 	newdir.own       = awbbar_own;
-	newdir.reorder   = awbbar_reorder;
 	newdir.add_icon  = awbbar_addicon;
 	newdir.reset_icons = awbbar_reseticon;
 	newdir.identity  = "awbwnd_bar";
@@ -414,6 +411,7 @@ local function awbwnd_addbar(self, direction, active_resdescr,
 	
 	image_tracetag(newdir.root, self.name .. "_bar_" .. direction .. "_root");
 	link_image(newdir.root, self.anchor);
+	image_inherit_order(newdir.root, true);
 	show_image(self.bordert);
 
 	awbwnd_setwbar(newdir, newdir.activeres);

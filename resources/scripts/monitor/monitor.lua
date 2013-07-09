@@ -117,7 +117,7 @@ function do_vobj()
 	end
 
 	vobjimg = render_text(string.format(
-"\\ffonts/default.ttf,12 Vobj(%d)=>(%d), Tag: %s\\n\\r" ..
+"\\ffonts/default.ttf,12 Vobj(%d)=>(%d), Parent: %d Tag: %s\\n\\r" ..
 "GL(Id: %d, W: %d, H: %d, BPP: %d, TXU: %d, TXV: %d\\n\\r" ..
 "Frameset( %d, %d / %d:%d )\\n\\r" ..
 "Scale: %s\\tFilter: %s\\tProc: %s\\tProgram: %s\\n\\r" ..
@@ -126,7 +126,9 @@ function do_vobj()
 "Mask: %s\\n\\r" .. 
 "Order: %d\\tLifetime: %d\\tOrigW: %d\\tOrigH: %d\\n\\r" ..
 "Source: %s\\n\\r" ..
-"Opacity: %d\\n\\r",  lv.cellid, lv.cellid_translated, lv.tracetag,
+"Opacity: %.2f\\n\\r" ..
+"Position: %.2f, %.2f\\tSize: %.2f %.2f\\tOrientation: %.2f degrees\\n\\r",
+lv.cellid, lv.cellid_translated, lv.parent, lv.tracetag, 
 lv.glstore_id, lv.glstore_w, lv.glstore_h, lv.glstore_bpp, lv.glstore_txu, lv.glstore_txv,
 lv.frameset_mode, lv.frameset_counter, lv.frameset_capacity, lv.frameset_current,
 lv.scalemode, lv.filtermode, lv.imageproc, lv.glstore_prg,
@@ -135,10 +137,15 @@ lv.flags,
 lv.mask,
 lv.order, lv.lifetime, lv.origw, lv.origh,
 string.gsub(lv.storage_source, "\\", "\\\\"),
-lv.props.opa
+lv.props.opa,
+lv.props.position[1], lv.props.position[2], 
+lv.origw * lv.props.scale[1], lv.origh * lv.props.scale[2], 
+lv.props.rotation[1]
 ));
 
 	show_image(vobjimg);
+
+	print(lv.parent);
 
 	local yofs = image_surface_properties(img).height;
 	move_image(vobjimg, 0, math.floor(VRESH * 0.5));
@@ -161,6 +168,62 @@ function step_vobj(num)
 	do_vobj();
 end
 
+function step_sibling(num)
+	local lim    = #csample.vcontexts[context].vobjs;
+	local cur    = vobj + num;
+	local count  = lim;
+	local parent = csample.vcontexts[context].vobjs[vobj].parent;
+
+	while (vobj ~= cur and count > 0) do
+		cur = cur + num;
+		count = count - 1;
+
+		if (cur <= 0) then
+			cur = lim;
+		elseif (cur > lim) then
+			cur = 1;
+		end
+
+		local cvo = csample.vcontexts[context].vobjs[cur];
+		if (cvo and cvo.parent == parent) then 
+			vobj = cur;
+			do_vobj();
+			return;
+		end
+	end
+
+end
+
+function step_parent()
+	if (csample.vcontexts[context].vobjs[vobj].parent ~= 0) then
+		vobj = csample.vcontexts[context].vobjs[vobj].parent;
+		do_vobj();
+	end
+end
+
+function step_child()
+	local lim    = #csample.vcontexts[context].vobjs;
+	local cur    = vobj + 1;
+	local count  = lim;
+	local parent = csample.vcontexts[context].vobjs[vobj].parent;
+
+	while (vobj ~= cur and count > 0) do
+		cur = cur + 1;
+		count = count - 1;
+
+		if (cur > lim) then
+			cur = 1;
+		end
+
+		local cvo = csample.vcontexts[context].vobjs[cur];
+		if (cvo and cvo.parent == vobj) then 
+			vobj = cur;
+			do_vobj();
+			return;
+		end
+	end
+end
+
 function cycle_rtarget(num)
 end
 
@@ -172,25 +235,54 @@ function step_context(num)
 	step_vobj(1);
 end
 
+shift_state = false;
+
+keyhandler = {};
+keyhandler["F1"] = toggle_help;
+keyhandler["F2"] = function() ignore_samples = false; end
+keyhandler["RIGHT"] = function() 
+	if (shift_state) then
+		step_sibling(1);
+	else
+		step_vobj(1);
+	end
+end
+
+keyhandler["LEFT"] = function()
+	if (shift_state) then
+		step_sibling(-1);
+	else
+		step_vobj(-1);
+	end
+end
+
+keyhandler["UP"] = function()
+	if (shift_state) then
+		step_parent();
+	else 
+		step_context(-1);
+	end
+end
+
+keyhandler["DOWN"] = function()
+	if (shift_state) then
+		step_child();
+	else
+		step_context(1);
+	end
+end
+
+keyhandler["ESCAPE"] = shutdown;
+
 function monitor_input(iotbl)
-	if (iotbl.kind == "digital" and iotbl.translated and iotbl.active) then
+	if (iotbl.kind == "digital" and iotbl.translated) then
 		local sym = symtable[iotbl.keysym];
-		if (sym == "F1") then
-			toggle_help();
-		elseif (sym == "F2") then
-			ignore_samples = false;
-		elseif (sym == "ESCAPE") then
-			shutdown();
-		elseif (sym == "LSHIFT" or sym == "RSHIFT") then
-			cycle_rtarget();
-		elseif (sym == "RIGHT") then
-			step_vobj(1);
-		elseif (sym == "LEFT") then
-			step_vobj(-1);
-		elseif (sym == "UP") then
-			step_context(-1);
-		elseif (sym == "DOWN") then
-			step_context(1);
+
+		if (sym == "LSHIFT" or sym == "RSHIFT") then
+			shift_state = iotbl.active;
+
+		elseif (iotbl.active and keyhandler[sym]) then
+			keyhandler[sym]();
 		end
 	end
 end

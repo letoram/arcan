@@ -67,6 +67,7 @@ function awb()
 -- their respective windows
 --
 	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
+
 	image_tracetag(imagery.cursor, "mouse cursor");
 	move_image(imagery.cursor, math.floor(VRESW * 0.5), math.floor(VRESW * 0.5));
 	show_image(imagery.cursor);
@@ -327,6 +328,7 @@ function focus_window(wnd)
 	end
 
 	if (wlist.focus) then
+-- fixme, this must be a calculated interval based on the number of windows
 		wlist.focus:active(false, ORDER_WDW);
 		if (wlist.focus.iconsoff) then
 			wlist.focus:iconsoff();
@@ -426,6 +428,7 @@ function spawn_window(wtype, ialign, caption)
 
 -- for windows without a scrollbar (say canvas / stretch)
 -- and no fullscreen, we add the resize button as linked to the border
+-- (otherwise, we just add it as the first icon to the right part of the bar)
 	local rzimg = load_image("awbicons/resize.png");
 	local props = image_surface_properties(rzimg);
 	link_image(rzimg, wcont.bordert);
@@ -465,6 +468,7 @@ function spawn_window(wtype, ialign, caption)
 		link_image(captxt, bg);
 		image_inherit_order(captxt, true);
 		move_image(captxt, 4, 4);
+		order_image(captxt, 1);
 
 		image_mask_set(bg, MASK_UNPICKABLE);
 		show_image({captxt, bg});
