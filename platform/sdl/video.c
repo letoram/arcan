@@ -46,6 +46,24 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames, bool conservative)
 {
 	char caption[64] = {0};
+	SDL_Init(SDL_INIT_VIDEO);
+
+	const SDL_VideoInfo* vi = SDL_GetVideoInfo();
+	if (!vi){
+		arcan_fatal("SDL_GetVideoInfo() failed, broken display subsystem.");
+	}
+
+	if (width == 0)
+		width = vi->current_w;
+
+	if (height == 0)
+		height = vi->current_h;
+
+	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, "
+		"window manager: %s, VSYNC: %i, MSAA: %i\n",
+			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", 
+			vi->wm_available ? "yes" : "no", arcan_video_display.vsync,
+			arcan_video_display.msasamples);
 
 /* some GL attributes have to be set before creating the video-surface */
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);

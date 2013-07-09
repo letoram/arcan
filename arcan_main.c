@@ -49,7 +49,6 @@
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include <SDL.h>
 #include <sqlite3.h>
 
 #include "getopt.h"
@@ -98,7 +97,6 @@ static const struct option longopts[] = {
 	{ "interactive",  no_argument,       NULL, 'i'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "novsync",      no_argument,       NULL, 'v'},
-/* no points guessing which platform forcing this .. */
 	{ "stdout",       required_argument, NULL, '1'},
 	{ "stderr",       required_argument, NULL, '2'},
 	{ "nowait",       no_argument,       NULL, 'V'},
@@ -300,11 +298,11 @@ int main(int argc, char* argv[])
 		fullscreen = false;
 	}
 #endif
-	
+	char* dbname;
+
 /* also used as restart point for switiching themes */
 themeswitch:
-	SDL_Init(SDL_INIT_VIDEO);
-	char* dbname = NULL;
+	dbname = NULL;
 
 /*
  * try to open the specified database,
@@ -330,12 +328,8 @@ themeswitch:
 			goto error;
 	}
 	free(dbname);
-
-	const SDL_VideoInfo* vi = SDL_GetVideoInfo();
-	if (!vi){
-		arcan_fatal("SDL_GetVideoInfo() failed, broken display subsystem.");
-		goto error;
-	}
+	
+	arcan_video_default_scalemode(scalemode);
 
 	if (winx != -1 || winy != -1){
 		char windbuf[64] = {0};
@@ -344,21 +338,8 @@ themeswitch:
 		putenv(strdup(windbuf));
 	}
 
-	if (width == 0 || height == 0) {
-		width = vi->current_w;
-		height = vi->current_h;
-	}
-
-	arcan_warning("Notice: [SDL] Video Info: %i, %i, hardware acceleration: %s, "
-		"window manager: %s, scalemode: %i, VSYNC: %i, MSAA: %i\n",
-			vi->current_w, vi->current_h, vi->hw_available ? "yes" : "no", 
-			vi->wm_available ? "yes" : "no", scalemode, arcan_video_display.vsync,
-			arcan_video_display.msasamples);
-	arcan_video_default_scalemode(scalemode);
-
-	if (windowed) {
+	if (windowed)
 		fullscreen = false;
-	}
 
 /* grab video, (necessary) */
 	if (arcan_video_init(width, height, 32, fullscreen, windowed, conservative)
@@ -450,8 +431,8 @@ themeswitch:
 
 /* entry point follows the name of the theme,
  * hand over execution and begin event loop */
-	arcan_lua_callvoidfun(luactx, arcan_themename);
-	arcan_lua_callvoidfun(luactx, "show");
+	arcan_lua_callvoidfun(luactx, arcan_themename, true);
+	arcan_lua_callvoidfun(luactx, "show", false);
 
 	bool done = false;
 	float lastfrag = 0.0f;
@@ -573,12 +554,11 @@ themeswitch:
 		arcan_audio_refresh();
 	}
 
-	arcan_lua_callvoidfun(luactx, "shutdown");
+	arcan_lua_callvoidfun(luactx, "shutdown", false);
 	arcan_led_cleanup();
 	arcan_video_shutdown();
 
 error:
-	SDL_Quit();
 	exit(1);
 
 	return 0;
