@@ -23,18 +23,14 @@
 #define _HAVE_ARCAN_SHADERMGMT
 
 enum shdrutype {
-	shdrbool  = 0,
-	shdrint   = 1,
-	shdrfloat = 2,
-	shdrvec2  = 3,
-	shdrvec3  = 4,
-	shdrvec4  = 5,
+	shdrbool   = 0,
+	shdrint    = 1,
+	shdrfloat  = 2,
+	shdrvec2   = 3,
+	shdrvec3   = 4,
+	shdrvec4   = 5,
 	shdrmat4x4 = 6
 };
-
-/* all the currently supported value slots,
- * type- encoded in name, the 'n' prefix used
- * means it supports multiple slots for that type */
 
 enum arcan_shader_envts{
 /* packed matrices */

@@ -22,6 +22,11 @@
 #ifndef _HAVE_ARCAN_VIDEO
 #define _HAVE_ARCAN_VIDEO
 
+/*
+ *  to build the engine with support for a different native pixel format,
+ *  override these macros through the build system 
+ *  (force- include a platform header that defines them for instance)
+ */
 #ifndef RGBA
 #define RGBA(r, g, b, a)( ((uint32_t)(a) << 24) | ((uint32_t) (b) << 16) |\
 ((uint32_t) (g) << 8) | ((uint32_t) (r)) )
@@ -39,14 +44,14 @@
 #define CONTEXT_STACK_LIMIT 8
 #endif
 
-/* Supposedly, GL_BGRA is more efficient and can be directly transferred 
- * without 'swizzling', but seems to vary heavily between platform and driver.
- * One option would be to actually probe this through timing texture 
- * upload times */
+#ifndef GL_PIXEL_FORMAT
 #define GL_PIXEL_FORMAT GL_RGBA
-#define GL_PIXEL_BPP 4
+#endif
 
-/* video-style enum of potential arcan_video_* outcomes */
+#ifndef GL_PIXEL_BPP
+#define GL_PIXEL_BPP 4
+#endif
+
 enum arcan_vrtypes {
 	ARCAN_VRTYPE_IMAGE,
 	ARCAN_VRTYPE_VIDEO,
@@ -72,7 +77,7 @@ enum arcan_vfilter_mode {
 };
 
 enum arcan_vimage_mode {
-	ARCAN_VIMAGE_NOPOW2 = 0,
+	ARCAN_VIMAGE_NOPOW2    = 0,
 	ARCAN_VIMAGE_SCALEPOW2 = 1 
 };
 
@@ -109,7 +114,7 @@ enum arcan_blendfunc {
 	blend_normal,
 	blend_force,
 	blend_add,
-	blend_multiply,
+	blend_multiply
 };
 
 enum arcan_interp_function {
@@ -170,24 +175,15 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst);
 signed   arcan_video_extpushcontext(arcan_vobj_id* dst);
 unsigned arcan_video_contextusage(unsigned* free);
 
-/* create a video object with a desired end-position and measurements
- * rloc = resource location, most commonly just a file. 
- * loading might be asynchronous. can be null.
- * zval = 0 (order added) otherwise 1 (draw first) up to 255 (draw last)
- * vis  = 0 (hidden) or 1 (visible)
- * opa  = 0.001 .. 1.000 (render opacity)
- * returns 0 if id couldn't be created
- * errc = if !null, will be set to potential errorcode
- */
+arcan_vobj_id arcan_video_nullobject(img_cons constraints, float origw,
+	float origh, unsigned short zv);
 
-/* use a prepared buffer to generate the video object.
- * buf* will be managed internally.
- * assumes constraints are a valid texture size (power of two),
- * and that the data is in RGBA format */
+arcan_vobj_id arcan_video_solidcolor(uint8_t r, uint8_t g, uint8_t b,
+	img_cons constraints, float origw, float origh, unsigned short zv);
+
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, 
 	img_cons constraints, float origw, float origh, unsigned short zv);
 
-/* tag will be stored in the asynchimg event when the image has been loaded */
 arcan_vobj_id arcan_video_loadimageasynch(const char* fname, 
 	img_cons constraints, intptr_t tag);
 arcan_vobj_id arcan_video_loadimage(const char* fname, 
@@ -201,7 +197,9 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed,
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
 arcan_errc arcan_video_alterfeed(arcan_vobj_id id, 
 	arcan_vfunc_cb feed, vfunc_state state);
-arcan_errc arcan_video_changefilter(arcan_vobj_id id, enum arcan_vfilter_mode);
+arcan_errc arcan_video_changefilter(arcan_vobj_id id, 
+	enum arcan_vfilter_mode);
+
 arcan_errc arcan_video_persistobject(arcan_vobj_id id);
 
 vfunc_state* arcan_video_feedstate(arcan_vobj_id);
@@ -238,7 +236,9 @@ surface_properties arcan_video_resolve_properties(arcan_vobj_id id);
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
 surface_properties arcan_video_current_properties(arcan_vobj_id id);
 arcan_errc arcan_video_screencoords(arcan_vobj_id, vector*);
-surface_properties arcan_video_properties_at(arcan_vobj_id id, uint32_t ticks);
+surface_properties arcan_video_properties_at(
+	arcan_vobj_id id, uint32_t ticks);
+
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
 arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, 
 	enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
@@ -249,18 +249,9 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
 
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
 
-/* -- multiple- frame management --
- * this is done by associating a working video-object (src) with another (dst),
- * so that (src) becomes part of (dst)s rendering. */
-
-/* specify the number of frames associated with vobj, default is 0
- * default mode is ARCAN_FRAMESET_SPLIT, ARCAN_FRAMESET_MULTITEXTURE tries
- * to take the active texture of each frame and divide among the available 
- * texture units, then set corresponding uniforms (map_fset1..capacity) */
 arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity, 
 	enum arcan_framemode mode);
 
-/* note that the frame_id (fid) have to be available through allocframes first*/
 arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, 
 	unsigned fid, bool detach, arcan_errc* errc);
 arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);

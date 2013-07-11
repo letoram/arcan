@@ -40,7 +40,6 @@ local function awbwnd_alloc(self)
 
 	self.anchor = fill_surface(1, 1, 0, 0, 0);
 	image_tracetag(self.anchor, self.name .. "_anchor");
-	image_inherit_order(self.anchor, true);
 
 --
 -- we split the border into 4 objs to limit wasted fillrate,
@@ -93,8 +92,6 @@ local function awbwnd_alloc(self)
 		move_image(self.canvas, cx, cy);
 		link_image(self.canvas, self.anchor);
 		show_image(self.canvas);	
-		image_inherit_order(self.canvas, true);
-		order_image(self.canvas, 1);
 
 -- these require scrollbars
 	elseif (self.mode == "iconview") then
@@ -111,7 +108,10 @@ local function awbwnd_alloc(self)
 			wcol.r * 1.2, wcol.g * 1.2, wcol.b * 1.2);
 		link_image(self.cursorvid, self.canvas);
 	end
-		
+
+	image_inherit_order(self.canvas, true);
+	order_image(self.canvas, 1);
+			
 	image_tracetag(self.canvas, self.name .. "_" .. self.mode .. "_canvas");
 	self:resize(self.width, self.height);
 	return self;
@@ -149,11 +149,6 @@ local function awbbar_addicon(self, imgres, align, trigger)
 			table.insert(self[align], icntbl);
 		end
 
-		link_image(icntbl.vid, self.activeid);
-		image_inherit_order(icntbl.vid, true);
-		order_image(icntbl.vid, 2);
-		show_image(icntbl.vid);
-
 		return icntbl;
 	end
 end
@@ -162,7 +157,6 @@ local function awbbar_refresh(self)
 -- align against border while maintaining set "thickness"
 	local bstep  = self.parent.border and self.parent.borderw or 0;
 	local wbarw  = 0;
-	local corder = image_surface_properties(self.activeid).order;
 	local storew = image_surface_initial_properties(self.activeid).width;
 
 	image_scale_txcos(self.activeid, self.parent.width / storew, 1.0);
@@ -204,7 +198,7 @@ local function awbbar_refresh(self)
 	local rofs = wbarw;
 	for ind, val in ipairs(self.left) do
 			local props = image_surface_properties(val.vid);
-			link_image(val.vid, self.parent.bordert);
+			link_image(val.vid, self.activeid);
 
 			if (val.stretch) then
 				resize_image(val.vid, 0, self.thickness);
@@ -223,7 +217,7 @@ local function awbbar_refresh(self)
 
 	for ind, val in ipairs(self.right) do
 		local props = image_surface_properties(val.vid);
-		link_image(val.vid, self.parent.bordert);
+		link_image(val.vid, self.activeid);
 		move_image(val.vid, self.xofs, self.yofs);
 		if (val.stretch) then
 			resize_image(val.vid, 0, self.thickness);
@@ -274,6 +268,21 @@ local function awbwnd_setwbar(dsttbl, active)
 	image_tracetag(dsttbl.activeid, dsttbl.parent.name .. "_bar_" .. 
 		dsttbl.direction .. "_" .. tostring(active) );
 	show_image(dsttbl.activeid);
+
+-- relink buttons
+	for ind, val in pairs(dsttbl.left) do
+		link_image(val.vid, dsttbl.activeid);
+		image_inherit_order(val.vid, true);
+		order_image(val.vid, 1);
+		show_image(val.vid);
+	end
+
+	for ind, val in pairs(dsttbl.right) do
+		link_image(val.vid, dsttbl.activeid);
+		order_image(val.vid, 1);
+		image_inherit_order(val.vid, true);
+		show_image(val.vid);
+	end
 
 	dsttbl:refresh();
 end
@@ -476,7 +485,7 @@ end
 -- and window mode, try to evenly divide the set of defined icons
 -- across the available space
 --
-local function icons_poslbl(val, cx, cy, ralign, balign, order)
+local function icons_poslbl(val, cx, cy, ralign, balign)
 	local lprops = image_surface_properties(val.label );
 	local sprops = image_surface_properties(val.active);
 
@@ -494,7 +503,7 @@ local function icons_poslbl(val, cx, cy, ralign, balign, order)
 	return sprops.width, (lprops.height + sprops.height);
 end
 
-local function icons_halign(self, sx, sy, ex, ey, hstep, order)
+local function icons_halign(self, sx, sy, ex, ey, hstep)
 	local cx_x = sx;
 	local cx_y = sy;
 	local iconset = self:sample_icons();
@@ -502,7 +511,7 @@ local function icons_halign(self, sx, sy, ex, ey, hstep, order)
 
 	for i=1,#iconset do
 		local lw, lh = icons_poslbl(iconset[i], cx_x, 
-			cx_y, hstep == -1, false, order);
+			cx_y, hstep == -1, false);
 	
 		if (lw > mwidth) then
 			mwidth = lw;
@@ -549,11 +558,11 @@ local function awbicn_refreshicons(self)
 --
 	if (self.iconalign == "left") then
 		icons_halign(self, self.hspacing, 
-		self.borderw, mx, my, 1, orderv);
+		self.borderw, mx, my, 1);
 
 	elseif (self.iconalign == "right") then
 		icons_halign(self, cprops.width - self.borderw,
-		 self.borderw, 0, my, -1, orderv);
+		 self.borderw, 0, my, -1);
 	end
 end
 
@@ -564,7 +573,6 @@ local function awbicn_iconsoff(self)
 end
 
 local function awbicn_activeicon(self)
-	local worder = image_surface_properties(self.active).order;
 	local active = self.active == self.mainsel;
 
 -- only allow one selected?
@@ -583,7 +591,6 @@ local function awbicn_activeicon(self)
 end
 
 local function awbicn_selon(self)
-	local order = image_surface_properties(self.parent.canvas).order;
 	copy_image_transform(self.main, self.mainsel);
 	link_image(self.label, self.mainsel);
 
@@ -668,9 +675,9 @@ local function awbicn_addicon(self, name, img, imga, font, fontsz, trigger)
 	image_clip_on(newent.mainsel);
 	image_clip_on(newent.label);
 
-	image_inherit_order(newent.main, true);
+	image_inherit_order(newent.main,    true);
 	image_inherit_order(newent.mainsel, true);
-	image_inherit_order(newent.label, true);
+	image_inherit_order(newent.label,   true);
 
 	order_image({newent.main, newent.mainsel, newent.label}, 1);
 

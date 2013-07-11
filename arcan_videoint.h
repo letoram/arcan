@@ -96,9 +96,9 @@ struct transf_rotate{
  */
 typedef struct surface_transform {
 
-	struct transf_move move;
-	struct transf_scale scale;
-	struct transf_blend blend;
+	struct transf_move   move;
+	struct transf_scale  scale;
+	struct transf_blend  blend;
 	struct transf_rotate rotate;
 	
 	struct surface_transform* next;
@@ -107,18 +107,40 @@ typedef struct surface_transform {
 typedef struct arcan_vstorage {
 	uint32_t s_raw;
 	uint8_t* raw;
-	char* source;
+	char*    source;
 } arcan_vstorage;
 
+/* 
+ * refcount is usually defaulted to 1 or ignored,
+ * otherwise it indicates that the storage is
+ * shared between multiple vobjects (sprite-sheets,
+ * binpacked font pages etc.)
+ *
+ * we separate single color (program is bound
+ * and quad is sent and a vec3 col uniform is expected,
+ * but no texture is bound)
+ */
 struct storage_info_t {
-	unsigned int glid;
-		
+
+	bool txmapped;
+	union{
+		struct {
+			unsigned glid;
+			unsigned refcount;
+		} text;
+		struct {
+			float r;
+			float g;
+			float b;
+		} col;
+	} store; 
+
 	unsigned short w, h, bpp;
-	unsigned int txu, txv;
+	unsigned txu, txv;
 	
-	enum arcan_vimage_mode scale;
+	enum arcan_vimage_mode    scale;
 	enum arcan_imageproc_mode imageproc;
-	enum arcan_vfilter_mode filtermode;
+	enum arcan_vfilter_mode   filtermode;
 
 	arcan_shader_id program;
 };
@@ -220,7 +242,7 @@ struct arcan_video_display {
  
 	arcan_shader_id defaultshdr;
 	
-	/* default image loading options */
+/* default image loading options */
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode filtermode;
@@ -265,13 +287,18 @@ extern struct arcan_video_context vcontext_stack[];
 extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
 
+static void drop_glres(struct storage_info_t* s);
+
 int arcan_debug_pumpglwarnings(const char* src);
 void arcan_resolve_vidprop(arcan_vobject* vobj, 
 	float lerp, surface_properties* props);
+
 arcan_vobject* arcan_video_getobject(arcan_vobj_id id);
 arcan_vobject* arcan_video_newvobject(arcan_vobj_id* id);
+
 arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
+
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 	arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
 void arcan_video_setblend(const surface_properties* dprops, 
@@ -298,9 +325,9 @@ void arcan_3d_setdefaults();
 
 /* sweep the glstor and bind the corresponding 
  * texture units (unless we hit the limit that is) */
-unsigned int arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
+unsigned arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
 arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, 
-	arcan_vobject_litem* cell, float frag, unsigned int destination);
+	arcan_vobject_litem* cell, float frag, unsigned destination);
 
 int stretchblit(char* src, int srcw, int srch,
 	uint32_t* dst, int dstw, int dsth, int flipy);

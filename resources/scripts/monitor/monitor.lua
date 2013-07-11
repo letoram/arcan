@@ -1,3 +1,9 @@
+--
+-- Reference example monitor script for debugging
+-- another arcan instance from the prelaunch/monitorstep
+-- -M 100 -O monitor.lua
+--
+
 ignore_samples = false;
 
 function monitor()
@@ -118,7 +124,7 @@ function do_vobj()
 
 	vobjimg = render_text(string.format(
 "\\ffonts/default.ttf,12 Vobj(%d)=>(%d), Parent: %d Tag: %s\\n\\r" ..
-"GL(Id: %d, W: %d, H: %d, BPP: %d, TXU: %d, TXV: %d\\n\\r" ..
+"GL(Id: %d, W: %d, H: %d, BPP: %d, TXU: %d, TXV: %d, Refcont: %d\\n\\r" ..
 "Frameset( %d, %d / %d:%d )\\n\\r" ..
 "Scale: %s\\tFilter: %s\\tProc: %s\\tProgram: %s\\n\\r" ..
 "#FrmRef: %d\\t#Inst: %d\\t#Attach: %d\\t#Link: %d\\n\\r" ..
@@ -129,7 +135,7 @@ function do_vobj()
 "Opacity: %.2f\\n\\r" ..
 "Position: %.2f, %.2f\\tSize: %.2f %.2f\\tOrientation: %.2f degrees\\n\\r",
 lv.cellid, lv.cellid_translated, lv.parent, lv.tracetag, 
-lv.glstore_id, lv.glstore_w, lv.glstore_h, lv.glstore_bpp, lv.glstore_txu, lv.glstore_txv,
+lv.glstore_glid and lv.glstore_glid or 0, lv.glstore_w, lv.glstore_h, lv.glstore_bpp, lv.glstore_txu, lv.glstore_txv, lv.glstore_refc and lv.glstore_refc or 0, 
 lv.frameset_mode, lv.frameset_counter, lv.frameset_capacity, lv.frameset_current,
 lv.scalemode, lv.filtermode, lv.imageproc, lv.glstore_prg,
 lv.extrefc_framesets, lv.extrefc_instances, lv.extrefc_attachments, lv.extrefc_links,
@@ -152,13 +158,13 @@ lv.props.rotation[1]
 end
 
 function step_vobj(num)
-	count = #csample.vcontexts[context].vobjs;
+	count = csample.vcontexts[context].limit;
 
--- linear search for next allocated vobj 
+-- linear search for next allocated vobj as we might have holes 
 	while (count > 0) do
 		vobj = vobj + num;
-		vobj = vobj > #csample.vcontexts[context].vobjs and 1 or vobj;
-		vobj = vobj < 1 and #csample.vcontexts[context].vobjs or vobj;
+		vobj = vobj > csample.vcontexts[context].limit and 1 or vobj;
+		vobj = vobj < 1 and csample.vcontexts[context].limit or vobj;
 		count = count - 1;
 		if (csample.vcontexts[context].vobjs[vobj] ~= nil) then
 			break;
@@ -169,7 +175,7 @@ function step_vobj(num)
 end
 
 function step_sibling(num)
-	local lim    = #csample.vcontexts[context].vobjs;
+	local lim    = csample.vcontexts[context].limit;
 	local cur    = vobj + num;
 	local count  = lim;
 	local parent = csample.vcontexts[context].vobjs[vobj].parent;
@@ -202,7 +208,7 @@ function step_parent()
 end
 
 function step_child()
-	local lim    = #csample.vcontexts[context].vobjs;
+	local lim    = csample.vcontexts[context].limit;
 	local cur    = vobj + 1;
 	local count  = lim;
 	local parent = csample.vcontexts[context].vobjs[vobj].parent;
