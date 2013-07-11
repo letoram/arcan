@@ -72,7 +72,7 @@ static void png_readfun(png_structp png_ptr, png_bytep outb, png_size_t ntr)
 	indata->inbuf_ofs += ntr;
 }
 
-arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh)
+arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh, bool vflip)
 {
 	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
 		NULL, NULL, NULL);	
@@ -106,8 +106,12 @@ arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh)
 
 	png_write_info(png_ptr, info_ptr);
 
-	for (int row = 0; row < inh; row++)
-		png_write_row(png_ptr, (png_bytep) inbuf + (row * 4 * inw));
+	if (vflip)
+		for (int row = inh-1; row >= 0; row--)
+			png_write_row(png_ptr, (png_bytep) inbuf + (row * 4 * inw));
+	else
+		for (int row = 0; row < inh; row++)
+			png_write_row(png_ptr, (png_bytep) inbuf + (row * 4 * inw));
 
 	png_write_end(png_ptr, info_ptr);
 	png_destroy_write_struct(&png_ptr, &info_ptr);

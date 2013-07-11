@@ -52,7 +52,7 @@ arcan_errc arcan_jpg_rgba32(char* inbuf, size_t inbuf_sz,
  * use a pre-opened filedescriptor to encode the contents of inbuf with dimensions 
  * of inw * inh (4BPP, no padding), will close the descriptor on completion
  */ 
-arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh);
+arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh, bool vflip);
 
 /* 
  * treat 'inbuf' as a tightly packed RGBA32 buffer with the dimensions of (inw, inh)

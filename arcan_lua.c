@@ -4149,7 +4149,7 @@ int arcan_lua_screenshot(lua_State* ctx)
 			int fd = open(fname, O_CREAT | O_RDWR, 0600);
 			if (-1 != fd){
 				arcan_rgba32_pngfile(fd, databuf, arcan_video_display.width,
-					arcan_video_display.height);
+					arcan_video_display.height, true);
 			}
 			else
 				arcan_warning("arcan_lua_screenshot() -- couldn't open (%s) "

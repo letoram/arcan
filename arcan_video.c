@@ -3810,28 +3810,18 @@ bool arcan_video_screenshot(void** dptr, size_t* dsize){
 	*dsize = sizeof(char) * arcan_video_display.width * 
 		arcan_video_display.height * GL_PIXEL_BPP;
 
-	uint32_t* tmpb = malloc( *dsize );
 	*dptr = malloc( *dsize );
 
 	if (!(*dptr)){
 		*dsize = 0;
-		free(tmpb);
-
 		return false;
 	}
 
 	glReadBuffer(GL_FRONT);
 
 	glReadPixels(0, 0, arcan_video_display.width, 
-		arcan_video_display.height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, tmpb);
+		arcan_video_display.height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
 
-/*
- * imagecopy(*dptr, tmpb, arcan_video_display.width, 
- * arcan_video_display.width, 
- * arcan_video_display.height, true); 
- */
-
-	free(tmpb);
 	return true;
 }
 
