@@ -123,7 +123,7 @@ typedef struct arcan_vstorage {
 struct storage_info_t {
 
 	bool txmapped;
-	union{
+	union {
 		struct {
 			unsigned glid;
 			unsigned refcount;
