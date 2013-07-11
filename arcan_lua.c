@@ -4931,7 +4931,7 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 	char* mask = maskstr(src->mask);
 
 	fprintf(dst,
-"local vobj = {\
+"vobj = {\
 origw = %d,\
 origh = %d,\
 order = %d,\
@@ -4948,7 +4948,6 @@ extrefc_attachments = %d,\
 extrefc_links = %d,\
 storage_source = [[%s]],\
 storage_size = %d,\
-glstore_id = %d,\
 glstore_w = %d,\
 glstore_h = %d,\
 glstore_bpp = %d,\
@@ -4958,11 +4957,11 @@ glstore_prg = [[%s]],\
 scalemode  = [[%s]],\
 imageproc = [[%s]],\
 filtermode = [[%s]],\
-flags = \"%s\",\
-mask = \"%s\",\
+flags = [[%s]],\
+mask = [[%s]],\
 origoofs = {%lf, %lf, %lf},\
 frameset = {},\
-tracetag = [[%s]],\
+tracetag = [[%s]]\
 };",
 (int) src->origw,
 (int) src->origh,
@@ -4980,7 +4979,6 @@ tracetag = [[%s]],\
 (int) src->extrefc.links,
 src->default_frame.source ? src->default_frame.source : "unknown",
 (int) src->default_frame.s_raw,
-(int) src->gl_storage.glid,
 (int) src->gl_storage.w,
 (int) src->gl_storage.h,
 (int) src->gl_storage.bpp,
@@ -4997,6 +4995,16 @@ mask,
 (double) src->origo_ofs.z,
 src->tracetag ? src->tracetag : "no tag");
 
+	if (src->gl_storage.txmapped){
+		fprintf(dst, "vobj.glstore_glid = %d;\
+vobj.glstore_refc = %d;\n", src->gl_storage.store.text.glid,
+			src->gl_storage.store.text.refcount);
+	} else {
+		fprintf(dst, "vobj.glstore_col = {%f, %f, %f}\n", 
+			src->gl_storage.store.col.r, src->gl_storage.store.col.g, 
+			src->gl_storage.store.col.b);
+	}
+
 	for (int i = 0; i < src->frameset_meta.capacity; i++)
 	{
 		fprintf(dst, "vobj.frameset[%d] = %"PRIxVOBJ";\n", i + 1,
@@ -5009,7 +5017,7 @@ src->tracetag ? src->tracetag : "no tag");
 		fprintf(dst, "vobj.parent = %"PRIxVOBJ";\n", src->parent->cellid);
 	}
 
-	fprintf(dst, "local props = {};\n");
+	fprintf(dst, "props = {};\n");
 	dump_props(dst, src->current);
 	fprintf(dst, "vobj.props = props;\n"); 
 
@@ -5037,7 +5045,10 @@ void arcan_lua_statesnap(FILE* dst)
  */
 	struct arcan_video_display* disp = &arcan_video_display;
 fprintf(dst, 
-"local restbl = {\
+				" do \
+local vobj = {};\
+local props = {};\
+local restbl = {\
 	display = {\
 		width = %d,\
 		height = %d,\
@@ -5094,7 +5105,7 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 	}
 
 /* foreach context, footer */
- 	fprintf(dst, "return restbl;\n#ENDBLOCK\n");
+ 	fprintf(dst, "return restbl;\nend\n#ENDBLOCK\n");
 	fflush(dst);
 }
 
@@ -5138,6 +5149,11 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 /* got one? parse then slide */
 			if (substrp){
 				substrp[1] = '\0';
+	
+FILE* outf = fopen("dumpfile", "w+");
+fwrite(statebuf, 1, strlen(statebuf), outf);
+fclose(outf);
+
 				lua_getglobal(ctx, "sample");
 				if (!lua_isfunction(ctx, -1)){
 					lua_pop(ctx, 1);

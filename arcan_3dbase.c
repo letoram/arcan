@@ -271,7 +271,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
  * corresponding map- slot in the shader */
 			glActiveTexture(GL_TEXTURE0 + i);
 			glEnable(GL_TEXTURE_2D);
-			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.glid);
+			glBindTexture(GL_TEXTURE_2D, frame->gl_storage.store.text.glid);
 
 			if (blendstate == false){
 				surface_properties dprops = {.opa = vobj->current.opa};
