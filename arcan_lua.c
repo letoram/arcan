@@ -1937,8 +1937,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			srcobj = arcan_video_getobject(ev->data.video.source);
 			evmsg = "video_event(asynchimg_load_fail), callback";
 			tblstr(ctx, "kind", "load_failed", top);
-			tblstr(ctx, "resource", srcobj && srcobj->default_frame.source ?
-				srcobj->default_frame.source : "unknown", top);
+			tblstr(ctx, "resource", srcobj && srcobj->vstore.source ?
+				srcobj->vstore.source : "unknown", top);
 			tblnum(ctx, "width", ev->data.video.constraints.w, top);
 			tblnum(ctx, "height", ev->data.video.constraints.h, top);
 			dst_cb = (intptr_t) ev->data.video.data;
@@ -3712,13 +3712,13 @@ int arcan_lua_recordset(lua_State* ctx)
 /* we define the size of the recording to be that of the storage
  * of the rendertarget vid, this should be allocated through fill_surface */
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
-		shmpage->storage.w = dobj->gl_storage.w;
-		shmpage->storage.h = dobj->gl_storage.h;
+		shmpage->storage.w = dobj->vstore.w;
+		shmpage->storage.h = dobj->vstore.h;
 
 /* separate storage and display dimensions to allow 
  * for scaling hints, or cropping */
-		shmpage->display.w   = dobj->gl_storage.w;
-		shmpage->display.h   = dobj->gl_storage.h;
+		shmpage->display.w   = dobj->vstore.w;
+		shmpage->display.h   = dobj->vstore.h;
 
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
@@ -3785,11 +3785,11 @@ int arcan_lua_borderscan(lua_State* ctx)
  * then readback pixels as there is limited use for this feature, we'll stick
  * to the cheap route, i.e. assume we don't use memory- conservative mode and
  * just grab the buffer from the cached storage. */
-	if (vobj && vobj->default_frame.raw && vobj->default_frame.s_raw > 0
+	if (vobj && vobj->vstore.raw && vobj->vstore.s_raw > 0
 		&& vobj->origw > 0 && vobj->origh > 0){
 
 #define sample(x,y) \
-	( vobj->default_frame.raw[ ((y) * vobj->origw + (x)) * 4 + 3 ] )
+	( vobj->vstore.raw[ ((y) * vobj->origw + (x)) * 4 + 3 ] )
 
 		for (x1 = vobj->origw >> 1; 
 			x1 >= 0 && sample(x1, vobj->origh >> 1) < 128; x1--);
@@ -4977,17 +4977,17 @@ tracetag = [[%s]]\
 (int) src->extrefc.instances,
 (int) src->extrefc.attachments,
 (int) src->extrefc.links,
-src->default_frame.source ? src->default_frame.source : "unknown",
-(int) src->default_frame.s_raw,
-(int) src->gl_storage.w,
-(int) src->gl_storage.h,
-(int) src->gl_storage.bpp,
-(int) src->gl_storage.txu,
-(int) src->gl_storage.txv,
-arcan_shader_lookuptag(src->gl_storage.program),
-lut_scale(src->gl_storage.scale),
-lut_imageproc(src->gl_storage.imageproc),
-lut_filtermode(src->gl_storage.filtermode),
+src->vstore.source ? src->vstore.source : "unknown",
+(int) src->vstore.s_raw,
+(int) src->vstore.w,
+(int) src->vstore.h,
+(int) src->vstore.bpp,
+(int) src->vstore.txu,
+(int) src->vstore.txv,
+arcan_shader_lookuptag(src->vstore.program),
+lut_scale(src->vstore.scale),
+lut_imageproc(src->vstore.imageproc),
+lut_filtermode(src->vstore.filtermode),
 vobj_flags(src), 
 mask,
 (double) src->origo_ofs.x, 
@@ -4995,14 +4995,14 @@ mask,
 (double) src->origo_ofs.z,
 src->tracetag ? src->tracetag : "no tag");
 
-	if (src->gl_storage.txmapped){
+	if (src->vstore.txmapped){
 		fprintf(dst, "vobj.glstore_glid = %d;\
-vobj.glstore_refc = %d;\n", src->gl_storage.store.text.glid,
-			src->gl_storage.store.text.refcount);
+vobj.glstore_refc = %d;\n", src->vstore.vinf.text.glid,
+			*src->vstore.vinf.text.refcount);
 	} else {
 		fprintf(dst, "vobj.glstore_col = {%f, %f, %f}\n", 
-			src->gl_storage.store.col.r, src->gl_storage.store.col.g, 
-			src->gl_storage.store.col.b);
+			src->vstore.vinf.col.r, src->vstore.vinf.col.g, 
+			src->vstore.vinf.col.b);
 	}
 
 	for (int i = 0; i < src->frameset_meta.capacity; i++)
@@ -5033,7 +5033,7 @@ vobj.glstore_refc = %d;\n", src->gl_storage.store.text.glid,
  *  frameset
  *  ffunc mask
  *  current_frame reference
- *  default_frame values
+ *  vstore values
  */
 
 void arcan_lua_statesnap(FILE* dst)
