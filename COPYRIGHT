@@ -1,5 +1,5 @@
-Arcan-FE is (c)opyright Björn Ståhl, 2011-2013 publically licensed
-under the terms of the GPLv3 agreement (see LICENSE.TXT).
+Arcan-FE is (c)opyright Björn Ståhl, 2003-2013 distributed here under the terms 
+of the GPLv3 agreement (see LICENSE.TXT).
 
 Code included in the project explicitly excluded from the above:
 
@@ -10,10 +10,10 @@ win32/SDL_main_win32.c
 SDLMain.*
 
 frameserver/resampler/*, libspeex developers (www.speex.org and xiph.org), revised BSD License.
-hidapi/*, (c) 2010 Alan Ott, FreeBSD License
-openCTM/* (c) Marcus Geelnard -- zlib / libpng license
-lodepng/* (c) 2005-2012 Lode Vandevenne -- BSD-like
-nacl/* Public Domain, courtesy of Daniel Bernstein, Tanja Lange and the CACE project.
+external/hidapi/*, (c) 2010 Alan Ott, FreeBSD License
+external/openCTM/* (c) Marcus Geelnard -- zlib / libpng license
+external/nacl/* Public Domain, courtesy of Daniel Bernstein, Tanja Lange and the CACE project.
+external/randombytes/* Public Domain, courtesy of Daniel Bernstein, Tanja Lange and the CACE project.
 arcan_renderfun.c:stretchblit derived from SDL_GFX (c) Andreas Schiffler -- BSD- like 
 
 Furthermore, media included as part of the main distribution resources and themes,
@@ -31,14 +31,12 @@ themes/gridle/display/* and are individually tagged with their respective author
 Additional thanks go out to the libretro project (libretro.org) and associated developers.
 
 Dependencies:
- SDL-1.2, SDL-TTF, SDL_Image -- www.libsdl.org, LGPL
- OpenGL -- www.opengl.org, SGI OpenGL License
+ SDL-1.2, (optional) SDL_Image -- www.libsdl.org, LGP
+ OpenGLES2+/EGL -- www.opengl.org, SGI OpenGL License
  OpenAL -- www.openal.org, 1.1 LGPL, > 1.1 proprietary
- GLEW -- glew.sf.net, Milan Ikits / Marcelo Magallon, Modified BSD, MIT 
+ GLEW (win32) -- glew.sf.net, Milan Ikits / Marcelo Magallon, Modified BSD, MIT 
  LUA 5.1 -- www.lua.org, MIT License
- Ogg/Vorbis -- www.xiph.org, Individual BSD license, no linking restrictions. 
  SQLite3 -- www.sqlite.org, Public Domain
- libvpx -- www.webmproject.org, Modified BSD 
  FFMPEG -- www.ffmpeg-org, LGPL 2.1
  BZip2 -- (implicitly used by some dependencies) BSD License
  ZLib -- zlib license

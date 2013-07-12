@@ -104,12 +104,6 @@ typedef struct surface_transform {
 	struct surface_transform* next;
 } surface_transform;
 
-typedef struct arcan_vstorage {
-	uint32_t s_raw;
-	uint8_t* raw;
-	char*    source;
-} arcan_vstorage;
-
 /* 
  * refcount is usually defaulted to 1 or ignored,
  * otherwise it indicates that the storage is
@@ -123,17 +117,18 @@ typedef struct arcan_vstorage {
 struct storage_info_t {
 
 	bool txmapped;
+
 	union {
 		struct {
 			unsigned glid;
-			unsigned refcount;
+			unsigned* refcount;
 		} text;
 		struct {
 			float r;
 			float g;
 			float b;
 		} col;
-	} store; 
+	} vinf; 
 
 	unsigned short w, h, bpp;
 	unsigned txu, txv;
@@ -141,6 +136,10 @@ struct storage_info_t {
 	enum arcan_vimage_mode    scale;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode   filtermode;
+
+	uint32_t s_raw;
+	uint8_t*   raw;
+	char*   source;
 
 	arcan_shader_id program;
 };
@@ -151,7 +150,6 @@ typedef struct arcan_vobject {
  * current_frame is set to default_frame, but could well reference 
  * another object (frameset) 
  */
-	arcan_vstorage default_frame;
 	struct arcan_vobject* current_frame;
 	uint16_t origw, origh;
 
@@ -164,7 +162,7 @@ typedef struct arcan_vobject {
 		enum arcan_framemode framemode; /* multitexture or just active frame      */
 	} frameset_meta;
 	
-	struct storage_info_t gl_storage;
+	struct storage_info_t vstore;
 	
 /* support for feed- functions
  * set to null if no feed functions are avail.
@@ -300,7 +298,8 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id);
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 
 arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
-	arcan_vstorage* dstframe, img_cons forced, bool asynchsrc);
+	img_cons forced, bool asynchsrc);
+
 void arcan_video_setblend(const surface_properties* dprops, 
 	const arcan_vobject* elem);
 
