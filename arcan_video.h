@@ -52,15 +52,6 @@
 #define GL_PIXEL_BPP 4
 #endif
 
-enum arcan_vrtypes {
-	ARCAN_VRTYPE_COLOR,
-	ARCAN_VRTYPE_NULLOBJ,
-	ARCAN_VRTYPE_IMAGE,
-	ARCAN_VRTYPE_VIDEO,
-	ARCAN_VRTYPE_CFUNC,
-	ARCAN_VRTYPE_RENDERSOURCE
-};
-
 enum arcan_framemode {
 	ARCAN_FRAMESET_SPLIT,
 	ARCAN_FRAMESET_MULTITEXTURE
@@ -177,11 +168,11 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst);
 signed   arcan_video_extpushcontext(arcan_vobj_id* dst);
 unsigned arcan_video_contextusage(unsigned* free);
 
-arcan_vobj_id arcan_video_nullobject(img_cons constraints, float origw,
-	float origh, unsigned short zv);
+arcan_vobj_id arcan_video_nullobject(float origw, float origh, 
+	unsigned short zv);
 
-arcan_vobj_id arcan_video_solidcolor(uint8_t r, uint8_t g, uint8_t b,
-	img_cons constraints, float origw, float origh, unsigned short zv);
+arcan_vobj_id arcan_video_solidcolor(float origw, float origh, 
+	uint8_t r, uint8_t g, uint8_t b, unsigned short zv);
 
 arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs, 
 	img_cons constraints, float origw, float origh, unsigned short zv);
