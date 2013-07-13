@@ -53,6 +53,8 @@
 #endif
 
 enum arcan_vrtypes {
+	ARCAN_VRTYPE_COLOR,
+	ARCAN_VRTYPE_NULLOBJ,
 	ARCAN_VRTYPE_IMAGE,
 	ARCAN_VRTYPE_VIDEO,
 	ARCAN_VRTYPE_CFUNC,
@@ -368,9 +370,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message, /*string to render*/
 	int8_t tab_spacing,  /* default spacing between tabs */
 	unsigned int* tabs,  /* specific tab widths (null-terminated) */
 	unsigned int* lines, /* [out]-> number of lines processed */
-	unsigned int** lineheights,
-	arcan_vobj_id did  /* EID or did will be reused rather than allocating 
-											* a new one */
+	unsigned int** lineheights
 ); /* [out]-> height of each line, needs to be freed */
 
 void arcan_video_reset_fontcache();

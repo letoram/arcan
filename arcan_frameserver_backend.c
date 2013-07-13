@@ -690,7 +690,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 /* for PBO transfers, new buffers etc. need to be prepared */
 		glBindTexture(GL_TEXTURE_2D, 
-			arcan_video_getobject(src->vid)->vstore.vinf.text.glid);
+			arcan_video_getobject(src->vid)->vstore->vinf.text.glid);
 
 		if (src->desc.pbo_transfer)
 			glDeleteBuffers(2, src->desc.upload_pbo);

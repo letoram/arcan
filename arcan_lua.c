@@ -791,6 +791,17 @@ int arcan_lua_buildshader(lua_State* ctx)
 	return 1;
 }
 
+int arcan_lua_sharestorage(lua_State* ctx)
+{
+	arcan_vobj_id src = luaL_checkvid(ctx, 1);
+	arcan_vobj_id dst = luaL_checkvid(ctx, 2);
+
+	arcan_errc rv = arcan_video_shareglstore(src, dst);
+	lua_pushboolean(ctx, rv == ARCAN_OK);
+	
+	return 1;
+}
+
 int arcan_lua_setshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -837,7 +848,6 @@ int arcan_lua_strsize(lua_State* ctx)
 int arcan_lua_buildstr(lua_State* ctx)
 {
 	arcan_vobj_id id  = ARCAN_EID;
-	arcan_vobj_id did = luaL_optvid(ctx, 4, ARCAN_EID);
 
 	const char* message = luaL_checkstring(ctx, 1);
 	int vspacing = luaL_optint(ctx, 2, 4);
@@ -847,7 +857,7 @@ int arcan_lua_buildstr(lua_State* ctx)
 	unsigned int* lineheights = NULL;
 
 	id = arcan_video_renderstring(message, vspacing, tspacing, NULL, 
-		&nlines, &lineheights, did);
+		&nlines, &lineheights);
 
 	lua_pushvid(ctx, id);
 
@@ -1937,8 +1947,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			srcobj = arcan_video_getobject(ev->data.video.source);
 			evmsg = "video_event(asynchimg_load_fail), callback";
 			tblstr(ctx, "kind", "load_failed", top);
-			tblstr(ctx, "resource", srcobj && srcobj->vstore.source ?
-				srcobj->vstore.source : "unknown", top);
+			tblstr(ctx, "resource", srcobj && srcobj->vstore->vinf.text.source ?
+				srcobj->vstore->vinf.text.source : "unknown", top);
 			tblnum(ctx, "width", ev->data.video.constraints.w, top);
 			tblnum(ctx, "height", ev->data.video.constraints.h, top);
 			dst_cb = (intptr_t) ev->data.video.data;
@@ -3712,13 +3722,13 @@ int arcan_lua_recordset(lua_State* ctx)
 /* we define the size of the recording to be that of the storage
  * of the rendertarget vid, this should be allocated through fill_surface */
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
-		shmpage->storage.w = dobj->vstore.w;
-		shmpage->storage.h = dobj->vstore.h;
+		shmpage->storage.w = dobj->vstore->w;
+		shmpage->storage.h = dobj->vstore->h;
 
 /* separate storage and display dimensions to allow 
  * for scaling hints, or cropping */
-		shmpage->display.w   = dobj->vstore.w;
-		shmpage->display.h   = dobj->vstore.h;
+		shmpage->display.w   = dobj->vstore->w;
+		shmpage->display.h   = dobj->vstore->h;
 
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
@@ -3785,11 +3795,12 @@ int arcan_lua_borderscan(lua_State* ctx)
  * then readback pixels as there is limited use for this feature, we'll stick
  * to the cheap route, i.e. assume we don't use memory- conservative mode and
  * just grab the buffer from the cached storage. */
-	if (vobj && vobj->vstore.raw && vobj->vstore.s_raw > 0
+	if (vobj && vobj->vstore->txmapped && 
+		vobj->vstore->vinf.text.raw && vobj->vstore->vinf.text.s_raw > 0
 		&& vobj->origw > 0 && vobj->origh > 0){
 
 #define sample(x,y) \
-	( vobj->vstore.raw[ ((y) * vobj->origw + (x)) * 4 + 3 ] )
+	( vobj->vstore->vinf.text.raw[ ((y) * vobj->origw + (x)) * 4 + 3 ] )
 
 		for (x1 = vobj->origw >> 1; 
 			x1 >= 0 && sample(x1, vobj->origh >> 1) < 128; x1--);
@@ -4660,6 +4671,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_tracetag",           arcan_lua_tracetag           },
 {"image_mask_clearall",      arcan_lua_clearall           },
 {"image_shader",             arcan_lua_setshader          },
+{"image_sharestorage",       arcan_lua_sharestorage       },
 {"fill_surface",             arcan_lua_fillsurface        },
 {"raw_surface",              arcan_lua_rawsurface         },
 {"image_surface_properties", arcan_lua_getimageprop       },
@@ -4977,17 +4989,18 @@ tracetag = [[%s]]\
 (int) src->extrefc.instances,
 (int) src->extrefc.attachments,
 (int) src->extrefc.links,
-src->vstore.source ? src->vstore.source : "unknown",
-(int) src->vstore.s_raw,
-(int) src->vstore.w,
-(int) src->vstore.h,
-(int) src->vstore.bpp,
-(int) src->vstore.txu,
-(int) src->vstore.txv,
-arcan_shader_lookuptag(src->vstore.program),
-lut_scale(src->vstore.scale),
-lut_imageproc(src->vstore.imageproc),
-lut_filtermode(src->vstore.filtermode),
+(src->vstore->txmapped && src->vstore->vinf.text.source) ?
+	src->vstore->vinf.text.source : "unknown",
+(int) src->vstore->vinf.text.s_raw,
+(int) src->vstore->w,
+(int) src->vstore->h,
+(int) src->vstore->bpp,
+(int) src->vstore->txu,
+(int) src->vstore->txv,
+arcan_shader_lookuptag(src->vstore->program),
+lut_scale(src->vstore->scale),
+lut_imageproc(src->vstore->imageproc),
+lut_filtermode(src->vstore->filtermode),
 vobj_flags(src), 
 mask,
 (double) src->origo_ofs.x, 
@@ -4995,14 +5008,14 @@ mask,
 (double) src->origo_ofs.z,
 src->tracetag ? src->tracetag : "no tag");
 
-	if (src->vstore.txmapped){
+	if (src->vstore->txmapped){
 		fprintf(dst, "vobj.glstore_glid = %d;\
-vobj.glstore_refc = %d;\n", src->vstore.vinf.text.glid,
-			*src->vstore.vinf.text.refcount);
+vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
+			src->vstore->refcount);
 	} else {
 		fprintf(dst, "vobj.glstore_col = {%f, %f, %f}\n", 
-			src->vstore.vinf.col.r, src->vstore.vinf.col.g, 
-			src->vstore.vinf.col.b);
+			src->vstore->vinf.col.r, src->vstore->vinf.col.g, 
+			src->vstore->vinf.col.b);
 	}
 
 	for (int i = 0; i < src->frameset_meta.capacity; i++)
@@ -5033,7 +5046,7 @@ vobj.glstore_refc = %d;\n", src->vstore.vinf.text.glid,
  *  frameset
  *  ffunc mask
  *  current_frame reference
- *  vstore values
+ *  vstore->values
  */
 
 void arcan_lua_statesnap(FILE* dst)

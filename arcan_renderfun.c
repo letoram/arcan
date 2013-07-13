@@ -739,7 +739,7 @@ static inline void copy_rect(TTF_Surface* surf, uint32_t* dst,
  * text-texture packing and more clever antialiasing */
 arcan_vobj_id arcan_video_renderstring(const char* message, 
 	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, 
-	unsigned int* n_lines, unsigned int** lineheights, arcan_vobj_id did)
+	unsigned int* n_lines, unsigned int** lineheights)
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	if (!message)
@@ -801,13 +801,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 /* (C) */
 /* prepare structures */
 		arcan_vobject* vobj = NULL;
-		if (did != ARCAN_EID){
-			glDeleteTextures(1, &vobj->vstore.vinf.text.glid);
-			free(vobj->vstore.raw);
-			vobj = arcan_video_getobject(did);
-		}
-		else 
-			vobj = arcan_video_newvobject(&rv);
+		vobj = arcan_video_newvobject(&rv);
 
 		if (!vobj){
 			arcan_fatal("Fatal: arcan_video_renderstring(), "
@@ -816,24 +810,23 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 				"scripts of the current theme.\n");
 		}
 
+		struct storage_info_t* s = vobj->vstore;
+
 		int storw = nexthigher(maxw);
 		int storh = nexthigher(maxh);
-		vobj->vstore.w = storw;
-		vobj->vstore.h = storh;
-		vobj->vstore.s_raw = storw * storh * GL_PIXEL_BPP;
-		vobj->vstore.raw = (uint8_t*) calloc(vobj->vstore.s_raw, 1);
+		s->w = storw;
+		s->h = storh;
+		s->vinf.text.s_raw = storw * storh * GL_PIXEL_BPP;
+		s->vinf.text.raw = malloc(s->vinf.text.s_raw);
+		memset(s->vinf.text.raw, '\0', s->vinf.text.s_raw);
 		vobj->feed.state.tag = ARCAN_TAG_TEXT;
 		vobj->blendmode = blend_force;
 		vobj->origw = maxw;
 		vobj->origh = maxh;
-		vobj->vstore.source = strdup(message);
+		s->vinf.text.source = strdup(message);
 
-		vobj->vstore.vinf.text.refcount = malloc(1);		
-		*(vobj->vstore.vinf.text.refcount) = 1;
-		vobj->vstore.txmapped = true;
-
-		glGenTextures(1, &vobj->vstore.vinf.text.glid);
-		glBindTexture(GL_TEXTURE_2D, vobj->vstore.vinf.text.glid);
+		glGenTextures(1, &vobj->vstore->vinf.text.glid);
+		glBindTexture(GL_TEXTURE_2D, vobj->vstore->vinf.text.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
@@ -842,9 +835,8 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		curw = 0;
 		int yofs = 0;
 
-		uint32_t* canvas = (uint32_t*) vobj->vstore.raw;
+		uint32_t* canvas = (uint32_t*) s->vinf.text.raw; 
 		uint32_t* cwrk   = canvas;
-		memset(canvas, '\0', storw * storh * 4);
 
 		int line = 0;
 
@@ -870,11 +862,11 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	
 /* upload */
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, storw, storh, 0, 
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, vobj->vstore.raw);
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw); 
 		glBindTexture(GL_TEXTURE_2D, 0);
 
-		float wv = (float)maxw / (float)vobj->vstore.w;
-		float hv = (float)maxh / (float)vobj->vstore.h;
+		float wv = (float)maxw / (float)vobj->vstore->w;
+		float hv = (float)maxh / (float)vobj->vstore->h;
 
 		generate_basic_mapping(vobj->txcos, wv, hv);
 		arcan_video_attachobject(rv);
