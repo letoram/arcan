@@ -115,13 +115,15 @@ typedef struct surface_transform {
  * but no texture is bound)
  */
 struct storage_info_t {
-
+	unsigned refcount;
 	bool txmapped;
 
 	union {
 		struct {
 			unsigned glid;
-			unsigned* refcount;
+			uint32_t s_raw;
+			uint8_t*   raw;
+			char*   source;
 		} text;
 		struct {
 			float r;
@@ -136,10 +138,6 @@ struct storage_info_t {
 	enum arcan_vimage_mode    scale;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode   filtermode;
-
-	uint32_t s_raw;
-	uint8_t*   raw;
-	char*   source;
 
 	arcan_shader_id program;
 };
@@ -162,11 +160,8 @@ typedef struct arcan_vobject {
 		enum arcan_framemode framemode; /* multitexture or just active frame      */
 	} frameset_meta;
 	
-	struct storage_info_t vstore;
+	struct storage_info_t* vstore;
 	
-/* support for feed- functions
- * set to null if no feed functions are avail.
- * [note] this might be more handy as a per/frame thing */
 	struct {
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;

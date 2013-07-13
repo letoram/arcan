@@ -271,7 +271,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
  * corresponding map- slot in the shader */
 			glActiveTexture(GL_TEXTURE0 + i);
 			glEnable(GL_TEXTURE_2D);
-			glBindTexture(GL_TEXTURE_2D, frame->vstore.vinf.text.glid);
+			glBindTexture(GL_TEXTURE_2D, frame->vstore->vinf.text.glid);
 
 			if (blendstate == false){
 				surface_properties dprops = {.opa = vobj->current.opa};
@@ -348,7 +348,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
 	
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
-		rendermodel(dvo, dvo->feed.state.ptr, dvo->vstore.program, 
+		rendermodel(dvo, dvo->feed.state.ptr, dvo->vstore->program, 
 			dprops, modelview);
 
 		current = current->next;

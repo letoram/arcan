@@ -422,6 +422,8 @@ platform/sdl/event.c
 
 add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
+#add_definitions(-fsanitize=address ) 
+
 set_source_files_properties( ctags.output PROPERTIES GENERATED true )
 add_custom_command( OUTPUT ctags.output
 	COMMAND ctags -R --fields=+iaS --extra=+q -o ctags.output .
@@ -436,7 +438,7 @@ LIST(APPEND SOURCES
 )
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 
-LIST(APPEND MAIN_LIBRARIES usb-1.0 rt m)
+LIST(APPEND MAIN_LIBRARIES usb-1.0 m rt) 
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c ${FSERV_PLATFORM_SOURCES})
 LIST(APPEND FSRV_LIBRARIES rt m dl)
 
