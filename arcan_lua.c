@@ -2574,6 +2574,30 @@ error:
 	return 0;
 }
 
+int arcan_lua_colorsurface(lua_State* ctx)
+{
+	int desw = luaL_checknumber(ctx, 1);
+	int desh = luaL_checknumber(ctx, 2);
+	int cred = luaL_checknumber(ctx, 3);
+	int cgrn = luaL_checknumber(ctx, 4);
+	int cblu = luaL_checknumber(ctx, 5);
+	int order = luaL_optnumber(ctx, 6, 1);
+
+	lua_pushvid(ctx, arcan_video_solidcolor(desw, desh, 
+		cred, cgrn, cblu, order));
+	return 1;
+}
+
+int arcan_lua_nullsurface(lua_State* ctx)
+{
+	int desw = luaL_checknumber(ctx, 1);
+	int desh = luaL_checknumber(ctx, 2);
+	int order = luaL_optnumber(ctx, 3, 1);
+
+	lua_pushvid(ctx, arcan_video_nullobject(desw, desh, order) );
+	return 1;	
+}
+
 int arcan_lua_rawsurface(lua_State* ctx)
 {
 	int desw = luaL_checknumber(ctx, 1);
@@ -4674,6 +4698,8 @@ static const luaL_Reg imgfuns[] = {
 {"image_sharestorage",       arcan_lua_sharestorage       },
 {"fill_surface",             arcan_lua_fillsurface        },
 {"raw_surface",              arcan_lua_rawsurface         },
+{"color_surface",            arcan_lua_colorsurface       },
+{"null_surface",             arcan_lua_nullsurface        },
 {"image_surface_properties", arcan_lua_getimageprop       },
 {"image_storage_properties", arcan_lua_getimagestorageprop},
 {"render_text",              arcan_lua_buildstr           },

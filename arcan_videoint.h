@@ -234,6 +234,7 @@ struct arcan_video_display {
 	unsigned default_vitemlim;
  
 	arcan_shader_id defaultshdr;
+	arcan_shader_id defclrshdr;
 	
 /* default image loading options */
 	enum arcan_vimage_mode scalemode;
