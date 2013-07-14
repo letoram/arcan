@@ -70,6 +70,8 @@ function mouse_setup(cvid, clayer, pickdepth)
 	mstate.cursor = cvid; 
 	mstate.x = math.floor(VRESW * 0.5);
 	mstate.y = math.floor(VRESH * 0.5);
+	show_image(cvid);
+	move_image(cvid, mstate.x, mstate.y);
 	mstate.pickdepth = pickdepth;
 	order_image(cvid, clayer);
 	image_mask_set(cvid, MASK_UNPICKABLE);
@@ -211,7 +213,8 @@ end
 -- 
 -- triggers callbacks in tbl when desired events are triggered.
 -- expected members of tbl;
--- own (function(vid)) true | tbl / false if tbl is considered the owner of vid
+-- own (function(vid)) true | tbl / false if tbl is considered 
+-- the owner of vid
 -- 
 function mouse_addlistener(tbl, events)
 	if (tbl.own == nil) then
@@ -223,7 +226,8 @@ function mouse_addlistener(tbl, events)
 			linear_find(mstate.handlers[val], tbl) == nil) then
 			table.insert(mstate.handlers[val], tbl);
 		else
-			warning("mouse_addlistener(), unknown event function: " .. val ..".\n");
+			warning("mouse_addlistener(), unknown event function: " 
+				.. val ..".\n");
 		end
 	end
 end
