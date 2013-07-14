@@ -1,24 +1,27 @@
 --
--- Amiga Workbench- Lookalike Theme
--- Conceived in a "how far can you get in 24 hours" hackathon
--- (wildly re-uses stuff from gridle to get that done however)
+-- Arcan "Workbench" theme
+-- "inspired" by certain older desktop / windowing UI
+-- but mainly thought of as an experiment towards better 
+-- networking features and testing out the API for more
+-- desktop- kindof window management. 
 --
-wlist    = {
+wlist     = {
 	windows = {};
 };
 
 settings = {
-	mfact = 0.2,
-	mvol  = 1.0
+	mfact  = 0.2,
+	mvol   = 1.0
 };
-sysicons = {};
-imagery  = {};
+
+sysicons   = {};
+imagery    = {};
 colortable = {};
 
-groupicn = "awbicons/drawer.png";
+groupicn    = "awbicons/drawer.png";
 groupselicn = "awbicons/drawer_open.png";
-deffont = "fonts/topaz8.ttf";
-deffont_sz = 12;
+deffont     = "fonts/topaz8.ttf";
+deffont_sz  = 12;
 
 colortable.bgcolor = {0, 85, 169};
 
@@ -55,84 +58,43 @@ end
 function awb()
 	settings.colourtable = system_load("scripts/colourtable.lua")();
 	symtable = system_load("scripts/symtable.lua")();
-	system_load("scripts/calltrace.lua")();
-	system_load("scripts/3dsupport.lua")();
+
+-- shader function / model viewer
+	system_load("scripts/3dsupport.lua")(); 
+
+-- mouse abstraction layer (callbacks for click handlers,
+-- motion events etc.)
 	system_load("scripts/mouse.lua")();
-	system_load("awb_window.lua")();
+
+	system_load("awbwnd.lua")();
+	system_load("awbwman.lua")();
 
 	settings.defwinw = math.floor(VRESW * 0.35);
 	settings.defwinh = math.floor(VRESH * 0.35);
---
--- the other icons are just referenced by string since they're managed by 
--- their respective windows
---
-	imagery.cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
 
+-- the imagery pool is used as a static data cache,
+-- since the windowing subsystem need link_ calls to work
+-- we can't use instancing, so instead we allocate a pool
+-- and then share_storage
+	imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
+	awbwman_init();	
+
+-- 
+-- look in resources/scripts/mouse.lua
+-- for heaps more options (gestures, trails, autohide) 
+--
 	image_tracetag(imagery.cursor, "mouse cursor");
-	move_image(imagery.cursor, math.floor(VRESW * 0.5), math.floor(VRESW * 0.5));
-	show_image(imagery.cursor);
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
 
 	spawn_boing();
+
+--	for i=1,10 do
+--		local tbl = spawn_boing();
+--		move_image(tbl.anchor, math.random(VRESW), math.random(VRESH));
+--	end
+
 --	awb_desktop_setup();
-end
-
-function awb_desktop_setup()
-	rootwnd = awbwnd_create({
-		fullscreen = true,
-		border     = false,
-		borderw    = 2,
-		mode       = "iconview",
-		iconalign  = "right"
-	});
-
-	rootwnd:add_icon("Systems",  groupicn, groupselicn, deffont, 
-		deffont_sz, sysgrp);
-	rootwnd:add_icon("Saves",    groupicn, groupselicn, deffont, 
-		deffont_sz, sfn);
-	rootwnd:add_icon("Programs", groupicn, groupselicn, deffont, 
-		deffont_sz, prggrp);
-	rootwnd:add_icon("Videos",   groupicn, groupselicn, deffont, 
-		deffont_sz, vidgrp);	
-	rootwnd:add_icon("Models",   groupicn, groupselicn, deffont,
-		deffont_sz, modelgrp);
-
-	local wbarcb = function() return fill_surface(VRESW, 24, 210, 210, 210); end
-	local topbar = rootwnd:add_bar("top", wbarcb, wbarcb, 20);
-	local tbl = topbar:add_icon(menulbl("Arcan Workbench"), "left", nil);
-	tbl.yofs = 6;
-	tbl.xofs = 6;
-	tbl.stretch = false;	
-
-	rootwnd.click = function(self, vid, x, y)
-		local tbl = self:own(vid);
-		if (tbl and tbl.toggle) then
-			tbl:toggle();
-		end
-	end
-
-	mouse_addlistener(rootwnd, {"click", "dblclick"});
-
-	rootwnd:refresh_icons();
-	rootwnd:show();
-end
-
-function defgrp_click(self, vid, x, y)
-	local icn = self:own(vid);
-	if (icn) then
-		icn:toggle();
-	end
-end
-
-function prggrp(caller)
-	prggrp_window = spawn_window("iconview", "left")
-	prggrp_window:add_icon("Boing", "awbicons/boing.png", 
-		nil, deffont, deffont_sz, spawn_boing);
-	prggrp_window:refresh_icons();
-
-	prggrp_window.click = defgrp_click; 
-	mouse_addlistener(prggrp_window, {"click"});
 end
 
 function attrstr(self)
@@ -156,7 +118,7 @@ function progress_notify(msg, rowheight, bwidth, level)
 		infodlg = fill_surface(bwidth, rowheight + deffont_sz + 10, 40, 40, 40);
 		infobar = fill_surface(bwidth - 10, rowheight, 80, 80, 80);
 		progbar = fill_surface(1, 1, 220, 35, 35);
-		iconimg = render_text(string.format([[\ffonts/topaz8.ttf,%d\#dc2323 %s]],
+		iconimg = render_text(string.format([[\f%s,%d\#dc2323 %s]], deffont,
 			deffont_sz, msg));
 		lastnotify = msg;
 		move_image(infodlg, math.floor(VRESW * 0.5 - 0.5 * bwidth),
@@ -206,7 +168,7 @@ function volume_step(direction)
 end
 
 function mouse_accellstep(direction)
-	settings.mfact = settings.mfact + (0.1 * direction);
+	settings.mfact = settings.mfact +  (0.1 * direction);
 	settings.mfact = settings.mfact >= 0.01 and settings.mfact or 0.0;
 	settings.mfact = settings.mfact <   2.0 and settings.mfact or 2.0;
 
@@ -217,127 +179,28 @@ function mouse_accellstep(direction)
 	mouse_acceleration(settings.mfact);
 end
 
-function sysgame(caller)
-	local gamelist = list_games({target = caller.name});
-	local gametbl = gamelist[math.random(1, #gamelist)];
-	local gamewin = spawn_window("container_managed");
-
-	gamewin.active_vid = launch_target(gametbl.gameid, LAUNCH_INTERNAL, 
-		function(source, status)
-		if (status.kind == "resized") then
-			gamewin:update_canvas(source);
-		end
-	end);
-	image_tracetag(gamewin.active_vid, "internal_launch(" .. 
-		tostring(gametbl.gameid) .. ")");
-
---	syslist = spawn_window("listview");
---	if (#gamelist) then
---		for ind, val in ipairs(gamelist) do
---			val.caption = attrstr;	
---		end
-
---		syslist:update_list(gamelist, gametoggle);
---		syslist.target = launch_target(LAUNCH_INTERNAL, gamefsrv_status);
---	end
-end
-
-function gametoggle(caller)
-		
-end
-
-function sysvid(caller)
-	local vidwin = spawn_window("container_managed");
-	vidwin.active_vid =	load_movie("videos/" .. caller.res, 
-		FRAMESERVER_NOLOOP, function(source, status) 
-		if (status.kind == "resized") then
-			play_movie(source);
-			vidwin:update_canvas(source);
-		end
-	end);
-end
-
-function vidgrp(caller)
-	local res = glob_resource("videos/*", ALL_RESOURCES);
-	local newvid = spawn_window("iconview", "left", "Videos");
-
-	if (res and #res > 0) then
-		for ind, val in ipairs(res) do
-			local ent = newvid:add_icon(val, "awbicons/floppy.png", 
-				nil, deffont, deffont_sz, sysvid);
-
-			ent.res = val;
-		end
-		newvid:refresh_icons();
-	end
-
-	newvid.click = defgrp_click; 
-	mouse_addlistener(newvid, {"click"});
-end
-
-function sysgrp(caller)
-	sysgroup_window = spawn_window("iconview", "left", "Systems");
-	local tgtlist = list_targets();
-
-	for ind, val in ipairs(tgtlist) do
-		local caps = launch_target_capabilities(val);
-		if (caps and caps.internal_launch) then
-
-			local resa = "images/systems/" .. val .. ".png";
-			local resb = "icons/" .. val .. ".ico";
-			
-			if (resource(resa)) then
-				sysgroup_window:add_icon(val, resa, resa, 
-					deffont, deffont_sz, sysgame);
-			elseif (resource(resb)) then
-				sysgroup_window:add_icon(val, resb, resb, 
-					deffont, deffont_sz, sysgame);
-
-			else -- FIXME defaulticon
-				local active = fill_surface(80, 20, 255, 0, 0);
-				local inactive = fill_surface(80, 20, 0, 255, 0);
-				sysgroup_window:add_icon(val, "awbicons/floppy.png", 
-					nil, deffont, deffont_sz, sysgame);
-			end
-		end
-	end
-
-	sysgroup_window:refresh_icons();
-	sysgroup_window.click = defgrp_click; 
-	mouse_addlistener(sysgroup_window, {"click"});
-end
-
 --
 -- A little hommage to the original, shader is from rendertoy
 --
-function spawn_boing()
+function spawn_boing(caption)
 	local int oval = math.random(1,100);
-	local a = spawn_window("container", "left", "BOING!");
+	local a = awbwman_spawn("BOING!");
+
 	a.name = "boingwnd" .. tostring(oval);
+	
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
-		"shaders/boing.fShader", "boing" .. oval, {}); 
-	local props = image_surface_properties(a.canvas);
-	shader_uniform(boing, "display", "ff", PERSIST, props.width, props.height); 
-	shader_uniform(boing, "offset", "i", PERSIST, oval); 
-
-	image_shader(a.canvas, boing);
-end
-
-function focus_window(wnd)
-	if (wnd == rootwnd or wnd == wlist.focus) then
-		return;
+		"shaders/boing.fShader", "boing" .. oval, {});
+		
+	local props = image_surface_properties(a.canvas.vid);
+	a.canvas.resize = function(self, neww, newh)
+		shader_uniform(boing, "display", "ff", PERSIST, neww, newh); 
+		shader_uniform(boing, "offset", "i", PERSIST, oval);
+		resize_image(self.vid, neww, newh);
 	end
 
-	if (wlist.focus) then
--- fixme, this must be a calculated interval based on the number of windows
-		wlist.focus:active(false, ORDER_WDW);
-		if (wlist.focus.iconsoff) then
-			wlist.focus:iconsoff();
-		end
-	end
-
-	wlist.focus = wnd;
-	wlist.focus:active(true, ORDER_FOCUSWDW);
+	image_shader(a.canvas.vid, boing);
+	a.canvas:resize(props.width, props.height);
+	return a;
 end
 
 function closewin(self)
@@ -356,159 +219,8 @@ function closewin(self)
 	self.parent.parent:destroy(15);
 end
 
---
--- Generate default action handlers for the window titlebar
---
-function wbar_ahandlers(wnd, bar)
-	bar.drag = function(self, vid, x, y)
-		local props = image_surface_resolve_properties(self.root);
-		focus_window(wnd);
-		wnd:move(props.x + x, props.y + y);
-	end
- 
-	bar.dblclick = function(self, vid, x, y)
-		if (self.maximized) then
-			wnd:move(self.oldx, self.oldy);
-			wnd:resize(self.oldw, self.oldh);
-			self.maximized = false;
-		else
-			self.maximized = true;
-			self.oldx = wnd.x;
-			self.oldy = wnd.y;
-			self.oldw = wnd.width;
-			self.oldh = wnd.height;
-			wnd:move(0, 20);
-			wnd:resize(VRESW, VRESH - 20);
-		end
-	end
-
-	bar.drop = function(self, vid, x, y)
-		local props = image_surface_resolve_properties(self.root);
-		wnd:move(math.floor(props.x), math.floor(props.y));
-	end
-
-	bar.click = function(self, vid, x, y)
-		print(self.parent.name, "click");
-		focus_window(wnd);
-	end
-
-	mouse_addlistener(bar, {"drag", "drop", "click", "dblclick"});
-end
-
 function resizewnd(self, vid, x, y)
 	self.parent:resize(self.parent.width + x, self.parent.height + y);
-end
-
---
--- Allocate, Setup, Register and Position a new Window
--- These always start out focused
---
-function spawn_window(wtype, ialign, caption)
-	local wcont  = awbwnd_create({
-		iconalign  = ialign,
-		fullscreen = false,
-		border  = true,
-		borderw = 2,
-		mode    = wtype,
-		width   = settings.defwinw,
-		height  = settings.defwinh,
-		name = caption,
-		minw = 50,
-		minh = 24, 
-		x    = x_spawnpos,
-		y    = y_spawnpos
-	});
-
--- overload destroy to deregister mouse handler
-	local tmpfun = wcont.destroy;
-	local function wdestroy(self)
-		mouse_droplistener(self);
-		mouse_droplistener(self.top);
-		tmpfun(self);
-	end
-
--- for windows without a scrollbar (say canvas / stretch)
--- and no fullscreen, we add the resize button as linked to the border
--- (otherwise, we just add it as the first icon to the right part of the bar)
-	local rzimg = load_image("awbicons/resize.png");
-	local props = image_surface_properties(rzimg);
-	link_image(rzimg, wcont.bordert);
-	image_inherit_order(rzimg, true);
-	order_image(rzimg, 2);
-	image_tracetag(rzimg, "resizebtn");
-	wcont.rztbl = {};
-	wcont.rztbl.vid  = rzimg;
-	wcont.rztbl.drag = resizewnd;
-	wcont.rztbl.parent = wcont;
-	wcont.rztbl.own  = function(self, vid) return vid == self.vid; end 
-	mouse_addlistener(wcont.rztbl, {"drag"});
-
--- overload resize to cover the resize button
-	local rzfun = wcont.resize;
-	wcont.resize = function(self, newx, newy)
-		rzfun(self, newx, newy);
-		local bprops = image_surface_properties(self.canvas);
-		move_image(rzimg, bprops.width - props.width + 2, bprops.height); 
-		show_image(rzimg);
-	end
-
-	local bar = wcont:add_bar("top", "awbicons/border.png", 
-		"awbicons/border_inactive.png", 16);
-	bar:add_icon("awbicons/close.png",   "left",  closewin);
-
-	if (caption) then	
-		local captxt = menulbl(caption);
-		image_tracetag(captxt, "captxt(" ..caption .. ")");
-	
-		local props  = image_surface_properties(captxt);
-
-		local bg = fill_surface(math.floor(props.width * 0.1) + props.width, 
-			16, 230, 230, 230);
-		image_tracetag(bg, "capbg");
-
-		link_image(captxt, bg);
-		image_inherit_order(captxt, true);
-		move_image(captxt, 4, 4);
-		order_image(captxt, 1);
-
-		image_mask_set(bg, MASK_UNPICKABLE);
-		show_image({captxt, bg});
-		blend_image(bg, 0.5);
-
--- don't want thee to interfere with bar drag 
-		image_mask_set(captxt, MASK_UNPICKABLE);
-		wcont.minw = props.width + 24;
-		bar:add_icon(bg, "left", nil);
-	end
-
-	local canvaseh = {};
-	canvaseh.own = function(self, vid)
-		return vid == wcont.canvas;
-	end
-
-	canvaseh.click = function(self, vid, x, y)
-		focus_window(wcont);
-	end
-
-	mouse_addlistener(canvaseh, {"click"});
-
-	bar:add_icon("awbicons/enlarge.png", "right", maximize);
-	bar:add_icon("awbicons/shrink.png",  "right", sendtoback);
-	wcont:show();
-		
-	wbar_ahandlers(wcont, bar);
-
-	x_spawnpos = x_spawnpos + 20;
-	y_spawnpos = y_spawnpos + 20;
-	
-	wcont.window = demownd;
-	focus_window(wcont);
-
-	wlist.focus = wcont;
-	wcont:reorder(ORDER_FOCUSWDW);
-	table.insert(wlist.windows, wcont);
-
-	return wcont;
 end
 
 minputtbl = {false, false, false};
