@@ -20,8 +20,7 @@ local mstate = {
 -- mouse event is triggered
 	accel        = 1, -- factor to x,y movements
 	dblclickstep = 6, -- maximum number of ticks between clicks for dblclick 
-	drag_dx      = 4, -- pixel-movement after click to begin drag     
-	drag_dy      = 4,
+	drag_delta   = 8,
 	counter      = 0
 };
 
@@ -89,6 +88,20 @@ function mouse_absinput(x, y, state)
 	);
 end
 
+function mouse_xy()
+	local props = image_surface_resolve_properties(mstate.cursor);
+	return props.x, props.y;
+end
+
+local function mouse_drag(x, y)
+	for key, val in pairs(mstate.drag.list) do
+		local res = linear_find_vid(mstate.handlers.drag, val);
+		if (res) then
+			res:drag(val, x, y);
+		end
+	end
+end
+	
 local function rmbhandler(hists, press)
 	if (press) then
 		mstate.rpress_x = mstate.x;
@@ -109,8 +122,7 @@ local function lmbhandler(hists, press)
 		mstate.press_y = mstate.y;
 		mstate.predrag = {};
 		mstate.predrag.list = hists;
-		mstate.predrag.x = mstate.drag_dx;
-		mstate.predrag.y = mstate.drag_dy;
+		mstate.predrag.count = mstate.drag_delta;
 
 	else -- release
 		if (mstate.drag) then -- already dragging, check if dropped
@@ -185,22 +197,17 @@ function mouse_input(x, y, state)
 -- start with that
 		if (mstate.predrag) then
 
-				mstate.predrag.x = mstate.predrag.x - math.abs( x );
-				mstate.predrag.y = mstate.predrag.y - math.abs( y ); 
+				mstate.predrag.count = mstate.predrag.count - 
+					(math.abs(x) + math.abs(y));
 
-			if (mstate.predrag.x <= 0 and mstate.predrag.y <= 0) then
+			if (mstate.predrag.count <= 0) then
 				mstate.drag = mstate.predrag;
 				mstate.predrag = nil;
 			end
 		end
-		
+
 		if (mstate.drag) then
-			for key, val in pairs(mstate.drag.list) do
-				local res = linear_find_vid(mstate.handlers.drag, val);
-				if (res) then
-					res:drag(val, x, y);
-				end
-			end
+			mouse_drag(x, y);
 		end
 	end	
 

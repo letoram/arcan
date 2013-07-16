@@ -2920,9 +2920,9 @@ arcan_errc arcan_video_origoshift(arcan_vobj_id id,
 
 	if (vobj){
 		vobj->flags.origoofs = true;
-		vobj->origo_ofs.x += sx;
-		vobj->origo_ofs.y += sy;
-		vobj->origo_ofs.z += sz;
+		vobj->origo_ofs.x = sx;
+		vobj->origo_ofs.y = sy;
+		vobj->origo_ofs.z = sz;
 		rv = ARCAN_OK;
 	}
 
@@ -3553,21 +3553,25 @@ static inline void setup_surf(struct rendertarget* dst,
 
 	float omatr[16], imatr[16], dmatr[16];
 
+/* now position represents centerpoint in screen coordinates */
 	prop->scale.x *= src->origw * 0.5;
 	prop->scale.y *= src->origh * 0.5;
+	prop->position.x += prop->scale.x;
+	prop->position.y += prop->scale.y;
 
 	memcpy(imatr, dst->base, sizeof(float) * 16);
 	matr_quatf(norm_quat (prop->rotation.quaternion), omatr);
 
 /* rotate around user-defined point rather than own center */
 	if (src->flags.origoofs){
-		translate_matrix(imatr, src->origo_ofs.x, src->origo_ofs.y, 0.0);
+		translate_matrix(imatr, 
+			prop->position.x + src->origo_ofs.x,
+			prop->position.y + src->origo_ofs.y, 0.0);
+
 		multiply_matrix(dmatr, imatr, omatr);
-		translate_matrix(dmatr, prop->position.x + prop->scale.x, 
-			prop->position.y + prop->scale.y, 0.0);
+		translate_matrix(dmatr, -src->origo_ofs.x, -src->origo_ofs.y, 0.0); 
 	} else {
-		translate_matrix(imatr, prop->position.x + prop->scale.x, 
-			prop->position.y + prop->scale.y, 0.0);
+		translate_matrix(imatr, prop->position.x, prop->position.y, 0.0); 
 		multiply_matrix(dmatr, imatr, omatr);
 	}
 
