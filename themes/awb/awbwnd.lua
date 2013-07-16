@@ -12,8 +12,10 @@
 local function awbwnd_alloc(tbl)
 -- root will serve as main visibility, clipping etc. region
 	tbl.anchor = null_surface(tbl.width, tbl.height);
+	image_tracetag(tbl.anchor, tbl.name .. ".anchor");
 	image_mask_set(tbl.anchor, MASK_UNPICKABLE);
 	show_image(tbl.anchor);	
+	move_image(tbl.anchor, tbl.x, tbl.y);
 	return tbl;
 end
 
@@ -27,7 +29,27 @@ local function awbwnd_iconify()
 
 end
 
+local function awbwnd_update_minsz(self)
+	self.minw = 0;
+	self.minh = 0;
+
+	for k, v in pairs(self.dir) do
+		if (v) then
+			local tw, th = v:min_sz();
+			self.minw = self.minw + tw;
+			self.minh = self.minh + th;
+		end
+	end
+
+	if (self.canvas) then
+		self.minw = self.minw + self.canvas.minw;
+		self.minh = self.minh + self.canvas.minh;
+	end
+end
+
 local function awbwnd_resize(self, neww, newh)
+	awbwnd_update_minsz(self);
+
 	neww = neww >= self.minw and neww or self.minw;
 	newh = newh >= self.minh and newh or self.minh;
 
@@ -57,12 +79,19 @@ local function awbwnd_resize(self, neww, newh)
 
 	if (self.dir.r) then
 		hspace = hspace - self.dir.r.rsize;
-		move_image(self.dir.r.vid, xofs + hspace, yofs);
+		if (self.dir.r.rsize ~= self.dir.r.size) then
+			move_image(self.dir.r.vid, xofs + hspace + 
+				self.dir.r.rsize - self.dir.r.size, yofs);
+		else
+			move_image(self.dir.r.vid, xofs + hspace, yofs);
+		end
 		self.dir.r:resize(self.dir.r.size, vspace);
 	end
 	
 	resize_image(self.anchor, neww, newh);
 	move_image(self.canvas.vid, xofs, yofs); 
+	self.width = neww;
+	self.height = newh;
 	self.canvas:resize(hspace, vspace);
 end
 
@@ -103,17 +132,40 @@ end
 --
 local function awbwnd_move(self, newx, newy, timeval)
 	move_image(self.anchor, newx, newy, timeval);
+	self.x = newx;
+	self.y = newy;
 end
 
 local function awbwnd_destroy(self, timeval)
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
 
+--
+-- delete the icons immediately as we don't want them pressed
+-- and they "fade" somewhat oddly when there's a background bar
+--
 	for k, v in pairs(self.dir) do
 		if (v) then 
 			delete_image(v.activeimg);
 			delete_image(v.inactiveimg);
+	
+			v.activeimg = nil;
+			v.activeimg = nil;
+
+			for icnk, icnv in ipairs(v.left) do
+				delete_image(icnv.vid);
+			end
+
+			for icnk, icnv in ipairs(v.right) do
+				delete_image(icnv.vid);
+			end
+
+			if (v.fill) then
+				delete_image(v.fill.vid);
+			end
 		end
+
+		self.dir[k] = nil;
 	end
 --
 -- the rest should disappear in cascaded deletions
@@ -121,8 +173,10 @@ local function awbwnd_destroy(self, timeval)
 end
 
 local function awbbar_destroy(self)
-	delete_image(self.active);
-	delete_image(self.inactive);
+	if (self.activeres) then
+		delete_image(self.activeres);
+		delete_image(self.inactiveres);
+	end
 
 	for i=1,#self.left do
 		delete_image(self.left[i].vid);
@@ -141,6 +195,23 @@ local function awbbar_destroy(self)
 	self.right = nil;
 end
 
+local function awbbar_minsz(bar)
+	local w = 0;
+	local h = 0;
+
+	if (bar.vertical) then
+		w = bar.rsize;
+		h = (#bar.left + #bar.right) * bar.size + 
+			(bar.fill and bar.fill.minsz or 0);
+	else
+		h = bar.rsize;
+		w = (#bar.left + #bar.right) * bar.size + 
+			(bar.fill and bar.fill.minsz or 0);
+	end
+
+	return w, h;
+end
+
 local function awbbar_resize(self, neww, newh)
 	self.w = neww;
 	self.h = newh;
@@ -148,34 +219,49 @@ local function awbbar_resize(self, neww, newh)
 	resize_image(self.vid, neww, newh);
 	local storep = image_storage_properties(self.vid);
 
--- vertical or horizontal?
 	local stepx = 0;
 	local stepy = 0;
+	local ofs = 0;
+	local lim = 0;
 
-	if (neww > newh) then
+	if (not self.vertical) then
 		image_scale_txcos(self.vid, neww / storep.width, 1);
+		lim = neww;
 		stepx = 1;
 	else
 		image_scale_txcos(self.vid, 1, newh / storep.height);
+		lim = newh;
 		stepy = 1;
 	end
 
-	local startx = 0;
-	local starty = 0;
-	
 	for i=1,#self.left do
 		resize_image(self.left[i].vid, self.size, self.size);
 		move_image(self.left[i].vid, stepx * (i-1) * self.size,
 			stepy * (i-1) * self.size);
+		ofs = ofs + self.size;
 	end
 
 	for i=1,#self.right do
 		resize_image(self.right[i].vid, self.size, self.size);
-		move_image(self.left[i].vid, stepx * (i-1) * self.size,
-			stepy * (i-1) * self.size);
+		move_image(self.right[i].vid, stepx * self.w - (stepx * i * self.size),
+			stepy * self.h - (stepy * i * self.size) );
+		lim = lim - self.size;
 	end
 
 	if (self.fill) then
+		if (self.fill.maxsz > 0 and lim > self.fill.maxsz) then
+			lim = self.fill.maxsz;
+		end
+
+		if (self.vertical) then
+			move_image(self.fill.vid, 0, ofs);
+			resize_image(self.fill.vid, self.size, lim);
+		else
+			move_image(self.fill.vid, ofs, 0);
+			resize_image(self.fill.vid, lim, self.size);
+		end
+
+-- more "fill" positioning options when lim > maxsz, (center, left, right)
 	end
 end
 
@@ -187,6 +273,7 @@ local function awbbar_addicon(self, dir, image, trig)
 	local icon = null_surface(self.size, self.size);
 	link_image(icon, self.vid);
 	image_inherit_order(icon, true);
+	image_tracetag(icon, self.parent.name .. ".bar(" .. dir .. ").icon");
 
 	if (dir == "l" or dir == "r") then
 		table.insert(dir == "l" and self.left or self.right, icontbl);
@@ -194,10 +281,13 @@ local function awbbar_addicon(self, dir, image, trig)
 
 	elseif (dir == "fill") then
 		if (self.fill ~= nil) then
-			return nil;
+			delete_image(self.fill.vid);
 		end
-		
-		image_order(icon, 1);
+
+		icontbl.maxsz = 0;
+		icontbl.minsz = 0;
+		self.fill = icontbl; 
+		order_image(icon, 1);
 	else
 		return nil;
 	end
@@ -267,6 +357,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		own      = awbbar_own,
 		active   = awbbar_active,
 		inactive = awbbar_inactive,
+		min_sz   = awbbar_minsz,
 		left     = {},
 		right    = {},
 		fill     = nil,
@@ -274,6 +365,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		rsize    = rsize
 	};
 
+	awbbar.vertical = dir == "l" or dir == "r";
 	awbbar.parent = self;
 	awbbar.activeimg = load_image(activeres);
 	image_tracetag(awbbar.activeimg, "awbbar_active_store");
@@ -290,7 +382,6 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		.. "." .. dir .. "bar");
 
 	order_image(awbbar.vid, 1);
-	awbbar:active();
 
 	if (self.dir[dir]) then
 		self.dir[dir]:destroy();
@@ -300,19 +391,25 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 	
 -- resize will move / cascade etc.
 	self:resize(self.width, self.height);
+	awbbar:active();
 	return awbbar;
 end
 
 local function awbwnd_update_canvas(self, vid, volatile)
+
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
 	order_image(vid, 0);
 	show_image(vid);
 
 	local canvastbl = {
-		parent = self
+		parent = self,
+		minw = 1,
+		minh = 1,
+		vid = vid,
+		volatile = volatile
 	};
-	canvastbl.vid = vid;
+
 	canvastbl.resize = function(self, neww, newh)
 		resize_image(self.vid, neww, newh);
 	end
@@ -323,14 +420,10 @@ local function awbwnd_update_canvas(self, vid, volatile)
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
-
---
--- size canvas after window, moving / resizing based on
--- which border directions that are in use
---
+	self:resize(self.width, self.height);
 
 	if (oldcanvas and oldcanvas.volatile) then
-		delete_image(canvastbl.vid);
+		delete_image(oldcanvas.vid);
 	else	
 		return oldcanvas;
 	end
@@ -402,7 +495,7 @@ function awbwnd_create(options)
 --
 	for key, val in pairs(options) do
 		if (restbl[key]) then
-			restbl.key = val;
+			restbl[key] = val;
 		end
 	end
 

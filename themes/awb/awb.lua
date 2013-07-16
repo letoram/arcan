@@ -60,6 +60,7 @@ function awb()
 	symtable = system_load("scripts/symtable.lua")();
 
 -- shader function / model viewer
+  system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")(); 
 
 -- mouse abstraction layer (callbacks for click handlers,
@@ -87,12 +88,9 @@ function awb()
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
 
-	spawn_boing();
-
---	for i=1,10 do
---		local tbl = spawn_boing();
---		move_image(tbl.anchor, math.random(VRESW), math.random(VRESH));
---	end
+	for i=1,5 do
+		local tbl = spawn_boing();
+	end
 
 --	awb_desktop_setup();
 end
@@ -184,7 +182,7 @@ end
 --
 function spawn_boing(caption)
 	local int oval = math.random(1,100);
-	local a = awbwman_spawn("BOING!");
+	local a = awbwman_spawn(menulbl("Boing!"));
 
 	a.name = "boingwnd" .. tostring(oval);
 	
@@ -192,7 +190,7 @@ function spawn_boing(caption)
 		"shaders/boing.fShader", "boing" .. oval, {});
 		
 	local props = image_surface_properties(a.canvas.vid);
-	a.canvas.resize = function(self, neww, newh)
+		a.canvas.resize = function(self, neww, newh)
 		shader_uniform(boing, "display", "ff", PERSIST, neww, newh); 
 		shader_uniform(boing, "offset", "i", PERSIST, oval);
 		resize_image(self.vid, neww, newh);
@@ -200,6 +198,7 @@ function spawn_boing(caption)
 
 	image_shader(a.canvas.vid, boing);
 	a.canvas:resize(props.width, props.height);
+
 	return a;
 end
 
@@ -234,10 +233,18 @@ function awb_input(iotbl)
 			minputtbl[iotbl.subid] = iotbl.active;
 			mouse_input(0, 0, minputtbl);
 		end
-	
-	elseif (iotbl.kind == "digital" and iotbl.active 
-	 and iotbl.translated and kbdbinds[ symtable[iotbl.keysym] ]) then
-	 	kbdbinds[ symtable[iotbl.keysym] ]();
+
+	elseif (iotbl.kind == "digital" and iotbl.translated) then
+		if (symtable[iotbl.keysym] == "LSHIFT" or 
+			symtable[iotbl.keysym] == "RSHIFT") then 
+			awbwman_meta("shift", iotbl.active);
+		end
+
+		if (iotbl.active and kbdbinds[ symtable[iotbl.keysym] ]) then
+		 	kbdbinds[ symtable[iotbl.keysym] ]();
+		end
+
+-- forward input to focus window
 	elseif (wlist.focus) then
 		a = 1
 	end
