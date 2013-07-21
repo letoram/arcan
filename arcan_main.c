@@ -106,7 +106,7 @@ static const struct option longopts[] = {
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
-void usage()
+static void usage()
 {
 printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-w\t--width       \tdesired width (default: 640)\n"

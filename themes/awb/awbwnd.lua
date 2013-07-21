@@ -11,12 +11,51 @@
 
 local function awbwnd_alloc(tbl)
 -- root will serve as main visibility, clipping etc. region
-	tbl.anchor = null_surface(tbl.width, tbl.height);
+	tbl.anchor = null_surface(tbl.w, tbl.h);
 	image_tracetag(tbl.anchor, tbl.name .. ".anchor");
 	image_mask_set(tbl.anchor, MASK_UNPICKABLE);
 	show_image(tbl.anchor);	
 	move_image(tbl.anchor, tbl.x, tbl.y);
+
 	return tbl;
+end
+
+local function awbwnd_set_border(s, sz, r, g, b)
+-- border exists "outside" normal tbl dimensions
+	if (s.borders) then
+		for i, v in pairs(tbl.borders) do
+			delete_image(v);
+		end
+		s.borders = nil;
+		s.resize = s.default_resize;
+	end
+
+	if (sz > 0) then
+		local dirs = {"t", "l", "r", "b"};
+		s.borders = {};
+		for i, v in ipairs(dirs) do
+			s.borders[v] = color_surface(1, 1, r, g, b);
+			link_image(s.borders[v], s.anchor);
+			image_inherit_order(s.borders[v], true);
+			order_image(s.borders[v], 2);
+			show_image(s.borders[v]);
+		end
+		
+		s.default_resize = s.resize;
+		s.resize = function(self, neww, newh)
+			s:default_resize(neww, newh);
+
+			move_image(s.borders.t, 0 - sz, 0 - sz);
+			move_image(s.borders.b, 0 - sz, s.h);
+			move_image(s.borders.l, 0 - sz, 0);
+			move_image(s.borders.r, s.w, 0); 
+
+			resize_image(s.borders.t, s.w + sz * 2,  sz); 
+			resize_image(s.borders.r, sz, s.h);
+			resize_image(s.borders.l, sz, s.h);
+			resize_image(s.borders.b, s.w + sz * 2,  sz);
+		end
+	end
 end
 
 --
@@ -90,8 +129,8 @@ local function awbwnd_resize(self, neww, newh)
 	
 	resize_image(self.anchor, neww, newh);
 	move_image(self.canvas.vid, xofs, yofs); 
-	self.width = neww;
-	self.height = newh;
+	self.w = neww;
+	self.h = newh;
 	self.canvas:resize(hspace, vspace);
 end
 
@@ -101,28 +140,13 @@ end
 --
 local function awbwnd_own(self, vid)
 	local rv = nil;
+	local t = {self.canvas, self.dir.t, self.dir.r, self.dir.l, self.dir.b};
 
-	if (self.canvas) then
-		rv = self.canvas:own(vid);
+	for ind, val in ipairs(t) do
+		if (val and val:own(vid)) then
+			return true;
+		end
 	end
-
-	if (self.dir.t) then
-		rv = self.dir.t:own(vid);
-	end
-
-	if (not rv and self.dir.r) then
-		rv = self.dir.r:own(vid);
-	end
-
-	if (not rv and self.dir.l) then
-		rv = self.dir.l:own(vid);
-	end
-
-	if (not rv and self.dir.d) then
-		rv = self.dir.d:own(vid);
-	end
-
-	return rv;
 end
 
 --
@@ -267,7 +291,8 @@ end
 
 local function awbbar_addicon(self, dir, image, trig)
 	local icontbl = {
-		trigger = trig
+		trigger = trig,
+		parrent = self
 	};
 	
 	local icon = null_surface(self.size, self.size);
@@ -312,7 +337,10 @@ local function awbbar_own(self, vid)
 	for k, v in ipairs(tbl) do
 		for ind, val in ipairs(v) do
 			if (val.vid == vid) then
-				if (val:trigger()) then
+				local mx, my = mouse_xy();
+
+				if (val.trigger and val:trigger(mx - self.parent.x, 
+					my - self.parent.y)) then
 					return true;
 				end
 			end
@@ -373,7 +401,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 	awbbar.inactiveimg = load_image(inactiveres);
 	image_tracetag(awbbar.inactiveimg, "awbbar_inactive_store");
 
-	awbbar.vid      = null_surface(self.width, bsize);
+	awbbar.vid      = null_surface(self.w, bsize);
 	link_image(awbbar.vid, self.anchor);
 	show_image(awbbar.vid);
 
@@ -390,7 +418,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 	self.dir[dir] = awbbar;
 	
 -- resize will move / cascade etc.
-	self:resize(self.width, self.height);
+	self:resize(self.w, self.h);
 	awbbar:active();
 	return awbbar;
 end
@@ -420,7 +448,7 @@ local function awbwnd_update_canvas(self, vid, volatile)
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
-	self:resize(self.width, self.height);
+	self:resize(self.w, self.h);
 
 	if (oldcanvas and oldcanvas.volatile) then
 		delete_image(oldcanvas.vid);
@@ -466,12 +494,13 @@ function awbwnd_create(options)
 		own        = awbwnd_own,
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
+		set_border = awbwnd_set_border,
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
 
 -- defaults 
-   width       = math.floor(VRESW * 0.3),
-   height      = math.floor(VRESH * 0.3),
+   w           = math.floor(VRESW * 0.3),
+   h           = math.floor(VRESH * 0.3),
 	 x           = math.floor(0.5 * (VRESW - (VRESW * 0.3)));
 	 y           = math.floor(0.5 * (VRESH - (VRESH * 0.3)));
    minw        = 0,

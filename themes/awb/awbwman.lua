@@ -3,10 +3,15 @@
 -- More advanced windows from the (awbwnd.lua) base
 -- tracking ordering, creation / destruction /etc.
 --
-
---
--- Spawn a normal class window with optional caption
---
+-- Todolist:
+--   -> Auto-hide occluded windows to limit overdraw
+--   -> Tab- cycle focus window with out of focus shadowed
+--   -> Menu- bar per-window
+--   -> Fullscreen mode for window
+--   -> Autohide for top menu bar on fullscreen
+--   -> Drag and Drop for windows
+--   -> Remember icon / window positions and sizes
+--   -> Keyboard input for all windows
 
 -- #attic for now
 local awbwnd_invsh = [[
@@ -26,14 +31,15 @@ void main(){
 -- /#attic
 
 local awb_wtable = {};
+local awb_col = {};
 local awb_cfg = {
 	wlimit      = 10,
 	activeres   = "awbicons/border.png",
 	inactiveres = "awbicons/border_inactive.png",
 	alphares    = "awbicons/alpha.png",
 	topbar_sz   = 16,
-	spawnx      = 0,
-	spawny      = 0  
+	spawnx      = 20,
+	spawny      = 20  
 };
 
 local function awbwman_findind(val)
@@ -91,6 +97,16 @@ local function awbwman_focus(wnd)
 	awbwman_updateorder();
 end
 
+local function awbwman_shadow_nonfocus()
+	if (awb_cfg.focus == nil) then
+		return;
+	end
+
+	local order = image_surface_properties(awb_cfg.focus.anchor).order;
+	order_image(shadowimg, order - 1);
+	blend_image(shadowimg, 0.8, 0.8, awb_cfg.animspeed);
+end
+
 local function awbwman_close(wcont)
 	for i=1,#awb_wtable do
 		if (awb_wtable[i] == wcont) then
@@ -130,17 +146,20 @@ local function lineobj(src, x1, y1, x2, y2)
 end
 
 local function awbwnd_fling(wnd, fx, fy, bar)
-	local mfact = (wnd.width * wnd.height) / (VRESW * VRESH);
+	local len  = math.sqrt(fx * fx + fy * fy);
+	local wlen = 0.5 * math.sqrt(VRESW * VRESW + VRESH * VRESH);
+	local fact = 1 / (len / wlen);
+	local time = (10 * fact > 20) and 20 or (10 * fact);
 
 -- just some magnification + stop against screen edges
 	local dx = wnd.x + fx * 4;
 	local dy = wnd.y + fy * 4;
 	dx = dx >= 0 and dx or 0;
 	dy = dy >= 0 and dy or 0;
-	dx = (dx + wnd.width > VRESW) and (VRESW - wnd.width) or dx;
-	dy = (dy + wnd.height > VRESH) and (VRESH - wnd.height) or dy;
+	dx = (dx + wnd.w > VRESW) and (VRESW - wnd.w) or dx;
+	dy = (dy + wnd.h > VRESH) and (VRESH - wnd.h) or dy;
 
-	wnd:move(dx, dy, 10);
+	wnd:move(dx, dy, 10 * fact);
 end
 
 local function awbman_mhandlers(wnd, bar)
@@ -171,6 +190,11 @@ local function awbman_mhandlers(wnd, bar)
 	bar.dblclick = function(self, vid, x, y)
 		awbwman_focus(self.parent);
 
+--
+-- Note; change this into a real "maximize / fullscreen window" thing
+-- where the top-bar becomes self-hiding, the own window bar is hidden
+-- and any submenus added gets moved to the top-bar
+--
 		if (self.maximized) then
 			wnd:move(self.oldx, self.oldy);
 			wnd:resize(self.oldw, self.oldh);
@@ -179,8 +203,8 @@ local function awbman_mhandlers(wnd, bar)
 			self.maximized = true;
 			self.oldx = wnd.x;
 			self.oldy = wnd.y;
-			self.oldw = wnd.width;
-			self.oldh = wnd.height;
+			self.oldw = wnd.w;
+			self.oldh = wnd.h;
 			wnd:move(0, 20);
 			wnd:resize(VRESW, VRESH - 20);
 		end
@@ -236,6 +260,33 @@ local function awbwman_addcaption(bar, caption)
 	move_image(caption, 2, 2 + math.floor(0.5 * (bar.size - props.height)));
 end
 
+function awbwman_gather_scatter()
+	if (awb_cfg.scattered) then
+		for ind, val	in ipairs(awb_wtable) do
+			move_image(val.anchor, val.pos_memory[1], val.pos_memory[2], 10);
+			blend_image(val.anchor, 1.0, 10);
+		end
+
+		awb_cfg.scattered = nil;
+	else
+		for ind, val in ipairs(awb_wtable) do
+			val.pos_memory = {val.x, val.y};
+
+			if ( ( val.x + val.w * 0.5) < 0.5 * VRESW) then
+				move_image(val.anchor,  -val.w, val.y, 10);
+				blend_image(val.anchor, 1.0, 9);
+				blend_image(val.anchor, 0.0, 1);
+			else
+				move_image(val.anchor,  VRESW, val.y, 10);
+				blend_image(val.anchor, 1.0, 9);
+				blend_image(val.anchor, 0.0, 1);
+			end
+		end
+	
+		awb_cfg.scattered = true;
+	end
+end
+
 --
 -- desired spawning behavior might change (i.e. 
 -- best fit, random, centered, at cursor, incremental pos, ...)
@@ -256,6 +307,145 @@ local function awbwman_next_spawnpos()
 	end
 
 	return oldx, oldy;
+end
+
+local function next_iconspawn()
+	local oldx = awb_cfg.icnroot_x;
+	local oldy = awb_cfg.icnroot_y;
+
+	awb_cfg.icnroot_y = awb_cfg.icnroot_y + awb_cfg.icnroot_stepy;
+
+	if (awb_cfg.icnroot_y > awb_cfg.icnroot_maxy) then
+		awb_cfg.icnroot_x = awb_cfg.icnroot_x + awb_cfg.icnroot_stepx;
+		awb_cfg.icnroot_y = awb_cfg.starty;
+	end
+
+	return oldx, oldy;
+end
+
+function awbwman_iconwnd(caption, selfun)
+	local wnd = awbwman_spawn(caption);
+
+	awbwnd_iconview(wnd, 64, 48, 32, selfun, 
+		fill_surface(32, 32, 
+			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
+		fill_surface(32, 32, 
+			awb_col.dialog_sbar.r, awb_col.dialog_sbar.g,awb_col.dialog_sbar.b),"r"
+	);
+
+	return wnd;
+end
+
+--
+-- Similar to a regular spawn, but will always have order group 0,
+-- canvas click only sets group etc. somewhat simpler than the 
+-- awbicon window type as we don't care about resize or rapidly 
+-- changing dynamic sets of lots of icons
+--
+function awbwman_rootwnd()
+	local wcont = awbwnd_create({
+		x      = 0,
+		y      = 0,
+		w      = VRESW,
+		h      = VRESH
+	});
+
+	local r = awb_col.bgcolor[1];
+	local g = awb_col.bgcolor[2];
+	local b = awb_col.bgcolor[3];
+	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
+	wcont:update_canvas(canvas, true);
+
+	local tbar = wcont:add_bar("t", "awbicons/topbar.png", 
+		"awbicons/topbar.png", awb_cfg.topbar_sz, awb_cfg.topbar_sz);
+	order_image(tbar.vid, ORDER_MOUSE - 5);
+	image_mask_set(tbar.vid, MASK_UNPICKABLE);
+
+	blend_image(wcont.dir.t.vid, 0.8);
+	move_image(wcont.canvas, 0, -awb_cfg.topbar_sz);
+
+	hide_image(wcont.anchor);
+	blend_image(wcont.anchor, 1.0, 15);
+
+	awb_cfg.root = wcont;
+end
+
+function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
+	local icntbl = {
+		caption     = captionvid,
+		selected    = false,
+		trigger     = trig,
+		name        = name
+	};
+
+	icntbl.toggle = function(val)
+		if (val == nil) then
+			icntbl.selected = not icntbl.selected;
+			print(icntbl.selected);
+		else
+			icntbl.selected = val;
+		end
+
+		image_sharestorage(icntbl.selected and iconselvid or iconvid, icntbl.vid);
+	end
+
+-- create containers (anchor, mainvid)
+-- transfer icon storage to mainvid and position icon + canvas
+	local props = image_surface_properties(iconselvid);
+	icntbl.x, icntbl.y = next_iconspawn();
+
+	icntbl.anchor = null_surface(awb_cfg.rootcell_w, awb_cfg.rootcell_h);
+	icntbl.vid    = null_surface(props.width, props.height); 
+	image_sharestorage(iconvid, icntbl.vid);
+
+	link_image(icntbl.vid, icntbl.anchor);
+	link_image(icntbl.caption, icntbl.anchor);
+	move_image(icntbl.caption, math.floor( 0.5 * (awb_cfg.rootcell_w - 
+		image_surface_properties(captionvid).width)), props.height + 5);
+
+	image_mask_set(icntbl.anchor, MASK_UNPICKABLE);
+-- default mouse handlers (double-click -> trigger(), 
+-- free drag / reposition, single click marks as active/inactive
+	local ctable = {};
+	ctable.own = function(self, vid)
+		return vid == icntbl.vid or vid == icntbl.caption;
+	end
+
+	ctable.click = function(self, vid)
+		for k,v in ipairs(awb_cfg.rooticns) do
+			if (v ~= icntbl) then
+				v.toggle(false);
+			end
+		end
+		icntbl.toggle();
+	end
+
+	ctable.dblclick = function(self, vid)
+		for k, v in ipairs(awb_cfg.rooticns) do
+			v.toggle(false);
+		end
+		icntbl.trigger();
+	end
+
+	ctable.drop = function(self, vid, dx, dy)
+		icntbl.x = math.floor(icntbl.x);
+		icntbl.y = math.floor(icntbl.y);
+		move_image(icntbl.anchor, icntbl.x, icntbl.y);
+	end
+
+	ctable.drag = function(self, vid, dx, dy)
+		icntbl.x = icntbl.x + dx;
+		icntbl.y = icntbl.y + dy;
+		move_image(icntbl.anchor, icntbl.x, icntbl.y);
+-- nudge windows so the region is free
+	end
+
+	order_image({icntbl.caption, icntbl.vid}, 5);
+	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 1.0, 15);
+	move_image(icntbl.anchor, icntbl.x, icntbl.y);
+
+	mouse_addlistener(ctable, {"drag", "drop", "click", "dblclick"});
+	table.insert(awb_cfg.rooticns, icntbl);
 end
 
 function awbwman_spawn(caption)
@@ -281,14 +471,14 @@ function awbwman_spawn(caption)
 
 -- single color canvas (but treated as textured)
 -- for shader or replacement 
-	local r = colortable.bgcolor[1];
-	local g = colortable.bgcolor[2];
-	local b = colortable.bgcolor[3];
+	local r = awb_col.bgcolor[1];
+	local g = awb_col.bgcolor[2];
+	local b = awb_col.bgcolor[3];
 
 -- separate click handler for the canvas area
 -- as more advanced windows types (selection etc.) may need 
 -- to override
-	local canvas = fill_surface(wcont.width, wcont.height, r, g, b);
+	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas, true);
 	local chandle = {};
 	chandle.click = function(vid, x, y)
@@ -320,13 +510,13 @@ function awbwman_spawn(caption)
 -- lies above the canvas area. The resize button needs a separate 
 -- mouse handler
 	local rbar = wcont:add_bar("r", awb_cfg.alphares,
-		awb_cfg.alphares, awb_cfg.topbar_sz, 0);
+		awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
 	image_mask_set(rbar.vid, MASK_UNPICKABLE);
 	local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
 	local rhandle = {};
 	rhandle.drag = function(self, vid, x, y)
 		awbwman_focus(wcont);
-		wcont:resize(wcont.width + x, wcont.height + y);
+		wcont:resize(wcont.w + x, wcont.h + y);
 	end
 	rhandle.own = function(self, vid)
 		return vid == icn.vid;
@@ -336,6 +526,9 @@ function awbwman_spawn(caption)
 -- register, push to front etc.
   awbman_mhandlers(wcont, tbar);
 	awbwman_regwnd(wcont);
+
+	wcont:set_border(1, awb_col.dialog_border.r, 
+		awb_col.dialog_border.g, awb_col.dialog_border.b);
 
 	hide_image(wcont.anchor);
 	blend_image(wcont.anchor, 1.0, 15);
@@ -347,9 +540,25 @@ end
 -- Load / Store default settings for window behavior etc.
 --
 function awbwman_init()
+	awb_cfg.meta       = {};
 	awb_cfg.bordericns = {};
+	awb_cfg.rooticns   = {};
+	awb_col = system_load("scripts/colourtable.lua")();
+
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
-	awb_cfg.meta = {};
+
+	awb_cfg.rootcell_w     = 80;
+	awb_cfg.rootcell_h     = 60;
+
+	awb_cfg.icnroot_starty = 0;
+	awb_cfg.icnroot_stepx  = -40;
+	awb_cfg.icnroot_stepy  = 80;
+	awb_cfg.icnroot_maxy   = VRESH - 100;
+
+	awb_cfg.icnroot_x      = VRESW - 100;
+	awb_cfg.icnroot_y      = 30;
+
+	awbwman_rootwnd();
 end
