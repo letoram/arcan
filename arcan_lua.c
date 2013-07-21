@@ -127,9 +127,9 @@ extern char* arcan_themename;
 extern arcan_dbh* dbhandle;
 
 enum arcan_cb_source {
-	CB_SOURCE_NONE = 0,
-	CB_SOURCE_FRAMESERVER= 1,
-	CB_SOURCE_IMAGE = 2
+	CB_SOURCE_NONE        = 0,
+	CB_SOURCE_FRAMESERVER = 1,
+	CB_SOURCE_IMAGE       = 2
 };
 
 static struct {
@@ -168,7 +168,7 @@ static inline char* findresource(const char* arg, int searchmask)
 	return res;
 }
 
-int arcan_lua_zapresource(lua_State* ctx)
+static int arcan_lua_zapresource(lua_State* ctx)
 {
 	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
 
@@ -181,7 +181,7 @@ int arcan_lua_zapresource(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_rawresource(lua_State* ctx)
+static int arcan_lua_rawresource(lua_State* ctx)
 {
 	char* path = findresource(luaL_checkstring(ctx, 1), 
 		ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
@@ -215,7 +215,7 @@ static char* chop(char* str)
     return str;
 }
 
-int arcan_lua_readrawresource(lua_State* ctx)
+static int arcan_lua_readrawresource(lua_State* ctx)
 {
 	if (lua_ctx_store.rfile){
 		char line[256];
@@ -228,7 +228,8 @@ int arcan_lua_readrawresource(lua_State* ctx)
 	return 0;
 }
 
-void arcan_lua_setglobalstr(lua_State* ctx, const char* key, const char* val)
+void arcan_lua_setglobalstr(lua_State* ctx, 
+	const char* key, const char* val)
 {
 	lua_pushstring(ctx, val);
 	lua_setglobal(ctx, key);
@@ -240,7 +241,7 @@ void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val)
 	lua_setglobal(ctx, key);
 }
 
-const char* luaL_lastcaller(lua_State* ctx)
+static const char* luaL_lastcaller(lua_State* ctx)
 {
 	return lua_tostring(ctx, lua_upvalueindex(2));
 }
@@ -301,7 +302,7 @@ static inline void lua_pushaid(lua_State* ctx, arcan_aobj_id id)
 	lua_pushnumber(ctx, id);
 }
 
-int arcan_lua_rawclose(lua_State* ctx)
+static int arcan_lua_rawclose(lua_State* ctx)
 {
 	bool res = false;
 
@@ -314,7 +315,7 @@ int arcan_lua_rawclose(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_pushrawstr(lua_State* ctx)
+static int arcan_lua_pushrawstr(lua_State* ctx)
 {
 	bool res = false;
 	const char* mesg = luaL_checkstring(ctx, 1);
@@ -328,7 +329,7 @@ int arcan_lua_pushrawstr(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_loadimage(lua_State* ctx)
+static int arcan_lua_loadimage(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
 	char* path = findresource(luaL_checkstring(ctx, 1), 

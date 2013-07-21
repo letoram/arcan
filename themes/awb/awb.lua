@@ -23,8 +23,6 @@ groupselicn = "awbicons/drawer_open.png";
 deffont     = "fonts/topaz8.ttf";
 deffont_sz  = 12;
 
-colortable.bgcolor = {0, 85, 169};
-
 x_spawnpos = 20;
 y_spawnpos = 20;
 
@@ -38,10 +36,11 @@ ORDER_MOUSE     = 255;
 kbdbinds = {};
 kbdbinds["LCTRL"]  = toggle_mouse_grab;
 kbdbinds["ESCAPE"] = shutdown;
-kbdbinds["F11"]    = function() mouse_accellstep(-1); end
-kbdbinds["F12"]    = function() mouse_accellstep(1);  end
-kbdbinds["F9"]     = function() volume_step(-1);      end
+kbdbinds["F7"]     = function() mouse_accellstep(-1); end
+kbdbinds["F8"]     = function() mouse_accellstep(1);  end
+kbdbinds["F9"]     = function() volume_step(-1);      end 
 kbdbinds["F10"]    = function() volume_step(1);       end
+kbdbinds["F11"]    = function() awbwman_gather_scatter(); end
 
 --  window (focus, minimize, maximize, close)
 --  border (always visible, content (when not drag))
@@ -52,6 +51,11 @@ kbdbinds["F10"]    = function() volume_step(1);       end
 
 function menulbl(text)
 	return render_text(string.format("\\#0055a9\\f%s,%d %s", 
+		deffont, 10, text));
+end
+
+function desktoplbl(text)
+	return render_text(string.format("\\#ffffff\\f%s,%d %s",
 		deffont, 10, text));
 end
 
@@ -67,7 +71,9 @@ function awb()
 -- motion events etc.)
 	system_load("scripts/mouse.lua")();
 
+	system_load("awb_iconcache.lua")();
 	system_load("awbwnd.lua")();
+	system_load("awbwnd_icon.lua")();
 	system_load("awbwman.lua")();
 
 	settings.defwinw = math.floor(VRESW * 0.35);
@@ -87,16 +93,152 @@ function awb()
 	image_tracetag(imagery.cursor, "mouse cursor");
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
+	
+	awb_desktop_setup();
+end
 
-	for i=1,5 do
-		local tbl = spawn_boing();
+function table.subtbl(self, ofs, lim)
+	local res = {};
+
+	for i=ofs, i < lim and i < #self do
+		table.insert(res, self[i]);
 	end
 
---	awb_desktop_setup();
+	return res;
+end
+
+--
+-- Set up a basic gamelist view from a prefiltered selection
+-- (which can be fine-grained afterwards ofc). 
+--
+function gamelist_wnd(selection)
+	awbwman_listwnd(menulbls(selection), function(filter,
+		ofs, lim, iconw, iconh)
+		
+	end);
+end
+
+--
+-- Encompass all (gettargets, getgame, gamefamily, getgenres)
+-- course- grained filters
+--
+function build_systbl(self, listcmd, trigfun)
+	local tgtlist = listcmd();
+	if (system_list == nil or #tgtlist ~= #system_list) then
+		system_list = {};
+		for i, v in tgtlist do
+			local ent = {};
+			ent.icon    = sysicons.lru_cache:get(v);
+			ent.caption = desktoplbl(v);
+			ent.name    = v;
+			ent.trigger = gamelist_wnd;
+			table.insert(system_list, ent);
+		end
+	end
+
+	awbwman_iconwnd(menulbl("Systems"),
+		function(filter, ofs, lim, iconw, iconh)
+			return table.subtbl(systbl, ofs, lim);
+		end);
+end
+
+function awb_desktop_setup()
+	sysicons.group        = load_image("awbicons/drawer.png");
+	sysicons.group_active = load_image("awbicons/drawer_open.png");
+	sysicons.boing        = load_image("awbicons/boing.png");
+	sysicons.floppy       = load_image("awbicons/floppy.png");
+	sysicons.shell        = load_image("awbicons/shell.png");
+
+-- constraint, lru_cache limit should always be >= the number of icons
+-- in a fullscreen iconview window (else, if every entry is unique,
+-- images will be deleted before they are used)
+	sysicons.lru_cache    = awb_iconcache(64, 
+		{"images/icons", "icons", "images/systems"}, sysicons.floppy); 
+
+	local groups = {
+		{
+			name    = "Tools",
+			key     = "tools",
+			trigger = function()
+				awbwman_iconwnd(menulbl("Tools"), builtin_group);
+			end
+		},
+		{
+			name    = "Saves",
+			key     = "savestates",
+			trigger = nil, 
+		},
+		{
+			name    = "Systems",
+			key     = "sytems",
+			trigger = function()
+				local tbl =	awbwman_iconwnd(menulbl("Systems"), system_group);
+				tbl.idfun = list_targets;
+			end
+		}
+	};
+
+	for i,j in pairs(groups) do
+		local lbl = desktoplbl(j.name);
+		awbwman_rootaddicon(j.key, lbl, sysicons.group, 
+			sysicons.group_active, j.trigger);
+	end
+
 end
 
 function attrstr(self)
 	return self.title;
+end
+
+--
+-- Since these use the icon LRU cache, parts of 
+-- the tables need to be generated dynamically
+--
+function builtin_group(self, ofs, lim, desw, desh)
+	local tools = {
+		{"BOING!",    spawn_boing,    "boing"},
+		{"InputConf", spawn_inped,  "inputed"},
+		{"Recorder",  spawn_vidrec,  "vidrec"},
+		{"Network",   spawn_socsrv, "socserv"},
+		{"VidCap",    spawn_vidcap,  "vidcap"}
+	};
+
+	local restbl = {};
+
+	lim = lim + ofs;
+	while ofs <= lim and ofs <= #tools do
+		local newtbl = {};
+		newtbl.caption = desktoplbl(tools[ofs][1]);
+		newtbl.trigger = tools[ofs][2];
+		newtbl.name    = tools[ofs][3];
+		newtbl.icon    = sysicons.lru_cache:get(newtbl.name, desw, desh).icon;
+		table.insert(restbl, newtbl);
+		ofs = ofs + 1;
+	end
+
+	return restbl, #tools;
+end
+
+function listview_group(self)
+	print("should list:", self.name, self.idfun);
+end
+
+function system_group(self, ofs, lim, desw, desh)
+	local targets = list_targets();
+	local restbl = {};
+
+	lim = lim + ofs;
+	while ofs <= lim and ofs <= #targets do
+		local newtbl = {};
+		newtbl.caption = desktoplbl(targets[ofs]);
+		newtbl.trigger = listview_group;
+		newtbl.name    = targets[ofs];
+		newtbl.icon    = sysicons.lru_cache:get(newtbl.name, desw, desh).icon;
+		table.insert(restbl, newtbl);
+		ofs = ofs + 1;
+	end
+	
+	return restbl, #targets;
 end
 
 --
@@ -216,10 +358,6 @@ function closewin(self)
 
 	mouse_droplistener(self);
 	self.parent.parent:destroy(15);
-end
-
-function resizewnd(self, vid, x, y)
-	self.parent:resize(self.parent.width + x, self.parent.height + y);
 end
 
 minputtbl = {false, false, false};
