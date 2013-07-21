@@ -24,12 +24,14 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_img.h"
 #include "arcan_video.h"
 
+#include <zlib.h>
 #include <png.h>
 
 #ifdef TJPEG
@@ -67,7 +69,7 @@ static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int
  */ 
 static void png_readfun(png_structp png_ptr, png_bytep outb, png_size_t ntr)
 {
-	struct png_readstr* indata = png_ptr->io_ptr;
+	struct png_readstr* indata = png_get_io_ptr(png_ptr);
 	memcpy(outb, indata->inbuf + indata->inbuf_ofs, ntr);
 	indata->inbuf_ofs += ntr;
 }
