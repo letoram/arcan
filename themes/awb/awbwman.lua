@@ -13,7 +13,10 @@
 --   -> Remember icon / window positions and sizes
 --   -> Keyboard input for all windows
 
--- #attic for now
+--
+-- mapped up as "default_inverted", needed by some subclasses
+-- (e.g. awbwnd_icon etc.)
+--
 local awbwnd_invsh = [[
 uniform sampler2D map_diffuse;
 uniform float obj_opacity;
@@ -28,18 +31,30 @@ void main(){
 		col.a * obj_opacity);
 }
 ]];
--- /#attic
 
 local awb_wtable = {};
 local awb_col = {};
 local awb_cfg = {
+-- window management
 	wlimit      = 10,
+	focus_locked = false,
 	activeres   = "awbicons/border.png",
 	inactiveres = "awbicons/border_inactive.png",
 	alphares    = "awbicons/alpha.png",
 	topbar_sz   = 16,
 	spawnx      = 20,
-	spawny      = 20  
+	spawny      = 20,
+	animspeed   = 10,
+
+-- root window icon management
+	rootcell_w  = 80,
+	rootcell_h  = 60,
+	icnroot_startx = 0,
+	icnroot_stepx  = -40,
+	icnroot_stepy  = 80,
+	icnroot_maxy   = VRESH - 100,
+	icnroot_x      = VRESW - 100,
+	icnroot_y      = 30
 };
 
 local function awbwman_findind(val)
@@ -83,7 +98,7 @@ end
 
 local function awbwman_focus(wnd)
 	if (awb_cfg.focus) then
-		if (awb_cfg.focus == wnd) then
+		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
 		end
 		
@@ -97,14 +112,20 @@ local function awbwman_focus(wnd)
 	awbwman_updateorder();
 end
 
-local function awbwman_shadow_nonfocus()
-	if (awb_cfg.focus == nil) then
+function awbwman_shadow_nonfocus()
+	if (awb_cfg.focus_locked == false and awb_cfg.focus == nil) then
 		return;
 	end
 
-	local order = image_surface_properties(awb_cfg.focus.anchor).order;
-	order_image(shadowimg, order - 1);
-	blend_image(shadowimg, 0.8, 0.8, awb_cfg.animspeed);
+	awb_cfg.focus_locked = not awb_cfg.focus_locked;
+
+	if (awb_cfg.focus_locked)  then
+		local order = image_surface_properties(awb_cfg.focus.anchor).order;
+		order_image(awb_cfg.shadowimg, order - 1);
+		blend_image(awb_cfg.shadowimg, 0.8, awb_cfg.animspeed);
+	else
+		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed); 
+	end
 end
 
 local function awbwman_close(wcont)
@@ -117,12 +138,16 @@ local function awbwman_close(wcont)
 
 	if (awb_cfg.focus == wcont) then
 		awb_cfg.focus = nil;
+		if (awb_cfg.focus_locked) then
+			awbwman_shadow_nonfocus();
+		end
+
 		if (#awb_wtable > 0) then
 			awbwman_focus(awb_wtable[#awb_wtable]);
 		end
 	end
 	
-	wcont:destroy(15);
+	wcont:destroy(awb_cfg.animspeed);
 end
 
 local function awbwman_regwnd(wcont)
@@ -261,10 +286,15 @@ local function awbwman_addcaption(bar, caption)
 end
 
 function awbwman_gather_scatter()
+	if (awb_cfg.focus_locked) then
+		awbwman_shadow_nonfocus();
+	end
+
 	if (awb_cfg.scattered) then
 		for ind, val	in ipairs(awb_wtable) do
-			move_image(val.anchor, val.pos_memory[1], val.pos_memory[2], 10);
-			blend_image(val.anchor, 1.0, 10);
+			move_image(val.anchor, val.pos_memory[1], 
+				val.pos_memory[2], awb_cfg.animspeed);
+			blend_image(val.anchor, 1.0, awb_cfg.animspeed);
 		end
 
 		awb_cfg.scattered = nil;
@@ -273,11 +303,11 @@ function awbwman_gather_scatter()
 			val.pos_memory = {val.x, val.y};
 
 			if ( ( val.x + val.w * 0.5) < 0.5 * VRESW) then
-				move_image(val.anchor,  -val.w, val.y, 10);
+				move_image(val.anchor,  -val.w, val.y, awb_cfg.animspeed);
 				blend_image(val.anchor, 1.0, 9);
 				blend_image(val.anchor, 0.0, 1);
 			else
-				move_image(val.anchor,  VRESW, val.y, 10);
+				move_image(val.anchor,  VRESW, val.y, awb_cfg.animspeed);
 				blend_image(val.anchor, 1.0, 9);
 				blend_image(val.anchor, 0.0, 1);
 			end
@@ -365,7 +395,7 @@ function awbwman_rootwnd()
 	move_image(wcont.canvas, 0, -awb_cfg.topbar_sz);
 
 	hide_image(wcont.anchor);
-	blend_image(wcont.anchor, 1.0, 15);
+	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 
 	awb_cfg.root = wcont;
 end
@@ -441,7 +471,7 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 	end
 
 	order_image({icntbl.caption, icntbl.vid}, 5);
-	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 1.0, 15);
+	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 1.0, awb_cfg.animspeed);
 	move_image(icntbl.anchor, icntbl.x, icntbl.y);
 
 	mouse_addlistener(ctable, {"drag", "drop", "click", "dblclick"});
@@ -531,7 +561,7 @@ function awbwman_spawn(caption)
 		awb_col.dialog_border.g, awb_col.dialog_border.b);
 
 	hide_image(wcont.anchor);
-	blend_image(wcont.anchor, 1.0, 15);
+	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 
 	return wcont;
 end
@@ -548,17 +578,9 @@ function awbwman_init()
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
+	awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0);
 
-	awb_cfg.rootcell_w     = 80;
-	awb_cfg.rootcell_h     = 60;
-
-	awb_cfg.icnroot_starty = 0;
-	awb_cfg.icnroot_stepx  = -40;
-	awb_cfg.icnroot_stepy  = 80;
-	awb_cfg.icnroot_maxy   = VRESH - 100;
-
-	awb_cfg.icnroot_x      = VRESW - 100;
-	awb_cfg.icnroot_y      = 30;
+	build_shader(nil, awbwnd_invsh, "awb_selected");
 
 	awbwman_rootwnd();
 end

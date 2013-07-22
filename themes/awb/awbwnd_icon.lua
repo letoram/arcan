@@ -22,28 +22,29 @@ end
 -- (and hide/show scrollbar if one isn't needed)
 --
 local function awbicon_setscrollbar(self, visible, ofs, total)
-	local enabled = image_surface_properties(
-		self.dir[self.icon_bardir].fill.vid).opa <= 0;
+	local fillprop = image_surface_properties(self.dir[self.icon_bardir].fill.vid);
+	local enabled = fillprop.opacity > 0.0;
 
-	if (not enabled and visible <= 0) then
+	if (not enabled and visible == false) then
 		return;
 
-	elseif (enabled and visible <= 0) then
+	elseif (enabled and visible == false) then
 		hide_image(self.dir[self.icon_bardir].fill.vid);
 		self.dir[self.icon_bardir].oldsz = self.dir[self.icon_bardir].bsize;
 		self.dir[self.icon_bardir].bsize = 0;
-		self:icon_resize(neww, newh);
+		self:icon_resize(self.w, self.h);
 		return;
 
-	elseif (not enabled and visible >= 0) then
+	elseif (not enabled) then
 		show_image(self.dir[self.icon_bardir].fill.vid);
 		self.dir[self.icon_bardir].bsize = self.dir[self.icon_bardir].oldsz;
-		self:icon_resize(neww, newh);
+		self:icon_resize(self.w, self.h);
 	end
 
-	resize_image(self.scrollcaret, self.topbar_sz, math.floor(self.height * 
-		(visible / total)));
-	move_image(self.scrollcaret, 1, math.floor(visible * ofs / total));
+	local stepsz = fillprop.height / total; 
+
+	resize_image(self.scrollcaret, fillprop.width - 4, stepsz * #self.icons); 
+	move_image(self.scrollcaret, 2, 2 + (ofs - 1) * stepsz);
 end
 
 local function awbicon_add(self, icntbl)
@@ -57,13 +58,14 @@ local function awbicon_add(self, icntbl)
 	show_image(icn_area);
 
 -- container for icon (lifecycle managed elsewhere)
-	icn = null_surface(self.cell_w, self.cell_h);
+	local icn = null_surface(self.cell_w, self.cell_h);
 	image_sharestorage(icntbl.icon, icn);
+	image_mask_set(icn, MASK_UNPICKABLE);
 	link_image(icn, icn_area);
 	image_inherit_order(icn, true);
 	image_clip_on(icn);
 	order_image(icn, 1);
-	show_image(icn);
+	blend_image(icn, 0.5);
 	image_tracetag(icn, tostring(icntbl.name) .. ".icon");
 
 -- caption is managed here however, assumed caption.height < icnh-2-icnsize
@@ -73,6 +75,7 @@ local function awbicon_add(self, icntbl)
 		local props = image_surface_properties(icntbl.caption);
 		link_image(icntbl.caption, icn_area);
 		show_image(icntbl.caption);
+		image_mask_set(icntbl.caption, MASK_UNPICKABLE);
 		image_inherit_order(icntbl.caption, true);
 		order_image(icntbl.caption, 1);
 		image_clip_on(icntbl.caption);
@@ -87,6 +90,20 @@ local function awbicon_add(self, icntbl)
 
 -- icn_area works as container for deletions as well
 	table.insert(self.icons, icn_area);
+
+	icntbl.own = function(self, vid)
+		return vid == icn_area;
+	end
+
+	icntbl.over = function()
+		blend_image(icn, 1.0, 5);
+	end
+
+	icntbl.out = function()
+		blend_image(icn, 0.5, 5);
+	end
+
+	mouse_addlistener(icntbl, {"over", "out", "dblclick"});
 end
 
 --
@@ -107,7 +124,7 @@ local function awbicon_resize(self, neww, newh)
 -- shrink (drop n items from the end of icons)
 -- else just reposition
 	if (lim > #self.icons) then
-		tbl, total = self:datasel(self.ofs + #self.icons, lim - #self.icons, 
+		tbl, self.total = self:datasel(self.ofs + #self.icons, lim - #self.icons, 
 			self.cell_w, self.cell_h);
 
 		for i, v in ipairs(tbl) do
@@ -115,7 +132,7 @@ local function awbicon_resize(self, neww, newh)
 		end
 
 	elseif (lim < #self.icons) then
-		for i=#self.icons,lim,-1 do
+		for i=#self.icons,lim+1,-1 do
 			local tbl = table.remove(self.icons);
 			if (valid_vid(tbl)) then
 				delete_image(tbl);
@@ -124,7 +141,12 @@ local function awbicon_resize(self, neww, newh)
 		end
 	end
 
--- show scrollbar / move scroll-cursor
+	if (#self.icons / self.total >= 1 or #self.icons == 0) then
+		awbicon_setscrollbar(self, false);
+	else
+		awbicon_setscrollbar(self, #self.icons, self.ofs, self.total); 
+	end
+
 	self:reposition();
 end
 

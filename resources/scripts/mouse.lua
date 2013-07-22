@@ -32,6 +32,16 @@ local function linear_find(table, label)
 	return nil;  
 end
 
+local function linear_ifind(table, val)
+	for i=1,#table do
+		if (table[i] == val) then
+			return true;
+		end
+	end
+
+	return false;
+end
+
 local function linear_find_vid(table, vid)
 	for a,b in pairs(table) do
 		if (b:own(vid)) then
@@ -155,7 +165,6 @@ local function lmbhandler(hists, press)
 		mstate.counter   = 0;
 		mstate.predrag   = nil;
 		mstate.drag      = nil;	
-		
 	end 
 end
 
@@ -163,7 +172,7 @@ function mouse_input(x, y, state)
 	x, y = mouse_cursorupd(x, y);
 
 -- look for new mouse over objects
--- not that over/out do not filter drag/drop targets, that's up to the owner
+-- note that over/out do not filter drag/drop targets, that's up to the owner
 	local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
 	for i=1,#hists do
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
@@ -177,11 +186,10 @@ function mouse_input(x, y, state)
 
 -- drop ones no longer selected
 	for i=#mstate.cur_over,1,-1 do
-		vid = linear_find(hists, mstate.cur_over[i]);
-		if (vid == nil) then
-			local res = linear_find_vid(mstate.handlers.out, hists[i]);
-			if (res) then 
-				res:out(hists[i], mstate.x, mstate.y);
+		if (not linear_ifind(hists, mstate.cur_over[i])) then
+			local res = linear_find_vid(mstate.handlers.out, mstate.cur_over[i]);
+			if (res) then
+				res:out(mstate.cur_over[i], mstate.x, mstate.y);
 			end
 			table.remove(mstate.cur_over, i);
 		end
