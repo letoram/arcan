@@ -12,6 +12,8 @@
 --   -> Drag and Drop for windows
 --   -> Remember icon / window positions and sizes
 --   -> Keyboard input for all windows
+--   -> Animated resize effect
+--   -> Iconify 
 
 --
 -- mapped up as "default_inverted", needed by some subclasses
@@ -360,9 +362,25 @@ function awbwman_iconwnd(caption, selfun)
 		fill_surface(32, 32, 
 			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
 		fill_surface(32, 32, 
-			awb_col.dialog_sbar.r, awb_col.dialog_sbar.g,awb_col.dialog_sbar.b),"r"
+			awb_col.dialog_sbar.r, awb_col.dialog_sbar.g, awb_col.dialog_sbar.b),
+			"r"
 	);
 
+	return wnd;
+end
+
+function awbwman_listwnd(caption, lineh, colopts, selfun, renderfun)
+	local wnd = awbwman_spawn(caption);
+
+	awbwnd_listview(wnd, lineh, colopts, selfun, renderfun, 
+		fill_surface(32, 32, 
+			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
+		fill_surface(32, 32, 
+			awb_col.dialog_sbar.r, awb_col.dialog_sbar.g,awb_col.dialog_sbar.b),
+		fill_surface(32, 32,
+			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
+		"r");
+	
 	return wnd;
 end
 
@@ -411,7 +429,6 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 	icntbl.toggle = function(val)
 		if (val == nil) then
 			icntbl.selected = not icntbl.selected;
-			print(icntbl.selected);
 		else
 			icntbl.selected = val;
 		end

@@ -7,6 +7,7 @@ local mouse_handlers = {
 	out   = {}, 
   drag  = {},
 	drop  = {},
+	motion = {},
 	dblclick = {},
 	rclick = {}
 };
@@ -192,6 +193,11 @@ function mouse_input(x, y, state)
 				res:out(mstate.cur_over[i], mstate.x, mstate.y);
 			end
 			table.remove(mstate.cur_over, i);
+		else
+			local res = linear_find_vid(mstate.handlers.motion, mstate.cur_over[i]);
+			if (res) then
+				res:motion(mstate.cur_over[i], mstate.x, mstate.y);
+			end
 		end
 	end
 

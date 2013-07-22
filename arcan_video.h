@@ -62,6 +62,12 @@ enum arcan_vtex_mode {
 	ARCAN_VTEX_CLAMP  = 1
 };
 
+enum arcan_clipmode {
+	ARCAN_CLIP_OFF = 0,
+	ARCAN_CLIP_ON  = 1,
+	ARCAN_CLIP_SHALLOW = 2
+};
+
 enum arcan_vfilter_mode {
 	ARCAN_VFILTER_NONE,
 	ARCAN_VFILTER_LINEAR,
@@ -220,7 +226,7 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent,
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src, 
 	enum arcan_transform_mask mask);
-arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon);
+arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode toggleon);
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);
 const char* const arcan_video_readtag(arcan_vobj_id id);
 

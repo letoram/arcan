@@ -66,13 +66,14 @@ function awb()
   system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")(); 
 
--- mouse abstraction layer (callbacks for click handlers,
--- motion events etc.)
+-- mouse abstraction layer 
+-- (callbacks for click handlers, motion events etc.)
 	system_load("scripts/mouse.lua")();
 
 	system_load("awb_iconcache.lua")();
 	system_load("awbwnd.lua")();
 	system_load("awbwnd_icon.lua")();
+	system_load("awbwnd_list.lua")();
 	system_load("awbwman.lua")();
 
 	settings.defwinw = math.floor(VRESW * 0.35);
@@ -107,38 +108,60 @@ function table.subtbl(self, ofs, lim)
 end
 
 --
+-- Setup a frameserver session with an interactive target
+-- as a new window, start with a "launching" canvas and 
+-- on activation, switch to the real one.
+--
+function gamelist_launch(self)
+	local wnd = awbwman_spawn(menulbl(self.name));
+	launch_target(self.gameid, LAUNCH_INTERNAL, function(source, status)
+		wnd:update_canvas(source, false);	
+	end);
+end
+
+function spawn_vidwin(self)
+	local wnd = awbwman_spawn(menulbl("Video Capture"));
+
+	load_movie("vidcap:0", NOLOOP, function(source, status)
+		if (status.kind == "resized") then
+			play_movie(source);
+			wnd:update_canvas(source, false);
+			wnd:resize(status.width, status.height);
+		end
+	end);
+
+	return wnd;
+end
+
+--
 -- Set up a basic gamelist view from a prefiltered selection
 -- (which can be fine-grained afterwards ofc). 
 --
 function gamelist_wnd(selection)
-	awbwman_listwnd(menulbls(selection), function(filter,
+	local tgtname = selection.name;
+	local tgttotal = #list_games({target = tgtname});
+
+	awbwman_listwnd(menulbl(tgtname), 10, {0.7, 0.3}, function(filter,
 		ofs, lim, iconw, iconh)
 		
-	end);
-end
+		local res = {};
+		local tbl = list_games({offset = ofs-1, limit = lim, target = tgtname});
 
---
--- Encompass all (gettargets, getgame, gamefamily, getgenres)
--- course- grained filters
---
-function build_systbl(self, listcmd, trigfun)
-	local tgtlist = listcmd();
-	if (system_list == nil or #tgtlist ~= #system_list) then
-		system_list = {};
-		for i, v in tgtlist do
-			local ent = {};
-			ent.icon    = sysicons.lru_cache:get(v);
-			ent.caption = desktoplbl(v);
-			ent.name    = v;
-			ent.trigger = gamelist_wnd;
-			table.insert(system_list, ent);
+		if (tbl) then
+		for i=1,#tbl do
+			local ent = {
+				name    = tbl[i].title,
+				gameid  = tbl[i].gameid,
+				trigger = gamelist_launch,
+				cols    = {tbl[i].title, tbl[i].genre}
+			};
+
+			table.insert(res, ent);
 		end
-	end
-
-	awbwman_iconwnd(menulbl("Systems"),
-		function(filter, ofs, lim, iconw, iconh)
-			return table.subtbl(systbl, ofs, lim);
-		end);
+		end
+	
+		return res, tgttotal;
+	end, desktoplbl);
 end
 
 function awb_desktop_setup()
@@ -183,6 +206,7 @@ function awb_desktop_setup()
 			sysicons.group_active, j.trigger);
 	end
 
+	groups[3]:trigger();
 end
 
 function attrstr(self)
@@ -199,7 +223,7 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"InputConf", spawn_inped,  "inputed"},
 		{"Recorder",  spawn_vidrec,  "vidrec"},
 		{"Network",   spawn_socsrv, "socserv"},
-		{"VidCap",    spawn_vidcap,  "vidcap"}
+		{"VidCap",    spawn_vidwin,  "vidcap"}
 	};
 
 	local restbl = {};
@@ -218,10 +242,6 @@ function builtin_group(self, ofs, lim, desw, desh)
 	return restbl, #tools;
 end
 
-function listview_group(self)
-	print("should list:", self.name, self.idfun);
-end
-
 function system_group(self, ofs, lim, desw, desh)
 	local targets = list_targets();
 	local restbl = {};
@@ -230,7 +250,7 @@ function system_group(self, ofs, lim, desw, desh)
 	while ofs <= lim and ofs <= #targets do
 		local newtbl = {};
 		newtbl.caption = desktoplbl(targets[ofs]);
-		newtbl.trigger = listview_group;
+		newtbl.trigger = gamelist_wnd;
 		newtbl.name    = targets[ofs];
 		newtbl.icon    = sysicons.lru_cache:get(newtbl.name, desw, desh).icon;
 		table.insert(restbl, newtbl);

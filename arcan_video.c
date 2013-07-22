@@ -3388,13 +3388,13 @@ unsigned arcan_video_tick(unsigned steps)
 	return arcan_frametime() - now;
 }
 
-arcan_errc arcan_video_setclip(arcan_vobj_id id, bool toggleon)
+arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode mode)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){
-		vobj->flags.cliptoparent = toggleon;
+		vobj->flags.cliptoparent = mode;
 		rv = ARCAN_OK;
 	}
 
@@ -3771,7 +3771,8 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 /* enable clipping using stencil buffer */
 			bool clipped = false;
-			if (elem->flags.cliptoparent && elem->parent !=&current_context->world){
+			if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
+				elem->parent != &current_context->world){
 /* toggle stenciling, reset into zero, draw parent bounding area to 
  * stencil only,redraw parent into stencil, draw new object 
  * then disable stencil. */
@@ -3790,14 +3791,24 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 				arcan_shader_activate(arcan_video_display.defclrshdr);
 				arcan_vobject* celem = elem;
 
-/* since we can have hierarchies of partially 
- * clipped, we may need to resolve all */
+				if (celem->flags.cliptoparent == ARCAN_CLIP_SHALLOW){
+					surface_properties pprops = empty_surface();
+					arcan_resolve_vidprop(celem->parent, fract, &pprops);
+					draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+				}
+				else
+/* deep -> draw all objects that aren't clipping to parent,
+ * terminate when a shallow clip- object is found */
 				while (celem->parent != &current_context->world){
 					surface_properties pprops = empty_surface();
 					arcan_resolve_vidprop(celem->parent, fract, &pprops);
 
-					if (celem->parent->flags.cliptoparent == false)
+					if (celem->parent->flags.cliptoparent == ARCAN_CLIP_OFF)
 						draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+					else if (celem->parent->flags.cliptoparent == ARCAN_CLIP_SHALLOW){
+						draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+						break;
+					}
 
 					celem = celem->parent;
 				}
