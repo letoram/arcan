@@ -1,4 +1,11 @@
--- 
+--
+-- AWB IconView
+--
+-- Todolist:
+-- Fix last few event handlers for scrollbar (single scroll, full page flip, ..)
+-- Icons for changing default iconsize
+
+
 -- Sweep the temporary table and distribute in the window region
 --
 local function awbicon_reposition(self)
@@ -6,7 +13,7 @@ local function awbicon_reposition(self)
 	local cy = self.vspace;
 
 	for i, v in ipairs(self.icons) do
-		move_image(v, cx, cy);
+		move_image(v.anchor, cx, cy);
 
 		cx = cx + self.cell_w + self.hspace;
 
@@ -88,11 +95,15 @@ local function awbicon_add(self, icntbl)
 	resize_image(icn, self.icon_sz, self.icon_sz);
 	move_image(icn, math.floor(0.5 * (self.cell_w - self.icon_sz)), 0);	
 
--- icn_area works as container for deletions as well
-	table.insert(self.icons, icn_area);
-
+-- need to track whole icntbl for handler deregistration etc.
+	table.insert(self.icons, icntbl);
+	icntbl.anchor = icn_area;
 	icntbl.own = function(self, vid)
 		return vid == icn_area;
+	end
+
+	icntbl.dblclick = function(self)
+		icntbl:trigger();
 	end
 
 	icntbl.over = function()
@@ -124,8 +135,8 @@ local function awbicon_resize(self, neww, newh)
 -- shrink (drop n items from the end of icons)
 -- else just reposition
 	if (lim > #self.icons) then
-		tbl, self.total = self:datasel(self.ofs + #self.icons, lim - #self.icons, 
-			self.cell_w, self.cell_h);
+		tbl, self.total = self:datasel(self.ofs + #self.icons, 
+			lim - #self.icons, self.cell_w, self.cell_h);
 
 		for i, v in ipairs(tbl) do
 			awbicon_add(self, v);
@@ -134,10 +145,11 @@ local function awbicon_resize(self, neww, newh)
 	elseif (lim < #self.icons) then
 		for i=#self.icons,lim+1,-1 do
 			local tbl = table.remove(self.icons);
-			if (valid_vid(tbl)) then
-				delete_image(tbl);
+			if (valid_vid(tbl.anchor)) then
+				delete_image(tbl.anchor);
+				tbl.anchor = BADID;
 			end
-
+			mouse_droplistener(tbl);
 		end
 	end
 

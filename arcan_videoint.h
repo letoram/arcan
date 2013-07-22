@@ -176,7 +176,7 @@ typedef struct arcan_vobject {
 	struct {
 		bool in_use;         /* must be set for any operation other than allocate */
 		bool clone;          /* limited features, inherits from another obj       */
-		bool cliptoparent;   /* only draw to the parent object surface area       */
+		char cliptoparent;   /* only draw to the parent object surface area       */
 		bool asynchdisable;  /* don't run any asynchronous loading operations     */
 		bool cycletransform; /* when a transform is finished, attach it to the end*/
 		bool origoofs;       /* use world-space coordinate as center for rotation */

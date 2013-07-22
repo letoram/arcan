@@ -1050,14 +1050,17 @@ int arcan_lua_setmask(lua_State* ctx)
 int arcan_lua_clipon(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_video_setclip(id, true);
+	char clipm = luaL_optint(ctx, 2, ARCAN_CLIP_ON);
+
+	arcan_video_setclip(id, clipm == ARCAN_CLIP_ON ? ARCAN_CLIP_ON :
+		ARCAN_CLIP_SHALLOW);
     return 0;
 }
 
 int arcan_lua_clipoff(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_video_setclip(id, false);
+	arcan_video_setclip(id, ARCAN_CLIP_OFF);
     return 0;
 }
 
@@ -4847,6 +4850,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"IMAGEPROC_NORMAL", imageproc_normal},
 {"IMAGEPROC_FLIPH",  imageproc_fliph },
 {"WORLDID", ARCAN_VIDEO_WORLDID},
+{"CLIP_ON", ARCAN_CLIP_ON},
+{"CLIP_OFF", ARCAN_CLIP_OFF},
+{"CLIP_SHALLOW", ARCAN_CLIP_SHALLOW},
 {"BADID",   ARCAN_EID         },
 {"CLOCKRATE", ARCAN_TIMER_TICK},
 {"CLOCK",     0               },
