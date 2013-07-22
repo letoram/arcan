@@ -1000,7 +1000,7 @@ static void arcan_video_gldefault()
 	glCullFace(GL_BACK);
 }
 
-const static char* defvprg =
+const char* defvprg =
 "uniform mat4 modelview;\n"
 "uniform mat4 projection;\n"
 
@@ -1012,19 +1012,17 @@ const static char* defvprg =
 "   texco = texcoord;\n"
 "}";
 
-const static char* deffprg =
+const char* deffprg =
 "uniform sampler2D map_diffuse;\n"
 "varying vec2 texco;\n"
 "uniform float obj_opacity;\n"
 "void main(){\n"
 "   vec4 col = texture2D(map_diffuse, texco);\n"
-//"   if (col.a < 0.001)\n"
-//"      discard;\n"
 "   col.a = col.a * obj_opacity;\n"
 "	gl_FragColor = col;\n"
 "}";
 
-const static char* defcvprg =
+const char* defcvprg =
 "uniform mat4 modelview;\n"
 "uniform mat4 projection;\n"
 "attribute vec4 vertex;\n"
@@ -1032,7 +1030,7 @@ const static char* defcvprg =
 " gl_Position = (projection * modelview) * vertex;\n"
 "}";
 
-const static char* defcfprg = 
+const char* defcfprg = 
 "varying vec2 texco;\n"
 "uniform vec3 obj_col;\n"
 "uniform float obj_opacity;\n"

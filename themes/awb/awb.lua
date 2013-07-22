@@ -36,11 +36,10 @@ ORDER_MOUSE     = 255;
 kbdbinds = {};
 kbdbinds["LCTRL"]  = toggle_mouse_grab;
 kbdbinds["ESCAPE"] = shutdown;
-kbdbinds["F7"]     = function() mouse_accellstep(-1); end
-kbdbinds["F8"]     = function() mouse_accellstep(1);  end
-kbdbinds["F9"]     = function() volume_step(-1);      end 
-kbdbinds["F10"]    = function() volume_step(1);       end
-kbdbinds["F11"]    = function() awbwman_gather_scatter(); end
+kbdbinds["F7"]     = function() mouse_accellstep(-1);      end
+kbdbinds["F8"]     = function() mouse_accellstep(1);       end
+kbdbinds["F11"]    = function() awbwman_gather_scatter();  end
+kbdbinds["F12"]    = function() awbwman_shadow_nonfocus(); end
 
 --  window (focus, minimize, maximize, close)
 --  border (always visible, content (when not drag))

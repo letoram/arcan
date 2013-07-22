@@ -783,8 +783,11 @@ int arcan_lua_pauseaudio(lua_State* ctx)
 
 int arcan_lua_buildshader(lua_State* ctx)
 {
-	const char* vprog = luaL_checkstring(ctx, 1);
-	const char* fprog = luaL_checkstring(ctx, 2);
+	extern char* deffprg;
+	extern char* defvprg;
+
+	const char* vprog = luaL_optstring(ctx, 1, defvprg);
+	const char* fprog = luaL_optstring(ctx, 2, deffprg);
 	const char* label = luaL_checkstring(ctx, 3);
 
 	arcan_shader_id rv = arcan_shader_build(label, NULL, vprog, fprog);
@@ -4129,9 +4132,15 @@ int arcan_lua_settexmode(lua_State* ctx)
 int arcan_lua_tracetag(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	const char* const msg = luaL_checkstring(ctx, 2);
+	const char* const msg = luaL_optstring(ctx, 2, NULL);
 
-	arcan_video_tracetag(id, msg);
+	if (!msg){
+		const char* tag = arcan_video_readtag(id);
+		lua_pushstring(ctx, tag ? tag : "(no tag)");
+		return 1;
+	} 
+	else 
+		arcan_video_tracetag(id, msg);
 
 	return 0;
 }
