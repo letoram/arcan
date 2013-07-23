@@ -130,6 +130,7 @@ function awbwnd_listview(pwin, lineh, colcfg, datasel_fun, render_fun,
 	blend_image(cursor_icn, 0.8);
 	pwin.cursor = cursor_icn;
 	image_clip_on(cursor_icn, CLIP_SHALLOW);
+	image_mask_set(cursor_icn, MASK_UNPICKABLE);
 
 -- find cursor ..
 	local mhand = {};
@@ -137,7 +138,6 @@ function awbwnd_listview(pwin, lineh, colcfg, datasel_fun, render_fun,
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
 
-		print(pwin.restbl[linen]);
 		if (linen and pwin.restbl[linen]) then
 			pwin.restbl[linen]:trigger();
 		end
