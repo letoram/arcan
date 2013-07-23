@@ -285,8 +285,8 @@ LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
 LIST(APPEND SOURCES 
 	SDLMain.m 
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_mac.c 
-	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h 
+	${CMAKE_EXTERNAL_SRCDIR}/external/hidapi/hid_mac.c 
+	${CMAKE_EXTERNAL_SRCDIR}/external/hidapi/hidapi.h 
 	arcan_target_launcher.c 
 	arcan_frameserver_backend_unix.c)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
@@ -533,8 +533,8 @@ add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES 
-hidapi/hid_win32.cpp 
-hidapi/hidapi.h 
+${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.cpp 
+${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h 
 win32/arcan_target_launcher_win32.c
 win32/arcan_frameserver_backend_win32.c 
 win32/getopt_win32.c 

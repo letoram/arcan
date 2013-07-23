@@ -122,7 +122,7 @@ end
 function spawn_vidwin(self)
 	local wnd = awbwman_spawn(menulbl("Video Capture"));
 
-	load_movie("vidcap:0", NOLOOP, function(source, status)
+	load_movie("capture:device=0", NOLOOP, function(source, status)
 		if (status.kind == "resized") then
 			play_movie(source);
 			wnd:update_canvas(source, false);
