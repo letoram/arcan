@@ -2,9 +2,9 @@
 -- AWB IconView
 --
 -- Todolist:
--- Fix last few event handlers for scrollbar (single scroll, full page flip, ..)
+-- Fix last few event handlers for scrollbar 
+-- (single scroll, full page flip, ..)
 -- Icons for changing default iconsize
-
 
 -- Sweep the temporary table and distribute in the window region
 --

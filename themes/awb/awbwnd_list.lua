@@ -1,6 +1,13 @@
 --
--- Assume hetroneneous linesize
+-- AWB List View
+-- Specialized window subclass to handle longer multi-column lists
+-- 
+-- Todo;
+-- Column headers and resizers between each row (alternative column bg)
+-- Deregister mouse handler on exit
+-- Edit box filtering
 --
+
 function awblist_resize(self, neww, newh)
 	self:list_resize(neww, newh);
 	local props = image_surface_properties(self.canvas.vid);

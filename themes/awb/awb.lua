@@ -34,8 +34,6 @@ ORDER_OVERLAY   = 50;
 ORDER_MOUSE     = 255;
 
 kbdbinds = {};
-kbdbinds["LCTRL"]  = toggle_mouse_grab;
-kbdbinds["ESCAPE"] = shutdown;
 kbdbinds["F7"]     = function() mouse_accellstep(-1);      end
 kbdbinds["F8"]     = function() mouse_accellstep(1);       end
 kbdbinds["F11"]    = function() awbwman_gather_scatter();  end
@@ -95,6 +93,9 @@ function awb()
 	mouse_acceleration(0.5);
 	
 	awb_desktop_setup();
+
+	kbdbinds["LCTRL"]  = toggle_mouse_grab;
+	kbdbinds["ESCAPE"] = confirm_shutdown;
 end
 
 function table.subtbl(self, ofs, lim)
@@ -405,6 +406,21 @@ function awb_input(iotbl)
 	elseif (wlist.focus) then
 		a = 1
 	end
+end
+
+function confirm_shutdown()
+	local btntbl = {
+			{
+				caption = desktoplbl("No"),
+				trigger = function(owner) owner:destroy(15); end
+			},
+			{
+				caption = desktoplbl("Yes");
+				trigger = function(owner) shutdown(); end
+			}
+	};
+
+	local awb = awbwman_dialog(desktoplbl("Shutdown?"), btntbl, 1, true);
 end
 
 function awb_clock_pulse(stamp, nticks)
