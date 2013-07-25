@@ -194,6 +194,9 @@ local function awbwnd_destroy(self, timeval)
 --
 -- the rest should disappear in cascaded deletions
 --
+	if (self.on_destroy) then
+		self:on_destroy();
+	end
 end
 
 local function awbbar_destroy(self)
@@ -236,40 +239,63 @@ local function awbbar_minsz(bar)
 	return w, h;
 end
 
+--
+-- Default version enforces square buttons
+--
+local function awbbaricn_resize(vid, limit, vertical)
+	resize_image(vid, limit, limit);
+	return limit, limit;
+end
+
+function awbbaricn_rectresize(vid, limit, vertical)
+	if (vertical) then
+		resize_image(vid, limit, 0);
+	else
+		resize_image(vid, 0, limit);
+	end
+
+	props = image_surface_properties(vid);
+	return props.width, props.height;
+end
+
 local function awbbar_resize(self, neww, newh)
 	self.w = neww;
 	self.h = newh;
 
 	resize_image(self.vid, neww, newh);
 	local storep = image_storage_properties(self.vid);
+	local stepx;
+	local stepy;
+	local lim; 
 
-	local stepx = 0;
-	local stepy = 0;
-	local ofs = 0;
-	local lim = 0;
-
-	if (not self.vertical) then
-		image_scale_txcos(self.vid, neww / storep.width, 1);
-		lim = neww;
-		stepx = 1;
-	else
-		image_scale_txcos(self.vid, 1, newh / storep.height);
-		lim = newh;
+	if (self.vertical) then
+		stepx = 0;
 		stepy = 1;
+		lim = newh;
+		image_scale_txcos(self.vid, 1, newh / storep.height);
+	else
+		image_scale_txcos(self.vid, neww / storep.width, 1);
+		stepy = 0;
+		stepx = 1;
+		lim = neww;
 	end
-
+	
+	local lofs = 0;
 	for i=1,#self.left do
-		resize_image(self.left[i].vid, self.size, self.size);
-		move_image(self.left[i].vid, stepx * (i-1) * self.size,
-			stepy * (i-1) * self.size);
-		ofs = ofs + self.size;
+		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
+		move_image(self.left[i].vid, stepx * lofs, stepy * lofs); 
+		lofs = lofs + w;
 	end
 
+	local rofs = 0;
 	for i=1,#self.right do
-		resize_image(self.right[i].vid, self.size, self.size);
-		move_image(self.right[i].vid, stepx * self.w - (stepx * i * self.size),
-			stepy * self.h - (stepy * i * self.size) );
-		lim = lim - self.size;
+		local w, h = self.rzfun(self.right[i].vid, self.size, self.vertical);
+		rofs = rofs + w;
+
+		move_image(self.right[i].vid, stepx * (self.w - rofs), 
+			stepy * (self.h - rofs));
+
+		lim  = lim  - w;
 	end
 
 	if (self.fill) then
@@ -278,10 +304,10 @@ local function awbbar_resize(self, neww, newh)
 		end
 
 		if (self.vertical) then
-			move_image(self.fill.vid, 0, ofs);
+			move_image(self.fill.vid, 0, lofs);
 			resize_image(self.fill.vid, self.size, lim);
 		else
-			move_image(self.fill.vid, ofs, 0);
+			move_image(self.fill.vid, lofs, 0);
 			resize_image(self.fill.vid, lim, self.size);
 		end
 
@@ -386,6 +412,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		active   = awbbar_active,
 		inactive = awbbar_inactive,
 		min_sz   = awbbar_minsz,
+		rzfun    = awbbaricn_resize;
 		left     = {},
 		right    = {},
 		fill     = nil,
@@ -495,6 +522,7 @@ function awbwnd_create(options)
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
 		set_border = awbwnd_set_border,
+		on_destroy = nil,
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
 

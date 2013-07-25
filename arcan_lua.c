@@ -2581,6 +2581,27 @@ error:
 	return 0;
 }
 
+int arcan_lua_imagecolor(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	uint8_t cred = luaL_checknumber(ctx, 2);
+	uint8_t cgrn = luaL_checknumber(ctx, 3);
+	uint8_t cblu = luaL_checknumber(ctx, 4);
+
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	if (!vobj || vobj->vstore->txmapped){
+		lua_pushboolean(ctx, false);
+		return 1;
+	}
+
+	vobj->vstore->vinf.col.r = (float)cred / 255.0f;
+	vobj->vstore->vinf.col.g = (float)cgrn / 255.0f;
+	vobj->vstore->vinf.col.b = (float)cblu / 255.0f;
+
+	lua_pushboolean(ctx, true);
+	return 1;
+}
+
 int arcan_lua_colorsurface(lua_State* ctx)
 {
 	int desw = luaL_checknumber(ctx, 1);
@@ -4709,6 +4730,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_mask_clearall",      arcan_lua_clearall           },
 {"image_shader",             arcan_lua_setshader          },
 {"image_sharestorage",       arcan_lua_sharestorage       },
+{"image_color",              arcan_lua_imagecolor         },
 {"fill_surface",             arcan_lua_fillsurface        },
 {"raw_surface",              arcan_lua_rawsurface         },
 {"color_surface",            arcan_lua_colorsurface       },

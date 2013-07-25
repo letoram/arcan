@@ -479,6 +479,8 @@ function setup_3dsupport()
 		shader_uniform(def3d_txcoscroll, "speedfact", "ff", PERSIST, 12.0, 12.0);
 		image_tracetag(support3d.hf_noise, "3dmodel(noise)");
 	end
+
+	return support3d;
 end
 
 --

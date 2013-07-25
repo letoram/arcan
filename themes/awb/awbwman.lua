@@ -385,6 +385,110 @@ function awbwman_listwnd(caption, lineh, colopts, selfun, renderfun)
 end
 
 --
+-- Caption is a prerendered information string
+-- Buttons is a itable of {caption, trigger}
+-- Trying to close the window via other means uses buttons[cancelind] trigger
+-- Modal prevents other actions until response has been provided 
+--
+function awbwman_dialog(caption, buttons, cancelind, modal)
+	local wnd = awbwman_spawn(caption);
+	local tmptbl = {};
+
+-- remove the option to resize, and center on screen
+	wnd.dir.r:destroy();
+	wnd.dir.r = nil;
+
+--
+-- Size the new buttons after the biggest supplied one
+--
+	local maxw = 0;
+	local maxh = 0;
+
+	for i, v in ipairs(buttons) do
+		local bprop = image_surface_properties(v.caption);
+		maxw = bprop.width > maxw and bprop.width or maxw;
+		maxh = bprop.height > maxh and bprop.height or maxh;
+	end
+
+-- Fit dialog to size of contents and center
+	local bwidth  = math.floor(maxw * 1.2);
+	local bheight = math.floor(maxh * 1.1);
+	local capp    = image_surface_properties(caption);
+	local wwidth  = (bwidth * #buttons) > capp.width and 
+		(bwidth * #buttons) or capp.width;
+	local wheight = bheight + capp.height + 10;
+
+	wnd:resize(math.floor(wwidth * 1.2), math.floor(wheight * 2));
+	move_image(wnd.anchor, math.floor(0.5 * (VRESW - wnd.w)),
+		math.floor(0.5 * (VRESH - wnd.h)));
+
+-- Link caption to window area, center (taking buttons into account)
+	link_image(caption, wnd.canvas.vid);
+	image_inherit_order(caption, true);
+	
+	local wndprop = image_surface_properties(wnd.canvas.vid);
+	move_image(caption, math.floor(0.5 * (wndprop.width - capp.width)),
+		math.floor(0.5 * ((wndprop.height - bheight) - capp.height)) );
+
+-- Generate buttons and link lifetime to parent (but track
+-- mouse handlers separately)
+	for i, v in ipairs(buttons) do
+		local dlgc = awb_col.dialog_border;
+		local bgc  = awb_col.bgcolor;
+		local ccol = awb_col.dialog_caret;
+
+		local border = color_surface(bwidth, bheight, dlgc.r, dlgc.g, dlgc.b);
+		local button = color_surface(bwidth-2, bheight-2, bgc.r, bgc.g, bgc.b);
+		link_image(button, border);
+		link_image(border, wnd.canvas.vid);
+		link_image(v.caption, button);
+		image_inherit_order(button, true);
+		image_inherit_order(border, true);
+		image_inherit_order(v.caption, true);
+		order_image(button, 1);
+		order_image(v.caption, 2);
+		image_mask_set(v.caption, MASK_UNPICKABLE);
+
+		local bevent = {
+			own   = function(self, vid) return vid == button; end,
+			click = function() v.trigger(wnd); end,
+			over  = function() image_color(button, ccol.r, ccol.g, ccol.b); end, 
+			out   = function() image_color(button, bgc.r, bgc.g, bgc.b); end,
+		};
+
+		local capp = image_surface_properties(v.caption);
+		show_image({button, border, v.caption});
+		move_image(button, 1, 1);
+		move_image(border, wndprop.width - i * (bwidth + 10), wndprop.height - 
+			bheight - 10);
+		move_image(v.caption, math.floor(0.5 * (bwidth - capp.width)),
+			math.floor(0.5 * (bheight - (capp.height - 4) )));
+
+		mouse_addlistener(bevent, {"over", "out", "click"});
+		table.insert(tmptbl, bevent);
+	end
+
+--
+-- Add an invisible surface just beneath the dialog that grabs all input
+--
+	if (modal and false) then
+		a = color_surface(VRESW, VRESH, 255, 0, 0);
+		show_image(a);
+		order_image(a, image_surface_properties(wnd.anchor).order - 1);
+		link_image(a, wnd.anchor);
+		image_mask_clear(a, MASK_POSITION);
+	end
+
+	wnd.on_destroy = function()
+		for i, v in ipairs(tmptbl) do
+			mouse_droplistener(v);
+		end
+	end
+
+	return wnd;
+end
+
+--
 -- Similar to a regular spawn, but will always have order group 0,
 -- canvas click only sets group etc. somewhat simpler than the 
 -- awbicon window type as we don't care about resize or rapidly 
@@ -398,9 +502,9 @@ function awbwman_rootwnd()
 		h      = VRESH
 	});
 
-	local r = awb_col.bgcolor[1];
-	local g = awb_col.bgcolor[2];
-	local b = awb_col.bgcolor[3];
+	local r = awb_col.bgcolor.r;
+	local g = awb_col.bgcolor.g;
+	local b = awb_col.bgcolor.b;
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas, true);
 
@@ -518,9 +622,9 @@ function awbwman_spawn(caption)
 
 -- single color canvas (but treated as textured)
 -- for shader or replacement 
-	local r = awb_col.bgcolor[1];
-	local g = awb_col.bgcolor[2];
-	local b = awb_col.bgcolor[3];
+	local r = awb_col.bgcolor.r;
+	local g = awb_col.bgcolor.g;
+	local b = awb_col.bgcolor.b;
 
 -- separate click handler for the canvas area
 -- as more advanced windows types (selection etc.) may need 
@@ -579,7 +683,8 @@ function awbwman_spawn(caption)
 
 	hide_image(wcont.anchor);
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
-
+	wcont:resize(wcont.w, wcont.h);
+	
 	return wcont;
 end
 
