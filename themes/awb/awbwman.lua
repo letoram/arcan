@@ -68,11 +68,8 @@ local function awbwman_findind(val)
 end
 
 local function awbwman_updateorder()
-	local count = 0; 
-
 	for i,v in ipairs(awb_wtable) do
 		order_image(v.anchor, i * 10);
-		count = count + 1;
 	end
 end
 
@@ -84,7 +81,7 @@ local function awbwman_pushback(wnd)
 	local ind = awbwman_findind(wnd);
 	if (ind ~= nil and ind > 1) then
 		table.remove(awb_wtable, ind);
-		table.insert(awb_wtable, 1, wnd);
+		table.insert(awb_wtable, ind - 1, wnd);
 	end
 
 	wnd:inactive();
@@ -294,9 +291,11 @@ function awbwman_gather_scatter()
 
 	if (awb_cfg.scattered) then
 		for ind, val	in ipairs(awb_wtable) do
-			move_image(val.anchor, val.pos_memory[1], 
-				val.pos_memory[2], awb_cfg.animspeed);
-			blend_image(val.anchor, 1.0, awb_cfg.animspeed);
+			if (val.pos_memory) then
+				move_image(val.anchor, val.pos_memory[1], 
+					val.pos_memory[2], awb_cfg.animspeed);
+					blend_image(val.anchor, 1.0, awb_cfg.animspeed);
+			end
 		end
 
 		awb_cfg.scattered = nil;
@@ -369,18 +368,23 @@ function awbwman_iconwnd(caption, selfun)
 	return wnd;
 end
 
-function awbwman_listwnd(caption, lineh, colopts, selfun, renderfun)
+function awbwman_listwnd(caption, lineh, linespace, colopts, selfun, renderfun)
 	local wnd = awbwman_spawn(caption);
 
-	awbwnd_listview(wnd, lineh, colopts, selfun, renderfun, 
+	opts = {
+		rowhicol = {awb_col.bgcolor.r * 1.2, 
+			awb_col.bgcolor.g * 1.2, awb_col.bgcolor.b * 1.2}
+	};
+
+	awbwnd_listview(wnd, lineh, linespace, colopts, selfun, renderfun, 
 		fill_surface(32, 32, 
 			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
 		fill_surface(32, 32, 
 			awb_col.dialog_sbar.r, awb_col.dialog_sbar.g,awb_col.dialog_sbar.b),
 		fill_surface(32, 32,
 			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
-		"r");
-	
+		"r", opts);
+
 	return wnd;
 end
 
@@ -511,6 +515,7 @@ function awbwman_rootwnd()
 	local tbar = wcont:add_bar("t", "awbicons/topbar.png", 
 		"awbicons/topbar.png", awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 	order_image(tbar.vid, ORDER_MOUSE - 5);
+
 	image_mask_set(tbar.vid, MASK_UNPICKABLE);
 
 	blend_image(wcont.dir.t.vid, 0.8);

@@ -22,6 +22,7 @@ groupicn    = "awbicons/drawer.png";
 groupselicn = "awbicons/drawer_open.png";
 deffont     = "fonts/topaz8.ttf";
 deffont_sz  = 12;
+linespace   = 4;
 
 x_spawnpos = 20;
 y_spawnpos = 20;
@@ -142,11 +143,12 @@ function gamelist_wnd(selection)
 	local tgtname = selection.name;
 	local tgttotal = #list_games({target = tgtname});
 
-	awbwman_listwnd(menulbl(tgtname), 10, {0.7, 0.3}, function(filter,
-		ofs, lim, iconw, iconh)
+	awbwman_listwnd(menulbl(tgtname), deffont_sz, linespace, 
+		{0.7, 0.3}, function(filter, ofs, lim, iconw, iconh)
 		
 		local res = {};
-		local tbl = list_games({offset = ofs-1, limit = lim, target = tgtname});
+
+		local tbl = list_games({offset = ofs-1, limit = lim, target = tgtname});	
 
 		if (tbl) then
 		for i=1,#tbl do
@@ -176,7 +178,7 @@ function awb_desktop_setup()
 -- in a fullscreen iconview window (else, if every entry is unique,
 -- images will be deleted before they are used)
 	sysicons.lru_cache    = awb_iconcache(64, 
-		{"images/icons", "icons", "images/systems"}, sysicons.floppy); 
+		{"images/icons", "icons", "images/systems", "awbicons"}, sysicons.floppy);
 
 	local groups = {
 		{
@@ -275,7 +277,9 @@ function progress_notify(msg, rowheight, bwidth, level)
 	if (valid_vid(infodlg)) then
 		show_image(infodlg);
 	else
-		infodlg = fill_surface(bwidth, rowheight + deffont_sz + 10, 40, 40, 40);
+		infodlg = fill_surface(bwidth, 
+			rowheight + deffont_sz + linespace, 40, 40, 40);
+	
 		infobar = fill_surface(bwidth - 10, rowheight, 80, 80, 80);
 		progbar = fill_surface(1, 1, 220, 35, 35);
 		iconimg = render_text(string.format([[\f%s,%d\#dc2323 %s]], deffont,

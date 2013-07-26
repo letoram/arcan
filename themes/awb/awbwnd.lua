@@ -8,6 +8,9 @@
 -- table = awb_alloc(options)
 -- 	useful options: width, height, minw, minh
 --
+-- Todo:
+-- more "fill" positioning options when lim > maxsz, (center, left, right)
+--
 
 local function awbwnd_alloc(tbl)
 -- root will serve as main visibility, clipping etc. region
@@ -103,6 +106,17 @@ local function awbwnd_resize(self, neww, newh)
 		self.dir.t:resize(neww, self.dir.t.size);
 	end
 
+	if (self.dir.tt) then
+		vspace = vspace - self.dir.tt.rsize;
+		yofs   = self.dir.t.rsize + self.dir.tt.rsize;
+		self.dir.tt:resize(neww, self.dir.tt.size);
+		if (self.dir.t) then
+			move_image(self.dir.tt.vid, 0, self.dir.t.rsize);
+		else
+			move_image(self.dir.tt.vid, 0);
+		end
+	end
+
 	if (self.dir.b) then
 		vspace = vspace - self.dir.b.rsize;
 		move_image(self.dir.b.vid, 0, yofs + vspace);
@@ -140,7 +154,8 @@ end
 --
 local function awbwnd_own(self, vid)
 	local rv = nil;
-	local t = {self.canvas, self.dir.t, self.dir.r, self.dir.l, self.dir.b};
+	local t = {self.canvas, self.dir.tt, self.dir.t, 
+		self.dir.r, self.dir.l, self.dir.b};
 
 	for ind, val in ipairs(t) do
 		if (val and val:own(vid)) then
@@ -279,7 +294,7 @@ local function awbbar_resize(self, neww, newh)
 		stepx = 1;
 		lim = neww;
 	end
-	
+
 	local lofs = 0;
 	for i=1,#self.left do
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
@@ -310,8 +325,6 @@ local function awbbar_resize(self, neww, newh)
 			move_image(self.fill.vid, lofs, 0);
 			resize_image(self.fill.vid, lim, self.size);
 		end
-
--- more "fill" positioning options when lim > maxsz, (center, left, right)
 	end
 end
 
@@ -396,7 +409,8 @@ local function awbbar_active(self)
 end
 
 local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
-	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and dir ~= "r") then
+	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and 
+		dir ~= "r" and dir ~= "tt") then
 		return nil;
 	end
 
