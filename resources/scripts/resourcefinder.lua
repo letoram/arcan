@@ -13,7 +13,7 @@
 --  artwork (* special, accepts anything that matches setname_wildcard.extension)
 --  
 -- (Audio)
---  music (.ogg)
+--  music (.ogg, .mp3)
 --  sfx (.wav)
 --
 -- (Video extensions: .webm, .mpg, .avi, .mp4, .mkv)
@@ -85,7 +85,7 @@ local function resourcefinder_video(game, restbl, cache_results)
 end
 
 local function resourcefinder_audio(game, restbl, cache_results)
-	local audext = {"ogg", "wav"};
+	local audext = {"ogg", "mp3", "wav"};
 	local worktbl = {"music", "sfx"};
 	
 	for ind, val in ipairs(worktbl) do

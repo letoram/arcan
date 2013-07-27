@@ -35,8 +35,6 @@ ORDER_OVERLAY   = 50;
 ORDER_MOUSE     = 255;
 
 kbdbinds = {};
-kbdbinds["F7"]     = function() mouse_accellstep(-1);      end
-kbdbinds["F8"]     = function() mouse_accellstep(1);       end
 kbdbinds["F11"]    = function() awbwman_gather_scatter();  end
 kbdbinds["F12"]    = function() awbwman_shadow_nonfocus(); end
 
@@ -63,7 +61,8 @@ function awb()
 
 -- shader function / model viewer
   system_load("scripts/calltrace.lua")();
-	system_load("scripts/3dsupport.lua")(); 
+	system_load("scripts/3dsupport.lua")();
+	system_load("scripts/resourcefinder.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
@@ -73,6 +72,7 @@ function awb()
 	system_load("awbwnd.lua")();
 	system_load("awbwnd_icon.lua")();
 	system_load("awbwnd_list.lua")();
+	system_load("awbwnd_media.lua")();
 	system_load("awbwman.lua")();
 
 	settings.defwinw = math.floor(VRESW * 0.35);
@@ -83,7 +83,7 @@ function awb()
 -- we can't use instancing, so instead we allocate a pool
 -- and then share_storage
 	imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
-	awbwman_init();	
+	awbwman_init(desktoplbl, menulbl);	
 
 -- 
 -- look in resources/scripts/mouse.lua
@@ -94,19 +94,10 @@ function awb()
 	mouse_acceleration(0.5);
 	
 	awb_desktop_setup();
+	setup_3dsupport();
 
 	kbdbinds["LCTRL"]  = toggle_mouse_grab;
-	kbdbinds["ESCAPE"] = confirm_shutdown;
-end
-
-function table.subtbl(self, ofs, lim)
-	local res = {};
-
-	for i=ofs, i < lim and i < #self do
-		table.insert(res, self[i]);
-	end
-
-	return res;
+	kbdbinds["ESCAPE"] = awbwman_cancel;
 end
 
 --
@@ -135,6 +126,89 @@ function spawn_vidwin(self)
 	return wnd;
 end
 
+function gamelist_media(tbl)
+	local res  = resourcefinder_search(tbl, true);
+	local list = {};
+
+	for i,j in ipairs(res.movies) do
+		local ment = {
+			resource = j,
+			name     = "video_" .. tostring(i),
+			trigger  = function()
+				local wnd, tfun = awbwman_mediawnd(
+					menulbl("Media Player"), "frameserver");
+				load_movie(j, FRAMESERVER_NOLOOP, tfun);
+			end,
+			cols     = {"video_" .. tostring(i)} 
+		};
+		table.insert(list, ment);
+	end
+
+	local imgcat = {"screenshots", "bezels", "marquees", "controlpanels",
+		"overlays", "cabinets", "boxart"};
+
+	for ind, cat in ipairs(imgcat) do
+		if (res[cat]) then
+			for i, j in ipairs(res[cat]) do
+				local ment = {
+					resource = j,
+					trigger = function()
+						local wnd, tfun = awbwman_mediawnd(
+							menulbl(cat), "static");
+						load_image_asynch(j, tfun);
+					end,
+					name = cat .. "_" .. tostring(i),
+					cols = {cat .. "_" .. tostring(i)}
+				};
+				table.insert(list, ment);
+			end
+		end
+	end
+
+	mdl = find_cabinet_model(tbl);
+	if (mdl) then
+		local ment = {
+			resource = mdl,
+			trigger  = function() 
+				local model = setup_cabinet_model(mdl, tbl, {});
+				if (model.vid) then
+					move3d_model(model.vid, 0.0, -0.2, -2.0);
+				else
+					model = {};
+				end
+				awbwman_mediawnd(menulbl("3D Model"), "3d", model.vid); 
+			end,
+			name = "model(" .. mdl ..")",
+			cols = {"3D Model"}
+		};
+		table.insert(list, ment);
+	end
+
+-- resource-finder don't sub-categorize properly so we'll 
+-- have to do that manually
+	awbwman_listwnd(menulbl("Media:" .. tbl.title), deffont_sz, linespace,
+	{1.0}, function(filter, ofs, lim, iconw, iconh)
+		local res = {};
+		local ul = ofs + lim;
+		for i=ofs, ul do
+			table.insert(res, list[i]);
+		end
+		return res, #list;
+	end, desktoplbl);
+end
+
+function gamelist_popup(ent)
+	local popup_opts = [[Launch\n\rFind Media\n\rList Siblings]];
+	local vid, list  = desktoplbl(popup_opts);
+	local popup_fun = {
+		function() gamelist_launch(ent); end,
+		function() gamelist_media(ent.tag);  end,
+		function() gamelist_family(ent); end
+	};
+
+	awbwman_popup(vid, list, popup_fun);
+end
+
 --
 -- Set up a basic gamelist view from a prefiltered selection
 -- (which can be fine-grained afterwards ofc). 
@@ -153,10 +227,12 @@ function gamelist_wnd(selection)
 		if (tbl) then
 		for i=1,#tbl do
 			local ent = {
-				name    = tbl[i].title,
-				gameid  = tbl[i].gameid,
-				trigger = gamelist_launch,
-				cols    = {tbl[i].title, tbl[i].genre}
+				name     = tbl[i].title,
+				gameid   = tbl[i].gameid,
+				tag      = tbl[i],
+				rtrigger = gamelist_popup,
+				trigger  = gamelist_launch,
+				cols     = {tbl[i].title, tbl[i].genre}
 			};
 
 			table.insert(res, ent);
@@ -208,8 +284,6 @@ function awb_desktop_setup()
 		awbwman_rootaddicon(j.key, lbl, sysicons.group, 
 			sysicons.group_active, j.trigger);
 	end
-
-	groups[3]:trigger();
 end
 
 function attrstr(self)
@@ -226,7 +300,9 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"InputConf", spawn_inped,  "inputed"},
 		{"Recorder",  spawn_vidrec,  "vidrec"},
 		{"Network",   spawn_socsrv, "socserv"},
-		{"VidCap",    spawn_vidwin,  "vidcap"}
+		{"VidCap",    spawn_vidwin,  "vidcap"},
+		{"Compare",   spawn_vidcmp,  "vidcmp"},
+		{"ShaderEd",  spawn_shadeed, "shadeed"},
 	};
 
 	local restbl = {};
@@ -264,86 +340,6 @@ function system_group(self, ofs, lim, desw, desh)
 end
 
 --
--- Spawn an overlay dialog that quickly expires,
--- used for presenting a numeric value (0..1) relative
--- to an icon or label 
--- 
-function progress_notify(msg, rowheight, bwidth, level)
-	if (lastnotify ~= nil and
-		lastnotify ~= msg) then
-		delete_image(infodlg);
-	end
-
-	if (valid_vid(infodlg)) then
-		show_image(infodlg);
-	else
-		infodlg = fill_surface(bwidth, 
-			rowheight + deffont_sz + linespace, 40, 40, 40);
-	
-		infobar = fill_surface(bwidth - 10, rowheight, 80, 80, 80);
-		progbar = fill_surface(1, 1, 220, 35, 35);
-		iconimg = render_text(string.format([[\f%s,%d\#dc2323 %s]], deffont,
-			deffont_sz, msg));
-		lastnotify = msg;
-		move_image(infodlg, math.floor(VRESW * 0.5 - 0.5 * bwidth),
-			math.floor(VRESH * 0.5 - 0.5 * rowheight));
-
-		order_image(infodlg, ORDER_OVERLAY);
-		order_image(iconimg, ORDER_OVERLAY);
-		order_image(infobar, ORDER_OVERLAY);
-		order_image(progbar, ORDER_OVERLAY);
-
-		move_image(infobar, 5, deffont_sz + 5);
-		move_image(iconimg, 5, 5);
-
-		link_image(infobar, infodlg);
-		link_image(progbar, infobar);
-		link_image(iconimg, infodlg);
-
-		show_image({infodlg, infobar, progbar, iconimg});
-	end
-
--- reset timer, change the progress value
-	expire_image(infodlg, 60);
-	blend_image(infodlg, 1.0, 50);
-	blend_image(infodlg, 0.0, 10);
-	local props = image_surface_properties(infobar);
-	if (level < 0.001) then
-		hide_image(progbar);
-	else
-		show_image(progbar);
-		resize_image(progbar, math.floor(props.width * level), props.height);
-	end
-end
-
-function volume_step(direction)
-	settings.mvol = settings.mvol + (0.1 * direction);
-	settings.mvol = settings.mvol >= 0.01 and settings.mvol or 0.0;
-	settings.mvol = settings.mvol <  1.0  and settings.mvol or 1.0;
-
-	local mwidth = deffont_sz * 13 + 10;
-	mwidth = (VRESW*0.3) > mwidth and math.floor(VRESW * 0.3) or mwidth;
-	progress_notify("Master Volume", 20, mwidth, settings.mvol);
-
--- 
--- calculate how this affects the individual audio sources and
--- change accordingly? (or expand the interface to cover listener vol)
---
-end
-
-function mouse_accellstep(direction)
-	settings.mfact = settings.mfact +  (0.1 * direction);
-	settings.mfact = settings.mfact >= 0.01 and settings.mfact or 0.0;
-	settings.mfact = settings.mfact <   2.0 and settings.mfact or 2.0;
-
-	local mwidth = deffont_sz * 12 + 10;
-	mwidth = (VRESW*0.3) > mwidth and math.floor(VRESW * 0.3) or mwidth;
-	progress_notify("Acceleration", 20, mwidth, settings.mfact / 2.0);
-
-	mouse_acceleration(settings.mfact);
-end
-
---
 -- A little hommage to the original, shader is from rendertoy
 --
 function spawn_boing(caption)
@@ -366,22 +362,6 @@ function spawn_boing(caption)
 	a.canvas:resize(props.width, props.height);
 
 	return a;
-end
-
-function closewin(self)
-	for ind, val in ipairs(wlist.windows) do
-		if (val == self.parent.parent) then
-			table.remove(wlist.windows, ind);
-			if (wlist.focus == val) then
-				wlist.focus = nil;
-			end
-			break;
-		end
-
-	end
-
-	mouse_droplistener(self);
-	self.parent.parent:destroy(15);
 end
 
 minputtbl = {false, false, false};
@@ -412,21 +392,3 @@ function awb_input(iotbl)
 	end
 end
 
-function confirm_shutdown()
-	local btntbl = {
-			{
-				caption = desktoplbl("No"),
-				trigger = function(owner) owner:destroy(15); end
-			},
-			{
-				caption = desktoplbl("Yes");
-				trigger = function(owner) shutdown(); end
-			}
-	};
-
-	local awb = awbwman_dialog(desktoplbl("Shutdown?"), btntbl, 1, true);
-end
-
-function awb_clock_pulse(stamp, nticks)
-	mouse_tick(1);
-end

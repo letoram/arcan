@@ -3826,6 +3826,9 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 					elem->vstore->vinf.col.g, elem->vstore->vinf.col.b);
 			}
 
+			if (clipped)
+				glDisable(GL_STENCIL_TEST);
+
 			current = current->next;
 			continue;
 		}

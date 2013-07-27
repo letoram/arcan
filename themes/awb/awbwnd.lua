@@ -331,7 +331,7 @@ end
 local function awbbar_addicon(self, dir, image, trig)
 	local icontbl = {
 		trigger = trig,
-		parrent = self
+		parent = self
 	};
 	
 	local icon = null_surface(self.size, self.size);
@@ -499,7 +499,7 @@ local function awbwnd_update_canvas(self, vid, volatile)
 end
 
 local function awbwnd_active(self)
-	local tbl = {self.dir.t, self.dir.l, 
+	local tbl = {self.dir.t, self.dir.tt, self.dir.l, 
 		self.dir.b, self.dir.r, self.canvas};
 	
 	for i, v in ipairs(tbl) do
@@ -511,7 +511,7 @@ local function awbwnd_active(self)
 end
 
 local function awbwnd_inactive(self)
-	local tbl = {self.dir.t, self.dir.l, 
+	local tbl = {self.dir.t, self.dir.tt, self.dir.l, 
 		self.dir.b, self.dir.r, self.canvas};
 
 	for i, v in ipairs(tbl) do
@@ -552,6 +552,7 @@ function awbwnd_create(options)
 -- each (dir) can have an action bar attached
 --
 	dir = {
+		 tt = nil,
 			t = nil,
 			r = nil,
 			l = nil,
