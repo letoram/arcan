@@ -42,6 +42,8 @@ local awb_cfg = {
 	focus_locked = false,
 	activeres   = "awbicons/border.png",
 	inactiveres = "awbicons/border_inactive.png",
+	ttactiveres = "awbicons/tt_border.png",
+	ttinactvres = "awbicons/tt_border.png",
 	alphares    = "awbicons/alpha.png",
 	topbar_sz   = 16,
 	spawnx      = 20,
@@ -95,7 +97,18 @@ function awbwman_meta(lbl, active)
 	awb_cfg.meta.shift = active;
 end
 
+local function drop_popup()
+	if (awb_cfg.popup_active ~= nil) then
+		expire_image(awb_cfg.popup_active[1], awb_cfg.animspeed);
+		blend_image(awb_cfg.popup_active[1], 0.0, awb_cfg.animspeed);
+		mouse_droplistener(awb_cfg.popup_active[2]);
+		awb_cfg.popup_active = nil;
+	end
+end
+
 local function awbwman_focus(wnd)
+	drop_popup();
+
 	if (awb_cfg.focus) then
 		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
@@ -128,6 +141,8 @@ function awbwman_shadow_nonfocus()
 end
 
 local function awbwman_close(wcont)
+	drop_popup();
+
 	for i=1,#awb_wtable do
 		if (awb_wtable[i] == wcont) then
 			table.remove(awb_wtable, i);
@@ -150,6 +165,8 @@ local function awbwman_close(wcont)
 end
 
 local function awbwman_regwnd(wcont)
+	drop_popup();
+
 	table.insert(awb_wtable, wcont);
 	awbwman_focus(wcont);
 end
@@ -176,8 +193,8 @@ local function awbwnd_fling(wnd, fx, fy, bar)
 	local time = (10 * fact > 20) and 20 or (10 * fact);
 
 -- just some magnification + stop against screen edges
-	local dx = wnd.x + fx * 4;
-	local dy = wnd.y + fy * 4;
+	local dx = wnd.x + fx * 8;
+	local dy = wnd.y + fy * 8;
 	dx = dx >= 0 and dx or 0;
 	dy = dy >= 0 and dy or 0;
 	dx = (dx + wnd.w > VRESW) and (VRESW - wnd.w) or dx;
@@ -368,6 +385,12 @@ function awbwman_iconwnd(caption, selfun)
 	return wnd;
 end
 
+function awbwman_mediawnd(caption, kind, source)
+	local wnd = awbwman_spawn(caption);
+	return wnd, awbwnd_media(wnd, kind, source, 
+		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
+end
+
 function awbwman_listwnd(caption, lineh, linespace, colopts, selfun, renderfun)
 	local wnd = awbwman_spawn(caption);
 
@@ -525,6 +548,126 @@ function awbwman_rootwnd()
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 
 	awb_cfg.root = wcont;
+end
+
+function awbwman_cancel()
+	if (awb_cfg.active_popup) then
+		drop_popup();
+	else
+	local btntbl = {
+			{
+				caption = awb_cfg.defrndfun("No"),
+				trigger = function(owner) owner:destroy(awb_cfg.animspeed); end
+			},
+			{
+				caption = awb_cfg.defrndfun("Yes");
+				trigger = function(owner) shutdown(); end
+			}
+	};
+
+	local awb = awbwman_dialog(desktoplbl("Shutdown?"), btntbl, 1, true);
+	end
+end
+
+function awb_clock_pulse(stamp, nticks)
+	mouse_tick(1);
+end
+
+--
+-- Simple popup window ordered just below the mouse cursor 
+--
+function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
+	drop_popup();
+
+	local mx, my;
+	if (spawnx ~= nil and spawny ~= nil) then
+		mx, my = spawnx, spawny;
+	else
+		mx, my = mouse_xy();
+	end
+
+	local props = image_surface_properties(rendervid);
+
+	if (mx + props.width > VRESW) then
+		mx = VRESW - props.width;
+	end
+
+	if (my + props.height > VRESH) then
+		my = VRESH - props.height;
+	end
+
+	local dlgc = awb_col.dialog_border;
+	local cc   = awb_col.dialog_caret;
+	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
+	local wnd    = color_surface(props.width, props.height, awb_col.bgcolor.r,
+		awb_col.bgcolor.g, awb_col.bgcolor.b);
+	local cursor = color_surface(props.width, 10, cc.r, cc.g, cc.b); 
+
+	link_image(wnd,       border);
+	link_image(rendervid, border);
+	link_image(cursor,    border);
+
+	image_mask_set(border,    MASK_UNPICKABLE);
+	image_mask_set(rendervid, MASK_UNPICKABLE);
+	image_mask_set(cursor,    MASK_UNPICKABLE);
+
+	order_image(border, max_current_image_order() - 2);
+	image_inherit_order(cursor,    true);
+	image_inherit_order(rendervid, true);
+	image_inherit_order(wnd,       true);
+
+	image_clip_on(wnd,       CLIP_SHALLOW);
+	image_clip_on(cursor,    CLIP_SHALLOW);
+	image_clip_on(rendervid, CLIP_SHALLOW);
+
+	order_image(cursor,    1);
+	order_image(rendervid, 2);
+
+	show_image({border, wnd, rendervid, cursor});
+
+	move_image(border,  mx, my);
+	move_image({wnd, rendervid, cursor}, 1, 1);
+
+	resize_image(border, props.width + 2, props.height + 2, awb_cfg.animspeed);
+
+	local line_y = function(yv, lheight)
+-- find the matching pair and pick the closest one
+		for i=1,#lheight-1 do
+			local dy1 = lheight[i];
+			local dy2 = lheight[i+1];
+
+			if (dy1 <= yv and dy2 >= yv) then
+				return dy1, i, (dy2 - dy1);
+			end
+		end
+
+		return lheight[#lheight], #lheight, 10;
+	end
+
+	local mh = {
+		click = function(self, vid, x, y)
+			local yofs, ind, hght = line_y(y - 
+				image_surface_resolve_properties(wnd).y, lineheights);
+
+			mouse_droplistener(self);
+			expire_image(border, awb_cfg.animspeed);
+			blend_image(border, 0.0, awb_cfg.animspeed);
+			awb_cfg.popup_active = nil;
+			callbacks[ind]();
+		end,
+
+		motion = function(self, vid, x, y)
+			local yofs, ind, hght  = line_y(y 
+				- image_surface_resolve_properties(wnd).y, lineheights);
+			resize_image(cursor, props.width, hght);
+			move_image(cursor, 1, yofs + 1);
+		end,
+	
+		own = function(self, vid) return vid == wnd; end
+	}
+
+	awb_cfg.popup_active = {border, mh};
+	mouse_addlistener(mh, {"click", "motion"});
 end
 
 function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
@@ -694,14 +837,36 @@ function awbwman_spawn(caption)
 end
 
 --
+-- Forced indirection to monitor configuration changes,
+-- shouldn't happen outside support scripts
+--
+function awbwman_cfg()
+	return awb_cfg;
+end
+
+--
 -- Load / Store default settings for window behavior etc.
 --
-function awbwman_init()
+function awbwman_init(defrndr, mnurndr)
 	awb_cfg.meta       = {};
 	awb_cfg.bordericns = {};
 	awb_cfg.rooticns   = {};
-	awb_col = system_load("scripts/colourtable.lua")();
+	awb_cfg.defrndfun  = defrndr;
+	awb_cfg.mnurndfun  = mnurndr;
 
+	awb_col = system_load("scripts/colourtable.lua")();
+	awb_cfg.bordericns["minus"]    = load_image("awbicons/minus.png");
+	awb_cfg.bordericns["plus"]     = load_image("awbicons/plus.png");
+	awb_cfg.bordericns["clone"]    = load_image("awbicons/clone.png");
+	awb_cfg.bordericns["r1"]       = load_image("awbicons/r1.png");
+	awb_cfg.bordericns["g1"]       = load_image("awbicons/g1.png");
+	awb_cfg.bordericns["b1"]       = load_image("awbicons/b1.png");
+	awb_cfg.bordericns["r2"]       = load_image("awbicons/r2.png");
+	awb_cfg.bordericns["g2"]       = load_image("awbicons/g2.png");
+	awb_cfg.bordericns["b2"]       = load_image("awbicons/b2.png");
+	awb_cfg.bordericns["r3"]       = load_image("awbicons/r3.png");
+	awb_cfg.bordericns["g3"]       = load_image("awbicons/g3.png");
+	awb_cfg.bordericns["b3"]       = load_image("awbicons/b3.png");
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");

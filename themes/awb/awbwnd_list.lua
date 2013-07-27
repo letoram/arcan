@@ -70,7 +70,7 @@ function awblist_resize(self, neww, newh)
 
 			link_image(colv, clip);
 			show_image(colv);
-			move_image(colv, 0, self.linespace * 0.5);
+			move_image(colv, 0, math.floor(self.linespace * 0.5));
 			image_tracetag(colv, "listview.col(" .. tostring(ind) ..").column");
 			image_inherit_order(colv, true);
 			order_image(colv, 2);
@@ -122,6 +122,7 @@ function awblist_resize(self, neww, newh)
 		end
 	end
 
+	blend_image(self.cursor, self.total == 0 and 0.0 or 1.0);
 	resize_image(self.cursor, props.width, self.lineh + self.linespace);
 	awblist_scrollbar(self);
 end
@@ -298,6 +299,14 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		end
 	end
 
+	mhand.rclick = function(self, vid, x, y)
+		local props = image_surface_resolve_properties(pwin.canvas.vid);
+		local yofs, linen = pwin:line_y(y - props.y);
+		if (linen and pwin.restbl[linen] and pwin.restbl[linen].rtrigger) then
+			pwin.restbl[linen]:rtrigger();
+		end
+	end
+
 	mhand.motion = function(self, vid, x, y)
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
@@ -308,7 +317,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		return pwin.canvas.vid == vid;
 	end
 
-	mouse_addlistener(mhand, {"dblclick", "motion"});
+	mouse_addlistener(mhand, {"dblclick", "motion", "rclick"});
 
 	pwin.on_destroy = function()
 		mouse_droplistener(scrollmh);
