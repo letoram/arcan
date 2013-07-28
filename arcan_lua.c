@@ -274,6 +274,11 @@ static inline lua_Number vid_toluavid(arcan_vobj_id innum)
 static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
 {
 	arcan_vobj_id res = luaL_checknumber(ctx, num);
+#ifdef _DEBUG
+	arcan_vobject* vobj = arcan_video_getobject(luavid_tovid(res));
+	if (vobj && vobj->flags.frozen)
+		abort();
+#endif	
 	return luavid_tovid(res);
 }
 
@@ -281,6 +286,11 @@ static inline arcan_vobj_id luaL_optvid(lua_State* ctx, int slot,
 	arcan_vobj_id optnum)
 {
 	arcan_vobj_id num = luaL_optnumber(ctx, slot, optnum);
+#ifdef _DEBUG
+	arcan_vobject* vobj = arcan_video_getobject(luavid_tovid(num));
+	if (vobj->flags.frozen)
+		abort();
+#endif
 	return luavid_tovid(num);
 }
 
@@ -328,6 +338,16 @@ static int arcan_lua_pushrawstr(lua_State* ctx)
 	lua_pushboolean(ctx, res);
 	return 1;
 }
+
+#ifdef _DEBUG
+static int arcan_lua_freezeimage(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	vobj->flags.frozen = true;
+	return 0;
+}
+#endif
 
 static int arcan_lua_loadimage(lua_State* ctx)
 {
@@ -1132,11 +1152,11 @@ int arcan_lua_setlife(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	int ttl = luaL_checkint(ctx, 2);
-
+	
 	if (ttl <= 0)
 			return arcan_lua_deleteimage(ctx);
 	else
-			arcan_video_setlife(id, ttl);
+		arcan_video_setlife(id, ttl);
 
 	return 0;
 }
@@ -4777,6 +4797,9 @@ static const luaL_Reg sysfuns[] = {
 {"system_context_size", arcan_lua_systemcontextsize},
 {"utf8kind",            arcan_lua_utf8kind         },
 {"decode_modifiers",    arcan_lua_decodemod        },
+#ifdef _DEBUG
+{"freeze_image",        arcan_lua_freezeimage      },
+#endif
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_SYSTEM

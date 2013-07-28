@@ -2694,6 +2694,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 					if ( (dobj->mask & MASK_LIVING) > 0){
 						dobj->parent = NULL;
 						pool[cascade_c++] = dobj;
+						trace("(deleteobject) added (%d:%s) to cascadepool\n",
+							dobj->cellid, video_tracetag(dobj));
 					}
 					else{
 						dobj->parent = &current_context->world;
@@ -2766,9 +2768,16 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
  * entire object to be sure. will help leak detectors as well */
 	memset(vobj, 0, sizeof(arcan_vobject));
 
-	for (int i = 0; i < cascade_c; i++)
-		if (pool[i] && pool[i]->flags.in_use)
-		arcan_video_deleteobject(pool[i]->cellid);
+	for (int i = 0; i < cascade_c; i++){
+		if (!pool[i])
+			continue;
+
+		trace("(deleteobject) cascade pool entry (%d), %d:%s\n", i, pool[i]->cellid,
+			pool[i]->tracetag ? pool[i]->tracetag : "(NO TAG)");
+
+		if (pool[i]->flags.in_use)
+			arcan_video_deleteobject(pool[i]->cellid);
+	}
 
 	free(pool);
 
@@ -3336,30 +3345,30 @@ static void tick_rendertarget(struct rendertarget* tgt)
 		if (elem->last_updated != arcan_video_display.c_ticks){
 /* is the item to be updated? */
 			update_object(elem, arcan_video_display.c_ticks);
+		}
 
-			if (elem->feed.ffunc)
-				elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
+		if (elem->feed.ffunc)
+			elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
 
 /* special case for "unreachables", e.g. detached frameset cells */
-			for (int i = 0; i < elem->frameset_meta.capacity; i++){
-				arcan_vobject* cell = elem->frameset[i];
-				if (cell->owner == NULL && cell->feed.ffunc)
-					elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
-			}
-
-			if ((elem->mask & MASK_LIVING) > 0)
-				expire_object(elem);
+		for (int i = 0; i < elem->frameset_meta.capacity; i++){
+			arcan_vobject* cell = elem->frameset[i];
+			if (cell->owner == NULL && cell->feed.ffunc)
+				elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
+		}
 
 /* mode > 0, cycle every 'n' ticks */
-			if (elem->frameset_meta.mode > 0){
-				elem->frameset_meta.counter--;
-				if (elem->frameset_meta.counter == 0){
-					elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
-					step_active_frame(elem);
-				}
+		if (elem->frameset_meta.mode > 0){
+			elem->frameset_meta.counter--;
+			if (elem->frameset_meta.counter == 0){
+				elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
+				step_active_frame(elem);
 			}
 		}
 
+		if ((elem->mask & MASK_LIVING) > 0)
+			expire_object(elem);
+		
 		current = current->next;
 	}
 }

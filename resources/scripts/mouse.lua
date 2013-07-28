@@ -251,16 +251,31 @@ function mouse_addlistener(tbl, events)
 				.. val ..".\n");
 		end
 	end
+
+end
+
+function mouse_dumphandlers()
+	warning("mouse_dumphandlers()");
+
+	for ind, val in pairs(mstate.handlers) do
+		warning("\t" .. ind .. ":");
+			for key, vtbl in ipairs(val) do
+				warning("\t\t" .. 
+					(vtbl.name and vtbl.name or tostring(vtbl)));
+			end
+	end
+
+	warning("/mouse_dumphandlers()");
 end
 
 --
 -- Removes tbl from all callback tables
 --
 function mouse_droplistener(tbl)
-	for ind, val in ipairs( mstate.handlers ) do
-		for key, vtbl in pairs( val ) do
+	for key, val in pairs( mstate.handlers ) do
+		for ind, vtbl in ipairs( val ) do
 			if (tbl == vtbl) then 
-				val[key] = nil;
+				table.remove(val, ind);
 				break;
 			end
 		end

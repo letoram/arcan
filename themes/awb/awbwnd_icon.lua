@@ -223,6 +223,8 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 	local bartbl = pwin.dir[bardir];
 	local newicn = bartbl:add_icon("fill", scrollbar_icn);
 
+	delete_image(scrollbar_icn);
+
 	link_image(scrollcaret_icn, newicn.vid);
 	image_inherit_order(scrollcaret_icn, true);
 	order_image(scrollcaret_icn, 1);
@@ -234,5 +236,12 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 	pwin.resize = awbicon_resize;
 
 	pwin:resize(pwin.w, pwin.h);
+
+	pwin.on_destroy = function()
+		for i, v in ipairs(pwin.icons) do
+			mouse_droplistener(v);
+		end
+	end
+
 	return pwin;
 end

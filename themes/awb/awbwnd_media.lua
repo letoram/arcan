@@ -29,7 +29,20 @@ local function add_vmedia_top()
 end
 
 local function slide_pop(caller, status)
+	print("slide_pop");
 	return true;
+end
+
+local function zoom_in(self)
+	props = image_surface_properties(self.parent.parent.model);
+	move3d_model(self.parent.parent.model, props.x, props.y, props.z + 1.0, 
+		awbwman_cfg().animspeed);
+end
+
+local function zoom_out(self)
+	props = image_surface_properties(self.parent.parent.model);
+	move3d_model(self.parent.parent.model, props.x, props.y, props.z - 1.0,
+		awbwman_cfg().animspeed);
 end
 
 local function add_3dmedia_top(pwin, active, inactive)
@@ -38,34 +51,36 @@ local function add_3dmedia_top(pwin, active, inactive)
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	local cfg = awbwman_cfg();
 
-	local mh = {
-		function own(self, vid)
-			for i,v in ipairs({"left", "right"}) do
-				for j,h in ipairs(self[v]) do
-					if (h.vid == vid) then
-						return true;
-					end
-				end
-			end
-			return false;
-		end
-
-			return vid == self.vid; 
-		end
-
-	};
-
-	bar:add_icon("l", cfg.bordericns["plus"],  function(zoom); 
-	bad_add_icon("l", cfg.bordericns["minus"], zoom);
+	bar:add_icon("l", cfg.bordericns["plus"], zoom_in); 
+	bar:add_icon("l", cfg.bordericns["minus"], zoom_out);
 
 	bar:add_icon("l", cfg.bordericns["r1"], slide_pop);
 	bar:add_icon("l", cfg.bordericns["g1"], slide_pop);
 	bar:add_icon("l", cfg.bordericns["b1"], slide_pop);
 
-	bar:add_icon("r", cfg.bordericns["clone"],   slide_pop);
+	bar:add_icon("r", cfg.bordericns["clone"], clone);
 
-	local mhs = {};
-	
+-- click gets sneakily implemented in own()
+	pwin.click = function() end
+	pwin.name = "3dmedia_topbar";
+	mouse_addlistener(pwin, {"click"});
+end
+
+function input_3dwin(self, iotbl)
+	if (iotbl.active == false or iotbl.keysym == nil) then
+		return;
+	end
+
+	if (iotbl.keysym) then
+		if (iotbl.keysym == "UP" or 
+			iotbl.keysym == "PAGEUP" or iotbl.keysym == "w") then
+			zoom_in({parent = {parent = self}});	
+
+		elseif (iotbl.keysym == "DOWN" or 
+			iotbl.keysym ==" PAGEDOWN" or iotbl.keysym == "s") then
+			zoom_out({parent = {parent = self}});
+		end
+	end	
 end
 
 function awbwnd_media(pwin, kind, source, active, inactive)
@@ -96,8 +111,11 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		define_rendertarget(dstvid, {source}, 
 			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 		pwin:update_canvas(dstvid, false);
-
+		pwin.model = source;
+		pwin.input = input_3dwin;
+		
 		local mh = {
+			name = "3dwindow_canvas",
 			own = function(self, vid) return vid == dstvid; end,
 			drag = function(self, vid, dx, dy)
 				rotate3d_model(source, 0.0, dy, -1 * dx, 0, ROTATE_RELATIVE);
@@ -108,6 +126,9 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		mouse_addlistener(mh, {"drag"});
 		add_3dmedia_top(pwin, active, inactive);
 
+		pwin.on_destroy = function()
+			mouse_droplistener(mh);
+		end
 	else
 		warning("awbwnd_media() media type: " .. kind .. "unknown\n");
 	end
