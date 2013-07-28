@@ -181,7 +181,9 @@ typedef struct arcan_vobject {
 		bool cycletransform; /* when a transform is finished, attach it to the end*/
 		bool origoofs;       /* use world-space coordinate as center for rotation */
 		bool orderofs;       /* ofset is relative parent                          */
-
+#ifdef _DEBUG
+		bool frozen;         /* tag for debugging */
+#endif
 /* with this flag set, the object will be maintained in every "higher" context
  * position, and only deleted if pop:ed off without existing in a lower layer.
  * They can't be rendertargets, nor be instanced or linked (anything that would

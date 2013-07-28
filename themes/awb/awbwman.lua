@@ -71,7 +71,9 @@ end
 
 local function awbwman_updateorder()
 	for i,v in ipairs(awb_wtable) do
-		order_image(v.anchor, i * 10);
+		if (v.anchor ~= nil) then
+			order_image(v.anchor, i * 10);
+		end
 	end
 end
 
@@ -99,11 +101,16 @@ end
 
 local function drop_popup()
 	if (awb_cfg.popup_active ~= nil) then
-		expire_image(awb_cfg.popup_active[1], awb_cfg.animspeed);
-		blend_image(awb_cfg.popup_active[1], 0.0, awb_cfg.animspeed);
-		mouse_droplistener(awb_cfg.popup_active[2]);
-		awb_cfg.popup_active = nil;
+		if (awb_cfg.popup_active.destroy ~= nil) then
+			awb_cfg.popup_active:destroy(awb_cfg.animspeed);
+		else
+			expire_image(awb_cfg.popup_active[1], awb_cfg.animspeed);
+			blend_image(awb_cfg.popup_active[1], 0.0, awb_cfg.animspeed);
+			mouse_droplistener(awb_cfg.popup_active[2]);
+		end
 	end
+			
+	awb_cfg.popup_active = nil;
 end
 
 local function awbwman_focus(wnd)
@@ -391,6 +398,12 @@ function awbwman_mediawnd(caption, kind, source)
 		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
 end
 
+function awbwman_targetwnd(caption, kind, source)
+	local wnd = awbwman_spawn(caption);
+	awbwnd_media(wnd, kind, source, awb_cfg.ttactiveres, awb_cfg.ttinactvres);
+	return wnd, awbwnd_target(wnd);
+end
+
 function awbwman_listwnd(caption, lineh, linespace, colopts, selfun, renderfun)
 	local wnd = awbwman_spawn(caption);
 
@@ -418,13 +431,15 @@ end
 -- Modal prevents other actions until response has been provided 
 --
 function awbwman_dialog(caption, buttons, cancelind, modal)
+	image_tracetag(caption, "awbwman_dialog(caption)");
 	local wnd = awbwman_spawn(caption);
+	image_tracetag(wnd.anchor, "awbwman_dialog.anchor");
 	local tmptbl = {};
 
 -- remove the option to resize, and center on screen
 	wnd.dir.r:destroy();
 	wnd.dir.r = nil;
-
+	
 --
 -- Size the new buttons after the biggest supplied one
 --
@@ -466,8 +481,11 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 
 		local border = color_surface(bwidth, bheight, dlgc.r, dlgc.g, dlgc.b);
 		local button = color_surface(bwidth-2, bheight-2, bgc.r, bgc.g, bgc.b);
-		link_image(button, border);
+
+		image_tracetag(border, "awbwnd_dialog.border(" .. tostring(i) .. ")");
+		image_tracetag(button, "awbwnd_dialog.button(" .. tostring(i) .. ")");
 		link_image(border, wnd.canvas.vid);
+		link_image(button, border);
 		link_image(v.caption, button);
 		image_inherit_order(button, true);
 		image_inherit_order(border, true);
@@ -478,7 +496,7 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 
 		local bevent = {
 			own   = function(self, vid) return vid == button; end,
-			click = function() v.trigger(wnd); end,
+			click = function() v.trigger(wnd); wnd:destroy(awb_cfg.animspeed); end,
 			over  = function() image_color(button, ccol.r, ccol.g, ccol.b); end, 
 			out   = function() image_color(button, bgc.r, bgc.g, bgc.b); end,
 		};
@@ -491,6 +509,7 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 		move_image(v.caption, math.floor(0.5 * (bwidth - capp.width)),
 			math.floor(0.5 * (bheight - (capp.height - 4) )));
 
+		bevent.name = "awbdialog_button(" .. tostring(i) .. ")";
 		mouse_addlistener(bevent, {"over", "out", "click"});
 		table.insert(tmptbl, bevent);
 	end
@@ -498,11 +517,12 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 --
 -- Add an invisible surface just beneath the dialog that grabs all input
 --
-	if (modal and false) then
-		a = color_surface(VRESW, VRESH, 255, 0, 0);
+	if (modal) then
+		a = fill_surface(VRESW, VRESH, 255, 0, 0);
 		show_image(a);
+		image_tracetag(a, "modal_block");
 		order_image(a, image_surface_properties(wnd.anchor).order - 1);
-		link_image(a, wnd.anchor);
+		link_image(a, wnd.canvas.vid);
 		image_mask_clear(a, MASK_POSITION);
 	end
 
@@ -551,13 +571,13 @@ function awbwman_rootwnd()
 end
 
 function awbwman_cancel()
-	if (awb_cfg.active_popup) then
+	if (awb_cfg.popup_active) then
 		drop_popup();
 	else
 	local btntbl = {
 			{
 				caption = awb_cfg.defrndfun("No"),
-				trigger = function(owner) owner:destroy(awb_cfg.animspeed); end
+				trigger = function(owner) end
 			},
 			{
 				caption = awb_cfg.defrndfun("Yes");
@@ -565,7 +585,7 @@ function awbwman_cancel()
 			}
 	};
 
-	local awb = awbwman_dialog(desktoplbl("Shutdown?"), btntbl, 1, true);
+	awb_cfg.popup_active = awbwman_dialog(desktoplbl("Shutdown?"), btntbl, 1, true);
 	end
 end
 
@@ -645,6 +665,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 	end
 
 	local mh = {
+		name  = "popup_handler",
 		click = function(self, vid, x, y)
 			local yofs, ind, hght = line_y(y - 
 				image_surface_resolve_properties(wnd).y, lineheights);
@@ -740,9 +761,10 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 	end
 
 	order_image({icntbl.caption, icntbl.vid}, 5);
-	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 1.0, awb_cfg.animspeed);
+	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 
+		1.0, awb_cfg.animspeed);
 	move_image(icntbl.anchor, icntbl.x, icntbl.y);
-
+	ctable.name = "rootwindow_button(" .. name .. ")";
 	mouse_addlistener(ctable, {"drag", "drop", "click", "dblclick"});
 	table.insert(awb_cfg.rooticns, icntbl);
 end
@@ -760,6 +782,7 @@ function awbwman_spawn(caption)
 -- default drag, click, double click etc.
 	wcont.destroy = function(self, time)
 		mouse_droplistener(self);
+		mouse_droplistener(self.rhandle);
 		mouse_droplistener(self.top);
 		for i,v in ipairs(mhands) do
 			mouse_droplistener(v);
@@ -787,6 +810,7 @@ function awbwman_spawn(caption)
 		return vid == canvas; 
 	end
 	chandle.vid = canvas;
+	chandle.name = "awbwnd_canvas";
 	mouse_addlistener(chandle, {"click"});
 	table.insert(mhands, chandle);
 
@@ -820,7 +844,9 @@ function awbwman_spawn(caption)
 	rhandle.own = function(self, vid)
 		return vid == icn.vid;
 	end
+	rhandle.name = "awbwindow_resizebtn";
 	mouse_addlistener(rhandle, {"drag"});
+	wcont.rhandle = rhandle; -- for deregistration
 
 -- register, push to front etc.
   awbman_mhandlers(wcont, tbar);
@@ -845,6 +871,28 @@ function awbwman_cfg()
 end
 
 --
+-- While some input (e.g. whatever is passed as input 
+-- to mouse_handler) gets treated elsewhere, as is meta state modifier,
+-- the purpose of this function is to forward to the current 
+-- focuswnd (if needed) or manipulate whatever is in the popup-slot,
+-- and secondarily, pass through the active input layout and push
+-- to the broadcast domain.
+--
+function awbwman_input(iotbl, keysym)
+
+-- match configured from global?
+-- else forward raw input 
+
+	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
+		awb_cfg.popup_active:input(iotbl);
+	
+	elseif (awb_cfg.focus and 
+			awb_cfg.focus.input ~= nil) then
+		awb_cfg.focus:input(iotbl);
+	end
+end
+
+--
 -- Load / Store default settings for window behavior etc.
 --
 function awbwman_init(defrndr, mnurndr)
@@ -861,12 +909,6 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["r1"]       = load_image("awbicons/r1.png");
 	awb_cfg.bordericns["g1"]       = load_image("awbicons/g1.png");
 	awb_cfg.bordericns["b1"]       = load_image("awbicons/b1.png");
-	awb_cfg.bordericns["r2"]       = load_image("awbicons/r2.png");
-	awb_cfg.bordericns["g2"]       = load_image("awbicons/g2.png");
-	awb_cfg.bordericns["b2"]       = load_image("awbicons/b2.png");
-	awb_cfg.bordericns["r3"]       = load_image("awbicons/r3.png");
-	awb_cfg.bordericns["g3"]       = load_image("awbicons/g3.png");
-	awb_cfg.bordericns["b3"]       = load_image("awbicons/b3.png");
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
@@ -874,5 +916,5 @@ function awbwman_init(defrndr, mnurndr)
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 
-	awbwman_rootwnd();
+--	awbwman_rootwnd();
 end

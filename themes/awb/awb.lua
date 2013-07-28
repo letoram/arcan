@@ -63,16 +63,19 @@ function awb()
   system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/resourcefinder.lua")();
+	system_load("tools/inputconf.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
 	system_load("scripts/mouse.lua")();
+	kbdbinds["F10"]    = mouse_dumphandlers;
 
 	system_load("awb_iconcache.lua")();
 	system_load("awbwnd.lua")();
 	system_load("awbwnd_icon.lua")();
 	system_load("awbwnd_list.lua")();
 	system_load("awbwnd_media.lua")();
+	system_load("awbwnd_target.lua")();
 	system_load("awbwman.lua")();
 
 	settings.defwinw = math.floor(VRESW * 0.35);
@@ -93,11 +96,25 @@ function awb()
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
 	
-	awb_desktop_setup();
 	setup_3dsupport();
+--	awb_desktop_setup();
 
+-- LCTRL + META = (toggle) grab to specific internal
+-- LCTRL = (toggle) grab to this window
 	kbdbinds["LCTRL"]  = toggle_mouse_grab;
 	kbdbinds["ESCAPE"] = awbwman_cancel;
+
+--	awb_inputed();
+--	local tbl = list_games({title = "Moon P%"})[1];
+--	local res = resourcefinder_search(tbl, true);
+--	local mdl = find_cabinet_model(tbl);
+--	local model = setup_cabinet_model(mdl, res, {});
+--	if (model.vid) then
+--		move3d_model(model.vid, 0.0, -0.2, -2.0);
+--	else
+--		model = {};
+--	end
+--	awbwman_mediawnd(menulbl("3D Model"), "3d", model.vid); 
 end
 
 --
@@ -297,7 +314,7 @@ end
 function builtin_group(self, ofs, lim, desw, desh)
 	local tools = {
 		{"BOING!",    spawn_boing,    "boing"},
-		{"InputConf", spawn_inped,  "inputed"},
+		{"InputConf", awb_inputed,  "inputed"},
 		{"Recorder",  spawn_vidrec,  "vidrec"},
 		{"Network",   spawn_socsrv, "socserv"},
 		{"VidCap",    spawn_vidwin,  "vidcap"},
@@ -372,6 +389,12 @@ function awb_input(iotbl)
 
 	elseif (iotbl.kind == "digital" and iotbl.source == "mouse") then
 		if (iotbl.subid > 0 and iotbl.subid <= 3) then
+
+-- meta converts LMB to RMB
+--			if (iotbl.subid == 1 and awbwman_cfg().meta.shift) then
+--				iotbl.subid = 3;
+--			end
+
 			minputtbl[iotbl.subid] = iotbl.active;
 			mouse_input(0, 0, minputtbl);
 		end
@@ -382,13 +405,13 @@ function awb_input(iotbl)
 			awbwman_meta("shift", iotbl.active);
 		end
 
-		if (iotbl.active and kbdbinds[ symtable[iotbl.keysym] ]) then
-		 	kbdbinds[ symtable[iotbl.keysym] ]();
-		end
+		iotbl.keysym = symtable[iotbl.keysym];
 
--- forward input to focus window
-	elseif (wlist.focus) then
-		a = 1
+		if (iotbl.active and kbdbinds[ iotbl.keysym ]) then
+		 	kbdbinds[ iotbl.keysym ](); 
+		else
+			awbwman_input(iotbl);
+		end
 	end
 end
 

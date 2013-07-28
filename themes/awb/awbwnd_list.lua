@@ -233,8 +233,8 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.datasel    = datasel_fun;
 	pwin.renderfn   = render_fun;
 	pwin.cols       = colcfg;
-	pwin.scrollup   = stepup;
-	pwin.scrolldown = stepdown;
+	pwin.scrollup   = scrollup;
+	pwin.scrolldown = scrolldown;
 
 	pwin.icon_bardir = bardir;
 	pwin.scrollcaret = scrollcaret_icn;
@@ -244,12 +244,25 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	image_tracetag(scrollbar_icn,   "awbwnd_listview.scrollbar");
 	image_tracetag(scrollcaret_icn, "awbwnd_listview.scrollcaret_icn");
 
+	pwin.input = function(self, iotbl)
+		if (iotbl.active == false) then
+			return;
+		end
+
+		if (iotbl.keysym == "UP") then
+			pwin:scrollup(1);
+		elseif (iotbl.keysym == "DOWN") then
+			pwin:scrolldown(1);
+		end
+	end
+
 --
 -- build scrollbar 
 --
 	local bartbl = pwin.dir[bardir];
 	local newicn = bartbl:add_icon("fill", scrollbar_icn);
 
+	delete_image(scrollbar_icn);
 	link_image(scrollcaret_icn, newicn.vid);
 	image_inherit_order(scrollcaret_icn, true);
 	order_image(newicn.vid, 3);
@@ -270,23 +283,25 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	image_clip_on(cursor_icn, CLIP_SHALLOW);
 	image_mask_set(cursor_icn, MASK_UNPICKABLE);
 
-	local carretmh = {
+	local caretmh = {
 		wnd  = pwin,
 		caret_dy = 0,
 		drag = caretdrag,
 		drop = caretdrop,
+		name = "list_scroll_caret",
 		own  = function(self,vid) return scrollcaret_icn == vid; end
 	};
 
 	local scrollmh = {
 		caret = pwin.scrollcaret,
 		wnd   = pwin, 
+		name  = "list_scrollbar",
 		own   = function(self, vid) return newicn.vid == vid; end,
 		click = scrollclick; 
 	};
 
 	mouse_addlistener(scrollmh, {"click"});
-	mouse_addlistener(carretmh, {"drag", "drop"});
+	mouse_addlistener(caretmh,  {"drag", "drop"});
 
 -- find cursor ..
 	local mhand = {};
@@ -295,7 +310,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		local yofs, linen = pwin:line_y(y - props.y);
 
 		if (linen and pwin.restbl[linen]) then
-			pwin.restbl[linen]:trigger();
+			pwin.restbl[linen]:trigger(pwin);
 		end
 	end
 
@@ -303,7 +318,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
 		if (linen and pwin.restbl[linen] and pwin.restbl[linen].rtrigger) then
-			pwin.restbl[linen]:rtrigger();
+			pwin.restbl[linen]:rtrigger(pwin);
 		end
 	end
 
@@ -321,7 +336,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 	pwin.on_destroy = function()
 		mouse_droplistener(scrollmh);
-		mouse_droplistener(carretmh);
+		mouse_droplistener(caretmh);
 		mouse_droplistener(mhand);
 	end
 --

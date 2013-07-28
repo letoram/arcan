@@ -42,6 +42,7 @@ local function awbwnd_set_border(s, sz, r, g, b)
 			image_inherit_order(s.borders[v], true);
 			order_image(s.borders[v], 2);
 			show_image(s.borders[v]);
+			image_tracetag(s.borders[v], "awbwnd_border(" .. v .. ")");
 		end
 		
 		s.default_resize = s.resize;
@@ -90,6 +91,10 @@ local function awbwnd_update_minsz(self)
 end
 
 local function awbwnd_resize(self, neww, newh)
+	if (self.anchor == nil) then
+		return;
+	end
+	
 	awbwnd_update_minsz(self);
 
 	neww = neww >= self.minw and neww or self.minw;
@@ -170,54 +175,43 @@ end
 -- partly- managed members
 --
 local function awbwnd_move(self, newx, newy, timeval)
+	if (self.anchor == nil) then
+		return;
+	end
+	
 	move_image(self.anchor, newx, newy, timeval);
 	self.x = newx;
 	self.y = newy;
 end
 
 local function awbwnd_destroy(self, timeval)
-	blend_image(self.anchor,  0.0, timeval);
-	expire_image(self.anchor, timeval);
+--	print("anchor (", image_tracetag(self.anchor), "dies in: ", timeval);
 
 --
 -- delete the icons immediately as we don't want them pressed
 -- and they "fade" somewhat oddly when there's a background bar
 --
 	for k, v in pairs(self.dir) do
-		if (v) then 
-			delete_image(v.activeimg);
-			delete_image(v.inactiveimg);
-	
-			v.activeimg = nil;
-			v.activeimg = nil;
-
-			for icnk, icnv in ipairs(v.left) do
-				delete_image(icnv.vid);
-			end
-
-			for icnk, icnv in ipairs(v.right) do
-				delete_image(icnv.vid);
-			end
-
-			if (v.fill) then
-				delete_image(v.fill.vid);
-			end
+		if (v) then
+			v:destroy();
 		end
-
-		self.dir[k] = nil;
 	end
---
+
 -- the rest should disappear in cascaded deletions
 --
 	if (self.on_destroy) then
 		self:on_destroy();
 	end
+
+	blend_image(self.anchor,  0.0, timeval);
+	expire_image(self.anchor, timeval);
+	self.anchor = nil;
 end
 
 local function awbbar_destroy(self)
-	if (self.activeres) then
-		delete_image(self.activeres);
-		delete_image(self.inactiveres);
+	if (self.activeimg) then
+		delete_image(self.activeimg);
+		delete_image(self.inactiveimg );
 	end
 
 	for i=1,#self.left do
@@ -235,6 +229,7 @@ local function awbbar_destroy(self)
 
 	self.left  = nil;
 	self.right = nil;
+	mouse_droplistener(self);
 end
 
 local function awbbar_minsz(bar)
@@ -276,6 +271,9 @@ end
 local function awbbar_resize(self, neww, newh)
 	self.w = neww;
 	self.h = newh;
+	if (self.left == nil) then
+		return;
+	end
 
 	resize_image(self.vid, neww, newh);
 	local storep = image_storage_properties(self.vid);
@@ -426,7 +424,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		active   = awbbar_active,
 		inactive = awbbar_inactive,
 		min_sz   = awbbar_minsz,
-		rzfun    = awbbaricn_resize;
+		rzfun    = awbbaricn_resize,
 		left     = {},
 		right    = {},
 		fill     = nil,
