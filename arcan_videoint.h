@@ -120,7 +120,7 @@ struct storage_info_t {
 
 	union {
 		struct {
-			unsigned glid;
+			unsigned  glid; /* GLUint should always be unsigned int */
 			uint32_t s_raw;
 			uint8_t*   raw;
 			char*   source;

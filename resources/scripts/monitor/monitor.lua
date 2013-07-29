@@ -1,7 +1,9 @@
 --
--- Reference example monitor script for debugging
+-- Minimalistic example monitor script for debugging
 -- another arcan instance from the prelaunch/monitorstep
 -- -M 100 -O monitor.lua
+--
+-- For a more advanced use awbmon.lua
 --
 
 ignore_samples = false;
@@ -91,11 +93,16 @@ function toggle_help()
 	
 	helpimg = render_text([[\ffonts/default.ttf,12 Default Monitor Script Helper
 \n\rn\r
-F1\ttoggle help\n\r
-F2\twait for new sample\n\r
-Up/Down\t switch active context\n\r
-Shift\t cycle rendertarget\n\r
-Left/Right\t switch current video object\n\r
+F1\tToggle help\n\r
+F2\tWait for new sample\n\r
+F3\tDelta sample\n\r
+F4\tShow tree view\n\r
+F5\tShow allocation map\n\r
+F6\tSwitch context up\n\r
+F7\tSwitch context down\n\r
+Up/Down\t move to parent / child \n\r
+Left/Right\t step to previous/next object in context \n\r 
+Shift+L/R\t step to previous/next sibling to obj \n\r 
 Escape\t shut down\n\r
 ]]);
 	local props = image_surface_properties(helpimg);
@@ -244,8 +251,15 @@ end
 shift_state = false;
 
 keyhandler = {};
+
 keyhandler["F1"] = toggle_help;
 keyhandler["F2"] = function() ignore_samples = false; end
+keyhandler["F3"] = function() print("implement delta frame"); end
+keyhandler["F4"] = function() print("delta plot"); end
+keyhandler["F5"] = function() allocation_map(); end  
+keyhandler["F6"] = function() step_context(-1); end
+keyhandler["F7"] = function() step_context(1);  end
+
 keyhandler["RIGHT"] = function() 
 	if (shift_state) then
 		step_sibling(1);
@@ -263,19 +277,11 @@ keyhandler["LEFT"] = function()
 end
 
 keyhandler["UP"] = function()
-	if (shift_state) then
-		step_parent();
-	else 
-		step_context(-1);
-	end
+	step_parent();
 end
 
 keyhandler["DOWN"] = function()
-	if (shift_state) then
-		step_child();
-	else
-		step_context(1);
-	end
+	step_child();
 end
 
 keyhandler["ESCAPE"] = shutdown;

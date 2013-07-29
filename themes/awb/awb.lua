@@ -56,7 +56,6 @@ function desktoplbl(text)
 end
 
 function awb()
-	settings.colourtable = system_load("scripts/colourtable.lua")();
 	symtable = system_load("scripts/symtable.lua")();
 
 -- shader function / model viewer
@@ -97,7 +96,7 @@ function awb()
 	mouse_acceleration(0.5);
 	
 	setup_3dsupport();
---	awb_desktop_setup();
+	awb_desktop_setup();
 
 -- LCTRL + META = (toggle) grab to specific internal
 -- LCTRL = (toggle) grab to this window
@@ -123,10 +122,16 @@ end
 -- on activation, switch to the real one.
 --
 function gamelist_launch(self)
-	local wnd = awbwman_spawn(menulbl(self.name));
-	launch_target(self.gameid, LAUNCH_INTERNAL, function(source, status)
-		wnd:update_canvas(source, false);	
-	end);
+	local captbl = launch_target_capabilities(self.target);
+
+	if (true or captbl.internal_launch == false) then
+		launch_target(self.gameid, LAUNCH_EXTERNAL);
+	else
+		local wnd = awbwman_spawn(menulbl(self.name));
+		launch_target(self.gameid, LAUNCH_INTERNAL, function(source, status)
+			wnd:update_canvas(source, false);	
+		end);
+	end
 end
 
 function spawn_vidwin(self)
@@ -246,6 +251,7 @@ function gamelist_wnd(selection)
 			local ent = {
 				name     = tbl[i].title,
 				gameid   = tbl[i].gameid,
+				target   = tbl[i].target,
 				tag      = tbl[i],
 				rtrigger = gamelist_popup,
 				trigger  = gamelist_launch,

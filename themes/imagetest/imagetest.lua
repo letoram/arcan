@@ -39,6 +39,7 @@ function drawmenu()
 	[[\b\!i(4)\t\!bdouble stacksize (current: ]] .. used+1 .. " / " .. total .. [[\n\r]] ..
 	[[\b\!i(s)\t\!bstack push\n\r]] ..
 	[[\b\!i(p)\t\!bstack pop\n\r]] ..
+	[[\b\!i(r)\t\!bandom surface\n\r]] ..
 	[[\b\!i(l)\t\!bload image into context\n\r]] ..
 	[[\b\!i(a)\t\!btoggle asynchronous image_load\n\r]] ..
 	[[\b\!i(d)\t\!bstack push store\n\r]] ..
@@ -152,6 +153,15 @@ function imagetest_input(inputtbl)
 		elseif (symtable[inputtbl.keysym] == "a") then
 			print("Switching image mode\n");
 			imagefun = imagefun == load_image and load_image_asynch or load_image
+		elseif (symtable[inputtbl.keysym] == "r") then
+			local tbl = {};
+			for i=1,(256 * 256) do
+				table.insert(tbl, math.random(255));
+				table.insert(tbl, math.random(255));
+				table.insert(tbl, math.random(255));
+			end
+				vid = raw_surface(256, 256, 3, tbl); 
+				show_image(vid);
 		end
 	end
 end
