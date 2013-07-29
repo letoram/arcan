@@ -95,9 +95,6 @@ function toggle_help()
 \n\rn\r
 F1\tToggle help\n\r
 F2\tWait for new sample\n\r
-F3\tDelta sample\n\r
-F4\tShow tree view\n\r
-F5\tShow allocation map\n\r
 F6\tSwitch context up\n\r
 F7\tSwitch context down\n\r
 Up/Down\t move to parent / child \n\r
