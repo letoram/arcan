@@ -49,6 +49,7 @@ local awb_cfg = {
 	spawnx      = 20,
 	spawny      = 20,
 	animspeed   = 10,
+	meta = {},
 
 -- root window icon management
 	rootcell_w  = 80,
@@ -916,5 +917,5 @@ function awbwman_init(defrndr, mnurndr)
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 
---	awbwman_rootwnd();
+	awbwman_rootwnd();
 end
