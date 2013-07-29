@@ -208,6 +208,10 @@ local function awbman_mhandlers(wnd, bar)
 			self.line_beg = nil;
 			delete_image(self.lineobj);
 			self.lineobj = nil;
+		else
+			props = image_surface_resolve_properties(self.parent.anchor);
+			self.line_beg = nil;
+			wnd:move(math.floor(props.x), math.floor(props.y));
 		end
 	end
 
@@ -408,25 +412,10 @@ function awbwman_cfg()
 	return awb_cfg;
 end
 
---
--- While some input (e.g. whatever is passed as input 
--- to mouse_handler) gets treated elsewhere, as is meta state modifier,
--- the purpose of this function is to forward to the current 
--- focuswnd (if needed) or manipulate whatever is in the popup-slot,
--- and secondarily, pass through the active input layout and push
--- to the broadcast domain.
---
 function awbwman_input(iotbl, keysym)
-
--- match configured from global?
--- else forward raw input 
-
-	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
-		awb_cfg.popup_active:input(iotbl);
-	
-	elseif (awb_cfg.focus and 
+	if (awb_cfg.focus and 
 			awb_cfg.focus.input ~= nil) then
-		awb_cfg.focus:input(iotbl);
+		awb_cfg.focus:input(iotbl, keysym);
 	end
 end
 
@@ -439,6 +428,7 @@ function awbwman_init(defrndr, mnurndr)
 
 	awb_col = system_load("scripts/colourtable.lua")();
 	awb_col.bgcolor = {r = 0, g = 85, b = 169, a = 1.0};
+	awb_col.dialog_border = {r = 255, g = 255, b = 255, a = 1.0};
 
 	awb_cfg.bordericns["close"] =load_image("/scripts/monitor/awbmon/close.png");
 	awb_cfg.bordericns["resize"]=load_image("/scripts/monitor/awbmon/resize.png");

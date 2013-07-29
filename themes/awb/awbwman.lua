@@ -519,7 +519,7 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 -- Add an invisible surface just beneath the dialog that grabs all input
 --
 	if (modal) then
-		a = fill_surface(VRESW, VRESH, 255, 0, 0);
+		a = null_surface(VRESW, VRESH);
 		show_image(a);
 		image_tracetag(a, "modal_block");
 		order_image(a, image_surface_properties(wnd.anchor).order - 1);
