@@ -288,7 +288,10 @@ int main(int argc, char* argv[])
 				close(pair[0]);
 			/*	fclose(stdout);
 				fclose(stderr); */
+				extern arcan_benchdata benchdata;
+	
 				monitor_parent = true;
+				benchdata.bench_enabled = true;
 				monitor_outf = fdopen(pair[1], "w");
 				waitpid(p1, &status, 0);
 			 	signal(SIGPIPE, SIG_IGN);	
@@ -502,6 +505,8 @@ themeswitch:
 /* priority is always in maintaining logical clock and event processing */
 		if (nticks > 0){
 			arcan_video_tick(nticks);
+			arcan_bench_register_tick(nticks);
+
 			arcan_audio_tick(nticks);
 			lastfrag = 0.0;
 				
@@ -536,6 +541,8 @@ themeswitch:
  * flip cost and expensive (vsync on) */
 			if (arcan_video_display.vsync_timing < 8.0){
 				arcan_video_refresh(frag, true);
+				arcan_bench_register_frame();
+
 				int delta = arcan_timemillis() - lastflip;
 				lastflip += delta;
 	
@@ -546,6 +553,8 @@ themeswitch:
 				int delta = arcan_timemillis() - lastflip;
 				if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
 					arcan_video_refresh(frag, true);
+					arcan_bench_register_frame();
+
 					lastflip += delta;
 				} 
 			}

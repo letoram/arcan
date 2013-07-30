@@ -41,7 +41,7 @@ function awbmon()
 	kbdbinds["F11"]  = awbmon_help;
 	kbdbinds["CTRL"] = toggle_mouse_grab;
 	kbdbinds["ALTF4"] = shutdown;
-	kbdbinds["F2"] = function() state.process_sample = true; end
+	kbdbinds[" "] = function() state.process_sample = true; end
 
 	awbmon_help();
 end
@@ -51,17 +51,18 @@ function awbmon_help()
 	helpimg = desktoplbl([[Default Monitor Script Helper\n\r\n\r
 (global)\n\r
 CTRL\t Grab/Release Mouse\n\r
-F2\t Wait for new Sample\n\r
+SPACE\t Wait for new Sample\n\r
 ALT+F4\t Shutdown\n\r
 F11\t Help Window\n\r\nr\r
 (window-input)\n\r
 ESC\tDestroy Window\n\r
 F1\tGenerate Tree View\n\r
-F4\tGenerate Allocation Map\n\r
-F5\tSwitch Context Up\n\r
+F2\tGenerate Allocation Map\n\r
+F3\tSwitch Context Up\n\r
 SHIFT+F3\tSwitch Context Down\n\r
-F6\tContext Info\n\r
-F7\tVideo Subsystem Info\n\r
+F4\tContext Info\n\r
+F5\tVideo Subsystem Info\n\r
+F6\tBenchmark View\n\r
 Up/Down\t Move to Parent/Child\n\r
 Left/Right\t Step to Prev/Next Object\n\r
 Shift+L/R\t Step to Prev/Next Sibling\n\r
@@ -235,6 +236,19 @@ function samplewnd_stepchild(self)
 	end
 end
 
+function wnd_link(wnd, vid)
+	link_image(vid, wnd.canvas.vid);
+	show_image(vid);
+	image_clip_on(vid, CLIP_SHALLOW);
+	image_inherit_order(vid, true);
+	order_image(vid, 1);
+	
+	local props = image_surface_properties(vid);
+	props.width = props.width > (0.5 * VRESW) and math.floor(0.5 * VRESW) or
+		props.width;
+	
+	wnd:resize(props.width + 20, props.height + 20);
+end
 
 function samplewnd_update(self, smpl)
 	delete_image(self.smplvid);
@@ -243,30 +257,7 @@ function samplewnd_update(self, smpl)
 	end
 
 	self.smplvid = render_sample(smpl);
-	link_image(self.smplvid, self.canvas.vid);
-	show_image(self.smplvid);
-	image_clip_on(self.smplvid, CLIP_SHALLOW);
-	image_inherit_order(self.smplvid, true);
-	order_image(self.smplvid, 1);
-	
-	local props = image_surface_properties(self.smplvid);
-	props.width = props.width > (0.5 * VRESW) and math.floor(0.5 * VRESW) or
-		props.width;
-	
-	self:resize(props.width + 20, props.height + 20);
-end
-
---
--- To generate a tree, first create a list of samples
--- where each element is sorted based on the number of parents it has (level)
--- Use this to calculate scale
--- then traverse and add lines for other kinds of relationships (frameset,
--- instances, ... 
--- fill this to a surface, define a rendertarget, process it then kill it
--- and put this new vid into a window
---
-function spawn_tree(smpl, context)
-
+	wnd_link(self, self.smplvid);
 end
 
 --
@@ -276,13 +267,100 @@ function vobjcol(smpl)
 	if (smpl == nil) then
 		return 0, 255, 0;
 	else
-		return 255, 0, 0;
+		return 255, 0, (string.find(smpl.flags, "clone") ~= nil and 255 or 0);
 	end
+end
+
+local function lineobj(src, x1, y1, x2, y2)
+	local dx  = x2 - x1 + 1;
+	local dy  = y2 - y1 + 1;
+	local len = math.sqrt(dx * dx + dy * dy);
+
+	resize_image(src, len, 2);
+
+	show_image(src);
+	rotate_image(src, math.deg( math.atan2(dy, dx) ) );
+	move_image(src, x1, y1);
+	image_origo_offset(src, -1 * (0.5 * len), -0.5);
+
+	return line;
+end
+
+--
+-- To generate a tree, first create a list of samples
+-- where each element is sorted based on the number of parents it has (level)
+-- This gives us the Y value and allocate X on a first come first serve basis.
+-- Path the smpl table to track references to cells in this new tree,
+-- and use lineobj calls to plot out the relation.
+--
+function spawn_tree(smpl, context)
+	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) .. 
+		tostring(smpl.display.ticks)));
+
+	lvls = {};
+
+	local nparents = function(vobj)
+		local cur = vobj;
+		local cnt = 0;
+
+		while (cur and cur.cellid ~= 0) do
+			cnt = cnt + 1;
+			cur = smpl.vcontexts[context].vobjs[cur.parent];
+		end
+
+		return cnt;
+	end
+
+	for i,j in pairs(smpl.vcontexts[context].vobjs) do
+	end
+end
+
+function spawn_benchmark(smpl)
+	local wnd = awbwman_spawn(menulbl("Benchmark:" .. tostring(context) ..
+	tostring(smpl.display.ticks)));
+
+end
+
+function spawn_context(smpl, context)
+	local wnd = awbwman_spawn(menulbl("Context:" .. tostring(context) .. ":" ..
+		tostring(smpl.display.ticks)));
+
+	local ctx = smpl.vcontexts[context];
+	local cimg = desktoplbl(string.format([[
+Context:\t%d / %d\n\r
+Rtargets:\t%d\n\r
+Vobjects:\t%d (%d) / %d\n\r
+Last Tick:\t%d\n\r]], context, #smpl.vcontexts, #ctx.rtargets, ctx.alive,
+#ctx.vobjs, ctx.limit, ctx.tickstamp));
+
+	image_mask_set(cimg, MASK_UNPICKABLE);
+	wnd_link(wnd, cimg);
+end
+
+function spawn_vidinf(smpl, disp)
+	local wnd = awbwman_spawn(menulbl("Video:" .. tostring(disp.ticks)));
+	local cimg = desktoplbl(string.format([[
+Ticks:\t%d\n\r
+Display:\t%d\n\r
+Conserv:\t%d\n\r
+Vsync:\t%d\n\r
+MSA:\t%d\n\r
+Vitem:\t%d\n\r
+Imageproc:\t%d\n\r
+Scalemode:\t%d\n\r
+Filtermode:\t%d\n\r]],
+disp.ticks, disp.width, disp.height,
+disp.conservative, disp.vsync, disp.msasamples,
+disp.ticks, disp.default_vitemlim, disp.imageproc,
+disp.scalemode, disp.filtermode));
+
+	image_mask_set(cimg, MASK_UNPICKABLE);
+	wnd_link(wnd, cimg);
 end
 
 function spawn_allocmap(smpl, context)
 	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) .. 
-		tostring(smpl.vcontexts[context].tickstamp)));
+		tostring(smpl.display.ticks)));
 
 	local bitmap = {};
 	local ul     = smpl.vcontexts[context].limit;
@@ -320,9 +398,48 @@ function spawn_allocmap(smpl, context)
 	end
 end
 
+function window_input(self, iotbl)
+	local sym = iotbl.prefix .. iotbl.keysym;
+	
+	if (iotbl.active == false) then
+		return;
+	end
+	if (sym == "RIGHT") then
+		self:step(1);
+	elseif (sym == "LEFT") then
+		self:step(-1);
+	elseif (sym == "SHIFTRIGHT") then
+		self:step_sibling(1);
+	elseif (sym == "SHIFTLEFT") then
+		self:step_sibling(-1);
+	elseif (sym == "SHIFTENTER") then
+		spawn_sample(self.smpl, self.context, self.activeid);
+	elseif (sym == "UP") then
+		self:step_parent();
+	elseif (sym == "DOWN") then
+		self:step_child();
+	elseif (sym == "ESCAPE") then
+		self:destroy(10);
+	elseif (sym == "F1") then
+		spawn_tree(self.smpl, self.context);
+	elseif (sym == "F2") then
+		spawn_allocmap(self.smpl, self.context);
+	elseif (sym == "F3") then
+		print("switch context down");
+	elseif (sym == "SHIFTF3") then
+		print("switch context down");
+	elseif (sym == "F4") then
+		spawn_context(self.smpl, self.context);
+	elseif (sym == "F5") then
+		spawn_vidinf(self.smpl, self.smpl.display);
+	elseif (sym == "F6") then
+		print("benchmark");
+	end
+end
+
 function spawn_sample(smpl, context, startid)
 	local wnd = awbwman_spawn(menulbl(tostring(context) .. ":" .. 
-		tostring(smpl.vcontexts[context].tickstamp)));
+		tostring(smpl.display.ticks)));
 
 	wnd.step = samplewnd_step;
 	wnd.update_smpl = samplewnd_update;
@@ -333,42 +450,7 @@ function spawn_sample(smpl, context, startid)
 	wnd.step_parent  = samplewnd_stepparent;
 	wnd.step_sibling = samplewnd_stepsibling;
 	wnd.step_child   = samplewnd_stepchild;
-
-	wnd.input = function(self, inp)
-		local sym = inp.prefix .. inp.keysym;
-	
-		if (inp.active == false) then
-			return;
-		end
-		if (sym == "RIGHT") then
-			self:step(1);
-		elseif (sym == "LEFT") then
-			self:step(-1);
-		elseif (sym == "SHIFTRIGHT") then
-			self:step_sibling(1);
-		elseif (sym == "SHIFTLEFT") then
-			self:step_sibling(-1);
-		elseif (sym == "SHIFTENTER") then
-			spawn_sample(smpl, context, self.activeid);
-		elseif (sym == "UP") then
-			self:step_parent();
-		elseif (sym == "DOWN") then
-			self:step_child();
-		elseif (sym == "ESCAPE") then
-			self:destroy(10);
-		elseif (sym == "F1") then
-			print("tree view");
-		elseif (sym == "F3") then
-			spawn_allocmap(smpl, self.context);
-		elseif (sym == "F4") then
-			print("switch context up");
-		elseif (sym == "F5") then
-			print("context metainfo");
-		elseif (sym == "F6") then
-			print("generation videoinf");
-		end
-	end
-
+	wnd.input = window_input; 
 	wnd:step(1);
 end
 

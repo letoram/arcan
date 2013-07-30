@@ -3903,6 +3903,76 @@ int arcan_lua_borderscan(lua_State* ctx)
 	return 4;
 }
 
+extern arcan_benchdata benchdata;
+int arcan_lua_togglebench(lua_State* ctx)
+{
+	int nargs = lua_gettop(ctx);
+
+	if (nargs)
+		benchdata.bench_enabled = lua_toboolean(ctx, 1);
+	else
+		benchdata.bench_enabled = !benchdata.bench_enabled;
+
+/* always reset on data change */
+	memset(benchdata.ticktime, '\0', sizeof(benchdata.ticktime));
+	memset(benchdata.frametime, '\0', sizeof(benchdata.frametime));
+	memset(benchdata.framecost, '\0', sizeof(benchdata.framecost));
+	benchdata.tickofs = benchdata.frameofs = benchdata.costofs = 0;
+
+	return 0;
+}
+
+static int arcan_lua_getbenchvals(lua_State* ctx)
+{
+	size_t bench_sz = sizeof(benchdata.ticktime) / sizeof(benchdata.ticktime[0]);
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+	int i = (benchdata.tickofs + 1) % bench_sz;
+	int count = 0;
+
+	while (i != benchdata.tickofs){
+		lua_pushnumber(ctx, count++);
+		lua_pushnumber(ctx, benchdata.ticktime[i]);
+		lua_rawset(ctx, top);
+		i = (i + 1) % bench_sz;
+	}
+
+	bench_sz = sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]);
+	i = (benchdata.frameofs + 1) % bench_sz;
+	lua_newtable(ctx);
+	top = lua_gettop(ctx);
+	count = 0;
+
+ 	while (i != benchdata.frameofs){
+		lua_pushnumber(ctx, count++);
+		lua_pushnumber(ctx, benchdata.frametime[i]);
+		lua_rawset(ctx, top);
+		i = (i + 1) % bench_sz;
+	}	
+
+	bench_sz = sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]);
+	i = (benchdata.costofs + 1) % bench_sz;
+	lua_newtable(ctx);
+	top = lua_gettop(ctx);
+	count = 0;
+
+ 	while (i != benchdata.costofs){
+		lua_pushnumber(ctx, count++);
+		lua_pushnumber(ctx, benchdata.framecost[i]);
+		lua_rawset(ctx, top);
+		i = (i + 1) % bench_sz;
+	}	
+
+	return 3;	
+}
+
+static int arcan_lua_timestamp(lua_State* ctx)
+{
+	lua_pushnumber(ctx, arcan_timemillis());
+	return 1;
+}
+
 int arcan_lua_decodemod(lua_State* ctx)
 {
 	int modval = luaL_checkint(ctx, 1);
@@ -4809,6 +4879,9 @@ static const luaL_Reg sysfuns[] = {
 {"system_context_size", arcan_lua_systemcontextsize},
 {"utf8kind",            arcan_lua_utf8kind         },
 {"decode_modifiers",    arcan_lua_decodemod        },
+{"benchmark_enable",    arcan_lua_togglebench      },
+{"benchmark_timestamp", arcan_lua_timestamp        },
+{"benchmark_data",      arcan_lua_getbenchvals     },
 #ifdef _DEBUG
 {"freeze_image",        arcan_lua_freezeimage      },
 #endif
@@ -5214,6 +5287,41 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 /* missing, rendertarget dump */
 		fprintf(dst,"table.insert(restbl.vcontexts, ctx);");
 		cctx--;
+	}
+
+/* benchmark data,
+ * reset these after each flush as their values will be distorted by the 
+ * sample function, ticks should be adjusted to fit the ring buffer size 
+ * (or just ignored) */
+	if (benchdata.bench_enabled){
+		size_t bsz = sizeof(benchdata.ticktime)  / sizeof(benchdata.ticktime[0]);
+		size_t fsz = sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]);
+		size_t csz = sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]);
+
+		int i = (benchdata.tickofs + 1) % bsz;
+		fprintf(dst, "ctx.benchmark = {};\nctx.benchmark.ticks = {");
+		while (i != benchdata.tickofs){
+			fprintf(dst, "%d,", benchdata.ticktime[i]);
+			i = (i + 1) % bsz;
+		}
+		fprintf(dst, "};\nctx.benchmark.frames = {");
+		i = (benchdata.frameofs + 1) % fsz;
+		while (i != benchdata.frameofs){
+			fprintf(dst, "%d,", benchdata.frametime[i]);
+			i = (i + 1) % fsz;
+		}
+		fprintf(dst, "};\nctx.benchmark.framecost = {");
+		i = (benchdata.costofs + 1) % csz;
+		while (i != benchdata.costofs){
+			fprintf(dst, "%d,", benchdata.framecost[i]);
+			i = (i + 1) % csz;
+		}
+		fprintf(dst, "};\n");
+	
+		memset(benchdata.ticktime, '\0', sizeof(benchdata.ticktime));
+		memset(benchdata.frametime, '\0', sizeof(benchdata.frametime));
+		memset(benchdata.framecost, '\0', sizeof(benchdata.framecost));
+		benchdata.tickofs = benchdata.frameofs = benchdata.costofs = 0;
 	}
 
 /* foreach context, footer */
