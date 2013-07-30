@@ -33,13 +33,6 @@
 #define ARCAN_VERSION_MINOR 3 
 #define ARCAN_VERSION_PATCH 1 
 
-extern char* arcan_themename;
-extern char* arcan_resourcepath;
-extern char* arcan_themepath;
-extern char* arcan_binpath;
-extern char* arcan_libpath;
-extern char* arcan_fontpath;
-
 typedef struct frameserver_shmpage frameserver_shmpage;
 
 #include PLATFORM_HEADER
@@ -215,4 +208,31 @@ const char* internal_launch_support();
 #define ARCAN_EID 0
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )
+
+/* 
+ * found / implemented in arcan_event.c 
+ */
+typedef struct {
+	bool bench_enabled;
+
+	unsigned ticktime[32];
+	char tickofs;
+
+	unsigned frametime[128];
+	char frameofs;
+
+	unsigned framecost[128];
+	char costofs;
+} arcan_benchdata;
+
+void arcan_bench_register_tick(unsigned);
+void arcan_bench_register_cost(unsigned);
+void arcan_bench_register_frame();
+
+extern char* arcan_themename;
+extern char* arcan_resourcepath;
+extern char* arcan_themepath;
+extern char* arcan_binpath;
+extern char* arcan_libpath;
+extern char* arcan_fontpath;
 #endif

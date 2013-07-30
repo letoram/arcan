@@ -330,6 +330,55 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 	return fragment;
 }
 
+arcan_benchdata benchdata = {0};
+
+/* 
+ * keep the time tracking separate from the other 
+ * timekeeping parts, discard non-monotonic values
+ */
+void arcan_bench_register_tick(unsigned nticks)
+{
+	static long long int lasttick = -1;
+	if (benchdata.bench_enabled == false)
+		return;
+
+	while (nticks--){
+		long long int ftime = arcan_timemillis();
+		if (lasttick > 0 && ftime > lasttick){
+			unsigned delta = ftime - lasttick;
+			benchdata.ticktime[benchdata.tickofs] = delta;
+			benchdata.tickofs = (benchdata.tickofs + 1) % 
+				(sizeof(benchdata.ticktime) / sizeof(benchdata.ticktime[0]));
+		}
+		
+		lasttick = ftime;
+	}
+}
+
+void arcan_bench_register_cost(unsigned cost)
+{
+	benchdata.framecost[benchdata.costofs] = cost;
+	benchdata.costofs = (benchdata.costofs + 1) % 
+		(sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]));
+}
+
+void arcan_bench_register_frame()
+{
+	static long long int lastframe = -1;
+	if (benchdata.bench_enabled == false)
+		return;
+
+	long long int ftime = arcan_timemillis();
+	if (lastframe > 0 && ftime > lastframe){
+		unsigned delta = ftime - lastframe;
+		benchdata.frametime[benchdata.frameofs] = delta;
+		benchdata.frameofs = (benchdata.frameofs + 1) % 
+			(sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]));
+		}
+
+	lastframe = ftime;
+}
+
 extern void platform_event_deinit(arcan_evctx* ctx);
 void arcan_event_deinit(arcan_evctx* ctx)
 {
