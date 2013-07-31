@@ -5098,10 +5098,10 @@ static inline char* lut_framemode(enum arcan_framemode mode)
 static inline void dump_props(FILE* dst, surface_properties props)
 {	
 	fprintf(dst,"\
-props.position = {%lf, %lf, %lf};\
-props.scale = {%lf, %lf, %lf};\
-props.opa = %f;\
-props.rotation = {%lf, %lf, %lf};\
+props.position = {%lf, %lf, %lf};\n\
+props.scale = {%lf, %lf, %lf};\n\
+props.opa = %f;\n\
+props.rotation = {%lf, %lf, %lf};\n\
 ", 
 (double)props.position.x, (double)props.position.y, (double)props.position.z,
 (double)props.scale.x, (double)props.scale.y, (double)props.scale.z,
@@ -5115,37 +5115,37 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 	char* mask = maskstr(src->mask);
 
 	fprintf(dst,
-"vobj = {\
-origw = %d,\
-origh = %d,\
-order = %d,\
-last_updated = %d,\
-lifetime = %d,\
-cellid = %d,\
-frameset_capacity = %d,\
-frameset_mode = %d,\
-frameset_counter = %d,\
-frameset_current = %d,\
-extrefc_framesets = %d,\
-extrefc_instances = %d,\
-extrefc_attachments = %d,\
-extrefc_links = %d,\
-storage_source = [[%s]],\
-storage_size = %d,\
-glstore_w = %d,\
-glstore_h = %d,\
-glstore_bpp = %d,\
-glstore_txu = %d,\
-glstore_txv = %d,\
-glstore_prg = [[%s]],\
-scalemode  = [[%s]],\
-imageproc = [[%s]],\
-filtermode = [[%s]],\
-flags = [[%s]],\
-mask = [[%s]],\
-origoofs = {%lf, %lf, %lf},\
-frameset = {},\
-tracetag = [[%s]]\
+"vobj = {\n\
+\torigw = %d,\n\
+\torigh = %d,\n\
+\torder = %d,\n\
+\tlast_updated = %d,\n\
+\tlifetime = %d,\n\
+\tcellid = %d,\n\
+\tframeset_capacity = %d,\n\
+\tframeset_mode = %d,\n\
+\tframeset_counter = %d,\n\
+\tframeset_current = %d,\n\
+\textrefc_framesets = %d,\n\
+\textrefc_instances = %d,\n\
+\textrefc_attachments = %d,\n\
+\textrefc_links = %d,\n\
+\tstorage_source = [[%s]],\n\
+\tstorage_size = %d,\n\
+\tglstore_w = %d,\n\
+\tglstore_h = %d,\n\
+\tglstore_bpp = %d,\n\
+\tglstore_txu = %d,\n\
+\tglstore_txv = %d,\n\
+\tglstore_prg = [[%s]],\n\
+\tscalemode  = [[%s]],\n\
+\timageproc = [[%s]],\n\
+\tfiltermode = [[%s]],\n\
+\tflags = [[%s]],\n\
+\tmask = [[%s]],\n\
+\torigoofs = {%lf, %lf, %lf},\n\
+\tframeset = {},\n\
+\ttracetag = [[%s]]\n\
 };",
 (int) src->origw,
 (int) src->origh,
@@ -5181,7 +5181,7 @@ mask,
 src->tracetag ? src->tracetag : "no tag");
 
 	if (src->vstore->txmapped){
-		fprintf(dst, "vobj.glstore_glid = %d;\
+		fprintf(dst, "vobj.glstore_glid = %d;\n\
 vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
 			src->vstore->refcount);
 	} else {
@@ -5230,24 +5230,24 @@ void arcan_lua_statesnap(FILE* dst)
  */
 	struct arcan_video_display* disp = &arcan_video_display;
 fprintf(dst, 
-				" do \
-local vobj = {};\
-local props = {};\
-local restbl = {\
-	display = {\
-		width = %d,\
-		height = %d,\
-		conservative = %d,\
-		vsync = %d,\
-		msasamples = %d,\
-		ticks = %lld,\
-		default_vitemlim = %d,\
-		imageproc = %d,\
-		scalemode = %d,\
-		filtermode = %d,\
-	},\
-	vcontexts = {}\
-};\
+				" do \n\
+local vobj = {};\n\
+local props = {};\n\
+local restbl = {\n\
+\tdisplay = {\n\
+\t\twidth = %d,\n\
+\t\theight = %d,\n\
+\t\tconservative = %d,\n\
+\t\tvsync = %d,\n\
+\t\tmsasamples = %d,\n\
+\t\tticks = %lld,\n\
+\t\tdefault_vitemlim = %d,\n\
+\t\timageproc = %d,\n\
+\t\tscalemode = %d,\n\
+\t\tfiltermode = %d,\n\
+\t};\n\
+\tvcontexts = {};\
+};\n\
 ", disp->width, disp->height, disp->conservative ? 1 : 0, disp->vsync ? 1 : 0, 
 	(int)disp->msasamples, (long long int)disp->c_ticks, 
 	(int)disp->default_vitemlim,
@@ -5257,17 +5257,17 @@ local restbl = {\
 	while (cctx >= 0){
 /* foreach context, header */
 fprintf(dst,
-"local ctx = {\
-	vobjs = {},\
-	rtargets = {}\
+"local ctx = {\n\
+\tvobjs = {},\n\
+\trtargets = {}\n\
 };");
 
 	struct arcan_video_context* ctx = &vcontext_stack[cctx];
 	fprintf(dst, 
-"ctx.ind = %d;\
-ctx.alive = %d;\
-ctx.limit = %d;\
-ctx.tickstamp = %lld;", 
+"ctx.ind = %d;\n\
+ctx.alive = %d;\n\
+ctx.limit = %d;\n\
+ctx.tickstamp = %lld;\n", 
 (int) cctx,
 (int) ctx->nalive,
 (int) ctx->vitem_limit,
@@ -5280,7 +5280,7 @@ ctx.tickstamp = %lld;",
 
 			dump_vobject(dst, ctx->vitems_pool + i);
 			fprintf(dst, "\
-vobj.cellid_translated = %ld;\
+vobj.cellid_translated = %ld;\n\
 ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 		}
 
