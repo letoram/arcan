@@ -121,7 +121,7 @@ local function awbwman_focus(wnd)
 		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
 		end
-		
+	
 		awbwman_pushback(awb_cfg.focus);
 	end
 
@@ -148,15 +148,18 @@ function awbwman_shadow_nonfocus()
 	end
 end
 
-local function awbwman_close(wcont)
-	drop_popup();
-
+local function awbwman_dereg(wcont)
 	for i=1,#awb_wtable do
 		if (awb_wtable[i] == wcont) then
 			table.remove(awb_wtable, i);
 			break;
 		end
 	end
+end
+
+local function awbwman_close(wcont)
+	drop_popup();
+	awbwman_dereg(wcont);
 
 	if (awb_cfg.focus == wcont) then
 		awb_cfg.focus = nil;
@@ -282,7 +285,7 @@ end
 
 local function awbwman_addcaption(bar, caption)
 	local props  = image_surface_properties(caption);
-	local bgsurf = color_surface(10, 10, 220, 220, 220);
+	local bgsurf = color_surface(10, 10, 0, 0, 0);
 	local icn = bar:add_icon("fill", bgsurf);
 	delete_image(icn.vid);
 
@@ -431,16 +434,20 @@ end
 -- Trying to close the window via other means uses buttons[cancelind] trigger
 -- Modal prevents other actions until response has been provided 
 --
-function awbwman_dialog(caption, buttons, cancelind, modal)
+function awbwman_dialog(caption, buttons, options, modal)
+	if (options == nil) then
+		options = {};
+	end
+
+	options.nocaption= true;
+	options.noicons  = true;
+	options.noresize = true;
+
 	image_tracetag(caption, "awbwman_dialog(caption)");
-	local wnd = awbwman_spawn(caption);
+	local wnd = awbwman_spawn(caption, options); 
 	image_tracetag(wnd.anchor, "awbwman_dialog.anchor");
 	local tmptbl = {};
 
--- remove the option to resize, and center on screen
-	wnd.dir.r:destroy();
-	wnd.dir.r = nil;
-	
 --
 -- Size the new buttons after the biggest supplied one
 --
@@ -457,9 +464,9 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 	local bwidth  = math.floor(maxw * 1.2);
 	local bheight = math.floor(maxh * 1.1);
 	local capp    = image_surface_properties(caption);
-	local wwidth  = (bwidth * #buttons) > capp.width and 
-		(bwidth * #buttons) or capp.width;
-	local wheight = bheight + capp.height + 10;
+	local wwidth  = (bwidth * #buttons + 20) > capp.width and 
+		(bwidth * #buttons + 20) or capp.width;
+	local wheight = bheight + capp.height + wnd.dir.t.size;
 
 	wnd:resize(math.floor(wwidth * 1.2), math.floor(wheight * 2));
 	move_image(wnd.anchor, math.floor(0.5 * (VRESW - wnd.w)),
@@ -468,7 +475,8 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 -- Link caption to window area, center (taking buttons into account)
 	link_image(caption, wnd.canvas.vid);
 	image_inherit_order(caption, true);
-	
+	show_image(caption);
+
 	local wndprop = image_surface_properties(wnd.canvas.vid);
 	move_image(caption, math.floor(0.5 * (wndprop.width - capp.width)),
 		math.floor(0.5 * ((wndprop.height - bheight) - capp.height)) );
@@ -493,11 +501,13 @@ function awbwman_dialog(caption, buttons, cancelind, modal)
 		image_inherit_order(v.caption, true);
 		order_image(button, 1);
 		order_image(v.caption, 2);
+		image_mask_set(border, MASK_UNPICKABLE);
 		image_mask_set(v.caption, MASK_UNPICKABLE);
+		image_mask_set(caption, MASK_UNPICKABLE);
 
 		local bevent = {
 			own   = function(self, vid) return vid == button; end,
-			click = function() v.trigger(wnd); wnd:destroy(awb_cfg.animspeed); end,
+			click = function() v.trigger(wnd); awbwman_close(wnd); end,
 			over  = function() image_color(button, ccol.r, ccol.g, ccol.b); end, 
 			out   = function() image_color(button, bgc.r, bgc.g, bgc.b); end,
 		};
@@ -572,7 +582,11 @@ function awbwman_rootwnd()
 end
 
 function awbwman_cancel()
-	if (awb_cfg.popup_active) then
+	if (awb_cfg.cursor_tag) then
+		delete_image(awb_cfg.cursor_tag.vid);
+		awb_cfg.cursor_tag = nil;
+
+	elseif (awb_cfg.popup_active) then
 		drop_popup();
 	else
 	local btntbl = {
@@ -586,7 +600,7 @@ function awbwman_cancel()
 			}
 	};
 
-	awb_cfg.popup_active = awbwman_dialog(desktoplbl("Shutdown?"), btntbl, 1, true);
+		awbwman_dialog( awb_cfg.defrndfun("Shutdown?"), btntbl, {}, true);
 	end
 end
 
@@ -728,7 +742,7 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 -- default mouse handlers (double-click -> trigger(), 
 -- free drag / reposition, single click marks as active/inactive
 	local ctable = {};
-	ctable.own = function(self, vid)
+		ctable.own = function(self, vid)
 		return vid == icntbl.vid or vid == icntbl.caption;
 	end
 
@@ -770,7 +784,11 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 	table.insert(awb_cfg.rooticns, icntbl);
 end
 
-function awbwman_spawn(caption)
+function awbwman_spawn(caption, options)
+	if (options == nil) then
+		options = {};
+	end
+
 	local xp, yp = awbwman_next_spawnpos();
 
 	local wcont  = awbwnd_create({	
@@ -819,42 +837,50 @@ function awbwman_spawn(caption)
 	local tbar = wcont:add_bar("t", awb_cfg.activeres,
 		awb_cfg.inactiveres, awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 
-		awbwman_addcaption(tbar, caption);
+		if (options.nocaption == nil) then
+			awbwman_addcaption(tbar, caption);
+		end
 
-	tbar:add_icon("l", awb_cfg.bordericns["close"], function()
-		awbwman_close(wcont);
-	end);
+	if (options.noicons == nil) then
+		tbar:add_icon("l", awb_cfg.bordericns["close"], function()
+			awbwman_close(wcont);
+		end);
 
-	tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
-		awbwman_pushback(wcont);
-		awbwman_updateorder();
-	end);
+		tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
+			awbwman_pushback(wcont);
+			awbwman_updateorder();
+		end);
+	end
 
 -- "normal" right bar (no scrolling) is mostly transparent and 
 -- lies above the canvas area. The resize button needs a separate 
 -- mouse handler
-	local rbar = wcont:add_bar("r", awb_cfg.alphares,
-		awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
-	image_mask_set(rbar.vid, MASK_UNPICKABLE);
-	local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
-	local rhandle = {};
-	rhandle.drag = function(self, vid, x, y)
-		awbwman_focus(wcont);
-		wcont:resize(wcont.w + x, wcont.h + y);
-	end
-	rhandle.own = function(self, vid)
-		return vid == icn.vid;
-	end
-	rhandle.name = "awbwindow_resizebtn";
-	mouse_addlistener(rhandle, {"drag"});
-	wcont.rhandle = rhandle; -- for deregistration
+	if (options.noresize == nil) then
+		local rbar = wcont:add_bar("r", awb_cfg.alphares,
+			awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
+		image_mask_set(rbar.vid, MASK_UNPICKABLE);
+		local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
+		local rhandle = {};
+		rhandle.drag = function(self, vid, x, y)
+			awbwman_focus(wcont);
+			wcont:resize(wcont.w + x, wcont.h + y);
+		end
+		rhandle.own = function(self, vid)
+			return vid == icn.vid;
+		end
+		rhandle.name = "awbwindow_resizebtn";
+		mouse_addlistener(rhandle, {"drag"});
+		wcont.rhandle = rhandle; -- for deregistration
+	end	
 
 -- register, push to front etc.
   awbman_mhandlers(wcont, tbar);
 	awbwman_regwnd(wcont);
 
-	wcont:set_border(1, awb_col.dialog_border.r, 
-		awb_col.dialog_border.g, awb_col.dialog_border.b);
+	if (options.noborder == nil) then
+		wcont:set_border(1, awb_col.dialog_border.r, 
+			awb_col.dialog_border.g, awb_col.dialog_border.b);
+	end
 
 	hide_image(wcont.anchor);
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);

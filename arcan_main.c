@@ -254,8 +254,15 @@ int main(int argc, char* argv[])
  * #ENDSAMPLE . The block will be sampled, parsed and should return a table
  * pushed through the sample() function */
 	if (monitor > 0){
-		if (strcmp(monitor_arg, "LOG:") == 0){
-			arcan_warning("monitor log not yet added\n");
+		extern arcan_benchdata benchdata;
+
+		if (strncmp(monitor_arg, "LOG:", 4) == 0){
+			monitor_outf = fopen(&monitor_arg[4], "w+"); 
+			if (NULL == monitor_outf)
+				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
+
+			monitor_parent = true;
+			benchdata.bench_enabled = true;
 		}
 		else {
 			int pair[2];
@@ -288,7 +295,6 @@ int main(int argc, char* argv[])
 				close(pair[0]);
 			/*	fclose(stdout);
 				fclose(stderr); */
-				extern arcan_benchdata benchdata;
 	
 				monitor_parent = true;
 				benchdata.bench_enabled = true;

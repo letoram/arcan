@@ -175,6 +175,7 @@ function mouse_input(x, y, state)
 -- look for new mouse over objects
 -- note that over/out do not filter drag/drop targets, that's up to the owner
 	local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
+	
 	for i=1,#hists do
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
 			table.insert(mstate.cur_over, hists[i]);
@@ -210,7 +211,6 @@ function mouse_input(x, y, state)
 -- otherwise we have motion, if we havn't exceeded predrag threshold,
 -- start with that
 		if (mstate.predrag) then
-
 				mstate.predrag.count = mstate.predrag.count - 
 					(math.abs(x) + math.abs(y));
 

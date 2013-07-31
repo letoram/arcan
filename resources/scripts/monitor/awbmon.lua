@@ -131,6 +131,7 @@ function badsample(context, startid)
 end
 
 function render_sample(lv)
+	print(lv.props.position[1], lv.props.position[2]);
 	return desktoplbl(string.format(
 [[Vobj(%d)=>(%d), Parent: %d Tag: %s\n\r
 GL(Id: %d, W: %d, H: %d, BPP: %d, TXU: %d, TXV: %d, Refcont: %d\n\r
@@ -142,9 +143,9 @@ Mask: %s\n\r
 Order: %d\tLifetime: %d\tOrigW: %d\tOrigH: %d\n\r
 Source: %s\n\r
 Opacity: %.2f\n\r
-Position: %.2f, %.2f\n\r
-Size: %.2f %.2f\n\r
-Orientation: %.2f degrees\n\r]],
+Position: %.2f, %.2f, %.2f\n\r
+Size: %.2f %.2f, %.2f\n\r
+Orientation: %.2f, %.2f, %.2f degrees\n\r]],
 lv.cellid, lv.cellid_translated, lv.parent, lv.tracetag,
 lv.glstore_glid and lv.glstore_glid or 0, lv.glstore_w, lv.glstore_h, 
 lv.glstore_bpp, lv.glstore_txu, lv.glstore_txv, 
@@ -156,9 +157,9 @@ lv.extrefc_framesets, lv.extrefc_instances, lv.extrefc_attachments,
 lv.extrefc_links,lv.flags, lv.mask,lv.order, lv.lifetime, lv.origw, lv.origh,
 lv.storage_source and string.gsub(lv.storage_source, "\\", "\\\\") or "",
 lv.props.opa,
-lv.props.position[1], lv.props.position[2], 
-lv.origw * lv.props.scale[1], lv.origh * lv.props.scale[2], 
-lv.props.rotation[1]
+lv.props.position[1], lv.props.position[2], lv.props.position[3], 
+lv.origw * lv.props.scale[1], lv.props.scale[2], lv.origh * lv.props.scale[3], 
+lv.props.rotation[1], lv.props.rotation[2], lv.props.rotation[3]
 ));
 end
 

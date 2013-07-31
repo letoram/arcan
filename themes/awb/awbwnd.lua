@@ -205,7 +205,10 @@ local function awbwnd_destroy(self, timeval)
 
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
-	self.anchor = nil;
+
+	for i,v in pairs(self) do
+		self[i] = nil;
+	end
 end
 
 local function awbbar_destroy(self)
