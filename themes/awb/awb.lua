@@ -125,7 +125,7 @@ end
 function gamelist_launch(self)
 	local captbl = launch_target_capabilities(self.target);
 
-	if (true or captbl.internal_launch == false) then
+	if (captbl.internal_launch == false) then
 		launch_target(self.gameid, LAUNCH_EXTERNAL);
 	else
 		local wnd = awbwman_spawn(menulbl(self.name));
@@ -217,9 +217,9 @@ function gamelist_popup(ent)
 	local popup_opts = [[Launch\n\rFind Media\n\rList Siblings]];
 	local vid, list  = desktoplbl(popup_opts);
 	local popup_fun = {
-		function() gamelist_launch(ent); end,
+		function() gamelist_launch(ent);     end,
 		function() gamelist_media(ent.tag);  end,
-		function() gamelist_family(ent); end
+		function() gamelist_family(ent);     end
 	};
 
 	awbwman_popup(vid, list, popup_fun);
@@ -249,7 +249,7 @@ function gamelist_wnd(selection)
 				tag      = tbl[i],
 				rtrigger = gamelist_popup,
 				trigger  = gamelist_launch,
-				cols     = {tbl[i].title, tbl[i].genre}
+				cols     = {tbl[i].title, string.len(tbl[i].genre) > 0 and tbl[i].genre or "(none)"}
 			};
 
 			table.insert(res, ent);
