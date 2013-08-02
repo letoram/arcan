@@ -116,7 +116,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		end
 
 	elseif (kind == "3d" and source) then
-		dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
+		local dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 		image_tracetag(dstvid, "3dmedia_rendertarget");
 		set_shader(source.vid);
 		show_image(source.vid);

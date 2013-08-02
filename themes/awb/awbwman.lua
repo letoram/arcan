@@ -406,6 +406,10 @@ function awbwman_targetwnd(caption, kind, source)
 	return wnd, awbwnd_target(wnd);
 end
 
+function awbwman_activepopup()
+	return awb_cfg.popup_active ~= nil;
+end
+
 function awbwman_listwnd(caption, lineh, linespace, colopts, selfun, renderfun)
 	local wnd = awbwman_spawn(caption);
 
@@ -893,6 +897,7 @@ function awbwman_spawn(caption, options)
 		mouse_droplistener(self);
 		mouse_droplistener(self.rhandle);
 		mouse_droplistener(self.top);
+
 		for i,v in ipairs(mhands) do
 			mouse_droplistener(v);
 		end
@@ -975,7 +980,9 @@ function awbwman_spawn(caption, options)
 	hide_image(wcont.anchor);
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 	wcont:resize(wcont.w, wcont.h);
-	
+	wcont.focus = awbwman_focus;
+	wcont.focused = function(self) return self == awb_cfg.focus; end
+
 	return wcont;
 end
 

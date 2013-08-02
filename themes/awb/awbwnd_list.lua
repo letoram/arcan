@@ -46,6 +46,7 @@ function awblist_resize(self, neww, newh)
 			delete_image(v);
 		end
 		self.listtemp = {};
+		self.line_heights = nil;
 
 -- Render each column separately, using a clipping anchor 
 		local xofs = 0;
@@ -65,8 +66,11 @@ function awblist_resize(self, neww, newh)
 				table.insert(rendtbl, v.cols[ind]);
 			end
 			local colv, lines = self.renderfn(table.concat(rendtbl, [[\n\r]]));
-	
-			self.line_heights = lines;
+
+-- only take the first column (assumed to always be dominating / representative)
+			if (self.line_heights == nil) then
+				self.line_heights = lines;
+			end
 
 			link_image(colv, clip);
 			show_image(colv);
@@ -173,6 +177,7 @@ local function caretdrop(self)
 end
 
 local function caretdrag(self, vid, dx, dy)
+	self.wnd:focus();
 	local prop = image_surface_properties(
 		self.wnd.dir[self.wnd.icon_bardir].fill.vid);
 
@@ -193,6 +198,7 @@ end
 
 local function scrollclick(self, vid, x, y)
 	local props = image_surface_resolve_properties(self.caret);
+	self.wnd:focus();
 
 	self.wnd.ofs = (y < props.y) and (self.wnd.ofs - self.wnd.capacity) or
 		(self.wnd.ofs + self.wnd.capacity);
@@ -306,6 +312,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 -- find cursor ..
 	local mhand = {};
 	mhand.dblclick = function(self, vid, x, y)
+		pwin:focus();
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
 
@@ -315,14 +322,21 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	end
 
 	mhand.rclick = function(self, vid, x, y)
+		pwin:focus();
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
 		if (linen and pwin.restbl[linen] and pwin.restbl[linen].rtrigger) then
 			pwin.restbl[linen]:rtrigger(pwin);
+			move_image(pwin.cursor, 0, yofs);
 		end
 	end
 
 	mhand.motion = function(self, vid, x, y)
+		if (not pwin:focused() or awbwman_activepopup()) then
+			return;
+		end
+
+		pwin:focus();
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
 		move_image(pwin.cursor, 0, yofs); 
