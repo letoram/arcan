@@ -63,6 +63,7 @@ function awb()
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/resourcefinder.lua")();
 	system_load("tools/inputconf.lua")();
+	system_load("tools/vidrec.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
@@ -135,15 +136,8 @@ function gamelist_launch(self)
 end
 
 function spawn_vidwin(self)
-	local wnd = awbwman_spawn(menulbl("Video Capture"));
-
-	load_movie("capture:device=0", NOLOOP, function(source, status)
-		if (status.kind == "resized") then
-			play_movie(source);
-			wnd:update_canvas(source, false);
-			wnd:resize(status.width, status.height);
-		end
-	end);
+	local wnd, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
+	load_movie("capture:device=0", FRAMESERVER_NOLOOP, tfun);
 
 	return wnd;
 end
@@ -159,7 +153,7 @@ function gamelist_media(tbl)
 			trigger  = function()
 				local wnd, tfun = awbwman_mediawnd(
 					menulbl("Media Player"), "frameserver");
-				load_movie(j, FRAMESERVER_NOLOOP, tfun);
+				load_movie(j, FRAMESERVER_LOOP, tfun);
 			end,
 			cols     = {"video_" .. tostring(i)} 
 		};
@@ -198,7 +192,7 @@ function gamelist_media(tbl)
 				else
 					model = {};
 				end
-				awbwman_mediawnd(menulbl("3D Model"), "3d", model.vid); 
+				awbwman_mediawnd(menulbl("3D Model"), "3d", model); 
 			end,
 			name = "model(" .. mdl ..")",
 			cols = {"3D Model"}

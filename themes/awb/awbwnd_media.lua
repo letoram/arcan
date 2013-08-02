@@ -1,6 +1,7 @@
 --
 -- AWB Frameserver Media Window
--- For a 3D session, we set up a FBO rendertarget and connect the output to the canvas.
+-- For a 3D session, we set up a FBO rendertarget and connect
+-- the output to the canvas.
 -- Adds a "play/pause" and possibly others based on frameserver capabilities.
 -- Also adds the option to instance and set shaders.
 --
@@ -18,14 +19,23 @@ local function set_shader(modelv)
 	image_shader(modelv, lshdr);
 end
 
-local function add_vmedia_top()
+local function datashare(wnd)
+	local res  = awbwman_setup_cursortag(sysicons.floppy);
+	res.kind   = "media";
+	res.source = wnd;
+end
+
+local function add_vmedia_top(pwin, active, inactive)
 	local bar = pwin:add_bar("tt", active, inactive,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	local cfg = awbwman_cfg();
 
-	bar:add_icon("l", cfg.bordericns["play"],    vplay);
-	bar:add_icon("r", cfg.bordericns["clone"],   slide_pop);
-	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
+	bar:add_icon("l", cfg.bordericns["pause"], function() end);
+	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
+--	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
+	pwin.click = function() end
+	pwin.name = "3dmedia_topbar";
+	mouse_addlistener(pwin, {"click"});
 end
 
 local function slide_pop(caller, status)
@@ -34,14 +44,14 @@ local function slide_pop(caller, status)
 end
 
 local function zoom_in(self)
-	props = image_surface_properties(self.parent.parent.model);
-	move3d_model(self.parent.parent.model, props.x, props.y, props.z + 1.0, 
+	props = image_surface_properties(self.parent.parent.model.vid);
+	move3d_model(self.parent.parent.model.vid, props.x, props.y, props.z + 1.0, 
 		awbwman_cfg().animspeed);
 end
 
 local function zoom_out(self)
-	props = image_surface_properties(self.parent.parent.model);
-	move3d_model(self.parent.parent.model, props.x, props.y, props.z - 1.0,
+	props = image_surface_properties(self.parent.parent.model.vid);
+	move3d_model(self.parent.parent.model.vid, props.x, props.y, props.z - 1.0,
 		awbwman_cfg().animspeed);
 end
 
@@ -58,7 +68,7 @@ local function add_3dmedia_top(pwin, active, inactive)
 	bar:add_icon("l", cfg.bordericns["g1"], slide_pop);
 	bar:add_icon("l", cfg.bordericns["b1"], slide_pop);
 
-	bar:add_icon("r", cfg.bordericns["clone"], clone);
+	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
 
 -- click gets sneakily implemented in own()
 	pwin.click = function() end
@@ -87,6 +97,8 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
 
 	if (kind == "frameserver") then
+		add_vmedia_top(pwin, active, inactive);
+	
 		callback = function(source, status)
 			if (status.kind == "resized") then
 				play_movie(source);
@@ -106,24 +118,46 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	elseif (kind == "3d" and source) then
 		dstvid = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
 		image_tracetag(dstvid, "3dmedia_rendertarget");
-		set_shader(source);
-		show_image(source);
-		define_rendertarget(dstvid, {source}, 
+		set_shader(source.vid);
+		show_image(source.vid);
+		define_rendertarget(dstvid, {source.vid}, 
 			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 		pwin:update_canvas(dstvid, false);
 		pwin.model = source;
 		pwin.input = input_3dwin;
-		
+
 		local mh = {
 			name = "3dwindow_canvas",
 			own = function(self, vid) return vid == dstvid; end,
 			drag = function(self, vid, dx, dy)
-				rotate3d_model(source, 0.0, dy, -1 * dx, 0, ROTATE_RELATIVE);
+				rotate3d_model(source.vid, 0.0, dy, -1 * dx, 0, ROTATE_RELATIVE);
+			end,
+
+			over = function()
+				local tag = awbwman_cursortag();
+				if (tag and tag.kind == "media") then
+					tag:hint(true);
+				end
+			end,
+
+			out = function()
+				local tag = awbwman_cursortag();
+				if (tag and tag.kind == "media") then
+					tag:hint(false);
+				end
+			end,
+
+			click = function()
+				local tag = awbwman_cursortag();
+				if (tag and tag.kind == "media") then
+					pwin.model:update_display(instance_image(tag.source.canvas.vid));	
+					tag:drop();
+				end
 			end
 		};
 	
 		rotate_image(pwin.canvas.vid, 180);
-		mouse_addlistener(mh, {"drag"});
+		mouse_addlistener(mh, {"drag", "click", "over", "out"});
 		add_3dmedia_top(pwin, active, inactive);
 
 		pwin.on_destroy = function()
