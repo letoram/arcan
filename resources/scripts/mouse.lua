@@ -70,6 +70,10 @@ local function mouse_cursorupd(x, y)
 	return (mstate.x - lmx), (mstate.y - lmy);
 end
 
+function mouse_cursor()
+	return mstate.cursor;
+end
+
 --
 -- Load / Prepare cursor, read default acceleration and 
 -- filtering settings.

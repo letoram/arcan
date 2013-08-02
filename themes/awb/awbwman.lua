@@ -6,14 +6,12 @@
 -- Todolist:
 --   -> Auto-hide occluded windows to limit overdraw
 --   -> Tab- cycle focus window with out of focus shadowed
---   -> Menu- bar per-window
 --   -> Fullscreen mode for window
 --   -> Autohide for top menu bar on fullscreen
 --   -> Drag and Drop for windows
 --   -> Remember icon / window positions and sizes
 --   -> Keyboard input for all windows
 --   -> Animated resize effect
---   -> Iconify 
 
 --
 -- mapped up as "default_inverted", needed by some subclasses
@@ -285,7 +283,7 @@ end
 
 local function awbwman_addcaption(bar, caption)
 	local props  = image_surface_properties(caption);
-	local bgsurf = color_surface(10, 10, 0, 0, 0);
+	local bgsurf = color_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("fill", bgsurf);
 	delete_image(icn.vid);
 
@@ -546,6 +544,37 @@ function awbwman_dialog(caption, buttons, options, modal)
 	return wnd;
 end
 
+function awbwman_cursortag()
+	return awb_cfg.cursor_tag;
+end
+
+function cursortag_drop()
+	resize_image(awb_cfg.cursor_tag.vid, 1, 1, awb_cfg.animspeed);
+	blend_image(awb_cfg.cursor_tag.vid, 0.0, awb_cfg.animspeed);
+	expire_image(awb_cfg.cursor_tag.vid, awb_cfg.animspeed);
+	awb_cfg.cursor_tag = nil;
+end
+
+function cursortag_hint(on)
+	local tvid = awb_cfg.cursor_tag.vid;
+
+	if (on) then
+		instant_image_transform(tvid);
+
+		local props  = image_surface_properties(tvid);
+		local cprops = image_surface_properties(mouse_cursor());
+		
+		move_image(tvid, cprops.width - 5, cprops.height -5);
+		image_transform_cycle(tvid, 1);
+		resize_image(tvid,props.width * 1.1, props.height * 1.1, awb_cfg.animspeed);
+		resize_image(tvid,props.width * 0.9, props.height * 0.9, awb_cfg.animspeed);
+	else
+		image_transform_cycle(awb_cfg.cursor_tag.vid, 0);
+		instant_image_transform(awb_cfg.cursor_tag.vid);
+		blend_image(awb_cfg.cursor_tag.vid, 0.3, awb_cfg.animspeed);
+	end
+end
+
 --
 -- Similar to a regular spawn, but will always have order group 0,
 -- canvas click only sets group etc. somewhat simpler than the 
@@ -578,13 +607,43 @@ function awbwman_rootwnd()
 	hide_image(wcont.anchor);
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 
+--
+-- Most of the time, do nothing, 
+-- when we have an item to drag and drop,
+-- oscillate back and forth until they click
+--
+	local dndh = {
+		own = function(self, vid)
+			return vid == canvas;
+		end,
+
+		out = function(self, vid)
+			if (awb_cfg.cursor_tag) then
+				awb_cfg.cursor_tag.hint(false);
+			end
+		end,
+
+		over = function(self, vid)
+			if (awb_cfg.cursor_tag) then
+				awb_cfg.cursor_tag.hint(true);
+			end
+		end,
+
+		click = function(self, vid)
+			if (awb_cfg.cursor_tag) then
+				print("options; link, screenshot, background image");
+				awb_cfg.cursor_tag.drop();
+			end
+		end
+	};
+
+	mouse_addlistener(dndh, {"out", "over", "click"});
 	awb_cfg.root = wcont;
 end
 
 function awbwman_cancel()
 	if (awb_cfg.cursor_tag) then
-		delete_image(awb_cfg.cursor_tag.vid);
-		awb_cfg.cursor_tag = nil;
+		awb_cfg.cursor_tag.drop();
 
 	elseif (awb_cfg.popup_active) then
 		drop_popup();
@@ -631,22 +690,25 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 		my = VRESH - props.height;
 	end
 
+	props.width  = props.width + 10;
+	props.height = props.height + 10;
+
 	local dlgc = awb_col.dialog_border;
 	local cc   = awb_col.dialog_caret;
 	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
-	local wnd    = color_surface(props.width, props.height, awb_col.bgcolor.r,
-		awb_col.bgcolor.g, awb_col.bgcolor.b);
+	local wnd    = color_surface(props.width, props.height, 
+		awb_col.bgcolor.r,awb_col.bgcolor.g, awb_col.bgcolor.b);
 	local cursor = color_surface(props.width, 10, cc.r, cc.g, cc.b); 
 
 	link_image(wnd,       border);
-	link_image(rendervid, border);
-	link_image(cursor,    border);
+	link_image(rendervid,  wnd);
+	link_image(cursor, border);
 
 	image_mask_set(border,    MASK_UNPICKABLE);
 	image_mask_set(rendervid, MASK_UNPICKABLE);
 	image_mask_set(cursor,    MASK_UNPICKABLE);
 
-	order_image(border, max_current_image_order() - 2);
+	order_image(border, max_current_image_order() - 5);
 	image_inherit_order(cursor,    true);
 	image_inherit_order(rendervid, true);
 	image_inherit_order(wnd,       true);
@@ -660,10 +722,10 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 
 	show_image({border, wnd, rendervid, cursor});
 
-	move_image(border,  mx, my);
+	move_image(border,  math.floor(mx), math.floor(my));
 	move_image({wnd, rendervid, cursor}, 1, 1);
 
-	resize_image(border, props.width + 2, props.height + 2, awb_cfg.animspeed);
+	resize_image(border, props.width+2, props.height+2, awb_cfg.animspeed);
 
 	local line_y = function(yv, lheight)
 -- find the matching pair and pick the closest one
@@ -706,6 +768,33 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 	mouse_addlistener(mh, {"click", "motion"});
 end
 
+function awbwman_setup_cursortag(icon)
+	drop_popup();
+
+	local icn_props = image_surface_properties(icon);
+
+	local res = {
+		vid    = null_surface(icn_props.width, icn_props.height),
+		drop   = cursortag_drop,
+		hint   = cursortag_hint,
+		kind   = "unknown" 
+	};
+
+	local curs = mouse_cursor();
+	icn_props = image_surface_properties(curs);
+	image_mask_set(res.vid, MASK_UNPICKABLE);
+
+	image_sharestorage(icon, res.vid); 
+	link_image(res.vid, mouse_cursor());
+	blend_image(res.vid, 0.8, awb_cfg.animspeed);
+	move_image(res.vid, math.floor(icn_props.width * 0.5),
+		math.floor(icn_props.height * 0.5));
+	image_inherit_order(res.vid, true);
+
+	awb_cfg.cursor_tag = res;
+	return res;
+end
+
 function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 	local icntbl = {
 		caption     = captionvid,
@@ -721,7 +810,8 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 			icntbl.selected = val;
 		end
 
-		image_sharestorage(icntbl.selected and iconselvid or iconvid, icntbl.vid);
+		image_sharestorage(icntbl.selected and 
+			iconselvid or iconvid, icntbl.vid);
 	end
 
 -- create containers (anchor, mainvid)
@@ -939,6 +1029,8 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
+	awb_cfg.bordericns["play"]     = load_image("awbicons/play.png");
+	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
 	awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0);
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
