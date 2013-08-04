@@ -329,10 +329,26 @@ local function awbbar_resize(self, neww, newh)
 	end
 end
 
+local function awbicn_destroy(self)
+	local tbl = {self.parent.left, self.parent.right, {self.parent.fill}};
+	delete_image(self.vid);
+
+-- mouse handler is assigned to the bar so no problem there
+	for i,v in ipairs(tbl) do
+		for ii,vv in ipairs(v) do
+			if (vv == self) then
+				table.remove(v, ii);
+				return;
+			end
+		end
+	end
+end
+
 local function awbbar_addicon(self, dir, image, trig)
 	local icontbl = {
 		trigger = trig,
-		parent = self
+		parent = self,
+		destroy = awbicn_destroy
 	};
 	
 	local icon = null_surface(self.size, self.size);
@@ -446,6 +462,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 	image_tracetag(awbbar.inactiveimg, "awbbar_inactive_store");
 
 	awbbar.vid      = null_surface(self.w, bsize);
+
 	link_image(awbbar.vid, self.anchor);
 	show_image(awbbar.vid);
 

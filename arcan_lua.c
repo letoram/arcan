@@ -1474,6 +1474,8 @@ int arcan_lua_targetinput(lua_State* ctx)
 
 	/* populate all arguments */
 	const char* kindlbl = intblstr(ctx, tblind, "kind");
+	if (kindlbl == NULL)
+		goto kinderr;
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		ev.kind = EVENT_IO_AXIS_MOVE;
@@ -1517,6 +1519,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 		}
 	}
 	else {
+kinderr:
 		arcan_warning("Script Warning: target_input(), unkown \"kind\""
 			"	field in table.\n");
 		lua_pushnumber(ctx, false);

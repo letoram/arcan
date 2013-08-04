@@ -69,11 +69,13 @@ local function awbwman_findind(val)
 end
 
 local function awbwman_updateorder()
+	
 	for i,v in ipairs(awb_wtable) do
 		if (v.anchor ~= nil) then
 			order_image(v.anchor, i * 10);
 		end
 	end
+
 end
 
 local function awbwman_pushback(wnd)
@@ -119,8 +121,8 @@ local function awbwman_focus(wnd)
 		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
 		end
-	
-		awbwman_pushback(awb_cfg.focus);
+
+		awb_cfg.focus:inactive();
 	end
 
 	wnd:active();
@@ -402,7 +404,8 @@ end
 
 function awbwman_targetwnd(caption, kind, source)
 	local wnd = awbwman_spawn(caption);
-	awbwnd_media(wnd, kind, source, awb_cfg.ttactiveres, awb_cfg.ttinactvres);
+	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
+		wnd.dir.t.bsize);
 	return wnd, awbwnd_target(wnd);
 end
 
@@ -531,8 +534,8 @@ function awbwman_dialog(caption, buttons, options, modal)
 -- Add an invisible surface just beneath the dialog that grabs all input
 --
 	if (modal) then
-		a = null_surface(VRESW, VRESH);
-		show_image(a);
+		a = color_surface(VRESW, VRESH, 0, 0, 0);
+		blend_image(a, 0.5);
 		image_tracetag(a, "modal_block");
 		order_image(a, image_surface_properties(wnd.anchor).order - 1);
 		link_image(a, wnd.canvas.vid);
@@ -565,10 +568,11 @@ function cursortag_hint(on)
 	if (on) then
 		instant_image_transform(tvid);
 
-		local props  = image_surface_properties(tvid);
+		local props  = image_surface_initial_properties(tvid);
 		local cprops = image_surface_properties(mouse_cursor());
 		
 		move_image(tvid, cprops.width - 5, cprops.height -5);
+		blend_image(tvid, 1.0, awb_cfg.animspeed);
 		image_transform_cycle(tvid, 1);
 		resize_image(tvid,props.width * 1.1, props.height * 1.1, awb_cfg.animspeed);
 		resize_image(tvid,props.width * 0.9, props.height * 0.9, awb_cfg.animspeed);
@@ -646,6 +650,10 @@ function awbwman_rootwnd()
 end
 
 function awbwman_cancel()
+	if (close_dlg ~= nil) then
+		return;
+	end
+
 	if (awb_cfg.cursor_tag) then
 		awb_cfg.cursor_tag.drop();
 
@@ -655,15 +663,20 @@ function awbwman_cancel()
 	local btntbl = {
 			{
 				caption = awb_cfg.defrndfun("No"),
-				trigger = function(owner) end
+				trigger = function(owner) 
+					close_dlg = nil;
+				end
 			},
 			{
 				caption = awb_cfg.defrndfun("Yes");
-				trigger = function(owner) shutdown(); end
+				trigger = function(owner) shutdown(); 
+					close_dlg = nil;
+				end
 			}
 	};
 
 		awbwman_dialog( awb_cfg.defrndfun("Shutdown?"), btntbl, {}, true);
+		close_dlg = true;
 	end
 end
 
@@ -700,12 +713,12 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 	local dlgc = awb_col.dialog_border;
 	local cc   = awb_col.dialog_caret;
 	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
-	local wnd    = color_surface(props.width, props.height, 
+	local wnd    = color_surface(1, 1,
 		awb_col.bgcolor.r,awb_col.bgcolor.g, awb_col.bgcolor.b);
 	local cursor = color_surface(props.width, 10, cc.r, cc.g, cc.b); 
 
-	link_image(wnd,       border);
-	link_image(rendervid,  wnd);
+	link_image(wnd, border);
+	link_image(rendervid, wnd);
 	link_image(cursor, border);
 
 	image_mask_set(border,    MASK_UNPICKABLE);
@@ -730,6 +743,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 	move_image({wnd, rendervid, cursor}, 1, 1);
 
 	resize_image(border, props.width+2, props.height+2, awb_cfg.animspeed);
+	resize_image(wnd, props.width, props.height, awb_cfg.animspeed);
 
 	local line_y = function(yv, lheight)
 -- find the matching pair and pick the closest one
@@ -755,7 +769,12 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 			expire_image(border, awb_cfg.animspeed);
 			blend_image(border, 0.0, awb_cfg.animspeed);
 			awb_cfg.popup_active = nil;
-			callbacks[ind]();
+
+			if (type(callbacks) == "function") then
+				callbacks(ind);
+			else
+				callbacks[ind]();
+			end
 		end,
 
 		motion = function(self, vid, x, y)
@@ -770,6 +789,105 @@ function awbwman_popup(rendervid, lineheights, callbacks, spawnx, spawny)
 
 	awb_cfg.popup_active = {border, mh};
 	mouse_addlistener(mh, {"click", "motion"});
+end
+
+function awbwman_popupslider(min, val, max, updatefun, options)
+	drop_popup();
+
+	if (options == nil) then
+		options = {};
+	end
+
+	local sx, sy = mouse_xy();
+
+	if (options.x ~= nil) then
+		sx = options.x;
+		sy = options.y;
+	end
+
+	local h = options.height and 
+		options.height or math.floor(VRESH * 0.1);
+
+	local w = options.width and
+		options.width or 15;
+
+	local res = {
+		max = max,
+		min = min
+	};
+
+	res.step = math.ceil((h - 2) / (max - min));
+
+	local dlgc = awb_col.dialog_border;
+	local cc   = awb_col.dialog_caret;
+	local wc   = awb_col.bgcolor;
+
+	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
+	local wnd    = color_surface(1, 1, wc.r, wc.g, wc.b);
+	local caret  = color_surface(w - 2, res.step * (val - min), cc.r, cc.g, cc.b); 
+
+	image_tracetag(border, "popupslider.border");
+	image_tracetag(wnd, "popupslider.wnd");
+	image_tracetag(caret, "popuslider.caret");
+
+	link_image(wnd,   border);
+	link_image(caret, border);
+
+	image_mask_set(border, MASK_UNPICKABLE);
+	image_mask_set(caret,  MASK_UNPICKABLE);
+
+	order_image(border, max_current_image_order() - 5);
+
+	image_inherit_order(caret,    true);
+	image_inherit_order(wnd,      true);
+
+	image_clip_on(wnd,       CLIP_SHALLOW);
+	image_clip_on(caret,     CLIP_SHALLOW);
+
+	order_image(caret,    1);
+
+	show_image({border, wnd, caret});
+
+	move_image(border, sx, sy); 
+	move_image({wnd, caret}, 1, 1);
+
+	resize_image(border, w, h, awb_cfg.animspeed);
+	resize_image(wnd, w - 2, h - 2, awb_cfg.animspeed);
+
+	res.vid = wnd;
+	res.own = function(self, vid) return vid == wnd; end
+	res.destroy = function()
+		expire_image(border, awb_cfg.animspeed);
+		blend_image(border, 0.0, awb_cfg.animspeed);
+		resize_image(border, 1,1, awb_cfg.animspeed);
+		mouse_droplistener(res);
+	end
+
+-- increment or decrement (click on scrollbar vs. wnd)
+	res.click = function(self, vid, x, y) 
+		local props = image_surface_resolve_properties(wnd);
+		resize_image(caret, w - 2, y - props.y); 
+		if (updatefun) then
+			updatefun(((y - props.y) > 0 and (y - props.y) or 0.001)
+				/ (h - 2) * (max - min) + min);
+		end
+	end
+
+	res.drag = function(self, vid, x, y)
+		x, y = mouse_xy();
+		local props = image_surface_resolve_properties(wnd);
+		local yv = (y - props.y) > (h - 2) and (h - 2) or (y - props.y);
+		yv = yv <= 0 and 0.001 or yv;
+		resize_image(caret, w - 2, yv);
+		if (updatefun) then
+			updatefun(yv / (h - 2) * (max - min) + min);
+		end
+	end
+
+	mouse_addlistener(res, {"click", "drag"});
+
+	awb_cfg.popup_active = res;
+	return res;
 end
 
 function awbwman_setup_cursortag(icon)
@@ -1006,7 +1124,6 @@ function awbwman_input(iotbl, keysym)
 
 -- match configured from global?
 -- else forward raw input 
-
 	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
 		awb_cfg.popup_active:input(iotbl);
 	
@@ -1038,6 +1155,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
 	awb_cfg.bordericns["play"]     = load_image("awbicons/play.png");
 	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
+	awb_cfg.bordericns["input"]    = load_image("awbicons/joystick.png");
 	awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0);
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");

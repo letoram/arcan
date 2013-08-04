@@ -104,17 +104,17 @@ function awb()
 	kbdbinds["LCTRL"]  = toggle_mouse_grab;
 	kbdbinds["ESCAPE"] = awbwman_cancel;
 
---	awb_inputed();
---	local tbl = list_games({title = "Moon P%"})[1];
---	local res = resourcefinder_search(tbl, true);
---	local mdl = find_cabinet_model(tbl);
---	local model = setup_cabinet_model(mdl, res, {});
---	if (model.vid) then
---		move3d_model(model.vid, 0.0, -0.2, -2.0);
---	else
---		model = {};
---	end
---	awbwman_mediawnd(menulbl("3D Model"), "3d", model.vid); 
+-- awb_inputed();
+local tbl = list_games({title = "Moon P%"})[1];
+	local res = resourcefinder_search(tbl, true);
+	local mdl = find_cabinet_model(tbl);
+	local model = setup_cabinet_model(mdl, res, {});
+	if (model.vid) then
+		move3d_model(model.vid, 0.0, -0.2, -2.0);
+	else
+		model = {};
+	end
+	awbwman_mediawnd(menulbl("3D Model"), "3d", model);
 end
 
 --
@@ -128,18 +128,13 @@ function gamelist_launch(self)
 	if (captbl.internal_launch == false) then
 		launch_target(self.gameid, LAUNCH_EXTERNAL);
 	else
-		local wnd = awbwman_spawn(menulbl(self.name));
-		launch_target(self.gameid, LAUNCH_INTERNAL, function(source, status)
-			wnd:update_canvas(source, false);	
-		end);
+		local wnd, cb = awbwman_targetwnd(menulbl(self.name));
+		launch_target(self.gameid, LAUNCH_INTERNAL, cb); 
 	end
 end
 
 function spawn_vidwin(self)
-	local wnd, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
-	load_movie("capture:device=0", FRAMESERVER_NOLOOP, tfun);
-
-	return wnd;
+	awbwman_mediawnd(menulbl("Media Player"), "capture");
 end
 
 function gamelist_media(tbl)
@@ -181,11 +176,11 @@ function gamelist_media(tbl)
 		end
 	end
 
-	mdl = find_cabinet_model(tbl);
+	local mdl = find_cabinet_model(tbl);
 	if (mdl) then
 		local ment = {
 			resource = mdl,
-			trigger  = function() 
+			trigger  = function()
 				local model = setup_cabinet_model(mdl, tbl, {});
 				if (model.vid) then
 					move3d_model(model.vid, 0.0, -0.2, -2.0);
@@ -405,10 +400,10 @@ function awb_input(iotbl)
 			awbwman_meta("shift", iotbl.active);
 		end
 
-		iotbl.keysym = symtable[iotbl.keysym];
+		iotbl.lutsym = symtable[iotbl.keysym];
 
-		if (iotbl.active and kbdbinds[ iotbl.keysym ]) then
-		 	kbdbinds[ iotbl.keysym ](); 
+		if (iotbl.active and kbdbinds[ iotbl.lutsym ]) then
+		 	kbdbinds[ iotbl.lutsym ](); 
 		else
 			awbwman_input(iotbl);
 		end

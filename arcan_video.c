@@ -537,8 +537,11 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 	arcan_vobject* pobj = arcan_video_getobject(parent);
 	arcan_vobj_id rv = ARCAN_EID;
 
-	if (pobj == NULL || pobj->flags.clone || pobj->flags.persist)
+	if (pobj == NULL || pobj->flags.persist)
 		return rv;
+
+	while (pobj->flags.clone)
+		pobj = pobj->parent;
 
 	bool status;
 	rv = arcan_video_allocid(&status, current_context);

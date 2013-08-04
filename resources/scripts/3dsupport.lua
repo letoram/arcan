@@ -21,6 +21,7 @@ varying vec2 texco;
 void main(void)
 {
 	texco = texcoord;
+	texco.t = texco.t;
 	gl_Position = (projection * modelview) * vertex;
 }
 ]];
