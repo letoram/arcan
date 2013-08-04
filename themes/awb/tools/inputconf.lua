@@ -4,8 +4,6 @@
 -- but uses the awbwman* class of functions to build the UI etc. functions 
 --
 
-local activetbl = {};
-
 --
 -- fill tbl with PLAYERpc_AXISac   = analog:0:0:none
 --          with PLAYERpc_BUTTONbc = translated:0:0:none
@@ -36,13 +34,13 @@ end
 --
 local function keyconf_buildtable(self, label, state)
 -- matching label? else early out.
-	matchtbl = self:idtotbl(label); 
+	local matchtbl = self:idtotbl(label);
+
 	if (matchtbl == nil) then return nil; end
 	
 -- if we don't get a table from an input event, we build a small empty table,
 -- with the expr-eval of state as basis 
-	worktbl = {};
-	worktbl.label = label;
+	local worktbl = {};
 
 	if (type(state) ~= "table") then
 		worktbl.kind = "digital";
@@ -50,7 +48,7 @@ local function keyconf_buildtable(self, label, state)
 	else
 		worktbl = state;
 	end
-	
+
 -- safety check, analog must be mapped to analog 
 -- (translated is a subtype of digital so that can be reused)
 	if (worktbl.kind == "analog" and matchtbl.kind ~= "analog") then
@@ -67,6 +65,7 @@ local function keyconf_buildtable(self, label, state)
 		worktbl.subid = matchtbl.subid;
 	end
 
+	worktbl.label = label;
 	return worktbl;
 end
 
@@ -82,7 +81,7 @@ local function keyconf_match(self, input, label)
 		table.insert(kv, input.label);
 		return kv;
 	end
-	
+
 	if (type(input) == "table") then
 		kv = self.table[ self:id(input) ];
 	else
@@ -155,7 +154,7 @@ local function keyconf_idtotbl(self, idstr)
 end
 
 local function keyconf_tbltoid(self, itbl)
-	if (inputtable.kind == "analog") then
+	if (tbl.kind == "analog") then
 		return string.format("analog:%d:%d:%s", 
 			itbl.devid, itbl.subid, itbl.source);
 	end
@@ -165,8 +164,8 @@ local function keyconf_tbltoid(self, itbl)
 			return string.format("translated:%d:%s", 
 				itbl.devid, itbl.keysym);
 		else
-			return string.format("digital:%d:%d:%s", 
-				itbl.devid, itbl.subid, itbl.source);
+			return string.format("translated:%d:%d:%s", 
+				itbl.devid, itbl.keysym, itbl.modifiers);
 		end
 	else
 		return string.format("digital:%d:%d:%s",
@@ -194,7 +193,6 @@ end
 
 local function inputed_editlay(intbl, outputres)
 	local list = {};
-	print(intbl);
 
 	for k,v in pairs(intbl) do
 		local res = {};
@@ -227,12 +225,50 @@ local function inputed_editlay(intbl, outputres)
 		end, desktoplbl);
 end
 
-local function inputed_onload()
-	if (resource("keyconfig/default.cfg")) then
-		activetbl = system_load("keyconfig/default.cfg")();
-	else
-		pop_deftbl(activetbl, 4, 8, 6, {"START", "SELECT", "COIN1"}); 	
+--
+-- Try and reuse as much of scripts/keyconf.lua
+-- as possible
+--
+local deftbl = {
+	id = keyconf_tbltoid,
+	idtotbl = keyconf_idtotbl,
+	ignore_modifiers = false 
+};
+
+function inputed_translate(iotbl, cfg)
+	if (cfg == nil) then
+		return;
 	end
+
+	deftbl.table = cfg;
+	
+	if (iotbl.source == nil) then
+		iotbl.source = tostring(iotbl.devid);
+	end
+
+	local lbls = keyconf_match(deftbl, iotbl);
+	if (lbls == nil) then 
+		return;
+	end
+
+	local res = {};
+
+	for k,v in ipairs(lbls) do
+		table.insert(res, keyconf_buildtable(deftbl, v, iotbl));
+		print(res[k], v, res[k].label, res[k].kind);
+	end
+
+	return res;
+end
+
+function inputed_getcfg(lbl)
+	lbl = "keyconfig/" .. lbl;
+
+	if (resource(lbl)) then
+		return system_load(lbl)();
+	end
+
+	return nil;
 end
 
 --
@@ -248,7 +284,9 @@ function awb_inputed()
 		{
 			cols    = {"New Layout..."},
 			trigger = function(self, wnd)
+				local newtbl;
 				wnd:destroy(awbwman_cfg().animspeed);
+				pop_deftbl(activetbl, 4, 8, 6, {"START", "SELECT", "COIN1"});
 				inputed_editlay(activetbl);	
 			end
 		}
@@ -276,4 +314,8 @@ function awb_inputed()
 		end, desktoplbl);
 end
 
-inputed_onload();
+function inputed_configlist()
+	res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);
+	return res;
+end
+

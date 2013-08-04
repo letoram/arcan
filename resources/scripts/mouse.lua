@@ -7,6 +7,7 @@ local mouse_handlers = {
 	out   = {}, 
   drag  = {},
 	drop  = {},
+	hover = {},
 	motion = {},
 	dblclick = {},
 	rclick = {}
@@ -22,7 +23,9 @@ local mstate = {
 	accel        = 1, -- factor to x,y movements
 	dblclickstep = 6, -- maximum number of ticks between clicks for dblclick 
 	drag_delta   = 8,
-	counter      = 0
+	hover_ticks  = 30,
+	counter      = 0,
+	hover_count  = 0
 };
 
 local function linear_find(table, label)
@@ -31,6 +34,17 @@ local function linear_find(table, label)
 	end
 
 	return nil;  
+end
+
+local function insert_unique(tbl, key)
+	for key, val in ipairs(tbl) do
+		if val == key then
+			tbl[key] = val;
+			return;
+		end
+	end
+	
+	table.insert(tbl, key);
 end
 
 local function linear_ifind(table, val)
@@ -175,6 +189,7 @@ end
 
 function mouse_input(x, y, state)
 	x, y = mouse_cursorupd(x, y);
+	mstate.hover_count = 0;
 
 -- look for new mouse over objects
 -- note that over/out do not filter drag/drop targets, that's up to the owner
@@ -249,7 +264,7 @@ function mouse_addlistener(tbl, events)
 	for ind, val in ipairs(events) do
 		if (mstate.handlers[val] ~= nil and 
 			linear_find(mstate.handlers[val], tbl) == nil) then
-			table.insert(mstate.handlers[val], tbl);
+			insert_unique(mstate.handlers[val], tbl);
 		else
 			warning("mouse_addlistener(), unknown event function: " 
 				.. val ..".\n");
@@ -288,6 +303,23 @@ end
 
 function mouse_tick(val)
 	mstate.counter = mstate.counter + val;
+	mstate.hover_count = mstate.hover_count + 1;
+
+	if (mstate.hover_count > mstate.hover_ticks) then
+		if (hover_reset) then
+			local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
+			for i=1,#hists do
+				local res = linear_find_vid(mstate.handlers.hover, hists[i]);
+				if (res) then
+					res:hover(hists[i], mstate.x, mstate.y);
+				end
+			end
+		end
+
+		hover_reset = false;
+	else
+		hover_reset = true;
+	end
 end 	
 
 function mouse_acceleration(newv)
