@@ -57,7 +57,9 @@ local awb_cfg = {
 	icnroot_stepy  = 80,
 	icnroot_maxy   = VRESH - 100,
 	icnroot_x      = VRESW - 100,
-	icnroot_y      = 30
+	icnroot_y      = 30,
+
+	global_vol = 1.0
 };
 
 local function awbwman_findind(val)
@@ -133,7 +135,8 @@ local function awbwman_focus(wnd)
 end
 
 function awbwman_shadow_nonfocus()
-	if (awb_cfg.focus_locked == false and awb_cfg.focus == nil) then
+	if (awb_cfg.focus_locked == false and awb_cfg.focus == nil or
+		awb_cfg.modal) then
 		return;
 	end
 
@@ -141,9 +144,11 @@ function awbwman_shadow_nonfocus()
 
 	if (awb_cfg.focus_locked)  then
 		local order = image_surface_properties(awb_cfg.focus.anchor).order;
+		awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0); 
 		order_image(awb_cfg.shadowimg, order - 1);
-		blend_image(awb_cfg.shadowimg, 0.8, awb_cfg.animspeed);
+		blend_image(awb_cfg.shadowimg, 0.5, awb_cfg.animspeed);
 	else
+		expire_image(awb_cfg.shadowimg, awb_cfg.animspeed);
 		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed); 
 	end
 end
@@ -313,6 +318,12 @@ local function awbwman_addcaption(bar, caption)
 end
 
 function awbwman_gather_scatter()
+	if (awb_cfg.modal) then
+		return;
+	end
+
+	drop_popup();
+
 	if (awb_cfg.focus_locked) then
 		awbwman_shadow_nonfocus();
 	end
@@ -444,6 +455,10 @@ function awbwman_dialog(caption, buttons, options, modal)
 		options = {};
 	end
 
+	if (awb_cfg.focus_locked) then
+		awbwman_shadow_nonfocus();
+	end
+	
 	options.nocaption= true;
 	options.noicons  = true;
 	options.noresize = true;
@@ -534,6 +549,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 -- Add an invisible surface just beneath the dialog that grabs all input
 --
 	if (modal) then
+		awb_cfg.modal = true;
 		a = color_surface(VRESW, VRESH, 0, 0, 0);
 		blend_image(a, 0.5);
 		image_tracetag(a, "modal_block");
@@ -545,6 +561,10 @@ function awbwman_dialog(caption, buttons, options, modal)
 	wnd.on_destroy = function()
 		for i, v in ipairs(tmptbl) do
 			mouse_droplistener(v);
+		end
+
+		if (modal) then
+			awb_cfg.modal = nil;
 		end
 	end
 
@@ -606,6 +626,9 @@ function awbwman_rootwnd()
 	local tbar = wcont:add_bar("t", "awbicons/topbar.png", 
 		"awbicons/topbar.png", awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 	order_image(tbar.vid, ORDER_MOUSE - 5);
+
+	local icn = tbar:add_icon("r", awb_cfg.bordericns["volume_top"], function()
+	end);
 
 	image_mask_set(tbar.vid, MASK_UNPICKABLE);
 
@@ -892,6 +915,9 @@ end
 
 function awbwman_setup_cursortag(icon)
 	drop_popup();
+	if (awb_cfg.cursor_tag) then
+		awb_cfg.cursor_tag:drop();
+	end
 
 	local icn_props = image_surface_properties(icon);
 
@@ -1076,7 +1102,15 @@ function awbwman_spawn(caption, options)
 		local rhandle = {};
 		rhandle.drag = function(self, vid, x, y)
 			awbwman_focus(wcont);
-			wcont:resize(wcont.w + x, wcont.h + y);
+			if (awb_cfg.meta.shift) then
+				if (math.abs(x) > math.abs(y)) then
+					wcont:resize(wcont.w + x, 0);
+				else
+					wcont:resize(0, wcont.h + y);
+				end
+			else
+				wcont:resize(wcont.w + x, wcont.h + y);
+			end
 		end
 		rhandle.own = function(self, vid)
 			return vid == icn.vid;
@@ -1144,6 +1178,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.mnurndfun  = mnurndr;
 
 	awb_col = system_load("scripts/colourtable.lua")();
+
 	awb_cfg.bordericns["minus"]    = load_image("awbicons/minus.png");
 	awb_cfg.bordericns["plus"]     = load_image("awbicons/plus.png");
 	awb_cfg.bordericns["clone"]    = load_image("awbicons/clone.png");
@@ -1156,7 +1191,9 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["play"]     = load_image("awbicons/play.png");
 	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
 	awb_cfg.bordericns["input"]    = load_image("awbicons/joystick.png");
-	awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0);
+	awb_cfg.bordericns["volume"]   = load_image("awbicons/speaker.png");
+
+	awb_cfg.bordericns["volume_top"]   = load_image("awbicons/topbar_speaker.png");
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 

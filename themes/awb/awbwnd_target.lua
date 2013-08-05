@@ -23,13 +23,27 @@ end
 --
 function awbwnd_target(pwin)
 	local loading = fill_surface(pwin.w, pwin.h, 100, 100, 100);
+	local cfg = awbwman_cfg();
+
 	pwin:update_canvas(loading, false);
 
-	pwin.dir.tt:add_icon("r", awbwman_cfg().bordericns["clone"], 
+	pwin.dir.tt:add_icon("r", cfg.bordericns["clone"], 
 		function() datashare(pwin); 
 	end);
 
-	pwin.dir.tt:add_icon("l", awbwman_cfg().bordericns["input"],
+	pwin.dir.tt:add_icon("l", cfg.bordericns["pause"], function(self) 
+		if (pwin.paused) then
+			pwin.paused = nil;
+			resume_target(pwin.canvas.vid);
+			image_sharestorage(cfg.bordericns["pause"], self.vid);
+		else
+			pwin.paused = true;
+			suspend_target(pwin.canvas.vid);
+			image_sharestorage(cfg.bordericns["play"], self.vid);
+		end
+	end);
+
+	pwin.dir.tt:add_icon("l", cfg.bordericns["input"],
 		function() inputlay_sel(pwin); end);
 
 	pwin.input = function(self, iotbl)

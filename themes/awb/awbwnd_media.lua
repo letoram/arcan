@@ -27,13 +27,33 @@ local function datashare(wnd)
 	return res;
 end
 
-local function add_vmedia_top(pwin, active, inactive)
+local function add_vmedia_top(pwin, active, inactive, fsrv)
 	local bar = pwin:add_bar("tt", active, inactive,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	local cfg = awbwman_cfg();
 
-	bar:add_icon("l", cfg.bordericns["pause"], function() end);
-	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
+	bar:add_icon("r", cfg.bordericns["clone"],  function() datashare(pwin); end);
+
+	if (fsrv) then
+		bar:add_icon("l", cfg.bordericns["pause"],  function(self) 
+			if (pwin.paused) then
+				pwin.paused = nil;
+				resume_movie(pwin.canvas.vid);
+				image_sharestorage(cfg.bordericns["pause"], self.vid);
+			else
+				pwin.paused = true;
+				pause_movie(pwin.canvas.vid);
+				image_sharestorage(cfg.bordericns["play"], self.vid);
+			end
+		end);
+
+		bar:add_icon("r", cfg.bordericns["volume"], function() 
+			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
+				pwin:set_mvol(val);
+			end);
+		end);
+	end
+
 --	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
 	pwin.click = function() end
 	pwin.name = "3dmedia_topbar";
@@ -41,8 +61,8 @@ local function add_vmedia_top(pwin, active, inactive)
 end
 
 local function slide_lightr(caller, status)
+	local pwin = caller.pwin;
 	awbwman_popupslider(0.01, pwin.amb_r, 1.0, function(val)
-		local pwin = caller.pwin;
 		pwin.amb_r = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
@@ -51,8 +71,8 @@ local function slide_lightr(caller, status)
 	return true;
 end
 local function slide_lightg(caller, status)
+	local pwin = caller.pwin;
 	awbwman_popupslider(0.01, pwin.amb_g, 1.0, function(val)
-		local pwin = caller.pwin;
 		pwin.amb_g = val;
 		shader_uniform(pwin.shader, "wambinet", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
@@ -61,8 +81,8 @@ local function slide_lightg(caller, status)
 end
 
 local function slide_lightb(caller, status)
+	local pwin = caller.pwin;
 	awbwman_popupslider(0.01, pwin.amb_b, 1.0, function(val)
-		local pwin = caller.pwin;
 		pwin.amb_b = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
@@ -134,11 +154,21 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
 
 	if (kind == "frameserver") then
-		add_vmedia_top(pwin, active, inactive);
+		add_vmedia_top(pwin, active, inactive, true);
+		pwin.mediavol = 1.0;
+		pwin.set_mvol = function(self, val)
+			pwin.mediavol = val;
+			local tmpvol = awbwman_cfg().global_vol * pwin.mediavol; 
+			tmpvol = tmpvol < 0 and 0 or tmpvol;
+			if (pwin.recv ~= nil) then
+				audio_gain(pwin.recv, tmpvol);	
+			end
+		end
 	
 		callback = function(source, status)
 			if (status.kind == "resized") then
-				play_movie(source);
+				local vid, aud = play_movie(source);
+				pwin.recv = aud;
 				pwin:update_canvas(source, false);
 				pwin:resize(status.width, status.height);
 			end

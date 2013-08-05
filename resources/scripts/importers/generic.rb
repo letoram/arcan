@@ -117,6 +117,7 @@ class Generic
 	
 	def check_target(target, targetpath)
 		@genericpath = nil
+		@filter_ext = nil
 		extension = ""
 		execs = ["", ".exe", ".so", ".dll", ".dylib"];
 		libloader = false # for dynamic libraries, we don't accept user supplied arguments, only target + romsetfull

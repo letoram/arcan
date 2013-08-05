@@ -154,7 +154,7 @@ local function keyconf_idtotbl(self, idstr)
 end
 
 local function keyconf_tbltoid(self, itbl)
-	if (tbl.kind == "analog") then
+	if (itbl.kind == "analog") then
 		return string.format("analog:%d:%d:%s", 
 			itbl.devid, itbl.subid, itbl.source);
 	end
@@ -255,7 +255,6 @@ function inputed_translate(iotbl, cfg)
 
 	for k,v in ipairs(lbls) do
 		table.insert(res, keyconf_buildtable(deftbl, v, iotbl));
-		print(res[k], v, res[k].label, res[k].kind);
 	end
 
 	return res;
