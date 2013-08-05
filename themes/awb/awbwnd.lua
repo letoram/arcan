@@ -94,7 +94,19 @@ local function awbwnd_resize(self, neww, newh)
 	if (self.anchor == nil) then
 		return;
 	end
-	
+
+--
+-- Maintain canvas aspect
+--
+	if (neww == 0 or newh == 0) then
+		local props = image_surface_initial_properties(self.canvas.vid);
+		if (neww == 0) then
+			neww = newh * (props.width / props.height);
+		else
+			newh = neww * (props.height / props.width);
+		end
+	end
+
 	awbwnd_update_minsz(self);
 
 	neww = neww >= self.minw and neww or self.minw;

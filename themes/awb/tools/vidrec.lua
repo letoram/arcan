@@ -19,16 +19,62 @@ local function add_rectarget(wnd, tag)
 	local tmpw, tmph = wnd.w * 0.2, wnd.h * 0.2;
 	local source = {};
 
-	source.data = tag.source;
-	source.vid  = null_surface(tmpw, tmph);
-	source.own  = function(self, vid) return vid == source.vid; end
+	source.data  = tag.source;
+	source.dmode = nil;
+	source.vid   = null_surface(tmpw, tmph);
+	source.own   = function(self, vid) return vid == source.vid; end
+	source.drag  = function(self, vid, dx, dy)
+
+--
+-- Add mouse handlers for moving / scaling, which one it'll be depends
+-- on if the click point is closer to the center or the edge of the object
+		if (source.dmode == nil) then
+			local props = image_surface_properties(source.vid);
+			source.start = props;
+			local mx, my = mouse_xy();
+			local rprops = image_surface_resolve_properties(source.vid);
+			rprops.width = rprops.width * 0.5;
+			rprops.height= rprops.height * 0.5;
+			local cata  = math.abs(rprops.x + rprops.width - mx);
+			local catb  = math.abs(rprops.y + rprops.height - my);
+			local dist  = math.sqrt( cata * cata + catb * catb );
+			local hhyp  = math.sqrt( rprops.width * rprops.width +
+				rprops.height * rprops.height ) * 0.5;
+
+			if (dist < hhyp) then
+				source.dmode = "move";
+			else
+				source.dmode = "scale"; 
+			end
+		elseif (source.dmode == "move") then
+			source.start.x = source.start.x + dx;
+			source.start.y = source.start.y + dy;
+			move_image(source.vid, source.start.x, source.start.y);
+
+		elseif (source.dmode == "scale") then
+			source.start.width  = source.start.width  + dx;
+			source.start.height = source.start.height + dy;
+			resize_image(source.vid, source.start.width, source.start.height);
+		end
+	end
+
+-- update selected for wnd so 'del' input key works
+	source.click = function(self, vid)
+	end
+
+	source.drop = function(self, vid)
+		source.dmode = nil;
+		source.start = nil;
+	end
 
 	image_sharestorage(tag.source.canvas.vid, source.vid);
 	table.insert(wnd.sources, source);
 	show_image(source.vid);
 	image_inherit_order(source.vid, true);
 	link_image(source.vid, wnd.canvas.vid);
+	image_clip_on(source.vid);
 
+	mouse_addlistener(source, {"click", "drag", "drop"});
 	tag:drop();
 end
 

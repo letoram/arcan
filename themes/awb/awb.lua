@@ -105,16 +105,16 @@ function awb()
 	kbdbinds["ESCAPE"] = awbwman_cancel;
 
 -- awb_inputed();
-local tbl = list_games({title = "Moon P%"})[1];
-	local res = resourcefinder_search(tbl, true);
-	local mdl = find_cabinet_model(tbl);
-	local model = setup_cabinet_model(mdl, res, {});
-	if (model.vid) then
-		move3d_model(model.vid, 0.0, -0.2, -2.0);
-	else
-		model = {};
-	end
-	awbwman_mediawnd(menulbl("3D Model"), "3d", model);
+--local tbl = list_games({title = "Moon P%"})[1];
+--	local res = resourcefinder_search(tbl, true);
+--	local mdl = find_cabinet_model(tbl);
+--	local model = setup_cabinet_model(mdl, res, {});
+--	if (model.vid) then
+--		move3d_model(model.vid, 0.0, -0.2, -2.0);
+--	else
+--		model = {};
+--	end
+--	awbwman_mediawnd(menulbl("3D Model"), "3d", model);
 end
 
 --
@@ -311,7 +311,7 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"BOING!",    spawn_boing,    "boing"},
 		{"InputConf", awb_inputed,  "inputed"},
 		{"Recorder",  spawn_vidrec,  "vidrec"},
-		{"Network",   spawn_socsrv, "socserv"},
+		{"Network",   spawn_socsrv, "network"},
 		{"VidCap",    spawn_vidwin,  "vidcap"},
 		{"Compare",   spawn_vidcmp,  "vidcmp"},
 		{"ShaderEd",  spawn_shadeed, "shadeed"},
