@@ -278,6 +278,8 @@ local function awbman_mhandlers(wnd, bar)
 			self.line_beg = nil;
 			delete_image(self.lineobj);
 			self.lineobj = nil;
+		else
+			wnd:move(math.floor(wnd.x), math.floor(wnd.y));
 		end
 	end
 
@@ -1192,7 +1194,10 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
 	awb_cfg.bordericns["input"]    = load_image("awbicons/joystick.png");
 	awb_cfg.bordericns["volume"]   = load_image("awbicons/speaker.png");
+	awb_cfg.bordericns["save"]     = load_image("awbicons/save.png");
+	awb_cfg.bordericns["load"]     = load_image("awbicons/load.png");
 
+	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]   = load_image("awbicons/topbar_speaker.png");
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");

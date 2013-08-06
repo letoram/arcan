@@ -25,10 +25,29 @@ function awbwnd_target(pwin)
 	local loading = fill_surface(pwin.w, pwin.h, 100, 100, 100);
 	local cfg = awbwman_cfg();
 
+	pwin.mediavol = 1.0;
 	pwin:update_canvas(loading, false);
 
+	pwin.set_mvol = function(self, val)
+		pwin.mediavol = val;
+		local tmpvol = awbwman_cfg().global_vol * pwin.mediavol; 
+		tmpvol = tmpvol < 0 and 0 or tmpvol;
+		if (pwin.reca ~= nil) then
+			audio_gain(pwin.reca, tmpvol);	
+		end
+	end
+	
 	pwin.dir.tt:add_icon("r", cfg.bordericns["clone"], 
 		function() datashare(pwin); 
+	end);
+
+	pwin.dir.tt:add_icon("r", cfg.bordericns["volume"], function() 
+		awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
+			pwin:set_mvol(val);
+		end);
+	end);
+
+	pwin.dir.tt:add_icon("l", cfg.bordericns["save"], function(self)
 	end);
 
 	pwin.dir.tt:add_icon("l", cfg.bordericns["pause"], function(self) 
@@ -43,7 +62,13 @@ function awbwnd_target(pwin)
 		end
 	end);
 
-	pwin.dir.tt:add_icon("l", cfg.bordericns["input"],
+	pwin.dir.tt:add_icon("l", cfg.bordericns["load"], function(self)
+	end);
+
+	pwin.dir.tt:add_icon("l", cfg.bordericns["fastforward"], function(self)
+	end);
+
+	pwin.dir.tt:add_icon("r", cfg.bordericns["input"],
 		function() inputlay_sel(pwin); end);
 
 	pwin.input = function(self, iotbl)
@@ -58,10 +83,9 @@ function awbwnd_target(pwin)
 		end
 	end
 
--- add_icon play/pause
 -- add_icon filter
 -- add_icon fast-forward
--- add_icon save(slot) 
+-- add_icon save(slot)
 
 	local callback = function(source, status)
 		if (status.kind == "frameserver_terminated") then
@@ -70,6 +94,7 @@ function awbwnd_target(pwin)
 
 		elseif (status.kind == "loading") then
 			print("show loading info..");
+
 		elseif (status.kind == "resized") then
 			pwin:update_canvas(source, false);
 		end

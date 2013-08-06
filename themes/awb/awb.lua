@@ -126,10 +126,11 @@ function gamelist_launch(self)
 	local captbl = launch_target_capabilities(self.target);
 
 	if (captbl.internal_launch == false) then
+-- confirmation dialog
 		launch_target(self.gameid, LAUNCH_EXTERNAL);
 	else
 		local wnd, cb = awbwman_targetwnd(menulbl(self.name));
-		launch_target(self.gameid, LAUNCH_INTERNAL, cb); 
+		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);
 	end
 end
 

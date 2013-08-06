@@ -177,8 +177,9 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	elseif (kind == "capture") then
 		add_vmedia_top(pwin, active, inactive);
 
-
 	elseif (kind == "static") then
+		add_vmedia_top(pwin, active, inactive);
+	
 		callback = function(source, status) 
 			if (status.kind == "loaded") then
 				pwin:update_canvas(source, false);
