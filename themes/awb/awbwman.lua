@@ -629,7 +629,11 @@ function awbwman_rootwnd()
 		"awbicons/topbar.png", awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 	order_image(tbar.vid, ORDER_MOUSE - 5);
 
-	local icn = tbar:add_icon("r", awb_cfg.bordericns["volume_top"], function()
+	wcont.set_mvol = function(self, val) awb_cfg.global_vol = val; end
+	local icn = tbar:add_icon("r", awb_cfg.bordericns["volume_top"], function(self)
+		awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
+			wcont:set_mvol(val);
+		end, {ref = self.vid});
 	end);
 
 	image_mask_set(tbar.vid, MASK_UNPICKABLE);
@@ -647,7 +651,7 @@ function awbwman_rootwnd()
 --
 	local dndh = {
 		own = function(self, vid)
-			return vid == canvas;
+			return vid == canvas; 
 		end,
 
 		out = function(self, vid)
@@ -663,6 +667,8 @@ function awbwman_rootwnd()
 		end,
 
 		click = function(self, vid)
+			drop_popup();
+
 			if (awb_cfg.cursor_tag) then
 				print("options; link, screenshot, background image");
 				awb_cfg.cursor_tag.drop();
@@ -670,6 +676,7 @@ function awbwman_rootwnd()
 		end
 	};
 
+	mouse_addlistener(tbar, {"click"});
 	mouse_addlistener(dndh, {"out", "over", "click"});
 	awb_cfg.root = wcont;
 end
@@ -823,11 +830,17 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 		options = {};
 	end
 
+	print(options.ref);
+
 	local sx, sy = mouse_xy();
 
 	if (options.x ~= nil) then
 		sx = options.x;
 		sy = options.y;
+	elseif (options.ref) then
+		local props = image_surface_resolve_properties(options.ref);
+		sx = props.x;
+		sy = props.y + props.height;
 	end
 
 	local h = options.height and 
