@@ -36,6 +36,7 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 	if (fsrv) then
 		bar:add_icon("l", cfg.bordericns["pause"],  function(self) 
+
 			if (pwin.paused) then
 				pwin.paused = nil;
 				resume_movie(pwin.canvas.vid);
@@ -47,58 +48,75 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 			end
 		end);
 
-		bar:add_icon("r", cfg.bordericns["volume"], function() 
+		bar:add_icon("r", cfg.bordericns["volume"], function(self)
+			pwin:focus();
+
 			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
 				pwin:set_mvol(val);
-			end);
+			end, {ref = self.vid});
 		end);
 	end
 
 --	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
-	pwin.click = function() end
+	pwin.click = function() 
+			print("pwinclick?");
+			pwin:focus(); 
+	end
 	pwin.name = "3dmedia_topbar";
 	mouse_addlistener(pwin, {"click"});
 end
 
 local function slide_lightr(caller, status)
 	local pwin = caller.pwin;
+	pwin:focus();
+
 	awbwman_popupslider(0.01, pwin.amb_r, 1.0, function(val)
 		pwin.amb_r = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
-			pwin.amb_r, pwin.amb_g, pwin.amb_b);
+			pwin.amb_r, pwin.amb_g, pwin.amb_b, {ref = caller.vid});
 	
 	end, nil);
 	return true;
 end
 local function slide_lightg(caller, status)
 	local pwin = caller.pwin;
+	pwin:focus();
+
 	awbwman_popupslider(0.01, pwin.amb_g, 1.0, function(val)
 		pwin.amb_g = val;
 		shader_uniform(pwin.shader, "wambinet", "fff", PERSIST,
-			pwin.amb_r, pwin.amb_g, pwin.amb_b);
+			pwin.amb_r, pwin.amb_g, pwin.amb_b, {ref = caller.vid});
 	end, nil);
 	return true;
 end
 
 local function slide_lightb(caller, status)
 	local pwin = caller.pwin;
+	pwin:focus();
+
 	awbwman_popupslider(0.01, pwin.amb_b, 1.0, function(val)
 		pwin.amb_b = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
-			pwin.amb_r, pwin.amb_g, pwin.amb_b);
+			pwin.amb_r, pwin.amb_g, pwin.amb_b, {ref = caller.vid});
 	end, nil);
 	return true;
 end
 
 local function zoom_in(self)
-	props = image_surface_properties(self.parent.parent.model.vid);
-	move3d_model(self.parent.parent.model.vid, props.x, props.y, props.z + 1.0, 
+	local pwin = self.parent.parent;
+	pwin:focus();
+
+	props = image_surface_properties(pwin.model.vid);
+	move3d_model(pwin.model.vid, props.x, props.y, props.z + 1.0, 
 		awbwman_cfg().animspeed);
 end
 
 local function zoom_out(self)
-	props = image_surface_properties(self.parent.parent.model.vid);
-	move3d_model(self.parent.parent.model.vid, props.x, props.y, props.z - 1.0,
+	local pwin = self.parent.parent;
+	pwin:focus();
+
+	props = image_surface_properties(pwin.model.vid);
+	move3d_model(pwin.model.vid, props.x, props.y, props.z - 1.0,
 		awbwman_cfg().animspeed);
 end
 
@@ -117,8 +135,6 @@ local function add_3dmedia_top(pwin, active, inactive)
 
 	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
 
--- click gets sneakily implemented in own()
-	pwin.click = function() end
 	pwin.name = "3dmedia_topbar";
 	mouse_addlistener(pwin, {"click"});
 end
@@ -156,6 +172,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	if (kind == "frameserver") then
 		add_vmedia_top(pwin, active, inactive, true);
 		pwin.mediavol = 1.0;
+
 		pwin.set_mvol = function(self, val)
 			pwin.mediavol = val;
 			local tmpvol = awbwman_cfg().global_vol * pwin.mediavol; 
@@ -204,7 +221,9 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		local mh = {
 			name = "3dwindow_canvas",
 			own = function(self, vid) return vid == dstvid; end,
+	
 			drag = function(self, vid, dx, dy)
+				pwin:focus();
 				rotate3d_model(source.vid, 0.0, dy, -1 * dx, 0, ROTATE_RELATIVE);
 			end,
 
@@ -224,6 +243,8 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 			click = function()
 				local tag = awbwman_cursortag();
+				pwin:focus();
+
 				if (tag and tag.kind == "media") then
 					pwin.model:update_display(instance_image(tag.source.canvas.vid));	
 					tag:drop();

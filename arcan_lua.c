@@ -5172,7 +5172,7 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 (int) src->vstore->bpp,
 (int) src->vstore->txu,
 (int) src->vstore->txv,
-arcan_shader_lookuptag(src->vstore->program),
+arcan_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
 lut_imageproc(src->vstore->imageproc),
 lut_filtermode(src->vstore->filtermode),

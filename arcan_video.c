@@ -564,7 +564,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->current.scale = pobj->current.scale;
 
 		nobj->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
-		nobj->vstore->program = pobj->vstore->program;
+		nobj->program = pobj->program;
 		generate_basic_mapping(nobj->txcos, 1.0, 1.0);
 
 		nobj->parent->extrefc.instances++;
@@ -1375,7 +1375,7 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 	newvobj->vstore->vinf.col.r = (float)r / 255.0f;
 	newvobj->vstore->vinf.col.g = (float)g / 255.0f;
 	newvobj->vstore->vinf.col.b = (float)b / 255.0f;
-	newvobj->vstore->program = arcan_video_display.defclrshdr;
+	newvobj->program = arcan_video_display.defclrshdr;
 	arcan_video_attachobject(rv);
 
 	return rv;	
@@ -1388,7 +1388,7 @@ arcan_vobj_id arcan_video_nullobject(float origw,
 
 	if (rv != ARCAN_EID){
 		arcan_vobject* vobj   = arcan_video_getobject(rv);
-		vobj->vstore->program = 0;
+		vobj->program = 0;
 		arcan_video_attachobject(rv);
 	}
 
@@ -3153,7 +3153,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj && arcan_shader_valid(shid)) {
-		vobj->vstore->program = shid;
+		vobj->program = shid;
 		rv = ARCAN_OK;
 	}
 
@@ -3832,8 +3832,8 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 /* if the object is not txmapped (or null, in that case give up) */ 
 		if (elem->vstore->txmapped == false){
-			if (elem->vstore->program != 0){
-				arcan_shader_activate(elem->vstore->program);
+			if (elem->program != 0){
+				arcan_shader_activate(elem->program);
 				draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
 					elem->vstore->vinf.col.g, elem->vstore->vinf.col.b);
 			}
@@ -3845,8 +3845,8 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			continue;
 		}
 
-		arcan_shader_activate( elem->vstore->program > 0 ? 
-			elem->vstore->program : arcan_video_display.defaultshdr );
+		arcan_shader_activate( elem->program > 0 ? 
+			elem->program : arcan_video_display.defaultshdr );
 
 /* depending on frameset- mode, we may need to split 
  * the frameset up into multitexturing */
