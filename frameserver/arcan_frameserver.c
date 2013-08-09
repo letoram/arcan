@@ -367,10 +367,6 @@ static void toggle_logdev(const char* prefix)
 				arcan_fatal("frameserver_debug() -- couldn't get shmkey\n");
 		}
 	}
-#else
-	close(0);
-	close(1);
-	close(2);
 #endif
 
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){

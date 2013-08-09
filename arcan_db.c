@@ -122,7 +122,8 @@ static int db_num_query(arcan_dbh* dbh, const char* qry, bool* status)
 		sqlite3_finalize(stmt);
 	} 
 	else {
-		arcan_warning("Warning: db_num_query(), Couldn't process query: %s, possibly broken/incomplete arcandb.sqlite\n", qry);
+		arcan_warning("Warning: db_num_query(), Couldn't process query: %s, "
+			"possibly broken/incomplete arcandb.sqlite\n", qry);
 		count = -1;
 	}
 
@@ -168,7 +169,8 @@ static void freegame(arcan_db_game* game)
 static void create_theme_group(arcan_dbh* dbh, const char* themename)
 {
 	sqlite3_stmt* stmt = NULL;
-	int nw = snprintf(wbuf, wbufsize, "CREATE TABLE theme_%s (key TEXT UNIQUE, value TEXT NOT NULL);", themename);
+	int nw = snprintf(wbuf, wbufsize, "CREATE TABLE theme_%s "
+		"(key TEXT UNIQUE, value TEXT NOT NULL);", themename);
 	sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 	sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -176,7 +178,8 @@ static void create_theme_group(arcan_dbh* dbh, const char* themename)
 
 arcan_dbh_res arcan_db_targets(arcan_dbh* dbh)
 {
-	const char* baseqry1 = "SELECT DISTINCT a.name FROM target a, game b WHERE a.targetid = b.target;";
+	const char* baseqry1 = "SELECT DISTINCT a.name FROM target a, "
+		"game b WHERE a.targetid = b.target;";
 	sqlite3_stmt* stmt = NULL;
 	
 	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
@@ -210,7 +213,8 @@ char* arcan_db_gametgthijack(arcan_dbh* dbh, int gameid)
 {
 	char* rv = NULL;
 	sqlite3_stmt* stmt = NULL;
-	const char* baseqry1 = "SELECT hijack FROM target WHERE targetid = (SELECT target FROM game WHERE gameid=? LIMIT 1);";
+	const char* baseqry1 = "SELECT hijack FROM target WHERE targetid = "
+		"(SELECT target FROM game WHERE gameid=? LIMIT 1);";
 	
 	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, gameid);
@@ -243,10 +247,12 @@ char* arcan_db_targethijack(arcan_dbh* dbh, char* targetname)
 	return rv;
 }
 
-bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, char** targetname, char** targetexec)
+bool arcan_db_targetdata(arcan_dbh* dbh, int targetid, 
+	char** targetname, char** targetexec)
 {
 	bool rv = false;
-	const char* baseqry1 = "SELECT name, executable, hijack FROM target WHERE targetid=? LIMIT 1;";
+	const char* baseqry1 = "SELECT name, executable, hijack FROM"
+		"	target WHERE targetid=? LIMIT 1;";
 	sqlite3_stmt* stmt = NULL;
 	
 	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
@@ -323,12 +329,13 @@ arcan_dbh_res arcan_db_game_siblings(arcan_dbh* dbh,
 	arcan_dbh_res res = {.kind = -1};
 
 	sqlite3_stmt* stmt = NULL;
-	const char* baseqry1 = "SELECT a.title FROM game a, game_relations b WHERE b.series = "
-	                       "(SELECT series FROM game_relations WHERE gameid = ?) AND a.gameid = b.gameid;";
+	const char* baseqry1 = "SELECT a.title FROM game a, game_relations b "
+		"WHERE b.series = (SELECT series FROM game_relations WHERE "
+		"gameid = ?) AND a.gameid = b.gameid;";
 
-	const char* baseqry2 = "SELECT a.title FROM game a, game_relations b WHERE b.series = "
-	                       "(SELECT series FROM game_relations WHERE gameid = ("
-	                       "SELECT gameid FROM game WHERE title=?)) AND a.gameid = b.gameid";
+	const char* baseqry2 = "SELECT a.title FROM game a, game_relations b "
+		"WHERE b.series = (SELECT series FROM game_relations WHERE gameid = ("
+		"SELECT gameid FROM game WHERE title=?)) AND a.gameid = b.gameid";
 
 	if (title) {
 		sqlite3_prepare_v2(dbh->dbh, baseqry2, strlen(baseqry2), &stmt, NULL);
@@ -376,13 +383,16 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	int wbufs = sizeof(wbuf) - 2;
 	
 	sqlite3_stmt* stmt = NULL;
-	bool patch_strings = title || genre || subgenre || target || system || manufacturer;
+	bool patch_strings = title || genre || subgenre || 
+		target || system || manufacturer;
 
 	if (!dbh)
 		return res;
 
-	if ( (nstrlen(title) + nstrlen(genre) + nstrlen(subgenre) + nstrlen(target) + nstrlen(system)) + 1024 > wbufs ){
-		arcan_warning("arcan_db_games() unacceptably long filter arguments specified, ignored.\n");
+	if ( (nstrlen(title) + nstrlen(genre) + nstrlen(subgenre) + 
+		nstrlen(target) + nstrlen(system)) + 1024 > wbufs ){
+		arcan_warning("arcan_db_games() unacceptably long filter"
+			"	arguments specified, ignored.\n");
 			return res;
 	}
 	
@@ -437,7 +447,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	}
 
 	if (title) {
-		nw = strchr(title, '%') ? snprintf(work, wbufs, " AND a.title LIKE ?") : snprintf(work, wbufs, " AND a.title=?");
+		nw = strchr(title, '%') ? snprintf(work, wbufs, " AND a.title LIKE ?") 
+			: snprintf(work, wbufs, " AND a.title=?");
 		if (-1 == nw)
 			return res;
 
@@ -446,7 +457,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	}
 
 	if (genre) {
-		nw = strchr(genre, '%') ? snprintf(work, wbufs, " AND a.genre LIKE ?") : snprintf(work, wbufs, " AND a.genre=?");
+		nw = strchr(genre, '%') ? snprintf(work, wbufs, " AND a.genre LIKE ?") 
+			: snprintf(work, wbufs, " AND a.genre=?");
 		if (-1 == nw)
 			return res;
 
@@ -455,7 +467,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	}
 
 	if (subgenre) {
-		nw = strchr(subgenre, '%') ? snprintf(work, wbufs, " AND a.subgenre LIKE ?") : snprintf(work, wbufs, " AND a.subgenre=?");
+		nw = strchr(subgenre, '%') ? snprintf(work, wbufs, " AND a.subgenre LIKE ?")
+			: snprintf(work, wbufs, " AND a.subgenre=?");
 		if (-1 == nw)
 			return res;
 
@@ -464,7 +477,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	}
 	
 	if (system) {
-		nw = strchr(system, '%') ? snprintf(work, wbufs, " AND a.system LIKE ?") : snprintf(work, wbufs, " AND a.system=?");
+		nw = strchr(system, '%') ? snprintf(work, wbufs, " AND a.system LIKE ?") 
+			: snprintf(work, wbufs, " AND a.system=?");
 		if (-1 == nw)
 			return res;
 
@@ -473,7 +487,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	}
 	
 	if (target) {
-		nw = strchr(target, '%') ? snprintf(work, wbufs, " AND b.name LIKE ?") : snprintf(work, wbufs, " AND b.name=?");
+		nw = strchr(target, '%') ? snprintf(work, wbufs, " AND b.name LIKE ?") 
+			: snprintf(work, wbufs, " AND b.name=?");
 		if (-1 == nw)
 			return res;
 
@@ -482,7 +497,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	}
 
 	if (manufacturer) {
-		nw = strchr(manufacturer, '%') ? snprintf(work, wbufs, " AND a.manufacturer LIKE ?") : snprintf(work, wbufs, " AND a.manufacturer=?");
+		nw = strchr(manufacturer, '%') ? snprintf(work, wbufs, 
+			" AND a.manufacturer LIKE ?") : 
+			snprintf(work, wbufs, " AND a.manufacturer=?");
 		if (-1 == nw)
 			return res;
 		
@@ -542,9 +559,11 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 			if (strcmp(col, "gameid") == 0)
 				row->gameid = sqlite3_column_int(stmt, ofs);
 			else if (strcmp(col, "title") == 0)
-				row->title = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->title = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else if (strcmp(col, "setname") == 0)
-				row->setname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->setname = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else if (strcmp(col, "players") == 0)
 				row->n_players = sqlite3_column_int(stmt, ofs);
 			else if (strcmp(col, "buttons") == 0)
@@ -552,23 +571,29 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 			else if (strcmp(col, "ctrlmask") == 0)
 				row->input = sqlite3_column_int(stmt, ofs);
 			else if (strcmp(col, "genre") == 0)
-				row->genre = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->genre = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else if (strcmp(col, "system") == 0)
-				row->system = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->system = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else if (strcmp(col, "subgenre") == 0)
-				row->subgenre = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->subgenre = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else if (strcmp(col, "year") == 0)
 				row->year = sqlite3_column_int(stmt, ofs);
 			else if (strcmp(col, "manufacturer") == 0)
-				row->manufacturer = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->manufacturer = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else if (strcmp(col, "targetid") == 0)
 				row->targetid = sqlite3_column_int(stmt, ofs);
 			else if (strcmp(col, "launch_counter") == 0)
 				row->launch_counter = sqlite3_column_int(stmt, ofs);
 			else if (strcmp(col, "target") == 0)
-				row->targetname = _n_strdup((const char*) sqlite3_column_text(stmt, ofs), NULL);
+				row->targetname = _n_strdup((const char*) 
+					sqlite3_column_text(stmt, ofs), NULL);
 			else
-				arcan_warning("Warning: arcan_db_games(), unexpected column value %s\n", col);
+				arcan_warning("Warning: arcan_db_games(), "
+					"unexpected column value %s\n", col);
 		}
 		while (++ofs < ncols);
 
@@ -582,7 +607,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		res.data.gamearr[count++] = row;
 
 		if (count == alimit-1) {
-			arcan_db_game** newarr = (arcan_db_game**) realloc(res.data.gamearr, (alimit += REALLOC_STEP) * sizeof(arcan_db_game*));
+			arcan_db_game** newarr = (arcan_db_game**) realloc(res.data.gamearr,
+				(alimit += REALLOC_STEP) * sizeof(arcan_db_game*));
 			if (newarr)
 				res.data.gamearr = newarr;
 			else {
@@ -614,7 +640,8 @@ long int arcan_db_launch_counter(arcan_dbh* dbh, const char* title)
 	
 	if (dbh && title && strlen(title) > 0){
 		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufsize, "SELECT launch_counter FROM game WHERE title=?");
+		int nw = snprintf(wbuf, wbufsize, "SELECT launch_counter FROM"
+			"	game WHERE title=?");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, title, -1, SQLITE_TRANSIENT);
 		
@@ -633,7 +660,8 @@ bool arcan_db_launch_counter_increment(arcan_dbh* dbh, int gameid)
 	
 	if (dbh != NULL){
 		sqlite3_stmt* stmt = NULL;
-		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter = launch_counter + 1 WHERE gameid=?");
+		int nw = snprintf(wbuf, wbufsize, "UPDATE game SET launch_counter ="
+			"	launch_counter + 1 WHERE gameid=?");
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_int(stmt, 1, gameid);
 		rv = sqlite3_step(stmt) == SQLITE_DONE;
@@ -668,7 +696,8 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
 		char* err = NULL;
 		int rc = sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, &err);
 		if (err){
-			arcan_warning("arcan_db_kv() -- couldn't finalize transaction (%s).\n", err);
+			arcan_warning("arcan_db_kv() -- couldn't "
+				"finalize transaction (%s).\n", err);
 			sqlite3_free(err);
 		}
 		else
@@ -683,16 +712,21 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
 /* firsrt time, create dbh unique prepared statements */
 	if (!dbh->update_kv){
 		int nw; 
-		nw = snprintf(wbuf, wbufsize, "UPDATE theme_%s SET value=? WHERE key=?;", dbh->themename);
+		nw = snprintf(wbuf, wbufsize, 
+			"UPDATE theme_%s SET value=? WHERE key=?;",	dbh->themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->update_kv, NULL);
-		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) VALUES(?, ?);", dbh->themename);
+		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) "
+			"VALUES(?, ?);", dbh->themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &dbh->insert_kv, NULL);
 	}
 	
 	sqlite3_stmt* stmt;
 
-/* usage pattern is that the caller should set false on the last entry to false and the rest to true
- * if there will be a series of KVs to set, because of the synchronous nature of sqlite3 transactions */
+/*
+ * usage pattern is that the caller should set false on the last entry
+ * to false and the rest to true if there will be a series of KVs to set,
+ * because of the synchronous nature of sqlite3 transactions
+ */
 	if (!dbh->intrans){
 		char* err = NULL;
 		int rc = sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, &err);
@@ -714,13 +748,16 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
 		return true;
 	}
 	else{
-		arcan_warning("arcan_db_kv(%s, %s), intrans: %d => %d\n", key, value, dbh->intrans, errc);
+		arcan_warning("arcan_db_kv(%s, %s), intrans: %d => %d\n", 
+			key, value, dbh->intrans, errc);
 		return false;
 	}
 }
 
-/* deprecated, externally themes should use arcan_db_kv class functions instead */
-bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, const char* value)
+/* deprecated, externally themes should use 
+ * arcan_db_kv class functions instead */
+bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, 
+	const char* key, const char* value)
 {
 	bool rv = false;
 	int nw;
@@ -732,14 +769,16 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename, const char* key, c
 	sqlite3_stmt* stmt = NULL;
 	
 	if (okey) {
-		nw = snprintf(wbuf, wbufsize, "UPDATE theme_%s SET value=? WHERE key=?;", themename);
+		nw = snprintf(wbuf, wbufsize, 
+			"UPDATE theme_%s SET value=? WHERE key=?;", themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 2, key,   -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT);
 		free(okey);
 	}
 	else {
-		nw = snprintf(wbuf, wbufsize, "INSERT INTO theme_%s(key, value) VALUES(?, ?);", themename);
+		nw = snprintf(wbuf, wbufsize, 
+			"INSERT INTO theme_%s(key, value) VALUES(?, ?);", themename);
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 1, key,   -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT);
@@ -782,18 +821,23 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 	unsigned int targetid = -1;
 	char* romset = NULL, (* targetname) = NULL;
 
-	const char* launchqry1 = "SELECT a.targetid, b.gameid, a.executable, b.setname FROM target a, game b WHERE b.gameid=? AND b.target = a.targetid;";
-	const char* launchqry2 = "SELECT argument FROM target_arguments WHERE target = ? AND (mode = ? OR mode = 0) AND game = ? ORDER BY id ASC;";
-	const char* argcount = "SELECT Count(*) FROM target_arguments WHERE (mode = ? OR mode = 0) AND game = ?;";
+	const char* launchqry1 = "SELECT a.targetid, b.gameid, a.executable,b.setname"
+		"	FROM target a, game b WHERE b.gameid=? AND b.target = a.targetid;";
+	const char* launchqry2 = "SELECT argument FROM target_arguments WHERE"
+		"	target = ? AND (mode = ? OR mode = 0) AND game = ? ORDER BY id ASC;";
+	const char* argcount = "SELECT Count(*) FROM target_arguments "
+		"WHERE (mode = ? OR mode = 0) AND game = ?;";
 	
 /* query 1, figure out which program to launch based on the requested game */
-	int code = sqlite3_prepare_v2(dbh->dbh, launchqry1, strlen(launchqry1), &stmt, NULL);
+	int code = sqlite3_prepare_v2(dbh->dbh, 
+		launchqry1, strlen(launchqry1), &stmt, NULL);
 
 	sqlite3_bind_int(stmt, 1, gameid);
 	if ((code = sqlite3_step(stmt)) == SQLITE_ROW) {
 		targetid = sqlite3_column_int(stmt, 0);
 		gameid = sqlite3_column_int(stmt, 1);
-		res.data.strarr[count++] = _n_strdup((const char*) sqlite3_column_text(stmt, 2), "");
+		res.data.strarr[count++] = _n_strdup((const char*)
+			sqlite3_column_text(stmt, 2), "");
 		romset = _n_strdup((const char*) sqlite3_column_text(stmt, 3), NULL);
 	}
 	sqlite3_finalize(stmt);
@@ -802,7 +846,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 		if (!arcan_db_targetdata(dbh, targetid, &targetname, NULL))
 			targetname = strdup("");
 	
-/* query 2, check if there are any game- specific arguments that override the target defaults */
+/* query 2, check if there are any game- specific
+ * arguments that override the target defaults */
 	int arggameid = 0;
 	
 	code = sqlite3_prepare_v2(dbh->dbh, argcount, strlen(argcount), &stmt, NULL);
@@ -813,14 +858,17 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 			arggameid = gameid;
 	sqlite3_finalize(stmt);
 	
-/* query 3, build a list of command-line arguments for the specific game / target combination */
-	code = sqlite3_prepare_v2(dbh->dbh, launchqry2, strlen(launchqry2), &stmt, NULL);
+/* query 3, build a list of command-line arguments
+ * for the specific game / target combination */
+	code = sqlite3_prepare_v2(dbh->dbh, launchqry2, 
+		strlen(launchqry2), &stmt, NULL);
 	sqlite3_bind_int(stmt, 1, targetid);
 	sqlite3_bind_int(stmt, 2, internal ? 1 : 2);
 	sqlite3_bind_int(stmt, 3, arggameid);
 
-/* since we don't know how many are in the result set (without running another query),
- * allocate slots in batches of 8, free and fail if realloc isn't possible */
+/* since we don't know how many are in the result set 
+ * (without running another query), allocate slots in batches of 8, 
+ * free and fail if realloc isn't possible */
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
 		if (strcmp((char*)arg, "[romset]") == 0) {
@@ -829,7 +877,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 			romset = NULL;
 		}
 		else if ( strcmp(arg, "[romsetfull]") == 0){
-			snprintf(wbuf, wbufsize, "%s/games/%s/%s", arcan_resourcepath, targetname, romset);
+			snprintf(wbuf, wbufsize, "%s/games/%s/%s", 
+				arcan_resourcepath, targetname, romset);
 			res.data.strarr[count++] = strdup(wbuf);
 			free(romset);
 			romset = NULL;
@@ -839,7 +888,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 			res.data.strarr[count++] = strdup(wbuf);
 		}
 		else if ( (strlen(arg) >= 11) && strncmp(arg, "[themepath]", 11) == 0){
-			snprintf(wbuf, wbufsize, "%s/%s/%s", arcan_themepath, arcan_themename, arg + 11);
+			snprintf(wbuf, wbufsize, "%s/%s/%s", arcan_themepath,
+				arcan_themename, arg + 11);
 			res.data.strarr[count++] = strdup(wbuf);
 		}
 		else
@@ -848,7 +898,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 /* need to always have two spaces left, one for NULL terminator,
  * one for (possible) romset */
 		if (count == limit-1) {
-			char** newarr = (char**) realloc(res.data.strarr, (limit += REALLOC_STEP) * sizeof(char*));
+			char** newarr = (char**) realloc(res.data.strarr, 
+				(limit += REALLOC_STEP) * sizeof(char*));
 			if (newarr)
 				res.data.strarr = newarr;
 			else {
@@ -864,7 +915,8 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 		}
 	}
 
-/* Omitted, previously tracked if we had set romset or not, now it's always up to the db to have proper values */ 
+/* Omitted, previously tracked if we had set romset or not, 
+ * now it's always up to the db to have proper values */ 
 /*  if (romset) {
 		res.data.strarr[count++] = _n_strdup((char*) romset, "");
 		free(romset);
@@ -906,7 +958,8 @@ bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res)
 
 /* to detect old databases and upgrade if possible */
 static bool dbh_integrity_check(arcan_dbh* dbh){
-	int tablecount = db_num_query(dbh, "SELECT Count(*) FROM sqlite_master WHERE type='table';", NULL);
+	int tablecount = db_num_query(dbh, "SELECT Count(*) "
+		"FROM sqlite_master WHERE type='table';", NULL);
 
 /* empty database */
 	if (tablecount <= 0){
@@ -961,7 +1014,8 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 	if (!themename)
 		themename = "_default";
 	
-	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL)) == SQLITE_OK) {
+	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL))
+		== SQLITE_OK) {
 		arcan_dbh* res = (arcan_dbh*) calloc(sizeof(arcan_dbh), 1);
 		res->dbh = dbh;
 		assert(dbh);
@@ -980,8 +1034,11 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 		snprintf(wbuf, wbufsize, "%s%s", sqqry, "game");
 		int gc = db_num_query(res, wbuf, NULL);
 		create_theme_group(res, res->themename);
+		
+		db_void_query(res, "PRAGMA synchronous=0;");
 
-		arcan_warning("Notice: arcan_db_open(), # targets: %i, # games: %i\n", tc, gc);
+		arcan_warning("Notice: arcan_db_open(), # targets: "
+			"%i, # games: %i\n", tc, gc);
 		return res;
 	}
 	else

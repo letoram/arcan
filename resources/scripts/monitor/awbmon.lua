@@ -90,7 +90,7 @@ Last Tick:\t%d\n\r]] , contn, #csample.vcontexts,
 	return cimg;
 end
 
-function badsample(context, startid)
+function badsample(startid)
 	return {
 		cellid = startid,
 		cellid_translated = 0,
@@ -131,7 +131,10 @@ function badsample(context, startid)
 end
 
 function render_sample(lv)
-	print(lv.props.position[1], lv.props.position[2]);
+	if (lv.cellid == nil) then
+		return;
+	end
+
 	return desktoplbl(string.format(
 [[Vobj(%d)=>(%d), Parent: %d Tag: %s\n\r
 GL(Id: %d, W: %d, H: %d, BPP: %d, TXU: %d, TXV: %d, Refcont: %d\n\r
@@ -255,6 +258,7 @@ function samplewnd_update(self, smpl)
 	delete_image(self.smplvid);
 	if (smpl == nil) then
 		smpl = badsample( self.lastid );
+		print("bad sample");
 	end
 
 	self.smplvid = render_sample(smpl);

@@ -163,7 +163,11 @@ class Generic
 					}
 					
 					STDOUT.print("\t(#{target}): Libretro core found, #{info["library"]} #{info["version"]}\n\t")
-					exts = info["extensions"].split(/\|/)
+					if (info["extensions"])
+						exts = info["extensions"].split(/\|/)
+					else
+						exts = {};
+					end
 					STDOUT.print("\t(#{target}): Accepted extensions: #{exts}\n")
 
 					@extensions = {}

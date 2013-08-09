@@ -905,7 +905,6 @@ arcan_aobj_id arcan_audio_capturefeed(const char* dev)
  * and resend it back into the playback chain, so that monitoring etc. 
  * gets reused */
 	if (_wrap_alError(dstobj, "capture-device") && dstobj){
-		printf("setup streaming\n");
 		dstobj->streaming = true;
 		dstobj->gain = 1.0;
 		dstobj->kind = AOBJ_CAPTUREFEED;
@@ -918,7 +917,7 @@ arcan_aobj_id arcan_audio_capturefeed(const char* dev)
 		return dstobj->id;
 	}
 	else{
-		printf("could get audio lock\n");
+		arcan_warning("could get audio lock\n");
 		if (capture){
 			alcCaptureStop(capture);
 			alcCaptureCloseDevice(capture);

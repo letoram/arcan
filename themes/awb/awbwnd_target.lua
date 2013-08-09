@@ -5,14 +5,22 @@ local function datashare(wnd)
 	return res;
 end
 
-local function inputlay_sel(wnd)
+local function inputlay_sel(icn, wnd)
+	if (awbwman_ispopup(icn.vid)) then
+		wnd:focus();
+		return nil;
+	end
+
+	wnd:focus();
 	local lst = inputed_configlist();
+
+	table.insert(lst, 1, "Disable");
 	local str = table.concat(lst, [[\n\r]]);
 	local vid, lines = desktoplbl(str);
-	
+
 	awbwman_popup(vid, lines, function(ind)
 		wnd.inp_cfg = inputed_getcfg(lst[ind]); 
-	end);
+	end, {ref = icn.vid});
 end
 
 --
@@ -41,10 +49,15 @@ function awbwnd_target(pwin)
 		function() datashare(pwin); 
 	end);
 
-	pwin.dir.tt:add_icon("r", cfg.bordericns["volume"], function() 
-		awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
-			pwin:set_mvol(val);
-		end);
+	pwin.dir.tt:add_icon("r", cfg.bordericns["volume"], function(self)
+		if (awbwman_ispopup(self.vid)) then
+			pwin:focus();
+		else
+			pwin:focus();
+			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
+				pwin:set_mvol(val);
+			end, {ref = self.vid});
+		end
 	end);
 
 	pwin.dir.tt:add_icon("l", cfg.bordericns["save"], function(self)
@@ -63,13 +76,15 @@ function awbwnd_target(pwin)
 	end);
 
 	pwin.dir.tt:add_icon("l", cfg.bordericns["load"], function(self)
+		pwin:focus();
 	end);
 
 	pwin.dir.tt:add_icon("l", cfg.bordericns["fastforward"], function(self)
+		pwin:focus();
 	end);
 
 	pwin.dir.tt:add_icon("r", cfg.bordericns["input"],
-		function() inputlay_sel(pwin); end);
+		function(self) inputlay_sel(self, pwin); end);
 
 	pwin.input = function(self, iotbl)
 		local restbl = inputed_translate(iotbl, pwin.inp_cfg);
@@ -101,6 +116,7 @@ function awbwnd_target(pwin)
 	end
 
 	pwin.click = function()
+		pwin:focus();
 	end
 
 	mouse_addlistener(pwin, {"click"});

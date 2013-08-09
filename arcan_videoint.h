@@ -138,8 +138,6 @@ struct storage_info_t {
 	enum arcan_vimage_mode    scale;
 	enum arcan_imageproc_mode imageproc;
 	enum arcan_vfilter_mode   filtermode;
-
-	arcan_shader_id program;
 };
 
 typedef struct arcan_vobject {
@@ -161,6 +159,7 @@ typedef struct arcan_vobject {
 	} frameset_meta;
 	
 	struct storage_info_t* vstore;
+	arcan_shader_id program;
 	
 	struct {
 		arcan_vfunc_cb ffunc;
