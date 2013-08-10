@@ -135,7 +135,7 @@ function gamelist_launch(self)
 end
 
 function spawn_vidwin(self)
-	awbwman_mediawnd(menulbl("Media Player"), "capture");
+	awbwman_mediawnd(menulbl("Video Capture"), "capture");
 end
 
 function gamelist_media(tbl)

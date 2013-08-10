@@ -59,7 +59,6 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 --	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
 	pwin.click = function() 
-			print("pwinclick?");
 			pwin:focus(); 
 	end
 	pwin.name = "3dmedia_topbar";
@@ -73,9 +72,8 @@ local function slide_lightr(caller, status)
 	awbwman_popupslider(0.01, pwin.amb_r, 1.0, function(val)
 		pwin.amb_r = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
-			pwin.amb_r, pwin.amb_g, pwin.amb_b, {ref = caller.vid});
-	
-	end, nil);
+			pwin.amb_r, pwin.amb_g, pwin.amb_b);
+	end, {ref = caller.vid});
 	return true;
 end
 local function slide_lightg(caller, status)
@@ -84,9 +82,9 @@ local function slide_lightg(caller, status)
 
 	awbwman_popupslider(0.01, pwin.amb_g, 1.0, function(val)
 		pwin.amb_g = val;
-		shader_uniform(pwin.shader, "wambinet", "fff", PERSIST,
-			pwin.amb_r, pwin.amb_g, pwin.amb_b, {ref = caller.vid});
-	end, nil);
+		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
+			pwin.amb_r, pwin.amb_g, pwin.amb_b);
+	end, {ref = caller.vid});
 	return true;
 end
 
@@ -97,8 +95,8 @@ local function slide_lightb(caller, status)
 	awbwman_popupslider(0.01, pwin.amb_b, 1.0, function(val)
 		pwin.amb_b = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
-			pwin.amb_r, pwin.amb_g, pwin.amb_b, {ref = caller.vid});
-	end, nil);
+			pwin.amb_r, pwin.amb_g, pwin.amb_b);
+	end, {ref = caller.vid});
 	return true;
 end
 
@@ -136,11 +134,28 @@ local function add_3dmedia_top(pwin, active, inactive)
 	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
 
 	pwin.name = "3dmedia_topbar";
+	pwin.click = function()
+	end
 	mouse_addlistener(pwin, {"click"});
 end
 
 local function vcap_setup(pwin)
 	local bar = pwin.dir.tt;
+	local tbl = {};
+	for i=0,9 do
+		table.insert(tbl, tostring(i));
+	end
+	local msg = table.concat(tbl, [[\n\r]]);
+	local capstr = "capture:device=%d";
+
+	bar:add_icon("l", awbwman_cfg().bordericns["plus"], function(icn)
+		local vid, lines = desktoplbl(msg);
+		awbwman_popup(vid, lines, function(ind)
+			pwin:focus();
+			local vid = load_movie(string.format(capstr, ind));
+			pwin:update_canvas(vid, false);
+		end, {ref = icn.vid});
+	end);
 end
 
 function input_3dwin(self, iotbl)
@@ -193,6 +208,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 	elseif (kind == "capture") then
 		add_vmedia_top(pwin, active, inactive);
+		vcap_setup(pwin);
 
 	elseif (kind == "static") then
 		add_vmedia_top(pwin, active, inactive);

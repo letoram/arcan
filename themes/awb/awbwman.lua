@@ -1071,6 +1071,10 @@ function awbwman_spawn(caption, options)
 		options = {};
 	end
 
+-- If we specify a uuid in options,
+-- load pos, size from there and update
+-- the key in destroy
+
 	local xp, yp = awbwman_next_spawnpos();
 
 	local wcont  = awbwnd_create({	
