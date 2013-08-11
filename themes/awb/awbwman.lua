@@ -102,6 +102,21 @@ function awbwman_meta(lbl, active)
 	awb_cfg.meta.shift = active;
 end
 
+function string.split(instr, delim)
+	local res = {};
+	local strt = 1;
+	local delim_pos, delim_stp = string.find(instr, delim, strt);
+	
+	while delim_pos do
+		table.insert(res, string.sub(instr, strt, delim_pos-1));
+		strt = delim_stp + 1;
+		delim_pos, delim_stp = string.find(instr, delim, strt);
+	end
+	
+	table.insert(res, string.sub(instr, strt));
+	return res;
+end
+
 local function drop_popup()
 	if (awb_cfg.popup_active ~= nil) then
 		awb_cfg.popup_active:destroy(awb_cfg.animspeed);
@@ -394,8 +409,8 @@ local function next_iconspawn()
 	return oldx, oldy;
 end
 
-function awbwman_iconwnd(caption, selfun)
-	local wnd = awbwman_spawn(caption);
+function awbwman_iconwnd(caption, selfun, options)
+	local wnd = awbwman_spawn(caption, options);
 
 	awbwnd_iconview(wnd, 64, 48, 32, selfun, 
 		fill_surface(32, 32, 
@@ -408,14 +423,14 @@ function awbwman_iconwnd(caption, selfun)
 	return wnd;
 end
 
-function awbwman_mediawnd(caption, kind, source)
-	local wnd = awbwman_spawn(caption);
+function awbwman_mediawnd(caption, kind, source, options)
+	local wnd = awbwman_spawn(caption, options);
 	return wnd, awbwnd_media(wnd, kind, source, 
 		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
 end
 
-function awbwman_targetwnd(caption, kind, source)
-	local wnd = awbwman_spawn(caption);
+function awbwman_targetwnd(caption, options)
+	local wnd = awbwman_spawn(caption, options);
 	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
 		wnd.dir.t.bsize);
 	return wnd, awbwnd_target(wnd);
@@ -425,8 +440,9 @@ function awbwman_activepopup()
 	return awb_cfg.popup_active ~= nil;
 end
 
-function awbwman_listwnd(caption, lineh, linespace, colopts, selfun, renderfun)
-	local wnd = awbwman_spawn(caption);
+function awbwman_listwnd(caption, lineh, linespace, 
+	colopts, selfun, renderfun, options)
+	local wnd = awbwman_spawn(caption, options);
 
 	opts = {
 		rowhicol = {awb_col.bgcolor.r * 1.2, 
@@ -666,12 +682,12 @@ function awbwman_rootwnd()
 		end,
 
 		click = function(self, vid)
-			drop_popup();
-
-			if (awb_cfg.cursor_tag) then
-				print("options; link, screenshot, background image");
-				awb_cfg.cursor_tag.drop();
+			if (awb_cfg.cursor_tag and awb_cfg.on_rootdnd) then
+				awb_cfg.on_rootdnd(awb_cfg.cursor_tag);
+				awb_cfg.cursor_tag:drop();
 			end
+
+			drop_popp();
 		end
 	};
 
@@ -993,6 +1009,13 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 		name        = name
 	};
 
+	local val = get_key("rooticn_" .. name);
+	if (val ~= nil) then
+		a = string.split(val, ",");
+		icntbl.x = tostring(a[1]);
+		icntbl.y = tostring(a[2]);
+	end
+
 	icntbl.toggle = function(val)
 		if (val == nil) then
 			icntbl.selected = not icntbl.selected;
@@ -1007,7 +1030,9 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 -- create containers (anchor, mainvid)
 -- transfer icon storage to mainvid and position icon + canvas
 	local props = image_surface_properties(iconselvid);
-	icntbl.x, icntbl.y = next_iconspawn();
+	if (icntbl.x == nil) then
+		icntbl.x, icntbl.y = next_iconspawn();
+	end
 
 	icntbl.anchor = null_surface(awb_cfg.rootcell_w, awb_cfg.rootcell_h);
 	icntbl.vid    = null_surface(props.width, props.height); 
@@ -1070,17 +1095,25 @@ function awbwman_spawn(caption, options)
 	if (options == nil) then
 		options = {};
 	end
+	
+	if (options.refid ~= nil) then
+		local kv = get_key(options.refid);
+		if (kv ~= nil) then
+			kv = tostring(kv);
+			local strtbl = string.split(kv, ",");
+			for i, j in ipairs(strtbl) do
+				local arg = string.split(j, "=");
+				options[arg[1]] = tonumber(arg[2]);
+			end
+		end
+	end
 
--- If we specify a uuid in options,
 -- load pos, size from there and update
 -- the key in destroy
-
-	local xp, yp = awbwman_next_spawnpos();
-
-	local wcont  = awbwnd_create({	
-		x = xp,
-		y = yp
-	});
+	if (options.x == nil) then
+		options.x, options.y = awbwman_next_spawnpos();
+	end
+	local wcont  = awbwnd_create(options);
 	local mhands = {};
 	local tmpfun = wcont.destroy;
 
@@ -1092,6 +1125,12 @@ function awbwman_spawn(caption, options)
 
 		for i,v in ipairs(mhands) do
 			mouse_droplistener(v);
+		end
+
+		if (options.refid) then
+			local key = string.format("w=%d,h=%d,x=%d,y=%d",
+			wcont.w, wcont.h, wcont.x, wcont.y);
+			store_key(options.refid, key);
 		end
 
 		tmpfun(self, time);
@@ -1213,6 +1252,14 @@ function awbwman_input(iotbl, keysym)
 			awb_cfg.focus.input ~= nil) then
 		awb_cfg.focus:input(iotbl);
 	end
+end
+
+function awbwman_shutdown()
+	for i, v in ipairs(awb_cfg.rooticns) do
+		local val = string.format("%d,%d", v.x, v.y);
+		store_key("rooticn_" .. v.name, val);
+	end
+	shutdown();
 end
 
 --

@@ -31,6 +31,7 @@ local function add_rectarget(wnd, tag)
 		if (source.dmode == nil) then
 			local props = image_surface_properties(source.vid);
 			source.start = props;
+
 			local mx, my = mouse_xy();
 			local rprops = image_surface_resolve_properties(source.vid);
 			rprops.width = rprops.width * 0.5;
@@ -47,10 +48,14 @@ local function add_rectarget(wnd, tag)
 				source.dmode = "scale"; 
 			end
 		elseif (source.dmode == "move") then
-			source.start.x = source.start.x + dx;
-			source.start.y = source.start.y + dy;
-			move_image(source.vid, source.start.x, source.start.y);
-
+			if (awbwman_cfg().meta.shift) then
+				source.start.angle = source.start.angle + dx;
+				rotate_image(source.vid, source.start.angle);
+			else
+				source.start.x = source.start.x + dx;
+				source.start.y = source.start.y + dy;
+				move_image(source.vid, source.start.x, source.start.y);
+			end
 		elseif (source.dmode == "scale") then
 			source.start.width  = source.start.width  + dx;
 			source.start.height = source.start.height + dy;
@@ -83,7 +88,7 @@ local function change_selected(vid)
 end
 
 function spawn_vidrec()
-	local wnd = awbwman_spawn(menulbl("Recorder"));
+	local wnd = awbwman_spawn(menulbl("Recorder"), {refid = "vidrec"});
 	wnd.sources = {};
 
 	if (wnd == nil) then 

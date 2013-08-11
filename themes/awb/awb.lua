@@ -24,14 +24,6 @@ deffont     = "fonts/topaz8.ttf";
 deffont_sz  = 12;
 linespace   = 4;
 
-x_spawnpos = 20;
-y_spawnpos = 20;
-
-ORDER_BGLAYER   = 1;
-ORDER_ICONLAYER = 2;
-ORDER_WDW       = 10;
-ORDER_FOCUSWDW  = 30;
-ORDER_OVERLAY   = 50;
 ORDER_MOUSE     = 255;
 
 kbdbinds = {};
@@ -129,13 +121,15 @@ function gamelist_launch(self)
 -- confirmation dialog
 		launch_target(self.gameid, LAUNCH_EXTERNAL);
 	else
-		local wnd, cb = awbwman_targetwnd(menulbl(self.name));
+		local wnd, cb = awbwman_targetwnd(menulbl(self.name), 
+			{refid = "targetwnd_" .. tostring(self.gameid)});
 		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);
 	end
 end
 
 function spawn_vidwin(self)
-	awbwman_mediawnd(menulbl("Video Capture"), "capture");
+	awbwman_mediawnd(menulbl("Video Capture"), "capture", BADID,
+		{refid = "vidcapwnd"});
 end
 
 function gamelist_media(tbl)
@@ -245,7 +239,8 @@ function gamelist_wnd(selection)
 				tag      = tbl[i],
 				rtrigger = gamelist_popup,
 				trigger  = gamelist_launch,
-				cols     = {tbl[i].title, string.len(tbl[i].genre) > 0 and tbl[i].genre or "(none)"}
+				cols     = {tbl[i].title, 
+					string.len(tbl[i].genre) > 0 and tbl[i].genre or "(none)"}
 			};
 
 			table.insert(res, ent);
@@ -253,7 +248,7 @@ function gamelist_wnd(selection)
 		end
 	
 		return res, tgttotal;
-	end, desktoplbl);
+	end, desktoplbl, {refid = "listwnd_" .. tgtname});
 end
 
 function awb_desktop_setup()
@@ -274,7 +269,8 @@ function awb_desktop_setup()
 			name    = "Tools",
 			key     = "tools",
 			trigger = function()
-				awbwman_iconwnd(menulbl("Tools"), builtin_group);
+				awbwman_iconwnd(menulbl("Tools"), builtin_group, 
+					{refid = "iconwnd_tools"});
 			end
 		},
 		{
@@ -286,7 +282,8 @@ function awb_desktop_setup()
 			name    = "Systems",
 			key     = "sytems",
 			trigger = function()
-				local tbl =	awbwman_iconwnd(menulbl("Systems"), system_group);
+				local tbl =	awbwman_iconwnd(menulbl("Systems"), system_group,
+					{refid = "iconwnd_systems"});
 				tbl.idfun = list_targets;
 			end
 		}
