@@ -253,6 +253,8 @@ struct arcan_video_display {
 	
 	unsigned char msasamples;
 	float vsync_timing;
+
+	char* txdump;
 };
 
 /* these all represent a subset of the current context that is to be drawn.
@@ -307,6 +309,7 @@ void arcan_debug_tracetag_dump();
 /* only ever used for next power of two concerning dislay resolutions */
 uint16_t nexthigher(uint16_t k);
 
+void push_globj(arcan_vobject*, bool);
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
 

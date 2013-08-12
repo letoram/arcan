@@ -588,6 +588,8 @@ int arcan_lua_scaleimage2(lua_State* ctx)
 			if (neww > 0.0001 && newh < 0.0001)
 				newh = neww * (prop.scale.y / prop.scale.x);
 
+		neww = ceilf(neww);
+		newh = ceilf(newh);
 		arcan_video_objectscale(id, neww / prop.scale.x, 
 			newh / prop.scale.y, 1.0, time);
 
