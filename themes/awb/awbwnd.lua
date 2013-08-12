@@ -19,6 +19,7 @@ local function awbwnd_alloc(tbl)
 	image_mask_set(tbl.anchor, MASK_UNPICKABLE);
 	show_image(tbl.anchor);	
 	move_image(tbl.anchor, tbl.x, tbl.y);
+	tbl.temp = {};
 
 	return tbl;
 end
@@ -218,6 +219,10 @@ local function awbwnd_destroy(self, timeval)
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
 
+	for i,v in ipairs(self.temp) do
+		delete_image(v);
+	end
+
 	for i,v in pairs(self) do
 		self[i] = nil;
 	end
@@ -267,19 +272,14 @@ end
 --
 -- Default version enforces square buttons
 --
-local function awbbaricn_resize(vid, limit, vertical)
+function awbbaricn_resize(vid, limit, vertical)
 	resize_image(vid, limit, limit);
 	return limit, limit;
 end
 
 function awbbaricn_rectresize(vid, limit, vertical)
-	if (vertical) then
-		resize_image(vid, limit, 0);
-	else
-		resize_image(vid, 0, limit);
-	end
-
-	props = image_surface_properties(vid);
+	props = image_surface_initial_properties(vid);
+	resize_image(vid, props.width, props.height);
 	return props.width, props.height;
 end
 
@@ -311,8 +311,9 @@ local function awbbar_resize(self, neww, newh)
 	local lofs = 0;
 	for i=1,#self.left do
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
-		move_image(self.left[i].vid, stepx * lofs, stepy * lofs); 
-		lofs = lofs + w;
+		move_image(self.left[i].vid, self.left[i].xofs + stepx * lofs, 
+			self.left[i].yofs + stepy * lofs); 
+		lofs = lofs + w + self.left[i].xofs;
 	end
 
 	local rofs = 0;
@@ -359,11 +360,14 @@ end
 local function awbbar_addicon(self, dir, image, trig)
 	local icontbl = {
 		trigger = trig,
-		parent = self,
-		destroy = awbicn_destroy
+		parent  = self,
+		destroy = awbicn_destroy,
+		xofs = 0,
+		yofs = 0
 	};
-	
-	local icon = null_surface(self.size, self.size);
+
+	local props = image_surface_initial_properties(image);
+	local icon = null_surface(props.width, props.height);
 	link_image(icon, self.vid);
 	image_inherit_order(icon, true);
 	image_tracetag(icon, self.parent.name .. ".bar(" .. dir .. ").icon");
@@ -554,6 +558,10 @@ local function awbwnd_inactive(self)
 	
 end
 
+local function awbwnd_hide(self)
+	hide_image(self.anchor);
+end
+
 function awbwnd_create(options)
 	local restbl = {
 		show       = awbwnd_show,
@@ -565,6 +573,7 @@ function awbwnd_create(options)
 		iconify    = awbwnd_iconify,
 		move       = awbwnd_move,
 		own        = awbwnd_own,
+		hide       = awbwnd_hide,
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
 		set_border = awbwnd_set_border,

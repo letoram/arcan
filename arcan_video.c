@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -144,7 +145,7 @@ static void drop_glres(struct storage_info_t* s)
 	}
 }
 
-static void push_globj(arcan_vobject* dst, bool noupload)
+void push_globj(arcan_vobject* dst, bool noupload)
 {
 	struct storage_info_t* s = dst->vstore; 
 	if (s->txmapped == false)
@@ -193,9 +194,24 @@ static void push_globj(arcan_vobject* dst, bool noupload)
 	break;
 	}
 
-	if (!noupload)
+	if (!noupload){
+/*
+ * some drivers expose this kind of functionality, but with CodeXL/GDEbugger etc.
+ * support being a bit sketchy, this little hack can be enabled with a debugbuild
+ * and a txdump subfolder in cwd 
+ */
+#ifdef _DEBUG
+		if (arcan_video_display.txdump){
+			static int seqn = 0;
+			int outfd = fmt_open(O_RDWR | O_CREAT, S_IRWXU, "%sgldump%d.png", 
+				arcan_video_display.txdump, seqn++);
+			if (-1 != outfd)
+				arcan_rgba32_pngfile(outfd, (char*) s->vinf.text.raw, s->w, s->h, false);
+		}
+#endif
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h, 
 			0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
+	}
 
 	if (arcan_video_display.conservative){
 		free(s->vinf.text.raw);
@@ -1121,6 +1137,15 @@ retry:
 	arcan_video_gldefault();
 	arcan_3d_setdefaults();
 
+#ifdef _DEBUG
+	FILE* test = fopen("./txdump/.test", "w+");
+	if (test){
+		fclose(test);
+		unlink("./txdump/.test");
+		arcan_video_display.txdump = strdup("./txdump/");	
+	}
+#endif
+
 	return ARCAN_OK;
 }
 
@@ -1351,6 +1376,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 		drop_glres(dst->vstore);
 		dst->vstore = src->vstore;
 		dst->vstore->refcount++;
+		memcpy(dst->txcos, src->txcos, sizeof(dst->txcos));
 	
 		rv = ARCAN_OK;
 	}

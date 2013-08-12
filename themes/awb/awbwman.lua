@@ -34,6 +34,7 @@ void main(){
 
 local awb_wtable = {};
 local awb_col = {};
+
 local awb_cfg = {
 -- window management
 	wlimit      = 10,
@@ -47,7 +48,8 @@ local awb_cfg = {
 	spawnx      = 20,
 	spawny      = 20,
 	animspeed   = 10,
-	meta = {},
+	meta        = {},
+	hidden      = {},
 
 -- root window icon management
 	rootcell_w  = 80,
@@ -476,9 +478,10 @@ function awbwman_dialog(caption, buttons, options, modal)
 		awbwman_shadow_nonfocus();
 	end
 	
-	options.nocaption= true;
-	options.noicons  = true;
-	options.noresize = true;
+	options.nocaption  = true;
+	options.noicons    = true;
+	options.noresize   = true;
+	options.nominimize = true;
 
 	image_tracetag(caption, "awbwman_dialog(caption)");
 	local wnd = awbwman_spawn(caption, options); 
@@ -644,6 +647,20 @@ function awbwman_rootwnd()
 		"awbicons/topbar.png", awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 	order_image(tbar.vid, ORDER_MOUSE - 5);
 
+	tbar.rzfun = awbbaricn_rectresize;
+	local cap = awb_cfg.mnurndfun("Arcan");
+	local icn = tbar:add_icon("l", cap, function(self) end);
+	delete_image(cap);
+
+	icn.xofs = 4;
+	icn.yofs = 2;
+
+	cap = awb_cfg.mnurndfun("Windows");
+	icn = tbar:add_icon("l", awb_cfg.mnurndfun("Windows"), function(self)
+	end);
+	icn.xofs = 4;
+	icn.yofs = 2;
+
 	wcont.set_mvol = function(self, val) awb_cfg.global_vol = val; end
 	local icn = tbar:add_icon("r", awb_cfg.bordericns["volume_top"], function(self)
 		awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
@@ -686,8 +703,6 @@ function awbwman_rootwnd()
 				awb_cfg.on_rootdnd(awb_cfg.cursor_tag);
 				awb_cfg.cursor_tag:drop();
 			end
-
-			drop_popp();
 		end
 	};
 
@@ -1001,16 +1016,27 @@ function awbwman_setup_cursortag(icon)
 	return res;
 end
 
-function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
-	local icntbl = {
-		caption     = captionvid,
-		selected    = false,
-		trigger     = trig,
-		name        = name
-	};
+function awbwman_minimize(wnd, icon)
+-- have wnd generate iconic representation, 
+-- we add a border and then set as rootwndicon with
+-- the trigger set to restore
+	wnd:hide(100, 0);
+end
+
+function awbwman_rootaddicon(name, captionvid, 
+	iconvid, iconselvid, trig, icntbl)
+
+	if (icntbl == nil) then
+		icntbl = {};
+	end
+	
+	icntbl.caption  = captionvid;
+	icntbl.selected = false;
+	icntbl.trigger  = trig;
+	icntbl.name     = name;
 
 	local val = get_key("rooticn_" .. name);
-	if (val ~= nil) then
+	if (val ~= nil and val.nostore == nil) then
 		a = string.split(val, ",");
 		icntbl.x = tostring(a[1]);
 		icntbl.y = tostring(a[2]);
@@ -1029,7 +1055,7 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 
 -- create containers (anchor, mainvid)
 -- transfer icon storage to mainvid and position icon + canvas
-	local props = image_surface_properties(iconselvid);
+	local props = image_surface_properties(iconvid);
 	if (icntbl.x == nil) then
 		icntbl.x, icntbl.y = next_iconspawn();
 	end
@@ -1066,7 +1092,7 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 		for k, v in ipairs(awb_cfg.rooticns) do
 			v.toggle(false);
 		end
-		icntbl.trigger();
+		icntbl:trigger();
 	end
 
 	ctable.drop = function(self, vid, dx, dy)
@@ -1089,8 +1115,11 @@ function awbwman_rootaddicon(name, captionvid, iconvid, iconselvid, trig)
 	ctable.name = "rootwindow_button(" .. name .. ")";
 	mouse_addlistener(ctable, {"drag", "drop", "click", "dblclick"});
 	table.insert(awb_cfg.rooticns, icntbl);
+
+	return icntbl;
 end
 
+local wndbase = math.random(1000);
 function awbwman_spawn(caption, options)
 	if (options == nil) then
 		options = {};
@@ -1116,6 +1145,9 @@ function awbwman_spawn(caption, options)
 	local wcont  = awbwnd_create(options);
 	local mhands = {};
 	local tmpfun = wcont.destroy;
+
+	wcont.wndid = wndbase;
+	wndbase = wndbase + 1;
 
 -- default drag, click, double click etc.
 	wcont.destroy = function(self, time)
@@ -1175,6 +1207,12 @@ function awbwman_spawn(caption, options)
 		tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
 			awbwman_pushback(wcont);
 			awbwman_updateorder();
+		end);
+	end
+
+	if (options.nominimize == nil) then
+		tbar:add_icon("r", awb_cfg.bordericns["minimize"], function()
+			awbwman_minimize(wcont, true);
 		end);
 	end
 
@@ -1283,6 +1321,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
+	awb_cfg.bordericns["minimize"] = load_image("awbicons/minus.png", 16, 16);
 	awb_cfg.bordericns["play"]     = load_image("awbicons/play.png");
 	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
 	awb_cfg.bordericns["input"]    = load_image("awbicons/joystick.png");
@@ -1291,7 +1330,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["load"]     = load_image("awbicons/load.png");
 
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
-	awb_cfg.bordericns["volume_top"]   = load_image("awbicons/topbar_speaker.png");
+	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 

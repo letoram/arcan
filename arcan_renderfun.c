@@ -825,10 +825,10 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		vobj->origh = maxh;
 		s->vinf.text.source = strdup(message);
 
-		glGenTextures(1, &vobj->vstore->vinf.text.glid);
+/*		glGenTextures(1, &vobj->vstore->vinf.text.glid);
 		glBindTexture(GL_TEXTURE_2D, vobj->vstore->vinf.text.glid);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); */
 
 /* find dimensions and cleanup */
 		cnode = root;
@@ -861,13 +861,10 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		}
 	
 /* upload */
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, storw, storh, 0, 
-			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw); 
-		glBindTexture(GL_TEXTURE_2D, 0);
+		push_globj(vobj, false);
 
 		float wv = (float)maxw / (float)vobj->vstore->w;
 		float hv = (float)maxh / (float)vobj->vstore->h;
-
 		generate_basic_mapping(vobj->txcos, wv, hv);
 		arcan_video_attachobject(rv);
 		
