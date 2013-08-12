@@ -3499,14 +3499,10 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 				lerp_fract(tf->rotate.startt, tf->rotate.endt, 
 					(float)ct + lerp), tf->rotate.interp);
 
-/* quite expensive, and this data should only really be used internally, 
- * the lua resolve properties should do this manually */
-#ifdef _DEBUG
 			vector ang = angle_quat(dprops->rotation.quaternion);
 			dprops->rotation.roll  = ang.x;
 			dprops->rotation.pitch = ang.y;
 			dprops->rotation.yaw   = ang.z;
-#endif
 		}
 
 		if (!sprops)
@@ -4164,6 +4160,23 @@ bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 	return false;
 }
 
+/*
+ * since hit/rhit might be called at high frequency
+ * we need to limit the CPU impact here until
+ * there's proper caching of resolve_ calls
+ */
+static bool obj_visible(arcan_vobject* vobj)
+{
+	bool visible = vobj->current.opa > EPSILON;
+	
+	while (visible && vobj->parent && (vobj->mask & MASK_OPACITY) > 0){
+		visible = vobj->current.opa > EPSILON;
+	vobj = vobj->parent;	
+	}
+
+	return visible;
+}
+
 unsigned int arcan_video_rpick(arcan_vobj_id* dst, 
 	unsigned count, int x, int y)
 {
@@ -4178,11 +4191,11 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst,
 		current = current->next;
 
 	while (current && base < count){
-		if (current->elem->cellid && 
-			(current->elem->mask & MASK_UNPICKABLE) == 0 && 
-			current->elem->current.opa > EPSILON 
-			&& arcan_video_hittest(current->elem->cellid, x, y)){
-				dst[base++] = current->elem->cellid;
+		arcan_vobject* vobj = current->elem;
+
+		if (vobj->cellid && (vobj->mask & MASK_UNPICKABLE)== 0 && obj_visible(vobj)
+			&& arcan_video_hittest(vobj->cellid, x, y)){
+				dst[base++] = vobj->cellid;
 		}
 
 		current = current->previous;
@@ -4201,10 +4214,11 @@ unsigned arcan_video_pick(arcan_vobj_id* dst,
 	unsigned base = 0;
 
 	while (current && base < count) {
-		if (current->elem->cellid && !(current->elem->mask & MASK_UNPICKABLE) &&	
-			current->elem->current.opa > EPSILON && 
-			arcan_video_hittest(current->elem->cellid, x, y))
-				dst[base++] = current->elem->cellid;
+		arcan_vobject* vobj = current->elem;
+	
+		if (vobj->cellid && !(vobj->mask & MASK_UNPICKABLE) &&	
+			obj_visible(vobj) && arcan_video_hittest(vobj->cellid, x, y))
+				dst[base++] = vobj->cellid;
 
 		current = current->next;
 	}

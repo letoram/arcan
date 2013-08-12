@@ -623,6 +623,9 @@ function cursortag_hint(on)
 	end
 end
 
+function awbwman_restore(ind)
+end
+
 --
 -- Similar to a regular spawn, but will always have order group 0,
 -- canvas click only sets group etc. somewhat simpler than the 
@@ -648,21 +651,35 @@ function awbwman_rootwnd()
 	order_image(tbar.vid, ORDER_MOUSE - 5);
 
 	tbar.rzfun = awbbaricn_rectresize;
-	local cap = awb_cfg.mnurndfun("Arcan");
+	local cap = awb_cfg.mnurndfun("AWB ");
 	local icn = tbar:add_icon("l", cap, function(self) end);
 	delete_image(cap);
 
-	icn.xofs = 4;
+	icn.xofs = 2;
 	icn.yofs = 2;
 
 	cap = awb_cfg.mnurndfun("Windows");
 	icn = tbar:add_icon("l", awb_cfg.mnurndfun("Windows"), function(self)
+		if (#awb_cfg.hidden == 0) then
+			return;
+		end
+
+		local lst = {};
+		for i,v in ipairs(awb_cfg.hidden) do
+			table.insert(lst, v.name);
+		end
+		local vid, list = awb_cfg.defrndfun(table.concat(lst, [[\n\r]]));
+		awbwman_popup(vid, list, function(ind)
+			if (ind ~= -1) then
+				awbwman_restore(ind);
+			end
+		end, {ref = self.vid} );
 	end);
-	icn.xofs = 4;
+	icn.xofs = 12;
 	icn.yofs = 2;
 
 	wcont.set_mvol = function(self, val) awb_cfg.global_vol = val; end
-	local icn = tbar:add_icon("r", awb_cfg.bordericns["volume_top"], function(self)
+	local icn = tbar:add_icon("r",awb_cfg.bordericns["volume_top"],function(self)
 		awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
 			wcont:set_mvol(val);
 		end, {ref = self.vid});
@@ -768,7 +785,8 @@ local function awbwman_popupbase(props, options)
 		local props = image_surface_resolve_properties(options.ref);
 		mx = props.x;
 		my = props.y + props.height;
-		image_shader(options.ref, "awb_selected");
+		image_shader(options.ref, options.sel_shader ~= nil and
+			options.sel_shader or "awb_selected");
 
 	else
 		mx, my = mouse_xy();
@@ -800,6 +818,12 @@ local function awbwman_popupbase(props, options)
 	show_image({border, wnd});
 	move_image(border, math.floor(mx), math.floor(my));
 	move_image(wnd, 1, 1);
+
+	props.width = (options.minw and options.minw > props.width) and 
+		options.minw or props.width;
+
+	props.height = (options.minh and options.minh > props.height) and
+		options.minh or props.height;
 
 	resize_image(border, props.width+2, props.height+2, awb_cfg.animspeed);
 	resize_image(wnd, props.width, props.height, awb_cfg.animspeed);
@@ -871,6 +895,11 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 		blend_image(border, 0, awb_cfg.animspeed);
 		resize_image(border, 1, 1, awb_cfg.animspeed);
 		resize_image(wnd, 1, 1, awb_cfg.animspeed);
+
+		if (type(callbacks) == "function") then
+			callbacks(-1);
+		end
+		
 		mouse_droplistener(res);
 	end
 
@@ -884,6 +913,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 			else
 				callbacks[ind]();
 			end
+			awb_cfg.popup_active = nil;
 	end
 
 	res.motion = function(self, vid, x, y)
@@ -1021,6 +1051,7 @@ function awbwman_minimize(wnd, icon)
 -- we add a border and then set as rootwndicon with
 -- the trigger set to restore
 	wnd:hide(100, 0);
+	table.insert(awb_cfg.hidden, wnd);
 end
 
 function awbwman_rootaddicon(name, captionvid, 
