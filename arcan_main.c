@@ -362,6 +362,8 @@ themeswitch:
 	if (ARCAN_OK != arcan_audio_setup(nosound))
 		arcan_warning("Warning: No audio devices could be found.\n");
 
+	arcan_math_init();
+
 /* setup device polling, cleanup, ... */
 	arcan_evctx* def = arcan_event_defaultctx();
 	def->interactive = interactive;

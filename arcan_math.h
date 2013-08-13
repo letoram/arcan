@@ -35,6 +35,8 @@ typedef struct {
 	float x, y, z, w;
 } quat;
 
+extern quat default_quat;
+
 typedef struct {
 	float x, y, z;
 } vector;
@@ -48,6 +50,8 @@ typedef struct orientation {
 	float rollf, pitchf, yawf;
 	float matr[16];
 } orientation;
+
+void arcan_math_init();
 
 /* Matrices */
 void scale_matrix(float*, float, float, float);

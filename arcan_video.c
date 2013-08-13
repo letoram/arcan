@@ -412,7 +412,7 @@ signed arcan_video_pushcontext()
 			.position = {0}, 
 			.opa = 1.0,
 			.scale = {.x = 1.0, .y = 1.0, .z = 1.0},
-			.rotation.quaternion = build_quat_taitbryan(0, 0, 0)
+			.rotation.quaternion = default_quat 
 		} 
 	};
 
@@ -518,7 +518,7 @@ unsigned arcan_video_popcontext()
 static inline surface_properties empty_surface()
 {
 	surface_properties res  = {0};
-	res.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
+	res.rotation.quaternion = default_quat; 
 	return res;
 }
 
@@ -579,7 +579,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->vstore        = pobj->vstore;
 		nobj->current.scale = pobj->current.scale;
 
-		nobj->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
+		nobj->current.rotation.quaternion = default_quat; 
 		nobj->program = pobj->program;
 		generate_basic_mapping(nobj->txcos, 1.0, 1.0);
 
@@ -646,6 +646,8 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		rv->vstore->filtermode = arcan_video_display.filtermode;
 		rv->vstore->refcount   = 1;
 
+		rv->valid_cache = false;
+
 		rv->blendmode = blend_normal;
 		rv->flags.cliptoparent = false;
 
@@ -657,7 +659,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		rv->current.position.y = 0;
 		rv->current.position.z = 0;
 		
-		rv->current.rotation.quaternion = build_quat_taitbryan(0, 0, 0);
+		rv->current.rotation.quaternion = default_quat; 
 		
 		rv->current.opa = 0.0;
 		
@@ -2094,7 +2096,7 @@ arcan_vobj_id arcan_video_loadimageasynch(const char* rloc,
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 
 		if (vobj){
-			vobj->current.rotation.quaternion = build_quat_taitbryan( 0, 0, 0 );
+			vobj->current.rotation.quaternion = default_quat;
 			arcan_video_attachobject(rv);
 		}
 	}
@@ -2113,7 +2115,7 @@ arcan_vobj_id arcan_video_loadimage(const char* rloc,
 		arcan_vobject* vobj = arcan_video_getobject(rv);
 		if (vobj){
 			vobj->order = zv;
-			vobj->current.rotation.quaternion = build_quat_taitbryan( 0, 0, 0 );
+			vobj->current.rotation.quaternion = default_quat; 
 			arcan_video_attachobject(rv);
 		}
 	}
@@ -3521,10 +3523,10 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 			dprops->rotation.quaternion );
 
 #ifdef _DEBUG
-			vector ang = angle_quat(dprops->rotation.quaternion);
+/*		vector ang = angle_quat(dprops->rotation.quaternion);
 			dprops->rotation.roll  = ang.x;
 			dprops->rotation.pitch = ang.y;
-			dprops->rotation.yaw   = ang.z;
+			dprops->rotation.yaw   = ang.z; */
 #endif
 	}
 
@@ -3539,6 +3541,9 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, 
 	surface_properties* props)
 {
+	if (vobj->valid_cache)
+		*props = vobj->prop_cache;
+
 	if (vobj->parent && vobj->parent != &current_context->world){
 		surface_properties dprop = empty_surface();
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);

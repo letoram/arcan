@@ -1,10 +1,19 @@
 --
 -- AWB Frameserver Media Window
--- For a 3D session, we set up a FBO rendertarget and connect
--- the output to the canvas.
--- Adds a "play/pause" and possibly others based on frameserver capabilities.
--- Also adds the option to instance and set shaders.
+-- For a 3D session, we set up a FBO rendertarget 
+-- and connect the output to the canvas along with some buttons to
+-- navigate and control basic lighting.
+-- 
+-- For Vidcap, we add a popup button to select device / index
+-- and restart the frameserver each time.
 --
+-- Adds a "play/pause" and possibly others 
+-- based on frameserver capabilities.
+--
+-- Drag to Desktop behavior is link to recreate / reopen 
+-- or add a screenshot
+--
+
 local shader_seqn = 0;
 
 local function set_shader(modelv)
@@ -30,6 +39,7 @@ end
 local function add_vmedia_top(pwin, active, inactive, fsrv)
 	local bar = pwin:add_bar("tt", active, inactive,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
+
 	local cfg = awbwman_cfg();
 
 	bar:add_icon("r", cfg.bordericns["clone"],  function() datashare(pwin); end);
@@ -58,11 +68,9 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 	end
 
 --	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
-	pwin.click = function() 
-			pwin:focus(); 
-	end
-	pwin.name = "3dmedia_topbar";
-	mouse_addlistener(pwin, {"click"});
+--		pwin.click = function() 
+--			pwin:focus(); 
+--		end
 end
 
 local function slide_lightr(caller, status)
@@ -151,9 +159,13 @@ local function vcap_setup(pwin)
 	bar:add_icon("l", awbwman_cfg().bordericns["plus"], function(icn)
 		local vid, lines = desktoplbl(msg);
 		awbwman_popup(vid, lines, function(ind)
-			pwin:focus();
-			local vid = load_movie(string.format(capstr, ind));
-			pwin:update_canvas(vid, false);
+			local vid = load_movie(string.format(capstr, ind), FRAMESERVER_NOLOOP,
+			function(source, status)
+				if (status.kind == "frameserver_terminated") then
+					pwin:update_canvas(color_surface(1, 1, 100, 100, 100));
+				end
+			end);
+			pwin:update_canvas(vid);
 		end, {ref = icn.vid});
 	end);
 end
@@ -201,7 +213,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 			if (status.kind == "resized") then
 				local vid, aud = play_movie(source);
 				pwin.recv = aud;
-				pwin:update_canvas(source, false);
+				pwin:update_canvas(source);
 				pwin:resize(status.width, status.height);
 			end
 		end

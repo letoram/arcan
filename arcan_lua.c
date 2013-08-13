@@ -148,10 +148,59 @@ static struct {
 	.grab = 0
 };
 
-static void dump_stack(lua_State* ctx);
 extern char* _n_strdup(const char* instr, const char* alt);
 static void arcan_lua_warning(const char* const, ...);
 static void arcan_lua_fatal(const char* const, ...);
+
+static void dump_call_trace(lua_State* ctx)
+{
+#if LUA_VERSION_NUM == 501
+		printf("-- call trace -- \n");
+		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
+		if (!lua_istable(ctx, -1))
+			lua_pop(ctx, 1);
+		else {
+			lua_getfield(ctx, -1, "traceback");
+			if (!lua_isfunction(ctx, -1))
+				lua_pop(ctx, 2);
+			else {
+				lua_pushvalue(ctx, 1);
+				lua_pushinteger(ctx, 2);
+				lua_call(ctx, 2, 1);
+			}
+	}
+#endif
+}
+
+/* dump argument stack, stack trace are shown only when --debug is set */
+static void dump_stack(lua_State* ctx)
+{
+	int top = lua_gettop(ctx);
+	printf("-- stack dump --\n");
+
+	for (int i = 1; i <= top; i++) {
+		int t = lua_type(ctx, i);
+
+		switch (t) {
+			case LUA_TBOOLEAN:
+				fprintf(stdout, lua_toboolean(ctx, i) ? "true" : "false");
+				break;
+			case LUA_TSTRING:
+				fprintf(stdout, "`%s'", lua_tostring(ctx, i));
+				break;
+			case LUA_TNUMBER:
+				fprintf(stdout, "%g", lua_tonumber(ctx, i));
+				break;
+			default:
+				fprintf(stdout, "%s", lua_typename(ctx, t));
+				break;
+		}
+		fprintf(stdout, "  ");
+	}
+
+	fprintf(stdout, "\n");
+}
+
 
 static inline char* findresource(const char* arg, int searchmask)
 {
@@ -283,25 +332,21 @@ static inline lua_Number vid_toluavid(arcan_vobj_id innum)
 
 static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
 {
-	arcan_vobj_id res = luaL_checknumber(ctx, num);
+	arcan_vobj_id res = luavid_tovid( luaL_checknumber(ctx, num) );
+
 #ifdef _DEBUG
 	arcan_vobject* vobj = arcan_video_getobject(luavid_tovid(res));
 	if (vobj && vobj->flags.frozen)
 		abort();
-#endif	
-	return luavid_tovid(res);
-}
 
-static inline arcan_vobj_id luaL_optvid(lua_State* ctx, int slot,
-	arcan_vobj_id optnum)
-{
-	arcan_vobj_id num = luaL_optnumber(ctx, slot, optnum);
-#ifdef _DEBUG
-	arcan_vobject* vobj = arcan_video_getobject(luavid_tovid(num));
-	if (vobj->flags.frozen)
-		abort();
+	if (res == ARCAN_EID){
+		dump_call_trace(ctx);
+		dump_stack(ctx);
+		arcan_fatal("Bad VID requested (%"PRIxVOBJ")\n", res);
+	}
 #endif
-	return luavid_tovid(num);
+
+	return res; 
 }
 
 static inline arcan_vobj_id luaL_checkaid(lua_State* ctx, int num)
@@ -2040,7 +2085,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 }
 
-/* item:image_parent, vid, vid */
 int arcan_lua_imageparent(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
@@ -2050,7 +2094,6 @@ int arcan_lua_imageparent(lua_State* ctx)
 	return 1;
 }
 
-/* item: image_parent, vid, vid */
 int arcan_lua_validvid(lua_State* ctx)
 {
 	arcan_vobj_id res = (arcan_vobj_id) luaL_optnumber(ctx, 1, ARCAN_EID);
@@ -2407,55 +2450,6 @@ static int get_linenumber(lua_State* ctx)
   lua_getstack(ctx, 1, &ar);
 	lua_getinfo(ctx, "Sln", &ar);
 	return -1;
-}
-
-static void dump_call_trace(lua_State* ctx)
-{
-#if LUA_VERSION_NUM == 501
-		printf("-- call trace -- \n");
-		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
-		if (!lua_istable(ctx, -1))
-			lua_pop(ctx, 1);
-		else {
-			lua_getfield(ctx, -1, "traceback");
-			if (!lua_isfunction(ctx, -1))
-				lua_pop(ctx, 2);
-			else {
-				lua_pushvalue(ctx, 1);
-				lua_pushinteger(ctx, 2);
-				lua_call(ctx, 2, 1);
-			}
-	}
-#endif
-}
-
-/* dump argument stack, stack trace are shown only when --debug is set */
-static void dump_stack(lua_State* ctx)
-{
-	int top = lua_gettop(ctx);
-	printf("-- stack dump --\n");
-
-	for (int i = 1; i <= top; i++) {
-		int t = lua_type(ctx, i);
-
-		switch (t) {
-			case LUA_TBOOLEAN:
-				fprintf(stdout, lua_toboolean(ctx, i) ? "true" : "false");
-				break;
-			case LUA_TSTRING:
-				fprintf(stdout, "`%s'", lua_tostring(ctx, i));
-				break;
-			case LUA_TNUMBER:
-				fprintf(stdout, "%g", lua_tonumber(ctx, i));
-				break;
-			default:
-				fprintf(stdout, "%s", lua_typename(ctx, t));
-				break;
-		}
-		fprintf(stdout, "  ");
-	}
-
-	fprintf(stdout, "\n");
 }
 
 int arcan_lua_gamefamily(lua_State* ctx)

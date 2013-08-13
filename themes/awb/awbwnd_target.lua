@@ -31,6 +31,8 @@ end
 --
 function awbwnd_target(pwin)
 	local loading = fill_surface(pwin.w, pwin.h, 100, 100, 100);
+	image_tracetag(loading," awbwnd_loading");
+
 	local cfg = awbwman_cfg();
 
 	pwin.mediavol = 1.0;
@@ -104,14 +106,13 @@ function awbwnd_target(pwin)
 
 	local callback = function(source, status)
 		if (status.kind == "frameserver_terminated") then
-			pwin:update_canvas( 
-				fill_surface(pwin.w, pwin.h, 100, 100, 100), false);
+			pwin:update_canvas( color_surface(1, 1, 0, 0, 0) );
 
 		elseif (status.kind == "loading") then
 			print("show loading info..");
 
 		elseif (status.kind == "resized") then
-			pwin:update_canvas(source, false);
+			pwin:update_canvas(source);
 		end
 	end
 

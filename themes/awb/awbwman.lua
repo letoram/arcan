@@ -624,6 +624,10 @@ function cursortag_hint(on)
 end
 
 function awbwman_restore(ind)
+	drop_popup();
+	local wnd = awb_cfg.hidden[ind];
+	table.remove(awb_cfg.hidden, ind);
+	wnd:show();
 end
 
 --
@@ -723,6 +727,20 @@ function awbwman_rootwnd()
 		end
 	};
 
+	wcont.click_h = function()
+		drop_popup();
+		if (awb_cfg.focus) then
+			awb_cfg.focus:inactive();
+			awb_cfg.focus = nil;
+		end
+	end
+
+	local ch = {
+		own = function(self, vid) return vid == wcont.canvas.vid; end,
+		click = wcont.click_h;
+	};
+
+	mouse_addlistener(ch, {"click"});
 	mouse_addlistener(tbar, {"click"});
 	mouse_addlistener(dndh, {"out", "over", "click"});
 	awb_cfg.root = wcont;
@@ -1050,6 +1068,7 @@ function awbwman_minimize(wnd, icon)
 -- have wnd generate iconic representation, 
 -- we add a border and then set as rootwndicon with
 -- the trigger set to restore
+	debug.traceback();
 	wnd:hide(100, 0);
 	table.insert(awb_cfg.hidden, wnd);
 end
@@ -1199,8 +1218,7 @@ function awbwman_spawn(caption, options)
 		tmpfun(self, time);
 	end
 
--- single color canvas (but treated as textured)
--- for shader or replacement 
+-- single color canvas (but treated as textured) for shader or replacement 
 	local r = awb_col.bgcolor.r;
 	local g = awb_col.bgcolor.g;
 	local b = awb_col.bgcolor.b;
@@ -1211,11 +1229,13 @@ function awbwman_spawn(caption, options)
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas, true);
 	local chandle = {};
+
 	chandle.click = function(vid, x, y)
 		awbwman_focus(wcont);
 	end
 	chandle.own = function(self,vid)
-		return vid == canvas; 
+		return (wcont.canvas and vid == wcont.canvas.vid) or 
+		wcont:own(vid) or false; 
 	end
 	chandle.vid = canvas;
 	chandle.name = "awbwnd_canvas";
@@ -1289,7 +1309,9 @@ function awbwman_spawn(caption, options)
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 	wcont:resize(wcont.w, wcont.h);
 	wcont.focus = awbwman_focus;
-	wcont.focused = function(self) return self == awb_cfg.focus; end
+	wcont.focused = function(self) 
+		return self == awb_cfg.focus; 
+	end
 
 	return wcont;
 end

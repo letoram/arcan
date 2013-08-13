@@ -1165,10 +1165,12 @@ function move_cursor( ofs, absolute )
 	send_gamedata( current_game, false );
 
 -- reset the previous movie
-	if (imagery.movie) then
+	if (valid_vid(imagery.movie)) then
 		instant_image_transform(imagery.movie);
 		expire_image(imagery.movie, settings.fadedelay);
 		blend_image(imagery.movie, 0.0, settings.fadedelay);
+		imagery.movie = nil;
+	else
 		imagery.movie = nil;
 	end
 
