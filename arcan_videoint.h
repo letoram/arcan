@@ -166,8 +166,6 @@ typedef struct arcan_vobject {
 		vfunc_state state;
 	} feed;
 
-	uint8_t ffunc_mask;
-
 /* basic texture mapping, can be overridden (to mirror, skew etc.) */
 	float txcos[8];
 	enum arcan_blendfunc blendmode;
@@ -198,6 +196,13 @@ typedef struct arcan_vobject {
 	surface_transform* transform;
 	enum arcan_transform_mask mask;
 	
+/* transform caching,
+ * the invalidated flag will be active as long as there are running
+ * transformations for the object in question, or if there's running
+ * transformations somewhere in the parent chain */
+	bool valid_cache;
+	surface_properties prop_cache;
+
 /* life-cycle tracking */
 	unsigned long last_updated;
 	long lifetime;

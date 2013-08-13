@@ -500,7 +500,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 	return awbbar;
 end
 
-local function awbwnd_update_canvas(self, vid, volatile)
+local function awbwnd_update_canvas(self, vid)
 
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
@@ -511,13 +511,13 @@ local function awbwnd_update_canvas(self, vid, volatile)
 		parent = self,
 		minw = 1,
 		minh = 1,
-		vid = vid,
-		volatile = volatile
+		vid = vid
 	};
 
 	canvastbl.resize = function(self, neww, newh)
 		resize_image(self.vid, neww, newh);
 	end
+
 	canvastbl.own = function(self, vid)
 		return vid == self.vid;
 	end
@@ -525,12 +525,10 @@ local function awbwnd_update_canvas(self, vid, volatile)
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
-	self:resize(self.w, self.h);
+	canvastbl:resize(self.w, self.h);
 
-	if (oldcanvas and oldcanvas.volatile) then
+	if (oldcanvas and oldcanvas.vid ~= vid) then
 		delete_image(oldcanvas.vid);
-	else	
-		return oldcanvas;
 	end
 end
 
@@ -558,8 +556,33 @@ local function awbwnd_inactive(self)
 	
 end
 
-local function awbwnd_hide(self)
-	hide_image(self.anchor);
+local function awbwnd_show(self)
+	if (self.hidetbl == nil) then
+		return;
+	end
+
+	local t = awbwman_cfg().animspeed;
+	self:resize(self.hidetbl.w, self.hidetbl.h);
+	show_image(self.anchor, t);
+	move_image(self.anchor, self.hidetbl.x, self.hidetbl.y, t);
+	print("restore to:", self.w, self.h);
+
+	self.hidetbl = nil;
+end
+
+local function awbwnd_hide(self, dstx, dsty)
+	local t = awbwman_cfg().animspeed;
+	self.hidetbl = {
+		x = self.x,
+		y = self.y, 
+		w = self.w,
+		h = self.h
+	};
+
+	print("hide to:", self.w, self.h);
+	self:resize(64, 64);
+	move_image(self.anchor, dstx, dst, t);
+	blend_image(self.anchor, 0.0, t);
 end
 
 function awbwnd_create(options)

@@ -31,6 +31,8 @@
 
 #include "arcan_math.h"
 
+quat default_quat;
+
 void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
 {
 	int i;
@@ -125,7 +127,8 @@ void matr_lookat(float* m, vector position, vector dstpos, vector up)
 	translate_matrix(m, -position.x, -position.y, -position.z);
 }
 
-void build_orthographic_matrix(float* m, const float left, const float right, const float bottom, const float top, const float nearf, const float farf)
+void build_orthographic_matrix(float* m, const float left, const float right, 
+	const float bottom, const float top, const float nearf, const float farf)
 {
 	float irml = 1.0 / (right - left);
 	float itmb = 1.0 / (top - bottom);
@@ -152,7 +155,8 @@ void build_orthographic_matrix(float* m, const float left, const float right, co
 	m[15] = 1.0f;
 }
 
-void build_projection_matrix(float* m, float nearv, float farv, float aspect, float fov)
+void build_projection_matrix(float* m, 
+	float nearv, float farv, float aspect, float fov)
 {
 	const float h = 1.0f / tan(fov * (M_PI / 360.0));
 	float neg_depth = nearv - farv;
@@ -207,7 +211,8 @@ int pinpoly(int nvert, float *vertx, float *verty, float testx, float testy)
 	int i, j, c = 0;
 	for (i = 0, j = nvert-1; i < nvert; j = i++) {
 		if ( ((verty[i]>testy) != (verty[j]>testy)) &&
-			(testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+			(testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / 
+			 (verty[j]-verty[i]) + vertx[i]) )
 			c = !c;
 	}
 	return c;
@@ -248,7 +253,8 @@ quat build_quat(float angdeg, float vx, float vy, float vz)
 
 float len_vector(vector invect)
 {
-	return sqrt(invect.x * invect.x + invect.y * invect.y + invect.z * invect.z);
+	return sqrt(invect.x * invect.x + 
+		invect.y * invect.y + invect.z * invect.z);
 }
 
 vector crossp_vector(vector a, vector b)
@@ -318,18 +324,21 @@ quat inv_quat(quat src)
 
 float len_quat(quat src)
 {
-	return sqrt(src.x * src.x + src.y * src.y + src.z * src.z + src.w * src.w);
+	return sqrt(src.x * src.x + src.y * 
+		src.y + src.z * src.z + src.w * src.w);
 }
 
 quat norm_quat(quat src)
 {
-	float val = src.x * src.x + src.y * src.y + src.z * src.z + src.w * src.w;
+	float val = src.x * src.x + src.y * 
+		src.y + src.z * src.z + src.w * src.w;
 
 	if (val > 0.99999 && val < 1.000001)
 		return src;
 
 	val = sqrtf(val);
-	quat res = {.x = src.x / val, .y = src.y / val, .z = src.z / val, .w = src.w / val};
+	quat res = {.x = src.x / val, .y = src.y / val, 
+		.z = src.z / val, .w = src.w / val};
 	return res;
 }
 
@@ -458,10 +467,21 @@ static inline quat nlerp_quatfl(quat a, quat b, float fact, bool r360)
 	return norm_quat(rq);
 }
 
-quat slerp_quat180(quat a, quat b, float fact){ return slerp_quatfl(a, b, fact, false); }
-quat slerp_quat360(quat a, quat b, float fact){ return slerp_quatfl(a, b, fact, true ); }
-quat nlerp_quat180(quat a, quat b, float fact){ return nlerp_quatfl(a, b, fact, false); }
-quat nlerp_quat360(quat a, quat b, float fact){ return nlerp_quatfl(a, b, fact, true ); }
+quat slerp_quat180(quat a, quat b, float fact){ 
+	return slerp_quatfl(a, b, fact, false); 
+}
+
+quat slerp_quat360(quat a, quat b, float fact){
+	return slerp_quatfl(a, b, fact, true ); 
+}
+
+quat nlerp_quat180(quat a, quat b, float fact){ 
+	return nlerp_quatfl(a, b, fact, false); 
+}
+
+quat nlerp_quat360(quat a, quat b, float fact){
+	return nlerp_quatfl(a, b, fact, true ); 
+}
 
 float* matr_quatf(quat a, float* dmatr)
 {
@@ -515,7 +535,8 @@ quat build_quat_taitbryan(float roll, float pitch, float yaw)
 	pitch = fmodf(pitch+ 180.f, 360.f) - 180.f;
 	yaw   = fmodf(yaw  + 180.f, 360.f) - 180.f;
 	
-	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), build_quat(yaw, 0.0, 1.0, 0.0)), build_quat(roll, 0.0, 0.0, 1.0));
+	quat res = mul_quat( mul_quat( build_quat(pitch, 1.0, 0.0, 0.0), 
+		build_quat(yaw, 0.0, 1.0, 0.0)), build_quat(roll, 0.0, 0.0, 1.0));
 	return res;
 }
 
@@ -595,4 +616,9 @@ void update_frustum(float* prjm, float* mvm, float frustum[6][4])
 	frustum[5][2] = mmr[11] - mmr[10];
 	frustum[5][3] = mmr[15] - mmr[14];
 	normalize_plane(frustum[5]);
+}
+
+void arcan_math_init()
+{
+	default_quat = build_quat_taitbryan(0, 0, 0);
 }
