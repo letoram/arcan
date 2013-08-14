@@ -229,27 +229,15 @@ local function awbwnd_destroy(self, timeval)
 end
 
 local function awbbar_destroy(self)
-	if (self.activeimg) then
-		delete_image(self.activeimg);
-		delete_image(self.inactiveimg );
-	end
-
-	for i=1,#self.left do
-		delete_image(self.left[i].vid);
-	end
-
-	for i=1,#self.right do
-		delete_image(self.right[i].vid);
-	end
-
-	if (self.fill) then
-		delete_image(self.fill.vid);
-		self.fill = nil;
+	if (valid_vid(self.vid)) then
+		delete_image(self.vid);
 	end
 
 	self.left  = nil;
 	self.right = nil;
 	mouse_droplistener(self);
+
+	self.parent.dir[ self.dir ] = nil;
 end
 
 local function awbbar_minsz(bar)
@@ -441,7 +429,7 @@ local function awbbar_active(self)
 	self:resize(self.w, self.h);
 end
 
-local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
+local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and 
 		dir ~= "r" and dir ~= "tt") then
 		return nil;
@@ -464,20 +452,15 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		right    = {},
 		fill     = nil,
 		size     = bsize,
-		rsize    = rsize
+		rsize    = rsize,
+		dir      = dir
 	};
 
 	awbbar.vertical = dir == "l" or dir == "r";
 	awbbar.parent = self;
-	awbbar.activeimg = type(activeres) == "function" 
-		and activeres() or load_image(activeres);
-	image_tracetag(awbbar.activeimg, "awbbar_active_store");
-
-	awbbar.inactiveimg = type(inactiveres) == "function" and 
-		inactiveres() or load_image(inactiveres);
-	image_tracetag(awbbar.inactiveimg, "awbbar_inactive_store");
-
-	awbbar.vid      = null_surface(self.w, bsize);
+	awbbar.activeimg = activeimg;
+	awbbar.inactiveimg = inactiveimg;
+	awbbar.vid = null_surface(self.w, bsize);
 
 	link_image(awbbar.vid, self.anchor);
 	show_image(awbbar.vid);
@@ -561,17 +544,15 @@ local function awbwnd_show(self)
 		return;
 	end
 
-	local t = awbwman_cfg().animspeed;
 	self:resize(self.hidetbl.w, self.hidetbl.h);
-	show_image(self.anchor, t);
-	move_image(self.anchor, self.hidetbl.x, self.hidetbl.y, t);
+	show_image(self.anchor, self.animspeed);
+	move_image(self.anchor, self.hidetbl.x, self.hidetbl.y, self.animspeed);
 	print("restore to:", self.w, self.h);
 
 	self.hidetbl = nil;
 end
 
 local function awbwnd_hide(self, dstx, dsty)
-	local t = awbwman_cfg().animspeed;
 	self.hidetbl = {
 		x = self.x,
 		y = self.y, 
@@ -581,8 +562,8 @@ local function awbwnd_hide(self, dstx, dsty)
 
 	print("hide to:", self.w, self.h);
 	self:resize(64, 64);
-	move_image(self.anchor, dstx, dst, t);
-	blend_image(self.anchor, 0.0, t);
+	move_image(self.anchor, dstx, dst, self.animspeed);
+	blend_image(self.anchor, 0.0, self.animspeed);
 end
 
 function awbwnd_create(options)
@@ -600,6 +581,7 @@ function awbwnd_create(options)
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
 		set_border = awbwnd_set_border,
+		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
@@ -611,6 +593,7 @@ function awbwnd_create(options)
 	 y           = math.floor(0.5 * (VRESH - (VRESH * 0.3)));
    minw        = 0,
    minh        = 0,
+	 animspeed   = 0,
 
 -- internal states
 -- each (dir) can have an action bar attached

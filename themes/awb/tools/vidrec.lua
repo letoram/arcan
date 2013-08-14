@@ -16,7 +16,7 @@ end
 
 
 local function add_rectarget(wnd, tag)
-	local tmpw, tmph = wnd.w * 0.2, wnd.h * 0.2;
+	local tmpw, tmph = wnd.w * 0.4, wnd.h * 0.4;
 	local source = {};
 
 	source.data  = tag.source;
@@ -65,6 +65,10 @@ local function add_rectarget(wnd, tag)
 
 -- update selected for wnd so 'del' input key works
 	source.click = function(self, vid)
+		local tag = awbwman_cursortag();
+		if (tag and tag.kind == "media") then
+			add_rectarget(wnd, tag);
+		end
 	end
 
 	source.drop = function(self, vid)
@@ -95,6 +99,19 @@ function spawn_vidrec()
 		return;
 	end
 
+	local cfg = awbwman_cfg();
+	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
+		cfg.ttinactvres, cfg.topbar_sz); 
+	
+	bar:add_icon("r", cfg.bordericns["record"], function()
+		bar:destroy();
+		wnd:resize(wnd.w, wnd.h);
+	end);
+
+	bar.click = function()
+		wnd:req_focus();
+	end
+
 -- add ttbar, icons for; 
 -- resolution (popup, change vidres, preset values)
 -- framerate
@@ -107,7 +124,7 @@ function spawn_vidrec()
 
 	local mh = {
 	own = function(self, vid)
-		return vid == wnd.canvas.vid or sweepcmp(vid, wnd.sources); 
+		return vid == wnd.canvas.vid or sweepcmp(vid, wnd.sources);
 	end,
 
 	over = function(self, vid)
@@ -125,6 +142,7 @@ function spawn_vidrec()
 	end,
 
 	click = function(self, vid)
+		wnd:req_focus();
 		local tag = awbwman_cursortag();
 		if (tag and tag.kind == "media") then
 			add_rectarget(wnd, tag);
@@ -135,8 +153,12 @@ function spawn_vidrec()
 	}
 
 	mouse_addlistener(mh, {"click", "over", "out"});
-	mouse_droplistener(wnd);
+	mouse_addlistener(bar, {"click"});
+
 	wnd.on_destroy = function()
 		mouse_droplistener(mh);
+		mouse_droplistener(bar);
 	end
+
+	wnd:resize(wnd.w, wnd.h);
 end
