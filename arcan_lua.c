@@ -1196,10 +1196,13 @@ int arcan_lua_deleteimage(lua_State* ctx)
 			arcan_warning("%s => arcan_lua_deleteimage(%.0lf=>%d) -- Object could not"
 			" be deleted, invalid object specified.\n",luaL_lastcaller(ctx),srcid,id);
 		}
-		else
+		else{
+			dump_call_trace(ctx);
+			dump_stack(ctx);
 			arcan_fatal("Theme tried to delete non-existing object (%.0lf=>%d) from "
 			"(%s). Relaunch with debug flags (-g) to suppress.\n", 
 			srcid, id, luaL_lastcaller(ctx));
+		}
 	}
 
 	return 0;

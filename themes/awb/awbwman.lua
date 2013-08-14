@@ -39,11 +39,6 @@ local awb_cfg = {
 -- window management
 	wlimit      = 10,
 	focus_locked = false,
-	activeres   = "awbicons/border.png",
-	inactiveres = "awbicons/border_inactive.png",
-	ttactiveres = "awbicons/tt_border.png",
-	ttinactvres = "awbicons/tt_border.png",
-	alphares    = "awbicons/alpha.png",
 	topbar_sz   = 16,
 	spawnx      = 20,
 	spawny      = 20,
@@ -650,8 +645,8 @@ function awbwman_rootwnd()
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas, true);
 
-	local tbar = wcont:add_bar("t", "awbicons/topbar.png", 
-		"awbicons/topbar.png", awb_cfg.topbar_sz, awb_cfg.topbar_sz);
+	local tbar = wcont:add_bar("t", load_image("awbicons/topbar.png"), 
+		load_image("awbicons/topbar.png"), awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 	order_image(tbar.vid, ORDER_MOUSE - 5);
 
 	tbar.rzfun = awbbaricn_rectresize;
@@ -720,9 +715,13 @@ function awbwman_rootwnd()
 		end,
 
 		click = function(self, vid)
-			if (awb_cfg.cursor_tag and awb_cfg.on_rootdnd) then
-				awb_cfg.on_rootdnd(awb_cfg.cursor_tag);
+			if (awb_cfg.cursor_tag) then
+				if (awb_cfg.on_rootdnd) then
+					awb_cfg.on_rootdnd(awb_cfg.cursor_tag);
+				end
 				awb_cfg.cursor_tag:drop();
+			else
+				drop_popup();
 			end
 		end
 	};
@@ -735,12 +734,6 @@ function awbwman_rootwnd()
 		end
 	end
 
-	local ch = {
-		own = function(self, vid) return vid == wcont.canvas.vid; end,
-		click = wcont.click_h;
-	};
-
-	mouse_addlistener(ch, {"click"});
 	mouse_addlistener(tbar, {"click"});
 	mouse_addlistener(dndh, {"out", "over", "click"});
 	awb_cfg.root = wcont;
@@ -1175,6 +1168,8 @@ function awbwman_spawn(caption, options)
 		options = {};
 	end
 	
+	options.animspeed = awb_cfg.animspeed;
+
 	if (options.refid ~= nil) then
 		local kv = get_key(options.refid);
 		if (kv ~= nil) then
@@ -1193,6 +1188,9 @@ function awbwman_spawn(caption, options)
 		options.x, options.y = awbwman_next_spawnpos();
 	end
 	local wcont  = awbwnd_create(options);
+	wcont.req_focus = awbwman_focus;
+	print(wcont.req_focus);
+
 	local mhands = {};
 	local tmpfun = wcont.destroy;
 
@@ -1228,19 +1226,6 @@ function awbwman_spawn(caption, options)
 -- to override
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas, true);
-	local chandle = {};
-
-	chandle.click = function(vid, x, y)
-		awbwman_focus(wcont);
-	end
-	chandle.own = function(self,vid)
-		return (wcont.canvas and vid == wcont.canvas.vid) or 
-		wcont:own(vid) or false; 
-	end
-	chandle.vid = canvas;
-	chandle.name = "awbwnd_canvas";
-	mouse_addlistener(chandle, {"click"});
-	table.insert(mhands, chandle);
 
 -- top windowbar
 	local tbar = wcont:add_bar("t", awb_cfg.activeres,
@@ -1365,6 +1350,12 @@ function awbwman_init(defrndr, mnurndr)
 
 	awb_col = system_load("scripts/colourtable.lua")();
 
+	awb_cfg.activeres   = load_image("awbicons/border.png");
+	awb_cfg.inactiveres = load_image("awbicons/border_inactive.png");
+	awb_cfg.ttactiveres = load_image("awbicons/tt_border.png");
+	awb_cfg.ttinactvres = load_image("awbicons/tt_border.png");
+	awb_cfg.alphares    = load_image("awbicons/alpha.png");
+	
 	awb_cfg.bordericns["minus"]    = load_image("awbicons/minus.png");
 	awb_cfg.bordericns["plus"]     = load_image("awbicons/plus.png");
 	awb_cfg.bordericns["clone"]    = load_image("awbicons/clone.png");
@@ -1381,6 +1372,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["volume"]   = load_image("awbicons/speaker.png");
 	awb_cfg.bordericns["save"]     = load_image("awbicons/save.png");
 	awb_cfg.bordericns["load"]     = load_image("awbicons/load.png");
+	awb_cfg.bordericns["record"]   = load_image("awbicons/record.png");
 
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");

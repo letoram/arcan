@@ -376,12 +376,12 @@ end
 
 minputtbl = {false, false, false};
 function awb_input(iotbl)
-	if (iotbl.kind == "analog" and iotbl.source == "mouse" and nomouse == nil) then
+	if (iotbl.kind == "analog" and iotbl.source == "mouse") then
 		mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0, 
 			iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);
 
 	elseif (iotbl.kind == "digital" and iotbl.source == "mouse") then
-		if (iotbl.subid > 0 and iotbl.subid <= 3 and nomouse == nil) then
+		if (iotbl.subid > 0 and iotbl.subid <= 3) then
 
 -- meta converts LMB to RMB
 --			if (iotbl.subid == 1 and awbwman_cfg().meta.shift) then
@@ -394,10 +394,6 @@ function awb_input(iotbl)
 
 	elseif (iotbl.kind == "digital" and iotbl.translated) then
 		iotbl.lutsym = symtable[iotbl.keysym];
-
-		if (iotbl.lutsym == "k") then
-			nomouse = true;
-		end
 
 		if (iotbl.lutsym == "LSHIFT" or iotbl.lutsym == "RSHIFT") then 
 			awbwman_meta("shift", iotbl.active);
