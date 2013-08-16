@@ -28,31 +28,109 @@ end
 -- Resizes caret relative to current vertical scrollbar size 
 -- (and hide/show scrollbar if one isn't needed)
 --
-local function awbicon_setscrollbar(self, visible, ofs, total)
-	local fillprop = image_surface_properties(self.dir[self.icon_bardir].fill.vid);
-	local enabled = fillprop.opacity > 0.0;
+local function awbicon_setscrollbar(self)
+	if (self.capacity >= self.total) then
+		if (self.scroll) then
+			self.scroll = false;
+			hide_image(self.dir[self.icon_bardir].fill.vid);
+			self.dir[self.icon_bardir].oldsz = self.dir[self.icon_bardir].bsize;
+			self.dir[self.icon_bardir].bsize = 0;
+		end
 
-	if (not enabled and visible == false) then
 		return;
 
-	elseif (enabled and visible == false) then
-		hide_image(self.dir[self.icon_bardir].fill.vid);
-		self.dir[self.icon_bardir].oldsz = self.dir[self.icon_bardir].bsize;
-		self.dir[self.icon_bardir].bsize = 0;
-		self:icon_resize(self.w, self.h);
-		return;
-
-	elseif (not enabled) then
+	elseif (self.capacity < self.total and self.scroll == false) then
+		self.scroll = true;
 		show_image(self.dir[self.icon_bardir].fill.vid);
 		self.dir[self.icon_bardir].bsize = self.dir[self.icon_bardir].oldsz;
-		self:icon_resize(self.w, self.h);
 	end
 
-	local stepsz = fillprop.height / total; 
-
-	resize_image(self.scrollcaret, fillprop.width - 4, stepsz * #self.icons); 
-	move_image(self.scrollcaret, 2, 2 + (ofs - 1) * stepsz);
+	local prop = image_surface_properties(self.dir[self.icon_bardir].fill.vid);
+	local stepsz = prop.height / self.total;
+	
+	resize_image(self.scrollcaret, self.dir[self.icon_bardir].size - 2,
+		stepsz * self.capacity);
+	move_image(self.scrollcaret, 1, stepsz * (self.ofs - 1)); 
 end
+
+--
+-- Same as in awbwnd_list
+--
+local function clampofs(self)
+	if (self.ofs < 1) then
+		self.ofs = 1;
+	elseif (self.ofs + self.capacity >= self.total) then
+		self.ofs = self.total - self.capacity;
+	end
+end
+
+local function scrollup(self, n)
+	self.ofs = self.ofs - math.abs(n);
+	clampofs(self);
+	self.lasth = 0;
+
+	for i=1,#self.icons do
+		self.icons[i]:delete();
+	end
+
+	self.icons = {};
+	self:resize(self.w, self.h);
+end
+
+local function scrolldown(self, n)
+	self.ofs = self.ofs + math.abs(n);
+	clampofs(self);
+	self.lasth = 0;
+
+	for i=1,#self.icons do
+		self.icons[i]:delete();
+	end
+
+	self.icons = {};
+	self:resize(self.w, self.h);
+end
+
+local function caretdrop(self)
+	self.caret_dy = 0;
+end
+
+local function caretdrag(self, vid, dx, dy)
+	self.wnd:focus();
+	local prop = image_surface_properties(
+		self.wnd.dir[self.wnd.icon_bardir].fill.vid);
+
+	local stepsz = prop.height / self.wnd.total;
+	self.caret_dy = self.caret_dy + dy;
+
+	if(self.caret_dy < -5) then
+		local steps = math.floor(-1 * self.caret_dy / 5);
+		self.caret_dy = self.caret_dy + steps * 5;
+		scrollup(self.wnd, steps); 
+
+	elseif (self.caret_dy > 5) then
+		local steps = math.floor(self.caret_dy / 5);
+		self.caret_dy = self.caret_dy - steps * 5;
+		scrolldown(self.wnd, steps);
+	end
+end
+
+local function scrollclick(self, vid, x, y)
+	local props = image_surface_resolve_properties(self.caret);
+	self.wnd:focus();
+
+	self.wnd.ofs = (y < props.y) and (self.wnd.ofs - self.wnd.capacity) or
+		(self.wnd.ofs + self.wnd.capacity);
+
+	clampofs(self.wnd);
+
+	self.wnd.lasth = 0;
+	for i=1,#self.wnd.icons do
+		self.wnd.icons[i]:delete();
+	end
+	self.wnd.icons = {};
+	self.wnd:resize(self.wnd.w, self.wnd.h);
+end
+
 
 local function awbicon_add(self, icntbl)
 -- anchor + clipping region
@@ -114,6 +192,12 @@ local function awbicon_add(self, icntbl)
 		blend_image(icn, 0.5, 5);
 	end
 
+	icntbl.delete = function()
+		delete_image(icntbl.anchor);
+		icntbl.anchor = nil; -- rest dies in cascade
+		mouse_droplistener(icntbl);
+	end
+
 	mouse_addlistener(icntbl, {"over", "out", "dblclick"});
 end
 
@@ -127,43 +211,30 @@ local function awbicon_resize(self, neww, newh)
 	local props = image_surface_properties(self.canvas.vid);
 	local cols  = math.floor(props.width  / (self.cell_w + self.hspace));
 	local rows  = math.floor(props.height / (self.cell_h + self.vspace));
-	local lim   = cols * rows;
+	self.capacity = cols * rows;
 	local total = 0;
 	local tbl = nil;
 
 -- grow (request more icons at self.ofs + #icons)
 -- shrink (drop n items from the end of icons)
 -- else just reposition
-	if (lim > #self.icons) then
+	if (self.capacity > #self.icons) then
 		tbl, self.total = self:datasel(self.ofs + #self.icons, 
-			lim - #self.icons, self.cell_w, self.cell_h);
+			self.capacity - #self.icons, self.cell_w, self.cell_h);
 
 		for i, v in ipairs(tbl) do
 			awbicon_add(self, v);
 		end
 
-	elseif (lim < #self.icons) then
-		for i=#self.icons,lim+1,-1 do
+	elseif (self.capacity < #self.icons) then
+		for i=#self.icons,self.capacity+1,-1 do
 			local tbl = table.remove(self.icons);
-			if (valid_vid(tbl.anchor)) then
-				delete_image(tbl.anchor);
-				tbl.anchor = BADID;
-			end
-			mouse_droplistener(tbl);
+			tbl:delete();
 		end
 	end
 
-	if (#self.icons / self.total >= 1 or #self.icons == 0) then
-		awbicon_setscrollbar(self, false);
-	else
-		awbicon_setscrollbar(self, #self.icons, self.ofs, self.total); 
-	end
-
+	awbicon_setscrollbar(self);
 	self:reposition();
-end
-
-local function scrollbar_click(self, x, y)
-	print("click at local:", x, y);
 end
 
 --
@@ -222,8 +293,8 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 --
 	local bartbl = pwin.dir[bardir];
 	local newicn = bartbl:add_icon("fill", scrollbar_icn);
-
 	delete_image(scrollbar_icn);
+	pwin.scroll = true;
 
 	link_image(scrollcaret_icn, newicn.vid);
 	image_inherit_order(scrollcaret_icn, true);
@@ -237,7 +308,30 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 
 	pwin:resize(pwin.w, pwin.h);
 
+	local caretmh = {
+		wnd = pwin,
+		caret_dy = 0,
+		drag = caretdrag,
+		drop = caretdrop,
+		name = "list_scroll_caret",
+		own = function(self, vid) return scrollcaret_icn == vid; end
+	};
+
+	local scrollmh = {
+		wnd = pwin,
+		caret = scrollcaret_icn,
+		name = "icon_scrollbar",
+		own = function(self, vid) return newicn.vid == vid; end,
+		click = scrollclick
+	};
+
+	mouse_addlistener(caretmh, {"drag", "drop"});
+	mouse_addlistener(scrollmh, {"click"});
+
 	pwin.on_destroy = function()
+		mouse_droplistener(scrollmh);
+		mouse_droplistener(caretmh);
+
 		for i, v in ipairs(pwin.icons) do
 			mouse_droplistener(v);
 		end

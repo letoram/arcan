@@ -262,9 +262,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		end
 	end
 
---
 -- build scrollbar 
---
 	local bartbl = pwin.dir[bardir];
 	local newicn = bartbl:add_icon("fill", scrollbar_icn);
 
@@ -309,7 +307,6 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	mouse_addlistener(scrollmh, {"click"});
 	mouse_addlistener(caretmh,  {"drag", "drop"});
 
--- find cursor ..
 	local mhand = {};
 	mhand.dblclick = function(self, vid, x, y)
 		pwin:focus();
@@ -319,6 +316,10 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		if (linen and pwin.restbl[linen]) then
 			pwin.restbl[linen]:trigger(pwin);
 		end
+	end
+
+	mhand.click = function(self, vid, x, y)
+		pwin:focus();
 	end
 
 	mhand.rclick = function(self, vid, x, y)
@@ -346,13 +347,12 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		return pwin.canvas.vid == vid;
 	end
 
-	mouse_addlistener(mhand, {"dblclick", "motion", "rclick"});
+	mhand.name = "listview_mouseh";
+	mouse_addlistener(mhand, {"click", "dblclick", "motion", "rclick"});
+	table.insert(pwin.handlers, scrollmh);
+	table.insert(pwin.handlers, caretmh);
+	table.insert(pwin.handlers, mhand);
 
-	pwin.on_destroy = function()
-		mouse_droplistener(scrollmh);
-		mouse_droplistener(caretmh);
-		mouse_droplistener(mhand);
-	end
 --
 -- selected cursor management linked to canvas
 -- 

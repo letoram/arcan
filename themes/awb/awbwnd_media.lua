@@ -39,6 +39,7 @@ end
 local function add_vmedia_top(pwin, active, inactive, fsrv)
 	local bar = pwin:add_bar("tt", active, inactive,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
+	bar.name = "vmedia_ttbarh";
 
 	local cfg = awbwman_cfg();
 
@@ -67,10 +68,12 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 		end);
 	end
 
---	bar:add_icon("r", cfg.bordericns["filter"],  slide_pop);
---		pwin.click = function() 
---			pwin:focus(); 
---		end
+	bar.click = function()
+		pwin:focus();
+	end
+
+	mouse_addlistener(bar, {"click"});
+	table.insert(pwin.handlers, bar);
 end
 
 local function slide_lightr(caller, status)
@@ -142,9 +145,6 @@ local function add_3dmedia_top(pwin, active, inactive)
 	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
 
 	pwin.name = "3dmedia_topbar";
-	pwin.click = function()
-	end
-	mouse_addlistener(pwin, {"click"});
 end
 
 local function vcap_setup(pwin)
@@ -168,6 +168,7 @@ local function vcap_setup(pwin)
 			pwin:update_canvas(vid);
 		end, {ref = icn.vid});
 	end);
+
 end
 
 function input_3dwin(self, iotbl)
@@ -195,6 +196,19 @@ end
 
 function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
+
+	if (kind == "frameserver" or 
+		kind == "capture" or kind == "static") then
+		
+		local canvash = {
+			name  = kind .. "_canvash",
+			own   = function(self, vid) return vid == pwin.canvas.vid; end,
+			click = function() pwin:focus(); end
+		}
+
+		mouse_addlistener(canvash, {"click"});
+		table.insert(pwin.handlers, canvash);
+	end
 
 	if (kind == "frameserver") then
 		add_vmedia_top(pwin, active, inactive, true);
@@ -283,10 +297,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		rotate_image(pwin.canvas.vid, 180);
 		mouse_addlistener(mh, {"drag", "click", "over", "out"});
 		add_3dmedia_top(pwin, active, inactive);
-
-		pwin.on_destroy = function()
-			mouse_droplistener(mh);
-		end
+		table.insert(pwin.handlers, mh);
 	else
 		warning("awbwnd_media() media type: " .. kind .. "unknown\n");
 	end

@@ -261,6 +261,10 @@ function mouse_addlistener(tbl, events)
 		warning("mouse_addlistener(), missing own function in argument.\n");
 	end
 
+	if (tbl.name == nil) then
+		print( debug.traceback() );
+	end
+
 	for ind, val in ipairs(events) do
 		if (mstate.handlers[val] ~= nil and 
 			linear_find(mstate.handlers[val], tbl) == nil) then
