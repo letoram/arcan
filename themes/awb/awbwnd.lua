@@ -20,6 +20,7 @@ local function awbwnd_alloc(tbl)
 	show_image(tbl.anchor);	
 	move_image(tbl.anchor, tbl.x, tbl.y);
 	tbl.temp = {};
+	tbl.handlers = {};
 
 	return tbl;
 end
@@ -177,6 +178,7 @@ local function awbwnd_own(self, vid)
 
 	for ind, val in ipairs(t) do
 		if (val and val:own(vid)) then
+			self:focus();
 			return true;
 		end
 	end
@@ -198,8 +200,6 @@ local function awbwnd_move(self, newx, newy, timeval)
 end
 
 local function awbwnd_destroy(self, timeval)
---	print("anchor (", image_tracetag(self.anchor), "dies in: ", timeval);
-
 --
 -- delete the icons immediately as we don't want them pressed
 -- and they "fade" somewhat oddly when there's a background bar
@@ -210,8 +210,8 @@ local function awbwnd_destroy(self, timeval)
 		end
 	end
 
--- the rest should disappear in cascaded deletions
---
+-- the rest should disappear in cascaded deletions,
+-- but let subtypes be part of the chain 
 	if (self.on_destroy) then
 		self:on_destroy();
 	end
@@ -223,6 +223,13 @@ local function awbwnd_destroy(self, timeval)
 		delete_image(v);
 	end
 
+-- De-register mouse-handlers that subtasks may have set
+	for i,v in ipairs(self.handlers) do
+		mouse_droplistener(v);
+	end
+	self.handlers = nil;
+
+-- Clear all members to be sure we don't keep references around
 	for i,v in pairs(self) do
 		self[i] = nil;
 	end
@@ -235,7 +242,6 @@ local function awbbar_destroy(self)
 
 	self.left  = nil;
 	self.right = nil;
-	mouse_droplistener(self);
 
 	self.parent.dir[ self.dir ] = nil;
 end
@@ -560,10 +566,44 @@ local function awbwnd_hide(self, dstx, dsty)
 		h = self.h
 	};
 
-	print("hide to:", self.w, self.h);
 	self:resize(64, 64);
 	move_image(self.anchor, dstx, dst, self.animspeed);
+	blend_image(self.anchor, 1.0, self.animspeed);
 	blend_image(self.anchor, 0.0, self.animspeed);
+end
+
+--
+-- Create an input component that allows for text edits
+-- and returns as a table with a raw vid (link to whatever
+-- container should be used)
+--
+function awbwnd_subwin_input(options)
+	local res = {
+		msg = "",
+		cursorpos = 1,
+		limit = -1
+	};
+
+--
+-- Anchor, border, canvas, test, cursor 
+--
+
+	res.validator = function(self)
+		return true;
+	end
+
+	res.resize = function(self, neww)
+	end
+
+-- returns true on finished signal, requiring both a valid string
+-- and enter etc. being pressed
+	res.input = function(self, iotbl)
+	end
+
+	res.destroy = function(self)
+	end
+
+	return res;
 end
 
 function awbwnd_create(options)

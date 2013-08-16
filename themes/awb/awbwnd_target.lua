@@ -19,6 +19,7 @@ local function inputlay_sel(icn, wnd)
 	local vid, lines = desktoplbl(str);
 
 	awbwman_popup(vid, lines, function(ind)
+		print(lnd, lst, lst[ind]);
 		wnd.inp_cfg = inputed_getcfg(lst[ind]); 
 	end, {ref = icn.vid});
 end
@@ -30,13 +31,10 @@ end
 -- Assumes a bar already existing in the "tt" spot to add icons to.
 --
 function awbwnd_target(pwin)
-	local loading = fill_surface(pwin.w, pwin.h, 100, 100, 100);
-	image_tracetag(loading," awbwnd_loading");
-
 	local cfg = awbwman_cfg();
+	local bartt = pwin.dir.tt;
 
 	pwin.mediavol = 1.0;
-	pwin:update_canvas(loading, false);
 
 	pwin.set_mvol = function(self, val)
 		pwin.mediavol = val;
@@ -47,25 +45,26 @@ function awbwnd_target(pwin)
 		end
 	end
 	
-	pwin.dir.tt:add_icon("r", cfg.bordericns["clone"], 
+	bartt:add_icon("r", cfg.bordericns["clone"], 
 		function() datashare(pwin); 
 	end);
 
-	pwin.dir.tt:add_icon("r", cfg.bordericns["volume"], function(self)
-		if (awbwman_ispopup(self.vid)) then
-			pwin:focus();
-		else
-			pwin:focus();
+	bartt:add_icon("r", cfg.bordericns["volume"], function(self)
+		pwin:focus();
+		if (not awbwman_ispopup(self.vid)) then
 			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
 				pwin:set_mvol(val);
 			end, {ref = self.vid});
 		end
 	end);
 
-	pwin.dir.tt:add_icon("l", cfg.bordericns["save"], function(self)
+--
+-- Popup save menu
+--
+	bartt:add_icon("l", cfg.bordericns["save"], function(self)
 	end);
 
-	pwin.dir.tt:add_icon("l", cfg.bordericns["pause"], function(self) 
+	bartt:add_icon("l", cfg.bordericns["pause"], function(self) 
 		if (pwin.paused) then
 			pwin.paused = nil;
 			resume_target(pwin.canvas.vid);
@@ -77,15 +76,26 @@ function awbwnd_target(pwin)
 		end
 	end);
 
-	pwin.dir.tt:add_icon("l", cfg.bordericns["load"], function(self)
+--
+-- Popup "saves" list filtered by target / game
+--
+	bartt:add_icon("l", cfg.bordericns["load"], function(self)
 		pwin:focus();
 	end);
 
-	pwin.dir.tt:add_icon("l", cfg.bordericns["fastforward"], function(self)
+--
+-- Set frameskip mode, change icon to play
+--
+	bartt:add_icon("l", cfg.bordericns["fastforward"], function(self)
 		pwin:focus();
 	end);
 
-	pwin.dir.tt:add_icon("r", cfg.bordericns["input"],
+--
+-- Missing: popup frameskip mode
+-- popup filter mode
+--
+
+	bartt:add_icon("r", cfg.bordericns["input"],
 		function(self) inputlay_sel(self, pwin); end);
 
 	pwin.input = function(self, iotbl)
@@ -113,13 +123,24 @@ function awbwnd_target(pwin)
 
 		elseif (status.kind == "resized") then
 			pwin:update_canvas(source);
+			pwin:resize(pwin.w, pwin.h);
 		end
 	end
 
-	pwin.click = function()
-		pwin:focus();
-	end
+	bartt.click = function() pwin:focus(); end
+	local canvash = {
+					own = function(self, vid) return vid == pwin.canvas.vid; end,
+					click = function() pwin:focus(); end
+	}
 
-	mouse_addlistener(pwin, {"click"});
+	bartt.name = "target_ttbar";
+	canvash.name = "target_canvas";
+
+	mouse_addlistener(bartt, {"click"});
+	mouse_addlistener(canvash, {"click"});
+	table.insert(pwin.handlers, bartt);
+	table.insert(pwin.handlers, canvash);
+
+	pwin:update_canvas( fill_surface(pwin.w, pwin.h, 100, 100, 100) );
 	return callback;
 end

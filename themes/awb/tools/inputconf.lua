@@ -8,6 +8,8 @@
 -- fill tbl with PLAYERpc_AXISac   = analog:0:0:none
 --          with PLAYERpc_BUTTONbc = translated:0:0:none
 --          with PLAYERpc_other
+local activetbl = {};
+
 local function pop_deftbl(tbl, pc, bc, ac, other)
 	for i=1,pc do
 		for j=1,bc do 
@@ -214,8 +216,8 @@ local function inputed_editlay(intbl, outputres)
 
 -- and because *** intbl don't keep track of order, sort list..
 
-	awbwman_listwnd(menulbl("Input Editor"), deffont_sz, linespace, {0.5, 0.5},
-		function(filter, ofs, lim)
+	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
+		deffont_sz, linespace, {0.5, 0.5}, function(filter, ofs, lim)
 			local res = {};
 			local ul = ofs + lim;
 			for i=ofs, ul do
@@ -223,6 +225,7 @@ local function inputed_editlay(intbl, outputres)
 			end
 			return res, #list;
 		end, desktoplbl);
+	wnd.name = "Input Editor";
 end
 
 --
@@ -261,6 +264,7 @@ function inputed_translate(iotbl, cfg)
 end
 
 function inputed_getcfg(lbl)
+	print(debug.traceback());
 	lbl = "keyconfig/" .. lbl;
 
 	if (resource(lbl)) then
@@ -283,7 +287,7 @@ function awb_inputed()
 		{
 			cols    = {"New Layout..."},
 			trigger = function(self, wnd)
-				local newtbl;
+				activetbl = {};
 				wnd:destroy(awbwman_cfg().animspeed);
 				pop_deftbl(activetbl, 4, 8, 6, {"START", "SELECT", "COIN1"});
 				inputed_editlay(activetbl);	
@@ -302,7 +306,7 @@ function awb_inputed()
 		table.insert(list, res);
 	end
 
-	awbwman_listwnd(menulbl("Input Editor"), deffont_sz, linespace, {1.0},
+	local wnd = awbwman_listwnd(menulbl("Input Editor"), deffont_sz, linespace, {1.0},
 		function(filter, ofs, lim)
 			local res = {};
 			local ul = ofs + lim;
@@ -311,6 +315,7 @@ function awb_inputed()
 			end
 			return res, #list;
 		end, desktoplbl);
+	wnd.name = "Input Editor";
 end
 
 function inputed_configlist()

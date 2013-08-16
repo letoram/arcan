@@ -94,6 +94,7 @@ end
 function spawn_vidrec()
 	local wnd = awbwman_spawn(menulbl("Recorder"), {refid = "vidrec"});
 	wnd.sources = {};
+	wnd.name = "Video Recorder";
 
 	if (wnd == nil) then 
 		return;
@@ -109,7 +110,7 @@ function spawn_vidrec()
 	end);
 
 	bar.click = function()
-		wnd:req_focus();
+		wnd:focus();
 	end
 
 -- add ttbar, icons for; 
@@ -142,7 +143,7 @@ function spawn_vidrec()
 	end,
 
 	click = function(self, vid)
-		wnd:req_focus();
+		wnd:focus();
 		local tag = awbwman_cursortag();
 		if (tag and tag.kind == "media") then
 			add_rectarget(wnd, tag);

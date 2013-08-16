@@ -124,6 +124,7 @@ function gamelist_launch(self)
 		local wnd, cb = awbwman_targetwnd(menulbl(self.name), 
 			{refid = "targetwnd_" .. tostring(self.gameid)});
 		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);
+		wnd.name = self.target .. "(" .. self.name .. ")";
 	end
 end
 
@@ -222,8 +223,7 @@ end
 function gamelist_wnd(selection)
 	local tgtname = selection.name;
 	local tgttotal = #list_games({target = tgtname});
-
-	awbwman_listwnd(menulbl(tgtname), deffont_sz, linespace, 
+	local wnd = awbwman_listwnd(menulbl(tgtname), deffont_sz, linespace, 
 		{0.7, 0.3}, function(filter, ofs, lim, iconw, iconh)
 		
 		local res = {};
@@ -249,6 +249,7 @@ function gamelist_wnd(selection)
 	
 		return res, tgttotal;
 	end, desktoplbl, {refid = "listwnd_" .. tgtname});
+	wnd.name = "List(" .. tgtname .. ")";
 end
 
 function awb_desktop_setup()
@@ -269,22 +270,24 @@ function awb_desktop_setup()
 			name    = "Tools",
 			key     = "tools",
 			trigger = function()
-				awbwman_iconwnd(menulbl("Tools"), builtin_group, 
+				local wnd = awbwman_iconwnd(menulbl("Tools"), builtin_group, 
 					{refid = "iconwnd_tools"});
+				wnd.name = "List(Tools)";
 			end
 		},
 		{
 			name    = "Saves",
 			key     = "savestates",
-			trigger = nil, 
+			trigger = function() end, 
 		},
 		{
 			name    = "Systems",
-			key     = "sytems",
+			key     = "systems",
 			trigger = function()
 				local tbl =	awbwman_iconwnd(menulbl("Systems"), system_group,
 					{refid = "iconwnd_systems"});
 				tbl.idfun = list_targets;
+				tbl.name = "List(Systems)";
 			end
 		}
 	};
@@ -309,10 +312,10 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"BOING!",    spawn_boing,    "boing"},
 		{"InputConf", awb_inputed,  "inputed"},
 		{"Recorder",  spawn_vidrec,  "vidrec"},
-		{"Network",   spawn_socsrv, "network"},
+--		{"Network",   spawn_socsrv, "network"},
 		{"VidCap",    spawn_vidwin,  "vidcap"},
-		{"Compare",   spawn_vidcmp,  "vidcmp"},
-		{"ShaderEd",  spawn_shadeed, "shadeed"},
+--		{"Compare",   spawn_vidcmp,  "vidcmp"},
+--		{"ShaderEd",  spawn_shadeed, "shadeed"},
 	};
 
 	local restbl = {};
@@ -356,7 +359,7 @@ function spawn_boing(caption)
 	local int oval = math.random(1,100);
 	local a = awbwman_spawn(menulbl("Boing!"));
 
-	a.name = "boingwnd" .. tostring(oval);
+	a.name = "Boing!"; 
 	
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
 		"shaders/boing.fShader", "boing" .. oval, {});

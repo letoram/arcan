@@ -130,8 +130,13 @@ local function awbwman_focus(wnd, nodrop)
 		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
 		end
-
-		awb_cfg.focus:inactive();
+		
+-- only inactivate a window that hasn't been destroyed
+		if (awb_cfg.focus.inactive) then
+			awb_cfg.focus:inactive();
+		else
+			awb_cfg.focus = nil;
+		end
 	end
 
 	wnd:active();
@@ -173,7 +178,7 @@ local function awbwman_dereg(wcont)
 	end
 end
 
-local function awbwman_close(wcont)
+local function awbwman_close(wcont, nodest)
 	drop_popup();
 	awbwman_dereg(wcont);
 
@@ -187,8 +192,6 @@ local function awbwman_close(wcont)
 			awbwman_focus(awb_wtable[#awb_wtable]);
 		end
 	end
-	
-	wcont:destroy(awb_cfg.animspeed);
 end
 
 local function awbwman_regwnd(wcont)
@@ -298,7 +301,9 @@ local function awbman_mhandlers(wnd, bar)
 		awbwman_focus(self.parent);
 	end
 
+	bar.name = "awbwnd_default_tbarh";
   mouse_addlistener(bar, {"drag", "drop", "click", "dblclick"});
+	table.insert(wnd.handlers, bar);
 end
 
 local function awbwman_addcaption(bar, caption)
@@ -481,7 +486,6 @@ function awbwman_dialog(caption, buttons, options, modal)
 	image_tracetag(caption, "awbwman_dialog(caption)");
 	local wnd = awbwman_spawn(caption, options); 
 	image_tracetag(wnd.anchor, "awbwman_dialog.anchor");
-	local tmptbl = {};
 
 --
 -- Size the new buttons after the biggest supplied one
@@ -542,7 +546,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 
 		local bevent = {
 			own   = function(self, vid) return vid == button; end,
-			click = function() v.trigger(wnd); awbwman_close(wnd); end,
+			click = function() v.trigger(wnd); wnd:destroy(awb_cfg.animspeed); end,
 			over  = function() image_color(button, ccol.r, ccol.g, ccol.b); end, 
 			out   = function() image_color(button, bgc.r, bgc.g, bgc.b); end,
 		};
@@ -557,7 +561,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 
 		bevent.name = "awbdialog_button(" .. tostring(i) .. ")";
 		mouse_addlistener(bevent, {"over", "out", "click"});
-		table.insert(tmptbl, bevent);
+		table.insert(wnd.handlers, bevent);
 	end
 
 --
@@ -574,10 +578,6 @@ function awbwman_dialog(caption, buttons, options, modal)
 	end
 
 	wnd.on_destroy = function()
-		for i, v in ipairs(tmptbl) do
-			mouse_droplistener(v);
-		end
-
 		if (modal) then
 			awb_cfg.modal = nil;
 		end
@@ -649,6 +649,7 @@ function awbwman_rootwnd()
 		load_image("awbicons/topbar.png"), awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 	order_image(tbar.vid, ORDER_MOUSE - 5);
 
+	tbar.name = "rootwnd_topbar";
 	tbar.rzfun = awbbaricn_rectresize;
 	local cap = awb_cfg.mnurndfun("AWB ");
 	local icn = tbar:add_icon("l", cap, function(self) end);
@@ -678,11 +679,13 @@ function awbwman_rootwnd()
 	icn.yofs = 2;
 
 	wcont.set_mvol = function(self, val) awb_cfg.global_vol = val; end
-	local icn = tbar:add_icon("r",awb_cfg.bordericns["volume_top"],function(self)
+	local vicn = tbar:add_icon("r",awb_cfg.bordericns["volume_top"],function(self)
 		awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
 			wcont:set_mvol(val);
 		end, {ref = self.vid});
 	end);
+
+	awb_cfg.minimize_x = image_surface_properties(icn.vid).x;
 
 	image_mask_set(tbar.vid, MASK_UNPICKABLE);
 
@@ -698,6 +701,7 @@ function awbwman_rootwnd()
 -- oscillate back and forth until they click
 --
 	local dndh = {
+		name = "rootwnd_drag_n_droph",
 		own = function(self, vid)
 			return vid == canvas; 
 		end,
@@ -880,11 +884,11 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	move_image({rendervid, cursor}, 1, 1);
 
 	local line_y = function(yv, lheight)
--- find the matching pair and pick the closest one
+	-- find the matching pair and pick the closest one
 		for i=1,#lheight-1 do
 			local dy1 = lheight[i];
 			local dy2 = lheight[i+1];
-
+	
 			if (dy1 <= yv and dy2 >= yv) then
 				return dy1, i, (dy2 - dy1);
 			end
@@ -896,7 +900,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	res.own = function(self, vid) 
 		return vid == wnd; 
 	end
-	
+					
 	res.destroy = function()
 		if (res.ref) then
 			image_shader(res.ref, "DEFAULT");
@@ -907,34 +911,31 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 		resize_image(border, 1, 1, awb_cfg.animspeed);
 		resize_image(wnd, 1, 1, awb_cfg.animspeed);
 
-		if (type(callbacks) == "function") then
-			callbacks(-1);
-		end
-		
 		mouse_droplistener(res);
 	end
 
 	res.click = function(self, vid, x, y)
 		local yofs, ind, hght = line_y(y - 
 			image_surface_resolve_properties(wnd).y, lineheights);
-			awb_cfg.popup_active:destroy();
 
-			if (type(callbacks) == "function") then
-				callbacks(ind);
-			else
-				callbacks[ind]();
-			end
-			awb_cfg.popup_active = nil;
+		if (type(callbacks) == "function") then
+			callbacks(ind);
+		else
+			callbacks[ind]();
+		end
+
+		awb_cfg.popup_active:destroy(awb_cfg.animspeed);
+		awb_cfg.popup_active = nil;
 	end
 
 	res.motion = function(self, vid, x, y)
 		local yofs, ind, hght  = line_y(y - 
-			image_surface_resolve_properties(wnd).y, lineheights);
+		image_surface_resolve_properties(wnd).y, lineheights);
 
 		resize_image(cursor, props.width, hght);
 		move_image(cursor, 1, yofs + 1);
 	end
-	
+					
 	res.ref = options.ref;
 	awb_cfg.popup_active = res;
 	mouse_addlistener(res, {"click", "motion"});
@@ -955,7 +956,7 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 	if (border == nil) then
 		return;
 	end
-	
+					
 	local caret  = color_surface(1, 1, cc.r, cc.g, cc.b);
 	if (caret == BADID) then
 		delete_image(border);
@@ -1061,8 +1062,7 @@ function awbwman_minimize(wnd, icon)
 -- have wnd generate iconic representation, 
 -- we add a border and then set as rootwndicon with
 -- the trigger set to restore
-	debug.traceback();
-	wnd:hide(100, 0);
+	wnd:hide(awb_cfg.minimize_x, 0);
 	table.insert(awb_cfg.hidden, wnd);
 end
 
@@ -1072,7 +1072,7 @@ function awbwman_rootaddicon(name, captionvid,
 	if (icntbl == nil) then
 		icntbl = {};
 	end
-	
+					
 	icntbl.caption  = captionvid;
 	icntbl.selected = false;
 	icntbl.trigger  = trig;
@@ -1087,13 +1087,13 @@ function awbwman_rootaddicon(name, captionvid,
 
 	icntbl.toggle = function(val)
 		if (val == nil) then
-			icntbl.selected = not icntbl.selected;
-		else
-			icntbl.selected = val;
-		end
+		icntbl.selected = not icntbl.selected;
+	else
+		icntbl.selected = val;
+	end
 
-		image_sharestorage(icntbl.selected and 
-			iconselvid or iconvid, icntbl.vid);
+	image_sharestorage(icntbl.selected and 
+		iconselvid or iconvid, icntbl.vid);
 	end
 
 -- create containers (anchor, mainvid)
@@ -1188,8 +1188,6 @@ function awbwman_spawn(caption, options)
 		options.x, options.y = awbwman_next_spawnpos();
 	end
 	local wcont  = awbwnd_create(options);
-	wcont.req_focus = awbwman_focus;
-	print(wcont.req_focus);
 
 	local mhands = {};
 	local tmpfun = wcont.destroy;
@@ -1213,6 +1211,7 @@ function awbwman_spawn(caption, options)
 			store_key(options.refid, key);
 		end
 
+		awbwman_close(self);
 		tmpfun(self, time);
 	end
 
@@ -1237,7 +1236,7 @@ function awbwman_spawn(caption, options)
 
 	if (options.noicons == nil) then
 		tbar:add_icon("l", awb_cfg.bordericns["close"], function()
-			awbwman_close(wcont);
+			wcont:destroy(awb_cfg.animspeed);	
 		end);
 
 		tbar:add_icon("r", awb_cfg.bordericns["toback"], function()

@@ -155,7 +155,7 @@ static void arcan_lua_fatal(const char* const, ...);
 static void dump_call_trace(lua_State* ctx)
 {
 #if LUA_VERSION_NUM == 501
-		printf("-- call trace -- \n");
+		arcan_warning("-- call trace --");
 		lua_getfield(ctx, LUA_GLOBALSINDEX, "debug");
 		if (!lua_istable(ctx, -1))
 			lua_pop(ctx, 1);
@@ -167,6 +167,8 @@ static void dump_call_trace(lua_State* ctx)
 				lua_pushvalue(ctx, 1);
 				lua_pushinteger(ctx, 2);
 				lua_call(ctx, 2, 1);
+				const char* str = lua_tostring(ctx, -1);
+				arcan_warning("%s\n", str);
 			}
 	}
 #endif
@@ -3044,7 +3046,7 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 	if (lua_ctx_store.debug){
 		arcan_warning("Warning: arcan_lua_wraperr((), %s, from %s\n", mesg, src);
 
-		if (lua_ctx_store.debug > 1)
+		if (lua_ctx_store.debug >= 1)
 			dump_call_trace(ctx);
 
 		if (lua_ctx_store.debug > 0)
