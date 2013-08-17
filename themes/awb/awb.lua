@@ -43,11 +43,13 @@ function menulbl(text)
 end
 
 function desktoplbl(text)
+	text = text == nil and "" or text;
 	return render_text(string.format("\\#ffffff\\f%s,%d %s",
 		deffont, 10, text));
 end
 
 function awb()
+	print( string.format("w=%f,h=%f", 0.1, 0.2) ); 
 	symtable = system_load("scripts/symtable.lua")();
 
 -- shader function / model viewer
@@ -56,6 +58,7 @@ function awb()
 	system_load("scripts/resourcefinder.lua")();
 	system_load("tools/inputconf.lua")();
 	system_load("tools/vidrec.lua")();
+	system_load("tools/vidcmp.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
@@ -312,9 +315,9 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"BOING!",    spawn_boing,    "boing"},
 		{"InputConf", awb_inputed,  "inputed"},
 		{"Recorder",  spawn_vidrec,  "vidrec"},
---		{"Network",   spawn_socsrv, "network"},
+		{"Network",   spawn_socsrv, "network"},
 		{"VidCap",    spawn_vidwin,  "vidcap"},
---		{"Compare",   spawn_vidcmp,  "vidcmp"},
+		{"Compare",   spawn_vidcmp,  "vidcmp"},
 --		{"ShaderEd",  spawn_shadeed, "shadeed"},
 	};
 

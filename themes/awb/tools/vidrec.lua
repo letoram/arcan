@@ -93,12 +93,12 @@ end
 
 function spawn_vidrec()
 	local wnd = awbwman_spawn(menulbl("Recorder"), {refid = "vidrec"});
-	wnd.sources = {};
-	wnd.name = "Video Recorder";
-
 	if (wnd == nil) then 
 		return;
 	end
+
+	wnd.sources = {};
+	wnd.name = "Video Recorder";
 
 	local cfg = awbwman_cfg();
 	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
@@ -106,6 +106,8 @@ function spawn_vidrec()
 	
 	bar:add_icon("r", cfg.bordericns["record"], function()
 		bar:destroy();
+		wnd.dirs.r.right[1]:destroy();
+
 		wnd:resize(wnd.w, wnd.h);
 	end);
 
@@ -156,10 +158,8 @@ function spawn_vidrec()
 	mouse_addlistener(mh, {"click", "over", "out"});
 	mouse_addlistener(bar, {"click"});
 
-	wnd.on_destroy = function()
-		mouse_droplistener(mh);
-		mouse_droplistener(bar);
-	end
+	table.insert(wnd.handlers, mh);
+	table.insert(wnd.handlers, bar);
 
 	wnd:resize(wnd.w, wnd.h);
 end

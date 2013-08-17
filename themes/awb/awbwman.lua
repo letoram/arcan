@@ -50,6 +50,7 @@ local awb_cfg = {
 	rootcell_w  = 80,
 	rootcell_h  = 60,
 	icnroot_startx = 0,
+	icnroot_starty = 0,
 	icnroot_stepx  = -40,
 	icnroot_stepy  = 80,
 	icnroot_maxy   = VRESH - 100,
@@ -405,7 +406,7 @@ local function next_iconspawn()
 
 	if (awb_cfg.icnroot_y > awb_cfg.icnroot_maxy) then
 		awb_cfg.icnroot_x = awb_cfg.icnroot_x + awb_cfg.icnroot_stepx;
-		awb_cfg.icnroot_y = awb_cfg.starty;
+		awb_cfg.icnroot_y = awb_cfg.icnroot_starty;
 	end
 
 	return oldx, oldy;
@@ -678,7 +679,22 @@ function awbwman_rootwnd()
 	icn.xofs = 12;
 	icn.yofs = 2;
 
-	wcont.set_mvol = function(self, val) awb_cfg.global_vol = val; end
+	wcont.set_mvol = function(self, val)
+		awb_cfg.global_vol = val; 
+-- propagate new settings
+		for i, v in ipairs(awb_cfg.hidden) do
+			if (v.set_mvol ~= nil) then
+				v:set_mvol(v.mediavol);
+			end
+		end
+
+		for i, v in ipairs(awb_wtable) do
+			if (v.set_mvol ~= nil) then
+				v:set_mvol(v.mediavol);
+			end
+		end
+	end
+
 	local vicn = tbar:add_icon("r",awb_cfg.bordericns["volume_top"],function(self)
 		awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
 			wcont:set_mvol(val);
@@ -785,10 +801,11 @@ end
 local function awbwman_popupbase(props, options)
 	if (options and options.ref and awb_cfg.popup_active and
 		awb_cfg.popup_active.ref == options.ref) then
-		return;
+		drop_popup();
+		return nil;
 	end
-	drop_popup();
 
+	drop_popup();
 	local mx, my;
 	options = options ~= nil and options or {};
 
@@ -924,7 +941,9 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 			callbacks[ind]();
 		end
 
-		awb_cfg.popup_active:destroy(awb_cfg.animspeed);
+		if (awb_cfg.popup_active) then
+			awb_cfg.popup_active:destroy(awb_cfg.animspeed);
+		end
 		awb_cfg.popup_active = nil;
 	end
 
@@ -938,6 +957,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 					
 	res.ref = options.ref;
 	awb_cfg.popup_active = res;
+	res.name = "awbwman_popup";
 	mouse_addlistener(res, {"click", "motion"});
 end
 
@@ -1020,6 +1040,7 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 		end
 	end
 
+	res.name = "awbwman_popupslider";
 	mouse_addlistener(res, {"click", "drag"});
 
 	res.ref = options.ref;
@@ -1080,20 +1101,20 @@ function awbwman_rootaddicon(name, captionvid,
 
 	local val = get_key("rooticn_" .. name);
 	if (val ~= nil and val.nostore == nil) then
-		a = string.split(val, ",");
-		icntbl.x = tostring(a[1]);
-		icntbl.y = tostring(a[2]);
+		a = string.split(val, ":");
+		icntbl.x = math.floor(VRESW * tostring(a[1]));
+		icntbl.y = math.floor(VRESH * tostring(a[2]));
 	end
 
 	icntbl.toggle = function(val)
 		if (val == nil) then
-		icntbl.selected = not icntbl.selected;
-	else
-		icntbl.selected = val;
-	end
+			icntbl.selected = not icntbl.selected;
+		else
+			icntbl.selected = val;
+		end
 
-	image_sharestorage(icntbl.selected and 
-		iconselvid or iconvid, icntbl.vid);
+		image_sharestorage(icntbl.selected and 
+			iconselvid or iconvid, icntbl.vid);
 	end
 
 -- create containers (anchor, mainvid)
@@ -1174,10 +1195,15 @@ function awbwman_spawn(caption, options)
 		local kv = get_key(options.refid);
 		if (kv ~= nil) then
 			kv = tostring(kv);
-			local strtbl = string.split(kv, ",");
+			local strtbl = string.split(kv, ":");
 			for i, j in ipairs(strtbl) do
 				local arg = string.split(j, "=");
 				options[arg[1]] = tonumber(arg[2]);
+				if (arg[1] == "x" or arg[1] == "w") then
+					options[arg[1]] = math.floor(VRESW * options[arg[1]]);
+				elseif (arg[1] == "y" or arg[1] == "h") then
+					options[arg[1]] = math.floor(VRESH * options[arg[1]]);
+				end
 			end
 		end
 	end
@@ -1206,8 +1232,8 @@ function awbwman_spawn(caption, options)
 		end
 
 		if (options.refid) then
-			local key = string.format("w=%d,h=%d,x=%d,y=%d",
-			wcont.w, wcont.h, wcont.x, wcont.y);
+			local key = string.format("w=%f:h=%f:x=%f:y=%f",
+			wcont.w / VRESW, wcont.h / VRESH, wcont.x / VRESW, wcont.y / VRESH);
 			store_key(options.refid, key);
 		end
 
@@ -1331,7 +1357,7 @@ end
 
 function awbwman_shutdown()
 	for i, v in ipairs(awb_cfg.rooticns) do
-		local val = string.format("%d,%d", v.x, v.y);
+		local val = string.format("%.4f:%.4f", v.x / VRESW, v.y / VRESH);
 		store_key("rooticn_" .. v.name, val);
 	end
 	shutdown();

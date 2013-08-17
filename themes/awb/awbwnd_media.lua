@@ -61,8 +61,7 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 		bar:add_icon("r", cfg.bordericns["volume"], function(self)
 			pwin:focus();
-
-			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
+			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(self, val)
 				pwin:set_mvol(val);
 			end, {ref = self.vid});
 		end);
@@ -130,7 +129,6 @@ local function zoom_out(self)
 end
 
 local function add_3dmedia_top(pwin, active, inactive)
-
 	local bar = pwin:add_bar("tt", active, inactive, 
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	local cfg = awbwman_cfg();
