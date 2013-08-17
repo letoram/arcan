@@ -1093,10 +1093,11 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * processing should be scheduled in relation to vsync, or if we should yield at
  * appropriate times.
  */
-	long long int samples[10], sample_sum;
+	const int nsamples = 10;
+	long long int samples[nsamples], sample_sum;
 retry:
 	sample_sum = 0;
-	for (int i = 0; i < 10; i++){
+	for (int i = 0; i < nsamples; i++){
 		long long int start = arcan_timemillis();
 		platform_video_bufferswap();
 		long long int stop = arcan_timemillis();
@@ -1104,12 +1105,12 @@ retry:
 		sample_sum += samples[i];
 	}
 
-	float mean = (float) sample_sum / (float) 10;
+	float mean = (float) sample_sum / (float) nsamples;
 	float variance = 0.0;
-	for (int i = 0; i < 10; i++){
+	for (int i = 0; i < nsamples; i++){
 		variance += powf(mean - (float)samples[i], 2);
 	}
-	float stddev = sqrtf(variance / (float) 10);
+	float stddev = sqrtf(variance / (float) nsamples);
 	if (stddev > 0.5){
 		retrycount++;
 		if (retrycount > 10)
@@ -1119,9 +1120,11 @@ retry:
 	}
 	else
 		arcan_video_display.vsync_timing = mean;
+	arcan_video_display.vsync_stddev = stddev;
+	arcan_video_display.vsync_variance = variance;
 
 	arcan_warning("arcan_video_init(), timing estimate (mean: %f, deviation: %f, "
-		"samples used: %d)\n", mean, stddev, 10 * (retrycount + 1));
+		"samples used: %d)\n", mean, stddev, nsamples * (retrycount + 1));
 
 	arcan_video_display.conservative = conservative;
 	arcan_video_display.defaultshdr  = arcan_shader_build("DEFAULT",

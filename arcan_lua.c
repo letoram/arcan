@@ -3131,14 +3131,18 @@ int arcan_lua_screencoord(lua_State* ctx)
 	return 0;
 }
 
-void arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
+bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 {
-	if ( arcan_lua_grabthemefunction(ctx, fun) )
+	if ( arcan_lua_grabthemefunction(ctx, fun) ){
 		arcan_lua_wraperr(ctx,
 	                  lua_pcall(ctx, 0, 0, 0),
 	                  fun);
+		return true;
+	}
 	else if (warn)
 		arcan_warning("missing expected symbol ( %s )\n", fun);
+
+	return false;
 }
 
 int arcan_lua_getqueueopts(lua_State* ctx)
@@ -4956,6 +4960,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 	struct { const char* key; int val; } consttbl[] = {
 {"VRESH", arcan_video_screenh()},
 {"VRESW", arcan_video_screenw()},
+{"VSYNCH_TIMING", arcan_video_display.vsync_timing},
+{"VSYNCH_STDDEV", arcan_video_display.vsync_stddev},
+{"VSYNCH_VARIANCE", arcan_video_display.vsync_variance},
 {"MAX_SURFACEW",   MAX_SURFACEW        },
 {"MAX_SURFACEH",   MAX_SURFACEH        },
 {"STACK_MAXCOUNT", CONTEXT_STACK_LIMIT },

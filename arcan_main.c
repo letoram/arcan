@@ -445,7 +445,7 @@ themeswitch:
 	arcan_lua_callvoidfun(luactx, arcan_themename, true);
 	arcan_lua_callvoidfun(luactx, "show", false);
 
-	bool done = false;
+	bool done = false, framepulse = true;
 	float lastfrag = 0.0f;
 	long long int lastflip = arcan_timemillis();
 	int monitor_counter = monitor;
@@ -562,6 +562,8 @@ themeswitch:
 				if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
 					arcan_video_refresh(frag, true);
 					arcan_bench_register_frame();
+					if (framepulse)
+						framepulse = arcan_lua_callvoidfun(luactx, "frame_pulse", false);
 
 					lastflip += delta;
 				} 
