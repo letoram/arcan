@@ -257,7 +257,7 @@ struct arcan_video_display {
 	uint32_t c_ticks;
 	
 	unsigned char msasamples;
-	float vsync_timing;
+	float vsync_timing, vsync_stddev, vsync_variance;
 
 	char* txdump;
 };
