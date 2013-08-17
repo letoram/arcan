@@ -19,9 +19,19 @@ local function inputlay_sel(icn, wnd)
 	local vid, lines = desktoplbl(str);
 
 	awbwman_popup(vid, lines, function(ind)
-		print(lnd, lst, lst[ind]);
 		wnd.inp_cfg = inputed_getcfg(lst[ind]); 
 	end, {ref = icn.vid});
+end
+
+--
+-- Re-uses the same patterns as gridle
+-- If the user wants to load savestates with other names, 
+-- he'll have to drag'n'drop from the desktop group
+--
+function awbtarget_listsnaps(gametbl)
+	local base = glob_resource(string.format("savestates/%s_%s_*", 
+		gametbl.target, gametbl.setname));
+	
 end
 
 --
@@ -50,8 +60,8 @@ function awbwnd_target(pwin)
 	end);
 
 	bartt:add_icon("r", cfg.bordericns["volume"], function(self)
-		pwin:focus();
-		if (not awbwman_ispopup(self.vid)) then
+		if (not awbwman_ispopup(self)) then
+			pwin:focus();
 			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
 				pwin:set_mvol(val);
 			end, {ref = self.vid});
@@ -62,6 +72,8 @@ function awbwnd_target(pwin)
 -- Popup save menu
 --
 	bartt:add_icon("l", cfg.bordericns["save"], function(self)
+		local list = {"Quicksave", "New..."};
+		local states = awbtarget_liststates(pwin.gametbl);
 	end);
 
 	bartt:add_icon("l", cfg.bordericns["pause"], function(self) 

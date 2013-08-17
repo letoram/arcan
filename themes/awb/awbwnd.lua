@@ -305,8 +305,8 @@ local function awbbar_resize(self, neww, newh)
 	local lofs = 0;
 	for i=1,#self.left do
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
-		move_image(self.left[i].vid, self.left[i].xofs + stepx * lofs, 
-			self.left[i].yofs + stepy * lofs); 
+		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs), 
+			math.floor(self.left[i].yofs + stepy * lofs)); 
 		lofs = lofs + w + self.left[i].xofs;
 	end
 
@@ -315,8 +315,8 @@ local function awbbar_resize(self, neww, newh)
 		local w, h = self.rzfun(self.right[i].vid, self.size, self.vertical);
 		rofs = rofs + w;
 
-		move_image(self.right[i].vid, stepx * (self.w - rofs), 
-			stepy * (self.h - rofs));
+		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)), 
+			math.floor(stepy * (self.h - rofs)));
 
 		lim  = lim  - w;
 	end
