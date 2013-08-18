@@ -284,7 +284,7 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
  * readback >  0, readback will occur every tick frames */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, 
-	bool scale);
+	bool scale, bool flipx, bool flipy);
 
 /* Attach src to rendertarget did,
  * if detach is set to true, the rendertarget will be the 

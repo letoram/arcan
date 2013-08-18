@@ -91,7 +91,14 @@ function awb()
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
 	mouse_acceleration(0.5);
 	
-	setup_3dsupport();
+--
+-- Since we'll only use the 3d subsystem as a view for specific windows
+-- and those are populated through rendertargets, it's easiest to flip
+-- the camera
+--
+	local supp3d = setup_3dsupport();
+	scale3d_model(supp3d.camera, 1.0, -1.0, 1.0);
+
 	awb_desktop_setup();
 
 -- LCTRL + META = (toggle) grab to specific internal

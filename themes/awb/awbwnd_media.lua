@@ -142,6 +142,14 @@ local function add_3dmedia_top(pwin, active, inactive)
 
 	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
 
+	local bh = {
+		name = "3dbar_handle",
+		own = function(self, vid) return bar:own(vid); end,
+		click = function() pwin:focus(); end
+	};
+	
+	mouse_addlistener(bh, {"click"});
+	table.insert(pwin.handlers, bh);
 	pwin.name = "3dmedia_topbar";
 end
 
@@ -250,7 +258,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		pwin.shader = set_shader(source.vid);
 		show_image(source.vid);
 		define_rendertarget(dstvid, {source.vid}, 
-			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, 1, 1);
 		pwin:update_canvas(dstvid, false);
 		pwin.model = source;
 		pwin.input = input_3dwin;
@@ -264,7 +272,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	
 			drag = function(self, vid, dx, dy)
 				pwin:focus();
-				rotate3d_model(source.vid, 0.0, dy, -1 * dx, 0, ROTATE_RELATIVE);
+				rotate3d_model(source.vid, 0.0, dy, dx, 0, ROTATE_RELATIVE);
 			end,
 
 			over = function(self, vid)
@@ -292,7 +300,6 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 			end
 		};
 	
-		rotate_image(pwin.canvas.vid, 180);
 		mouse_addlistener(mh, {"drag", "click", "over", "out"});
 		add_3dmedia_top(pwin, active, inactive);
 		table.insert(pwin.handlers, mh);

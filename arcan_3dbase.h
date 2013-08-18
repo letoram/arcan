@@ -35,6 +35,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);
 arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
 
+arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
+
 /* empty model allocates and populates a container,
  * then add a hierarchy of meshes to the model */
 arcan_vobj_id arcan_3d_emptymodel();

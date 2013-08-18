@@ -69,6 +69,7 @@ struct virtobj {
 
 /* cached orientation */
 	orientation direction;
+	scalefactor scale;
 	vector position;
 	vector view;
 	float projmatr[16];
@@ -372,6 +373,7 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag,arcan_vobject_litem* cell,
 			arcan_resolve_vidprop(parent, frag, &dprops);
 
 /* update local cache */
+			base->scale = dprops.scale;
 			base->position  = dprops.position;
 			matr_quatf(dprops.rotation.quaternion, base->direction.matr);
 			base->direction.pitchf = dprops.rotation.pitch;
@@ -383,6 +385,7 @@ arcan_vobject_litem* arcan_refresh_3d(unsigned camtag,arcan_vobject_litem* cell,
 			case virttype_camera :
 				arcan_shader_envv(PROJECTION_MATR, base->projmatr, sizeof(float) * 16);
 				identity_matrix(matr);
+				scale_matrix(matr, base->scale.x, base->scale.y, base->scale.z);
 				multiply_matrix(dmatr, matr, base->direction.matr);
 				translate_matrix(dmatr, base->position.x, 
 					base->position.y, base->position.z);
@@ -824,10 +827,10 @@ arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
 		vrtobj->parent    = vid;
 		vrtobj->position  = vobj->current.position;
 
-		matr_quatf(vobj->current.rotation.quaternion, vrtobj->direction.matr);
+/*		matr_quatf(vobj->current.rotation.quaternion, vrtobj->direction.matr);
 		vrtobj->direction.pitchf = vobj->current.rotation.pitch;
 		vrtobj->direction.rollf  = vobj->current.rotation.roll;
-		vrtobj->direction.yawf   = vobj->current.rotation.yaw;
+		vrtobj->direction.yawf   = vobj->current.rotation.yaw;  */
 	}
 
 	return rv;
