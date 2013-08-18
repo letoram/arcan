@@ -2315,20 +2315,41 @@ int arcan_lua_buildmodel(lua_State* ctx)
 	return 1;
 }
 
-/* item:build_3dplane, minx, mind, endx, endd, hdens, ddens, nil */
 int arcan_lua_buildplane(lua_State* ctx)
 {
-	float minx = luaL_checknumber(ctx, 1);
-	float mind = luaL_checknumber(ctx, 2);
-	float endx = luaL_checknumber(ctx, 3);
-	float endd = luaL_checknumber(ctx, 4);
-	float starty = luaL_checknumber(ctx, 5);
-	float hdens = luaL_checknumber(ctx, 6);
-	float ddens = luaL_checknumber(ctx, 7);
+	float minx     = luaL_checknumber(ctx, 1);
+	float mind     = luaL_checknumber(ctx, 2);
+	float endx     = luaL_checknumber(ctx, 3);
+	float endd     = luaL_checknumber(ctx, 4);
+	float starty   = luaL_checknumber(ctx, 5);
+	float hdens    = luaL_checknumber(ctx, 6);
+	float ddens    = luaL_checknumber(ctx, 7);
 	unsigned nmaps = luaL_optnumber(ctx, 8, 1);
 
 	lua_pushvid(ctx, arcan_3d_buildplane(minx, mind, endx, endd, starty, 
 		hdens, ddens, nmaps));
+	return 1;
+}
+
+int arcan_lua_buildbox(lua_State* ctx)
+{
+	point minp, maxp;
+
+	minp.x = luaL_checknumber(ctx, 1);
+	minp.y = luaL_checknumber(ctx, 2);
+	minp.z = luaL_checknumber(ctx, 3);
+	maxp.x = luaL_checknumber(ctx, 4);
+	maxp.y = luaL_checknumber(ctx, 5);
+	maxp.z = luaL_checknumber(ctx, 6);
+
+}
+
+int arcan_lua_swizzlemodel(lua_State* ctx)
+{
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_errc rv = arcan_3d_swizzlemodel(id);
+	lua_pushboolean(ctx, rv == ARCAN_OK);
+
 	return 1;
 }
 
@@ -3608,12 +3629,31 @@ cleanup:
 	return rv;
 }
 
+int arcan_lua_renderattach(lua_State* ctx)
+{
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 2);
+	int detach        = luaL_checkint(ctx, 3);
+
+	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
+		arcan_warning("arcan_lua_renderattach(%d) invalid arg 3, expected "
+			"RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
+		return 0;
+	}
+
+/* arcan_video_attachtorendertarget already has pretty aggressive checks */
+	arcan_video_attachtorendertarget(did, sid, detach == RENDERTARGET_DETACH);
+
+ }
+
 int arcan_lua_renderset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	int nvids         = lua_rawlen(ctx, 2);
 	int detach        = luaL_checkint(ctx, 3);
 	int scale         = luaL_checkint(ctx, 4);
+	int flipx         = luaL_optint(ctx, 5, 0);
+	int flipy         = luaL_optint(ctx, 6, 0);
 
 	if (!arcan_video_display.fbo_support){
 		arcan_warning("arcan_lua_renderset(%d) FBO support is disabled,"
@@ -3634,7 +3674,8 @@ int arcan_lua_renderset(lua_State* ctx)
 	}
 
 	if (nvids > 0){
-		arcan_video_setuprendertarget(did, 0, scale == RENDERTARGET_SCALE);
+		arcan_video_setuprendertarget(did, 0, 
+			scale == RENDERTARGET_SCALE, flipx != 0, flipy != 0);
 
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
@@ -3736,7 +3777,7 @@ int arcan_lua_recordset(lua_State* ctx)
 			else {
 				if (!rtsetup)
 					rtsetup = (arcan_video_setuprendertarget(did, pollrate, 
-						scale == RENDERTARGET_SCALE), true);
+						scale == RENDERTARGET_SCALE, false, false), true);
 
 				arcan_video_attachtorendertarget(did, setvid, 
 					detach == RENDERTARGET_DETACH);
@@ -4752,6 +4793,7 @@ static const luaL_Reg tgtfuns[] = {
 {"reset_target",               arcan_lua_targetreset              },
 {"define_rendertarget",        arcan_lua_renderset                },
 {"define_recordtarget",        arcan_lua_recordset                },
+{"rendertarget_attach",        arcan_lua_renderattach             },
 {"play_movie",                 arcan_lua_playmovie                },
 {"load_movie",                 arcan_lua_loadmovie                },
 {"pause_movie",                arcan_lua_pausemovie               },
@@ -4871,7 +4913,9 @@ static const luaL_Reg threedfuns[] = {
 {"scale3d_model",    arcan_lua_scalemodel   },
 {"camtag_model",     arcan_lua_camtag       },
 {"build_3dplane",    arcan_lua_buildplane   },
+{"build_3dbox",      arcan_lua_buildbox     },
 {"scale_3dvertices", arcan_lua_scale3dverts },
+{"swizzle_model",    arcan_lua_swizzlemodel },
 {"mesh_shader",      arcan_lua_setmeshshader},
 {NULL, NULL}
 };

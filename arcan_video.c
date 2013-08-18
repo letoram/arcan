@@ -704,7 +704,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	assert(src);
 
 /* already detached or empty source/target */
-	if (!dst || !dst->first || !src->owner)
+	if (!dst || !dst->first)
 		return false;
 
 /* find it */
@@ -741,7 +741,9 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 /* cleanup torem */
 	memset(torem, 0, sizeof(arcan_vobject_litem));
 	free(torem);
-	src->owner = NULL;
+
+	if (src->owner == dst) 
+		src->owner = NULL;
 
 	if (dst->color){
 		dst->color->extrefc.attachments--;
@@ -1142,6 +1144,10 @@ retry:
 	arcan_video_gldefault();
 	arcan_3d_setdefaults();
 
+/*
+ * DEBUG build + a txdump subfolder stores a copy of all
+ * static textures being uploaded 
+ */
 #ifdef _DEBUG
 	FILE* test = fopen("./txdump/.test", "w+");
 	if (test){
@@ -1469,26 +1475,6 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 	return rv;
 }
 
-/* glGenFramebuffers(n, ptr_ids);
- * glDeleteFramebuffers when destroying the fbo
- *
- * glBindFramebuffer(before rendering)
- * bind 0 for default.
- *
- * glRenderbufferStorage(GL_RENDERBUFER, RGBA, width, height);
- * glFramebufferTexture2D(GL_FRAMEBUFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE2D,
- *
- * verify with glCheckFrameBufferStatus(target) == GL_FRAMEBUFER_COMPLETE
- *
- * For PBO readback,
- * glGenBuffers(1, pbo);
- * glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
- * glReadBuffer(fbnotex);
- * glReadPixels(0, 0, w, h, format, type, 0);
- * glBindBuffer ->A glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
- *
- * to free, BindBuffer, UnmapBuffer, BindBuffer0, DeleteBuffers*/
-
 static arcan_errc attach_readback(arcan_vobj_id src)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
@@ -1526,8 +1512,10 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	arcan_vobject* srcobj = arcan_video_getobject(src);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/* don't allow to attach to self, that FBO behavior would be undefined */
-	if (dstobj == srcobj)
+/* don't allow to attach to self, that FBO behavior would be undefined 
+ * and don't allow persist attachments as the other object can go out of 
+ * scope */
+	if (dstobj == srcobj || srcobj->flags.persist || dstobj->flags.persist)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
 	if (dstobj && srcobj){
@@ -1546,17 +1534,6 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 /* try and detach (most likely fail) to make sure that we don't get duplicates*/
 				bool a = detach_fromtarget(&current_context->rtargets[ind], srcobj);
 				attach_object(&current_context->rtargets[ind], srcobj);
-
-				if (c)
-					arcan_warning("detach: (%s) from owner.\n", srcobj->tracetag, 
-						dstobj->tracetag);
-
-				if (a)
-					arcan_warning("detach: (%s) from rendertarget (%s).\n", 
-						srcobj->tracetag, dstobj->tracetag);
-
-				arcan_warning("attach: (%s) to rendertarget (%s).\n", srcobj->tracetag,
-					dstobj->tracetag);
 
 				rv = ARCAN_OK;
 			}
@@ -1668,7 +1645,7 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 }
 
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, 
-	int readback, bool scale)
+	int readback, bool scale, bool flipx, bool flipy)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
@@ -1704,11 +1681,18 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		identity_matrix(dst->base);
 
 		if (scale){
-			float xs = (float) vobj->vstore->w / (float)arcan_video_display.width;
-			float ys = (float) vobj->vstore->h / (float)arcan_video_display.height;
+			float xs = (flipx ? -1 : 1) * ((float)vobj->vstore->w / 
+				(float)arcan_video_display.width);
+
+			float ys = (flipy ? -1 : 1) * ((float)vobj->vstore->h / 
+				(float)arcan_video_display.height);
+
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
-		}
+		} 
+		else 
+			scale_matrix(dst->base, 
+				flipx ? -1.0 : 1.0, flipy ? -1.0 : 1.0, 1.0);
 
 		alloc_fbo(dst);
 
