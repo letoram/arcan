@@ -28,6 +28,9 @@ local mstate = {
 	hover_count  = 0
 };
 
+-- this can be overridden to cache previous queries
+mouse_pickfun = pick_items;
+
 local function linear_find(table, label)
 	for a,b in pairs(table) do
 		if (b == label) then return a end
@@ -65,6 +68,25 @@ local function linear_find_vid(table, vid)
 	end
 end
 
+local function cached_pick(xpos, ypos, depth, nitems)
+	if (mouse_lastpick == nil or CLOCK > mouse_lastpick.tick or
+		xpos ~= mouse_lastpick.x or ypos ~= mouse_lastpick.y) then
+		local res = pick_items(xpos, ypos, depth, nitems);
+
+		mouse_lastpick = {
+			tick = CLOCK,
+			x = xpos,
+			y = ypos,
+			count = nitems,
+			val = res
+		};
+
+		return res;
+	else
+		return mouse_lastpick.val;
+	end
+end
+
 local function mouse_cursorupd(x, y)
 	x = x * mstate.accel;
 	y = y * mstate.accel;
@@ -94,7 +116,7 @@ end
 -- cicon(string) : path to valid resource for cursor 
 -- clayer(uint)  : which ordervalue for cursor to have
 --
-function mouse_setup(cvid, clayer, pickdepth)
+function mouse_setup(cvid, clayer, pickdepth, cachepick)
 	mstate.cursor = cvid; 
 	mstate.x = math.floor(VRESW * 0.5);
 	mstate.y = math.floor(VRESH * 0.5);
@@ -103,6 +125,12 @@ function mouse_setup(cvid, clayer, pickdepth)
 	mstate.pickdepth = pickdepth;
 	order_image(cvid, clayer);
 	image_mask_set(cvid, MASK_UNPICKABLE);
+	if (cachepick) then
+		mouse_pickfun = cached_pick;
+	else
+		mouse_pickfun = pick_items;
+	end
+
 	mouse_cursorupd(0, 0);
 end
 
@@ -193,7 +221,7 @@ function mouse_input(x, y, state)
 
 -- look for new mouse over objects
 -- note that over/out do not filter drag/drop targets, that's up to the owner
-	local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
+	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
 	
 	for i=1,#hists do
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
@@ -311,7 +339,7 @@ function mouse_tick(val)
 
 	if (mstate.hover_count > mstate.hover_ticks) then
 		if (hover_reset) then
-			local hists = pick_items(mstate.x, mstate.y, mstate.pickdepth, 1);
+			local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
 			for i=1,#hists do
 				local res = linear_find_vid(mstate.handlers.hover, hists[i]);
 				if (res) then
@@ -324,7 +352,7 @@ function mouse_tick(val)
 	else
 		hover_reset = true;
 	end
-end 	
+end
 
 function mouse_acceleration(newv)
 	mstate.accel = math.abs(newv);

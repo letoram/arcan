@@ -88,7 +88,7 @@ function awb()
 -- for heaps more options (gestures, trails, autohide) 
 --
 	image_tracetag(imagery.cursor, "mouse cursor");
-	mouse_setup(imagery.cursor, ORDER_MOUSE, 1);
+	mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
 	mouse_acceleration(0.5);
 	
 --

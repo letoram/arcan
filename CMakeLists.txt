@@ -67,9 +67,10 @@ if( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 	set( HAVE_64_BIT 0 )
 else( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 	set( HAVE_64_BIT 1 )
+	set( HAVE_SIMD TRUE )
 endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 
-# Collective sigh for stupid standard breaking features.
+# Collective sigh for stupid standard breaking features (nested functions, seriously..).
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
 add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu 
@@ -78,6 +79,7 @@ add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")
 	add_definitions(-pg)
+	set(CMAKE_EXE_LINKER_FLAGS "-pg")
 endif(CMAKE_BUILD_TYPE STREQUAL "Profile")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -264,6 +266,12 @@ set (
  arcan_frameserver_shmpage.c
  arcan_event.c
 )
+
+if (${HAVE_SIMD})
+				message("Enabling SIMD")
+				add_definitions(-DARCAN_MATH_SIMD)
+				LIST(APPEND SOURCES arcan_math_simd.c)
+endif (${HAVE_SIMD})
 
 include_directories(${INCLUDE_DIRS})
 

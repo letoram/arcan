@@ -108,6 +108,8 @@ static bool activate_fbo(struct rendertarget* dst);
 static void process_rendertarget(struct rendertarget* tgt, float fract);
 static arcan_vobject* new_vobject(arcan_vobj_id* id, 
 	struct arcan_video_context* dctx);
+static inline void build_modelview(float* dmatr, 
+	float* imatr, surface_properties* prop, arcan_vobject* src);
 
 static inline void trace(const char* msg, ...)
 {
@@ -239,6 +241,74 @@ static struct rendertarget* find_rendertarget(arcan_vobject* vobj)
 			return &current_context->rtargets[i];
 
 	return NULL;
+}
+
+static void addchild(arcan_vobject* parent, arcan_vobject* child)
+{
+	arcan_vobject** slot = NULL;
+	for (int i = 0; i < parent->childslots; i++){
+		if (parent->children[i] == NULL){
+		 slot = &parent->children[i];
+			break;
+		}
+	}
+
+/* grow and set element */
+	if (!slot){
+		arcan_vobject** news = realloc(parent->children,
+			(parent->childslots + 8) * sizeof(void*));
+
+		if (news != NULL){
+			parent->children = news;
+
+			for (int i = 0; i < 8; i++)
+				parent->children[parent->childslots + i] = NULL;
+
+			slot = &parent->children[parent->childslots];
+			parent->childslots += 8;
+		}
+		else
+			return;
+	}
+
+	if (child->flags.clone)
+		parent->extrefc.instances++;
+	else
+		parent->extrefc.links++;
+
+	child->parent = parent;
+	*slot = child;
+}
+
+/*
+ * recursively sweep children and 
+ * flag their caches for updates as well
+ */
+static void invalidate_cache(arcan_vobject* vobj)
+{
+	if (!vobj->valid_cache)
+		return;
+
+	vobj->valid_cache = false;
+
+	for (int i = 0; i < vobj->childslots; i++)
+		if (vobj->children[i])
+			invalidate_cache(vobj->children[i]);
+}
+
+static void dropchild(arcan_vobject* parent, arcan_vobject* child)
+{
+	for (int i = 0; i < parent->childslots; i++){
+		if (parent->children[i] == child){
+			parent->children[i] = NULL;
+			if (child->flags.clone)
+				parent->extrefc.instances--;
+			else
+				parent->extrefc.links--;
+			child->parent = &current_context->world;
+			break;
+		}	
+	}	
 }
 
 /* scan through each cell in use, and either deallocate / wrap with deleteobject
@@ -567,7 +637,6 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 
 /* use parent values as template */
 		nobj->flags.clone   = true;
-		nobj->parent        = pobj;
 		nobj->blendmode     = pobj->blendmode;
 		nobj->current_frame = pobj->current_frame;
 		nobj->origw         = pobj->origw;
@@ -583,7 +652,7 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 		nobj->program = pobj->program;
 		generate_basic_mapping(nobj->txcos, 1.0, 1.0);
 
-		nobj->parent->extrefc.instances++;
+		addchild(pobj, nobj);
 		trace("(clone) new instance of (%d:%s) with ID: %d, total: %d\n", 
 			parent, video_tracetag(pobj), nobj->cellid, 
 			nobj->parent->extrefc.instances);
@@ -645,6 +714,8 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		rv->vstore->imageproc  = arcan_video_display.imageproc;
 		rv->vstore->filtermode = arcan_video_display.filtermode;
 		rv->vstore->refcount   = 1;
+		rv->childslots = 0;
+		rv->children = NULL;
 
 		rv->valid_cache = false;
 
@@ -832,9 +903,9 @@ arcan_errc arcan_video_attachobject(arcan_vobj_id id)
 
 	if (src){
 /* make sure that there isn't already one attached */
-
 		detach_fromtarget(&current_context->stdoutp, src);
 		attach_object(&current_context->stdoutp, src);
+
 		rv = ARCAN_OK;
 	}
 
@@ -908,7 +979,7 @@ enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id id)
 const char* const arcan_video_readtag(arcan_vobj_id id)
 {
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	return vobj ? vobj->tracetag : NULL;
+	return vobj ? vobj->tracetag : "(no tag)";
 }
 
 arcan_errc arcan_video_transformmask(arcan_vobj_id id, 
@@ -959,14 +1030,14 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 /* already linked to dst? do nothing */
 		if (src->parent == dst)
 			return rv;
+
 /* otherwise, first decrement parent counter */
 		else if (src->parent != &current_context->world)
-			src->parent->extrefc.links--;
+			dropchild(src->parent, src);
 
 /* create link connection, and update counter */
-		src->parent = dst;
-		if (src->parent != &current_context->world){
-			src->parent->extrefc.links++;
+		if (dst != &current_context->world){
+			addchild(dst, src);
 			trace("(link) (%d:%s) linked to (%d:%s), count: %d\n", 
 				src->cellid, src->tracetag == NULL ? "(unknown)" : src->tracetag,
 				dst->cellid, dst->tracetag ? "(unknown)" : dst->tracetag, 
@@ -1752,7 +1823,7 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src,
 	}
 
 	if (dstvobj->flags.clone || dstvobj->flags.persist || srcvobj->flags.persist ||
-		!srcvobj->vstore->txmapped || !dstvobj->vstore->txmapped){
+		srcvobj->flags.clone || !srcvobj->vstore->txmapped || !dstvobj->vstore->txmapped){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
 		return rv;
@@ -2185,36 +2256,11 @@ static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 /*
- * Might have children with order relative to our own
- * Track them separately, calculate their new order value
- * and set afterwards. This only happens if they're primarily
- * associated with the same rendertarget(!) 
- */
-	int n_related = vobj->extrefc.instances + vobj->extrefc.links;
-	int n_reorder = 0;
-	arcan_vobject* relbuf[n_related];
-	arcan_vobject_litem* current = owner->first;
-
-	while(n_related && current && current->elem){
-		arcan_vobject* elem = current->elem;
-
-		if (elem->parent == vobj){
-			n_related--;
-
-			if (elem->flags.orderofs && elem->owner == owner){
-							if (elem->order < vobj->order)
-											arcan_warning("broken object (%s)\n", elem->tracetag);
-				relbuf[n_reorder++] = elem;
-			}
-		}
-
-		current = current->next;
-	}
-	
-/*
  * attach also works like an insertion sort where 
  * the insertion criterion is <= order, to aid dynamic 
- * corruption checks
+ * corruption checks, this could be further optimized
+ * by using the fact that we're simply "sliding" in the
+ * same chain.
  */
 	int oldv = vobj->order;
 	detach_fromtarget(owner, vobj);
@@ -2228,11 +2274,12 @@ static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
  * take account for the fact that we may relatively speaking shrink
  * the distance between our orderv vs. parent 
  */
-	for (int i = 0; i < n_reorder; i++){
-		int distance = relbuf[i]->order - oldv;
-		update_zv(relbuf[i], newzv + distance);
-	}
-
+	for (int i = 0; i < vobj->childslots; i++)
+		if (vobj->children[i] && vobj->children[i]->flags.orderofs){
+			int distance = vobj->children[i]->order - oldv;
+			update_zv(vobj->children[i], newzv + distance);
+		}
+	
 	return ARCAN_OK;
 }
 
@@ -2255,7 +2302,10 @@ arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 		int newv = newzv + vobj->parent->order;
 		newzv = newv > 65535 ? 65535 : newv;
 	}
-	
+
+/* 
+ * Then propagate to any child that might've inherited
+ */
 	update_zv(vobj, newzv);
 
 	return ARCAN_OK;
@@ -2308,7 +2358,7 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj) {
+	if (vobj && vobj->transform) {
 			surface_transform* current = vobj->transform;
 			while (current){
 				if (current->move.startt){
@@ -2327,6 +2377,7 @@ arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
 				current = current->next;
 			}
 
+		invalidate_cache(vobj);
 		arcan_video_zaptransform(id);
 	}
 
@@ -2430,6 +2481,8 @@ arcan_errc arcan_video_copytransform(arcan_vobj_id sid, arcan_vobj_id did)
 		arcan_video_zaptransform(did);
 		dst->transform = dup_chain(src->transform);
 		update_zv(dst, src->order);
+
+		invalidate_cache(dst);
 
 /* in order to NOT break resizefeed etc. this copy actually 
  * requires a modification of the transformation
@@ -2616,23 +2669,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		detach_fromtarget(&current_context->rtargets[i], vobj);
 
 /* step two, disconnect from parent, WORLD references doesn't count */
-	if (vobj->parent && vobj->parent != &current_context->world){
-		if (vobj->flags.clone){
-			vobj->parent->extrefc.instances--;
-			trace("(deleteobject) drop clone (%d:%s) from parent (%d:%s)\n",
-				vobj->cellid, video_tracetag(vobj), vobj->parent->cellid, 
-				video_tracetag(vobj->parent));
-			assert(vobj->parent->extrefc.instances >= 0);
-		}
-		else{
-			vobj->parent->extrefc.links--;
-			trace("(deleteobject) drop (%d:%s) from parent (%d:%s)\n",
-				vobj->cellid, video_tracetag(vobj), vobj->parent->cellid, 
-				video_tracetag(vobj->parent));
-			assert(vobj->parent->extrefc.links >= 0);
-		}
-	}
-	vobj->parent = NULL;
+	if (vobj->parent && vobj->parent != &current_context->world)
+		dropchild(vobj->parent, vobj);
 
 /* vobj might be a rendertarget itself, so detach all its
  * possible members, free FBO/PBO resources etc. */
@@ -2641,14 +2679,14 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* populate a pool of cascade deletions, none of this applies to
  * instances as they can only really be part of a rendertarget, 
  * and those are handled separately */
-	arcan_vobject** pool = NULL;
 	unsigned sum = vobj->flags.clone ? 0 :
 		vobj->frameset_meta.capacity + vobj->extrefc.links + 
 		vobj->extrefc.framesets + vobj->extrefc.instances;
+	
+	arcan_vobject* pool[ (sum + 1) ];
 
 	if (sum){
-		pool = malloc(sizeof(arcan_vobject*) * (sum + 1));
-		memset(pool, 0, sizeof(arcan_vobject*) * (sum + 1));
+		memset(pool, 0, sizeof(pool));
 
 /* the frameset is either populated with self-references, 
  * or references to other objects. add references to other objects to a 
@@ -2676,70 +2714,19 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			}
 		}
 
-	sum = vobj->flags.clone ? vobj->extrefc.framesets : vobj->extrefc.links +
-					vobj->extrefc.framesets + vobj->extrefc.instances;
-/* sweep the entire context vobj pool for references 
- * until the object is clean */
-		for (unsigned int i = 1; i < current_context->vitem_limit && sum; i++){
-			arcan_vobject* dobj = &current_context->vitems_pool[i];
-
-/* don't check ourself, or cells that aren't in use */
-			if (i == vobj->cellid || dobj->flags.in_use == false)
-				continue;
-
-/* check links */
-			if (dobj->parent == vobj){
-				if (dobj->flags.clone){
-					vobj->extrefc.instances--;
-					dobj->parent = NULL;
-					trace("(deleteobject) remove clone (%d:%s) from (%d:%s), left: %d\n", 
-						dobj->cellid, video_tracetag(dobj), vobj->cellid, 
-						video_tracetag(vobj), vobj->extrefc.instances);
-					assert(vobj->extrefc.instances >= 0);
-					sum--;
-
-					pool[cascade_c++] = dobj;
-				}
-				else {
-					vobj->extrefc.links--;
-					trace("(deleteobject) dereference (%d:%s) from (%d:%s), left: %d\n", 
-						dobj->cellid, video_tracetag(dobj), vobj->cellid, 
-						video_tracetag(vobj), vobj->extrefc.links);
-					assert(vobj->extrefc.links >= 0);
-					sum--;
-
-/* if linked object is set to cascade, mark this one as well */
-					if ( (dobj->mask & MASK_LIVING) > 0){
-						dobj->parent = NULL;
-						pool[cascade_c++] = dobj;
-						trace("(deleteobject) added (%d:%s) to cascadepool\n",
-							dobj->cellid, video_tracetag(dobj));
-					}
-					else{
-						dobj->parent = &current_context->world;
-					}
-				}
-			}
-
-/* we ignore clone framesets as they use their parents 
- * and will have been added to the delete-pool anyhow */
-			if (dobj->frameset && dobj->flags.clone == false){
-				if (dobj->current_frame == vobj)
-					dobj->current_frame = dobj;
-
-				for(unsigned i = 0; i < dobj->frameset_meta.capacity && 
-					vobj->extrefc.framesets; i++)
-					if (dobj->frameset[i] == vobj){
-						vobj->extrefc.framesets--;
-						trace("(deleteobject) removing frameset reference from (%d:%s) "
-							"to (%d:%s), left: %d\n", vobj->cellid, video_tracetag(vobj), 
-							dobj->cellid, video_tracetag(dobj), vobj->extrefc.framesets);
-						assert(vobj->extrefc.framesets >= 0);
-						dobj->frameset[i] = dobj;
-						dobj->extrefc.framesets++;
-					}
+/* drop all children, add those that should be deleted to the pool */
+		for (int i = 0; i < vobj->childslots; i++){
+			arcan_vobject* cur = vobj->children[i];
+			if (cur){
+				if (cur->flags.clone || (cur->mask & MASK_LIVING) > 0)
+					pool[cascade_c++] = cur;
+	
+				dropchild(vobj, cur);
 			}
 		}
+
+		free(vobj->children);
+		vobj->childslots = 0;
 
 	current_context->nalive--;
 
@@ -2797,8 +2784,6 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			arcan_video_deleteobject(pool[i]->cellid);
 	}
 
-	free(pool);
-
 	return ARCAN_OK;
 }
 
@@ -2853,23 +2838,13 @@ arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs)
 	if (!vobj)
 		return rv;
 
-	arcan_vobject_litem* current = current_context->stdoutp.first;
-
-	while (current && current->elem) {
-		arcan_vobject* elem = current->elem;
-		arcan_vobject** frameset = elem->frameset;
-
-		/* how to deal with those that inherit? */
-		if (elem->parent == vobj) {
+	for (int i = 0; i < vobj->childslots; i++){
+		if (vobj->children[i]){
 			if (ofs > 0)
 				ofs--;
-			else{
-				rv = elem->cellid;
-				return rv;
-			}
+			else
+				return vobj->children[i]->cellid;
 		}
-
-		current = current->next;
 	}
 
 	return rv;
@@ -2883,6 +2858,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
 
 	if (vobj) {
 		rv = ARCAN_OK;
+		invalidate_cache(vobj);
 
 		/* clear chains for rotate attribute
 		 * if time is set to override and be immediate */
@@ -2933,7 +2909,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
 				interpolate_normalized_linear : interpolate_normalized_linear_large;
 		}
 	}
-
+	
 	return rv;
 }
 
@@ -2944,6 +2920,7 @@ arcan_errc arcan_video_origoshift(arcan_vobj_id id,
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){
+		invalidate_cache(vobj);
 		vobj->flags.origoofs = true;
 		vobj->origo_ofs.x = sx;
 		vobj->origo_ofs.y = sy;
@@ -2964,6 +2941,7 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 
 	if (vobj) {
 		rv = ARCAN_OK;
+		invalidate_cache(vobj);
 
 		/* clear chains for rotate attribute
 		 * if time is set to ovverride and be immediate */
@@ -3019,6 +2997,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 
 	if (vobj) {
 		rv = ARCAN_OK;
+		invalidate_cache(vobj);
 
 /* clear chains for rotate attribute
  * if time is set to ovverride and be immediate */
@@ -3081,6 +3060,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 	if (vobj) {
 		const int immediately = 0;
 		rv = ARCAN_OK;
+		invalidate_cache(vobj);
 
 		if (tv == immediately) {
 			swipe_chain(vobj->transform, offsetof(surface_transform, scale), 
@@ -3522,23 +3502,47 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 	}
 }
 
-/* this is really grounds for some more elaborate caching 
- * strategy if CPU- bound. using some frame- specific tag so that
- * we don't repeatedly resolve with this complexity. */
+/* 
+ * Caching works as follows;
+ * Any object that has a parent with an ongoing transformation
+ * has its valid_cache property set to false
+ * upon changing it to true a copy is made and stored in prop_cache
+ * and a resolve- pass is performed with its results stored in prop_matr 
+ * which is then re-used every rendercall.
+ * Queueing a transformation immediately invalidates the cache.
+ */
 void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp, 
 	surface_properties* props)
 {
 	if (vobj->valid_cache)
 		*props = vobj->prop_cache;
 
-	if (vobj->parent && vobj->parent != &current_context->world){
+/* first recurse to parents */
+	else if (vobj->parent && vobj->parent != &current_context->world){
 		surface_properties dprop = empty_surface();
 		arcan_resolve_vidprop(vobj->parent, lerp, &dprop);
 		apply(vobj, props, lerp, &dprop, false);
 	}
-	else{
+	else
 		apply(vobj, props, lerp, &current_context->world.current, true);
+
+	arcan_vobject* current = vobj;
+	bool can_cache = true;
+	while (current){
+		if (current->transform){
+			can_cache = false;
+			break;
+		}
+		current = current->parent;
 	}
+
+	if (can_cache && vobj->owner && vobj->valid_cache == false){
+		surface_properties dprop = *props; 
+		vobj->prop_cache  = *props;
+		vobj->valid_cache = true;
+		build_modelview(vobj->prop_matr, vobj->owner->base, &dprop, vobj);
+	}
+ 	else;
 }
 
 static inline void draw_vobj(float x, float y, float x2, float y2, 
@@ -3569,37 +3573,65 @@ static inline void draw_vobj(float x, float y, float x2, float y2,
 	}
 }
 
+static inline void build_modelview(float* dmatr, 
+	float* imatr, surface_properties* prop, arcan_vobject* src)
+{
+	float omatr[16], tmatr[16];
+/* now position represents centerpoint in screen coordinates */
+	prop->scale.x *= src->origw * 0.5f;
+	prop->scale.y *= src->origh * 0.5f;
+	prop->position.x += prop->scale.x;
+	prop->position.y += prop->scale.y;
+
+	src->rotate_state = 
+		abs(prop->rotation.roll)  > EPSILON ||
+		abs(prop->rotation.pitch) > EPSILON ||
+		abs(prop->rotation.yaw)   > EPSILON;	 
+
+	memcpy(tmatr, imatr, sizeof(float) * 16);
+
+	if (src->rotate_state)
+		matr_quatf(norm_quat (prop->rotation.quaternion), omatr);
+
+/* rotate around user-defined point rather than own center */
+	if (src->flags.origoofs && src->rotate_state){
+		translate_matrix(tmatr, 
+			prop->position.x + src->origo_ofs.x,
+			prop->position.y + src->origo_ofs.y, 0.0);
+
+		multiply_matrix(dmatr, tmatr, omatr);
+		translate_matrix(dmatr, -src->origo_ofs.x, -src->origo_ofs.y, 0.0); 
+	}
+	else	
+		translate_matrix(tmatr, prop->position.x, prop->position.y, 0.0); 
+
+	if (src->rotate_state)	
+		multiply_matrix(dmatr, tmatr, omatr);
+	else
+		memcpy(dmatr, tmatr, sizeof(float) * 16);
+}
+
 static inline void setup_surf(struct rendertarget* dst,
 	surface_properties* prop, arcan_vobject* src)
 {
 	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
  		return;
 
-	float omatr[16], imatr[16], dmatr[16];
+/* currently, we only cache the primary rendertarget */
+	if (src->valid_cache && dst == src->owner){
+		prop->scale.x *= src->origw * 0.5f;
+		prop->scale.y *= src->origh * 0.5f;
+		prop->position.x += prop->scale.x;
+		prop->position.y += prop->scale.y;
 
-/* now position represents centerpoint in screen coordinates */
-	prop->scale.x *= src->origw * 0.5;
-	prop->scale.y *= src->origh * 0.5;
-	prop->position.x += prop->scale.x;
-	prop->position.y += prop->scale.y;
-
-	memcpy(imatr, dst->base, sizeof(float) * 16);
-	matr_quatf(norm_quat (prop->rotation.quaternion), omatr);
-
-/* rotate around user-defined point rather than own center */
-	if (src->flags.origoofs){
-		translate_matrix(imatr, 
-			prop->position.x + src->origo_ofs.x,
-			prop->position.y + src->origo_ofs.y, 0.0);
-
-		multiply_matrix(dmatr, imatr, omatr);
-		translate_matrix(dmatr, -src->origo_ofs.x, -src->origo_ofs.y, 0.0); 
-	} else {
-		translate_matrix(imatr, prop->position.x, prop->position.y, 0.0); 
-		multiply_matrix(dmatr, imatr, omatr);
+		arcan_shader_envv(MODELVIEW_MATR, src->prop_matr, sizeof(float) * 16);
+	}
+	else {	
+		float dmatr[16];
+		build_modelview(dmatr, dst->base, prop, src); 
+		arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	}
 
-	arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	arcan_shader_envv(OBJ_OPACITY, &prop->opa, sizeof(float));
 }
 
@@ -4071,7 +4103,8 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){
-/* get object properties taking inheritance etc. into account */
+/* get object properties taking inheritance etc. into account,
+ * this will automatically re-use any possible cache */
 		surface_properties dprops = empty_surface();
 		arcan_resolve_vidprop(vobj, 0.0, &dprops);
 		dprops.scale.x *= vobj->origw * 0.5;
@@ -4082,11 +4115,15 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		int view[4] = {0, 0, arcan_video_display.width, 
 			arcan_video_display.height};
 
-		identity_matrix(imatr);
-		matr_quatf(dprops.rotation.quaternion, omatr);
-		translate_matrix(imatr, dprops.position.x + dprops.scale.x, 
-			dprops.position.y + dprops.scale.y, 0.0);
-		multiply_matrix(dmatr, imatr, omatr);
+		if (vobj->valid_cache)
+			memcpy(dmatr, vobj->prop_matr, sizeof(float) * 16);
+		else {
+			identity_matrix(imatr);
+			matr_quatf(dprops.rotation.quaternion, omatr);
+			translate_matrix(imatr, dprops.position.x + dprops.scale.x, 
+				dprops.position.y + dprops.scale.y, 0.0);
+			multiply_matrix(dmatr, imatr, omatr);
+		}
 
 		float p[4][3];
 
@@ -4107,7 +4144,7 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		res[1].y = arcan_video_display.height - res[1].y;
 		res[2].y = arcan_video_display.height - res[2].y;
 		res[3].y = arcan_video_display.height - res[3].y;
-
+	
 		rv = ARCAN_OK;
 	}
 
@@ -4134,19 +4171,25 @@ static inline bool itri(int x, int y, int t[6])
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
 	vector projv[4];
-	
-	if (ARCAN_OK == arcan_video_screencoords(id, projv)){
-		int t1[] =
-			{ projv[0].x, projv[0].y,
-			  projv[1].x, projv[1].y,
-			  projv[2].x, projv[2].y};
-		
-		int t2[] = 
-			{ projv[2].x, projv[2].y, 
-				projv[3].x, projv[3].y, 
-				projv[0].x, projv[0].y };
+	arcan_vobject* vobj = arcan_video_getobject(id);
 
-		return itri(x, y, t1) || itri(x, y, t2);	
+	if (ARCAN_OK == arcan_video_screencoords(id, projv)){
+		if (vobj->rotate_state){
+			int t1[] =
+				{ projv[0].x, projv[0].y,
+				  projv[1].x, projv[1].y,
+				  projv[2].x, projv[2].y};
+		
+			int t2[] = 
+				{ projv[2].x, projv[2].y, 
+					projv[3].x, projv[3].y, 
+					projv[0].x, projv[0].y };
+
+			return itri(x, y, t1) || itri(x, y, t2);	
+		}
+		else
+			return (x >= projv[0].x && y >= projv[0].y) &&
+				(x <= projv[2].x && y <= projv[2].y);
 	}
 
 	return false;

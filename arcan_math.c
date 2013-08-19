@@ -54,6 +54,7 @@ void mult_matrix_vec3f(const float matrix[16], const float in[3], float out[3])
 		in[2] * matrix[2*4+i]; 
 }
 
+#ifndef ARCAN_MATH_SIMD 
 void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
 {
 	for (int i = 0; i < 16; i+= 4)
@@ -64,6 +65,7 @@ void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
 				b[i+2] * a[j+8] +
 				b[i+3] * a[j+12];
 }
+#endif
 
 void scale_matrix(float* m, float xs, float ys, float zs)
 {

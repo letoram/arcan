@@ -385,7 +385,6 @@ local function awbbar_addicon(self, dir, image, trig)
 
 	show_image(icon);
 	image_sharestorage(image, icon);
-	image_clip_on(icon);
 	icontbl.vid = icon;
 
 -- resize will also reorder / resize fill

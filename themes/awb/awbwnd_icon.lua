@@ -138,7 +138,6 @@ local function awbicon_add(self, icntbl)
 	move_image(icn_area, cx, cy);
 	link_image(icn_area, self.canvas.vid);
 	image_inherit_order(icn_area, true);
-	image_clip_on(icn_area);
 	image_tracetag(icn_area, tostring(icntbl.name) .. ".anchor_region");
 	show_image(icn_area);
 
@@ -148,7 +147,6 @@ local function awbicon_add(self, icntbl)
 	image_mask_set(icn, MASK_UNPICKABLE);
 	link_image(icn, icn_area);
 	image_inherit_order(icn, true);
-	image_clip_on(icn);
 	order_image(icn, 1);
 	blend_image(icn, 0.5);
 	image_tracetag(icn, tostring(icntbl.name) .. ".icon");
@@ -163,7 +161,6 @@ local function awbicon_add(self, icntbl)
 		image_mask_set(icntbl.caption, MASK_UNPICKABLE);
 		image_inherit_order(icntbl.caption, true);
 		order_image(icntbl.caption, 1);
-		image_clip_on(icntbl.caption);
 		image_tracetag(icntbl.caption, tostring(icntbl.name) .. ".caption");
 		move_image(icntbl.caption, math.floor(0.5 * (self.cell_w - props.width)),
 			self.cell_h - props.height);
