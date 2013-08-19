@@ -4103,6 +4103,8 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (vobj){
+		rv = ARCAN_OK;
+
 /* get object properties taking inheritance etc. into account,
  * this will automatically re-use any possible cache */
 		surface_properties dprops = empty_surface();
@@ -4143,9 +4145,7 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		res[0].y = arcan_video_display.height - res[0].y;
 		res[1].y = arcan_video_display.height - res[1].y;
 		res[2].y = arcan_video_display.height - res[2].y;
-		res[3].y = arcan_video_display.height - res[3].y;
-	
-		rv = ARCAN_OK;
+		res[3].y = arcan_video_display.height - res[3].y;	
 	}
 
 	return rv;
@@ -4168,12 +4168,23 @@ static inline bool itri(int x, int y, int t[6])
 	return (b1 == b2) && (b2 == b3);
 }
 
+static inline bool easypick(arcan_vobject* vobj, unsigned int x, unsigned int y)
+{
+	return (x>=vobj->prop_cache.position.x && y >= vobj->prop_cache.position.y&& 
+		x <= (vobj->prop_cache.position.x+(vobj->origw*vobj->prop_cache.scale.x))&&
+		y <= (vobj->prop_cache.position.y+(vobj->origh*vobj->prop_cache.scale.y))
+		);
+}
+
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y)
 {
 	vector projv[4];
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (ARCAN_OK == arcan_video_screencoords(id, projv)){
+		if (vobj->valid_cache && vobj->rotate_state == false)
+			return easypick(vobj, x, y);
+
 		if (vobj->rotate_state){
 			int t1[] =
 				{ projv[0].x, projv[0].y,
