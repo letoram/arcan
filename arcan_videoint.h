@@ -200,8 +200,9 @@ typedef struct arcan_vobject {
  * the invalidated flag will be active as long as there are running
  * transformations for the object in question, or if there's running
  * transformations somewhere in the parent chain */
-	bool valid_cache;
+	bool valid_cache, rotate_state;
 	surface_properties prop_cache;
+	float prop_matr[16];
 
 /* life-cycle tracking */
 	unsigned long last_updated;
@@ -209,6 +210,9 @@ typedef struct arcan_vobject {
 	
 /* management mappings */
 	struct arcan_vobject* parent;
+	struct arcan_vobject** children;
+	unsigned childslots;
+
 	struct rendertarget* owner;
 	arcan_vobj_id cellid;
 

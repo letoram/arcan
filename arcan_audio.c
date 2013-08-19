@@ -135,7 +135,7 @@ static ALuint load_wave(const char* fname){
 
 	memcpy(&fmt,     inmem.ptr + 20, 2);
 	memcpy(&nch,     inmem.ptr + 22, 2);
-	memcpy(&smplrte, inmem.ptr + 24, 4);
+	memcpy(&smplrte, inmem.ptr + 24, 2);
 	memcpy(&bits_ps, inmem.ptr + 34, 2);
 	memcpy(&nofs,    inmem.ptr + 16, 4);
 	nofs += 20;

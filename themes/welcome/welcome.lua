@@ -21,7 +21,7 @@ function welcome()
 	\ffonts/default.ttf,14\bPoints of reference:\!b\n\r\ffonts/default.ttf,12
 	http://arcanfe.wordpress.com - Main Site\n\r
 	https://sourceforge.net/projects/arcanfe\n\r
-	fearcan@gmail.com - E-mail contact\n\r
+	contact@arcan-fe.com - E-mail contact\n\r
 	\ffonts/default.ttf,14\b\n\nDetected settings:\!b\n\r]];
 
 	gamelst = list_games( {} );
@@ -32,7 +32,7 @@ function welcome()
 
 	games = [[#games:\t\t]] .. tostring( # gamelst ); 
 	display = [[resolution:\t\t]] .. tostring(VRESH) .. "x" .. tostring(VRESW);
-	internal_clock = [[clock:         \t]] .. tostring(CLOCKRATE) .. " hz";
+	internal_clock = [[clock: \t]] .. tostring(CLOCKRATE) .. " hz";
 	hardware = [[#joysticks:\t\t]] .. tostring(JOYSTICKS) .. [[\n\r#ledctrls:\t\t]] .. tostring(LEDCONTROLLERS);
 	pathstr = [[themepath:\t\t]] .. tostring(THEMEPATH) .. [[\n\rresourcepath:\t ]] .. tostring(RESOURCEPATH) ..
 		[[\n\rbinpath:\t\t ]] .. tostring(BINPATH) ..

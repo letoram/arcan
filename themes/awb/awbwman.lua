@@ -328,7 +328,6 @@ local function awbwman_addcaption(bar, caption)
 	image_mask_set(icn.vid, MASK_UNPICKABLE);
 
 	link_image(caption, bgsurf);
-	image_clip_on(caption);
 	show_image(caption);
 	image_inherit_order(caption, true);
 	order_image(caption, 1);

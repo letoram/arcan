@@ -274,7 +274,7 @@ int main(int argc, char* argv[])
 			
 			pid_t p1;
 
-			pipe(pair);
+			int rv = pipe(pair);
 			if ( (p1 = fork()) == 0){
 				close(pair[1]);
 				monitor_parent = false;
