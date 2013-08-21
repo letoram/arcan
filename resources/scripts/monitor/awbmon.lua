@@ -142,8 +142,12 @@ Frameset( %d, %d / %d:%d )\n\r
 Scale: %s\tFilter: %s\tProc: %s\tProgram: %s\n\r
 #FrmRef: %d\t#Inst: %d\t#Attach: %d\t#Link: %d\n\r
 Flags: %s\n\r
+Cache: %d\tRotate: %d\n\r
+#Childslots: %d\n\r
+Blend Mode: %s\n\r
+Clipping Mode: %s\n\r
 Mask: %s\n\r
-Order: %d\tLifetime: %d\tOrigW: %d\tOrigH: %d\n\r
+Order: \b%d\!b\tLifetime: %d\tOrigW: %d\tOrigH: %d\n\r
 Source: %s\n\r
 Opacity: %.2f\n\r
 Position: %.2f, %.2f, %.2f\n\r
@@ -157,7 +161,11 @@ lv.frameset_mode, lv.frameset_counter, lv.frameset_capacity,
 lv.frameset_current,
 lv.scalemode, lv.filtermode, lv.imageproc, lv.glstore_prg,
 lv.extrefc_framesets, lv.extrefc_instances, lv.extrefc_attachments, 
-lv.extrefc_links,lv.flags, lv.mask,lv.order, lv.lifetime, lv.origw, lv.origh,
+lv.extrefc_links,lv.flags,
+lv.valid_cache, lv.rotate_state,
+lv.children ~= nil and lv.childslots or 0,
+lv.blendmode, lv.clipmode,
+lv.mask,lv.order, lv.lifetime, lv.origw, lv.origh,
 lv.storage_source and string.gsub(lv.storage_source, "\\", "\\\\") or "",
 lv.props.opa,
 lv.props.position[1], lv.props.position[2], lv.props.position[3], 

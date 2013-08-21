@@ -19,6 +19,8 @@ local function awbwnd_alloc(tbl)
 	image_mask_set(tbl.anchor, MASK_UNPICKABLE);
 	show_image(tbl.anchor);	
 	move_image(tbl.anchor, tbl.x, tbl.y);
+	tbl.temp = {};
+	tbl.handlers = {};
 
 	return tbl;
 end
@@ -94,7 +96,19 @@ local function awbwnd_resize(self, neww, newh)
 	if (self.anchor == nil) then
 		return;
 	end
-	
+
+--
+-- Maintain canvas aspect
+--
+	if (neww == 0 or newh == 0) then
+		local props = image_surface_initial_properties(self.canvas.vid);
+		if (neww == 0) then
+			neww = newh * (props.width / props.height);
+		else
+			newh = neww * (props.height / props.width);
+		end
+	end
+
 	awbwnd_update_minsz(self);
 
 	neww = neww >= self.minw and neww or self.minw;
@@ -164,6 +178,7 @@ local function awbwnd_own(self, vid)
 
 	for ind, val in ipairs(t) do
 		if (val and val:own(vid)) then
+			self:focus();
 			return true;
 		end
 	end
@@ -185,8 +200,6 @@ local function awbwnd_move(self, newx, newy, timeval)
 end
 
 local function awbwnd_destroy(self, timeval)
---	print("anchor (", image_tracetag(self.anchor), "dies in: ", timeval);
-
 --
 -- delete the icons immediately as we don't want them pressed
 -- and they "fade" somewhat oddly when there's a background bar
@@ -197,39 +210,40 @@ local function awbwnd_destroy(self, timeval)
 		end
 	end
 
--- the rest should disappear in cascaded deletions
---
+-- the rest should disappear in cascaded deletions,
+-- but let subtypes be part of the chain 
 	if (self.on_destroy) then
 		self:on_destroy();
 	end
 
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
-	self.anchor = nil;
+
+	for i,v in ipairs(self.temp) do
+		delete_image(v);
+	end
+
+-- De-register mouse-handlers that subtasks may have set
+	for i,v in ipairs(self.handlers) do
+		mouse_droplistener(v);
+	end
+	self.handlers = nil;
+
+-- Clear all members to be sure we don't keep references around
+	for i,v in pairs(self) do
+		self[i] = nil;
+	end
 end
 
 local function awbbar_destroy(self)
-	if (self.activeimg) then
-		delete_image(self.activeimg);
-		delete_image(self.inactiveimg );
-	end
-
-	for i=1,#self.left do
-		delete_image(self.left[i].vid);
-	end
-
-	for i=1,#self.right do
-		delete_image(self.right[i].vid);
-	end
-
-	if (self.fill) then
-		delete_image(self.fill.vid);
-		self.fill = nil;
+	if (valid_vid(self.vid)) then
+		delete_image(self.vid);
 	end
 
 	self.left  = nil;
 	self.right = nil;
-	mouse_droplistener(self);
+
+	self.parent.dir[ self.dir ] = nil;
 end
 
 local function awbbar_minsz(bar)
@@ -252,19 +266,14 @@ end
 --
 -- Default version enforces square buttons
 --
-local function awbbaricn_resize(vid, limit, vertical)
+function awbbaricn_resize(vid, limit, vertical)
 	resize_image(vid, limit, limit);
 	return limit, limit;
 end
 
 function awbbaricn_rectresize(vid, limit, vertical)
-	if (vertical) then
-		resize_image(vid, limit, 0);
-	else
-		resize_image(vid, 0, limit);
-	end
-
-	props = image_surface_properties(vid);
+	props = image_surface_initial_properties(vid);
+	resize_image(vid, props.width, props.height);
 	return props.width, props.height;
 end
 
@@ -296,8 +305,9 @@ local function awbbar_resize(self, neww, newh)
 	local lofs = 0;
 	for i=1,#self.left do
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
-		move_image(self.left[i].vid, stepx * lofs, stepy * lofs); 
-		lofs = lofs + w;
+		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs), 
+			math.floor(self.left[i].yofs + stepy * lofs)); 
+		lofs = lofs + w + self.left[i].xofs;
 	end
 
 	local rofs = 0;
@@ -305,8 +315,8 @@ local function awbbar_resize(self, neww, newh)
 		local w, h = self.rzfun(self.right[i].vid, self.size, self.vertical);
 		rofs = rofs + w;
 
-		move_image(self.right[i].vid, stepx * (self.w - rofs), 
-			stepy * (self.h - rofs));
+		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)), 
+			math.floor(stepy * (self.h - rofs)));
 
 		lim  = lim  - w;
 	end
@@ -326,13 +336,32 @@ local function awbbar_resize(self, neww, newh)
 	end
 end
 
+local function awbicn_destroy(self)
+	local tbl = {self.parent.left, self.parent.right, {self.parent.fill}};
+	delete_image(self.vid);
+
+-- mouse handler is assigned to the bar so no problem there
+	for i,v in ipairs(tbl) do
+		for ii,vv in ipairs(v) do
+			if (vv == self) then
+				table.remove(v, ii);
+				return;
+			end
+		end
+	end
+end
+
 local function awbbar_addicon(self, dir, image, trig)
 	local icontbl = {
 		trigger = trig,
-		parent = self
+		parent  = self,
+		destroy = awbicn_destroy,
+		xofs = 0,
+		yofs = 0
 	};
-	
-	local icon = null_surface(self.size, self.size);
+
+	local props = image_surface_initial_properties(image);
+	local icon = null_surface(props.width, props.height);
 	link_image(icon, self.vid);
 	image_inherit_order(icon, true);
 	image_tracetag(icon, self.parent.name .. ".bar(" .. dir .. ").icon");
@@ -356,7 +385,6 @@ local function awbbar_addicon(self, dir, image, trig)
 
 	show_image(icon);
 	image_sharestorage(image, icon);
-	image_clip_on(icon);
 	icontbl.vid = icon;
 
 -- resize will also reorder / resize fill
@@ -406,7 +434,7 @@ local function awbbar_active(self)
 	self:resize(self.w, self.h);
 end
 
-local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
+local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and 
 		dir ~= "r" and dir ~= "tt") then
 		return nil;
@@ -429,20 +457,16 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 		right    = {},
 		fill     = nil,
 		size     = bsize,
-		rsize    = rsize
+		rsize    = rsize,
+		dir      = dir
 	};
 
 	awbbar.vertical = dir == "l" or dir == "r";
 	awbbar.parent = self;
-	awbbar.activeimg = type(activeres) == "function" 
-		and activeres() or load_image(activeres);
-	image_tracetag(awbbar.activeimg, "awbbar_active_store");
+	awbbar.activeimg = activeimg;
+	awbbar.inactiveimg = inactiveimg;
+	awbbar.vid = null_surface(self.w, bsize);
 
-	awbbar.inactiveimg = type(inactiveres) == "function" and 
-		inactiveres() or load_image(inactiveres);
-	image_tracetag(awbbar.inactiveimg, "awbbar_inactive_store");
-
-	awbbar.vid      = null_surface(self.w, bsize);
 	link_image(awbbar.vid, self.anchor);
 	show_image(awbbar.vid);
 
@@ -464,7 +488,7 @@ local function awbwnd_addbar(self, dir, activeres, inactiveres, bsize, rsize)
 	return awbbar;
 end
 
-local function awbwnd_update_canvas(self, vid, volatile)
+local function awbwnd_update_canvas(self, vid)
 
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
@@ -475,13 +499,13 @@ local function awbwnd_update_canvas(self, vid, volatile)
 		parent = self,
 		minw = 1,
 		minh = 1,
-		vid = vid,
-		volatile = volatile
+		vid = vid
 	};
 
 	canvastbl.resize = function(self, neww, newh)
 		resize_image(self.vid, neww, newh);
 	end
+
 	canvastbl.own = function(self, vid)
 		return vid == self.vid;
 	end
@@ -489,12 +513,10 @@ local function awbwnd_update_canvas(self, vid, volatile)
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
-	self:resize(self.w, self.h);
+	canvastbl:resize(self.w, self.h);
 
-	if (oldcanvas and oldcanvas.volatile) then
+	if (oldcanvas and oldcanvas.vid ~= vid) then
 		delete_image(oldcanvas.vid);
-	else	
-		return oldcanvas;
 	end
 end
 
@@ -522,6 +544,67 @@ local function awbwnd_inactive(self)
 	
 end
 
+local function awbwnd_show(self)
+	if (self.hidetbl == nil) then
+		return;
+	end
+
+	self:resize(self.hidetbl.w, self.hidetbl.h);
+	show_image(self.anchor, self.animspeed);
+	move_image(self.anchor, self.hidetbl.x, self.hidetbl.y, self.animspeed);
+	print("restore to:", self.w, self.h);
+
+	self.hidetbl = nil;
+end
+
+local function awbwnd_hide(self, dstx, dsty)
+	self.hidetbl = {
+		x = self.x,
+		y = self.y, 
+		w = self.w,
+		h = self.h
+	};
+
+	self:resize(64, 64);
+	move_image(self.anchor, dstx, dst, self.animspeed);
+	blend_image(self.anchor, 1.0, self.animspeed);
+	blend_image(self.anchor, 0.0, self.animspeed);
+end
+
+--
+-- Create an input component that allows for text edits
+-- and returns as a table with a raw vid (link to whatever
+-- container should be used)
+--
+function awbwnd_subwin_input(options)
+	local res = {
+		msg = "",
+		cursorpos = 1,
+		limit = -1
+	};
+
+--
+-- Anchor, border, canvas, test, cursor 
+--
+
+	res.validator = function(self)
+		return true;
+	end
+
+	res.resize = function(self, neww)
+	end
+
+-- returns true on finished signal, requiring both a valid string
+-- and enter etc. being pressed
+	res.input = function(self, iotbl)
+	end
+
+	res.destroy = function(self)
+	end
+
+	return res;
+end
+
 function awbwnd_create(options)
 	local restbl = {
 		show       = awbwnd_show,
@@ -533,9 +616,11 @@ function awbwnd_create(options)
 		iconify    = awbwnd_iconify,
 		move       = awbwnd_move,
 		own        = awbwnd_own,
+		hide       = awbwnd_hide,
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
 		set_border = awbwnd_set_border,
+		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
@@ -547,6 +632,7 @@ function awbwnd_create(options)
 	 y           = math.floor(0.5 * (VRESH - (VRESH * 0.3)));
    minw        = 0,
    minh        = 0,
+	 animspeed   = 0,
 
 -- internal states
 -- each (dir) can have an action bar attached

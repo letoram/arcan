@@ -1,23 +1,63 @@
 --
--- AWBMon Window Manager
--- Just copied / edited down version of what's in the AWB theme 
--- dropped everything that has to do with popups, dialogs,
--- specialized window subtypes, rootwindow.
+-- AWB Window Manager,
+-- More advanced windows from the (awbwnd.lua) base
+-- tracking ordering, creation / destruction /etc.
 --
+-- Todolist:
+--   -> Auto-hide occluded windows to limit overdraw
+--   -> Tab- cycle focus window with out of focus shadowed
+--   -> Fullscreen mode for window
+--   -> Autohide for top menu bar on fullscreen
+--   -> Drag and Drop for windows
+--   -> Remember icon / window positions and sizes
+--   -> Keyboard input for all windows
+--   -> Animated resize effect
+
+--
+-- mapped up as "default_inverted", needed by some subclasses
+-- (e.g. awbwnd_icon etc.)
+--
+local awbwnd_invsh = [[
+uniform sampler2D map_diffuse;
+uniform float obj_opacity;
+
+varying vec2 texco;
+
+void main(){
+	vec4 col = texture2D(map_diffuse, texco);
+	gl_FragColor = vec4(1.0 - col.r,
+		1.0 - col.g, 
+		1.0 - col.b,
+		col.a * obj_opacity);
+}
+]];
+
 local awb_wtable = {};
 local awb_col = {};
+
 local awb_cfg = {
 -- window management
 	wlimit      = 10,
 	focus_locked = false,
-	activeres   = "scripts/monitor/awbmon/border.png",
-	inactiveres = "scripts/monitor/awbmon/border_inactive.png",
-	alphares    = "scripts/monitor/awbmon/alpha.png",
 	topbar_sz   = 16,
 	spawnx      = 20,
 	spawny      = 20,
 	animspeed   = 10,
-	meta = {},
+	meta        = {},
+	hidden      = {},
+
+-- root window icon management
+	rootcell_w  = 80,
+	rootcell_h  = 60,
+	icnroot_startx = 0,
+	icnroot_starty = 0,
+	icnroot_stepx  = -40,
+	icnroot_stepy  = 80,
+	icnroot_maxy   = VRESH - 100,
+	icnroot_x      = VRESW - 100,
+	icnroot_y      = 30,
+
+	global_vol = 1.0
 };
 
 local function awbwman_findind(val)
@@ -29,11 +69,13 @@ local function awbwman_findind(val)
 end
 
 local function awbwman_updateorder()
+	
 	for i,v in ipairs(awb_wtable) do
 		if (v.anchor ~= nil) then
 			order_image(v.anchor, i * 10);
 		end
 	end
+
 end
 
 local function awbwman_pushback(wnd)
@@ -58,13 +100,44 @@ function awbwman_meta(lbl, active)
 	awb_cfg.meta.shift = active;
 end
 
-local function awbwman_focus(wnd)
+function string.split(instr, delim)
+	local res = {};
+	local strt = 1;
+	local delim_pos, delim_stp = string.find(instr, delim, strt);
+	
+	while delim_pos do
+		table.insert(res, string.sub(instr, strt, delim_pos-1));
+		strt = delim_stp + 1;
+		delim_pos, delim_stp = string.find(instr, delim, strt);
+	end
+	
+	table.insert(res, string.sub(instr, strt));
+	return res;
+end
+
+local function drop_popup()
+	if (awb_cfg.popup_active ~= nil) then
+		awb_cfg.popup_active:destroy(awb_cfg.animspeed);
+		awb_cfg.popup_active = nil;
+	end
+end
+
+local function awbwman_focus(wnd, nodrop)
+	if (nodrop == nil or nodrop == false) then
+		drop_popup();
+	end
+
 	if (awb_cfg.focus) then
 		if (awb_cfg.focus == wnd or awb_cfg.focus_locked) then
 			return;
 		end
 		
-		awbwman_pushback(awb_cfg.focus);
+-- only inactivate a window that hasn't been destroyed
+		if (awb_cfg.focus.inactive) then
+			awb_cfg.focus:inactive();
+		else
+			awb_cfg.focus = nil;
+		end
 	end
 
 	wnd:active();
@@ -74,8 +147,13 @@ local function awbwman_focus(wnd)
 	awbwman_updateorder();
 end
 
+function awbwman_ispopup(vid)
+	return awb_cfg.popup_active and awb_cfg.popup_active.ref == vid;
+end
+
 function awbwman_shadow_nonfocus()
-	if (awb_cfg.focus_locked == false and awb_cfg.focus == nil) then
+	if (awb_cfg.focus_locked == false and awb_cfg.focus == nil or
+		awb_cfg.modal) then
 		return;
 	end
 
@@ -83,20 +161,27 @@ function awbwman_shadow_nonfocus()
 
 	if (awb_cfg.focus_locked)  then
 		local order = image_surface_properties(awb_cfg.focus.anchor).order;
+		awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0); 
 		order_image(awb_cfg.shadowimg, order - 1);
-		blend_image(awb_cfg.shadowimg, 0.8, awb_cfg.animspeed);
+		blend_image(awb_cfg.shadowimg, 0.5, awb_cfg.animspeed);
 	else
+		expire_image(awb_cfg.shadowimg, awb_cfg.animspeed);
 		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed); 
 	end
 end
 
-local function awbwman_close(wcont)
+local function awbwman_dereg(wcont)
 	for i=1,#awb_wtable do
 		if (awb_wtable[i] == wcont) then
 			table.remove(awb_wtable, i);
 			break;
 		end
 	end
+end
+
+local function awbwman_close(wcont, nodest)
+	drop_popup();
+	awbwman_dereg(wcont);
 
 	if (awb_cfg.focus == wcont) then
 		awb_cfg.focus = nil;
@@ -108,11 +193,11 @@ local function awbwman_close(wcont)
 			awbwman_focus(awb_wtable[#awb_wtable]);
 		end
 	end
-	
-	wcont:destroy(awb_cfg.animspeed);
 end
 
 local function awbwman_regwnd(wcont)
+	drop_popup();
+
 	table.insert(awb_wtable, wcont);
 	awbwman_focus(wcont);
 end
@@ -209,9 +294,7 @@ local function awbman_mhandlers(wnd, bar)
 			delete_image(self.lineobj);
 			self.lineobj = nil;
 		else
-			props = image_surface_resolve_properties(self.parent.anchor);
-			self.line_beg = nil;
-			wnd:move(math.floor(props.x), math.floor(props.y));
+			wnd:move(math.floor(wnd.x), math.floor(wnd.y));
 		end
 	end
 
@@ -219,12 +302,14 @@ local function awbman_mhandlers(wnd, bar)
 		awbwman_focus(self.parent);
 	end
 
+	bar.name = "awbwnd_default_tbarh";
   mouse_addlistener(bar, {"drag", "drop", "click", "dblclick"});
+	table.insert(wnd.handlers, bar);
 end
 
 local function awbwman_addcaption(bar, caption)
 	local props  = image_surface_properties(caption);
-	local bgsurf = color_surface(10, 10, 220, 220, 220);
+	local bgsurf = color_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("fill", bgsurf);
 	delete_image(icn.vid);
 
@@ -243,7 +328,6 @@ local function awbwman_addcaption(bar, caption)
 	image_mask_set(icn.vid, MASK_UNPICKABLE);
 
 	link_image(caption, bgsurf);
-	image_clip_on(caption);
 	show_image(caption);
 	image_inherit_order(caption, true);
 	order_image(caption, 1);
@@ -251,156 +335,138 @@ local function awbwman_addcaption(bar, caption)
 	move_image(caption, 2, 2 + math.floor(0.5 * (bar.size - props.height)));
 end
 
-function awbwman_gather_scatter()
-	if (awb_cfg.focus_locked) then
-		awbwman_shadow_nonfocus();
-	end
-
-	if (awb_cfg.scattered) then
-		for ind, val	in ipairs(awb_wtable) do
-			if (val.pos_memory) then
-				move_image(val.anchor, val.pos_memory[1], 
-					val.pos_memory[2], awb_cfg.animspeed);
-					blend_image(val.anchor, 1.0, awb_cfg.animspeed);
-			end
-		end
-
-		awb_cfg.scattered = nil;
-	else
-		for ind, val in ipairs(awb_wtable) do
-			val.pos_memory = {val.x, val.y};
-
-			if ( ( val.x + val.w * 0.5) < 0.5 * VRESW) then
-				move_image(val.anchor,  -val.w, val.y, awb_cfg.animspeed);
-				blend_image(val.anchor, 1.0, 9);
-				blend_image(val.anchor, 0.0, 1);
-			else
-				move_image(val.anchor,  VRESW, val.y, awb_cfg.animspeed);
-				blend_image(val.anchor, 1.0, 9);
-				blend_image(val.anchor, 0.0, 1);
-			end
-		end
-	
-		awb_cfg.scattered = true;
-	end
+function awbwman_activepopup()
+	return awb_cfg.popup_active ~= nil;
 end
 
---
--- desired spawning behavior might change (i.e. 
--- best fit, random, centered, at cursor, incremental pos, ...)
---
-local function awbwman_next_spawnpos()
-	local oldx = awb_cfg.spawnx;
-	local oldy = awb_cfg.spawny;
-	
-	awb_cfg.spawnx = awb_cfg.spawnx + awb_cfg.topbar_sz;
-	awb_cfg.spawny = awb_cfg.spawny + awb_cfg.topbar_sz;
-
-	if (awb_cfg.spawnx > VRESW * 0.75) then
-		awb_cfg.spawnx = 0;
-	end
-
-	if (awb_cfg.spawny > VRESH * 0.75) then
-		awb_cfg.spawny = 0;
-	end
-
-	return oldx, oldy;
+function awbwman_cursortag()
+	return awb_cfg.cursor_tag;
 end
 
-function awbmon_clock_pulse(stamp, nticks)
+function cursortag_drop()
+end
+
+function cursortag_hint(on)
+end
+
+function awbwman_cancel()
+end
+
+function awb_clock_pulse(stamp, nticks)
 	mouse_tick(1);
 end
 
-function awbwman_spawn(caption)
-	local xp, yp = awbwman_next_spawnpos();
+local wndbase = 1000;
+function awbwman_spawn(caption, options)
+	if (options == nil) then
+		options = {};
+	end
+	
+	options.animspeed = awb_cfg.animspeed;
 
-	local wcont  = awbwnd_create({	
-		x = xp,
-		y = yp
-	});
+-- load pos, size from there and update
+-- the key in destroy
+	if (options.x == nil) then
+		options.x, options.y = mouse_xy();
+	end
+	local wcont  = awbwnd_create(options);
+
 	local mhands = {};
 	local tmpfun = wcont.destroy;
+
+	wcont.wndid = wndbase;
+	wndbase = wndbase + 1;
 
 -- default drag, click, double click etc.
 	wcont.destroy = function(self, time)
 		mouse_droplistener(self);
 		mouse_droplistener(self.rhandle);
 		mouse_droplistener(self.top);
+
 		for i,v in ipairs(mhands) do
 			mouse_droplistener(v);
 		end
 
+		awbwman_close(self);
 		tmpfun(self, time);
 	end
 
--- single color canvas (but treated as textured)
--- for shader or replacement 
-	local r = awb_col.bgcolor.r;
-	local g = awb_col.bgcolor.g;
-	local b = awb_col.bgcolor.b;
+-- single color canvas (but treated as textured) for shader or replacement 
+	local r = 0;
+	local g = 0;
+	local b = 100;
 
 -- separate click handler for the canvas area
 -- as more advanced windows types (selection etc.) may need 
 -- to override
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 	wcont:update_canvas(canvas, true);
-	local chandle = {};
-	chandle.click = function(vid, x, y)
-		awbwman_focus(wcont);
-	end
-	chandle.own = function(self,vid)
-		return vid == canvas; 
-	end
-	chandle.vid = canvas;
-	chandle.name = "awbwnd_canvas";
-	mouse_addlistener(chandle, {"click"});
-	table.insert(mhands, chandle);
 
 -- top windowbar
 	local tbar = wcont:add_bar("t", awb_cfg.activeres,
 		awb_cfg.inactiveres, awb_cfg.topbar_sz, awb_cfg.topbar_sz);
 
-		awbwman_addcaption(tbar, caption);
+		if (options.nocaption == nil) then
+			awbwman_addcaption(tbar, caption);
+		end
 
-	tbar:add_icon("l", awb_cfg.bordericns["close"], function()
-		awbwman_close(wcont);
-	end);
+	if (options.noicons == nil) then
+		tbar:add_icon("l", awb_cfg.bordericns["close"], function()
+			wcont:destroy(awb_cfg.animspeed);	
+		end);
 
-	tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
-		awbwman_pushback(wcont);
-		awbwman_updateorder();
-	end);
+		tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
+			awbwman_pushback(wcont);
+			awbwman_updateorder();
+		end);
+	end
 
 -- "normal" right bar (no scrolling) is mostly transparent and 
 -- lies above the canvas area. The resize button needs a separate 
 -- mouse handler
-	local rbar = wcont:add_bar("r", awb_cfg.alphares,
-		awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
-	image_mask_set(rbar.vid, MASK_UNPICKABLE);
-	local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
-	local rhandle = {};
-	rhandle.drag = function(self, vid, x, y)
-		awbwman_focus(wcont);
-		wcont:resize(wcont.w + x, wcont.h + y);
-	end
-	rhandle.own = function(self, vid)
-		return vid == icn.vid;
-	end
-	rhandle.name = "awbwindow_resizebtn";
-	mouse_addlistener(rhandle, {"drag"});
-	wcont.rhandle = rhandle; -- for deregistration
+	if (options.noresize == nil) then
+		local rbar = wcont:add_bar("r", awb_cfg.alphares,
+			awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
+		image_mask_set(rbar.vid, MASK_UNPICKABLE);
+		local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
+		local rhandle = {};
+		rhandle.drag = function(self, vid, x, y)
+			awbwman_focus(wcont);
+			if (awb_cfg.meta.shift) then
+				if (math.abs(x) > math.abs(y)) then
+					wcont:resize(wcont.w + x, 0);
+				else
+					wcont:resize(0, wcont.h + y);
+				end
+			else
+				wcont:resize(wcont.w + x, wcont.h + y);
+			end
+		end
+		rhandle.own = function(self, vid)
+			return vid == icn.vid;
+		end
+		rhandle.name = "awbwindow_resizebtn";
+		mouse_addlistener(rhandle, {"drag"});
+		wcont.rhandle = rhandle; -- for deregistration
+	end	
 
 -- register, push to front etc.
   awbman_mhandlers(wcont, tbar);
 	awbwman_regwnd(wcont);
 
-	wcont:set_border(1, awb_col.dialog_border.r, 
-		awb_col.dialog_border.g, awb_col.dialog_border.b);
+	if (options.noborder == nil) then
+		wcont:set_border(1, awb_col.dialog_border.r, 
+			awb_col.dialog_border.g, awb_col.dialog_border.b);
+	end
 
 	hide_image(wcont.anchor);
 	blend_image(wcont.anchor, 1.0, awb_cfg.animspeed);
 	wcont:resize(wcont.w, wcont.h);
-	
+	wcont.focus = awbwman_focus;
+	wcont.focused = function(self) 
+		return self == awb_cfg.focus; 
+	end
+
 	return wcont;
 end
 
@@ -412,13 +478,34 @@ function awbwman_cfg()
 	return awb_cfg;
 end
 
+--
+-- While some input (e.g. whatever is passed as input 
+-- to mouse_handler) gets treated elsewhere, as is meta state modifier,
+-- the purpose of this function is to forward to the current 
+-- focuswnd (if needed) or manipulate whatever is in the popup-slot,
+-- and secondarily, pass through the active input layout and push
+-- to the broadcast domain.
+--
 function awbwman_input(iotbl, keysym)
-	if (awb_cfg.focus and 
+
+-- match configured from global?
+-- else forward raw input 
+	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
+		awb_cfg.popup_active:input(iotbl);
+	
+	elseif (awb_cfg.focus and 
 			awb_cfg.focus.input ~= nil) then
-		awb_cfg.focus:input(iotbl, keysym);
+		awb_cfg.focus:input(iotbl);
 	end
 end
 
+function awbwman_shutdown()
+	shutdown();
+end
+
+--
+-- Load / Store default settings for window behavior etc.
+--
 function awbwman_init(defrndr, mnurndr)
 	awb_cfg.meta       = {};
 	awb_cfg.bordericns = {};
@@ -427,11 +514,16 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.mnurndfun  = mnurndr;
 
 	awb_col = system_load("scripts/colourtable.lua")();
-	awb_col.bgcolor = {r = 0, g = 85, b = 169, a = 1.0};
-	awb_col.dialog_border = {r = 255, g = 255, b = 255, a = 1.0};
 
-	awb_cfg.bordericns["close"] =load_image("/scripts/monitor/awbmon/close.png");
-	awb_cfg.bordericns["resize"]=load_image("/scripts/monitor/awbmon/resize.png");
-	awb_cfg.bordericns["toback"]=load_image("/scripts/monitor/awbmon/toback.png");
-	awb_cfg.shadowimg = color_surface(VRESW, VRESH, 0, 0, 0);
+	awb_cfg.activeres   = load_image("scripts/monitor/awbmon/border.png");
+	awb_cfg.inactiveres = load_image("scripts/monitor/awbmon/border_inactive.png");
+	awb_cfg.ttactiveres = load_image("scripts/monitor/awbmon/tt_border.png");
+	awb_cfg.ttinactvres = load_image("scripts/monitor/awbmon/tt_border.png");
+	awb_cfg.alphares    = load_image("scripts/monitor/awbmon/alpha.png");
+	
+	awb_cfg.bordericns["close"]    = load_image("scripts/monitor/awbmon/close.png");
+	awb_cfg.bordericns["resize"]   = load_image("scripts/monitor/awbmon/resize.png");
+	awb_cfg.bordericns["toback"]   = load_image("scripts/monitor/awbmon/toback.png");
+
+	build_shader(nil, awbwnd_invsh, "awb_selected");
 end
