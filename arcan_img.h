@@ -22,6 +22,12 @@
 #ifndef _HAVE_ARCAN_PNG
 #define _HAVE_ARCAN_PNG
 
+struct arcan_img_meta {
+	bool compressed;
+	bool mipmapped;
+	size_t c_size;
+};
+
 /* 
  * these functions wrap libpng and add basic colour conversion
  */
@@ -31,10 +37,13 @@ typedef void* (*outimg_allocator)( size_t );
 /*
  * Wrapper around the other decode functions in that it tries to
  * identify (heuristically, experimentally or by the 'hint' inbuf)
- * the data source and choose decoding routine accordingly
+ * the data source and choose decoding routine accordingly.
+ * If *outraw is set, the image data is in a native-compressed format (ETC1, ...)
+ * and needs to be forwarded / treated as such (no postproc.)
  */
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
-	char** outbuf, int* outw, int* outh, bool vflip, outimg_allocator);
+	char** outbuf, int* outw, int* outh, 
+	struct arcan_img_meta* outm, bool vflip, outimg_allocator);
 
 /* 
  * decode the supplied input buffer 'inbuf' (limited to 'inbuf_sz') and convert 

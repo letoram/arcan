@@ -215,13 +215,13 @@ const char* internal_launch_support();
 typedef struct {
 	bool bench_enabled;
 
-	unsigned ticktime[32];
+	unsigned ticktime[32], tickcount;
 	char tickofs;
 
-	unsigned frametime[128];
+	unsigned frametime[64], framecount;
 	char frameofs;
 
-	unsigned framecost[128];
+	unsigned framecost[64], costcount;
 	char costofs;
 } arcan_benchdata;
 

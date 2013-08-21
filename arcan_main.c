@@ -548,7 +548,8 @@ themeswitch:
 /* separate between cheap (possibly vsync off or triple buffering) 
  * flip cost and expensive (vsync on) */
 			if (arcan_video_display.vsync_timing < 8.0){
-				arcan_video_refresh(frag, true);
+				unsigned cost = arcan_video_refresh(frag, true);
+				arcan_bench_register_cost(cost);
 				arcan_bench_register_frame();
 
 				int delta = arcan_timemillis() - lastflip;
@@ -560,7 +561,8 @@ themeswitch:
 			else {
 				int delta = arcan_timemillis() - lastflip;
 				if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
-					arcan_video_refresh(frag, true);
+					unsigned cost = arcan_video_refresh(frag, true);
+					arcan_bench_register_cost(cost);
 					arcan_bench_register_frame();
 					if (framepulse)
 						framepulse = arcan_lua_callvoidfun(luactx, "frame_pulse", false);

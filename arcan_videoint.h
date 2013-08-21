@@ -318,7 +318,8 @@ void arcan_debug_tracetag_dump();
 /* only ever used for next power of two concerning dislay resolutions */
 uint16_t nexthigher(uint16_t k);
 
-void push_globj(arcan_vobject*, bool);
+struct arcan_img_meta;
+void push_globj(arcan_vobject*, bool, struct arcan_img_meta*);
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
 

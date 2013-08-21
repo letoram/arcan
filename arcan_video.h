@@ -65,7 +65,8 @@ enum arcan_vtex_mode {
 enum arcan_clipmode {
 	ARCAN_CLIP_OFF = 0,
 	ARCAN_CLIP_ON  = 1,
-	ARCAN_CLIP_SHALLOW = 2
+	ARCAN_CLIP_SHALLOW = 2,
+	ARCAN_CLIP_SCISSOR = 3
 };
 
 enum arcan_vfilter_mode {
@@ -390,7 +391,7 @@ void arcan_video_restore_external();
 
 /* fragment represents how much time left until the next timestep,
  * used to interpolate movements / fades */
-void arcan_video_refresh(float fragment, bool synch);
+unsigned arcan_video_refresh(float fragment, bool synch);
 void arcan_video_pollfeed();
 
 void arcan_video_shutdown();

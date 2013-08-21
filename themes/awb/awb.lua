@@ -49,7 +49,6 @@ function desktoplbl(text)
 end
 
 function awb()
-	print( string.format("w=%f,h=%f", 0.1, 0.2) ); 
 	symtable = system_load("scripts/symtable.lua")();
 
 -- shader function / model viewer
