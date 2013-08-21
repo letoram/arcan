@@ -319,6 +319,48 @@ arcan_errc arcan_pkm_raw(const unsigned char* inbuf, size_t inbuf_sz, char** out
 #endif
 }
 
+/*
+struct dds_data_fmt
+{
+	GLsizei  width;
+	GLsizei  height;
+	GLint    components;
+	GLenum   format;
+	int      numMipMaps;
+	GLubyte *pixels;
+};
+*/
+
+arcan_errc arcan_dds_raw(const unsigned char* inbuf, size_t inbuf_sz, char** outbuf,
+	int* outw, int* outh, struct arcan_img_meta* meta, outimg_allocator alloc)
+{
+#ifdef DDS_SUPPORT
+	struct dds_dsta_fmt* dds_img_data;
+	DDSurfacedesc2 ddsd;
+
+	strncmp(inbuf, "DDS ", 4) == 0;
+
+/* read DDSD */
+/* alloc outbuf as DDSIMAGEDATA */
+/* check FourCC from DDSD for supported formats;
+   FOURCC_DXT1,3,5 (factor 2, 4, 4 as CR) 
+	 something weird with dwLinearSize?
+	 check mipmapcount (linearsize * factor from fourCC)
+	 now we have raw-data
+	 FOURCC DXT1 only gives RGB, no alpha channel
+	 DXT1 has a block size of 8, otherwise 16
+	 foreach mipmap level;
+			(1, 1 dimension if 0 0,
+			glCompressedTexImage(level, formatv, cw, ch, 0, 
+				(cw+3)/4 * (ch+3)/4 * blocksize)
+			slide buffer offset with size
+			shift down width / height
+*/
+#else
+	return ARCAN_ERRC_UNSUPPORTED_FORMAT;
+#endif
+}
+
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz, 
 	char** outbuf, int* outw, int* outh, struct arcan_img_meta* meta, 
 	bool vflip, outimg_allocator imalloc)
@@ -343,6 +385,9 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 		}
 		else if (strcasecmp(hint + (len - 3), "PKM") == 0){
 			return arcan_pkm_raw(inbuf, inbuf_sz, outbuf, outw, outh, meta, imalloc);
+		}
+		else if (strcasecmp(hint + (len - 3), "DDS") == 0){
+			return arcan_dds_raw(inbuf, inbuf_sz, outbuf, outw, outh, meta, imalloc);
 		}
 	}
 

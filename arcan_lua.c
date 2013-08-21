@@ -5150,8 +5150,29 @@ static inline char* lut_scale(enum arcan_vimage_mode mode)
 static inline char* lut_framemode(enum arcan_framemode mode)
 {
 	switch(mode){
-	case ARCAN_FRAMESET_SPLIT        : return "split";
+	case ARCAN_FRAMESET_SPLIT        : return "split"; 
 	case ARCAN_FRAMESET_MULTITEXTURE : return "multitexture";
+	}
+}
+
+static inline char* lut_clipmode(enum arcan_clipmode mode)
+{
+	switch(mode){
+	case ARCAN_CLIP_OFF     : return "disabled";
+	case ARCAN_CLIP_ON      : return "stencil deep";
+	case ARCAN_CLIP_SHALLOW : return "stencil shallow";
+	case ARCAN_CLIP_SCISSOR : return "scissor";
+	}
+}
+
+static inline char* lut_blendmode(enum arcan_blendfunc func)
+{
+	switch(func){
+	case blend_disable  : return "disabled";
+	case blend_normal   : return "normal";
+	case blend_force    : return "forceblend";
+	case blend_add      : return "additive";
+	case blend_multiply : return "multiply";
 	}
 }
 
@@ -5182,6 +5203,8 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tlast_updated = %d,\n\
 \tlifetime = %d,\n\
 \tcellid = %d,\n\
+\tvalid_cache = %d,\n\
+\trotate_state = %d,\n\
 \tframeset_capacity = %d,\n\
 \tframeset_mode = %d,\n\
 \tframeset_counter = %d,\n\
@@ -5200,6 +5223,8 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tglstore_prg = [[%s]],\n\
 \tscalemode  = [[%s]],\n\
 \timageproc = [[%s]],\n\
+\tblendmode = [[%s]],\n\
+\tclipmode  = [[%s]],\n\
 \tfiltermode = [[%s]],\n\
 \tflags = [[%s]],\n\
 \tmask = [[%s]],\n\
@@ -5213,6 +5238,8 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 (int) src->last_updated,
 (int) src->lifetime,
 (int) src->cellid,
+(int) src->valid_cache,
+(int) src->rotate_state,
 (int) src->frameset_meta.capacity,
 (int) src->frameset_meta.mode,
 (int) src->frameset_meta.counter,
@@ -5232,6 +5259,8 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 arcan_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
 lut_imageproc(src->vstore->imageproc),
+lut_blendmode(src->blendmode),
+lut_clipmode(src->flags.cliptoparent),
 lut_filtermode(src->vstore->filtermode),
 vobj_flags(src), 
 mask,
@@ -5254,6 +5283,15 @@ vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
 	{
 		fprintf(dst, "vobj.frameset[%d] = %"PRIxVOBJ";\n", i + 1,
 			src->frameset[i] ? src->frameset[i]->cellid : ARCAN_EID);
+	}
+
+	if (src->children){
+		fprintf(dst, "vobj.children = {};\n");
+		fprintf(dst, "vobj.childslots = %d;\n", (int) src->childslots);
+		for (int i = 0; i < src->childslots; i++){
+			fprintf(dst, "vobj.children[%d] = %"PRIxVOBJ";\n", i+1, src->children[i] ?
+				src->children[i]->cellid : ARCAN_EID);
+		}
 	}
 
 	if (src->parent->cellid == ARCAN_VIDEO_WORLDID){
