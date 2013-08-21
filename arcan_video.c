@@ -107,7 +107,7 @@ static bool alloc_fbo(struct rendertarget* dst);
 static bool activate_fbo(struct rendertarget* dst);
 static void process_rendertarget(struct rendertarget* tgt, float fract);
 static arcan_vobject* new_vobject(arcan_vobj_id* id, 
-	struct arcan_video_context* dctx);
+struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr, 
 	float* imatr, surface_properties* prop, arcan_vobject* src);
 
@@ -147,7 +147,8 @@ static void drop_glres(struct storage_info_t* s)
 	}
 }
 
-void push_globj(arcan_vobject* dst, bool noupload)
+void push_globj(arcan_vobject* dst, bool noupload, 
+		struct arcan_img_meta* meta)
 {
 	struct storage_info_t* s = dst->vstore; 
 	if (s->txmapped == false)
@@ -166,11 +167,18 @@ void push_globj(arcan_vobject* dst, bool noupload)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, s->txu);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv);
 
+/* 
+ * Mipmapping API/ Mapping is a bit clumsy at the moment,
+ * should be reworked to individual vobj- setting
+ * that can handle different sources for different mipmap
+ * levels
+ */
+	bool mipmap = arcan_video_display.mipmap;
 #ifndef GL_GENERATE_MIPMAP
-	glGenerateMipmap(GL_TEXTURE_2D);
+		if (mipmap)
+			glGenerateMipmap(GL_TEXTURE_2D);
 #else
-	glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, 
-		arcan_video_display.mipmap ? GL_TRUE : GL_FALSE);
+		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmap);
 #endif
 
 	switch (s->filtermode){
@@ -405,7 +413,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			}
 			else
 				if (current->vstore->txmapped)
-					push_globj(current, false);
+					push_globj(current, false, NULL);
 
 			arcan_frameserver* movie = current->feed.state.ptr;
 			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && movie){ 
@@ -1095,6 +1103,11 @@ static void arcan_video_gldefault()
 }
 
 const char* defvprg =
+#ifdef GL_ES_VERSION_2_0
+"#version 100\n"
+#else
+"#version 120\n"
+#endif
 "uniform mat4 modelview;\n"
 "uniform mat4 projection;\n"
 
@@ -1107,6 +1120,12 @@ const char* defvprg =
 "}";
 
 const char* deffprg =
+#ifdef GL_ES_VERSION_2_0
+"#version 100\n"
+"precision mediump float;\n"
+#else
+"#version 120\n"
+#endif
 "uniform sampler2D map_diffuse;\n"
 "varying vec2 texco;\n"
 "uniform float obj_opacity;\n"
@@ -1117,6 +1136,11 @@ const char* deffprg =
 "}";
 
 const char* defcvprg =
+#ifdef GL_ES_VERSION_2_0
+"#version 100\n"
+#else
+"#version 120\n"
+#endif
 "uniform mat4 modelview;\n"
 "uniform mat4 projection;\n"
 "attribute vec4 vertex;\n"
@@ -1124,7 +1148,13 @@ const char* defcvprg =
 " gl_Position = (projection * modelview) * vertex;\n"
 "}";
 
-const char* defcfprg = 
+const char* defcfprg =
+#ifdef GL_ES_VERSION_2_0
+"#version 100\n"
+"precision mediump float;\n"
+#else
+"#version 120\n"
+#endif
 "varying vec2 texco;\n"
 "uniform vec3 obj_col;\n"
 "uniform float obj_opacity;\n"
@@ -1280,8 +1310,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
 
+	struct arcan_img_meta meta = {0};
 	rv = arcan_img_decode(fname, inmem.ptr, inmem.sz, &imgbuf, &inw, &inh,
-	dst->vstore->imageproc == imageproc_fliph, malloc);
+	&meta, dst->vstore->imageproc == imageproc_fliph, malloc);
 
 	arcan_release_map(inmem);
 	arcan_release_resource(&inres);
@@ -1308,6 +1339,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 		dstframe->vinf.text.source = strdup(fname);
 
 		enum arcan_vimage_mode desm = dst->vstore->scale;
+
+		if (meta.compressed)
+			goto push_comp;
 
 /* the user requested specific dimensions,
  * so we force the rescale texture mode for mismatches and set 
@@ -1351,8 +1385,10 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 /*
  * for the asynch case, we need to do this separately as we're in a different
  * thread and forcibly assigning the glcontext to another thread is expensive */
+
+push_comp:
 		if (!asynchsrc && dst->vstore->txmapped)
-			push_globj(dst, false);
+			push_globj(dst, false, &meta);
 	}
 
 	sem_post(&asynchsynch);
@@ -1974,7 +2010,7 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 			free(vobj->feed.state.ptr);
 			vobj->feed.state.ptr = NULL;
 
-			push_globj(vobj, false);
+			push_globj(vobj, false, NULL);
 
 			vobj->feed.state.tag = ARCAN_TAG_IMAGE;
 			vobj->feed.state.ptr = NULL;
@@ -2085,7 +2121,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 		memset(vstor->vinf.text.raw, '\0', vstor->vinf.text.s_raw);
 
 		newvobj->feed.ffunc = ffunc;
-		push_globj(newvobj, false);
+		push_globj(newvobj, false, NULL);
 	}
 
 	return rv;
@@ -2137,7 +2173,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		glDeleteTextures(1, &vobj->vstore->vinf.text.glid);
 		vobj->vstore->vinf.text.glid = 0;
 
-		push_globj(vobj, false);
+		push_globj(vobj, false, NULL);
 
 		rv = ARCAN_OK;
 	}
@@ -2395,7 +2431,7 @@ arcan_errc arcan_video_objecttexmode(arcan_vobj_id id,
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
 		src->vstore->txv = modet == ARCAN_VTEX_REPEAT ? 
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
-		push_globj(src, true);
+		push_globj(src, true, NULL);
 	}
 
 	return rv;
@@ -2410,7 +2446,7 @@ arcan_errc arcan_video_objectfilter(arcan_vobj_id id,
 /* fake an upload with disabled filteroptions */
 	if (src){
 		src->vstore->filtermode = mode;
-		push_globj(src, true);
+		push_globj(src, true, NULL);
 	}
 
 	return rv;
@@ -4073,14 +4109,18 @@ void arcan_video_refresh_GL(float lerp)
 		process_rendertarget(&current_context->stdoutp, lerp);
 }
 
-void arcan_video_refresh(float tofs, bool synch)
+unsigned arcan_video_refresh(float tofs, bool synch)
 {
 /* for less interactive / latency sensitive applications the delta > .. 
  * with vsync on, the delta > .. could be removed */
+	long long int pre = arcan_timemillis();
+		arcan_video_refresh_GL(tofs);
+	long long int post = arcan_timemillis();
 
-	arcan_video_refresh_GL(tofs);
 	if (synch)
 		platform_video_bufferswap();
+
+	return post - pre;
 }
 
 void arcan_video_default_scalemode(enum arcan_vimage_mode newmode)

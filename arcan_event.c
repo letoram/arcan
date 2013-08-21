@@ -344,6 +344,8 @@ void arcan_bench_register_tick(unsigned nticks)
 
 	while (nticks--){
 		long long int ftime = arcan_timemillis();
+		benchdata.tickcount++;
+
 		if (lasttick > 0 && ftime > lasttick){
 			unsigned delta = ftime - lasttick;
 			benchdata.ticktime[benchdata.tickofs] = delta;
@@ -358,6 +360,10 @@ void arcan_bench_register_tick(unsigned nticks)
 void arcan_bench_register_cost(unsigned cost)
 {
 	benchdata.framecost[benchdata.costofs] = cost;
+	if (benchdata.bench_enabled == false)
+		return;
+
+	benchdata.costcount++;
 	benchdata.costofs = (benchdata.costofs + 1) % 
 		(sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]));
 }
@@ -372,6 +378,7 @@ void arcan_bench_register_frame()
 	if (lastframe > 0 && ftime > lastframe){
 		unsigned delta = ftime - lastframe;
 		benchdata.frametime[benchdata.frameofs] = delta;
+		benchdata.framecount++;
 		benchdata.frameofs = (benchdata.frameofs + 1) % 
 			(sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]));
 		}

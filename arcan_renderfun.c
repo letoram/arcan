@@ -186,11 +186,12 @@ TTF_Surface* text_loadimage(const char* const infn, img_cons cons)
 		return NULL;
 	}
 
-	char* imgbuf = NULL;
+	struct arcan_img_meta meta = {0};
+	char* imgbuf;
 	int inw, inh;
 
-	arcan_errc rv = arcan_img_decode(infn,inmem.ptr,inmem.sz,&imgbuf,&inw,&inh,
-		false, malloc);
+	arcan_errc rv = arcan_img_decode(infn, inmem.ptr, inmem.sz, &imgbuf, 
+		&inw, &inh, &meta, false, malloc);
 
 /* stretchblit is assumed to deal with the edgecase of 
  * w ^ h being 0 */
@@ -861,7 +862,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		}
 	
 /* upload */
-		push_globj(vobj, false);
+		push_globj(vobj, false, NULL);
 
 		float wv = (float)maxw / (float)vobj->vstore->w;
 		float hv = (float)maxh / (float)vobj->vstore->h;

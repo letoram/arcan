@@ -293,8 +293,35 @@ arcan_errc arcan_sdlimage_rgba32(char* inbuf, size_t inbuf_sz, char** outbuf,
 }
 #endif
 
+arcan_errc arcan_pkm_raw(const unsigned char* inbuf, size_t inbuf_sz, char** outbuf,
+		int* outw, int* outh, struct arcan_img_meta* meta, outimg_allocator alloc)
+{
+#ifdef ETC1_SUPPORT
+/* extract header fields */
+	int pwidth  = (inbuf[ 8] << 8) | inbuf[ 9];
+	int pheight = (inbuf[10] << 8) | inbuf[11];
+	int width   = (inbuf[12] << 8) | inbuf[13];
+	int height  = (inbuf[14] << 8) | inbuf[15];
+
+/* strip header */
+	*outbuf = alloc(inbuf_sz - 16);
+	memcpy(*outbuf, inbuf + 16, inbuf_sz - 16);
+	meta->compressed = true;
+	meta->pwidth = pwidth;
+	meta->pheight = pheight;
+	meta->c_size = (pwidth * pheight) >> 1;
+ 	*outw = width;
+	*outh = height;
+
+	return ARCAN_OK;
+#else
+	return ARCAN_ERRC_UNSUPPORTED_FORMAT;	
+#endif
+}
+
 arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz, 
-	char** outbuf, int* outw, int* outh, bool vflip, outimg_allocator imalloc)
+	char** outbuf, int* outw, int* outh, struct arcan_img_meta* meta, 
+	bool vflip, outimg_allocator imalloc)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 	int len = strlen(hint);
@@ -306,13 +333,16 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 
 	if (len >= 3){
 		if (strcasecmp(hint + (len - 3), "PNG") == 0){
-			rv = arcan_png_rgba32(inbuf, inbuf_sz, outbuf, outw, outh, vflip,imalloc);
+			rv = arcan_png_rgba32(inbuf, inbuf_sz, outbuf, outw, outh, vflip, imalloc);
 			if (rv == ARCAN_OK)
 				return ARCAN_OK;
 		} 
 		else if (strcasecmp(hint + (len - 3), "JPG") == 0 || 
 			(len >= 4 && strcasecmp(hint + (len - 4), "JPEG") == 0)){
 			arcan_warning("use libjpeg(turbo)");
+		}
+		else if (strcasecmp(hint + (len - 3), "PKM") == 0){
+			return arcan_pkm_raw(inbuf, inbuf_sz, outbuf, outw, outh, meta, imalloc);
 		}
 	}
 

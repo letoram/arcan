@@ -209,7 +209,7 @@ static inline char* findresource(const char* arg, int searchmask)
 	char* res = arcan_find_resource(arg, searchmask);
 /* since this is invoked extremely frequently and is involved in file-system
  * related stalls, maybe a sort of caching mechanism should be implemented
- * (invalidate / refill every N ticks or have a flag to side-step it, as a lot
+ * (invalidate / refill every N ticks or have a flag to side-step it -- as a lot
  * of resources are quite static and the rest of the API have to handle missing
  * or bad resources anyhow, we also know which subdirectories to attach
  * to OS specific event monitoring effects */
@@ -223,7 +223,8 @@ static inline char* findresource(const char* arg, int searchmask)
 
 static int arcan_lua_zapresource(lua_State* ctx)
 {
-	char* path = findresource(luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
+	char* path = findresource(
+		luaL_checkstring(ctx, 1), ARCAN_RESOURCE_THEME);
 
 	if (path && unlink(path) != -1)
 		lua_pushboolean(ctx, false);
@@ -2342,6 +2343,7 @@ int arcan_lua_buildbox(lua_State* ctx)
 	maxp.y = luaL_checknumber(ctx, 5);
 	maxp.z = luaL_checknumber(ctx, 6);
 
+	return 0;
 }
 
 int arcan_lua_swizzlemodel(lua_State* ctx)
@@ -3643,8 +3645,8 @@ int arcan_lua_renderattach(lua_State* ctx)
 
 /* arcan_video_attachtorendertarget already has pretty aggressive checks */
 	arcan_video_attachtorendertarget(did, sid, detach == RENDERTARGET_DETACH);
-
- }
+	return 0;
+}
 
 int arcan_lua_renderset(lua_State* ctx)
 {
@@ -3967,14 +3969,15 @@ int arcan_lua_togglebench(lua_State* ctx)
 	memset(benchdata.frametime, '\0', sizeof(benchdata.frametime));
 	memset(benchdata.framecost, '\0', sizeof(benchdata.framecost));
 	benchdata.tickofs = benchdata.frameofs = benchdata.costofs = 0;
-
+	benchdata.framecount = benchdata.tickcount = benchdata.costcount = 0;
 	return 0;
 }
 
 static int arcan_lua_getbenchvals(lua_State* ctx)
 {
 	size_t bench_sz = sizeof(benchdata.ticktime) / sizeof(benchdata.ticktime[0]);
-
+	
+	lua_pushnumber(ctx, benchdata.tickcount);
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 	int i = (benchdata.tickofs + 1) % bench_sz;
@@ -3989,6 +3992,7 @@ static int arcan_lua_getbenchvals(lua_State* ctx)
 
 	bench_sz = sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]);
 	i = (benchdata.frameofs + 1) % bench_sz;
+	lua_pushnumber(ctx, benchdata.framecount);
 	lua_newtable(ctx);
 	top = lua_gettop(ctx);
 	count = 0;
@@ -4002,6 +4006,7 @@ static int arcan_lua_getbenchvals(lua_State* ctx)
 
 	bench_sz = sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]);
 	i = (benchdata.costofs + 1) % bench_sz;
+	lua_pushnumber(ctx, benchdata.costcount);
 	lua_newtable(ctx);
 	top = lua_gettop(ctx);
 	count = 0;
@@ -4013,7 +4018,7 @@ static int arcan_lua_getbenchvals(lua_State* ctx)
 		i = (i + 1) % bench_sz;
 	}	
 
-	return 3;	
+	return 6;	
 }
 
 static int arcan_lua_timestamp(lua_State* ctx)
