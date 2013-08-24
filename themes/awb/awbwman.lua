@@ -652,7 +652,20 @@ function awbwman_rootwnd()
 	tbar.name = "rootwnd_topbar";
 	tbar.rzfun = awbbaricn_rectresize;
 	local cap = awb_cfg.mnurndfun("AWB ");
-	local icn = tbar:add_icon("l", cap, function(self) end);
+	local awblist = {
+		"Help...",
+		"Quit"
+	};
+	local icn = tbar:add_icon("l", cap, function(self) 
+		local vid, list = awb_cfg.defrndfun(table.concat(awblist, [[\n\r]]));
+		awbwman_popup(vid, list, function(ind)
+			if (ind == 1) then
+				show_help();
+			else
+				shutdown();
+			end
+		end, {ref = self.vid} )
+	end);
 	delete_image(cap);
 
 	icn.xofs = 2;
