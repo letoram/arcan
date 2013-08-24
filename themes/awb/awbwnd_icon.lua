@@ -14,6 +14,11 @@ local function awbicon_reposition(self)
 
 	for i, v in ipairs(self.icons) do
 		move_image(v.anchor, cx, cy);
+		if (cx + self.cell_w > self.w or cy + self.cell_h > self.h) then
+			hide_image(v.anchor);
+		else
+			show_image(v.anchor);
+		end
 
 		cx = cx + self.cell_w + self.hspace;
 

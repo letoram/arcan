@@ -213,6 +213,10 @@ function gamelist_media(tbl)
 	end, desktoplbl);
 end
 
+function show_help()
+	print("Help!");
+end
+
 function gamelist_popup(ent)
 	local popup_opts = [[Launch\n\rFind Media\n\rList Siblings]];
 	local vid, list  = desktoplbl(popup_opts);
