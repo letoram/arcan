@@ -268,7 +268,7 @@ set (
 )
 
 if (${HAVE_SIMD})
-				message("Enabling SIMD")
+				message("-- Enabling SIMD")
 				add_definitions(-DARCAN_MATH_SIMD)
 				LIST(APPEND SOURCES arcan_math_simd.c)
 endif (${HAVE_SIMD})

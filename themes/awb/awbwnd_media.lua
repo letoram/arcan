@@ -61,7 +61,7 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 		bar:add_icon("r", cfg.bordericns["volume"], function(self)
 			pwin:focus();
-			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(self, val)
+			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
 				pwin:set_mvol(val);
 			end, {ref = self.vid});
 		end);
@@ -76,18 +76,16 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 end
 
 local function slide_lightr(caller, status)
-	local pwin = caller.pwin;
-	pwin:focus();
+	local pwin = caller.parent.parent;
 
 	awbwman_popupslider(0.01, pwin.amb_r, 1.0, function(val)
-		pwin.amb_r = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
 	end, {ref = caller.vid});
 	return true;
 end
 local function slide_lightg(caller, status)
-	local pwin = caller.pwin;
+	local pwin = caller.parent.parent;
 	pwin:focus();
 
 	awbwman_popupslider(0.01, pwin.amb_g, 1.0, function(val)
@@ -99,7 +97,7 @@ local function slide_lightg(caller, status)
 end
 
 local function slide_lightb(caller, status)
-	local pwin = caller.pwin;
+	local pwin = caller.parent.parent;
 	pwin:focus();
 
 	awbwman_popupslider(0.01, pwin.amb_b, 1.0, function(val)
@@ -136,21 +134,18 @@ local function add_3dmedia_top(pwin, active, inactive)
 	bar:add_icon("l", cfg.bordericns["plus"], zoom_in); 
 	bar:add_icon("l", cfg.bordericns["minus"], zoom_out);
 
-	bar:add_icon("l", cfg.bordericns["r1"], slide_lightr).pwin = pwin;
-	bar:add_icon("l", cfg.bordericns["g1"], slide_lightg).pwin = pwin;
-	bar:add_icon("l", cfg.bordericns["b1"], slide_lightb).pwin = pwin;
+	bar:add_icon("l", cfg.bordericns["r1"], slide_lightr);
+	bar:add_icon("l", cfg.bordericns["g1"], slide_lightg);
+	bar:add_icon("l", cfg.bordericns["b1"], slide_lightb);
 
 	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
 
-	local bh = {
-		name = "3dbar_handle",
-		own = function(self, vid) return bar:own(vid); end,
-		click = function() pwin:focus(); end
-	};
+	bar.click = function()
+		pwin:focus(true);
+	end
 	
-	mouse_addlistener(bh, {"click"});
-	table.insert(pwin.handlers, bh);
-	pwin.name = "3dmedia_topbar";
+	mouse_addlistener(bar, {"click"});
+	table.insert(pwin.handlers, bar);
 end
 
 local function vcap_setup(pwin)
@@ -291,10 +286,13 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 			click = function()
 				local tag = awbwman_cursortag();
+				print("pwin click");
 				pwin:focus();
 
 				if (tag and tag.kind == "media") then
-					pwin.model:update_display(instance_image(tag.source.canvas.vid));	
+					local newdisp = null_surface(32, 32);
+					image_sharestorage(tag.source.canvas.vid, newdisp);
+					pwin.model:update_display(newdisp);
 					tag:drop();
 				end
 			end

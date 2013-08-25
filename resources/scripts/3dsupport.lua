@@ -522,7 +522,8 @@ function setup_cabinet_model(modelname, restbl, options)
 
 -- change the display to show just a noisy image
 		res.display_broken = function(self)
-			local noiseinst = instance_image(support3d.hf_noise);
+			local noiseinst = null_surface(32, 32);
+			image_sharestorage(support3d.hf_noise, noiseinst);
 			image_tracetag(noiseinst, "3dmodel(noise instance)");
 			self:update_display(noiseinst, def3d_txcoscroll);
 		end

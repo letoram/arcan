@@ -367,7 +367,9 @@ function awbwman_spawn(caption, options)
 -- load pos, size from there and update
 -- the key in destroy
 	if (options.x == nil) then
-		options.x, options.y = mouse_xy();
+		local lx, ly = mouse_xy();
+		options.x = math.floor(lx) - 60;
+		options.y = math.floor(ly);
 	end
 	local wcont  = awbwnd_create(options);
 
@@ -426,7 +428,8 @@ function awbwman_spawn(caption, options)
 -- mouse handler
 	if (options.noresize == nil) then
 		local rbar = wcont:add_bar("r", awb_cfg.alphares,
-			awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
+			awb_cfg.alphares, awb_cfg.topbar_sz - 2, awb_cfg.topbar_sz - 2);
+
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
 		local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
 		local rhandle = {};
@@ -519,7 +522,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.inactiveres = load_image("scripts/monitor/awbmon/border_inactive.png");
 	awb_cfg.ttactiveres = load_image("scripts/monitor/awbmon/tt_border.png");
 	awb_cfg.ttinactvres = load_image("scripts/monitor/awbmon/tt_border.png");
-	awb_cfg.alphares    = load_image("scripts/monitor/awbmon/alpha.png");
+	awb_cfg.alphares    = fill_surface(32, 32, 50, 50, 200); 
 	
 	awb_cfg.bordericns["close"]    = load_image("scripts/monitor/awbmon/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("scripts/monitor/awbmon/resize.png");

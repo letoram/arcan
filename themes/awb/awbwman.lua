@@ -974,6 +974,15 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 end
 
 function awbwman_popupslider(min, val, max, updatefun, options)
+	if (options.ref and awbwman_ispopup(options.ref)) then
+		drop_popup();
+		return;
+	end
+
+	if (options.win) then
+		options.win:focus();
+	end
+
 	local cc     = awb_col.dialog_caret;
 	local wc     = awb_col.bgcolor;
 	local res    = {};
@@ -1411,6 +1420,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["load"]     = load_image("awbicons/load.png");
 	awb_cfg.bordericns["record"]   = load_image("awbicons/record.png");
 
+	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
 

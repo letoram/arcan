@@ -255,6 +255,7 @@ int main(int argc, char* argv[])
  * pushed through the sample() function */
 	if (monitor > 0){
 		extern arcan_benchdata benchdata;
+		benchdata.bench_enabled = true;
 
 		if (strncmp(monitor_arg, "LOG:", 4) == 0){
 			monitor_outf = fopen(&monitor_arg[4], "w+"); 
@@ -262,16 +263,22 @@ int main(int argc, char* argv[])
 				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
 
 			monitor_parent = true;
-			benchdata.bench_enabled = true;
 		}
 		else {
 			int pair[2];
 			char scriptfnbuf[256] = {0};
+
 			snprintf(scriptfnbuf, 255, "scripts/monitor/%s", monitor_arg);
 			char* tmpscript = arcan_find_resource(scriptfnbuf, ARCAN_RESOURCE_SHARED);
 			if (tmpscript == NULL)
 				arcan_fatal("Missing monitor script: %s\n", scriptfnbuf);
-			
+
+/* if we reference a subdir (more complicated monitoring scripts),
+ * make sure to strip that when extracting the themename */
+			char* marg = rindex(monitor_arg, '/');
+			if (marg != NULL)
+				monitor_arg = marg + 1;
+				
 			pid_t p1;
 
 			int rv = pipe(pair);
@@ -297,7 +304,6 @@ int main(int argc, char* argv[])
 				fclose(stderr); */
 	
 				monitor_parent = true;
-				benchdata.bench_enabled = true;
 				monitor_outf = fdopen(pair[1], "w");
 				waitpid(p1, &status, 0);
 			 	signal(SIGPIPE, SIG_IGN);	
