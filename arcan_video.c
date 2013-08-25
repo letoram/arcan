@@ -343,12 +343,13 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 			else if (current->flags.persist == false){
 				arcan_frameserver* dstfsrv = current->feed.state.ptr;
 
+/* glid 0 will be used as a flag for shared storages */
 				if (current->vstore->txmapped && current->vstore->vinf.text.glid){
 					glDeleteTextures(1, &current->vstore->vinf.text.glid);
 					current->vstore->vinf.text.glid = 0;
 				}
 
-				if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && dstfsrv)
+				if (dstfsrv && current->feed.state.tag == ARCAN_TAG_FRAMESERV)
 					arcan_frameserver_pause(dstfsrv, true);
 			}
 		}
@@ -2792,6 +2793,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* video storage, will take care of refcounting in case of 
  * shared storage etc. */
 		drop_glres( vobj->vstore );
+		vobj->vstore = NULL;
 	}
 
 	if (vobj->extrefc.attachments | vobj->extrefc.framesets | 
@@ -3452,6 +3454,7 @@ arcan_errc arcan_video_persistobject(arcan_vobj_id id)
 	if (vobj){
 		if (vobj->flags.clone == false &&
 			vobj->frameset_meta.capacity == 0 &&
+			vobj->vstore->refcount == 1 && 
 			vobj->parent == &current_context->world){
 			vobj->flags.persist = true;
 			rv = ARCAN_OK;

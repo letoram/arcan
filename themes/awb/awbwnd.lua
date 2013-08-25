@@ -456,13 +456,13 @@ local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 		left     = {},
 		right    = {},
 		fill     = nil,
+		parent   = self,
 		size     = bsize,
 		rsize    = rsize,
 		dir      = dir
 	};
 
 	awbbar.vertical = dir == "l" or dir == "r";
-	awbbar.parent = self;
 	awbbar.activeimg = activeimg;
 	awbbar.inactiveimg = inactiveimg;
 	awbbar.vid = null_surface(self.w, bsize);

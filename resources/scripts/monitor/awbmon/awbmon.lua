@@ -3,6 +3,8 @@
 -- somwhat messy, but it isn't exactly a trivial datamodel 
 -- that we're working with ...
 --
+-- 
+--
 
 state = {
 	process_sample = false,
@@ -27,13 +29,19 @@ function awbmon()
 	system_context_size(65535);
 	pop_video_context();
 
+	for i=1,#arguments do
+		if (string.sub(arguments[i], 1, 5) == "file:") then
+			samplefile = string.sub(arguments[i], 6);
+		end
+	end
+
 	system_load("scripts/mouse.lua")();
 	system_load("scripts/monitor/awbmon/awbwnd.lua")();
 	system_load("scripts/monitor/awbmon/awbwman.lua")();
 	symtable = system_load("scripts/symtable.lua")();
 
-	cursor = fill_surface(16, 16, 128, 255, 0);
-	mouse_setup(cursor, 255, 1);
+	cursor = load_image("scripts/monitor/awbmon/cursor.png");
+	mouse_setup(cursor, 255, 1, true);
 	mouse_acceleration(0.5);
 
 	awbwman_init(menulbl, desktoplbl);
@@ -41,7 +49,22 @@ function awbmon()
 	kbdbinds["F11"]  = awbmon_help;
 	kbdbinds["CTRL"] = toggle_mouse_grab;
 	kbdbinds["ALTF4"] = shutdown;
-	kbdbinds[" "] = function() state.process_sample = true; end
+	kbdbinds["F6"] = spawn_benchmark;
+
+	kbdbinds[" "] = function()
+		if (LAST_SAMPLE ~= nil) then
+			spawn_sample(LAST_SAMPLE, 1, 1); 
+		end
+	end
+
+--
+-- "Offline" mode
+--
+	if (samplefile ~= nil) then
+		if (not open_rawresource(samplefile)) then
+			shutdown();
+		end
+	end
 
 	awbmon_help();
 end
@@ -51,18 +74,19 @@ function awbmon_help()
 	helpimg = desktoplbl([[Default Monitor Script Helper\n\r\n\r
 (global)\n\r
 CTRL\t Grab/Release Mouse\n\r
-SPACE\t Wait for new Sample\n\r
+SPACE\t Latest Sample\n\r 
+F6\tBenchmark View\n\r
 ALT+F4\t Shutdown\n\r
 F11\t Help Window\n\r\nr\r
 (window-input)\n\r
 ESC\tDestroy Window\n\r
 F1\tGenerate Tree View\n\r
 F2\tGenerate Allocation Map\n\r
+SHFT+F2\tContinuous Allocation Map\n\r
 F3\tSwitch Context Up\n\r
 SHIFT+F3\tSwitch Context Down\n\r
 F4\tContext Info\n\r
 F5\tVideo Subsystem Info\n\r
-F6\tBenchmark View\n\r
 Up/Down\t Move to Parent/Child\n\r
 Left/Right\t Step to Prev/Next Object\n\r
 Shift+L/R\t Step to Prev/Next Sibling\n\r
@@ -70,10 +94,12 @@ Shift+Enter\t Copy to new Window]]);
 	link_image(helpimg, wnd.canvas.vid);
 	show_image(helpimg);
 	image_clip_on(helpimg, CLIP_SHALLOW);
+	image_mask_set(helpimg, MASK_UNPICKABLE);
 	image_inherit_order(helpimg, true);
 	order_image(helpimg, 1);
 	local props =	image_surface_properties(helpimg);
 	wnd:resize(props.width + 20, props.height + 20);
+	default_mh(wnd);
 end
 
 function context_vid(smpl, contn)
@@ -130,48 +156,99 @@ function badsample(startid)
 	};
 end
 
-function render_sample(lv)
-	if (lv.cellid == nil) then
+--
+-- Bunch of LUTs to make comparison, color hilights etc.
+-- Easier and less error-prone than a gigantic string.format
+--
+
+-- key order
+local keytbl = {
+	"cellid", "cellid_translated", "parent", "tracetag", "glstore_glid",
+	"glstore_w", "glstore_h", "glstore_bpp", "glstore_refc", "glstore_txu",
+	"glstore_txv", "frameset_mode", "frameset_counter", "frameset_capacity",
+	"frameset_current", "scalemode", "filtermode", "imageproc", "blendmode",
+	"clipmode", "glstore_prg", "extrefc_framesets", "extrefc_instances",
+	"extrefc_attachments", "extrefc_links", "flags", "valid_cache", "rotate_state",
+	"childslots", "mask", "order", "lifetime", "origw", "origh", "storage_source",
+	"opa", "position", "scale", "rotation"
+};
+
+-- format string profile
+local typetbl = {
+	cellid             = "Cellid: %d ",
+	cellid_translated  = "Translated: %d\\t",
+	parent             = "Parent: %d\\n\\r", 
+	tracetag           = "\\n\\rTracetag: %s\\n\\r",
+
+	glstore_glid = "GL(id: %d",
+	glstore_w    = " w: %d",
+	glstore_h    = " h: %d", 
+	glstore_bpp  = " bpp: %d",
+	glstore_refc = " refc: %d", 
+	glstore_txu  = " txu: %f",
+	glstore_txv  = " txv: %f)\\n\\r",
+
+	frameset_mode      = "\\n\\r(Frameset mode: %s ", 
+	frameset_counter   = " counter: %d ",
+	frameset_capacity  = " capacity: %d ", 
+	frameset_current   = " current: %d )\\n\\r",
+
+	scalemode   = "scalemode: %s ",
+	filtermode  = "filtermode: %s ",
+	imageproc   = "postprocess: %s\\n\\r",
+	blendmode   = "blendmode: %s ",
+	clipmode    = "clipmode: %s ",
+	glstore_prg = "\\n\\rprogram: %s\\n\\r",  
+
+	extrefc_framesets   = "Refc(Framesets: %d ", 
+	extrefc_instances   = "Inst: %d ", 
+	extrefc_attachments = "Attach: %d ",
+	extrefc_links       = "Links: %d ",
+
+	flags = "\\n\\rflags: %s\\n\\r",
+
+	valid_cache   = "Valid Cache: %d ", 
+	rotate_state  = "Rotation: %d ",
+	childslots    = "Children: %d ",
+
+	mask     = "\\n\\r%s\\n\\r",
+	order    = "Order: %d",
+	lifetime = "Lifetime: %d ",
+	origw    = "Orig.W: %d ",
+	origh    = "Orig.H: %d ",
+
+	storage_source = "Source: %s ",
+
+	opa      = "Opacity: %d ",
+	position = "Position: %d ",
+	scale    = "Scale: %d ",
+	rotation = "Rotation: %d "
+};
+
+function default_mh(wnd, vid)
+	local mh = {
+		own = function(self, vid) return vid == wnd.canvas.vid; end,
+		click = function() wnd:focus(); end
+	};
+	table.insert(wnd.handlers, mh);
+	mouse_addlistener(mh, {"click"});
+end
+
+function render_sample(smpl)
+	if (smpl.cellid == nil) then
 		return;
 	end
 
-	return desktoplbl(string.format(
-[[Vobj(%d)=>(%d), Parent: %d Tag: %s\n\r
-GL(Id: %d, W: %d, H: %d, BPP: %d, TXU: %d, TXV: %d, Refcont: %d\n\r
-Frameset( %d, %d / %d:%d )\n\r
-Scale: %s\tFilter: %s\tProc: %s\tProgram: %s\n\r
-#FrmRef: %d\t#Inst: %d\t#Attach: %d\t#Link: %d\n\r
-Flags: %s\n\r
-Cache: %d\tRotate: %d\n\r
-#Childslots: %d\n\r
-Blend Mode: %s\n\r
-Clipping Mode: %s\n\r
-Mask: %s\n\r
-Order: \b%d\!b\tLifetime: %d\tOrigW: %d\tOrigH: %d\n\r
-Source: %s\n\r
-Opacity: %.2f\n\r
-Position: %.2f, %.2f, %.2f\n\r
-Size: %.2f %.2f, %.2f\n\r
-Orientation: %.2f, %.2f, %.2f degrees\n\r]],
-lv.cellid, lv.cellid_translated, lv.parent, lv.tracetag,
-lv.glstore_glid and lv.glstore_glid or 0, lv.glstore_w, lv.glstore_h, 
-lv.glstore_bpp, lv.glstore_txu, lv.glstore_txv, 
-lv.glstore_refc and lv.glstore_refc or 0, 
-lv.frameset_mode, lv.frameset_counter, lv.frameset_capacity, 
-lv.frameset_current,
-lv.scalemode, lv.filtermode, lv.imageproc, lv.glstore_prg,
-lv.extrefc_framesets, lv.extrefc_instances, lv.extrefc_attachments, 
-lv.extrefc_links,lv.flags,
-lv.valid_cache, lv.rotate_state,
-lv.children ~= nil and lv.childslots or 0,
-lv.blendmode, lv.clipmode,
-lv.mask,lv.order, lv.lifetime, lv.origw, lv.origh,
-lv.storage_source and string.gsub(lv.storage_source, "\\", "\\\\") or "",
-lv.props.opa,
-lv.props.position[1], lv.props.position[2], lv.props.position[3], 
-lv.origw * lv.props.scale[1], lv.props.scale[2], lv.origh * lv.props.scale[3], 
-lv.props.rotation[1], lv.props.rotation[2], lv.props.rotation[3]
-));
+	local strtbl = {};
+
+	for i,v in ipairs(keytbl) do
+		if (smpl[v] ~= nil) then
+			table.insert(strtbl, 
+				string.format(typetbl[v], smpl[v]));
+		end
+	end
+
+	return render_text(table.concat(strtbl, ""));
 end
 
 function samplewnd_step(self, dir)
@@ -266,22 +343,58 @@ function samplewnd_update(self, smpl)
 	delete_image(self.smplvid);
 	if (smpl == nil) then
 		smpl = badsample( self.lastid );
-		print("bad sample");
 	end
 
 	self.smplvid = render_sample(smpl);
 	wnd_link(self, self.smplvid);
+	image_mask_set(self.smplvid, MASK_UNPICKABLE);
 end
 
 --
 -- Set a representative color based on the complexity of the object
+-- (dark grey : free)
+-- color; kind
+-- intensity; cost
 --
 function vobjcol(smpl)
 	if (smpl == nil) then
-		return 0, 255, 0;
-	else
-		return 255, 0, (string.find(smpl.flags, "clone") ~= nil and 255 or 0);
+		return 20, 20, 20;
 	end
+
+	local base_r, base_g, base_b;
+	local intensity = 0.5;
+
+	if (string.find(smpl.flags, "clone") ~= nil) then
+		base_r = 255;
+		base_g = 0;
+		base_b = 204;
+	elseif (smpl.kind == "3dobj") then
+		base_r = 0;
+		base_g = 0;
+		base_b = 255;
+	elseif (smpl.kind == "frameserver") then
+		base_r = 255;
+		base_g = 255;
+		base_b = 0;
+	elseif (smpl.kind == "textured_loading") then
+		base_r = 255;
+		base_g = 200;
+		base_b = 100;
+	elseif (smpl.kind == "color") then
+		base_r = 150;
+		base_g = 150;
+		base_b = 100;
+	elseif (smpl.kind == "textured") then
+		base_r = 255;
+		base_g = 255;
+		base_b = 200;
+	elseif (smpl.kind == "dead") then
+		base_r = 255;
+		base_g = 0;
+		base_b = 0;
+	end
+
+	return (intensity * base_r), (intensity * base_g), (intensity * base_b); 
 end
 
 local function lineobj(src, x1, y1, x2, y2)
@@ -307,7 +420,7 @@ end
 -- and use lineobj calls to plot out the relation.
 --
 function spawn_tree(smpl, context)
-	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) .. 
+	local wnd = awbwman_spawn(menulbl("TreeView:" .. tostring(context) .. 
 		tostring(smpl.display.ticks)));
 
 	lvls = {};
@@ -326,11 +439,81 @@ function spawn_tree(smpl, context)
 
 	for i,j in pairs(smpl.vcontexts[context].vobjs) do
 	end
+
+	default_mh();
+end
+
+function bench_update(wnd, smpl)
+	if (smpl.benchmark == nil) then
+		return;
+	end
+	
+	local bench = smpl.benchmark;
+	local bitmap = {};
+
+	local split1 = #bench.ticks;
+	local split2 = #bench.frames;
+	local split3 = #bench.framecost;
+	local w = split1 + split2 + split3;
+
+-- Replace this one to get bars instead of points
+	local plot_sample = function(dst, col, value, r, g, b)
+		value = value > wnd.maxv and wnd.maxv or value;
+		local row = wnd.maxv - value;
+
+		local cell = ( (row - 1) * w + col ) * 3;
+		
+		dst[cell + 1] = r;
+		dst[cell + 2] = g;
+		dst[cell + 3] = b;
+	end
+
+--
+-- Fill with black
+--
+	local npx = wnd.maxv * w;
+	for i=1,npx do
+		bitmap[(i-1)*3+1] = 0;
+		bitmap[(i-1)*3+2] = 0;
+		bitmap[(i-1)*3+3] = 0;
+	end
+	
+	for i=1,#bench.ticks do
+		plot_sample(bitmap, i - 1, bench.ticks[i], 255, 0, 0);
+	end
+
+	for i=1,#bench.frames do
+		plot_sample(bitmap, i + split1 - 2, bench.frames[i], 0, 255, 0);
+	end
+
+	for i=1,#bench.framecost do
+		plot_sample(bitmap, i + split1 + split2 - 3, 
+		bench.framecost[i], 0, 200, 255);	
+	end
+
+	local vid = raw_surface(w, wnd.maxv, 3, bitmap);
+	image_texfilter(vid, FILTER_NONE);
+	wnd:update_canvas(vid);
 end
 
 function spawn_benchmark(smpl)
-	local wnd = awbwman_spawn(menulbl("Benchmark:" .. tostring(context) ..
-	tostring(smpl.display.ticks)));
+	if (smpl == nil) then
+		smpl = LAST_SAMPLE;
+	end
+
+	if (benchmark_wnd == nil and smpl ~= nil) then
+		local wnd  = awbwman_spawn(menulbl("Benchmark"));
+		wnd.update = bench_update;
+		wnd.maxv   = 50;
+
+		default_mh(wnd);
+		wnd.on_destroy = function() benchmark_wnd = nil; end
+		benchmark_wnd = wnd;
+		benchmark_wnd:update(smpl);
+	else
+		benchmark_wnd:focus();
+		benchmark_wnd:update(smpl);
+	end
 
 end
 
@@ -348,6 +531,7 @@ Last Tick:\t%d\n\r]], context, #smpl.vcontexts, #ctx.rtargets, ctx.alive,
 
 	image_mask_set(cimg, MASK_UNPICKABLE);
 	wnd_link(wnd, cimg);
+	default_mh(wnd);
 end
 
 function spawn_vidinf(smpl, disp)
@@ -369,6 +553,7 @@ disp.scalemode, disp.filtermode));
 
 	image_mask_set(cimg, MASK_UNPICKABLE);
 	wnd_link(wnd, cimg);
+	default_mh(wnd);
 end
 
 function spawn_allocmap(smpl, context)
@@ -392,22 +577,35 @@ function spawn_allocmap(smpl, context)
 				ofs = ofs + 3;
 			else
 				local r, g, b = vobjcol(smpl.vcontexts[context].vobjs[smplofs]);
-				bitmap[ofs   ] = r;
-				bitmap[ofs +1] = g;
-				bitmap[ofs +2] = b;
+				bitmap[ofs  ] = r;
+				bitmap[ofs+1] = g;
+				bitmap[ofs+2] = b;
 				ofs = ofs + 3;
 				smplofs = smplofs + 1;
 			end
 		end
 
 		odd  = not odd;
-		rows = rows + 1;
+		rows = rows + 1
+		wnd:resize(wnd.w, wnd.h);
 	end
 
 	local vid = raw_surface(npix * 2, rows, 3, bitmap);
 	image_texfilter(vid, FILTER_NONE);
 	if (vid ~= BADID) then
 		wnd:update_canvas(vid, false);
+		wnd:resize(wnd.w, wnd.h);
+		local mh = {
+			own   = function(self, vid) 
+				print(vid, wnd.canvas.vid); return vid == wnd.canvas.vid; end,
+			click = function(self, vid, mx, my)
+				wnd:focus();
+				local x, y = mouse_xy();
+				print(mx, my, x, y);
+			end
+		};
+		table.insert(wnd.handlers, mh);
+		mouse_addlistener(mh, {"click"});
 	end
 end
 
@@ -445,8 +643,6 @@ function window_input(self, iotbl)
 		spawn_context(self.smpl, self.context);
 	elseif (sym == "F5") then
 		spawn_vidinf(self.smpl, self.smpl.display);
-	elseif (sym == "F6") then
-		print("benchmark");
 	end
 end
 
@@ -465,24 +661,18 @@ function spawn_sample(smpl, context, startid)
 	wnd.step_child   = samplewnd_stepchild;
 	wnd.input = window_input; 
 	wnd:step(1);
+	default_mh(wnd);
 end
 
---
--- Whenever we want a new sample, set process_sample to true
--- When parent sends one, it gets rendered to an image and set
--- as the canvas of a new window
---
 function sample(smpl)
-	if (state.process_sample == false) then
-		return;
+	LAST_SAMPLE = smpl;
+
+	if (benchmark_wnd ~= nil) then
+		benchmark_wnd:update(smpl);
 	end
 
-	if (state.delta_sample) then
-	else
-		spawn_sample(smpl, 1, 0);
-	end
-
-	state.process_sample = false;
+-- update benchmark window
+-- update calloc_window
 end
 
 modtbl = {false, false, false, false};

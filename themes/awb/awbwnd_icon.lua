@@ -182,6 +182,10 @@ local function awbicon_add(self, icntbl)
 		return vid == icn_area;
 	end
 
+	icntbl.click = function()
+		self:focus();
+	end
+
 	icntbl.dblclick = function(self)
 		icntbl:trigger();
 	end
@@ -200,7 +204,7 @@ local function awbicon_add(self, icntbl)
 		mouse_droplistener(icntbl);
 	end
 
-	mouse_addlistener(icntbl, {"over", "out", "dblclick"});
+	mouse_addlistener(icntbl, {"over", "click", "out", "dblclick"});
 end
 
 --
@@ -327,13 +331,19 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 		click = scrollclick
 	};
 
+	local canvash = {
+		own = function(self, vid) return vid == pwin.canvas.vid; end,
+		click = function() pwin:focus(); end
+	};
+
+	mouse_addlistener(canvash, {"click"});
 	mouse_addlistener(caretmh, {"drag", "drop"});
 	mouse_addlistener(scrollmh, {"click"});
 
+	table.insert(pwin.handlers, scrollmh);
+	table.insert(pwin.handlers, caretmh);
+	table.insert(pwin.handlers, canvash);
 	pwin.on_destroy = function()
-		mouse_droplistener(scrollmh);
-		mouse_droplistener(caretmh);
-
 		for i, v in ipairs(pwin.icons) do
 			mouse_droplistener(v);
 		end

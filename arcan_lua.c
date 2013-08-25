@@ -5176,6 +5176,20 @@ static inline char* lut_blendmode(enum arcan_blendfunc func)
 	}
 }
 
+static inline char* lut_kind(arcan_vobject* src)
+{
+	if (src->feed.state.tag == ARCAN_TAG_IMAGE)
+		return src->vstore->txmapped ? "textured" : "single color";
+	else if (src->feed.state.tag == ARCAN_TAG_FRAMESERV)
+		return "frameserver";
+	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+		return "textured_loading";
+	else if (src->feed.state.tag == ARCAN_TAG_3DOBJ)
+		return "3dobject";
+	else
+		return "dead";
+}
+
 static inline void dump_props(FILE* dst, surface_properties props)
 {	
 	fprintf(dst,"\
@@ -5230,6 +5244,7 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tmask = [[%s]],\n\
 \torigoofs = {%lf, %lf, %lf},\n\
 \tframeset = {},\n\
+\tkind = [[%s]],\n\
 \ttracetag = [[%s]]\n\
 };",
 (int) src->origw,
@@ -5267,6 +5282,7 @@ mask,
 (double) src->origo_ofs.x, 
 (double) src->origo_ofs.y, 
 (double) src->origo_ofs.z,
+lut_kind(src),
 src->tracetag ? src->tracetag : "no tag");
 
 	if (src->vstore->txmapped){
@@ -5387,28 +5403,24 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 		cctx--;
 	}
 
-/* benchmark data,
- * reset these after each flush as their values will be distorted by the 
- * sample function, ticks should be adjusted to fit the ring buffer size 
- * (or just ignored) */
 	if (benchdata.bench_enabled){
 		size_t bsz = sizeof(benchdata.ticktime)  / sizeof(benchdata.ticktime[0]);
 		size_t fsz = sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]);
 		size_t csz = sizeof(benchdata.framecost) / sizeof(benchdata.framecost[0]);
 
 		int i = (benchdata.tickofs + 1) % bsz;
-		fprintf(dst, "ctx.benchmark = {};\nctx.benchmark.ticks = {");
+		fprintf(dst, "\nrestbl.benchmark = {};\nrestbl.benchmark.ticks = {");
 		while (i != benchdata.tickofs){
 			fprintf(dst, "%d,", benchdata.ticktime[i]);
 			i = (i + 1) % bsz;
 		}
-		fprintf(dst, "};\nctx.benchmark.frames = {");
+		fprintf(dst, "};\nrestbl.benchmark.frames = {");
 		i = (benchdata.frameofs + 1) % fsz;
 		while (i != benchdata.frameofs){
 			fprintf(dst, "%d,", benchdata.frametime[i]);
 			i = (i + 1) % fsz;
 		}
-		fprintf(dst, "};\nctx.benchmark.framecost = {");
+		fprintf(dst, "};\nrestbl.benchmark.framecost = {");
 		i = (benchdata.costofs + 1) % csz;
 		while (i != benchdata.costofs){
 			fprintf(dst, "%d,", benchdata.framecost[i]);

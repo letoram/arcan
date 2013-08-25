@@ -4,6 +4,15 @@
 -- and a drag-n-drop composition canvas
 --
 
+--
+-- Missing;
+-- Icons
+-- Activation
+-- Aspect Enforcing in Resize.
+-- Delete, Stretch, Move to back, ...
+-- Destination Input
+--
+
 local function sweepcmp(vid, tbl)
 	for k,v in ipairs(tbl) do
 		if (v == vid) then
@@ -91,6 +100,113 @@ local function change_selected(vid)
 	print("change selected");
 end
 
+local function dotbl(icn, tbl, dstkey, hook)
+	local str = table.concat(tbl, [[\n\r]]);
+	local vid, lines = desktoplbl(str);
+
+	awbwman_popup(vid, lines, function(ind)
+		icn.parent.parent[dstkey] = tonumber(ind);
+		if (hook) then
+			hook(icn.parent.parent);
+		end
+	end, {ref = icn.vid});
+end
+
+local function respop(icn)
+	local lst = {
+		"200",
+		"240",
+		"360",
+		"480",
+		"720",
+		"1080"
+	};
+
+	for i=#lst,1,-1 do
+		if (VRESH < tonumber(lst[i])) then
+			table.remove(lst, i);
+		else
+			break;
+		end
+	end
+
+	dotbl(icn, lst, "resolution");
+end
+
+local function aspectpop(icn)
+	local lst = {
+		"4:3",
+		"5:3",
+		"3:2", 
+		"16:9"
+	};
+
+	dotbl(icn, lst, "aspect", icn.parent.parent.update_aspect);
+end
+
+local function vcodecpop(icn)
+	local lst = {
+		"H.264",
+		"VP8",
+		"FFV1"
+	};
+
+	dotbl(icn, lst, "vcodec"); 
+end
+
+local function qualpop(icn, dstkey)
+	awbwman_popupslider(1, icn.parent.parent[dstkey], 10, function(val)
+		icn.parent.parent[dstkey] = math.ceil(val);
+		end, {ref = icn.vid, win = icn.parent.parent});
+end
+
+local function acodecpop(icn)
+	local lst = {
+		"MP3",
+		"OGG",
+		"PCM",
+		"FLAC"
+	};
+
+	dotbl(icn, lst, "acodec");
+end
+
+local function fpspop(icn)
+	local lst = {
+		"10",
+		"24",
+		"25",
+		"30",
+		"50",
+		"60"
+	};
+
+	dotbl(icn, lst, "fps");
+end
+
+local function destpop(icn)
+	local lst = {
+		"Auto",
+		"Specify...",
+		"Stream..."
+	};
+
+--
+-- Generate auto name .. 
+--
+
+	dotbl(icn, lst, "destination");
+end
+
+--
+-- Resize window to fit aspect as a helper in positioning etc.
+--
+local function wnd_aspectchange()
+end
+
+local function wnd_dorecord()
+end
+
 function spawn_vidrec()
 	local wnd = awbwman_spawn(menulbl("Recorder"), {refid = "vidrec"});
 	if (wnd == nil) then 
@@ -98,22 +214,47 @@ function spawn_vidrec()
 	end
 
 	wnd.sources = {};
-	wnd.name = "Video Recorder";
 
+	wnd.name = "Video Recorder";
+	wnd.aquality = 7;
+	wnd.vquality = 7;
+	wnd.resolution = 480;
+	wnd.aspect = "4:3";
+	wnd.container = "MKV";
+	wnd.vcodec = "VP8";
+	wnd.acodec = "OGG";
+	wnd.destination = "Auto";
+
+--
+-- Load old settings
+--
 	local cfg = awbwman_cfg();
 	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
 		cfg.ttinactvres, cfg.topbar_sz); 
 	
 	bar:add_icon("r", cfg.bordericns["record"], function()
 		bar:destroy();
-		wnd.dirs.r.right[1]:destroy();
+		wnd.dir.r.right[1]:destroy();
 
 		wnd:resize(wnd.w, wnd.h);
 	end);
 
+	bar:add_icon("l", cfg.bordericns["resolution"], respop);
+	bar:add_icon("l", cfg.bordericns["resolution"], aspectpop);
+	bar:add_icon("l", cfg.bordericns["resolution"], vcodecpop);
+	bar:add_icon("l", cfg.bordericns["resolution"], function(self)
+		qualpop(self, "vquality"); end);
+	bar:add_icon("l", cfg.bordericns["resolution"], acodecpop);
+	bar:add_icon("l", cfg.bordericns["resolution"], function(self)
+		qualpop(self, "aquality"); end);
+	bar:add_icon("l", cfg.bordericns["resolution"], fpspop);
+	bar:add_icon("l", cfg.bordericns["save"], destpop);
+
 	bar.click = function()
-		wnd:focus();
+		wnd:focus(true);
 	end
+	mouse_addlistener(bar, {"click"});
+	table.insert(wnd.handlers, bar);
 
 -- add ttbar, icons for; 
 -- resolution (popup, change vidres, preset values)
