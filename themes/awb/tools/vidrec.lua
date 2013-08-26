@@ -6,7 +6,6 @@
 
 --
 -- Missing;
--- Icons
 -- Activation
 -- Aspect Enforcing in Resize.
 -- Delete, Stretch, Move to back, ...
@@ -80,6 +79,31 @@ local function add_rectarget(wnd, tag)
 		end
 	end
 
+	source.dblclick = function(self, vid)
+		resize_image(source.vid, wnd.w, wnd.h);
+		move_image(source.vid, 0, 0);
+	end
+
+	source.rclick = function(self, vid)
+		local dind = 0;
+
+		for i=1,#wnd.sources do
+			if (wnd.sources[i] == source) then
+				dind = i;
+				break;
+			end
+		end
+
+		if (dind > 1) then
+			local tbl = table.remove(wnd.sources, dind);
+			table.insert(wnd.sources, dind - 1, tbl);
+		end
+
+		for i=1,#wnd.sources do
+			order_image(wnd.sources[i].vid, 1);
+		end
+	end
+
 	source.drop = function(self, vid)
 		source.dmode = nil;
 		source.start = nil;
@@ -92,7 +116,7 @@ local function add_rectarget(wnd, tag)
 	link_image(source.vid, wnd.canvas.vid);
 	image_clip_on(source.vid);
 
-	mouse_addlistener(source, {"click", "drag", "drop"});
+	mouse_addlistener(source, {"click", "rclick", "drag", "drop", "dblclick"});
 	tag:drop();
 end
 
@@ -240,14 +264,14 @@ function spawn_vidrec()
 	end);
 
 	bar:add_icon("l", cfg.bordericns["resolution"], respop);
-	bar:add_icon("l", cfg.bordericns["resolution"], aspectpop);
-	bar:add_icon("l", cfg.bordericns["resolution"], vcodecpop);
-	bar:add_icon("l", cfg.bordericns["resolution"], function(self)
+	bar:add_icon("l", cfg.bordericns["aspect"], aspectpop);
+	bar:add_icon("l", cfg.bordericns["vcodec"], vcodecpop);
+	bar:add_icon("l", cfg.bordericns["vquality"], function(self)
 		qualpop(self, "vquality"); end);
-	bar:add_icon("l", cfg.bordericns["resolution"], acodecpop);
-	bar:add_icon("l", cfg.bordericns["resolution"], function(self)
+	bar:add_icon("l", cfg.bordericns["acodec"], acodecpop);
+	bar:add_icon("l", cfg.bordericns["aquality"], function(self)
 		qualpop(self, "aquality"); end);
-	bar:add_icon("l", cfg.bordericns["resolution"], fpspop);
+	bar:add_icon("l", cfg.bordericns["fps"], fpspop);
 	bar:add_icon("l", cfg.bordericns["save"], destpop);
 
 	bar.click = function()
