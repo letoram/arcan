@@ -1419,7 +1419,12 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["save"]     = load_image("awbicons/save.png");
 	awb_cfg.bordericns["load"]     = load_image("awbicons/load.png");
 	awb_cfg.bordericns["record"]   = load_image("awbicons/record.png");
-
+	awb_cfg.bordericns["aspect"]   = load_image("awbicons/aspect.png");
+	awb_cfg.bordericns["vcodec"]   = load_image("awbicons/vcodec.png");
+	awb_cfg.bordericns["vquality"] = load_image("awbicons/vquality.png");
+	awb_cfg.bordericns["acodec"]   = load_image("awbicons/acodec.png");
+	awb_cfg.bordericns["aquality"] = load_image("awbicons/aquality.png");
+	awb_cfg.bordericns["fps"]      = load_image("awbicons/fps.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
