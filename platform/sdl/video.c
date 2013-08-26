@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
 
 #include "glheaders.h"
 
@@ -40,6 +41,56 @@ void platform_video_restore_external()
 void platform_video_bufferswap()
 {
 	SDL_GL_SwapBuffers();
+}
+
+void platform_video_timing(float* o_sync, float* o_stddev, float* o_variance)
+{
+	static float sync, stddev, variance;
+	static bool gottiming;
+
+	if (!gottiming){
+		platform_video_bufferswap();
+	
+		int retrycount = 0;
+
+/* 
+ * try to get a decent measurement of actual timing, this is not really used for
+ * synchronization but rather as a guess of we're actually vsyncing and how 
+ * processing should be scheduled in relation to vsync, or if we should yield at
+ * appropriate times.
+ */
+
+		const int nsamples = 10;
+		long long int samples[nsamples], sample_sum;
+
+retry:
+		sample_sum = 0;
+		for (int i = 0; i < nsamples; i++){
+			long long int start = arcan_timemillis();
+			platform_video_bufferswap();
+			long long int stop = arcan_timemillis();
+			samples[i] = stop - start;
+			sample_sum += samples[i];
+		}
+
+		sync = (float) sample_sum / (float) nsamples;
+		variance = 0.0;
+		for (int i = 0; i < nsamples; i++){
+			variance += powf(sync - (float)samples[i], 2);
+		}
+		stddev = sqrtf(variance / (float) nsamples);
+		if (stddev > 0.5){
+			retrycount++;
+			if (retrycount > 10)
+				arcan_video_display.vsync_timing = 16.667; /* give up and just revert */
+			else
+				goto retry;
+		}
+	}
+
+	*o_sync = sync;
+	*o_stddev = stddev;
+	*o_variance = variance;
 }
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,

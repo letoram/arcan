@@ -45,7 +45,9 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
+#include "platform/platform.h"
 #include "arcan_video.h"
+#include "arcan_ttf.h"
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_framequeue.h"
@@ -1163,11 +1165,6 @@ const char* defcfprg =
 "   gl_FragColor = vec4(obj_col.rgb, obj_opacity);\n"
 "}\n";
 
-extern int TTF_Init();
-extern void platform_video_bufferswap();
-extern bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
-	bool frames, bool conservative);
-
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, 
 	bool fs, bool frames, bool conservative)
 {
@@ -1186,10 +1183,8 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	}
 
 /* flip twice (back->front->display) to hopefully wash out initial jitter */
-	arcan_video_display.vsync_timing = 0;
-	platform_video_bufferswap();
-	platform_video_bufferswap();
-	int retrycount = 0;
+	platform_video_timing(&arcan_video_display.vsync_timing, 
+		&arcan_video_display.vsync_stddev, &arcan_video_display.vsync_variance);
 
 /* 
  * try to get a decent measurement of actual timing, this is not really used for
@@ -1197,38 +1192,12 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  * processing should be scheduled in relation to vsync, or if we should yield at
  * appropriate times.
  */
-	const int nsamples = 10;
-	long long int samples[nsamples], sample_sum;
-retry:
-	sample_sum = 0;
-	for (int i = 0; i < nsamples; i++){
-		long long int start = arcan_timemillis();
-		platform_video_bufferswap();
-		long long int stop = arcan_timemillis();
-		samples[i] = stop - start;
-		sample_sum += samples[i];
-	}
 
-	float mean = (float) sample_sum / (float) nsamples;
-	float variance = 0.0;
-	for (int i = 0; i < nsamples; i++){
-		variance += powf(mean - (float)samples[i], 2);
-	}
-	float stddev = sqrtf(variance / (float) nsamples);
-	if (stddev > 0.5){
-		retrycount++;
-		if (retrycount > 10)
-			arcan_video_display.vsync_timing = 16.667; 
-		else
-			goto retry;
-	}
-	else
-		arcan_video_display.vsync_timing = mean;
-	arcan_video_display.vsync_stddev = stddev;
-	arcan_video_display.vsync_variance = variance;
-
-	arcan_warning("arcan_video_init(), timing estimate (mean: %f, deviation: %f, "
-		"samples used: %d)\n", mean, stddev, nsamples * (retrycount + 1));
+	arcan_warning("arcan_video_init(), timing estimate"
+	"	(mean: %f, deviation: %f, variance: %f)\n", 
+		arcan_video_display.vsync_timing,
+		arcan_video_display.vsync_stddev,
+		arcan_video_display.vsync_variance);
 
 	arcan_video_display.conservative = conservative;
 	arcan_video_display.defaultshdr  = arcan_shader_build("DEFAULT",
