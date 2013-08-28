@@ -8,9 +8,6 @@
 -- Missing;
 -- Activation
 -- Aspect Enforcing in Resize.
--- Delete, Stretch, Move to back, ...
--- Destination Input
---
 
 local function sweepcmp(vid, tbl)
 	for k,v in ipairs(tbl) do
@@ -74,6 +71,20 @@ local function add_rectarget(wnd, tag)
 -- update selected for wnd so 'del' input key works
 	source.click = function(self, vid)
 		local tag = awbwman_cursortag();
+		
+		if (wnd.selected ~= source) then
+			if (wnd.selected) then
+				image_shader(wnd.selected.vid, "DEFAULT");
+			end
+
+			wnd.selected = source;
+			image_shader(wnd.selected.vid, "awb_selected");
+
+		else	
+			image_shader(wnd.selected.vid, "DEFAULT");
+			wnd.selected = nil;
+		end
+
 		if (tag and tag.kind == "media") then
 			add_rectarget(wnd, tag);
 		end
@@ -116,6 +127,7 @@ local function add_rectarget(wnd, tag)
 	link_image(source.vid, wnd.canvas.vid);
 	image_clip_on(source.vid);
 
+	source.name = "vidrec_source";
 	mouse_addlistener(source, {"click", "rclick", "drag", "drop", "dblclick"});
 	tag:drop();
 end
@@ -124,12 +136,18 @@ local function change_selected(vid)
 	print("change selected");
 end
 
-local function dotbl(icn, tbl, dstkey, hook)
+local function dotbl(icn, tbl, dstkey, convert, hook)
+	for i=1,#tbl do
+		if (tbl[i] == icn.parent.parent[dstkey]) then
+			tbl[i] = [[\#00ff00 ]] .. tbl[i] .. [[\#ffffff ]];
+		end
+	end
+
 	local str = table.concat(tbl, [[\n\r]]);
 	local vid, lines = desktoplbl(str);
 
 	awbwman_popup(vid, lines, function(ind)
-		icn.parent.parent[dstkey] = tonumber(ind);
+		icn.parent.parent[dstkey] = convert and tonumber(tbl[ind]) or tbl[ind];
 		if (hook) then
 			hook(icn.parent.parent);
 		end
@@ -154,7 +172,7 @@ local function respop(icn)
 		end
 	end
 
-	dotbl(icn, lst, "resolution");
+	dotbl(icn, lst, "resolution", true);
 end
 
 local function aspectpop(icn)
@@ -165,7 +183,7 @@ local function aspectpop(icn)
 		"16:9"
 	};
 
-	dotbl(icn, lst, "aspect", icn.parent.parent.update_aspect);
+	dotbl(icn, lst, "aspect", false, icn.parent.parent.update_aspect);
 end
 
 local function vcodecpop(icn)
@@ -175,7 +193,7 @@ local function vcodecpop(icn)
 		"FFV1"
 	};
 
-	dotbl(icn, lst, "vcodec"); 
+	dotbl(icn, lst, "vcodec", false); 
 end
 
 local function qualpop(icn, dstkey)
@@ -192,7 +210,7 @@ local function acodecpop(icn)
 		"FLAC"
 	};
 
-	dotbl(icn, lst, "acodec");
+	dotbl(icn, lst, "acodec", false);
 end
 
 local function fpspop(icn)
@@ -219,7 +237,7 @@ local function destpop(icn)
 -- Generate auto name .. 
 --
 
-	dotbl(icn, lst, "destination");
+	dotbl(icn, lst, "destination", false);
 end
 
 --
@@ -249,6 +267,23 @@ function spawn_vidrec()
 	wnd.acodec = "OGG";
 	wnd.destination = "Auto";
 
+	wnd.on_destroy = function()
+		print("save vidrec settings");
+	end
+
+	wnd.input = function(self, val)
+		if (val.active and val.lutsym == "DELETE" and wnd.selected) then
+			for i=1,#wnd.sources do
+				if (wnd.sources[i] == wnd.selected) then
+					wnd.selected = nil;
+					delete_image(wnd.sources[i].vid);
+					table.remove(wnd.sources, i);
+					break;
+				end
+			end
+		end
+	end
+
 --
 -- Load old settings
 --
@@ -258,9 +293,16 @@ function spawn_vidrec()
 	
 	bar:add_icon("r", cfg.bordericns["record"], function()
 		bar:destroy();
-		wnd.dir.r.right[1]:destroy();
 
+		wnd.dir.r.right[1]:destroy();
+		if (wnd.selected ~= nil) then
+			image_transform_cycle(wnd.selected, 0);
+			show_image(wnd.selected);
+		end
+
+		wnd.input = nil;
 		wnd:resize(wnd.w, wnd.h);
+-- activate recording, add statuslabel, detach sources etc.
 	end);
 
 	bar:add_icon("l", cfg.bordericns["resolution"], respop);
@@ -277,6 +319,7 @@ function spawn_vidrec()
 	bar.click = function()
 		wnd:focus(true);
 	end
+	bar.name = "vidrec_ttbar";
 	mouse_addlistener(bar, {"click"});
 	table.insert(wnd.handlers, bar);
 
@@ -320,8 +363,8 @@ function spawn_vidrec()
 	end,
 	}
 
+	mh.name = "vidrec_mh";
 	mouse_addlistener(mh, {"click", "over", "out"});
-	mouse_addlistener(bar, {"click"});
 
 	table.insert(wnd.handlers, mh);
 	table.insert(wnd.handlers, bar);
