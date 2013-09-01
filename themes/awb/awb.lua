@@ -97,8 +97,6 @@ function awb()
 -- the camera
 --
 	local supp3d = setup_3dsupport();
-	scale3d_model(supp3d.camera, 1.0, -1.0, 1.0);
-
 	awb_desktop_setup();
 
 -- LCTRL + META = (toggle) grab to specific internal

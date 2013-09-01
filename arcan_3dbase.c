@@ -328,15 +328,9 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 
 	arcan_shader_envv(PROJECTION_MATR, camera->projection, sizeof(float) * 16);
 
-/* for infinite geometry, we need a different modelview 
- * where we don't translate the camera, just scale / rotate -- so the cached
- * one isn't of use */
 	identity_matrix(matr);
 	scale_matrix(matr, dprop.scale.x, dprop.scale.y, dprop.scale.z);
-
- 	if (camobj->rotate_state)
-		matr_quatf(norm_quat(dprop.rotation.quaternion), omatr);
-
+	matr_quatf(norm_quat(dprop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, matr, omatr);
 	cell = process_scene_infinite(cell, fract, dmatr);
 
