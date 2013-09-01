@@ -291,7 +291,7 @@ function spawn_vidrec()
 	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
 		cfg.ttinactvres, cfg.topbar_sz); 
 	
-	bar:add_icon("r", cfg.bordericns["record"], function()
+	bar:add_icon("record", "r", cfg.bordericns["record"], function()
 		bar:destroy();
 
 		wnd.dir.r.right[1]:destroy();
@@ -305,16 +305,16 @@ function spawn_vidrec()
 -- activate recording, add statuslabel, detach sources etc.
 	end);
 
-	bar:add_icon("l", cfg.bordericns["resolution"], respop);
-	bar:add_icon("l", cfg.bordericns["aspect"], aspectpop);
-	bar:add_icon("l", cfg.bordericns["vcodec"], vcodecpop);
-	bar:add_icon("l", cfg.bordericns["vquality"], function(self)
+	bar:add_icon("res", "l", cfg.bordericns["resolution"], respop);
+	bar:add_icon("aspect", "l", cfg.bordericns["aspect"], aspectpop);
+	bar:add_icon("vcodec", "l", cfg.bordericns["vcodec"], vcodecpop);
+	bar:add_icon("vqual", "l", cfg.bordericns["vquality"], function(self)
 		qualpop(self, "vquality"); end);
-	bar:add_icon("l", cfg.bordericns["acodec"], acodecpop);
-	bar:add_icon("l", cfg.bordericns["aquality"], function(self)
+	bar:add_icon("acodec", "l", cfg.bordericns["acodec"], acodecpop);
+	bar:add_icon("aqual", "l", cfg.bordericns["aquality"], function(self)
 		qualpop(self, "aquality"); end);
-	bar:add_icon("l", cfg.bordericns["fps"], fpspop);
-	bar:add_icon("l", cfg.bordericns["save"], destpop);
+	bar:add_icon("fps", "l", cfg.bordericns["fps"], fpspop);
+	bar:add_icon("save", "l", cfg.bordericns["save"], destpop);
 
 	bar.click = function()
 		wnd:focus(true);

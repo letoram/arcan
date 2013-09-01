@@ -114,7 +114,7 @@ function spawn_vidcmp()
 	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
 		cfg.ttinactvres, cfg.topbar_sz);
 
-	bar:add_icon("l", cfg.bordericns["play"], 
+	bar:add_icon("play", "l", cfg.bordericns["play"], 
 		function(self)
 			wnd:focus();
 			popup_options(wnd, self.vid); 

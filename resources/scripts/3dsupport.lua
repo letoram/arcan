@@ -465,13 +465,6 @@ end
 --
 function setup_3dsupport()
 	update_cache();
-	if (valid_vid(support3d.camera)) then
-		delete_image(support3d.camera);
-	end
-
-	support3d.camera = fill_surface(4, 4, 0, 0, 0);
-	camtag_model(support3d.camera);
-	image_tracetag(support3d.camera, "3d camera");
 	
 	if (not valid_vid(support3d.hf_noise)) then
 		switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
@@ -480,8 +473,6 @@ function setup_3dsupport()
 		shader_uniform(def3d_txcoscroll, "speedfact", "ff", PERSIST, 12.0, 12.0);
 		image_tracetag(support3d.hf_noise, "3dmodel(noise)");
 	end
-
-	return support3d;
 end
 
 --

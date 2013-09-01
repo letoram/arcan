@@ -351,14 +351,19 @@ local function awbicn_destroy(self)
 	end
 end
 
-local function awbbar_addicon(self, dir, image, trig)
+local function awbbar_addicon(self, name, dir, image, trig)
 	local icontbl = {
 		trigger = trig,
 		parent  = self,
 		destroy = awbicn_destroy,
 		xofs = 0,
-		yofs = 0
+		yofs = 0,
+		name = name
 	};
+
+	if (type(image) ~= "number") then
+		print(debug.traceback());
+	end
 
 	local props = image_surface_initial_properties(image);
 	local icon = null_surface(props.width, props.height);
@@ -576,30 +581,74 @@ end
 -- and returns as a table with a raw vid (link to whatever
 -- container should be used)
 --
-function awbwnd_subwin_input(options)
+function awbwnd_subwin_input(trigger, options)
 	local res = {
 		msg = "",
 		cursorpos = 1,
 		limit = -1
 	};
 
+	res.border = color_surface(res.w, res.h, options.borderr, 
+		options.borderg, options.borderb);
+
+	res.canvas = color_surface(res.w - res.borderw * 2, res.h - res.borderh * 2,
+		options.bgr, options. bgg, options.bgb);
+
+	link_image(res.canvas, res.border);
+	move_image(res.canvas, res.borderw, res.borderw);
+
+-- move caret also (but keep blinking ..)
+	show_image({res.border, res.canvas});
+
 --
 -- Anchor, border, canvas, test, cursor 
 --
-
 	res.validator = function(self)
 		return true;
 	end
 
 	res.resize = function(self, neww)
+		resize_image(res.anchor, neww);
+		resize_image(res.border, neww);
+		resize_image(res.wnd, neww - res.borderw * 2);
+	end
+
+	res.redraw = function(self)
+		if (res.textvid) then
+			delete_image(res.textvid);
+		end
+
+		res.textvid = render_text(res.str.gsub("\\", "\\\\"));
+		show_image(res.textvid);
+		link_image(res.textvid, res.wnd);
+		image_clip_on(res.textvid, CLIP_SHALLOW);
 	end
 
 -- returns true on finished signal, requiring both a valid string
 -- and enter etc. being pressed
 	res.input = function(self, iotbl)
+		if (iotbl.lutsym == "LSHIFT" or iotbl.lutsym == "RSHIFT") then
+			print("shift");
+		end
+
+		if (iotbl.lutsym == "BACKSPACE") then
+			self.str = string.sub( self.str, 1, -2 );
+		end
+
+		self.str = self.str .. 
+
+		self:redraw();
 	end
 
 	res.destroy = function(self)
+		if (res.textvid) then
+			delete_image(res.textvid);
+		end
+		
+		delete_image(res.border);
+		for k, v in pairs(res) do
+			res[v] = nil;
+		end
 	end
 
 	return res;

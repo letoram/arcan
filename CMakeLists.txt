@@ -235,6 +235,8 @@ set (
  arcan_audio.h
  arcan_target_launcher.h
  arcan_led.c
+ arcan_hmd.c
+ arcan_hmd.h
  arcan_led.h
  arcan_general.h
  arcan_db.h
@@ -429,6 +431,7 @@ platform/sdl/event.c
 )
 
 add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
+add_definitions(-DCLOCK_SOURCE_RAW)
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 #add_definitions(-fsanitize=address ) 
 

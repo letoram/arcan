@@ -298,7 +298,7 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 -- build scrollbar 
 --
 	local bartbl = pwin.dir[bardir];
-	local newicn = bartbl:add_icon("fill", scrollbar_icn);
+	local newicn = bartbl:add_icon("scroll", "fill", scrollbar_icn);
 	delete_image(scrollbar_icn);
 	pwin.scroll = true;
 

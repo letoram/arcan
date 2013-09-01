@@ -34,7 +34,7 @@
 #include GL_HEADERS
 
 #ifndef GL_MAX_TEXTURE_UNITS
-#define GL_MAX_TEXTURE_UNITS 4
+#define GL_MAX_TEXTURE_UNITS 8 
 #endif
 
 #include "arcan_math.h"
@@ -49,47 +49,9 @@
 extern struct arcan_video_display arcan_video_display;
 static arcan_shader_id default_3dprog;
 
-/* 
- * since the 3d is planned as a secondary feature, rather than the primary one,
- * things work slightly different as each 3d object is essentially 
- * coupled to 1..n of 2D, thus more complex models 
- */
-enum virttype{
-	virttype_camera = 0,
-	virttype_pointlight,
-	virttype_dirlight,
-	virttype_reflection,
-	virttype_shadow
+struct camtag_data {
+	float projection[16];
 };
-
-struct virtobj {
-/* inherits orientation from this object 
- * (if it resolves else revert to cached) */
-	arcan_vobj_id parent;
-
-/* cached orientation */
-	orientation direction;
-	scalefactor scale;
-	vector position;
-	vector view;
-	float projmatr[16];
-
-	enum virttype type;
-/* linked list arranged, sorted high-to-low
- * based on virttype */
-	struct virtobj* next;
-};
-
-typedef struct virtobj virtobj;
-
-typedef struct {
-	/* ntxcos == nverts */
-    arcan_vobj_id vid;
-} texture_set;
-
-typedef struct {
-	virtobj* perspectives;
-} arcan_3dscene;
 
 struct geometry {
 	unsigned nmaps;
@@ -132,25 +94,6 @@ typedef struct {
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
-static arcan_3dscene current_scene = {0};
-/*
- * CAMERA Control, generation and manipulation
- */
-
-static virtobj* find_perspective(unsigned camtag)
-{
-	virtobj* vobj = current_scene.perspectives;
-	unsigned ofs = 0;
-
-	while (vobj){
-		if (vobj->type == virttype_camera && camtag == ofs){
-			return vobj;
-		} else ofs++;
-		vobj = vobj->next;
-	}
-	return NULL;
-}
-
 static void freemodel(arcan_3dmodel* src)
 {
 	if (src){
@@ -188,19 +131,12 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 		return;
 
 	unsigned cframe = 0;
+
 	float wmvm[16];
-
-/* if there's texture coordsets and an associated vobj,
- * enable texture coord array, normal array etc. */
-	if (src->flags.infinite){
-		identity_matrix(wmvm);
-		glDepthMask(GL_FALSE);
-		glEnable(GL_DEPTH_TEST);
-	} else
-		memcpy(wmvm, modelview, sizeof(float) * 16);
-
 	float dmatr[16], omatr[16];
 	float opa   = 1.0;
+	
+	memcpy(wmvm, modelview, sizeof(float) * 16);
 
 /* reposition the current modelview, set it as the current shader data,
  * enable vertex attributes and issue drawcalls */
@@ -214,12 +150,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	struct geometry* base = src->geometry;
 
 	while (base){
-		if (!base->complete){
-			base = base->next;
-			continue;
-		}
+		if (!base->complete)
+			goto step;
 
- /* keep track of how many TUs are in use */
 		unsigned counter = 0;
 			if (-1 != base->program)
 				arcan_shader_activate(base->program);
@@ -233,7 +166,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 			arcan_shader_vattribute_loc(ATTRIBUTE_TEXCORD)};
 
 		if (attribs[0] == -1)
-			continue;
+			goto step;
 		else {
 			glEnableVertexAttribArray(attribs[0]);
 			glVertexAttribPointer(attribs[0], 3, GL_FLOAT, GL_FALSE, 0, base->verts);
@@ -241,7 +174,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 
 		if (attribs[1] != -1 && base->normals){
 			glEnableVertexAttribArray(attribs[1]);
-			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0,base->normals);
+			glVertexAttribPointer(attribs[1], 3, GL_FLOAT, GL_FALSE,0, base->normals);
 		} else attribs[1] = -1;
 
 		if (attribs[2] != -1 && base->txcos){
@@ -249,7 +182,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 			glVertexAttribPointer(attribs[2], 2, GL_FLOAT, GL_FALSE, 0, base->txcos);
 		} else attribs[2] = -1;
 
-/* It's up to arcan_shader to determine if this will actually involve 
+/* It's up to arcan_shdrmgmt to determine if this will actually involve 
  * a program switch or not, blend states etc. are dictated by the images 
  * used as texture, and with the frameset_multitexture approach, 
  * the first one in the set */
@@ -281,7 +214,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 			}
 		}
 		
-/* Indexed- or direct mode? */
+/* Indexed, direct or VBO */
 		if (base->indices)
 			glDrawElements(GL_TRIANGLES, base->nindices,
 				base->indexformat, base->indices);
@@ -293,13 +226,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 				glDisableVertexAttribArray(attribs[i]);
 
 		cframe += base->nmaps;
+	
+step:
 		base = base->next;
-	}
-
-/* revert from infinite geometry */
-	if (src->flags.infinite){
-		glDepthMask(GL_TRUE);
-		glEnable(GL_DEPTH_TEST);
 	}
 }
 
@@ -323,12 +252,40 @@ static int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf,
 	return 0;
 }
 
-/* Simple one- off rendering pass, no exotic sorting, 
- * culling structures, projections or other */
+/* normal scene process, except stops after no objects with infinite 
+ * flag (skybox, skygeometry etc.) */
+static arcan_vobject_litem* process_scene_infinite(
+	arcan_vobject_litem* cell, float lerp, float* modelview)
+{
+	arcan_vobject_litem* current = cell;
+
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
+	while (current){
+		arcan_vobject* cvo = current->elem;
+		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
+
+		arcan_3dmodel* obj3d = dvo->feed.state.ptr;
+	
+		if (cvo->order >= 0 || obj3d->flags.infinite == false)
+			break;
+
+		surface_properties dprops;
+		arcan_resolve_vidprop(cvo, lerp, &dprops);
+		rendermodel(dvo, obj3d, dvo->program, dprops, modelview);
+
+		current = current->next;
+	}
+
+	return current;
+}
+
 static void process_scene_normal(arcan_vobject_litem* cell, float lerp, 
-	float* modelview, float* projection)
+	float* modelview)
 {
 	glEnable(GL_DEPTH_TEST);
+	glDepthMask(GL_TRUE);
 	glCullFace(GL_BACK);
 
 	arcan_vobject_litem* current = cell;
@@ -340,14 +297,10 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 		if (cvo->order >= 0)
 			break;
 
-		if (cvo->flags.clone){
-			assert(cvo->parent);
-		}
-
 /* use parent if we have an instance.. */
 		surface_properties dprops;
 		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
-	
+		arcan_3dmodel* obj3d = dvo->feed.state.ptr;
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
 		rendermodel(dvo, dvo->feed.state.ptr, dvo->program, 
 			dprops, modelview);
@@ -358,50 +311,37 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 
 /* Chained to the video-pass in arcan_video, stop at the 
  * first non-negative order value */
-arcan_vobject_litem* arcan_refresh_3d(unsigned camtag,arcan_vobject_litem* cell,
-	float frag, unsigned int destination)
+arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag, 
+	arcan_vobject_litem* cell, float fract)
 {
-	virtobj* base = find_perspective(camtag);
+	arcan_vobject* camobj = arcan_video_getobject(camtag);
 
 	glClear(GL_DEPTH_BUFFER_BIT);
+	if (!camobj || camobj->feed.state.tag != ARCAN_TAG_3DCAMERA)
+		return cell;	
+	
+	struct camtag_data* camera = camobj->feed.state.ptr;
+	float matr[16], dmatr[16], omatr[16];
 
-	if (base){
-		float matr[16], dmatr[16];
-		arcan_vobject* parent = arcan_video_getobject(base->parent);
-		surface_properties dprops = {0};
-		if (parent){
-			arcan_resolve_vidprop(parent, frag, &dprops);
+	surface_properties dprop;
+	arcan_resolve_vidprop(camobj, fract, &dprop);
 
-/* update local cache */
-			base->scale = dprops.scale;
-			base->position  = dprops.position;
-			matr_quatf(dprops.rotation.quaternion, base->direction.matr);
-			base->direction.pitchf = dprops.rotation.pitch;
-			base->direction.rollf  = dprops.rotation.roll;
-			base->direction.yawf   = dprops.rotation.yaw;
-		}
+	arcan_shader_envv(PROJECTION_MATR, camera->projection, sizeof(float) * 16);
 
-		switch(base->type){
-			case virttype_camera :
-				arcan_shader_envv(PROJECTION_MATR, base->projmatr, sizeof(float) * 16);
-				identity_matrix(matr);
-				scale_matrix(matr, base->scale.x, base->scale.y, base->scale.z);
-				multiply_matrix(dmatr, matr, base->direction.matr);
-				translate_matrix(dmatr, base->position.x, 
-					base->position.y, base->position.z);
-				process_scene_normal(cell, frag, dmatr, base->projmatr);
+/* for infinite geometry, we need a different modelview 
+ * where we don't translate the camera, just scale / rotate -- so the cached
+ * one isn't of use */
+	identity_matrix(matr);
+	scale_matrix(matr, dprop.scale.x, dprop.scale.y, dprop.scale.z);
 
-			case virttype_dirlight   : break;
-			case virttype_pointlight : break;
-/* camera with inverted Y, add a stencil at clipping plane and (optionally) 
- * render to texture (for water) */
-			case virttype_reflection : break;
-/* depends on caster source, treat pointlights separately, for infinite
- * dirlights use ortographic projection, elsehave a caster-specific 
- * perspective projection */
-			case virttype_shadow : break;
-		}
-	}
+ 	if (camobj->rotate_state)
+		matr_quatf(norm_quat(dprop.rotation.quaternion), omatr);
+
+	multiply_matrix(dmatr, matr, omatr);
+	cell = process_scene_infinite(cell, fract, dmatr);
+
+	translate_matrix(dmatr, dprop.position.x, dprop.position.y, dprop.position.z);
+	process_scene_normal(cell, fract, dmatr); 
 
 	return cell;
 }
@@ -759,6 +699,21 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
     return rv;
 }
 
+arcan_errc arcan_3d_infinitemodel(arcan_vobj_id id, bool state)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+	 return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	arcan_3dmodel* dstobj = vobj->feed.state.ptr;
+	dstobj->flags.infinite = state;
+
+	return ARCAN_OK;	
+}
+
 arcan_vobj_id arcan_3d_emptymodel()
 {
 	arcan_vobj_id rv = ARCAN_EID;
@@ -817,38 +772,18 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	return rv;
 }
 
-arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id vid)
+arcan_errc arcan_3d_camtag(arcan_vobj_id vid, 
+	float near, float far, float ar, float fov)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(vid);
-	virtobj* vrtobj = find_perspective(camtag);
 
-	if (vrtobj && vobj){
-		vrtobj->parent    = vid;
-		vrtobj->position  = vobj->current.position;
+	vobj->owner->camtag = vobj->cellid;
+	struct camtag_data* camobj = malloc(sizeof(struct camtag_data));
 
-/*		matr_quatf(vobj->current.rotation.quaternion, vrtobj->direction.matr);
-		vrtobj->direction.pitchf = vobj->current.rotation.pitch;
-		vrtobj->direction.rollf  = vobj->current.rotation.roll;
-		vrtobj->direction.yawf   = vobj->current.rotation.yaw;  */
-	}
+	build_projection_matrix(camobj->projection, near, far, ar, fov);
+	vobj->feed.state.ptr = camobj;
+	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA; 
 
-	return rv;
-}
-
-void arcan_3d_setdefaults()
-{
-	current_scene.perspectives = calloc( sizeof(virtobj), 1);
-	virtobj* cam = current_scene.perspectives;
-
-	float aspect = (float) arcan_video_display.width / 
-		(float) arcan_video_display.height;
-	if (aspect < 1.0)
-		aspect = (float) arcan_video_display.height / 
-			(float) arcan_video_display.width;
-
-	build_projection_matrix(cam->projmatr, 0.1, 100.0, aspect, 45.0);
-
-	cam->type = virttype_camera;
-	cam->position = build_vect(0, 0, 0);
+	return ARCAN_OK;
 }

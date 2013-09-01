@@ -789,6 +789,9 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	if (!dst || !dst->first)
 		return false;
 
+	if (dst->camtag == src->cellid)
+		dst->camtag = ARCAN_EID;
+
 /* find it */
 	torem = dst->first;
 	while(torem){
@@ -1213,7 +1216,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		current_context->vitem_limit);
 
 	arcan_video_gldefault();
-	arcan_3d_setdefaults();
 
 /*
  * DEBUG build + a txdump subfolder stores a copy of all
@@ -1745,6 +1747,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		dst->mode     = RENDERTARGET_COLOR_DEPTH_STENCIL;
 		dst->readback = readback;
 		dst->color    = vobj;
+		dst->camtag   = ARCAN_EID;
 
 		vobj->extrefc.attachments++;
 		trace("(setuprendertarget), (%d:%s) defined as rendertarget."
@@ -2612,16 +2615,6 @@ static void drop_rtarget(arcan_vobject* vobj)
 				attach_object(&current_context->stdoutp, pool[i]);
 		}
 
-/* lightweight detach */
-//			(*base)->extrefc.attachments--;
-//			trace("(deleteobject::drop_rtarget) remove rendertarget 
-//			(%d:%s) reference from (%d:%s)\n",
-//				vobj->cellid, video_tracetag(vobj), (*base)->cellid, 
-//				video_tracetag(*base));
-//			assert( (*base)->extrefc.attachments >= 0);
-
-/* revert to stdout */
-
 	free(pool);
 }
 
@@ -3378,18 +3371,21 @@ static void tick_rendertarget(struct rendertarget* tgt)
 	}
 }
 
+#ifndef SHADER_TIME_PERIOD
+#define SHADER_TIME_PERIOD 128
+#endif
 unsigned arcan_video_tick(unsigned steps)
 {
 	if (steps == 0)
 		return 0;
 
 	unsigned now = arcan_frametime();
+	uint32_t tsd = arcan_video_display.c_ticks % SHADER_TIME_PERIOD;
 
 	do {
 		update_object(&current_context->world, arcan_video_display.c_ticks);
 
-		arcan_shader_envv(TIMESTAMP_D, &arcan_video_display.c_ticks, 
-			sizeof(arcan_video_display.c_ticks));
+		arcan_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
 
 		for (int i = 0; i < current_context->n_rtargets; i++)
 			tick_rendertarget(&current_context->rtargets[i]);
@@ -3771,10 +3767,11 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 
-	/* first, handle all 3d work (which may require multiple passes etc.) */
+/* first, handle all 3d work 
+ * (which may require multiple passes etc.) */
 	if (!arcan_video_display.order3d == order3d_first && 
 		current && current->elem->order < 0){
-		current = arcan_refresh_3d(0, current, fract, 0);
+		current = arcan_refresh_3d(tgt->camtag, current, fract);
 	}
 
 /* skip a possible 3d pipeline */
@@ -3964,7 +3961,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	current = tgt->first;
 	if (current && current->elem->order < 0 && 
 		arcan_video_display.order3d == order3d_last)
-		current = arcan_refresh_3d(0, current, fract, 0);
+		current = arcan_refresh_3d(tgt->camtag, current, fract);
 }
 
 bool arcan_video_screenshot(void** dptr, size_t* dsize){

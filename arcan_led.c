@@ -39,7 +39,8 @@
 /* to add more devices,
  * 1. patch in the type in the enum.
  * 2. add a constant for corresponding VID/PID,
- *    or alter the init function to actually scan for it and if found, forcecontroller (get the returned index and patch type).
+ *    or alter the init function to actually scan for it and if found, 
+ *    forcecontroller (get the returned index and patch type).
  * 3. add the corresponding enum to the switch in set/unset */
 
 enum controller_types {
@@ -79,7 +80,8 @@ void arcan_led_init()
 		arcan_led_cleanup();
 
 	/* pacdrive scan */
-	for (int i= 0; i < MAX_LED_CONTROLLERS && i < 8 && n_controllers < MAX_LED_CONTROLLERS; i++)
+	for (int i= 0; i < MAX_LED_CONTROLLERS && i < 8 
+		&& n_controllers < MAX_LED_CONTROLLERS; i++)
 		arcan_led_forcecontroller(ULTIMARC_VID, ULTIMARC_PID + i);
 }
 
@@ -106,12 +108,14 @@ bool arcan_led_set(uint8_t device, int8_t led)
 				dbuf[2] = 0xdd;
 				dbuf[3] = (char) controllers[device].ledmask;
 				dbuf[4] = (char)(controllers[device].ledmask >> 8) & 0xff;
-				hid_write(controllers[device].handle, dbuf, sizeof(dbuf) / sizeof(dbuf[0]));
+				hid_write(controllers[device].handle, dbuf, 
+					sizeof(dbuf) / sizeof(dbuf[0]));
 
 				break;
 
 			default:
-				arcan_warning("Warning: arcan_led_set(), unknown LED controller type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_set(), "
+					"unknown LED controller type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -134,11 +138,13 @@ bool arcan_led_clear(uint8_t device, int8_t led)
 				dbuf[3] = (char)(controllers[device].ledmask);
 				dbuf[4] = (char)((controllers[device].ledmask >> 8) & 0xff);
 
-				hid_write(controllers[device].handle, dbuf, sizeof(dbuf) / sizeof(dbuf[0]));
+				hid_write(controllers[device].handle, dbuf, 
+					sizeof(dbuf) / sizeof(dbuf[0]));
 				break;
 
 			default:
-				arcan_warning("Warning: arcan_led_unset(), unknown LED controller type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_unset(), "
+					"unknown LED controller type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -154,7 +160,8 @@ bool arcan_led_intensity(uint8_t device, int8_t led, uint8_t intensity)
 				/* doesn't support this feature */
 
 			default:
-				arcan_warning("Warning: arcan_led_intensity(), unknown LED / unsupported mode for device type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_intensity(), unknown LED / "
+				"unsupported mode for device type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -170,7 +177,8 @@ bool arcan_led_rgb(uint8_t device, int8_t led, uint8_t r, uint8_t g, uint8_t b)
 				/* doesn't support this feature */
 
 			default:
-				arcan_warning("Warning: arcan_led_rgb(), unknown LED / unsupported mode for device type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_rgb(), unknown LED / unsupported mode"
+				"	for device type: %i\n", controllers[device].type);
 		}
 
 	return rv;
@@ -189,7 +197,8 @@ led_capabilities arcan_led_capabilities(uint8_t device)
 				break;
 
 			default:
-				arcan_warning("Warning: arcan_led_capabilities(), unknown LED controller type: %i\n", controllers[device].type);
+				arcan_warning("Warning: arcan_led_capabilities(),"
+				"	unknown LED controller type: %i\n", controllers[device].type);
 				break;
 		}
 	}
