@@ -561,6 +561,10 @@ end
 function setup_gridview()
 	gridview_input();
 	setup_3dsupport();
+
+	camera = null_surface(1, 1);
+	camtag_model(camera);
+
 	grab_sysicons();
 	
 	music_start_bgmusic(settings.bgmusic_playlist);

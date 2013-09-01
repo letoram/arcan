@@ -64,7 +64,7 @@ end
 
 function gridledetail_internal_status(source, datatbl)
 	if (datatbl.kind == "resized") then
-		detailview.model:update_display(instance_image(source));
+		detailview.model:update_display(source);
 	
 		audio_gain(datatbl.source_audio, settings.internal_gain, NOW);
 		move3d_model(detailview.model.vid, detailview.zoompos.x, detailview.zoompos.y, detailview.zoompos.z, 20);

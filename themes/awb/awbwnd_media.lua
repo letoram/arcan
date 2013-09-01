@@ -254,8 +254,16 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		image_tracetag(dstvid, "3dmedia_rendertarget");
 		pwin.shader = set_shader(source.vid);
 		show_image(source.vid);
+
 		define_rendertarget(dstvid, {source.vid}, 
 			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, 1, 1);
+	
+		local camera = null_surface(1, 1);
+		scale3d_model(camera, 1.0, -1.0, 1.0);
+		rotate3d_model(camera, 0.01, 0.01, 0.01);
+		rendertarget_attach(dstvid, camera, RENDERTARGET_DETACH);
+		camtag_model(camera, 0.01, 100.0, 45.0);
+
 		pwin:update_canvas(dstvid, false);
 		pwin.model = source;
 		pwin.input = input_3dwin;
