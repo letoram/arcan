@@ -264,7 +264,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 -- build scrollbar 
 	local bartbl = pwin.dir[bardir];
-	local newicn = bartbl:add_icon("fill", scrollbar_icn);
+	local newicn = bartbl:add_icon("scroll", "fill", scrollbar_icn);
 
 	delete_image(scrollbar_icn);
 	link_image(scrollcaret_icn, newicn.vid);

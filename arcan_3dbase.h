@@ -26,11 +26,9 @@
  video object */
 void arcan_3d_setdefaults();
 
-/* the camtag (0) is always available, that's the default view that will 
- * be rasterized, more can be defined for lights, shadows, etc.
- * by associating the camtag with a vobj parent, it will use that for 
- * resolving/interpolating position/orientation */
-arcan_errc arcan_3d_camtag_parent(unsigned camtag, arcan_vobj_id parent);
+arcan_errc arcan_3d_camtag(arcan_vobj_id parent, 
+	float near, float far, float ar, float fov);
+
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, 
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);
 arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps);
@@ -40,6 +38,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
 /* empty model allocates and populates a container,
  * then add a hierarchy of meshes to the model */
 arcan_vobj_id arcan_3d_emptymodel();
+arcan_errc arcan_3d_infinitemodel(arcan_vobj_id, bool);
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, 
 	arcan_shader_id shid, unsigned slot);
 arcan_errc arcan_3d_addmesh(arcan_vobj_id dst, 

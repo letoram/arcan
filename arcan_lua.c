@@ -2304,6 +2304,21 @@ int arcan_lua_loadmesh(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_attrtag(lua_State* ctx)
+{
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	const char*  attr = luaL_checkstring(ctx, 2);
+	int         state =  luaL_checknumber(ctx, 3);
+
+	if (strcmp(attr, "infinite") == 0)
+		lua_pushboolean(ctx, 
+			arcan_3d_infinitemodel(did, state != 0) != ARCAN_OK);
+	else
+		lua_pushboolean(ctx, false);
+
+	return 1;
+}
+
 int arcan_lua_buildmodel(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
@@ -2358,14 +2373,18 @@ int arcan_lua_swizzlemodel(lua_State* ctx)
 int arcan_lua_camtag(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	unsigned camtag = luaL_optnumber(ctx, 2, 0);
-	arcan_errc rv = arcan_3d_camtag_parent(camtag, id);
+	float w = arcan_video_display.width;
+	float h = arcan_video_display.height;
+	float ar = w / h > 1.0 ? w / h : h / w;
 
-	if (rv == ARCAN_OK)
-		lua_pushboolean(ctx, true);
-	else
-		lua_pushboolean(ctx, false);
+	float near = luaL_optnumber(ctx, 2, 0.1);
+	float far  = luaL_optnumber(ctx, 3, 100.0);
+	float fov  = luaL_optnumber(ctx, 4, 45.0);
+	ar = luaL_optnumber(ctx, 5, ar);	
 
+	arcan_errc rv = arcan_3d_camtag(id, near, far, ar, fov);
+
+	lua_pushboolean(ctx, rv == ARCAN_OK);
 	return 1;
 }
 
@@ -4912,6 +4931,7 @@ static const luaL_Reg imgfuns[] = {
 static const luaL_Reg threedfuns[] = {
 {"new_3dmodel",      arcan_lua_buildmodel   },
 {"add_3dmesh",       arcan_lua_loadmesh     },
+{"attrtag_model",    arcan_lua_attrtag      },
 {"move3d_model",     arcan_lua_movemodel    },
 {"rotate3d_model",   arcan_lua_rotatemodel  },
 {"orient3d_model",   arcan_lua_orientmodel  },

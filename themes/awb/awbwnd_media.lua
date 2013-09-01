@@ -43,10 +43,11 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 	local cfg = awbwman_cfg();
 
-	bar:add_icon("r", cfg.bordericns["clone"],  function() datashare(pwin); end);
+	bar:add_icon("clone", "r", cfg.bordericns["clone"],
+		function() datashare(pwin); end);
 
 	if (fsrv) then
-		bar:add_icon("l", cfg.bordericns["pause"],  function(self) 
+		bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
 
 			if (pwin.paused) then
 				pwin.paused = nil;
@@ -59,7 +60,7 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 			end
 		end);
 
-		bar:add_icon("r", cfg.bordericns["volume"], function(self)
+		bar:add_icon("volume", "r", cfg.bordericns["volume"], function(self)
 			pwin:focus();
 			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
 				pwin:set_mvol(val);
@@ -131,14 +132,15 @@ local function add_3dmedia_top(pwin, active, inactive)
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	local cfg = awbwman_cfg();
 
-	bar:add_icon("l", cfg.bordericns["plus"], zoom_in); 
-	bar:add_icon("l", cfg.bordericns["minus"], zoom_out);
+	bar:add_icon("zoom_in", "l", cfg.bordericns["plus"], zoom_in); 
+	bar:add_icon("zoom_out", "l", cfg.bordericns["minus"], zoom_out);
 
-	bar:add_icon("l", cfg.bordericns["r1"], slide_lightr);
-	bar:add_icon("l", cfg.bordericns["g1"], slide_lightg);
-	bar:add_icon("l", cfg.bordericns["b1"], slide_lightb);
+	bar:add_icon("light_r", "l", cfg.bordericns["r1"], slide_lightr);
+	bar:add_icon("light_g", "l", cfg.bordericns["g1"], slide_lightg);
+	bar:add_icon("light_b", "l", cfg.bordericns["b1"], slide_lightb);
 
-	bar:add_icon("r", cfg.bordericns["clone"], function() datashare(pwin); end);
+	bar:add_icon("clone", "r", cfg.bordericns["clone"], 
+		function() datashare(pwin); end);
 
 	bar.click = function()
 		pwin:focus(true);
@@ -157,7 +159,7 @@ local function vcap_setup(pwin)
 	local msg = table.concat(tbl, [[\n\r]]);
 	local capstr = "capture:device=%d";
 
-	bar:add_icon("l", awbwman_cfg().bordericns["plus"], function(icn)
+	bar:add_icon("add", "l", awbwman_cfg().bordericns["plus"], function(icn)
 		local vid, lines = desktoplbl(msg);
 		awbwman_popup(vid, lines, function(ind)
 			local vid = load_movie(string.format(capstr, ind), FRAMESERVER_NOLOOP,

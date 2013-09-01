@@ -34,8 +34,11 @@
 long long int arcan_timemillis()
 {
 	struct timespec tp;
+#ifdef CLOCK_SOURCE_RAW
+	clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+#else
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-
+#endif
 /*
 	deprecated:
 	struct timeval tv;

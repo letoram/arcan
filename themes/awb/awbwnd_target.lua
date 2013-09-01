@@ -55,11 +55,11 @@ function awbwnd_target(pwin)
 		end
 	end
 	
-	bartt:add_icon("r", cfg.bordericns["clone"], 
+	bartt:add_icon("clone", "r", cfg.bordericns["clone"], 
 		function() datashare(pwin); 
 	end);
 
-	bartt:add_icon("r", cfg.bordericns["volume"], function(self)
+	bartt:add_icon("volume", "r", cfg.bordericns["volume"], function(self)
 		if (not awbwman_ispopup(self)) then
 			pwin:focus();
 			awbwman_popupslider(0.01, pwin.mediavol, 1.0, function(val)
@@ -71,12 +71,12 @@ function awbwnd_target(pwin)
 --
 -- Popup save menu
 --
-	bartt:add_icon("l", cfg.bordericns["save"], function(self)
+	bartt:add_icon("save", "l", cfg.bordericns["save"], function(self)
 		local list = {"Quicksave", "New..."};
 		local states = awbtarget_liststates(pwin.gametbl);
 	end);
 
-	bartt:add_icon("l", cfg.bordericns["pause"], function(self) 
+	bartt:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
 		if (pwin.paused) then
 			pwin.paused = nil;
 			resume_target(pwin.canvas.vid);
@@ -91,14 +91,14 @@ function awbwnd_target(pwin)
 --
 -- Popup "saves" list filtered by target / game
 --
-	bartt:add_icon("l", cfg.bordericns["load"], function(self)
+	bartt:add_icon("load", "l", cfg.bordericns["load"], function(self)
 		pwin:focus();
 	end);
 
 --
 -- Set frameskip mode, change icon to play
 --
-	bartt:add_icon("l", cfg.bordericns["fastforward"], function(self)
+	bartt:add_icon("ffwd", "l", cfg.bordericns["fastforward"], function(self)
 		pwin:focus();
 	end);
 
@@ -107,7 +107,7 @@ function awbwnd_target(pwin)
 -- popup filter mode
 --
 
-	bartt:add_icon("r", cfg.bordericns["input"],
+	bartt:add_icon("input", "r", cfg.bordericns["input"],
 		function(self) inputlay_sel(self, pwin); end);
 
 	pwin.input = function(self, iotbl)

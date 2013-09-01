@@ -310,7 +310,7 @@ end
 local function awbwman_addcaption(bar, caption)
 	local props  = image_surface_properties(caption);
 	local bgsurf = color_surface(10, 10, 230, 230, 230);
-	local icn = bar:add_icon("fill", bgsurf);
+	local icn = bar:add_icon("caption", "fill", bgsurf);
 	delete_image(icn.vid);
 
 	if (props.height > (bar.size - 2)) then
@@ -656,7 +656,7 @@ function awbwman_rootwnd()
 		"Help...",
 		"Quit"
 	};
-	local icn = tbar:add_icon("l", cap, function(self) 
+	local icn = tbar:add_icon("cap", "l", cap, function(self) 
 		local vid, list = awb_cfg.defrndfun(table.concat(awblist, [[\n\r]]));
 		awbwman_popup(vid, list, function(ind)
 			if (ind == 1) then
@@ -672,7 +672,7 @@ function awbwman_rootwnd()
 	icn.yofs = 2;
 
 	cap = awb_cfg.mnurndfun("Windows");
-	icn = tbar:add_icon("l", awb_cfg.mnurndfun("Windows"), function(self)
+	icn = tbar:add_icon("windows", "l", awb_cfg.mnurndfun("Windows"), function(self)
 		if (#awb_cfg.hidden == 0) then
 			return;
 		end
@@ -707,11 +707,12 @@ function awbwman_rootwnd()
 		end
 	end
 
-	local vicn = tbar:add_icon("r",awb_cfg.bordericns["volume_top"],function(self)
-		awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
-			wcont:set_mvol(val);
-		end, {ref = self.vid});
-	end);
+	local vicn = tbar:add_icon("vol", "r",awb_cfg.bordericns["volume_top"],
+		function(self)
+			awbwman_popupslider(0.01, awb_cfg.global_vol, 1.0, function(val)
+				wcont:set_mvol(val);
+			end, {ref = self.vid});
+		end);
 
 	awb_cfg.minimize_x = image_surface_properties(icn.vid).x;
 
@@ -1104,6 +1105,7 @@ function awbwman_minimize(wnd, icon)
 -- have wnd generate iconic representation, 
 -- we add a border and then set as rootwndicon with
 -- the trigger set to restore
+	drop_popup();
 	wnd:hide(awb_cfg.minimize_x, 0);
 	table.insert(awb_cfg.hidden, wnd);
 end
@@ -1282,18 +1284,18 @@ function awbwman_spawn(caption, options)
 		end
 
 	if (options.noicons == nil) then
-		tbar:add_icon("l", awb_cfg.bordericns["close"], function()
+		tbar:add_icon("close", "l", awb_cfg.bordericns["close"], function()
 			wcont:destroy(awb_cfg.animspeed);	
 		end);
 
-		tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
+		tbar:add_icon("toback", "r", awb_cfg.bordericns["toback"], function()
 			awbwman_pushback(wcont);
 			awbwman_updateorder();
 		end);
 	end
 
 	if (options.nominimize == nil) then
-		tbar:add_icon("r", awb_cfg.bordericns["minimize"], function()
+		tbar:add_icon("minimize", "r", awb_cfg.bordericns["minimize"], function()
 			awbwman_minimize(wcont, true);
 		end);
 	end
@@ -1305,7 +1307,7 @@ function awbwman_spawn(caption, options)
 		local rbar = wcont:add_bar("r", awb_cfg.alphares,
 			awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
-		local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
+		local icn = rbar:add_icon("resize", "r", awb_cfg.bordericns["resize"]);
 		local rhandle = {};
 		rhandle.drag = function(self, vid, x, y)
 			awbwman_focus(wcont);
@@ -1425,6 +1427,8 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["acodec"]   = load_image("awbicons/acodec.png");
 	awb_cfg.bordericns["aquality"] = load_image("awbicons/aquality.png");
 	awb_cfg.bordericns["fps"]      = load_image("awbicons/fps.png");
+	awb_cfg.bordericns["subdivide"]= load_image("awbicons/subdiv.png");
+	awb_cfg.bordericns["amplitude"]= load_image("awbicons/ampl.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");

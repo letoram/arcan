@@ -83,7 +83,9 @@ ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external
 													 resource (frameserver)                             */
 ARCAN_TAG_3DOBJ     = 5,/* got a corresponding entry in arcan_3dbase, ffunc is
 												   used to control the behavior of the 3d part        */
-ARCAN_TAG_ASYNCIMG  = 6 /* intermediate state, means that getimage is still
+ARCAN_TAG_3DCAMERA  = 6,/* set after using camtag,
+													 only usable on NONE/IMAGE                          */
+ARCAN_TAG_ASYNCIMG  = 7 /* intermediate state, means that getimage is still
 											     loading, don't touch objects in this state, wait for
 												   them to switch to TAG_IMAGE                        */
 };

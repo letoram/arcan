@@ -58,6 +58,7 @@ function awb()
 	system_load("tools/inputconf.lua")();
 	system_load("tools/vidrec.lua")();
 	system_load("tools/vidcmp.lua")();
+	system_load("tools/hghtmap.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
@@ -104,18 +105,6 @@ function awb()
 -- LCTRL = (toggle) grab to this window
 	kbdbinds["LCTRL"]  = toggle_mouse_grab;
 	kbdbinds["ESCAPE"] = awbwman_cancel;
-
--- awb_inputed();
---local tbl = list_games({title = "Moon P%"})[1];
---	local res = resourcefinder_search(tbl, true);
---	local mdl = find_cabinet_model(tbl);
---	local model = setup_cabinet_model(mdl, res, {});
---	if (model.vid) then
---		move3d_model(model.vid, 0.0, -0.2, -2.0);
---	else
---		model = {};
---	end
---	awbwman_mediawnd(menulbl("3D Model"), "3d", model);
 end
 
 --
@@ -328,6 +317,7 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"Network",   spawn_socsrv, "network"},
 		{"VidCap",    spawn_vidwin,  "vidcap"},
 		{"Compare",   spawn_vidcmp,  "vidcmp"},
+		{"HeightMap", spawn_hmap,   "hghtmap"}
 --		{"ShaderEd",  spawn_shadeed, "shadeed"},
 	};
 

@@ -21,7 +21,7 @@
 #define _HAVE_ARCAN_VIDEOINT
 
 #ifndef RENDERTARGET_LIMIT
-#define RENDERTARGET_LIMIT 6 
+#define RENDERTARGET_LIMIT 32 
 #endif
 
 
@@ -58,6 +58,11 @@ struct rendertarget {
 	bool readreq; 
 
 	enum rendertarget_mode mode;
+
+/* each rendertarget can have one possible camera attached to it
+ * which affects the 3d pipe. This is defaulted to BADID until 
+ * a vobj is explicitly camtaged */
+	arcan_vobj_id camtag;
 
 /* color representes the attached vid, 
  * first is the pipeline (subset of context vid pool) */
@@ -335,8 +340,8 @@ void arcan_3d_setdefaults();
 /* sweep the glstor and bind the corresponding 
  * texture units (unless we hit the limit that is) */
 unsigned arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
-arcan_vobject_litem* arcan_refresh_3d(unsigned camtag, 
-	arcan_vobject_litem* cell, float frag, unsigned destination);
+arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
+	arcan_vobject_litem* cell, float frag);
 
 int stretchblit(char* src, int srcw, int srch,
 	uint32_t* dst, int dstw, int dsth, int flipy);

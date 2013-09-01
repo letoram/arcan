@@ -61,6 +61,7 @@
 #include "arcan_frameserver_backend.h"
 #include "arcan_lua.h"
 #include "arcan_led.h"
+#include "arcan_hmd.h"
 #include "arcan_db.h"
 #include "arcan_util.h"
 #include "arcan_videoint.h"
@@ -375,6 +376,7 @@ themeswitch:
 	def->interactive = interactive;
 	arcan_event_init( def );
 	arcan_led_init();
+	arcan_hmd_open();
 
 /*
  * MINGW implements putenv, so use this to set
@@ -462,6 +464,7 @@ themeswitch:
 
 /* pollfeed can actually populate event-loops, assuming we don't exceed a 
  * compile- time threshold */
+		arcan_hmd_update();
 		arcan_video_pollfeed();
 
 /* NOTE: might be better if this terminates if we're closing in on a 
