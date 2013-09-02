@@ -51,6 +51,12 @@ typedef struct orientation {
 	float matr[16];
 } orientation;
 
+enum cstate {
+	inside    = 0,
+	intersect = 1,
+	outside   = 2
+};
+
 void arcan_math_init();
 
 /* Matrices */
@@ -100,6 +106,8 @@ quat add_quat(quat a, quat b);
 quat build_quat_taitbryan(float roll, float pitch, float yaw);
 quat quat_lookat(vector viewpos, vector dstpos);
 
+vector taitbryan_forwardv(float roll, float pitch, float yaw);
+
 scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
 void update_view(orientation* dst, float roll, float pitch, float yaw);
 float lerp_val(float a, float b, float f);
@@ -115,6 +123,16 @@ int project_matrix(float objx, float objy, float objz, const float model[16],
 
 void update_frustum(float* projection, 
 	float* modelview, float dstfrustum[6][4]);
+
+enum cstate frustum_sphere(const float frustum[6][4],
+	const float x, const float y, const float z, const float radius);
+
+bool frustum_point(const float frustum[6][4], 
+	const float x, const float y, const float z);
+
+enum cstate frustum_aabb(const float frustum[6][4],
+	const float x1, const float y1, const float z1,
+	const float x2, const float y2, const float z2);
 
 /* comp.graphics.algorithms DAQ, Randolph Franklin */
 int pinpoly(int, float*, float*, float, float);

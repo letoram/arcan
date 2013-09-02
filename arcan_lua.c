@@ -2382,10 +2382,48 @@ int arcan_lua_camtag(lua_State* ctx)
 	float fov  = luaL_optnumber(ctx, 4, 45.0);
 	ar = luaL_optnumber(ctx, 5, ar);	
 
-	arcan_errc rv = arcan_3d_camtag(id, near, far, ar, fov);
+	float projection[16];
+	build_projection_matrix(projection, near, far, ar, fov);
+	arcan_errc rv = arcan_3d_camtag(id, projection); 
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 	return 1;
+}
+
+int arcan_lua_camtaghmd(lua_State* ctx)
+{
+	arcan_vobj_id lid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id rid = luaL_checkvid(ctx, 2);
+	
+	float near = luaL_checknumber(ctx, 3);
+	float far  = luaL_checknumber(ctx, 4);
+	float ipd = luaL_checknumber(ctx, 5);
+
+	float projection[16] = {0};
+	float etsd = 0.0640; 
+	float fov = 90.0;
+	float ar = 2.0f * (float) arcan_video_display.width / (float)
+				arcan_video_display.height;
+
+	build_projection_matrix(projection, near, far, ar, fov);
+
+/*
+ * retrieve values from HMD,
+ * hscreen (m), vscreen (m), vscreencenter(x, y)
+ * eyetoscreendist (m), ipd, hres, vres
+ */
+	
+	bool rv = arcan_3d_camtag(lid, projection) == ARCAN_OK && 
+		arcan_3d_camtag(rid, projection) == ARCAN_OK;
+
+	lua_pushboolean(ctx, rv == ARCAN_OK);
+
+	lua_pushnumber(ctx, 1.0);
+	lua_pushnumber(ctx, 0.22);
+	lua_pushnumber(ctx, 0.24);
+	lua_pushnumber(ctx, 0);
+
+	return 5;	
 }
 
 int arcan_lua_getimageprop(lua_State* ctx)
@@ -4129,6 +4167,54 @@ int arcan_lua_movemodel(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_forwardmodel(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	float mag = luaL_checknumber(ctx, 2);
+	unsigned int dt = luaL_optint(ctx, 3, 0);
+	bool axismask_x = luaL_optnumber(ctx, 4, 0) == 1;
+	bool axismask_y = luaL_optnumber(ctx, 5, 0) == 1;
+	bool axismask_z = luaL_optnumber(ctx, 6, 0) == 1;
+
+	surface_properties prop = arcan_video_current_properties(vid);
+
+	vector view = taitbryan_forwardv(prop.rotation.roll, 
+		prop.rotation.pitch, prop.rotation.yaw);
+	view = mul_vectorf(view, mag);
+	vector newpos = add_vector(prop.position, view);
+
+	arcan_video_objectmove(vid, 
+		axismask_x ? prop.position.x : newpos.x, 
+		axismask_y ? prop.position.y : newpos.y,
+		axismask_z ? prop.position.z : newpos.z, dt);
+	return 0;
+}
+
+int arcan_lua_strafemodel(lua_State* ctx)
+{
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	float mag = luaL_checknumber(ctx, 2);
+	unsigned int dt = luaL_optint(ctx, 3, 0);
+
+	surface_properties prop = arcan_video_current_properties(vid);
+	vector view = taitbryan_forwardv(prop.rotation.roll, 
+		prop.rotation.pitch, prop.rotation.yaw);
+	
+	vector up = build_vect(0.0, 1.0, 0.0);
+	if (prop.rotation.pitch > 180 || prop.rotation.pitch < -180)
+		mag *= -1.0f;
+
+	view = norm_vector(crossp_vector(view, up));
+
+	prop.position.x += view.x * mag;
+	prop.position.z += view.z * mag;
+
+	arcan_video_objectmove(vid,
+		prop.position.x, prop.position.y, prop.position.z, dt);
+
+	return 0;
+}
+
 int arcan_lua_scalemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
@@ -4936,7 +5022,10 @@ static const luaL_Reg threedfuns[] = {
 {"rotate3d_model",   arcan_lua_rotatemodel  },
 {"orient3d_model",   arcan_lua_orientmodel  },
 {"scale3d_model",    arcan_lua_scalemodel   },
+{"forward3d_model",  arcan_lua_forwardmodel },
+{"strafe3d_model",   arcan_lua_strafemodel  },
 {"camtag_model",     arcan_lua_camtag       },
+{"camtaghmd_model",  arcan_lua_camtaghmd    },
 {"build_3dplane",    arcan_lua_buildplane   },
 {"build_3dbox",      arcan_lua_buildbox     },
 {"scale_3dvertices", arcan_lua_scale3dverts },

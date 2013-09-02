@@ -26,8 +26,7 @@
  video object */
 void arcan_3d_setdefaults();
 
-arcan_errc arcan_3d_camtag(arcan_vobj_id parent, 
-	float near, float far, float ar, float fov);
+arcan_errc arcan_3d_camtag(arcan_vobj_id parent, float* projection);
 
 arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx, 
 	float maxz, float y, float wdens, float ddens, unsigned nmaps);

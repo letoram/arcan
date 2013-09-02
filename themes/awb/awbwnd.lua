@@ -585,17 +585,36 @@ function awbwnd_subwin_input(trigger, options)
 	local res = {
 		msg = "",
 		cursorpos = 1,
-		limit = -1
+		limit = -1,
 	};
+
+	for k,v in pairs(options) do
+		res[k] = v;
+	end
+
+	res.anchor = null_surface(1, 1);
+	show_image(res.anchor);
 
 	res.border = color_surface(res.w, res.h, options.borderr, 
 		options.borderg, options.borderb);
 
-	res.canvas = color_surface(res.w - res.borderw * 2, res.h - res.borderh * 2,
+	res.canvas = color_surface(res.w - res.borderw * 2, res.h - res.borderw * 2,
 		options.bgr, options. bgg, options.bgb);
 
-	link_image(res.canvas, res.border);
+	link_image(res.canvas, res.anchor);
 	move_image(res.canvas, res.borderw, res.borderw);
+	link_image(res.border, res.anchor);
+
+	res.caret = color_surface(res.borderw, res.h - res.borderw * 4, 
+		options.borderr, options.borderg, options.borderb);
+
+	link_image(res.caret, res.anchor);
+
+	move_image(res.caret, options.borderw * 2, options.borderw * 2);
+
+	image_transform_cycle(res.caret, 1);
+	blend_image(res.caret, 0.0, 20);
+	blend_image(res.caret, 1.0, 20);
 
 -- move caret also (but keep blinking ..)
 	show_image({res.border, res.canvas});
