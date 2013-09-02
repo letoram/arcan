@@ -103,6 +103,20 @@ function awb()
 -- LCTRL = (toggle) grab to this window
 	kbdbinds["LCTRL"]  = toggle_mouse_grab;
 	kbdbinds["ESCAPE"] = awbwman_cancel;
+
+	local res = awbwnd_subwin_input(function(msg) print(msg) end, {
+		borderr = 255,
+		borderg = 255,
+		borderb = 255,
+		w = 64,
+		h = 32,
+		bgg = 200,
+		bgr = 0,
+		bgb = 0,
+		borderw = 2
+	});
+
+	move_image(res.anchor, 100, 100);
 end
 
 --

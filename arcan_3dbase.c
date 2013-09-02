@@ -44,8 +44,6 @@
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 
-#include "arcan_3dbase_synth.h"
-
 extern struct arcan_video_display arcan_video_display;
 static arcan_shader_id default_3dprog;
 
@@ -93,6 +91,95 @@ typedef struct {
 
 	arcan_vobject* parent;
 } arcan_3dmodel;
+
+static void build_quadbox(float n, float p, float** verts, 
+	float** txcos, unsigned* nverts)
+{
+	float lut[6][12] = {
+		{n,p,p,   n,p,n,   p,p,n,   p,p,p}, /* up */
+		{n,n,n,   n,n,p,   p,n,p,   p,n,n}, /* dn */
+		{n,p,p,   n,n,p,   n,n,n,   n,p,n}, /* lf */
+		{p,p,n,   p,n,n,   p,n,p,   p,p,p}, /* rg */
+		{n,p,n,   n,n,n,   p,n,n,   p,p,n}, /* fw */
+		{p,p,p,   p,n,p,   n,n,p,   n,p,p}  /* bk */
+	};
+
+	*nverts = 24;
+	*verts = malloc(sizeof(float) * (*nverts * 3));
+	*txcos = malloc(sizeof(float) * (*nverts * 2));
+
+	unsigned ofs = 0, tofs = 0;
+	for (unsigned i = 0; i < 6; i++){
+		*txcos[tofs++] = 1.0f; 
+		*txcos[tofs++] = 0.0;
+		*txcos[tofs++] = 1.0f; 
+		*txcos[tofs++] = 1.0;
+		*txcos[tofs++] = 0.0f; 
+		*txcos[tofs++] = 1.0; 
+		*txcos[tofs++] = 0.0f; 
+		*txcos[tofs++] = 0.0; 
+			
+	 	*verts[ofs++] = lut[i][0]; 
+		*verts[ofs++] = lut[i][1]; 
+		*verts[ofs++] = lut[i][2]; 
+	 	*verts[ofs++] = lut[i][3]; 
+		*verts[ofs++] = lut[i][4]; 
+		*verts[ofs++] = lut[i][5];
+		*verts[ofs++] = lut[i][6];
+	  *verts[ofs++] = lut[i][7]; 
+		*verts[ofs++] = lut[i][8]; 
+		*verts[ofs++] = lut[i][9]; 
+		*verts[ofs++] = lut[i][10];
+	 	*verts[ofs++] = lut[i][11]; 
+	}
+}
+
+static void build_hplane(point min, point max, point step,
+						 float** verts, unsigned** indices, float** txcos,
+						 unsigned* nverts, unsigned* nindices)
+{
+	point delta = {
+		.x = max.x - min.x,
+		.y = max.y,
+		.z = max.z - min.z
+	};
+
+	unsigned nx = ceil(delta.x / step.x);
+	unsigned nz = ceil(delta.z / step.z);
+	
+	*nverts = nx * nz;
+	*verts = (float*) malloc(sizeof(float) * (*nverts) * 3);
+	*txcos = (float*) malloc(sizeof(float) * (*nverts) * 2);
+	
+	unsigned vofs = 0, tofs = 0;
+	for (unsigned x = 0; x < nx; x++)
+		for (unsigned z = 0; z < nz; z++){
+			(*verts)[vofs++] = min.x + (float)x*step.x;
+			(*verts)[vofs++] = min.y;
+			(*verts)[vofs++] = min.z + (float)z*step.z;
+			(*txcos)[tofs++] = (float)x / (float)nx;
+			(*txcos)[tofs++] = (float)z / (float)nz;
+		}
+
+	vofs = 0; tofs = 0;
+#define GETVERT(X,Z)( ( (X) * nz) + Z)
+	*indices = (unsigned*) malloc(sizeof(unsigned) * (*nverts) * 3 * 2);
+		for (unsigned x = 0; x < nx-1; x++)
+			for (unsigned z = 0; z < nz-1; z++){
+				(*indices)[vofs++] = GETVERT(x, z);
+				(*indices)[vofs++] = GETVERT(x, z+1);
+				(*indices)[vofs++] = GETVERT(x+1, z+1);
+				tofs++;
+				
+				(*indices)[vofs++] = GETVERT(x, z);
+				(*indices)[vofs++] = GETVERT(x+1, z+1);
+				(*indices)[vofs++] = GETVERT(x+1, z);
+				tofs++;
+			}
+			
+	*nindices = vofs;
+}
+
 
 static void freemodel(arcan_3dmodel* src)
 {
@@ -407,6 +494,21 @@ arcan_vobj_id arcan_3d_buildbox(float minx, float miny,
 		state.ptr = (void*) newmodel;
 		arcan_fatal("arcan_3d_buildbox() unfinished\n");
 	}
+
+	return rv;
+}
+
+arcan_vobj_id arcan_3d_buildcube(float mpx, float mpy, 
+	float mpz, float base, unsigned nmaps)
+{
+	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
+	img_cons empty = {0};
+	arcan_vobj_id rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
+	if (rv == ARCAN_EID)
+		return rv;
+
+	arcan_3dmodel* newmodel = NULL;
+	arcan_vobject* vobj;
 
 	return rv;
 }
@@ -766,16 +868,15 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	return rv;
 }
 
-arcan_errc arcan_3d_camtag(arcan_vobj_id vid, 
-	float near, float far, float ar, float fov)
+arcan_errc arcan_3d_camtag(arcan_vobj_id vid, float projection[16]) 
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 
 	vobj->owner->camtag = vobj->cellid;
 	struct camtag_data* camobj = malloc(sizeof(struct camtag_data));
+	memcpy(camobj->projection, projection, sizeof(float) * 16);
 
-	build_projection_matrix(camobj->projection, near, far, ar, fov);
 	vobj->feed.state.ptr = camobj;
 	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA; 
 

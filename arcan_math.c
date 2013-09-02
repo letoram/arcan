@@ -508,6 +508,11 @@ float* matr_quatf(quat a, float* dmatr)
 	return dmatr;
 }
 
+vector qmatr_viewv(float* inmatr)
+{
+	
+}
+
 double* matr_quat(quat a, double* dmatr)
 {
 	if (dmatr){
@@ -554,6 +559,25 @@ void update_view(orientation* dst, float roll, float pitch, float yaw)
 	matr_quatf(res, dst->matr);
 }
 
+vector taitbryan_forwardv(float roll, float pitch, float yaw)
+{
+	float dmatr[16];
+	quat pitchq = build_quat(pitch, 1.0, 0.0, 0.0);
+	quat yawq   = build_quat(yaw,   0.0, 1.0, 0.0);
+	quat rollq  = build_quat(roll,  0.0, 0.0, 1.0);
+
+	matr_quatf(pitchq, dmatr);
+
+	vector view;
+	view.y = -dmatr[9];
+	quat res = mul_quat(pitchq, yawq);
+	matr_quatf(res, dmatr);
+	view.x = -dmatr[8];
+	view.z = dmatr[10];
+
+	return view;
+}
+
 float lerp_fract(unsigned startt, unsigned endt, float ct)
 {
 	float startf = (float)startt + EPSILON;
@@ -574,6 +598,83 @@ static inline void normalize_plane(float* pl)
 	pl[1] *= mag;
 	pl[2] *= mag;
 	pl[3] *= mag;
+}
+
+bool frustum_point(const float frustum[6][4], 
+	const float x, const float y, const float z)
+{
+	for (int i = 0; i < 6; i++)
+		if (frustum[i][0] * x +
+			  frustum[i][1] * y + 
+				frustum[i][2] * z + 
+				frustum[i][3] <= 0.0f)
+			return false;
+
+	return true;
+}
+
+enum cstate frustum_aabb(const float frustum[6][4],
+	const float x1, const float y1, const float z1,
+	const float x2, const float y2, const float z2)
+{
+	enum cstate res = inside;
+	for (int i = 0; i < 6; i++){
+		if (frustum[i][0] * x1 + frustum[i][1] * y1 +
+			frustum[i][2] * z1 + frustum[i][3] > 0.0f)
+			continue;
+
+		res = intersect;
+
+		if (frustum[i][0] * x2 + frustum[i][1] * y1 +
+			frustum[i][2] * z1 + frustum[i][3] > 0.0f)
+			continue;
+
+		if (frustum[i][0] * x1 + frustum[i][1] * y2 +
+			frustum[i][2] * z1 + frustum[i][3] > 0.0f)
+			continue;
+	
+		if (frustum[i][0] * x2 + frustum[i][1] * y2 +
+			frustum[i][2] * z1 + frustum[i][3] > 0.0f)
+			continue;
+
+		if (frustum[i][0] * x1 + frustum[i][1] * y1 +
+			frustum[i][2] * z2 + frustum[i][3] > 0.0f)
+			continue;
+
+		if (frustum[i][0] * x2 + frustum[i][1] * y1 +
+			frustum[i][2] * z2 + frustum[i][3] > 0.0f)
+			continue;
+
+		if (frustum[i][0] * x1 + frustum[i][1] * y2 +
+			frustum[i][2] * z2 + frustum[i][3] > 0.0f)
+			continue;
+
+		if (frustum[i][0] * x2 + frustum[i][1] * y2 +
+			frustum[i][2] * z2 + frustum[i][3] > 0.0f)
+			continue;
+	}
+
+	return res;
+}
+
+enum cstate frustum_sphere(const float frustum[6][4],
+	const float x, const float y, const float z, const float radius)
+{
+	for (int i = 0; i < 6; i++){
+		float dist = 
+			frustum[i][0] * x +
+			frustum[i][1] * y + 
+			frustum[i][2] * z + 
+			frustum[i][3];
+
+		if (dist < -radius)
+			return outside;
+
+		else if (fabs(dist) < radius)
+			return intersect;
+	}
+
+	return inside;	
 }
 
 void update_frustum(float* prjm, float* mvm, float frustum[6][4])
