@@ -43,11 +43,20 @@
 #include "arcan_shdrmgmt.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
+#include "arcan_3dbase.h"
 
 extern struct arcan_video_display arcan_video_display;
 static arcan_shader_id default_3dprog;
 
+enum camtag_facing
+{
+	FRONT = GL_FRONT,
+	BACK  = GL_BACK,
+	BOTH  = GL_NONE
+};
+
 struct camtag_data {
+	enum camtag_facing facing;
 	float projection[16];
 };
 
@@ -373,7 +382,6 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 {
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
-	glCullFace(GL_BACK);
 
 	arcan_vobject_litem* current = cell;
 	while (current){
@@ -419,7 +427,12 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 	scale_matrix(matr, dprop.scale.x, dprop.scale.y, dprop.scale.z);
 	matr_quatf(norm_quat(dprop.rotation.quaternion), omatr);
 	multiply_matrix(dmatr, matr, omatr);
-	cell = process_scene_infinite(cell, fract, dmatr);
+		
+	arcan_3dmodel* obj3d = cell->elem->feed.state.ptr;
+
+	glCullFace(camera->facing);
+	if (obj3d->flags.infinite)
+		cell = process_scene_infinite(cell, fract, dmatr);
 
 	translate_matrix(dmatr, dprop.position.x, dprop.position.y, dprop.position.z);
 	process_scene_normal(cell, fract, dmatr); 
@@ -478,8 +491,8 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id dst)
 	return rv;
 }
 
-arcan_vobj_id arcan_3d_buildbox(float minx, float miny, 
-	float minz, float maxx, float maxy, float maxz){
+arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps)
+{
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ};
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons empty = {0};
@@ -868,7 +881,8 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	return rv;
 }
 
-arcan_errc arcan_3d_camtag(arcan_vobj_id vid, float projection[16]) 
+arcan_errc arcan_3d_camtag(arcan_vobj_id vid, 
+	float projection[16], bool front, bool back) 
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(vid);
@@ -876,6 +890,14 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid, float projection[16])
 	vobj->owner->camtag = vobj->cellid;
 	struct camtag_data* camobj = malloc(sizeof(struct camtag_data));
 	memcpy(camobj->projection, projection, sizeof(float) * 16);
+
+/* we cull the inverse */
+	if (front && back)
+		camobj->facing = BOTH;
+	else if (front)
+		camobj->facing = BACK;
+	else
+		camobj->facing = FRONT;
 
 	vobj->feed.state.ptr = camobj;
 	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA; 
