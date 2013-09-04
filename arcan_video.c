@@ -213,7 +213,7 @@ void push_globj(arcan_vobject* dst, bool noupload,
  * and a txdump subfolder in cwd 
  */
 #ifdef _DEBUG
-		if (arcan_video_display.txdump){
+		if (arcan_video_display.txdump && s->vinf.text.raw){
 			static int seqn = 0;
 			int outfd = fmt_open(O_RDWR | O_CREAT, S_IRWXU, "%sgldump%d.png", 
 				arcan_video_display.txdump, seqn++);
@@ -1638,39 +1638,7 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 static bool activate_fbo(struct rendertarget* dst)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
-
-	if (dst->mode == RENDERTARGET_DEPTH){
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-			GL_TEXTURE_2D, dst->depth, 0);
-		glDrawBuffer(GL_NONE);
-		glReadBuffer(GL_NONE);
-	}
-	else{ /* RENDERTARGET_COLOR */
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-			GL_TEXTURE_2D, dst->color->vstore->vinf.text.glid, 0);
-		
-		if (dst->mode > RENDERTARGET_COLOR)
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-				GL_RENDERBUFFER, dst->depth);
-
-		if (dst->mode > RENDERTARGET_COLOR_DEPTH)
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
-				GL_RENDERBUFFER, dst->depth);
-	}
-
-/* basic error handling / status checking
- * may be possible that we should cache this in the 
- * rendertarget and only call when / if something changes as
- * it's not certain that drivers won't stall the pipeline on this */
-	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	
-	if (status == GL_FRAMEBUFFER_COMPLETE)
-		return true;
-	else {
-		arcan_video_display.fbo_support = false;
-		arcan_warning("Error using rendertarget (FBO), feature disabled.\n");
-		return false;
-	}
+	return true;
 }
 
 /* 
@@ -1682,9 +1650,6 @@ static bool alloc_fbo(struct rendertarget* dst)
 	if (!arcan_video_display.fbo_support)
 		return false;
 
-/* assert is leak-trigger here */
-	assert(dst->fbo == 0);
-	assert(dst->color);
 	glGenFramebuffers(1, &dst->fbo);
 
 /* need both stencil and depth buffer, but we don't need the data from them */
@@ -1695,24 +1660,63 @@ static bool alloc_fbo(struct rendertarget* dst)
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
 			GL_TEXTURE_2D, dst->color->vstore->vinf.text.glid, 0);
 
-		if (dst->mode >= RENDERTARGET_COLOR_DEPTH) {
+/* need a Z buffer in the offscreen rendering but don't want 
+ * to store it, so setup a renderbuffer */
+		if (dst->mode > RENDERTARGET_COLOR) {
 			glGenRenderbuffers(1, &dst->depth);
-/* need a depth buffer (can optimize if we knew that no 3D vids was present) */
+
+/* could use GL_DEPTH_COMPONENT only if we'd know that there
+ * wouldn't be any clipping in the active rendertarget */
 			glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
-			glRenderbufferStorage(GL_RENDERBUFFER,
-				dst->mode == RENDERTARGET_COLOR_DEPTH_STENCIL ? 
-				GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT,
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
 				dst->color->vstore->w, dst->color->vstore->h);
+
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+				GL_RENDERBUFFER, dst->depth);
 		}
 	}
 	else {
 /* DEPTH buffer only (shadowmapping, ...) convert the storage to
- * be depth buffer only */
+ * contain a depth texture */
+		int w = dst->color->vstore->w;
+		int h = dst->color->vstore->h;
+		drop_glres(dst->color->vstore);
 
-		glGenRenderbuffers(1, &dst->depth);
-		glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
-		glRenderbufferStorage(GL_RENDERBUFFER,
-			GL_DEPTH_COMPONENT, dst->color->vstore->w, dst->color->vstore->h);
+		dst->color->vstore = malloc(sizeof(struct storage_info_t));
+		struct storage_info_t* store = dst->color->vstore;
+
+		memset(store, '\0', sizeof(struct storage_info_t));
+
+		store->txmapped   = TXSTATE_DEPTH;
+		store->txu        = GL_CLAMP;
+		store->txv        = GL_CLAMP;
+		store->scale      = ARCAN_VIMAGE_NOPOW2; 
+		store->imageproc  = imageproc_normal; 
+		store->filtermode = ARCAN_VFILTER_NONE;
+		store->refcount   = 1;
+		store->w = w;
+		store->h = h;
+	
+/* generate ID etc. special path for TXSTATE_DEPTH */
+		push_globj(dst->color, false, NULL); 
+
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+			GL_TEXTURE_2D, store->vinf.text.glid, 0);
+	}
+
+/* basic error handling / status checking
+ * may be possible that we should cache this in the 
+ * rendertarget and only call when / if something changes as
+ * it's not certain that drivers won't stall the pipeline on this */
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	
+	if (status != GL_FRAMEBUFFER_COMPLETE){
+		arcan_video_display.fbo_support = false;
+		arcan_warning("Error using rendertarget (FBO), feature disabled.\n");
+		return false;
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
