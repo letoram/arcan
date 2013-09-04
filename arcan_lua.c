@@ -82,12 +82,10 @@
 #ifndef CONST_ROTATE_RELATIVE
 #define CONST_ROTATE_RELATIVE 10
 #endif
-static const int ROTATE_RELATIVE = CONST_ROTATE_RELATIVE;
 
 #ifndef CONST_ROTATE_ABSOLUTE
 #define CONST_ROTATE_ABSOLUTE 5
 #endif
-static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 
 #ifndef CONST_MAX_SURFACEW
 #define CONST_MAX_SURFACEW 2048
@@ -96,6 +94,25 @@ static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 #ifndef CONST_MAX_SURFACEH
 #define CONST_MAX_SURFACEH 2048
 #endif
+
+#ifndef CONST_RENDERTARGET_DETACH
+#define CONST_RENDERTARGET_DETACH 20
+#endif
+
+#ifndef CONST_RENDERTARGET_NODETACH
+#define CONST_RENDERTARGET_NODETACH 21
+#endif
+
+#ifndef CONST_RENDERTARGET_SCALE
+#define CONST_RENDERTARGET_SCALE 30
+#endif
+
+#ifndef CONST_RENDERTARGET_NOSCALE
+#define CONST_RENDERTARGET_NOSCALE 31
+#endif
+
+static const int ROTATE_RELATIVE = CONST_ROTATE_RELATIVE;
+static const int ROTATE_ABSOLUTE = CONST_ROTATE_ABSOLUTE;
 
 static const int MOUSE_GRAB_ON  = 20;
 static const int MOUSE_GRAB_OFF = 21;
@@ -109,10 +126,13 @@ static const int FRAMESERVER_NOLOOP = 0;
 static const int FRAMESET_NODETACH = 11;
 static const int FRAMESET_DETACH   = 10;
 
-static const int RENDERTARGET_DETACH   = 10;
-static const int RENDERTARGET_NODETACH = 11;
-static const int RENDERTARGET_SCALE    = 20;
-static const int RENDERTARGET_NOSCALE  = 21;
+static const int RENDERTARGET_DETACH   = CONST_RENDERTARGET_DETACH;
+static const int RENDERTARGET_NODETACH = CONST_RENDERTARGET_NODETACH;
+static const int RENDERTARGET_SCALE    = CONST_RENDERTARGET_SCALE;
+static const int RENDERTARGET_NOSCALE  = CONST_RENDERTARGET_NOSCALE;
+static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
+static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
+static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
 
 static const int BLEND_NONE     = blend_disable;
 static const int BLEND_NORMAL   = blend_normal;
@@ -2381,10 +2401,12 @@ int arcan_lua_camtag(lua_State* ctx)
 	float far  = luaL_optnumber(ctx, 3, 100.0);
 	float fov  = luaL_optnumber(ctx, 4, 45.0);
 	ar = luaL_optnumber(ctx, 5, ar);	
+	bool front = luaL_optnumber(ctx, 6, true);
+	bool back  = luaL_optnumber(ctx, 7, false);
 
 	float projection[16];
 	build_projection_matrix(projection, near, far, ar, fov);
-	arcan_errc rv = arcan_3d_camtag(id, projection); 
+	arcan_errc rv = arcan_3d_camtag(id, projection, front, back); 
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 	return 1;
@@ -2399,11 +2421,16 @@ int arcan_lua_camtaghmd(lua_State* ctx)
 	float far  = luaL_checknumber(ctx, 4);
 	float ipd = luaL_checknumber(ctx, 5);
 
+	bool front = luaL_optnumber(ctx, 6, true);
+	bool back  = luaL_optnumber(ctx, 7, false);
+
 	float projection[16] = {0};
 	float etsd = 0.0640; 
 	float fov = 90.0;
-	float ar = 2.0f * (float) arcan_video_display.width / (float)
-				arcan_video_display.height;
+
+	float w = arcan_video_display.width;
+	float h = arcan_video_display.height;
+	float ar = 2.0 * w / h;
 
 	build_projection_matrix(projection, near, far, ar, fov);
 
@@ -2413,8 +2440,8 @@ int arcan_lua_camtaghmd(lua_State* ctx)
  * eyetoscreendist (m), ipd, hres, vres
  */
 	
-	bool rv = arcan_3d_camtag(lid, projection) == ARCAN_OK && 
-		arcan_3d_camtag(rid, projection) == ARCAN_OK;
+	bool rv = arcan_3d_camtag(lid, projection, front, back) == ARCAN_OK && 
+		arcan_3d_camtag(rid, projection, front, back) == ARCAN_OK;
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 
@@ -3711,8 +3738,7 @@ int arcan_lua_renderset(lua_State* ctx)
 	int nvids         = lua_rawlen(ctx, 2);
 	int detach        = luaL_checkint(ctx, 3);
 	int scale         = luaL_checkint(ctx, 4);
-	int flipx         = luaL_optint(ctx, 5, 0);
-	int flipy         = luaL_optint(ctx, 6, 0);
+	int format        = luaL_optint(ctx, 5, RENDERFMT_COLOR);
 
 	if (!arcan_video_display.fbo_support){
 		arcan_warning("arcan_lua_renderset(%d) FBO support is disabled,"
@@ -3734,7 +3760,7 @@ int arcan_lua_renderset(lua_State* ctx)
 
 	if (nvids > 0){
 		arcan_video_setuprendertarget(did, 0, 
-			scale == RENDERTARGET_SCALE, flipx != 0, flipy != 0);
+			scale == RENDERTARGET_SCALE, format); 
 
 		for (int i = 0; i < nvids; i++){
 			lua_rawgeti(ctx, 2, i+1);
@@ -3836,7 +3862,7 @@ int arcan_lua_recordset(lua_State* ctx)
 			else {
 				if (!rtsetup)
 					rtsetup = (arcan_video_setuprendertarget(did, pollrate, 
-						scale == RENDERTARGET_SCALE, false, false), true);
+						scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR), true);
 
 				arcan_video_attachtorendertarget(did, setvid, 
 					detach == RENDERTARGET_DETACH);
@@ -5136,6 +5162,9 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"RENDERTARGET_SCALE",    RENDERTARGET_SCALE   },
 {"RENDERTARGET_NODETACH", RENDERTARGET_NODETACH},
 {"RENDERTARGET_DETACH",   RENDERTARGET_DETACH  },
+{"RENDERTARGET_COLOR", RENDERFMT_COLOR },
+{"RENDERTARGET_DEPTH", RENDERFMT_DEPTH },
+{"RENDERTARGET_FULL", RENDERFMT_FULL }, 
 {"ROTATE_RELATIVE", CONST_ROTATE_RELATIVE},
 {"ROTATE_ABSOLUTE", CONST_ROTATE_ABSOLUTE},
 {"TEX_REPEAT",       ARCAN_VTEX_REPEAT      },

@@ -81,6 +81,13 @@ enum arcan_vimage_mode {
 	ARCAN_VIMAGE_SCALEPOW2 = 1 
 };
 
+enum rendertarget_mode {
+	RENDERTARGET_DEPTH = 0,
+	RENDERTARGET_COLOR = 1,
+	RENDERTARGET_COLOR_DEPTH = 2,
+	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
+};
+
 enum arcan_transform_mask {
 	MASK_NONE        = 0,
 	MASK_POSITION    = 1,
@@ -285,7 +292,7 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
  * readback >  0, readback will occur every tick frames */
 arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, 
-	bool scale, bool flipx, bool flipy);
+	bool scale, enum rendertarget_mode format);		
 
 /* Attach src to rendertarget did,
  * if detach is set to true, the rendertarget will be the 

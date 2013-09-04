@@ -24,14 +24,6 @@
 #define RENDERTARGET_LIMIT 32 
 #endif
 
-
-enum rendertarget_mode {
-	RENDERTARGET_DEPTH = 0,
-	RENDERTARGET_COLOR = 1,
-	RENDERTARGET_COLOR_DEPTH = 2,
-	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
-};
-
 struct arcan_vobject_litem;
 struct arcan_vobject;
 
@@ -119,9 +111,16 @@ typedef struct surface_transform {
  * and quad is sent and a vec3 col uniform is expected,
  * but no texture is bound)
  */
+
+enum txstate {
+	TXSTATE_OFF   = 0,
+	TXSTATE_TEX2D = 1,
+	TXSTATE_DEPTH = 2
+};
+
 struct storage_info_t {
 	unsigned refcount;
-	bool txmapped;
+	enum txstate txmapped;
 
 	union {
 		struct {

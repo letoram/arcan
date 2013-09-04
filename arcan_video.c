@@ -137,7 +137,7 @@ static void drop_glres(struct storage_info_t* s)
 	s->refcount--;
 
 	if (s->refcount == 0){
-		if (s->txmapped && s->vinf.text.glid){
+		if (s->txmapped != TXSTATE_OFF && s->vinf.text.glid){
 			glDeleteTextures(1, &s->vinf.text.glid);
 
 			if (s->vinf.text.raw)
@@ -153,7 +153,7 @@ void push_globj(arcan_vobject* dst, bool noupload,
 		struct arcan_img_meta* meta)
 {
 	struct storage_info_t* s = dst->vstore; 
-	if (s->txmapped == false)
+	if (s->txmapped == TXSTATE_OFF)
 		return;
 
 	if (noupload)
@@ -218,11 +218,16 @@ void push_globj(arcan_vobject* dst, bool noupload,
 			int outfd = fmt_open(O_RDWR | O_CREAT, S_IRWXU, "%sgldump%d.png", 
 				arcan_video_display.txdump, seqn++);
 			if (-1 != outfd)
-				arcan_rgba32_pngfile(outfd, (char*) s->vinf.text.raw, s->w, s->h, false);
+				arcan_rgba32_pngfile(outfd, 
+					(char*) s->vinf.text.raw, s->w, s->h, false);
 		}
 #endif
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h, 
-			0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
+		if (s->txmapped == TXSTATE_DEPTH)
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
+				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
+		else
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, s->w, s->h, 
+				0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, s->vinf.text.raw);
 	}
 
 	if (arcan_video_display.conservative){
@@ -346,7 +351,8 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 				arcan_frameserver* dstfsrv = current->feed.state.ptr;
 
 /* glid 0 will be used as a flag for shared storages */
-				if (current->vstore->txmapped && current->vstore->vinf.text.glid){
+				if (current->vstore->txmapped != TXSTATE_OFF 
+					&& current->vstore->vinf.text.glid){
 					glDeleteTextures(1, &current->vstore->vinf.text.glid);
 					current->vstore->vinf.text.glid = 0;
 				}
@@ -374,7 +380,12 @@ static inline void step_active_frame(arcan_vobject* vobj)
 	vobj->current_frame = vobj->frameset[ vobj->frameset_meta.current ];
 }
 
-/* iterate a saved context, and reallocate all resources associated with it */
+/* 
+ * Iterate a saved context, and reallocate all resources associated with it.
+ * Note that this doesn't really consider other forms of gl storage at the
+ * moment, particularly rendertargets(!)
+ * 
+ */
 static void reallocate_gl_context(struct arcan_video_context* context)
 {
 	arcan_tickv cticks = arcan_video_display.c_ticks;
@@ -415,7 +426,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 				free(fname); 
 			}
 			else
-				if (current->vstore->txmapped)
+				if (current->vstore->txmapped != TXSTATE_OFF)
 					push_globj(current, false, NULL);
 
 			arcan_frameserver* movie = current->feed.state.ptr;
@@ -718,7 +729,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		rv->vstore = malloc(sizeof(struct storage_info_t));
 		memset(rv->vstore, '\0', sizeof(struct storage_info_t));
 
-		rv->vstore->txmapped   = true;
+		rv->vstore->txmapped   = TXSTATE_TEX2D;
 		rv->vstore->txu        = arcan_video_display.deftxs;
 		rv->vstore->txv        = arcan_video_display.deftxt;
 		rv->vstore->scale      = arcan_video_display.scalemode;
@@ -1359,7 +1370,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * thread and forcibly assigning the glcontext to another thread is expensive */
 
 push_comp:
-		if (!asynchsrc && dst->vstore->txmapped)
+		if (!asynchsrc && dst->vstore->txmapped != TXSTATE_OFF)
 			push_globj(dst, false, &meta);
 	}
 
@@ -1458,7 +1469,8 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 	arcan_vobject* dst = arcan_video_getobject(did);
 
 	if (src && dst && src != dst){
-		if (!src->vstore->txmapped || src->vstore->vinf.text.glid == 0 ||
+		if (src->vstore->txmapped == TXSTATE_OFF || 
+			src->vstore->vinf.text.glid == 0 ||
 			src->flags.persist || dst->flags.persist || src->flags.clone ||
 			dst->flags.clone)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
@@ -1487,7 +1499,7 @@ arcan_vobj_id arcan_video_solidcolor(float origw, float origh,
 
 	newvobj->origw = origw;
 	newvobj->origh = origh;
-	newvobj->vstore->txmapped = false;
+	newvobj->vstore->txmapped = TXSTATE_OFF;
 	newvobj->vstore->vinf.col.r = (float)r / 255.0f;
 	newvobj->vstore->vinf.col.g = (float)g / 255.0f;
 	newvobj->vstore->vinf.col.b = (float)b / 255.0f;
@@ -1533,7 +1545,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 		newvobj->origw = origw;
 		newvobj->origh = origh;
 
-		ds->txmapped = true;
+		ds->txmapped = TXSTATE_TEX2D;
 		glGenTextures(1, &ds->vinf.text.glid);
 
 		glBindTexture(GL_TEXTURE_2D, ds->vinf.text.glid);
@@ -1693,10 +1705,14 @@ static bool alloc_fbo(struct rendertarget* dst)
 				dst->color->vstore->w, dst->color->vstore->h);
 		}
 	}
-/* DEPTH buffer only (shadowmapping, ...) */
 	else {
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, 
-			GL_TEXTURE_2D, dst->color->vstore->vinf.text.glid, 0);
+/* DEPTH buffer only (shadowmapping, ...) convert the storage to
+ * be depth buffer only */
+
+		glGenRenderbuffers(1, &dst->depth);
+		glBindRenderbuffer(GL_RENDERBUFFER, dst->depth);
+		glRenderbufferStorage(GL_RENDERBUFFER,
+			GL_DEPTH_COMPONENT, dst->color->vstore->w, dst->color->vstore->h);
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1724,7 +1740,7 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 }
 
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, 
-	int readback, bool scale, bool flipx, bool flipy)
+	int readback, bool scale, enum rendertarget_mode format) 
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(did);
@@ -1744,7 +1760,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		int ind = current_context->n_rtargets++;
 		struct rendertarget* dst = &current_context->rtargets[ ind ];
 
-		dst->mode     = RENDERTARGET_COLOR_DEPTH_STENCIL;
+		dst->mode     = format; 
 		dst->readback = readback;
 		dst->color    = vobj;
 		dst->camtag   = ARCAN_EID;
@@ -1761,18 +1777,13 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		identity_matrix(dst->base);
 
 		if (scale){
-			float xs = (flipx ? -1 : 1) * ((float)vobj->vstore->w / 
-				(float)arcan_video_display.width);
+			float xs = ((float)vobj->vstore->w / (float)arcan_video_display.width);
 
-			float ys = (flipy ? -1 : 1) * ((float)vobj->vstore->h / 
-				(float)arcan_video_display.height);
+			float ys = ((float)vobj->vstore->h / (float)arcan_video_display.height);
 
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
 		} 
-		else 
-			scale_matrix(dst->base, 
-				flipx ? -1.0 : 1.0, flipy ? -1.0 : 1.0, 1.0);
 
 		alloc_fbo(dst);
 
@@ -1832,7 +1843,8 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src,
 	}
 
 	if (dstvobj->flags.clone || dstvobj->flags.persist || srcvobj->flags.persist ||
-		srcvobj->flags.clone || !srcvobj->vstore->txmapped || !dstvobj->vstore->txmapped){
+		srcvobj->flags.clone || srcvobj->vstore->txmapped == TXSTATE_OFF 
+		|| dstvobj->vstore->txmapped == TXSTATE_OFF){
 		if (errc)
 			*errc = ARCAN_ERRC_BAD_ARGUMENT;
 		return rv;
@@ -3882,7 +3894,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			}
 
 /* if the object is not txmapped (or null, in that case give up) */ 
-		if (elem->vstore->txmapped == false){
+		if (elem->vstore->txmapped == TXSTATE_OFF){
 			if (elem->program != 0){
 				arcan_shader_activate(elem->program);
 				draw_colorsurf(tgt, dprops, elem, elem->vstore->vinf.col.r,
@@ -3988,8 +4000,8 @@ static void process_readback(struct rendertarget* tgt, float fract)
 /* should we issue a new readback? */
 	bool req_rb = false;
 
-/* check if there's data ready to be copied
-	TODO: this doesn't accept stencil / depth readback */
+/* check if there's data ready to be copied,
+ * this doesn't work for STENCIL or DEPTH */
 	if (tgt->readreq && arcan_video_display.pbo_support){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
 		GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
@@ -4002,6 +4014,8 @@ static void process_readback(struct rendertarget* tgt, float fract)
 				vobj->feed.state);
 		}
 
+/* TODO: EGL/GLES target doesn't have PBOs until 3.0,
+ * the fallback option should be glReadPixels */
 		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
 		tgt->readreq = false;
 	}
