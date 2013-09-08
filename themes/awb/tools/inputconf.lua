@@ -8,9 +8,71 @@
 -- fill tbl with PLAYERpc_AXISac   = analog:0:0:none
 --          with PLAYERpc_BUTTONbc = translated:0:0:none
 --          with PLAYERpc_other
-local activetbl = {};
+--
+local function keyconf_idtotbl(self, idstr)
+	local res = self.table[ idstr ];
+	if (res == nil) then return nil; end
+
+	restbl = splits(res, ":");
+	if (restbl[1] == "digital") then
+		restbl.kind = "digital";
+		restbl.devid = tonumber(restbl[2]);
+		restbl.subid = tonumber(restbl[3]);
+		restbl.source = restbl[4];
+		restbl.active = false;
+		
+	elseif (restbl[1] == "translated") then
+		restbl.kind = "digital";
+		restbl.translated = true;
+		restbl.devid = tonumber(restbl[2]);
+		restbl.keysym = tonumber(restbl[3]);
+		restbl.modifiers = restbl[4] == nil and 0 or tonumber(restbl[4]);
+		restbl.active = false;
+		
+	elseif (restbl[1] == "analog") then
+		restbl.kind = "analog";
+		restbl.devid = tonumber(restbl[2]);
+		restbl.subid = tonumber(restbl[3]);
+		restbl.source = restbl[4];
+	else
+		restbl = nil;
+	end
+	
+	return restbl;
+end
+
+local function keyconf_tbltoid(self, itbl)
+	if (itbl.kind == "analog") then
+		return string.format("analog:%d:%d:%s", 
+			itbl.devid, itbl.subid, itbl.source);
+	end
+
+	if itbl.translated then
+		if self.ignore_modifiers then
+			return string.format("translated:%d:%s", 
+				itbl.devid, itbl.keysym);
+		else
+			return string.format("translated:%d:%d:%s", 
+				itbl.devid, itbl.keysym, itbl.modifiers);
+		end
+	else
+		return string.format("digital:%d:%d:%s",
+			itbl.devid, itbl.subid, itbl.source);
+	end
+end
+
+--
+-- Try and reuse as much of scripts/keyconf.lua
+-- as possible
+--
+local function set_tblfun(dst)
+	dst.id = keyconf_tbltoid;
+	dst.idtotbl = keyconf_idtotbl;
+	dst.ignore_modifiers = false;
+end
 
 local function pop_deftbl(tbl, pc, bc, ac, other)
+
 	for i=1,pc do
 		for j=1,bc do 
 			tbl["PLAYER" .. tostring(i) .. "_BUTTON" ..tostring(j)] = 
@@ -123,58 +185,6 @@ local function splits(instr, delim)
 	return res;
 end
 
-local function keyconf_idtotbl(self, idstr)
-	local res = self.table[ idstr ];
-	if (res == nil) then return nil; end
-
-	restbl = splits(res, ":");
-	if (restbl[1] == "digital") then
-		restbl.kind = "digital";
-		restbl.devid = tonumber(restbl[2]);
-		restbl.subid = tonumber(restbl[3]);
-		restbl.source = restbl[4];
-		restbl.active = false;
-		
-	elseif (restbl[1] == "translated") then
-		restbl.kind = "digital";
-		restbl.translated = true;
-		restbl.devid = tonumber(restbl[2]);
-		restbl.keysym = tonumber(restbl[3]);
-		restbl.modifiers = restbl[4] == nil and 0 or tonumber(restbl[4]);
-		restbl.active = false;
-		
-	elseif (restbl[1] == "analog") then
-		restbl.kind = "analog";
-		restbl.devid = tonumber(restbl[2]);
-		restbl.subid = tonumber(restbl[3]);
-		restbl.source = restbl[4];
-	else
-		restbl = nil;
-	end
-	
-	return restbl;
-end
-
-local function keyconf_tbltoid(self, itbl)
-	if (itbl.kind == "analog") then
-		return string.format("analog:%d:%d:%s", 
-			itbl.devid, itbl.subid, itbl.source);
-	end
-
-	if itbl.translated then
-		if self.ignore_modifiers then
-			return string.format("translated:%d:%s", 
-				itbl.devid, itbl.keysym);
-		else
-			return string.format("translated:%d:%d:%s", 
-				itbl.devid, itbl.keysym, itbl.modifiers);
-		end
-	else
-		return string.format("digital:%d:%d:%s",
-			itbl.devid, itbl.subid, itbl.source);
-	end
-end
-
 local function insert_unique(tbl, key)
 	for key, val in ipairs(tbl) do
 		if val == key then
@@ -190,53 +200,107 @@ local function input_anal(edittbl)
 end
 
 local function input_dig(edittbl)
-	print("configure digital");
+	local cfg = awbwman_cfg();
+
+	local btntbl = {
+		{
+			caption = cfg.defrndfun("Save"),
+			trigger = function(owner)
+				edittbl.parent.table[edittbl.name] = owner.lastid;
+				edittbl.parent:update_list();
+				edittbl.parent.wnd:force_update();
+			end,
+		},
+		{
+			caption = cfg.defrndfun("Cancel"),
+			trigger = function(owner)
+			end
+		}
+	};
+		
+	local msg = cfg.defrndfun( string.format("Press a button for [%s]\\n\\r\t%s",
+		edittbl.name, edittbl.bind) );
+
+	local props = image_surface_resolve_properties(edittbl.parent.wnd.canvas.vid);
+
+	local dlg = awbwman_dialog(msg, btntbl, 
+		{x = (props.x + 20), y = (props.y + 20), nocenter = true}, false);
+	dlg.lastid = edittbl.bind;
+
+	dlg.input = function(self, iotbl)
+		local tblstr = edittbl.parent:id(iotbl);
+		if (tblstr) then
+			dlg.lastid = tblstr;
+			local msg = cfg.defrndfun( string.format("Press a button for [%s]\\n\\r\t%s",
+			edittbl.name, tblstr) ); 
+			if (valid_vid(msg)) then
+				dlg:update_caption(msg);
+			end
+		end
+	end
+--	awbwnd_dialog
 end
 
-local function inputed_editlay(intbl, outputres)
-	local list = {};
+local function inputed_editlay(intbl)
 
-	for k,v in pairs(intbl) do
-		local res = {};
-		res.name = k;
-		res.bind = v;
-		res.trigger = (string.sub(v, 1, 6) == "analog") and input_anal or input_dig;
-		if (v == "analog:0:0:none" or 
-			v == "digital:0:0:none" or v == "translated:0:0:none") then
-			res.cols = {k, "not bound"};
-		else
-			res.cols = {k, v};
+	intbl.update_list = function(intbl)
+		intbl.list = {};
+
+		for k,v in pairs(intbl.table) do
+			if (type(v) == "string") then
+				local res = {};
+				res.name = k;
+				res.bind = v;
+				res.parent = intbl;
+
+				local bindstr = "";
+				local procv = v;
+
+				res.trigger = (string.sub(v, 1, 6) == "analog") 
+					and input_anal or input_dig;
+	
+				if (v == "analog:0:0:none" or 
+					v == "digital:0:0:none" or v == "translated:0:0:none") then
+					res.cols = {k, "not bound"};
+				else
+					res.cols = {k, v};
+				end
+				table.insert(intbl.list, res);
+			end
 		end
-		table.insert(list, res);
+
+		table.sort(intbl.list, function(a,b) 
+			return string.lower(a.name) < string.lower(b.name); 
+		end);
 	end
 
-	table.sort(list, function(a,b) 
-		return string.lower(a.name) < string.lower(b.name); 
-	end);
-
+	intbl:update_list();
 -- and because *** intbl don't keep track of order, sort list..
-
 	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
 		deffont_sz, linespace, {0.5, 0.5}, function(filter, ofs, lim)
 			local res = {};
 			local ul = ofs + lim;
 			for i=ofs, ul do
-				table.insert(res, list[i]);
+				table.insert(res, intbl.list[i]);
 			end
-			return res, #list;
+			return res, #intbl.list;
 		end, desktoplbl);
+
+	local cfg = awbwman_cfg();
+
+	wnd.real_destroy = wnd.destroy;
+	wnd.destroy = function()
+		local vid, lines = desktoplbl("Save\\n\\rDiscard");
+		
+		awbwman_popup(vid, lines, function(ind)
+-- on index 1, update cfg etc.
+			wnd:real_destroy(cfg.animspeed);
+		end, {ref = wnd.dir.t.left[1].vid});
+	end
+
+	intbl.wnd = wnd;
 	wnd.name = "Input Editor";
 end
-
---
--- Try and reuse as much of scripts/keyconf.lua
--- as possible
---
-local deftbl = {
-	id = keyconf_tbltoid,
-	idtotbl = keyconf_idtotbl,
-	ignore_modifiers = false 
-};
 
 function inputed_translate(iotbl, cfg)
 	if (cfg == nil) then
@@ -282,15 +346,18 @@ end
 --
 function awb_inputed()
 	res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);	
+	local ctable = {};
+	set_tblfun(ctable);
 
 	local list = {
 		{
 			cols    = {"New Layout..."},
 			trigger = function(self, wnd)
-				activetbl = {};
 				wnd:destroy(awbwman_cfg().animspeed);
+				local activetbl = {};
 				pop_deftbl(activetbl, 4, 8, 6, {"START", "SELECT", "COIN1"});
-				inputed_editlay(activetbl);	
+				ctable.table = activetbl;
+				inputed_editlay(ctable);	
 			end
 		}
 	};
@@ -298,16 +365,17 @@ function awb_inputed()
 	for i,v in ipairs(res) do
 		local res = { cols = {v},
 			trigger = function(self, wnd)
-				wnd:destroy(awbwman_cfg().animspeed);
-				inputed_editlay(system_load("keyconfig/" .. v)());
+				wnd:destroy(awbwman_cfg().animspeed);	
+				ctable.table = system_load("keyconfig/" .. v)();
+				inputed_editlay( ctable ); 
 			end
 		};
 
 		table.insert(list, res);
 	end
 
-	local wnd = awbwman_listwnd(menulbl("Input Editor"), deffont_sz, linespace, {1.0},
-		function(filter, ofs, lim)
+	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
+		deffont_sz, linespace, {1.0}, function(filter, ofs, lim)
 			local res = {};
 			local ul = ofs + lim;
 			for i=ofs, ul do

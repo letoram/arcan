@@ -6,12 +6,12 @@
 -- desktop- kindof window management. 
 --
 wlist     = {
-	windows = {};
+windows = {};
 };
 
 settings = {
-	mfact  = 0.2,
-	mvol   = 1.0
+mfact  = 0.2,
+mvol   = 1.0
 };
 
 sysicons   = {};
@@ -38,85 +38,77 @@ kbdbinds["F12"]    = function() awbwman_shadow_nonfocus(); end
 --   group_window
 
 function menulbl(text)
-	return render_text(string.format("\\#0055a9\\f%s,%d %s", 
-		deffont, 10, text));
+return render_text(string.format("\\#0055a9\\f%s,%d %s", 
+deffont, 10, text));
 end
 
 function desktoplbl(text)
+text = text == nil and "" or text;
+return render_text(string.format("\\#ffffff\\f%s,%d %s",
+deffont, 10, text));
+end
+
+function inputlbl(text)
 	text = text == nil and "" or text;
 	return render_text(string.format("\\#ffffff\\f%s,%d %s",
-		deffont, 10, text));
+		deffont, 12, text));
 end
 
 function awb()
-	symtable = system_load("scripts/symtable.lua")();
+symtable = system_load("scripts/symtable.lua")();
 
 -- shader function / model viewer
-  system_load("scripts/calltrace.lua")();
-	system_load("scripts/3dsupport.lua")();
-	system_load("scripts/resourcefinder.lua")();
-	system_load("tools/inputconf.lua")();
-	system_load("tools/vidrec.lua")();
-	system_load("tools/vidcmp.lua")();
-	system_load("tools/hghtmap.lua")();
+system_load("scripts/calltrace.lua")();
+system_load("scripts/3dsupport.lua")();
+system_load("scripts/resourcefinder.lua")();
+system_load("tools/inputconf.lua")();
+system_load("tools/vidrec.lua")();
+system_load("tools/vidcmp.lua")();
+system_load("tools/hghtmap.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
-	system_load("scripts/mouse.lua")();
-	kbdbinds["F10"]    = mouse_dumphandlers;
+system_load("scripts/mouse.lua")();
+kbdbinds["F10"]    = mouse_dumphandlers;
 
-	system_load("awb_iconcache.lua")();
-	system_load("awbwnd.lua")();
-	system_load("awbwnd_icon.lua")();
-	system_load("awbwnd_list.lua")();
-	system_load("awbwnd_media.lua")();
-	system_load("awbwnd_target.lua")();
-	system_load("awbwman.lua")();
+system_load("awb_iconcache.lua")();
+system_load("awbwnd.lua")();
+system_load("awbwnd_icon.lua")();
+system_load("awbwnd_list.lua")();
+system_load("awbwnd_media.lua")();
+system_load("awbwnd_target.lua")();
+system_load("awbwman.lua")();
 
-	settings.defwinw = math.floor(VRESW * 0.35);
-	settings.defwinh = math.floor(VRESH * 0.35);
+settings.defwinw = math.floor(VRESW * 0.35);
+settings.defwinh = math.floor(VRESH * 0.35);
 
 -- the imagery pool is used as a static data cache,
 -- since the windowing subsystem need link_ calls to work
 -- we can't use instancing, so instead we allocate a pool
 -- and then share_storage
-	imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
-	awbwman_init(desktoplbl, menulbl);	
+imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
+awbwman_init(desktoplbl, menulbl);	
 
 -- 
 -- look in resources/scripts/mouse.lua
 -- for heaps more options (gestures, trails, autohide) 
 --
-	image_tracetag(imagery.cursor, "mouse cursor");
-	mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
-	mouse_acceleration(0.5);
-	
+image_tracetag(imagery.cursor, "mouse cursor");
+mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
+mouse_acceleration(0.5);
+
 --
 -- Since we'll only use the 3d subsystem as a view for specific windows
 -- and those are populated through rendertargets, it's easiest to flip
 -- the camera
 --
-	local supp3d = setup_3dsupport();
-	awb_desktop_setup();
+local supp3d = setup_3dsupport();
+awb_desktop_setup();
 
 -- LCTRL + META = (toggle) grab to specific internal
 -- LCTRL = (toggle) grab to this window
-	kbdbinds["LCTRL"]  = toggle_mouse_grab;
-	kbdbinds["ESCAPE"] = awbwman_cancel;
-
-	local res = awbwnd_subwin_input(function(msg) print(msg) end, {
-		borderr = 255,
-		borderg = 255,
-		borderb = 255,
-		w = 64,
-		h = 32,
-		bgg = 200,
-		bgr = 0,
-		bgb = 0,
-		borderw = 2
-	});
-
-	move_image(res.anchor, 100, 100);
+kbdbinds["LCTRL"]  = toggle_mouse_grab;
+kbdbinds["ESCAPE"] = awbwman_cancel;
 end
 
 --
@@ -139,8 +131,19 @@ function gamelist_launch(self)
 end
 
 function spawn_vidwin(self)
-	awbwman_mediawnd(menulbl("Video Capture"), "capture", BADID,
-		{refid = "vidcapwnd"});
+	local wnd = awbwman_mediawnd(menulbl("Video Capture"), "capture", BADID,
+	{refid = "vidcapwnd"});
+
+	local res = awbwman_inputattach(function(msg) print(msg) end, 
+		inputlbl, {
+		w = 64,
+		h = 32,
+		owner = wnd.canvas.vid
+	});
+
+-- tests, border, noborder, static vs. dynamic
+
+	wnd.input = function(self, tbl) res:input(tbl); end
 end
 
 function gamelist_media(tbl)

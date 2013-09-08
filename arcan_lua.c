@@ -3159,6 +3159,25 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		if (lua_ctx_store.debug > 0)
 			dump_stack(ctx);
 
+		if (lua_ctx_store.debug > 0){
+			time_t logtime = time(NULL);
+			struct tm* ltime = localtime(&logtime);
+			
+			if (ltime) {
+				const char* fns = "/logs/crash_mmdd_hhmmss.lua";
+				char fname[ strlen(arcan_resourcepath) + strlen(fns) + 1 ]; 
+				sprintf(fname, "%s%s", arcan_resourcepath, fns);
+				strftime( fname + strlen(arcan_resourcepath) + 
+					strlen("/logs/crash_"), 9, "%m%d_%H%M%S", ltime);
+
+				FILE* tmpout = fopen(fname, "w+");
+				if (tmpout){
+					arcan_lua_statesnap(tmpout);
+					fclose(tmpout);
+			}
+		}
+	}
+
 		if (!(lua_ctx_store.debug > 2))
 			arcan_fatal("Fatal: arcan_lua_wraperr()\n");
 

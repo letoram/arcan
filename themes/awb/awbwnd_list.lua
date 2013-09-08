@@ -38,7 +38,9 @@ function awblist_resize(self, neww, newh)
 -- only redraw if we've grown (keep image when shrinking), some parts of
 -- this function is really expensive and high-resolution mice etc. do
 -- emitt lots of resize events when drag-resizing
-	if (props.height - self.lasth > (self.lineh + self.linespace)) then
+	if (self.invalidate or (props.height - self.lasth 
+		> (self.lineh + self.linespace))) then
+		self.invalidate = false;
 		self.lasth  = props.height;
 		self.restbl, self.total = self:datasel(self.ofs, self.capacity);	
 		
@@ -260,6 +262,11 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		elseif (iotbl.keysym == "DOWN") then
 			pwin:scrolldown(1);
 		end
+	end
+
+	pwin.force_update = function(self)
+		self.invalidate = true;
+		self:resize(self.w, self.h);
 	end
 
 -- build scrollbar 
