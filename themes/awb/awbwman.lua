@@ -442,6 +442,29 @@ function awbwman_activepopup()
 	return awb_cfg.popup_active ~= nil;
 end
 
+function awbwman_inputattach(dst, lblfun, options)
+--
+-- Override to fit current global settings / skin 
+--
+	options.bgr = awb_col.bgcolor.r;
+	options.bgg = awb_col.bgcolor.g;
+	options.bgb = awb_col.bgcolor.b;
+
+	local dlgc = awb_col.dialog_border;
+	options.borderr = dlgc.r;
+	options.borderg = dlgc.g;
+	options.borderb = dlgc.b;
+
+	options.borderw = 2;
+
+	options.caretr = awb_col.dialog_caret.r;
+	options.caretg = awb_col.dialog_caret.g;
+	options.caretb = awb_col.dialog_caret.b;
+
+
+	return awbwnd_subwin_input(dst, lblfun, options);
+end
+
 function awbwman_listwnd(caption, lineh, linespace, 
 	colopts, selfun, renderfun, options)
 	local wnd = awbwman_spawn(caption, options);
@@ -486,6 +509,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 	image_tracetag(caption, "awbwman_dialog(caption)");
 	local wnd = awbwman_spawn(caption, options); 
 	image_tracetag(wnd.anchor, "awbwman_dialog.anchor");
+	wnd.dlg_caption = caption;
 
 --
 -- Size the new buttons after the biggest supplied one
@@ -508,13 +532,24 @@ function awbwman_dialog(caption, buttons, options, modal)
 	local wheight = bheight + capp.height + wnd.dir.t.size;
 
 	wnd:resize(math.floor(wwidth * 1.2), math.floor(wheight * 2));
-	move_image(wnd.anchor, math.floor(0.5 * (VRESW - wnd.w)),
-		math.floor(0.5 * (VRESH - wnd.h)));
+
+	if (not options.nocenter) then
+		move_image(wnd.anchor, math.floor(0.5 * (VRESW - wnd.w)),
+			math.floor(0.5 * (VRESH - wnd.h)));
+	end
 
 -- Link caption to window area, center (taking buttons into account)
 	link_image(caption, wnd.canvas.vid);
 	image_inherit_order(caption, true);
 	show_image(caption);
+
+	wnd.update_caption = function(self, capvid)
+		copy_image_transform(self.dlg_caption, capvid);
+		delete_image(self.dlg_caption);
+		self.dlg_caption = capvid;
+		link_image(capvid, self.canvas.vid);
+		image_inherit_order(capvid, true);
+	end
 
 	local wndprop = image_surface_properties(wnd.canvas.vid);
 	move_image(caption, math.floor(0.5 * (wndprop.width - capp.width)),
@@ -877,7 +912,8 @@ local function awbwman_popupbase(props, options)
 end
 
 --
--- Simple popup window ordered just below the mouse cursor 
+-- Simple popup window ordered just below the mouse cursor or
+-- other points of reference.
 --
 function awbwman_popup(rendervid, lineheights, callbacks, options)
 	local props = image_surface_properties(rendervid);
@@ -1246,6 +1282,10 @@ function awbwman_spawn(caption, options)
 
 -- default drag, click, double click etc.
 	wcont.destroy = function(self, time)
+		if (time == nil) then
+			time = awb_cfg.animspeed;
+		end
+
 		mouse_droplistener(self);
 		mouse_droplistener(self.rhandle);
 		mouse_droplistener(self.top);

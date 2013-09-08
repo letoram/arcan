@@ -430,13 +430,21 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 		
 	arcan_3dmodel* obj3d = cell->elem->feed.state.ptr;
 
-	glCullFace(camera->facing);
+	glEnable(GL_CULL_FACE);
+	switch (camera->facing)
+	{
+	case FRONT: glCullFace(GL_BACK); break;
+	case BACK:  glCullFace(GL_FRONT); break;
+	case BOTH:  glDisable(GL_CULL_FACE);
+	}
+
 	if (obj3d->flags.infinite)
 		cell = process_scene_infinite(cell, fract, dmatr);
 
 	translate_matrix(dmatr, dprop.position.x, dprop.position.y, dprop.position.z);
 	process_scene_normal(cell, fract, dmatr); 
 
+	glDisable(GL_CULL_FACE);
 	return cell;
 }
 
@@ -895,9 +903,9 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 	if (front && back)
 		camobj->facing = BOTH;
 	else if (front)
-		camobj->facing = BACK;
-	else
 		camobj->facing = FRONT;
+	else
+		camobj->facing = BACK;
 
 	vobj->feed.state.ptr = camobj;
 	vobj->feed.state.tag = ARCAN_TAG_3DCAMERA; 

@@ -3498,6 +3498,14 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 			return;
 	}
 
+/*	if (force || (vobj->mask & MASK_SCALE) > 0){
+		printf("%f, %f, %f => %f, %f, %f\n", dprops->scale.x, dprops->scale.y,
+										dprops->scale.z, sprops->scale.x, sprops->scale.y, sprops->scale.z);
+		dprops->scale.x *= sprops->scale.x;
+		dprops->scale.y *= sprops->scale.y;
+		dprops->scale.z *= sprops->scale.z;
+	} */
+
 /* translate to sprops */
 	if (force || (vobj->mask & MASK_POSITION) > 0)
 		dprops->position = add_vector(dprops->position, sprops->position);

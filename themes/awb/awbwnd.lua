@@ -557,7 +557,6 @@ local function awbwnd_show(self)
 	self:resize(self.hidetbl.w, self.hidetbl.h);
 	show_image(self.anchor, self.animspeed);
 	move_image(self.anchor, self.hidetbl.x, self.hidetbl.y, self.animspeed);
-	print("restore to:", self.w, self.h);
 
 	self.hidetbl = nil;
 end
@@ -577,15 +576,155 @@ local function awbwnd_hide(self, dstx, dsty)
 end
 
 --
+-- Patched string functions for UTF-8 compliance
+--
+function string.utf8back(src, ofs)
+	if (ofs > 1 and string.len(src)+1 >= ofs) then
+		ofs = ofs - 1;
+		while (ofs > 1 and utf8kind(string.byte(src,ofs) ) == 2) do
+			ofs = ofs - 1;
+		end
+	end
+
+	return ofs;
+end
+
+function string.utf8forward(src, ofs)
+	if (ofs <= string.len(src)) then
+		repeat
+			ofs = ofs + 1;
+		until (ofs > string.len(src) or utf8kind( string.byte(src, ofs) ) < 2);
+	end
+
+	return ofs;
+end
+
+function string.translateofs(src, ofs, beg)
+	local i = beg;
+	local eos = string.len(src);
+
+	-- scan for corresponding UTF-8 position
+	while ofs > 1 and i <= eos do
+		local kind = utf8kind( string.byte(src, i) );
+		if (kind < 2) then
+			ofs = ofs - 1;
+		end
+		
+		i = i + 1;
+	end
+
+	return i;
+end
+
+function string.utf8len(src, ofs)
+	local i = 0;
+	local rawlen = string.len(src);
+	ofs = ofs < 1 and 1 or ofs
+	
+	while (ofs <= rawlen) do
+		local kind = utf8kind( string.byte(src, ofs) );
+		if (kind < 2) then
+			i = i + 1;
+		end
+
+		ofs = ofs + 1;
+	end
+
+	return i;
+end
+
+function string.insert(src, msg, ofs, limit)
+	local xlofs = src:translateofs(ofs, 1);
+	if (limit == nil) then
+		limit = string.len(msg) + ofs;
+	end
+	
+	if ofs + string.len(msg) > limit then
+		msg = string.sub(msg, 1, limit - ofs);
+
+-- align to the last possible UTF8 char..
+		while (string.len(msg) > 0 and 
+			utf8kind( string.byte(msg, string.len(msg))) == 2) do
+			msg = string.sub(msg, 1, string.len(msg) - 1);
+		end
+	end
+	
+	return string.sub(src, 1, xlofs - 1) .. msg .. 
+		string.sub(src, xlofs, string.len(src)), string.len(msg);
+end
+
+function string.delete_at(src, ofs)
+	local fwd = string.utf8forward(src, ofs);
+	if (fwd ~= ofs) then
+		return string.sub(src, 1, ofs - 1) .. string.sub(src, fwd, string.len(src));
+	end
+	
+	return src;
+end
+
+function awbwnd_subwin_inputfunc(self, iotbl)
+	if (iotbl.active == false and iotbl.utf8 == "") then
+		return;
+	end
+	
+	if (iotbl.lutsym == "HOME") then
+		self.caretpos = 1;
+		self:update_caret();
+
+	elseif (iotbl.lutsym == "END") then
+		self.caretpos = string.len( self.msg ) + 1;
+		self:update_caret();
+
+	elseif (iotbl.lutsym == "LEFT") then
+		self.caretpos = string.utf8back(self.msg, self.caretpos);
+		self:update_caret();
+
+	elseif (iotbl.lutsym == "RIGHT") then
+		self.caretpos = string.utf8forward(self.msg, self.caretpos);
+		self:update_caret();
+
+	elseif (iotbl.lutsym == "DELETE") then
+		self.msg = string.delete_at(self.msg, self.caretpos);
+		self:redraw();
+
+	elseif (iotbl.lutsym == "BACKSPACE") then
+		if (self.caretpos > 0) then
+			self.caretpos = string.utf8back(self.msg, self.caretpos);
+			self.msg = string.delete_at(self.msg, self.caretpos);
+			self:redraw();
+		end
+
+	elseif (iotbl.lutsym == "ESCAPE") then
+-- terminate buffer / popup / whatever
+
+	elseif (iotbl.lutsym == "RETURN") then
+-- same as escape, but return message
+
+	else
+		local keych = iotbl.utf8;
+		if (keych == nil) then
+			return;
+		end
+
+		self.msg, nch = string.insert(self.msg,
+			keych, self.caretpos, self.nchars);
+		self.caretpos = self.caretpos + nch;
+
+		self:redraw();
+	end
+end
+
+--
 -- Create an input component that allows for text edits
 -- and returns as a table with a raw vid (link to whatever
 -- container should be used)
 --
-function awbwnd_subwin_input(trigger, options)
+function awbwnd_subwin_input(trigger, lblfun, options)
 	local res = {
 		msg = "",
-		cursorpos = 1,
+		caretpos = 1,
 		limit = -1,
+		noborder = true
 	};
 
 	for k,v in pairs(options) do
@@ -593,31 +732,78 @@ function awbwnd_subwin_input(trigger, options)
 	end
 
 	res.anchor = null_surface(1, 1);
+	image_mask_set(res.anchor, MASK_SCALE);
 	show_image(res.anchor);
 
-	res.border = color_surface(res.w, res.h, options.borderr, 
-		options.borderg, options.borderb);
+	if (res.owner) then
+		link_image(res.anchor, options.owner);
+		image_inherit_order(res.anchor, true);
+		order_image(res.anchor, 1);
+	end
+
+	if (not res.noborder) then
+		res.border = color_surface(res.w, res.h, options.borderr, 
+			options.borderg, options.borderb);
+		image_inherit_order(res.border, true);
+		order_image(res.border, 2);
+		image_mask_set(res.border, MASK_SCALE);
+		link_image(res.border, res.anchor);
+		show_image(res.border);
+	else
+		res.borderw = 0;
+	end
 
 	res.canvas = color_surface(res.w - res.borderw * 2, res.h - res.borderw * 2,
 		options.bgr, options. bgg, options.bgb);
-
 	link_image(res.canvas, res.anchor);
-	move_image(res.canvas, res.borderw, res.borderw);
-	link_image(res.border, res.anchor);
+	image_inherit_order(res.canvas, true);
+	order_image(res.canvas, 3);
 
-	res.caret = color_surface(res.borderw, res.h - res.borderw * 4, 
-		options.borderr, options.borderg, options.borderb);
+	move_image(res.canvas, res.borderw, res.borderw);
+
+	local ctv = lblfun("A");
+	local ch  = image_surface_properties(ctv).height;
+	delete_image(ctv);
+
+	res.caret = color_surface(2, ch, 
+		options.caretr, options.caretg, options.caretb); 
 
 	link_image(res.caret, res.anchor);
+	image_inherit_order(res.caret, true);
+	image_clip_on(res.caret, CLIP_SHALLOW);
+	order_image(res.caret, 4);
 
-	move_image(res.caret, options.borderw * 2, options.borderw * 2);
+	move_image(res.caret, res.borderw * 2, res.borderw * 2);
 
 	image_transform_cycle(res.caret, 1);
-	blend_image(res.caret, 0.0, 20);
-	blend_image(res.caret, 1.0, 20);
+	blend_image(res.caret, 0.5, 15);
+	blend_image(res.caret, 1.0, 15);
 
 -- move caret also (but keep blinking ..)
-	show_image({res.border, res.canvas});
+	show_image(res.canvas);
+
+	res.update_caret = function(self)
+		if (not valid_vid(self.textvid)) then
+			return;
+		end
+
+		local xpos = 0;
+		local height = image_surface_properties(self.caret).height;
+
+		if (self.caretpos > 1) then
+			local msgstr = string.sub(self.msg, 1,
+				string.utf8back(self.msg, self.caretpos));
+
+			local dimv = lblfun(msgstr);
+			local prop = image_surface_properties(dimv);
+			delete_image(dimv);
+			xpos = prop.width;
+			height = prop.height > 0 and (prop.height + 2) or height;
+		end
+
+		resize_image(self.caret, 2, height);
+		move_image(self.caret, xpos + 1, res.borderh);
+	end
 
 --
 -- Anchor, border, canvas, test, cursor 
@@ -626,10 +812,23 @@ function awbwnd_subwin_input(trigger, options)
 		return true;
 	end
 
-	res.resize = function(self, neww)
-		resize_image(res.anchor, neww);
-		resize_image(res.border, neww);
-		resize_image(res.wnd, neww - res.borderw * 2);
+	res.resize = function(self, neww, newh)
+		local height = newh; 
+
+		if (res.textvid and height == nil) then
+			local props = image_surface_properties(res.textvid);
+			height = props.height + self.borderw * 2 + 4;
+		else
+			height = newh and newh or 16;
+		end
+
+		resize_image(res.anchor, neww, newh);
+		if (valid_vid(res.border)) then
+			resize_image(res.border, neww, newh);
+		end
+	
+		resize_image(res.canvas, neww - res.borderw * 2, newh - res.borderw * 2);
+		res:update_caret();
 	end
 
 	res.redraw = function(self)
@@ -637,27 +836,27 @@ function awbwnd_subwin_input(trigger, options)
 			delete_image(res.textvid);
 		end
 
-		res.textvid = render_text(res.str.gsub("\\", "\\\\"));
-		show_image(res.textvid);
-		link_image(res.textvid, res.wnd);
-		image_clip_on(res.textvid, CLIP_SHALLOW);
+		res.textvid = lblfun( string.gsub(res.msg, "\\", "\\\\") );
+	
+		if (res.textvid ~= BADID) then
+			show_image(res.textvid);
+			link_image(res.textvid, res.canvas);
+			image_clip_on(res.textvid, CLIP_SHALLOW);
+			image_inherit_order(res.textvid, true);
+			order_image(res.textvid, 3);
+			move_image(res.textvid, res.borderw, res.borderw);
+			local props = image_surface_properties(res.textvid);
+
+			if (res.w == nil) then
+				res:resize(props.width + res.borderw * 2);
+			end
+		end
+		self:update_caret();
 	end
 
 -- returns true on finished signal, requiring both a valid string
 -- and enter etc. being pressed
-	res.input = function(self, iotbl)
-		if (iotbl.lutsym == "LSHIFT" or iotbl.lutsym == "RSHIFT") then
-			print("shift");
-		end
-
-		if (iotbl.lutsym == "BACKSPACE") then
-			self.str = string.sub( self.str, 1, -2 );
-		end
-
-		self.str = self.str .. 
-
-		self:redraw();
-	end
+	res.input = awbwnd_subwin_inputfunc;
 
 	res.destroy = function(self)
 		if (res.textvid) then
@@ -669,6 +868,8 @@ function awbwnd_subwin_input(trigger, options)
 			res[v] = nil;
 		end
 	end
+
+	res:resize(res.w, res.h);
 
 	return res;
 end

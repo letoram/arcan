@@ -563,7 +563,7 @@ function setup_gridview()
 	setup_3dsupport();
 
 	camera = null_surface(1, 1);
-	camtag_model(camera);
+	camtag_model(camera, 0.1, 100.0, 45.0, 1.33, 1, 1);
 
 	grab_sysicons();
 	
