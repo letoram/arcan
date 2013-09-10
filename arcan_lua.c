@@ -3134,8 +3134,8 @@ void arcan_lua_panic(lua_State* ctx)
 	lua_ctx_store.debug = 2;
 
 	if (!lua_ctx_store.cb_source_kind == CB_SOURCE_NONE){
-		char vidbuf[64];
-		sprintf(vidbuf, "script error in callback for VID (%lld)", 
+		char vidbuf[64] = {0};
+		snprintf(vidbuf, 63, "script error in callback for VID (%lld)", 
 			lua_ctx_store.lua_vidbase + lua_ctx_store.cb_source_tag);
 		arcan_lua_wraperr(ctx, -1, vidbuf);
 	} else
@@ -3915,7 +3915,7 @@ int arcan_lua_recordset(lua_State* ctx)
 				free(aidlocks);
 				aidlocks = NULL;
 				naids = 0;
-				char* ol = malloc(strlen(argl) + 13 + 1);
+				char* ol = malloc(strlen(argl) + strlen(":noaudio=true") + 1);
 				sprintf(ol, "%s%s", argl, ":noaudio=true");
 				free(argl);
 				argl = ol;
@@ -4631,7 +4631,7 @@ static int arcan_lua_net_open(lua_State* ctx)
 		work_sz = strlen(workstr);
 	}
 
-	char* instr = malloc(work_sz + strlen("mode=client:host="));
+	char* instr = malloc(work_sz + strlen("mode=client:host=") + 1);
 	sprintf(instr,"mode=client%s%s", host ? ":host=" : "", workstr ? workstr:"");
 
 	struct frameserver_envp args = {
@@ -5333,6 +5333,28 @@ static inline char* lut_blendmode(enum arcan_blendfunc func)
 	}
 }
 
+/*
+ * Ignore LOCALE RADIX settings...
+ * Some dependencies actually dynamically change locale
+ * affecting float representation during fprintf (nice race there) 
+ * by defining nan and infinite locally first (see further below)
+ * we cover that case, but still need to go through the headache
+ * of splitting
+ */
+static inline void fprintf_float(FILE* dst, 
+	const char* pre, float in, const char* post)
+{
+	float intp, fractp;
+ 	fractp = modff(in, &intp);
+
+	if (isnan(in))
+		fprintf(dst, "%snan%s", pre, post);
+	else if (isinf(in))
+		fprintf(dst, "%sinf%s", pre, post);
+	else
+		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs(fractp), post);
+}
+
 static inline char* lut_kind(arcan_vobject* src)
 {
 	if (src->feed.state.tag == ARCAN_TAG_IMAGE)
@@ -5349,17 +5371,17 @@ static inline char* lut_kind(arcan_vobject* src)
 
 static inline void dump_props(FILE* dst, surface_properties props)
 {	
-	fprintf(dst,"\
-props.position = {%lf, %lf, %lf};\n\
-props.scale = {%lf, %lf, %lf};\n\
-props.opa = %f;\n\
-props.rotation = {%lf, %lf, %lf};\n\
-", 
-(double)props.position.x, (double)props.position.y, (double)props.position.z,
-(double)props.scale.x, (double)props.scale.y, (double)props.scale.z,
-(float)props.opa,
-(double)props.rotation.roll, (double)props.rotation.pitch, 
-(double)props.rotation.yaw);
+	fprintf_float(dst, "props.position = {", props.position.x, ", ");
+	fprintf_float(dst, "", props.position.y, ", ");
+	fprintf_float(dst, "", props.position.z, "};\n");
+
+	fprintf_float(dst, "props.scale = {", props.scale.x, ", ");
+	fprintf_float(dst, "", props.scale.y, ", ");
+	fprintf_float(dst, "", props.scale.z, "};\n");
+
+	fprintf_float(dst, "props.rotation = {", props.rotation.roll, ", ");
+	fprintf_float(dst, "", props.rotation.pitch, ", ");
+	fprintf_float(dst, "", props.rotation.yaw, "};\n");
 }
 
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
@@ -5399,11 +5421,10 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tfiltermode = [[%s]],\n\
 \tflags = [[%s]],\n\
 \tmask = [[%s]],\n\
-\torigoofs = {%lf, %lf, %lf},\n\
 \tframeset = {},\n\
 \tkind = [[%s]],\n\
-\ttracetag = [[%s]]\n\
-};",
+\ttracetag = [[%s]],\n\
+",
 (int) src->origw,
 (int) src->origh,
 (int) src->order,
@@ -5436,20 +5457,21 @@ lut_clipmode(src->flags.cliptoparent),
 lut_filtermode(src->vstore->filtermode),
 vobj_flags(src), 
 mask,
-(double) src->origo_ofs.x, 
-(double) src->origo_ofs.y, 
-(double) src->origo_ofs.z,
 lut_kind(src),
 src->tracetag ? src->tracetag : "no tag");
+
+	fprintf_float(dst, "origoofs = {", src->origo_ofs.x, ", ");
+	fprintf_float(dst, "", src->origo_ofs.y, ", ");
+	fprintf_float(dst, "", src->origo_ofs.z, "}\n};\n");
 
 	if (src->vstore->txmapped){
 		fprintf(dst, "vobj.glstore_glid = %d;\n\
 vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
 			src->vstore->refcount);
 	} else {
-		fprintf(dst, "vobj.glstore_col = {%f, %f, %f}\n", 
-			src->vstore->vinf.col.r, src->vstore->vinf.col.g, 
-			src->vstore->vinf.col.b);
+		fprintf_float(dst, "vobj.glstore_col = {", src->vstore->vinf.col.r, ", ");
+		fprintf_float(dst, "", src->vstore->vinf.col.g, ", ");
+		fprintf_float(dst, "", src->vstore->vinf.col.b, "};\n");
 	}
 
 	for (int i = 0; i < src->frameset_meta.capacity; i++)
@@ -5500,8 +5522,9 @@ void arcan_lua_statesnap(FILE* dst)
  * missing event-queues
  */
 	struct arcan_video_display* disp = &arcan_video_display;
-fprintf(dst, 
-				" do \n\
+fprintf(dst, " do \n\
+local nan = 0/0;\n\
+local inf = math.huge;\n\
 local vobj = {};\n\
 local props = {};\n\
 local restbl = {\n\

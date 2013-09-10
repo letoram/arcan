@@ -9,10 +9,26 @@
 --          with PLAYERpc_BUTTONbc = translated:0:0:none
 --          with PLAYERpc_other
 --
+
+local function splits(instr, delim)
+	local res = {};
+	local strt = 1;
+	local delim_pos, delim_stp = string.find(instr, delim, strt);
+	
+	while delim_pos do
+		table.insert(res, string.sub(instr, strt, delim_pos-1));
+		strt = delim_stp + 1;
+		delim_pos, delim_stp = string.find(instr, delim, strt);
+	end
+	
+	table.insert(res, string.sub(instr, strt));
+	return res;
+end
+
 local function keyconf_idtotbl(self, idstr)
 	local res = self.table[ idstr ];
 	if (res == nil) then return nil; end
-
+	
 	restbl = splits(res, ":");
 	if (restbl[1] == "digital") then
 		restbl.kind = "digital";
@@ -49,7 +65,7 @@ local function keyconf_tbltoid(self, itbl)
 
 	if itbl.translated then
 		if self.ignore_modifiers then
-			return string.format("translated:%d:%s", 
+			return string.format("translated:%d:%s:0", 
 				itbl.devid, itbl.keysym);
 		else
 			return string.format("translated:%d:%d:%s", 
@@ -68,7 +84,7 @@ end
 local function set_tblfun(dst)
 	dst.id = keyconf_tbltoid;
 	dst.idtotbl = keyconf_idtotbl;
-	dst.ignore_modifiers = false;
+	dst.ignore_modifiers = true;
 end
 
 local function pop_deftbl(tbl, pc, bc, ac, other)
@@ -168,21 +184,6 @@ local function keyconf_match(self, input, label)
 	end
 
 	return kv;
-end
-
-local function splits(instr, delim)
-	local res = {};
-	local strt = 1;
-	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
-	while delim_pos do
-		table.insert(res, string.sub(instr, strt, delim_pos-1));
-		strt = delim_stp + 1;
-		delim_pos, delim_stp = string.find(instr, delim, strt);
-	end
-	
-	table.insert(res, string.sub(instr, strt));
-	return res;
 end
 
 local function insert_unique(tbl, key)
@@ -307,13 +308,11 @@ function inputed_translate(iotbl, cfg)
 		return;
 	end
 
-	deftbl.table = cfg;
-	
 	if (iotbl.source == nil) then
 		iotbl.source = tostring(iotbl.devid);
 	end
 
-	local lbls = keyconf_match(deftbl, iotbl);
+	local lbls = keyconf_match(cfg, iotbl);
 	if (lbls == nil) then 
 		return;
 	end
@@ -321,18 +320,20 @@ function inputed_translate(iotbl, cfg)
 	local res = {};
 
 	for k,v in ipairs(lbls) do
-		table.insert(res, keyconf_buildtable(deftbl, v, iotbl));
+		table.insert(res, keyconf_buildtable(cfg, v, iotbl));
 	end
 
 	return res;
 end
 
 function inputed_getcfg(lbl)
-	print(debug.traceback());
 	lbl = "keyconfig/" .. lbl;
 
 	if (resource(lbl)) then
-		return system_load(lbl)();
+		local res = {};
+		set_tblfun(res);
+		res.table = system_load(lbl)(); 
+		return res;
 	end
 
 	return nil;
