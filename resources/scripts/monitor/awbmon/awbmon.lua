@@ -244,7 +244,7 @@ function render_sample(smpl)
 	for i,v in ipairs(keytbl) do
 		if (smpl[v] ~= nil) then
 			table.insert(strtbl, 
-				string.format(typetbl[v], smpl[v]));
+				string.format(typetbl[v], string.gsub(smpl[v], '\\', '\\\\')));
 		end
 	end
 

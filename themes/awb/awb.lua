@@ -269,6 +269,17 @@ function gamelist_wnd(selection)
 	wnd.name = "List(" .. tgtname .. ")";
 end
 
+function rootdnd(ctag)
+	local ftbl = {
+		function() print("Shortcut"); end,
+		function() print("Screenshot"); end,
+		function() print("Background"); end
+	};
+
+	local vid, lines = desktoplbl([[Shortcut\n\rScreenshot\n\rBackground]]);
+	awbwman_popup(vid, lines, ftbl);
+end
+
 function awb_desktop_setup()
 	sysicons.group        = load_image("awbicons/drawer.png");
 	sysicons.group_active = load_image("awbicons/drawer_open.png");
@@ -314,6 +325,9 @@ function awb_desktop_setup()
 		awbwman_rootaddicon(j.key, lbl, sysicons.group, 
 			sysicons.group_active, j.trigger);
 	end
+
+	local cfg = awbwman_cfg();
+	cfg.on_rootdnd = rootdnd;
 end
 
 function attrstr(self)

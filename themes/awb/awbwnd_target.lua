@@ -107,10 +107,23 @@ function awbwnd_target(pwin)
 -- popup filter mode
 --
 
+	bartt:add_icon("ginput", "r", cfg.bordericns["ginput"],
+		function(self) 
+			if (awbwman_reqglobal(pwin)) then
+				image_shader(self.vid, "awb_selected"); 
+			else
+				image_shader(self.vid, "DEFAULT"); 
+			end
+		end);
+
 	bartt:add_icon("input", "r", cfg.bordericns["input"],
 		function(self) inputlay_sel(self, pwin); end);
 
 	pwin.input = function(self, iotbl)
+		if (pwin.inp_cfg == nil) then
+			return;
+		end
+	
 		local restbl = inputed_translate(iotbl, pwin.inp_cfg);
 
 		if (restbl) then 

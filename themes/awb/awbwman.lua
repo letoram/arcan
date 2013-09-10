@@ -45,6 +45,7 @@ local awb_cfg = {
 	animspeed   = 10,
 	meta        = {},
 	hidden      = {},
+	global_input= {},
 
 -- root window icon management
 	rootcell_w  = 80,
@@ -170,18 +171,21 @@ function awbwman_shadow_nonfocus()
 	end
 end
 
-local function awbwman_dereg(wcont)
-	for i=1,#awb_wtable do
-		if (awb_wtable[i] == wcont) then
-			table.remove(awb_wtable, i);
-			break;
+local function awbwman_dereg(tbl, wcont)
+	for i=1,#tbl do
+		if (tbl[i] == wcont) then
+			table.remove(tbl, i);
+			return true;
 		end
 	end
+
+	return false;
 end
 
 local function awbwman_close(wcont, nodest)
 	drop_popup();
-	awbwman_dereg(wcont);
+	awbwman_dereg(awb_wtable, wcont);
+	awbwman_dereg(awb_cfg.global_input, wcont);
 
 	if (awb_cfg.focus == wcont) then
 		awb_cfg.focus = nil;
@@ -348,7 +352,7 @@ function awbwman_gather_scatter()
 
 	if (awb_cfg.scattered) then
 		for ind, val	in ipairs(awb_wtable) do
-			if (val.pos_memory) then
+			if (not val.minimized and val.pos_memory) then
 				move_image(val.anchor, val.pos_memory[1], 
 					val.pos_memory[2], awb_cfg.animspeed);
 					blend_image(val.anchor, 1.0, awb_cfg.animspeed);
@@ -358,16 +362,18 @@ function awbwman_gather_scatter()
 		awb_cfg.scattered = nil;
 	else
 		for ind, val in ipairs(awb_wtable) do
-			val.pos_memory = {val.x, val.y};
+			if (not val.minimized) then
+				val.pos_memory = {val.x, val.y};
 
-			if ( ( val.x + val.w * 0.5) < 0.5 * VRESW) then
-				move_image(val.anchor,  -val.w, val.y, awb_cfg.animspeed);
-				blend_image(val.anchor, 1.0, 9);
-				blend_image(val.anchor, 0.0, 1);
-			else
-				move_image(val.anchor,  VRESW, val.y, awb_cfg.animspeed);
-				blend_image(val.anchor, 1.0, 9);
-				blend_image(val.anchor, 0.0, 1);
+				if ( ( val.x + val.w * 0.5) < 0.5 * VRESW) then
+					move_image(val.anchor,  -val.w, val.y, awb_cfg.animspeed);
+					blend_image(val.anchor, 1.0, 9);
+					blend_image(val.anchor, 0.0, 1);
+				else
+					move_image(val.anchor,  VRESW, val.y, awb_cfg.animspeed);
+					blend_image(val.anchor, 1.0, 9);
+					blend_image(val.anchor, 0.0, 1);
+				end
 			end
 		end
 	
@@ -461,7 +467,6 @@ function awbwman_inputattach(dst, lblfun, options)
 	options.caretg = awb_col.dialog_caret.g;
 	options.caretb = awb_col.dialog_caret.b;
 
-
 	return awbwnd_subwin_input(dst, lblfun, options);
 end
 
@@ -484,6 +489,17 @@ function awbwman_listwnd(caption, lineh, linespace,
 		"r", opts);
 
 	return wnd;
+end
+
+function awbwman_reqglobal(wnd)
+	local res = awbwman_dereg(awb_cfg.global_input, wnd);
+
+	if (not res) then
+		table.insert(awb_cfg.global_input, wnd);
+		return true;
+	end
+
+	return false;
 end
 
 --
@@ -656,6 +672,7 @@ end
 function awbwman_restore(ind)
 	drop_popup();
 	local wnd = awb_cfg.hidden[ind];
+	wnd.minimized = false;
 	table.remove(awb_cfg.hidden, ind);
 	wnd:show();
 end
@@ -1143,6 +1160,7 @@ function awbwman_minimize(wnd, icon)
 -- the trigger set to restore
 	drop_popup();
 	wnd:hide(awb_cfg.minimize_x, 0);
+	wnd.minimized = true;
 	table.insert(awb_cfg.hidden, wnd);
 end
 
@@ -1407,14 +1425,22 @@ end
 --
 function awbwman_input(iotbl, keysym)
 
--- match configured from global?
--- else forward raw input 
 	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
 		awb_cfg.popup_active:input(iotbl);
 	
-	elseif (awb_cfg.focus and 
-			awb_cfg.focus.input ~= nil) then
-		awb_cfg.focus:input(iotbl);
+	else
+		focus_done = false;
+		for i,v in ipairs(awb_cfg.global_input) do
+			v:input(iotbl);
+			if (v == awb_cfg.focus) then
+				focus_done = true;
+			end
+		end
+					
+		if (focus_done == false and 
+			awb_cfg.focus and awb_cfg.focus.input ~= nil) then
+				awb_cfg.focus:input(iotbl);
+		end
 	end
 end
 
@@ -1457,6 +1483,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["play"]     = load_image("awbicons/play.png");
 	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
 	awb_cfg.bordericns["input"]    = load_image("awbicons/joystick.png");
+	awb_cfg.bordericns["ginput"]   = load_image("awbicons/globalinp.png");
 	awb_cfg.bordericns["volume"]   = load_image("awbicons/speaker.png");
 	awb_cfg.bordericns["save"]     = load_image("awbicons/save.png");
 	awb_cfg.bordericns["load"]     = load_image("awbicons/load.png");
