@@ -213,7 +213,8 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		table.insert(pwin.handlers, canvash);
 	end
 
-	if (kind == "frameserver") then
+-- should split these two later on
+	if (kind == "frameserver" or kind == "frameserver_music") then
 		add_vmedia_top(pwin, active, inactive, true);
 		pwin.mediavol = 1.0;
 
@@ -295,7 +296,6 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 			click = function()
 				local tag = awbwman_cursortag();
-				print("pwin click");
 				pwin:focus();
 
 				if (tag and tag.kind == "media") then
