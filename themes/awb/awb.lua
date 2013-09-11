@@ -43,6 +43,10 @@ deffont, 10, text));
 end
 
 function desktoplbl(text)
+	if (type(text) ~= "string") then
+		print(debug.traceback());
+	end
+
 text = text == nil and "" or text;
 return render_text(string.format("\\#ffffff\\f%s,%d %s",
 deffont, 10, text));
@@ -233,6 +237,34 @@ function gamelist_popup(ent)
 	awbwman_popup(vid, list, popup_fun);
 end
 
+function string.utf8back(src, ofs)
+	if (ofs > 1 and string.len(src)+1 >= ofs) then
+		ofs = ofs - 1;
+		while (ofs > 1 and utf8kind(string.byte(src,ofs) ) == 2) do
+			ofs = ofs - 1;
+		end
+	end
+
+	return ofs;
+end
+
+function string.extension(src)
+	local ofs = #src;
+
+	while (ofs > 1) do
+		if (string.sub(src, ofs, ofs) == ".") then
+			local base = string.sub(src, 1, ofs-1);
+			local ext  = string.sub(src, ofs + 1);
+
+			return base, ext;
+		end
+
+		ofs = string.utf8back(src, ofs);
+	end
+
+	return src, nil;
+end
+
 --
 -- Set up a basic gamelist view from a prefiltered selection
 -- (which can be fine-grained afterwards ofc). 
@@ -280,6 +312,87 @@ function rootdnd(ctag)
 	awbwman_popup(vid, lines, ftbl);
 end
 
+local function amediahandler(name)
+	local vid, tfun = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
+	load_movie(name, FRAMESERVER_LOOP, tfun);
+end
+
+local function vmediahandler(name)
+	local vid, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
+	load_movie(name, FRAMESERVER_LOOP, tfun);
+end
+
+local function imghandler(name)
+	local wnd, tfun = awbwman_mediawnd(menulbl(cat), "static");
+	load_image_asynch(name, tfun);
+end
+
+local handlers = {
+	MP3 = amediahandler,
+	OGG = amediahandler,
+	MKV = vmediahandler,
+	AVI = vmediahandler,
+	MPG = vmediahandler,
+	MPEG= vmediahandler,
+	JPG = vmediahandler,
+	PNG = vmediahandler
+};
+
+local function exthandler(name, ext)
+	if (ext == nil) then
+		return false;
+	end
+
+	local hfun = handlers[string.upper(ext)];
+	if (hfun ~= nil) then
+		hfun(name .. "." .. ext);
+		return true;
+	end
+
+	return false;
+end
+
+local function wnd_media(path)
+	local list = {};
+	local res = glob_resource(path .. "/*");
+
+	for k,l in ipairs(res) do
+		table.insert(list, l);
+	end
+
+	if (#list == 0) then
+		return;
+	end
+
+	table.sort(list, function(a, b)
+		local ab, ax = string.extension(a);
+		local bb, bx = string.extension(b);
+	end);
+	
+	awbwman_listwnd(menulbl("MediaBrowser"), deffont_sz, linespace, {1.0}, 
+		function(filter, ofs, lim, iconw, iconh)
+			local res = {};
+			local ul = ofs + lim;
+	
+			for i=ofs, ul do
+				local ment = {
+					resource = list[i],
+					trigger  = function()
+						local base, ext = string.extension(list[i]);
+						if (not exthandler(path .. "/" .. base, ext)) then
+							wnd_media(path .. "/" .. list[i]); 
+						end
+					end,
+					name = "mediaent",
+					cols = {list[i]}
+				};
+	
+				table.insert(res, ment);
+			end
+			return res, #list;
+		end, desktoplbl);
+end
+
 function awb_desktop_setup()
 	sysicons.group        = load_image("awbicons/drawer.png");
 	sysicons.group_active = load_image("awbicons/drawer_open.png");
@@ -317,7 +430,28 @@ function awb_desktop_setup()
 				tbl.idfun = list_targets;
 				tbl.name = "List(Systems)";
 			end
-		}
+		},
+		{
+			name = "Music",
+			key  = "music",
+			trigger = function() 
+				wnd_media("music");
+			end
+		},
+		{
+			name = "Recordings",
+			key = "recordings",
+			trigger = function()
+				wnd_media("recordings");
+			end,
+		},
+		{
+			name = "Videos",
+			key = "videos",
+			trigger = function()
+				wnd_media("videos");
+			end
+		},
 	};
 
 	for i,j in pairs(groups) do
