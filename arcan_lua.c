@@ -2412,15 +2412,15 @@ int arcan_lua_camtag(lua_State* ctx)
 	float h = arcan_video_display.height;
 	float ar = w / h > 1.0 ? w / h : h / w;
 
-	float near = luaL_optnumber(ctx, 2, 0.1);
-	float far  = luaL_optnumber(ctx, 3, 100.0);
-	float fov  = luaL_optnumber(ctx, 4, 45.0);
+	float nv  = luaL_optnumber(ctx, 2, 0.1);
+	float fv  = luaL_optnumber(ctx, 3, 100.0);
+	float fov = luaL_optnumber(ctx, 4, 45.0);
 	ar = luaL_optnumber(ctx, 5, ar);	
 	bool front = luaL_optnumber(ctx, 6, true);
 	bool back  = luaL_optnumber(ctx, 7, false);
 
 	float projection[16];
-	build_projection_matrix(projection, near, far, ar, fov);
+	build_projection_matrix(projection, nv, fv, ar, fov);
 	arcan_errc rv = arcan_3d_camtag(id, projection, front, back); 
 
 	lua_pushboolean(ctx, rv == ARCAN_OK);
@@ -2432,8 +2432,8 @@ int arcan_lua_camtaghmd(lua_State* ctx)
 	arcan_vobj_id lid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id rid = luaL_checkvid(ctx, 2);
 	
-	float near = luaL_checknumber(ctx, 3);
-	float far  = luaL_checknumber(ctx, 4);
+	float nv = luaL_checknumber(ctx, 3);
+	float fv  = luaL_checknumber(ctx, 4);
 	float ipd = luaL_checknumber(ctx, 5);
 
 	bool front = luaL_optnumber(ctx, 6, true);
@@ -2447,7 +2447,7 @@ int arcan_lua_camtaghmd(lua_State* ctx)
 	float h = arcan_video_display.height;
 	float ar = 2.0 * w / h;
 
-	build_projection_matrix(projection, near, far, ar, fov);
+	build_projection_matrix(projection, nv, fv, ar, fov);
 
 /*
  * retrieve values from HMD,
