@@ -95,6 +95,11 @@ local function pop_deftbl(tbl, pc, bc, ac, other)
 				"translated:0:0:none";
 		end
 
+		tbl["PLAYER" .. tostring(i) .. "_UP"]    = "translated:0:0:none";
+		tbl["PLAYER" .. tostring(i) .. "_DOWN"]  = "translated:0:0:none";
+		tbl["PLAYER" .. tostring(i) .. "_LEFT"]  = "translated:0:0:none";
+		tbl["PLAYER" .. tostring(i) .. "_RIGHT"] = "translated:0:0:none";
+
 		for j=1,ac do
 			tbl["PLAYER" .. tostring(i) .. "_AXIS" .. tostring(j)] = 
 				"analog:0:0:none";
@@ -170,7 +175,6 @@ local function keyconf_match(self, input, label)
 
 -- with a label set, we expect a boolean result
 -- otherwise the actual matchresult will be returned
-
 	if label ~= nil and kv ~= nil then
 		if type(kv) == "table" then
 			for i=1, #kv do
@@ -214,8 +218,7 @@ local function input_dig(edittbl)
 		},
 		{
 			caption = cfg.defrndfun("Cancel"),
-			trigger = function(owner)
-			end
+			trigger = function(owner) end
 		}
 	};
 		
@@ -228,6 +231,7 @@ local function input_dig(edittbl)
 		{x = (props.x + 20), y = (props.y + 20), nocenter = true}, false);
 	dlg.lastid = edittbl.bind;
 
+	edittbl.parent.wnd:add_cascade(dlg);
 	dlg.input = function(self, iotbl)
 		local tblstr = edittbl.parent:id(iotbl);
 		if (tblstr) then
@@ -239,11 +243,43 @@ local function input_dig(edittbl)
 			end
 		end
 	end
+
+	local real_dest = dlg.destroy;
+
+	dlg.destroy = function(self, speed)
+		if (edittbl.parent.wnd.drop_cascade) then
+			edittbl.parent.wnd:drop_cascade(dlg);
+		end
+		real_dest(self, speed);
+	end
 --	awbwnd_dialog
 end
 
-local function inputed_editlay(intbl)
+--
+-- Just copied from resources/scripts/keyconf.lua
+--
+local function inputed_saveas(tbl, dstname)
+	local k,v = next(tbl);
 
+	zap_resource("keyconfig/" .. dstname);
+	open_rawresource("keyconfig/" .. dstname);
+	write_rawresource("local keyconf = {};\n");
+
+	for key, value in pairs(tbl) do
+		if (type(value) == "table") then
+			write_rawresource( "keyconf[\"" .. key .. "\"] = {\"");
+			write_rawresource( table.concat(value, "\",\"") .. "\"};\n" );
+		else
+			write_rawresource( "keyconf[\"" .. key .. "\"] = \"" .. value .. "\";\n" );
+		end
+	end
+
+   write_rawresource("return keyconf;");
+   close_rawresource();
+end
+
+local function inputed_editlay(intbl, dstname)
+	
 	intbl.update_list = function(intbl)
 		intbl.list = {};
 
@@ -289,14 +325,43 @@ local function inputed_editlay(intbl)
 
 	local cfg = awbwman_cfg();
 
+	wnd.cascade = {};
+
 	wnd.real_destroy = wnd.destroy;
-	wnd.destroy = function()
-		local vid, lines = desktoplbl("Save\\n\\rDiscard");
-		
-		awbwman_popup(vid, lines, function(ind)
--- on index 1, update cfg etc.
-			wnd:real_destroy(cfg.animspeed);
-		end, {ref = wnd.dir.t.left[1].vid});
+	
+	wnd.destroy = function(self, speed)
+		local opt = {};
+		if (dstname) then
+			table.insert(opt, "Update");
+		end
+		table.insert(opt, "Save As");
+		table.insert(opt, "Discard");
+
+		local vid, lines = desktoplbl(table.concat(opt, "\\n\\r"));
+	
+		local btnhand = function(ind)
+			if (opt[ind] == "Save As") then
+				local buttontbl = {
+					{ caption = desktoplbl("OK"), trigger = function(own)
+						inputed_saveas(own.inptbl, own.inputfield.msg .. ".cfg");
+					 end }
+				};
+
+				local dlg = awbwman_dialog(desktoplbl("Save As:"), buttontbl, {
+					input = { w = 100, h = 20, limit = 32, accept = 1 } 
+				});
+				dlg.inptbl = intbl.table;
+
+			elseif (opt[ind] == "Discard") then
+				wnd:real_destroy(speed);
+
+			elseif (opt[ind] == "Update") then
+				inputed_saveas(intbl.table, dstname);
+				wnd:real_destroy(speed);
+			end
+		end
+
+		awbwman_popup(vid, lines, btnhand, {ref = wnd.dir.t.left[1].vid}); 
 	end
 
 	intbl.wnd = wnd;
@@ -313,6 +378,7 @@ function inputed_translate(iotbl, cfg)
 	end
 
 	local lbls = keyconf_match(cfg, iotbl);
+
 	if (lbls == nil) then 
 		return;
 	end
@@ -320,10 +386,37 @@ function inputed_translate(iotbl, cfg)
 	local res = {};
 
 	for k,v in ipairs(lbls) do
-		table.insert(res, keyconf_buildtable(cfg, v, iotbl));
+		local tbl = keyconf_buildtable(cfg, v, iotbl);
+		table.insert(res, tbl); 
 	end
 
 	return res;
+end
+
+function inputed_inversetbl(intbl)
+	local newtbl = {};
+
+	for k,v in pairs(intbl) do
+		newtbl[k] = v;
+
+		if (newtbl[v] == nil) then
+			newtbl[v] = {};
+		end
+
+		local found = false;
+		for h,j in ipairs(newtbl[v]) do
+			if (j == k) then 
+				found = true;
+				break;
+			end
+		end
+
+		if (not found) then
+			table.insert(newtbl[v], k);
+		end
+	end
+
+	return newtbl;
 end
 
 function inputed_getcfg(lbl)
@@ -331,8 +424,8 @@ function inputed_getcfg(lbl)
 
 	if (resource(lbl)) then
 		local res = {};
+		res.table = inputed_inversetbl(system_load(lbl)());
 		set_tblfun(res);
-		res.table = system_load(lbl)(); 
 		return res;
 	end
 
@@ -364,11 +457,15 @@ function awb_inputed()
 	};
 
 	for i,v in ipairs(res) do
-		local res = { cols = {v},
+		local base, ext = string.extension(v);
+		local res = { cols = {base},
 			trigger = function(self, wnd)
 				wnd:destroy(awbwman_cfg().animspeed);	
 				ctable.table = system_load("keyconfig/" .. v)();
-				inputed_editlay( ctable ); 
+-- sanity check
+				if (ctable.table) then
+					inputed_editlay(ctable, v); 
+				end
 			end
 		};
 

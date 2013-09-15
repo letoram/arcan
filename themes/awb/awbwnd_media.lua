@@ -80,6 +80,7 @@ local function slide_lightr(caller, status)
 	local pwin = caller.parent.parent;
 
 	awbwman_popupslider(0.01, pwin.amb_r, 1.0, function(val)
+		pwin.amb_r = val;
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
 	end, {ref = caller.vid});

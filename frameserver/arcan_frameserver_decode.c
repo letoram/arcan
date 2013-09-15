@@ -12,10 +12,9 @@
 #include "arcan_frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_decode.h"
-#include "./graphing/net_graph.h"
 
-#define AUD_VIS_HRES 512
-#define AUD_VIS_VRES 256
+#define AUD_VIS_HRES 64 
+#define AUD_VIS_VRES 2 
 
 #include "arcan_frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
@@ -52,9 +51,6 @@ struct {
 	AVStream* vstream;
 	AVPacket packet;
 
-	struct graph_context* graphing;
-	int graphmode;
-	
 	int vid; /* selected video-stream */
 	int aid; /* Selected audio-stream */
 
@@ -247,7 +243,7 @@ bool ffmpeg_decode()
 }
 
 static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, 
-	AVDictionary** opts)
+	AVDictionary** opts, bool skipaud, bool skipvid)
 {
 	memset(&decctx, 0, sizeof(decctx)); 
 
@@ -277,7 +273,7 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat,
 	for (int i = 0; i < decctx.fcontext->nb_streams && 
 		(vid == -1 || aid == -1); i++)
 		if (decctx.fcontext->streams[i]->codec->codec_type == 
-			AVMEDIA_TYPE_VIDEO && vid == -1) {
+			AVMEDIA_TYPE_VIDEO && vid == -1 && !skipvid) {
 			decctx.vid = vid = i;
 			decctx.vcontext  = decctx.fcontext->streams[vid]->codec;
 			decctx.vcodec    = avcodec_find_decoder(decctx.vcontext->codec_id);
@@ -295,7 +291,7 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat,
 			}
 		}
 		else if (decctx.fcontext->streams[i]->codec->codec_type == 
-			AVMEDIA_TYPE_AUDIO && aid == -1) {
+			AVMEDIA_TYPE_AUDIO && aid == -1 && !skipaud) {
 			decctx.aid      = aid = i;
 			decctx.astream  = decctx.fcontext->streams[aid];
 			decctx.acontext = decctx.fcontext->streams[aid]->codec;
@@ -376,7 +372,7 @@ static bool ffmpeg_vidcap(unsigned ind, int desw, int desh, float fps)
 	if (!fname || !format)
 		return NULL;
 
-	return ffmpeg_preload(fname, format, &opts);
+	return ffmpeg_preload(fname, format, &opts, false, false);
 }
 
 static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
@@ -409,8 +405,10 @@ static inline void targetev(arcan_event* ev)
 
 	switch (ev->kind){
 		case TARGET_COMMAND_GRAPHMODE:
-			decctx.graphmode = tgt->ioevs[0].iv;
 		break;
+
+/* missing; seek, mapping graphmode to possible audiovis for 
+ * FFT etc. */
 
 		default:
 			arcan_warning("frameserver(decode), unknown target event "
@@ -445,6 +443,13 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 
 	do {
 		const char* val;
+		bool noaudio = false;
+		bool novideo = false;
+
+		if (arg_lookup(args, "noaudio", 0, &val)){
+			noaudio = true;
+		} else if (arg_lookup(args, "novideo", 0, &val))
+			novideo = true;
 
 /* special about stream devices is that we can specify external resources (e.g.
  * http://, rtmp:// etc. along with buffer dimensions */
@@ -478,10 +483,13 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 				
 			statusfl = ffmpeg_vidcap(devind, desw, desh, fps);
 		}
+		else if (arg_lookup(args, "file", 0, &val)){
+			statusfl = ffmpeg_preload(val, NULL, NULL, noaudio, novideo);
+		}
 		else
 /* as to not entirely break the API, we revert to default-treat 
  * resource as a filename */
-			statusfl = ffmpeg_preload(resource, NULL, NULL);
+			statusfl = ffmpeg_preload(resource, NULL, NULL, noaudio, novideo);
 
 		if (!statusfl)
 			break;
@@ -500,17 +508,32 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		frameserver_semcheck(decctx.shmcont.vsem, -1);
 		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
 			&(decctx.inevq), &(decctx.outevq), false);
+
 		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height)){
 			LOG("arcan_frameserver(decode) shmpage setup failed, "
 				"requested: (%d x %d @ %d)	aud(%d,%d)\n", 
 				decctx.width, decctx.height, decctx.bpp, 
 				decctx.channels, decctx.samplerate);
 			return;
-		}
-		
-		decctx.graphing = graphing_new(GRAPH_MANUAL, decctx.width, 
-			decctx.height, (uint32_t*) decctx.vidp);
+		} 
+
 		frameserver_shmpage_calcofs(shms.addr, &(decctx.vidp), &(decctx.audp) );
+		if (!decctx.vcontext){
+			uint8_t* dstbuf = decctx.vidp;
+			int ntc = decctx.width * decctx.height * decctx.bpp;
+
+			while (ntc){
+				*dstbuf++ = 0x00;
+				*dstbuf++ = 0x00;
+				*dstbuf++ = 0x00;
+				*dstbuf++ = 0xff;
+				ntc -= 4;
+			}
+
+			decctx.shmcont.addr->vpts = 0;
+			decctx.shmcont.addr->vready = true;
+			frameserver_semcheck( decctx.shmcont.vsem, -1);
+		}
 
 	} while (ffmpeg_decode() && decctx.shmcont.addr->loop);
 }

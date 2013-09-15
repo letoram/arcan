@@ -1,9 +1,23 @@
 --
 -- Arcan "Workbench" theme
 -- "inspired" by certain older desktop / windowing UI
--- but mainly thought of as an experiment towards better 
--- networking features and testing out the API for more
--- desktop- kindof window management. 
+--
+-- Todo:
+--  ( ) refactor the label/font use to not rely on just
+--      (desktoplbl, menulbl) globals
+--
+--  ( ) config tool to change default colors, fonts, ...
+--
+--  ( ) helper tool (and a default implementation that
+--      resurrects clippy ;)
+--
+--  ( ) autotiling
+--
+--  ( ) fullscreen mode for media windows
+--
+--  ( ) better icon management / struct and the option to switch them
+--
+--  ( ) move language strings to table for internationalization
 --
 wlist     = {
 windows = {};
@@ -129,6 +143,8 @@ function gamelist_launch(self)
 	else
 		local wnd, cb = awbwman_targetwnd(menulbl(self.name), 
 			{refid = "targetwnd_" .. tostring(self.gameid)});
+		wnd.gametbl = self.tag;
+
 		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);
 		wnd.name = self.target .. "(" .. self.name .. ")";
 	end
@@ -146,7 +162,6 @@ function spawn_vidwin(self)
 	});
 
 -- tests, border, noborder, static vs. dynamic
-
 	wnd.input = function(self, tbl) res:input(tbl); end
 end
 
@@ -302,28 +317,48 @@ function gamelist_wnd(selection)
 end
 
 function rootdnd(ctag)
-	local ftbl = {
-		function() print("Shortcut"); end,
-		function() print("Screenshot"); end,
-		function() print("Background"); end
-	};
+	local lbls = {};
+	local ftbl = {};
 
-	local vid, lines = desktoplbl([[Shortcut\n\rScreenshot\n\rBackground]]);
-	awbwman_popup(vid, lines, ftbl);
+--
+-- If we can use a string- reference as allocation function
+-- (this needs to be stored on the database, read on desktup setup
+-- and use the construction string to rebuild on activation)
+--
+	if (ctag.conststr) then
+		table.insert(lbls, "Shortcut");
+		table.insert(ftbl, function() end);
+	end
+
+	if (ctag.source and ctag.source.canvas 
+		and valid_vid(ctag.source.canvas.vid)) then
+		table.insert(lbls, "Background");
+		table.insert(ftbl, function()
+			image_sharestorage(ctag.source.canvas.vid, awbwman_cfg().root.canvas.vid);
+		end);
+	end
+
+	if (#lbls > 0) then
+		local vid, lines = desktoplbl(table.concat(lbls, "\\n\\r"));
+		awbwman_popup(vid, lines, ftbl);
+	end
 end
 
-local function amediahandler(name)
+local function amediahandler(path, base, ext)
+	local name = path .. "/" .. base .. "." .. ext;
 	local vid, tfun = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
-	load_movie(name, FRAMESERVER_LOOP, tfun);
+	load_movie(name, FRAMESERVER_LOOP, tfun, 1, "novideo=true");
 end
 
-local function vmediahandler(name)
+local function vmediahandler(path, base, ext)
+	local name = path .. "/" .. base .. "." .. ext;
 	local vid, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
 	load_movie(name, FRAMESERVER_LOOP, tfun);
 end
 
-local function imghandler(name)
-	local wnd, tfun = awbwman_mediawnd(menulbl(cat), "static");
+local function imghandler(path, base, ext)
+	local wnd, tfun = awbwman_mediawnd(menulbl(base), "static");
+	local name = path .. "/" .. base .. "." .. ext;
 	load_image_asynch(name, tfun);
 end
 
@@ -334,18 +369,18 @@ local handlers = {
 	AVI = vmediahandler,
 	MPG = vmediahandler,
 	MPEG= vmediahandler,
-	JPG = vmediahandler,
-	PNG = vmediahandler
+	JPG = imghandler,
+	PNG = imghandler 
 };
 
-local function exthandler(name, ext)
+local function exthandler(path, base, ext)
 	if (ext == nil) then
 		return false;
 	end
 
 	local hfun = handlers[string.upper(ext)];
 	if (hfun ~= nil) then
-		hfun(name .. "." .. ext);
+		hfun(path, base, ext);
 		return true;
 	end
 
@@ -379,7 +414,7 @@ local function wnd_media(path)
 					resource = list[i],
 					trigger  = function()
 						local base, ext = string.extension(list[i]);
-						if (not exthandler(path .. "/" .. base, ext)) then
+						if (not exthandler(path, base, ext)) then
 							wnd_media(path .. "/" .. list[i]); 
 						end
 					end,
@@ -449,7 +484,7 @@ function awb_desktop_setup()
 			name = "Videos",
 			key = "videos",
 			trigger = function()
-				wnd_media("videos");
+				wnd_media("movies");
 			end
 		},
 	};

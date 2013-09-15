@@ -179,7 +179,9 @@ local function console_update_caret(self)
 	local xpos = 0;
 	
 	if (self.caretpos > 1) then
-		local msgstr = string.sub( self.buffer, 1, string.utf8back(self.buffer, self.caretpos) );
+		local msgstr = string.sub( self.buffer, 1, 
+			string.utf8back(self.buffer, self.caretpos) );
+
 		editprop.width = self.fontsize;
 
 		-- Figure out how wide the current message is (locate ofset)
