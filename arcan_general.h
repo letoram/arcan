@@ -201,11 +201,18 @@ const char* internal_launch_support();
 /* update rate of 25 ms / tick,which amounts to a logical time-span of 40 fps,
  * for lower power devices, this can be raised signifantly, 
  * just adjust INTERP_MINSTEP accordingly */
+#ifndef ARCAN_TIMER_TICK
 #define ARCAN_TIMER_TICK 25
+#endif
+
+#ifndef INTERP_MINSTEP
 #define INTERP_MINSTEP 0.15
+#endif
 
 /* fixed limit of allowed events in queue before old gets overwritten */
+#ifndef ARCAN_EVENT_QUEUE_LIM
 #define ARCAN_EVENT_QUEUE_LIM 1024
+#endif
 
 #define ARCAN_EID 0
 

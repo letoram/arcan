@@ -461,7 +461,7 @@ function awbwman_inputattach(dst, lblfun, options)
 	options.borderg = dlgc.g;
 	options.borderb = dlgc.b;
 
-	options.borderw = 2;
+	options.borderw = 1;
 
 	options.caretr = awb_col.dialog_caret.r;
 	options.caretg = awb_col.dialog_caret.g;
@@ -502,6 +502,15 @@ function awbwman_reqglobal(wnd)
 	return false;
 end
 
+function awbwman_notice()
+end
+
+function awbwman_alert()
+end
+
+function awbwman_warning()
+end
+
 --
 -- Caption is a prerendered information string
 -- Buttons is a itable of {caption, trigger}
@@ -539,14 +548,42 @@ function awbwman_dialog(caption, buttons, options, modal)
 		maxh = bprop.height > maxh and bprop.height or maxh;
 	end
 
--- Fit dialog to size of contents and center
+-- Fit dialog to size of contents
+	local capp = image_surface_properties(caption);
+	local cpyofs = 0;
 	local bwidth  = math.floor(maxw * 1.2);
 	local bheight = math.floor(maxh * 1.1);
-	local capp    = image_surface_properties(caption);
 	local wwidth  = (bwidth * #buttons + 20) > capp.width and 
 		(bwidth * #buttons + 20) or capp.width;
 	local wheight = bheight + capp.height + wnd.dir.t.size;
+	
+-- attach input field if requested
+	if (options.input) then
+		options.input.owner = caption;
+		options.input.noborder = false;
+		options.input.borderw = 1;
 
+		if (not options.input.w) then
+			options.input.w = 128;
+		end
+
+		wwidth  = options.input.w > wwidth and options.input.w or wwidth;
+		wheight = wheight + 20;
+		cpyofs  = -20;
+
+		wnd.inputfield = awbwman_inputattach( function(self) wnd.msg = self.msg; end,
+		desktoplbl, options.input );
+		wnd.input  = function(self, tbl) wnd.inputfield:input(tbl); end
+		wnd.inputfield.accept = function(self)
+			buttons[options.input.accept].trigger(wnd);
+			wnd:destroy(awb_cfg.animspeed);
+		end
+
+		move_image(wnd.inputfield.anchor, 
+			math.floor( 0.5 * (capp.width - options.input.w)), capp.height + 5);
+	end
+
+-- center
 	wnd:resize(math.floor(wwidth * 1.2), math.floor(wheight * 2));
 
 	if (not options.nocenter) then
@@ -569,7 +606,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 
 	local wndprop = image_surface_properties(wnd.canvas.vid);
 	move_image(caption, math.floor(0.5 * (wndprop.width - capp.width)),
-		math.floor(0.5 * ((wndprop.height - bheight) - capp.height)) );
+		math.floor(0.5 * ((wndprop.height - bheight) - capp.height)) + cpyofs );
 
 -- Generate buttons and link lifetime to parent (but track
 -- mouse handlers separately)

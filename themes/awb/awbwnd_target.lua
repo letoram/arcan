@@ -28,11 +28,53 @@ end
 -- If the user wants to load savestates with other names, 
 -- he'll have to drag'n'drop from the desktop group
 --
-function awbtarget_listsnaps(gametbl)
+function awbtarget_listsnaps(tgtwin, gametbl)
 	local base = glob_resource(string.format("savestates/%s_%s_*", 
-		gametbl.target, gametbl.setname));
+		gametbl.target, 
+		gametbl.setname and gametbl.setname or ""), SHARED_RESOURCE);
 	
+	if (base and #base > 0) then
+-- The number of possible savestates make this one difficult 
+-- to maintain as a popup, so use a list window
+		local newwnd = awbwman_listwnd(
+			menulbl(gametbl.title .. ":savestates"), deffont_sz, linespace, {1.0},
+			function(filter, ofs, lim, iconw, iconh)
+				local res = {};
+				local ul  = ofs + lim;
+				for i=ofs, ul do
+					table.insert(res, {
+						name = base[i],
+						trigger = function() restore_target(tgtwin.recv, base[i]); end, 
+						name = base[i],
+						cols = {base[i]}});
+				end
+				return res, #base;
+			end, desktoplbl);
+
+-- Make sure that this window disappears when / if the parent 
+-- dies / is forcibly closed
+		table.insert(tgtwin.cascade, newwnd);
+		local olddes = newwnd.on_destroy;
+		newwnd.on_destroy = function(self)
+			if (olddes) then
+				olddes(self);
+			end
+			for i=#tgtwin.cascade,1,-1 do
+				if (tgtwin.cascade[i] == newwnd) then
+					table.remove(tgtwin.cascade, i);
+					break;
+				end
+			end
+		end
+
+	end
 end
+	
+--target_postfilter_args(internal_vid, 1, settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
+--target_postfilter_args(internal_vid, 2, settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
+--target_postfilter_args(internal_vid, 3, settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
+--target_postfilter_args(internal_vid, 4, settings.ntsc_fringing);
+--target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
 
 --
 -- Target window
@@ -43,6 +85,7 @@ end
 function awbwnd_target(pwin)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
+	pwin.cascade = {}; 
 
 	pwin.mediavol = 1.0;
 
@@ -73,7 +116,6 @@ function awbwnd_target(pwin)
 --
 	bartt:add_icon("save", "l", cfg.bordericns["save"], function(self)
 		local list = {"Quicksave", "New..."};
-		local states = awbtarget_liststates(pwin.gametbl);
 	end);
 
 	bartt:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
@@ -92,7 +134,7 @@ function awbwnd_target(pwin)
 -- Popup "saves" list filtered by target / game
 --
 	bartt:add_icon("load", "l", cfg.bordericns["load"], function(self)
-		pwin:focus();
+		awbtarget_listsnaps(pwin, pwin.gametbl);
 	end);
 
 --
@@ -125,7 +167,6 @@ function awbwnd_target(pwin)
 		end
 	
 		local restbl = inputed_translate(iotbl, pwin.inp_cfg);
-
 		if (restbl) then 
 			for i,v in ipairs(restbl) do
 				target_input(pwin.canvas.vid, v);

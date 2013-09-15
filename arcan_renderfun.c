@@ -402,9 +402,17 @@ static struct text_format formatend(char* base, struct text_format prev,
 /* don't carry caret modifiers */
 	prev.newline = prev.tab = prev.cr = 0; 
 	bool inv = false;
+	bool whskip = false;
+
 	while (*base) {
-/* skip whitespace */
-		if (isspace(*base)) { base++; continue; }
+/* skip first whitespace (avoid situation where;
+ * \ffonts/test,181889 when writing 1889.. and still 
+ * allow for dynamic input dialogs etc. */
+		if (whskip == false && isspace(*base)) { 
+			base++; 
+			whskip = true;
+			continue; 
+		}
 
 /* out of formatstring */
 		if (*base != '\\') { prev.endofs = base; break; }
@@ -472,6 +480,7 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 		}
 		else if (curr_style->font){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
+			arcan_warning("render: '%s' \n", base);
 			cnode->data.surf = TTF_RenderUTF8(curr_style->font,base,curr_style->col);
 		}
 		else{

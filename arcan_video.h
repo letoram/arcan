@@ -384,7 +384,8 @@ void arcan_video_dumppipe();
 /* allocate buffer, readback current front buffer and return buffer ptr 
  * in *dptr with buffer size in dsize. true on success
  * false on failed malloc */
-bool arcan_video_screenshot(void** dptr, size_t* dsize);
+arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize);
+arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dstsz);
 
 /* determine if 3D is going to be processed first (2D mode used as 'HUD' 
  * and supplementary imagery') or 'last' (adding partial 3D models to an

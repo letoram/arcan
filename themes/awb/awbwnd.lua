@@ -216,6 +216,10 @@ local function awbwnd_destroy(self, timeval)
 		self:on_destroy();
 	end
 
+	if (type(timeval) == "table") then
+		print(debug.traceback());
+	end
+
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
 
@@ -229,9 +233,17 @@ local function awbwnd_destroy(self, timeval)
 	end
 	self.handlers = nil;
 
+	local cascade = self.cascade;
+
 -- Clear all members to be sure we don't keep references around
 	for i,v in pairs(self) do
 		self[i] = nil;
+	end
+
+	if (cascade) then
+		for i,j in ipairs(cascade) do
+			j:destroy(timeval);
+		end
 	end
 end
 
@@ -360,10 +372,6 @@ local function awbbar_addicon(self, name, dir, image, trig)
 		yofs = 0,
 		name = name
 	};
-
-	if (type(image) ~= "number") then
-		print(debug.traceback());
-	end
 
 	local props = image_surface_initial_properties(image);
 	local icon = null_surface(props.width, props.height);
@@ -599,6 +607,21 @@ function string.utf8forward(src, ofs)
 	return ofs;
 end
 
+function string.utf8lalign(src, ofs)
+	while (ofs > 1 and utf8kind(string.byte(src, ofs)) == 2) do
+		ofs = ofs - 1;
+	end
+	return ofs;
+end
+
+function string.utf8ralign(src, ofs)
+	while (ofs <= string.len(src) and string.byte(src, ofs)  
+		and utf8kind(string.byte(src, ofs)) == 2) do
+		ofs = ofs + 1;
+	end
+	return ofs;
+end
+
 function string.translateofs(src, ofs, beg)
 	local i = beg;
 	local eos = string.len(src);
@@ -643,6 +666,7 @@ function string.insert(src, msg, ofs, limit)
 		msg = string.sub(msg, 1, limit - ofs);
 
 -- align to the last possible UTF8 char..
+		
 		while (string.len(msg) > 0 and 
 			utf8kind( string.byte(msg, string.len(msg))) == 2) do
 			msg = string.sub(msg, 1, string.len(msg) - 1);
@@ -669,36 +693,61 @@ function awbwnd_subwin_inputfunc(self, iotbl)
 	
 	if (iotbl.lutsym == "HOME") then
 		self.caretpos = 1;
-		self:update_caret();
+		self.chofs    = 1;
+		self:redraw();
 
 	elseif (iotbl.lutsym == "END") then
 		self.caretpos = string.len( self.msg ) + 1;
-		self:update_caret();
+		self.chofs = self.caretpos - self.ulim;
+		self.chofs = self.chofs < 1 and 1 or self.chofs;
+		self.chofs = string.utf8lalign(self.msg, self.chofs);
+	
+		self:redraw();
 
 	elseif (iotbl.lutsym == "LEFT") then
 		self.caretpos = string.utf8back(self.msg, self.caretpos);
-		self:update_caret();
+
+		if (self.caretpos < self.chofs) then
+			self.chofs = self.chofs - self.ulim;
+			self.chofs = self.chofs < 1 and 1 or self.chofs;
+			self.chofs = string.utf8lalign(self.msg, self.chofs);
+		end
+		self:redraw();
 
 	elseif (iotbl.lutsym == "RIGHT") then
 		self.caretpos = string.utf8forward(self.msg, self.caretpos);
-		self:update_caret();
+		if (self.chofs + self.ulim <= self.caretpos) then
+			self.chofs = self.chofs + 1;
+			self:redraw();
+		else
+			self:update_caret();
+		end
 
 	elseif (iotbl.lutsym == "DELETE") then
 		self.msg = string.delete_at(self.msg, self.caretpos);
 		self:redraw();
 
 	elseif (iotbl.lutsym == "BACKSPACE") then
-		if (self.caretpos > 0) then
+		if (self.caretpos > 1) then
 			self.caretpos = string.utf8back(self.msg, self.caretpos);
+			if (self.caretpos <= self.chofs) then
+				self.chofs = self.caretpos - self.ulim;
+				self.chofs = self.chofs < 0 and 1 or self.chofs;
+			end
+
 			self.msg = string.delete_at(self.msg, self.caretpos);
 			self:redraw();
 		end
 
 	elseif (iotbl.lutsym == "ESCAPE") then
--- terminate buffer / popup / whatever
+		if (self.cancel) then
+			self.cancel();
+		end
 
 	elseif (iotbl.lutsym == "RETURN") then
--- same as escape, but return message
+		if (self.accept) then
+			self.accept();
+		end
 
 	else
 		local keych = iotbl.utf8;
@@ -716,15 +765,20 @@ end
 
 --
 -- Create an input component that allows for text edits
--- and returns as a table with a raw vid (link to whatever
+-- and returns as a table with a rew vid (link to whatever
 -- container should be used)
 --
 function awbwnd_subwin_input(trigger, lblfun, options)
 	local res = {
-		msg = "",
+		msg      = "",
 		caretpos = 1,
-		limit = -1,
-		noborder = true
+		limit    = -1,
+		noborder = true,
+		dynamic  = false,
+		w        = 64,
+		h        = 32,
+		ulim     = 10,
+		chofs    = 1
 	};
 
 	for k,v in pairs(options) do
@@ -753,27 +807,29 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 		res.borderw = 0;
 	end
 
-	res.canvas = color_surface(res.w - res.borderw * 2, res.h - res.borderw * 2,
-		options.bgr, options. bgg, options.bgb);
+	res.canvas = color_surface(res.w - res.borderw * 2, 
+		res.h - res.borderw * 2, options.bgr, options.bgg, options.bgb);
 	link_image(res.canvas, res.anchor);
 	image_inherit_order(res.canvas, true);
 	order_image(res.canvas, 3);
 
 	move_image(res.canvas, res.borderw, res.borderw);
 
+-- size caret, figure out upper clipping limits etc. using 
+-- a reference character image
 	local ctv = lblfun("A");
-	local ch  = image_surface_properties(ctv).height;
+	local ch  = image_surface_properties(ctv);
+	res.ulim  = math.ceil(res.w / ch.width);
 	delete_image(ctv);
 
-	res.caret = color_surface(2, ch, 
+	res.caret = color_surface(2, ch.height, 
 		options.caretr, options.caretg, options.caretb); 
 
-	link_image(res.caret, res.anchor);
+	link_image(res.caret, res.canvas);
 	image_inherit_order(res.caret, true);
 	image_clip_on(res.caret, CLIP_SHALLOW);
 	order_image(res.caret, 4);
-
-	move_image(res.caret, res.borderw * 2, res.borderw * 2);
+	move_image(res.caret, res.borderw, res.borderw);
 
 	image_transform_cycle(res.caret, 1);
 	blend_image(res.caret, 0.5, 15);
@@ -781,6 +837,13 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 
 -- move caret also (but keep blinking ..)
 	show_image(res.canvas);
+
+	res.clip_msg = function(self, cv)
+		local uc  = string.utf8ralign(self.msg, 
+			cv and cv or (self.chofs + self.ulim));
+
+		return string.gsub(string.sub(self.msg, self.chofs, uc), "\\", "\\\\");
+	end
 
 	res.update_caret = function(self)
 		if (not valid_vid(self.textvid)) then
@@ -790,19 +853,21 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 		local xpos = 0;
 		local height = image_surface_properties(self.caret).height;
 
-		if (self.caretpos > 1) then
-			local msgstr = string.sub(self.msg, 1,
-				string.utf8back(self.msg, self.caretpos));
+		local msgstr = self:clip_msg(self.caretpos - 1);
+		local dimv = lblfun(msgstr);
+		local prop = image_surface_properties(dimv);
+		local cnvprop = image_surface_properties(self.canvas);
 
-			local dimv = lblfun(msgstr);
-			local prop = image_surface_properties(dimv);
-			delete_image(dimv);
-			xpos = prop.width;
-			height = prop.height > 0 and (prop.height + 2) or height;
+		delete_image(dimv);
+		xpos = prop.width;
+		if (xpos + 2 > cnvprop.width) then
+			local dx = cnvprop.width - xpos;
+			move_image(self.textvid, dx, self.borderw);
+			move_image(self.caret, cnvprop.width - 2, self.borderw);
+		else
+			move_image(self.textvid, self.borderw, self.borderw);
+			move_image(self.caret, xpos + 2, self.borderw);
 		end
-
-		resize_image(self.caret, 2, height);
-		move_image(self.caret, xpos + 1, res.borderh);
 	end
 
 --
@@ -811,6 +876,8 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	res.validator = function(self)
 		return true;
 	end
+
+	res.cascade = {};
 
 	res.resize = function(self, neww, newh)
 		local height = newh; 
@@ -832,12 +899,16 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	end
 
 	res.redraw = function(self)
-		if (res.textvid) then
-			delete_image(res.textvid);
+		if (self.textvid) then
+			delete_image(self.textvid);
 		end
 
-		res.textvid = lblfun( string.gsub(res.msg, "\\", "\\\\") );
-	
+		if (self.caretpos - self.chofs + 1 > self.ulim) then
+			self.chofs = string.utf8lalign(self.msg, self.caretpos - self.ulim);
+		end
+
+		res.textvid = lblfun( self:clip_msg() );
+
 		if (res.textvid ~= BADID) then
 			show_image(res.textvid);
 			link_image(res.textvid, res.canvas);
@@ -849,16 +920,17 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 
 			if (res.w == nil) then
 				res:resize(props.width + res.borderw * 2);
+			else
+				self:update_caret();
 			end
 		end
-		self:update_caret();
 	end
 
 -- returns true on finished signal, requiring both a valid string
 -- and enter etc. being pressed
 	res.input = awbwnd_subwin_inputfunc;
 
-	res.destroy = function(self)
+	res.destroy = function(self, time)
 		if (res.textvid) then
 			delete_image(res.textvid);
 		end
@@ -872,6 +944,20 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 	res:resize(res.w, res.h);
 
 	return res;
+end
+
+local function awbwnd_addcascade(self, wnd)
+	self:drop_cascade();
+	table.insert(self.cascade, wnd);
+end
+
+local function awbwnd_dropcascade(self, wnd)
+	for i=#self.cascade,1,-1 do
+		if (self.cascade[i] == wnd) then
+			table.remove(self.cascade, i);
+			return;
+		end
+	end
 end
 
 function awbwnd_create(options)
@@ -889,6 +975,8 @@ function awbwnd_create(options)
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
 		set_border = awbwnd_set_border,
+		add_cascade= awbwnd_addcascade,
+		drop_cascade=awbwnd_dropcascade,
 		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,
 		name       = "awbwnd",

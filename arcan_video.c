@@ -3988,7 +3988,37 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
 }
 
-bool arcan_video_screenshot(void** dptr, size_t* dsize){
+arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
+{
+/*
+ * more involved tha one may think, the store doesn't have to be representative
+ * in case of rendertargets, and for streaming readbacks of those we already
+ * have readback toggles etc. Thus this function is only for "one-off" reads
+ * where a blocking behavior may be accepted, especially outside a main 
+ * renderloop as this will force a sync for the pipeline. 
+ */
+	
+	arcan_vobject* vobj = arcan_video_getobject(sid);
+	struct storage_info_t* dstore = vobj->vstore;
+
+	if (!vobj || !dstore) 
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (dstore->txmapped != TXSTATE_TEX2D)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	*dsize = GL_PIXEL_BPP * dstore->w * dstore->h; 
+	*dptr  = malloc(*dsize);
+
+	glBindTexture(GL_TEXTURE_2D, dstore->vinf.text.glid); 
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	return ARCAN_OK;
+}
+
+arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
+{
 	*dsize = sizeof(char) * arcan_video_display.width * 
 		arcan_video_display.height * GL_PIXEL_BPP;
 
@@ -3996,7 +4026,7 @@ bool arcan_video_screenshot(void** dptr, size_t* dsize){
 
 	if (!(*dptr)){
 		*dsize = 0;
-		return false;
+		return ARCAN_ERRC_OUT_OF_SPACE;
 	}
 
 	glReadBuffer(GL_FRONT);
@@ -4004,7 +4034,7 @@ bool arcan_video_screenshot(void** dptr, size_t* dsize){
 	glReadPixels(0, 0, arcan_video_display.width, 
 		arcan_video_display.height, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
 
-	return true;
+	return ARCAN_OK;
 }
 
 static void process_readback(struct rendertarget* tgt, float fract)

@@ -1339,17 +1339,32 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 	}
 
 	const char* farg = luaL_checkstring(ctx, 1);
+
 	bool special = is_special_res(farg);
 	char* fname = special ? strdup(farg) : findresource(farg, 
 		ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED);
 	intptr_t ref = (intptr_t) 0;
 
+	const char* argstr = luaL_optstring(ctx, 5, "");
+	size_t optlen = strlen(argstr);
+
 	if (!fname){
 		arcan_warning("arcan_lua_loadmovie() -- unknown resource (%s)"
 		"	specified.\n", fname);
 		return 0;
-	} else
-		fname = strdup(fname);
+	} 
+	else{
+		if (!special)
+			if (optlen > 0){
+				size_t fnlen = strlen(fname) + optlen + 8;
+				char msg[fnlen];
+				msg[fnlen-1] = 0;
+				snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
+				fname = strdup(msg);	
+			} 
+			else
+				fname = strdup(fname);
+	}
 
 /* in order to stay backward compatible API wise, 
  * the load_movie with function callback
@@ -4512,11 +4527,20 @@ int arcan_lua_inputfilteranalog(lua_State* ctx)
 
 int arcan_lua_screenshot(lua_State* ctx)
 {
-	const char* const resstr = luaL_checkstring(ctx, 1);
-	void* databuf;
+	void* databuf = NULL;
 	size_t bufs;
 
-	if (arcan_video_screenshot(&databuf, &bufs)){
+	const char* const resstr = luaL_checkstring(ctx, 1);
+	arcan_vobj_id sid = ARCAN_EID;
+	
+	if (luaL_optnumber(ctx, 2, ARCAN_EID) != ARCAN_EID){
+		sid = luaL_checkvid(ctx, 2);
+		arcan_video_forceread(sid, &databuf, &bufs);
+	} 
+	else 
+		arcan_video_screenshot(&databuf, &bufs);
+
+	if (databuf){
 		char* fname = arcan_find_resource(resstr, ARCAN_RESOURCE_THEME);
 		if (!fname){
 			fname = arcan_expand_resource(resstr, false);
