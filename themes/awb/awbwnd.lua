@@ -216,6 +216,14 @@ local function awbwnd_destroy(self, timeval)
 		self:on_destroy();
 	end
 
+--
+-- workaround for (cascade-window in minimize getting deleted)
+--
+	awbwman_minimize_drop(self);	
+
+--
+-- just quickly spot invocations that miss :
+--
 	if (type(timeval) == "table") then
 		print(debug.traceback());
 	end
@@ -242,7 +250,9 @@ local function awbwnd_destroy(self, timeval)
 
 	if (cascade) then
 		for i,j in ipairs(cascade) do
-			j:destroy(timeval);
+			if (j.destroy) then
+				j:destroy(timeval);
+			end
 		end
 	end
 end

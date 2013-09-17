@@ -23,16 +23,22 @@ local function inputlay_sel(icn, wnd)
 	end, {ref = icn.vid});
 end
 
+function awbtarget_factorystr(wnd)
+--
+-- Generate a string that can be used to recreate this particular session,
+-- down to savestate, input config and filter
+--
+end
+
 --
 -- Re-uses the same patterns as gridle
 -- If the user wants to load savestates with other names, 
 -- he'll have to drag'n'drop from the desktop group
 --
 function awbtarget_listsnaps(tgtwin, gametbl)
-	local base = glob_resource(string.format("savestates/%s_%s_*", 
-		gametbl.target, 
-		gametbl.setname and gametbl.setname or ""), SHARED_RESOURCE);
-	
+	local base = glob_resource(string.format("savestates/%s*", 
+		tgtwin.snap_prefix), SHARED_RESOURCE);
+
 	if (base and #base > 0) then
 -- The number of possible savestates make this one difficult 
 -- to maintain as a popup, so use a list window
@@ -41,32 +47,23 @@ function awbtarget_listsnaps(tgtwin, gametbl)
 			function(filter, ofs, lim, iconw, iconh)
 				local res = {};
 				local ul  = ofs + lim;
+				ul = ul > #base and #base or ul;
+	
 				for i=ofs, ul do
 					table.insert(res, {
 						name = base[i],
-						trigger = function() restore_target(tgtwin.recv, base[i]); end, 
+						trigger = function() 
+							restore_target(tgtwin.recv, base[i]); 
+							tgtwin.laststate = base[i];
+						end, 
 						name = base[i],
-						cols = {base[i]}});
+						cols = {string.sub(base[i], #tgtwin.snap_prefix+1)}
+					});
 				end
 				return res, #base;
 			end, desktoplbl);
 
--- Make sure that this window disappears when / if the parent 
--- dies / is forcibly closed
-		table.insert(tgtwin.cascade, newwnd);
-		local olddes = newwnd.on_destroy;
-		newwnd.on_destroy = function(self)
-			if (olddes) then
-				olddes(self);
-			end
-			for i=#tgtwin.cascade,1,-1 do
-				if (tgtwin.cascade[i] == newwnd) then
-					table.remove(tgtwin.cascade, i);
-					break;
-				end
-			end
-		end
-
+		tgtwin:add_cascade(newwnd);
 	end
 end
 	
@@ -76,17 +73,67 @@ end
 --target_postfilter_args(internal_vid, 4, settings.ntsc_fringing);
 --target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
 
+local function awbtarget_save(pwin, res)
+	if (res == nil) then
+		local buttontbl = {
+			{ caption = desktoplbl("OK"), trigger = function(own) 
+				awbtarget_save(pwin, own.inputfield.msg); print("save, ", own.inputfield.msg);
+			end },
+			{ caption = desktoplbl("Cancel"), trigger = function(own) print("cancel"); end }
+		};
+
+		local dlg = awbwman_dialog(desktoplbl("Save As:"), buttontbl, {
+			input = { w = 100, h = 20, limit = 32, accept = 1, cancel = 2 }
+		}, false);
+
+		pwin:add_cascade(dlg);
+	else
+		snapshot_target(pwin.canvas.vid, pwin.snap_prefix .. res);
+		pwin.laststate = res; 
+	end
+end
+
+local function awbtarget_addstateopts(pwin)
+	local cfg = awbwman_cfg();
+	local bartt = pwin.dir.tt;
+
+	bartt:add_icon("save", "l", cfg.bordericns["save"], function(self)
+		local list = {};
+
+		if (pwin.laststate) then
+			table.insert(list, pwin.laststate);
+		end
+
+		table.insert(list, "New...");
+		if (not awbwman_ispopup(self)) then
+			pwin:focus();
+
+			local str = table.concat(list, [[\n\r]]);
+			local vid, lines = desktoplbl(str);
+
+			awbwman_popup(vid, lines, function(ind)
+				awbtarget_save(pwin, (ind ~= #list) and list[ind] or nil);
+			end, {ref = self.vid});
+		end
+	end);
+
+	bartt:add_icon("load", "l", cfg.bordericns["load"], function(self)
+		awbtarget_listsnaps(pwin, pwin.gametbl);
+	end);
+	
+end
+
 --
 -- Target window
 -- Builds upon a spawned window (pwin) and returns a 
 -- suitable callback for use in launch_target- style commands.
 -- Assumes a bar already existing in the "tt" spot to add icons to.
 --
-function awbwnd_target(pwin)
+function awbwnd_target(pwin, caps)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
 	pwin.cascade = {}; 
-
+	pwin.snap_prefix = caps.prefix and caps.prefix or "";
 	pwin.mediavol = 1.0;
 
 	pwin.set_mvol = function(self, val)
@@ -99,8 +146,7 @@ function awbwnd_target(pwin)
 	end
 	
 	bartt:add_icon("clone", "r", cfg.bordericns["clone"], 
-		function() datashare(pwin); 
-	end);
+		function() datashare(pwin); end);
 
 	bartt:add_icon("volume", "r", cfg.bordericns["volume"], function(self)
 		if (not awbwman_ispopup(self)) then
@@ -109,13 +155,6 @@ function awbwnd_target(pwin)
 				pwin:set_mvol(val);
 			end, {ref = self.vid});
 		end
-	end);
-
---
--- Popup save menu
---
-	bartt:add_icon("save", "l", cfg.bordericns["save"], function(self)
-		local list = {"Quicksave", "New..."};
 	end);
 
 	bartt:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
@@ -130,12 +169,9 @@ function awbwnd_target(pwin)
 		end
 	end);
 
---
--- Popup "saves" list filtered by target / game
---
-	bartt:add_icon("load", "l", cfg.bordericns["load"], function(self)
-		awbtarget_listsnaps(pwin, pwin.gametbl);
-	end);
+	if (caps.snapshot) then
+		awbtarget_addstateopts(pwin);
+	end
 
 --
 -- Set frameskip mode, change icon to play
@@ -208,5 +244,6 @@ function awbwnd_target(pwin)
 	table.insert(pwin.handlers, canvash);
 
 	pwin:update_canvas( fill_surface(pwin.w, pwin.h, 100, 100, 100) );
+	pwin.factorystr = awbtarget_factory;
 	return callback;
 end

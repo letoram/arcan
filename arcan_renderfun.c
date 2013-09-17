@@ -480,7 +480,6 @@ static inline void currstyle_cnode(struct text_format* curr_style,
 		}
 		else if (curr_style->font){
 			TTF_SetFontStyle(curr_style->font, curr_style->style);
-			arcan_warning("render: '%s' \n", base);
 			cnode->data.surf = TTF_RenderUTF8(curr_style->font,base,curr_style->col);
 		}
 		else{

@@ -141,8 +141,11 @@ function gamelist_launch(self)
 -- confirmation dialog
 		launch_target(self.gameid, LAUNCH_EXTERNAL);
 	else
+		captbl.prefix = string.format("%s_%s_",self.target,
+		self.tag.setname and self.tag.setname or "");
+
 		local wnd, cb = awbwman_targetwnd(menulbl(self.name), 
-			{refid = "targetwnd_" .. tostring(self.gameid)});
+			{refid = "targetwnd_" .. tostring(self.gameid)}, captbl);
 		wnd.gametbl = self.tag;
 
 		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);

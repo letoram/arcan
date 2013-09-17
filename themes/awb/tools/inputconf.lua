@@ -88,7 +88,6 @@ local function set_tblfun(dst)
 end
 
 local function pop_deftbl(tbl, pc, bc, ac, other)
-
 	for i=1,pc do
 		for j=1,bc do 
 			tbl["PLAYER" .. tostring(i) .. "_BUTTON" ..tostring(j)] = 
@@ -439,7 +438,7 @@ end
 -- (digital or analog) and 
 --
 function awb_inputed()
-	res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);	
+	local res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);	
 	local ctable = {};
 	set_tblfun(ctable);
 
@@ -458,17 +457,26 @@ function awb_inputed()
 
 	for i,v in ipairs(res) do
 		local base, ext = string.extension(v);
-		local res = { cols = {base},
-			trigger = function(self, wnd)
-				wnd:destroy(awbwman_cfg().animspeed);	
-				ctable.table = system_load("keyconfig/" .. v)();
--- sanity check
-				if (ctable.table) then
-					inputed_editlay(ctable, v); 
-				end
-			end
+		local res = {
+			cols = {base}
 		};
-
+		res.trigger = function(self, wnd)
+			local vid, lines = desktoplbl([[Edit\n\rDelete]]);
+			awbwman_popup(vid, lines, function(ind)
+				if (ind == 1) then
+					wnd:destroy(awbwman_cfg().animspeed);
+					ctable.table = system_load("keyconfig/" .. v)();
+					if (ctable.table) then
+						inputed_editlay(ctable, v); 
+					end
+				else
+					zap_resource("keyconfig/" .. v);
+					res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);
+					table.remove(list, ind);
+					wnd:force_update();
+				end
+			end, {});
+		end
 		table.insert(list, res);
 	end
 
