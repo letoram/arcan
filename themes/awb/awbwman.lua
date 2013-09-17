@@ -437,11 +437,11 @@ function awbwman_mediawnd(caption, kind, source, options)
 		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
 end
 
-function awbwman_targetwnd(caption, options)
+function awbwman_targetwnd(caption, options, capabilities)
 	local wnd = awbwman_spawn(caption, options);
 	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
 		wnd.dir.t.bsize);
-	return wnd, awbwnd_target(wnd);
+	return wnd, awbwnd_target(wnd, capabilities);
 end
 
 function awbwman_activepopup()
@@ -657,7 +657,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 --
 	if (modal) then
 		awb_cfg.modal = true;
-		a = color_surface(VRESW, VRESH, 0, 0, 0);
+		local a = color_surface(VRESW, VRESH, 0, 0, 0);
 		blend_image(a, 0.5);
 		image_tracetag(a, "modal_block");
 		order_image(a, image_surface_properties(wnd.anchor).order - 1);
@@ -704,6 +704,10 @@ function cursortag_hint(on)
 		instant_image_transform(awb_cfg.cursor_tag.vid);
 		blend_image(awb_cfg.cursor_tag.vid, 0.3, awb_cfg.animspeed);
 	end
+end
+
+function awbwman_minimize_drop(wnd)
+	awbwman_dereg(awb_cfg.hidden, wnd);	
 end
 
 function awbwman_restore(ind)
