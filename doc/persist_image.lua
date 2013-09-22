@@ -1,0 +1,41 @@
+-- persist_image
+-- @short: Flag the video object as persistant. Persistant objects are preserved across pushed video contexts. 
+-- @inargs: vid
+-- @outargs: bool 
+-- @longdescr: Some objects, and especially those linked to frameservers, may need to survive otherwise aggressive operations e.g. push_video_context. This function attempts to promote the referenced object to such a state. This ability comes with several erstrictions however. In practice, objects that are linked, are clones, has a frameset or in other ways affect maintain horizontal references (within the same context) are prohibited from being flagged as persistant. 
+-- @note: 
+-- @group: image 
+-- @related: push_video_context, pop_video_context
+-- @cfunction: arcan_lua_imagepersist
+function main()
+	a = fill_surface(32, 32, 255, 0, 0);
+	b = fill_surface(32, 32, 0, 255, 0); 
+	show_image({a, b});
+
+#ifdef MAIN
+	assert(persist_image(a) == true);
+	push_video_context();
+#endif
+
+#ifdef ERROR1
+	persist_image(a);
+	push_video_context();
+	delete_image(a);
+#endif
+
+#ifdef ERROR2
+	persist_image(a);
+	link_image(a, b);
+#endif
+
+#ifdef ERROR3
+	persist_image(a);
+	link_image(b, a);
+#endif
+
+#ifdef ERROR4
+	persist_image(a);
+	c = instance_image(a);
+	push_video_context();	
+#endif
+end
