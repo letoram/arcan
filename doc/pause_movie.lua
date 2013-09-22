@@ -1,0 +1,6 @@
+-- pause_movie
+-- @short: Signal a frameserver that whatever playback operation is running should be paused. 
+-- @inargs: fsrvvid
+-- @note: This is enforced on two ends, frameserver will lock on synch after filling up the internal queue, but also in the polling/queueing part of the main engine loop.
+-- @group: targetcontrol 
+-- @cfunction: arcan_lua_pausemovie

@@ -1,0 +1,6 @@
+-- pause_audio
+-- @short: Temporarily pause device playback from the stream connected with an AID.
+-- @inargs: aid
+-- @group: audio 
+-- @cfunction: arcan_lua_pauseaudio
+-- @related: play_audio 
