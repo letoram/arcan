@@ -16,6 +16,8 @@
 
 local shader_seqn = 0;
 
+local crtcont = system_load("display/crt.lua")();
+
 local function set_shader(modelv)
 	local lshdr = load_shader("shaders/dir_light.vShader", 
 		"shaders/dir_light.fShader", "media3d_" .. tostring(shader_seqn));
@@ -36,6 +38,67 @@ local function datashare(wnd)
 	return res;
 end
 
+local function submenupop(wnd, list, trig, key, reficn)
+	local lbllist = {};
+
+	for i,j in ipairs(list) do
+		if (j == wnd.filters[key]) then
+			lbllist[i] = "\\#00ff00" .. list[i] .. "\\#ffffff";
+		else
+			lbllist[i] = list[i];
+		end
+	end		
+
+	local cbtbl = {};
+	local cprops = image_surface_properties(wnd.canvas.vid);
+
+	for i,j in ipairs(list) do
+		cbtbl[i] = function(ind, btn)
+			if (btn == false and trig[i] ~= nil) then
+				wnd.filters[key] = list[i];
+				wnd:rebuild_chain(cprops.width, cprops.height);
+				trig[i](wnd);
+			else
+				if (wnd.filters[key] == list[i]) then
+					wnd.filters[key] = nil; 
+				else
+					wnd.filters[key] = list[i];
+				end
+				wnd:rebuild_chain(cprops.width, cprops.height);
+			end
+		end;
+	end
+
+	local vid, lines = desktoplbl(table.concat(lbllist, "\\n\\r"));
+	awbwman_popup(vid, lines, cbtbl, {ref = reficn});
+end
+
+-- is to add multiline editor and a graphing shader-stage
+-- configuration.
+--
+-- Each group represents a distinct category to configure.
+--
+function awbwmedia_filterpop(wnd, icn)
+	local fltdlg = {
+		"Display",
+		"Upscaler",
+		"Effects"
+	};
+
+	local dlgtbl = {
+		function() submenupop(wnd, {"CRT"}, {}, "display", icn.vid); end,
+		function() submenupop(wnd, 
+			{"SABR", "xBR", "Linear", "Bilinear", "Trilinear"},
+			{}, "upscaler", icn.vid); end,
+
+		function() submenupop(wnd,
+			{"Glow", "Trails", "GlowTrails"}, {}, "effects", icn.vid); end
+	};
+
+	local vid, lines = desktoplbl(table.concat(fltdlg, "\\n\\r"));
+	awbwman_popup(vid, lines, dlgtbl, {ref = icn.vid});
+end
+
 local function add_vmedia_top(pwin, active, inactive, fsrv)
 	local bar = pwin:add_bar("tt", active, inactive,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
@@ -45,6 +108,9 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 	bar:add_icon("clone", "r", cfg.bordericns["clone"],
 		function() datashare(pwin); end);
+
+	bar:add_icon("filters", "r", cfg.bordericns["filter"], 
+		function(self) awbwmedia_filterpop(pwin, self); end);
 
 	if (fsrv) then
 		bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
@@ -198,15 +264,108 @@ function input_3dwin(self, iotbl)
 	end	
 end
 
+--
+-- Due to the possiblity of having to sharestorage etc.
+-- the final canvas composition must be a FBO
+--
+function awbwmedia_filterchain(pwin)
+-- first time calling, and this will need 
+-- to be managed / deleted manually
+	if (pwin.controlid == nil) then
+		pwin.controlid  = pwin.canvas.vid;
+		hide_image(pwin.controlid);
+		pwin.canvas.vid = BADID;
+	end
+
+-- upscalers etc. can modify these as they affect the next one in the chain
+	local store_sz = image_storage_properties(pwin.controlid);
+	local in_sz    = image_surface_initial_properties(pwin.controlid);
+	local out_sz   = {width = pwin.canvasw, height = pwin.canvash};
+
+--
+-- Every effect here uses dstres as basis, and if additional
+-- FBO chains etc. are set up, they are linked to dstres in
+-- someway, and then replaces the referenced vid.
+--
+-- The last one gets attached to the canvas.
+--
+	local dstres = null_surface(store_sz.width, store_sz.height);
+	image_sharestorage(pwin.controlid, dstres);
+
+-- 1. upscaler, this may modify what the other filters / effects.
+-- see as the internal/storage/source resolution will be scaled.
+	image_texfilter(dstres, FILTER_NONE, FILTER_NONE);
+
+	if (pwin.filters.upscaler) then
+		local f = pwin.filters.upscaler;
+
+		if (f == "Linear") then
+			image_texfilter(dstres, FILTER_LINEAR);
+
+		elseif (f == "Bilinear") then
+			image_texfilter(dstres, FILTER_BILINEAR);
+
+		elseif (f == "Trilinear") then
+			image_texfilter(dstres, FILTER_TRILINEAR);
+
+-- since shaders are "per target" 
+-- we need to load / rebuild and tagging with the wndid
+		elseif (f == "SABR") then
+			dstres, dprops = upscaler.sabr:setup(dstres, "SABR_" .. tostring(pwin.wndid),
+				pwin.filters.upscaleopt);
+	
+		elseif (f == "XBR") then
+ 			dstres, dprops = upscaler.xbr:setup(dstres, "XBR_" .. tostring(pwin.wndid),
+			pwin.filters.upscaleopt);
+		end
+	end
+
+-- 2. effects (glow, ...)
+	if (pwin.filters.effect) then
+		local f = pwin.filters.effect;
+		if (f == "Glow") then
+			dstres = glow:setup(dstres, "GLOW_" .. tostring(pwin.wndid),
+				pwin.filters.effectopt);
+
+		elseif (f == "Trails") then
+			dstres = trails:setup(dstres, "TRAILS_" .. tostring(pwin.wndid),
+				pwin.filters.effectopt);
+
+		elseif (f == "TrailGlow") then
+			dstres = glowtrails:setup(dstres, "GLOWTRAILS_" .. tostring(pwin.wndid),
+				pwin.filters.effectopt);
+		end
+	end
+	
+-- 3. display
+	if (pwin.filters.display) then
+		local f = pwin.filters.display;
+		if (f == "CRT") then
+			dstres = crtcont:setup(dstres, "CRT_" .. tostring(pwin.wndid), store_sz,
+				in_sz, out_sz, pwin.filters_displayopt);
+		end
+	end
+
+	pwin:update_canvas(dstres);
+end
+
 function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
+	pwin.filters = {};
+	pwin.rebuild_chain = awbwmedia_filterchain;
+	pwin.on_resized = 
+		function(wnd, winw, winh, cnvw, cnvh)
+			awbwmedia_filterchain(pwin, cnvw, cnvh);
+		end;
 
 	if (kind == "frameserver" or 
 		kind == "capture" or kind == "static") then
 		
 		local canvash = {
 			name  = kind .. "_canvash",
-			own   = function(self, vid) return vid == pwin.canvas.vid; end,
+			own   = function(self, vid) 
+								return vid == pwin.canvas.vid; 
+							end,
 			click = function() pwin:focus(); end
 		}
 
@@ -229,11 +388,14 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		end
 	
 		callback = function(source, status)
+			if (pwin.controlid == nil) then
+				pwin:update_canvas(source);
+			end
+
 			if (status.kind == "resized") then
 				local vid, aud = play_movie(source);
 				pwin.recv = aud;
-				pwin:update_canvas(source);
-				pwin:resize(status.width, status.height);
+				pwin:resize(status.width, status.height, true);
 			end
 		end
 

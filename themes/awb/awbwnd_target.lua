@@ -135,6 +135,11 @@ function awbwnd_target(pwin, caps)
 	pwin.cascade = {}; 
 	pwin.snap_prefix = caps.prefix and caps.prefix or "";
 	pwin.mediavol = 1.0;
+	pwin.filters = {};
+	pwin.rebuild_chain = awbwmedia_filterchain;
+	pwin.on_resized = function(wnd, wndw, wndh, cnvw, cnvh) 
+		pwin:rebuild_chain(cnvw, cnvh);
+	end;
 
 	pwin.set_mvol = function(self, val)
 		pwin.mediavol = val;
@@ -156,6 +161,9 @@ function awbwnd_target(pwin, caps)
 			end, {ref = self.vid});
 		end
 	end);
+
+	bartt:add_icon("filters", "r", cfg.bordericns["filter"], 
+		function(self) awbwmedia_filterpop(pwin, self); end);
 
 	bartt:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
 		if (pwin.paused) then
@@ -205,10 +213,10 @@ function awbwnd_target(pwin, caps)
 		local restbl = inputed_translate(iotbl, pwin.inp_cfg);
 		if (restbl) then 
 			for i,v in ipairs(restbl) do
-				target_input(pwin.canvas.vid, v);
+				target_input(pwin.controlid, v);
 			end
 		else -- hope that the hijacked target can do something with it anyway
-			target_input(pwin.canvas.vid, iotbl);
+			target_input(pwin.controlid, iotbl);
 		end
 	end
 
@@ -225,7 +233,7 @@ function awbwnd_target(pwin, caps)
 
 		elseif (status.kind == "resized") then
 			pwin:update_canvas(source);
-			pwin:resize(pwin.w, pwin.h);
+			pwin:resize(pwin.w, pwin.h, true);
 		end
 	end
 
