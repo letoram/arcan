@@ -4448,7 +4448,10 @@ int arcan_lua_changetexfilter(lua_State* ctx)
 		  mode == ARCAN_VFILTER_LINEAR ||
 		  mode == ARCAN_VFILTER_NONE){
 		arcan_video_objectfilter(vid, mode);
-	}
+	} 
+	else
+		arcan_fatal("image_texfilter(vid, s) -- unsupported mode (%d), expected:"
+			"	FILTER_LINEAR, FILTER_BILINEAR or FILTER_TRILINEAR\n", mode);
 
 	return 0;
 }

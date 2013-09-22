@@ -21,7 +21,7 @@
 #define _HAVE_ARCAN_VIDEOINT
 
 #ifndef RENDERTARGET_LIMIT
-#define RENDERTARGET_LIMIT 32 
+#define RENDERTARGET_LIMIT 64 
 #endif
 
 struct arcan_vobject_litem;

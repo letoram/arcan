@@ -282,7 +282,7 @@ local function awbman_mhandlers(wnd, bar)
 			self.oldw = wnd.w;
 			self.oldh = wnd.h;
 			wnd:move(0, 20);
-			wnd:resize(VRESW, VRESH - 20);
+			wnd:resize(VRESW, VRESH - 20, true);
 		end
 	end
 
@@ -1038,21 +1038,24 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 		mouse_droplistener(res);
 	end
 
-	res.click = function(self, vid, x, y)
+	local btnh = function(self, vid, x, y, left)
 		local yofs, ind, hght = line_y(y - 
 			image_surface_resolve_properties(wnd).y, lineheights);
-
-		if (type(callbacks) == "function") then
-			callbacks(ind);
-		else
-			callbacks[ind]();
-		end
 
 		if (awb_cfg.popup_active) then
 			awb_cfg.popup_active:destroy(awb_cfg.animspeed);
 		end
 		awb_cfg.popup_active = nil;
+
+		if (type(callbacks) == "function") then
+			callbacks(ind, left);
+		else
+			callbacks[ind](left);
+		end
 	end
+
+	res.click = function(self, vid, x, y) btnh(self, vid, x, y, true); end
+	res.rclick = function(self, vid, x, y) btnh(self, vid, x, y, false); end
 
 	res.motion = function(self, vid, x, y)
 		local yofs, ind, hght  = line_y(y - 
@@ -1065,7 +1068,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	res.ref = options.ref;
 	awb_cfg.popup_active = res;
 	res.name = "awbwman_popup";
-	mouse_addlistener(res, {"click", "motion"});
+	mouse_addlistener(res, {"click", "rclick", "motion"});
 end
 
 function awbwman_popupslider(min, val, max, updatefun, options)
@@ -1106,7 +1109,7 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 
 	image_tracetag(border, "popupslider.border");
 	image_tracetag(wnd,    "popupslider.wnd");
-	image_tracetag(caret,  "popuslider.caret");
+	image_tracetag(caret,  "popupslider.caret");
 
 	link_image(caret, border);
 
@@ -1408,23 +1411,29 @@ function awbwman_spawn(caption, options)
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
 		local icn = rbar:add_icon("resize", "r", awb_cfg.bordericns["resize"]);
 		local rhandle = {};
+
 		rhandle.drag = function(self, vid, x, y)
 			awbwman_focus(wcont);
 			if (awb_cfg.meta.shift) then
 				if (math.abs(x) > math.abs(y)) then
-					wcont:resize(wcont.w + x, 0);
+					wcont:resize(wcont.w + x, 0, false);
 				else
-					wcont:resize(0, wcont.h + y);
+					wcont:resize(0, wcont.h + y, false);
 				end
 			else
-				wcont:resize(wcont.w + x, wcont.h + y);
+				wcont:resize(wcont.w + x, wcont.h + y, false);
 			end
 		end
+
+		rhandle.drop = function(self, vid)
+			wcont:resize(math.floor(wcont.w), math.floor(wcont.h), true);
+		end
+
 		rhandle.own = function(self, vid)
 			return vid == icn.vid;
 		end
 		rhandle.name = "awbwindow_resizebtn";
-		mouse_addlistener(rhandle, {"drag"});
+		mouse_addlistener(rhandle, {"drag", "drop"});
 		wcont.rhandle = rhandle; -- for deregistration
 	end	
 
@@ -1537,6 +1546,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["fps"]      = load_image("awbicons/fps.png");
 	awb_cfg.bordericns["subdivide"]= load_image("awbicons/subdiv.png");
 	awb_cfg.bordericns["amplitude"]= load_image("awbicons/ampl.png");
+	awb_cfg.bordericns["filter"]   = load_image("awbicons/filter.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");

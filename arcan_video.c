@@ -1776,13 +1776,12 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 
 /* alter projection so the GL texture gets stored in the way 
  * the images are rendered in normal mode, with 0,0 being upper left */
-		build_orthographic_matrix(dst->projection, 0, arcan_video_display.width, 0, 
-			arcan_video_display.height, 0, 1);
+		build_orthographic_matrix(dst->projection, 0, vobj->origw, 0, 
+			vobj->origh, 0, 1);
 		identity_matrix(dst->base);
 
 		if (scale){
 			float xs = ((float)vobj->vstore->w / (float)arcan_video_display.width);
-
 			float ys = ((float)vobj->vstore->h / (float)arcan_video_display.height);
 
 /* since we may likely have a differently sized FBO, scale it */
@@ -1800,8 +1799,8 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 				glGenBuffers(1, &dst->pbo);
 				glBindBuffer(GL_PIXEL_PACK_BUFFER, dst->pbo);
 				glBufferData(GL_PIXEL_PACK_BUFFER, 
-					vobj->vstore->w*vobj->vstore->h*
-				vobj->vstore->bpp, NULL, GL_STREAM_READ);
+					vobj->vstore->w*vobj->vstore->h *
+					vobj->vstore->bpp, NULL, GL_STREAM_READ);
 				glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 			}
 			else
@@ -3788,6 +3787,22 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	arcan_vobject_litem* current = tgt->first;
 	int width, height;
 
+	if (tgt->color){
+		width = tgt->color->origw;
+		height = tgt->color->origh;
+	}
+	else{
+		width = arcan_video_display.width;
+		height = arcan_video_display.height;
+	}
+
+/* since the rendertargets may vary in size etc. 
+ * we setup the viewport/scissoring here */
+	glScissor(0, 0, width, height);
+	glViewport(0, 0, width, height);
+
+/* should possibly have a "per rendertarget" flag to disable this one
+ * amounts to quite some overdraw on low- power devices */
 	glClear(GL_COLOR_BUFFER_BIT);
 	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 

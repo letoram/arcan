@@ -48,8 +48,8 @@ local function awbwnd_set_border(s, sz, r, g, b)
 		end
 		
 		s.default_resize = s.resize;
-		s.resize = function(self, neww, newh)
-			s:default_resize(neww, newh);
+		s.resize = function(self, neww, newh, completed)
+			s:default_resize(neww, newh, completed);
 
 			move_image(s.borders.t, 0 - sz, 0 - sz);
 			move_image(s.borders.b, 0 - sz, s.h);
@@ -92,13 +92,13 @@ local function awbwnd_update_minsz(self)
 	end
 end
 
-local function awbwnd_resize(self, neww, newh)
+local function awbwnd_resize(self, neww, newh, finished)
 	if (self.anchor == nil) then
 		return;
 	end
 
 --
--- Maintain canvas aspect
+-- Should we forcibly maintain canvas aspect
 --
 	if (neww == 0 or newh == 0) then
 		local props = image_surface_initial_properties(self.canvas.vid);
@@ -162,9 +162,21 @@ local function awbwnd_resize(self, neww, newh)
 	
 	resize_image(self.anchor, neww, newh);
 	move_image(self.canvas.vid, xofs, yofs); 
+
+-- cache these values as they're somewhat expensive to 
+-- calculate and used reasonably often
 	self.w = neww;
 	self.h = newh;
+
+	self.canvasx = xofs;
+	self.canvasy = yofs;
+	self.canvasw = hspace;
+	self.canvash = vspace;
+
 	self.canvas:resize(hspace, vspace);
+	if (finished and self.on_resized) then
+		self:on_resized(neww, newh, hspace, vspace);
+	end
 end
 
 --
@@ -383,11 +395,27 @@ local function awbbar_addicon(self, name, dir, image, trig)
 		name = name
 	};
 
+--
+-- If the icon provided is broken, replace it with a red one
+-- (not worth the abort()), then link it to the null surface to
+-- prevent a leak.
+--
+	local savelink = false;
+	if (not valid_vid(image)) then
+		image = fill_surface(8, 8, 255, 0, 0);
+		image_tracetag(image, "awbbar_icon_leak(" .. name .. ")");
+		savelink = true;
+	end
+
 	local props = image_surface_initial_properties(image);
 	local icon = null_surface(props.width, props.height);
 	link_image(icon, self.vid);
 	image_inherit_order(icon, true);
 	image_tracetag(icon, self.parent.name .. ".bar(" .. dir .. ").icon");
+
+	if (savelink) then
+		link_image(image, icon);
+	end
 
 	if (dir == "l" or dir == "r") then
 		table.insert(dir == "l" and self.left or self.right, icontbl);
@@ -512,11 +540,13 @@ local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 end
 
 local function awbwnd_update_canvas(self, vid)
-
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
 	order_image(vid, 0);
 	show_image(vid);
+
+	move_image(vid, self.canvasx, self.canvasy);
+	resize_image(vid, self.canvasw, self.canvash);
 
 	local canvastbl = {
 		parent = self,
@@ -536,9 +566,9 @@ local function awbwnd_update_canvas(self, vid)
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
-	canvastbl:resize(self.w, self.h);
 
-	if (oldcanvas and oldcanvas.vid ~= vid) then
+	if (oldcanvas and valid_vid(oldcanvas.vid) and 
+		oldcanvas.vid ~= vid) then
 		delete_image(oldcanvas.vid);
 	end
 end
@@ -997,6 +1027,10 @@ function awbwnd_create(options)
    h           = math.floor(VRESH * 0.3),
 	 x           = math.floor(0.5 * (VRESW - (VRESW * 0.3)));
 	 y           = math.floor(0.5 * (VRESH - (VRESH * 0.3)));
+	 canvasw     = 1,
+	 canvash     = 1,
+	 canvasx     = 0,
+	 canvasy     = 0,
    minw        = 0,
    minh        = 0,
 	 animspeed   = 0,
