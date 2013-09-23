@@ -24,13 +24,15 @@ def add_function(groupname, symname, cname)
 -- @longdescr: \n\
 -- @group: #{groupname} \n\
 -- @cfunction: #{cname}\n\
--- @flags: \n\
--- 1 0: \n\
-\#define MAIN
+-- @related:\n\
+\
 function main()
-end
-\#endif\n")
-		end
+\#ifdef MAIN
+\#endif
+
+\#ifdef ERROR1
+\#endif
+end\n") end
 end
 
 in_grp = false

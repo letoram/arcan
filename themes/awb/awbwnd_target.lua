@@ -53,7 +53,7 @@ function awbtarget_listsnaps(tgtwin, gametbl)
 					table.insert(res, {
 						name = base[i],
 						trigger = function() 
-							restore_target(tgtwin.recv, base[i]); 
+							restore_target(tgtwin.controlid, base[i]); 
 							tgtwin.laststate = base[i];
 						end, 
 						name = base[i],
@@ -77,9 +77,8 @@ local function awbtarget_save(pwin, res)
 	if (res == nil) then
 		local buttontbl = {
 			{ caption = desktoplbl("OK"), trigger = function(own) 
-				awbtarget_save(pwin, own.inputfield.msg); print("save, ", own.inputfield.msg);
-			end },
-			{ caption = desktoplbl("Cancel"), trigger = function(own) print("cancel"); end }
+				awbtarget_save(pwin, own.inputfield.msg); end },
+			{ caption = desktoplbl("Cancel"), trigger = function(own) end }
 		};
 
 		local dlg = awbwman_dialog(desktoplbl("Save As:"), buttontbl, {
@@ -88,7 +87,7 @@ local function awbtarget_save(pwin, res)
 
 		pwin:add_cascade(dlg);
 	else
-		snapshot_target(pwin.canvas.vid, pwin.snap_prefix .. res);
+		snapshot_target(pwin.controlid, pwin.snap_prefix .. res);
 		pwin.laststate = res; 
 	end
 end
@@ -232,8 +231,14 @@ function awbwnd_target(pwin, caps)
 			print("show loading info..");
 
 		elseif (status.kind == "resized") then
-			pwin:update_canvas(source);
+			if (pwin.updated == nil) then
+				pwin:update_canvas(source);
+			end
+	
+			pwin.updated = true;
 			pwin:resize(pwin.w, pwin.h, true);
+		else
+--			print(status.kind);
 		end
 	end
 

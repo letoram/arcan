@@ -55,11 +55,10 @@ static data_source* alloc_datasource()
 
 void arcan_release_resource(data_source* sptr)
 {
-    char playbuf[4096];
-    playbuf[4095] = '\0';
-
 /* relying on a working close() is bad form,
- * unfortunately recovery options are few */
+ * unfortunately recovery options are few 
+ * this could be a race instead, however main
+ * app shouldn't be multithreaded. */
 	if (-1 != sptr->fd){
 		int trycount = 10;
 		while (trycount--){
@@ -68,18 +67,24 @@ void arcan_release_resource(data_source* sptr)
 		}
 
 /* don't want this one free:d */
-	if ( sptr->source == tag_resleak )
-		sptr->source = NULL;
+		if ( sptr->source == tag_resleak )
+			sptr->source = NULL;
 
 /* something broken with the file-descriptor, 
  * not many recovery options but purposefully leak
  * the memory so that it can be found in core dumps etc. */
-		if (trycount){
-			free( sptr->source );
+		if (trycount && sptr->source){
+	    char playbuf[4096];
+  	  playbuf[4095] = '\0';
+
 			snprintf(playbuf, sizeof(playbuf) - 1, "broken_fd(%d:%s)", 
 				sptr->fd, sptr->source);
+
+			free( sptr->source );
 			sptr->source = strdup(playbuf);
-		} else {
+			return;
+		} 
+		else {
 /* make the released memory distinguishable from a broken 
  * descriptor from a memory analysis perspective */
 			free( sptr->source );
@@ -87,11 +92,6 @@ void arcan_release_resource(data_source* sptr)
 			sptr->start  = -1;
 			sptr->len    = -1;
 		}
-	}
-
-	if (sptr->source){
-		free(sptr->source);
-		sptr->source = NULL;
 	}
 }
 

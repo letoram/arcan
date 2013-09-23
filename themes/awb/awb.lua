@@ -87,7 +87,11 @@ system_load("tools/hghtmap.lua")();
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
 system_load("scripts/mouse.lua")();
-kbdbinds["F10"]    = mouse_dumphandlers;
+
+if (DEBUGLEVEL > 1) then
+	kbdbinds["F10"]    = mouse_dumphandlers;
+	kbdbinds["F9"]     = function() Trace(); end
+end
 
 system_load("awb_iconcache.lua")();
 system_load("awbwnd.lua")();

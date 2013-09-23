@@ -70,6 +70,11 @@ else( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 	set( HAVE_SIMD TRUE )
 endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 
+option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
+option(ENABLE_NET "Build with networking support in frameserver" ON)
+option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
+option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
+
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
@@ -91,6 +96,10 @@ if (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
 	message("-------------- *Debug Tracing Build* --------------")
 	add_definitions(-g -D_DEBUG -DTRACE_ENABLE)
 endif (CMAKE_BUILD_TYPE STREQUAL "DebugTrace")
+
+if (ENABLE_ASAN)
+	set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
+endif (ENABLE_ASAN)
 
 # --- Step 1, Dependencies
 # paths / locations
@@ -128,16 +137,10 @@ elseif(WIN32)
 	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
 	set(GLEW_INCLUDE_DIR ${WININC})
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
-
-# don't need it defined on windows, just map to a preexisting
-# lib to fool the FIND_ script
-	set(VPX_LIBRARIES ${WINLIB}\\glew32s.lib)
-	set(VPX_INCLUDE_DIRS ${WININC})
 endif()
 
 FIND_PACKAGE ( SDL REQUIRED )
 FIND_PACKAGE ( SDL_image )
-FIND_PACKAGE ( PNG REQUIRED )
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( OpenAL REQUIRED )
@@ -145,11 +148,14 @@ FIND_PACKAGE ( PNG REQUIRED )
 FIND_PACKAGE ( Lua51 REQUIRED )
 FIND_PACKAGE ( BZip2 REQUIRED )
 FIND_PACKAGE ( ZLIB REQUIRED )
-FIND_PACKAGE ( FFMPEG REQUIRED )
 FIND_PACKAGE ( SQLITE3 REQUIRED )
 FIND_PACKAGE ( GLEW REQUIRED )
-FIND_PACKAGE ( VPX REQUIRED )
-FIND_PACKAGE ( APR REQUIRED )
+
+# -- without APR, no frameserver_net (and no need for NaCL)
+FIND_PACKAGE ( APR )
+
+# -- without FFMPEG, no frameserver_encode, frameserver_decode
+FIND_PACKAGE ( FFMPEG )
 
 LIST (APPEND
 	MAIN_LIBRARIES
@@ -170,11 +176,8 @@ LIST (APPEND
 set (
 FSRV_LIBRARIES
 	${SDL_LIBRARY}
-	${FFMPEG_LIBRARIES}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
-	${APR_LIBRARIES}
-	${VPX_LIBRARIES}
 #	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
 #	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
 #	${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/include
@@ -247,21 +250,9 @@ set (
 
 set (
  FSRV_SOURCES
- frameserver/arcan_frameserver_decode.h
- frameserver/arcan_frameserver_decode.c
- frameserver/arcan_frameserver_encode.h
- frameserver/arcan_frameserver_encode.c
- frameserver/arcan_frameserver_libretro.h
- frameserver/arcan_frameserver_libretro.c
- frameserver/arcan_frameserver_encode_presets.c
- frameserver/arcan_frameserver_encode_presets.h
- frameserver/arcan_frameserver_net.h
- frameserver/arcan_frameserver_net.c
  frameserver/graphing/font_8x8.h
  frameserver/graphing/net_graph.h
  frameserver/graphing/net_graph.c
- frameserver/ntsc/snes_ntsc.h
- frameserver/ntsc/snes_ntsc.c
  frameserver/resampler/resample.c
  frameserver/resampler/speex_resampler.h
  arcan_frameserver_shmpage.h
@@ -270,10 +261,50 @@ set (
 )
 
 if (${HAVE_SIMD})
-				message("-- Enabling SIMD")
-				add_definitions(-DARCAN_MATH_SIMD)
-				LIST(APPEND SOURCES arcan_math_simd.c)
+	message("-- Enabling SIMD")
+	add_definitions(-DARCAN_MATH_SIMD)
+	list(APPEND SOURCES arcan_math_simd.c)
 endif (${HAVE_SIMD})
+
+# Enable / Disable individual frameserver features
+if (${ENABLE_LIBRETRO})
+	message("--> Including libretro support.")
+	list(APPEND FSRV_SOURCES
+	 frameserver/arcan_frameserver_libretro.h
+	 frameserver/arcan_frameserver_libretro.c
+	 frameserver/ntsc/snes_ntsc.h
+	 frameserver/ntsc/snes_ntsc.c
+ 	)
+	add_definitions(-DENABLE_FSRV_LIBRETRO) 
+endif(${ENABLE_LIBRETRO})
+
+if (${APR_FOUND} AND ${ENABLE_NET})
+	message("--> Including networking support.") 
+	list(APPEND FSRV_LIBRARIES ${APR_LIBRARIES} )
+	list(APPEND FSRV_SOURCES
+   frameserver/arcan_frameserver_net.h
+	 frameserver/arcan_frameserver_net.c
+	)
+	add_definitions(-DENABLE_FSRV_NET)
+else (${APR_FOUND} AND ${ENABLE_NET})
+	message("--> Disabling networking support.")
+endif (${APR_FOUND} AND ${ENABLE_NET})
+
+if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
+	message("--> Enabling video encoding/decoding support.") 
+	list(APPEND FSRV_LIBRARIES ${FFMPEG_LIBRARIES})
+	list(APPEND FSRV_SOURCES 
+		frameserver/arcan_frameserver_decode.h
+		frameserver/arcan_frameserver_decode.c
+		frameserver/arcan_frameserver_encode.h
+		frameserver/arcan_frameserver_encode.c
+		frameserver/arcan_frameserver_encode_presets.c
+		frameserver/arcan_frameserver_encode_presets.h
+	)
+	add_definitions(-DENABLE_FSRV_ENCODE -DENABLE_FSRV_DECODE)
+else (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
+	message("--> Disabling video de-/encoding.")
+endif(${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 
 include_directories(${INCLUDE_DIRS})
 
@@ -301,14 +332,6 @@ LIST(APPEND SOURCES
 	arcan_frameserver_backend_unix.c)
 LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c)
 
-# " probe " support not ready, idea is to sweep targets, look at dependencies with the hijack preloaded
-# and figure out which symbols are used and available
-
-#add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
-#add_library(arcan_hijackprobe SHARED arcan_target_osx.c arcan_frameserver_shmpage.c)
-#add_dependencies(arcan_hijackprobe arcan_target_probebackend)
-#set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
-
 add_definitions(-D__APPLE__ -D__UNIX -DLUA_51)
 add_library( arcan_hijack SHARED arcan_target_osx.c arcan_frameserver_shmpage.c arcan_event.c frameserver/ntsc/snes_ntsc.c )
 
@@ -316,7 +339,6 @@ target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY} )
 
 add_executable( arcan ${SOURCES} )
 add_executable( arcan_frameserver ${FSRV_SOURCES})
-# add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
@@ -397,7 +419,6 @@ platform/sdl/event.c
 
 	add_executable( arcan ${SOURCES})
 	add_executable( arcan_frameserver ${FSRV_SOURCES})
-#	add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 	install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 	install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
@@ -433,7 +454,6 @@ platform/sdl/event.c
 add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
 add_definitions(-DCLOCK_SOURCE_RAW)
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
-#add_definitions(-fsanitize=address ) 
 
 set_source_files_properties( ctags.output PROPERTIES GENERATED true )
 add_custom_command( OUTPUT ctags.output
@@ -463,19 +483,12 @@ add_library(arcan_hijack SHARED
 set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
-# part of tools to troubleshoot / test hijack for a target (intended for the romman)
-# add_custom_target(arcan_target_probebackend DEPENDS "arcan_target_probe.c")
-# add_library(arcan_hijackprobe SHARED arcan_target_unix.c)
-# add_dependencies(arcan_hijackprobe arcan_target_probebackend)
-# set_target_properties(arcan_hijackprobe PROPERTIES COMPILE_FLAGS "-DPROBE")
-
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES} )
 add_executable( arcan_frameserver ${FSRV_SOURCES})
-# add_executable( arcan_modelconv arcan_modelconv.c arcan_math.c)
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 

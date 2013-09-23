@@ -17,6 +17,7 @@
 local shader_seqn = 0;
 
 local crtcont = system_load("display/crt.lua")();
+local upscaler = system_load("display/upscale.lua")();
 
 local function set_shader(modelv)
 	local lshdr = load_shader("shaders/dir_light.vShader", 
@@ -311,12 +312,12 @@ function awbwmedia_filterchain(pwin)
 -- since shaders are "per target" 
 -- we need to load / rebuild and tagging with the wndid
 		elseif (f == "SABR") then
-			dstres, dprops = upscaler.sabr:setup(dstres, "SABR_" .. tostring(pwin.wndid),
-				pwin.filters.upscaleopt);
+			dstres, ctx = upscaler.sabr:setup(dstres,"SABR_"..tostring(pwin.wndid),
+				store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
 	
-		elseif (f == "XBR") then
- 			dstres, dprops = upscaler.xbr:setup(dstres, "XBR_" .. tostring(pwin.wndid),
-			pwin.filters.upscaleopt);
+		elseif (f == "xBR") then
+ 			dstres, ctx = upscaler.xbr:setup(dstres, "XBR_"..tostring(pwin.wndid),
+			store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
 		end
 	end
 
@@ -324,11 +325,11 @@ function awbwmedia_filterchain(pwin)
 	if (pwin.filters.effect) then
 		local f = pwin.filters.effect;
 		if (f == "Glow") then
-			dstres = glow:setup(dstres, "GLOW_" .. tostring(pwin.wndid),
+			dstres, ctx = glow:setup(dstres, "GLOW_" .. tostring(pwin.wndid),
 				pwin.filters.effectopt);
 
 		elseif (f == "Trails") then
-			dstres = trails:setup(dstres, "TRAILS_" .. tostring(pwin.wndid),
+			dstres, ctx = trails:setup(dstres, "TRAILS_" .. tostring(pwin.wndid),
 				pwin.filters.effectopt);
 
 		elseif (f == "TrailGlow") then

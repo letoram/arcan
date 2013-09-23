@@ -159,8 +159,13 @@ void push_globj(arcan_vobject* dst, bool noupload,
 	if (noupload)
 		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 	else{
-		glGenTextures(1, &s->vinf.text.glid); 
-		s->refcount = 1;
+		glGenTextures(1, &s->vinf.text.glid);
+
+/* for the launch_resume and resize states, were we'd push a new 
+ * update	but have multiple references */
+		if (s->refcount == 0) 
+			s->refcount = 1;
+
 		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 	}
 
@@ -1476,6 +1481,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 
 		drop_glres(dst->vstore);
+
 		dst->vstore = src->vstore;
 		dst->vstore->refcount++;
 		memcpy(dst->txcos, src->txcos, sizeof(dst->txcos));
