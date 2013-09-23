@@ -898,7 +898,7 @@ local function match_aspect(sourcew, sourceh, destw, desth)
 	if (hr > wr) then
 		return math.floor(desth * ar), desth;
 	else
-		return destw, math.floor(ar / destw);
+		return destw, math.floor(destw / ar);
 	end
 end
 

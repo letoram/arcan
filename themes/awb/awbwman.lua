@@ -39,6 +39,7 @@ local awb_cfg = {
 -- window management
 	wlimit      = 10,
 	focus_locked = false,
+	fullscreen  = nil,
 	topbar_sz   = 16,
 	spawnx      = 20,
 	spawny      = 20,
@@ -150,6 +151,75 @@ end
 
 function awbwman_ispopup(vid)
 	return awb_cfg.popup_active and awb_cfg.popup_active.ref == vid;
+end
+
+function awbwman_fullscreen(wnd)
+-- hide root window (will cascade and hide everything else)
+	blend_image(awb_cfg.root.anchor, 0.0, awb_cfg.animspeed);
+	for k, v in ipairs(awb_wtable) do
+		blend_image(v.anchor, 0.0, awb_cfg.animspeed);
+	end
+
+	awb_cfg.fullscreen = {};
+
+-- fit screen, maintaining aspect ratio
+-- (force a resize of the focus window so possible filter-chains etc.
+-- gets updated properly).
+
+	local cprops = image_surface_properties(awb_cfg.focus.canvas.vid);
+	local iprops = image_surface_initial_properties(awb_cfg.focus.canvas.vid);
+	local ar = iprops.width / iprops.height;
+	local wr = iprops.width / VRESW;
+	local hr = iprops.height / VRESH;
+	local dw, dh;
+
+	if (hr > wr) then
+		dw = math.floor(VRESH * ar);
+		dh = VRESH;
+	else
+		dw = VRESW;
+		dh = math.floor(VRESW / ar);
+	end
+
+-- we'll restore later
+	awb_cfg.focus.canvas:resize(dw, dh);
+	if (awb_cfg.focus.on_resized) then
+		awb_cfg.focus:on_resized(dw, dh, dw, dh);
+	end
+
+	local xp = math.floor(0.5 * (VRESW - dw));
+	local yp = math.floor(0.5 * (VRESH - dh));
+
+-- setup intermediate representation
+	local vid = null_surface(dw, dh);
+	image_sharestorage(awb_cfg.focus.canvas.vid, vid);
+	blend_image(vid, 1.0, awb_cfg.animspeed);
+	move_image(vid, xp, yp);
+	show_image(vid);
+	order_image(vid, max_current_image_order());
+
+-- store values for restoring
+	awb_cfg.fullscreen.vid = vid;
+	awb_cfg.fullscreen.props = cprops;
+end
+
+function awbwman_dropfullscreen(wnd)
+-- reattach canvas to window
+ 	for k, v in ipairs(awb_wtable) do
+		blend_image(v.anchor, 1.0, awb_cfg.animspeed);
+	end
+	blend_image(awb_cfg.root.anchor, 1.0, awb_cfg.animspeed);
+
+	local w = awb_cfg.fullscreen.props.width;
+	local h = awb_cfg.fullscreen.props.height;
+
+	awb_cfg.focus.canvas:resize(w, h);
+	if (awb_cfg.focus.on_resized) then
+		awb_cfg.focus:on_resized(w, h, w, h);
+	end
+		
+	delete_image(awb_cfg.fullscreen.vid);
+	awb_cfg.fullscreen = nil;
 end
 
 function awbwman_shadow_nonfocus()
@@ -432,12 +502,22 @@ function awbwman_iconwnd(caption, selfun, options)
 end
 
 function awbwman_mediawnd(caption, kind, source, options)
+	if (options == nil) then
+		options = {};
+	end
+
+	options.fullscreen = true;
 	local wnd = awbwman_spawn(caption, options);
 	return wnd, awbwnd_media(wnd, kind, source, 
 		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
 end
 
 function awbwman_targetwnd(caption, options, capabilities)
+	if (options == nil) then
+		options = {};
+	end
+
+	options.fullscreen = true;
 	local wnd = awbwman_spawn(caption, options);
 	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
 		wnd.dir.t.bsize);
@@ -502,13 +582,13 @@ function awbwman_reqglobal(wnd)
 	return false;
 end
 
-function awbwman_notice()
+function awbwman_notice(msg)
 end
 
-function awbwman_alert()
+function awbwman_alert(msg)
 end
 
-function awbwman_warning()
+function awbwman_warning(msg)
 end
 
 --
@@ -866,6 +946,11 @@ function awbwman_rootwnd()
 end
 
 function awbwman_cancel()
+	if (awb_cfg.fullscreen ~= nil) then
+		awbwman_dropfullscreen();
+		return;
+	end
+
 	if (close_dlg ~= nil) then
 		return;
 	end
@@ -1246,6 +1331,8 @@ function awbwman_rootaddicon(name, captionvid,
 	end
 
 	icntbl.anchor = null_surface(awb_cfg.rootcell_w, awb_cfg.rootcell_h);
+	link_image(icntbl.anchor, awb_cfg.root.anchor);
+
 	icntbl.vid    = null_surface(props.width, props.height); 
 	image_sharestorage(iconvid, icntbl.vid);
 
@@ -1432,8 +1519,18 @@ function awbwman_spawn(caption, options)
 		rhandle.own = function(self, vid)
 			return vid == icn.vid;
 		end
+
+		rhandle.rclick = function(self, vid)
+			if (options.fullscreen) then
+				local vid, lines = desktoplbl([[Fullscreen]]);
+				awbwman_popup(vid, lines, function(ind)
+					awbwman_fullscreen(wcont);
+				end);
+			end
+		end
+
 		rhandle.name = "awbwindow_resizebtn";
-		mouse_addlistener(rhandle, {"drag", "drop"});
+		mouse_addlistener(rhandle, {"drag", "drop", "rclick"});
 		wcont.rhandle = rhandle; -- for deregistration
 	end	
 
