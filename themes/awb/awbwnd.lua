@@ -563,6 +563,7 @@ local function awbwnd_update_canvas(self, vid)
 		return vid == self.vid;
 	end
 
+
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");

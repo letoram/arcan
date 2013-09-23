@@ -167,11 +167,11 @@ function awbwnd_target(pwin, caps)
 	bartt:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
 		if (pwin.paused) then
 			pwin.paused = nil;
-			resume_target(pwin.canvas.vid);
+			resume_target(pwin.controlid);
 			image_sharestorage(cfg.bordericns["pause"], self.vid);
 		else
 			pwin.paused = true;
-			suspend_target(pwin.canvas.vid);
+			suspend_target(pwin.controlid);
 			image_sharestorage(cfg.bordericns["play"], self.vid);
 		end
 	end);
