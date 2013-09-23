@@ -44,17 +44,31 @@
 #include "../arcan_event.h"
 #include "arcan_frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
-#include "arcan_frameserver_libretro.h"
-#include "arcan_frameserver_decode.h"
-#include "arcan_frameserver_encode.h"
 
+#ifdef ENABLE_FSRV_LIBRETRO
+#include "arcan_frameserver_libretro.h"
+#endif
+
+#ifdef ENABLE_FSRV_ENCODE
+#include "arcan_frameserver_encode.h"
+#endif
+
+#ifdef ENABLE_FSRV_DECODE
+#include "arcan_frameserver_decode.h"
+#endif
+
+#ifdef ENABLE_FSRV_NET
 #include "arcan_frameserver_net.h"
+#endif
 
 FILE* logdev = NULL;
 int sockin_fd = -1;
 
-/* arcan_general functions assumes these are valid for searchpaths etc.
- * since we want to use some of those functions, we need a linkerhack or two */
+/* 
+ * arcan_general functions assumes these are valid for searchpaths etc.
+ * since we want to use some of those functions, we need a linkerhack or two.
+ * These should be refactored to use the platform* functions
+ */
 void* frameserver_getrawfile(const char* fname, ssize_t* dstsize)
 {
 	int fd;
@@ -369,23 +383,35 @@ static void toggle_logdev(const char* prefix)
 	}
 #endif
 
+/* these are enabled based on build-system toggles */
+
+#ifdef ENABLE_FSRV_NET
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);
 	}
-	else if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
+#endif
+
+#ifdef ENABLE_FSRV_DECODE
+	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("dec");
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	}
-	else if (strcmp(fsrvmode, "libretro") == 0){
-		toggle_logdev("retro");
-		arcan_frameserver_libretro_run(resource, keyfile);
-	}
-	else if (strcmp(fsrvmode, "record") == 0){
+#endif
+
+#ifdef ENABLE_FSRV_ENCODE
+	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("rec");
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);
 	}
-	else;
+#endif
+
+#ifdef ENABLE_FSRV_LIBRETRO
+	if (strcmp(fsrvmode, "libretro") == 0){
+		toggle_logdev("retro");
+		arcan_frameserver_libretro_run(resource, keyfile);
+	}
+#endif
 
 	return 0;
 }
