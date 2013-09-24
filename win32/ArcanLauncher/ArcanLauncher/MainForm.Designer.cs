@@ -31,6 +31,8 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(LauncherForm));
             this.MainTab = new System.Windows.Forms.TabControl();
             this.ArcanTP = new System.Windows.Forms.TabPage();
+            this.BASEBTN = new System.Windows.Forms.Button();
+            this.BasedirTB = new System.Windows.Forms.TextBox();
             this.label7 = new System.Windows.Forms.Label();
             this.PrewakeSelector = new System.Windows.Forms.NumericUpDown();
             this.ThemePathTB = new System.Windows.Forms.TextBox();
@@ -84,7 +86,6 @@
             this.label3 = new System.Windows.Forms.Label();
             this.TargetDatabaseTB = new System.Windows.Forms.TextBox();
             this.OutputTP = new System.Windows.Forms.TabPage();
-            this.label2 = new System.Windows.Forms.Label();
             this.OutputErrLB = new System.Windows.Forms.ListBox();
             this.outputLB = new System.Windows.Forms.ListBox();
             this.folderSelector = new System.Windows.Forms.FolderBrowserDialog();
@@ -121,6 +122,8 @@
             // 
             // ArcanTP
             // 
+            this.ArcanTP.Controls.Add(this.BASEBTN);
+            this.ArcanTP.Controls.Add(this.BasedirTB);
             this.ArcanTP.Controls.Add(this.label7);
             this.ArcanTP.Controls.Add(this.PrewakeSelector);
             this.ArcanTP.Controls.Add(this.ThemePathTB);
@@ -153,6 +156,25 @@
             this.ArcanTP.TabIndex = 0;
             this.ArcanTP.Text = "Arcan";
             this.ArcanTP.UseVisualStyleBackColor = true;
+            // 
+            // BASEBTN
+            // 
+            this.BASEBTN.Location = new System.Drawing.Point(363, 180);
+            this.BASEBTN.Name = "BASEBTN";
+            this.BASEBTN.Size = new System.Drawing.Size(118, 21);
+            this.BASEBTN.TabIndex = 33;
+            this.BASEBTN.Text = "Base Directory...";
+            this.BASEBTN.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.BASEBTN.UseVisualStyleBackColor = true;
+            this.BASEBTN.Click += new System.EventHandler(this.BASEBTN_Click);
+            // 
+            // BasedirTB
+            // 
+            this.BasedirTB.Enabled = false;
+            this.BasedirTB.Location = new System.Drawing.Point(11, 180);
+            this.BasedirTB.Name = "BasedirTB";
+            this.BasedirTB.Size = new System.Drawing.Size(346, 20);
+            this.BasedirTB.TabIndex = 32;
             // 
             // label7
             // 
@@ -195,7 +217,7 @@
             // ThemePathTB
             // 
             this.ThemePathTB.Enabled = false;
-            this.ThemePathTB.Location = new System.Drawing.Point(11, 237);
+            this.ThemePathTB.Location = new System.Drawing.Point(11, 262);
             this.ThemePathTB.Name = "ThemePathTB";
             this.ThemePathTB.Size = new System.Drawing.Size(346, 20);
             this.ThemePathTB.TabIndex = 29;
@@ -203,7 +225,7 @@
             // ResourcePathTB
             // 
             this.ResourcePathTB.Enabled = false;
-            this.ResourcePathTB.Location = new System.Drawing.Point(11, 209);
+            this.ResourcePathTB.Location = new System.Drawing.Point(11, 236);
             this.ResourcePathTB.Name = "ResourcePathTB";
             this.ResourcePathTB.Size = new System.Drawing.Size(346, 20);
             this.ResourcePathTB.TabIndex = 28;
@@ -211,7 +233,7 @@
             // DatabaseTB
             // 
             this.DatabaseTB.Enabled = false;
-            this.DatabaseTB.Location = new System.Drawing.Point(11, 183);
+            this.DatabaseTB.Location = new System.Drawing.Point(11, 210);
             this.DatabaseTB.Name = "DatabaseTB";
             this.DatabaseTB.Size = new System.Drawing.Size(346, 20);
             this.DatabaseTB.TabIndex = 27;
@@ -407,7 +429,7 @@
             // 
             // DBBTN
             // 
-            this.DBBTN.Location = new System.Drawing.Point(363, 183);
+            this.DBBTN.Location = new System.Drawing.Point(363, 207);
             this.DBBTN.Name = "DBBTN";
             this.DBBTN.Size = new System.Drawing.Size(118, 21);
             this.DBBTN.TabIndex = 7;
@@ -427,7 +449,7 @@
             // 
             // TPathBTN
             // 
-            this.TPathBTN.Location = new System.Drawing.Point(363, 236);
+            this.TPathBTN.Location = new System.Drawing.Point(363, 261);
             this.TPathBTN.Name = "TPathBTN";
             this.TPathBTN.Size = new System.Drawing.Size(118, 21);
             this.TPathBTN.TabIndex = 5;
@@ -438,7 +460,7 @@
             // 
             // RPathBTN
             // 
-            this.RPathBTN.Location = new System.Drawing.Point(363, 210);
+            this.RPathBTN.Location = new System.Drawing.Point(363, 234);
             this.RPathBTN.Name = "RPathBTN";
             this.RPathBTN.Size = new System.Drawing.Size(118, 21);
             this.RPathBTN.TabIndex = 4;
@@ -778,7 +800,6 @@
             // 
             // OutputTP
             // 
-            this.OutputTP.Controls.Add(this.label2);
             this.OutputTP.Controls.Add(this.OutputErrLB);
             this.OutputTP.Controls.Add(this.outputLB);
             this.OutputTP.Location = new System.Drawing.Point(4, 22);
@@ -787,16 +808,6 @@
             this.OutputTP.TabIndex = 2;
             this.OutputTP.Text = "Output";
             this.OutputTP.UseVisualStyleBackColor = true;
-            // 
-            // label2
-            // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(319, 0);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(58, 13);
-            this.label2.TabIndex = 2;
-            this.label2.Text = "(STDERR)";
-            this.label2.Click += new System.EventHandler(this.label2_Click);
             // 
             // OutputErrLB
             // 
@@ -856,7 +867,6 @@
             this.tabPage5.ResumeLayout(false);
             this.tabPage5.PerformLayout();
             this.OutputTP.ResumeLayout(false);
-            this.OutputTP.PerformLayout();
             this.ResumeLayout(false);
 
         }
@@ -923,7 +933,8 @@
         private System.Windows.Forms.ListBox TargetsLB;
         private System.Windows.Forms.CheckBox ShortenTitles;
         private System.Windows.Forms.CheckBox FBSkipClonesCB;
-        private System.Windows.Forms.Label label2;
+        private System.Windows.Forms.Button BASEBTN;
+        private System.Windows.Forms.TextBox BasedirTB;
     }
 }
 

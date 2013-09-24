@@ -140,6 +140,10 @@ end
 --
 function gamelist_launch(self)
 	local captbl = launch_target_capabilities(self.target);
+	if (captbl == nil) then
+		awbwman_alert("Couldn't get capability table");
+		return;
+	end
 
 	if (captbl.internal_launch == false) then
 -- confirmation dialog
@@ -311,7 +315,7 @@ function gamelist_wnd(selection)
 				rtrigger = gamelist_popup,
 				trigger  = gamelist_launch,
 				cols     = {tbl[i].title, 
-					string.len(tbl[i].genre) > 0 and tbl[i].genre or "(none)"}
+					(tbl[i].genre ~= nil and string.len(tbl[i].genre) > 0) and tbl[i].genre or "(none)"}
 			};
 
 			table.insert(res, ent);
