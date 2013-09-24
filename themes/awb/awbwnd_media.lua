@@ -354,14 +354,15 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
 	pwin.filters = {};
 	pwin.rebuild_chain = awbwmedia_filterchain;
-	pwin.on_resized = 
-		function(wnd, winw, winh, cnvw, cnvh)
-			awbwmedia_filterchain(pwin, cnvw, cnvh);
-		end;
 
 	if (kind == "frameserver" or 
 		kind == "capture" or kind == "static") then
-		
+	
+		pwin.on_resized = 
+		function(wnd, winw, winh, cnvw, cnvh)
+			awbwmedia_filterchain(pwin, cnvw, cnvh);
+		end;
+	
 		local canvash = {
 			name  = kind .. "_canvash",
 			own   = function(self, vid) 
