@@ -455,11 +455,15 @@ add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
 add_definitions(-DCLOCK_SOURCE_RAW)
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
-set_source_files_properties( ctags.output PROPERTIES GENERATED true )
-add_custom_command( OUTPUT ctags.output
-	COMMAND ctags -R --fields=+iaS --extra=+q -o ctags.output .
-	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
-LIST(APPEND SOURCES ctags.output)
+find_program(GENERATE_TAGS ctags)
+if (GENERATE_TAGS)
+	message("--> ctags command found, generating tags output")
+	set_source_files_properties( ctags.output PROPERTIES GENERATED true )
+	add_custom_command( OUTPUT ctags.output
+		COMMAND ctags -R --fields=+iaS --extra=+q -o ctags.output .
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} )
+	LIST(APPEND SOURCES ctags.output)
+endif (GENERATE_TAGS)
 
 LIST(APPEND SOURCES 
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
