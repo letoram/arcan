@@ -15,32 +15,56 @@ namespace ArcanLauncher
 {
     public partial class LauncherForm : Form
     {
-        String baseDir;
-        
         public LauncherForm()
         {
-            InitializeComponent();
+            String baseDir;
 
+            InitializeComponent();
+            List<String> paths = new List<String>();
+            paths.Add("C:\\Program Files (x86)\\Arcan");
+            paths.Add("C:\\Program Files (x86)\\Arcan31");
+            paths.Add("C:\\Program Files\\Arcan");
+            paths.Add("C:\\Arcan");
+            paths.Add("C:\\Arcan31");
+             
+/* try to locate the installation, should've had this key written: */
             Object baseDirObj = Registry.GetValue("HKEY_LOCAL_MACHINE\\Software\\Wow6432Node\\Arcan", "InstallationDirectory", null);
             if (baseDirObj == null)
                 baseDirObj = Registry.GetValue("HKEY_LOCAL_MACHINE\\Software\\Arcan", "InstallationDirectory", null);
 
-            if (baseDirObj == null){
-                baseDir = "C:\\Arcan30";
-            } else
-                baseDir = (string) baseDirObj;
+            baseDir = (string)baseDirObj;
 
-            DatabaseTB.Text = String.Format("{0}\\resources\\arcandb.sqlite", baseDir);
-            ThemePathTB.Text = String.Format("{0}\\themes", baseDir);
-            ResourcePathTB.Text = String.Format("{0}\\resources", baseDir);
+            if (baseDir == null || Directory.Exists(baseDir) == false)
+                foreach (String val in paths) {
+                    if (Directory.Exists(val)){
+                        baseDir = val;
+                        break;
+                    }
+                }
 
-            updateThemeList();
-            RebuildCmdLine();
+            if (baseDir != null && Directory.Exists(baseDir))
+            {
+                BasedirTB.Text = baseDir;
+                DatabaseTB.Text = String.Format("{0}\\resources\\arcandb.sqlite", baseDir);
+                ThemePathTB.Text = String.Format("{0}\\themes", baseDir);
+                ResourcePathTB.Text = String.Format("{0}\\resources", baseDir);
+
+                updateThemeList();
+                RebuildCmdLine();
+            }
+            else
+                BasedirTB.Text = "Not Found";
         }
 
         private void updateThemeList()
         {
             ThemeList.Items.Clear();
+            if (Directory.Exists(ThemePathTB.Text) == false)
+                ThemePathTB.Text = BasedirTB.Text + "\\themes";
+
+            if (Directory.Exists(ThemePathTB.Text) == false)
+                return;
+
             foreach (DirectoryInfo dirinf in (new DirectoryInfo(ThemePathTB.Text).EnumerateDirectories()))
             {
                 if (File.Exists(String.Format("{0}\\{1}.lua", dirinf.FullName, dirinf.Name)))
@@ -102,8 +126,8 @@ namespace ArcanLauncher
             outputLB.Items.Clear();
 
             Process aProc = new Process();
-            aProc.StartInfo.FileName = baseDir + "\\arcan.exe";
-            aProc.StartInfo.WorkingDirectory = baseDir;
+            aProc.StartInfo.FileName = BasedirTB.Text + "\\arcan.exe";
+            aProc.StartInfo.WorkingDirectory = BasedirTB.Text;
             aProc.StartInfo.Arguments = CMDLine.Text;
             aProc.StartInfo.CreateNoWindow = true;
             aProc.StartInfo.RedirectStandardError = true;
@@ -170,10 +194,17 @@ namespace ArcanLauncher
         private void GroupsChanged()
         {
             TargetsLB.Items.Clear();
-            
+
+            if (Directory.Exists(resPathTB.Text) == false)
+                resPathTB.Text = BasedirTB.Text + "\\resources";
+
+            if (Directory.Exists(resPathTB.Text + "\\targets") == false)
+                return;
+
             foreach (FileInfo fileinf in (new DirectoryInfo(resPathTB.Text + "\\targets").EnumerateFiles()))
             {
                 String basename = Path.GetFileNameWithoutExtension(fileinf.FullName);
+
                 if (Directory.Exists(resPathTB.Text + "\\games\\" + basename))
                     TargetsLB.Items.Add(basename);
             }
@@ -264,8 +295,8 @@ namespace ArcanLauncher
             outputLB.Items.Clear();
 
             Process aProc = new Process();
-            aProc.StartInfo.FileName = baseDir + "\\arcan_romman.exe";
-            aProc.StartInfo.WorkingDirectory = baseDir;
+            aProc.StartInfo.FileName = BasedirTB.Text + "\\arcan_romman.exe";
+            aProc.StartInfo.WorkingDirectory = BasedirTB.Text;
             aProc.StartInfo.Arguments = CmdLine;
             aProc.StartInfo.CreateNoWindow = false;
             aProc.StartInfo.RedirectStandardError = false;
@@ -276,9 +307,16 @@ namespace ArcanLauncher
             aProc.WaitForExit();
         }
 
-        private void label2_Click(object sender, EventArgs e)
+        private void BASEBTN_Click(object sender, EventArgs e)
         {
+            folderSelector.SelectedPath = BasedirTB.Text;
+            DialogResult res = folderSelector.ShowDialog();
 
+            if (res == DialogResult.OK)
+            {
+                BasedirTB.Text = folderSelector.SelectedPath;
+                GroupsChanged();
+            }
         }
     }
 }
