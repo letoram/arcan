@@ -122,6 +122,20 @@ local function awbtarget_addstateopts(pwin)
 	
 end
 
+local function awbtarget_dropstateopts(pwin)
+	local cfg = awbwman_cfg();
+	local bartt = pwin.dir.tt;
+	
+	for i=#bartt.left,1,-1 do
+		if (bartt.left[i].name == "save") then
+			bartt.left[i]:destroy();
+		elseif (bartt.left[i].name == "load") then
+			bartt.left[i]:destroy();	
+		end
+	end
+
+end
+
 --
 -- Target window
 -- Builds upon a spawned window (pwin) and returns a 
@@ -131,11 +145,17 @@ end
 function awbwnd_target(pwin, caps)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
+
 	pwin.cascade = {}; 
 	pwin.snap_prefix = caps.prefix and caps.prefix or "";
 	pwin.mediavol = 1.0;
 	pwin.filters = {};
 	pwin.rebuild_chain = awbwmedia_filterchain;
+
+-- these need to be able to be added / removed dynamically
+	pwin.add_statectls  = awbtarget_addstateopts;
+	pwin.drop_statectls = awbtarget_dropstateopts;
+
 	pwin.on_resized = function(wnd, wndw, wndh, cnvw, cnvh) 
 		pwin:rebuild_chain(cnvw, cnvh);
 	end;
@@ -175,10 +195,6 @@ function awbwnd_target(pwin, caps)
 			image_sharestorage(cfg.bordericns["play"], self.vid);
 		end
 	end);
-
-	if (caps.snapshot) then
-		awbtarget_addstateopts(pwin);
-	end
 
 --
 -- Set frameskip mode, change icon to play
@@ -233,10 +249,20 @@ function awbwnd_target(pwin, caps)
 		elseif (status.kind == "resized") then
 			if (pwin.updated == nil) then
 				pwin:update_canvas(source);
+				pwin:resize(pwin.w, pwin.h, true);
 			end
-	
+
+-- if we're in fullscreen, handle the resize differently
 			pwin.updated = true;
-			pwin:resize(pwin.w, pwin.h, true);
+	
+		elseif (status.kind == "state_size") then
+			pwin:drop_statectls();
+
+			if (status.state_size > 0) then
+				pwin:add_statectls();
+				pwin.state_size = status.state_size;
+
+			end
 		else
 --			print(status.kind);
 		end
