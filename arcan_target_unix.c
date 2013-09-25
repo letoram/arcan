@@ -20,17 +20,76 @@
  *
  */
 
-#ifndef PROBE
-#define _TARGET_BASE "arcan_target.c"
-#else
-#define _TARGET_BASE "arcan_target_probe.c"
-#endif
-
 #define ENABLE_X11_HIJACK
 #define ENABLE_WINE_HIJACK
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <math.h>
+#include <stdbool.h>
+#include <ulimit.h>
+#include <limits.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <errno.h>
+#include <poll.h>
+#include <signal.h>
+
+#include "frameserver/resampler/speex_resampler.h"
+
+#ifdef ENABLE_X11_HIJACK
+#include <X11/X.h>
+#include <X11/Xlib.h>
+#include <X11/Xlibint.h>
+#include <X11/Xutil.h>
+#include <GL/glx.h>
+#else
+
+#define GL_GLEXT_PROTOTYPES 1
+#include <SDL/SDL_opengl.h>
+#endif
+
+#include <SDL/SDL.h>
 #include <dlfcn.h>
-#include _TARGET_BASE
+#include "arcan_target.h"
+
+extern struct hijack_fwdtbl forwardtbl;
+
+/* prototypes matching arcan_target.c */
+SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode);
+void ARCAN_target_init();
+void ARCAN_target_shmsize(int w, int h, int bpp);
+int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained);
+SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height,
+	int depth, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask);
+SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags);
+int ARCAN_SDL_PollEvent(SDL_Event* inev);
+int ARCAN_SDL_Flip(SDL_Surface* screen);
+void ARCAN_SDL_UpdateRect(SDL_Surface* screen, 
+	Sint32 x, Sint32 y, Uint32 w, Uint32 h); 
+void ARCAN_SDL_UpdateRects(SDL_Surface* screen, 
+	int numrects, SDL_Rect* rects);
+int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, 
+	SDL_Surface *dst, SDL_Rect *dstrect);
+void ARCAN_SDL_GL_SwapBuffers();
+void ARCAN_glFinish();
+void ARCAN_glFlush();
+
+#ifdef ENABLE_X11_HIJACK
+int ARCAN_XNextEvent(Display* disp, XEvent* ev);
+int ARCAN_XPeekEvent(Display* disp, XEvent* ev);
+Bool ARCAN_XGetEventData(Display* display, XGenericEventCookie* event);
+void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable);
+Bool ARCAN_XQueryPointer(Display* display, Window w, 
+	Window* root_return, Window* child_return, int* rxret, 
+	int* ryret, int* wxret, int* wyret, unsigned* maskret);
+int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return, 
+	Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg);
+Bool ARCAN_XFilterEvent(XEvent* ev, Window m);
+#endif
 
 /* quick debugging hack */
 static char* lastsym;

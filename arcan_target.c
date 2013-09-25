@@ -55,6 +55,7 @@
 #include "arcan_general.h"
 #include "arcan_event.h"
 #include "arcan_target_const.h"
+#include "arcan_target.h"
 #include "arcan_frameserver_shmpage.h"
 #include "frameserver/ntsc/snes_ntsc.h"
 
@@ -74,50 +75,7 @@ static SDL_PixelFormat PixelFormat_RGBA888 = {
 	.Amask = 0xff000000
 };
 
-static struct {
-/* SDL */
-	void (*sdl_swapbuffers)(void);
-	SDL_Surface* (*sdl_setvideomode)(int, int, int, Uint32);
-	int (*sdl_pollevent)(SDL_Event*);
-	int (*sdl_pushevent)(SDL_Event*);
-	int (*sdl_peepevents)(SDL_Event*, int, SDL_eventaction, Uint32);
-	int (*sdl_openaudio)(SDL_AudioSpec*, SDL_AudioSpec*);
-	SDL_GrabMode (*sdl_grabinput)(SDL_GrabMode);
-	int (*sdl_iconify)(void);
-	void (*sdl_updaterect)(SDL_Surface*, Sint32, Sint32, Uint32, Uint32);
-	void (*sdl_updaterects)(SDL_Surface*, int, SDL_Rect*);
-	int (*sdl_upperblit)(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect);
-	int (*sdl_flip)(SDL_Surface*);
-	SDL_Surface* (*sdl_creatergbsurface)(Uint32, int, int, int, Uint32, Uint32, Uint32, Uint32);
-	int (*audioproxy)(int, int);
-	
-	void (*glLineWidth)(float);
-	void (*glPointSize)(float);
-	void (*glFinish)(void);
-	void (*glFlush)(void);
-
-#ifdef ENABLE_X11_HIJACK
-	XVisualInfo* (*glXChooseVisual)(Display* dpy, int screen, int* attribList);
-	Window (*XCreateWindow)(Display* display, Window parent,int x, int y, unsigned int width, unsigned int height, unsigned int border_width,
-		int depth, unsigned int class, Visual* visual, unsigned long valuemask, XSetWindowAttributes* attributes);
-	
-	Window (*XCreateSimpleWindow)(Display* display, Window parent, int x, int y, unsigned int width, unsigned int height, unsigned int border_width,
-		unsigned long border, unsigned long background);
-
-	void* (*glXGetProcAddress)(const GLubyte* name);
-
-	Bool (*XQueryPointer)(Display* display, Window w, Window* root_return, Window* child_return, int* rxret, int* ryret, int* wxret, int* wyret, unsigned* maskret);
-	Bool (*XGetEventData)(Display*, XGenericEventCookie*);
-	int (*XCheckIfEvent)(Display*, XEvent*, Bool (*predicate)(), XPointer);
-	Bool (*XFilterEvent)(XEvent*, Window);
-	int (*XNextEvent)(Display*, XEvent*);
-	int (*XPeekEvent)(Display*, XEvent*);
-	
-/* could take the CheckMaskEvent, CheckTypedEvent etc. as well as we're just filtering input */
-	
-	void (*glXSwapBuffers)(Display *dpy, GLXDrawable drawable);
-#endif
-} forwardtbl = {0};
+struct hijack_fwdtbl forwardtbl = {0};
 
 static struct {
 /* audio */
@@ -126,7 +84,8 @@ static struct {
 	uint8_t channels;
 	uint16_t format;
 
-/* resampling / audio transfer (likely to come from a different thread than the rendering one) */
+/* resampling / audio transfer (likely to come from a 
+ * different thread than the rendering one) */
 	SpeexResamplerState* resampler;
 	int16_t* encabuf;
 	int encabuf_ofs;
@@ -161,10 +120,10 @@ static struct {
 	snes_ntsc_setup_t ntsc_opts;
 	
 /* specialized hack for vector graphics, a better approach would be to implement
- * a geometry buffering scheme (requires different SHM sizes though) and have a list of 
- * geometry + statetable + maptable etc. and see how many 3D- based emulators that would run
- * in such conditions */
-	bool update_vector;
+ * a geometry buffering scheme (requires different SHM sizes though) 
+ * and have a list of geometry + statetable + maptable etc. and see how 
+ * many 3D- based emulators that would run in such conditions */
+	bool update_vector; 
 	float point_size;
 	float line_size;
 	
@@ -245,16 +204,20 @@ int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
 
 static void(*acbfun)(void*, uint8_t*, int) = NULL;
 
-/* Note; we always let the target application DRIVE the playback, we may, however, copy the output data in order
+/* Note; we always let the target application DRIVE the playback, 
+ * we may, however, copy the output data in order
  * for it to be available for analysis / recording, etc.
  * 
- * (parent) -> (attenuation request) -> [target: we're here] alters audio buffers in situ to reflect attenuation,
- * resamples output into shared memory buffer (unless full) -> (parent) -> drops audio or pushes it to whatever is monitoring.
+ * (parent) -> (attenuation request) -> [target: we're here] alters 
+ * audio buffers in situ to reflect attenuation,
+ * resamples output into shared memory buffer (unless full) -> (
+ * parent) -> drops audio or pushes it to whatever is monitoring.
  */
 
 /* convert, attenuate (0..1), buffer copy to parent,
  * can't be certain about correctly aligned input --
- * branch-predict + any decent -O step + intrisics should reduce this to barely nothing though */
+ * branch-predict + any decent -O step + intrisics 
+ * should reduce this to barely nothing though */
 static inline int process_sample(uint8_t* stream, float attenuate)
 {
 	int counter = 1;
@@ -269,7 +232,8 @@ static inline int process_sample(uint8_t* stream, float attenuate)
 				global.encabuf[global.encabuf_ofs++] = ((*stream) << 8) - 0x7ff;
 
 				if (global.channels == 1){
-					global.encabuf[global.encabuf_ofs++] = global.encabuf[global.encabuf_ofs - 1];
+					global.encabuf[global.encabuf_ofs++] = 
+						global.encabuf[global.encabuf_ofs - 1];
 					global.encabuf_ofs++;
 				}
 			break;
@@ -304,13 +268,15 @@ static inline int process_sample(uint8_t* stream, float attenuate)
 			break;
 			
 			default:
-				fprintf(stderr, "hijack process sample; Big Endian not supported by this hijack library");
+				fprintf(stderr, "hijack process sample; Big Endian" 
+					"	not supported by this hijack library");
 				abort();
 		}
 
 /* buffer overrun, throw away */
 		if (global.encabuf_ofs * 2 >= global.encabuf_sz){
-			trace("process_sample failed, overflow (%d vs %d)\n", global.encabuf_ofs * 2, global.encabuf_sz);
+			trace("process_sample failed, overflow (%d vs %d)\n", 
+				global.encabuf_ofs * 2, global.encabuf_sz);
 			global.encabuf_ofs = 0;
 		}
 		
@@ -364,25 +330,30 @@ void ARCAN_target_init(){
 	unsigned bufsize = shmsize ? strtoul(shmsize, NULL, 10) : 0;
 
 	if (bufsize == 0 || errno == ERANGE || errno == EINVAL){
-		fprintf(stderr, "arcan hijack: bad value in env[arcan_shmsize], terminating.\n");
+		fprintf(stderr, "arcan hijack: bad value in "
+			"env[arcan_shmsize], terminating.\n");
 		exit(1);
 	}
 
 	global.shared = frameserver_getshm(global.shmkey, true);
 	if (!global.shared.addr){
-		fprintf(stderr, "arcan hijack: couldn't allocate shared memory, terminating.\n");
+		fprintf(stderr, "arcan hijack: couldn't allocate "
+			"shared memory, terminating.\n");
 		exit(1);
 	}
 
-/* set this env whenever you want to step through the frameserver as launched from the parent */
+/* set this env whenever you want to step through the 
+ * frameserver as launched from the parent */
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		fprintf(stderr, "frameserver_debugstall, waiting 10s to continue. pid: %d\n", (int) getpid());
+		fprintf(stderr, "frameserver_debugstall, waiting 10s"
+			"	to continue. pid: %d\n", (int) getpid());
 		sleep(10);
 	}
 	
 	frameserver_shmpage_resize( &(global.shared), 32, 32);
 	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-	frameserver_shmpage_setevqs(global.shared.addr, global.shared.esem, &(global.inevq), &(global.outevq), false);
+	frameserver_shmpage_setevqs(global.shared.addr, 
+		global.shared.esem, &(global.inevq), &(global.outevq), false);
 
 	global.ntsc_opts = snes_ntsc_rgb;
 	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
@@ -399,13 +370,14 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 	global.sourcew = w;
 	global.sourceh = h;
 
-	if (global.ntscconv && SNES_NTSC_OUT_WIDTH(w) < MAX_SHMWIDTH && h * 2 < MAX_SHMHEIGHT){
+	if (global.ntscconv && SNES_NTSC_OUT_WIDTH(w) < 
+		MAX_SHMWIDTH && h * 2 < MAX_SHMHEIGHT){
 		w  = SNES_NTSC_OUT_WIDTH(w);
 		h *= 2;
 		if (global.ntsc_imb)
 			free(global.ntsc_imb);
 	
-		global.ntsc_imb = malloc(global.sourcew * global.sourceh * sizeof(int16_t)); 
+		global.ntsc_imb = malloc(global.sourcew * global.sourceh * sizeof(int16_t));
 	} else {
 		if (global.ntsc_imb){
 			free(global.ntsc_imb);
@@ -424,7 +396,8 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 
 int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 {
-	trace("SDL_OpenAudio( %d, %d, %d )\n", obtained->freq, obtained->channels, obtained->format);
+	trace("SDL_OpenAudio( %d, %d, %d )\n", 
+		obtained->freq, obtained->channels, obtained->format);
 
 	acbfun = desired->callback;
 	desired->callback = audiocb;
@@ -452,15 +425,19 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 		
 	if (global.samplerate != SHMPAGE_SAMPLERATE){
 		int errc;	
-		global.resampler  = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, global.samplerate, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
+		global.resampler  = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, 
+			global.samplerate, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
 	}
 	
 	return rc;
 }
 
-SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, int width, int height, int depth, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask){
+SDL_Surface* ARCAN_SDL_CreateRGBSurface(Uint32 flags, 
+	int width, int height, int depth, 
+	Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask){
 	trace("SDL_CreateRGBSurface(%d, %d, %d, %d)\n", flags, width, height, depth);
-	return forwardtbl.sdl_creatergbsurface(flags, width, height, depth, Rmask, Gmask, Bmask, Amask);
+	return forwardtbl.sdl_creatergbsurface(flags, width, 
+		height, depth, Rmask, Gmask, Bmask, Amask);
 }
 
 /*
@@ -476,7 +453,8 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
 	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
-	global.glsource = global.shared.addr->storage.glsource = (flags & SDL_OPENGL) > 0;
+	global.glsource = global.shared.addr->storage.glsource = 
+		(flags & SDL_OPENGL) > 0;
 	
 	if ( (flags & SDL_FULLSCREEN) > 0) { 
 /* oh no you don't */
@@ -514,8 +492,10 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 			newev.button.which = event.input.digital.devid;
 				
 			if (event.devkind == EVENT_IDEVKIND_MOUSE){
-				newev.button.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
-				newev.button.type   = event.input.digital.active ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+				newev.button.state  = event.input.digital.active ? 
+					SDL_PRESSED : SDL_RELEASED;
+				newev.button.type   = event.input.digital.active ? 
+					SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
 				newev.button.button = event.input.digital.subid;
 				newev.button.which -= ARCAN_MOUSEIDBASE;
 				newev.button.x = global.mousestate.x;
@@ -525,8 +505,10 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 					global.mousebutton | SDL_BUTTON( newev.button.button + 1 ) :
 					global.mousebutton & ~(SDL_BUTTON( newev.button.button + 1 ));
 			} else {
-				newev.jbutton.state  = event.input.digital.active ? SDL_PRESSED : SDL_RELEASED;
-				newev.jbutton.type   = event.input.digital.active ? SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
+				newev.jbutton.state  = event.input.digital.active ?
+					SDL_PRESSED : SDL_RELEASED;
+				newev.jbutton.type   = event.input.digital.active ?
+					SDL_JOYBUTTONDOWN : SDL_JOYBUTTONUP;
 				newev.jbutton.button = event.input.digital.subid;
 				newev.button.which  -= ARCAN_JOYIDBASE;
 			}
@@ -540,8 +522,8 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 			newev.key.keysym.mod      = event.input.translated.modifiers;
 			newev.key.keysym.unicode  = event.input.translated.subid;
 			newev.key.which           = event.input.translated.devid;
-			newev.key.state           = event.input.translated.active ? SDL_PRESSED : SDL_RELEASED;
-			newev.key.type            = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
+			newev.key.state = event.input.translated.active ?SDL_PRESSED:SDL_RELEASED;
+			newev.key.type = event.input.translated.active ? SDL_KEYDOWN : SDL_KEYUP;
 
 			trace("got key: %c\n", newev.key.keysym.sym);
 			forwardtbl.sdl_pushevent(&newev);
@@ -598,7 +580,8 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 		break;
 
 		case TARGET_COMMAND_ATTENUATE:
-			global.attenuation = ev->ioevs[0].fv > 1.0 ? 1.0 : ( ev->ioevs[0].fv < 0.0 ? 0.0 : ev->ioevs[0].fv);
+			global.attenuation = ev->ioevs[0].fv > 1.0 ? 1.0 : 
+				( ev->ioevs[0].fv < 0.0 ? 0.0 : ev->ioevs[0].fv);
 		break;
 		
 		case TARGET_COMMAND_NTSCFILTER:
@@ -660,14 +643,19 @@ static void push_audio()
 		SDL_mutexP(global.abuf_synch);
 		
 			if (global.samplerate == SHMPAGE_SAMPLERATE){
-				memcpy(global.audp, global.encabuf, global.encabuf_ofs * sizeof(int16_t));
+				memcpy(global.audp, global.encabuf, 
+					global.encabuf_ofs * sizeof(int16_t));
 			} else {
-				spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; /*first number of bytes, then after process..., number of samples */
+				spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; 
+/*first number of bytes, then after process..., number of samples */
 				spx_uint32_t nsamp = global.encabuf_ofs >> 1;
 				
-				speex_resampler_process_interleaved_int(global.resampler, (const spx_int16_t*) global.encabuf, &nsamp, (spx_int16_t*) global.audp, &outc);
+				speex_resampler_process_interleaved_int(global.resampler, 
+					(const spx_int16_t*) global.encabuf, &nsamp, 
+					(spx_int16_t*) global.audp, &outc);
 				if (outc)
-					global.shared.addr->abufused += outc * SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
+					global.shared.addr->abufused += 
+						outc * SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
 
 				global.shared.addr->aready = true;
 			}
@@ -685,11 +673,14 @@ static void push_ntsc()
 	size_t line_sz = SNES_NTSC_OUT_WIDTH(global.sourcew) * 4;
 
 /* only draw on every other line, so we can easily mix or blend interleaved */
-	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, global.sourcew, 0, global.sourcew, global.sourceh, global.vidp, line_sz * 2);
+	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, 
+		global.sourcew, 0, global.sourcew, global.sourceh, 
+		global.vidp, line_sz * 2);
 
 /* just line-double for now */
 	for (int row = 1; row < global.sourceh * 2; row += 2)
-		memcpy(&global.vidp[row * line_sz], &global.vidp[(row-1) * line_sz], line_sz);
+		memcpy(&global.vidp[row * line_sz], 
+			&global.vidp[(row-1) * line_sz], line_sz);
 }
 
 static bool cmpfmt(SDL_PixelFormat* a, SDL_PixelFormat* b){
@@ -712,9 +703,11 @@ static void copysurface(SDL_Surface* src){
 			SDL_UnlockSurface(src);
 		}
 		else {
-			SDL_Surface* surf = SDL_ConvertSurface(src, &PixelFormat_RGB565, SDL_SWSURFACE);
+			SDL_Surface* surf = SDL_ConvertSurface(src, 
+				&PixelFormat_RGB565, SDL_SWSURFACE);
 			SDL_LockSurface(surf);
-			memcpy(global.ntsc_imb, surf->pixels, surf->w * surf->h * sizeof(int16_t));
+			memcpy(global.ntsc_imb, surf->pixels, 
+				surf->w * surf->h * sizeof(int16_t));
 			SDL_UnlockSurface(surf);
 			SDL_FreeSurface(surf);
 		}
@@ -727,7 +720,8 @@ static void copysurface(SDL_Surface* src){
 			memcpy(global.vidp, src->pixels, src->w * src->h * sizeof(int32_t));
 			SDL_UnlockSurface(src);
 		} else {
-			SDL_Surface* surf = SDL_ConvertSurface(src, &PixelFormat_RGBA888, SDL_SWSURFACE);
+			SDL_Surface* surf = SDL_ConvertSurface(src, 
+				&PixelFormat_RGBA888, SDL_SWSURFACE);
 			SDL_LockSurface(surf);
 			memcpy(global.vidp, surf->pixels, surf->w * surf->h * sizeof(int32_t));
 			SDL_UnlockSurface(surf);
@@ -740,7 +734,8 @@ static void copysurface(SDL_Surface* src){
 	global.shared.addr->vready = true;
 }
 
-/* NON-GL SDL applications (unfortunately, moreso for 1.3 which is not handled at all currently) 
+/* NON-GL SDL applications (unfortunately, moreso for 1.3 
+ * which is not handled at all currently) 
  * have a lot of different entry-points to actually blit,
  * there's perhaps some low level SDL hack to do this,
  * the options are a few;
@@ -757,22 +752,24 @@ static void copysurface(SDL_Surface* src){
  * (b) give up and just emit a page every 'n' ticks
  * (c) catch the flip
  * 
- * there's possibly a slightly more cool hack, for surfaces that match the shmpage
- * in pixformat, create a proxy SDL_Surface object, replace the low-level buffer object
- * with a pointer to our shmpage, align ->ready to flips (otherwise the app has the possiblity
- * of tearing anyhow so...) -- There's also the SDL_malloc and look for requests that match their
- * w * h * bpp dimensions, and return pointers to locally managed ones ... lots to play with
- * if anyone is interested.
+ * there's possibly a slightly more cool hack, for surfaces that match 
+ * the shmpage in pixformat, create a proxy SDL_Surface object, replace 
+ * the low-level buffer object with a pointer to our shmpage, align ->ready 
+ * to flips (otherwise the app has the possiblity of tearing anyhow so...) 
+ * -- There's also the SDL_malloc and look for requests that match their
+ * w * h * bpp dimensions, and return pointers to locally managed ones ... 
+ * lots to play with if anyone is interested.
  * 
- * Currently, we use (a) / (c) -- to implement the (b) fallback, PollEvent is likely the more
- * "natural" place */
+ * Currently, we use (a) / (c) -- to implement the (b) fallback, 
+ * PollEvent is likely the more "natural" place */
 int ARCAN_SDL_Flip(SDL_Surface* screen)
 {
 	copysurface(screen);
 	return 0;
 }
 
-void ARCAN_SDL_UpdateRect(SDL_Surface* screen, Sint32 x, Sint32 y, Uint32 w, Uint32 h){
+void ARCAN_SDL_UpdateRect(SDL_Surface* screen, 
+	Sint32 x, Sint32 y, Uint32 w, Uint32 h){
 	forwardtbl.sdl_updaterect(screen, x, y, w, h);
 
 	if (!global.doublebuffered && 
@@ -789,7 +786,8 @@ void ARCAN_SDL_UpdateRects(SDL_Surface* screen, int numrects, SDL_Rect* rects){
 }
 
 /* this is the actual SDL1.2 call most blit functions resolve to */
-int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface *dst, SDL_Rect *dstrect){
+int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, 
+	SDL_Surface *dst, SDL_Rect *dstrect){
 	int rv = forwardtbl.sdl_upperblit(src, srcrect, dst, dstrect);
 
 	if (!global.doublebuffered && 
@@ -802,14 +800,18 @@ int ARCAN_SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface *
 /* 
  * The OpenGL case is easier, but perhaps a bit pricier .. 
  */
-#define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
+#define RGB565(r, g, b) ((uint16_t)(((uint8_t)(r) >> 3) << 11) \
+	| (((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
 
 void ARCAN_SDL_GL_SwapBuffers()
 {
 	trace("CopySurface(GL:pre)\n");
-/* here's a nasty little GL thing, readPixels can only be with origo in lower-left rather than up, 
- * so we need to swap Y, on the other hand, with the amount of data involved here (minimize memory bw- use at all time),
- * we want to flip in the main- app using the texture coordinates, hence the glsource flag */
+/* here's a nasty little GL thing, readPixels can only be with 
+ * origo in lower-left rather than up, so we need to swap Y, 
+ * on the other hand, with the amount of data involved here 
+ * (minimize memory bw- use at all time),
+ * we want to flip in the main- app using the texture coordinates, 
+ * hence the glsource flag */
 	if (!global.shared.addr->storage.glsource){
 		trace("Toggle GL surface support");
 		global.shared.addr->storage.glsource = true;
@@ -821,16 +823,25 @@ void ARCAN_SDL_GL_SwapBuffers()
 		return;
 
 	glReadBuffer(GL_BACK_LEFT);
-/* the assumption as to the performance impact of this is that if it is aligned to the
- * buffer swap, we're at a point in most engines targeted (so no AAA) where there will be a natural pause
- * which masquerades much of the readback overhead, initial measurements did not see a worthwhile performance
- * increase when using PBOs. The 2D-in-GL edgecase could probably get an additional boost
- * by patching glTexImage2D- class functions triggering on ortographic projection and texture dimensions */
+/*
+ * the assumption as to the performance impact of this is that 
+ * if it is aligned to the buffer swap, we're at a point in most engines 
+ * targeted (so no AAA) where there will be a natural pause
+ * which masquerades much of the readback overhead, initial measurements 
+ * did not see a worthwhile performance
+ * increase when using PBOs. The 2D-in-GL edgecase could probably get 
+ * an additional boost by patching glTexImage2D- class functions 
+ * triggering on ortographic projection and texture dimensions 
+ */
 
-	glReadPixels(0, 0, global.sourcew, global.sourceh, GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
+	glReadPixels(0, 0, global.sourcew, global.sourceh, 
+		GL_RGBA, GL_UNSIGNED_BYTE, global.vidp);
 	trace("buffer read (%d, %d)\n", global.sourcew, global.sourceh);
 	
-/* seems like several driver combinations implement readback swizzling in a broken way, use RGBA and convert manually. */
+/*
+ * seems like several driver combinations implement readback 
+ * swizzling in a broken way, use RGBA and convert manually. 
+ */
 	if (global.ntscconv && global.ntsc_imb){
 		uint16_t* dbuf = global.ntsc_imb;
 		uint8_t*   inb = (uint8_t*) global.vidp;
@@ -849,7 +860,10 @@ void ARCAN_SDL_GL_SwapBuffers()
 
 	trace("CopySurface(GL:post)\n");
 	
-/* can't be done in the target event handler as it might be in a different thread and thus GL context */
+/*
+ * can't be done in the target event handler as it might be 
+ * in a different thread and thus GL context 
+ */
 	if (global.update_vector){
 		forwardtbl.glPointSize(global.point_size);
 		forwardtbl.glLineWidth(global.line_size);
@@ -912,9 +926,12 @@ void ARCAN_glXSwapBuffers (Display *dpy, GLXDrawable drawable)
  */
 }
 
-Bool ARCAN_XQueryPointer(Display* display, Window w, Window* root_return, Window* child_return, int* rxret, int* ryret, int* wxret, int* wyret, unsigned* maskret)
+Bool ARCAN_XQueryPointer(Display* display, Window w, 
+	Window* root_return, Window* child_return, int* rxret, 
+	int* ryret, int* wxret, int* wyret, unsigned* maskret)
 {
-	bool rv = forwardtbl.XQueryPointer(display, w, root_return, child_return, rxret, ryret, wxret, wyret, maskret);
+	bool rv = forwardtbl.XQueryPointer(display, w, root_return, 
+		child_return, rxret, ryret, wxret, wyret, maskret);
 	
 	*rxret = global.lastmx;
 	*ryret = global.lastmy;
@@ -922,10 +939,12 @@ Bool ARCAN_XQueryPointer(Display* display, Window w, Window* root_return, Window
 	return rv;
 }
 
-int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return, Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg)
+int ARCAN_XCheckIfEvent(Display *display, XEvent *event_return, 
+	Bool (*predicate)(Display*, XEvent*, XPointer), XPointer arg)
 {
 	if ( forwardtbl.XCheckIfEvent(display, event_return, predicate, arg) ){
-		trace("got event, %d (%d, %d, %d)\n", event_return->type, KeyPress, KeyRelease, MotionNotify);
+		trace("got event, %d (%d, %d, %d)\n", 
+			event_return->type, KeyPress, KeyRelease, MotionNotify);
 		return true;
 	}
 	return false;
