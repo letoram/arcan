@@ -478,13 +478,13 @@ LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c ${FSERV_PLATFORM_SOURCE
 LIST(APPEND FSRV_LIBRARIES rt m dl)
 
 add_library(arcan_hijack SHARED 
-	arcan_target_unix.c 
+	arcan_target_unix.c
+	arcan_target.c	
 	arcan_event.c 
 	arcan_frameserver_shmpage.c 
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c)
 
-set_property(SOURCE arcan_target_unix.c APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
