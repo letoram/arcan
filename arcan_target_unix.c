@@ -20,9 +20,6 @@
  *
  */
 
-#define ENABLE_X11_HIJACK
-#define ENABLE_WINE_HIJACK
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
