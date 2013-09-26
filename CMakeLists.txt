@@ -408,6 +408,9 @@ platform/sdl/event.c
 		frameserver/ntsc/snes_ntsc.c 
 		frameserver/resampler/resample.c
 	)
+	
+	set_property(TARGET arcan_hijack PROPERTY 
+		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
 	set_property(SOURCE arcan_target_unix.c 
 		APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
@@ -456,6 +459,7 @@ add_definitions(-DCLOCK_SOURCE_RAW)
 add_definitions(-DLUA_51 -D__UNIX -D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
 find_program(GENERATE_TAGS ctags)
+
 if (GENERATE_TAGS)
 	message("--> ctags command found, generating tags output")
 	set_source_files_properties( ctags.output PROPERTIES GENERATED true )
@@ -484,6 +488,9 @@ add_library(arcan_hijack SHARED
 	arcan_frameserver_shmpage.c 
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c)
+
+	set_property(TARGET arcan_hijack PROPERTY 
+		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
