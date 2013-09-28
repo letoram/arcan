@@ -237,14 +237,7 @@ function gamelist_media(tbl)
 -- resource-finder don't sub-categorize properly so we'll 
 -- have to do that manually
 	awbwman_listwnd(menulbl("Media:" .. tbl.title), deffont_sz, linespace,
-	{1.0}, function(filter, ofs, lim, iconw, iconh)
-		local res = {};
-		local ul = ofs + lim;
-		for i=ofs, ul do
-			table.insert(res, list[i]);
-		end
-		return res, #list;
-	end, desktoplbl);
+	{1.0}, list, desktoplbl);
 end
 
 function show_help()
@@ -358,13 +351,13 @@ end
 local function amediahandler(path, base, ext)
 	local name = path .. "/" .. base .. "." .. ext;
 	local vid, tfun = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
-	load_movie(name, FRAMESERVER_LOOP, tfun, 1, "novideo=true");
+	load_movie(name, FRAMESERVER_NOLOOP, tfun, 1, "novideo=true");
 end
 
 local function vmediahandler(path, base, ext)
 	local name = path .. "/" .. base .. "." .. ext;
 	local vid, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
-	load_movie(name, FRAMESERVER_LOOP, tfun);
+	load_movie(name, FRAMESERVER_NOLOOP, tfun);
 end
 
 local function imghandler(path, base, ext)

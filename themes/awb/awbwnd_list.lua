@@ -42,7 +42,7 @@ function awblist_resize(self, neww, newh)
 		> (self.lineh + self.linespace))) then
 		self.invalidate = false;
 		self.lasth  = props.height;
-		self.restbl, self.total = self:datasel(self.ofs, self.capacity);	
+		self.restbl, self.total = self:datasel(self.ofs, self.capacity, list);	
 		
 		for i, v in ipairs(self.listtemp) do
 			delete_image(v);
@@ -211,6 +211,19 @@ local function scrollclick(self, vid, x, y)
 	self.wnd:resize(self.wnd.w, self.wnd.h);
 end
 
+local function def_datasel(filter, ofs, lim)
+	local tbl = filter.tbl;
+	local res = {};
+	local ul = ofs + lim;
+	ul = ul > #tbl and #tbl or ul;
+
+	for i=ofs, ul do
+		table.insert(res, tbl[i]);
+	end
+
+	return res, #tbl;
+end
+
 function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun, 
 	render_fun,scrollbar_icn, scrollcaret_icn, cursor_icn, bardir,
 	options)
@@ -238,7 +251,19 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.linespace  = linespace;
 	pwin.ofs        = 1;
 	pwin.listtemp   = {};
-	pwin.datasel    = datasel_fun;
+
+	if (type(datasel_fun) == "table") then
+		pwin.datasel = def_datasel;
+		pwin.tbl = datasel_fun;
+
+	elseif (type(datasel_fun) == "function") then
+		pwin.datasel = datasel_fun;
+
+	else
+		warning("awbwnd_listview(broken), no data source specified");
+		warning(debug.traceback());
+	end
+
 	pwin.renderfn   = render_fun;
 	pwin.cols       = colcfg;
 	pwin.scrollup   = scrollup;
@@ -325,8 +350,13 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		end
 	end
 
-	mhand.click = function(self, vid, x, y)
-		pwin:focus();
+	if (options.double_single) then
+					print("double_single");
+		mhand.click = mhand.dblclick;
+	else
+		mhand.click = function(self, vid, x, y)
+			pwin:focus();
+		end
 	end
 
 	mhand.rclick = function(self, vid, x, y)
