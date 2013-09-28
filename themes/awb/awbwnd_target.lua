@@ -1,3 +1,19 @@
+local function getskipval(str)
+	if (str == "Automatic") then
+		return 0;
+	elseif (str == "None") then
+		return -1;
+	elseif (str == "Skip 1") then
+		return 1;
+	elseif (str == "Skip 2") then
+		return 2;
+	elseif (str == "Skip 3") then
+		return 3;
+	elseif (str == "Skip 4") then
+		return 4;
+	end
+end
+
 local function datashare(wnd)
 	local res = awbwman_setup_cursortag(sysicons.floppy);
 	res.kind = "media";
@@ -23,11 +39,102 @@ local function inputlay_sel(icn, wnd)
 	end, {ref = icn.vid});
 end
 
-function awbtarget_factorystr(wnd)
---
--- Generate a string that can be used to recreate this particular session,
--- down to savestate, input config and filter
---
+function stepfun_tbl(trig, wnd, c, name, tbl, up)
+	local ind = 1;
+	for i=1, #tbl do
+		if (tbl[i] == c[name]) then
+			ind = i;
+			break;
+		end
+	end
+
+	if (up) then
+		ind = ind + 1;
+		ind = ind > #tbl and 1 or ind;
+	else
+		ind = ind - 1;
+		ind = ind == 0 and #tbl or ind;
+	end
+
+	trig.cols[2] = tbl[ind];
+	c[name] = tbl[ind];
+end
+
+function stepfun_num(trig, wnd, c, name, shsym, shtype, min, max, step)
+	c[name] = c[name] + step;
+	c[name] = c[name] < min and min or c[name];
+	c[name] = c[name] > max and max or c[name];
+
+	trig.cols[2] = tostring(c[name]);
+
+	wnd:force_update();
+	if (shsym) then
+		shader_uniform(c.shid, shsym, shtype, PERSIST, c[name]);
+	end
+end
+
+function awbtarget_settingswin(tgtwin)
+	local conftbl = {
+		{
+		name = "graphdbg",
+		trigger = function(self, wnd)
+			tgtwin.graphdbg = not tgtwin.graphdbg;
+			target_graphmode(tgtwin.controlid, tgtwin.graphdbg == true and 1 or 0);
+			self.cols[2] = tostring(tgtwin.graphdbg);
+			wnd:force_update();
+		end,
+		rtrigger = trigger,
+		cols = {"Graph Debug", tostring(tgtwin.graphdbg)} 
+		},
+		{
+		name = "preaud",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "preaud", nil, nil, 0, 6, 1);
+			tgtwin:set_frameskip();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd, tgtwin, "preaud", nil, nil, 0, 6, -1);
+			tgtwin:set_frameskip();
+		end,
+		cols = {"Pre-Audio", tostring(tgtwin.preaud)},
+		},
+		{
+		name = "skipmode",
+		trigger = function(self, wnd)
+			stepfun_tbl(self, wnd, tgtwin, "skipmode", {"Automatic", "None",
+			"Skip 1", "Skip 2", "Skip 3", "Skip 4"}, true);
+			self.cols[2] = tgtwin.skipmode;
+			tgtwin:set_frameskip();
+			wnd:force_update();
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_tbl(self, wnd, tgtwin, "skipmode", {"Automatic", "None",
+			"Skip 1", "Skip 2", "Skip 3", "Skip 4"}, false);
+			self.cols[2] = tgtwin.skipmode;
+			wnd:force_update();
+			tgtwin:set_frameskip();
+		end,
+		cols = {"Skip Mode", tgtwin.skipmode}
+		},
+		{
+		name = "framealign",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "framealign", nil, nil, 0, 10, 1);
+			tgtwin:set_frameskip();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd, tgtwin, "framealign", nil, nil, 0, 10, -1);
+			tgtwin:set_frameskip();
+		end,
+		cols = {"Frame Prealign", tostring(tgtwin.framealign)},
+		}
+	};
+
+	local newwnd = awbwman_listwnd(
+		menulbl("Advanced..."), deffont_sz, linespace,
+		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+
+		tgtwin:add_cascade(newwnd);
 end
 
 --
@@ -54,7 +161,7 @@ function awbtarget_listsnaps(tgtwin, gametbl)
 						name = base[i],
 						trigger = function() 
 							restore_target(tgtwin.controlid, base[i]); 
-							tgtwin.laststate = base[i];
+							tgtwin.laststate = string.sub(base[i], #tgtwin.snap_prefix+1);
 						end, 
 						name = base[i],
 						cols = {string.sub(base[i], #tgtwin.snap_prefix+1)}
@@ -67,12 +174,6 @@ function awbtarget_listsnaps(tgtwin, gametbl)
 	end
 end
 	
---target_postfilter_args(internal_vid, 1, settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
---target_postfilter_args(internal_vid, 2, settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
---target_postfilter_args(internal_vid, 3, settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
---target_postfilter_args(internal_vid, 4, settings.ntsc_fringing);
---target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
-
 local function awbtarget_save(pwin, res)
 	if (res == nil) then
 		local buttontbl = {
@@ -122,6 +223,163 @@ local function awbtarget_addstateopts(pwin)
 	
 end
 
+local function ntsc_dlg(tgtwin)
+	local conftbl = {
+		{
+		name = "ntsc_artifacts",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_artifacts",nil,nil,-1.0,0.0,-0.1);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_artifacts", nil, nil,-1.0,0.0,0.1);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Artifacts", tostring(tgtwin.ntsc_artifacts)}
+		},
+		{
+		name = "ntsc_hue",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "ntsc_hue",  nil, nil,-0.1, 0.1, -0.05);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd, tgtwin, "ntsc_hue",  nil, nil,-0.1, 0.1, 0.05);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Hue", tostring(tgtwin.ntsc_hue)}
+		},
+		{
+		name = "ntsc_saturation",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_saturation",nil,nil,-1,1,0.2);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd,tgtwin,"ntsc_saturation",nil,nil,-1, 1,-0.2);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Saturation", tostring(tgtwin.ntsc_saturation)}
+		},
+		{
+		name = "ntsc_contrast",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_contrast",nil,nil,-0.5,0.5,0.1);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd,tgtwin,"ntsc_contrast",nil,nil,-0.5,0.5,-0.1);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Contrast", tostring(tgtwin.ntsc_contrast)}
+		},
+		{
+		name = "ntsc_brightness",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_brightness",nil,nil,-0.5,0.5,0.1);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd,tgtwin,"ntsc_brightness",nil,nil,-0.5,0.5,-0.1);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Brightness", tostring(tgtwin.ntsc_brightness)}
+		},
+		{
+		name = "ntsc_gamma",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_gamma",nil,nil,-0.5,0.5,0.1);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd,tgtwin,"ntsc_gamma",nil,nil,-0.5,0.5,-0.1);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Gamma", tostring(tgtwin.ntsc_gamma)}
+		},
+		{
+		name = "ntsc_sharpness",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_sharpness",nil,nil,-1.0,1.0,1.0);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self, wnd,tgtwin,"ntsc_sharpness",nil,nil,-1.0,1.0,-1.0);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Sharpness", tostring(tgtwin.ntsc_sharpness)}
+		},
+		{
+		name = "ntsc_resolution",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_resolution", nil, nil, 0.0, 1.0, 0.2);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self,wnd,tgtwin,"ntsc_resolution",nil,nil,0.0, 1.0, -0.2);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Resolution", tostring(tgtwin.ntsc_resolution)}
+		},
+		{
+		name = "ntsc_bleed",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin,"ntsc_bleed",nil, nil, -1.0, 0.0, 0.2);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self,wnd,tgtwin,"ntsc_bleed",nil,nil,-1.0,0.0,-0.2);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Bleed", tostring(tgtwin.ntsc_bleed)}
+		},
+		{
+		name = "ntsc_fringing",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "ntsc_fringing", nil, nil,-1.0, 1.0, 1.0);
+			tgtwin:set_ntscflt();
+		end,
+		rtrigger = function(self,wnd)
+			stepfun_num(self,wnd,tgtwin,"ntsc_fringing",nil,nil,-1.0, 1.0, -1.0);
+			tgtwin:set_ntscflt();
+		end,
+		cols = {"Fringing", tostring(tgtwin.ntsc_fringing)}
+		}
+	};
+
+	local newwnd = awbwman_listwnd(
+		menulbl("Advanced..."), deffont_sz, linespace,
+		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+
+		tgtwin:add_cascade(newwnd);
+end
+
+local function awbtarget_ntscpop(wnd, icn)
+	local fltdlg = {
+		"NTSC"
+	};
+
+	if (wnd.ntsc_state == true) then
+		fltdlg[1] = "\\#00ff00 NTSC";
+	end
+
+	local dlgtbl = {
+		function(btn)
+			if (btn == true) then
+				wnd.ntsc_state = not wnd.ntsc_state;
+				wnd:set_ntscflt();
+			else
+				wnd.ntsc_state = true;
+				ntsc_dlg(wnd);
+				wnd:set_ntscflt();	
+			end
+		end
+	};
+
+	local vid, lines = desktoplbl(table.concat(fltdlg, "\\n\\r"));
+	awbwman_popup(vid, lines, dlgtbl, {ref = icn.vid});
+end
+
 local function awbtarget_dropstateopts(pwin)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
@@ -134,6 +392,17 @@ local function awbtarget_dropstateopts(pwin)
 		end
 	end
 
+end
+
+local function gen_factorystr(wnd)
+--
+-- Generate a string that can be used to recreate this particular session,
+-- down to savestate, input config and filter
+--
+-- track: gameid, graphdbg, skipmode, framealign, jitterstep, jitterxfer,
+-- preaud
+-- sweep each filtercategory and get the respective factorystr
+--
 end
 
 --
@@ -150,7 +419,49 @@ function awbwnd_target(pwin, caps)
 	pwin.snap_prefix = caps.prefix and caps.prefix or "";
 	pwin.mediavol = 1.0;
 	pwin.filters = {};
+
+-- options part of the "factory string" (along with filter)
+	pwin.graphdbg   = false;
+	pwin.skipmode   = "Automatic";
+	pwin.framealign = 6;
+	pwin.preaud     = 1;
+	pwin.jitterstep = 0; -- just for debugging
+	pwin.jitterxfer = 0; -- just for debugging
+	pwin.ntsc_state = false;
+	pwin.ntsc_hue        = 0.0;
+	pwin.ntsc_saturation = 0.0;
+	pwin.ntsc_contrast   = 0.0;
+	pwin.ntsc_brightness = 0.0;
+	pwin.ntsc_gamma      = 0.2;
+	pwin.ntsc_sharpness  = 0.0;
+	pwin.ntsc_resolution = 0.7;
+	pwin.ntsc_artifacts  =-1.0;
+	pwin.ntsc_bleed      =-1.0;
+	pwin.ntsc_fringing   =-1.0;
+-- end of factorystring options
+
 	pwin.rebuild_chain = awbwmedia_filterchain;
+
+	pwin.set_frameskip = function(self)
+		local val = getskipval(self.skipmode);
+		target_framemode(self.controlid, val, self.framealign, self.preaud,
+			self.jitterstep, self.jitterxfer);
+	end
+
+	pwin.set_ntscflt = function(self)
+		if (self.ntsc_state) then
+			target_postfilter_args(pwin.controlid, 1, 
+				pwin.ntsc_hue, pwin.ntsc_saturation, pwin.ntsc_contrast);
+			target_postfilter_args(pwin.controlid, 2, 
+				pwin.ntsc_brightness, pwin.ntsc_gamma, pwin.ntsc_sharpness);
+			target_postfilter_args(pwin.controlid, 3, 
+				pwin.ntsc_resolution, pwin.ntsc_artifacts, pwin.ntsc_bleed);
+			target_postfilter_args(pwin.controlid, 4, pwin.ntsc_fringing);
+			target_postfilter(pwin.controlid, POSTFILTER_NTSC);
+		else
+			target_postfilter(pwin.controlid, POSTFILTER_OFF);
+		end
+	end
 
 -- these need to be able to be added / removed dynamically
 	pwin.add_statectls  = awbtarget_addstateopts;
@@ -183,6 +494,12 @@ function awbwnd_target(pwin, caps)
 
 	bartt:add_icon("filters", "r", cfg.bordericns["filter"], 
 		function(self) awbwmedia_filterpop(pwin, self); end);
+
+	bartt:add_icon("settings", "r", cfg.bordericns["settings"],
+		function(self) awbtarget_settingswin(pwin); end);
+
+	bartt:add_icon("ntsc", "r", cfg.bordericns["ntsc"],
+		function(self) awbtarget_ntscpop(pwin, self);	end);
 
 	bartt:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
 		if (pwin.paused) then
