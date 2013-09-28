@@ -524,7 +524,7 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 		if (*current == '\\') {
 /* special case, escape \ */
 			if (*(current+1) == '\\') {
-				memmove(current, current+1, strlen(current)+1);
+				memmove(current, current+1, strlen(current));
 				current += 1;
 				msglen++;
 			}
