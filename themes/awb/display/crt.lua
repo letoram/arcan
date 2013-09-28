@@ -160,15 +160,46 @@ cont.confwin = function(c, pwin)
 		name = "curvaturetog",
 		trigger = function(self, wnd)
 			c.opts["CURVATURE"] = not c.opts["CURVATURE"];
-			self.cols[1] = tostring(c.opts["CURVATURE"]);
+			self.cols[2] = tostring(c.opts["CURVATURE"]);
+			wnd:force_update();
 			pwin:rebuild_chain();
 		end,
 		rtrigger = trigger,
 		cols = {"Curvature", tostring(c.opts["CURVATURE"])}
+		},
+		{
+			name = "lineartog",
+			trigger = function(self, wnd)
+				c.opts["LINEAR_PROCESSING"] = not c.opts["LINEAR_PROCESSING"];
+				self.cols[2] = tostring(c.opts["LINEAR_PROCESSING"]);
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"Linear Processing", tostring(c.opts["LINEAR_PROCESSING"])}
+		},
+		{
+			name = "oversampletog",
+			trigger = function(self, wnd)
+				c.opts["OVERSAMPLE"] = not c.opts["OVERSAMPLE"];
+				self.cols[2] = tostring(c.opts["OVERSAMPLE"]);
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"Oversample", tostring(c.opts["OVERSAMPLE"])}
+		},
+		{
+			name = "gaussiantog",
+			trigger = function(self, wnd)
+				c.opts["USEGAUSSIAN"] = not c.opts["USEGAUSSIAN"];
+				self.cols[2] = tostring(c.opts["USEGAUSSIAN"]);
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"Gaussian", tostring(c.opts["USEGAUSSIAN"])}
 		}
---		c.opts["USEGAUSSIAN"]       = true;
---		c.opts["LINEAR_PROCESSING"] = true;
---		c.opts["OVERSAMPLE"]        = true;
 	};
 
 	local newwnd = awbwman_listwnd(
@@ -176,6 +207,7 @@ cont.confwin = function(c, pwin)
 			{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
 	pwin:add_cascade(newwnd);
+	newwnd:move(mouse_xy());
 
 -- left: increment, right: decrement
 -- create listview and link to parent
@@ -186,8 +218,6 @@ end
 -- but always uses an 1:1 FBO
 --
 cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
-	local shaderopts = {};
-
 	if (c == nil) then
 		c = {};
 		for k,v in pairs(cont) do
@@ -202,9 +232,17 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		c.opts["OVERSAMPLE"]        = true;
 	end
 
+-- just keep the true flagged
+	local shopts = {};
+	for k,v in pairs(c.opts) do
+		if (v) then
+			shopts[k] = true;
+		end
+	end
+
 -- rebuild shader and define uniforms
 	local s = load_shader("display/crt.vShader", 
-		"display/crt.fShader", shid, c.opts);
+		"display/crt.fShader", shid, shopts);
 
 -- could make this cheaper and simply encode the values into the shader
 -- before uploading ..

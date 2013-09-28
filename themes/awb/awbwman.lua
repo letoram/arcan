@@ -173,6 +173,8 @@ function awbwman_fullscreen(wnd)
 	local hr = iprops.height / VRESH;
 	local dw, dh;
 
+	print(iprops.width, iprops.height);
+
 	if (hr > wr) then
 		dw = math.floor(VRESH * ar);
 		dh = VRESH;
