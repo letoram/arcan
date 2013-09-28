@@ -988,11 +988,19 @@ function awbwnd_subwin_input(trigger, lblfun, options)
 end
 
 local function awbwnd_addcascade(self, wnd)
-	self:drop_cascade();
+	if (self.cascade == nil) then
+		self.cascade = {};
+	end
+
+	self:drop_cascade(wnd);
 	table.insert(self.cascade, wnd);
 end
 
 local function awbwnd_dropcascade(self, wnd)
+	if (self.cascade == nil) then
+		return;
+	end
+
 	for i=#self.cascade,1,-1 do
 		if (self.cascade[i] == wnd) then
 			table.remove(self.cascade, i);

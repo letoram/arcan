@@ -54,7 +54,7 @@ local function submenupop(wnd, list, trig, key, reficn)
 	local cprops = image_surface_properties(wnd.canvas.vid);
 
 	for i,j in ipairs(list) do
-		cbtbl[i] = function(ind, btn)
+		cbtbl[i] = function(btn)
 			if (btn == false and trig[i] ~= nil) then
 				wnd.filters[key] = list[i];
 				wnd:rebuild_chain(cprops.width, cprops.height);
@@ -74,6 +74,10 @@ local function submenupop(wnd, list, trig, key, reficn)
 	awbwman_popup(vid, lines, cbtbl, {ref = reficn});
 end
 
+local function fltpop(wnd, ctx)
+	ctx:confwin(wnd);
+end
+
 -- is to add multiline editor and a graphing shader-stage
 -- configuration.
 --
@@ -87,7 +91,8 @@ function awbwmedia_filterpop(wnd, icn)
 	};
 
 	local dlgtbl = {
-		function() submenupop(wnd, {"CRT"}, {}, "display", icn.vid); end,
+		function() submenupop(wnd, {"CRT"}, {function() fltpop(wnd,
+		wnd.filters.displayctx); end}, "display", icn.vid); end,
 		function() submenupop(wnd, 
 			{"SABR", "xBR", "Linear", "Bilinear", "Trilinear"},
 			{}, "upscaler", icn.vid); end,
@@ -312,12 +317,17 @@ function awbwmedia_filterchain(pwin)
 -- since shaders are "per target" 
 -- we need to load / rebuild and tagging with the wndid
 		elseif (f == "SABR") then
-			dstres, ctx = upscaler.sabr:setup(dstres,"SABR_"..tostring(pwin.wndid),
+			dstres, ctx = upscaler.sabr.setup(pwin.filters.upscalerctx, 
+				dstres, "SABR_"..tostring(pwin.wndid),
 				store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
+
+			pwin.filters.upscalerctx = ctx;
 	
 		elseif (f == "xBR") then
- 			dstres, ctx = upscaler.xbr:setup(dstres, "XBR_"..tostring(pwin.wndid),
-			store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
+ 			dstres, ctx = upscaler.xbr.setup(pwin.filter.supscalerctx,
+				dstres, "XBR_"..tostring(pwin.wndid),
+				store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
+			pwin.filters.upscalerctx = ctx;
 		end
 	end
 
@@ -325,15 +335,15 @@ function awbwmedia_filterchain(pwin)
 	if (pwin.filters.effect) then
 		local f = pwin.filters.effect;
 		if (f == "Glow") then
-			dstres, ctx = glow:setup(dstres, "GLOW_" .. tostring(pwin.wndid),
+			dstres, ctx = glow.setup(dstres, "GLOW_" .. tostring(pwin.wndid),
 				pwin.filters.effectopt);
 
 		elseif (f == "Trails") then
-			dstres, ctx = trails:setup(dstres, "TRAILS_" .. tostring(pwin.wndid),
+			dstres, ctx = trails.setup(dstres, "TRAILS_" .. tostring(pwin.wndid),
 				pwin.filters.effectopt);
 
 		elseif (f == "TrailGlow") then
-			dstres = glowtrails:setup(dstres, "GLOWTRAILS_" .. tostring(pwin.wndid),
+			dstres = glowtrails.setup(dstres, "GLOWTRAILS_" .. tostring(pwin.wndid),
 				pwin.filters.effectopt);
 		end
 	end
@@ -342,8 +352,11 @@ function awbwmedia_filterchain(pwin)
 	if (pwin.filters.display) then
 		local f = pwin.filters.display;
 		if (f == "CRT") then
-			dstres = crtcont:setup(dstres, "CRT_" .. tostring(pwin.wndid), store_sz,
+			dstres, ctx = crtcont.setup(pwin.filters.displayctx, 
+				dstres, "CRT_"..tostring(pwin.wndid),store_sz,
 				in_sz, out_sz, pwin.filters_displayopt);
+	
+			pwin.filters.displayctx = ctx;
 		end
 	end
 

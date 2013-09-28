@@ -261,7 +261,6 @@ function awbwnd_target(pwin, caps)
 			if (status.state_size > 0) then
 				pwin:add_statectls();
 				pwin.state_size = status.state_size;
-
 			end
 		else
 --			print(status.kind);

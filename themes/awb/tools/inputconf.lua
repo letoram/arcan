@@ -245,12 +245,12 @@ local function input_dig(edittbl)
 
 	local real_dest = dlg.destroy;
 
-	dlg.destroy = function(self, speed)
-		if (edittbl.parent.wnd.drop_cascade) then
-			edittbl.parent.wnd:drop_cascade(dlg);
-		end
-		real_dest(self, speed);
-	end
+--	dlg.destroy = function(self, speed)
+--		if (edittbl.parent.wnd.drop_cascade) then
+--			edittbl.parent.wnd:drop_cascade(dlg);
+--		end
+--		real_dest(self, speed);
+--	end
 --	awbwnd_dialog
 end
 
@@ -308,19 +308,16 @@ local function inputed_editlay(intbl, dstname)
 		table.sort(intbl.list, function(a,b) 
 			return string.lower(a.name) < string.lower(b.name); 
 		end);
+
+		if (intbl.wnd) then
+			intbl.wnd.tbl = intbl.list;
+		end
 	end
 
 	intbl:update_list();
 -- and because *** intbl don't keep track of order, sort list..
 	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
-		deffont_sz, linespace, {0.5, 0.5}, function(filter, ofs, lim)
-			local res = {};
-			local ul = ofs + lim;
-			for i=ofs, ul do
-				table.insert(res, intbl.list[i]);
-			end
-			return res, #intbl.list;
-		end, desktoplbl);
+		deffont_sz, linespace, {0.5, 0.5}, intbl.list, desktoplbl);
 
 	local cfg = awbwman_cfg();
 
@@ -481,14 +478,7 @@ function awb_inputed()
 	end
 
 	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
-		deffont_sz, linespace, {1.0}, function(filter, ofs, lim)
-			local res = {};
-			local ul = ofs + lim;
-			for i=ofs, ul do
-				table.insert(res, list[i]);
-			end
-			return res, #list;
-		end, desktoplbl);
+		deffont_sz, linespace, {1.0}, list, desktoplbl);
 	wnd.name = "Input Editor";
 end
 

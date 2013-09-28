@@ -552,11 +552,16 @@ end
 
 function awbwman_listwnd(caption, lineh, linespace, 
 	colopts, selfun, renderfun, options)
+	if (options == nil) then
+		options = {};
+	end
+
 	local wnd = awbwman_spawn(caption, options);
 
 	opts = {
 		rowhicol = {awb_col.bgcolor.r * 1.2, 
-			awb_col.bgcolor.g * 1.2, awb_col.bgcolor.b * 1.2}
+			awb_col.bgcolor.g * 1.2, awb_col.bgcolor.b * 1.2},
+		double_single = options.double_single
 	};
 
 	awbwnd_listview(wnd, lineh, linespace, colopts, selfun, renderfun, 
@@ -1307,9 +1312,10 @@ function awbwman_rootaddicon(name, captionvid,
 
 	local val = get_key("rooticn_" .. name);
 	if (val ~= nil and val.nostore == nil) then
+		val = string.gsub(val, ",", ".");
 		a = string.split(val, ":");
-		icntbl.x = math.floor(VRESW * tostring(a[1]));
-		icntbl.y = math.floor(VRESH * tostring(a[2]));
+		icntbl.x = math.floor(VRESW * tonumber(a[1]));
+		icntbl.y = math.floor(VRESH * tonumber(a[2]));
 	end
 
 	icntbl.toggle = function(val)
@@ -1406,7 +1412,9 @@ function awbwman_spawn(caption, options)
 			local strtbl = string.split(kv, ":");
 			for i, j in ipairs(strtbl) do
 				local arg = string.split(j, "=");
-				options[arg[1]] = tonumber(arg[2]);
+				local opt = string.gsub(arg[2], ",", ".");
+				options[arg[1]] = tonumber(opt);
+
 				if (arg[1] == "x" or arg[1] == "w") then
 					options[arg[1]] = math.floor(VRESW * options[arg[1]]);
 				elseif (arg[1] == "y" or arg[1] == "h") then

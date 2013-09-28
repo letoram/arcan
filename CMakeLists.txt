@@ -74,6 +74,8 @@ option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OF
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
 option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
+option(LUA51_JIT "Use the luajit-5.1 VM" ON)
+option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
@@ -145,10 +147,16 @@ FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( OpenGL REQUIRED )
 FIND_PACKAGE ( OpenAL REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
+
+# modified version of the 51 package that checks for the lua51_jit option 
 FIND_PACKAGE ( Lua51 REQUIRED )
 FIND_PACKAGE ( BZip2 REQUIRED )
 FIND_PACKAGE ( ZLIB REQUIRED )
+
+if (NOT SQLITE_AMALGAMATE) 
 FIND_PACKAGE ( SQLITE3 REQUIRED )
+endif(NOT SQLITE_AMALGAMATE) 
+
 FIND_PACKAGE ( GLEW REQUIRED )
 
 # -- without APR, no frameserver_net (and no need for NaCL)
@@ -305,6 +313,18 @@ if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 else (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 	message("--> Disabling video de-/encoding.")
 endif(${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
+
+if (SQLITE_AMALGAMATE)
+	message("--> Embedding the SQLite Amalgamation.")
+	list(APPEND SOURCES external/sqlite3/sqlite3.c)
+	list(APPEND MAIN_LIBRARIES dl)
+endif (SQLITE_AMALGAMATE)
+
+if (LUA51_JIT)
+	message("--> Enabling JIT- mode for LUA.")
+	set_property(SOURCE arcan_lua.c PROPERTY 
+				COMPILE_DEFINITIONS LUA51_JIT)
+endif (LUA51_JIT)
 
 include_directories(${INCLUDE_DIRS})
 
@@ -489,8 +509,8 @@ add_library(arcan_hijack SHARED
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c)
 
-	set_property(TARGET arcan_hijack PROPERTY 
-		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
+set_property(TARGET arcan_hijack PROPERTY 
+	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
 target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
