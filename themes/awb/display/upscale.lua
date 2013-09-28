@@ -1,5 +1,5 @@
 --
--- Setup- and option- wrapper for CGWGs CRT filter
+-- Setup- and option- wrapper for hyllian et. als upscalers. 
 --
 
 local cont = {
@@ -8,36 +8,168 @@ local cont = {
 		ddt = false,
 		factor = 5,
 		upscale_ineq = 15,
-		post = FILTER_NONE
+		post = "none" 
 	},
 	sabr = {
 		ddt = false,
-		post = FILTER_NONE
+		post = "none" 
 	},
 };
 
 -- macro defaults, parsing factorstring projects values overrides
+local function stepfun_num(trig, wnd, c, name, shsym, shtype, min, max, step)
+	c[name] = c[name] + step;
+	c[name] = c[name] < min and min or c[name];
+	c[name] = c[name] > max and max or c[name];
 
-cont.xbr.confwin = function(pwin)
--- left: increment, right: decrement
--- create listview and link to parent
+	trig.cols[2] = tostring(c[name]);
+
+	wnd:force_update();
+	if (shsym) then
+		shader_uniform(c.shid, shsym, shtype, PERSIST, c[name]);
+	end
 end
 
-cont.sabr.confwin = function(pwin)
+local function stepfun_tbl(trig, wnd, c, name, tbl, up)
+	local ind = 1;
+	for i=1, #tbl do
+		if (tbl[i] == c[name]) then
+			ind = i;
+			break;
+		end
+	end
+
+	if (up) then
+		ind = ind + 1;
+		ind = ind > #tbl and 1 or ind;
+	else
+		ind = ind - 1;
+		ind = ind == 0 and #tbl or ind;
+	end
+
+	trig.cols[2] = tbl[ind];
+	c[name] = tbl[ind];
 end
 
-local function add_ddt(newobj, neww, newh, outw, outh)
+cont.xbr.confwin = function(c, pwin)
+	local conftbl = {
+		{
+			name = "method",
+			trigger = function(self, wnd)
+				stepfun_tbl(self, wnd, c, "method", {"rounded", 
+					"semi-rounded", "square", "level3"}, true); 
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = function(self, wnd)
+				stepfun_tbl(self, wnd, c, "method", {"rounded", 
+					"semi-rounded", "square", "level3"}, false); 
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			cols = {"Method", c.method}
+		},
+		{
+			name = "factor",
+			trigger = function(self, wnd)
+				stepfun_num(self, wnd, c, "factor", nil, nil, 1, 5, 1);
+				pwin:rebuild_chain();
+			end,
+			rtrigger = function(self, wnd)
+				stepfun_num(self, wnd, c, "factor", nil, nil, 1, 5, -1);
+				pwin:rebuild_chain();
+			end,
+			cols = {"Scale Factor", c.factor}
+		},
+		{
+			name = "upscale_ineq",
+			trigger = function(self, wnd)
+				stepfun_num(self, wnd, c, "upscale_ineq", nil, nil, 1, 15, 1);
+				pwin:rebuild_chain();
+			end,
+			rtrigger = function(self, wnd)
+				stepfun_num(self, wnd, c, "upscale_ineq", nil, nil, 1, 15, -1);
+				pwin:rebuild_chain();
+			end,
+			cols = {"Upscale Inequality", tostring(c.upscale_ineq)}
+		},
+		{
+			name = "ddt",
+			trigger = function(self, wnd)
+				c.ddt = not c.ddt;
+				self.cols[2] = tostring(c.ddt);
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"DDT- Stage", tostring(c.ddt)} 
+		},
+		{
+			name = "post",
+			trigger = function(self, wnd)
+				stepfun_tbl(self, wnd, c, "post", {"none", "linear", "bilinear"},
+					true); 
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"Postfilter", "none"};
+		}
+	};
+
+	local newwnd = awbwman_listwnd(
+		menulbl("XBR Settings..."), deffont_sz, linespace,
+		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+
+		pwin:add_cascade(newwnd);
+		newwnd:move(mouse_xy());
+end
+
+cont.sabr.confwin = function(c, pwin)
+	local conftbl = {
+		{
+			name = "ddt",
+			trigger = function(self, wnd)
+				c.ddt = not c.ddt;
+				self.cols[2] = tostring(c.ddt);
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"DDT- Stage", tostring(c.ddt)} 
+		},
+		{
+			name = "post",
+			trigger = function(self, wnd)
+				stepfun_tbl(self, wnd, c, "post", {"none", "linear", "bilinear"},
+					true); 
+				wnd:force_update();
+				pwin:rebuild_chain();
+			end,
+			rtrigger = trigger,
+			cols = {"Postfilter", "none"};
+		}
+	};
+
+	local newwnd = awbwman_listwnd(
+		menulbl("SABR Settings..."), deffont_sz, linespace,
+		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+
+		pwin:add_cascade(newwnd);
+		newwnd:move(mouse_xy());
+end
+
+local function add_ddt(c, newobj, shid, inw, inh, outw, outh)
 	local ddtshader = load_shader("display/ddt.vShader", 
 		"display/ddt.fShader", shid .. "_ddt", {});
 
-	shader_uniform(ddtshader, "texture_size", "ff", PERSIST, neww, newh); 
-
-	local ddtsurf = fill_surface(outw, outh, 0, 0, 0, neww, newh);
+	shader_uniform(ddtshader, "texture_size", "ff", PERSIST, inw, inh); 
+	local ddtsurf = fill_surface(outw, outh, 0, 0, 0, outw, outh); 
 	show_image(ddtsurf);
+
 	define_rendertarget(ddtsurf, {newobj}, 
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
-	image_texfilter(ddtsurf, FILTER_NONE); 
 	return ddtsurf;
 end
 
@@ -48,10 +180,16 @@ end
 cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	local shaderopts = {};
 
--- MISSING; project optstr unto c
+	if (c == nil or c.tag ~= "xbr") then
+		c = {};
+		for k, v in pairs(cont.xbr) do
+			c[k] = v;
+		end
+		c.tag = "xbr";
+	end
+
 	if (c.method == "rounded") then
 		shaderopts["METHOD_A"] = true;
-		print("method a");
 	elseif (c.method == "semi-rounded") then
 		shaderopts["METHOD_B"] = true;
 	elseif (c.method == "square") then
@@ -62,8 +200,10 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	end
 
 -- clamp scale factor based on input source
-	local intw = 4096;
-	local inth = 4096;
+
+	local intw = sprops.width * c.factor;
+	local inth = sprops.height * c.factor;
+
 	while ( (intw > 2048 or inth > 2048) and c.factor >= 1) do
 		intw = sprops.width * c.factor;
 		inth = sprops.height * c.factor;
@@ -72,7 +212,7 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 
 -- Can't clamp? then skip this filter 
 	if (intw > 2048 or inth > 2048) then
-		return srcimg;
+		return srcimg, c;
 	end
 
 -- rebuild shader, setup internal storage matching scalefactor etc.
@@ -80,8 +220,8 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		"display/xbr.fShader", shid, shaderopts);
 
 	shader_uniform(s, "storage_size", "ff", PERSIST, intw, inth); 
-	shader_uniform(s, "texture_size", "ff", PERSIST, inprops.width, inprops.height);
-	shader_uniform(s, "eq_threshold", "ffff", PERSIST, c.upscale_ineq, c.upscale_ineq,
+	shader_uniform(s, "texture_size", "ff",PERSIST,inprops.width, inprops.height);
+	shader_uniform(s, "eq_threshold","ffff",PERSIST,c.upscale_ineq,c.upscale_ineq,
 		c.upscale_ineq, c.upscale_ineq);
 
 -- figure out max scale factor, scale to that and then let the output stretch.
@@ -99,13 +239,30 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
 	if (c.ddt) then
-		newobj = add_ddt(newobj, intw, inth, outprops.width, outprops.height);
+		newobj = add_ddt(c, newobj, shid, 
+			intw, inth, outprops.width, outprops.height);
+	end
+
+	if (post == "none") then
+		image_texfilter(newobj, FILTER_NONE);
+	elseif (post == "linear") then
+		image_texfilter(newobj, FILTER_LINEAR);
+	elseif (post == "bilinear") then
+		image_texfilter(newobj, FILTER_BILINEAR);
 	end
 
 	return newobj, c;
 end
 
 cont.sabr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
+	if (c == nil or c.tag ~= "sabr") then
+		c = {};
+		for k, v in pairs(cont.sabr) do
+			c[k] = v;
+		end
+		c.tag = "sabr";
+	end
+
 	local shid = load_shader("display/sabr.vShader", 
 		"display/sabr.fShader", shid, {});
 
@@ -125,7 +282,16 @@ cont.sabr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
 	if (c.ddt) then
-		newobj = add_ddt(newobj, outprops.width, outprops.height);
+		newobj = add_ddt(c, newobj, shid, outprops.width, outprops.height,
+			outprops.width, outprops.height);
+	end
+
+	if (post == "none") then
+		image_texfilter(newobj, FILTER_NONE);
+	elseif (post == "linear") then
+		image_texfilter(newobj, FILTER_LINEAR);
+	elseif (post == "bilinear") then
+		image_texfilter(newobj, FILTER_BILINEAR);
 	end
 
 	return newobj, c;

@@ -95,8 +95,9 @@ function awbwmedia_filterpop(wnd, icn)
 		wnd.filters.displayctx); end}, "display", icn.vid); end,
 		function() submenupop(wnd, 
 			{"SABR", "xBR", "Linear", "Bilinear", "Trilinear"},
-			{}, "upscaler", icn.vid); end,
-
+			{function() fltpop(wnd, wnd.filters.upscalerctx); end,
+			 function() fltpop(wnd, wnd.filters.upscalerctx); end},
+			 "upscaler", icn.vid); end,
 		function() submenupop(wnd,
 			{"Glow", "Trails", "GlowTrails"}, {}, "effects", icn.vid); end
 	};
@@ -324,9 +325,10 @@ function awbwmedia_filterchain(pwin)
 			pwin.filters.upscalerctx = ctx;
 	
 		elseif (f == "xBR") then
- 			dstres, ctx = upscaler.xbr.setup(pwin.filter.supscalerctx,
+ 			dstres, ctx = upscaler.xbr.setup(pwin.filters.upscalerctx,
 				dstres, "XBR_"..tostring(pwin.wndid),
 				store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
+
 			pwin.filters.upscalerctx = ctx;
 		end
 	end
