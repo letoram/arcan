@@ -17,19 +17,6 @@ local cont = {
 	cornersmooth = 1000
 };
 
-local function stepfun_num(trig, wnd, c, name, shsym, shtype, min, max, step)
-	c[name] = c[name] + step;
-	c[name] = c[name] < min and min or c[name];
-	c[name] = c[name] > max and max or c[name];
-
-	trig.cols[2] = tostring(c[name]);
-
-	wnd:force_update();
-	if (shsym) then
-		shader_uniform(c.shid, shsym, shtype, PERSIST, c[name]);
-	end
-end
-
 cont.confwin = function(c, pwin)
 	local conftbl = {
 		{
@@ -220,6 +207,8 @@ end
 cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	if (c == nil) then
 		c = {};
+		c.rebuildc = 0;
+
 		for k,v in pairs(cont) do
 			c[k] = v;
 		end
@@ -230,6 +219,8 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		c.opts["USEGAUSSIAN"]       = true;
 		c.opts["LINEAR_PROCESSING"] = true;
 		c.opts["OVERSAMPLE"]        = true;
+	else
+		c.rebuildc = c.rebuildc + 1;
 	end
 
 -- just keep the true flagged
@@ -261,7 +252,8 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 
 	local newobj = fill_surface(outprops.width, outprops.height, 0, 0, 0,
 		outprops.width, outprops.height);
-	
+
+	image_tracetag(newobj, "crt_filter_" .. tostring(c.rebuildc));
 	image_texfilter(newobj, FILTER_NONE, FILTER_NONE);
 
 	show_image(newobj);

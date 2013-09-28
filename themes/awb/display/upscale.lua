@@ -16,41 +16,6 @@ local cont = {
 	},
 };
 
--- macro defaults, parsing factorstring projects values overrides
-local function stepfun_num(trig, wnd, c, name, shsym, shtype, min, max, step)
-	c[name] = c[name] + step;
-	c[name] = c[name] < min and min or c[name];
-	c[name] = c[name] > max and max or c[name];
-
-	trig.cols[2] = tostring(c[name]);
-
-	wnd:force_update();
-	if (shsym) then
-		shader_uniform(c.shid, shsym, shtype, PERSIST, c[name]);
-	end
-end
-
-local function stepfun_tbl(trig, wnd, c, name, tbl, up)
-	local ind = 1;
-	for i=1, #tbl do
-		if (tbl[i] == c[name]) then
-			ind = i;
-			break;
-		end
-	end
-
-	if (up) then
-		ind = ind + 1;
-		ind = ind > #tbl and 1 or ind;
-	else
-		ind = ind - 1;
-		ind = ind == 0 and #tbl or ind;
-	end
-
-	trig.cols[2] = tbl[ind];
-	c[name] = tbl[ind];
-end
-
 cont.xbr.confwin = function(c, pwin)
 	local conftbl = {
 		{

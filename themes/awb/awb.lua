@@ -89,6 +89,7 @@ system_load("tools/hghtmap.lua")();
 system_load("scripts/mouse.lua")();
 
 if (DEBUGLEVEL > 1) then
+	kbdbinds["F5"]     = function() print(current_context_usage()); end; 
 	kbdbinds["F10"]    = mouse_dumphandlers;
 	kbdbinds["F9"]     = function() Trace(); end
 end

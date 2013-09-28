@@ -1636,7 +1636,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["close"]    = load_image("awbicons/close.png");
 	awb_cfg.bordericns["resize"]   = load_image("awbicons/resize.png");
 	awb_cfg.bordericns["toback"]   = load_image("awbicons/toback.png");
-	awb_cfg.bordericns["minimize"] = load_image("awbicons/minus.png", 16, 16);
+	awb_cfg.bordericns["minimize"] = load_image("awbicons/minus.png");
 	awb_cfg.bordericns["play"]     = load_image("awbicons/play.png");
 	awb_cfg.bordericns["pause"]    = load_image("awbicons/pause.png");
 	awb_cfg.bordericns["input"]    = load_image("awbicons/joystick.png");
@@ -1654,6 +1654,8 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["subdivide"]= load_image("awbicons/subdiv.png");
 	awb_cfg.bordericns["amplitude"]= load_image("awbicons/ampl.png");
 	awb_cfg.bordericns["filter"]   = load_image("awbicons/filter.png");
+	awb_cfg.bordericns["settings"] = load_image("awbicons/settings.png");
+	awb_cfg.bordericns["ntsc"]     = load_image("awbicons/ntsc.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
