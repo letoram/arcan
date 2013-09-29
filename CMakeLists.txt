@@ -560,9 +560,9 @@ set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Pa
 #
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 set (PLATFORM_SOURCES
-platform/posix/strip_traverse.c
 platform/posix/fmt_open.c
 platform/win32/sem.c
+platform/win32/strip_traverse.c
 platform/win32/shm.c
 platform/win32/time.c
 platform/win32/glob.c

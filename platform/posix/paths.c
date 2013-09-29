@@ -69,7 +69,7 @@ static inline bool file_exists(const char* fn)
 
 char* arcan_find_resource(const char* label, int searchmask)
 {
-	if (label == NULL)
+	if (label == NULL || strip_traverse(label) == NULL)
 		return NULL;
 
 	char playbuf[4096];
@@ -78,7 +78,6 @@ char* arcan_find_resource(const char* label, int searchmask)
 	if (searchmask & ARCAN_RESOURCE_THEME) {
 		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", arcan_themepath, 
 			arcan_themename, label);
-		strip_traverse(playbuf);
 
 		if (file_exists(playbuf))
 			return strdup(playbuf);
@@ -86,7 +85,6 @@ char* arcan_find_resource(const char* label, int searchmask)
 
 	if (searchmask & ARCAN_RESOURCE_SHARED) {
 		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath, label);
-		strip_traverse(playbuf);
 
 		if (file_exists(playbuf))
 			return strdup(playbuf);
@@ -104,7 +102,8 @@ static bool check_paths()
 	}
 
 	if (!arcan_libpath){
-		arcan_warning("Warning: check_paths(), libpath not found (internal support downgraded to partial).\n");
+		arcan_warning("Warning: check_paths(), libpath not found "
+			"(internal support downgraded to partial).\n");
 	}
 
 	if (!arcan_resourcepath){
@@ -150,6 +149,9 @@ char* arcan_expand_resource(const char* label, bool global)
 	char playbuf[4096];
 	playbuf[4095] = '\0';
 
+	if (strip_traverse(playbuf) == NULL)
+		return NULL;
+
 	if (global) {
 		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s", arcan_resourcepath, 
 			label);
@@ -159,14 +161,15 @@ char* arcan_expand_resource(const char* label, bool global)
 			arcan_themename, label);
 	}
 
-	return strdup( strip_traverse(playbuf) );
+	return strdup( playbuf );
 }
 
 char* arcan_find_resource_path(const char* label, const char* path, 
 	int searchmask)
 {
-	if (label == NULL)
-		return NULL;
+	if (label == NULL || 
+		strip_traverse(path) == NULL || strip_traverse(label) == NULL)
+			return NULL;
 
 	char playbuf[4096];
 	playbuf[4095] = '\0';
@@ -174,7 +177,6 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	if (searchmask & ARCAN_RESOURCE_THEME) {
 		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s/%s", arcan_themepath, 
 			arcan_themename, path, label);
-		strip_traverse(playbuf);
 
 		if (file_exists(playbuf))
 			return strdup(playbuf);
@@ -183,11 +185,9 @@ char* arcan_find_resource_path(const char* label, const char* path,
 	if (searchmask & ARCAN_RESOURCE_SHARED) {
 		snprintf(playbuf, sizeof(playbuf) - 1, "%s/%s/%s", 
 			arcan_resourcepath, path, label);
-		strip_traverse(playbuf);
 
 		if (file_exists(playbuf))
 			return strdup(playbuf);
-
 	}
 
 	return NULL;
