@@ -37,12 +37,16 @@ unsigned arcan_glob(char* basename, int searchmask,
 {
 	unsigned count = 0;
 	char* basepath;
+
+	if (!basename || strip_traverse(basename) == NULL)
+		return 0;
+
 	char playbuf[4096];
 	playbuf[4095] = '\0';
 
 	if ((searchmask & ARCAN_RESOURCE_THEME) > 0){
 		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s/%s", 
-			arcan_themepath, arcan_themename, strip_traverse(basename));
+			arcan_themepath, arcan_themename, basename);
 
 		glob_t res = {0};
 		if ( glob(playbuf, 0, NULL, &res) == 0 ){
@@ -57,8 +61,7 @@ unsigned arcan_glob(char* basename, int searchmask,
 	}
 
 	if ((searchmask & ARCAN_RESOURCE_SHARED) > 0){
-		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s", arcan_resourcepath, 
-			strip_traverse(basename));
+		snprintf(playbuf, sizeof(playbuf)-1, "%s/%s",arcan_resourcepath,basename);
 		glob_t res = {0};
 
 		if ( glob(playbuf, 0, NULL, &res) == 0 ){
