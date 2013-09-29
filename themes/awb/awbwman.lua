@@ -154,6 +154,8 @@ function awbwman_ispopup(vid)
 end
 
 function awbwman_fullscreen(wnd)
+	blend_image(mouse_cursor(), 0.0, awb_cfg.animspeed);
+
 -- hide root window (will cascade and hide everything else)
 	blend_image(awb_cfg.root.anchor, 0.0, awb_cfg.animspeed);
 	for k, v in ipairs(awb_wtable) do
@@ -172,8 +174,6 @@ function awbwman_fullscreen(wnd)
 	local wr = iprops.width / VRESW;
 	local hr = iprops.height / VRESH;
 	local dw, dh;
-
-	print(iprops.width, iprops.height);
 
 	if (hr > wr) then
 		dw = math.floor(VRESH * ar);
@@ -207,6 +207,8 @@ end
 
 function awbwman_dropfullscreen(wnd)
 -- reattach canvas to window
+	blend_image(mouse_cursor(), 1.0, awb_cfg.animspeed);
+
  	for k, v in ipairs(awb_wtable) do
 		blend_image(v.anchor, 1.0, awb_cfg.animspeed);
 	end
@@ -409,6 +411,7 @@ local function awbwman_addcaption(bar, caption)
 	order_image(caption, 1);
 	image_mask_set(caption, MASK_UNPICKABLE);
 	move_image(caption, 2, 2 + math.floor(0.5 * (bar.size - props.height)));
+	image_clip_on(caption, CLIP_SHALLOW);
 end
 
 function awbwman_gather_scatter()
@@ -823,7 +826,7 @@ function awbwman_rootwnd()
 	local g = awb_col.bgcolor.g;
 	local b = awb_col.bgcolor.b;
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
-	wcont:update_canvas(canvas, true);
+	wcont:update_canvas(canvas);
 
 	local tbar = wcont:add_bar("t", load_image("awbicons/topbar.png"), 
 		load_image("awbicons/topbar.png"), awb_cfg.topbar_sz, awb_cfg.topbar_sz);
@@ -1472,7 +1475,7 @@ function awbwman_spawn(caption, options)
 -- as more advanced windows types (selection etc.) may need 
 -- to override
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
-	wcont:update_canvas(canvas, true);
+	wcont:update_canvas(canvas);
 
 -- top windowbar
 	local tbar = wcont:add_bar("t", awb_cfg.activeres,

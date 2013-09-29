@@ -539,11 +539,17 @@ local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 	return awbbar;
 end
 
-local function awbwnd_update_canvas(self, vid)
+local function awbwnd_update_canvas(self, vid, mirrored)
+	if (mirrored == nil) then
+		mirrored = 0; 
+	end
+
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
 	order_image(vid, 0);
 	show_image(vid);
+
+	image_set_txcos_default(vid, mirrored); 
 
 	move_image(vid, self.canvasx, self.canvasy);
 	resize_image(vid, self.canvasw, self.canvash);

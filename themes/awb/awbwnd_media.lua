@@ -362,7 +362,7 @@ function awbwmedia_filterchain(pwin)
 		end
 	end
 
-	pwin:update_canvas(dstres);
+	pwin:update_canvas(dstres, pwin.mirrored);
 end
 
 function awbwnd_media(pwin, kind, source, active, inactive)
@@ -425,7 +425,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	
 		callback = function(source, status) 
 			if (status.kind == "loaded") then
-				pwin:update_canvas(source, false);
+				pwin:update_canvas(source);
 				pwin:resize(status.width, status.height);
 			end
 		end
@@ -444,7 +444,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		rendertarget_attach(dstvid, camera, RENDERTARGET_DETACH);
 		camtag_model(camera, 0.01, 100.0, 45.0, 1.33); 
 
-		pwin:update_canvas(dstvid, false);
+		pwin:update_canvas(dstvid);
 		pwin.model = source;
 		pwin.input = input_3dwin;
 		pwin.amb_r = 0.3;
@@ -481,7 +481,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 				if (tag and tag.kind == "media") then
 					local newdisp = null_surface(32, 32);
 					image_sharestorage(tag.source.canvas.vid, newdisp);
-					pwin.model:update_display(newdisp);
+					pwin.model:update_display(newdisp, true);
 					tag:drop();
 				end
 			end
