@@ -268,9 +268,12 @@ static int arcan_lua_rawresource(lua_State* ctx)
 
 	if (!path) {
 		char* fname = arcan_expand_resource(luaL_checkstring(ctx, 1), false);
-		lua_ctx_store.rfile = fopen(fname, "w+");
-		free(fname);
-	} else
+		if (fname){
+			lua_ctx_store.rfile = fopen(fname, "w+");
+			free(fname);
+		}
+	} 
+	else
 		lua_ctx_store.rfile = fopen(path, "r");
 
 	lua_pushboolean(ctx, lua_ctx_store.rfile != NULL);
@@ -5690,10 +5693,11 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 			if (substrp){
 				substrp[1] = '\0';
 	
-FILE* outf = fopen("dumpfile", "w+");
-fwrite(statebuf, 1, strlen(statebuf), outf);
-fclose(outf);
-
+/*
+ * FILE* outf = fopen("dumpfile", "w+");
+ * fwrite(statebuf, 1, strlen(statebuf), outf);
+ * fclose(outf);
+ */
 				lua_getglobal(ctx, "sample");
 				if (!lua_isfunction(ctx, -1)){
 					lua_pop(ctx, 1);

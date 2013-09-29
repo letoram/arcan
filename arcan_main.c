@@ -104,6 +104,7 @@ static const struct option longopts[] = {
 	{ "vsync-falign", required_argument, NULL, 'F'},
 	{ "monitor",      required_argument, NULL, 'M'},
 	{ "monitor-out",  required_argument, NULL, 'O'},
+	{ "monitor-in",   required_argument, NULL, 'I'},
 	{ NULL,           no_argument,       NULL,  0 }
 };
 
@@ -120,6 +121,7 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
 "-O\t--monitor-out \tLOG or script.lua (resourcepath/scripts/monitors)\n"
 #endif
+"-I\t--monitor-in  \tdumpname (resourcepath/logs/dumpname.lua)\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 "-p\t--rpath       \tchange path for resources (default: autodetect)\n"
 "-t\t--themepath   \tchange path for themes (default: autodetect)\n"
@@ -299,9 +301,11 @@ int main(int argc, char* argv[])
 				int status;
 /* close these as they occlude data from the monitor session
  * ideally, the lua warning/etc. should be mapped to go as messages
- * to the monitoring session, as should a perror/atexit handler */
+ * to the monitoring session, as should a perror/atexit handler,
+ * preferrably combined with an option to send lua commands from
+ * the monitor to manipulate object states. */
 				close(pair[0]);
-			/*	fclose(stdout);
+			/*fclose(stdout);
 				fclose(stderr); */
 	
 				monitor_parent = true;

@@ -6,7 +6,9 @@ ltime = 50;
 
 function welcome()
 	local symfun = system_load("scripts/symtable.lua");
-	symtable = symfun();
+	if (symfun ~= nil) then
+		symtable = symfun();
+	end
 
 	titlestr = render_text( [[\ffonts/default.ttf,18\bWelcome to ARCAN!]] );
 	move_image(titlestr, VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width)); 
