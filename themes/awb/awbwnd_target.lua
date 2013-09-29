@@ -564,8 +564,10 @@ function awbwnd_target(pwin, caps)
 			print("show loading info..");
 
 		elseif (status.kind == "resized") then
+			pwin.mirrored = status.mirrored;
+	
 			if (pwin.updated == nil) then
-				pwin:update_canvas(source);
+				pwin:update_canvas(source, pwin.mirrored);
 				pwin:resize(pwin.w, pwin.h, true);
 			end
 

@@ -331,7 +331,7 @@ function spawn_vidrec()
 -- muxer
 -- possibly name
 -- start recording (purge all icons, close button stops.)
-	wnd:update_canvas(fill_surface(32, 32, 60, 60, 60), false); 
+	wnd:update_canvas(fill_surface(32, 32, 60, 60, 60) ); 
 
 	local mh = {
 	own = function(self, vid)

@@ -351,14 +351,16 @@ end
 
 local function amediahandler(path, base, ext)
 	local name = path .. "/" .. base .. "." .. ext;
-	local vid, tfun = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
+	local wnd, tfun = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
 	load_movie(name, FRAMESERVER_NOLOOP, tfun, 1, "novideo=true");
+	wnd.name = base; 
 end
 
 local function vmediahandler(path, base, ext)
 	local name = path .. "/" .. base .. "." .. ext;
-	local vid, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
+	local wnd, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
 	load_movie(name, FRAMESERVER_NOLOOP, tfun);
+	wnd.name = base; 
 end
 
 local function imghandler(path, base, ext)
