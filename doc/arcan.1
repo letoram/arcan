@@ -1,0 +1,131 @@
+.\" groff -man -Tascii arcan.1
+.TH arcan 1 "October 2013" arcan "User manual"
+.SH NAME
+Arcan \- Scriptable Multimedia Engine 
+.SH SYNOPSIS
+.B arcan 
+.RI [ OPTIONS ]
+.B themename
+.RI [ THEMEARGS ]
+
+.SH DESCRIPTION
+Arcan is an OpenGL based realtime LUA scriptable 2D/3D multimedia engine. Its intended application areas range from graphical frontends, user-interfaces, game prototyping,
+emulation experiments to video (re-) streaming and customized presentations.
+
+.SH OPTIONS
+.IP "\fB-h, --help\fR"
+Show a brief summary of commands and usage.
+
+.IP "\fB-w, --width\fR \fIpixels\fR"
+Set the width of the window or display resolution (with --fullscreen), invalid or 0 value will force device fullscreen dimensions.
+
+.IP "\fB-h, --height\fR \fIpixels\fR"
+Set the height of the window or display resolution (with -- fullscreen), invalid or 0 value will force device fullscreen dimensions.
+
+.IP "\fB-x, --winx\fR \fIstartx\fR"
+Set the x position of the window.
+
+.IP "\fB-y, --winy\fR \fIstarty\fR"
+Set the y position of the window.
+
+.IP "\fB-f, --fullscreen\fR"
+Toggle fullscreen (may require a modeswitch).
+
+.IP "\fB-m, --conservative\fR"
+Toggle memory conservative mode (assumes VRAM won't be externally flushed).
+
+.IP "\fB-M, --monitor\fR \fIinterval\fR"
+Launches another session and serializes the whole object space every \fIinterval\fR ticks.
+
+.IP "\fB-O, --monitor-out\fR \fImonscript\fR"
+Set the monitoring script used (or LOG:fname) for streamed logging to a file.
+
+.IP "\fB-I, --monitor-input\fR \fIdumpfile\fR"
+Ignore the specified theme and activate monitor-out with a single sample from resources/logs/dumpfile. 
+
+.IP "\fB-s, --windowed\fR"
+Set windows mode, will disable window titlebar / window border. 
+
+.IP "\fB-p, --resourcepath\fR \fIrespath\fR"
+Forcibly override the detected resourcepath and replace with \fIrespath\fR. See 
+
+.IP "\fB-t, --themepath\fR \fIthemepath\fR"
+Forcibly override the detected themepath and replace with \fIthemepath\fR. See \fBRESOURCES\fR below.
+
+.IP "\fB-o, --frameserver\fR \fIframeserver\fR"
+Specify the path to the frameserver to use. Default: arcan_frameserver.
+
+.IP "\fB-l, --hijacklib\fR \fIhijacklib\fR"
+Specify another default hijacklib. See \fBHIJACKING\fR below.
+
+.IP "\fB-d, --database\fR \fIdbpath\fR"
+Specify a database that should be used. Default: resourcepath/arcandb.sqlite.
+
+.IP "\fB-g, --debug\fR"
+Increase the running debuglevel, this can be stacked multiple times.
+
+.IP "\fB-a, --multisamples\fR \flevels\fR"
+Initialize the OpenGL context with a set number of multisamples (0, 4, ...).
+
+.IP "\fB-v, --novsync\fR"
+Disable sync to video-refresh.
+
+.IP "\fB-V, --nowait\fR"
+Disable sleeping between frames.
+
+.IP "\fB-F, --vsync-falign\fR \fIvfalign(0..1)\fR"
+Only process / interpolate a video frame if falign*vsync-timing ms has elapsed since the last flip.
+
+.IP "\fB-S, --nosound\fR"
+Set OpenAL global sound output to 0db.
+
+.IP "\fB-r, --scalemode\fR \fImode_n\fR"
+Force the underlying image management to either retain input sizes (moden=0) or to internally rescale to the nearest power of two (moden=1).
+
+.SH ENVIRONMENT VARIABLES
+.B ARCAN_SYSTEMPATH
+Set a different path for system- related storage (default, resources/games/system), mainly used by libretro frameserver cores.
+
+.B ARCAN_FRAMESERVER_LOGDIR
+Sets the output logfiles from frameserver sessions.
+
+.B ARCAN_FRAMESERVER_DEBUGSTALL
+If set, a frameserver launch will print its PID and then wait for 10 seconds,
+giving ample time to attach a debugger.
+
+.B ARCAN_FRAMESERVER
+If set, the frameserver binary used will be the one specified unless overridden through command-line arguments.
+
+.SH RESOURCES
+Arcan resource management is built around a two-tier namespace. There's a shared (R/O w. exceptions for games/system and savestates) tier called 'resources' (or resourcepath) and a local (R/W) one restricted to themepath/themename. On namespace collisions, the theme- specific tier is given priority.
+
+Resource- and theme tier path is determined by the search order (higher to lower priority):
+command-line argument, environment variable, current working directory , HOME/.arcan, /usr/local/share/arcan, /usr/share/arcan 
+
+.SH HIJACKING
+For some targets, a hijack- library can be used. This can either be the default one included in the build or specially written on a per-target basis. The one that will be preloaded in the launched target is defined in the database, or, if undefined, the default. The role of the hijack- library is to translate the parent event-loop into the namespace of the hijacked target, but also to sample audio/video and transfer over a shared memory interface. The default implementation handles targets that use SDLv1.2 and, to a lesser extent, OpenGL trough X11. 
+
+.SH DATABASE
+All tasks that involve launching and controlling external applications needs to have a configuration stored in the share database (which also acts as a key/value store for theme- specific data). The supplementary tool arcan_romman.rb can be used to automatically scan and build a database from a resource- folder, or manually view and edit settings.
+
+.SH FRAMESERVER
+For video de-/en- coding, network communications and similar tasks, the job is split across multiple semi-trusted processes. These use a shared memory interface and a domain socket to pass data and file-descriptors around. The main binary for this is the arcan_frameserver and usually resides in the same location as the main arcan binary.
+
+.SH DIAGNOSTICS
+There are a number of ways the engine can shut down, especially if the built in Debug mode. To diagnose a problem with a script (rather than a crash in the Engine, for that, see the \fBBUGS\fR section below), there are several tools to assist you. One is increasing the debuglevel through the -g calls, which will increase the level of verbosity in messages and warnings sent to STDOUT, but this is also exposed to the running script as DEBUGLEVEL. By creating a logs subdirectory in the active resource-folder, the engine will also save as much of the video state-space in a .lua readable script (crash_timeofcrash.lua) that can be used to build more refined troubleshooting tools. In addition, there is the notion of monitoring scripts, launching two arcan sessions where one samples and monitors the state of another. See resources/scripts/monitor for examples.
+
+.SH HOMEPAGE
+https://arcan-fe.com
+
+.SH SEE-ALSO
+.IX Header "SEE ALSO"
+\&\fIarcan_api_overview\fR\|(3)
+
+.SH BUGS
+You can report bugs at the forum on the homepage or through the the AUTHOR contact below. Save a snapshot of core-dumps (in the case of engine issues) or the appropriate resources/logs entries. For some issues, a copy of the database used and a list of files (with permissions) in themepath and resourcepath might also be relevant.
+
+.SH COPYRIGHT
+Copyright  ©  2013  Bjorn Stahl. License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>. This is free software: you are free  to  change  and  redistribute  it. There is NO WARRANTY, to the extent permitted by law.
+
+.SH AUTHOR
+Bjorn Stahl <contact at arcan-fe dot com>
