@@ -4,11 +4,6 @@
 -- and a drag-n-drop composition canvas
 --
 
---
--- Missing;
--- Activation
--- Aspect Enforcing in Resize.
-
 local function sweepcmp(vid, tbl)
 	for k,v in ipairs(tbl) do
 		if (v == vid) then
@@ -18,7 +13,6 @@ local function sweepcmp(vid, tbl)
 
 	return false;
 end
-
 
 local function add_rectarget(wnd, tag)
 	local tmpw, tmph = wnd.w * 0.4, wnd.h * 0.4;
@@ -132,13 +126,9 @@ local function add_rectarget(wnd, tag)
 	tag:drop();
 end
 
-local function change_selected(vid)
-	print("change selected");
-end
-
 local function dotbl(icn, tbl, dstkey, convert, hook)
 	for i=1,#tbl do
-		if (tbl[i] == icn.parent.parent[dstkey]) then
+		if (tbl[i] == tostring(icn.parent.parent[dstkey])) then
 			tbl[i] = [[\#00ff00 ]] .. tbl[i] .. [[\#ffffff ]];
 		end
 	end
@@ -223,30 +213,103 @@ local function fpspop(icn)
 		"60"
 	};
 
-	dotbl(icn, lst, "fps");
+	dotbl(icn, lst, "fps", true);
 end
 
 local function destpop(icn)
+	local buttontbl = {
+		{
+		caption = desktoplbl("OK"), 
+		trigger = function(own)
+			icn.parent.parent:set_destination(own.inputfield.msg);
+		end
+		}, 
+		{
+			caption = desktoplbl("Cancel"),
+			trigger = function(own) end
+		}
+	};
+
 	local lst = {
-		"Auto",
 		"Specify...",
 		"Stream..."
 	};
 
---
--- Generate auto name .. 
---
+	local funtbl = {
+		function() 
+		awbwman_dialog(desktoplbl("Save As (recordings/*.mkv):"), 
+			buttontbl, { input = { w = 100, h = 20, limit = 32,
+			accept = 1, cancel = 2} }, false);
+		end,
+		function()
+		end
+	};
 
-	dotbl(icn, lst, "destination", false);
+	local vid, lines = desktoplbl(table.concat(lst, "\\n\\r"));
+	awbwman_popup(vid, lines, funtbl, {ref = icn.vid});
 end
 
---
--- Resize window to fit aspect as a helper in positioning etc.
---
-local function wnd_aspectchange()
+local function getasp(str)
+	local res = 1;
+
+	if (str == "4:3") then
+		res = 4 / 3;
+	elseif (str == "5:3") then
+		res = 5 / 3;
+	elseif (str == "3:2") then
+		res = 3 / 2;
+	elseif (str == "16:9") then
+		res = 16 / 9;
+	end
+
+	return res;
 end
 
-local function wnd_dorecord()
+local function record(wnd)
+-- detach all objects, use video recording surface as canvas
+	local aspf = getasp(wnd.aspect);
+	local height = wnd.resolution;
+	local width  = height * aspf;
+	width = width - math.fmod(width, 2);
+
+	local streamstr = "libvorbis:vcodec=libx264:container" ..
+		"=stream:acodec=libmp3lame:streamdst=" -- gsub(: to tab)
+	
+	local fmtstr = string.format("vcodec=%s:acodec=%s:vpreset=%d:" ..
+		"apreset=%d:fps=%d:container=%s%s",
+		wnd.vcodec, wnd.acodec, wnd.vquality, wnd.aquality, 
+			wnd.fps, wnd.container, wnd.nosound ~= nil and ":noaudio" or "");
+
+	local vidset = {};
+	local baseprop = image_surface_properties(wnd.canvas.vid);
+
+-- translate each surface and add to the final recordset
+-- speaker icons will be added to vidset with corresponding mixing settings
+	for i,j in ipairs(wnd.sources) do
+		if (j.icon == nil) then
+			local props = image_surface_properties(j.vid);
+			table.insert(vidset, j.vid);
+			link_image(j.vid, j.vid);
+			local relw = math.ceil(props.width / baseprop.width * width);
+			local relh = math.ceil(props.height / baseprop.height * height);
+			local relx = math.ceil(props.x / baseprop.width * width);
+			local rely = math.ceil(props.y / baseprop.height * height);
+			resize_image(j.vid, relw, relh);
+			move_image(j.vid, relx, rely);
+		else
+-- find corresponding AID, calculate mixing properties
+		end
+	end
+
+	local dstvid = fill_surface(width, height, 0, 0, 0, width, height);
+	define_recordtarget(dstvid, wnd.destination, fmtstr, vidset, wnd.nosound ~= nil and {} or
+		WORLDID, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, tonumber(wnd.fps) > 30 and -1 or -2, 
+		function(src, status)
+		end);
+
+	show_image(dstvid);
+	wnd:set_border(2, 255, 0, 0);
+	wnd:update_canvas(dstvid);
 end
 
 function spawn_vidrec()
@@ -255,17 +318,60 @@ function spawn_vidrec()
 		return;
 	end
 
-	wnd.sources = {};
+	local cfg = awbwman_cfg();
+	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
+		cfg.ttinactvres, cfg.topbar_sz); 
+	
+	local barrecfun = function()
+		bar:destroy();
 
+		wnd.dir.r.right[1]:destroy();
+--		if (wnd.selected ~= nil) then
+--			image_transform_cycle(wnd.selected, 0);
+--			show_image(wnd.selected);
+--		end
+
+		wnd.input = nil;
+		wnd:resize(wnd.w, wnd.h);
+		record(wnd);	
+	end
+	
+	wnd.sources = {};
+	wnd.asources = {};
+
+	wnd.nosound = true;
 	wnd.name = "Video Recorder";
 	wnd.aquality = 7;
 	wnd.vquality = 7;
 	wnd.resolution = 480;
 	wnd.aspect = "4:3";
 	wnd.container = "MKV";
-	wnd.vcodec = "VP8";
-	wnd.acodec = "OGG";
-	wnd.destination = "Auto";
+	wnd.vcodec = "MP3";
+	wnd.acodec = "H264";
+	wnd.fps = 30;
+
+	wnd.set_destination = function(wnd, name, stream)
+		if (name == nil or string.len(name) == 0) then
+			return false;
+		end
+
+		if (stream) then 
+			wnd.streaming = true;
+			wnd.destination = name;
+		else
+			wnd.destination = string.format("recordings/%s.mkv", name);
+		end
+
+		if (wnd.ready == nil) then
+			bar:add_icon("record", "r", cfg.bordericns["record"], barrecfun);
+			wnd.ready = true;
+		end
+	end
+
+	wnd.update_aspect = function()
+		local aspw = getasp(wnd.aspect);
+		wnd:resize(wnd.w, wnd.h / aspw, true);
+	end
 
 	wnd.on_destroy = function()
 		print("save vidrec settings");
@@ -283,27 +389,6 @@ function spawn_vidrec()
 			end
 		end
 	end
-
---
--- Load old settings
---
-	local cfg = awbwman_cfg();
-	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
-		cfg.ttinactvres, cfg.topbar_sz); 
-	
-	bar:add_icon("record", "r", cfg.bordericns["record"], function()
-		bar:destroy();
-
-		wnd.dir.r.right[1]:destroy();
-		if (wnd.selected ~= nil) then
-			image_transform_cycle(wnd.selected, 0);
-			show_image(wnd.selected);
-		end
-
-		wnd.input = nil;
-		wnd:resize(wnd.w, wnd.h);
--- activate recording, add statuslabel, detach sources etc.
-	end);
 
 	bar:add_icon("res", "l", cfg.bordericns["resolution"], respop);
 	bar:add_icon("aspect", "l", cfg.bordericns["aspect"], aspectpop);
@@ -357,8 +442,6 @@ function spawn_vidrec()
 		local tag = awbwman_cursortag();
 		if (tag and tag.kind == "media") then
 			add_rectarget(wnd, tag);
-		else
-			change_selected(vid);
 		end
 	end,
 	}
