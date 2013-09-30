@@ -4,7 +4,7 @@
 -- @group: database 
 -- @cfunction: arcan_lua_gettargets
 function main()
-#define MAIN
+#ifdef MAIN
 	for i,v in ipairs(list_targets()) do
 		print(v);
 	end

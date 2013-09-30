@@ -8,7 +8,7 @@
 -- @related: store_key
 -- @flags: 
 function main()
-#define MAIN
+#ifdef MAIN
 	local test = store_key("test", "result");
 	local value = load_key("test");	
 	if (value == "result") then

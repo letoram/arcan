@@ -6,8 +6,7 @@
 -- @group: resource 
 -- @cfunction: arcan_lua_readrawresource
 -- @flags: 
--- 1 0: 
-#define MAIN
 function main()
-end
+#ifdef MAIN
 #endif
+end

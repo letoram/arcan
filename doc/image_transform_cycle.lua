@@ -13,7 +13,7 @@
 -- @group: image 
 -- @cfunction: arcan_lua_cycletransform
 function main()
-#define MAIN
+#ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);
 	image_transform_cycle(a, 1);
 	move_image(a, 100, 100, 100);

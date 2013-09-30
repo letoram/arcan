@@ -6,8 +6,7 @@
 -- @group: image 
 -- @cfunction: arcan_lua_imageasframe
 -- @flags: 
--- 1 0: 
-#define MAIN
 function main()
-end
+#ifdef MAIN
 #endif
+end

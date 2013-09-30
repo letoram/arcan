@@ -6,7 +6,7 @@
 -- @related: image_children, link_image, valid_vid  
 -- @cfunction: arcan_lua_imageparent
 function main()
-#define MAIN
+#ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);
 	b = instance_image(a);
 	c = fill_surface(32, 32, 255, 0, 0);
@@ -17,11 +17,11 @@ function main()
 	print(image_tracetag(image_parent(a)));
 #endif
 
-#define ERROR1
+#ifdef ERROR1
 	print(image_parent(BADID));
 #endif
 
-#define ERROR2
+#ifdef ERROR2
 	print(image_parent(WORLDID));
 #endif
 end
