@@ -28,8 +28,8 @@ end
 local function awbwnd_set_border(s, sz, r, g, b)
 -- border exists "outside" normal tbl dimensions
 	if (s.borders) then
-		for i, v in pairs(tbl.borders) do
-			delete_image(v);
+		for i, v in pairs(s.borders) do
+			image_color(v, r, g, b);
 		end
 		s.borders = nil;
 		s.resize = s.default_resize;
@@ -92,7 +92,7 @@ local function awbwnd_update_minsz(self)
 	end
 end
 
-local function awbwnd_resize(self, neww, newh, finished)
+local function awbwnd_resize(self, neww, newh, finished, canvassz)
 	if (self.anchor == nil) then
 		return;
 	end
@@ -159,7 +159,12 @@ local function awbwnd_resize(self, neww, newh, finished)
 		end
 		self.dir.r:resize(self.dir.r.size, vspace);
 	end
-	
+
+	if (canvassz and (canxofs > 0 or yofs > 0)) then
+		awbwnd_resize(self, neww + xofs, newh + xofs, finished, false);
+		return;
+	end
+
 	resize_image(self.anchor, neww, newh);
 	move_image(self.canvas.vid, xofs, yofs); 
 

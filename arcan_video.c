@@ -1613,11 +1613,11 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 /* don't allow to attach to self, that FBO behavior would be undefined 
  * and don't allow persist attachments as the other object can go out of 
  * scope */
+	if (dstobj && srcobj){
+/* find dstobj in rendertargets */
 	if (dstobj == srcobj || srcobj->flags.persist || dstobj->flags.persist)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (dstobj && srcobj){
-/* find dstobj in rendertargets */
 		rv = ARCAN_ERRC_UNACCEPTED_STATE;
 
 /* linear search for rendertarget matching the destination id */
