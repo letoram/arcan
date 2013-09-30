@@ -13,7 +13,6 @@
 -- @group: database 
 -- @cfunction: arcan_lua_getgame
 -- @flags: 
--- 1 0: 
 function main()
 #ifdef MAIN
 	local res = game_info("A%");

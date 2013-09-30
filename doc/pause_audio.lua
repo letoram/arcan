@@ -3,4 +3,4 @@
 -- @inargs: aid
 -- @group: audio 
 -- @cfunction: arcan_lua_pauseaudio
--- @related: play_audio 
+-- @related: play_audio

@@ -98,7 +98,6 @@ def funtoman(fname)
 	outm << ".SH #{shortnm}\n"
 
 	groups, line = scangrp(inf)
-	p line
 	groups.each_pair{|group, line|
 		workstr = line.strip
 		if (workstr.length > 0)

@@ -12,7 +12,6 @@
 -- @cfunction: arcan_lua_copytransform
 -- @related: copy_surface_properties
 -- @flags: 
--- 1 0: 
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);
