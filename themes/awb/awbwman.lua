@@ -1023,14 +1023,14 @@ local function awbwman_popupbase(props, options)
 
 	local dlgc = awb_col.dialog_border;
 	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
-	local wnd    = color_surface(1, 1,
+	local wnd = color_surface(1, 1,
 		awb_col.bgcolor.r,awb_col.bgcolor.g, awb_col.bgcolor.b);
 	
-	image_mask_set(border,    MASK_UNPICKABLE);
+	image_mask_set(border, MASK_UNPICKABLE);
 
 	order_image(border, max_current_image_order() - 5);
-	image_inherit_order(wnd,       true);
-	image_clip_on(wnd,       CLIP_SHALLOW);
+	image_inherit_order(wnd, true);
+	image_clip_on(wnd, CLIP_SHALLOW);
 
 	link_image(wnd, border);
 	show_image({border, wnd});
@@ -1149,6 +1149,10 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	awb_cfg.popup_active = res;
 	res.name = "awbwman_popup";
 	mouse_addlistener(res, {"click", "rclick", "motion"});
+end
+
+function awbwman_shortcut( factorystr )
+	print("add shortcut:", factorystr );
 end
 
 function awbwman_popupslider(min, val, max, updatefun, options)
@@ -1401,7 +1405,7 @@ function awbwman_spawn(caption, options)
 			local strtbl = string.split(kv, ":");
 			for i, j in ipairs(strtbl) do
 				local arg = string.split(j, "=");
-				options[arg[1]] = tonumber(opt);
+				options[arg[1]] = tonumber_rdx(arg[2]);
 
 				if (arg[1] == "x" or arg[1] == "w") then
 					options[arg[1]] = math.floor(VRESW * options[arg[1]]);
