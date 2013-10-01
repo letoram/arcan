@@ -35,6 +35,7 @@ local function inputlay_sel(icn, wnd)
 	local vid, lines = desktoplbl(str);
 
 	awbwman_popup(vid, lines, function(ind)
+		wnd.inp_val = lst[ind];
 		wnd.inp_cfg = inputed_getcfg(lst[ind]); 
 	end, {ref = icn.vid});
 end
@@ -394,15 +395,64 @@ local function awbtarget_dropstateopts(pwin)
 
 end
 
+local function factrest(wnd, str)
+-- split and index on group
+-- lineattr : skipping / mediavol
+-- inputcfg : try and load (if it exists)
+-- ntscattr : unpack and toggle ntscon
+-- statectl : try and load/ restore
+	print("restore:", wnd, str);
+end
+
 local function gen_factorystr(wnd)
---
--- Generate a string that can be used to recreate this particular session,
--- down to savestate, input config and filter
---
--- track: gameid, graphdbg, skipmode, framealign, jitterstep, jitterxfer,
--- preaud
--- sweep each filtercategory and get the respective factorystr
---
+	if (wnd.factory_base == nil) then
+		return nil;
+	end
+
+-- the value that the desktop-env needs to create this window,
+-- format:
+-- group:arg1,arg2=val,arg3\n
+-- group2:arg1,arg2=\n
+-- etc.
+	local base = wnd.factory_base;
+	local lines = {};
+
+	table.insert(lines, string.format("lineattr:skipmode=%s:" ..
+		"framealign=%d:preaud=%d:mediavol=%f", 
+		wnd.skipmode, wnd.framealign, wnd.preaud, wnd.mediavol));
+
+	if (wnd.inp_val ~= nil) then
+		table.insert(lines, string.format("inputcfg:%s", wnd.inp_val));
+	end
+
+	if (wnd.laststate ~= nil) then
+		table.insert(lines, string.format("statectl:%s", wnd.laststate));
+	end
+
+	if (wnd.ntsc_state == true) then
+		table.insert(lines, string.format("ntscattr:ntsc_hue=%f:" ..
+		"ntsc_saturation=%f:ntsc_contrast=%f:" ..
+		"ntsc_brightness=%f:ntsc_gamma=%f:ntsc_sharpness=%f:" ..
+		"ntsc_resolution=%f:ntsc_artifacts=%f:" ..
+		"ntsc_bleed=%f:ntsc_fringing=%f", 
+		wnd.ntsc_hue, wnd.ntsc_saturation, wnd.ntsc_contrast, wnd.ntsc_brightness,
+		wnd.ntsc_gamma, wnd.ntsc_sharpness,	wnd.ntsc_resolution, 
+		wnd.ntsc_artifacts,wnd.ntsc_bleed,wnd.ntsc_fringing));
+	end
+
+	if (wnd.filters.displayctx and wnd.filters.displayctx.factorystr) then
+		table.insert(lines, wnd.filters.displayctx:factorystr());
+	end
+
+	if (wnd.filters.upscalectx and wnd.filters.upscalectx.factorystr) then
+		table.insert(lines, wnd.filters.displayctx:factorystr());
+	end
+
+	if (wnd.filters.effectctx and wnd.filters.effectctx.factorystr) then
+		table.insert(lines, wnd.filters.effectctx:factorystr());
+	end
+
+	return table.concat(lines, "\\n");
 end
 
 --
@@ -411,7 +461,7 @@ end
 -- suitable callback for use in launch_target- style commands.
 -- Assumes a bar already existing in the "tt" spot to add icons to.
 --
-function awbwnd_target(pwin, caps)
+function awbwnd_target(pwin, caps, factstr)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
 
@@ -441,6 +491,7 @@ function awbwnd_target(pwin, caps)
 -- end of factorystring options
 
 	pwin.rebuild_chain = awbwmedia_filterchain;
+	pwin.factory_restore = factrest;
 
 	pwin.set_frameskip = function(self)
 		local val = getskipval(self.skipmode);
@@ -569,6 +620,10 @@ function awbwnd_target(pwin, caps)
 			if (pwin.updated == nil) then
 				pwin:update_canvas(source, pwin.mirrored);
 				pwin:resize(pwin.w, pwin.h, true);
+-- unpack settings
+				if (factrest ~= nil) then
+					pwin:factory_restore(factrest);
+				end
 			end
 
 -- if we're in fullscreen, handle the resize differently

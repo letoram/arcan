@@ -102,21 +102,6 @@ function awbwman_meta(lbl, active)
 	awb_cfg.meta.shift = active;
 end
 
-function string.split(instr, delim)
-	local res = {};
-	local strt = 1;
-	local delim_pos, delim_stp = string.find(instr, delim, strt);
-	
-	while delim_pos do
-		table.insert(res, string.sub(instr, strt, delim_pos-1));
-		strt = delim_stp + 1;
-		delim_pos, delim_stp = string.find(instr, delim, strt);
-	end
-	
-	table.insert(res, string.sub(instr, strt));
-	return res;
-end
-
 local function drop_popup()
 	if (awb_cfg.popup_active ~= nil) then
 		awb_cfg.popup_active:destroy(awb_cfg.animspeed);
@@ -526,7 +511,7 @@ function awbwman_targetwnd(caption, options, capabilities)
 	local wnd = awbwman_spawn(caption, options);
 	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
 		wnd.dir.t.bsize);
-	return wnd, awbwnd_target(wnd, capabilities);
+	return wnd, awbwnd_target(wnd, capabilities, options.factsrc);
 end
 
 function awbwman_activepopup()
@@ -1317,10 +1302,9 @@ function awbwman_rootaddicon(name, captionvid,
 
 	local val = get_key("rooticn_" .. name);
 	if (val ~= nil and val.nostore == nil) then
-		val = string.gsub(val, ",", ".");
 		a = string.split(val, ":");
-		icntbl.x = math.floor(VRESW * tonumber(a[1]));
-		icntbl.y = math.floor(VRESH * tonumber(a[2]));
+		icntbl.x = math.floor(VRESW * tonumber_rdx(a[1]));
+		icntbl.y = math.floor(VRESH * tonumber_rdx(a[2]));
 	end
 
 	icntbl.toggle = function(val)
@@ -1417,7 +1401,6 @@ function awbwman_spawn(caption, options)
 			local strtbl = string.split(kv, ":");
 			for i, j in ipairs(strtbl) do
 				local arg = string.split(j, "=");
-				local opt = string.gsub(arg[2], ",", ".");
 				options[arg[1]] = tonumber(opt);
 
 				if (arg[1] == "x" or arg[1] == "w") then
@@ -1457,8 +1440,12 @@ function awbwman_spawn(caption, options)
 		end
 
 		if (options.refid) then
-			local key = string.format("w=%f:h=%f:x=%f:y=%f",
-			wcont.w / VRESW, wcont.h / VRESH, wcont.x / VRESW, wcont.y / VRESH);
+			local key = string.format("w=%s:h=%s:x=%s:y=%s",
+			tostring_rdx(wcont.w / VRESW), 
+			tostring_rdx(wcont.h / VRESH),
+			tostring_rdx(wcont.x / VRESW),
+			tostring_rdx(wcont.y / VRESH));
+
 			store_key(options.refid, key);
 		end
 
@@ -1606,9 +1593,13 @@ end
 
 function awbwman_shutdown()
 	for i, v in ipairs(awb_cfg.rooticns) do
-		local val = string.format("%.4f:%.4f", v.x / VRESW, v.y / VRESH);
+		local val = string.format("%s:%s", tostring_rdx(v.x / VRESW), 
+			tostring_rdx(v.y / VRESH));
 		store_key("rooticn_" .. v.name, val);
 	end
+
+	store_key("global_vol", tostring_rdx(awb_cfg.global_vol));
+
 	shutdown();
 end
 
@@ -1621,6 +1612,11 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.rooticns   = {};
 	awb_cfg.defrndfun  = defrndr;
 	awb_cfg.mnurndfun  = mnurndr;
+
+	local mvol = get_key("global_vol");
+	if (mvol ~= nil) then
+		awb_cfg.global_vol = tonumber_rdx(mvol);
+	end
 
 	awb_col = system_load("scripts/colourtable.lua")();
 
