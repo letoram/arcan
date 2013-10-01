@@ -73,65 +73,66 @@ function inputlbl(text)
 end
 
 function awb()
-symtable = system_load("scripts/symtable.lua")();
+	symtable = system_load("scripts/symtable.lua")();
+	system_load("awb_support.lua")();
 
 -- shader function / model viewer
-system_load("scripts/calltrace.lua")();
-system_load("scripts/3dsupport.lua")();
-system_load("scripts/resourcefinder.lua")();
-system_load("tools/inputconf.lua")();
-system_load("tools/vidrec.lua")();
-system_load("tools/vidcmp.lua")();
-system_load("tools/hghtmap.lua")();
+	system_load("scripts/calltrace.lua")();
+	system_load("scripts/3dsupport.lua")();
+	system_load("scripts/resourcefinder.lua")();
+	system_load("tools/inputconf.lua")();
+	system_load("tools/vidrec.lua")();
+	system_load("tools/vidcmp.lua")();
+	system_load("tools/hghtmap.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
-system_load("scripts/mouse.lua")();
+	system_load("scripts/mouse.lua")();
 
-if (DEBUGLEVEL > 1) then
-	kbdbinds["F5"]     = function() print(current_context_usage()); end; 
-	kbdbinds["F10"]    = mouse_dumphandlers;
-	kbdbinds["F9"]     = function() Trace(); end
-end
+	if (DEBUGLEVEL > 1) then
+		kbdbinds["F5"]     = function() print(current_context_usage()); end; 
+		kbdbinds["F10"]    = mouse_dumphandlers;
+		kbdbinds["F9"]     = function() Trace(); end
+	end
 
-system_load("awb_iconcache.lua")();
-system_load("awbwnd.lua")();
-system_load("awbwnd_icon.lua")();
-system_load("awbwnd_list.lua")();
-system_load("awbwnd_media.lua")();
-system_load("awbwnd_target.lua")();
-system_load("awbwman.lua")();
+	system_load("awb_iconcache.lua")();
+	system_load("awbwnd.lua")();
+	system_load("awbwnd_icon.lua")();
+	system_load("awbwnd_list.lua")();
+	system_load("awbwnd_media.lua")();
+	system_load("awbwnd_target.lua")();
+	system_load("awbwman.lua")();
 
-settings.defwinw = math.floor(VRESW * 0.35);
-settings.defwinh = math.floor(VRESH * 0.35);
+	settings.defwinw = math.floor(VRESW * 0.35);
+	settings.defwinh = math.floor(VRESH * 0.35);
 
 -- the imagery pool is used as a static data cache,
 -- since the windowing subsystem need link_ calls to work
 -- we can't use instancing, so instead we allocate a pool
 -- and then share_storage
-imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
-awbwman_init(desktoplbl, menulbl);	
+	imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
+	awbwman_init(desktoplbl, menulbl);	
 
 -- 
 -- look in resources/scripts/mouse.lua
 -- for heaps more options (gestures, trails, autohide) 
 --
-image_tracetag(imagery.cursor, "mouse cursor");
-mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
-mouse_acceleration(0.5);
+	image_tracetag(imagery.cursor, "mouse cursor");
+	mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
+	mouse_acceleration(0.5);
 
 --
 -- Since we'll only use the 3d subsystem as a view for specific windows
 -- and those are populated through rendertargets, it's easiest to flip
 -- the camera
 --
-local supp3d = setup_3dsupport();
-awb_desktop_setup();
+	local supp3d = setup_3dsupport();
+	awb_desktop_setup();
 
 -- LCTRL + META = (toggle) grab to specific internal
 -- LCTRL = (toggle) grab to this window
-kbdbinds["LCTRL"]  = toggle_mouse_grab;
-kbdbinds["ESCAPE"] = awbwman_cancel;
+	kbdbinds["LCTRL"]  = toggle_mouse_grab;
+	kbdbinds["ESCAPE"] = awbwman_cancel;
 end
 
 --
@@ -139,7 +140,7 @@ end
 -- as a new window, start with a "launching" canvas and 
 -- on activation, switch to the real one.
 --
-function gamelist_launch(self)
+function gamelist_launch(self, factstr)
 	local captbl = launch_target_capabilities(self.target);
 	if (captbl == nil) then
 		awbwman_alert("Couldn't get capability table");
@@ -154,7 +155,8 @@ function gamelist_launch(self)
 		self.tag.setname and self.tag.setname or "");
 
 		local wnd, cb = awbwman_targetwnd(menulbl(self.name), 
-			{refid = "targetwnd_" .. tostring(self.gameid)}, captbl);
+			{refid = "targetwnd_" .. tostring(self.gameid),
+			 factsrc = factstr}, captbl);
 		wnd.gametbl = self.tag;
 
 		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);
@@ -257,34 +259,6 @@ function gamelist_popup(ent)
 	awbwman_popup(vid, list, popup_fun);
 end
 
-function string.utf8back(src, ofs)
-	if (ofs > 1 and string.len(src)+1 >= ofs) then
-		ofs = ofs - 1;
-		while (ofs > 1 and utf8kind(string.byte(src,ofs) ) == 2) do
-			ofs = ofs - 1;
-		end
-	end
-
-	return ofs;
-end
-
-function string.extension(src)
-	local ofs = #src;
-
-	while (ofs > 1) do
-		if (string.sub(src, ofs, ofs) == ".") then
-			local base = string.sub(src, 1, ofs-1);
-			local ext  = string.sub(src, ofs + 1);
-
-			return base, ext;
-		end
-
-		ofs = string.utf8back(src, ofs);
-	end
-
-	return src, nil;
-end
-
 --
 -- Set up a basic gamelist view from a prefiltered selection
 -- (which can be fine-grained afterwards ofc). 
@@ -340,6 +314,13 @@ function rootdnd(ctag)
 		table.insert(lbls, "Background");
 		table.insert(ftbl, function()
 			image_sharestorage(ctag.source.canvas.vid, awbwman_cfg().root.canvas.vid);
+		end);
+	end
+
+	if (ctag.factory) then
+		table.insert(lbls, "Add Shortcut");
+		table.insert(ftbl, function()
+			awbwman_shortcut( ctag.factory() );
 		end);
 	end
 
@@ -492,6 +473,9 @@ function awb_desktop_setup()
 			key = "videos",
 			trigger = function()
 				wnd_media("movies");
+			end,
+			rtrigger = function()
+				print("balle");
 			end
 		},
 	};
@@ -504,10 +488,12 @@ function awb_desktop_setup()
 
 	local cfg = awbwman_cfg();
 	cfg.on_rootdnd = rootdnd;
-end
 
-function attrstr(self)
-	return self.title;
+-- shortcuts are stored as a group- key with individual factories 
+	local scuts = get_key("shortcuts");
+	if (scuts ~= nil) then
+
+	end
 end
 
 --
