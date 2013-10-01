@@ -154,6 +154,10 @@ function tostring_rdx(inv)
 end
 
 function tonumber_rdx(ins)
+	if (ins == nil) then
+		print(debug.traceback());
+	end
+
 	local rdx_in  = ',';
 	local rdx_out = '.';
 	local len = string.len(ins);

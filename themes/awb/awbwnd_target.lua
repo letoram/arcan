@@ -14,13 +14,6 @@ local function getskipval(str)
 	end
 end
 
-local function datashare(wnd)
-	local res = awbwman_setup_cursortag(sysicons.floppy);
-	res.kind = "media";
-	res.source = wnd;
-	return res;
-end
-
 local function inputlay_sel(icn, wnd)
 	if (awbwman_ispopup(icn.vid)) then
 		wnd:focus();
@@ -414,12 +407,12 @@ local function gen_factorystr(wnd)
 -- group:arg1,arg2=val,arg3\n
 -- group2:arg1,arg2=\n
 -- etc.
-	local base = wnd.factory_base;
 	local lines = {};
+	table.insert(lines, wnd.factory_base);
 
 	table.insert(lines, string.format("lineattr:skipmode=%s:" ..
-		"framealign=%d:preaud=%d:mediavol=%f", 
-		wnd.skipmode, wnd.framealign, wnd.preaud, wnd.mediavol));
+		"framealign=%d:preaud=%d:mediavol=%s", 
+		wnd.skipmode, wnd.framealign, wnd.preaud, tostring_rdx(wnd.mediavol)));
 
 	if (wnd.inp_val ~= nil) then
 		table.insert(lines, string.format("inputcfg:%s", wnd.inp_val));
@@ -430,14 +423,16 @@ local function gen_factorystr(wnd)
 	end
 
 	if (wnd.ntsc_state == true) then
-		table.insert(lines, string.format("ntscattr:ntsc_hue=%f:" ..
+		line = string.format("ntscattr:ntsc_hue=%f:" ..
 		"ntsc_saturation=%f:ntsc_contrast=%f:" ..
 		"ntsc_brightness=%f:ntsc_gamma=%f:ntsc_sharpness=%f:" ..
 		"ntsc_resolution=%f:ntsc_artifacts=%f:" ..
 		"ntsc_bleed=%f:ntsc_fringing=%f", 
 		wnd.ntsc_hue, wnd.ntsc_saturation, wnd.ntsc_contrast, wnd.ntsc_brightness,
 		wnd.ntsc_gamma, wnd.ntsc_sharpness,	wnd.ntsc_resolution, 
-		wnd.ntsc_artifacts,wnd.ntsc_bleed,wnd.ntsc_fringing));
+		wnd.ntsc_artifacts,wnd.ntsc_bleed,wnd.ntsc_fringing);
+		line = string.gsub(',', '.');
+		table.insert(lines, line);
 	end
 
 	if (wnd.filters.displayctx and wnd.filters.displayctx.factorystr) then
@@ -453,6 +448,14 @@ local function gen_factorystr(wnd)
 	end
 
 	return table.concat(lines, "\\n");
+end
+
+local function datashare(wnd)
+	local res = awbwman_setup_cursortag(sysicons.floppy);
+	res.kind = "media";
+	res.factory = gen_factorystr(wnd);
+	res.source = wnd;
+	return res;
 end
 
 --

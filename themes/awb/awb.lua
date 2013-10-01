@@ -159,7 +159,9 @@ function gamelist_launch(self, factstr)
 			 factsrc = factstr}, captbl);
 		wnd.gametbl = self.tag;
 
-		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL,cb);
+		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL, cb);
+		wnd.factory_base = "gameid:" .. tostring(self.gameid);
+	
 		wnd.name = self.target .. "(" .. self.name .. ")";
 	end
 end
@@ -320,7 +322,7 @@ function rootdnd(ctag)
 	if (ctag.factory) then
 		table.insert(lbls, "Add Shortcut");
 		table.insert(ftbl, function()
-			awbwman_shortcut( ctag.factory() );
+			awbwman_shortcut( ctag.factory );
 		end);
 	end
 
