@@ -882,6 +882,11 @@ function awbwman_rootwnd()
 			end, {ref = self.vid});
 		end);
 
+	awb_cfg.mouseicn = tbar:add_icon("mouse", "r", awb_cfg.bordericns["mouse"],
+		function(self)
+			awbwman_mousepop(self.vid);
+		end);
+
 	awb_cfg.minimize_x = image_surface_properties(icn.vid).x;
 
 	image_mask_set(tbar.vid, MASK_UNPICKABLE);
@@ -1566,6 +1571,36 @@ function awbwman_cfg()
 	return awb_cfg;
 end
 
+function awbwman_mousepop(reficn)
+	local lst = {
+		"Acceleration...",
+		"Calibration..."
+	};
+
+	local vid, lines = desktoplbl(table.concat(lst, "\\n\\r"));
+	local resfun = {};
+	resfun[1] = function()
+		awbwman_popupslider(0.1, mouse_acceleration(), 5.0, function(val)
+			mouse_acceleration(val);	
+		end, {ref = reficn});
+	end
+
+	resfun[2] = function()
+		print("popup calibration dialog");
+	end
+
+	awbwman_popup(vid, lines, resfun, {ref = reficn});
+end
+
+function awbwman_toggle_mousegrab()
+	local state = toggle_mouse_grab();
+	if (state) then
+		image_sharestorage(awb_cfg.bordericns["mouselock"], awb_cfg.mouseicn.vid);	
+	else
+		image_sharestorage(awb_cfg.bordericns["mouse"], awb_cfg.mouseicn.vid);
+	end
+end
+
 --
 -- While some input (e.g. whatever is passed as input 
 -- to mouse_handler) gets treated elsewhere, as is meta state modifier,
@@ -1603,6 +1638,7 @@ function awbwman_shutdown()
 	end
 
 	store_key("global_vol", tostring_rdx(awb_cfg.global_vol));
+	store_key("mouse_accel", tostring_rdx(mouse_acceleration()));
 
 	shutdown();
 end
@@ -1620,6 +1656,11 @@ function awbwman_init(defrndr, mnurndr)
 	local mvol = get_key("global_vol");
 	if (mvol ~= nil) then
 		awb_cfg.global_vol = tonumber_rdx(mvol);
+	end
+
+	local mval = get_key("mouse_accel");
+	if (mval ~= nil) then
+		mouse_acceleration( tonumber_rdx(mval) );
 	end
 
 	awb_col = system_load("scripts/colourtable.lua")();
@@ -1661,7 +1702,10 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["ntsc"]     = load_image("awbicons/ntsc.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
+
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
+	awb_cfg.bordericns["mouse"]       = load_image("awbicons/topbar_mouse.png");
+	awb_cfg.bordericns["mouselock"]   = load_image("awbicons/topbar_mouselock.png");
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 

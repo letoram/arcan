@@ -119,7 +119,6 @@ function awb()
 --
 	image_tracetag(imagery.cursor, "mouse cursor");
 	mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
-	mouse_acceleration(0.5);
 
 --
 -- Since we'll only use the 3d subsystem as a view for specific windows
@@ -131,7 +130,7 @@ function awb()
 
 -- LCTRL + META = (toggle) grab to specific internal
 -- LCTRL = (toggle) grab to this window
-	kbdbinds["LCTRL"]  = toggle_mouse_grab;
+	kbdbinds["LCTRL"]  = awbwman_toggle_mousegrab;
 	kbdbinds["ESCAPE"] = awbwman_cancel;
 end
 
