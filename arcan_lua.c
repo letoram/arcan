@@ -2669,7 +2669,9 @@ int arcan_lua_mousegrab(lua_State* ctx)
 		lua_ctx_store.grab = false;
 
 	arcan_device_lock(0, lua_ctx_store.grab);
-	return 0;
+	lua_pushboolean(ctx, lua_ctx_store.grab);
+
+	return 1;
 }
 
 int arcan_lua_gettargets(lua_State* ctx)

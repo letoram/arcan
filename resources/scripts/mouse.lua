@@ -355,7 +355,11 @@ function mouse_tick(val)
 end
 
 function mouse_acceleration(newv)
-	mstate.accel = math.abs(newv);
+	if (newv == nil) then
+		return mstate.accel;
+	else
+		mstate.accel = math.abs(newv);
+	end
 	-- save / store
 end
 
