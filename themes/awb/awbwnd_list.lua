@@ -96,7 +96,7 @@ function awblist_resize(self, neww, newh)
 			local yofs = 0;
 			for i=2,#self.line_heights do
 				if (i % 2 == 0) then
-					a = color_surface(props.width, 
+					local a = color_surface(props.width, 
 						self.line_heights[i] - self.line_heights[i - 1], 
 						self.rowhicol[1], self.rowhicol[2], self.rowhicol[3]);
 					move_image(a, 0, self.line_heights[i]);
@@ -277,6 +277,15 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	image_tracetag(scrollbar_icn,   "awbwnd_listview.scrollbar");
 	image_tracetag(scrollcaret_icn, "awbwnd_listview.scrollcaret_icn");
 
+	pwin.on_destroy = function()
+		if (pwin.bglines) then
+			for ind, val in ipairs(pwin.bglines) do
+				delete_image(val);
+			end
+			pwin.bglines = nil;
+		end
+	end
+
 	pwin.input = function(self, iotbl)
 		if (iotbl.active == false) then
 			return;
@@ -351,7 +360,6 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	end
 
 	if (options.double_single) then
-					print("double_single");
 		mhand.click = mhand.dblclick;
 	else
 		mhand.click = function(self, vid, x, y)

@@ -64,16 +64,6 @@ local function awbwnd_set_border(s, sz, r, g, b)
 	end
 end
 
---
--- Define a new rendertarget reusing the existing
--- hiarchy, then drop it as rendertarget, now we have
--- an iconified version of the contents of the window
--- return as a vid
---
-local function awbwnd_iconify()
-
-end
-
 local function awbwnd_update_minsz(self)
 	self.minw = 0;
 	self.minh = 0;
@@ -311,7 +301,7 @@ function awbbaricn_resize(vid, limit, vertical)
 end
 
 function awbbaricn_rectresize(vid, limit, vertical)
-	props = image_surface_initial_properties(vid);
+	local props = image_surface_initial_properties(vid);
 	resize_image(vid, props.width, props.height);
 	return props.width, props.height;
 end
@@ -925,7 +915,6 @@ function awbwnd_create(options)
     add_bar    = awbwnd_addbar,
     resize     = awbwnd_resize,
     destroy    = awbwnd_destroy,
-		iconify    = awbwnd_iconify,
 		move       = awbwnd_move,
 		own        = awbwnd_own,
 		hide       = awbwnd_hide,
