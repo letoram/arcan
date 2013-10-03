@@ -71,8 +71,16 @@ function inputlbl(text)
 	return render_text(string.format("\\#ffffff\\f%s,%d %s",
 		deffont, 12, text));
 end
+		
+debug_global = {};
 
 function awb()
+	if (DEBUGLEVEL > 1) then
+		for k,v in pairs(_G) do
+			debug_global[k] = true;
+		end
+	end
+
 	symtable = system_load("scripts/symtable.lua")();
 	system_load("awb_support.lua")();
 
@@ -92,6 +100,20 @@ function awb()
 	if (DEBUGLEVEL > 1) then
 		kbdbinds["F5"]     = function() print(current_context_usage()); end; 
 		kbdbinds["F10"]    = mouse_dumphandlers;
+		kbdbinds["F4"]     = function()
+			local newglob = {};
+
+			print("[dump globals]");
+			for k,v in pairs(_G) do
+				if (debug_global[k] == nil) then
+					print(k, v);
+				end
+				newglob[k] = true;
+			end
+
+			debug_global = newglob;
+			print("[/dump globals]");
+		end;
 		kbdbinds["F9"]     = function() Trace(); end
 	end
 
@@ -393,7 +415,8 @@ local function wnd_media(path)
 		local bb, bx = string.extension(b);
 	end);
 	
-	awbwman_listwnd(menulbl("MediaBrowser"), deffont_sz, linespace, {1.0}, 
+	local wnd = awbwman_listwnd(menulbl("MediaBrowser"), 
+		deffont_sz, linespace, {1.0},
 		function(filter, ofs, lim, iconw, iconh)
 			local res = {};
 			local ul = ofs + lim;
@@ -415,6 +438,7 @@ local function wnd_media(path)
 			end
 			return res, #list;
 		end, desktoplbl);
+	wnd.name = "Media Browser";
 end
 
 function awb_desktop_setup()
@@ -437,6 +461,7 @@ function awb_desktop_setup()
 			trigger = function()
 				local wnd = awbwman_iconwnd(menulbl("Tools"), builtin_group, 
 					{refid = "iconwnd_tools"});
+					print("tools spawned", wnd, name);
 				wnd.name = "List(Tools)";
 			end
 		},
@@ -474,9 +499,6 @@ function awb_desktop_setup()
 			key = "videos",
 			trigger = function()
 				wnd_media("movies");
-			end,
-			rtrigger = function()
-				print("balle");
 			end
 		},
 	};
@@ -484,7 +506,7 @@ function awb_desktop_setup()
 	for i,j in pairs(groups) do
 		local lbl = desktoplbl(j.name);
 		awbwman_rootaddicon(j.key, lbl, sysicons.group, 
-			sysicons.group_active, j.trigger);
+			sysicons.group_active, j.trigger, j.rtrigger);
 	end
 
 	local cfg = awbwman_cfg();
@@ -553,9 +575,9 @@ end
 function spawn_boing(caption)
 	local int oval = math.random(1,100);
 	local a = awbwman_spawn(menulbl("Boing!"));
-
 	a.name = "Boing!"; 
-	
+	a.kind = sysicons.boing; 
+
 	local boing = load_shader("shaders/fullscreen/default.vShader", 
 		"shaders/boing.fShader", "boing" .. oval, {});
 		
@@ -592,15 +614,19 @@ function awb_input(iotbl)
 
 	elseif (iotbl.kind == "digital" and iotbl.translated) then
 		iotbl.lutsym = symtable[iotbl.keysym];
+		local kbdbindbase = awbwman_meta() .. iotbl.lutsym;
+		local forward = true;
 
 		if (iotbl.lutsym == "LSHIFT" or iotbl.lutsym == "RSHIFT") then 
 			awbwman_meta("shift", iotbl.active);
 		end
 
-		if (iotbl.active and kbdbinds[ iotbl.lutsym ]) then
-		 	kbdbinds[ iotbl.lutsym ](); 
-		else
-			awbwman_input(iotbl);
+		if (iotbl.active and kbdbinds[ kbdbindbase ]) then
+			forward = kbdbinds[ kbdbindbase ]() == nil;
+		end
+	
+		if (forward) then
+			awbwman_input(iotbl, kbdbindbase);
 		end
 	end
 end

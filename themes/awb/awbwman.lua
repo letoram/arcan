@@ -6,12 +6,10 @@
 -- Todolist:
 --   -> Auto-hide occluded windows to limit overdraw
 --   -> Tab- cycle focus window with out of focus shadowed
---   -> Fullscreen mode for window
---   -> Autohide for top menu bar on fullscreen
---   -> Drag and Drop for windows
---   -> Remember icon / window positions and sizes
 --   -> Keyboard input for all windows
 --   -> Animated resize effect
+--   -> Better fade animation
+--   -> Save background image
 
 --
 -- mapped up as "default_inverted", needed by some subclasses
@@ -36,8 +34,6 @@ local awb_wtable = {};
 local awb_col = {};
 
 local awb_cfg = {
--- window management
-	wlimit      = 10,
 	focus_locked = false,
 	fullscreen  = nil,
 	topbar_sz   = 16,
@@ -48,7 +44,6 @@ local awb_cfg = {
 	hidden      = {},
 	global_input= {},
 
--- root window icon management
 	rootcell_w  = 80,
 	rootcell_h  = 60,
 	icnroot_startx = 0,
@@ -58,7 +53,7 @@ local awb_cfg = {
 	icnroot_maxy   = VRESH - 100,
 	icnroot_x      = VRESW - 100,
 	icnroot_y      = 30,
-
+	tabicn_base = 32,
 	global_vol = 1.0
 };
 
@@ -95,11 +90,19 @@ local function awbwman_pushback(wnd)
 end
 
 function awbwman_meta(lbl, active)
-	if (lbl ~= "shift") then
-		return;
+	if (lbl ~= nil) then
+		if (lbl ~= "shift") then
+			return "";
+		else
+			if (awb_cfg.meta.shift and active == false) then
+				awbwman_tablist_toggle(false);
+			end
+
+			awb_cfg.meta.shift = active;
+		end
 	end
 
-	awb_cfg.meta.shift = active;
+	return awb_cfg.meta.shift and "SHIFT" or "";
 end
 
 local function drop_popup()
@@ -479,6 +482,7 @@ end
 
 function awbwman_iconwnd(caption, selfun, options)
 	local wnd = awbwman_spawn(caption, options);
+	wnd.kind = "icon";
 
 	awbwnd_iconview(wnd, 64, 48, 32, selfun, 
 		fill_surface(32, 32, 
@@ -498,6 +502,7 @@ function awbwman_mediawnd(caption, kind, source, options)
 
 	options.fullscreen = true;
 	local wnd = awbwman_spawn(caption, options);
+	wnd.kind = "media";
 	return wnd, awbwnd_media(wnd, kind, source, 
 		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
 end
@@ -509,6 +514,8 @@ function awbwman_targetwnd(caption, options, capabilities)
 
 	options.fullscreen = true;
 	local wnd = awbwman_spawn(caption, options);
+	wnd.kind = "target";
+
 	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
 		wnd.dir.t.bsize);
 	return wnd, awbwnd_target(wnd, capabilities, options.factsrc);
@@ -547,8 +554,9 @@ function awbwman_listwnd(caption, lineh, linespace,
 	end
 
 	local wnd = awbwman_spawn(caption, options);
+	wnd.kind = "list";
 
-	opts = {
+	local opts = {
 		rowhicol = {awb_col.bgcolor.r * 1.2, 
 			awb_col.bgcolor.g * 1.2, awb_col.bgcolor.b * 1.2},
 		double_single = options.double_single
@@ -806,6 +814,8 @@ function awbwman_rootwnd()
 		w      = VRESW,
 		h      = VRESH
 	});
+
+	wcont.kind = "root";
 
 	local r = awb_col.bgcolor.r;
 	local g = awb_col.bgcolor.g;
@@ -1298,7 +1308,7 @@ function awbwman_minimize(wnd, icon)
 end
 
 function awbwman_rootaddicon(name, captionvid, 
-	iconvid, iconselvid, trig, icntbl)
+	iconvid, iconselvid, trig, rtrigger, icntbl)
 
 	if (icntbl == nil) then
 		icntbl = {};
@@ -1307,11 +1317,12 @@ function awbwman_rootaddicon(name, captionvid,
 	icntbl.caption  = captionvid;
 	icntbl.selected = false;
 	icntbl.trigger  = trig;
+	icntbl.rtrigger = rtrigger;
 	icntbl.name     = name;
 
 	local val = get_key("rooticn_" .. name);
 	if (val ~= nil and val.nostore == nil) then
-		a = string.split(val, ":");
+		local a = string.split(val, ":");
 		icntbl.x = math.floor(VRESW * tonumber_rdx(a[1]));
 		icntbl.y = math.floor(VRESH * tonumber_rdx(a[2]));
 	end
@@ -1371,6 +1382,13 @@ function awbwman_rootaddicon(name, captionvid,
 		icntbl:trigger();
 	end
 
+	ctable.rclick = function(self, vid)
+		ctable.click(self, vid);
+		if (icntbl.rtrigger) then
+			icntbl:rtrigger();
+		end
+	end
+
 	ctable.drop = function(self, vid, dx, dy)
 		icntbl.x = math.floor(icntbl.x);
 		icntbl.y = math.floor(icntbl.y);
@@ -1389,7 +1407,7 @@ function awbwman_rootaddicon(name, captionvid,
 		1.0, awb_cfg.animspeed);
 	move_image(icntbl.anchor, icntbl.x, icntbl.y);
 	ctable.name = "rootwindow_button(" .. name .. ")";
-	mouse_addlistener(ctable, {"drag", "drop", "click", "dblclick"});
+	mouse_addlistener(ctable, {"drag", "drop", "click", "rclick", "dblclick"});
 	table.insert(awb_cfg.rooticns, icntbl);
 
 	return icntbl;
@@ -1427,6 +1445,7 @@ function awbwman_spawn(caption, options)
 		options.x, options.y = awbwman_next_spawnpos();
 	end
 	local wcont  = awbwnd_create(options);
+	wcont.kind   = "window";
 
 	local mhands = {};
 	local tmpfun = wcont.destroy;
@@ -1601,6 +1620,142 @@ function awbwman_toggle_mousegrab()
 	end
 end
 
+-- want to re-use when we cycle the transform
+local function tablist_allocslot(i, wndind)
+	local tbl  = awb_cfg.tablist_toggle;
+	local b    = awb_cfg.tabicn_base;
+	local dwin = awb_wtable[wndind];
+	local cont = null_surface(b, b);
+
+	tbl.slots[i] = {
+		vid = cont,
+		wnd = dwin
+	};
+
+	link_image(cont, tbl.anchor);
+	image_inherit_order(cont, true);
+	blend_image(cont, 1.0, awb_cfg.animspeed);
+	move_image(cont, (i-1) * (b + 4), b, awb_cfg.animspeed);
+
+	if (type(awb_cfg.tabicns[dwin.kind]) == "number") then
+		image_sharestorage(awb_cfg.tabicns[dwin.kind], cont);
+
+	elseif (type(dwin.kind) == "number" and
+		valid_vid(dwin.kind)) then
+		image_sharestorage(dwin.kind, cont);
+
+	elseif (valid_vid(dwin.canvas.vid)) then
+		image_sharestorage(dwin.canvas.vid, cont);
+	end
+end
+
+local function tablist_updatetag(msg)
+	local tbl = awb_cfg.tablist_toggle;
+	if (tbl.lbl) then
+		expire_image(tbl.lbl, awb_cfg.animspeed);
+		blend_image(tbl.lbl, 0.0, awb_cfg.animspeed);
+		tbl.lbl = nil;
+	end
+
+	if (msg) then
+		local props = image_surface_properties(mouse_cursor());
+		tbl.lbl = desktoplbl(msg);
+		link_image(tbl.lbl, tbl.anchor);
+		blend_image(tbl.lbl, 1.0, awb_cfg.animspeed);
+		image_inherit_order(tbl.lbl, true);
+		move_image(tbl.lbl, props.width, props.height - 
+			image_surface_properties(tbl.lbl).height);  
+	end
+end
+
+function awbwman_tablist_toggle(active)
+	local tbl = awb_cfg.tablist_toggle;
+
+	if (active == false) then
+		if (tbl ~= nil) then
+			expire_image(tbl.anchor, awb_cfg.animspeed);
+			blend_image(tbl.anchor, 0.0, awb_cfg.animspeed);
+			if (tbl.lbl) then
+				expire_image(tbl.lbl, awb_cfg.animspeed);
+				blend_image(tbl.lbl, 0.0, awb_cfg.animspeed);
+			end
+
+			for k, v in ipairs(awb_cfg.tablist_toggle.slots) do
+				move_image(v, 0, 0, awb_cfg.animspeed);
+			end
+
+			local wnd = awb_cfg.tablist_toggle.slots[1].wnd;
+			if (wnd.active) then
+				awbwman_focus(wnd, false);
+				local dx, dy = mouse_xy();
+				wnd:move(dx, dy, awb_cfg.animspeed);
+			end
+
+			awb_cfg.tablist_toggle = nil;
+		end
+		return;
+	end
+
+-- spawn
+	if (awb_cfg.tablist_toggle == nil and active) then
+		if (#awb_wtable <= 1) then
+			return;
+		end
+
+		tbl = {
+			slots = {}
+		};
+
+		tbl.ulim = #awb_wtable > 5 and 5 or #awb_wtable;
+		tbl.ofs  = tbl.ulim + 1;
+		awb_cfg.tablist_toggle = tbl;
+
+		tbl.anchor = null_surface(1, 1);
+		link_image(tbl.anchor, mouse_cursor());
+		image_inherit_order(tbl.anchor, true);
+		show_image(tbl.anchor);
+
+		for i=1,tbl.ulim do
+			tablist_allocslot(i, i);
+		end
+
+		tablist_updatetag(tbl.slots[1].wnd.name);
+	else
+-- already got a session running, just cycle the transform
+		local b = awb_cfg.tabicn_base;
+	
+		if (#awb_wtable > tbl.ulim) then
+			expire_image(tbl.slots[1].vid, awb_cfg.animspeed);
+		end
+
+		local tmp = tbl.slots[1];
+		for i=1,tbl.ulim-1 do
+			tbl.slots[i] = tbl.slots[i+1];
+		end
+		tbl.slots[tbl.ulim] = tmp;
+
+		for i=1,tbl.ulim do
+			move_image(tbl.slots[i].vid, (i-1) * (b + 4), b, awb_cfg.animspeed);
+		end
+
+-- need to rotate in a new one, since the first now is the last
+		if (#awb_wtable > tbl.ulim) then
+			local tbl = awb_cfg.tablist_toggle;
+			reset_image_transform(tbl.slots[tbl.ulim].vid);
+			move_image(tbl.slots[tbl.ulim].vid, 0, 0, awb_cfg.animspeed);
+			expire_image(tbl.slots[tbl.ulim].vid, awb_cfg.animspeed);
+			blend_image(tbl.slots[tbl.ulim].vid, 0, awb_cfg.animspeed);
+
+-- allocate a new that takes the offset in consideration
+			tablist_allocslot(tbl.ulim, tbl.ofs);
+			tbl.slots[tbl.ulim].wnd = awb_wtable[tbl.ofs];
+			tbl.ofs = (tbl.ofs + 1) > #awb_wtable and 1 or (tbl.ofs + 1);
+		end
+	end
+
+	tablist_updatetag(tbl.slots[1].wnd.name);
+end
+
 --
 -- While some input (e.g. whatever is passed as input 
 -- to mouse_handler) gets treated elsewhere, as is meta state modifier,
@@ -1609,8 +1764,17 @@ end
 -- and secondarily, pass through the active input layout and push
 -- to the broadcast domain.
 --
+local tablist_active = nil;
 function awbwman_input(iotbl, keysym)
-
+	if (keysym == "SHIFTTAB" and awb_cfg.modal == nil) then
+		if (iotbl.active) then
+			awbwman_tablist_toggle(true);
+		end
+		return;
+	else -- the shiftstate modifier will invalidate tablist
+		return;
+	end
+	
 	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
 		awb_cfg.popup_active:input(iotbl);
 	
@@ -1671,6 +1835,11 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.ttinactvres = load_image("awbicons/tt_border.png");
 	awb_cfg.alphares    = load_image("awbicons/alpha.png");
 	
+	awb_cfg.tabicns = {};
+	awb_cfg.tabicns.list = load_image("awbicons/floppy.png");
+	awb_cfg.tabicns.icon = awb_cfg.tabicns.list;
+	awb_cfg.tabicns.tool = awb_cfg.tabicns.list;
+
 	awb_cfg.bordericns["minus"]    = load_image("awbicons/minus.png");
 	awb_cfg.bordericns["plus"]     = load_image("awbicons/plus.png");
 	awb_cfg.bordericns["clone"]    = load_image("awbicons/clone.png");
