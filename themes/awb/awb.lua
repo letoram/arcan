@@ -181,9 +181,28 @@ function gamelist_launch(self, factstr)
 		wnd.gametbl = self.tag;
 
 		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL, cb);
-		wnd.factory_base = "gameid:" .. tostring(self.gameid);
+		wnd.factory_base = "gameid=" .. tostring(self.gameid);
 	
 		wnd.name = self.target .. "(" .. self.name .. ")";
+		return wnd;
+	end
+end
+
+function launch_factorytgt(tbl, factstr)
+	local lines  = string.split(factstr, "\n");
+	local idline = lines[1];
+	local idval  = tonumber(string.split(idline, "=")[2]);
+
+	local tbl = game_info(idval);
+	if (tbl ~= nil) then
+		tbl.tag = {
+			setname = tbl.setname,
+			tag = tbl,
+		};
+		tbl.name = tbl.title;
+		local wnd = gamelist_launch(tbl, factstr);
+	else
+		warning("broken gameid / lnk, check database reference.");
 	end
 end
 
@@ -304,7 +323,7 @@ function gamelist_wnd(selection)
 				target   = tbl[i].target,
 				tag      = tbl[i],
 				rtrigger = gamelist_popup,
-				trigger  = gamelist_launch,
+				trigger  = function(self) gamelist_launch(self); end,
 				cols     = {tbl[i].title, 
 					(tbl[i].genre ~= nil and string.len(tbl[i].genre) > 0) and tbl[i].genre or "(none)"}
 			};
@@ -342,8 +361,28 @@ function rootdnd(ctag)
 
 	if (ctag.factory) then
 		table.insert(lbls, "Add Shortcut");
+
 		table.insert(ftbl, function()
-			awbwman_shortcut( ctag.factory );
+			local ind  = 1;
+			local base = string.match(ctag.caption, "[a-ZA-Z0-9 _-]+");
+			local line = "shortcuts/" .. base .. ".lnk";
+
+			while (resource(line)) do
+				line = "shortcuts/" .. base .. ".lnk";
+				ind = ind + 1;
+			end
+		
+			if (open_rawresource(line)) then
+				write_rawresource(string.format(
+					"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];" ..
+					"\nres.factorystr = [[%s]];\nreturn res;", base, ctag.caption,
+					ctag.factory));
+				close_rawresource();
+			end
+
+			awbwman_rootaddicon(base, desktoplbl(ctag.caption),
+				sysicons.group, sysicons.group_active, function()
+			end);
 		end);
 	end
 
@@ -461,7 +500,6 @@ function awb_desktop_setup()
 			trigger = function()
 				local wnd = awbwman_iconwnd(menulbl("Tools"), builtin_group, 
 					{refid = "iconwnd_tools"});
-					print("tools spawned", wnd, name);
 				wnd.name = "List(Tools)";
 			end
 		},
@@ -512,10 +550,17 @@ function awb_desktop_setup()
 	local cfg = awbwman_cfg();
 	cfg.on_rootdnd = rootdnd;
 
--- shortcuts are stored as a group- key with individual factories 
-	local scuts = get_key("shortcuts");
-	if (scuts ~= nil) then
-
+	local rtbl = glob_resource("shortcuts/*.lnk");
+	if (rtbl) then
+		for k,v in ipairs(rtbl) do
+			local tbl = system_load("shortcuts/" .. v)();
+			if (tbl ~= nil and  
+				tbl.factorystr and tbl.name and tbl.caption) then
+				awbwman_rootaddicon(tbl.name, desktoplbl(tbl.caption),
+				sysicons.group, sysicons.group_active, function()
+					launch_factorytgt(tbl, tbl.factorystr); end, nil);
+			end
+		end
 	end
 end
 

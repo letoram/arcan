@@ -153,6 +153,10 @@ function tostring_rdx(inv)
 	return outs;
 end
 
+function string.trim(s)
+  return (s:gsub("^%s*(.-)%s*$", "%1"))
+end
+
 function tonumber_rdx(ins)
 	if (ins == nil) then
 		print(debug.traceback());

@@ -3120,33 +3120,47 @@ int arcan_lua_switchtheme(lua_State *ctx)
 
 int arcan_lua_getgame(lua_State* ctx)
 {
-	const char* game = luaL_checkstring(ctx, 1);
 	int rv = 0;
 
-	arcan_dbh_res dbr = arcan_db_games(dbhandle,
+	if (lua_type(ctx, 1) == LUA_TSTRING){
+		const char* game = luaL_checkstring(ctx, 1);
+
+		arcan_dbh_res dbr = arcan_db_games(dbhandle,
  /* year, input, players, buttons */
-		0, 0, 0, 0,
+			0, 0, 0, 0,
 /*title, genre, subgenre, target, system, manufacturer */
-		game, NULL, NULL, NULL, NULL, NULL, 
-		0, 0); /* offset, limit */
+			game, NULL, NULL, NULL, NULL, NULL, 
+			0, 0); /* offset, limit */
 
-	if (dbr.kind == 1 && dbr.count > 0 && dbr.data.gamearr &&(*dbr.data.gamearr)){
-		arcan_db_game** curr = dbr.data.gamearr;
+		if (dbr.kind == 1 && dbr.count > 0 && 
+			dbr.data.gamearr &&(*dbr.data.gamearr)){
+			arcan_db_game** curr = dbr.data.gamearr;
 /* table of tables .. missing ruby style yield just about now.. */ 
-		lua_newtable(ctx);
-		int rtop = lua_gettop(ctx);
-		int count = 1;
-
-		while (*curr) {
-			lua_pushnumber(ctx, count++);
 			lua_newtable(ctx);
-			pushgame(ctx, *curr);
-			lua_rawset(ctx, rtop);
-			curr++;
-		}
+			int rtop = lua_gettop(ctx);
+			int count = 1;
 
-		rv = 1;
-		arcan_db_free_res(dbhandle, dbr);
+			while (*curr) {
+				lua_pushnumber(ctx, count++);
+				lua_newtable(ctx);
+				pushgame(ctx, *curr);
+				lua_rawset(ctx, rtop);
+				curr++;
+			}
+
+			rv = 1;
+			arcan_db_free_res(dbhandle, dbr);
+		}
+	}
+	else {
+		arcan_dbh_res dbr = arcan_db_gamebyid(dbhandle, luaL_checkint(ctx, 1));
+		if (dbr.kind == 1 && dbr.count > 0 && 
+			dbr.data.gamearr &&(*dbr.data.gamearr)){
+			lua_newtable(ctx);
+			pushgame(ctx, dbr.data.gamearr[0]);
+			rv = 1;
+			arcan_db_free_res(dbhandle, dbr);
+		}
 	}
 
 	return rv;

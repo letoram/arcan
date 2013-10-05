@@ -514,10 +514,11 @@ function awbwman_targetwnd(caption, options, capabilities)
 
 	options.fullscreen = true;
 	local wnd = awbwman_spawn(caption, options);
+
 	wnd.kind = "target";
 
-	wnd:add_bar("tt", awb_cfg.ttactiveres, awb_cfg.ttinactvres, wnd.dir.t.rsize,
-		wnd.dir.t.bsize);
+	wnd:add_bar("tt", awb_cfg.ttactiveres, 
+		awb_cfg.ttinactvres, wnd.dir.t.rsize, wnd.dir.t.bsize);
 	return wnd, awbwnd_target(wnd, capabilities, options.factsrc);
 end
 
@@ -1166,10 +1167,6 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	mouse_addlistener(res, {"click", "rclick", "motion"});
 end
 
-function awbwman_shortcut( factorystr )
-	print("add shortcut:", factorystr );
-end
-
 function awbwman_popupslider(min, val, max, updatefun, options)
 	if (options.ref and awbwman_ispopup(options.ref)) then
 		drop_popup();
@@ -1313,7 +1310,7 @@ function awbwman_rootaddicon(name, captionvid,
 	if (icntbl == nil) then
 		icntbl = {};
 	end
-					
+
 	icntbl.caption  = captionvid;
 	icntbl.selected = false;
 	icntbl.trigger  = trig;
@@ -1550,10 +1547,29 @@ function awbwman_spawn(caption, options)
 
 		rhandle.rclick = function(self, vid)
 			if (options.fullscreen) then
-				local vid, lines = desktoplbl([[Fullscreen]]);
-				awbwman_popup(vid, lines, function(ind)
-					awbwman_fullscreen(wcont);
-				end);
+				local lbls = {"Fullscreen"};
+				local tbl = {function() awbwman_fullscreen(wcont); end};
+
+				if (wcont.kind == "media" or wcont.kind == "target") then
+					table.insert(lbls, "Original Size");
+					table.insert(tbl, function()
+						local did = wcont.controlid ~= nil 
+							and wcont.controlid or wcont.canvas.vid;
+
+						local props = image_surface_initial_properties(did);
+						wcont:resize(props.width, props.height, true, true);
+					end);
+
+					table.insert(lbls, "/2 align");
+					table.insert(tbl, function()
+						local props = image_surface_properties(wcont.canvas.vid);
+						wcont:resize( props.width - math.fmod(props.width, 2), 
+							props.height - math.fmod(props.height, 2), true, true);
+					end);
+				end
+
+				local vid, lines = desktoplbl(table.concat(lbls, "\\n\\r"));
+				awbwman_popup(vid, lines, tbl);
 			end
 		end
 
@@ -1632,6 +1648,7 @@ local function tablist_allocslot(i, wndind)
 		wnd = dwin
 	};
 
+	image_mask_set(cont, MASK_UNPICKABLE);
 	link_image(cont, tbl.anchor);
 	image_inherit_order(cont, true);
 	blend_image(cont, 1.0, awb_cfg.animspeed);
@@ -1660,6 +1677,7 @@ local function tablist_updatetag(msg)
 	if (msg) then
 		local props = image_surface_properties(mouse_cursor());
 		tbl.lbl = desktoplbl(msg);
+		image_mask_set(tbl.lbl, MASK_UNPICKABLE);
 		link_image(tbl.lbl, tbl.anchor);
 		blend_image(tbl.lbl, 1.0, awb_cfg.animspeed);
 		image_inherit_order(tbl.lbl, true);
@@ -1670,6 +1688,7 @@ end
 
 function awbwman_tablist_toggle(active)
 	local tbl = awb_cfg.tablist_toggle;
+	local b = awb_cfg.tabicn_base;
 
 	if (active == false) then
 		if (tbl ~= nil) then
@@ -1719,10 +1738,15 @@ function awbwman_tablist_toggle(active)
 			tablist_allocslot(i, i);
 		end
 
+		reset_image_transform(tbl.slots[1].vid);
+		blend_image(tbl.slots[1].vid, 1.0, awb_cfg.animspeed);
+		move_image(tbl.slots[1].vid, -1 * b, -1 * b, awb_cfg.animspeed);
+
 		tablist_updatetag(tbl.slots[1].wnd.name);
+		return;
+
 	else
 -- already got a session running, just cycle the transform
-		local b = awb_cfg.tabicn_base;
 	
 		if (#awb_wtable > tbl.ulim) then
 			expire_image(tbl.slots[1].vid, awb_cfg.animspeed);
@@ -1753,6 +1777,8 @@ function awbwman_tablist_toggle(active)
 		end
 	end
 
+	reset_image_transform(tbl.slots[1].vid);
+	move_image(tbl.slots[1].vid, -1 * b, -1 * b, awb_cfg.animspeed);
 	tablist_updatetag(tbl.slots[1].wnd.name);
 end
 
@@ -1771,10 +1797,8 @@ function awbwman_input(iotbl, keysym)
 			awbwman_tablist_toggle(true);
 		end
 		return;
-	else -- the shiftstate modifier will invalidate tablist
-		return;
 	end
-	
+
 	if (awb_cfg.popup_active and awb_cfg.popup_active.input ~= nil) then
 		awb_cfg.popup_active:input(iotbl);
 	

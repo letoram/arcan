@@ -99,6 +99,7 @@ function awblist_resize(self, neww, newh)
 					local a = color_surface(props.width, 
 						self.line_heights[i] - self.line_heights[i - 1], 
 						self.rowhicol[1], self.rowhicol[2], self.rowhicol[3]);
+
 					move_image(a, 0, self.line_heights[i]);
 					link_image(a, self.canvas.vid);
 					show_image(a);
