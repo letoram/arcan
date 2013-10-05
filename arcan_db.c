@@ -360,8 +360,93 @@ static size_t nstrlen(const char* n){
 	return n == NULL ? 0 : strlen(n);
 }
 
+static void extract_gameinfo(sqlite3_stmt* stmt, arcan_db_game* row, int ofs)
+{	
+/* fill the game structure */
+	const char* col = sqlite3_column_name(stmt, ofs);
+	if (strcmp(col, "gameid") == 0)
+		row->gameid = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "title") == 0)
+		row->title = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else if (strcmp(col, "setname") == 0)
+		row->setname = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else if (strcmp(col, "players") == 0)
+		row->n_players = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "buttons") == 0)
+		row->n_buttons = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "ctrlmask") == 0)
+		row->input = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "genre") == 0)
+		row->genre = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else if (strcmp(col, "system") == 0)
+		row->system = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else if (strcmp(col, "subgenre") == 0)
+		row->subgenre = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else if (strcmp(col, "year") == 0)
+		row->year = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "manufacturer") == 0)
+		row->manufacturer = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else if (strcmp(col, "targetid") == 0)
+		row->targetid = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "launch_counter") == 0)
+		row->launch_counter = sqlite3_column_int(stmt, ofs);
+	else if (strcmp(col, "target") == 0)
+		row->targetname = _n_strdup((const char*) 
+			sqlite3_column_text(stmt, ofs), NULL);
+	else
+		arcan_warning("Warning: arcan_db_games(), "
+			"unexpected column value %s\n", col);
+}	
+
+arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid)
+{
+	const char* baseqry1 = "SELECT a.gameid AS \"gameid\", "
+		"a.title AS \"title\", "
+		"a.setname AS \"setname\", "
+		"a.players AS \"players\", "
+		"a.buttons AS \"buttons\", "
+		"a.ctrlmask AS \"ctrlmask\", "
+		"a.genre AS \"genre\", "
+		"a.subgenre AS \"subgenre\", "
+		"a.system AS \"system\", "
+		"a.year AS \"year\", "
+		"a.manufacturer AS \"manufacturer\", "
+		"a.target AS \"targetid\", "
+		"a.launch_counter AS \"launch_counter\", "
+		"b.name AS \"target\" FROM game a, target b WHERE a.gameid=?;"; 
+	
+	arcan_dbh_res res = {.kind = -1};
+	sqlite3_stmt* stmt = NULL;
+	sqlite3_prepare_v2(dbh->dbh, baseqry1, strlen(baseqry1), &stmt, NULL);
+	sqlite3_bind_int(stmt, 1, gameid);
+
+	if (sqlite3_step(stmt) == SQLITE_ROW){
+		res.kind = 1;
+		res.count = 1;
+		res.data.gamearr = malloc(sizeof(arcan_db_game*) * 2);
+		res.data.gamearr[0] = calloc(sizeof(arcan_db_game), 1);
+
+		int ncols = sqlite3_column_count(stmt);
+		int ofs = 0;
+		do
+			extract_gameinfo(stmt, res.data.gamearr[0], ofs);
+		while(++ofs < ncols);
+
+		res.data.gamearr[1] = NULL;
+	}
+	sqlite3_finalize(stmt);
+
+	return res;
+}
+
+
 /* dynamically build a SQL query that
- * matches the desired attributes, a bit of a mess :'(
  * as an afterthought, the limit / offset clauses should've been part of the dbh.
  * the the upper/lower limit (as there might be thousands of entries here) '*/
 arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
@@ -553,48 +638,8 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		if (!row)
 			break;
 
-		/* fill the game structure */
-		do {
-			const char* col = sqlite3_column_name(stmt, ofs);
-			if (strcmp(col, "gameid") == 0)
-				row->gameid = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "title") == 0)
-				row->title = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else if (strcmp(col, "setname") == 0)
-				row->setname = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else if (strcmp(col, "players") == 0)
-				row->n_players = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "buttons") == 0)
-				row->n_buttons = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "ctrlmask") == 0)
-				row->input = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "genre") == 0)
-				row->genre = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else if (strcmp(col, "system") == 0)
-				row->system = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else if (strcmp(col, "subgenre") == 0)
-				row->subgenre = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else if (strcmp(col, "year") == 0)
-				row->year = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "manufacturer") == 0)
-				row->manufacturer = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else if (strcmp(col, "targetid") == 0)
-				row->targetid = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "launch_counter") == 0)
-				row->launch_counter = sqlite3_column_int(stmt, ofs);
-			else if (strcmp(col, "target") == 0)
-				row->targetname = _n_strdup((const char*) 
-					sqlite3_column_text(stmt, ofs), NULL);
-			else
-				arcan_warning("Warning: arcan_db_games(), "
-					"unexpected column value %s\n", col);
-		}
+		do 
+			extract_gameinfo(stmt, row, ofs);
 		while (++ofs < ncols);
 
 		if (input > 0 && (row->input & input) == 0) {

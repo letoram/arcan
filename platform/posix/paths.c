@@ -149,7 +149,7 @@ char* arcan_expand_resource(const char* label, bool global)
 	char playbuf[4096];
 	playbuf[4095] = '\0';
 
-	if (strip_traverse(playbuf) == NULL)
+	if (strip_traverse(label) == NULL)
 		return NULL;
 
 	if (global) {

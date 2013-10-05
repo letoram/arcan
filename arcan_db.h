@@ -99,6 +99,7 @@ arcan_dbh_res arcan_db_games(arcan_dbh*,
 	const long long offset,
 	const long long limit
 );
+arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid);
 
 /* log a database entry for a failed launch,
  * assist in maintaing game-db / config */
@@ -113,14 +114,13 @@ bool arcan_db_clear_launch_counter(arcan_dbh*);
  * if gameid is specified (> 0), this will be used to search,
  * otherwise title is used */
 arcan_dbh_res arcan_db_game_siblings(arcan_dbh*,
-                                     const char* title,
-                                     const int gameid);
+	const char* title, const int gameid);
 
 /* populate a list of viable targets (with games associated) */
 arcan_dbh_res arcan_db_targets(arcan_dbh*);
 
-bool  arcan_db_targetdata  (arcan_dbh*, int targetid, char** targetname, char** targetexec);
-char* arcan_db_targetexec  (arcan_dbh*, char* targetname);
+bool arcan_db_targetdata (arcan_dbh*, int targetid, char** targetname, char** targetexec);
+char* arcan_db_targetexec (arcan_dbh*, char* targetname);
 
 /* Figure out the actual hijack-lib that would be needed to launch gameid
  * Added primarily to support a range of hijack libs for specialized targets */

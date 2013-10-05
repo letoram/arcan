@@ -394,7 +394,35 @@ local function factrest(wnd, str)
 -- inputcfg : try and load (if it exists)
 -- ntscattr : unpack and toggle ntscon
 -- statectl : try and load/ restore
-	print("restore:", wnd, str);
+
+	local lines = string.split(str, "\n");
+	for i=2,#lines do
+		local opts = string.split(lines[i], ":");
+		if (opts[1]) then
+-- ntsc, just map
+			if (opts[1] == "ntscattr") then
+				for i=2,#opts do
+					local arg = string.split(opts[i], "=");
+					if (#arg == 2) then
+						print(arg[1], arg[2]);
+						wnd[arg[1]] = tonumber_rdx(arg[2]);
+					end
+				end
+			
+			wnd.ntsc_state = true;
+			wnd:set_ntscflt();
+
+-- general opts, split into k-v tbl then map known 
+-- attributes and run respective triggers
+			elseif (opts[1] == "lineattr") then
+
+-- rest, send to parent (mediawnd) and have it rebuild chain
+			else
+				print("unhandled group:", opts[1]);
+			end
+		end
+	end
+
 end
 
 local function gen_factorystr(wnd)
@@ -431,7 +459,7 @@ local function gen_factorystr(wnd)
 		wnd.ntsc_hue, wnd.ntsc_saturation, wnd.ntsc_contrast, wnd.ntsc_brightness,
 		wnd.ntsc_gamma, wnd.ntsc_sharpness,	wnd.ntsc_resolution, 
 		wnd.ntsc_artifacts,wnd.ntsc_bleed,wnd.ntsc_fringing);
-		line = string.gsub(',', '.');
+		line = string.gsub(line, ',', '.');
 		table.insert(lines, line);
 	end
 
@@ -447,13 +475,14 @@ local function gen_factorystr(wnd)
 		table.insert(lines, wnd.filters.effectctx:factorystr());
 	end
 
-	return table.concat(lines, "\\n");
+	return table.concat(lines, "\n");
 end
 
 local function datashare(wnd)
 	local res = awbwman_setup_cursortag(sysicons.floppy);
 	res.kind = "media";
 	res.factory = gen_factorystr(wnd);
+	res.caption = wnd.gametbl.title; 
 	res.source = wnd;
 	return res;
 end
@@ -624,8 +653,8 @@ function awbwnd_target(pwin, caps, factstr)
 				pwin:update_canvas(source, pwin.mirrored);
 				pwin:resize(pwin.w, pwin.h, true);
 -- unpack settings
-				if (factrest ~= nil) then
-					pwin:factory_restore(factrest);
+				if (factstr ~= nil) then
+					pwin:factory_restore(factstr);
 				end
 			end
 
