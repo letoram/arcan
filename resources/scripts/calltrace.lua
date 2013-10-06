@@ -11,6 +11,13 @@ local Depth
 -- include the function's current line number if WithLineNum is true. A
 -- sensible string will be returned even if a name or line numbers
 -- can't be found.
+
+local dbg = debug.debug;
+function debug.debug()
+	toggle_mouse_grab(MOUSE_GRAB_OFF);
+	dbg();
+end
+
 local function GetInfo(StackLvl, WithLineNum)
 -- StackLvl is reckoned from the caller's level:
   StackLvl = StackLvl + 1

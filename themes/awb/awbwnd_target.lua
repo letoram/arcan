@@ -22,9 +22,18 @@ local function inputlay_sel(icn, wnd)
 
 	wnd:focus();
 	local lst = inputed_configlist();
-
+	local lst2 = {};
 	table.insert(lst, 1, "Disable");
-	local str = table.concat(lst, [[\n\r]]);
+
+	for ind, val in ipairs(lst) do
+		if (val == wnd.inp_val) then
+			table.insert(lst2, [[\#00ff00]] .. val);
+		else
+			table.insert(lst2, [[\#ffffff]] .. val);
+		end	
+	end
+
+	local str = table.concat(lst2, [[\n\r]]);
 	local vid, lines = desktoplbl(str);
 
 	awbwman_popup(vid, lines, function(ind)
@@ -154,7 +163,7 @@ function awbtarget_listsnaps(tgtwin, gametbl)
 					table.insert(res, {
 						name = base[i],
 						trigger = function() 
-							restore_target(tgtwin.controlid, base[i]); 
+							restore_target(tgtwin.controlid, base[i]);
 							tgtwin.laststate = string.sub(base[i], #tgtwin.snap_prefix+1);
 						end, 
 						name = base[i],
@@ -396,15 +405,17 @@ local function factrest(wnd, str)
 -- statectl : try and load/ restore
 
 	local lines = string.split(str, "\n");
+
+-- foreach group of attributes
 	for i=2,#lines do
 		local opts = string.split(lines[i], ":");
+
+-- depending on group, treat arg:argv differently 
 		if (opts[1]) then
--- ntsc, just map
 			if (opts[1] == "ntscattr") then
 				for i=2,#opts do
 					local arg = string.split(opts[i], "=");
 					if (#arg == 2) then
-						print(arg[1], arg[2]);
 						wnd[arg[1]] = tonumber_rdx(arg[2]);
 					end
 				end
@@ -415,7 +426,46 @@ local function factrest(wnd, str)
 -- general opts, split into k-v tbl then map known 
 -- attributes and run respective triggers
 			elseif (opts[1] == "lineattr") then
+				for i=2,#opts do
+					local arg = string.split(opts[i], ":");
+					for ind, argv in ipairs(arg) do
+						local argg = string.split(argv, "=");
+						local opc, oper; 
 
+						if (argg ~= nil and #argg > 1) then
+							opc  = argg[1];
+							oper = argg[2];
+						else
+							opc = arg;
+						end
+
+						if (opc == "skipmode") then
+							wnd.skipmode = oper; 
+						elseif (opc == "framealign") then
+							wnd.framealign = tonumber(oper);
+						elseif (opc == "preaud") then
+							wnd.preaud = tonumber(oper);
+						elseif (opc == "mediavol") then
+							wnd:set_mvol(tonumber_rdx(oper));
+						else
+							warning("unhandled linattr(" .. arg[1] ..")");
+						end
+					end
+
+					wnd:set_frameskip();
+				end
+
+			elseif (opts[1] == "inputcfg") then
+				if (resource("keyconfig/" .. opts[2])) then
+					wnd.inp_cfg = inputed_getcfg(opts[2]); 
+					if (wnd.inp_cfg) then
+						wnd.inp_val = opts[2];
+					end
+				end
+			elseif (opts[1] == "statectl") then
+				wnd.laststate = opts[2];
+				restore_target(wnd.controlid, wnd.laststate);
+					
 -- rest, send to parent (mediawnd) and have it rebuild chain
 			else
 				print("unhandled group:", opts[1]);
@@ -447,7 +497,8 @@ local function gen_factorystr(wnd)
 	end
 
 	if (wnd.laststate ~= nil) then
-		table.insert(lines, string.format("statectl:%s", wnd.laststate));
+		table.insert(lines, 
+			string.format("statectl:%s", wnd.snap_prefix .. wnd.laststate));
 	end
 
 	if (wnd.ntsc_state == true) then
@@ -481,6 +532,12 @@ end
 local function datashare(wnd)
 	local res = awbwman_setup_cursortag(sysicons.floppy);
 	res.kind = "media";
+	res.name = wnd.name;
+
+	if (res.name == nil) then
+		res.name = wnd.gametbl.title;
+	end
+
 	res.factory = gen_factorystr(wnd);
 	res.caption = wnd.gametbl.title; 
 	res.source = wnd;
