@@ -57,8 +57,12 @@ local awb_cfg = {
 	global_vol = 1.0
 };
 
-local function awbwman_findind(val)
-	for i,v in ipairs(awb_wtable) do
+local function awbwman_findind(val, tbl)
+	if (tbl == nil) then
+		tbl = awb_wtable;
+	end
+
+	for i,v in ipairs(tbl) do
 		if (v == val) then
 			return i;
 		end
@@ -1319,7 +1323,6 @@ function awbwman_rootaddicon(name, captionvid,
 		icntbl = {};
 	end
 
-	icntbl.caption  = captionvid;
 	icntbl.selected = false;
 	icntbl.trigger  = trig;
 	icntbl.rtrigger = rtrigger;
@@ -1343,6 +1346,15 @@ function awbwman_rootaddicon(name, captionvid,
 			iconselvid or iconvid, icntbl.vid);
 	end
 
+	icntbl.destroy = function(self)
+		table.remove(awb_cfg.rooticns, awbwman_findind(self, awb_cfg.rooticns));
+		delete_image(self.anchor);
+		mouse_droplistener(self.mhandler);
+		for i,v in pairs(self) do
+			self[i] = nil;
+		end
+	end
+
 -- create containers (anchor, mainvid)
 -- transfer icon storage to mainvid and position icon + canvas
 	local props = image_surface_properties(iconvid);
@@ -1357,10 +1369,25 @@ function awbwman_rootaddicon(name, captionvid,
 	image_sharestorage(iconvid, icntbl.vid);
 
 	link_image(icntbl.vid, icntbl.anchor);
-	link_image(icntbl.caption, icntbl.anchor);
-	move_image(icntbl.caption, math.floor( 0.5 * (awb_cfg.rootcell_w - 
-		image_surface_properties(captionvid).width)), props.height + 5);
 
+	icntbl.set_caption = function(self, newvid)
+		local newopa = 0.0;
+
+		if (icntbl.caption) then
+			delete_image(icntbl.caption);
+			newopa = 1.0;
+		end
+
+		icntbl.caption = newvid;
+		blend_image(icntbl.caption, newopa);
+		link_image(icntbl.caption, icntbl.anchor);
+		move_image(icntbl.caption, math.floor( 0.5 * (awb_cfg.rootcell_w - 
+			image_surface_properties(icntbl.caption).width)), props.height + 5);
+		order_image(icntbl.caption, 5);
+		blend_image(icntbl.caption, 1.0, awb_cfg.animspeed);
+	end
+
+	icntbl:set_caption(captionvid);
 	image_mask_set(icntbl.anchor, MASK_UNPICKABLE);
 -- default mouse handlers (double-click -> trigger(), 
 -- free drag / reposition, single click marks as active/inactive
@@ -1411,15 +1438,15 @@ function awbwman_rootaddicon(name, captionvid,
 		print("show helper");
 	end
 
-	order_image({icntbl.caption, icntbl.vid}, 5);
-	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 
+	order_image(icntbl.vid, 5);
+	blend_image({icntbl.anchor, icntbl.vid}, 
 		1.0, awb_cfg.animspeed);
 	move_image(icntbl.anchor, icntbl.x, icntbl.y);
 	ctable.name = "rootwindow_button(" .. name .. ")";
 	mouse_addlistener(ctable, {"drag", "drop", 
 		"click", "rclick", "dblclick", "hover"});
 	table.insert(awb_cfg.rooticns, icntbl);
-
+	icntbl.mhandler = ctable;
 	return icntbl;
 end
 

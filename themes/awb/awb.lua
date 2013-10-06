@@ -5,18 +5,12 @@
 -- Todo:
 --  ( ) refactor the label/font use to not rely on just
 --      (desktoplbl, menulbl) globals
---
 --  ( ) config tool to change default colors, fonts, ...
---
 --  ( ) helper tool (and a default implementation that
 --      resurrects clippy ;)
---
 --  ( ) autotiling
---
 --  ( ) fullscreen mode for media windows
---
 --  ( ) better icon management / struct and the option to switch them
---
 --  ( ) move language strings to table for internationalization
 --
 wlist     = {
@@ -107,6 +101,42 @@ function inputlbl(text)
 end
 		
 debug_global = {};
+
+function shortcut_popup(icn, tbl, name)
+	local popup_opts = [[Rename...\n\rDrop Shortcut]];
+	local vid, list  = desktoplbl(popup_opts);
+
+	local popup_fun = {
+		function()
+			local state = system_load("shortcuts/" .. name)();
+			local buttontbl = {
+				{ caption = desktoplbl("OK"), trigger = 
+				function(own)
+					zap_resource("shortcuts/" .. name);
+						open_rawresource("shortcuts/" .. name);
+						write_rawresource(string.format(
+							"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];" ..
+							"\nres.factorystr = [[%s]];\nreturn res;", state.name, 
+							own.inputfield.msg, state.factorystr));
+					close_rawresource();
+					icn:set_caption(iconlbl(own.inputfield.msg));
+				end
+				},
+				{ caption = desktoplbl("Cancel"), trigger = function(own) end }
+				};
+
+				local dlg = awbwman_dialog(desktoplbl("Rename To:"), buttontbl, {
+					input = { w = 100, h = 20, limit = 32, accept = 1, cancel = 2 }
+					}, false);
+				end,
+		function() 
+			zap_resource("shortcuts/" .. name);
+			icn:destroy();
+		end
+	};
+
+	awbwman_popup(vid, list, popup_fun);
+end
 
 function awb()
 	if (DEBUGLEVEL > 1) then
@@ -420,8 +450,9 @@ function rootdnd(ctag)
 			local tbl = system_load(line)();
 				if (tbl ~= nil and tbl.factorystr and tbl.name and tbl.caption) then
 					local icn = awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
-						sysicons.group, sysicons.group_active, function()
-						launch_factorytgt(tbl, tbl.factorystr); end, nil);
+						sysicons.group, sysicons.group_active, 
+						function() launch_factorytgt(tbl, tbl.factorystr); end, 
+						function(self) shortcut_popup(self, tbl, base .. ".lnk");	end);
 					local mx, my = mouse_xy();
 					icn.x = math.floor(mx);
 					icn.y = math.floor(my);
@@ -602,7 +633,8 @@ function awb_desktop_setup()
 				tbl.factorystr and tbl.name and tbl.caption) then
 				awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
 				sysicons.group, sysicons.group_active, function()
-					launch_factorytgt(tbl, tbl.factorystr); end, nil);
+					launch_factorytgt(tbl, tbl.factorystr); end, 
+					function(self) shortcut_popup(self, tbl, v); end);
 			end
 		end
 	end
