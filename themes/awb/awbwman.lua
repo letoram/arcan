@@ -1304,6 +1304,14 @@ function awbwman_minimize(wnd, icon)
 	table.insert(awb_cfg.hidden, wnd);
 end
 
+function awbwman_rootgeticon(name)
+	for i,j in ipairs(awb_cfg.rooticns) do
+		if (j.name == name) then
+			return name;
+		end
+	end
+end
+
 function awbwman_rootaddicon(name, captionvid, 
 	iconvid, iconselvid, trig, rtrigger, icntbl)
 
@@ -1399,12 +1407,17 @@ function awbwman_rootaddicon(name, captionvid,
 -- nudge windows so the region is free
 	end
 
+	ctable.hover = function(self, vid, dx, dy)
+		print("show helper");
+	end
+
 	order_image({icntbl.caption, icntbl.vid}, 5);
 	blend_image({icntbl.anchor, icntbl.vid, icntbl.caption}, 
 		1.0, awb_cfg.animspeed);
 	move_image(icntbl.anchor, icntbl.x, icntbl.y);
 	ctable.name = "rootwindow_button(" .. name .. ")";
-	mouse_addlistener(ctable, {"drag", "drop", "click", "rclick", "dblclick"});
+	mouse_addlistener(ctable, {"drag", "drop", 
+		"click", "rclick", "dblclick", "hover"});
 	table.insert(awb_cfg.rooticns, icntbl);
 
 	return icntbl;
@@ -1844,6 +1857,8 @@ function awbwman_init(defrndr, mnurndr)
 	local mvol = get_key("global_vol");
 	if (mvol ~= nil) then
 		awb_cfg.global_vol = tonumber_rdx(mvol);
+	else
+		awb_cfg.mvol = 1.0;
 	end
 
 	local mval = get_key("mouse_accel");

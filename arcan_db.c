@@ -419,7 +419,7 @@ arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid)
 		"a.manufacturer AS \"manufacturer\", "
 		"a.target AS \"targetid\", "
 		"a.launch_counter AS \"launch_counter\", "
-		"b.name AS \"target\" FROM game a, target b WHERE a.gameid=?;"; 
+		"b.name AS \"target\" FROM game a, target b WHERE a.gameid=? AND b.targetid=a.target;"; 
 	
 	arcan_dbh_res res = {.kind = -1};
 	sqlite3_stmt* stmt = NULL;

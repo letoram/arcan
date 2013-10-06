@@ -2,6 +2,74 @@
 -- Basic table/string manipulation additions and overloads used throught
 --
 --
+
+-- This require some explanation, by default, the 
+-- "tonumber/..." classes of functions seriously takes locale into 
+-- account. This breaks heavily when linked with some libs that
+-- actually manipulate radix throughout program lifecycle, when
+-- can happen in window managers /etc. that switch locale
+-- dynamically based on locale (this seriously happens) and we
+-- get inconsistent behavior between LUA51 and LUA51jit.
+local radix_point = ".";
+function tonumber_rdx(ins, reccall)
+	if (ins == nil) then
+		print(debug.traceback());
+	end
+
+	local rdx_in  = string.byte(',', 1);
+	local rdx_out = string.byte('.', 1);
+
+	if (radix_point == ",") then
+		rdx_in = string.byte('.', 1);
+		rdx_out = string.byte(',', 1);
+	end
+
+	local len = string.len(ins);
+
+	for i=1,len do
+		if (string.byte(ins, i) == rdx_in) then -- ","
+			if (i > 1) then
+				ins = string.sub(ins, 1, i-1) .. 
+					string.char(rdx_out) .. string.sub(ins, i+1);
+			else
+				ins = string.char(rdx_out) .. string.sub(ins, 2);
+			end
+			break;
+		end
+	end
+
+	local res = tonumber(ins);
+	if (res == nil and reccall == nil) then
+		radix_point = ",";
+		return tonumber_rdx(ins, true);
+	else
+		return res;
+	end
+end
+
+-- for strings out we always enforce "C" style point
+function tostring_rdx(inv)
+	local rdx_in  = string.byte(',', 1);
+	local rdx_out = string.byte('.', 1);
+
+	local outs = tostring(inv);
+	local len = string.len(outs);
+
+	for i=1,len do
+		if (string.byte(outs, i) == rdx_in) then -- ","
+			if (i > 1) then
+				outs = string.sub(outs, 1, i-1) .. 
+					string.char(rdx_out) .. string.sub(outs, i+1);
+			else
+				outs = string.char(rdx_out) .. string.sub(outs, 2);
+			end
+			break;
+		end
+	end
+
+	return outs;
+end
+
 function string.utf8back(src, ofs)
 	if (ofs > 1 and string.len(src)+1 >= ofs) then
 		ofs = ofs - 1;
@@ -17,7 +85,8 @@ function string.utf8forward(src, ofs)
 	if (ofs <= string.len(src)) then
 		repeat
 			ofs = ofs + 1;
-		until (ofs > string.len(src) or utf8kind( string.byte(src, ofs) ) < 2);
+		until (ofs > string.len(src) or 
+			utf8kind( string.byte(src, ofs) ) < 2);
 	end
 
 	return ofs;
@@ -128,56 +197,8 @@ function string.split(instr, delim)
 	return res;
 end
 
---
--- Some libraries actually have the audacity to manipulate
--- locale, even mid-execution (corner-cases in xlib for instance)
--- <insert long and angry rant>
---
-function tostring_rdx(inv)
-	local rdx_in  = ',';
-	local rdx_out = '.';
-	local outs = tostring(inv);
-	local len = string.len(outs);
-
-	for i=1,len do
-		if (string.byte(outs, i) == 44) then -- ","
-			if (i > 1) then
-				outs = string.sub(outs, 1, i-1) .. "." .. string.sub(outs, i+1);
-			else
-				outs = "." .. string.sub(outs, 2);
-			end
-			break;
-		end
-	end
-
-	return outs;
-end
-
 function string.trim(s)
   return (s:gsub("^%s*(.-)%s*$", "%1"))
-end
-
-function tonumber_rdx(ins)
-	if (ins == nil) then
-		print(debug.traceback());
-	end
-
-	local rdx_in  = ',';
-	local rdx_out = '.';
-	local len = string.len(ins);
-
-	for i=1,len do
-		if (string.byte(ins, i) == 44) then -- ","
-			if (i > 1) then
-				ins = string.sub(ins, 1, i-1) .. "." .. string.sub(ins, i+1);
-			else
-				ins = "." .. string.sub(ins, 2);
-			end
-			break;
-		end
-	end
-
-	return tonumber(ins);
 end
 
 function string.extension(src)

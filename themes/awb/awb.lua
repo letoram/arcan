@@ -61,9 +61,43 @@ function desktoplbl(text)
 		print(debug.traceback());
 	end
 
-text = text == nil and "" or text;
-return render_text(string.format("\\#ffffff\\f%s,%d %s",
-deffont, 10, text));
+	text = text == nil and "" or text;
+	return render_text(string.format("\\#ffffff\\f%s,%d %s",
+	deffont, 10, text));
+end
+
+-- input is trusted, i.e. data supposedly comes from
+-- the "add shortcut" etc. parts and has not been modified
+-- by the user
+function iconlbl(text)
+	local ofs     = 0;
+	local sz      = 10;
+	local rowc    = 1;
+	local newofs  = 1;
+	local cc      = 0;
+	local workstr = {}; 
+
+	while newofs ~= ofs do
+		ofs = newofs;
+		cc = cc + 1;
+		newofs = string.utf8forward(text, ofs);
+		table.insert(workstr, string.sub(text, ofs, ofs));
+		if (cc > 10) then
+			rowc = rowc - 1;
+			if (rowc < 0) then
+				sz = 8;
+				table.insert(workstr, "...");
+				break;
+			else
+				table.insert(workstr, "\\n\\r");
+				cc = 0;
+			end
+		end
+	end
+
+	return render_text(
+		string.format("\\#ffffff\\f%s,%d %s", deffont, 
+			sz, table.concat(workstr, "")));
 end
 
 function inputlbl(text)
@@ -98,7 +132,8 @@ function awb()
 	system_load("scripts/mouse.lua")();
 
 	if (DEBUGLEVEL > 1) then
-		kbdbinds["F5"]     = function() print(current_context_usage()); end; 
+		kbdbinds["F5"]     = function() print(current_context_usage()); end;
+		kbdbinds["F6"]     = debug.debug;
 		kbdbinds["F10"]    = mouse_dumphandlers;
 		kbdbinds["F4"]     = function()
 			local newglob = {};
@@ -162,7 +197,9 @@ end
 -- on activation, switch to the real one.
 --
 function gamelist_launch(self, factstr)
-	local captbl = launch_target_capabilities(self.target);
+	local game = self.tag;
+
+	local captbl = launch_target_capabilities(game.target);
 	if (captbl == nil) then
 		awbwman_alert("Couldn't get capability table");
 		return;
@@ -172,18 +209,18 @@ function gamelist_launch(self, factstr)
 -- confirmation dialog
 		launch_target(self.gameid, LAUNCH_EXTERNAL);
 	else
-		captbl.prefix = string.format("%s_%s_",self.target,
-		self.tag.setname and self.tag.setname or "");
+		captbl.prefix = string.format("%s_%s_", game.target,
+			game.setname and game.setname or "");
 
-		local wnd, cb = awbwman_targetwnd(menulbl(self.name), 
-			{refid = "targetwnd_" .. tostring(self.gameid),
+		game.name = game.title;
+		local wnd, cb = awbwman_targetwnd(menulbl(game.name), 
+			{refid = "targetwnd_" .. tostring(game.gameid),
 			 factsrc = factstr}, captbl);
-		wnd.gametbl = self.tag;
-
-		wnd.recv, wnd.reca = launch_target(self.gameid, LAUNCH_INTERNAL, cb);
-		wnd.factory_base = "gameid=" .. tostring(self.gameid);
+		wnd.gametbl = game; 
+		wnd.recv, wnd.reca = launch_target(game.gameid, LAUNCH_INTERNAL, cb);
+		wnd.factory_base = "gameid=" .. tostring(game.gameid);
 	
-		wnd.name = self.target .. "(" .. self.name .. ")";
+		wnd.name = game.target .. "(" .. game.name .. ")";
 		return wnd;
 	end
 end
@@ -193,13 +230,8 @@ function launch_factorytgt(tbl, factstr)
 	local idline = lines[1];
 	local idval  = tonumber(string.split(idline, "=")[2]);
 
-	local tbl = game_info(idval);
+	local tbl = { tag = game_info(idval) };
 	if (tbl ~= nil) then
-		tbl.tag = {
-			setname = tbl.setname,
-			tag = tbl,
-		};
-		tbl.name = tbl.title;
 		local wnd = gamelist_launch(tbl, factstr);
 	else
 		warning("broken gameid / lnk, check database reference.");
@@ -355,7 +387,8 @@ function rootdnd(ctag)
 		and valid_vid(ctag.source.canvas.vid)) then
 		table.insert(lbls, "Background");
 		table.insert(ftbl, function()
-			image_sharestorage(ctag.source.canvas.vid, awbwman_cfg().root.canvas.vid);
+			image_sharestorage(ctag.source.canvas.vid, 
+				awbwman_cfg().root.canvas.vid);
 		end);
 	end
 
@@ -364,26 +397,37 @@ function rootdnd(ctag)
 
 		table.insert(ftbl, function()
 			local ind  = 1;
-			local base = string.match(ctag.caption, "[a-ZA-Z0-9 _-]+");
+			local base = string.match(ctag.caption, "[%a %d_-]+");
 			local line = "shortcuts/" .. base .. ".lnk";
 
 			while (resource(line)) do
-				line = "shortcuts/" .. base .. ".lnk";
+				line = string.format("shortcuts/%s_%d.lnk", base, ind);
 				ind = ind + 1;
 			end
-		
+
+			while (awbwman_rootgeticon(base .. tostring(ind))) do
+				ind = ind + 1;
+			end
+
 			if (open_rawresource(line)) then
 				write_rawresource(string.format(
 					"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];" ..
-					"\nres.factorystr = [[%s]];\nreturn res;", base, ctag.caption,
-					ctag.factory));
+					"\nres.factorystr = [[%s]];\nreturn res;", base .. tostring(ind)
+					,ctag.caption, ctag.factory));
 				close_rawresource();
 			end
 
-			awbwman_rootaddicon(base, desktoplbl(ctag.caption),
-				sysicons.group, sysicons.group_active, function()
+			local tbl = system_load(line)();
+				if (tbl ~= nil and tbl.factorystr and tbl.name and tbl.caption) then
+					local icn = awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
+						sysicons.group, sysicons.group_active, function()
+						launch_factorytgt(tbl, tbl.factorystr); end, nil);
+					local mx, my = mouse_xy();
+					icn.x = math.floor(mx);
+					icn.y = math.floor(my);
+					move_image(icn.anchor, icn.x, icn.y);
+				end
 			end);
-		end);
 	end
 
 	if (#lbls > 0) then
@@ -556,7 +600,7 @@ function awb_desktop_setup()
 			local tbl = system_load("shortcuts/" .. v)();
 			if (tbl ~= nil and  
 				tbl.factorystr and tbl.name and tbl.caption) then
-				awbwman_rootaddicon(tbl.name, desktoplbl(tbl.caption),
+				awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
 				sysicons.group, sysicons.group_active, function()
 					launch_factorytgt(tbl, tbl.factorystr); end, nil);
 			end
