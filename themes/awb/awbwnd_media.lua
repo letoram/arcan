@@ -302,9 +302,11 @@ function awbwmedia_filterchain(pwin)
 -- 1. upscaler, this may modify what the other filters / effects.
 -- see as the internal/storage/source resolution will be scaled.
 	image_texfilter(dstres, FILTER_NONE, FILTER_NONE);
+	print("reset filter");
 
 	if (pwin.filters.upscaler) then
 		local f = pwin.filters.upscaler;
+		print("upscale:", f);
 
 		if (f == "Linear") then
 			image_texfilter(dstres, FILTER_LINEAR);
@@ -353,6 +355,8 @@ function awbwmedia_filterchain(pwin)
 -- 3. display
 	if (pwin.filters.display) then
 		local f = pwin.filters.display;
+		print("display:", f);
+
 		if (f == "CRT") then
 			dstres, ctx = crtcont.setup(pwin.filters.displayctx, 
 				dstres, "CRT_"..tostring(pwin.wndid),store_sz,

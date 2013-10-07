@@ -20,7 +20,11 @@ local function iconcache_checkpath(n)
 	return spath_cache[n];
 end
 
-local function iconcache_get(self, iconname, desw, desh)
+local function iconcache_get(self, iconname)
+	if (iconname == nil) then
+		iconname = self.default.name;
+	end
+
 	for i,v in ipairs(self.icons) do
 		if (v.name == iconname) then
 			local tbl = table.remove(self.icons, i);
@@ -69,7 +73,7 @@ function awb_iconcache(lim, paths, defv)
 		limit = lim,
 		icons = {},
 		default = {
-			name = "defult",
+			name = "default",
 			icon = defv
 		},
 		get = iconcache_get,

@@ -463,8 +463,8 @@ local function factrest(wnd, str)
 					end
 				end
 			elseif (opts[1] == "statectl") then
-				wnd.laststate = opts[2];
-				restore_target(wnd.controlid, wnd.laststate);
+				wnd.laststate = string.sub(opts[2], #wnd.snap_prefix+1);
+				restore_target(wnd.controlid, opts[2]); 
 					
 -- rest, send to parent (mediawnd) and have it rebuild chain
 			else
@@ -539,7 +539,8 @@ local function datashare(wnd)
 	end
 
 	res.factory = gen_factorystr(wnd);
-	res.caption = wnd.gametbl.title; 
+	res.caption = wnd.gametbl.title;
+	res.icon = wnd.gametbl.target;
 	res.source = wnd;
 	return res;
 end

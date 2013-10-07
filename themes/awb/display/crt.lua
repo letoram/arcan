@@ -235,6 +235,7 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	local s = load_shader("display/crt.vShader", 
 		"display/crt.fShader", shid, shopts);
 
+	print("crt:", inprops.width, inprops.height, outprops.width, outprops.height);
 -- could make this cheaper and simply encode the values into the shader
 -- before uploading ..
 	shader_uniform(s, "input_size", "ff", PERSIST, inprops.width, inprops.height);
