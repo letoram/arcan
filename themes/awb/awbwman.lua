@@ -175,11 +175,7 @@ function awbwman_fullscreen(wnd)
 		dh = math.floor(VRESW / ar);
 	end
 
--- we'll restore later
-	awb_cfg.focus.canvas:resize(dw, dh);
-	if (awb_cfg.focus.on_resized) then
-		awb_cfg.focus:on_resized(dw, dh, dw, dh);
-	end
+	awb_cfg.focus:resize(dw, dh, true, true);
 
 	local xp = math.floor(0.5 * (VRESW - dw));
 	local yp = math.floor(0.5 * (VRESH - dh));
@@ -209,10 +205,7 @@ function awbwman_dropfullscreen(wnd)
 	local w = awb_cfg.fullscreen.props.width;
 	local h = awb_cfg.fullscreen.props.height;
 
-	awb_cfg.focus.canvas:resize(w, h);
-	if (awb_cfg.focus.on_resized) then
-		awb_cfg.focus:on_resized(w, h, w, h);
-	end
+	awb_cfg.focus:resize(w, h, true, true);
 		
 	delete_image(awb_cfg.fullscreen.vid);
 	awb_cfg.fullscreen = nil;
@@ -1327,6 +1320,15 @@ function awbwman_rootaddicon(name, captionvid,
 	icntbl.trigger  = trig;
 	icntbl.rtrigger = rtrigger;
 	icntbl.name     = name;
+	
+	local props = image_surface_properties(iconvid);
+	if (icntbl.w == nil) then
+		icntbl.w = props.width; 
+	end
+
+	if (icntbl.h == nil) then
+		icntbl.h = props.height; 
+	end
 
 	local val = get_key("rooticn_" .. name);
 	if (val ~= nil and val.nostore == nil) then
@@ -1342,8 +1344,13 @@ function awbwman_rootaddicon(name, captionvid,
 			icntbl.selected = val;
 		end
 
-		image_sharestorage(icntbl.selected and 
-			iconselvid or iconvid, icntbl.vid);
+		if (iconselvid == iconvid) then
+			image_shader(icntbl.vid, icntbl.selected 
+				and "awb_selected" or "DEFAULT");
+		else
+			image_sharestorage(icntbl.selected and 
+				iconselvid or iconvid, icntbl.vid);
+		end
 	end
 
 	icntbl.destroy = function(self)
@@ -1357,7 +1364,6 @@ function awbwman_rootaddicon(name, captionvid,
 
 -- create containers (anchor, mainvid)
 -- transfer icon storage to mainvid and position icon + canvas
-	local props = image_surface_properties(iconvid);
 	if (icntbl.x == nil) then
 		icntbl.x, icntbl.y = next_iconspawn();
 	end
@@ -1365,8 +1371,11 @@ function awbwman_rootaddicon(name, captionvid,
 	icntbl.anchor = null_surface(awb_cfg.rootcell_w, awb_cfg.rootcell_h);
 	link_image(icntbl.anchor, awb_cfg.root.anchor);
 
-	icntbl.vid    = null_surface(props.width, props.height); 
+	icntbl.vid    = null_surface(icntbl.w, icntbl.h);
+	move_image(icntbl.vid, math.floor(0.5 * (awb_cfg.rootcell_w - icntbl.w)));	
+
 	image_sharestorage(iconvid, icntbl.vid);
+	resize_image(icntbl.vid, icntbl.w, icntbl.h);
 
 	link_image(icntbl.vid, icntbl.anchor);
 
@@ -1382,7 +1391,7 @@ function awbwman_rootaddicon(name, captionvid,
 		blend_image(icntbl.caption, newopa);
 		link_image(icntbl.caption, icntbl.anchor);
 		move_image(icntbl.caption, math.floor( 0.5 * (awb_cfg.rootcell_w - 
-			image_surface_properties(icntbl.caption).width)), props.height + 5);
+			image_surface_properties(icntbl.caption).width)), icntbl.h + 5);
 		order_image(icntbl.caption, 5);
 		blend_image(icntbl.caption, 1.0, awb_cfg.animspeed);
 	end
@@ -1586,6 +1595,7 @@ function awbwman_spawn(caption, options)
 		end
 
 		rhandle.rclick = function(self, vid)
+			awbwman_focus(wcont);
 			if (options.fullscreen) then
 				local lbls = {"Fullscreen"};
 				local tbl = {function() awbwman_fullscreen(wcont); end};
@@ -1734,6 +1744,7 @@ function awbwman_tablist_toggle(active)
 		if (tbl ~= nil) then
 			expire_image(tbl.anchor, awb_cfg.animspeed);
 			blend_image(tbl.anchor, 0.0, awb_cfg.animspeed);
+
 			if (tbl.lbl) then
 				expire_image(tbl.lbl, awb_cfg.animspeed);
 				blend_image(tbl.lbl, 0.0, awb_cfg.animspeed);
@@ -1769,10 +1780,30 @@ function awbwman_tablist_toggle(active)
 		tbl.ofs  = tbl.ulim + 1;
 		awb_cfg.tablist_toggle = tbl;
 
+		local msglen = "";
+		for i=1,#awb_wtable do
+			if (string.len(awb_wtable[i].name) > string.len(msglen)) then
+				msglen = awb_wtable[i].name;
+			end
+		end
+
+		local vid = desktoplbl(msglen);
+		local msgw = (3 * b) + image_surface_properties(vid).width;
+		delete_image(vid);
+
 		tbl.anchor = null_surface(1, 1);
+		image_mask_set(tbl.anchor, MASK_UNPICKABLE);
 		link_image(tbl.anchor, mouse_cursor());
 		image_inherit_order(tbl.anchor, true);
 		show_image(tbl.anchor);
+
+		tbl.minbw = (b + 6) * (tbl.ulim + 3);
+		tbl.minbw = tbl.minbw < msgw and msgw or tbl.minbw; 
+		tbl.bg = color_surface(tbl.minbw, 5 * b, 0, 0, 0);
+		move_image(tbl.bg, -2 * b - 4, -2 * b - 4);
+		link_image(tbl.bg, tbl.anchor);
+		image_inherit_order(tbl.bg, true);
+		blend_image(tbl.bg, 0.5);
 
 		for i=1,tbl.ulim do
 			tablist_allocslot(i, i);
@@ -1780,7 +1811,8 @@ function awbwman_tablist_toggle(active)
 
 		reset_image_transform(tbl.slots[1].vid);
 		blend_image(tbl.slots[1].vid, 1.0, awb_cfg.animspeed);
-		move_image(tbl.slots[1].vid, -1 * b, -1 * b, awb_cfg.animspeed);
+		move_image(tbl.slots[1].vid, -2 * b, -2 * b, awb_cfg.animspeed);
+		resize_image(tbl.slots[1].vid, b + b, b + b, awb_cfg.animspeed);
 
 		tablist_updatetag(tbl.slots[1].wnd.name);
 		return;
@@ -1800,6 +1832,7 @@ function awbwman_tablist_toggle(active)
 
 		for i=1,tbl.ulim do
 			move_image(tbl.slots[i].vid, (i-1) * (b + 4), b, awb_cfg.animspeed);
+			resize_image(tbl.slots[i].vid, b, b, awb_cfg.animspeed);
 		end
 
 -- need to rotate in a new one, since the first now is the last
@@ -1818,7 +1851,8 @@ function awbwman_tablist_toggle(active)
 	end
 
 	reset_image_transform(tbl.slots[1].vid);
-	move_image(tbl.slots[1].vid, -1 * b, -1 * b, awb_cfg.animspeed);
+	move_image(tbl.slots[1].vid, -2 * b, -2 * b, awb_cfg.animspeed);
+	resize_image(tbl.slots[1].vid, b + b, b + b, awb_cfg.animspeed);
 	tablist_updatetag(tbl.slots[1].wnd.name);
 end
 

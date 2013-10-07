@@ -12,15 +12,6 @@
 --  ( ) fullscreen mode for media windows
 --  ( ) better icon management / struct and the option to switch them
 --  ( ) move language strings to table for internationalization
---
-wlist     = {
-windows = {};
-};
-
-settings = {
-mfact  = 0.2,
-mvol   = 1.0
-};
 
 sysicons   = {};
 imagery    = {};
@@ -115,9 +106,11 @@ function shortcut_popup(icn, tbl, name)
 					zap_resource("shortcuts/" .. name);
 						open_rawresource("shortcuts/" .. name);
 						write_rawresource(string.format(
-							"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];" ..
-							"\nres.factorystr = [[%s]];\nreturn res;", state.name, 
-							own.inputfield.msg, state.factorystr));
+							"local res = {};\nres.name=[[%s]];\n" ..
+							"res.caption=[[%s]];\nres.icon=[[%s]];\n" ..
+							"res.factorystr = [[%s]];\nreturn res;", state.name,
+							own.inputfield.msg, state.icon and state.icon or "default", 
+							state.factorystr));
 					close_rawresource();
 					icn:set_caption(iconlbl(own.inputfield.msg));
 				end
@@ -189,9 +182,6 @@ function awb()
 	system_load("awbwnd_media.lua")();
 	system_load("awbwnd_target.lua")();
 	system_load("awbwman.lua")();
-
-	settings.defwinw = math.floor(VRESW * 0.35);
-	settings.defwinh = math.floor(VRESH * 0.35);
 
 -- the imagery pool is used as a static data cache,
 -- since the windowing subsystem need link_ calls to work
@@ -441,18 +431,20 @@ function rootdnd(ctag)
 
 			if (open_rawresource(line)) then
 				write_rawresource(string.format(
-					"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];" ..
-					"\nres.factorystr = [[%s]];\nreturn res;", base .. tostring(ind)
-					,ctag.caption, ctag.factory));
+					"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];\n" ..
+					"res.icon = [[%s]];\nres.factorystr = [[%s]];\nreturn res;",
+					base .. tostring(ind), ctag.caption, ctag.icon, ctag.factory));
 				close_rawresource();
 			end
 
 			local tbl = system_load(line)();
 				if (tbl ~= nil and tbl.factorystr and tbl.name and tbl.caption) then
+					local icn, w, h = get_root_icon(tbl.icon);
+
 					local icn = awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
-						sysicons.group, sysicons.group_active, 
-						function() launch_factorytgt(tbl, tbl.factorystr); end, 
-						function(self) shortcut_popup(self, tbl, base .. ".lnk");	end);
+						icn, icn, function() launch_factorytgt(tbl, tbl.factorystr); end, 
+						function(self) shortcut_popup(self, tbl, base .. ".lnk");	end,
+						{w = w, h = h});
 					local mx, my = mouse_xy();
 					icn.x = math.floor(mx);
 					icn.y = math.floor(my);
@@ -629,15 +621,29 @@ function awb_desktop_setup()
 	if (rtbl) then
 		for k,v in ipairs(rtbl) do
 			local tbl = system_load("shortcuts/" .. v)();
-			if (tbl ~= nil and  
+			if (tbl ~= nil and 
 				tbl.factorystr and tbl.name and tbl.caption) then
+				local icn, desw, desh = get_root_icon(tbl.icon);
+	
 				awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
-				sysicons.group, sysicons.group_active, function()
+				icn, icn, function()
 					launch_factorytgt(tbl, tbl.factorystr); end, 
-					function(self) shortcut_popup(self, tbl, v); end);
+					function(self) shortcut_popup(self, tbl, v); end,
+				{w = desw, h = desh}); 
 			end
 		end
 	end
+end
+
+function get_root_icon(hint)
+	local icn = sysicons.lru_cache:get(hint).icon;
+	local props = image_surface_properties(icn);
+	local desw = 48; local desh = 48;
+	if (props.width < 48 and props.height < 48) then
+		desw = nil;
+		desh = nil;
+	end
+	return icn, desw, desh;
 end
 
 --
@@ -664,7 +670,7 @@ function builtin_group(self, ofs, lim, desw, desh)
 		newtbl.caption = desktoplbl(tools[ofs][1]);
 		newtbl.trigger = tools[ofs][2];
 		newtbl.name    = tools[ofs][3];
-		newtbl.icon    = sysicons.lru_cache:get(newtbl.name, desw, desh).icon;
+		newtbl.icon    = sysicons.lru_cache:get(newtbl.name).icon;
 		table.insert(restbl, newtbl);
 		ofs = ofs + 1;
 	end
@@ -682,7 +688,7 @@ function system_group(self, ofs, lim, desw, desh)
 		newtbl.caption = desktoplbl(targets[ofs]);
 		newtbl.trigger = gamelist_wnd;
 		newtbl.name    = targets[ofs];
-		newtbl.icon    = sysicons.lru_cache:get(newtbl.name, desw, desh).icon;
+		newtbl.icon    = sysicons.lru_cache:get(newtbl.name).icon;
 		table.insert(restbl, newtbl);
 		ofs = ofs + 1;
 	end
