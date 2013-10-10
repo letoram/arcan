@@ -40,6 +40,7 @@ local awb_cfg = {
 	spawnx      = 20,
 	spawny      = 20,
 	animspeed   = 10,
+	bgopa       = 0.8,
 	meta        = {},
 	hidden      = {},
 	global_input= {},
@@ -274,7 +275,7 @@ local function lineobj(src, x1, y1, x2, y2)
 
 	show_image(src);
 	rotate_image(src, math.deg( math.atan2(dy, dx) ) );
-	move_image(src, x1, y1);
+	move_image(src, x1 + (dx * 0.5), y1 + (dy * 0.5)); 
 	image_origo_offset(src, -1 * (0.5 * len), -0.5);
 
 	return line;
@@ -488,6 +489,7 @@ function awbwman_iconwnd(caption, selfun, options)
 			awb_col.dialog_sbar.r, awb_col.dialog_sbar.g, awb_col.dialog_sbar.b),
 			"r"
 	);
+	blend_image(wnd.canvas.vid, awb_cfg.bgopa);
 
 	return wnd;
 end
@@ -712,6 +714,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 		image_mask_set(border, MASK_UNPICKABLE);
 		image_mask_set(v.caption, MASK_UNPICKABLE);
 		image_mask_set(caption, MASK_UNPICKABLE);
+		blend_image(wnd.canvas.vid, awb_cfg.bgopa);
 
 		local bevent = {
 			own   = function(self, vid) return vid == button; end,
@@ -796,6 +799,8 @@ function awbwman_restore(ind)
 	local wnd = awb_cfg.hidden[ind];
 	wnd.minimized = false;
 	table.remove(awb_cfg.hidden, ind);
+	table.insert(awb_wtable, wnd);
+	awbwman_focus(wnd);
 	wnd:show();
 end
 
@@ -1298,6 +1303,7 @@ function awbwman_minimize(wnd, icon)
 	drop_popup();
 	wnd:hide(awb_cfg.minimize_x, 0);
 	wnd.minimized = true;
+	table.remove(awb_wtable, awbwman_findind(awb_wtable, wnd));
 	table.insert(awb_cfg.hidden, wnd);
 end
 
@@ -1398,6 +1404,7 @@ function awbwman_rootaddicon(name, captionvid,
 
 	icntbl:set_caption(captionvid);
 	image_mask_set(icntbl.anchor, MASK_UNPICKABLE);
+
 -- default mouse handlers (double-click -> trigger(), 
 -- free drag / reposition, single click marks as active/inactive
 	local ctable = {};
@@ -1443,8 +1450,12 @@ function awbwman_rootaddicon(name, captionvid,
 -- nudge windows so the region is free
 	end
 
-	ctable.hover = function(self, vid, dx, dy)
-		print("show helper");
+	ctable.hover = function(self, vid, dx, dy, state)
+		if (state and icntbl.helper) then
+			awbwman_hoverhint(icntbl.helper);
+		else
+			awbwman_drophover();
+		end
 	end
 
 	order_image(icntbl.vid, 5);
@@ -1884,12 +1895,62 @@ function awbwman_input(iotbl, keysym)
 				focus_done = true;
 			end
 		end
-					
+	
 		if (focus_done == false and 
 			awb_cfg.focus and awb_cfg.focus.input ~= nil) then
 				awb_cfg.focus:input(iotbl);
 		end
 	end
+end
+
+function awbwman_hoverhint(msg)
+	local lbl = desktoplbl(msg);
+	local props = image_surface_properties(lbl);
+	local bg = color_surface(props.width + 4, props.height + 4, 0, 0, 0);
+	local anchor = null_surface(1, 1);
+
+	local cattach = mouse_cursor();
+	local cprops = image_surface_properties(cattach);
+
+	link_image(anchor, cattach);
+	link_image(bg, anchor);
+	link_image(lbl, anchor);
+
+	image_mask_set(anchor, MASK_UNPICKABLE);
+	image_mask_set(bg, MASK_UNPICKABLE);
+	image_mask_set(lbl, MASK_UNPICKABLE);
+
+	blend_image(anchor, 1.0, awb_cfg.animspeed);
+
+	if (cprops.x > VRESW * 0.5) then
+		local dx = -1 * props.width;
+		if (cprops.x - dx < 0) then 
+			dx = dx + math.abs(cprops.x - dx);
+		end
+		move_image(anchor, dx, 0); 
+	else
+		move_image(anchor, cprops.width, 0);
+	end
+
+	show_image(lbl);
+	blend_image(bg, 0.5);
+
+	image_inherit_order(anchor, true);
+	image_inherit_order(lbl, true);
+	image_inherit_order(bg, true);
+	order_image(lbl, 1);
+	move_image(lbl, 2, 2);
+
+	awbwman_drophover();
+	awb_cfg.hover = anchor;
+end
+
+function awbwman_drophover()
+	if (awb_cfg.hover) then
+		blend_image(awb_cfg.hover, 0.0, awb_cfg.animspeed);
+		expire_image(awb_cfg.hover, awb_cfg.animspeed);
+	end
+	awb_cfg.hover = nil;
 end
 
 function awbwman_shutdown()
@@ -1969,9 +2030,9 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["filter"]   = load_image("awbicons/filter.png");
 	awb_cfg.bordericns["settings"] = load_image("awbicons/settings.png");
 	awb_cfg.bordericns["ntsc"]     = load_image("awbicons/ntsc.png");
+
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
-
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
 	awb_cfg.bordericns["mouse"]       = load_image("awbicons/topbar_mouse.png");
 	awb_cfg.bordericns["mouselock"]   = load_image("awbicons/topbar_mouselock.png");

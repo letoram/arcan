@@ -438,7 +438,12 @@ local function awbbar_addicon(self, name, dir, image, trig)
 	return icontbl;
 end
 
-local function awbbar_own(self, vid)
+--
+-- This little odd design is mostly legacy before the mouse 
+-- API was steady, could(should?) be replaced with individual
+-- handlers for each button.
+--
+local function awbbar_own(self, vid, state)
 	local tbl = {self.left, self.right, {self.fill}};
 
 	if (vid == self.vid) then
@@ -449,6 +454,9 @@ local function awbbar_own(self, vid)
 		for ind, val in ipairs(v) do
 			if (val.vid == vid) then
 				local mx, my = mouse_xy();
+				if (state ~= "click" and state ~= "rclick") then
+					return true;
+				end
 
 				if (val.trigger and val:trigger(mx - self.parent.x, 
 					my - self.parent.y)) then

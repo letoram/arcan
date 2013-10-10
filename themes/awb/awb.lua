@@ -149,6 +149,7 @@ function awb()
 	system_load("tools/vidrec.lua")();
 	system_load("tools/vidcmp.lua")();
 	system_load("tools/hghtmap.lua")();
+	MESSAGE = system_load("language/default.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
@@ -205,6 +206,9 @@ function awb()
 	local supp3d = setup_3dsupport();
 	awb_desktop_setup();
 
+	if (get_key("help_shown") == nil) then
+		show_help();
+	end
 -- LCTRL + META = (toggle) grab to specific internal
 -- LCTRL = (toggle) grab to this window
 	kbdbinds["LCTRL"]  = awbwman_toggle_mousegrab;
@@ -338,7 +342,19 @@ function gamelist_media(tbl)
 end
 
 function show_help()
-	print("Help!");
+	local wnd = awbwman_spawn(menulbl("Help"));
+	helpimg = desktoplbl(MESSAGE["HELPER_MSG"]);
+	link_image(helpimg, wnd.canvas.vid);
+	show_image(helpimg);
+	image_clip_on(helpimg, CLIP_SHALLOW);
+	image_mask_set(helpimg, MASK_UNPICKABLE);
+	image_inherit_order(helpimg, true);
+	order_image(helpimg, 1);
+	local props =	image_surface_properties(helpimg);
+	wnd:resize(props.width + 20, props.height + 20);
+	wnd.on_destroy = function() 
+		store_key("help_shown", "yes");
+	end
 end
 
 function gamelist_popup(ent)
@@ -444,7 +460,7 @@ function rootdnd(ctag)
 					local icn = awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
 						icn, icn, function() launch_factorytgt(tbl, tbl.factorystr); end, 
 						function(self) shortcut_popup(self, tbl, base .. ".lnk");	end,
-						{w = w, h = h});
+						{w = w, h = h, helper = tbl.caption});
 					local mx, my = mouse_xy();
 					icn.x = math.floor(mx);
 					icn.y = math.floor(my);
@@ -562,48 +578,48 @@ function awb_desktop_setup()
 
 	local groups = {
 		{
-			name    = "Tools",
+			name    = MESSAGE["GROUP_TOOLS"],
 			key     = "tools",
 			trigger = function()
-				local wnd = awbwman_iconwnd(menulbl("Tools"), builtin_group, 
+				local wnd = awbwman_iconwnd(menulbl(MESSAGE["GROUP_TOOLS"]), builtin_group, 
 					{refid = "iconwnd_tools"});
 				wnd.name = "List(Tools)";
 			end
 		},
 		{
-			name    = "Saves",
+			name    = MESSAGE["GROUP_SAVES"],
 			key     = "savestates",
 			trigger = function() end, 
 		},
 		{
-			name    = "Systems",
+			name    = MESSAGE["GROUP_SYSTEMS"],
 			key     = "systems",
 			trigger = function()
-				local tbl =	awbwman_iconwnd(menulbl("Systems"), system_group,
+				local tbl =	awbwman_iconwnd(menulbl(MESSAGE["GROUP_SYSTEMS"]), system_group,
 					{refid = "iconwnd_systems"});
 				tbl.idfun = list_targets;
 				tbl.name = "List(Systems)";
 			end
 		},
 		{
-			name = "Music",
+			name = MESSAGE["GROUP_MUSIC"],
 			key  = "music",
 			trigger = function() 
-				wnd_media("music");
+				wnd_media(MESSAGE["GROUP_MUSIC"]);
 			end
 		},
 		{
-			name = "Recordings",
+			name = MESSAGE["GROUP_RECORDINGS"],
 			key = "recordings",
 			trigger = function()
-				wnd_media("recordings");
+				wnd_media(MESSAGE["GROUP_RECORDINGS"]);
 			end,
 		},
 		{
-			name = "Videos",
+			name = MESSAGE["GROUP_VIDEOS"], 
 			key = "videos",
 			trigger = function()
-				wnd_media("movies");
+				wnd_media(MESSAGE["GROUP_VIDEOS"]);
 			end
 		},
 	};
@@ -629,7 +645,7 @@ function awb_desktop_setup()
 				icn, icn, function()
 					launch_factorytgt(tbl, tbl.factorystr); end, 
 					function(self) shortcut_popup(self, tbl, v); end,
-				{w = desw, h = desh}); 
+				{w = desw, h = desh, helper = tbl.caption}); 
 			end
 		end
 	end

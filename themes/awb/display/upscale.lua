@@ -138,6 +138,42 @@ local function add_ddt(c, newobj, shid, inw, inh, outw, outh)
 	return ddtsurf;
 end
 
+local function gen_factstr(c)
+	if (c.tag == "xbr") then
+		return string.format(
+			"xbrattr:method=%s:upscale_ineq=%s:factor=%d:post=%s%s",
+			c.method, tostring_rdx(c.upscale_ineq), c.factor, c.post,
+			c.ddt == true and ":ddt" or ""
+		);
+
+	elseif (c.tag == "sabr") then
+		return string.format(
+			"sabrattr:factor=%d:post=%s",
+			c.factor, c.post, c.ddt == true and ":ddt" or ""
+		);
+	end
+end
+
+-- works for both sabr and xbr
+local function set_factstr(c, str)
+	c.ddt = false;
+
+	local tbl = string.split(str, ":");
+	for i=2,#tbl do
+		if (tbl[i] == "ddt") then
+			c.ddt = true;
+		else
+			local argt = string.split(tbl[i], "=");
+			if (#argt == 2) then
+				local opc = argt[1];
+				local opv = argt[2];
+				c[opc] = tonumber_rdx(opv);
+			end
+		end
+	end
+
+end
+
 --
 -- Similar to the one used in gridle,
 -- but always uses an 1:1 FBO
@@ -216,6 +252,9 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		image_texfilter(newobj, FILTER_BILINEAR);
 	end
 
+	c.factorystr = gen_factstr;
+	c.set_factstr = set_factstr;
+
 	return newobj, c;
 end
 
@@ -258,6 +297,9 @@ cont.sabr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	elseif (post == "bilinear") then
 		image_texfilter(newobj, FILTER_BILINEAR);
 	end
+
+	c.factorystr = gen_factstr;
+	c.set_factstr = set_factstr;
 
 	return newobj, c;
 end
