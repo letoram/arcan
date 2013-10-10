@@ -200,11 +200,70 @@ cont.confwin = function(c, pwin)
 -- create listview and link to parent
 end
 
+local function gen_factstr(c)
+	local res = "crtattr:" .. 
+		(c.opts["CURVATURE"] == true and "curvature:" or "") ..
+		(c.opts["USEGAUSSIAN"] == true and "gaussian:" or "") .. 
+		(c.opts["LINEAR_POCESSING"] == true and "linear:" or "") .. 
+		(c.opts["OVERSAMPLE"] == true and "oversample:" or "");
+
+	return string.format("%sgamma=%s:hoverscan=%s:voverscan=%s:" ..
+	"monitorgamma=%s:haspect=%s:vaspect=%s:distance=%s:curvrad=%s:" ..
+	"tilth=%s:tiltv=%s:cornersz=%s:cornersmooth=%s", res,  
+		tostring_rdx(c.gamma), tostring_rdx(c.hoverscan), tostring_rdx(c.voverscan),
+		tostring_rdx(c.mongamma), tostring_rdx(c.haspect), tostring_rdx(c.vaspect), 
+		tostring_rdx(c.distance), tostring_rdx(c.curvrad), tostring_rdx(c.tilth), 
+		tostring_rdx(c.tiltv), tostring_rdx(c.cornersz), 
+		tostring_rdx(c.cornersmooth));
+end
+
+local function push_uniforms(s, c)
+	shader_uniform(s, "CRTgamma", "f", PERSIST, c.gamma);
+	shader_uniform(s, "overscan", "ff", PERSIST, c.hoverscan, c.voverscan);
+	shader_uniform(s, "monitorgamma", "f", PERSIST, c.mongamma);
+	shader_uniform(s, "aspect", "ff", PERSIST, c.haspect, c.vaspect);
+	shader_uniform(s, "distance", "f", PERSIST, c.distance);
+	shader_uniform(s, "curv_radius", "f", PERSIST, c.curvrad);
+	shader_uniform(s, "tilt_angle", "ff", PERSIST, c.tilth, c.tiltv);
+	shader_uniform(s, "cornersize", "f", PERSIST, c.cornersz);
+	shader_uniform(s, "cornersmooth", "f", PERSIST, c.cornersmooth);
+end
+
+local function set_factstr(c, str)
+	local tbl = string.split(str, ":");
+
+	c.opts["CURVATURE"]         = false;
+	c.opts["USEGAUSSIAN"]       = false;
+	c.opts["LINEAR_PROCESSING"] = false;
+	c.opts["OVERSAMPLE"]        = false; 
+
+	for i=2,#tbl do
+		if (tbl[i] == "curvature") then
+			c.opts["CURVATURE"] = true;
+		elseif (tbl[i] == "gaussian") then
+			c.opts["USEGAUSSIAN"] = true;
+		elseif (tbl[i] == "linear") then
+			c.opts["LINEAR_PROCESSING"] = true;
+		elseif (tbl[i] == "oversample") then
+			c.opts["OVERSAMPLE"] = true;
+		else
+			local argt = string.split(tbl[i], "=");
+			if (#argt == 2) then
+				local opc = argt[1];
+				local opv = argt[2];
+				c[opc] = tonumber_rdx(opv);
+			end
+		end
+	end
+
+	push_uniforms(c.shid, c);
+end
+
 --
 -- Similar to the one used in gridle,
--- but always uses an 1:1 FBO
+-- but always uses a 1:1 FBO
 --
-cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
+cont.setup = function(c, srcimg, shid, sprops, inprops, outprops)
 	if (c == nil) then
 		c = {};
 		c.rebuildc = 0;
@@ -218,7 +277,7 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		c.opts["CURVATURE"]         = false;
 		c.opts["USEGAUSSIAN"]       = true;
 		c.opts["LINEAR_PROCESSING"] = true;
-		c.opts["OVERSAMPLE"]        = true;
+		c.opts["OVERSAMPLE"]        = true; 
 	else
 		c.rebuildc = c.rebuildc + 1;
 	end
@@ -235,24 +294,15 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	local s = load_shader("display/crt.vShader", 
 		"display/crt.fShader", shid, shopts);
 
-	print("crt:", inprops.width, inprops.height, outprops.width, outprops.height);
 -- could make this cheaper and simply encode the values into the shader
 -- before uploading ..
 	shader_uniform(s, "input_size", "ff", PERSIST, inprops.width, inprops.height);
 	shader_uniform(s, "output_size", "ff",PERSIST,outprops.width,outprops.height);
 	shader_uniform(s, "storage_size", "ff", PERSIST, sprops.width, sprops.height);
-	shader_uniform(s, "CRTgamma", "f", PERSIST, c.gamma);
-	shader_uniform(s, "overscan", "ff", PERSIST, c.hoverscan, c.voverscan);
-	shader_uniform(s, "monitorgamma", "f", PERSIST, c.mongamma);
-	shader_uniform(s, "aspect", "ff", PERSIST, c.haspect, c.vaspect);
-	shader_uniform(s, "distance", "f", PERSIST, c.distance);
-	shader_uniform(s, "curv_radius", "f", PERSIST, c.curvrad);
-	shader_uniform(s, "tilt_angle", "ff", PERSIST, c.tilth, c.tiltv);
-	shader_uniform(s, "cornersize", "f", PERSIST, c.cornersz);
-	shader_uniform(s, "cornersmooth", "f", PERSIST, c.cornersmooth);
-
 	local newobj = fill_surface(outprops.width, outprops.height, 0, 0, 0,
 		outprops.width, outprops.height);
+
+	push_uniforms(s, c);
 
 	image_tracetag(newobj, "crt_filter_" .. tostring(c.rebuildc));
 	image_texfilter(newobj, FILTER_NONE, FILTER_NONE);
@@ -264,13 +314,14 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	resize_image(srcimg, outprops.width, outprops.height);
 	link_image(srcimg, srcimg);
 	move_image(srcimg, 0, 0);
-
 	image_shader(srcimg, s);
 
 	define_rendertarget(newobj, {srcimg}, 
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
 	c.shid = s;
+	c.factorystr = gen_factstr;
+	c.set_factstr = set_factstr;
 
 	return newobj, c;
 end

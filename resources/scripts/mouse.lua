@@ -18,14 +18,17 @@ local mstate = {
 	handlers = mouse_handlers,
 	btns = {false, false, false}, -- always LMB, MMB, RMB 
 	cur_over = {},
+	hover_track = {},
 
 -- mouse event is triggered
-	accel        = 1, -- factor to x,y movements
-	dblclickstep = 6, -- maximum number of ticks between clicks for dblclick 
-	drag_delta   = 8,
-	hover_ticks  = 30,
+	accel        = 1,  -- factor to x,y movements
+	dblclickstep = 6,  -- maximum number of ticks between clicks for dblclick 
+	drag_delta   = 8,  -- wiggle-room for drag
+	hover_ticks  = 30, -- time of inactive cursor before hover is triggered 
+	hover_thresh = 12, -- pixels movement before hover is released
 	counter      = 0,
-	hover_count  = 0
+	hover_count  = 0,
+	last_hover   = 0
 };
 
 -- this can be overridden to cache previous queries
@@ -60,9 +63,9 @@ local function linear_ifind(table, val)
 	return false;
 end
 
-local function linear_find_vid(table, vid)
+local function linear_find_vid(table, vid, state)
 	for a,b in pairs(table) do
-		if (b:own(vid)) then
+		if (b:own(vid, state)) then
 			return b;
 		end
 	end
@@ -152,7 +155,7 @@ end
 
 local function mouse_drag(x, y)
 	for key, val in pairs(mstate.drag.list) do
-		local res = linear_find_vid(mstate.handlers.drag, val);
+		local res = linear_find_vid(mstate.handlers.drag, val, "drag");
 		if (res) then
 			res:drag(val, x, y);
 		end
@@ -165,7 +168,7 @@ local function rmbhandler(hists, press)
 		mstate.rpress_y = mstate.y;
 	else
 		for key, val in pairs(hists) do
-			local res = linear_find_vid(mstate.handlers.rclick, val);
+			local res = linear_find_vid(mstate.handlers.rclick, val, "rclick");
 			if (res) then
 				res:rclick(val, mstate.x, mstate.y);
 			end
@@ -184,7 +187,7 @@ local function lmbhandler(hists, press)
 	else -- release
 		if (mstate.drag) then -- already dragging, check if dropped
 			for key, val in pairs(mstate.drag.list) do
-				local res = linear_find_vid(mstate.handlers.drop, val);
+				local res = linear_find_vid(mstate.handlers.drop, val, "drop");
 				if (res) then
 					res:drop(val, mstate.x, mstate.y);
 				end
@@ -192,7 +195,7 @@ local function lmbhandler(hists, press)
 -- only click if we havn't started dragging
 		else
 			for key, val in pairs(hists) do
-				local res = linear_find_vid(mstate.handlers.click, val);
+				local res = linear_find_vid(mstate.handlers.click, val, "click");
 				if (res) then
 					res:click(val, mstate.x, mstate.y);
 				end
@@ -201,7 +204,7 @@ local function lmbhandler(hists, press)
 -- double click is based on the number of ticks since the last click
 			if (mstate.counter > 0 and mstate.counter <= mstate.dblclickstep) then
 				for key, val in pairs(hists) do
-					local res = linear_find_vid(mstate.handlers.dblclick, val);
+					local res = linear_find_vid(mstate.handlers.dblclick, val,"dblclick");
 					if (res) then
 						res:dblclick(val, mstate.x, mstate.y);
 					end
@@ -219,6 +222,21 @@ function mouse_input(x, y, state)
 	x, y = mouse_cursorupd(x, y);
 	mstate.hover_count = 0;
 
+	if (#mstate.hover_track > 0) then
+		local dx = math.abs(mstate.hover_x - mstate.x);
+		local dy = math.abs(mstate.hover_y - mstate.y);
+
+		if (dx + dy > mstate.hover_thresh) then
+			for i,v in ipairs(mstate.hover_track) do
+				v.state:hover(v.vid, mstate.x, mstate.y, false);
+			end
+			
+			mstate.hover_track = {};
+			mstate.hover_x = nil;
+			mstate.last_hover = CLOCK;
+		end
+	end
+
 -- look for new mouse over objects
 -- note that over/out do not filter drag/drop targets, that's up to the owner
 	local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
@@ -226,7 +244,7 @@ function mouse_input(x, y, state)
 	for i=1,#hists do
 		if (linear_find(mstate.cur_over, hists[i]) == nil) then
 			table.insert(mstate.cur_over, hists[i]);
-			local res = linear_find_vid(mstate.handlers.over, hists[i]);
+			local res = linear_find_vid(mstate.handlers.over, hists[i], "over");
 			if (res) then
 					res:over(hists[i], mstate.x, mstate.y);
 			end
@@ -236,13 +254,14 @@ function mouse_input(x, y, state)
 -- drop ones no longer selected
 	for i=#mstate.cur_over,1,-1 do
 		if (not linear_ifind(hists, mstate.cur_over[i])) then
-			local res = linear_find_vid(mstate.handlers.out, mstate.cur_over[i]);
+			local res = linear_find_vid(mstate.handlers.out,mstate.cur_over[i],"out");
 			if (res) then
 				res:out(mstate.cur_over[i], mstate.x, mstate.y);
 			end
 			table.remove(mstate.cur_over, i);
 		else
-			local res = linear_find_vid(mstate.handlers.motion, mstate.cur_over[i]);
+			local res = linear_find_vid(mstate.handlers.motion,
+				mstate.cur_over[i], "motion");
 			if (res) then
 				res:motion(mstate.cur_over[i], mstate.x, mstate.y);
 			end
@@ -337,13 +356,24 @@ function mouse_tick(val)
 	mstate.counter = mstate.counter + val;
 	mstate.hover_count = mstate.hover_count + 1;
 
-	if (mstate.hover_count > mstate.hover_ticks) then
+	local hval = mstate.hover_ticks;
+	if (CLOCK - mstate.last_hover < 200) then
+		hval = 2;
+	end
+
+	if (mstate.hover_count > hval) then
 		if (hover_reset) then
 			local hists = mouse_pickfun(mstate.x, mstate.y, mstate.pickdepth, 1);
 			for i=1,#hists do
-				local res = linear_find_vid(mstate.handlers.hover, hists[i]);
+				local res = linear_find_vid(mstate.handlers.hover, hists[i], "hover");
 				if (res) then
-					res:hover(hists[i], mstate.x, mstate.y);
+					if (mstate.hover_x == nil) then
+						mstate.hover_x = mstate.x;
+						mstate.hover_y = mstate.y;
+					end
+
+					res:hover(hists[i], mstate.x, mstate.y, true);
+					table.insert(mstate.hover_track, {state = res, vid = hists[i]});
 				end
 			end
 		end

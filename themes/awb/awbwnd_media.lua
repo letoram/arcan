@@ -113,15 +113,19 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 
 	local cfg = awbwman_cfg();
 
-	bar:add_icon("clone", "r", cfg.bordericns["clone"],
-		function() datashare(pwin); end);
+	pwin.hoverlut[ 
+	(bar:add_icon("clone", "r", cfg.bordericns["clone"],
+		function() datashare(pwin); end)).vid] = 
+	MESSAGE["HOVER_CLONE"];
 
-	bar:add_icon("filters", "r", cfg.bordericns["filter"], 
-		function(self) awbwmedia_filterpop(pwin, self); end);
+	pwin.hoverlut[
+	(bar:add_icon("filters", "r", cfg.bordericns["filter"], 
+		function(self) awbwmedia_filterpop(pwin, self); end)).vid] = 
+	MESSAGE["HOVER_FILTER"];
 
 	if (fsrv) then
-		bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
-
+		pwin.hoverlut[
+		(bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
 			if (pwin.paused) then
 				pwin.paused = nil;
 				resume_movie(pwin.canvas.vid);
@@ -131,7 +135,7 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 				pause_movie(pwin.canvas.vid);
 				image_sharestorage(cfg.bordericns["play"], self.vid);
 			end
-		end);
+		end)).vid] = MESSAGE["HOVER_PLAYPAUSE"];
 
 		bar:add_icon("volume", "r", cfg.bordericns["volume"], function(self)
 			pwin:focus();
@@ -141,11 +145,19 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 		end);
 	end
 
+	bar.hover = function(self, vid, x, y, state)
+		if (state == false) then
+			awbwman_drophover();
+		elseif (pwin.hoverlut[vid]) then
+			awbwman_hoverhint(pwin.hoverlut[vid]);
+		end
+	end
+
 	bar.click = function()
 		pwin:focus();
 	end
 
-	mouse_addlistener(bar, {"click"});
+	mouse_addlistener(bar, {"click", "hover"});
 	table.insert(pwin.handlers, bar);
 end
 
@@ -213,14 +225,24 @@ local function add_3dmedia_top(pwin, active, inactive)
 	bar:add_icon("light_g", "l", cfg.bordericns["g1"], slide_lightg);
 	bar:add_icon("light_b", "l", cfg.bordericns["b1"], slide_lightb);
 
-	bar:add_icon("clone", "r", cfg.bordericns["clone"], 
-		function() datashare(pwin); end);
+	pwin.hoverlut[
+	(bar:add_icon("clone", "r", cfg.bordericns["clone"], 
+		function() datashare(pwin); end)).vid
+	] = MESSAGE["HOVER_CLONE"];
 
 	bar.click = function()
 		pwin:focus(true);
 	end
+
+	bar.hover = function(self, vid, x, y, state)
+		if (state == false) then
+			awbwman_drophover();
+		elseif (pwin.hoverlut[vid]) then
+			awbwman_hoverhint(pwin.hoverlut[vid]);
+		end
+	end
 	
-	mouse_addlistener(bar, {"click"});
+	mouse_addlistener(bar, {"click", "hover"});
 	table.insert(pwin.handlers, bar);
 end
 
@@ -302,11 +324,9 @@ function awbwmedia_filterchain(pwin)
 -- 1. upscaler, this may modify what the other filters / effects.
 -- see as the internal/storage/source resolution will be scaled.
 	image_texfilter(dstres, FILTER_NONE, FILTER_NONE);
-	print("reset filter");
 
 	if (pwin.filters.upscaler) then
 		local f = pwin.filters.upscaler;
-		print("upscale:", f);
 
 		if (f == "Linear") then
 			image_texfilter(dstres, FILTER_LINEAR);
@@ -355,7 +375,6 @@ function awbwmedia_filterchain(pwin)
 -- 3. display
 	if (pwin.filters.display) then
 		local f = pwin.filters.display;
-		print("display:", f);
 
 		if (f == "CRT") then
 			dstres, ctx = crtcont.setup(pwin.filters.displayctx, 
@@ -372,6 +391,8 @@ end
 function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
 	pwin.filters = {};
+	pwin.hoverlut = {};
+
 	pwin.rebuild_chain = awbwmedia_filterchain;
 
 	if (kind == "frameserver" or 
