@@ -64,8 +64,8 @@ end
 local function clampofs(self)
 	if (self.ofs < 1) then
 		self.ofs = 1;
-	elseif (self.ofs + self.capacity >= self.total) then
-		self.ofs = self.total - self.capacity;
+	elseif (self.ofs + self.capacity > self.total) then
+		self.ofs = self.total - self.capacity + 1;
 	end
 end
 
