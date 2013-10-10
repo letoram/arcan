@@ -4,7 +4,7 @@
 -- With clickable headers, sorting etc.
 -- 
 local function awblist_scrollbar(self)
-	if (self.capacity > self.total) then
+	if (self.capacity >= self.total) then
 		if (self.scroll) then
 			self.scroll = false;
 			hide_image(self.dir[self.icon_bardir].fill.vid);
@@ -156,8 +156,8 @@ end
 local function clampofs(self)
 	if (self.ofs < 1) then
 		self.ofs = 1;
-	elseif (self.ofs + self.capacity >= self.total) then
-		self.ofs = self.total - self.capacity;
+	elseif (self.ofs + self.capacity > self.total) then
+		self.ofs = self.total - self.capacity + 1;
 	end
 end
 
@@ -292,9 +292,9 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 			return;
 		end
 
-		if (iotbl.keysym == "UP") then
+		if (iotbl.lutsym == "UP") then
 			pwin:scrollup(1);
-		elseif (iotbl.keysym == "DOWN") then
+		elseif (iotbl.lutsym == "DOWN") then
 			pwin:scrolldown(1);
 		end
 	end

@@ -3393,16 +3393,17 @@ static void tick_rendertarget(struct rendertarget* tgt)
 	}
 }
 
-#ifndef SHADER_TIME_PERIOD
-#define SHADER_TIME_PERIOD 128
-#endif
 unsigned arcan_video_tick(unsigned steps)
 {
 	if (steps == 0)
 		return 0;
 
 	unsigned now = arcan_frametime();
-	uint32_t tsd = arcan_video_display.c_ticks % SHADER_TIME_PERIOD;
+	uint32_t tsd = arcan_video_display.c_ticks;
+
+#ifdef SHADER_TIME_PERIOD
+	tsd = tsd % SHADER_TIME_PERIOD;
+#endif
 
 	do {
 		update_object(&current_context->world, arcan_video_display.c_ticks);

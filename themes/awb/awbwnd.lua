@@ -21,7 +21,6 @@ local function awbwnd_alloc(tbl)
 	move_image(tbl.anchor, tbl.x, tbl.y);
 	tbl.temp = {};
 	tbl.handlers = {};
-
 	return tbl;
 end
 
