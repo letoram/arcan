@@ -14,7 +14,7 @@ local Depth
 
 local dbg = debug.debug;
 function debug.debug()
-	toggle_mouse_grab(MOUSE_GRAB_OFF);
+	toggle_mouse_grab(MOUSE_GRABOFF);
 	dbg();
 end
 

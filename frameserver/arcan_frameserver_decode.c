@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <fft/kiss_fftr.h>
 
 #include "../arcan_math.h"
 #include "../arcan_general.h"
@@ -13,17 +14,8 @@
 #include "../arcan_frameserver_shmpage.h"
 #include "arcan_frameserver_decode.h"
 
-#define AUD_VIS_HRES 64 
-#define AUD_VIS_VRES 2 
+#define AUD_VIS_HRES 2048 
 
-#include "arcan_frameserver.h"
-#include "../arcan_frameserver_shmpage.h"
-#include "arcan_frameserver_encode.h"
-
-/* LibFFMPEG
- * A possible option for future versions not constrained to a single 
- * arcan_frameserver, is to make this into a small:ish patch for ffplay.c 
- * instead rather than maintaining a separate player as is the case now */
 #include <libavcodec/avcodec.h>
 #include <libavutil/audioconvert.h>
 #include <libavformat/avformat.h>
@@ -54,6 +46,12 @@ struct {
 	int vid; /* selected video-stream */
 	int aid; /* Selected audio-stream */
 
+/* for music- only playback, we can populate the video
+ * channels with the samples + their FFT */
+	bool fft_audio;
+	kiss_fftr_cfg fft_state;
+	uint32_t vfc;
+
 	int height;
 	int width;
 	int bpp;
@@ -69,16 +67,105 @@ struct {
 
 } decctx = {0};
 
-const int audio_vis_width  = AUD_VIS_HRES;
-const int audio_vis_height = AUD_VIS_VRES;
-
 static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
 	uint16_t width, uint16_t height, enum PixelFormat pfmt);
 
+/* Convert the interleaved output audio buffer into n- videoframes,
+ * packed planar with uint16_t samples in R,G (slightly wasteful but simple)
+ * and their FFT version in the second row, as floats packed in RGBA),
+ * generate PTS based on n samples processed 
+ */
+static void generate_frame()
+{
+	const int smpl_wndw = AUD_VIS_HRES * 2;
+	static float smplbuf[AUD_VIS_HRES * 2];
+	static kiss_fft_scalar fsmplbuf[AUD_VIS_HRES * 2];
+	static kiss_fft_cpx foutsmplbuf[AUD_VIS_HRES * 2];
+
+	static bool gotfft;
+	static kiss_fftr_cfg kfft;
+
+	if (!gotfft){
+		kfft = kiss_fftr_alloc(smpl_wndw, false, NULL, NULL);
+		gotfft = true;
+	}
+
+	static int smplc;
+	static int vfc = 0;
+	static double vptsc = 0;
+
+	int16_t* basep = (uint16_t*) decctx.audp;
+	int counter = decctx.shmcont.addr->abufused;
+
+	while (counter){
+/* could've split the window up into 
+ * two functions and used the b and a channels */
+		float lv = (*basep++) / 32767.0f;
+		float rv = (*basep++) / 32767.0f;
+		float smpl = (lv + rv) / 2.0f; 
+		smplbuf[smplc] = smpl;
+
+/* hann window float sample before FFT */ 
+		float winv = 0.5f * ( 1.0f - cosf(2.0 * M_PI * smplc / (float) smpl_wndw));
+		fsmplbuf[smplc] = smpl + 1.0 * winv;
+
+		smplc++;
+		counter -= 4; /* 4 bytes consumed */
+
+		if (smplc == smpl_wndw){
+			smplc = 0;
+
+			uint8_t* base = decctx.vidp;
+			kiss_fftr(kfft, fsmplbuf, foutsmplbuf);
+
+/* store FFT output in dB scale */
+			float low = 255.0f;
+			float high = 0.0f;
+
+			for (int j= 0; j < smpl_wndw / 2; j++)
+			{
+				float magnitude = sqrtf(foutsmplbuf[j].r * foutsmplbuf[j].r +
+					foutsmplbuf[j].i * foutsmplbuf[j].i);
+				fsmplbuf[j] = 10.0f * log10f(magnitude);
+				if (fsmplbuf[j] < low)
+					low = fsmplbuf[j];
+				if (fsmplbuf[j] > high)
+					high = fsmplbuf[j];	
+			}
+
+/* wasting a level just to get POT as the interface doesn't
+ * support a 1D texture format */
+			for (int j=0; j<smpl_wndw / 2; j++){
+				*base++ = 0;
+				*base++ = 0;
+				*base++ = 0;
+				*base++ = 0xff;
+			}
+
+/* pack in output image, smooth two audio samples */
+			for (int j=0; j < smpl_wndw / 2; j++){
+				*base++ = (1.0f + ((smplbuf[j * 2] + smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0;
+				*base++ = (fsmplbuf[j] / high) * 255.0;
+				*base++ = 0x00;
+				*base++ = 0xff;
+			}
+
+			decctx.shmcont.addr->vpts = vptsc;
+			decctx.shmcont.addr->vready = true;
+			frameserver_semcheck( decctx.shmcont.vsem, -1);
+			vptsc += 1000.0f / ((double)(SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
+		}
+	}
+}
+
 static inline void synch_audio()
 {
+	if (decctx.fft_audio)
+		generate_frame();
+
 	decctx.shmcont.addr->aready = true;
 	frameserver_semcheck( decctx.shmcont.asem, -1);
+
 	decctx.shmcont.addr->abufused = 0;
 }
 
@@ -184,6 +271,7 @@ static bool decode_vframe()
 
 	avcodec_decode_video2(decctx.vcontext, vframe, 
 		&complete_frame, &decctx.packet);
+
 	if (complete_frame) {
 		uint8_t* dstpl[4] = {NULL, NULL, NULL, NULL};
 		int dststr[4] = {0, 0, 0, 0};
@@ -496,9 +584,10 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 
 /* take something by default so that we can still graph etc. */
 		if (!decctx.vcontext){
-			decctx.width  = audio_vis_height;
-			decctx.height = audio_vis_width;
+			decctx.width  = AUD_VIS_HRES;
+			decctx.height = 2; 
 			decctx.bpp    = 4;
+			decctx.fft_audio = true;
 		}
 		
 /* initialize both semaphores to 0 => render frame (wait for 
@@ -516,24 +605,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 				decctx.channels, decctx.samplerate);
 			return;
 		} 
-
+	
 		frameserver_shmpage_calcofs(shms.addr, &(decctx.vidp), &(decctx.audp) );
-		if (!decctx.vcontext){
-			uint8_t* dstbuf = decctx.vidp;
-			int ntc = decctx.width * decctx.height * decctx.bpp;
-
-			while (ntc){
-				*dstbuf++ = 0x00;
-				*dstbuf++ = 0x00;
-				*dstbuf++ = 0x00;
-				*dstbuf++ = 0xff;
-				ntc -= 4;
-			}
-
-			decctx.shmcont.addr->vpts = 0;
-			decctx.shmcont.addr->vready = true;
-			frameserver_semcheck( decctx.shmcont.vsem, -1);
-		}
-
 	} while (ffmpeg_decode() && decctx.shmcont.addr->loop);
 }

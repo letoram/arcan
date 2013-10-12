@@ -342,7 +342,7 @@ function gamelist_media(tbl)
 end
 
 function show_help()
-	local wnd = awbwman_spawn(menulbl("Help"));
+	local wnd = awbwman_spawn(menulbl("Help"), {noresize = true});
 	helpimg = desktoplbl(MESSAGE["HELPER_MSG"]);
 	link_image(helpimg, wnd.canvas.vid);
 	show_image(helpimg);
@@ -351,7 +351,8 @@ function show_help()
 	image_inherit_order(helpimg, true);
 	order_image(helpimg, 1);
 	local props =	image_surface_properties(helpimg);
-	wnd:resize(props.width + 20, props.height + 20);
+	move_image(helpimg, 10, 10);
+	wnd:resize(props.width + 20, props.height + 20, true, true);
 	wnd.on_destroy = function() 
 		store_key("help_shown", "yes");
 	end
@@ -587,11 +588,6 @@ function awb_desktop_setup()
 			end
 		},
 		{
-			name    = MESSAGE["GROUP_SAVES"],
-			key     = "savestates",
-			trigger = function() end, 
-		},
-		{
 			name    = MESSAGE["GROUP_SYSTEMS"],
 			key     = "systems",
 			trigger = function()
@@ -605,21 +601,21 @@ function awb_desktop_setup()
 			name = MESSAGE["GROUP_MUSIC"],
 			key  = "music",
 			trigger = function() 
-				wnd_media(MESSAGE["GROUP_MUSIC"]);
+				wnd_media("music");
 			end
 		},
 		{
 			name = MESSAGE["GROUP_RECORDINGS"],
 			key = "recordings",
 			trigger = function()
-				wnd_media(MESSAGE["GROUP_RECORDINGS"]);
-			end,
+				wnd_media("recordings");
+			end
 		},
 		{
 			name = MESSAGE["GROUP_VIDEOS"], 
 			key = "videos",
 			trigger = function()
-				wnd_media(MESSAGE["GROUP_VIDEOS"]);
+				wnd_media("movies");
 			end
 		},
 	};

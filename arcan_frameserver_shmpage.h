@@ -29,7 +29,8 @@
 
 #define SHMPAGE_ACHANNELCOUNT 2
 #define SHMPAGE_VCHANNELCOUNT 4
-#define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
+#define SHMPAGE_AUDIOBUF_SIZE (1024 * 8) 
+//#define SHMPAGE_AUDIOBUF_SIZE ( SHMPAGE_MAXAUDIO_FRAMESIZE * 3 / 2)
 
 #define MAX_SHMSIZE 9582916
 #define MAX_SHMWIDTH 1920
@@ -62,7 +63,7 @@ struct frameserver_shmpage {
 	process_handle parent;
 
 	volatile uint8_t vready;
-	uint32_t vpts;
+	int64_t vpts;
 
 	struct {
 		bool glsource;
@@ -89,34 +90,56 @@ struct arg_arr {
 };
 
 /* note, frameserver_semcheck is hidden in arcan_frameserver_shmpage.o,
- * this is partly to make it easier to share code between hijacklib and frameserver,
- * while at the same time keeping it out of the frameserver routine in the main app, where
+ * this is partly to make it easier to share code between hijacklib 
+ * and frameserver, while at the same time keeping it out of the 
+ * frameserver routine in the main app, where
  * that kind of shmcheck is dangerous */
 
-/* try and acquire a lock on the semaphore before mstimeout runs out (-1 == INFINITE, 0 == return immediately) this will forcibly exit should any error other than timeout occur.
- * on some platforms, this unfortunately will end up in a sleep -> check -> sleep | return loop, which is jittery and wasteful */
+/* try and acquire a lock on the semaphore before mstimeout 
+ * runs out (-1 == INFINITE, 0 == return immediately) 
+ * this will forcibly exit should any error other than timeout occur.
+ * on some platforms, this unfortunately will end up in a 
+ * sleep -> check -> sleep | return loop, which is jittery and wasteful */
 int frameserver_semcheck(sem_handle semaphore, int timeout);
 
-/* returns true if the contents of the shmpage seems sound (unless this passes, the server will likely kill or ignore the client */
+/* returns true if the contents of the shmpage seems sound 
+ * (unless this passes, the server will likely kill or ignore the client */
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
 
 /* calculate video/audio buffers from shmpage as baseaddr */
-void frameserver_shmpage_calcofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr);
-void frameserver_shmpage_forceofs(struct frameserver_shmpage*, uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, unsigned height, unsigned bpp);
-void frameserver_shmpage_setevqs(struct frameserver_shmpage*, sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
+void frameserver_shmpage_calcofs(struct frameserver_shmpage*, 
+	uint8_t** dstvidptr, uint8_t** dstaudptr);
 
-/* (client use only) using a keyname, setup shmpage (with eventqueues etc.) and semaphores */
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, bool force_unlink);
+void frameserver_shmpage_forceofs(struct frameserver_shmpage*, 
+	uint8_t** dstvidptr, uint8_t** dstaudptr, 
+	unsigned width, unsigned height, unsigned bpp);
 
-/* (client use only) recalculate offsets, synchronize with parent and make sure these new options work */
-bool frameserver_shmpage_resize(struct frameserver_shmcont*, unsigned width, unsigned height);
+void frameserver_shmpage_setevqs(struct frameserver_shmpage*, 
+	sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
 
-/* Serializing a bunch of key=val or key args into a string for passing to frameserver args at launch,
- * added as convenience here to make sure that frameserver and main-app threat these the same */
+/* (client use only) using a keyname, 
+ * setup shmpage (with eventqueues etc.) and semaphores */
+struct frameserver_shmcont frameserver_getshm(
+	const char* shmkey, bool force_unlink);
+
+/* (client use only) recalculate offsets, 
+ * synchronize with parent and make sure these new options work */
+bool frameserver_shmpage_resize(struct frameserver_shmcont*, 
+	unsigned width, unsigned height);
+
+/* Serializing a bunch of key=val or key args into a string 
+ * for passing to frameserver args at launch,
+ * added as convenience here to make sure that frameserver 
+ * and main-app threat these the same */
 struct arg_arr* arg_unpack(const char*);
 
-/* return the value matching a certain key, if ind is larger than 0, it's the n-th result that will be stored in dst */ 
-bool arg_lookup(struct arg_arr* arr, const char* val, unsigned short ind, const char** found);
+/*
+ * return the value matching a certain key, 
+ * if ind is larger than 0, it's the n-th result 
+ * that will be stored in dst 
+ */ 
+bool arg_lookup(struct arg_arr* arr, const char* val, 
+	unsigned short ind, const char** found);
 void arg_cleanup(struct arg_arr*);
 
 #endif

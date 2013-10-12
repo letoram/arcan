@@ -21,16 +21,16 @@ return {
 	HOVER_GLOBALINPUT = "Toggle Global Input ON/OFF",
 	HOVER_INPUTCFG = "Switch active input layout",
 	HELPER_MSG = [[
-		(global)\n\r
+		\#00ff00(global)\n\r\#ffffff
 			LCTRL\tgrab/release input\n\r
 			SHIFT+TAB\t cycle visible windows\n\r
 			ALT+F4\t close normal (non-media) window\n\r
 			RCLICK\t context menu (where applicable)\n\r
 			F12\t\tforce-focus window\n\r
 			F11\t\tgather/scatter visible windows\n\r\n\r
-		(titlebar)\n\r
+		\#00ff00(titlebar)\#ffffff\n\r
 			SHIFT+CLICK+DRAG\t fling window\n\r\n\r
-		(target window)\n\r
+		\#00ff00(target window)\#ffffff\n\r
 			RCLICK\t scale options (resize-button)\n\r
 	]];
 };

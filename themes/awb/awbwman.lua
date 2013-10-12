@@ -160,9 +160,14 @@ function awbwman_fullscreen(wnd)
 -- fit screen, maintaining aspect ratio
 -- (force a resize of the focus window so possible filter-chains etc.
 -- gets updated properly).
+	local srcid = awb_cfg.focus.canvas.vid;
 
-	local cprops = image_surface_properties(awb_cfg.focus.canvas.vid);
-	local iprops = image_surface_initial_properties(awb_cfg.focus.canvas.vid);
+	if (awb_cfg.focus.controlid) then
+		srcid = awb_cfg.focus.controld;
+	end
+
+	local cprops = image_surface_properties(srcid);
+	local iprops = image_surface_initial_properties(srcid);
 	local ar = iprops.width / iprops.height;
 	local wr = iprops.width / VRESW;
 	local hr = iprops.height / VRESH;
@@ -934,6 +939,12 @@ function awbwman_rootwnd()
 		end,
 
 		click = function(self, vid)
+			for k,v in ipairs(awb_cfg.rooticns) do
+				if (v ~= icntbl) then
+					v.toggle(false);
+				end
+			end
+
 			if (awb_cfg.cursor_tag) then
 				if (awb_cfg.on_rootdnd) then
 					awb_cfg.on_rootdnd(awb_cfg.cursor_tag);

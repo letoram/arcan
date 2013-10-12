@@ -208,6 +208,7 @@ INCLUDE_DIRS
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIRS}
 	"frameserver/ntsc"
+	"external"
 #	"nacl/include"
 #	"libjpeg-turbo/include"
 )
@@ -270,6 +271,8 @@ set (
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
  arcan_event.c
+ external/fft/kiss_fft.c
+ external/fft/kiss_fftr.c
 )
 
 if (${HAVE_SIMD})
