@@ -1352,6 +1352,8 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 	intptr_t ref = (intptr_t) 0;
 
 	const char* argstr = luaL_optstring(ctx, 5, "");
+	bool force_nopts = luaL_optnumber(ctx, 6, 0);
+
 	size_t optlen = strlen(argstr);
 
 	if (!fname){
@@ -1383,7 +1385,7 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 	mvctx->loop     = loop == FRAMESERVER_LOOP;
 	mvctx->autoplay = luaL_optint(ctx, 4, 0) > 0 || special;
-	mvctx->nopts    = special;
+	mvctx->nopts    = force_nopts || special;
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -2660,7 +2662,7 @@ int arcan_lua_3dorder(lua_State* ctx)
 int arcan_lua_mousegrab(lua_State* ctx)
 {
 	int mode =  luaL_optint( ctx, 1, -1);
-	
+
 	if (mode == -1)
 		lua_ctx_store.grab = !lua_ctx_store.grab;
 	else if (mode == MOUSE_GRAB_ON)

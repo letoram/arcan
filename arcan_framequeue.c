@@ -41,9 +41,11 @@ void arcan_framequeue_step(frame_queue* queue)
 	frame_cell* current = &queue->da_cells[ queue->ni ];
 
 	pthread_mutex_lock(&queue->framesync);
+
 	while (queue->alive && 
-		queue->n_cells + 1 == queue->c_cells) 
+		queue->n_cells + 1 == queue->c_cells){ 
 			pthread_cond_wait(&queue->framecond, &queue->framesync);
+	}
 
 	if (queue->alive){
 		current->wronly = false;

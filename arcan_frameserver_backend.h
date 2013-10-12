@@ -22,15 +22,12 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
-#define ARCAN_FRAMESERVER_VCACHE_LIMIT 8 
-#define ARCAN_FRAMESERVER_ACACHE_LIMIT 24
-#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 60
-#define ARCAN_FRAMESERVER_ABUFFER_SIZE 8 * 1024 
+#define ARCAN_FRAMESERVER_VCACHE_LIMIT 6 
+#define ARCAN_FRAMESERVER_ACACHE_LIMIT 24 
+#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 30
+#define ARCAN_FRAMESERVER_ABUFFER_SIZE (8 * 1024) 
 #define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 450
 #define ARCAN_FRAMESERVER_PRESILENCE 16024 
-#define VID_FD 3
-#define AUD_FD 4
-#define CTRL_FD 5
 
 struct arcan_ffmpeg_context;
 
@@ -60,7 +57,7 @@ typedef struct {
 	uint16_t bpp;
 	uint8_t sformat;
 	uint8_t dformat;
-	uint16_t vskipthresh;
+	int16_t vskipthresh;
 
 	/* audio */
 	unsigned samplerate;

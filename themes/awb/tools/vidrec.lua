@@ -310,10 +310,13 @@ local function record(wnd)
 	show_image(dstvid);
 	wnd:set_border(2, 255, 0, 0);
 	wnd:update_canvas(dstvid);
+	wnd.recording = true;
 end
 
 function spawn_vidrec()
 	local wnd = awbwman_spawn(menulbl("Recorder"), {refid = "vidrec"});
+	wnd.hoverlut = {};
+
 	if (wnd == nil) then 
 		return;
 	end
@@ -390,7 +393,11 @@ function spawn_vidrec()
 		end
 	end
 
-	bar:add_icon("res", "l", cfg.bordericns["resolution"], respop);
+
+	wnd.hoverlut[
+	(bar:add_icon("res", "l", cfg.bordericns["resolution"], respop)).vid
+	] = "Resolution";
+
 	bar:add_icon("aspect", "l", cfg.bordericns["aspect"], aspectpop);
 	bar:add_icon("vcodec", "l", cfg.bordericns["vcodec"], vcodecpop);
 	bar:add_icon("vqual", "l", cfg.bordericns["vquality"], function(self)
@@ -401,11 +408,19 @@ function spawn_vidrec()
 	bar:add_icon("fps", "l", cfg.bordericns["fps"], fpspop);
 	bar:add_icon("save", "l", cfg.bordericns["save"], destpop);
 
+	bar.hover = function(self, vid, x, y, state)
+		if (state == false) then
+			awbwman_drophover();
+		elseif (pwin.hoverlut[vid]) then
+			awbwman_hoverhint(wnd.hoverlut[vid]);
+		end
+	end
+	
 	bar.click = function()
 		wnd:focus(true);
 	end
 	bar.name = "vidrec_ttbar";
-	mouse_addlistener(bar, {"click"});
+	mouse_addlistener(bar, {"click", "hover"});
 	table.insert(wnd.handlers, bar);
 
 -- add ttbar, icons for; 

@@ -313,7 +313,7 @@ function load_shader(vertname, fragname, label, defines)
 	elseif (type(vertname) == "table") then
 		vprog = table.concat(vertname, "\n");
 	else
-		warning("load_shader(" .. label .. ") failed, bad vertex program argument.\n");
+		vprog = nil;
 	end
 
 	if (type(fragname) == "string") then
@@ -329,9 +329,8 @@ function load_shader(vertname, fragname, label, defines)
 		end
 	elseif (type(fragname) == "table") then
 		fprog = table.concat(fragname, "\n");
-		print(fprog);
 	else
-		warning("load_shader(" .. label .. ") failed, bad fragment program argument.\n");
+		fprog = nil;
 	end
 
 	return build_shader(vprog, fprog, label);

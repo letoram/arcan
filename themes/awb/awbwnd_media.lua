@@ -15,6 +15,7 @@
 --
 
 local shader_seqn = 0;
+local last_audshader = nil;
 
 local crtcont = system_load("display/crt.lua")();
 local upscaler = system_load("display/upscale.lua")();
@@ -106,13 +107,35 @@ function awbwmedia_filterpop(wnd, icn)
 	awbwman_popup(vid, lines, dlgtbl, {ref = icn.vid});
 end
 
-local function add_vmedia_top(pwin, active, inactive, fsrv)
+local function awbamedia_filterpop(wnd, icn)
+	local opts = glob_resource("shaders/audio/*.fShader");
+	if (opts == nil or #opts == 0) then
+		return;
+	end
+
+	local labels = {};
+	for i=1,#opts do
+		table.insert(labels, string.sub(opts[i], 1, string.len(opts[i]) - 8)); 
+	end
+
+	local vid, lines = desktoplbl(table.concat(labels, "\\n\\r"));
+	awbwman_popup(vid, lines, function(ind)
+		last_audshader = "shaders/audio/" .. labels[ind] .. ".fShader";
+		local shid = load_shader(nil, last_audshader, "aud_" .. wnd.wndid); 
+		if (shid) then
+			image_shader(wnd.canvas.vid, shid);
+		end
+	end, {ref = icn.vid});
+end
+
+local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 	local bar = pwin:add_bar("tt", active, inactive,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	bar.name = "vmedia_ttbarh";
 
 	local cfg = awbwman_cfg();
 
+	if (kind ~= "frameserver_music") then
 	pwin.hoverlut[ 
 	(bar:add_icon("clone", "r", cfg.bordericns["clone"],
 		function() datashare(pwin); end)).vid] = 
@@ -122,6 +145,13 @@ local function add_vmedia_top(pwin, active, inactive, fsrv)
 	(bar:add_icon("filters", "r", cfg.bordericns["filter"], 
 		function(self) awbwmedia_filterpop(pwin, self); end)).vid] = 
 	MESSAGE["HOVER_FILTER"];
+
+	else
+		pwin.hoverlut[
+		(bar:add_icon("filters", "r", cfg.bordericns["filter"],
+			function(self) awbamedia_filterpop(pwin, self); end)).vid] = 
+		MESSAGE["HOVER_AUDIOFILTER"];
+	end
 
 	if (fsrv) then
 		pwin.hoverlut[
@@ -415,9 +445,8 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		table.insert(pwin.handlers, canvash);
 	end
 
--- should split these two later on
 	if (kind == "frameserver" or kind == "frameserver_music") then
-		add_vmedia_top(pwin, active, inactive, true);
+		add_vmedia_top(pwin, active, inactive, true, kind);
 		pwin.mediavol = 1.0;
 
 		pwin.set_mvol = function(self, val)
@@ -428,16 +457,32 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 				audio_gain(pwin.recv, tmpvol);	
 			end
 		end
-	
-		callback = function(source, status)
-			if (pwin.controlid == nil) then
-				pwin:update_canvas(source);
-			end
 
-			if (status.kind == "resized") then
-				local vid, aud = play_movie(source);
-				pwin.recv = aud;
-				pwin:resize(status.width, status.height, true);
+		if (kind == "frameserver") then
+			callback = function(source, status)
+				if (pwin.controlid == nil) then
+					pwin:update_canvas(source);
+				end
+
+				if (status.kind == "resized") then
+					local vid, aud = play_movie(source);
+					pwin.recv = aud;
+					pwn:set_mvol(pwin.mediavol);
+					pwin:resize(status.width, status.height, true);
+				end
+			end
+		else
+			callback = function(source, status)
+				if (status.kind == "resized") then
+					pwin:update_canvas(source);
+					pwin.recv = status.source_audio;
+					pwin:set_mvol(pwin.mediavol);
+					local shid = load_shader(nil,
+						last_audshader, "aud_" .. pwin.wndid);
+
+					image_shader(pwin.canvas.vid, shid);
+					image_texfilter(pwin.canvas.vid, FILTER_NONE, FILTER_NONE);
+				end
 			end
 		end
 
