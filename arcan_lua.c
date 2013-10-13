@@ -1749,6 +1749,27 @@ int arcan_lua_scale3dverts(lua_State* ctx)
     return 0;
 }
 
+static void slimpush(char* dst, char ulim, char* inmsg)
+{
+	ulim--;
+
+	while (*inmsg && ulim--)
+		*dst++ = *inmsg++;
+
+	*dst = '\0';
+}
+
+static char* streamtype(int num)
+{
+	switch (num){
+		case 0: return "audio";
+		case 1: return "video";
+		case 2: return "text";
+		case 3: return "overlay";
+	}
+	return "broken";
+}
+
 /* emit input() call based on a arcan_event,
  * uses a separate format and translation to make it easier
  * for the user to modify. Perhaps one field should have been used
@@ -1914,14 +1935,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 	}
 	else if (ev->category == EVENT_EXTERNAL){
+		char mcbuf[65];
 		if (arcan_video_findparent(ev->data.external.source) == ARCAN_EID)
 			return;
 
 /* need to jump through a few hoops to get hold of the possible callback */
 		arcan_vobject* vobj = arcan_video_getobject(ev->data.external.source);
 
-/* edge case, dangling event with frameserver that died during initialization
- * but wasn't pruned from the eventqueue */
+/* edge case, dangling event with frameserver 
+ * that died during initialization but wasn't pruned from the eventqueue */
 		if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV)
 			return;
 
@@ -1936,11 +1958,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			switch (ev->kind){
 				case EVENT_EXTERNAL_NOTICE_IDENT:
 					tblstr(ctx, "kind", "ident", top);
-					tblstr(ctx, "message", ev->data.external.message, top);
+					slimpush(mcbuf, sizeof(ev->data.external.message) /
+						sizeof(ev->data.external.message[0]), ev->data.external.message);
+					tblstr(ctx, "message", mcbuf, top);
 				break;
 				case EVENT_EXTERNAL_NOTICE_MESSAGE:
+					slimpush(mcbuf, sizeof(ev->data.external.message) /
+						sizeof(ev->data.external.message[0]), ev->data.external.message);	
 					tblstr(ctx, "kind", "message", top);
-					tblstr(ctx, "message", ev->data.external.message, top);
+					tblstr(ctx, "message", mcbuf, top); 
 				break;
 				case EVENT_EXTERNAL_NOTICE_FAILURE:
 					tblstr(ctx, "kind", "failure", top);
@@ -1950,8 +1976,35 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					tblstr(ctx, "kind", "frame", top);
 					tblnum(ctx, "frame", 
 						ev->data.external.framestatus.framenumber, top);
-/* FIXME: extract input bitfields, and expose those as well */
 				break;
+
+				case EVENT_EXTERNAL_NOTICE_STREAMINFO:
+					slimpush(mcbuf, sizeof(ev->data.external.streaminf.message) /
+						sizeof(ev->data.external.streamstat.timestr[0]),
+						ev->data.external.streamstat.timestr);
+					tblstr(ctx, "kind", "streaminfo", top);
+					tblstr(ctx, "lang", mcbuf, top);
+					tblnum(ctx, "streamid", ev->data.external.streaminf.streamid, top);
+					tblstr(ctx, "type", 
+						streamtype(ev->data.external.streaminf.datakind),top);
+				break;
+
+				case EVENT_EXTERNAL_NOTICE_STREAMSTATUS:
+			 		slimpush(mcbuf, sizeof(ev->data.external.streamstat.timestr) /
+						sizeof(ev->data.external.streamstat.timestr[0]), 
+						ev->data.external.streamstat.timestr);
+					tblstr(ctx, "kind", "streamstatus", top);
+					tblstr(ctx, "ctime", mcbuf, top);
+					slimpush(mcbuf, sizeof(ev->data.external.streamstat.timelim) /
+						sizeof(ev->data.external.streamstat.timelim[0]),
+						ev->data.external.streamstat.timelim);
+					tblstr(ctx, "endtime", mcbuf, top);
+					tblnum(ctx,"completion",ev->data.external.streamstat.completion,top);
+					tblnum(ctx, "frameno", ev->data.external.streamstat.frameno, top);
+					tblnum(ctx,"streaming",
+						ev->data.external.streamstat.streaming!=0,top);
+				break;
+
 				case EVENT_EXTERNAL_NOTICE_STATESIZE:
 					tblstr(ctx, "kind", "state_size", top);
 					tblnum(ctx, "state_size", ev->data.external.state_sz, top);

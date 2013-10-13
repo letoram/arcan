@@ -90,12 +90,18 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_PAUSE,
 	TARGET_COMMAND_UNPAUSE,
 
-/* plug in device of a specific kind in a set port */
+/* plug in device of a specific kind in a set port,
+ * switch audio / video stream etc. */
 	TARGET_COMMAND_SETIODEV,
 
 /* used when audio playback is in the frameserver
  * (so hijacked targets) */
 	TARGET_COMMAND_ATTENUATE,
+
+/* used for libretro to seek back in state (if that feature
+ * is activated) and for decode frameserver to seek relative
+ * or absolute in the current streams */
+	TARGET_COMMAND_SEEKTIME,
 
 /* for audio / video synchronization in video decode/encode 
  * (ioevs[0] -> samples per channel) */
@@ -148,6 +154,9 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_NOTICE_IDENT, 
 	EVENT_EXTERNAL_NOTICE_FAILURE,
 	EVENT_EXTERNAL_NOTICE_FRAMESTATUS,
+	EVENT_EXTERNAL_NOTICE_STREAMINFO,
+	EVENT_EXTERNAL_NOTICE_STREAMSTATUS,
+	EVENT_EXTERNAL_NOTICE_PLAYBACKSTATUS,
 	EVENT_EXTERNAL_NOTICE_STATESIZE,
 	EVENT_EXTERNAL_NOTICE_RESOURCE
 };
@@ -307,7 +316,7 @@ typedef struct arcan_netevent{
 
 typedef struct arcan_tgtevent {
 	union {
-		int iv;
+		int32_t iv;
 		float fv;
 	} ioevs[6];
 #ifdef _WIN32
@@ -319,9 +328,23 @@ typedef struct arcan_extevent {
 	arcan_vobj_id source;
 
 	union {
-		char message[24];
+		uint8_t message[24];
 		int32_t state_sz;
 		uint32_t code;
+
+		struct {
+			uint8_t message[3]; /* 3 character country code */
+			uint8_t streamid;   /* key used to tell the decoder to switch */
+			uint8_t datakind;   /* 0: audio, 1: video, 2: text, 3: overlay */
+		} streaminf;
+
+		struct {
+			uint8_t timestr[15]; /* HH:MM:SS.FRACT\0 */
+			uint8_t timelim[15]; /* HH:MM:SS.FRACT\0 */
+			uint8_t completion;  /* float 0..1 -> 8-bit */
+			uint8_t streaming;   /* makes lim/completion unknown */
+			uint32_t frameno;    /* simple counter */
+		} streamstat;
 
 /*
  * emitted as a verification / debugging / 
@@ -331,9 +354,9 @@ typedef struct arcan_extevent {
  */
 		struct {
 			uint32_t framenumber;
-			char port;
-			char input_bitf[4];
-			signed axes_samples[8];
+			uint8_t port;
+			uint8_t input_bitf[4];
+			int32_t axes_samples[8];
 		} framestatus;
 	};
 } arcan_extevent;
@@ -495,11 +518,14 @@ void arcan_event_dumpqueue(arcan_evctx*);
 
 /*
  * Supply a buffer sizeof(arcan_event) or larger and it'll be packed down to
- * an internal format (XDR) for serialization,
+ * an internal format (XDR or protobuf?) for serialization,
  * which can be transmitted over the wire and later deserialized again with 
  * unpack. dbuf is dynamically allocated, and the payload is padded by 'pad' 
  * byte, final size is stored in sz. returns false on out of memory or 
- * unusable event contents  
+ * unusable event contents.
+ * Not completed, this is inteded to be the format used for versioning 
+ * between hijack/portability libs and 3rd party software rather than
+ * the compliant frameservers.
  */
 bool arcan_event_pack(arcan_event*, int pad, char** dbuf, size_t* sz);
 
