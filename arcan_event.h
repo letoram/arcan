@@ -339,11 +339,11 @@ typedef struct arcan_extevent {
 		} streaminf;
 
 		struct {
-			uint8_t timestr[15]; /* HH:MM:SS.FRACT\0 */
-			uint8_t timelim[15]; /* HH:MM:SS.FRACT\0 */
-			uint8_t completion;  /* float 0..1 -> 8-bit */
-			uint8_t streaming;   /* makes lim/completion unknown */
-			uint32_t frameno;    /* simple counter */
+			uint8_t timestr[9]; /* HH:MM:SS\0 */
+			uint8_t timelim[9]; /* HH:MM:SS\0 */
+			float completion;   /* float 0..1 -> 8-bit */
+			uint8_t streaming;  /* makes lim/completion unknown */
+			uint32_t frameno;  /* simple counter */
 		} streamstat;
 
 /*

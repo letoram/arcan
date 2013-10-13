@@ -736,9 +736,10 @@ end
 minputtbl = {false, false, false};
 function awb_input(iotbl)
 	if (iotbl.kind == "analog" and iotbl.source == "mouse") then
-		mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0, 
-			iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);
-
+		if (awbwman_minput(iotbl)) then
+			mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0, 
+				iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);
+		end
 	elseif (iotbl.kind == "digital" and iotbl.source == "mouse") then
 		if (iotbl.subid > 0 and iotbl.subid <= 3) then
 
@@ -748,7 +749,9 @@ function awb_input(iotbl)
 --			end
 
 			minputtbl[iotbl.subid] = iotbl.active;
-			mouse_input(0, 0, minputtbl);
+			if (awbwman_minput(iotbl)) then
+				mouse_input(0, 0, minputtbl);
+			end
 		end
 
 	elseif (iotbl.kind == "digital" and iotbl.translated) then
