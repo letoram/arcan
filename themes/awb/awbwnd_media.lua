@@ -151,9 +151,6 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 		(bar:add_icon("filters", "r", cfg.bordericns["filter"],
 			function(self) awbamedia_filterpop(pwin, self); end)).vid] = 
 		MESSAGE["HOVER_AUDIOFILTER"];
-
-		local fillicn = bar:add_icon("status", "fill", nil,
-			function(self) end);
 	end
 
 	if (fsrv) then
@@ -176,6 +173,22 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 				pwin:set_mvol(val);
 			end, {ref = self.vid});
 		end);
+
+		local fillcol = fill_surface(8, 8, 192, 192, 192);
+		local caretcol = color_surface(8, 16, 96, 96, 96); 
+		local fillicn = bar:add_icon("status", "fill", fillcol,
+			function(self, x, y)
+				local rel = x / image_surface_properties(self.vid).width;
+
+			end);
+
+		link_image(caretcol, fillicn.vid);
+		show_image(caretcol);
+		image_inherit_order(caretcol, true);
+		image_mask_set(caretcol, MASK_UNPICKABLE);
+		pwin.poscaret = caretcol;
+
+		delete_image(fillcol);
 	end
 
 	bar.hover = function(self, vid, x, y, state)
@@ -472,9 +485,22 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 					pwin.recv = aud;
 					pwin:set_mvol(pwin.mediavol);
 					pwin:resize(status.width, status.height, true);
+				elseif (status.kind == "streamstatus") then
+					local w = image_surface_properties(pwin.dir.tt.fill.vid).width;
+					move_image(pwin.poscaret, w * status.completion, 0);
 				end
 			end
+-- music-player specific setup
 		else
+			local canvash = {
+				name  = kind .. "_canvash",
+				own   = function(self, vid) 
+									return vid == pwin.canvas.vid; 
+								end,
+				click = function() pwin:focus(); end
+			}
+			mouse_addlistener(canvash, {"click"});
+			table.insert(pwin.handlers, canvash);
 			callback = function(source, status)
 				if (status.kind == "resized") then
 					pwin:update_canvas(source);
@@ -485,6 +511,10 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 					image_shader(pwin.canvas.vid, shid);
 					image_texfilter(pwin.canvas.vid, FILTER_NONE, FILTER_NONE);
+
+				elseif (status.kind == "streamstatus") then
+					local w = image_surface_properties(pwin.dir.tt.fill.vid).width;
+					move_image(pwin.poscaret, w * status.completion, 0);
 				end
 			end
 		end
