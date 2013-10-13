@@ -47,7 +47,7 @@ struct {
 	int aid; /* Selected audio-stream */
 
 /* for music- only playback, we can populate the video
- * channels with the samples + their FFT */
+ * channels with samples + FFT */
 	bool fft_audio;
 	kiss_fftr_cfg fft_state;
 	uint32_t vfc;
@@ -70,13 +70,17 @@ struct {
 static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
 	uint16_t width, uint16_t height, enum PixelFormat pfmt);
 
-/* Convert the interleaved output audio buffer into n- videoframes,
- * packed planar with uint16_t samples in R,G (slightly wasteful but simple)
- * and their FFT version in the second row, as floats packed in RGBA),
- * generate PTS based on n samples processed 
+/* 
+ * Audio visualization,
+ * just HANN -> FFT -> dB scale -> pack in 8-bit
+ * could be used to push vocal input events to the 
+ * main engine with little extra work for singalong-
+ * style controls 
  */
 static void generate_frame()
 {
+/* window size is twice the possible output,
+ * since the FFT will be N/2 out */
 	const int smpl_wndw = AUD_VIS_HRES * 2;
 	static float smplbuf[AUD_VIS_HRES * 2];
 	static kiss_fft_scalar fsmplbuf[AUD_VIS_HRES * 2];
@@ -99,7 +103,8 @@ static void generate_frame()
 
 	while (counter){
 /* could've split the window up into 
- * two functions and used the b and a channels */
+ * two functions and used the b and a channels
+ * but little point atm. */
 		float lv = (*basep++) / 32767.0f;
 		float rv = (*basep++) / 32767.0f;
 		float smpl = (lv + rv) / 2.0f; 
@@ -144,7 +149,8 @@ static void generate_frame()
 
 /* pack in output image, smooth two audio samples */
 			for (int j=0; j < smpl_wndw / 2; j++){
-				*base++ = (1.0f + ((smplbuf[j * 2] + smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0;
+				*base++ = (1.0f + ((smplbuf[j * 2] + 
+					smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0;
 				*base++ = (fsmplbuf[j] / high) * 255.0;
 				*base++ = 0x00;
 				*base++ = 0xff;
@@ -493,10 +499,27 @@ static inline void targetev(arcan_event* ev)
 
 	switch (ev->kind){
 		case TARGET_COMMAND_GRAPHMODE:
+/* add debugging / optimization geometry, the option of 
+ * using YUV420 or other formats packed in the RGBA buffer
+ * to reduce decoding / scaling and offload to shader etc. */
 		break;
 
-/* missing; seek, mapping graphmode to possible audiovis for 
- * FFT etc. */
+		case TARGET_COMMAND_FRAMESKIP:
+/* only forward every n frames */
+		break;
+
+		case TARGET_COMMAND_SETIODEV:
+/* switch stream */
+		break;
+
+		case TARGET_COMMAND_SEEKTIME:
+			avformat_seek_file(decctx.fcontext, -1, INT64_MIN, 
+				(int64_t)tgt->ioevs[0].iv * AV_TIME_BASE, INT64_MAX, 0);
+		break;
+
+		case TARGET_COMMAND_EXIT:
+			exit(1);
+		break;
 
 		default:
 			arcan_warning("frameserver(decode), unknown target event "
