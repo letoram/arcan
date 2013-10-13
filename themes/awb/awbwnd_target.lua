@@ -734,6 +734,10 @@ function awbwnd_target(pwin, caps, factstr)
 		function(self) inputlay_sel(self, pwin); end)).vid
 	] = MESSAGE["HOVER_INPUTCFG"];
 
+	pwin.minput = function(self, iotbl)
+		target_input(pwin.controlid, iotbl);
+	end
+
 	pwin.input = function(self, iotbl)
 		if (pwin.inp_cfg == nil) then
 			return;
@@ -801,14 +805,17 @@ function awbwnd_target(pwin, caps, factstr)
 
 	local canvash = {
 					own = function(self, vid) return vid == pwin.canvas.vid; end,
-					click = function() pwin:focus(); end
+					click = function() pwin:focus(); end,
+					dblclick = function()
+						awbwman_mousefocus(pwin);
+					end
 	};
 
 	bartt.name = "target_ttbar";
 	canvash.name = "target_canvas";
 
 	mouse_addlistener(bartt, {"click", "hover"});
-	mouse_addlistener(canvash, {"click"});
+	mouse_addlistener(canvash, {"click", "dblclick"});
 	table.insert(pwin.handlers, bartt);
 	table.insert(pwin.handlers, canvash);
 

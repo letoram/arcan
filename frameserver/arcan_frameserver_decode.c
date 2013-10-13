@@ -50,7 +50,6 @@ struct {
  * channels with samples + FFT */
 	bool fft_audio;
 	kiss_fftr_cfg fft_state;
-	uint32_t vfc;
 
 	int height;
 	int width;
@@ -95,7 +94,6 @@ static void generate_frame()
 	}
 
 	static int smplc;
-	static int vfc = 0;
 	static double vptsc = 0;
 
 	int16_t* basep = (uint16_t*) decctx.audp;
@@ -306,6 +304,49 @@ static bool decode_vframe()
 	return true;
 }
 
+void push_streamstatus()
+{
+	static int updatei;
+	static unsigned int c;
+
+/* don't update every frame, that's excessive */
+	if (updatei > 0){
+		updatei--;
+		return;
+	}
+
+	updatei = 100;
+
+	struct arcan_event status = {
+			.category = EVENT_EXTERNAL,
+			.kind = EVENT_EXTERNAL_NOTICE_STREAMSTATUS,
+			.data.external.streamstat.frameno = c++
+	};
+
+/* split duration and store */
+	int64_t dura = decctx.fcontext->duration / AV_TIME_BASE;
+	int dh = dura / 3600;
+	int dm = (dura % 3600) / 60;
+	int ds = (dura % 60);
+
+	snprintf(status.data.external.streamstat.timestr, 14,
+		"%2d:%2d:%2d", dh, dm, ds);
+
+/* use last pts to indicate current position, base is in milliseconds */
+	int64_t duras = decctx.shmcont.addr->vpts / 1000.0;
+	ds = duras % 60;
+	dh = duras / 3600;
+	dm = (duras % 3600) / 60;
+
+	status.data.external.streamstat.completion = 
+		( (float) duras / (float) dura ); 
+
+	snprintf(status.data.external.streamstat.timestr, 14,
+		"%2d:%2d:%2d", dh, dm, ds);
+
+	arcan_event_enqueue(&decctx.outevq, &status);
+}
+	
 bool ffmpeg_decode()
 {
 	bool fstatus = true;
@@ -330,6 +371,7 @@ bool ffmpeg_decode()
 		}
 
 		av_free_packet(&decctx.packet);
+		push_streamstatus();
 		flush_eventq();
 	}
 

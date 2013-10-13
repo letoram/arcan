@@ -151,6 +151,9 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 		(bar:add_icon("filters", "r", cfg.bordericns["filter"],
 			function(self) awbamedia_filterpop(pwin, self); end)).vid] = 
 		MESSAGE["HOVER_AUDIOFILTER"];
+
+		local fillicn = bar:add_icon("status", "fill", nil,
+			function(self) end);
 	end
 
 	if (fsrv) then
@@ -467,7 +470,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 				if (status.kind == "resized") then
 					local vid, aud = play_movie(source);
 					pwin.recv = aud;
-					pwn:set_mvol(pwin.mediavol);
+					pwin:set_mvol(pwin.mediavol);
 					pwin:resize(status.width, status.height, true);
 				end
 			end

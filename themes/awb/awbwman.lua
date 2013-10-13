@@ -117,6 +117,15 @@ local function drop_popup()
 	end
 end
 
+--
+-- Will receive mouse input events and cursor while be 
+-- disabled while this state is active
+--
+function awbwman_mousefocus(wnd)
+	blend_image( mouse_cursor(), 0.0, awb_cfg.animspeed );
+	awb_cfg.mouse_focus = wnd;
+end
+
 local function awbwman_focus(wnd, nodrop)
 	if (nodrop == nil or nodrop == false) then
 		drop_popup();
@@ -147,6 +156,7 @@ function awbwman_ispopup(vid)
 end
 
 function awbwman_fullscreen(wnd)
+	awbwman_focus(wnd);
 	blend_image(mouse_cursor(), 0.0, awb_cfg.animspeed);
 
 -- hide root window (will cascade and hide everything else)
@@ -160,10 +170,10 @@ function awbwman_fullscreen(wnd)
 -- fit screen, maintaining aspect ratio
 -- (force a resize of the focus window so possible filter-chains etc.
 -- gets updated properly).
-	local srcid = awb_cfg.focus.canvas.vid;
+	local srcid = wnd.canvas.vid; 
 
-	if (awb_cfg.focus.controlid) then
-		srcid = awb_cfg.focus.controld;
+	if (wnd.controlid) then
+		srcid = wnd.controlid; 
 	end
 
 	local cprops = image_surface_properties(srcid);
@@ -972,6 +982,12 @@ end
 function awbwman_cancel()
 	if (awb_cfg.fullscreen ~= nil) then
 		awbwman_dropfullscreen();
+		return;
+	end
+
+	if (awb_cfg.mouse_focus) then
+		blend_image(mouse_cursor(), 1.0, awb_cfg.animspeed);
+		awb_cfg.mouse_focus = nil;
 		return;
 	end
 
@@ -1840,8 +1856,7 @@ function awbwman_tablist_toggle(active)
 		return;
 
 	else
--- already got a session running, just cycle the transform
-	
+-- already got a session running, just cycle the transform	
 		if (#awb_wtable > tbl.ulim) then
 			expire_image(tbl.slots[1].vid, awb_cfg.animspeed);
 		end
@@ -1876,6 +1891,20 @@ function awbwman_tablist_toggle(active)
 	move_image(tbl.slots[1].vid, -2 * b, -2 * b, awb_cfg.animspeed);
 	resize_image(tbl.slots[1].vid, b + b, b + b, awb_cfg.animspeed);
 	tablist_updatetag(tbl.slots[1].wnd.name);
+end
+
+--
+-- To override regular mouse events, this functions returns true
+-- on forward and false when the chain should be dropped
+--
+function awbwman_minput(iotbl)
+	if (awb_cfg.mouse_focus ~= nil and
+		awb_cfg.focus and awb_cfg.focus.minput) then
+		awb_cfg.focus:minput(iotbl);
+		return false;
+	else
+		return true;
+	end
 end
 
 --
