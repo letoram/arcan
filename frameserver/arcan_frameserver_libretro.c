@@ -735,6 +735,7 @@ static inline void targetev(arcan_event* ev)
 			retroctx.skipmode    = tgt->ioevs[0].iv;
 			retroctx.prewake     = tgt->ioevs[1].iv;
 			retroctx.preaudiogen = tgt->ioevs[2].iv;
+			retroctx.audbuf_ofs  = 0;
 			retroctx.jitterstep  = tgt->ioevs[3].iv;
 			retroctx.jitterxfer  = tgt->ioevs[4].iv;
 			reset_timing();
@@ -1202,7 +1203,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 			retroctx.xferbuf_ofs = (retroctx.xferbuf_ofs + 1) % 
 				( sizeof(retroctx.xfer_ringbuf) / sizeof(retroctx.xfer_ringbuf[0]) );
-			assert(retroctx.audguardb[0] = 0xde && retroctx.audguardb[1] == 0xad);
+			assert(retroctx.audguardb[0] == 0xde && retroctx.audguardb[1] == 0xad);
 		}
 
 	}

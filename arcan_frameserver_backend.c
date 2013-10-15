@@ -302,6 +302,8 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 				4, width, height, 4);
 
 			if (shmpage->aready) {
+				sem_wait(&tgt->lock_audb);
+
 				size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
 					(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
@@ -313,6 +315,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 
 				memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 				tgt->ofs_audb += ntc;
+				sem_post(&tgt->lock_audb);
 
 				shmpage->abufused = 0;
 				shmpage->aready = false;
