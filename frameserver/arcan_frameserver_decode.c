@@ -45,6 +45,7 @@ struct {
 
 	int vid; /* selected video-stream */
 	int aid; /* Selected audio-stream */
+	int64_t last_dts;
 
 /* for music- only playback, we can populate the video
  * channels with samples + FFT */
@@ -315,7 +316,7 @@ void push_streamstatus()
 		return;
 	}
 
-	updatei = 100;
+	updatei = 20;
 
 	struct arcan_event status = {
 			.category = EVENT_EXTERNAL,
@@ -333,7 +334,7 @@ void push_streamstatus()
 		"%2d:%2d:%2d", dh, dm, ds);
 
 /* use last pts to indicate current position, base is in milliseconds */
-	int64_t duras = decctx.shmcont.addr->vpts / 1000.0;
+	int64_t duras = decctx.last_dts / 1000.0;
 	ds = duras % 60;
 	dh = duras / 3600;
 	dm = (duras % 3600) / 60;
@@ -357,6 +358,15 @@ bool ffmpeg_decode()
 	/* Main Decoding sequence */
 	while (fstatus &&
 		av_read_frame(decctx.fcontext, &decctx.packet) >= 0) {
+
+		if (decctx.packet.dts != AV_NOPTS_VALUE){
+			if (decctx.packet.stream_index == decctx.vid)
+				decctx.last_dts = decctx.packet.dts * 
+					av_q2d(decctx.vstream->time_base) * 1000.0;
+			else if (decctx.packet.stream_index == decctx.aid)
+				decctx.last_dts = decctx.packet.dts *
+					av_q2d(decctx.astream->time_base) * 1000.0;
+		}
 
 /* got a videoframe */
 		if (decctx.packet.stream_index == decctx.vid){
@@ -555,8 +565,23 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		case TARGET_COMMAND_SEEKTIME:
-			avformat_seek_file(decctx.fcontext, -1, INT64_MIN, 
-				(int64_t)tgt->ioevs[0].iv * AV_TIME_BASE, INT64_MAX, 0);
+/* ioev[0] -> absolute, float
+ * ioev[1] -> relative */
+			if (fabs(tgt->ioevs[0].fv) > 0.0000000001){
+				if (decctx.fcontext->duration != AV_NOPTS_VALUE){
+					int64_t newv = (float)decctx.fcontext->duration * tgt->ioevs[0].fv;
+					avformat_seek_file(decctx.fcontext, -1, INT64_MIN, newv, INT64_MAX,0);
+				}
+			}
+			else if (tgt->ioevs[1].iv != 0){
+				int64_t duras = decctx.last_dts / 1000.0;
+				avformat_seek_file(decctx.fcontext, -1, INT64_MIN,
+					(decctx.last_dts / 1000.0 + tgt->ioevs[1].iv)*AV_TIME_BASE,
+				 	INT64_MAX, 0);	
+			}
+			else;
+
+			push_streamstatus();
 		break;
 
 		case TARGET_COMMAND_EXIT:

@@ -36,81 +36,81 @@
 #include "arcan_framequeue.h"
 
 /* Slide the destination buffer target */
-void arcan_framequeue_step(frame_queue* queue)
+void arcan_framequeue_step(frame_queue* src)
 {
-	frame_cell* current = &queue->da_cells[ queue->ni ];
+	frame_cell* current = &src->da_cells[ src->ni ];
 
-	pthread_mutex_lock(&queue->framesync);
+	int val;
+	sem_getvalue(&src->framecount, &val);
 
-	while (queue->alive && 
-		queue->n_cells + 1 == queue->c_cells){ 
-			pthread_cond_wait(&queue->framecond, &queue->framesync);
-	}
-
-	if (queue->alive){
-		current->wronly = false;
-		*(queue->current_cell) = current;
-		queue->current_cell = &current->next;
-		*(queue->current_cell) = NULL;
-
-		queue->ni = (queue->ni + 1) % queue->c_cells;
-		queue->n_cells++;
-	}
-
-	pthread_mutex_unlock(&queue->framesync);
+	sem_wait(&src->framecount);
+	pthread_mutex_lock(&src->framesync);
+		src->ni = (src->ni + 1) % src->c_cells;
+	pthread_mutex_unlock(&src->framesync);
 }
 
-/* This is one of few major synchpoints between MT and other threads,
- * with any issue where MT becomes unresponsive, look here first. */
-frame_cell* arcan_framequeue_dequeue(frame_queue* src)
-{
-	frame_cell* rcell = NULL;
+frame_cell* arcan_framequeue_front(frame_queue* src)
+{	
+	if (src->ci == src->ni) 
+		return NULL;
 
-	if (src->front_cell) {
-		int lv = pthread_mutex_lock(&src->framesync);
-
-		rcell = src->front_cell;
-		src->front_cell = src->front_cell->next;
-
-	/* reset the flags already */
-		rcell->ofs = 0;
-		rcell->next = NULL;
-		rcell->wronly = true;
-		src->n_cells--;
-
-		if (src->front_cell == NULL)
-			src->current_cell = &src->front_cell;
-
-		pthread_cond_signal(&src->framecond);
-		pthread_mutex_unlock(&src->framesync);	
-	}
-
-	return rcell;
+	return &src->da_cells[src->ci];
 }
 
-/* Kill the running thread, cleanup mutexes, free intermediate buffers */
+void arcan_framequeue_dequeue(frame_queue* src)
+{ 
+	if (src->ci == src->ni)
+		return;
+
+	pthread_mutex_lock(&src->framesync);
+		src->da_cells[src->ci].ofs = 0;
+		src->da_cells[src->ci].tag = 0;
+		src->ci = (src->ci + 1) % src->c_cells;
+		sem_post(&src->framecount);
+
+	int val;
+	sem_getvalue(&src->framecount, &val);
+
+	pthread_mutex_unlock(&src->framesync);
+}
+
 arcan_errc arcan_framequeue_free(frame_queue* queue)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (queue && queue->alive) {
+	if (queue && queue->da_cells){
+/* alive-flag + wakeup -> unlock thread loop which will check flag and exit */
 		queue->alive = false;
-		pthread_cond_signal(&queue->framecond);
+		sem_post(&queue->framecount);
 		pthread_join(queue->iothread, NULL);
-		pthread_cond_destroy(&queue->framecond);
+
+		sem_destroy(&queue->framecount);
 		pthread_mutex_destroy(&queue->framesync);
-
 		free(queue->label);
-		if (queue->da_cells) {
-			free(queue->da_cells[0].buf);
-			free(queue->da_cells);
-		}
 
-		memset(queue, 0, sizeof(frame_queue));
+/* linear continuous, rest will die too -- don't want contents
+ * of previous frameserver staying in buffer so reset that forcibly */
+		memset(queue->da_cells[0].buf, '\0', queue->cell_size * queue->c_cells); 
+		free(queue->da_cells[0].buf);
+		free(queue->da_cells);
+
+		memset(queue, '\0', sizeof(frame_queue));
 		rv = ARCAN_OK;
 	}
 
 	return rv;
+}
+
+void arcan_framequeue_flush(frame_queue* queue)
+{
+	pthread_mutex_lock(&queue->framesync);
+
+	while (queue->ci != queue->ni){
+		queue->ci = (queue->ci + 1) % queue->c_cells;
+		sem_post(&queue->framecount);
+	}
+
+	pthread_mutex_unlock(&queue->framesync);
 }
 
 static void* framequeue_loop(void* data)
@@ -122,17 +122,15 @@ static void* framequeue_loop(void* data)
 		size_t ntr = queue->vcs ? queue->cell_size : queue->cell_size - current->ofs;
 		ssize_t nr = queue->read(queue->fd, current->buf + current->ofs, ntr);
 
-		if (nr > 0) {
+		if (nr > 0)
 			current->ofs += nr;
-
-			if (current->ofs == queue->cell_size || queue->vcs)
-				arcan_framequeue_step(queue);
-		}
-		
 		else if (nr == -1 && errno == EAGAIN)
 			arcan_timesleep(1);
-		else
+		else if (errno == EINVAL)
 			break;
+
+		if (current->ofs == queue->cell_size)
+			arcan_framequeue_step(queue);
 	}
 
 	queue->alive = false;
@@ -143,40 +141,42 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	unsigned int cell_count, unsigned int cell_size, bool variable, 
 	arcan_rfunc rfunc, char* label)
 {
-	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
+	assert(queue);
 
-	if (queue) {
-		if (queue->alive)
-			arcan_framequeue_free(queue);
+	if (queue->alive)
+		arcan_framequeue_free(queue);
 		
-		queue->c_cells = cell_count; 
-		queue->da_cells = (frame_cell*) calloc(sizeof(frame_cell), queue->c_cells);
-		queue->cell_size = cell_size;
-	 	queue->ni = 0;
-		queue->vcs = variable;
-		queue->current_cell = &queue->front_cell;
+	queue->c_cells = cell_count; 
+	queue->cell_size = cell_size;
 
-		if (rfunc)
-			queue->read = rfunc;
-		else
-			queue->read = (arcan_rfunc) read;
+	queue->da_cells = malloc(sizeof(frame_cell) * queue->c_cells);
+	memset(queue->da_cells, '\0', sizeof(frame_cell) * queue->c_cells);
 
-		char* cbuf = (char*) malloc(cell_size * queue->c_cells);
+ 	queue->ni = 0;
+	queue->ci = 0;
 
-		for (int i = 0; i < queue->c_cells; i++) {
-			queue->da_cells[i].wronly = true;
-			queue->da_cells[i].buf  = (uint8_t*)(cbuf + (i * cell_size));
-		}
+	if (rfunc)
+		queue->read = rfunc;
+	else
+		queue->read = (arcan_rfunc) read;
 
-		queue->fd = fd;
-		queue->label = label ? strdup(label) : strdup("(unlabeled)");
-		pthread_mutex_init(&queue->framesync, NULL);
-		pthread_cond_init(&queue->framecond, NULL);
-		queue->alive = true;
-		pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue); 
+/* map continuous linear region and partition with respect
+ * to the cells */
+	char* mbuf = (char*) malloc(cell_size * queue->c_cells);
 
-		rv = ARCAN_OK;
+	for (int i = 0; i < queue->c_cells; i++) {
+		queue->da_cells[i].buf = mbuf + (i * cell_size);
 	}
 
-	return rv;
+	queue->fd = fd;
+	queue->label = label ? strdup(label) : strdup("(unlabeled)");
+
+	pthread_mutex_init(&queue->framesync, NULL);
+	sem_init(&queue->framecount, 0, queue->c_cells - 1);
+	queue->alive = true;
+
+	pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue); 
+	pthread_setname_np(queue->iothread, "arcan_framequeue");
+	
+	return ARCAN_OK;
 }

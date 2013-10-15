@@ -254,6 +254,8 @@ local function awbwnd_destroy(self, timeval)
 		self[i] = nil;
 	end
 
+	self.alive = false;
+
 	if (cascade) then
 		for i,j in ipairs(cascade) do
 			if (j.destroy) then
@@ -947,6 +949,7 @@ function awbwnd_create(options)
    minw        = 0,
    minh        = 0,
 	 animspeed   = 0,
+	 alive       = true,
 
 -- internal states
 -- each (dir) can have an action bar attached

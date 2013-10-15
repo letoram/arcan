@@ -3499,6 +3499,36 @@ int arcan_lua_targetgraph(lua_State* ctx)
 	return 0;
 }
 
+int arcan_lua_targetseek(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	float val         = luaL_checknumber(ctx, 2);
+	bool relative     = luaL_optnumber(ctx, 3, 1) == 1;
+
+	vfunc_state* state = arcan_video_feedstate(tgt);
+
+	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr))
+		arcan_fatal("arcan_lua_targetseek() vid(%"PRIxVOBJ") is not "
+			"connected to a frameserver\n", tgt);
+
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_SEEKTIME
+	};
+
+	if (relative)
+		ev.data.target.ioevs[1].iv = (int32_t) val;
+	else
+		ev.data.target.ioevs[0].fv = val;
+
+	tgtevent(tgt, ev);
+	
+	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+	arcan_frameserver_flush(fsrv);
+
+	return 0;
+}
+
 int arcan_lua_targetskipmodecfg(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
@@ -5046,6 +5076,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_postfilter",          arcan_lua_targetpostfilter         },
 {"target_graphmode",           arcan_lua_targetgraph              },
 {"target_postfilter_args",     arcan_lua_targetpostfilterargs     },
+{"target_seek",                arcan_lua_targetseek               },
 {"stepframe_target",           arcan_lua_targetstepframe          },
 {"snapshot_target",            arcan_lua_targetsnapshot           },
 {"restore_target",             arcan_lua_targetrestore            },

@@ -130,8 +130,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			pthread_t pthr;
 			*pidptr = src->child;
 
-			if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr))
+			if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr)){
+				pthread_setname_np(pthr, "zombie_nannythread");
 				kill(src->child, SIGKILL);
+			}
 
 /* panic option anyhow, just forcibly kill */
 			src->child = -1;
