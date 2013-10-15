@@ -633,7 +633,6 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 			}
 			else
 				arcan_framequeue_dequeue(&src->afq);
-
 		}
 	}
 
