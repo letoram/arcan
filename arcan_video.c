@@ -2156,6 +2156,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		vobj->vstore->vinf.text.s_raw = vobj->vstore->w * vobj->vstore->h * 
 			GL_PIXEL_BPP;
 
+		free(vobj->vstore->vinf.text.raw);
 		vobj->vstore->vinf.text.raw = malloc(vobj->vstore->vinf.text.s_raw);
 		memset(vobj->vstore->vinf.text.raw, '\0', vobj->vstore->vinf.text.s_raw);
 

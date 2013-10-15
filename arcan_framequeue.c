@@ -134,6 +134,7 @@ static void* framequeue_loop(void* data)
 	}
 
 	queue->alive = false;
+	pthread_exit(NULL);
 	return 0;
 }
 

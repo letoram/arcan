@@ -85,7 +85,7 @@ function movietest_input( inputtbl )
 		if (symtable[ inputtbl.keysym ] == "d") then
 			
 		elseif (symtable[ inputtbl.keysym ] == "s") then
-			vid, aid = load_movie("movietest.avi");
+			vid, aid = load_movie("movietest.avi", FRAMESERVER_LOOP);
 			img.last = vid;
 			move_image(vid, cursor.x, cursor.y);
 			show_image(vid);
