@@ -519,21 +519,26 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		return FFUNC_RV_NOFRAME;
 
 /* early out if the "synch- to PTS" feature has been disabled */
-		if (src->nopts && src->vfq.front_cell != NULL){
-			arcan_warning("empty queue\n");
-			return FFUNC_RV_GOTFRAME;
-		}
+		frame_cell* ccell = arcan_framequeue_front(&src->vfq);
+	
+		if (src->nopts)
+			return ccell ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
 
-		if (src->vfq.front_cell && src->vfq.front_cell->wronly == false) {
-			struct frame_cell* ccell = src->vfq.front_cell;
-
+		if (ccell){
+/* seeks etc. start giving PTSes that are outside expected values */
 			int64_t now = arcan_frametime() - src->starttime;
 			int64_t delta = now - (int64_t)ccell->tag;
 
+			if (abs(delta) > src->desc.resynchthresh){
+				src->reclock = true;
+				src->starttime += delta;
+				delta = 0;
+			}
+		
 /* if frames are too old, just ignore them */
 			while (delta > src->desc.vskipthresh){
 				arcan_framequeue_dequeue(&src->vfq);
-				ccell = src->vfq.front_cell;
+				ccell = arcan_framequeue_front(&src->vfq); 
 
 				if (!ccell){
 					return FFUNC_RV_NOFRAME;
@@ -542,8 +547,8 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				delta = now - (int64_t) ccell->tag;
 			}
 			
-			if (delta > -1 * src->desc.vfthresh){	
-				src->lastpts = src->vfq.front_cell->tag;
+			if (delta > -1 * src->desc.vfthresh){
+				src->lastpts = ccell->tag; 
 				return FFUNC_RV_GOTFRAME;
 			}
 		}
@@ -554,9 +559,12 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
-		frame_cell* current = arcan_framequeue_dequeue(&src->vfq);
-		return push_buffer( src, (char*) current->buf, gltarget, src->desc.width, 
-			src->desc.height, src->desc.bpp, width, height, bpp);
+		frame_cell* current = arcan_framequeue_front(&src->vfq);
+		arcan_errc rv = push_buffer( src, (char*) current->buf, 
+			gltarget, src->desc.width, src->desc.height, src->desc.bpp, 
+			width, height, bpp);
+		arcan_framequeue_dequeue(&src->vfq);
+		return rv;
 	}
 	else if (cmd == ffunc_tick)
 		arcan_frameserver_tick_control(src);
@@ -599,34 +607,33 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 
 /* for each cell, buffer (-> quit), wait (-> quit) or drop(full/partially) */
 	if (src->playstate == ARCAN_PLAYING){
-		while (src->afq.front_cell){
+		frame_cell* ccell;
+	
+		while ( (ccell = arcan_framequeue_front(&src->afq)) != NULL){
 			int64_t now = arcan_frametime() - src->starttime;
-			int64_t toshow = src->afq.front_cell->tag;
+			int64_t toshow = ccell->tag; 
 
-/*
- * as there are latencies introduced by the audiocard etc. as well,
- * it is actually somewhat beneficial to lie a 
- * few ms ahead of the videotimer 
- */
-			size_t buffers = src->afq.cell_size - (src->afq.cell_size - 
-				src->afq.front_cell->ofs);
+			size_t buffers = src->afq.cell_size; 
 			double dc = (double)src->lastpts - src->audioclock;
 			src->audioclock += src->bpms * (double)buffers;
 
-/* not more than 60ms and not severe desynch? send the audio, 
- * else we drop and continue */
-			if (dc < 60.0){
+			const float audioframe_prethresh = 40.0f;
+			if (dc < audioframe_prethresh){
 				sem_wait(&src->lock_audb);
-					arcan_audio_buffer(aobj, buffer, src->afq.front_cell->buf, 
-						buffers, src->desc.channels, src->desc.samplerate, tag);
+				arcan_audio_buffer(aobj, buffer, ccell->buf, 
+					buffers, src->desc.channels, src->desc.samplerate, tag);
 				sem_post(&src->lock_audb);
-
 				arcan_framequeue_dequeue(&src->afq);
 				rv = ARCAN_OK;
 				break;
 			}
+			else if (src->reclock){
+				src->reclock = false;
+				src->audioclock = src->lastpts;
+			}
+			else
+				arcan_framequeue_dequeue(&src->afq);
 
-			arcan_framequeue_dequeue(&src->afq);
 		}
 	}
 
@@ -743,6 +750,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 				(double)src->desc.channels * 0.5;
 			src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
 			src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
+			src->desc.resynchthresh = ARCAN_FRAMESERVER_RESET_PTS_THRESH;
 			src->audioclock = 0.0;
 
 /* just to get some kind of trace when threading acts up */
@@ -818,6 +826,23 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	return rv;
 }
 
+arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
+{
+	if (!fsrv)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (fsrv->vfq.alive){
+		arcan_framequeue_flush(&fsrv->vfq);
+	}
+	
+	if (fsrv->afq.alive){
+		arcan_framequeue_flush(&fsrv->afq);
+/* FIXME: have arcan_audio drop all queued output buffers as well,
+ * otherwise we can get drift with multiple consequtive flushes */
+		fsrv->reclock = true;
+	}
+}
+
 /* video- frames will always yield a ntr here that
  * corresponds to a full frame (no partials allowed) */
 ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
@@ -864,14 +889,16 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 			frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
 			current->tag = shm->vpts;
 
+/* more in buffer than we can process in this frame? copy as much
+ * as possible, return and let the main lock/step */
 			if (shm->abufused - shm->abufbase > ntr) {
-				memcpy(dst, movie->audp, ntr);
+				memcpy(dst, movie->audp + shm->abufbase, ntr);
 				shm->abufbase += ntr;
 				rv = ntr;
 			}
 			else {
 				size_t nc = shm->abufused - shm->abufbase;
-				memcpy(dst, movie->audp, nc);
+				memcpy(dst, movie->audp + shm->abufbase, nc);
 				shm->abufused = 0;
 				shm->abufbase = 0;
 				shm->aready = false;

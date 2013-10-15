@@ -179,7 +179,11 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 		local fillicn = bar:add_icon("status", "fill", fillcol,
 			function(self, x, y)
 				local rel = x / image_surface_properties(self.vid).width;
-
+				if (valid_vid(pwin.controlid)) then
+					target_seek(pwin.controlid, rel, 0);
+				else
+					target_seek(pwin.canvas.vid, rel, 0); 
+				end
 			end);
 
 		link_image(caretcol, fillicn.vid);
@@ -475,7 +479,15 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		end
 
 		if (kind == "frameserver") then
+			if (pwin.alive == false) then
+				return;
+			end
+
 			callback = function(source, status)
+				if (pwin.alive == false) then
+					return;
+				end
+
 				if (pwin.controlid == nil) then
 					pwin:update_canvas(source);
 				end
@@ -502,6 +514,10 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 			mouse_addlistener(canvash, {"click"});
 			table.insert(pwin.handlers, canvash);
 			callback = function(source, status)
+				if (pwin.alive == false) then
+					return;
+				end
+
 				if (status.kind == "resized") then
 					pwin:update_canvas(source);
 					pwin.recv = status.source_audio;
@@ -526,7 +542,11 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	elseif (kind == "static") then
 		add_vmedia_top(pwin, active, inactive);
 	
-		callback = function(source, status) 
+		callback = function(source, status)
+			if (pwin.alive == false) then
+				return;
+			end
+
 			if (status.kind == "loaded") then
 				pwin:update_canvas(source);
 				pwin:resize(status.width, status.height);

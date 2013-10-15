@@ -758,6 +758,10 @@ function awbwnd_target(pwin, caps, factstr)
 -- add_icon save(slot)
 
 	local callback = function(source, status)
+		if (pwin.alive == false) then
+			return;
+		end
+
 		if (status.kind == "frameserver_terminated") then
 			pwin:update_canvas( color_surface(1, 1, 0, 0, 0) );
 

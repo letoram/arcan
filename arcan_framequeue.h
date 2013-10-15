@@ -22,41 +22,47 @@
 #ifndef _HAVE_ARCAN_FRAMEQUEUE
 #define _HAVE_ARCAN_FRAMEQUEUE
 
+/* these are rather dated, 
+ * added back when AIO/OSX experiments were made */
 typedef ssize_t(*arcan_rfunc)(int, void*, size_t);
 
 typedef struct frame_cell {
-    uint32_t tag;
+/* hint that the cell is empty, and tag used from callback for tracking */
+	uint32_t tag;
+
+/* for buffering up to full frame size */
 	uint32_t ofs;
 	uint8_t* buf;
-	struct frame_cell* next;
-	bool wronly;
+
 } frame_cell;
 
 typedef struct frame_queue {
-	/* queue traversal */
-	frame_cell* front_cell;
-	frame_cell** current_cell;
-
-	/* queue storage */
-	unsigned int c_cells, n_cells, cell_size;
+/* queue static storage */
+	unsigned int c_cells, cell_size;
 
 	/* array to pick elements from */
 	frame_cell* da_cells;
-	unsigned int ni;
+	unsigned ni;
+ 	unsigned ci;
 
+/* synchronization primitives,
+ * mutex for frame_queue manipulation
+ * framec for counting available cells in the queue */
 	pthread_t iothread;
+	sem_t framecount; 
 	pthread_mutex_t framesync;
-	pthread_cond_t framecond;
 	bool alive, vcs;
 
+/* input source and callback trigger */
 	int fd;
 	arcan_rfunc read;
 
+/* tracing identifier to find in dumps */
 	char* label;
 } frame_queue;
 
 /* initialize a frame_queue (non NULL),
- * connect it asyncronously to [fd]
+ * connect it asyncronously to [fd] (where applicable)
  * allocate [cell_count] slots with [cell_size] buffer to each cell
  * specify if the data to queue is fixed or variable
  * if rfunc is NULL, it defaults to read() on fd, 
@@ -65,12 +71,18 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	unsigned int cell_count, unsigned int cell_size, bool variable, 
 	arcan_rfunc rfunc, char* idlabel);
 
-/* cleanup,
- * free all the related buffers and terminate any ongoing AIO calls. */
-arcan_errc arcan_framequeue_free(frame_queue* queue);
+/*
+ * For seek- etc. operations where we know that
+ * the contents of the framequeue is outdated
+ */
+void arcan_framequeue_flush(frame_queue* queue);
+frame_cell* arcan_framequeue_front(frame_queue* src);
+void arcan_framequeue_dequeue(frame_queue* src);
 
-/* grab a cell from the queue,
- * returns NULL if empty. */
-frame_cell* arcan_framequeue_dequeue(frame_queue* src);
+/*
+ * cleanup,
+ * free all the related buffers and terminate any ongoing AIO calls. 
+ */
+arcan_errc arcan_framequeue_free(frame_queue* queue);
 
 #endif
