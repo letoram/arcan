@@ -96,7 +96,9 @@ end
 
 function awbwman_meta(lbl, active)
 	if (lbl ~= nil) then
-		if (lbl ~= "shift") then
+		if (lbl == "alt") then
+			awb_cfg.meta.alt = active;
+		elseif (lbl ~= "shift") then
 			return "";
 		else
 			if (awb_cfg.meta.shift and active == false) then
@@ -107,7 +109,16 @@ function awbwman_meta(lbl, active)
 		end
 	end
 
-	return awb_cfg.meta.shift and "SHIFT" or "";
+	local rkey = "";
+	if (awb_cfg.meta.shift) then
+		rkey = rkey .. "SHIFT";
+	end
+
+	if (awb_cfg.meta.alt) then
+		rkey = rkey .. "ALT";
+	end
+
+	return rkey;
 end
 
 local function drop_popup()
@@ -207,6 +218,9 @@ function awbwman_fullscreen(wnd)
 -- store values for restoring
 	awb_cfg.fullscreen.vid = vid;
 	awb_cfg.fullscreen.props = cprops;
+	
+-- force focus lock for mouse input etc.
+	awb_cfg.focus_locked = true;
 end
 
 function awbwman_dropfullscreen(wnd)
@@ -224,6 +238,8 @@ function awbwman_dropfullscreen(wnd)
 	awb_cfg.focus:resize(w, h, true, true);
 		
 	delete_image(awb_cfg.fullscreen.vid);
+
+	awb_cfg.focus_locked = nil;
 	awb_cfg.fullscreen = nil;
 end
 
@@ -1917,9 +1933,17 @@ end
 --
 local tablist_active = nil;
 function awbwman_input(iotbl, keysym)
-	if (keysym == "SHIFTTAB" and awb_cfg.modal == nil) then
+	if (keysym == "ALTTAB" and awb_cfg.modal == nil) then
 		if (iotbl.active) then
 			awbwman_tablist_toggle(true);
+		end
+		return;
+	end
+
+	if (keysym == "ALTF4") then
+		if (awb_cfg.focus and 
+			awb_cfg.modal ~= true and iotbl.active) then
+			awb_cfg.focus:destroy();
 		end
 		return;
 	end
@@ -2030,6 +2054,7 @@ function awbwman_init(defrndr, mnurndr)
 
 	awb_col = system_load("scripts/colourtable.lua")();
 
+	awb_cfg.col = awb_col;
 	awb_cfg.activeres   = load_image("awbicons/border.png");
 	awb_cfg.inactiveres = load_image("awbicons/border_inactive.png");
 	awb_cfg.ttactiveres = load_image("awbicons/tt_border.png");
@@ -2070,7 +2095,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["filter"]   = load_image("awbicons/filter.png");
 	awb_cfg.bordericns["settings"] = load_image("awbicons/settings.png");
 	awb_cfg.bordericns["ntsc"]     = load_image("awbicons/ntsc.png");
-
+	awb_cfg.bordericns["list"]     = load_image("awbicons/list.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");

@@ -393,25 +393,44 @@ function spawn_vidrec()
 		end
 	end
 
-
 	wnd.hoverlut[
 	(bar:add_icon("res", "l", cfg.bordericns["resolution"], respop)).vid
-	] = "Resolution";
+	] = MESSAGE["VIDREC_RES"];  
 
-	bar:add_icon("aspect", "l", cfg.bordericns["aspect"], aspectpop);
-	bar:add_icon("vcodec", "l", cfg.bordericns["vcodec"], vcodecpop);
-	bar:add_icon("vqual", "l", cfg.bordericns["vquality"], function(self)
-		qualpop(self, "vquality"); end);
-	bar:add_icon("acodec", "l", cfg.bordericns["acodec"], acodecpop);
-	bar:add_icon("aqual", "l", cfg.bordericns["aquality"], function(self)
-		qualpop(self, "aquality"); end);
-	bar:add_icon("fps", "l", cfg.bordericns["fps"], fpspop);
-	bar:add_icon("save", "l", cfg.bordericns["save"], destpop);
+	wnd.hoverlut[
+	(bar:add_icon("aspect", "l", cfg.bordericns["aspect"], aspectpop)).vid
+	] = MESSAGE["VIDREC_ASPECT"];
+	
+	wnd.hoverlut[
+	(bar:add_icon("vcodec", "l", cfg.bordericns["vcodec"], vcodecpop)).vid
+	] = MESSAGE["VIDREC_CODEC"];
+
+	wnd.hoverlut[
+	(bar:add_icon("vqual", "l", cfg.bordericns["vquality"], function(self)
+		qualpop(self, "vquality"); end)).vid
+	] = MESSAGE["VIDREC_QUALITY"];
+
+	wnd.hoverlut[
+	(bar:add_icon("acodec", "l", cfg.bordericns["acodec"], acodecpop)).vid
+	] = MESSAGE["VIDREC_ACODEC"];
+
+	wnd.hoverlut[
+	(bar:add_icon("aqual", "l", cfg.bordericns["aquality"], function(self)
+		qualpop(self, "aquality"); end)).vid
+	] = MESSAGE["VIDREC_AQUALITY"];
+
+	wnd.hoverlut[
+	(bar:add_icon("fps", "l", cfg.bordericns["fps"], fpspop)).vid
+	] = MESSAGE["VIDREC_FPS"];
+
+	wnd.hoverlut[
+	(bar:add_icon("save", "l", cfg.bordericns["save"], destpop)).vid
+	] = MESSAGE["VIDREC_SAVE"];
 
 	bar.hover = function(self, vid, x, y, state)
 		if (state == false) then
 			awbwman_drophover();
-		elseif (pwin.hoverlut[vid]) then
+		elseif (wnd.hoverlut[vid]) then
 			awbwman_hoverhint(wnd.hoverlut[vid]);
 		end
 	end

@@ -16,6 +16,7 @@
 
 local shader_seqn = 0;
 local last_audshader = nil;
+local global_aplayer = nil;
 
 local crtcont = system_load("display/crt.lua")();
 local upscaler = system_load("display/upscale.lua")();
@@ -31,6 +32,9 @@ local function set_shader(modelv)
 
 	image_shader(modelv, lshdr);
 	return lshdr;
+end
+
+local function playlistwnd(wnd)
 end
 
 local function datashare(wnd)
@@ -174,11 +178,16 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 			end, {ref = self.vid});
 		end);
 
-		local fillcol = fill_surface(8, 8, 192, 192, 192);
-		local caretcol = color_surface(8, 16, 96, 96, 96); 
+		local fillcol = null_surface(32, 32);
+		image_sharestorage(bar.activeimg, fillcol);
+		local caretcol = color_surface(8, 16, cfg.col.dialog_caret.r,
+			cfg.col.dialog_caret.g, cfg.col.dialog_caret.b);
+	
 		local fillicn = bar:add_icon("status", "fill", fillcol,
-			function(self, x, y)
-				local rel = x / image_surface_properties(self.vid).width;
+			function(self, x, y, bx, by)
+				local props = image_surface_properties(self.vid);
+				local rel = (x - props.x) / image_surface_properties(self.vid).width;
+
 				if (valid_vid(pwin.controlid)) then
 					target_seek(pwin.controlid, rel, 0);
 				else
@@ -320,7 +329,36 @@ local function vcap_setup(pwin)
 
 end
 
-function input_3dwin(self, iotbl)
+local function update_streamstats(win, stat)
+	if (win.laststat == nil or win.ctime ~= win.laststat.ctime or
+		win.progr_label == nil) then
+		if (win.progr_label) then
+			delete_image(win.progr_label);
+		end
+
+		win.progr_label = desktoplbl(
+			string.format("%s / %s", string.gsub(stat.ctime, "\\", "\\\\"),
+			string.gsub(stat.endtime, "\\", "\\\\"))
+		);
+	end
+
+	win.laststat = stat;
+	local props = image_surface_properties(win.progr_label);
+	local w = image_surface_properties(win.dir.tt.fill.vid).width - 10;
+
+	move_image(win.progr_label, math.floor(0.5 * (w - props.width)), 2);
+
+	image_clip_on(win.progr_label, CLIP_SHALLOW);
+	link_image(win.progr_label, win.dir.tt.fill.vid);
+	image_inherit_order(win.progr_label, true);
+	order_image(win.progr_label, 1);
+	show_image(win.progr_label, 1);
+	image_mask_set(win.progr_label, MASK_UNPICKABLE);
+
+	move_image(win.poscaret, w * stat.completion, 0);
+end
+
+local function input_3dwin(self, iotbl)
 	if (iotbl.active == false or iotbl.lutsym == nil) then
 		return;
 	end
@@ -438,6 +476,65 @@ function awbwmedia_filterchain(pwin)
 	pwin:update_canvas(dstres, pwin.mirrored);
 end
 
+local function awnd_setup(pwin, bar)
+	local canvash = {
+		name  = "musicplayer" .. "_canvash",
+		own   = function(self, vid) 
+							return vid == pwin.canvas.vid; 
+						end,
+		click = function() pwin:focus(); end
+	};
+
+	local bar = pwin.dir.tt;
+	local cfg = awbwman_cfg();
+
+	pwin.hoverlut[
+	(bar:add_icon("playlist", "l", cfg.bordericns["list"], 
+		function() playlistwnd(pwin); end)).vid
+	] = MESSAGE["HOVER_PLAYLIST"];
+
+	mouse_addlistener(canvash, {"click"});
+	table.insert(pwin.handlers, canvash);
+
+	callback = function(source, status)
+		if (pwin.alive == false) then
+			return;
+			end
+
+		if (status.kind == "resized") then
+			pwin:update_canvas(source);
+			pwin.recv = status.source_audio;
+			pwin:set_mvol(pwin.mediavol);
+			local shid = load_shader(nil,
+			last_audshader, "aud_" .. pwin.wndid);
+
+			image_shader(pwin.canvas.vid, shid);
+			image_texfilter(pwin.canvas.vid, FILTER_NONE, FILTER_NONE);
+
+		elseif (status.kind == "streamstatus") then
+			update_streamstats(pwin, status);
+		end
+	end
+
+	return callback;
+end
+
+--
+-- Usually there's little point in having many music players running
+-- (same can not be said for video however) so we track the one that
+-- is running and add to the playlist if one already exists
+--
+function awbwnd_globalmedia(newmedia)
+	if (global_aplayer == nil) then
+		return;
+	end
+
+	table.insert(global_aplayer.playlist, newmedia);
+	if (global_aplayer.playlistwnd) then
+--		global_aplayer.playlistwnd
+	end
+end
+
 function awbwnd_media(pwin, kind, source, active, inactive)
 	local callback;
 	pwin.filters = {};
@@ -451,6 +548,9 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		pwin.on_resized = 
 		function(wnd, winw, winh, cnvw, cnvh)
 			awbwmedia_filterchain(pwin, cnvw, cnvh);
+			if (wnd.laststat ~= nil) then
+				update_streamstats(wnd, wnd.laststat);
+			end
 		end;
 	
 		local canvash = {
@@ -468,6 +568,30 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	if (kind == "frameserver" or kind == "frameserver_music") then
 		add_vmedia_top(pwin, active, inactive, true, kind);
 		pwin.mediavol = 1.0;
+
+-- seek controls
+		pwin.input = function(self, iotbl)
+			if (iotbl.active == false or iotbl.lutsym == nil) then
+				return;
+			end
+			
+			local id = pwin.controlid ~= nil 
+				and pwin.controlid or pwin.canvas.vid;
+
+			if (iotbl.lutsym == "LEFT") then
+				target_seek(id, -10, 1);
+			elseif (iotbl.lutsym == "RIGHT") then
+				target_seek(id, 10, 1);
+			elseif (iotbl.lutsym == "UP") then
+				target_seek(id, 30, 1);
+			elseif (iotbl.lutsym == "DOWN") then
+				target_seek(id, -30, 1);
+			elseif (iotbl.lutsym == "PGUP") then
+				target_seek(id, -60, 1);
+			elseif (iotbl.lutsym == "PGDN") then
+				target_seek(id, 60, 1);
+			end
+		end
 
 		pwin.set_mvol = function(self, val)
 			pwin.mediavol = val;
@@ -497,44 +621,15 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 					pwin.recv = aud;
 					pwin:set_mvol(pwin.mediavol);
 					pwin:resize(status.width, status.height, true);
+
 				elseif (status.kind == "streamstatus") then
-					local w = image_surface_properties(pwin.dir.tt.fill.vid).width;
-					move_image(pwin.poscaret, w * status.completion, 0);
+					update_streamstats(pwin, status);
 				end
 			end
 -- music-player specific setup
 		else
-			local canvash = {
-				name  = kind .. "_canvash",
-				own   = function(self, vid) 
-									return vid == pwin.canvas.vid; 
-								end,
-				click = function() pwin:focus(); end
-			}
-			mouse_addlistener(canvash, {"click"});
-			table.insert(pwin.handlers, canvash);
-			callback = function(source, status)
-				if (pwin.alive == false) then
-					return;
-				end
-
-				if (status.kind == "resized") then
-					pwin:update_canvas(source);
-					pwin.recv = status.source_audio;
-					pwin:set_mvol(pwin.mediavol);
-					local shid = load_shader(nil,
-						last_audshader, "aud_" .. pwin.wndid);
-
-					image_shader(pwin.canvas.vid, shid);
-					image_texfilter(pwin.canvas.vid, FILTER_NONE, FILTER_NONE);
-
-				elseif (status.kind == "streamstatus") then
-					local w = image_surface_properties(pwin.dir.tt.fill.vid).width;
-					move_image(pwin.poscaret, w * status.completion, 0);
-				end
-			end
+			callback = awnd_setup(pwin);
 		end
-
 	elseif (kind == "capture") then
 		add_vmedia_top(pwin, active, inactive);
 		vcap_setup(pwin);

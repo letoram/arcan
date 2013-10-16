@@ -38,8 +38,8 @@ function awblist_resize(self, neww, newh)
 -- only redraw if we've grown (keep image when shrinking), some parts of
 -- this function is really expensive and high-resolution mice etc. do
 -- emitt lots of resize events when drag-resizing
-	if (self.invalidate or (props.height - self.lasth 
-		> (self.lineh + self.linespace))) then
+	if (self.invalidate or (props.height - self.lasth >
+		(self.lineh + self.linespace))) then
 		self.invalidate = false;
 		self.lasth  = props.height;
 		self.restbl, self.total = self:datasel(self.ofs, self.capacity, list);	
@@ -60,6 +60,11 @@ function awblist_resize(self, neww, newh)
 			image_mask_set(clip, MASK_UNPICKABLE);
 			image_inherit_order(clip, true);
 			image_tracetag(clip, "listview.col(" .. tostring(ind) .. ").clip");
+
+			if (ind > 1 and self.collines[ind-1] ~= nil) then
+				move_image(self.collines[ind-1], xofs, 0);
+				resize_image(self.collines[ind-1], 2, self.canvash); 
+			end
 			xofs = xofs + math.floor(props.width * col);
 
 -- concat the subselected column lines, force-add headers to the top
@@ -120,6 +125,11 @@ function awblist_resize(self, neww, newh)
 		local clipw = math.floor(props.width * col);
 		resize_image(self.listtemp[i], clipw, props.height);
 		move_image(self.listtemp[i], xofs, 0);
+		if (i > 1 and self.collines[i-1] ~= nil) then
+			blend_image(self.collines[i-1], 0.5); 
+			move_image(self.collines[i-1], xofs, 0);
+			resize_image(self.collines[i-1], 2, self.canvash); 
+		end
 		xofs = xofs + clipw;
 	end
 
@@ -267,6 +277,17 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 	pwin.renderfn   = render_fun;
 	pwin.cols       = colcfg;
+	pwin.collines   = {};
+
+	for i=2,#pwin.cols do
+		local barl = color_surface(1, 2, 255, 255, 255);
+		link_image(barl, pwin.canvas.vid);
+		blend_image(barl, 0.5);
+		image_inherit_order(barl, true);
+		order_image(barl, 2);
+		table.insert(pwin.collines, barl); 
+	end
+
 	pwin.scrollup   = scrollup;
 	pwin.scrolldown = scrolldown;
 
