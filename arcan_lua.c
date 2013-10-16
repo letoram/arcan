@@ -1990,10 +1990,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				break;
 
 				case EVENT_EXTERNAL_NOTICE_STREAMSTATUS:
+					tblstr(ctx, "kind", "streamstatus", top);
 			 		slimpush(mcbuf, sizeof(ev->data.external.streamstat.timestr) /
 						sizeof(ev->data.external.streamstat.timestr[0]), 
 						ev->data.external.streamstat.timestr);
-					tblstr(ctx, "kind", "streamstatus", top);
 					tblstr(ctx, "ctime", mcbuf, top);
 					slimpush(mcbuf, sizeof(ev->data.external.streamstat.timelim) /
 						sizeof(ev->data.external.streamstat.timelim[0]),

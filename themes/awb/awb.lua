@@ -763,6 +763,10 @@ function awb_input(iotbl)
 			awbwman_meta("shift", iotbl.active);
 		end
 
+		if (iotbl.lutsym == "LALT" or iotbl.lutsym == "RALT") then
+			awbwman_meta("alt", iotbl.active);
+		end
+
 		if (iotbl.active and kbdbinds[ kbdbindbase ]) then
 			forward = kbdbinds[ kbdbindbase ]() == nil;
 		end
