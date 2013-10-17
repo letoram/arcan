@@ -103,6 +103,5 @@ arcan_aobj_id arcan_audio_capturefeed(const char* identifier);
 /* Time component is similar to video management.
  * However, the fades are currently only linear (oops) */
 arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time);
-arcan_errc arcan_audio_setpitch(arcan_aobj_id id, float pitch, uint16_t time);
 
 #endif

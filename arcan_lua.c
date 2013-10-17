@@ -812,15 +812,6 @@ int arcan_lua_gain(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_pitch(lua_State* ctx)
-{
-	arcan_aobj_id id = luaL_checkaid(ctx, 1);
-	float pitch = luaL_checknumber(ctx, 2);
-	uint16_t time = luaL_optint(ctx, 3, 0);
-	arcan_audio_setpitch(id, pitch, time);
-	return 0;
-}
-
 int arcan_lua_playaudio(lua_State* ctx)
 {
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);

@@ -331,7 +331,7 @@ void push_streamstatus()
 	int ds = (dura % 60);
 
 	snprintf(status.data.external.streamstat.timelim, 14,
-		"%d:%d:%d", dh, dm, ds);
+		"%d:%02d:%02d", dh, dm, ds);
 
 /* use last pts to indicate current position, base is in milliseconds */
 	int64_t duras = decctx.last_dts / 1000.0;
@@ -343,7 +343,7 @@ void push_streamstatus()
 		( (float) duras / (float) dura ); 
 
 	snprintf(status.data.external.streamstat.timestr, 14,
-		"%d:%d:%d", dh, dm, ds);
+		"%d:%02d:%02d", dh, dm, ds);
 
 	arcan_event_enqueue(&decctx.outevq, &status);
 }

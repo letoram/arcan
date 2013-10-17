@@ -478,9 +478,45 @@ end
 
 local function amediahandler(path, base, ext)
 	local name = path .. "/" .. base .. "." .. ext;
-	local wnd, tfun = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
-	load_movie(name, FRAMESERVER_NOLOOP, tfun, 1, "novideo=true");
-	wnd.name = base; 
+	local awbwnd = awbwnd_globalmedia();
+
+	if (awbwnd == nil) then
+		awbwnd = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
+	end
+
+	awbwnd:add_playitem(base, name);
+
+-- animate where the playlist item is actually going
+	local aspeed = awbwman_cfg().animspeed;
+	local lbl = desktoplbl(string.gsub(
+		string.sub(base, 1, 8), "\\", "\\\\"));
+	show_image(lbl);
+	local x, y = mouse_xy();
+	move_image(lbl, x, y);
+
+	if (awbwnd.minimized == true) then
+		blend_image(lbl, 1.0, aspeed * 2);
+		move_image(lbl, 40, 0, aspeed);
+		move_image(lbl, 40, 0, aspeed);
+		blend_image(lbl, 0.0, aspeed);
+	else
+		local prop = image_surface_properties(lbl);
+		local dstx = -1 * 0.5 * prop.width;
+		local dstw = awbwnd.playlistwnd ~= nil and awbwnd.playlistwnd or awbwnd;
+
+		prop = image_surface_properties(dstw.canvas.vid);
+		dstx = dstx + prop.width * 0.5; 
+
+		link_image(lbl, dstw.canvas.vid);
+		image_inherit_order(lbl, true);
+		move_image(lbl, prop.x - x, prop.y - y);
+		blend_image(lbl, 1.0, aspeed * 2);
+		move_image(lbl, dstx, prop.height * 0.5, aspeed); 
+		move_image(lbl, dstx, prop.height * 0.5, aspeed);
+		blend_image(lbl, 0.0, aspeed);		
+	end
+
+	expire_image(lbl, aspeed * 3); 
 end
 
 local function vmediahandler(path, base, ext)
