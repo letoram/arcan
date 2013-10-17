@@ -591,20 +591,31 @@ arcan_errc arcan_audio_stop(arcan_aobj_id id)
 	return rv;
 }
 
+static inline void reset_chain(arcan_aobj* dobj)
+{
+	struct arcan_achain* current = dobj->transform;
+	struct arcan_achain* next;
+
+	while (current) {
+		next = current->next;
+		free(current);
+		current = next; 
+	}
+
+	dobj->transform = NULL;
+}
+
 arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 {
 	arcan_aobj* dobj = arcan_audio_getobj(id);
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
 	if (dobj) {
-		gain = gain > 1.0 ? 1.0 : (gain < 0.0 ? 0.0 : gain);
-
-		if (!dobj->gproxy && dobj->alid)
-			alGetSourcef(dobj->alid, AL_GAIN, &dobj->gain);
-
-		/* immediately */
-		if (time == 0) {
-			dobj->d_gain = 0.0;
-			dobj->t_gain = 0;
+		rv = ARCAN_OK;
+	
+/* immediately */
+		if (time == 0){
+			reset_chain(dobj);
 			dobj->gain = gain;
 
 			if (dobj->gproxy)
@@ -613,39 +624,20 @@ arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 				alSourcef(dobj->alid, AL_GAIN, gain);
 
 			_wrap_alError(dobj, "audio_setgain(getSource/source)");
-			rv = ARCAN_OK;
 		}
-		else {
-			dobj->d_gain = (gain - dobj->gain) / (float) time;
-			dobj->t_gain = time;
-			rv = ARCAN_OK;
-		}
-
-	}
-
-	return rv;
-}
-
-arcan_errc arcan_audio_setpitch(arcan_aobj_id id, float pitch, uint16_t time)
-{
-	arcan_aobj* dobj = arcan_audio_getobj(id);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (dobj && dobj->alid) {
-		alGetSourcef(dobj->alid, AL_PITCH, &dobj->pitch);
-		pitch = (pitch < 0.0 ? 0.0 : pitch);
-
-		if (!time && !dobj->gproxy) {
-			alSourcef(dobj->alid, AL_PITCH, pitch);
-			dobj->d_pitch = 0.0;
-			dobj->t_pitch = 0;
-			_wrap_alError(dobj, "audio_setpitch(get/source)");
-			rv = ARCAN_OK;
-		}
-		else {
-			dobj->d_pitch = pitch;
-			dobj->t_pitch = time;
-			rv = ARCAN_OK;
+		else{
+			struct arcan_achain** dptr = &dobj->transform;
+			float sgain = dobj->gain;
+	
+			while(*dptr){
+				sgain = (*dptr)->d_gain;
+				dptr = &(*dptr)->next;
+			}
+			
+			*dptr = malloc(sizeof(struct arcan_achain));
+			(*dptr)->next = NULL;
+			(*dptr)->t_gain = time;
+			(*dptr)->d_gain = gain;
 		}
 	}
 
@@ -949,6 +941,26 @@ void arcan_audio_refresh()
 	}
 }	
 
+static inline bool step_transform(arcan_aobj* obj)
+{
+	if (obj->transform == NULL)
+		return false;
+
+/* OpenAL maps dB to linear */
+	obj->gain += (obj->transform->d_gain - obj->gain) /
+		(float) obj->transform->t_gain;
+
+	obj->transform->t_gain--;
+	if (obj->transform->t_gain == 0){
+		obj->gain = obj->transform->d_gain;
+		struct arcan_achain* ct = obj->transform;
+		obj->transform = obj->transform->next;
+		free(ct);
+	}
+
+	return true;
+}
+
 void arcan_audio_tick(uint8_t ntt)
 {
 /*
@@ -963,58 +975,24 @@ void arcan_audio_tick(uint8_t ntt)
 		alcMakeContextCurrent(current_acontext->context);
 
 	arcan_audio_refresh();
-	
+
+/* update time-dependent transformations */	
 	while (ntt-- > 0) {
 		arcan_aobj* current = current_acontext->first;
 
 		while (current){
-
-		/* step gradual gain change */
-			if (current->t_gain > 0) {
-				current->t_gain--;
-				current->gain += current->d_gain;
-
+			if (step_transform(current)){
 				if (current->gproxy)
 					current->gproxy(current->gain, current->tag);
 				else
 					alSourcef(current->alid, AL_GAIN, current->gain);
 				_wrap_alError(current, "audio_tick(source/gain)");
-
-				if (current->t_gain == 0) {
-					arcan_event newevent = {
-						.category = EVENT_AUDIO, 
-						.kind = EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED
-					};
-					
-					newevent.data.audio.source = current->id;
-					arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
-				}
 			}
-		
-		/* step gradual pitch change */
-			if (current->t_pitch) {
-				float newpitch = current->pitch + (current->d_pitch - current->pitch) / 
-					(float)current->t_pitch;
-				alSourcef(current->alid, AL_PITCH, newpitch);
-				current->t_pitch--;
-				alGetSourcef(current->alid, AL_PITCH, &current->pitch);
-				_wrap_alError(current, "audio_tick(source/pitch)");
-
-				if (current->t_pitch == 0) {
-					arcan_event newevent = {
-						.category = EVENT_AUDIO, 
-						.kind = EVENT_AUDIO_PITCH_TRANSFORMATION_FINISHED,
-					};
-					
-					newevent.data.audio.source = current->id;
-					arcan_event_enqueue(arcan_event_defaultctx(), &newevent);
-				}
-			}
-
+			
 			current = current->next;
 		}
 	}
-	
+/* scan all streaming buffers and free up those no-longer needed */	
 	for (unsigned i = 0; i < ARCAN_AUDIO_SLIMIT; i++)
 	if ( current_acontext->sample_sources[i] > 0) {
 		ALint state;
@@ -1025,7 +1003,6 @@ void arcan_audio_tick(uint8_t ntt)
 		}
 	}
 }	
-
 
 static bool _wrap_alError(arcan_aobj* obj, char* prefix)
 {

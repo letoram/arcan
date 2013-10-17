@@ -23,6 +23,8 @@ return {
 	HOVER_INPUTCFG = "Switch active input layout",
 	HOVER_PLAYLIST = "Show Playlist",
 
+	ROOT_WINDOW    = "Windows",
+
 	VIDREC_RES     = "Vertical Resolution",
 	VIDREC_ASPECT  = "Aspect Ratio",
 	VIDREC_CODEC   = "Video Codec",

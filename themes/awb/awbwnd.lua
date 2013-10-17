@@ -168,6 +168,10 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 	self.canvash = vspace;
 
 	self.canvas:resize(hspace, vspace);
+	if (self.on_resize) then
+		self:on_resize(neww, newh, hspace, vspace);
+	end
+
 	if (finished and self.on_resized) then
 		self:on_resized(neww, newh, hspace, vspace);
 	end

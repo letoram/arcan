@@ -26,6 +26,13 @@
 #define ARCAN_ASTREAMBUF_LLIMIT 4096 
 struct arcan_aobj_cell;
 
+struct arcan_achain {
+	unsigned t_gain;
+	float d_gain;
+
+	struct arcan_achain* next;
+};
+
 typedef struct arcan_aobj {
 /* shared */
 	arcan_aobj_id id;
@@ -33,13 +40,9 @@ typedef struct arcan_aobj {
 	enum aobj_kind kind;
 	bool active;
 
-/* mixing state */
-	unsigned t_pitch;
 	float gain;
-	unsigned t_gain;
-	float d_gain;
-	float pitch;
-	float d_pitch;
+
+	struct arcan_achain* transform;
 
 /* AOBJ proxy only */
 	arcan_again_cb gproxy;

@@ -98,13 +98,13 @@ function awbwman_meta(lbl, active)
 	if (lbl ~= nil) then
 		if (lbl == "alt") then
 			awb_cfg.meta.alt = active;
-		elseif (lbl ~= "shift") then
-			return "";
-		else
-			if (awb_cfg.meta.shift and active == false) then
+			if (active == false) then
 				awbwman_tablist_toggle(false);
 			end
 
+		elseif (lbl ~= "shift") then
+			return "";
+		else
 			awb_cfg.meta.shift = active;
 		end
 	end
@@ -883,7 +883,7 @@ function awbwman_rootwnd()
 	icn.xofs = 2;
 	icn.yofs = 2;
 
-	cap = awb_cfg.mnurndfun("Windows");
+	cap = awb_cfg.mnurndfun(MESSAGE["ROOT_WINDOW"]);
 	icn = tbar:add_icon("windows", "l", awb_cfg.mnurndfun("Windows"), function(self)
 		if (#awb_cfg.hidden == 0) then
 			return;
@@ -893,6 +893,7 @@ function awbwman_rootwnd()
 		for i,v in ipairs(awb_cfg.hidden) do
 			table.insert(lst, v.name);
 		end
+
 		local vid, list = awb_cfg.defrndfun(table.concat(lst, [[\n\r]]));
 		awbwman_popup(vid, list, function(ind)
 			if (ind ~= -1) then
