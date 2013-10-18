@@ -381,7 +381,7 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 		} 
 		else if (strcasecmp(hint + (len - 3), "JPG") == 0 || 
 			(len >= 4 && strcasecmp(hint + (len - 4), "JPEG") == 0)){
-			arcan_warning("use libjpeg(turbo)");
+//			arcan_warning("use libjpeg(turbo)");
 		}
 		else if (strcasecmp(hint + (len - 3), "PKM") == 0){
 			return arcan_pkm_raw(inbuf, inbuf_sz, outbuf, outw, outh, meta, imalloc);
