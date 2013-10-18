@@ -178,17 +178,12 @@ function awbwman_fullscreen(wnd)
 
 	awb_cfg.fullscreen = {};
 
--- fit screen, maintaining aspect ratio
--- (force a resize of the focus window so possible filter-chains etc.
--- gets updated properly).
-	local srcid = wnd.canvas.vid; 
+	local cprops = {
+		width = wnd.canvasw,
+		height =wnd.canvash
+	};
 
-	if (wnd.controlid) then
-		srcid = wnd.controlid; 
-	end
-
-	local cprops = image_surface_properties(srcid);
-	local iprops = image_surface_initial_properties(srcid);
+	local iprops = wnd:canvas_iprops();
 	local ar = iprops.width / iprops.height;
 	local wr = iprops.width / VRESW;
 	local hr = iprops.height / VRESH;
@@ -214,6 +209,9 @@ function awbwman_fullscreen(wnd)
 	move_image(vid, xp, yp);
 	show_image(vid);
 	order_image(vid, max_current_image_order());
+	if (wnd.on_fullscreen) then
+		wnd:on_fullscreen(vid);
+	end
 
 -- store values for restoring
 	awb_cfg.fullscreen.vid = vid;
@@ -1661,7 +1659,7 @@ function awbwman_spawn(caption, options)
 						local did = wcont.controlid ~= nil 
 							and wcont.controlid or wcont.canvas.vid;
 
-						local props = image_surface_initial_properties(did);
+						local props = wcont:canvas_iprops();
 						wcont:resize(props.width, props.height, true, true);
 					end);
 

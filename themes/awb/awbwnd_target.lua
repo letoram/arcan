@@ -808,11 +808,11 @@ function awbwnd_target(pwin, caps, factstr)
 	end
 
 	local canvash = {
-					own = function(self, vid) return vid == pwin.canvas.vid; end,
-					click = function() pwin:focus(); end,
-					dblclick = function()
-						awbwman_mousefocus(pwin);
-					end
+		own = function(self, vid) return vid == pwin.canvas.vid; end,
+		click = function() pwin:focus(); end,
+		dblclick = function()
+				awbwman_mousefocus(pwin);
+		end
 	};
 
 	bartt.name = "target_ttbar";
@@ -822,6 +822,10 @@ function awbwnd_target(pwin, caps, factstr)
 	mouse_addlistener(canvash, {"click", "dblclick"});
 	table.insert(pwin.handlers, bartt);
 	table.insert(pwin.handlers, canvash);
+
+	pwin.canvas_iprops = function(self)
+		return image_surface_initial_properties(self.controlid);
+	end
 
 	pwin:update_canvas( fill_surface(pwin.w, pwin.h, 100, 100, 100) );
 	pwin.factorystr = awbtarget_factory;

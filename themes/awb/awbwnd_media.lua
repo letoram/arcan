@@ -48,6 +48,29 @@ local function set_shader(modelv)
 end
 
 local function playlistwnd(wnd)
+	local x, y = mouse_xy();
+	local props = image_surface_properties(wnd.anchor);
+	local speed = awbwman_cfg().animspeed;
+
+	if (wnd.playlistwnd) then
+		move_image(wnd.playlistwnd.anchor, x, y, speed); 
+		return;
+	end
+
+	wnd.playlistwnd = awbwman_listwnd(menulbl("Playlist"), 
+		deffont_sz, linespace, {1.0}, wnd.playlist_full, 
+		desktoplbl, {double_single = true});
+
+	local pdstr = wnd.playlistwnd.on_destroy;
+	wnd.name = "Playlist";
+	wnd.playlistwnd.on_destroy = function(self)
+		if (pdstr) then 
+			pdstr(self); 
+		end
+		wnd.playlistwnd = nil;
+	end
+
+	wnd:add_cascade(wnd.playlistwnd);
 end
 
 local function datashare(wnd)
@@ -509,7 +532,7 @@ local function awnd_setup(pwin, bar)
 				#pwin.playlist;
 
 			pwin.recv = nil;
-			pwin:update_canvas( load_movie(pwin.playlist_full[pwin.playlist_ofs], 
+			pwin:update_canvas( load_movie(pwin.playlist_full[pwin.playlist_ofs].name, 
 				FRAMESERVER_NOLOOP, pwin.callback, 1, "novideo=true") );
 		end
 
@@ -532,6 +555,12 @@ local function awnd_setup(pwin, bar)
 		end
 	end
 
+	pwin.on_fullscreen = function(self, dstvid)
+		if (pwin.shid) then
+			image_shader(dstvid, pwin.shid);
+		end
+	end
+
 	local canvash = {
 		name  = "musicplayer" .. "_canvash",
 		own   = function(self, vid) 
@@ -548,11 +577,20 @@ local function awnd_setup(pwin, bar)
 
 	pwin.add_playitem = function(self, caption, item)
 		table.insert(pwin.playlist, caption);
-		table.insert(pwin.playlist_full, item);
+		local ind = #pwin.playlist;
+-- this will be used for the playlist window as well, hence the formatting.
+		table.insert(pwin.playlist_full, {
+			name = item,
+			cols = {caption},
 
---
+-- fake a terminated frameserver to kick off the swap 
+			trigger = function()
+				pwin.playlist_ofs = ind - 1;
+				pwin.callback(pwin.recv, {kind = "frameserver_terminated"});
+			end
+		});
+
 -- if not playing, launch a new session
---
 		if (pwin.recv == nil) then
 			pwin.playlist_ofs = 1;
 			local vid = 
@@ -571,6 +609,22 @@ local function awnd_setup(pwin, bar)
 
 	mouse_addlistener(canvash, {"click"});
 	table.insert(pwin.handlers, canvash);
+
+	pwin.canvas_iprops = function(self)
+		local ar = VRESW / VRESH;
+		local w  = math.floor(0.3 * VRESW);
+		local h  = math.floor( w / ar );
+
+		return {
+			width = w,
+			height = h
+		};
+	end
+
+	if (pwin.playlistwnd) then
+		pwin.playlistwnd:update_list();
+		pwin.playlistwnd:force_update();
+	end
 end
 
 --
@@ -581,12 +635,6 @@ end
 function awbwnd_globalmedia(newmedia)
 	if (global_aplayer == nil) then
 		return;
-	end
-
-	table.insert(global_aplayer.playlist, newmedia);
-	if (global_aplayer.playlistwnd) then
-		global_aplayer:update_list();
-		global_aplayer.wnd:force_update();
 	end
 
 	return global_aplayer;
