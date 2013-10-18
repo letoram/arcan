@@ -57,20 +57,76 @@ local function playlistwnd(wnd)
 		return;
 	end
 
-	wnd.playlistwnd = awbwman_listwnd(menulbl("Playlist"), 
+	local nwin = awbwman_listwnd(menulbl("Playlist"), 
 		deffont_sz, linespace, {1.0}, wnd.playlist_full, 
-		desktoplbl, {double_single = true});
+		desktoplbl);
 
-	local pdstr = wnd.playlistwnd.on_destroy;
+	wnd.playlistwnd = nwin;
+	local pdstr = nwin.on_destroy;
 	wnd.name = "Playlist";
-	wnd.playlistwnd.on_destroy = function(self)
+
+	nwin.on_destroy = function(self)
 		if (pdstr) then 
 			pdstr(self); 
 		end
 		wnd.playlistwnd = nil;
 	end
 
-	wnd:add_cascade(wnd.playlistwnd);
+	nwin.input = function(self, iotbl)
+		if (iotbl.active == false) then
+			return;
+		end
+
+		if (iotbl.lutsym == "DELETE" and #wnd.playlist > 1 and
+			nwin.selline ~= nil) then
+			table.remove(wnd.playlist_full, nwin.selline);
+			table.remove(wnd.playlist, nwin.selline);
+			nwin:force_update();
+
+			if (nwin.selline == wnd.playlist_ofs) then
+				wnd.playlist_ofs = wnd.playlist_ofs > 1 
+				and wnd.playlist_ofs - 1 or 1;
+				wnd.callback(wnd.recv, {kind = "frameserver_terminated"});
+
+			elseif (nwin.selline < wnd.playlist_ofs) then
+				wnd.playlist_ofs = wnd.playlist_ofs - 1;
+			end
+
+			nwin:update_cursor();
+		end
+	end
+
+	local sel = color_surface(1, 1, 40, 128, 40);
+	nwin.activesel = sel;
+	link_image(sel, nwin.anchor);
+		
+-- need one cursor to indicate currently playing
+	link_image(sel, nwin.canvas.vid);
+	image_inherit_order(sel, true);
+	order_image(sel, 1);
+	blend_image(sel, 0.4);
+	image_clip_on(sel, CLIP_SHALLOW);
+	image_mask_set(sel, MASK_UNPICKABLE);
+	
+	nwin.update_cursor = function()
+-- find y
+		local ind = wnd.playlist_ofs - (nwin.ofs - 1);
+		if (ind < 1 or ind > nwin.capacity) then
+			hide_image(sel);
+			return;
+		end
+
+		blend_image(sel, 0.4);
+		move_image(sel, 0, nwin.line_heights[ind]);
+		resize_image(sel, nwin.canvasw, nwin.lineh + nwin.linespace);
+	end
+
+	nwin.on_resize = nwin.update_cursor;
+
+	local bar = nwin:add_bar("tt", wnd.dir.tt.activeimg, wnd.dir.tt.activeimg, 
+		wnd.dir.t.rsize, wnd.dir.t.bsize);
+
+	wnd:add_cascade(nwin);
 end
 
 local function datashare(wnd)
@@ -529,7 +585,11 @@ local function awnd_setup(pwin, bar)
 		if (status.kind == "frameserver_terminated") then
 			pwin.playlist_ofs = pwin.playlist_ofs + 1;
 			pwin.playlist_ofs = pwin.playlist_ofs > #pwin.playlist and 1 or
-				#pwin.playlist;
+				pwin.playlist_ofs;
+
+			if (pwin.playlistwnd) then
+				pwin.playlistwnd:update_cursor();
+			end
 
 			pwin.recv = nil;
 			pwin:update_canvas( load_movie(pwin.playlist_full[pwin.playlist_ofs].name, 
@@ -575,6 +635,15 @@ local function awnd_setup(pwin, bar)
 	pwin.playlist = {};
 	pwin.playlist_full = {};
 
+	pwin.playtrig = function(self)
+		for i,v in ipairs(pwin.playlist_full) do
+			if (self.name == v.name) then
+				pwin.playlist_ofs = i - 1;
+				pwin.callback(pwin.recv, {kind = "frameserver_terminated"});
+			end
+		end
+	end
+
 	pwin.add_playitem = function(self, caption, item)
 		table.insert(pwin.playlist, caption);
 		local ind = #pwin.playlist;
@@ -582,12 +651,7 @@ local function awnd_setup(pwin, bar)
 		table.insert(pwin.playlist_full, {
 			name = item,
 			cols = {caption},
-
--- fake a terminated frameserver to kick off the swap 
-			trigger = function()
-				pwin.playlist_ofs = ind - 1;
-				pwin.callback(pwin.recv, {kind = "frameserver_terminated"});
-			end
+			trigger = pwin.playtrig
 		});
 
 -- if not playing, launch a new session
@@ -596,6 +660,10 @@ local function awnd_setup(pwin, bar)
 			local vid = 
 				load_movie(item, FRAMESERVER_NOLOOP, pwin.callback, 1, "novideo=true");
 			pwin:update_canvas(vid);
+		end
+
+		if (pwin.playlistwnd) then
+			pwin.playlistwnd:force_update();
 		end
 	end
 
@@ -621,10 +689,6 @@ local function awnd_setup(pwin, bar)
 		};
 	end
 
-	if (pwin.playlistwnd) then
-		pwin.playlistwnd:update_list();
-		pwin.playlistwnd:force_update();
-	end
 end
 
 --

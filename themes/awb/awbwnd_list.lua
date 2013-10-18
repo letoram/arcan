@@ -385,6 +385,9 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		mhand.click = mhand.dblclick;
 	else
 		mhand.click = function(self, vid, x, y)
+			local props = image_surface_resolve_properties(pwin.canvas.vid);
+			local yofs, linen = pwin:line_y(y - props.y);
+			move_image(pwin.cursor, 0, yofs); 
 			pwin:focus();
 		end
 	end
@@ -407,6 +410,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		pwin:focus();
 		local props = image_surface_resolve_properties(pwin.canvas.vid);
 		local yofs, linen = pwin:line_y(y - props.y);
+		pwin.selline = linen;
 		move_image(pwin.cursor, 0, yofs); 
 	end
 
@@ -423,6 +427,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 --
 -- selected cursor management linked to canvas
 -- 
+	pwin.mhandler = mhand;
 	pwin:resize(pwin.w, pwin.h);
 	return pwin;
 end
