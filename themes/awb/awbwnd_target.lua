@@ -473,13 +473,13 @@ local function factrest(wnd, str)
 			elseif (opts[1] == "xbrattr") then
 				wnd.filters.upscaler = "xBR";
 				wnd:rebuild_chain();
-				wnd.filters.upscalectx:set_factstr(lines[i]);
+				wnd.filters.upscalerctx:set_factstr(lines[i]);
 				wnd:rebuild_chain();
 
 			elseif (opts[1] == "sabrattr") then
 				wnd.filters.upscaler = "SABR";
 				wnd:rebuild_chain();
-				wnd.filters.upscalectx:set_factstr(lines[i]);
+				wnd.filters.upscalerctx:set_factstr(lines[i]);
 				wnd:rebuild_chain();
 
 			elseif (opts[1] == "fltattr") then
@@ -542,8 +542,8 @@ local function gen_factorystr(wnd)
 		table.insert(lines, wnd.filters.displayctx:factorystr());
 	end
 
-	if (wnd.filters.upscalectx and wnd.filters.upscalectx.factorystr) then
-		table.insert(lines, wnd.filters.displayctx:factorystr());
+	if (wnd.filters.upscalerctx and wnd.filters.upscalerctx.factorystr) then
+		table.insert(lines, wnd.filters.upscalerctx:factorystr());
 
 	elseif (wnd.filters.upscaler) then
 		table.insert(lines, "fltattr:" .. wnd.filters.upscaler);
@@ -610,6 +610,21 @@ function awbwnd_target(pwin, caps, factstr)
 
 	pwin.rebuild_chain = awbwmedia_filterchain;
 	pwin.factory_restore = factrest;
+
+	pwin:add_handler("on_destroy", function()
+		if (pwin.filtertmp ~= nil) then
+			for k, v in ipairs(pwin.filtertmp) do
+				if (valid_vid(v)) then
+					delete_image(v);
+				end
+			end
+		end
+
+		if (valid_vid(pwin.controlid)) then
+			delete_image(pwin.controlid);
+			pwin.controlid = nil;
+		end
+	end);
 
 	pwin.set_frameskip = function(self, req)
 		local val = getskipval(self.skipmode);

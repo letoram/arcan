@@ -299,10 +299,10 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops)
 	shader_uniform(s, "input_size", "ff", PERSIST, inprops.width, inprops.height);
 	shader_uniform(s, "output_size", "ff",PERSIST,outprops.width,outprops.height);
 	shader_uniform(s, "storage_size", "ff", PERSIST, sprops.width, sprops.height);
+	push_uniforms(s, c);
+
 	local newobj = fill_surface(outprops.width, outprops.height, 0, 0, 0,
 		outprops.width, outprops.height);
-
-	push_uniforms(s, c);
 
 	image_tracetag(newobj, "crt_filter_" .. tostring(c.rebuildc));
 	image_texfilter(newobj, FILTER_NONE, FILTER_NONE);
@@ -312,7 +312,6 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops)
 -- completely detach and fit
 	show_image(srcimg);
 	resize_image(srcimg, outprops.width, outprops.height);
-	link_image(srcimg, srcimg);
 	move_image(srcimg, 0, 0);
 	image_shader(srcimg, s);
 

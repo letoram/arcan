@@ -65,7 +65,7 @@ function awblist_resize(self, neww, newh)
 				move_image(self.collines[ind-1], xofs, 0);
 				resize_image(self.collines[ind-1], 2, self.canvash); 
 			end
-			xofs = xofs + math.floor(props.width * col);
+			xofs = xofs + math.floor(props.width * col) + 4;
 
 -- concat the subselected column lines, force-add headers to the top
 			local rendtbl = {};
@@ -127,7 +127,7 @@ function awblist_resize(self, neww, newh)
 		move_image(self.listtemp[i], xofs, 0);
 		if (i > 1 and self.collines[i-1] ~= nil) then
 			blend_image(self.collines[i-1], 0.5); 
-			move_image(self.collines[i-1], xofs, 0);
+			move_image(self.collines[i-1], xofs - 2, 0);
 			resize_image(self.collines[i-1], 2, self.canvash); 
 		end
 		xofs = xofs + clipw;

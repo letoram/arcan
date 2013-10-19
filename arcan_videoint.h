@@ -56,6 +56,8 @@ struct rendertarget {
  * a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
 
+	bool alive;
+
 /* color representes the attached vid, 
  * first is the pipeline (subset of context vid pool) */
 	struct arcan_vobject* color;

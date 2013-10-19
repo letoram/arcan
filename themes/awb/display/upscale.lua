@@ -128,9 +128,10 @@ local function add_ddt(c, newobj, shid, inw, inh, outw, outh)
 	local ddtshader = load_shader("display/ddt.vShader", 
 		"display/ddt.fShader", shid .. "_ddt", {});
 
-	shader_uniform(ddtshader, "texture_size", "ff", PERSIST, inw, inh); 
-	local ddtsurf = fill_surface(outw, outh, 0, 0, 0, outw, outh); 
+	shader_uniform(ddtshader, "texture_size", "ff", PERSIST, outw, outh); 
+	local ddtsurf = fill_surface(outw, outh, 0, 0, 0, inw, inh); 
 	show_image(ddtsurf);
+	image_tracetag(ddtsurf, "DDT_step");
 
 	define_rendertarget(ddtsurf, {newobj}, 
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
@@ -143,35 +144,40 @@ local function gen_factstr(c)
 		return string.format(
 			"xbrattr:method=%s:upscale_ineq=%s:factor=%d:post=%s%s",
 			c.method, tostring_rdx(c.upscale_ineq), c.factor, c.post,
-			c.ddt == true and ":ddt" or ""
+			c.ddt == true and ":ddt=1" or ":ddt=0"
 		);
 
 	elseif (c.tag == "sabr") then
 		return string.format(
 			"sabrattr:factor=%d:post=%s",
-			c.factor, c.post, c.ddt == true and ":ddt" or ""
+			c.factor, c.post, c.ddt == true and ":ddt=1" or ":ddt=0"
 		);
 	end
 end
 
 -- works for both sabr and xbr
 local function set_factstr(c, str)
-	c.ddt = false;
 
 	local tbl = string.split(str, ":");
 	for i=2,#tbl do
-		if (tbl[i] == "ddt") then
-			c.ddt = true;
-		else
-			local argt = string.split(tbl[i], "=");
-			if (#argt == 2) then
-				local opc = argt[1];
-				local opv = argt[2];
-				c[opc] = tonumber_rdx(opv);
+		local argt = string.split(tbl[i], "=");
+		if (#argt == 2) then
+			local opc = string.lower(argt[1]);
+			local opv = argt[2];
+			local num = tonumber_rdx(opv);
+			if (num) then
+				c[opc] = num;
+			else
+				c[opc] = opv;
 			end
 		end
 	end
 
+	if (c.ddt == 1) then
+		c.ddt = true;
+	else
+		c.ddt = false;
+	end
 end
 
 --
@@ -189,6 +195,13 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		c.tag = "xbr";
 	end
 
+-- just for tracetagging
+	if (c.rebuildcount == nil) then
+		c.rebuildcount = 1;
+	else
+		c.rebuildcount = c.rebuildcount + 1;
+	end
+
 	if (c.method == "rounded") then
 		shaderopts["METHOD_A"] = true;
 	elseif (c.method == "semi-rounded") then
@@ -200,8 +213,8 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		shaderopts["LEVEL_3A"] = true;
 	end
 
--- clamp scale factor based on input source
-
+-- clamp scale factor based on input source 
+-- and engine resolution restrictions 
 	local intw = sprops.width * c.factor;
 	local inth = sprops.height * c.factor;
 
@@ -221,29 +234,33 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		"display/xbr.fShader", shid, shaderopts);
 
 	shader_uniform(s, "storage_size", "ff", PERSIST, intw, inth); 
-	shader_uniform(s, "texture_size", "ff",PERSIST,inprops.width, inprops.height);
-	shader_uniform(s, "eq_threshold","ffff",PERSIST,c.upscale_ineq,c.upscale_ineq,
+	shader_uniform(s, "texture_size", "ff", PERSIST, inprops.width, inprops.height);
+	shader_uniform(s, "eq_threshold","ffff",PERSIST, c.upscale_ineq, c.upscale_ineq,
 		c.upscale_ineq, c.upscale_ineq);
 
 -- figure out max scale factor, scale to that and then let the output stretch.
 	local newobj = fill_surface(intw, inth, 0, 0, 0, intw, inth);
 	image_texfilter(newobj, FILTER_NONE, FILTER_NONE);
 	show_image(newobj);
+	image_tracetag(newobj, "xbr_main_" .. tostring(c.rebuildcount));
 
 -- detach, reset and setup rendertarget matching the scalefactor 
 	show_image(srcimg);
 	resize_image(srcimg, intw, inth); 
-	link_image(srcimg, srcimg);
 	move_image(srcimg, 0, 0);
 	image_shader(srcimg, s);
 	define_rendertarget(newobj, {srcimg}, 
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
+-- data-dependent triangulation
 	if (c.ddt) then
 		newobj = add_ddt(c, newobj, shid, 
-			intw, inth, outprops.width, outprops.height);
+			intw, inth, intw, inth); 
+		resize_image(newobj, outprops.width, outprops.height); 
 	end
 
+-- size we resize the output to canvas size, 
+-- additional filtering may be needed here
 	if (post == "none") then
 		image_texfilter(newobj, FILTER_NONE);
 	elseif (post == "linear") then
@@ -252,7 +269,7 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 		image_texfilter(newobj, FILTER_BILINEAR);
 	end
 
-	c.factorystr = gen_factstr;
+	c.factorystr  = gen_factstr;
 	c.set_factstr = set_factstr;
 
 	return newobj, c;
@@ -278,6 +295,7 @@ cont.sabr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 
 	local newobj = fill_surface(outprops.width, outprops.height, 0, 0, 0,
 		outprops.width, outprops.height);
+	image_tracetag(newobj, "sabr_container");
 	image_texfilter(newobj, FILTER_NONE);
 	show_image({newobj, srcimg});
 	image_shader(srcimg, shid);

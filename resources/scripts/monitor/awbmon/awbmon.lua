@@ -14,6 +14,7 @@ state = {
 deffont = "fonts/default.ttf";
 
 kbdbinds = {};
+sample_triggers = {};
 
 function menulbl(text)
 	return render_text(string.format("\\#0055a9\\f%s,%d %s", 
@@ -98,7 +99,7 @@ Shift+Enter\t Copy to new Window]]);
 	image_inherit_order(helpimg, true);
 	order_image(helpimg, 1);
 	local props =	image_surface_properties(helpimg);
-	wnd:resize(props.width + 20, props.height + 20);
+	wnd:resize(props.width, props.height, true, true);
 	default_mh(wnd);
 end
 
@@ -170,7 +171,7 @@ local keytbl = {
 	"clipmode", "glstore_prg", "extrefc_framesets", "extrefc_instances",
 	"extrefc_attachments", "extrefc_links", "flags", "valid_cache", "rotate_state",
 	"childslots", "mask", "order", "lifetime", "origw", "origh", "storage_source",
-	"opa", "position", "scale", "rotation"
+	"kind", "opa", "position", "scale", "rotation"
 };
 
 -- format string profile
@@ -218,11 +219,12 @@ local typetbl = {
 	origh    = "Orig.H: %d ",
 
 	storage_source = "Source: %s ",
+	kind = "Kind: %s \\n\\r",
 
-	opa      = "Opacity: %d ",
-	position = "Position: %d ",
-	scale    = "Scale: %d ",
-	rotation = "Rotation: %d "
+	opa      = "Opacity: %s ",
+	position = "Position: %s ",
+	scale    = "Scale: %s ",
+	rotation = "Rotation: %s "
 };
 
 function default_mh(wnd, vid)
@@ -238,7 +240,6 @@ function render_sample(smpl)
 	if (smpl.cellid == nil) then
 		return;
 	end
-
 	local strtbl = {};
 
 	for i,v in ipairs(keytbl) do
@@ -336,7 +337,7 @@ function wnd_link(wnd, vid)
 	props.width = props.width > (0.5 * VRESW) and math.floor(0.5 * VRESW) or
 		props.width;
 	
-	wnd:resize(props.width + 20, props.height + 20);
+	wnd:resize(props.width, props.height, true, true);
 end
 
 function samplewnd_update(self, smpl)
@@ -373,7 +374,8 @@ function vobjcol(smpl)
 		base_g = 0;
 		base_b = 255;
 	elseif (smpl.kind == "frameserver") then
-		base_r = 255;
+		intensity = 1.0;
+		base_r = 0;
 		base_g = 255;
 		base_b = 0;
 	elseif (smpl.kind == "textured_loading") then
@@ -440,7 +442,7 @@ function spawn_tree(smpl, context)
 	for i,j in pairs(smpl.vcontexts[context].vobjs) do
 	end
 
-	default_mh();
+	default_mh(wnd);
 end
 
 function bench_update(wnd, smpl)
@@ -496,25 +498,40 @@ function bench_update(wnd, smpl)
 	wnd:update_canvas(vid);
 end
 
-function spawn_benchmark(smpl)
-	if (smpl == nil) then
-		smpl = LAST_SAMPLE;
-	end
-
-	if (benchmark_wnd == nil and smpl ~= nil) then
+function spawn_benchmark()
+	if (sample_triggers["benchmark"] == nil) then
 		local wnd  = awbwman_spawn(menulbl("Benchmark"));
 		wnd.update = bench_update;
 		wnd.maxv   = 50;
 
+		sample_triggers["benchmark"] = wnd;
+		wnd.on_destroy = function()
+			sample_triggers["benchmark"] = nil;
+		end
 		default_mh(wnd);
-		wnd.on_destroy = function() benchmark_wnd = nil; end
-		benchmark_wnd = wnd;
-		benchmark_wnd:update(smpl);
-	else
-		benchmark_wnd:focus();
-		benchmark_wnd:update(smpl);
 	end
 
+end
+
+function spawn_continous(smpl, context)
+	if (sample_triggers["allocmon"] == nil) then
+		local wnd = awbwman_spawn(menulbl("Allocation Monitor"));
+
+		wnd.update = function(self, smpl)
+			if (smpl == nil) then
+				smpl = LAST_SAMPLE;
+			end
+			local vid = build_allocmap(smpl, context);
+			wnd:update_canvas(vid);
+		end
+
+		wnd.maxv = 50;
+		sample_triggers["allocmon"] = wnd;
+		wnd.on_destroy = function()
+			sample_triggers["benchmark"] = nil;
+		end
+		default_mh(wnd);
+	end
 end
 
 function spawn_context(smpl, context)
@@ -556,17 +573,15 @@ disp.scalemode, disp.filtermode));
 	default_mh(wnd);
 end
 
-function spawn_allocmap(smpl, context)
-	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) .. 
-		tostring(smpl.display.ticks)));
-
-	local bitmap = {};
-	local ul     = smpl.vcontexts[context].limit;
-	local npix   = math.floor(math.sqrt(ul));
+function build_allocmap(smpl, context)
 	local ofs    = 1;
 	local smplofs= 1;
 	local rows   = 0;
 	local odd    = false;
+	local bitmap = {};
+	local ul     = smpl.vcontexts[context].limit;
+	local npix   = math.floor(math.sqrt(ul));
+	local rowvs  = {};
 
 	while (smplofs <= ul) do
 		for col=1,npix*2 do
@@ -586,27 +601,81 @@ function spawn_allocmap(smpl, context)
 		end
 
 		odd  = not odd;
-		rows = rows + 1
-		wnd:resize(wnd.w, wnd.h);
+		rows = rows + 1;
 	end
 
 	local vid = raw_surface(npix * 2, rows, 3, bitmap);
 	image_texfilter(vid, FILTER_NONE);
-	if (vid ~= BADID) then
-		wnd:update_canvas(vid, false);
-		wnd:resize(wnd.w, wnd.h);
-		local mh = {
-			own   = function(self, vid) 
-				print(vid, wnd.canvas.vid); return vid == wnd.canvas.vid; end,
-			click = function(self, vid, mx, my)
-				wnd:focus();
-				local x, y = mouse_xy();
-				print(mx, my, x, y);
-			end
-		};
-		table.insert(wnd.handlers, mh);
-		mouse_addlistener(mh, {"click"});
+	return vid, rowvs;	
+end
+
+local function get_cellid(canvasvid, mx, my) 
+	local p = image_surface_resolve_properties(canvasvid);
+	local o = image_surface_initial_properties(canvasvid);
+	local sx = p.width / o.width;
+	local sy = p.height / o.height;
+	local rv = o.width / 2;
+	if (o.width % 2 == 0) then
+		rv = rv - 1;
 	end
+
+	local mx = math.floor((mx - p.x) / (sx * 2));
+	local my = math.floor((my - p.y) / (sy * 2));
+	local cellid = my * rv + mx + my + 1;
+	return cellid;
+end
+
+function spawn_allocmap(smpl, context)
+	local wnd = awbwman_spawn(menulbl("AllocMap:" .. tostring(context) .. 
+		tostring(smpl.display.ticks)));
+	
+	if (smpl == nil) then
+		smpl = LAST_SAMPLE;
+	end
+
+	local vid = build_allocmap(smpl, context);
+	wnd:update_canvas(vid);
+	wnd:resize(wnd.w, wnd.h, true, true);
+
+-- figure out what is clicked, and spawn a sample video 
+-- navigated to that particular sample
+	local mh = {
+		own = function(self, vid) 
+			return vid == wnd.canvas.vid; 
+		end,
+
+		motion = function(self, vid, mx, my, relx, rely)
+-- scale to the dimensions provided by the vcontext
+			local ind = get_cellid(wnd.canvas.vid, mx, my);
+			local vobj = smpl.vcontexts[context].vobjs[ind];
+			local tag = vobj ~= nil and vobj.tracetag or "no object";
+			tag = tag .. "(" .. tostring(ind) .. ")";
+
+			local l = desktoplbl(string.gsub(tag, "\\", "\\\\"));
+			if (wnd.lasthint ~= nil) then
+				delete_image(wnd.lasthint);
+				wnd.lasthint = nil;
+			end
+
+			link_image(l, wnd.dir.b.vid);
+			show_image(l);
+			image_inherit_order(l, true);
+			order_image(l, 1);
+			wnd.lasthint = l;
+		end,
+
+		click = function(self, vid, mx, my)
+			wnd:focus();
+			print(mx, my);
+			local ind = get_cellid(wnd.canvas.vid, mx, my);
+			if (smpl.vcontexts[context].vobjs[ind] ~= nil) then
+				spawn_sample(smpl, context, ind - 1);
+			end
+		end
+	};
+
+	table.insert(wnd.handlers, mh);
+	mouse_addlistener(mh, {"motion", "click", "dblclick"});
 end
 
 function window_input(self, iotbl)
@@ -635,6 +704,8 @@ function window_input(self, iotbl)
 		spawn_tree(self.smpl, self.context);
 	elseif (sym == "F2") then
 		spawn_allocmap(self.smpl, self.context);
+	elseif (sym == "SHIFTF2") then
+		spawn_continous(self.smpl, self.context);
 	elseif (sym == "F3") then
 		print("switch context down");
 	elseif (sym == "SHIFTF3") then
@@ -667,12 +738,11 @@ end
 function sample(smpl)
 	LAST_SAMPLE = smpl;
 
-	if (benchmark_wnd ~= nil) then
-		benchmark_wnd:update(smpl);
+	for k,v in pairs(sample_triggers) do
+		if (v.update) then
+			v:update(smpl);
+		end
 	end
-
--- update benchmark window
--- update calloc_window
 end
 
 modtbl = {false, false, false, false};

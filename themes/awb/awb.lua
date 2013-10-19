@@ -173,7 +173,13 @@ function awb()
 			debug_global = newglob;
 			print("[/dump globals]");
 		end;
-		kbdbinds["F9"]     = function() Trace(); end
+		kbdbinds["F9"]     = function() 
+			if (global_tracing ~= true) then
+				Trace();
+			else
+				Untrace();	
+			end
+		end
 	end
 
 	system_load("awb_iconcache.lua")();
