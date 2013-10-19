@@ -1771,6 +1771,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 		int ind = current_context->n_rtargets++;
 		struct rendertarget* dst = &current_context->rtargets[ ind ];
 
+		dst->alive    = true;
 		dst->mode     = format; 
 		dst->readback = readback;
 		dst->color    = vobj;
@@ -2577,6 +2578,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 		glDeleteRenderbuffers(1,&dst->depth);
 	}
 
+	dst->alive = false;
+
 /* PBOs activated for those rendertargets used with readback */
 	if (dst->pbo)
 		glDeleteBuffers(1, &dst->pbo);
@@ -2629,14 +2632,16 @@ static void drop_rtarget(arcan_vobject* vobj)
 /* sweep the list of rendertarget children, and see if we have the 
  * responsibility of cleaning it up */
 	for (int i = 0; i < cascade_c; i++)
-		if (pool[i] && pool[i]->flags.in_use && pool[i]->owner == dst){
+		if (pool[i] && pool[i]->flags.in_use && (pool[i]->owner == dst ||
+			pool[i]->owner->alive == false)){
 			pool[i]->owner = NULL;
 
 /* cascade or push to stdout as new owner */
 			if ((pool[i]->mask & MASK_LIVING) > 0 || pool[i]->flags.clone)
 				arcan_video_deleteobject(pool[i]->cellid);
-			else
+			else{
 				attach_object(&current_context->stdoutp, pool[i]);
+			}
 		}
 
 	free(pool);

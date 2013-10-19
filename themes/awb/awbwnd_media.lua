@@ -62,15 +62,12 @@ local function playlistwnd(wnd)
 		desktoplbl);
 
 	wnd.playlistwnd = nwin;
-	local pdstr = nwin.on_destroy;
 	wnd.name = "Playlist";
 
-	nwin.on_destroy = function(self)
-		if (pdstr) then 
-			pdstr(self); 
-		end
+	nwin:add_handler("on_destroy", function(self)
 		wnd.playlistwnd = nil;
 	end
+	);
 
 	nwin.input = function(self, iotbl)
 		if (iotbl.active == false) then
@@ -243,9 +240,9 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 	MESSAGE["HOVER_FILTER"];
 
 	else
-		pwin.on_destroy = function()
+		pwin:add_handler("on_destroy", function()
 			global_aplayer = nil;
-		end
+		end);
 
 		global_aplayer = pwin;
 
@@ -498,6 +495,16 @@ function awbwmedia_filterchain(pwin)
 	local in_sz    = image_surface_initial_properties(pwin.controlid);
 	local out_sz   = {width = pwin.canvasw, height = pwin.canvash};
 
+	if (pwin.filtertmp ~= nil) then
+		for k,v in ipairs(pwin.filtertmp) do
+			if (valid_vid(v)) then
+				delete_image(v);
+			end
+		end
+	end
+
+	pwin.filtertmp = {};
+
 --
 -- Every effect here uses dstres as basis, and if additional
 -- FBO chains etc. are set up, they are linked to dstres in
@@ -506,7 +513,10 @@ function awbwmedia_filterchain(pwin)
 -- The last one gets attached to the canvas.
 --
 	local dstres = null_surface(store_sz.width, store_sz.height);
-	image_sharestorage(pwin.controlid, dstres);
+	image_tracetag(dstres, "filterchain_core");
+	image_sharestorage(pwin.controlid, dstres); 
+
+	table.insert(pwin.filtertmp, dstres);
 
 -- 1. upscaler, this may modify what the other filters / effects.
 -- see as the internal/storage/source resolution will be scaled.
@@ -530,15 +540,15 @@ function awbwmedia_filterchain(pwin)
 			dstres, ctx = upscaler.sabr.setup(pwin.filters.upscalerctx, 
 				dstres, "SABR_"..tostring(pwin.wndid),
 				store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
-
 			pwin.filters.upscalerctx = ctx;
+			table.insert(pwin.filtertmp, dstres);
 	
 		elseif (f == "xBR") then
  			dstres, ctx = upscaler.xbr.setup(pwin.filters.upscalerctx,
 				dstres, "XBR_"..tostring(pwin.wndid),
 				store_sz, in_sz, out_sz, pwin.filters.upscaleopt);
-
 			pwin.filters.upscalerctx = ctx;
+			table.insert(pwin.filtertmp, dstres);
 		end
 	end
 
@@ -557,6 +567,7 @@ function awbwmedia_filterchain(pwin)
 			dstres = glowtrails.setup(dstres, "GLOWTRAILS_" .. tostring(pwin.wndid),
 				pwin.filters.effectopt);
 		end
+		table.insert(pwin.filtertmp, dstres);
 	end
 	
 -- 3. display
@@ -569,6 +580,7 @@ function awbwmedia_filterchain(pwin)
 				in_sz, out_sz, pwin.filters_displayopt);
 	
 			pwin.filters.displayctx = ctx;
+			table.insert(pwin.filtertmp, dstres);
 		end
 	end
 
@@ -724,6 +736,19 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 	pwin.rebuild_chain = awbwmedia_filterchain;
 
+	pwin:add_handler("on_destroy", function(self)
+		if (pwin.filtertmp ~= nil) then
+			for i, v in ipairs(pwin.filtertmp) do
+				if (valid_vid(v)) then delete_image(v); end
+			end
+		end
+
+		if (valid_vid(pwin.controlid)) then
+			delete_image(pwin.controlid);
+			pwin.controlid = nil;
+		end
+	end);
+
 	if (kind == "frameserver" or 
 		kind == "capture" or kind == "static") then
 	
@@ -845,6 +870,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		scale3d_model(camera, 1.0, -1.0, 1.0);
 		rendertarget_attach(dstvid, camera, RENDERTARGET_DETACH);
 		camtag_model(camera, 0.01, 100.0, 45.0, 1.33); 
+		image_tracetag(camera, "3dcamera");
 
 		pwin:update_canvas(dstvid);
 		pwin.model = source;
@@ -882,6 +908,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 				if (tag and tag.kind == "media") then
 					local newdisp = null_surface(32, 32);
+					image_tracetag(newdisp, "media_displaytag");
 					image_sharestorage(tag.source.canvas.vid, newdisp);
 					pwin.model:update_display(newdisp, true);
 					tag:drop();

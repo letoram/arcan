@@ -307,10 +307,13 @@ local function awbman_mhandlers(wnd, bar)
 	table.insert(wnd.handlers, bar);
 end
 
+function awbwman_minimize_drop()
+end
+
 local function awbwman_addcaption(bar, caption)
 	local props  = image_surface_properties(caption);
 	local bgsurf = color_surface(10, 10, 230, 230, 230);
-	local icn = bar:add_icon("fill", bgsurf);
+	local icn = bar:add_icon("caption", "fill", bgsurf);
 	delete_image(icn.vid);
 
 	if (props.height > (bar.size - 2)) then
@@ -402,7 +405,7 @@ function awbwman_spawn(caption, options)
 -- as more advanced windows types (selection etc.) may need 
 -- to override
 	local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
-	wcont:update_canvas(canvas, true);
+	wcont:update_canvas(canvas);
 
 -- top windowbar
 	local tbar = wcont:add_bar("t", awb_cfg.activeres,
@@ -413,11 +416,11 @@ function awbwman_spawn(caption, options)
 		end
 
 	if (options.noicons == nil) then
-		tbar:add_icon("l", awb_cfg.bordericns["close"], function()
+		tbar:add_icon("cap", "l", awb_cfg.bordericns["close"], function()
 			wcont:destroy(awb_cfg.animspeed);	
 		end);
 
-		tbar:add_icon("r", awb_cfg.bordericns["toback"], function()
+		tbar:add_icon("cap", "r", awb_cfg.bordericns["toback"], function()
 			awbwman_pushback(wcont);
 			awbwman_updateorder();
 		end);
@@ -427,11 +430,11 @@ function awbwman_spawn(caption, options)
 -- lies above the canvas area. The resize button needs a separate 
 -- mouse handler
 	if (options.noresize == nil) then
-		local rbar = wcont:add_bar("r", awb_cfg.alphares,
-			awb_cfg.alphares, awb_cfg.topbar_sz - 2, awb_cfg.topbar_sz - 2);
+		local rbar = wcont:add_bar("b", awb_cfg.alphares,
+			awb_cfg.alphares, awb_cfg.topbar_sz - 2, awb_cfg.topbar_sz - 2); 
 
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
-		local icn = rbar:add_icon("r", awb_cfg.bordericns["resize"]);
+		local icn = rbar:add_icon("resize", "r", awb_cfg.bordericns["resize"]);
 		local rhandle = {};
 		rhandle.drag = function(self, vid, x, y)
 			awbwman_focus(wcont);

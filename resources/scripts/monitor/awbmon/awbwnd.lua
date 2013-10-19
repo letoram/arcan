@@ -21,15 +21,14 @@ local function awbwnd_alloc(tbl)
 	move_image(tbl.anchor, tbl.x, tbl.y);
 	tbl.temp = {};
 	tbl.handlers = {};
-
 	return tbl;
 end
 
 local function awbwnd_set_border(s, sz, r, g, b)
 -- border exists "outside" normal tbl dimensions
 	if (s.borders) then
-		for i, v in pairs(tbl.borders) do
-			delete_image(v);
+		for i, v in pairs(s.borders) do
+			image_color(v, r, g, b);
 		end
 		s.borders = nil;
 		s.resize = s.default_resize;
@@ -48,8 +47,8 @@ local function awbwnd_set_border(s, sz, r, g, b)
 		end
 		
 		s.default_resize = s.resize;
-		s.resize = function(self, neww, newh)
-			s:default_resize(neww, newh);
+		s.resize = function(self, neww, newh, completed)
+			s:default_resize(neww, newh, completed);
 
 			move_image(s.borders.t, 0 - sz, 0 - sz);
 			move_image(s.borders.b, 0 - sz, s.h);
@@ -62,16 +61,6 @@ local function awbwnd_set_border(s, sz, r, g, b)
 			resize_image(s.borders.b, s.w + sz * 2,  sz);
 		end
 	end
-end
-
---
--- Define a new rendertarget reusing the existing
--- hiarchy, then drop it as rendertarget, now we have
--- an iconified version of the contents of the window
--- return as a vid
---
-local function awbwnd_iconify()
-
 end
 
 local function awbwnd_update_minsz(self)
@@ -92,13 +81,13 @@ local function awbwnd_update_minsz(self)
 	end
 end
 
-local function awbwnd_resize(self, neww, newh)
+local function awbwnd_resize(self, neww, newh, finished, canvassz)
 	if (self.anchor == nil) then
 		return;
 	end
 
 --
--- Maintain canvas aspect
+-- Should we forcibly maintain canvas aspect
 --
 	if (neww == 0 or newh == 0) then
 		local props = image_surface_initial_properties(self.canvas.vid);
@@ -159,12 +148,33 @@ local function awbwnd_resize(self, neww, newh)
 		end
 		self.dir.r:resize(self.dir.r.size, vspace);
 	end
-	
+
+	if (canvassz and (canxofs > 0 or yofs > 0)) then
+		awbwnd_resize(self, neww + xofs, newh + xofs, finished, false);
+		return;
+	end
+
 	resize_image(self.anchor, neww, newh);
 	move_image(self.canvas.vid, xofs, yofs); 
+
+-- cache these values as they're somewhat expensive to 
+-- calculate and used reasonably often
 	self.w = neww;
 	self.h = newh;
+
+	self.canvasx = xofs;
+	self.canvasy = yofs;
+	self.canvasw = hspace;
+	self.canvash = vspace;
+
 	self.canvas:resize(hspace, vspace);
+	if (self.on_resize) then
+		self:on_resize(neww, newh, hspace, vspace);
+	end
+
+	if (finished and self.on_resized) then
+		self:on_resized(neww, newh, hspace, vspace);
+	end
 end
 
 --
@@ -210,10 +220,25 @@ local function awbwnd_destroy(self, timeval)
 		end
 	end
 
--- the rest should disappear in cascaded deletions,
--- but let subtypes be part of the chain 
-	if (self.on_destroy) then
+-- let subtype specific hooks be invoked before we reset members
+	if (type(self.on_destroy) == "function") then
 		self:on_destroy();
+	elseif (type(self.on_destroy) == "table") then
+		for i=1,#self.on_destroy do
+			self.on_destroy[i](self);
+		end
+	end
+
+--
+-- workaround for (cascade-window in minimize getting deleted)
+--
+	awbwman_minimize_drop(self);	
+
+--
+-- just quickly spot invocations that miss :
+--
+	if (type(timeval) == "table") then
+		print(debug.traceback());
 	end
 
 	blend_image(self.anchor,  0.0, timeval);
@@ -229,9 +254,21 @@ local function awbwnd_destroy(self, timeval)
 	end
 	self.handlers = nil;
 
+	local cascade = self.cascade;
+
 -- Clear all members to be sure we don't keep references around
 	for i,v in pairs(self) do
 		self[i] = nil;
+	end
+
+	self.alive = false;
+
+	if (cascade) then
+		for i,j in ipairs(cascade) do
+			if (j.destroy) then
+				j:destroy(timeval);
+			end
+		end
 	end
 end
 
@@ -272,7 +309,7 @@ function awbbaricn_resize(vid, limit, vertical)
 end
 
 function awbbaricn_rectresize(vid, limit, vertical)
-	props = image_surface_initial_properties(vid);
+	local props = image_surface_initial_properties(vid);
 	resize_image(vid, props.width, props.height);
 	return props.width, props.height;
 end
@@ -351,20 +388,37 @@ local function awbicn_destroy(self)
 	end
 end
 
-local function awbbar_addicon(self, dir, image, trig)
+local function awbbar_addicon(self, name, dir, image, trig)
 	local icontbl = {
 		trigger = trig,
 		parent  = self,
 		destroy = awbicn_destroy,
 		xofs = 0,
-		yofs = 0
+		yofs = 0,
+		name = name
 	};
+
+--
+-- If the icon provided is broken, replace it with a red one
+-- (not worth the abort()), then link it to the null surface to
+-- prevent a leak.
+--
+	local savelink = false;
+	if (not valid_vid(image)) then
+		image = fill_surface(8, 8, 255, 0, 0);
+		image_tracetag(image, "awbbar_icon_leak(" .. name .. ")");
+		savelink = true;
+	end
 
 	local props = image_surface_initial_properties(image);
 	local icon = null_surface(props.width, props.height);
 	link_image(icon, self.vid);
 	image_inherit_order(icon, true);
 	image_tracetag(icon, self.parent.name .. ".bar(" .. dir .. ").icon");
+
+	if (savelink) then
+		link_image(image, icon);
+	end
 
 	if (dir == "l" or dir == "r") then
 		table.insert(dir == "l" and self.left or self.right, icontbl);
@@ -392,7 +446,12 @@ local function awbbar_addicon(self, dir, image, trig)
 	return icontbl;
 end
 
-local function awbbar_own(self, vid)
+--
+-- This little odd design is mostly legacy before the mouse 
+-- API was steady, could(should?) be replaced with individual
+-- handlers for each button.
+--
+local function awbbar_own(self, vid, state)
 	local tbl = {self.left, self.right, {self.fill}};
 
 	if (vid == self.vid) then
@@ -403,6 +462,9 @@ local function awbbar_own(self, vid)
 		for ind, val in ipairs(v) do
 			if (val.vid == vid) then
 				local mx, my = mouse_xy();
+				if (state ~= "click" and state ~= "rclick") then
+					return true;
+				end
 
 				if (val.trigger and val:trigger(mx - self.parent.x, 
 					my - self.parent.y)) then
@@ -456,13 +518,13 @@ local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 		left     = {},
 		right    = {},
 		fill     = nil,
+		parent   = self,
 		size     = bsize,
 		rsize    = rsize,
 		dir      = dir
 	};
 
 	awbbar.vertical = dir == "l" or dir == "r";
-	awbbar.parent = self;
 	awbbar.activeimg = activeimg;
 	awbbar.inactiveimg = inactiveimg;
 	awbbar.vid = null_surface(self.w, bsize);
@@ -488,12 +550,20 @@ local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 	return awbbar;
 end
 
-local function awbwnd_update_canvas(self, vid)
+local function awbwnd_update_canvas(self, vid, mirrored)
+	if (mirrored == nil) then
+		mirrored = 0; 
+	end
 
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
 	order_image(vid, 0);
 	show_image(vid);
+
+	image_set_txcos_default(vid, mirrored); 
+
+	move_image(vid, self.canvasx, self.canvasy);
+	resize_image(vid, self.canvasw, self.canvash);
 
 	local canvastbl = {
 		parent = self,
@@ -510,12 +580,13 @@ local function awbwnd_update_canvas(self, vid)
 		return vid == self.vid;
 	end
 
+
 	local oldcanvas = self.canvas;
 	self.canvas = canvastbl;
 	image_tracetag(vid, "awbwnd(" .. self.name ..").canvas");
-	canvastbl:resize(self.w, self.h);
 
-	if (oldcanvas and oldcanvas.vid ~= vid) then
+	if (oldcanvas and valid_vid(oldcanvas.vid) and 
+		oldcanvas.vid ~= vid) then
 		delete_image(oldcanvas.vid);
 	end
 end
@@ -552,7 +623,6 @@ local function awbwnd_show(self)
 	self:resize(self.hidetbl.w, self.hidetbl.h);
 	show_image(self.anchor, self.animspeed);
 	move_image(self.anchor, self.hidetbl.x, self.hidetbl.y, self.animspeed);
-	print("restore to:", self.w, self.h);
 
 	self.hidetbl = nil;
 end
@@ -571,38 +641,302 @@ local function awbwnd_hide(self, dstx, dsty)
 	blend_image(self.anchor, 0.0, self.animspeed);
 end
 
+function awbwnd_subwin_inputfunc(self, iotbl)
+	if (iotbl.active == false and iotbl.utf8 == "") then
+		return;
+	end
+	
+	if (iotbl.lutsym == "HOME") then
+		self.caretpos = 1;
+		self.chofs    = 1;
+		self:redraw();
+
+	elseif (iotbl.lutsym == "END") then
+		self.caretpos = string.len( self.msg ) + 1;
+		self.chofs = self.caretpos - self.ulim;
+		self.chofs = self.chofs < 1 and 1 or self.chofs;
+		self.chofs = string.utf8lalign(self.msg, self.chofs);
+	
+		self:redraw();
+
+	elseif (iotbl.lutsym == "LEFT") then
+		self.caretpos = string.utf8back(self.msg, self.caretpos);
+
+		if (self.caretpos < self.chofs) then
+			self.chofs = self.chofs - self.ulim;
+			self.chofs = self.chofs < 1 and 1 or self.chofs;
+			self.chofs = string.utf8lalign(self.msg, self.chofs);
+		end
+		self:redraw();
+
+	elseif (iotbl.lutsym == "RIGHT") then
+		self.caretpos = string.utf8forward(self.msg, self.caretpos);
+		if (self.chofs + self.ulim <= self.caretpos) then
+			self.chofs = self.chofs + 1;
+			self:redraw();
+		else
+			self:update_caret();
+		end
+
+	elseif (iotbl.lutsym == "DELETE") then
+		self.msg = string.delete_at(self.msg, self.caretpos);
+		self:redraw();
+
+	elseif (iotbl.lutsym == "BACKSPACE") then
+		if (self.caretpos > 1) then
+			self.caretpos = string.utf8back(self.msg, self.caretpos);
+			if (self.caretpos <= self.chofs) then
+				self.chofs = self.caretpos - self.ulim;
+				self.chofs = self.chofs < 0 and 1 or self.chofs;
+			end
+
+			self.msg = string.delete_at(self.msg, self.caretpos);
+			self:redraw();
+		end
+
+	elseif (iotbl.lutsym == "ESCAPE") then
+		if (self.cancel) then
+			self.cancel();
+		end
+
+	elseif (iotbl.lutsym == "RETURN") then
+		if (self.accept) then
+			self.accept();
+		end
+
+	else
+		local keych = iotbl.utf8;
+		if (keych == nil) then
+			return;
+		end
+
+		self.msg, nch = string.insert(self.msg,
+			keych, self.caretpos, self.nchars);
+		self.caretpos = self.caretpos + nch;
+
+		self:redraw();
+	end
+end
+
 --
 -- Create an input component that allows for text edits
--- and returns as a table with a raw vid (link to whatever
+-- and returns as a table with a rew vid (link to whatever
 -- container should be used)
 --
-function awbwnd_subwin_input(options)
+function awbwnd_subwin_input(trigger, lblfun, options)
 	local res = {
-		msg = "",
-		cursorpos = 1,
-		limit = -1
+		msg      = "",
+		caretpos = 1,
+		limit    = -1,
+		noborder = true,
+		dynamic  = false,
+		w        = 64,
+		h        = 32,
+		ulim     = 10,
+		chofs    = 1
 	};
+
+	for k,v in pairs(options) do
+		res[k] = v;
+	end
+
+	res.anchor = null_surface(1, 1);
+	image_mask_set(res.anchor, MASK_SCALE);
+	show_image(res.anchor);
+
+	if (res.owner) then
+		link_image(res.anchor, options.owner);
+		image_inherit_order(res.anchor, true);
+		order_image(res.anchor, 1);
+	end
+
+	if (not res.noborder) then
+		res.border = color_surface(res.w, res.h, options.borderr, 
+			options.borderg, options.borderb);
+		image_inherit_order(res.border, true);
+		order_image(res.border, 2);
+		image_mask_set(res.border, MASK_SCALE);
+		link_image(res.border, res.anchor);
+		show_image(res.border);
+	else
+		res.borderw = 0;
+	end
+
+	res.canvas = color_surface(res.w - res.borderw * 2, 
+		res.h - res.borderw * 2, options.bgr, options.bgg, options.bgb);
+	link_image(res.canvas, res.anchor);
+	image_inherit_order(res.canvas, true);
+	order_image(res.canvas, 3);
+
+	move_image(res.canvas, res.borderw, res.borderw);
+
+-- size caret, figure out upper clipping limits etc. using 
+-- a reference character image
+	local ctv = lblfun("A");
+	local ch  = image_surface_properties(ctv);
+	res.ulim  = math.ceil(res.w / ch.width);
+	delete_image(ctv);
+
+	res.caret = color_surface(2, ch.height, 
+		options.caretr, options.caretg, options.caretb); 
+
+	link_image(res.caret, res.canvas);
+	image_inherit_order(res.caret, true);
+	image_clip_on(res.caret, CLIP_SHALLOW);
+	order_image(res.caret, 4);
+	move_image(res.caret, res.borderw, res.borderw);
+
+	image_transform_cycle(res.caret, 1);
+	blend_image(res.caret, 0.5, 15);
+	blend_image(res.caret, 1.0, 15);
+
+-- move caret also (but keep blinking ..)
+	show_image(res.canvas);
+
+	res.clip_msg = function(self, cv)
+		local uc  = string.utf8ralign(self.msg, 
+			cv and cv or (self.chofs + self.ulim));
+
+		return string.gsub(string.sub(self.msg, self.chofs, uc), "\\", "\\\\");
+	end
+
+	res.update_caret = function(self)
+		if (not valid_vid(self.textvid)) then
+			return;
+		end
+
+		local xpos = 0;
+		local height = image_surface_properties(self.caret).height;
+
+		local msgstr = self:clip_msg(self.caretpos - 1);
+		local dimv = lblfun(msgstr);
+		local prop = image_surface_properties(dimv);
+		local cnvprop = image_surface_properties(self.canvas);
+
+		delete_image(dimv);
+		xpos = prop.width;
+		if (xpos + 2 > cnvprop.width) then
+			local dx = cnvprop.width - xpos;
+			move_image(self.textvid, dx, self.borderw);
+			move_image(self.caret, cnvprop.width - 2, self.borderw);
+		else
+			move_image(self.textvid, self.borderw, self.borderw);
+			move_image(self.caret, xpos + 2, self.borderw);
+		end
+	end
 
 --
 -- Anchor, border, canvas, test, cursor 
 --
-
 	res.validator = function(self)
 		return true;
 	end
 
-	res.resize = function(self, neww)
+	res.cascade = {};
+
+	res.resize = function(self, neww, newh)
+		local height = newh; 
+
+		if (res.textvid and height == nil) then
+			local props = image_surface_properties(res.textvid);
+			height = props.height + self.borderw * 2 + 4;
+		else
+			height = newh and newh or 16;
+		end
+
+		resize_image(res.anchor, neww, newh);
+		if (valid_vid(res.border)) then
+			resize_image(res.border, neww, newh);
+		end
+	
+		resize_image(res.canvas, neww - res.borderw * 2, newh - res.borderw * 2);
+		res:update_caret();
+	end
+
+	res.redraw = function(self)
+		if (self.textvid) then
+			delete_image(self.textvid);
+		end
+
+		if (self.caretpos - self.chofs + 1 > self.ulim) then
+			self.chofs = string.utf8lalign(self.msg, self.caretpos - self.ulim);
+		end
+
+		res.textvid = lblfun( self:clip_msg() );
+
+		if (res.textvid ~= BADID) then
+			show_image(res.textvid);
+			link_image(res.textvid, res.canvas);
+			image_clip_on(res.textvid, CLIP_SHALLOW);
+			image_inherit_order(res.textvid, true);
+			order_image(res.textvid, 3);
+			move_image(res.textvid, res.borderw, res.borderw);
+			local props = image_surface_properties(res.textvid);
+
+			if (res.w == nil) then
+				res:resize(props.width + res.borderw * 2);
+			else
+				self:update_caret();
+			end
+		end
 	end
 
 -- returns true on finished signal, requiring both a valid string
 -- and enter etc. being pressed
-	res.input = function(self, iotbl)
+	res.input = awbwnd_subwin_inputfunc;
+
+	res.destroy = function(self, time)
+		if (res.textvid) then
+			delete_image(res.textvid);
+		end
+		
+		delete_image(res.border);
+		for k, v in pairs(res) do
+			res[v] = nil;
+		end
 	end
 
-	res.destroy = function(self)
-	end
+	res:resize(res.w, res.h);
 
 	return res;
+end
+
+local function awbwnd_addcascade(self, wnd)
+	if (self.cascade == nil) then
+		self.cascade = {};
+	end
+
+	self:drop_cascade(wnd);
+	table.insert(self.cascade, wnd);
+end
+
+local function awbwnd_dropcascade(self, wnd)
+	if (self.cascade == nil) then
+		return;
+	end
+
+	for i=#self.cascade,1,-1 do
+		if (self.cascade[i] == wnd) then
+			table.remove(self.cascade, i);
+			return;
+		end
+	end
+end
+
+local function awbwnd_addhandler(self, slot, fptr)
+	print("adding", slot, self.wndid);
+	if (self[slot] ~= nil) then
+	elseif (type(self[slot]) == "table") then
+		table.insert(self[slot], fptr);
+	elseif (type(self[slot]) == "function") then
+		self[slot] = {self[slot], fptr};
+	else
+		self[slot] = fptr;
+	end
+end
+
+local function awbwnd_canvas_iprops(self)
+	return image_surface_initial_properties(self.canvas.vid);
 end
 
 function awbwnd_create(options)
@@ -613,13 +947,16 @@ function awbwnd_create(options)
     add_bar    = awbwnd_addbar,
     resize     = awbwnd_resize,
     destroy    = awbwnd_destroy,
-		iconify    = awbwnd_iconify,
 		move       = awbwnd_move,
 		own        = awbwnd_own,
 		hide       = awbwnd_hide,
 		active     = awbwnd_active,
 		inactive   = awbwnd_inactive,
 		set_border = awbwnd_set_border,
+		add_cascade= awbwnd_addcascade,
+		drop_cascade=awbwnd_dropcascade,
+		add_handler= awbwnd_addhandler,
+		canvas_iprops = awbwnd_canvas_iprops,
 		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,
 		name       = "awbwnd",
@@ -630,9 +967,14 @@ function awbwnd_create(options)
    h           = math.floor(VRESH * 0.3),
 	 x           = math.floor(0.5 * (VRESW - (VRESW * 0.3)));
 	 y           = math.floor(0.5 * (VRESH - (VRESH * 0.3)));
+	 canvasw     = 1,
+	 canvash     = 1,
+	 canvasx     = 0,
+	 canvasy     = 0,
    minw        = 0,
    minh        = 0,
 	 animspeed   = 0,
+	 alive       = true,
 
 -- internal states
 -- each (dir) can have an action bar attached

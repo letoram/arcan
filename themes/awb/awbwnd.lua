@@ -220,8 +220,7 @@ local function awbwnd_destroy(self, timeval)
 		end
 	end
 
--- the rest should disappear in cascaded deletions,
--- but let subtypes be part of the chain 
+-- let subtype specific hooks be invoked before we reset members
 	if (type(self.on_destroy) == "function") then
 		self:on_destroy();
 	elseif (type(self.on_destroy) == "table") then
@@ -924,6 +923,18 @@ local function awbwnd_dropcascade(self, wnd)
 	end
 end
 
+local function awbwnd_addhandler(self, slot, fptr)
+	print("adding", slot, self.wndid);
+	if (self[slot] ~= nil) then
+	elseif (type(self[slot]) == "table") then
+		table.insert(self[slot], fptr);
+	elseif (type(self[slot]) == "function") then
+		self[slot] = {self[slot], fptr};
+	else
+		self[slot] = fptr;
+	end
+end
+
 local function awbwnd_canvas_iprops(self)
 	return image_surface_initial_properties(self.canvas.vid);
 end
@@ -944,6 +955,7 @@ function awbwnd_create(options)
 		set_border = awbwnd_set_border,
 		add_cascade= awbwnd_addcascade,
 		drop_cascade=awbwnd_dropcascade,
+		add_handler= awbwnd_addhandler,
 		canvas_iprops = awbwnd_canvas_iprops,
 		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,

@@ -353,6 +353,9 @@ local function awbman_mhandlers(wnd, bar)
 	end
  
 	bar.dblclick = function(self, vid, x, y)
+		if (wnd.resizable == false) then
+			return;
+		end
 		awbwman_focus(self.parent);
 
 --
@@ -1070,6 +1073,9 @@ local function awbwman_popupbase(props, options)
 		mx, my = mouse_xy();
 	end
 
+	props.width  = props.width + 10;
+	props.height = props.height + 10;
+
 	if (mx + props.width > VRESW) then
 		mx = VRESW - props.width;
 	end
@@ -1077,9 +1083,6 @@ local function awbwman_popupbase(props, options)
 	if (my + props.height > VRESH) then
 		my = VRESH - props.height;
 	end
-
-	props.width  = props.width + 10;
-	props.height = props.height + 10;
 
 	local dlgc = awb_col.dialog_border;
 	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
@@ -1616,6 +1619,7 @@ function awbwman_spawn(caption, options)
 		end);
 	end
 
+	wcont.resizable = options.noresize == nil;
 -- "normal" right bar (no scrolling) is mostly transparent and 
 -- lies above the canvas area. The resize button needs a separate 
 -- mouse handler
@@ -1711,20 +1715,38 @@ end
 
 function awbwman_mousepop(reficn)
 	local lst = {
-		"Acceleration...",
-		"Calibration..."
+		"Acceleration",
+		"Acceleration (X)",
+		"Acceleration (Y)",
+		"Double-Click"
 	};
 
 	local vid, lines = desktoplbl(table.concat(lst, "\\n\\r"));
 	local resfun = {};
 	resfun[1] = function()
 		awbwman_popupslider(0.1, mouse_acceleration(), 5.0, function(val)
-			mouse_acceleration(val);	
+			mouse_acceleration(val);
 		end, {ref = reficn});
 	end
 
 	resfun[2] = function()
-		print("popup calibration dialog");
+		local x, y = mouse_acceleration();
+		awbwman_popupslider(0.1, x, 5.0, function(val)
+			mouse_acceleration(val, y);
+		end, {ref = reficn});
+	end
+
+	resfun[3] = function()
+		local x, y = mouse_acceleration();
+		awbwman_popupslider(0.1, y, 5.0, function(val)
+			mouse_acceleration(x, val);
+		end, {ref = reficn});
+	end
+
+	resfun[4] = function()
+		awbwman_popupslider(4, mouse_dblclickrate(), 20, function(val)
+			mouse_dblclickrate(val);
+		end, {ref = reficn});
 	end
 
 	awbwman_popup(vid, lines, resfun, {ref = reficn});
@@ -2024,7 +2046,13 @@ function awbwman_shutdown()
 	end
 
 	store_key("global_vol", tostring_rdx(awb_cfg.global_vol));
-	store_key("mouse_accel", tostring_rdx(mouse_acceleration()));
+
+	local dblrate = mouse_dblclickrate();
+	store_key("mouse_dblclick", tostring_rdx(dblrate));
+
+	local ax, ay = mouse_acceleration();
+	store_key("mouse_accel_x", tostring_rdx(ax));
+	store_key("mouse_accel_y", tostring_rdx(ay));
 
 	shutdown();
 end
@@ -2046,9 +2074,20 @@ function awbwman_init(defrndr, mnurndr)
 		awb_cfg.mvol = 1.0;
 	end
 
-	local mval = get_key("mouse_accel");
-	if (mval ~= nil) then
-		mouse_acceleration( tonumber_rdx(mval) );
+	local mvalx = get_key("mouse_accel_x");
+	local mvaly = get_key("mouse_accel_y");
+
+	if (mvalx ~= nil) then
+		if (mvaly ~= nil) then
+			mouse_acceleration( tonumber_rdx(mvalx), tonumber_rdx(mvaly) );
+		else
+			mouse_acceleration( tonumber_rdx(mvalx) );
+		end
+	end
+
+	local mdbl = get_key("mouse_dblclick");
+	if (mdbl ~= nil) then
+		mouse_dblclickrate( tonumber_rdx(mdbl) );
 	end
 
 	awb_col = system_load("scripts/colourtable.lua")();

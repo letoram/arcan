@@ -21,7 +21,8 @@ local mstate = {
 	hover_track = {},
 
 -- mouse event is triggered
-	accel        = 1,  -- factor to x,y movements
+	accel_x      = 1,
+	accel_y      = 1,
 	dblclickstep = 6,  -- maximum number of ticks between clicks for dblclick 
 	drag_delta   = 8,  -- wiggle-room for drag
 	hover_ticks  = 30, -- time of inactive cursor before hover is triggered 
@@ -91,8 +92,8 @@ local function cached_pick(xpos, ypos, depth, nitems)
 end
 
 local function mouse_cursorupd(x, y)
-	x = x * mstate.accel;
-	y = y * mstate.accel;
+	x = x * mstate.accel_x;
+	y = y * mstate.accel_y;
 
 	lmx = mstate.x;
 	lmy = mstate.y;
@@ -309,6 +310,7 @@ function mouse_addlistener(tbl, events)
 	end
 
 	if (tbl.name == nil) then
+		print(" -- mouse listener missing identifier -- ");
 		print( debug.traceback() );
 	end
 
@@ -384,12 +386,24 @@ function mouse_tick(val)
 	end
 end
 
-function mouse_acceleration(newv)
-	if (newv == nil) then
-		return mstate.accel;
+function mouse_dblclickrate(newr)
+	if (newr == nil) then
+		return mstate.dblclickstep;
 	else
-		mstate.accel = math.abs(newv);
+		mstate.dblclickstep = newr;
 	end
-	-- save / store
+end
+
+function mouse_acceleration(newvx, newvy)
+	if (newvx == nil) then
+		return mstate.accel_x, mstate.accel_y;
+
+	elseif (newvy == nil) then
+		mstate.accel_x = math.abs(newvx);
+		mstate.accel_y = math.abs(newvx);
+	else
+		mstate.accel_x = math.abs(newvx);
+		mstate.accel_y = math.abs(newvy);
+	end
 end
 
