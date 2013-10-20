@@ -576,7 +576,6 @@ function display_defects(source, targetw, targeth, blur, trails)
 		blend_image(blur_vbuf, 0.99);
 		force_image_blend(blur_vbuf, BLEND_ADD);
 		resize_image(blur_vbuf, targetw, targeth);
-		order_image(blur_vbuf, max_current_image_order() + 1);
 		image_tracetag(comp_outbuf, "vector(composite)");
 
 		force_image_blend(blur_vbuf, BLEND_ADD);

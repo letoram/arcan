@@ -149,8 +149,8 @@ local function gen_factstr(c)
 
 	elseif (c.tag == "sabr") then
 		return string.format(
-			"sabrattr:factor=%d:post=%s",
-			c.factor, c.post, c.ddt == true and ":ddt=1" or ":ddt=0"
+			"sabrattr:post=%s",
+			c.post, c.ddt == true and ":ddt=1" or ":ddt=0"
 		);
 	end
 end

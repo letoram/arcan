@@ -42,40 +42,6 @@ local function inputlay_sel(icn, wnd)
 	end, {ref = icn.vid});
 end
 
-function stepfun_tbl(trig, wnd, c, name, tbl, up)
-	local ind = 1;
-	for i=1, #tbl do
-		if (tbl[i] == c[name]) then
-			ind = i;
-			break;
-		end
-	end
-
-	if (up) then
-		ind = ind + 1;
-		ind = ind > #tbl and 1 or ind;
-	else
-		ind = ind - 1;
-		ind = ind == 0 and #tbl or ind;
-	end
-
-	trig.cols[2] = tbl[ind];
-	c[name] = tbl[ind];
-end
-
-function stepfun_num(trig, wnd, c, name, shsym, shtype, min, max, step)
-	c[name] = c[name] + step;
-	c[name] = c[name] < min and min or c[name];
-	c[name] = c[name] > max and max or c[name];
-
-	trig.cols[2] = tostring(c[name]);
-
-	wnd:force_update();
-	if (shsym) then
-		shader_uniform(c.shid, shsym, shtype, PERSIST, c[name]);
-	end
-end
-
 function awbtarget_settingswin(tgtwin)
 	local conftbl = {
 		{
@@ -136,8 +102,11 @@ function awbtarget_settingswin(tgtwin)
 	local newwnd = awbwman_listwnd(
 		menulbl("Advanced..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+	if (newwnd == nil) then
+		return;
+	end
 
-		tgtwin:add_cascade(newwnd);
+	tgtwin:add_cascade(newwnd);
 end
 
 --
@@ -173,6 +142,9 @@ function awbtarget_listsnaps(tgtwin, gametbl)
 				return res, #base;
 			end, desktoplbl);
 
+		if (newwnd == nil) then
+			return;
+		end
 		tgtwin:add_cascade(newwnd);
 	end
 end
@@ -355,8 +327,10 @@ local function ntsc_dlg(tgtwin)
 	local newwnd = awbwman_listwnd(
 		menulbl("Advanced..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
-
-		tgtwin:add_cascade(newwnd);
+	if (newwnd == nil) then
+		return;
+	end
+	tgtwin:add_cascade(newwnd);
 end
 
 local function awbtarget_ntscpop(wnd, icn)
@@ -484,6 +458,24 @@ local function factrest(wnd, str)
 
 			elseif (opts[1] == "fltattr") then
 				wnd.filters.upscaler = opts[2]; 
+				wnd:rebuild_chain();
+
+			elseif (opts[1] == "glowattr") then
+				wnd.filters.effect = "Glow";
+				wnd:rebuild_chain();
+				wnd.filters.effectctx:set_factstr(lines[i]);
+				wnd:rebuild_chain();
+
+			elseif (opts[1] == "trailattr") then
+				wnd.filters.effect = "Trails";
+				wnd:rebuild_chain();
+				wnd.filters.effectctx:set_factstr(lines[i]);
+				wnd:rebuild_chain();
+
+			elseif (opts[1] == "glowtrailattr") then
+				wnd.filters.effect = "GlowTrails";
+				wnd:rebuild_chain();
+				wnd.filters.effectctx:set_factstr(lines[i]);
 				wnd:rebuild_chain();
 
 			elseif (opts[1] == "statectl") then
