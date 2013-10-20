@@ -306,7 +306,6 @@ cont.setup = function(c, srcimg, shid, sprops, inprops, outprops)
 
 	image_tracetag(newobj, "crt_filter_" .. tostring(c.rebuildc));
 	image_texfilter(newobj, FILTER_NONE, FILTER_NONE);
-
 	show_image(newobj);
 
 -- completely detach and fit

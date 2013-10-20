@@ -67,6 +67,9 @@ function spawn_hmap()
 --
 	local wnd = awbwman_mediawnd(menulbl("Height Map"), "3d", model);
 	model.shader = build_shader(vshader, nil, "hmapn" .. wnd.wndid);
+	if (wnd == nil) then
+		return;
+	end
 
 	for i=#wnd.dir.tt.left,1,-1 do
 		if (string.match(wnd.dir.tt.left[i].name, "light_%w+") ~= nil) then

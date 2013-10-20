@@ -318,6 +318,9 @@ local function inputed_editlay(intbl, dstname)
 -- and because *** intbl don't keep track of order, sort list..
 	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
 		deffont_sz, linespace, {0.5, 0.5}, intbl.list, desktoplbl);
+	if (wnd == nil) then
+		return;
+	end
 
 	local cfg = awbwman_cfg();
 

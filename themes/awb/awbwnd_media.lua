@@ -23,6 +23,7 @@ local global_aplayer = nil;
 
 local crtcont = system_load("display/crt.lua")();
 local upscaler = system_load("display/upscale.lua")();
+local effect = system_load("display/glow.lua")();
 
 local function seekstep(pwin)
 	if (pwin.recv) then
@@ -60,6 +61,9 @@ local function playlistwnd(wnd)
 	local nwin = awbwman_listwnd(menulbl("Playlist"), 
 		deffont_sz, linespace, {1.0}, wnd.playlist_full, 
 		desktoplbl);
+	if (nwin == nil) then
+		return;
+	end
 
 	wnd.playlistwnd = nwin;
 	wnd.name = "Playlist";
@@ -181,7 +185,7 @@ function awbwmedia_filterpop(wnd, icn)
 	local fltdlg = {
 		"Display",
 		"Upscaler",
-		"Effects"
+		"Effect"
 	};
 
 	local dlgtbl = {
@@ -193,7 +197,10 @@ function awbwmedia_filterpop(wnd, icn)
 			 function() fltpop(wnd, wnd.filters.upscalerctx); end},
 			 "upscaler", icn.vid); end,
 		function() submenupop(wnd,
-			{"Glow", "Trails", "GlowTrails"}, {}, "effects", icn.vid); end
+			{"Glow", "Trails", "GlowTrails"}, {function() fltpop(wnd,
+				wnd.filters.effectctx); end, function() fltpop(wnd,
+				wnd.filters.effectctx); end, function() fltpop(wnd,
+				wnd.filters.effectctx); end}, "effect", icn.vid); end
 	};
 
 	local vid, lines = desktoplbl(table.concat(fltdlg, "\\n\\r"));
@@ -490,6 +497,12 @@ function awbwmedia_filterchain(pwin)
 		pwin.canvas.vid = BADID;
 	end
 
+-- trail effects may mess with these
+	image_framesetsize(pwin.controlid, 0);
+	image_framecyclemode(pwin.controlid, 0);
+	image_mask_set(pwin.controlid, MASK_POSITION);
+	hide_image(pwin.controlid);
+
 -- upscalers etc. can modify these as they affect the next one in the chain
 	local store_sz = image_storage_properties(pwin.controlid);
 	local in_sz    = image_surface_initial_properties(pwin.controlid);
@@ -513,16 +526,18 @@ function awbwmedia_filterchain(pwin)
 -- The last one gets attached to the canvas.
 --
 	local dstres = null_surface(store_sz.width, store_sz.height);
+	local dstres_base = dstres;
 	image_tracetag(dstres, "filterchain_core");
-	image_sharestorage(pwin.controlid, dstres); 
+	image_sharestorage(pwin.controlid, dstres);
 
 	table.insert(pwin.filtertmp, dstres);
 
--- 1. upscaler, this may modify what the other filters / effects.
+-- 1. upscaler, this may modify what the other filters / effect.
 -- see as the internal/storage/source resolution will be scaled.
 	image_texfilter(dstres, FILTER_NONE, FILTER_NONE);
 
-	if (pwin.filters.upscaler) then
+	if (pwin.filters.upscaler and pwin.filters.effect ~= "Trails" and
+		pwin.filters.effect ~= "GlowTrails") then
 		local f = pwin.filters.upscaler;
 
 		if (f == "Linear") then
@@ -552,24 +567,43 @@ function awbwmedia_filterchain(pwin)
 		end
 	end
 
--- 2. effects (glow, ...)
+	if (dstres == nil) then
+		dstres = dstres_base;
+	end
+
+-- 2. effect (glow, ...)
 	if (pwin.filters.effect) then
 		local f = pwin.filters.effect;
 		if (f == "Glow") then
-			dstres, ctx = glow.setup(dstres, "GLOW_" .. tostring(pwin.wndid),
-				pwin.filters.effectopt);
+			dstres, ctx = effect.glow.setup(pwin.filters.effectctx,
+				dstres, "GLOW_" .. tostring(pwin.wndid), 
+				store_sz, in_sz, out_sz, pwin.filters.effectopt);
+			pwin.filters.effectctx = ctx;
+			if (ctx == nil) then pwin.filters.effect = nil; end
 
 		elseif (f == "Trails") then
-			dstres, ctx = trails.setup(dstres, "TRAILS_" .. tostring(pwin.wndid),
-				pwin.filters.effectopt);
+			dstres, ctx = effect.trails.setup(pwin.filters.effectctx,
+				pwin.controlid, -- need access to the original source				
+				dstres, "TRAILS_" .. tostring(pwin.wndid), 
+				store_sz, in_sz, out_sz, pwin.filters.effectopt);
+			pwin.filters.effectctx = ctx;
+			if (ctx == nil) then pwin.filters.effect = nil; end
 
-		elseif (f == "TrailGlow") then
-			dstres = glowtrails.setup(dstres, "GLOWTRAILS_" .. tostring(pwin.wndid),
-				pwin.filters.effectopt);
+		elseif (f == "GlowTrails") then
+			dstres, ctx = effect.glowtrails.setup(pwin.filters.effectctx,
+				dstres, "GLOWTRAILS_" .. tostring(pwin.wndid), 
+				store_sz, in_sz, out_sz, pwin.filters.effectopt);
+			pwin.filters.effectctx = ctx;
+			if (ctx == nil) then pwin.filters.effect = nil; end
 		end
+
 		table.insert(pwin.filtertmp, dstres);
 	end
-	
+
+	if (dstres == nil) then
+		dstres = dstres_base;
+	end
+
 -- 3. display
 	if (pwin.filters.display) then
 		local f = pwin.filters.display;
@@ -873,6 +907,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		image_tracetag(camera, "3dcamera");
 
 		pwin:update_canvas(dstvid);
+		pwin.name = "3d model";
 		pwin.model = source;
 		pwin.input = input_3dwin;
 		pwin.amb_r = 0.3;

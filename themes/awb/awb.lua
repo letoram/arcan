@@ -246,6 +246,10 @@ function gamelist_launch(self, factstr)
 		local wnd, cb = awbwman_targetwnd(menulbl(game.name), 
 			{refid = "targetwnd_" .. tostring(game.gameid),
 			 factsrc = factstr}, captbl);
+		if (wnd == nil) then
+			return;
+		end
+	
 		wnd.gametbl = game; 
 		wnd.recv, wnd.reca = launch_target(game.gameid, LAUNCH_INTERNAL, cb);
 		wnd.factory_base = "gameid=" .. tostring(game.gameid);
@@ -271,6 +275,9 @@ end
 function spawn_vidwin(self)
 	local wnd = awbwman_mediawnd(menulbl("Video Capture"), "capture", BADID,
 	{refid = "vidcapwnd"});
+	if (wnd == nil) then
+		return;
+	end
 
 	local res = awbwman_inputattach(function(msg) print(msg) end, 
 		inputlbl, {
@@ -295,6 +302,9 @@ function gamelist_media(tbl)
 				local wnd, tfun = awbwman_mediawnd(
 					menulbl("Media Player"), "frameserver");
 				load_movie(j, FRAMESERVER_LOOP, tfun);
+				if (wnd == nil) then
+					return;
+				end
 			end,
 			cols     = {"video_" .. tostring(i)} 
 		};
@@ -313,6 +323,9 @@ function gamelist_media(tbl)
 						local wnd, tfun = awbwman_mediawnd(
 							menulbl(cat), "static");
 						load_image_asynch(j, tfun);
+						if (wnd == nil) then
+							return;
+						end
 					end,
 					name = cat .. "_" .. tostring(i),
 					cols = {cat .. "_" .. tostring(i)}
@@ -349,6 +362,10 @@ end
 
 function show_help()
 	local wnd = awbwman_spawn(menulbl("Help"), {noresize = true});
+	if (wnd == nil) then
+		return;
+	end
+
 	helpimg = desktoplbl(MESSAGE["HELPER_MSG"]);
 	link_image(helpimg, wnd.canvas.vid);
 	show_image(helpimg);
@@ -756,6 +773,10 @@ end
 function spawn_boing(caption)
 	local int oval = math.random(1,100);
 	local a = awbwman_spawn(menulbl("Boing!"));
+	if (a == nil) then
+		return;
+	end
+
 	a.name = "Boing!"; 
 	a.kind = sysicons.boing; 
 
