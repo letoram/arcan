@@ -86,8 +86,22 @@ cont.xbr.confwin = function(c, pwin)
 		menulbl("XBR Settings..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
-		pwin:add_cascade(newwnd);
-		newwnd:move(mouse_xy());
+	if (newwnd == nil) then
+		return;
+	end
+
+	pwin:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.y > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "Upscaler Settings";
+	newwnd:move(mx, my);
 end
 
 cont.sabr.confwin = function(c, pwin)
@@ -120,8 +134,22 @@ cont.sabr.confwin = function(c, pwin)
 		menulbl("SABR Settings..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
-		pwin:add_cascade(newwnd);
-		newwnd:move(mouse_xy());
+	if (newwnd == nil) then
+		return;
+	end
+
+	pwin:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.y > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "Upscaler Settings";
+	newwnd:move(mx, my);
 end
 
 local function add_ddt(c, newobj, shid, inw, inh, outw, outh)

@@ -143,8 +143,22 @@ cont.glow.confwin = function(c, pwin)
 		menulbl("Glow Settings..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
-		pwin:add_cascade(newwnd);
-		newwnd:move(mouse_xy());
+	if (newwnd == nil) then
+		return;
+	end
+
+	pwin:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.y > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "Glow Settings";
+	newwnd:move(mx, my);
 end
 
 cont.trails.confwin = function(c, pwin)
@@ -155,8 +169,22 @@ cont.trails.confwin = function(c, pwin)
 		menulbl("Trails Settings..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
-		pwin:add_cascade(newwnd);
-		newwnd:move(mouse_xy());
+	if (newwnd == nil) then
+		return;
+	end
+
+	pwin:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.y > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "Trails Settings";
+	newwnd:move(mx, my);
 end
 
 cont.glowtrails.confwin = function(c, pwin)
@@ -169,8 +197,22 @@ cont.glowtrails.confwin = function(c, pwin)
 		menulbl("Glowtrails Settings..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
-		pwin:add_cascade(newwnd);
-		newwnd:move(mouse_xy());
+	if (newwnd == nil) then
+		return;
+	end
+
+	pwin:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.y > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "Glowtrails Settings";
+	newwnd:move(mx, my);
 end
 
 local function gen_factstr(c)
