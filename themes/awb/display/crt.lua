@@ -193,11 +193,22 @@ cont.confwin = function(c, pwin)
 		menulbl("CRT Settings.."), deffont_sz, linespace, 
 			{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
 
-	pwin:add_cascade(newwnd);
-	newwnd:move(mouse_xy());
+	if (newwnd == nil) then
+		return;
+	end
 
--- left: increment, right: decrement
--- create listview and link to parent
+	pwin:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.y > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "CRT settings";
+	newwnd:move(mx, my);
 end
 
 local function gen_factstr(c)

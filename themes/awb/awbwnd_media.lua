@@ -173,7 +173,7 @@ local function submenupop(wnd, list, trig, key, reficn)
 end
 
 local function fltpop(wnd, ctx)
-	ctx:confwin(wnd);
+	local newwnd = ctx:confwin(wnd);
 end
 
 -- is to add multiline editor and a graphing shader-stage
@@ -409,6 +409,7 @@ local function add_3dmedia_top(pwin, active, inactive)
 end
 
 local function vcap_setup(pwin)
+	pwin.name = "Video Capture";
 	local bar = pwin.dir.tt;
 	local tbl = {};
 	for i=0,9 do
@@ -420,13 +421,18 @@ local function vcap_setup(pwin)
 	bar:add_icon("add", "l", awbwman_cfg().bordericns["plus"], function(icn)
 		local vid, lines = desktoplbl(msg);
 		awbwman_popup(vid, lines, function(ind)
+			local running = false;
 			local vid = load_movie(string.format(capstr, ind), FRAMESERVER_NOLOOP,
 			function(source, status)
-				if (status.kind == "frameserver_terminated") then
-					pwin:update_canvas(color_surface(1, 1, 100, 100, 100));
+				if (status.kind == "resized") then
+					if (running) then
+						pwin:rebuild_chain();
+					else
+						running = true;
+						pwin:update_canvas(source);
+					end
 				end
 			end);
-			pwin:update_canvas(vid);
 		end, {ref = icn.vid});
 	end);
 
