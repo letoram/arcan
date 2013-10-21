@@ -200,7 +200,104 @@ local function insert_unique(tbl, key)
 end
 
 local function input_anal(edittbl)
-	print("configure analog");
+	local cfg = awbwman_cfg();
+	local btntbl = {
+		{
+			caption = cfg.defrndfun("Select"),
+			trigger = function(owner)
+				print("anal trigger");
+			end
+		},
+		{
+			caption = cfg.defrndfun("Cancel"),
+			trigger = function(owner)
+			end
+		},
+		{
+			caption = cfg.defrndfun("Next"),
+			trigger = function(owner)
+				print("step axis");
+				return true;
+			end
+		},
+		{
+			caption = cfg.defrndfun("Previous");
+			trigger = function(owner)
+				print("step axis");
+				return true;
+			end
+		}
+	};
+
+	local msg = cfg.defrndfun( string.format("Axis data:") );
+	local props = image_surface_resolve_properties(
+		edittbl.parent.wnd.canvas.vid);
+
+	local dlg = awbwman_dialog(msg, btntbl, 
+		{x = (props.x + 20), y = (props.y + 20), nocenter = true}, false);
+	dlg.lastid = edittbl.bind;
+
+	edittbl.parent.wnd:add_cascade(dlg);
+
+-- index by device / axis, note which ones are active but only track
+-- the current one.
+--
+-- next cycles among detected devices / axes
+-- show low, high
+-- filterstep cycles among filter- window 
+-- arrow keys change upper / lower cutoff
+--
+	local updatestr = function()
+-- current axis, # samples checked, minv, maxv
+-- lowthresh, upthresh, avg-kernel
+-- an axis plot as well?
+	end
+--
+-- What we would need;
+-- 1. disable all analog (default)
+-- 2. enable all ( for config ) specific analog ( for each active ioconf )
+-- 3. set specific analog filter per device (low, high, avgbuf_sz)
+-- Everything to limit the number of samples that pass the core <-> script
+-- barrier
+--
+	local active_dev = 1;
+	local active_axis = 0;
+	local lower_thresh = 0;
+	local upper_thresh = 32767;
+
+	dlg.input = function(self, iotbl)
+		if (iotbl.key == "UP") then
+			lower_thresh = (lower_thresh + 1000) > upper_thresh and 
+				(upper_thresh - 1000) or (lower_thresh + 1000); 
+
+		elseif (iotbl.key == "DOWN") then
+			lower_thresh = (lower_thresh - 1000) < 0 and
+				0 or (lower_thresh - 1000);
+
+		elseif (iotbl.key == "LEFT") then
+			upper_thresh = (upper_thresh - 1000) > lower_thresh and
+				(upper_thresh - 1000) or (lower_thresh + 1000);
+			
+		elseif (iotbl.key == "RIGHT") then
+			upper_thresh = (upper_thresh + 1000) > 32767 and 32767
+				or (upper_thresh + 1000);
+
+		elseif (iotbl.key == "PGUP") then
+			flt_kernel = flt_kernel + 1;
+
+		elseif (iotbl.key == "PGDN") then
+			flt_kernel = (flt_kernel - 1) > 0 and (flt_kernel - 1) or 1;
+		end
+
+		updatestr();
+	end
+
+	dlg.ainput = function(self, iotbl)
+		if (iotbl.devid ~= active_dev) then
+			devmap[iotbl.devid] = true;
+			return;
+		end
+	end
 end
 
 local function input_dig(edittbl)
