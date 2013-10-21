@@ -2225,7 +2225,7 @@ int arcan_lua_framesetalloc(lua_State* ctx)
 	unsigned num = luaL_checkint(ctx, 2);
 	unsigned mode = luaL_optint(ctx, 3, ARCAN_FRAMESET_SPLIT);
 
-	if (num > 0 && num < 256){
+	if (num >= 0 && num < 256){
 		arcan_video_allocframes(sid, num, mode);
 	}
 

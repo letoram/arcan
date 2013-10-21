@@ -1436,6 +1436,8 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 
 /* reset frameset relevant members */
 		target->current_frame = target;
+
+	if (capacity > 0){
 		target->frameset = malloc(sizeof(arcan_vobject*) * capacity);
 
 /* fill each slot with references to self */
@@ -1445,10 +1447,11 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 			trace("(allocframe) self-attached to (%d:%s)\n", target->cellid, 
 				video_tracetag(target) );
 		}
+	}
 
-		target->frameset_meta.current = 0;
-		target->frameset_meta.capacity = capacity;
-		target->frameset_meta.framemode = mode;
+	target->frameset_meta.current = 0;
+	target->frameset_meta.capacity = capacity;
+	target->frameset_meta.framemode = mode;
 
 	return ARCAN_OK;
 }

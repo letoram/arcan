@@ -23,7 +23,7 @@ local cont = {
 		vscale = 0.6,
 		trailstep  = -2,
 		trailfall  =  2,
-		trails     =  2,
+		trails     =  4,
 		deltam = "off"
 	}
 };
@@ -483,11 +483,11 @@ cont.glowtrails.setup = function(c, srcimg, shid, sprops, inprops, outprops, opt
 	image_mask_clear(srcimg, MASK_POSITION);
 	image_mask_clear(srcimg, MASK_LIVING);
 
-	c.factorystr = gen_factstr;
-	c.set_factstr = set_factstr;
-
 	local res = add_historybuffer(srcimg, c, c.trails, c.trailstep, 
 		c.trailfall, inprops.width, inprops.height); 
+
+	c.factorystr = gen_factstr;
+	c.set_factstr = set_factstr;
 
 	res = add_gaussian(c, res, inprops.width, 
 		inprops.height, outprops.width, outprops.height);
