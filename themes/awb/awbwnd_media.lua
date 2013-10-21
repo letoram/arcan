@@ -497,11 +497,13 @@ function awbwmedia_filterchain(pwin)
 		pwin.canvas.vid = BADID;
 	end
 
--- trail effects may mess with these
-	image_framesetsize(pwin.controlid, 0);
+-- trail effects may mess with these so revert back on each build
+	image_framesetsize(pwin.controlid, 0, ARCAN_FRAMESET_SPLIT);
 	image_framecyclemode(pwin.controlid, 0);
 	image_mask_set(pwin.controlid, MASK_POSITION);
+	image_mask_clear(pwin.controlid, MASK_MAPPING);
 	hide_image(pwin.controlid);
+	image_shader(pwin.controlid, "DEFAULT");
 
 -- upscalers etc. can modify these as they affect the next one in the chain
 	local store_sz = image_storage_properties(pwin.controlid);
@@ -590,8 +592,9 @@ function awbwmedia_filterchain(pwin)
 			if (ctx == nil) then pwin.filters.effect = nil; end
 
 		elseif (f == "GlowTrails") then
+			print("set trails");
 			dstres, ctx = effect.glowtrails.setup(pwin.filters.effectctx,
-				dstres, "GLOWTRAILS_" .. tostring(pwin.wndid), 
+				pwin.controlid, "GLOWTRAILS_" .. tostring(pwin.wndid), 
 				store_sz, in_sz, out_sz, pwin.filters.effectopt);
 			pwin.filters.effectctx = ctx;
 			if (ctx == nil) then pwin.filters.effect = nil; end

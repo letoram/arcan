@@ -311,7 +311,7 @@ function music_start_bgmusic(playlist)
         imagery.source_audio = nil;
 			end
 
-			imagery.musicplayer = load_movie(song,  FRAMESERVER_NOLOOP, musicplayer_trigger);
+			imagery.musicplayer = load_movie(song, FRAMESERVER_NOLOOP, musicplayer_trigger);
 			persist_image(imagery.musicplayer);
 			image_tracetag(imagery.musicplayer, "music player");
 		
