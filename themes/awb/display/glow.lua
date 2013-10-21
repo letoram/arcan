@@ -157,7 +157,7 @@ cont.glow.confwin = function(c, pwin)
 		my = VRESH - newwnd.h;
 	end
 
-	newwnd.name = "Glow Settings";
+	newwnd.name = "Trails Settings";
 	newwnd:move(mx, my);
 end
 

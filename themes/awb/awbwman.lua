@@ -750,7 +750,8 @@ function awbwman_dialog(caption, buttons, options, modal)
 
 		local bevent = {
 			own   = function(self, vid) return vid == button; end,
-			click = function() v.trigger(wnd); wnd:destroy(awb_cfg.animspeed); end,
+			click = function() if (v.trigger(wnd) == nil) then
+				wnd:destroy(awb_cfg.animspeed); end end,
 			over  = function() image_color(button, ccol.r, ccol.g, ccol.b); end, 
 			out   = function() image_color(button, bgc.r, bgc.g, bgc.b); end,
 		};
@@ -1953,6 +1954,28 @@ end
 -- to the broadcast domain.
 --
 local tablist_active = nil;
+function awbwman_ainput(iotbl)
+	if (awb_cfg.popup_active and awb_cfg.popup_active.ainput ~= nil) then
+		awb_cfg.popup_active:ainput(iotbl);
+		return;
+	end
+
+	local focus_done = false;
+	for i,v in ipairs(awb_cfg.global_input) do
+		if (v.ainput) then
+			v:ainput(iotbl);
+			if (v == awb_cfg.focus) then
+				focus_done = true;
+			end
+		end
+	end
+
+	if (focus_done == false and awb_cfg.focus and 
+		awb_cfg.focus.ainput) then
+		awb_cfg.focus:ainput(iotbl);
+	end
+end
+
 function awbwman_input(iotbl, keysym)
 	if (keysym == "ALTTAB" and awb_cfg.modal == nil) then
 		if (iotbl.active) then

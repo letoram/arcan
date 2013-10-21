@@ -837,6 +837,8 @@ function awb_input(iotbl)
 		if (forward) then
 			awbwman_input(iotbl, kbdbindbase);
 		end
+	elseif (iotbl.kind == "analog") then
+			awbwman_ainput(iotbl);
 	end
 end
 
