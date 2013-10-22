@@ -198,17 +198,18 @@ enum ARCAN_EVENT_AUDIO {
 	EVENT_AUDIO_INVALID_OBJECT_REFERENCED
 };
 
-enum ARCAN_EVENTFILTER_ANALOG {
-	EVENT_FILTER_ANALOG_NONE,
-	EVENT_FILTER_ANALOG_ALL,
-	EVENT_FILTER_ANALOG_SPECIFIC
-};
-
 enum ARCAN_TARGET_SKIPMODE {
 	TARGET_SKIP_AUTO = 0,
 	TARGET_SKIP_NONE = -1,
 	TARGET_SKIP_STEP = 1,
 	TARGET_SKIP_FASTFWD = 10
+};
+
+enum ARCAN_ANALOGFILTER_KIND {
+	ARCAN_ANALOGFILTER_NONE = 0,
+	ARCAN_ANALOGFILTER_PASS = 1, 
+	ARCAN_ANALOGFILTER_AVG  = 2,
+ 	ARCAN_ANALOGFILTER_ALAST = 3
 };
 
 typedef union arcan_ioevent_data {
@@ -512,6 +513,46 @@ void arcan_event_erase_vobj(arcan_evctx* ctx,
 
 void arcan_event_init(arcan_evctx* dstcontext);
 void arcan_event_deinit(arcan_evctx*);
+
+/*
+ * Update/get the active filter setting for the specific 
+ * devid / axis (-1 for all) lower_bound / upper_bound sets the 
+ * [lower < n < upper] where only n values are passed into the filter core 
+ * (and later on, possibly as events)
+ * 
+ * Buffer_sz is treated as a hint of how many samples in should be considered
+ * before emitting a sample out.
+ *
+ * The implementation is left to the respective platform/input code to handle.
+ */
+void arcan_event_analogfilter(int devid, 
+	int axisid, int lower_bound, int upper_bound, int deadzone,
+	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind);
+
+bool arcan_event_analogstate(int devid, int axisid,
+	int* lower_bound, int* upper_bound, int* deadzone,
+	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
+
+/*
+ * Quick-helper to toggle all analog device samples on / off  
+ * If mouse is set the action will also be toggled on mouse x / y
+ * This will keep track of the old state, but repeating the same 
+ * toggle will flush state memory. All devices (except mouse) start
+ * in off mode.
+ */
+void arcan_event_analogall(bool enable, bool mouse);
+
+/*
+ * Set A/D mappings, when the specific dev/axis enter or exit
+ * the set interval, a digital press/release event with the 
+ * set subid will be emitted. This is intended for analog sticks/buttons,
+ * not touch- class displays that need a more refined classification/
+ * remapping system. 
+ *
+ * The implementation is left to the respective platform/input code to handle.
+ */
+void arcan_event_analoginterval(int devid, int axisid,
+	int enter, int exit, int subid);
 
 /* call to dump the contents of the queue */
 void arcan_event_dumpqueue(arcan_evctx*);
