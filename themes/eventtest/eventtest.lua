@@ -26,6 +26,8 @@ keyconfig = keyconf_create();
     local lookuplabel = drawline( [[\bLookup]], 18 );
     local translabel = drawline( [[\bTranslated]], 18 ); 
 
+		inputanalog_toggle(1);
+
     move_image(analabel, 0, 0, 0);
     move_image(digilabel, (VRESW / 3), 0, 0);
     move_image(translabel, (VRESW / 3) * 2, 0, 0);

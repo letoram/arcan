@@ -1799,9 +1799,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblnum(ctx, "devid", ev->data.io.input.analog.devid, top);
 			tblnum(ctx, "subid", ev->data.io.input.analog.subid, top);
 			tblbool(ctx, "active", true, top);
-/* always active, just saves a conditional here and there */
-
-/* "stateful" data? */
 			tblbool(ctx, "relative", ev->data.io.input.analog.gotrel,top);
 
 			lua_pushstring(ctx, "samples");
@@ -1813,11 +1810,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					lua_rawset(ctx, top2);
 				}
 			lua_rawset(ctx, top);
-		break;
-
-		case EVENT_SYSTEM_EVALCMD:
-/* FIXME: eval in a safe ("don't crash etc. on error") context */
-			free(ev->data.system.data.mesg.dyneval_msg);
 		break;
 
 		case EVENT_IO_BUTTON_PRESS:
@@ -4622,7 +4614,33 @@ int arcan_lua_utf8kind(lua_State* ctx)
 int arcan_lua_inputfilteranalog(lua_State* ctx)
 {
 	int joyid = luaL_checknumber(ctx, 1);
+/* mode, deadzone, lowth, upth, kernel_sz */
+	return 0;
+}
 
+int arcan_lua_inputanalogzonemap(lua_State* ctx)
+{
+/* FIXME: 
+ * dev, axis, pressv, releasev, buttonind
+ */
+	return 0;
+}
+
+int arcan_lua_inputanalogquery(lua_State* ctx)
+{
+/* FIXME:
+ * sweep all joys (0..n which is fail) and sweep all axis,
+ * expose as one big 'ol table 
+ */
+	return 0;
+}
+
+int arcan_lua_inputanalogtoggle(lua_State* ctx)
+{
+	bool val = lua_tonumber(ctx, 1) != 0;
+	bool mouse = luaL_optnumber(ctx, 2, 0) != 0;
+
+	arcan_event_analogall(val, mouse); 
 	return 0;
 }
 
@@ -5237,7 +5255,9 @@ static const luaL_Reg iofuns[] = {
 {"set_led_rgb",         arcan_lua_led_rgb          },
 {"controller_leds",     arcan_lua_n_leds           },
 #endif
-{"input_filter_analog", arcan_lua_inputfilteranalog},
+{"inputanalog_filter",  arcan_lua_inputfilteranalog},
+{"inputanalog_query",   arcan_lua_inputanalogquery},
+{"inputanalog_toggle",  arcan_lua_inputanalogtoggle},
 {NULL, NULL},
 };
 #undef EXT_MAPTBL_IODEV
