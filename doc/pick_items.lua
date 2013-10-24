@@ -6,6 +6,7 @@
 -- @group: image 
 -- @cfunction: arcan_lua_pick
 -- @flags: 
+-- 1 0: 
 function main()
 #ifdef MAIN
 #endif

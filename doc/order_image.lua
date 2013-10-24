@@ -6,7 +6,8 @@
 -- @group: image 
 -- @cfunction: arcan_lua_orderimage
 -- @flags: 
+-- 1 0: 
+#define MAIN
 function main()
-#ifdef MAIN
-#endif
 end
+#endif

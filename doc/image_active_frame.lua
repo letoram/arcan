@@ -16,7 +16,7 @@
 -- where you need access to previous frames.
 -- @related: set_image_as_frame, image_framesetsize, image_framecyclemode
 function main()
-#ifdef MAIN
+#define MAIN
 	a = fill_surface(320, 200, 0, 0, 0);
 	show_image(a);
 

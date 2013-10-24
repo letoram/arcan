@@ -6,7 +6,8 @@
 -- @group: iodev 
 -- @cfunction: arcan_lua_led_rgb
 -- @flags: 
+-- 1 0: 
+#define MAIN
 function main()
-#ifdef MAIN
-#endif
 end
+#endif

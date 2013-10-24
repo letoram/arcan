@@ -9,6 +9,7 @@
 -- @group: image 
 -- @cfunction: arcan_lua_orderinherit
 -- @flags: 
+--
 function main()
 #ifdef MAIN
 	a = fill_surface(32, 32, 255, 0, 0);

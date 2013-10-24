@@ -18,7 +18,7 @@
 -- @related: define_rendertarget
 -- @flags: 
 function main()
-#ifdef MAIN
+#define MAIN
 	a = fill_surface(64, 64, 128, 0, 0);
 	b = fill_surface(32, 32, 0, 128, 0);
 	c = fill_surface(16, 16, 0, 0, 128);

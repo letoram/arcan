@@ -7,8 +7,9 @@
 -- @cfunction: arcan_lua_camtag
 -- @related: define_3dview
 -- @flags: 
+-- 1 0: 
 function main()
-#ifdef MAIN
+#define MAIN
 	vid = fill_surface(4, 4, 0, 0, 0);
 	camtag_model(vid, 0);
 #endif

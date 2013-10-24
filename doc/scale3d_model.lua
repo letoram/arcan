@@ -6,7 +6,8 @@
 -- @group: 3d 
 -- @cfunction: arcan_lua_scalemodel
 -- @flags: 
+-- 1 0: 
+#define MAIN
 function main()
-#ifdef MAIN
-#endif
 end
+#endif

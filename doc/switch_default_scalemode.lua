@@ -6,7 +6,8 @@
 -- @group: vidsys 
 -- @cfunction: arcan_lua_setscalemode
 -- @flags: 
+-- 1 0: 
+#define MAIN
 function main()
-#ifdef MAIN
-#endif
 end
+#endif

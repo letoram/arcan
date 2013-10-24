@@ -5,7 +5,7 @@
 -- @cfunction: arcan_lua_maxorderimage
 -- @related: order_image, image_inherit_order 
 function main()
-#ifdef MAIN
+#define MAIN
 	print(max_current_image_order());
 	a = fill_surface(32, 32, 0, 0, 0);
 	order_image(a, 65500);

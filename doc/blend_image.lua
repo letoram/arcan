@@ -11,6 +11,7 @@
 -- @cfunction: arcan_lua_imageopacity
 -- @alias: show_image, hide_image
 -- @flags: 
+-- 1 3: 
 function main()
 	a = fill_surface(128, 128, 255, 0, 0);
 	b = fill_surface(128, 128, 0, 255, 0);

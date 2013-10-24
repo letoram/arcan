@@ -1,15 +1,16 @@
 -- image_framecyclemode
 -- @short: Switch how object frameset properties are managed.
 -- @inargs: vid, *mode* 
--- @longdescr: Framesets associated with an object can have its active_frame 
+-- @outargs: Framesets associated with an object can have its active_frame 
 -- property vary with other engine states. By setting *mode* till 0 (disable)
 -- only activeframe can alter the active frame property. With mode < 0 the
 -- active frame will be cycled (rotate-right) every n logical frames. With
 -- mode > 0, the active frame will be cycled (rotate-right) every n rendered
 -- frame.
--- @group: image
+-- @longdescr
+-- @group: image 
 -- @cfunction: arcan_lua_framesetcycle
--- @related: image_framesetsize, image_activeframe, set_image_as_frame
+-- @related: image_framesetsize, image_activeframe, set_image_as_frame 
 function main()
 #ifdef MAIN
 	a = fill_surface(64, 64, 255, 0, 0);
