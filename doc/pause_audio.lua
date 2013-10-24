@@ -3,4 +3,12 @@
 -- @inargs: aid
 -- @group: audio 
 -- @cfunction: arcan_lua_pauseaudio
--- @related: play_audio 
+-- @related: play_audio
+-- @note: the streaming audio behavior is deprecated and replaced with the 
+-- use of regular video decoding frameservers (load_movie etc.) that comes
+-- with its own playback control functions.
+-- @flags: deprecated
+function main()
+#ifdef MAIN
+#endif
+end

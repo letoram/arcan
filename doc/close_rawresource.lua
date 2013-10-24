@@ -7,7 +7,6 @@
 -- @cfunction: arcan_lua_rawclose
 -- @related: open_rawresource, write_rawresource, read_rawresource
 -- @flags: 
--- 1 1: 
 function main()
 #ifdef MAIN
 	open_rawresource("testres.txt");

@@ -19,7 +19,6 @@
 -- @cfunction: arcan_lua_loadimage
 -- @related: load_image_asynch
 -- @flags: 
--- 1 2: 
 function main()
 #ifdef MAIN
 	vid = load_image("demoimg.png");	

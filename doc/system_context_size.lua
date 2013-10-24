@@ -6,8 +6,7 @@
 -- @group: system 
 -- @cfunction: arcan_lua_systemcontextsize
 -- @flags: 
--- 1 0: 
-#define MAIN
 function main()
-end
+#ifdef MAIN
 #endif
+end

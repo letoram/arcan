@@ -6,8 +6,7 @@
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetpointsize
 -- @flags: 
--- 1 0: 
-#define MAIN
 function main()
-end
+#ifdef MAIN
 #endif
+end

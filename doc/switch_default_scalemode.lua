@@ -1,13 +1,10 @@
 -- switch_default_scalemode
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Change the default scale-mode for newly loaded images. 
+-- @inargs: scalemode 
+-- @longdescr: This function accepts either SCALE_NOPOW2 (default) or
+-- SCALE_POW2 (which can also be set through the command-line when
+-- starting the engine). For older GPUs that cannot handle textures with
+-- dimensions that isn't an even power-of-two, SCALE_POW2 will manually
+-- rescale them to fit, at a fairly high CPU cost on-load.
 -- @group: vidsys 
 -- @cfunction: arcan_lua_setscalemode
--- @flags: 
--- 1 0: 
-#define MAIN
-function main()
-end
-#endif

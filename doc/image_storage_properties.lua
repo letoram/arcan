@@ -11,7 +11,7 @@
 -- @related: image_surface_properties, image_surface_initial_properties,
 -- image_surface_resolve_properties
 function main()
-#define MAIN
+#ifdef MAIN
 	a = fill_surface(64, 64, 255, 0, 0, 33, 33);
 	b = image_storage_properties(a);
 	print(b.width, b.height);

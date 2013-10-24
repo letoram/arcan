@@ -3,9 +3,13 @@
 -- @inargs: resstr
 -- @outargs: success_bool
 -- @longdescr: Each session can have one- globally opened
--- text file for working with in a rather limited fashion. Typically, user/theme data should be stored in the database if at all possible, and binary data should only be in forms that the indirect functions can working with (like load_image etc.). 
+-- text file for working with in a rather limited fashion. 
+-- Typically, user/theme data should be stored in the database if at all 
+-- possible, and binary data should only be in forms that the indirect 
+-- functions can working with (like load_image etc.). 
 -- @note: If the resource exists, it will be opened in a read-only mode.
--- @note: If the resource doesn't exist, it will be created and opened for writing (in themepath, shared resources are read-only).
+-- @note: If the resource doesn't exist, it will be created and opened 
+-- for writing (in themepath, shared resources are read-only).
 -- @group: resource 
 -- @cfunction: arcan_lua_rawresource
 -- @related: close_rawresource

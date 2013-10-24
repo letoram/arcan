@@ -1,13 +1,22 @@
 -- store_key
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Store the key-value pair in the database. 
+-- @inargs: argtbl or key, val 
+-- @longdescr:  
+-- @note: For storing a lot of key-value pairs, package the data
+-- in a key-indexed table as this operation is synchronous and 
+-- the underlying database engine may wrap each store_key invocation
+-- in a transaction.
 -- @group: database 
 -- @cfunction: arcan_lua_storekey
--- @flags: 
--- 1 0: 
-#define MAIN
+-- @related: get_key 
 function main()
-end
+#ifdef MAIN
+	tbl = {key_a = "ok", key_b = "ok"};
+	store_key(tbl);
+	store_key("key_c", "ok");
+
+	print(get_key("key_a"));
+	print(get_key("key_b"));
+	prnit(get_key("key_c"));
 #endif
+end

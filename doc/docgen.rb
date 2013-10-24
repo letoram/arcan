@@ -5,6 +5,70 @@ keys = [
 "IODEV", "VIDSYS", "NETWORK" 
 ]
 
+def scangrp(inf)
+	line = "";
+	res = {};
+	group = "unknown";
+
+	while ( (line = inf.readline)[0..2] == "-- ") do
+		if line[0..3] == "-- @"
+			group = line[4..line.index(":")-1]
+			msg = line[(line.index(":")+1)..-1];
+
+			if (msg != nil)
+				msg.strip!
+				res[group] = [msg] if msg.length > 0
+			end
+		else
+			res[group] << line[3..-1].strip;
+		end
+	end
+	
+	return res, line	
+
+rescue => er
+	STDERR.print("parsing error, #{er} while processing " \
+							 "(#{inf.path}\n lastline: #{line}\n")
+	return res, ""
+end
+
+class DocReader
+	def initialize
+		@short = ""
+		@inargs = []
+		@outargs = []
+		@longdescr = ""
+		@group = ""
+		@cfunction = ""
+		@related = []
+		@notes = []
+		@example = ""
+		@main_tests = []
+		@error_tests = []
+	end
+
+	def DocReader.Open(fname)
+		a = File.open(fname)
+		if (a == nil) then
+			return
+		end
+
+		a.readline # skip first line (just the function name)
+		res = DocReader.new
+		groups, line = scangrp(a)
+		p line
+		res	
+	rescue
+		nil	
+	end
+
+	attr_accessor :short, :inargs, :outargs, 
+		:longdescr, :group, :cfunction, :related, :notes,
+		:example, :main_tests, :error_tests
+
+	private :initialize
+end
+
 def add_function(groupname, symname, cname)
 	fn = "#{symname}.lua"
 	if (File.exists?(fn))
@@ -53,36 +117,11 @@ def cscan(cfun)
 	}
 end
 
-$grouptbl = {};
 def scangroups(group, sym, csym)
 	if ($grouptbl[group] == nil) then
 		$grouptbl[group] = [];
 	end
 	$grouptbl[group] << sym;
-end
-
-def scangrp(inf)
-	line = "";
-	res = {};
-	group = "unknown";
-
-	while ( (line = inf.readline)[0..2] == "-- ") do
-		if line[0..3] == "-- @"
-			group = line[4..line.index(":")-1]
-			msg = line[(line.index(":")+1)..-1];
-			if (msg != nil)
-				msg.strip!
-				res[group] = msg if msg.length > 0
-			end
-		else
-			res[group] << line[3..-1].strip;
-		end
-	end
-	
-	return res, line	
-
-rescue
-	return res, ""
 end
 
 def funtoman(fname)
@@ -109,10 +148,17 @@ end
 
 if (ARGV[0] == "scan")
 	cscan(:add_function)
+
+elsif (ARGV[0] == "lookup")
+	DocReader.Open("#{ARGV[1]}.lua")		
+
 elsif (ARGV[0] == "mangen")
 	cscan(:scangroups)
 	inf = File.open("arcan_api_overview_hdr")
-	File.delete("arcan_api_overview.1")
+	if (File.exists?("arcan_api_overview.1"))
+		File.delete("arcan_api_overview.1")
+	end
+
 	outf = File.new("arcan_api_overview.1", IO::CREAT | IO::RDWR)
 	inf.each_line{|line| outf << line}
 	
@@ -135,10 +181,10 @@ elsif (ARGV[0] == "mangen")
 	inf = File.open("arcan_api_overview_ftr").each_line{|line|
 		outf << line;
 	}
-	
 
 else
 	STDOUT.print("Usage: ruby docgen.rb command\nscan:\n\
 scrape arcan_lua.c and generate stubs for missing corresponding .lua\n\n\
-mangen:\n sweep each .lua file and generate corresponding manpages.\n")
+mangen:\n sweep each .lua file and generate corresponding manpages.\n\n\
+lookup function_name:\n generate a quick-reference \n")
 end

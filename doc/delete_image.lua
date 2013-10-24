@@ -14,7 +14,6 @@
 -- @related: expire_image
 -- @cfunction: arcan_lua_deleteimage
 -- @flags: 
--- 1 0: 
 function main()
 #ifdef MAIN
 	valid = fill_surface(32, 32, 255, 0, 0, 0);

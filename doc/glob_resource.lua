@@ -12,7 +12,6 @@
 -- @cfunction: arcan_lua_globresource
 -- @related: resource
 -- @flags: 
--- 1 0: 
 function main()
 #ifdef MAIN
 	local tbl = glob_resource("*");

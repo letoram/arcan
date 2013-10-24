@@ -5,7 +5,7 @@
 -- @cfunction: arcan_lua_capturelist
 -- @related: capture_audio
 function main()
-#define MAIN
+#ifdef MAIN
 	print("begin list of audio devices");
 	for i,v in ipairs(list_audio_inputs()) do
 		print(v);

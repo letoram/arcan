@@ -1,15 +1,14 @@
 -- rendertarget_attach
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Attach a qualified object to a preexisting rendertarget. 
+-- @inargs: rtgt, srcobj, detachfl 
+-- @longdescr: Every object is attached to at least one rendertarget,
+-- the standard output for the current context. Some operations however,
+-- either for recording or rendering to texture, define new rendertargets
+-- to which objects can be dynamically attached.
+-- @note: Deleting an object also implies detaching it from all active rendertargets.
+-- @note: Valid values for detachfl are RENDERTARGET_DETACH, RENDERTARGET_NODETACH
+-- @note: A rendertarget cannot be attached to itself.
+-- @note: Persistant objects cannot be part of other rendertargets.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_renderattach
--- @related:
-function main()
-#ifdef MAIN
-#endif
-
-#ifdef ERROR1
-#endif
-end
+-- @related: define_rendertarget, define_recordtarget
