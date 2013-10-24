@@ -1,17 +1,15 @@
 --
 -- Arcan "Workbench" theme
--- "inspired" by certain older desktop / windowing UI
+-- "inspired" by certain older desktop / windowing UIs
 --
 -- Todo:
---  ( ) refactor the label/font use to not rely on just
---      (desktoplbl, menulbl) globals
---  ( ) config tool to change default colors, fonts, ...
---  ( ) helper tool (and a default implementation that
---      resurrects clippy ;)
---  ( ) autotiling
---  ( ) fullscreen mode for media windows
---  ( ) better icon management / struct and the option to switch them
---  ( ) move language strings to table for internationalization
+-- ( ) refactor the label/font use to not rely on just
+--     (desktoplbl, menulbl) globals
+-- ( ) config tool to change default colors, fonts, ...
+-- ( ) autotiling, smarter window allocation scheme
+-- ( ) better icon management / struct and the option to switch them
+-- ( ) growl- style notifications with movable anchor
+-- 
 
 sysicons   = {};
 imagery    = {};
@@ -559,6 +557,7 @@ local handlers = {
 	MP3 = amediahandler,
 	OGG = amediahandler,
 	MKV = vmediahandler,
+	MP4 = vmediahandler,
 	AVI = vmediahandler,
 	MPG = vmediahandler,
 	MPEG= vmediahandler,

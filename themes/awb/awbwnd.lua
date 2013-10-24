@@ -924,7 +924,6 @@ local function awbwnd_dropcascade(self, wnd)
 end
 
 local function awbwnd_addhandler(self, slot, fptr)
-	print("adding", slot, self.wndid);
 	if (self[slot] ~= nil) then
 	elseif (type(self[slot]) == "table") then
 		table.insert(self[slot], fptr);

@@ -19,6 +19,7 @@ extern char* strdup(const char*);
 extern double round(double x);
 FILE* fdopen(int, const char*);
 int strcasecmp(const char*, const char*);
+int random(void);
 
 typedef int pipe_handle;
 typedef HANDLE file_handle;

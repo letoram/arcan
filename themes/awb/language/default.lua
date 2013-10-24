@@ -33,6 +33,7 @@ return {
 	VIDREC_AQUALITY= "Audio Quality",
 	VIDREC_FPS     = "Framerate",
 	VIDREC_SAVE    = "Destination",
+	VIDREC_ASOURCE = "Audio Sources",
 
 	HELPER_MSG = [[
 		\#00ff00(global)\n\r\#ffffff

@@ -829,6 +829,14 @@ end
 
 function awbwman_restore(ind)
 	drop_popup();
+
+	if (type(ind) == "table") then
+		ind = awbwman_findind(ind, awb_cfg.hidden);
+		if (ind == nil) then
+			return;
+		end
+	end
+	
 	local wnd = awb_cfg.hidden[ind];
 	wnd.minimized = false;
 	table.remove(awb_cfg.hidden, ind);
@@ -2114,7 +2122,8 @@ function awbwman_init(defrndr, mnurndr)
 	end
 
 	awb_col = system_load("scripts/colourtable.lua")();
-
+	
+	local load_image = load_image_asynch;
 	awb_cfg.col = awb_col;
 	awb_cfg.activeres   = load_image("awbicons/border.png");
 	awb_cfg.inactiveres = load_image("awbicons/border_inactive.png");
@@ -2127,6 +2136,8 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.tabicns.icon = awb_cfg.tabicns.list;
 	awb_cfg.tabicns.tool = awb_cfg.tabicns.list;
 
+-- These should really have a packed- storage form, but that feature is currently
+-- missing and the planned approach doesn't really play well with image_sharestorage 
 	awb_cfg.bordericns["minus"]    = load_image("awbicons/minus.png");
 	awb_cfg.bordericns["plus"]     = load_image("awbicons/plus.png");
 	awb_cfg.bordericns["clone"]    = load_image("awbicons/clone.png");
@@ -2162,6 +2173,9 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
 	awb_cfg.bordericns["mouse"]       = load_image("awbicons/topbar_mouse.png");
 	awb_cfg.bordericns["mouselock"]   = load_image("awbicons/topbar_mouselock.png");
+	for k,v in pairs(awb_cfg.bordericns) do
+		image_pushasynch(v);
+	end
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 

@@ -3847,12 +3847,15 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 		while (current && current->elem->order >= 0){
 #ifdef _DEBUG
-			char cvid[24];
-			snprintf(cvid,24,"refreshGL:2d(%d)", (unsigned) current->elem->cellid);
-			if (arcan_debug_pumpglwarnings(cvid) == -1){
-				arcan_warning("fatal: GL error detected, check dump.\n");
-				abort();
-			};
+			static bool warned;
+			if (!warned){
+				char cvid[24];
+				snprintf(cvid,24,"refreshGL:2d(%d)", (unsigned) current->elem->cellid);
+				if (arcan_debug_pumpglwarnings(cvid) == -1){
+					arcan_warning("warning: GL error detected, check dump.\n");
+					warned = true;
+				};
+			}
 #endif
 
 			arcan_vobject* elem = current->elem;
@@ -4624,11 +4627,11 @@ void arcan_video_shutdown()
 
 int arcan_debug_pumpglwarnings(const char* src){
 #ifdef _DEBUG
-	GLenum errc = glGetError();
+/*	GLenum errc = glGetError();
 	if (errc != GL_NO_ERROR){
 		arcan_warning("GLError detected (%s) GL error, code: %d\n", src, errc);
 		return -1;
-	}
+	} */
 #endif
 	return 1;
 }

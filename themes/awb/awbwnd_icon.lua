@@ -332,6 +332,7 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 	};
 
 	local canvash = {
+		name = "icon_canvas",
 		own = function(self, vid) return vid == pwin.canvas.vid; end,
 		click = function() pwin:focus(); end
 	};
