@@ -54,7 +54,12 @@ local function playlistwnd(wnd)
 	local speed = awbwman_cfg().animspeed;
 
 	if (wnd.playlistwnd) then
-		move_image(wnd.playlistwnd.anchor, x, y, speed); 
+		if (wnd.playlistwnd.minimized) then
+			awbwman_restore(wnd.playlistwnd);
+		else
+			move_image(wnd.playlistwnd.anchor, x, y, speed);
+			wnd.playlistwnd:focus();
+		end
 		return;
 	end
 
@@ -66,7 +71,7 @@ local function playlistwnd(wnd)
 	end
 
 	wnd.playlistwnd = nwin;
-	wnd.name = "Playlist";
+	nwin.name = "Playlist";
 
 	nwin:add_handler("on_destroy", function(self)
 		wnd.playlistwnd = nil;
@@ -134,6 +139,8 @@ local function datashare(wnd)
 	local res  = awbwman_setup_cursortag(sysicons.floppy);
 	res.kind   = "media";
 	res.source = wnd;
+	res.audio  = wnd.recv;
+	res.name   = wnd.name;
 	return res;
 end
 

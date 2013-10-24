@@ -552,6 +552,7 @@ local function datashare(wnd)
 	local res = awbwman_setup_cursortag(sysicons.floppy);
 	res.kind = "media";
 	res.name = wnd.name;
+	res.audio = wnd.reca;
 
 	if (res.name == nil) then
 		res.name = wnd.gametbl.title;

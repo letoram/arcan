@@ -78,7 +78,8 @@ struct frameserver_audsrc {
 	float inbuf[4096];
 	off_t inofs;
 	arcan_aobj_id src_aid;
-	float weight, gain;
+	float l_gain;
+	float r_gain;
 };
 
 struct frameserver_audmix {
@@ -244,8 +245,11 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd,
 /* used as monitor hook for frameserver audio feeds */
 void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf, 
 	size_t buf_sz, unsigned channels, unsigned frequency, void* tag);
+
 void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, 
-	int n_sources, arcan_aobj_id* sources, float* gains);
+	int n_sources, arcan_aobj_id* sources);
+void arcan_frameserver_update_mixweight(arcan_frameserver* dst,
+	arcan_aobj_id source, float leftch, float rightch);
 
 /* return a callback function for retrieving appropriate video-feeds */
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, 

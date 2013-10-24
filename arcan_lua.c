@@ -1273,6 +1273,17 @@ int arcan_lua_dofile(lua_State* ctx)
 	return res;
 }
 
+int arcan_lua_clipboardget(lua_State* ctx)
+{
+	const char* const msg = luaL_optstring(ctx, 2, "text");
+	if (strcmp(msg, "text") == 0){
+		
+	} 
+	else{
+		arcan_warning("unsupported clipboard type requested.\n");
+	}
+}
+
 int arcan_lua_pausemovie(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
@@ -2897,11 +2908,6 @@ int arcan_lua_rawsurface(lua_State* ctx)
 	return 0;
 }
 
-#if _WIN32
-/* mingw headers miss this one for some reason, but it's still in the header */
-int random(void);
-#endif
-
 /* not intendend to be used as a low-frequency noise function (duh) */
 int arcan_lua_randomsurface(lua_State* ctx)
 {
@@ -4108,7 +4114,7 @@ int arcan_lua_recordset(lua_State* ctx)
  * the same rate and buffering will converge on the biggest- buffer audio source
  */
 			if (naids > 1)
-				arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks, NULL);
+				arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
 		}
 		else
 			arcan_warning("arcan_lua_recordset(%s/%s/%s)--couldn't create output.\n",
@@ -4119,6 +4125,25 @@ int arcan_lua_recordset(lua_State* ctx)
 
 cleanup:
 	free(argl);
+	return 0;
+}
+
+int arcan_lua_recordgain(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_aobj_id aid = luaL_checkaid(ctx, 2);
+	float left = luaL_checknumber(ctx, 3);
+	float right = luaL_checknumber(ctx, 4);
+
+	arcan_vobject* vobj = arcan_video_getobject(tgt);
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("arcan_lua_recordgain() -- bad arg1, "
+			"VID is not a frameserver.\n");
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	arcan_frameserver_update_mixweight(fsrv, aid, left, right);
+
 	return 0;
 }
 
@@ -5092,6 +5117,7 @@ static const luaL_Reg tgtfuns[] = {
 {"reset_target",               arcan_lua_targetreset              },
 {"define_rendertarget",        arcan_lua_renderset                },
 {"define_recordtarget",        arcan_lua_recordset                },
+{"recordtarget_gain",          arcan_lua_recordgain               },
 {"rendertarget_attach",        arcan_lua_renderattach             },
 {"play_movie",                 arcan_lua_playmovie                },
 {"load_movie",                 arcan_lua_loadmovie                },
@@ -5231,6 +5257,7 @@ static const luaL_Reg sysfuns[] = {
 {"switch_theme",        arcan_lua_switchtheme      },
 {"warning",             arcan_luac_warning         },
 {"system_load",         arcan_lua_dofile           },
+{"clipboard_getmsg",    arcan_lua_clipboardget     },
 {"system_context_size", arcan_lua_systemcontextsize},
 {"utf8kind",            arcan_lua_utf8kind         },
 {"decode_modifiers",    arcan_lua_decodemod        },

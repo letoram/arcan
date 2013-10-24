@@ -14,18 +14,22 @@ settings = {
 soundmap = {};
 
 function get_recstr()
-	local recstr = "vcodec=H264:container=%s:acodec=MP3:fps=%d:apreset=%d:vpreset=%d:vptsofs=%d:aptsofs=%d%s";
+	local recstr = "vcodec=H264:container=%s:acodec=MP3:fps=%d:" ..
+		"apreset=%d:vpreset=%d:vptsofs=%d:aptsofs=%d%s";
 	local fname  = "";
 	local args   = "";
 
 	if (string.sub(settings.out_url, 1, 7) == "rtmp://") then
 		fname = "stream";
-		args  = string.format(recstr, "stream", settings.record_fps, settings.record_aqual, settings.record_vqual,
-			settings.record_vpts, settings.record_apts, ":streamdst=" .. string.gsub(settings.out_url, ":", "\t"));
+		args  = string.format(recstr, "stream", settings.record_fps, 
+			settings.record_aqual, settings.record_vqual,
+			settings.record_vpts, settings.record_apts, 
+				":streamdst=" .. string.gsub(settings.out_url, ":", "\t"));
 
 	elseif (string.sub(settings.out_url, 1, 7) == "file://") then
 		fname = string.sub(settings.out_url, 8);
-		args  = string.format(recstr, "MKV", settings.record_fps, settings.record_aqual, settings.record_vqual,
+		args  = string.format(recstr, "MKV", settings.record_fps, 
+			settings.record_aqual, settings.record_vqual,
 			settings.record_vpts, settings.record_apts, ""); 
 	end
 
@@ -33,12 +37,11 @@ function get_recstr()
 end
 
 function streamer()
---listview.lua, osdkbd.lua, dialog.lua, colourtable.lu	
-	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
-	system_load("scripts/keyconf.lua")();        -- input configuration dialogs
+	system_load("scripts/listview.lua")();       
+	system_load("scripts/keyconf.lua")();       -- input configuration dialogs
 	system_load("scripts/3dsupport.lua")();
-	system_load("scripts/layout_editor.lua")();  -- used to define layouts
-	system_load("scripts/osdkbd.lua")();         -- for defining stream destination
+	system_load("scripts/layout_editor.lua")(); -- used to define layouts
+	system_load("scripts/osdkbd.lua")();        -- for defining stream destination
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/resourcefinder.lua")(); 
 	system_load("scripts/calltrace.lua")();
@@ -50,7 +53,8 @@ function streamer()
 	settings.adevs = list_audio_inputs();
 	
 -- regular setup patterns for the necessary inputs
-	keyconfig = keyconf_create({"rMENU_ESCAPE", "rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", 
+	keyconfig = keyconf_create({"rMENU_ESCAPE", 
+		"rMENU_UP", "rMENU_DOWN", "rMENU_LEFT", 
 		"rMENU_RIGHT", "rMENU_SELECT", "rCONTEXT", "aMOUSE_X", "aMOUSE_Y"});
 
 	if (keyconfig.active == false) then
@@ -84,7 +88,8 @@ function osdkbd_inputfun(iotbl, dstkbd)
 				resstr = dstkbd:input(val, iotbl.active);
 
 				if (iotbl.active) then
-					play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
+					play_audio(val == "MENU_SELECT" and 
+						soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
 				end
 				
 -- also allow direct keyboard input
@@ -130,11 +135,13 @@ function show_helper()
 		end
 
 		if (settings.layout["vidcap"] ~= nil) then
-			table.insert(status, tostring(#settings.layout["vidcap"]) .. " Video Feed Slots");
+			table.insert(status, tostring(#settings.layout["vidcap"]) 
+				.. " Video Feed Slots");
 			local str = "Feeds: ";
 			
 			for ind, val in ipairs(settings.layout["vidcap"]) do
-				str = str .. string.format("(%d) => (%d)", ind, settings.vidcap[ind] ~= nil and settings.vidcap[ind] or 0);
+				str = str .. string.format("(%d) => (%d)", ind, 
+					settings.vidcap[ind] ~= nil and settings.vidcap[ind] or 0);
 			end
 
 			table.insert(status, str);
@@ -201,7 +208,8 @@ function start_streaming()
 		outurl = outurl .. ":noaudio";
 	end
 	
-	define_recordtarget(dstvid, outfn, outurl, recordset, audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, 
+	define_recordtarget(dstvid, outfn, outurl, recordset, 
+		audset, RENDERTARGET_NODETACH, RENDERTARGET_SCALE, -1, 
 		function(source, status)
 			print("recordtarget status", status.kind);
 		end);
@@ -260,7 +268,8 @@ function get_audio_toggles()
 			settings.atoggles[label] = not settings.atoggles[label];
 		end
 			
-		current_menu.formats[label] = settings.atoggles[label] and settings.colourtable.notice_fontstr or nil;
+		current_menu.formats[label] = 
+			settings.atoggles[label] and settings.colourtable.notice_fontstr or nil;
 		current_menu:invalidate();
 		current_menu:redraw();
 	end
@@ -292,7 +301,8 @@ function query_destination(file)
 			opts.prefix = "rtmp://";
 			opts.startstr = settings.out_url;
 
--- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
+-- quick hack to make it slightly easier '
+-- to enter "big and nasty justin.tv kind" keys
 			if (settings.out_url == "rtmp://" and resource("stream.key")) then
 				if (open_rawresource("stream.key")) then
 					local line = read_rawresource();
@@ -327,14 +337,17 @@ function query_destination(file)
 	
 
 --
--- this parses the currently active layout (if any) and generates the appropriate menu entries
+-- this parses the currently active layout (if any) 
+-- and generates the appropriate menu entries
 -- depends on current layout (if any), target in layout, vidcap feeds in layout
 --
 function toggle_main_menu()
 	ready = settings.out_url ~= "rtmp://";
 
-	target = (settings.layout and settings.layout["internal"] ~= nil) and (#settings.layout["internal"] > 0) or nil;
-	nvc = (settings.layout and settings.layout["vidcap"]) and #settings.layout["vidcap"] or 0;
+	target = (settings.layout and settings.layout["internal"] ~= nil) 
+		and (#settings.layout["internal"] > 0) or nil;
+	nvc = (settings.layout and settings.layout["vidcap"])
+		and #settings.layout["vidcap"] or 0;
 	
 	while current_menu ~= nil do
 		current_menu:destroy();
@@ -352,17 +365,25 @@ function toggle_main_menu()
 	local streamptrs = {};
 	local streamfmts = {};
 
-	add_submenu(streammenu, streamptrs, "Framerate...", "record_fps", gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
-	add_submenu(streammenu, streamptrs, "Max Vertical Resolution...", "record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240}, function() end));
-	add_submenu(streammenu, streamptrs, "Video Quality...", "record_vqual", gen_tbl_menu("record_vqual", {2, 4, 6, 8, 10}, function() end));
-	add_submenu(streammenu, streamptrs, "Audio Quality...", "record_aqual", gen_tbl_menu("record_aqual", {2, 4, 6, 8, 10}, function() end));
-	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts", gen_num_menu("record_vpts", 0, 4, 12, function() end));
-	add_submenu(streammenu, streamptrs, "APTS offset...", "record_apts", gen_num_menu("record_apts", 0, 4, 12, function() end));
+	add_submenu(streammenu, streamptrs, "Framerate...", "record_fps", 
+		gen_tbl_menu("record_fps", {12, 24, 25, 30, 50, 60}, function() end));
+	add_submenu(streammenu, streamptrs, "Max Vertical Resolution...", 
+		"record_res", gen_tbl_menu("record_res", {720, 576, 480, 360, 288, 240},
+		function() end));
+	add_submenu(streammenu, streamptrs, "Video Quality...", "record_vqual", 
+		gen_tbl_menu("record_vqual", {2, 4, 6, 8, 10}, function() end));
+	add_submenu(streammenu, streamptrs, "Audio Quality...", "record_aqual", 
+		gen_tbl_menu("record_aqual", {2, 4, 6, 8, 10}, function() end));
+	add_submenu(streammenu, streamptrs, "VPTS offset...", "record_vpts", 
+		gen_num_menu("record_vpts", 0, 4, 12, function() end));
+	add_submenu(streammenu, streamptrs, "APTS offset...", "record_apts", 
+		gen_num_menu("record_apts", 0, 4, 12, function() end));
 	table.insert(streammenu, "Define Stream...");
 	table.insert(streammenu, "Define File...");
 
 	if (settings.layout ~= nil) then
-		add_submenu(menulbls, menuptrs, "Streaming Settings...", nil, streammenu, streamptrs, {});
+		add_submenu(menulbls, menuptrs, 
+			"Streaming Settings...", nil, streammenu, streamptrs, {});
 
 		table.insert(menulbls, "Audio Sources...");
 		menuptrs["Audio Sources..."] = function() 
@@ -383,7 +404,8 @@ function toggle_main_menu()
 
 -- need a layout set in order to know what to define the different slots as
 	if (target) then
-		add_submenu(menulbls, menuptrs, "Setup Game...", nil, gen_tbl_menu(nil, list_targets(), list_targetgames, true));
+		add_submenu(menulbls, menuptrs, "Setup Game...", nil, 
+			gen_tbl_menu(nil, list_targets(), list_targetgames, true));
 	end
 
 	if (nvc > 0) then
@@ -391,8 +413,8 @@ function toggle_main_menu()
 		local lbls = {};
 
 		for num=1, nvc do
-			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, gen_num_menu(nil, 1, 1, 10, function(lbl)
-				print("setting slot:", num, "to:", lbl);
+			add_submenu(lbls, ptrs, "Slot " .. tostring(num) .. "...", nil, 
+				gen_num_menu(nil, 1, 1, 10, function(lbl)
 				settings.vidcap[num] = tonumber(lbl);
 				toggle_main_menu();
 			end ));
@@ -440,15 +462,17 @@ end
 
 --
 -- Will be triggered everytime the layout editor rebuilds its view
--- Mostly expect the script to resolve a full resource description based on type and idtag
--- Although some properties could be altered "in flight" and LAYRES_SPECIAL are even expected to be
+-- Mostly expect the script to resolve a full resource description
+-- based on type and idtag Although some properties could be altered 
+-- "in flight" and LAYRES_SPECIAL are even expected to be
 --
 function load_cb(restype, lay)
 	print("lay.idtag:", lay.idtag);
 
 	if (restype == LAYRES_STATIC or restype == LAYRES_MODEL) then
 		if (lay.idtag == "background") then
-			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
+			return "backgrounds/" .. lay.res, (function(newvid) 
+				settings.background = newvid; end);
 			
 		elseif (lay.idtag == "image") then
 			return "images/" .. lay.res;
@@ -481,20 +505,25 @@ end
 function run_view(dry_run)
 	settings.layout:show();
 --
--- NOTE: missing: with a dry_run, just use placeholders for all "dynamic" sources
+-- NOTE: missing: with a dry_run, just use placeholders 
+-- for all "dynamic" sources
 --	
--- NOTE:For creating the record-set, the temporary and temporary_static tables are swept
--- and just re-added. When (if?) MRT or WORLDID recordsets are working, we'll switch to that
+-- NOTE:For creating the record-set, the temporary and 
+-- temporary_static tables are swept
+-- and just re-added. When (if?) MRT or WORLDID 
+-- recordsets are working, we'll switch to that
 --
-	if (settings.layout["internal"] and #settings.layout["internal"] > 0 and settings.gametbl) then
-		local internal_vid, internal_aid = launch_target(settings.gametbl.gameid, LAUNCH_INTERNAL, function(source, status) 
+	if (settings.layout["internal"] and 
+		#settings.layout["internal"] > 0 and settings.gametbl) then
+		local internal_vid, internal_aid = launch_target(settings.gametbl.gameid, 
+			LAUNCH_INTERNAL, function(source, status) 
 				if (status == "resized") then
 					play_audio(status.source_audio);
 				end
 			end);
 	
 		if (not valid_vid(internal_vid)) then
-			spawn_warning("Coudln't launch game, giving up.");
+			spawn_warning("Couldn't launch game, giving up.");
 			return false;
 		end
 			
@@ -515,7 +544,8 @@ function run_view(dry_run)
 	
 --
 -- for each vidcap, check if the user has specified a mapping,
--- if he has, check if there's already a session running (most capture devices don't permit sharing)
+-- if he has, check if there's already a session running 
+-- (most capture devices don't permit sharing)
 -- and if so, instance, otherwise spawn a new one
 --
 	if (settings.layout["vidcap"] and #settings.layout["vidcap"] > 0) then
@@ -527,9 +557,18 @@ function run_view(dry_run)
 					settings.layout:add_imagevid(newvid, settings.layout["vidcap"][i]);
 				else
 					local elem = settings.layout["vidcap"][i];
-					local reqstr = string.format("capture:device=%d:width=%d:height=%d", 1, elem.size[1], elem.size[2]);
-					settings.vidcaps[ settings.vidcap[i] ] = load_movie(reqstr, FRAMESERVER_NOLOOP, function(source, status) end );
-					settings.layout:add_imagevid(settings.vidcaps[ settings.vidcap[i] ], settings.layout["vidcap"][i]);
+					local reqstr = string.format("capture:device=%d:width=%d:height=%d", 
+						1, elem.size[1], elem.size[2]);
+					settings.vidcaps[ settings.vidcap[i] ] = 
+						load_movie(reqstr, FRAMESERVER_NOLOOP, 
+							function(source, status) 
+								if (status.kind == "resized") then
+									resize_image(source, elem.size[1], elem.size[2]);
+								end
+							end
+						);
+					settings.layout:add_imagevid(settings.vidcaps[ 
+						settings.vidcap[i] ], settings.layout["vidcap"][i]);
 				end
 			end
 		end
@@ -581,7 +620,9 @@ function load_layout(lay)
 	settings.vidcaps = {};
 
 	if (settings.layout ~= nil) then
-		toggle_main_menu(settings.layout["internal"] ~= nil and (#settings.layout["internal"] > 0), settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
+		toggle_main_menu(settings.layout["internal"] ~= nil and 
+			(#settings.layout["internal"] > 0), 
+			settings.layout["vidcap"] and #settings.layout["vidcap"] or 0);
 	else
 		spawn_warning("Couldn't load layout: " .. lay);
 		toggle_main_menu(false, 0);
@@ -614,7 +655,8 @@ function define_layout()
 end
 
 function gen_layout_menu()
-	local laymenu, layptrs = build_globmenu("layouts/*.lay", load_layout, THEME_RESOURCE);
+	local laymenu, layptrs = build_globmenu("layouts/*.lay", 
+		load_layout, THEME_RESOURCE);
 	local layfmt = {};
 
 	table.insert(laymenu, 1, "New Layout");
@@ -625,9 +667,9 @@ function gen_layout_menu()
 end
 
 function update_shader(resname)
--- (when here, something goes bad?!)	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
 	if (valid_vid(settings.background)) then
-		settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+		settings.shader = load_shader("shaders/fullscreen/default.vShader", 
+			"shaders/bgeffects/" .. resname, "bgeffect", {});
 		image_shader(settings.background, settings.shader);
 		shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
 	end
@@ -692,25 +734,40 @@ function lay_setup(layname)
 	end
 	
 	layout = layout_new(layname);
-	layout:add_resource("background", "Background...", function() return glob_resource("backgrounds/*.png"); end, nil, LAYRES_STATIC, true, function(key) return load_image("backgrounds/" .. key); end);
-	layout:add_resource("bgeffect", "Background Effect...", function() return glob_resource("shaders/bgeffects/*.fShader"); end, nil, LAYRES_SPECIAL, true, nil);
-	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", LAYRES_FRAMESERVER, false, identphold);
-	layout:add_resource("image", "Image...", function() return glob_resource("images/*.png"); end, nil, LAYRES_STATIC, false, function(key) return load_image("images/" .. key); end);
-	for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
-		layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
+	layout:add_resource("background", "Background...", function() 
+		return glob_resource("backgrounds/*.png"); 
+		end, nil, LAYRES_STATIC, true, 
+		function(key) return load_image("backgrounds/" .. key); end);
+
+	layout:add_resource("bgeffect", "Background Effect...", function() 
+			return glob_resource("shaders/bgeffects/*.fShader"); end, nil, 
+			LAYRES_SPECIAL, true, nil);
+	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", 
+	LAYRES_FRAMESERVER, false, identphold);
+
+	layout:add_resource("image", "Image...", 
+		function() return glob_resource("images/*.png"); end, nil, 
+			LAYRES_STATIC, false, 
+		function(key) return load_image("images/" .. key); end);
+
+	for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)",
+		"Fanart", "Bezel", "Marquee"} ) do
+		layout:add_resource(string.lower(val), val, val, 
+			"Dynamic Media...", LAYRES_IMAGE, false, identphold);
 	end
 
--- 3D models currently not enabled due to a problem with
--- models in recordsets / FBOs, will sort itself out when the 3D pipeline gets more focus
---	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
---	layout:add_resource("static_model", "Model...", function() return glob_resource("models/*"); end , "Static Media...", LAYRES_MODEL, false, function(key) return load_model(key); end );
-	
-	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
-		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
+	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", 
+		"Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
+		layout:add_resource(string.lower(val), val, val,
+			"Dynamic Text...", LAYRES_TEXT, false, nil);
 	end
 	
-	layout:add_resource("internal", "internal", "Internal Launch", "Input Feeds...", LAYRES_FRAMESERVER, false, load_image("images/placeholders/internal.png"));
-	layout:add_resource("vidcap", "vidcap", "Video Capture", "Input Feeds...", LAYRES_FRAMESERVER, false, load_image("images/placeholders/vidcap.png"));
+	layout:add_resource("internal", "internal", "Internal Launch", 
+		"Input Feeds...", LAYRES_FRAMESERVER, false, 
+		load_image("images/placeholders/internal.png"));
+	layout:add_resource("vidcap", "vidcap", "Video Capture", 
+		"Input Feeds...", LAYRES_FRAMESERVER, false, 
+		load_image("images/placeholders/vidcap.png"));
 	layout.post_save_hook = hookfun;
 
 	layout.finalizer = function(state)
@@ -734,7 +791,8 @@ function lay_setup(layname)
 	layout:show();
 end
 
--- the shared code partially uses this, since the soundmap is empty, just stop sources that are null.
+-- the shared code partially uses this, 
+-- since the soundmap is empty, just stop sources that are null.
 local oldplay = play_audio;
 function play_audio(source)
 	if (source) then

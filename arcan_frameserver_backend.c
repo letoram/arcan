@@ -308,8 +308,12 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 					(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
 
 				if (ntc == 0){
-					arcan_warning("frameserver_videoframe_direct(), incoming buffer "
-						"overflow for: %d, resetting.\n", tgt->vid);
+					static bool overflow;
+					if (!overflow){
+						arcan_warning("frameserver_videoframe_direct(), incoming buffer "
+							"overflow for: %d, resetting.\n", tgt->vid);
+						overflow = true;
+					}
 					tgt->ofs_audb = 0;
 				}
 
@@ -406,12 +410,15 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid,
  * buffered. Truncate if needed. */
 	for (int i = 0; i < dst->amixer.n_aids; i++){
 		struct frameserver_audsrc* cur = dst->amixer.inaud + i;
+	
 		if (cur->src_aid == srcid){
 			int ulim = sizeof(cur->inbuf) / sizeof(float);
-	
+			int count = 0;
+
 			while (nsamples-- && cur->inofs < ulim){
 				float val = *buf++;
-				cur->inbuf[cur->inofs++] = cur->gain * val / 32768.0f;
+				cur->inbuf[cur->inofs++] = 
+					(count++ % 2 ? cur->l_gain : cur->r_gain) * (val / 32767.0f);
 			}
 		}
 
@@ -458,8 +465,19 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid,
 
 }
 
+void arcan_frameserver_update_mixweight(arcan_frameserver* dst, 
+	arcan_aobj_id src, float left, float right)
+{
+	for (int i = 0; i < dst->amixer.n_aids; i++){
+		if (src == 0 || dst->amixer.inaud[i].src_aid == src){
+			dst->amixer.inaud[i].l_gain = left;
+			dst->amixer.inaud[i].r_gain = right;
+		}	
+	}
+}
+
 void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources, 
-	arcan_aobj_id* sources, float* gains)
+	arcan_aobj_id* sources)
 {
 	assert(sources != NULL && dst != NULL && n_sources > 0);
 	
@@ -469,10 +487,10 @@ void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources,
 	dst->amixer.inaud = malloc(n_sources * sizeof(struct frameserver_audsrc) 
 		* n_sources);
 	for (int i = 0; i < n_sources; i++){
-		dst->amixer.inaud[i].gain    = gains ? *gains++ : 1.0;
+		dst->amixer.inaud[i].l_gain  = 1.0;
+		dst->amixer.inaud[i].r_gain  = 1.0;
 		dst->amixer.inaud[i].inofs   = 0;
 		dst->amixer.inaud[i].src_aid = *sources++;
-		dst->amixer.inaud[i].weight  = 1.0;
 	}
 	
 	dst->amixer.n_aids = n_sources;

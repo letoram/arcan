@@ -14,15 +14,111 @@ local function sweepcmp(vid, tbl)
 	return false;
 end
 
+local function add_asource(wnd, tag)
+	local icnw, icnh = 64, 64;
+	local source = {};
+
+	for i=1,#wnd.sources do
+		if (wnd.sources[i].kind == "recaudio" and
+			wnd.sources[i].data == tag) then
+			return;
+		end
+	end
+
+	if (tag.vid) then
+		source.vid = null_surface(icnw, icnh);
+		image_sharestorage(tag.vid, source.vid);
+		local overlay = load_image("awbicons/audsrc.png");
+		link_image(overlay, source.vid);
+		image_inherit_order(overlay, true);
+		blend_image(overlay, 0.80);
+		image_mask_set(overlay, MASK_UNPICKABLE);
+	else
+		source.vid = load_image("awbicons/audsrc.png");
+	end
+
+	show_image(source.vid);
+
+-- to show WHERE the balance will be calculated from
+	local anchorp = color_surface(8, 8, 0, 255, 0);
+	link_image(anchorp, source.vid);
+	show_image(anchorp);
+	image_inherit_order(anchorp, true);
+	order_image(anchorp, 1);
+
+	source.anchorp = anchorp;
+	source.kind = "recaudio";
+	source.data  = tag;
+	source.audio = tag.audio;
+
+	source.own   = function(self, vid) return vid == source.vid; end
+	
+--
+-- Use the tag.data storage as basis for the icon,
+-- then add the speaker- symbol to indicate that it's a connected
+-- audio source
+--
+
+-- position here represents gain and balance L/R
+	local mh = {};
+	mh.own = source.own;
+	mh.name = "audio_source";
+
+	mh.drag = function(self, vid, mx, my)
+		local props = image_surface_properties(source.vid);
+		if (props.x + mx + 64 > wnd.canvasw or
+			props.x + mx < 0) then mx = 0; end
+		if (props.y + my + 64 > wnd.canvash or
+			props.y + my < 0) then my = 0; end
+
+		move_image(source.vid, props.x + mx, props.y + my);
+		props = image_surface_properties(source.vid);
+		local opa = 0.1 + 0.9 * ((wnd.canvash - props.y) / wnd.canvash);
+		blend_image(anchorp, opa);
+
+		if (props.x < 0.5 * wnd.canvasw) then
+			move_image(source.anchorp, 0, 0);
+		else
+			move_image(source.anchorp, 64 - 8, 0);
+		end
+	end
+
+	mh.drop = function()
+		local props = image_surface_properties(source.vid);
+		if (math.abs(wnd.canvasw * 0.5 - (props.x + 32)) < wnd.canvasw * 0.1) then
+			move_image(source.vid, math.floor(wnd.canvasw * 0.5) - 32, props.y);
+			move_image(source.anchorp, 32 - 4, 0);
+		end
+	end
+
+	link_image(source.vid, wnd.canvas.vid);
+	image_inherit_order(source.vid, true);
+	order_image(source.vid, 2);
+	image_clip_on(source.vid);
+
+	source.name = "audrec_name";
+	mouse_addlistener(mh, {"drag", "drop"});
+	table.insert(wnd.handlers, mh);
+
+	table.insert(wnd.sources, source);
+end
+
 local function add_rectarget(wnd, tag)
 	local tmpw, tmph = wnd.w * 0.4, wnd.h * 0.4;
 	local source = {};
 
+	if (wnd.recording) then
+		return;
+	end
+
+	source.kind  = "rectarget";
 	source.data  = tag.source;
+	source.audio = tag.audio;
 	source.dmode = nil;
 	source.vid   = null_surface(tmpw, tmph);
 	source.own   = function(self, vid) return vid == source.vid; end
 	source.drag  = function(self, vid, dx, dy)
+		source.name  = tag.name;
 
 --
 -- Add mouse handlers for moving / scaling, which one it'll be depends
@@ -110,6 +206,12 @@ local function add_rectarget(wnd, tag)
 	end
 
 	source.drop = function(self, vid)
+		local ang = math.floor(image_surface_properties(source.vid).angle);
+		if (ang % 45 < 10) then
+			ang = ang - (ang % 45);
+		end
+		rotate_image(source.vid, ang);
+	
 		source.dmode = nil;
 		source.start = nil;
 	end
@@ -123,6 +225,7 @@ local function add_rectarget(wnd, tag)
 
 	source.name = "vidrec_source";
 	mouse_addlistener(source, {"click", "rclick", "drag", "drop", "dblclick"});
+	table.insert(wnd.handlers, source);
 	tag:drop();
 end
 
@@ -216,6 +319,78 @@ local function fpspop(icn)
 	dotbl(icn, lst, "fps", true);
 end
 
+local function audiopop(icn)
+	local wnd = icn.parent.parent;
+
+	local lbltbl = {
+		"Global Monitor",
+		"Capture Sources...",
+		"Playback Sources..."
+	};
+
+	if (wnd.global_amon) then
+		lbltbl[1] = "\\#00ff00" .. lbltbl[1] .. "\\#ffffff";
+		table.remove(lbltbl, 3);
+		table.remove(lbltbl, 2);
+	end
+
+	local trigtbl = {
+		function() 
+			wnd:drop_audio();
+			wnd.global_amon = not wnd.global_amon;
+		end,
+-- grab a list of possible audio capture sources (microphones etc.)
+-- crop the string (as they can get tediously long) 
+		function()
+			local lst = list_audio_inputs();
+			if (lst == nil or #lst == 0) then
+				return;
+			else
+				local indtbl = {};
+				for k,v in ipairs(lst) do
+					table.insert(indtbl, string.sub(v, 1, 32));
+				end
+				local vid, lines = desktoplbl(table.concat(indtbl, "\\n\\r"));
+				awbwman_popup(vid, lines, 
+					function(ind) 
+						wnd.global_amon = false;
+						wnd:add_audio(lst[ind]);
+					end, {ref = icn.vid}
+				);
+			end
+		end,
+
+-- sweep all the video sources added and add those that also has
+-- an audio source connected, this will not work for music playback
+-- windows but should work fine for the rest.
+		function()
+			local list = {};
+			local refs = {};
+			for i=1,#wnd.sources do
+				local v = wnd.sources[i];
+
+				if (v.audio ~= nil and v.kind ~= "recaudio") then
+					table.insert(refs, v);
+					table.insert(list, v.name ~= nil and 
+						string.sub(v.name, 1,32) or tostring(v.audio));
+				end
+			end
+
+			if (#list == 0) then
+				return;
+			end
+
+			local vid, lines = desktoplbl(table.concat(list, "\\n\\r"));
+			awbwman_popup(vid, lines, function(ind)
+				wnd:add_audio(refs[ind]);
+			end, {ref = icn.vid});
+		end
+	};
+	
+	local vid, lines = desktoplbl(table.concat(lbltbl, "\\n\\r"));
+	awbwman_popup(vid, lines, trigtbl, {ref = icn.vid});
+end
+
 local function destpop(icn)
 	local buttontbl = {
 		{
@@ -273,20 +448,45 @@ local function record(wnd)
 	width = width - math.fmod(width, 2);
 
 	local streamstr = "libvorbis:vcodec=libx264:container" ..
-		"=stream:acodec=libmp3lame:streamdst=" -- gsub(: to tab)
-	
-	local fmtstr = string.format("vcodec=%s:acodec=%s:vpreset=%d:" ..
-		"apreset=%d:fps=%d:container=%s%s",
-		wnd.vcodec, wnd.acodec, wnd.vquality, wnd.aquality, 
-			wnd.fps, wnd.container, wnd.nosound ~= nil and ":noaudio" or "");
+		"=stream:acodec=libmp3lame:";
 
+	local fmtstr = string.format("vcodec=%s:acodec=%s:vpreset=%d:" ..
+		"apreset=%d:fps=%d:container=%s", wnd.vcodec, wnd.acodec, 
+			wnd.vquality, wnd.aquality, wnd.fps, wnd.container);
+
+	local asources = {};
+
+	if (wnd.global_amon == false) then
+		for i=1,#wnd.sources do
+			if (wnd.sources[i].kind == "recaudio") then
+				if (wnd.sources[i].audio == nil) then
+					wnd.sources[i].audio = capture_audio(wnd.sources[i].data);		
+					print("opening capture device:", wnd.sources[i].data);
+				end
+
+-- device open may have failed
+				if (wnd.sources[i].audio ~= nil) then
+					table.insert(asources, wnd.sources[i].audio);
+				end
+			end
+		end
+		if (#asources == 0 and wnd.global_amon == false) then
+			fmtstr = fmtstr .. ":noaudio";
+			streamstr = streamstr .. ":noaudio";
+		end
+	else
+		asources = WORLDID;
+	end
+	
+--		:streamdst=" -- gsub(: to tab)
+	
 	local vidset = {};
 	local baseprop = image_surface_properties(wnd.canvas.vid);
 
--- translate each surface and add to the final recordset
--- speaker icons will be added to vidset with corresponding mixing settings
+-- translate each surface and add to the final recordset,
+-- take care of the audio mixing in the next stage
 	for i,j in ipairs(wnd.sources) do
-		if (j.icon == nil) then
+		if (j.kind ~= "recaudio") then
 			local props = image_surface_properties(j.vid);
 			table.insert(vidset, j.vid);
 			link_image(j.vid, j.vid);
@@ -296,16 +496,41 @@ local function record(wnd)
 			local rely = math.ceil(props.y / baseprop.height * height);
 			resize_image(j.vid, relw, relh);
 			move_image(j.vid, relx, rely);
-		else
--- find corresponding AID, calculate mixing properties
 		end
 	end
 
 	local dstvid = fill_surface(width, height, 0, 0, 0, width, height);
-	define_recordtarget(dstvid, wnd.destination, fmtstr, vidset, wnd.nosound ~= nil and {} or
-		WORLDID, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, tonumber(wnd.fps) > 30 and -1 or -2, 
-		function(src, status)
-		end);
+	define_recordtarget(dstvid, wnd.destination, fmtstr, vidset, asources,
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, 
+		tonumber(wnd.fps) > 30 and -1 or -2, 
+			function(src, status)
+		end
+	);
+
+-- set the channel weights based on icon positions 
+-- (if we're not capturing globally) 
+	if (type(asources) == "table") then
+		for i, v in ipairs(wnd.sources) do
+			if (v.kind == "recaudio" and v.audio ~= nil) then
+				local props  = image_surface_properties(v.vid);
+				local hw     = math.floor(props.width * 0.5);
+				local fact   = (wnd.canvash - props.y) / wnd.canvash;
+				local srcpos = (props.x + hw) / wnd.canvasw;
+
+				if (srcpos > 0.5) then
+					local rf = 1.0 - (((srcpos + hw / wnd.canvasw) - 0.5) / 0.5);
+					recordtarget_gain(dstvid, v.audio, fact * rf, fact);	
+
+				elseif (srcpos < 0.5) then
+					local rf = 1.0 - ((0.5 - (srcpos - hw / wnd.canvasw)) / 0.5);
+					recordtarget_gain(dstvid, v.audio, fact, fact * rf); 
+
+				else
+					recordtarget_gain(dstvid, v.audio, fact, fact);
+				end
+			end
+		end
+	end
 
 	show_image(dstvid);
 	wnd:set_border(2, 255, 0, 0);
@@ -329,10 +554,6 @@ function spawn_vidrec()
 		bar:destroy();
 
 		wnd.dir.r.right[1]:destroy();
---		if (wnd.selected ~= nil) then
---			image_transform_cycle(wnd.selected, 0);
---			show_image(wnd.selected);
---		end
 
 		wnd.input = nil;
 		wnd:resize(wnd.w, wnd.h);
@@ -342,6 +563,7 @@ function spawn_vidrec()
 	wnd.sources = {};
 	wnd.asources = {};
 
+	wnd.global_amon = false;
 	wnd.nosound = true;
 	wnd.name = "Video Recorder";
 	wnd.aquality = 7;
@@ -371,25 +593,43 @@ function spawn_vidrec()
 		end
 	end
 
+-- generate a decent representation icon
+	wnd.add_audio = add_asource;
+
 	wnd.update_aspect = function()
 		local aspw = getasp(wnd.aspect);
 		wnd:resize(wnd.w, wnd.h / aspw, true);
 	end
 
+	wnd.drop_audio = function()
+		for i=#wnd.sources,1,-1 do
+			if (wnd.sources[i].kind == "recaudio") then
+				delete_image(wnd.sources[i].vid);
+				table.remove(wnd.sources, i);
+			end
+		end
+	end
+
 	wnd.on_destroy = function()
-		print("save vidrec settings");
 	end
 
 	wnd.input = function(self, val)
+		if (wnd.recording == true) then
+			return;
+		end
+	
 		if (val.active and val.lutsym == "DELETE" and wnd.selected) then
-			for i=1,#wnd.sources do
-				if (wnd.sources[i] == wnd.selected) then
-					wnd.selected = nil;
+			for i=#wnd.sources,1,-1 do
+
+				if (wnd.sources[i] == wnd.selected or 
+					(wnd.sources[i].kind == "recaudio" and 
+						wnd.sources[i].data == wnd.selected)) then
 					delete_image(wnd.sources[i].vid);
 					table.remove(wnd.sources, i);
-					break;
 				end
 			end
+	
+			wnd.selected = nil;
 		end
 	end
 
@@ -424,6 +664,10 @@ function spawn_vidrec()
 	] = MESSAGE["VIDREC_FPS"];
 
 	wnd.hoverlut[
+	(bar:add_icon("asource", "l", cfg.bordericns["list"], audiopop)).vid
+	] = MESSAGE["VIDREC_ASOURCE"];
+
+	wnd.hoverlut[
 	(bar:add_icon("save", "l", cfg.bordericns["save"], destpop)).vid
 	] = MESSAGE["VIDREC_SAVE"];
 
@@ -442,14 +686,6 @@ function spawn_vidrec()
 	mouse_addlistener(bar, {"click", "hover"});
 	table.insert(wnd.handlers, bar);
 
--- add ttbar, icons for; 
--- resolution (popup, change vidres, preset values)
--- framerate
--- codec
--- vcodec
--- muxer
--- possibly name
--- start recording (purge all icons, close button stops.)
 	wnd:update_canvas(fill_surface(32, 32, 60, 60, 60) ); 
 
 	local mh = {

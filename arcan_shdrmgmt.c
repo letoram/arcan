@@ -132,16 +132,10 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 	const char* id, const char* program)
 {
 #ifdef SHADER_TRACE
-	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n", loc, typestrtbl[kind], kind, id, program);
+	arcan_warning("[shader], location(%d), kind(%s:%d), id(%s), program(%s)\n", 
+			loc, typestrtbl[kind], kind, id, program);
 #endif
 
-#ifdef _DEBUG
-	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:pre") == -1){
-		arcan_warning("setv() -> errors found when pumping context.\n");
-        abort();
-  }
-
-#endif
 /* add more as needed, just match the current shader_envts */
 	switch (kind){
 	case shdrbool:
@@ -164,20 +158,23 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 	}
 
 #ifdef _DEBUG
-    if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:post") == -1){
+	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:post") == -1){
 		int progno;
-		glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
+		static bool warned;
+	
+		if (!warned){
+			glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
 
-		printf("failed operation: store type(%i:%s) into slot(%i:%s)"
-		"	on program(%i:%s)\n", kind, typestrtbl[kind], loc, id, progno, program);
-		struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
-		printf("last active shader: (%s), locals: \n", src->label);
-		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
-			printf("\t [%i] %s : %i\n", i, symtbl[i], src->locations[i]);
-		}
+			printf("failed operation: store type(%i:%s) into slot(%i:%s)"
+			"	on program(%i:%s)\n", kind, typestrtbl[kind], loc, id, progno, program);
+			struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
+			printf("last active shader: (%s), locals: \n", src->label);
+			for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++)
+				printf("\t [%i] %s : %i\n", i, symtbl[i], src->locations[i]);
 
-      abort();
-    }
+			warned = true;
+ 	  }
+	}
 #endif
 }
 
