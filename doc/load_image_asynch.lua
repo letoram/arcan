@@ -17,16 +17,19 @@
 -- @group: image 
 -- @cfunction: arcan_lua_loadimageasynch
 -- @related: image_pushasynch load_image
-function main()
-#ifdef MAIN
-	vid = load_image_asynch("demoimg.png", function(source, tbl)
-	    if (tbl.kind == "loaded") then
+
+function loadcb_valid(source, tbl)
+	if (tbl.kind == "loaded") then
 		resize_image(source, tbl.width, tbl.height);
 		warning("image loaded\n");
-	    elseif (tbl.kind == "load_failed") then
+	elseif (tbl.kind == "load_failed") then
 		warning("couldn't load:" .. tbl.resource .. "\n");
-	end);
+	end
+end
 
+function main()
+#ifdef MAIN
+	vid = load_image_asynch("demoimg.png", loadcb_valid); 
 	show_image(vid);
 #endif
 

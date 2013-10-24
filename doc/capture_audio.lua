@@ -8,6 +8,7 @@
 -- @cfunction: arcan_lua_captureaudio
 -- @related: list_audio_inputs
 -- @flags: 
+-- 1 1: 
 function main()
 #ifdef MAIN
 	a = list_audio_inputs();

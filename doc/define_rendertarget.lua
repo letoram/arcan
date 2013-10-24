@@ -7,6 +7,7 @@
 -- @cfunction: arcan_lua_renderset
 -- @related: define_recordtarget, fill_surface
 -- @flags: 
+-- 1 0: 
 #ifdef MAIN
 -- this function creates two intermediate surfaces that applies
 -- horiz-vert separated gaussian blur along with regular texture filtering

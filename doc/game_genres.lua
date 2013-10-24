@@ -7,8 +7,9 @@
 -- @cfunction: arcan_lua_getgenres
 -- @flags: 
 -- @related: game_cmdline, list_games, list_targets, game_info, game_genres
+ 
 function main()
-#ifdef MAIN
+#define MAIN
 	local res = game_genres();
 	if (res) then
 		for k, v in ipairs(res) do

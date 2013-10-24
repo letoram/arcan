@@ -6,6 +6,8 @@
 -- @group: vidsys 
 -- @cfunction: arcan_lua_buildshader
 -- @flags: 
+-- 1 0:
+
 vshader = [[uniform mat4 modelview;
 uniform mat4 projection;
 
@@ -16,7 +18,7 @@ varying vec2 texco;
 
 void main(void)
 {
-	texco = texcoord;
+	texco = texcoord;	
 	gl_Position = (projection * modelview) * vertex;
 }]];
 

@@ -7,7 +7,7 @@
 -- @cfunction: arcan_lua_loadasample
 -- @related: play_audio
 function main()
-#ifdef MAIN
+#define MAIN
 	aid = load_asample("test.wav", 0.5);
 	play_audio(aid);
 #endif

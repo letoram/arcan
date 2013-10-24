@@ -8,8 +8,9 @@
 -- the shader state will forcibly be reset to DEFAULT.
 -- @cfunction: arcan_lua_setshader
 -- @flags: 
+-- 1 0: 
 function main()
-#ifdef MAIN
+#define MAIN
 	shid = build_shader(nil, [[
 		void main(){
 			gl_FragColor = vec4(0.5, 1.0, 0.5, 1.0);

@@ -9,7 +9,7 @@
 -- @group: image 
 -- @cfunction: arcan_lua_linkimage
 function main()
-#ifdef MAIN
+#define MAIN
 	a = fill_surface(64, 64, 255, 0, 0);
 	b = fill_surface(32, 32, 0, 255, 0);
 	link_image(b, a);

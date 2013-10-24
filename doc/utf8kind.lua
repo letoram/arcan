@@ -6,7 +6,8 @@
 -- @group: system 
 -- @cfunction: arcan_lua_utf8kind
 -- @flags: 
+-- 1 0: 
+#define MAIN
 function main()
-#ifdef MAIN
-#endif
 end
+#endif

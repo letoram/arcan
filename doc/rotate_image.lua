@@ -6,7 +6,8 @@
 -- @group: image 
 -- @cfunction: arcan_lua_rotateimage
 -- @flags: 
+-- 1 0: 
+#define MAIN
 function main()
-#ifdef MAIN
-#endif
 end
+#endif

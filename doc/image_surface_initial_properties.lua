@@ -9,7 +9,7 @@
 -- @cfunction: arcan_lua_getimageinitprop
 -- @related: image_surface_resolve_propreties, image_surface_properties
 function main()
-#ifdef MAIN
+#define MAIN
 	a = load_image("demoimg.png");
 	resize_image(a, 32, 32);
 	iprop = image_surface_initial_properties(a);
