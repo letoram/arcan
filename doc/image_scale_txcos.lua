@@ -5,7 +5,7 @@
 -- @cfunction: arcan_lua_scaletxcos
 -- @related: image_set_txcos, image_get_txcos, image_set_txcos_default
 function main()
-#define MAIN
+#ifdef MAIN
 	a = load_image("test_pattern.png");
 	switch_default_texmode(TEX_REPEAT, TEX_REPEAT, a);
 	show_image(a);

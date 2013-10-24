@@ -12,15 +12,14 @@
 -- @group: audio 
 -- @cfunction: arcan_lua_gain
 -- @flags: 
--- 1 1: 
 function main()
 	local asrc = load_asample("sample.wav");
 
-#define MAIN
+#ifdef MAIN
 	audio_gain(asrc, 0.0, 100);
 #endif
 
-#ifdef ERROR1	
+#ifdef ERROR1
 	audio_gain(asrc, -1.0, -1);
 #endif
 

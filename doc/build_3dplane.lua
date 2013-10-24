@@ -8,4 +8,7 @@
 -- @group: 3d 
 -- @cfunction: arcan_lua_buildplane
 -- @flags: 
--- 0 0: 
+function main()
+#ifdef MAIN
+#endif
+end

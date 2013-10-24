@@ -1,13 +1,6 @@
 -- set_led_rgb
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Set the specific R,G,B values for an individual LED on a specific controller. 
+-- @inargs: controlid, ledid, r, g, b
 -- @group: iodev 
 -- @cfunction: arcan_lua_led_rgb
--- @flags: 
--- 1 0: 
-#define MAIN
-function main()
-end
-#endif
+-- @note: incomplete

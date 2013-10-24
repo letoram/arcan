@@ -1,13 +1,13 @@
 -- stepframe_target
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Request that the target process generate a new video frame.  
+-- @inargs: targetid, n_frames
+-- @longdescr: Some targets either require, or can be set to require,
+-- a frame-clock that hints when a new video-frame should be emitted.
+-- One such example is the networking frameserver that does not regenerate
+-- or redraw the traffic graphs unless explicitly instructed to do so.
+-- Other frameservers, e.g. decode, operate continuously and have its
+-- output throttled through other means.
+-- @note: *n_frames* argument of 0 is currently a no-op, this semantic
+-- may be subject to change.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetstepframe
--- @flags: 
--- 1 0: 
-#define MAIN
-function main()
-end
-#endif

@@ -1,13 +1,25 @@
 -- read_rawresource
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Read a line from the globally shared raw resource handle. 
+-- @outargs: line
+-- @note: Each "line" is constrained to a maximum of 256 characters.
+-- @note: Leading and trailing whitespace is removed.
 -- @group: resource 
 -- @cfunction: arcan_lua_readrawresource
--- @flags: 
--- 1 0: 
-#define MAIN
+-- @related: open_rawresource, write_rawresource, close_rawresource
 function main()
-end
+#ifdef MAIN
+	zap_resource("test.txt");
+	open_rawresource("test.txt");
+	write_rawresource("linea");
+	close_rawresource();
+
+	open_rawresource("test.txt");
+	local line = read_rawresource();
+	close_rawresource();
+	if (line == "linea") then
+		warning("resource test OK");
+	else
+		warning("resource test failed");
+	end
 #endif
+end

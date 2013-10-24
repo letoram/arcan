@@ -6,9 +6,8 @@
 -- @group: system 
 -- @cfunction: arcan_lua_decodemod
 -- @flags: 
--- 1 0: 
 function main()
-#define MAIN
+#ifdef MAIN
 	print( decode_modifiers( 0xffffff ) );
 #endif
 end

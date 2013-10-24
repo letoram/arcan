@@ -1,13 +1,13 @@
 -- resume_movie
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Resume playback of a previously paused decode frameserver. 
+-- @inargs: movievid 
+-- @longdescr: There are two principal pause/resume mechanisms that
+-- overlap slightly. resume_movie guarantee that the audio/video playback
+-- sampling will be paused in the main engine. This implies that queued
+-- buffers (decode- sessions can maintain a preset number of cached audio/video
+-- frames) will be kept intact. The related resume_target sends a request 
+-- to the target frameserver or hijack sessions and blocks the process to
+-- whatever extent is possible.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_resumemovie
--- @flags: 
--- 1 0: 
-#define MAIN
-function main()
-end
-#endif
+-- @related: resume_target

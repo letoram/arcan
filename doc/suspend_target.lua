@@ -1,13 +1,11 @@
 -- suspend_target
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Request that the target suspend execution, awaiting a resume or terminate call.
+-- @inargs: targetvid 
+-- @longdescr: There are two principal pause/resume mechanisms that overlap slightly.
+-- the _movie class that guarantee that the audio/video playback sampling will be paused
+-- in the main engine. The other is suspend/resume target that queues an event in the
+-- process associated with targetvid that assumes the target will suspend, but it is 
+-- not strictly enforced.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetsuspend
--- @flags: 
--- 1 0: 
-#define MAIN
-function main()
-end
-#endif
+-- @related: resume_target

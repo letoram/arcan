@@ -1,13 +1,19 @@
 -- resize_image
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Change object dimensions based on absolute pixel values. 
+-- @inargs: vobj, new_w, new_h, *time* 
+-- @longdescr: This transformation, internally remapped to the
+-- scale_image call but with scale values based on the initial dimensions
+-- of the object, sets a new desired output dimension.
+-- @note: the end dimensions can still be manipulated through the 
+-- vertex shader stage, but such changes do not affect other engine 
+-- features (like picking and other forms of collision detection).
 -- @group: image 
 -- @cfunction: arcan_lua_scaleimage2
--- @flags: 
--- 1 0: 
-#define MAIN
+-- @related: scale_image
 function main()
-end
+#ifdef MAIN
+	a = fill_surface(64, 64, 0, 255, 0);
+	resize_image(a, 128, 128, 100);
+	show_image(a);
 #endif
+end

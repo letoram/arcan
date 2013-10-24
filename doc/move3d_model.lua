@@ -8,7 +8,7 @@
 -- @cfunction: arcan_lua_movemodel
 -- @related: move3d_model, rotate3d_model, scale3d_model  
 function main()
-#define MAIN
+#ifdef MAIN
 	a = fill_surface(64, 64, 255, 0, 0);
 	move3d_model(a, 100, 100, -5, 100);
 	show_image(a);

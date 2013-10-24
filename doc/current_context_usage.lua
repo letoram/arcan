@@ -7,7 +7,7 @@
 -- @cfunction: arcan_lua_contextusage
 -- @flags: 
 function main()
-#define MAIN
+#ifdef MAIN
 	a = fill_surface(32, 32, 0, 0, 0);
 	print(current_context_usage());
 	b = fill_surface(32, 32, 0, 0, 0);

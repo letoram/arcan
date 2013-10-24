@@ -1,0 +1,24 @@
+[ Planned API changes ]
+ a. let 3d plane etc. be attachable as a mesh or collidable to model
+    for cheap debug-geometry etc.
+
+ b. play_audio should have the side effect of flushing the buffers 
+    to a frameserver
+
+ c. random_surface need some love; specifying other kinds of lower 
+    frequency noise e.g. perlin would be good
+
+ d. poor error handling in rendertarget attach
+ 
+ e. reset image transform should return the number of ticks left in chain
+
+ f. instant_image_transform should really be able to create a new vid instead,
+    and store existing objects
+
+ g. MRT for WORLDID rendertarget/recordtarget incomplete
+
+ h. snapkey in snapshot function does not prevent escaping atm.
+
+ i. snapshot should have the option to allow local or shared
+
+ j. snapshot should have the option to hint delta or complete
