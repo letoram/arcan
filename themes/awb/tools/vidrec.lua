@@ -103,6 +103,40 @@ local function add_asource(wnd, tag)
 	table.insert(wnd.sources, source);
 end
 
+local function advsettings(icn)
+	local pwnd = icn.parent.parent;
+	local settbl = {
+	{
+		name = "aptsofs",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, pwnd, "aptsofs", nil, nil, 0, 100, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, pwnd, "aptsofs", nil, nil, 0, 100, -1);
+		end,
+		cols = {"APTS Ofset", tostring(pwnd.aptsofs)}
+	},
+	{
+		name = "vptsofs",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, pwnd, "vptsofs", nil, nil, 0, 100, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, pwnd, "vptsofs", nil, nil, 0, 100, -1);		
+		end,
+		cols = {"VPTS Ofset", tostring(pwnd.vptsofs)}
+	}
+	};
+
+	local newwnd = awbwman_listwnd(
+		menulbl("Advanced..."), deffont_sz, linespace, {0.7, 0.3}, 
+		settbl, desktoplbl, {double_single = true});
+
+	if (newwnd ~= nil) then
+		pwnd:add_cascade(newwnd);
+	end
+end
+
 local function add_rectarget(wnd, tag)
 	local tmpw, tmph = wnd.w * 0.4, wnd.h * 0.4;
 	local source = {};
@@ -144,17 +178,22 @@ local function add_rectarget(wnd, tag)
 			end
 		elseif (source.dmode == "move") then
 			if (awbwman_cfg().meta.shift) then
-				source.start.angle = source.start.angle + dx;
-				rotate_image(source.vid, source.start.angle);
+				source.start.opacity = source.start.opacity + dx * 0.01;
+				blend_image(source.vid, source.start.opacity);
 			else
 				source.start.x = source.start.x + dx;
 				source.start.y = source.start.y + dy;
 				move_image(source.vid, source.start.x, source.start.y);
 			end
 		elseif (source.dmode == "scale") then
-			source.start.width  = source.start.width  + dx;
-			source.start.height = source.start.height + dy;
-			resize_image(source.vid, source.start.width, source.start.height);
+			if (awbwman_cfg().meta.shift) then
+				source.start.angle = source.start.angle + dx;
+				rotate_image(source.vid, source.start.angle);
+			else
+				source.start.width  = source.start.width  + dx;
+				source.start.height = source.start.height + dy;
+				resize_image(source.vid, source.start.width, source.start.height);
+			end
 		end
 	end
 
@@ -230,17 +269,23 @@ local function add_rectarget(wnd, tag)
 end
 
 local function dotbl(icn, tbl, dstkey, convert, hook)
+	local wnd = icn.parent.parent;
+
+	local list = {};
+
 	for i=1,#tbl do
-		if (tbl[i] == tostring(icn.parent.parent[dstkey])) then
-			tbl[i] = [[\#00ff00 ]] .. tbl[i] .. [[\#ffffff ]];
+		if (tbl[i] == tostring(wnd[dstkey])) then
+			list[i] = [[\#00ff00 ]] .. tbl[i] .. [[\#ffffff ]];
+		else
+			list[i] = tbl[i];
 		end
 	end
 
-	local str = table.concat(tbl, [[\n\r]]);
+	local str = table.concat(list, [[\n\r]]);
 	local vid, lines = desktoplbl(str);
 
 	awbwman_popup(vid, lines, function(ind)
-		icn.parent.parent[dstkey] = convert and tonumber(tbl[ind]) or tbl[ind];
+		wnd[dstkey] = (convert == true) and tonumber(tbl[ind]) or tbl[ind];
 		if (hook) then
 			hook(icn.parent.parent);
 		end
@@ -392,11 +437,12 @@ local function audiopop(icn)
 end
 
 local function destpop(icn)
+	local wnd = icn.parent.parent;
 	local buttontbl = {
 		{
 		caption = desktoplbl("OK"), 
 		trigger = function(own)
-			icn.parent.parent:set_destination(own.inputfield.msg);
+			wnd:set_destination(own.inputfield.msg);
 		end
 		}, 
 		{
@@ -407,8 +453,22 @@ local function destpop(icn)
 
 	local lst = {
 		"Specify...",
-		"Stream..."
 	};
+
+	if (resource("stream.key")) then
+		table.insert(lst, "Stream (stream.key)");
+	else
+		local msg = desktoplbl(MESSAGE["VIDREC_NOKEY"]);
+		local props = image_surface_properties(msg);
+		show_image(msg);
+		link_image(msg, wnd.canvas.vid);
+		image_inherit_order(msg, true);
+		order_image(msg, 5);
+		expire_image(msg, 100);
+		blend_image(msg, 1.0, 90);
+		blend_image(msg, 0.0, 10);
+		move_image(msg, 0, wnd.canvash - props.height);
+	end
 
 	local funtbl = {
 		function() 
@@ -416,7 +476,15 @@ local function destpop(icn)
 			buttontbl, { input = { w = 100, h = 20, limit = 32,
 			accept = 1, cancel = 2} }, false);
 		end,
+
 		function()
+			if (open_rawresource("stream.key")) then
+				local line = read_rawresource();
+				if (line ~= nil and string.len(line) > 0) then
+					wnd:set_destination(line, true);
+				end
+			close_rawresource();
+			end
 		end
 	};
 
@@ -447,12 +515,18 @@ local function record(wnd)
 	local width  = height * aspf;
 	width = width - math.fmod(width, 2);
 
-	local streamstr = "libvorbis:vcodec=libx264:container" ..
-		"=stream:acodec=libmp3lame:";
-
-	local fmtstr = string.format("vcodec=%s:acodec=%s:vpreset=%d:" ..
-		"apreset=%d:fps=%d:container=%s", wnd.vcodec, wnd.acodec, 
-			wnd.vquality, wnd.aquality, wnd.fps, wnd.container);
+	local fmtstr = "";
+	if (wnd.streaming) then
+		fmtstr = string.format("libvorbis:vcodec=libx264:container" ..
+		"=stream:acodec=libmp3lame:vpreset=%d:apreset=%d:vptsofs=%d:" ..
+		"aptsofs=%d:streamdst=%s", wnd.vquality, wnd.aquality, 
+		wnd.vptsofs, wnd.aptsofs, string.gsub(wnd.destination, ":", "\t"));
+	else
+		fmtstr = string.format("vcodec=%s:acodec=%s:vpreset=%d:" ..
+		"apreset=%d:fps=%d:container=%s:vptsofs=%d:aptsofs=%d", wnd.vcodec, 
+			wnd.acodec, wnd.vquality, wnd.aquality, wnd.fps, wnd.container, 
+			wnd.vptsofs, wnd.aptsofs);
+	end
 
 	local asources = {};
 
@@ -461,7 +535,6 @@ local function record(wnd)
 			if (wnd.sources[i].kind == "recaudio") then
 				if (wnd.sources[i].audio == nil) then
 					wnd.sources[i].audio = capture_audio(wnd.sources[i].data);		
-					print("opening capture device:", wnd.sources[i].data);
 				end
 
 -- device open may have failed
@@ -472,13 +545,10 @@ local function record(wnd)
 		end
 		if (#asources == 0 and wnd.global_amon == false) then
 			fmtstr = fmtstr .. ":noaudio";
-			streamstr = streamstr .. ":noaudio";
 		end
 	else
 		asources = WORLDID;
 	end
-	
---		:streamdst=" -- gsub(: to tab)
 	
 	local vidset = {};
 	local baseprop = image_surface_properties(wnd.canvas.vid);
@@ -563,6 +633,7 @@ function spawn_vidrec()
 	wnd.sources = {};
 	wnd.asources = {};
 
+	wnd.helpmsg = MESSAGE["HELP_VIDREC"];
 	wnd.global_amon = false;
 	wnd.nosound = true;
 	wnd.name = "Video Recorder";
@@ -574,6 +645,8 @@ function spawn_vidrec()
 	wnd.vcodec = "MP3";
 	wnd.acodec = "H264";
 	wnd.fps = 30;
+	wnd.aptsofs = 1;
+	wnd.vptsofs = 12;
 
 	wnd.set_destination = function(wnd, name, stream)
 		if (name == nil or string.len(name) == 0) then
@@ -666,6 +739,10 @@ function spawn_vidrec()
 	wnd.hoverlut[
 	(bar:add_icon("asource", "l", cfg.bordericns["list"], audiopop)).vid
 	] = MESSAGE["VIDREC_ASOURCE"];
+
+	wnd.hoverlut[
+	(bar:add_icon("settings", "l", cfg.bordericns["settings"], advsettings)).vid
+	] = MESSAGE["VIDREC_ADVANCED"];
 
 	wnd.hoverlut[
 	(bar:add_icon("save", "l", cfg.bordericns["save"], destpop)).vid

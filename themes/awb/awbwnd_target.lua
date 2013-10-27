@@ -96,6 +96,16 @@ function awbtarget_settingswin(tgtwin)
 			tgtwin:set_frameskip();
 		end,
 		cols = {"Frame Prealign", tostring(tgtwin.framealign)},
+		},
+		{
+		name = "mouse_accel",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouse_accel", nil, nil, 0.1, 4.0, 0.1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouse_accel", nil, nil, 0.1, 4.0, -0.1);
+		end,
+		cols = {"Mouse Accel.", tostring(tgtwin.mouse_accel)}
 		}
 	};
 
@@ -373,6 +383,9 @@ local function awbtarget_dropstateopts(pwin)
 
 end
 
+--
+-- Could really use some refactoring into something slightly more sensible
+--
 local function factrest(wnd, str)
 -- split and index on group
 -- lineattr : skipping / mediavol
@@ -431,6 +444,41 @@ local function factrest(wnd, str)
 					wnd:set_frameskip();
 				end
 
+			elseif (opts[1] == "mouse_remap") then
+				for i=2,#opts do
+					local arg = string.split(opts[i], ":");
+					for ind, argv in ipairs(arg) do
+						local argg = string.split(argv, "=");
+						local opc, oper;
+						if (argg ~= nil and #argg > 1) then
+							opc = argg[1];
+							oper = argg[2];
+						else
+							opc = arg;
+						end
+
+						if (opc == "x_player") then
+							wnd.mouse_x[1] = tonumber(oper);
+						elseif (opc == "x_axis") then
+							wnd.mouse_x[2] = tonumber(oper);
+						elseif (opc == "y_player") then
+							wnd.mouse_y[1] = tonumber(oper);
+						elseif (opc == "y_axis") then
+							wnd.mouse_y[2] = tonumber(oper);
+						elseif (opc == "lmb_player") then
+							wnd.mouse_l[1] = tonumber(oper);
+						elseif (opc == "lmb_button") then
+							wnd.mouse_l[2] = tonumber(oper);
+						elseif (opc == "rmb_player") then
+							wnd.mouse_r[1] = tonumber(oper);
+						elseif (opc == "rmb_button") then
+							wnd.mouse_r[2] = tonumber(oper);
+						elseif (opc == "accelf") then
+							wnd.mouse_accel = tonumber_rdx(oper);
+						end
+					end
+				end
+	
 			elseif (opts[1] == "inputcfg") then
 				if (resource("keyconfig/" .. opts[2])) then
 					wnd.inp_cfg = inputed_getcfg(opts[2]); 
@@ -518,14 +566,16 @@ local function gen_factorystr(wnd)
 	end
 
 	if (wnd.ntsc_state == true) then
-		line = string.format("ntscattr:ntsc_hue=%f:" ..
-		"ntsc_saturation=%f:ntsc_contrast=%f:" ..
-		"ntsc_brightness=%f:ntsc_gamma=%f:ntsc_sharpness=%f:" ..
-		"ntsc_resolution=%f:ntsc_artifacts=%f:" ..
-		"ntsc_bleed=%f:ntsc_fringing=%f", 
-		wnd.ntsc_hue, wnd.ntsc_saturation, wnd.ntsc_contrast, wnd.ntsc_brightness,
-		wnd.ntsc_gamma, wnd.ntsc_sharpness,	wnd.ntsc_resolution, 
-		wnd.ntsc_artifacts,wnd.ntsc_bleed,wnd.ntsc_fringing);
+		line = string.format("ntscattr:ntsc_hue=%s:" ..
+		"ntsc_saturation=%s:ntsc_contrast=%s:" ..
+		"ntsc_brightness=%s:ntsc_gamma=%s:ntsc_sharpness=%s:" ..
+		"ntsc_resolution=%s:ntsc_artifacts=%s:" ..
+		"ntsc_bleed=%s:ntsc_fringing=%s", 
+		tostring_rdx(wnd.ntsc_hue), tostring_rdx(wnd.ntsc_saturation),
+		tostring_rdx(wnd.ntsc_contrast), tostring_rdx(wnd.ntsc_brightness),
+		tostring_rdx(wnd.ntsc_gamma), tostring_rdx(wnd.ntsc_sharpness),
+		tostring_rdx(wnd.ntsc_resolution), tostring_rdx(wnd.ntsc_artifacts),
+		tostring_rdx(wnd.ntsc_bleed), tostring_rdx(wnd.ntsc_fringing));
 		line = string.gsub(line, ',', '.');
 		table.insert(lines, line);
 	end
@@ -544,6 +594,13 @@ local function gen_factorystr(wnd)
 	if (wnd.filters.effectctx and wnd.filters.effectctx.factorystr) then
 		table.insert(lines, wnd.filters.effectctx:factorystr());
 	end
+
+	table.insert(lines, string.format("mouse_remap:x_player=%d:x_axis=%d" ..
+	":y_player=%d:y_axis=%d:lmb_player=%d:lmb_button=%d:rmb_player=%d:" ..
+	"rmb_button=%d:accelf=%s",
+		wnd.mouse_x[1], wnd.mouse_x[2], wnd.mouse_y[1], wnd.mouse_y[2],
+		wnd.mouse_l[1], wnd.mouse_l[2], wnd.mouse_r[1], wnd.mouse_r[2],
+		tostring_rdx(wnd.mouse_accel)));
 
 	return table.concat(lines, "\n");
 end
@@ -580,6 +637,7 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.mediavol = 1.0;
 	pwin.filters = {};
 	pwin.hoverlut = {};
+	pwin.helpmsg = MESSAGE["HELP_TARGET"];
 
 -- options part of the "factory string" (along with filter)
 	pwin.graphdbg   = false;
@@ -589,6 +647,13 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.jitterstep = 0; -- just for debugging
 	pwin.jitterxfer = 0; -- just for debugging
 	pwin.ntsc_state = false;
+
+	pwin.mouse_accel = 1.0;
+	pwin.mouse_x = {1, 1};
+	pwin.mouse_y = {1, 2};
+	pwin.mouse_l = {1, 1};
+	pwin.mouse_r = {1, 2};
+
 	pwin.ntsc_hue        = 0.0;
 	pwin.ntsc_saturation = 0.0;
 	pwin.ntsc_contrast   = 0.0;
@@ -742,7 +807,27 @@ function awbwnd_target(pwin, caps, factstr)
 		function(self) inputlay_sel(self, pwin); end)).vid
 	] = MESSAGE["HOVER_INPUTCFG"];
 
+-- Forced remapping of mouse in / out 
 	pwin.minput = function(self, iotbl)
+		if (iotbl.kind == "digital") then
+			if (iotbl.subid == 0) then
+				iotbl.label = string.format("PLAYER%d_BUTTON%d", 
+				pwin.mouse_l[1], pwin.mouse_r[2]);
+			else
+				iotbl.label = string.format("PLAYER%d_BUTTON%d", 
+					pwin.mouse_r[1], pwin.mouse_r[2]);
+			end
+		else
+			local tbl = iotbl.subid == 0 and pwin.mouse_x or pwin.mouse_y;
+			iotbl.label = string.format("PLAYER%d_AXIS%d", tbl[1], tbl[2]); 
+				
+-- scale both absolute and relative (if provided)
+			iotbl.samples[1] = iotbl.samples[1] * pwin.mouse_accel;
+			if (iotbl.samples[2]) then
+				iotbl.samples[2] = iotbl.samples[2] * pwin.mouse_accel;
+			end
+		end
+	
 		target_input(pwin.controlid, iotbl);
 	end
 
@@ -761,10 +846,6 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 	end
 
--- add_icon filter
--- add_icon fast-forward
--- add_icon save(slot)
-
 	local callback = function(source, status)
 		if (pwin.alive == false) then
 			return;
@@ -773,9 +854,20 @@ function awbwnd_target(pwin, caps, factstr)
 		if (status.kind == "frameserver_terminated") then
 			pwin:update_canvas( color_surface(1, 1, 0, 0, 0) );
 
+		elseif (status.kind == "message") then
+--			print("show message:", status.message);
+
+		elseif (status.kind == "ident") then
+--			print("ident", status.message);
+
+		elseif (status.kind == "resource_status") then
+--			print("resstat", status.message);
+
 		elseif (status.kind == "loading") then
 			print("show loading info..");
 
+		elseif (status.kind == "frame") then
+-- do nothing
 		elseif (status.kind == "resized") then
 			pwin.mirrored = status.mirrored;
 	
@@ -799,7 +891,7 @@ function awbwnd_target(pwin, caps, factstr)
 				pwin.state_size = status.state_size;
 			end
 		else
---			print(status.kind);
+			print(status.kind);
 		end
 	end
 

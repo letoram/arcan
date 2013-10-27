@@ -649,7 +649,7 @@ local function awnd_setup(pwin, bar)
 			pwin.playlist_ofs = pwin.playlist_ofs > #pwin.playlist and 1 or
 				pwin.playlist_ofs;
 
-			if (pwin.playlistwnd) then
+			if (pwin.playlistwnd and pwin.playlistwnd.update_cursor) then
 				pwin.playlistwnd:update_cursor();
 			end
 
@@ -885,9 +885,11 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 					update_streamstats(pwin, status);
 				end
 			end
+			pwin.helpmsg = MESSAGE["HELP_VMEDIA"];
 		else
 -- music-player specific setup
 			awnd_setup(pwin);
+			pwin.helpmsg = MESSAGE["HELP_AMEDIA"];
 		end
 	elseif (kind == "capture") then
 		add_vmedia_top(pwin, active, inactive);
@@ -929,6 +931,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 		pwin.amb_r = 0.3;
 		pwin.amb_g = 0.3;
 		pwin.amb_b = 0.3;
+		pwin.helpmsg = MESSAGE["HELP_3DMEDIA"];
 
 		local mh = {
 			name = "3dwindow_canvas",

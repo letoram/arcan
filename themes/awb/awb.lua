@@ -359,23 +359,60 @@ function gamelist_media(tbl)
 end
 
 function show_help()
+	local wnd = awbwman_gethelper();
+	local focusmsg = MESSAGE["HELP_GLOBAL"];
+	local focus = awbwman_cfg().focus;
+
+	if (focus ~= nil and type(focus.helpmsg) == "string" and
+		string.len(focus.helpmsg) > 0) then
+		focusmsg = focus.helpmsg;
+	end
+
+	if (wnd ~= nil) then
+		wnd:focus();
+		wnd:helpmsg(focusmsg);
+		return;
+	end
+
 	local wnd = awbwman_spawn(menulbl("Help"), {noresize = true});
 	if (wnd == nil) then
 		return;
 	end
 
-	helpimg = desktoplbl(MESSAGE["HELPER_MSG"]);
-	link_image(helpimg, wnd.canvas.vid);
-	show_image(helpimg);
-	image_clip_on(helpimg, CLIP_SHALLOW);
-	image_mask_set(helpimg, MASK_UNPICKABLE);
-	image_inherit_order(helpimg, true);
-	order_image(helpimg, 1);
-	local props =	image_surface_properties(helpimg);
-	move_image(helpimg, 10, 10);
-	wnd:resize(props.width + 20, props.height + 20, true, true);
+	awbwman_sethelper( wnd );
+
+	wnd.helpmsg = function(self, msg)
+		if (wnd.lasthelp) then
+			delete_image(wnd.lasthelp);
+		end
+
+		local helpimg = desktoplbl(msg);
+		link_image(helpimg, wnd.canvas.vid);
+		show_image(helpimg);
+		image_clip_on(helpimg, CLIP_SHALLOW);
+		image_mask_set(helpimg, MASK_UNPICKABLE);
+		image_inherit_order(helpimg, true);
+		order_image(helpimg, 1);
+		local props =	image_surface_properties(helpimg);
+		move_image(helpimg, 10, 10);
+		wnd:resize(props.width + 20, props.height + 20, true, true);
+	
+		wnd.lasthelp = helpimg;
+	end
+
+	wnd:helpmsg(focusmsg);
+
+	local mh = {
+		own = function(self, vid) return vid == wnd.canvas.vid; end,
+		click = function() wnd:focus(); end
+	};
+
+	mouse_addlistener(mh, {"click"});
+	table.insert(wnd.handlers, mh);
+
 	wnd.on_destroy = function() 
 		store_key("help_shown", "yes");
+		awbwman_sethelper ( nil );
 	end
 end
 

@@ -299,7 +299,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 	
 		if (srcw == tgt->desc.width && srch == tgt->desc.height){
 			rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 
-				4, width, height, 4);
+				GL_PIXEL_BPP, width, height, GL_PIXEL_BPP);
 
 			if (shmpage->aready) {
 				sem_wait(&tgt->lock_audb);
@@ -407,7 +407,7 @@ static void feed_amixer(arcan_frameserver* dst, arcan_aobj_id srcid,
 	size_t minv = INT_MAX;
 	
 /* 1. Convert to float and buffer. Find the lowest common number of samples
- * buffered. Truncate if needed. */
+ * buffered. Truncate if needed. Assume source feeds L/R */
 	for (int i = 0; i < dst->amixer.n_aids; i++){
 		struct frameserver_audsrc* cur = dst->amixer.inaud + i;
 	
@@ -639,7 +639,10 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 			src->audioclock += src->bpms * (double)buffers;
 
 			const float audioframe_prethresh = 40.0f;
-			if (dc < audioframe_prethresh){
+
+/* seems to work better with just have the soundcard buffer and play whatever,
+ * should experiment more or make this feature programmable */
+			if (1 || dc < audioframe_prethresh){
 				sem_wait(&src->lock_audb);
 				arcan_audio_buffer(aobj, buffer, ccell->buf, 
 					buffers, src->desc.channels, src->desc.samplerate, tag);
@@ -688,10 +691,14 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
         return;
     }
 
+/* only allow the two categories below, and only let the 
+ * internal event queue be filled to half in order to not 
+ * have a crazy frameserver starve the main process */
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 		EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
 
-/* may happen multiple- times */
+/* may happen multiple- times, reasonably costly, might
+ * want rate-limit this */
 	if ( shmpage->resized ){
 		arcan_errc rv;
 		char labelbuf[32];
@@ -717,13 +724,16 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_event_clearmask(arcan_event_defaultctx());
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
-/* for PBO transfers, new buffers etc. need to be prepared */
+/* for PBO transfers, new buffers etc. need to be prepared
+ * that match the new internal resolution */
 		glBindTexture(GL_TEXTURE_2D, 
 			arcan_video_getobject(src->vid)->vstore->vinf.text.glid);
 
 		if (src->desc.pbo_transfer)
 			glDeleteBuffers(2, src->desc.upload_pbo);
 
+/* PBO support has on some buggy drivers been dynamically failing,
+ * this was a safety fallback for that kind of behavior */
 		src->desc.pbo_transfer = src->use_pbo;
 
 		if (src->use_pbo){
@@ -1006,15 +1016,16 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		}
 	}
 /* hijack works as a 'process parasite' inside the rendering pipeline of 
- * other projects, similar otherwise to libretro except it only deals 
- * with videoframes (currently) */
+ * other projects, either through a generic fallback library or for
+ * specialized "per- target" (in order to minimize size and handle 32/64
+ * switching parent-vs-child relations */
 	else{
 		ctx->kind = ARCAN_HIJACKLIB;
 		ctx->autoplay = true;
 		ctx->nopts = true;
 
-/* although audio playback is still done through the process parasite,
- * it can duplicate the audio for monitoring purposes */
+/* although audio playback tend to be kept in the child process, the
+ * sampledata may still be needed for recording/monitoring */ 
 		ctx->sz_audb  = 1024 * 64;
 		ctx->ofs_audb = 0;
 		ctx->audb     = malloc( ctx->sz_audb );
@@ -1026,15 +1037,20 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	ctx->child_alive = true;
 	ctx->desc        = vinfo;
 
-/* these are just placeholders, the real ones will be set in tick_control */
+/* these are just placeholders to be able to return a real vid without
+ * stalling waiting for the other process to finish, so the first event
+ * tend to be a resize- */ 
 	ctx->desc.width  = 32;
 	ctx->desc.height = 32;
-	ctx->desc.bpp    = 4;
+	ctx->desc.bpp    = GL_PIXEL_BPP;
 
 /* two separate queues for passing events back and forth between main program
  * and frameserver, set the buffer pointers to the relevant offsets in 
- * backend_shmpage, and semaphores from the sem_open calls */
-	frameserver_shmpage_setevqs( ctx->shm.ptr, ctx->esync, 
+ * backend_shmpage, and semaphores from the sem_open calls -- plan is 
+ * to switch this behavior on some platforms to instead use sockets to 
+ * improve I/O multiplexing (network- frameservers) or at least have futex
+ * triggers on Linux */
+	frameserver_shmpage_setevqs(ctx->shm.ptr, ctx->esync, 
 		&(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.external.killswitch = ctx;
 	ctx->outqueue.synch.external.killswitch = ctx;
