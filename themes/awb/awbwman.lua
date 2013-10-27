@@ -98,14 +98,13 @@ function awbwman_meta(lbl, active)
 	if (lbl ~= nil) then
 		if (lbl == "alt") then
 			awb_cfg.meta.alt = active;
-			if (active == false) then
-				awbwman_tablist_toggle(false);
-			end
-
 		elseif (lbl ~= "shift") then
 			return "";
 		else
 			awb_cfg.meta.shift = active;
+			if (active == false) then
+				awbwman_tablist_toggle(false);
+			end
 		end
 	end
 
