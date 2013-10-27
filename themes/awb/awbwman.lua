@@ -159,6 +159,7 @@ local function awbwman_focus(wnd, nodrop)
 	awb_cfg.focus = wnd;
 	local tbl = table.remove(awb_wtable, awbwman_findind(wnd));
 	table.insert(awb_wtable, tbl);
+
 	awbwman_updateorder();
 end
 
@@ -176,6 +177,7 @@ function awbwman_fullscreen(wnd)
 		blend_image(v.anchor, 0.0, awb_cfg.animspeed);
 	end
 
+	awb_cfg.mouse_focus = wnd;
 	awb_cfg.fullscreen = {};
 
 	local cprops = {
@@ -278,6 +280,7 @@ local function awbwman_close(wcont, nodest)
 
 	if (awb_cfg.focus == wcont) then
 		awb_cfg.focus = nil;
+
 		if (awb_cfg.focus_locked) then
 			awbwman_shadow_nonfocus();
 		end
@@ -303,6 +306,13 @@ local function lineobj(src, x1, y1, x2, y2)
 	resize_image(src, len, 2);
 
 	show_image(src);
+
+-- quickfix to bug in origo_offset with -1 > n < 1 degrees
+	local deg = math.deg( math.atan2(dy, dx) );
+	if ( deg > -1.0 and deg < 1.0) then
+		deg = deg < 0.0 and -1.0 or 1.0;
+	end
+
 	rotate_image(src, math.deg( math.atan2(dy, dx) ) );
 	move_image(src, x1 + (dx * 0.5), y1 + (dy * 0.5)); 
 	image_origo_offset(src, -1 * (0.5 * len), -0.5);
@@ -320,7 +330,7 @@ local function awbwnd_fling(wnd, fx, fy, bar)
 	local dx = wnd.x + fx * 8;
 	local dy = wnd.y + fy * 8;
 	dx = dx >= 0 and dx or 0;
-	dy = dy >= 0 and dy or 0;
+	dy = dy >= awb_cfg.topbar_sz and dy or awb_cfg.topbar_sz;
 	dx = (dx + wnd.w > VRESW) and (VRESW - wnd.w) or dx;
 	dy = (dy + wnd.h > VRESH) and (VRESH - wnd.h) or dy;
 
@@ -875,18 +885,28 @@ function awbwman_rootwnd()
 	tbar.rzfun = awbbaricn_rectresize;
 	local cap = awb_cfg.mnurndfun("AWB ");
 	local awblist = {
+		"Reset Background",
 		"Help...",
 		"Quit"
 	};
+
+	local ftbl = {
+		function() 
+			local r = awb_col.bgcolor.r;
+			local g = awb_col.bgcolor.g;
+			local b = awb_col.bgcolor.b;
+			local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
+			wcont:update_canvas(canvas);
+		end,
+		function()
+			show_help(); 
+		end,
+		shutdown
+	};
+
 	local icn = tbar:add_icon("cap", "l", cap, function(self) 
 		local vid, list = awb_cfg.defrndfun(table.concat(awblist, [[\n\r]]));
-		awbwman_popup(vid, list, function(ind)
-			if (ind == 1) then
-				show_help();
-			else
-				shutdown();
-			end
-		end, {ref = self.vid} )
+		awbwman_popup(vid, list, ftbl ,{ref = self.vid} )
 	end);
 	delete_image(cap);
 
@@ -1985,14 +2005,14 @@ function awbwman_ainput(iotbl)
 end
 
 function awbwman_input(iotbl, keysym)
-	if (keysym == "ALTTAB" and awb_cfg.modal == nil) then
+	if (keysym == "SHIFTTAB" and awb_cfg.modal == nil) then
 		if (iotbl.active) then
 			awbwman_tablist_toggle(true);
 		end
 		return;
 	end
 
-	if (keysym == "ALTF4") then
+	if (keysym == "SHIFTF4") then
 		if (awb_cfg.focus and 
 			awb_cfg.modal ~= true and iotbl.active) then
 			awb_cfg.focus:destroy();
@@ -2088,6 +2108,14 @@ function awbwman_shutdown()
 	shutdown();
 end
 
+function awbwman_gethelper(wnd)
+	return awb_cfg.helper;
+end
+
+function awbwman_sethelper(wnd)
+	awb_cfg.helper = wnd;
+end
+
 --
 -- Load / Store default settings for window behavior etc.
 --
@@ -2095,6 +2123,8 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.meta       = {};
 	awb_cfg.bordericns = {};
 	awb_cfg.rooticns   = {};
+	awb_cfg.helper     = nil;
+
 	awb_cfg.defrndfun  = defrndr;
 	awb_cfg.mnurndfun  = mnurndr;
 
@@ -2123,6 +2153,11 @@ function awbwman_init(defrndr, mnurndr)
 
 	awb_col = system_load("scripts/colourtable.lua")();
 	
+-- just somewhere for global notification messages to attach
+	awb_cfg.notifyanchor = null_surface(1,1);
+	show_image(awb_cfg.notifyanchor);
+
+
 	local load_image = load_image_asynch;
 	awb_cfg.col = awb_col;
 	awb_cfg.activeres   = load_image("awbicons/border.png");

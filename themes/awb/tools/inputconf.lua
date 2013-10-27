@@ -580,6 +580,7 @@ function awb_inputed()
 	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
 		deffont_sz, linespace, {1.0}, list, desktoplbl);
 	wnd.name = "Input Editor";
+	wnd.helpmsg = MESSAGE["HELP_INPUT"];
 end
 
 function inputed_configlist()

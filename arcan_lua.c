@@ -4639,7 +4639,16 @@ int arcan_lua_utf8kind(lua_State* ctx)
 int arcan_lua_inputfilteranalog(lua_State* ctx)
 {
 	int joyid = luaL_checknumber(ctx, 1);
-/* mode, deadzone, lowth, upth, kernel_sz */
+	int axisid = luaL_checknumber(ctx, 2);
+	int deadzone = luaL_checknumber(ctx, 3);
+	int lb = luaL_checknumber(ctx, 4);
+	int ub = luaL_checknumber(ctx, 5);
+	int buffer_sz = luaL_checknumber(ctx, 4);
+	int mode = luaL_checknumber(ctx, 5);
+
+	arcan_event_analogfilter(joyid, axisid, 
+		lb, ub, deadzone, buffer_sz, mode);	
+
 	return 0;
 }
 
@@ -4653,11 +4662,61 @@ int arcan_lua_inputanalogzonemap(lua_State* ctx)
 
 int arcan_lua_inputanalogquery(lua_State* ctx)
 {
-/* FIXME:
- * sweep all joys (0..n which is fail) and sweep all axis,
- * expose as one big 'ol table 
- */
-	return 0;
+	int devid = 0, resind = 1;
+
+	lua_newtable(ctx);
+	int top = lua_gettop(ctx);
+	arcan_errc errc = ARCAN_OK;
+
+	while (errc != ARCAN_ERRC_NO_SUCH_OBJECT){
+		int axid = 0;
+		
+		while (true){
+			int lbound, ubound, dz, ksz;
+			enum ARCAN_ANALOGFILTER_KIND mode;
+
+			errc = arcan_event_analogstate(devid, axid, 
+				&lbound, &ubound, &dz, &ksz, &mode);
+
+			if (errc != ARCAN_OK)
+				break;
+
+			lua_pushnumber(ctx, resind++); 
+			lua_newtable(ctx);
+			int ttop = lua_gettop(ctx);
+
+			tblnum(ctx, "devid", devid, ttop);
+			tblnum(ctx, "subid", axid, ttop);
+			tblnum(ctx, "upper_bound", ubound, ttop);
+			tblnum(ctx, "lower_bound", lbound, ttop);
+			tblnum(ctx, "deadzone", dz, ttop);
+			tblnum(ctx, "kernel_size", ksz, ttop);
+
+			switch (mode){
+			case ARCAN_ANALOGFILTER_NONE:
+				tblstr(ctx, "mode", "none", ttop);
+			break;
+
+			case ARCAN_ANALOGFILTER_PASS:
+				tblstr(ctx, "mode", "pass", ttop);
+			break;
+
+			case ARCAN_ANALOGFILTER_AVG:
+				tblstr(ctx, "mode", "average", ttop);
+			break;
+
+			case ARCAN_ANALOGFILTER_ALAST:
+				tblstr(ctx, "mode", "keep_latest", ttop);
+			break;
+			}
+
+			lua_rawset(ctx, ttop);
+			axid++;
+		}
+
+	}
+
+	return 1;
 }
 
 int arcan_lua_inputanalogtoggle(lua_State* ctx)

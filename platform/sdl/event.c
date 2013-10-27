@@ -171,7 +171,7 @@ static void set_analogstate(struct axis_opts* dst,
 	dst->kernel_ofs = 0;
 }	
 
-bool arcan_event_analogstate(int devid, int axisid,
+arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
 {
@@ -192,17 +192,17 @@ bool arcan_event_analogstate(int devid, int axisid,
 			*mode        = iodev.my.mode;
 		}
 		else
-			return false;
+			return ARCAN_ERRC_BAD_RESOURCE;
 
 		return true;
 	}
 
 	devid -= ARCAN_JOYIDBASE;
 	if (devid < 0 || devid >= iodev.n_joy)
-		return false;
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (axisid >= iodev.joys[devid].axis)
-		return false;
+		return ARCAN_ERRC_BAD_RESOURCE;
 
 	struct axis_opts* daxis = &iodev.joys[devid].adata[axisid];
 	*mode = daxis->mode;
@@ -211,7 +211,7 @@ bool arcan_event_analogstate(int devid, int axisid,
 	*deadzone = daxis->deadzone;
 	*kernel_size = daxis->kernel_sz;
 
-	return true;
+	return ARCAN_OK;
 }
 
 void arcan_event_analogall(bool enable, bool mouse)
