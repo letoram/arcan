@@ -239,7 +239,8 @@ function awbwman_dropfullscreen(wnd)
 		
 	delete_image(awb_cfg.fullscreen.vid);
 
-	awb_cfg.focus_locked = nil;
+	awb_cfg.mouse_focus = nil;
+	awb_cfg.focus_locked = false;
 	awb_cfg.fullscreen = nil;
 end
 
