@@ -208,7 +208,6 @@ static void arcan_simulator(struct frameserver_shmcont* shm){
 static char* launch_debugparent()
 {
 	int shmfd = -1;
-	struct frameserver_shmcont cont;
 
 /* prealloc shmpage */
 	char* key = arcan_findshmkey(&shmfd, true);

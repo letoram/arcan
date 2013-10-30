@@ -4648,7 +4648,7 @@ int arcan_lua_inputanalogzonemap(lua_State* ctx)
 
 int arcan_lua_inputanalogquery(lua_State* ctx)
 {
-	int devid = 0, resind = 1;
+	int devid = ARCAN_JOYIDBASE, resind = 1;
 
 	lua_newtable(ctx);
 	arcan_errc errc = ARCAN_OK;
@@ -4666,7 +4666,8 @@ int arcan_lua_inputanalogquery(lua_State* ctx)
 			if (errc != ARCAN_OK)
 				break;
 
-			lua_pushnumber(ctx, resind++); 
+			int rawtop = lua_gettop(ctx);
+			lua_pushnumber(ctx, resind++);
 			lua_newtable(ctx);
 			int ttop = lua_gettop(ctx);
 
@@ -4695,10 +4696,11 @@ int arcan_lua_inputanalogquery(lua_State* ctx)
 			break;
 			}
 
-			lua_rawset(ctx, ttop);
+			lua_rawset(ctx, rawtop);
 			axid++;
 		}
 
+		devid++;
 	}
 
 	return 1;
