@@ -312,7 +312,6 @@ float arcan_event_process(arcan_evctx* ctx, unsigned* dtick)
 	unsigned nticks = delta / ARCAN_TIMER_TICK;
 	float fragment = ((float)(delta % ARCAN_TIMER_TICK) + 0.0001) /
 		(float) ARCAN_TIMER_TICK;
-	int rv = 0;
 
 	if (nticks){
 		arcan_event newevent = {.category = EVENT_TIMER, 
@@ -348,7 +347,7 @@ void arcan_bench_register_tick(unsigned nticks)
 
 		if (lasttick > 0 && ftime > lasttick){
 			unsigned delta = ftime - lasttick;
-			benchdata.ticktime[benchdata.tickofs] = delta;
+			benchdata.ticktime[(unsigned)benchdata.tickofs] = delta;
 			benchdata.tickofs = (benchdata.tickofs + 1) % 
 				(sizeof(benchdata.ticktime) / sizeof(benchdata.ticktime[0]));
 		}
@@ -359,7 +358,7 @@ void arcan_bench_register_tick(unsigned nticks)
 
 void arcan_bench_register_cost(unsigned cost)
 {
-	benchdata.framecost[benchdata.costofs] = cost;
+	benchdata.framecost[(unsigned)benchdata.costofs] = cost;
 	if (benchdata.bench_enabled == false)
 		return;
 
@@ -377,7 +376,7 @@ void arcan_bench_register_frame()
 	long long int ftime = arcan_timemillis();
 	if (lastframe > 0 && ftime > lastframe){
 		unsigned delta = ftime - lastframe;
-		benchdata.frametime[benchdata.frameofs] = delta;
+		benchdata.frametime[(unsigned)benchdata.frameofs] = delta;
 		benchdata.framecount++;
 		benchdata.frameofs = (benchdata.frameofs + 1) % 
 			(sizeof(benchdata.frametime) / sizeof(benchdata.frametime[0]));

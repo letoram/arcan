@@ -512,7 +512,6 @@ enum aobj_kind arcan_audio_kind(arcan_aobj_id id)
 arcan_errc arcan_audio_suspend()
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
-	ALCcontext* ctx = current_acontext->context;
 
 	arcan_aobj* current = current_acontext->first;
 
@@ -530,7 +529,6 @@ arcan_errc arcan_audio_suspend()
 arcan_errc arcan_audio_resume()
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
-	ALCcontext* ctx = current_acontext->context;
 	arcan_aobj* current = current_acontext->first;
 
 	while (current) {
@@ -627,10 +625,8 @@ arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 		}
 		else{
 			struct arcan_achain** dptr = &dobj->transform;
-			float sgain = dobj->gain;
 	
 			while(*dptr){
-				sgain = (*dptr)->d_gain;
 				dptr = &(*dptr)->next;
 			}
 			
@@ -673,7 +669,6 @@ arcan_errc arcan_audio_queuebufslot(arcan_aobj_id aid, unsigned int abufslot,
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_aobj* aobj = arcan_audio_getobj(aid);
-	static FILE* fout = NULL;
 
 	if (aobj && abufslot < aobj->n_streambuf && aobj->streambufmask[abufslot]){
 	

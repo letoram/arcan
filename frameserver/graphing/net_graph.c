@@ -118,15 +118,6 @@ struct graph_context {
 	enum graphing_mode mode;
 };
 
-static inline uint32_t px_blend(const uint32_t p1, 
-	const uint32_t p2, float fact)
-{
-	uint32_t rv;
-/* shift out individual components, res = (p1.n * 1.0 - fact) + 
- * (p2.n * fact), pack and return */
-	return rv;
-}
-
 void blend_hline(struct graph_context* ctx, int x, int y, 
 	int width, uint32_t col, float fact)
 {
@@ -236,7 +227,7 @@ void draw_text(struct graph_context* ctx, const char* msg,
 			for (int row = 0; row < pxfont_height; row++)
 				for (int col = 0; col < pxfont_width; col++)
 /* no AA, no blending, no filtering */
-					if (PXFONT[*msg][row] & 1 << col)
+					if (PXFONT[(unsigned char) *msg][row] & 1 << col)
 						ctx->vidp[ctx->width * (row + y) + col + x] = txcol;
 
 			x += pxfont_width;
@@ -253,15 +244,15 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 	draw_vline(ctx, x, y, h, ctx->colors.border);
 	draw_hline(ctx, x, y, w, ctx->colors.border);
 
-	int step_sz = (src->maxv - src->minv) / y;
+/*	int step_sz = (src->maxv - src->minv) / y; */
 	int i = src->buf_back;
 /* we use the bucket midpoint as 0 for y axis, it should be <= minv */
 
 	switch (src->mode){
 		case PLOT_XY_POINT:
 			while (i != src->buf_front){
-				int xv, yv;
-				uint32_t col;
+				int xv = 0, yv = 0;
+				uint32_t col = 0;
 				draw_square(ctx, xv, yv, 4, col);
 				i = (i + 1) % src->ringbuf_sz;
 			}
@@ -313,7 +304,7 @@ static bool graph_refresh_client(struct graph_context* ctx)
 	if (ctx->mode == GRAPH_MANUAL)
 		return false;
 
-	long long int ts = arcan_timemillis();
+/*	long long int ts = arcan_timemillis(); */
 	int bucketh = (ctx->height - 10) / 3;
 
 /* two buckets, one (height / 3) for discovery 

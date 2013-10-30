@@ -61,7 +61,7 @@
 #include "arcan_frameserver_net.h"
 #endif
 
-FILE* logdev = NULL;
+FILE* logdev;
 int sockin_fd = -1;
 
 /* 
@@ -248,12 +248,14 @@ int frameserver_readhandle(arcan_event* inev)
 /* some would call this black magic. They'd be right. */
 	if (sockin_fd != -1){
 		char empty;
-		
+	
+#pragma GCC diagnostic ignored "-Wpedantic"	
 		struct cmsgbuf {
 			struct cmsghdr hdr;
 			int fd[1];
 		} msgbuf;
-		
+#pragma GCC diagnostic warning "-Wpedantic"
+
 		struct iovec nothing_ptr = {
 			.iov_base = &empty,
 			.iov_len = 1
@@ -299,8 +301,6 @@ void* frameserver_requirefun(const char* const sym)
 	return dlsym(lastlib, sym);
 }
 
-/* by default, we only do this for libretro where it might help
- * with external troubleshooting */
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");

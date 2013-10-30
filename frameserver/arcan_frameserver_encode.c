@@ -194,8 +194,7 @@ static bool encode_audio(bool flush)
 	AVCodecContext* ctx = recctx.acontext;
 	AVFrame* frame;
 	bool forcetog = false;
-	int numf, got_packet = false;
-	off_t base = 0;
+	int got_packet = false;
 
 /* NOTE: for real sample-rate conversion, this test would need to 
  * reflect the state of the resampler internal buffers */
@@ -311,7 +310,7 @@ int encode_video(bool flush)
 	frametime -= next_frame;
 	int fc = frametime > 0 ? floor(frametime / mspf) : 0;
 
-	int rv = sws_scale(recctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0,
+	sws_scale(recctx.ccontext, (const uint8_t* const*) srcpl, srcstr, 0,
 		recctx.vcontext->height, recctx.pframe->data, recctx.pframe->linesize);
 
 	AVCodecContext* ctx = recctx.vcontext;
@@ -615,18 +614,12 @@ static bool setup_ffmpeg_encode(const char* resource)
 #include <io.h>
 #endif
 
-static inline int ms_to_samples(int inv)
-{
-	return ( (double)SHMPAGE_SAMPLERATE / 1000.0) * inv;
-}
-
 void arcan_frameserver_ffmpeg_encode(const char* resource,
 	const char* keyfile)
 {
 /* setup shmpage etc. resolution etc. is already in 
  * place thanks to the parent */
 	recctx.shmcont = frameserver_getshm(keyfile, true);
-	struct frameserver_shmpage* shared = recctx.shmcont.addr;
 	frameserver_shmpage_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
 	recctx.lastfd = BADFD;

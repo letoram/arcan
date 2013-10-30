@@ -177,10 +177,6 @@ void arcan_warning(const char* msg, ...)
 }
 
 #include <time.h>
-static inline bool parent_alive()
-{
-	return getppid() != 1;
-}
 
 int arcan_sem_post(sem_handle sem)
 {
@@ -484,7 +480,6 @@ static inline void push_ioevent_x11(arcan_ioevent event)
 
 static inline void push_ioevent_sdl(arcan_ioevent event){
 	SDL_Event newev = {0};
-	bool active;
 	
 	switch (event.datatype){
 		case EVENT_IDATATYPE_TOUCH: break;
@@ -876,13 +871,13 @@ void ARCAN_SDL_GL_SwapBuffers()
 void ARCAN_glFinish()
 {
 	trace("glFinish()\n");
-	return forwardtbl.glFinish();
+	forwardtbl.glFinish();
 }
 
 void ARCAN_glFlush()
 {
 	trace("glFlush()\n");
-	return forwardtbl.glFlush();
+	forwardtbl.glFlush();
 }
 
 #ifdef ENABLE_X11_HIJACK

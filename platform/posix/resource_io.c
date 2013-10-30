@@ -37,21 +37,7 @@
 #include "../../arcan_math.h"
 #include "../../arcan_general.h"
 
-/* malloc() wrapper for now, entry point here
- * to easier switch to pooled storage */
 static char* tag_resleak = "resource_leak";
-static data_source* alloc_datasource()
-{
-	data_source* res = malloc(sizeof(data_source));
-	res->fd     =  BADFD;
-	res->start  =  0;
-	res->len    =  0;
-
-/* trace for this value to track down leaks */
-	res->source = tag_resleak; 
-	
-	return res;	
-}
 
 void arcan_release_resource(data_source* sptr)
 {

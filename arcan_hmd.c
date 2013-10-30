@@ -15,17 +15,18 @@ static const int RIFT_VID = 0x2833;
 static const int RIFT_PID = 0x0001;
 
 static hid_device* hmd_handle;
+
+/* 
 static arcan_vobj_id hmd_dvobj = ARCAN_EID;
 
 static uint8_t keepalive[5] = {
-	8, 0, 0, /* interval lower */ 0, /* interval upper */ 0
+	8, 0, 0, interval lower 0, interval upper 
 };
 
-/*
+
  * (u,s)int16 ( [1] << 8 | 0)
  * -> uint32, recast as float
  *  -> uint32 (0 | [1] << 8, [2] << 16 | [3] << 24
- */
 
 static bool scale_range(uint8_t accel_scale, 
 	uint16_t gyro_scale, uint16_t mag_scale)
@@ -39,7 +40,7 @@ static bool scale_range(uint8_t accel_scale,
 
 	return hid_send_feature_report(hmd_handle, cmd, 8) == 8;
 }
-
+*/
 /* config; 7 len (2, 0, 0, flags, interval, keepalive_lower, keeplaive_upper) */
 
 bool arcan_hmd_open()
@@ -77,7 +78,7 @@ void arcan_hmd_update()
 	if (!hmd_handle)
 		return;
 	
-	char hmdbuf[64];  
+	unsigned char hmdbuf[64];  
 	hid_read(hmd_handle, hmdbuf, 64); 
 
 /*
@@ -86,9 +87,8 @@ void arcan_hmd_update()
  * 3. Set the orientation quaternion for the targetobj
  *    (typically a camtagged obj.)
  * 4. Send keepalive if it's "time", just use global clock
- */
 
-	hid_send_feature_report(hmd_handle, keepalive, 5);
+	hid_send_feature_report(hmd_handle, keepalive, 5); */
 }
 
 void arcan_hmd_close()

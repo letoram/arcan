@@ -46,6 +46,17 @@ keyconfig = keyconf_create();
 			end
 		end
 	end
+
+-- enumerate the list of found devices
+	restbl = inputanalog_query();
+	print(#restbl, "entries found");
+
+	for k, v in ipairs(restbl) do
+	
+	end
+
+-- enable analog events
+	inputanalog_toggle(1);
 end
 
 function round(inn, dec)

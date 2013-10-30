@@ -24,7 +24,7 @@
 
 struct arcan_event;
 
-#define LOG(...) ( (logdev ? (fprintf(logdev, __VA_ARGS__) && fflush(logdev)) : 0) )
+#define LOG(...) (fprintf(logdev, __VA_ARGS__))
 extern const int audio_samplerate;
 extern const int audio_channels;
 extern const int video_channels;

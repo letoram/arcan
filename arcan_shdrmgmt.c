@@ -56,16 +56,6 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrint /* timestamp */
 };
 
-static char* typestrtbl[7] = {
-	"shdrbool",
-	"shdrint",
-	"shdrfloat",
-	"shdrvec2",
-	"shdrvec3",
-	"shdrvec4",
-	"shdrmat4x4"
-};
-
 static char* symtbl[TBLSIZE] = {
 	"modelview",
 	"projection",

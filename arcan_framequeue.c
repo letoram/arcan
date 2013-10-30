@@ -38,8 +38,6 @@
 /* Slide the destination buffer target */
 void arcan_framequeue_step(frame_queue* src)
 {
-	frame_cell* current = &src->da_cells[ src->ni ];
-
 	int val;
 	sem_getvalue(&src->framecount, &val);
 
@@ -163,7 +161,7 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 
 /* map continuous linear region and partition with respect
  * to the cells */
-	char* mbuf = (char*) malloc(cell_size * queue->c_cells);
+	unsigned char* mbuf = malloc(cell_size * queue->c_cells);
 
 	for (int i = 0; i < queue->c_cells; i++) {
 		queue->da_cells[i].buf = mbuf + (i * cell_size);

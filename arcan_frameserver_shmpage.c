@@ -49,9 +49,8 @@ static void spawn_guardthread(struct guard_struct gs)
 	pthread_attr_t pthattr;
 	pthread_attr_init(&pthattr);
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
-//	pthread_attr_setstacksize(&pthattr, PTHREAD_STACK_MIN);
 
-	pthread_create(&pth, &pthattr, (void*) guard_thread, (void*) hgs);
+	pthread_create(&pth, &pthattr, guard_thread, hgs);
 	pthread_setname_np(pth, "frameserver_shmpage_guard");
 }
 

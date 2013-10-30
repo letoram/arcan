@@ -911,7 +911,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
 	retroctx.converter    = (pixconv_fun) libretro_rgb1555_rgba;
 	const char* libname   = resource;
-	uint32_t framecounter = 0;
 	int errc;
 	LOG("mode_libretro (%s)\n", resource);
 
@@ -929,6 +928,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		LOG("(libretro) -- couldn't open library (%s), giving up.\n", libname);
 		exit(1);
 	}
+
+#pragma GCC diagnostic ignored "-Wpedantic"
 
 	void (*initf)() = libretro_requirefun("retro_init");
 	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
@@ -998,13 +999,13 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		size_t msgsz = sizeof(outev.data.external.message) / 
 			sizeof(outev.data.external.message[0]);
-		snprintf(outev.data.external.message, msgsz, "%s %s", 
+		snprintf((char*)outev.data.external.message, msgsz, "%s %s", 
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 
 /* load the rom, either by letting the emulator acts as loader, or by 
  * mmaping and handing that segment over */
-		ssize_t bufsize;
+		ssize_t bufsize = 0;
 
 		if (retroctx.sysinfo.need_fullpath){
 			LOG("libretro(%s), core requires fullpath, resolved to (%s).\n", 
@@ -1024,20 +1025,22 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		
 /* load the game, and if that fails, give up */
 		outev.kind = EVENT_EXTERNAL_NOTICE_RESOURCE;
-		snprintf(outev.data.external.message, msgsz, "loading");
+		snprintf((char*)outev.data.external.message, msgsz, "loading");
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 		
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
-			snprintf(outev.data.external.message, msgsz, "failed");
+			snprintf((char*)outev.data.external.message, msgsz, "failed");
 			arcan_event_enqueue(&retroctx.outevq, &outev);
 			return;
 		}
 
-		snprintf(outev.data.external.message, msgsz, "loaded");
+		snprintf((char*)outev.data.external.message, msgsz, "loaded");
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 
 		( (void(*)(struct retro_system_av_info*)) 
 			libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
+	
+#pragma GCC diagnostic warning "-Wpedantic"
 
 /* setup frameserver, synchronization etc. */
 		assert(retroctx.avinfo.timing.fps > 1);
@@ -1269,8 +1272,6 @@ static void push_stats()
  * with the next intended frame, horizontal resolution is 2 px / ms */
 
 	int dw = retroctx.shmcont.addr->storage.w;
-	float hscale = 2.0;
-	long long int next = floor( (double)retroctx.vframecount * retroctx.mspf );
 	draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
 	draw_hline(retroctx.graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
 
