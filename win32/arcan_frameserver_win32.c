@@ -33,7 +33,7 @@ const int audio_samplerate = DST_SAMPLERATE;
 const int audio_channels   = DST_AUDIOCHAN;
 const int video_channels   = DST_VIDEOCHAN; /* RGBA */
 
-FILE* logdev = NULL;
+FILE* logdev;
 HWND parent = 0;
 sem_handle async, vsync, esync;
 
@@ -163,7 +163,7 @@ void* frameserver_requirefun(const char* const name)
 static void toggle_logdev(const char* prefix)
 {
 	const char* logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
-/* win32 .. :'( */
+	
 	if (!logdir)
 		logdir = "./resources/logs";
 
@@ -179,12 +179,13 @@ static void toggle_logdev(const char* prefix)
 		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
 		logdev = freopen(logbuf, "a", stderr);
 	}
+	else
+		logdev = fopen("NUL", "a");
 }
 
 int main(int argc, char* argv[])
 {
-	logdev = NULL;
-    toggle_logdev("main");
+	toggle_logdev("main");
 
 #ifndef _DEBUG
 /*	_set_invalid_parameter_handler(inval_param_handler) */

@@ -134,6 +134,9 @@ function gridledetail_stopinternal()
 	show_image(detailview.model.vid);
 	detailview.model:display_broken();
 
+	if (valid_vid(internal_vid)) then
+		delete_image(internal_vid);
+	end
 	internal_vid = BADID;
 
 -- reset model to start position

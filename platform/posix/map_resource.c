@@ -42,22 +42,6 @@
 #define MAX_RESMAP_SIZE (1024 * 1024 * 10)
 #endif
 
-/* malloc() wrapper for now, entry point here
- * to easier switch to pooled storage */
-static char* tag_resleak = "resource_leak";
-static data_source* alloc_datasource()
-{
-	data_source* res = malloc(sizeof(data_source));
-	res->fd     = -1;
-	res->start  =  0;
-	res->len    =  0;
-
-/* trace for this value to track down leaks */
-	res->source = tag_resleak;
-	
-	return res;
-}
-
 static inline bool read_safe(int fd, size_t ntr, int bs, char* dofs)
 {
 	char* dbuf = dofs;

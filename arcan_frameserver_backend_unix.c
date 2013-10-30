@@ -201,11 +201,13 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 
 	if (fsrv && fd > 0){
 		char empty = '!';
-		
+
+#pragma GCC diagnostic ignored "-Wpedantic"
 		struct cmsgbuf {
 			struct cmsghdr hdr;
 			int fd[1];
 		} msgbuf;
+#pragma GCC diagnostic warning "-Wpedantic"
 		
 		struct iovec nothing_ptr = {
 			.iov_base = &empty,
@@ -295,7 +297,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 	pid_t child = fork();
 	if (child) {
-		arcan_errc err;
 		close(sockp[1]);
 
 /* 
@@ -358,7 +359,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 			snprintf( vla, sizeof(vla), "%s", setup.args.builtin.mode );
 			argv[0] = vla;
 
-			int rv = execv(arcan_binpath, argv);
+			execv(arcan_binpath, argv);
 			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
 				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", 
 				arcan_binpath, setup.args.builtin.mode, 
@@ -382,7 +383,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				envv += 2;
 			}
 
-			int rv = execv(setup.args.external.fname, setup.args.external.argv);
+			execv(setup.args.external.fname, setup.args.external.argv);
 			exit(1);
 		}
 	}

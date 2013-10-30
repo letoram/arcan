@@ -739,7 +739,7 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
 /* empty key terminates transaction status */
 	if (!key && dbh->intrans){
 		char* err = NULL;
-		int rc = sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, &err);
+		sqlite3_exec(dbh->dbh, "COMMIT;", NULL, NULL, &err);
 		if (err){
 			arcan_warning("arcan_db_kv() -- couldn't "
 				"finalize transaction (%s).\n", err);
@@ -774,7 +774,7 @@ bool arcan_db_kv(arcan_dbh* dbh, const char* key, const char* value)
  */
 	if (!dbh->intrans){
 		char* err = NULL;
-		int rc = sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, &err);
+		sqlite3_exec(dbh->dbh, "BEGIN;", NULL, NULL, &err);
 		if (err){
 			arcan_warning("arcan_db_kv() -- couldn't begin transaction (%s).\n", err);
 		}

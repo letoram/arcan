@@ -1252,7 +1252,13 @@ function build_whitegrid()
 				local gridbg = BADID;
 	
 				if (gametbl and gametbl.system and settings.tilebg == "Sysicons") then
-					local syslbl = sysicon_remap[ gametbl.system ] and sysicon_remap[ gametbl.system ] or string.lower(gametbl.system);
+					local syslbl = sysicon_remap[ gametbl.system ] 
+						and sysicon_remap[ gametbl.system ] or string.lower(gametbl.system);
+					
+					if (imagery.sysicons[ syslbl ] == nil) then
+						syslbl = string.lower(gametbl.target);
+					end
+
 					local icon = imagery.sysicons[ syslbl ];
 					if (icon and valid_vid(icon)) then 
 						gridbg = instance_image(icon); 

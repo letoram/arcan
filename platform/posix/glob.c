@@ -36,7 +36,6 @@ unsigned arcan_glob(char* basename, int searchmask,
 	void (*cb)(char*, void*), void* tag)
 {
 	unsigned count = 0;
-	char* basepath;
 
 	if (!basename || strip_traverse(basename) == NULL)
 		return 0;

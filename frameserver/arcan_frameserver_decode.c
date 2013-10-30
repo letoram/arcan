@@ -67,9 +67,6 @@ struct {
 
 } decctx = {0};
 
-static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
-	uint16_t width, uint16_t height, enum PixelFormat pfmt);
-
 /* 
  * Audio visualization,
  * just HANN -> FFT -> dB scale -> pack in 8-bit
@@ -97,7 +94,7 @@ static void generate_frame()
 	static int smplc;
 	static double vptsc = 0;
 
-	int16_t* basep = (uint16_t*) decctx.audp;
+	int16_t* basep = (int16_t*) decctx.audp;
 	int counter = decctx.shmcont.addr->abufused;
 
 	while (counter){
@@ -178,8 +175,6 @@ static inline void synch_audio()
  * when it's full OR we switch to video frames, synch the audio */
 static bool decode_aframe()
 {
-	static char* afr_sconv = NULL;
-	static size_t afr_sconv_sz = 0;
 	static AVFrame* aframe;
 
 	if (!aframe)
@@ -187,7 +182,6 @@ static bool decode_aframe()
 	
 	int got_frame = 1;
 
-	uint32_t ofs = 0;
 	int nts = avcodec_decode_audio4(decctx.acontext, aframe, 
 		&got_frame, &decctx.packet);
 
@@ -330,7 +324,7 @@ void push_streamstatus()
 	int dm = (dura % 3600) / 60;
 	int ds = (dura % 60);
 
-	snprintf(status.data.external.streamstat.timelim, 14,
+	snprintf((char*)status.data.external.streamstat.timelim, 14,
 		"%d:%02d:%02d", dh, dm, ds);
 
 /* use last pts to indicate current position, base is in milliseconds */
@@ -342,7 +336,7 @@ void push_streamstatus()
 	status.data.external.streamstat.completion = 
 		( (float) duras / (float) dura ); 
 
-	snprintf(status.data.external.streamstat.timestr, 14,
+	snprintf((char*)status.data.external.streamstat.timestr, 14,
 		"%d:%02d:%02d", dh, dm, ds);
 
 	arcan_event_enqueue(&decctx.outevq, &status);
@@ -521,30 +515,6 @@ static bool ffmpeg_vidcap(unsigned ind, int desw, int desh, float fps)
 	return ffmpeg_preload(fname, format, &opts, false, false);
 }
 
-static void interleave_pict(uint8_t* buf, uint32_t size, AVFrame* frame, 
-	uint16_t width, uint16_t height, enum PixelFormat pfmt)
-{
-	bool planar = (pfmt == PIX_FMT_YUV420P || pfmt == PIX_FMT_YUV422P || 
-		pfmt == PIX_FMT_YUV444P || pfmt == PIX_FMT_YUV411P);
-
-	if (planar) { /* need to expand into an interleaved format */
-		/* av_malloc (buf) guarantees alignment */
-		uint32_t* dst = (uint32_t*) buf;
-
-/* atm. just assuming plane1 = Y, plane2 = U, plane 3 = V and that correct 
- * linewidth / height is present */
-		for (int row = 0; row < height; row++)
-			for (int col = 0; col < width; col++) {
-				uint8_t y = frame->data[0][row * frame->linesize[0] + col];
-				uint8_t u = frame->data[1][(row/2) * frame->linesize[1] + (col / 2)];
-				uint8_t v = frame->data[2][(row/2) * frame->linesize[2] + (col / 2)];
-
-				*dst = 0xff | y << 24 | u << 16 | v << 8;
-				dst++;
-			}
-	}
-}
-
 static inline void targetev(arcan_event* ev)
 {
 	arcan_tgtevent* tgt = &ev->data.target;
@@ -574,7 +544,6 @@ static inline void targetev(arcan_event* ev)
 				}
 			}
 			else if (tgt->ioevs[1].iv != 0){
-				int64_t duras = decctx.last_dts / 1000.0;
 				avformat_seek_file(decctx.fcontext, -1, INT64_MIN,
 					(decctx.last_dts / 1000.0 + tgt->ioevs[1].iv)*AV_TIME_BASE,
 				 	INT64_MAX, 0);	

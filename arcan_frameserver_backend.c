@@ -109,7 +109,6 @@ void arcan_frameserver_dropsemaphores_keyed(char* key)
 
 void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
 	if (src && src->shm.key && src->shm.ptr){
-		struct frameserver_shmpage* shmpage = src->shm.ptr;
 		arcan_frameserver_dropsemaphores_keyed(src->shm.key);
 	}
 }
@@ -274,9 +273,8 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 		return rv;
 
 	arcan_frameserver* tgt = state.ptr;
-	arcan_vobject* vobj = arcan_video_getobject(tgt->vid);
 	struct frameserver_shmpage* shmpage = tgt->shm.ptr;
-	unsigned srcw, srch, srcbpp;
+	unsigned srcw, srch;
 
 	switch (cmd){
 	case ffunc_rendertarget_readback: break;
@@ -631,8 +629,6 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 		frame_cell* ccell;
 	
 		while ( (ccell = arcan_framequeue_front(&src->afq)) != NULL){
-			int64_t now = arcan_frametime() - src->starttime;
-			int64_t toshow = ccell->tag; 
 
 			size_t buffers = src->afq.cell_size; 
 			double dc = (double)src->lastpts - src->audioclock;
@@ -663,24 +659,6 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 	return rv;
 }
 
-static arcan_errc again_feed(float gain, void* tag)
-{
-	arcan_frameserver* target = tag;
-
-	if (target){
-		arcan_event ev = {
-			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_ATTENUATE,
-			.data.target.ioevs[0].fv = gain
-		};
-		arcan_frameserver_pushevent( target, &ev );
-
-		return ARCAN_OK;
-	}
-	else
-		return ARCAN_ERRC_NO_SUCH_OBJECT;
-}
-
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	struct frameserver_shmpage* shmpage = src->shm.ptr;
@@ -700,7 +678,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* may happen multiple- times, reasonably costly, might
  * want rate-limit this */
 	if ( shmpage->resized ){
-		arcan_errc rv;
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
 		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, 
@@ -867,10 +844,13 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 	
 	if (fsrv->afq.alive){
 		arcan_framequeue_flush(&fsrv->afq);
+
 /* FIXME: have arcan_audio drop all queued output buffers as well,
  * otherwise we can get drift with multiple consequtive flushes */
 		fsrv->reclock = true;
 	}
+
+	return ARCAN_OK;
 }
 
 /* video- frames will always yield a ntr here that

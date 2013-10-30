@@ -112,7 +112,6 @@ struct rcell {
 static TTF_Font* grab_font(const char* fname, uint8_t size)
 {
 	int leasti = 0, i, leastv = -1;
-	const int nchannels_rgba = 4;
 
 	if (!fname) 
 		return NULL;
@@ -626,11 +625,9 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 		return tab_spacing ? 
 			round_mult(offset, tab_spacing) + ((tabc - 1) * tab_spacing) : offset;
 
-	unsigned int lastofs = offset;
-
 /* find last matching tab pos first */
 	while (*tabs && *tabs < offset)
-		lastofs = *tabs++;
+		tabs++;
 
 /* matching tab found */
 	if (*tabs) {
@@ -650,22 +647,6 @@ static unsigned int get_tabofs(int offset, int tabc, int8_t tab_spacing,
 	return offset;
 }
 
-static void dumptchain(struct rcell* node)
-{
-	int count = 0;
-
-	while (node) {
-		if (node->surface) {
-			printf("[%i] image surface\n", count++);
-		}
-		else {
-			printf("[%i] format (%i lines, %i tabs, %i cr)\n", count++, 
-				node->data.format.newline, node->data.format.tab, node->data.format.cr);
-		}
-		node = node->next;
-	}
-}
-
 void arcan_video_stringdimensions(const char* message, int8_t line_spacing, 
 	int8_t tab_spacing, unsigned* tabs, unsigned* maxw, unsigned* maxh)
 {
@@ -682,14 +663,11 @@ void arcan_video_stringdimensions(const char* message, int8_t line_spacing,
 	
 	if ((chainlines = build_textchain(work, &root, true)) > 0) {
 		struct rcell* cnode = &root;
-		unsigned int linecount = 0;
-		bool flushed = false;
 		*maxw = 0;
 		*maxh = 0;
 		
 		int lineh = 0;
 		int curw = 0;
-		int curh = 0;
 		
 		while (cnode) {
 			if (cnode->width > 0) {
@@ -767,16 +745,13 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 /* (B) */
 		struct rcell* cnode = root;
 		unsigned int linecount = 0;
-		bool flushed = false;
 		int maxw = 0;
 		int maxh = 0;
 		int lineh = 0;
 		int curw = 0;
-		int curh = 0;
 /* note, linecount is overflow */
 		unsigned int* lines = (unsigned int*) calloc(sizeof(unsigned int), 
 			chainlines + 1);
-		unsigned int* curr_line = lines;
 
 		while (cnode) {
 			if (cnode->surface) {
@@ -834,18 +809,11 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		vobj->origh = maxh;
 		s->vinf.text.source = strdup(message);
 
-/*		glGenTextures(1, &vobj->vstore->vinf.text.glid);
-		glBindTexture(GL_TEXTURE_2D, vobj->vstore->vinf.text.glid);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); */
-
 /* find dimensions and cleanup */
 		cnode = root;
 		curw = 0;
-		int yofs = 0;
 
 		uint32_t* canvas = (uint32_t*) s->vinf.text.raw; 
-		uint32_t* cwrk   = canvas;
 
 		int line = 0;
 
@@ -888,7 +856,6 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	
 	struct rcell* current;
 
-cleanup:
 	current = root;
 	while (current){
 		assert(current != (void*) 0xdeadbeef);

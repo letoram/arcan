@@ -508,11 +508,6 @@ float* matr_quatf(quat a, float* dmatr)
 	return dmatr;
 }
 
-vector qmatr_viewv(float* inmatr)
-{
-	
-}
-
 double* matr_quat(quat a, double* dmatr)
 {
 	if (dmatr){
@@ -564,7 +559,6 @@ vector taitbryan_forwardv(float roll, float pitch, float yaw)
 	float dmatr[16];
 	quat pitchq = build_quat(pitch, 1.0, 0.0, 0.0);
 	quat yawq   = build_quat(yaw,   0.0, 1.0, 0.0);
-	quat rollq  = build_quat(roll,  0.0, 0.0, 1.0);
 
 	matr_quatf(pitchq, dmatr);
 

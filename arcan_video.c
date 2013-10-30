@@ -103,7 +103,6 @@ unsigned vcontext_ind = 0;
  */ 
 static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src);
 static void attach_object(struct rendertarget* dst, arcan_vobject* src);
-static void reorder_object(struct rendertarget* dst, arcan_vobject* src);
 static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
 static void rebase_transform(struct surface_transform*, arcan_tickv);
 static bool alloc_fbo(struct rendertarget* dst);
@@ -959,7 +958,6 @@ static surface_transform* dup_chain(surface_transform* base)
 	if (!base)
 		return NULL;
 
-	unsigned count = 1;
 	surface_transform* res = (surface_transform*) 
 		malloc(sizeof(surface_transform));
 	surface_transform* current = res;
@@ -1188,7 +1186,6 @@ const char* defcfprg =
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, 
 	bool fs, bool frames, bool conservative)
 {
-	static char caption[64];
 	static bool firstinit = true;
 
 /* might be called multiple times so.. */
@@ -1628,12 +1625,11 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 			if (current_context->rtargets[ind].color == dstobj){
 
 /* find whatever rendertarget we're already attached to, and detach */
-				bool c;
 				if (srcobj->owner && detach)
-					c = detach_fromtarget(srcobj->owner, srcobj);
+					detach_fromtarget(srcobj->owner, srcobj);
 
 /* try and detach (most likely fail) to make sure that we don't get duplicates*/
-				bool a = detach_fromtarget(&current_context->rtargets[ind], srcobj);
+				detach_fromtarget(&current_context->rtargets[ind], srcobj);
 				attach_object(&current_context->rtargets[ind], srcobj);
 
 				rv = ARCAN_OK;
@@ -2024,7 +2020,6 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 static arcan_vobj_id loadimage(const char* fname, img_cons constraints, 
 	arcan_errc* errcode)
 {
-	GLuint gtid = 0;
 	arcan_vobj_id rv = 0;
 
 	arcan_vobject* newvobj = arcan_video_newvobject(&rv);
@@ -2163,11 +2158,6 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		free(vobj->vstore->vinf.text.raw);
 		vobj->vstore->vinf.text.raw = malloc(vobj->vstore->vinf.text.s_raw);
 		memset(vobj->vstore->vinf.text.raw, '\0', vobj->vstore->vinf.text.s_raw);
-
-		float hx = vobj->vstore->scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : 
-			(float)store.w / (float)vobj->vstore->w;
-		float hy = vobj->vstore->scale == ARCAN_VIMAGE_NOPOW2 ? 1.0 : 
-			(float)store.h / (float)vobj->vstore->h;
 
 /* as the dimensions may be different, we need to 
  * reinitialize the gl-storage as well */
@@ -2324,7 +2314,6 @@ static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv)
  * return value is an error code */
 arcan_errc arcan_video_setzv(arcan_vobj_id id, unsigned short newzv)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
 	if (!vobj)
@@ -2825,7 +2814,6 @@ arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* newmapping)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj && id > 0) {
-		float* fv = vobj->txcos;
 		memcpy(vobj->txcos, newmapping, sizeof(float) * 8);
 		rv = ARCAN_OK;
 	}
@@ -3367,7 +3355,6 @@ static void expire_object(arcan_vobject* obj){
  * update / rescale / redraw / flip) returns msecs elapsed */
 static void tick_rendertarget(struct rendertarget* tgt)
 {
-	unsigned now = arcan_frametime();
 	arcan_vobject_litem* current = tgt->first;
 
 	while (current){
@@ -3755,7 +3742,6 @@ static void ffunc_process(arcan_vobject* dst)
 static void poll_list(arcan_vobject_litem* current)
 {
 	while(current && current->elem){
-	arcan_vobject* cframe = current->elem->current_frame;
 	arcan_vobject* celem  = current->elem;
 
 	ffunc_process(celem);
@@ -3801,7 +3787,6 @@ void arcan_video_setblend(const surface_properties* dprops,
 
 static void process_rendertarget(struct rendertarget* tgt, float fract)
 {
-	arcan_vobject* world = &current_context->world;
 	arcan_vobject_litem* current = tgt->first;
 	int width, height;
 
@@ -3859,7 +3844,6 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 #endif
 
 			arcan_vobject* elem = current->elem;
-			surface_properties* csurf = &elem->current;
 
 /* calculate coordinate system translations, world cannot be masked */
 			surface_properties dprops = empty_surface();
@@ -3962,12 +3946,10 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 /* depending on frameset- mode, we may need to split 
  * the frameset up into multitexturing */
 		int cfind  = elem->frameset_meta.current;
-		int unbc = 0;
 		if (elem->frameset_meta.capacity > 0 && 
 			elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE){
 			int j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? 
 				GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
-			unbc = 0;
 
 			for(int i = 0; i < j; i++){
 				char unifbuf[16];
@@ -4127,7 +4109,6 @@ static void process_readback(struct rendertarget* tgt, float fract)
 		tgt->readreq = true;
 	}
 
-cleanup:
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
@@ -4150,21 +4131,23 @@ void arcan_video_refresh_GL(float lerp)
 /* use MRT to populate a possible "capture" FBO, 
  * the process_rendertarget function will make sure to not render the color
  * target (reading + writing to the same texture is undefined behavior), 
- * although it can be "circumvented" with instancing */
+ * although it can be "circumvented" with instancing,
+ * this is marked incomplete due to driver issues */
 	if (current_context->stdoutp.color){
-		GLenum buffers[] = {GL_BACK, GL_COLOR_ATTACHMENT0};
+/*		GLenum buffers[] = {GL_BACK, GL_COLOR_ATTACHMENT0};
 		arcan_debug_pumpglwarnings("mrt");
-//	glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
-//	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
-//	GL_TEXTURE_2D, current_context->stdoutp.color->vstore->glid, 0);
-//	glDrawBuffers(2, buffers);
+  	glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
+  	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
+  	GL_TEXTURE_2D, current_context->stdoutp.color->vstore->glid, 0);
+  	glDrawBuffers(2, buffers); */
 		process_rendertarget(&current_context->stdoutp, lerp);
 		arcan_debug_pumpglwarnings("mrtpost");
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		if (current_context->stdoutp.readback != 0){
-//			process_readback(&current_context->stdoutp, lerp);
-		}
+/*	if (current_context->stdoutp.readback != 0){
+			process_readback(&current_context->stdoutp, lerp);
+		} 
+*/
 	}
 	else
 		process_rendertarget(&current_context->stdoutp, lerp);
@@ -4227,8 +4210,6 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 				dprops.position.y + dprops.scale.y, 0.0);
 			multiply_matrix(dmatr, imatr, omatr);
 		}
-
-		float p[4][3];
 
 /* transform the four vertices of the quad to window */
 		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr,
@@ -4609,7 +4590,6 @@ void arcan_video_restore_external()
 extern void platform_video_shutdown();
 void arcan_video_shutdown()
 {
-	arcan_vobject_litem* current = current_context->stdoutp.first;
 	unsigned lastctxa, lastctxc = arcan_video_popcontext();
 
 /* this will effectively make sure that all external launchers, 

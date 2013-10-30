@@ -50,7 +50,6 @@ static bool default_vcodec_setup(struct codec_ent* dst, unsigned width,
 	vcodec_defaults(dst, width, height, fps, vbr);
 /* terrible */
 	if (vbr <= 10){
-		int npx = width * height;
 		vbr = 150 * 1024;
 	}
 
@@ -137,7 +136,6 @@ static bool setup_cb_x264(struct codec_ent* dst, unsigned width,
 	unsigned height, float fps, unsigned vbr, bool stream)
 {
 	AVDictionary* opts = NULL;
-	const char* const lif = fps > 30.0 ? "25" : "16";
 	float vbrf = 1000 * (height >= 720 ? 2.0 : 1.0);
 
 	vcodec_defaults(dst, width, height, fps, vbr);
@@ -216,7 +214,6 @@ static bool setup_cb_vp8(struct codec_ent* dst, unsigned width,
 {
 	AVDictionary* opts = NULL;
 	const char* const lif = fps > 30.0 ? "25" : "16";
-	const char* deadline  = "good";
 
 	vcodec_defaults(dst, width, height, fps, vbr);
 
@@ -327,32 +324,6 @@ static struct codec_ent acodec_tbl[] = {
 					.setup.audio = default_acodec_setup}
 };
 
-static struct codec_ent fcodec_tbl[] = {
-	{.kind = CODEC_FORMAT, 
-					.name = "matroska",
-				 	.shortname = "MKV",
-				 	.id = 0,
-				 	.setup.muxer = default_format_setup },
-
-	{.kind = CODEC_FORMAT,
-				 	.name = "mpeg4",
-					.shortname = "MP4",
-				 	.id = 0,
-				 	.setup.muxer = default_format_setup },
-
-	{.kind = CODEC_FORMAT,
-				 	.name = "avi",
-					.shortname = "AVI",
-				 	.id = 0,
-				 	.setup.muxer = default_format_setup },
-
-	{.kind = CODEC_FORMAT,
-				 	.name = "flv",
-					.shortname = "FLV",
-				 	.id = 0,
-				 	.setup.muxer = default_format_setup }
-};
-
 static struct codec_ent lookup_default(const char* const req, 
 	struct codec_ent* tbl, size_t nmemb, bool audio)
 {
@@ -431,7 +402,6 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 struct codec_ent encode_getcontainer(const char* const requested, 
 	int dst, const char* remote)
 {
-	char fdbuf[16];
 	AVFormatContext* ctx;
 	struct codec_ent res = {0};
 
@@ -474,8 +444,9 @@ struct codec_ent encode_getcontainer(const char* const requested,
 
 /* ugly hack around not having a way of mapping filehandle to fd
  * WITHOUT going through open, sic. */
+	char fdbuf[64];
 	sprintf(fdbuf, "pipe:%d", dst);
-	int rv = avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_READ_WRITE, NULL, NULL);
+	avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_READ_WRITE, NULL, NULL);
 	ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;
 
 	res.storage.container.context = ctx;

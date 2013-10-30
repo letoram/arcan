@@ -299,8 +299,6 @@ extern struct arcan_video_context vcontext_stack[];
 extern unsigned vcontext_ind;
 extern struct arcan_video_display arcan_video_display;
 
-static void drop_glres(struct storage_info_t* s);
-
 int arcan_debug_pumpglwarnings(const char* src);
 void arcan_resolve_vidprop(arcan_vobject* vobj, 
 	float lerp, surface_properties* props);

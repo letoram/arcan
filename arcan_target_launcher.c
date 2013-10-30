@@ -78,11 +78,6 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	}
 }
 
-static arcan_errc again_feed(float gain, void* tag)
-{
-	return ARCAN_OK;
-}
-
 /* note for debugging internal launch (particularly the hijack lib)
  * (linux only)
  * gdb, break just before the fork

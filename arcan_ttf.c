@@ -157,16 +157,6 @@ static inline int TTF_underline_top_row(TTF_Font *font)
 	return font->ascent - font->underline_offset - 1;
 }
 
-/* Gets the top row of the underline. for a given glyph. The outline
-   is taken into account.
-   Need to update row according to height difference between font and glyph:
-   font_value - font->ascent + glyph->maxy
-*/
-static inline int TTF_Glyph_underline_top_row(TTF_Font *font, c_glyph *glyph)
-{
-	return glyph->maxy - font->underline_offset - 1;
-}
-
 /* Gets the bottom row of the underline. The outline
    is taken into account.
 */
@@ -181,16 +171,6 @@ static inline int TTF_underline_bottom_row(TTF_Font *font)
 	return row;
 }
 
-/* Gets the bottom row of the underline. for a given glyph. The outline
-   is taken into account.
-   Need to update row according to height difference between font and glyph:
-   font_value - font->ascent + glyph->maxy
-*/
-static inline int TTF_Glyph_underline_bottom_row(TTF_Font *font, c_glyph *glyph)
-{
-	return TTF_underline_bottom_row(font) - font->ascent + glyph->maxy;
-}
-
 /* Gets the top row of the strikethrough. The outline
    is taken into account.
 */
@@ -199,16 +179,6 @@ static inline int TTF_strikethrough_top_row(TTF_Font *font)
 	/* With outline, the first text row is 'outline'. */
 	/* So, we don't have to remove the top part of the outline height. */
 	return font->height / 2;
-}
-
-/* Gets the top row of the strikethrough for a given glyph. The outline
-   is taken into account.
-   Need to update row according to height difference between font and glyph:
-   font_value - font->ascent + glyph->maxy
-*/
-static inline int TTF_Glyph_strikethrough_top_row(TTF_Font *font, c_glyph *glyph)
-{
-	return TTF_strikethrough_top_row(font) - font->ascent + glyph->maxy;
 }
 
 static void TTF_initLineMectrics(const TTF_Font *font,const TTF_Surface 
@@ -1267,7 +1237,6 @@ TTF_Surface* TTF_RenderUNICODE(TTF_Font *font,
 	int swapped;
 	int row, col;
 	c_glyph* glyph;
-	FT_Error error;
 	FT_Long use_kerning;
 	FT_UInt prev_index = 0;
 

@@ -41,8 +41,6 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 
 static int sem_timedwaithack(sem_handle semaphore, int msecs)
 {
-	struct timespec st = {.tv_sec  = 0, .tv_nsec = 1000000L}, rem;
-
 	if (msecs == 0)
 		return sem_trywait( semaphore );
 
@@ -53,11 +51,7 @@ static int sem_timedwaithack(sem_handle semaphore, int msecs)
 	}
 
 	int rc = -1;
-	while ( (rc = sem_trywait(semaphore) != 0) && msecs && errno != EINVAL){
-		struct timespec rem;
-	//	nanosleep(&st, &rem);
-		msecs -= 1;
-	}
+	while ( (rc = sem_trywait(semaphore) != 0) && msecs && errno != EINVAL);
 
 	return rc;
 }

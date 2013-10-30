@@ -46,7 +46,6 @@
 #include "arcan_3dbase.h"
 
 extern struct arcan_video_display arcan_video_display;
-static arcan_shader_id default_3dprog;
 
 enum camtag_facing
 {
@@ -101,16 +100,17 @@ typedef struct {
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
+/* 
 static void build_quadbox(float n, float p, float** verts, 
 	float** txcos, unsigned* nverts)
 {
 	float lut[6][12] = {
-		{n,p,p,   n,p,n,   p,p,n,   p,p,p}, /* up */
-		{n,n,n,   n,n,p,   p,n,p,   p,n,n}, /* dn */
-		{n,p,p,   n,n,p,   n,n,n,   n,p,n}, /* lf */
-		{p,p,n,   p,n,n,   p,n,p,   p,p,p}, /* rg */
-		{n,p,n,   n,n,n,   p,n,n,   p,p,n}, /* fw */
-		{p,p,p,   p,n,p,   n,n,p,   n,p,p}  /* bk */
+		{n,p,p,   n,p,n,   p,p,n,   p,p,p}, 
+		{n,n,n,   n,n,p,   p,n,p,   p,n,n},
+		{n,p,p,   n,n,p,   n,n,n,   n,p,n},
+		{p,p,n,   p,n,n,   p,n,p,   p,p,p},
+		{n,p,n,   n,n,n,   p,n,n,   p,p,n},
+		{p,p,p,   p,n,p,   n,n,p,   n,p,p} 
 	};
 
 	*nverts = 24;
@@ -142,6 +142,7 @@ static void build_quadbox(float n, float p, float** verts,
 	 	*verts[ofs++] = lut[i][11]; 
 	}
 }
+*/
 
 static void build_hplane(point min, point max, point step,
 						 float** verts, unsigned** indices, float** txcos,
@@ -230,7 +231,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 
 	float wmvm[16];
 	float dmatr[16], omatr[16];
-	float opa   = 1.0;
 	
 	memcpy(wmvm, modelview, sizeof(float) * 16);
 
@@ -249,7 +249,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 		if (!base->complete)
 			goto step;
 
-		unsigned counter = 0;
 			if (-1 != base->program)
 				arcan_shader_activate(base->program);
 			else
@@ -395,7 +394,7 @@ static void process_scene_normal(arcan_vobject_litem* cell, float lerp,
 /* use parent if we have an instance.. */
 		surface_properties dprops;
 		arcan_vobject* dvo = cvo->flags.clone ? cvo->parent : cvo;
-		arcan_3dmodel* obj3d = dvo->feed.state.ptr;
+		
 		arcan_resolve_vidprop(cvo, lerp, &dprops);
 		rendermodel(dvo, dvo->feed.state.ptr, dvo->program, 
 			dprops, modelview);
@@ -508,7 +507,6 @@ arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps)
 	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
 
 	arcan_3dmodel* newmodel = NULL;
-	arcan_vobject* vobj = NULL;
 
 	if (rv != ARCAN_EID){
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
@@ -528,9 +526,6 @@ arcan_vobj_id arcan_3d_buildcube(float mpx, float mpy,
 	if (rv == ARCAN_EID)
 		return rv;
 
-	arcan_3dmodel* newmodel = NULL;
-	arcan_vobject* vobj;
-
 	return rv;
 }
 
@@ -543,7 +538,6 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
 
 	arcan_3dmodel* newmodel = NULL;
-	arcan_vobject* vobj = NULL;
 
 	if (rv != ARCAN_EID){
 		point minp = {.x = minx, .y = y, .z = minz};
@@ -577,6 +571,7 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 	return rv;
 }
 
+/*
 static void invert_txcos(float* buf, unsigned bufs){
 	for (unsigned i = 0; i < bufs; i+= 2){
 		float a = buf[i+1];
@@ -584,6 +579,7 @@ static void invert_txcos(float* buf, unsigned bufs){
 		buf[i] = a;
 	}
 }
+*/
 
 /* undesired limits with this function is that it ignores
  * many possible vertex attributes (such as colour weighting)
@@ -893,7 +889,6 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 arcan_errc arcan_3d_camtag(arcan_vobj_id vid, 
 	float projection[16], bool front, bool back) 
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 
 	vobj->owner->camtag = vobj->cellid;

@@ -223,7 +223,6 @@ static char* unix_find(const char* fname){
 		}
 	}
 
-cleanup:
 	free(pathtbl[1]);
 	return res;
 }

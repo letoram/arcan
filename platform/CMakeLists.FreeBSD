@@ -1,0 +1,64 @@
+set (PLATFORM_SOURCES
+platform/posix/fmt_open.c
+platform/posix/glob.c
+platform/posix/map_resource.c
+platform/posix/resource_io.c
+platform/posix/ilaunch.c
+platform/posix/strip_traverse.c
+platform/posix/paths.c
+platform/posix/sem.c
+platform/posix/shm.c
+platform/posix/time.c
+platform/posix/warning.c
+platform/sdl/event.c
+platform/sdl/video.c
+)
+
+set (FSERV_PLATFORM_SOURCES
+platform/posix/warning.c
+platform/posix/time.c
+platform/posix/sem.c
+platform/posix/shm.c
+platform/sdl/event.c
+)
+
+	add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
+	add_definitions(-DLUA_51 -D__UNIX -D_LIBUSB_BSD -D_POSIX_C_SOURCE)
+
+	LIST(APPEND SOURCES ${PLATFORM_SOURCES})
+	LIST(APPEND SOURCES 
+		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
+		${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
+ 		arcan_target_launcher.c arcan_frameserver_backend_unix.c)
+
+	LIST(APPEND MAIN_LIBRARIES usb rt)
+	LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c 
+					${FSERV_PLATFORM_SOURCES})
+	LIST(APPEND FSRV_LIBRARIES -lrt)
+
+	add_library(arcan_hijack SHARED 
+		arcan_target_unix.c
+	 	arcan_event.c 
+		arcan_target.c 
+		frameserver/ntsc/snes_ntsc.c 
+		frameserver/resampler/resample.c
+	)
+	
+	set_property(TARGET arcan_hijack PROPERTY 
+		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
+
+	set_property(SOURCE arcan_target_unix.c 
+		APPEND PROPERTY OBJECT_DEPENDS "arcan_target.c")
+	target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
+
+	set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
+	set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
+	set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
+
+	add_executable( arcan ${SOURCES})
+	add_executable( arcan_frameserver ${FSRV_SOURCES})
+
+	install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1 DESTINATION /usr/local/share/man/man1 PERMISSONS WORLD_READ OWNER_WRITE OWNER_READ GROUP_READ)
+	install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+	install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb DESTINATION ${BIN_DST} PERMISSIONS WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
+

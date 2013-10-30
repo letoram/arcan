@@ -167,7 +167,6 @@ int main(int argc, char* argv[])
 	bool monitor_parent   = true;
 	char* monitor_arg     = "LOG";
 
-	FILE* errc;
 	char* dbfname = "arcandb.sqlite";
 	char ch;
 	
@@ -219,11 +218,11 @@ int main(int argc, char* argv[])
 	break;
 	case '1' :
 		stdout_redirected = true;
-		errc = freopen(optarg, "a", stdout);
+		freopen(optarg, "a", stdout);
 		break;
 	case '2' :
 		stderr_redirected = true;
-		errc = freopen(optarg, "a", stderr);
+		freopen(optarg, "a", stderr);
 		break;
 
 	default:
@@ -284,7 +283,7 @@ int main(int argc, char* argv[])
 				
 			pid_t p1;
 
-			int rv = pipe(pair);
+			pipe(pair);
 			if ( (p1 = fork()) == 0){
 				close(pair[1]);
 				monitor_parent = false;
@@ -428,8 +427,6 @@ themeswitch:
 
 	if (argc > optind)
 		arcan_lua_pushargv(luactx, argv + optind + 1);
-
-	int err_func = 0;
 
 	if (script_override && luaL_dofile(luactx, script_override) == 1){
 		arcan_fatal("Fatal: main(), Error loading"

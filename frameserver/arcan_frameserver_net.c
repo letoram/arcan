@@ -238,7 +238,7 @@ static bool flushout_default(struct conn_state* self)
 		apr_pollset_remove(netcontext.pollset, &self->poll_state);
 			self->poll_state.reqevents  = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 			self->poll_state.rtnevents  = 0;
-			apr_status_t ps2 = apr_pollset_add(netcontext.pollset,&self->poll_state);
+			apr_pollset_add(netcontext.pollset,&self->poll_state);
 		} else {
 /* partial write, slide */
 			memmove(self->outbuffer, &self->outbuffer[nts], self->outbuf_ofs - nts);
@@ -428,11 +428,10 @@ decode:
 
 /* full packet */
 			int buflen = len + FRAME_HEADER_SIZE;
-			bool rv = true;
 
 /* invoke next dispatcher, let any failure propagate */
 			if (self->buf_ofs >= buflen){
-				rv = self->dispatch(self, self->inbuffer[0], len, 
+				self->dispatch(self, self->inbuffer[0], len, 
 					&self->inbuffer[FRAME_HEADER_SIZE]);
 
 /* slide or reset */
@@ -574,7 +573,6 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 	apr_pollset_add(pollset, pfd);
 
 /* figure out source address, add to event and fire */
-	char* dstaddr = NULL;
 	apr_sockaddr_t* addr;
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
@@ -666,7 +664,7 @@ static apr_socket_t* server_prepare_socket(const char* host, apr_sockaddr_t*
 	althost, int sport, bool tcp)
 {
 	char errbuf[64];
-	apr_socket_t* ear_sock;
+	apr_socket_t* ear_sock = NULL;
 	apr_sockaddr_t* addr;
 	apr_status_t rv;
 
@@ -790,7 +788,6 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
 	arcan_event* ev;
-	struct conn_state* target_con;
 	
 	uint16_t msgsz = sizeof(ev->data.network.message) / 
 		sizeof(ev->data.network.message[0]);
@@ -862,8 +859,6 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 
 static void server_session(const char* host, int limit)
 {
-	int errc = 0, thd_ofs = 0;
-	apr_status_t rv;
 	apr_pollset_t* poll_in;
 	apr_int32_t pnum;
 	const apr_pollfd_t* ret_pfd;
@@ -950,7 +945,7 @@ retry:
 	apr_pollset_add(poll_in, &pfd);
 
 	while (true){
-		apr_status_t status = apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
+		apr_pollset_poll(poll_in, timeout, &pnum, &ret_pfd);
 
 		for (int i = 0; i < pnum; i++){
 			void* cb = ret_pfd[i].client_data;
@@ -1049,7 +1044,7 @@ retry:
  */
 static char* host_discover(char* host, bool usenacl, bool passive)
 {
-	const int addr_maxlen = 45; /* RFC4291 */
+/*	const int addr_maxlen = 45; RFC4291 */
 	char reqmsg[ MAX_HEADER_SIZE ], repmsg[ MAX_HEADER_SIZE + 1 ];
 
 	memset(reqmsg, 0, MAX_HEADER_SIZE);

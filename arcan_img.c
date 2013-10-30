@@ -178,7 +178,6 @@ arcan_errc arcan_png_rgba32(char* inbuf, size_t inbuf_sz,
 	int32_t status = png_get_IHDR(png_ptr, info_ptr, &w, &h, &bd,
 		 &cspace, NULL, NULL, NULL);
 
-	size_t out_str = w * 4;
 	size_t out_sz  = w * h * 4; 
 
 	*outw = w;
@@ -293,7 +292,7 @@ arcan_errc arcan_sdlimage_rgba32(char* inbuf, size_t inbuf_sz, char** outbuf,
 }
 #endif
 
-arcan_errc arcan_pkm_raw(const unsigned char* inbuf, size_t inbuf_sz, char** outbuf,
+arcan_errc arcan_pkm_raw(const uint8_t* inbuf, size_t inbuf_sz, char** outbuf,
 		int* outw, int* outh, struct arcan_img_meta* meta, outimg_allocator alloc)
 {
 #ifdef ETC1_SUPPORT
@@ -331,7 +330,7 @@ struct dds_data_fmt
 };
 */
 
-arcan_errc arcan_dds_raw(const unsigned char* inbuf, size_t inbuf_sz, char** outbuf,
+arcan_errc arcan_dds_raw(const uint8_t* inbuf, size_t inbuf_sz, char** outbuf,
 	int* outw, int* outh, struct arcan_img_meta* meta, outimg_allocator alloc)
 {
 #ifdef DDS_SUPPORT
@@ -384,10 +383,12 @@ arcan_errc arcan_img_decode(const char* hint, char* inbuf, size_t inbuf_sz,
 //			arcan_warning("use libjpeg(turbo)");
 		}
 		else if (strcasecmp(hint + (len - 3), "PKM") == 0){
-			return arcan_pkm_raw(inbuf, inbuf_sz, outbuf, outw, outh, meta, imalloc);
+			return arcan_pkm_raw((uint8_t*)inbuf, inbuf_sz, 
+				outbuf, outw, outh, meta, imalloc);
 		}
 		else if (strcasecmp(hint + (len - 3), "DDS") == 0){
-			return arcan_dds_raw(inbuf, inbuf_sz, outbuf, outw, outh, meta, imalloc);
+			return arcan_dds_raw((uint8_t*)inbuf, inbuf_sz, 
+				outbuf, outw, outh, meta, imalloc);
 		}
 	}
 
