@@ -155,8 +155,8 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 		if (!warned){
 			glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
 
-			printf("failed operation: store type(%i:%s) into slot(%i:%s)"
-			"	on program(%i:%s)\n", kind, typestrtbl[kind], loc, id, progno, program);
+			printf("failed operation: store type(%i) into slot(%i:%s)"
+			"	on program(%i:%s)\n", kind, loc, id, progno, program);
 			struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
 			printf("last active shader: (%s), locals: \n", src->label);
 			for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++)

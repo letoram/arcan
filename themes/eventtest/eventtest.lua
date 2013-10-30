@@ -52,7 +52,8 @@ keyconfig = keyconf_create();
 	print(#restbl, "entries found");
 
 	for k, v in ipairs(restbl) do
-	
+		print("-new table-")
+		print(k, v)
 	end
 
 -- enable analog events
