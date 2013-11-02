@@ -24,12 +24,10 @@
 
 struct arcan_event;
 
-#define LOG(...) (fprintf(logdev, __VA_ARGS__))
+#define LOG(...) (fprintf(stderr, __VA_ARGS__))
 extern const int audio_samplerate;
 extern const int audio_channels;
 extern const int video_channels;
-
-extern FILE* logdev;
 
 /* resolve 'resource', open and try to store it in one buffer, possibly memory mapped,
  * avoid if possible since the parent may manipulate the frameserver file-system namespace and

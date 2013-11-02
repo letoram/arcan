@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
 
 /* if we reference a subdir (more complicated monitoring scripts),
  * make sure to strip that when extracting the themename */
-			char* marg = rindex(monitor_arg, '/');
+			char* marg = strrchr(monitor_arg, '/');
 			if (marg != NULL)
 				monitor_arg = marg + 1;
 				

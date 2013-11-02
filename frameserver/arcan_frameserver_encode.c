@@ -417,9 +417,6 @@ static void encoder_atexit()
 		if (recctx.fcontext)
 			av_write_trailer(recctx.fcontext);
 	}
-
-	if (logdev)
-		fflush(logdev);
 }
 
 static bool setup_ffmpeg_encode(const char* resource)
