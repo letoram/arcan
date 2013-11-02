@@ -50,7 +50,7 @@ option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OF
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
 option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
-option(LUA51_JIT "Use the luajit-5.1 VM" ON)
+option(LUA51_JIT "Use the luajit-5.1 VM" OFF)
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
