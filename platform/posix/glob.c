@@ -23,9 +23,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <glob.h>
 
 #include <stdbool.h>
+#include <sys/types.h>
 #include "../../arcan_math.h"
 #include "../../arcan_general.h"
 

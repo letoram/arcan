@@ -56,7 +56,7 @@ option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
-add_definitions(-std=iso9899:1999 -DBSD_SOURCE -Wno-gnu 
+add_definitions(-std=gnu99 
 -DGL_HEADERS="platform/sdl/glheaders.h")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
@@ -79,15 +79,16 @@ if (ENABLE_ASAN)
 	set(CMAKE_C_FLAGS "-fsanitize=address ${CMAKE_C_FLAGS}")
 endif (ENABLE_ASAN)
 
-# --- Step 1, Dependencies
+# --- Step 1, Dependencies / find package flags
 # paths / locations
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 set(OPENCTM_LIBRARY openctm)
 
-# OS Specific libraries / dependencies first
-#if(APPLE)
-#	set(CMAKE_FIND_FRAMEWORK "FIRST")
+if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+set(BSD_BUILD ON)
+endif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
+# OS Specific libraries / dependencies first
 if(WIN32)
 	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/win32/lib)
 	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/win32/inc)
@@ -306,9 +307,6 @@ include_directories(${INCLUDE_DIRS})
 #
 # OS and more compiler specific files, packaging etc.
 #
-#if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-#	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.OSX)
-				
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
 

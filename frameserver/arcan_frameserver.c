@@ -248,12 +248,10 @@ int frameserver_readhandle(arcan_event* inev)
 	if (sockin_fd != -1){
 		char empty;
 	
-#pragma GCC diagnostic ignored "-Wpedantic"	
 		struct cmsgbuf {
 			struct cmsghdr hdr;
 			int fd[1];
 		} msgbuf;
-#pragma GCC diagnostic warning "-Wpedantic"
 
 		struct iovec nothing_ptr = {
 			.iov_base = &empty,

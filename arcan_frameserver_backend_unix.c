@@ -131,7 +131,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 			*pidptr = src->child;
 
 			if (0 != pthread_create(&pthr, NULL, nanny_thread, (void*) pidptr)){
-				pthread_setname_np(pthr, "zombie_nannythread");
 				kill(src->child, SIGKILL);
 			}
 
@@ -202,12 +201,10 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	if (fsrv && fd > 0){
 		char empty = '!';
 
-#pragma GCC diagnostic ignored "-Wpedantic"
 		struct cmsgbuf {
 			struct cmsghdr hdr;
 			int fd[1];
 		} msgbuf;
-#pragma GCC diagnostic warning "-Wpedantic"
 		
 		struct iovec nothing_ptr = {
 			.iov_base = &empty,

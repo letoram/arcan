@@ -175,7 +175,6 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	queue->alive = true;
 
 	pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue); 
-	pthread_setname_np(queue->iothread, "arcan_framequeue");
 	
 	return ARCAN_OK;
 }
