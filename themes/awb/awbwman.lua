@@ -1791,10 +1791,10 @@ function awbwman_toggle_mousegrab()
 end
 
 -- want to re-use when we cycle the transform
-local function tablist_allocslot(i, wndind)
+local function tablist_allocslot(i, wnd)
 	local tbl  = awb_cfg.tablist_toggle;
 	local b    = awb_cfg.tabicn_base;
-	local dwin = awb_wtable[wndind];
+	local dwin = wnd; 
 	local cont = null_surface(b, b);
 
 	tbl.slots[i] = {
@@ -1840,7 +1840,7 @@ local function tablist_updatetag(msg)
 	end
 end
 
-function awbwman_tablist_toggle(active)
+function awbwman_tablist_toggle(active, group)
 	local tbl = awb_cfg.tablist_toggle;
 	local b = awb_cfg.tabicn_base;
 
@@ -1859,20 +1859,54 @@ function awbwman_tablist_toggle(active)
 			end
 
 			local wnd = awb_cfg.tablist_toggle.slots[1].wnd;
+			if (wnd.minimized) then
+				local ind = awbwman_findind(wnd, awb_cfg.hidden);
+				local speed = wnd.animspeed;
+				wnd.animspeed = 0;
+				awbwman_restore(ind);
+				wnd.animspeed = speed;
+			end
+
 			if (wnd.active) then
 				awbwman_focus(wnd, false);
 				local dx, dy = mouse_xy();
 				wnd:move(dx, dy, awb_cfg.animspeed);
-			end
+			end			
 
 			awb_cfg.tablist_toggle = nil;
 		end
 		return;
 	end
 
--- spawn
+--
+-- spawn, cycle a user-defined window- reference list if necessary
+-- (to add more advanced forms, like ALT-TAB between most recently used etc.)
+--
+	group = "all";
 	if (awb_cfg.tablist_toggle == nil and active) then
-		if (#awb_wtable <= 1) then
+		if (group == nil) then
+			awb_tablist= awb_wtable;
+
+		elseif (type(group) == "string") then
+			awb_tablist = {};
+
+			if (group == "hidden") then
+			awb_tablist = awb_cfg.hidden;	
+
+			elseif (group == "all") then
+				for i,v in ipairs(awb_cfg.hidden) do
+					table.insert(awb_tablist, v);
+				end
+
+				for i,v in ipairs(awb_wtable) do
+					table.insert(awb_tablist, v);
+				end
+			end
+		else
+			awb_tablist = group;
+		end
+
+		if (#awb_tablist <= 1) then
 			return;
 		end
 
@@ -1880,14 +1914,14 @@ function awbwman_tablist_toggle(active)
 			slots = {}
 		};
 
-		tbl.ulim = #awb_wtable > 5 and 5 or #awb_wtable;
+		tbl.ulim = #awb_tablist > 5 and 5 or #awb_tablist;
 		tbl.ofs  = tbl.ulim + 1;
 		awb_cfg.tablist_toggle = tbl;
 
 		local msglen = "";
-		for i=1,#awb_wtable do
-			if (string.len(awb_wtable[i].name) > string.len(msglen)) then
-				msglen = awb_wtable[i].name;
+		for i=1,#awb_tablist do
+			if (string.len(awb_tablist[i].name) > string.len(msglen)) then
+				msglen = awb_tablist[i].name;
 			end
 		end
 
@@ -1910,7 +1944,7 @@ function awbwman_tablist_toggle(active)
 		blend_image(tbl.bg, 0.5);
 
 		for i=1,tbl.ulim do
-			tablist_allocslot(i, i);
+			tablist_allocslot(i, awb_tablist[i]);
 		end
 
 		reset_image_transform(tbl.slots[1].vid);
@@ -1923,7 +1957,7 @@ function awbwman_tablist_toggle(active)
 
 	else
 -- already got a session running, just cycle the transform	
-		if (#awb_wtable > tbl.ulim) then
+		if (#awb_tablist > tbl.ulim) then
 			expire_image(tbl.slots[1].vid, awb_cfg.animspeed);
 		end
 
@@ -1939,7 +1973,7 @@ function awbwman_tablist_toggle(active)
 		end
 
 -- need to rotate in a new one, since the first now is the last
-		if (#awb_wtable > tbl.ulim) then
+		if (#awb_tablist > tbl.ulim) then
 			local tbl = awb_cfg.tablist_toggle;
 			reset_image_transform(tbl.slots[tbl.ulim].vid);
 			move_image(tbl.slots[tbl.ulim].vid, 0, 0, awb_cfg.animspeed);
@@ -1948,8 +1982,8 @@ function awbwman_tablist_toggle(active)
 
 -- allocate a new that takes the offset in consideration
 			tablist_allocslot(tbl.ulim, tbl.ofs);
-			tbl.slots[tbl.ulim].wnd = awb_wtable[tbl.ofs];
-			tbl.ofs = (tbl.ofs + 1) > #awb_wtable and 1 or (tbl.ofs + 1);
+			tbl.slots[tbl.ulim].wnd = awb_tablist[tbl.ofs];
+			tbl.ofs = (tbl.ofs + 1) > #awb_tablist and 1 or (tbl.ofs + 1);
 		end
 	end
 

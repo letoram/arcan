@@ -61,7 +61,6 @@
 #include "arcan_frameserver_net.h"
 #endif
 
-FILE* logdev;
 int sockin_fd = -1;
 
 /* 
@@ -312,7 +311,11 @@ static void toggle_logdev(const char* prefix)
 		char* logbuf = malloc(logbuf_sz + 1);
 
 		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
-		logdev = freopen(logbuf, "a", stderr);
+		if (!freopen(logbuf, "a", stderr)){
+			stderr = fopen("/dev/null", "a");
+			if (!stderr)
+				stderr = stdout;
+		}
 	}
 }
 
@@ -339,8 +342,6 @@ static void toggle_logdev(const char* prefix)
 #endif
 		return 1;
 	}
-
-	logdev = stderr;
 
 /* this is not passed as a command-line argument in order to reuse code with 
  * arcan_target where we don't have control over argv. furthermore, 

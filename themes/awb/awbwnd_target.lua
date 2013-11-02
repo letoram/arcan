@@ -878,6 +878,14 @@ function awbwnd_target(pwin, caps, factstr)
 				if (factstr ~= nil) then
 					pwin:factory_restore(factstr);
 				end
+
+				if (pwin.inp_cfg == nil) then
+					local lst = inputed_configlist();
+					if (#lst > 0) then
+						pwin.inp_cfg = inputed_getcfg(lst[1]);
+						pwin.inp_val = lst[1];
+					end
+				end
 			end
 
 -- if we're in fullscreen, handle the resize differently
@@ -898,7 +906,7 @@ function awbwnd_target(pwin, caps, factstr)
 	bartt.hover = function(self, vid, x, y, state)
 		if (state == false) then
 			awbwman_drophover();
-		else
+		elseif (pwin.hoverlut[vid] ~= nil) then
 			awbwman_hoverhint(pwin.hoverlut[vid]);
 		end
 	end
@@ -929,5 +937,6 @@ function awbwnd_target(pwin, caps, factstr)
 
 	pwin:update_canvas( fill_surface(pwin.w, pwin.h, 100, 100, 100) );
 	pwin.factorystr = awbtarget_factory;
+
 	return callback;
 end

@@ -275,7 +275,7 @@ local function dotbl(icn, tbl, dstkey, convert, hook)
 
 	for i=1,#tbl do
 		if (tbl[i] == tostring(wnd[dstkey])) then
-			list[i] = [[\#00ff00 ]] .. tbl[i] .. [[\#ffffff ]];
+			list[i] = [[\#00ff00]] .. tbl[i] .. [[\#ffffff ]];
 		else
 			list[i] = tbl[i];
 		end
@@ -326,7 +326,7 @@ end
 
 local function vcodecpop(icn)
 	local lst = {
-		"H.264",
+		"H264",
 		"VP8",
 		"FFV1"
 	};
@@ -462,6 +462,7 @@ local function destpop(icn)
 		local props = image_surface_properties(msg);
 		show_image(msg);
 		link_image(msg, wnd.canvas.vid);
+		image_clip_on(msg, CLIP_SHALLOW);
 		image_inherit_order(msg, true);
 		order_image(msg, 5);
 		expire_image(msg, 100);
@@ -642,8 +643,8 @@ function spawn_vidrec()
 	wnd.resolution = 480;
 	wnd.aspect = "4:3";
 	wnd.container = "MKV";
-	wnd.vcodec = "MP3";
-	wnd.acodec = "H264";
+	wnd.acodec = "MP3";
+	wnd.vcodec = "H264";
 	wnd.fps = 30;
 	wnd.aptsofs = 1;
 	wnd.vptsofs = 12;
