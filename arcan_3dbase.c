@@ -747,7 +747,6 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 		(*nextslot)->nmaps = nmaps;
 		arg->geom = *nextslot;
 		pthread_create(&arg->geom->worker, NULL, threadloader, (void*) arg);
-		pthread_setname_np(arg->geom->worker, "3dobj_threadloader");
 
 		rv = ARCAN_OK;
 	} else

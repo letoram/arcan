@@ -51,7 +51,6 @@ static void spawn_guardthread(struct guard_struct gs)
 	pthread_attr_setdetachstate(&pthattr, PTHREAD_CREATE_DETACHED);
 
 	pthread_create(&pth, &pthattr, guard_thread, hgs);
-	pthread_setname_np(pth, "frameserver_shmpage_guard");
 }
 
 /* Dislike pulling stunts like this,

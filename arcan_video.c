@@ -1989,7 +1989,6 @@ static arcan_vobj_id loadimage_asynch(const char* fname,
 	dstobj->feed.state.ptr = malloc(sizeof(pthread_t));
 	pthread_create((pthread_t*) dstobj->feed.state.ptr, NULL, 
 		thread_loader, (void*) args);
-	pthread_setname_np(*(pthread_t*)dstobj->feed.state.ptr, "loadimage_asynch");
 
 	return rv;
 }

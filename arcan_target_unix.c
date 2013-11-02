@@ -117,9 +117,7 @@ static void* lookupsym(const char* symname, void* bounce, bool fatal){
 
 	if (res == NULL && fatal){
 		fprintf(stderr, "ARCAN_Hijack, warning: %s not found.\n", symname);
-#pragma GCC diagnostic ignored "-Wpedantic"
 		res = fatal_catcher;
-#pragma GCC diagnostic warning "-Wpedantic"
 	}
 
 	struct symentry* dst = malloc(sizeof(struct symentry));
@@ -157,7 +155,6 @@ static struct symentry* find_symbol(const char* sym)
 
 __attribute__((constructor))
 static void hijack_init(void){
-#pragma GCC diagnostic ignored "-Wpedantic"
   forwardtbl.sdl_grabinput = lookupsym("SDL_WM_GrabInput",ARCAN_SDL_WM_GrabInput, true);
 	forwardtbl.sdl_openaudio = lookupsym("SDL_OpenAudio",ARCAN_SDL_OpenAudio, true);
 	forwardtbl.sdl_peepevents = lookupsym("SDL_PeepEvents",NULL, true);
@@ -192,7 +189,6 @@ static void hijack_init(void){
 /* SDL_mixer hijack, might not be present */
 	forwardtbl.audioproxy = lookupsym("Mix_Volume", NULL, false);
 	ARCAN_target_init();
-#pragma GCC diagnostic warning "-Wpedantic"
 }
 
 __attribute__((destructor))

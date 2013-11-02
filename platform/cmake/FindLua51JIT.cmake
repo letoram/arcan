@@ -55,7 +55,7 @@ find_library(LUA_LIBRARY
 if(LUA_LIBRARY)
 	message("found:${LUA_LIBRARY}")
   # include the math/ldl library for Unix
-  if(UNIX AND NOT APPLE)
+  if(UNIX AND NOT BSD_BUILD)
     find_library(LUA_MATH_LIBRARY m)
 		find_library(LUA_LINKER_LIBRARY dl)
 		set( LUA_LIBRARIES "${LUA_LIBRARY};${LUA_MATH_LIBRARY};${LUA_LINKER_LIBRARY}" CACHE STRING "Lua Libraries")

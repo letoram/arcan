@@ -69,7 +69,7 @@ this is very invasive as it requires the detach
 and re-attach of the kernel driver. See comments inside hid_enumerate().
 libusb HIDAPI programs are encouraged to use the interface number
 instead to differentiate between interfaces on a composite HID device. */
-/*#define INVASIVE_GET_USAGE*/
+#define INVASIVE_GET_USAGE
 
 /* Linked List of input reports received from the device. */
 struct input_report {
@@ -756,8 +756,7 @@ static void *read_thread(void *param)
 	   if no transfers are pending, but that's OK. */
 	libusb_cancel_transfer(dev->transfer);
 
-	while (!dev->cancelled)
-		libusb_handle_events_completed(usb_context, &dev->cancelled);
+	libusb_handle_events(usb_context);
 
 	/* Now that the read thread is stopping, Wake any threads which are
 	   waiting on data (in hid_read_timeout()). Do this under a mutex to
