@@ -109,10 +109,10 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules)
 set(OPENCTM_LIBRARY openctm)
 
 # OS Specific libraries / dependencies first
-if(APPLE)
-	set(CMAKE_FIND_FRAMEWORK "FIRST")
+#if(APPLE)
+#	set(CMAKE_FIND_FRAMEWORK "FIRST")
 
-elseif(WIN32)
+if(WIN32)
 	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/win32/lib)
 	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/win32/inc)
 	set(CMAKE_INCLUDE_PATH ${WININC} /usr/local/include)
@@ -338,10 +338,10 @@ include_directories(${INCLUDE_DIRS})
 #
 # OS and more compiler specific files, packaging etc.
 #
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.OSX)
+#if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+#	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.OSX)
 				
-elseif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")

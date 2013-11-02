@@ -929,8 +929,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		exit(1);
 	}
 
-#pragma GCC diagnostic ignored "-Wpedantic"
-
 	void (*initf)() = libretro_requirefun("retro_init");
 	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
 	( (void(*)(retro_environment_t)) 
@@ -1040,8 +1038,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		( (void(*)(struct retro_system_av_info*)) 
 			libretro_requirefun("retro_get_system_av_info"))(&retroctx.avinfo);
 	
-#pragma GCC diagnostic warning "-Wpedantic"
-
 /* setup frameserver, synchronization etc. */
 		assert(retroctx.avinfo.timing.fps > 1);
 		assert(retroctx.avinfo.timing.sample_rate > 1);
