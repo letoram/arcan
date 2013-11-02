@@ -296,7 +296,6 @@ typedef struct arcan_sevent {
 	} data;
 } arcan_sevent;
 
-#pragma GCC diagnostic ignored "-Wpedantic"
 typedef struct arcan_tevent {
 	long long int pulse_count;
 } arcan_tevent;
@@ -362,7 +361,6 @@ typedef struct arcan_extevent {
 		} framestatus;
 	};
 } arcan_extevent;
-#pragma GCC diagnostic warning "-Wpedantic"
 
 typedef union event_data {
 	arcan_ioevent   io;
