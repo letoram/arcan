@@ -22,30 +22,6 @@ PROJECT( arcan )
 include(ExternalProject)
 
 set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
-#ExternalProject_Add(
-# nacl
-# SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
-# STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/stamp
-# TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/tmp
-# DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
-# INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
-
-# BUILD_IN_SOURCE 1
-# INSTALL_COMMAND ""
-#)
-
-#ExternalProject_Add(
-#	libjpeg-turbo
-#	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo
-#	STAMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/stamp
-#	TMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/tmp
-#	DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo
-#	SVN_REPOSITORY svn://svn.code.sf.net/p/libjpeg-turbo/code/tags/1.3.0
-#	UPDATE_COMMAND ""
-#	INSTALL_COMMAND ""
-#	BUILD_IN_SOURCE 1
-#)
-
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 3 )
@@ -105,7 +81,7 @@ endif (ENABLE_ASAN)
 
 # --- Step 1, Dependencies
 # paths / locations
-set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 set(OPENCTM_LIBRARY openctm)
 
 # OS Specific libraries / dependencies first
@@ -163,11 +139,8 @@ endif(NOT SQLITE_AMALGAMATE)
 
 FIND_PACKAGE ( GLEW REQUIRED )
 
-# -- without APR, no frameserver_net (and no need for NaCL)
-FIND_PACKAGE ( APR )
-
-# -- without FFMPEG, no frameserver_encode, frameserver_decode
-FIND_PACKAGE ( FFMPEG )
+FIND_PACKAGE ( APR ) # Adds support for frameserver_net
+FIND_PACKAGE ( FFMPEG ) # Adds support for frameserver_encode, frameserver_decode
 
 LIST (APPEND
 	MAIN_LIBRARIES
@@ -190,9 +163,6 @@ FSRV_LIBRARIES
 	${SDL_LIBRARY}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
-#	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
-#	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
-#	${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/include
 )
 
 set (
@@ -209,8 +179,6 @@ INCLUDE_DIRS
 	${GLEW_INCLUDE_DIRS}
 	"frameserver/ntsc"
 	"external"
-#	"nacl/include"
-#	"libjpeg-turbo/include"
 )
 
 if (${SDLIMAGE_FOUND})
@@ -355,8 +323,6 @@ target_link_libraries( arcan ${MAIN_LIBRARIES} )
 set_target_properties( arcan_frameserver PROPERTIES COMPILE_FLAGS "${FSRV_BUILD_FLAGS}" )
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
-# add_dependencies( arcan_frameserver nacl )
-
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ 
@@ -376,7 +342,7 @@ set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
 set(CPACK_PACKAGE_NAME "Arcan")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Scriptable frontend for games and emulators")
 set(CPACK_PACKAGE_DESCRIPTION "ARCAN is a fully scriptable front-end for launching and managing emulators, games and other full-screen applications in a visually appealing and embeddable way.")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.txt")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/distr/LICENSE.txt")
 
 set(CPACK_PACKAGE_VERSION_MAJOR ${MAJOR_VERSION} )
 set(CPACK_PACKAGE_VERSION_MINOR ${MINOR_VERSION} )

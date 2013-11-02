@@ -37,13 +37,20 @@
 #include <sys/stat.h>
 #include <math.h>
 
+#include <assert.h>
+
+#include GL_HEADERS
+
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
 
-#include <assert.h>
-
-#include GL_HEADERS
+#ifdef LUA51_JIT
+#include <luajit.h>
+#endif
+#if LUA_VERSION_NUM == 501
+	#define lua_rawlen(x, y) lua_objlen(x, y)
+#endif
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -67,14 +74,6 @@
 
 #include "arcan_img.h"
 #include "arcan_ttf.h"
-
-#ifdef LUA51_JIT
-#include "luajit.h"
-#endif
-
-#if LUA_VERSION_NUM == 501
-	#define lua_rawlen(x, y) lua_objlen(x, y)
-#endif
 
 /* these take some explaining:
  * to enforce that actual constants are used in LUA scripts and not magic 

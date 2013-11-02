@@ -1,0 +1,31 @@
+#ExternalProject_Add(
+# nacl
+# SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+# STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/stamp
+# TMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl/tmp
+# DOWNLOAD_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+# INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/nacl
+
+# BUILD_IN_SOURCE 1
+# INSTALL_COMMAND ""
+#)
+
+#ExternalProject_Add(
+#	libjpeg-turbo
+#	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo
+#	STAMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/stamp
+#	TMP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/tmp
+#	DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo
+#	SVN_REPOSITORY svn://svn.code.sf.net/p/libjpeg-turbo/code/tags/1.3.0
+#	UPDATE_COMMAND ""
+#	INSTALL_COMMAND ""
+#	BUILD_IN_SOURCE 1
+#)
+
+#	${CMAKE_CURRENT_BINARY_DIR}/nacl/libnacl.a
+#	${CMAKE_CURRENT_BINARY_DIR}/nacl/randombytes/librandombytes.a
+#	${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo/include
+
+add_dependencies( arcan_frameserver nacl )
+
+

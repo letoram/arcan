@@ -25,10 +25,10 @@
 # (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
-find_path(LUA_INCLUDE_DIR lua.h
+find_path(LUA_INCLUDE_DIR luajit.h
   HINTS
     ENV LUA_DIR
-  PATH_SUFFIXES include/lua51 include/lua5.1 include/lua include
+  PATH_SUFFIXES include/luajit-2.0 include/lua51 include/lua5.1 include/lua include
   PATHS
   ~/Library/Frameworks
   /Library/Frameworks

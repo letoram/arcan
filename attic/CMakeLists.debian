@@ -1,0 +1,13 @@
+if (EXISTS "/usr/bin/dpkg")
+	execute_process(COMMAND "dpkg" "--print-architecture" OUTPUT_VARIABLE DPKGARCH)
+	string(REPLACE "\n" "" DPKGARCH "${DPKGARCH}")
+	set(CPACK_SYSTEM_NAME ${DPKGARCH})
+	set(CPACK_DEBIAN_PACKAGE_NAME ${CPACK_PACKAGE_NAME})
+	set(CPACK_DEBIAN_PACKAGE_VERSION ${VERSION})
+	set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Bjorn Stahl")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.4), libglu1-mesa | libglu1, liblua5.1-0, libopenal1, libsdl-image1.2 (>= 1.2.10), libsdl-ttf2.0-0, libsdl1.2debian (>= 1.2.10-1), libsqlite3-0 (>= 3.6.0), libusb-1.0-0 (>= 2:1.0.8), libavcodec54 (>= 8:1.0.0), libavformat54 (>= 8:1.0-0), libavutil51 (>= 8:1.0.0, libswscale2 (>= 8:1.0.0), libavdevice54 (>= 8:1.0-0), libswresample0 (>= 8:1.0.0), libbz2-1.0, x264, librtmp0, ruby1.9.1, libsqlite3-ruby1.9.1, libnokogiri-ruby1.9.1, librmagick-ruby")
+
+endif(EXISTS "/usr/bin/dpkg")
+
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-dev_${VERSION}_${CPACK_SYSTEM_NAME}")
+set(CPACK_SOURCE_IGNORE_FILES "/\\\\.git/;\\\\.#.*;#.*#;.*~;CMakeFiles;_CPack_Packages;.*\\\\.cmake;install_manifest.txt;CMakeCache.txt;${CMAKE_PACKAGE_NAME}.*\\\\.(tar\\\\.gz|tar\\\\.bz2|deb);Makefile;")
