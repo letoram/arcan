@@ -827,8 +827,10 @@ function awbwnd_target(pwin, caps, factstr)
 				iotbl.samples[2] = iotbl.samples[2] * pwin.mouse_accel;
 			end
 		end
-	
-		target_input(pwin.controlid, iotbl);
+
+		if (pwin.controlid ~= nil) then	
+			target_input(pwin.controlid, iotbl);
+		end
 	end
 
 	pwin.input = function(self, iotbl)

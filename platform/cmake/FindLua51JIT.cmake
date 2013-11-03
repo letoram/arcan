@@ -52,8 +52,10 @@ find_library(LUA_LIBRARY
 	/opt
 )
 
+set ( LUA51_JIT FALSE )
 if(LUA_LIBRARY)
 	message("found:${LUA_LIBRARY}")
+	set ( LUA51_JIT TRUE ) 
   # include the math/ldl library for Unix
   if(UNIX AND NOT BSD_BUILD)
     find_library(LUA_MATH_LIBRARY m)
