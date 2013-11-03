@@ -1,6 +1,6 @@
 set (LAUNCHER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/utils/ArcanLauncher)
 set (DISTR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/distr)
-set (WIN32_PATH $¥CMAKE_CURRENT_SOURCE_DIR}/platform/win32)
+set (WIN32_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32)
 
 set (PLATFORM_SOURCES
 platform/posix/fmt_open.c
@@ -31,9 +31,8 @@ add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES 
-${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.cpp 
+${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h 
-${CMAKE_CURRENT_SOURCE_DIR}/arcan_resource.obj
 ${WIN32_PATH}/arcan_target_launcher_win32.c
 ${WIN32_PATH}/arcan_frameserver_backend_win32.c 
 ${WIN32_PATH}/getopt_win32.c 
@@ -43,7 +42,7 @@ ${DISTR_PATH}/arcan_resource.obj
 ${PLATFORM_SOURCES})
 
 LIST(APPEND FSRV_SOURCES 
-w${WIN32_PATH}/arcan_frameserver_win32.c 
+${WIN32_PATH}/arcan_frameserver_win32.c 
 ${DISTR_PATH}/arcan_frameserver_resource.obj 
 ${FSERV_PLATFORM_SOURCES})
 
@@ -53,12 +52,13 @@ LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)
 set(BIN_DST ".")
 set(RESOURCES_DST "./resources")
 set(THEME_DST "./themes")
+set(TEST_DST "./tests")
 
 add_custom_command(
 OUTPUT ${DISTR_PATH}/arcan_resource.obj
 DEPENDS ${DISTR_PATH}/arcan.rc
 COMMAND windres.exe
-ARGS -o ${DISTR_PATH}/distr/arcan_resource.obj
+ARGS -o ${DISTR_PATH}/arcan_resource.obj
 -i${DISTR_PATH}/arcan.rc
 )
 
@@ -72,16 +72,12 @@ ARGS -o ${DISTR_PATH}/arcan_frameserver_resource.obj
 
 # there must be a sane way to do this and actually have it work,
 # add_custom_target on the output seems to do absolutely nothing.
-add_custom_command(
-OUTPUT ${CMAKE_BINARY_DIR}/arcan_romman.exe
-DEPENDS ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb 
-	${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
+add_custom_target(arcan_romman.exe
 	COMMAND ocra
-	ARGS --output ${CMAKE_BINARY_DIR}/arcan_romman.exe 
+	--output ${CMAKE_BINARY_DIR}/arcan_romman.exe 
 	${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb 
 	${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
 )
-
 add_executable( arcan WIN32 ${SOURCES} )
 add_executable( arcan_frameserver ${FSRV_SOURCES})
 
@@ -93,7 +89,7 @@ include_external_msproject(ArcanLauncher
 	)
 
 # ------------- Win32 Installer ------------
-file (GLOB _dlls "${DISTR_PATH}/distr/win32libs/*.dll")
+file (GLOB _dlls "${DISTR_PATH}/win32libs/*.dll")
 install(FILES ${_dlls} DESTINATION ${BIN_DST})
 install(FILES ${CMAKE_BINARY_DIR}/arcan_romman.exe DESTINATION ${BIN_DST})
 install(FILES ${DISTR_PATH}/winicon.ico 

@@ -1882,7 +1882,7 @@ function awbwman_tablist_toggle(active, group)
 -- spawn, cycle a user-defined window- reference list if necessary
 -- (to add more advanced forms, like ALT-TAB between most recently used etc.)
 --
-	group = "all";
+--	group = "all";
 	if (awb_cfg.tablist_toggle == nil and active) then
 		if (group == nil) then
 			awb_tablist= awb_wtable;

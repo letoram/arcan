@@ -25,7 +25,7 @@ set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
 set(MINOR_VERSION 3 )
-set(PATCH_LEVEL 1alpha )
+set(PATCH_LEVEL 1beta )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -50,7 +50,7 @@ option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OF
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
 option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
-option(LUA51_JIT "Use the luajit-5.1 VM" OFF)
+option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
@@ -90,8 +90,9 @@ endif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
 # OS Specific libraries / dependencies first
 if(WIN32)
-	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/win32/lib)
-	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/win32/inc)
+	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32/lib)
+	set(WININC ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32/include)
+	set(WINDISTR ${CMAKE_CURRENT_SOURCE_DIR}/distr)
 	set(CMAKE_INCLUDE_PATH ${WININC} /usr/local/include)
 	set(CMAKE_LIBRARY_PATH ${WINLIB} /usr/local/lib)
 
@@ -103,16 +104,14 @@ if(WIN32)
 	set(OPENAL_INCLUDE_DIR ${WININC}\\AL)
 	set(PNG_PNG_INCLUDE_DIR ${WININC})
 
-	set(FREETYPE_LIBRARY ${WINLIB}\\distr\\libfreetype-6.dll)
-	set(PNG_LIBRARY ${WINLIB}\\distr\\libpng15-15.dll)
-	set(ZLIB_LIBRARY ${WINLIB}\\distr\\zlib1.dll)
-	set(LUA_LIBRARY ${WINLIB}\\..\\lua\\liblua.a)
+	set(FREETYPE_LIBRARY ${WINDISTR}\\win32libs\\freetype6.dll)
+	set(PNG_LIBRARY ${WINLIB}\\libpng16.a)
+	set(ZLIB_LIBRARY ${WINDISTR}\\win32libs\\zlib1.dll)
 
 	set(APR_LIBRARY ${WINLIB}\\libapr-1.a)
 	set(APR_INCLUDE_DIR ${WININC}\\apr)
-	set(LUA_INCLUDE_DIR ${WININC}\\..\\lua)
 	set(SQLITE3_INCLUDE_DIR ${WININC})
-	set(SQLITE3_LIBRARY_RELEASE ${WINLIB}\\distr\\sqlite3.dll)
+	set(SQLITE3_LIBRARY_RELEASE ${WINDISTR}\\win32libs\\sqlite3.dll)
 	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
 	set(GLEW_INCLUDE_DIR ${WININC})
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
@@ -127,10 +126,20 @@ FIND_PACKAGE ( PNG REQUIRED )
 
 # modified version of the 51 package that checks for the lua51_jit option 
 if (LUA51_JIT)
-	FIND_PACKAGE ( Lua51JIT REQUIRED )
-else (LUA51_JIT)
-	FIND_PACKAGE ( Lua51 REQUIRED )
+	FIND_PACKAGE ( Lua51JIT )
 endif (LUA51_JIT)
+
+if (NOT LUA_LIBRARY)
+	FIND_PACKAGE ( Lua51 )
+endif (NOT LUA_LIBRARY)
+
+if (NOT LUA_LIBRARIES)
+	message("--> LUA Library not found, building from external/lua")
+	add_subdirectory( external/lua )
+	set (LUA_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/lua)
+	set (LUA_LIBRARIES lua51 )
+endif (NOT LUA_LIBRARIES)
+
 FIND_PACKAGE ( BZip2 REQUIRED )
 FIND_PACKAGE ( ZLIB REQUIRED )
 
@@ -328,6 +337,14 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/
 	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} 
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS} 
 	PATTERN ".svn" EXCLUDE)
+
+if (TEST_DST) 
+	install(DIRECTORY ${CMAKE_SOURCE_DIR}/tests/
+		DESTINATION ${TEST_DST}
+		DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
+		FILE_PERMISSIONS ${SHARED_PERMISSIONS}
+		PATTERN ".svn" EXCLUDE)
+end
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ 
 				DESTINATION ${RESOURCES_DST} 

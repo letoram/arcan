@@ -28,7 +28,7 @@ end
 
 is_windows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
 
-searchpath = [".", "./scripts", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
+searchpath = [".", "../resources/scripts", "./scripts", "./resources/scripts", "#{ENV["HOME"]}/.arcan/resources/scripts", "/usr/local/share/arcan/resources/scripts", "/usr/share/arcan/resources/scripts"]
 searchpath.insert(0, ENV['ARCAN_RESOURCEPATH']) if ENV['ARCAN_RESOURCEPATH']
 
 basepath = nil
