@@ -73,6 +73,9 @@ function awbwnd_breakdisplay(wnd)
 	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
 	wnd:update_canvas(random_surface(128, 128));
   switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+	wnd.broken = true;
+
+	wnd.dir.tt:destroy();
 
 	wnd.rebuild_chain = function() end
 	wnd.shid = build_shader(animtexco_vshader, nil, "vid_" .. wnd.wndid);
@@ -80,6 +83,8 @@ function awbwnd_breakdisplay(wnd)
 		shader_uniform(wnd.shid, "speedfact", "ff", PERSIST, 12.0, 12.0);
 		image_shader(wnd.canvas.vid, wnd.shid);
 	end
+
+	wnd:resize(wnd.canvasw, wnd.canvash, true, true);
 end
 
 local function playlistwnd(wnd)
@@ -305,11 +310,11 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 		(bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
 			if (pwin.paused) then
 				pwin.paused = nil;
-				resume_movie(pwin.canvas.vid);
+				resume_movie(pwin.controlid);
 				image_sharestorage(cfg.bordericns["pause"], self.vid);
 			else
 				pwin.paused = true;
-				pause_movie(pwin.canvas.vid);
+				pause_movie(pwin.controlid);
 				image_sharestorage(cfg.bordericns["play"], self.vid);
 			end
 		end)).vid] = MESSAGE["HOVER_PLAYPAUSE"];
@@ -480,6 +485,10 @@ local function vcap_setup(pwin)
 end
 
 local function update_streamstats(win, stat)
+	if (win.broken) then
+		return;
+	end
+
 	if (win.laststat == nil or win.ctime ~= win.laststat.ctime or
 		win.progr_label == nil) then
 		if (win.progr_label) then
@@ -639,7 +648,6 @@ function awbwmedia_filterchain(pwin)
 			if (ctx == nil) then pwin.filters.effect = nil; end
 
 		elseif (f == "GlowTrails") then
-			print("set trails");
 			dstres, ctx = effect.glowtrails.setup(pwin.filters.effectctx,
 				pwin.controlid, "GLOWTRAILS_" .. tostring(pwin.wndid), 
 				store_sz, in_sz, out_sz, pwin.filters.effectopt);
@@ -669,6 +677,10 @@ function awbwmedia_filterchain(pwin)
 	end
 
 	pwin:update_canvas(dstres, pwin.mirrored);
+	local cfg = awbwman_cfg();
+	if (cfg.fullscreen and cfg.fullscreen.vid) then
+		image_sharestorage(dstres, cfg.fullscreen.vid);
+	end
 end
 
 local function awnd_setup(pwin, bar)
@@ -902,7 +914,6 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 			end
 
 			callback = function(source, status)
-				print(status.kind);
 				if (pwin.alive == false) then
 					return;
 				end
