@@ -210,6 +210,11 @@ function awb()
 	local supp3d = setup_3dsupport();
 	awb_desktop_setup();
 
+	local gametbl = list_games( {} );
+	if (gametbl == nil or #gametbl == 0) then
+		show_gamewarning();
+	end
+
 	if (get_key("help_shown") == nil) then
 		show_help();
 	end
@@ -271,8 +276,10 @@ function launch_factorytgt(tbl, factstr)
 end
 
 function spawn_vidwin(self)
-	local wnd = awbwman_mediawnd(menulbl("Video Capture"), "capture", BADID,
-	{refid = "vidcapwnd"});
+	local wnd = awbwman_mediawnd(
+		menulbl("Video Capture"), "capture", BADID,
+		{refid = "vidcapwnd"}
+	);
 	if (wnd == nil) then
 		return;
 	end

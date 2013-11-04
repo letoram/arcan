@@ -25,6 +25,18 @@ return {
 
 	ROOT_WINDOW    = "Windows",
 
+	WARNING_NOGAMES = [[
+		\#ffff00(Warning)\#ffffff\n\r
+		No games found in the database. \n\r
+		Either you have forgotten to set it up,\n\r
+		or Arcan was launched with the -d argument\n\r
+		pointing to a new or empty database.\n\r\n\r
+		Check the wiki@arcan-fe.com on how to setup\n\r
+		and build the database or experiment with\n\r
+		the arcan_romman.rb tool ("BuildDB / ArcanLauncher"\n\r
+		shortcuts on Windows).\n\r\n\r
+	]],
+
 	VIDREC_RES     = "Vertical Resolution",
 	VIDREC_ASPECT  = "Aspect Ratio",
 	VIDREC_CODEC   = "Video Codec",
