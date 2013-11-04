@@ -9,8 +9,8 @@
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
-#include "arcan_frameserver.h"
-#include "arcan_frameserver_encode_presets.h"
+#include "frameserver.h"
+#include "encode_presets.h"
 
 static void vcodec_defaults(struct codec_ent* dst, unsigned width, 
 	unsigned height, float fps, unsigned vbr)

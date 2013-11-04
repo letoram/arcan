@@ -23,10 +23,10 @@
 #undef BADFD
 #define BADFD -1
 
-#include "arcan_frameserver.h"
+#include "frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
-#include "arcan_frameserver_encode.h"
-#include "arcan_frameserver_encode_presets.h"
+#include "encode.h"
+#include "encode_presets.h"
 
 /* don't build / link to older versions */
 #if LIBAVCODEC_VERSION_MAJOR < 54

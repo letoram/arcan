@@ -358,6 +358,28 @@ function gamelist_media(tbl)
 	{1.0}, list, desktoplbl);
 end
 
+function show_gamewarning()
+	local wnd = awbwman_spawn(menulbl("Notice"), {noresize = true});
+	if (wnd == nil) then
+		return;
+	end
+
+	wnd:focus();
+
+	local helpimg = desktoplbl(MESSAGE["WARNING_NOGAMES"]);
+	link_image(helpimg, wnd.canvas.vid);
+	show_image(helpimg);
+	image_clip_on(helpimg, CLIP_SHALLOW);
+	image_mask_set(helpimg, MASK_UNPICKABLE);
+	image_inherit_order(helpimg, true);
+	order_image(helpimg, 1);
+	local props =	image_surface_properties(helpimg);
+	move_image(helpimg, 10, 10);
+	wnd:resize(props.width + 20, props.height + 20, true, true);
+	
+	wnd.lasthelp = helpimg;
+end
+
 function show_help()
 	local wnd = awbwman_gethelper();
 	local focusmsg = MESSAGE["HELP_GLOBAL"];
@@ -422,7 +444,10 @@ function gamelist_popup(ent)
 	local popup_fun = {
 		function() gamelist_launch(ent);     end,
 		function() gamelist_media(ent.tag);  end,
-		function() gamelist_family(ent);     end
+		function() 
+			local tbl = game_family(ent);
+			gamelist_wnd(tbl);
+		end
 	};
 
 	awbwman_popup(vid, list, popup_fun);

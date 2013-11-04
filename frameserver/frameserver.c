@@ -42,23 +42,23 @@
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
-#include "arcan_frameserver.h"
+#include "frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
 
 #ifdef ENABLE_FSRV_LIBRETRO
-#include "arcan_frameserver_libretro.h"
+#include "libretro.h"
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
-#include "arcan_frameserver_encode.h"
+#include "encode.h"
 #endif
 
 #ifdef ENABLE_FSRV_DECODE
-#include "arcan_frameserver_decode.h"
+#include "decode.h"
 #endif
 
 #ifdef ENABLE_FSRV_NET
-#include "arcan_frameserver_net.h"
+#include "net.h"
 #endif
 
 int sockin_fd = -1;
@@ -407,6 +407,8 @@ static void toggle_logdev(const char* prefix)
 #ifdef ENABLE_FSRV_LIBRETRO
 	if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev("retro");
+		extern void arcan_frameserver_libretro_run(
+			const char* resource, const char* shmkey);
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
 #endif

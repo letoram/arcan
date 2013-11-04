@@ -186,27 +186,21 @@ local function scrolldown(self, n)
 end
 
 local function caretdrop(self)
-	self.caret_dy = 0;
+	self.caret_dy = nil;
 end
 
 local function caretdrag(self, vid, dx, dy)
 	self.wnd:focus();
-	local prop = image_surface_properties(
+	
+	local mx, my = mouse_xy();
+	local pprop = image_surface_resolve_properties(
 		self.wnd.dir[self.wnd.icon_bardir].fill.vid);
-
-	local stepsz = prop.height / self.wnd.total;
-	self.caret_dy = self.caret_dy + dy;
-
-	if(self.caret_dy < -5) then
-		local steps = math.floor(-1 * self.caret_dy / 5);
-		self.caret_dy = self.caret_dy + steps * 5;
-		scrollup(self.wnd, steps); 
-
-	elseif (self.caret_dy > 5) then
-		local steps = math.floor(self.caret_dy / 5);
-		self.caret_dy = self.caret_dy - steps * 5;
-		scrolldown(self.wnd, steps);
-	end
+	
+	local mry = (my - pprop.y) / pprop.height;
+	mry = mry < 0 and 0 or mry;
+	mry = mry > 1 and 1 or mry;
+	self.wnd.ofs = (self.wnd.total - self.wnd.capacity) * mry;
+	scrollup(self.wnd, 0);
 end
 
 local function scrollclick(self, vid, x, y)
@@ -352,7 +346,6 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 	local caretmh = {
 		wnd  = pwin,
-		caret_dy = 0,
 		drag = caretdrag,
 		drop = caretdrop,
 		name = "list_scroll_caret",

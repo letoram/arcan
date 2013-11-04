@@ -19,7 +19,8 @@
  *
  */
 
-/* the use for these functions is just to call with, a possibly user supplied preferred codec identification string,
+/* the use for these functions is just to call with, 
+ * a possibly user supplied preferred codec identification string,
  * begin with container, as we need the flags to open correctly.
  * then video and audio, passing the flags of the container.
  * then call each codec_ents setup function with respective options */
@@ -72,5 +73,6 @@ struct codec_ent
  */
 struct codec_ent encode_getvcodec(const char* const requested, int flags);
 struct codec_ent encode_getacodec(const char* const requested, int flags);
-struct codec_ent encode_getcontainer(const char* const requested, int fd, const char* remote);
+struct codec_ent encode_getcontainer(const char* const requested, 
+	int fd, const char* remote);
 #endif

@@ -37,9 +37,9 @@
 #include "../arcan_general.h"
 #include "../arcan_event.h"
 
-#include "arcan_frameserver.h"
+#include "frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
-#include "arcan_frameserver_net.h"
+#include "net.h"
 #include "graphing/net_graph.h"
 
 #ifndef DEFAULT_CLIENT_TIMEOUT

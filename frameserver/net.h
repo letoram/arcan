@@ -54,7 +54,8 @@
 #endif
 
 /* only effective for state transfer over the TCP channel,
- * additional state data won't be pushed until buffer status is below SATCAP * OUTBUF_SZ */
+ * additional state data won't be pushed until buffer 
+ * status is below SATCAP * OUTBUF_SZ */
 #ifndef DEFAULT_OUTBUF_SATCAP
 #define DEFAULT_OUTBUF_SATCAP 0.5
 #endif
@@ -75,22 +76,35 @@ enum NET_STATES {
 };
 
 /* Overall design / idea:
- * Each frameserver can be launched in either server (1..n connections) or client (1..1 connections) in either simple or advanced mode.
+ * Each frameserver can be launched in either server 
+ * (1..n connections) or client (1..1 connections) in 
+ * either simple or advanced mode.
  *
  * a. There's a fixed limited number of simultaneous n connections
  *
- * b. The main loop polls on socket (FD transfer socket can be used), this can be externally interrupted through the wakeup_call callback,
+ * b. The main loop polls on socket (FD transfer socket can be used), 
+ * this can be externally interrupted through the wakeup_call callback,
  * and between polls the incoming eventqueue is flushed
  *
- * c. If advanced mode is enabled, the main server is not accessible until the client has successfully registered with
- * a dictionary service (which should also permit blacklisting, honeypot redirection etc.) which returns whatever public key the client is supposed to use when connecting
- * (client -> LIST/DISCOVER -> server -> PUBKEY response -> client -> LIST/REGISTER (own PUBKEY encrypted) -> server -> REGISTER/DST (pubkey to use))
- * --> server response size should never be larger than client request size <--
+ * c. If advanced mode is enabled, the main server is not accessible 
+ * until the client has successfully registered with
+ * a dictionary service (which should also permit blacklisting, 
+ * honeypot redirection etc.) which returns whatever public key
+ *  the client is supposed to use when connecting
+ * (client -> LIST/DISCOVER -> server -> PUBKEY response 
+ * -> client -> LIST/REGISTER (own PUBKEY encrypted) 
+ * -> server -> REGISTER/DST (pubkey to use))
+ * -> server response size should never be larger than client request size <--
  *
- * d. The shm-API may seem like an ill fit with the video/audio structure here, but is used for pushing monitoring graphs and/or aural alarms
+ * d. The shm-API may seem like an ill fit with the 
+ * video/audio structure here, but is used for pushing 
+ * monitoring graphs and/or aural alarms
  *
- * e. Client in 'direct' mode will just connect to a server and start pushing data / event in plaintext.
- * Client in 'dictionary' mode will try and figure out where to go from either an explicit directory service, or from local broadcasts,
+ * e. Client in 'direct' mode will just connect to a server 
+ * and start pushing data / event in plaintext.
+ * Client in 'dictionary' mode will try and figure out 
+ * where to go from either an explicit directory service, 
+ * or from local broadcasts,
  * or from an IPv6 multicast / network solicitation discovery
  */
 

@@ -25,6 +25,7 @@
 struct arcan_img_meta {
 	bool compressed;
 	bool mipmapped;
+	int pwidth, pheight;
 	size_t c_size;
 };
 

@@ -32,8 +32,7 @@
 #include "../arcan_general.h"
 #include "../arcan_event.h"
 
-#include "arcan_frameserver.h"
-#include "arcan_frameserver_libretro.h"
+#include "frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
 #include "./ntsc/snes_ntsc.h"
 #include "./graphing/net_graph.h"
