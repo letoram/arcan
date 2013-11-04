@@ -75,9 +75,8 @@ add_executable( arcan_frameserver ${FSRV_SOURCES})
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
-if (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
+if (ENABLE_32BITHIJACK)
 	message("(*) 64-bit target detected, building compat. 32-bit hijack library")
-	message("    disable with -DNO_HIJACK32=1")
 
 	add_library(arcan_hijack32 SHARED 
 		arcan_target_unix.c 
@@ -88,7 +87,7 @@ if (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
 	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
  	target_link_libraries(arcan_hijack32 -m32 -lrt )
 	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
-endif (${HAVE_64_BIT} AND NOT ${NO_HIJACK32})
+endif (ENABLE_32BITHIJACK)
 
 install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb DESTINATION ${BIN_DST} 
 	PERMISSIONS 
