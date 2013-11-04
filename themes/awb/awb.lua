@@ -284,7 +284,7 @@ function spawn_vidwin(self)
 		return;
 	end
 
-	local res = awbwman_inputattach(function(msg) print(msg) end, 
+	local res = awbwman_inputattach(function(msg) end, 
 		inputlbl, {
 		w = 64,
 		h = 32,
@@ -445,55 +445,110 @@ function show_help()
 	end
 end
 
-function gamelist_popup(ent)
-	local popup_opts = [[Launch\n\rFind Media\n\rList Siblings]];
+function sortopts_popup(ent, wnd)
+	local sortfun = function() end
+	local resort = function()
+		table.sort(wnd.data, sortfun); 
+		wnd:force_update();
+	end
+
+	local popup_opts = [[Title(Asc)\n\rTitle(Desc)\n\rGenre(Asc)\n\rGenre(Desc)\n\r]];
+	local popup_fun = {
+		function() sortfun = function(a, b) 
+			return string.lower(a.title) < string.lower(b.title);
+		end resort(); end,
+
+		function() sortfun = function(a, b) 
+			return string.lower(a.title) > string.lower(b.title);
+		end resort(); end,
+
+		function() sortfun = function(a, b) 
+			return string.lower(a.genre) < string.lower(b.genre);
+		end resort(); end,
+
+		function() sortfun = function(a, b) 
+			return string.lower(a.genre) < string.lower(b.genre);
+		end resort(); end
+	};
+
+	local vid, lines = desktoplbl(popup_opts);
+	awbwman_popup(vid, lines, popup_fun);
+end
+
+function gamelist_popup(ent, wnd)
+	local popup_opts = [[Launch\n\rFind Media\n\rList Siblings\n\rSort...]];
 	local vid, list  = desktoplbl(popup_opts);
 	local popup_fun = {
 		function() gamelist_launch(ent);     end,
 		function() gamelist_media(ent.tag);  end,
 		function() 
-			local tbl = game_family(ent);
-			gamelist_wnd(tbl);
+			local tbl = game_family(ent.gameid);
+
+			if (#tbl > 0) then
+				local restbl = {};
+
+				for i,j in ipairs(tbl) do
+					local gtbl = game_info(j);
+					if (gtbl ~= nil and gtbl[1] ~= nil) then
+						table.insert(restbl, gtbl[1]);
+					end
+				end
+
+				if (#restbl > 0) then
+					gamelist_tblwnd(restbl, "Family: " .. ent.name);
+				end
+			end
+		end,
+		function()
+			sortopts_popup(ent, wnd);
 		end
 	};
 
 	awbwman_popup(vid, list, popup_fun);
 end
 
---
--- Set up a basic gamelist view from a prefiltered selection
--- (which can be fine-grained afterwards ofc). 
---
+function gamelist_tblwnd(tbl, capt)
+	if (tbl == nil or #tbl == 0) then
+		return;
+	end
+
+	local ltf = function(self) gamelist_launch(self); end;
+
+	local wnd = awbwman_listwnd(menulbl(capt), deffont_sz, linespace,
+		{0.7, 0.3}, function(filter, ofs, lim, iconw, iconh)
+			local ul = ofs + lim;
+			local res = {};
+
+			ul = (ul > #tbl) and #tbl or ul;
+
+			for i=ofs,ul do
+				local ent = {
+					name = tbl[i].title,
+					gameid = tbl[i].gameid,
+					target = tbl[i].target,
+					tag = tbl[i],
+					rtrigger = gamelist_popup,
+					trigger = ltf, 
+					cols = {tbl[i].title, (tbl[i].genre ~= nil and 
+						string.len(tbl[i].genre) > 0) and tbl[i].genre or "(none)"}
+				};
+
+				table.insert(res, ent);
+			end
+
+			return res, #tbl;
+		end, desktoplbl, {refid = "listwnd_" .. capt});
+
+	if (wnd ~= nil) then
+		wnd.name = "List(" .. capt .. ")";
+		wnd.data = tbl;
+	end
+end
+
 function gamelist_wnd(selection)
 	local tgtname = selection.name;
-	local tgttotal = #list_games({target = tgtname});
-	local wnd = awbwman_listwnd(menulbl(tgtname), deffont_sz, linespace, 
-		{0.7, 0.3}, function(filter, ofs, lim, iconw, iconh)
-		
-		local res = {};
-
-		local tbl = list_games({offset = ofs-1, limit = lim, target = tgtname});	
-
-		if (tbl) then
-		for i=1,#tbl do
-			local ent = {
-				name     = tbl[i].title,
-				gameid   = tbl[i].gameid,
-				target   = tbl[i].target,
-				tag      = tbl[i],
-				rtrigger = gamelist_popup,
-				trigger  = function(self) gamelist_launch(self); end,
-				cols     = {tbl[i].title, 
-					(tbl[i].genre ~= nil and string.len(tbl[i].genre) > 0) and tbl[i].genre or "(none)"}
-			};
-
-			table.insert(res, ent);
-		end
-		end
-	
-		return res, tgttotal;
-	end, desktoplbl, {refid = "listwnd_" .. tgtname});
-	wnd.name = "List(" .. tgtname .. ")";
+	local tgttotal = list_games({target = tgtname});
+	gamelist_tblwnd(tgttotal, tgtname);
 end
 
 function rootdnd(ctag)

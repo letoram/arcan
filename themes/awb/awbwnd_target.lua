@@ -638,6 +638,7 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.filters = {};
 	pwin.hoverlut = {};
 	pwin.helpmsg = MESSAGE["HELP_TARGET"];
+	pwin.break_display = awbwnd_breakdisplay;
 
 -- options part of the "factory string" (along with filter)
 	pwin.graphdbg   = false;
@@ -854,7 +855,7 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 
 		if (status.kind == "frameserver_terminated") then
-			pwin:update_canvas( color_surface(1, 1, 0, 0, 0) );
+			pwin:break_display();	
 
 		elseif (status.kind == "message") then
 --			print("show message:", status.message);
