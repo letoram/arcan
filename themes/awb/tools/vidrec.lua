@@ -152,6 +152,7 @@ local function add_rectarget(wnd, tag)
 	source.vid   = null_surface(tmpw, tmph);
 	source.own   = function(self, vid) return vid == source.vid; end
 	source.drag  = function(self, vid, dx, dy)
+		wnd:focus();
 		source.name  = tag.name;
 
 --
@@ -200,7 +201,8 @@ local function add_rectarget(wnd, tag)
 -- update selected for wnd so 'del' input key works
 	source.click = function(self, vid)
 		local tag = awbwman_cursortag();
-		
+		wnd:focus();
+
 		if (wnd.selected ~= source) then
 			if (wnd.selected) then
 				image_shader(wnd.selected.vid, "DEFAULT");
@@ -226,6 +228,7 @@ local function add_rectarget(wnd, tag)
 
 	source.rclick = function(self, vid)
 		local dind = 0;
+		wnd:focus();
 
 		for i=1,#wnd.sources do
 			if (wnd.sources[i] == source) then

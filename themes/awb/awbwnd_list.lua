@@ -40,6 +40,7 @@ function awblist_resize(self, neww, newh)
 -- emitt lots of resize events when drag-resizing
 	if (self.invalidate or (props.height - self.lasth >
 		(self.lineh + self.linespace))) then
+	
 		self.invalidate = false;
 		self.lasth  = props.height;
 		self.restbl, self.total = self:datasel(self.ofs, self.capacity, list);	
@@ -169,6 +170,8 @@ local function clampofs(self)
 	elseif (self.ofs + self.capacity > self.total) then
 		self.ofs = self.total - self.capacity + 1;
 	end
+
+	self.ofs = math.floor(self.ofs);
 end
 
 local function scrollup(self, n)
@@ -199,8 +202,13 @@ local function caretdrag(self, vid, dx, dy)
 	local mry = (my - pprop.y) / pprop.height;
 	mry = mry < 0 and 0 or mry;
 	mry = mry > 1 and 1 or mry;
-	self.wnd.ofs = (self.wnd.total - self.wnd.capacity) * mry;
-	scrollup(self.wnd, 0);
+
+	local lastofs = self.wnd.ofs;
+	self.wnd.ofs = math.ceil( (self.wnd.total - self.wnd.capacity + 1) * mry );
+
+	if (lastofs ~= self.wnd.ofs) then
+		scrollup(self.wnd, 0);
+	end
 end
 
 local function scrollclick(self, vid, x, y)

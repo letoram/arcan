@@ -35,6 +35,27 @@ local function seekstep(pwin)
 	end
 end
 
+local animtexco_vshader = [[
+uniform mat4 modelview;
+uniform mat4 projection;
+uniform int timestamp;
+
+uniform vec2 speedfact;
+
+attribute vec4 vertex;
+attribute vec2 texcoord;
+
+varying vec2 texco;
+
+void main(void)
+{
+        texco.s = texcoord.s + fract(float(timestamp) / speedfact.x);
+        texco.t = texcoord.t + fract(float(timestamp) / speedfact.y);
+
+        gl_Position = (projection * modelview) * vertex;
+}
+]];
+
 local function set_shader(modelv)
 	local lshdr = load_shader("shaders/dir_light.vShader", 
 		"shaders/dir_light.fShader", "media3d_" .. tostring(shader_seqn));
@@ -46,6 +67,19 @@ local function set_shader(modelv)
 
 	image_shader(modelv, lshdr);
 	return lshdr;
+end
+
+function awbwnd_breakdisplay(wnd)
+	switch_default_texmode( TEX_REPEAT, TEX_REPEAT );
+	wnd:update_canvas(random_surface(128, 128));
+  switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
+
+	wnd.rebuild_chain = function() end
+	wnd.shid = build_shader(animtexco_vshader, nil, "vid_" .. wnd.wndid);
+	if (wnd.shid ~= nil) then
+		shader_uniform(wnd.shid, "speedfact", "ff", PERSIST, 12.0, 12.0);
+		image_shader(wnd.canvas.vid, wnd.shid);
+	end
 end
 
 local function playlistwnd(wnd)
@@ -785,6 +819,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 	pwin.hoverlut = {};
 
 	pwin.rebuild_chain = awbwmedia_filterchain;
+	pwin.break_display = awbwnd_breakdisplay;
 
 	pwin:add_handler("on_destroy", function(self)
 		if (pwin.filtertmp ~= nil) then
@@ -805,7 +840,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 -- resized for the costly functions
 		pwin.on_resized = 
 		function(wnd, winw, winh, cnvw, cnvh)
-			awbwmedia_filterchain(pwin, cnvw, cnvh);
+			pwin:rebuild_chain();
 		end;
 
 		local canvash = {
@@ -867,6 +902,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 			end
 
 			callback = function(source, status)
+				print(status.kind);
 				if (pwin.alive == false) then
 					return;
 				end
@@ -880,6 +916,9 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 					pwin.recv = aud;
 					pwin:set_mvol(pwin.mediavol);
 					pwin:resize(status.width, status.height, true);
+
+				elseif (status.kind == "frameserver_terminated") then
+					pwin:break_display();
 
 				elseif (status.kind == "streamstatus") then
 					update_streamstats(pwin, status);
