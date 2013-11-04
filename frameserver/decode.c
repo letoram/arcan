@@ -10,9 +10,9 @@
 #include "../arcan_general.h"
 #include "../arcan_event.h"
 
-#include "arcan_frameserver.h"
+#include "frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
-#include "arcan_frameserver_decode.h"
+#include "decode.h"
 
 #define AUD_VIS_HRES 2048 
 
@@ -324,7 +324,10 @@ void push_streamstatus()
 	int dm = (dura % 3600) / 60;
 	int ds = (dura % 60);
 
-	snprintf((char*)status.data.external.streamstat.timelim, 14,
+	size_t strlim = sizeof(status.data.external.streamstat.timelim) / 
+		sizeof(status.data.external.streamstat.timelim[0]);
+
+	snprintf((char*)status.data.external.streamstat.timelim, strlim-1,
 		"%d:%02d:%02d", dh, dm, ds);
 
 /* use last pts to indicate current position, base is in milliseconds */
@@ -336,7 +339,7 @@ void push_streamstatus()
 	status.data.external.streamstat.completion = 
 		( (float) duras / (float) dura ); 
 
-	snprintf((char*)status.data.external.streamstat.timestr, 14,
+	snprintf((char*)status.data.external.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
 	arcan_event_enqueue(&decctx.outevq, &status);

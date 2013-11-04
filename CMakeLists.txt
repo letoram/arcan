@@ -263,8 +263,8 @@ endif (${HAVE_SIMD})
 if (${ENABLE_LIBRETRO})
 	message("--> Including libretro support.")
 	list(APPEND FSRV_SOURCES
-	 frameserver/arcan_frameserver_libretro.h
-	 frameserver/arcan_frameserver_libretro.c
+	 frameserver/libretro.h
+	 frameserver/libretro.c
 	 frameserver/ntsc/snes_ntsc.h
 	 frameserver/ntsc/snes_ntsc.c
  	)
@@ -275,8 +275,8 @@ if (${APR_FOUND} AND ${ENABLE_NET})
 	message("--> Including networking support.") 
 	list(APPEND FSRV_LIBRARIES ${APR_LIBRARIES} )
 	list(APPEND FSRV_SOURCES
-   frameserver/arcan_frameserver_net.h
-	 frameserver/arcan_frameserver_net.c
+   frameserver/net.h
+	 frameserver/net.c
 	)
 	add_definitions(-DENABLE_FSRV_NET)
 else (${APR_FOUND} AND ${ENABLE_NET})
@@ -287,12 +287,12 @@ if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 	message("--> Enabling video encoding/decoding support.") 
 	list(APPEND FSRV_LIBRARIES ${FFMPEG_LIBRARIES})
 	list(APPEND FSRV_SOURCES 
-		frameserver/arcan_frameserver_decode.h
-		frameserver/arcan_frameserver_decode.c
-		frameserver/arcan_frameserver_encode.h
-		frameserver/arcan_frameserver_encode.c
-		frameserver/arcan_frameserver_encode_presets.c
-		frameserver/arcan_frameserver_encode_presets.h
+		frameserver/decode.h
+		frameserver/decode.c
+		frameserver/encode.h
+		frameserver/encode.c
+		frameserver/encode_presets.c
+		frameserver/encode_presets.h
 	)
 	add_definitions(-DENABLE_FSRV_ENCODE -DENABLE_FSRV_DECODE)
 else (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})

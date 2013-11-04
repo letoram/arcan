@@ -34,7 +34,7 @@ ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
 )
 
 LIST(APPEND MAIN_LIBRARIES usb rt)
-LIST(APPEND FSRV_SOURCES frameserver/arcan_frameserver.c 
+LIST(APPEND FSRV_SOURCES frameserver/frameserver.c 
 	${FSERV_PLATFORM_SOURCES})
 LIST(APPEND FSRV_LIBRARIES -lrt)
 

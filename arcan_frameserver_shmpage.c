@@ -20,7 +20,7 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
-#include "frameserver/arcan_frameserver.h"
+#include "frameserver/frameserver.h"
 #include "arcan_frameserver_shmpage.h"
 
 /* This little function tries to get around all the insane problems

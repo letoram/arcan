@@ -31,7 +31,7 @@
 #include "net_graph.h"
 #include "../../arcan_math.h"
 #include "../../arcan_general.h"
-#include "../arcan_frameserver.h"
+#include "../frameserver.h"
 
 /*
  * allocate context -> depending on type, different buckets are set up.

@@ -1882,7 +1882,7 @@ function awbwman_tablist_toggle(active, group)
 -- spawn, cycle a user-defined window- reference list if necessary
 -- (to add more advanced forms, like ALT-TAB between most recently used etc.)
 --
---	group = "all";
+	group = "all";
 	if (awb_cfg.tablist_toggle == nil and active) then
 		if (group == nil) then
 			awb_tablist= awb_wtable;
@@ -2191,14 +2191,13 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.notifyanchor = null_surface(1,1);
 	show_image(awb_cfg.notifyanchor);
 
-
-	local load_image = load_image_asynch;
 	awb_cfg.col = awb_col;
 	awb_cfg.activeres   = load_image("awbicons/border.png");
 	awb_cfg.inactiveres = load_image("awbicons/border_inactive.png");
 	awb_cfg.ttactiveres = load_image("awbicons/tt_border.png");
 	awb_cfg.ttinactvres = load_image("awbicons/tt_border.png");
 	awb_cfg.alphares    = load_image("awbicons/alpha.png");
+	local load_image = load_image_asynch;
 	
 	awb_cfg.tabicns = {};
 	awb_cfg.tabicns.list = load_image("awbicons/floppy.png");
@@ -2242,6 +2241,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
 	awb_cfg.bordericns["mouse"]       = load_image("awbicons/topbar_mouse.png");
 	awb_cfg.bordericns["mouselock"]   = load_image("awbicons/topbar_mouselock.png");
+
 	for k,v in pairs(awb_cfg.bordericns) do
 		image_pushasynch(v);
 	end
