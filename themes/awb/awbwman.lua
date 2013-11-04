@@ -1981,7 +1981,7 @@ function awbwman_tablist_toggle(active, group)
 			blend_image(tbl.slots[tbl.ulim].vid, 0, awb_cfg.animspeed);
 
 -- allocate a new that takes the offset in consideration
-			tablist_allocslot(tbl.ulim, tbl.ofs);
+			tablist_allocslot(tbl.ulim, awb_tablist[tbl.ofs]);
 			tbl.slots[tbl.ulim].wnd = awb_tablist[tbl.ofs];
 			tbl.ofs = (tbl.ofs + 1) > #awb_tablist and 1 or (tbl.ofs + 1);
 		end
