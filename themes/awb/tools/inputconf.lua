@@ -59,8 +59,8 @@ end
 
 local function keyconf_tbltoid(self, itbl)
 	if (itbl.kind == "analog") then
-		return string.format("analog:%d:%d:%s", 
-			itbl.devid, itbl.subid, itbl.source);
+		return string.format("analog:%d:%d", 
+			itbl.devid, itbl.subid);
 	end
 
 	if itbl.translated then
@@ -72,8 +72,8 @@ local function keyconf_tbltoid(self, itbl)
 				itbl.devid, itbl.keysym, itbl.modifiers);
 		end
 	else
-		return string.format("digital:%d:%d:%s",
-			itbl.devid, itbl.subid, itbl.source);
+		return string.format("digital:%d:%d",
+			itbl.devid, itbl.subid);
 	end
 end
 
@@ -199,103 +199,92 @@ local function insert_unique(tbl, key)
 	table.insert(tbl, key);
 end
 
-local function input_anal(edittbl)
+local function input_anal(edittbl, startofs)
 	local cfg = awbwman_cfg();
+	local devtbl = inputanalog_query();
+
 	local btntbl = {
 		{
 			caption = cfg.defrndfun("Select"),
 			trigger = function(owner)
-				print("anal trigger");
+				edittbl.parent.table[edittbl.name] = 
+					string.format("analog:%d:%d", devtbl[owner.cur_ind].devid, 
+					devtbl[owner.cur_ind].subid);
+
+				edittbl.parent:update_list();
+				edittbl.parent.wnd:force_update();
 			end
-		},
+		},	
 		{
 			caption = cfg.defrndfun("Cancel"),
 			trigger = function(owner)
 			end
 		},
-		{
-			caption = cfg.defrndfun("Next"),
-			trigger = function(owner)
-				print("step axis");
-				return true;
-			end
-		},
-		{
-			caption = cfg.defrndfun("Previous");
-			trigger = function(owner)
-				print("step axis");
-				return true;
-			end
-		}
 	};
 
-	local msg = cfg.defrndfun( string.format("Axis data:") );
+	if (devtbl == nil or #devtbl == 0) then
+		return;
+	end
+
+	local updatestr = function(ind, count)
+		local msg = string.format([[
+		(Arrow Keys to step Axis/Device)\n\r
+		Current(%d/%d):\t %d : %d\n\r
+		Sample Count:\t %d]], ind, #devtbl, devtbl[ind].devid, 
+			devtbl[ind].subid, count);
+		return desktoplbl( msg );
+	end
+
+	local step = function(self, n)
+		self.cur_ind = self.cur_ind + n;
+
+		if (self.cur_ind <= 0) then
+			self.cur_ind = #devtbl;
+		elseif (self.cur_ind > #devtbl) then
+			self.cur_ind = 1;
+		end
+
+		self.cur_count = 0;
+		self:update_caption( updatestr( self.cur_ind, 0 ) );
+	end
+
 	local props = image_surface_resolve_properties(
 		edittbl.parent.wnd.canvas.vid);
 
-	local dlg = awbwman_dialog(msg, btntbl, 
+	local dlg = awbwman_dialog(updatestr(1, 0), btntbl, 
 		{x = (props.x + 20), y = (props.y + 20), nocenter = true}, false);
 	dlg.lastid = edittbl.bind;
 
+	if (dlg == nil) then
+		return;
+	end
+
+	dlg.cur_count = 0;
+	dlg.cur_ind = 1;
 	edittbl.parent.wnd:add_cascade(dlg);
 
--- index by device / axis, note which ones are active but only track
--- the current one.
---
--- next cycles among detected devices / axes
--- show low, high
--- filterstep cycles among filter- window 
--- arrow keys change upper / lower cutoff
---
-	local updatestr = function()
--- current axis, # samples checked, minv, maxv
--- lowthresh, upthresh, avg-kernel
--- an axis plot as well?
-	end
---
--- What we would need;
--- 1. disable all analog (default)
--- 2. enable all ( for config ) specific analog ( for each active ioconf )
--- 3. set specific analog filter per device (low, high, avgbuf_sz)
--- Everything to limit the number of samples that pass the core <-> script
--- barrier
---
-	local active_dev = 1;
-	local active_axis = 0;
-	local lower_thresh = 0;
-	local upper_thresh = 32767;
-
 	dlg.input = function(self, iotbl)
-		if (iotbl.key == "UP") then
-			lower_thresh = (lower_thresh + 1000) > upper_thresh and 
-				(upper_thresh - 1000) or (lower_thresh + 1000); 
-
-		elseif (iotbl.key == "DOWN") then
-			lower_thresh = (lower_thresh - 1000) < 0 and
-				0 or (lower_thresh - 1000);
-
-		elseif (iotbl.key == "LEFT") then
-			upper_thresh = (upper_thresh - 1000) > lower_thresh and
-				(upper_thresh - 1000) or (lower_thresh + 1000);
-			
-		elseif (iotbl.key == "RIGHT") then
-			upper_thresh = (upper_thresh + 1000) > 32767 and 32767
-				or (upper_thresh + 1000);
-
-		elseif (iotbl.key == "PGUP") then
-			flt_kernel = flt_kernel + 1;
-
-		elseif (iotbl.key == "PGDN") then
-			flt_kernel = (flt_kernel - 1) > 0 and (flt_kernel - 1) or 1;
+		if (iotbl.active == false) then
+			return;
 		end
+	
+		if (iotbl.lutsym == "UP" or iotbl.lutsym == "RIGHT") then
+			step(self, 1);
+				
+		elseif (iotbl.lutsym == "DOWN" or iotbl.lutsym == "LEFT") then
+			step(self, -1);
 
-		updatestr();
+		else
+			return;
+		end
 	end
 
 	dlg.ainput = function(self, iotbl)
-		if (iotbl.devid ~= active_dev) then
-			devmap[iotbl.devid] = true;
-			return;
+		if (iotbl.devid == devtbl[self.cur_ind].devid and
+			iotbl.subid == devtbl[self.cur_ind].subid) then
+			
+			self.cur_count = self.cur_count + 1;
+			self:update_caption( updatestr( self.cur_ind, self.cur_count) );
 		end
 	end
 end
@@ -328,8 +317,10 @@ local function input_dig(edittbl)
 	dlg.lastid = edittbl.bind;
 
 	edittbl.parent.wnd:add_cascade(dlg);
+
 	dlg.input = function(self, iotbl)
 		local tblstr = edittbl.parent:id(iotbl);
+
 		if (tblstr) then
 			dlg.lastid = tblstr;
 			local msg = cfg.defrndfun( string.format("Press a button for [%s]\\n\\r\t%s",
@@ -528,12 +519,73 @@ function inputed_getcfg(lbl)
 	return nil;
 end
 
+local function setup_axismonitor()
+	if (global_axismon == nil) then
+		global_axismon.sample_count = 0;
+		global_axismon = awbwman_spawn(
+			menulbl("Analog Monitor"), {noresize = true}
+		);
+
+		awbwman_reqglobal(global_axismon);
+		global_axismon.on_destroy = function() global_axismon = nil; end;
+		global_axismon.axes = {};
+
+-- one column for each axis, on mouse over on column shows id:axis
+		global_axismon.ainput = function()
+			global_axismon.sample_count = global_axismon.sample_count + 1;
+		end
+	end
+
+end
+
 --
--- Spawn a window listing layouts, including a "new" will bring up
--- the layout editor, which is a list view of possible labels.
--- doubleclick there brings up the input dialog that samples input
--- (digital or analog) and 
+-- If we already have an axis view window, switch dev/axis
+-- else spawn a new window.
+-- Canvas is a graph view of current values (updated every n samples)
 --
+local function update_window(dev, sub)
+	if (global_analwin == nil) then
+		global_analwin = awbwman_spawn(menulbl("Notice"), {noresize = true});
+		awbwman_reqglobal(global_analwin);
+		global_analwin.on_destroy = function() global_analwin = nil; end;
+
+-- Map up scale and zones for the device in question
+		global_analwin.switch_device = function(dev, sub)
+			print("switch to: ", dev, sub);
+		end
+
+		global_analwin.ainput = function(iotbl)
+			print("got sample", iotbl.devid, iotbl.subid);
+		end
+	else
+		global_analwin:switch_device(dev, sub);
+	end
+end
+
+local function inputed_anallay(devtbl)
+	local devs = {};
+
+		for i,j in ipairs(devtbl) do
+		local newent = {
+			trigger = function(self, wnd)
+				update_window(j.devid, j.subid);
+			end,
+			cols = {
+				tostring(j.devid), tostring(j.subid)
+			}
+		}
+
+		table.insert(devs, newent);
+	end
+
+	local wnd = awbwman_listwnd(menulbl("Analog Options"), 
+		deffont_sz, linespace, {0.5, 0.5}, devs, desktoplbl);
+
+	if (wnd == nil) then
+		return;
+	end
+end
+
 function awb_inputed()
 	local res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);	
 	local ctable = {};
@@ -551,6 +603,17 @@ function awb_inputed()
 			end
 		}
 	};
+
+	local devtbl = inputanalog_query();
+	if (#devtbl > 0) then
+		table.insert(list, {
+			cols = {"Analog Options..."},
+			trigger = function(self, wnd)
+				wnd:destroy(awbwman_cfg().animspeed);
+				inputed_anallay(devtbl);
+			end
+		});
+	end
 
 	for i,v in ipairs(res) do
 		local base, ext = string.extension(v);

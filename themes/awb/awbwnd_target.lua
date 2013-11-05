@@ -849,6 +849,8 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 	end
 
+	pwin.ainput = pwin.input;
+
 	local callback = function(source, status)
 		if (pwin.alive == false) then
 			return;
