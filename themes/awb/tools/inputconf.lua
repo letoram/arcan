@@ -545,21 +545,76 @@ end
 --
 local function update_window(dev, sub)
 	if (global_analwin == nil) then
-		global_analwin = awbwman_spawn(menulbl("Notice"), {noresize = true});
+		global_analwin = awbwman_spawn(menulbl("Analog View"), {});
 		awbwman_reqglobal(global_analwin);
 		global_analwin.on_destroy = function() global_analwin = nil; end;
+		global_analwin.input = function() end
 
--- Map up scale and zones for the device in question
-		global_analwin.switch_device = function(dev, sub)
-			print("switch to: ", dev, sub);
+		global_analwin:update_canvas(fill_surface(8, 8, 0, 0, 0));
+		
+		local ubound = color_surface(2, 2,   0, 255,   0);
+		local lbound = color_surface(2, 2,   0, 255,   0);
+		local  dzone = color_surface(2, 2, 128,  32,  32);
+		
+		link_image(ubound, global_analwin.canvas.vid);
+		link_image(lbound, global_analwin.canvas.vid);
+		link_image(dzone,  global_analwin.canvas.vid);
+
+		local group = {ubound, lbound, dzone};
+		show_image(group);
+		image_inherit_order(group, true);
+		order_image(group, 1);
+
+-- Map up scale and zones for the device in question 
+-- (0 canvas, 1 bglabels, 2 samples, 3 notices)
+		global_analwin.switch_device = function(self, dev, sub)
+			local res = inputanalog_query(dev, sub);
+
+			if (res == nil) then
+				local img = desktoplbl("Couldn't find Device!");
+				link_image(img, global_analwin.canvas.vid);
+				image_inherit_order(img, true);
+				order_image(img, 3);
+				show_image(img);
+				expire_image(img, 100);
+	
+			else
+				local w = global_analwin.canvasw;
+				local h = global_analwin.canvash;
+				local step = h / 65536;
+				resize_image(ubound, w, 2);
+				resize_image(lbound, w, 2);
+				move_image(ubound, 0, h * 0.5 + step * res.upper_bound);
+				move_image(lbound, 0, h * 0.5 + step * res.lower_bound);
+				resize_image(dzone, w, res.deadzone * step);
+				move_image(dzone, 0, h * 0.5 - step * res.deadzone * 0.5);
+			end
 		end
 
-		global_analwin.ainput = function(iotbl)
-			print("got sample", iotbl.devid, iotbl.subid);
+		global_analwin.ainput = function(self, iotbl)
+			if (iotbl.devid == self.dev and iotbl.subid == self.sub) then
+				local h = global_analwin.canvash;
+				local step = h / 65536;
+				local box = color_surface(3, 3, 255, 255, 255);
+				show_image(box);
+				link_image(box, global_analwin.canvas.vid);
+				image_inherit_order(box, true);
+				order_image(box, 2);
+				expire_image(box, 5);
+				move_image(box, global_analwin.canvasw * 0.5, 
+					h * 0.5 - step * iotbl.samples[1]);
+			end
 		end
-	else
-		global_analwin:switch_device(dev, sub);
+
+		global_analwin.on_resized = function()
+			global_analwin:switch_device(global_analwin.dev, global_analwin.sub);
+		end
+
+		global_analwin.dev = dev;
+		global_analwin.sub = sub;
 	end
+
+	global_analwin:switch_device(dev, sub);
 end
 
 local function inputed_anallay(devtbl)
