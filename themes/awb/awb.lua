@@ -926,6 +926,7 @@ function awb_input(iotbl)
 			mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0, 
 				iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);
 		end
+
 	elseif (iotbl.kind == "digital" and iotbl.source == "mouse") then
 		if (iotbl.subid > 0 and iotbl.subid <= 3) then
 
@@ -940,8 +941,12 @@ function awb_input(iotbl)
 			end
 		end
 
-	elseif (iotbl.kind == "digital" and iotbl.translated) then
+	elseif (iotbl.kind == "digital") then
 		iotbl.lutsym = symtable[iotbl.keysym];
+		if (iotbl.lutsym == nil) then
+			iotbl.lutsym = "UNKNOWN";
+		end
+
 		local kbdbindbase = awbwman_meta() .. iotbl.lutsym;
 		local forward = true;
 
@@ -960,6 +965,7 @@ function awb_input(iotbl)
 		if (forward) then
 			awbwman_input(iotbl, kbdbindbase);
 		end
+
 	elseif (iotbl.kind == "analog") then
 			awbwman_ainput(iotbl);
 	end
