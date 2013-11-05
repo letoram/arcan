@@ -1029,7 +1029,7 @@ end
 function awbwman_cancel()
 	if (awb_cfg.fullscreen ~= nil) then
 		awbwman_dropfullscreen();
-		return;
+		return true;
 	end
 
 	if (awb_cfg.mouse_focus) then
