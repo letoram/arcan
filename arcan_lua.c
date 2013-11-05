@@ -2267,9 +2267,25 @@ int arcan_lua_origoofs(lua_State* ctx)
 
 int arcan_lua_orderinherit(lua_State* ctx)
 {
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	bool origo = lua_toboolean(ctx, 2);
-	arcan_video_inheritorder(sid, origo);
+
+/* array of VIDs or single VID */
+	int argtype = lua_type(ctx, 1);
+	if (argtype == LUA_TNUMBER){
+		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_video_inheritorder(id, origo);
+	}
+	else if (argtype == LUA_TTABLE){
+		int nelems = lua_rawlen(ctx, 1);
+
+		for (int i = 0; i < nelems; i++){
+			lua_rawgeti(ctx, 1, i+1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_video_inheritorder(id, origo);
+			lua_pop(ctx, 1);
+		}
+	}
+
 	return 0;
 }
 
@@ -4645,9 +4661,57 @@ int arcan_lua_inputanalogzonemap(lua_State* ctx)
 	return 0;
 }
 
+static inline void tblanalogenum(lua_State* ctx, int ttop,
+	enum ARCAN_ANALOGFILTER_KIND mode)
+{
+	switch (mode){
+	case ARCAN_ANALOGFILTER_NONE:
+		tblstr(ctx, "mode", "none", ttop);
+	break;
+	case ARCAN_ANALOGFILTER_PASS:
+		tblstr(ctx, "mode", "pass", ttop);
+	break;
+	case ARCAN_ANALOGFILTER_AVG:
+		tblstr(ctx, "mode", "average", ttop);
+	break;
+	case ARCAN_ANALOGFILTER_ALAST:
+		tblstr(ctx, "mode", "keep_latest", ttop);
+	break;
+	}
+}
+
+static int singlequery(lua_State* ctx, int devid, int axid)
+{
+	int lbound, ubound, dz, ksz;
+	enum ARCAN_ANALOGFILTER_KIND mode;
+
+	arcan_errc errc = arcan_event_analogstate(devid, axid, 
+		&lbound, &ubound, &dz, &ksz, &mode);
+
+	if (errc != ARCAN_OK)
+		return 0;
+
+	lua_newtable(ctx);
+	int ttop = lua_gettop(ctx);
+	tblnum(ctx, "devid", devid, ttop);
+	tblnum(ctx, "subid", axid, ttop);
+	tblnum(ctx, "upper_bound", ubound, ttop);
+	tblnum(ctx, "lower_bound", lbound, ttop);
+	tblnum(ctx, "deadzone", dz, ttop);
+	tblnum(ctx, "kernel_size", ksz, ttop);
+	tblanalogenum(ctx, ttop, mode);
+
+	return 1;	
+}
+
 int arcan_lua_inputanalogquery(lua_State* ctx)
 {
 	int devid = ARCAN_JOYIDBASE, resind = 1;
+	int devnum = luaL_optnumber(ctx, 1, -1);
+	int axnum = luaL_optnumber(ctx, 2, 0);
+
+	if (devnum != -1)
+		return singlequery(ctx, devnum, axnum);
 
 	lua_newtable(ctx);
 	arcan_errc errc = ARCAN_OK;
@@ -4676,24 +4740,7 @@ int arcan_lua_inputanalogquery(lua_State* ctx)
 			tblnum(ctx, "lower_bound", lbound, ttop);
 			tblnum(ctx, "deadzone", dz, ttop);
 			tblnum(ctx, "kernel_size", ksz, ttop);
-
-			switch (mode){
-			case ARCAN_ANALOGFILTER_NONE:
-				tblstr(ctx, "mode", "none", ttop);
-			break;
-
-			case ARCAN_ANALOGFILTER_PASS:
-				tblstr(ctx, "mode", "pass", ttop);
-			break;
-
-			case ARCAN_ANALOGFILTER_AVG:
-				tblstr(ctx, "mode", "average", ttop);
-			break;
-
-			case ARCAN_ANALOGFILTER_ALAST:
-				tblstr(ctx, "mode", "keep_latest", ttop);
-			break;
-			}
+			tblanalogenum(ctx, ttop, mode);
 
 			lua_rawset(ctx, rawtop);
 			axid++;

@@ -619,7 +619,7 @@ end
 function awbwman_reqglobal(wnd)
 	local res = awbwman_dereg(awb_cfg.global_input, wnd);
 
-	if (not res) then
+	if (not res and wnd.input ~= nil) then
 		table.insert(awb_cfg.global_input, wnd);
 		return true;
 	end
