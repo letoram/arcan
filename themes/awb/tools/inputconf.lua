@@ -538,6 +538,62 @@ local function setup_axismonitor()
 
 end
 
+local function analog_kernelpop(wnd, btn)
+	local list = {
+		"1",
+		"2",
+		"3",
+		"4",
+		"5",
+		"6"
+	};
+
+	local olist = {};
+	for ind, val in ipairs(list) do
+		if (val == tostring(wnd.kernel_sz)) then
+			olist[ind] = [[\#00ff00]] .. val .. [[\#ffffff]];
+		else
+			olist[ind] = val;
+		end
+	end
+
+	local str = table.concat(olist, [[\n\r]]);
+	local vid, lines = desktoplbl(str);
+	awbwman_popup(vid, lines, function(ind)
+		wnd.kernel_sz = tonumber(list[ind]);
+			inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
+				wnd.lbound, wnd.ubound, wnd.kernel_sz, wnd.mode);
+		end, {ref = btn.vid});
+end
+
+local function analog_filterpop(wnd, btn)
+	local list = {
+		"drop",
+		"pass",
+		"average",
+		"latest"
+	};
+
+	local olist = {};
+
+	for ind, val in ipairs(list) do
+		if (val == wnd.mode) then
+			olist[ind] = [[\#00ff00]] .. val .. [[\#ffffff]];
+		else
+			olist[ind] = val;
+		end
+	end
+
+	local str = table.concat(olist, [[\n\r]]);
+	local vid, lines = desktoplbl(str);
+
+	awbwman_popup(vid, lines, function(ind)
+		wnd.mode = list[ind];
+		inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
+			wnd.lbound, wnd.ubound, wnd.kernel_sz, wnd.mode);
+	end, {ref = btn.vid});
+end
+
 --
 -- If we already have an axis view window, switch dev/axis
 -- else spawn a new window.
@@ -545,20 +601,107 @@ end
 --
 local function update_window(dev, sub)
 	if (global_analwin == nil) then
-		global_analwin = awbwman_spawn(menulbl("Analog View"), {});
-		awbwman_reqglobal(global_analwin);
-		global_analwin.on_destroy = function() global_analwin = nil; end;
-		global_analwin.input = function() end
+		local wnd = awbwman_spawn(menulbl("Analog View"), {});
+	
+		global_analwin = wnd;
+		wnd.hoverlut = {};
+		wnd.deadzone = 0;
+		wnd.ubound = 32767;
+		wnd.lbound = -32768;
+		wnd.mode = "none";
+		wnd.kernel_sz = 1;
 
-		global_analwin:update_canvas(fill_surface(8, 8, 0, 0, 0));
+		local cfg = awbwman_cfg();
+		local bar = wnd:add_bar("tt", cfg.ttactiveres, cfg.ttactiveres,
+			wnd.dir.t.rsize, wnd.dir.t.bsize);
+
+		bar.hover = function(self, vid, x, y, state)
+			if (state == false) then
+				awbwman_drophover();
+			elseif (wnd.hoverlut[vid] ~= nil) then
+				awbwman_hoverhint(wnd.hoverlut[vid]);
+			end
+		end
+
+		bar.click = function() 
+			wnd:focus(); 
+		end
+
+		local canvash = {
+			own = function(self, vid) return vid == wnd.canvas.vid; end,
+			click = function() wnd:focus(); end
+		};
+
+		bar.name = "analog_ttbar";
+		canvash.name = "analog_canvas";
+
+		mouse_addlistener(bar, {"click", "hover"});
+	
+		wnd.hoverlut[
+		(bar:add_icon("filters", "l", cfg.bordericns["filter"],
+			function(self) 
+				analog_filterpop(wnd, self); 
+			end)).vid] = MESSAGE["ANALOG_FILTERMODE"];
+
+		wnd.hoverlut[
+			(bar:add_icon("kernelsz", "l", cfg.bordericns["resolution"],
+			function(self)
+				analog_kernelpop(wnd, self);
+			end)).vid] = MESSAGE["ANALOG_KERNELSIZE"];
+
+		wnd.hoverlut[
+			(bar:add_icon("deadzone", "l", cfg.bordericns["aspect"],
+			function(self)
+				awbwman_popupslider(0, wnd.deadzone, 10000, function(val)
+					inputanalog_filter(wnd.dev, wnd.sub, val, 
+						wnd.lbound, wnd.ubound, wnd.kernel_sz, wnd.mode);
+					wnd:switch_device(wnd.dev, wnd.sub);
+				end, {ref = self.vid});
+		end)).vid] = MESSAGE["ANALOG_DEADZONE"];
+
+		wnd.hoverlut[
+		(bar:add_icon("ubound", "l", cfg.bordericns["uparrow"],
+			function(self)
+				awbwman_popupslider(16536, wnd.ubound, 32767, function(val)
+					inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
+						wnd.lbound, val, wnd.kernel_sz, wnd.mode);
+					wnd:switch_device(wnd.dev, wnd.sub);
+				end, {ref = self.vid});
+			end)).vid] = MESSAGE["ANALOG_UBOUND"];
+
+		wnd.hoverlut[
+		(bar:add_icon("lbound", "l", cfg.bordericns["downarrow"],
+			function(self)
+				awbwman_popupslider(-16536, wnd.lbound, -32767, function(val)
+					inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
+						val, wnd.ubound, wnd.kernel_sz, wnd.mode);
+					wnd:switch_device(wnd.dev, wnd.sub);
+				end, {ref = self.vid});
+			end)).vid] = MESSAGE["ANALOG_LBOUND"];
+
+		wnd.hoverlut[
+		(bar:add_icon("invert", "l", cfg.bordericns["flip"],
+			function(self)
+				if (awbwman_flipaxis(wnd.dev, wnd.sub)) then
+					image_shader(self.vid, "awb_selected");
+				else
+					image_shader(self.vid, "DEFAULT");
+				end
+			end)).vid] = MESSAGE["ANALOG_INVERT"];
+
+		awbwman_reqglobal(wnd);
+		wnd.on_destroy = function() global_analwin = nil; end;
+		wnd.input = function() end
+
+		wnd:update_canvas(fill_surface(8, 8, 0, 0, 0));
 		
 		local ubound = color_surface(2, 2,   0, 255,   0);
-		local lbound = color_surface(2, 2,   0, 255,   0);
+		local lbound = color_surface(2, 2,   0, 255, 255);
 		local  dzone = color_surface(2, 2, 128,  32,  32);
 		
-		link_image(ubound, global_analwin.canvas.vid);
-		link_image(lbound, global_analwin.canvas.vid);
-		link_image(dzone,  global_analwin.canvas.vid);
+		link_image(ubound, wnd.canvas.vid);
+		link_image(lbound, wnd.canvas.vid);
+		link_image(dzone,  wnd.canvas.vid);
 
 		local group = {ubound, lbound, dzone};
 		show_image(group);
@@ -567,54 +710,70 @@ local function update_window(dev, sub)
 
 -- Map up scale and zones for the device in question 
 -- (0 canvas, 1 bglabels, 2 samples, 3 notices)
-		global_analwin.switch_device = function(self, dev, sub)
+		wnd.switch_device = function(self, dev, sub)
 			local res = inputanalog_query(dev, sub);
 
 			if (res == nil) then
 				local img = desktoplbl("Couldn't find Device!");
-				link_image(img, global_analwin.canvas.vid);
+
+				link_image(img, wnd.canvas.vid);
 				image_inherit_order(img, true);
 				order_image(img, 3);
 				show_image(img);
 				expire_image(img, 100);
 	
 			else
-				local w = global_analwin.canvasw;
-				local h = global_analwin.canvash;
+				wnd.mode = res.mode;
+				wnd.deadzone = res.deadzone;
+				wnd.ubound = res.upper_bound;
+				wnd.lbound = res.lower_bound;
+				wnd.kernel_sz = res.kernel_size;
+				wnd.dev = dev;
+				wnd.sub = sub;
+
+				local w = wnd.canvasw;
+				local h = wnd.canvash;
 				local step = h / 65536;
 				resize_image(ubound, w, 2);
 				resize_image(lbound, w, 2);
 				move_image(ubound, 0, h * 0.5 + step * res.upper_bound);
 				move_image(lbound, 0, h * 0.5 + step * res.lower_bound);
-				resize_image(dzone, w, res.deadzone * step);
+				if (res.deadzone == 0) then
+					hide_image(dzone);
+				else
+					show_image(dzone);
+					resize_image(dzone, w, res.deadzone * step);
+				end
+
 				move_image(dzone, 0, h * 0.5 - step * res.deadzone * 0.5);
 			end
 		end
 
-		global_analwin.ainput = function(self, iotbl)
+		wnd.ainput = function(self, iotbl)
 			if (iotbl.devid == self.dev and iotbl.subid == self.sub) then
-				local h = global_analwin.canvash;
+				local h = wnd.canvash;
 				local step = h / 65536;
 				local box = color_surface(3, 3, 255, 255, 255);
 				show_image(box);
-				link_image(box, global_analwin.canvas.vid);
+				link_image(box, wnd.canvas.vid);
 				image_inherit_order(box, true);
 				order_image(box, 2);
 				expire_image(box, 5);
-				move_image(box, global_analwin.canvasw * 0.5, 
+				move_image(box, wnd.canvasw * 0.5, 
 					h * 0.5 - step * iotbl.samples[1]);
 			end
 		end
 
-		global_analwin.on_resized = function()
-			global_analwin:switch_device(global_analwin.dev, global_analwin.sub);
+		wnd.on_resize = function()
+			wnd:switch_device(wnd.dev, wnd.sub);
 		end
 
-		global_analwin.dev = dev;
-		global_analwin.sub = sub;
+		wnd.dev = dev;
+		wnd.sub = sub;
 	end
 
 	global_analwin:switch_device(dev, sub);
+	global_analwin:focus();
 end
 
 local function inputed_anallay(devtbl)

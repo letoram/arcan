@@ -4644,8 +4644,20 @@ int arcan_lua_inputfilteranalog(lua_State* ctx)
 	int deadzone = luaL_checknumber(ctx, 3);
 	int lb = luaL_checknumber(ctx, 4);
 	int ub = luaL_checknumber(ctx, 5);
-	int buffer_sz = luaL_checknumber(ctx, 4);
-	int mode = luaL_checknumber(ctx, 5);
+	int buffer_sz = luaL_checknumber(ctx, 6);
+
+	const char* smode = luaL_checkstring(ctx, 7);
+	enum ARCAN_ANALOGFILTER_KIND mode = ARCAN_ANALOGFILTER_NONE;
+
+	if (strcmp(smode, "drop") == 0);
+	else if (strcmp(smode, "pass") == 0)
+		mode = ARCAN_ANALOGFILTER_PASS;
+	else if (strcmp(smode, "average") == 0)
+		mode = ARCAN_ANALOGFILTER_AVG;
+	else if (strcmp(smode, "latest") == 0)
+		mode = ARCAN_ANALOGFILTER_ALAST;
+	else
+		arcan_warning("inputfilteranalog(), unsupported mode (%s)\n", smode);
 
 	arcan_event_analogfilter(joyid, axisid, 
 		lb, ub, deadzone, buffer_sz, mode);	
@@ -4666,7 +4678,7 @@ static inline void tblanalogenum(lua_State* ctx, int ttop,
 {
 	switch (mode){
 	case ARCAN_ANALOGFILTER_NONE:
-		tblstr(ctx, "mode", "none", ttop);
+		tblstr(ctx, "mode", "drop", ttop);
 	break;
 	case ARCAN_ANALOGFILTER_PASS:
 		tblstr(ctx, "mode", "pass", ttop);
@@ -4675,7 +4687,7 @@ static inline void tblanalogenum(lua_State* ctx, int ttop,
 		tblstr(ctx, "mode", "average", ttop);
 	break;
 	case ARCAN_ANALOGFILTER_ALAST:
-		tblstr(ctx, "mode", "keep_latest", ttop);
+		tblstr(ctx, "mode", "latest", ttop);
 	break;
 	}
 }
