@@ -562,7 +562,7 @@ local function analog_kernelpop(wnd, btn)
 	awbwman_popup(vid, lines, function(ind)
 		wnd.kernel_sz = tonumber(list[ind]);
 			inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
-				wnd.lbound, wnd.ubound, wnd.kernel_sz, wnd.mode);
+				wnd.ubound, wnd.lbound, wnd.kernel_sz, wnd.mode);
 		end, {ref = btn.vid});
 end
 
@@ -590,7 +590,7 @@ local function analog_filterpop(wnd, btn)
 	awbwman_popup(vid, lines, function(ind)
 		wnd.mode = list[ind];
 		inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
-			wnd.lbound, wnd.ubound, wnd.kernel_sz, wnd.mode);
+			wnd.ubound, wnd.lbound, wnd.kernel_sz, wnd.mode);
 	end, {ref = btn.vid});
 end
 
@@ -654,7 +654,7 @@ local function update_window(dev, sub)
 			function(self)
 				awbwman_popupslider(0, wnd.deadzone, 10000, function(val)
 					inputanalog_filter(wnd.dev, wnd.sub, val, 
-						wnd.lbound, wnd.ubound, wnd.kernel_sz, wnd.mode);
+						wnd.ubound, wnd.lbound, wnd.kernel_sz, wnd.mode);
 					wnd:switch_device(wnd.dev, wnd.sub);
 				end, {ref = self.vid});
 		end)).vid] = MESSAGE["ANALOG_DEADZONE"];
@@ -664,7 +664,7 @@ local function update_window(dev, sub)
 			function(self)
 				awbwman_popupslider(16536, wnd.ubound, 32767, function(val)
 					inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
-						wnd.lbound, val, wnd.kernel_sz, wnd.mode);
+						val, wnd.lbound, wnd.kernel_sz, wnd.mode);
 					wnd:switch_device(wnd.dev, wnd.sub);
 				end, {ref = self.vid});
 			end)).vid] = MESSAGE["ANALOG_UBOUND"];
@@ -674,7 +674,7 @@ local function update_window(dev, sub)
 			function(self)
 				awbwman_popupslider(-16536, wnd.lbound, -32767, function(val)
 					inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
-						val, wnd.ubound, wnd.kernel_sz, wnd.mode);
+						wnd.ubound, val, wnd.kernel_sz, wnd.mode);
 					wnd:switch_device(wnd.dev, wnd.sub);
 				end, {ref = self.vid});
 			end)).vid] = MESSAGE["ANALOG_LBOUND"];
