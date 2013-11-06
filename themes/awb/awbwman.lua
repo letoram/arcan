@@ -2038,6 +2038,10 @@ function awbwman_ainput(iotbl)
 	end
 end
 
+function awbwman_flipaxis(dev, sub)
+	return true;
+end
+
 function awbwman_input(iotbl, keysym)
 	if (keysym == "SHIFTTAB" and awb_cfg.modal == nil) then
 		if (iotbl.active) then
@@ -2236,6 +2240,9 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["settings"] = load_image("awbicons/settings.png");
 	awb_cfg.bordericns["ntsc"]     = load_image("awbicons/ntsc.png");
 	awb_cfg.bordericns["list"]     = load_image("awbicons/list.png");
+	awb_cfg.bordericns["uparrow"]  = load_image("awbicons/uparrow.png");
+	awb_cfg.bordericns["downarrow"]= load_image("awbicons/downarrow.png");
+	awb_cfg.bordericns["flip"]     = load_image("awbicons/flip.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");

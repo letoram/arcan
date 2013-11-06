@@ -23,6 +23,13 @@ return {
 	HOVER_INPUTCFG = "Switch active input layout",
 	HOVER_PLAYLIST = "Show Playlist",
 
+	ANALOG_FILTERMODE = "Switch Filtering Mode",
+	ANALOG_KERNELSIZE = "Set Filter-kernel Size",
+	ANALOG_DEADZONE   = "Grow / Shrink Deadzone",
+	ANALOG_UBOUND     = "Change Upper Bound",
+	ANALOG_LBOUND     = "Change Lower Bound",
+	ANALOG_INVERT     = "Invert Axis Toggle",
+
 	ROOT_WINDOW    = "Windows",
 
 	WARNING_NOGAMES = [[
