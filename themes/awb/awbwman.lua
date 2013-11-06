@@ -44,6 +44,7 @@ local awb_cfg = {
 	meta        = {},
 	hidden      = {},
 	global_input= {},
+	amap        = {},
 
 	rootcell_w  = 80,
 	rootcell_h  = 60,
@@ -2022,6 +2023,14 @@ function awbwman_ainput(iotbl)
 		return;
 	end
 
+-- invert axis value in beforehand
+	if (awb_cfg.amap[iotbl.devid]) then
+		local a = awb_cfg.amap[iotbl.devid][iotbl.subid];
+		if (a ~= nil and a ~= false) then
+			iotbl.samples[1] = -1 * iotbl.samples[1];
+		end
+	end
+
 	local focus_done = false;
 	for i,v in ipairs(awb_cfg.global_input) do
 		if (v.ainput) then
@@ -2039,7 +2048,17 @@ function awbwman_ainput(iotbl)
 end
 
 function awbwman_flipaxis(dev, sub)
-	return true;
+	if (awb_cfg.amap[dev] == nil) then
+		awb_cfg.amap[dev] = {};
+	end
+
+	if (awb_cfg.amap[dev][sub] == nil) then
+		awb_cfg.amap[dev][sub] = true;
+	else
+		awb_cfg.amap[dev][sub] = not awb_cfg.amap[dev][sub];
+	end
+
+	return awb_cfg.amap[dev][sub];
 end
 
 function awbwman_input(iotbl, keysym)
@@ -2143,6 +2162,7 @@ function awbwman_shutdown()
 	store_key("mouse_accel_x", tostring_rdx(ax));
 	store_key("mouse_accel_y", tostring_rdx(ay));
 
+	awbwman_dumpanalog("analog.state");
 	shutdown();
 end
 
@@ -2152,6 +2172,53 @@ end
 
 function awbwman_sethelper(wnd)
 	awb_cfg.helper = wnd;
+end
+
+function awbwman_loadanalog(inp)
+	if (not resource(inp)) then
+		return;
+	end
+
+	local t = system_load(inp)();
+	if (t == nil) then
+		return;
+	end
+
+	for k, v in ipairs(t) do
+		inputanalog_filter(v.devid, v.subid, v.deadzone,
+			v.upper_bound, v.lower_bound, v.kernel_size, v.mode);
+	end
+end
+
+function awbwman_dumpanalog(outp)
+	local ref = inputanalog_query();
+	if (ref == nil) then
+		return;
+	end
+	
+	zap_resource(outp);
+	if (open_rawresource(outp) == nil) then
+		warning("Couldn't store analog state");
+		return;
+	end
+		
+	write_rawresource([[local t = {};]]);
+	for i,j in ipairs(ref) do
+		write_rawresource(string.format(
+[[table.insert(t, {
+devid = %d,
+subid = %d,
+mode = "%s",
+deadzone = %d,
+upper_bound = %d,
+lower_bound = %d,
+kernel_size = %d});
+]], j.devid, j.subid, j.mode, j.deadzone,
+				j.upper_bound, j.lower_bound, j.kernel_size));
+	end
+
+	write_rawresource("return t;");
+	close_rawresource();
 end
 
 --
@@ -2255,5 +2322,6 @@ function awbwman_init(defrndr, mnurndr)
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 
+	awbwman_loadanalog("analog.state");
 	awbwman_rootwnd();
 end
