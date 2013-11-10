@@ -449,7 +449,8 @@ local function add_3dmedia_top(pwin, active, inactive)
 			awbwman_hoverhint(pwin.hoverlut[vid]);
 		end
 	end
-	
+
+	bar.name = "3dmedia_top";	
 	mouse_addlistener(bar, {"click", "hover"});
 	table.insert(pwin.handlers, bar);
 end
