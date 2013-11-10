@@ -114,6 +114,7 @@ local function playlistwnd(wnd)
 
 	nwin:add_handler("on_destroy", function(self)
 		wnd.playlistwnd = nil;
+		warning("playlist destroyed");
 	end
 	);
 
@@ -308,6 +309,10 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 	if (fsrv) then
 		pwin.hoverlut[
 		(bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
+			if (pwin.controlid == nil) then
+				
+			end
+
 			if (pwin.paused) then
 				pwin.paused = nil;
 				resume_movie(pwin.controlid);
@@ -523,22 +528,22 @@ local function input_3dwin(self, iotbl)
 		return;
 	end
 
-	if (iotbl.lutsym) then
-		if (iotbl.lutsym == "UP" or 
-			iotbl.lutsym == "PAGEUP" or iotbl.lutsym == "w") then
-			zoom_in({parent = {parent = self}});	
+--	if (iotbl.lutsym) then
+--		if (iotbl.lutsym == "UP" or 
+--			iotbl.lutsym == "PAGEUP" or iotbl.lutsym == "w") then
+--			zoom_in({parent = {parent = self}});	
 
-		elseif (iotbl.lutsym == "DOWN" or 
-			iotbl.lutsym ==" PAGEDOWN" or iotbl.lutsym == "s") then
-			zoom_out({parent = {parent = self}});
+--	elseif (iotbl.lutsym == "DOWN" or 
+--			iotbl.lutsym ==" PAGEDOWN" or iotbl.lutsym == "s") then
+--			zoom_out({parent = {parent = self}});
 	
-		elseif (iotbl.lutsym == "LEFT") then
-			rotate3d_model(self.model.vid, 0.0, 0.0, -15, 5, ROTATE_RELATIVE);
+--		if (iotbl.lutsym == "LEFT") then
+--			rotate3d_model(self.model.vid, 0.0, 0.0, -15, 5, ROTATE_RELATIVE);
 
-		elseif (iotbl.lutsym == "RIGHT") then
-			rotate3d_model(self.model.vid, 0.0, 0.0, 15, 5, ROTATE_RELATIVE);
-		end
-	end	
+--		elseif (iotbl.lutsym == "RIGHT") then
+--			rotate3d_model(self.model.vid, 0.0, 0.0, 15, 5, ROTATE_RELATIVE);
+--		end
+--	end	
 end
 
 --
@@ -690,6 +695,10 @@ local function awnd_setup(pwin, bar)
 			return;
 			end
 
+		if (pwin.controlid == nil) then
+			pwin.controlid = source;
+		end
+
 -- update_canvas will delete this one
 		if (status.kind == "frameserver_terminated") then
 			pwin.playlist_ofs = pwin.playlist_ofs + 1;
@@ -701,8 +710,9 @@ local function awnd_setup(pwin, bar)
 			end
 
 			pwin.recv = nil;
-			pwin:update_canvas( load_movie(pwin.playlist_full[pwin.playlist_ofs].name, 
-				FRAMESERVER_NOLOOP, pwin.callback, 1, "novideo=true") );
+			pwin.controlid = load_movie(pwin.playlist_full[pwin.playlist_ofs].name, 
+				FRAMESERVER_NOLOOP, pwin.callback, 1, "novideo=true");
+			pwin:update_canvas(pwin.controlid);
 		end
 
 		if (status.kind == "resized") then
@@ -920,12 +930,15 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 				end
 
 				if (pwin.controlid == nil) then
+					arcan_warning("pwin controlid set to:", source);
+					pwin.controlid = source;
 					pwin:update_canvas(source);
 				end
 
 				if (status.kind == "resized") then
 					local vid, aud = play_movie(source);
 					pwin.recv = aud;
+
 					pwin:set_mvol(pwin.mediavol);
 					pwin:resize(status.width, status.height, true);
 

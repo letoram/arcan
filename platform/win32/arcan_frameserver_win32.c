@@ -225,6 +225,8 @@ int main(int argc, char* argv[])
 	char* fsrvmode = argv[5];
 	char* keyfile   = argv[1];
 
+	LOG("arcan_frameserver(win32) resource: %s, fsrvmode: %s\n", resource, fsrvmode);
+
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("decode");
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
