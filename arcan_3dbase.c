@@ -545,6 +545,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 		point step = {.x = wdens, .y = 0, .z = ddens};
 
 		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
+		pthread_mutex_init(&newmodel->lock, NULL);
+
 		state.ptr = (void*) newmodel;
 		arcan_video_alterfeed(rv, ffunc_3d, state);
 

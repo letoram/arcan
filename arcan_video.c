@@ -223,7 +223,7 @@ void push_globj(arcan_vobject* dst, bool noupload,
 			int outfd = fmt_open(O_RDWR | O_CREAT, S_IRWXU, "%sgldump%d.png", 
 				arcan_video_display.txdump, seqn++);
 			if (-1 != outfd)
-				arcan_rgba32_pngfile(outfd, 
+				arcan_rgba32_pngfile(fdopen(outfd, "w"),
 					(char*) s->vinf.text.raw, s->w, s->h, false);
 		}
 #endif
