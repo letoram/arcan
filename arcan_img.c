@@ -74,7 +74,7 @@ static void png_readfun(png_structp png_ptr, png_bytep outb, png_size_t ntr)
 	indata->inbuf_ofs += ntr;
 }
 
-arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh, bool vflip)
+arcan_errc arcan_rgba32_pngfile(FILE* dst, char* inbuf, int inw, int inh, bool vflip)
 {
 	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
 		NULL, NULL, NULL);	
@@ -91,13 +91,6 @@ arcan_errc arcan_rgba32_pngfile(int fd, char* inbuf, int inw, int inh, bool vfli
 	if (setjmp(png_jmpbuf(png_ptr))){
 		png_destroy_write_struct(&png_ptr, &info_ptr);
 		return ARCAN_ERRC_BAD_ARGUMENT; 
-	}
-
-	FILE* dst = fdopen(fd, "w+");
-	if (!dst){
-		png_destroy_write_struct(&png_ptr, &info_ptr);
-		close(fd);
-		return ARCAN_ERRC_BAD_ARGUMENT;
 	}
 
 	png_init_io(png_ptr, dst);

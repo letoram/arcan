@@ -1581,7 +1581,8 @@ int arcan_lua_targetinput(lua_State* ctx)
 		lua_getfield(ctx, tblind, "samples");
 		size_t naxiss = lua_rawlen(ctx, -1);
 		for (int i = 0; i < naxiss && 
-			i < sizeof(ev.data.io.input.analog.axisval); i++){
+			i < sizeof(ev.data.io.input.analog.axisval) / 
+				sizeof(ev.data.io.input.analog.axisval[0]); i++){
 			lua_rawgeti(ctx, -1, i+1);
 			ev.data.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
 			lua_pop(ctx, 1);
@@ -4792,15 +4793,14 @@ int arcan_lua_screenshot(lua_State* ctx)
 		char* fname = arcan_find_resource(resstr, ARCAN_RESOURCE_THEME);
 		if (!fname){
 			fname = arcan_expand_resource(resstr, false);
-			int fd = open(fname, O_CREAT | O_RDWR, 0600);
-			if (-1 != fd){
-				arcan_rgba32_pngfile(fd, databuf, arcan_video_display.width,
-					arcan_video_display.height, true);
+			FILE* dst = fopen(fname, "wb");
+			if (dst){ 
+				arcan_rgba32_pngfile(dst, databuf, arcan_video_display.width,
+					arcan_video_display.height, false);
 			}
 			else
 				arcan_warning("arcan_lua_screenshot() -- couldn't open (%s) "
 					"for writing.\n", fname);
-
 		}
 		else{
 			arcan_warning("arcan_lua_screenshot() -- refusing to overwrite existing "

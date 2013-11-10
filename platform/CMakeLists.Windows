@@ -27,7 +27,7 @@ platform/sdl/event.c
 )
  
 add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
-add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT)
+add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT -static)
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES 
@@ -117,7 +117,7 @@ set(SHARED_PERMISSIONS
 
 set(SHARED_PERMISSIONS_DIR 
 	${SHARED_PERMISSIONS} 
-	WORLD_EXCECUTE
+	WORLD_EXECUTE
 )
 
 set_target_properties(arcan PROPERTIES

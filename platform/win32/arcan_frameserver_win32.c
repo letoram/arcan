@@ -19,11 +19,11 @@
 #include "../arcan_general.h"
 #include "../arcan_event.h"
 
-#include "../frameserver/arcan_frameserver.h"
+#include "../frameserver/frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
-#include "../frameserver/arcan_frameserver_libretro.h"
-#include "../frameserver/arcan_frameserver_decode.h"
-#include "../frameserver/arcan_frameserver_net.h"
+#include "../frameserver/libretro.h"
+#include "../frameserver/decode.h"
+#include "../frameserver/net.h"
 
 #define DST_SAMPLERATE 44100
 #define DST_AUDIOCHAN  2
@@ -31,7 +31,7 @@
 
 const int audio_samplerate = DST_SAMPLERATE;
 const int audio_channels   = DST_AUDIOCHAN;
-const int video_channels   = DST_VIDEOCHAN; /* RGBA */
+const int video_channels   = DST_VIDEOCHAN; 
 
 FILE* logdev;
 HWND parent = 0;
