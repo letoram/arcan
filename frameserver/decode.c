@@ -561,7 +561,7 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		default:
-			arcan_warning("frameserver(decode), unknown target event "
+			LOG("frameserver(decode), unknown target event "
 				"(%d), ignored.\n", ev->kind);
 	}
 }
@@ -588,6 +588,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	bool statusfl = false;
 	struct arg_arr* args = arg_unpack(resource);
 	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
+	LOG("got resource: %s\n", resource);
 	
 	av_register_all();
 
@@ -634,12 +635,17 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 			statusfl = ffmpeg_vidcap(devind, desw, desh, fps);
 		}
 		else if (arg_lookup(args, "file", 0, &val)){
+			LOG("FILE opening using arg lookup, %s vs . %s\n", 
+				val, resource); 
 			statusfl = ffmpeg_preload(val, NULL, NULL, noaudio, novideo);
 		}
-		else
+		else{
 /* as to not entirely break the API, we revert to default-treat 
  * resource as a filename */
+			LOG("fallback opening using arg lookup, %s vs . %s\n", 
+				val, resource); 
 			statusfl = ffmpeg_preload(resource, NULL, NULL, noaudio, novideo);
+		}
 
 		if (!statusfl)
 			break;

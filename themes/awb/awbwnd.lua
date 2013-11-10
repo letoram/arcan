@@ -555,6 +555,10 @@ local function awbwnd_update_canvas(self, vid, mirrored)
 		mirrored = 0; 
 	end
 
+	if (vid == nil or vid == BADID) then	
+		return;
+	end
+
 	link_image(vid, self.anchor);
 	image_inherit_order(vid, true);
 	order_image(vid, 0);
@@ -925,10 +929,14 @@ end
 
 local function awbwnd_addhandler(self, slot, fptr)
 	if (self[slot] ~= nil) then
-	elseif (type(self[slot]) == "table") then
-		table.insert(self[slot], fptr);
-	elseif (type(self[slot]) == "function") then
-		self[slot] = {self[slot], fptr};
+
+		if (type(self[slot]) == "table") then
+			table.insert(self[slot], fptr);
+
+		elseif (type(self[slot]) == "function") then
+			self[slot] = {self[slot], fptr};
+		end
+
 	else
 		self[slot] = fptr;
 	end

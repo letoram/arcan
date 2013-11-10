@@ -1359,11 +1359,16 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 	else{
 		if (!special){
 			if (optlen > 0){
-				size_t fnlen = strlen(fname) + optlen + 8;
+				size_t flen = strlen(fname);
+				size_t fnlen = flen + optlen + 8;
 				char msg[fnlen];
 				msg[fnlen-1] = 0;
+
+				for (int i = 0; i <= flen; i++)
+					if (fname[i] == ':') fname[i] = '\t'; /* escape for windows et. al */
+
 				snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
-				fname = strdup(msg);	
+				fname = strdup(msg);
 			} 
 			else
 				fname = strdup(fname);
@@ -3236,6 +3241,7 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		return;
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
+
 	if (lua_ctx_store.debug){
 		arcan_warning("Warning: arcan_lua_wraperr((), %s, from %s\n", mesg, src);
 
@@ -3251,7 +3257,8 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 			
 			if (ltime) {
 				const char* fns = "/logs/crash_mmdd_hhmmss.lua";
-				char fname[ strlen(arcan_resourcepath) + strlen(fns) + 1 ]; 
+				char fname[ strlen(arcan_resourcepath) + strlen(fns) + 10 ];
+
 				sprintf(fname, "%s%s", arcan_resourcepath, fns);
 				strftime( fname + strlen(arcan_resourcepath) + 
 					strlen("/logs/crash_"), 9, "%m%d_%H%M%S", ltime);
@@ -3265,7 +3272,7 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 	}
 
 		if (!(lua_ctx_store.debug > 2))
-			arcan_fatal("Fatal: arcan_lua_wraperr()\n");
+			arcan_fatal("Fatal: arcan_lua_wraperr(%s, %s)\n", mesg, src);
 
 	}
 	else{
