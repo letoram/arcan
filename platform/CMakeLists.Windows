@@ -27,7 +27,7 @@ platform/sdl/event.c
 )
  
 add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
-add_definitions(-m32 -mthreads -D__WINDOWS -DPOOR_GL_SUPPORT -static)
+add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT -static)
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES 
