@@ -203,6 +203,7 @@ static bool encode_audio(bool flush)
 
 	AVPacket pkt = {0};
 	av_init_packet(&pkt);
+
 	frame = avcodec_alloc_frame();
 	frame->channel_layout = ctx->channel_layout;
 
@@ -237,8 +238,12 @@ forceencode:
 			pkt.dts = av_rescale_q(pkt.dts, ctx->time_base, 
 				recctx.astream->time_base);
 
-		pkt.duration = av_rescale_q(pkt.duration, ctx->time_base, 
+/* NOTE: we might be mistreating duration both here and in video,
+ * investigate! */
+		if (pkt.duration > 0)
+			pkt.duration = av_rescale_q(pkt.duration, ctx->time_base, 
 				recctx.astream->time_base);
+	
 		pkt.stream_index = recctx.astream->index;
 		
 		if (0 != av_interleaved_write_frame(recctx.fcontext, &pkt) && !flush){

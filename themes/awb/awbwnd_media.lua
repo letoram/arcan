@@ -930,7 +930,6 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 				end
 
 				if (pwin.controlid == nil) then
-					pwin.controlid = source;
 					pwin:update_canvas(source);
 				end
 
@@ -955,6 +954,7 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 				elseif (status.kind == "frameserver_terminated") then
 					pwin:break_display();
+					print("dead!");
 
 				elseif (status.kind == "streamstatus") then
 					update_streamstats(pwin, status);

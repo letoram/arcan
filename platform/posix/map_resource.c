@@ -107,7 +107,9 @@ map_region arcan_map_resource(data_source* source, bool allowwrite)
 
 		if (rv.ptr == MAP_FAILED){
 			char errbuf[64];
-			strerror_r(errno, errbuf, 64);
+			if (strerror_r(errno, errbuf, 64))
+				;
+
 			arcan_warning("arcan_map_resource() failed, reason(%d): %s\n\t"
 				"(length)%d, (fd)%d, (offset)%d\n", errno, errbuf, 
 				rv.sz, source->fd, source->start);

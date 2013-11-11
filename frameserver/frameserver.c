@@ -271,7 +271,8 @@ int frameserver_readhandle(arcan_event* inev)
 		cmsg->cmsg_len = msg.msg_controllen;
 		cmsg->cmsg_level = SOL_SOCKET;
 		cmsg->cmsg_type  = SCM_RIGHTS;
-		((int*) CMSG_DATA(cmsg))[0] = -1;
+		int* dfd = (int*) CMSG_DATA(cmsg);
+		*dfd = -1;
 		
 		if (recvmsg(sockin_fd, &msg, 0) >= 0)
 			rv = msgbuf.fd[0];

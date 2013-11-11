@@ -218,11 +218,11 @@ int main(int argc, char* argv[])
 	break;
 	case '1' :
 		stdout_redirected = true;
-		freopen(optarg, "a", stdout);
+		if (freopen(optarg, "a", stdout) == NULL);
 		break;
 	case '2' :
 		stderr_redirected = true;
-		freopen(optarg, "a", stderr);
+		if (freopen(optarg, "a", stderr) == NULL);
 		break;
 
 	default:
@@ -283,7 +283,9 @@ int main(int argc, char* argv[])
 				
 			pid_t p1;
 
-			pipe(pair);
+			if (pipe(pair) == 0)
+			;
+
 			if ( (p1 = fork()) == 0){
 				close(pair[1]);
 				monitor_parent = false;

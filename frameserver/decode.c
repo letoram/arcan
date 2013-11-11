@@ -349,8 +349,7 @@ bool ffmpeg_decode()
 {
 	bool fstatus = true;
 	av_init_packet(&decctx.packet);
-	decctx.packet.data = 0;
-	decctx.packet.size = 0;
+	decctx.packet.data = (uint8_t*) &decctx.packet;
 
 	/* Main Decoding sequence */
 	while (fstatus &&
@@ -635,16 +634,13 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 			statusfl = ffmpeg_vidcap(devind, desw, desh, fps);
 		}
 		else if (arg_lookup(args, "file", 0, &val)){
-			LOG("FILE opening using arg lookup, %s vs . %s\n", 
-				val, resource); 
 			statusfl = ffmpeg_preload(val, NULL, NULL, noaudio, novideo);
 		}
 		else{
 /* as to not entirely break the API, we revert to default-treat 
  * resource as a filename */
-			LOG("fallback opening using arg lookup, %s vs . %s\n", 
-				val, resource); 
-			statusfl = ffmpeg_preload(resource, NULL, NULL, noaudio, novideo);
+			LOG("failed, couldn't decode resource request (%s)\n", resource);
+			return;
 		}
 
 		if (!statusfl)
