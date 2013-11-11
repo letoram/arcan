@@ -1358,20 +1358,20 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 	} 
 	else{
 		if (!special){
-			if (optlen > 0){
-				size_t flen = strlen(fname);
-				size_t fnlen = flen + optlen + 8;
-				char msg[fnlen];
-				msg[fnlen-1] = 0;
+			size_t flen = strlen(fname);
+			size_t fnlen = flen + optlen + 8;
+			char msg[fnlen];
+			msg[fnlen-1] = 0;
 
-				for (int i = 0; i <= flen; i++)
-					if (fname[i] == ':') fname[i] = '\t'; /* escape for windows et. al */
+			for (int i = 0; i <= flen; i++)
+				if (fname[i] == ':') fname[i] = '\t'; /* escape for windows et. al */
 
+			if (optlen > 0)
 				snprintf(msg, fnlen-1, "%s:file=%s", argstr, fname);
-				fname = strdup(msg);
-			} 
 			else
-				fname = strdup(fname);
+				snprintf(msg, fnlen-1, "file=%s", fname);
+
+			fname = strdup(msg);
 		}
 	}
 
@@ -3508,9 +3508,11 @@ int arcan_lua_targetseek(lua_State* ctx)
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
-	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr))
-		arcan_fatal("arcan_lua_targetseek() vid(%"PRIxVOBJ") is not "
+	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
+		arcan_warning("arcan_lua_targetseek() vid(%"PRIxVOBJ") is not "
 			"connected to a frameserver\n", tgt);
+		return 0;
+	}
 
 	arcan_event ev = {
 		.category = EVENT_TARGET,
@@ -3933,7 +3935,7 @@ int arcan_lua_recordset(lua_State* ctx)
 	int scale         = luaL_checkint(ctx, 7);
 	int pollrate      = luaL_checkint(ctx, 8);
 
-	int naids;
+	int naids = 0;
 	bool global_monitor = false;
 
 	if (lua_type(ctx, 5) == LUA_TTABLE)

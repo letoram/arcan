@@ -228,7 +228,7 @@ static inline int process_sample(uint8_t* stream, float attenuate)
 				global.encabuf[global.encabuf_ofs++] = ((*stream) << 8) - 0x7ff;
 
 				if (global.channels == 1){
-					global.encabuf[global.encabuf_ofs++] = 
+					global.encabuf[global.encabuf_ofs] = 
 						global.encabuf[global.encabuf_ofs - 1];
 					global.encabuf_ofs++;
 				}

@@ -225,7 +225,8 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 		cmsg->cmsg_len = msg.msg_controllen;
 		cmsg->cmsg_level = SOL_SOCKET;
 		cmsg->cmsg_type  = SCM_RIGHTS;
-		((int*) CMSG_DATA(cmsg))[0] = fd;
+		int* dptr = (int*) CMSG_DATA(cmsg);
+		*dptr = fd;
 		
 		if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0){
 			rv = ARCAN_OK;

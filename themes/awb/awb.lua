@@ -174,7 +174,9 @@ function awb()
 		kbdbinds["F9"]     = function() 
 			if (global_tracing ~= true) then
 				Trace();
+				global_tracing = true;
 			else
+				global_tracing = false;
 				Untrace();	
 			end
 		end

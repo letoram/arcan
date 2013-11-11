@@ -1053,7 +1053,9 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 	if (!db_init) {
 		int rv = sqlite3_initialize();
 		atexit(sqliteexit);
-		assert(rv == SQLITE_OK);
+	
+		if (rv != SQLITE_OK)
+			return NULL;
 	}
 
 	if (!themename)
