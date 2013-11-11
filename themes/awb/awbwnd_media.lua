@@ -930,7 +930,6 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 				end
 
 				if (pwin.controlid == nil) then
-					arcan_warning("pwin controlid set to:", source);
 					pwin.controlid = source;
 					pwin:update_canvas(source);
 				end
@@ -940,7 +939,19 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 					pwin.recv = aud;
 
 					pwin:set_mvol(pwin.mediavol);
-					pwin:resize(status.width, status.height, true);
+					local tbl = image_surface_properties(pwin.anchor);
+
+					if (tbl.x + status.width > VRESW) then
+						pwin:resize(VRESW - tbl.x, (VRESW - tbl.x) * 
+							(status.height / status.width), true, true);
+	
+					elseif (tbl.y + status.height > VRESH) then
+						pwin:resize(VRESW - tbl.x, (VRESW - tbl.x) * 
+							(status.height / status.width), true, true);
+	
+					else
+						pwin:resize(status.width, status.height, true);
+					end
 
 				elseif (status.kind == "frameserver_terminated") then
 					pwin:break_display();
