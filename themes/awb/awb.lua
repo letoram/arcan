@@ -286,15 +286,6 @@ function spawn_vidwin(self)
 		return;
 	end
 
-	local res = awbwman_inputattach(function(msg) end, 
-		inputlbl, {
-		w = 64,
-		h = 32,
-		owner = wnd.canvas.vid
-	});
-
--- tests, border, noborder, static vs. dynamic
-	wnd.input = function(self, tbl) res:input(tbl); end
 end
 
 function gamelist_media(tbl)

@@ -169,6 +169,12 @@ end
 
 function awbwman_fullscreen(wnd)
 	awbwman_focus(wnd);
+	if (awb_cfg.shadowimg ~= nil) then
+		expire_image(awb_cfg.shadowimg, awb_cfg.animspeed);
+		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed);
+		awb_cfg.shadowimg = nil;
+	end
+
 	blend_image(mouse_cursor(), 0.0, awb_cfg.animspeed);
 
 -- hide root window (will cascade and hide everything else)
@@ -259,7 +265,8 @@ function awbwman_shadow_nonfocus()
 		blend_image(awb_cfg.shadowimg, 0.5, awb_cfg.animspeed);
 	else
 		expire_image(awb_cfg.shadowimg, awb_cfg.animspeed);
-		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed); 
+		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed);
+		awb_cfg.shadowimg = nil;
 	end
 end
 
@@ -468,6 +475,10 @@ function awbwman_gather_scatter()
 		for ind, val in ipairs(awb_wtable) do
 			if (not val.minimized) then
 				val.pos_memory = {val.x, val.y};
+				if (val.w == nil) then
+					val.w = 64;
+					val.h = 32;
+				end
 
 				if ( ( val.x + val.w * 0.5) < 0.5 * VRESW) then
 					move_image(val.anchor,  -val.w, val.y, awb_cfg.animspeed);
@@ -897,12 +908,15 @@ function awbwman_rootwnd()
 			local g = awb_col.bgcolor.g;
 			local b = awb_col.bgcolor.b;
 			local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
-			wcont:update_canvas(canvas);
+			image_sharestorage(canvas, wcont.canvas.vid);
+			delete_image(canvas);
 		end,
 		function()
 			show_help(); 
 		end,
-		shutdown
+		function()
+			awbwman_shutdown();
+		end
 	};
 
 	local icn = tbar:add_icon("cap", "l", cap, function(self) 
