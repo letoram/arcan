@@ -482,6 +482,7 @@ local function vcap_setup(pwin)
 					else
 						running = true;
 						pwin:update_canvas(source);
+						pwin:resize(status.width, status.height, true, true);
 					end
 				end
 			end);
