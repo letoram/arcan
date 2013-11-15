@@ -229,6 +229,15 @@ local function gen_factstr(c)
 end
 
 local function push_uniforms(s, c)
+	if (c.gamma == nil) then
+		for k, v in pairs(cont) do
+			if (c[k] == nil) then
+				c[k] = v;
+			end
+		end
+		return;
+	end
+
 	shader_uniform(s, "CRTgamma", "f", PERSIST, c.gamma);
 	shader_uniform(s, "overscan", "ff", PERSIST, c.hoverscan, c.voverscan);
 	shader_uniform(s, "monitorgamma", "f", PERSIST, c.mongamma);
