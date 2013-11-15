@@ -1575,11 +1575,12 @@ function awbwman_spawn(caption, options)
 			for i, j in ipairs(strtbl) do
 				local arg = string.split(j, "=");
 				options[arg[1]] = tonumber_rdx(arg[2]);
-
+				if (options[arg[1]]) ~= nil) then
 				if (arg[1] == "x" or arg[1] == "w") then
 					options[arg[1]] = math.floor(VRESW * options[arg[1]]);
 				elseif (arg[1] == "y" or arg[1] == "h") then
 					options[arg[1]] = math.floor(VRESH * options[arg[1]]);
+				end
 				end
 			end
 		end
