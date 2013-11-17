@@ -890,7 +890,8 @@ function awbwman_rootwnd()
 	wcont:update_canvas(canvas);
 
 	local tbar = wcont:add_bar("t", load_image("awbicons/topbar.png"), 
-		load_image("awbicons/topbar.png"), awb_cfg.topbar_sz, awb_cfg.topbar_sz);
+		load_image("awbicons/topbar.png"), awb_cfg.topbar_sz, awb_cfg.topbar_sz,
+		{mouse_nodefault = true});
 	order_image(tbar.vid, ORDER_MOUSE - 5);
 
 	tbar.name = "rootwnd_topbar";
@@ -1575,7 +1576,7 @@ function awbwman_spawn(caption, options)
 			for i, j in ipairs(strtbl) do
 				local arg = string.split(j, "=");
 				options[arg[1]] = tonumber_rdx(arg[2]);
-				if (options[arg[1]]) ~= nil) then
+				if (options[arg[1]] ~= nil) then
 				if (arg[1] == "x" or arg[1] == "w") then
 					options[arg[1]] = math.floor(VRESW * options[arg[1]]);
 				elseif (arg[1] == "y" or arg[1] == "h") then
@@ -1641,7 +1642,8 @@ function awbwman_spawn(caption, options)
 
 -- top windowbar
 	local tbar = wcont:add_bar("t", awb_cfg.activeres,
-		awb_cfg.inactiveres, awb_cfg.topbar_sz, awb_cfg.topbar_sz);
+		awb_cfg.inactiveres, awb_cfg.topbar_sz, 
+		awb_cfg.topbar_sz, {mouse_nodefault = true});
 
 		if (options.nocaption == nil) then
 			awbwman_addcaption(tbar, caption);
@@ -1670,7 +1672,7 @@ function awbwman_spawn(caption, options)
 -- mouse handler
 	if (options.noresize == nil) then
 		local rbar = wcont:add_bar("r", awb_cfg.alphares,
-			awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0);
+			awb_cfg.alphares, awb_cfg.topbar_sz - 2, 0, {mouse_nodefault = true});
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
 		local icn = rbar:add_icon("resize", "r", awb_cfg.bordericns["resize"]);
 		local rhandle = {};

@@ -139,7 +139,6 @@ function awb()
 	symtable = system_load("scripts/symtable.lua")();
 	system_load("awb_support.lua")();
 
--- shader function / model viewer
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")();
 	system_load("scripts/resourcefinder.lua")();
@@ -147,6 +146,8 @@ function awb()
 	system_load("tools/vidrec.lua")();
 	system_load("tools/vidcmp.lua")();
 	system_load("tools/hghtmap.lua")();
+	system_load("tools/socsrv.lua")();
+
 	MESSAGE = system_load("language/default.lua")();
 
 -- mouse abstraction layer 
@@ -839,11 +840,11 @@ end
 --
 function builtin_group(self, ofs, lim, desw, desh)
 	local tools = {
-		{"BOING!",    spawn_boing,    "boing"},
-		{"InputConf", awb_inputed,  "inputed"},
-		{"Recorder",  spawn_vidrec,  "vidrec"},
---		{"Network",   spawn_socsrv, "network"},
-		{"VidCap",    spawn_vidwin,  "vidcap"},
+		{"BOING!",     spawn_boing,    "boing"},
+		{"InputConf",  awb_inputed,  "inputed"},
+		{"Recorder",   spawn_vidrec,  "vidrec"},
+		{"Network",    spawn_socsrv, "network"},
+		{"VidCap",     spawn_vidwin,  "vidcap"},
 --		{"Compare",   spawn_vidcmp,  "vidcmp"},
 		{"HeightMap", spawn_hmap,   "hghtmap"}
 --		{"ShaderEd",  spawn_shadeed, "shadeed"},
