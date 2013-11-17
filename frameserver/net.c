@@ -763,7 +763,6 @@ static inline struct conn_state* lookup_connection(struct conn_state*
 
 static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 {
-	printf("disconnect (%d) \n", slot);
 	if (slot == 0){
 		for (int i = 0; i < nconns; i++)
 			if (active_cons[i].connstate > CONN_OFFLINE){
@@ -1312,13 +1311,37 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	return true;
 }
 
-/* Missing hoststr means we broadcast our request and bonds with the 
- * first/best session to respond */
+/*
+ * Missing hoststr; we broadcast our request and 
+ * bonds with the first/best session to respond
+ *
+ * hoststr == =passive, never leave the discover loop,
+ * just push detected server responses to parent
+ *
+ * hoststr == =19.ip.address forward discover requests to
+ * specified destination
+ *
+ * hoststr == NULL, get first / best (we're in a trusted network)
+ *
+ * mode -> CLIENT_DISCOVERY_NACL, only accept requests that use
+ * our per/session public key
+ */
 static void client_session(char* hoststr, enum client_modes mode)
 {
 	if ( (mode == CLIENT_DISCOVERY && hoststr == NULL) || 
 		mode == CLIENT_DISCOVERY_NACL){
-		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL, false);
+		bool passive = false;
+
+		if (hoststr){
+			if (hoststr[0] == '=')
+				hoststr++;
+			if (strcmp(hoststr, "passive") == 0){
+				hoststr = NULL;
+				passive = true;	
+			}
+		}
+
+		hoststr = host_discover(hoststr, mode == CLIENT_DISCOVERY_NACL, passive);
 		if (!hoststr){
 			LOG("(net) -- couldn't find any Arcan- compatible server.\n");
 			return;
@@ -1442,7 +1465,13 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	if (!args || !shmkey)
 		goto cleanup;
 
+/* make ID slot cookies predictable only in debug,
+ * to ensure that the parent process doesn't assume these are
+ * allowed or indexed sequentially. */
+#ifdef _DEBUG
 	srand(0xfeedface);
+#endif
+
 	idcookie = rand();
 	
 /* default graphing output overrides? */
