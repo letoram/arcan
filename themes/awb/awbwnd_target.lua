@@ -908,18 +908,6 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 	end
 
-	bartt.hover = function(self, vid, x, y, state)
-		if (state == false) then
-			awbwman_drophover();
-		elseif (pwin.hoverlut[vid] ~= nil) then
-			awbwman_hoverhint(pwin.hoverlut[vid]);
-		end
-	end
-
-	bartt.click = function() 
-		pwin:focus(); 
-	end
-
 	local canvash = {
 		own = function(self, vid) return vid == pwin.canvas.vid; end,
 		click = function() pwin:focus(); end,
@@ -931,9 +919,7 @@ function awbwnd_target(pwin, caps, factstr)
 	bartt.name = "target_ttbar";
 	canvash.name = "target_canvas";
 
-	mouse_addlistener(bartt, {"click", "hover"});
 	mouse_addlistener(canvash, {"click", "dblclick"});
-	table.insert(pwin.handlers, bartt);
 	table.insert(pwin.handlers, canvash);
 
 	pwin.canvas_iprops = function(self)

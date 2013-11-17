@@ -357,21 +357,6 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 
 		delete_image(fillcol);
 	end
-
-	bar.hover = function(self, vid, x, y, state)
-		if (state == false) then
-			awbwman_drophover();
-		elseif (pwin.hoverlut[vid]) then
-			awbwman_hoverhint(pwin.hoverlut[vid]);
-		end
-	end
-
-	bar.click = function()
-		pwin:focus();
-	end
-
-	mouse_addlistener(bar, {"click", "hover"});
-	table.insert(pwin.handlers, bar);
 end
 
 local function slide_lightr(caller, status)
@@ -443,21 +428,7 @@ local function add_3dmedia_top(pwin, active, inactive)
 		function() datashare(pwin); end)).vid
 	] = MESSAGE["HOVER_CLONE"];
 
-	bar.click = function()
-		pwin:focus(true);
-	end
-
-	bar.hover = function(self, vid, x, y, state)
-		if (state == false) then
-			awbwman_drophover();
-		elseif (pwin.hoverlut[vid]) then
-			awbwman_hoverhint(pwin.hoverlut[vid]);
-		end
-	end
-
 	bar.name = "3dmedia_top";	
-	mouse_addlistener(bar, {"click", "hover"});
-	table.insert(pwin.handlers, bar);
 end
 
 local function vcap_setup(pwin)

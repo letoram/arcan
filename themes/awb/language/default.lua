@@ -8,7 +8,8 @@ return {
 	GROUP_VIDEOS = "Videos",
 	GROUP_SYSTEMS = "Systems",
 	GROUP_SAVES = "Saves",
-	GROUP_TOOLS = "Tools",
+	GROUP_TOOLS = "Tools", 
+
 	HOVER_CLONE = "Clone: Attach a copy of the canvas\\n\\r to the mouse cursor",
 	HOVER_FILTER = "Display Filters: click to activate / set group" ..
 	"\\n\\rright-click specific filter to configure",
@@ -43,6 +44,16 @@ return {
 		the arcan_romman.rb tool ("BuildDB / ArcanLauncher"\n\r
 		shortcuts on Windows).\n\r\n\r
 	]],
+
+	TOOL_NETWORK = "Network",
+	TOOL_NETWORK_SERVER = "Network Server",
+	TOOL_NETWORK_CLIENT = "Network Client",
+	TOOL_NETWORK_BROWSER = "Network Browser",
+
+	NET_CONNECT  = "Connect to...",
+	NET_DISCOVER = "Local Discovery",
+	NET_LISTEN   = "Listen For Connections",
+	NET_BROWSE   = "Server Browser",
 
 	VIDREC_RES     = "Vertical Resolution",
 	VIDREC_ASPECT  = "Aspect Ratio",
