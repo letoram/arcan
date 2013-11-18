@@ -321,8 +321,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), 
 			&(retroctx.audp) );
 		graphing_destroy(retroctx.graphing);
-		retroctx.graphing = graphing_new(GRAPH_MANUAL, outw, outh, 
-			(uint32_t*) retroctx.vidp);
+		retroctx.graphing = graphing_new(outw, outh, (uint32_t*) retroctx.vidp);
 
 		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
 		retroctx.audguardb[0] = 0xde;
@@ -1072,9 +1071,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			return;
 
 		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
-		retroctx.graphing = graphing_new(GRAPH_MANUAL, 
+		retroctx.graphing = graphing_new(
 			retroctx.avinfo.geometry.max_width,
-			retroctx.avinfo.geometry.max_height, (uint32_t*) retroctx.vidp);
+			retroctx.avinfo.geometry.max_height, (uint32_t*) retroctx.vidp
+		);
+
 		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
 		retroctx.audguardb[0] = 0xde;
 		retroctx.audguardb[1] = 0xad;
