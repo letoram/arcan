@@ -6,3 +6,4 @@
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_pausemovie
 -- @example: video_playback
+
