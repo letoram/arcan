@@ -47,6 +47,10 @@ class DocReader
 		@error_tests = []
 	end
 
+	def incomplete?
+		return @short.length == 0
+	end
+
 	def DocReader.Open(fname)
 		a = File.open(fname)
 		if (a == nil) then
@@ -56,10 +60,15 @@ class DocReader
 		a.readline # skip first line (just the function name)
 		res = DocReader.new
 		groups, line = scangrp(a)
-		p line
+		groups.each_pair{|a, v|
+			if res.respond_to? a.to_sym
+				res.send("#{a}=".to_sym, v);
+			end	
+		}
+
 		res	
-	rescue
-		nil	
+#	rescue
+#		nil	
 	end
 
 	attr_accessor :short, :inargs, :outargs, 
@@ -67,6 +76,16 @@ class DocReader
 		:example, :main_tests, :error_tests
 
 	private :initialize
+end
+
+def find_empty()
+	Dir["*.lua"].each{|a|
+		if ( DocReader.Open(a).incomplete? ) then
+			yield a
+		end	
+	}
+
+	nil
 end
 
 def add_function(groupname, symname, cname)
@@ -152,6 +171,11 @@ if (ARGV[0] == "scan")
 elsif (ARGV[0] == "lookup")
 	DocReader.Open("#{ARGV[1]}.lua")		
 
+elsif (ARGV[0] == "missing")
+	find_empty(){|a|
+		STDOUT.print("#{a} is incomplete.\n")
+	}
+
 elsif (ARGV[0] == "mangen")
 	cscan(:scangroups)
 	inf = File.open("arcan_api_overview_hdr")
@@ -186,5 +210,6 @@ else
 	STDOUT.print("Usage: ruby docgen.rb command\nscan:\n\
 scrape arcan_lua.c and generate stubs for missing corresponding .lua\n\n\
 mangen:\n sweep each .lua file and generate corresponding manpages.\n\n\
-lookup function_name:\n generate a quick-reference \n")
+lookup function_name:\n generate a quick-reference \n\n\
+missing:\n scan all .lua files and list those that are incomplete.\n")
 end

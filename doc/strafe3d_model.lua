@@ -7,3 +7,4 @@
 -- @group: 3d 
 -- @cfunction: arcan_lua_strafemodel
 -- @related: move3d_model
+

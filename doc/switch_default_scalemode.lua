@@ -8,3 +8,4 @@
 -- rescale them to fit, at a fairly high CPU cost on-load.
 -- @group: vidsys 
 -- @cfunction: arcan_lua_setscalemode
+

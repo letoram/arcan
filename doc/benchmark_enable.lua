@@ -1,6 +1,6 @@
 -- benchmark_enable
--- @short: 
--- @inargs: 
+-- @short: Toggle the gathering of benchmark data on / off.
+-- @inargs:  
 -- @outargs: 
 -- @longdescr: 
 -- @group: system 
