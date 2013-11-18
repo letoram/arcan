@@ -594,8 +594,8 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 static uint32_t version_magic(bool req)
 {
 	char buf[32], (* ch) = buf;
-	sprintf(buf, "%s_ARCAN_%d_%d_%d", req ? "REQ" : "REP", 
-		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR, ARCAN_VERSION_PATCH);
+	sprintf(buf, "%s_ARCAN_%d_%d", req ? "REQ" : "REP", 
+		ARCAN_VERSION_MAJOR, ARCAN_VERSION_MINOR);
 
 	uint32_t hash = 5381;
 	int c;
@@ -766,7 +766,7 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 	if (slot == 0){
 		for (int i = 0; i < nconns; i++)
 			if (active_cons[i].connstate > CONN_OFFLINE){
-				printf("mass disconnect (%i, %i)\n", i, active_cons[i].slot);
+				LOG("Mass Disconnect (%i:%i)\n", i, active_cons[i].slot);
 				apr_socket_close(active_cons[i].inout);
 				apr_pollset_remove(netcontext.pollset, &active_cons[i].poll_state);
 				setup_cell(&active_cons[i]);
