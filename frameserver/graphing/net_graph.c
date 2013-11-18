@@ -66,7 +66,7 @@ struct datapoint {
 /* part of the regular dataflow or should be treated as an alarm */
 	bool continuous; 
 
-	char type_id;      /* union selector */
+	char type_id;
 	union {
 		int ival;
 		float fval;
@@ -75,8 +75,10 @@ struct datapoint {
 
 struct event_bucket {
 	bool labels;   /* render possibly attached labels */
+
+	/* should basev/maxv/minv be relative to window or accumulate */
 	bool absolute; 
-/* should basev/maxv/minv be relative to window or accumulate */
+
 	enum plot_mode mode;
 
 /* data model -- ring-buffer of datapoints, these and scales are
@@ -277,18 +279,24 @@ static bool graph_refresh_server(struct graph_context* ctx)
 /* these are responsible for allocating buckets based on mode, 
  * only relevant for GRAPH_NET class */
 	switch (ctx->mode){
+
+/* divide the space evenly, one for each client */
 	case GRAPH_NET_SERVER_SPLIT:
 	break;
 
+/* server mode, main server ins and outs */
 	case GRAPH_NET_SERVER_SINGLE:
 	break;
 
+/* plot out traffic belonging to a single client */
 	case GRAPH_NET_CLIENT:
 	break;
 
+/* we just want to see server traffic abstracted */
 	case GRAPH_NET_SERVER:
 	break;
 
+/* silence compilers .. */
 	case GRAPH_MANUAL:
 	break;
 	}
@@ -338,8 +346,7 @@ bool graph_refresh(struct graph_context* ctx)
 
 /* setup basic context (history buffer etc.)
  * along with colours etc. to some defaults. */
-struct graph_context* graphing_new(enum graphing_mode mode,
-	int width, int height, uint32_t* vidp)
+struct graph_context* graphing_new(int width, int height, uint32_t* vidp)
 {
 	if (width * height == 0)
 		return NULL;
@@ -348,7 +355,10 @@ struct graph_context* graphing_new(enum graphing_mode mode,
 
 	if (rctx){
 		struct graph_context rv = { 
-						.mode = mode, .width = width, .height = height, .vidp = vidp,
+			.mode = GRAPH_MANUAL, 
+			.width = width, 
+			.height = height, 
+			.vidp = vidp,
 			.colors.bg = 0xffffffff, 
 			.colors.border = 0xff000000,
 		 	.colors.grid = 0xffaaaaaa,
@@ -362,6 +372,11 @@ struct graph_context* graphing_new(enum graphing_mode mode,
 	return rctx;
 }
 
+void graphing_switch_mode(struct graph_context* ctx, enum graphing_mode mode)
+{
+/* drop, reset buckets */
+}
+
 void graphing_destroy(struct graph_context* ctx)
 {
 		if (ctx){
@@ -370,21 +385,16 @@ void graphing_destroy(struct graph_context* ctx)
 		}
 }
 
-void graph_tick(struct graph_context* ctx, long long int timestamp)
-{
-	assert(ctx);
-
-	/* rescale time-window for all buckets and
-	 * throw away those that fall outside */
-}
-
 /* all these events are simply translated to a data-point and 
  * inserted into the related bucket */
 void graph_log_connected(struct graph_context* ctx, char* label)
 {
 	assert(ctx);
+	if (ctx->n_buckets == 0)
+		return;	
 
 	if (GRAPH_SERVER(ctx->mode)){
+			
 	} else {
 	}
 
@@ -393,6 +403,8 @@ void graph_log_connected(struct graph_context* ctx, char* label)
 void graph_log_connecting(struct graph_context* ctx, char* label)
 {
 	assert(ctx);
+	if (ctx->n_buckets == 0)
+		return;	
 
 	if (GRAPH_SERVER(ctx->mode)){
 	}
@@ -404,7 +416,8 @@ void graph_log_connecting(struct graph_context* ctx, char* label)
 void graph_log_connection(struct graph_context* ctx, 
 	unsigned id, const char* label)
 {
-	assert(ctx);
+	if (ctx->n_buckets == 0)
+		return;	
 
 	if (GRAPH_SERVER(ctx->mode)){
 	}

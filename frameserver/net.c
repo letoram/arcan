@@ -810,9 +810,8 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 				
 			case EVENT_NET_GRAPHREFRESH:
 				if (netcontext.shmcont.addr->vready == false && 
-					graph_refresh(netcontext.graphing)){
+					graph_refresh(netcontext.graphing))
 					netcontext.shmcont.addr->vready = true;
-				}
 			break;
 
 			case EVENT_NET_CUSTOMMSG:
@@ -1537,8 +1536,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		char* dsthost = NULL;
 
 		arg_lookup(args, "host", 0, (const char**) &dsthost);
-		netcontext.graphing = graphing_new(GRAPH_NET_CLIENT, 
-			gwidth, gheight, gbufptr);
+		netcontext.graphing = graphing_new(gwidth, gheight, gbufptr);
+		graphing_switch_mode(netcontext.graphing, GRAPH_NET_CLIENT);
 		if (dsthost)
 			client_session(dsthost, CLIENT_SIMPLE);
 		else
@@ -1560,8 +1559,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 				limv = DEFAULT_CONNECTION_CAP;
 		}
 
-		netcontext.graphing = graphing_new(GRAPH_NET_SERVER, 
-			gwidth, gheight, gbufptr);
+		netcontext.graphing = graphing_new(gwidth, gheight, gbufptr);
 		server_session(listenhost, limv);
 	}
 	else {

@@ -41,9 +41,9 @@ enum graphing_mode {
  * etc. is left as an exercise for whatever frontend is using these. 
  * If the resolution etc. should be changed, then a new context will need 
  * to be allocated */
-struct graph_context* graphing_new(enum graphing_mode, int width, 
-	int height, uint32_t* vidp);
+struct graph_context* graphing_new(int width, int height, uint32_t* vidp);
 void graphing_destroy(struct graph_context*);
+void graphing_switch_mode(struct graph_context*, enum graphing_mode);
 
 /* ALL context references below this point are silently assumed to 
  * be from a valid graphing_new call. */
@@ -56,12 +56,6 @@ void graphing_destroy(struct graph_context*);
 /* update context video buffer,
  * true if there's data to push to parent, invoke frequently */ 
 bool graph_refresh(struct graph_context*);
-
-/* timestamps are assumed to increase monotonically,
- * this function makes sure that internal storage gets
- * flushed out over time */
-void graph_tick(struct graph_context* ctx, long long int timestamp);
-
 
 /* -------------------------------------------------- 
  *         Domain Specific Mapping 
