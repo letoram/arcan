@@ -12,3 +12,4 @@
 -- (SHARED or PRIVATE) and c. allowing hints on intended use (FULL or MINIMAL).
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetsnapshot
+

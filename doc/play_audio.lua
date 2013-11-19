@@ -1,6 +1,6 @@
 -- play_audio
 -- @short: Playback a preloaded sample 
--- @inargs aid, *gain
+-- @inargs: aid, *gain*
 -- @longdescr: Samples can be preloaded through the use load_asample. These
 -- can then be played back using this function. Multiple play calls on the same
 -- aid in rapid succession will have the sample playback being repeated.
