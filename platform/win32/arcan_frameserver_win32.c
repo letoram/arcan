@@ -122,10 +122,14 @@ bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_han
 	return rv;
 }
 
-/* assumed to live as long as the frameserver is alive, and killed / closed alongside process */
+/*
+ * assumed to live as long as the frameserver is alive, 
+ * and killed / closed alongside process 
+ */
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 {
-	HANDLE fh = CreateFile( resource, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
+	HANDLE fh = CreateFile( resource, GENERIC_READ, 
+		FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
 	if (fh == INVALID_HANDLE_VALUE)
 		return NULL;
 
@@ -157,7 +161,6 @@ void* frameserver_requirefun(const char* const name)
     GetProcAddress(lastlib, name);
 }
 
-
 /* by default, we only do this for libretro where it might help
  * with external troubleshooting */
 static void toggle_logdev(const char* prefix)
@@ -173,7 +176,9 @@ static void toggle_logdev(const char* prefix)
 		struct tm* basetime = localtime(&t);
 		strftime(timeb, sizeof(timeb)-1, "%y%m%d_%H%M", basetime);
 
-		size_t logbuf_sz = strlen(logdir) + sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
+		size_t logbuf_sz = strlen(logdir) + 
+			sizeof("/fsrv__yymmddhhss.txt") + strlen(prefix);
+
 		char* logbuf = malloc(logbuf_sz + 1);
 
 		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
@@ -193,29 +198,37 @@ int main(int argc, char* argv[])
 	SetErrorMode(dwMode | SEM_NOGPFAULTERRORBOX);
 
 #else
-/* set this env whenever you want to step through the frameserver as launched from the parent */
+/*
+ * set this env whenever you want to step through the
+ * frameserver as launched from the parent 
+ */
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 #endif
 
 	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
-		LOG("frameserver_debugstall, attach and unset volatile on pid: %d\n", (int) getpid());
+		LOG("frameserver_debugstall, attach and unset "
+			"volatile on pid: %d\n", (int) getpid());
         volatile bool a = false;
         while (!a){};
 	}
 
-/* the convention on windows doesn't include the program name as first argument,
- * but some execution contexts may use it, e.g. ruby / cygwin / ... so skew the arguments */
-    if (7 == argc){
-        argv++;
-        argc--;
-    }
+/*
+ * the convention on windows doesn't include the program name as first argument,
+ * but some execution contexts may use it, 
+ * e.g. ruby / cygwin / ... so skew the arguments 
+ */
+ 	if (7 == argc){
+		argv++;
+		argc--;
+	}
 
 /* map cmdline arguments (resource, shmkey, vsem, asem, esem, mode),
  * parent is retrieved from shmpage */
 	if (6 != argc){
-	    LOG("arcan_frameserver(win32, parsecmd) -- unexpected number of arguments, giving up.\n");
-        return 1;
-    }
+		LOG("arcan_frameserver(win32, parsecmd) -- "
+			"unexpected number of arguments, giving up.\n");
+		return 1;
+	}
 
 	vsync = (HANDLE) strtoul(argv[2], NULL, 10);
 	async = (HANDLE) strtoul(argv[3], NULL, 10);
@@ -223,28 +236,40 @@ int main(int argc, char* argv[])
 
 	char* resource = argv[0];
 	char* fsrvmode = argv[5];
-	char* keyfile   = argv[1];
+	char* keyfile  = argv[1];
 
-	LOG("arcan_frameserver(win32) resource: %s, fsrvmode: %s\n", resource, fsrvmode);
+	LOG("arcan_frameserver(win32) resource: %s, fsrvmode: %s\n", 
+		resource, fsrvmode);
 
-	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
+#ifdef ENABLE_FSRV_DECODE
+	if (strcmp(fsrvmode, "movie") == 0 
+		|| strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("decode");
 		arcan_frameserver_ffmpeg_run(resource, keyfile);
 	}
-	else if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
+#endif
+
+#ifdef ENABLE_FSRV_NET
+	if (strcmp(fsrvmode, "net-cl") == 0 
+		|| strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);
 	}
-	else if (strcmp(fsrvmode, "libretro") == 0){
+#endif
+
+#ifdef ENABLE_FSRV_LIBRETRO
+	if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev("retro");
 		arcan_frameserver_libretro_run(resource, keyfile);
 	}
-	else if (strcmp(fsrvmode, "record") == 0){
+#endif
+
+#ifdef ENABLE_FSRV_ENCODE
+	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("record");
 		arcan_frameserver_ffmpeg_encode(resource, keyfile);
 	}
-
-	else;
+#endif
 
 	return 0;
 }
