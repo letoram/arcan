@@ -1271,18 +1271,20 @@ int arcan_lua_systemcontextsize(lua_State* ctx)
 int arcan_lua_dofile(lua_State* ctx)
 {
 	const char* instr = luaL_checkstring(ctx, 1);
+	bool dieonfail = luaL_optnumber(ctx, 2, 1) != 0;
+	
 	char* fname = findresource(instr, ARCAN_RESOURCE_THEME|ARCAN_RESOURCE_SHARED);
 	int res = 0;
 
 	if (fname){
-		luaL_loadfile(ctx, fname);
-		res = 1;
+		int rv = luaL_loadfile(ctx, fname);
+		if (rv == 0)
+			res = 1;
+		else if (dieonfail)
+			arcan_fatal("Error parsing lua script (%s)\n", instr);
 	}
-	else{
-		free(fname);
-		arcan_warning("Script Warning: system_load(),"
-		" couldn't find resource (%s)\n", instr);
-	}
+	else
+		arcan_fatal("Invalid script specified for system_load(%s)\n", instr);
 
 	free(fname);
 	return res;
@@ -1588,6 +1590,11 @@ int arcan_lua_targetinput(lua_State* ctx)
 		return 1;
 	}
 
+/* populate all arguments */
+	const char* kindlbl = intblstr(ctx, tblind, "kind");
+	if (kindlbl == NULL)
+		goto kinderr;
+
 	const char* label = intblstr(ctx, tblind, "label");
 	if (label){
 		int ul = sizeof(ev.label) / sizeof(ev.label[0]) - 1;
@@ -1598,10 +1605,7 @@ int arcan_lua_targetinput(lua_State* ctx)
 		*dst = '\0';
 	}
 
-/* populate all arguments */
-	const char* kindlbl = intblstr(ctx, tblind, "kind");
-	if (kindlbl == NULL)
-		goto kinderr;
+	ev.data.io.pts = intblnum(ctx, tblind, "pts");
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
 		ev.kind = EVENT_IO_AXIS_MOVE;
