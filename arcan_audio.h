@@ -60,7 +60,7 @@ arcan_errc arcan_audio_resume();
 void arcan_audio_tick(uint8_t ntt);
 void arcan_audio_refresh(); /* audiobuffers may need to be requeued / processed quicker than tickrate */
 
-arcan_errc arcan_audio_teardown();
+arcan_errc arcan_audio_shutdown();
 
 /* A little hack to workaround certain AL implementation bugs,
  * will reallocate AL IDs / buffers associated with the aobj */

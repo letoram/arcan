@@ -45,10 +45,6 @@
 #include <errno.h>
 #include <time.h>
 
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
-
 #include <sqlite3.h>
 
 #include "getopt.h"
@@ -95,7 +91,6 @@ static const struct option longopts[] = {
 	{ "database",     required_argument, NULL, 'd'},
 	{ "scalemode",    required_argument, NULL, 'r'},
 	{ "multisamples", required_argument, NULL, 'a'},
-	{ "interactive",  no_argument,       NULL, 'i'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "novsync",      no_argument,       NULL, 'v'},
 	{ "stdout",       required_argument, NULL, '1'},
@@ -147,7 +142,6 @@ int main(int argc, char* argv[])
 	bool fullscreen   = false;
 	bool conservative = false;
 	bool nosound      = false;
-	bool interactive  = false;
 	bool waitsleep    = true;
 
 	unsigned char debuglevel = 0;
@@ -167,7 +161,7 @@ int main(int argc, char* argv[])
 	bool monitor_parent   = true;
 	char* monitor_arg     = "LOG";
 
-	char* dbfname = "arcandb.sqlite";
+	char* dbfname = NULL;
 	char ch;
 	
 	srand( time(0) );
@@ -197,7 +191,6 @@ int main(int argc, char* argv[])
 	case 'V' : waitsleep = false; break;
 	case 'p' : arcan_resourcepath = strdup(optarg); break;
 #ifndef _WIN32
-	case 'i' : fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); interactive = true; break;
 	case 'M' : monitor = abs( strtol(optarg, NULL, 10) ); break;
 	case 'O' : monitor_arg = strdup( optarg ); break; 
 #endif
@@ -330,25 +323,25 @@ themeswitch:
  * if that fails, warn, try to create an empty 
  * database and if that fails, give up. 
  */
+	if (!dbfname)
+		dbfname = arcan_expand_resource("arcandb.sqlite", true);
+
 	dbhandle = arcan_db_open(dbfname, arcan_themename);
-	if (!dbhandle){
-		dbname = arcan_expand_resource(dbfname, true);
-		dbhandle = arcan_db_open(dbfname, arcan_themename);
-	}
 
 	if (!dbhandle) {
-		arcan_warning("Couldn't open database (requested: %s => %s),"
-			"trying to create a new one.\n", dbfname, dbname);
-		FILE* fpek = fopen(dbname, "a");
+		arcan_warning("Couldn't open database (requested: %s),"
+			"trying to create a new one.\n", dbfname);
+		FILE* fpek = fopen(dbfname, "a");
 		if (fpek){
 			fclose(fpek);
 			dbhandle = arcan_db_open(dbname, arcan_themename);
 		}
 
-		if (!dbhandle)
+		if (!dbhandle){
+			arcan_warning("Couldn't create database, giving up.\n");
 			goto error;
+		}
 	}
-	free(dbname);
 	
 	arcan_video_default_scalemode(scalemode);
 
@@ -378,7 +371,6 @@ themeswitch:
 
 /* setup device polling, cleanup, ... */
 	arcan_evctx* def = arcan_event_defaultctx();
-	def->interactive = interactive;
 	arcan_event_init( def );
 	arcan_led_init();
 	arcan_hmd_open();
@@ -404,16 +396,15 @@ themeswitch:
 		putenv(logpath);
 	}
 
-/* export what we know and load theme */
-	lua_State* luactx = luaL_newstate();
-	luaL_openlibs(luactx);
-
 #ifndef _WIN32
 	struct rlimit coresize = {0};
 
 /* debuglevel 0, no coredumps etc.
  * debuglevel 1, maximum 1M coredump, should prioritize stack etc.
- * would so want to be able to hint to mmap which pages that should be avoided.
+ * would want to be able to hint to mmap which pages that should be avoided
+ * so that we could exclude texture data that both comprise most memory used
+ * and can be recovered through other means. One option for this would be
+ * to push image loading/management to a separate process, 
  * debuglevel > 1, dump everything */
 	if (debuglevel == 0);
 	else if (debuglevel == 1) coresize.rlim_max = 10 * 1024 * 1024;
@@ -423,27 +414,27 @@ themeswitch:
 	setrlimit(RLIMIT_CORE, &coresize);
 #endif
 
-/* this one also sandboxes os/io functions (just by setting to nil) */
-	arcan_lua_exposefuncs(luactx, debuglevel);
-	arcan_lua_pushglobalconsts(luactx);
 
-	if (argc > optind)
-		arcan_lua_pushargv(luactx, argv + optind + 1);
+/* setup VM, map arguments and possible overrides */ 
+	struct arcan_luactx* luactx = arcan_luaL_setup(debuglevel);
 
-	if (script_override && luaL_dofile(luactx, script_override) == 1){
-		arcan_fatal("Fatal: main(), Error loading"
-			" override: (%s)\n", script_override);
-		goto error;
+	if (script_override){
+		const char* msg = arcan_luaL_dofile(luactx, script_override);
+		if (msg){
+			arcan_fatal("Error loading override(%s): %s\n", script_override, msg);
+			goto error;
+		}
 	} 
 	else if (!script_override) {
 		char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
 		sprintf(themescr, "%s.lua", arcan_themename);
 		char* fn = arcan_find_resource(themescr, ARCAN_RESOURCE_THEME);
 
-		if ( luaL_dofile(luactx, fn) == 1 ){
-			const char* msg = lua_tostring(luactx, -1);
+		char* msg = arcan_luaL_dofile(luactx, fn);
+		if (msg != NULL){
 			arcan_fatal("Fatal: main(), Error loading theme script"
 				"(%s) : (%s)\n", themescr, msg);
+			free(msg);
 			goto error;
 		}
 			
@@ -453,6 +444,9 @@ themeswitch:
 
 /* entry point follows the name of the theme,
  * hand over execution and begin event loop */
+	if (argc > optind)
+		arcan_lua_pushargv(luactx, argv + optind + 1);
+
 	arcan_lua_callvoidfun(luactx, arcan_themename, true);
 	arcan_lua_callvoidfun(luactx, "show", false);
 
@@ -495,11 +489,11 @@ themeswitch:
 				if (ev->kind == EVENT_SYSTEM_EXIT)
 					done = true;
 				else if (ev->kind == EVENT_SYSTEM_SWITCHTHEME){
-					lua_close(luactx);
+					arcan_luaL_shutdown(luactx);
 					arcan_video_shutdown();
-					arcan_audio_teardown();
+					arcan_audio_shutdown();
 					arcan_event_deinit(arcan_event_defaultctx());
-					arcan_led_cleanup();
+					arcan_led_shutdown();
 					arcan_db_close(dbhandle);
 
 					arcan_themename = strdup(ev->data.system.data.message);
@@ -588,7 +582,7 @@ themeswitch:
 	}
 
 	arcan_lua_callvoidfun(luactx, "shutdown", false);
-	arcan_led_cleanup();
+	arcan_led_shutdown();
 	arcan_video_shutdown();
 
 error:

@@ -63,6 +63,6 @@ led_capabilities arcan_led_capabilities(uint8_t device);
 /* Free any USB resources lingering around,
  * might (might) be needed when launching a target externally that makes
  * direct use of the same usb device. */
-void arcan_led_cleanup();
+void arcan_led_shutdown();
 #endif
 
