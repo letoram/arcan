@@ -191,6 +191,27 @@ static void dump_call_trace(lua_State* ctx)
 #endif
 }
 
+static void crashdump()
+{
+	time_t logtime = time(NULL);
+	struct tm* ltime = localtime(&logtime);
+			
+	if (ltime) {
+		const char* fns = "/logs/crash_mmdd_hhmmss.lua";
+		char fname[ strlen(arcan_resourcepath) + strlen(fns) + 10 ];
+
+		sprintf(fname, "%s%s", arcan_resourcepath, fns);
+		strftime( fname + strlen(arcan_resourcepath) + 
+			strlen("/logs/crash_"), 9, "%m%d_%H%M%S", ltime);
+
+		FILE* tmpout = fopen(fname, "w+");
+		if (tmpout){
+			arcan_lua_statesnap(tmpout);
+			fclose(tmpout);
+		}
+	}
+}
+
 /* dump argument stack, stack trace are shown only when --debug is set */
 static void dump_stack(lua_State* ctx)
 {
@@ -1237,10 +1258,12 @@ int arcan_lua_setlife(lua_State* ctx)
 int arcan_lua_systemcontextsize(lua_State* ctx)
 {
 	unsigned newlim = luaL_checkint(ctx, 1);
-	if (newlim > 1){
-		newlim = newlim > 65536 ? 65536 : newlim;
+	if (newlim > 1 && newlim <= 65536){
 		arcan_video_contextsize(newlim);
-	}
+	} 
+	else 
+		arcan_fatal("system_context_size(), "
+			"invalid context size specified (%d)\n", newlim);
 
 	return 0;
 }
@@ -1566,10 +1589,16 @@ int arcan_lua_targetinput(lua_State* ctx)
 	}
 
 	const char* label = intblstr(ctx, tblind, "label");
-	if (label)
-		snprintf(ev.label, 16, "%s", label);
+	if (label){
+		int ul = sizeof(ev.label) / sizeof(ev.label[0]) - 1;
+		char* dst = ev.label;
 
-	/* populate all arguments */
+		while (*label != '\0' && ul--)
+			*dst++ = *label++;
+		*dst = '\0';
+	}
+
+/* populate all arguments */
 	const char* kindlbl = intblstr(ctx, tblind, "kind");
 	if (kindlbl == NULL)
 		goto kinderr;
@@ -3252,28 +3281,12 @@ void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 			dump_stack(ctx);
 
 		if (lua_ctx_store.debug > 0){
-			time_t logtime = time(NULL);
-			struct tm* ltime = localtime(&logtime);
-			
-			if (ltime) {
-				const char* fns = "/logs/crash_mmdd_hhmmss.lua";
-				char fname[ strlen(arcan_resourcepath) + strlen(fns) + 10 ];
+			crashdump();
 
-				sprintf(fname, "%s%s", arcan_resourcepath, fns);
-				strftime( fname + strlen(arcan_resourcepath) + 
-					strlen("/logs/crash_"), 9, "%m%d_%H%M%S", ltime);
-
-				FILE* tmpout = fopen(fname, "w+");
-				if (tmpout){
-					arcan_lua_statesnap(tmpout);
-					fclose(tmpout);
+			if (!(lua_ctx_store.debug > 2)){
+				arcan_fatal("Fatal: arcan_lua_wraperr(%s, %s)\n", mesg, src);
 			}
 		}
-	}
-
-		if (!(lua_ctx_store.debug > 2))
-			arcan_fatal("Fatal: arcan_lua_wraperr(%s, %s)\n", mesg, src);
-
 	}
 	else{
 		while ( arcan_video_popcontext() < CONTEXT_STACK_LIMIT -1);
