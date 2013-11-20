@@ -66,6 +66,8 @@
 #include "arcan_frameserver_shmpage.h"
 #include "arcan_target_const.h"
 #include "arcan_target_launcher.h"
+
+#define arcan_luactx lua_State
 #include "arcan_lua.h"
 
 #ifndef ARCAN_LUA_NOLED
@@ -190,6 +192,9 @@ static void dump_call_trace(lua_State* ctx)
 	}
 #endif
 }
+
+static void arcan_lua_wraperr(struct arcan_luactx* ctx, 
+	int errc, const char* src);
 
 static void crashdump()
 {
@@ -465,7 +470,7 @@ static int arcan_lua_loadimage(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_loadimageasynch(lua_State* ctx)
+static int arcan_lua_loadimageasynch(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
 	intptr_t ref = 0;
@@ -486,7 +491,7 @@ int arcan_lua_loadimageasynch(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_imageloaded(lua_State* ctx)
+static int arcan_lua_imageloaded(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobject* vobj = arcan_video_getobject(id);
@@ -499,7 +504,7 @@ int arcan_lua_imageloaded(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_moveimage(lua_State* ctx)
+static int arcan_lua_moveimage(lua_State* ctx)
 {
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
@@ -529,7 +534,7 @@ int arcan_lua_moveimage(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_nudgeimage(lua_State* ctx)
+static int arcan_lua_nudgeimage(lua_State* ctx)
 {
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
@@ -562,7 +567,7 @@ int arcan_lua_nudgeimage(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_instanceimage(lua_State* ctx)
+static int arcan_lua_instanceimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobj_id newid = arcan_video_cloneobject(id);
@@ -579,7 +584,7 @@ int arcan_lua_instanceimage(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_resettransform(lua_State* ctx)
+static int arcan_lua_resettransform(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_video_zaptransform(id);
@@ -587,7 +592,7 @@ int arcan_lua_resettransform(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_instanttransform(lua_State* ctx)
+static int arcan_lua_instanttransform(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_video_instanttransform(id);
@@ -595,7 +600,7 @@ int arcan_lua_instanttransform(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_cycletransform(lua_State* ctx)
+static int arcan_lua_cycletransform(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	bool flag = luaL_checknumber(ctx, 2) != 0;
@@ -605,7 +610,7 @@ int arcan_lua_cycletransform(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_copytransform(lua_State* ctx)
+static int arcan_lua_copytransform(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
@@ -615,7 +620,7 @@ int arcan_lua_copytransform(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_transfertransform(lua_State* ctx)
+static int arcan_lua_transfertransform(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
@@ -625,7 +630,7 @@ int arcan_lua_transfertransform(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_rotateimage(lua_State* ctx)
+static int arcan_lua_rotateimage(lua_State* ctx)
 {
 	float ang = luaL_checknumber(ctx, 2);
 	int time = luaL_optint(ctx, 3, 0);
@@ -653,7 +658,7 @@ int arcan_lua_rotateimage(lua_State* ctx)
 
 /* Input is absolute values,
  * arcan_video_objectscale takes relative to initial size */
-int arcan_lua_scaleimage2(lua_State* ctx)
+static int arcan_lua_scaleimage2(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float neww = luaL_checknumber(ctx, 2);
@@ -689,7 +694,7 @@ int arcan_lua_scaleimage2(lua_State* ctx)
 	return 2;
 }
 
-int arcan_lua_scaleimage(lua_State* ctx)
+static int arcan_lua_scaleimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 
@@ -715,7 +720,7 @@ int arcan_lua_scaleimage(lua_State* ctx)
 	return 2;
 }
 
-int arcan_lua_orderimage(lua_State* ctx)
+static int arcan_lua_orderimage(lua_State* ctx)
 {
 	unsigned int zv = luaL_checknumber(ctx, 2);
 
@@ -742,7 +747,7 @@ int arcan_lua_orderimage(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_maxorderimage(lua_State* ctx)
+static int arcan_lua_maxorderimage(lua_State* ctx)
 {
 	lua_pushnumber(ctx, arcan_video_maxorder());
 	return 1;
@@ -773,26 +778,26 @@ static inline void massopacity(lua_State* ctx,
 			"expected VID or indexed table of VIDs\n", caller);
 }
 
-int arcan_lua_imageopacity(lua_State* ctx)
+static int arcan_lua_imageopacity(lua_State* ctx)
 {
 	float val = luaL_checknumber(ctx, 2);
 	massopacity(ctx, val, "arcan_lua_imageopacity");
 	return 0;
 }
 
-int arcan_lua_showimage(lua_State* ctx)
+static int arcan_lua_showimage(lua_State* ctx)
 {
 	massopacity(ctx, 1.0, "arcan_lua_showimage");
 	return 0;
 }
 
-int arcan_lua_hideimage(lua_State* ctx)
+static int arcan_lua_hideimage(lua_State* ctx)
 {
 	massopacity(ctx, 0.0, "arcan_lua_hideimage");
 	return 0;
 }
 
-int arcan_lua_forceblend(lua_State* ctx)
+static int arcan_lua_forceblend(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_FORCE);
@@ -804,20 +809,20 @@ int arcan_lua_forceblend(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_imagepersist(lua_State* ctx)
+static int arcan_lua_imagepersist(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	lua_pushboolean(ctx, arcan_video_persistobject(id) == ARCAN_OK);
 	return 1;
 }
 
-int arcan_lua_dropaudio(lua_State* ctx)
+static int arcan_lua_dropaudio(lua_State* ctx)
 {
 	arcan_audio_stop( luaL_checkaid(ctx, 1) );
 	return 0;
 }
 
-int arcan_lua_gain(lua_State* ctx)
+static int arcan_lua_gain(lua_State* ctx)
 {
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
 	float gain = luaL_checknumber(ctx, 2);
@@ -826,7 +831,7 @@ int arcan_lua_gain(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_playaudio(lua_State* ctx)
+static int arcan_lua_playaudio(lua_State* ctx)
 {
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
 	if (lua_isnumber(ctx, 2))
@@ -837,7 +842,7 @@ int arcan_lua_playaudio(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_captureaudio(lua_State* ctx)
+static int arcan_lua_captureaudio(lua_State* ctx)
 {
 	char** cptlist = arcan_audio_capturelist();
 	const char* luach = luaL_checkstring(ctx, 1);
@@ -855,7 +860,7 @@ int arcan_lua_captureaudio(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_capturelist(lua_State* ctx)
+static int arcan_lua_capturelist(lua_State* ctx)
 {
 	char** cptlist = arcan_audio_capturelist();
 	int count = 1;
@@ -873,7 +878,7 @@ int arcan_lua_capturelist(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_loadasample(lua_State* ctx)
+static int arcan_lua_loadasample(lua_State* ctx)
 {
 	const char* rname = luaL_checkstring(ctx, 1);
 	char* resource = findresource(rname, 
@@ -885,14 +890,14 @@ int arcan_lua_loadasample(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_pauseaudio(lua_State* ctx)
+static int arcan_lua_pauseaudio(lua_State* ctx)
 {
 	arcan_aobj_id id = luaL_checkaid(ctx, 1);
 	arcan_audio_pause(id);
 	return 0;
 }
 
-int arcan_lua_buildshader(lua_State* ctx)
+static int arcan_lua_buildshader(lua_State* ctx)
 {
 	extern char* deffprg;
 	extern char* defvprg;
@@ -906,7 +911,7 @@ int arcan_lua_buildshader(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_sharestorage(lua_State* ctx)
+static int arcan_lua_sharestorage(lua_State* ctx)
 {
 	arcan_vobj_id src = luaL_checkvid(ctx, 1);
 	arcan_vobj_id dst = luaL_checkvid(ctx, 2);
@@ -917,7 +922,7 @@ int arcan_lua_sharestorage(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_setshader(lua_State* ctx)
+static int arcan_lua_setshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_shader_id shid;
@@ -932,7 +937,7 @@ int arcan_lua_setshader(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_setmeshshader(lua_State* ctx)
+static int arcan_lua_setmeshshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_shader_id shid = luaL_checknumber(ctx, 2);
@@ -943,7 +948,7 @@ int arcan_lua_setmeshshader(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_strsize(lua_State* ctx)
+static int arcan_lua_strsize(lua_State* ctx)
 {
 	unsigned int width = 0, height = 0;
 	const char* message = luaL_checkstring(ctx, 1);
@@ -959,7 +964,7 @@ int arcan_lua_strsize(lua_State* ctx)
 	return 2;
 }
 
-int arcan_lua_buildstr(lua_State* ctx)
+static int arcan_lua_buildstr(lua_State* ctx)
 {
 	arcan_vobj_id id  = ARCAN_EID;
 
@@ -990,7 +995,7 @@ int arcan_lua_buildstr(lua_State* ctx)
 	return 2;
 }
 
-int arcan_lua_scaletxcos(lua_State* ctx)
+static int arcan_lua_scaletxcos(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float txs = luaL_checknumber(ctx, 2);
@@ -1001,7 +1006,7 @@ int arcan_lua_scaletxcos(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_settxcos_default(lua_State* ctx)
+static int arcan_lua_settxcos_default(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobject* dst = arcan_video_getobject(id);
@@ -1017,7 +1022,7 @@ int arcan_lua_settxcos_default(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_settxcos(lua_State* ctx)
+static int arcan_lua_settxcos(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float txcos[8];
@@ -1043,7 +1048,7 @@ int arcan_lua_settxcos(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_gettxcos(lua_State* ctx)
+static int arcan_lua_gettxcos(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	int rv = 0;
@@ -1065,7 +1070,7 @@ int arcan_lua_gettxcos(lua_State* ctx)
 	return rv;
 }
 
-int arcan_lua_togglemask(lua_State* ctx)
+static int arcan_lua_togglemask(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned val = luaL_checknumber(ctx, 2);
@@ -1079,7 +1084,7 @@ int arcan_lua_togglemask(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_clearall(lua_State* ctx)
+static int arcan_lua_clearall(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	if (id){
@@ -1120,14 +1125,7 @@ static char* maskstr(enum arcan_transform_mask mask)
 	return strdup(maskstr);
 }
 
-void dumpmask(arcan_vobj_id id)
-{
-	char* mask = maskstr( arcan_video_getmask(id) );
-	arcan_warning("(%d:%s) => %s\n", id, arcan_video_readtag(id), mask);
-	free(mask);
-}
-
-int arcan_lua_clearmask(lua_State* ctx)
+static int arcan_lua_clearmask(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	unsigned val = luaL_checknumber(ctx, 2);
@@ -1141,7 +1139,7 @@ int arcan_lua_clearmask(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_setmask(lua_State* ctx)
+static int arcan_lua_setmask(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	enum arcan_transform_mask val = luaL_checknumber(ctx, 2);
@@ -1157,7 +1155,7 @@ int arcan_lua_setmask(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_clipon(lua_State* ctx)
+static int arcan_lua_clipon(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	char clipm = luaL_optint(ctx, 2, ARCAN_CLIP_ON);
@@ -1167,14 +1165,14 @@ int arcan_lua_clipon(lua_State* ctx)
     return 0;
 }
 
-int arcan_lua_clipoff(lua_State* ctx)
+static int arcan_lua_clipoff(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_video_setclip(id, ARCAN_CLIP_OFF);
     return 0;
 }
 
-int arcan_lua_pick(lua_State* ctx)
+static int arcan_lua_pick(lua_State* ctx)
 {
 	int x = luaL_checkint(ctx, 1);
 	int y = luaL_checkint(ctx, 2);
@@ -1202,7 +1200,7 @@ int arcan_lua_pick(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_hittest(lua_State* state)
+static int arcan_lua_hittest(lua_State* state)
 {
 	arcan_vobj_id id = luaL_checkvid(state, 1);
 	unsigned int x = luaL_checkint(state, 2);
@@ -1213,7 +1211,7 @@ int arcan_lua_hittest(lua_State* state)
 	return 1;
 }
 
-int arcan_lua_deleteimage(lua_State* ctx)
+static int arcan_lua_deleteimage(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	double srcid = luaL_checknumber(ctx, 1);
@@ -1241,7 +1239,7 @@ int arcan_lua_deleteimage(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_setlife(lua_State* ctx)
+static int arcan_lua_setlife(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	int ttl = luaL_checkint(ctx, 2);
@@ -1255,7 +1253,7 @@ int arcan_lua_setlife(lua_State* ctx)
 }
 
 /* to actually put this into effect, change value and pop the entire stack */
-int arcan_lua_systemcontextsize(lua_State* ctx)
+static int arcan_lua_systemcontextsize(lua_State* ctx)
 {
 	unsigned newlim = luaL_checkint(ctx, 1);
 	if (newlim > 1 && newlim <= 65536){
@@ -1268,7 +1266,19 @@ int arcan_lua_systemcontextsize(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_dofile(lua_State* ctx)
+char* arcan_luaL_dofile(lua_State* ctx, const char* fname)
+{
+	int code = luaL_dofile(ctx, fname);
+	if (code == 1){
+		const char* msg = lua_tostring(ctx, -1);
+		if (msg)
+			return strdup(msg);
+	}
+
+	return NULL;
+}
+
+static int arcan_lua_dofile(lua_State* ctx)
 {
 	const char* instr = luaL_checkstring(ctx, 1);
 	bool dieonfail = luaL_optnumber(ctx, 2, 1) != 0;
@@ -1290,7 +1300,7 @@ int arcan_lua_dofile(lua_State* ctx)
 	return res;
 }
 
-int arcan_lua_clipboardget(lua_State* ctx)
+/*static int arcan_lua_clipboardget(lua_State* ctx)
 {
 	const char* const msg = luaL_optstring(ctx, 2, "text");
 	if (strcmp(msg, "text") == 0){
@@ -1302,8 +1312,9 @@ int arcan_lua_clipboardget(lua_State* ctx)
 
 	return 0;
 }
+*/
 
-int arcan_lua_pausemovie(lua_State* ctx)
+static int arcan_lua_pausemovie(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	vfunc_state* state = arcan_video_feedstate(vid);
@@ -1314,7 +1325,7 @@ int arcan_lua_pausemovie(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_resumemovie(lua_State* ctx)
+static int arcan_lua_resumemovie(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	vfunc_state* state = arcan_video_feedstate(vid);
@@ -1325,7 +1336,7 @@ int arcan_lua_resumemovie(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_playmovie(lua_State* ctx)
+static int arcan_lua_playmovie(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	vfunc_state* state = arcan_video_feedstate(vid);
@@ -1346,12 +1357,10 @@ int arcan_lua_playmovie(lua_State* ctx)
 	return 0;
 }
 
-/* NOTE: the is_special_res / loadmovie hack is slated to be replaced for the
- * hardening 0.3 branch, where the nopts / framequeue solution is dropped 
- * altogether in favor of doing synchronization work in frameserver- */
 static bool is_special_res(const char* msg)
 {
-	return strncmp(msg, "device", 6) == 0 || strncmp(msg, "stream", 6) == 0 || 
+	return strncmp(msg, "device", 6) == 0 || 
+		strncmp(msg, "stream", 6) == 0 || 
 		strncmp(msg, "capture", 7) == 0;
 }
 
@@ -1438,7 +1447,7 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 }
 
 #ifndef ARCAN_LUA_NOLED
-int arcan_lua_n_leds(lua_State* ctx)
+static int arcan_lua_n_leds(lua_State* ctx)
 {
 	uint8_t id = luaL_checkint(ctx, 1);
 	led_capabilities cap = arcan_led_capabilities(id);
@@ -1447,7 +1456,7 @@ int arcan_lua_n_leds(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_led_intensity(lua_State* ctx)
+static int arcan_lua_led_intensity(lua_State* ctx)
 {
 	uint8_t id = luaL_checkint(ctx, 1);
 	int8_t led = luaL_checkint(ctx, 2);
@@ -1459,7 +1468,7 @@ int arcan_lua_led_intensity(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_led_rgb(lua_State* ctx)
+static int arcan_lua_led_rgb(lua_State* ctx)
 {
 	uint8_t id = luaL_checkint(ctx, 1);
 	int8_t led = luaL_checkint(ctx, 2);
@@ -1471,7 +1480,7 @@ int arcan_lua_led_rgb(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_setled(lua_State* ctx)
+static int arcan_lua_setled(lua_State* ctx)
 {
 	int id = luaL_checkint(ctx, 1);
 	int num = luaL_checkint(ctx, 2);
@@ -1489,7 +1498,7 @@ int arcan_lua_setled(lua_State* ctx)
  * the -- possibly -- safest option would be to completely flush event queues 
  * between successful context pops, in such cases, it should be handled in the 
  * LUA layer */
-int arcan_lua_pushcontext(lua_State* ctx)
+static int arcan_lua_pushcontext(lua_State* ctx)
 {
 /* make sure that we save one context for launch_external */
 
@@ -1501,7 +1510,7 @@ int arcan_lua_pushcontext(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_popcontext_ext(lua_State* ctx)
+static int arcan_lua_popcontext_ext(lua_State* ctx)
 {
 	arcan_vobj_id newid = ARCAN_EID;
 
@@ -1512,7 +1521,7 @@ int arcan_lua_popcontext_ext(lua_State* ctx)
 	return 2;
 }
 
-int arcan_lua_pushcontext_ext(lua_State* ctx)
+static int arcan_lua_pushcontext_ext(lua_State* ctx)
 {
 	arcan_vobj_id newid = ARCAN_EID;
 
@@ -1523,13 +1532,13 @@ int arcan_lua_pushcontext_ext(lua_State* ctx)
 	return 2;
 }
 
-int arcan_lua_popcontext(lua_State* ctx)
+static int arcan_lua_popcontext(lua_State* ctx)
 {
 	lua_pushinteger(ctx, arcan_video_popcontext());
 	return 1;
 }
 
-int arcan_lua_contextusage(lua_State* ctx)
+static int arcan_lua_contextusage(lua_State* ctx)
 {
 	unsigned usecount;
 	lua_pushinteger(ctx, arcan_video_contextusage(&usecount));
@@ -1566,7 +1575,7 @@ static inline bool intblbool(lua_State* ctx, int ind, const char* field){
  * in the first few versions while other functions tend to lead with vid, 
  * which causes some confusion. So we check whethere the table argument is first
  * or second, and extract accordingly, so both will work */
-int arcan_lua_targetinput(lua_State* ctx)
+static int arcan_lua_targetinput(lua_State* ctx)
 {
 	arcan_event ev = {.kind = 0, .category = EVENT_IO };
 	int vidind, tblind;
@@ -1777,7 +1786,7 @@ static char* to_utf8(uint16_t utf16)
 	return (char*) utf8buf;
 }
 
-int arcan_lua_scale3dverts(lua_State* ctx)
+static int arcan_lua_scale3dverts(lua_State* ctx)
 {
     arcan_vobj_id vid = luaL_checkvid(ctx, 1);
     arcan_3d_scalevertices(vid);
@@ -1811,7 +1820,8 @@ static char* streamtype(int num)
  * to store the actual event, but it wouldn't really help extraction. */
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
-	if (ev->category == EVENT_SYSTEM && arcan_lua_grabthemefunction(ctx, "system")){
+	if (ev->category == EVENT_SYSTEM && 
+		arcan_lua_grabthemefunction(ctx, "system")){
 		lua_newtable(ctx);
 	}
 	if (ev->category == EVENT_IO && arcan_lua_grabthemefunction(ctx, "input")){
@@ -2213,7 +2223,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	}
 }
 
-int arcan_lua_imageparent(lua_State* ctx)
+static int arcan_lua_imageparent(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobj_id pid = arcan_video_findparent(id);
@@ -2222,7 +2232,7 @@ int arcan_lua_imageparent(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_validvid(lua_State* ctx)
+static int arcan_lua_validvid(lua_State* ctx)
 {
 	arcan_vobj_id res = (arcan_vobj_id) luaL_optnumber(ctx, 1, ARCAN_EID);
 
@@ -2236,7 +2246,7 @@ int arcan_lua_validvid(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_imagechildren(lua_State* ctx)
+static int arcan_lua_imagechildren(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_vobj_id child;
@@ -2254,7 +2264,7 @@ int arcan_lua_imagechildren(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_framesetalloc(lua_State* ctx)
+static int arcan_lua_framesetalloc(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	unsigned num = luaL_checkint(ctx, 2);
@@ -2267,7 +2277,7 @@ int arcan_lua_framesetalloc(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_framesetcycle(lua_State* ctx)
+static int arcan_lua_framesetcycle(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	unsigned num = luaL_optint(ctx, 2, 0);
@@ -2275,14 +2285,14 @@ int arcan_lua_framesetcycle(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_pushasynch(lua_State* ctx)
+static int arcan_lua_pushasynch(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_video_pushasynch(sid);
 	return 0;
 }
 
-int arcan_lua_activeframe(lua_State* ctx)
+static int arcan_lua_activeframe(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	unsigned num = luaL_checkint(ctx, 2);
@@ -2292,7 +2302,7 @@ int arcan_lua_activeframe(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_origoofs(lua_State* ctx)
+static int arcan_lua_origoofs(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	float xv = luaL_checknumber(ctx, 2);
@@ -2304,7 +2314,7 @@ int arcan_lua_origoofs(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_orderinherit(lua_State* ctx)
+static int arcan_lua_orderinherit(lua_State* ctx)
 {
 	bool origo = lua_toboolean(ctx, 2);
 
@@ -2328,7 +2338,7 @@ int arcan_lua_orderinherit(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_imageasframe(lua_State* ctx)
+static int arcan_lua_imageasframe(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
@@ -2354,7 +2364,7 @@ int arcan_lua_imageasframe(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_linkimage(lua_State* ctx)
+static int arcan_lua_linkimage(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
@@ -2420,7 +2430,7 @@ static inline int pushprop(lua_State* ctx,
 	return 1;
 }
 
-int arcan_lua_loadmesh(lua_State* ctx)
+static int arcan_lua_loadmesh(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	unsigned nmaps = luaL_optnumber(ctx, 3, 1);
@@ -2442,7 +2452,7 @@ int arcan_lua_loadmesh(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_attrtag(lua_State* ctx)
+static int arcan_lua_attrtag(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	const char*  attr = luaL_checkstring(ctx, 2);
@@ -2457,7 +2467,7 @@ int arcan_lua_attrtag(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_buildmodel(lua_State* ctx)
+static int arcan_lua_buildmodel(lua_State* ctx)
 {
 	arcan_vobj_id id = ARCAN_EID;
 	id = arcan_3d_emptymodel();
@@ -2469,7 +2479,7 @@ int arcan_lua_buildmodel(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_buildplane(lua_State* ctx)
+static int arcan_lua_buildplane(lua_State* ctx)
 {
 	float minx     = luaL_checknumber(ctx, 1);
 	float mind     = luaL_checknumber(ctx, 2);
@@ -2485,7 +2495,7 @@ int arcan_lua_buildplane(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_buildbox(lua_State* ctx)
+static int arcan_lua_buildbox(lua_State* ctx)
 {
 /* FIXME: incomplete
  point minp, maxp;
@@ -2501,7 +2511,7 @@ int arcan_lua_buildbox(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_swizzlemodel(lua_State* ctx)
+static int arcan_lua_swizzlemodel(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	arcan_errc rv = arcan_3d_swizzlemodel(id);
@@ -2510,7 +2520,7 @@ int arcan_lua_swizzlemodel(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_camtag(lua_State* ctx)
+static int arcan_lua_camtag(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	float w = arcan_video_display.width;
@@ -2532,7 +2542,7 @@ int arcan_lua_camtag(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_camtaghmd(lua_State* ctx)
+static int arcan_lua_camtaghmd(lua_State* ctx)
 {
 	arcan_vobj_id lid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id rid = luaL_checkvid(ctx, 2);
@@ -2575,7 +2585,7 @@ int arcan_lua_camtaghmd(lua_State* ctx)
 	return 7;	
 }
 
-int arcan_lua_getimageprop(lua_State* ctx)
+static int arcan_lua_getimageprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	long long dt = luaL_optnumber(ctx, 2, 0);
@@ -2590,7 +2600,7 @@ int arcan_lua_getimageprop(lua_State* ctx)
 	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 
-int arcan_lua_getimageresolveprop(lua_State* ctx)
+static int arcan_lua_getimageresolveprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 /* FIXME: resolve_properties does not take dt into account */
@@ -2599,7 +2609,7 @@ int arcan_lua_getimageresolveprop(lua_State* ctx)
 	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 
-int arcan_lua_getimageinitprop(lua_State* ctx)
+static int arcan_lua_getimageinitprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	surface_properties prop = arcan_video_initial_properties(id);
@@ -2607,7 +2617,7 @@ int arcan_lua_getimageinitprop(lua_State* ctx)
 	return pushprop(ctx, prop, arcan_video_getzv(id));
 }
 
-int arcan_lua_getimagestorageprop(lua_State* ctx)
+static int arcan_lua_getimagestorageprop(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	img_cons cons = arcan_video_storage_properties(id);
@@ -2628,7 +2638,7 @@ int arcan_lua_getimagestorageprop(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_copyimageprop(lua_State* ctx)
+static int arcan_lua_copyimageprop(lua_State* ctx)
 {
 	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
 	arcan_vobj_id did = luaL_checkvid(ctx, 2);
@@ -2638,7 +2648,7 @@ int arcan_lua_copyimageprop(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_storekey(lua_State* ctx)
+static int arcan_lua_storekey(lua_State* ctx)
 {
 	if (lua_type(ctx, 1) == LUA_TTABLE){
 		lua_pushnil(ctx);
@@ -2662,7 +2672,7 @@ int arcan_lua_storekey(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_getkey(lua_State* ctx)
+static int arcan_lua_getkey(lua_State* ctx)
 {
 	const char* key = luaL_checkstring(ctx, 1);
 	char* val = arcan_db_theme_val(dbhandle, arcan_themename, key);
@@ -2677,7 +2687,7 @@ int arcan_lua_getkey(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_gamefamily(lua_State* ctx)
+static int arcan_lua_gamefamily(lua_State* ctx)
 {
 	const int gameid = luaL_checkinteger(ctx, 1);
 	arcan_dbh_res res = arcan_db_game_siblings(dbhandle, NULL, gameid);
@@ -2730,14 +2740,14 @@ static int push_stringres(lua_State* ctx, arcan_dbh_res res)
 	return rv;
 }
 
-int arcan_lua_kbdrepeat(lua_State* ctx)
+static int arcan_lua_kbdrepeat(lua_State* ctx)
 {
 	unsigned rrate = luaL_checknumber(ctx, 1);
 	arcan_event_keyrepeat(arcan_event_defaultctx(), rrate);
 	return 0;
 }
 
-int arcan_lua_3dorder(lua_State* ctx)
+static int arcan_lua_3dorder(lua_State* ctx)
 {
 	int order = luaL_checknumber(ctx, 1);
 
@@ -2749,9 +2759,9 @@ int arcan_lua_3dorder(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_mousegrab(lua_State* ctx)
+static int arcan_lua_mousegrab(lua_State* ctx)
 {
-	int mode =  luaL_optint( ctx, 1, -1);
+	int mode = luaL_optint( ctx, 1, -1);
 
 	if (mode == -1)
 		lua_ctx_store.grab = !lua_ctx_store.grab;
@@ -2766,7 +2776,7 @@ int arcan_lua_mousegrab(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_gettargets(lua_State* ctx)
+static int arcan_lua_gettargets(lua_State* ctx)
 {
 	int rv = 0;
 
@@ -2777,7 +2787,7 @@ int arcan_lua_gettargets(lua_State* ctx)
 	return rv;
 }
 
-int arcan_lua_getgenres(lua_State* ctx)
+static int arcan_lua_getgenres(lua_State* ctx)
 {
 	int rv = 0;
 	arcan_dbh_res res = arcan_db_genres(dbhandle, false);
@@ -2791,7 +2801,7 @@ int arcan_lua_getgenres(lua_State* ctx)
 	return rv;
 }
 
-int arcan_lua_fillsurface(lua_State* ctx)
+static int arcan_lua_fillsurface(lua_State* ctx)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 
@@ -2833,7 +2843,7 @@ error:
 	return 0;
 }
 
-int arcan_lua_imagecolor(lua_State* ctx)
+static int arcan_lua_imagecolor(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	uint8_t cred = luaL_checknumber(ctx, 2);
@@ -2854,7 +2864,7 @@ int arcan_lua_imagecolor(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_colorsurface(lua_State* ctx)
+static int arcan_lua_colorsurface(lua_State* ctx)
 {
 	int desw = luaL_checknumber(ctx, 1);
 	int desh = luaL_checknumber(ctx, 2);
@@ -2868,7 +2878,7 @@ int arcan_lua_colorsurface(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_nullsurface(lua_State* ctx)
+static int arcan_lua_nullsurface(lua_State* ctx)
 {
 	int desw = luaL_checknumber(ctx, 1);
 	int desh = luaL_checknumber(ctx, 2);
@@ -2878,7 +2888,7 @@ int arcan_lua_nullsurface(lua_State* ctx)
 	return 1;	
 }
 
-int arcan_lua_rawsurface(lua_State* ctx)
+static int arcan_lua_rawsurface(lua_State* ctx)
 {
 	int desw = luaL_checknumber(ctx, 1);
 	int desh = luaL_checknumber(ctx, 2);
@@ -2952,7 +2962,7 @@ int arcan_lua_rawsurface(lua_State* ctx)
 }
 
 /* not intendend to be used as a low-frequency noise function (duh) */
-int arcan_lua_randomsurface(lua_State* ctx)
+static int arcan_lua_randomsurface(lua_State* ctx)
 {
 	int desw = abs( luaL_checknumber(ctx, 1) );
 	int desh = abs( luaL_checknumber(ctx, 2) );
@@ -2975,7 +2985,7 @@ int arcan_lua_randomsurface(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_getcmdline(lua_State* ctx)
+static int arcan_lua_getcmdline(lua_State* ctx)
 {
 	int gameid = 0;
 	arcan_errc status = ARCAN_OK;
@@ -2999,7 +3009,7 @@ int arcan_lua_getcmdline(lua_State* ctx)
 }
 
 
-void pushgame(lua_State* ctx, arcan_db_game* curr)
+static void pushgame(lua_State* ctx, arcan_db_game* curr)
 {
 	int top = lua_gettop(ctx);
 
@@ -3054,7 +3064,7 @@ void pushgame(lua_State* ctx, arcan_db_game* curr)
  * genre
  * subgenre
  * manufacturer */
-int arcan_lua_filtergames(lua_State* ctx)
+static int arcan_lua_filtergames(lua_State* ctx)
 {
 	int year = -1;
 	int n_players = -1;
@@ -3171,7 +3181,7 @@ int arcan_lua_filtergames(lua_State* ctx)
 	return rv;
 }
 
-int arcan_luac_warning(lua_State* ctx)
+static int arcan_luac_warning(lua_State* ctx)
 {
 	char* msg = (char*) luaL_checkstring(ctx, 1);
 
@@ -3181,7 +3191,22 @@ int arcan_luac_warning(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_shutdown(lua_State *ctx)
+void arcan_luaL_shutdown(lua_State* ctx)
+{
+	lua_close(ctx);	
+}
+
+lua_State* arcan_luaL_setup(int debuglevel)
+{
+	lua_State* res = luaL_newstate();
+	luaL_openlibs(res);
+	arcan_lua_exposefuncs(res, debuglevel);
+	arcan_lua_pushglobalconsts(res);
+
+	return res;
+}
+
+static int arcan_lua_shutdown(lua_State *ctx)
 {
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_EXIT};
 	arcan_event_enqueue(arcan_event_defaultctx(), &ev);
@@ -3193,7 +3218,7 @@ int arcan_lua_shutdown(lua_State *ctx)
 	return 0;
 }
 
-int arcan_lua_switchtheme(lua_State *ctx)
+static int arcan_lua_switchtheme(lua_State *ctx)
 {
 	arcan_event ev = {.category = EVENT_SYSTEM, .kind = EVENT_SYSTEM_SWITCHTHEME};
 	const char* newtheme = luaL_optstring(ctx, 1, arcan_themename);
@@ -3205,7 +3230,7 @@ int arcan_lua_switchtheme(lua_State *ctx)
 	return 0;
 }
 
-int arcan_lua_getgame(lua_State* ctx)
+static int arcan_lua_getgame(lua_State* ctx)
 {
 	int rv = 0;
 
@@ -3253,7 +3278,7 @@ int arcan_lua_getgame(lua_State* ctx)
 	return rv;
 }
 
-void arcan_lua_panic(lua_State* ctx)
+static void arcan_lua_panic(lua_State* ctx)
 {
 	lua_ctx_store.debug = 2;
 
@@ -3268,7 +3293,7 @@ void arcan_lua_panic(lua_State* ctx)
 	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
 }
 
-void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
+static void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 {
 	if (errc == 0)
 		return;
@@ -3312,7 +3337,7 @@ static void globcb(char* arg, void* tag)
 	lua_rawset(bptr->ctx, bptr->top);
 }
 
-int arcan_lua_globresource(lua_State* ctx)
+static int arcan_lua_globresource(lua_State* ctx)
 {
 	struct globs bptr = {
 		.ctx = ctx,
@@ -3336,7 +3361,7 @@ int arcan_lua_globresource(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_resource(lua_State* ctx)
+static int arcan_lua_resource(lua_State* ctx)
 {
 	const char* label = luaL_checkstring(ctx, 1);
 	int mask = luaL_optinteger(ctx, 2, 
@@ -3347,7 +3372,7 @@ int arcan_lua_resource(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_screencoord(lua_State* ctx)
+static int arcan_lua_screencoord(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	vector cv[4];
@@ -3381,7 +3406,7 @@ bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 	return false;
 }
 
-int arcan_lua_getqueueopts(lua_State* ctx)
+static int arcan_lua_getqueueopts(lua_State* ctx)
 {
 	unsigned short rv[4];
 	arcan_frameserver_queueopts( &rv[0], &rv[1], &rv[2], &rv[3] );
@@ -3393,7 +3418,7 @@ int arcan_lua_getqueueopts(lua_State* ctx)
 	return 4;
 }
 
-int arcan_lua_setqueueopts(lua_State* ctx)
+static int arcan_lua_setqueueopts(lua_State* ctx)
 {
 	unsigned char vcellc = luaL_checknumber(ctx, 1);
 	unsigned char acellc = luaL_checknumber(ctx, 2);
@@ -3415,7 +3440,7 @@ static bool use_loader(char* fname)
 		(strcasecmp(ext, ".dll") == 0) ? true : false;
 }
 
-int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
+static int arcan_lua_targetlaunch_capabilities(lua_State* ctx)
 {
 	char* targetname = strdup( luaL_checkstring(ctx, 1) );
 	char* targetexec = arcan_db_targetexec(dbhandle, targetname);
@@ -3483,7 +3508,7 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 	return false;
 }
 
-int arcan_lua_targetportcfg(lua_State* ctx)
+static int arcan_lua_targetportcfg(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	unsigned tgtport  = luaL_checkinteger(ctx, 2);
@@ -3501,7 +3526,7 @@ int arcan_lua_targetportcfg(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetgraph(lua_State* ctx)
+static int arcan_lua_targetgraph(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	unsigned ioval = luaL_checkinteger(ctx, 2);
@@ -3517,7 +3542,7 @@ int arcan_lua_targetgraph(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetseek(lua_State* ctx)
+static int arcan_lua_targetseek(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	float val         = luaL_checknumber(ctx, 2);
@@ -3549,7 +3574,7 @@ int arcan_lua_targetseek(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetskipmodecfg(lua_State* ctx)
+static int arcan_lua_targetskipmodecfg(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int skipval       = luaL_checkinteger(ctx, 2);
@@ -3576,7 +3601,7 @@ int arcan_lua_targetskipmodecfg(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetrestore(lua_State* ctx)
+static int arcan_lua_targetrestore(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	const char* snapkey = luaL_checkstring(ctx, 2);
@@ -3605,7 +3630,7 @@ int arcan_lua_targetrestore(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_targetlinewidth(lua_State* ctx)
+static int arcan_lua_targetlinewidth(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 
@@ -3622,7 +3647,7 @@ int arcan_lua_targetlinewidth(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetpointsize(lua_State* ctx)
+static int arcan_lua_targetpointsize(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 
@@ -3639,7 +3664,7 @@ int arcan_lua_targetpointsize(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetpostfilter(lua_State* ctx)
+static int arcan_lua_targetpostfilter(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int filtertype = luaL_checknumber(ctx, 2);
@@ -3660,7 +3685,7 @@ int arcan_lua_targetpostfilter(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetpostfilterargs(lua_State* ctx)
+static int arcan_lua_targetpostfilterargs(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int group = luaL_checknumber(ctx, 2);
@@ -3683,7 +3708,7 @@ int arcan_lua_targetpostfilterargs(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetstepframe(lua_State* ctx)
+static int arcan_lua_targetstepframe(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	int nframes = luaL_checknumber(ctx, 2);
@@ -3700,7 +3725,7 @@ int arcan_lua_targetstepframe(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_targetsnapshot(lua_State* ctx)
+static int arcan_lua_targetsnapshot(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	const char* snapkey = luaL_checkstring(ctx, 2);
@@ -3731,7 +3756,7 @@ int arcan_lua_targetsnapshot(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_targetreset(lua_State* ctx)
+static int arcan_lua_targetreset(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	arcan_event ev = {
@@ -3762,7 +3787,7 @@ static char* lookup_hijack(int gameid)
 	return newstr;
 }
 
-int arcan_lua_targetlaunch(lua_State* ctx)
+static int arcan_lua_targetlaunch(lua_State* ctx)
 {
 	int gameid = luaL_checknumber(ctx, 1);
 	arcan_errc status = ARCAN_OK;
@@ -3876,7 +3901,7 @@ cleanup:
 	return rv;
 }
 
-int arcan_lua_renderattach(lua_State* ctx)
+static int arcan_lua_renderattach(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	arcan_vobj_id sid = luaL_checkvid(ctx, 2);
@@ -3893,7 +3918,7 @@ int arcan_lua_renderattach(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_renderset(lua_State* ctx)
+static int arcan_lua_renderset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	int nvids         = lua_rawlen(ctx, 2);
@@ -3939,7 +3964,7 @@ int arcan_lua_renderset(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_recordset(lua_State* ctx)
+static int arcan_lua_recordset(lua_State* ctx)
 {
 	arcan_vobj_id did = luaL_checkvid(ctx, 1);
 	const char* resf  = luaL_checkstring(ctx, 2);
@@ -4156,7 +4181,7 @@ cleanup:
 	return 0;
 }
 
-int arcan_lua_recordgain(lua_State* ctx)
+static int arcan_lua_recordgain(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
 	arcan_aobj_id aid = luaL_checkaid(ctx, 2);
@@ -4175,7 +4200,7 @@ int arcan_lua_recordgain(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_borderscan(lua_State* ctx)
+static int arcan_lua_borderscan(lua_State* ctx)
 {
 	int x1, y1, x2, y2;
 	x1 = y1 = 0;
@@ -4215,7 +4240,7 @@ int arcan_lua_borderscan(lua_State* ctx)
 }
 
 extern arcan_benchdata benchdata;
-int arcan_lua_togglebench(lua_State* ctx)
+static int arcan_lua_togglebench(lua_State* ctx)
 {
 	int nargs = lua_gettop(ctx);
 
@@ -4287,7 +4312,7 @@ static int arcan_lua_timestamp(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_decodemod(lua_State* ctx)
+static int arcan_lua_decodemod(lua_State* ctx)
 {
 	int modval = luaL_checkint(ctx, 1);
 
@@ -4358,7 +4383,7 @@ int arcan_lua_decodemod(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_movemodel(lua_State* ctx)
+static int arcan_lua_movemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	float x = luaL_checknumber(ctx, 2);
@@ -4370,7 +4395,7 @@ int arcan_lua_movemodel(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_forwardmodel(lua_State* ctx)
+static int arcan_lua_forwardmodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	float mag = luaL_checknumber(ctx, 2);
@@ -4393,7 +4418,7 @@ int arcan_lua_forwardmodel(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_strafemodel(lua_State* ctx)
+static int arcan_lua_strafemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	float mag = luaL_checknumber(ctx, 2);
@@ -4418,7 +4443,7 @@ int arcan_lua_strafemodel(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_scalemodel(lua_State* ctx)
+static int arcan_lua_scalemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	float sx = luaL_checknumber(ctx, 2);
@@ -4430,7 +4455,7 @@ int arcan_lua_scalemodel(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_orientmodel(lua_State* ctx)
+static int arcan_lua_orientmodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	double roll       = luaL_checknumber(ctx, 2);
@@ -4441,7 +4466,7 @@ int arcan_lua_orientmodel(lua_State* ctx)
 }
 
 /* map a format string to the arcan_shdrmgmt.h different datatypes */
-int arcan_lua_shader_uniform(lua_State* ctx)
+static int arcan_lua_shader_uniform(lua_State* ctx)
 {
 	float fbuf[16];
 
@@ -4530,7 +4555,7 @@ int arcan_lua_shader_uniform(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_rotatemodel(lua_State* ctx)
+static int arcan_lua_rotatemodel(lua_State* ctx)
 {
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
 	double roll       = luaL_checknumber(ctx, 2);
@@ -4554,7 +4579,7 @@ int arcan_lua_rotatemodel(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_setimageproc(lua_State* ctx)
+static int arcan_lua_setimageproc(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
 
@@ -4567,7 +4592,7 @@ int arcan_lua_setimageproc(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_settexfilter(lua_State* ctx)
+static int arcan_lua_settexfilter(lua_State* ctx)
 {
 	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 1);
 
@@ -4581,7 +4606,7 @@ int arcan_lua_settexfilter(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_changetexfilter(lua_State* ctx)
+static int arcan_lua_changetexfilter(lua_State* ctx)
 {
 	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 2);
 	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
@@ -4599,7 +4624,7 @@ int arcan_lua_changetexfilter(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_settexmode(lua_State* ctx)
+static int arcan_lua_settexmode(lua_State* ctx)
 {
 	int numa = luaL_checknumber(ctx, 1);
 	int numb = luaL_checknumber(ctx, 2);
@@ -4619,7 +4644,7 @@ int arcan_lua_settexmode(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_tracetag(lua_State* ctx)
+static int arcan_lua_tracetag(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
 	const char* const msg = luaL_optstring(ctx, 2, NULL);
@@ -4635,7 +4660,7 @@ int arcan_lua_tracetag(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_setscalemode(lua_State* ctx)
+static int arcan_lua_setscalemode(lua_State* ctx)
 {
 	int num = luaL_checknumber(ctx, 1);
 
@@ -4652,7 +4677,7 @@ int arcan_lua_setscalemode(lua_State* ctx)
 /* 0 => 7 bit char,
  * 1 => start of char,
  * 2 => in the middle of char */
-int arcan_lua_utf8kind(lua_State* ctx)
+static int arcan_lua_utf8kind(lua_State* ctx)
 {
 	char num = luaL_checkint(ctx, 1);
 
@@ -4664,7 +4689,7 @@ int arcan_lua_utf8kind(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_inputfilteranalog(lua_State* ctx)
+static int arcan_lua_inputfilteranalog(lua_State* ctx)
 {
 	int joyid = luaL_checknumber(ctx, 1);
 	int axisid = luaL_checknumber(ctx, 2);
@@ -4692,13 +4717,12 @@ int arcan_lua_inputfilteranalog(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_inputanalogzonemap(lua_State* ctx)
+/*static int arcan_lua_inputanalogzonemap(lua_State* ctx)
 {
-/* FIXME: 
  * dev, axis, pressv, releasev, buttonind
- */
 	return 0;
 }
+*/
 
 static inline void tblanalogenum(lua_State* ctx, int ttop,
 	enum ARCAN_ANALOGFILTER_KIND mode)
@@ -4743,7 +4767,7 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	return 1;	
 }
 
-int arcan_lua_inputanalogquery(lua_State* ctx)
+static int arcan_lua_inputanalogquery(lua_State* ctx)
 {
 	int devid = ARCAN_JOYIDBASE, resind = 1;
 	int devnum = luaL_optnumber(ctx, 1, -1);
@@ -4791,7 +4815,7 @@ int arcan_lua_inputanalogquery(lua_State* ctx)
 	return 1;
 }
 
-int arcan_lua_inputanalogtoggle(lua_State* ctx)
+static int arcan_lua_inputanalogtoggle(lua_State* ctx)
 {
 	bool val = lua_tonumber(ctx, 1) != 0;
 	bool mouse = luaL_optnumber(ctx, 2, 0) != 0;
@@ -4800,7 +4824,7 @@ int arcan_lua_inputanalogtoggle(lua_State* ctx)
 	return 0;
 }
 
-int arcan_lua_screenshot(lua_State* ctx)
+static int arcan_lua_screenshot(lua_State* ctx)
 {
 	void* databuf = NULL;
 	size_t bufs;

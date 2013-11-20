@@ -22,26 +22,32 @@
 #ifndef _HAVE_ARCAN_LUA
 #define _HAVE_ARCAN_LUA
 
+struct arcan_luactx;
+struct arcan_luactx* arcan_luaL_setup(int debuglevel);
+char* arcan_luaL_dofile(struct arcan_luactx*, const char* fname);
+void arcan_luaL_shutdown(struct arcan_luactx*);
+
 /* add a set of wrapper functions exposing arcan_video and friends 
  * to the LUA state, debugfuncs corresponds to desired debug level / behavior */
-arcan_errc arcan_lua_exposefuncs(lua_State* dst, unsigned char debugfuncs);
+arcan_errc arcan_lua_exposefuncs(struct arcan_luactx* dst, 
+	unsigned char debugfuncs);
 
-/* wrap lua_pcalls with this (set errc to pcall result) */
-void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src);
-void arcan_lua_setglobalint(lua_State* ctx, const char* key, int val);
-void arcan_lua_setglobalstr(lua_State* ctx, const char* key, const char* val);
-void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev);
-bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn);
-void arcan_lua_pushargv(lua_State* ctx, char** argv);
+void arcan_lua_setglobalint(struct arcan_luactx* ctx, const char* key, int val);
+void arcan_lua_setglobalstr(struct arcan_luactx* ctx, 
+	const char* key, const char* val);
+void arcan_lua_pushevent(struct arcan_luactx* ctx, arcan_event* ev);
+bool arcan_lua_callvoidfun(struct arcan_luactx* ctx, 
+	const char* fun, bool warn);
+void arcan_lua_pushargv(struct arcan_luactx* ctx, char** argv);
 
 /* used to implement an interactive shell,
  * iterate the global (_G) table for a matching prefix, yield callback 
  * for each hit, with (key, type, tag) as the callback arguments */
-void arcan_lua_eachglobal(lua_State* ctx, char* prefix, 
+void arcan_lua_eachglobal(struct arcan_luactx* ctx, char* prefix, 
 	int (*callback)(const char*, const char*, void*), void* tag);
 
 /* for initialization, update / push all the global constants used */
-void arcan_lua_pushglobalconsts(lua_State* ctx);
+void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
 
 /* serialize a LUA- parseable snapshot of the various mapped subsystems 
  * and resources into the (dst) filestream. Since it's streaming, the blocks
@@ -49,8 +55,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx);
 void arcan_lua_statesnap(FILE* dst);
 
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
- * parse this and push it into the lua_State as the first and only argument
- * to the function pointed out with (dstfun). */
-void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int fd);
+ * parse this and push it into the struct arcan_luactx as the first 
+ * and only argument to the function pointed out with (dstfun). */
+void arcan_lua_stategrab(struct arcan_luactx* ctx, char* dstfun, int fd);
 #endif
 

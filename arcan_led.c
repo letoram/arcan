@@ -77,7 +77,7 @@ int arcan_led_forcecontroller(int vid, int pid)
 void arcan_led_init()
 {
 	if (n_controllers > 0)
-		arcan_led_cleanup();
+		arcan_led_shutdown();
 
 	/* pacdrive scan */
 	for (int i= 0; i < MAX_LED_CONTROLLERS && i < 8 
@@ -206,7 +206,7 @@ led_capabilities arcan_led_capabilities(uint8_t device)
 	return rv;
 }
 
-void arcan_led_cleanup()
+void arcan_led_shutdown()
 {
 	for (int i = 0; i < n_controllers; i++)
 		hid_close(controllers[i].handle);

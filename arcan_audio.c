@@ -346,7 +346,7 @@ arcan_errc arcan_audio_setup(bool nosound)
 	something fails, revert to alcOpenDevice
 */
 
-arcan_errc arcan_audio_teardown()
+arcan_errc arcan_audio_shutdown()
 {
 	arcan_errc rv = ARCAN_OK;
 	ALCcontext* ctx = current_acontext->context;
