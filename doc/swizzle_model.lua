@@ -1,15 +1,13 @@
 -- swizzle_model
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Modify the vertices of the specified model to reverse the winding order.
+-- @inargs: modelvid 
+-- @outargs: success
+-- @longdescr: The order in which vertices are specified (clockwise or counterclockwise)
+-- determine the direction in which the triangel is facing (front or back). For some
+-- models, one may want to reorder these on some condition without changing the order
+-- that the current camtagged object is using.
+-- @note: This applies to all meshes CURRENTLY associated with the model.
 -- @group: 3d 
 -- @cfunction: arcan_lua_swizzlemodel
--- @related:
-function main()
-#ifdef MAIN
-#endif
+-- @related: scale_3dvertices
 
-#ifdef ERROR1
-#endif
-end

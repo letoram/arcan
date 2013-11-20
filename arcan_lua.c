@@ -1410,7 +1410,7 @@ static int arcan_lua_loadmovie(lua_State* ctx)
 
 	arcan_frameserver* mvctx = arcan_frameserver_alloc();
 	mvctx->loop     = loop == FRAMESERVER_LOOP;
-	mvctx->autoplay = luaL_optint(ctx, 4, 0) > 0 || special;
+	mvctx->autoplay = luaL_optint(ctx, 4, 0) != 0 || special;
 	mvctx->nopts    = force_nopts || special;
 
 	struct frameserver_envp args = {
@@ -3390,7 +3390,7 @@ int arcan_lua_getqueueopts(lua_State* ctx)
 	lua_pushnumber(ctx, rv[2]);
 	lua_pushnumber(ctx, rv[3]);
 
-	return 3;
+	return 4;
 }
 
 int arcan_lua_setqueueopts(lua_State* ctx)
@@ -5377,7 +5377,6 @@ static const luaL_Reg sysfuns[] = {
 {"switch_theme",        arcan_lua_switchtheme      },
 {"warning",             arcan_luac_warning         },
 {"system_load",         arcan_lua_dofile           },
-{"clipboard_getmsg",    arcan_lua_clipboardget     },
 {"system_context_size", arcan_lua_systemcontextsize},
 {"utf8kind",            arcan_lua_utf8kind         },
 {"decode_modifiers",    arcan_lua_decodemod        },

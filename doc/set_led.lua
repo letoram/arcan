@@ -1,5 +1,5 @@
 -- set_led
--- @short:  
+-- @short: Change the active state of a single LED. 
 -- @inargs: id, num, state 
 -- @longdescr: Set the state of the specific led (0..n leds) on
 -- led controller (id, > 0) to state (1: on, not1: off). 

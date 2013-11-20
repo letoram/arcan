@@ -1,12 +1,15 @@
 -- target_postfilter
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Set the active postfilter state for the targetted frameserver. 
+-- @inargs: vid, mode 
+-- @note: This function was internally first only used to toggle CPU- 
+-- based NTSC postfilter for libretro style filters and is currently rather
+-- usefuless for other means. Future revisions will be used to control
+-- frameserver- related scaling, resampling and colourspace conversion.
+-- @note: The behavior (or lack thereof) related to this function is frameserver-
+-- dependent, for some targets (i.e. non-GL/SDL hijacks, libretro) it will have no effect.
+-- @note: vid must be connected to a frameserver.
+-- @note: accepted mode values are POSTFILTER_NTSC, POSTFILTER_OFF 
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetpostfilter
--- @flags: 
-function main()
-#ifdef MAIN
-#endif
-end
+-- @related: target_linewidth, target_pointsize, target_postfilter_args 
+--

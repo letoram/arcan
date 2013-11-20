@@ -1,8 +1,8 @@
 -- list_games
--- @short: 
+-- @short: Query the database for launchable games. 
 -- @inargs: argtable 
 -- @outargs: gametable_tbl
--- @note: (possible *argtable* fielsd: year, limit, offset, input, players, buttons,
+-- @note: (possible *argtable* fields: year, limit, offset, input, players, buttons,
 -- title, genre, subgenre, target, system, manufacturer)
 -- @note: (possible *gametable* fields: gameid, targetid, title, genre, subgenre,
 -- setname, buttons, manufacturer, players, input, year, target, launch_counter, system)

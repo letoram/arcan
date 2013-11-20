@@ -1,15 +1,8 @@
 -- inputanalog_filter
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Change filtering / sampling options for a single analog input source. 
+-- @inargs: joyid, axisid, deadzone, lower, upper, buffer, modestr
+-- @note: accepted modestr values are "drop, pass, average or latest".
 -- @group: iodev 
 -- @cfunction: arcan_lua_inputfilteranalog
--- @related:
-function main()
-#ifdef MAIN
-#endif
+-- @related: inputanalog_query, inputanalog_toggle
 
-#ifdef ERROR1
-#endif
-end

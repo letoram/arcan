@@ -1,15 +1,10 @@
 -- build_3dbox
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Generate a mesh matching a cube 
+-- @inargs: TBD
+-- @outargs: TBD
+-- @longdescr: Incomplete, Placeholder symbol.
 -- @group: 3d 
 -- @cfunction: arcan_lua_buildbox
--- @related:
-function main()
-#ifdef MAIN
-#endif
-
-#ifdef ERROR1
-#endif
-end
+-- @related: build_3dplane
+-- @flags: placeholder
+--

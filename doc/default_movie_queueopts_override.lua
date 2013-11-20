@@ -1,15 +1,9 @@
 -- default_movie_queueopts_override
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Change the default buffering parameters for new decode frameservers.
+-- @inargs: vcells, acells, abufs, presilence
+-- @note: This is an expensive and unpredictable option and, with future
+-- buffering improvements in decode frameserver, should be used sparringly.
 -- @group: vidsys 
 -- @cfunction: arcan_lua_setqueueopts
--- @related:
-function main()
-#ifdef MAIN
-#endif
+-- @related: default_movie_queueopts
 
-#ifdef ERROR1
-#endif
-end

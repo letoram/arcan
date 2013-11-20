@@ -22,3 +22,5 @@
  i. snapshot should have the option to allow local or shared
 
  j. snapshot should have the option to hint delta or complete
+
+ k. switch_theme should allow resolution switching.
