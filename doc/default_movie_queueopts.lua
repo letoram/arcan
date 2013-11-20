@@ -1,15 +1,6 @@
 -- default_movie_queueopts
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Query current decode frameserver buffering options. 
+-- @outargs: vcellc, acellc, abufs, presilence
 -- @group: vidsys 
 -- @cfunction: arcan_lua_getqueueopts
--- @related:
-function main()
-#ifdef MAIN
-#endif
 
-#ifdef ERROR1
-#endif
-end

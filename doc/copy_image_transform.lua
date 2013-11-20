@@ -1,7 +1,6 @@
 -- copy_image_transform
 -- @short: Duplicate the transform chain of one VID and transfer it to another. 
 -- @inargs: srcvid, dstvid
--- @outargs: 
 -- @longdescr: This function traverses the entire transform chain of the srcvid, copying each transform step and attaches it to a new chain in dstvid.
 -- @note: This will also initiate a recursive rendering re-order.
 -- @note: This will irrevocably alter the origw,origh properties in the destination order (in order for the scale transform to be usable).

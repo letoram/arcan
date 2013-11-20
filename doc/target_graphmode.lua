@@ -1,12 +1,8 @@
 -- target_graphmode
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Switch graphing mode for target frameserver. 
+-- @inargs: vid, modeid 
+-- @note: This is primarily intended for debugging/monitoring purposes.
+-- @note: modeid value semantics are frameserver type-specific.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetgraph
--- @flags: 
-function main()
-#ifdef MAIN
-#endif
-end
+

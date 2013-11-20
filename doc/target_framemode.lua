@@ -1,12 +1,27 @@
 -- target_framemode
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Hint to the target frameserver to restrict frame delivery. 
+-- @inargs: tgtid, skipval, *prewake*, *preaud*, *skipdbg1*, *skipdbg2* 
+-- @longdescr: Some frameservers can be instructed to ignore 
+-- transferring frames with deadlines that cannot be matched.
+-- The semantics for skipval:
+-- -1 (NONE) -- always deliver every frame, stall if necessary.
+-- 0 (AUTO) -- the frameserver is responsible for only delivering relevant frames.
+-- 0 < n <= 9 (STEPn) -- only process every n frames, retain clock.
+-- 9 < n < * (FASTFWD) -- only process every n (n - 9) frames, fast forward clock.
+-- 
+-- *prewake* determines how far in advance of the next deadline
+-- frame generation should begin.
+--
+-- *preaud* forcibly desynchs A/V clock n frames in order to allow some buffering.
+--
+-- *skipdbg1/skipdbg2* if these are set to > 0, random() jitter sleeps are inserted
+-- before generation and transmission to troubleshoot / optimize timing in the main
+-- process.
+--
+-- @note: Switching skipmode may force an audio buffer flush.
+-- @note: Only libretro follows this pattern at the moment,
+-- but decode and hijack libraries will be updated to include support.
+-- hijack and decode will also
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetskipmodecfg
--- @flags: 
-function main()
-#ufdef MAIN
-#endif
-end
+

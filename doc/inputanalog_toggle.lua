@@ -1,15 +1,7 @@
 -- inputanalog_toggle
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Switch all analog device processing on/off.
+-- @inargs: state, *skipmouse*
 -- @group: iodev 
 -- @cfunction: arcan_lua_inputanalogtoggle
--- @related:
-function main()
-#ifdef MAIN
-#endif
+-- @related: inputanalog_filter, inputanalog_query
 
-#ifdef ERROR1
-#endif
-end

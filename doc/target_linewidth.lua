@@ -1,12 +1,10 @@
 -- target_linewidth
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Hint to hijacked targets that we explicitly want to 
+-- modify the width of rasterized lines.
+-- @inargs: floatw
+-- @longdescr: This is a corner case with few uses outside 
+-- very specific targets (libretro cores and hijacking some games).
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetlinewidth
--- @flags: 
-function main()
-#ifdef MAIN
-#endif
-end
+-- @related: target_pointsize
+

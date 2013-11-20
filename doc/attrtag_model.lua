@@ -1,15 +1,11 @@
 -- attrtag_model
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Set 3d model rendering-specific flags 
+-- @inargs: dstvid, attrstr, stateval
+-- @outargs: boolres
+-- @longdescr: Switch attribute for a 3d model on or off. Accepted values are: "infinite"
+-- (use the model as infinite geometry, common cases are skyboxes/skydomes/skyplanes,
+-- silhouettes in the horizon etc.).
 -- @group: 3d 
 -- @cfunction: arcan_lua_attrtag
 -- @related:
-function main()
-#ifdef MAIN
-#endif
 
-#ifdef ERROR1
-#endif
-end

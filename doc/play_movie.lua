@@ -1,12 +1,11 @@
 -- play_movie
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Switch state of the decoding frameserver to playing. 
+-- @inargs: vid
+-- @outargs: vid, aid 
+-- @longdescr: Decode frameservers that weren't started with the autoplay option set to true,
+-- will not start emitting frames and maintaining PTS/DTS synchronization before playback
+-- has been started.
+-- @note: This is a no-op for broken frameservers or frameservers not supporting framequeues.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_playmovie
--- @flags: 
-function main()
-#ifdef MAIN
-#endif
-end
+

@@ -1,15 +1,11 @@
 -- image_borderscan
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Scan image for a transparent center region. 
+-- @inargs: vid
+-- @outargs: x1, y1, x2, y2 
+-- @note: This only works for texture stores that can either be read back or
+-- are stored in local memory already (with the engine not launched in conservative mode).
+-- @note: On failure, X2,Y2 will match VRESW, VRESH
 -- @group: image 
 -- @cfunction: arcan_lua_borderscan
--- @related:
-function main()
-#ifdef MAIN
-#endif
+-- @flags: deprecated
 
-#ifdef ERROR1
-#endif
-end

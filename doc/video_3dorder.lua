@@ -1,12 +1,14 @@
 -- video_3dorder
--- @short: 
--- @inargs: 
--- @outargs: 
--- @longdescr: 
+-- @short: Switch when, in relation to the 2d pipeline, 3d processing should be active. 
+-- @inargs: orderv
+-- @longdescr: Due to technical / engine restrictions, the 3D pipeline is shared
+-- with the 2D one storage- and API wise, but is performed separately. The default
+-- is that the 3D pipeline is performed first, with 2D operations drawn untop of that.
+-- This function can be used to change that behavior, depending on orderv:
+-- ORDER_NONE/ORDER_SKIP, disable 3d rendering. 
+-- ORDER_FIRST, complete 3d operations before 2d operations.
+-- ORDER_LAST, complete 2d operations before 3d operations.
+-- @note: the order option currently applies globally and not on a per rendertarget basis.
 -- @group: vidsys 
 -- @cfunction: arcan_lua_3dorder
--- @flags: 
-function main()
-#ifdef MAIN
-#endif
-end
+
