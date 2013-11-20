@@ -62,7 +62,7 @@ enum plot_mode {
 
 struct datapoint {
 	long long int timestamp;
-	const char* label; /* optional */
+	char* label; /* optional */
 /* part of the regular dataflow or should be treated as an alarm */
 	bool continuous; 
 
@@ -304,34 +304,15 @@ static bool graph_refresh_server(struct graph_context* ctx)
 	return true;
 }
 
-/* divide Y- res based on number of event- buckets in 
- * time-window (client should really just have one or two)
- * render each event-bucket based on the graph- profile of the bucket */
 static bool graph_refresh_client(struct graph_context* ctx)
 {
-	if (ctx->mode == GRAPH_MANUAL)
+	if (ctx->n_buckets == 0)
 		return false;
 
-/*	long long int ts = arcan_timemillis(); */
-	int bucketh = (ctx->height - 10) / 3;
+/*	int bucketh = (ctx->height - 10) / 3; */
 
-/* two buckets, one (height / 3) for discovery 
- * domain data, one for main domain */
 	clear_tocol(ctx, ctx->colors.bg);
-
-	switch (ctx->n_buckets){
-	case 1: draw_bucket(ctx, &ctx->buckets[0], 0, 
-		0, ctx->width, ctx->height); break;
-	case 2:
-		draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, bucketh);
-		draw_bucket(ctx, &ctx->buckets[1], 0, 10 + bucketh, 
-		ctx->width, bucketh * 2);
-	break;
-/*		default:
-			LOG("graphing(graph_refresh_client) : draw failed, 
-				unhandled number of buckets (%d)\n", ctx->n_buckets);
-			abort(); */
-	}
+	draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, ctx->height);
 
 	return true;
 }
@@ -372,14 +353,90 @@ struct graph_context* graphing_new(int width, int height, uint32_t* vidp)
 	return rctx;
 }
 
+static void drop_buckets(struct graph_context* ctx)
+{
+	if (ctx->n_buckets > 0){
+		for (int i = 0; i < ctx->n_buckets; i++){
+			for (int j = 0; j < ctx->buckets[i].ringbuf_sz; j++)
+				free(ctx->buckets[i].ringbuf[j].label);
+	
+			free(ctx->buckets[i].ringbuf);
+		}
+
+		ctx->n_buckets = 0;
+		free(ctx->buckets);
+		ctx->buckets = NULL;
+	}
+}
+
 void graphing_switch_mode(struct graph_context* ctx, enum graphing_mode mode)
 {
-/* drop, reset buckets */
+	assert(ctx);
+	drop_buckets(ctx);
+
+	switch(mode){
+/* create <connection limit> buckets */
+	case GRAPH_NET_SERVER_SPLIT:
+		mode = GRAPH_MANUAL;			
+	break;
+
+	/* render possibly attached labels */
+	bool labels;
+
+	/* should basev/maxv/minv be relative to window or accumulate */
+	bool absolute; 
+
+	enum plot_mode mode;
+
+/* data model -- ring-buffer of datapoints, these and scales are
+ * modified dynamically based on the domain- specific events further below */
+	int ringbuf_sz, buf_front, buf_back;
+	struct datapoint* ringbuf;
+
+/* x scale */
+	const char* suffix_x;
+	long long int last_updated;
+	long long int window_beg;
+
+/* y scale */
+	const char* suffix_y;
+	int maxv, minv, basev;
+
+/* server mode, focus on a single targetid */
+	case GRAPH_NET_SERVER_SINGLE:
+		ctx->n_buckets = 1;
+		ctx->buckets = malloc(sizeof(struct event_bucket) * ctx->n_buckets);
+		memset(ctx->buckets, '\0', sizeof(struct event_bucket));
+		ctx->buckets[0].labels = false;
+		ctx->buckets[0].absolute = false;
+		ctx->buckets[0].mode = false;
+	break;
+
+/* plot out traffic belonging to a single client */
+	case GRAPH_NET_CLIENT:
+		ctx->n_buckets = 1;
+		ctx->buckets = malloc(sizeof(struct event_bucket) * ctx->n_buckets);
+	break;
+
+/* we just want to see server traffic abstracted */
+	case GRAPH_NET_SERVER:
+		ctx->n_buckets = 1;
+		ctx->buckets = malloc(sizeof(struct event_bucket) * ctx->n_buckets);
+	break;
+
+/* already set */ 
+	case GRAPH_MANUAL:
+	break;
+	}
+
+	ctx->mode = mode;
 }
 
 void graphing_destroy(struct graph_context* ctx)
 {
 		if (ctx){
+			drop_buckets(ctx);
+
 			memset(ctx, 0, sizeof(struct graph_context));
 			free(ctx);
 		}

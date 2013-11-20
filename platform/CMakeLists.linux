@@ -21,7 +21,7 @@ ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/time.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
-${PLATFORM_PATH}/../sdl/event.c
+${PLATFORM_PATH}/../stub/event.c
 )
 
 add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h" 

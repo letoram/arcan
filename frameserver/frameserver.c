@@ -128,6 +128,9 @@ error:
 	return rv;
 }
 
+/* linking hack, just want the symbol there, it won't be called */
+void arcan_frameserver_free(void* srv, bool rel) {}
+
 bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, 
 	file_handle dst, bool finalize)
 {
@@ -164,77 +167,6 @@ bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data,
 	
 	return rv;
 }
-
-/* linker hack */
-void arcan_frameserver_free(void* dontuse){}
-
-/* Stream-server is used as a 'reverse' movie mode,
- * i.e. it is the frameserver that reads from the shmpage,
- * feeding whatever comes to ffmpeg */
-
-#ifdef _DEBUG
-static void arcan_simulator(struct frameserver_shmcont* shm){
-	arcan_evctx inevq, outevq;
-	frameserver_shmpage_setevqs(shm->addr, shm->esem, 
-		&inevq, &outevq, true /*parent*/ );
-
-	while( getppid() != 1 ){
-		if (shm->addr->vready){
-			shm->addr->vready = false;
-			sem_post(shm->vsem);
-		}
-		
-		if (shm->addr->aready){
-			shm->addr->aready = false;
-			sem_post(shm->asem);
-		}
-		
-		unsigned evc = 0;
-		arcan_errc evstat; 
-		while ( arcan_event_poll( &inevq, &evstat) != NULL ) evc++;
-
-/* if nothing has happened, the frameserver is probably not 
- * set up right yet, sleep a little */
-		struct timespec tv = {
-						.tv_sec = 0,
-					 	.tv_nsec = 10000000L
-		};
-		if (!(shm->addr->vready || shm->addr->aready || evc > 0))
-			nanosleep(&tv, NULL);
-	}
-}
-
-static char* launch_debugparent()
-{
-	int shmfd = -1;
-
-/* prealloc shmpage */
-	char* key = arcan_findshmkey(&shmfd, true);
-	if (!key)
-		return NULL;
-	
-	ftruncate(shmfd, MAX_SHMSIZE);
-
-/* set the size, fork a child (mimicking frameserver parent behavior)
- * now we can break / step the frameserver with correct synching behavior
- * without the complexity of the main program */
-
-	if ( fork() == 0){
-		struct frameserver_shmcont cont = frameserver_getshm(key, false);
-
-		if (cont.addr)
-			arcan_simulator(&cont);
-
-		arcan_warning("frameserver_debugparent() -- shutting down.\n");
-		exit(1);
-	}
-	else{
-		sleep(1); /* make sure the parent has been able to 
-								 setup keys by now so we can unlink */
-		return key;
-	}
-}
-#endif
 
 /* inev is part of the argument in order for Win32 and others that can 
  * pass handles in a less hackish way to do so by reusing symbols and
@@ -362,26 +294,6 @@ static void toggle_logdev(const char* prefix)
 		sleep(10);
 	}
 	
-/* to ease debugging, allow the frameserver to be launched without a parent we 
- * pass debug: to modestr, so setup shmpage, fork a lightweight parent, ..*/
-#ifdef _DEBUG
-	char* modeprefix = NULL;
-	char* splitp = strchr(fsrvmode, ':');
-	if (splitp){
-		*splitp = '\0';
-		modeprefix = fsrvmode;
-		fsrvmode = splitp+1;
-		
-		if (strcmp(modeprefix, "debug") == 0){
-			keyfile = launch_debugparent();
-			if (keyfile)
-				arcan_warning("frameserver_debug() -- mapped to %s\n", keyfile);
-			else
-				arcan_fatal("frameserver_debug() -- couldn't get shmkey\n");
-		}
-	}
-#endif
-
 /* these are enabled based on build-system toggles */
 
 #ifdef ENABLE_FSRV_NET

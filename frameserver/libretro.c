@@ -18,14 +18,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,MA 02110-1301,USA.
  *
  */
-#include <SDL/SDL_loadso.h>
-
 #include <math.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <string.h>
 #include <strings.h>
 
 #include "../arcan_math.h"

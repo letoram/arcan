@@ -23,7 +23,7 @@ ${WIN32_PATH}/time.c
 ${WIN32_PATH}/sem.c
 ${WIN32_PATH}/shm.c
 ${WIN32_PATH}/realpath.c
-platform/sdl/event.c
+platform/stub/event.c
 )
  
 add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
