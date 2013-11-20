@@ -252,6 +252,7 @@ typedef struct {
 	enum ARCAN_EVENT_IDEVKIND devkind;
 	enum ARCAN_EVENT_IDATATYPE datatype;
 
+	unsigned pts;
 	arcan_ioevent_data input;
 } arcan_ioevent;
 
