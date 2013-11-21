@@ -114,9 +114,8 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-m\t--conservative\ttoggle conservative memory management (default: off)\n"
 #ifndef _WIN32
 "-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
-"-O\t--monitor-out \tLOG or script.lua (resourcepath/scripts/monitors)\n"
+"-O\t--monitor-out \tLOG:fname or themename\n"
 #endif
-"-I\t--monitor-in  \tdumpname (resourcepath/logs/dumpname.lua)\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 "-p\t--rpath       \tchange path for resources (default: autodetect)\n"
 "-t\t--themepath   \tchange path for themes (default: autodetect)\n"
@@ -130,14 +129,14 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-V\t--nowait      \tdisable sleeping between superflous frames\n"
 "-F\t--vsync-falign\t (0..1, default: 0.6) balance processing vs. CPU usage\n"
 "-S\t--nosound     \tdisable audio output\n"
-"-r\t--scalemode   \tset texture mode:\n\t"
-"%i(rectangle sized textures, default),\n\t"
-"%i(scale to power of two)\n\t", ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2);
+"-r\t--scalemode   \tset texture mode:\n"
+"                  \t\t%i(rectangle sized textures, default),\n"
+"                  \t\t%i(scale to power of two)\n\t", 
+	ARCAN_VIMAGE_NOPOW2, ARCAN_VIMAGE_SCALEPOW2);
 }
 
 int main(int argc, char* argv[])
 {
-	char* script_override = NULL;
 	bool windowed     = false;
 	bool fullscreen   = false;
 	bool conservative = false;
@@ -261,36 +260,20 @@ int main(int argc, char* argv[])
 		}
 		else {
 			int pair[2];
-			char scriptfnbuf[256] = {0};
 
-			snprintf(scriptfnbuf, 255, "scripts/monitor/%s", monitor_arg);
-			char* tmpscript = arcan_find_resource(scriptfnbuf, ARCAN_RESOURCE_SHARED);
-			if (tmpscript == NULL)
-				arcan_fatal("Missing monitor script: %s\n", scriptfnbuf);
-
-/* if we reference a subdir (more complicated monitoring scripts),
- * make sure to strip that when extracting the themename */
-			char* marg = strrchr(monitor_arg, '/');
-			if (marg != NULL)
-				monitor_arg = marg + 1;
-				
 			pid_t p1;
-
-			if (pipe(pair) == 0)
-			;
+			if (pipe(pair) == 0);
 
 			if ( (p1 = fork()) == 0){
 				close(pair[1]);
 				monitor_parent = false;
-				if (fork() != 0)
+
+/* double-fork to get away from parent */
+				if (fork() != 0) 
 					exit(0); 
 
 				monitor_outfd   = pair[0]; 
-				script_override = tmpscript;
-				arcan_themename = strdup(monitor_arg);
-				char* tmp = strchr(arcan_themename, '.');
-				if (tmp)
-					*tmp = '\0';
+				arcan_themename = monitor_arg;
 			} else {
 				int status;
 /* close these as they occlude data from the monitor session
@@ -418,29 +401,20 @@ themeswitch:
 /* setup VM, map arguments and possible overrides */ 
 	struct arcan_luactx* luactx = arcan_luaL_setup(debuglevel);
 
-	if (script_override){
-		const char* msg = arcan_luaL_dofile(luactx, script_override);
-		if (msg){
-			arcan_fatal("Error loading override(%s): %s\n", script_override, msg);
-			goto error;
-		}
-	} 
-	else if (!script_override) {
-		char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
-		sprintf(themescr, "%s.lua", arcan_themename);
-		char* fn = arcan_find_resource(themescr, ARCAN_RESOURCE_THEME);
+	char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
+	sprintf(themescr, "%s.lua", arcan_themename);
+	char* fn = arcan_find_resource(themescr, ARCAN_RESOURCE_THEME);
 
-		char* msg = arcan_luaL_dofile(luactx, fn);
-		if (msg != NULL){
-			arcan_fatal("Fatal: main(), Error loading theme script"
-				"(%s) : (%s)\n", themescr, msg);
-			free(msg);
-			goto error;
-		}
-			
-		free(fn);
-		free(themescr);
+	char* msg = arcan_luaL_dofile(luactx, fn);
+	if (msg != NULL){
+		arcan_fatal("Fatal: main(), Error loading theme script"
+			"(%s) : (%s)\n", themescr, msg);
+		free(msg);
+		goto error;
 	}
+
+	free(fn);
+	free(themescr);
 
 /* entry point follows the name of the theme,
  * hand over execution and begin event loop */

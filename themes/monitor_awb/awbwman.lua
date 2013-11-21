@@ -521,15 +521,15 @@ function awbwman_init(defrndr, mnurndr)
 
 	awb_col = system_load("scripts/colourtable.lua")();
 
-	awb_cfg.activeres   = load_image("scripts/monitor/awbmon/border.png");
-	awb_cfg.inactiveres = load_image("scripts/monitor/awbmon/border_inactive.png");
-	awb_cfg.ttactiveres = load_image("scripts/monitor/awbmon/tt_border.png");
-	awb_cfg.ttinactvres = load_image("scripts/monitor/awbmon/tt_border.png");
+	awb_cfg.activeres   = load_image("border.png");
+	awb_cfg.inactiveres = load_image("border_inactive.png");
+	awb_cfg.ttactiveres = load_image("tt_border.png");
+	awb_cfg.ttinactvres = load_image("tt_border.png");
 	awb_cfg.alphares    = fill_surface(32, 32, 50, 50, 200); 
 	
-	awb_cfg.bordericns["close"]    = load_image("scripts/monitor/awbmon/close.png");
-	awb_cfg.bordericns["resize"]   = load_image("scripts/monitor/awbmon/resize.png");
-	awb_cfg.bordericns["toback"]   = load_image("scripts/monitor/awbmon/toback.png");
+	awb_cfg.bordericns["close"]    = load_image("close.png");
+	awb_cfg.bordericns["resize"]   = load_image("resize.png");
+	awb_cfg.bordericns["toback"]   = load_image("toback.png");
 
 	build_shader(nil, awbwnd_invsh, "awb_selected");
 end

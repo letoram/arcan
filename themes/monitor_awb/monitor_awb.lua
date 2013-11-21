@@ -26,7 +26,7 @@ function desktoplbl(text)
 		deffont, 10, text));
 end
 
-function awbmon()
+function monitor_awb()
 	system_context_size(65535);
 	pop_video_context();
 
@@ -37,11 +37,12 @@ function awbmon()
 	end
 
 	system_load("scripts/mouse.lua")();
-	system_load("scripts/monitor/awbmon/awbwnd.lua")();
-	system_load("scripts/monitor/awbmon/awbwman.lua")();
+
+	system_load("awbwnd.lua")();
+	system_load("awbwman.lua")();
 	symtable = system_load("scripts/symtable.lua")();
 
-	cursor = load_image("scripts/monitor/awbmon/cursor.png");
+	cursor = load_image("cursor.png");
 	mouse_setup(cursor, 255, 1, true);
 	mouse_acceleration(0.5);
 
@@ -62,9 +63,8 @@ function awbmon()
 -- "Offline" mode
 --
 	if (samplefile ~= nil) then
-		if (not open_rawresource(samplefile)) then
-			shutdown();
-		end
+		LAST_SAMPLE = system_load(samplefile)();
+		sample_sample(LAST_SAMPLE, 1, 1);
 	end
 
 	awbmon_help();
@@ -766,7 +766,7 @@ function update_modifiers(sym, active)
 end
 
 minputtbl = {false, false, false};
-function awbmon_input(iotbl)
+function monitor_awb_input(iotbl)
 	if (iotbl.kind == "analog" and iotbl.source == "mouse") then
 		mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0,
 			iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);

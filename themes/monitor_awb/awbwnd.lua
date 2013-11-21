@@ -496,10 +496,29 @@ local function awbbar_active(self)
 	self:resize(self.w, self.h);
 end
 
-local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
+local function awbbar_click(self)
+	self.parent:focus();
+end
+
+local function awbbar_hover(self, vid, x, y, state)
+	if (state == false) then
+		awbwman_drophover();
+
+	elseif (self.hoverlut[vid]) then
+		awbwman_hoverhint(self.hoverlut[vid]);
+	end
+end
+
+local function awbwnd_addbar(self, dir, activeimg, 
+	inactiveimg, bsize, rsize, options)
+
 	if (dir ~= "t" and dir ~= "b" and dir ~= "l" and 
 		dir ~= "r" and dir ~= "tt") then
 		return nil;
+	end
+
+	if (options == nil) then
+		options = {};
 	end
 
 	if (rsize == nil) then
@@ -517,12 +536,21 @@ local function awbwnd_addbar(self, dir, activeimg, inactiveimg, bsize, rsize)
 		rzfun    = awbbaricn_resize,
 		left     = {},
 		right    = {},
+		hoverlut = {},
 		fill     = nil,
 		parent   = self,
 		size     = bsize,
 		rsize    = rsize,
 		dir      = dir
 	};
+
+	if (not options.mouse_nodefault) then
+		awbbar.click = awbbar_click;
+		awbbar.hover = awbbar_hover;
+		awbbar.name = self.name .. "_ttbar_mh";
+		mouse_addlistener(awbbar, {"click", "hover"});
+		table.insert(self.handlers, awbbar);
+	end	
 
 	awbbar.vertical = dir == "l" or dir == "r";
 	awbbar.activeimg = activeimg;
@@ -553,6 +581,10 @@ end
 local function awbwnd_update_canvas(self, vid, mirrored)
 	if (mirrored == nil) then
 		mirrored = 0; 
+	end
+
+	if (vid == nil or vid == BADID) then	
+		return;
 	end
 
 	link_image(vid, self.anchor);
@@ -924,12 +956,15 @@ local function awbwnd_dropcascade(self, wnd)
 end
 
 local function awbwnd_addhandler(self, slot, fptr)
-	print("adding", slot, self.wndid);
 	if (self[slot] ~= nil) then
-	elseif (type(self[slot]) == "table") then
-		table.insert(self[slot], fptr);
-	elseif (type(self[slot]) == "function") then
-		self[slot] = {self[slot], fptr};
+
+		if (type(self[slot]) == "table") then
+			table.insert(self[slot], fptr);
+
+		elseif (type(self[slot]) == "function") then
+			self[slot] = {self[slot], fptr};
+		end
+
 	else
 		self[slot] = fptr;
 	end
