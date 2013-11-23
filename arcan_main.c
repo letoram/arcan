@@ -513,7 +513,7 @@ themeswitch:
 			if (monitor && monitor_parent){
 				if (--monitor_counter == 0){
 					monitor_counter = monitor;
-					arcan_lua_statesnap(monitor_outf);
+					arcan_lua_statesnap(monitor_outf, true);
 				}
 			} 
 		}
