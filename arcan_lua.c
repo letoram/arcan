@@ -5384,7 +5384,9 @@ static const luaL_Reg threedfuns[] = {
 {"forward3d_model",  arcan_lua_forwardmodel },
 {"strafe3d_model",   arcan_lua_strafemodel  },
 {"camtag_model",     arcan_lua_camtag       },
+#ifdef ARCAN_HMD
 {"camtaghmd_model",  arcan_lua_camtaghmd    },
+#endif
 {"build_3dplane",    arcan_lua_buildplane   },
 {"build_3dbox",      arcan_lua_buildbox     },
 {"scale_3dvertices", arcan_lua_scale3dverts },
@@ -5419,7 +5421,7 @@ static const luaL_Reg sysfuns[] = {
 static const luaL_Reg iofuns[] = {
 {"kbd_repeat",          arcan_lua_kbdrepeat        },
 {"toggle_mouse_grab",   arcan_lua_mousegrab        },
-#ifndef ARCAN_LUA_NOLED
+#ifdef ARCAN_LED
 {"set_led",             arcan_lua_setled           },
 {"led_intensity",       arcan_lua_led_intensity    },
 {"set_led_rgb",         arcan_lua_led_rgb          },

@@ -50,7 +50,10 @@ endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
+option(ENABLE_LIBRETRO3D "Add 3D core support to libretro frameserver" ON)
 option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
+option(ENABLE_LED "Build with LED controller support in core" ON)
+option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
@@ -254,6 +257,22 @@ set (
  external/fft/kiss_fftr.c
 )
 
+if (${ENABLE_LED})
+	list(APPEND ${SOURCES}
+		arcan_led.c
+		arcan_led.h
+	)
+	add_definitions(-DARCAN_LED)
+endif (${ENABLE_LED})
+
+if (${ENABLE_HMD})
+	list(APPEND ${SOURCES}
+		arcan_hmd.c
+		arcan_hmd.h
+	)
+	add_definitions(-DARCAN_HMD)
+endif (${ENABLE_HMD})
+
 if (${HAVE_SIMD})
 	message("-- Enabling SIMD")
 	add_definitions(-DARCAN_MATH_SIMD)
@@ -266,10 +285,23 @@ if (${ENABLE_LIBRETRO})
 	list(APPEND FSRV_SOURCES
 	 frameserver/libretro.h
 	 frameserver/libretro.c
+	 frameserver/stateman.h
+	 frameserver/stateman.c
+	 frameserver/ievsched.c
+	 frameserver/ievsched.h
 	 frameserver/ntsc/snes_ntsc.h
 	 frameserver/ntsc/snes_ntsc.c
  	)
-	add_definitions(-DENABLE_FSRV_LIBRETRO) 
+	add_definitions(-DENABLE_FSRV_LIBRETRO)
+
+	if (${ENABLE_LIBRETRO3D})
+		message("  |-> Enabling experimental 3D support.")
+		set_property( SOURCE frameserver/libretro.c
+			APPEND PROPERTY COMPILE_DEFINITIONS
+				FRAMESERVER_LIBRETRO_3D
+		)	
+	endif(${ENABLE_LIBRETRO3D})
+
 endif(${ENABLE_LIBRETRO})
 
 if (${APR_FOUND} AND ${ENABLE_NET})

@@ -56,8 +56,15 @@
 #include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_lua.h"
+
+#ifdef ARCAN_LED
 #include "arcan_led.h"
+#endif
+
+#ifdef ARCAN_HMD
 #include "arcan_hmd.h"
+#endif
+
 #include "arcan_db.h"
 #include "arcan_util.h"
 #include "arcan_videoint.h"
@@ -355,8 +362,14 @@ themeswitch:
 /* setup device polling, cleanup, ... */
 	arcan_evctx* def = arcan_event_defaultctx();
 	arcan_event_init( def );
+
+#ifdef ARCAN_LED
 	arcan_led_init();
-	arcan_hmd_open();
+#endif
+
+#ifdef ARCAN_HMD
+	arcan_hmd_setup();
+#endif
 
 /*
  * MINGW implements putenv, so use this to set
@@ -467,7 +480,6 @@ themeswitch:
 					arcan_video_shutdown();
 					arcan_audio_shutdown();
 					arcan_event_deinit(arcan_event_defaultctx());
-					arcan_led_shutdown();
 					arcan_db_close(dbhandle);
 
 					arcan_themename = strdup(ev->data.system.data.message);
@@ -556,7 +568,15 @@ themeswitch:
 	}
 
 	arcan_lua_callvoidfun(luactx, "shutdown", false);
+
+#ifdef ARCAN_LED
 	arcan_led_shutdown();
+#endif
+
+#ifdef ARCAN_HMD
+	arcan_hmd_shutdown();
+#endif
+
 	arcan_video_shutdown();
 
 error:

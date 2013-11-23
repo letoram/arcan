@@ -43,10 +43,10 @@ static bool scale_range(uint8_t accel_scale,
 */
 /* config; 7 len (2, 0, 0, flags, interval, keepalive_lower, keeplaive_upper) */
 
-bool arcan_hmd_open()
+bool arcan_hmd_setup()
 {
 	if (hmd_handle != NULL){
-		arcan_hmd_close();
+		arcan_hmd_shutdown();
 	}
 
 	hmd_handle = hid_open(RIFT_VID, RIFT_PID, NULL);
@@ -91,7 +91,7 @@ void arcan_hmd_update()
 	hid_send_feature_report(hmd_handle, keepalive, 5); */
 }
 
-void arcan_hmd_close()
+void arcan_hmd_shutdown()
 {
 	if (hmd_handle != NULL)
 		hid_close(hmd_handle);
