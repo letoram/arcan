@@ -211,7 +211,7 @@ static void crashdump()
 
 		FILE* tmpout = fopen(fname, "w+");
 		if (tmpout){
-			arcan_lua_statesnap(tmpout);
+			arcan_lua_statesnap(tmpout, false);
 			fclose(tmpout);
 		}
 	}
@@ -5838,7 +5838,7 @@ vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
  *  vstore->values
  */
 
-void arcan_lua_statesnap(FILE* dst)
+void arcan_lua_statesnap(FILE* dst, bool delim)
 {
 /*
  * display global settings, wrap to local ptr for shorthand */
@@ -5939,7 +5939,7 @@ ctx.vobjs[vobj.cellid] = vobj;\n", (long int)vid_toluavid(i));
 	}
 
 /* foreach context, footer */
- 	fprintf(dst, "return restbl;\nend\n#ENDBLOCK\n");
+ 	fprintf(dst, "return restbl;\nend\n%s", delim ? "#ENDBLOCK\n" : "");
 	fflush(dst);
 }
 

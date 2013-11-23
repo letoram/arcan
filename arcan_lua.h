@@ -50,9 +50,10 @@ void arcan_lua_eachglobal(struct arcan_luactx* ctx, char* prefix,
 void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
 
 /* serialize a LUA- parseable snapshot of the various mapped subsystems 
- * and resources into the (dst) filestream. Since it's streaming, the blocks
- * will be separated with a #ENDBLOCK\n tag and fsynched. */ 
-void arcan_lua_statesnap(FILE* dst);
+ * and resources into the (dst) filestream. 
+ * If delim is set, we're in streaming mode so a delimiter will be added
+ * to account for more snapshots over the same stream */
+void arcan_lua_statesnap(FILE* dst, bool delim);
 
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the struct arcan_luactx as the first 
