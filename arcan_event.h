@@ -387,24 +387,22 @@ typedef struct arcan_event {
 	event_data data;
 } arcan_event;
 
-#ifndef _SDL_keysym_h
 /* matches those that libraries such as SDL uses */
 typedef enum {
-	KMOD_NONE  = 0x0000,
-	KMOD_LSHIFT= 0x0001,
-	KMOD_RSHIFT= 0x0002,
-	KMOD_LCTRL = 0x0040,
-	KMOD_RCTRL = 0x0080,
-	KMOD_LALT  = 0x0100,
-	KMOD_RALT  = 0x0200,
-	KMOD_LMETA = 0x0400,
-	KMOD_RMETA = 0x0800,
-	KMOD_NUM   = 0x1000,
-	KMOD_CAPS  = 0x2000,
-	KMOD_MODE  = 0x4000,
-	KMOD_RESERVED = 0x8000
+	ARKMOD_NONE  = 0x0000,
+	ARKMOD_LSHIFT= 0x0001,
+	ARKMOD_RSHIFT= 0x0002,
+	ARKMOD_LCTRL = 0x0040,
+	ARKMOD_RCTRL = 0x0080,
+	ARKMOD_LALT  = 0x0100,
+	ARKMOD_RALT  = 0x0200,
+	ARKMOD_LMETA = 0x0400,
+	ARKMOD_RMETA = 0x0800,
+	ARKMOD_NUM   = 0x1000,
+	ARKMOD_CAPS  = 0x2000,
+	ARKMOD_MODE  = 0x4000,
+	ARKMOD_RESERVED = 0x8000
 } key_modifiers;
-#endif
 
 struct arcan_evctx {
 	bool interactive; /* should STDIN be processed for command events? */

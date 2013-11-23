@@ -4320,61 +4320,61 @@ static int arcan_lua_decodemod(lua_State* ctx)
 	int top = lua_gettop(ctx);
 
 	int count = 1;
-	if ((modval & KMOD_LSHIFT) > 0){
+	if ((modval & ARKMOD_LSHIFT) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "lshift");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_RSHIFT) > 0){
+	if ((modval & ARKMOD_RSHIFT) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "rshift");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_LALT) > 0){
+	if ((modval & ARKMOD_LALT) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "lalt");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_RALT) > 0){
+	if ((modval & ARKMOD_RALT) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "ralt");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_LCTRL) > 0){
+	if ((modval & ARKMOD_LCTRL) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "lctrl");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_RCTRL) > 0){
+	if ((modval & ARKMOD_RCTRL) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "rctrl");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_LMETA) > 0){
+	if ((modval & ARKMOD_LMETA) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "lmeta");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_RMETA) > 0){
+	if ((modval & ARKMOD_RMETA) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "rmeta");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_NUM) > 0){
+	if ((modval & ARKMOD_NUM) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "num");
 		lua_rawset(ctx, top);
 	}
 
-	if ((modval & KMOD_CAPS) > 0){
+	if ((modval & ARKMOD_CAPS) > 0){
 		lua_pushnumber(ctx, count++);
 		lua_pushstring(ctx, "caps");
 		lua_rawset(ctx, top);
