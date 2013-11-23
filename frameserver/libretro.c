@@ -34,11 +34,24 @@
 
 #include "frameserver.h"
 #include "../arcan_frameserver_shmpage.h"
-#include "./ntsc/snes_ntsc.h"
-#include "./graphing/net_graph.h"
+#include "ntsc/snes_ntsc.h"
+#include "graphing/net_graph.h"
+#include "ievsched.h"
+#include "stateman.h"
 #include "libretro.h"
 
 #include "resampler/speex_resampler.h"
+
+#ifdef FRAMESERVER_LIBRETRO_3D 
+#include "../platform/platform.h"
+#include "../arcan_video.h"
+#include "../arcan_videoint.h"
+
+/* linking hijacks to workaround the platform
+ * split problem (to be refactored when decent
+ * KMS etc. support is added) */
+struct arcan_video_display arcan_video_display = {0};
+#endif
 
 #ifndef MAX_PORTS
 #define MAX_PORTS 4
@@ -156,7 +169,8 @@ static struct {
 } retroctx = {.prewake = 4, .preaudiogen = 0};
 
 /* render statistics unto *vidp, at the very end of this .c file */
-static void push_stats();
+static void push_stats(); 
+static void setup_3dcore(struct retro_hw_render_callback*);
 
 static void* libretro_requirefun(const char* const sym)
 {
@@ -488,6 +502,15 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		*((const char**) data) = sysdir;
 		rv = sysdir != NULL;
 	break;
+
+#ifdef FRAMESERVER_LIBRETRO_3D
+	case RETRO_ENVIRONMENT_SET_HW_RENDER:
+		setup_3dcore( (struct retro_hw_render_callback*) data);
+	break;
+#endif
+
+	default:
+		LOG("arcan_frameserver:libretro), unhandled retro request (%d)\n", cmd);
 	}
 
 	return rv;
@@ -886,6 +909,22 @@ static inline void add_jitter(int num)
 	else if (num > 0)
 		arcan_timesleep( num );
 }
+
+/* 
+ * A selected few cores need a fully working GL context and then
+ * emit the output as an FBO. We currently lack a good way of 
+ * sharing the output texture with the parent process, so 
+ * we initialize a dumb "1x1" window with the FBO being our
+ * desired output resolution, and then doing a readback
+ * into the shmpage
+ */
+#ifdef FRAMESERVER_LIBRETRO_3D
+static void setup_3dcore(struct retro_hw_render_callback* ctx)
+{
+	platform_video_init(32, 32, 4, false, false, false);
+	LOG("got 3dcore request");	
+}
+#endif
 
 /* a big issue is that the libretro- modules are not guaranteed to act 
  * in a nice library way, meaning that they (among other things) install
