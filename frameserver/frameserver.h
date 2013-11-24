@@ -52,7 +52,8 @@ int frameserver_pushraw_handle(file_handle, void* buf, size_t ressize);
 /* set currently active library for loading symbols */
 bool frameserver_loadlib(const char* const);
 
-/* look for a specific symbol in the current library (frameserver_loadlib) */
-void* frameserver_requirefun(const char* const sym);
+/* look for a specific symbol in the current library (frameserver_loadlib),
+ * or, if module == false, the global namespace (whatever that is) */
+void* frameserver_requirefun(const char* const sym, bool module);
 
 #endif

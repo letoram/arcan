@@ -43,6 +43,7 @@
 #include "resampler/speex_resampler.h"
 
 #ifdef FRAMESERVER_LIBRETRO_3D 
+#include "../platform/sdl/glheaders.h"
 #include "../platform/platform.h"
 #include "../arcan_video.h"
 #include "../arcan_videoint.h"
@@ -172,9 +173,12 @@ static struct {
 static void push_stats(); 
 static void setup_3dcore(struct retro_hw_render_callback*);
 
-static void* libretro_requirefun(const char* const sym)
+static retro_proc_address_t libretro_requirefun(const char* sym)
 {
-	void* res = frameserver_requirefun(sym);
+	void* res = frameserver_requirefun(sym, true);
+
+	if (!res)
+		res = frameserver_requirefun(sym, false);
 
 	if (!res)
 	{
@@ -446,6 +450,7 @@ static void libretro_pollcb(){}
 static bool libretro_setenv(unsigned cmd, void* data){
 	char* sysdir;
 	bool rv = false;
+	struct retro_hw_render_callback* hwrend = data;
 
 	switch (cmd){
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
@@ -505,7 +510,14 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
-		setup_3dcore( (struct retro_hw_render_callback*) data);
+		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
+			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
+			setup_3dcore( hwrend ); 
+			rv = true;
+		} 
+		else
+			LOG("(arcan_frameserver:libretro) -- unsupported"
+				"	hw context requested.\n");
 	break;
 #endif
 
@@ -919,10 +931,43 @@ static inline void add_jitter(int num)
  * into the shmpage
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
+static uintptr_t get_framebuffer()
+{
+	static bool got_fbo;
+	static GLuint dstfbo;
+
+	if (!got_fbo){
+		glGenFramebuffers(1, &dstfbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, dstfbo);
+/*
+ *  grab the rest from arcan_video.c
+	glFramebufferTexture2D(GL_FRAMEBUFER, GL_COLOR_ATTACHMENT0,
+		GL_TEXTURE_2D, glid, 0);
+*/	
+	}
+
+	return (uintptr_t) &dstfbo;
+}
+
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
-	platform_video_init(32, 32, 4, false, false, false);
-	LOG("got 3dcore request");	
+/* we just want a dummy window with a valid openGL context
+ * bound and then set up a FBO with the proper dimensions */
+	if (!platform_video_init(640, 480, 32, false, true)){
+		LOG("Couldn't setup OpenGL context\n");
+		exit(1);
+	}
+
+	ctx->bottom_left_origin = false;
+//	ctx->get_current_framebuffer = get_framebuffer; 
+	ctx->get_proc_address = libretro_requirefun;
+	ctx->context_destroy = NULL;
+
+	ctx->context_reset();
+/* missing (except for the build options)
+ * is possibly the timer trigger thing
+ * and then readback from the context into the shmpage as per _target.c,
+ * possibly try and hide/minimize the window this is bound to (and keep at 1x1 or sth) */
 }
 #endif
 
@@ -967,7 +1012,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	}
 
 	void (*initf)() = libretro_requirefun("retro_init");
-	unsigned (*apiver)() = libretro_requirefun("retro_api_version");
+	unsigned (*apiver)() = (unsigned(*)()) libretro_requirefun("retro_api_version");
 	( (void(*)(retro_environment_t)) 
 		libretro_requirefun("retro_set_environment"))(libretro_setenv);
 

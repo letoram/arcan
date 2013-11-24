@@ -214,25 +214,38 @@ int frameserver_readhandle(arcan_event* inev)
 }
 
 /* set currently active library for loading symbols */
-static void* lastlib = NULL;
+static void* lastlib, (* globallib);
+
 bool frameserver_loadlib(const char* const lib)
 {
 	lastlib = dlopen(lib, RTLD_LAZY);
+	if (!globallib)
+		globallib = dlopen(NULL, RTLD_LAZY);
+
 	return lastlib != NULL;
 }
 
-/* look for a specific symbol in the current library (frameserver_loadlib) */
-void* frameserver_requirefun(const char* const sym)
+void* frameserver_requirefun(const char* const sym, bool module)
 {
-	if (!lastlib || !sym)
+/* not very relevant here, but proper form is dlerror() */
+	if (!sym)
 		return NULL;
-	
+
+	if (module){
+		if (lastlib)
+			return dlsym(lastlib, sym);
+		else
+			return NULL;
+	}
+
 	return dlsym(lastlib, sym);
 }
 
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
+	return;
+
 	if (logdir){
 		char timeb[16];
 		time_t t = time(NULL);

@@ -152,13 +152,15 @@ file_handle frameserver_readhandle(arcan_event* src)
 static HMODULE lastlib = NULL;
 bool frameserver_loadlib(const char* const name)
 {
-    lastlib = LoadLibrary(name);
-    return lastlib != NULL;
+	lastlib = LoadLibrary(name);
+	return lastlib != NULL;
 }
 
-void* frameserver_requirefun(const char* const name)
+void* frameserver_requirefun(const char* const name, bool global)
 {
-    GetProcAddress(lastlib, name);
+	return GetProcAddress(lastlib, name);
+/* FIXME:
+ * scan OGL dll if procaddress fails */
 }
 
 /* by default, we only do this for libretro where it might help
