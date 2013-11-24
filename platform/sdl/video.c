@@ -94,7 +94,7 @@ retry:
 }
 
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
-	bool fs, bool frames, bool conservative)
+	bool fs, bool frames)
 {
 	char caption[64] = {0};
 	SDL_Init(SDL_INIT_VIDEO);
