@@ -1194,7 +1194,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		firstinit = false;
 	}
 
-	if (!platform_video_init(width, height, bpp, fs, frames, conservative)){
+	if (!platform_video_init(width, height, bpp, fs, frames)){
 		arcan_warning("platform_video_init() failed.\n");
 		return ARCAN_ERRC_BADVMODE;
 	}
