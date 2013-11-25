@@ -25,6 +25,15 @@ ${WIN32_PATH}/shm.c
 ${WIN32_PATH}/realpath.c
 platform/stub/event.c
 )
+
+if (${ENABLE_LIBRETRO})
+if (${ENABLE_LIBRETRO3D})
+	list(APPEND FSRV_SOURCES platform/sdl/video.c)
+	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
+	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
+	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
+endif(${ENABLE_LIBRETRO3D})
+endif(${ENABLE_LIBRETRO})
  
 add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
 add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT -static)
