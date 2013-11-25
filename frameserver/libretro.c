@@ -91,82 +91,86 @@ typedef void(*pixconv_fun)(const void* data, uint32_t* outp,
 static struct {
 /* frame management */
 /* flag for rendering callbacks, should the frame be processed or not */
-		bool skipframe_a, skipframe_v; 
+	bool skipframe_a, skipframe_v; 
 
-		bool pause;     /* event toggle frame, are we paused */
-		double mspf;    /* static for each run, 1000/fps */
+	bool pause;     /* event toggle frame, are we paused */
+	double mspf;    /* static for each run, 1000/fps */
 
 /* when did we last seed gameplay timing */
-		long long int basetime;
+	long long int basetime;
 
 /* for debugging / testing, added extra jitter to 
  * the cost for the different stages */
-		int jitterstep, jitterxfer; 
+	int jitterstep, jitterxfer; 
 		
 /* add 'n' frames pseudoskipping to populate audiobuffers */
-		int preaudiogen;                    
+	int preaudiogen;                    
 /* user changeable variable, how synching should be treated */
-		int skipmode; 
+	int skipmode; 
 /* for frameskip auto to compensate for jitter in transfer etc. */
-		int prewake;  
+	int prewake;  
 
 /* how many video frames have we processed, used to calculate when the next
  * frame is supposed to be used */
-		unsigned long long vframecount;
+	unsigned long long vframecount;
 
 /* audio frame counter, used to determine jitter in samplerate */
-		unsigned long long aframecount;
-
-		struct retro_system_av_info avinfo; /* timing according to libretro */
+	unsigned long long aframecount;
+	struct retro_system_av_info avinfo; /* timing according to libretro */
 
 /* statistics */
-		int rebasecount, frameskips, transfercost, framecost;
-		long long int frame_ringbuf[160];
-		long long int drop_ringbuf[40];
-		int xfer_ringbuf[MAX_SHMWIDTH];
-		short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
-		const char* colorspace;
+	int rebasecount, frameskips, transfercost, framecost;
+	long long int frame_ringbuf[160];
+	long long int drop_ringbuf[40];
+	int xfer_ringbuf[MAX_SHMWIDTH];
+	short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
+	const char* colorspace;
 
 /* colour conversion / filtering */
-		pixconv_fun converter;
-		uint16_t* ntsc_imb;
-		bool ntscconv;
-		snes_ntsc_t ntscctx;
-		snes_ntsc_setup_t ntsc_opts;
+	pixconv_fun converter;
+	uint16_t* ntsc_imb;
+	bool ntscconv;
+	snes_ntsc_t ntscctx;
+	snes_ntsc_setup_t ntsc_opts;
 
 /* SHM- API input /output */
-		struct frameserver_shmcont shmcont;
-		uint8_t* vidp, (* audp);
-		struct graph_context* graphing;
-		int graphmode;
-		file_handle last_fd; /* state management */
-		struct arcan_evctx inevq;
-		struct arcan_evctx outevq;
+	struct frameserver_shmcont shmcont;
+	uint8_t* vidp, (* audp);
+	struct graph_context* graphing;
+	int graphmode;
+	file_handle last_fd; /* state management */
+	struct arcan_evctx inevq;
+	struct arcan_evctx outevq;
 
 /* set as a canary after audb at a recalc to detect overflow */
-		uint8_t* audguardb;
+	uint8_t* audguardb;
 
 /* internal resampling */
-		int16_t* audbuf;
-		size_t audbuf_sz;
-		off_t audbuf_ofs;
-		SpeexResamplerState* resampler;
+	int16_t* audbuf;
+	size_t audbuf_sz;
+	off_t audbuf_ofs;
+	SpeexResamplerState* resampler;
 
 /* libretro states / function pointers */
-		struct retro_system_info sysinfo;
-		struct retro_game_info gameinfo;
+	struct retro_system_info sysinfo;
+	struct retro_game_info gameinfo;
+			
+#ifdef FRAMESERVER_LIBRETRO_3D
+	struct retro_hw_render_callback* hwctx;
+	GLuint fbo_id, fbo_col;
+#endif
 
 /* parent uses an event->push model for input, libretro uses a poll one, so
  * prepare a lookup table that events gets pushed into and libretro can poll */
-		struct input_port input_ports[MAX_PORTS];
+	struct input_port input_ports[MAX_PORTS];
 
-		void (*run)();
-		void (*reset)();
-		bool (*load_game)(const struct retro_game_info* game);
-		size_t (*serialize_size)();
-		bool (*serialize)(void*, size_t);
-		bool (*deserialize)(const void*, size_t);
-		void (*set_ioport)(unsigned, unsigned);
+	void (*run)();
+	void (*reset)();
+	bool (*load_game)(const struct retro_game_info* game);
+	size_t (*serialize_size)();
+	bool (*serialize)(void*, size_t);
+	bool (*deserialize)(const void*, size_t);
+	void (*set_ioport)(unsigned, unsigned);
 } retroctx = {.prewake = 4, .preaudiogen = 0};
 
 /* render statistics unto *vidp, at the very end of this .c file */
@@ -314,10 +318,10 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 /* width / height can be changed without notice, so we have to be ready
  * for the fact that the cost of conversion can suddenly move outside the
- * allowed boundaries, then NTSC is ignored */
+ * allowed boundaries, then NTSC is ignored (or if we have 3d/hw source */
 	unsigned outw = width;
 	unsigned outh = height;
-	bool ntscconv = retroctx.ntscconv;
+	bool ntscconv = retroctx.ntscconv && data != RETRO_HW_FRAME_BUFFER_VALID;
 
 	if (ntscconv && SNES_NTSC_OUT_WIDTH(width)<= MAX_SHMWIDTH
 		&& height * 2 <= MAX_SHMHEIGHT){
@@ -357,6 +361,16 @@ static void libretro_vidcb(const void* data, unsigned width,
 	if (ntscconv && !retroctx.ntsc_imb){
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
+
+#ifdef FRAMESERVER_LIBRETRO_3D
+	if (data == RETRO_HW_FRAME_BUFFER_VALID){
+		glBindTexture(GL_TEXTURE_2D, retroctx.fbo_col);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, 
+			GL_UNSIGNED_BYTE, retroctx.vidp);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		return;
+	}
+#endif
 
 /* lastly, convert / blit, this will possibly clip */
 	if (retroctx.converter)
@@ -934,32 +948,66 @@ static inline void add_jitter(int num)
 static uintptr_t get_framebuffer()
 {
 	static bool got_fbo;
-	static GLuint dstfbo;
 
 	if (!got_fbo){
-		glGenFramebuffers(1, &dstfbo);
-		glBindFramebuffer(GL_FRAMEBUFFER, dstfbo);
-/*
- *  grab the rest from arcan_video.c
-	glFramebufferTexture2D(GL_FRAMEBUFER, GL_COLOR_ATTACHMENT0,
-		GL_TEXTURE_2D, glid, 0);
-*/	
+		GLuint rbo_depth;
+
+		int dw = retroctx.avinfo.geometry.max_width;
+		int dh = retroctx.avinfo.geometry.max_height;
+
+/* grab storage, should have some dynamic test/hint
+ * to detect formats working without swizzling */
+		glGenTextures(1, &retroctx.fbo_col);
+		glBindTexture(GL_TEXTURE_2D, retroctx.fbo_col);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dw, dh, 0, 
+			GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+/* don't need to readback depthbuffer but rendering may
+ * still require it */
+		glGenRenderbuffers(1, &rbo_depth);
+		glBindRenderbuffer(GL_RENDERBUFFER, rbo_depth);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, dw, dh);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+		glGenFramebuffers(1, &retroctx.fbo_id);
+			glBindFramebuffer(GL_FRAMEBUFFER, retroctx.fbo_id);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, 
+				GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, retroctx.fbo_col, 0);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, 
+				GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo_depth);
+			GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+			if (GL_FRAMEBUFFER_COMPLETE != status)
+				LOG("(libretro) couldn't setup framebuffer.\n");
+			else
+				LOG("(libretro) FBO (%d x %d) created.\n", dw, dh);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	
+		got_fbo = true;
 	}
 
-	return (uintptr_t) &dstfbo;
+	return (uintptr_t) retroctx.fbo_id;
 }
 
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
 /* we just want a dummy window with a valid openGL context
  * bound and then set up a FBO with the proper dimensions */
-	if (!platform_video_init(640, 480, 32, false, true)){
+	if (!platform_video_init(1, 1, 32, false, true)){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
 	}
 
+	retroctx.hwctx = ctx;
+
 	ctx->bottom_left_origin = false;
-//	ctx->get_current_framebuffer = get_framebuffer; 
+	ctx->get_current_framebuffer = get_framebuffer; 
 	ctx->get_proc_address = libretro_requirefun;
 	ctx->context_destroy = NULL;
 
