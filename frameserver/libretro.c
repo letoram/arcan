@@ -1023,9 +1023,10 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 
 	retroctx.hwctx = ctx;
 
+	SDL_WM_IconifyWindow();
 	ctx->bottom_left_origin = false;
 	ctx->get_current_framebuffer = get_framebuffer; 
-	ctx->get_proc_address = libretro_requirefun;
+	ctx->get_proc_address = SDL_GL_GetProcAddress; // libretro_requirefun;
 	ctx->context_destroy = NULL;
 
 	ctx->context_reset();
