@@ -364,10 +364,25 @@ static void libretro_vidcb(const void* data, unsigned width,
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (data == RETRO_HW_FRAME_BUFFER_VALID){
+/* method one, just read color attachment */
 		glBindTexture(GL_TEXTURE_2D, retroctx.fbo_col);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, 
-			GL_UNSIGNED_BYTE, retroctx.vidp);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp);
 		glBindTexture(GL_TEXTURE_2D, 0);
+
+/* method two, pixels of buffer out 
+ * glBindFramebuffer(GL_READ_FRAMEBUFFER, retroctx.fbo_id);
+ * glReadPixels(0, 0, outw, outh, 
+ * GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp);
+*/
+
+/*	uint64_t sum = 0;
+		for (int i = 0; i < (outw * outh); i++)
+			sum += ((uint32_t*)retroctx.vidp)[i];
+		LOG("sum: %lld\n", sum);
+*/
+
+/*		for (int i = 0; i < (outw * outh) / 4; i++)
+ *			((uint32_t*)retroctx.vidp)[i] = 0xff00ffff; */
 		return;
 	}
 #endif
@@ -963,9 +978,13 @@ static uintptr_t get_framebuffer()
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		char* mem = malloc(dw * dh * 4);
+		memset(mem, 0xaa, dw * dh * 4);
+
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dw, dh, 0, 
-			GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+			GL_RGBA, GL_UNSIGNED_BYTE, mem);
 		glBindTexture(GL_TEXTURE_2D, 0);
+		free(mem);
 
 /* don't need to readback depthbuffer but rendering may
  * still require it */
@@ -975,18 +994,16 @@ static uintptr_t get_framebuffer()
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
 		glGenFramebuffers(1, &retroctx.fbo_id);
-			glBindFramebuffer(GL_FRAMEBUFFER, retroctx.fbo_id);
+		glBindFramebuffer(GL_FRAMEBUFFER, retroctx.fbo_id);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, 
 				GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, retroctx.fbo_col, 0);
 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, 
 				GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo_depth);
 			GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-
 			if (GL_FRAMEBUFFER_COMPLETE != status)
 				LOG("(libretro) couldn't setup framebuffer.\n");
 			else
 				LOG("(libretro) FBO (%d x %d) created.\n", dw, dh);
-
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	
 		got_fbo = true;
@@ -999,7 +1016,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
 /* we just want a dummy window with a valid openGL context
  * bound and then set up a FBO with the proper dimensions */
-	if (!platform_video_init(1, 1, 32, false, true)){
+	if (!platform_video_init(640, 480, 32, false, true)){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
 	}
@@ -1014,7 +1031,6 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	ctx->context_reset();
 /* missing (except for the build options)
  * is possibly the timer trigger thing
- * and then readback from the context into the shmpage as per _target.c,
  * possibly try and hide/minimize the window this is bound to (and keep at 1x1 or sth) */
 }
 #endif
