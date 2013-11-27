@@ -52,6 +52,8 @@
  * split problem (to be refactored when decent
  * KMS etc. support is added) */
 struct arcan_video_display arcan_video_display = {0};
+static void build_fbo(int neww, int newh, int* dw, int* dh, 
+	GLuint* dfbo, GLuint* ddepth, GLuint* dcol);
 #endif
 
 #ifndef MAX_PORTS
@@ -83,6 +85,11 @@ struct input_port {
 
 /* special offsets into buttons / axes based on device */
 	unsigned cursor_x, cursor_y, cursor_btns[5];
+};
+
+struct fbo_cont {
+	GLuint fbo, col, depth;
+	int dw, dh;
 };
 
 typedef void(*pixconv_fun)(const void* data, uint32_t* outp, 
@@ -156,8 +163,9 @@ static struct {
 	struct retro_game_info gameinfo;
 			
 #ifdef FRAMESERVER_LIBRETRO_3D
-	struct retro_hw_render_callback* hwctx;
-	GLuint fbo_id, fbo_col;
+	struct retro_hw_render_callback hwctx;
+	struct fbo_cont fbos[1];
+	int fbo_ind;
 #endif
 
 /* parent uses an event->push model for input, libretro uses a poll one, so
@@ -175,6 +183,7 @@ static struct {
 
 /* render statistics unto *vidp, at the very end of this .c file */
 static void push_stats(); 
+static void log_msg(char* msg, bool flush);
 static void setup_3dcore(struct retro_hw_render_callback*);
 
 static retro_proc_address_t libretro_requirefun(const char* sym)
@@ -192,6 +201,42 @@ static retro_proc_address_t libretro_requirefun(const char* sym)
 
 	return res;
 }
+
+void resize_shmpage(int neww, int newh, bool first)
+{
+/* present error message, synch then terminate. */
+	if (!frameserver_shmpage_resize(&retroctx.shmcont, neww, newh)){
+		exit(1);
+	}
+
+/* align buffer pointers according to protocol */
+	frameserver_shmpage_calcofs(retroctx.shmcont.addr, 
+		&(retroctx.vidp), &(retroctx.audp) );
+
+/* audguard adds an easy detection to vidp write overflows (broken readback) 
+ * in 3d and audio-output not in synch with video */
+	retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
+	retroctx.audguardb[0] = 0xde;
+	retroctx.audguardb[1] = 0xad;
+
+/* graphing context just works on offsets into the page, need to reset */
+	if (retroctx.graphing != NULL)
+		graphing_destroy(retroctx.graphing);
+
+	retroctx.graphing = graphing_new(neww, newh, (uint32_t*) retroctx.vidp);
+
+/* will be reallocated if needed and not set so just free and unset */
+	if (retroctx.ntsc_imb){
+		free(retroctx.ntsc_imb);
+		retroctx.ntsc_imb = NULL;
+	}
+
+/* for the first time around, we need to lock the semaphore */
+	if (first){
+		frameserver_semcheck(retroctx.shmcont.vsem, -1);
+	}
+}
+
 
 #define RGB565(b, g, r) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | \
 								(((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
@@ -339,41 +384,29 @@ static void libretro_vidcb(const void* data, unsigned width,
  * and toggle resize flag */
 	if (outw != retroctx.shmcont.addr->storage.w || outh != 
 		retroctx.shmcont.addr->storage.h){
-		frameserver_shmpage_resize(&retroctx.shmcont, outw, outh);
-		frameserver_shmpage_calcofs(retroctx.shmcont.addr, &(retroctx.vidp), 
-			&(retroctx.audp) );
-		graphing_destroy(retroctx.graphing);
-		retroctx.graphing = graphing_new(outw, outh, (uint32_t*) retroctx.vidp);
-
-		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
-		retroctx.audguardb[0] = 0xde;
-		retroctx.audguardb[1] = 0xad;
-
-/* will be reallocated if needed and not set so just free and unset */
-		if (retroctx.ntsc_imb){
-			free(retroctx.ntsc_imb);
-			retroctx.ntsc_imb = NULL;
-		}
+		resize_shmpage(outw, outh, false);
 	}
 
 /* intermediate storage for blargg NTSC filter, if toggled, 
  * ntscconv will be applied by the converter however */
 	if (ntscconv && !retroctx.ntsc_imb){
+		LOG("(libretro) rebuilding shmpage for NTSC\n");
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	if (data == RETRO_HW_FRAME_BUFFER_VALID){
-/* method one, just read color attachment */
-		glBindTexture(GL_TEXTURE_2D, retroctx.fbo_col);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp);
-		glBindTexture(GL_TEXTURE_2D, 0);
 
-/* method two, pixels of buffer out 
- * glBindFramebuffer(GL_READ_FRAMEBUFFER, retroctx.fbo_id);
- * glReadPixels(0, 0, outw, outh, 
- * GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp);
-*/
+/* method one, just read color attachment, when this is working,
+ * switch to PBO transfers and possible Flip-Flop FBOs */
+  glBindTexture(GL_TEXTURE_2D, retroctx.fbos[retroctx.fbo_ind].col);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+/* method two, pixels of buffer out */ 
+/*  glBindFramebuffer(GL_READ_FRAMEBUFFER, retroctx.fbo_id);
+  glReadPixels(0, 0, outw, outh, 
+  GL_RGBA, GL_UNSIGNED_BYTE, retroctx.vidp); */
 
 /*	uint64_t sum = 0;
 		for (int i = 0; i < (outw * outh); i++)
@@ -519,6 +552,11 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		LOG("(arcan_frameserver:libretro) -- shutdown requested from lib.\n");
 	break;
 
+/* parse, emit as control messages */
+	case RETRO_ENVIRONMENT_SET_VARIABLES:
+
+	break;
+
 /* unsure how we'll handle this when privsep is working, 
  * possibly through chroot to garbage dir */
 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
@@ -538,6 +576,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	break;
 
 #ifdef FRAMESERVER_LIBRETRO_3D
+	case RETRO_ENVIRONMENT_SET_HW_RENDER | RETRO_ENVIRONMENT_EXPERIMENTAL:
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
 		if (hwrend->context_type == RETRO_HW_CONTEXT_OPENGL ||
 			hwrend->context_type == RETRO_HW_CONTEXT_OPENGL_CORE){
@@ -960,79 +999,105 @@ static inline void add_jitter(int num)
  * into the shmpage
  */
 #ifdef FRAMESERVER_LIBRETRO_3D
-static uintptr_t get_framebuffer()
+
+/* need to reset on resize */
+static void build_fbo(int neww, int newh, int* dw, int* dh, 
+	GLuint* dfbo, GLuint* ddepth, GLuint* dcol)
 {
-	static bool got_fbo;
 
-	if (!got_fbo){
-		GLuint rbo_depth;
+/* re-use or allocate? */
+	if (*dfbo != 0){
+		glDeleteTextures(1, dcol);
+		if (ddepth)
+			glDeleteRenderbuffers(1, ddepth);
+	} else {
+		glGenFramebuffers(1, dfbo);
+	}
 
-		int dw = retroctx.avinfo.geometry.max_width;
-		int dh = retroctx.avinfo.geometry.max_height;
+	*dw = neww;
+	*dh = newh;
 
-/* grab storage, should have some dynamic test/hint
- * to detect formats working without swizzling */
-		glGenTextures(1, &retroctx.fbo_col);
-		glBindTexture(GL_TEXTURE_2D, retroctx.fbo_col);
+/* setup color attachment texture, reset the values to something
+ * visible for troubleshooting */
+	char* mem = malloc(neww * newh * 4);
+	memset(mem, 0xaa, neww * newh * 4);
+
+	glGenTextures(1, dcol);
+	glBindTexture(GL_TEXTURE_2D, *dcol);
+	
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		char* mem = malloc(dw * dh * 4);
-		memset(mem, 0xaa, dw * dh * 4);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, neww, newh, 0, 
+		GL_RGBA, GL_UNSIGNED_BYTE, mem);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	free(mem);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dw, dh, 0, 
-			GL_RGBA, GL_UNSIGNED_BYTE, mem);
-		glBindTexture(GL_TEXTURE_2D, 0);
-		free(mem);
-
-/* don't need to readback depthbuffer but rendering may
- * still require it */
-		glGenRenderbuffers(1, &rbo_depth);
-		glBindRenderbuffer(GL_RENDERBUFFER, rbo_depth);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, dw, dh);
+/* won't read this one back but emulation might still need it */
+	if (ddepth){
+		glGenRenderbuffers(1, ddepth); 
+		glBindRenderbuffer(GL_RENDERBUFFER, *ddepth); 
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, neww, newh); 
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-		glGenFramebuffers(1, &retroctx.fbo_id);
-		glBindFramebuffer(GL_FRAMEBUFFER, retroctx.fbo_id);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, 
-				GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, retroctx.fbo_col, 0);
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, 
-				GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo_depth);
-			GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-			if (GL_FRAMEBUFFER_COMPLETE != status)
-				LOG("(libretro) couldn't setup framebuffer.\n");
-			else
-				LOG("(libretro) FBO (%d x %d) created.\n", dw, dh);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	
-		got_fbo = true;
 	}
 
-	return (uintptr_t) retroctx.fbo_id;
+	glBindFramebuffer(GL_FRAMEBUFFER, *dfbo); 
+		glFramebufferTexture2D(GL_FRAMEBUFFER, 
+			GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *dcol, 0);
+
+	if (ddepth)
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, 
+			GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *ddepth);
+
+	GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (GL_FRAMEBUFFER_COMPLETE != status)
+		LOG("(libretro) couldn't setup framebuffer.\n");
+	else
+		LOG("(libretro) FBO (%d x %d) created.\n", neww, newh);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	retroctx.hwctx.context_reset();
+}
+
+static uintptr_t get_framebuffer()
+{
+	struct fbo_cont* dfbo = &retroctx.fbos[retroctx.fbo_ind];
+
+	int shmw = retroctx.shmcont.addr->storage.w;
+	int shmh = retroctx.shmcont.addr->storage.h;
+
+	if (dfbo->fbo == 0 || shmw != dfbo->dw || shmh != dfbo->dh)  
+		build_fbo(shmw, shmh, &dfbo->dw, &dfbo->dh, &dfbo->fbo,
+			retroctx.hwctx.depth ? &dfbo->depth : NULL, &dfbo->col);
+
+	return (uintptr_t) dfbo->fbo; 
 }
 
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
 /* we just want a dummy window with a valid openGL context
- * bound and then set up a FBO with the proper dimensions */
-	if (!platform_video_init(640, 480, 32, false, true)){
+ * bound and then set up a FBO with the proper dimensions,
+ * when things are working, just use a 2x2 window and minimize */
+	if (!platform_video_init(2, 2, 32, false, true)){
 		LOG("Couldn't setup OpenGL context\n");
 		exit(1);
 	}
 
-	retroctx.hwctx = ctx;
+	SDL_WM_IconifyWindow(); 
 
-	SDL_WM_IconifyWindow();
-	ctx->bottom_left_origin = false;
 	ctx->get_current_framebuffer = get_framebuffer; 
-	ctx->get_proc_address = SDL_GL_GetProcAddress; // libretro_requirefun;
-	ctx->context_destroy = NULL;
+	ctx->get_proc_address = (retro_hw_get_proc_address_t) SDL_GL_GetProcAddress;
+	if (ctx->bottom_left_origin)
+		retroctx.shmcont.addr->storage.glsource = true;
 
-	ctx->context_reset();
+	memcpy(&retroctx.hwctx, ctx, 
+		sizeof(struct retro_hw_render_callback));
+
+		ctx->context_reset();
+
 /* missing (except for the build options)
- * is possibly the timer trigger thing
- * possibly try and hide/minimize the window this is bound to (and keep at 1x1 or sth) */
+ * is possibly the timer trigger thing */
 }
 #endif
 
@@ -1069,6 +1134,24 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 	if (*libname == 0)
 		return;
+
+	char logbuf[128] = {0};
+	size_t logbuf_sz = sizeof(logbuf); 
+
+	retroctx.shmcont = frameserver_getshm(keyfile, true);
+	struct frameserver_shmpage* shared = retroctx.shmcont.addr;
+	if (!shared){
+		LOG("(libretro) fatal, couldn't map shared memory from (%s)\n", keyfile);
+		return;
+	}
+
+	frameserver_shmpage_setevqs(shared, retroctx.shmcont.esem, 
+		&(retroctx.inevq), &(retroctx.outevq), false);
+	resize_shmpage(320, 240, true);
+
+	if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
+		logbuf[logbuf_sz-1] = '\0';	
+	log_msg(logbuf, true);
 
 /* map up functions and test version */
 	if (!frameserver_loadlib(libname)){
@@ -1130,12 +1213,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		( (void(*)(retro_input_state_t)) 
 			libretro_requirefun("retro_set_input_state") )(libretro_inputstate);
 
-/* for event enqueue, shared memory interface is needed */
-		retroctx.shmcont = frameserver_getshm(keyfile, true);
-		struct frameserver_shmpage* shared = retroctx.shmcont.addr;
-		frameserver_shmpage_setevqs(retroctx.shmcont.addr, 
-			retroctx.shmcont.esem, &(retroctx.inevq), &(retroctx.outevq), false);
-
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {
 						.category = EVENT_EXTERNAL,
@@ -1144,9 +1221,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		size_t msgsz = sizeof(outev.data.external.message) / 
 			sizeof(outev.data.external.message[0]);
-		snprintf((char*)outev.data.external.message, msgsz, "%s %s", 
+		snprintf((char*)outev.data.external.message, msgsz-1, "%s %s", 
 			retroctx.sysinfo.library_name, retroctx.sysinfo.library_version);
 		arcan_event_enqueue(&retroctx.outevq, &outev);
+		
+		if (snprintf(logbuf, logbuf_sz, "(core: %s)", 
+			retroctx.sysinfo.library_name) >= logbuf_sz)
+			logbuf[logbuf_sz - 1] = '\0';
+		log_msg(logbuf, true);
 
 /* load the rom, either by letting the emulator acts as loader, or by 
  * mmaping and handing that segment over */
@@ -1172,7 +1254,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		outev.kind = EVENT_EXTERNAL_NOTICE_RESOURCE;
 		snprintf((char*)outev.data.external.message, msgsz, "loading");
 		arcan_event_enqueue(&retroctx.outevq, &outev);
-		
+		if (snprintf(logbuf, logbuf_sz, "loading game...") >= logbuf_sz)
+			logbuf[logbuf_sz - 1] = '\0';
+		log_msg(logbuf, true);
+
 		if ( retroctx.load_game( &retroctx.gameinfo ) == false ){
 			snprintf((char*)outev.data.external.message, msgsz, "failed");
 			arcan_event_enqueue(&retroctx.outevq, &outev);
@@ -1214,22 +1299,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.audbuf = malloc(retroctx.audbuf_sz);
 		memset(retroctx.audbuf, 0, retroctx.audbuf_sz);
 
-		if (!frameserver_shmpage_resize(&retroctx.shmcont,
-			retroctx.avinfo.geometry.max_width,
-			retroctx.avinfo.geometry.max_height))
-			return;
-
-		frameserver_shmpage_calcofs(shared, &(retroctx.vidp), &(retroctx.audp) );
-		retroctx.graphing = graphing_new(
-			retroctx.avinfo.geometry.max_width,
-			retroctx.avinfo.geometry.max_height, (uint32_t*) retroctx.vidp
-		);
-
-		retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
-		retroctx.audguardb[0] = 0xde;
-		retroctx.audguardb[1] = 0xad;
-
-		frameserver_semcheck(retroctx.shmcont.vsem, -1);
+/* [ do first resize based on something more subtle ] 
+ * NOTE; what we want to do is set some kind of start window
+ * and put loading progress etc. there,
+ * now the graphing context and initial size doesn't match the allocated FBO etc.
+ * max_width and max_height can try and overflow and get clamped and broken.
+ */ 
 
 /* since we're guaranteed to get at least one input callback each run(), 
  * call, we multiplex parent event processing as well */
@@ -1363,6 +1438,30 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		PXFONT_HEIGHT, 0xff000000);\
 	draw_text(retroctx.graphing, X, 0, yv, 0xffffffff);\
 	yv += PXFONT_HEIGHT + PXFONT_HEIGHT * 0.3;
+
+static void log_msg(char* msg, bool flush)
+{
+	clear_tocol(retroctx.graphing, 0xff000000);
+	int dw, dh;
+	int sw = retroctx.shmcont.addr->storage.w;
+
+/* clip string */
+	char* mendp = msg + strlen(msg) + 1;
+	do {
+		*mendp = '\0';
+		text_dimensions(retroctx.graphing, msg, &dw, &dh);
+		mendp--;
+	} while (dw > sw && mendp > msg);
+
+/* center */
+	draw_text(retroctx.graphing, msg, 
+		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.addr->storage.h - dh), 0xffffffff);
+
+	if (flush){
+		retroctx.shmcont.addr->vready = true;
+		frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
+	}	
+}
 
 static void push_stats()
 {
