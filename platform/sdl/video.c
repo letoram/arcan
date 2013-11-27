@@ -43,6 +43,11 @@ void platform_video_bufferswap()
 	SDL_GL_SwapBuffers();
 }
 
+void platform_video_minimize()
+{
+    SDL_WM_IconifyWindow();
+}
+
 void platform_video_timing(float* o_sync, float* o_stddev, float* o_variance)
 {
 	static float sync, stddev, variance;
