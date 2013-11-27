@@ -25,6 +25,7 @@
 struct arcan_luactx;
 struct arcan_luactx* arcan_luaL_setup(int debuglevel);
 char* arcan_luaL_dofile(struct arcan_luactx*, const char* fname);
+void arcan_luaL_dostring(struct arcan_luactx*, const char* sbuf);
 void arcan_luaL_shutdown(struct arcan_luactx*);
 
 /* add a set of wrapper functions exposing arcan_video and friends 
