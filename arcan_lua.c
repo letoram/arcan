@@ -1617,8 +1617,10 @@ static int arcan_lua_targetinput(lua_State* ctx)
 	ev.data.io.pts = intblnum(ctx, tblind, "pts");
 
 	if ( strcmp( kindlbl, "analog") == 0 ){
+		const char* srcstr = intblstr(ctx, tblind, "source");
+
 		ev.kind = EVENT_IO_AXIS_MOVE;
-		ev.data.io.devkind = strcmp( intblstr(ctx, tblind, "source"), "mouse") == 0?
+		ev.data.io.devkind = srcstr && strcmp( srcstr, "mouse") == 0 ?
 			EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 		ev.data.io.input.analog.devid  = intblnum(ctx, tblind, "devid");
 		ev.data.io.input.analog.subid  = intblnum(ctx, tblind, "subid");
@@ -1650,7 +1652,8 @@ static int arcan_lua_targetinput(lua_State* ctx)
 				EVENT_IO_KEYB_PRESS : EVENT_IO_KEYB_RELEASE;
 		}
 		else {
-			ev.data.io.devkind = strcmp( intblstr(ctx, tblind, "source"), "mouse")==0?
+			const char* tblsrc = intblstr(ctx, tblind, "source");
+			ev.data.io.devkind = tblsrc && strcmp(tblsrc, "mouse") == 0 ?  
 				EVENT_IDEVKIND_MOUSE : EVENT_IDEVKIND_GAMEDEV;
 			ev.data.io.datatype = EVENT_IDATATYPE_DIGITAL;
 			ev.data.io.input.digital.active= intblbool(ctx, tblind, "active");
