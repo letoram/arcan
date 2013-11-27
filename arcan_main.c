@@ -448,7 +448,9 @@ themeswitch:
 
 /* pollfeed can actually populate event-loops, assuming we don't exceed a 
  * compile- time threshold */
+#ifdef ARCAN_HMD
 		arcan_hmd_update();
+#endif
 		arcan_video_pollfeed();
 
 /* NOTE: might be better if this terminates if we're closing in on a 
