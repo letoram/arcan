@@ -5,10 +5,7 @@
 --
 -- Todolist:
 --   -> Auto-hide occluded windows to limit overdraw
---   -> Tab- cycle focus window with out of focus shadowed
---   -> Keyboard input for all windows
 --   -> Animated resize effect
---   -> Better fade animation
 --   -> Save background image
 
 --
@@ -1086,7 +1083,14 @@ function awbwman_cancel()
 end
 
 function awb_clock_pulse(stamp, nticks)
-	mouse_tick(1);
+	mouse_tick(1); -- hovers etc.
+
+ -- chain to windows that need clock
+	for i,v in ipairs(awb_wtable) do 
+		if (v.clock_pulse) then
+			v:clock_pulse(stamp, nticks);
+		end
+	end
 end
 
 --
