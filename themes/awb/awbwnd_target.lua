@@ -790,7 +790,6 @@ function awbwnd_target(pwin, caps, factstr)
 	end)).vid] = MESSAGE["HOVER_FASTFWD"];
 
 --
--- Missing: popup frameskip mode
 -- popup filter mode
 --
 	pwin.hoverlut[
@@ -875,7 +874,7 @@ function awbwnd_target(pwin, caps, factstr)
 -- do nothing
 		elseif (status.kind == "resized") then
 			pwin.mirrored = status.mirrored;
-	
+
 			if (pwin.updated == nil) then
 				pwin:update_canvas(source, pwin.mirrored);
 				pwin:resize(pwin.w, pwin.h, true);
@@ -895,6 +894,7 @@ function awbwnd_target(pwin, caps, factstr)
 
 -- if we're in fullscreen, handle the resize differently
 			pwin.updated = true;
+			image_set_txcos_default(pwin.canvas.vid, pwin.mirrored);
 	
 		elseif (status.kind == "state_size") then
 			pwin:drop_statectls();
