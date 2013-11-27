@@ -376,9 +376,11 @@ themeswitch:
  * the system subpath path (BIOS, ..) 
  */
 	if (getenv("ARCAN_SYSTEMPATH") == NULL){
-		size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 15;
+		size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 
+			strlen("ARCAN_SYSTEMPATH");
+
 		char* const syspath = malloc(len);
-		sprintf(syspath, "ARCAN_SYSPATH=%s/games/system", arcan_resourcepath);
+		sprintf(syspath, "ARCAN_SYSTEMPATH=%s/games/system", arcan_resourcepath);
 		arcan_warning("Notice: Using default systempath (%s)\n", syspath);
 		putenv(syspath);
 	} else
