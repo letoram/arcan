@@ -12,7 +12,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+/
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,MA 02110-1301,USA.
@@ -81,7 +81,7 @@ static void build_fbo(int neww, int newh, int* dw, int* dh,
  */
 struct input_port {
 	bool buttons[MAX_BUTTONS];
-	signed axes[MAX_AXES];
+	int16_t axes[MAX_AXES];
 
 /* special offsets into buttons / axes based on device */
 	unsigned cursor_x, cursor_y, cursor_btns[5];
@@ -735,6 +735,7 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 	char* subtype;
 	signed value = ioev->datatype == EVENT_IDATATYPE_TRANSLATED ? 
 		ioev->input.translated.active : ioev->input.digital.active;
+	LOG("%s\n", label);
 
 	if (1 == sscanf(label, "PLAYER%d_", &ind) && ind > 0 && 
 		ind <= MAX_PORTS && (subtype = strchr(label, '_')) ){
@@ -747,16 +748,8 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		}
 		else if (1 == sscanf(subtype, "AXIS%d", &axis) && axis > 0 
 			&& axis <= MAX_AXES){
-			if (ioev->input.analog.gotrel)
-				retroctx.input_ports[ind-1].axes[ axis - 1 ] = 
-					ioev->input.analog.axisval[1];
-			else {
-				static bool warned = false;
-				if (!warned)
-					LOG("libretro::analog input(%s), ignored. Absolute input "
-						"currently unsupported.\n", label);
-				warned = true;
-			}
+			retroctx.input_ports[ind-1].axes[ axis - 1 ] = 
+				ioev->input.analog.axisval[0];
 		}
 		else if ( strcmp(subtype, "UP") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_UP;
@@ -1020,7 +1013,7 @@ static void build_fbo(int neww, int newh, int* dw, int* dh,
 /* setup color attachment texture, reset the values to something
  * visible for troubleshooting */
 	char* mem = malloc(neww * newh * 4);
-	memset(mem, 0xaa, neww * newh * 4);
+	memset(mem, 0xff, neww * newh * 4);
 
 	glGenTextures(1, dcol);
 	glBindTexture(GL_TEXTURE_2D, *dcol);
