@@ -1084,10 +1084,11 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		exit(1);
 	}
 
-	SDL_WM_IconifyWindow(); 
+	platform_video_minimize();
 
 	ctx->get_current_framebuffer = get_framebuffer; 
 	ctx->get_proc_address = (retro_hw_get_proc_address_t) SDL_GL_GetProcAddress;
+
 	if (ctx->bottom_left_origin)
 		retroctx.shmcont.addr->storage.glsource = true;
 
