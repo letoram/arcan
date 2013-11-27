@@ -3198,7 +3198,7 @@ void arcan_luaL_shutdown(lua_State* ctx)
 
 void arcan_luaL_dostring(lua_State* ctx, const char* code)
 {
-    luaL_dostring(ctx, code);
+    (void)luaL_dostring(ctx, code);
 }
 
 lua_State* arcan_luaL_setup(int debuglevel)
