@@ -184,11 +184,11 @@ void clear_tocol(struct graph_context* ctx, uint32_t col)
 		ctx->vidp[i] = col;
 }
 
-void draw_box(struct graph_context* ctx, int x, int y, 
+bool draw_box(struct graph_context* ctx, int x, int y, 
 	int width, int height, uint32_t col)
 {
 	if (x >= ctx->width || y >= ctx->height || x < 0 || y < 0)
-		return;
+		return false;
 
 	width  = abs(width);
 	height = abs(height);
@@ -199,6 +199,8 @@ void draw_box(struct graph_context* ctx, int x, int y,
 	for (int cy = y; cy != uy; cy++)
 		for (int cx = x; cx != ux; cx++)
 			ctx->vidp[ cy * ctx->width + cx ] = col;
+
+	return true;
 }
 
 void draw_square(struct graph_context* ctx, int x, int y, 
@@ -216,12 +218,27 @@ void draw_square(struct graph_context* ctx, int x, int y,
 			ctx->vidp[ cy * ctx->width + cx ] = col;
 }
 
+void text_dimensions(struct graph_context* ctx, const char* msg,
+	int* dw, int* dh){
+
+	int nvc = 0;
+	while (*msg){
+		if (*msg <= 127)
+			nvc++;
+	
+		msg++;
+	}
+
+	*dw = nvc * pxfont_width;
+	*dh = pxfont_height;
+}
+
 /* use the included 8x8 bitmap font to draw simple 7-bit ASCII messages */
-void draw_text(struct graph_context* ctx, const char* msg, 
+bool draw_text(struct graph_context* ctx, const char* msg, 
 	int x, int y, uint32_t txcol)
 {
 	if (y + pxfont_height >= ctx->height)
-		return;
+		return false;
 
 	while (*msg && x+pxfont_width < ctx->width){
 /* font only has that many entry points */
@@ -235,6 +252,8 @@ void draw_text(struct graph_context* ctx, const char* msg,
 			x += pxfont_width;
 			msg++;
 	}
+
+	return true;
 }
 
 static void draw_bucket(struct graph_context* ctx, struct event_bucket* src, 

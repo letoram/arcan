@@ -86,8 +86,12 @@ void graph_log_conn_error(struct graph_context*,
 /* ---------------------------------------------- 
  *       Lower Level drawing functions 
  * ----------------------------------------------*/
-/* assumed sanitized inputs
- */
+/* assumed sanitized inputs, those that return bool
+ * will return false if the primitive couldn't fit inside
+ * the current context dimensions */
+
+void clear_tocol(struct graph_context* ctx, uint32_t col);
+
 void draw_hline(struct graph_context* ctx, int x, int y,
 	int width, uint32_t col);
 
@@ -100,7 +104,7 @@ void  draw_aaline(struct graph_context* ctx, int x, int y,
 void  draw_square(struct graph_context* ctx, int x, int y,
 	int side,  uint32_t col);
 
-void  draw_box(struct graph_context* ctx, int x, int y,
+bool draw_box(struct graph_context* ctx, int x, int y,
 	int width, int height, uint32_t col);
 
 void blend_square(struct graph_context* ctx, int x, int y,
@@ -112,8 +116,11 @@ void blend_vline(struct graph_context* ctx, int x, int y,
 void blend_hline(struct graph_context* ctx, int x, int y,
 	int width, uint32_t col, float fact);
 
-void draw_text(struct graph_context* ctx, const char* msg, 
+bool draw_text(struct graph_context* ctx, const char* msg, 
 	int x, int y, uint32_t col);
+
+void text_dimensions(struct graph_context* ctx, const char* msg,
+	int* dw, int* dh);
 
 void blend_text(struct graph_context* ctx, const char* msg, 
 	int x, int y, uint32_t col, float fact);

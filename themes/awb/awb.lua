@@ -18,7 +18,7 @@ colortable = {};
 groupicn    = "awbicons/drawer.png";
 groupselicn = "awbicons/drawer_open.png";
 deffont     = "fonts/topaz8.ttf";
-deffont_sz  = 12;
+deffont_sz  = 10;
 linespace   = 4;
 
 ORDER_MOUSE     = 255;
@@ -36,7 +36,7 @@ kbdbinds["F12"]    = function() awbwman_shadow_nonfocus(); end
 
 function menulbl(text)
 return render_text(string.format("\\#0055a9\\f%s,%d %s", 
-deffont, 10, text));
+deffont, deffont_sz, text));
 end
 
 function desktoplbl(text)
@@ -46,7 +46,7 @@ function desktoplbl(text)
 
 	text = text == nil and "" or text;
 	return render_text(string.format("\\#ffffff\\f%s,%d %s",
-	deffont, 10, text));
+	deffont, deffont_sz, text));
 end
 
 -- input is trusted, i.e. data supposedly comes from
