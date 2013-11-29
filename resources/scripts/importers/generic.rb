@@ -38,6 +38,8 @@ SystemTable = {
 
 # Common target- names and their corresponding system
 class Generic
+	attr_accessor :target
+
 	def initialize
 		@gentargets = {}
 		@genromlist = {}
@@ -80,7 +82,7 @@ class Generic
 				@gamedb = GamesDB.new
 				@gamedb_media = opts["--genscrapemedia"]
 			rescue => er
-				STDERR.print( "\tGamesDB Scraper not responding (#{er}), scraping disabled.\n");
+				STDERR.print( "#{self} GamesDB Scraper not responding (#{er}), scraping disabled.\n");
 				@gamedb = nil
 				@gamedb_media = nil
 				@options["--genscrape"] = nil
@@ -102,7 +104,7 @@ class Generic
 				arg.each{|subarg|
 					subargs = subarg.split(/,/)
 					if (subargs.size <= 1)
-						STDERR.print("[Generic Importer] couldn't set #{argstr}, format; target,arg1,arg2,..\n")
+						STDERR.print("#{self} couldn't set #{argstr}, format; target,arg1,arg2,..\n")
 						return false
 					else
 						@gentargets[subargs[0]] = [[], [], []] if @gentargets[subargs[0]] == nil 
@@ -144,10 +146,9 @@ class Generic
 				
 				begin
 					in_block = false
-					STDOUT.print("\t(#{target}: Trying to check core extensions with #{args}\n");
+					STDOUT.print("#{self} Trying to check core extensions with #{args}\n");
 	
 					IO.popen(args).each_line{|line|
-						p line
 						if (in_block)
 							line = line.strip
 							if (line != "/arcan_frameserver(info)")
@@ -162,26 +163,26 @@ class Generic
 						end
 					}
 					
-					STDOUT.print("\t(#{target}): Libretro core found, #{info["library"]} #{info["version"]}\n\t")
+					STDOUT.print("#{self} Libretro core found, #{info["library"]} #{info["version"]}\n\t")
 					if (info["extensions"])
 						exts = info["extensions"].split(/\|/)
 					else
 						exts = {};
 					end
-					STDOUT.print("\t(#{target}): Accepted extensions: #{exts}\n")
+					STDOUT.print("#{self} Accepted extensions: #{exts}\n")
 
 					@extensions = {}
 					exts.each{|val| @extensions[".#{val.upcase}"] = true }
 					@filter_ext = @extensions.size > 0
 	
 				rescue => er
-					STDERR.print("[Generic Importer] couldn't parse frameserver output (#{er}, #{er.backtrace}).\n");
+					STDERR.print("#{self} couldn't parse frameserver output (#{er}, #{er.backtrace}).\n");
 					@extensions = nil
 					@filter_ext = nil
 				end
 
 			else
-			   STDERR.print("[Generic Importer] couldn't find frameserver, no library extension filtering will be performed.\n")
+			   STDERR.print("#{self} couldn't find frameserver, no library extension filtering will be performed.\n")
 			end
 		end
 		
@@ -195,9 +196,9 @@ class Generic
 		if @gamedb
 			@gamedb_sys = @gamedb.find_system(target)
 			if @gamedb_sys == nil
-				STDERR.print("[Generic Importer] Problem while scraping data, no system match for target #{target} found.\n")
+				STDERR.print("#{self} Problem while scraping data, no system match for target #{target} found.\n")
 			else
-				STDOUT.print("[Generic Importer] Mapped #{target} to #{@gamedb_sys}\n")
+				STDOUT.print("#{self} Mapped #{target} to #{@gamedb_sys}\n")
 			end
 		end
 
@@ -257,13 +258,13 @@ class Generic
 				end
 
 			rescue => er
-				STDERR.print("[Generic Importer] Scraping media disabled, couldn't create output directories.\n");
+				STDERR.print("#{self} Scraping media disabled, couldn't create output directories.\n");
 				@gamedb_media = false
 			end
 			end
 			
 			if (game)
-				STDOUT.print("[Generic Importer] Scraping matched (#{title}) to (#{game.title})\n")
+				STDOUT.print("#{self} Scraping matched (#{title}) to (#{game.title})\n")
 				dstgame.title   = game.title
 				dstgame.players = game.players
 				dstgame.system  = game.platform
@@ -289,7 +290,7 @@ class Generic
 			end
 	
 		else
-			STDERR.print("[Generic Importer] No match for (#{title}) while scraping.\n")
+			STDERR.print("#{self} No match for (#{title}) while scraping.\n")
 		end
 		
 	end
@@ -318,7 +319,7 @@ class Generic
 			ext = File.extname(fn).upcase
 
 			if (fn == "." || fn == ".." || (@filter_ext and @extensions[ext] != true))
-				STDERR.print("\tunknown extension (#{ext}), ignored.\n");
+				STDERR.print("#{self} unknown extension (#{ext}), ignored.\n");
 				next
 			else
 				setname = File.basename(fn) 

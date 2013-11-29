@@ -5,6 +5,8 @@
 # packed in a full release, with an online lookup fallback
 #
 class FBA 
+	attr_accessor :target
+
 	def initialize
 		@categories = {}
 		@series = {}
@@ -193,7 +195,7 @@ class FBA
 		return (File.exists?(@fbatarget) )
 	end
 
-	def check_games(rompath)
+	def check_games(rompath, group)
 		setnames = {}
 		exts = ["zip", "ZIP", "iso", "ISO"]
 		

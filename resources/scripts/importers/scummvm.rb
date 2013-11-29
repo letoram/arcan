@@ -5,6 +5,8 @@
 # along with year, manufacturer,  ...)
 
 class ScummVM 
+	attr_accessor :target
+
 	def initialize
 		@scummargs = [ [], [], [] ]
 	end
@@ -93,7 +95,7 @@ class ScummVM
 		"[ScummVM Importer]"
 	end
 
-	def check_games(rompath)
+	def check_games(rompath, group)
 		Dir["#{rompath}/*"].each{|fn|
 			if (fn == "." || fn == ".." || File.directory?(fn) == false) 
 				next

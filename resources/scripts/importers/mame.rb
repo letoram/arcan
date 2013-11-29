@@ -1,4 +1,6 @@
 class Mame
+	attr_accessor :target
+
 	def initialize
 		@categories = {}
 		@series = {}
