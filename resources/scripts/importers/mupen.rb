@@ -2,6 +2,8 @@
 # Just a modified version of Mupen64Plus importer
 
 class Mupen
+	attr_accessor :target
+
 	def initialize
 		@mupenargs = []
 		@mupenargs[0] = ["--noosd", "--nosaveoptions", "--datadir", "[gamepath]/mupen", "--plugindir", "[gamepath]/mupen"]

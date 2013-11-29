@@ -178,10 +178,14 @@ class Game < DBObject
 		last = nil
 		if (@pkid > 0)
 			@@dbconn.execute(DQL[:update_game], 
-				last = [@setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @pkid])
+				last = [@setname, @players, @buttons, @ctrlmask, 
+					@genre, @subgenre, @year, 
+					@manufacturer, @system, @pkid])
 		else
 			@@dbconn.execute(DQL[:insert_game],
-				last = [@title, @setname, @players, @buttons, @ctrlmask, @genre, @subgenre, @year, @manufacturer, @system, @target.pkid])
+				last = [@title, @setname, @players, @buttons, @ctrlmask, 
+					@genre, @subgenre, @year, 
+					@manufacturer, @system, @target.pkid])
 
 			@pkid = @@dbconn.last_insert_row_id()
 		end
@@ -194,7 +198,8 @@ class Game < DBObject
 		@@dbconn.execute(DQL[:delete_arg_by_gameid], @pkid)
 		3.times{|arggrp|
 			@arguments[arggrp].each{|gamearg|
-				@@dbconn.execute(DQL[:insert_arg], [ @target.pkid, @pkid, gamearg, arggrp ])
+				@@dbconn.execute(DQL[:insert_arg], 
+					[ @target.pkid, @pkid, gamearg, arggrp ])
 			}
 		}
 	rescue => er
@@ -292,7 +297,14 @@ class Game < DBObject
 	end
 	
 	def Game.LoadSingle(title, setname, target)
-		dbres = @@dbconn.execute(DQL[:get_game_by_title_setname_targetid], title, setname, target)
+		dbres = nil
+
+		if (setname == nil) then
+			dbres = @@dbconn.execute(DQL[:get_game_by_title_exact], title, target)
+		else
+			dbres = @@dbconn.execute(DQL[:get_game_by_title_setname_targetid], title, setname, target)
+		end
+
 		dbres.count > 0 ? Game.FromRow(dbres[0]) : nil
 	end
 	
@@ -503,6 +515,59 @@ rescue => er
 	STDOUT.print("couldn't acquire DB connection, #{er}\n");
 end
 
+def add_preset(fn, group, target)
+	a = File.open(fn).readlines
+	game = nil
+
+	a.each{|line|
+
+		ind = line.index('=')
+		next if (ind == nil or ind == 0)
+		key = line[0..ind-1]
+		val = line[ind+1..-1].strip!
+
+		if key.upcase == "ENTRY" then
+			begin
+				if (game != nil) then
+					STDOUT.print("[#{group}.cfg], storing entry: #{game.title}\n")
+					game.store
+				end
+			rescue
+				STDERR.print("#{group}.cfg : couldn't store #{game}\n")
+			end
+
+			game = Game.LoadSingle(title, nil, @target.pkid)
+			if (not game) then
+				game = Game.new
+			end
+
+			game.title = val
+			game.target = target
+
+		elsif game == nil then
+			STDERR.print("#{group}.cfg : key without matching entry, ignoring.\n")
+	
+		elsif game.respond_to?("#{key}=") == false then
+			STDERR.print("unknown key (#{key}) specified, ignoring.\n")
+		
+		else
+			begin
+				game.send("#{key}=", val)
+			rescue
+				STDERR.print("error trying to set #{key} to #{val}, ignoring.\n")
+			end
+		end	
+	}	
+
+	if (game != nil) then
+		STDOUT.print("[#{group}.cfg], storing entry: #{game.title}\n")
+		game.store
+	end
+
+rescue => er
+	STDERR.print("#{group}.cfg : parsing error (#{er})\n")
+end
+
 def import_roms(options)
 # either let the user specify (multiple scanpath arguments)
 # or just glob the entire gamesfolder
@@ -510,6 +575,7 @@ def import_roms(options)
 		groups = []
 		options[:scangroup].each{|group|
 			path = "#{options[:rompath]}/#{group}"
+			
 			if File.exists?(path)
 				groups << group
 			else
@@ -543,22 +609,26 @@ def import_roms(options)
 		if (imp == nil)
 			STDOUT.print("No importer found for #{group}, ignoring.\n")
 			next
-		else
-			target_opt = imp.check_target(group, options[:targetpath])
-
-			unless (target_opt)
-				STDOUT.print("#{imp.to_s} Couldn't open target: #{group}, ignoring.\n")
-				next
-			end
-	
-			STDOUT.print("#{imp.to_s} processing\n")
-			imp.check_games( "#{options[:rompath]}/#{group}" ){|game|
-				game.store
-				STDOUT.print("\t|--> Added : #{game.title}\n")
-			}
-
-			STDOUT.print("#{imp.to_s} processed\n")
 		end
+	
+		unless (imp.check_target(group, options[:targetpath]))
+			STDOUT.print("#{imp.to_s} Couldn't open target: #{group}, ignoring.\n")
+			next
+		end
+	
+		fn = "#{options[:rompath]}/#{group}/#{group}.descr"
+		if (File.exists?(fn)) 
+			add_preset(fn, group, imp.target)
+			next
+		end
+
+		STDOUT.print("#{imp.to_s} processing\n")
+		imp.check_games( "#{options[:rompath]}/#{group}"){|game|
+			game.store
+			STDOUT.print("\t|--> Added : #{game.title}\n")
+		}
+
+		STDOUT.print("#{imp.to_s} processed\n")
 	}
 end
 
