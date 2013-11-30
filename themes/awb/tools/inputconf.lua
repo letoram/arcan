@@ -714,14 +714,7 @@ local function update_window(dev, sub)
 			local res = inputanalog_query(dev, sub);
 
 			if (res == nil) then
-				local img = desktoplbl("Couldn't find Device!");
-
-				link_image(img, wnd.canvas.vid);
-				image_inherit_order(img, true);
-				order_image(img, 3);
-				show_image(img);
-				expire_image(img, 100);
-	
+				wnd.dir.t:update_caption(menulbl("No Device Found"));
 			else
 				wnd.mode = res.mode;
 				wnd.deadzone = res.deadzone;
@@ -730,6 +723,9 @@ local function update_window(dev, sub)
 				wnd.kernel_sz = res.kernel_size;
 				wnd.dev = dev;
 				wnd.sub = sub;
+				wnd.dir.t:update_caption(menulbl(
+					string.format("(%d:%d)", 
+						dev, sub, res.label), 10) );
 
 				local w = wnd.canvasw;
 				local h = wnd.canvash;
@@ -819,6 +815,11 @@ function awb_inputed()
 	};
 
 	local devtbl = inputanalog_query();
+	if (#devtbl == 0) then
+		inputanalog_query(0, 0, 1);
+		devtbl = inputanalog_query();
+	end
+
 	if (#devtbl > 0) then
 		table.insert(list, {
 			cols = {"Analog Options..."},
@@ -828,6 +829,21 @@ function awb_inputed()
 			end
 		});
 	end
+
+	table.insert(list, {
+		cols = {"Re- scan Analog..."},
+			trigger = function(self, wnd)
+				inputanalog_query(0, 0, 1);
+				local x = wnd.x;
+				local y = wnd.y;
+
+				wnd:destroy();
+				local newwnd = awb_inputed();
+				if (newwnd ~= nil) then
+					newwnd:move(x, y);
+				end
+			end
+	});
 
 	for i,v in ipairs(res) do
 		local base, ext = string.extension(v);
@@ -856,8 +872,13 @@ function awb_inputed()
 
 	local wnd = awbwman_listwnd(menulbl("Input Editor"), 
 		deffont_sz, linespace, {1.0}, list, desktoplbl);
-	wnd.name = "Input Editor";
-	wnd.helpmsg = MESSAGE["HELP_INPUT"];
+
+	if (wnd ~= nil) then
+		wnd.name = "Input Editor";
+		wnd.helpmsg = MESSAGE["HELP_INPUT"];
+	end
+
+	return wnd;
 end
 
 function inputed_configlist()

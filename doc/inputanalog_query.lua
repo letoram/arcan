@@ -1,10 +1,14 @@
 -- inputanalog_query
 -- @short: Query analog devices for filtering details. 
--- @inargs: *devnum*, *axnum* 
+-- @inargs: *devnum*, *axnum*, *rescan* 
 -- @outargs: analogtbl_tbl or analogtbl
 -- @longdescr: This function allows you to query a device for analog 
 -- device options and current values, either globally (no arguments,
--- table of analogtbl returned) or from a specific device (and, optionally) axis.
+-- table of analogtbl returned) or from a specific device (and, optionally) 
+-- axis. If rescan is set to != 0, the input subsystem will first scan for 
+-- new devices.
+-- @note: rescan is a rather costly operation and may possibly lose data
+-- for devices that doesn't identify properly.
 -- @note: analogtbl members:
 -- devid, subid (device and axis indices)
 -- upper_bound, lower_bound (value > upper and < lower will be discarded)

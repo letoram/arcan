@@ -1738,7 +1738,8 @@ static inline int arcan_lua_funtable(lua_State* ctx, uint32_t kind){
 	return top;
 }
 
-static inline void tblstr(lua_State* ctx, char* k, char* v, int top){
+static inline void tblstr(lua_State* ctx, const char* k, 
+	const char* v, int top){
 	lua_pushstring(ctx, k);
 	lua_pushstring(ctx, v);
 	lua_rawset(ctx, top);
@@ -4766,6 +4767,7 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	int ttop = lua_gettop(ctx);
 	tblnum(ctx, "devid", devid, ttop);
 	tblnum(ctx, "subid", axid, ttop);
+	tblstr(ctx, "label", arcan_event_devlabel(devid), ttop);
 	tblnum(ctx, "upper_bound", ubound, ttop);
 	tblnum(ctx, "lower_bound", lbound, ttop);
 	tblnum(ctx, "deadzone", dz, ttop);
@@ -4780,6 +4782,10 @@ static int arcan_lua_inputanalogquery(lua_State* ctx)
 	int devid = ARCAN_JOYIDBASE, resind = 1;
 	int devnum = luaL_optnumber(ctx, 1, -1);
 	int axnum = luaL_optnumber(ctx, 2, 0);
+	int rescan = luaL_optnumber(ctx, 3, 0);
+
+ 	if (rescan)
+		arcan_event_rescan_idev(arcan_event_defaultctx());
 
 	if (devnum != -1)
 		return singlequery(ctx, devnum, axnum);
@@ -4807,6 +4813,7 @@ static int arcan_lua_inputanalogquery(lua_State* ctx)
 
 			tblnum(ctx, "devid", devid, ttop);
 			tblnum(ctx, "subid", axid, ttop);
+			tblstr(ctx, "label", arcan_event_devlabel(devid), ttop);
 			tblnum(ctx, "upper_bound", ubound, ttop);
 			tblnum(ctx, "lower_bound", lbound, ttop);
 			tblnum(ctx, "deadzone", dz, ttop);

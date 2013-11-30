@@ -39,9 +39,14 @@ return render_text(string.format("\\#0055a9\\f%s,%d %s",
 deffont, deffont_sz, text));
 end
 
-function desktoplbl(text)
+function desktoplbl(text, len)
 	if (type(text) ~= "string") then
 		print(debug.traceback());
+	end
+
+	if (len and len > 0) then
+		text = string.sub(text, 1, string.utf8forward(text, len)); 
+		print(text);
 	end
 
 	text = text == nil and "" or text;
@@ -234,6 +239,9 @@ end
 --
 function gamelist_launch(self, factstr)
 	local game = self.tag;
+	if (game == nil) then
+		return;
+	end
 
 	local captbl = launch_target_capabilities(game.target);
 	if (captbl == nil) then
@@ -841,10 +849,10 @@ end
 function builtin_group(self, ofs, lim, desw, desh)
 	local tools = {
 		{"BOING!",     spawn_boing,    "boing"},
-		{"InputConf",  awb_inputed,  "inputed"},
+		{"Input",      awb_inputed,  "inputed"},
 		{"Recorder",   spawn_vidrec,  "vidrec"},
 		{"Network",    spawn_socsrv, "network"},
-		{"VidCap",     spawn_vidwin,  "vidcap"},
+		{"VideoIn",    spawn_vidwin,  "vidcap"},
 --		{"Compare",   spawn_vidcmp,  "vidcmp"},
 		{"HeightMap", spawn_hmap,   "hghtmap"}
 --		{"ShaderEd",  spawn_shadeed, "shadeed"},
