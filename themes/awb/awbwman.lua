@@ -43,6 +43,7 @@ local awb_cfg = {
 	global_input= {},
 	amap        = {},
 
+	spawn_method = "mouse",
 	rootcell_w  = 80,
 	rootcell_h  = 60,
 	icnroot_startx = 0,
@@ -419,6 +420,8 @@ local function awbman_mhandlers(wnd, bar)
 end
 
 local function awbwman_addcaption(bar, caption)
+	bar.update_caption = awbwman_addcaption;
+
 	local props  = image_surface_properties(caption);
 	local bgsurf = color_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("caption", "fill", bgsurf);
@@ -497,19 +500,35 @@ end
 -- desired spawning behavior might change (i.e. 
 -- best fit, random, centered, at cursor, incremental pos, ...)
 --
-local function awbwman_next_spawnpos()
+local function awbwman_next_spawnpos(wnd)
 	local oldx = awb_cfg.spawnx;
 	local oldy = awb_cfg.spawny;
-	
-	awb_cfg.spawnx = awb_cfg.spawnx + awb_cfg.topbar_sz;
-	awb_cfg.spawny = awb_cfg.spawny + awb_cfg.topbar_sz;
 
-	if (awb_cfg.spawnx > VRESW * 0.75) then
-		awb_cfg.spawnx = 0;
-	end
+	if (awb_cfg.spawn_method == "mouse") then
+		local x, y = mouse_xy();
+		x = x - 16;
 
-	if (awb_cfg.spawny > VRESH * 0.75) then
-		awb_cfg.spawny = 0;
+		if (wnd.canvasw + x > VRESW) then
+			x = VRESW - wnd.canvasw;
+		end
+
+		if (wnd.canvash + y > VRESH) then
+			y = VRESH - wnd.canvash;
+		end
+
+		return x, y;
+
+	else
+		awb_cfg.spawnx = awb_cfg.spawnx + awb_cfg.topbar_sz;
+		awb_cfg.spawny = awb_cfg.spawny + awb_cfg.topbar_sz;
+
+		if (awb_cfg.spawnx > VRESW * 0.75) then
+			awb_cfg.spawnx = 0;
+		end
+
+		if (awb_cfg.spawny > VRESH * 0.75) then
+			awb_cfg.spawny = 0;
+		end
 	end
 
 	return oldx, oldy;
@@ -1593,10 +1612,11 @@ function awbwman_spawn(caption, options)
 
 -- load pos, size from there and update
 -- the key in destroy
-	if (options.x == nil) then
-		options.x, options.y = awbwman_next_spawnpos();
-	end
 	local wcont  = awbwnd_create(options);
+	if (wcont == nil) then
+		return;
+	end
+
 	wcont.kind   = "window";
 
 	local mhands = {};
@@ -1751,6 +1771,13 @@ function awbwman_spawn(caption, options)
 	wcont.focus = awbwman_focus;
 	wcont.focused = function(self) 
 		return self == awb_cfg.focus; 
+	end
+
+	if (options.x == nil) then
+		options.x, options.y = awbwman_next_spawnpos(wcont);
+		wcont:move(options.x, options.y);
+	else
+		wcont:move(options.x, options.y);
 	end
 
 	return wcont;
