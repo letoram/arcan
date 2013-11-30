@@ -532,6 +532,11 @@ arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
 	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode);
 
+/* look for new joystick / analog devices */
+void arcan_event_rescan_idev(arcan_evctx* ctx);
+
+const char* arcan_event_devlabel(int devid);
+
 /*
  * Quick-helper to toggle all analog device samples on / off  
  * If mouse is set the action will also be toggled on mouse x / y

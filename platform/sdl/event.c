@@ -25,6 +25,7 @@ static struct {
 		struct axis_opts mx, my, 
 			mx_r, my_r;
 	
+		bool sticks_init;
 		unsigned short n_joy;
 		struct arcan_stick* joys;
 } iodev = {0};
@@ -341,6 +342,19 @@ static inline void process_hatmotion(arcan_evctx* ctx, unsigned devid,
 	}
 }
 
+const char* arcan_event_devlabel(int devid)
+{
+	if (devid == -1)
+		return "mouse";
+
+	devid -= ARCAN_JOYIDBASE;
+	if (devid < 0 || devid >= iodev.n_joy)
+		return "no device";
+
+	return strlen(iodev.joys[devid].label) == 0 ?
+		"no identifier" : iodev.joys[devid].label;
+}
+
 void platform_event_process(arcan_evctx* ctx)
 {
 	SDL_Event event;
@@ -479,6 +493,109 @@ void platform_event_process(arcan_evctx* ctx)
 	}
 }
 
+void drop_joytbl()
+{
+	for(int i=0; i < iodev.n_joy; i++){
+		free(iodev.joys[i].adata);
+		free(iodev.joys[i].hattbls);
+	}
+
+	free(iodev.joys);
+	iodev.joys = NULL;
+	iodev.n_joy = 0;
+}
+
+void arcan_event_rescan_idev(arcan_evctx* ctx)
+{
+	if (iodev.sticks_init)
+		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+
+	SDL_Init(SDL_INIT_JOYSTICK);
+	iodev.sticks_init = true;
+	SDL_JoystickEventState(SDL_ENABLE);
+
+	int n_joys = SDL_NumJoysticks();
+
+	if (n_joys == 0){
+		drop_joytbl();
+		return;
+	}
+
+/*
+ * (Re) scan/open all joysticks, 
+ * look for matching / already present devices
+ * and copy their settings.
+ */
+	size_t jsz = sizeof(struct arcan_stick) * n_joys;
+	struct arcan_stick* joys = malloc(jsz);
+	memset(joys, '\0', jsz);
+
+	for (int i = 0; i < n_joys; i++) {
+		struct arcan_stick* dj = &joys[i];
+		struct arcan_stick* sj = NULL;
+		int hashid = djb_hash(SDL_JoystickName(i));
+
+/* find existing */
+		if (iodev.joys){
+			for (int j = 0; j < iodev.n_joy; j++) 
+				if (iodev.joys[j].hashid == hashid){
+					sj = &iodev.joys[j];
+					break;
+				}
+
+			if (sj){
+				memcpy(dj, sj, sizeof(struct arcan_stick));
+				if (dj->hats){
+					dj->hattbls = malloc(dj->hats * sizeof(unsigned));
+					memcpy(dj->hattbls, sj->hattbls, sizeof(unsigned) * sj->hats);
+				}
+
+				if (dj->axis){
+					dj->adata = malloc(dj->axis * sizeof(struct axis_opts));
+					memcpy(dj->adata, sj->adata, sizeof(unsigned) * sj->hats);
+				}	
+				continue;
+			}
+		}
+
+/* new entry */
+		strncpy(dj->label, SDL_JoystickName(i), 255);
+		dj->hashid = djb_hash(SDL_JoystickName(i));
+		dj->handle = SDL_JoystickOpen(i);
+		dj->devnum = i;
+
+		dj->axis    = SDL_JoystickNumAxes(joys[i].handle);
+		dj->buttons = SDL_JoystickNumButtons(joys[i].handle);
+		dj->balls   = SDL_JoystickNumBalls(joys[i].handle);
+		dj->hats    = SDL_JoystickNumHats(joys[i].handle);
+
+		if (dj->hats > 0){
+			size_t dst_sz = joys[i].hats * sizeof(unsigned);
+			dj->hattbls = malloc(dst_sz);
+			memset(joys[i].hattbls, 0, dst_sz);
+		}
+
+		if (dj->axis > 0){
+			size_t ad_sz = sizeof(struct axis_opts) * dj->axis;
+			dj->adata = malloc(ad_sz);
+			memset(dj->adata, '\0', ad_sz); 
+			for (int i = 0; i < dj->axis; i++){
+				dj->adata[i].mode = ARCAN_ANALOGFILTER_AVG;
+/* these values are sortof set 
+ * based on the SixAxis (common enough, and noisy enough) */
+				dj->adata[i].lower    = -32765;
+				dj->adata[i].deadzone = 5000;
+				dj->adata[i].upper    = 32768;
+				dj->adata[i].kernel_sz = 1;
+			}
+		}
+	}
+
+	drop_joytbl();
+	iodev.n_joy = n_joys; 
+	iodev.joys = joys;
+}
+
 void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 {
 		ctx->kbdrepeat = rate;
@@ -490,12 +607,10 @@ void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 
 void platform_event_deinit(arcan_evctx* ctx)
 {
-	if (iodev.joys){
-		free(iodev.joys);
-		iodev.joys = 0;
+	if (iodev.sticks_init){
+		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+		iodev.sticks_init = false;
 	}
-
-	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 }
 
 void platform_device_lock(int devind, bool state)
@@ -526,57 +641,7 @@ void platform_event_init(arcan_evctx* ctx)
 	SDL_Event dummy[1];
 	while ( SDL_PeepEvents(dummy, 1, SDL_GETEVENT, 
 		SDL_EVENTMASK(SDL_MOUSEMOTION)) );
-			
-	SDL_Init(SDL_INIT_JOYSTICK);
 
-	SDL_JoystickEventState(SDL_ENABLE);
-	iodev.n_joy = SDL_NumJoysticks();
-
-/* 
- * enumerate joysticks, 
- * try to connect to those available and map their respective axises,
- * should implement some way to try and track / reuse devnum and 
- * allow rescanning etc. to handle devices that appear after 
- * launch.
- */
-	if (iodev.n_joy > 0) {
-		size_t jsz = sizeof(struct arcan_stick) * iodev.n_joy;
-		iodev.joys = malloc(jsz);
-		memset(iodev.joys, '\0', jsz);
-
-		for (int i = 0; i < iodev.n_joy; i++) {
-			struct arcan_stick* dj = &iodev.joys[i];
-
-			strncpy(dj->label, SDL_JoystickName(i), 255);
-			dj->hashid = djb_hash(SDL_JoystickName(i));
-			dj->handle = SDL_JoystickOpen(i);
-			dj->devnum = i;
-
-			dj->axis    = SDL_JoystickNumAxes(iodev.joys[i].handle);
-			dj->buttons = SDL_JoystickNumButtons(iodev.joys[i].handle);
-			dj->balls   = SDL_JoystickNumBalls(iodev.joys[i].handle);
-			dj->hats    = SDL_JoystickNumHats(iodev.joys[i].handle);
-
-			if (dj->hats > 0){
-				size_t dst_sz = iodev.joys[i].hats * sizeof(unsigned);
-				dj->hattbls = malloc(dst_sz);
-				memset(iodev.joys[i].hattbls, 0, dst_sz);
-			}
-
-			if (dj->axis > 0){
-				size_t ad_sz = sizeof(struct axis_opts) * dj->axis;
-				dj->adata = malloc(ad_sz);
-				memset(dj->adata, '\0', ad_sz); 
-				for (int i = 0; i < dj->axis; i++){
-					dj->adata[i].mode = ARCAN_ANALOGFILTER_AVG;
-/* these values are sortof set 
- * based on the SixAxis (common enough, and noisy enough) */
-					dj->adata[i].lower    = -32765;
-					dj->adata[i].deadzone = 5000;
-					dj->adata[i].upper    = 32768;
-					dj->adata[i].kernel_sz = 1;
-				}
-			}
-		}
-	}
+	arcan_event_rescan_idev(ctx);
 }
+

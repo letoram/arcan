@@ -241,6 +241,9 @@ local function awbwnd_destroy(self, timeval)
 		print(debug.traceback());
 	end
 
+	if (valid_vid(self.canvas.vid)) then
+		force_image_blend(self.canvas.vid, BLEND_NORMAL);
+	end
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
 
