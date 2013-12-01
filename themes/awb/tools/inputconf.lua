@@ -602,7 +602,7 @@ end
 local function update_window(dev, sub)
 	if (global_analwin == nil) then
 		local wnd = awbwman_spawn(menulbl("Analog View"), {});
-	
+
 		global_analwin = wnd;
 		wnd.hoverlut = {};
 		wnd.deadzone = 0;
@@ -610,6 +610,7 @@ local function update_window(dev, sub)
 		wnd.lbound = -32768;
 		wnd.mode = "none";
 		wnd.kernel_sz = 1;
+		wnd.name = string.format("Analog(%d:%d)", dev, sub);
 
 		local cfg = awbwman_cfg();
 		local bar = wnd:add_bar("tt", cfg.ttactiveres, cfg.ttactiveres,
@@ -636,7 +637,9 @@ local function update_window(dev, sub)
 		canvash.name = "analog_canvas";
 
 		mouse_addlistener(bar, {"click", "hover"});
-	
+		mouse_addlistener(canvash, {"click"});
+		table.insert(wnd.handlers, canvash);
+
 		wnd.hoverlut[
 		(bar:add_icon("filters", "l", cfg.bordericns["filter"],
 			function(self) 
@@ -662,9 +665,10 @@ local function update_window(dev, sub)
 		wnd.hoverlut[
 		(bar:add_icon("ubound", "l", cfg.bordericns["uparrow"],
 			function(self)
+				print("ubound:", wnd.ubound);
 				awbwman_popupslider(16536, wnd.ubound, 32767, function(val)
 					inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
-						val, wnd.lbound, wnd.kernel_sz, wnd.mode);
+						wnd.lbound, val, wnd.kernel_sz, wnd.mode);
 					wnd:switch_device(wnd.dev, wnd.sub);
 				end, {ref = self.vid});
 			end)).vid] = MESSAGE["ANALOG_UBOUND"];
@@ -672,22 +676,25 @@ local function update_window(dev, sub)
 		wnd.hoverlut[
 		(bar:add_icon("lbound", "l", cfg.bordericns["downarrow"],
 			function(self)
+				print("lbound:", wnd.lbound);
 				awbwman_popupslider(-16536, wnd.lbound, -32767, function(val)
 					inputanalog_filter(wnd.dev, wnd.sub, wnd.deadzone, 
-						wnd.ubound, val, wnd.kernel_sz, wnd.mode);
+						val, wnd.ubound, wnd.kernel_sz, wnd.mode);
 					wnd:switch_device(wnd.dev, wnd.sub);
 				end, {ref = self.vid});
 			end)).vid] = MESSAGE["ANALOG_LBOUND"];
 
-		wnd.hoverlut[
-		(bar:add_icon("invert", "l", cfg.bordericns["flip"],
+		wnd.invertvid = 
+		bar:add_icon("invert", "l", cfg.bordericns["flip"],
 			function(self)
 				if (awbwman_flipaxis(wnd.dev, wnd.sub)) then
 					image_shader(self.vid, "awb_selected");
 				else
 					image_shader(self.vid, "DEFAULT");
 				end
-			end)).vid] = MESSAGE["ANALOG_INVERT"];
+			end).vid;
+
+		wnd.hoverlut[wnd.invertvid] = MESSAGE["ANALOG_INVERT"];
 
 		awbwman_reqglobal(wnd);
 		wnd.on_destroy = function() global_analwin = nil; end;
@@ -698,7 +705,11 @@ local function update_window(dev, sub)
 		local ubound = color_surface(2, 2,   0, 255,   0);
 		local lbound = color_surface(2, 2,   0, 255, 255);
 		local  dzone = color_surface(2, 2, 128,  32,  32);
-		
+	
+		image_mask_set(ubound, MASK_UNPICKABLE);
+		image_mask_set(lbound, MASK_UNPICKABLE);
+		image_mask_set(dzone, MASK_UNPICKABLE);
+
 		link_image(ubound, wnd.canvas.vid);
 		link_image(lbound, wnd.canvas.vid);
 		link_image(dzone,  wnd.canvas.vid);
@@ -721,12 +732,14 @@ local function update_window(dev, sub)
 				wnd.ubound = res.upper_bound;
 				wnd.lbound = res.lower_bound;
 				wnd.kernel_sz = res.kernel_size;
+				wnd.devlbl = res.label;
 				wnd.dev = dev;
 				wnd.sub = sub;
-				wnd.dir.t:update_caption(menulbl(
-					string.format("(%d:%d)", 
-						dev, sub, res.label), 10) );
+				local lblcap = menulbl( 
+					string.format("(%d:%d)", dev, sub, res.label), 10);
+				image_tracetag(lblcap, "analog_detailcap");
 
+				wnd.dir.t:update_caption(lblcap);
 				local w = wnd.canvasw;
 				local h = wnd.canvash;
 				local step = h / 65536;
@@ -743,6 +756,9 @@ local function update_window(dev, sub)
 
 				move_image(dzone, 0, h * 0.5 - step * res.deadzone * 0.5);
 			end
+
+			local flipped = awbwman_flipaxis(wnd.dev, wnd.sub, true);
+			image_shader(wnd.invertvid, flipped == true and "awb_selected" or "DEFAULT");
 		end
 
 		wnd.ainput = function(self, iotbl)
@@ -781,7 +797,7 @@ local function inputed_anallay(devtbl)
 				update_window(j.devid, j.subid);
 			end,
 			cols = {
-				tostring(j.devid), tostring(j.subid)
+				tostring(j.devid), tostring(j.subid), j.label
 			}
 		}
 
@@ -789,7 +805,7 @@ local function inputed_anallay(devtbl)
 	end
 
 	local wnd = awbwman_listwnd(menulbl("Analog Options"), 
-		deffont_sz, linespace, {0.5, 0.5}, devs, desktoplbl);
+		deffont_sz, linespace, {0.2, 0.2, 0.6}, devs, desktoplbl);
 
 	if (wnd == nil) then
 		return;
@@ -800,6 +816,25 @@ function awb_inputed()
 	local res = glob_resource("keyconfig/*.cfg", RESOURCE_THEME);	
 	local ctable = {};
 	set_tblfun(ctable);
+
+	inputed_glut = {};
+	local symres = glob_resource("keyconfig/*.sym", RESOURCE_THEME);
+
+	if (symres and #symres > 0) then
+		for i, v in ipairs(symres) do
+			local resv = system_load("keyconfig/" .. v);
+			if (resv) then
+				local group, tbl = resv();
+
+				if (type(group) == "string" and type(tbl) == "tbl") then
+					inputed_glut[group] = tbl;
+				else
+					warning(string.format("loading helper (%s) failed" ..
+						", expected key, tbl\n", v));
+				end
+			end
+		end
+	end
 
 	local list = {
 		{

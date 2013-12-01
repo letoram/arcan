@@ -330,6 +330,7 @@ local function awbbar_resize(self, neww, newh)
 	local stepy;
 	local lim; 
 
+-- tile pattern
 	if (self.vertical) then
 		stepx = 0;
 		stepy = 1;
@@ -342,6 +343,7 @@ local function awbbar_resize(self, neww, newh)
 		lim = neww;
 	end
 
+-- reposition icons and figure out fillspace
 	local lofs = 0;
 	for i=1,#self.left do
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
@@ -368,10 +370,14 @@ local function awbbar_resize(self, neww, newh)
 
 		if (self.vertical) then
 			move_image(self.fill.vid, 0, lofs);
-			resize_image(self.fill.vid, self.size, lim);
+			if (self.noresize_fill == nil) then
+				resize_image(self.fill.vid, self.size, lim);
+			end
 		else
 			move_image(self.fill.vid, lofs, 0);
-			resize_image(self.fill.vid, lim, self.size);
+			if (self.noresize_fill == nil) then
+				resize_image(self.fill.vid, lim, self.size);
+			end
 		end
 	end
 end

@@ -895,6 +895,7 @@ function awbwnd_target(pwin, caps, factstr)
 -- if we're in fullscreen, handle the resize differently
 			pwin.updated = true;
 			image_set_txcos_default(pwin.canvas.vid, pwin.mirrored);
+			force_image_blend(pwin.canvas.vid, BLEND_NONE);
 	
 		elseif (status.kind == "state_size") then
 			pwin:drop_statectls();
