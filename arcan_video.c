@@ -1335,7 +1335,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 		if (forced.h > 0 && forced.w > 0){
 			neww = ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.w) : forced.w;
 			newh = ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.h) : forced.h;
-				
+			dst->origw = forced.w;
+			dst->origh = forced.h;
+
 			dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
 			dstframe->vinf.text.raw   = malloc(dstframe->vinf.text.s_raw); 
 			stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
