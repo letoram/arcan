@@ -533,15 +533,19 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 	for (int i = 0; i < n_joys; i++) {
 		struct arcan_stick* dj = &joys[i];
 		struct arcan_stick* sj = NULL;
-		int hashid = djb_hash(SDL_JoystickName(i));
+		unsigned long hashid = djb_hash(SDL_JoystickName(i));
 
 /* find existing */
 		if (iodev.joys){
-			for (int j = 0; j < iodev.n_joy; j++) 
+			for (int j = 0; j < iodev.n_joy; j++){ 
 				if (iodev.joys[j].hashid == hashid){
+					arcan_warning("found matching\n");
 					sj = &iodev.joys[j];
 					break;
 				}
+				else
+					arcan_warning("didn't match %d, %d\n", iodev.joys[j].hashid, hashid);
+			}
 
 			if (sj){
 				memcpy(dj, sj, sizeof(struct arcan_stick));
@@ -552,8 +556,10 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 
 				if (dj->axis){
 					dj->adata = malloc(dj->axis * sizeof(struct axis_opts));
-					memcpy(dj->adata, sj->adata, sizeof(unsigned) * sj->hats);
-				}	
+					memcpy(dj->adata, sj->adata, sizeof(struct axis_opts) * sj->axis);
+				}
+
+				dj->handle = SDL_JoystickOpen(i);
 				continue;
 			}
 		}

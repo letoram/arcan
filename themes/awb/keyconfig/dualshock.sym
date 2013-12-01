@@ -1,0 +1,51 @@
+local tbl = {
+	analog = {
+		"Lstick X",
+		"Lstick Y",
+		"Rstick X",
+		"Rstick Y",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"L2",
+		"R2",
+		"L1",
+		"R2",
+		"Triangle",
+		"Circle",
+		"Cross",
+		"Square",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown",
+		"Unknown"
+	},
+	digital = {
+		"Select",
+		"Lstick Press",
+		"Rstick Press",
+		"Start",
+		"Up",
+		"Right",
+		"Down",
+		"Left",
+		"L2 Press",
+		"R2 Press",
+		"L1 Press",
+		"L2 Press",
+		"Triangle",
+		"Circle",
+		"Cross",
+		"Square"
+	}
+};
+
+return "Sony PLAYSTATION(R)3 Controller", tbl;

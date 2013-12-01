@@ -412,35 +412,42 @@ local function awbman_mhandlers(wnd, bar)
 end
 
 local function awbwman_addcaption(bar, caption)
+	if (bar.update_caption == nil) then
+		bar.update_caption = awbwman_addcaption;
+	else
+		image_sharestorage(caption, bar.capvid);
+		local props = image_surface_properties(caption);
+		delete_image(caption);
+		resize_image(bar.capvid, props.width, props.height);
+		resize_image(bar.bgvid, 3 + props.width * 1.1, bar.size);
+		return;
+	end
+
 	bar.update_caption = awbwman_addcaption;
-	print("caption set to id:", caption);
+	bar.noresize_fill = true;
 
 	local props  = image_surface_properties(caption);
-	local bgsurf = color_surface(10, 10, 230, 230, 230);
+	local bgsurf = fill_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("caption", "fill", bgsurf);
-	delete_image(icn.vid);
+	delete_image(bgsurf);	
 
 	if (props.height > (bar.size - 2)) then
 		resize_image(caption, 0, bar.size);
 		props = image_surface_properties(caption);
 	end
 
-	icn.maxsz = 3 + props.width * 1.1; 
-	icn.vid = bgsurf;
+	icn.maxsz = math.floor(3 + props.width * 1.1);
+	resize_image(icn.vid, icn.maxsz, bar.size);
 
-	link_image(icn.vid, bar.vid);
-	show_image(icn.vid);
-	image_inherit_order(icn.vid, true);
-	order_image(icn.vid, 0);
-	image_mask_set(icn.vid, MASK_UNPICKABLE);
-
-	link_image(caption, bgsurf);
+	link_image(caption, icn.vid);
 	show_image(caption);
 	image_inherit_order(caption, true);
 	order_image(caption, 1);
 	image_mask_set(caption, MASK_UNPICKABLE);
 	move_image(caption, 2, 2 + math.floor(0.5 * (bar.size - props.height)));
 	image_clip_on(caption, CLIP_SHALLOW);
+	bar.capvid = caption;
+	bar.bgvid = icn.vid;
 end
 
 function awbwman_gather_scatter()
@@ -1731,6 +1738,8 @@ function awbwman_spawn(caption, options)
 			return vid == icn.vid;
 		end
 
+		rhandle.click = function() wcont:focus(); end
+
 		rhandle.rclick = function(self, vid)
 			awbwman_focus(wcont);
 			if (options.fullscreen) then
@@ -1761,7 +1770,7 @@ function awbwman_spawn(caption, options)
 		end
 
 		rhandle.name = "awbwindow_resizebtn";
-		mouse_addlistener(rhandle, {"drag", "drop", "rclick"});
+		mouse_addlistener(rhandle, {"click", "drag", "drop", "rclick"});
 		wcont.rhandle = rhandle; -- for deregistration
 	end	
 
@@ -2104,9 +2113,13 @@ function awbwman_ainput(iotbl)
 	end
 end
 
-function awbwman_flipaxis(dev, sub)
+function awbwman_flipaxis(dev, sub, qry)
 	if (awb_cfg.amap[dev] == nil) then
 		awb_cfg.amap[dev] = {};
+	end
+
+	if (qry) then
+		return awb_cfg.amap[dev][sub];
 	end
 
 	if (awb_cfg.amap[dev][sub] == nil) then
