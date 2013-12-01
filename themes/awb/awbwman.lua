@@ -3,15 +3,7 @@
 -- More advanced windows from the (awbwnd.lua) base
 -- tracking ordering, creation / destruction /etc.
 --
--- Todolist:
---   -> Auto-hide occluded windows to limit overdraw
---   -> Animated resize effect
---   -> Save background image
 
---
--- mapped up as "default_inverted", needed by some subclasses
--- (e.g. awbwnd_icon etc.)
---
 local awbwnd_invsh = [[
 uniform sampler2D map_diffuse;
 uniform float obj_opacity;
@@ -421,6 +413,7 @@ end
 
 local function awbwman_addcaption(bar, caption)
 	bar.update_caption = awbwman_addcaption;
+	print("caption set to id:", caption);
 
 	local props  = image_surface_properties(caption);
 	local bgsurf = color_surface(10, 10, 230, 230, 230);
@@ -755,6 +748,7 @@ function awbwman_dialog(caption, buttons, options, modal)
 		self.dlg_caption = capvid;
 		link_image(capvid, self.canvas.vid);
 		image_inherit_order(capvid, true);
+		order_image(capvid, 1);
 	end
 
 	local wndprop = image_surface_properties(wnd.canvas.vid);
@@ -912,7 +906,8 @@ function awbwman_rootwnd()
 
 	tbar.name = "rootwnd_topbar";
 	tbar.rzfun = awbbaricn_rectresize;
-	local cap = awb_cfg.mnurndfun("AWB ");
+	local cap = menulbl("AWB ");
+
 	local awblist = {
 		"Reset Background",
 		"Help...",
@@ -1109,6 +1104,20 @@ function awb_clock_pulse(stamp, nticks)
 		if (v.clock_pulse) then
 			v:clock_pulse(stamp, nticks);
 		end
+	end
+
+	if (DEBUGLEVEL > 0) then
+		local a, b = current_context_usage();
+
+		if (valid_vid(DEBUG_usage)) then
+			delete_image(DEBUG_usage);
+		end
+
+		DEBUG_usage = desktoplbl(string.format("%d/%d", a, b));
+		show_image(DEBUG_usage);
+		order_image(DEBUG_usage, max_current_image_order());
+		move_image(DEBUG_usage, 0, 
+			VRESH - image_surface_properties(DEBUG_usage).height);
 	end
 end
 
