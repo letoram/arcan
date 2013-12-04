@@ -750,12 +750,19 @@ function awbwman_dialog(caption, buttons, options, modal)
 	show_image(caption);
 
 	wnd.update_caption = function(self, capvid)
-		copy_image_transform(self.dlg_caption, capvid);
 		delete_image(self.dlg_caption);
 		self.dlg_caption = capvid;
+		local props = image_surface_properties(capvid);
+		local cprop = image_surface_properties(self.canvas.vid);
+
+		move_image(capvid, math.floor(0.5 * (cprop.width - props.width)),
+			math.floor(0.5 * ( (cprop.height - bheight - 10) - props.height)));
+	
+		image_mask_set(caption, MASK_UNPICKABLE);
 		link_image(capvid, self.canvas.vid);
 		image_inherit_order(capvid, true);
-		order_image(capvid, 1);
+		order_image(capvid, 2);
+		show_image(capvid);
 	end
 
 	local wndprop = image_surface_properties(wnd.canvas.vid);
