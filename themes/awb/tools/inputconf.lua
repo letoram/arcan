@@ -323,8 +323,27 @@ local function input_dig(edittbl)
 
 		if (tblstr) then
 			dlg.lastid = tblstr;
-			local msg = cfg.defrndfun( string.format("Press a button for [%s]\\n\\r\t%s",
-			edittbl.name, tblstr) ); 
+			local alias = "";
+
+			local ainf = inputanalog_query(iotbl.devid, 0);
+
+			if (ainf and ainf.label ~= nil) then
+
+			if (inputed_glut and 
+				inputed_glut[ainf.label] and
+				inputed_glut[ainf.label].digital and
+				inputed_glut[ainf.label].digital[iotbl.subid+1]) then
+				alias = "\\n\\r\\t" .. 
+					tostring(inputed_glut[ainf.label].digital[iotbl.subid+1]);
+			end
+
+			end
+
+			local msg = desktoplbl( 
+				string.format("Press a button for [%s]\\n\\r\\t%s%s",
+				edittbl.name, tblstr, alias ~= nil and alias or "") 
+			);
+
 			if (valid_vid(msg)) then
 				dlg:update_caption(msg);
 			end
@@ -724,6 +743,11 @@ local function update_window(dev, sub)
 		wnd.switch_device = function(self, dev, sub)
 			local res = inputanalog_query(dev, sub);
 
+			if (wnd.devsym ~= nil) then
+				delete_image(wnd.devsym);
+				wnd.devsym = nil;
+			end
+
 			if (res == nil) then
 				wnd.dir.t:update_caption(menulbl("No Device Found"));
 			else
@@ -738,6 +762,16 @@ local function update_window(dev, sub)
 				local lblcap = menulbl( 
 					string.format("(%d:%d)", dev, sub, res.label), 10);
 				image_tracetag(lblcap, "analog_detailcap");
+
+				if (inputed_glut and inputed_glut[res.label] and 
+					inputed_glut[res.label].analog[sub+1]) then
+					wnd.devsym = desktoplbl(tostring(inputed_glut[res.label].analog[sub+1]));
+					show_image(wnd.devsym);
+					link_image(wnd.devsym, wnd.canvas.vid);
+					image_inherit_order(wnd.devsym, true);
+					order_image(wnd.devsym, 1);
+					image_clip_on(wnd.devsym, CLIP_SHALLOW);
+				end
 
 				wnd.dir.t:update_caption(lblcap);
 				local w = wnd.canvasw;
@@ -826,7 +860,7 @@ function awb_inputed()
 			if (resv) then
 				local group, tbl = resv();
 
-				if (type(group) == "string" and type(tbl) == "tbl") then
+				if (type(group) == "string" and type(tbl) == "table") then
 					inputed_glut[group] = tbl;
 				else
 					warning(string.format("loading helper (%s) failed" ..

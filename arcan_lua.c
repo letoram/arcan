@@ -4760,8 +4760,19 @@ static int singlequery(lua_State* ctx, int devid, int axid)
 	arcan_errc errc = arcan_event_analogstate(devid, axid, 
 		&lbound, &ubound, &dz, &ksz, &mode);
 
-	if (errc != ARCAN_OK)
+	if (errc != ARCAN_OK){
+		const char* lbl = arcan_event_devlabel(devid);
+
+		if (lbl != NULL){
+			lua_newtable(ctx);
+			int ttop = lua_gettop(ctx);
+			tblstr(ctx, "label", arcan_event_devlabel(devid), ttop);
+			tblnum(ctx, "devid", devid, ttop);
+			return 1;
+		}
+
 		return 0;
+	}
 
 	lua_newtable(ctx);
 	int ttop = lua_gettop(ctx);
