@@ -226,12 +226,16 @@ local function input_anal(edittbl, startofs)
 		return;
 	end
 
-	local updatestr = function(ind, count)
+	local updatestr = function(ind, count, label)
+		if (label == nil) then
+			label = "";
+		end
+
 		local msg = string.format([[
-		(Arrow Keys to step Axis/Device)\n\r
-		Current(%d/%d):\t %d : %d\n\r
-		Sample Count:\t %d]], ind, #devtbl, devtbl[ind].devid, 
-			devtbl[ind].subid, count);
+(Arrow Keys to step Axis/Device)\n\r
+Current(%d/%d):\t %d : %d\n\r
+Sample Count:\t %d%s]], ind, #devtbl, devtbl[ind].devid, 
+			devtbl[ind].subid, count, label); 
 		return desktoplbl( msg );
 	end
 
@@ -245,7 +249,22 @@ local function input_anal(edittbl, startofs)
 		end
 
 		self.cur_count = 0;
-		self:update_caption( updatestr( self.cur_ind, 0 ) );
+		local ainf = inputanalog_query(devtbl[self.cur_ind].devid, 0);
+		local label = nil;
+		self.tmplabel = nil; 
+
+		if (ainf and ainf.label ~= nil) then
+			if (inputed_glut and 
+				inputed_glut[ainf.label] and
+				inputed_glut[ainf.label].analog and
+				inputed_glut[ainf.label].analog[devtbl[self.cur_ind].subid+1]) then
+				label = "\\n\\rIdentifer:\\t" .. 
+					tostring(inputed_glut[ainf.label].analog[devtbl[self.cur_ind].subid+1]);
+				self.tmplabel = label;
+			end
+		end
+
+		self:update_caption( updatestr( self.cur_ind, 0, label ) );
 	end
 
 	local props = image_surface_resolve_properties(
@@ -261,6 +280,8 @@ local function input_anal(edittbl, startofs)
 
 	dlg.cur_count = 0;
 	dlg.cur_ind = 1;
+	step(dlg, 0);
+
 	edittbl.parent.wnd:add_cascade(dlg);
 
 	dlg.input = function(self, iotbl)
@@ -284,7 +305,7 @@ local function input_anal(edittbl, startofs)
 			iotbl.subid == devtbl[self.cur_ind].subid) then
 			
 			self.cur_count = self.cur_count + 1;
-			self:update_caption( updatestr( self.cur_ind, self.cur_count) );
+			self:update_caption( updatestr( self.cur_ind, self.cur_count, self.tmplabel) );
 		end
 	end
 end

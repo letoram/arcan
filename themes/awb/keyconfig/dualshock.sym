@@ -15,7 +15,7 @@ local tbl = {
 		"L2",
 		"R2",
 		"L1",
-		"R2",
+		"R1",
 		"Triangle",
 		"Circle",
 		"Cross",
