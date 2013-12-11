@@ -596,6 +596,18 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	return rv;
 }
 
+/*
+ * this is quite sensitive to changes in libretro.h
+ */
+static inline int16_t map_analog_axis(unsigned port, unsigned ind, unsigned id)
+{
+	ind *= 2;
+	ind += id;
+	assert(ind < MAX_AXES);
+	
+	return (int16_t) retroctx.input_ports[port].axes[ind];
+}
+
 /* use the context-tables from retroctx in combination with dev / ind / ...
  * to try and figure out what to return, this table is 
  * populated in flush_eventq() */
@@ -695,7 +707,8 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 		break;
 
 		case RETRO_DEVICE_ANALOG:
-			return (int16_t) retroctx.input_ports[port].axes[id];
+			return map_analog_axis(port, ind, id);
+	
 		break;
 
 		default:
