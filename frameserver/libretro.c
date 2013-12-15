@@ -54,6 +54,11 @@
 struct arcan_video_display arcan_video_display = {0};
 static void build_fbo(int neww, int newh, int* dw, int* dh, 
 	GLuint* dfbo, GLuint* ddepth, GLuint* dcol);
+
+struct fbo_cont {
+	GLuint fbo, col, depth;
+	int dw, dh;
+};
 #endif
 
 #ifndef MAX_PORTS
@@ -85,11 +90,6 @@ struct input_port {
 
 /* special offsets into buttons / axes based on device */
 	unsigned cursor_x, cursor_y, cursor_btns[5];
-};
-
-struct fbo_cont {
-	GLuint fbo, col, depth;
-	int dw, dh;
 };
 
 typedef void(*pixconv_fun)(const void* data, uint32_t* outp, 
@@ -161,7 +161,16 @@ static struct {
 /* libretro states / function pointers */
 	struct retro_system_info sysinfo;
 	struct retro_game_info gameinfo;
-			
+
+/* for core options support:
+ * 1. on SET_VARIABLES, expose each as an event to parent.
+ *    populate a separate table that acts as a cache. 
+ *
+ * 2. on GET_VARIABLE, lookup against the args and fallback
+ *    on the cache. Dynamic switching isn't supported currently. */
+	struct arg_arr* inargs;
+	struct retro_variable* varset;
+
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
 	struct fbo_cont fbos[1];
@@ -171,7 +180,7 @@ static struct {
 /* parent uses an event->push model for input, libretro uses a poll one, so
  * prepare a lookup table that events gets pushed into and libretro can poll */
 	struct input_port input_ports[MAX_PORTS];
-
+		
 	void (*run)();
 	void (*reset)();
 	bool (*load_game)(const struct retro_game_info* game);
@@ -202,7 +211,7 @@ static retro_proc_address_t libretro_requirefun(const char* sym)
 	return res;
 }
 
-void resize_shmpage(int neww, int newh, bool first)
+static void resize_shmpage(int neww, int newh, bool first)
 {
 /* present error message, synch then terminate. */
 	if (!frameserver_shmpage_resize(&retroctx.shmcont, neww, newh)){
@@ -474,7 +483,7 @@ static void reset_timing()
 	retroctx.rebasecount++;
 }
 
-void libretro_audscb(int16_t left, int16_t right)
+static void libretro_audscb(int16_t left, int16_t right)
 {
 	retroctx.aframecount++;
 
@@ -488,7 +497,7 @@ void libretro_audscb(int16_t left, int16_t right)
 	}
 }
 
-size_t libretro_audcb(const int16_t* data, size_t nframes)
+static size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
 	retroctx.aframecount += nframes;
 
@@ -508,14 +517,140 @@ size_t libretro_audcb(const int16_t* data, size_t nframes)
  * we've already processed the queue */
 static void libretro_pollcb(){}
 
+static const char* lookup_varset( const char* key )
+{
+	char buf[ strlen(key) + sizeof("core_") + 1];
+	sprintf(buf, "core_%s", key);
+	const char* val;
+
+	if (arg_lookup(retroctx.inargs, key, 0, &val)){
+		return val;
+	}
+
+	struct retro_variable* var = retroctx.varset;
+	if (var)
+		while(var->key){
+			if (strcmp(var->key, key) == 0)
+				return var->value;
+
+			var++;
+		}
+
+	return NULL;
+}
+
+static void update_varset( struct retro_variable* data )
+{
+	int count = 0;
+	arcan_event outev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_NOTICE_COREOPT
+	};
+
+	size_t msgsz = sizeof(outev.data.external.message) / 
+		sizeof(outev.data.external.message[0]);
+
+/* reset current varset */	
+	if (retroctx.varset){
+		while (retroctx.varset[count].key){
+			free((char*)retroctx.varset[count].key);
+			free((char*)retroctx.varset[count].value);
+			count++;
+		}
+
+		free(retroctx.varset);
+		retroctx.varset = NULL;
+		count = 0;
+	}
+
+/* allocate a new set */	
+	while ( data[count].key ) 
+		count++;
+
+	if (count == 0)
+		return;
+
+	retroctx.varset = malloc( sizeof(struct retro_variable) * count);
+	memset(retroctx.varset, '\0', sizeof(struct retro_variable) * count);
+	LOG("coreopts (%d) options.\n", count);
+
+	count = 0;
+	while ( data[count].key ){
+		retroctx.varset[count].key = strdup(data[count].key);
+
+/* parse, grab the first argument and keep in table,
+ * queue the argument as a series of event to the parent */
+		if (data[count].value){
+			bool gotval = false;
+			char* msg = strdup(data[count].value);
+			char* workbeg = msg;
+			char* workend = msg;
+
+/* message */
+			while (*workend && *workend != ';') workend++;
+
+			if (*workend != ';'){
+				LOG("malformed core argument (%s:%s)\n", data[count].key, 
+					data[count].value);
+				goto step;
+			}
+			*workend++ = '\0';
+
+			if (msgsz < strlen(workbeg)){
+				LOG("suspiciously long description (%s:%s), %d\n", data[count].key,
+					workbeg, (int)msgsz);
+				goto step;
+			}
+
+/* skip leading whitespace */
+		while(*workend && *workend == ' ') workend++;
+
+
+/* key */
+		snprintf((char*)outev.data.external.message, msgsz-1,
+			"%d:key:%s", count, data[count].key);
+		arcan_event_enqueue(&retroctx.outevq, &outev);
+
+/* description */
+			snprintf((char*)outev.data.external.message, msgsz-1, 
+				"%d:descr:%s", count, workbeg);
+			arcan_event_enqueue(&retroctx.outevq, &outev);
+
+/* each option */
+startarg:
+			workbeg = workend;
+			while (*workend && *workend != '|') workend++;
+
+/* treats || as erroneous */
+			if (strlen(workbeg) > 0){
+				if (*workend == '|')
+					*workend++ = '\0';
+
+				if (!gotval && (gotval = true))
+					retroctx.varset[count].value = strdup(workbeg);
+
+				snprintf((char*)outev.data.external.message, msgsz-1,
+					"%d:arg:%s", count, workbeg);
+				LOG("adding arg (%s)", workbeg);
+				arcan_event_enqueue(&retroctx.outevq, &outev);
+				goto startarg;
+			}
+	
+step:
+			free(msg);
+		}
+
+		count++;
+	}
+}
+
 static bool libretro_setenv(unsigned cmd, void* data){
 	char* sysdir;
-	bool rv = false;
+	bool rv = true;
 	struct retro_hw_render_callback* hwrend = data;
 
 	switch (cmd){
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
-		rv = true;
 
 		switch ( *(enum retro_pixel_format*) data ){
 		case RETRO_PIXEL_FORMAT_0RGB1555:
@@ -541,7 +676,6 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 	case RETRO_ENVIRONMENT_GET_CAN_DUPE:
 		*((bool*) data) = true;
-		rv = true;
 	break;
 
 /* ignore for now */
@@ -550,9 +684,19 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		LOG("shutdown requested from lib.\n");
 	break;
 
-/* parse, emit as control messages */
 	case RETRO_ENVIRONMENT_SET_VARIABLES:
+		update_varset( (struct retro_variable*) data );
+	break;
 
+	case RETRO_ENVIRONMENT_GET_VARIABLE:
+		{
+			struct retro_variable* arg = (struct retro_variable*) data;
+			arg->value = lookup_varset(arg->key);
+		}
+	break;
+
+	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+		rv = false;
 	break;
 
 /* unsure how we'll handle this when privsep is working, 
@@ -586,7 +730,10 @@ static bool libretro_setenv(unsigned cmd, void* data){
 #endif
 
 	default:
+		rv = false;
+#ifdef _DEBUG
 		LOG("unhandled retro request (%d)\n", cmd);
+#endif
 	}
 
 	return rv;
@@ -742,7 +889,6 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 	char* subtype;
 	signed value = ioev->datatype == EVENT_IDATATYPE_TRANSLATED ? 
 		ioev->input.translated.active : ioev->input.digital.active;
-	LOG("%s\n", label);
 
 	if (1 == sscanf(label, "PLAYER%d_", &ind) && ind > 0 && 
 		ind <= MAX_PORTS && (subtype = strchr(label, '_')) ){
@@ -1120,7 +1266,9 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
 	retroctx.converter   = (pixconv_fun) libretro_rgb1555_rgba;
-	struct arg_arr* args = arg_unpack(resource);
+	retroctx.inargs      = arg_unpack(resource);
+	struct arg_arr* args = retroctx.inargs;
+
 	const char* libname  = NULL;
 	const char* resname  = NULL;
 	const char* val;
@@ -1378,9 +1526,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			outev.data.external.framestatus.framenumber++;
 			arcan_event_enqueue(&retroctx.outevq, &outev);
 
+#ifdef _DEBUG
 			if (testcounter != 1)
 				LOG("inconsistent core behavior, "
 					"expected 1 video frame / run(), got %d\n", testcounter);
+#endif
 
 /* frameskipping here is a simple adaptive thing, 
  * if we're too out of alignment against the next deadline, 

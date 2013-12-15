@@ -1995,68 +1995,75 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_newtable(ctx);
 			int top = lua_gettop(ctx);
 			switch (ev->kind){
-				case EVENT_EXTERNAL_NOTICE_IDENT:
-					tblstr(ctx, "kind", "ident", top);
-					slimpush(mcbuf, sizeof(ev->data.external.message) /
-						sizeof(ev->data.external.message[0]), 
-						(char*)ev->data.external.message);
-					tblstr(ctx, "message", mcbuf, top);
-				break;
-				case EVENT_EXTERNAL_NOTICE_MESSAGE:
-					slimpush(mcbuf, sizeof(ev->data.external.message) /
-						sizeof(ev->data.external.message[0]), 
-						(char*)ev->data.external.message);	
-					tblstr(ctx, "kind", "message", top);
-					tblstr(ctx, "message", mcbuf, top); 
-				break;
-				case EVENT_EXTERNAL_NOTICE_FAILURE:
-					tblstr(ctx, "kind", "failure", top);
-					tblnum(ctx, "code", ev->data.external.code, top);
-				break;
-				case EVENT_EXTERNAL_NOTICE_FRAMESTATUS:
-					tblstr(ctx, "kind", "frame", top);
-					tblnum(ctx, "frame", 
-						ev->data.external.framestatus.framenumber, top);
-				break;
+			case EVENT_EXTERNAL_NOTICE_IDENT:
+				tblstr(ctx, "kind", "ident", top);
+				slimpush(mcbuf, sizeof(ev->data.external.message) /
+					sizeof(ev->data.external.message[0]), 
+					(char*)ev->data.external.message);
+				tblstr(ctx, "message", mcbuf, top);
+			break;
+			case EVENT_EXTERNAL_NOTICE_COREOPT:
+				tblstr(ctx, "kind", "coreopt", top);
+				slimpush(mcbuf, sizeof(ev->data.external.message) /
+					sizeof(ev->data.external.message[0]), 
+					(char*)ev->data.external.message);
+				tblstr(ctx, "pair", mcbuf, top);
+			break;
+			case EVENT_EXTERNAL_NOTICE_MESSAGE:
+				slimpush(mcbuf, sizeof(ev->data.external.message) /
+					sizeof(ev->data.external.message[0]), 
+					(char*)ev->data.external.message);	
+				tblstr(ctx, "kind", "message", top);
+				tblstr(ctx, "message", mcbuf, top); 
+			break;
+			case EVENT_EXTERNAL_NOTICE_FAILURE:
+				tblstr(ctx, "kind", "failure", top);
+				tblnum(ctx, "code", ev->data.external.code, top);
+			break;
+			case EVENT_EXTERNAL_NOTICE_FRAMESTATUS:
+				tblstr(ctx, "kind", "frame", top);
+				tblnum(ctx, "frame", 
+					ev->data.external.framestatus.framenumber, top);
+			break;
 
-				case EVENT_EXTERNAL_NOTICE_STREAMINFO:
-					slimpush(mcbuf, sizeof(ev->data.external.streaminf.message) /
-						sizeof(ev->data.external.streamstat.timestr[0]),
-						(char*)ev->data.external.streamstat.timestr);
-					tblstr(ctx, "kind", "streaminfo", top);
-					tblstr(ctx, "lang", mcbuf, top);
-					tblnum(ctx, "streamid", ev->data.external.streaminf.streamid, top);
-					tblstr(ctx, "type", 
-						streamtype(ev->data.external.streaminf.datakind),top);
-				break;
+			case EVENT_EXTERNAL_NOTICE_STREAMINFO:
+				slimpush(mcbuf, sizeof(ev->data.external.streaminf.message) /
+					sizeof(ev->data.external.streamstat.timestr[0]),
+					(char*)ev->data.external.streamstat.timestr);
+				tblstr(ctx, "kind", "streaminfo", top);
+				tblstr(ctx, "lang", mcbuf, top);
+				tblnum(ctx, "streamid", ev->data.external.streaminf.streamid, top);
+				tblstr(ctx, "type", 
+					streamtype(ev->data.external.streaminf.datakind),top);
+			break;
 
-				case EVENT_EXTERNAL_NOTICE_STREAMSTATUS:
-					tblstr(ctx, "kind", "streamstatus", top);
-			 		slimpush(mcbuf, sizeof(ev->data.external.streamstat.timestr) /
-						sizeof(ev->data.external.streamstat.timestr[0]), 
-						(char*)ev->data.external.streamstat.timestr);
-					tblstr(ctx, "ctime", mcbuf, top);
-					slimpush(mcbuf, sizeof(ev->data.external.streamstat.timelim) /
-						sizeof(ev->data.external.streamstat.timelim[0]),
-						(char*)ev->data.external.streamstat.timelim);
-					tblstr(ctx, "endtime", mcbuf, top);
-					tblnum(ctx,"completion",ev->data.external.streamstat.completion,top);
-					tblnum(ctx, "frameno", ev->data.external.streamstat.frameno, top);
-					tblnum(ctx,"streaming",
-						ev->data.external.streamstat.streaming!=0,top);
-				break;
+			case EVENT_EXTERNAL_NOTICE_STREAMSTATUS:
+				tblstr(ctx, "kind", "streamstatus", top);
+					slimpush(mcbuf, sizeof(ev->data.external.streamstat.timestr) /
+					sizeof(ev->data.external.streamstat.timestr[0]), 
+					(char*)ev->data.external.streamstat.timestr);
+				tblstr(ctx, "ctime", mcbuf, top);
+				slimpush(mcbuf, sizeof(ev->data.external.streamstat.timelim) /
+					sizeof(ev->data.external.streamstat.timelim[0]),
+					(char*)ev->data.external.streamstat.timelim);
+				tblstr(ctx, "endtime", mcbuf, top);
+				tblnum(ctx,"completion",ev->data.external.streamstat.completion,top);
+				tblnum(ctx, "frameno", ev->data.external.streamstat.frameno, top);
+				tblnum(ctx,"streaming",
+					ev->data.external.streamstat.streaming!=0,top);
+			break;
 
-				case EVENT_EXTERNAL_NOTICE_STATESIZE:
-					tblstr(ctx, "kind", "state_size", top);
-					tblnum(ctx, "state_size", ev->data.external.state_sz, top);
-				break;
-				case EVENT_EXTERNAL_NOTICE_RESOURCE:
-					tblstr(ctx, "kind", "resource_status", top);
-					tblstr(ctx, "message", (char*)ev->data.external.message, top);
-				break;
-				default:
-					tblstr(ctx, "kind", "unknown", top);
-					tblnum(ctx, "kind_num", ev->kind, top);
+			case EVENT_EXTERNAL_NOTICE_STATESIZE:
+				tblstr(ctx, "kind", "state_size", top);
+				tblnum(ctx, "state_size", ev->data.external.state_sz, top);
+			break;
+			case EVENT_EXTERNAL_NOTICE_RESOURCE:
+				tblstr(ctx, "kind", "resource_status", top);
+				tblstr(ctx, "message", (char*)ev->data.external.message, top);
+			break;
+			default:
+				tblstr(ctx, "kind", "unknown", top);
+				tblnum(ctx, "kind_num", ev->kind, top);
 			}
 
 			lua_ctx_store.cb_source_tag  = ev->data.external.source;
