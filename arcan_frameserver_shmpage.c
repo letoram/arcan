@@ -421,7 +421,9 @@ bool arg_lookup(struct arg_arr* arr, const char* val,
 /* return only the 'ind'th match */
 		if (strcmp(arr[pos].key, val) == 0)
 			if (ind-- == 0){
-				*found = arr[pos].value;
+				if (found)
+					*found = arr[pos].value;
+
 				return true;
 			}
 
