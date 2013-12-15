@@ -3813,7 +3813,7 @@ static int arcan_lua_targetlaunch(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 
-	/* see if we know what the game is */
+/* see if we know what the game is */
 	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, gameid, internal);
 	if (cmdline.kind == 0){
 		char* resourcestr = arcan_find_resource_path(cmdline.data.strarr[0],
@@ -3832,13 +3832,21 @@ static int arcan_lua_targetlaunch(lua_State* ctx)
 	* the argumentlist is just [romsetfull] */
 			if (use_loader(resourcestr)){
 				char* metastr = resourcestr;
-				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){ 
-/* launch_options adds exec path first, we already know that one */
-					size_t arglen = strlen(resourcestr) + 1 + 
-						strlen(cmdline.data.strarr[1]) + 1;
+				if ( cmdline.data.strarr[0] && cmdline.data.strarr[1] ){
 
-					metastr = (char*) malloc( arglen );
-					snprintf(metastr, arglen, "%s*%s", resourcestr, 
+/* launch_options adds exec path first, we already know that one */
+					size_t arglim = strlen(resourcestr) + sizeof("core=") + 
+						strlen(cmdline.data.strarr[1]) + sizeof("resource=");
+
+/* escape resource, unpack in frameserver fixes it */
+					char* work = resourcestr;
+					do {
+						if (*work == ':')
+							*work = '\t';
+					} while (*work++);
+
+					metastr = (char*) malloc( arglim );
+					snprintf(metastr, arglim, "core=%s:resource=%s", resourcestr, 
 						cmdline.data.strarr[1]);
 				}
 
