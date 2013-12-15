@@ -1231,19 +1231,6 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 	arcan_video_gldefault();
 
-/*
- * DEBUG build + a txdump subfolder stores a copy of all
- * static textures being uploaded 
- */
-#ifdef _DEBUG
-	FILE* test = fopen("./txdump/.test", "w+");
-	if (test){
-		fclose(test);
-		unlink("./txdump/.test");
-		arcan_video_display.txdump = strdup("./txdump/");	
-	}
-#endif
-
 	return ARCAN_OK;
 }
 
