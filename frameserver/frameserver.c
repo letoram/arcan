@@ -244,7 +244,6 @@ void* frameserver_requirefun(const char* const sym, bool module)
 static void toggle_logdev(const char* prefix)
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
-	return;
 
 	if (logdir){
 		char timeb[16];

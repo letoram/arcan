@@ -587,7 +587,6 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 	bool statusfl = false;
 	struct arg_arr* args = arg_unpack(resource);
 	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
-	LOG("got resource: %s\n", resource);
 	
 	av_register_all();
 
