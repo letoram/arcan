@@ -195,7 +195,7 @@ static retro_proc_address_t libretro_requirefun(const char* sym)
 
 	if (!res)
 	{
-		LOG("(libretro) -- missing library or symbol (%s) during lookup.\n", sym);
+		LOG("missing library or symbol (%s) during lookup.\n", sym);
 		exit(1);
 	}
 
@@ -236,7 +236,6 @@ void resize_shmpage(int neww, int newh, bool first)
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 	}
 }
-
 
 #define RGB565(b, g, r) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | \
 								(((uint8_t)(g) >> 2) << 5) | ((uint8_t)(b) >> 3))
@@ -390,7 +389,7 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* intermediate storage for blargg NTSC filter, if toggled, 
  * ntscconv will be applied by the converter however */
 	if (ntscconv && !retroctx.ntsc_imb){
-		LOG("(libretro) rebuilding shmpage for NTSC\n");
+		LOG("rebuilding shmpage for NTSC\n");
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
@@ -520,23 +519,22 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 		switch ( *(enum retro_pixel_format*) data ){
 		case RETRO_PIXEL_FORMAT_0RGB1555:
-			LOG("(libretro) -- pixel format set to RGB1555\n");
+			LOG("pixel format set to RGB1555\n");
 			retroctx.converter = (pixconv_fun) libretro_rgb1555_rgba;
 		break;
 
 		case RETRO_PIXEL_FORMAT_RGB565:
-			LOG("(libretro) -- pixel format set to RGB565\n");
+			LOG("pixel format set to RGB565\n");
 			retroctx.converter = (pixconv_fun) libretro_rgb565_rgba;
 		break;
 
 		case RETRO_PIXEL_FORMAT_XRGB8888:
-			LOG("(libretro) -- pixel format set to XRGB8888\n");
+			LOG("pixel format set to XRGB8888\n");
 			retroctx.converter = (pixconv_fun) libretro_xrgb888_rgba;
 		break;
 
 		default:
-			LOG("(arcan_frameserver:libretro) -- "
-			"unknown pixelformat encountered (%d).\n", *(unsigned*)data);
+			LOG("unknown pixelformat encountered (%d).\n", *(unsigned*)data);
 			retroctx.converter = NULL;
 		}
 	break;
@@ -549,7 +547,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
 /* ignore for now */
 	case RETRO_ENVIRONMENT_SHUTDOWN:
 		retroctx.shmcont.addr->dms = true;
-		LOG("(arcan_frameserver:libretro) -- shutdown requested from lib.\n");
+		LOG("shutdown requested from lib.\n");
 	break;
 
 /* parse, emit as control messages */
@@ -569,8 +567,7 @@ static bool libretro_setenv(unsigned cmd, void* data){
  * so resolve to absolute one for the time being */
 		sysdir = realpath(sysdir, NULL);
 
-		LOG("(arcan_frameserver:libretro) -- system directory "
-			"set to (%s).\n", sysdir);
+		LOG("system directory set to (%s).\n", sysdir);
 		*((const char**) data) = sysdir;
 		rv = sysdir != NULL;
 	break;
@@ -584,13 +581,12 @@ static bool libretro_setenv(unsigned cmd, void* data){
 			rv = true;
 		} 
 		else
-			LOG("(arcan_frameserver:libretro) -- unsupported"
-				"	hw context requested.\n");
+			LOG("unsupported hw context requested.\n");
 	break;
 #endif
 
 	default:
-		LOG("arcan_frameserver:libretro), unhandled retro request (%d)\n", cmd);
+		LOG("unhandled retro request (%d)\n", cmd);
 	}
 
 	return rv;
@@ -618,8 +614,8 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 
 	if (id > MAX_BUTTONS){
 		if (butn_warning == false)
-			arcan_warning("arcan_frameserver(libretro) -- unexpectedly high button "
-				"index (dev:%u)(%u:%%) requested, ignoring.\n", ind, id);
+			LOG("unexpectedly high button index (dev:%u)(%u:%%) "
+				"requested, ignoring.\n", ind, id);
 
 		butn_warning = true;
 		return 0;
@@ -627,8 +623,7 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 
 	if (port > MAX_PORTS){
 		if (port_warning == false)
-			LOG("(libretro) -- core requested an unknown port id (%u:%u:%u), " 
-				"ignored.\n", dev, ind, id);
+			LOG("core requested unknown port (%u:%u:%u), ignored.\n", dev, ind, id);
 
 		port_warning = true;
 		return 0;
@@ -712,8 +707,7 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 		break;
 
 		default:
-			LOG("(arcan_frameserver:libretro) Unknown device ID specified (%d),"
-				"	video will be disabled.\n", dev);
+			LOG("Unknown device ID specified (%d), video will be disabled.\n", dev);
 	}
 
 	return 0;
@@ -810,7 +804,7 @@ static inline void targetev(arcan_event* ev)
  * for UNIX, we read it from the socket connection we have */
 		case TARGET_COMMAND_FDTRANSFER:
 			retroctx.last_fd = frameserver_readhandle( ev );
-			LOG("(libretro) -- descriptor transferred, %d\n", retroctx.last_fd);
+			LOG("descriptor transferred, %d\n", retroctx.last_fd);
 		break;
 
 		case TARGET_COMMAND_GRAPHMODE:
@@ -889,14 +883,13 @@ static inline void targetev(arcan_event* ev)
 							retroctx.last_fd, true );
 						retroctx.last_fd = BADFD;
 					} else
-						LOG("frameserver(libretro), serialization failed.\n");
+						LOG("serialization failed.\n");
 
 					free(buf);
 				}
 			}
 			else
-				LOG("frameserver(libretro), snapshot store requested without"
-					"	any viable target.\n");
+				LOG("snapshot store requested without	any viable target.\n");
 		break;
 
 		case TARGET_COMMAND_RESTORE:
@@ -912,13 +905,11 @@ static inline void targetev(arcan_event* ev)
 				retroctx.last_fd = BADFD;
 			}
 			else
-				LOG("frameserver(libretro), snapshot restore requested "
-					"without any viable target\n");
+				LOG("snapshot restore requested without any viable target\n");
 		break;
 
 		default:
-			arcan_warning("frameserver(libretro), unknown target event (%d),"
-				"	ignored.\n", ev->kind);
+			LOG("unknown target event (%d), ignored.\n", ev->kind);
 	}
 }
 
@@ -959,7 +950,7 @@ static inline bool retroctx_sync()
 
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
 	if (now < 0 || abs( left ) > retroctx.mspf * 60.0){
-		LOG("(libretro) -- stall detected, resetting timers.\n");
+		LOG("stall detected, resetting timers.\n");
 		reset_timing();
 		return true;
 	}
@@ -1058,9 +1049,9 @@ static void build_fbo(int neww, int newh, int* dw, int* dh,
 
 	GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (GL_FRAMEBUFFER_COMPLETE != status)
-		LOG("(libretro) couldn't setup framebuffer.\n");
+		LOG("couldn't setup framebuffer.\n");
 	else
-		LOG("(libretro) FBO (%d x %d) created.\n", neww, newh);
+		LOG("FBO (%d x %d) created.\n", neww, newh);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	retroctx.hwctx.context_reset();
@@ -1128,16 +1119,20 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
  * of the core will be sent to stdout. */
 void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 {
-	retroctx.converter    = (pixconv_fun) libretro_rgb1555_rgba;
-	const char* libname   = resource;
-	int errc;
-	LOG("mode_libretro (%s)\n", resource);
+	retroctx.converter   = (pixconv_fun) libretro_rgb1555_rgba;
+	struct arg_arr* args = arg_unpack(resource);
+	const char* libname  = NULL;
+	const char* resname  = NULL;
+	const char* val;
 
-/* abssopath : gamename */
-	char* gamename = strrchr(resource, '*');
-	if (!gamename) return;
-	*gamename = 0;
-	gamename++;
+	if (arg_lookup(args, "core", 0, &val))
+		libname = strdup(val);
+
+	if (arg_lookup(args, "resource", 0, &val))
+		resname = strdup(val);
+
+	LOG("loading core (%s) with resource (%s)\n", libname ? 
+		libname : "missing arg.", resname ? resname : "missing arg.");
 
 	if (*libname == 0)
 		return;
@@ -1148,7 +1143,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	retroctx.shmcont = frameserver_getshm(keyfile, true);
 	struct frameserver_shmpage* shared = retroctx.shmcont.addr;
 	if (!shared){
-		LOG("(libretro) fatal, couldn't map shared memory from (%s)\n", keyfile);
+		LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
 		return;
 	}
 
@@ -1162,7 +1157,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* map up functions and test version */
 	if (!frameserver_loadlib(libname)){
-		LOG("(libretro) -- couldn't open library (%s), giving up.\n", libname);
+		LOG("couldn't open library (%s), giving up.\n", libname);
 		exit(1);
 	}
 
@@ -1178,7 +1173,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* added as a support to romman etc. so they don't have 
  * to load the libs in question */
-		if (strcmp(gamename, "/info") == 0){
+		if (arg_lookup(args, "info", 0, NULL)){
 			fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\n"
 				"version:%s\nextensions:%s\n/arcan_frameserver(info)", 
 				retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, 
@@ -1222,8 +1217,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* send some information on what core is actually loaded etc. */
 		arcan_event outev = {
-						.category = EVENT_EXTERNAL,
-					 	.kind = EVENT_EXTERNAL_NOTICE_IDENT
+			.category = EVENT_EXTERNAL,
+			.kind = EVENT_EXTERNAL_NOTICE_IDENT
 		};
 
 		size_t msgsz = sizeof(outev.data.external.message) / 
@@ -1242,15 +1237,15 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		ssize_t bufsize = 0;
 
 		if (retroctx.sysinfo.need_fullpath){
-			LOG("libretro(%s), core requires fullpath, resolved to (%s).\n", 
-				retroctx.sysinfo.library_name, gamename); 
+			LOG("core(%s), core requires fullpath, resolved to (%s).\n", 
+				retroctx.sysinfo.library_name, resname ); 
 			retroctx.gameinfo.data = NULL;
-			retroctx.gameinfo.path = strdup( gamename );
+			retroctx.gameinfo.path = strdup( resname );
 		} else {
-			retroctx.gameinfo.path = strdup( gamename );
-			retroctx.gameinfo.data = frameserver_getrawfile(gamename, &bufsize);
+			retroctx.gameinfo.path = strdup( resname );
+			retroctx.gameinfo.data = frameserver_getrawfile(resname, &bufsize);
 			if (bufsize == -1){
-				LOG("libretro(%s), couldn't map data, giving up.\n", gamename);
+				LOG("core(%s), couldn't map data, giving up.\n", resname);
 				return;
 			}
 		}	
@@ -1287,14 +1282,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.ntsc_opts = snes_ntsc_rgb;
 		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
 
-		LOG("(libretro) -- video timing: %f fps (%f ms), "
-			"audio samplerate: %f Hz\n", 
+		LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n", 
 			(float)retroctx.avinfo.timing.fps, (float)retroctx.mspf, 
 			(float)retroctx.avinfo.timing.sample_rate);
 
-		LOG("(libretro) -- setting up resampler, %f => %d.\n", 
+		LOG("setting up resampler, %f => %d.\n", 
 			(float)retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE);
 
+		int errc;
 		retroctx.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, 
 			retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE, 
 			RESAMPLER_QUALITY, &errc);
@@ -1384,7 +1379,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			arcan_event_enqueue(&retroctx.outevq, &outev);
 
 			if (testcounter != 1)
-				LOG("(arcan_frameserver(libretro) -- inconsistent core behavior, "
+				LOG("inconsistent core behavior, "
 					"expected 1 video frame / run(), got %d\n", testcounter);
 
 /* frameskipping here is a simple adaptive thing, 

@@ -142,11 +142,10 @@ class Generic
 			if File.exists?(@options[:frameserver])
 				info  = {}
 				args  = @options[:in_windows] ? "nokey 0 0 0 libretro" : "nokey libretro"
-				args  = "#{@options[:frameserver]} #{targetpath}/#{target}#{extension}*/info #{args}"
+				args  = "#{@options[:frameserver]} \"core=#{targetpath}/#{target}#{extension}:info\" #{args}"
 				
 				begin
 					in_block = false
-					STDOUT.print("#{self} Trying to check core extensions with #{args}\n");
 	
 					IO.popen(args).each_line{|line|
 						if (in_block)
