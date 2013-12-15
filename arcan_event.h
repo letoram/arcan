@@ -151,6 +151,7 @@ enum ARCAN_EVENT_FRAMESERVER {
 
 enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_NOTICE_MESSAGE = 0,
+	EVENT_EXTERNAL_NOTICE_COREOPT,
 	EVENT_EXTERNAL_NOTICE_IDENT, 
 	EVENT_EXTERNAL_NOTICE_FAILURE,
 	EVENT_EXTERNAL_NOTICE_FRAMESTATUS,
@@ -330,7 +331,7 @@ typedef struct arcan_extevent {
 	arcan_vobj_id source;
 
 	union {
-		uint8_t message[24];
+		uint8_t message[78];
 		int32_t state_sz;
 		uint32_t code;
 
