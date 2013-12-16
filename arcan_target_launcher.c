@@ -45,7 +45,6 @@
 #include "arcan_audio.h"
 #include "arcan_event.h"
 #include "arcan_framequeue.h"
-#include "arcan_target_const.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_frameserver_shmpage.h"
 #include "arcan_target_launcher.h"

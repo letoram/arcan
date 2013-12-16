@@ -54,7 +54,6 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
-#include "arcan_target_const.h"
 #include "arcan_target.h"
 #include "arcan_frameserver_shmpage.h"
 #include "frameserver/ntsc/snes_ntsc.h"
