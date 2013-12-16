@@ -53,7 +53,6 @@
 #include "arcan_event.h"
 #include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_target_const.h"
 #include "arcan_target_launcher.h"
 #include "arcan_shdrmgmt.h"
 #include "arcan_videoint.h"
