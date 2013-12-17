@@ -23,6 +23,7 @@ return {
 	HOVER_GLOBALINPUT = "Toggle Global Input ON/OFF",
 	HOVER_INPUTCFG = "Switch active input layout",
 	HOVER_PLAYLIST = "Show Playlist",
+	HOVER_SYSOPT = "System Options",
 
 	ANALOG_FILTERMODE = "Switch Filtering Mode",
 	ANALOG_KERNELSIZE = "Set Filter-kernel Size",

@@ -129,3 +129,11 @@ function spawn_socsrv()
 	wnd.name = MESSAGE["TOOL_NETWORK"];
 end
 
+local descrtbl = {
+	name = "network",
+	caption = "Network",
+	icon = "network",
+	trigger = spawn_socsrv
+};
+
+return descrtbl;

@@ -103,3 +103,12 @@ function spawn_hmap()
 	model:update_display(fill_surface(32, 32, 20, 20, 20));
 	return wnd;
 end
+
+local descrtbl = {
+	name = "hghtmap",
+	caption = "Heightmap",
+	icon = "hghtmap",
+	trigger = spawn_hmap
+};
+
+return descrtbl;

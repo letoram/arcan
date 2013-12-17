@@ -805,3 +805,12 @@ function spawn_vidrec()
 
 	wnd:resize(wnd.w, wnd.h);
 end
+
+local descrtbl = {
+	name = "vidrec",
+	caption = "Recorder",
+	icon = "vidrec",
+	trigger = spawn_vidrec
+};
+
+return descrtbl;

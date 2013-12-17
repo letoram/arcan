@@ -14,6 +14,83 @@ local function getskipval(str)
 	end
 end
 
+local function spawn_corewnd(wnd)
+	local conftbl = {};
+
+	for k,v in pairs(wnd.coreopts) do
+		local entry = {};
+		entry.name = tostring(v.num);
+		entry.trigger = function(self, lstwnd)
+			stepfun_tbl(self, lstwnd, wnd, tostring(v.num), v.args, true);
+			lstwnd:force_update();
+		end
+		entry.cols = {string.gsub(k, "\\", "\\\\"), v.args[1]};
+		table.insert(conftbl, entry);
+	end
+
+	local newwnd = awbwman_listwnd(
+		menulbl("Core Options"), deffont_sz, linespace,
+			{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+
+	if (newwnd == nil) then
+		return;
+	end
+	
+	wnd:add_cascade(newwnd);
+	local mx, my = mouse_xy();
+	if (mx + newwnd.w > VRESW) then
+		mx = VRESW - newwnd.w;
+	end
+
+	if (my + newwnd.h > VRESH) then
+		my = VRESH - newwnd.h;
+	end
+
+	newwnd.name = "Core options";
+	newwnd:move(mx, my);
+end
+
+local function sysopt_sel(icn, wnd)
+	if (awbwman_ispopup(icn.vid)) then
+		wnd:focus();
+		return nil;
+	end
+
+	wnd:focus();
+
+	local lst = {
+		"Soft Reset",
+		"Hard Reset"
+	};
+
+	local funtbl = {
+		function()
+			reset_target(wnd.controlid);
+		end,
+
+		function()
+			local tbl = wnd.gametbl;
+			local fact = wnd.factstr_src;
+			wnd:destroy();
+
+			targetwnd_setup(tbl, fact);
+		end
+	};
+
+	if (wnd.coreopts) then
+		table.insert(lst, 1, "Core Options...");
+		table.insert(funtbl, 1, function()
+			spawn_corewnd(wnd);	
+		end);
+	end
+
+	local str = table.concat(lst, [[\n\r]]);
+	local vid, lines = desktoplbl(str);
+	awbwman_popup(vid, lines, function(ind)
+		funtbl[ind]();	
+	end, {ref = icn.vid});
+end
+
 local function inputlay_sel(icn, wnd)
 	if (awbwman_ispopup(icn.vid)) then
 		wnd:focus();
@@ -622,6 +699,36 @@ local function datashare(wnd)
 	return res;
 end
 
+local function add_corearg(dstwnd, msg)
+	if (dstwnd.coreopts == nil) then
+		dstwnd.coreopts = {};
+	end
+	
+	local num, group, msg = string.match(msg, "(%d+):(.+):(.+)");
+	if (group == "key") then
+		dstwnd.coreopts[msg] = {};
+		dstwnd.coreopts[msg].num = num;
+		dstwnd.coreopts[msg].args = {};
+
+	elseif (group == "descr") then
+		for i,v in pairs(dstwnd.coreopts) do
+			if (v.num == num) then
+				v.descr = msg;
+				return;
+			end
+		end
+
+	elseif (group == "arg") then
+		for i,v in pairs(dstwnd.coreopts) do
+			if (v.num == num) then
+				table.insert(v.args, tostring(msg));
+				return;
+			end
+		end
+
+	end
+end
+
 --
 -- Target window
 -- Builds upon a spawned window (pwin) and returns a 
@@ -632,7 +739,9 @@ function awbwnd_target(pwin, caps, factstr)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
 
-	pwin.cascade = {}; 
+	pwin.cascade = {};
+	pwin.caps_src = caps;
+	pwin.factstr_src = factstr;
 	pwin.snap_prefix = caps.prefix and caps.prefix or "";
 	pwin.mediavol = 1.0;
 	pwin.filters = {};
@@ -789,6 +898,11 @@ function awbwnd_target(pwin, caps, factstr)
 		pwin:set_frameskip(pwin.ffstate);
 	end)).vid] = MESSAGE["HOVER_FASTFWD"];
 
+	pwin.hoverlut[
+	(bartt:add_icon("sysopt", "l", cfg.bordericns["sysopt"], function(self)
+		sysopt_sel(self, pwin);
+	end)).vid] = MESSAGE["HOVER_SYSOPT"];
+
 --
 -- popup filter mode
 --
@@ -861,6 +975,9 @@ function awbwnd_target(pwin, caps, factstr)
 		elseif (status.kind == "message") then
 --			print("show message:", status.message);
 
+		elseif (status.kind == "coreopt") then
+			add_corearg(pwin, status.argument);
+
 		elseif (status.kind == "ident") then
 --			print("ident", status.message);
 
@@ -931,4 +1048,38 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.factorystr = awbtarget_factory;
 
 	return callback;
+end
+
+--
+-- Convenience "launcher" factory function
+--
+function targetwnd_setup(game, factstr)
+	local captbl = launch_target_capabilities(game.target);
+	if (captbl == nil) then
+		awbwman_alert("Couldn't get capability table");
+		return;
+	end
+
+	if (captbl.internal_launch == false) then
+-- confirmation dialog missing
+		launch_target(self.gameid, LAUNCH_EXTERNAL);
+	else
+		captbl.prefix = string.format("%s_%s_", game.target,
+			game.setname and game.setname or "");
+
+		game.name = game.title;
+		local wnd, cb = awbwman_targetwnd(menulbl(game.name), 
+			{refid = "targetwnd_" .. tostring(game.gameid),
+			 factsrc = factstr}, captbl);
+		if (wnd == nil) then
+			return;
+		end
+	
+		wnd.gametbl = game; 
+		wnd.recv, wnd.reca = launch_target(game.gameid, LAUNCH_INTERNAL, cb);
+		wnd.factory_base = "gameid=" .. tostring(game.gameid);
+	
+		wnd.name = game.target .. "(" .. game.name .. ")";
+		return wnd;
+	end
 end

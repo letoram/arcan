@@ -2387,6 +2387,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["uparrow"]  = load_image("awbicons/uparrow.png");
 	awb_cfg.bordericns["downarrow"]= load_image("awbicons/downarrow.png");
 	awb_cfg.bordericns["flip"]     = load_image("awbicons/flip.png");
+	awb_cfg.bordericns["sysopt"]   = load_image("awbicons/sysopt.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");

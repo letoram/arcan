@@ -2007,7 +2007,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				slimpush(mcbuf, sizeof(ev->data.external.message) /
 					sizeof(ev->data.external.message[0]), 
 					(char*)ev->data.external.message);
-				tblstr(ctx, "pair", mcbuf, top);
+				tblstr(ctx, "argument", mcbuf, top);
 			break;
 			case EVENT_EXTERNAL_NOTICE_MESSAGE:
 				slimpush(mcbuf, sizeof(ev->data.external.message) /
