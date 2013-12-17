@@ -2,7 +2,6 @@
 -- VidCompare Built-in Tool
 -- Can be used as a prefilter to VideoRecord 
 --
-
 local function build_cmpshader(ntus, mode)
 	local resshader = {};
 	table.insert(resshader, "varying vec2 texco;");
@@ -157,3 +156,12 @@ function spawn_vidcmp()
 	wnd:resize(wnd.w, wnd.h);
 	return wnd;
 end
+
+local descrtbl = {
+	name = "vidcmp",
+	caption = "Compare",
+	icon = "vidcmp",
+	trigger = spawn_vidcmp
+};
+
+return descrtbl;

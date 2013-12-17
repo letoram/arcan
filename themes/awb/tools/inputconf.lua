@@ -976,3 +976,11 @@ function inputed_configlist()
 	return res;
 end
 
+local descrtbl = {
+	name = "inputed",
+	caption = "Input",
+	icon = "ipnuted",
+	trigger = awb_inputed 
+};
+
+return descrtbl;

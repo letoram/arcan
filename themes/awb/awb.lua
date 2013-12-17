@@ -2,16 +2,13 @@
 -- Arcan "Workbench" theme
 -- "inspired" by certain older desktop / windowing UIs
 --
--- Todo:
--- ( ) refactor the label/font use to not rely on just
---     (desktoplbl, menulbl) globals
--- ( ) config tool to change default colors, fonts, ...
--- ( ) autotiling, smarter window allocation scheme
--- ( ) better icon management / struct and the option to switch them
--- ( ) growl- style notifications with movable anchor
--- 
 
 sysicons   = {};
+
+-- the imagery pool is used as a data cache,
+-- since the windowing subsystem need link_ calls to work
+-- we can't use instancing, so instead we allocate a pool
+-- and then share_storage
 imagery    = {};
 colortable = {};
 
@@ -24,15 +21,6 @@ linespace   = 4;
 ORDER_MOUSE     = 255;
 
 kbdbinds = {};
-kbdbinds["F11"]    = function() awbwman_gather_scatter();  end
-kbdbinds["F12"]    = function() awbwman_shadow_nonfocus(); end
-
---  window (focus, minimize, maximize, close)
---  border (always visible, content (when not drag))
-
---  launch_window
--- console_window
---   group_window
 
 function menulbl(text)
 return render_text(string.format("\\#0055a9\\f%s,%d %s", 
@@ -134,7 +122,29 @@ function shortcut_popup(icn, tbl, name)
 	awbwman_popup(vid, list, popup_fun);
 end
 
+function load_aux()
+	system_load("tools/inputconf.lua")();
+	system_load("tools/vidrec.lua")();
+	system_load("tools/vidcmp.lua")();
+	system_load("tools/hghtmap.lua")();
+	system_load("tools/socsrv.lua")();
+	system_load("awb_browser.lua")();
+	system_load("awb_iconcache.lua")();
+	system_load("awbwnd.lua")();
+	system_load("awbwnd_icon.lua")();
+	system_load("awbwnd_list.lua")();
+	system_load("awbwnd_media.lua")();
+	system_load("awbwnd_target.lua")();
+	system_load("awbwman.lua")();
+end
+
 function awb()
+	MESSAGE = system_load("language/default.lua")();
+
+-- maintain a list of global symbols
+-- from the launch, on a keypress, dump
+-- anything that has been added / changed
+-- to track down namespace pollution
 	if (DEBUGLEVEL > 1) then
 		for k,v in pairs(_G) do
 			debug_global[k] = true;
@@ -142,23 +152,47 @@ function awb()
 	end
 
 	symtable = system_load("scripts/symtable.lua")();
-	system_load("awb_support.lua")();
 
+	system_load("awb_support.lua")();
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")();
-	system_load("scripts/resourcefinder.lua")();
-	system_load("tools/inputconf.lua")();
-	system_load("tools/vidrec.lua")();
-	system_load("tools/vidcmp.lua")();
-	system_load("tools/hghtmap.lua")();
-	system_load("tools/socsrv.lua")();
+	setup_3dsupport();
 
-	MESSAGE = system_load("language/default.lua")();
+	system_load("scripts/resourcefinder.lua")();
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
+-- 
+-- look in resources/scripts/mouse.lua
+-- for heaps more options (gestures, trails, autohide) 
+--
 	system_load("scripts/mouse.lua")();
+	local cursor = load_image("awbicons/mouse.png", ORDER_MOUSE);
+	image_tracetag(cursor, "mouse cursor");
+	mouse_setup(cursor, ORDER_MOUSE, 1, true);
+		
+	load_aux(); -- support classes (awbwnd etc.)
+	awbwman_init(desktoplbl, menulbl);	
 
+	awb_desktop_setup();
+
+-- check that there are things that can be launched, else
+-- we probably have an incomplete installation / setup
+	local gametbl = list_games( {} );
+	if (gametbl == nil or #gametbl == 0) then
+		show_gamewarning();
+	end
+
+-- first time launching, show help window
+	if (get_key("help_shown") == nil) then
+		show_help();
+	end
+
+	scan_tools();
+	map_inputs();
+end
+
+function map_inputs()
 	if (DEBUGLEVEL > 1) then
 		kbdbinds["F5"]     = function() print(current_context_usage()); end;
 		kbdbinds["F6"]     = debug.debug;
@@ -188,48 +222,10 @@ function awb()
 		end
 	end
 
-	system_load("awb_iconcache.lua")();
-	system_load("awbwnd.lua")();
-	system_load("awbwnd_icon.lua")();
-	system_load("awbwnd_list.lua")();
-	system_load("awbwnd_media.lua")();
-	system_load("awbwnd_target.lua")();
-	system_load("awbwman.lua")();
-
--- the imagery pool is used as a static data cache,
--- since the windowing subsystem need link_ calls to work
--- we can't use instancing, so instead we allocate a pool
--- and then share_storage
-	imagery.cursor       = load_image("awbicons/mouse.png", ORDER_MOUSE);
-	awbwman_init(desktoplbl, menulbl);	
-
--- 
--- look in resources/scripts/mouse.lua
--- for heaps more options (gestures, trails, autohide) 
---
-	image_tracetag(imagery.cursor, "mouse cursor");
-	mouse_setup(imagery.cursor, ORDER_MOUSE, 1, true);
-
---
--- Since we'll only use the 3d subsystem as a view for specific windows
--- and those are populated through rendertargets, it's easiest to flip
--- the camera
---
-	local supp3d = setup_3dsupport();
-	awb_desktop_setup();
-
-	local gametbl = list_games( {} );
-	if (gametbl == nil or #gametbl == 0) then
-		show_gamewarning();
-	end
-
-	if (get_key("help_shown") == nil) then
-		show_help();
-	end
--- LCTRL + META = (toggle) grab to specific internal
--- LCTRL = (toggle) grab to this window
 	kbdbinds["LCTRL"]  = awbwman_toggle_mousegrab;
 	kbdbinds["ESCAPE"] = awbwman_cancel;
+	kbdbinds["F11"] = awbwman_gather_scatter;
+	kbdbinds["F12"]	= awbwman_shadow_nonfocus;
 end
 
 --
@@ -243,34 +239,7 @@ function gamelist_launch(self, factstr)
 		return;
 	end
 
-	local captbl = launch_target_capabilities(game.target);
-	if (captbl == nil) then
-		awbwman_alert("Couldn't get capability table");
-		return;
-	end
-
-	if (captbl.internal_launch == false) then
--- confirmation dialog
-		launch_target(self.gameid, LAUNCH_EXTERNAL);
-	else
-		captbl.prefix = string.format("%s_%s_", game.target,
-			game.setname and game.setname or "");
-
-		game.name = game.title;
-		local wnd, cb = awbwman_targetwnd(menulbl(game.name), 
-			{refid = "targetwnd_" .. tostring(game.gameid),
-			 factsrc = factstr}, captbl);
-		if (wnd == nil) then
-			return;
-		end
-	
-		wnd.gametbl = game; 
-		wnd.recv, wnd.reca = launch_target(game.gameid, LAUNCH_INTERNAL, cb);
-		wnd.factory_base = "gameid=" .. tostring(game.gameid);
-	
-		wnd.name = game.target .. "(" .. game.name .. ")";
-		return wnd;
-	end
+	targetwnd_setup(game, factstr);
 end
 
 function launch_factorytgt(tbl, factstr)
@@ -295,76 +264,6 @@ function spawn_vidwin(self)
 		return;
 	end
 
-end
-
-function gamelist_media(tbl)
-	local res  = resourcefinder_search(tbl, true);
-	local list = {};
-
-	for i,j in ipairs(res.movies) do
-		local ment = {
-			resource = j,
-			name     = "video_" .. tostring(i),
-			trigger  = function()
-				local wnd, tfun = awbwman_mediawnd(
-					menulbl("Media Player"), "frameserver");
-				load_movie(j, FRAMESERVER_LOOP, tfun);
-				if (wnd == nil) then
-					return;
-				end
-			end,
-			cols     = {"video_" .. tostring(i)} 
-		};
-		table.insert(list, ment);
-	end
-
-	local imgcat = {"screenshots", "bezels", "marquees", "controlpanels",
-		"overlays", "cabinets", "boxart"};
-
-	for ind, cat in ipairs(imgcat) do
-		if (res[cat]) then
-			for i, j in ipairs(res[cat]) do
-				local ment = {
-					resource = j,
-					trigger = function()
-						local wnd, tfun = awbwman_mediawnd(
-							menulbl(cat), "static");
-						load_image_asynch(j, tfun);
-						if (wnd == nil) then
-							return;
-						end
-					end,
-					name = cat .. "_" .. tostring(i),
-					cols = {cat .. "_" .. tostring(i)}
-				};
-				table.insert(list, ment);
-			end
-		end
-	end
-
-	local mdl = find_cabinet_model(tbl);
-	if (mdl) then
-		local ment = {
-			resource = mdl,
-			trigger  = function()
-				local model = setup_cabinet_model(mdl, tbl, {});
-				if (model.vid) then
-					move3d_model(model.vid, 0.0, -0.2, -2.0);
-				else
-					model = {};
-				end
-				awbwman_mediawnd(menulbl("3D Model"), "3d", model); 
-			end,
-			name = "model(" .. mdl ..")",
-			cols = {"3D Model"}
-		};
-		table.insert(list, ment);
-	end
-
--- resource-finder don't sub-categorize properly so we'll 
--- have to do that manually
-	awbwman_listwnd(menulbl("Media:" .. tbl.title), deffont_sz, linespace,
-	{1.0}, list, desktoplbl);
 end
 
 function show_gamewarning()
@@ -469,7 +368,7 @@ function sortopts_popup(ent, wnd)
 		end resort(); end,
 
 		function() sortfun = function(a, b) 
-			return string.lower(a.genre) < string.lower(b.genre);
+			return string.lower(a.genre) > string.lower(b.genre);
 		end resort(); end
 	};
 
@@ -482,7 +381,7 @@ function gamelist_popup(ent, wnd)
 	local vid, list  = desktoplbl(popup_opts);
 	local popup_fun = {
 		function() gamelist_launch(ent);     end,
-		function() gamelist_media(ent.tag);  end,
+		function() awbbrowse_gamedata(ent.tag);  end,
 		function() 
 			local tbl = game_family(ent.gameid);
 
@@ -679,7 +578,7 @@ local function imghandler(path, base, ext)
 	load_image_asynch(name, tfun);
 end
 
-local handlers = {
+local exthandler = {
 	MP3 = amediahandler,
 	OGG = amediahandler,
 	MKV = vmediahandler,
@@ -690,20 +589,6 @@ local handlers = {
 	JPG = imghandler,
 	PNG = imghandler 
 };
-
-local function exthandler(path, base, ext)
-	if (ext == nil) then
-		return false;
-	end
-
-	local hfun = handlers[string.upper(ext)];
-	if (hfun ~= nil) then
-		hfun(path, base, ext);
-		return true;
-	end
-
-	return false;
-end
 
 local function wnd_media(path)
 	local list = {};
@@ -733,14 +618,18 @@ local function wnd_media(path)
 					resource = list[i],
 					trigger  = function()
 						local base, ext = string.extension(list[i]);
-						if (not exthandler(path, base, ext)) then
+						local handler = exthandler[ string.upper(ext) ];
+	
+						if (handler) then
+							handler(path, base, ext);
+						else
 							wnd_media(path .. "/" .. list[i]); 
 						end
 					end,
 					name = "mediaent",
 					cols = {list[i]}
 				};
-	
+-- FIXME: prefix icon based on extension, use that to set icon
 				table.insert(res, ment);
 			end
 			return res, #list;
@@ -757,16 +646,20 @@ function awb_desktop_setup()
 
 -- constraint, lru_cache limit should always be >= the number of icons
 -- in a fullscreen iconview window (else, if every entry is unique,
--- images will be deleted before they are used)
+-- images will be deleted before they are used), this should really
+-- be changed to have sheets of icons instead and just instantiate 
+-- images with shared storage and explicit coordinates that map
 	sysicons.lru_cache    = awb_iconcache(64, 
 		{"images/icons", "icons", "images/systems", "awbicons"}, sysicons.floppy);
+
+	local tools = scan_tools();
 
 	local groups = {
 		{
 			name    = MESSAGE["GROUP_TOOLS"],
 			key     = "tools",
 			trigger = function()
-				local wnd = awbwman_iconwnd(menulbl(MESSAGE["GROUP_TOOLS"]), builtin_group, 
+				local wnd = awbwman_iconwnd(menulbl(MESSAGE["GROUP_TOOLS"]), tools, 
 					{refid = "iconwnd_tools"});
 				wnd.name = "List(Tools)";
 			end
@@ -842,36 +735,37 @@ function get_root_icon(hint)
 	return icn, desw, desh;
 end
 
---
--- Since these use the icon LRU cache, parts of 
--- the tables need to be generated dynamically
---
-function builtin_group(self, ofs, lim, desw, desh)
-	local tools = {
-		{"BOING!",     spawn_boing,    "boing"},
-		{"Input",      awb_inputed,  "inputed"},
-		{"Recorder",   spawn_vidrec,  "vidrec"},
-		{"Network",    spawn_socsrv, "network"},
-		{"VideoIn",    spawn_vidwin,  "vidcap"},
---		{"Compare",   spawn_vidcmp,  "vidcmp"},
-		{"HeightMap", spawn_hmap,   "hghtmap"}
---		{"ShaderEd",  spawn_shadeed, "shadeed"},
-	};
-
-	local restbl = {};
-
-	lim = lim + ofs;
-	while ofs <= lim and ofs <= #tools do
-		local newtbl = {};
-		newtbl.caption = desktoplbl(tools[ofs][1]);
-		newtbl.trigger = tools[ofs][2];
-		newtbl.name    = tools[ofs][3];
-		newtbl.icon    = sysicons.lru_cache:get(newtbl.name).icon;
-		table.insert(restbl, newtbl);
-		ofs = ofs + 1;
+function scan_tools()
+-- If we've already loaded / parsed, just make sure that we 
+-- have the proper icons already from the cache
+	if (global_tools ~= nil) then
+		for i, v in ipairs(global_tools) do
+			v.icon = sysicons.lru_cache:get(v.name).icon;
+		end
+		return global_tools;
 	end
 
-	return restbl, #tools;
+-- scan and dynamically load everything in the theme tools subfolder,
+-- this is missing a "safe" evaluation context approach
+	local res = glob_resource("tools/*.lua", THEME_RESOURCE);
+	if (res == nil) then
+		return;
+	end
+
+	global_tools = {};
+	for i, v in ipairs(res) do
+		local restbl = system_load("tools/" .. v)();
+		if (restbl ~= nil) then
+			local newent = {};
+			newent.caption = desktoplbl(restbl.caption);
+			newent.trigger = restbl.trigger;
+			newent.name    = restbl.name;
+			newent.icon    = sysicons.lru_cache:get(newent.name).icon;
+			table.insert(global_tools, newent);
+		end
+	end
+
+	return global_tools;
 end
 
 function system_group(self, ofs, lim, desw, desh)

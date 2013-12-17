@@ -34,6 +34,7 @@ end
 -- (and hide/show scrollbar if one isn't needed)
 --
 local function awbicon_setscrollbar(self)
+
 	if (self.capacity >= self.total) then
 		if (self.scroll) then
 			self.scroll = false;
@@ -207,6 +208,19 @@ local function awbicon_add(self, icntbl)
 	mouse_addlistener(icntbl, {"over", "click", "out", "dblclick"});
 end
 
+local function def_datasel(filter, ofs, lim)
+	local tbl = filter.tbl;
+	local res = {};
+	local ul = ofs + lim;
+	ul = ul > #tbl and #tbl or ul;
+
+	for i=ofs, ul do
+		table.insert(res, tbl[i]);
+	end
+
+	return res, #tbl;
+end
+
 --
 -- Window-resize; just figure out how many additional items
 -- to try and request (or how many items to drop)
@@ -218,10 +232,9 @@ local function awbicon_resize(self, neww, newh)
 	local cols  = math.floor(props.width  / (self.cell_w + self.hspace));
 	local rows  = math.floor(props.height / (self.cell_h + self.vspace));
 	self.capacity = cols * rows;
-	local total = 0;
 	local tbl = nil;
-
--- grow (request more icons at self.ofs + #icons)
+	
+--grow (request more icons at self.ofs + #icons)
 -- shrink (drop n items from the end of icons)
 -- else just reposition
 	if (self.capacity > #self.icons) then
@@ -272,6 +285,7 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 	pwin.icon_sz = iconsz;
 	pwin.vspace  = 6;
 	pwin.hspace  = 12;
+	pwin.total   = 1;
 	
 	if (options) then
 		for k,v in pairs(options) do
@@ -283,7 +297,19 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 	pwin.canvas.minh = cell_h;
 
 	pwin.ofs       = 1;
-	pwin.datasel   = datasel_fun;
+
+	if (type(datasel_fun) == "table") then
+		pwin.datasel = def_datasel;
+		pwin.tbl = datasel_fun;
+
+	elseif (type(datasel_fun) == "function") then
+		pwin.datasel = datasel_fun;
+	else
+		warning("awbwnd_iconview(broken), no data source specified");
+		warning(debug.traceback());
+		return nil;
+	end
+
 	pwin.icons     = {};
 
 	pwin.icon_bardir = bardir;
@@ -350,5 +376,6 @@ function awbwnd_iconview(pwin, cell_w, cell_h, iconsz, datasel_fun,
 		end
 	end
 
+	pwin:resize(pwin.w, pwin.h);
 	return pwin;
 end
