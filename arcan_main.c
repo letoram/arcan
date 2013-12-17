@@ -489,9 +489,6 @@ themeswitch:
 					arcan_themename = strdup(ev->data.system.data.message);
 					goto themeswitch;
 				}
-				else if (ev->kind == EVENT_SYSTEM_LAUNCH_EXTERNAL){}
-				else if (ev->kind == EVENT_SYSTEM_CLEANUP_EXTERNAL){}
-/* don't want to propagate the others */
 				else 
 					continue;
 			break;
