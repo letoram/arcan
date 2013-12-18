@@ -40,7 +40,13 @@
 
 #include GL_HEADERS
 
-/* arcan */
+/*
+ * Refactoring needs;
+ * (a) move gl operations to video or videoint
+ * (b) move al operations to audio or audioint
+ * (c) reduce the include namespace 
+ */
+
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
@@ -77,6 +83,72 @@ void arcan_frameserver_queueopts_override(unsigned short vcellcount,
 	queueopts.abufsize = abufsize;
 	queueopts.acellcount = acellcount;
 	queueopts.presilence = presilence;
+}
+
+arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
+{
+	if (!src)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+		
+/* the more complicated case here is looping,
+ * meaning that if the frameserver dies or exits within
+ * a set threshold, launch it again and reuse as much
+ * of the resources as possible, but especially everything
+ * conntected to the vid */
+
+	src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
+
+	if (src->vfq.alive)
+		arcan_framequeue_free(&src->vfq);
+		
+	if (src->afq.alive)
+		arcan_framequeue_free(&src->afq);
+
+	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) 
+		src->shm.ptr;
+
+	if (src->child_alive){
+		shmpage->dms = false;
+
+		arcan_event exev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_EXIT
+		};
+
+		arcan_frameserver_pushevent(src, &exev);
+	
+/* hook in platform, expecting src->child to be -1,
+ * child_alive to be false etc. */
+		arcan_frameserver_killchild(src);
+ 
+		src->child = -1;
+		src->child_alive = false;
+	}
+
+/* unhook audio monitors */
+	arcan_aobj_id* base = src->alocks;
+	while (base && *base){
+		arcan_audio_hookfeed(*base, NULL, NULL, NULL);
+		base++;
+	}
+
+	free(src->audb);
+	sem_destroy(&src->lock_audb);
+
+	if (shmpage){
+		arcan_frameserver_dropshared(src);
+		src->shm.ptr = NULL;
+	}
+
+	if (!loop){
+		vfunc_state emptys = {0};
+		arcan_audio_stop(src->aid);
+		arcan_video_alterfeed(src->vid, NULL, emptys);
+		memset(src, 0xaa, sizeof(arcan_frameserver));
+		free(src);
+	}
+
+	return ARCAN_OK;	
 }
 
 void arcan_frameserver_queueopts(unsigned short* vcellcount, 
@@ -119,9 +191,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
  * with the structure to provoke a vulnerability, frameserver 
  * dying or timing out, ... */
 	if (frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
-		(src->child_alive && src->child && -1 == 
-		 check_child(src) && errno == EINVAL))
-	{
+		arcan_frameserver_validchild(src) == false){
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,
 		.data.frameserver.video = src->vid,

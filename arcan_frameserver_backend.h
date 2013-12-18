@@ -30,7 +30,32 @@
 #define ARCAN_FRAMESERVER_PRESILENCE 16024
 #define ARCAN_FRAMESERVER_RESET_PTS_THRESH 800 
 
-struct arcan_ffmpeg_context;
+/*
+ * Missing;
+ *  The resource mapping between main engine and frameservers is 
+ *  1:1, 1 shmpage segment (associated with one vid,aid pair) etc.
+ *
+ *  There is a need for children to be able to request new video
+ *  blocks and for the running script to accept / reject that,
+ *  which essentially becomes a new allocation function.
+ *
+ *  This means that we also need to refcount such blocks, to
+ *  account for the possibility of the child to flag it as a "won't use"
+ *  and for the parent to indicate that the associated VID has been removed.
+ *  
+ *  There is also a need to specify "special" storage classes,
+ *  in particular sharing GL/GLES textures rather than having 
+ *  to go the readback approach. 
+ */
+
+/*
+ * The following functions are implemented in the platform layer;
+ * arcan_frameserver_validchild,
+ * arcan_frameserver_killchild,
+ * arcan_frameserver_dropshared,
+ * arcan_frameserver_pushfd,
+ * arcan_frameserver_spawn_server
+ */
 
 enum arcan_playstate {
 	ARCAN_PASSIVE = 0,
@@ -49,8 +74,6 @@ enum arcan_frameserver_kinds {
 	ARCAN_HIJACKLIB
 };
 
-/* FIXME: the interfaces to all the frameserver callbacks should really
- * be harmonized to pass this struct rather than the current win32ish arghell */
 typedef struct {
 	/* video */
 	uint16_t width;
@@ -277,6 +300,25 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 
 arcan_errc arcan_frameserver_audioframe_direct(struct arcan_aobj* aobj,
 	arcan_aobj_id id, unsigned buffer, void* tag);
+
+/*
+ * return if the child process associated with the frameserver context
+ * is still alive or not 
+ */
+bool arcan_frameserver_validchild(arcan_frameserver* ctx);
+
+/*
+ * guarantee that any and all child processes associated or spawned
+ * from the child connected will be terminated in as clean a 
+ * manner as possible (thus may not happen immediately although
+ * contents of the struct will be reset) 
+ */
+void arcan_frameserver_killchild(arcan_frameserver* ctx);
+
+/*
+ * release any shared memory resources associated with the frameserver
+ */
+void arcan_frameserver_dropshared(arcan_frameserver* ctx);
 
 /* PROCEED WITH EXTREME CAUTION, _configure, 
  * _spawn, _free etc. are among the more complicated functions

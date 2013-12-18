@@ -32,13 +32,11 @@
 
 #include <tchar.h>
 
-/* libSDL */
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include <SDL_mutex.h>
 #include <SDL_types.h>
 
-/* arcan */
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 
@@ -50,6 +48,13 @@
 #include "../arcan_event.h"
 #include "../arcan_util.h"
 #include "../arcan_frameserver_shmpage.h"
+
+/*
+ * refactor needs:
+ * should be able to get rid of SDL here
+ * the terminate process doesn't work particularly gracefully,
+ * and can block / stall the main app
+ */ 
 
 static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode);
 

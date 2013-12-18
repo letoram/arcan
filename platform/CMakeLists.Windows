@@ -13,6 +13,7 @@ ${WIN32_PATH}/paths.c
 ${WIN32_PATH}/resource_io.c
 ${WIN32_PATH}/warning.c
 ${WIN32_PATH}/map_resource.c
+${WIN32_PATH}/frameserver.c
 platform/sdl/event.c
 platform/sdl/video.c
 )
@@ -43,7 +44,6 @@ LIST(APPEND SOURCES
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_win32.c
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h 
 ${WIN32_PATH}/arcan_target_launcher_win32.c
-${WIN32_PATH}/arcan_frameserver_backend_win32.c 
 ${WIN32_PATH}/getopt_win32.c 
 ${WIN32_PATH}/getopt.h 
 ${WIN32_PATH}/sdl_win32_main.c 
