@@ -28,10 +28,7 @@
 #include "../arcan_audio.h"
 #include "../arcan_framequeue.h"
 #include "../arcan_frameserver_backend.h"
-#include "../arcan_target_const.h"
 #include "../arcan_target_launcher.h"
-
-extern bool fullscreen;
 
 int arcan_target_launch_external(const char* fname, char** argv)
 {
@@ -40,7 +37,9 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	DWORD exitcode;
 	unsigned long int start = arcan_frametime();
 	if (fname == NULL || argv == NULL) {
-		arcan_warning("arcan_target_launch_external(win32) : invalid arguments to launch\n\t (empty fname or empty argv), check the database.\n");
+		arcan_warning("arcan_target_launch_external(win32) :"
+			" invalid arguments to launch\n\t (empty fname or empty argv)"
+			", check the database.\n");
 		return -1;
 	}
 
@@ -53,7 +52,8 @@ int arcan_target_launch_external(const char* fname, char** argv)
 	while (base && *base) {
 		size_t res = strlen(*base++);
 		if (res == -1) {
-			arcan_warning("arcan_target_launch_external(), error parsing string argument.\n");
+			arcan_warning("arcan_target_launch_external(), "
+				"error parsing string argument.\n");
 			continue;
 		}
 
@@ -78,10 +78,12 @@ int arcan_target_launch_external(const char* fname, char** argv)
 
 	/* merge argv */
 	si.cb = sizeof(si);
-	if (CreateProcess(0, cmdline, 0, 0, FALSE, CREATE_NO_WINDOW, 0, 0, &si, &pi)) {
+	if (CreateProcess(0, cmdline, 0, 0, FALSE, 
+		CREATE_NO_WINDOW, 0, 0, &si, &pi)) {
 		while (1) {
 			MSG msg;
-			if (!GetExitCodeProcess(pi.hProcess, &exitcode) || exitcode != STILL_ACTIVE)
+			if (!GetExitCodeProcess(pi.hProcess, &exitcode) 
+				|| exitcode != STILL_ACTIVE)
 				break;
 
 			WaitForSingleObject(pi.hProcess, INFINITE);
@@ -102,7 +104,8 @@ static arcan_errc again_feed(float gain, void* tag)
 }
 
 extern char* arcan_libpath;
-arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack, char** argv)
+arcan_frameserver* arcan_target_launch_internal(
+	const char* fname, char* hijack, char** argv)
 {
 	return NULL;
 }

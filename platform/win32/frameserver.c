@@ -15,7 +15,8 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, 
+ * MA 02110-1301, USA.
  *
  */
 
@@ -56,79 +57,18 @@
  * and can block / stall the main app
  */ 
 
+sem_handle async, vsync, esync;
+HANDLE parent;
+
 static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode);
 
-arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
+void arcan_frameserver_killchild(arcan_frameserver* src)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+	UINT ec;
 
-	if (src) {
-		src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
-		if (!loop)
-			arcan_audio_stop(src->aid);
-
-		if (src->vfq.alive)
-			arcan_framequeue_free(&src->vfq);
-
-		if (src->afq.alive)
-			arcan_framequeue_free(&src->afq);
-
-		struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) src->shm.ptr;
-
-	/* might have died prematurely (framequeue cbs), no reason sending signal */
- 		if (src->child_alive) {
-			shmpage->dms = false;
-
-			arcan_event exev = {
-				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_EXIT
-			};
-
-			arcan_frameserver_pushevent(src, &exev);
-
-			UINT ec;
-			SafeTerminateProcess(src->child, &ec);
-			src->child_alive = false;
-			src->child = NULL;
-		}
-
-/* unhook audio monitors */
-		arcan_aobj_id* base = src->alocks;
-		while (base && *base){
-			arcan_audio_hookfeed(*base, NULL, NULL, NULL);
-			base++;
-		}
-		free(src->audb);
-
-		sem_destroy(&src->lock_audb);
-		
-		if (shmpage){
-			arcan_frameserver_dropsemaphores(src);
-
-			if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
-				arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n", strerror(errno));
-
-			CloseHandle(src->async);
-			CloseHandle(src->vsync);
-			CloseHandle(src->esync);
-			CloseHandle( src->shm.handle );
-			free(src->shm.key);
-
-			src->shm.ptr = NULL;
-		}
-
-		if (!loop){
-			vfunc_state emptys = {0};
-			arcan_audio_stop(src->aid);
-			arcan_video_alterfeed(src->vid, arcan_video_emptyffunc(), emptys);
-			memset(src, 0x00, sizeof(arcan_frameserver));
-			free(src);
-		}
-
-		rv = ARCAN_OK;
-	}
-
-	return rv;
+	SafeTerminateProcess(src->child, &ec);
+	src->child_alive = false;
+	src->child = NULL;
 }
 
 /* Dr.Dobb, anno 99, because a working signaling system and kill is too clean */
@@ -147,7 +87,8 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 		FALSE,
 		0);
 
-	if (GetExitCodeProcess((bDup) ? hProcessDup : hProcess, &dwCode) && (dwCode == STILL_ACTIVE)) {
+	if (GetExitCodeProcess((bDup) ? hProcessDup :
+		 hProcess, &dwCode) && (dwCode == STILL_ACTIVE)) {
 		FARPROC pfnExitProc;
 		pfnExitProc = GetProcAddress(hKernel, "exit");
 		hRT = CreateRemoteThread((bDup) ? hProcessDup : hProcess,
@@ -177,22 +118,38 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 	return bSuccess;
 }
 
-int check_child(arcan_frameserver* movie)
+bool arcan_frameserver_validchild(arcan_frameserver* src)
 {
-	int rv = -1;
-	errno = EAGAIN;
-
-	if (movie->child){
+	if (src->child){
 		DWORD exitcode;
-		GetExitCodeProcess((HANDLE) movie->child, &exitcode);
+		GetExitCodeProcess((HANDLE) src->child, &exitcode);
 		if (exitcode == STILL_ACTIVE); /* this was a triumph */
 		else {
-			errno = EINVAL;
-			movie->child_alive = false;
+			src->child_alive = false;
+			return false;
 		}
 	}
 
-	return rv;
+	return true;
+}
+
+void arcan_frameserver_dropshared(arcan_frameserver* src)
+{
+	arcan_frameserver_dropsemaphores(src);
+	struct frameserver_shmpage* shmpage = 
+		(struct frameserver_shmpage*) src->shm.ptr;
+
+	if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
+		arcan_warning("BUG -- arcan_frameserver_free()"
+			", munmap failed: %s\n", strerror(errno));
+
+	CloseHandle(src->async);
+	CloseHandle(src->vsync);
+	CloseHandle(src->esync);
+	CloseHandle( src->shm.handle );
+	free(src->shm.key);
+
+		src->shm.ptr = NULL;
 }
 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
@@ -205,14 +162,16 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 
 		childh = OpenProcess(PROCESS_DUP_HANDLE, FALSE, fsrv->childp);
 		if (INVALID_HANDLE_VALUE == childh){
-			arcan_warning("arcan_frameserver(win32)::push_handle, couldn't open child process (%ld)\n", GetLastError());
+			arcan_warning("arcan_frameserver(win32)::push_handle, "
+				"couldn't open child process (%ld)\n", GetLastError());
 			return rv;
 		}
 
 /* assume valid input fd, 64bit issues with this one? */
 		fdh = (HANDLE) _get_osfhandle(fd);
 
-		if (DuplicateHandle(GetCurrentProcess(), fdh, childh, &dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
+		if (DuplicateHandle(GetCurrentProcess(), fdh, childh, 
+			&dh, 0, FALSE, DUPLICATE_SAME_ACCESS)){
 			arcan_event ev = {
 				.category = EVENT_TARGET,
 				.kind = TARGET_COMMAND_FDTRANSFER
@@ -223,11 +182,13 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			rv = ARCAN_OK;
 		}
 		else {
-			arcan_warning("arcan_frameserver(win32)::push_handle failed (%ld)\n", GetLastError() );
+			arcan_warning("arcan_frameserver(win32)::push_handle "
+				"failed (%ld)\n", GetLastError() );
 			rv = ARCAN_ERRC_BAD_ARGUMENT;
 		}
 
-/*	removed: likely suspect for a Windows Exception in zwClose and friends.	CloseHandle(fdh); */
+/*removed: likely suspect for a Windows Exception in 
+ * zwClose and friends.	CloseHandle(fdh); */
 		_close(fd);
 	}
 
@@ -259,23 +220,20 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 		NULL /* null, pass by inheritance */
 	);
 
-	if (*dfd != NULL && (res = MapViewOfFile(*dfd, FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
+	if (*dfd != NULL && (res = MapViewOfFile(*dfd, 
+			FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
 		memset(res, 0, sizeof(struct frameserver_shmpage));
 		return res;
 	}
 
 error:
-	arcan_warning("arcan_frameserver_spawn_server(), could't allocate shared memory.\n");
+	arcan_warning("arcan_frameserver_spawn_server(), "
+		"could't allocate shared memory.\n");
 	return NULL;
 }
 
-
-/* unfortunate and temporary (0.2.3 cleanup) hack around linking shmpage */
-sem_handle async, vsync, esync;
-HANDLE parent;
-FILE* logdev = NULL;
-
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct frameserver_envp setup)
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
+	struct frameserver_envp setup)
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	arcan_frameserver_meta vinfo = {0};
@@ -298,11 +256,15 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	if (ctx->vid == ARCAN_EID) {
 		vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
 		ctx->source = strdup(setup.args.builtin.resource);
-		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
+		ctx->vid = arcan_video_addfobject(
+			(arcan_vfunc_cb)arcan_frameserver_emptyframe, state, cons, 0);
 		ctx->aid = ARCAN_EID;
-	} else if (setup.custom_feed == false){
+	} 
+	else if (setup.custom_feed == false){
+/* revert back to empty vfunc? */
 		vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
-		arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); /* revert back to empty vfunc? */
+		arcan_video_alterfeed(ctx->vid, 
+		(arcan_vfunc_cb)arcan_frameserver_emptyframe, *cstate); 
 	}
 
 	ctx->vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
@@ -321,7 +283,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 	arcan_frameserver_configure(ctx, setup);
 
 	char cmdline[4196];
-	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", setup.args.builtin.resource, shmh,
+	snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" %i %i %i %i %s", 
+		setup.args.builtin.resource, shmh,
 		ctx->vsync, ctx->async, ctx->esync, setup.args.builtin.mode);
 
 	PROCESS_INFORMATION pi;
@@ -330,18 +293,20 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 
 	si.cb = sizeof(si);
 	if (CreateProcess(
-		"arcan_frameserver.exe", /* program name, if null it will be extracted from cmdline */
-		cmdline, /* will be mapped up to argv, frameserver takes; resource(fname), handle */
+		"arcan_frameserver.exe", 
+		cmdline,
 		0, /* don't make the parent process handle inheritable */
 		0, /* don't make the parent thread handle(s) inheritable */
 		TRUE, /* inherit the rest (we want semaphore / shm handle) */
-		CREATE_NO_WINDOW, /* console application, however we don't need a console window spawned with it */
+/* console application, however we don't need a console window spawned with it */
+		CREATE_NO_WINDOW, 
 		0, /* don't need an ENV[] */
 		0, /* don't change CWD */
 		&si, /* Startup info */
 		&pi /* process-info */)) {
 
-/* anything else that can happen to the child at this point is handled in frameserver_tick_control */
+/* anything else that can happen to the child at 
+ * this point is handled in frameserver_tick_control */
 		ctx->child = pi.hProcess;
 		ctx->childp = pi.dwProcessId;
 
@@ -350,10 +315,12 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, struct framese
 		return ARCAN_OK;
 	}
 	else
-		arcan_warning("arcan_frameserver_spawn_server(), couldn't spawn frameserver.\n");
+		arcan_warning("arcan_frameserver_spawn_server(),"
+			" couldn't spawn frameserver.\n");
 
 error:
-	arcan_warning("arcan_frameserver(win32): couldn't spawn frameserver session (out of shared memory?)\n");
+	arcan_warning("arcan_frameserver(win32): couldn't spawn "
+		"frameserver session (out of shared memory?)\n");
 
 	CloseHandle(ctx->async);
 	CloseHandle(ctx->vsync);
