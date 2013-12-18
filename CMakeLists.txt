@@ -257,6 +257,9 @@ set (
  external/fft/kiss_fftr.c
 )
 
+set_property(SOURCE frameserver/graphing/net_graph.c 
+	PROPERTY COMPILE_FLAGS -Wno-unused)
+
 if (${ENABLE_LED})
 	list(APPEND ${SOURCES}
 		arcan_led.c

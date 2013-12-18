@@ -14,6 +14,7 @@ ${PLATFORM_PATH}/time.c
 ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/../sdl/event.c
 ${PLATFORM_PATH}/../sdl/video.c
+${PLATFORM_PATH}/frameserver.c
 )
 
 set (FSERV_PLATFORM_SOURCES
@@ -51,7 +52,6 @@ LIST(APPEND SOURCES
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
  	arcan_target_launcher.c 
-	arcan_frameserver_backend_unix.c
 )
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 

@@ -10,6 +10,7 @@ platform/posix/sem.c
 platform/posix/shm.c
 platform/posix/time.c
 platform/posix/warning.c
+platform/posix/frameserver.c
 platform/sdl/event.c
 platform/sdl/video.c
 )

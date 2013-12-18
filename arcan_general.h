@@ -29,6 +29,11 @@
  * in platform/system/functionname.c 
  */
 
+/* refactor needs:
+ * (a) stop typedef:ing structs
+ * (b) continue evacuating ifdefs that aren't DEBUG
+ */
+
 #define ARCAN_VERSION_MAJOR 0
 #define ARCAN_VERSION_MINOR 3 
 #define ARCAN_VERSION_PATCH 1 
@@ -155,6 +160,8 @@ char* arcan_find_resource_path(const char* label,
 	const char* path, int searchmask);
 char* arcan_find_resource(const char* label, int searchmask);
 char* arcan_findshmkey(int* dhd, bool semalloc);
+void arcan_dropshmkey(char* srckey);
+
 const char* strip_traverse(const char* in);
 /*
  * Open and map a resource description (from _expand, _find category 
