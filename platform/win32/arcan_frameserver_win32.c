@@ -158,9 +158,9 @@ bool frameserver_loadlib(const char* const name)
 
 void* frameserver_requirefun(const char* const name, bool global)
 {
-	return GetProcAddress(lastlib, name);
-/* FIXME:
- * scan OGL dll if procaddress fails */
+	void* addr = GetProcAddress(lastlib, name);
+	if (addr)
+		return addr;
 }
 
 /* by default, we only do this for libretro where it might help
