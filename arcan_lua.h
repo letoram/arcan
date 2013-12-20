@@ -54,7 +54,7 @@ void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
  * and resources into the (dst) filestream. 
  * If delim is set, we're in streaming mode so a delimiter will be added
  * to account for more snapshots over the same stream */
-void arcan_lua_statesnap(FILE* dst, bool delim);
+void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim);
 
 /* nonblock/read from (dst) filestream until an #ENDBLOCK\n tag is encountered,
  * parse this and push it into the struct arcan_luactx as the first 

@@ -195,24 +195,32 @@ static void dump_call_trace(lua_State* ctx)
 static void arcan_lua_wraperr(struct arcan_luactx* ctx, 
 	int errc, const char* src);
 
-static void crashdump()
+static void crashdump(const char* msg, const char* src)
 {
 	time_t logtime = time(NULL);
 	struct tm* ltime = localtime(&logtime);
 			
 	if (ltime) {
-		const char* fns = "/logs/crash_mmdd_hhmmss.lua";
-		char fname[ strlen(arcan_resourcepath) + strlen(fns) + 10 ];
+#define DATESTR "%m%d_%H%M%S"
+		char datestr[ sizeof(DATESTR) * 2 ];
+		char fname[strlen(arcan_resourcepath) + 
+			sizeof("/logs/crash_.lua") + sizeof(datestr)];
+		strftime(datestr, sizeof(datestr), DATESTR, ltime);
+#undef DATESTR
 
-		sprintf(fname, "%s%s", arcan_resourcepath, fns);
-		strftime( fname + strlen(arcan_resourcepath) + 
-			strlen("/logs/crash_"), 9, "%m%d_%H%M%S", ltime);
+		snprintf(fname, sizeof(fname), 
+			"%s/logs/crash_%s.lua", arcan_resourcepath, datestr);
 
 		FILE* tmpout = fopen(fname, "w+");
 		if (tmpout){
-			arcan_lua_statesnap(tmpout, false);
+			char dbuf[strlen(msg) + strlen(src) + 1];
+			snprintf(dbuf, sizeof(dbuf), "%s, %s\n", msg ? msg : "", src ? src : "");
+
+			arcan_lua_statesnap(tmpout, dbuf, false);
 			fclose(tmpout);
-		}
+		} 
+		else 
+			arcan_warning("crashdump requested but (%s/logs) not accessible.\n");
 	}
 }
 
@@ -3324,16 +3332,14 @@ static void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 		if (lua_ctx_store.debug > 0)
 			dump_stack(ctx);
 
-		if (lua_ctx_store.debug > 0){
-			crashdump();
-
-			if (!(lua_ctx_store.debug > 2)){
-				arcan_fatal("Fatal: arcan_lua_wraperr(%s, %s)\n", mesg, src);
-			}
+		crashdump(mesg, src);
+		if (!(lua_ctx_store.debug > 2)){
+			arcan_fatal("Fatal: arcan_lua_wraperr(%s, %s)\n", mesg, src);
 		}
 	}
 	else{
 		while ( arcan_video_popcontext() < CONTEXT_STACK_LIMIT -1);
+		crashdump(mesg, src);
 		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
 	}
 }
@@ -5866,19 +5872,7 @@ vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
 	free(mask);
 }
 
-/*
- * missing;
- *  frameset_framemode
- *  transform_chains
- *  texture_coordinates
- *  blendmode
- *  frameset
- *  ffunc mask
- *  current_frame reference
- *  vstore->values
- */
-
-void arcan_lua_statesnap(FILE* dst, bool delim)
+void arcan_lua_statesnap(FILE* dst, const char* tag, bool delim)
 {
 /*
  * display global settings, wrap to local ptr for shorthand */
@@ -5892,6 +5886,7 @@ local inf = math.huge;\n\
 local vobj = {};\n\
 local props = {};\n\
 local restbl = {\n\
+\tmessage = [[%s]],\n\
 \tdisplay = {\n\
 \t\twidth = %d,\n\
 \t\theight = %d,\n\
@@ -5906,7 +5901,8 @@ local restbl = {\n\
 \t};\n\
 \tvcontexts = {};\
 };\n\
-", disp->width, disp->height, disp->conservative ? 1 : 0, disp->vsync ? 1 : 0, 
+", tag ? tag : "", 
+	disp->width, disp->height, disp->conservative ? 1 : 0, disp->vsync ? 1 : 0, 
 	(int)disp->msasamples, (long long int)disp->c_ticks, 
 	(int)disp->default_vitemlim,
 	(int)disp->imageproc, (int)disp->scalemode, (int)disp->filtermode);
