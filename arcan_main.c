@@ -513,8 +513,11 @@ themeswitch:
 				
 			if (monitor && monitor_parent){
 				if (--monitor_counter == 0){
+					static int mc;
+					char buf[8];
+					snprintf(buf, 8, "%d", mc++);
 					monitor_counter = monitor;
-					arcan_lua_statesnap(monitor_outf, true);
+					arcan_lua_statesnap(monitor_outf, buf, true);
 				}
 			} 
 		}
