@@ -16,15 +16,27 @@ end
 
 local function spawn_corewnd(wnd)
 	local conftbl = {};
+	local dumptbl = {}; -- wnd.coreopts has fields to protect 
 
 	for k,v in pairs(wnd.coreopts) do
 		local entry = {};
+
+		if (v.value == nil) then v.value = v.args[1]; end
+
+		for i=1,#v.args do
+			if (v.args[i] == v.value) then
+				entry.ind = i;
+				break;
+			end
+		end
+
 		entry.name = tostring(v.num);
 		entry.trigger = function(self, lstwnd)
-			stepfun_tbl(self, lstwnd, wnd, tostring(v.num), v.args, true);
+			stepfun_tbl(self, lstwnd, dumptbl, k, v.args, true);
+			wnd:set_coreopt(k, dumptbl[k]);
 			lstwnd:force_update();
 		end
-		entry.cols = {string.gsub(k, "\\", "\\\\"), v.args[1]};
+		entry.cols = {string.gsub(v.descr, "\\", "\\\\"), v.value};
 		table.insert(conftbl, entry);
 	end
 
@@ -71,9 +83,10 @@ local function sysopt_sel(icn, wnd)
 		function()
 			local tbl = wnd.gametbl;
 			local fact = wnd.factstr_src;
-			wnd:destroy();
+			local copt = wnd.coreopts;
 
-			targetwnd_setup(tbl, fact);
+			wnd:destroy();
+			targetwnd_setup(tbl, fact, copt); 
 		end
 	};
 
@@ -682,6 +695,14 @@ local function gen_factorystr(wnd)
 	return table.concat(lines, "\n");
 end
 
+local function setcoreopt(wnd, key, value)
+	target_coreopt(wnd.controlid, 
+		wnd.coreopts[key].num, value);
+
+-- for hard reset
+	wnd.coreopts[key].value = value;
+end
+
 local function datashare(wnd)
 	local res = awbwman_setup_cursortag(sysicons.floppy);
 	res.kind = "media";
@@ -709,6 +730,7 @@ local function add_corearg(dstwnd, msg)
 		dstwnd.coreopts[msg] = {};
 		dstwnd.coreopts[msg].num = num;
 		dstwnd.coreopts[msg].args = {};
+		dstwnd.coreopts[msg].key = msg;
 
 	elseif (group == "descr") then
 		for i,v in pairs(dstwnd.coreopts) do
@@ -757,6 +779,7 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.jitterstep = 0; -- just for debugging
 	pwin.jitterxfer = 0; -- just for debugging
 	pwin.ntsc_state = false;
+	pwin.set_coreopt = setcoreopt;
 
 	pwin.mouse_accel = 1.0;
 	pwin.mouse_x = {1, 1};
@@ -973,22 +996,23 @@ function awbwnd_target(pwin, caps, factstr)
 			pwin:break_display();	
 
 		elseif (status.kind == "message") then
---			print("show message:", status.message);
+--	
 
 		elseif (status.kind == "coreopt") then
 			add_corearg(pwin, status.argument);
 
 		elseif (status.kind == "ident") then
---			print("ident", status.message);
+--	
 
 		elseif (status.kind == "resource_status") then
---			print("resstat", status.message);
+--		
 
 		elseif (status.kind == "loading") then
-			print("show loading info..");
+--     
 
 		elseif (status.kind == "frame") then
 -- do nothing
+
 		elseif (status.kind == "resized") then
 			pwin.mirrored = status.mirrored;
 
@@ -1053,7 +1077,7 @@ end
 --
 -- Convenience "launcher" factory function
 --
-function targetwnd_setup(game, factstr)
+function targetwnd_setup(game, factstr, coreargs)
 	local captbl = launch_target_capabilities(game.target);
 	if (captbl == nil) then
 		awbwman_alert("Couldn't get capability table");
@@ -1075,8 +1099,25 @@ function targetwnd_setup(game, factstr)
 			return;
 		end
 	
-		wnd.gametbl = game; 
-		wnd.recv, wnd.reca = launch_target(game.gameid, LAUNCH_INTERNAL, cb);
+		wnd.gametbl = game;
+		local tgtargs = nil;
+
+		if (coreargs) then
+			local argtbl = {};
+
+			for k,v in pairs(coreargs) do
+				table.insert(argtbl, string.format("core_%s=%s", 
+					v.key, v.value));
+			end
+
+			if (#argtbl > 0) then
+				tgtargs = table.concat(argtbl, ":");
+			end
+		end
+
+		wnd.recv, wnd.reca = launch_target(game.gameid, 
+			LAUNCH_INTERNAL, cb, tgtargs);
+
 		wnd.factory_base = "gameid=" .. tostring(game.gameid);
 	
 		wnd.name = game.target .. "(" .. game.name .. ")";

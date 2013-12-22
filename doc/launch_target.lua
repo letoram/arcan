@@ -1,6 +1,6 @@
 -- launch_target
 -- @short: Setup and launch an external program.
--- @inargs: gameid, mode, *handler*
+-- @inargs: gameid, mode, *handler*, *argstr*
 -- @outargs: *vid*
 -- @longdescr: This function first resolves properties (execution environment),
 -- and, depending on if mode is set to LAUNCH_EXTERNAL or LAUNCH_INTERNAL:
@@ -12,6 +12,8 @@
 -- frameserver process or as a hijacked process), poll for changes / updates and feed the
 -- *handler* (source, statustbl) callback function on notable changes in state.
 -- See notes below for details on statustbl contents.
+-- *argstr* is a regular k1=v1:k2:k3=v3 kind of argument string, used primarily
+-- for libretro cores when prefixed with core_
 -- @notes: Possible statustbl.kind values; "resized", "ident", "message", "failure",
 -- "frameserver_terminated", "frame", "state_size", "resource_status", "unknown".
 -- @notes: for kind == "resized", width, height 
