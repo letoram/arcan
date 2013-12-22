@@ -424,7 +424,7 @@ local function awbwman_addcaption(bar, caption)
 	end
 
 	bar.update_caption = awbwman_addcaption;
-	bar.noresize_fill = true;
+--	bar.noresize_fill = false;
 
 	local props  = image_surface_properties(caption);
 	local bgsurf = fill_surface(10, 10, 230, 230, 230);
