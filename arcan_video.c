@@ -3754,7 +3754,8 @@ void arcan_video_setblend(const surface_properties* dprops,
 {
 /* only blend if the object isn't entirely solid or 
  * if the object has specific settings */
-	if (dprops->opa > 0.999f && elem->blendmode == blend_disable)
+	if ((dprops->opa > 0.999f && elem->blendmode == blend_disable) ||
+		elem->blendmode == blend_disable )
 		glDisable(GL_BLEND);
 	else{
 		glEnable(GL_BLEND);
