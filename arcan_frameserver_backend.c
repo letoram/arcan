@@ -61,8 +61,6 @@
 
 #define INCR(X, C) ( (X = (X + 1) % C) )
 
-extern int check_child(arcan_frameserver*);
-
 static struct {
 	unsigned vcellcount;
 	unsigned abufsize;
@@ -190,8 +188,9 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /* bunch of terminating conditions -- frameserver messes 
  * with the structure to provoke a vulnerability, frameserver 
  * dying or timing out, ... */
-	if (frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
-		arcan_frameserver_validchild(src) == false){
+	if ( src->child_alive && 
+		(frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
+		arcan_frameserver_validchild(src) == false)){
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,
 		.data.frameserver.video = src->vid,
