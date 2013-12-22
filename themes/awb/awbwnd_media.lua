@@ -75,7 +75,9 @@ function awbwnd_breakdisplay(wnd)
   switch_default_texmode( TEX_CLAMP, TEX_CLAMP );
 	wnd.broken = true;
 
-	wnd.dir.tt:destroy();
+	if (wnd.dir.tt) then
+		wnd.dir.tt:destroy();
+	end
 
 	wnd.rebuild_chain = function() end
 	wnd.shid = build_shader(animtexco_vshader, nil, "vid_" .. wnd.wndid);
@@ -926,7 +928,6 @@ function awbwnd_media(pwin, kind, source, active, inactive)
 
 				elseif (status.kind == "frameserver_terminated") then
 					pwin:break_display();
-					print("dead!");
 
 				elseif (status.kind == "streamstatus") then
 					update_streamstats(pwin, status);
