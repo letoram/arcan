@@ -92,6 +92,12 @@ struct input_port {
 	unsigned cursor_x, cursor_y, cursor_btns[5];
 };
 
+struct core_variable {
+	const char* key;
+	const char* value;
+	bool updated;
+};
+
 typedef void(*pixconv_fun)(const void* data, uint32_t* outp, 
 	unsigned width, unsigned height, size_t pitch, bool postfilter);
 
@@ -169,7 +175,8 @@ static struct {
  * 2. on GET_VARIABLE, lookup against the args and fallback
  *    on the cache. Dynamic switching isn't supported currently. */
 	struct arg_arr* inargs;
-	struct retro_variable* varset;
+	struct core_variable* varset;
+	bool optdirty;
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
@@ -398,7 +405,6 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* intermediate storage for blargg NTSC filter, if toggled, 
  * ntscconv will be applied by the converter however */
 	if (ntscconv && !retroctx.ntsc_imb){
-		LOG("rebuilding shmpage for NTSC\n");
 		retroctx.ntsc_imb = malloc(sizeof(uint16_t) * outw * outh);
 	}
 
@@ -519,24 +525,48 @@ static void libretro_pollcb(){}
 
 static const char* lookup_varset( const char* key )
 {
+	struct core_variable* var = retroctx.varset;
 	char buf[ strlen(key) + sizeof("core_") + 1];
 	sprintf(buf, "core_%s", key);
-	const char* val;
+	const char* val = NULL;
 
-	if (arg_lookup(retroctx.inargs, key, 0, &val)){
-		return val;
+/* we have an initial preset, only update if dirty */
+	if (arg_lookup(retroctx.inargs, buf, 0, &val)){
+		if (var)
+			while(var->key){
+				if (var->updated && strcmp(var->key, key) == 0){
+					return var->value;
+				}
+	
+				var++;	
+			}
+	
 	}
-
-	struct retro_variable* var = retroctx.varset;
-	if (var)
-		while(var->key){
+/* no preset, just return the first match */
+	else if (var) {
+		while (var->key){
 			if (strcmp(var->key, key) == 0)
 				return var->value;
 
 			var++;
 		}
+	}
 
-	return NULL;
+	return val;
+}
+
+/* from parent, not all cores support dynamic arguments
+ * so this is just a complement to launch arguments */
+static void update_corearg(int code, const char* value)
+{
+	struct core_variable* var = retroctx.varset;
+	while (var && var->key && code--)
+		var++;
+
+	if (code <= 0){
+		free((char*)var->value);
+		var->value = strdup(value);
+	}
 }
 
 static void update_varset( struct retro_variable* data )
@@ -570,9 +600,9 @@ static void update_varset( struct retro_variable* data )
 	if (count == 0)
 		return;
 
-	retroctx.varset = malloc( sizeof(struct retro_variable) * count);
-	memset(retroctx.varset, '\0', sizeof(struct retro_variable) * count);
-	LOG("coreopts (%d) options.\n", count);
+	count++;
+	retroctx.varset = malloc( sizeof(struct core_variable) * count);
+	memset(retroctx.varset, '\0', sizeof(struct core_variable) * count);
 
 	count = 0;
 	while ( data[count].key ){
@@ -605,7 +635,6 @@ static void update_varset( struct retro_variable* data )
 /* skip leading whitespace */
 		while(*workend && *workend == ' ') workend++;
 
-
 /* key */
 		snprintf((char*)outev.data.external.message, msgsz-1,
 			"%d:key:%s", count, data[count].key);
@@ -631,7 +660,6 @@ startarg:
 
 				snprintf((char*)outev.data.external.message, msgsz-1,
 					"%d:arg:%s", count, workbeg);
-				LOG("adding arg (%s)", workbeg);
 				arcan_event_enqueue(&retroctx.outevq, &outev);
 				goto startarg;
 			}
@@ -692,11 +720,18 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		{
 			struct retro_variable* arg = (struct retro_variable*) data;
 			arg->value = lookup_varset(arg->key);
+			if (arg->value)
+				rv = true;
 		}
 	break;
 
+	case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL:
+/* don't care */
+	break;
+
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-		rv = false;
+		rv = retroctx.optdirty;
+		retroctx.optdirty = false;
 	break;
 
 /* unsure how we'll handle this when privsep is working, 
@@ -1005,6 +1040,11 @@ static inline void targetev(arcan_event* ev)
 			reset_timing();
 		break;
 
+		case TARGET_COMMAND_COREOPT:
+			retroctx.optdirty = true;
+			update_corearg(tgt->code, tgt->message);	
+		break;
+
 		case TARGET_COMMAND_SETIODEV:
 			retroctx.set_ioport(tgt->ioevs[0].iv, tgt->ioevs[1].iv);
 		break;
@@ -1280,7 +1320,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		resname = strdup(val);
 
 	LOG("loading core (%s) with resource (%s)\n", libname ? 
-		libname : "missing arg.", resname ? resname : "missing arg.");
+		libname : "missing arg.", resname ? resname : "missing resarg.");
 
 	if (*libname == 0)
 		return;
@@ -1527,9 +1567,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			arcan_event_enqueue(&retroctx.outevq, &outev);
 
 #ifdef _DEBUG
-			if (testcounter != 1)
-				LOG("inconsistent core behavior, "
-					"expected 1 video frame / run(), got %d\n", testcounter);
+			if (testcounter != 1){
+				static bool countwarn = 0;
+				if (!countwarn && (countwarn = true))
+					LOG("inconsistent core behavior, "
+						"expected 1 video frame / run(), got %d\n", testcounter);
+			}
 #endif
 
 /* frameskipping here is a simple adaptive thing, 
