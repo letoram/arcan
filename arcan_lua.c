@@ -3563,6 +3563,27 @@ static int arcan_lua_targetgraph(lua_State* ctx)
 	return 0;
 }
 
+static int arcan_lua_targetcoreopt(lua_State* ctx)
+{
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_COREOPT
+	};
+
+	size_t msgsz = sizeof(ev.data.target.message) / 
+		sizeof(ev.data.target.message[0]);
+
+	ev.data.target.code = luaL_checknumber(ctx, 2);
+	const char* msg = luaL_checkstring(ctx, 3);
+
+	strncpy(ev.data.target.message, msg, msgsz - 1);
+	tgtevent(tgt, ev);
+
+	return 0;
+}
+
 static int arcan_lua_targetseek(lua_State* ctx)
 {
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
@@ -3825,6 +3846,8 @@ static int arcan_lua_targetlaunch(lua_State* ctx)
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
 
+	const char* argstr = luaL_optstring(ctx, 4, NULL); 
+
 /* see if we know what the game is */
 	arcan_dbh_res cmdline = arcan_db_launch_options(dbhandle, gameid, internal);
 	if (cmdline.kind == 0){
@@ -3848,7 +3871,8 @@ static int arcan_lua_targetlaunch(lua_State* ctx)
 
 /* launch_options adds exec path first, we already know that one */
 					size_t arglim = strlen(resourcestr) + sizeof("core=") + 
-						strlen(cmdline.data.strarr[1]) + sizeof("resource=");
+						strlen(cmdline.data.strarr[1]) + sizeof("resource=") +
+						strlen(argstr ? argstr : "")  + 1;
 
 /* escape resource, unpack in frameserver fixes it */
 					char* work = resourcestr;
@@ -3858,8 +3882,9 @@ static int arcan_lua_targetlaunch(lua_State* ctx)
 					} while (*work++);
 
 					metastr = (char*) malloc( arglim );
-					snprintf(metastr, arglim, "core=%s:resource=%s", resourcestr, 
-						cmdline.data.strarr[1]);
+					snprintf(metastr, arglim, "core=%s:resource=%s%s%s", 
+						resourcestr, cmdline.data.strarr[1], argstr ? ":" : "",
+						argstr ? argstr : "");
 				}
 
 				arcan_frameserver* intarget = arcan_frameserver_alloc();
@@ -5301,6 +5326,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_graphmode",           arcan_lua_targetgraph              },
 {"target_postfilter_args",     arcan_lua_targetpostfilterargs     },
 {"target_seek",                arcan_lua_targetseek               },
+{"target_coreopt",             arcan_lua_targetcoreopt            },
 {"stepframe_target",           arcan_lua_targetstepframe          },
 {"snapshot_target",            arcan_lua_targetsnapshot           },
 {"restore_target",             arcan_lua_targetrestore            },

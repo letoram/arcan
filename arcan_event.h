@@ -65,6 +65,10 @@ enum ARCAN_TARGET_COMMAND {
 	TARGET_COMMAND_FRAMESKIP,
 	TARGET_COMMAND_STEPFRAME,
 
+/* libretro: set new value for previously notified key,
+ * for on-load options, use commandline arguments */
+	TARGET_COMMAND_COREOPT,
+
 /* libretro: store to last FDTRANSFER FD 
  * net-cl: read from FD, package and send to srv */
 	TARGET_COMMAND_STORE,
@@ -313,6 +317,9 @@ typedef struct arcan_tgtevent {
 		int32_t iv;
 		float fv;
 	} ioevs[6];
+
+	int code;
+	char message[78];
 #ifdef _WIN32
 	HANDLE fh;
 #endif
