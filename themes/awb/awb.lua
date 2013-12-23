@@ -84,6 +84,15 @@ end
 		
 debug_global = {};
 
+local function shortcut_str(caption, state)
+	return string.format(
+		"local res = {};\nres.name=[[%s]];\n" ..
+		"res.caption=[[%s]];\nres.icon=[[%s]];\n" ..
+		"res.factorystr = [[%s]];\nreturn res;", state.name,
+		caption, state.icon and state.icon or "default", 
+		state.factorystr ~= nil and state.factorystr or state.factory);
+end
+
 function shortcut_popup(icn, tbl, name)
 	local popup_opts = [[Rename...\n\rDrop Shortcut]];
 	local vid, list  = desktoplbl(popup_opts);
@@ -96,12 +105,7 @@ function shortcut_popup(icn, tbl, name)
 				function(own)
 					zap_resource("shortcuts/" .. name);
 						open_rawresource("shortcuts/" .. name);
-						write_rawresource(string.format(
-							"local res = {};\nres.name=[[%s]];\n" ..
-							"res.caption=[[%s]];\nres.icon=[[%s]];\n" ..
-							"res.factorystr = [[%s]];\nreturn res;", state.name,
-							own.inputfield.msg, state.icon and state.icon or "default", 
-							state.factorystr));
+						write_rawresource(shortcut_str(own.inputfield.msg, state));
 					close_rawresource();
 					icn:set_caption(iconlbl(own.inputfield.msg));
 				end
@@ -493,10 +497,7 @@ function rootdnd(ctag)
 			end
 
 			if (open_rawresource(line)) then
-				write_rawresource(string.format(
-					"local res = {};\nres.name=[[%s]];\nres.caption=[[%s]];\n" ..
-					"res.icon = [[%s]];\nres.factorystr = [[%s]];\nreturn res;",
-					base .. tostring(ind), ctag.caption, ctag.icon, ctag.factory));
+				write_rawresource(shortcut_str(base .. tostring(ind), ctag));
 				close_rawresource();
 			end
 
