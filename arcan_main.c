@@ -269,7 +269,8 @@ int main(int argc, char* argv[])
 			int pair[2];
 
 			pid_t p1;
-			if (pipe(pair) == 0);
+			if (pipe(pair) == 0)
+				;
 
 			if ( (p1 = fork()) == 0){
 				close(pair[1]);
