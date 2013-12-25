@@ -1,0 +1,99 @@
+set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
+
+set (PLATFORM_SOURCES
+	${PLATFORM_PATH}/fmt_open.c
+	${PLATFORM_PATH}/glob.c
+	${PLATFORM_PATH}/map_resource.c
+	${PLATFORM_PATH}/resource_io.c
+	${PLATFORM_PATH}/ilaunch.c
+	${PLATFORM_PATH}/strip_traverse.c
+	${PLATFORM_PATH}/paths.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/../darwin/time.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/../sdl/event.c
+	${PLATFORM_PATH}/../sdl/video.c
+	${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/../darwin/SDLmain.m
+	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c 
+	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h 
+)
+	
+set (FSERV_PLATFORM_SOURCES
+	${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/../darwin/time.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/../stub/event.c
+)
+
+add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
+add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D__APPLE__)
+
+# map_file is the default and doesn't need to be set here
+set_property(SOURCE ${PLATFORM_PATH}/map_resource.c 
+				PROPERTY COMPILE_FLAGS -DMAP_FILE=0) 
+
+set_property(SOURCE ${CMAKE_SOURCE_DIR}/arcan_main.c
+				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+
+if (${ENABLE_LIBRETRO})
+if (${ENABLE_LIBRETRO3D})
+	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
+	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
+	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
+	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
+endif(${ENABLE_LIBRETRO3D})
+endif(${ENABLE_LIBRETRO})
+
+find_library(IOKIT NAMES IOKit)
+find_library(COREFOUNDATION NAMES CoreFoundation)
+LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
+LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
+
+LIST(APPEND SOURCES
+					${CMAKE_SOURCE_DIR}/arcan_target_launcher.c)
+
+#add_library( arcan_hijack SHARED 
+#	arcan_target_osx.c 
+#	arcan_target.c
+#	arcan_event.c 
+#	arcan_frameserver_shmpage.c 
+#	frameserver/ntsc/snes_ntsc.c
+#	frameserver/resampler/resample.c
+#)
+
+#target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY} )
+
+add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES})
+add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSERV_PLATFORM_SOURCES})
+
+# Packaging and installation. build a DMG which installs to a default
+# Application folder, with resources, themes and frameworks included.
+#
+# The default search- order for resources/themes in the main app,
+# should be ENV -> home -> unix "share" -> bundle
+
+set(CPACK_BUNDLE_NAME Arcan)
+set(CPACK_BUNDLE_PLIST Info.plist)
+set(CPACK_BUNDLE_ICON Arcan.icns)
+
+set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
+set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
+set(DATA_INSTALL_DIR ".")
+set(BIN_DST "../MacOS")
+set(THEME_DST "../Resources/themes")
+set(RESOURCES_DST "../Resources/resources")
+
+#install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
+install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb 
+	DESTINATION ${BIN_DST} 
+	PERMISSIONS
+	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ 
+	OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
+
+SET(CPACK_GENERATOR ${CPACK_GENERATOR};Bundle)
+
+
