@@ -36,7 +36,7 @@ struct arcan_achain {
 typedef struct arcan_aobj {
 /* shared */
 	arcan_aobj_id id;
-	ALuint alid;
+	unsigned alid;
 	enum aobj_kind kind;
 	bool active;
 
@@ -55,7 +55,7 @@ typedef struct arcan_aobj {
 
 /* openAL Buffering */
 	unsigned char n_streambuf;
-	ALuint streambuf[ARCAN_ASTREAMBUF_LIMIT];
+	unsigned streambuf[ARCAN_ASTREAMBUF_LIMIT];
 	bool streambufmask[ARCAN_ASTREAMBUF_LIMIT];
 	short used;
 
@@ -69,7 +69,8 @@ typedef struct arcan_aobj {
 } arcan_aobj;
 
 /* just a wrapper around alBufferData that takes monitors into account */
-void arcan_audio_buffer(arcan_aobj*, ALuint, void*, size_t, unsigned, unsigned, void*);
+void arcan_audio_buffer(arcan_aobj*, unsigned, void*, 
+	size_t, unsigned, unsigned, void*);
 
 #ifndef ARCAN_AUDIO_SLIMIT 
 #define ARCAN_AUDIO_SLIMIT 16

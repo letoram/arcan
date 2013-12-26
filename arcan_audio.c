@@ -31,8 +31,8 @@
 #include <limits.h>
 #include <pthread.h>
 
-#include <AL/al.h>
-#include <AL/alc.h>
+#include <al.h>
+#include <alc.h>
 
 #include "arcan_math.h"
 #include "arcan_general.h"

@@ -181,7 +181,6 @@ FSRV_LIBRARIES
 
 set (
 INCLUDE_DIRS
-	${APR_INCLUDE_DIR}
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
 	${SDL_INCLUDE_DIR}
@@ -194,6 +193,10 @@ INCLUDE_DIRS
 	"frameserver/ntsc"
 	"external"
 )
+
+if (${APR_FOUND})
+	list(APPEND INCLUDE_DIRS ${APR_INCLUDE_DIR})
+endif()
 
 if (${SDLIMAGE_FOUND})
 	message("--> SDL_Image found, enabling (use -DCMAKE_DISABLE_FIND_PACKAGE_SDL_image to force off).")
@@ -360,6 +363,9 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Windows)
+
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Darwin)
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
