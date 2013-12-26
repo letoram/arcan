@@ -88,9 +88,12 @@ local function shortcut_str(caption, state)
 	return string.format(
 		"local res = {};\nres.name=[[%s]];\n" ..
 		"res.caption=[[%s]];\nres.icon=[[%s]];\n" ..
-		"res.factorystr = [[%s]];\nreturn res;", state.name,
+		"res.factorystr = [[%s]];\n" .. 
+		"%s\n" .. 
+		"\nreturn res;", state.name,
 		caption, state.icon and state.icon or "default", 
-		state.factorystr ~= nil and state.factorystr or state.factory);
+		state.factorystr ~= nil and state.factorystr or state.factory,
+		state.shortcut_trig ~= nil and state.shortcut_trig() or "");
 end
 
 function shortcut_popup(icn, tbl, name)
@@ -129,8 +132,8 @@ end
 function load_aux()
 	system_load("tools/inputconf.lua")();
 	system_load("tools/vidrec.lua")();
-	system_load("tools/vidcmp.lua")();
-	system_load("tools/hghtmap.lua")();
+ 	system_load("tools/vidcmp.lua")();
+ 	system_load("tools/hghtmap.lua")();
 	system_load("tools/socsrv.lua")();
 	system_load("awb_browser.lua")();
 	system_load("awb_iconcache.lua")();
@@ -192,7 +195,6 @@ function awb()
 		show_help();
 	end
 
-	scan_tools();
 	map_inputs();
 end
 
@@ -619,7 +621,8 @@ local function wnd_media(path)
 					resource = list[i],
 					trigger  = function()
 						local base, ext = string.extension(list[i]);
-						local handler = exthandler[ string.upper(ext) ];
+						local handler = exthandler[ 
+							string.upper(ext ~= nil and ext or "") ];
 	
 						if (handler) then
 							handler(path, base, ext);
@@ -645,23 +648,16 @@ function awb_desktop_setup()
 	sysicons.floppy       = load_image("awbicons/floppy.png");
 	sysicons.shell        = load_image("awbicons/shell.png");
 
--- constraint, lru_cache limit should always be >= the number of icons
--- in a fullscreen iconview window (else, if every entry is unique,
--- images will be deleted before they are used), this should really
--- be changed to have sheets of icons instead and just instantiate 
--- images with shared storage and explicit coordinates that map
 	sysicons.lru_cache    = awb_iconcache(64, 
 		{"images/icons", "icons", "images/systems", "awbicons"}, sysicons.floppy);
-
-	local tools = scan_tools();
 
 	local groups = {
 		{
 			name    = MESSAGE["GROUP_TOOLS"],
 			key     = "tools",
 			trigger = function()
-				local wnd = awbwman_iconwnd(menulbl(MESSAGE["GROUP_TOOLS"]), tools, 
-					{refid = "iconwnd_tools"});
+			local wnd = awbwman_iconwnd(menulbl(MESSAGE["GROUP_TOOLS"]), 
+				builtin_group, {refid = "iconwnd_tools"});
 				wnd.name = "List(Tools)";
 			end
 		},
@@ -669,8 +665,8 @@ function awb_desktop_setup()
 			name    = MESSAGE["GROUP_SYSTEMS"],
 			key     = "systems",
 			trigger = function()
-				local tbl =	awbwman_iconwnd(menulbl(MESSAGE["GROUP_SYSTEMS"]), system_group,
-					{refid = "iconwnd_systems"});
+				local tbl =	awbwman_iconwnd(menulbl(MESSAGE["GROUP_SYSTEMS"]), 
+					system_group, {refid = "iconwnd_systems"});
 				tbl.idfun = list_targets;
 				tbl.name = "List(Systems)";
 			end
@@ -736,37 +732,32 @@ function get_root_icon(hint)
 	return icn, desw, desh;
 end
 
-function scan_tools()
--- If we've already loaded / parsed, just make sure that we 
--- have the proper icons already from the cache
-	if (global_tools ~= nil) then
-		for i, v in ipairs(global_tools) do
-			v.icon = sysicons.lru_cache:get(v.name).icon;
-		end
-		return global_tools;
-	end
+function builtin_group(self, ofs, lim, desw, desh)
+	local tools = {
+ 		{"BOING!",    spawn_boing, "boing"   },
+		{"InputConf", awb_inputed, "inputed" },
+		{"Recorder",  spawn_vidrec, "vidrec" },
+		{"Network",   spawn_socsrv, "network"},
+		{"VidCap",    spawn_vidwin, "vidcap" },
+--                {"Compare", spawn_vidcmp, "vidcmp"},
+		{"HeightMap", spawn_hmap, "hghtmap"  }
+--                {"ShaderEd", spawn_shadeed, "shadeed"},
+	};
 
--- scan and dynamically load everything in the theme tools subfolder,
--- this is missing a "safe" evaluation context approach
-	local res = glob_resource("tools/*.lua", THEME_RESOURCE);
-	if (res == nil) then
-		return;
-	end
+ 	local restbl = {};
 
-	global_tools = {};
-	for i, v in ipairs(res) do
-		local restbl = system_load("tools/" .. v)();
-		if (restbl ~= nil) then
-			local newent = {};
-			newent.caption = desktoplbl(restbl.caption);
-			newent.trigger = restbl.trigger;
-			newent.name    = restbl.name;
-			newent.icon    = sysicons.lru_cache:get(newent.name).icon;
-			table.insert(global_tools, newent);
-		end
-	end
+	lim = lim + ofs;
+	while ofs <= lim and ofs <= #tools do
+ 		local newtbl = {};
+   	newtbl.caption = desktoplbl(tools[ofs][1]);
+   	newtbl.trigger = tools[ofs][2];
+   	newtbl.name = tools[ofs][3];
+   	newtbl.icon = sysicons.lru_cache:get(newtbl.name).icon;
+   	table.insert(restbl, newtbl);
+   	ofs = ofs + 1;
+  end
 
-	return global_tools;
+	return restbl, #tools;
 end
 
 function system_group(self, ofs, lim, desw, desh)
