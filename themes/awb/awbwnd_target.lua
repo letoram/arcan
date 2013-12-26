@@ -1101,7 +1101,7 @@ function targetwnd_setup(game, factstr, coreargs)
 
 	if (captbl.internal_launch == false) then
 -- confirmation dialog missing
-		launch_target(self.gameid, LAUNCH_EXTERNAL);
+		launch_target(game.gameid, LAUNCH_EXTERNAL);
 	else
 		captbl.prefix = string.format("%s_%s_", game.target,
 			game.setname and game.setname or "");
