@@ -444,6 +444,7 @@ local function awbwman_addcaption(bar, caption)
 	image_inherit_order(caption, true);
 	order_image(caption, 1);
 	image_mask_set(caption, MASK_UNPICKABLE);
+	image_mask_set(icn.vid, MASK_UNPICKABLE);
 	move_image(caption, 2, 2 + math.floor(0.5 * (bar.size - props.height)));
 	image_clip_on(caption, CLIP_SHALLOW);
 	bar.capvid = caption;
