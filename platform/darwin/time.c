@@ -26,6 +26,8 @@
 #include <time.h>
 #include <math.h>
 
+#include <mach/mach_time.h>
+
 #include <stdint.h>
 #include <stdbool.h>
 #include "../../arcan_math.h"
@@ -33,14 +35,21 @@
 
 long long int arcan_timemillis()
 {
-	struct timespec tp;
 	struct timeval tv;
+	uint64_t time = mach_absolute_time();
+	static double sf;
 
-	gettimeofday(&tv, NULL);
-	tp.tv_sec = tp.tv_sec;
-	tp.tv_nsec = tv.tv_usec * 1000; 
-	
-	return (tp.tv_sec * 1000) + (tp.tv_nsec / 1000000);
+	if (!sf){
+		mach_timebase_info_data_t info;
+		kern_return_t ret = mach_timebase_info(&info);
+		if (ret == 0)
+			sf = (double)info.numer / (double)info.denom;
+		else{
+			arcan_warning("arcan_timemillis() couldn't get mach scalefactor.\n");
+			sf = 1.0;
+		}
+	}
+	return ( (double)time * sf) / 1000000;
 }
 
 void arcan_timesleep(unsigned long val)
