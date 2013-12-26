@@ -18,11 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
  *
  */
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
 #include <math.h>
@@ -34,9 +34,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #endif
-
-#include <AL/al.h>
-#include <AL/alc.h>
 
 #include GL_HEADERS
 
@@ -241,6 +238,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
 #ifndef _WIN32
+#ifndef MSG_DONTWAIT
+#define MSG_DONTWAIT 0
+#endif
+
 	if (dst->kind == ARCAN_FRAMESERVER_NETCL || 
 		dst->kind == ARCAN_FRAMESERVER_NETSRV){
 		int sn = 0;

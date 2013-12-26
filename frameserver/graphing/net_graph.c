@@ -26,7 +26,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <assert.h>
-#include <apr_poll.h>
 
 #include "net_graph.h"
 #include "../../arcan_math.h"
