@@ -285,12 +285,12 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 	local cfg = awbwman_cfg();
 
 	if (kind ~= "frameserver_music") then
-	pwin.hoverlut[ 
+	bar.hoverlut[ 
 	(bar:add_icon("clone", "r", cfg.bordericns["clone"],
 		function() datashare(pwin); end)).vid] = 
 	MESSAGE["HOVER_CLONE"];
 
-	pwin.hoverlut[
+	bar.hoverlut[
 	(bar:add_icon("filters", "r", cfg.bordericns["filter"], 
 		function(self) awbwmedia_filterpop(pwin, self); end)).vid] = 
 	MESSAGE["HOVER_FILTER"];
@@ -302,19 +302,15 @@ local function add_vmedia_top(pwin, active, inactive, fsrv, kind)
 
 		global_aplayer = pwin;
 
-		pwin.hoverlut[
+		bar.hoverlut[
 		(bar:add_icon("filters", "r", cfg.bordericns["filter"],
 			function(self) awbamedia_filterpop(pwin, self); end)).vid] = 
 		MESSAGE["HOVER_AUDIOFILTER"];
 	end
 
 	if (fsrv) then
-		pwin.hoverlut[
-		(bar:add_icon("pause", "l", cfg.bordericns["pause"],  function(self) 
-			if (pwin.controlid == nil) then
-				
-			end
-
+		bar.hoverlut[
+		(bar:add_icon("pause", "l", cfg.bordericns["pause"], function(self) 
 			if (pwin.paused) then
 				pwin.paused = nil;
 				resume_movie(pwin.controlid);
@@ -369,11 +365,11 @@ local function slide_lightr(caller, status)
 		shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
 	end, {ref = caller.vid});
+
 	return true;
 end
 local function slide_lightg(caller, status)
 	local pwin = caller.parent.parent;
-	pwin:focus();
 
 	awbwman_popupslider(0.01, pwin.amb_g, 1.0, function(val)
 		pwin.amb_g = val;
@@ -385,7 +381,6 @@ end
 
 local function slide_lightb(caller, status)
 	local pwin = caller.parent.parent;
-	pwin:focus();
 
 	awbwman_popupslider(0.01, pwin.amb_b, 1.0, function(val)
 		pwin.amb_b = val;
@@ -425,7 +420,7 @@ local function add_3dmedia_top(pwin, active, inactive)
 	bar:add_icon("light_g", "l", cfg.bordericns["g1"], slide_lightg);
 	bar:add_icon("light_b", "l", cfg.bordericns["b1"], slide_lightb);
 
-	pwin.hoverlut[
+	bar.hoverlut[
 	(bar:add_icon("clone", "r", cfg.bordericns["clone"], 
 		function() datashare(pwin); end)).vid
 	] = MESSAGE["HOVER_CLONE"];
@@ -763,7 +758,7 @@ local function awnd_setup(pwin, bar)
 	local bar = pwin.dir.tt;
 	local cfg = awbwman_cfg();
 
-	pwin.hoverlut[
+	bar.hoverlut[
 	(bar:add_icon("playlist", "l", cfg.bordericns["list"], 
 		function() playlistwnd(pwin); end)).vid
 	] = MESSAGE["HOVER_PLAYLIST"];

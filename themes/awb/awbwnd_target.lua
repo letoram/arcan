@@ -272,7 +272,7 @@ local function awbtarget_addstateopts(pwin)
 	local cfg = awbwman_cfg();
 	local bartt = pwin.dir.tt;
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("save", "l", cfg.bordericns["save"], function(self)
 		local list = {};
 
@@ -293,7 +293,7 @@ local function awbtarget_addstateopts(pwin)
 		end
 	end)).vid] = MESSAGE["HOVER_STATESAVE"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("load", "l", cfg.bordericns["load"], function(self)
 		awbtarget_listsnaps(pwin, pwin.gametbl);
 	end)).vid] = MESSAGE["HOVER_STATELOAD"];
@@ -714,6 +714,22 @@ local function datashare(wnd)
 	end
 
 	res.factory = gen_factorystr(wnd);
+
+	res.shortcut_trig = function()
+		local lines = {};
+
+		for k,v in pairs(wnd.coreopts) do
+			if (v.value ~= nil) then
+				table.insert(lines, string.format("coreopts[\"%s\"] = [[%s]];\n", 
+					v.key, v.value));
+			end
+		end
+
+		return string.format("coreopts = {};\n" .. table.concat(lines, ""));
+	end
+
+	res.coreargs = "";
+
 	res.caption = wnd.gametbl.title;
 	res.icon = wnd.gametbl.target;
 	res.source = wnd;
@@ -767,7 +783,6 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.snap_prefix = caps.prefix and caps.prefix or "";
 	pwin.mediavol = 1.0;
 	pwin.filters = {};
-	pwin.hoverlut = {};
 	pwin.helpmsg = MESSAGE["HELP_TARGET"];
 	pwin.break_display = awbwnd_breakdisplay;
 
@@ -858,11 +873,11 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 	end
 	
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("clone", "r", cfg.bordericns["clone"], 
 		function() datashare(pwin); end)).vid] = MESSAGE["HOVER_CLONE"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("volume", "r", cfg.bordericns["volume"], function(self)
 		if (not awbwman_ispopup(self)) then
 			pwin:focus();
@@ -872,17 +887,17 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 	end)).vid] = MESSAGE["HOVER_VOLUME"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("filters", "r", cfg.bordericns["filter"], 
 		function(self) awbwmedia_filterpop(pwin, self); end)).vid
 	] = MESSAGE["HOVER_FILTER"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("settings", "r", cfg.bordericns["settings"],
 		function(self) awbtarget_settingswin(pwin); end)).vid
 	] = MESSAGE["HOVER_TARGETCFG"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("ntsc", "r", cfg.bordericns["ntsc"],
 		function(self) awbtarget_ntscpop(pwin, self);	end)).vid
 	] = MESSAGE["HOVER_CPUFILTER"];
@@ -902,12 +917,12 @@ function awbwnd_target(pwin, caps, factstr)
 		end
 	end);
 
-	pwin.hoverlut[pausebtn.vid] = MESSAGE["HOVER_PLAYPAUSE"];
+	bartt.hoverlut[pausebtn.vid] = MESSAGE["HOVER_PLAYPAUSE"];
 
 --
 -- Set frameskip mode, change icon to play
 --
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("ffwd", "l", cfg.bordericns["fastforward"], function(self)
 		if (pwin.ffstate ~= nil) then
 			pwin.ffstate = pwin.ffstate + 1;
@@ -921,7 +936,7 @@ function awbwnd_target(pwin, caps, factstr)
 		pwin:set_frameskip(pwin.ffstate);
 	end)).vid] = MESSAGE["HOVER_FASTFWD"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("sysopt", "l", cfg.bordericns["sysopt"], function(self)
 		sysopt_sel(self, pwin);
 	end)).vid] = MESSAGE["HOVER_SYSOPT"];
@@ -929,7 +944,7 @@ function awbwnd_target(pwin, caps, factstr)
 --
 -- popup filter mode
 --
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("ginput", "r", cfg.bordericns["ginput"],
 		function(self) 
 			if (awbwman_reqglobal(pwin)) then
@@ -939,13 +954,13 @@ function awbwnd_target(pwin, caps, factstr)
 			end
 		end)).vid] = MESSAGE["HOVER_GLOBALINPUT"];
 
-	pwin.hoverlut[
+	bartt.hoverlut[
 	(bartt:add_icon("input", "r", cfg.bordericns["input"],
 		function(self) inputlay_sel(self, pwin); end)).vid
 	] = MESSAGE["HOVER_INPUTCFG"];
 
 -- Forced remapping of mouse in / out 
-	pwin.minput = function(self, iotbl)
+	bartt.minput = function(self, iotbl)
 		if (iotbl.kind == "digital") then
 			if (iotbl.subid == 0) then
 				iotbl.label = string.format("PLAYER%d_BUTTON%d", 
