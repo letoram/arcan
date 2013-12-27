@@ -19,8 +19,6 @@
     )
 */
 
-#version 120
-
 uniform mat4 modelview;
 uniform mat4 projection;
 
@@ -30,7 +28,7 @@ uniform vec2 storage_size;
 uniform vec2 output_size;
 uniform float CRTgamma;
 uniform float monitorgamma;
-uniform float distance;
+uniform float dispdist;
 uniform float curv_radius;
 uniform float cornersize;
 uniform float cornersmooth;
@@ -52,9 +50,10 @@ varying vec2 cosangle;
  
 float intersect(vec2 xy)
 {
-  float A = dot(xy,xy)+distance*distance;
-  float B = 2.0*(curv_radius*(dot(xy,sinangle)-distance*cosangle.x*cosangle.y)-distance*distance);
-  float C = distance*distance + 2.0*curv_radius*distance*cosangle.x*cosangle.y;
+	float dsq = dispdist * dispdist;
+  float A = dot(xy,xy)+dsq;
+  float B = 2.0*(curv_radius*(dot(xy,sinangle)-dispdist*cosangle.x*cosangle.y)-dsq);
+  float C = dsq + 2.0*curv_radius*dispdist*cosangle.x*cosangle.y;
   return (-B-sqrt(B*B-4.0*A*C))/(2.0*A);
 }
  
@@ -80,13 +79,13 @@ vec2 fwtrans(vec2 uv)
   float r = FIX(sqrt(dot(uv,uv)));
   uv *= sin(r/curv_radius)/r;
   float x = 1.0-cos(r/curv_radius);
-  float D = distance/curv_radius + x*cosangle.x*cosangle.y+dot(uv,sinangle);
-  return distance*(uv*cosangle-x*sinangle)/D;
+  float D = dispdist/curv_radius + x*cosangle.x*cosangle.y+dot(uv,sinangle);
+  return dispdist*(uv*cosangle-x*sinangle)/D;
 }
  
 vec3 maxscale()
 {
-  vec2 c = bkwtrans(-curv_radius * sinangle / (1.0 + curv_radius/distance*cosangle.x*cosangle.y));
+  vec2 c = bkwtrans(-curv_radius * sinangle / (1.0 + curv_radius/dispdist*cosangle.x*cosangle.y));
   vec2 a = vec2(0.5,0.5)*aspect;
   vec2 lo = vec2(fwtrans(vec2(-a.x,c.y)).x,
                  fwtrans(vec2(c.x,-a.y)).y)/aspect;

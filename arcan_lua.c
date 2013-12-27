@@ -3457,8 +3457,8 @@ static bool use_loader(char* fname)
 	if (!ext) return false;
 
 /* there are prettier ways to do this . . . */
-	return (strcasecmp(ext, ".so") == 0) || 
-		(strcasecmp(ext, ".dll") == 0) ? true : false;
+	return ((strcasecmp(ext, ".so") == 0) || (strcasecmp(ext, ".dylib") == 0) ||
+		(strcasecmp(ext, ".dll") == 0)) ? true : false;
 }
 
 static int arcan_lua_targetlaunch_capabilities(lua_State* ctx)

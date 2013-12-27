@@ -20,7 +20,7 @@ set (PLATFORM_SOURCES
 	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h 
 )
 	
-set (FSERV_PLATFORM_SOURCES
+set (FSRV_PLATFORM_SOURCES
 	${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
 	${PLATFORM_PATH}/warning.c
 	${PLATFORM_PATH}/../darwin/time.c
@@ -42,9 +42,12 @@ set_property(SOURCE ${CMAKE_SOURCE_DIR}/arcan_main.c
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
 	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
+	list(APPEND FSRV_PLATFORM_SOURCES ${PLATFORM_PATH}/../darwin/SDLmain.m)
 	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
 	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
 	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
+set_property(SOURCE ${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
+	PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
 
@@ -68,7 +71,7 @@ LIST(APPEND SOURCES
 #target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY} )
 
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES})
-add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSERV_PLATFORM_SOURCES})
+add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
