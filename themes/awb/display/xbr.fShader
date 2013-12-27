@@ -21,8 +21,6 @@
   Incorporates some of the ideas from SABR shader. Thanks to Joshua Street.
 */
 
-#version 120
-
 uniform sampler2D map_diffuse;
 uniform vec2 texture_size;
 uniform float deltav;

@@ -3,8 +3,6 @@
  * License: GPLv2
  */
 
-#version 120
-
 attribute vec2 texcoord;
 attribute vec4 vertex;
 

@@ -154,7 +154,8 @@ end
 
 local function add_ddt(c, newobj, shid, inw, inh, outw, outh)
 	local ddtshader = load_shader("display/ddt.vShader", 
-		"display/ddt.fShader", shid .. "_ddt", {});
+		"display/ddt.fShader", shid .. "_ddt", {},
+		"#version 120");
 
 	shader_uniform(ddtshader, "texture_size", "ff", PERSIST, outw, outh); 
 	local ddtsurf = fill_surface(outw, outh, 0, 0, 0, inw, inh); 
@@ -259,7 +260,8 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 
 -- rebuild shader, setup internal storage matching scalefactor etc.
 	local s = load_shader("display/xbr.vShader", 
-		"display/xbr.fShader", shid, shaderopts);
+		"display/xbr.fShader", shid, shaderopts,
+		"#version 120");
 
 	shader_uniform(s, "storage_size", "ff", PERSIST, intw, inth); 
 	shader_uniform(s, "texture_size", "ff", PERSIST, inprops.width, inprops.height);
@@ -313,7 +315,7 @@ cont.sabr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	end
 
 	local shid = load_shader("display/sabr.vShader", 
-		"display/sabr.fShader", shid, {});
+		"display/sabr.fShader", shid, {}, "#version 120");
 
 	shader_uniform(shid, "storage_size", "ff", PERSIST, 
 		outprops.width, outprops.height);

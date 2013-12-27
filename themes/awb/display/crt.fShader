@@ -19,8 +19,6 @@
     )
 */
 
-#version 120
-
 // Macros.
 #define FIX(c) max(abs(c), 1e-5);
 #define PI 3.141592653589
@@ -36,7 +34,7 @@ uniform vec2 input_size;
 uniform vec2 storage_size;
 uniform float obj_opacity;
 uniform float curv_radius;
-uniform float distance;
+uniform float dispdist;
 uniform float monitorgamma;
 uniform float cornersize;
 uniform float cornersmooth;
@@ -55,9 +53,11 @@ varying vec2 cosangle;
  
 float intersect(vec2 xy)
 {
-  float A = dot(xy,xy)+distance*distance;
-  float B = 2.0*(curv_radius*(dot(xy,sinangle)-distance*cosangle.x*cosangle.y)-distance*distance);
-  float C = distance*distance + 2.0*curv_radius*distance*cosangle.x*cosangle.y;
+	float dist = dispdist;
+	float dsq  = dist * dist;
+  float A = dot(xy,xy) + dsq;
+  float B = 2.0*(curv_radius*(dot(xy,sinangle)-dist * cosangle.x*cosangle.y) - dsq);
+  float C = dsq + 2.0*curv_radius*dist*cosangle.x*cosangle.y;
   return (-B-sqrt(B*B-4.0*A*C))/(2.0*A);
 }
  
@@ -102,7 +102,7 @@ float corner(vec2 coord)
 // pixel to the scanline in question.
 // 'color' is the colour of the scanline at the horizontal location of
 // the current pixel.
-vec4 scanlineWeights(float distance, vec4 color)
+vec4 scanlineWeights(float dist, vec4 color)
 {
   // "wid" controls the width of the scanline beam, for each RGB channel
   // The "weights" lines basically specify the formula that gives
@@ -116,11 +116,11 @@ vec4 scanlineWeights(float distance, vec4 color)
   // scanline than for a wider beam.
 #ifdef USEGAUSSIAN
   vec4 wid = 0.3 + 0.1 * pow(color, vec4(3.0));
-  vec4 weights = vec4(distance / wid);
+  vec4 weights = vec4(dist / wid);
   return 0.4 * exp(-weights * weights) / wid;
 #else
   vec4 wid = 2.0 + 2.0 * pow(color, vec4(4.0));
-  vec4 weights = vec4(distance / 0.3);
+  vec4 weights = vec4(dist / 0.3);
   return 1.4 * exp(-pow(weights * inversesqrt(0.5 * wid), wid)) / (0.6 + 0.2 * wid);
 #endif
 }

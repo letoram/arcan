@@ -9,6 +9,9 @@
 
 local support3d = {};
 
+-- default version 120 if none is found in shader
+SHADER_FORCE_VERSION = true
+
 local fullbright_vshader = [[
 uniform mat4 modelview;
 uniform mat4 projection;
@@ -285,11 +288,16 @@ end
 -- e.g. #define SYMBOL, removes it if it's in the undefines list
 -- or adds prior to a matching #ifdef. This should be used in conjunction with
 -- parse_shader(filename)
-function load_shader(vertname, fragname, label, defines)
+function load_shader(vertname, fragname, label, defines, versionstr)
 	local vprog = "";
 	local fprog = "";
 	local verttbl = {};
 	local fragtbl = {};
+
+	if (versionstr ~= nil) then
+		table.insert(verttbl, versionstr);
+		table.insert(fragtbl, versionstr);
+	end
 
 	if defines ~= nil then
 			for key, val in pairs(defines) do

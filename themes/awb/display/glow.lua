@@ -346,7 +346,7 @@ function add_historybuffer(source, c, trails,
 	end
 	
 	local mixshader = load_shader("shaders/fullscreen/default.vShader", 
-		fshader, "history_mix", {});
+		fshader, "history_mix", {}, "#version 120");
 
 	image_framesetsize(source, #frames, FRAMESET_MULTITEXTURE);
 	image_framecyclemode(source, trailstep);
@@ -380,9 +380,11 @@ end
 local function glow_setup(c, id, blurw, blurh)
 	if (c.shid_bh == nil) then
 		c.shid_bh = load_shader("shaders/fullscreen/default.vShader", 
-		"shaders/fullscreen/gaussianH.fShader", id .. "blur_horiz", {});
+		"shaders/fullscreen/gaussianH.fShader", id .. "blur_horiz", {},
+		"#version 120");
  		c.shid_bv = load_shader("shaders/fullscreen/default.vShader", 
-		"shaders/fullscreen/gaussianV.fShader", id .. "blur_vert", {});
+		"shaders/fullscreen/gaussianV.fShader", id .. "blur_vert", {},
+		"#version 120");
 	end
 
 	local blur_hbuf = fill_surface(blurw, blurh, 1, 1, 1, blurw, blurh);
