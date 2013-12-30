@@ -239,23 +239,23 @@ end
 -- as a new window, start with a "launching" canvas and 
 -- on activation, switch to the real one.
 --
-function gamelist_launch(self, factstr)
+function gamelist_launch(self, factstr, coreargs)
 	local game = self.tag;
 	if (game == nil) then
 		return;
 	end
 
-	targetwnd_setup(game, factstr);
+	targetwnd_setup(game, factstr, coreargs);
 end
 
-function launch_factorytgt(tbl, factstr)
+function launch_factorytgt(tbl, factstr, coreopts)
 	local lines  = string.split(factstr, "\n");
 	local idline = lines[1];
 	local idval  = tonumber(string.split(idline, "=")[2]);
 
 	local tbl = { tag = game_info(idval) };
 	if (tbl ~= nil) then
-		local wnd = gamelist_launch(tbl, factstr);
+		local wnd = gamelist_launch(tbl, factstr, coreopts);
 	else
 		warning("broken gameid / lnk, check database reference.");
 	end
@@ -714,7 +714,7 @@ function awb_desktop_setup()
 	
 				awbwman_rootaddicon(tbl.name, iconlbl(tbl.caption),
 				icn, icn, function()
-					launch_factorytgt(tbl, tbl.factorystr); end, 
+					launch_factorytgt(tbl, tbl.factorystr, tbl.coreopts); end, 
 					function(self) shortcut_popup(self, tbl, v); end,
 				{w = desw, h = desh, helper = tbl.caption}); 
 			end
