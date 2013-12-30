@@ -300,7 +300,7 @@ class Game < DBObject
 		dbres = nil
 
 		if (setname == nil) then
-			dbres = @@dbconn.execute(DQL[:get_game_by_title_exact], title, target)
+			dbres = @@dbconn.execute(DQL[:get_game_by_title_exact], title)
 		else
 			dbres = @@dbconn.execute(DQL[:get_game_by_title_setname_targetid], title, setname, target)
 		end
@@ -536,7 +536,7 @@ def add_preset(fn, group, target)
 				STDERR.print("#{group}.cfg : couldn't store #{game}\n")
 			end
 
-			game = Game.LoadSingle(title, nil, @target.pkid)
+			game = Game.LoadSingle(val, nil, target.pkid)
 			if (not game) then
 				game = Game.new
 			end
@@ -545,7 +545,7 @@ def add_preset(fn, group, target)
 			game.target = target
 
 		elsif game == nil then
-			STDERR.print("#{group}.cfg : key without matching entry, ignoring.\n")
+			STDERR.print("#{group}.descr : key without matching entry, ignoring.\n")
 	
 		elsif game.respond_to?("#{key}=") == false then
 			STDERR.print("unknown key (#{key}) specified, ignoring.\n")
@@ -560,12 +560,12 @@ def add_preset(fn, group, target)
 	}	
 
 	if (game != nil) then
-		STDOUT.print("[#{group}.cfg], storing entry: #{game.title}\n")
+		STDOUT.print("[#{group}.descr], storing entry: #{game.title}\n")
 		game.store
 	end
 
 rescue => er
-	STDERR.print("#{group}.cfg : parsing error (#{er})\n")
+	STDERR.print("#{group}.descr : parsing error (#{er})\n")
 end
 
 def import_roms(options)
@@ -587,7 +587,7 @@ def import_roms(options)
 		Dir[ "#{options[:rompath]}/*" ].each{|entry|
 			entry.slice!( "#{options[:rompath]}/" )
 			groups << entry
-			STDOUT.print("\t#{entry} added\n")
+			STDOUT.print("adding group \t#{entry} for scanning\n")
 		}
 	end
 
