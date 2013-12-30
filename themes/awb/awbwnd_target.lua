@@ -196,6 +196,14 @@ function awbtarget_settingswin(tgtwin)
 			stepfun_num(self, wnd, tgtwin, "mouse_accel", nil, nil, 0.1, 4.0, -0.1);
 		end,
 		cols = {"Mouse Accel.", tostring(tgtwin.mouse_accel)}
+		},
+		{
+		name = "reset_opposing",
+		trigger = function(self, wnd)
+			tgtwin.reset_opposing = not tgtwin.reset_opposing;
+		end,
+		rtrigger = trigger,
+		cols = {"Reset Opposing", tostring(tgtwin.reset_opposing)}
 		}
 	};
 
@@ -767,6 +775,39 @@ local function add_corearg(dstwnd, msg)
 	end
 end
 
+local optbl = {};
+optbl["UP"]    = "DOWN";
+optbl["LEFT"]  = "RIGHT";
+optbl["DOWN"]  = "UP";
+optbl["RIGHT"] = "LEFT";
+
+--
+-- For presses, check if it's a directory indicator
+-- and if so, if there's a defined opposing value
+-- then prelude this with a release of this opposite.
+--
+local function block_opposing(tgtid, v)
+	if (v.active == false) then
+		return;
+	end
+
+	local n, dir = string.match(v, "PLAYER(%d+)_(%a+)");
+
+	if (n ~= nil and dir ~= nil) then
+		local odir = optbl[string.upper(dir)];
+		if (odir == nil) then
+			return;
+		end
+
+		local oldlbl = v.label;
+		v.label = string.format("PLAYER%d_%s", n, odir);
+		v.active = false;
+		target_input(tgtid, v);
+		v.label = oldlbl;
+		v.active = true;
+	end
+end
+
 --
 -- Target window
 -- Builds upon a spawned window (pwin) and returns a 
@@ -993,6 +1034,11 @@ function awbwnd_target(pwin, caps, factstr)
 		local restbl = inputed_translate(iotbl, pwin.inp_cfg);
 		if (restbl) then 
 			for i,v in ipairs(restbl) do
+-- LEFT :- rel.right + push.left etc.
+				if (pwin.block_opposing) then
+					block_opposing(pwin.controlid, v);
+				end
+
 				target_input(pwin.controlid, v);
 			end
 		else -- hope that the hijacked target can do something with it anyway
