@@ -148,6 +148,7 @@ int main(int argc, char* argv[])
 	bool fullscreen   = false;
 	bool conservative = false;
 	bool nosound      = false;
+	bool in_monitor   = getenv("ARCAN_MONITOR_FD") != NULL;
 	bool waitsleep    = true;
 
 	unsigned char debuglevel = 0;
@@ -162,9 +163,8 @@ int main(int argc, char* argv[])
 /* only used when monitor mode is activated, where we want some 
  * of the global paths etc. accessible, but not *all* of them */
 	FILE* monitor_outf    = NULL;
-	int monitor_outfd     = -1;
 	int monitor           = 0;
-	bool monitor_parent   = true;
+	int monitor_infd      = -1;
 	char* monitor_arg     = "LOG";
 
 	char* dbfname = NULL;
@@ -253,8 +253,12 @@ int main(int argc, char* argv[])
 /* pipe to file, socket or launch script based on monitor output,
  * format will be LUA tables with the exception of each cell ending with
  * #ENDSAMPLE . The block will be sampled, parsed and should return a table
- * pushed through the sample() function */
-	if (monitor > 0){
+ * pushed through the sample() function in the LUA space */
+	if (in_monitor){
+		monitor_infd = strtol( getenv("ARCAN_MONITOR_FD"), NULL, 10);
+	 	signal(SIGPIPE, SIG_IGN);	
+	}
+	else if (monitor > 0){
 		extern arcan_benchdata benchdata;
 		benchdata.bench_enabled = true;
 
@@ -262,8 +266,6 @@ int main(int argc, char* argv[])
 			monitor_outf = fopen(&monitor_arg[4], "w+"); 
 			if (NULL == monitor_outf)
 				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
-
-			monitor_parent = true;
 		}
 		else {
 			int pair[2];
@@ -274,28 +276,27 @@ int main(int argc, char* argv[])
 
 			if ( (p1 = fork()) == 0){
 				close(pair[1]);
-				monitor_parent = false;
 
 /* double-fork to get away from parent */
 				if (fork() != 0) 
 					exit(0); 
 
-				monitor_outfd   = pair[0]; 
-				arcan_themename = monitor_arg;
-			} else {
-				int status;
-/* close these as they occlude data from the monitor session
- * ideally, the lua warning/etc. should be mapped to go as messages
- * to the monitoring session, as should a perror/atexit handler,
- * preferrably combined with an option to send lua commands from
- * the monitor to manipulate object states. */
+/* set the descriptor of the inherited pipe as an envvariable,
+ * this will have the program be launched with in_monitor set to true
+ * the monitor args will then be ignored and themename replaced with 
+ * the monitorarg */
+				char monfd_buf[8] = {0};
+				snprintf(monfd_buf, 8, "%d", pair[0]);
+				setenv("ARCAN_MONITOR_FD", monfd_buf, 1);
+				argv[optind] = strdup(monitor_arg);	
+
+				execv(argv[0], argv);
+				exit(1);
+			} 
+			else {
+/* don't terminate just because the pipe gets broken (i.e. dead monitor) */
 				close(pair[0]);
-			/*fclose(stdout);
-				fclose(stderr); */
-	
-				monitor_parent = true;
 				monitor_outf = fdopen(pair[1], "w");
-				waitpid(p1, &status, 0);
 			 	signal(SIGPIPE, SIG_IGN);	
 			}
 		}
@@ -512,7 +513,7 @@ themeswitch:
 			arcan_audio_tick(nticks);
 			lastfrag = 0.0;
 				
-			if (monitor && monitor_parent){
+			if (monitor && !in_monitor){
 				if (--monitor_counter == 0){
 					static int mc;
 					char buf[8];
@@ -526,8 +527,8 @@ themeswitch:
 /* this is internally buffering and non-blocking, hence the fd use compared
  * to arcan_lua_statesnap above */
 #ifndef _WIN32
-		if (monitor && !monitor_parent)
-			arcan_lua_stategrab(luactx, "sample", monitor_outfd);
+		if (in_monitor)
+			arcan_lua_stategrab(luactx, "sample", monitor_infd);
 #endif
 	
 /*
