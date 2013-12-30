@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -266,22 +267,31 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
 
 /*	int step_sz = (src->maxv - src->minv) / y; */
 	int i = src->buf_back;
-/* we use the bucket midpoint as 0 for y axis, it should be <= minv */
 
+/* we use the bucket midpoint as 0 for y axis, it should be <= minv */
+/* independent of draw-mode, process non-continous datapoints separately,
+ * and distribute evenly across y. */ 
 	switch (src->mode){
-		case PLOT_XY_POINT:
-			while (i != src->buf_front){
-				int xv = 0, yv = 0;
-				uint32_t col = 0;
-				draw_square(ctx, xv, yv, 4, col);
-				i = (i + 1) % src->ringbuf_sz;
-			}
-		break;
-		case PLOT_XY_LERP:  break;
-		case PLOT_XY_ROW:   break;
-		default:
-			LOG("net_graph(draw_bucket) -- unknown mode specified (%d)\n", src->mode);
-			abort();
+	case PLOT_XY_POINT:
+		while (i != src->buf_front){
+			int xv = 0, yv = 0;
+			uint32_t col = 0;
+			draw_square(ctx, xv, yv, 4, col);
+			i = (i + 1) % src->ringbuf_sz;
+		}
+	break;
+	case PLOT_XY_LERP:
+/* check the xv and yv for the datapoint vs. the next datapoint and 
+ * linearly fill in the rest */	
+	break;
+	case PLOT_XY_ROW:   
+/* for every datapoint, fill from y- base to projected y-point, and 
+ * for collisions vs x. scale and horizontal time resolution, additively 
+ * blend to illustrate the intensity between datapoints */
+	break;
+	default:
+		LOG("net_graph(draw_bucket) -- unknown mode specified (%d)\n", src->mode);
+		abort();
 	}
 }
 
@@ -306,16 +316,15 @@ static bool graph_refresh_server(struct graph_context* ctx)
 	case GRAPH_NET_SERVER_SINGLE:
 	break;
 
-/* plot out traffic belonging to a single client */
-	case GRAPH_NET_CLIENT:
-	break;
-
 /* we just want to see server traffic abstracted */
 	case GRAPH_NET_SERVER:
+		clear_tocol(ctx, ctx->colors.bg);
+		draw_bucket(ctx, &ctx->buckets[0], 0, 0, ctx->width, ctx->height);
 	break;
 
 /* silence compilers .. */
 	case GRAPH_MANUAL:
+		case GRAPH_NET_CLIENT:
 	break;
 	}
 
@@ -398,10 +407,10 @@ void graphing_switch_mode(struct graph_context* ctx, enum graphing_mode mode)
 		mode = GRAPH_MANUAL;			
 	break;
 
-	/* render possibly attached labels */
+/* render possibly attached labels */
 	bool labels;
 
-	/* should basev/maxv/minv be relative to window or accumulate */
+/* should basev/maxv/minv be relative to window or accumulate */
 	bool absolute; 
 
 	enum plot_mode mode;
@@ -427,22 +436,28 @@ void graphing_switch_mode(struct graph_context* ctx, enum graphing_mode mode)
 		memset(ctx->buckets, '\0', sizeof(struct event_bucket));
 		ctx->buckets[0].labels = false;
 		ctx->buckets[0].absolute = false;
-		ctx->buckets[0].mode = false;
+		ctx->buckets[0].mode = PLOT_XY_LERP;
 	break;
 
 /* plot out traffic belonging to a single client */
 	case GRAPH_NET_CLIENT:
 		ctx->n_buckets = 1;
 		ctx->buckets = malloc(sizeof(struct event_bucket) * ctx->n_buckets);
+		ctx->buckets[0].labels = false;
+		ctx->buckets[0].absolute = false;
+		ctx->buckets[0].mode = PLOT_XY_LERP;
 	break;
 
 /* we just want to see server traffic abstracted */
 	case GRAPH_NET_SERVER:
 		ctx->n_buckets = 1;
 		ctx->buckets = malloc(sizeof(struct event_bucket) * ctx->n_buckets);
+		ctx->buckets[0].labels = true;
+		ctx->buckets[0].absolute = false;
+		ctx->buckets[0].mode = PLOT_XY_ROW;
 	break;
 
-/* already set */ 
+/* already set / don't care (re-use of graphing code) */
 	case GRAPH_MANUAL:
 	break;
 	}
@@ -515,22 +530,20 @@ void graph_log_discover_req(struct graph_context* ctx,
 	unsigned id, const char* label)
 {
 	assert(ctx);
+	assert(label);
 
-	if (GRAPH_SERVER(ctx->mode)){
-	}
-	else {
-	}
+	struct datapoint newp = {
+		.label = strdup(label),
+		.continuous = false,
+		.timestamp = arcan_timemillis()
+	};
+
+//	attach_datapoint(ctx, &newp);
 }
 
 void graph_log_discover_rep(struct graph_context* ctx, 
 	unsigned id, const char* label)
 {
-	assert(ctx);
-
-	if (GRAPH_SERVER(ctx->mode)){
-	}
-	else {
-	}
 }
 
 void graph_log_tlv_in(struct graph_context* ctx, unsigned id, 

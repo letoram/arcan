@@ -54,6 +54,15 @@
 #define OUTBUF_CAP 65536
 #endif
 
+/*
+ * Priority list;
+ * 1. Get client/server graphing up and running.
+ * 2. Test/fix/harden state transfers.
+ * 3. Enable NaCL sessions.
+ * 4. Fingerprinting of NaCL keys.
+ * 5. Request/setup streaming sessions (e.g. audio/video).
+ */
+
 static const int outbuf_cap = OUTBUF_CAP;
 static const int discover_delay = CLIENT_DISCOVER_DELAY;
 
@@ -652,7 +661,7 @@ static void server_gatekeeper_message(apr_socket_t* gk_sock,
 			apr_size_t tosend = MAX_HEADER_SIZE;
 			src_addr.port = DEFAULT_DISCOVER_RESP_PORT;
 			apr_socket_sendto(gk_sock, &src_addr, 0, gk_outbuf, &tosend);
-			graph_log_discover_req(netcontext.graphing, srcmagic, "" 
+			graph_log_discover_req(netcontext.graphing, srcmagic, "req" 
 				/* NOTE: useful to log? */);
 		}
 		else;
@@ -1560,6 +1569,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 		}
 
 		netcontext.graphing = graphing_new(gwidth, gheight, gbufptr);
+		graphing_switch_mode(netcontext.graphing, GRAPH_NET_SERVER_SINGLE);
 		server_session(listenhost, limv);
 	}
 	else {
