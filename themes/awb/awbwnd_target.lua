@@ -720,12 +720,12 @@ local function datashare(wnd)
 
 		for k,v in pairs(wnd.coreopts) do
 			if (v.value ~= nil) then
-				table.insert(lines, string.format("coreopts[\"%s\"] = [[%s]];\n", 
+				table.insert(lines, string.format("res.coreopts[\"%s\"] = [[%s]];\n", 
 					v.key, v.value));
 			end
 		end
 
-		return string.format("coreopts = {};\n" .. table.concat(lines, ""));
+		return string.format("res.coreopts = {};\n" .. table.concat(lines, ""));
 	end
 
 	res.coreargs = "";
@@ -1122,7 +1122,7 @@ function targetwnd_setup(game, factstr, coreargs)
 
 			for k,v in pairs(coreargs) do
 				table.insert(argtbl, string.format("core_%s=%s", 
-					v.key, v.value));
+					k, type(v) == "table" and v.value or v));
 			end
 
 			if (#argtbl > 0) then
