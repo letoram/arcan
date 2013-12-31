@@ -201,6 +201,8 @@ function awbtarget_settingswin(tgtwin)
 		name = "reset_opposing",
 		trigger = function(self, wnd)
 			tgtwin.reset_opposing = not tgtwin.reset_opposing;
+			self.cols[2] = tostring(tgtwin.reset_opposing);
+			wnd:force_update();
 		end,
 		rtrigger = trigger,
 		cols = {"Reset Opposing", tostring(tgtwin.reset_opposing)}
@@ -576,7 +578,10 @@ local function factrest(wnd, str)
 						end
 					end
 				end
-	
+
+			elseif (opts[1] == "reset_opposing") then
+				wnd.reset_opposing = true;
+
 			elseif (opts[1] == "inputcfg") then
 				if (resource("keyconfig/" .. opts[2])) then
 					wnd.inp_cfg = inputed_getcfg(opts[2]); 
@@ -656,6 +661,10 @@ local function gen_factorystr(wnd)
 
 	if (wnd.inp_val ~= nil) then
 		table.insert(lines, string.format("inputcfg:%s", wnd.inp_val));
+	end
+
+	if (wnd.reset_opposing) then
+		table.insert(lines, "reset_opposing:");
 	end
 
 	if (wnd.laststate ~= nil) then
@@ -786,12 +795,12 @@ optbl["RIGHT"] = "LEFT";
 -- and if so, if there's a defined opposing value
 -- then prelude this with a release of this opposite.
 --
-local function block_opposing(tgtid, v)
+local function reset_opposing(tgtid, v)
 	if (v.active == false) then
 		return;
 	end
 
-	local n, dir = string.match(v, "PLAYER(%d+)_(%a+)");
+	local n, dir = string.match(v.label, "PLAYER(%d+)_(%a+)");
 
 	if (n ~= nil and dir ~= nil) then
 		local odir = optbl[string.upper(dir)];
@@ -803,6 +812,7 @@ local function block_opposing(tgtid, v)
 		v.label = string.format("PLAYER%d_%s", n, odir);
 		v.active = false;
 		target_input(tgtid, v);
+		print("release:", v.label);
 		v.label = oldlbl;
 		v.active = true;
 	end
@@ -826,6 +836,7 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.filters = {};
 	pwin.helpmsg = MESSAGE["HELP_TARGET"];
 	pwin.break_display = awbwnd_breakdisplay;
+	pwin.reset_opposing = false;
 
 -- options part of the "factory string" (along with filter)
 	pwin.graphdbg   = false;
@@ -1035,8 +1046,8 @@ function awbwnd_target(pwin, caps, factstr)
 		if (restbl) then 
 			for i,v in ipairs(restbl) do
 -- LEFT :- rel.right + push.left etc.
-				if (pwin.block_opposing) then
-					block_opposing(pwin.controlid, v);
+				if (pwin.reset_opposing) then
+					reset_opposing(pwin.controlid, v);
 				end
 
 				target_input(pwin.controlid, v);
