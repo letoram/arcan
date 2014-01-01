@@ -26,7 +26,8 @@ local function customview_internal(source, datatbl)
 end
 
 --
--- called whenever an internal launch has terminated: update caches, reset timers, restore context.
+-- called whenever an internal launch 
+-- has terminated: update caches, reset timers, restore context.
 --
 local function cleanup()
 	resourcefinder_cache.invalidate = true;
@@ -34,13 +35,17 @@ local function cleanup()
 		resourcefinder_search(customview.gametbl, true);
 	resourcefinder_cache.invalidate = false;
 
-	if ( (settings.autosave == "On" or (settings.autosave == "On (No Warning)")) and valid_vid(internal_vid)) then
+	store_coreoptions(customview.gametbl);
+
+	if ( (settings.autosave == "On" or 
+		(settings.autosave == "On (No Warning)")) and valid_vid(internal_vid)) then
 		local counter = 20;
 		local old_clock = gridle_clock_pulse;
 		blend_image(internal_vid, 0.0, 20);
 		audio_gain(internal_aid, 0.0, 20);
 
--- should be removed when save-state cleanup in libretro frameserver is less .. "dumb" 
+-- should be removed when save-state cleanup 
+-- in libretro frameserver is less .. "dumb" 
 		gridle_clock_pulse = function()
 			if counter > 0 then
 				counter = counter - 1;
@@ -59,7 +64,9 @@ local function launch(tbl)
 		return;
 	end
 	
-	local launch_internal = (settings.default_launchmode == "Internal" or tbl.capabilities.external_launch == false) and tbl.capabilities.internal_launch;
+	local launch_internal = (settings.default_launchmode == 
+		"Internal" or tbl.capabilities.external_launch == false) 
+		and tbl.capabilities.internal_launch;
 
 -- can also be invoked from the context menus
 	if (launch_internal) then
@@ -68,7 +75,8 @@ local function launch(tbl)
 -- load the standard icons needed to show internal launch info
 		imagery.loading = load_image("images/icons/colourwheel.png");
 		resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
-		move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+		move_image(imagery.loading, 
+			0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
 		order_image(imagery.loading, INGAMELAYER_OVERLAY);
 		
 		image_tracetag(imagery.loading, "loading");
@@ -88,7 +96,10 @@ local function launch(tbl)
 
 		settings.internal_ident = "";
 		dispatch_push(tmptbl, "internal loading", nil, 0);
-		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, customview_internal );
+
+		local coreopts = load_coreoptions( tbl );
+		internal_vid = launch_target( tbl.gameid, LAUNCH_INTERNAL, 
+			customview_internal );
 	else
 		settings.in_internal = false;
 		play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -217,13 +228,15 @@ local function setup_customview()
 end
 
 local function customview_3dbase()
-	local lshdr = load_shader("shaders/dir_light.vShader", "shaders/dir_light.fShader", "cvdef3d");
+	local lshdr = load_shader("shaders/dir_light.vShader", 
+		"shaders/dir_light.fShader", "cvdef3d");
 	shader_uniform(lshdr, "map_diffuse", "i"  , PERSIST, 0);
 	customview.light_shader = lshdr;
 end
 
 customview.cleanup = function()
 		gridle_internal_cleanup(cleanup, false);
+		store_coreoptions();
 end
 
 function update_shader(resname)
@@ -231,7 +244,8 @@ function update_shader(resname)
 		return;
 	end
 	
-	settings.shader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. resname, "bgeffect", {});
+	settings.shader = load_shader("shaders/fullscreen/default.vShader", 
+		"shaders/bgeffects/" .. resname, "bgeffect", {});
 	shader_uniform(settings.shader, "display", "ff", PERSIST, VRESW, VRESH);
 
 	if (valid_vid(settings.background)) then
@@ -242,7 +256,8 @@ end
 local function load_cb(restype, lay)
 	if (restype == LAYRES_STATIC) then
 		if (lay.idtag == "background") then
-			return "backgrounds/" .. lay.res, (function(newvid) settings.background = newvid; end);
+			return "backgrounds/" .. lay.res, (function(newvid) 
+				settings.background = newvid; end);
 			
 		elseif (lay.idtag == "image") then
 			return "images/" .. lay.res;
@@ -267,9 +282,12 @@ local function load_cb(restype, lay)
 		local model = find_cabinet_model(settings.gametbl);
 		model = model and setup_cabinet_model(model, settings.restbl, {}) or nil;
 		if (model) then
-			shader_uniform(customview.light_shader, "wlightdir", "fff", PERSIST, lay.dirlight[1], lay.dirlight[2], lay.dirlight[3]);
-			shader_uniform(customview.light_shader, "wambient",  "fff", PERSIST, lay.ambient[1], lay.ambient[2], lay.ambient[3]);
-			shader_uniform(customview.light_shader, "wdiffuse",  "fff", PERSIST, lay.diffuse[1], lay.diffuse[2], lay.diffuse[3]);
+			shader_uniform(customview.light_shader, "wlightdir", "fff", 
+				PERSIST, lay.dirlight[1], lay.dirlight[2], lay.dirlight[3]);
+			shader_uniform(customview.light_shader, "wambient",  "fff", 
+				PERSIST, lay.ambient[1], lay.ambient[2], lay.ambient[3]);
+			shader_uniform(customview.light_shader, "wdiffuse",  "fff", 
+				PERSIST, lay.diffuse[1], lay.diffuse[2], lay.diffuse[3]);
 			image_shader(model.vid, customview.light_shader);
 		end
 		return model;
@@ -343,29 +361,78 @@ function gridle_customview()
 	end
 	
 -- 
--- If the default layout cannot be found (menu/config will simply zap the customview_cfg and call _customview() gain)
--- Setup an edit session, this is a slightly different version of what's present in "streamer" (no internal launch, no vidcap, ...)
--- Instead, a "navigator" group is added (se navigators/*.lua) that determines what is currently "selected"
+-- If the default layout cannot be found (menu/config 
+-- will simply zap the customview_cfg and call _customview() gain)
+-- Setup an edit session, this is a slightly different version of 
+-- what's present in "streamer" (no internal launch, no vidcap, ...)
+-- Instead, a "navigator" group is added (se navigators/*.lua) 
+-- that determines what is currently "selected"
 --
 	layout = layout_new("customview.lay");
 		
-	local identtext  = function(key) return render_text(settings.colourtable.label_fontstr .. key); end
-	local identphold = function(key) return load_image("images/placeholders/" .. string.lower(key) .. ".png"); end
-	
-	layout:add_resource("background", "Background...", function() return glob_resource("backgrounds/*.png"); end, nil, LAYRES_STATIC, true, function(key) return load_image("backgrounds/" .. key); end);
-	layout:add_resource("bgeffect", "Background Effect...", function() return glob_resource("shaders/bgeffects/*.fShader"); end, nil, LAYRES_SPECIAL, true, nil);
-	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", LAYRES_FRAMESERVER, false, identphold);
-	layout:add_resource("image", "Image...", function() return glob_resource("images/*.png"); end, nil, LAYRES_STATIC, false, function(key) return load_image("images/" .. key); end);
-	layout:add_resource("navigator", "Navigators...", function() return glob_resource("customview/*.lua"); end, nil, LAYRES_SPECIAL, true, function(key) return load_image("images/placeholders/" .. key .. ".png"); end);
-		
-	for ind, val in ipairs( {"Screenshot", "Boxart", "Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
-		layout:add_resource(string.lower(val), val, val, "Dynamic Media...", LAYRES_IMAGE, false, identphold);
+	local identtext  = function(key) 
+		return render_text(settings.colourtable.label_fontstr .. key); 
 	end
 
-	layout:add_resource("model", "Model", "Model", "Dynamic Media...", LAYRES_MODEL, false, function(key) return load_model("placeholder"); end );
+	local identphold = function(key) 
+		return load_image("images/placeholders/" .. 
+		string.lower(key) .. ".png"); 
+	end
+	
+	layout:add_resource("background", "Background...", 
+		function() 
+			return glob_resource("backgrounds/*.png"); 
+		end, 
+		nil, LAYRES_STATIC, true, 
+		function(key)
+			return load_image("backgrounds/" .. key); 
+		end
+	);
 
-	for ind, val in ipairs( {"Title", "Genre", "Subgenre", "Setname", "Manufacturer", "Buttons", "Players", "Year", "Target", "System"} ) do
-		layout:add_resource(string.lower(val), val, val, "Dynamic Text...", LAYRES_TEXT, false, nil);
+	layout:add_resource("bgeffect", "Background Effect...", 
+		function() 
+			return glob_resource("shaders/bgeffects/*.fShader"); 
+		end, nil, LAYRES_SPECIAL, true, nil);
+
+	layout:add_resource("movie", "Movie", "Movie", "Dynamic Media...", 
+		LAYRES_FRAMESERVER, false, identphold);
+
+	layout:add_resource("image", "Image...", 
+		function() 
+			return glob_resource("images/*.png"); 
+		end, nil, LAYRES_STATIC, false, 
+		function(key) 
+			return load_image("images/" .. key); 
+		end
+	);
+
+	layout:add_resource("navigator", "Navigators...", 
+		function()
+			return glob_resource("customview/*.lua"); 
+		end, nil, LAYRES_SPECIAL, true, 
+		function(key) 
+			return load_image("images/placeholders/" .. key .. ".png"); 
+		end
+	);
+		
+	for ind, val in ipairs( {"Screenshot", "Boxart", 
+		"Boxart (Back)", "Fanart", "Bezel", "Marquee"} ) do
+		layout:add_resource(string.lower(val), val, val, 
+			"Dynamic Media...", LAYRES_IMAGE, false, identphold);
+	end
+
+	layout:add_resource("model", "Model", "Model", 
+		"Dynamic Media...", LAYRES_MODEL, false, 
+		function(key) 
+			return load_model("placeholder"); 
+		end 
+	);
+
+	for ind, val in ipairs( {"Title", "Genre", "Subgenre", 
+		"Setname", "Manufacturer", "Buttons", "Players", 
+		"Year", "Target", "System"} ) do
+		layout:add_resource(string.lower(val), val, val, 
+			"Dynamic Text...", LAYRES_TEXT, false, nil);
 	end
 
 --
