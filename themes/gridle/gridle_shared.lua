@@ -1,12 +1,17 @@
 --
 -- helper functions shared by all the other gridle subsystems
--- these could easily be generalized / translated to work for other themes as well
+-- these could easily be generalized / translated to work 
+-- for other themes as well
 --
 -- dependencies: listview.lua, osdkbd.lua, dialog.lua, colourtable.lua
--- globals: "settings" table to manipulate, keyconfig in place, "imagery" table to manipulate, soundmap for soundeffects associated with labels
--- gridle_input (dispatch routines override the default input handler)
+-- globals: "settings" table to manipulate, keyconfig in place, 
+-- "imagery" table to manipulate, soundmap for soundeffects
+-- associated with labels gridle_input (dispatch routines override 
+-- the default input handler)
 --
--- one of the many string functions missing from the std lua library, just drop trailing or leading whitespaces
+-- one of the many string functions missing from the std lua library, 
+-- just drop trailing or leading whitespaces
+--
 function string.trim(s)
 	return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
@@ -34,7 +39,8 @@ function string.split(instr, delim)
 	return res;
 end
 
--- (hidden) local dispatch function that gets used when someone pushes a table but no name 
+-- (hidden) local dispatch function that gets 
+-- used when someone pushes a table but no name 
 local function dispatch_input(iotbl, override)
 	local restbl = keyconfig:match(iotbl);
 	
@@ -57,16 +63,17 @@ end
 -- rrate is either -1 or 0,where 0 indicates no keyboard repeat allowed, 
 -- -1 sets it to user setting
 -- 
-function dispatch_push(tbl, name, triggerfun, rrate)
+function dispatch_push(tbl, nname, triggerfun, reprate)
 	if (settings.dispatch_stack == nil) then
 		settings.dispatch_stack = {};
 	end
 
-	local newtbl = {};
+	local newtbl = {
+		table = tbl,
+		name  = nname,
+		rrate = reprate == nil and -1 or reprate
+	};
 
-	newtbl.table = tbl;
-	newtbl.name = name;
-	newtbl.rrate = rrate ~= nil and rrate or -1 -- negative one will be replaced with settings.repeatrate
 	newtbl.dispfun = triggerfun and triggerfun or dispatch_input;
 	
 	table.insert(settings.dispatch_stack, newtbl);
@@ -75,7 +82,8 @@ function dispatch_push(tbl, name, triggerfun, rrate)
 	local input_key = string.lower(THEMENAME) .. "_input";
 	_G[input_key] = newtbl.dispfun;
 
-	kbd_repeat(newtbl.rrate == -1 and settings.repeatrate or newtbl.rrate);
+	kbd_repeat(newtbl.rrate == -1 and 
+		settings.repeatrate or newtbl.rrate);
 
 	if (DEBUGLEVEL > 0) then
 		print("dispatch_push(), adding ", tostring(tbl));
@@ -134,8 +142,10 @@ function spawn_warning( message, persist )
 	local infowin     = listview_create( msg, VRESW / 2, VRESH / 2 );
 	infowin:show();
 
-	local x = math.floor( 0.5 * (VRESW - image_surface_properties(infowin.border, -1).width)  );
-	local y = math.floor( 0.5 * (VRESH - image_surface_properties(infowin.border, -1).height) );
+	local x = math.floor( 0.5 * (VRESW - 
+		image_surface_properties(infowin.border, -1).width)  );
+	local y = math.floor( 0.5 * (VRESH - 
+		image_surface_properties(infowin.border, -1).height) );
 
 	move_image(infowin.anchor, x, y);
 	hide_image(infowin.cursorvid);
@@ -150,10 +160,14 @@ function spawn_warning( message, persist )
 	return infowin;
 end
 
--- Spawn a modal dialog window displaying [message (stringtable or string, \ will be escaped to \\)],
--- letting the user to select between [buttons (stringtable)]. valbls[chosen button] will be triggered upon selection,
--- cleanuphook() called (unless nil) when user has either selected or pressed escape
--- and canescape (boolean) determines if the user is allowed to use MENU_ESCAPE or not.
+-- Spawn a modal dialog window displaying [message 
+-- (stringtable or string, \ will be escaped to \\)],
+-- letting the user to select between [buttons (stringtable)]. 
+-- valbls[chosen button] will be triggered upon selection,
+-- cleanuphook() called (unless nil) when user has 
+-- either selected or pressed escape
+-- and canescape (boolean) determines if the user is
+-- allowed to use MENU_ESCAPE or not.
 function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
 	local dialogwin = dialog_create(message, buttons);
 	local imenu = {};
@@ -190,7 +204,8 @@ function dialog_option( message, buttons, canescape, valcbs, cleanuphook )
 	dialogwin:show();
 end
 
--- Ask the user if he wants to shut down the program or not, disables 3D models while doing so.
+-- Ask the user if he wants to shut down the program or not, 
+-- disables 3D models while doing so.
 function confirm_shutdown()
 	local valcbs = {};
 
@@ -200,12 +215,15 @@ function confirm_shutdown()
 
 	video_3dorder(ORDER_NONE);
 
-	dialog_option(settings.colourtable.fontstr .. "Shutdown?", {"NO", "YES"}, true, valcbs, function()
+	dialog_option(settings.colourtable.fontstr .. 
+		"Shutdown?", {"NO", "YES"}, true, valcbs, function()
 		video_3dorder(ORDER_LAST);
 	end);
 end
 
--- Locate "playlist" in 'music/playlists/' and populate the global settings.playlist with all entries that doesn't begin with #
+-- Locate "playlist" in 'music/playlists/' and 
+-- populate the global settings.playlist with all entries 
+-- that doesn't begin with #
 function music_load_playlist(playlist)
 	settings.playlist = {};
 
@@ -235,7 +253,8 @@ function music_randomize_playlist()
 	local newlist = {};
 
 	while #settings.playlist > 0 do
-		local entry = table.remove(settings.playlist, math.random(1, #settings.playlist));
+		local entry = table.remove(settings.playlist, 
+			math.random(1, #settings.playlist));
 	
 		if (entry) then
 			table.insert(newlist, entry);
@@ -246,12 +265,15 @@ function music_randomize_playlist()
 	settings.playlist_ofs = 1;
 end
 
--- Recursively increment the settings.playlist_ofs and look for matching resources (playlists should
--- be relative the music or music/playlists folder) until a matching resource is found or reccount
+-- Recursively increment the settings.playlist_ofs and 
+-- look for matching resources (playlists should
+-- be relative the music or music/playlists folder) 
+-- until a matching resource is found or reccount
 -- amount of times exceeds the reccount tries. 
 function music_next_song(reccount)
 	if (reccount == 0) then
-		spawn_warning("Music Player: Couldn't find next track to play, empty or broken playlist?");
+		spawn_warning("Music Player: Couldn't find next "..
+			"track to play, empty or broken playlist?");
 		return nil;
 	end
 	
@@ -274,9 +296,11 @@ function music_next_song(reccount)
 end
 
 --
--- Create a persistant frameserver connection responsible for streaming a song,
+-- Create a persistant frameserver connection 
+-- responsible for streaming a song,
 -- whenever that finishes, traverse the playlist to find a new one etc.
--- This can be called repeatedly and tracks state between changes (using settings.bgmusic
+-- This can be called repeatedly and tracks state 
+-- between changes (using settings.bgmusic
 -- and playlist as argument)
 --
 function music_start_bgmusic(playlist)
@@ -311,7 +335,9 @@ function music_start_bgmusic(playlist)
         imagery.source_audio = nil;
 			end
 
-			imagery.musicplayer = load_movie(song, FRAMESERVER_NOLOOP, musicplayer_trigger);
+			imagery.musicplayer = load_movie(song, 
+				FRAMESERVER_NOLOOP, musicplayer_trigger);
+	
 			persist_image(imagery.musicplayer);
 			image_tracetag(imagery.musicplayer, "music player");
 		
@@ -327,7 +353,9 @@ function music_start_bgmusic(playlist)
 		local song = music_next_song( #settings.playlist );
 		if (song ~= nil) then
 			settings.playlist_ofs = 1;
-			imagery.musicplayer = load_movie(song, FRAMESERVER_NOLOOP, musicplayer_trigger);
+			imagery.musicplayer = load_movie(song, 
+				FRAMESERVER_NOLOOP, musicplayer_trigger);
+
 			persist_image(imagery.musicplayer);
 			image_tracetag(imagery.musicplayer, "music player");
 		end
@@ -342,7 +370,8 @@ end
 --
 
 --
--- generate a list of menuentries based on the globpattern (globstr) in the resource category globmask (_THEME, _SHARED, _ALL)
+-- generate a list of menuentries based on the globpattern 
+-- (globstr) in the resource category globmask (_THEME, _SHARED, _ALL)
 -- where MENU_SELECT would trigger cbfun
 --
 function build_globmenu(globstr, cbfun, globmask)
@@ -357,8 +386,10 @@ function build_globmenu(globstr, cbfun, globmask)
 end
 
 --
--- Wrapper around build_globmenu that takes all the "saving settings etc." into account as well
--- name: is the settings and k/v store key to use for saving settings and getting current value
+-- Wrapper around build_globmenu that takes all the 
+-- "saving settings etc." into account as well
+-- name: is the settings and k/v store key to use for 
+-- saving settings and getting current value
 -- globstr: pattern to look for
 -- globmask: which resource category to target
 -- triggerfun: invoke when a globbed entry is selected
@@ -404,8 +435,10 @@ end
 -- Take a table of values and generate functions etc. to match the entries
 -- name     : settings[name] to store under
 -- tbl      : array of string with labels of possible values
--- trggerfun: when selected, this function will be called (useful for activating whatever setting changed)
--- isstring : treat value as string or convert to number before sending to store_key
+-- trggerfun: when selected, this function will be called 
+-- (useful for activating whatever setting changed)
+-- isstring : treat value as string or convert 
+-- to number before sending to store_key
 --
 function gen_tbl_menu(name, tbl, triggerfun, isstring)
 	local reslbl = {};
@@ -438,7 +471,8 @@ end
 -- automatically generate a menu of numbers
 -- name  : the settings key to store in
 -- base  : start value
--- step  : value to add to base, or a function that calculates the value using an index
+-- step  : value to add to base, or a function 
+-- 	that calculates the value using an index
 -- count : number of entries
 -- triggerfun : hook to be called when selected 
 function gen_num_menu(name, base, step, count, triggerfun)
@@ -485,10 +519,15 @@ end
 -- dstlbls : array of strings to insert into
 -- dstptrs : hashtable keyed by label for which to insert the spawn function
 -- label   : to use for dstlbls/dstptrs
--- lbls    : array of strings used in the submenu (typically from gen_num, gen_tbl)
--- ptrs    : hashtable keyed by label that acts as triggers (typically from gen_num, gen_tbl)
+-- lbls    : array of strings used in the submenu 
+-- 	(typically from gen_num, gen_tbl)
+-- ptrs    : hashtable keyed by label that acts as triggers 
+-- 	(typically from gen_num, gen_tbl)
 function add_submenu(dstlbls, dstptrs, label, key, lbls, ptrs, fmt)
-	if (dstlbls == nil or dstptrs == nil or lbls == nil or #lbls == 0) then return; end
+	if (dstlbls == nil or dstptrs == nil 
+		or lbls == nil or #lbls == 0) then 
+		return; 
+	end
 
 	if (not table.find(dstlbls, label)) then
 		table.insert(dstlbls, label);
@@ -517,7 +556,8 @@ end
 -- create and display a listview setup with the menu defined by the arguments.
 -- list    : array of strings that make up the menu
 -- listptr : hashtable keyed by list labels
--- fmtlist : hashtable keyed by list labels, on match, will be prepended when rendering (used for icons, highlights etc.)
+-- fmtlist : hashtable keyed by list labels, on match, will be
+-- prepended when rendering (used for icons, highlights etc.)
 function menu_spawnmenu(list, listptr, fmtlist)
 	if (#list < 1) then
 		return nil;
@@ -526,7 +566,8 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	local parent = current_menu;
 	local props = image_surface_resolve_properties(current_menu.cursorvid);
 
-	current_menu = listview_create(list, math.floor(VRESH * 0.7), math.floor(VRESW / 3), fmtlist);
+	current_menu = listview_create(list, math.floor(VRESH * 0.7), 
+		math.floor(VRESW / 3), fmtlist);
 	current_menu.parent = parent;
 	current_menu.ptrs = listptr;
 	current_menu.updatecb = parent.updatecb;
@@ -547,7 +588,6 @@ function menu_spawnmenu(list, listptr, fmtlist)
 	local winh = wprops_l.height;
 	
 	if (dx + winw > VRESW) then
-		print(dx, winw);
 		dx = dx + (VRESW - (dx + winw));
 	end
 	
@@ -555,7 +595,8 @@ function menu_spawnmenu(list, listptr, fmtlist)
 		dy = dy + (VRESH - (dy + winh));
 	end
 
-	move_image( current_menu.anchor, math.floor(dx), math.floor(dy), settings.fadedelay );
+	move_image( current_menu.anchor, math.floor(dx), 
+		math.floor(dy), settings.fadedelay );
 	
 	play_audio(soundmap["SUBMENU_TOGGLE"]);
 	return current_menu;
@@ -588,7 +629,8 @@ function send_gamedata(gametbl, ingame, target)
 			end
 		end
 
-		net_push_srv(imagery.server, (ingame and "playing:" or "selected:") .. tostring(count), target);
+		net_push_srv(imagery.server, 
+			(ingame and "playing:" or "selected:") .. tostring(count), target);
 
 		for key, val in pairs(gametbl) do
 			if (type(val) == "string" or type(val) == "number") then
@@ -616,7 +658,8 @@ end
 function gridle_internal_setup(source, datatbl, gametbl)
 -- per session settings
 	if (not settings.in_internal) then
--- first, tell all remote controls -- title / system have already been transferred */
+-- first, tell all remote controls -- 
+-- title / system have already been transferred
 		send_gamedata(gametbl, true);
 
 		if (settings.autosave == "On") then
@@ -624,26 +667,30 @@ function gridle_internal_setup(source, datatbl, gametbl)
 		end
 
 		target_graphmode(source, settings.graph_mode);
-		target_framemode(internal_vid, skipremap[ settings.skip_mode ], settings.frame_align,
+		target_framemode(internal_vid, skipremap[ 
+			settings.skip_mode ], settings.frame_align,
 			settings.preaud, settings.jitterstep, settings.jitterxfer);
 
 		settings.in_internal = true;
 		
-		if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
+		if (valid_vid(imagery.musicplayer) 
+			and settings.bgmusic == "Menu Only") then
 			pause_movie(imagery.musicplayer);
 		end
 		
 		internal_aid = datatbl.source_audio;
 		internal_vid = source;
 
--- (reset toggles? Future NOTE: do this on a per game basis, so track id + toggles)  
+-- (reset toggles? Future NOTE: do this on a 
+-- 	per game basis, so track id + toggles)  
 --
 --  	settings.internal_toggles.bezel     = false;
 --  	settings.internal_toggles.overlay   = false;
 --  	settings.internal_toggles.backdrops = false;
 --
 
-		gridle_load_internal_extras( resourcefinder_search(gametbl, true), gametbl.target );
+		gridle_load_internal_extras( 
+			resourcefinder_search(gametbl, true), gametbl.target );
 --	order_image(internal_vid, max_current_image_order());
 		image_tracetag(source, "internal_launch(" .. gametbl.title ..")");
 		audio_gain(internal_aid, settings.internal_gain);
@@ -661,23 +708,31 @@ function gridle_internal_setup(source, datatbl, gametbl)
 	gridlemenu_rebuilddisplay(settings.internal_toggles);
 end
 
--- shared between grid/customview, finishedhook is called when user has confirmed or the shared parts have been deleted
--- forced is initially false, this is done in order to confirm shutdown if the state can't be saved
+-- shared between grid/customview, finishedhook is called 
+-- when user has confirmed or the shared parts have been deleted
+-- forced is initially false, this is done in order to 
+-- confirm shutdown if the state can't be saved
 function gridle_internal_cleanup(finishedhook, forced)
 	if (settings.in_internal) then
-		if (settings.autosave == "On" or settings.autosave == "On (No Warning)") then
+		if (settings.autosave == "On" or 
+			settings.autosave == "On (No Warning)") then
 
-			if ((settings.capabilities.snapshot == false or settings.capabilities.snapshot == nil) and forced ~= true) then
+			if ((settings.capabilities.snapshot == false or 
+				settings.capabilities.snapshot == nil) and forced ~= true) then
 				local confirmcmd = {};
-				confirmcmd["YES"] = function() gridle_internal_cleanup(finishedhook, true); end
-				dialog_option(settings.colourtable.fontstr .. "Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
+				confirmcmd["YES"] = function() 
+					gridle_internal_cleanup(finishedhook, true); 
+				end
+				dialog_option(settings.colourtable.fontstr .. 
+					"Game State will be lost, quit?", {"NO", "YES"}, true, confirmcmd);
 				return false;
 			end
 
 			internal_statectl("auto", true);
 			expire_image(internal_vid, 20);
 
-			if (valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only") then
+			if (valid_vid(imagery.musicplayer) 
+				and settings.bgmusic == "Menu Only") then
 				resume_movie(imagery.musicplayer);
 			end
 			
@@ -709,13 +764,44 @@ function gridle_internal_cleanup(finishedhook, forced)
 	end
 end
 
--- default handler that sets up all shared members etc. needed for gridle_internal functions,
+local function add_corearg(dsttbl, msg)
+	local num, group, msg = string.match(msg, "(%d+):(.+):(.+)");
+
+	if (group == "key") then
+		dsttbl[msg] = {};
+		dsttbl[msg].num = num;
+		dsttbl[msg].args = {};
+		dsttbl[msg].key = msg;
+
+	elseif (group == "descr") then
+		for i,v in pairs(dsttbl) do
+			if (v.num == num) then
+				v.descr = msg;
+				return;
+			end
+		end
+
+	elseif (group == "arg") then
+		for i,v in pairs(dsttbl) do
+			if (v.num == num) then
+				table.insert(v.args, tostring(msg));
+				return;
+			end
+		end
+
+	end
+end
+
+-- default handler that sets up all shared members etc. 
+-- needed for gridle_internal functions,
 -- used by both custom, detail and grid view.
 function internallaunch_event(source, datatbl)
 	if (datatbl.kind == "resized") then
 		if (not settings.in_internal) then
--- remap input function to one that can handle forwarding and have access to context specific menu
-			dispatch_push(settings.iodispatch, "internal_input", gridle_internalinput, 0);
+-- remap input function to one that can handle forwarding 
+-- and have access to context specific menu
+			dispatch_push(settings.iodispatch, 
+				"internal_input", gridle_internalinput, 0);
 		end
 
 		gridle_internal_setup(source, datatbl, current_game);
@@ -738,7 +824,10 @@ function internallaunch_event(source, datatbl)
 
 	elseif (datatbl.kind == "ident") then
 		settings.internal_ident = datatbl.message;
-		
+	
+	elseif (datatbl.kind == "coreopt") then
+		add_corearg(settings.coreargs, datatbl.argument);
+
 	elseif (datatbl.kind == "state_size") then
 		if (datatbl.state_size <= 0) then
 			disable_snapshot();
@@ -807,7 +896,9 @@ function menu_defaultdispatch(dst)
 		dst["MENU_ESCAPE"] = function(iotbl, restbl, silent)
 			current_menu:destroy();
 			if (current_menu.parent ~= nil) then
-				if (silent == nil or silent == false) then play_audio(soundmap["SUBMENU_FADE"]); end
+				if (silent == nil or silent == false) then 
+					play_audio(soundmap["SUBMENU_FADE"]); 
+				end
 				current_menu = current_menu.parent;
 			else -- top level
 				play_audio(soundmap["MENU_FADE"]);

@@ -1,13 +1,16 @@
 --
 -- Same mess as with gridle_settings
--- most are just lists of  textlabels mapping to a similar callback structure that, when triggered,
--- either spawns a submenu or updates the settings table, possibly calling store_key.
+-- most are just lists of  textlabels mapping to a similar 
+-- callback structure that, when triggered, either spawns a submenu or 
+-- updates the settings table, possibly calling store_key.
 --
 -- The ones that work differently are mostly shader submenu (scans filesystem)
 -- saves/loads menu (scans filesystem and pops up OSD keyboard)
--- input-port config menu (generates "N" slots, with possible constraints for each submenu in each slot)
+-- input-port config menu (generates "N" slots, with possible constraints 
+-- for each submenu in each slot)
 --
--- changes to most/all of these needs to be tested both from "grid view" and from "detailed view + zoom"
+-- changes to most/all of these needs to be tested both from "grid view" 
+-- and from "detailed view + zoom"
 --
 
 local scalemodelist = {
@@ -22,13 +25,24 @@ local scalemodelist = {
 
 -- NOTE; H264 encoding seems to yield broken MOV
 local codectbl = {};
-local codeclbls = {"Lossless (MKV/FFV1/RAW)", "Lossless (MKV/FFV1/FLAC)", "WebM (MKV/VP8/OGG)", "H264 (MKV/H264/MP3)"};
-codectbl["Lossless (MKV/FFV1/RAW)"]  = "acodec=RAW:vcodec=FFV1:container=matroska";
-codectbl["Lossless (MKV/FFV1/FLAC)"] = "acodec=FLAC:vcodec=FFV1:container=matroska";
-codectbl["WebM (MKV/VP8/OGG)"]       = "acodec=VORBIS:vcodec=VP8:container=matroska";
-codectbl["H264 (MKV/H264/MP3)"]      = "acodec=MP3:vcodec=H264:container=matroska";
+local codeclbls = {"Lossless (MKV/FFV1/RAW)", "Lossless (MKV/FFV1/FLAC)", 
+	"WebM (MKV/VP8/OGG)", "H264 (MKV/H264/MP3)"};
 
-local recstr = "libvorbis:vcodec=H264:container=stream:acodec=MP3:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
+codectbl["Lossless (MKV/FFV1/RAW)"]  = 
+	"acodec=RAW:vcodec=FFV1:container=matroska";
+
+codectbl["Lossless (MKV/FFV1/FLAC)"] = 
+	"acodec=FLAC:vcodec=FFV1:container=matroska";
+	
+codectbl["WebM (MKV/VP8/OGG)"]       = 
+	"acodec=VORBIS:vcodec=VP8:container=matroska";
+
+codectbl["H264 (MKV/H264/MP3)"]      = 
+	"acodec=MP3:vcodec=H264:container=matroska";
+
+local recstr = "libvorbis:vcodec=H264:container=stream:acodec=MP3:streamdst=" 
+	.. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
+
 local scalemodeptrs = {};
 
 local function scalemodechg(label, save)
@@ -171,16 +185,20 @@ end
 
 -- glob shaders/fullscreen/*
 -- for each unique basename, add to the menulist.
--- upon selection, load it into the "fullscreen" slot and reset the relevant uniforms
+-- upon selection, load it into the "fullscreen" 
+-- slot and reset the relevant uniforms
 local function build_shadermenu()
 	local reslbls = {};
 	local resptrs = {};
 	local shaderlist = {};
-	local vreslist = glob_resource("shaders/fullscreen/*.vShader", SHARED_RESOURCE);
-	local freslist = glob_resource("shaders/fullscreen/*.fShader", SHARED_RESOURCE);
+	local vreslist = glob_resource(
+		"shaders/fullscreen/*.vShader", SHARED_RESOURCE);
 
--- make sure both exist, add vertex to list, then add to real list if fragment
--- exist as well
+	local freslist = glob_resource(
+		"shaders/fullscreen/*.fShader", SHARED_RESOURCE);
+
+-- make sure both exist, add vertex to list, 
+-- then add to real list if fragment exist as well
 	for i = 1, #vreslist do
 		local basename = string.sub(vreslist[i], 1, -9);
 		vreslist[basename] = true;
@@ -216,10 +234,10 @@ end
 
 local cocktaillist = {
 	"Disabled",
-	"H-Split",       -- horizontal split, means scale to fit width, instance and flip instance 180
-	"V-Split",       -- vsplit means scale to fit width to height, instance, and rotate 90 -90
-	"H-Split SBS",   -- same as h-split, but don't rotate
-  "H-Split Slice"  -- special one, half the image to the left, haft to the right
+	"H-Split", 
+	"V-Split",
+	"H-Split SBS", 
+  "H-Split Slice" 
 };
 
 local cocktailptrs = {};
@@ -260,7 +278,8 @@ local function setup_cocktail(mode, source, vresw, vresh)
 		image_shader(cv, settings.fullscreen_shader);
 	end
 
-	if (mode == "H-Split" or mode == "H-Split SBS" or mode == "H-Split Slice") then
+	if (mode == "H-Split" or mode == "H-Split SBS" 
+		or mode == "H-Split Slice") then
 		image_mask_clear(cv, MASK_POSITION);
 	
 		if (mode == "H-Split") then
@@ -289,11 +308,16 @@ local function setup_cocktail(mode, source, vresw, vresh)
 			image_set_txcos(cv,     rary);
 		end
 
-		move_image(source,     math.floor(0.5 * (vresw - props.width)), math.floor(0.5 * (vresh - props.height)) );
-		move_image(cv, vresw + math.floor(0.5 * (vresw - props.width)), math.floor(0.5 * (vresh - props.height)) );
+		move_image(source, math.floor(0.5 * (vresw - props.width)), 
+			math.floor(0.5 * (vresh - props.height)) );
+
+		move_image(cv, vresw + math.floor(0.5 * (vresw - props.width)), 
+			math.floor(0.5 * (vresh - props.height)) );
 
 	elseif (mode == "V-Split") then
-		move_image(source, math.floor(0.5 * (vresh - props.width)), math.floor(0.5 * (vresw - props.height)));
+		move_image(source, math.floor(0.5 * (vresh - props.width)), 
+			math.floor(0.5 * (vresw - props.height)));
+
 		move_image(cv, vresh, 0);
 		rotate_image(cv,    -90);
 		rotate_image(source, 90);
@@ -311,7 +335,8 @@ local function setup_bezel(source)
 		y1 = (y1 / props.height) * VRESH;
 		y2 = (y2 / props.height) * VRESH;
 
-		local dstvid = valid_vid(imagery.display_vid) and imagery.display_vid or internal_vid;
+		local dstvid = valid_vid(imagery.display_vid) 
+			and imagery.display_vid or internal_vid;
 
 		resize_image(dstvid, x2 - x1, y2 - y1);
 		move_image(dstvid, x1, y1);
@@ -328,7 +353,8 @@ end
 -- with the help of a set of weighhts
 -- frames : array of #of frames and textures to be used
 -- delta  : don't mix "everything" just the changes versus the first texture
--- deltaonly : only output the changes relative to the first frame (use with delta)
+-- deltaonly : only output the changes relative 
+-- 	to the first frame (use with delta)
 --
 function create_weighted_fbo( frames, delta, deltaonly )
 	local resshader = {};
@@ -344,13 +370,17 @@ function create_weighted_fbo( frames, delta, deltaonly )
 	mixl = "";
 	for i=1,#frames-1 do
 		if (delta) then
-			table.insert(resshader, "vec4 col" .. tostring(i) .. " = clamp(col0 - texture2D(map_tu" .. tostring(i) .. ", texco), 0.0, 1.0);");
+			table.insert(resshader, 
+				string.format(
+					"vec4 col%d = clamp(col0 - " ..
+					"texture2D(map_tu%d, texco), 0.0, 1.0);", i, i));
 		else
-			table.insert(resshader, "vec4 col" .. tostring(i) .. " = texture2D(map_tu" .. tostring(i) .. ", texco);")
+			table.insert(resshader, 
+				string.format("vec4 col%d = texture2D(map_tu%d, texco);", i, i));
 		end
 
 		local strv = tostring(frames[i]);
-		strv = string.gsub(strv, ",", "."); -- workaround for a bug in some versions of lua..
+		strv = string.gsub(strv, ",", "."); 
 
 		local coll = "vec4(" .. strv .. ", " .. strv .. ", " .. strv .. ", 1.0)";
 		mixl = mixl .. "col" .. tostring(i) .. " * " .. coll;
@@ -363,7 +393,8 @@ function create_weighted_fbo( frames, delta, deltaonly )
 	end
 
 	if (delta and deltaonly) then
-		table.insert(resshader, "gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0) + " ..mixl);
+		table.insert(resshader, 
+			"gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0) + " ..mixl);
 	else
 		table.insert(resshader, "gl_FragColor = col0 + " ..mixl);
 	end
@@ -373,8 +404,11 @@ end
 
 -- configure shaders for the blur / glow / bloom effect
 function vector_setupblur(targetw, targeth, blurw, blurh, hbias, vbias)
-	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
-	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", "shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
+	local blurshader_h = load_shader("shaders/fullscreen/default.vShader", 
+		"shaders/fullscreen/gaussianH.fShader", "blur_horiz", {});
+
+	local blurshader_v = load_shader("shaders/fullscreen/default.vShader", 
+		"shaders/fullscreen/gaussianV.fShader", "blur_vert", {});
 
 	shader_uniform(blurshader_h, "blur", "f", PERSIST, 1.0 / blurw);
 	shader_uniform(blurshader_v, "blur", "f", PERSIST, 1.0 / blurh);
@@ -395,13 +429,16 @@ end
 
 -- "slightly" easier than SMAA ;-)
 function display_fxaa(source, targetw, targeth)
-	local fxaa_shader = load_shader("shaders/fullscreen/default.vShader", "display/fxaa.fShader", "fxaa", {});
+	local fxaa_shader = load_shader("shaders/fullscreen/default.vShader", 
+		"display/fxaa.fShader", "fxaa", {});
 	local node        = instance_image(source);
 	local fxaa_outp   = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
 
 	local props = image_surface_properties(source);
 
-	shader_uniform(fxaa_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+	shader_uniform(fxaa_shader, "pixel_size", "ff", 
+		PERSIST, 1.0 / targetw, 1.0 / targeth);
+
 	hide_image(source);
 	image_shader(node, fxaa_shader);
 	resize_image(node, targetw, targeth);
@@ -410,7 +447,9 @@ function display_fxaa(source, targetw, targeth)
 	image_mask_set(node, MASK_MAPPING);
 	show_image(node);
 
-	define_rendertarget(fxaa_outp, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(fxaa_outp, {node}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 	show_image(fxaa_outp);
 	order_image(fxaa_outp, 3);
 
@@ -419,10 +458,14 @@ end
 
 function display_smaa(source, targetw, targeth)
 -- start with edge detection
-	local edge_shader = load_shader("display/smaa_edge.vShader", "display/smaa_edge.fShader", "smaa_edge", {});
+	local edge_shader = load_shader("display/smaa_edge.vShader", 
+		"display/smaa_edge.fShader", "smaa_edge", {});
+
 	local node        = instance_image(source);
 	local edge_outp   = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
-	shader_uniform(edge_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+	shader_uniform(edge_shader, "pixel_size", 
+		"ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+
 	hide_image(source);
 
 	image_shader(node, edge_shader);
@@ -431,14 +474,21 @@ function display_smaa(source, targetw, targeth)
 	image_mask_clear(node, MASK_OPACITY);
 	show_image(node);
 
-	define_rendertarget(edge_outp, {node}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(edge_outp, {node}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 	show_image(edge_outp);
 
 -- return edge_outp; here to verify the edge detection step
--- the complicated part, generate the blend map by using the edge detection as input,
+-- the complicated part, generate the blend map 
+-- by using the edge detection as input,
 -- along with two LUTs (area / search)
-	local blend_shader = load_shader("display/smaa_blend.vShader", "display/smaa_blend.fShader", "smaa_blend", {});
-	shader_uniform(blend_shader, "pixel_size", "ff", PERSIST, 1.0 / targetw, 1.0 / targeth);
+	local blend_shader = load_shader("display/smaa_blend.vShader", 
+		"display/smaa_blend.fShader", "smaa_blend", {});
+
+	shader_uniform(blend_shader, "pixel_size", "ff", 
+		PERSIST, 1.0 / targetw, 1.0 / targeth);
+
 	local blend_outp = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
 	local blend_comb = fill_surface(targetw, targeth, 1, 1, 1, 2, 2);
 
@@ -454,10 +504,11 @@ function display_smaa(source, targetw, targeth)
 	show_image(blend_outp);
 	show_image(blend_comb);
 
-	define_rendertarget(blend_outp, {blend_comb}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(blend_outp, {blend_comb}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
--- last step is instancing source again, combine with blend_outp and the neighbor shader
--- unfinished
+-- last step is instancing source again, 
+-- combine with blend_outp and the neighbor shader unfinished
 	return blend_outp;
 end
 
@@ -476,14 +527,16 @@ local function get_blendcopy(srcvid, resvid, blendmode)
 end
 
 --
--- Set up a number of "spare" textures that act as storage for previous frames in the 'source' vid.
+-- Set up a number of "spare" textures that act as storage for 
+-- previous frames in the 'source' vid.
 -- Will return the vid of the output rendertarget
 -- trails    : number of history frames
 -- trailstep : number of frames between each "step"
 -- trailfall : >=0..9 (1.0-n then step to 0.1), 1+ exponential fade
 -- targetw / targeth: down or upscale the output
 --
-function add_historybuffer(source, trails, trailstep, trailfall, targetw, targeth)
+function add_historybuffer(source, trails, 
+	trailstep, trailfall, targetw, targeth)
 	local frames = {};
 	local base = 1.0;
 	
@@ -503,7 +556,8 @@ function add_historybuffer(source, trails, trailstep, trailfall, targetw, target
 		end
 	end
 	
--- dynamically generate a shader that multitextures and blends using the above weights
+-- dynamically generate a shader that multitextures 
+-- and blends using the above weights
 	local fshader;
 	if (settings.vector_deltamethod == "Off") then
 		fshader = create_weighted_fbo(frames, false, false);
@@ -513,7 +567,9 @@ function add_historybuffer(source, trails, trailstep, trailfall, targetw, target
 		fshader = create_weighted_fbo(frames, true, true);
 	end
 	
-	local mixshader = load_shader("shaders/fullscreen/default.vShader", fshader, "history_mix", {});
+	local mixshader = load_shader("shaders/fullscreen/default.vShader", 
+		fshader, "history_mix", {});
+
 	image_framesetsize(source, #frames, FRAMESET_MULTITEXTURE);
 	image_framecyclemode(source, trailstep);
 	image_shader(source, mixshader);
@@ -521,10 +577,13 @@ function add_historybuffer(source, trails, trailstep, trailfall, targetw, target
 	move_image(source, 0, 0);
 	image_mask_set(source, MASK_MAPPING);
 	
--- generate textures to use as round-robin store, these need to match the storage size to avoid  a copy/scale each frame
+-- generate textures to use as round-robin store, 
+-- these need to match the storage size to avoid  a copy/scale each frame
 	local props = image_surface_initial_properties(internal_vid);
 	for i=1,trails do
-		local vid = fill_surface(targetw, targeth, 0, 0, 0, props.width, props.height);
+		local vid = fill_surface(targetw, targeth, 
+			0, 0, 0, props.width, props.height);
+
 		image_texfilter(vid, FILTER_NONE);
 		set_image_as_frame(source, vid, i, FRAMESET_DETACH);
 	end
@@ -532,7 +591,9 @@ function add_historybuffer(source, trails, trailstep, trailfall, targetw, target
 	image_texfilter(source, FILTER_NONE);
 	rendertgt = fill_surface(targetw, targeth, 0, 0, 0, targetw, targeth);
 	image_texfilter(rendertgt, FILTER_NONE);
-	define_rendertarget(rendertgt, {source}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(rendertgt, {source}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 	resize_image(source, targetw, targeth);
 	show_image(rendertgt);
 	image_tracetag(rendertgt, "vector(trailblur)");
@@ -559,20 +620,25 @@ function display_defects(source, targetw, targeth, blur, trails)
 -- add a gaussian blur
 		local blurw = targetw * settings.vector_hblurscale;
 		local blurh = targeth * settings.vector_vblurscale;
-		local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, blurw, blurh, 
-			settings.vector_hbias, settings.vector_vbias);
+		local blur_hbuf, blur_vbuf = vector_setupblur(targetw, targeth, 
+			blurw, blurh, settings.vector_hbias, settings.vector_vbias);
 
 		image_tracetag(blur_hbuf, "vector(hblur)");
 		image_tracetag(blur_vbuf, "vector(vblur)");
 		move_image(hbuffer, 0, 0);
 		resize_image(hbuffer, blurw, blurh);
 		
-		define_rendertarget(blur_hbuf, {hbuffer},   RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
-		define_rendertarget(blur_vbuf, {blur_hbuf}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		define_rendertarget(blur_hbuf, {hbuffer},   
+			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
+		define_rendertarget(blur_vbuf, {blur_hbuf}, 
+			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
 -- do a weighted additive blend into an output target, possibly offset as well, 
 -- rescale and filter as needed
-		local comp_outbuf = fill_surface(targetw, targeth, 1, 1, 1, targetw, targeth);
+		local comp_outbuf = fill_surface(
+			targetw, targeth, 1, 1, 1, targetw, targeth);
+
 		blend_image(blur_vbuf, 0.99);
 		force_image_blend(blur_vbuf, BLEND_ADD);
 		resize_image(blur_vbuf, targetw, targeth);
@@ -582,7 +648,9 @@ function display_defects(source, targetw, targeth, blur, trails)
 		force_image_blend(normal, BLEND_ADD); 
 		order_image(blur_vbuf, 2);
 		order_image(normal, 3);
-		define_rendertarget(comp_outbuf, {blur_vbuf, normal}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		define_rendertarget(comp_outbuf, {blur_vbuf, normal}, 
+			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 		show_image(comp_outbuf);
 		hbuffer = comp_outbuf;
 	end
@@ -606,8 +674,10 @@ function undo_displaymodes()
 	image_framesetsize(internal_vid, 0);
 	image_framecyclemode(internal_vid, 0);
 
--- lots of things happening beneath the surface here, killing the vector vid will cascade and drop all detached images
--- that are part of the render target, EXCEPT for the initial internal vid that has its MASKED_LIVING disabled
+-- lots of things happening beneath the surface here, 
+-- killing the vector vid will cascade and drop all detached images
+-- that are part of the render target, EXCEPT for the initial 
+-- internal vid that has its MASKED_LIVING disabled
 -- this means that it gets reattached to the main pipe instead of deleted
 	if (valid_vid(imagery.display_vid)) then
 		delete_image(imagery.display_vid);
@@ -635,8 +705,9 @@ local function toggle_displaydefects(sourcevid, windw, windh)
 
 	order_image(imagery.display_vid, 1);
 
--- CRT toggle is done through the fullscreen_shader member (should be refactored but
--- that goes for this whole display toggle mess, there's just too many permutations 
+-- CRT toggle is done through the fullscreen_shader member 
+-- (should be refactored but that goes for this whole display 
+-- toggle mess, there's just too many permutations 
 -- at the moment...
 end
 
@@ -662,7 +733,8 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 	local shader = nil;
 	if (mode == "sabr") then
-		shader = load_shader("display/sabr.vShader", "display/sabr.fShader", "sabr", {});
+		shader = load_shader("display/sabr.vShader", 
+			"display/sabr.fShader", "sabr", {});
 	else
 		local definetbl = {};
 
@@ -677,17 +749,20 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 			definetbl["LEVEL_3A"] = true;
 		end
 
-		shader = load_shader("display/xbr.vShader", "display/xbr.fShader", "xbr", definetbl);
+		shader = load_shader("display/xbr.vShader", 
+			"display/xbr.fShader", "xbr", definetbl);
 	end
 
 	if (mode ~= "sabr") then
 		shader_uniform(shader, "deltav", "f", PERSIST, settings.upscale_delta);
-		shader_uniform(shader, "eq_threshold","ffff", PERSIST, settings.upscale_ineq, settings.upscale_ineq, 
+		shader_uniform(shader, "eq_threshold","ffff", PERSIST, 
+			settings.upscale_ineq, settings.upscale_ineq, 
 			settings.upscale_ineq, settings.upscale_ineq);
 	end
 
 	shader_uniform(shader, "storage_size", "ff", PERSIST, neww, newh);
-	shader_uniform(shader, "texture_size", "ff", PERSIST, init_props.width, init_props.height);
+	shader_uniform(shader, "texture_size", "ff", 
+		PERSIST, init_props.width, init_props.height);
 
 	hide_image(sourcevid);
 	local workvid = instance_image(sourcevid);
@@ -699,7 +774,9 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	image_set_txcos_default(workvid, settings.internal_mirror);
 
 	upscaler = fill_surface(neww, newh, 0, 0, 0, neww, newh);
-	define_rendertarget(upscaler, {workvid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(upscaler, {workvid}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 	show_image(upscaler);
 	resize_image(workvid, neww, newh);
 	move_image(workvid, 0, 0);
@@ -712,11 +789,15 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 
 -- optional additional postprocessor
 	if (settings.upscale_ddt and upscaler) then
-		local ddtshader = load_shader("display/ddt.vShader", "display/ddt.fShader", "ddt", {});
+		local ddtshader = load_shader("display/ddt.vShader", 
+			"display/ddt.fShader", "ddt", {});
+
 		shader_uniform(ddtshader, "texture_size", "ff", PERSIST, neww, newh);
 
 		ddtsurf = fill_surface(neww, newh, 0, 0, 0, neww, newh);
-		define_rendertarget(ddtsurf, {upscaler}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+		define_rendertarget(ddtsurf, {upscaler}, 
+			RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
 		image_shader(ddtsurf, ddtshader);
 		image_tracetag(ddtsurf, "(upscale DDT filter)");
 
@@ -735,27 +816,51 @@ local function toggle_crtmode(vid, props, windw, windh)
 	if (settings.crt_linearproc) then shaderopts["LINEAR_PROCESSING"] = true; end
 	if (settings.crt_oversample) then shaderopts["OVERSAMPLE"]        = true; end
 
-	local shader = load_shader("display/crt.vShader", "display/crt.fShader", "crt", shaderopts);
+	local shader = load_shader("display/crt.vShader", 
+		"display/crt.fShader", "crt", shaderopts);
+
 	local sprops = image_storage_properties(vid);
 	settings.fullscreen_shader = shader;
 
-	shader_uniform(shader, "input_size",   "ff", PERSIST, props.width, props.height);
-	shader_uniform(shader, "output_size",  "ff", PERSIST, props.width, props.height);
-	shader_uniform(shader, "storage_size", "ff", PERSIST, sprops.width, sprops.height);
-	shader_uniform(shader, "CRTgamma",      "f", PERSIST, settings.crt_gamma);
-	shader_uniform(shader, "overscan",     "ff", PERSIST, settings.crt_hoverscan, settings.crt_voverscan);
-	shader_uniform(shader, "monitorgamma",  "f", PERSIST, settings.crt_mongamma);
-	shader_uniform(shader, "aspect",       "ff", PERSIST, settings.crt_haspect, settings.crt_vaspect);
-	shader_uniform(shader, "distance",      "f", PERSIST, settings.crt_distance);
-	shader_uniform(shader, "curv_radius",   "f", PERSIST, settings.crt_curvrad);
+	shader_uniform(shader, "input_size",   "ff", 
+		PERSIST, props.width, props.height);
+
+	shader_uniform(shader, "output_size",  "ff", 
+		PERSIST, props.width, props.height);
+
+	shader_uniform(shader, "storage_size", "ff", 
+		PERSIST, sprops.width, sprops.height);
+
+	shader_uniform(shader, "CRTgamma",      "f", 
+		PERSIST, settings.crt_gamma);
+
+	shader_uniform(shader, "overscan",     "ff", 
+		PERSIST, settings.crt_hoverscan, settings.crt_voverscan);
+
+	shader_uniform(shader, "monitorgamma",  "f", 
+		PERSIST, settings.crt_mongamma);
+
+	shader_uniform(shader, "aspect",       "ff", 
+		PERSIST, settings.crt_haspect, settings.crt_vaspect);
+
+	shader_uniform(shader, "distance",      "f", 
+		PERSIST, settings.crt_distance);
+
+	shader_uniform(shader, "curv_radius",   "f", 
+		PERSIST, settings.crt_curvrad);
+
 	if (settings.internal_mirror) then
-		shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv * -1);
+		shader_uniform(shader, "tilt_angle", "ff", 
+			PERSIST, settings.crt_tilth, settings.crt_tiltv * -1);
 	else
-		shader_uniform(shader, "tilt_angle", "ff", PERSIST, settings.crt_tilth, settings.crt_tiltv);
+		shader_uniform(shader, "tilt_angle", "ff", 
+			PERSIST, settings.crt_tilth, settings.crt_tiltv);
 	end
 
-	shader_uniform(shader, "cornersize",   "f",  PERSIST, settings.crt_cornersz);
-	shader_uniform(shader, "cornersmooth", "f",  PERSIST, settings.crt_cornersmooth);
+	shader_uniform(shader, "cornersize",   "f",  
+		PERSIST, settings.crt_cornersz);
+	shader_uniform(shader, "cornersmooth", "f",  
+		PERSIST, settings.crt_cornersmooth);
 
 	image_shader(vid, shader);
 end
@@ -773,12 +878,16 @@ local function update_filter(vid, filtermode)
 end
 
 function push_ntsc(noresume)
-	target_postfilter_args(internal_vid, 1, settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
-	target_postfilter_args(internal_vid, 2, settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
-	target_postfilter_args(internal_vid, 3, settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
+	target_postfilter_args(internal_vid, 1, 
+		settings.ntsc_hue, settings.ntsc_saturation, settings.ntsc_contrast);
+	target_postfilter_args(internal_vid, 2, 
+		settings.ntsc_brightness, settings.ntsc_gamma, settings.ntsc_sharpness);
+	target_postfilter_args(internal_vid, 3, 
+		settings.ntsc_resolution, settings.ntsc_artifacts, settings.ntsc_bleed);
 	target_postfilter_args(internal_vid, 4, settings.ntsc_fringing);
 
-	target_postfilter(internal_vid, settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
+	target_postfilter(internal_vid, 
+		settings.internal_toggles.ntsc and POSTFILTER_NTSC or POSTFILTER_OFF);
 
 -- for the argument changes to be reflected, we need the video rolling
 	if (noresume == nil or noresume == false) then
@@ -789,9 +898,11 @@ end
 --
 -- Needs to be done to all changes to the original video source,
 --
--- (upscale) -> (antialias) -> (final_scaler -> (vector | gameboy) -> (crt) -> (cocktail)
+-- (upscale) -> (antialias) -> 
+-- 	(final_scaler -> (vector | gameboy) -> (crt) -> (cocktail)
 -- NTSC prefilter is enabled in the source frameserver so not included here
--- There's also a NTSC shader by themaister that could be considered, but the "switch" is really 
+-- There's also a NTSC shader by themaister that 
+-- could be considered, but the "switch" is really 
 -- dependent on how heavy the GPU load already is
 --
 function gridlemenu_rebuilddisplay(toggles)
@@ -801,7 +912,8 @@ function gridlemenu_rebuilddisplay(toggles)
 
 	undo_displaymodes();
 
--- default filter preference isn't guaranteed to work as higher priority display mode
+-- default filter preference isn't guaranteed 
+-- to work as higher priority display mode
 -- options can well override them.
 	update_filter(internal_vid, settings.imagefilter);
 
@@ -809,7 +921,8 @@ function gridlemenu_rebuilddisplay(toggles)
 	local dstvid = internal_vid;
 
 	if (toggles.upscaler) then
-		local upscale = toggle_upscaler(internal_vid, props, settings.upscale_method, settings.upscale_factor);
+		local upscale = toggle_upscaler(internal_vid, props, 
+			settings.upscale_method, settings.upscale_factor);
 		if (upscale ~= nil) then
 			dstvid = upscale;
 			props = image_surface_initial_properties(dstvid);
@@ -840,7 +953,8 @@ function gridlemenu_rebuilddisplay(toggles)
 		toggle_displaydefects(dstvid, dstw, dsth);
 		dstvid = imagery.display_vid;
 	else
-		settings.fullscreen_shader = gridlemenu_loadshader(settings.fullscreenshader, dstvid);
+		settings.fullscreen_shader = 
+			gridlemenu_loadshader(settings.fullscreenshader, dstvid);
 	end	
 
 -- redo so that instancing etc. match
@@ -854,7 +968,9 @@ function gridlemenu_rebuilddisplay(toggles)
 -- crt is always last
 	if (toggles.crt) then
 -- special case with cocktail modes
-		toggle_crtmode(dstvid, image_surface_initial_properties(dstvid), windw, windh);
+		toggle_crtmode(dstvid, 
+			image_surface_initial_properties(dstvid), windw, windh);
+
 		if ( valid_vid(imagery.cocktail_vid) ) then
 			image_shader(imagery.cocktail_vid, settings.fullscreen_shader);
 		end
@@ -864,7 +980,8 @@ function gridlemenu_rebuilddisplay(toggles)
 		get_blendcopy(imagery.backdrop, dstvid, BLEND_ADD);
 		
 		if (valid_vid(imagery.cocktail_vid)) then
-			local cockt_cpy = get_blendcopy(imagery.backdrop, imagery.cocktail_vid, BLEND_ADD);
+			local cockt_cpy = get_blendcopy(imagery.backdrop, 
+				imagery.cocktail_vid, BLEND_ADD);
 		end
 	end
 
@@ -872,13 +989,16 @@ function gridlemenu_rebuilddisplay(toggles)
 		get_blendcopy(imagery.overlay, dstvid, BLEND_MULTIPLY);
 		
 		if (valid_vid(imagery.cocktail_vid)) then
-			local cockt_cpy = get_blendcopy(imagery.overlay, imagery.cocktail_vid, BLEND_MULTIPLY);
+			local cockt_cpy = get_blendcopy(imagery.overlay, 
+				imagery.cocktail_vid, BLEND_MULTIPLY);
 		end
 	end
 
 --
--- with NTSC rolling, we need to keep updating to get the changes to be reflected, thus the "noresume" thing,
--- this can unfortunately lead to a resize event and thereafter, a new call to this function
+-- with NTSC rolling, we need to keep updating to get the changes 
+-- to be reflected, thus the "noresume" thing,
+-- this can unfortunately lead to a resize event and thereafter, 
+-- a new call to this function
 --
 	if (toggles.ntsc) then
 		push_ntsc();
@@ -902,11 +1022,13 @@ local function match_aspect(sourcew, sourceh, destw, desth)
 end
 
 --
--- Figure out how much workspace surface we have, combine that with the current scalemode and apply to source.
+-- Figure out how much workspace surface we have, 
+-- combine that with the current scalemode and apply to source.
 -- Returns the final workspace surface
 -- 
 function gridlemenu_resize_fullscreen(source, init_props)
--- rotations are not allowed for H-Split / H-Split SBS and V-Split needs separate treatment
+-- rotations are not allowed for H-Split / 
+-- H-Split SBS and V-Split needs separate treatment
 	local rotate = nil;
 	imagery.cocktail_vid = nil;
 	
@@ -985,9 +1107,11 @@ function gridlemenu_resize_fullscreen(source, init_props)
 	else
 		if (rotate ~= nil) then
 			rotate_image(source, rotate);
-			move_image(source, math.floor(0.5 * (windh - props.width)), math.floor(0.5 * (windw - props.height)) );
+			move_image(source, math.floor(0.5 * (windh - props.width)), 
+				math.floor(0.5 * (windw - props.height)) );
 		elseif (scalemode ~= "Bezel") then
-			move_image(source, math.floor(0.5 * (windw - props.width)), math.floor(0.5 * (windh - props.height)) );
+			move_image(source, math.floor(0.5 * (windw - props.width)), 
+				math.floor(0.5 * (windh - props.height)) );
 		end
 	end
 	
@@ -1019,9 +1143,14 @@ function gridlemenu_loadshader(basename, dstvid)
 	if (settings.shader_opts) then
 		local resshdr = load_shader(vsh, fsh, "fullscreen", settings.shader_opts);
 
-		shader_uniform(resshdr, "output_size",  "ff", PERSIST, dispprops.width,  dispprops.height );
-		shader_uniform(resshdr, "input_size",   "ff", PERSIST, startprops.width, startprops.height);
-		shader_uniform(resshdr, "storage_size", "ff", PERSIST, storprops.width,  storprops.height );
+		shader_uniform(resshdr, "output_size",  "ff", 
+			PERSIST, dispprops.width,  dispprops.height );
+
+		shader_uniform(resshdr, "input_size",   "ff", 
+			PERSIST, startprops.width, startprops.height);
+
+		shader_uniform(resshdr, "storage_size", "ff", 
+			PERSIST, storprops.width,  storprops.height );
 
 		image_shader(dstvid, resshdr);
 		return resshdr;
@@ -1031,12 +1160,17 @@ end
 local function get_saveslist(gametbl)
 -- check for existing snapshots (ignore auto and quicksave)
 	local saveslist = {};
-	local saves = glob_resource("savestates/" .. gametbl.target .. "_" .. gametbl.setname .. "_*", SHARED_RESOURCE)
+	local saves = glob_resource("savestates/" .. 
+		gametbl.target .. "_" .. gametbl.setname .. "_*", SHARED_RESOURCE);
+
 	for ind, val in ipairs( saves ) do
 		if not (string.sub( val, -5, -1 ) == "_auto" or
 				string.sub( val, -10, -1 ) == "_quicksave") then
 
-			local prefix = string.sub( val, string.len( gametbl.target ) + string.len(gametbl.setname) + 3 );
+			local prefix = string.sub( val, 
+				string.len( gametbl.target ) + 
+				string.len(gametbl.setname) + 3 );
+
 			table.insert(saveslist, prefix);
 		end
 	end
@@ -1045,8 +1179,11 @@ local function get_saveslist(gametbl)
 end
 
 local function grab_shaderconf(basename)
-	local vdef, vcond = parse_shader("shaders/fullscreen/" .. basename .. ".vShader");
-	local fdef, fcond = parse_shader("shaders/fullscreen/" .. basename .. ".fShader");
+	local vdef, vcond = parse_shader(
+		"shaders/fullscreen/" .. basename .. ".vShader");
+
+	local fdef, fcond = parse_shader(
+		"shaders/fullscreen/" .. basename .. ".fShader");
 
 	local resdef = {};
 	local rescond = {};
@@ -1144,7 +1281,8 @@ function gen_keymap_name( gamespecific )
 	return reslbl;
 end
 
--- quick heuristic, look for a game-specific, then target specific, else just use global
+-- quick heuristic, look for a game-specific, 
+-- then target specific, else just use global
 function set_internal_keymap()
 	if ( resource( gen_keymap_name( true )) ) then
 		local keytbl = system_load( gen_keymap_name(true) )();
@@ -1204,7 +1342,8 @@ local function configure_players(dstname)
 	
 	kbd_repeat(0);
 
-	dispatch_push({}, "reconfigure players (" .. tostring(dstname) ..")", function(iotbl)
+	dispatch_push({}, "reconfigure players (" 
+		.. tostring(dstname) ..")", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
 			dispatch_pop();
 			
@@ -1236,13 +1375,16 @@ local function add_gamelbls( lbltbl, ptrtbl )
 		end
 	end
 
--- fixme; generate menus for all the different kinds of "frame-stepping" options we'd like to have
+-- fixme; generate menus for all the different kinds of
+-- "frame-stepping" options we'd like to have
 -- (auto, draw every n frames, rewind n frames, ...)
 
--- fixme; generate menus for each input port with (gamepad, mouse, keyboard, ...) sort of options
+-- fixme; generate menus for each input port with 
+-- (gamepad, mouse, keyboard, ...) sort of options
 -- in order to plug into proper libretro devices ..
 --	if ( captbl.ports and captbl.ports > 0) then
---		local numslots = captbl.ports > keyconfig.table.player_count and keyconfig.table.player_count or captbl.ports;
+--		local numslots = captbl.ports > keyconfig.table.player_count 
+--		and keyconfig.table.player_count or captbl.ports;
 --		if (numslots > 0) then
 --			table.insert(lbltbl, "Input Ports");
 --			for i=1,numslots do
@@ -1300,16 +1442,24 @@ local function add_gamelbls( lbltbl, ptrtbl )
 	local function aligntrig()
 		settings.iodispatch["MENU_ESCAPE"]();
 		settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
-		target_framemode(internal_vid, skipremap[settings.skip_mode], settings.frame_align, settings.preaud, settings.jitterstep, settings.jitterxfer);
+		target_framemode(internal_vid, skipremap[settings.skip_mode], 
+			settings.frame_align, 
+			settings.preaud, settings.jitterstep, settings.jitterxfer);
 	end
 
-	add_submenu(advtbl, advptrs, "Frame Alignment...",    "frame_align", gen_num_menu("frame_align", -1,  2, 6,  aligntrig));
-	add_submenu(advtbl, advptrs, "Skip Method...",        "skip_mode",   gen_tbl_menu("skip_mode", skiptbl, aligntrig, true));
-	add_submenu(advtbl, advptrs, "Pre-audio (frames)...", "preaud",      gen_num_menu("preaud",       0,  1, 4,  aligntrig));
+	add_submenu(advtbl, advptrs, "Frame Alignment...",
+		"frame_align", gen_num_menu("frame_align", -1,  2, 6,  aligntrig));
+	add_submenu(advtbl, advptrs, "Skip Method...", 
+		"skip_mode",   gen_tbl_menu("skip_mode", skiptbl, aligntrig, true));
+
+	add_submenu(advtbl, advptrs, "Pre-audio (frames)...", "preaud",
+		gen_num_menu("preaud",       0,  1, 4,  aligntrig));
 	
 	if (DEBUGLEVEL > 0) then
-		add_submenu(advtbl, advptrs, "Emulation jitter...", "jitterstep",  gen_num_menu("jitterstep",  -28, 4, 14, aligntrig));
-		add_submenu(advtbl, advptrs, "Transfer jitter...", "jitterxfer",  gen_num_menu("jitterxfer",  -28, 4, 14, aligntrig));
+		add_submenu(advtbl, advptrs, "Emulation jitter...", "jitterstep",
+			gen_num_menu("jitterstep",  -28, 4, 14, aligntrig));
+		add_submenu(advtbl, advptrs, "Transfer jitter...", "jitterxfer",
+			gen_num_menu("jitterxfer",  -28, 4, 14, aligntrig));
 	end
 
 	advptrs["Toggle Debugmode"] = function()
@@ -1324,6 +1474,46 @@ local function add_gamelbls( lbltbl, ptrtbl )
 		menu_spawnmenu(advtbl, advptrs, {});
 	end
 
+	local coretbl = {}; 
+	local coreptr = {};
+	
+	local update_corearg = function(k, v)
+		settings.coreargs[k].value = v;
+		target_coreopt(internal_vid, settings.coreargs[k].num,
+			settings.coreargs[k].value);
+	
+		settings.coreargs_dirty = true;
+		settings.iodispatch["MENU_ESCAPE"]();
+	end
+
+-- map the core options as menus, call update_corearg on
+-- trigger, which will try to update the corearg (though
+-- that might not always work), this table is also 
+-- flushed / stored on close.
+	for k,v in pairs(settings.coreargs) do
+		table.insert(coretbl, k);
+		coreptr[k] = function()
+			local argptr = {};
+
+			for ind, av in ipairs(v.args) do
+				argptr[av] = function(v)
+					update_corearg(k, v);
+				end
+			end
+
+			menu_spawnmenu(v.args, argptr, {});
+		end
+	end
+
+	table.sort(coretbl);
+
+	if (#coretbl > 0) then
+		table.insert(lbltbl, "Core Options...");
+		ptrtbl["Core Options..."] = function()
+			menu_spawnmenu(coretbl, coreptr, {});
+		end
+	end
+
 	if ( captbl.reset ) then
 		table.insert(lbltbl, "Reset Game");
 			ptrtbl["Reset Game"] = function(label, store)
@@ -1333,7 +1523,10 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				end
 
 				valcbs["NO"]  = function()	end
-				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, true, valcbs, function() settings.iodispatch["MENU_ESCAPE"](nil, nil, true); end );
+				dialog_option("Resetting emulation, OK?", {"YES", "NO"}, true, 
+					valcbs, function() 
+						settings.iodispatch["MENU_ESCAPE"](nil, nil, true); 
+					end );
 			end
 		end
 
@@ -1341,7 +1534,9 @@ local function add_gamelbls( lbltbl, ptrtbl )
 end
 
 function screenshot()
-	local lblbase = "screenshots/" .. current_game.target .. "_" .. current_game.setname;
+	local lblbase = "screenshots/" .. 
+		current_game.target .. "_" .. current_game.setname;
+
 	local ofs = 1;
 
 -- only add sequence number if we already have a screenshot for the game
@@ -1392,16 +1587,18 @@ function enable_record(width, height, args)
 	resize_image(lvid, width, height);
 	show_image(lvid);
 
-	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
-	end
-);
+	define_recordtarget(dstvid, dst, args, {lvid}, {internal_aid}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status)
+		end
+	);
 
 	imagery.record_target = dstvid;
 	imagery.record_indicator = load_image("images/icons/record.png");
 
 	move_image(imagery.record_indicator);
 	image_transform_cycle(imagery.record_indicator, 1);
-	resize_image(imagery.record_indicator, math.floor(VRESW * 0.05), math.floor(VRESW * 0.05));
+	resize_image(imagery.record_indicator, 
+		math.floor(VRESW * 0.05), math.floor(VRESW * 0.05));
 	blend_image(imagery.record_indicator, 0.5, 128);
 	blend_image(imagery.record_indicator, 0.0, 128);
 	order_image(imagery.record_indicator, max_current_image_order() + 1);
@@ -1420,14 +1617,16 @@ displaymodeptrs["Custom Shaders..."] = function()
 	menu_spawnmenu( listl, listp, def );
 end
 
--- Don't implement save / favorite for these ones without serious long-term testing
--- As we have no automated heuristics (which would mean creating reference images, doing an FBO, read back,
--- compare output with reference and determine if it's "stable" or not) and GPU failures
--- are still very much treated like a full on crash.
+-- Don't implement save / favorite for these ones without serious 
+-- long-term testing As we have no automated heuristics (which would mean 
+-- creating reference images, doing an FBO, read back,
+-- compare output with reference and determine if it's "stable" or not) 
+-- and GPU failures are still very much treated like a full on crash.
 displaymodelist = {}; -- {"Custom Shaders..."};
 
 local function add_displaymodeptr(list, ptrs, key, label, togglecb)
-	local ctxmenus = {CRT = true, Overlay = false, Backdrop = false, Filter = true, 
+	local ctxmenus = {CRT = true, 
+		Overlay = false, Backdrop = false, Filter = true, 
 		NTSC = true, Glow = true, Trails = true, Upscaler = true};
 
 	table.insert(list, label);
@@ -1437,13 +1636,15 @@ local function add_displaymodeptr(list, ptrs, key, label, togglecb)
 
 	current_menu.formats[label] = nil;
 	local fz = settings.colourtable.font_size;
-	local iconlbl = string.format("\\P%d,%d,%s,", fz, fz, "images/icons/magnify.png");
+	local iconlbl = string.format("\\P%d,%d,%s,", 
+		fz, fz, "images/icons/magnify.png");
 
 	if (ctxmenus[label]) then
 		current_menu.formats[label] = iconlbl;
 	end
 
-	current_menu.formats[label] = string.format("%s%s", ctxmenus[label] and iconlbl or "",
+	current_menu.formats[label] = string.format("%s%s", 
+		ctxmenus[label] and iconlbl or "",
 		settings.internal_toggles[key] and settings.colourtable.notice_fontstr or 
 		settings.colourtable.data_fontstr);
 
@@ -1563,7 +1764,9 @@ local function flip_crttog(label, save)
 		play_audio(soundmap["MENU_SELECT"]);
 	end
 
-	current_menu.formats[label] = settings[dstkey] and settings.colourtable.notice_fontstr or nil;
+	current_menu.formats[label] = settings[dstkey] 
+		and settings.colourtable.notice_fontstr or nil;
+
 	current_menu:invalidate();
 	current_menu:redraw();
 
@@ -1581,7 +1784,9 @@ local function flip_scalertog(label, save)
 		play_audio(soundmap["MENU_SELECT"]);
 	end
 
-	current_menu.formats[label] = settings[dstkey] and settings.colourtable.notice_fontstr or nil;
+	current_menu.formats[label] = settings[dstkey] 
+		and settings.colourtable.notice_fontstr or nil;
+
 	current_menu:invalidate();
 	current_menu:redraw();
 
@@ -1619,7 +1824,8 @@ streamptrs["Define Stream..."] = function(label, store)
 		opts.prefix = "rtmp://";
 		opts.startstr = settings.stream_url;
 
--- quick hack to make it slightly easier to enter "big and nasty justin.tv kind" keys
+-- quick hack to make it slightly easier to 
+-- enter "big and nasty justin.tv kind" keys
 		if (settings.stream_url == "rtmp://" and resource("stream.key")) then
 			if (open_rawresource("stream.key")) then
 				local line = read_rawresource();
@@ -1654,7 +1860,8 @@ table.insert(streammenu, "Define Stream...");
 table.insert(streammenu, "Start Streaming");
 local tmpfmt = {};
 tmpfmt["Start Streaming"] = "\\b" .. settings.colourtable.notice_fontstr;
-add_submenu(recordlist, recordptrs, "Streaming...", "record_stream", streammenu, streamptrs, tmpfmt);
+add_submenu(recordlist, recordptrs, "Streaming...", 
+	"record_stream", streammenu, streamptrs, tmpfmt);
 table.insert(recordlist, "Start Recording");
 
 streamptrs["Start Streaming"] = function()
@@ -1663,9 +1870,17 @@ streamptrs["Start Streaming"] = function()
 	settings.iodispatch["MENU_ESCAPE"](nil, nil, true);
 
 	local width, height = recdim();
-	local recstr = "libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" .. string.gsub(settings.stream_url and settings.stream_url or "", ":", "\t");
-	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
-	spawn_warning("Streaming to: " .. string.gsub(settings.stream_url and settings.stream_url or "", "\\", "\\\\"));
+	local recstr = 
+		"libvorbis:vcodec=libx264:container=stream:acodec=libmp3lame:streamdst=" 
+		.. string.gsub(settings.stream_url and
+			settings.stream_url or "", ":", "\t");
+
+	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) 
+		.. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" 
+		.. tostring(settings.record_qual);
+
+	spawn_warning("Streaming to: " .. string.gsub(settings.stream_url 
+		and settings.stream_url or "", "\\", "\\\\"));
 
 	enable_record(width, height, recstr);
 end
@@ -1677,7 +1892,9 @@ recordptrs["Start Recording"] = function()
 
 -- compile a string with all the settings- goodness
 	local recstr = codectbl[settings.record_format];
-	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) .. ":apreset=" .. tostring(settings.record_qual) .. ":vpreset=" .. tostring(settings.record_qual);
+	recstr = recstr .. ":fps=" .. tostring(settings.record_fps) 
+		.. ":apreset=" .. tostring(settings.record_qual) .. 
+			":vpreset=" .. tostring(settings.record_qual);
 
 	enable_record(width, height, recstr);
 end
@@ -1726,10 +1943,21 @@ function gridlemenu_internal(target_vid, contextlbls, settingslbls)
 		elseif (selectlbl == "CRT") then
 			fmts = {};
 
-			if (settings.crt_gaussian)   then fmts["Gaussian Profile"]  = settings.colourtable.notice_fontstr; end
-			if (settings.crt_linearproc) then fmts["Linear Processing"] = settings.colourtable.notice_fontstr; end
-			if (settings.crt_curvature)  then fmts["Curvature"]         = settings.colourtable.notice_fontstr; end
-			if (settings.crt_oversample) then fmts["Oversample"]        = settings.colourtable.notice_fontstr; end
+			if (settings.crt_gaussian) then 
+				fmts["Gaussian Profile"]  = settings.colourtable.notice_fontstr; 
+			end
+
+			if (settings.crt_linearproc) then 
+				fmts["Linear Processing"] = settings.colourtable.notice_fontstr; 
+			end
+
+			if (settings.crt_curvature)  then 
+				fmts["Curvature"] = settings.colourtable.notice_fontstr; 
+			end
+
+			if (settings.crt_oversample) then 
+				fmts["Oversample"] = settings.colourtable.notice_fontstr; 
+			end
 
 			menu_spawnmenu(crtmenulbls, crtmenuptrs, fmts);
 
@@ -1827,7 +2055,9 @@ if (#menulbls > 0 and settingslbls) then
 
 	current_menu.ptrs["Audio Gain..."] = function()
 		local def = {};
-		def[ tostring(settings.internal_again) ] = settings.colourtable.notice_fontstr;
+		def[ tostring(settings.internal_again) ] = 
+			settings.colourtable.notice_fontstr;
+
 		if (get_key("internal_again")) then
 			def[ get_key("internal_again") ] = settings.colourtable.alert_fontstr;
 		end
@@ -1835,7 +2065,8 @@ if (#menulbls > 0 and settingslbls) then
 		menu_spawnmenu( audiogainlist, audiogainptrs, def );
 	end
 
--- trickier than expected, as we don't want the game to progress and we don't want any UI elements involved */
+-- trickier than expected, as we don't want the game to 
+-- progress and we don't want any UI elements involved */
 	current_menu.ptrs["Screenshot"] = function()
 		settings.iodispatch["MENU_ESCAPE"]();
 		local tmpclock = gridle_clock_pulse;
@@ -1844,7 +2075,8 @@ if (#menulbls > 0 and settingslbls) then
 		escape_locked = true;
 		suspend_target( target_vid );
 
--- replace the current timing function with one that only ticks down and then takes a screenshot
+-- replace the current timing function with one that 
+-- only ticks down and then takes a screenshot
 		gridle_clock_pulse = function()
 -- generate a filename that's not in use
 			if (tmpclock_c > 0) then
@@ -1860,7 +2092,9 @@ if (#menulbls > 0 and settingslbls) then
 
 	current_menu.ptrs["Cocktail Modes..."] = function()
 		local def = {};
-		def[ tostring(settings.cocktail_mode) ] = settings.colourtable.notice_fontstr;
+		def[ tostring(settings.cocktail_mode) ] 
+			= settings.colourtable.notice_fontstr;
+
 		if (get_key("cocktail_mode")) then
 			def[ get_key("cocktail_mode") ] = settings.colourtable.alert_fontstr;
 		end
@@ -1882,7 +2116,8 @@ if (#menulbls > 0 and settingslbls) then
 	current_menu:show();
 	suspend_target(internal_vid);
 	play_audio(soundmap["MENU_TOGGLE"]);
-	move_image(current_menu.anchor, 10, math.floor(VRESH * 0.1), settings.fadedelay);
+	move_image(current_menu.anchor, 10, 
+		math.floor(VRESH * 0.1), settings.fadedelay);
 end
 
 function gridle_load_internal_extras(restbl, tgt)
@@ -1932,7 +2167,9 @@ function gridle_delete_internal_extras()
 		expire_image(imagery.cocktail_vid, settings.transitiondelay);
 		resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
 		blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
-		move_image(imagery.cocktail_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+		move_image(imagery.cocktail_vid, 
+			VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+
 		imagery.cocktail_vid = BADID;
 	end
 end
