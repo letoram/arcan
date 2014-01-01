@@ -17,12 +17,14 @@ imagery = {
 -- each key entry is expected to have a subtable with
 -- trigger, current_value, seed_value
 -- [trigger] invoked when current_value <= 0
--- [seed_value == 0] and the timer will be removed when current_value has expired
+-- [seed_value == 0] and the timer will be removed 
+-- when current_value has expired
 clock_timers = {};
 
 -- source table used when mouse trails are activated,
--- populated with [mouse_trails] randomized samples from icons/* forcescaled to 32x32
--- will be instanced at a fixed clock rate up to an upper limit
+-- populated with [mouse_trails] randomized samples from icons/* 
+-- forcescaled to 32x32 will be instanced at a fixed clock rate 
+-- up to an upper limit
 mouse_trails = {
 };
 mouse_x = math.floor(VRESW * 0.5);
@@ -98,6 +100,7 @@ settings = {
 
 	iodispatch     = {},
 	dispatch_stack = {},
+	coreargs = {},
 
 	fadedelay = 10,
 	transitiondelay = 30,
@@ -142,8 +145,12 @@ settings = {
 	default_launchmode = "Internal",
 
 -- DISPLAY MODE PRESETS (can be overridden from load_settings
-	internal_toggles = {crt = false, trails = false, glow = false, backdrop = false, 
-	ntsc = false, upscaler = false, overlay = false, antialias = false},
+	internal_toggles = {
+		crt = false, trails = false, 
+		glow = false, backdrop = false, 
+		ntsc = false, upscaler = false, 
+		overlay = false, antialias = false
+	},
 
 	crt_gamma     = 2.4,
 	crt_mongamma  = 2.2,
@@ -220,6 +227,7 @@ sysicon_remap["Nintendo Game Boy"] = "gb";
 sysicon_remap["Nintendo Game Boy Advance"] = "gba";
 sysicon_remap["Nintendo Wii"] = "wii";
 sysicon_remap["Nintendo DS"] = "nds";
+sysicon_remap["Nintendo 64"] = "n64";
 sysicon_remap["Sega Genesis"] = "genesis";
 sysicon_remap["Sega Mega Drive"] = "genesis";
 sysicon_remap["Sony Playstation"] = "psx";
@@ -246,10 +254,22 @@ end
 table.sort(skiptbl, nil);
 
 settings.sortfunctions = {};
-settings.sortfunctions["Ascending"]    = function(a,b) return string.lower(a.title) < string.lower(b.title) end 
-settings.sortfunctions["Descending"]   = function(a,b) return string.lower(a.title) > string.lower(b.title) end
-settings.sortfunctions["Times Played"] = function(a,b) return a.launch_counter > b.launch_counter end 
-settings.sortfunctions["Favorites"]    = function(a,b) 
+settings.sortfunctions["Ascending"] = 
+function(a,b) 
+	return string.lower(a.title) < string.lower(b.title) 
+end
+
+settings.sortfunctions["Descending"] = 
+function(a,b) 
+	return string.lower(a.title) > string.lower(b.title) 
+end
+
+settings.sortfunctions["Times Played"] =
+function(a,b)
+	return a.launch_counter > b.launch_counter 
+end
+
+settings.sortfunctions["Favorites"] = function(a,b) 
 	local af = settings.favorites[a.title];
 	local bf = settings.favorites[b.title];
 	if (af and not bf) then
@@ -283,6 +303,51 @@ function load_soundmap(name)
 	end
 end
 
+function store_coreoptions(game)
+	if (settings.coreargs_dirty) then
+		local fn = string.format("coreopts/%s.cfg", current_game.target);
+		if (resource(fn)) then
+			zap_resource(fn);
+		end
+		
+		if (open_rawresource(fn)) then
+			local lines = {};
+	
+			for k,v in pairs(settings.coreargs) do
+				table.insert(lines, string.format("res[\"%s\"] = [[%s]];", k, v.value));
+			end
+			
+			write_rawresource(string.format(
+				"local res = {};\n%s\nreturn res;", table.concat(lines, "\n"))
+			);
+			close_rawresource();
+		end
+
+		settings.coreargs = {};
+		settings.coreargs_dirty = nil;
+	end
+end
+
+function load_coreoptions(game)
+	local fn = string.format("coreopts/%s.cfg", game.target);
+
+	if (resource(fn)) then
+		local coreargs = system_load(fn)();
+		local opttbl = {};
+
+		for k,v in pairs(coreargs) do
+			table.insert(opttbl, string.format("core_%s=%s", 
+				k, type(v) == "table" and v.value or v));
+		end
+
+		if (#opttbl > 0) then
+			optstr = table.concat(opttbl, ':');	
+		end
+
+		return optstr;
+	end
+end
+
 function gridle_launchexternal()
 	erase_grid(true);
 	play_audio(soundmap["LAUNCH_EXTERNAL"]);
@@ -307,45 +372,73 @@ function gridle_launchinternal()
 		gridle_internal_cleanup(gridview_cleanuphook, true);
 	end
 	
-	dispatch_push(tmptbl, "launch_internal", nil, 0); 
-	internal_vid = launch_target( current_game.gameid, LAUNCH_INTERNAL, gridle_internal_status );
+	dispatch_push(tmptbl, "launch_internal", nil, 0);
+	settings.coreopts = {};
+
+	local optstr = load_coreoptions(current_game);
+	
+	internal_vid = launch_target( current_game.gameid, 
+		LAUNCH_INTERNAL, gridle_internal_status, optstr );
 end
 
 error_nogames = nil;
 
--- we override this function further down so that it universally applies the gain limit
+-- we override this function further down so 
+-- that it universally applies the gain limit
 settings.play_audio = play_audio;
 
 local function menu_bgupdate() 
 	zap_whitegrid();
 	grab_sysicons();
-	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh)	
+	set_background(settings.bgname, 
+		settings.bg_rw, settings.bg_rh, 
+		settings.bg_speedv, settings.bg_speedh);
 	build_whitegrid();
 end
 
 function gridle()
--- updates settings namespace, needed for some load-time options in gridle_menus etc.
-	system_load("gridle_shared.lua")();          -- functions for managing menus, background music etc. ...
+-- updates settings namespace, needed for 
+-- some load-time options in gridle_menus etc.
+	system_load("gridle_shared.lua")(); 
 	load_settings();
 	
 -- grab all dependencies;
-	settings.colourtable = system_load("scripts/colourtable.lua")(); -- default colour values for windows, text etc.
-	system_load("scripts/calltrace.lua")();      -- debug features Trace() and Untrace()
-	system_load("scripts/listview.lua")();       -- used by menus (_menus, _intmenus) and key/ledconf
-	system_load("scripts/dialog.lua")();         -- dialog used for confirmations 
-	system_load("scripts/keyconf.lua")();        -- input configuration dialogs
-	system_load("scripts/keyconf_mame.lua")();   -- convert a keyconf into a mame configuration
-	system_load("scripts/ledconf.lua")();        -- associate input labels with led controller IDs
-	system_load("scripts/resourcefinder.lua")(); -- heuristics for finding media
-	system_load("scripts/3dsupport.lua")();      -- used by detailview / customview, model/material/shader loader
-	system_load("scripts/osdkbd.lua")();         -- on-screen keyboard 
-	system_load("scripts/layout_editor.lua")();  -- layout editor for customview
-	system_load("gridle_menus.lua")();           -- in-frontend configuration options
-	system_load("gridle_contextmenus.lua")();    -- context menus (quickfilter, database manipulation, ...)
-	system_load("gridle_internal.lua")();        -- internal launch, any arcan controllable emulator
-	system_load("gridle_detail.lua")();          -- detailed view showing either 3D models or game- specific scripts
-	system_load("gridle_customview.lua")();      -- customizable list view
-	system_load("retrohelper.lua")();            -- libretro- / arcan namespace input mapping translation tables
+-- default colour values for windows, text etc.
+	settings.colourtable = system_load("scripts/colourtable.lua")(); 
+
+-- debug features Trace() and Untrace()
+	system_load("scripts/calltrace.lua")(); 
+
+-- UI components (dialogs, menus, on-screen keyboard) 
+	system_load("scripts/listview.lua")();
+	system_load("scripts/osdkbd.lua")();
+	system_load("scripts/dialog.lua")();
+
+-- input configuration dialogs, mame and led mapping
+	system_load("scripts/keyconf.lua")();
+	system_load("scripts/keyconf_mame.lua")();
+	system_load("scripts/ledconf.lua")();
+
+-- heuristics for finding media, 3d model setup
+	system_load("scripts/resourcefinder.lua")();
+	system_load("scripts/3dsupport.lua")();
+
+-- editor for "custom view"
+	system_load("scripts/layout_editor.lua")();
+	system_load("gridle_customview.lua")();
+
+-- global/ context menus
+	system_load("gridle_menus.lua")();
+	system_load("gridle_contextmenus.lua")();
+
+-- visual effects, input mapping etc. for internal launch
+	system_load("gridle_internal.lua")();
+
+-- 3D model view/navigation
+	system_load("gridle_detail.lua")();
+
+-- libretro- / arcan namespace input mapping translation tables
+	system_load("retrohelper.lua")(); 
 	
 	if (DEBUGLEVEL > 2) then
 		settings.graph_mode = 1;
@@ -355,9 +448,11 @@ function gridle()
 		Trace();
 	end
 	
--- make sure that the engine API version and the version this theme was tested for, align.
+-- make sure that the engine API version 
+-- and the version this theme was tested for, align.
 	if (API_VERSION_MAJOR ~= 0 and API_VERSION_MINOR ~= 6) then
-		msg = "Engine/Script API version match, expected 0.6, got " .. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
+		msg = "Engine/Script API version match, expected 0.6, got " 
+			.. API_VERSION_MAJOR .. "." .. API_VERSION_MINOR;
 		error(msg);
 		shutdown();
 	end
@@ -379,8 +474,10 @@ function gridle()
 -- make sure the current context runs with the new limit
 	pop_video_context();
 
--- keep an active list of available games, make sure that we have something to play/show
--- since we want a custom sort, we'll have to keep a table of all the games (expensive)
+-- keep an active list of available games, 
+-- make sure that we have something to play/show
+-- since we want a custom sort, 
+-- we'll have to keep a table of all the games (expensive)
 	settings.games = list_games( {} );
 
 	local tgtlist = list_targets();
@@ -396,7 +493,8 @@ function gridle()
 -- use the DB theme-specific key/value store to populate the settings table
 	load_soundmap(settings.soundmap);
 	
--- network remote connection, always on but can allow / disallow connections based on user settings
+-- network remote connection, always on but can 
+-- allow / disallow connections based on user settings
 	imagery.server = net_listen(settings.listen_host, network_onevent);
 	
 -- global
@@ -404,25 +502,18 @@ function gridle()
 	persist_image(imagery.server);
 	push_video_context();
 
--- test layout for fullscreen recording, something not working right with MRT however
--- setting this one up and making it persistant should allow for recording a full session
--- (particularly useful for demo recording)
---
--- the global monitoring isn't good enough for it to be working however.
--- recres = fill_surface(VRESW, VRESH, 0, 0, 0, VRESW, VRESH);
--- define_recordtarget(recres, "rest.mkv", "acodec=VORBIS:vcodec=VP8:container=matroska", {WORLDID}, {}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(source, status) end);
--- image_tracetag(recres, "recres");
---
-
--- any 3D rendering (models etc.) should happen after any 2D surfaces have been drawn as to not be occluded
+-- any 3D rendering (models etc.) should happen after any 
+-- 2D surfaces have been drawn as to not be occluded
 	video_3dorder(ORDER_LAST); 
 
 	build_fadefunctions();
 	osd_visible = false;
 
--- slightly complicated, we cannot activate the respective grid mode in the case of customview etc. 
--- as it will pop context, manipulate I/O handlers etc. so let the keyconf / ledconf set it all up.
-	local lfun = settings.viewmode == "Grid" and setup_gridview or gridle_customview;
+-- slightly complicated, we cannot activate the respective grid mode
+-- in the case of customview etc. as it will pop context, 
+-- manipulate I/O handlers etc. so let the keyconf / ledconf set it all up.
+	local lfun = settings.viewmode == "Grid" 
+		and setup_gridview or gridle_customview;
 	
 	gridle_keyconf(lfun);
 	gridle_ledconf(lfun);
@@ -433,24 +524,69 @@ function gridview_input()
 -- the dispatchtable will be manipulated throughout the theme, 
 -- simply used as a label <-> function pointer lookup table
 -- check gridle_input / gridle_dispatchinput for more detail
-	imenu["MOUSE_X"]      = function(luttbl, iotbl) mouse_movement(iotbl.samples[1], 0); end 
-	imenu["MOUSE_Y"]      = function(luttbl, iotbl) mouse_movement(0, iotbl.samples[1]); end
-	imenu["MENU_UP"]      = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 *settings.ncw); end
-	imenu["MENU_DOWN"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor(settings.ncw ); end
-	imenu["MENU_LEFT"]    = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( -1 ); end
-	imenu["MENU_RIGHT"]   = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( 1 ); end
-	imenu["RANDOM_GAME"]  = function(iotbl) play_audio(soundmap["GRIDCURSOR_MOVE"]); move_cursor( math.random(-#settings.games, #settings.games) ); end
-	imenu["MENU_ESCAPE"]  = function(iotbl) confirm_shutdown(); end
-	imenu["QUICKSAVE"]    = function(iotbl) end
-	imenu["QUICKLOAD"]    = function(iotbl) end
+	imenu["MOUSE_X"] = 
+	function(luttbl, iotbl)
+		mouse_movement(iotbl.samples[1], 0); 
+	end 
 	
-	imenu["FLAG_FAVORITE"]= function(iotbl)
+	imenu["MOUSE_Y"] = 
+	function(luttbl, iotbl) 
+		mouse_movement(0, iotbl.samples[1]); 
+	end
+
+	imenu["MENU_UP"] = 
+	function(iotbl) 
+		play_audio(soundmap["GRIDCURSOR_MOVE"]);
+		move_cursor( -1 *settings.ncw); 
+	end
+
+	imenu["MENU_DOWN"] = 
+	function(iotbl) 
+		play_audio(soundmap["GRIDCURSOR_MOVE"]); 
+		move_cursor(settings.ncw ); 
+	end
+
+	imenu["MENU_LEFT"] = 
+	function(iotbl) 
+		play_audio(soundmap["GRIDCURSOR_MOVE"]); 
+		move_cursor( -1 ); 
+	end
+
+	imenu["MENU_RIGHT"] = 
+	function(iotbl)
+		play_audio(soundmap["GRIDCURSOR_MOVE"]); 
+		move_cursor( 1 ); 
+	end
+
+	imenu["RANDOM_GAME"] = 
+	function(iotbl) 
+		play_audio(soundmap["GRIDCURSOR_MOVE"]); 
+		move_cursor( math.random(-#settings.games, #settings.games) ); 
+	end
+
+	imenu["MENU_ESCAPE"] =
+	function(iotbl) 
+		confirm_shutdown(); 
+	end
+
+	imenu["QUICKSAVE"] = 
+	function(iotbl) 
+	end
+
+	imenu["QUICKLOAD"] = 
+	function(iotbl) 
+	end
+	
+	imenu["FLAG_FAVORITE"] = 
+	function(iotbl)
 		local ind = table.find(settings.favorites, current_game.title);
 		
 		if (ind == nil) then -- flag
 			table.insert(settings.favorites, current_game.title);
 			local props = image_surface_properties( cursor_bgvid() );
-			settings.favorites[current_game.title] = spawn_favoritestar(props.x, props.y);
+			settings.favorites[current_game.title] = 
+				spawn_favoritestar(props.x, props.y);
+	
 			play_audio(soundmap["SET_FAVORITE"]);
 
 		else -- unflag
@@ -480,7 +616,8 @@ function gridview_input()
 			blend_image( cursor_vid(), 0.3 );
 			play_audio( soundmap["DETAILVIEW_TOGGLE"] ); 
 			
--- cache curind so we don't have to search if we're switching game inside detail view 
+-- cache curind so we don't have to search if 
+-- we're switching game inside detail view 
 			for ind = 1, #settings.games do
 				if (settings.games[ind].title == current_game.title) then
 					gameind = ind;
@@ -523,7 +660,8 @@ function gridview_input()
 	imenu["MENU_SELECT"] = function(iotbl)
 		if (not current_game.capabilities) then return; end
 		
-		local launch_internal = (settings.default_launchmode == "Internal" or current_game.capabilities.external_launch == false)
+		local launch_internal = (settings.default_launchmode == "Internal" 
+			or current_game.capabilities.external_launch == false)
 			and current_game.capabilities.internal_launch;
 
 -- can also be invoked from the context menus
@@ -551,13 +689,14 @@ function mouse_movement(dx, dy)
 -- [2a]for grid view, check if we're selecting something in the grid
 --     or if we are closer to any of the control buttons
 --
--- [2b]for menus or OSD, just forward the event to the corresponding listview/osdkbd
--- 
+-- [2b]for menus or OSD, just forward the event to the 
+-- corresponding listview/osdkbd
 	end
 end
 
 -- to save resources when going from customview to grid view
--- the entire context is poped meaning that all involved resources need to be rebuilt
+-- the entire context is poped meaning that all involved 
+-- resources need to be rebuilt
 function setup_gridview()
 	gridview_input();
 	setup_3dsupport();
@@ -572,7 +711,8 @@ function setup_gridview()
 		table.sort(settings.games, settings.sortfunctions[settings.sortorder]);
 	end
 	
-	set_background(settings.bgname, settings.bg_rw, settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
+	set_background(settings.bgname, settings.bg_rw, 
+		settings.bg_rh, settings.bg_speedv, settings.bg_speedh);
 	
 	imagery.black = fill_surface(1,1,0,0,0);
 	image_tracetag(imagery.black, "black");
@@ -582,7 +722,9 @@ function setup_gridview()
 
 	imagery.loading = load_image("images/icons/colourwheel.png");
 	resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
-	move_image(imagery.loading, 0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+	move_image(imagery.loading, 0.5 * 
+		(VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+
 	order_image(imagery.loading, INGAMELAYER_OVERLAY); 
 	image_tracetag(imagery.loading, "loading");
 	
@@ -598,15 +740,22 @@ function setup_gridview()
 	image_tracetag(imagery.crashimage, "terminated");
 
 	resize_image(imagery.crashimage, VRESW * 0.5, VRESH * 0.5);
-	move_image(imagery.crashimage, 0.5 * (VRESW - (VRESW * 0.5)), 0.5 * (VRESH - (VRESH * 0.5)));
+	move_image(imagery.crashimage, 
+		0.5 * (VRESW - (VRESW * 0.5)), 
+		0.5 * (VRESH - (VRESH * 0.5)));
 
 	imagery.magnifyimage = load_image("images/icons/magnify.png");
 	image_tracetag(imagery.magnifyimage, "detailview icon");
 
-	settings.cleanup_toggle = function() gridle_internal_cleanup(gridview_cleanuphook, false); end
+	settings.cleanup_toggle = function() 
+		gridle_internal_cleanup(gridview_cleanuphook, false); 
+	end
 
-	settings.cell_width  = settings.cell_width  > VRESW and math.floor(VRESW * 0.5) or settings.cell_width;
-	settings.cell_height = settings.cell_height > VRESH and math.floor(VRESH * 0.5) or settings.cell_height;
+	settings.cell_width  = settings.cell_width  > VRESW 
+		and math.floor(VRESW * 0.5) or settings.cell_width;
+
+	settings.cell_height = settings.cell_height > VRESH 
+		and math.floor(VRESH * 0.5) or settings.cell_height;
 
 	recalc_scale();
 	build_grid(settings.cell_width, settings.cell_height);
@@ -647,7 +796,8 @@ function network_onevent(source, tbl)
 
 	elseif (tbl.kind == "message") then
 		if (settings.network_remote == "Active") then
-			local faketbl = {kind = "digital", devid = 0, subid = 0, source = "remote", external = true};
+			local faketbl = {kind = "digital", 
+				devid = 0, subid = 0, source = "remote", external = true};
 			local override = {};
 
 			if (string.sub(tbl.message, 1, 6) == "press:") then
@@ -688,13 +838,17 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 
 	local bgshader = nil;
 
-	if ((settings.bgeffect and settings.bgeffect == "none.fShader") or settings.bgeffect == nil) then
--- shader for an animated background (tiled with texture coordinates aligned to the internal clock)
-		bgshader = load_shader("shaders/anim_txco.vShader", "shaders/anim_txco.fShader", "background");
+	if ((settings.bgeffect and 
+		settings.bgeffect == "none.fShader") or settings.bgeffect == nil) then
+-- shader for an animated background (tiled with texture 
+-- coordinates aligned to the internal clock)
+		bgshader = load_shader("shaders/anim_txco.vShader", 
+			"shaders/anim_txco.fShader", "background");
 		shader_uniform(bgshader, "speedfact", "ff", PERSIST, hspeed, vspeed);
 	else
 		print("load_shader", "shaders/bgeffects/" .. settings.bgeffect);
-		bgshader = load_shader("shaders/fullscreen/default.vShader", "shaders/bgeffects/" .. settings.bgeffect, "background", {});
+		bgshader = load_shader("shaders/fullscreen/default.vShader", 
+			"shaders/bgeffects/" .. settings.bgeffect, "background", {});
 		shader_uniform(bgshader, "display", "ff", PERSIST, VRESW, VRESH);
 	end
 	
@@ -704,7 +858,8 @@ function set_background(name, tilefw, tilefh, hspeed, vspeed)
 	image_tracetag(imagery.bgimage, "background");
 	
 	resize_image(imagery.bgimage, VRESW, VRESH);
-	image_scale_txcos(imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
+	image_scale_txcos(
+		imagery.bgimage, VRESW / (VRESW / tilefw), VRESH / (VRESH / tilefh) );
 	image_shader(imagery.bgimage, bgshader);
 	show_image(imagery.bgimage);
 	order_image(imagery.bgimage, GRIDBGLAYER); 
@@ -737,7 +892,8 @@ function osdkbd_inputfun(iotbl, dstkbd)
 				resstr = dstkbd:input(val, iotbl.active);
 
 				if (iotbl.active) then
-					play_audio(val == "MENU_SELECT" and soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
+					play_audio(val == "MENU_SELECT" and 
+						soundmap["OSDKBD_SELECT"] or soundmap["OSDKBD_MOVE"]);
 				end
 				
 -- also allow direct keyboard input
@@ -782,25 +938,46 @@ function keyconf_helper(message)
 	
 	hide_image(infowin.cursorvid);
 	local props = image_surface_properties(infowin.border, 100);
-	move_image(infowin.anchor, math.floor( 0.5 * (VRESW - props.width)), VRESH - props.height);
+	move_image(infowin.anchor, math.floor( 
+		0.5 * (VRESW - props.width)), VRESH - props.height);
 end
 
 function gridle_keyconf(defer_fun)
 	local keylabels = {
-		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", "rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", "aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", " DETAIL_VIEW", " FLAG_FAVORITE",
-		" RANDOM_GAME", " OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" };
+		"rMENU_ESCAPE", "rMENU_LEFT", "rMENU_RIGHT", 
+		"rMENU_UP", "rMENU_DOWN", "rMENU_SELECT", 
+		"aMOUSE_X", "aMOUSE_Y", " CONTEXT", "rMENU_TOGGLE", 
+		" DETAIL_VIEW", " FLAG_FAVORITE",	" RANDOM_GAME", 
+		" OSD_KEYBOARD", " QUICKSAVE", " QUICKLOAD" 
+	};
 
 	local helplabels = {};
-	helplabels["FLAG_FAVORITE"] = {"(grid-view) Mark game as a favorite.", "(menus) Toggle and save a setting."};
-	helplabels["MENU_TOGGLE"  ] = {"(grid-view) Show global settings, filter options.", "(internal-launch) Show display options, record video, remap keys."};
-	helplabels["CONTEXT"      ] = {"(grid-view) Use selected game as filter, force specific launch-mode.", 
-			"(detail view) Zoom in/out, switch between 3D model and full-screen.", 
-			"(internal-launch) Show game-specific options, state saving, reconfigure game-specific input.",
-			"(internal-launch-menus) (Spyglass options), show option details."
+	helplabels["FLAG_FAVORITE"] = {"(grid-view) Mark game as a favorite.", 
+		"(menus) Toggle and save a setting."};
+
+	helplabels["MENU_TOGGLE"] = {
+		"(grid-view) Show global settings, filter options.", 
+		"(internal-launch) Show display options, record video, remap keys."
 	};
-	helplabels["DETAIL_VIEW"  ] = {"(grid-view) If a spyglass icon is present, switch to a 3D model of the selected game."};
-	helplabels["OSD_KEYBOARD" ] = {"(grid-view) Use an on-screen keyboard to filter current list of games."};
-	helplabels["RANDOM_GAME"  ] = {"(grid-view, custom-view) Move the cursor to a random location.", "(internal-launch) Toggle fast-forward on/off (where applicable)."};
+
+	helplabels["CONTEXT"] = {
+		"(grid-view) Use selected game as filter, force specific launch-mode.", 
+		"(detail view) Zoom in/out, switch between 3D model and full-screen.", 
+		"(internal-launch) Show game-specific options, state saving," ..
+		"reconfigure game-specific input.",
+		"(internal-launch-menus) (Spyglass options), show option details."
+	};
+
+	helplabels["DETAIL_VIEW"] = {
+		"(grid-view) If a spyglass icon is present, " ..
+		"switch to a 3D model of the selected game."};
+
+	helplabels["OSD_KEYBOARD"] = {
+		"(grid-view) Use an on-screen keyboard to filter current list of games."};
+
+	helplabels["RANDOM_GAME"] = {
+		"(grid-view, custom-view) Move the cursor to a random location.", 
+		"(internal-launch) Toggle fast-forward on/off (where applicable)."};
 	
 	local listlbls = {};
 	local lastofs = 1;
@@ -812,7 +989,8 @@ function gridle_keyconf(defer_fun)
 	keyconfig = keyconf_create(keylabels);
 	
 	if (keyconfig.active == false) then
--- keep a listview in the left-side behind the dialog to show all the labels left to configure
+-- keep a listview in the left-side behind the dialog
+-- to show all the labels left to configure
 		keyconf_labelview = listview_create(listlbls, VRESH * 0.9, VRESW / 4);
 		keyconf_labelview:show();
 		
@@ -826,7 +1004,7 @@ function gridle_keyconf(defer_fun)
 -- replace the current input function until we have a working keyconfig
 	dispatch_push({}, "keyconfig (full)", function(iotbl)
 		if (keyconfig:input(iotbl) == true) then
-			keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); -- should be replaced with a more generic export interface
+			keyconf_tomame(keyconfig, "_mame/cfg/default.cfg"); 
 			zap_resource("ledsym.lua"); -- delete this one and retry ledconf
 			dispatch_pop();
 			
@@ -836,7 +1014,9 @@ function gridle_keyconf(defer_fun)
 
 			gridle_ledconf(defer_fun);
 
-		else -- more keys to go, labelview MAY disappear but only if the user defines PLAYERn_BUTTONm > 0
+		else 
+-- more keys to go, labelview MAY disappear 
+-- but only if the user defines PLAYERn_BUTTONm > 0
 			if (keyconfig.ofs ~= lastofs and keyconf_labelview) then
 				lastofs = keyconfig.ofs;
 				keyconf_labelview:move_cursor(1, 1);
@@ -856,8 +1036,8 @@ else
 	end
 end
  
--- very similar to gridle_keyconf, only real difference is that the labels are a subset
--- of the output from keyconf (PLAYERn)
+-- very similar to gridle_keyconf, only real difference is that 
+-- the labels are a subset of the output from keyconf (PLAYERn)
 function gridle_ledconf(defer_fun)
 	if (keyconfig.active == false) then 
 		return; 
@@ -880,7 +1060,8 @@ function gridle_ledconf(defer_fun)
 		
 		local props = image_surface_properties(ledconf_labelview.window, 5);
 		if (props.height < VRESH) then
-			move_image(ledconf_labelview.anchor, 0, math.floor(VRESH * 0.5 - props.height* 0.5));
+			move_image(ledconf_labelview.anchor, 0, 
+				math.floor(VRESH * 0.5 - props.height* 0.5));
 		end
 
 		ledconfig.lastofs = ledconfig.labelofs;
@@ -951,7 +1132,8 @@ function spawn_magnify( x, y )
 	order_image(maginst, ICONLAYER);
 	show_image(maginst, 1.0);
 	resize_image(maginst, 1, 1, NOW);
-	resize_image(maginst, settings.cell_width * 0.1, settings.cell_width * 0.1, settings.fadedelay);
+	resize_image(maginst, settings.cell_width * 0.1, 
+		settings.cell_width * 0.1, settings.fadedelay);
 	move_image(maginst, x, y, NOW);
 	
 	table.insert(settings.detailvids, maginst);
@@ -999,7 +1181,8 @@ function osdkbd_filter(msg)
 			build_grid(settings.cell_width, settings.cell_height);
 		else
 		-- no match, send a warning message
-			spawn_warning("Couldn't find any games matching title: " .. settings.filters.title );
+			spawn_warning("Couldn't find any games matching title: " 
+				.. settings.filters.title );
 	-- and restore settings
 			settings.filters.title = titlecpy;
 		end
@@ -1007,7 +1190,9 @@ function osdkbd_filter(msg)
 end
 
 function cell_coords(x, y)
-    return (0.5 * settings.borderw) + x * (settings.cell_width + settings.hspacing), (0.5 * settings.borderh) + y * (settings.cell_height + settings.vspacing);
+    return (0.5 * settings.borderw) + x * 
+			(settings.cell_width + settings.hspacing), 
+			(0.5 * settings.borderh) + y * (settings.cell_height + settings.vspacing);
 end
 
 function build_fadefunctions()
@@ -1028,7 +1213,9 @@ function build_fadefunctions()
 			time = math.floor(time * 0.4);
 		end
 
-		move_image(vid, props.x + props.width / 2, props.y + props.height / 2, time);
+		move_image(vid, props.x + props.width / 2, 
+			props.y + props.height / 2, time);
+
 		blend_image(vid, 0.0, time);
 		resize_image(vid, 1, 1, time);
 	end)
@@ -1037,9 +1224,11 @@ function build_fadefunctions()
 	table.insert(fadefunctions, function(vid, col, row)
 		local props = image_surface_properties(vid);
 		if (row % 2 > 0) then
-			move_image(vid, -1 * (settings.ncw-col) * props.width, props.y, settings.transitiondelay);
+			move_image(vid, -1 * (settings.ncw-col) * props.width, 
+				props.y, settings.transitiondelay);
 		else
-			move_image(vid, (col * props.width) + VRESW + props.width, props.y, settings.transitiondelay);
+			move_image(vid, (col * props.width) + VRESW + props.width, 
+				props.y, settings.transitiondelay);
 		end
 		return settings.transitiondelay;
 	end);
@@ -1056,8 +1245,10 @@ function got_asynchimage(source, status)
 			blend_image(source, 0.3, settings.transitiondelay);
 		end
 		
-		local neww = source == cursor_vid() and (settings.cell_width * settings.cursor_scale) or settings.cell_width;
-		local newh = source == cursor_vid() and (settings.cell_height * settings.cursor_scale) or settings.cell_height;
+		local neww = source == cursor_vid() and 
+			(settings.cell_width * settings.cursor_scale) or settings.cell_width;
+		local newh = source == cursor_vid() and 
+			(settings.cell_height * settings.cursor_scale) or settings.cell_height;
 
 		order_image(source, GRIDLAYER);
 		order_image(cursor_vid(), GRIDLAYER_ZOOM);
@@ -1109,23 +1300,33 @@ function blend_gridcell(val, dt)
 		
 		if (settings.cursor_scale > 1.0) then
 			if (val < 0.9) then
-				local x,y = cell_coords( math.floor(settings.cursor %settings.ncw), math.floor(settings.cursor /settings.ncw) );
+				local x,y = cell_coords( 
+					math.floor(settings.cursor %settings.ncw), 
+					math.floor(settings.cursor /settings.ncw) 
+				);
 			
 				local neww = settings.cell_width / settings.cursor_scale;
 				local newh = settings.cell_height / settings.cursor_scale;
 				local props = image_surface_properties(gridcell_vid);
 				
 				move_image(gridcell_vid, x, y, dt);
-				resize_image(gridcell_vid, settings.cell_width, settings.cell_height, dt);
+				resize_image(gridcell_vid, settings.cell_width, 
+					settings.cell_height, dt);
 				order_image(gridcell_vid, GRIDLAYER); 
 -- Fading out, reposition / rescale
 			else
 -- Fading in, reposition / rescale
 				local neww  = settings.cell_width * settings.cursor_scale;
 				local newh  = settings.cell_height * settings.cursor_scale;
-				local x,y = cell_coords( math.floor(settings.cursor %settings.ncw), math.floor(settings.cursor /settings.ncw) )	;
-				move_image(gridcell_vid, x - 0.5 * (neww - settings.cell_width), y - 0.5 * (newh - settings.cell_height), dt);
-				resize_image(gridcell_vid, settings.cell_width * settings.cursor_scale, settings.cell_height * settings.cursor_scale, dt);
+				local x,y = cell_coords( 
+					math.floor(settings.cursor %settings.ncw), 
+					math.floor(settings.cursor /settings.ncw) )	;
+
+				move_image(gridcell_vid, x - 0.5 * (neww - settings.cell_width), 
+					y - 0.5 * (newh - settings.cell_height), dt);
+
+				resize_image(gridcell_vid, settings.cell_width * settings.cursor_scale, 
+					settings.cell_height * settings.cursor_scale, dt);
 				order_image(gridcell_vid, GRIDLAYER_ZOOM); 
 			end
 
@@ -1153,7 +1354,8 @@ function move_cursor( ofs, absolute )
 	settings.pageofs, settings.cursor = page_calc( settings.gameind );
 
 	local x,y = cell_coords(
-		math.floor(settings.cursor %settings.ncw), math.floor(settings.cursor /settings.ncw)
+		math.floor(settings.cursor %settings.ncw), 
+		math.floor(settings.cursor /settings.ncw)
 	);
 
 -- reload images of the page has changed
@@ -1178,7 +1380,8 @@ function move_cursor( ofs, absolute )
 		imagery.movie = nil;
 	end
 
--- just sweeps the matching PLAYERX_BUTTONY pattern, a more refined approach would take all the weird little
+-- just sweeps the matching PLAYERX_BUTTONY pattern, 
+-- a more refined approach would take all the weird little
 -- arcade game control quirks into proper account
 	toggle_led(current_game.players, current_game.buttons, "");
 
@@ -1230,7 +1433,8 @@ function zap_whitegrid()
 	
 	for row=0,settings.nch-1 do
 		for col=0,settings.ncw-1 do
-			if (whitegrid[row] and whitegrid[row][col] and valid_vid(whitegrid[row][col])) then 
+			if (whitegrid[row] and whitegrid[row][col] 
+				and valid_vid(whitegrid[row][col])) then 
 				delete_image(whitegrid[row][col]); 
 			end
 		end
@@ -1267,7 +1471,8 @@ function build_whitegrid()
 				end
 				
 				if (gridbg == BADID) then
-					gridbg = instance_image(settings.tilebg == "Black" and imagery.black or imagery.white);
+					gridbg = instance_image(settings.tilebg == "Black" 
+						and imagery.black or imagery.white);
 					image_tracetag(gridbg, "background tile instance");
 				end
 				
@@ -1276,7 +1481,8 @@ function build_whitegrid()
 				image_mask_clear(gridbg, MASK_OPACITY);
 				order_image(gridbg, GRIDBGLAYER);
 				
--- we have hidden images for the "None" mode to use the positioning for snapshots etc.
+-- we have hidden images for the "None" mode to 
+-- use the positioning for snapshots etc.
 -- so we attach other images to the "right" vid position.
 				if (settings.tilebg == "None") then
 					hide_image(gridbg);
@@ -1339,7 +1545,8 @@ local function titlestr(msg)
 	local basemsg = string.gsub(msg, "\\", "\\\\");
 	local fontheight = math.ceil( settings.cell_height * 0.5 );
 	local bgcolor = settings.tilebg == "Black" and [[\#ffffff]] or [[\#0000ff]];
-	local fontstr = settings.colourtable.font .. tostring(fontheight) .. "\\b" .. bgcolor;
+	local fontstr = settings.colourtable.font .. 
+		tostring(fontheight) .. "\\b" .. bgcolor;
 	
 	local vid, lines = render_text(fontstr .. basemsg);
 	resize_image(vid, settings.cell_width, settings.cell_height);
@@ -1358,18 +1565,25 @@ function build_grid(width, height)
 		grid[row] = {};
 
 		for col= 0,settings.ncw - 1 do
-			local gameno = (row *settings.ncw + col + settings.pageofs + 1); -- settings.games is 1 indexed
+			local gameno = (row *settings.ncw + col + settings.pageofs + 1); 
 			local cx, cy = cell_coords(col, row);
 
 			if (settings.games[gameno] == nil) then break; end
-			settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
-			settings.games[gameno].capabilities = launch_target_capabilities( settings.games[gameno].target );
+			settings.games[gameno].resources = 
+				resourcefinder_search( settings.games[gameno], true);
+
+			settings.games[gameno].capabilities = 
+				launch_target_capabilities( settings.games[gameno].target );
 		
-			local vid = get_image(settings.games[gameno].resources, settings.games[gameno]);
+			local vid = get_image(settings.games[gameno].resources,
+				settings.games[gameno]);
+
 			if (vid == BADID) then
 				vid = titlestr( settings.games[gameno].title );
 				local props = image_surface_properties(vid);
-				move_image(vid, cx + 0.5 * (settings.cell_width - props.width), cy + 0.5 * (settings.cell_height - props.height));
+				move_image(vid, cx + 0.5 * (settings.cell_width - props.width), 
+					cy + 0.5 * (settings.cell_height - props.height));
+	
 				blend_image(vid, 0.3);
 			else
 				resize_image(vid, settings.cell_width, settings.cell_height);
@@ -1379,7 +1593,8 @@ function build_grid(width, height)
 			order_image(vid, GRIDLAYER);
 
 			if (settings.favorites[ settings.games[gameno].title ]) then
-				settings.favorites[ settings.games[gameno].title ] = spawn_favoritestar( cx, cy );
+				settings.favorites[ settings.games[gameno].title ] = 
+					spawn_favoritestar( cx, cy );
 			end
 
 			if (find_cabinet_model( settings.games[gameno] )) then
@@ -1400,7 +1615,8 @@ function gridle_shutdown()
 	if (open_rawresource("lists/favorites")) then
 		for a=1,#settings.favorites do
 			if ( write_rawresource(settings.favorites[a] .. "\n") == false) then
-				warning("Couldn't save favorites in lists/favorites. Check permissions.");
+				warning(
+					"Couldn't save favorites in lists/favorites. Check permissions.");
 				break;
 			end
 		end
@@ -1446,19 +1662,23 @@ function asynch_movie_ready(source, statustbl)
 end
 
 function gridle_clock_pulse()
--- the cooldown before loading a movie lowers the number of frameserver launches etc. in
--- situations with a high repeatrate and a button hold down. It also gives the soundeffect
+-- the cooldown before loading a movie lowers the number of 
+-- frameserver launches etc. in situations with a high repeatrate 
+-- and a button hold down. It also gives the soundeffect
 -- chance to play without being drowned by an audio track in the movie
 	if (settings.cooldown > 0 and settings.cooldown_start > 0) then
 		settings.cooldown = settings.cooldown - 1;
 
--- cooldown reached, check the current cursor position, use that to figure out which movie to launch
+-- cooldown reached, check the current cursor position, 
+-- use that to figure out which movie to launch
 		if (settings.cooldown == 0 and current_game and current_game.resources
 		and current_game.resources.movies[1]) then
 			local moviefile = current_game.resources.movies[1];
 
 			if (moviefile and cursor_vid() ) then
-				imagery.movie = load_movie( moviefile, FRAMESERVER_LOOP, asynch_movie_ready);
+				imagery.movie = load_movie( moviefile, 
+					FRAMESERVER_LOOP, asynch_movie_ready);
+	
 				if (imagery.movie) then
 					local vprop = image_surface_properties( cursor_bgvid() );
 
@@ -1486,6 +1706,8 @@ function gridview_cleanuphook()
 	audio_gain(internal_aid, 0.0, settings.transitiondelay);
 	move_image(internal_vid, VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
 	hide_image(imagery.crashimage);
+	
+	store_coreoptions(current_game);
 
 	internal_vid = BADID;
 	internal_aid = BADID;
@@ -1506,7 +1728,9 @@ function gridview_cleanuphook()
 -- we need to invalidate the cache and rescan the globs in question 
 	resourcefinder_cache.invalidate = true;
 		local gameno = current_game_cellid();
-		settings.games[gameno].resources = resourcefinder_search( settings.games[gameno], true);
+		settings.games[gameno].resources = resourcefinder_search( 
+			settings.games[gameno], true);
+
 	resourcefinder_cache.invalidate = false;
 end
 
@@ -1547,7 +1771,9 @@ end
 
 function internal_statectl(suffix, save)
 	if (settings.capabilities.snapshot) then
-		local label = current_game.target .. "_" .. current_game.setname .. "_" .. suffix;
+		local label = current_game.target .. "_" .. 
+			current_game.setname .. "_" .. suffix;
+
 		if (save) then
 			snapshot_target( internal_vid, label );
 		else
@@ -1565,7 +1791,9 @@ local function rotate_label(label, cw)
 
 	if (string.sub(label, 1, 6) == "PLAYER") then
 		local num = string.sub(label, 7, 7);
-		local dir = cw and dirtbl_cw[ string.sub(label, 9) ] or dirtbl_ccw[ string.sub(label, 9) ];
+		local dir = cw and dirtbl_cw[ string.sub(label, 9) ] 
+			or dirtbl_ccw[ string.sub(label, 9) ];
+
 		return dir and ("PLAYER" .. num .."_" .. dir) or nil;
 	end
 	
@@ -1574,7 +1802,11 @@ end
 
 -- keep track of active directions for each player,
 -- if a label representing a direction opposite of level is activated, 
-filter_label_dirtbl = {UP = "DOWN", DOWN = "UP", LEFT = "RIGHT", RIGHT = "LEFT"};
+filter_label_dirtbl = {
+	UP = "DOWN", DOWN = "UP", 
+	LEFT = "RIGHT", RIGHT = "LEFT"
+};
+
 local function filter_label(label, iotbl)
 	
 	if (string.sub(label, 1, 6) == "PLAYER") then
@@ -1591,8 +1823,9 @@ local function filter_label(label, iotbl)
 			filter_label_statetbl[ num ] = emptytbl;
 		end
 
--- lookup the opposite direction, check if that one is active, if it is, ignore this input
--- else have the state table updated with the state from the iotable 
+-- lookup the opposite direction, check if that one is active, 
+-- if it is, ignore this input else have the state table 
+-- updated with the state from the iotable 
 		if (filter_label_dirtbl[ dir ] ) then
 			if (filter_label_statetbl[ filter_label_dirtbl[ dir ] ]) then 
 				return nil;
@@ -1613,7 +1846,9 @@ function gridle_internaltgt_analoginput(val, iotbl)
 -- figure out the image center, calculate offset and negate that
 	elseif (settings.internal_input == "Mirror Axis (analog)") then
 		if ( (iotbl.subid + 1) % 2 == 0 ) then -- treat as Y
-			local center = image_surface_initial_properties(internal_vid).height * 0.5;
+			local center = image_surface_initial_properties(
+				internal_vid).height * 0.5;
+
 			iotbl.samples[1] = center + (center - iotbl.samples[1]);
 		else -- treat as X 
 			local center = image_surface_initial_properties(internal_vid).width * 0.5;
@@ -1631,17 +1866,20 @@ function gridle_internaltgt_input(val, iotbl)
 		ledconfig:set_led_label(val, iotbl.active);
 	end
 
--- strip all input events for which there is an opposing, active, PLAYERn_UP/DOWN/LEFT/RIGHT
+-- strip all input events for which there is an opposing, 
+-- active, PLAYERn_UP/DOWN/LEFT/RIGHT
 	if (settings.filter_opposing) then
 		val = filter_label(val, iotbl); 
 	end
 
 -- useful for horiz/vertical game switching
-	if (val and settings.internal_input == "Rotate CW" or settings.internal_input == "Rotate CCW") then
+	if (val and settings.internal_input == "Rotate CW" or 
+		settings.internal_input == "Rotate CCW") then
 		val = rotate_label(val, settings.internal_input == "Rotate CW");
 	end
 
--- now, the "new" iotbl doesn't necessarily correspond to the values from the original iotable (think axis values)
+-- now, the "new" iotbl doesn't necessarily correspond to 
+-- the values from the original iotable (think axis values)
 -- so have keyconfig try to rebuild a useful one.
 	if (val) then
 		res = keyconfig:buildtbl(val, iotbl);
@@ -1662,7 +1900,8 @@ function gridle_internalinput(iotbl)
 	local restbl = keyconfig:match(iotbl);
 
 -- We don't forward / allow the MENU_ESCAPE or the MENU TOGGLE buttons at all. 
--- the reason for looping the restbl is simply that the iotbl can be set to match several labels
+-- the reason for looping the restbl is simply that 
+-- the iotbl can be set to match several labels
 	
 	if (restbl) then
 		for ind, val in pairs(restbl) do
@@ -1693,7 +1932,8 @@ function gridle_internalinput(iotbl)
 				end
 			end
 
--- input the translated label (if we're in a setting where those matters, some hijacks just use the raw table) 
+-- input the translated label (if we're in a setting where those matters, 
+-- some hijacks just use the raw table) 
 			if (not found) then
 				if (iotbl.kind == "analog") then
 					gridle_internaltgt_analoginput(val, iotbl);
@@ -1704,8 +1944,9 @@ function gridle_internalinput(iotbl)
 
 		end
 	else
--- default behavior is to forward even unmapped keys, the frameserver will simply ignore
--- and hijack target then allows for local use even when input hasn't been set up correctly
+-- default behavior is to forward even unmapped keys, 
+-- the frameserver will simply ignore and hijack target then allows for 
+-- local use even when input hasn't been set up correctly
 		target_input(iotbl, internal_vid);
 	end
 end
@@ -1716,7 +1957,8 @@ function error_nogames()
 	
 	local props = image_surface_properties(dbhelp);
 	if (VRESW > props.width and VRESH > props.height) then
-		move_image(dbhelp, 0.5 * (VRESW - props.width), 0.5 * (VRESH - props.height));
+		move_image(dbhelp, 0.5 * (VRESW - props.width), 
+			0.5 * (VRESH - props.height));
 	else
 		resize_image(dbhelp, VRESW, VRESH);
 	end
@@ -1742,7 +1984,8 @@ function load_settings()
 	load_key_num("cell_width", "cell_width", settings.cell_width);
 	load_key_num("cell_height", "cell_height", settings.cell_height);
 	load_key_num("fadedelay", "fadedelay", settings.fadedelay);
-	load_key_str("default_launchmode", "default_launchmode", settings.default_launchmode);
+	load_key_str("default_launchmode", "default_launchmode", 
+		settings.default_launchmode);
 	load_key_str("bgmusic", "bgmusic", settings.bgmusic);
 	load_key_num("bgmusic_gain", "bgmusic_gain", settings.bgmusic_gain);
 	load_key_num("transitiondelay", "transitiondelay", settings.transitiondelay);
@@ -1774,18 +2017,24 @@ function load_settings()
 	load_key_num("bgmusic_gain", "bgmusic_gain", settings.bgmusic_gain);
 	load_key_str("bgmusic_order", "bgmusic_order", settings.bgmusic_order);
 	load_key_str("bgmusic", "bgmusic", settings.bgmusic);
-	load_key_num("vector_linew",      "vector_linew",      settings.vector_linew);
-	load_key_num("vector_pointsz",    "vector_pointsz",    settings.vector_pointsz);
-	load_key_num("vector_hblurscale", "vector_hblurscale", settings.vector_hblurscale);
-	load_key_num("vector_vblurscale", "vector_vblurscale", settings.vector_vblurscale);
-	load_key_num("vector_hblurofs",   "vector_hblurofs",   settings.vector_hblurofs);
-	load_key_num("vector_vblurofs",   "vector_vblurofs",   settings.vector_vblurofs);
-	load_key_num("vector_vbias",      "vector_vbias",      settings.vector_vbias);
-	load_key_num("vector_hbias",      "vector_hbias",      settings.vector_hbias);
-	load_key_num("vector_glowtrails", "vector_glowtrails", settings.vector_glowtrails);
-	load_key_num("vector_trailstep",  "vector_trailstep",  settings.vector_trailstep);
-	load_key_num("vector_trailfall",  "vector_trailfall",  settings.vector_trailfall);
-	load_key_str("vector_deltamethod","vector_deltamethod",settings.vector_deltamethod);
+	load_key_num("vector_linew", "vector_linew", settings.vector_linew);
+	load_key_num("vector_pointsz", "vector_pointsz", settings.vector_pointsz);
+	load_key_num("vector_hblurscale", "vector_hblurscale", 
+		settings.vector_hblurscale);
+	load_key_num("vector_vblurscale", "vector_vblurscale", 
+		settings.vector_vblurscale);
+	load_key_num("vector_hblurofs", "vector_hblurofs", settings.vector_hblurofs);
+	load_key_num("vector_vblurofs", "vector_vblurofs", settings.vector_vblurofs);
+	load_key_num("vector_vbias", "vector_vbias", settings.vector_vbias);
+	load_key_num("vector_hbias", "vector_hbias", settings.vector_hbias);
+	load_key_num("vector_glowtrails", "vector_glowtrails", 
+		settings.vector_glowtrails);
+	load_key_num("vector_trailstep",  "vector_trailstep", 
+		settings.vector_trailstep);
+	load_key_num("vector_trailfall",  "vector_trailfall", 
+		settings.vector_trailfall);
+	load_key_str("vector_deltamethod","vector_deltamethod",
+		settings.vector_deltamethod);
 
 	load_key_num("ntsc_hue",        "ntsc_hue",        settings.ntsc_hue); 
 	load_key_num("ntsc_saturation", "ntsc_saturation", settings.ntsc_saturation);
@@ -1808,7 +2057,8 @@ function load_settings()
 	load_key_num("crt_tilth",       "crt_tilth",       settings.crt_tilth); 
 	load_key_num("crt_tiltv",       "crt_tiltv",       settings.crt_tiltv); 
 	load_key_num("crt_cornersz",    "crt_cornersz",    settings.crt_cornersz); 
-	load_key_num("crt_cornersmooth","crt_cornersmooth",settings.crt_cornersmooth); 
+	load_key_num("crt_cornersmooth",
+		"crt_cornersmooth",settings.crt_cornersmooth); 
 	load_key_bool("crt_curvature",  "crt_curvature",   settings.crt_curvature); 
 	load_key_bool("crt_gaussian",   "crt_gaussian",    settings.crt_gaussian); 
 	load_key_bool("crt_oversample", "crt_oversample",  settings.crt_oversample); 
@@ -1825,8 +2075,9 @@ function load_settings()
 	load_key_str("skip_mode",       "skip_mode",       settings.skip_mode);
 	load_key_num("preaud",          "preaud",          settings.preaud);
 
--- load key * will update a global table of missing keys, filled with default values
--- these are stored and flushed as a transaction due to the cost in storing keys
+-- load key * will update a global table of missing keys, 
+-- filled with default values these are stored and flushed as a 
+-- transaction due to the cost in storing keys
 	if #key_queue > 0 then
 		store_key(key_queue);
 	end
