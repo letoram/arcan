@@ -452,6 +452,27 @@ function gamelist_tblwnd(tbl, capt)
 	end
 end
 
+last_bgwin = nil;
+local function background_tagh(funptr, wnd, srcvid)
+
+-- set as new background	
+	image_sharestorage(srcvid, awbwman_cfg().root.canvas.vid);
+end
+
+local function register_bghandler(wnd)
+	if (last_bgwin == wnd) then
+		return;
+	end
+
+-- de-register from last window that updated
+	if (last_bgwin ~= nil) then
+		last_bgwin:drop_handler("on_update", background_tagh);
+	end
+
+-- add to updatehandler for new window
+	wnd:add_handler("on_update", background_tagh);
+end
+
 function gamelist_wnd(selection)
 	local tgtname = selection.name;
 	local tgttotal = list_games({target = tgtname});
@@ -475,10 +496,12 @@ function rootdnd(ctag)
 	if (ctag.source and ctag.source.canvas 
 		and valid_vid(ctag.source.canvas.vid)) then
 		table.insert(lbls, "Background");
-		table.insert(ftbl, function()
-			image_sharestorage(ctag.source.canvas.vid, 
-				awbwman_cfg().root.canvas.vid);
-		end);
+		table.insert(ftbl, 
+			function()
+				image_sharestorage(ctag.source.canvas.vid, 
+					awbwman_cfg().root.canvas.vid);
+					register_bghandler(ctag.source);	
+			end);
 	end
 
 	if (ctag.factory) then

@@ -656,6 +656,11 @@ function awbwmedia_filterchain(pwin)
 	if (cfg.fullscreen and cfg.fullscreen.vid) then
 		image_sharestorage(dstres, cfg.fullscreen.vid);
 	end
+
+-- propagate to other recipients 
+	for k,v in ipairs(pwin.on_update) do
+		v(v, pwin, dstres);	
+	end
 end
 
 local function awnd_setup(pwin, bar)
