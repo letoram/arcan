@@ -751,6 +751,30 @@ static bool libretro_setenv(unsigned cmd, void* data){
 		rv = sysdir != NULL;
 	break;
 
+	case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK:
+		LOG("frame-time callback unsupported.\n");
+		rv = false;
+	break;
+
+	case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
+		LOG("rumble- interfaces unsupported.\n");
+		rv = false;
+	break;
+
+	case RETRO_ENVIRONMENT_GET_PERF_INTERFACE:
+		LOG("performance- interfaces unsupported.\n");
+		rv = false;
+	break;
+
+	case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+/* we don't really care */
+	break;
+
+	case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
+		LOG("retro- keyboard callback unsupported.\n");
+		rv = false;
+	break;	
+
 #ifdef FRAMESERVER_LIBRETRO_3D
 	case RETRO_ENVIRONMENT_SET_HW_RENDER | RETRO_ENVIRONMENT_EXPERIMENTAL:
 	case RETRO_ENVIRONMENT_SET_HW_RENDER:
