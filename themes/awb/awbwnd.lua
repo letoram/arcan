@@ -486,6 +486,12 @@ local function awbbar_own(self, vid, state)
 
 end
 
+--
+-- If this window is used as a source in cursortag,
+-- this function allows recipients to register for
+-- updates if the media has changed in some way
+--
+
 local function awbbar_inactive(self)
 	if (self.w == nil) then 
 		return;
@@ -965,16 +971,25 @@ local function awbwnd_dropcascade(self, wnd)
 	end
 end
 
+local function awbwnd_drophandler(self, slot, fptr)
+	for i, v in ipairs(self[slot]) do
+		if (v == fptr) then
+			table.remove(self[slot], i);
+			return;
+		end
+	end
+end
+
 local function awbwnd_addhandler(self, slot, fptr)
 	if (self[slot] ~= nil) then
-
-		if (type(self[slot]) == "table") then
+		if (type(self[slot]) == "table") then			
+			self:drop_handler(slot, fptr);
 			table.insert(self[slot], fptr);
 
 		elseif (type(self[slot]) == "function") then
 			self[slot] = {self[slot], fptr};
 		end
-
+	
 	else
 		self[slot] = fptr;
 	end
@@ -1001,9 +1016,11 @@ function awbwnd_create(options)
 		add_cascade= awbwnd_addcascade,
 		drop_cascade=awbwnd_dropcascade,
 		add_handler= awbwnd_addhandler,
+		drop_handler= awbwnd_drophandler,
 		canvas_iprops = awbwnd_canvas_iprops,
 		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,
+		on_update  = {},
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
 
