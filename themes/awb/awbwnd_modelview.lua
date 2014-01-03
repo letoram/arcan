@@ -93,22 +93,8 @@ local function input_3dwin(self, iotbl)
 		return;
 	end
 
---	if (iotbl.lutsym) then
---		if (iotbl.lutsym == "UP" or 
---			iotbl.lutsym == "PAGEUP" or iotbl.lutsym == "w") then
---			zoom_in({parent = {parent = self}});	
-
---	elseif (iotbl.lutsym == "DOWN" or 
---			iotbl.lutsym ==" PAGEDOWN" or iotbl.lutsym == "s") then
---			zoom_out({parent = {parent = self}});
-	
---		if (iotbl.lutsym == "LEFT") then
---			rotate3d_model(self.model.vid, 0.0, 0.0, -15, 5, ROTATE_RELATIVE);
-
---		elseif (iotbl.lutsym == "RIGHT") then
---			rotate3d_model(self.model.vid, 0.0, 0.0, 15, 5, ROTATE_RELATIVE);
---		end
---	end	
+-- dropped the rotate functions from here as some want
+-- to play using global input capture and game output on display
 end
 
 --
@@ -143,6 +129,15 @@ function awbwnd_modelview(pwin, source)
 	pwin.amb_b = 0.3;
 	pwin.helpmsg = MESSAGE["HELP_3DMEDIA"];
 
+-- this needs to be unique for each window as it's also
+-- used as handler table for another window
+	pwin.dispsrc_update = function(self, srcwnd)
+		local newdisp = null_surface(32, 32);
+		image_tracetag(newdisp, "media_displaytag");
+		image_sharestorage(srcwnd.canvas.vid, newdisp);
+		pwin.model:update_display(newdisp, true);
+	end
+
 	local mh = {
 	name = "3dwindow_canvas",
 	own = function(self, vid) return vid == dstvid; end,
@@ -175,15 +170,18 @@ function awbwnd_modelview(pwin, source)
 		pwin:focus();
 
 		if (tag and tag.kind == "media") then
-			local newdisp = null_surface(32, 32);
-			image_tracetag(newdisp, "media_displaytag");
-			image_sharestorage(tag.source.canvas.vid, newdisp);
-			pwin.model:update_display(newdisp, true);
+			if (pwin.update_source and pwin.update_source.alive) then
+				pwin.update_source:drop_handler("on_update", pwin.dispsrc_update);
+			end
+
+			pwin.update_source = tag.source;
+			pwin.update_source:add_handler("on_update", pwin.dispsrc_update); 
+			pwin:dispsrc_update(tag.source);
+
 			tag:drop();
 		end
-		end
-	};
-	
+	end};
+
 	mouse_addlistener(mh, {"drag", "click", "over", "out"});
 	add_3dmedia_top(pwin, active, inactive);
 	table.insert(pwin.handlers, mh);
