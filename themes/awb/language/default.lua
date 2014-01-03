@@ -8,7 +8,8 @@ return {
 	GROUP_VIDEOS = "Videos",
 	GROUP_SYSTEMS = "Systems",
 	GROUP_SAVES = "Saves",
-	GROUP_TOOLS = "Tools", 
+	GROUP_TOOLS = "Tools",
+	GROUP_MODELS = "Models",
 
 	HOVER_CLONE = "Clone: Attach a copy of the canvas\\n\\r to the mouse cursor",
 	HOVER_FILTER = "Display Filters: click to activate / set group" ..

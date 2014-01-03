@@ -565,6 +565,19 @@ function awbwman_iconwnd(caption, selfun, options)
 	return wnd;
 end
 
+function awbwman_modelwnd(caption, source, options)
+	if (options == nil) then
+		options = {};
+	end
+
+	options.fullscreen = true;
+	local wnd = awbwman_spawn(caption, options);
+	wnd.kind = "3dmodel";
+
+	wnd.ttbar_bg = awb_cfg.ttactiveres;
+	return wnd, awbwnd_modelview(wnd, source);
+end
+
 function awbwman_mediawnd(caption, kind, source, options)
 	if (options == nil) then
 		options = {};
@@ -1360,6 +1373,9 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 	res.own = function(self, vid) return vid == wnd; end
 
 	res.destroy = function()
+		print("destroy slider");
+		print(debug.traceback());
+
 		if (res.ref) then
 			image_shader(res.ref, "DEFAULT");
 		end
