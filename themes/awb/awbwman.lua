@@ -950,6 +950,7 @@ function awbwman_rootwnd()
 			local canvas = fill_surface(wcont.w, wcont.h, r, g, b);
 			image_sharestorage(canvas, wcont.canvas.vid);
 			delete_image(canvas);
+			zap_resource("background.png");
 		end,
 		function()
 			show_help(); 

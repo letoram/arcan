@@ -200,6 +200,12 @@ function awb()
 	end
 
 	map_inputs();
+
+	local img = load_image("background.png");
+	if (valid_vid(img)) then
+		image_sharestorage( img, awbwman_cfg().root.canvas.vid );
+		delete_image(img);	
+	end
 end
 
 function map_inputs()
@@ -461,6 +467,7 @@ local function background_tagh(funptr, wnd, srcvid)
 
 -- set as new background	
 	image_sharestorage(srcvid, awbwman_cfg().root.canvas.vid);
+	background_dirty = true; -- save upon closing
 end
 
 local function register_bghandler(wnd)
@@ -504,7 +511,8 @@ function rootdnd(ctag)
 			function()
 				image_sharestorage(ctag.source.canvas.vid, 
 					awbwman_cfg().root.canvas.vid);
-					register_bghandler(ctag.source);	
+				background_dirty = true; -- save upon closing
+				register_bghandler(ctag.source);
 			end);
 	end
 
@@ -925,3 +933,10 @@ function awb_input(iotbl)
 	end
 end
 
+function awb_shutdown()
+	if (background_dirty) then
+		zap_resource("background.png");
+		save_screenshot("background.png", 0,
+			awbwman_cfg().root.canvas.vid);
+	end
+end
