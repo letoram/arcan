@@ -813,9 +813,7 @@ function builtin_group(self, ofs, lim, desw, desh)
 		{"Recorder",  spawn_vidrec, "vidrec" },
 		{"Network",   spawn_socsrv, "network"},
 		{"VidCap",    spawn_vidwin, "vidcap" },
---                {"Compare", spawn_vidcmp, "vidcmp"},
 		{"HeightMap", spawn_hmap, "hghtmap"  }
---                {"ShaderEd", spawn_shadeed, "shadeed"},
 	};
 
  	local restbl = {};
