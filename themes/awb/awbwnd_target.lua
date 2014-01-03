@@ -817,6 +817,34 @@ local function reset_opposing(tgtid, v)
 	end
 end
 
+local tgtwnd_mappings = {};
+tgtwnd_mappings["QUICKSAVE"] = function(wnd, iotbl)
+	if (iotbl.active) then
+		local fname = wnd.snap_prefix .. "quick"; 
+		snapshot_target(wnd.controlid, fname);
+	end
+end
+
+tgtwnd_mappings["QUICKLOAD"] = function(wnd, iotbl)
+	if (iotbl.active) then
+		local fname = wnd.snap_prefix .. "quick"; 
+		restore_target(wnd.controlid, fname);
+	end
+end
+
+tgtwnd_mappings["FASTFORWARD"] = function(wnd, iotbl)
+	local skipmode;
+
+	if (iotbl.active == false) then
+		skipmode = getskipval(wnd.skipmode);
+	else
+		skipmode = 10; 
+	end
+
+	target_framemode(wnd.controlid, skipmode, wnd.framealign, wnd.preaud,
+		wnd.jitterstep, wnd.jitterxfer);
+end
+
 --
 -- Target window
 -- Builds upon a spawned window (pwin) and returns a 
@@ -1044,6 +1072,10 @@ function awbwnd_target(pwin, caps, factstr)
 		local restbl = inputed_translate(iotbl, pwin.inp_cfg);
 		if (restbl) then 
 			for i,v in ipairs(restbl) do
+				if (tgtwnd_mappings[v.label]) then
+					tgtwnd_mappings[v.label](pwin, iotbl);
+				end
+	
 -- LEFT :- rel.right + push.left etc.
 				if (pwin.reset_opposing) then
 					reset_opposing(pwin.controlid, v);

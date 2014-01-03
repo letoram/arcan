@@ -88,16 +88,22 @@ local function set_tblfun(dst)
 end
 
 local function pop_deftbl(tbl, pc, bc, ac, other)
+	local nulstr = "translated:0:0:none";
+
+	tbl["QUICKLOAD"] = nulstr;
+	tbl["QUICKSAVE"] = nulstr;
+	tbl["FASTFORWARD"] = nulstr;
+
 	for i=1,pc do
 		for j=1,bc do 
 			tbl["PLAYER" .. tostring(i) .. "_BUTTON" ..tostring(j)] = 
-				"translated:0:0:none";
+				nulstr;	
 		end
 
-		tbl["PLAYER" .. tostring(i) .. "_UP"]    = "translated:0:0:none";
-		tbl["PLAYER" .. tostring(i) .. "_DOWN"]  = "translated:0:0:none";
-		tbl["PLAYER" .. tostring(i) .. "_LEFT"]  = "translated:0:0:none";
-		tbl["PLAYER" .. tostring(i) .. "_RIGHT"] = "translated:0:0:none";
+		tbl["PLAYER" .. tostring(i) .. "_UP"]    = nulstr;
+		tbl["PLAYER" .. tostring(i) .. "_DOWN"]  = nulstr;
+		tbl["PLAYER" .. tostring(i) .. "_LEFT"]  = nulstr;
+		tbl["PLAYER" .. tostring(i) .. "_RIGHT"] = nulstr; 
 
 		for j=1,ac do
 			tbl["PLAYER" .. tostring(i) .. "_AXIS" .. tostring(j)] = 
