@@ -4902,11 +4902,13 @@ static int arcan_lua_screenshot(lua_State* ctx)
 
 	const char* const resstr = luaL_checkstring(ctx, 1);
 	arcan_vobj_id sid = ARCAN_EID;
-	
-	if (luaL_optnumber(ctx, 2, ARCAN_EID) != ARCAN_EID){
-		sid = luaL_checkvid(ctx, 2);
+
+	bool flip = luaL_optnumber(ctx, 2, 0) != 0;
+
+	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
+		sid = luaL_checkvid(ctx, 3);
 		arcan_video_forceread(sid, &databuf, &bufs);
-	} 
+	}
 	else 
 		arcan_video_screenshot(&databuf, &bufs);
 
@@ -4917,7 +4919,7 @@ static int arcan_lua_screenshot(lua_State* ctx)
 			FILE* dst = fopen(fname, "wb");
 			if (dst){ 
 				arcan_rgba32_pngfile(dst, databuf, arcan_video_display.width,
-					arcan_video_display.height, false);
+					arcan_video_display.height, flip);
 			}
 			else
 				arcan_warning("arcan_lua_screenshot() -- couldn't open (%s) "
