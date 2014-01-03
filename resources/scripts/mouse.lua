@@ -16,6 +16,7 @@ local mouse_handlers = {
 local mstate = {
 -- tables of event_handlers to check for match when
 	handlers = mouse_handlers,
+	eventtrace = false,
 	btns = {false, false, false}, -- always LMB, MMB, RMB 
 	cur_over = {},
 	hover_track = {},
@@ -155,6 +156,10 @@ function mouse_xy()
 end
 
 local function mouse_drag(x, y)
+	if (mstate.eventtrace) then
+		warning(string.format("mouse_drag(%d, %d)", x, y));
+	end
+
 	for key, val in pairs(mstate.drag.list) do
 		local res = linear_find_vid(mstate.handlers.drag, val, "drag");
 		if (res) then
@@ -168,6 +173,10 @@ local function rmbhandler(hists, press)
 		mstate.rpress_x = mstate.x;
 		mstate.rpress_y = mstate.y;
 	else
+		if (mstate.eventtrace) then
+			warning("right click");
+		end
+
 		for key, val in pairs(hists) do
 			local res = linear_find_vid(mstate.handlers.rclick, val, "rclick");
 			if (res) then
@@ -186,7 +195,15 @@ local function lmbhandler(hists, press)
 		mstate.predrag.count = mstate.drag_delta;
 
 	else -- release
+		if (mstate.eventtrace) then
+			warning("left click");
+		end
+
 		if (mstate.drag) then -- already dragging, check if dropped
+			if (mstate.eventtrace) then
+				warning("drag");
+			end
+
 			for key, val in pairs(mstate.drag.list) do
 				local res = linear_find_vid(mstate.handlers.drop, val, "drop");
 				if (res) then
@@ -204,6 +221,10 @@ local function lmbhandler(hists, press)
 
 -- double click is based on the number of ticks since the last click
 			if (mstate.counter > 0 and mstate.counter <= mstate.dblclickstep) then
+				if (mstate.eventtrace) then
+					warning("double click");
+				end
+
 				for key, val in pairs(hists) do
 					local res = linear_find_vid(mstate.handlers.dblclick, val,"dblclick");
 					if (res) then

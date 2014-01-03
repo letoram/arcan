@@ -130,19 +130,23 @@ function shortcut_popup(icn, tbl, name)
 end
 
 function load_aux()
+	system_load("awb_iconcache.lua")();
+
+	system_load("awbwnd.lua")();
+	system_load("awbwnd_icon.lua")();
+	system_load("awbwnd_list.lua")();
+	system_load("awbwnd_media.lua")();
+	system_load("awbwnd_modelview.lua")();
+	system_load("awbwnd_target.lua")();
+	
+	system_load("awbwman.lua")();
+
+	system_load("awb_browser.lua")();
 	system_load("tools/inputconf.lua")();
 	system_load("tools/vidrec.lua")();
  	system_load("tools/vidcmp.lua")();
  	system_load("tools/hghtmap.lua")();
 	system_load("tools/socsrv.lua")();
-	system_load("awb_browser.lua")();
-	system_load("awb_iconcache.lua")();
-	system_load("awbwnd.lua")();
-	system_load("awbwnd_icon.lua")();
-	system_load("awbwnd_list.lua")();
-	system_load("awbwnd_media.lua")();
-	system_load("awbwnd_target.lua")();
-	system_load("awbwman.lua")();
 end
 
 function awb()
@@ -617,6 +621,39 @@ local exthandler = {
 	PNG = imghandler 
 };
 
+local function wnd_3dmodels()
+	local list = {};
+	local res = glob_resource("models/*");
+
+	local mtrig = 
+	function(a, b)
+		local model = setup_cabinet_model(
+			a.name, {}, {});
+		if (model and model.vid) then
+			move3d_model(model.vid, 0.0, -0.2, -2.0);
+			awbwman_modelwnd(menulbl(a.name), model);
+		end
+	end
+
+	for k,l in ipairs(res) do
+		local ent = {};
+		ent.trigger = mtrig;
+		ent.name = tostring(l);
+		ent.cols = {tostring(l)};
+
+		table.insert(list, ent);
+	end
+
+	if (#list == 0) then
+		return;
+	end
+
+	local wnd = awbwman_listwnd(menulbl("3D Models"), deffont_sz, 
+		linespace, {1.0}, list, desktoplbl);
+
+	wnd.name = "3D Models";
+end
+
 local function wnd_media(path)
 	local list = {};
 	local res = glob_resource(path .. "/*");
@@ -694,6 +731,11 @@ function awb_desktop_setup()
 				tbl.idfun = list_targets;
 				tbl.name = "List(Systems)";
 			end
+		},
+		{
+			name = MESSAGE["GROUP_MODELS"],
+			key = "models",
+			trigger = wnd_3dmodels
 		},
 		{
 			name = MESSAGE["GROUP_MUSIC"],

@@ -61,7 +61,7 @@ function awbbrowse_gamedata(tbl)
 				else
 					model = {};
 				end
-				awbwman_mediawnd(menulbl("3D Model"), "3d", model); 
+				awbwman_modelwnd(menulbl("3D Model"), "3d", model); 
 			end,
 			name = "model(" .. mdl ..")",
 			cols = {"3D Model"}

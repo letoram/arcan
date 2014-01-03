@@ -39,6 +39,8 @@ set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
 set_property(SOURCE ${CMAKE_SOURCE_DIR}/arcan_main.c
 				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
 
+#experiment with glfw, add_external + change SDL_GL_GetProc 
+
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
 	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
@@ -80,8 +82,8 @@ add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
 # should be ENV -> home -> unix "share" -> bundle
 
 set(CPACK_BUNDLE_NAME Arcan)
-set(CPACK_BUNDLE_PLIST Info.plist)
-set(CPACK_BUNDLE_ICON Arcan.icns)
+set(CPACK_BUNDLE_PLIST ${PLATFORM_PATH}/../darwin/Info.plist)
+set(CPACK_BUNDLE_ICON ${CMAKE_SOURCE_DIR}/distr/Arcan.icns)
 
 set(frameworks_dir ${bundle_name}/Contents/Frameworks/)
 set(CMAKE_INSTALL_PREFIX ${bundle_name}/Contents/MacOS/)
@@ -91,7 +93,7 @@ set(THEME_DST "../Resources/themes")
 set(RESOURCES_DST "../Resources/resources")
 
 #install(TARGETS arcan_hijack DESTINATION ${BIN_DST})
-install(FILES ${CMAKE_SOURCE_DIR}/arcan_romman.rb 
+install(FILES ${CMAKE_SOURCE_DIR}/utils/arcan_romman.rb 
 	DESTINATION ${BIN_DST} 
 	PERMISSIONS
 	WORLD_READ WORLD_EXECUTE OWNER_WRITE OWNER_READ 

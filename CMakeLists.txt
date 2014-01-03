@@ -370,6 +370,7 @@ endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
 set_target_properties( arcan_frameserver PROPERTIES COMPILE_FLAGS "${FSRV_BUILD_FLAGS}" )
+
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})

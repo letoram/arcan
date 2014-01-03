@@ -812,7 +812,6 @@ local function reset_opposing(tgtid, v)
 		v.label = string.format("PLAYER%d_%s", n, odir);
 		v.active = false;
 		target_input(tgtid, v);
-		print("release:", v.label);
 		v.label = oldlbl;
 		v.active = true;
 	end
