@@ -4899,6 +4899,8 @@ static int arcan_lua_screenshot(lua_State* ctx)
 {
 	void* databuf = NULL;
 	size_t bufs;
+	int dw = arcan_video_display.width;
+	int dh = arcan_video_display.height;
 
 	const char* const resstr = luaL_checkstring(ctx, 1);
 	arcan_vobj_id sid = ARCAN_EID;
@@ -4907,7 +4909,11 @@ static int arcan_lua_screenshot(lua_State* ctx)
 
 	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
 		sid = luaL_checkvid(ctx, 3);
-		arcan_video_forceread(sid, &databuf, &bufs);
+			arcan_video_forceread(sid, &databuf, &bufs);
+
+		img_cons com = arcan_video_storage_properties(sid);
+		dw = com.w;
+		dh = com.h;	
 	}
 	else 
 		arcan_video_screenshot(&databuf, &bufs);
@@ -4917,10 +4923,9 @@ static int arcan_lua_screenshot(lua_State* ctx)
 		if (!fname){
 			fname = arcan_expand_resource(resstr, false);
 			FILE* dst = fopen(fname, "wb");
-			if (dst){ 
-				arcan_rgba32_pngfile(dst, databuf, arcan_video_display.width,
-					arcan_video_display.height, flip);
-			}
+
+			if (dst) 
+				arcan_rgba32_pngfile(dst, databuf, dw, dh, flip); 
 			else
 				arcan_warning("arcan_lua_screenshot() -- couldn't open (%s) "
 					"for writing.\n", fname);
