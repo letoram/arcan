@@ -178,6 +178,14 @@ static struct {
 	struct core_variable* varset;
 	bool optdirty;
 
+/* for skipmode == TARGET_SKIP_ROLLBACK,
+ * then we maintain a statebuffer (requires savestate support)
+ * and when input is "dirty" roll back one frame ignoring output, 
+ * apply, then fast forward one frame */
+ 	bool dirty_input;
+	int rollback_precount; 
+	char* rollback_state;	
+
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
 	struct fbo_cont fbos[1];
@@ -491,10 +499,10 @@ static void reset_timing()
 
 static void libretro_audscb(int16_t left, int16_t right)
 {
-	retroctx.aframecount++;
-
 	if (retroctx.skipframe_a)
 		return;
+
+	retroctx.aframecount++;
 
 /* can happen if we skip a lot and never transfer */
 	if (retroctx.audbuf_ofs + 2 < retroctx.audbuf_sz >> 1){
@@ -505,9 +513,12 @@ static void libretro_audscb(int16_t left, int16_t right)
 
 static size_t libretro_audcb(const int16_t* data, size_t nframes)
 {
+	if (retroctx.skipframe_a)
+		return nframes;
+
 	retroctx.aframecount += nframes;
 
-	if (retroctx.skipframe_a || (retroctx.audbuf_ofs << 1) + 
+	if ((retroctx.audbuf_ofs << 1) + 
 		(nframes << 1) + (nframes << 2) > retroctx.audbuf_sz )
 		return nframes;
 	
@@ -946,6 +957,9 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 	size_t remaptbl_sz = sizeof(remaptbl) / sizeof(remaptbl[0]) - 1;
 	int ind, button = -1, axis;
 	char* subtype;
+	
+	retroctx.dirty_input = true;
+
 	signed value = ioev->datatype == EVENT_IDATATYPE_TRANSLATED ? 
 		ioev->input.translated.active : ioev->input.digital.active;
 
@@ -1547,31 +1561,59 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* only now, when a game is loaded and set-up, can we know how large a
  * savestate might possibly be, the frontend need to know this in order 
  * to determine strategy for netplay and for enabling / disabling savestates */
+		size_t state_sz = retroctx.serialize_size();
 		outev.kind = EVENT_EXTERNAL_NOTICE_STATESIZE;
 		outev.category = EVENT_EXTERNAL;
-		outev.data.external.state_sz = retroctx.serialize_size();
+		outev.data.external.state_sz = state_sz; 
 		arcan_event_enqueue(&retroctx.outevq, &outev);
-		long long int start, stop;
+
+		if (state_sz > 0)
+			retroctx.rollback_state = malloc(state_sz);
 
 		do_preaudio();
-	while (retroctx.shmcont.addr->dms){
+		long long int start, stop;
+	
+		while (retroctx.shmcont.addr->dms){
 /* since pause and other timing anomalies are part of the eventq flush, 
  * take care of it outside of frame frametime measurements */
+			flush_eventq();
+	
 			if (retroctx.skipmode >= TARGET_SKIP_FASTFWD)
 				libretro_skipnframes(retroctx.skipmode - 
 					TARGET_SKIP_FASTFWD + 1, true);
+
 			else if (retroctx.skipmode >= TARGET_SKIP_STEP)
 				libretro_skipnframes(retroctx.skipmode - 
 					TARGET_SKIP_STEP + 1, false);
-			else ;
 
-			flush_eventq();
+			else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK
+				&& retroctx.rollback_precount == 0 && state_sz > 0 &&
+				retroctx.dirty_input){
+				retroctx.skipframe_v = true;
+				retroctx.skipframe_a = true;
+
+/* rollback to desired "point", run frame (which will consume input)
+ * then roll forward to next video frame */
+				retroctx.deserialize(retroctx.rollback_state, state_sz);
+				int ntr = TARGET_SKIP_ROLLBACK - retroctx.skipmode;
+				retroctx.run();
+				retroctx.serialize(retroctx.rollback_state, state_sz);
+	
+				while (ntr-- > 0)
+					retroctx.run();
+
+				retroctx.skipframe_v = false;
+				retroctx.skipframe_a = false;
+				retroctx.dirty_input = false;
+			}
 
 			testcounter = 0;
 
+/* add jitter, jitterstep, framecost etc. are mostly just 
+ * used for debug graphing */
 			start = arcan_timemillis();
 			add_jitter(retroctx.jitterstep);
-			retroctx.run();
+				retroctx.run();
 			stop = arcan_timemillis();
 			retroctx.framecost = stop - start;
 
@@ -1637,6 +1679,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
 				stop = arcan_timemillis();
 
+/* statistics and guardbyte verification */
 				retroctx.transfercost = stop - start;
 				retroctx.xfer_ringbuf[ retroctx.xferbuf_ofs ] = retroctx.transfercost;
 			}
@@ -1720,6 +1763,12 @@ static void push_stats()
 	}
 	else if (retroctx.skipmode == TARGET_SKIP_NONE){
 		STEPMSG("Frameskip: None");
+	}
+	else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK){
+		int n = retroctx.skipmode + TARGET_SKIP_ROLLBACK;
+		n = abs(n) + 1;
+		snprintf(scratch, 64, "Frameskip: Rollback (%d)\n", n);
+		STEPMSG(scratch);
 	}
 	else if (retroctx.skipmode >= TARGET_SKIP_STEP && 
 		retroctx.skipmode < TARGET_SKIP_FASTFWD){
