@@ -195,11 +195,12 @@ enum ARCAN_EVENT_AUDIO {
 };
 
 enum ARCAN_TARGET_SKIPMODE {
-	TARGET_SKIP_AUTO = 0,
-	TARGET_SKIP_NONE = -1,
-	TARGET_SKIP_ROLLBACK = -2,
-	TARGET_SKIP_STEP = 1,
-	TARGET_SKIP_FASTFWD = 10
+	TARGET_SKIP_AUTO     =  0, /* drop to keep sync */
+	TARGET_SKIP_NONE     = -1, /* never discard data */
+	TARGET_SKIP_REVERSE  = -2, /* play backward */
+	TARGET_SKIP_ROLLBACK = -3, /* apply input events to prev. state */
+	TARGET_SKIP_STEP     =  1, /* single stepping, advance with events */
+	TARGET_SKIP_FASTFWD  = 10  /* 10+, only return every nth frame */
 };
 
 enum ARCAN_ANALOGFILTER_KIND {
