@@ -178,13 +178,15 @@ static struct {
 	struct core_variable* varset;
 	bool optdirty;
 
-/* for skipmode == TARGET_SKIP_ROLLBACK,
+/* for skipmode = TARGET_SKIP_ROLLBACK,
  * then we maintain a statebuffer (requires savestate support)
  * and when input is "dirty" roll back one frame ignoring output, 
  * apply, then fast forward one frame */
  	bool dirty_input;
-	int rollback_precount; 
-	char* rollback_state;	
+	int rollback_window; 
+	unsigned rollback_front;
+	char* rollback_state;
+	size_t state_sz;
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 	struct retro_hw_render_callback hwctx;
@@ -259,6 +261,32 @@ static void resize_shmpage(int neww, int newh, bool first)
 	if (first){
 		frameserver_semcheck(retroctx.shmcont.vsem, -1);
 	}
+}
+
+/* overrv / overra are needed for handling rollbacks etc.
+ * while still making sure the other frameskipping options are working */
+static void process_frames(int nframes, bool overrv, bool overra)
+{
+	bool cv = retroctx.skipframe_v;
+	bool ca = retroctx.skipframe_a;
+
+	if (overrv)
+		retroctx.skipframe_v = true;
+
+	if (overra)
+		retroctx.skipframe_a = true;
+
+	retroctx.run();
+
+	if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK){
+		retroctx.serialize(retroctx.rollback_state + 
+			(retroctx.rollback_front * retroctx.state_sz), retroctx.state_sz);
+		retroctx.rollback_front = (retroctx.rollback_front + 1) 
+			% retroctx.rollback_window;
+	}
+
+	retroctx.skipframe_v = cv;
+	retroctx.skipframe_a = ca;
 }
 
 #define RGB565(b, g, r) ((uint16_t)(((uint8_t)(r) >> 3) << 11) | \
@@ -487,13 +515,32 @@ static void libretro_skipnframes(unsigned count, bool fastfwd)
 	retroctx.skipframe_v = false;
 }
 
-static void reset_timing()
+static void reset_timing(bool newstate)
 {
 	retroctx.basetime = arcan_timemillis();
 	do_preaudio();
 	retroctx.vframecount = 1;
 	retroctx.aframecount = 1;
 	retroctx.frameskips  = 0;
+
+/* since we can't be certain about our current vantage point...*/
+	if (newstate && retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
+		retroctx.state_sz > 0){
+		retroctx.rollback_window = (TARGET_SKIP_ROLLBACK - retroctx.skipmode) + 1;
+		if (retroctx.rollback_window > 10)
+			retroctx.rollback_window = 10;
+	
+			free(retroctx.rollback_state);
+			retroctx.rollback_state = malloc(retroctx.state_sz * retroctx.rollback_window);
+			retroctx.rollback_front = 0;
+			
+			retroctx.serialize(retroctx.rollback_state, retroctx.state_sz);
+			for (int i=1; i < retroctx.rollback_window - 1; i++)
+				memcpy(retroctx.rollback_state + (i*retroctx.state_sz),
+					retroctx.rollback_state, retroctx.state_sz);
+
+			LOG("setting input rollback (%d)\n", retroctx.rollback_window);
+	}
 	retroctx.rebasecount++;
 }
 
@@ -1058,7 +1105,7 @@ static inline void targetev(arcan_event* ev)
 			retroctx.audbuf_ofs  = 0;
 			retroctx.jitterstep  = tgt->ioevs[3].iv;
 			retroctx.jitterxfer  = tgt->ioevs[4].iv;
-			reset_timing();
+			reset_timing(true);
 		break;
 
 /* any event not being UNPAUSE is ignored, no frames are processed
@@ -1075,7 +1122,7 @@ static inline void targetev(arcan_event* ev)
 
 		case TARGET_COMMAND_UNPAUSE:
 			retroctx.pause = false;
-			reset_timing();
+			reset_timing(false);
 		break;
 
 		case TARGET_COMMAND_COREOPT:
@@ -1123,7 +1170,7 @@ static inline void targetev(arcan_event* ev)
 				void* buf = frameserver_getrawfile_handle( retroctx.last_fd, &dstsize);
 				if (buf != NULL && dstsize > 0){
 					retroctx.deserialize( buf, dstsize );
-					reset_timing();
+					reset_timing(true);
 				}
 
 				retroctx.last_fd = BADFD;
@@ -1175,7 +1222,7 @@ static inline bool retroctx_sync()
 /* ntpd, settimeofday, wonky OS etc. or some massive stall */
 	if (now < 0 || abs( left ) > retroctx.mspf * 60.0){
 		LOG("stall detected, resetting timers.\n");
-		reset_timing();
+		reset_timing(false);
 		return true;
 	}
 
@@ -1561,14 +1608,14 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* only now, when a game is loaded and set-up, can we know how large a
  * savestate might possibly be, the frontend need to know this in order 
  * to determine strategy for netplay and for enabling / disabling savestates */
-		size_t state_sz = retroctx.serialize_size();
+		retroctx.state_sz = retroctx.serialize_size();
 		outev.kind = EVENT_EXTERNAL_NOTICE_STATESIZE;
 		outev.category = EVENT_EXTERNAL;
-		outev.data.external.state_sz = state_sz; 
+		outev.data.external.state_sz = retroctx.state_sz; 
 		arcan_event_enqueue(&retroctx.outevq, &outev);
 
-		if (state_sz > 0)
-			retroctx.rollback_state = malloc(state_sz);
+		if (retroctx.state_sz > 0)
+			retroctx.rollback_state = malloc(retroctx.state_sz);
 
 		do_preaudio();
 		long long int start, stop;
@@ -1586,24 +1633,15 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				libretro_skipnframes(retroctx.skipmode - 
 					TARGET_SKIP_STEP + 1, false);
 
-			else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK
-				&& retroctx.rollback_precount == 0 && state_sz > 0 &&
+			else if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK &&
 				retroctx.dirty_input){
-				retroctx.skipframe_v = true;
-				retroctx.skipframe_a = true;
+/* last entry will always be the current front */
+				retroctx.deserialize(retroctx.rollback_state + 
+					retroctx.state_sz * retroctx.rollback_front, retroctx.state_sz);
 
 /* rollback to desired "point", run frame (which will consume input)
  * then roll forward to next video frame */
-				retroctx.deserialize(retroctx.rollback_state, state_sz);
-				int ntr = TARGET_SKIP_ROLLBACK - retroctx.skipmode;
-				retroctx.run();
-				retroctx.serialize(retroctx.rollback_state, state_sz);
-	
-				while (ntr-- > 0)
-					retroctx.run();
-
-				retroctx.skipframe_v = false;
-				retroctx.skipframe_a = false;
+				process_frames(retroctx.rollback_window - 1, true, true);
 				retroctx.dirty_input = false;
 			}
 
@@ -1613,7 +1651,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
  * used for debug graphing */
 			start = arcan_timemillis();
 			add_jitter(retroctx.jitterstep);
-				retroctx.run();
+				process_frames(1, false, false);
 			stop = arcan_timemillis();
 			retroctx.framecost = stop - start;
 
