@@ -565,29 +565,42 @@ function awbwman_iconwnd(caption, selfun, options)
 	return wnd;
 end
 
-function awbwman_modelwnd(caption, source, options)
+local function wsetup(subkind, subdescr, caption, source, options)
 	if (options == nil) then
 		options = {};
 	end
 
 	options.fullscreen = true;
 	local wnd = awbwman_spawn(caption, options);
-	wnd.kind = "3dmodel";
-
+	wnd.kind = subdescr;
 	wnd.ttbar_bg = awb_cfg.ttactiveres;
-	return wnd, awbwnd_modelview(wnd, source);
+
+	if (subkind ~= nil) then
+		local res = subkind(wnd, options);
+		return wnd, res;
+	end
+
+	return wnd;
 end
 
-function awbwman_mediawnd(caption, kind, source, options)
-	if (options == nil) then
-		options = {};
-	end
+function awbwman_aplayer(caption, source, options)
+	return wsetup(awbwnd_aplayer, "aplayer", caption, source, options);
+end
 
-	options.fullscreen = true;
-	local wnd = awbwman_spawn(caption, options);
-	wnd.kind = "media";
-	return wnd, awbwnd_media(wnd, kind, source, 
-		awb_cfg.ttactiveres, awb_cfg.ttinactvres);
+function awbwman_modelwnd(caption, source, options)
+	return wsetup(awbwnd_modelview, "3dmodel", caption, source, options);
+end
+
+function awbwman_mediawnd(caption, source, options)
+	return wsetup(awbwnd_media, "frameserver", caption, source, options);
+end
+
+function awbwman_imagewnd(caption, source, options)
+	return wsetup(awbwnd_media, "static", caption, source, options);
+end
+
+function awbwman_capwnd(caption, source, options)
+	return wsetup(awbwnd_media, "capture", caption, source, options);
 end
 
 function awbwman_targetwnd(caption, options, capabilities)

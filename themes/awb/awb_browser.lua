@@ -14,8 +14,7 @@ function awbbrowse_gamedata(tbl)
 			resource = j,
 			name     = "video_" .. tostring(i),
 			trigger  = function()
-				local wnd, tfun = awbwman_mediawnd(
-					menulbl("Media Player"), "frameserver");
+				local wnd, tfun = awbwman_mediawnd(menulbl("Media Player"));
 				load_movie(j, FRAMESERVER_LOOP, tfun);
 				if (wnd == nil) then
 					return;
@@ -36,7 +35,7 @@ function awbbrowse_gamedata(tbl)
 					resource = j,
 					trigger = function()
 						local wnd, tfun = awbwman_mediawnd(
-							menulbl(cat), "static");
+							menulbl(cat), nil, {subtype = "static"});
 						load_image_asynch(j, tfun);
 						if (wnd == nil) then
 							return;
