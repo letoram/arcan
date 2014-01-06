@@ -20,7 +20,6 @@ local function spawn_corewnd(wnd)
 
 	for k,v in pairs(wnd.coreopts) do
 		local entry = {};
-
 		if (v.value == nil) then v.value = v.args[1]; end
 
 		for i=1,#v.args do
@@ -36,6 +35,7 @@ local function spawn_corewnd(wnd)
 			wnd:set_coreopt(k, dumptbl[k]);
 			lstwnd:force_update();
 		end
+
 		entry.cols = {string.gsub(v.descr, "\\", "\\\\"), v.value};
 		table.insert(conftbl, entry);
 	end
@@ -757,8 +757,9 @@ local function add_corearg(dstwnd, msg)
 	if (dstwnd.coreopts == nil) then
 		dstwnd.coreopts = {};
 	end
-	
-	local num, group, msg = string.match(msg, "(%d+):(.+):(.+)");
+
+	local num, group, msg = string.match(msg, "(%d+):(%a+):(.+)");
+
 	if (group == "key") then
 		dstwnd.coreopts[msg] = {};
 		dstwnd.coreopts[msg].num = num;
