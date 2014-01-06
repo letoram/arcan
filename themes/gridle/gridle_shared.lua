@@ -765,7 +765,7 @@ function gridle_internal_cleanup(finishedhook, forced)
 end
 
 local function add_corearg(dsttbl, msg)
-	local num, group, msg = string.match(msg, "(%d+):(.+):(.+)");
+	local num, group, msg = string.match(msg, "(%d+):(%a+):(.+)");
 
 	if (group == "key") then
 		dsttbl[msg] = {};
