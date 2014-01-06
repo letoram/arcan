@@ -136,6 +136,7 @@ function load_aux()
 	system_load("awbwnd_icon.lua")();
 	system_load("awbwnd_list.lua")();
 	system_load("awbwnd_media.lua")();
+	system_load("awbwnd_music.lua")();
 	system_load("awbwnd_modelview.lua")();
 	system_load("awbwnd_target.lua")();
 	
@@ -272,14 +273,8 @@ function launch_factorytgt(tbl, factstr, coreopts)
 end
 
 function spawn_vidwin(self)
-	local wnd = awbwman_mediawnd(
-		menulbl("Video Capture"), "capture", BADID,
-		{refid = "vidcapwnd"}
-	);
-	if (wnd == nil) then
-		return;
-	end
-
+	local wnd = awbwman_capwnd(menulbl("Video Capture"), 
+		{refid = "vidcapwnd"});
 end
 
 function show_gamewarning()
@@ -565,7 +560,7 @@ local function amediahandler(path, base, ext)
 	local awbwnd = awbwnd_globalmedia();
 
 	if (awbwnd == nil) then
-		awbwnd = awbwman_mediawnd(menulbl("Music Player"), "frameserver_music");
+		awbwnd = awbwman_aplayer(menulbl("Music Player"));
 	end
 
 	awbwnd:add_playitem(base, name);
@@ -605,13 +600,13 @@ end
 
 local function vmediahandler(path, base, ext)
 	local name = path .. "/" .. base .. "." .. ext;
-	local wnd, tfun = awbwman_mediawnd(menulbl("Media Player"), "frameserver");
+	local wnd, tfun = awbwman_mediawnd(menulbl("Media Player"));
 	load_movie(name, FRAMESERVER_NOLOOP, tfun);
 	wnd.name = base; 
 end
 
 local function imghandler(path, base, ext)
-	local wnd, tfun = awbwman_mediawnd(menulbl(base), "static");
+	local wnd, tfun = awbwman_imagewnd(menulbl(base), nil);
 	local name = path .. "/" .. base .. "." .. ext;
 	load_image_asynch(name, tfun);
 end
