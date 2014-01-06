@@ -583,6 +583,10 @@ local function wsetup(subkind, subdescr, caption, source, options)
 	return wnd;
 end
 
+function awbwman_customwnd(fun, caption, source, options)
+	return wsetup(fun, "custom", caption, source, options);
+end
+
 function awbwman_aplayer(caption, source, options)
 	return wsetup(awbwnd_aplayer, "aplayer", caption, source, options);
 end
@@ -1163,6 +1167,7 @@ function awb_clock_pulse(stamp, nticks)
 	end
 end
 
+
 --
 -- Window, border, position, event hook and basic destructor
 --
@@ -1203,20 +1208,34 @@ local function awbwman_popupbase(props, options)
 		my = VRESH - props.height;
 	end
 
+-- re-use the border function from awbwnd
 	local dlgc = awb_col.dialog_border;
-	local border = color_surface(1, 1, dlgc.r, dlgc.g, dlgc.b); 
-	local wnd = color_surface(1, 1,
+	local border = {};
+
+	border.resize = function(self, neww, newh, completed, dt)
+		self.w = neww;
+		self.h = newh;
+		resize_image(self.anchor, neww, newh, dt);
+	end
+
+	border.anchor = null_surface(1, 1);
+	border.w = props.width;
+	border.h = props.height;
+
+	awbwnd_set_border(border, 1, dlgc.r, dlgc.g, dlgc.b);
+
+	local wnd = fill_surface(1, 1, 
 		awb_col.bgcolor.r,awb_col.bgcolor.g, awb_col.bgcolor.b);
 	
-	image_mask_set(border, MASK_UNPICKABLE);
-
-	order_image(border, max_current_image_order() - 5);
+	order_image(border.anchor, max_current_image_order() - 4);
 	image_inherit_order(wnd, true);
 	image_clip_on(wnd, CLIP_SHALLOW);
 
-	link_image(wnd, border);
-	show_image({border, wnd});
-	move_image(border, math.floor(mx), math.floor(my));
+	link_image(wnd, border.anchor);
+	blend_image(border.anchor, 1.0, awb_cfg.animspeed);
+	blend_image(wnd, awb_cfg.bgopa);
+
+	move_image(border.anchor, math.floor(mx), math.floor(my));
 	move_image(wnd, 1, 1);
 
 	props.width = (options.minw and options.minw > props.width) and 
@@ -1225,7 +1244,7 @@ local function awbwman_popupbase(props, options)
 	props.height = (options.minh and options.minh > props.height) and
 		options.minh or props.height;
 
-	resize_image(border, props.width+2, props.height+2, awb_cfg.animspeed);
+	border:resize(props.width, props.height, true, awb_cfg.animspeed); 
 	resize_image(wnd, props.width, props.height, awb_cfg.animspeed);
 
 	return border, wnd, options;
@@ -1251,8 +1270,8 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	local cc   = awb_col.dialog_caret;
 	local cursor = color_surface(props.width, 10, cc.r, cc.g, cc.b); 
 
-	link_image(rendervid, wnd);
-	link_image(cursor, border);
+	link_image(rendervid, border.anchor);
+	link_image(cursor, border.anchor);
 
 	image_mask_set(rendervid, MASK_UNPICKABLE);
 	image_mask_set(cursor,    MASK_UNPICKABLE);
@@ -1260,7 +1279,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	image_inherit_order(cursor,    true);
 	image_inherit_order(rendervid, true);
 	
-	image_clip_on(cursor,    CLIP_SHALLOW);
+	image_clip_on(cursor);    
 	image_clip_on(rendervid, CLIP_SHALLOW);
 
 	order_image(cursor,    1);
@@ -1292,9 +1311,11 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 			image_shader(res.ref, "DEFAULT");
 		end
 
-		expire_image(border, awb_cfg.animspeed);
-		blend_image(border, 0, awb_cfg.animspeed);
-		resize_image(border, 1, 1, awb_cfg.animspeed);
+		expire_image(border.anchor, awb_cfg.animspeed);
+		blend_image(border.anchor, 0, awb_cfg.animspeed);
+		border.w = 1;
+		border.h = 1;
+		border:resize(1, 1, true, awb_cfg.animspeed);
 		resize_image(wnd, 1, 1, awb_cfg.animspeed);
 
 		mouse_droplistener(res);
@@ -1369,11 +1390,11 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 
 	res.step = math.ceil((h - 2) / (max - min));
 
-	image_tracetag(border, "popupslider.border");
+	image_tracetag(border.anchor, "popupslider.border");
 	image_tracetag(wnd,    "popupslider.wnd");
 	image_tracetag(caret,  "popupslider.caret");
 
-	link_image(caret, border);
+	link_image(caret, border.anchor);
 
 	image_mask_set(caret, MASK_UNPICKABLE);
 	image_inherit_order(caret, true);
@@ -1394,9 +1415,9 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 			image_shader(res.ref, "DEFAULT");
 		end
 
-		expire_image(border, awb_cfg.animspeed);
-		blend_image(border, 0.0, awb_cfg.animspeed);
-		resize_image(border, 1,1, awb_cfg.animspeed);
+		expire_image(border.anchor, awb_cfg.animspeed);
+		blend_image(border.anchor, 0.0, awb_cfg.animspeed);
+		border:resize(1, 1, true, awb_cfg.animspeed);
 		mouse_droplistener(res);
 	end
 

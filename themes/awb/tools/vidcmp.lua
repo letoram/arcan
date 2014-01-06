@@ -1,6 +1,5 @@
 --
 -- VidCompare Built-in Tool
--- Can be used as a prefilter to VideoRecord 
 --
 local function build_cmpshader(ntus, mode)
 	local resshader = {};
@@ -93,25 +92,26 @@ end
 
 local function popup_options(wnd)
 	local optlist = {
-		"Matching",
+		"Blend",
 		"Delta",
-		"Trails"
+		"Matching"
 	};
+
+
+	vid, lines = desktoplbl(table.concat(optlist, "\\n\\r"));
+	awbwman_popup(vid, lines, function(ind, left)
+		wnd.mode = string.lower(optlist[ind]);
+		rebuild(wnd);
+	end);
 end
 
-function spawn_vidcmp()
-	local wnd = awbwman_spawn(menulbl("Compare"), {refid = "vidrec"});
-	if (wnd == nil) then
-		return;
-	end
-
+local function vidcmp_setup(wnd, options)
 	wnd.sources = {};
 	wnd.name = "Video Compare";
 	wnd.mode = "Delta";
 
 	local cfg = awbwman_cfg();
-	local bar = wnd:add_bar("tt", cfg.ttactiveres, 
-		cfg.ttinactvres, cfg.topbar_sz);
+	local bar = wnd:add_bar("tt", wnd.ttbar_bg, wnd.ttbar_bg, cfg.topbar_sz);
 
 	bar:add_icon("play", "l", cfg.bordericns["play"], 
 		function(self)
@@ -124,6 +124,7 @@ function spawn_vidcmp()
 
 	local mh = {
 		own = function(self, vid) return vid == wnd.canvas.vid; end,
+		name = "vidcmp_mh",
 		over = function(self, vid)
 			local tag = awbwman_cursortag();
 			if (tag and tag.kind == "media" and vid == wnd.canvas.vid) then
@@ -133,7 +134,7 @@ function spawn_vidcmp()
 
 		out = function(self, vid)
 			local tag = awbwman_cursortag();
-			if (tag and tag.kind == "mediaQ" and vid == wnd.canvas.vid) then
+			if (tag and tag.kind == "media" and vid == wnd.canvas.vid) then
 				tag:hint(false);
 			end
 		end,
@@ -153,8 +154,18 @@ function spawn_vidcmp()
 
 	table.insert(wnd.handlers, bar);
 	table.insert(wnd.handlers, mh);
+
 	wnd:resize(wnd.w, wnd.h);
 	return wnd;
+end
+
+function spawn_vidcmp()
+	local wnd = awbwman_customwnd(vidcmp_setup, menulbl("Compare"), 
+		nil, {refid = "vidcmp"});
+
+	if (wnd == nil) then
+		return;
+	end
 end
 
 local descrtbl = {

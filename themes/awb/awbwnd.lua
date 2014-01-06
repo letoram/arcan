@@ -24,7 +24,7 @@ local function awbwnd_alloc(tbl)
 	return tbl;
 end
 
-local function awbwnd_set_border(s, sz, r, g, b)
+function awbwnd_set_border(s, sz, r, g, b)
 -- border exists "outside" normal tbl dimensions
 	if (s.borders) then
 		for i, v in pairs(s.borders) do
@@ -47,18 +47,22 @@ local function awbwnd_set_border(s, sz, r, g, b)
 		end
 		
 		s.default_resize = s.resize;
-		s.resize = function(self, neww, newh, completed)
-			s:default_resize(neww, newh, completed);
+		s.resize = function(self, neww, newh, completed, dt)
+			if (dt == nil) then
+				dt = 0;
+			end
 
-			move_image(s.borders.t, 0 - sz, 0 - sz);
-			move_image(s.borders.b, 0 - sz, s.h);
-			move_image(s.borders.l, 0 - sz, 0);
-			move_image(s.borders.r, s.w, 0); 
+			s:default_resize(neww, newh, completed, dt);
 
-			resize_image(s.borders.t, s.w + sz * 2,  sz); 
-			resize_image(s.borders.r, sz, s.h);
-			resize_image(s.borders.l, sz, s.h);
-			resize_image(s.borders.b, s.w + sz * 2,  sz);
+			move_image(s.borders.t, 0 - sz, 0 - sz, dt);
+			move_image(s.borders.b, 0 - sz, s.h, dt);
+			move_image(s.borders.l, 0 - sz, 0, dt);
+			move_image(s.borders.r, s.w, 0, dt); 
+
+			resize_image(s.borders.t, s.w + sz * 2,  sz, dt); 
+			resize_image(s.borders.r, sz, s.h, dt);
+			resize_image(s.borders.l, sz, s.h, dt);
+			resize_image(s.borders.b, s.w + sz * 2,  sz, dt);
 		end
 	end
 end
@@ -149,7 +153,7 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 		self.dir.r:resize(self.dir.r.size, vspace);
 	end
 
-	if (canvassz and (canxofs > 0 or yofs > 0)) then
+	if (canvassz and (xofs > 0 or yofs > 0)) then
 		awbwnd_resize(self, neww + xofs, newh + xofs, finished, false);
 		return;
 	end
