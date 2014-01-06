@@ -806,6 +806,7 @@ function builtin_group(self, ofs, lim, desw, desh)
  		{"BOING!",    spawn_boing, "boing"   },
 		{"InputConf", awb_inputed, "inputed" },
 		{"Recorder",  spawn_vidrec, "vidrec" },
+		{"Compare",   spawn_vidcmp, "vidcmp" },
 		{"Network",   spawn_socsrv, "network"},
 		{"VidCap",    spawn_vidwin, "vidcap" },
 		{"HeightMap", spawn_hmap, "hghtmap"  }
