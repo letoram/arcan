@@ -50,13 +50,13 @@ function awblist_resize(self, neww, newh)
 		end
 		self.listtemp = {};
 		self.line_heights = nil;
-
+		
 -- Render each column separately, using a clipping anchor 
 		local xofs = 0;
 		for ind, col in ipairs(self.cols) do
 			local clip = null_surface(math.floor(props.width * col), props.height);
 	
-			link_image(clip, self.canvas.vid);
+			link_image(clip, self.ianchor);
 			show_image(clip);
 			image_mask_set(clip, MASK_UNPICKABLE);
 			image_inherit_order(clip, true);
@@ -66,10 +66,12 @@ function awblist_resize(self, neww, newh)
 				move_image(self.collines[ind-1], xofs, 0);
 				resize_image(self.collines[ind-1], 2, self.canvash); 
 			end
+	
 			xofs = xofs + math.floor(props.width * col) + 4;
 
 -- concat the subselected column lines, force-add headers to the top
 			local rendtbl = {};
+
 			for i, v in ipairs(self.restbl) do
 				table.insert(rendtbl, v.cols[ind]);
 			end
@@ -108,7 +110,7 @@ function awblist_resize(self, neww, newh)
 						self.rowhicol[1], self.rowhicol[2], self.rowhicol[3]);
 
 					move_image(a, 0, self.line_heights[i]);
-					link_image(a, self.canvas.vid);
+					link_image(a, self.ianchor); 
 					show_image(a);
 					image_inherit_order(a, true);
 					image_clip_on(a);
@@ -123,6 +125,8 @@ function awblist_resize(self, neww, newh)
 
 -- always update clipping anchors
 	local xofs = 0;
+	local ctot = neww;
+
 	for i, col in ipairs(self.cols) do
 		local clipw = math.floor(props.width * col);
 
@@ -134,6 +138,12 @@ function awblist_resize(self, neww, newh)
 				if (clipw > colw * 1.1) then
 					clipw = math.floor(colw * 1.1);
 				end
+		end
+
+		if (i == #self.cols) then
+			clipw = ctot;
+		else
+			ctot = ctot - clipw;
 		end
 
 		resize_image(self.listtemp[i], clipw, props.height);
@@ -153,6 +163,7 @@ function awblist_resize(self, neww, newh)
 	end
 
 	blend_image(self.cursor, self.total == 0 and 0.0 or 1.0);
+	resize_image(self.ianchor, props.width, props.height);
 	resize_image(self.cursor, props.width, self.lineh + self.linespace);
 	awblist_scrollbar(self);
 end
@@ -276,6 +287,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.linespace  = linespace;
 	pwin.ofs        = 1;
 	pwin.listtemp   = {};
+	local panch = null_surface(1, 1);
 
 	if (type(datasel_fun) == "table") then
 		pwin.datasel = def_datasel;
@@ -295,7 +307,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 	for i=2,#pwin.cols do
 		local barl = color_surface(1, 2, 255, 255, 255);
-		link_image(barl, pwin.canvas.vid);
+		link_image(barl, panch); 
 		blend_image(barl, 0.5);
 		image_inherit_order(barl, true);
 		order_image(barl, 2);
@@ -356,9 +368,10 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.list_resize = pwin.resize;
 	pwin.resize = awblist_resize;
 
-	link_image(cursor_icn, pwin.canvas.vid);
+	link_image(cursor_icn, panch); 
 	image_inherit_order(cursor_icn, true);
 	order_image(cursor_icn, 1);
+	show_image(cursor_icn);
 	blend_image(cursor_icn, 0.8);
 	pwin.cursor = cursor_icn;
 	image_clip_on(cursor_icn, CLIP_SHALLOW);
@@ -439,7 +452,18 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 --
 -- selected cursor management linked to canvas
--- 
+--
+	local props = image_surface_properties(pwin.canvas.vid);
+
+-- we want to anchor this for all the columns etc. to have a different
+-- opacity for the canvas
+	show_image(panch);
+	link_image(panch, pwin.anchor);
+	image_inherit_order(panch, true);
+	order_image(panch, 2);
+	move_image(panch, props.x, props.y);
+
+	pwin.ianchor = panch;
 	pwin.mhandler = mhand;
 	pwin:resize(pwin.w, pwin.h);
 	return pwin;

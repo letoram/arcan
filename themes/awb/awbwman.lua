@@ -576,7 +576,7 @@ local function wsetup(subkind, subdescr, caption, source, options)
 	wnd.ttbar_bg = awb_cfg.ttactiveres;
 
 	if (subkind ~= nil) then
-		local res = subkind(wnd, options);
+		local res = subkind(wnd, source, options);
 		return wnd, res;
 	end
 
@@ -672,6 +672,7 @@ function awbwman_listwnd(caption, lineh, linespace,
 			awb_col.dialog_caret.r, awb_col.dialog_caret.g, awb_col.dialog_caret.b),
 		"r", opts);
 
+	blend_image(wnd.canvas.vid, awb_cfg.bgopa); 
 	return wnd;
 end
 

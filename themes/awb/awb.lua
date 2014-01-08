@@ -336,7 +336,7 @@ function show_help()
 		order_image(helpimg, 1);
 		local props =	image_surface_properties(helpimg);
 		move_image(helpimg, 10, 10);
-		wnd:resize(props.width + 20, props.height + 20, true, true);
+		wnd:resize(props.width + 20, props.height + 20, true);
 	
 		wnd.lasthelp = helpimg;
 	end
