@@ -507,7 +507,7 @@ local function vmedia_callback(pwin, source, status)
 	end
 end
 
-function awbwnd_media(pwin, options) 
+function awbwnd_media(pwin, source, options) 
 	local callback;
 	local kind = pwin.kind; 
 	

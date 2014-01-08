@@ -268,7 +268,7 @@ local function awnd_setup(pwin, bar)
 	pwin.helpmsg = MESSAGE["HELP_AMEDIA"];
 end
 
-function awbwnd_aplayer(pwin, source)
+function awbwnd_aplayer(pwin, source, options)
 	local bar = pwin:add_bar("tt", pwin.ttbar_bg, pwin.ttbar_bg,
 		pwin.dir.t.rsize, pwin.dir.t.bsize);
 	bar.name = "amedia_ttbarh";
