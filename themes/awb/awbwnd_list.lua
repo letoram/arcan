@@ -74,6 +74,7 @@ function awblist_resize(self, neww, newh)
 				table.insert(rendtbl, v.cols[ind]);
 			end
 			local colv, lines = self.renderfn(table.concat(rendtbl, [[\n\r]]));
+			local colw = image_surface_properties(colv).width;
 
 -- only take the first column (assumed to always be dominating / representative)
 			if (self.line_heights == nil) then
@@ -124,6 +125,17 @@ function awblist_resize(self, neww, newh)
 	local xofs = 0;
 	for i, col in ipairs(self.cols) do
 		local clipw = math.floor(props.width * col);
+
+-- if not marked as static enforced columns, make sure that we don't overuse
+-- a column with too much space reserved
+		if (self.static == nil or self.static == false) then
+			local colw = image_surface_properties(image_children(
+				self.listtemp[i])[1]).width;
+				if (clipw > colw * 1.1) then
+					clipw = math.floor(colw * 1.1);
+				end
+		end
+
 		resize_image(self.listtemp[i], clipw, props.height);
 		move_image(self.listtemp[i], xofs, 0);
 		if (i > 1 and self.collines[i-1] ~= nil) then
