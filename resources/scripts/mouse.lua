@@ -30,8 +30,43 @@ local mstate = {
 	hover_thresh = 12, -- pixels movement before hover is released
 	counter      = 0,
 	hover_count  = 0,
-	last_hover   = 0
+	x_ofs        = 0,
+	y_ofs        = 0,
+	last_hover   = 0,
 };
+
+local function mouse_cursorupd(x, y)
+	x = x * mstate.accel_x;
+	y = y * mstate.accel_y;
+
+	lmx = mstate.x;
+	lmy = mstate.y;
+
+	mstate.x = mstate.x + x; 
+	mstate.y = mstate.y + y; 
+		
+	mstate.x = mstate.x < 0 and 0 or mstate.x;
+	mstate.y = mstate.y < 0 and 0 or mstate.y;
+	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x; 
+	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y; 
+	
+	move_image(mstate.cursor, mstate.x + mstate.x_ofs, 
+		mstate.y + mstate.y_ofs);
+	return (mstate.x - lmx), (mstate.y - lmy);
+end
+
+-- global event handlers for things like switching cursor on press
+mstate.lmb_global_press = function()
+		mstate.y_ofs = 2;
+		mstate.x_ofs = 2;
+		mouse_cursorupd(0, 0);
+	end
+
+mstate.lmb_global_release = function()
+		mstate.x_ofs = 0;
+		mstate.y_ofs = 0;
+		mouse_cursorupd(0, 0);
+	end
 
 -- this can be overridden to cache previous queries
 mouse_pickfun = pick_items;
@@ -92,27 +127,8 @@ local function cached_pick(xpos, ypos, depth, nitems)
 	end
 end
 
-local function mouse_cursorupd(x, y)
-	x = x * mstate.accel_x;
-	y = y * mstate.accel_y;
-
-	lmx = mstate.x;
-	lmy = mstate.y;
-
-	mstate.x = mstate.x + x; 
-	mstate.y = mstate.y + y; 
-		
-	mstate.x = mstate.x < 0 and 0 or mstate.x;
-	mstate.y = mstate.y < 0 and 0 or mstate.y;
-	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x; 
-	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y; 
-	
-	move_image(mstate.cursor, mstate.x, mstate.y);
-	return (mstate.x - lmx), (mstate.y - lmy);
-end
-
 function mouse_cursor()
-	return mstate.cursor;
+	return mstate.cursor, mstate;
 end
 
 --
@@ -193,8 +209,11 @@ local function lmbhandler(hists, press)
 		mstate.predrag = {};
 		mstate.predrag.list = hists;
 		mstate.predrag.count = mstate.drag_delta;
+		mstate.lmb_global_press();
 
 	else -- release
+		mstate.lmb_global_release();
+
 		if (mstate.eventtrace) then
 			warning("left click");
 		end

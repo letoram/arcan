@@ -224,6 +224,7 @@ function awbmedia_add_fsrvctrl(pwin, bar)
 		);
 	end);
 
+-- seek UI bar
 	local fillcol = null_surface(32, 32);
 	image_sharestorage(bar.activeimg, fillcol);
 	local caretcol = color_surface(8, 16, cfg.col.dialog_caret.r,
@@ -489,11 +490,11 @@ local function vmedia_callback(pwin, source, status)
 
 		if (tbl.x + status.width > VRESW) then
 			pwin:resize(VRESW - tbl.x, (VRESW - tbl.x) * 
-				(status.height / status.width), true, true);
+				(status.height / status.width), true);
 	
 		elseif (tbl.y + status.height > VRESH) then
 			pwin:resize(VRESW - tbl.x, (VRESW - tbl.x) * 
-					(status.height / status.width), true, true);
+					(status.height / status.width), true);
 	
 		else
 			pwin:resize(status.width, status.height, true);

@@ -53,7 +53,6 @@ local function add_3dmedia_top(pwin)
 	bar:add_icon("light_r", "l", cfg.bordericns["r1"], 
 	function(self)
 		awbwman_popupslider(0.01, pwin.amb_r, 1.0, function(val)
-			pwin:focus();
 			pwin.amb_r = val;
 			shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
@@ -63,7 +62,6 @@ local function add_3dmedia_top(pwin)
 	bar:add_icon("light_g", "l", cfg.bordericns["g1"], 
 	function(self)
 		awbwman_popupslider(0.01, pwin.amb_g, 1.0, function(val)
-			pwin:focus();
 			pwin.amb_g = val;
 			shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
@@ -73,7 +71,6 @@ local function add_3dmedia_top(pwin)
 	bar:add_icon("light_b", "l", cfg.bordericns["b1"], 
 	function(self)
 		awbwman_popupslider(0.01, pwin.amb_b, 1.0, function(val)
-			pwin:focus();
 			pwin.amb_b = val;
 			shader_uniform(pwin.shader, "wambient", "fff", PERSIST,
 			pwin.amb_r, pwin.amb_g, pwin.amb_b);
