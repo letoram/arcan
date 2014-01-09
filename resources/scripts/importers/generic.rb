@@ -24,7 +24,9 @@ SystemTable = {
 
 "tg16"   => "TurboGrafx 16",
 "pce"    => "TurboGrafx 16",
-	
+"mupen64" => "Nintendo 64",
+"n64"    => "Nintendo 64",
+
 "genplus"=> "Sega",
 "genesis"=> "Sega Genesis",
 "gg"     => "Sega Game Gear",

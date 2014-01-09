@@ -130,6 +130,7 @@ class DBObject
 	def DBObject.openDB(o)
 		@@dbconn = o
 		@@dbconn.extend DBWrapper
+		@@dbconn.execute("PRAGMA synchronous = OFF")
 	end
 
 end
@@ -586,13 +587,18 @@ def import_roms(options)
 		groups = []
 		Dir[ "#{options[:rompath]}/*" ].each{|entry|
 			entry.slice!( "#{options[:rompath]}/" )
-			groups << entry
-			STDOUT.print("adding group \t#{entry} for scanning\n")
+			if (entry == "system") then
+				STDOUT.print("skipping 'system' group\n")
+			else
+				groups << entry
+				STDOUT.print("adding group \t#{entry} for scanning\n")
+			end
 		}
 	end
 
 	db = getdb(options)
-
+	
+	
 # for each path (group) to scan, check if it's on the skiplist
 # else sweep importers for one that accepts it, and (as an optional fallback)
 # use the generic one. The importer will yield a number of Game instances
