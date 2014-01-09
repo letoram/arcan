@@ -358,18 +358,18 @@ local function awbbar_resize(self, neww, newh)
 		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs), 
 			math.floor(self.left[i].yofs + stepy * lofs)); 
 		lofs = lofs + w + self.left[i].xofs + self.spacing;
-		lim = lim - w - self.spacing;
+		lim = lim - w;
 	end
 
 	local rofs = 0;
 	for i=1,#self.right do
 		local w, h = self.rzfun(self.right[i].vid, self.size, self.vertical);
-		rofs = rofs + w + self.spacing;
+		rofs = rofs + w;
 
 		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)), 
 			math.floor(stepy * (self.h - rofs)));
 
-		lim = lim - w - self.spacing;
+		lim = lim - w;
 	end
 
 	if (self.fill) then
