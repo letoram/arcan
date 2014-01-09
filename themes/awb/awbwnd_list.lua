@@ -288,6 +288,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.ofs        = 1;
 	pwin.listtemp   = {};
 	local panch = null_surface(1, 1);
+	image_mask_set(panch, MASK_UNPICKABLE);
 
 	if (type(datasel_fun) == "table") then
 		pwin.datasel = def_datasel;

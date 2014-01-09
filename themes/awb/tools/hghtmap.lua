@@ -65,7 +65,7 @@ function spawn_hmap()
 --
 -- Inherit wnd and add buttons for controlling tesselation etc.
 --
-	local wnd = awbwman_mediawnd(menulbl("Height Map"), "3d", model);
+	local wnd = awbwman_modelwnd(menulbl("Height Map"), model);
 	model.shader = build_shader(vshader, nil, "hmapn" .. wnd.wndid);
 	if (wnd == nil) then
 		return;
