@@ -735,6 +735,9 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	bool rv = true;
 	struct retro_hw_render_callback* hwrend = data;
 
+	if (!retroctx.shmcont.addr)
+		return false;
+
 	switch (cmd){
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
 
@@ -1404,8 +1407,11 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	if (arg_lookup(args, "resource", 0, &val))
 		resname = strdup(val);
 
-	LOG("loading core (%s) with resource (%s)\n", libname ? 
-		libname : "missing arg.", resname ? resname : "missing resarg.");
+	bool info_only = arg_lookup(args, "info", 0, NULL);
+
+	if (!info_only)
+		LOG("loading core (%s) with resource (%s)\n", libname ? 
+			libname : "missing arg.", resname ? resname : "missing resarg.");
 
 	if (*libname == 0)
 		return;
@@ -1413,20 +1419,26 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	char logbuf[128] = {0};
 	size_t logbuf_sz = sizeof(logbuf); 
 
-	retroctx.shmcont = frameserver_getshm(keyfile, true);
+	if (!info_only)
+		retroctx.shmcont = frameserver_getshm(keyfile, true);
+
 	struct frameserver_shmpage* shared = retroctx.shmcont.addr;
+
 	if (!shared){
-		LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
-		return;
+		if (!info_only){
+			LOG("fatal, couldn't map shared memory from (%s)\n", keyfile);
+			return;
+		}
 	}
-
-	frameserver_shmpage_setevqs(shared, retroctx.shmcont.esem, 
-		&(retroctx.inevq), &(retroctx.outevq), false);
-	resize_shmpage(320, 240, true);
-
-	if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
-		logbuf[logbuf_sz-1] = '\0';	
-	log_msg(logbuf, true);
+ 	else {
+		frameserver_shmpage_setevqs(shared, retroctx.shmcont.esem, 
+			&(retroctx.inevq), &(retroctx.outevq), false);
+		resize_shmpage(320, 240, true);
+	
+		if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
+			logbuf[logbuf_sz-1] = '\0';	
+		log_msg(logbuf, true);
+	}
 
 /* map up functions and test version */
 	if (!frameserver_loadlib(libname)){
@@ -1435,7 +1447,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	}
 
 	void (*initf)() = libretro_requirefun("retro_init");
-	unsigned (*apiver)() = (unsigned(*)()) libretro_requirefun("retro_api_version");
+	unsigned (*apiver)() = (unsigned(*)()) 
+		libretro_requirefun("retro_api_version");
+
 	( (void(*)(retro_environment_t)) 
 		libretro_requirefun("retro_set_environment"))(libretro_setenv);
 
@@ -1446,7 +1460,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 /* added as a support to romman etc. so they don't have 
  * to load the libs in question */
-		if (arg_lookup(args, "info", 0, NULL)){
+		if (info_only){
 			fprintf(stdout, "arcan_frameserver(info)\nlibrary:%s\n"
 				"version:%s\nextensions:%s\n/arcan_frameserver(info)", 
 				retroctx.sysinfo.library_name, retroctx.sysinfo.library_version, 
