@@ -128,7 +128,11 @@ local function cached_pick(xpos, ypos, depth, nitems)
 end
 
 function mouse_cursor()
-	return mstate.cursor, mstate;
+	return mstate.cursor;
+end
+
+function mouse_state()
+	return mstate;
 end
 
 --
