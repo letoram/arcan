@@ -357,19 +357,19 @@ local function awbbar_resize(self, neww, newh)
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
 		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs), 
 			math.floor(self.left[i].yofs + stepy * lofs)); 
-		lofs = lofs + w + self.left[i].xofs;
-		lim = lim - w;
+		lofs = lofs + w + self.left[i].xofs + self.spacing;
+		lim = lim - w - self.spacing;
 	end
 
 	local rofs = 0;
 	for i=1,#self.right do
 		local w, h = self.rzfun(self.right[i].vid, self.size, self.vertical);
-		rofs = rofs + w;
+		rofs = rofs + w + self.spacing;
 
 		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)), 
 			math.floor(stepy * (self.h - rofs)));
 
-		lim = lim - w;
+		lim = lim - w - self.spacing;
 	end
 
 	if (self.fill) then
@@ -565,6 +565,7 @@ local function awbwnd_addbar(self, dir, activeimg,
 		parent   = self,
 		size     = bsize,
 		rsize    = rsize,
+		spacing  = 0,
 		dir      = dir
 	};
 
@@ -574,6 +575,10 @@ local function awbwnd_addbar(self, dir, activeimg,
 		awbbar.name = self.name .. "_ttbar_mh";
 		mouse_addlistener(awbbar, {"click", "hover"});
 		table.insert(self.handlers, awbbar);
+	end
+
+	if (options.spacing ~= nil) then
+		awbbar.spacing = spacing;
 	end
 
 	awbbar.vertical = dir == "l" or dir == "r";
