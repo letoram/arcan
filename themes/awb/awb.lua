@@ -39,7 +39,7 @@ function desktoplbl(text, len)
 
 	text = text == nil and "" or text;
 	return render_text(string.format("\\#ffffff\\f%s,%d %s",
-	deffont, deffont_sz, text));
+	deffont, deffont_sz, text), linespace);
 end
 
 -- input is trusted, i.e. data supposedly comes from
@@ -277,6 +277,57 @@ function launch_factorytgt(tbl, factstr, coreopts)
 	end
 end
 
+local function search_popup(reficn)
+	local wnd = awbwman_listwnd(menulbl("Search Results..."),
+		deffont_sz, linespace, {1.0}, 
+			function(filter, ofs, lim, iconw, iconh)
+				return {}, 0;
+			end, desktoplbl);
+
+	local setcap = function(msg)
+		if (valid_vid(wnd.caption)) then
+			delete_image(wnd.caption);
+		end
+		wnd.caption = desktoplbl(msg);
+
+		show_image(wnd.caption);
+		link_image(wnd.caption, wnd.canvas.vid);
+		image_inherit_order(wnd.caption, true);
+		order_image(wnd.caption, 1);
+		image_clip_on(wnd.caption, CLIP_SHALLOW);
+		return image_surface_properties(wnd.caption);
+	end
+	
+	local props = setcap(MESSAGE["TITLE_SEARCH"]);
+	wnd:resize(math.floor(props.width * 1.1), math.floor(props.height) * 8);
+
+	wnd.inputfield = awbwman_inputattach(
+		function(a) print(a); end, desktoplbl, {});
+
+	wnd.ulim = 100;
+
+	wnd.input = 
+	function(self, tbl)
+		wnd.inputfield:input(tbl); 
+	end
+
+	wnd.inputfield.accept = function(self)
+		local list = list_games({title = wnd.inputfield.msg});
+		if (list == nil or #list == 0) then
+			setcap(MESSAGE["TITLE_SEARCH_FAILED"]);			
+		end
+	end
+
+	link_image(wnd.inputfield.anchor, wnd.canvas.vid);
+	image_inherit_order(wnd.inputfield.anchor, true);
+	order_image(wnd.inputfield.anchor, 1);
+	move_image(wnd.inputfield.anchor, 0, props.height + 4);
+	wnd.inputfield:resize(math.floor(props.width), 
+		math.floor(props.height * 2));
+	
+	wnd.name = "searchwnd";
+end
+
 function spawn_vidwin(self)
 	local wnd = awbwman_capwnd(menulbl("Video Capture"), 
 		{refid = "vidcapwnd"});
@@ -438,7 +489,8 @@ function gamelist_tblwnd(tbl, capt)
 
 			ul = (ul > #tbl) and #tbl or ul;
 
-			for i=ofs,ul do
+			for i=ofs,ul-1 do
+				if (tbl[i] ~= nil) then
 				local ent = {
 					name = tbl[i].title,
 					gameid = tbl[i].gameid,
@@ -451,6 +503,7 @@ function gamelist_tblwnd(tbl, capt)
 				};
 
 				table.insert(res, ent);
+				end
 			end
 
 			return res, #tbl;
@@ -793,6 +846,10 @@ function awb_desktop_setup()
 			end
 		end
 	end
+
+	local tbar = awbwman_cfg().root.dir.t;
+	tbar:add_icon("search", "r", cfg.bordericns["search"],
+		function(self) search_popup(self); end);
 end
 
 function get_root_icon(hint)
