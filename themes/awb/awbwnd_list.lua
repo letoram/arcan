@@ -10,6 +10,7 @@ local function awblist_scrollbar(self)
 			hide_image(self.dir[self.icon_bardir].fill.vid);
 			self.dir[self.icon_bardir].oldsz = self.dir[self.icon_bardir].bsize;
 			self.dir[self.icon_bardir].bsize = 0;
+-- make sure the bar- resize gets updated
 			self:list_resize(self.w, self.h);
 		end
 
@@ -22,29 +23,48 @@ local function awblist_scrollbar(self)
 		self:list_resize(self.w, self.h);
 	end
 
+-- with capacity matching total we don't have a bar to deal with so that
+-- case can be safely ignored
 	local prop = image_surface_properties(self.dir[self.icon_bardir].fill.vid);
-	local stepsz = prop.height / self.total;
-	
-	resize_image(self.scrollcaret, self.dir[self.icon_bardir].size - 2,
-		stepsz * self.capacity);
-	move_image(self.scrollcaret, 1, stepsz * (self.ofs - 1)); 
+	local barsz = (self.capacity / self.total) * prop.height;
+
+	local yv = math.floor(self.ofs-1+0.001) / self.total * prop.height;
+
+-- special hack to cover rounding / imprecision etc.)
+	if (self.ofs + self.capacity >= self.total) then
+		move_image(self.scrollcaret, 1, prop.height - barsz - 1);
+	else
+	 	move_image(self.scrollcaret, 1, 1 + yv);
+	end
+
+	resize_image(self.scrollcaret, self.dir[self.icon_bardir].size - 2, barsz);
 end
 
 function awblist_resize(self, neww, newh)
 	self:list_resize(neww, newh);
 	local props = image_surface_properties(self.canvas.vid);
-	self.capacity = math.ceil(props.height / (self.lineh + self.linespace)) + 1;
+	self.capacity = math.floor(props.height / (self.lineh + self.linespace));
 
--- only redraw if we've grown (keep image when shrinking), some parts of
+	if (self.capacity < 1) then
+		self.capacity = 1;
+	end
+
+	if (self.total ~= nil and (self.ofs + self.capacity > self.total)) then
+		self.ofs = self.total - self.capacity;
+		self.invalidate = true;
+	end
+
+-- only redraw if we've grown (keep image when shrinking and clip
+-- in order to minimize transfers / regenerating the texture), some parts of
 -- this function is really expensive and high-resolution mice etc. do
 -- emitt lots of resize events when drag-resizing
 	if (self.invalidate or (props.height - self.lasth >
 		(self.lineh + self.linespace))) then
-	
+
 		self.invalidate = false;
 		self.lasth  = props.height;
 		self.restbl, self.total = self:datasel(self.ofs, self.capacity, list);	
-		
+
 		for i, v in ipairs(self.listtemp) do
 			delete_image(v);
 		end
@@ -75,6 +95,7 @@ function awblist_resize(self, neww, newh)
 			for i, v in ipairs(self.restbl) do
 				table.insert(rendtbl, v.cols[ind]);
 			end
+
 			local colv, lines = self.renderfn(table.concat(rendtbl, [[\n\r]]));
 			local colw = image_surface_properties(colv).width;
 
@@ -125,6 +146,8 @@ function awblist_resize(self, neww, newh)
 	end
 
 -- always update clipping anchors
+	awblist_scrollbar(self);
+
 	local xofs = 0;
 	local ctot;
 	if (self.scroll) then
@@ -175,7 +198,6 @@ function awblist_resize(self, neww, newh)
 	blend_image(self.cursor, self.total == 0 and 0.0 or 1.0);
 	resize_image(self.ianchor, props.width, props.height);
 	resize_image(self.cursor, ctot, self.lineh + self.linespace);
-	awblist_scrollbar(self);
 end
 
 function awbicon_liney(self, yv)
@@ -200,6 +222,7 @@ end
 local function clampofs(self)
 	if (self.ofs < 1) then
 		self.ofs = 1;
+
 	elseif (self.ofs + self.capacity > self.total) then
 		self.ofs = self.total - self.capacity + 1;
 	end
@@ -354,6 +377,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 		if (iotbl.lutsym == "UP") then
 			pwin:scrollup(1);
+
 		elseif (iotbl.lutsym == "DOWN") then
 			pwin:scrolldown(1);
 		end
