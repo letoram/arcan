@@ -716,8 +716,8 @@ static inline void copy_rect(TTF_Surface* surf, uint32_t* dst,
 	uint32_t* wrk = (uint32_t*) surf->data;
 
 	for (int row = 0; row < surf->height; row++)
-		for (int col = 0; col < surf->width; col++)
-			dst[ (y + row) * pitch + x + col ] = wrk[row * surf->width + col ];
+		memcpy( &dst[ (y + row) * pitch + x], 
+			&wrk[row * surf->width], surf->width * 4);
 }
 	
 /* note: currently does not obey restrictions placed on texturemode 
