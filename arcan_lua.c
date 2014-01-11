@@ -1285,6 +1285,41 @@ char* arcan_luaL_dofile(lua_State* ctx, const char* fname)
 	return NULL;
 }
 
+static int arcan_lua_syssnap(lua_State* ctx)
+{
+	const char* instr = luaL_checkstring(ctx, 1);
+	char* fname = findresource(instr, ARCAN_RESOURCE_THEME);
+
+	if (fname){
+		arcan_warning("system_statesnap(), " 
+		"refuses to overwrite existing file (%s));\n", fname);
+		free(fname);
+
+		return 0;
+	}
+
+	fname = arcan_expand_resource(luaL_checkstring(ctx, 1), false);
+
+	if (fname){
+		FILE* outf = fopen(fname, "w+");
+			
+		if (outf){
+			arcan_lua_statesnap(outf, "", false); 
+			fclose(outf);
+		}
+		else
+			arcan_warning("system_statesnpa(), "
+				"couldn't open (%s) for writing.\n", fname);
+
+	} else {
+		arcan_warning("system_statesnap(), "
+			"couldn't resolve destination resource.\n");
+	}
+
+	free(fname);
+	return 0;
+}
+
 static int arcan_lua_dofile(lua_State* ctx)
 {
 	const char* instr = luaL_checkstring(ctx, 1);
@@ -2275,7 +2310,7 @@ static int arcan_lua_imagechildren(lua_State* ctx)
 
 	while( (child = arcan_video_findchild(id, ofs++)) != ARCAN_EID){
 		lua_pushnumber(ctx, count++);
-		lua_pushnumber(ctx, child);
+		lua_pushvid(ctx, child);
 		lua_rawset(ctx, top);
 	}
 
@@ -5483,6 +5518,7 @@ static const luaL_Reg sysfuns[] = {
 {"warning",             arcan_luac_warning         },
 {"system_load",         arcan_lua_dofile           },
 {"system_context_size", arcan_lua_systemcontextsize},
+{"system_snapshot",     arcan_lua_syssnap          },
 {"utf8kind",            arcan_lua_utf8kind         },
 {"decode_modifiers",    arcan_lua_decodemod        },
 {"benchmark_enable",    arcan_lua_togglebench      },
