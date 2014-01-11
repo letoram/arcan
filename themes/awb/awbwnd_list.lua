@@ -55,16 +55,16 @@ function awblist_resize(self, neww, newh)
 		local xofs = 0;
 		for ind, col in ipairs(self.cols) do
 			local clip = null_surface(math.floor(props.width * col), props.height);
+			image_tracetag(clip, "listview.col(" .. tostring(ind) .. ").clip");
 	
 			link_image(clip, self.ianchor);
 			show_image(clip);
 			image_mask_set(clip, MASK_UNPICKABLE);
 			image_inherit_order(clip, true);
-			image_tracetag(clip, "listview.col(" .. tostring(ind) .. ").clip");
 
 			if (ind > 1 and self.collines[ind-1] ~= nil) then
 				move_image(self.collines[ind-1], xofs, 0);
-				resize_image(self.collines[ind-1], 2, self.canvash); 
+				resize_image(self.collines[ind-1], 2, props.height);
 			end
 	
 			xofs = xofs + math.floor(props.width * col) + 4;
@@ -84,9 +84,10 @@ function awblist_resize(self, neww, newh)
 			end
 
 			link_image(colv, clip);
+			image_tracetag(colv, "listview.col(" .. tostring(ind) ..").column");
+
 			show_image(colv);
 			move_image(colv, 0, math.floor(self.linespace * 0.5));
-			image_tracetag(colv, "listview.col(" .. tostring(ind) ..").column");
 			image_inherit_order(colv, true);
 			order_image(colv, 2);
 			image_mask_set(colv, MASK_UNPICKABLE);
@@ -111,10 +112,10 @@ function awblist_resize(self, neww, newh)
 
 					move_image(a, 0, self.line_heights[i]);
 					link_image(a, self.ianchor); 
+					image_tracetag(a, "listview.stripbg");
 					show_image(a);
 					image_inherit_order(a, true);
 					image_clip_on(a);
-					image_tracetag(a, "listview.stripbg");
 					image_mask_set(a, MASK_UNPICKABLE);
 					table.insert(self.bglines, a);
 				end
@@ -125,8 +126,14 @@ function awblist_resize(self, neww, newh)
 
 -- always update clipping anchors
 	local xofs = 0;
-	local ctot = neww;
-
+	local ctot;
+	if (self.scroll) then
+		ctot = props.width - self.dir[self.icon_bardir].size;
+	else
+		ctot = props.width;
+	end
+	local ccur = ctot;
+	
 	for i, col in ipairs(self.cols) do
 		local clipw = math.floor(props.width * col);
 
@@ -135,24 +142,27 @@ function awblist_resize(self, neww, newh)
 		if (self.static == nil or self.static == false) then
 			local colw = image_surface_properties(image_children(
 				self.listtemp[i])[1]).width;
+
 				if (clipw > colw * 1.1) then
 					clipw = math.floor(colw * 1.1);
 				end
 		end
 
 		if (i == #self.cols) then
-			clipw = ctot;
+			clipw = ccur;
 		else
-			ctot = ctot - clipw;
+			ccur = ccur - clipw;
 		end
 
 		resize_image(self.listtemp[i], clipw, props.height);
 		move_image(self.listtemp[i], xofs, 0);
+	
 		if (i > 1 and self.collines[i-1] ~= nil) then
 			blend_image(self.collines[i-1], 0.5); 
 			move_image(self.collines[i-1], xofs - 2, 0);
-			resize_image(self.collines[i-1], 2, self.canvash); 
+			resize_image(self.collines[i-1], 2, props.height); 
 		end
+
 		xofs = xofs + clipw;
 	end
 
@@ -164,7 +174,7 @@ function awblist_resize(self, neww, newh)
 
 	blend_image(self.cursor, self.total == 0 and 0.0 or 1.0);
 	resize_image(self.ianchor, props.width, props.height);
-	resize_image(self.cursor, props.width, self.lineh + self.linespace);
+	resize_image(self.cursor, ctot, self.lineh + self.linespace);
 	awblist_scrollbar(self);
 end
 
@@ -289,6 +299,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.listtemp   = {};
 	local panch = null_surface(1, 1);
 	image_mask_set(panch, MASK_UNPICKABLE);
+	image_tracetag(panch, "listview(dataanchor)");
 
 	if (type(datasel_fun) == "table") then
 		pwin.datasel = def_datasel;
@@ -308,7 +319,8 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 	for i=2,#pwin.cols do
 		local barl = color_surface(1, 2, 255, 255, 255);
-		link_image(barl, panch); 
+		image_tracetag(barl, "bar_handle");
+		link_image(barl, panch);
 		blend_image(barl, 0.5);
 		image_inherit_order(barl, true);
 		order_image(barl, 2);
@@ -370,6 +382,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 	pwin.resize = awblist_resize;
 
 	link_image(cursor_icn, panch); 
+	image_tracetag(cursor_icn, "cursor_icon");
 	image_inherit_order(cursor_icn, true);
 	order_image(cursor_icn, 1);
 	show_image(cursor_icn);
