@@ -211,6 +211,11 @@ end
 
 function map_inputs()
 	if (DEBUGLEVEL > 1) then
+		kbdbinds["F3"]     = function() 
+			zap_resource("syssnap.lua"); 
+			system_snapshot("syssnap.lua"); 
+		end
+
 		kbdbinds["F5"]     = function() print(current_context_usage()); end;
 		kbdbinds["F6"]     = debug.debug;
 		kbdbinds["F10"]    = mouse_dumphandlers;

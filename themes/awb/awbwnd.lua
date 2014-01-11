@@ -52,10 +52,6 @@ function awbwnd_set_border(s, sz, r, g, b)
 				dt = 0;
 			end
 
-			if (dt == false or dt == true) then
-				print(debug.traceback());	
-			end
-	
 			s:default_resize(neww, newh, completed, dt);
 
 			move_image(s.borders.t, 0 - sz, 0 - sz, dt);
@@ -148,6 +144,7 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 
 	if (self.dir.r) then
 		hspace = hspace - self.dir.r.rsize;
+	
 		if (self.dir.r.rsize ~= self.dir.r.size) then
 			move_image(self.dir.r.vid, xofs + hspace + 
 				self.dir.r.rsize - self.dir.r.size, yofs);

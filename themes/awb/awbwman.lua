@@ -177,8 +177,8 @@ function awbwman_fullscreen(wnd)
 	awb_cfg.fullscreen = {};
 
 	local cprops = {
-		width = wnd.canvasw,
-		height =wnd.canvash
+		width = wnd.w,  
+		height = wnd.h 
 	};
 
 	local iprops = wnd:canvas_iprops();
@@ -195,7 +195,7 @@ function awbwman_fullscreen(wnd)
 		dh = math.floor(VRESW / ar);
 	end
 
-	awb_cfg.focus:resize(dw, dh, true, true);
+	awb_cfg.focus:resize(dw, dh, true);
 
 	local xp = math.floor(0.5 * (VRESW - dw));
 	local yp = math.floor(0.5 * (VRESH - dh));
@@ -231,7 +231,7 @@ function awbwman_dropfullscreen(wnd)
 	local w = awb_cfg.fullscreen.props.width;
 	local h = awb_cfg.fullscreen.props.height;
 
-	awb_cfg.focus:resize(w, h, true, true);
+	awb_cfg.focus:resize(w, h, true);
 		
 	delete_image(awb_cfg.fullscreen.vid);
 
@@ -1409,9 +1409,6 @@ function awbwman_popupslider(min, val, max, updatefun, options)
 	res.own = function(self, vid) return vid == wnd; end
 
 	res.destroy = function()
-		print("destroy slider");
-		print(debug.traceback());
-
 		if (res.ref) then
 			image_shader(res.ref, "DEFAULT");
 		end
@@ -1813,14 +1810,14 @@ function awbwman_spawn(caption, options)
 							and wcont.controlid or wcont.canvas.vid;
 
 						local props = wcont:canvas_iprops();
-						wcont:resize(props.width, props.height, true, true);
+						wcont:resize(props.width, props.height, true);
 					end);
 
 					table.insert(lbls, "/2 align");
 					table.insert(tbl, function()
 						local props = image_surface_properties(wcont.canvas.vid);
 						wcont:resize( props.width - math.fmod(props.width, 2), 
-							props.height - math.fmod(props.height, 2), true, true);
+							props.height - math.fmod(props.height, 2), true);
 					end);
 				end
 
