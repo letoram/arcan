@@ -2443,6 +2443,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["volume_top"]  = load_image("awbicons/topbar_speaker.png");
 	awb_cfg.bordericns["mouse"]       = load_image("awbicons/topbar_mouse.png");
 	awb_cfg.bordericns["mouselock"]   = load_image("awbicons/topbar_mouselock.png");
+	awb_cfg.bordericns["search"]      = load_image("awbicons/topbar_search.png");
 
 	for k,v in pairs(awb_cfg.bordericns) do
 		image_pushasynch(v);
