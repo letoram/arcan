@@ -141,7 +141,13 @@ function awbwnd_modelview(pwin, source)
 	
 	drag = function(self, vid, dx, dy)
 		pwin:focus();
-		rotate3d_model(source.vid, 0.0, dy, dx, 0, ROTATE_RELATIVE);
+		if (awbwman_cfg().meta.shift) then
+			local props = image_surface_properties(pwin.model.vid);
+			move3d_model(pwin.model.vid, props.x, 
+				props.y + 0.01 * dy, props.z + 0.01 * dx); 
+		else
+			rotate3d_model(source.vid, 0.0, dy, dx, 0, ROTATE_RELATIVE);
+		end
 	end,
 
 -- hint that this window accepts drag'n'drop for media
