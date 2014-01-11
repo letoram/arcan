@@ -2326,6 +2326,8 @@ static int arcan_lua_framesetalloc(lua_State* ctx)
 	if (num < 256){
 		arcan_video_allocframes(sid, num, mode);
 	}
+	else
+		arcan_fatal("frameset_alloc() frameset limit (256) exceeded\n");
 
 	return 0;
 }
