@@ -1544,9 +1544,9 @@ function screenshot()
 		while resource(lblbase .. "_" .. tostring(ofs) .. ".png") do
 			ofs = ofs + 1;
 		end
-		save_screenshot(lblbase .. "_" .. tostring(ofs) .. ".png");
+		save_screenshot(lblbase .. "_" .. tostring(ofs) .. ".png", 1);
 	else
-		save_screenshot(lblbase .. ".png");
+		save_screenshot(lblbase .. ".png", 1);
 	end
 end
 
