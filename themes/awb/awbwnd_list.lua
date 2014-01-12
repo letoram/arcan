@@ -260,7 +260,12 @@ local function caretdrag(self, vid, dx, dy)
 	mry = mry > 1 and 1 or mry;
 
 	local lastofs = self.wnd.ofs;
-	self.wnd.ofs = math.ceil( (self.wnd.total - self.wnd.capacity + 1) * mry );
+	self.wnd.ofs = 1 + math.ceil(
+		(self.wnd.total - self.wnd.capacity) * mry );
+
+	if (self.wnd.ofs + self.wnd.capacity > self.wnd.total) then
+		self.wnd.ofs = self.wnd.total - self.wnd.capacity;
+	end
 
 	if (lastofs ~= self.wnd.ofs) then
 		scrollup(self.wnd, 0);
