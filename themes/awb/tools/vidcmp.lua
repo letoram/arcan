@@ -9,7 +9,7 @@ local function sample_prelude(weights)
 	local resshader = {};
 
 	table.insert(resshader, "varying vec2 texco;");
-	table.insert(resshader, "uniform float obj_opacity");
+	table.insert(resshader, "uniform float obj_opacity;");
 
 	for i=1, #weights do
 		table.insert(resshader, "uniform sampler2D map_tu" .. 
@@ -37,52 +37,51 @@ local function build_blendshader(weights)
 	end
 
 	table.insert(resshader,
-		"vec3 finalc = %s;", table.concat(colvs, "+"));
-	table.insert(resshader, "gl_FragColor = vec4(finalc, obj_opacity);}");
+		string.format("vec3 finalc = %s;", table.concat(colvs, "+")));
+	
+	table.insert(resshader, "finalc = clamp(finalc, 0.0, 1.0);");
+	table.insert(resshader, "gl_FragColor = vec4(finalc, obj_opacity);\n}");
 
 	return table.concat(resshader, "\n");
 end
 
 --
--- Matching mode, only show colors with an 
--- accumulated deviation within a threshold
+-- Accumulate differences between textures per channel
 --
-local function build_matchshader(weights, mode)
+local function gen_rgb_abscomp(weights, evalstr)
 	local resshader = sample_prelude(weights);
 	local colvs = {"r", "g", "b"};
 
-	table.insert(resshader, 
-		string.format("float diff_%s = 0.0f;", colv));
+	table.insert(resshader, "vec3 finalc = vec3(0.0, 0.0, 0.0);");
 
-	for k=2, #weights do
+	for k=1, #weights-1 do
+		table.insert(resshader,
+			string.format("float diff_%d = abs(col0.r - col%d.r) " ..
+				"+ abs(col0.g - col%d.g) + abs(col0.b - col%d.b);",
+				k, k, k, k));
 		table.insert(resshader, string.format(
-			"if (absf(col%d.%s - col%d.%s) < 0.1) diff_%s = col%d.%s;",
-				0, colv, k-1, colv, colv, 0, colv));
+			evalstr .. "\n\t finalc = finalc + col0;", k));
 	end
 
+	table.insert(resshader, "finalc = clamp(finalc, 0.0, 1.0);");
+	table.insert(resshader, "gl_FragColor = vec4(finalc, obj_opacity);\n}");
+
 	return table.concat(resshader, "\n");
+end
+
+
+local function build_matchshader(weights, mode)
+	return gen_rgb_abscomp(weights, "if (diff_%d < 0.05)");
 end
 
 local function build_deltashader(weights, mode)
-	local resshader = sample_prelude(weights);
-	local colvs = {"r", "g", "b"};
-
-	table.insert(resshader, 
-		string.format("float diff_%s = 0.0f;", colv));
-
-	for k=2, #weights do
-		table.insert(resshader, string.format(
-			"if (absf(col%d.%s - col%d.%s) < %f) diff_%s = col%d.%s;",
-				0, colv, k-1, colv, 0.1, colv, 0, colv));
-	end
-
-	return table.concat(resshader, "\n");
+	return gen_rgb_abscomp(weights, "if (diff_%d > 0.05)");
 end
 
 local shdrtbl = {
 	blend = build_blendshader,
-	match = build_matchshader,
-	delta = build_deltashader
+	delta = build_deltashader,
+	matching = build_matchshader
 };
 
 local function rebuild(wnd)
@@ -159,7 +158,6 @@ local function popup_options(wnd)
 		"Matching"
 	};
 
-
 	vid, lines = desktoplbl(table.concat(optlist, "\\n\\r"));
 	awbwman_popup(vid, lines, function(ind, left)
 		wnd.mode = string.lower(optlist[ind]);
@@ -170,12 +168,12 @@ end
 local function vidcmp_setup(wnd, options)
 	wnd.sources = {};
 	wnd.name = "Video Compare";
-	wnd.mode = "Delta";
+	wnd.mode = "Blend";
 
 	local cfg = awbwman_cfg();
 	local bar = wnd:add_bar("tt", wnd.ttbar_bg, wnd.ttbar_bg, cfg.topbar_sz);
 
-	bar:add_icon("play", "l", cfg.bordericns["play"], 
+	bar:add_icon("filter", "l", cfg.bordericns["filter"], 
 		function(self)
 			wnd:focus();
 			popup_options(wnd, self.vid); 
