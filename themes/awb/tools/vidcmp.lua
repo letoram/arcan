@@ -1,10 +1,6 @@
 --
 -- VidCompare Built-in Tool
 --
--- Missing; 
---  dynamic buttons defining channel weights
---  register and handle dynamic source updates based on on_update (se 3dmodel)
---
 local function sample_prelude(weights)
 	local resshader = {};
 
@@ -43,6 +39,14 @@ local function build_blendshader(weights)
 	table.insert(resshader, "gl_FragColor = vec4(finalc, obj_opacity);\n}");
 
 	return table.concat(resshader, "\n");
+end
+
+local function datashare(wnd)
+	local res  = awbwman_setup_cursortag(sysicons.floppy);
+	res.kind   = "media";
+	res.source = wnd;
+	res.name   = wnd.name;
+	return res;
 end
 
 --
@@ -179,6 +183,11 @@ local function vidcmp_setup(wnd, options)
 			popup_options(wnd, self.vid); 
 		end
 	);
+
+	bar.hoverlut[
+	(bar:add_icon("clone", "r", cfg.bordericns["clone"], 
+		function() datashare(wnd); end)).vid
+	] = MESSAGE["HOVER_CLONE"];
 
 	bar.click = function() wnd:focus(); end
 
