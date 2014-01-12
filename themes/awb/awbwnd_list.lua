@@ -3,7 +3,7 @@
 -- Specialized window subclass to handle longer multi-column lists
 -- With clickable headers, sorting etc.
 -- 
-local function awblist_scrollbar(self)
+function awbwnd_scroll_check(self)
 	if (self.capacity >= self.total) then
 		if (self.scroll) then
 			self.scroll = false;
@@ -11,7 +11,7 @@ local function awblist_scrollbar(self)
 			self.dir[self.icon_bardir].oldsz = self.dir[self.icon_bardir].bsize;
 			self.dir[self.icon_bardir].bsize = 0;
 -- make sure the bar- resize gets updated
-			self:list_resize(self.w, self.h);
+			self:orig_resize(self.w, self.h);
 		end
 
 		return;
@@ -20,7 +20,7 @@ local function awblist_scrollbar(self)
 		self.scroll = true;
 		show_image(self.dir[self.icon_bardir].fill.vid);
 		self.dir[self.icon_bardir].bsize = self.dir[self.icon_bardir].oldsz;
-		self:list_resize(self.w, self.h);
+		self:orig_resize(self.w, self.h);
 	end
 
 -- with capacity matching total we don't have a bar to deal with so that
@@ -41,7 +41,7 @@ local function awblist_scrollbar(self)
 end
 
 function awblist_resize(self, neww, newh)
-	self:list_resize(neww, newh);
+	self:orig_resize(neww, newh);
 	local props = image_surface_properties(self.canvas.vid);
 	self.capacity = math.floor(props.height / (self.lineh + self.linespace));
 
@@ -146,7 +146,7 @@ function awblist_resize(self, neww, newh)
 	end
 
 -- always update clipping anchors
-	awblist_scrollbar(self);
+	awbwnd_scroll_check(self);
 
 	local xofs = 0;
 	local ctot;
@@ -230,25 +230,25 @@ local function clampofs(self)
 	self.ofs = math.floor(self.ofs);
 end
 
-local function scrollup(self, n)
+function awbwnd_scroll_up(self, n)
 	self.ofs = self.ofs - math.abs(n);
 	clampofs(self);
 	self.lasth = 0;
 	self:resize(self.w, self.h);
 end
 
-local function scrolldown(self, n)
+function awbwnd_scroll_down(self, n)
 	self.ofs = self.ofs + math.abs(n);
 	clampofs(self);
 	self.lasth = 0;
 	self:resize(self.w, self.h);
 end
 
-local function caretdrop(self)
+function awbwnd_scroll_caretdrop(self)
 	self.caret_dy = nil;
 end
 
-local function caretdrag(self, vid, dx, dy)
+function awbwnd_scroll_caretdrag(self, vid, dx, dy)
 	self.wnd:focus();
 	
 	local mx, my = mouse_xy();
@@ -268,11 +268,11 @@ local function caretdrag(self, vid, dx, dy)
 	end
 
 	if (lastofs ~= self.wnd.ofs) then
-		scrollup(self.wnd, 0);
+		awbwnd_scroll_up(self.wnd, 0);
 	end
 end
 
-local function scrollclick(self, vid, x, y)
+function awbwnd_scroll_caretclick(self, vid, x, y)
 	local props = image_surface_resolve_properties(self.caret);
 	self.wnd:focus();
 
@@ -355,8 +355,8 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		table.insert(pwin.collines, barl); 
 	end
 
-	pwin.scrollup   = scrollup;
-	pwin.scrolldown = scrolldown;
+	pwin.scrollup   = awbwnd_scroll_up;
+	pwin.scrolldown = awbwnd_scroll_down; 
 
 	pwin.icon_bardir = bardir;
 	pwin.scrollcaret = scrollcaret_icn;
@@ -407,7 +407,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		pwin.dir["t"].size - 2, pwin.dir["t"].size - 2); 
 	image_clip_on(scrollcaret_icn, CLIP_SHALLOW);
 
-	pwin.list_resize = pwin.resize;
+	pwin.orig_resize = pwin.resize;
 	pwin.resize = awblist_resize;
 
 	link_image(cursor_icn, panch); 
@@ -422,8 +422,8 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 
 	local caretmh = {
 		wnd  = pwin,
-		drag = caretdrag,
-		drop = caretdrop,
+		drag = awbwnd_scroll_caretdrag,
+		drop = awbwnd_scroll_caretdrop,
 		name = "list_scroll_caret",
 		own  = function(self,vid) return scrollcaret_icn == vid; end
 	};
@@ -433,7 +433,7 @@ function awbwnd_listview(pwin, lineh, linespace, colcfg, datasel_fun,
 		wnd   = pwin, 
 		name  = "list_scrollbar",
 		own   = function(self, vid) return newicn.vid == vid; end,
-		click = scrollclick; 
+		click = awbwnd_scroll_caretclick 
 	};
 
 	mouse_addlistener(scrollmh, {"click"});
