@@ -675,7 +675,7 @@ function spawn_vidrec()
 
 	wnd.update_aspect = function()
 		local aspw = getasp(wnd.aspect);
-		wnd:resize(wnd.w, wnd.h / aspw, true);
+		wnd:resize(wnd.w, wnd.w / aspw, true);
 	end
 
 	wnd.drop_audio = function()
