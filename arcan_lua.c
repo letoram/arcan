@@ -220,7 +220,8 @@ static void crashdump(const char* msg, const char* src)
 			fclose(tmpout);
 		} 
 		else 
-			arcan_warning("crashdump requested but (%s/logs) not accessible.\n");
+			arcan_warning("crashdump requested but (%s/logs) not accessible.\n", 
+				arcan_resourcepath);
 	}
 }
 
