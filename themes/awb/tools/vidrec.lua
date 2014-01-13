@@ -39,7 +39,7 @@ local function add_asource(wnd, tag)
 
 	show_image(source.vid);
 
--- to show WHERE the balance will be calculated from
+-- green dot to show WHERE the balance will be calculated from
 	local anchorp = color_surface(8, 8, 0, 255, 0);
 	link_image(anchorp, source.vid);
 	show_image(anchorp);
@@ -247,6 +247,8 @@ local function add_rectarget(wnd, tag)
 		end
 	end
 
+-- align to nearest 45 degrees if we're close enough to get
+-- less filtering artifacts
 	source.drop = function(self, vid)
 		local ang = math.floor(image_surface_properties(source.vid).angle);
 		if (ang % 45 < 10) then
@@ -259,6 +261,12 @@ local function add_rectarget(wnd, tag)
 	end
 
 	image_sharestorage(tag.source.canvas.vid, source.vid);
+
+	tag.source:add_handler("on_update", 
+		function(self, srcwnd)
+			image_sharestorage(srcwnd.canvas.vid, source.vid);
+		end);
+
 	table.insert(wnd.sources, source);
 	show_image(source.vid);
 	image_inherit_order(source.vid, true);
@@ -295,6 +303,11 @@ local function dotbl(icn, tbl, dstkey, convert, hook)
 	end, {ref = icn.vid});
 end
 
+--
+-- Filter output resolution so that we don't exceed that of the display
+-- This shouldn't really be a problem since the internal FBOs use 2048
+-- but ...
+--
 local function respop(icn)
 	local lst = {
 		"200",
@@ -458,6 +471,10 @@ local function destpop(icn)
 		"Specify...",
 	};
 
+--
+-- This should be complemented with proper cut'n'paste from external
+-- problems and with manually typing a key
+--
 	if (resource("stream.key")) then
 		table.insert(lst, "Stream (stream.key)");
 	else
