@@ -52,7 +52,7 @@ local function awbicon_add(self, icntbl)
 		image_inherit_order(icntbl.caption, true);
 		order_image(icntbl.caption, 1);
 		image_tracetag(icntbl.caption, tostring(icntbl.name) .. ".caption");
-		move_image(icntbl.caption, math.floor(0.5 * (self.cell_w - props.width)),
+		move_image(icntbl.caption, math.ceil(0.5 * (self.cell_w - props.width)),
 			self.cell_h - props.height);
 	end
 

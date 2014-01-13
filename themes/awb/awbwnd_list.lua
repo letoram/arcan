@@ -42,15 +42,20 @@ end
 
 function awblist_resize(self, neww, newh)
 	self:orig_resize(neww, newh);
+
 	local props = image_surface_properties(self.canvas.vid);
-	self.capacity = math.floor(props.height / (self.lineh + self.linespace));
+	self.capacity = math.floor(props.height / (self.lineh + self.linespace)) - 1;
 
 	if (self.capacity < 1) then
 		self.capacity = 1;
 	end
 
-	if (self.total ~= nil and (self.ofs + self.capacity > self.total)) then
+	if (self.total ~= nil and (self.ofs + self.capacity - 1 > self.total)) then
 		self.ofs = self.total - self.capacity;
+		
+		if (self.ofs < 1) then 
+			self.ofs = 1;
+		end
 		self.invalidate = true;
 	end
 
@@ -64,7 +69,7 @@ function awblist_resize(self, neww, newh)
 		self.invalidate = false;
 		self.lasth  = props.height;
 		self.restbl, self.total = self:datasel(self.ofs, self.capacity, list);	
-
+	
 		for i, v in ipairs(self.listtemp) do
 			delete_image(v);
 		end
@@ -263,7 +268,7 @@ function awbwnd_scroll_caretdrag(self, vid, dx, dy)
 	self.wnd.ofs = 1 + math.ceil(
 		(self.wnd.total - self.wnd.capacity) * mry );
 
-	if (self.wnd.ofs + self.wnd.capacity > self.wnd.total) then
+	if (self.wnd.ofs + self.wnd.capacity > self.wnd.total + 1) then
 		self.wnd.ofs = self.wnd.total - self.wnd.capacity;
 	end
 
@@ -285,13 +290,13 @@ function awbwnd_scroll_caretclick(self, vid, x, y)
 	self.wnd:resize(self.wnd.w, self.wnd.h);
 end
 
-local function def_datasel(filter, ofs, lim)
+local function def_datasel(filter, ofs, lim, list)
 	local tbl = filter.tbl;
 	local res = {};
 	local ul = ofs + lim;
 	ul = ul > #tbl and #tbl or ul;
 
-	for i=ofs, ul do
+	for i=ofs, ofs+lim do
 		table.insert(res, tbl[i]);
 	end
 
