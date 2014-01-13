@@ -152,6 +152,15 @@ local function add_source(wnd, tag)
 	end
 
 	table.insert(wnd.sources, tag.source.canvas.vid);
+	local ind = #wnd.sources;
+
+-- replace the slot reference and force a rebuild
+	tag.source:add_handler("on_update", 
+		function(self, srcwnd)
+			wnd.sources[ind] = srcwnd.canvas.vid;	
+			rebuild(wnd);
+		end);
+
 	rebuild(wnd);
 end
 
