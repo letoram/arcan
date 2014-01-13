@@ -59,7 +59,7 @@ function awbwnd_breakdisplay(wnd)
 		image_shader(wnd.canvas.vid, wnd.shid);
 	end
 
-	wnd:resize(wnd.canvasw, wnd.canvash, true, true);
+	wnd:resize(wnd.canvasw, wnd.canvash, true);
 end
 
 function awbmedia_seekstep(pwin)
@@ -315,7 +315,7 @@ local function vcap_setup(pwin)
 					else
 						running = true;
 						pwin:update_canvas(source);
-						pwin:resize(status.width, status.height, true, true);
+						pwin:resize(status.width, status.height, true);
 					end
 				end
 			end);
