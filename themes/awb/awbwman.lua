@@ -1270,7 +1270,9 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 
 	local cc   = awb_col.dialog_caret;
 	local cursor = color_surface(props.width, 10, cc.r, cc.g, cc.b); 
-
+	res.cursor = cursor;
+	
+	res.border = border;
 	link_image(rendervid, border.anchor);
 	link_image(cursor, border.anchor);
 
@@ -1353,6 +1355,8 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 	awb_cfg.popup_active = res;
 	res.name = "awbwman_popup";
 	mouse_addlistener(res, {"click", "rclick", "motion"});
+
+	return res;
 end
 
 function awbwman_popupslider(min, val, max, updatefun, options)
