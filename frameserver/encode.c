@@ -219,7 +219,7 @@ forceencode:
 		exit(EXIT_FAILURE);
 	}
 
-	frame->pts = recctx.apts_ofs + recctx.aframe_ptscnt;
+	frame->pts = recctx.aframe_ptscnt;
 	recctx.aframe_ptscnt += frame->nb_samples;
 	
 	int rv = avcodec_encode_audio2(ctx, &pkt, frame, &got_packet);
@@ -294,7 +294,7 @@ forceencode:
 	return true;
 }
 
-int encode_video(bool flush)
+static int encode_video(bool flush)
 {
 	uint8_t* srcpl[4] = {recctx.vidp, NULL, NULL, NULL};
 	int srcstr[4] = {0, 0, 0, 0};
@@ -323,7 +323,7 @@ int encode_video(bool flush)
 	int got_outp = false;
 
 	av_init_packet(&pkt);
-	recctx.pframe->pts = recctx.vpts_ofs + recctx.framecount++;
+	recctx.pframe->pts = recctx.framecount++;
 
 	int rs = avcodec_encode_video2(recctx.vcontext, &pkt, flush ?
 		NULL : recctx.pframe, &got_outp);
@@ -346,8 +346,7 @@ int encode_video(bool flush)
 			pkt.flags |= AV_PKT_FLAG_KEY;
 
 		if (pkt.dts > pkt.pts){
-			LOG("(encode) dts > pts, clipping.\n");
-			pkt.dts = pkt.pts - 1;
+			pkt.dts = pkt.pts;
 		}
 
 		pkt.stream_index = recctx.vstream->index;
@@ -418,10 +417,37 @@ static void encoder_atexit()
 		if (recctx.vcontext)
 			encode_video(true);
 		
-/* write header is done in the encoder_presets fcontext setup */
-		if (recctx.fcontext)
+/* write header is done in the encoder_presets fcontext setup,
+ * being a bit sloppy with the cleanup and leaving it to the process exit */
+		if (recctx.fcontext){
 			av_write_trailer(recctx.fcontext);
+
+			if (recctx.astream){
+				LOG("(encode) closing audio stream\n");
+				avcodec_close(recctx.astream->codec);
+			}
+
+			if (recctx.vstream){
+				LOG("(encode) closing video stream\n");
+				avcodec_close(recctx.vstream->codec);
+			}
+
+			if (!(recctx.fcontext->oformat->flags & AVFMT_NOFILE)){
+				LOG("(encode) avio closing file\n");
+				avio_close(recctx.fcontext->pb);
+			}
+
+			avformat_free_context(recctx.fcontext);
+		}
+
+		LOG("(encode) atexit cleanup finished\n");
+		fflush(stderr);
 	}
+}
+
+static void log_callback(void* ptr, int level, const char* fmt, va_list vl) 
+{
+	vfprintf(stderr, fmt, vl);
 }
 
 static bool setup_ffmpeg_encode(const char* resource)
@@ -429,7 +455,13 @@ static bool setup_ffmpeg_encode(const char* resource)
 	struct frameserver_shmpage* shared = recctx.shmcont.addr;
 	assert(shared);
 
+#ifdef _DEBUG
+	av_log_set_level( AV_LOG_DEBUG );
+#else
 	av_log_set_level( AV_LOG_WARNING );
+#endif
+	av_log_set_callback(log_callback);
+
 	static bool initialized = false;
 
 	if (shared->storage.w % 2 != 0 || shared->storage.h % 2 != 0){
@@ -504,6 +536,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 		stream_outp = true;
 		cont = "stream";
 
+		LOG("(encode) enabled streaming output\n");
 		if (!arg_lookup(args, "streamdst", 0, &streamdst) || 
 			strncmp("rtmp://", streamdst, 7) != 0){
 			LOG("(encode:args) Streaming requested, but no "
@@ -552,6 +585,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			
 			recctx.vstream->codec = recctx.vcontext;
 			recctx.fps = fps;
+			LOG("(encode) Video output stream: %d x %d %f fps\n", width, height, fps);
 		}
 	}
 
@@ -651,6 +685,7 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 #else
 				recctx.lastfd = frameserver_readhandle(ev);
 #endif
+				LOG("received file-descriptor, setting up encoder.\n");
 				if (!setup_ffmpeg_encode(resource))
 					return;
 			break;
@@ -668,8 +703,13 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 					ev->data.target.ioevs[0].iv;
 			break;
 
-			case TARGET_COMMAND_STEPFRAME: arcan_frameserver_stepframe(); break;
-			case TARGET_COMMAND_STORE:	return;	break;
+			case TARGET_COMMAND_STEPFRAME: 
+				arcan_frameserver_stepframe(); 
+			break;
+
+			case TARGET_COMMAND_STORE:
+				return;
+			break;
 			}
 		}
 

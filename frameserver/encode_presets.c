@@ -20,10 +20,11 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width,
 
 	ctx->width     = width;
 	ctx->height    = height;
-	ctx->time_base = av_d2q(1.0 / fps, 1000000);
 	ctx->bit_rate  = vbr;
 	ctx->pix_fmt   = PIX_FMT_YUV420P;
 	ctx->gop_size  = 12;
+	ctx->time_base.den = fps;
+	ctx->time_base.num = 1;
 	
 	AVFrame* pframe = avcodec_alloc_frame();
 	pframe->data[0] = av_malloc( (base_sz * 3) / 2);
