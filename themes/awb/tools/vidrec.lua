@@ -536,6 +536,12 @@ local function record(wnd)
 	local width  = height * aspf;
 	width = width - math.fmod(width, 2);
 
+-- disabled selected
+	if (wnd.selected) then
+		image_shader(wnd.selected.vid, "DEFAULT");
+	end
+	wnd.selected = nil;
+
 	local fmtstr = "";
 	if (wnd.streaming) then
 		fmtstr = string.format("libvorbis:vcodec=libx264:container" ..
