@@ -23,6 +23,19 @@ local scalemodelist = {
 	"Bezel"
 };
 
+local deffshdr = [[
+	uniform sampler2D map_diffuse;
+	varying vec2 texco;
+	uniform float obj_opacity;
+
+	void main(){
+		vec4 col = texture2D(map_diffuse, texco);
+		col.a = obj_opacity;
+		gl_FragColor = col;
+	}
+]];
+build_shader(nil, deffshdr, "default_target");
+
 -- NOTE; H264 encoding seems to yield broken MOV
 local codectbl = {};
 local codeclbls = {"Lossless (MKV/FFV1/RAW)", "Lossless (MKV/FFV1/FLAC)", 
@@ -669,7 +682,7 @@ function gridlemenu_tofront(cur)
 end
 
 function undo_displaymodes()
-	image_shader(internal_vid, "DEFAULT");
+	image_shader(internal_vid, "default_target");
 
 	image_framesetsize(internal_vid, 0);
 	image_framecyclemode(internal_vid, 0);
