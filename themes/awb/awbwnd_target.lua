@@ -1,3 +1,19 @@
+--
+-- A different default shader for the canvas that
+-- ignores the alpha channel from the source video
+--
+local deffshdr = [[
+	uniform sampler2D map_diffuse;
+	varying vec2 texco;
+	uniform float obj_opacity;
+
+	void main(){
+		vec4 col = texture2D(map_diffuse, texco);
+		col.a = obj_opacity;
+		gl_FragColor = col;
+	}
+]];
+
 local function getskipval(str)
 	if (str == "Automatic") then
 		return 0;
@@ -1123,6 +1139,7 @@ function awbwnd_target(pwin, caps, factstr)
 			if (pwin.updated == nil) then
 				pwin:update_canvas(source, pwin.mirrored);
 				pwin:resize(pwin.w, pwin.h, true);
+				image_shader(pwin.canvas.vid, "default_target");
 -- unpack settings
 				if (factstr ~= nil) then
 					pwin:factory_restore(factstr);
@@ -1181,7 +1198,14 @@ end
 --
 -- Convenience "launcher" factory function
 --
+local first_init = false;
+
 function targetwnd_setup(game, factstr, coreargs)
+	if (first_init == false) then
+		first_init = true;
+		build_shader(nil, deffshdr, "default_target");
+	end
+				
 	local captbl = launch_target_capabilities(game.target);
 	if (captbl == nil) then
 		awbwman_alert("Couldn't get capability table");
@@ -1204,6 +1228,8 @@ function targetwnd_setup(game, factstr, coreargs)
 		end
 	
 		wnd.gametbl = game;
+		wnd.def_shader = "default_target";
+
 		local tgtargs = nil;
 
 		if (coreargs) then
