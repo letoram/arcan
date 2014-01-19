@@ -68,6 +68,7 @@ return {
 	VIDREC_ASOURCE = "Audio Sources",
 	VIDREC_NOKEY   = "No stream.key found, streaming disabled.",
 	VIDREC_ADVANCED = "Advanced Settings",
+	VIDREC_CFORMAT = "Container Format",
 
 	HELP_GLOBAL = [[
 		\#00ff00(global)\n\r\#ffffff

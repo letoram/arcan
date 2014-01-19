@@ -367,6 +367,22 @@ local function acodecpop(icn)
 	dotbl(icn, lst, "acodec", false);
 end
 
+local function cformatpop(icn)
+	local lst = {
+		"MKV",
+		"MP4",
+		"AVI"
+	};
+
+	dotbl(icn, lst, "cformat", false);
+end
+
+local cformat_ext = {
+	MKV = ".mkv",
+	MP4 = ".mp4",
+	AVI = ".avi"
+};
+
 local function fpspop(icn)
 	local lst = {
 		"10",
@@ -551,7 +567,7 @@ local function record(wnd)
 	else
 		fmtstr = string.format("vcodec=%s:acodec=%s:vpreset=%d:" ..
 		"apreset=%d:fps=%d:container=%s:vptsofs=%d:aptsofs=%d", wnd.vcodec, 
-			wnd.acodec, wnd.vquality, wnd.aquality, wnd.fps, wnd.container, 
+			wnd.acodec, wnd.vquality, wnd.aquality, wnd.fps, wnd.cformat, 
 			wnd.vptsofs, wnd.aptsofs);
 	end
 
@@ -635,6 +651,23 @@ local function record(wnd)
 	wnd.recording = true;
 end
 
+local function load_settings(wnd)
+	wnd.aquality = 7;
+	wnd.vquality = 7;
+	wnd.resolution = 480;
+	wnd.aspect = "4:3";
+	wnd.cformat = "MKV";
+	wnd.acodec = "MP3";
+	wnd.vcodec = "H264";
+	wnd.fps = 30;
+	wnd.aptsofs = 1;
+	wnd.vptsofs = 12;
+end
+
+local function save_settings(wnd)
+	
+end
+
 function spawn_vidrec()
 	local wnd = awbwman_spawn(menulbl("Recorder"), {refid = "vidrec"});
 	wnd.hoverlut = {};
@@ -661,19 +694,11 @@ function spawn_vidrec()
 	wnd.asources = {};
 
 	wnd.helpmsg = MESSAGE["HELP_VIDREC"];
+	load_settings(wnd);
+
 	wnd.global_amon = false;
 	wnd.nosound = true;
 	wnd.name = "Video Recorder";
-	wnd.aquality = 7;
-	wnd.vquality = 7;
-	wnd.resolution = 480;
-	wnd.aspect = "4:3";
-	wnd.container = "MKV";
-	wnd.acodec = "MP3";
-	wnd.vcodec = "H264";
-	wnd.fps = 30;
-	wnd.aptsofs = 1;
-	wnd.vptsofs = 12;
 
 	wnd.set_destination = function(wnd, name, stream)
 		if (name == nil or string.len(name) == 0) then
@@ -684,7 +709,8 @@ function spawn_vidrec()
 			wnd.streaming = true;
 			wnd.destination = name;
 		else
-			wnd.destination = string.format("recordings/%s.mkv", name);
+			wnd.destination = string.format("recordings/%s%s", 
+				name, cformat_ext[wnd.cformat]);
 		end
 
 		if (wnd.ready == nil) then
@@ -711,6 +737,7 @@ function spawn_vidrec()
 	end
 
 	wnd.on_destroy = function()
+		save_settings(wnd);
 	end
 
 	wnd.input = function(self, val)
@@ -753,6 +780,10 @@ function spawn_vidrec()
 	wnd.hoverlut[
 	(bar:add_icon("acodec", "l", cfg.bordericns["acodec"], acodecpop)).vid
 	] = MESSAGE["VIDREC_ACODEC"];
+
+	wnd.hoverlut[
+	(bar:add_icon("cformat", "l", cfg.bordericns["cformat"], cformatpop)).vid
+	] = MESSAGE["VIDREC_CFORMAT"];
 
 	wnd.hoverlut[
 	(bar:add_icon("aqual", "l", cfg.bordericns["aquality"], function(self)
