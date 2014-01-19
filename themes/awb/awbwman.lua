@@ -1109,7 +1109,7 @@ function awbwman_cancel()
 	if (awb_cfg.mouse_focus) then
 		blend_image(mouse_cursor(), 1.0, awb_cfg.animspeed);
 		awb_cfg.mouse_focus = nil;
-		return;
+		return true;
 	end
 
 	if (close_dlg ~= nil) then
@@ -2432,6 +2432,7 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["acodec"]   = load_image("awbicons/acodec.png");
 	awb_cfg.bordericns["aquality"] = load_image("awbicons/aquality.png");
 	awb_cfg.bordericns["fps"]      = load_image("awbicons/fps.png");
+	awb_cfg.bordericns["cformat"]  = load_image("awbicons/cformat.png");
 	awb_cfg.bordericns["subdivide"]= load_image("awbicons/subdiv.png");
 	awb_cfg.bordericns["amplitude"]= load_image("awbicons/ampl.png");
 	awb_cfg.bordericns["filter"]   = load_image("awbicons/filter.png");
