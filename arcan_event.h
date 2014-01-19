@@ -407,6 +407,7 @@ typedef enum {
 
 struct arcan_evctx {
 	bool interactive; /* should STDIN be processed for command events? */
+	bool lossless; /* by default, the oldest event is dropped if queue is full */
 
 	unsigned c_ticks;
 	unsigned c_leaks;

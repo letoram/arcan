@@ -54,7 +54,8 @@ static struct arcan_evctx default_evctx = {
 	.n_eventbuf = ARCAN_EVENT_QUEUE_LIM,
 	.front = &eventfront,
 	.back  = &eventback,
-	.local = true
+	.local = true,
+	.lossless = false
 };
 
 arcan_evctx* arcan_event_defaultctx(){
@@ -218,6 +219,13 @@ void arcan_event_erase_vobj(arcan_evctx* ctx,
 	}
 }
 
+static inline int queue_used(arcan_evctx* dq)
+{
+	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - 
+		*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+	return rv;
+}
+
 /* enqueue to current context considering input-masking,
  * unless label is set, assign one based on what kind of event it is */
 void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
@@ -227,7 +235,18 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 		return;
 	}
 
+retry:
 	if (LOCK(ctx)){
+
+		if (ctx->lossless){
+			if (ctx->n_eventbuf - queue_used(ctx) <= 1){
+				UNLOCK(ctx);
+/* futex or other sleep mechanic, 
+ * or use the synch as a counting semaphore */	
+				goto retry;	
+			}
+		}
+
 		unsigned ind = alloc_queuecell(ctx);
 		arcan_event* dst = &ctx->eventbuf[ind];
 		*dst = *src;
@@ -235,13 +254,6 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 
 		UNLOCK(ctx);
 	}
-}
-
-static inline int queue_used(arcan_evctx* dq)
-{
-	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - 
-		*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
-	return rv;
 }
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, 
