@@ -56,7 +56,10 @@ function awblist_resize(self, neww, newh)
 		if (self.ofs < 1) then 
 			self.ofs = 1;
 		end
-		self.invalidate = true;
+
+		if (self.capacity < self.total) then
+			self.invalidate = true;
+		end
 	end
 
 -- only redraw if we've grown (keep image when shrinking and clip
