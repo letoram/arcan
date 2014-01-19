@@ -242,6 +242,7 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst,
 	inq->synch.external.shared = esem;
 	inq->synch.external.killswitch = NULL;
 	inq->local = false;
+	inq->lossless = true;
 	inq->eventbuf = dst->childdevq.evqueue;
 	inq->front = &dst->childdevq.front;
 	inq->back  = &dst->childdevq.back;
@@ -250,6 +251,7 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst,
 	outq->synch.external.shared = esem;
 	outq->synch.external.killswitch = NULL;
 	outq->local =false;
+	outq->lossless = true;
 	outq->eventbuf = dst->parentdevq.evqueue;
 	outq->front = &dst->parentdevq.front;
 	outq->back  = &dst->parentdevq.back;
