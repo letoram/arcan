@@ -63,7 +63,7 @@ static void* nanny_thread(void* arg)
 	pid_t* pid = (pid_t*) arg;
 	
 	if (pid){
-		int counter = 10;
+		int counter = 60;
 		
 		while (counter--){
 			int statusfl;
@@ -193,6 +193,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 				fd, fsrv->sockout_fd, errno, strerror(errno));
 	}
 	
+	close(fd);
 	return rv;
 }
 
