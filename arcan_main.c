@@ -378,8 +378,8 @@ themeswitch:
  * the system subpath path (BIOS, ..) 
  */
 	if (getenv("ARCAN_SYSTEMPATH") == NULL){
-		size_t len = strlen(arcan_resourcepath) + strlen("/games/system") + 
-			strlen("ARCAN_SYSTEMPATH");
+		size_t len = strlen(arcan_resourcepath) + sizeof("/games/system") + 
+			sizeof("ARCAN_SYSTEMPATH=") + 1;
 
 		char* const syspath = malloc(len);
 		sprintf(syspath, "ARCAN_SYSTEMPATH=%s/games/system", arcan_resourcepath);
@@ -390,7 +390,9 @@ themeswitch:
 			getenv("ARCAN_SYSTEMPATH"));
 
 	if (getenv("ARCAN_FRAMESERVER_LOGDIR") == NULL){
-		size_t len = strlen(arcan_resourcepath) + strlen("/logs") + 27;
+		size_t len = strlen(arcan_resourcepath) + sizeof("/logs") + 
+			sizeof("ARCAN_FRAMESERVER_LOGDIR=/logs");
+
 		char* const logpath = malloc(len);
 		sprintf(logpath, "ARCAN_FRAMESERVER_LOGDIR=%s/logs", arcan_resourcepath);
 		putenv(logpath);
