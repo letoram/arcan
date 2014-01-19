@@ -1714,10 +1714,13 @@ function gridview_cleanuphook()
 
 	if (settings.status_loading) then
 		remove_loaded();
-	else
-		build_grid(settings.cell_width, settings.cell_height);
 	end
-	
+
+	if (settings.grid_gone) then
+		build_grid(settings.cell_width, settings.cell_height);
+		settings.grid_gone = nil;
+	end
+
 	blend_image(imagery.bgimage, 1.0, settings.transitiondelay);
 	
 	if ((valid_vid(imagery.musicplayer) and settings.bgmusic == "Menu Only")) then
@@ -1753,6 +1756,7 @@ end
 function gridle_internal_status(source, tbl)
 	if (tbl.kind == "resized") then
 		if (not settings.in_internal) then
+			settings.grid_gone = true;
 			erase_grid(true);
 			zap_whitegrid();
 			blend_image(imagery.bgimage, 0.0, settings.transitiondelay);
