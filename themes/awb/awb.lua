@@ -282,6 +282,10 @@ local function search_popup(reficn)
 	local wnd = awbwman_popup(placeholdr, deffont_sz - 4, 
 		function() end, {ref = reficn.vid}); 
 
+	if (wnd == nil) then
+		return;
+	end
+
 	hide_image(wnd.cursor);
 	mouse_droplistener(wnd);
 	delete_image(placeholdr);
@@ -307,6 +311,8 @@ local function search_popup(reficn)
 		local list = list_games({title = wnd.inputfield.msg});
 		if (list ~= nil and #list > 0) then
 			gamelist_tblwnd(list, wnd.inputfield.msg);
+		else
+			wnd:destroy();
 		end
 	end
 
@@ -491,7 +497,7 @@ function gamelist_tblwnd(tbl, capt)
 			end
 
 			return res, #tbl;
-		end, desktoplbl, {refid = "listwnd_" .. capt});
+		end, desktoplbl, {});
 
 	if (wnd ~= nil) then
 		wnd.name = "List(" .. capt .. ")";

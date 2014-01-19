@@ -36,11 +36,13 @@ local awb_cfg = {
 	amap        = {},
 
 	spawn_method = "mouse",
+-- the whole "cell allocation + nextspawn" strategy should
+-- be entirely reworked, this is just crazy
 	rootcell_w  = 80,
 	rootcell_h  = 60,
 	icnroot_startx = 0,
-	icnroot_starty = 0,
-	icnroot_stepx  = -40,
+	icnroot_starty = 30,
+	icnroot_stepx  = -80,
 	icnroot_stepy  = 80,
 	icnroot_maxy   = VRESH - 100,
 	icnroot_x      = VRESW - 100,
@@ -517,6 +519,10 @@ local function awbwman_next_spawnpos(wnd)
 			y = VRESH - wnd.canvash;
 		end
 
+		if (y < awb_cfg.topbar_sz) then
+			 y = awb_cfg.topbar_sz;
+		end
+
 		return x, y;
 
 	else
@@ -542,7 +548,7 @@ local function next_iconspawn()
 	awb_cfg.icnroot_y = awb_cfg.icnroot_y + awb_cfg.icnroot_stepy;
 
 	if (awb_cfg.icnroot_y > awb_cfg.icnroot_maxy) then
-		awb_cfg.icnroot_x = awb_cfg.icnroot_x + awb_cfg.icnroot_stepx;
+		awb_cfg.icnroot_x = awb_cfg.icnroot_x + awb_cfg.icnroot_stepx; 
 		awb_cfg.icnroot_y = awb_cfg.icnroot_starty;
 	end
 
@@ -1322,6 +1328,7 @@ function awbwman_popup(rendervid, lineheights, callbacks, options)
 		resize_image(wnd, 1, 1, awb_cfg.animspeed);
 
 		mouse_droplistener(res);
+		awb_cfg.popup_active = nil;
 	end
 
 	local btnh = function(self, vid, x, y, left)
