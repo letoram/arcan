@@ -230,19 +230,24 @@ static inline int queue_used(arcan_evctx* dq)
  * unless label is set, assign one based on what kind of event it is */
 void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 {
+	int rtc = 1;
+
 /* early-out mask-filter */
 	if (!src || (src->category & ctx->mask_cat_inp)){
 		return;
 	}
 
 retry:
-	if (LOCK(ctx)){
 
+	if (LOCK(ctx)){
 		if (ctx->lossless){
 			if (ctx->n_eventbuf - queue_used(ctx) <= 1){
 				UNLOCK(ctx);
 /* futex or other sleep mechanic, 
  * or use the synch as a counting semaphore */	
+				rtc *= 2;
+				arcan_timesleep(rtc);
+
 				goto retry;	
 			}
 		}
