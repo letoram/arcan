@@ -1019,15 +1019,13 @@ static bool dbh_integrity_check(arcan_dbh* dbh){
 
 	switch (vnum){
 		case 0:
-			arcan_warning("Upgrading old database to revision 2\n");
+			arcan_warning("Upgrading old database (v0) to (v2)\n");
 			arcan_db_theme_kv(dbh, "arcan", "dbversion", "1");
 			db_void_query(dbh, "ALTER TABLE game ADD COLUMN system TEXT;");
-		break;
 		case 1:
-			arcan_warning("Upgrading old database to revision 2\n");
+			arcan_warning("Upgrading old database (v1) to (v2)\n");
 			db_void_query(dbh, "ALTER_TABLE target ADD COLUMN hijack TEXT;");
 			arcan_db_theme_kv(dbh, "arcan", "dbversion", "2");
-		break;
 	}
 
 	return true;
