@@ -27,6 +27,12 @@ local function getskipval(str)
 		return 3;
 	elseif (str == "Skip 4") then
 		return 4;
+	elseif (str == "Rollback 1") then
+		return -3;
+	elseif (str == "Rollback 2") then
+		return -4;
+	elseif (str == "Rollback 3") then
+		return -5;
 	end
 end
 
@@ -149,6 +155,24 @@ local function inputlay_sel(icn, wnd)
 end
 
 function awbtarget_settingswin(tgtwin)
+	local skiptbl = {
+		"Automatic", 
+		"None",
+		"Skip 1", 
+		"Skip 2", 
+		"Skip 3", 
+		"Skip 4", 
+		"Rollback 1", 
+		"Rollback 2",
+		"Rollback 3"
+	};
+
+	local modetbl = {
+		"Direct",
+		"Analog-Remap",
+		"Analog-Disable"
+	};
+
 	local conftbl = {
 		{
 		name = "graphdbg",
@@ -176,15 +200,13 @@ function awbtarget_settingswin(tgtwin)
 		{
 		name = "skipmode",
 		trigger = function(self, wnd)
-			stepfun_tbl(self, wnd, tgtwin, "skipmode", {"Automatic", "None",
-			"Skip 1", "Skip 2", "Skip 3", "Skip 4"}, true);
+			stepfun_tbl(self, wnd, tgtwin, "skipmode", skiptbl, true);
 			self.cols[2] = tgtwin.skipmode;
 			tgtwin:set_frameskip();
 			wnd:force_update();
 		end,
 		rtrigger = function(self, wnd)
-			stepfun_tbl(self, wnd, tgtwin, "skipmode", {"Automatic", "None",
-			"Skip 1", "Skip 2", "Skip 3", "Skip 4"}, false);
+			stepfun_tbl(self, wnd, tgtwin, "skipmode", skiptbl, false);
 			self.cols[2] = tgtwin.skipmode;
 			wnd:force_update();
 			tgtwin:set_frameskip();
@@ -222,8 +244,103 @@ function awbtarget_settingswin(tgtwin)
 		end,
 		rtrigger = trigger,
 		cols = {"Reset Opposing", tostring(tgtwin.reset_opposing)}
+		},
+		{
+		name = "mouse_mode",
+		trigger = function(self, wnd)
+			stepfun_tbl(self, wnd, tgtwin, "mouse_mode", modetbl, true);
+			self.cols[2] = tgtwin.mouse_mode;
+			wnd:force_update();
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_tbl(self, wnd, tgtwin, "mouse_mode", modetbl, false);
+			self.cols[2] = tgtwin.mouse_mode;
+			wnd:force_update();
+		end,
+		cols = {"Mousegrab Mode", tgtwin.mouse_mode}
+		},
+		{
+		name = "mousex_pl",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousex_pl", nil, nil, 1, 4, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousex_pl", nil, nil, 1, 4, -1);
+		end,
+		cols = {"Mouse X -> Player #", tostring(tgtwin.mousex_pl)},
+		},
+		{
+		name = "mousex_ax",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousex_ax", nil, nil, 1, 8, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousex_ax", nil, nil, 1, 8, -1);
+		end,
+		cols = {"Mouse X -> Player Axis", tostring(tgtwin.mousex_ax)},
+
+		},
+		{
+		name = "mousey_pl",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousey_pl", nil, nil, 1, 4, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousey_pl", nil, nil, 1, 4, -1);
+		end,
+		cols = {"Mouse Y -> Player #", tostring(tgtwin.mousey_pl)}
+		},
+		{
+		name = "mousey_ax",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousey_ax", nil, nil, 1, 8, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mousey_ax", nil, nil, 1, 8, -1);
+		end,
+		cols = {"Mouse Y -> Player Axis", tostring(tgtwin.mousey_ax)}
+		},
+		{
+		name = "mouselb_pl",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouselb_pl", nil, nil, 1, 4, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouselb_pl", nil, nil, 1, 4, -1);
+		end,
+		cols = {"Mouse Left Button -> Player #", tostring(tgtwin.mouselb_pl)}
+		},
+		{
+		name = "mouselb_btn",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouselb_btn", nil, nil, 1, 8, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouselb_btn", nil, nil, 1, 8, -1);
+		end,
+		cols = {"Mouse Left Button -> Player Button", tostring(tgtwin.mouselb_btn)}
+		},
+		{
+		name = "mouserb_pl",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouserb_pl", nil, nil, 1, 4, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouserb_pl", nil, nil, 1, 4, -1);
+		end,
+		cols = {"Mouse Right Button -> Player #", tostring(tgtwin.mouserb_pl)}
+		},
+		{
+		name = "mouserb_btn",
+		trigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouserb_btn", nil, nil, 1, 8, 1);
+		end,
+		rtrigger = function(self, wnd)
+			stepfun_num(self, wnd, tgtwin, "mouserb_btn", nil, nil, 1, 8, -1);
+		end,
+		cols = {"Mouse Right Button -> Player Button", tostring(tgtwin.mouserb_btn)}
 		}
-	};
+		};
 
 	local newwnd = awbwman_listwnd(
 		menulbl("Advanced..."), deffont_sz, linespace,
@@ -572,23 +689,24 @@ local function factrest(wnd, str)
 						else
 							opc = arg;
 						end
-
 						if (opc == "x_player") then
-							wnd.mouse_x[1] = tonumber(oper);
+							wnd.mousex_pl = tonumber(oper);
+						elseif (opc == "mode") then
+							wnd.mouse_mode = oper;
 						elseif (opc == "x_axis") then
-							wnd.mouse_x[2] = tonumber(oper);
+							wnd.mousex_ax = tonumber(oper);
 						elseif (opc == "y_player") then
-							wnd.mouse_y[1] = tonumber(oper);
+							wnd.mousey_pl = tonumber(oper);
 						elseif (opc == "y_axis") then
-							wnd.mouse_y[2] = tonumber(oper);
+							wnd.mousey_ax = tonumber(oper);
 						elseif (opc == "lmb_player") then
-							wnd.mouse_l[1] = tonumber(oper);
+							wnd.mouselb_pl = tonumber(oper);
 						elseif (opc == "lmb_button") then
-							wnd.mouse_l[2] = tonumber(oper);
+							wnd.mouselb_btn = tonumber(oper);
 						elseif (opc == "rmb_player") then
-							wnd.mouse_r[1] = tonumber(oper);
+							wnd.mouserb_pl = tonumber(oper);
 						elseif (opc == "rmb_button") then
-							wnd.mouse_r[2] = tonumber(oper);
+							wnd.mouserb_btn = tonumber(oper);
 						elseif (opc == "accelf") then
 							wnd.mouse_accel = tonumber_rdx(oper);
 						end
@@ -720,10 +838,10 @@ local function gen_factorystr(wnd)
 
 	table.insert(lines, string.format("mouse_remap:x_player=%d:x_axis=%d" ..
 	":y_player=%d:y_axis=%d:lmb_player=%d:lmb_button=%d:rmb_player=%d:" ..
-	"rmb_button=%d:accelf=%s",
-		wnd.mouse_x[1], wnd.mouse_x[2], wnd.mouse_y[1], wnd.mouse_y[2],
-		wnd.mouse_l[1], wnd.mouse_l[2], wnd.mouse_r[1], wnd.mouse_r[2],
-		tostring_rdx(wnd.mouse_accel)));
+	"rmb_button=%d:accelf=%s:mode=%s",
+		wnd.mousex_pl, wnd.mousex_ax, wnd.mousey_pl, wnd.mousey_ax,
+		wnd.mouselb_pl, wnd.mouselb_btn, wnd.mouserb_pl, wnd.mouserb_btn,
+		tostring_rdx(wnd.mouse_accel), wnd.mouse_mode));
 
 	return table.concat(lines, "\n");
 end
@@ -892,11 +1010,16 @@ function awbwnd_target(pwin, caps, factstr)
 	pwin.ntsc_state = false;
 	pwin.set_coreopt = setcoreopt;
 
+	pwin.mouse_mode = "Direct";
 	pwin.mouse_accel = 1.0;
-	pwin.mouse_x = {1, 1};
-	pwin.mouse_y = {1, 2};
-	pwin.mouse_l = {1, 1};
-	pwin.mouse_r = {1, 2};
+	pwin.mousex_pl = 1;
+	pwin.mousex_ax = 1;
+	pwin.mousey_pl = 1;
+	pwin.mousey_ax = 2;
+	pwin.mouselb_pl = 1;
+	pwin.mouselb_btn = 1;
+	pwin.mouserb_pl = 1;
+	pwin.mouserb_btn = 2;
 
 	pwin.ntsc_hue        = 0.0;
 	pwin.ntsc_saturation = 0.0;
@@ -1056,29 +1179,55 @@ function awbwnd_target(pwin, caps, factstr)
 	] = MESSAGE["HOVER_INPUTCFG"];
 
 -- Forced remapping of mouse in / out 
-	bartt.minput = function(self, iotbl)
+	pwin.minput = function(self, iotbl, focused)
+		if (pwin.controlid == nil) then
+			return;
+		end
+
 		if (iotbl.kind == "digital") then
 			if (iotbl.subid == 0) then
 				iotbl.label = string.format("PLAYER%d_BUTTON%d", 
-				pwin.mouse_l[1], pwin.mouse_r[2]);
+				pwin.mouselb_pl, pwin.mouselb_btn);
 			else
 				iotbl.label = string.format("PLAYER%d_BUTTON%d", 
-					pwin.mouse_r[1], pwin.mouse_r[2]);
+					pwin.mouserb_pl, pwin.mouserb_btn);
 			end
+
+		elseif (pwin.mouse_mode == "Analog-Disable") then
+			return;
 		else
-			local tbl = iotbl.subid == 0 and pwin.mouse_x or pwin.mouse_y;
-			iotbl.label = string.format("PLAYER%d_AXIS%d", tbl[1], tbl[2]); 
-				
+			local pl_n, pl_a;
+			if (iotbl.subid == 0) then
+				pl_n = pwin.mousex_pl;
+				pl_a = pwin.mousex_ax;
+			else
+				pl_n = pwin.mousey_pl;
+				pl_a = pwin.mousey_ax;
+			end
+
+			iotbl.label = string.format("PLAYER%d_AXIS%d", pl_n, pl_a);
+			
 -- scale both absolute and relative (if provided)
 			iotbl.samples[1] = iotbl.samples[1] * pwin.mouse_accel;
 			if (iotbl.samples[2]) then
 				iotbl.samples[2] = iotbl.samples[2] * pwin.mouse_accel;
 			end
-		end
+	
+-- if (direct) then just pass unaltered
+			if (pwin.mouse_mode == "Analog-Remap") then
+				iotbl.samples[2] = nil;
+				if (iotbl.subid == 0) then
+					iotbl.samples[1] = math.floor(
+						((iotbl.samples[1] / VRESW) - 0.5) * 32767);
+				else
+					iotbl.samples[1] = math.floor(
+						((iotbl.samples[1] / VRESH) - 0.5) * 32767);
+				end
+			end
 
-		if (pwin.controlid ~= nil) then	
-			target_input(pwin.controlid, iotbl);
 		end
+	
+		target_input(pwin.controlid, iotbl);
 	end
 
 	pwin.input = function(self, iotbl)
@@ -1175,7 +1324,7 @@ function awbwnd_target(pwin, caps, factstr)
 		own = function(self, vid) return vid == pwin.canvas.vid; end,
 		click = function() pwin:focus(); end,
 		dblclick = function()
-				awbwman_mousefocus(pwin);
+			awbwman_mousefocus(pwin);
 		end
 	};
 
