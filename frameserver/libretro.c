@@ -197,7 +197,8 @@ static struct {
 /* parent uses an event->push model for input, libretro uses a poll one, so
  * prepare a lookup table that events gets pushed into and libretro can poll */
 	struct input_port input_ports[MAX_PORTS];
-		
+	char kbdtbl[RETROK_LAST];	
+
 	void (*run)();
 	void (*reset)();
 	bool (*load_game)(const struct retro_game_info* game);
@@ -276,7 +277,8 @@ static void process_frames(int nframes, bool overrv, bool overra)
 	if (overra)
 		retroctx.skipframe_a = true;
 
-	retroctx.run();
+	while(nframes--)
+		retroctx.run();
 
 	if (retroctx.skipmode <= TARGET_SKIP_ROLLBACK){
 		retroctx.serialize(retroctx.rollback_state + 
@@ -905,6 +907,8 @@ static inline int16_t libretro_inputmain(unsigned port, unsigned dev,
 		break;
 
 		case RETRO_DEVICE_KEYBOARD:
+			if (id < RETROK_LAST)
+				rv |= retroctx.kbdtbl[id];
 		break;
 
 		case RETRO_DEVICE_MOUSE:
@@ -1040,11 +1044,13 @@ static void ioev_ctxtbl(arcan_ioevent* ioev, const char* label)
 		else if ( strcmp(subtype, "START") == 0 )
 			button = RETRO_DEVICE_ID_JOYPAD_START;
 		else;
-
 		if (button >= 0)
 			retroctx.input_ports[ind-1].buttons[button] = value;
 	}
-
+	else if (ioev->datatype == EVENT_IDATATYPE_TRANSLATED){
+		if (ioev->input.translated.keysym < RETROK_LAST)
+			retroctx.kbdtbl[ioev->input.translated.keysym] = value;
+	}
 }
 
 static void toggle_ntscfilter(int toggle)
@@ -1433,6 +1439,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
  	else {
 		frameserver_shmpage_setevqs(shared, retroctx.shmcont.esem, 
 			&(retroctx.inevq), &(retroctx.outevq), false);
+		retroctx.outevq.lossless = true;
+	
 		resize_shmpage(320, 240, true);
 	
 		if (snprintf(logbuf, logbuf_sz, "loading(%s)", libname) >= logbuf_sz)
