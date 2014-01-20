@@ -1512,6 +1512,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	frameserver_shmpage_setevqs(netcontext.shmcont.addr, 
 		netcontext.shmcont.esem, &(netcontext.inevq), 
 		&(netcontext.outevq), false);
+	netcontext.outevq.lossless = true;
+
 	frameserver_semcheck(netcontext.shmcont.vsem, -1);
 
 /* resize guarantees at least 32bit alignment (possibly 64, 128) */
