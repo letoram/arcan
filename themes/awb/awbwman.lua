@@ -2135,7 +2135,7 @@ end
 function awbwman_minput(iotbl)
 	if (awb_cfg.mouse_focus ~= nil and
 		awb_cfg.focus and awb_cfg.focus.minput) then
-		awb_cfg.focus:minput(iotbl);
+		awb_cfg.focus:minput(iotbl, true);
 		return false;
 	else
 		return true;
