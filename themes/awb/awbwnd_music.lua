@@ -179,8 +179,8 @@ local function awnd_setup(pwin, bar)
 		awnd_callback(pwin, source, status);
 	end
 
-	pwin.on_fullscreen = function(self, dstvid)
-		if (pwin.shid) then
+	pwin.on_fullscreen = function(self, dstvid, active)
+		if (pwin.shid and active) then
 			image_shader(dstvid, pwin.shid);
 		end
 	end
