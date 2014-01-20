@@ -210,18 +210,19 @@ function awbwman_fullscreen(wnd)
 	show_image(vid);
 	order_image(vid, max_current_image_order());
 	if (wnd.on_fullscreen) then
-		wnd:on_fullscreen(vid);
+		wnd:on_fullscreen(vid, true);
 	end
 
 -- store values for restoring
 	awb_cfg.fullscreen.vid = vid;
 	awb_cfg.fullscreen.props = cprops;
+	awb_cfg.fullscreen.wnd = wnd;
 	
 -- force focus lock for mouse input etc.
 	awb_cfg.focus_locked = true;
 end
 
-function awbwman_dropfullscreen(wnd)
+function awbwman_dropfullscreen()
 -- reattach canvas to window
 	blend_image(mouse_cursor(), 1.0, awb_cfg.animspeed);
 
@@ -235,6 +236,10 @@ function awbwman_dropfullscreen(wnd)
 
 	awb_cfg.focus:resize(w, h, true);
 		
+	if (awb_cfg.fullscreen.wnd.on_fullscreen) then
+		awb_cfg.fullscreen.wnd:on_fullscreen(vid, false);
+	end
+
 	delete_image(awb_cfg.fullscreen.vid);
 
 	awb_cfg.mouse_focus = nil;

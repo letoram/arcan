@@ -467,6 +467,14 @@ function awbwmedia_filterchain(pwin)
 		image_sharestorage(dstres, cfg.fullscreen.vid);
 	end
 
+	pwin.on_fullscreen = function(self, vid, state)
+		if (pwin.filters.effect == "Glow" or 
+			pwin.filters.effect == "GlowTrails") then
+			image_mask_clear(pwin.controlid, MASK_OPACITY);
+			show_image(pwin.controlid);
+		end
+	end
+
 -- propagate to other recipients 
 	for k,v in ipairs(pwin.on_update) do
 		v(v, pwin, dstres);	
