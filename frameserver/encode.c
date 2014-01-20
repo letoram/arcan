@@ -658,6 +658,8 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 	recctx.shmcont = frameserver_getshm(keyfile, true);
 	frameserver_shmpage_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
+	recctx.outevq.lossless = true;
+
 	recctx.lastfd = BADFD;
 	atexit(encoder_atexit);
 

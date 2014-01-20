@@ -660,6 +660,7 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 		frameserver_semcheck(decctx.shmcont.vsem, -1);
 		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
 			&(decctx.inevq), &(decctx.outevq), false);
+		decctx.outevq.lossless = true;
 
 		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height)){
 			LOG("arcan_frameserver(decode) shmpage setup failed, "
