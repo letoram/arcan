@@ -5824,6 +5824,8 @@ static inline void dump_props(FILE* dst, surface_properties props)
 	fprintf_float(dst, "props.rotation = {", props.rotation.roll, ", ");
 	fprintf_float(dst, "", props.rotation.pitch, ", ");
 	fprintf_float(dst, "", props.rotation.yaw, "};\n");
+
+	fprintf_float(dst, "props.opacity = ", props.opa, ";\n");
 }
 
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
