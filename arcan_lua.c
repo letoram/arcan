@@ -5861,6 +5861,7 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tglstore_bpp = %d,\n\
 \tglstore_txu = %d,\n\
 \tglstore_txv = %d,\n\
+\tglstore_prgid = %d,\n\
 \tglstore_prg = [[%s]],\n\
 \tscalemode  = [[%s]],\n\
 \timageproc = [[%s]],\n\
@@ -5897,6 +5898,7 @@ lut_framemode(src->frameset_meta.mode),
 (int) src->vstore->bpp,
 (int) src->vstore->txu,
 (int) src->vstore->txv,
+(int) src->program,
 arcan_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
 lut_imageproc(src->vstore->imageproc),
