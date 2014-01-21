@@ -73,7 +73,19 @@
 #include "arcan_led.h"
 #endif
 
-#define LUA_TRACE(fsym) 
+/* this macro is placed in every arcan- specific function callable from the LUA
+ * space. By default, it's empty, but can be used to map out stack contents 
+ * (above will only be LUA context pointer that can be used to devise the
+ * calling function, or to output "reasonably" cheap profiling (entry
+ * will be either a frameserver/image/etc. callback or the few (_event, 
+ * _clock_pulse, _frame_pulse etc.) entry-point can be found (with >= 1 
+ * debug_level in lua_ctx_store.lastsrc and timing data can be gotten
+ * from arcan_timemillis()
+	example: #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
+		arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
+*/
+
+#define LUA_TRACE(fsym)
 
 #include "arcan_img.h"
 #include "arcan_ttf.h"
@@ -156,6 +168,8 @@ enum arcan_cb_source {
 
 static struct {
 	FILE* rfile;
+	const char* lastsrc;
+
 	unsigned char debug;
 	unsigned lua_vidbase;
 	unsigned char grab;
@@ -194,7 +208,7 @@ static void dump_call_trace(lua_State* ctx)
 #endif
 }
 
-static void arcan_lua_wraperr(struct arcan_luactx* ctx, 
+static void wraperr(struct arcan_luactx* ctx, 
 	int errc, const char* src);
 
 static void crashdump(const char* msg, const char* src)
@@ -1325,7 +1339,7 @@ static int deleteimage(lua_State* ctx)
 
 	if (rv != ARCAN_OK){
 		if (lua_ctx_store.debug > 0){
-			arcan_warning("%s => arcan_lua_deleteimage(%.0lf=>%d) -- Object could not"
+			arcan_warning("%s => deleteimage(%.0lf=>%d) -- Object could not"
 			" be deleted, invalid object specified.\n",luaL_lastcaller(ctx),srcid,id);
 		}
 		else{
@@ -1442,20 +1456,6 @@ static int dofile(lua_State* ctx)
 	free(fname);
 	return res;
 }
-
-/*static int arcan_lua_clipboardget(lua_State* ctx)
-{
-	const char* const msg = luaL_optstring(ctx, 2, "text");
-	if (strcmp(msg, "text") == 0){
-		
-	} 
-	else{
-		arcan_warning("unsupported clipboard type requested.\n");
-	}
-
-	return 0;
-}
-*/
 
 static int pausemovie(lua_State* ctx)
 {
@@ -1882,7 +1882,7 @@ static int targetresume(lua_State* ctx)
 	return 0;
 }
 
-static bool arcan_lua_grabthemefunction(lua_State* ctx, const char* funame)
+static bool grabthemefunction(lua_State* ctx, const char* funame)
 {
 	if (strcmp(arcan_themename, funame) == 0)
 		lua_getglobal(ctx, arcan_themename);
@@ -1901,7 +1901,7 @@ static bool arcan_lua_grabthemefunction(lua_State* ctx, const char* funame)
 	return true;
 }
 
-static inline int arcan_lua_funtable(lua_State* ctx, uint32_t kind){
+static inline int funtable(lua_State* ctx, uint32_t kind){
 	lua_newtable(ctx);
 	int top = lua_gettop(ctx);
 	lua_pushstring(ctx, "kind");
@@ -2000,11 +2000,11 @@ static char* streamtype(int num)
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	if (ev->category == EVENT_SYSTEM && 
-		arcan_lua_grabthemefunction(ctx, "system")){
+		grabthemefunction(ctx, "system")){
 		lua_newtable(ctx);
 	}
-	if (ev->category == EVENT_IO && arcan_lua_grabthemefunction(ctx, "input")){
-		int top = arcan_lua_funtable(ctx, ev->kind);
+	if (ev->category == EVENT_IO && grabthemefunction(ctx, "input")){
+		int top = funtable(ctx, ev->kind);
 
 		lua_pushstring(ctx, "kind");
 
@@ -2081,15 +2081,15 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			arcan_warning("Engine -> Script: ignoring IO event: %i\n",ev->kind);
 		}
 
-		arcan_lua_wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
+		wraperr(ctx, lua_pcall(ctx, 1, 0, 0), "push event( input )");
 	}
 	else if (ev->category == EVENT_TIMER){
 		arcan_lua_setglobalint(ctx, "CLOCK", ev->tickstamp);
 
-		if (arcan_lua_grabthemefunction(ctx, "clock_pulse")) {
+		if (grabthemefunction(ctx, "clock_pulse")) {
 			lua_pushnumber(ctx, ev->tickstamp);
 			lua_pushnumber(ctx, ev->data.timer.pulse_count);
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
 		}
 	}
 	else if (ev->category == EVENT_NET){
@@ -2142,7 +2142,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			lua_ctx_store.cb_source_tag  = ev->data.external.source;
 			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_net");
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_net");
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 		}
@@ -2243,7 +2243,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			lua_ctx_store.cb_source_tag  = ev->data.external.source;
 			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event_external");
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 		}
@@ -2261,7 +2261,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (arcan_video_findparent(ev->data.frameserver.video) == ARCAN_EID)
 			return;
 
-		if (arcan_lua_grabthemefunction(ctx, "frameserver_event"))
+		if (grabthemefunction(ctx, "frameserver_event"))
 			gotfun = true;
 		else
 			gotfun = (lua_pushnumber(ctx, 0), false);
@@ -2301,7 +2301,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 
 		if (gotfun)
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
 		else
 			lua_settop(ctx, 0);
 
@@ -2313,7 +2313,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		const char* evmsg = "video_event";
 		bool gotfun;
 
-		if (arcan_lua_grabthemefunction(ctx, "video_event"))
+		if (grabthemefunction(ctx, "video_event"))
 /* due to the asynch- callback approach some additional 
  * checks are needed before bailing */
 			gotfun = true;
@@ -2379,14 +2379,14 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 
 		if (gotfun)
-			arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), evmsg);
+			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), evmsg);
 		else
 			lua_settop(ctx, 0);
 
 		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 	}
 	else if (ev->category == EVENT_AUDIO && 
-		arcan_lua_grabthemefunction(ctx, "audio_event")){
+		grabthemefunction(ctx, "audio_event")){
 		lua_pushaid(ctx, ev->data.video.source);
 		lua_newtable(ctx);
 
@@ -2405,7 +2405,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(),"
 				"	unknown audio event (%i)\n", ev->kind);
 		}
-		arcan_lua_wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: audio_event");
+		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: audio_event");
 	}
 }
 
@@ -3427,7 +3427,7 @@ static int filtergames(lua_State* ctx)
 		}
 	}
 	else {
-		arcan_lua_wraperr(ctx,0,"filtergames(), requires argument table");
+		wraperr(ctx,0,"filtergames(), requires argument table");
 	}
 
 	arcan_db_free_res(dbhandle, dbr);
@@ -3542,7 +3542,7 @@ static int getgame(lua_State* ctx)
 	return rv;
 }
 
-static void arcan_lua_panic(lua_State* ctx)
+static void panic(lua_State* ctx)
 {
 	lua_ctx_store.debug = 2;
 
@@ -3550,22 +3550,25 @@ static void arcan_lua_panic(lua_State* ctx)
 		char vidbuf[64] = {0};
 		snprintf(vidbuf, 63, "script error in callback for VID (%lld)", 
 			lua_ctx_store.lua_vidbase + lua_ctx_store.cb_source_tag);
-		arcan_lua_wraperr(ctx, -1, vidbuf);
+		wraperr(ctx, -1, vidbuf);
 	} else
-		arcan_lua_wraperr(ctx, -1, "(panic)");
+		wraperr(ctx, -1, "(panic)");
 
 	arcan_fatal("LUA VM is in an unrecoverable panic state.\n");
 }
 
-static void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
+static void wraperr(lua_State* ctx, int errc, const char* src)
 {
+	if (lua_ctx_store.debug)
+		lua_ctx_store.lastsrc = src;
+
 	if (errc == 0)
 		return;
 
 	const char* mesg = luaL_optstring(ctx, 1, "unknown");
 
 	if (lua_ctx_store.debug){
-		arcan_warning("Warning: arcan_lua_wraperr((), %s, from %s\n", mesg, src);
+		arcan_warning("Warning: wraperr((), %s, from %s\n", mesg, src);
 
 		if (lua_ctx_store.debug >= 1)
 			dump_call_trace(ctx);
@@ -3575,13 +3578,13 @@ static void arcan_lua_wraperr(lua_State* ctx, int errc, const char* src)
 
 		crashdump(mesg, src);
 		if (!(lua_ctx_store.debug > 2)){
-			arcan_fatal("Fatal: arcan_lua_wraperr(%s, %s)\n", mesg, src);
+			arcan_fatal("Fatal: wraperr(%s, %s)\n", mesg, src);
 		}
 	}
 	else{
 		while ( arcan_video_popcontext() < CONTEXT_STACK_LIMIT -1);
 		crashdump(mesg, src);
-		arcan_fatal("Fatal: arcan_lua_wraperr(), %s, from %s\n", mesg, src);
+		arcan_fatal("Fatal: wraperr(), %s, from %s\n", mesg, src);
 	}
 }
 
@@ -3661,10 +3664,8 @@ static int screencoord(lua_State* ctx)
 
 bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 {
-	if ( arcan_lua_grabthemefunction(ctx, fun) ){
-		arcan_lua_wraperr(ctx,
-	                  lua_pcall(ctx, 0, 0, 0),
-	                  fun);
+	if ( grabthemefunction(ctx, fun) ){
+		wraperr(ctx, lua_pcall(ctx, 0, 0, 0), fun);
 		return true;
 	}
 	else if (warn)
@@ -5090,13 +5091,6 @@ static int inputfilteranalog(lua_State* ctx)
 	return 0;
 }
 
-/*static int arcan_lua_inputanalogzonemap(lua_State* ctx)
-{
- * dev, axis, pressv, releasev, buttonind
-	return 0;
-}
-*/
-
 static inline void tblanalogenum(lua_State* ctx, int ttop,
 	enum ARCAN_ANALOGFILTER_KIND mode)
 {
@@ -5614,7 +5608,7 @@ void arcan_lua_pushargv(lua_State* ctx, char** argv)
 	lua_setglobal(ctx, "arguments");
 }
 
-static void arcan_lua_register_tbl(lua_State* ctx, const luaL_Reg* funtbl) 
+static void register_tbl(lua_State* ctx, const luaL_Reg* funtbl) 
 {
 	while(funtbl->name != NULL){
 		lua_pushstring(ctx, funtbl->name);
@@ -5630,7 +5624,7 @@ arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	lua_ctx_store.debug = debugfuncs;
-	lua_atpanic(ctx, (lua_CFunction) arcan_lua_panic);
+	lua_atpanic(ctx, (lua_CFunction) panic);
 
 #ifdef _DEBUG
 	lua_ctx_store.lua_vidbase = rand() % 32768;
@@ -5655,7 +5649,7 @@ static const luaL_Reg resfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_RESOURCE
-	arcan_lua_register_tbl(ctx, resfuns);
+	register_tbl(ctx, resfuns);
 
 #define EXT_MAPTBL_TARGETCONTROL
 static const luaL_Reg tgtfuns[] = {
@@ -5689,7 +5683,7 @@ static const luaL_Reg tgtfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_TARGETCONTROL
-	arcan_lua_register_tbl(ctx, tgtfuns);
+	register_tbl(ctx, tgtfuns);
 
 #define EXT_MAPTBL_DATABASE
 static const luaL_Reg dbfuns[] = {
@@ -5704,7 +5698,7 @@ static const luaL_Reg dbfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_DATABASE
-	arcan_lua_register_tbl(ctx, dbfuns);
+	register_tbl(ctx, dbfuns);
 
 #define EXT_MAPTBL_AUDIO
 static const luaL_Reg audfuns[] = {
@@ -5718,7 +5712,7 @@ static const luaL_Reg audfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_AUDIO
-	arcan_lua_register_tbl(ctx, audfuns);
+	register_tbl(ctx, audfuns);
 	
 #define EXT_MAPTBL_IMAGE
 static const luaL_Reg imgfuns[] = {
@@ -5789,7 +5783,7 @@ static const luaL_Reg imgfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_IMAGE
-	arcan_lua_register_tbl(ctx, imgfuns);
+	register_tbl(ctx, imgfuns);
 
 #define EXT_MAPTBL_3D
 static const luaL_Reg threedfuns[] = {
@@ -5814,7 +5808,7 @@ static const luaL_Reg threedfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_3D
-	arcan_lua_register_tbl(ctx, threedfuns);
+	register_tbl(ctx, threedfuns);
 
 #define EXT_MAPTBL_SYSTEM
 static const luaL_Reg sysfuns[] = {
@@ -5835,7 +5829,7 @@ static const luaL_Reg sysfuns[] = {
 {NULL, NULL}
 };
 #undef EXT_MAPTBL_SYSTEM
-	arcan_lua_register_tbl(ctx, sysfuns);
+	register_tbl(ctx, sysfuns);
 
 #define EXT_MAPTBL_IODEV
 static const luaL_Reg iofuns[] = {
@@ -5853,7 +5847,7 @@ static const luaL_Reg iofuns[] = {
 {NULL, NULL},
 };
 #undef EXT_MAPTBL_IODEV
-	arcan_lua_register_tbl(ctx, iofuns);
+	register_tbl(ctx, iofuns);
 
 #define EXT_MAPTBL_VIDSYS
 static const luaL_Reg vidsysfuns[] = {
@@ -5875,7 +5869,7 @@ static const luaL_Reg vidsysfuns[] = {
 {NULL, NULL},
 };
 #undef EXT_MAPTBL_VIDSYS
-	arcan_lua_register_tbl(ctx, vidsysfuns);
+	register_tbl(ctx, vidsysfuns);
 
 #define EXT_MAPTBL_NETWORK
 static const luaL_Reg netfuns[] = {
@@ -5890,7 +5884,7 @@ static const luaL_Reg netfuns[] = {
 {NULL, NULL},
 };
 #undef EXT_MAPTBL_NETWORK
-	arcan_lua_register_tbl(ctx, netfuns);
+	register_tbl(ctx, netfuns);
 
 	atexit(arcan_lua_cleanup);
 	return ARCAN_OK;
