@@ -1,7 +1,9 @@
 -- image_shader
 -- @short: Set the active shader for an object.
--- @inargs: vid, shid or string 
--- @group: image 
+-- @inargs: vid, *shid or string*
+-- @outargs: oldshid 
+-- @group: image
+-- @note: if only the vid is provided, the active program won't be changed
 -- @note: if a string argument is supplied as the second argument,
 -- the routine will first resolve it by looking for a previously compiled
 -- shader with a name that matches the argument. If no match is found,

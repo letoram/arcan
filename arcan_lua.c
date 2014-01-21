@@ -933,16 +933,20 @@ static int arcan_lua_sharestorage(lua_State* ctx)
 static int arcan_lua_setshader(lua_State* ctx)
 {
 	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_shader_id shid;
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_shader_id oldshid = vobj->program;
 
-	shid = lua_type(ctx, 2) == LUA_TSTRING ?
-		arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
+	if (lua_gettop(ctx) > 1){
+		arcan_shader_id shid = lua_type(ctx, 2) == LUA_TSTRING ?
+			arcan_shader_lookup(luaL_checkstring(ctx, 2)) : luaL_checknumber(ctx, 2);
 
-	if (ARCAN_OK != arcan_video_setprogram(id, shid))
-		arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader," 
-			"invalid vobj or shader id specified.\n", id, shid);
+		if (ARCAN_OK != arcan_video_setprogram(id, shid))
+			arcan_warning("arcan_video_setprogram(%d, %d) -- couldn't set shader," 
+				"invalid vobj or shader id specified.\n", id, shid);
+	}
 
-	return 0;
+	lua_pushnumber(ctx, oldshid);
+	return 1;
 }
 
 static int arcan_lua_setmeshshader(lua_State* ctx)
