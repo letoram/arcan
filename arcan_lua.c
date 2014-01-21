@@ -81,11 +81,11 @@
  * _clock_pulse, _frame_pulse etc.) entry-point can be found (with >= 1 
  * debug_level in lua_ctx_store.lastsrc and timing data can be gotten
  * from arcan_timemillis()
-	example: #define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
-		arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
-*/
+	example: */
 
-#define LUA_TRACE(fsym)
+//#define LUA_TRACE(fsym)
+#define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
+		arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
 
 #include "arcan_img.h"
 #include "arcan_ttf.h"
@@ -1311,15 +1311,15 @@ static int pick(lua_State* ctx)
 	return 1;
 }
 
-static int hittest(lua_State* state)
+static int hittest(lua_State* ctx)
 {
 	LUA_TRACE("image_hit");
 
-	arcan_vobj_id id = luaL_checkvid(state, 1);
-	unsigned int x = luaL_checkint(state, 2);
-	unsigned int y = luaL_checkint(state, 3);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	unsigned int x = luaL_checkint(ctx, 2);
+	unsigned int y = luaL_checkint(ctx, 3);
 
-	lua_pushboolean(state, arcan_video_hittest(id, x, y) != 0);
+	lua_pushboolean(ctx, arcan_video_hittest(id, x, y) != 0);
 
 	return 1;
 }
