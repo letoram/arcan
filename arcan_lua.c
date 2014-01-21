@@ -83,9 +83,9 @@
  * from arcan_timemillis()
 	example: */
 
-//#define LUA_TRACE(fsym)
-#define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
-		arcan_timemillis(), lua_ctx_store.lastsrc, fsym);
+#define LUA_TRACE(fsym)
+/*#define LUA_TRACE(fsym) fprintf(stderr, "(%lld:%s)->%s\n", \
+		arcan_timemillis(), lua_ctx_store.lastsrc, fsym); */
 
 #include "arcan_img.h"
 #include "arcan_ttf.h"
