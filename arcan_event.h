@@ -416,19 +416,6 @@ struct arcan_evctx {
 
 	unsigned kbdrepeat;
 
-/* limit analog sampling rate as to not saturate the event buffer,
- * with rate == 0, all axis events will be emitted
- * with rate >  0, the upper limit is n samples per second.
- * with rate <  0, emit a sample per axis every n milliseconds. */
-	struct {
-		int rate;
-
-/* with smooth samples > 0, use a ring-buffer of smooth_sample
- * values per axis,and whenever an sample is to be emitted,
- * the actual value will be based on an averag eof the smooth buffer. */
-		char smooth_samples;
-	} analog_filter;
-
 	unsigned n_eventbuf;
 	arcan_event* eventbuf;
 

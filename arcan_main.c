@@ -66,7 +66,6 @@
 #endif
 
 #include "arcan_db.h"
-#include "arcan_util.h"
 #include "arcan_videoint.h"
 
 arcan_dbh* dbhandle = NULL;
