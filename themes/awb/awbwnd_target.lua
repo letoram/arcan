@@ -908,6 +908,14 @@ local function add_corearg(dstwnd, msg)
 			end
 		end
 
+	elseif (group == "curv") then
+		for i,v in pairs(dstwnd.coreopts) do
+			if (v.num == num) then
+				v.value = msg;
+				return;
+			end
+		end
+
 	elseif (group == "arg") then
 		for i,v in pairs(dstwnd.coreopts) do
 			if (v.num == num) then
