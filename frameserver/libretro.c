@@ -590,7 +590,8 @@ static const char* lookup_varset( const char* key )
 	sprintf(buf, "core_%s", key);
 	const char* val = NULL;
 
-/* we have an initial preset, only update if dirty */
+/* we have an initial preset, only update if dirty,
+ * note: this might not be necessary anymore, test and drop */
 	if (arg_lookup(retroctx.inargs, buf, 0, &val)){
 		if (var)
 			while(var->key){
@@ -626,6 +627,7 @@ static void update_corearg(int code, const char* value)
 	if (code <= 0){
 		free((char*)var->value);
 		var->value = strdup(value);
+		var->updated = true;
 	}
 }
 
@@ -696,9 +698,9 @@ static void update_varset( struct retro_variable* data )
 		while(*workend && *workend == ' ') workend++;
 
 /* key */
-		snprintf((char*)outev.data.external.message, msgsz-1,
-			"%d:key:%s", count, data[count].key);
-		arcan_event_enqueue(&retroctx.outevq, &outev);
+			snprintf((char*)outev.data.external.message, msgsz-1,
+				"%d:key:%s", count, data[count].key);
+			arcan_event_enqueue(&retroctx.outevq, &outev);
 
 /* description */
 			snprintf((char*)outev.data.external.message, msgsz-1, 
@@ -721,7 +723,15 @@ startarg:
 				snprintf((char*)outev.data.external.message, msgsz-1,
 					"%d:arg:%s", count, workbeg);
 				arcan_event_enqueue(&retroctx.outevq, &outev);
+
 				goto startarg;
+			}
+	
+			const char* curv = lookup_varset(data[count].key);
+			if (curv){
+				snprintf((char*)outev.data.external.message, msgsz-1,
+				"%d:curv:%s", count, curv);
+				arcan_event_enqueue(&retroctx.outevq, &outev);
 			}
 	
 step:
@@ -782,9 +792,12 @@ static bool libretro_setenv(unsigned cmd, void* data){
 	case RETRO_ENVIRONMENT_GET_VARIABLE:
 		{
 			struct retro_variable* arg = (struct retro_variable*) data;
-			arg->value = lookup_varset(arg->key);
-			if (arg->value)
+			const char* val = lookup_varset(arg->key);
+			if (val){
+				arg->value = val;
+				LOG("core requested (%s), got (%s)\n", arg->key, arg->value);
 				rv = true;
+			}
 		}
 	break;
 
