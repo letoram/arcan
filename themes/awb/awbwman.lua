@@ -871,7 +871,18 @@ function awbwman_dialog(caption, buttons, options, modal)
 		image_mask_clear(a, MASK_POSITION);
 	end
 
+--
+-- Need to be first in the on_destroy chain to manage a. modal dialogs,
+-- b. windows that need some kind of confirmation before being destroyed
+-- as there might be unsaved state that will be lost
+--
 	wnd.on_destroy = function()
+		if (wnd.confirm_destroy ~= nil) then
+			awbwman_confirm_dialog(wnd.confirm_destroy, 
+				wnd.wndid, function() wnd.confirm_destroy = nil; wnd:destroy(); end);
+			return true;
+		end
+
 		if (modal) then
 			awb_cfg.modal = nil;
 		end
@@ -1111,6 +1122,32 @@ function awbwman_rootwnd()
 	awb_cfg.root = wcont;
 end
 
+local confirmtbl = {};
+function awbwman_confirm_dialog(msg, id, trigfun, modal)
+	if (confirmtbl[id] == true) then
+		return;
+	end
+
+	local btntbl = {
+	{
+		caption = awb_cfg.defrndfun("No"),
+		trigger = function(owner) 
+			confirmtbl[id] = nil;
+		end
+	},
+	{
+		caption = awb_cfg.defrndfun("Yes");
+		trigger = function(owner) 
+			confirmtbl[id] = nil;
+			trigfun();
+		end
+	}
+	};
+
+	awbwman_dialog(awb_cfg.defrndfun(msg), btntbl, {}, modal);
+	confirmtbl[id] = true;
+end
+
 function awbwman_cancel()
 	if (awb_cfg.fullscreen ~= nil) then
 		awbwman_dropfullscreen();
@@ -1123,34 +1160,13 @@ function awbwman_cancel()
 		return true;
 	end
 
-	if (close_dlg ~= nil) then
-		return;
-	end
-
 	if (awb_cfg.cursor_tag) then
 		awb_cfg.cursor_tag.drop();
 
 	elseif (awb_cfg.popup_active) then
 		drop_popup();
 	else
-	local btntbl = {
-			{
-				caption = awb_cfg.defrndfun("No"),
-				trigger = function(owner) 
-					close_dlg = nil;
-				end
-			},
-			{
-				caption = awb_cfg.defrndfun("Yes");
-				trigger = function(owner) 
-					awbwman_shutdown();
-					close_dlg = nil;
-				end
-			}
-	};
-
-		awbwman_dialog( awb_cfg.defrndfun("Shutdown?"), btntbl, {}, true);
-		close_dlg = true;
+		awbwman_confirm_dialog("Shutdown?", "shutdowndlg", shutdown, true);
 	end
 end
 

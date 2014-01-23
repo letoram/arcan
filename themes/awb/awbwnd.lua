@@ -215,6 +215,20 @@ local function awbwnd_move(self, newx, newy, timeval)
 end
 
 local function awbwnd_destroy(self, timeval)
+-- let subtype specific hooks be invoked before we reset members
+	if (type(self.on_destroy) == "function") then
+		if (self:on_destroy() == true and self.confirm_destroy) then
+			return;
+		end
+
+	elseif (type(self.on_destroy) == "table") then
+		for i=1,#self.on_destroy do
+			if (self.on_destroy[i](self) == true and self.confirm_destroy) then
+				return;
+			end
+		end
+	end
+
 --
 -- delete the icons immediately as we don't want them pressed
 -- and they "fade" somewhat oddly when there's a background bar
@@ -222,15 +236,6 @@ local function awbwnd_destroy(self, timeval)
 	for k, v in pairs(self.dir) do
 		if (v) then
 			v:destroy();
-		end
-	end
-
--- let subtype specific hooks be invoked before we reset members
-	if (type(self.on_destroy) == "function") then
-		self:on_destroy();
-	elseif (type(self.on_destroy) == "table") then
-		for i=1,#self.on_destroy do
-			self.on_destroy[i](self);
 		end
 	end
 
