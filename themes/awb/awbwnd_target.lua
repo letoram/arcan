@@ -1362,7 +1362,7 @@ function targetwnd_setup(game, factstr, coreargs)
 		first_init = true;
 		build_shader(nil, deffshdr, "default_target");
 	end
-				
+
 	local captbl = launch_target_capabilities(game.target);
 	if (captbl == nil) then
 		awbwman_alert("Couldn't get capability table");
@@ -1386,6 +1386,12 @@ function targetwnd_setup(game, factstr, coreargs)
 	
 		wnd.gametbl = game;
 		wnd.def_shader = "default_target";
+		wnd.real_destroy = wnd.destroy;
+		wnd.destroy = function(self, speed)
+			local vid, lines = desktoplbl("Close");
+			awbwman_popup(vid, lines, function() wnd:real_destroy(speed); end,
+				{ref = wnd.dir.t.left[1].vid});
+		end;
 
 		local tgtargs = nil;
 
