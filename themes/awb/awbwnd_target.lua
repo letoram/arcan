@@ -154,6 +154,75 @@ local function inputlay_sel(icn, wnd)
 	end, {ref = icn.vid});
 end
 
+-- save the current wnd advanced settings,
+-- ind : 1 (game/target specific)
+-- ind : 2 (target specific)
+-- ind : 3 (global)
+local function global_cfgname(gametbl)
+	return "tgtdefaults/global.lua";
+end
+
+local function target_cfgname(gametbl)
+	return string.format("tgtdefaults/%s.lua", gametbl.target);
+end
+
+local function targetgame_cfgname(gametbl)
+	return string.format("tgtdefaults/%s_%d.lua", gametbl.target, gametbl.gameid);
+end
+
+local function advanced_defaults(wnd, ind)
+	local dstfile;
+
+	if (ind == 1) then
+		dstfile = targetgame_cfgname(wnd.gametbl);
+	elseif (ind == 2) then
+		dstfile = target_cfgname(wnd.gametbl);
+	else
+		dstfile = global_cfgname(wnd.gametbl);
+	end
+
+	zap_resource(dstfile);
+	if (not open_rawresource(dstfile)) then
+		warning(string.format("Failed saving settings to (%s)", dwtfile));
+		return;
+	end
+
+-- should really segment / refactor all these
+-- little settings into seperate tables and just 
+-- iterate / expand that way
+	write_rawresource(string.format([[
+local args = {};
+args.skipmode = "%s";
+args.graphdbg = %s;
+args.framealign = %d;
+args.preaud = %d;
+args.jitterstep = %d;
+args.jitterxfer = %d;
+args.mouse_mode = "%s";
+args.mouse_accel = %f;
+args.mousex_pl = %d;
+args.mousex_ax = %d;
+args.mousey_pl = %d;
+args.mousey_ax = %d;
+args.mouselb_pl = %d;
+args.mouselb_btn = %d;
+args.mouserb_pl = %d;
+args.mouserb_btn = %d;
+return args;]],
+		wnd.skipmode, tostring(wnd.graphdbg),
+		wnd.framealign,
+		wnd.preaud, wnd.jitterstep,
+		wnd.jitterxfer, wnd.mouse_mode,
+		wnd.mouse_accel, wnd.mousex_pl,
+		wnd.mousex_ax, wnd.mousey_pl,
+		wnd.mousey_ax, wnd.mouselb_pl, 
+		wnd.mouselb_btn, wnd.mouserb_pl, 
+		wnd.mouserb_btn 
+		));
+
+	close_rawresource();
+end
+
 function awbtarget_settingswin(tgtwin)
 	local skiptbl = {
 		"Automatic", 
@@ -340,14 +409,25 @@ function awbtarget_settingswin(tgtwin)
 		end,
 		cols = {"Mouse Right Button -> Player Button", tostring(tgtwin.mouserb_btn)}
 		}
-		};
+	};
 
 	local newwnd = awbwman_listwnd(
 		menulbl("Advanced..."), deffont_sz, linespace,
 		{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
-	if (newwnd == nil) then
+
+		if (newwnd == nil) then
 		return;
 	end
+
+	newwnd.dir.t:add_icon("save", "l", awbwman_cfg().bordericns["save"], 
+		function(self)
+			local savetbl = {'Game Defaults', 'Target Defaults', 'Global Defaults'};
+				local vid,lines = desktoplbl(table.concat(savetbl, "\\n\\r"));
+				awbwman_popup(vid, lines, 
+					function(ind) advanced_defaults(tgtwin, ind); 
+				end);
+		end
+	);
 
 	tgtwin:add_cascade(newwnd);
 end
@@ -984,8 +1064,30 @@ tgtwnd_mappings["FASTFORWARD"] = function(wnd, iotbl)
 		skipmode = 10; 
 	end
 
-	target_framemode(wnd.controlid, skipmode, wnd.framealign, wnd.preaud,
-		wnd.jitterstep, wnd.jitterxfer);
+	target_framemode(wnd.controlid, skipmode, 
+		wnd.framealign, wnd.preaud, wnd.jitterstep, wnd.jitterxfer);
+end
+
+local function load_settings(pwin, gametbl)
+	local srctbl; 
+
+	if (resource(targetgame_cfgname(gametbl))) then
+		srctbl = system_load(targetgame_cfgname(gametbl))();
+
+	elseif (resource(target_cfgname(gametbl))) then
+		srctbl = system_load(target_cfgname(gametbl))();
+
+	elseif (resource(global_cfgname(gametbl))) then
+		srctbl = system_load(global_cfgname(gametbl))();
+	end
+
+	if (srctbl == nil or type(srctbl) ~= "table") then
+		return;
+	end
+
+	for k,v in pairs(srctbl) do
+		pwin[k] = v;
+	end
 end
 
 --
@@ -1385,6 +1487,8 @@ function targetwnd_setup(game, factstr, coreargs)
 		end
 	
 		wnd.gametbl = game;
+		load_settings(wnd, game);
+
 		wnd.def_shader = "default_target";
 		wnd.real_destroy = wnd.destroy;
 		wnd.destroy = function(self, speed)
