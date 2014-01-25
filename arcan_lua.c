@@ -6093,6 +6093,18 @@ static inline void fprintf_float(FILE* dst,
 		fprintf(dst, "%s%d.%d%s", pre, (int)intp, abs(fractp), post);
 }
 
+static inline char* lut_txmode(int txmode)
+{
+	switch (txmode){
+	case GL_REPEAT:
+		return "repeat";
+	case GL_CLAMP_TO_EDGE:
+		return "clamp(edge)";
+	default:
+		return "unknown(broken)";
+	}
+}
+
 static inline char* lut_kind(arcan_vobject* src)
 {
 	if (src->feed.state.tag == ARCAN_TAG_IMAGE)
@@ -6152,6 +6164,8 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tglstore_h = %d,\n\
 \tglstore_bpp = %d,\n\
 \tglstore_prgid = %d,\n\
+\tglstore_txu = [[%s]],\n\
+\tglstore_txv = [[%s]],\n\
 \tglstore_prg = [[%s]],\n\
 \tscalemode  = [[%s]],\n\
 \timageproc = [[%s]],\n\
@@ -6187,6 +6201,8 @@ lut_framemode(src->frameset_meta.mode),
 (int) src->vstore->h,
 (int) src->vstore->bpp,
 (int) src->program,
+lut_txmode(src->vstore->txu),
+lut_txmode(src->vstore->txv),
 arcan_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
 lut_imageproc(src->vstore->imageproc),
@@ -6198,8 +6214,6 @@ mask,
 lut_kind(src),
 src->tracetag ? src->tracetag : "no tag");
 
-	fprintf_float(dst, "glstore_txu = ", src->vstore->txu, ",\n");
-	fprintf_float(dst, "glstore_txv = ", src->vstore->txv, ",\n");
 	fprintf_float(dst, "origoofs = {", src->origo_ofs.x, ", ");
 	fprintf_float(dst, "", src->origo_ofs.y, ", ");
 	fprintf_float(dst, "", src->origo_ofs.z, "}\n};\n");
