@@ -464,7 +464,7 @@ function display_fxaa(source, targetw, targeth)
 		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
 
 	show_image(fxaa_outp);
-	order_image(fxaa_outp, 3);
+	order_image(fxaa_outp, INGAMELAYER_DISPLAY);
 
 	return fxaa_outp;
 end
@@ -1491,9 +1491,9 @@ local function add_gamelbls( lbltbl, ptrtbl )
 	local coreptr = {};
 	
 	local update_corearg = function(k, v)
-		settings.coreargs[k].value = v;
+		settings.coreargs[k].curv = v;
 		target_coreopt(internal_vid, settings.coreargs[k].num,
-			settings.coreargs[k].value);
+			settings.coreargs[k].curv);
 	
 		settings.coreargs_dirty = true;
 		settings.iodispatch["MENU_ESCAPE"]();
@@ -1514,7 +1514,9 @@ local function add_gamelbls( lbltbl, ptrtbl )
 				end
 			end
 
-			menu_spawnmenu(v.args, argptr, {});
+			local defs = {};
+			defs[v.curv] = settings.colourtable.notice_fontstr;
+			menu_spawnmenu(v.args, argptr, defs); 
 		end
 	end
 
