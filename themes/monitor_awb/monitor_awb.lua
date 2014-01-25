@@ -64,7 +64,7 @@ function monitor_awb()
 --
 	if (samplefile ~= nil) then
 		LAST_SAMPLE = system_load(samplefile)();
-		sample_sample(LAST_SAMPLE, 1, 1);
+		sample(LAST_SAMPLE, 1, 1);
 	end
 
 	awbmon_help();
