@@ -3,20 +3,7 @@
 -- More advanced windows from the (awbwnd.lua) base
 -- tracking ordering, creation / destruction /etc.
 --
--- Todolist:
---   -> Auto-hide occluded windows to limit overdraw
---   -> Tab- cycle focus window with out of focus shadowed
---   -> Fullscreen mode for window
---   -> Autohide for top menu bar on fullscreen
---   -> Drag and Drop for windows
---   -> Remember icon / window positions and sizes
---   -> Keyboard input for all windows
---   -> Animated resize effect
 
---
--- mapped up as "default_inverted", needed by some subclasses
--- (e.g. awbwnd_icon etc.)
---
 local awbwnd_invsh = [[
 uniform sampler2D map_diffuse;
 uniform float obj_opacity;
@@ -36,32 +23,37 @@ local awb_wtable = {};
 local awb_col = {};
 
 local awb_cfg = {
--- window management
-	wlimit      = 10,
 	focus_locked = false,
+	fullscreen  = nil,
 	topbar_sz   = 16,
 	spawnx      = 20,
 	spawny      = 20,
 	animspeed   = 10,
+	bgopa       = 1.0,
 	meta        = {},
 	hidden      = {},
 
+	spawn_method = "mouse",
 -- root window icon management
 	rootcell_w  = 80,
 	rootcell_h  = 60,
 	icnroot_startx = 0,
-	icnroot_starty = 0,
-	icnroot_stepx  = -40,
+	icnroot_starty = 30,
+	icnroot_stepx  = -80,
 	icnroot_stepy  = 80,
 	icnroot_maxy   = VRESH - 100,
 	icnroot_x      = VRESW - 100,
 	icnroot_y      = 30,
-
+	tabicn_base = 32,
 	global_vol = 1.0
 };
 
-local function awbwman_findind(val)
-	for i,v in ipairs(awb_wtable) do
+local function awbwman_findind(val, tbl)
+	if (tbl == nil) then
+		tbl = awb_wtable;
+	end
+
+	for i,v in ipairs(tbl) do
 		if (v == val) then
 			return i;
 		end
@@ -93,11 +85,29 @@ local function awbwman_pushback(wnd)
 end
 
 function awbwman_meta(lbl, active)
-	if (lbl ~= "shift") then
-		return;
+	if (lbl ~= nil) then
+		if (lbl == "alt") then
+			awb_cfg.meta.alt = active;
+		elseif (lbl ~= "shift") then
+			return "";
+		else
+			awb_cfg.meta.shift = active;
+			if (active == false) then
+				awbwman_tablist_toggle(false);
+			end
+		end
 	end
 
-	awb_cfg.meta.shift = active;
+	local rkey = "";
+	if (awb_cfg.meta.shift) then
+		rkey = rkey .. "SHIFT";
+	end
+
+	if (awb_cfg.meta.alt) then
+		rkey = rkey .. "ALT";
+	end
+
+	return rkey;
 end
 
 function string.split(instr, delim)
@@ -110,7 +120,7 @@ function string.split(instr, delim)
 		strt = delim_stp + 1;
 		delim_pos, delim_stp = string.find(instr, delim, strt);
 	end
-	
+
 	table.insert(res, string.sub(instr, strt));
 	return res;
 end
@@ -144,6 +154,7 @@ local function awbwman_focus(wnd, nodrop)
 	awb_cfg.focus = wnd;
 	local tbl = table.remove(awb_wtable, awbwman_findind(wnd));
 	table.insert(awb_wtable, tbl);
+
 	awbwman_updateorder();
 end
 
@@ -166,7 +177,7 @@ function awbwman_shadow_nonfocus()
 		blend_image(awb_cfg.shadowimg, 0.5, awb_cfg.animspeed);
 	else
 		expire_image(awb_cfg.shadowimg, awb_cfg.animspeed);
-		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed); 
+		blend_image(awb_cfg.shadowimg, 0.0, awb_cfg.animspeed);
 	end
 end
 
@@ -181,10 +192,11 @@ end
 
 local function awbwman_close(wcont, nodest)
 	drop_popup();
-	awbwman_dereg(wcont);
+	awbwman_dereg(awb_wtable, wcont);
 
 	if (awb_cfg.focus == wcont) then
 		awb_cfg.focus = nil;
+
 		if (awb_cfg.focus_locked) then
 			awbwman_shadow_nonfocus();
 		end
@@ -210,8 +222,15 @@ local function lineobj(src, x1, y1, x2, y2)
 	resize_image(src, len, 2);
 
 	show_image(src);
+
+-- quickfix to bug in origo_offset with -1 > n < 1 degrees
+	local deg = math.deg( math.atan2(dy, dx) );
+	if ( deg > -1.0 and deg < 1.0) then
+		deg = deg < 0.0 and -1.0 or 1.0;
+	end
+
 	rotate_image(src, math.deg( math.atan2(dy, dx) ) );
-	move_image(src, x1, y1);
+	move_image(src, x1 + (dx * 0.5), y1 + (dy * 0.5)); 
 	image_origo_offset(src, -1 * (0.5 * len), -0.5);
 
 	return line;
@@ -227,7 +246,7 @@ local function awbwnd_fling(wnd, fx, fy, bar)
 	local dx = wnd.x + fx * 8;
 	local dy = wnd.y + fy * 8;
 	dx = dx >= 0 and dx or 0;
-	dy = dy >= 0 and dy or 0;
+	dy = dy >= awb_cfg.topbar_sz and dy or awb_cfg.topbar_sz;
 	dx = (dx + wnd.w > VRESW) and (VRESW - wnd.w) or dx;
 	dy = (dy + wnd.h > VRESH) and (VRESH - wnd.h) or dy;
 
@@ -260,6 +279,9 @@ local function awbman_mhandlers(wnd, bar)
 	end
  
 	bar.dblclick = function(self, vid, x, y)
+		if (wnd.resizable == false) then
+			return;
+		end
 		awbwman_focus(self.parent);
 
 --
@@ -278,7 +300,7 @@ local function awbman_mhandlers(wnd, bar)
 			self.oldw = wnd.w;
 			self.oldh = wnd.h;
 			wnd:move(0, 20);
-			wnd:resize(VRESW, VRESH - 20);
+			wnd:resize(VRESW, VRESH - 20, true);
 		end
 	end
 
@@ -307,39 +329,93 @@ local function awbman_mhandlers(wnd, bar)
 	table.insert(wnd.handlers, bar);
 end
 
-function awbwman_minimize_drop()
-end
-
 local function awbwman_addcaption(bar, caption)
+	if (bar.update_caption == nil) then
+		bar.update_caption = awbwman_addcaption;
+	else
+		image_sharestorage(caption, bar.capvid);
+		local props = image_surface_properties(caption);
+		delete_image(caption);
+		resize_image(bar.capvid, props.width, props.height);
+		resize_image(bar.bgvid, 3 + props.width * 1.1, bar.size);
+		return;
+	end
+
+	bar.update_caption = awbwman_addcaption;
+--	bar.noresize_fill = false;
 	local props  = image_surface_properties(caption);
-	local bgsurf = color_surface(10, 10, 230, 230, 230);
+	local bgsurf = fill_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("caption", "fill", bgsurf);
-	delete_image(icn.vid);
+	delete_image(bgsurf);	
 
 	if (props.height > (bar.size - 2)) then
 		resize_image(caption, 0, bar.size);
 		props = image_surface_properties(caption);
 	end
 
-	icn.maxsz = 3 + props.width * 1.1; 
-	icn.vid = bgsurf;
+	icn.maxsz = math.floor(3 + props.width * 1.1);
+	resize_image(icn.vid, icn.maxsz, bar.size);
 
-	link_image(icn.vid, bar.vid);
-	show_image(icn.vid);
-	image_inherit_order(icn.vid, true);
-	order_image(icn.vid, 0);
-	image_mask_set(icn.vid, MASK_UNPICKABLE);
-
-	link_image(caption, bgsurf);
+	link_image(caption, icn.vid);
 	show_image(caption);
 	image_inherit_order(caption, true);
 	order_image(caption, 1);
 	image_mask_set(caption, MASK_UNPICKABLE);
+	image_mask_set(icn.vid, MASK_UNPICKABLE);
 	move_image(caption, 2, 2 + math.floor(0.5 * (bar.size - props.height)));
+	image_clip_on(caption, CLIP_SHALLOW);
+	bar.capvid = caption;
+	bar.bgvid = icn.vid;
 end
+
+function awbwman_minimize_drop()
+end
+
 
 function awbwman_activepopup()
 	return awb_cfg.popup_active ~= nil;
+end
+
+--
+-- desired spawning behavior might change (i.e. 
+-- best fit, random, centered, at cursor, incremental pos, ...)
+--
+local function awbwman_next_spawnpos(wnd)
+	local oldx = awb_cfg.spawnx;
+	local oldy = awb_cfg.spawny;
+
+	if (awb_cfg.spawn_method == "mouse") then
+		local x, y = mouse_xy();
+		x = x - 16;
+
+		if (wnd.w + x > VRESW) then
+			x = VRESW - wnd.canvasw;
+		end
+
+		if (wnd.h + y > VRESH) then
+			y = VRESH - wnd.canvash;
+		end
+
+		if (y < awb_cfg.topbar_sz) then
+			 y = awb_cfg.topbar_sz;
+		end
+
+		return math.floor(x), math.floor(y);
+
+	else
+		awb_cfg.spawnx = awb_cfg.spawnx + awb_cfg.topbar_sz;
+		awb_cfg.spawny = awb_cfg.spawny + awb_cfg.topbar_sz;
+
+		if (awb_cfg.spawnx > VRESW * 0.75) then
+			awb_cfg.spawnx = 0;
+		end
+
+		if (awb_cfg.spawny > VRESH * 0.75) then
+			awb_cfg.spawny = 0;
+		end
+	end
+
+	return oldx, oldy;
 end
 
 function awbwman_cursortag()
@@ -367,15 +443,32 @@ function awbwman_spawn(caption, options)
 	
 	options.animspeed = awb_cfg.animspeed;
 
--- load pos, size from there and update
--- the key in destroy
-	if (options.x == nil) then
-		local lx, ly = mouse_xy();
-		options.x = math.floor(lx) - 60;
-		options.y = math.floor(ly);
+	if (options.refid ~= nil) then
+		local kv = get_key(options.refid);
+		if (kv ~= nil) then
+			kv = tostring(kv);
+			local strtbl = string.split(kv, ":");
+			for i, j in ipairs(strtbl) do
+				local arg = string.split(j, "=");
+				options[arg[1]] = tonumber_rdx(arg[2]);
+				if (options[arg[1]] ~= nil) then
+				if (arg[1] == "x" or arg[1] == "w") then
+					options[arg[1]] = math.floor(VRESW * options[arg[1]]);
+				elseif (arg[1] == "y" or arg[1] == "h") then
+					options[arg[1]] = math.floor(VRESH * options[arg[1]]);
+				end
+				end
+			end
+		end
 	end
-	local wcont  = awbwnd_create(options);
 
+	local wcont  = awbwnd_create(options);
+	if (wcont == nil) then
+		return;
+	end
+
+	wcont.kind = "window";
+	
 	local mhands = {};
 	local tmpfun = wcont.destroy;
 
@@ -384,6 +477,10 @@ function awbwman_spawn(caption, options)
 
 -- default drag, click, double click etc.
 	wcont.destroy = function(self, time)
+		if (time == nil) then
+			time = awb_cfg.animspeed;
+		end
+
 		mouse_droplistener(self);
 		mouse_droplistener(self.rhandle);
 		mouse_droplistener(self.top);
@@ -416,11 +513,11 @@ function awbwman_spawn(caption, options)
 		end
 
 	if (options.noicons == nil) then
-		tbar:add_icon("cap", "l", awb_cfg.bordericns["close"], function()
+		tbar:add_icon("close", "l", awb_cfg.bordericns["close"], function()
 			wcont:destroy(awb_cfg.animspeed);	
 		end);
 
-		tbar:add_icon("cap", "r", awb_cfg.bordericns["toback"], function()
+		tbar:add_icon("toback", "r", awb_cfg.bordericns["toback"], function()
 			awbwman_pushback(wcont);
 			awbwman_updateorder();
 		end);
@@ -436,6 +533,7 @@ function awbwman_spawn(caption, options)
 		image_mask_set(rbar.vid, MASK_UNPICKABLE);
 		local icn = rbar:add_icon("resize", "r", awb_cfg.bordericns["resize"]);
 		local rhandle = {};
+
 		rhandle.drag = function(self, vid, x, y)
 			awbwman_focus(wcont);
 			if (awb_cfg.meta.shift) then
@@ -448,11 +546,21 @@ function awbwman_spawn(caption, options)
 				wcont:resize(wcont.w + x, wcont.h + y);
 			end
 		end
+
+		rhandle.drop = function(self, vid)
+			wcont:resize(math.floor(wcont.w), math.floor(wcont.h), true);
+		end
+
 		rhandle.own = function(self, vid)
 			return vid == icn.vid;
 		end
+
+		rhandle.clock = function()
+			wcont:focus();
+		end
+
 		rhandle.name = "awbwindow_resizebtn";
-		mouse_addlistener(rhandle, {"drag"});
+		mouse_addlistener(rhandle, {"drag", "drop"});
 		wcont.rhandle = rhandle; -- for deregistration
 	end	
 
@@ -471,6 +579,13 @@ function awbwman_spawn(caption, options)
 	wcont.focus = awbwman_focus;
 	wcont.focused = function(self) 
 		return self == awb_cfg.focus; 
+	end
+
+	if (options.x == nil) then
+		options.x, options.y = awbwman_next_spawnpos(wcont);
+		wcont:move(options.x, options.y);
+	else
+		wcont:move(options.x, options.y);
 	end
 
 	return wcont;

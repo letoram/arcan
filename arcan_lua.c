@@ -6151,8 +6151,6 @@ static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 \tglstore_w = %d,\n\
 \tglstore_h = %d,\n\
 \tglstore_bpp = %d,\n\
-\tglstore_txu = %d,\n\
-\tglstore_txv = %d,\n\
 \tglstore_prgid = %d,\n\
 \tglstore_prg = [[%s]],\n\
 \tscalemode  = [[%s]],\n\
@@ -6188,8 +6186,6 @@ lut_framemode(src->frameset_meta.mode),
 (int) src->vstore->w,
 (int) src->vstore->h,
 (int) src->vstore->bpp,
-(int) src->vstore->txu,
-(int) src->vstore->txv,
 (int) src->program,
 arcan_shader_lookuptag(src->program),
 lut_scale(src->vstore->scale),
@@ -6202,6 +6198,8 @@ mask,
 lut_kind(src),
 src->tracetag ? src->tracetag : "no tag");
 
+	fprintf_float(dst, "glstore_txu = ", src->vstore->txu, ",\n");
+	fprintf_float(dst, "glstore_txv = ", src->vstore->txv, ",\n");
 	fprintf_float(dst, "origoofs = {", src->origo_ofs.x, ", ");
 	fprintf_float(dst, "", src->origo_ofs.y, ", ");
 	fprintf_float(dst, "", src->origo_ofs.z, "}\n};\n");

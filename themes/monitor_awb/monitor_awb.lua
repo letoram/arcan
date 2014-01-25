@@ -67,31 +67,32 @@ function monitor_awb()
 		sample(LAST_SAMPLE, 1, 1);
 	end
 
+	toggle_mouse_grab();
 	awbmon_help();
 end
 
 function awbmon_help()
 	local wnd = awbwman_spawn(menulbl("Help"));
-	helpimg = desktoplbl([[Default Monitor Script Helper\n\r\n\r
-(global)\n\r
-CTRL\t Grab/Release Mouse\n\r
-SPACE\t Latest Sample\n\r 
-F6\tBenchmark View\n\r
-ALT+F4\t Shutdown\n\r
-F11\t Help Window\n\r\nr\r
-(window-input)\n\r
-ESC\tDestroy Window\n\r
-F1\tGenerate Tree View\n\r
-F2\tGenerate Allocation Map\n\r
-SHFT+F2\tContinuous Allocation Map\n\r
-F3\tSwitch Context Up\n\r
-SHIFT+F3\tSwitch Context Down\n\r
-F4\tContext Info\n\r
-F5\tVideo Subsystem Info\n\r
-Up/Down\t Move to Parent/Child\n\r
-Left/Right\t Step to Prev/Next Object\n\r
-Shift+L/R\t Step to Prev/Next Sibling\n\r
-Shift+Enter\t Copy to new Window]]);
+	helpimg = desktoplbl([[\bDefault Monitor Script Helper\!b\n\r\n\r
+\i(global)\!i\n\r
+\bCTRL\!b\t Grab/Release Mouse\n\r
+\bSPACE\!b\t Latest Sample\n\r 
+\bF6\!b\tBenchmark View\n\r
+\bALT+F4\!b\t Shutdown\n\r
+\bF11\!b\t Help Window\n\r\nr\r
+\i(window-input)\!i\n\r
+\bESC\!b\tDestroy Window\n\r
+\bF1\!b\tGenerate Tree View\n\r
+\bF2\!b\tGenerate Allocation Map\n\r
+\bSHFT+F2\!b\tContinuous Allocation Map\n\r
+\bF3\!b\tSwitch Context Up\n\r
+\bSHIFT+F3\!b\tSwitch Context Down\n\r
+\bF4\!b\tContext Info\n\r
+\bF5\!b\tVideo Subsystem Info\n\r
+\bUp/Down\!b\t Move to Parent/Child\n\r
+\bLeft/Right\!b\t Step to Prev/Next Object\n\r
+\bShift+L/R\!b\t Step to Prev/Next Sibling\n\r
+\bShift+Enter\!b\t Copy to new Window]]);
 	link_image(helpimg, wnd.canvas.vid);
 	show_image(helpimg);
 	image_clip_on(helpimg, CLIP_SHALLOW);
@@ -99,8 +100,9 @@ Shift+Enter\t Copy to new Window]]);
 	image_inherit_order(helpimg, true);
 	order_image(helpimg, 1);
 	local props =	image_surface_properties(helpimg);
-	wnd:resize(props.width, props.height, true, true);
+	wnd:resize(props.width + 20, props.height + 40, true);
 	default_mh(wnd);
+	wnd:move(0, 0);
 end
 
 function context_vid(smpl, contn)
@@ -164,67 +166,116 @@ end
 
 -- key order
 local keytbl = {
-	"cellid", "cellid_translated", "parent", "tracetag", "glstore_glid",
-	"glstore_w", "glstore_h", "glstore_bpp", "glstore_refc", "glstore_txu",
-	"glstore_txv", "frameset_mode", "frameset_counter", "frameset_capacity",
-	"frameset_current", "scalemode", "filtermode", "imageproc", "blendmode",
-	"clipmode", "glstore_prg", "extrefc_framesets", "extrefc_instances",
-	"extrefc_attachments", "extrefc_links", "flags", "valid_cache", "rotate_state",
-	"childslots", "mask", "order", "lifetime", "origw", "origh", "storage_source",
-	"kind", "opa", "position", "scale", "rotation"
+	"cellid", 
+	"cellid_translated", 
+	"parent",
+	"lifetime", 
+	"flags", 
+	"tracetag", 
+	"origw", 
+	"origh",
+	"posx",
+	"posy",
+	"posz",
+	"scalex",
+	"scaley",
+	"scalez",
+	"origox",
+	"origoy",
+	"origoz",
+	"rotx",
+	"roty",
+	"rotz",
+	"glstore_glid",
+	"glstore_w", 
+	"glstore_h", 
+	"glstore_bpp", 
+	"glstore_refc", 
+	"glstore_txu",
+	"glstore_txv",
+	"glstore_prg",
+	"storage_size",
+	"storage_source", 
+	"scalemode", 
+	"filtermode", 
+	"imageproc", 
+	"blendmode",
+	"clipmode", 
+	"mask", 
+	"order",
+	"valid_cache", 
+	"rotate_state",
+	"kind", 
+	"frameset_mode", 
+	"frameset_counter", 
+	"frameset_capacity",
+	"frameset_current", 
+	"extrefc_framesets", 
+	"extrefc_instances",
+	"extrefc_attachments", 
+	"extrefc_links",
+	"childslots", 
 };
 
 -- format string profile
 local typetbl = {
-	cellid             = "Cellid: %d ",
-	cellid_translated  = "Translated: %d\\t",
-	parent             = "Parent: %d\\n\\r", 
-	tracetag           = "\\n\\rTracetag: %s\\n\\r",
+	cellid = "\\bCellid:\\!b\\#00ff00 %d\\t\\#ffffff",
+	cellid_translated  = "\\bTranslated: \\!b\\#00ff00 %d\\t\\#ffffff",
+	parent = "\\bParent: \\!b\\#00ff00 %d\\n\\r\\#ffffff",
+	lifetime = "\\bLifetime:\\!b\\#00ff00 %d \\#ffffff\\t",
+	flags = "\\bFlags: \\!b\\#00ff00 %s\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
+	tracetag = "\\b\\n\\rTracetag: \\!b\\#ffaa00 %s\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
 
-	glstore_glid = "GL(id: %d",
-	glstore_w    = " w: %d",
-	glstore_h    = " h: %d", 
-	glstore_bpp  = " bpp: %d",
-	glstore_refc = " refc: %d", 
-	glstore_txu  = " txu: %f",
-	glstore_txv  = " txv: %f)\\n\\r",
+	origw    = "\\bOrigin\\!b( width: \\#00ff00 %d \\#ffffff",
+	origh    = " height: \\#00ff00 %d \\#ffffff)\\n\\r",
+	posx     = " \\bPosition\\!b(\\#00ff00 %.2f ",
+	posy     = " %.2f ",
+	posz     = " %.2f \\#ffffff)\\n\\r",
+	scalex   = " \\bScale\\!b(\\#00ff00 %.2f ",
+	scaley   = " %.2f ",
+	scalez   = " %.2f \\#ffffff)\\n\\r",
+	origox = " \\bOrigo-Ofs\\!b(\\#00ff00 %.2f ",
+	origoy = " %.2f ",
+	origoz = " %.2f \\#ffffff)\\n\\r",
+	rotx = " \\bRotation\\!b(\\#00ff00 %.2f ",
+	roty = " %.2f ",
+	rotz = " %.2f \\#ffffff)\\n\\r",
 
-	frameset_mode      = "\\n\\r(Frameset mode: %s ", 
-	frameset_counter   = " counter: %d ",
-	frameset_capacity  = " capacity: %d ", 
-	frameset_current   = " current: %d )\\n\\r",
+	glstore_glid = "\\n\\r\\#ff9999----------\\#ffffff\\n\\r\\bGL\\!b(id:\\#00ff00 %d \\#ffffff",
+	glstore_w    = " w: \\#00ff00 %d \\#ffffff",
+	glstore_h    = " h: \\#00ff00 %d \\#ffffff", 
+	glstore_bpp  = " bpp: \\#00ff00 %d \\#ffffff",
+	glstore_refc = " refc: \\#00ff00 %d \\#ffffff\\n\\r\\t", 
+	glstore_txu  = " txu: \\#00ff00 %.2f \\#ffffff",
+	glstore_txv  = " txv: \\#00ff00 %.2f \\#ffffff",
+	glstore_prg = "prg: \\#00ff00 %s \\#ffffff",
+	storage_size = " size: \\#00ff00 \%d \\#ffffff)\\n\\r",
+	storage_source = "\\bSource\\!b: %s \\#ffffff\\n\\r",
 
-	scalemode   = "scalemode: %s ",
-	filtermode  = "filtermode: %s ",
-	imageproc   = "postprocess: %s\\n\\r",
-	blendmode   = "blendmode: %s ",
-	clipmode    = "clipmode: %s ",
-	glstore_prg = "\\n\\rprogram: %s\\n\\r",  
+	scalemode   = "\\bProcessing\\!b(scale:\\#00ff00 %s \\#ffffff",
+	filtermode  = "filter: \\#00ff00 %s \\#ffffff",
+	imageproc   = "post: \\#00ff00 %s \\#ffffff\\n\\r\\t",
+	blendmode   = "blend: \\#00ff00 %s \\#ffffff",
+	clipmode    = "clip: \\#00ff00 %s \\#ffffff",
+	storage_size = "size: \\#00ff00 %d \\#ffffff)\\n\\r\\#ff9999----------\\n\\r\\\#ffffff", 
 
-	extrefc_framesets   = "Refc(Framesets: %d ", 
-	extrefc_instances   = "Inst: %d ", 
-	extrefc_attachments = "Attach: %d ",
-	extrefc_links       = "Links: %d ",
+	mask     = "\\n\\r\\bMask:\\!b\\#00ff00 %s\\n\\r\\#ffffff",
+	order    = "\\bOrder: \\!b\\#00ff00 %d \\#ffffff\\n\\r",
 
-	flags = "\\n\\rflags: %s\\n\\r",
+	valid_cache   = "\\n\\r\\#ff9999----------\\n\\r\\#ffffff\\bValid Cache:\\!b\\#00ff00 %d \\#ffffff ", 
+	rotate_state  = "\\b\\tRotation:\\!b\\#00ff00 %d \\#ffffff\\r\\n",
+	kind = "\\b\\tKind: \\!b\\#00ff00 %s \\#ffffff\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
 
-	valid_cache   = "Valid Cache: %d ", 
-	rotate_state  = "Rotation: %d ",
-	childslots    = "Children: %d ",
+	frameset_mode      = "\\bFrameset\\!b(mode:\\#00ff00 %s \\#ffffff", 
+	frameset_counter   = "counter:\\#00ff00 %d \\#ffffff",
+	frameset_capacity  = "capacity:\\#00ff00 %d \\#ffffff", 
+	frameset_current   = "current:\\#00ff00 %d \\#ffffff)\\n\\r",
 
-	mask     = "\\n\\r%s\\n\\r",
-	order    = "Order: %d",
-	lifetime = "Lifetime: %d ",
-	origw    = "Orig.W: %d ",
-	origh    = "Orig.H: %d ",
-
-	storage_source = "Source: %s ",
-	kind = "Kind: %s \\n\\r",
-
-	opa      = "Opacity: %s ",
-	position = "Position: %s ",
-	scale    = "Scale: %s ",
-	rotation = "Rotation: %s "
+	extrefc_framesets   = "\\bRefc\\!b(Framesets: \\#00ff00 %d \\#ffffff", 
+	extrefc_instances   = "Inst: \\#00ff00 %d \\#ffffff", 
+	extrefc_attachments = "Attach: \\#00ff00 %d \\#ffffff",
+	extrefc_links       = "Links: \\#00ff00 %d \\#ffffff)\\n\\r",
+	childslots    = "\\bChildren:\\!b\\#00ff00 %d \\#ffffff ",
 };
 
 function default_mh(wnd, vid)
@@ -240,12 +291,26 @@ function render_sample(smpl)
 	if (smpl.cellid == nil) then
 		return;
 	end
+	
 	local strtbl = {};
+-- expand samples:
+	smpl.posx = smpl.props.position[1];
+	smpl.posy = smpl.props.position[2];
+	smpl.posz = smpl.props.position[3];
+	smpl.origox = smpl.origoofs[1];
+	smpl.origoy = smpl.origoofs[2];
+	smpl.origoz = smpl.origoofs[3];
+	smpl.sfx = smpl.props.scale[1];
+	smpl.sfy = smpl.props.scale[2];
+	smpl.sfz = smpl.props.scale[3];
+	smpl.rotx = smpl.props.rotation[1];
+	smpl.roty = smpl.props.rotation[2];
+	smpl.rotz = smpl.props.rotation[3];
 
 	for i,v in ipairs(keytbl) do
 		if (smpl[v] ~= nil) then
 			table.insert(strtbl, 
-				string.format(typetbl[v], string.gsub(smpl[v], '\\', '\\\\')));
+				string.format(typetbl[v], string.gsub(tostring(smpl[v]), '\\', '\\\\')));
 		end
 	end
 
@@ -337,7 +402,7 @@ function wnd_link(wnd, vid)
 	props.width = props.width > (0.5 * VRESW) and math.floor(0.5 * VRESW) or
 		props.width;
 	
-	wnd:resize(props.width, props.height, true, true);
+	wnd:resize(props.width + 20, props.height + 20, true);
 end
 
 function samplewnd_update(self, smpl)
@@ -394,6 +459,11 @@ function vobjcol(smpl)
 		base_r = 255;
 		base_g = 0;
 		base_b = 0;
+	else
+		warning(string.format("unknown sample kind (%s)\n", smpl.kind));
+		base_r = 255;
+		base_g = 255;
+		base_b = 255;
 	end
 
 	return (intensity * base_r), (intensity * base_g), (intensity * base_b); 
@@ -540,10 +610,10 @@ function spawn_context(smpl, context)
 
 	local ctx = smpl.vcontexts[context];
 	local cimg = desktoplbl(string.format([[
-Context:\t%d / %d\n\r
-Rtargets:\t%d\n\r
-Vobjects:\t%d (%d) / %d\n\r
-Last Tick:\t%d\n\r]], context, #smpl.vcontexts, #ctx.rtargets, ctx.alive,
+\bContext:\!b\t\#00ff00 %d / %d \#ffffff\n\r
+\bRtargets:\!b\t\#00ff00 %d \#ffffff\n\r
+\bVobjects:\!b\t\#00ff00 %d (%d) / %d\#ffffff\n\r
+\bLast Tick:\!b\t%d\n\r]], context, #smpl.vcontexts, #ctx.rtargets, ctx.alive,
 #ctx.vobjs, ctx.limit, ctx.tickstamp));
 
 	image_mask_set(cimg, MASK_UNPICKABLE);
@@ -554,18 +624,18 @@ end
 function spawn_vidinf(smpl, disp)
 	local wnd = awbwman_spawn(menulbl("Video:" .. tostring(disp.ticks)));
 	local cimg = desktoplbl(string.format([[
-Ticks:\t%d\n\r
-Display:\t%d\n\r
-Conserv:\t%d\n\r
-Vsync:\t%d\n\r
-MSA:\t%d\n\r
-Vitem:\t%d\n\r
-Imageproc:\t%d\n\r
-Scalemode:\t%d\n\r
-Filtermode:\t%d\n\r]],
+\bTicks:\!b\t\#00ff00 %d \#ffffff\n\r
+\bDisplay:\!b\t\#00ff00 %d,%d \#ffffff\n\r
+\bConserv:\!b\t\#00ff00 %d \#ffffff\n\r
+\bVsync:\!b\t\#00ff00 %d \#ffffff\n\r
+\bMSA:\!b\t\#00ff00 %d \#ffffff\n\r
+\bVitem:\!b\t\#00ff00 %d \#ffffff\n\r
+\bImageproc:\!b\t\#00ff00 %d \#ffffff\n\r
+\bScalemode:\!b\t\#00ff00 %d \#ffffff\n\r
+\bFiltermode:\!b\t\#00ff00 %d \#ffffff\n\r]],
 disp.ticks, disp.width, disp.height,
 disp.conservative, disp.vsync, disp.msasamples,
-disp.ticks, disp.default_vitemlim, disp.imageproc,
+disp.default_vitemlim, disp.imageproc,
 disp.scalemode, disp.filtermode));
 
 	image_mask_set(cimg, MASK_UNPICKABLE);
@@ -635,7 +705,7 @@ function spawn_allocmap(smpl, context)
 
 	local vid = build_allocmap(smpl, context);
 	wnd:update_canvas(vid);
-	wnd:resize(wnd.w, wnd.h, true, true);
+	wnd:resize(wnd.w + 20, wnd.h + 20, true);
 
 -- figure out what is clicked, and spawn a sample video 
 -- navigated to that particular sample

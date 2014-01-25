@@ -24,7 +24,7 @@ local function awbwnd_alloc(tbl)
 	return tbl;
 end
 
-local function awbwnd_set_border(s, sz, r, g, b)
+function awbwnd_set_border(s, sz, r, g, b)
 -- border exists "outside" normal tbl dimensions
 	if (s.borders) then
 		for i, v in pairs(s.borders) do
@@ -47,18 +47,22 @@ local function awbwnd_set_border(s, sz, r, g, b)
 		end
 		
 		s.default_resize = s.resize;
-		s.resize = function(self, neww, newh, completed)
-			s:default_resize(neww, newh, completed);
+		s.resize = function(self, neww, newh, completed, dt)
+			if (dt == nil) then
+				dt = 0;
+			end
 
-			move_image(s.borders.t, 0 - sz, 0 - sz);
-			move_image(s.borders.b, 0 - sz, s.h);
-			move_image(s.borders.l, 0 - sz, 0);
-			move_image(s.borders.r, s.w, 0); 
+			s:default_resize(neww, newh, completed, dt);
 
-			resize_image(s.borders.t, s.w + sz * 2,  sz); 
-			resize_image(s.borders.r, sz, s.h);
-			resize_image(s.borders.l, sz, s.h);
-			resize_image(s.borders.b, s.w + sz * 2,  sz);
+			move_image(s.borders.t, 0 - sz, 0 - sz, dt);
+			move_image(s.borders.b, 0 - sz, s.h, dt);
+			move_image(s.borders.l, 0 - sz, 0, dt);
+			move_image(s.borders.r, s.w, 0, dt); 
+
+			resize_image(s.borders.t, s.w + sz * 2,  sz, dt); 
+			resize_image(s.borders.r, sz, s.h, dt);
+			resize_image(s.borders.l, sz, s.h, dt);
+			resize_image(s.borders.b, s.w + sz * 2,  sz, dt);
 		end
 	end
 end
@@ -140,6 +144,7 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 
 	if (self.dir.r) then
 		hspace = hspace - self.dir.r.rsize;
+	
 		if (self.dir.r.rsize ~= self.dir.r.size) then
 			move_image(self.dir.r.vid, xofs + hspace + 
 				self.dir.r.rsize - self.dir.r.size, yofs);
@@ -149,7 +154,7 @@ local function awbwnd_resize(self, neww, newh, finished, canvassz)
 		self.dir.r:resize(self.dir.r.size, vspace);
 	end
 
-	if (canvassz and (canxofs > 0 or yofs > 0)) then
+	if (canvassz and (xofs > 0 or yofs > 0)) then
 		awbwnd_resize(self, neww + xofs, newh + xofs, finished, false);
 		return;
 	end
@@ -210,6 +215,20 @@ local function awbwnd_move(self, newx, newy, timeval)
 end
 
 local function awbwnd_destroy(self, timeval)
+-- let subtype specific hooks be invoked before we reset members
+	if (type(self.on_destroy) == "function") then
+		if (self:on_destroy() == true and self.confirm_destroy) then
+			return;
+		end
+
+	elseif (type(self.on_destroy) == "table") then
+		for i=1,#self.on_destroy do
+			if (self.on_destroy[i](self) == true and self.confirm_destroy) then
+				return;
+			end
+		end
+	end
+
 --
 -- delete the icons immediately as we don't want them pressed
 -- and they "fade" somewhat oddly when there's a background bar
@@ -217,15 +236,6 @@ local function awbwnd_destroy(self, timeval)
 	for k, v in pairs(self.dir) do
 		if (v) then
 			v:destroy();
-		end
-	end
-
--- let subtype specific hooks be invoked before we reset members
-	if (type(self.on_destroy) == "function") then
-		self:on_destroy();
-	elseif (type(self.on_destroy) == "table") then
-		for i=1,#self.on_destroy do
-			self.on_destroy[i](self);
 		end
 	end
 
@@ -241,6 +251,9 @@ local function awbwnd_destroy(self, timeval)
 		print(debug.traceback());
 	end
 
+	if (valid_vid(self.canvas.vid)) then
+		force_image_blend(self.canvas.vid, BLEND_NORMAL);
+	end
 	blend_image(self.anchor,  0.0, timeval);
 	expire_image(self.anchor, timeval);
 
@@ -344,7 +357,8 @@ local function awbbar_resize(self, neww, newh)
 		local w, h = self.rzfun(self.left[i].vid, self.size, self.vertical);
 		move_image(self.left[i].vid, math.floor(self.left[i].xofs + stepx * lofs), 
 			math.floor(self.left[i].yofs + stepy * lofs)); 
-		lofs = lofs + w + self.left[i].xofs;
+		lofs = lofs + w + self.left[i].xofs + self.spacing;
+		lim = lim - w;
 	end
 
 	local rofs = 0;
@@ -355,7 +369,7 @@ local function awbbar_resize(self, neww, newh)
 		move_image(self.right[i].vid, math.floor(stepx * (self.w - rofs)), 
 			math.floor(stepy * (self.h - rofs)));
 
-		lim  = lim  - w;
+		lim = lim - w;
 	end
 
 	if (self.fill) then
@@ -365,10 +379,14 @@ local function awbbar_resize(self, neww, newh)
 
 		if (self.vertical) then
 			move_image(self.fill.vid, 0, lofs);
-			resize_image(self.fill.vid, self.size, lim);
+			if (self.noresize_fill == nil) then
+				resize_image(self.fill.vid, self.size, lim);
+			end
 		else
 			move_image(self.fill.vid, lofs, 0);
-			resize_image(self.fill.vid, lim, self.size);
+			if (self.noresize_fill == nil) then
+				resize_image(self.fill.vid, lim, self.size);
+			end
 		end
 	end
 end
@@ -541,6 +559,7 @@ local function awbwnd_addbar(self, dir, activeimg,
 		parent   = self,
 		size     = bsize,
 		rsize    = rsize,
+		spacing  = 0,
 		dir      = dir
 	};
 
@@ -550,7 +569,11 @@ local function awbwnd_addbar(self, dir, activeimg,
 		awbbar.name = self.name .. "_ttbar_mh";
 		mouse_addlistener(awbbar, {"click", "hover"});
 		table.insert(self.handlers, awbbar);
-	end	
+	end
+
+	if (options.spacing ~= nil) then
+		awbbar.spacing = spacing;
+	end
 
 	awbbar.vertical = dir == "l" or dir == "r";
 	awbbar.activeimg = activeimg;
@@ -955,16 +978,25 @@ local function awbwnd_dropcascade(self, wnd)
 	end
 end
 
+local function awbwnd_drophandler(self, slot, fptr)
+	for i, v in ipairs(self[slot]) do
+		if (v == fptr) then
+			table.remove(self[slot], i);
+			return;
+		end
+	end
+end
+
 local function awbwnd_addhandler(self, slot, fptr)
 	if (self[slot] ~= nil) then
-
-		if (type(self[slot]) == "table") then
+		if (type(self[slot]) == "table") then			
+			self:drop_handler(slot, fptr);
 			table.insert(self[slot], fptr);
 
 		elseif (type(self[slot]) == "function") then
 			self[slot] = {self[slot], fptr};
 		end
-
+	
 	else
 		self[slot] = fptr;
 	end
@@ -991,9 +1023,11 @@ function awbwnd_create(options)
 		add_cascade= awbwnd_addcascade,
 		drop_cascade=awbwnd_dropcascade,
 		add_handler= awbwnd_addhandler,
+		drop_handler= awbwnd_drophandler,
 		canvas_iprops = awbwnd_canvas_iprops,
 		req_focus  = function() end, -- set by window manager
 		on_destroy = nil,
+		on_update  = {},
 		name       = "awbwnd",
     update_canvas = awbwnd_update_canvas,
 
