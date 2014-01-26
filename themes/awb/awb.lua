@@ -171,7 +171,6 @@ function awb()
 	setup_3dsupport(true);
 
 	system_load("scripts/resourcefinder.lua")();
-	toggle_mouse_grab(1);
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)
@@ -208,6 +207,8 @@ function awb()
 		image_sharestorage( img, awbwman_cfg().root.canvas.vid );
 		delete_image(img);	
 	end
+
+	awbwman_toggle_mousegrab();
 end
 
 function map_inputs()
