@@ -314,7 +314,9 @@ function store_coreoptions(game)
 			local lines = {};
 	
 			for k,v in pairs(settings.coreargs) do
-				table.insert(lines, string.format("res[\"%s\"] = [[%s]];", k, v.value));
+				if (v.curv ~= nil) then
+					table.insert(lines, string.format("res[\"%s\"] = [[%s]];", k, v.curv));
+				end
 			end
 			
 			write_rawresource(string.format(
@@ -334,6 +336,10 @@ function load_coreoptions(game)
 	if (resource(fn)) then
 		local coreargs = system_load(fn)();
 		local opttbl = {};
+
+		if (coreargs == nil) then 
+			return "";
+		end
 
 		for k,v in pairs(coreargs) do
 			table.insert(opttbl, string.format("core_%s=%s", 
@@ -774,7 +780,6 @@ function network_onevent(source, tbl)
 
 		local dvid = load_image("images/icons/disconnected.png");
 		if (dvid ~= BADID) then
-			print("show disconnect image");
 			show_image(dvid);
 			order_image(dvid, INGAMELAYER_OVERLAY);
 			blend_image(dvid, 1.0, 5);
@@ -1708,6 +1713,7 @@ function gridview_cleanuphook()
 	hide_image(imagery.crashimage);
 	
 	store_coreoptions(current_game);
+	settings.coreargs = {};
 
 	internal_vid = BADID;
 	internal_aid = BADID;

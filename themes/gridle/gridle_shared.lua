@@ -789,6 +789,13 @@ local function add_corearg(dsttbl, msg)
 			end
 		end
 
+	elseif (group == "curv") then
+		for i,v in pairs(dsttbl) do
+			if (v.num == num) then
+				v.curv = tostring(msg);
+				return;
+			end
+		end
 	end
 end
 
