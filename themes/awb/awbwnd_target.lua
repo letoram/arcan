@@ -36,6 +36,26 @@ local function getskipval(str)
 	end
 end
 
+local function target_coreopts(wnd)
+	local fn = string.format("coreopts/%s.cfg", wnd.gametbl.target);
+	if (resource(fn)) then
+		zap_resource(fn);
+	end
+	
+	if (open_rawresource(fn)) then
+		local lines = {};
+		for k,v in pairs(wnd.coreopts) do
+			if (v.value ~= nil) then
+				table.insert(lines, string.format("res[\"%s\"] = [[%s]];", k, v.value));
+			end
+		end
+
+		write_rawresource(string.format(
+			"local res = {};\n%s\nreturn res;", table.concat(lines, "\n"))
+		);
+	end
+end
+
 local function spawn_corewnd(wnd)
 	local conftbl = {};
 	local dumptbl = {}; -- wnd.coreopts has fields to protect 
@@ -65,6 +85,17 @@ local function spawn_corewnd(wnd)
 	local newwnd = awbwman_listwnd(
 		menulbl("Core Options"), deffont_sz, linespace,
 			{0.7, 0.3}, conftbl, desktoplbl, {double_single = true});
+
+	newwnd.dir.t:add_icon("save", "l", awbwman_cfg().bordericns["save"],
+		function(self)
+			local vid, lines = desktoplbl("Target Defaults");
+			awbwman_popup(vid, lines, 
+				function(ind) 
+					target_coreopts(wnd);
+					newwnd:destroy();
+				end);
+		end
+	);
 
 	if (newwnd == nil) then
 		return;
@@ -1460,6 +1491,20 @@ end
 local first_init = false;
 
 function targetwnd_setup(game, factstr, coreargs)
+	local fn = string.format("coreopts/%s.cfg", game.target); 
+	if (resource(fn)) then
+		if (coreargs == nil) then
+			coreargs = {};
+		end
+
+		local tbl = system_load(fn)();
+		for k, v in pairs(tbl) do
+			if (coreargs[k] == nil) then
+				coreargs[k] = v;	
+			end
+		end
+	end
+	
 	if (first_init == false) then
 		first_init = true;
 		build_shader(nil, deffshdr, "default_target");
