@@ -5,8 +5,6 @@
  * License: GPLv2
  */
 
-#version 120
-
 uniform sampler2D map_diffuse;
 uniform float obj_opacity;
 
