@@ -11,12 +11,17 @@ function welcome()
 	end
 
 	titlestr = render_text( [[\ffonts/default.ttf,18\bWelcome to ARCAN!]] );
-	move_image(titlestr, VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width)); 
+	move_image(titlestr, 
+		VRESW * 0.5 - (0.5 * image_surface_properties(titlestr).width)); 
 	show_image(titlestr);
 
-	intrstr = render_text( [[\ffonts/default.ttf,12\bUsage: \!b arcan <cmdline arguments> themename <theme arguments>]] )
+	intrstr = render_text( 
+[[\ffonts/default.ttf,12\bUsage: 
+\!b arcan <cmdline arguments> themename <theme arguments>]] )
 
-	move_image(intrstr, VRESW * 0.5 - (0.5 * image_surface_properties(intrstr).width), 24 );
+	move_image(intrstr, VRESW * 0.5 - 
+		(0.5 * image_surface_properties(intrstr).width), 24 );
+
 	show_image(intrstr);
 
 	welcomestr = [[\n\r
@@ -32,38 +37,41 @@ function welcome()
 		gamelst = {};
 	end
 
-	games = [[#games:\t\t]] .. tostring( # gamelst ); 
-	display = [[resolution:\t\t]] .. tostring(VRESH) .. "x" .. tostring(VRESW);
-	internal_clock = [[clock: \t]] .. tostring(CLOCKRATE) .. " hz";
-	hardware = [[\n\r#ledctrls:\t\t]] .. tostring(LEDCONTROLLERS);
-	pathstr = [[themepath:\t\t]] .. tostring(THEMEPATH) .. [[\n\rresourcepath:\t ]] .. tostring(RESOURCEPATH) ..
-		[[\n\rbinpath:\t\t ]] .. tostring(BINPATH) ..
-		[[\n\rlibpath:\t\t ]] .. tostring(LIBPATH);
-	internalmode = [[internal mode:\t]] .. tostring(INTERNALMODE);
+	local st = {welcomestr, [[\ffonts/default.ttf,12]]};
+	table.insert(st, string.format("# Games:\\t\\t%d", #gamelst));
+	table.insert(st, string.format("Resolution:\\t\\t%d x %d", VRESW, VRESH));
+	table.insert(st, string.format("Clock:\\t\\t%d Hz", CLOCKRATE));
+	table.insert(st, string.format("Themepath:\\t\\t%s", string.gsub(THEMEPATH, "\\", "\\\\")));
+	table.insert(st, string.format("Respath:\\t\\t%s", string.gsub(RESOURCEPATH, "\\", "\\\\")));
+	table.insert(st, string.format("Libpath:\\t\\t%s", string.gsub(LIBPATH, "\\", "\\\\")));
+	table.insert(st, string.format("Binpath:\\t\\t%s", string.gsub(BINPATH, "\\", "\\\\")));
+	table.insert(st, string.format("Internal:\\t\\t%s", tostring(INTERNALMODE)));
 
-	datawindow = render_text( welcomestr .. [[\n\r\ffonts/default.ttf,12]] .. games .. [[\n\r]] .. hardware .. [[\n\r]] .. internal_clock .. 
-	[[\n\r]] .. display .. [[\n\r]] .. pathstr .. [[\n\r]] .. internalmode );
-
-	argwindow = render_text( [[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b\n\r\ffonts/default.ttf,12
-	-w res  \t(default: 640)\n\r
-	-h res  \t(default: 480)\n\r
-	-v      \tdisable VSYNC\n\r
-	-V      \tdisable WaitSleep (use with -v)\n\r
-	-F      \t(default: 0.6) Prewake vs. VSYNC \n\r"
-	-x winx \tset window start x coordinate\n\r
-	-y winy \tset window start y coordinate\n\r
-	-f      \tswitch resolution (fullscreen)\n\r
-	-m      \tconservative memory profile\n\r
-	-s      \tdisable window borders\n\r
-	-p pname\tforce resource path\n\r
-	-t tname\tforce theme path\n\r
-	-o fname\tforce frameserver\n\r
-  -l hijacklib\tforce hijack lib\n\r
-	-d fname\tdatabase filename\n\r
-	-g      \tenable (partial) debug output\n\r
-	-a      \tmultisamples (default 4, disable 0)\n\r
-	-S      \t0dB global audio output\n\r
-	-r num  \tset texture scale mode: (0, 1, 2)\n\t]] );
+	datawindow = render_text(table.concat(st, "\\n\\r")); 
+	argwindow = render_text( 
+[[\n\r\ffonts/default.ttf,14\t\bCommand-Line Arguments:\!b
+\n\r\ffonts/default.ttf,12
+-w res  \t(default: 640)\n\r
+-h res  \t(default: 480)\n\r
+-x winx \tforce window x position\n\r
+-y winy \tforce window y position\n\r
+-f      \tswitch display to fullscreen\n\r
+-m      \ttoggle conservative memory mode\n\r
+-M rate \tsplit open a debug session\n\r
+-O src  \tmonitor theme or LOG:fname\n\r
+-s      \ttoggle borderless window mode\n\r
+-p path \tset resourcepath\n\r
+-t path \tset themepath\n\r
+-o fsrv \tforce frameserver\n\r
+-l lib  \tforce internal launch hijacklib\n\r
+-d db   \tset database\n\r
+-g      \tincrease debuglevel by one\n\r
+-a nms  \tmultisampling\n\r
+-v vs   \tdisable VSYNC\n\r
+-V      \tdisable waiting between frames\n\r
+-F      \tvsync prewake (range, 0..1)\n\r
+-S      \tsilence audio output\n\r
+]] );
 
 	move_image(datawindow, VRESW - image_surface_properties(argwindow).width, 38);
 	move_image(argwindow, 10, 38);

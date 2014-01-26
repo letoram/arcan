@@ -5939,7 +5939,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"SHARED_RESOURCE",   ARCAN_RESOURCE_SHARED                       },
 {"ALL_RESOURCES",     ARCAN_RESOURCE_THEME | ARCAN_RESOURCE_SHARED},
 {"API_VERSION_MAJOR", 0},
-{"API_VERSION_MINOR", 6},
+{"API_VERSION_MINOR", 7},
 {"LAUNCH_EXTERNAL",   0},
 {"LAUNCH_INTERNAL",   1},
 {"MASK_LIVING",      MASK_LIVING     },
