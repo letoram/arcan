@@ -254,7 +254,7 @@ cont.xbr.setup = function(c, srcimg, shid, sprops, inprops, outprops, optstr)
 	end
 
 -- Can't clamp? then skip this filter 
-	if (intw > 2048 or inth > 2048) then
+	if (intw > 2048 or inth > 2048 or intw == 0 or inth == 0) then
 		return srcimg, c;
 	end
 
