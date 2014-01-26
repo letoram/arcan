@@ -106,6 +106,7 @@ function awbwman_meta(lbl, active)
 		rkey = rkey .. "SHIFT";
 	end
 
+
 	if (awb_cfg.meta.alt) then
 		rkey = rkey .. "ALT";
 	end
@@ -432,7 +433,6 @@ local function awbwman_addcaption(bar, caption)
 
 	bar.update_caption = awbwman_addcaption;
 --	bar.noresize_fill = false;
-
 	local props  = image_surface_properties(caption);
 	local bgsurf = fill_surface(10, 10, 230, 230, 230);
 	local icn = bar:add_icon("caption", "fill", bgsurf);
@@ -1827,7 +1827,9 @@ function awbwman_spawn(caption, options)
 			return vid == icn.vid;
 		end
 
-		rhandle.click = function() wcont:focus(); end
+		rhandle.click = function() 
+			wcont:focus(); 
+		end
 
 		rhandle.rclick = function(self, vid)
 			awbwman_focus(wcont);
@@ -2026,7 +2028,7 @@ function awbwman_tablist_toggle(active, group)
 			if (wnd.active) then
 				awbwman_focus(wnd, false);
 				local dx, dy = mouse_xy();
-				wnd:move(dx, dy, awb_cfg.animspeed);
+				wnd:move(math.floor(dx), math.floor(dy), awb_cfg.animspeed);
 			end			
 
 			awb_cfg.tablist_toggle = nil;

@@ -168,9 +168,10 @@ function awb()
 	system_load("awb_support.lua")();
 	system_load("scripts/calltrace.lua")();
 	system_load("scripts/3dsupport.lua")();
-	setup_3dsupport();
+	setup_3dsupport(true);
 
 	system_load("scripts/resourcefinder.lua")();
+	toggle_mouse_grab(1);
 
 -- mouse abstraction layer 
 -- (callbacks for click handlers, motion events etc.)

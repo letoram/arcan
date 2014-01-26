@@ -1,10 +1,12 @@
 --
 -- AWB 3D Model Viewer
 --
-
+	
+local shader_seqn = 1;
 local function set_shader(modelv)
 	local lshdr = load_shader("shaders/dir_light.vShader", 
 		"shaders/dir_light.fShader", "media3d_" .. tostring(shader_seqn));
+	shader_seqn = shader_seqn + 1;
 
 	shader_uniform(lshdr, "map_diffuse", "i", PERSIST, 0);
 	shader_uniform(lshdr, "wlightdir", "fff", PERSIST, 1, 0, 0);
