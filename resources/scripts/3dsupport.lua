@@ -515,7 +515,7 @@ function setup_3dsupport(nocam)
 
 	if (not nocam) then
 		local cam = null_surface(1, 1);
-		camtag_model(cam, 0.01, 100.0, 45.0, 1.33, nil, true, true);
+		camtag_model(cam, 0.01, 100.0, 45.0, 1.33, nil, 1, 1); 
 		image_tracetag(cam, "3dcamera");
 		return cam;
 	end

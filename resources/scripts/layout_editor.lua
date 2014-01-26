@@ -1072,12 +1072,16 @@ local function layout_show(self)
 				image_mask_clearall(vid); -- clones can't live past their parent so nothing more to do
 				layout_imagepos(self, vid, val);
 			else
-				local vid = load_movie(res, val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, function(src, stat)
+				local vid = load_movie(res, 
+					val.loop and FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, 
+					function(src, stat)
 					if (stat.source_audio ~= nil) then
 						audio_gain(stat.source_audio, self.default_gain);
 					end
 				
-					play_movie(src); 
+					if (stat.kind == "resized") then
+						play_movie(src); 
+					end
 				end);
 
 				if valid_vid(vid) then
