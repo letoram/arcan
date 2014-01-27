@@ -22,8 +22,16 @@
 #ifndef _HAVE_ARCAN_LUA
 #define _HAVE_ARCAN_LUA
 
+/* arcan_luactx* is just an intermediary alias for lua_State */
 struct arcan_luactx;
-struct arcan_luactx* arcan_luaL_setup(int debuglevel);
+
+/* we separate alloc and mapfunctions to allow partial VM execution
+ * BEFORE we have exposed the engine functions. This allows "constants"
+ * to be calculated while still enforcing the themename() entrypoint */
+struct arcan_luactx* arcan_lua_alloc();
+void arcan_lua_mapfunctions(
+	struct arcan_luactx* dst, int debuglevel);
+
 char* arcan_luaL_dofile(struct arcan_luactx*, const char* fname);
 void arcan_luaL_dostring(struct arcan_luactx*, const char* sbuf);
 void arcan_luaL_shutdown(struct arcan_luactx*);
