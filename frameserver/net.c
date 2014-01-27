@@ -1489,13 +1489,13 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 
 	if (arg_lookup(args, "width", 0, &rk) ){
 		unsigned neww = strtoul(rk, NULL, 10);
-		if (neww > 0 && neww <= MAX_SHMWIDTH)
+		if (neww > 0 && neww <= ARCAN_SHMPAGE_MAXW)
 			gwidth = neww;
 	}
 
 	if (arg_lookup(args, "height", 0, &rk) ){
 		unsigned newh = strtoul(rk, NULL, 10);
-		if (newh > 0 && newh <= MAX_SHMHEIGHT)
+		if (newh > 0 && newh <= ARCAN_SHMPAGE_MAXH) 
 			gheight = newh;
 	}
 

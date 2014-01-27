@@ -155,7 +155,8 @@ static void generate_frame()
 			decctx.shmcont.addr->vpts = vptsc;
 			decctx.shmcont.addr->vready = true;
 			frameserver_semcheck( decctx.shmcont.vsem, -1);
-			vptsc += 1000.0f / ((double)(SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
+			vptsc += 1000.0f / (
+				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
 		}
 	}
 }
@@ -203,22 +204,23 @@ static bool decode_aframe()
 			aframe->channel_layout : av_get_default_channel_layout(aframe->channels);
 
 /* should we resample? */
-			if (aframe->format != AV_SAMPLE_FMT_S16 || aframe->channels !=
-				SHMPAGE_ACHANNELCOUNT || aframe->sample_rate != SHMPAGE_SAMPLERATE){
+			if (aframe->format != AV_SAMPLE_FMT_S16 || 
+				aframe->channels != ARCAN_SHMPAGE_ACHANNELS || 
+				aframe->sample_rate != ARCAN_SHMPAGE_SAMPLERATE){
 				uint8_t* outb[] = {decctx.audp, NULL};
-				unsigned nsamples = (unsigned)(SHMPAGE_AUDIOBUF_SIZE - 
+				unsigned nsamples = (unsigned)(ARCAN_SHMPAGE_AUDIOBUF_SZ - 
 					decctx.shmcont.addr->abufused) >> 2;
 	
 				outb[0] += decctx.shmcont.addr->abufused;
 
 				if (!decctx.rcontext){
 					decctx.rcontext = swr_alloc_set_opts(decctx.rcontext, 
-						AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, SHMPAGE_SAMPLERATE, 
+						AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, ARCAN_SHMPAGE_SAMPLERATE, 
 						dlayout, aframe->format, aframe->sample_rate, 0, NULL);
 	
 					swr_init(decctx.rcontext);
 					LOG("(decode) resampler initialized, (%d) => (%d)\n", 
-						aframe->sample_rate, SHMPAGE_SAMPLERATE);
+						aframe->sample_rate, ARCAN_SHMPAGE_SAMPLERATE);
 				}
 	
 				int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) 
@@ -239,15 +241,15 @@ static bool decode_aframe()
 
 /* flush the entire buffer to parent before continuing */
 				do {
-					ntc = plane_size > SHMPAGE_AUDIOBUF_SIZE - *abufused ?
-					SHMPAGE_AUDIOBUF_SIZE - *abufused : plane_size;
+					ntc = plane_size > ARCAN_SHMPAGE_AUDIOBUF_SZ - *abufused ?
+					ARCAN_SHMPAGE_AUDIOBUF_SZ - *abufused : plane_size;
 
 					memcpy(&decctx.audp[*abufused], ofbuf, ntc);
 					*abufused += ntc;
 					plane_size -= ntc;
 					ofbuf += ntc;
 
-					if (*abufused == SHMPAGE_AUDIOBUF_SIZE)
+					if (*abufused == ARCAN_SHMPAGE_AUDIOBUF_SZ)
 						synch_audio();
 
 				} while (plane_size > 0);
@@ -622,12 +624,12 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 			
 			if (arg_lookup(args, "width", 0, &val)){
 				desw = strtoul(val, NULL, 10);
-				desw = (desw > 0 && desw < MAX_SHMWIDTH) ? desw : 0;
+				desw = (desw > 0 && desw < ARCAN_SHMPAGE_MAXW) ? desw : 0;
 			}
 
 			if (arg_lookup(args, "height", 0, &val)){
 				desh = strtoul(val, NULL, 10);
-				desh = (desh > 0 && desh < MAX_SHMHEIGHT) ? desh : 0;
+				desh = (desh > 0 && desh < ARCAN_SHMPAGE_MAXH) ? desh : 0;
 			}
 				
 			statusfl = ffmpeg_vidcap(devind, desw, desh, fps);

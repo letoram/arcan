@@ -111,7 +111,7 @@ arcan_frameserver* arcan_target_launch_internal(const char* fname, char* hijack,
 		.args.external.argv = argv
 	};
 	
-	snprintf(shmsize, 38, "%ui", (unsigned int) MAX_SHMSIZE);
+	snprintf(shmsize, 38, "%ui", (unsigned int) ARCAN_SHMPAGE_MAXSZ);
 	
 	if (
 		arcan_frameserver_spawn_server(res, args) != ARCAN_OK) {

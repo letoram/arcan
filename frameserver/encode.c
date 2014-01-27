@@ -157,10 +157,10 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 		resampler = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO, 
 			recctx.acontext->sample_fmt,
 			recctx.acontext->sample_rate, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, 
-			SHMPAGE_SAMPLERATE, 0, NULL);
+			ARCAN_SHMPAGE_SAMPLERATE, 0, NULL);
 
-		resamp_outbuf = av_malloc(sizeof(uint8_t*) * SHMPAGE_ACHANNELCOUNT);
-		av_samples_alloc(resamp_outbuf, NULL, SHMPAGE_ACHANNELCOUNT, 
+		resamp_outbuf = av_malloc(sizeof(uint8_t*) * ARCAN_SHMPAGE_ACHANNELS);
+		av_samples_alloc(resamp_outbuf, NULL, ARCAN_SHMPAGE_ACHANNELS, 
 			recctx.aframe_smplcnt, recctx.acontext->sample_fmt, 0);
 		
 		if (swr_init(resampler) < 0 ){
@@ -179,7 +179,7 @@ static uint8_t* s16swrconv(int* size, int* nsamp)
 	}
 
 	*nsamp = rc;
-	*size = av_samples_get_buffer_size(NULL, SHMPAGE_ACHANNELCOUNT, rc, 
+	*size = av_samples_get_buffer_size(NULL, ARCAN_SHMPAGE_ACHANNELS, rc, 
 		recctx.acontext->sample_fmt, 0);
 	memmove(recctx.encabuf, recctx.encabuf + recctx.aframe_insz, 
 		recctx.encabuf_ofs - recctx.aframe_insz);
@@ -213,7 +213,7 @@ static bool encode_audio(bool flush)
 forceencode:
 	ptr = s16swrconv(&buffer_sz, &frame->nb_samples);
 
-	if ( avcodec_fill_audio_frame(frame, SHMPAGE_ACHANNELCOUNT, 
+	if ( avcodec_fill_audio_frame(frame, ARCAN_SHMPAGE_ACHANNELS, 
 		ctx->sample_fmt, ptr, buffer_sz, 0) < 0 ){
 		LOG("(encode) couldn't fill target audio frame.\n");
 		exit(EXIT_FAILURE);
@@ -464,9 +464,9 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 	static bool initialized = false;
 
-	if (shared->storage.w % 2 != 0 || shared->storage.h % 2 != 0){
+	if (shared->w % 2 != 0 || shared->h % 2 != 0){
 		LOG("(encode) source image format (%dx%d) must be evenly"
-		"	divisible by 2.\n", shared->storage.w, shared->storage.h);
+		"	divisible by 2.\n", shared->w, shared->h);
 
 		return false;
 	}
@@ -479,7 +479,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
-	unsigned vbr = 5, abr = 5, samplerate = SHMPAGE_SAMPLERATE, 
+	unsigned vbr = 5, abr = 5, samplerate = ARCAN_SHMPAGE_SAMPLERATE, 
 		channels = 2, presilence = 0;
 
 	bool noaudio = false, stream_outp = false;
@@ -568,8 +568,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 	frameserver_shmpage_calcofs(shared, &(recctx.vidp), &(recctx.audp) );
 
 	if (video.storage.video.codec){
-		unsigned width  = shared->storage.w;
-		unsigned height = shared->storage.h;
+		unsigned width  = shared->w;
+		unsigned height = shared->h;
 
 		if ( video.setup.video(&video, width, height, fps, vbr, stream_outp) ){
 			recctx.encvbuf_sz = width * height * 4;
@@ -591,7 +591,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 	if (!noaudio && video.storage.audio.codec){
 		if ( audio.setup.audio(&audio, channels, samplerate, abr) ){
-			recctx.encabuf_sz     = SHMPAGE_AUDIOBUF_SIZE * 2;
+			recctx.encabuf_sz     = ARCAN_SHMPAGE_AUDIOBUF_SZ * 2;
 			recctx.encabuf_ofs    = 0;
 			recctx.encabuf        = av_malloc(recctx.encabuf_sz);
 
@@ -617,8 +617,8 @@ static bool setup_ffmpeg_encode(const char* resource)
 			}
 
 			recctx.aframe_insz = recctx.aframe_smplcnt * 
-				SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
-			recctx.aframe_sz = recctx.aframe_smplcnt * SHMPAGE_ACHANNELCOUNT * 
+				ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
+			recctx.aframe_sz = recctx.aframe_smplcnt * ARCAN_SHMPAGE_ACHANNELS * 
 				av_get_bytes_per_sample(recctx.acontext->sample_fmt);
 			LOG("(encode) audio: bytes per sample: %d, samples per frame: %d\n", 
 				av_get_bytes_per_sample( recctx.acontext->sample_fmt ),
@@ -635,7 +635,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 	if (presilence > 0 && recctx.acontext)
 	{
-		 presilence *= (float)SHMPAGE_SAMPLERATE / 1000.0;
+		 presilence *= (float)ARCAN_SHMPAGE_SAMPLERATE / 1000.0;
 		 if (presilence > recctx.encabuf_sz >> 2)
 			 presilence = recctx.encabuf_sz >> 2;
 			recctx.silence_samples = presilence;
@@ -701,8 +701,8 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 			case TARGET_COMMAND_AUDDELAY:
 				LOG("(encode) adjust audio buffering, %d milliseconds.\n",
 					ev->data.target.ioevs[0].iv);
-				recctx.silence_samples += (double) (SHMPAGE_SAMPLERATE / 1000.0) * 
-					ev->data.target.ioevs[0].iv;
+				recctx.silence_samples += (double) 
+					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev->data.target.ioevs[0].iv;
 			break;
 
 			case TARGET_COMMAND_STEPFRAME: 

@@ -135,7 +135,7 @@ static struct {
 	int rebasecount, frameskips, transfercost, framecost;
 	long long int frame_ringbuf[160];
 	long long int drop_ringbuf[40];
-	int xfer_ringbuf[MAX_SHMWIDTH];
+	int xfer_ringbuf[ARCAN_SHMPAGE_MAXW];
 	short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
 	const char* colorspace;
 
@@ -242,7 +242,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 /* audguard adds an easy detection to vidp write overflows (broken readback) 
  * in 3d and audio-output not in synch with video */
-	retroctx.audguardb = retroctx.audp + SHMPAGE_AUDIOBUF_SIZE;
+	retroctx.audguardb = retroctx.audp + ARCAN_SHMPAGE_AUDIOBUF_SZ;
 	retroctx.audguardb[0] = 0xde;
 	retroctx.audguardb[1] = 0xad;
 
@@ -379,8 +379,8 @@ static void libretro_rgb1555_rgba(const uint16_t* data, uint32_t* outp,
 	uint16_t* interm = retroctx.ntsc_imb;
 	retroctx.colorspace = "RGB1555->RGBA";
 
-	unsigned dh = height >= MAX_SHMHEIGHT ? MAX_SHMHEIGHT : height;
-	unsigned dw =  width >=  MAX_SHMWIDTH ?  MAX_SHMWIDTH : width;
+	unsigned dh = height >= ARCAN_SHMPAGE_MAXH ? ARCAN_SHMPAGE_MAXH : height;
+	unsigned dw =  width >= ARCAN_SHMPAGE_MAXW ? ARCAN_SHMPAGE_MAXW : width; 
 
 	for (int y = 0; y < dh; y++){
 		for (int x = 0; x < dw; x++){
@@ -421,8 +421,8 @@ static void libretro_vidcb(const void* data, unsigned width,
 	unsigned outh = height;
 	bool ntscconv = retroctx.ntscconv && data != RETRO_HW_FRAME_BUFFER_VALID;
 
-	if (ntscconv && SNES_NTSC_OUT_WIDTH(width)<= MAX_SHMWIDTH
-		&& height * 2 <= MAX_SHMHEIGHT){
+	if (ntscconv && SNES_NTSC_OUT_WIDTH(width)<= ARCAN_SHMPAGE_MAXW
+		&& height * 2 <= ARCAN_SHMPAGE_MAXH){ 
 		outh = outh << 1;
 		outw = SNES_NTSC_OUT_WIDTH( width );
 	}
@@ -435,8 +435,8 @@ static void libretro_vidcb(const void* data, unsigned width,
 /* the shmpage size will be larger than the possible values for width / height,
  * so if we have a mismatch, just change the shared dimensions
  * and toggle resize flag */
-	if (outw != retroctx.shmcont.addr->storage.w || outh != 
-		retroctx.shmcont.addr->storage.h){
+	if (outw != retroctx.shmcont.addr->w || outh != 
+		retroctx.shmcont.addr->h){
 		resize_shmpage(outw, outh, false);
 	}
 
@@ -1354,8 +1354,8 @@ static uintptr_t get_framebuffer()
 {
 	struct fbo_cont* dfbo = &retroctx.fbos[retroctx.fbo_ind];
 
-	int shmw = retroctx.shmcont.addr->storage.w;
-	int shmh = retroctx.shmcont.addr->storage.h;
+	int shmw = retroctx.shmcont.addr->w;
+	int shmh = retroctx.shmcont.addr->h;
 
 	if (dfbo->fbo == 0 || shmw != dfbo->dw || shmh != dfbo->dh)  
 		build_fbo(shmw, shmh, &dfbo->dw, &dfbo->dh, &dfbo->fbo,
@@ -1380,7 +1380,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	ctx->get_proc_address = (retro_hw_get_proc_address_t) SDL_GL_GetProcAddress;
 
 	if (ctx->bottom_left_origin)
-		retroctx.shmcont.addr->storage.glsource = true;
+		retroctx.shmcont.addr->glsource = true;
 
 	memcpy(&retroctx.hwctx, ctx, 
 		sizeof(struct retro_hw_render_callback));
@@ -1595,12 +1595,12 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 			(float)retroctx.avinfo.timing.sample_rate);
 
 		LOG("setting up resampler, %f => %d.\n", 
-			(float)retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE);
+			(float)retroctx.avinfo.timing.sample_rate, ARCAN_SHMPAGE_SAMPLERATE);
 
 		int errc;
-		retroctx.resampler = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, 
-			retroctx.avinfo.timing.sample_rate, SHMPAGE_SAMPLERATE, 
-			RESAMPLER_QUALITY, &errc);
+		retroctx.resampler = speex_resampler_init(ARCAN_SHMPAGE_ACHANNELS, 
+			retroctx.avinfo.timing.sample_rate, ARCAN_SHMPAGE_SAMPLERATE, 
+			ARCAN_SHMPAGE_RESAMPLER_QUALITY, &errc);
 
 /* intermediate buffer for resampling and not 
  * relying on a well-behaving shmpage */
@@ -1727,7 +1727,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* possible to add a size lower limit here to maintain a larger
  * resampling buffer than synched to videoframe */
 				if (retroctx.audbuf_ofs){
-					spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; 
+					spx_uint32_t outc  = ARCAN_SHMPAGE_AUDIOBUF_SZ; 
 /*first number of bytes, then after process..., number of samples */
 					spx_uint32_t nsamp = retroctx.audbuf_ofs >> 1;
 					speex_resampler_process_interleaved_int(retroctx.resampler, 
@@ -1735,7 +1735,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 						(spx_int16_t*) retroctx.audp, &outc);
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc * 
-							SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
+							ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
 
 					shared->aready = true;
 					retroctx.audbuf_ofs = 0;
@@ -1778,7 +1778,7 @@ static void log_msg(char* msg, bool flush)
 {
 	clear_tocol(retroctx.graphing, 0xff000000);
 	int dw, dh;
-	int sw = retroctx.shmcont.addr->storage.w;
+	int sw = retroctx.shmcont.addr->w;
 
 /* clip string */
 	char* mendp = msg + strlen(msg) + 1;
@@ -1790,7 +1790,7 @@ static void log_msg(char* msg, bool flush)
 
 /* center */
 	draw_text(retroctx.graphing, msg, 
-		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.addr->storage.h - dh), 0xffffffff);
+		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.addr->h - dh), 0xffffffff);
 
 	if (flush){
 		retroctx.shmcont.addr->vready = true;
@@ -1856,7 +1856,7 @@ static void push_stats()
 /* color-coded frame timing / alignment, starting at the far right 
  * with the next intended frame, horizontal resolution is 2 px / ms */
 
-	int dw = retroctx.shmcont.addr->storage.w;
+	int dw = retroctx.shmcont.addr->w;
 	draw_box(retroctx.graphing, 0, yv, dw, PXFONT_HEIGHT * 2, 0xff000000);
 	draw_hline(retroctx.graphing, 0, yv + PXFONT_HEIGHT, dw, 0xff999999);
 
@@ -1918,7 +1918,7 @@ static void push_stats()
 	ofs = STEPBACK(retroctx.xferbuf_ofs);
 	int maxv = 0, count = 0;
 
-	while( count < retroctx.shmcont.addr->storage.w ){
+	while( count < retroctx.shmcont.addr->w ){
 		if (retroctx.xfer_ringbuf[ ofs ] > maxv)
 			maxv = retroctx.xfer_ringbuf[ ofs ];
 

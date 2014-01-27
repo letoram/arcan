@@ -36,7 +36,7 @@
 struct guard_struct {
 	sem_handle semset[3];
 	int parent;
-	bool* dms; /* dead man's switch */
+	volatile uint8_t* dms; /* dead man's switch */
 };
 static void* guard_thread(void* gstruct);
 
@@ -112,7 +112,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 	struct frameserver_shmcont res = {0};
 	force_unlink = false;
 
-	unsigned bufsize = MAX_SHMSIZE;
+	unsigned bufsize = ARCAN_SHMPAGE_MAXSZ;
 	int fd = -1;
 
 /* little hack to get around some implementations not accepting a 
@@ -286,18 +286,15 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp,
 	uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
 	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, 
-		shmp->storage.w, shmp->storage.h, SHMPAGE_VCHANNELCOUNT);
+		shmp->w, shmp->h, ARCAN_SHMPAGE_VCHANNELS);
 }
 
 bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, 
 	unsigned width, unsigned height)
 {
 	if (arg->addr){
-		arg->addr->storage.w = width;
-		arg->addr->storage.h = height;
-
-		arg->addr->display.w = width;
-		arg->addr->display.h = height;
+		arg->addr->w = width;
+		arg->addr->h = height;
 
 		if (frameserver_shmpage_integrity_check(arg->addr)){
 			arg->addr->resized = true;

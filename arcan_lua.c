@@ -4467,13 +4467,8 @@ static int recordset(lua_State* ctx)
 /* we define the size of the recording to be that of the storage
  * of the rendertarget vid, this should be allocated through fill_surface */
 		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
-		shmpage->storage.w = dobj->vstore->w;
-		shmpage->storage.h = dobj->vstore->h;
-
-/* separate storage and display dimensions to allow 
- * for scaling hints, or cropping */
-		shmpage->display.w   = dobj->vstore->w;
-		shmpage->display.h   = dobj->vstore->h;
+		shmpage->w = dobj->vstore->w;
+		shmpage->h = dobj->vstore->h;
 
 		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
