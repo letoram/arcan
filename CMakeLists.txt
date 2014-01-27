@@ -232,7 +232,6 @@ set (
  arcan_math.h
  arcan_3dbase.h
  arcan_video.h
- arcan_util.h
  arcan_audio.h
  arcan_target_launcher.h
  arcan_led.c
