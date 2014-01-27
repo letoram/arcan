@@ -363,8 +363,8 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 			EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is 
  * detected, just ignore this frame */
-		srcw = shmpage->storage.w;
-		srch = shmpage->storage.h;
+		srcw = shmpage->w;
+		srch = shmpage->h;
 	
 		if (srcw == tgt->desc.width && srch == tgt->desc.height){
 			rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 
@@ -751,9 +751,11 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 	if ( shmpage->resized ){
 		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
-		img_cons store = {.w = shmpage->storage.w, .h = shmpage->storage.h, 
-			.bpp = SHMPAGE_VCHANNELCOUNT};
-		img_cons disp  = {.w = shmpage->display.w, .h = shmpage->display.h};
+		img_cons store = {
+			.w = shmpage->w, 
+			.h = shmpage->h, 
+			.bpp = ARCAN_SHMPAGE_VCHANNELS
+		};
 
 		src->desc.width = store.w; 
 		src->desc.height = store.h; 
@@ -763,12 +765,12 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		arcan_framequeue_free(&src->afq);
 
 /* resize the source vid in a way that won't propagate to user scripts */
-		src->desc.samplerate = SHMPAGE_SAMPLERATE;
-		src->desc.channels = SHMPAGE_ACHANNELCOUNT;
+		src->desc.samplerate = ARCAN_SHMPAGE_SAMPLERATE;
+		src->desc.channels = ARCAN_SHMPAGE_ACHANNELS;
 
 		arcan_event_maskall(arcan_event_defaultctx());
 /* this will also emit the resize event */
-		arcan_video_resizefeed(src->vid, store, disp);
+		arcan_video_resizefeed(src->vid, store, store);
 		arcan_event_clearmask(arcan_event_defaultctx());
 		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
 
@@ -818,8 +820,9 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 				&abufsize, &presilence);
 			if (acachelim == 0 || abufsize == 0){
 				float mspvf = 1000.0 / 30.0;
-				float mspaf = 1000.0 / (float) SHMPAGE_SAMPLERATE;
-				abufsize = ceilf( (mspvf / mspaf) * SHMPAGE_ACHANNELCOUNT * 2);
+				float mspaf = 1000.0 / (float) ARCAN_SHMPAGE_SAMPLERATE;
+				abufsize = ceilf( (mspvf / mspaf) * 
+					ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t));
 				acachelim = vcachelim * 2;
 			}
 
@@ -850,7 +853,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			.data.frameserver.video = src->vid,
 			.data.frameserver.audio = src->aid,
 			.data.frameserver.otag = src->tag,
-			.data.frameserver.glsource = shmpage->storage.glsource
+			.data.frameserver.glsource = shmpage->glsource
 		};
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
@@ -1062,7 +1065,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* we don't know how many audio feeds are actually monitored to produce the
  * output, thus not how large the intermediate buffer should be to 
  * safely accommodate them all */
-			ctx->sz_audb = SHMPAGE_AUDIOBUF_SIZE;
+			ctx->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
 			ctx->audb = malloc( ctx->sz_audb );
 		}
 	}
