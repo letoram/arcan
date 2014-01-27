@@ -417,7 +417,7 @@ themeswitch:
 
 
 /* setup VM, map arguments and possible overrides */ 
-	struct arcan_luactx* luactx = arcan_luaL_setup(debuglevel);
+	struct arcan_luactx* luactx = arcan_lua_alloc();
 
 	char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
 	sprintf(themescr, "%s.lua", arcan_themename);
@@ -439,6 +439,7 @@ themeswitch:
 	if (argc > optind)
 		arcan_lua_pushargv(luactx, argv + optind + 1);
 
+	arcan_lua_mapfunctions(luactx, debuglevel);
 	arcan_lua_callvoidfun(luactx, arcan_themename, true);
 	arcan_lua_callvoidfun(luactx, "show", false);
 

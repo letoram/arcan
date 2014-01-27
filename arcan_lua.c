@@ -3454,14 +3454,23 @@ void arcan_luaL_dostring(lua_State* ctx, const char* code)
     (void)luaL_dostring(ctx, code);
 }
 
-lua_State* arcan_luaL_setup(int debuglevel)
+lua_State* arcan_lua_alloc()
 {
 	lua_State* res = luaL_newstate();
-	luaL_openlibs(res);
-	arcan_lua_exposefuncs(res, debuglevel);
-	arcan_lua_pushglobalconsts(res);
+
+/* in the future, we need a hook here to 
+ * limit / "null-out" the undesired subset of the LUA API */
+	if (res){
+		luaL_openlibs(res);
+		arcan_lua_pushglobalconsts(res);
+	}
 
 	return res;
+}
+
+void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
+{
+	arcan_lua_exposefuncs(ctx, debuglevel);
 }
 
 static int shutdown(lua_State *ctx)
