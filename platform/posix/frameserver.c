@@ -204,7 +204,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	size_t shmsize = ARCAN_SHMPAGE_MAXSZ;
+	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
 	struct frameserver_shmpage* shmpage;
 	int shmfd = 0;
 
