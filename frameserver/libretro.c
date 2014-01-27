@@ -135,7 +135,7 @@ static struct {
 	int rebasecount, frameskips, transfercost, framecost;
 	long long int frame_ringbuf[160];
 	long long int drop_ringbuf[40];
-	int xfer_ringbuf[ARCAN_SHMPAGE_MAXW];
+	int xfer_ringbuf[PP_SHMPAGE_MAXW];
 	short int framebuf_ofs, dropbuf_ofs, xferbuf_ofs;
 	const char* colorspace;
 

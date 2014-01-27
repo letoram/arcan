@@ -47,7 +47,6 @@
 #include "../arcan_event.h"
 #include "../arcan_frameserver_backend.h"
 #include "../arcan_event.h"
-#include "../arcan_util.h"
 #include "../arcan_frameserver_shmpage.h"
 
 /*
@@ -216,12 +215,12 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 		&nullsec_attr, /* security, want to inherit */
 		PAGE_READWRITE, /* access */
 		0, /* big-endian size? */
-		MAX_SHMSIZE, /* little-endian size */
+		ARCAN_SHMPAGE_MAX_SZ, /* little-endian size */
 		NULL /* null, pass by inheritance */
 	);
 
 	if (*dfd != NULL && (res = MapViewOfFile(*dfd, 
-			FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE))){
+			FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ))){
 		memset(res, 0, sizeof(struct frameserver_shmpage));
 		return res;
 	}
@@ -237,7 +236,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 {
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	arcan_frameserver_meta vinfo = {0};
-	size_t shmsize = MAX_SHMSIZE;
+	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
 
 	HANDLE shmh;
 	struct frameserver_shmpage* shmpage = setupshmipc(&shmh);
@@ -276,7 +275,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 	ctx->shm.key = strdup("win32_static");
 	ctx->shm.ptr = (void*) shmpage;
-	ctx->shm.shmsize = MAX_SHMSIZE;
+	ctx->shm.shmsize = ARCAN_SHMPAGE_MAX_SZ;
 	ctx->shm.handle = shmh;
 	shmpage->parent = handle;
 
