@@ -80,7 +80,8 @@
  * Number of allowed events in the in-queue and the out-queue,
  * should be kept low and monitored for use. 
  */
-static const int ARCAN_SHMPAGE_QUEUESIZE = 64;
+#define PP_QUEUE_SZ 64
+static const int ARCAN_SHMPAGE_QUEUE_SZ = PP_QUEUE_SZ;
 
 /* 
  * Default audio storage / transfer characteristics
@@ -107,22 +108,31 @@ static const int ARCAN_SHMPAGE_ACHANNELS = 2;
  * pack in 4x8bit channels interleaved and then hint the
  * conversion in the shader used 
  */ 
+#ifndef PP_SHMPAGE_MAXW
+#define PP_SHMPAGE_MAXW 1920
+#endif
+
+#ifndef PP_SHMPAGE_MAXH
+#define PP_SHMPAGE_MAXH 1080
+#endif
 static const int ARCAN_SHMPAGE_VCHANNELS = 4;
-static const int ARCAN_SHMPAGE_MAXW = 1920;
-static const int ARCAN_SHMPAGE_MAXH = 1080;
+static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
+static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
 
 /* 
  * The final shmpage size will be a function of the constants 
  * above, along with a few extra bytes to make room for the
- * header structure
+ * header structure (audioframe * 3 / shmpage_achannels)
  */
-static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 
-	ARCAN_SHMPAGE_MAXAUDIO_FRAME * 3 / ARCAN_SHMPAGE_ACHANNELS;
-static const int ARCAN_SHMPAGE_MAXSZ = 
-	(ARCAN_SHMPAGE_MAXW * ARCAN_SHMPAGE_MAXH * ARCAN_SHMPAGE_VCHANNELS) +
-	ARCAN_SHMPAGE_AUDIOBUF_SZ + 
-	(sizeof(struct arcan_event) * ARCAN_SHMPAGE_QUEUESIZE * 2) + 512
-	;
+static const int ARCAN_SHMPAGE_AUDIOBUF_SZ = 288000;
+/*	ARCAN_SHMPAGE_MAXAUDIO_FRAME * 3 / ARCAN_SHMPAGE_ACHANNELS; */
+
+static const int ARCAN_SHMPAGE_VIDEOBUF_SZ = 8294400;
+/* ARCAN_SHMPAGE_MAXW * ARCAN_SHMPAGE_MAXH * ARCAN_SHMPAGE_VCHANNELS */
+
+static const int ARCAN_SHMPAGE_MAX_SZ = 8647936; 
+/* ARCAN_SHMPAGE_AUDIOBUF_SZ + ARCAN_SHMPAGE_VIDEOBUF_SZ + 
+  sizeof(struct arcan_event) * ARCAN_SHMPAGE_QUEUE_SZ * 2) + 512 */
 
 #ifndef INFINITE
 #define INFINITE -1
@@ -147,7 +157,7 @@ struct frameserver_shmpage {
  * ring-buffer.
  */ 
 	struct {
-		arcan_event evqueue[ ARCAN_SHMPAGE_QUEUESIZE ];
+		arcan_event evqueue[ PP_QUEUE_SZ ];
 		uint32_t front, back;
 	} childdevq, parentdevq;
 

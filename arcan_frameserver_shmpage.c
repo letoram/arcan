@@ -75,7 +75,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
 	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, 
-		FILE_MAP_ALL_ACCESS, 0, 0, MAX_SHMSIZE);
+		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
 
 	if ( res.addr == NULL ) {
 		arcan_warning("fatal: Couldn't map the allocated shared "
