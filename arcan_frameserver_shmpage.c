@@ -112,7 +112,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 	struct frameserver_shmcont res = {0};
 	force_unlink = false;
 
-	unsigned bufsize = ARCAN_SHMPAGE_MAXSZ;
+	unsigned bufsize = ARCAN_SHMPAGE_MAX_SZ;
 	int fd = -1;
 
 /* little hack to get around some implementations not accepting a 
