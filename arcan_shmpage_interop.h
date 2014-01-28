@@ -46,8 +46,9 @@
  * arcan_general.h */
 
 #ifdef _WIN32
+#include "platform/win32/platform.h"
 #else
-
+#define BADFD -1
 #include <pthread.h>
 #include <semaphore.h>
 
@@ -78,7 +79,6 @@ typedef long long arcan_vobj_id;
 typedef int arcan_aobj_id;
 
 #define PRIxVOBJ "lld"
-#define BADFD -1
 
 struct arcan_event* arcan_event_poll(struct arcan_evctx*, arcan_errc* status);
 void arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event*);

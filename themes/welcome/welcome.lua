@@ -37,6 +37,10 @@ function welcome()
 		gamelst = {};
 	end
 
+	if (LIBPATH == nil) then
+		LIBPATH = "not found";
+	end
+
 	local st = {welcomestr, [[\ffonts/default.ttf,12]]};
 	table.insert(st, string.format("# Games:\\t\\t%d", #gamelst));
 	table.insert(st, string.format("Resolution:\\t\\t%d x %d", VRESW, VRESH));
