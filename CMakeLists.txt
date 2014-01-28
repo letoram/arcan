@@ -213,7 +213,6 @@ set (
  arcan_event.c
  arcan_lua.c
  arcan_framequeue.c
- arcan_frameserver_backend.c
  arcan_main.c
  arcan_db.c
  arcan_video.c
@@ -228,7 +227,6 @@ set (
  arcan_framequeue.h
  arcan_event.h
  arcan_lua.h
- arcan_frameserver_backend.h
  arcan_math.h
  arcan_3dbase.h
  arcan_video.h
@@ -241,6 +239,9 @@ set (
  arcan_general.h
  arcan_db.h
  arcan_shdrmgmt.h
+ arcan_shmpage_interop.h
+ arcan_frameserver_backend.h
+ arcan_frameserver_backend.c
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
 )
@@ -254,7 +255,8 @@ set (
  frameserver/resampler/speex_resampler.h
  arcan_frameserver_shmpage.h
  arcan_frameserver_shmpage.c
- arcan_event.c
+ arcan_shmpage_interop.h
+ arcan_shmpage_interop.c
  external/fft/kiss_fft.c
  external/fft/kiss_fftr.c
 )

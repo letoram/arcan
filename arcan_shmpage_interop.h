@@ -1,0 +1,85 @@
+/* 
+ Arcan Shared Memory Interface, Interoperability definitions
+
+ Copyright (c) 2014, Bjorn Stahl
+ All rights reserved.
+ 
+ Redistribution and use in source and binary forms, 
+ with or without modification, are permitted provided that the 
+ following conditions are met:
+ 
+ 1. Redistributions of source code must retain the above copyright notice, 
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice, 
+ this list of conditions and the following disclaimer in the documentation 
+ and/or other materials provided with the distribution.
+ 
+ 3. Neither the name of the copyright holder nor the names of its contributors 
+ may be used to endorse or promote products derived from this software without 
+ specific prior written permission.
+ 
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+ AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, 
+ THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+ ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+ LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, 
+ OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+ SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+ THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#ifndef _HAVE_ARCAN_INTEROP
+#define _HAVE_ARCAN_INTEROP
+
+#define ARCAN_VERSION_MAJOR 0
+#define ARCAN_VERSION_MINOR 3 
+#define ARCAN_VERSION_PATCH 2 
+
+/* There is a limited amount of types that both arcan
+ * and frameservers need to agree on. To limit namespaces
+ * this header provides definitions that otherwise would've
+ * resided in the platform subdirectories or as part of 
+ * arcan_general.h */
+
+#ifdef _WIN32
+#else
+
+#include <pthread.h>
+#include <semaphore.h>
+
+typedef int pipe_handle;
+typedef int file_handle;
+typedef pid_t process_handle;
+typedef sem_t* sem_handle;
+#endif
+
+struct arcan_event;
+struct arcan_evctx;
+
+/*
+ * For porting the shmpage interface, these functions need to be 
+ * implemented and pulled in, shouldn't be much more work than
+ * what's already in the corresponding platform folder
+ */
+long long int arcan_timemillis();
+void arcan_timesleep(unsigned long);
+
+int arcan_sem_post(sem_handle sem);
+int arcan_sem_unlink(sem_handle sem, char* key);
+int arcan_sem_timedwait(sem_handle sem, int msecs);
+
+
+typedef int8_t arcan_errc;
+typedef long long arcan_vobj_id;
+typedef int arcan_aobj_id;
+
+#define PRIxVOBJ "lld"
+#define BADFD -1
+
+struct arcan_event* arcan_event_poll(struct arcan_evctx*, arcan_errc* status);
+void arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event*);
+#endif

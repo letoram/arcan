@@ -27,13 +27,13 @@
 #include <unistd.h>
 #include <string.h>
 #include <strings.h>
+#include <pthread.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
+#include "../arcan_shmpage_interop.h"
+#include "../arcan_shmpage_event.h"
+#include "../arcan_frameserver_shmpage.h"
 
 #include "frameserver.h"
-#include "../arcan_frameserver_shmpage.h"
 #include "ntsc/snes_ntsc.h"
 #include "graphing/net_graph.h"
 #include "ievsched.h"
@@ -45,13 +45,7 @@
 #ifdef FRAMESERVER_LIBRETRO_3D 
 #include "../platform/sdl/glheaders.h"
 #include "../platform/platform.h"
-#include "../arcan_video.h"
-#include "../arcan_videoint.h"
 
-/* linking hijacks to workaround the platform
- * split problem (to be refactored when decent
- * KMS etc. support is added) */
-struct arcan_video_display arcan_video_display = {0};
 static void build_fbo(int neww, int newh, int* dw, int* dh, 
 	GLuint* dfbo, GLuint* ddepth, GLuint* dcol);
 

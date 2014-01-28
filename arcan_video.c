@@ -1919,8 +1919,8 @@ static void* thread_loader(void* in)
 
 	if (rc == ARCAN_OK){ /* emit OK event */
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
-		result.data.video.constraints.w = dst->origw;
-		result.data.video.constraints.h = dst->origh;
+		result.data.video.width = dst->origw;
+		result.data.video.height = dst->origh;
 	} else {
 		dst->origw = 32;
 		dst->origh = 32;
@@ -1931,8 +1931,8 @@ static void* thread_loader(void* in)
 		dst->vstore->h = 32;
 		dst->vstore->vinf.text.source = strdup(largs->fname);
 		result.data.video.data = largs->tag;
-		result.data.video.constraints.w = 32;
-		result.data.video.constraints.h = 32;
+		result.data.video.width = 32;
+		result.data.video.height = 32;
 		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;
 		/* emit FAILED event */
 	}
