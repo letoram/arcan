@@ -6,12 +6,11 @@
 #include <sys/types.h>
 #include <fft/kiss_fftr.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
+#include "../arcan_shmpage_interop.h"
+#include "../arcan_shmpage_event.h"
+#include "../arcan_frameserver_shmpage.h"
 
 #include "frameserver.h"
-#include "../arcan_frameserver_shmpage.h"
 #include "decode.h"
 
 #define AUD_VIS_HRES 2048 
@@ -574,8 +573,7 @@ static inline void flush_eventq(){
 	 arcan_event* ev;
 	 arcan_errc evstat;
 
-	while ( (ev = arcan_event_poll(&decctx.inevq, &evstat)) 
-		&& evstat == ARCAN_OK){
+	while ( (ev = arcan_event_poll(&decctx.inevq, &evstat)) && evstat == 0){
 		switch (ev->category){
 		case EVENT_IO: break;
 		case EVENT_TARGET: targetev(ev); break;

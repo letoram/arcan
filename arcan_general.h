@@ -34,13 +34,10 @@
  * (b) continue evacuating ifdefs that aren't DEBUG
  */
 
-#define ARCAN_VERSION_MAJOR 0
-#define ARCAN_VERSION_MINOR 3 
-#define ARCAN_VERSION_PATCH 1 
-
 typedef struct frameserver_shmpage frameserver_shmpage;
 
 #include PLATFORM_HEADER
+#include "arcan_shmpage_interop.h"
 
 #ifndef _WIN32
 
@@ -50,16 +47,10 @@ typedef struct frameserver_shmpage frameserver_shmpage;
 	#define LIBNAME "libarcan_hijack.so"
 #endif
 
-#define BADFD -1
 #define NULFILE "/dev/null"
 
 #include <semaphore.h>
 #include <getopt.h>
-typedef int pipe_handle;
-typedef int file_handle;
-typedef pid_t process_handle;
-typedef sem_t* sem_handle;
-
 typedef struct {
 	frameserver_shmpage* ptr;
 	int handle;
@@ -70,13 +61,7 @@ typedef struct {
 
 #endif
 
-/* shared definitions */
-typedef int8_t arcan_errc;
-typedef long long arcan_vobj_id;
-#define PRIxVOBJ "lld"
-
 typedef int arcan_shader_id;
-typedef long arcan_aobj_id;
 typedef unsigned int arcan_tickv;
 
 enum arcan_vobj_tags {
@@ -173,15 +158,11 @@ void arcan_release_resource(data_source* sptr);
 map_region arcan_map_resource(data_source* source, bool wr); 
 bool arcan_release_map(map_region region);
 
-long long int arcan_timemillis();
-
 /* 
  * Somewhat ad-hoc, mainly just used for mouse grab- style
  * global state changes for now.
  */
 void arcan_device_lock(int devind, bool state);
-
-void arcan_timesleep(unsigned long);
 
 void arcan_warning(const char* msg, ...);
 void arcan_fatal(const char* msg, ...);
@@ -191,12 +172,6 @@ void arcan_fatal(const char* msg, ...);
  * the file_handle wrapper is purposefully not used on this function 
  * and for Win32, is expected to be managed by _get_osfhandle */
 int fmt_open(int flags, mode_t mode, const char* fmt, ...);
-
-/* wrap the posix-2001 semaphore functions, needs workarounds for some 
- * platforms for timed_wait and everything on win32 */
-int arcan_sem_post(sem_handle sem);
-int arcan_sem_unlink(sem_handle sem, char* key);
-int arcan_sem_timedwait(sem_handle sem, int msecs);
 
 /* since mingw does not export a glob.h,
  * we have to write a lightweight globber */
@@ -214,11 +189,6 @@ const char* internal_launch_support();
 
 #ifndef INTERP_MINSTEP
 #define INTERP_MINSTEP 0.15
-#endif
-
-/* fixed limit of allowed events in queue before old gets overwritten */
-#ifndef ARCAN_EVENT_QUEUE_LIM
-#define ARCAN_EVENT_QUEUE_LIM 1024
 #endif
 
 #define ARCAN_EID 0

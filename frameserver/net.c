@@ -33,12 +33,11 @@
 #include <apr_poll.h>
 #include <apr_portable.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
+#include "../arcan_shmpage_interop.h"
+#include "../arcan_shmpage_event.h"
+#include "../arcan_frameserver_shmpage.h"
 
 #include "frameserver.h"
-#include "../arcan_frameserver_shmpage.h"
 #include "net.h"
 #include "graphing/net_graph.h"
 
@@ -1120,7 +1119,7 @@ retry:
 							arcan_event_enqueue(&netcontext.outevq, &ev);
 
 							while ( (dev = arcan_event_poll(&netcontext.outevq, &sc))
-								&& sc == ARCAN_OK ){
+								&& sc == 0 ){
 								if (dev->category == EVENT_TARGET && dev->kind == 
 									TARGET_COMMAND_EXIT)
 									return NULL;

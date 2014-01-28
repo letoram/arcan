@@ -32,8 +32,8 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _HAVE_FRAMESERVER_SHMPAGE
-#define _HAVE_FRAMESERVER_SHMPAGE
+#ifndef _HAVE_ARCAN_FRAMESERVER_SHMPAGE
+#define _HAVE_ARCAN_FRAMESERVER_SHMPAGE
 
 /* 
  * This header defines the interface and support functions for

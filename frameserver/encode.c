@@ -16,17 +16,17 @@
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
-
 #undef BADFD
 #define BADFD -1
 
-#include "frameserver.h"
+#include "../arcan_shmpage_interop.h"
+#include "../arcan_shmpage_event.h"
 #include "../arcan_frameserver_shmpage.h"
+
 #include "encode.h"
 #include "encode_presets.h"
+
+#include "frameserver.h"
 
 /* don't build / link to older versions */
 #if LIBAVCODEC_VERSION_MAJOR < 54
@@ -669,7 +669,7 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 /* fail here means there's something wrong with 
  * frameserver - main app connection */
 		arcan_event* ev = arcan_event_poll(&recctx.inevq, &evstat);
-		if (evstat != ARCAN_OK)
+		if (evstat != 0)
 			break;
 
 		if (ev && ev->category == EVENT_TARGET){

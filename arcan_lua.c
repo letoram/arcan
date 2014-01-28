@@ -2340,8 +2340,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
 			evmsg = "video_event(asynchimg_loaded)";
 			tblstr(ctx, "kind", "loaded", top);
-			tblnum(ctx, "width", ev->data.video.constraints.w, top);
-			tblnum(ctx, "height", ev->data.video.constraints.h, top);
+			tblnum(ctx, "width", ev->data.video.width, top);
+			tblnum(ctx, "height", ev->data.video.height, top);
 			dst_cb = (intptr_t) ev->data.video.data;
 
 			if (dst_cb){
@@ -2356,8 +2356,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			tblstr(ctx, "kind", "load_failed", top);
 			tblstr(ctx, "resource", srcobj && srcobj->vstore->vinf.text.source ?
 				srcobj->vstore->vinf.text.source : "unknown", top);
-			tblnum(ctx, "width", ev->data.video.constraints.w, top);
-			tblnum(ctx, "height", ev->data.video.constraints.h, top);
+			tblnum(ctx, "width", ev->data.video.width, top);
+			tblnum(ctx, "height", ev->data.video.height, top);
 			dst_cb = (intptr_t) ev->data.video.data;
 
 			if (dst_cb){
