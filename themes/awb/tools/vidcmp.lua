@@ -157,6 +157,10 @@ local function add_source(wnd, tag)
 -- replace the slot reference and force a rebuild
 	tag.source:add_handler("on_update", 
 		function(self, srcwnd)
+			if (wnd.alive == false) then
+				return;
+			end
+
 			wnd.sources[ind] = srcwnd.canvas.vid;	
 			rebuild(wnd);
 		end);
