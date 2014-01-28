@@ -51,11 +51,12 @@
 
 #include <SDL/SDL.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_event.h"
 #include "arcan_target.h"
+
+#include "arcan_shmpage_interop.h"
+#include "arcan_shmpage_event.h"
 #include "arcan_frameserver_shmpage.h"
+
 #include "frameserver/ntsc/snes_ntsc.h"
 
 static SDL_PixelFormat PixelFormat_RGB565 = {
@@ -359,14 +360,14 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 	trace("ARCAN_target_shmsize(%d, %d, %d)\n", w, h, bpp);
 
 /* filter "useless" resolutions */
-	if (w > MAX_SHMWIDTH || h > MAX_SHMHEIGHT || w < 32 || h < 32)
+	if (w > ARCAN_SHMPAGE_MAXW || h > ARCAN_SHMPAGE_MAXH || w < 32 || h < 32)
 		return;
 
 	global.sourcew = w;
 	global.sourceh = h;
 
 	if (global.ntscconv && SNES_NTSC_OUT_WIDTH(w) < 
-		MAX_SHMWIDTH && h * 2 < MAX_SHMHEIGHT){
+		ARCAN_SHMPAGE_MAXW && h * 2 < ARCAN_SHMPAGE_MAXH){
 		w  = SNES_NTSC_OUT_WIDTH(w);
 		h *= 2;
 		if (global.ntsc_imb)
@@ -418,10 +419,11 @@ int ARCAN_SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 	global.encabuf_sz = 120 * 1024;
 	global.encabuf    = malloc(global.encabuf_sz);
 		
-	if (global.samplerate != SHMPAGE_SAMPLERATE){
+	if (global.samplerate != ARCAN_SHMPAGE_SAMPLERATE){
 		int errc;	
-		global.resampler  = speex_resampler_init(SHMPAGE_ACHANNELCOUNT, 
-			global.samplerate, SHMPAGE_SAMPLERATE, RESAMPLER_QUALITY, &errc);
+		global.resampler  = speex_resampler_init(ARCAN_SHMPAGE_ACHANNELS, 
+			global.samplerate, ARCAN_SHMPAGE_SAMPLERATE, 
+			ARCAN_SHMPAGE_RESAMPLER_QUALITY, &errc);
 	}
 	
 	return rc;
@@ -447,10 +449,10 @@ SDL_Surface* ARCAN_SDL_SetVideoMode(int w, int h, int ncps, Uint32 flags)
 	global.gotsdl = true;
 	
 	SDL_Surface* res = forwardtbl.sdl_setvideomode(w, h, ncps, flags);
-	global.doublebuffered = (flags & SDL_DOUBLEBUF) > 0;
-	global.glsource = global.shared.addr->storage.glsource = 
-		(flags & SDL_OPENGL) > 0;
-	
+	global.doublebuffered = ((flags & SDL_DOUBLEBUF) > 0);
+	global.glsource = ((flags & SDL_OPENGL) > 0); 
+	global.shared.addr->glsource = global.glsource;
+
 	if ( (flags & SDL_FULLSCREEN) > 0) { 
 /* oh no you don't */
 		flags &= !SDL_FULLSCREEN;
@@ -604,7 +606,7 @@ int ARCAN_SDL_PollEvent(SDL_Event* inev)
 	
 	trace("SDL_PollEvent()\n");
 	
-	while ( (ev = arcan_event_poll(&global.inevq, &rv)) && rv == ARCAN_OK ) 
+	while ( (ev = arcan_event_poll(&global.inevq, &rv)) && rv == 0 ) 
 		switch (ev->category){
 			case EVENT_IO:
 				if (global.gotsdl)
@@ -636,11 +638,11 @@ static void push_audio()
 	if (global.abuf_synch && global.encabuf_ofs > 0){
 		SDL_mutexP(global.abuf_synch);
 		
-			if (global.samplerate == SHMPAGE_SAMPLERATE){
+			if (global.samplerate == ARCAN_SHMPAGE_SAMPLERATE){
 				memcpy(global.audp, global.encabuf, 
 					global.encabuf_ofs * sizeof(int16_t));
 			} else {
-				spx_uint32_t outc  = SHMPAGE_AUDIOBUF_SIZE; 
+				spx_uint32_t outc  = ARCAN_SHMPAGE_AUDIOBUF_SZ; 
 /*first number of bytes, then after process..., number of samples */
 				spx_uint32_t nsamp = global.encabuf_ofs >> 1;
 				
@@ -649,7 +651,7 @@ static void push_audio()
 					(spx_int16_t*) global.audp, &outc);
 				if (outc)
 					global.shared.addr->abufused += 
-						outc * SHMPAGE_ACHANNELCOUNT * sizeof(uint16_t);
+						outc * ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
 
 				global.shared.addr->aready = true;
 			}
@@ -723,7 +725,7 @@ static void copysurface(SDL_Surface* src){
 		}
 	}
 
-	global.shared.addr->storage.glsource = false;
+	global.shared.addr->glsource = false;
 	push_audio();
 	global.shared.addr->vready = true;
 }
@@ -806,9 +808,9 @@ void ARCAN_SDL_GL_SwapBuffers()
  * (minimize memory bw- use at all time),
  * we want to flip in the main- app using the texture coordinates, 
  * hence the glsource flag */
-	if (!global.shared.addr->storage.glsource){
+	if (!global.shared.addr->glsource){
 		trace("Toggle GL surface support");
-		global.shared.addr->storage.glsource = true;
+		global.shared.addr->glsource = true;
 		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
 	}
 	
