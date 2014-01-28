@@ -131,6 +131,10 @@ function awbwnd_modelview(pwin, source)
 -- this needs to be unique for each window as it's also
 -- used as handler table for another window
 	pwin.dispsrc_update = function(self, srcwnd)
+		if (pwin.alive == false) then
+			return;
+		end
+
 		local newdisp = null_surface(32, 32);
 		image_tracetag(newdisp, "media_displaytag");
 		image_sharestorage(srcwnd.canvas.vid, newdisp);
