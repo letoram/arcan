@@ -29,7 +29,7 @@ platform/stub/event.c
 
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_SOURCES platform/sdl/video.c)
+	list(APPEND FSRV_SOURCES platform/sdl/video_mini.c)
 	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
 	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
 	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
