@@ -359,6 +359,7 @@ function show_help()
 
 	if (wnd ~= nil) then
 		wnd:focus();
+		wnd.name = "Help Window";
 		wnd:helpmsg(focusmsg);
 		return;
 	end

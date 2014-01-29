@@ -180,10 +180,10 @@ else
 	mnavfmts["Off"] = settings.colourtable.notice_fontstr;
 end
 
-add_submenu(inputlbls, inputptrs, "Mouse Navigation...", "mouse_enabled", 
-	mnavlbls, mnavptrs, mnavfmts);
-add_submenu(inputlbls, inputptrs, "Mouse Trails...", "mouse_trails", 
-	gen_num_menu("mouse_trails", 0, 10, 5, function() end, true));
+-- add_submenu(inputlbls, inputptrs, "Mouse Navigation...", "mouse_enabled", 
+--	mnavlbls, mnavptrs, mnavfmts);
+-- add_submenu(inputlbls, inputptrs, "Mouse Trails...", "mouse_trails", 
+--	gen_num_menu("mouse_trails", 0, 10, 5, function() end, true));
 
 local mainlbls = {};
 local mainptrs = {};
