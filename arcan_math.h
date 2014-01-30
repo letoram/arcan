@@ -32,13 +32,23 @@
 #define DEG2RAD(X) (X * M_PI / 180)
 
 typedef struct {
-	float x, y, z, w;
+	union {
+		struct {
+			float x, y, z, w;
+		};
+		float xyzw[4];
+	};
 } quat;
 
 extern quat default_quat;
 
 typedef struct {
-	float x, y, z;
+	union {
+		struct {
+			float x, y, z, w;
+		};
+		float xyz[3]; 
+	};
 } vector;
 
 typedef vector point;

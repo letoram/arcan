@@ -60,8 +60,21 @@ option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
 # Two GNU extensions are used, anonymous inner unions (accepted in C11)
 # and variable size structure member not at end of struct (for Linux/CMSG)
-add_definitions(-std=gnu99 
+add_definitions(-std=gnu11
 -DGL_HEADERS="platform/sdl/glheaders.h")
+
+if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
+	execute_process(
+		COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
+	
+	if (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
+		message(FATAL_ERROR "Ancient GCC Version detected, Arcan needs to be compiled with Clang-3.3+ or 4.7+")
+	endif()
+
+elseif ("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
+else()
+	message(FATAL_ERROR "Arcan requires an ISO C 9899:2011 capable compiler (Clang-3.3+ or gcc 4.7+)")
+endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Profile")
 	message("------------------*Profile Build*------------------")
