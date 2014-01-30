@@ -18,6 +18,8 @@
  */
 
 #include <xmmintrin.h>
+#include <stdint.h>
+#include <assert.h>
 
 void multiply_matrix(float* restrict dst, 
 	float* restrict ina, float* restrict inb)
@@ -26,6 +28,10 @@ void multiply_matrix(float* restrict dst,
 	const __m128 b = _mm_load_ps(&ina[4]);
 	const __m128 c = _mm_load_ps(&ina[8]);
 	const __m128 d = _mm_load_ps(&ina[12]);
+
+	assert(((uintptr_t)dst % 16) == 0);
+	assert(((uintptr_t)ina % 16) == 0);
+	assert(((uintptr_t)inb % 16) == 0);
 
  	__m128 t1, t2;
 
@@ -38,6 +44,8 @@ void multiply_matrix(float* restrict dst,
 	t1 =_mm_set1_ps(inb[3]);
 	t2 = _mm_add_ps(_mm_mul_ps(d, t1), t2);
 
+/* can we guarantee alignment? else 
+ * __mm_storeu_ps */
 	_mm_store_ps(&dst[0], t2);
 
 	t1 = _mm_set1_ps(inb[4]);

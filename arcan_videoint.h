@@ -36,8 +36,8 @@ struct rendertarget {
 	unsigned pbo;
 	
 /* think of base as identity matrix, sometimes with added scale */
-	float base[16];
-	float projection[16];
+	_Alignas(16) float base[16];
+	_Alignas(16) float projection[16];
 	
 /* readback == 0, no readback. Otherwise, a readback is requested 
  * every abs(readback) frames. if readback is negative, 

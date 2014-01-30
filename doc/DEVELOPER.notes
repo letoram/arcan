@@ -1,8 +1,7 @@
 Some notes and hints for building / patching / packaging the engine as such.
 
 [Targetted Platform]
- Language: C99 -- no 89 workarounds planned or allowed, no C11 features planned or allowed. 
-                  GNU extensions will be killed on sight.
+ Language: C11 -- variable size member not at end of struct GNU extension accepted (due to linux CMSG format limitations) 
 
  System API: * POSIX2008 -- Linux extensions only allowed when there's no reasonable alternatives.
                win32/osx breakage workarounds should be split of into separate objects.

@@ -32,6 +32,7 @@
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
+#include <stdalign.h>
 
 #include <pthread.h>
 #include <semaphore.h>
@@ -3595,7 +3596,9 @@ static inline void draw_vobj(float x, float y, float x2, float y2,
 static inline void build_modelview(float* dmatr, 
 	float* imatr, surface_properties* prop, arcan_vobject* src)
 {
-	float omatr[16], tmatr[16];
+	_Alignas(16) float omatr[16];
+ 	_Alignas(16) float tmatr[16];
+
 /* now position represents centerpoint in screen coordinates */
 	prop->scale.x *= src->origw * 0.5f;
 	prop->scale.y *= src->origh * 0.5f;
@@ -3646,7 +3649,7 @@ static inline void setup_surf(struct rendertarget* dst,
 		arcan_shader_envv(MODELVIEW_MATR, src->prop_matr, sizeof(float) * 16);
 	}
 	else {	
-		float dmatr[16];
+		_Alignas(16) float dmatr[16];
 		build_modelview(dmatr, dst->base, prop, src); 
 		arcan_shader_envv(MODELVIEW_MATR, dmatr, sizeof(float) * 16);
 	}
@@ -4185,7 +4188,10 @@ arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 		dprops.scale.y *= vobj->origh * 0.5;
 
 /* transform and rotate the bounding coordinates into screen space */
-		float omatr[16], imatr[16], dmatr[16];
+		_Alignas(16) float omatr[16];
+	 	_Alignas(16) float imatr[16];
+	 	_Alignas(16) float dmatr[16];
+
 		int view[4] = {0, 0, arcan_video_display.width, 
 			arcan_video_display.height};
 
