@@ -254,7 +254,8 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 /* for the first time around, we need to lock the semaphore */
 	if (first){
-		frameserver_semcheck(retroctx.shmcont.vsem, -1);
+		arcan_sem_timedwait_ks(retroctx.shmcont.vsem, 
+			-1, &retroctx.shmcont.addr->dms);
 	}
 }
 
@@ -1743,7 +1744,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 				start = arcan_timemillis();
 					add_jitter(retroctx.jitterxfer);
 					shared->vready = true;
-					frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
+
+					arcan_sem_timedwait_ks(retroctx.shmcont.vsem, 
+						-1, &retroctx.shmcont.addr->dms);
 				stop = arcan_timemillis();
 
 /* statistics and guardbyte verification */
@@ -1788,7 +1791,8 @@ static void log_msg(char* msg, bool flush)
 
 	if (flush){
 		retroctx.shmcont.addr->vready = true;
-		frameserver_semcheck( retroctx.shmcont.vsem, INFINITE);
+		arcan_sem_timedwait_ks(retroctx.shmcont.vsem, 
+			-1, &retroctx.shmcont.addr->dms);
 	}	
 }
 

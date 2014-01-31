@@ -71,15 +71,19 @@ static unsigned alloc_queuecell(arcan_evctx* ctx)
 arcan_event* arcan_event_poll(arcan_evctx* ctx, arcan_errc* status)
 {
 	arcan_event* rv = NULL;
-	arcan_sem_timedwait(ctx->synch.external.shared, -1);
+	if (arcan_sem_timedwait_ks(ctx->synch.external_c.shared, -1,
+		ctx->synch.external_c.killswitch)){
+		*status = 0;
+		return NULL;
+	}
 
-	*status = ARCAN_OK;
+	*status = 1;
 	if (*ctx->front != *ctx->back){
 		rv = &ctx->eventbuf[ *ctx->front ];
 		*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
 	}
 
-	arcan_sem_post(ctx->synch.external.shared);
+	arcan_sem_post(ctx->synch.external_c.shared);
 	return rv;
 }
 
@@ -93,10 +97,13 @@ void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
 	}
 
 retry:
-	arcan_sem_timedwait(ctx->synch.external.shared, -1);
+	if (arcan_sem_timedwait_ks(ctx->synch.external_c.shared, -1, 
+		ctx->synch.external_c.killswitch) == 0)
+			return;
+
 	if (ctx->lossless){
 		if (ctx->n_eventbuf - queue_used(ctx) <= 1){
-			arcan_sem_post(ctx->synch.external.shared);
+			arcan_sem_post(ctx->synch.external_c.shared);
 
 /* 
  * Needlessly to say, this should *REALLY* be changed
@@ -116,6 +123,10 @@ retry:
 	*dst = *src;
 	dst->tickstamp = ctx->c_ticks;
 
-	arcan_sem_post(ctx->synch.external.shared);
+	arcan_sem_post(ctx->synch.external_c.shared);
 }
 
+#ifndef _WIN32
+#else
+
+#endif

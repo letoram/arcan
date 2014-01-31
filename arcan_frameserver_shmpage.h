@@ -164,11 +164,11 @@ struct frameserver_shmpage {
 /* will be checked frequently, likely before transfers.
  * if the DMS is released, the parent (or child or both) will
  * drop the connection. */
-	volatile uint8_t resized;
+	volatile int8_t resized;
 
 /* when released, it is assumed that the parent or child or both
  * has failed and everything should be dropped and terminated */
-	volatile uint8_t dms;
+	volatile int8_t dms;
 
 /* used as a hint to how disruptions (e.g. broken datastreams,
  * end of content in terms of video playback etc.) should be handled,
@@ -284,14 +284,6 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont*,
  * problem) so that proper debug-/tracing-/user- measures can be taken.  
  */
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
-
-/* try and acquire a lock on the semaphore before mstimeout 
- * runs out (-1 == INFINITE, 0 == return immediately) 
- * this will forcibly exit should any error other than timeout occur.
- * on some platforms, this unfortunately will end up in a 
- * sleep -> check -> sleep | return loop, which is jittery and wasteful */
-int frameserver_semcheck(sem_handle semaphore, int timeout);
-
 
 /* 
  * The following functions are simple lookup/unpack support functions

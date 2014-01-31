@@ -11,7 +11,6 @@
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames)
 {
-	char caption[64] = {0};
 	SDL_Init(SDL_INIT_VIDEO);
 
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 1);
