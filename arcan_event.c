@@ -85,18 +85,17 @@ static inline bool lock_local(arcan_evctx* ctx)
 
 static inline bool lock_shared(arcan_evctx* ctx)
 {
-	if (ctx->synch.external.killswitch){
-		if (-1 == arcan_sem_timedwait(ctx->synch.external.shared, 
-			DEFAULT_EVENT_TIMEOUT)){
+	if (ctx->synch.external_p.killswitch){
+		if (-1 == arcan_sem_wait(ctx->synch.external_p.shared)){
 			arcan_frameserver_free( (arcan_frameserver*) 
-				ctx->synch.external.killswitch, false );
-			ctx->synch.external.killswitch = NULL;
+				ctx->synch.external_p.killswitch, false );
+			ctx->synch.external_p.killswitch = NULL;
 
 			return false;
 		}
 	}
 	else
-		arcan_sem_timedwait(ctx->synch.external.shared, -1);
+		arcan_sem_timedwait(ctx->synch.external_p.shared, -1);
 
 	return true;
 }
@@ -109,7 +108,7 @@ static inline bool unlock_local(arcan_evctx* ctx)
 
 static inline bool unlock_shared(arcan_evctx* ctx)
 {
-	arcan_sem_post(ctx->synch.external.shared);
+	arcan_sem_post(ctx->synch.external_p.shared);
 	return true;
 }
 

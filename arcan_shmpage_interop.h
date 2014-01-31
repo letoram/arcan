@@ -64,15 +64,15 @@ struct arcan_evctx;
 /*
  * For porting the shmpage interface, these functions need to be 
  * implemented and pulled in, shouldn't be much more work than
- * what's already in the corresponding platform folder
+ * what's already in the corresponding platform folder with one exception
+ * (see arcan_sem_timedwait) 
  */
 long long int arcan_timemillis();
 void arcan_timesleep(unsigned long);
 
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
-int arcan_sem_timedwait(sem_handle sem, int msecs);
-
+int arcan_sem_wait(sem_handle sem, int msecs);
 
 typedef int8_t arcan_errc;
 typedef long long arcan_vobj_id;

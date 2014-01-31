@@ -36,7 +36,7 @@
 struct guard_struct {
 	sem_handle semset[3];
 	int parent;
-	volatile uint8_t* dms; /* dead man's switch */
+	volatile int8_t* dms; /* dead man's switch */
 };
 static void* guard_thread(void* gstruct);
 
@@ -220,11 +220,6 @@ static void* guard_thread(void* gs)
 	return NULL;
 }
 
-#include <assert.h>
-int frameserver_semcheck(sem_handle semaphore, int timeout){
-		return arcan_sem_timedwait(semaphore, timeout);
-}
-
 bool frameserver_shmpage_integrity_check(struct frameserver_shmpage* shmp)
 {
 	return true;
@@ -237,23 +232,32 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst,
 		arcan_evctx* tmp = inq;
 		inq = outq;
 		outq = tmp;
+
+		outq->synch.external_p.shared = esem;
+		inq->synch.external_p.shared = esem;
+
+		inq->synch.external_p.killswitch = NULL;
+		outq->synch.external_p.killswitch = NULL;
+	}
+	else {
+		inq->synch.external_c.shared = esem;
+		inq->synch.external_c.killswitch = &dst->dms;
+		outq->synch.external_c.shared = esem;
+		outq->synch.external_c.killswitch = &dst->dms;
 	}
 
-	inq->synch.external.shared = esem;
-	inq->synch.external.killswitch = NULL;
 	inq->local = false;
 	inq->eventbuf = dst->childdevq.evqueue;
 	inq->front = &dst->childdevq.front;
 	inq->back  = &dst->childdevq.back;
 	inq->n_eventbuf = sizeof(dst->childdevq.evqueue) / sizeof(arcan_event);
 
-	outq->synch.external.shared = esem;
-	outq->synch.external.killswitch = NULL;
 	outq->local =false;
 	outq->eventbuf = dst->parentdevq.evqueue;
 	outq->front = &dst->parentdevq.front;
 	outq->back  = &dst->parentdevq.back;
 	outq->n_eventbuf = sizeof(dst->parentdevq.evqueue) / sizeof(arcan_event);
+
 }
 
 void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, 

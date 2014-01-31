@@ -53,7 +53,7 @@ static int sem_timedwaithack(sem_handle semaphore, int msecs)
 	}
 
 	int rc = -1;
-	while ( (rc = sem_trywait(semaphore) != 0) && msecs && errno != EINVAL);
+	while ( (rc = sem_trywait(semaphore) != 0) && msecs-- && errno != EINVAL);
 
 	return rc;
 }

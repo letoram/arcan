@@ -1106,6 +1106,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * triggers on Linux */
 	frameserver_shmpage_setevqs(ctx->shm.ptr, ctx->esync, 
 		&(ctx->inqueue), &(ctx->outqueue), true);
-	ctx->inqueue.synch.external.killswitch = ctx;
-	ctx->outqueue.synch.external.killswitch = ctx;
+	ctx->inqueue.synch.external_p.killswitch = ctx;
+	ctx->outqueue.synch.external_p.killswitch = ctx;
 }

@@ -153,7 +153,9 @@ static void generate_frame()
 
 			decctx.shmcont.addr->vpts = vptsc;
 			decctx.shmcont.addr->vready = true;
-			frameserver_semcheck( decctx.shmcont.vsem, -1);
+
+			arcan_sem_timedwait_ks(decctx.shmcont.vsem, 
+				-1, &decctx.shmcont.addr->dms);
 			vptsc += 1000.0f / (
 				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
 		}
@@ -166,8 +168,8 @@ static inline void synch_audio()
 		generate_frame();
 
 	decctx.shmcont.addr->aready = true;
-	frameserver_semcheck( decctx.shmcont.asem, -1);
-
+	arcan_sem_timedwait_ks(decctx.shmcont.asem, 
+		-1, &decctx.shmcont.addr->dms);
 	decctx.shmcont.addr->abufused = 0;
 }
 
@@ -293,7 +295,8 @@ static bool decode_vframe()
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
 		decctx.shmcont.addr->vready = true;
-		frameserver_semcheck( decctx.shmcont.vsem, -1);
+		arcan_sem_timedwait_ks(decctx.shmcont.vsem,
+			-1, &decctx.shmcont.addr->dms);
 	}
 	else;
 
@@ -656,8 +659,11 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
 /* initialize both semaphores to 0 => render frame (wait for 
  * parent to signal) => regain lock */
 		decctx.shmcont = shms;
-		frameserver_semcheck(decctx.shmcont.asem, -1);
-		frameserver_semcheck(decctx.shmcont.vsem, -1);
+
+		arcan_sem_timedwait_ks(decctx.shmcont.asem,
+			-1, &decctx.shmcont.addr->dms);
+		arcan_sem_timedwait_ks(decctx.shmcont.vsem,
+			-1, &decctx.shmcont.addr->dms);
 		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
 			&(decctx.inevq), &(decctx.outevq), false);
 		decctx.outevq.lossless = true;

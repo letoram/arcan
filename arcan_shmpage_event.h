@@ -444,7 +444,12 @@ struct arcan_evctx {
 		struct {
 			void* killswitch; /* assumed to be NULL or frameserver */
 			sem_handle shared;
-		} external;
+		} external_p;
+
+		struct {
+			volatile int8_t* killswitch;
+			sem_handle shared;
+		} external_c;
 
 	} synch;
 };
