@@ -1947,7 +1947,6 @@ static void* thread_loader(void* in)
 	memset(largs, 0xba, sizeof(struct thread_loader_args));
 	free(largs);
 
-
 	return NULL;
 }
 

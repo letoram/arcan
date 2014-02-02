@@ -41,24 +41,17 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return sem_unlink(key);
 }
 
-static int sem_timedwaithack(sem_handle semaphore, int msecs)
+int arcan_sem_trywait(sem_handle sem)
 {
-	if (msecs == 0)
-		return sem_trywait( semaphore );
-
-	if (msecs == -1){
-		int rv;
-		while ( -1 == (rv = sem_wait( semaphore )) && errno == EINTR);
-		return rv;
-	}
-
-	int rc = -1;
-	while ( (rc = sem_trywait(semaphore) != 0) && msecs-- && errno != EINVAL);
-
-	return rc;
+	return sem_trywait(sem);
 }
 
-int arcan_sem_timedwait(sem_handle semaphore, int msecs)
+int arcan_sem_value(sem_handle sem, int* dstval)
 {
-    return sem_timedwaithack(semaphore, msecs);
+	return sem_getvalue(sem, dstval);
+}
+
+int arcan_sem_wait(sem_handle sem)
+{
+	return sem_wait(sem);
 }

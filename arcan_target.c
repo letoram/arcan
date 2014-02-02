@@ -601,22 +601,24 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 int ARCAN_SDL_PollEvent(SDL_Event* inev)
 {
 	SDL_Event gevent;
-	arcan_event* ev;
-	arcan_errc rv;
+	arcan_event ev;
 	
 	trace("SDL_PollEvent()\n");
 	
-	while ( (ev = arcan_event_poll(&global.inevq, &rv)) && rv == 0 ) 
-		switch (ev->category){
-			case EVENT_IO:
-				if (global.gotsdl)
-					push_ioevent_sdl(ev->data.io);
+	while ( arcan_event_poll(&global.inevq, &ev) ){
+		switch (ev.category){
+		case EVENT_IO:
+			if (global.gotsdl)
+				push_ioevent_sdl(ev.data.io);
 #ifdef ENABLE_X11_HIJACK
-				else
-					push_ioevent_x11(ev->data.io);
+			else
+				push_ioevent_x11(ev.data.io);
 #endif
-			break;
-			case EVENT_TARGET: process_targetevent(ev->kind, &ev->data.target); break;
+		break;
+		case EVENT_TARGET: 
+			process_targetevent(ev.kind, &ev.data.target); 
+		break;
+		}
 	}
 
 /* strip away a few events related to fullscreen,

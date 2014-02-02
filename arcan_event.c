@@ -42,7 +42,8 @@
 #include "arcan_general.h"
 #include "arcan_video.h"
 #include "arcan_audio.h"
-#include "arcan_shmpage_interop.h"
+
+#include "arcan_shmpage_if.h"
 #include "arcan_event.h"
 
 #include "arcan_framequeue.h"
@@ -58,136 +59,96 @@ static unsigned eventfront = 0, eventback = 0;
 
 static struct arcan_evctx default_evctx = {
 	.eventbuf = eventbuf,
-	.n_eventbuf = ARCAN_EVENT_QUEUE_LIM,
+	.eventbuf_sz = ARCAN_EVENT_QUEUE_LIM,
 	.front = &eventfront,
-	.back  = &eventback,
-	.local = true,
-	.lossless = false
+	.back = &eventback,
+	.local = true
 };
 
 arcan_evctx* arcan_event_defaultctx(){
 	return &default_evctx;
 }
 
+/* 
+ * If the shmpage integrity is somehow compromised,
+ * if semaphore use is out of order etc.
+ */
+static void pull_killswitch(arcan_evctx* ctx)
+{
+	arcan_frameserver* ks = (arcan_frameserver*) ctx->synch.killswitch;
+	arcan_sem_post(ctx->synch.handle);
+	arcan_warning("inconsistency while processing "
+		"shmpage events, pulling killswitch.\n");
+	arcan_frameserver_free(ks, ks->loop);
+	ctx->synch.killswitch = NULL;
+}
+
 static unsigned alloc_queuecell(arcan_evctx* ctx)
 {
 	unsigned rv = *(ctx->back);
-	*(ctx->back) = ( *(ctx->back) + 1) % ctx->n_eventbuf;
+	if (ctx->local){
+		*(ctx->back) = (*(ctx->back) + 1) % ctx->eventbuf_sz;
+	}
+/* can't trust queue_sz for external */
+	else {
+		if (*(ctx->back) > ARCAN_SHMPAGE_QUEUE_SZ)
+			pull_killswitch(ctx);
+		else {
+			*(ctx->back) = (*(ctx->back) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;	
+		}	
+	}
 
 	return rv;
-}
-
-static inline bool lock_local(arcan_evctx* ctx)
-{
-	pthread_mutex_lock(&ctx->synch.local);
-	return true;
-}
-
-static inline bool lock_shared(arcan_evctx* ctx)
-{
-	if (ctx->synch.external_p.killswitch){
-		if (-1 == arcan_sem_wait(ctx->synch.external_p.shared)){
-			arcan_frameserver_free( (arcan_frameserver*) 
-				ctx->synch.external_p.killswitch, false );
-			ctx->synch.external_p.killswitch = NULL;
-
-			return false;
-		}
-	}
-	else
-		arcan_sem_timedwait(ctx->synch.external_p.shared, -1);
-
-	return true;
-}
-
-static inline bool unlock_local(arcan_evctx* ctx)
-{
-	pthread_mutex_unlock(&ctx->synch.local);
-	return true;
-}
-
-static inline bool unlock_shared(arcan_evctx* ctx)
-{
-	arcan_sem_post(ctx->synch.external_p.shared);
-	return true;
-}
-
-static inline bool LOCK(arcan_evctx* ctx)
-{
-	return ctx->local ? lock_local(ctx) : lock_shared(ctx);
-}
-
-static inline bool UNLOCK(arcan_evctx* ctx)
-{
-	return ctx->local ? unlock_local(ctx) : unlock_shared(ctx);
 }
 
 /* check queue for event, ignores mask */
-arcan_event* arcan_event_poll(arcan_evctx* ctx, arcan_errc* status)
+int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
-	arcan_event* rv = NULL;
+	assert(dst);
+	if (*ctx->front == *ctx->back)
+		return 0;
 
-		if (!LOCK(ctx)){
-			*status = ARCAN_ERRC_UNACCEPTED_STATE; /* possibly dead frameserver */
-			return NULL;
+	if (ctx->local == false){
+		if ( *(ctx->front) > ARCAN_SHMPAGE_QUEUE_SZ )
+			pull_killswitch(ctx);
+		else {
+			*dst = ctx->eventbuf[ *(ctx->front) ];
+			*(ctx->front) = (*(ctx->front) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;
 		}
-
-		*status = ARCAN_OK;
-		if (*ctx->front != *ctx->back){
-			rv = &ctx->eventbuf[ *ctx->front ];
-			*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
-		}
-
-	UNLOCK(ctx);
-	return rv;
-}
-
-void arcan_event_maskall(arcan_evctx* ctx){
-	if ( LOCK(ctx) ){
-		ctx->mask_cat_inp = 0xffffffff;
-		UNLOCK(ctx);
 	}
-}
-
-void arcan_event_clearmask(arcan_evctx* ctx){
-	if ( LOCK(ctx) ){
-		ctx->mask_cat_inp = 0;
-	UNLOCK(ctx);
+	else {
+		*dst = ctx->eventbuf[ *(ctx->front) ];
+		*(ctx->front) = (*(ctx->front) + 1) % ctx->eventbuf_sz;
 	}
+
+	return 1;
 }
 
-void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask){
-	if (LOCK(ctx)){
-		ctx->mask_cat_inp = mask;
-		UNLOCK(ctx);
-	}
-}
-
-/* drop the specified index and compact everything to the right of it,
- * assumes the context is already locked, so for large event queues etc.
- * this is subpar */
-static void drop_event(arcan_evctx* ctx, unsigned index)
+void arcan_event_maskall(arcan_evctx* ctx)
 {
-	unsigned current  = (index + 1) % ctx->n_eventbuf;
-	unsigned previous = index;
+	ctx->mask_cat_inp = 0xffffffff;
+}
 
-/* compact left until we reach the end, back is actually
- * one after the last cell in use */
-	while (current != *(ctx->back)){
-		memcpy( &ctx->eventbuf[ previous ], &ctx->eventbuf[ current ], 
-			sizeof(arcan_event) );
-		previous = current;
-		current  = (index + 1) % ctx->n_eventbuf;
-	}
+void arcan_event_clearmask(arcan_evctx* ctx)
+{
+	ctx->mask_cat_inp = 0;
+}
 
-	*(ctx->back) = previous;
+void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask)
+{
+	ctx->mask_cat_inp = mask;
 }
 
 /*
- * this implementation is pretty naive and expensive on a large/filled queue,
- * partly because this feature was added as an afterthought and the underlying
- * datastructure isn't optimal for the use, should have been linked or 
- * double-linked 
+ * This is something of a hack, process the entire eventqueue
+ * and switch the source element for video/frameserver inputs to
+ * a BADID (which won't get propagated when pushing to LUA).
+ *
+ * The rationale stem from that there can be other events in the
+ * queue after an object has died (note; video manipulation 
+ * comes from the same (main) thread and new ones for the object
+ * in question won't be enqueued during this call, so the 
+ * lockless ringbuffer still holds.
  */
 void arcan_event_erase_vobj(arcan_evctx* ctx, 
 	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source)
@@ -198,73 +159,87 @@ void arcan_event_erase_vobj(arcan_evctx* ctx,
 	if ( !(category == EVENT_VIDEO || category == EVENT_FRAMESERVER) )
 		return;
 
-	if (LOCK(ctx)){
+	while(elem != *(ctx->back)){
 
-		while(elem != *(ctx->back)){
-			bool match = false;
-
-			switch (ctx->eventbuf[elem].category){
-			case EVENT_VIDEO: match = source == 
-				ctx->eventbuf[elem].data.video.source; 
-			break;
-			case EVENT_FRAMESERVER: match = source == 
-				ctx->eventbuf[elem].data.frameserver.video; 
-			break;
-			}
-
-/* slide only if the cell shouldn't be deleted, 
- * otherwise it'll be replaced with the next one in line */
-			if (match){
-				drop_event(ctx, elem);
-			}
-			else
-				elem = (elem + 1) % ctx->n_eventbuf;
+		switch (ctx->eventbuf[elem].category){
+		case EVENT_VIDEO: 
+			if (ctx->eventbuf[elem].data.video.source == source)
+				ctx->eventbuf[elem].data.video.source = ARCAN_EID;
+		break;
+		case EVENT_FRAMESERVER: 
+			if (ctx->eventbuf[elem].data.frameserver.video == source)
+				ctx->eventbuf[elem].data.frameserver.video = ARCAN_EID; 
+		break;
 		}
 
-		UNLOCK(ctx);
+		elem = (elem + 1) % ctx->eventbuf_sz;
 	}
 }
 
 static inline int queue_used(arcan_evctx* dq)
 {
-	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - 
+	int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz - 
 		*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
 	return rv;
 }
 
-/* enqueue to current context considering input-masking,
- * unless label is set, assign one based on what kind of event it is */
-void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
+/*
+ * enqueue to current context considering input-masking,
+ * unless label is set, assign one based on what kind of event it is
+ * This function has a similar prototype to the enqueue defined in
+ * the interop.h, but a different implementation to support waking up
+ * the child, and that blocking behaviors in the main thread is always
+ * forbidden. 
+ */
+int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src) 
 {
-	int rtc = 1;
+	int ntr = ctx->eventbuf_sz - queue_used(ctx);
 
-/* early-out mask-filter */
+/* early-out mask-filter, these are only ever used to silently
+ * discard input / output (only operate on head and tail of ringbuffer) */
 	if (!src || (src->category & ctx->mask_cat_inp)){
-		return;
+		return ntr; 
 	}
 
-retry:
+/* 
+ * Note, we should add panic /warning hooks here as the internal event 
+ * subsystem is overloaded, which is a sign of something gone wrong.
+ * The recover option would be to silently overwrite one of the lesser
+ * important (typically, ANALOG INPUTS or frame counters) in the queue
+ */
+	if (ntr <= 1)
+		return 0;
 
-	if (LOCK(ctx)){
-		if (ctx->lossless){
-			if (ctx->n_eventbuf - queue_used(ctx) <= 1){
-				UNLOCK(ctx);
-/* futex or other sleep mechanic, 
- * or use the synch as a counting semaphore */	
-				rtc *= 2;
-				arcan_timesleep(rtc);
+	unsigned ind = alloc_queuecell(ctx);
+	arcan_event* dst = &ctx->eventbuf[ind];
+	*dst = *src;
+	dst->tickstamp = ctx->c_ticks;
 
-				goto retry;	
+/* 
+ * Currently, we just wake the sleeping frameserver up as soon as we get
+ * an event (and it's actually sleeping), the better option would be
+ * to somehow determine if we'll have more useful events coming in a little
+ * while so that we don't get a sleep -> 1 event -> sleep -> 1 event scenario
+ * for highly interactive frameservers
+ */
+	if (!ctx->local){
+		int semv;
+		if (-1 == arcan_sem_value(ctx->synch.handle, &semv)){
+			char buf[128];
+			if ( strerror_r(errno, buf, 128) == 0 ){
+				buf[128] = 0;
+				arcan_warning("broken synchronization (%d:%s)", errno, buf);
+			}
+			else{
+				arcan_warning("broken synchronization (%d)", errno);
 			}
 		}
-
-		unsigned ind = alloc_queuecell(ctx);
-		arcan_event* dst = &ctx->eventbuf[ind];
-		*dst = *src;
-		dst->tickstamp = ctx->c_ticks;
-
-		UNLOCK(ctx);
+		else if (semv == 0){
+			arcan_sem_post(ctx->synch.handle);
+		}
 	}
+
+	return ntr - 1; 
 }
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, 
@@ -277,23 +252,25 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
 
 	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
-			floor((float)dstqueue->n_eventbuf * saturation) > queue_used(dstqueue) ){
+			floor((float)dstqueue->eventbuf_sz * saturation) > queue_used(dstqueue) ){
 
-		arcan_errc status;
-		arcan_event* ev = arcan_event_poll(srcqueue, &status);
-	
-		if (status != ARCAN_OK)
+		arcan_event inev;
+		if (arcan_event_poll(srcqueue, &inev) == 0)
 			break;
 		
-		if (ev && (ev->category & allowed) > 0 ){
-			if (ev->category == EVENT_EXTERNAL)
-				ev->data.external.source = source;
+/*
+ * update / translate to make sure the corresponding frameserver<->lua mapping
+ * can be found and tracked 
+ */
+		if ((inev.category & allowed) > 0 ){
+			if (inev.category == EVENT_EXTERNAL)
+				inev.data.external.source = source;
 
-			else if (ev->category == EVENT_NET){
-				ev->data.network.source = source;
+			else if (inev.category == EVENT_NET){
+				inev.data.network.source = source;
 			}
 
-			arcan_event_enqueue(dstqueue, ev);
+			arcan_event_enqueue(dstqueue, &inev);
 		}
 	}
 
@@ -302,10 +279,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 extern void platform_key_repeat(arcan_evctx* ctx, unsigned rate);
 void arcan_event_keyrepeat(arcan_evctx* ctx, unsigned rate)
 {
-	if (LOCK(ctx)){
-		platform_key_repeat(ctx, rate);
-		UNLOCK(ctx);
-	}
+	platform_key_repeat(ctx, rate);
 }
 
 int64_t arcan_frametime()
@@ -426,9 +400,7 @@ void arcan_event_init(arcan_evctx* ctx)
 		return;
 	}
 
-	pthread_mutex_init(&ctx->synch.local, NULL);
 	platform_event_init(ctx);
-
  	arcan_tickofset = arcan_timemillis();
 }
 

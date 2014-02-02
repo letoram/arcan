@@ -154,8 +154,7 @@ static void generate_frame()
 			decctx.shmcont.addr->vpts = vptsc;
 			decctx.shmcont.addr->vready = true;
 
-			arcan_sem_timedwait_ks(decctx.shmcont.vsem, 
-				-1, &decctx.shmcont.addr->dms);
+			arcan_sem_wait(decctx.shmcont.vsem);
 			vptsc += 1000.0f / (
 				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
 		}
@@ -168,8 +167,7 @@ static inline void synch_audio()
 		generate_frame();
 
 	decctx.shmcont.addr->aready = true;
-	arcan_sem_timedwait_ks(decctx.shmcont.asem, 
-		-1, &decctx.shmcont.addr->dms);
+	arcan_sem_wait(decctx.shmcont.asem);
 	decctx.shmcont.addr->abufused = 0;
 }
 
@@ -295,8 +293,7 @@ static bool decode_vframe()
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
 		decctx.shmcont.addr->vready = true;
-		arcan_sem_timedwait_ks(decctx.shmcont.vsem,
-			-1, &decctx.shmcont.addr->dms);
+		arcan_sem_wait(decctx.shmcont.vsem);
 	}
 	else;
 
@@ -572,14 +569,14 @@ static inline void targetev(arcan_event* ev)
 /* use labels etc. for trying to populate the context table */
 /* we also process requests to save state, shutdown, reset, 
  * plug/unplug input, here */
-static inline void flush_eventq(){
-	 arcan_event* ev;
-	 arcan_errc evstat;
+static inline void flush_eventq()
+{
+	 arcan_event ev;
 
-	while ( (ev = arcan_event_poll(&decctx.inevq, &evstat)) && evstat == 0){
-		switch (ev->category){
+	while ( 1 == arcan_event_poll(&decctx.inevq, &ev) ){
+		switch (ev.category){
 		case EVENT_IO: break;
-		case EVENT_TARGET: targetev(ev); break;
+		case EVENT_TARGET: targetev(&ev); break;
 		}
 	}
 
@@ -660,13 +657,12 @@ void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
  * parent to signal) => regain lock */
 		decctx.shmcont = shms;
 
-		arcan_sem_timedwait_ks(decctx.shmcont.asem,
-			-1, &decctx.shmcont.addr->dms);
-		arcan_sem_timedwait_ks(decctx.shmcont.vsem,
-			-1, &decctx.shmcont.addr->dms);
+		if (-1 == arcan_sem_wait(decctx.shmcont.asem) ||
+			-1 == arcan_sem_wait(decctx.shmcont.vsem))
+			return;
+
 		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
 			&(decctx.inevq), &(decctx.outevq), false);
-		decctx.outevq.lossless = true;
 
 		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height)){
 			LOG("arcan_frameserver(decode) shmpage setup failed, "

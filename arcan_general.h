@@ -36,8 +36,10 @@
 
 typedef struct frameserver_shmpage frameserver_shmpage;
 
+#define PRIxVOBJ "lld"
+
 #include PLATFORM_HEADER
-#include "arcan_shmpage_interop.h"
+#include "arcan_shmpage_if.h"
 
 #ifndef _WIN32
 

@@ -63,23 +63,45 @@ struct arcan_evctx;
 
 /*
  * For porting the shmpage interface, these functions need to be 
- * implemented and pulled in, shouldn't be much more work than
- * what's already in the corresponding platform folder with one exception
- * (see arcan_sem_timedwait) 
+ * implemented and pulled in, shouldn't be more complicated than
+ * mapping to the corresponding platform/ functions. 
  */
 long long int arcan_timemillis();
 void arcan_timesleep(unsigned long);
 
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
-int arcan_sem_wait(sem_handle sem, int msecs);
+int arcan_sem_wait(sem_handle sem);
+int arcan_sem_value(sem_handle sem, int* dstval);
+int arcan_sem_trywait(sem_handle sem);
 
 typedef int8_t arcan_errc;
 typedef long long arcan_vobj_id;
 typedef int arcan_aobj_id;
 
-#define PRIxVOBJ "lld"
+/*
+ * Try and dequeue the element in the front of the queue with (wait)
+ * or without (poll) blocking execution. 
+ * returns non-zero on success. 
+ */
+int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
+int arcan_event_wait(
+	struct arcan_evctx*, struct arcan_event* dst);
 
-struct arcan_event* arcan_event_poll(struct arcan_evctx*, arcan_errc* status);
-void arcan_event_enqueue(struct arcan_evctx*, const struct arcan_event*);
+/*
+ * Try and enqueue the element to the queue. If the context is 
+ * set to lossless, enqueue may block, sleep (or spinlock).
+ *
+ * returns the number of FREE slots left on success or a negative
+ * value on failure. The purpose of the try- approach is to let
+ * the user distinguish between necessary and merely "helpful"
+ * events (e.g. frame numbers, net ping-pongs etc.) 
+ */
+int arcan_event_enqueue(struct arcan_evctx*, 
+	const struct arcan_event* const);
+
+int arcan_event_tryenqueue(struct arcan_evctx*, 
+	const struct arcan_event* const);
+
 #endif
+
