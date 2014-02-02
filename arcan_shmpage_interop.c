@@ -56,24 +56,11 @@
  * vulnerability.
  */
 
-static inline int queue_used(arcan_evctx* dq)
-{
-	return (*dq->front > *dq->back) ? 
-		(dq->eventbuf_sz - *dq->front + *dq->back) : (*dq->back - *dq->front);
-}
-
-static inline unsigned alloc_queuecell(arcan_evctx* ctx)
-{
-	unsigned rv = *ctx->back;
-	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
-	return rv;
-}
-
 int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
 	assert(dst);
 
-	if (ctx->front == ctx->back)
+	if (*ctx->front == *ctx->back)
 		return 0;
 
 	*dst = ctx->eventbuf[ *ctx->front ];
@@ -85,15 +72,10 @@ int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 int arcan_event_wait(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
 	assert(dst);
+	volatile int* ks = (volatile int*) ctx->synch.killswitch;
 
-	if (*ctx->front == *ctx->back){
-#ifdef _DEBUG
-		int value;
-		assert(arcan_sem_value(
-			ctx->synch.handle, &value) == 0 && value == 1);
-#endif
+	while (*ctx->front == *ctx->back && *ks)
 		arcan_sem_wait(ctx->synch.handle);
-	}
 	
 	return arcan_event_poll(ctx, dst);
 }
@@ -101,42 +83,22 @@ int arcan_event_wait(struct arcan_evctx* ctx, struct arcan_event* dst)
 int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 {
 	assert(ctx);
-
 /* child version doesn't use any masking */
-	unsigned ind; 
-	int rtc;
- 
-	rtc	= queue_used(ctx);
 
-	while (rtc == ctx->eventbuf_sz){
-/* we just sleep at the moment, the rational being that the parent
- * process should spend very little time actually processing events,
- * and if it's overloaded to the point that it cannot, the noisiest
- * children can slow down (particularly if the parent processes events
- * in a fair way, e.g. while(set_of_providers:gotevent)[queuetransfer(provider,n)])
- * rather than foreach(set_of_providers)queuetransfer(provider)) */
-		arcan_timesleep(10);
-		rtc	= queue_used(ctx);
+	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+		arcan_sem_wait(ctx->synch.handle);
 	}
 	
-	ind = alloc_queuecell(ctx);
+	ctx->eventbuf[*ctx->back] = *src;
+	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
-	arcan_event* dst = &ctx->eventbuf[ind];
-	*dst = *src;
-
-/* won't "really" matter here as the parent,
- * when multiplexing events on the main-queue,
- * re-timestamps it to local time 	
- * dst->tickstamp = ctx->c_ticks;
-*/
-	return ctx->eventbuf_sz - rtc - 1;
+	return 1;
 }
 
 int arcan_event_tryenqueue(arcan_evctx* ctx, const arcan_event* const src)
 {
-	int rtc = queue_used(ctx);
-	if (rtc == ctx->eventbuf_sz)
-		return 0;
+	if (((*ctx->front + 1) % ctx->eventbuf_sz) == *ctx->back)
+		return 0;	
 
 	return arcan_event_enqueue(ctx, src);	
 }

@@ -343,7 +343,8 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 
 /* before doing any modification, wait for any async load calls to finish(!),
  * question is IF this should invalidate or not */
-			if (current->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+			if (current->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
+				current->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
 				arcan_video_pushasynch(i);
 
 /* for persistant objects, deleteobject will only be "effective" if we're at
@@ -1893,61 +1894,69 @@ arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src,
 }
 
 struct thread_loader_args {
-/* where the results will be stored */
 	arcan_vobject* dst;
+	pthread_t self;
 	arcan_vobj_id dstid;
 	char* fname;
 	intptr_t tag;
 	img_cons constraints;
+	arcan_errc rc;
 };
 
-/* if the loading failed, we'll add a small black image in its stead,
- * and emit a failed video event */
 static void* thread_loader(void* in)
 {
-	arcan_event result;
 	struct thread_loader_args* largs = (struct thread_loader_args*) in;
 	arcan_vobject* dst = largs->dst;
+	largs->rc = arcan_video_getimage(largs->fname, dst, largs->constraints, true);
+	dst->feed.state.tag = ARCAN_TAG_ASYNCIMGRD;
+	return 0;
+}
 
-/* 
- * while this happens, the following members of the struct are not to be touched
- * elsewhere: origw / origh, vstore->>tag/source, vstore->
- */
-	arcan_errc rc = arcan_video_getimage(largs->fname, dst, 
-		largs->constraints, true);
+static void join_asynchimg(arcan_vobject* img, bool emit)
+{
+	if (img->feed.state.tag != ARCAN_TAG_ASYNCIMGRD)
+		return;
 
-	result.data.video.data = largs->tag;
+	struct thread_loader_args* args = 
+		(struct thread_loader_args*) img->feed.state.ptr;
 
-	if (rc == ARCAN_OK){ /* emit OK event */
-		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
-		result.data.video.width = dst->origw;
-		result.data.video.height = dst->origh;
-	} else {
-		dst->origw = 32;
-		dst->origh = 32;
-		dst->vstore->vinf.text.s_raw = 32 * 32 * GL_PIXEL_BPP;
-		dst->vstore->vinf.text.raw = malloc(dst->vstore->vinf.text.s_raw);
-		memset(dst->vstore->vinf.text.raw, 0, dst->vstore->vinf.text.s_raw);
-		dst->vstore->w = 32;
-		dst->vstore->h = 32;
-		dst->vstore->vinf.text.source = strdup(largs->fname);
-		result.data.video.data = largs->tag;
-		result.data.video.width = 32;
-		result.data.video.height = 32;
-		result.kind = EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED;
-		/* emit FAILED event */
+	arcan_event loadev = {
+		.category = EVENT_VIDEO,
+		.data.video.data = args->tag, 
+		.data.video.source = args->dstid
+	};
+
+	if (args->rc == ARCAN_OK){ 
+		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_LOADED;
+		loadev.data.video.width = img->origw;
+		loadev.data.video.height = img->origh;
+	} 
+/* copy broken placeholder instead */
+	else {
+		img->origw = 32;
+		img->origh = 32;
+		img->vstore->vinf.text.s_raw = 32 * 32 * GL_PIXEL_BPP;
+		img->vstore->vinf.text.raw = malloc(img->vstore->vinf.text.s_raw);
+		memset(img->vstore->vinf.text.raw, 0, img->vstore->vinf.text.s_raw);
+		img->vstore->w = 32;
+		img->vstore->h = 32;
+		img->vstore->vinf.text.source = strdup(args->fname);
+
+		loadev.data.video.width = 32;
+		loadev.data.video.height = 32;
+		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
 	}
 
-	result.data.video.source = largs->dstid;
-	result.category = EVENT_VIDEO;
+	pthread_join(args->self, NULL);
+	push_globj(img, false, NULL);
 
-	arcan_event_enqueue(arcan_event_defaultctx(), &result);
-	free(largs->fname);
+	if (emit)
+		arcan_event_enqueue(arcan_event_defaultctx(), &loadev);
 
-	memset(largs, 0xba, sizeof(struct thread_loader_args));
-	free(largs);
-
-	return NULL;
+	free(args->fname);
+	free(args);
+	img->feed.state.ptr = NULL;
+	img->feed.state.tag = ARCAN_TAG_IMAGE;
 }
 
 /* create a new vobj, fill it out with enough vals that we can treat it
@@ -1959,49 +1968,41 @@ static arcan_vobj_id loadimage_asynch(const char* fname,
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	arcan_vobject* dstobj = arcan_video_newvobject(&rv);
-	assert(dstobj);
+	if (!dstobj)
+		return rv;
 
-	struct thread_loader_args* args = calloc(sizeof(struct thread_loader_args),1);
+	struct thread_loader_args* args = malloc(sizeof(struct thread_loader_args));
+
 	args->dstid = rv;
 	args->dst = dstobj;
-
-	if (!args->dst){
-		free(args);
-		return ARCAN_EID;
-	}
-
 	args->fname = strdup(fname);
 	args->tag = tag;
 	args->constraints = constraints;
-	dstobj->feed.state.tag = ARCAN_TAG_ASYNCIMG;
-	dstobj->feed.state.ptr = malloc(sizeof(pthread_t));
-	pthread_create((pthread_t*) dstobj->feed.state.ptr, NULL, 
-		thread_loader, (void*) args);
+
+	dstobj->feed.state.tag = ARCAN_TAG_ASYNCIMGLD;
+	dstobj->feed.state.ptr = args;
+
+	pthread_create(&args->self, NULL, thread_loader, (void*) args); 
 
 	return rv;
 }
 
 arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(source);
+	
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj){
-		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG){
+	if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
+		vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD){
 		/* protect us against premature invocation */
-			pthread_join(*(pthread_t*) vobj->feed.state.ptr, NULL);
-			free(vobj->feed.state.ptr);
-			vobj->feed.state.ptr = NULL;
-
-			push_globj(vobj, false, NULL);
-
-			vobj->feed.state.tag = ARCAN_TAG_IMAGE;
-			vobj->feed.state.ptr = NULL;
-		}
-		else rv = ARCAN_ERRC_UNACCEPTED_STATE;
+		join_asynchimg(vobj, false);
 	}
+	else 
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	return rv;
+	return ARCAN_OK;
 }
 
 static arcan_vobj_id loadimage(const char* fname, img_cons constraints, 
@@ -2122,7 +2123,8 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		return ARCAN_ERRC_CLONE_NOT_PERMITTED;
 
 	if (vobj) {
-		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
+			vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
 			arcan_video_pushasynch(id);
 
 		float fx = (float)vobj->origw / (float)display.w;
@@ -2751,10 +2753,8 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 		}
 
 /* synchronize with the threadloader so we don't get a race */
-		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMG){
-			pthread_join(*(pthread_t*) vobj->feed.state.ptr, NULL);
-			free(vobj->feed.state.ptr);
-			vobj->feed.state.ptr = NULL;
+		if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD){
+			arcan_video_pushasynch(id);
 		}
 
 		free(vobj->frameset);
@@ -3209,17 +3209,6 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			compact_transformation(ci,
 				offsetof(surface_transform, blend),
 				sizeof(struct transf_blend));
-
-/* only fire event if we've run out of the 
- * transform chain for the current value */
-			if (!ci->transform || ci->transform->blend.startt == 0) {
-				arcan_event ev = {.category = EVENT_VIDEO, 
-					.kind = EVENT_VIDEO_BLENDED
-				};
-
-				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-			}
 		}
 	}
 
@@ -3243,12 +3232,6 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			compact_transformation(ci,
 				offsetof(surface_transform, move),
 				sizeof(struct transf_move));
-
-			if (!ci->transform || ci->transform->move.startt == 0) {
-				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_MOVED};
-				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-			}
 		}
 	}
 
@@ -3271,12 +3254,6 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			compact_transformation(ci,
 				offsetof(surface_transform, scale),
 				sizeof(struct transf_scale));
-
-			if (!ci->transform || ci->transform->scale.startt == 0) {
-				arcan_event ev = {.category = EVENT_VIDEO, .kind = EVENT_VIDEO_SCALED};
-				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-			}
 		}
 	}
 
@@ -3298,14 +3275,6 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			compact_transformation(ci,
 				offsetof(surface_transform, rotate),
 				sizeof(struct transf_rotate));
-
-			if (!ci->transform || ci->transform->rotate.startt == 0) {
-				arcan_event ev = { .category = EVENT_VIDEO, 
-					.kind = EVENT_VIDEO_ROTATED
-				};
-				ev.data.video.source = ci->cellid;
-				arcan_event_enqueue(arcan_event_defaultctx(), &ev);
-			}
 		}
 		else
 			ci->current.rotation.quaternion = 
@@ -3635,7 +3604,9 @@ static inline void build_modelview(float* dmatr,
 static inline void setup_surf(struct rendertarget* dst,
 	surface_properties* prop, arcan_vobject* src)
 {
-	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
+		join_asynchimg(src, true);
+	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
  		return;
 
 /* currently, we only cache the primary rendertarget */

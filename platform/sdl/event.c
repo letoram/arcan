@@ -610,7 +610,7 @@ void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
 		else{
 			kbdrepeat = rate;
-			SDL_EnableKeyRepeat(10, kbdrepeat); 
+			SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, kbdrepeat); 
 		}
 }
 

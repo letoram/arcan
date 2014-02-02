@@ -2311,32 +2311,17 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		intptr_t dst_cb = 0;
 		arcan_vobject* srcobj;
 		const char* evmsg = "video_event";
-		bool gotfun;
+		bool gotfun = false;
 
-		if (grabthemefunction(ctx, "video_event"))
-/* due to the asynch- callback approach some additional 
- * checks are needed before bailing */
-			gotfun = true;
-		else
-/* add placeholder if we find another function to call through */
-			gotfun = (lua_pushnumber(ctx, 0), false);
+/* add placeholder, if we find an asynch recipient */
+		lua_pushnumber(ctx, 0);
 
 		lua_pushvid(ctx, ev->data.video.source);
 		lua_newtable(ctx);
 		int top = lua_gettop(ctx);
 
 		switch (ev->kind) {
-		case EVENT_VIDEO_EXPIRE  : tblstr(ctx, "kind", "expired", top);
-															 evmsg = "video_event(expire)"; break;
-		case EVENT_VIDEO_SCALED  : tblstr(ctx, "kind", "scaled", top);
-														 	 evmsg = "video_event(scale)";  break;
-		case EVENT_VIDEO_MOVED   : tblstr(ctx, "kind", "moved", top);
-															 evmsg = "video_event(move))";  break;
-		case EVENT_VIDEO_BLENDED : tblstr(ctx, "kind", "blended", top);
-															 evmsg = "video_event(blend)";  break;
-		case EVENT_VIDEO_ROTATED : tblstr(ctx, "kind", "rotated", top);
-															 evmsg = "video_event(rotate)"; break;
-
+		case EVENT_VIDEO_EXPIRE : break;
 		case EVENT_VIDEO_ASYNCHIMAGE_LOADED:
 			evmsg = "video_event(asynchimg_loaded)";
 			tblstr(ctx, "kind", "loaded", top);
@@ -2350,7 +2335,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			}
 		break;
 
-		case EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED:
+		case EVENT_VIDEO_ASYNCHIMAGE_FAILED:
 			srcobj = arcan_video_getobject(ev->data.video.source);
 			evmsg = "video_event(asynchimg_load_fail), callback";
 			tblstr(ctx, "kind", "load_failed", top);
@@ -6115,8 +6100,10 @@ static inline char* lut_kind(arcan_vobject* src)
 		return src->vstore->txmapped ? "textured" : "single color";
 	else if (src->feed.state.tag == ARCAN_TAG_FRAMESERV)
 		return "frameserver";
-	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMG)
+	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
 		return "textured_loading";
+	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
+		return "texture_ready";
 	else if (src->feed.state.tag == ARCAN_TAG_3DOBJ)
 		return "3dobject";
 	else

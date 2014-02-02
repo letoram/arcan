@@ -48,6 +48,8 @@ struct png_readstr
 	size_t inbuf_sz;
 };
 
+
+#ifdef _SDL_IMAGE_H
 /* copy RGBA src row by row with optional "flip",
  * swidth <= dwidth */
 static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int 
@@ -62,6 +64,7 @@ static inline void imagecopy(uint32_t* dst, uint32_t* src, int dwidth, int
 		for (int row = 0; row < height; row++)
 			memcpy(&dst[row * dwidth], &src[row * swidth], swidth * 4);
 }
+#endif 
 
 /*
  * Ideally, this copy shouldn't be needed --

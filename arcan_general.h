@@ -66,22 +66,6 @@ typedef struct {
 typedef int arcan_shader_id;
 typedef unsigned int arcan_tickv;
 
-enum arcan_vobj_tags {
-ARCAN_TAG_NONE      = 0,/* "don't touch" -- rawobjects, uninitialized etc.    */
-ARCAN_TAG_IMAGE     = 1,/* images from an external source, need to be able 
-													 to grab by internal video_getimage function        */
-ARCAN_TAG_TEXT      = 2,/* specialized form of RAWOBJECT                      */
-ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external 
-													 resource (frameserver)                             */
-ARCAN_TAG_3DOBJ     = 5,/* got a corresponding entry in arcan_3dbase, ffunc is
-												   used to control the behavior of the 3d part        */
-ARCAN_TAG_3DCAMERA  = 6,/* set after using camtag,
-													 only usable on NONE/IMAGE                          */
-ARCAN_TAG_ASYNCIMG  = 7 /* intermediate state, means that getimage is still
-											     loading, don't touch objects in this state, wait for
-												   them to switch to TAG_IMAGE                        */
-};
-
 enum arcan_errors {
 	ARCAN_OK                       =   0,
 	ARCAN_ERRC_NOT_IMPLEMENTED     =  -1,

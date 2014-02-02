@@ -88,6 +88,22 @@ enum rendertarget_mode {
 	RENDERTARGET_COLOR_DEPTH_STENCIL = 3
 };
 
+enum arcan_vobj_tags {
+ARCAN_TAG_NONE      = 0,/* "don't touch" -- rawobjects, uninitialized etc.    */
+ARCAN_TAG_IMAGE     = 1,/* images from an external source, need to be able 
+													 to grab by internal video_getimage function        */
+ARCAN_TAG_TEXT      = 2,/* specialized form of RAWOBJECT                      */
+ARCAN_TAG_FRAMESERV = 3,/* got a connection to an external 
+													 resource (frameserver)                             */
+ARCAN_TAG_3DOBJ     = 5,/* got a corresponding entry in arcan_3dbase, ffunc is
+												   used to control the behavior of the 3d part        */
+ARCAN_TAG_3DCAMERA  = 6,/* set after using camtag,
+													 only usable on NONE/IMAGE                          */
+ARCAN_TAG_ASYNCIMGLD= 7,/* intermediate state, means that getimage is still
+											     loading, don't touch objects in this state         */
+ARCAN_TAG_ASYNCIMGRD= 8 /* when asynch loader is finished, ready to collect   */
+};
+
 enum arcan_transform_mask {
 	MASK_NONE        = 0,
 	MASK_POSITION    = 1,

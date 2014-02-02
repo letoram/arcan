@@ -473,9 +473,6 @@ themeswitch:
 			case EVENT_VIDEO:
 				if (ev.kind == EVENT_VIDEO_EXPIRE)
 					arcan_video_deleteobject(ev.data.video.source);
-				else if (ev.kind == EVENT_VIDEO_ASYNCHIMAGE_LOADED ||
-					ev.kind == EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED)
-				arcan_video_pushasynch(ev.data.video.source);
 			break;
 
 			case EVENT_SYSTEM:
