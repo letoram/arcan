@@ -1912,13 +1912,16 @@ static void* thread_loader(void* in)
 	return 0;
 }
 
-static void join_asynchimg(arcan_vobject* img, bool emit)
+static void join_asynchimg(arcan_vobject* img, bool emit, bool force)
 {
-	if (img->feed.state.tag != ARCAN_TAG_ASYNCIMGRD)
+	if (!force && img->feed.state.tag != ARCAN_TAG_ASYNCIMGRD){
 		return;
+	}
 
 	struct thread_loader_args* args = 
 		(struct thread_loader_args*) img->feed.state.ptr;
+	
+	pthread_join(args->self, NULL);
 
 	arcan_event loadev = {
 		.category = EVENT_VIDEO,
@@ -1947,7 +1950,6 @@ static void join_asynchimg(arcan_vobject* img, bool emit)
 		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
 	}
 
-	pthread_join(args->self, NULL);
 	push_globj(img, false, NULL);
 
 	if (emit)
@@ -1997,7 +1999,7 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 	if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
 		vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD){
 		/* protect us against premature invocation */
-		join_asynchimg(vobj, false);
+		join_asynchimg(vobj, false, true);
 	}
 	else 
 		return ARCAN_ERRC_UNACCEPTED_STATE;
@@ -3459,8 +3461,10 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 	}
 
 /*	if (force || (vobj->mask & MASK_SCALE) > 0){
-		printf("%f, %f, %f => %f, %f, %f\n", dprops->scale.x, dprops->scale.y,
-										dprops->scale.z, sprops->scale.x, sprops->scale.y, sprops->scale.z);
+		printf("%f, %f, %f => %f, %f, %f\n", 
+		dprops->scale.x, dprops->scale.y,
+		dprops->scale.z, 
+		sprops->scale.x, sprops->scale.y, sprops->scale.z);
 		dprops->scale.x *= sprops->scale.x;
 		dprops->scale.y *= sprops->scale.y;
 		dprops->scale.z *= sprops->scale.z;
@@ -3604,10 +3608,11 @@ static inline void build_modelview(float* dmatr,
 static inline void setup_surf(struct rendertarget* dst,
 	surface_properties* prop, arcan_vobject* src)
 {
-	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGRD)
-		join_asynchimg(src, true);
+	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGRD){
+		join_asynchimg(src, true, false);
+	}
 	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
- 		return;
+		return;
 
 /* currently, we only cache the primary rendertarget */
 	if (src->valid_cache && dst == src->owner){
