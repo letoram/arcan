@@ -36,7 +36,7 @@
 struct guard_struct {
 	sem_handle semset[3];
 	int parent;
-	volatile int8_t* dms; /* dead man's switch */
+	volatile uintptr_t* dms; /* dead man's switch */
 };
 static void* guard_thread(void* gstruct);
 
@@ -256,7 +256,7 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst,
 	outq->eventbuf = dst->parentdevq.evqueue;
 	outq->front = &dst->parentdevq.front;
 	outq->back  = &dst->parentdevq.back;
-	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
+	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
 
 }
 

@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <pthread.h>
 #include <string.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -35,7 +34,7 @@
 
 /* fixed limit of allowed events in queue before old gets overwritten */
 #ifndef ARCAN_EVENT_QUEUE_LIM
-#define ARCAN_EVENT_QUEUE_LIM 1024
+#define ARCAN_EVENT_QUEUE_LIM 500 
 #endif
 
 #include "arcan_math.h"
@@ -57,6 +56,22 @@ typedef struct queue_cell queue_cell;
 static arcan_event eventbuf[ARCAN_EVENT_QUEUE_LIM];
 static unsigned eventfront = 0, eventback = 0;
 
+/* 
+ * By default, we only have a 
+ * single-producer,single-consumer,single-threaded approach
+ * but some platforms may need different support, so allow
+ * multiple-producers single-consumer at compile-time
+ */
+#ifdef EVENT_MULTITHREAD_SUPPORT
+#include <pthread.h>
+static pthread_mutex_t defctx_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define LOCK() pthread_mutex_lock(&defctx_mutex);
+#define UNLOCK() pthread_mutex_unlock(&defctx_mutex);
+#else
+#define LOCK(X) 
+#define UNLOCK(X)
+#endif
+
 static struct arcan_evctx default_evctx = {
 	.eventbuf = eventbuf,
 	.eventbuf_sz = ARCAN_EVENT_QUEUE_LIM,
@@ -67,6 +82,27 @@ static struct arcan_evctx default_evctx = {
 
 arcan_evctx* arcan_event_defaultctx(){
 	return &default_evctx;
+}
+
+static void wake_semsleeper(arcan_evctx* ctx)
+{
+	if (ctx->local)
+		return;
+
+	int semv;
+	if (-1 == arcan_sem_value(ctx->synch.handle, &semv)){
+		char buf[128];
+		if ( strerror_r(errno, buf, 128) == 0 ){
+			buf[127] = 0;
+			arcan_warning("broken synchronization (%d:%s)", errno, buf);
+		}
+		else{
+			arcan_warning("broken synchronization (%d)", errno);
+		}
+	}
+	else if (semv == 0){
+		arcan_sem_post(ctx->synch.handle);
+	}
 }
 
 /* 
@@ -83,24 +119,6 @@ static void pull_killswitch(arcan_evctx* ctx)
 	ctx->synch.killswitch = NULL;
 }
 
-static unsigned alloc_queuecell(arcan_evctx* ctx)
-{
-	unsigned rv = *(ctx->back);
-	if (ctx->local){
-		*(ctx->back) = (*(ctx->back) + 1) % ctx->eventbuf_sz;
-	}
-/* can't trust queue_sz for external */
-	else {
-		if (*(ctx->back) > ARCAN_SHMPAGE_QUEUE_SZ)
-			pull_killswitch(ctx);
-		else {
-			*(ctx->back) = (*(ctx->back) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;	
-		}	
-	}
-
-	return rv;
-}
-
 /* check queue for event, ignores mask */
 int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
@@ -114,11 +132,14 @@ int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 		else {
 			*dst = ctx->eventbuf[ *(ctx->front) ];
 			*(ctx->front) = (*(ctx->front) + 1) % ARCAN_SHMPAGE_QUEUE_SZ;
+			wake_semsleeper(ctx);
 		}
 	}
 	else {
-		*dst = ctx->eventbuf[ *(ctx->front) ];
-		*(ctx->front) = (*(ctx->front) + 1) % ctx->eventbuf_sz;
+		LOCK();
+			*dst = ctx->eventbuf[ *(ctx->front) ];
+			*(ctx->front) = (*(ctx->front) + 1) % ctx->eventbuf_sz;
+		UNLOCK();
 	}
 
 	return 1;
@@ -176,13 +197,6 @@ void arcan_event_erase_vobj(arcan_evctx* ctx,
 	}
 }
 
-static inline int queue_used(arcan_evctx* dq)
-{
-	int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz - 
-		*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
-	return rv;
-}
-
 /*
  * enqueue to current context considering input-masking,
  * unless label is set, assign one based on what kind of event it is
@@ -193,12 +207,10 @@ static inline int queue_used(arcan_evctx* dq)
  */
 int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src) 
 {
-	int ntr = ctx->eventbuf_sz - queue_used(ctx);
-
 /* early-out mask-filter, these are only ever used to silently
  * discard input / output (only operate on head and tail of ringbuffer) */
 	if (!src || (src->category & ctx->mask_cat_inp)){
-		return ntr; 
+		return 1;
 	}
 
 /* 
@@ -207,13 +219,17 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * The recover option would be to silently overwrite one of the lesser
  * important (typically, ANALOG INPUTS or frame counters) in the queue
  */
-	if (ntr <= 1)
+	if (((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
 		return 0;
+	}
 
-	unsigned ind = alloc_queuecell(ctx);
-	arcan_event* dst = &ctx->eventbuf[ind];
-	*dst = *src;
-	dst->tickstamp = ctx->c_ticks;
+	if (ctx->local){
+		LOCK();
+	}
+
+	ctx->eventbuf[*ctx->back] = *src;
+	ctx->eventbuf[*ctx->back].tickstamp = ctx->c_ticks;
+	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 
 /* 
  * Currently, we just wake the sleeping frameserver up as soon as we get
@@ -222,24 +238,20 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
  * while so that we don't get a sleep -> 1 event -> sleep -> 1 event scenario
  * for highly interactive frameservers
  */
-	if (!ctx->local){
-		int semv;
-		if (-1 == arcan_sem_value(ctx->synch.handle, &semv)){
-			char buf[128];
-			if ( strerror_r(errno, buf, 128) == 0 ){
-				buf[128] = 0;
-				arcan_warning("broken synchronization (%d:%s)", errno, buf);
-			}
-			else{
-				arcan_warning("broken synchronization (%d)", errno);
-			}
-		}
-		else if (semv == 0){
-			arcan_sem_post(ctx->synch.handle);
-		}
+	if (ctx->local){
+		UNLOCK();
 	}
+	else
+		wake_semsleeper(ctx);
 
-	return ntr - 1; 
+	return 1; 
+}
+
+static inline int queue_used(arcan_evctx* dq)
+{
+int rv = *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
+*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+return rv;
 }
 
 void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue, 
@@ -252,7 +264,7 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 	saturation = (saturation > 1.0 ? 1.0 : saturation < 0.5 ? 0.5 : saturation);
 
 	while ( srcqueue->front && *srcqueue->front != *srcqueue->back &&
-			floor((float)dstqueue->eventbuf_sz * saturation) > queue_used(dstqueue) ){
+			floor((float)dstqueue->eventbuf_sz * saturation) > queue_used(dstqueue)) {
 
 		arcan_event inev;
 		if (arcan_event_poll(srcqueue, &inev) == 0)
@@ -386,6 +398,11 @@ extern void platform_event_deinit(arcan_evctx* ctx);
 void arcan_event_deinit(arcan_evctx* ctx)
 {
 	platform_event_deinit(ctx);
+
+#ifdef EVENT_MULTITHREAD_SUPPORT
+	pthread_mutex_destroy(&defctx_mutex);
+#endif
+
 	eventfront = eventback = 0;
 }
 
@@ -399,6 +416,10 @@ void arcan_event_init(arcan_evctx* ctx)
 	if (!ctx->local){
 		return;
 	}
+
+#ifdef EVENT_MULTITHREAD_SUPPORT
+	pthread_mutex_init(&defctx_mutex, NULL);
+#endif
 
 	platform_event_init(ctx);
  	arcan_tickofset = arcan_timemillis();

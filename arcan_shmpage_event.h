@@ -173,13 +173,9 @@ enum ARCAN_EVENT_EXTERNAL {
 };
 
 enum ARCAN_EVENT_VIDEO {
-	EVENT_VIDEO_EXPIRE = 0,
-	EVENT_VIDEO_SCALED,
-	EVENT_VIDEO_MOVED,
-	EVENT_VIDEO_BLENDED,
-	EVENT_VIDEO_ROTATED,
+	EVENT_VIDEO_EXPIRE,
 	EVENT_VIDEO_ASYNCHIMAGE_LOADED,
-	EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED
+	EVENT_VIDEO_ASYNCHIMAGE_FAILED
 };
 
 enum ARCAN_EVENT_NET {
@@ -454,7 +450,7 @@ struct arcan_evctx {
  * of semaphores).
  */
 	struct {
-		volatile int8_t* killswitch;
+		volatile uintptr_t* killswitch;
 		sem_handle handle;
 	} synch;
 

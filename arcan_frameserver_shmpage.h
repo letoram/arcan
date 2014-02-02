@@ -53,17 +53,6 @@
  * (which would also need sematics for handling the corresponding
  * rejection).
  *
- * Additionally, note that the default eventqueue behaviour is
- * lossy, if the parent is not handling them in time, an attempt
- * to enqueue a new event will mean the loss of an older one,
- * unless the event context is explicitly set to lossless.
- *
- * The rational for this rather odd behavior, is in part for
- * historial reasons (initial event- transfers were mostly
- * framestatus updates, or noisy input device data). The longer
- * term is to fixate the event.h structure in a versioned binary
- * protocol (XDR or protobuf).  
- *
  * Other forms of data (files for transferring to a remote source,
  * data sources for state serialization / deserialization) etc.
  * are managed through file-descriptor passing (HANDLES for the 
@@ -80,7 +69,7 @@
  * Number of allowed events in the in-queue and the out-queue,
  * should be kept low and monitored for use. 
  */
-#define PP_QUEUE_SZ 64
+#define PP_QUEUE_SZ 32
 static const int ARCAN_SHMPAGE_QUEUE_SZ = PP_QUEUE_SZ;
 
 /* 
@@ -134,10 +123,6 @@ static const int ARCAN_SHMPAGE_MAX_SZ = 8647936;
 /* ARCAN_SHMPAGE_AUDIOBUF_SZ + ARCAN_SHMPAGE_VIDEOBUF_SZ + 
   sizeof(struct arcan_event) * ARCAN_SHMPAGE_QUEUE_SZ * 2) + 512 */
 
-#ifndef INFINITE
-#define INFINITE -1
-#endif
-
 /* 
  * Tracking context for a frameserver connection,
  * will only be used "locally" with references 
@@ -149,12 +134,11 @@ struct frameserver_shmcont{
 	sem_handle esem;
 };
 
-
 struct frameserver_shmpage {
 /* 
  * These queues carry the event blocks (~100b datastructures)
  * back and forth between parent and child. It is treated as a
- * ring-buffer.
+ * one-producer, one-consumer ring-buffer.
  */ 
 	struct {
 		struct arcan_event evqueue[ PP_QUEUE_SZ ];
@@ -168,7 +152,7 @@ struct frameserver_shmpage {
 
 /* when released, it is assumed that the parent or child or both
  * has failed and everything should be dropped and terminated */
-	volatile int8_t dms;
+	volatile uintptr_t dms;
 
 /* used as a hint to how disruptions (e.g. broken datastreams,
  * end of content in terms of video playback etc.) should be handled,
@@ -179,7 +163,7 @@ struct frameserver_shmpage {
  * flipped whenever a buffer is ready to be synched,
  * polled repeatedly by the parent (or child for the case of an
  * encode frameserver) then the corresponding sem_handle is used
- * as a wake-up trigger 
+ * as a wake-up trigger.
  */	
 	volatile uint8_t aready;
 	volatile uint8_t vready;
