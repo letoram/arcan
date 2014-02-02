@@ -36,12 +36,10 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <assert.h>
 
-#include "arcan_shmpage_interop.h"
-#include "arcan_shmpage_event.h"
-
-#define ARCAN_OK 0
-#define ARCAN_ERRC_UNACCEPTED_STATE -1
+#include "arcan_shmpage_if.h"
 
 /*
  * This implementation is a first refactor step to separate
@@ -50,83 +48,96 @@
  *
  * The main process has a slightly different implementation of
  * these functions, thus special care should be taken to ensure
- * that any behavioral changes are synchronized. 
+ * that any behavioral changes are synchronized.
+ *
+ * One of the big differences is that the main process has to
+ * verify or clamp the front and back values as to not provide
+ * an easy write/read from user-controllable offsets type
+ * vulnerability.
  */
 
 static inline int queue_used(arcan_evctx* dq)
 {
-	int rv = *(dq->front) > *(dq->back) ? dq->n_eventbuf - 
-		*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+	return (*dq->front > *dq->back) ? 
+		(dq->eventbuf_sz - *dq->front + *dq->back) : (*dq->back - *dq->front);
+}
+
+static inline unsigned alloc_queuecell(arcan_evctx* ctx)
+{
+	unsigned rv = *ctx->back;
+	*ctx->back = (*ctx->back + 1) % ctx->eventbuf_sz;
 	return rv;
 }
 
-static unsigned alloc_queuecell(arcan_evctx* ctx)
+int arcan_event_poll(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
-	unsigned rv = *(ctx->back);
-	*(ctx->back) = ( *(ctx->back) + 1) % ctx->n_eventbuf;
+	assert(dst);
 
-	return rv;
+	if (ctx->front == ctx->back)
+		return 0;
+
+	*dst = ctx->eventbuf[ *ctx->front ];
+	*ctx->front = (*ctx->front + 1) % ctx->eventbuf_sz;
+
+	return 1;
 }
 
-arcan_event* arcan_event_poll(arcan_evctx* ctx, arcan_errc* status)
+int arcan_event_wait(struct arcan_evctx* ctx, struct arcan_event* dst)
 {
-	arcan_event* rv = NULL;
-	if (arcan_sem_timedwait_ks(ctx->synch.external_c.shared, -1,
-		ctx->synch.external_c.killswitch)){
-		*status = 0;
-		return NULL;
-	}
+	assert(dst);
 
-	*status = 1;
-	if (*ctx->front != *ctx->back){
-		rv = &ctx->eventbuf[ *ctx->front ];
-		*ctx->front = (*ctx->front + 1) % ctx->n_eventbuf;
+	if (*ctx->front == *ctx->back){
+#ifdef _DEBUG
+		int value;
+		assert(arcan_sem_value(
+			ctx->synch.handle, &value) == 0 && value == 1);
+#endif
+		arcan_sem_wait(ctx->synch.handle);
 	}
-
-	arcan_sem_post(ctx->synch.external_c.shared);
-	return rv;
+	
+	return arcan_event_poll(ctx, dst);
 }
 
-void arcan_event_enqueue(arcan_evctx* ctx, const arcan_event* src)
+int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 {
-	int rtc = 1;
+	assert(ctx);
 
-/* early-out mask-filter */
-	if (!src || (src->category & ctx->mask_cat_inp)){
-		return;
+/* child version doesn't use any masking */
+	unsigned ind; 
+	int rtc;
+ 
+	rtc	= queue_used(ctx);
+
+	while (rtc == ctx->eventbuf_sz){
+/* we just sleep at the moment, the rational being that the parent
+ * process should spend very little time actually processing events,
+ * and if it's overloaded to the point that it cannot, the noisiest
+ * children can slow down (particularly if the parent processes events
+ * in a fair way, e.g. while(set_of_providers:gotevent)[queuetransfer(provider,n)])
+ * rather than foreach(set_of_providers)queuetransfer(provider)) */
+		arcan_timesleep(10);
+		rtc	= queue_used(ctx);
 	}
+	
+	ind = alloc_queuecell(ctx);
 
-retry:
-	if (arcan_sem_timedwait_ks(ctx->synch.external_c.shared, -1, 
-		ctx->synch.external_c.killswitch) == 0)
-			return;
-
-	if (ctx->lossless){
-		if (ctx->n_eventbuf - queue_used(ctx) <= 1){
-			arcan_sem_post(ctx->synch.external_c.shared);
-
-/* 
- * Needlessly to say, this should *REALLY* be changed
- * for futexes or even using the event semaphore as a counter
- * (awaiting bencharking and tests from the "evilcore" 
- * before proceeding though) 
- */
-			rtc *= 2;
-			arcan_timesleep(rtc);
-
-			goto retry;	
-		}
-	}
-
-	unsigned ind = alloc_queuecell(ctx);
 	arcan_event* dst = &ctx->eventbuf[ind];
 	*dst = *src;
-	dst->tickstamp = ctx->c_ticks;
 
-	arcan_sem_post(ctx->synch.external_c.shared);
+/* won't "really" matter here as the parent,
+ * when multiplexing events on the main-queue,
+ * re-timestamps it to local time 	
+ * dst->tickstamp = ctx->c_ticks;
+*/
+	return ctx->eventbuf_sz - rtc - 1;
 }
 
-#ifndef _WIN32
-#else
+int arcan_event_tryenqueue(arcan_evctx* ctx, const arcan_event* const src)
+{
+	int rtc = queue_used(ctx);
+	if (rtc == ctx->eventbuf_sz)
+		return 0;
 
-#endif
+	return arcan_event_enqueue(ctx, src);	
+}
+

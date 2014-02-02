@@ -54,6 +54,7 @@
 #include "arcan_audioint.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_frameserver_shmpage.h"
+#include "arcan_shmpage_interop.h"
 #include "arcan_event.h"
 
 #define INCR(X, C) ( (X = (X + 1) % C) )
@@ -435,8 +436,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * Audio will keep on buffering until overflow,
  */
 	else if (cmd == ffunc_rendertarget_readback){
-		if ( arcan_sem_timedwait(src->vsync, 0) == 0){
-
+		if ( arcan_sem_trywait(src->vsync) ){
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
 				sem_wait(&src->lock_audb);
@@ -1106,6 +1106,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * triggers on Linux */
 	frameserver_shmpage_setevqs(ctx->shm.ptr, ctx->esync, 
 		&(ctx->inqueue), &(ctx->outqueue), true);
-	ctx->inqueue.synch.external_p.killswitch = ctx;
-	ctx->outqueue.synch.external_p.killswitch = ctx;
+	ctx->inqueue.synch.killswitch = (void*) ctx;
+	ctx->outqueue.synch.killswitch = (void*) ctx;
 }

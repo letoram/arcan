@@ -233,30 +233,30 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst,
 		inq = outq;
 		outq = tmp;
 
-		outq->synch.external_p.shared = esem;
-		inq->synch.external_p.shared = esem;
+		outq->synch.handle = esem;
+		inq->synch.handle = esem;
 
-		inq->synch.external_p.killswitch = NULL;
-		outq->synch.external_p.killswitch = NULL;
+		inq->synch.killswitch = NULL;
+		outq->synch.killswitch = NULL;
 	}
 	else {
-		inq->synch.external_c.shared = esem;
-		inq->synch.external_c.killswitch = &dst->dms;
-		outq->synch.external_c.shared = esem;
-		outq->synch.external_c.killswitch = &dst->dms;
+		inq->synch.handle = esem;
+		inq->synch.killswitch = &dst->dms;
+		outq->synch.handle = esem;
+		outq->synch.killswitch = &dst->dms;
 	}
 
 	inq->local = false;
 	inq->eventbuf = dst->childdevq.evqueue;
 	inq->front = &dst->childdevq.front;
 	inq->back  = &dst->childdevq.back;
-	inq->n_eventbuf = sizeof(dst->childdevq.evqueue) / sizeof(arcan_event);
+	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
 
 	outq->local =false;
 	outq->eventbuf = dst->parentdevq.evqueue;
 	outq->front = &dst->parentdevq.front;
 	outq->back  = &dst->parentdevq.back;
-	outq->n_eventbuf = sizeof(dst->parentdevq.evqueue) / sizeof(arcan_event);
+	inq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
 
 }
 

@@ -604,11 +604,14 @@ void arcan_event_rescan_idev(arcan_evctx* ctx)
 
 void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 {
-		ctx->kbdrepeat = rate;
+	static int kbdrepeat;
+
 		if (rate == 0)
 			SDL_EnableKeyRepeat(0, SDL_DEFAULT_REPEAT_INTERVAL);
-		else
-			SDL_EnableKeyRepeat(10, ctx->kbdrepeat);
+		else{
+			kbdrepeat = rate;
+			SDL_EnableKeyRepeat(10, kbdrepeat); 
+		}
 }
 
 void platform_event_deinit(arcan_evctx* ctx)
@@ -629,7 +632,7 @@ void platform_event_init(arcan_evctx* ctx)
 	static bool first_init;
 
 	SDL_EnableUNICODE(1);
-	arcan_event_keyrepeat(ctx, ctx->kbdrepeat);
+	arcan_event_keyrepeat(ctx, SDL_DEFAULT_REPEAT_INTERVAL);
 
 /* OSX hack */
 	SDL_ShowCursor(0);

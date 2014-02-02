@@ -421,37 +421,43 @@ typedef enum {
 } key_modifiers;
 
 struct arcan_evctx {
-	int8_t interactive; /* should STDIN be processed for command events? */
-	int8_t lossless; /* by default, the oldest event is dropped if queue is full */
-
+/* time and mask- tracking, only used parent-side */
 	unsigned c_ticks;
 	unsigned c_leaks;
 	unsigned mask_cat_inp;
 	unsigned mask_cat_out;
 
-	unsigned kbdrepeat;
+/* only used for local queues,  */
+	size_t eventbuf_sz;
 
-	unsigned n_eventbuf;
 	arcan_event* eventbuf;
 
-	unsigned* front;
-	unsigned* back;
+/* offsets into the eventbuf queue, parent will always
+ * % ARCAN_SHMPAGE_QUEUE_SZ to prevent nasty surprises */ 
+	volatile unsigned* front;
+	volatile unsigned* back;
 
 	int8_t local;
-	union {
-		pthread_mutex_t local;
 
-		struct {
-			void* killswitch; /* assumed to be NULL or frameserver */
-			sem_handle shared;
-		} external_p;
-
-		struct {
-			volatile int8_t* killswitch;
-			sem_handle shared;
-		} external_c;
-
+/*
+ * When the child (!local flag) wants the parent to wake it up,
+ * the sem_handle (by default, 1) is set to 0 and calls sem_wait.
+ * 
+ * When the parent pushes data on the event-queue it checks the 
+ * state if this sem_handle. If it's 0, and some internal
+ * dynamic heuristic (if the parent knows multiple- connected
+ * events are enqueued, it can wait a bit before waking the child)
+ * and if that heuristic is triggered, the semaphore is posted.
+ *
+ * This is also used by the guardthread (that periodically checks
+ * if the parent is still alive, and if not, unlocks a batch
+ * of semaphores).
+ */
+	struct {
+		volatile int8_t* killswitch;
+		sem_handle handle;
 	} synch;
+
 };
 
 typedef struct arcan_evctx arcan_evctx;

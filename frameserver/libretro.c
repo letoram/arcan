@@ -254,8 +254,7 @@ static void resize_shmpage(int neww, int newh, bool first)
 
 /* for the first time around, we need to lock the semaphore */
 	if (first){
-		arcan_sem_timedwait_ks(retroctx.shmcont.vsem, 
-			-1, &retroctx.shmcont.addr->dms);
+		arcan_sem_wait(retroctx.shmcont.vsem); 
 	}
 }
 
@@ -1205,18 +1204,17 @@ static inline void targetev(arcan_event* ev)
 /* we also process requests to save state, shutdown, reset, 
  * plug/unplug input, here */
 static inline void flush_eventq(){
-	 arcan_event* ev;
-	 arcan_errc evstat;
+	 arcan_event ev;
 
 	 do
-		while ( (ev = arcan_event_poll(&retroctx.inevq, &evstat)) ){
-			switch (ev->category){
+		while ( arcan_event_poll(&retroctx.inevq, &ev) == 1 ){
+			switch (ev.category){
 				case EVENT_IO:
-					ioev_ctxtbl(&(ev->data.io), ev->label);
+					ioev_ctxtbl(&(ev.data.io), ev.label);
 				break;
 
 				case EVENT_TARGET:
-					targetev(ev);
+					targetev(&ev);
 				break;
 			}
 		}
@@ -1447,7 +1445,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
  	else {
 		frameserver_shmpage_setevqs(shared, retroctx.shmcont.esem, 
 			&(retroctx.inevq), &(retroctx.outevq), false);
-		retroctx.outevq.lossless = true;
 	
 		resize_shmpage(320, 240, true);
 	
@@ -1745,8 +1742,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					add_jitter(retroctx.jitterxfer);
 					shared->vready = true;
 
-					arcan_sem_timedwait_ks(retroctx.shmcont.vsem, 
-						-1, &retroctx.shmcont.addr->dms);
+					arcan_sem_wait(retroctx.shmcont.vsem);
 				stop = arcan_timemillis();
 
 /* statistics and guardbyte verification */
@@ -1791,8 +1787,7 @@ static void log_msg(char* msg, bool flush)
 
 	if (flush){
 		retroctx.shmcont.addr->vready = true;
-		arcan_sem_timedwait_ks(retroctx.shmcont.vsem, 
-			-1, &retroctx.shmcont.addr->dms);
+		arcan_sem_wait(retroctx.shmcont.vsem);
 	}	
 }
 

@@ -658,22 +658,19 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 	recctx.shmcont = frameserver_getshm(keyfile, true);
 	frameserver_shmpage_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
-	recctx.outevq.lossless = true;
 
 	recctx.lastfd = BADFD;
 	atexit(encoder_atexit);
 
 	while (true){
-		arcan_errc evstat;
-
 /* fail here means there's something wrong with 
  * frameserver - main app connection */
-		arcan_event* ev = arcan_event_poll(&recctx.inevq, &evstat);
-		if (evstat != 0)
+		arcan_event ev;
+		if (0 == arcan_event_poll(&recctx.inevq, &ev))
 			break;
 
-		if (ev && ev->category == EVENT_TARGET){
-			switch (ev->kind){
+		if (ev.category == EVENT_TARGET){
+			switch (ev.kind){
 /* nothing happens until the first FDtransfer, and consequtive ones should 
  * really only be "useful" in streaming situations, and perhaps not even there, 
  * so consider that scenario untested */
@@ -685,7 +682,7 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 				recctx.lastfd = _open_osfhandle( (intptr_t) 
 					frameserver_readhandle(ev), _O_APPEND);
 #else
-				recctx.lastfd = frameserver_readhandle(ev);
+				recctx.lastfd = frameserver_readhandle(&ev);
 #endif
 				LOG("received file-descriptor, setting up encoder.\n");
 				if (!setup_ffmpeg_encode(resource))
@@ -700,9 +697,9 @@ void arcan_frameserver_ffmpeg_encode(const char* resource,
 
 			case TARGET_COMMAND_AUDDELAY:
 				LOG("(encode) adjust audio buffering, %d milliseconds.\n",
-					ev->data.target.ioevs[0].iv);
+					ev.data.target.ioevs[0].iv);
 				recctx.silence_samples += (double) 
-					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev->data.target.ioevs[0].iv;
+					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev.data.target.ioevs[0].iv;
 			break;
 
 			case TARGET_COMMAND_STEPFRAME: 

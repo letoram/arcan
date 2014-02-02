@@ -447,11 +447,11 @@ themeswitch:
 	float lastfrag = 0.0f;
 	long long int lastflip = arcan_timemillis();
 	int monitor_counter = monitor;
+	
+	arcan_event ev;
+	arcan_evctx* evctx = arcan_event_defaultctx();
 
 	while (!done) {
-		arcan_event* ev;
-		arcan_errc evstat;
-
 /* pollfeed can actually populate event-loops, assuming we don't exceed a 
  * compile- time threshold */
 #ifdef ARCAN_HMD
@@ -461,8 +461,7 @@ themeswitch:
 
 /* NOTE: might be better if this terminates if we're closing in on a 
  * deadline as to not be saturated with an onslaught of I/O events. */
-		while ((ev = arcan_event_poll(arcan_event_defaultctx(), 
-			&evstat)) && evstat == ARCAN_OK){
+		while (1 == arcan_event_poll(evctx, &ev)){ 
 
 /*
  * these events can typically be determined in video_tick(),
@@ -470,27 +469,27 @@ themeswitch:
  * (linked objs, instances, ...)
  * that a full delete is not really safe there (e.g. event -> callback -> 
  */
-			switch (ev->category){
+			switch (ev.category){
 			case EVENT_VIDEO:
-				if (ev->kind == EVENT_VIDEO_EXPIRE)
-					arcan_video_deleteobject(ev->data.video.source);
-				else if (ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOADED ||
-					ev->kind == EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED)
-				arcan_video_pushasynch(ev->data.video.source);
+				if (ev.kind == EVENT_VIDEO_EXPIRE)
+					arcan_video_deleteobject(ev.data.video.source);
+				else if (ev.kind == EVENT_VIDEO_ASYNCHIMAGE_LOADED ||
+					ev.kind == EVENT_VIDEO_ASYNCHIMAGE_LOAD_FAILED)
+				arcan_video_pushasynch(ev.data.video.source);
 			break;
 
 			case EVENT_SYSTEM:
 /* note the LUA shutdown() call actually emits this event */
-				if (ev->kind == EVENT_SYSTEM_EXIT)
+				if (ev.kind == EVENT_SYSTEM_EXIT)
 					done = true;
-				else if (ev->kind == EVENT_SYSTEM_SWITCHTHEME){
+				else if (ev.kind == EVENT_SYSTEM_SWITCHTHEME){
 					arcan_luaL_shutdown(luactx);
 					arcan_video_shutdown();
 					arcan_audio_shutdown();
 					arcan_event_deinit(arcan_event_defaultctx());
 					arcan_db_close(dbhandle);
 
-					arcan_themename = strdup(ev->data.system.data.message);
+					arcan_themename = strdup(ev.data.system.data.message);
 					goto themeswitch;
 				}
 				else 
@@ -498,7 +497,7 @@ themeswitch:
 			break;
 			}
 
-			arcan_lua_pushevent(luactx, ev);
+			arcan_lua_pushevent(luactx, &ev);
 		}
 
 		unsigned nticks;

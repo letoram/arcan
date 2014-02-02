@@ -157,7 +157,7 @@ struct frameserver_shmpage {
  * ring-buffer.
  */ 
 	struct {
-		arcan_event evqueue[ PP_QUEUE_SZ ];
+		struct arcan_event evqueue[ PP_QUEUE_SZ ];
 		uint32_t front, back;
 	} childdevq, parentdevq;
 
