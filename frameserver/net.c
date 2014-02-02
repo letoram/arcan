@@ -33,9 +33,7 @@
 #include <apr_poll.h>
 #include <apr_portable.h>
 
-#include "../arcan_shmpage_interop.h"
-#include "../arcan_shmpage_event.h"
-#include "../arcan_frameserver_shmpage.h"
+#include "../arcan_shmpage_if.h"
 
 #include "frameserver.h"
 #include "net.h"
@@ -794,17 +792,16 @@ static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
-	arcan_event* ev;
-	
-	uint16_t msgsz = sizeof(ev->data.network.message) / 
-		sizeof(ev->data.network.message[0]);
-	char outbuf[ msgsz + 3];
+	arcan_event ev;
+	uint16_t msgsz = sizeof(ev.data.network.message) / 
+		sizeof(ev.data.network.message[0]);
+	char outbuf[ msgsz + 3 ];
 
 /*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
-	arcan_errc evstat;
-	while ( (ev = arcan_event_poll(&netcontext.inevq, &evstat)) )
-		if (ev->category == EVENT_NET){
-			switch (ev->kind){
+
+	while ( arcan_event_poll(&netcontext.inevq, &ev) == 1 )
+		if (ev.category == EVENT_NET){
+			switch (ev.kind){
 			case EVENT_NET_INPUTEVENT:
 				LOG("(net-srv) inputevent unfinished, implement "
 					"event_pack()/unpack(), ignored\n");
@@ -813,7 +810,7 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 /* don't confuse this one with EVENT_NET_DISCONNECTED, which is a 
  * notification rather than a command */
 			case EVENT_NET_DISCONNECT:
-				disconnect(active_cons, nconns, ev->data.network.connid);
+				disconnect(active_cons, nconns, ev.data.network.connid);
 			break;
 				
 			case EVENT_NET_GRAPHREFRESH:
@@ -823,27 +820,27 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 			break;
 
 			case EVENT_NET_CUSTOMMSG:
-				LOG("(net-srv) broadcast %s\n", ev->data.network.message);
+				LOG("(net-srv) broadcast %s\n", ev.data.network.message);
 				outbuf[0] = TAG_NETMSG;
 				outbuf[1] = msgsz;
 				outbuf[2] = msgsz >> 8;
-				memcpy(&outbuf[3], ev->data.network.message, msgsz);
+				memcpy(&outbuf[3], ev.data.network.message, msgsz);
 				server_queueout_data(active_cons, nconns, outbuf, msgsz + 3, 
-					ev->data.network.connid);
-				graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message, 
+					ev.data.network.connid);
+				graph_log_tlv_out(netcontext.graphing, 0, ev.data.network.message, 
 					TAG_NETMSG, msgsz);
 				break;
 			}
 		}
-		else if (ev->category == EVENT_TARGET){
-			switch (ev->kind){
+		else if (ev.category == EVENT_TARGET){
+			switch (ev.kind){
 				case TARGET_COMMAND_EXIT:
 					LOG("(net-srv) parent requested termination, giving up.\n");
 					return false;
 				break;
 
 				case TARGET_COMMAND_FDTRANSFER:
-					netcontext.tmphandle = frameserver_readhandle(ev);
+					netcontext.tmphandle = frameserver_readhandle(&ev);
 				break;
 
 /* active slot -> fdtransfer -> store or restore */
@@ -1113,14 +1110,14 @@ retry:
 											.category = EVENT_NET, 
 											.kind = EVENT_NET_DISCOVERED
 							};
-							arcan_event* dev;
+							arcan_event dev;
 
 							strncpy(ev.data.network.host.addr, strbuf, MAX_ADDR_SIZE);
 							arcan_event_enqueue(&netcontext.outevq, &ev);
 
-							while ( (dev = arcan_event_poll(&netcontext.outevq, &sc))
-								&& sc == 0 ){
-								if (dev->category == EVENT_TARGET && dev->kind == 
+/* flush the queue */
+							while ( 1 == arcan_event_poll(&netcontext.outevq, &dev)){
+								if (dev.category == EVENT_TARGET && dev.kind == 
 									TARGET_COMMAND_EXIT)
 									return NULL;
 							}
@@ -1245,9 +1242,9 @@ static bool client_data_push(apr_socket_t* addr, char* buf, size_t buf_sz)
 
 static bool client_inevq_process(apr_socket_t* outconn)
 {
-	arcan_event* ev;
-	uint16_t msgsz = sizeof(ev->data.network.message) / 
-		sizeof(ev->data.network.message[0]);
+	arcan_event ev;
+	uint16_t msgsz = sizeof(ev.data.network.message) / 
+		sizeof(ev.data.network.message[0]);
 	char outbuf[ msgsz + 3];
 	outbuf[msgsz + 2] = 0;
 
@@ -1259,10 +1256,9 @@ static bool client_inevq_process(apr_socket_t* outconn)
  * The real issue is buffer overruns though, which currently means that data
  * gets lost (for custommsg) or truncated State transfers won't ever overflow
  * and are only ever tucked on at the end */
-	arcan_errc evstat;
-	while ( (ev = arcan_event_poll(&netcontext.inevq, &evstat)) )
-		if (ev->category == EVENT_NET){
-			switch (ev->kind){
+	while ( 1 == arcan_event_poll(&netcontext.inevq, &ev) )
+		if (ev.category == EVENT_NET){
+			switch (ev.kind){
 			case EVENT_NET_INPUTEVENT:
 				LOG("(net-cl) inputevent unfinished, implement "
 					"event_pack()/unpack(), ignored\n");
@@ -1272,15 +1268,15 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				if (netcontext.connstate < CONN_CONNECTED)
 					break;
 
-				if (strlen(ev->data.network.message) + 1 < msgsz)
-					msgsz = strlen(ev->data.network.message) + 1;
+				if (strlen(ev.data.network.message) + 1 < msgsz)
+					msgsz = strlen(ev.data.network.message) + 1;
 
 				outbuf[0] = TAG_NETMSG;
 				outbuf[1] = msgsz;
 				outbuf[2] = msgsz >> 8;
-				memcpy(&outbuf[3], ev->data.network.message, msgsz);
+				memcpy(&outbuf[3], ev.data.network.message, msgsz);
 				if (client_data_push(outconn, outbuf, msgsz + 3)){
-					graph_log_tlv_out(netcontext.graphing, 0, ev->data.network.message,
+					graph_log_tlv_out(netcontext.graphing, 0, ev.data.network.message,
 						TAG_NETMSG, msgsz);
 				}
 				else
@@ -1295,12 +1291,12 @@ static bool client_inevq_process(apr_socket_t* outconn)
 			break;
 			}
 		}
-		else if (ev->category == EVENT_TARGET){
-			switch (ev->kind){
+		else if (ev.category == EVENT_TARGET){
+			switch (ev.kind){
 			case TARGET_COMMAND_EXIT: return false; break;
 
 			case TARGET_COMMAND_FDTRANSFER:
-				netcontext.tmphandle = frameserver_readhandle(ev);
+				netcontext.tmphandle = frameserver_readhandle(&ev);
 			break;
 
 			case TARGET_COMMAND_STORE:
@@ -1511,9 +1507,8 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 	frameserver_shmpage_setevqs(netcontext.shmcont.addr, 
 		netcontext.shmcont.esem, &(netcontext.inevq), 
 		&(netcontext.outevq), false);
-	netcontext.outevq.lossless = true;
 
-	frameserver_semcheck(netcontext.shmcont.vsem, -1);
+	arcan_sem_post(netcontext.shmcont.vsem);
 
 /* resize guarantees at least 32bit alignment (possibly 64, 128) */
 	gbufptr = (uint32_t*) netcontext.vidp;
