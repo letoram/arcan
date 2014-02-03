@@ -52,11 +52,7 @@
 #include <SDL/SDL.h>
 
 #include "arcan_target.h"
-
-#include "arcan_shmpage_interop.h"
-#include "arcan_shmpage_event.h"
-#include "arcan_frameserver_shmpage.h"
-
+#include "arcan_shmpage_if.h"
 #include "frameserver/ntsc/snes_ntsc.h"
 
 static SDL_PixelFormat PixelFormat_RGB565 = {
