@@ -40,7 +40,6 @@
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
 #include "arcan_event.h"
-#include "arcan_frameserver_shmpage.h"
 
 typedef struct {
 /* linked list of audio sources,

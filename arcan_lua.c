@@ -63,7 +63,7 @@
 #include "arcan_db.h"
 #include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_frameserver_shmpage.h"
+#include "arcan_shmpage_if.h"
 #include "arcan_target_launcher.h"
 
 #define arcan_luactx lua_State

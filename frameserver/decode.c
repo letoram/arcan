@@ -6,9 +6,7 @@
 #include <sys/types.h>
 #include <fft/kiss_fftr.h>
 
-#include "../arcan_shmpage_interop.h"
-#include "../arcan_shmpage_event.h"
-#include "../arcan_frameserver_shmpage.h"
+#include "../arcan_shmpage_if.h"
 
 #include "frameserver.h"
 #include "decode.h"

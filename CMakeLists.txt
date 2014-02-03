@@ -255,8 +255,9 @@ set (
  arcan_shmpage_interop.h
  arcan_frameserver_backend.h
  arcan_frameserver_backend.c
- arcan_frameserver_shmpage.h
- arcan_frameserver_shmpage.c
+ arcan_shmpage_if.h
+ arcan_shmpage_control.h
+ arcan_shmpage_control.c
 )
 
 set (
@@ -266,10 +267,9 @@ set (
  frameserver/graphing/net_graph.c
  frameserver/resampler/resample.c
  frameserver/resampler/speex_resampler.h
- arcan_frameserver_shmpage.h
- arcan_frameserver_shmpage.c
  arcan_shmpage_interop.h
  arcan_shmpage_interop.c
+ arcan_shmpage_control.c
  external/fft/kiss_fft.c
  external/fft/kiss_fftr.c
 )

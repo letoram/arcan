@@ -1498,6 +1498,8 @@ function targetwnd_setup(game, factstr, coreargs)
 		end
 
 		local tbl = system_load(fn)();
+		tbl = tbl ~= nil and tbl or {};
+	
 		for k, v in pairs(tbl) do
 			if (coreargs[k] == nil) then
 				coreargs[k] = v;	
