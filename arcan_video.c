@@ -3317,6 +3317,8 @@ static void tick_rendertarget(struct rendertarget* tgt)
 
 	while (current){
 		arcan_vobject* elem = current->elem;
+		join_asynchimg(elem, true, false);
+
 		if (elem->last_updated != arcan_video_display.c_ticks){
 /* is the item to be updated? */
 			update_object(elem, arcan_video_display.c_ticks);
@@ -3608,10 +3610,7 @@ static inline void build_modelview(float* dmatr,
 static inline void setup_surf(struct rendertarget* dst,
 	surface_properties* prop, arcan_vobject* src)
 {
-	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGRD){
-		join_asynchimg(src, true, false);
-	}
-	else if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
+	if (src->feed.state.tag == ARCAN_TAG_ASYNCIMGLD)
 		return;
 
 /* currently, we only cache the primary rendertarget */
