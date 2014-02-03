@@ -42,8 +42,8 @@
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
+#include "../arcan_shmpage_if.h"
 #include "frameserver.h"
-#include "../arcan_frameserver_shmpage.h"
 
 #ifdef ENABLE_FSRV_LIBRETRO
 #include "libretro.h"

@@ -21,7 +21,7 @@
 #include "arcan_general.h"
 #include "arcan_event.h"
 #include "frameserver/frameserver.h"
-#include "arcan_frameserver_shmpage.h"
+#include "arcan_shmpage_if.h"
 
 /* This little function tries to get around all the insane problems
  * that occur with the fundamentally broken sem_timedwait with named

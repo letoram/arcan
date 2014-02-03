@@ -34,4 +34,4 @@
 
 #include "arcan_shmpage_interop.h"
 #include "arcan_shmpage_event.h"
-#include "arcan_frameserver_shmpage.h"
+#include "arcan_shmpage_control.h"
