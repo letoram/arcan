@@ -322,14 +322,14 @@ static void toggle_logdev(const char* prefix)
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("dec");
-		arcan_frameserver_ffmpeg_run(resource, keyfile);
+		arcan_frameserver_decode_run(resource, keyfile);
 	}
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("rec");
-		arcan_frameserver_ffmpeg_encode(resource, keyfile);
+		arcan_frameserver_encode_run(resource, keyfile);
 	}
 #endif
 

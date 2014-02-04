@@ -648,7 +648,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 #include <io.h>
 #endif
 
-void arcan_frameserver_ffmpeg_encode(const char* resource,
+void arcan_frameserver_encode_run(const char* resource,
 	const char* keyfile)
 {
 /* setup shmpage etc. resolution etc. is already in 
