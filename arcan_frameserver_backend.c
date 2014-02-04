@@ -1026,6 +1026,17 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* nopts / autoplay is preset from the calling context */
 		}
 
+/* similar to movie but no raw framequeues or feeds */
+		if (strcmp(setup.args.builtin.mode, "avfeed") == 0){
+			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
+			ctx->nopts    = true;
+			ctx->autoplay = true;
+			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
+											arcan_frameserver_audioframe_direct, ctx, &errc);
+			ctx->sz_audb  = 1024 * 64;
+			ctx->ofs_audb = 0;
+			ctx->audb     = malloc( ctx->sz_audb);
+		}
 /* "libretro" (or rather, interactive mode) treats a single pair of 
  * videoframe+audiobuffer each transfer, minimising latency is key. 
  * All operations require an intermediate buffer and are synched 

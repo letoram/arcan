@@ -409,9 +409,16 @@ static inline lua_Number vid_toluavid(arcan_vobj_id innum)
 	return (double) innum;
 }
 
-static inline arcan_vobj_id luaL_checkvid(lua_State* ctx, int num)
+static inline arcan_vobj_id luaL_checkvid(
+		lua_State* ctx, int num, arcan_vobject** dptr)
 {
 	arcan_vobj_id res = luavid_tovid( luaL_checknumber(ctx, num) );
+	if (dptr){
+		*dptr = arcan_video_getobject(res);
+		if (!(*dptr)){
+			arcan_fatal("invalid VID requested (%"PRIxVOBJ")\n", res);
+		}
+	}
 
 #ifdef _DEBUG
 	arcan_vobject* vobj = arcan_video_getobject(luavid_tovid(res));
@@ -482,8 +489,8 @@ static int freezeimage(lua_State* ctx)
 {
 	LUA_TRACE("freeze_image");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
-	arcan_vobject* vobj = arcan_video_getobject(vid);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 	vobj->flags.frozen = true;
 	return 0;
 }
@@ -534,14 +541,10 @@ static int loadimageasynch(lua_State* ctx)
 static int imageloaded(lua_State* ctx)
 {
 	LUA_TRACE("imageloaded");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_vobject* vobj; 
+	luaL_checkvid(ctx, 1, &vobj);
 
-	if (vobj)
-		lua_pushnumber(ctx, vobj->feed.state.tag == ARCAN_TAG_IMAGE);
-	else
-		lua_pushnumber(ctx, false);
-
+	lua_pushnumber(ctx, vobj->feed.state.tag == ARCAN_TAG_IMAGE);
 	return 1;
 }
 
@@ -556,7 +559,7 @@ static int moveimage(lua_State* ctx)
 /* array of VIDs or single VID */
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
-		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_objectmove(id, newx, newy, 1.0, time);
 	}
 	else if (argtype == LUA_TTABLE){
@@ -564,7 +567,7 @@ static int moveimage(lua_State* ctx)
 
 		for (int i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
-			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectmove(id, newx, newy, 1.0, time);
 			lua_pop(ctx, 1);
 		}
@@ -586,7 +589,7 @@ static int nudgeimage(lua_State* ctx)
 
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
-		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		surface_properties props = arcan_video_current_properties(id);
 		arcan_video_objectmove(id, props.position.x + newx, 
 			props.position.y + newy, 1.0, time);
@@ -596,7 +599,7 @@ static int nudgeimage(lua_State* ctx)
 
 		for (int i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
-			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			surface_properties props = arcan_video_current_properties(id);
 			arcan_video_objectmove(id, props.position.x + newx, 
 				props.position.y + newy, 1.0, time);
@@ -613,7 +616,7 @@ static int nudgeimage(lua_State* ctx)
 static int instanceimage(lua_State* ctx)
 {
 	LUA_TRACE("instance_image");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id newid = arcan_video_cloneobject(id);
 
 	if (newid != ARCAN_EID){
@@ -631,7 +634,7 @@ static int instanceimage(lua_State* ctx)
 static int resettransform(lua_State* ctx)
 {
 	LUA_TRACE("reset_image_transform");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_video_zaptransform(id);
 
 	return 0;
@@ -640,7 +643,7 @@ static int resettransform(lua_State* ctx)
 static int instanttransform(lua_State* ctx)
 {
 	LUA_TRACE("instant_image_transform");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_video_instanttransform(id);
 
 	return 0;
@@ -649,7 +652,7 @@ static int instanttransform(lua_State* ctx)
 static int cycletransform(lua_State* ctx)
 {
 	LUA_TRACE("image_transform_cycle");	
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	bool flag = luaL_checknumber(ctx, 2) != 0;
 
 	arcan_video_transformcycle(sid, flag);
@@ -660,8 +663,8 @@ static int cycletransform(lua_State* ctx)
 static int copytransform(lua_State* ctx)
 {
 	LUA_TRACE("copy_image_transform");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
-	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
 
 	arcan_video_copytransform(sid, did);
 
@@ -672,8 +675,8 @@ static int transfertransform(lua_State* ctx)
 {
 	LUA_TRACE("transfer_image_transform");
 
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
-	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
 
 	arcan_video_transfertransform(sid, did);
 
@@ -689,7 +692,7 @@ static int rotateimage(lua_State* ctx)
 
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
-		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
 	}
 	else if (argtype == LUA_TTABLE){
@@ -697,7 +700,7 @@ static int rotateimage(lua_State* ctx)
 
 		for (int i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
-			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectrotate(id, ang, 0.0, 0.0, time);
 			lua_pop(ctx, 1);
 		}
@@ -714,7 +717,7 @@ static int scaleimage2(lua_State* ctx)
 {
 	LUA_TRACE("resize_image");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	float neww = luaL_checknumber(ctx, 2);
 	float newh = luaL_checknumber(ctx, 3);
 	int time = luaL_optint(ctx, 4, 0);
@@ -751,7 +754,7 @@ static int scaleimage2(lua_State* ctx)
 static int scaleimage(lua_State* ctx)
 {
 	LUA_TRACE("scale_image");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 
 	float desw = luaL_checknumber(ctx, 2);
 	float desh = luaL_checknumber(ctx, 3);
@@ -783,7 +786,7 @@ static int orderimage(lua_State* ctx)
 /* array of VIDs or single VID */
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
-		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_setzv(id, zv);
 	}
 	else if (argtype == LUA_TTABLE){
@@ -791,7 +794,7 @@ static int orderimage(lua_State* ctx)
 
 		for (int i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
-			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_setzv(id, zv);
 			lua_pop(ctx, 1);
 		}
@@ -817,7 +820,7 @@ static inline void massopacity(lua_State* ctx,
 
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
-		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_objectopacity(id, val, time);
 	}
 	else if (argtype == LUA_TTABLE){
@@ -825,7 +828,7 @@ static inline void massopacity(lua_State* ctx,
 
 		for (int i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
-			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectopacity(id, val, time);
 			lua_pop(ctx, 1);
 		}
@@ -862,7 +865,7 @@ static int forceblend(lua_State* ctx)
 {
 	LUA_TRACE("force_image_blend");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	enum arcan_blendfunc mode = luaL_optnumber(ctx, 2, BLEND_FORCE);
 
 	if (mode == BLEND_FORCE || mode == BLEND_ADD ||
@@ -876,7 +879,7 @@ static int imagepersist(lua_State* ctx)
 {
 	LUA_TRACE("persist_image");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	lua_pushboolean(ctx, arcan_video_persistobject(id) == ARCAN_OK);
 	return 1;
 }
@@ -996,8 +999,8 @@ static int sharestorage(lua_State* ctx)
 {
 	LUA_TRACE("image_sharestorage");
 
-	arcan_vobj_id src = luaL_checkvid(ctx, 1);
-	arcan_vobj_id dst = luaL_checkvid(ctx, 2);
+	arcan_vobj_id src = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id dst = luaL_checkvid(ctx, 2, NULL);
 
 	arcan_errc rv = arcan_video_shareglstore(src, dst);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
@@ -1009,8 +1012,8 @@ static int setshader(lua_State* ctx)
 {
 	LUA_TRACE("image_shader");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_vobject* vobj = arcan_video_getobject(id);
+	arcan_vobject* vobj;
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, &vobj);
 	arcan_shader_id oldshid = vobj->program;
 
 	if (lua_gettop(ctx) > 1){
@@ -1030,7 +1033,7 @@ static int setmeshshader(lua_State* ctx)
 {
 	LUA_TRACE("mesh_shader");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_shader_id shid = luaL_checknumber(ctx, 2);
 	int slot = abs ( luaL_checknumber(ctx, 3) );
 
@@ -1092,7 +1095,7 @@ static int buildstr(lua_State* ctx)
 static int scaletxcos(lua_State* ctx)
 {
 	LUA_TRACE("image_scale_txcos");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	float txs = luaL_checknumber(ctx, 2);
 	float txt = luaL_checknumber(ctx, 3);
 
@@ -1104,8 +1107,8 @@ static int scaletxcos(lua_State* ctx)
 static int settxcos_default(lua_State* ctx)
 {
 	LUA_TRACE("image_set_txcos_default");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
-	arcan_vobject* dst = arcan_video_getobject(id);
+	arcan_vobject* dst; 
+	luaL_checkvid(ctx, 1, &dst);
 	bool mirror = luaL_optinteger(ctx, 2, 0) != 0;
 
 	if (dst){
@@ -1121,7 +1124,7 @@ static int settxcos_default(lua_State* ctx)
 static int settxcos(lua_State* ctx)
 {
 	LUA_TRACE("image_set_txcos");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	float txcos[8];
 
 	if (arcan_video_retrieve_mapping(id, txcos) == ARCAN_OK){
@@ -1149,7 +1152,7 @@ static int gettxcos(lua_State* ctx)
 {
 	LUA_TRACE("image_get_txcos");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	int rv = 0;
 	float txcos[8] = {0};
 
@@ -1173,7 +1176,7 @@ static int togglemask(lua_State* ctx)
 {
 	LUA_TRACE("image_mask_toggle");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	unsigned val = luaL_checknumber(ctx, 2);
 
 	if ( (val & !(MASK_ALL)) == 0){
@@ -1189,7 +1192,7 @@ static int clearall(lua_State* ctx)
 {
 	LUA_TRACE("image_mask_clearall");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	if (id){
 		arcan_video_transformmask(id, 0);
 	}
@@ -1231,7 +1234,7 @@ static char* maskstr(enum arcan_transform_mask mask)
 static int clearmask(lua_State* ctx)
 {
 	LUA_TRACE("image_mask_clear");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	unsigned val = luaL_checknumber(ctx, 2);
 
 	if ( (val & !(MASK_ALL)) == 0){
@@ -1247,7 +1250,7 @@ static int setmask(lua_State* ctx)
 {
 	LUA_TRACE("image_mask_set");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	enum arcan_transform_mask val = luaL_checknumber(ctx, 2);
 
 	if ( (val & !(MASK_ALL)) == 0){
@@ -1265,7 +1268,7 @@ static int clipon(lua_State* ctx)
 {
 	LUA_TRACE("image_clip_on");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	char clipm = luaL_optint(ctx, 2, ARCAN_CLIP_ON);
 
 	arcan_video_setclip(id, clipm == ARCAN_CLIP_ON ? ARCAN_CLIP_ON :
@@ -1277,7 +1280,7 @@ static int clipoff(lua_State* ctx)
 {
 	LUA_TRACE("image_clip_off");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_video_setclip(id, ARCAN_CLIP_OFF);
     return 0;
 }
@@ -1315,7 +1318,7 @@ static int hittest(lua_State* ctx)
 {
 	LUA_TRACE("image_hit");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	unsigned int x = luaL_checkint(ctx, 2);
 	unsigned int y = luaL_checkint(ctx, 3);
 
@@ -1328,7 +1331,7 @@ static int deleteimage(lua_State* ctx)
 {
 	LUA_TRACE("delete_image");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	double srcid = luaL_checknumber(ctx, 1);
 
 	/* possibly long journey,
@@ -1357,7 +1360,7 @@ static int deleteimage(lua_State* ctx)
 static int setlife(lua_State* ctx)
 {
 	LUA_TRACE("expire_image");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	int ttl = luaL_checkint(ctx, 2);
 	
 	if (ttl <= 0)
@@ -1461,7 +1464,7 @@ static int pausemovie(lua_State* ctx)
 {
 	LUA_TRACE("pause_movie");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
@@ -1474,7 +1477,7 @@ static int resumemovie(lua_State* ctx)
 {
 	LUA_TRACE("pause_movie");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
@@ -1487,7 +1490,7 @@ static int playmovie(lua_State* ctx)
 {
 	LUA_TRACE("play_movie");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	vfunc_state* state = arcan_video_feedstate(vid);
 
 	if (state && state->tag == ARCAN_TAG_FRAMESERV) {
@@ -1513,17 +1516,54 @@ static bool is_special_res(const char* msg)
 		strncmp(msg, "capture", 7) == 0;
 }
 
+static int setupavstream(lua_State* ctx)
+{
+	LUA_TRACE("launch_avstream");
+	const char* argstr = luaL_optstring(ctx, 1, "");
+	uintptr_t ref = 0;
+
+	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
+		lua_pushvalue(ctx, 3);
+		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	};
+
+	arcan_frameserver* mvctx = arcan_frameserver_alloc();
+
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.args.builtin.mode = "avfeed",
+		.args.builtin.resource = argstr 
+	};
+
+	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK )
+	{
+		mvctx->tag = ref;
+
+		arcan_video_objectopacity(mvctx->vid, 0.0, 0);
+		lua_pushvid(ctx, mvctx->vid);
+		lua_pushaid(ctx, mvctx->aid);
+	} 
+	else {
+		free(mvctx);
+		lua_pushvid(ctx, ARCAN_EID);
+		lua_pushvid(ctx, ARCAN_EID);
+	}
+
+	return 2;
+}
+
 static int loadmovie(lua_State* ctx)
 {
 	LUA_TRACE("load_movie");
-
+	
 	int loop = luaL_optint(ctx, 2, FRAMESERVER_NOLOOP);
 	if (loop != FRAMESERVER_LOOP && loop != FRAMESERVER_NOLOOP){
 		arcan_warning("loadmovie() invalid second argument (%d) specified"
-		",	should be FRAMESERVER_NOLOOP or FRAMESERVER_LOOP\n", loop);
+		", should be FRAMESERVER_NOLOOP or FRAMESERVER_LOOP\n", loop);
+
 		return 0;
 	}
-
+	
 	const char* farg = luaL_checkstring(ctx, 1);
 
 	bool special = is_special_res(farg);
@@ -1756,7 +1796,7 @@ static int targetinput(lua_State* ctx)
 		vidind = 1;
 	}
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, vidind);
+	arcan_vobj_id vid = luaL_checkvid(ctx, vidind, NULL);
 	luaL_checktype(ctx, tblind, LUA_TTABLE);
 
 	vfunc_state* vstate = arcan_video_feedstate(vid);
@@ -1845,7 +1885,7 @@ static int targetsuspend(lua_State* ctx)
 {
 	LUA_TRACE("suspend_target");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
@@ -1866,7 +1906,7 @@ static int targetresume(lua_State* ctx)
 {
 	LUA_TRACE("resume_target");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	if (vid != ARCAN_EID){
 		vfunc_state* state = arcan_video_feedstate(vid);
 		if (state && state->ptr && state->tag == ARCAN_TAG_FRAMESERV){
@@ -1967,7 +2007,7 @@ static int scale3dverts(lua_State* ctx)
 {
 	LUA_TRACE("scale_3dvertices");
 
-  arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+  arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
   arcan_3d_scalevertices(vid);
   return 0;
 }
@@ -2397,7 +2437,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 static int imageparent(lua_State* ctx)
 {
 	LUA_TRACE("image_parent");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id pid = arcan_video_findparent(id);
 
 	lua_pushvid( ctx, pid );
@@ -2422,7 +2462,7 @@ static int validvid(lua_State* ctx)
 static int imagechildren(lua_State* ctx)
 {
 	LUA_TRACE("image_children");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobj_id child;
 	unsigned ofs = 0, count = 1;
 
@@ -2441,7 +2481,7 @@ static int imagechildren(lua_State* ctx)
 static int framesetalloc(lua_State* ctx)
 {
 	LUA_TRACE("image_framesetsize");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	unsigned num = luaL_checkint(ctx, 2);
 	unsigned mode = luaL_optint(ctx, 3, ARCAN_FRAMESET_SPLIT);
 
@@ -2457,7 +2497,7 @@ static int framesetalloc(lua_State* ctx)
 static int framesetcycle(lua_State* ctx)
 {
 	LUA_TRACE("image_framecyclemode");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	unsigned num = luaL_optint(ctx, 2, 0);
 	arcan_video_framecyclemode(sid, num);
 	return 0;
@@ -2466,7 +2506,7 @@ static int framesetcycle(lua_State* ctx)
 static int pushasynch(lua_State* ctx)
 {
 	LUA_TRACE("image_pushasynch");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	arcan_video_pushasynch(sid);
 	return 0;
 }
@@ -2474,7 +2514,7 @@ static int pushasynch(lua_State* ctx)
 static int activeframe(lua_State* ctx)
 {
 	LUA_TRACE("image_active_frame");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	unsigned num = luaL_checkint(ctx, 2);
 
 	arcan_video_setactiveframe(sid, num);
@@ -2485,7 +2525,7 @@ static int activeframe(lua_State* ctx)
 static int origoofs(lua_State* ctx)
 {
 	LUA_TRACE("image_origo_offset");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
 	float xv = luaL_checknumber(ctx, 2);
 	float yv = luaL_checknumber(ctx, 3);
 	float zv = luaL_optnumber(ctx, 4, 0.0);
@@ -2503,7 +2543,7 @@ static int orderinherit(lua_State* ctx)
 /* array of VIDs or single VID */
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
-		arcan_vobj_id id = luaL_checkvid(ctx, 1);
+		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_inheritorder(id, origo);
 	}
 	else if (argtype == LUA_TTABLE){
@@ -2511,7 +2551,7 @@ static int orderinherit(lua_State* ctx)
 
 		for (int i = 0; i < nelems; i++){
 			lua_rawgeti(ctx, 1, i+1);
-			arcan_vobj_id id = luaL_checkvid(ctx, -1);
+			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_inheritorder(id, origo);
 			lua_pop(ctx, 1);
 		}
@@ -2523,8 +2563,8 @@ static int orderinherit(lua_State* ctx)
 static int imageasframe(lua_State* ctx)
 {
 	LUA_TRACE("set_image_as_frame");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
-	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
 	unsigned num = luaL_checkint(ctx, 3);
 	unsigned detach = luaL_optint(ctx, 4, FRAMESET_NODETACH);
 
@@ -2550,8 +2590,8 @@ static int imageasframe(lua_State* ctx)
 static int linkimage(lua_State* ctx)
 {
 	LUA_TRACE("link_image");
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
-	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
 
 	enum arcan_transform_mask smask = arcan_video_getmask(sid);
 	smask |= MASK_LIVING;
@@ -2618,7 +2658,7 @@ static int loadmesh(lua_State* ctx)
 {
 	LUA_TRACE("add_3dmesh");
 
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	unsigned nmaps = luaL_optnumber(ctx, 3, 1);
 	char* path = findresource(luaL_checkstring(ctx, 2), 
 		ARCAN_RESOURCE_SHARED | ARCAN_RESOURCE_THEME);
@@ -2642,7 +2682,7 @@ static int attrtag(lua_State* ctx)
 {
 	LUA_TRACE("attrtag_model");
 
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	const char*  attr = luaL_checkstring(ctx, 2);
 	int         state =  luaL_checknumber(ctx, 3);
 
@@ -2709,7 +2749,7 @@ static int swizzlemodel(lua_State* ctx)
 {
 	LUA_TRACE("swizzle_model");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_errc rv = arcan_3d_swizzlemodel(id);
 	lua_pushboolean(ctx, rv == ARCAN_OK);
 
@@ -2720,7 +2760,7 @@ static int camtag(lua_State* ctx)
 {
 	LUA_TRACE("camtag_model");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	float w = arcan_video_display.width;
 	float h = arcan_video_display.height;
 	float ar = w / h > 1.0 ? w / h : h / w;
@@ -2744,8 +2784,8 @@ static int camtaghmd(lua_State* ctx)
 {
 	LUA_TRACE("camtaghmd_model");
 
-	arcan_vobj_id lid = luaL_checkvid(ctx, 1);
-	arcan_vobj_id rid = luaL_checkvid(ctx, 2);
+	arcan_vobj_id lid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id rid = luaL_checkvid(ctx, 2, NULL);
 	
 	float nv = luaL_checknumber(ctx, 3);
 	float fv  = luaL_checknumber(ctx, 4);
@@ -2789,7 +2829,7 @@ static int getimageprop(lua_State* ctx)
 {
 	LUA_TRACE("image_surface_properties");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	long long dt = luaL_optnumber(ctx, 2, 0);
 	surface_properties prop;
 
@@ -2805,7 +2845,7 @@ static int getimageprop(lua_State* ctx)
 static int getimageresolveprop(lua_State* ctx)
 {
 	LUA_TRACE("image_surface_resolve_properties");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 /* FIXME: resolve_properties does not take dt into account */
 	surface_properties prop = arcan_video_resolve_properties(id);
 
@@ -2816,7 +2856,7 @@ static int getimageinitprop(lua_State* ctx)
 {
 	LUA_TRACE("image_surface_initial_properties");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	surface_properties prop = arcan_video_initial_properties(id);
 
 	return pushprop(ctx, prop, arcan_video_getzv(id));
@@ -2826,7 +2866,7 @@ static int getimagestorageprop(lua_State* ctx)
 {
 	LUA_TRACE("image_storage_properties");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	img_cons cons = arcan_video_storage_properties(id);
 	lua_createtable(ctx, 0, 6);
 
@@ -2849,8 +2889,8 @@ static int copyimageprop(lua_State* ctx)
 {
 	LUA_TRACE("copy_surface_properties");
 
-	arcan_vobj_id sid = luaL_checkvid(ctx, 1);
-	arcan_vobj_id did = luaL_checkvid(ctx, 2);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id did = luaL_checkvid(ctx, 2, NULL);
 
 	arcan_video_copyprops(sid, did);
 
@@ -3071,12 +3111,12 @@ static int imagecolor(lua_State* ctx)
 {
 	LUA_TRACE("image_color");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 	uint8_t cred = luaL_checknumber(ctx, 2);
 	uint8_t cgrn = luaL_checknumber(ctx, 3);
 	uint8_t cblu = luaL_checknumber(ctx, 4);
 
-	arcan_vobject* vobj = arcan_video_getobject(vid);
 	if (!vobj || vobj->vstore->txmapped){
 		lua_pushboolean(ctx, false);
 		return 1;
@@ -3638,7 +3678,7 @@ static int resource(lua_State* ctx)
 static int screencoord(lua_State* ctx)
 {
 	LUA_TRACE("image_screen_coordinates");
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	vector cv[4];
 
 	if (ARCAN_OK == arcan_video_screencoords(id, cv)){
@@ -3780,7 +3820,7 @@ static int targetportcfg(lua_State* ctx)
 {
 	LUA_TRACE("target_portconfig");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	unsigned tgtport  = luaL_checkinteger(ctx, 2);
 	unsigned tgtkind  = luaL_checkinteger(ctx, 3);
 
@@ -3800,7 +3840,7 @@ static int targetgraph(lua_State* ctx)
 {
 	LUA_TRACE("target_graphmode");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	unsigned ioval = luaL_checkinteger(ctx, 2);
 
 	arcan_event ev = {
@@ -3818,7 +3858,7 @@ static int targetcoreopt(lua_State* ctx)
 {
 	LUA_TRACE("target_coreopt");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	arcan_event ev = {
 		.category = EVENT_TARGET,
 		.kind = TARGET_COMMAND_COREOPT
@@ -3840,7 +3880,7 @@ static int targetseek(lua_State* ctx)
 {
 	LUA_TRACE("target_seek");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float val         = luaL_checknumber(ctx, 2);
 	bool relative     = luaL_optnumber(ctx, 3, 1) == 1;
 
@@ -3874,7 +3914,7 @@ static int targetskipmodecfg(lua_State* ctx)
 {
 	LUA_TRACE("target_framemode");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	int skipval       = luaL_checkinteger(ctx, 2);
 	int skiparg       = luaL_optinteger(ctx, 3, 0);
 	int preaud        = luaL_optinteger(ctx, 4, 0);
@@ -3903,7 +3943,7 @@ static int targetrestore(lua_State* ctx)
 {
 	LUA_TRACE("restore_target");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	const char* snapkey = luaL_checkstring(ctx, 2);
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
@@ -3934,7 +3974,7 @@ static int targetlinewidth(lua_State* ctx)
 {
 	LUA_TRACE("target_linewidth");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float lsz = luaL_checknumber(ctx, 2);
 	arcan_event ev = {
 			.category = EVENT_TARGET,
@@ -3951,7 +3991,7 @@ static int targetpointsize(lua_State* ctx)
 {
 	LUA_TRACE("target_pointsize");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	float psz = luaL_checknumber(ctx, 2);
 	arcan_event ev = {
 			.category = EVENT_TARGET,
@@ -3968,7 +4008,7 @@ static int targetpostfilter(lua_State* ctx)
 {
 	LUA_TRACE("target_postfilter");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	int filtertype = luaL_checknumber(ctx, 2);
 
 	if (filtertype != POSTFILTER_NTSC && filtertype != POSTFILTER_OFF)
@@ -3991,7 +4031,7 @@ static int targetpostfilterargs(lua_State* ctx)
 {
 	LUA_TRACE("target_postfilter_args");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	int group = luaL_checknumber(ctx, 2);
 	float v1  = luaL_optnumber(ctx, 3, 0.0);
 	float v2  = luaL_optnumber(ctx, 4, 0.0);
@@ -4016,7 +4056,7 @@ static int targetstepframe(lua_State* ctx)
 {
 	LUA_TRACE("stepframe_target");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	int nframes = luaL_checknumber(ctx, 2);
 	if (nframes == 0) return 0;
 
@@ -4035,7 +4075,7 @@ static int targetsnapshot(lua_State* ctx)
 {
 	LUA_TRACE("snapshot_target");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	const char* snapkey = luaL_checkstring(ctx, 2);
 	bool gotval = false;
 
@@ -4068,7 +4108,7 @@ static int targetreset(lua_State* ctx)
 {
 	LUA_TRACE("reset_target");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	arcan_event ev = {
 		.kind = TARGET_COMMAND_RESET,
 		.category = EVENT_TARGET
@@ -4229,8 +4269,8 @@ static int renderattach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_attach");
 
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
-	arcan_vobj_id sid = luaL_checkvid(ctx, 2);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobj_id sid = luaL_checkvid(ctx, 2, NULL);
 	int detach        = luaL_checkint(ctx, 3);
 
 	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
@@ -4248,7 +4288,7 @@ static int renderset(lua_State* ctx)
 {
 	LUA_TRACE("define_rendertarget");
 
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	int nvids         = lua_rawlen(ctx, 2);
 	int detach        = luaL_checkint(ctx, 3);
 	int scale         = luaL_checkint(ctx, 4);
@@ -4330,7 +4370,7 @@ static int procset(lua_State* ctx)
 
 /* similar in setup to renderset,
  * but fewer arguments and takes a processing callback */
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	luaL_checktype(ctx, 2, LUA_TTABLE);
 	int nvids = lua_rawlen(ctx, 2);
 	int detach = luaL_checkint(ctx, 3);
@@ -4424,7 +4464,7 @@ static int recordset(lua_State* ctx)
 {
 	LUA_TRACE("define_recordtarget");
 
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
 	const char* resf  = luaL_checkstring(ctx, 2);
 	char* argl        = strdup( luaL_checkstring(ctx, 3) );
 
@@ -4442,7 +4482,7 @@ static int recordset(lua_State* ctx)
 		naids         = lua_rawlen(ctx, 5);
 	else if (lua_type(ctx, 5) == LUA_TNUMBER){
 		naids         = 1;
-		arcan_vobj_id did = luaL_checkvid(ctx, 5);
+		arcan_vobj_id did = luaL_checkvid(ctx, 5, NULL);
 		if (did != ARCAN_VIDEO_WORLDID){
 			arcan_warning("recordset(%d) Unexpected value for audio, "
 				"only a table of selected AID streams or single WORLDID "
@@ -4638,7 +4678,7 @@ static int recordgain(lua_State* ctx)
 {
 	LUA_TRACE("recordtarget_gain");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1);
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
 	arcan_aobj_id aid = luaL_checkaid(ctx, 2);
 	float left = luaL_checknumber(ctx, 3);
 	float right = luaL_checknumber(ctx, 4);
@@ -4663,7 +4703,7 @@ static int borderscan(lua_State* ctx)
 	x2 = arcan_video_screenw();
 	y2 = arcan_video_screenh();
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 
 /* since GLES doesn't support texture readback, the option would be to render
@@ -4850,7 +4890,7 @@ static int movemodel(lua_State* ctx)
 {
 	LUA_TRACE("move3d_model");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float x = luaL_checknumber(ctx, 2);
 	float y = luaL_checknumber(ctx, 3);
 	float z = luaL_checknumber(ctx, 4);
@@ -4864,7 +4904,7 @@ static int forwardmodel(lua_State* ctx)
 {
 	LUA_TRACE("forward3d_model");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float mag = luaL_checknumber(ctx, 2);
 	unsigned int dt = luaL_optint(ctx, 3, 0);
 	bool axismask_x = luaL_optnumber(ctx, 4, 0) == 1;
@@ -4889,7 +4929,7 @@ static int strafemodel(lua_State* ctx)
 {
 	LUA_TRACE("strafe3d_model");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float mag = luaL_checknumber(ctx, 2);
 	unsigned int dt = luaL_optint(ctx, 3, 0);
 
@@ -4916,7 +4956,7 @@ static int scalemodel(lua_State* ctx)
 {
 	LUA_TRACE("scale3d_model");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	float sx = luaL_checknumber(ctx, 2);
 	float sy = luaL_checknumber(ctx, 3);
 	float sz = luaL_checknumber(ctx, 4);
@@ -4930,7 +4970,7 @@ static int orientmodel(lua_State* ctx)
 {
 	LUA_TRACE("orient3d_model");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	double roll       = luaL_checknumber(ctx, 2);
 	double pitch      = luaL_checknumber(ctx, 3);
 	double yaw        = luaL_checknumber(ctx, 4);
@@ -5034,7 +5074,7 @@ static int rotatemodel(lua_State* ctx)
 {
 	LUA_TRACE("rotate3d_model");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 	double roll       = luaL_checknumber(ctx, 2);
 	double pitch      = luaL_checknumber(ctx, 3);
 	double yaw        = luaL_checknumber(ctx, 4);
@@ -5091,7 +5131,7 @@ static int changetexfilter(lua_State* ctx)
 	LUA_TRACE("image_texfilter");
 
 	enum arcan_vfilter_mode mode = luaL_checknumber(ctx, 2);
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
 
 	if (mode == ARCAN_VFILTER_TRILINEAR ||
 			mode == ARCAN_VFILTER_BILINEAR ||
@@ -5117,7 +5157,7 @@ static int settexmode(lua_State* ctx)
 	if ( (numa == ARCAN_VTEX_CLAMP || numa == ARCAN_VTEX_REPEAT) &&
 		(numb == ARCAN_VTEX_CLAMP || numb == ARCAN_VTEX_REPEAT) ){
 		if (tmpn != ARCAN_EID){
-			arcan_vobj_id dvid = luaL_checkvid(ctx, 3);
+			arcan_vobj_id dvid = luaL_checkvid(ctx, 3, NULL);
 			arcan_video_objecttexmode(dvid, numa, numb);
 		}
 		else
@@ -5132,7 +5172,7 @@ static int tracetag(lua_State* ctx)
 {
 	LUA_TRACE("image_tracetag");
 
-	arcan_vobj_id id = luaL_checkvid(ctx, 1);
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	const char* const msg = luaL_optstring(ctx, 2, NULL);
 
 	if (!msg){
@@ -5344,7 +5384,7 @@ static int screenshot(lua_State* ctx)
 	bool flip = luaL_optnumber(ctx, 2, 0) != 0;
 
 	if (luaL_optnumber(ctx, 3, ARCAN_EID) != ARCAN_EID){
-		sid = luaL_checkvid(ctx, 3);
+		sid = luaL_checkvid(ctx, 3, NULL);
 			arcan_video_forceread(sid, &databuf, &bufs);
 
 		img_cons com = arcan_video_storage_properties(sid);
@@ -5498,8 +5538,8 @@ static int net_pushcl(lua_State* ctx)
 {
 	LUA_TRACE("net_push");
 
-	arcan_vobj_id did   = luaL_checkvid(ctx, 1);
-	arcan_vobject* vobj = arcan_video_getobject(did);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 
 /* arg2 can be (string) => NETMSG, (event) => just push */
 	arcan_event outev = {.category = EVENT_NET};
@@ -5552,8 +5592,8 @@ static int net_pushsrv(lua_State* ctx)
 {
 	LUA_TRACE("net_push_srv");
 
-	arcan_vobj_id did   = luaL_checkvid(ctx, 1);
-	arcan_vobject* vobj = arcan_video_getobject(did);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 	int domain          = luaL_optnumber(ctx, 3, 0);
 
 /* arg2 can be (string) => NETMSG, (event) => just push */
@@ -5599,8 +5639,8 @@ static int net_pushsrv(lua_State* ctx)
 static inline arcan_frameserver* luaL_checknet(lua_State* ctx, 
 	bool server, const char* prefix)
 {
-	arcan_vobj_id did = luaL_checkvid(ctx, 1);
-	arcan_vobject* vobj = arcan_video_getobject(did);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
 		arcan_fatal("%s -- VID is not a frameserver.\n", prefix);
@@ -5686,10 +5726,10 @@ static int net_refresh(lua_State* ctx)
 {
 	LUA_TRACE("net_refresh");
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 	arcan_event outev = {.category = EVENT_NET, .kind = EVENT_NET_GRAPHREFRESH};
 
-	arcan_vobject* vobj = arcan_video_getobject(vid);
 	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
 	if (!fsrv)
@@ -5796,6 +5836,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_attach",        renderattach             },
 {"play_movie",                 playmovie                },
 {"load_movie",                 loadmovie                },
+{"launch_avfeed",              setupavstream            },
 {"pause_movie",                pausemovie               },
 {"resume_movie",               resumemovie              },
 {NULL, NULL}
