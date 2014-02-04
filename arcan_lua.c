@@ -1523,7 +1523,7 @@ static int setupavstream(lua_State* ctx)
 	uintptr_t ref = 0;
 
 	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
-		lua_pushvalue(ctx, 3);
+		lua_pushvalue(ctx, 2);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	};
 
@@ -2287,7 +2287,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 		}
-
 	}
 	else if (ev->category == EVENT_FRAMESERVER){
 		bool gotfun;
