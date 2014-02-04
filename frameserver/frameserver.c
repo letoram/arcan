@@ -61,6 +61,10 @@
 #include "net.h"
 #endif
 
+#ifdef ENABLE_FSRV_AVFEED
+#include "avfeed.h"
+#endif
+
 int sockin_fd = -1;
 
 /* 
@@ -338,6 +342,14 @@ static void toggle_logdev(const char* prefix)
 	}
 #endif
 
+#ifdef ENABLE_FSRV_AVFEED
+	if (strcmp(fsrvmode, "avfeed") == 0){
+		toggle_logdev("avfeed");
+		arcan_frameserver_avfeed_run(resource, keyfile);
+	}
+#endif
+
+	LOG("frameserver launch failed, unsupported mode (%s)\n", fsrvmode);
 	return 0;
 }
 
