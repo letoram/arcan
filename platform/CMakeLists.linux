@@ -64,8 +64,10 @@ LIST(APPEND FSRV_LIBRARIES rt m dl)
 add_library(arcan_hijack SHARED 
 	arcan_target_unix.c
 	arcan_target.c	
-	arcan_event.c 
-	arcan_frameserver_shmpage.c 
+	arcan_shmpage_interop.h
+	arcan_shmpage_if.h
+	arcan_shmpage_control.c 
+	arcan_shmpage_interop.c
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c
 )
