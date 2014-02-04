@@ -4292,6 +4292,134 @@ static int renderset(lua_State* ctx)
 	return 0;
 }
 
+
+struct proctarget_src {
+	lua_State* ctx;
+	uintptr_t cbfun;
+};
+
+static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
+	unsigned mode, vfunc_state state)
+{
+	if (cmd == ffunc_destroy){
+		free(state.ptr);	
+	}
+	else if (cmd == ffunc_tick)
+		;
+	else if (cmd == ffunc_rendertarget_readback){
+		struct proctarget_src* src = state.ptr;
+
+		lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
+
+		lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+		lua_pushlstring(src->ctx, (const char*) buf, s_buf);
+	 	lua_pushnumber(src->ctx, width);
+		lua_pushnumber(src->ctx, height);
+		lua_pushnumber(src->ctx, bpp);	
+		wraperr(src->ctx, lua_pcall(src->ctx, 4, 0, 0), "proctarget_cb");
+		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+	}
+
+	return 0;	
+}
+
+static int procset(lua_State* ctx)
+{
+	LUA_TRACE("define_calctarget");
+
+/* similar in setup to renderset,
+ * but fewer arguments and takes a processing callback */
+	arcan_vobj_id did = luaL_checkvid(ctx, 1);
+	luaL_checktype(ctx, 2, LUA_TTABLE);
+	int nvids = lua_rawlen(ctx, 2);
+	int detach = luaL_checkint(ctx, 3);
+	int scale = luaL_checkint(ctx, 4);
+	int pollrate = luaL_checkint(ctx, 5);
+
+	if (!arcan_video_display.fbo_support){
+		arcan_warning("procset(%d) FBO support is disabled, "
+			"cannot setup proctarget.\n");
+		goto cleanup;
+	}
+
+	if (detach != RENDERTARGET_DETACH && detach != RENDERTARGET_NODETACH){
+		arcan_warning("procset(%d) invalid arg 3, expected"
+			"	RENDERTARGET_DETACH or RENDERTARGET_NODETACH\n", detach);
+		goto cleanup;
+	}
+
+	if (scale != RENDERTARGET_SCALE && scale != RENDERTARGET_NOSCALE){
+		arcan_warning("procset(%d) invalid arg 4, "
+			"expected RENDERTARGET_SCALE or RENDERTARGET_NOSCALE\n", scale);
+		goto cleanup;
+	}
+
+	if (pollrate == 0){
+		arcan_warning("procset(%d) invalid arg 5, expected "
+			"n < 0 (every n frame) or n > 0 (every n tick)\n", pollrate);
+		goto cleanup;
+	}
+
+	if (nvids > 0){
+		bool rtsetup = false;
+
+		for (int i = 0; i < nvids; i++){
+			lua_rawgeti(ctx, 2, i+1);
+			arcan_vobj_id setvid = luavid_tovid( lua_tointeger(ctx, -1) );
+			lua_pop(ctx, 1);
+
+			if (setvid == ARCAN_VIDEO_WORLDID){
+				if (nvids != 1)
+					arcan_fatal("procset(), with WORLDID in recordset, "
+						"no other entries are allowed.\n");
+
+				if (arcan_video_attachtorendertarget(did, setvid, false) != ARCAN_OK){
+					arcan_warning("procset() -- global capture failed, "
+						"setvid dimensions must match VRESW, VRESH\n");
+					return 0;
+				}
+
+/* since the worldid attach is a special case, 
+ * some rendertarget bound options need to be set manually */
+				arcan_video_alterreadback(ARCAN_VIDEO_WORLDID, pollrate);
+				break;
+			}
+			else {
+				if (!rtsetup)
+					rtsetup = (arcan_video_setuprendertarget(did, pollrate, 
+						scale == RENDERTARGET_SCALE, RENDERTARGET_COLOR), true);
+
+				arcan_video_attachtorendertarget(did, setvid, 
+					detach == RENDERTARGET_DETACH);
+			}
+		}
+	}
+	else{
+		arcan_warning("recordset(%d), empty source vid set -- "
+			"global capture unimplemented.\n");
+		goto cleanup;
+	}
+
+	struct proctarget_src* cbsrc = malloc(sizeof(struct proctarget_src));
+	cbsrc->ctx = ctx;
+	cbsrc->cbfun = 0;
+
+	if (lua_isfunction(ctx, 6) && !lua_iscfunction(ctx, 6)){
+		lua_pushvalue(ctx, 6);
+		cbsrc->cbfun = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
+
+	vfunc_state fftag = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = (void*) cbsrc
+	};
+	arcan_video_alterfeed(did, proctarget, fftag);
+
+cleanup:
+	return 0;
+}
+
 static int recordset(lua_State* ctx)
 {
 	LUA_TRACE("define_recordtarget");
@@ -5663,6 +5791,7 @@ static const luaL_Reg tgtfuns[] = {
 {"reset_target",               targetreset              },
 {"define_rendertarget",        renderset                },
 {"define_recordtarget",        recordset                },
+{"define_calctarget",          procset                  },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_attach",        renderattach             },
 {"play_movie",                 playmovie                },
