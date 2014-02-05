@@ -19,4 +19,4 @@
  *
  */
 
-void arcan_frameserver_decode_run(const char* resource, const char* keyfile);
+void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile);

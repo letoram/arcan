@@ -580,7 +580,7 @@ static inline void flush_eventq()
 
 }
 
-void arcan_frameserver_ffmpeg_run(const char* resource, const char* keyfile)
+void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 {
 	bool statusfl = false;
 	struct arg_arr* args = arg_unpack(resource);
