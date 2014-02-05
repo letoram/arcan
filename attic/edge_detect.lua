@@ -50,10 +50,74 @@ void main()
 }
 ]];
 
-function calc()
-	local edge = build_shader(nil, string.format(edt, 320.0, 320, 1.8, 0.1, 0.4), "edge");
-	local vid = load_image("mmm.png");
+local gauss_h = [[
+uniform sampler2D map_diffuse;
+varying vec2 texco;
+
+void main()
+{
+	vec4 sum = vec4(0.0);
+	float ampl = %f;
+	float dx = 1.0 / %f; /* populate with width */ 
+	
+	sum += texture2D(map_diffuse, vec2(texco.x - (4.0 * dx), texco.y)) * 0.05;
+	sum += texture2D(map_diffuse, vec2(texco.x - (3.0 * dx), texco.y)) * 0.09;
+	sum += texture2D(map_diffuse, vec2(texco.x - (2.0 * dx), texco.y)) * 0.12;
+	sum += texture2D(map_diffuse, vec2(texco.x - (1.0 * dx), texco.y)) * 0.15;
+	sum += texture2D(map_diffuse, vec2(texco.x - (0.0     ), texco.y)) * 0.16;
+	sum += texture2D(map_diffuse, vec2(texco.x + (1.0 * dx), texco.y)) * 0.15;
+	sum += texture2D(map_diffuse, vec2(texco.x + (2.0 * dx), texco.y)) * 0.12;
+	sum += texture2D(map_diffuse, vec2(texco.x + (3.0 * dx), texco.y)) * 0.09;
+	sum += texture2D(map_diffuse, vec2(texco.x + (4.0 * dx), texco.y)) * 0.05;
+
+	gl_FragColor = vec4(sum.r * ampl, sum.g * ampl, sum.b * ampl, 1.0);
+}
+]];
+
+local gauss_v = [[
+uniform sampler2D map_diffuse;
+varying vec2 texco;
+
+void main()
+{
+	vec4 sum = vec4(0.0);
+	float ampl = %f;
+	float dy = 1.0 / %f;
+
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y - (4.0 * dy))) * 0.05;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y - (3.0 * dy))) * 0.09;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y - (2.0 * dy))) * 0.12;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y - (1.0 * dy))) * 0.15;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y - (0.0     ))) * 0.16;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y + (1.0 * dy))) * 0.15;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y + (2.0 * dy))) * 0.12;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y + (3.0 * dy))) * 0.09;
+	sum += texture2D(map_diffuse, vec2(texco.x, texco.y + (4.0 * dy))) * 0.05;
+
+	gl_FragColor = vec4(sum.r * ampl, sum.g * ampl, sum.b * ampl, 1.0);
+}
+]];
+
+function edge()
+	local dw = 320;
+	local dh = 320;
+	local vid = load_image("images/icons/arcanicon.png");
 	resize_image(vid, 320, 320);
-	image_shader(vid, edge);
-	show_image(vid);
+
+	local edge = build_shader(
+		nil, string.format(edt, dw, dh, 1.8, 0.1, 0.4), "edge");
+
+	local gauss_h = build_shader(nil, string.format(gauss_h, 1.0, dw), "gauss_h");
+	local gauss_v = build_shader(nil, string.format(gauss_v, 1.0, dh), "gauss_v");
+
+	local ghi = fill_surface(dw, dh, 0, 0, 0, dw, dh);
+	local ghj = fill_surface(dw, dh, 0, 0, 0, dw, dh);
+
+	define_rendertarget(ghi, {vid}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+	define_rendertarget(ghj, {ghi}, RENDERTARGET_DETACH, RENDERTARGET_NOSCALE);
+
+	image_shader(vid, gauss_h);
+	image_shader(ghi, gauss_v);
+--	image_shader(ghj, edge);
+	show_image({vid, ghi, ghj});
 end
