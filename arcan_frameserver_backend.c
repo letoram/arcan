@@ -588,6 +588,36 @@ void arcan_frameserver_avfeedmon(arcan_aobj_id src, uint8_t* buf,
 	sem_post(&dst->lock_audb);
 }
 
+static inline void emit_deliveredframe(arcan_frameserver* src, 
+	unsigned long long pts, unsigned long long framecount)
+{
+	arcan_event deliv = {
+		.category = EVENT_FRAMESERVER,
+		.kind = EVENT_FRAMESERVER_DELIVEREDFRAME,
+		.data.frameserver.pts = pts,
+		.data.frameserver.counter = framecount,
+		.data.frameserver.otag = src->tag,
+		.data.frameserver.video = src->vid
+	};
+
+	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
+}
+
+static inline void emit_droppedframe(arcan_frameserver* src,
+	unsigned long long pts, unsigned long long dropcount)
+{
+	arcan_event deliv = {
+		.category = EVENT_FRAMESERVER,
+		.kind = EVENT_FRAMESERVER_DROPPEDFRAME,
+		.data.frameserver.pts = pts,
+		.data.frameserver.counter = dropcount,
+		.data.frameserver.otag = src->tag,
+		.data.frameserver.video = src->vid
+	};
+
+	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
+}
+
 int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned gltarget, vfunc_state vstate)
@@ -629,6 +659,9 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				arcan_framequeue_dequeue(&src->vfq);
 				ccell = arcan_framequeue_front(&src->vfq); 
 
+				if (src->desc.callback_framestate)
+					emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
+
 				if (!ccell){
 					return FFUNC_RV_NOFRAME;
 				}
@@ -649,6 +682,10 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
 		frame_cell* current = arcan_framequeue_front(&src->vfq);
+
+		if (src->desc.callback_framestate)
+			emit_deliveredframe(src, current->tag, src->desc.framecount++);
+
 		arcan_errc rv = push_buffer( src, (char*) current->buf, 
 			gltarget, src->desc.width, src->desc.height, src->desc.bpp, 
 			width, height, bpp);
