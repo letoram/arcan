@@ -2320,6 +2320,22 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				dst_cb = ev->data.frameserver.otag;
 			break;
 
+			case EVENT_FRAMESERVER_DELIVEREDFRAME :
+				tblstr(ctx, "kind", "frame", top);
+				tblnum(ctx, "pts", ev->data.frameserver.pts, top);
+				tblnum(ctx, "number", ev->data.frameserver.counter, top);
+
+				dst_cb = ev->data.frameserver.otag;
+			break;
+			
+			case EVENT_FRAMESERVER_DROPPEDFRAME :
+				tblstr(ctx, "kind", "dropped_frame", top);
+				tblnum(ctx, "pts", ev->data.frameserver.pts, top);
+				tblnum(ctx, "number", ev->data.frameserver.counter, top);
+
+				dst_cb = ev->data.frameserver.otag;
+			break;
+
 			case EVENT_FRAMESERVER_RESIZED :
 				tblstr(ctx, "kind", "resized", top);
 				tblnum(ctx, "width", ev->data.frameserver.width, top);
@@ -3907,6 +3923,26 @@ static int targetseek(lua_State* ctx)
 	arcan_frameserver_flush(fsrv);
 
 	return 0;
+}
+
+static int targetverbose(lua_State* ctx)
+{
+	LUA_TRACE("target_verbose");
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	bool toggle = luaL_optnumber(ctx, 3, 1) == 1; 
+
+	vfunc_state* state = arcan_video_feedstate(tgt);
+
+	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
+		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
+			"connected to a frameserver\n", tgt);
+		return 0;
+	}
+
+	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+	fsrv->desc.callback_framestate = toggle;
+
+	return 0;	
 }
 
 static int targetskipmodecfg(lua_State* ctx)
@@ -5817,6 +5853,7 @@ static const luaL_Reg tgtfuns[] = {
 {"resume_target",              targetresume             },
 {"target_portconfig",          targetportcfg            },
 {"target_framemode",           targetskipmodecfg        },
+{"target_verbose",             targetverbose            },
 {"target_pointsize",           targetpointsize          },
 {"target_linewidth",           targetlinewidth          },
 {"target_postfilter",          targetpostfilter         },

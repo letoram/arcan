@@ -94,6 +94,14 @@ typedef struct {
 	bool pbo_transfer;
 	unsigned pbo_index;
 	unsigned upload_pbo[2];
+
+/* if the user wants detailed
+ * info about the latest frame that was 
+ * uploaded */
+	bool callback_framestate;
+	unsigned long long framecount;
+	unsigned long long dropcount;
+	unsigned long long lastpts;
 	
 } arcan_frameserver_meta;
 
