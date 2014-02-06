@@ -659,12 +659,12 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				arcan_framequeue_dequeue(&src->vfq);
 				ccell = arcan_framequeue_front(&src->vfq); 
 
-				if (src->desc.callback_framestate)
-					emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
-
 				if (!ccell){
 					return FFUNC_RV_NOFRAME;
 				}
+
+				if (src->desc.callback_framestate)
+					emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
 
 				delta = now - (int64_t) ccell->tag;
 			}
@@ -689,6 +689,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		arcan_errc rv = push_buffer( src, (char*) current->buf, 
 			gltarget, src->desc.width, src->desc.height, src->desc.bpp, 
 			width, height, bpp);
+
 		arcan_framequeue_dequeue(&src->vfq);
 		return rv;
 	}
