@@ -45,14 +45,20 @@ struct {
 	AVFrame* pframe;
 
 /* VIDEO */
-	struct SwsContext* ccontext; /* color format conversion */
+/* color format conversion (ccontext) is also used for
+ * just populating the image/ color planes properly */
+	struct SwsContext* ccontext; 
 	AVCodecContext* vcontext;
 	AVStream* vstream;
 	AVCodec* vcodec;
+	int bpp; 
 	uint8_t* encvbuf;
+	
+/* set to ~twice the size of a full frame, larger than that and
+ * we have terrible "compression" on our hands */
 	size_t encvbuf_sz;
-	int vpts_ofs; /* used to rougly displace A/V synchronisation 
-								 *in encoded frames */
+	int vpts_ofs; 
+/* used to rougly displace A/V synchronisation in encoded frames */
 
 /* Timing (shared) */
 	long long starttime;       /* monotonic clock time-stamp */
@@ -82,6 +88,8 @@ struct {
 	size_t aframe_insz, aframe_sz;
 	unsigned long aframe_ptscnt;
 
+/* for re-using this compilation unit from other frameservers */
+	bool extsynch;
 } recctx = {0};
 
 /* flush the audio buffer present in the shared memory page as 
@@ -110,7 +118,8 @@ static void flush_audbuf()
 		recctx.encabuf_ofs += nti;
 		recctx.silence_samples = nti >> 2;
 		
-	} else if (recctx.silence_samples < 0){ /* drop n samples */
+	} 
+	else if (recctx.silence_samples < 0){ /* drop n samples */
 		size_t ntd = (ntc >> 2) > recctx.silence_samples ? 
 			recctx.silence_samples << 2 : ntc;
 		if (ntd == ntc){
@@ -121,7 +130,9 @@ static void flush_audbuf()
 
 		dataptr += ntd;
 		ntc -= ntd;
-	} else ;
+	} 
+	else 
+		;
 	
 	if (ntc + recctx.encabuf_ofs > recctx.encabuf_sz){
 		ntc = recctx.encabuf_sz - recctx.encabuf_ofs;
@@ -137,15 +148,17 @@ static void flush_audbuf()
 	memcpy(&recctx.encabuf[recctx.encabuf_ofs], dataptr, ntc);
 	recctx.encabuf_ofs += ntc;
 
-/* worst case, we get overflown buffers and need to dorp sound */
+/* worst case, we get overflown buffers and need to drop sound */
 	recctx.shmcont.addr->abufused = 0;
 }
 
-/* This is somewhat ugly, a real ffmpeg expert could probably help out here --
+/*
+ * This is somewhat ugly, a real ffmpeg expert could probably help out here --
  * we don't actually use the resampler for resampling purposes, 
  * output encoder samplerate is forced to the same as SHMPAGE_SAMPLERATE, 
  * but the resampler API is used to convert between all *** possible
- * expected output formats and filling out plane- alignments etc. */
+ * expected output formats and filling out plane- alignments etc. 
+ */
 static uint8_t* s16swrconv(int* size, int* nsamp)
 {
 	static struct SwrContext* resampler = NULL;
@@ -194,7 +207,8 @@ static bool encode_audio(bool flush)
 	bool forcetog = false;
 	int got_packet = false;
 
-/* NOTE: for real sample-rate conversion, this test would need to 
+/* NOTE: 
+ * for real sample-rate conversion, this test would need to 
  * reflect the state of the resampler internal buffers */
 	if (!flush && recctx.aframe_insz > recctx.encabuf_ofs)
 		return false;
@@ -236,8 +250,11 @@ forceencode:
 			pkt.dts = av_rescale_q(pkt.dts, ctx->time_base, 
 				recctx.astream->time_base);
 
-/* NOTE: we might be mistreating duration both here and in video,
- * investigate! */
+/*
+ * NOTE: 
+ * we might be mistreating duration both here and in video,
+ * investigate! 
+ */
 		if (pkt.duration > 0)
 			pkt.duration = av_rescale_q(pkt.duration, ctx->time_base, 
 				recctx.astream->time_base);
@@ -252,17 +269,23 @@ forceencode:
 		avcodec_free_frame(&frame);
 	}
 
-/* for the flush case, we may have a little bit of buffers left, both in the 
+	av_free_packet(&pkt);
+
+/* 
+ * for the flush case, we may have a little bit of buffers left, both in the 
  * encoder and the resampler,
  * CODEC_CAP_DELAY = pframe can be NULL and encode audio is used to flush
  * CODEC_CAP_SMALL_LAST_FRAME or CODEC_CAP_VARIABLE_FRAME_SIZE = 
  * we can the last few buffer bytes can be stored as well otherwise those
- * will be discarded */
+ * will be discarded 
+ */
 
 	if (flush){
-/* setup a partial new frame with as many samples as we can fit, 
+/* 
+ * setup a partial new frame with as many samples as we can fit, 
  * change the expected "frame size" to match
- * and then re-use the encode / conversion code */
+ * and then re-use the encode / conversion code 
+ */
 		if (!forcetog &&
 			((ctx->flags & CODEC_CAP_SMALL_LAST_FRAME) > 0 || 
 				(ctx->flags & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)){
@@ -282,6 +305,7 @@ forceencode:
 				av_init_packet(&flushpkt);
 				if (0 == avcodec_encode_audio2(ctx, &flushpkt, NULL, &gotpkt)){
 					av_interleaved_write_frame(recctx.fcontext, &flushpkt);
+				av_free_packet(&flushpkt);
 				}
 			} while (gotpkt);
 		}
@@ -296,7 +320,7 @@ static int encode_video(bool flush)
 {
 	uint8_t* srcpl[4] = {recctx.vidp, NULL, NULL, NULL};
 	int srcstr[4] = {0, 0, 0, 0};
-	srcstr[0] = recctx.vcontext->width * 4;
+	srcstr[0] = recctx.vcontext->width * recctx.bpp;
 
 /* the main problem here is that the source material may encompass many 
  * framerates, in fact, even be variable (!) the samplerate we're running 
@@ -400,7 +424,8 @@ restep:
 end:
 /* acknowledge that a frame has been consumed, 
  * then return to polling events */
-	arcan_sem_post(recctx.shmcont.vsem);
+	if (!recctx.extsynch)
+		arcan_sem_post(recctx.shmcont.vsem);
 }
 
 static void encoder_atexit()
@@ -448,7 +473,10 @@ static void log_callback(void* ptr, int level, const char* fmt, va_list vl)
 	vfprintf(stderr, fmt, vl);
 }
 
-static bool setup_ffmpeg_encode(const char* resource)
+/*
+ * expects ccontext to be populated elsewhere
+ */
+static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 {
 	struct frameserver_shmpage* shared = recctx.shmcont.addr;
 	assert(shared);
@@ -462,7 +490,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 
 	static bool initialized = false;
 
-	if (shared->w % 2 != 0 || shared->h % 2 != 0){
+	if (desw % 2 != 0 || desh % 2 != 0){
 		LOG("(encode) source image format (%dx%d) must be evenly"
 		"	divisible by 2.\n", shared->w, shared->h);
 
@@ -478,7 +506,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 /* codec stdvals, these may be overridden by the codec- options,
  * mostly used as hints to the setup- functions from the presets.* files */
 	unsigned vbr = 5, abr = 5, samplerate = ARCAN_SHMPAGE_SAMPLERATE, 
-		channels = 2, presilence = 0;
+		channels = 2, presilence = 0, bpp = 4;
 
 	bool noaudio = false, stream_outp = false;
 	float fps    = 25;
@@ -543,14 +571,13 @@ static bool setup_ffmpeg_encode(const char* resource)
 		}
 	}
 	
-/* locate codecs and containers */
 	struct codec_ent muxer = encode_getcontainer(cont, 
 		recctx.lastfd, streamdst);
 	struct codec_ent video = encode_getvcodec(vck, 
 		muxer.storage.container.format->flags);
 	struct codec_ent audio = encode_getacodec(ack, 
 		muxer.storage.container.format->flags);
-	unsigned contextc      = 0; /* track of which ID the next stream has */
+	unsigned contextc = 0; /* track of which ID the next stream has */
 
 	if (!video.storage.container.context){
 		LOG("(encode) No valid output container found, aborting.\n");
@@ -562,19 +589,14 @@ static bool setup_ffmpeg_encode(const char* resource)
 		return false;
 	}
 
-/* some feasible combination found, prepare memory page */
 	frameserver_shmpage_calcofs(shared, &(recctx.vidp), &(recctx.audp) );
 
 	if (video.storage.video.codec){
-		unsigned width  = shared->w;
-		unsigned height = shared->h;
 
-		if ( video.setup.video(&video, width, height, fps, vbr, stream_outp) ){
-			recctx.encvbuf_sz = width * height * 4;
+		if ( video.setup.video(&video, desw, desh, fps, vbr, stream_outp) ){
+			recctx.encvbuf_sz = desw * desh * bpp;
+			recctx.bpp = bpp;
 			recctx.encvbuf    = av_malloc(recctx.encvbuf_sz);
-			recctx.ccontext   = sws_getContext(width, height, PIX_FMT_RGBA, 
-				width, height, PIX_FMT_YUV420P, SWS_FAST_BILINEAR, NULL, NULL, NULL);
-
 			recctx.vstream = av_new_stream(muxer.storage.container.context,
 				contextc++);
 			recctx.vcodec  = video.storage.video.codec;
@@ -583,7 +605,7 @@ static bool setup_ffmpeg_encode(const char* resource)
 			
 			recctx.vstream->codec = recctx.vcontext;
 			recctx.fps = fps;
-			LOG("(encode) Video output stream: %d x %d %f fps\n", width, height, fps);
+			LOG("(encode) Video output stream: %d x %d %f fps\n", desw, desh, fps);
 		}
 	}
 
@@ -640,13 +662,50 @@ static bool setup_ffmpeg_encode(const char* resource)
 	}
 	
 /* signal that we are ready to receive video frames */
-	arcan_sem_post(recctx.shmcont.vsem);
+	if (!recctx.extsynch)
+		arcan_sem_post(recctx.shmcont.vsem);
+
 	return true;
 }
 
 #ifdef _WIN32
 #include <io.h>
 #endif
+
+/*
+ * This version does not really use the shmpage API but is intended 
+ * as a logging / side-call for the other frameservers to quickly
+ * get an internal recording / logging feature going
+ */ 
+int arcan_frameserver_encode_intrun(const char* resstr, 
+	uint8_t* vidp, int w, int h, int bpp, int pixfmt, 
+	uint8_t* audp, uint32_t** aud_sz)
+{
+	/* inargs packas upp,
+	 * fejka in data i recctx
+	 * öppna upp utresurs som fd (recctx.lastfd)
+	 */
+
+	recctx.ccontext   = sws_getContext(w, h, PIX_FMT_RGBA, 
+		w, h, PIX_FMT_YUV420P, SWS_FAST_BILINEAR, NULL, NULL, NULL);
+
+	recctx.vidp = vidp;
+	recctx.audp = audp;
+
+	char* output_fname = "default.mkv";
+	recctx.lastfd = open(output_fname, O_CREAT | O_RDWR, 0700);
+	if (recctx.lastfd == -1)
+		return -1;
+
+	struct frameserver_shmpage* fakepage = 
+		malloc(sizeof(struct frameserver_shmpage));
+
+	memset(fakepage, '\0', sizeof(struct frameserver_shmpage));
+	*aud_sz = &fakepage->abufused;
+
+	recctx.extsynch = true;
+	return 1;
+}
 
 void arcan_frameserver_encode_run(const char* resource,
 	const char* keyfile)
@@ -683,8 +742,16 @@ void arcan_frameserver_encode_run(const char* resource,
 				recctx.lastfd = frameserver_readhandle(&ev);
 #endif
 				LOG("received file-descriptor, setting up encoder.\n");
-				if (!setup_ffmpeg_encode(resource))
+				if (!setup_ffmpeg_encode(resource, recctx.shmcont.addr->w,
+					recctx.shmcont.addr->h))
 					return;
+				else{
+					recctx.ccontext   = sws_getContext(
+						recctx.shmcont.addr->w, recctx.shmcont.addr->h, PIX_FMT_RGBA,
+						recctx.shmcont.addr->w, recctx.shmcont.addr->h, PIX_FMT_YUV420P, 
+						SWS_FAST_BILINEAR, NULL, NULL, NULL
+					);
+				}
 			break;
 
 /* the atexit handler flushes stream buffers and finalizes output headers */
