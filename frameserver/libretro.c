@@ -29,7 +29,7 @@
 #include <strings.h>
 #include <pthread.h>
 
-#include "../arcan_shmpage_if.h"
+#include "../shmif/arcan_shmif.h"
 
 #include "frameserver.h"
 #include "ntsc/snes_ntsc.h"
@@ -1719,11 +1719,10 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 					speex_resampler_process_interleaved_int(retroctx.resampler, 
 						(const spx_int16_t*) retroctx.audbuf, &nsamp, 
 						(spx_int16_t*) retroctx.audp, &outc);
+
 					if (outc)
 						retroctx.shmcont.addr->abufused += outc * 
 							ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
-
-					shared->aready = true;
 					retroctx.audbuf_ofs = 0;
 				}
 
@@ -1734,9 +1733,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* Frametransfer step */
 				start = arcan_timemillis();
 					add_jitter(retroctx.jitterxfer);
-					shared->vready = true;
-
-					arcan_sem_wait(retroctx.shmcont.vsem);
+					arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
 				stop = arcan_timemillis();
 
 /* statistics and guardbyte verification */
@@ -1779,10 +1776,8 @@ static void log_msg(char* msg, bool flush)
 	draw_text(retroctx.graphing, msg, 
 		0.5 * (sw - dw), 0.5 * (retroctx.shmcont.addr->h - dh), 0xffffffff);
 
-	if (flush){
-		retroctx.shmcont.addr->vready = true;
-		arcan_sem_wait(retroctx.shmcont.vsem);
-	}	
+	if (flush)
+		arcan_shmif_signal(&retroctx.shmcont, SHMIF_SIGVID);
 }
 
 static void push_stats()

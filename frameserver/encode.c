@@ -19,7 +19,7 @@
 #undef BADFD
 #define BADFD -1
 
-#include "../arcan_shmpage_if.h"
+#include <arcan_shmif.h> 
 
 #include "encode.h"
 #include "encode_presets.h"

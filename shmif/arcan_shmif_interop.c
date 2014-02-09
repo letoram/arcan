@@ -39,7 +39,7 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "arcan_shmpage_if.h"
+#include "arcan_shmif.h"
 
 /*
  * This implementation is a first refactor step to separate

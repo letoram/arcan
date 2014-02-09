@@ -17,11 +17,11 @@
 #include <string.h>
 #include <pthread.h>
 
-#include "arcan_math.h"
-#include "arcan_general.h"
-#include "arcan_event.h"
-#include "frameserver/frameserver.h"
-#include "arcan_shmpage_if.h"
+#include "../arcan_math.h"
+#include "../arcan_general.h"
+#include "../arcan_event.h"
+#include "../frameserver/frameserver.h"
+#include "arcan_shmif.h"
 
 /* This little function tries to get around all the insane problems
  * that occur with the fundamentally broken sem_timedwait with named
@@ -272,6 +272,25 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->back  = &dst->parentdevq.back;
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
 
+}
+
+void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
+{
+	if (mask == SHMIF_SIGVID){
+		ctx->addr->vready = true;
+		arcan_sem_wait(ctx->vsem);
+	}
+	else if (mask == SHMIF_SIGAUD){ 
+		ctx->addr->aready = true;
+		arcan_sem_wait(ctx->asem);
+		}
+	else if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD)){
+		ctx->addr->vready = ctx->addr->aready = true;
+		arcan_sem_wait(ctx->vsem);
+		arcan_sem_wait(ctx->asem);
+	}
+	else
+		;
 }
 
 void arcan_shmif_forceofs(struct arcan_shmif_page* shmp, 

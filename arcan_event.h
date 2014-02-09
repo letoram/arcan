@@ -22,8 +22,6 @@
 #ifndef _HAVE_ARCAN_EPRIV
 #define _HAVE_ARCAN_EPRIV
 
-#include "arcan_shmpage_event.h"
-
 /* check timers, poll IO events and timing calculations
  * out : (NOT NULL) storage- container for number of ticks that has passed
  *                   since the last call to arcan_process

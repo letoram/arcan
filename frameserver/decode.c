@@ -6,7 +6,7 @@
 #include <sys/types.h>
 #include <fft/kiss_fftr.h>
 
-#include "../arcan_shmpage_if.h"
+#include <arcan_shmif.h>
 #include "graphing/net_graph.h"
 
 #include "frameserver.h"
@@ -154,8 +154,7 @@ static void generate_frame()
 			}
 
 			decctx.shmcont.addr->vpts = vptsc;
-			decctx.shmcont.addr->vready = true;
-			arcan_sem_wait(decctx.shmcont.vsem);
+			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 
 			vptsc += 1000.0f / (
 				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
@@ -168,8 +167,7 @@ static inline void synch_audio()
 	if (decctx.fft_audio)
 		generate_frame();
 
-	decctx.shmcont.addr->aready = true;
-	arcan_sem_wait(decctx.shmcont.asem);
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD); 
 	decctx.shmcont.addr->abufused = 0;
 }
 
@@ -294,8 +292,7 @@ static bool decode_vframe()
 			decctx.packet.dts : 0) * av_q2d(decctx.vstream->time_base) * 1000.0;
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
-		decctx.shmcont.addr->vready = true;
-		arcan_sem_wait(decctx.shmcont.vsem);
+		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID); 
 	}
 	else;
 
@@ -594,8 +591,7 @@ static void statusmsg(const char* msg)
 	text_dimensions(decctx.graphing, msg, &dw, &dh); 
 	draw_text(decctx.graphing, msg, 
 		0.5 * (320 - dw), 0.5 * (200 - dh), 0xffffffff);
-	decctx.shmcont.addr->vready = true;
-	arcan_sem_wait(decctx.shmcont.vsem);
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 	graphing_destroy(decctx.graphing);
 }
 

@@ -53,7 +53,7 @@
 #include "arcan_audio.h"
 #include "arcan_audioint.h"
 #include "arcan_frameserver_backend.h"
-#include "arcan_shmpage_if.h"
+#include "arcan_shmif.h"
 #include "arcan_event.h"
 
 static struct {

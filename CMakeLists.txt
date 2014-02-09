@@ -203,8 +203,11 @@ INCLUDE_DIRS
 	${FFMPEG_INCLUDE_DIRS}
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	${GLEW_INCLUDE_DIRS}
+	"frameserver"
 	"frameserver/ntsc"
 	"external"
+	"shmif"
+	"engine"
 )
 
 if (${APR_FOUND})
@@ -252,12 +255,12 @@ set (
  arcan_general.h
  arcan_db.h
  arcan_shdrmgmt.h
- arcan_shmpage_interop.h
  arcan_frameserver_backend.h
  arcan_frameserver_backend.c
- arcan_shmpage_if.h
- arcan_shmpage_control.h
- arcan_shmpage_control.c
+ shmif/arcan_shmif_interop.h
+ shmif/arcan_shmif_control.c
+ shmif/arcan_shmif_event.h
+ shmif/arcan_shmif.h
 )
 
 set (
@@ -267,9 +270,11 @@ set (
  frameserver/graphing/net_graph.c
  frameserver/resampler/resample.c
  frameserver/resampler/speex_resampler.h
- arcan_shmpage_interop.h
- arcan_shmpage_interop.c
- arcan_shmpage_control.c
+ shmif/arcan_shmif_interop.h
+ shmif/arcan_shmif_interop.c
+ shmif/arcan_shmif_control.c
+ shmif/arcan_shmif_event.h
+ shmif/arcan_shmif.h
  external/fft/kiss_fft.c
  external/fft/kiss_fftr.c
 )

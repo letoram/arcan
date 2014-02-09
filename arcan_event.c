@@ -42,7 +42,7 @@
 #include "arcan_video.h"
 #include "arcan_audio.h"
 
-#include "arcan_shmpage_if.h"
+#include "arcan_shmif.h"
 #include "arcan_event.h"
 
 #include "arcan_framequeue.h"
