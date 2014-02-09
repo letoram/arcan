@@ -38,7 +38,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#include "../arcan_shmpage_if.h"
+#include "../shmif/arcan_shmif.h"
 #include "avfeed.h"
 #include "frameserver.h"
 
@@ -53,10 +53,6 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;
 
-/* setup the semaphores, vready flag + semaphore toggle required */
-	if (-1 == arcan_sem_wait(shms.asem) || -1 == arcan_sem_wait(shms.vsem))
-		return;
-
 	arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
 	int startw = 320, starth = 200;
 
@@ -69,6 +65,11 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	uint16_t* audp;
 
 	arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
+	uint32_t* cptr = vidp;
+	for (int i = 0; i < starth * startw; i++)
+		*cptr++ = 0xff000000;
+	arcan_shmif_signal(&shms, SHMIF_SIGVID);
+
 	while(1){
 		while (1 == arcan_event_poll(&inevq, &ev)){
 /*
@@ -77,6 +78,5 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
  *	be EVENT_SYSTEM, EVENT_IO, EVENT_TARGET
  */ 
 		}
-
 	}
 }

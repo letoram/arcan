@@ -33,7 +33,7 @@
 #include <apr_poll.h>
 #include <apr_portable.h>
 
-#include "../arcan_shmpage_if.h"
+#include "../shmif/arcan_shmif.h"
 
 #include "frameserver.h"
 #include "net.h"
@@ -110,7 +110,7 @@ enum connection_state {
 int idcookie = 0;
 
 struct {
-	struct frameserver_shmcont shmcont;
+	struct arcan_shmif_cont shmcont;
 
 /* callback driven struct, basic one is just colors matching
  * some state of the server/client */
@@ -1105,7 +1105,6 @@ retry:
 							return strdup(strbuf);
 						}
 						else {
-							arcan_errc sc;
 							arcan_event ev = {
 											.category = EVENT_NET, 
 											.kind = EVENT_NET_DISCOVERED
@@ -1497,18 +1496,17 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 /* using the shared memory context as a graphing / logging window,
  * for event passing, the sound as a possible alert, 
  * but also for the guard thread*/
-	netcontext.shmcont  = frameserver_getshm(shmkey, true);
+	netcontext.shmcont  = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true);
 
-	if (!frameserver_shmpage_resize(&netcontext.shmcont, gwidth, gheight))
+	if (!arcan_shmif_resize(&netcontext.shmcont, gwidth, gheight))
 		return;
 
-	frameserver_shmpage_calcofs(netcontext.shmcont.addr, 
+	arcan_shmif_calcofs(netcontext.shmcont.addr, 
 		&(netcontext.vidp), &(netcontext.audp) );
-	frameserver_shmpage_setevqs(netcontext.shmcont.addr, 
+
+	arcan_shmif_setevqs(netcontext.shmcont.addr, 
 		netcontext.shmcont.esem, &(netcontext.inevq), 
 		&(netcontext.outevq), false);
-
-	arcan_sem_post(netcontext.shmcont.vsem);
 
 /* resize guarantees at least 32bit alignment (possibly 64, 128) */
 	gbufptr = (uint32_t*) netcontext.vidp;

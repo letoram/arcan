@@ -42,7 +42,7 @@
 #include "../arcan_math.h"
 #include "../arcan_general.h"
 #include "../arcan_event.h"
-#include "../arcan_shmpage_if.h"
+#include <arcan_shmif.h> 
 #include "frameserver.h"
 
 #ifdef ENABLE_FSRV_LIBRETRO
@@ -131,9 +131,6 @@ void* frameserver_getrawfile_handle(file_handle fd, ssize_t* dstsize)
 error:
 	return rv;
 }
-
-/* linking hack, just want the symbol there, it won't be called */
-void arcan_frameserver_free(void* srv, bool rel) {}
 
 bool frameserver_dumprawfile_handle(const void* const data, size_t sz_data, 
 	file_handle dst, bool finalize)

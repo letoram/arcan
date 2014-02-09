@@ -128,6 +128,11 @@ enum arcan_shmif_type {
 	SHMIF_OUTPUT
 };
 
+enum arcan_shmif_sigmask {
+	SHMIF_SIGVID,
+	SHMIF_SIGAUD
+};
+
 /* 
  * Tracking context for a frameserver connection,
  * will only be used "locally" with references 
@@ -263,6 +268,12 @@ void arcan_shmif_setevqs(struct arcan_shmif_page*,
  */ 
 bool arcan_shmif_resize(struct arcan_shmif_cont*, 
 	unsigned width, unsigned height);
+
+/*
+ * Signal that the audio and/or video blocks are ready for 
+ * a transfer, this may block indefinitely 
+ */
+void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
 
 /*
  * This is currently a "stub" although it is suggested that

@@ -32,6 +32,6 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "arcan_shmpage_interop.h"
-#include "arcan_shmpage_event.h"
-#include "arcan_shmpage_control.h"
+#include "arcan_shmif_interop.h"
+#include "arcan_shmif_event.h"
+#include "arcan_shmif_control.h"

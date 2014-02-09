@@ -46,7 +46,7 @@
 #include "../../arcan_video.h"
 #include "../../arcan_audio.h"	
 #include "../../arcan_frameserver_backend.h"
-#include "../../arcan_shmpage_if.h"
+#include "../../shmif/arcan_shmif.h"
 
 #define INCR(X, C) ( ( (X) = ( (X) + 1) % (C)) )
 
