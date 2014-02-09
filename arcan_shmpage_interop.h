@@ -103,5 +103,27 @@ int arcan_event_enqueue(struct arcan_evctx*,
 int arcan_event_tryenqueue(struct arcan_evctx*, 
 	const struct arcan_event* const);
 
+/* 
+ * The following functions are simple lookup/unpack support functions
+ * for argument strings usually passed on the command-line to a newly 
+ * spawned frameserver in a simple (utf-8) key=value\tkey=value type format. 
+ */ 
+struct arg_arr {
+	char* key;
+	char* value;
+};
+
+/* take the input string and unpack it into an array of key-value pairs */
+struct arg_arr* arg_unpack(const char*);
+
+/*
+ * return the value matching a certain key, 
+ * if ind is larger than 0, it's the n-th result 
+ * that will be stored in dst 
+ */ 
+bool arg_lookup(struct arg_arr* arr, const char* val, 
+	unsigned short ind, const char** found);
+
+void arg_cleanup(struct arg_arr*);
 #endif
 

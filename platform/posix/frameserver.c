@@ -89,7 +89,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 	if (!src)
 		return;
 	
-	struct frameserver_shmpage* shmpage = src->shm.ptr;
+	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
 	if (shmpage && -1 == munmap((void*) shmpage, src->shm.shmsize))
 		arcan_warning("BUG -- arcan_frameserver_free(), munmap failed: %s\n",
@@ -205,7 +205,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
 	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
-	struct frameserver_shmpage* shmpage;
+	struct arcan_shmif_page* shmpage;
 	int shmfd = 0;
 
 	ctx->shm.key = arcan_findshmkey(&shmfd, true);

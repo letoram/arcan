@@ -69,8 +69,9 @@ static inline bool parent_alive()
 
 /* force_unlink isn't used here as the semaphores are 
  * passed as inherited handles */
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, 
-	bool force_unlink){
+struct arcan_shmif_cont arcan_shmif_acquire(
+	const char* shmkey, bool force_unlink)
+{
 	struct frameserver_shmcont res = {0};
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
@@ -105,11 +106,11 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 }
 #else
 #include <sys/mman.h>
-struct frameserver_shmcont frameserver_getshm(const char* shmkey, 
-	bool force_unlink){
+struct arcan_shmif_cont arcan_shmif_acquire(
+	const char* shmkey, int shmif_type, bool force_unlink){
 /* step 1, use the fd (which in turn is set up by the parent 
  * to point to a mmaped "tempfile" */
-	struct frameserver_shmcont res = {0};
+	struct arcan_shmif_cont res = {0};
 	force_unlink = false;
 
 	unsigned bufsize = ARCAN_SHMPAGE_MAX_SZ;
@@ -126,7 +127,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 	}
 
 	/* map up the shared key- file */
-	res.addr = (struct frameserver_shmpage*) mmap(NULL,
+	res.addr = (struct arcan_shmif_page*) mmap(NULL,
 		bufsize,
 		PROT_READ | PROT_WRITE,
 		MAP_SHARED,
@@ -163,7 +164,7 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 	if (res.asem == 0x0 ||
 		res.esem == 0x0 ||
 		res.vsem == 0x0 ){
-		arcan_warning("arcan_frameserver_shmpage(getshm) -- couldn't "
+		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
 			"map semaphores (basekey: %s), giving up.\n", shmkey);
 		return res;
 	}
@@ -182,6 +183,19 @@ struct frameserver_shmcont frameserver_getshm(const char* shmkey,
 	};
 
 	spawn_guardthread(gs);
+
+/* 
+ * step 3, set the initial semaphore states
+ */
+	if (shmif_type == SHMIF_INPUT){
+		if (-1 == arcan_sem_wait(res.asem) ||
+			-1 == arcan_sem_wait(res.vsem))
+		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
+			"setup semaphore states, giving up.\n");
+	} 
+	else {
+/* default state is OK */
+	}
 
 	return res;
 }
@@ -220,12 +234,12 @@ static void* guard_thread(void* gs)
 	return NULL;
 }
 
-bool frameserver_shmpage_integrity_check(struct frameserver_shmpage* shmp)
+bool arcan_shmif_integrity_check(struct arcan_shmif_page* shmp)
 {
 	return true;
 }
 
-void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst, 
+void arcan_shmif_setevqs(struct arcan_shmif_page* dst, 
 	sem_handle esem, arcan_evctx* inq, arcan_evctx* outq, bool parent)
 {
 	if (parent){
@@ -260,12 +274,12 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage* dst,
 
 }
 
-void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp, 
+void arcan_shmif_forceofs(struct arcan_shmif_page* shmp, 
 	uint8_t** dstvidptr, uint8_t** dstaudptr, unsigned width, 
 	unsigned height, unsigned bpp)
 {
 	uint8_t* base = (uint8_t*) shmp;
-	uint8_t* vidaddr = base + sizeof(struct frameserver_shmpage);
+	uint8_t* vidaddr = base + sizeof(struct arcan_shmif_page);
 	uint8_t* audaddr;
 
 	const int memalign = 64;
@@ -286,21 +300,21 @@ void frameserver_shmpage_forceofs(struct frameserver_shmpage* shmp,
 	}
 }
 
-void frameserver_shmpage_calcofs(struct frameserver_shmpage* shmp, 
+void arcan_shmif_calcofs(struct arcan_shmif_page* shmp, 
 	uint8_t** dstvidptr, uint8_t** dstaudptr)
 {
-	frameserver_shmpage_forceofs(shmp, dstvidptr, dstaudptr, 
+	arcan_shmif_forceofs(shmp, dstvidptr, dstaudptr, 
 		shmp->w, shmp->h, ARCAN_SHMPAGE_VCHANNELS);
 }
 
-bool frameserver_shmpage_resize(struct frameserver_shmcont* arg, 
+bool arcan_shmif_resize(struct arcan_shmif_cont* arg, 
 	unsigned width, unsigned height)
 {
 	if (arg->addr){
 		arg->addr->w = width;
 		arg->addr->h = height;
 
-		if (frameserver_shmpage_integrity_check(arg->addr)){
+		if (arcan_shmif_integrity_check(arg->addr)){
 			arg->addr->resized = true;
 
 /* spinlock until acknowledged */

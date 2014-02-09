@@ -129,7 +129,7 @@ static struct {
 	char* shmkey;
 		
 	struct arcan_evctx inevq, outevq;
-	struct frameserver_shmcont shared;
+	struct arcan_shmif_cont shared;
 	uint8_t* vidp, (* audp);
 } global = {
 		.desfmt = {
@@ -164,35 +164,7 @@ static inline void trace(const char* msg, ...)
 #endif
 }
 
-void arcan_warning(const char* msg, ...)
-{
-	va_list args;
-	va_start( args, msg );
-		vfprintf(stderr, msg, args),
-	va_end(args);
-}
-
 #include <time.h>
-
-int arcan_sem_post(sem_handle sem)
-{
-	return sem_post(sem);
-}
-
-int arcan_sem_unlink(sem_handle sem, char* key)
-{
-	return sem_unlink(key);
-}
-
-/* left for legacy reasons, old timedwait used timedwait which
- * was broken on a lot of platforms. Now shmget spawns a guardthread instead */
-int arcan_sem_timedwait(sem_handle semaphore, int mstimeout)
-{
-	if (mstimeout == 0)
-		return sem_trywait(semaphore);
-	else
-		return sem_wait(semaphore);
-}
 
 static void(*acbfun)(void*, uint8_t*, int) = NULL;
 
@@ -327,7 +299,7 @@ void ARCAN_target_init(){
 		exit(1);
 	}
 
-	global.shared = frameserver_getshm(global.shmkey, true);
+	global.shared = arcan_shmif_acquire(global.shmkey, SHMIF_INPUT, true);
 	if (!global.shared.addr){
 		fprintf(stderr, "arcan hijack: couldn't allocate "
 			"shared memory, terminating.\n");
@@ -342,9 +314,9 @@ void ARCAN_target_init(){
 		sleep(10);
 	}
 	
-	frameserver_shmpage_resize( &(global.shared), 32, 32);
-	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
-	frameserver_shmpage_setevqs(global.shared.addr, 
+	arcan_shmif_resize( &(global.shared), 32, 32);
+	arcan_shmif_calcofs(global.shared.addr, &global.vidp, &global.audp);
+	arcan_shmif_setevqs(global.shared.addr, 
 		global.shared.esem, &(global.inevq), &(global.outevq), false);
 
 	global.ntsc_opts = snes_ntsc_rgb;
@@ -377,8 +349,8 @@ void ARCAN_target_shmsize(int w, int h, int bpp)
 		}
 	}
 	
-	frameserver_shmpage_resize( &(global.shared), w, h);
-	frameserver_shmpage_calcofs(global.shared.addr, &global.vidp, &global.audp);
+	arcan_shmif_resize( &(global.shared), w, h);
+	arcan_shmif_calcofs(global.shared.addr, &global.vidp, &global.audp);
 
 	uint32_t px = 0xff000000;
 	uint32_t* vidp = (uint32_t*) global.vidp;
@@ -812,10 +784,6 @@ void ARCAN_SDL_GL_SwapBuffers()
 		ARCAN_target_shmsize(global.sourcew, global.sourceh, 4);
 	}
 	
-	sem_wait(global.shared.vsem);
-	if (!global.shared.addr->dms)
-		return;
-
 	glReadBuffer(GL_BACK_LEFT);
 /*
  * the assumption as to the performance impact of this is that 
@@ -850,7 +818,9 @@ void ARCAN_SDL_GL_SwapBuffers()
 	}
 
 	push_audio();
+
 	global.shared.addr->vready = true;
+	sem_wait(global.shared.vsem);
 
 	trace("CopySurface(GL:post)\n");
 	

@@ -49,7 +49,7 @@
 void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 {
 /*	struct arg_arr* args = arg_unpack(resource); */
-	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
+	struct arcan_shmif_cont shms = arcan_shmif_acquire(keyfile,SHMIF_INPUT,true);
 	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;
 
@@ -57,10 +57,10 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	if (-1 == arcan_sem_wait(shms.asem) || -1 == arcan_sem_wait(shms.vsem))
 		return;
 
-	frameserver_shmpage_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
+	arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
 	int startw = 320, starth = 200;
 
-	if (!frameserver_shmpage_resize(&shms, startw, starth)){
+	if (!arcan_shmif_resize(&shms, startw, starth)){
 		LOG("arcan_frameserver(decode) shmpage setup, resize failed\n");
 		return;
 	}
@@ -68,7 +68,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	uint32_t* vidp;
 	uint16_t* audp;
 
-	frameserver_shmpage_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
+	arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
 	while(1){
 		while (1 == arcan_event_poll(&inevq, &ev)){
 /*

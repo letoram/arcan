@@ -317,6 +317,9 @@ local function vcap_setup(pwin)
 						pwin:update_canvas(source);
 						pwin:resize(status.width, status.height, true);
 					end
+
+				elseif (status.kind == "frameserver_terminated") then
+					pwin:break_display();
 				end
 			end);
 		end, {ref = icn.vid});
