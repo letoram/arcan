@@ -133,6 +133,8 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		src->shm.ptr = NULL;
 	}
 
+	close(src->sockout_fd);
+
 	if (!loop){
 		vfunc_state emptys = {0};
 		arcan_audio_stop(src->aid);
@@ -686,8 +688,10 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /* RENDER, can assume that peek has just happened */
 	else if (cmd == ffunc_render) {
 		frame_cell* current = arcan_framequeue_front(&src->vfq);
+		if (!current)
+			return FFUNC_RV_NOFRAME;
 
-		if (current && current->tag && src->desc.callback_framestate)
+		if (src->desc.callback_framestate)
 			emit_deliveredframe(src, current->tag, src->desc.framecount++);
 
 		arcan_errc rv = push_buffer( src, (char*) current->buf, 
