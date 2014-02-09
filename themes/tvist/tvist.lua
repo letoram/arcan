@@ -3,6 +3,7 @@
 --
 
 trigger_y = 0;
+start_analyse = nil;
 
 --
 -- TODO:
@@ -36,7 +37,7 @@ local passf = [[
 	void main()
 	{
 		vec4 col = texture2D(map_diffuse, texco);
-		float intens = (col.r + col.g + col.b) / 3;
+		float intens = (col.r + col.g + col.b) / 3.0;
 
 		if (intens > 0.5)
 			intens = 1.0;
@@ -50,14 +51,17 @@ local passf = [[
 
 function tvist()
 	keysym = system_load("scripts/symtable.lua")();
+	mouse = system_load("scripts/mouse.lua")();
 
 	if (arguments[1] == nil or not resource(arguments[1])) then
-		shutdown("Usage: arcan tvist moviename");
+		shutdown("Usage: arcan tvist moviename [cfg]");
 		return;
 	end
 
 	pass_filter = build_shader(nil, passf, "pass_filter");
-	movieref = load_movie(arguments[1], FRAMESERVER_NOLOOP, video_trigger);
+	moviename = arguments[1];
+	savecfg_name = nil;
+	movieref = load_movie(arguments[1], FRAMESERVER_LOOP, video_trigger);
 	target_verbose(movieref);
 
 	triggers = {};
@@ -73,6 +77,12 @@ function tvist()
 	show_image({mouse, cursor});
 	move_image(cursor, -15, -15);	
 	image_inherit_order(cursor, true);
+
+	if (arguments[2] ~= nil and resource(arguments[2])) then
+		print( string.format("Using cfgfile=%s",arguments[2]));
+		system_load(arguments[2])();
+		start_analyse = 1;
+	end
 end
 
 function video_trigger(source, status)
@@ -84,6 +94,14 @@ function video_trigger(source, status)
 	elseif (status.kind == "frame") then
 		last_frame = status.number;
 		last_pts = status.pts;
+		if (last_frame == 0 and start_analyse) then
+			activate_regions();
+		end
+
+	elseif (status.kind == "frameserver_loop") then
+		if (start_analyse) then
+			shutdown();
+		end
 	end
 end
 
@@ -212,10 +230,17 @@ end
 -- setup a calc-target for each trigger region
 function activate_regions()
 	start_framenumber = last_frame;
+	if (savecfg_name ~= nil) then
+		zap_resource(savecfg_name);
+		open_rawresource(savecfg_name);
+		write_rawresource(string.format("-- arcan arguments: -w %d -h %d\n", VRESW, VRESH));
+	end
 
 	for i, v in ipairs(triggers) do
 		local newsrf = fill_surface(v.w, v.h, 0, 0, 0, v.w, v.h);
-
+		if (savecfg_name ~= nil) then
+			write_rawresource(string.format("add_trigger_region(%d, %d, %d, %d)\n", v.x1, v.y1, v.x2, v.y2));
+		end
 --
 -- every tick (25Hz), read-back the contents of the region, run the avg_trigfun
 -- (change to something of your liking depending on method of analysis)
@@ -229,7 +254,10 @@ function activate_regions()
 -- properties are not bound to rendertargets, so either instance
 -- the source material and attach to the calctarget, or stack them.
 		move_image(v.vid, 0, 0);
-	end			
+	end
+	if (savecfg_name ~= nil) then
+		close_rawresource();
+	end
 
 -- disable all UI elements, setup actual readbacks and filters then go
 	tvist_input = function(iotbl)
@@ -255,6 +283,8 @@ function tvist_input(iotbl)
 				new_rect_pick(add_trigger_region, "binary");
 
 			elseif (keysym[iotbl.keysym] == "g") then
+				savecfg_name = "tvist_cfg.lua";
+				start_analyse = 1;
 				activate_regions();
 
 			elseif (keysym[iotbl.keysym] == "LCTRL") then
