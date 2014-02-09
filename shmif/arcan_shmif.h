@@ -32,6 +32,11 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifndef _HAVE_ARCAN_SHMIF
+#define _HAVE_ARCAN_SHMIF
+
 #include "arcan_shmif_interop.h"
 #include "arcan_shmif_event.h"
 #include "arcan_shmif_control.h"
+
+#endif

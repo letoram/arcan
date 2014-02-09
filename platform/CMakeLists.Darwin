@@ -26,32 +26,29 @@ set (FSRV_PLATFORM_SOURCES
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/sem.c
 	${PLATFORM_PATH}/shm.c
-	${PLATFORM_PATH}/../stub/event.c
 )
-
-add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
-add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D__APPLE__)
 
 # map_file is the default and doesn't need to be set here
 set_property(SOURCE ${PLATFORM_PATH}/map_resource.c 
 				PROPERTY COMPILE_FLAGS -DMAP_FILE=0) 
 
-set_property(SOURCE ${CMAKE_SOURCE_DIR}/arcan_main.c
+set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
 				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
-
-#experiment with glfw, add_external + change SDL_GL_GetProc 
 
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
 	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video_mini.c)
 	list(APPEND FSRV_PLATFORM_SOURCES ${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
-	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
-	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
-	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
-set_property(SOURCE ${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
-	PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY} ${GLEW_LIBRARIES} ${OPENGL_gl_LIBRARY})
+	set_property(SOURCE ${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
+		PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
+
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
+	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
+
+add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D__APPLE__)
 
 find_library(IOKIT NAMES IOKit)
 find_library(COREFOUNDATION NAMES CoreFoundation)
@@ -59,7 +56,7 @@ LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
 
 LIST(APPEND SOURCES
-					${CMAKE_SOURCE_DIR}/arcan_target_launcher.c)
+					${CMAKE_SOURCE_DIR}/engine/arcan_target_launcher.c)
 
 #add_library( arcan_hijack SHARED 
 #	arcan_target_osx.c 
