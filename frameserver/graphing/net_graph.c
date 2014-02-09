@@ -29,10 +29,8 @@
 #include <assert.h>
 
 #include "net_graph.h"
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
-#include "../frameserver.h"
-
+#include <arcan_math.h>
+#include <arcan_general.h>
 /*
  * allocate context -> depending on type, different buckets are set up.
  * Each bucket maintain separate data-tracking,
@@ -290,7 +288,6 @@ static void draw_bucket(struct graph_context* ctx, struct event_bucket* src,
  * blend to illustrate the intensity between datapoints */
 	break;
 	default:
-		LOG("net_graph(draw_bucket) -- unknown mode specified (%d)\n", src->mode);
 		abort();
 	}
 }

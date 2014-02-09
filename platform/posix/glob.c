@@ -28,8 +28,8 @@
 
 #include <stdbool.h>
 #include <sys/types.h>
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 extern char* arcan_themepath;
 extern char* arcan_themename;

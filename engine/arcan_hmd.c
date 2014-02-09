@@ -9,7 +9,7 @@
 #include "arcan_video.h"
 #include "arcan_hmd.h"
 
-#include "external/hidapi/hidapi.h"
+#include <hidapi/hidapi.h>
 
 static const int RIFT_VID = 0x2833;
 static const int RIFT_PID = 0x0001;

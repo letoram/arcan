@@ -35,7 +35,7 @@
 #include <poll.h>
 #include <signal.h>
 
-#include "frameserver/resampler/speex_resampler.h"
+#include "../frameserver/resampler/speex_resampler.h"
 
 #ifdef ENABLE_X11_HIJACK
 #include <X11/X.h>

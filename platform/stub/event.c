@@ -3,9 +3,9 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
-#include "../../arcan_event.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
+#include <arcan_event.h>
 
 arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,

@@ -57,11 +57,13 @@ option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
+#
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
-# Two GNU extensions are used, anonymous inner unions (accepted in C11)
-# and variable size structure member not at end of struct (for Linux/CMSG)
-add_definitions(-std=gnu11
--DGL_HEADERS="platform/sdl/glheaders.h")
+# one GNU extension is forcibly used here, variable size structure member 
+# not at end of struct (for Linux/CMSG)
+# C11 requirement is for _Alignas and _Atomic
+#
+add_definitions(-std=gnu11)
 
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
@@ -226,37 +228,37 @@ add_subdirectory( external/openctm )
 # --- Step 2, source files
 set (
  SOURCES
- arcan_event.c
- arcan_lua.c
- arcan_framequeue.c
- arcan_main.c
- arcan_db.c
- arcan_video.c
- arcan_renderfun.c
- arcan_shdrmgmt.c
- arcan_3dbase.c
- arcan_math.c
- arcan_audio.c
- arcan_ttf.c
- arcan_img.c
- arcan_audioint.h
- arcan_framequeue.h
- arcan_event.h
- arcan_lua.h
- arcan_math.h
- arcan_3dbase.h
- arcan_video.h
- arcan_audio.h
- arcan_target_launcher.h
- arcan_led.c
- arcan_hmd.c
- arcan_hmd.h
- arcan_led.h
- arcan_general.h
- arcan_db.h
- arcan_shdrmgmt.h
- arcan_frameserver_backend.h
- arcan_frameserver_backend.c
+ engine/arcan_event.c
+ engine/arcan_lua.c
+ engine/arcan_framequeue.c
+ engine/arcan_main.c
+ engine/arcan_db.c
+ engine/arcan_video.c
+ engine/arcan_renderfun.c
+ engine/arcan_shdrmgmt.c
+ engine/arcan_3dbase.c
+ engine/arcan_math.c
+ engine/arcan_audio.c
+ engine/arcan_ttf.c
+ engine/arcan_img.c
+ engine/arcan_audioint.h
+ engine/arcan_framequeue.h
+ engine/arcan_event.h
+ engine/arcan_lua.h
+ engine/arcan_math.h
+ engine/arcan_3dbase.h
+ engine/arcan_video.h
+ engine/arcan_audio.h
+ engine/arcan_target_launcher.h
+ engine/arcan_led.c
+ engine/arcan_hmd.c
+ engine/arcan_hmd.h
+ engine/arcan_led.h
+ engine/arcan_general.h
+ engine/arcan_db.h
+ engine/arcan_shdrmgmt.h
+ engine/arcan_frameserver_backend.h
+ engine/arcan_frameserver_backend.c
  shmif/arcan_shmif_interop.h
  shmif/arcan_shmif_control.c
  shmif/arcan_shmif_event.h
@@ -301,7 +303,7 @@ endif (${ENABLE_HMD})
 if (${HAVE_SIMD})
 	message("-- Enabling SIMD")
 	add_definitions(-DARCAN_MATH_SIMD)
-	list(APPEND SOURCES arcan_math_simd.c)
+	list(APPEND SOURCES engine/arcan_math_simd.c)
 endif (${HAVE_SIMD})
 
 # Enable / Disable individual frameserver features
@@ -371,7 +373,7 @@ endif (SQLITE_AMALGAMATE)
 
 if (LUA51_JIT)
 	message("--> Enabling JIT- mode for LUA.")
-	set_property(SOURCE arcan_lua.c PROPERTY 
+	set_property(SOURCE engine/arcan_lua.c PROPERTY 
 				COMPILE_DEFINITIONS LUA51_JIT)
 endif (LUA51_JIT)
 

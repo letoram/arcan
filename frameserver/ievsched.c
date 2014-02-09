@@ -25,9 +25,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
+#include <arcan_event.h>
 
 #include "ievsched.h"
 

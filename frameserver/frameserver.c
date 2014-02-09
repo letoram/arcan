@@ -39,9 +39,8 @@
 #include <time.h>
 #include <dlfcn.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 #include <arcan_shmif.h> 
 #include "frameserver.h"
 

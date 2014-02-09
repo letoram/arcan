@@ -30,8 +30,8 @@
 #include <errno.h>
 #include <string.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 /* try to allocate a shared memory page and two semaphores (vid / aud) is specififed,
  * return a pointer to the shared key (this will keep the resources allocated) or NULL on fail */

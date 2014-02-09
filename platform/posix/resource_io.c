@@ -34,8 +34,8 @@
 #include <stdarg.h>
 #include <time.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 static char* tag_resleak = "resource_leak";
 

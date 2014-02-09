@@ -1,9 +1,12 @@
-Arcan-FE is (c)opyright Björn Ståhl, 2003-2013 distributed here under the terms 
-of the GPLv3 agreement (see LICENSE.TXT).
+Arcan-FE is (c)opyright Björn Ståhl, 
+2003-2014 distributed here under the terms of the GPLv3 agreement (see LICENSE.TXT).
 
 Code included in the project explicitly excluded from the above:
 
-win32/getopt_win32.c, (c) 2000 The NetBSD Foundation
+platform/* 3-clause BSD licensed
+shmapi/* 3-clause BSD licensed
+
+platform/win32/getopt_win32.c, (c) 2000 The NetBSD Foundation
 
 author: Sam Lantiga, Public Domain 
 win32/SDL_main_win32.c
@@ -20,10 +23,9 @@ Furthermore, media included as part of the main distribution resources and theme
 have individual licensing references (filename extension, .license) where applicable.
 
 The iconset used in resources/images is CC-BY-30-ND-NP courtesy of http://www.visualpharm.com
-
 Gridle disconnected icon is CC-BY-30-NP courtesy of Mazeni77, http://mazeni77.deviantart.com
-
-The shaders included in resources/shaders/bgeffects are from "ShaderToy", http://www.iquilezles.org/apps/shadertoy/ 
+The shaders included in resources/shaders/bgeffects are from "ShaderToy", www.shadertoy.com 
+(those are CC-BY-30-NC-SA)
 
 The shaders used as display-effect for Gridle/Internal-Launch/Display Modes can be found in
 themes/gridle/display/* and are individually tagged with their respective authors.

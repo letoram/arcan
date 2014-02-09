@@ -47,7 +47,7 @@
 
 #include "arcan_math.h"
 #include "arcan_general.h"
-#include "platform/platform.h"
+#include "../platform/platform.h"
 #include "arcan_video.h"
 #include "arcan_ttf.h"
 #include "arcan_audio.h"
