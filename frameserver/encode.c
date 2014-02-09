@@ -723,7 +723,7 @@ void arcan_frameserver_encode_run(const char* resource,
 /* fail here means there's something wrong with 
  * frameserver - main app connection */
 		arcan_event ev;
-		if (0 == arcan_event_poll(&recctx.inevq, &ev))
+		if (0 == arcan_event_wait(&recctx.inevq, &ev))
 			break;
 
 		if (ev.category == EVENT_TARGET){

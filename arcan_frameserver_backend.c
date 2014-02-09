@@ -202,6 +202,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
  * in triggering alarm systems etc. for fork() bombs 
  */
 		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
+			bool cb_fstate = src->desc.callback_framestate;
 			arcan_frameserver_free(src, true);
 			src->autoplay = true;
 			sevent.kind = EVENT_FRAMESERVER_LOOPED;
@@ -213,6 +214,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 			};
 
 			arcan_frameserver_spawn_server(src, args);
+			src->desc.callback_framestate = cb_fstate;
 		}
 
 /* force flush beforehand */
@@ -683,7 +685,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	else if (cmd == ffunc_render) {
 		frame_cell* current = arcan_framequeue_front(&src->vfq);
 
-		if (src->desc.callback_framestate)
+		if (current && current->tag && src->desc.callback_framestate)
 			emit_deliveredframe(src, current->tag, src->desc.framecount++);
 
 		arcan_errc rv = push_buffer( src, (char*) current->buf, 
