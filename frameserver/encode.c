@@ -33,7 +33,7 @@
 
 struct {
 /* IPC */
-	struct frameserver_shmcont shmcont;
+	struct arcan_shmif_cont shmcont;
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq; /* UNUSED */
 	uint8_t* vidp, (* audp);   /* precalc dstptrs into shm */
@@ -478,7 +478,7 @@ static void log_callback(void* ptr, int level, const char* fmt, va_list vl)
  */
 static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 {
-	struct frameserver_shmpage* shared = recctx.shmcont.addr;
+	struct arcan_shmif_page* shared = recctx.shmcont.addr;
 	assert(shared);
 
 #ifdef _DEBUG
@@ -589,7 +589,7 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 		return false;
 	}
 
-	frameserver_shmpage_calcofs(shared, &(recctx.vidp), &(recctx.audp) );
+	arcan_shmif_calcofs(shared, &(recctx.vidp), &(recctx.audp) );
 
 	if (video.storage.video.codec){
 
@@ -697,10 +697,10 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 	if (recctx.lastfd == -1)
 		return -1;
 
-	struct frameserver_shmpage* fakepage = 
-		malloc(sizeof(struct frameserver_shmpage));
+	struct arcan_shmif_page* fakepage = 
+		malloc(sizeof(struct arcan_shmif_page));
 
-	memset(fakepage, '\0', sizeof(struct frameserver_shmpage));
+	memset(fakepage, '\0', sizeof(struct arcan_shmif_page));
 	*aud_sz = &fakepage->abufused;
 
 	recctx.extsynch = true;
@@ -712,8 +712,8 @@ void arcan_frameserver_encode_run(const char* resource,
 {
 /* setup shmpage etc. resolution etc. is already in 
  * place thanks to the parent */
-	recctx.shmcont = frameserver_getshm(keyfile, true);
-	frameserver_shmpage_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
+	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true);
+	arcan_shmif_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
 
 	recctx.lastfd = BADFD;

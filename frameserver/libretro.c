@@ -139,7 +139,7 @@ static struct {
 	snes_ntsc_setup_t ntsc_opts;
 
 /* SHM- API input /output */
-	struct frameserver_shmcont shmcont;
+	struct arcan_shmif_cont shmcont;
 	uint8_t* vidp, (* audp);
 	struct graph_context* graphing;
 	int graphmode;
@@ -224,13 +224,14 @@ static retro_proc_address_t libretro_requirefun(const char* sym)
 static void resize_shmpage(int neww, int newh, bool first)
 {
 /* present error message, synch then terminate. */
-	if (!frameserver_shmpage_resize(&retroctx.shmcont, neww, newh)){
+	if (!arcan_shmif_resize(&retroctx.shmcont, neww, newh)){
+		LOG("resizing shared memory page failed\n");
 		exit(1);
 	}
 
 /* align buffer pointers according to protocol */
-	frameserver_shmpage_calcofs(retroctx.shmcont.addr, 
-		&(retroctx.vidp), &(retroctx.audp) );
+	arcan_shmif_calcofs(
+		retroctx.shmcont.addr, &(retroctx.vidp), &(retroctx.audp) );
 
 /* audguard adds an easy detection to vidp write overflows (broken readback) 
  * in 3d and audio-output not in synch with video */
@@ -248,11 +249,6 @@ static void resize_shmpage(int neww, int newh, bool first)
 	if (retroctx.ntsc_imb){
 		free(retroctx.ntsc_imb);
 		retroctx.ntsc_imb = NULL;
-	}
-
-/* for the first time around, we need to lock the semaphore */
-	if (first){
-		arcan_sem_wait(retroctx.shmcont.vsem); 
 	}
 }
 
@@ -1430,9 +1426,9 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	size_t logbuf_sz = sizeof(logbuf); 
 
 	if (!info_only)
-		retroctx.shmcont = frameserver_getshm(keyfile, true);
+		retroctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true);
 
-	struct frameserver_shmpage* shared = retroctx.shmcont.addr;
+	struct arcan_shmif_page* shared = retroctx.shmcont.addr;
 
 	if (!shared){
 		if (!info_only){
@@ -1441,7 +1437,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		}
 	}
  	else {
-		frameserver_shmpage_setevqs(shared, retroctx.shmcont.esem, 
+		arcan_shmif_setevqs(shared, retroctx.shmcont.esem, 
 			&(retroctx.inevq), &(retroctx.outevq), false);
 	
 		resize_shmpage(320, 240, true);

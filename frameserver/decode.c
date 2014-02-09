@@ -7,6 +7,7 @@
 #include <fft/kiss_fftr.h>
 
 #include "../arcan_shmpage_if.h"
+#include "graphing/net_graph.h"
 
 #include "frameserver.h"
 #include "decode.h"
@@ -23,7 +24,7 @@
 static void flush_eventq();
 
 struct {
-	struct frameserver_shmcont shmcont;
+	struct arcan_shmif_cont shmcont;
 	
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
@@ -58,7 +59,10 @@ struct {
 
 	uint8_t* video_buf;
 	uint32_t c_video_buf;
-	
+
+/* debug visualization */
+	struct graph_context* graphing;
+
 /* precalc dstptrs into shm */
 	uint8_t* vidp, (* audp);
 
@@ -151,8 +155,8 @@ static void generate_frame()
 
 			decctx.shmcont.addr->vpts = vptsc;
 			decctx.shmcont.addr->vready = true;
-
 			arcan_sem_wait(decctx.shmcont.vsem);
+
 			vptsc += 1000.0f / (
 				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
 		}
@@ -216,17 +220,17 @@ static bool decode_aframe()
 						dlayout, aframe->format, aframe->sample_rate, 0, NULL);
 	
 					swr_init(decctx.rcontext);
-					LOG("(decode) resampler initialized, (%d) => (%d)\n", 
+					LOG("resampler initialized, (%d) => (%d)\n", 
 						aframe->sample_rate, ARCAN_SHMPAGE_SAMPLERATE);
 				}
 	
 				int rc = swr_convert(decctx.rcontext, outb, nsamples, (const uint8_t**) 
 					aframe->extended_data, aframe->nb_samples);
 				if (-1 == rc)
-					LOG("(decode) swr_convert failed\n");
+					LOG("swr_convert failed\n");
 
 				if (rc == nsamples){
-					LOG("(decode) resample buffer overflow\n");
+					LOG("resample buffer overflow\n");
 					swr_init(decctx.rcontext);
 				}
 
@@ -386,11 +390,9 @@ bool ffmpeg_decode()
 static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat, 
 	AVDictionary** opts, bool skipaud, bool skipvid)
 {
-	memset(&decctx, 0, sizeof(decctx)); 
-
 	int errc = avformat_open_input(&decctx.fcontext, fname, iformat, NULL);
 	if (0 != errc || !decctx.fcontext){
-		LOG("(decode) avformat_open_input() couldn't open fcontext"
+		LOG("avformat_open_input() couldn't open fcontext"
 			"	for resource (%s)\n", fname);
 		return false;
 	}
@@ -398,7 +400,7 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat,
 	errc = avformat_find_stream_info(decctx.fcontext, NULL);
 
 	if (! (errc >= 0) ){
-		LOG("(decode) avformat_find_stream_info() didn't return"
+		LOG("avformat_find_stream_info() didn't return"
 			"	any useful data.\n");
 		return NULL;
 	}
@@ -407,7 +409,7 @@ static bool ffmpeg_preload(const char* fname, AVInputFormat* iformat,
 	int vid,aid;
 
 	vid = aid = decctx.vid = decctx.aid = -1;
-	LOG("(decode) %d streams found in container.\n",decctx.fcontext->nb_streams);
+	LOG("%d streams found in container.\n",decctx.fcontext->nb_streams);
 
 /* scan through all video streams, grab the first one,
  * find a decoder for it, extract resolution etc. */
@@ -481,7 +483,7 @@ static const char* probe_vidcap(signed prefind, AVInputFormat** dst)
 	
 	snprintf(arg, sizeof(arg)-1, "%d", prefind);
 	*dst = av_find_input_format("vfwcap");
-	LOG("(decode) win32:probe_vidcap, find input format yielded %" 
+	LOG("win32:probe_vidcap, find input format yielded %" 
 		PRIxPTR "\n", *dst);
 	
 	return strdup(arg);
@@ -507,7 +509,7 @@ static bool ffmpeg_vidcap(unsigned ind, int desw, int desh, float fps)
 /* supported options: standard, channel, video_size, pixel_format, 
  * list_formats, framerate */
 
-	LOG("(decode) scanning for capture device (requested: %dx%d @ %f fps)\n",
+	LOG("scanning for capture device (requested: %dx%d @ %f fps)\n",
 		desw, desh, fps);
 	const char* fname = probe_vidcap(ind, &format);
 	if (!fname || !format)
@@ -559,8 +561,7 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		default:
-			LOG("frameserver(decode), unknown target event "
-				"(%d), ignored.\n", ev->kind);
+			LOG("unhandled target event (%d), ignored.\n", ev->kind);
 	}
 }
 
@@ -580,12 +581,38 @@ static inline void flush_eventq()
 
 }
 
+static void statusmsg(const char* msg)				
+{
+/* 
+ * Just initialize the page to black with a text string to avoid periods
+ * without any feedback on longer stalls (e.g. starting camfeed) 
+ */ 
+	int dw, dh;
+	arcan_shmif_calcofs(decctx.shmcont.addr, &(decctx.vidp), &(decctx.audp) );
+	decctx.graphing = graphing_new(320, 200, (uint32_t*) decctx.vidp);
+	clear_tocol(decctx.graphing, 0xff0000ff);
+	text_dimensions(decctx.graphing, msg, &dw, &dh); 
+	draw_text(decctx.graphing, msg, 
+		0.5 * (320 - dw), 0.5 * (200 - dh), 0xffffffff);
+	decctx.shmcont.addr->vready = true;
+	arcan_sem_wait(decctx.shmcont.vsem);
+	graphing_destroy(decctx.graphing);
+}
+
 void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 {
 	bool statusfl = false;
 	struct arg_arr* args = arg_unpack(resource);
-	struct frameserver_shmcont shms = frameserver_getshm(keyfile, true);
+	decctx.shmcont = arcan_shmif_acquire(keyfile,SHMIF_INPUT,true);
+
+	arcan_shmif_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
+		&(decctx.inevq), &(decctx.outevq), false);
+
+	if (!arcan_shmif_resize(&decctx.shmcont, 320, 200)){
+		LOG("couldn't setup shmpage, giving up.\n");
+	}
 	
+	statusmsg("(decode) loading ...");
 	av_register_all();
 
 	do {
@@ -651,25 +678,15 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 			decctx.fft_audio = true;
 		}
 		
-/* initialize both semaphores to 0 => render frame (wait for 
- * parent to signal) => regain lock */
-		decctx.shmcont = shms;
-
-		if (-1 == arcan_sem_wait(decctx.shmcont.asem) ||
-			-1 == arcan_sem_wait(decctx.shmcont.vsem))
-			return;
-
-		frameserver_shmpage_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
-			&(decctx.inevq), &(decctx.outevq), false);
-
-		if (!frameserver_shmpage_resize(&shms, decctx.width, decctx.height)){
+		if (!arcan_shmif_resize(&decctx.shmcont, decctx.width, decctx.height)){
 			LOG("arcan_frameserver(decode) shmpage setup failed, "
 				"requested: (%d x %d @ %d)	aud(%d,%d)\n", 
 				decctx.width, decctx.height, decctx.bpp, 
 				decctx.channels, decctx.samplerate);
 			return;
 		} 
-	
-		frameserver_shmpage_calcofs(shms.addr, &(decctx.vidp), &(decctx.audp) );
+		arcan_shmif_calcofs(decctx.shmcont.addr, &(decctx.vidp), &(decctx.audp) );
+		statusmsg("(decode) waiting for input source");	
+
 	} while (ffmpeg_decode() && decctx.shmcont.addr->loop);
 }

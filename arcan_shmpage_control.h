@@ -32,8 +32,8 @@
  THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _HAVE_ARCAN_FRAMESERVER_SHMPAGE
-#define _HAVE_ARCAN_FRAMESERVER_SHMPAGE
+#ifndef _HAVE_ARCAN_SHMIF_CONTROL
+#define _HAVE_ARCAN_SHMIF_CONTROL
 
 /* 
  * This header defines the interface and support functions for
@@ -123,18 +123,23 @@ static const int ARCAN_SHMPAGE_MAX_SZ = 8647936;
 /* ARCAN_SHMPAGE_AUDIOBUF_SZ + ARCAN_SHMPAGE_VIDEOBUF_SZ + 
   sizeof(struct arcan_event) * ARCAN_SHMPAGE_QUEUE_SZ * 2) + 512 */
 
+enum arcan_shmif_type {
+	SHMIF_INPUT,
+	SHMIF_OUTPUT
+};
+
 /* 
  * Tracking context for a frameserver connection,
  * will only be used "locally" with references 
  */
-struct frameserver_shmcont{
-	struct frameserver_shmpage* addr;
+struct arcan_shmif_cont {
+	struct arcan_shmif_page* addr;
 	sem_handle vsem;
 	sem_handle asem;
 	sem_handle esem;
 };
 
-struct frameserver_shmpage {
+struct arcan_shmif_page {
 /* 
  * These queues carry the event blocks (~100b datastructures)
  * back and forth between parent and child. It is treated as a
@@ -231,15 +236,15 @@ struct frameserver_shmpage {
  * namespace the key resides in, should be unlinked after
  * allocation, to prevent other processes from mapping it as well.
  */
-struct frameserver_shmcont frameserver_getshm(
-	const char* shmkey, bool force_unlink);
+struct arcan_shmif_cont arcan_shmif_acquire(
+	const char* shmkey, int shmif_type, bool force_unlink);
 
 /* 
  * Using the specified shmpage state, return pointers into 
  * suitable offsets into the shared memory pages for video
  * (planar, packed, RGBA) and audio (limited by abufsize constant). 
  */ 
-void frameserver_shmpage_calcofs(struct frameserver_shmpage*, 
+void arcan_shmif_calcofs(struct arcan_shmif_page*, 
 	uint8_t** dstvidptr, uint8_t** dstaudptr);
 
 /*
@@ -247,7 +252,7 @@ void frameserver_shmpage_calcofs(struct frameserver_shmpage*,
  * construct two event-queue contexts. Parent- flag should be set 
  * to false for frameservers 
  */
-void frameserver_shmpage_setevqs(struct frameserver_shmpage*, 
+void arcan_shmif_setevqs(struct arcan_shmif_page*, 
 	sem_handle, arcan_evctx* inevq, arcan_evctx* outevq, bool parent);
 
 /* (frameserver use only) helper function to implement 
@@ -256,7 +261,7 @@ void frameserver_shmpage_setevqs(struct frameserver_shmpage*,
  * This request can be declined (false return value) and 
  * can be considered costly (may block indefinitely) 
  */ 
-bool frameserver_shmpage_resize(struct frameserver_shmcont*, 
+bool arcan_shmif_resize(struct arcan_shmif_cont*, 
 	unsigned width, unsigned height);
 
 /*
@@ -267,28 +272,6 @@ bool frameserver_shmpage_resize(struct frameserver_shmcont*,
  * in the event of a corrupt page (indication of a serious underlying
  * problem) so that proper debug-/tracing-/user- measures can be taken.  
  */
-bool frameserver_shmpage_integrity_check(struct frameserver_shmpage*);
+bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
 
-/* 
- * The following functions are simple lookup/unpack support functions
- * for argument strings usually passed on the command-line to a newly 
- * spawned frameserver in a simple (utf-8) key=value\tkey=value type format. 
- */ 
-struct arg_arr {
-	char* key;
-	char* value;
-};
-
-/* take the input string and unpack it into an array of key-value pairs */
-struct arg_arr* arg_unpack(const char*);
-
-/*
- * return the value matching a certain key, 
- * if ind is larger than 0, it's the n-th result 
- * that will be stored in dst 
- */ 
-bool arg_lookup(struct arg_arr* arr, const char* val, 
-	unsigned short ind, const char** found);
-
-void arg_cleanup(struct arg_arr*);
 #endif

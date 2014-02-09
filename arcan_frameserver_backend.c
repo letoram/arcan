@@ -56,8 +56,6 @@
 #include "arcan_shmpage_if.h"
 #include "arcan_event.h"
 
-#define INCR(X, C) ( (X = (X + 1) % C) )
-
 static struct {
 	unsigned vcellcount;
 	unsigned abufsize;
@@ -99,7 +97,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	if (src->afq.alive)
 		arcan_framequeue_free(&src->afq);
 
-	struct frameserver_shmpage* shmpage = (struct frameserver_shmpage*) 
+	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
 		src->shm.ptr;
 
 	if (src->child_alive){
@@ -186,7 +184,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
  * with the structure to provoke a vulnerability, frameserver 
  * dying or timing out, ... */
 	if ( src->child_alive && 
-		(frameserver_shmpage_integrity_check(src->shm.ptr) == false ||
+		(arcan_shmif_integrity_check(src->shm.ptr) == false ||
 		arcan_frameserver_validchild(src) == false)){
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,
@@ -346,7 +344,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 		return rv;
 
 	arcan_frameserver* tgt = state.ptr;
-	struct frameserver_shmpage* shmpage = tgt->shm.ptr;
+	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 	unsigned srcw, srch;
 
 	switch (cmd){
@@ -457,6 +455,10 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			};
 
 			arcan_event_enqueue(&src->outqueue, &ev);
+		} 
+		else {
+/* NOTE: if verbosity is toggled, enqueue a notification about the dropped
+ * frame */
 		}
 	}
 	else;
@@ -771,7 +773,7 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
-	struct frameserver_shmpage* shmpage = src->shm.ptr;
+	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
     if (!arcan_frameserver_control_chld(src) || !src || !shmpage){
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
@@ -811,7 +813,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* this will also emit the resize event */
 		arcan_video_resizefeed(src->vid, store, store);
 		arcan_event_clearmask(arcan_event_defaultctx());
-		frameserver_shmpage_calcofs(shmpage, &(src->vidp), &(src->audp));
+		arcan_shmif_calcofs(shmpage, &(src->vidp), &(src->audp));
 
 /* for PBO transfers, new buffers etc. need to be prepared
  * that match the new internal resolution */
@@ -976,7 +978,7 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
 		((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = state->ptr;
-		struct frameserver_shmpage* shm = movie->shm.ptr;
+		struct arcan_shmif_page* shm = movie->shm.ptr;
 
 			if (shm->vready) {
 				frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
@@ -1005,7 +1007,7 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
 		((arcan_frameserver*)state->ptr)->child_alive) {
 		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
-		struct frameserver_shmpage* shm = (struct frameserver_shmpage*)
+		struct arcan_shmif_page* shm = (struct arcan_shmif_page*)
 			movie->shm.ptr;
 
 		if (shm->aready) {
@@ -1065,7 +1067,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 											arcan_frameserver_audioframe, ctx, &errc);
 /* nopts / autoplay is preset from the calling context */
 		}
-
 /* similar to movie but no raw framequeues or feeds */
 		if (strcmp(setup.args.builtin.mode, "avfeed") == 0){
 			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
@@ -1076,7 +1077,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
 			ctx->audb     = malloc( ctx->sz_audb);
-		}
+		} 
 /* "libretro" (or rather, interactive mode) treats a single pair of 
  * videoframe+audiobuffer each transfer, minimising latency is key. 
  * All operations require an intermediate buffer and are synched 
@@ -1154,7 +1155,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * to switch this behavior on some platforms to instead use sockets to 
  * improve I/O multiplexing (network- frameservers) or at least have futex
  * triggers on Linux */
-	frameserver_shmpage_setevqs(ctx->shm.ptr, ctx->esync, 
+	arcan_shmif_setevqs(ctx->shm.ptr, ctx->esync, 
 		&(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;

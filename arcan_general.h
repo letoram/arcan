@@ -54,7 +54,7 @@ typedef struct frameserver_shmpage frameserver_shmpage;
 #include <semaphore.h>
 #include <getopt.h>
 typedef struct {
-	frameserver_shmpage* ptr;
+	struct arcan_shmif_page* ptr;
 	int handle;
 	void* synch;
 	char* key;

@@ -1518,12 +1518,17 @@ static bool is_special_res(const char* msg)
 
 static int setupavstream(lua_State* ctx)
 {
-	LUA_TRACE("launch_avstream");
-	const char* argstr = luaL_optstring(ctx, 1, "");
+	LUA_TRACE("launch_avfeed");
+	const char* argstr = luaL_optstring(ctx, 1, NULL);
 	uintptr_t ref = 0;
+	int cbofs = 2;
 
-	if (lua_isfunction(ctx, 2) && !lua_iscfunction(ctx, 2)){
-		lua_pushvalue(ctx, 2);
+	if (argstr == NULL){
+		cbofs = 1;
+	}
+
+	if (lua_isfunction(ctx, cbofs) && !lua_iscfunction(ctx, cbofs)){
+		lua_pushvalue(ctx, cbofs);
 		ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	};
 
@@ -4654,11 +4659,11 @@ static int recordset(lua_State* ctx)
 
 /* we define the size of the recording to be that of the storage
  * of the rendertarget vid, this should be allocated through fill_surface */
-		struct frameserver_shmpage* shmpage = mvctx->shm.ptr;
+		struct arcan_shmif_page* shmpage = mvctx->shm.ptr;
 		shmpage->w = dobj->vstore->w;
 		shmpage->h = dobj->vstore->h;
 
-		frameserver_shmpage_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
+		arcan_shmif_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
 
 /* pushing the file descriptor signals the frameserver to start receiving 
  * (and use the proper dimensions), it is permitted to close and push another
