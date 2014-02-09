@@ -5,9 +5,9 @@
 
 #include <SDL/SDL.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
-#include "../../arcan_event.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
+#include <arcan_event.h>
 
 struct axis_opts {
 /* none, avg, drop */ 

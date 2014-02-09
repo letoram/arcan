@@ -5,10 +5,10 @@
 
 #include "glheaders.h"
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
-#include "../../arcan_video.h"
-#include "../../arcan_videoint.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
+#include <arcan_video.h>
+#include <arcan_videoint.h>
 
 static SDL_Surface* screen;
 

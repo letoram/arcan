@@ -30,8 +30,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 /* 
  * some mapping mechanisms other than arcan_map_resource

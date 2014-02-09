@@ -6,8 +6,6 @@ Some notes and hints for building / patching / packaging the engine as such.
  System API: * POSIX2008 -- Linux extensions only allowed when there's no reasonable alternatives.
                win32/osx breakage workarounds should be split of into separate objects.
              
-             * gradually transition to APR
-
  Hardware:   * OpenGL 2.1 / GLES2.0 compatible acceleration, only RGBA8888 as texture format.
 
 [All]
@@ -40,16 +38,13 @@ Some notes and hints for building / patching / packaging the engine as such.
 
 [Linux]
  * Nothing really new or surprising here -- huge dependency-tree,
-   libogg
-   libvorbis
-   libvpx,
-   ffmpeg (with libvpx support), 
-   sdl1.2, (should really be replaced with GLFW as that's pretty much what we use it for except for the hijack bits..)
-   sdl_image1.2,
-   sdl_ttf2.0,
+   ffmpeg (with libvpx, libx264, ...), 
+   sdl1.2 (likely to be replaced with just EGL/KMS/devinput), 
+   GLEW,
+   sdl_image1.2 (optional, can survive with just libpng),
+	 freetype2,
    openAL,
    openGL,
-   GLEW,
    libusb1.0,
-   APR (apache portable runtime)
+   APR (apache portable runtime, for networking support)
 

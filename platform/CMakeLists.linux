@@ -40,7 +40,8 @@ endif(${ENABLE_LIBRETRO})
 set_property(SOURCE ${PLATFORM_PATH}/frameserver.c 
 				PROPERTY COMPILE_FLAGS -Wno-gnu-variable-sized-type-not-at-end)
 
-add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h" 
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
+	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
 	-Wall -Wno-missing-braces -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
 	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
@@ -57,7 +58,7 @@ add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h"
 LIST(APPEND SOURCES 
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_linux.c
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
- 	arcan_target_launcher.c 
+ 	engine/arcan_target_launcher.c 
 )
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 
@@ -67,9 +68,9 @@ LIST(APPEND FSRV_SOURCES frameserver/frameserver.c
 
 LIST(APPEND FSRV_LIBRARIES rt m dl)
 
-add_library(arcan_hijack SHARED 
-	arcan_target_unix.c
-	arcan_target.c
+SET(HIJACK_SOURCES
+	hijack/arcan_target_unix.c
+	hijack/arcan_target.c
   shmif/arcan_shmif.h	
 	shmif/arcan_shmif_interop.h
 	shmif/arcan_shmif_control.c 
@@ -79,6 +80,8 @@ add_library(arcan_hijack SHARED
 	frameserver/ntsc/snes_ntsc.c
  	frameserver/resampler/resample.c
 )
+
+add_library(arcan_hijack SHARED ${HIJACK_SOURCES}) 
 
 set_property(TARGET arcan_hijack PROPERTY 
 	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
@@ -97,11 +100,7 @@ install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 if (ENABLE_32BITHIJACK)
 	message("(*) 64-bit target detected, building compat. 32-bit hijack library")
 
-	add_library(arcan_hijack32 SHARED 
-		arcan_target_unix.c 
-		arcan_event.c 
-		arcan_frameserver_shmpage.c 
-		frameserver/ntsc/snes_ntsc.c)
+	add_library(arcan_hijack32 SHARED ${HIJACK_SOURCES})
 	
 	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
  	target_link_libraries(arcan_hijack32 -m32 -lrt )

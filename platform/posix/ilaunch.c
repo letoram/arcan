@@ -25,8 +25,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 const char* internal_launch_support(){
 	return arcan_libpath ? "FULL SUPPORT" : "PARTIAL SUPPORT";
