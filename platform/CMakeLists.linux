@@ -22,7 +22,6 @@ ${PLATFORM_PATH}/warning.c
 ${PLATFORM_PATH}/time.c
 ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
-${PLATFORM_PATH}/../stub/event.c
 )
 
 if (${ENABLE_LIBRETRO})
