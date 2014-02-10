@@ -578,23 +578,6 @@ static inline void flush_eventq()
 
 }
 
-static void statusmsg(const char* msg)				
-{
-/* 
- * Just initialize the page to black with a text string to avoid periods
- * without any feedback on longer stalls (e.g. starting camfeed) 
- */ 
-	int dw, dh;
-	arcan_shmif_calcofs(decctx.shmcont.addr, &(decctx.vidp), &(decctx.audp) );
-	decctx.graphing = graphing_new(320, 200, (uint32_t*) decctx.vidp);
-	clear_tocol(decctx.graphing, 0xff0000ff);
-	text_dimensions(decctx.graphing, msg, &dw, &dh); 
-	draw_text(decctx.graphing, msg, 
-		0.5 * (320 - dw), 0.5 * (200 - dh), 0xffffffff);
-	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
-	graphing_destroy(decctx.graphing);
-}
-
 void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 {
 	bool statusfl = false;
@@ -608,7 +591,6 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 		LOG("couldn't setup shmpage, giving up.\n");
 	}
 	
-	statusmsg("(decode) loading ...");
 	av_register_all();
 
 	do {
@@ -682,7 +664,6 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 			return;
 		} 
 		arcan_shmif_calcofs(decctx.shmcont.addr, &(decctx.vidp), &(decctx.audp) );
-		statusmsg("(decode) waiting for input source");	
 
 	} while (ffmpeg_decode() && decctx.shmcont.addr->loop);
 }
