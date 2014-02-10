@@ -46,7 +46,7 @@
  * arcan_general.h */
 
 #ifdef _WIN32
-#include "platform/win32/platform.h"
+#include PLATFORM_HEADER
 #else
 #define BADFD -1
 #include <pthread.h>
