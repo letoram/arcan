@@ -72,7 +72,6 @@ void arcan_timesleep(unsigned long);
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
 int arcan_sem_wait(sem_handle sem);
-int arcan_sem_value(sem_handle sem, int* dstval);
 int arcan_sem_trywait(sem_handle sem);
 
 typedef int8_t arcan_errc;

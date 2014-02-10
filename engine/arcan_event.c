@@ -89,29 +89,14 @@ static void wake_semsleeper(arcan_evctx* ctx)
 	if (ctx->local)
 		return;
 
-	static bool broken_semval;
-
-/* OSX, need I say more? */
-	if (broken_semval){
-		arcan_sem_post(ctx->synch.handle);
-		return;
-	}
-
-	int semv;
-	if (-1 == arcan_sem_value(ctx->synch.handle, &semv)){
-		char buf[128];
-		if ( strerror_r(errno, buf, 128) == 0 ){
-			buf[127] = 0;
-			arcan_warning("broken synchronization (%d:%s)\n", errno, buf);
-		}
-		else{
-			arcan_warning("broken synchronization (%d)\n", errno);
-		}
-		broken_semval = true;
-	}
-	else if (semv == 0){
+/* if it can't be locked, it's likely that the other process
+ * is sleeping, waiting for signal, so just do that,
+ * else leave it at 0 */
+	if (-1 == arcan_sem_trywait(ctx->synch.handle)){
 		arcan_sem_post(ctx->synch.handle);
 	}
+	else
+		;
 }
 
 /* 
