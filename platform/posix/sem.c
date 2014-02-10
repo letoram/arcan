@@ -46,11 +46,6 @@ int arcan_sem_trywait(sem_handle sem)
 	return sem_trywait(sem);
 }
 
-int arcan_sem_value(sem_handle sem, int* dstval)
-{
-	return sem_getvalue(sem, dstval);
-}
-
 int arcan_sem_wait(sem_handle sem)
 {
 	return sem_wait(sem);
