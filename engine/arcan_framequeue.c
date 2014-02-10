@@ -38,9 +38,6 @@
 /* Slide the destination buffer target */
 void arcan_framequeue_step(frame_queue* src)
 {
-	int val;
-	sem_getvalue(&src->framecount, &val);
-
 	sem_wait(&src->framecount);
 	pthread_mutex_lock(&src->framesync);
 		src->ni = (src->ni + 1) % src->c_cells;
@@ -65,9 +62,6 @@ void arcan_framequeue_dequeue(frame_queue* src)
 		src->da_cells[src->ci].tag = 0;
 		src->ci = (src->ci + 1) % src->c_cells;
 		sem_post(&src->framecount);
-
-	int val;
-	sem_getvalue(&src->framecount, &val);
 
 	pthread_mutex_unlock(&src->framesync);
 }
