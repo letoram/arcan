@@ -1,34 +1,38 @@
+set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
+
 set (PLATFORM_SOURCES
-platform/posix/fmt_open.c
-platform/posix/glob.c
-platform/posix/map_resource.c
-platform/posix/resource_io.c
-platform/posix/ilaunch.c
-platform/posix/strip_traverse.c
-platform/posix/paths.c
-platform/posix/sem.c
-platform/posix/shm.c
-platform/posix/time.c
-platform/posix/warning.c
-platform/posix/frameserver.c
-platform/sdl/event.c
-platform/sdl/video.c
+${PLATFORM_PATH}/fmt_open.c
+${PLATFORM_PATH}/glob.c
+${PLATFORM_PATH}/map_resource.c
+${PLATFORM_PATH}/resource_io.c
+${PLATFORM_PATH}/ilaunch.c
+${PLATFORM_PATH}/strip_traverse.c
+${PLATFORM_PATH}/paths.c
+${PLATFORM_PATH}/sem.c
+${PLATFORM_PATH}/shm.c
+${PLATFORM_PATH}/time.c
+${PLATFORM_PATH}/warning.c
+${PLATFORM_PATH}/frameserver.c
+${PLATFORM_PATH}/../sdl/event.c
+${PLATFORM_PATH}/../sdl/video.c
 )
 
 set (FSERV_PLATFORM_SOURCES
-platform/posix/warning.c
-platform/posix/time.c
-platform/posix/sem.c
-platform/posix/shm.c
-platform/sdl/event.c
+${PLATFORM_PATH}/warning.c
+${PLATFORM_PATH}/time.c
+${PLATFORM_PATH}/sem.c
+${PLATFORM_PATH}/shm.c
 )
 
-add_definitions(-DPLATFORM_HEADER="platform/posix/platform.h")
-add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D_LIBUSB_BSD)
+add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
+	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
+	-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D_LIBUSB_BSD)
+
+include_directories(platform/freebsd)
 
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
+	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video_mini.c)
 	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
 	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
 	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
@@ -39,8 +43,7 @@ LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 LIST(APPEND SOURCES 
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hid_bsd.c
 ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
-	arcan_target_launcher.c 
-	arcan_frameserver_backend_unix.c
+	engine/arcan_target_launcher.c 
 )
 
 LIST(APPEND MAIN_LIBRARIES usb rt)
@@ -49,9 +52,14 @@ LIST(APPEND FSRV_SOURCES frameserver/frameserver.c
 LIST(APPEND FSRV_LIBRARIES -lrt)
 
 add_library(arcan_hijack SHARED 
-	arcan_target_unix.c
- 	arcan_event.c 
-	arcan_target.c 
+	hijack/arcan_target_unix.c
+ 	hijack/arcan_target.c
+	shmif/arcan_shmif.h
+	shmif/arcan_shmif_interop.h
+	shmif/arcan_shmif_control.c
+	shmif/arcan_shmif_interop.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/sem.c	
 	frameserver/ntsc/snes_ntsc.c 
 	frameserver/resampler/resample.c
 )

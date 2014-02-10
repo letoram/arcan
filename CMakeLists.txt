@@ -65,6 +65,8 @@ option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 #
 add_definitions(-std=gnu11)
 
+message("Using compiler: ${CMAKE_C_COMPILER_ID}") 
+
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
 		COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
