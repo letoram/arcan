@@ -164,6 +164,8 @@ function tvist()
 	
 	triggers = {};
 
+	movieref = load_movie(arguments[1], FRAMESERVER_LOOP, video_trigger);
+	target_verbose(movieref);
 -- setup mouse cursor and place it at the middle of the screen
 	local cursor = load_image("cursor.png");
 	show_image(cursor);
@@ -408,6 +410,7 @@ end
 -- setup a calc-target for each trigger region
 function activate_regions()
 	start_framenumber = last_frame;
+
 	if (savecfg_name ~= nil) then
 		zap_resource(savecfg_name);
 		open_rawresource(savecfg_name);
@@ -422,8 +425,8 @@ function activate_regions()
 				"%d, %d, %s)\n", v.x1, v.y1, v.x2, v.y2, v.lb, v.ub, 
 				v.thresh, v.subtype)
 			);
-			activate_region(v);
 		end
+		activate_region(v);
 	end
 
 	if (savecfg_name ~= nil) then
