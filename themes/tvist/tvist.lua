@@ -133,7 +133,7 @@ function tvist()
 	prefilter = "normal";
 
 	if (arguments[1] == nil or not resource(arguments[1])) then
-		shutdown("Usage: arcan tvist [src=moviename or src=feed] [prefilt=fltname] " ..
+		shutdown("Usage: arcan tvist moviename [prefilt=fltname] " ..
 			"[outcfg=fname] [run=fname]");
 		return;
 	end
@@ -141,9 +141,6 @@ function tvist()
 	moviename = arguments[1];
 	savecfg_name = nil;
 	local cmdfile;
-
-	movieref = load_movie(arguments[1], FRAMESERVER_LOOP, video_trigger);
-	target_verbose(movieref);
 
 	for i=2,#arguments do
 		local v = string.split(arguments[i], "=");
@@ -160,6 +157,8 @@ function tvist()
 			savecfg_name = val;
 		elseif (cmd == "run") then
 			cmdfile = val;
+		elseif (cmd == "src") then
+			
 		end
 	end
 	
@@ -179,7 +178,7 @@ function tvist()
 	order_image(mouse, 255);
 
 	if (cmdfile ~= nil) then
-		print(string.format("Using cfgfile=%s",arguments[2]));
+		print(string.format("Using cfgfile=%s",cmdfile));
 		system_load(cmdfile)();
 		start_analyse = 1;
 	end
@@ -247,8 +246,12 @@ function add_trigger_region(x1, y1, x2, y2, lb, ub, thresh, subtype)
 	newtrig.flt = build_shader(nil, passf, "pass_filter" .. tostring(#triggers));
 	image_shader(newtrig.vid, newtrig.flt);
 
+-- Note; due to our serialization format, and not having to deal with
+-- localization issues from radix_point problems, we just 8-bit limit 
+-- our ub/lb values ..
 	newtrig.shupdate = function()
-		shader_uniform(newtrig.flt, "bounds", "ff", PERSIST, newtrig.ub, newtrig.lb); 
+		shader_uniform(newtrig.flt, "bounds", "ff", PERSIST, 
+		newtrig.ub / 255.0, newtrig.lb / 255.0); 
 	end
 
 	newtrig.shupdate();
@@ -266,7 +269,7 @@ function new_rect_pick(cbf, subtype, r, g, b)
 	mouse_recv = { 
 		step = function(self)
 			if (self.x1 ~= nil) then
-				cbf(self.x1, self.y1, mx, my, 0.2, 0.7, 128, subtype);
+				cbf(self.x1, self.y1, mx, my, 20, 200, 128, subtype);
 				order_image(mouse, max_current_image_order() + 1);
 				self:destroy();
 			else
@@ -416,8 +419,9 @@ function activate_regions()
 		if (savecfg_name ~= nil) then
 			write_rawresource(
 				string.format("add_trigger_region(%d, %d, %d, %d, %d, " .. 
-				"%d, %d, %s)\n", v.x1, v.y1, v.x2, v.y2, 
-				v.lb, v.ub, v.thresh, v.subtype));
+				"%d, %d, %s)\n", v.x1, v.y1, v.x2, v.y2, v.lb, v.ub, 
+				v.thresh, v.subtype)
+			);
 			activate_region(v);
 		end
 	end
