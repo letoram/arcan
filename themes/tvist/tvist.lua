@@ -422,7 +422,7 @@ function activate_regions()
 		if (savecfg_name ~= nil) then
 			write_rawresource(
 				string.format("add_trigger_region(%d, %d, %d, %d, %d, " .. 
-				"%d, %d, %s)\n", v.x1, v.y1, v.x2, v.y2, v.lb, v.ub, 
+				"%d, %d, [[%s]])\n", v.x1, v.y1, v.x2, v.y2, v.lb, v.ub, 
 				v.thresh, v.subtype)
 			);
 		end
