@@ -249,7 +249,7 @@ local typetbl = {
 	glstore_txu  = " txu: \\#00ff00 %s \\#ffffff",
 	glstore_txv  = " txv: \\#00ff00 %s \\#ffffff",
 	glstore_prg = "prg: \\#00ff00 %s \\#ffffff",
-	storage_size = " size: \\#00ff00 \%d \\#ffffff)\\n\\r",
+	storage_size = " size: \\#00ff00 \\%d \\#ffffff)\\n\\r",
 	storage_source = "\\bSource\\!b: %s \\#ffffff\\n\\r",
 
 	scalemode   = "\\bProcessing\\!b(scale:\\#00ff00 %s \\#ffffff",
@@ -257,7 +257,7 @@ local typetbl = {
 	imageproc   = "post: \\#00ff00 %s \\#ffffff\\n\\r\\t",
 	blendmode   = "\\tblend: \\#00ff00 %s \\#ffffff",
 	clipmode    = "clip: \\#00ff00 %s \\#ffffff)",
-	storage_size = "size: \\#00ff00 %d \\#ffffff)\\n\\r\\#ff9999----------\\n\\r\\\#ffffff", 
+	storage_size = "size: \\#00ff00 %d \\#ffffff)\\n\\r\\#ff9999----------\\n\\r\\#ffffff", 
 
 	mask     = "\\n\\r\\bMask:\\!b\\#00ff00 %s\\n\\r\\#ffffff",
 	order    = "\\bOrder: \\!b\\#00ff00 %d \\#ffffff\\n\\r",
