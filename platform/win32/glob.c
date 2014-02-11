@@ -24,8 +24,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 extern char* arcan_themename;
 extern char* arcan_themepath;

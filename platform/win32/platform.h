@@ -26,8 +26,10 @@ typedef HANDLE file_handle;
 typedef HANDLE sem_handle;
 
 typedef void* process_handle;
+#define BROKEN_PROCESS_HANDLE NULL
+
 typedef struct {
-	struct frameserver_shmpage* ptr;
+	struct arcan_shmif_page* ptr;
 	void* handle;
 	void* synch;
 	char* key;

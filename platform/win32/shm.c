@@ -23,9 +23,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
-
 char* arcan_findshmkey(int* dfd, bool semalloc)
 {
 	return NULL;

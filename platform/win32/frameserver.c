@@ -38,16 +38,14 @@
 #include <SDL_mutex.h>
 #include <SDL_types.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-
-#include "../arcan_framequeue.h"
-#include "../arcan_video.h"
-#include "../arcan_audio.h"
-#include "../arcan_event.h"
-#include "../arcan_frameserver_backend.h"
-#include "../arcan_event.h"
-#include "../arcan_frameserver_shmpage.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
+#include <arcan_event.h>
+#include <arcan_video.h>
+#include <arcan_audio.h>
+#include <arcan_framequeue.h>
+#include <arcan_frameserver_backend.h>
+#include <arcan_shmif.h>
 
 /*
  * refactor needs:
@@ -135,8 +133,8 @@ bool arcan_frameserver_validchild(arcan_frameserver* src)
 void arcan_frameserver_dropshared(arcan_frameserver* src)
 {
 	arcan_frameserver_dropsemaphores(src);
-	struct frameserver_shmpage* shmpage = 
-		(struct frameserver_shmpage*) src->shm.ptr;
+	struct arcan_shmif_page* shmpage = 
+		(struct arcan_shmif_page*) src->shm.ptr;
 
 	if (src->shm.ptr && false == UnmapViewOfFile((void*) shmpage))
 		arcan_warning("BUG -- arcan_frameserver_free()"
@@ -203,9 +201,9 @@ static TCHAR* alloc_wchar(const char* key)
 }
 
 static SECURITY_ATTRIBUTES nullsec_attr;
-static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
+static struct arcan_shmif_page* setupshmipc(HANDLE* dfd)
 {
-	struct frameserver_shmpage* res = NULL;
+	struct arcan_shmif_page* res = NULL;
 
 	nullsec_attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	nullsec_attr.lpSecurityDescriptor = NULL;
@@ -221,7 +219,7 @@ static struct frameserver_shmpage* setupshmipc(HANDLE* dfd)
 
 	if (*dfd != NULL && (res = MapViewOfFile(*dfd, 
 			FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ))){
-		memset(res, 0, sizeof(struct frameserver_shmpage));
+		memset(res, 0, sizeof(struct arcan_shmif_page));
 		return res;
 	}
 
@@ -239,7 +237,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
 
 	HANDLE shmh;
-	struct frameserver_shmpage* shmpage = setupshmipc(&shmh);
+	struct arcan_shmif_page* shmpage = setupshmipc(&shmh);
 
 	if (!shmpage)
 		goto error;

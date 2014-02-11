@@ -46,7 +46,7 @@
  * arcan_general.h */
 
 #ifdef _WIN32
-#include "platform/win32/platform.h"
+#include PLATFORM_HEADER
 #else
 #define BADFD -1
 #include <pthread.h>
@@ -72,7 +72,6 @@ void arcan_timesleep(unsigned long);
 int arcan_sem_post(sem_handle sem);
 int arcan_sem_unlink(sem_handle sem, char* key);
 int arcan_sem_wait(sem_handle sem);
-int arcan_sem_value(sem_handle sem, int* dstval);
 int arcan_sem_trywait(sem_handle sem);
 
 typedef int8_t arcan_errc;

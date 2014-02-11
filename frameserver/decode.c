@@ -10,7 +10,6 @@
 #include "graphing/net_graph.h"
 
 #include "frameserver.h"
-#include "decode.h"
 
 #define AUD_VIS_HRES 2048 
 
@@ -587,10 +586,6 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	arcan_shmif_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
 		&(decctx.inevq), &(decctx.outevq), false);
 
-	if (!arcan_shmif_resize(&decctx.shmcont, 320, 200)){
-		LOG("couldn't setup shmpage, giving up.\n");
-	}
-	
 	av_register_all();
 
 	do {
