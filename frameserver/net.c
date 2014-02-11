@@ -33,7 +33,7 @@
 #include <apr_poll.h>
 #include <apr_portable.h>
 
-#include "../shmif/arcan_shmif.h"
+#include <arcan_shmif.h>
 
 #include "frameserver.h"
 #include "net.h"

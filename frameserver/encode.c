@@ -16,14 +16,8 @@
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 
-#undef BADFD
-#define BADFD -1
-
 #include <arcan_shmif.h> 
-
-#include "encode.h"
 #include "encode_presets.h"
-
 #include "frameserver.h"
 
 /* don't build / link to older versions */
@@ -433,7 +427,7 @@ static void encoder_atexit()
 	if (!recctx.fcontext)
 		return;
 
-	if (recctx.lastfd != BADFD){
+	if (recctx.lastfd != -1){
 		if (recctx.acontext)
 			encode_audio(true);
 
@@ -668,10 +662,6 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 	return true;
 }
 
-#ifdef _WIN32
-#include <io.h>
-#endif
-
 /*
  * This version does not really use the shmpage API but is intended 
  * as a logging / side-call for the other frameservers to quickly
@@ -716,7 +706,7 @@ void arcan_frameserver_encode_run(const char* resource,
 	arcan_shmif_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
 
-	recctx.lastfd = BADFD;
+	recctx.lastfd = -1;
 	atexit(encoder_atexit);
 
 	while (true){
@@ -732,12 +722,10 @@ void arcan_frameserver_encode_run(const char* resource,
  * really only be "useful" in streaming situations, and perhaps not even there, 
  * so consider that scenario untested */
 			case TARGET_COMMAND_FDTRANSFER:
-/* regular file_handle abstraction with the readhandle actually
- * returns a HANDLE on win32, since that's currently not very workable
- * with avformat we covert that to a regular POSIX file handle */
 #ifdef _WIN32
-				recctx.lastfd = _open_osfhandle( (intptr_t) 
-					frameserver_readhandle(ev), _O_APPEND);
+				recctx.lastfd = _open_osfhandle( 
+/* is this actually safe on 64-bit win? */ 
+					(intptr_t) frameserver_readhandle(&ev), _O_APPEND );
 #else
 				recctx.lastfd = frameserver_readhandle(&ev);
 #endif

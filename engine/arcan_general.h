@@ -34,8 +34,6 @@
  * (b) continue evacuating ifdefs that aren't DEBUG
  */
 
-typedef struct frameserver_shmpage frameserver_shmpage;
-
 #define PRIxVOBJ "lld"
 
 #include PLATFORM_HEADER
@@ -50,6 +48,7 @@ typedef struct frameserver_shmpage frameserver_shmpage;
 #endif
 
 #define NULFILE "/dev/null"
+#define BROKEN_PROCESS_HANDLE -1
 
 #include <semaphore.h>
 #include <getopt.h>

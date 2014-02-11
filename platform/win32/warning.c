@@ -25,8 +25,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 extern bool stderr_redirected;
 extern bool stdout_redirected;

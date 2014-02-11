@@ -65,6 +65,13 @@ struct fbo_cont {
 #define MAX_BUTTONS 16
 #endif
 
+#undef BADID
+#ifdef _WIN32
+#define BADID NULL
+#else
+#define BADID -1
+#endif
+
 /* note on synchronization:
  * the async and esync mechanisms will buffer locally and have that buffer 
  * flushed by the main application whenever appropriate. For audio, this is 
@@ -808,7 +815,11 @@ static bool libretro_setenv(unsigned cmd, void* data){
 
 /* some cores (mednafen-psx, ..) currently breaks on relative paths, 
  * so resolve to absolute one for the time being */
+#ifdef _WIN32
+		sysdir = _fullpath(NULL, sysdir, MAX_PATH);
+#else
 		sysdir = realpath(sysdir, NULL);
+#endif
 
 		LOG("system directory set to (%s).\n", sysdir);
 		*((const char**) data) = sysdir;
@@ -1154,7 +1165,7 @@ static inline void targetev(arcan_event* ev)
 
 /* store / rewind operate on the last FD set through FDtransfer */
 		case TARGET_COMMAND_STORE:
-			if (BADFD != retroctx.last_fd){
+			if (BADID != retroctx.last_fd){
 				size_t dstsize = retroctx.serialize_size();
 				void* buf;
 				if (dstsize && ( buf = malloc( dstsize ) )){
@@ -1162,7 +1173,7 @@ static inline void targetev(arcan_event* ev)
 					if ( retroctx.serialize(buf, dstsize) ){
 						frameserver_dumprawfile_handle( buf, dstsize, 
 							retroctx.last_fd, true );
-						retroctx.last_fd = BADFD;
+						retroctx.last_fd = BADID;
 					} else
 						LOG("serialization failed.\n");
 
@@ -1174,7 +1185,7 @@ static inline void targetev(arcan_event* ev)
 		break;
 
 		case TARGET_COMMAND_RESTORE:
-			if (BADFD != retroctx.last_fd){
+			if (BADID != retroctx.last_fd){
 				ssize_t dstsize = -1;
 
 				void* buf = frameserver_getrawfile_handle( retroctx.last_fd, &dstsize);
@@ -1183,7 +1194,7 @@ static inline void targetev(arcan_event* ev)
 					reset_timing(true);
 				}
 
-				retroctx.last_fd = BADFD;
+				retroctx.last_fd = BADID;
 			}
 			else
 				LOG("snapshot restore requested without any viable target\n");
@@ -1569,7 +1580,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 /* setup frameserver, synchronization etc. */
 		assert(retroctx.avinfo.timing.fps > 1);
 		assert(retroctx.avinfo.timing.sample_rate > 1);
-		retroctx.last_fd = BADFD;
+		retroctx.last_fd = BADID;
 		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 
 		retroctx.ntscconv  = false;

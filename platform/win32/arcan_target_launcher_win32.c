@@ -20,15 +20,15 @@
 #include <assert.h>
 #include <errno.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
-#include "../arcan_event.h"
-#include "../arcan_video.h"
-#include "../arcan_audio.h"
-#include "../arcan_framequeue.h"
-#include "../arcan_frameserver_backend.h"
-#include "../arcan_target_launcher.h"
+#include <arcan_event.h>
+#include <arcan_video.h>
+#include <arcan_audio.h>
+#include <arcan_framequeue.h>
+#include <arcan_frameserver_backend.h>
+#include <arcan_target_launcher.h>
 
 int arcan_target_launch_external(const char* fname, char** argv)
 {
