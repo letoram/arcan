@@ -15,15 +15,20 @@
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 
-#include "../arcan_math.h"
-#include "../arcan_general.h"
-#include "../arcan_event.h"
+#include <arcan_shmif.h>
 
 #include "../frameserver/frameserver.h"
-#include "../arcan_frameserver_shmpage.h"
-#include "../frameserver/libretro.h"
-#include "../frameserver/decode.h"
-#include "../frameserver/net.h"
+
+void arcan_frameserver_decode_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_libretro_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_encode_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_net_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_avfeed_run(
+	const char* resource, const char* keyfile);
 
 #define DST_SAMPLERATE 44100
 #define DST_AUDIOCHAN  2
@@ -78,7 +83,8 @@ void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 		DWORD retc;
 		ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-		if (!ReadFile(fh, retb, *ressize, &retc, &ov) && GetLastError() == ERROR_IO_PENDING){
+		if (!ReadFile(fh, retb, *ressize, &retc, &ov) 
+			&& GetLastError() == ERROR_IO_PENDING){
 			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
 				free(retb);
 				retb = NULL;
@@ -95,7 +101,8 @@ void* frameserver_getrawfile_handle(file_handle fh, ssize_t* ressize)
 }
 
 /* always close handle */
-bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_handle fh, bool finalize)
+bool frameserver_dumprawfile_handle(const void* const buf, 
+	size_t bufs, file_handle fh, bool finalize)
 {
 	bool rv = false;
 
@@ -108,9 +115,11 @@ bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_han
 		ov.OffsetHigh = 0xFFFFFFFF;
 		ov.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-		if (!WriteFile(fh, buf, bufs, &retc, &ov) && GetLastError() == ERROR_IO_PENDING){
+		if (!WriteFile(fh, buf, bufs, &retc, &ov) 
+			&& GetLastError() == ERROR_IO_PENDING){
 			if (!GetOverlappedResult(fh, &ov, &retc, TRUE)){
-				LOG("frameserver(win32)_dumprawfile : failed, %ld\n", GetLastError());
+				LOG("frameserver(win32)_dumprawfile : "
+					"failed, %ld\n", GetLastError());
 			}
 		}
 
@@ -129,7 +138,8 @@ bool frameserver_dumprawfile_handle(const void* const buf, size_t bufs, file_han
 void* frameserver_getrawfile(const char* resource, ssize_t* ressize)
 {
 	HANDLE fh = CreateFile( resource, GENERIC_READ, 
-		FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL );
+		FILE_SHARE_READ, NULL, OPEN_EXISTING, 
+			FILE_FLAG_SEQUENTIAL_SCAN, NULL );
 	if (fh == INVALID_HANDLE_VALUE)
 		return NULL;
 
@@ -183,7 +193,8 @@ static void toggle_logdev(const char* prefix)
 
 		char* logbuf = malloc(logbuf_sz + 1);
 
-		snprintf(logbuf, logbuf_sz+1, "%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
+		snprintf(logbuf, logbuf_sz+1, 
+			"%s/fsrv_%s_%s.txt", logdir, prefix, timeb);
 		logdev = freopen(logbuf, "a", stderr);
 	}
 	else
@@ -215,7 +226,8 @@ int main(int argc, char* argv[])
 	}
 
 /*
- * the convention on windows doesn't include the program name as first argument,
+ * the convention on windows doesn't include 
+ * the program name as first argument,
  * but some execution contexts may use it, 
  * e.g. ruby / cygwin / ... so skew the arguments 
  */
@@ -247,7 +259,7 @@ int main(int argc, char* argv[])
 	if (strcmp(fsrvmode, "movie") == 0 
 		|| strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("decode");
-		arcan_frameserver_ffmpeg_run(resource, keyfile);
+		arcan_frameserver_decode_run(resource, keyfile);
 	}
 #endif
 
@@ -269,9 +281,16 @@ int main(int argc, char* argv[])
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("record");
-		arcan_frameserver_ffmpeg_encode(resource, keyfile);
+		arcan_frameserver_encode_run(resource, keyfile);
 	}
 #endif
 
-	return 0;
+#ifdef ENABLE_FSRV_AVFEED
+	if (strcmp(fsrvmode, "avfeed") == 0){
+		toggle_logdev("record");
+		arcan_frameserver_avfeed_run(resource, keyfile);
+	}
+#endif
+
+return 0;
 }

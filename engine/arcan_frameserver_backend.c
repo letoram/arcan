@@ -110,11 +110,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 		arcan_frameserver_pushevent(src, &exev);
 	
-/* hook in platform, expecting src->child to be -1,
- * child_alive to be false etc. */
 		arcan_frameserver_killchild(src);
  
-		src->child = -1;
+		src->child = BROKEN_PROCESS_HANDLE;
 		src->child_alive = false;
 	}
 
@@ -133,7 +131,9 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		src->shm.ptr = NULL;
 	}
 
+#ifndef _WIN32
 	close(src->sockout_fd);
+#endif
 
 	if (!loop){
 		vfunc_state emptys = {0};
@@ -231,9 +231,14 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 	arcan_event* ev){
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/* NOTE: when arcan_event_serialize(*buffer) is implemented,
+/* 
+ * NOTE: when arcan_event_serialize(*buffer) is implemented,
  * the queue should be stripped from the shmpage entirely and only 
- * transferred over the socket(!) */
+ * transferred over the socket(!) 
+ * The problem with the current approach is that we have no
+ * decent mechanism active for waking a child that's simultaneously
+ * polling and need to respond quickly to enqueued events,
+ */
 	if (dst && ev)
 		rv = dst->child_alive ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :

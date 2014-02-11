@@ -29,8 +29,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 char* arcan_themepath      = NULL;
 char* arcan_resourcepath   = NULL;

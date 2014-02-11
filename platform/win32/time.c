@@ -25,8 +25,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <Windows.h>
 
 long long int arcan_timemillis()
 {

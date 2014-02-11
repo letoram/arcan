@@ -39,30 +39,19 @@
 #include <time.h>
 #include <dlfcn.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
 #include <arcan_shmif.h> 
 #include "frameserver.h"
 
-#ifdef ENABLE_FSRV_LIBRETRO
-#include "libretro.h"
-#endif
-
-#ifdef ENABLE_FSRV_ENCODE
-#include "encode.h"
-#endif
-
-#ifdef ENABLE_FSRV_DECODE
-#include "decode.h"
-#endif
-
-#ifdef ENABLE_FSRV_NET
-#include "net.h"
-#endif
-
-#ifdef ENABLE_FSRV_AVFEED
-#include "avfeed.h"
-#endif
+void arcan_frameserver_decode_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_libretro_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_encode_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_net_run(
+	const char* resource, const char* keyfile);
+void arcan_frameserver_avfeed_run(
+	const char* resource, const char* keyfile);
 
 int sockin_fd = -1;
 
