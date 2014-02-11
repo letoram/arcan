@@ -1,6 +1,6 @@
-set (LAUNCHER_PATH ${CMAKE_CURRENT_SOURCE_DIR}/utils/ArcanLauncher)
-set (DISTR_PATH ${CMAKE_CURRENT_SOURCE_DIR}/distr)
-set (WIN32_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32)
+set (LAUNCHER_PATH ${CMAKE_SOURCE_DIR}/utils/ArcanLauncher)
+set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
+set (WIN32_PATH ${CMAKE_SOURCE_DIR}/platform/win32)
 
 set (PLATFORM_SOURCES
 platform/posix/fmt_open.c
@@ -24,7 +24,6 @@ ${WIN32_PATH}/time.c
 ${WIN32_PATH}/sem.c
 ${WIN32_PATH}/shm.c
 ${WIN32_PATH}/realpath.c
-platform/stub/event.c
 )
 
 if (${ENABLE_LIBRETRO})
@@ -36,8 +35,11 @@ if (${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
  
-add_definitions(-DPLATFORM_HEADER="platform\\win32\\platform.h")
-add_definitions(-m32 -D__WINDOWS -DPOOR_GL_SUPPORT -static)
+add_definitions(-DPLATFORM_HEADER=\"${WIN32_PATH}/platform.h\"
+	-DGL_HEADERS=\"${WIN32_PATH}/../sdl/glheaders.h\"
+	-Wno-missing-braces
+	-DLUA_51 -D__WINDOWS -DPOOR_GL_SUPPORT -static
+)
 
 # the win32/ folder should be merged with the platform sources
 LIST(APPEND SOURCES 
@@ -55,7 +57,7 @@ ${WIN32_PATH}/arcan_frameserver_win32.c
 ${DISTR_PATH}/arcan_frameserver_resource.obj 
 ${FSERV_PLATFORM_SOURCES})
 
-LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm)
+LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm pthread)
 LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)
 
 set(BIN_DST ".")

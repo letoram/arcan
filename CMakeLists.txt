@@ -65,6 +65,8 @@ option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 #
 add_definitions(-std=gnu11)
 
+message("Using compiler: ${CMAKE_C_COMPILER_ID}") 
+
 if ("${CMAKE_C_COMPILER_ID}" MATCHES "GNU")
 	execute_process(
 		COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
@@ -345,7 +347,6 @@ endif (${APR_FOUND} AND ${ENABLE_NET})
 
 add_definitions(-DENABLE_FSRV_AVFEED)
 list(APPEND FSRV_SOURCES
-    frameserver/avfeed.h
     frameserver/avfeed.c
 )
 
@@ -353,9 +354,7 @@ if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 	message("--> Enabling video encoding/decoding support.") 
 	list(APPEND FSRV_LIBRARIES ${FFMPEG_LIBRARIES})
 	list(APPEND FSRV_SOURCES 
-		frameserver/decode.h
 		frameserver/decode.c
-		frameserver/encode.h
 		frameserver/encode.c
 		frameserver/encode_presets.c
 		frameserver/encode_presets.h

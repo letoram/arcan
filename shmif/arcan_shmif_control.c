@@ -70,12 +70,12 @@ static inline bool parent_alive()
 /* force_unlink isn't used here as the semaphores are 
  * passed as inherited handles */
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, bool force_unlink)
+	const char* shmkey, int shmif_type, bool force_unlink)
 {
-	struct frameserver_shmcont res = {0};
+	struct arcan_shmif_cont res = {0};
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
-	res.addr = (struct frameserver_shmpage*) MapViewOfFile(shmh, 
+	res.addr = (struct arcan_shmif_page*) MapViewOfFile(shmh, 
 		FILE_MAP_ALL_ACCESS, 0, 0, ARCAN_SHMPAGE_MAX_SZ);
 
 	if ( res.addr == NULL ) {
@@ -100,6 +100,16 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.semset = { async, vsync, esync }
 	};
 	spawn_guardthread(gs);
+
+	if (shmif_type == SHMIF_INPUT){
+		if (-1 == arcan_sem_wait(res.asem) ||
+			-1 == arcan_sem_wait(res.vsem))
+		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
+			"setup semaphore states, giving up.\n");
+	} 
+	else {
+/* default state is OK */
+	}
 
 	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;

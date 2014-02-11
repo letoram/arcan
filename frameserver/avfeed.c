@@ -38,8 +38,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-#include "../shmif/arcan_shmif.h"
-#include "avfeed.h"
+#include <arcan_shmif.h>
 #include "frameserver.h"
 
 /*

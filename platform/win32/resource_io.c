@@ -23,8 +23,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 /* malloc() wrapper for now, entry point here
  * to easier switch to pooled storage */

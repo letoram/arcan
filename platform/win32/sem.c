@@ -23,8 +23,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "../../arcan_math.h"
-#include "../../arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
 
 int arcan_sem_post(sem_handle sem)
 {
@@ -36,12 +36,9 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return CloseHandle(sem);
 }
 
-int arcan_sem_timedwait(sem_handle sem, int msecs)
+int arcan_sem_trywait(sem_handle sem)
 {
-	if (msecs == -1)
-		msecs = INFINITE;
-
-	DWORD rc = WaitForSingleObject(sem, msecs);
+	DWORD rc = WaitForSingleObject(sem, 0);
 	int rv = 0;
 
 	switch (rc){
@@ -64,8 +61,39 @@ int arcan_sem_timedwait(sem_handle sem, int msecs)
 		break; /* default returnpath */
 
 	default:
-		arcan_warning("Warning: arcan_sem_timedwait(win32) -- unknown result on WaitForSingleObject (%i)\n", rc);
+		arcan_warning("Warning: arcan_sem_timedwait(win32) "
+			"-- unknown result on WaitForSingleObject (%i)\n", rc);
 	}
 
-	return rv;
+	return rc;
+}
+
+int arcan_sem_wait(sem_handle sem)
+{
+	DWORD rc = WaitForSingleObject(sem, INFINITE);
+	int rv = 0;
+
+	switch (rc){
+		case WAIT_ABANDONED:
+			rv = -1;
+			errno = EINVAL;
+		break;
+
+		case WAIT_TIMEOUT:
+			rv = -1;
+			errno = EAGAIN;
+		break;
+
+		case WAIT_FAILED:
+			rv = -1;
+			errno = EINVAL;
+		break;
+
+		case WAIT_OBJECT_0:
+		break; /* default returnpath */
+
+	default:
+		arcan_warning("Warning: arcan_sem_timedwait(win32) "
+			"-- unknown result on WaitForSingleObject (%i)\n", rc);
+	}
 }
