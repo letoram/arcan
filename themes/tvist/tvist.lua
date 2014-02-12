@@ -189,7 +189,7 @@ end
 function video_trigger(source, status)
 	if (status.kind == "resized") then
 		play_movie(source);
-		prefilters[prefilter](source, VRESW, VRESH);
+		movieref = prefilters[prefilter](source, VRESW, VRESH);
 
 	elseif (status.kind == "frame") then
 		last_frame = status.number;
