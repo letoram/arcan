@@ -376,36 +376,36 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 		if (srcw == tgt->desc.width && srch == tgt->desc.height){
 			rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 
 				GL_PIXEL_BPP, width, height, GL_PIXEL_BPP);
-
-			if (shmpage->aready) {
-				sem_wait(&tgt->lock_audb);
-
-				size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
-					(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
-
-				if (ntc == 0){
-					static bool overflow;
-					if (!overflow){
-						arcan_warning("frameserver_videoframe_direct(), incoming buffer "
-							"overflow for: %d, resetting.\n", tgt->vid);
-						overflow = true;
-					}
-					tgt->ofs_audb = 0;
-				}
-
-				memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
-				tgt->ofs_audb += ntc;
-				sem_post(&tgt->lock_audb);
-
-				shmpage->abufused = 0;
-				shmpage->aready = false;
-			}
 		}
+		
+		if (shmpage->abufused > 0){
+			sem_wait(&tgt->lock_audb);
+
+			size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
+				(tgt->sz_audb - tgt->ofs_audb) : shmpage->abufused;
+
+			if (ntc == 0){
+				static bool overflow;
+				if (!overflow){
+					arcan_warning("frameserver_videoframe_direct(), incoming buffer "
+						"overflow for: %d, resetting.\n", tgt->vid);
+					overflow = true;
+				}
+				tgt->ofs_audb = 0;
+			}
+
+			memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
+			tgt->ofs_audb += ntc;
+			shmpage->abufused = 0;
+			sem_post(&tgt->lock_audb);
+		}
+
 /* interactive frameserver blocks on vsemaphore only, 
  * so set monitor flags and wake up */
 		shmpage->vready = false;
 		arcan_sem_post( tgt->vsync );
-	break;
+
+		break;
   }
 
 	return rv;
