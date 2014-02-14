@@ -346,8 +346,6 @@ function awbwmedia_filterchain(pwin)
 	image_mask_set(pwin.controlid, MASK_POSITION);
 	image_mask_clear(pwin.controlid, MASK_MAPPING);
 	hide_image(pwin.controlid);
-	image_shader(pwin.controlid, pwin.def_shader ~= nil and 
-		pwin.def_shader or "DEFAULT");
 
 -- upscalers etc. can modify these as they affect the next one in the chain
 	local store_sz = image_storage_properties(pwin.controlid);
@@ -375,6 +373,9 @@ function awbwmedia_filterchain(pwin)
 	local dstres_base = dstres;
 	image_tracetag(dstres, "filterchain_core");
 	image_sharestorage(pwin.controlid, dstres);
+
+	image_shader(dstres, pwin.def_shader ~= nil and 
+		pwin.def_shader or "DEFAULT");
 
 	table.insert(pwin.filtertmp, dstres);
 
