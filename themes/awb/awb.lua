@@ -211,6 +211,18 @@ function awb()
 	awbwman_toggle_mousegrab();
 end
 
+function dumpvid()
+	local px, ly = mouse_xy();
+	local res = pick_items(px, ly, 1, 1);
+	if (res[1] ~= nil) then
+		local props = image_surface_properties(res[1]);
+		local tag = image_tracetag(res[1]);
+		print(string.format("(%d) tag: %s, pos: %f, %f, dimensions: %f, %f",
+			res[1], tag ~= nil and tag or "no name", props.x, 
+			props.y, props.width, props.height));
+	end
+end
+
 function map_inputs()
 	if (DEBUGLEVEL > 1) then
 		kbdbinds["F3"]     = function() 
@@ -250,6 +262,7 @@ function map_inputs()
 	kbdbinds["ESCAPE"] = awbwman_cancel;
 	kbdbinds["F11"] = awbwman_gather_scatter;
 	kbdbinds["F12"]	= awbwman_shadow_nonfocus;
+	kbdbinds["F7"] = dumpvid;
 end
 
 --
