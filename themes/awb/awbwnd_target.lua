@@ -138,7 +138,8 @@ local function sysopt_sel(icn, wnd)
 			local fact = wnd.factstr_src;
 			local copt = wnd.coreopts;
 
-			wnd:destroy();
+-- don't want the "Close.." popup
+			wnd:real_destroy();
 			targetwnd_setup(tbl, fact, copt); 
 		end
 	};
@@ -980,11 +981,13 @@ local function datashare(wnd)
 	res.shortcut_trig = function()
 		local lines = {};
 
+		if (wnd.coreopts) then
 		for k,v in pairs(wnd.coreopts) do
 			if (v.value ~= nil) then
 				table.insert(lines, string.format("res.coreopts[\"%s\"] = [[%s]];\n", 
 					v.key, v.value));
 			end
+		end
 		end
 
 		return string.format("res.coreopts = {};\n" .. table.concat(lines, ""));
