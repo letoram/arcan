@@ -10,7 +10,9 @@
 -- *reverse* is set to a !0 value, the scan will instead start from
 -- the highest to the lowest order. The return value will be an 
 -- indexed table of 0..limit VIDs.
---
+-- @note: by default, all VIDs are eligible for picking, this 
+-- behavior can be controlled with image_mask_set(vid, MASK_UNPICKABLE)
+-- this mask value is not inherited.
 -- @note: the cost for calling pick_items vary with the complexity
 -- of the object in the scene, and increase noticeably with the 
 -- progression (2D- object) -> (x,y rotated 2D object) -> (x,y,z
