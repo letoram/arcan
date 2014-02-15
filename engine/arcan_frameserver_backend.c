@@ -68,6 +68,17 @@ static struct {
 	.presilence = ARCAN_FRAMESERVER_PRESILENCE
 };
 
+/*
+ * used for both encode and decode,
+ * for encode where the previously delivered frame hasn't been consumed
+ * and for decode where the framequeue heuristic decides to throw away (or
+ * emit) a frame.
+ */
+static inline void emit_deliveredframe(arcan_frameserver* src, 
+	unsigned long long pts, unsigned long long framecount);
+static inline void emit_droppedframe(arcan_frameserver* src, 
+	unsigned long long pts, unsigned long long framecount);
+
 void arcan_frameserver_queueopts_override(unsigned short vcellcount,
 	unsigned short abufsize, unsigned short acellcount, 
 	unsigned short presilence)
@@ -462,13 +473,17 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			};
 
 			arcan_event_enqueue(&src->outqueue, &ev);
+
+			if (src->desc.callback_framestate)
+				emit_deliveredframe(src, 0, src->desc.framecount++);
 		} 
 		else {
-/* NOTE: if verbosity is toggled, enqueue a notification about the dropped
- * frame */
+			if (src->desc.callback_framestate)
+				emit_droppedframe(src, 0, src->desc.dropcount++);
 		}
 	}
-	else;
+	else
+			;
 
 /* not really used */
 	return 0;
