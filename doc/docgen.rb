@@ -120,7 +120,7 @@ end
 
 def cscan(cfun)
 	in_grp = false
-	File.open("../arcan_lua.c").each_line{|line|
+	File.open("../engine/arcan_lua.c").each_line{|line|
 	if (not in_grp and line =~ /\#define\sEXT_MAPTBL_(\w+)/)
 		in_grp = $1
 	elsif (in_grp)

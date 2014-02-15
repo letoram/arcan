@@ -3930,17 +3930,37 @@ static int targetseek(lua_State* ctx)
 	return 0;
 }
 
-static int targetverbose(lua_State* ctx)
+static int targetsynchronous(lua_State* ctx)
 {
-	LUA_TRACE("target_verbose");
+	LUA_TRACE("target_synchronous");
 	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
-	bool toggle = luaL_optnumber(ctx, 3, 1) == 1; 
 
 	vfunc_state* state = arcan_video_feedstate(tgt);
 
 	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
 		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
 			"connected to a frameserver\n", tgt);
+		return 0;
+	}
+
+	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
+	fsrv->desc.explicit_xfer = true;
+
+	return 0;	
+}
+
+static int targetverbose(lua_State* ctx)
+{
+	LUA_TRACE("target_verbose");
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	bool toggle = luaL_optnumber(ctx, 2, 1) == 1; 
+
+	vfunc_state* state = arcan_video_feedstate(tgt);
+
+	if (!(state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)){
+		arcan_warning("targetverbose() vid(%"PRIxVOBJ") is not "
+			"connected to a frameserver\n", tgt);
+
 		return 0;
 	}
 
@@ -4628,17 +4648,17 @@ static int recordset(lua_State* ctx)
 		}
 	}
 
-/* in order to stay backward compatible API wise, 
+	arcan_frameserver* mvctx = arcan_frameserver_alloc();
+	mvctx->loop = FRAMESERVER_NOLOOP;
+	mvctx->vid  = did;
+
+	/* in order to stay backward compatible API wise, 
  * the load_movie with function callback will always need to specify 
  * loop condition. (or we can switch to heuristic stack management) */
 	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
 		lua_pushvalue(ctx, 9);
-		luaL_ref(ctx, LUA_REGISTRYINDEX);
+		mvctx->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
 	}
-
-	arcan_frameserver* mvctx = arcan_frameserver_alloc();
-	mvctx->loop = FRAMESERVER_NOLOOP;
-	mvctx->vid  = did;
 
 	struct frameserver_envp args = {
 		.use_builtin = true,
@@ -5859,6 +5879,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_portconfig",          targetportcfg            },
 {"target_framemode",           targetskipmodecfg        },
 {"target_verbose",             targetverbose            },
+{"target_synchronous",         targetsynchronous        },
 {"target_pointsize",           targetpointsize          },
 {"target_linewidth",           targetlinewidth          },
 {"target_postfilter",          targetpostfilter         },
