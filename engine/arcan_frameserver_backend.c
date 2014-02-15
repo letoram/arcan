@@ -37,13 +37,6 @@
 
 #include GL_HEADERS
 
-/*
- * Refactoring needs;
- * (a) move gl operations to video or videoint
- * (b) move al operations to audio or audioint
- * (c) reduce the include namespace 
- */
-
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
@@ -453,7 +446,8 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * Audio will keep on buffering until overflow,
  */
 	else if (cmd == ffunc_rendertarget_readback){
-		if ( arcan_sem_trywait(src->vsync) ){
+		if ( (src->desc.explicit_xfer && arcan_sem_wait(src->vsync) == 0) ||
+			(!src->desc.explicit_xfer && arcan_sem_trywait(src->vsync) == 0)){
 			memcpy(src->vidp, buf, s_buf);
 			if (src->ofs_audb){
 				sem_wait(&src->lock_audb);
@@ -679,9 +673,14 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				src->starttime += delta;
 				delta = 0;
 			}
-		
+
 /* if frames are too old, just ignore them */
 			while (delta > src->desc.vskipthresh){
+				if (src->desc.explicit_xfer){
+					src->starttime = arcan_frametime();
+					break;
+				}
+
 				arcan_framequeue_dequeue(&src->vfq);
 				ccell = arcan_framequeue_front(&src->vfq); 
 

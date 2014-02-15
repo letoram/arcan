@@ -75,7 +75,7 @@ enum arcan_frameserver_kinds {
 };
 
 typedef struct {
-	/* video */
+/* video */
 	uint16_t width;
 	uint16_t height;
 	uint16_t bpp;
@@ -84,7 +84,7 @@ typedef struct {
 	int16_t vskipthresh;
 	int16_t resynchthresh; 
 
-	/* audio */
+/* audio */
 	unsigned samplerate;
 	uint8_t channels;
 	uint8_t format;
@@ -92,6 +92,7 @@ typedef struct {
 
 /* transfer */
 	bool pbo_transfer;
+	bool explicit_xfer;
 	unsigned pbo_index;
 	unsigned upload_pbo[2];
 

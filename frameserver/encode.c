@@ -362,6 +362,13 @@ static int encode_video(bool flush)
 			pkt.flags |= AV_PKT_FLAG_KEY;
 
 		if (pkt.dts > pkt.pts){
+			static bool dts_warn;
+	
+			if (!dts_warn){
+				LOG("(encode) DTS > PTS inconsistency\n");
+				dts_warn = true;
+			}
+
 			pkt.dts = pkt.pts;
 		}
 
