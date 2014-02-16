@@ -1,5 +1,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavformat/avio.h>
+
 #include <sys/stat.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -399,6 +401,33 @@ struct codec_ent encode_getacodec(const char* const req, int flags)
 	return res;
 }
 
+static int64_t fds(void* infd, int64_t pos, int whence)
+{
+	int fd = *(int*) infd;
+
+	int64_t ret;
+
+	if (whence == AVSEEK_SIZE){
+		struct stat st;
+		ret = fstat(fd, &st);
+
+		return ret < 0 ? AVERROR(errno) : (S_ISFIFO(st.st_mode) ? 0 : st.st_size);
+	}
+
+	ret = lseek(fd, pos, whence);
+	return ret < 0 ? AVERROR(errno) : ret;
+}
+
+static int fdw(void* fd, uint8_t* buf, int buf_size)
+{
+	return write(*(int*)fd, buf, buf_size);
+}
+
+static int fdr(void* fd, uint8_t* buf, int buf_size)
+{
+	return read(*(int*)fd, buf, buf_size);
+}
+
 /* slightly difference scanning function here so can't re-use lookup_default */
 struct codec_ent encode_getcontainer(const char* const requested, 
 	int dst, const char* remote)
@@ -443,13 +472,15 @@ struct codec_ent encode_getcontainer(const char* const requested,
 	avformat_alloc_output_context2(&ctx, res.storage.container.format, 
 	NULL, NULL);
 
-/* ugly hack around not having a way of mapping filehandle to fd
- * WITHOUT going through open, sic. */
-	char fdbuf[64];
-	sprintf(fdbuf, "pipe:%d", dst);
-	avio_open2(&ctx->pb, fdbuf, AVIO_FLAG_READ_WRITE, NULL, NULL);
-	ctx->pb->seekable = AVIO_SEEKABLE_NORMAL;
-
+/* 
+ * Since there's no sane way for us to just pass a file descriptor and
+ * not be limited to pipe behaviors, we have to provide an entire
+ * custom avio class..  
+ */
+	int* fdbuf = malloc(sizeof(int));
+	*fdbuf = dst;
+	ctx->pb = avio_alloc_context(av_malloc(4096), 4096, 1, fdbuf, fdr, fdw, fds); 
+	
 	res.storage.container.context = ctx;
 	res.setup.muxer = default_format_setup;
 
