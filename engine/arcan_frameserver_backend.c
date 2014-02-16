@@ -223,7 +223,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 
 /* force flush beforehand */
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
-			EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
+			src->queue_mask, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 		return false;
 	}
@@ -371,7 +371,7 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 
 	case ffunc_render:
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, 
-			EVENT_EXTERNAL | EVENT_NET, 0.5, tgt->vid);
+			tgt->queue_mask, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is 
  * detected, just ignore this frame */
 		srcw = shmpage->w;
@@ -808,7 +808,7 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
  * internal event queue be filled to half in order to not 
  * have a crazy frameserver starve the main process */
 	arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
-		EVENT_EXTERNAL | EVENT_NET, 0.5, src->vid);
+		src->queue_mask, 0.5, src->vid);
 
 /* may happen multiple- times, reasonably costly, might
  * want rate-limit this */
@@ -1088,6 +1088,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->kind  = ARCAN_FRAMESERVER_INPUT;
 			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) 
 											arcan_frameserver_audioframe, ctx, &errc);
+			ctx->queue_mask = EVENT_EXTERNAL;
 /* nopts / autoplay is preset from the calling context */
 		}
 /* similar to movie but no raw framequeues or feeds */
@@ -1100,6 +1101,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
 			ctx->audb     = malloc( ctx->sz_audb);
+			ctx->queue_mask = EVENT_EXTERNAL;
 		} 
 /* "libretro" (or rather, interactive mode) treats a single pair of 
  * videoframe+audiobuffer each transfer, minimising latency is key. 
@@ -1114,6 +1116,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
 			ctx->audb     = malloc( ctx->sz_audb );
+			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 
 /* network client needs less in terms of buffering etc. but instead a 
@@ -1123,12 +1126,14 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->use_pbo = false;
 			ctx->nopts   = false;
 			ctx->autoplay= true;
+			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETSRV;
 			ctx->use_pbo = false;
 			ctx->nopts   = false;
 			ctx->autoplay= true;
+			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 
 /* record instead operates by maintaining up-to-date local buffers, 
@@ -1141,6 +1146,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * safely accommodate them all */
 			ctx->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
 			ctx->audb = malloc( ctx->sz_audb );
+			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 	}
 /* hijack works as a 'process parasite' inside the rendering pipeline of 
@@ -1151,6 +1157,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->kind = ARCAN_HIJACKLIB;
 		ctx->autoplay = true;
 		ctx->nopts = true;
+		ctx->queue_mask = EVENT_EXTERNAL;
 
 /* although audio playback tend to be kept in the child process, the
  * sampledata may still be needed for recording/monitoring */ 

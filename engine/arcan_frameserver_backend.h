@@ -125,7 +125,8 @@ typedef struct arcan_frameserver {
 	arcan_frameserver_meta desc;
 	frame_queue vfq, afq;
 	struct arcan_evctx inqueue, outqueue;
-	
+	int queue_mask;
+
 /* original resource, needed for reloading */
 	char* source;
 	
