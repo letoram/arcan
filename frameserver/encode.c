@@ -351,12 +351,12 @@ static int encode_video(bool flush)
 
 	if (got_outp){
 		if (pkt.pts != AV_NOPTS_VALUE)
-			pkt.pts = av_rescale_q(pkt.pts, ctx->time_base, 
-				recctx.vstream->time_base);
+			pkt.pts = av_rescale_q_rnd(pkt.pts, ctx->time_base, 
+				recctx.vstream->time_base, AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
 
 		if (pkt.dts != AV_NOPTS_VALUE)
-			pkt.dts = av_rescale_q(pkt.dts, ctx->time_base, 
-				recctx.vstream->time_base);
+			pkt.dts = av_rescale_q_rnd(pkt.dts, ctx->time_base, 
+				recctx.vstream->time_base, AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX);
 
 		if (ctx->coded_frame->key_frame)
 			pkt.flags |= AV_PKT_FLAG_KEY;
@@ -372,6 +372,8 @@ static int encode_video(bool flush)
 			pkt.dts = pkt.pts;
 		}
 
+		pkt.duration = av_rescale_q(pkt.duration, 
+			ctx->time_base, recctx.vstream->time_base);
 		pkt.stream_index = recctx.vstream->index;
 
 		if (av_interleaved_write_frame(recctx.fcontext, &pkt) != 0 && !flush){
@@ -380,6 +382,7 @@ static int encode_video(bool flush)
 		}
 	}
 
+	av_free_packet(&pkt);
 	return fc;
 }
 
@@ -397,36 +400,37 @@ void arcan_frameserver_stepframe()
 			first_audio = true;
 			recctx.starttime = arcan_timemillis();
 		}
-		else
 			goto end;
 	}
 
-/* encode_audio / video will return false if there's not enough data
- * to continue encoding, otherwise repeat / retry to ensure decent 
- * interleaving */
-restep:
 /* interleave audio / video */
-	apts = recctx.astream ? ( (double) recctx.astream->pts.val * 
-		recctx.astream->time_base.num / recctx.astream->time_base.den ) : 0;
-	vpts = recctx.vstream ? ( (double) recctx.vstream->pts.val *
-		recctx.vstream->time_base.num / recctx.vstream->time_base.den ) : 0;
+	if (recctx.astream && recctx.vstream){
+		while(1){
+			apts = recctx.astream->pts.val * av_q2d(recctx.astream->time_base);
+			vpts = recctx.vstream->pts.val * av_q2d(recctx.vstream->time_base);	
 
-	if (recctx.astream && (!recctx.vstream || apts < vpts)){
-		if ( encode_audio(false) )
-			goto restep;
+			if (apts < vpts){
+				if (!encode_audio(false))
+					break;
+			} 
+			else {
+				if (encode_video(false) == 0)
+					break;
+			}
+		}
 	}
-	else {
-		if (recctx.starttime == 0)
-			recctx.starttime = arcan_timemillis();
-		if ( encode_video(false) > 0)
-			goto restep;
-	}
+/* audio or video only */
+	else if (recctx.astream)
+		while (encode_audio(false));
+	else
+		while (encode_video(false) > 0);
 
-end:
 /* acknowledge that a frame has been consumed, 
  * then return to polling events */
+end:
 	if (!recctx.extsynch)
 		arcan_sem_post(recctx.shmcont.vsem);
+	LOG("pass finished\n");
 }
 
 static void encoder_atexit()
@@ -700,6 +704,7 @@ int arcan_frameserver_encode_intrun(const char* resstr,
 	memset(fakepage, '\0', sizeof(struct arcan_shmif_page));
 	*aud_sz = &fakepage->abufused;
 
+	recctx.starttime = arcan_timemillis();
 	recctx.extsynch = true;
 	return 1;
 }
@@ -712,6 +717,8 @@ void arcan_frameserver_encode_run(const char* resource,
 	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true);
 	arcan_shmif_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
+
+	bool firstframe = false;
 
 	recctx.lastfd = -1;
 	atexit(encoder_atexit);
@@ -762,7 +769,12 @@ void arcan_frameserver_encode_run(const char* resource,
 					(ARCAN_SHMPAGE_SAMPLERATE / 1000.0) * ev.data.target.ioevs[0].iv;
 			break;
 
-			case TARGET_COMMAND_STEPFRAME: 
+			case TARGET_COMMAND_STEPFRAME:
+				if (!firstframe){
+					firstframe = true;
+					recctx.starttime = arcan_timemillis();	
+				}
+
 				arcan_frameserver_stepframe(); 
 			break;
 
