@@ -253,6 +253,50 @@ static void toggle_logdev(const char* prefix)
 	}
 }
 
+/*
+ * Splitmode warrant some explaining,
+ * in the mode we use the frameserver binary as a chainloader;
+ * we select a different binary (our own name + _mode and
+ * just pass the environment onwards. We also get the benefit 
+ * of testing the main process resolve against double forking.
+ *
+ * This is done to limit the effect of some libraries having unreasonable
+ * (possible even non-ASLRable) requirements, doing multi-threading,
+ * installing signal handlers and what not in .ctor/.init
+ * and we like to limit that contamination (the herpes stops here...)
+ *
+ * This is mostly implemented in the build system;
+ * a main arcan_frameserver binary is produced with ARCAN_FRAMESERVER_SPLITMODE
+ * defined, and n' different others with the _mode suffix attached and 
+ * the unused subsystems won't be #defined in.
+ */
+#ifdef ARCAN_FRAMESERVER_SPLITMODE
+int main(int argc, char** argv)
+{
+	if (argc != 4){
+		printf("arcan_frameserver - Invalid arguments (shouldn't be "
+			"launched outside of ARCAN).\n");
+		return 1;
+	}	
+
+	char* fsrvmode = argv[3];
+	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
+		fsrvmode = "net";
+	}
+
+	char* binname = argv[0];
+	char* resources = argv[1];
+	char* keyfile = argv[2];
+
+	size_t newbin = strlen(argv[0]) + strlen(fsrvmode) + 2;
+ 	char* newarg = malloc(newbin);
+	snprintf(newarg, newbin, "%s_%s", argv[0], fsrvmode);
+
+	return execv(newarg, argv + 1);
+}
+
+#else
+
 /* args accepted;
  * fname
  * keyfile
@@ -337,4 +381,4 @@ static void toggle_logdev(const char* prefix)
 	LOG("frameserver launch failed, unsupported mode (%s)\n", fsrvmode);
 	return 0;
 }
-
+#endif
