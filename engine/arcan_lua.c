@@ -3192,7 +3192,7 @@ static int rawsurface(lua_State* ctx)
 
 	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
 
-	lua_checktype(ctx, 4, LUA_TTABLE);
+	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int nsamples = lua_rawlen(ctx, 4);
 
 	if (nsamples != desw * desh * bpp)
@@ -3946,6 +3946,7 @@ static int targetsynchronous(lua_State* ctx)
 
 	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
 	fsrv->desc.explicit_xfer = true;
+	fsrv->nopts = true;
 
 	return 0;	
 }
