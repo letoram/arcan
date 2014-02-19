@@ -151,7 +151,7 @@ typedef struct arcan_frameserver {
 	int64_t lastpts;
 	int64_t starttime;
 	int64_t launchedtime;
-	bool loop, autoplay, nopts;
+	bool loop, autoplay, nopts, ptsdisable;
 
 	enum arcan_frameserver_kinds kind;
 	
