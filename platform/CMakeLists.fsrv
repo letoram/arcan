@@ -1,0 +1,92 @@
+#
+# Builds on FSRV_[MODE]_SOURCES, FSRV_[MODE]_LIBRARIES,
+# FSRV_PLATFORM_SOURCES 
+#
+#
+
+if (SPLIT_FRAMESERVER)
+message("---- Building frameserver in SPLIT mode ----")
+
+	if (FSRV_DECODE_SOURCES)
+		add_executable(arcan_frameserver_movie
+			${FSRV_SOURCES}	
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_DECODE_SOURCES}
+		)
+		set_property(TARGET arcan_frameserver_movie APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE)
+		target_link_libraries(arcan_frameserver_movie ${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_DECODE_LIBRARIES})
+	endif()
+
+	if (FSRV_ENCODE_SOURCES)
+		add_executable(arcan_frameserver_record
+			${FSRV_SOURCES}
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_ENCODE_SOURCES}
+		)
+		set_property(TARGET arcan_frameserver_record APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_ENCODE)	
+		target_link_libraries(arcan_frameserver_record ${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_ENCODE_LIBRARIES})
+	endif()
+
+	if (FSRV_NET_SOURCES)
+		add_executable(arcan_frameserver_net
+			${FSRV_SOURCES}
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_NET_SOURCES}
+		)
+		set_property(TARGET arcan_frameserver_net APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_NET)
+		target_link_libraries(arcan_frameserver_net ${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_NET_LIBRARIES})
+	endif()
+
+	if (FSRV_LIBRETRO_SOURCES)
+		add_executable(arcan_frameserver_libretro
+			${FSRV_SOURCES}
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_LIBRETRO_SOURCES}
+		)
+		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
+						COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO main=SDL_main)
+		target_link_libraries(arcan_frameserver_libretro ${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_LIBRETRO_LIBRARIES})
+	endif()
+
+	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
+
+else(SPLIT_FRAMESERVER)
+message("---- Building Frameserver in JOINED mode ----")
+	set(definitions)
+
+	if (FSRV_DECODE_SOURCES)
+		list(APPEND FSRV_SOURCES	
+			${FSRV_DECODE_SOURCES}
+			${FSRV_ENCODE_SOURCES})
+		list(APPEND FSRV_LIBRARIES
+			${FSRV_DECODE_LIBRARIES})
+		list(APPEND definitions ENABLE_FSRV_DECODE ENABLE_FSRV_ENCODE)
+	endif()
+
+	if (FSRV_NET_SOURCES)
+		list(APPEND FSRV_SOURCES
+			${FSRV_NET_SOURCES})
+		list(APPEND FSRV_LIBRARIES
+			${FSRV_NET_LIBRARIES})
+		list(APPEND definitions EANBLE_FSRV_NET) 
+	endif()
+
+	if (FSRV_LIBRETRO_SOURCES)
+		list(APPEND FSRV_SOURCES
+			${FSRV_LIBRETRO_SOURCES})
+		list(APPEND FSRV_LIBRARIES
+			${FSRV_LIBRETRO_LIBRARIES})
+		list(APPEND definitions ENABLE_FSRV_LIBRETRO)
+	endif()
+	
+	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
+endif(SPLIT_FRAMESERVER)
+
+
