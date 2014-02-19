@@ -62,6 +62,17 @@ local function playlistwnd(wnd)
 	wnd.playlistwnd = nwin;
 	nwin.name = "Playlist";
 
+	local bar = nwin:add_bar("tt", wnd.dir.tt.activeimg, wnd.dir.tt.activeimg,
+		wnd.dir.t.rsize, wnd.dir.t.bsize);
+
+	local cfg = awbwman_cfg();
+
+	bar.hoverlut[
+	(bar:add_icon("shuffle", "l", cfg.bordericns["list"], 
+		function() 
+			print("shuffle"); 
+		end)).vid] = MESSAGE["HOVER_PLAYLIST"];
+
 	nwin:add_handler("on_destroy", function(self)
 		wnd.playlistwnd = nil;
 		warning("playlist destroyed");
@@ -112,15 +123,13 @@ local function playlistwnd(wnd)
 			return;
 		end
 
+		print("playlist ind:", nwin.line_heights[ind]);
 		blend_image(sel, 0.4);
 		move_image(sel, 0, nwin.line_heights[ind]);
 		resize_image(sel, nwin.canvasw, nwin.lineh + nwin.linespace);
 	end
 
 	nwin.on_resize = nwin.update_cursor;
-
-	local bar = nwin:add_bar("tt", wnd.dir.tt.activeimg, wnd.dir.tt.activeimg,
-		wnd.dir.t.rsize, wnd.dir.t.bsize);
 
 	wnd:add_cascade(nwin);
 end
