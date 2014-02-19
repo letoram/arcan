@@ -24,8 +24,8 @@ include(ExternalProject)
 set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(MAJOR_VERSION 0 )
-set(MINOR_VERSION 3 )
-set(PATCH_LEVEL 2 )
+set(MINOR_VERSION 4 )
+set(PATCH_LEVEL 0 )
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_LEVEL})
 
 set(SHARED_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ WORLD_READ)
@@ -33,7 +33,6 @@ set(SHARED_PERMISSIONS_DIR OWNER_WRITE OWNER_READ GROUP_WRITE
 		GROUP_READ WORLD_EXECUTE WORLD_READ)
 
 set( MAIN_LIBRARIES )
-set( FSRV_BUILD_FLAGS "-Wno-deprecated-declarations")
 
 #
 # for linux/BSD, we can build a 32-bit version of the hi-jack lib as well,
@@ -55,6 +54,7 @@ option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserv
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
+option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" OFF)
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 
 #
@@ -170,8 +170,11 @@ endif(NOT SQLITE_AMALGAMATE)
 
 FIND_PACKAGE ( GLEW REQUIRED )
 
-FIND_PACKAGE ( APR ) # Adds support for frameserver_net
-FIND_PACKAGE ( FFMPEG ) # Adds support for frameserver_encode, frameserver_decode
+# Adds support for frameserver_net
+FIND_PACKAGE ( APR ) 
+
+# Adds support for frameserver_encode, frameserver_decode
+FIND_PACKAGE ( FFMPEG )
 
 LIST (APPEND
 	MAIN_LIBRARIES
@@ -187,13 +190,6 @@ LIST (APPEND
 	${SQLITE3_LIBRARIES}
 	${GLEW_LIBRARIES}
 	${PNG_LIBRARIES}
-)
-
-set (
-FSRV_LIBRARIES
-	pthread
-	${BZIP2_LIBRARIES}
-	${ZLIB_LIBRARY}
 )
 
 set (
@@ -267,20 +263,17 @@ set (
  shmif/arcan_shmif.h
 )
 
+# in split-mode, these will bundle with the platform
+# frameserver.c and then each subgroup by its own into
+# a separate binary, in (default) join mode, the final
+# FSRV_SOURCES will be composed of the subgroups
 set (
  FSRV_SOURCES
- frameserver/graphing/font_8x8.h
- frameserver/graphing/net_graph.h
- frameserver/graphing/net_graph.c
- frameserver/resampler/resample.c
- frameserver/resampler/speex_resampler.h
  shmif/arcan_shmif_interop.h
  shmif/arcan_shmif_interop.c
  shmif/arcan_shmif_control.c
  shmif/arcan_shmif_event.h
  shmif/arcan_shmif.h
- external/fft/kiss_fft.c
- external/fft/kiss_fftr.c
 )
 
 set_property(SOURCE frameserver/graphing/net_graph.c 
@@ -311,17 +304,21 @@ endif (${HAVE_SIMD})
 # Enable / Disable individual frameserver features
 if (${ENABLE_LIBRETRO})
 	message("--> Including libretro support.")
-	list(APPEND FSRV_SOURCES
+	set(FSRV_LIBRETRO_SOURCES
 	 frameserver/libretro.h
 	 frameserver/libretro.c
 	 frameserver/stateman.h
 	 frameserver/stateman.c
 	 frameserver/ievsched.c
 	 frameserver/ievsched.h
+	 frameserver/resampler/resample.c
+	 frameserver/resampler/speex_resampler.h
 	 frameserver/ntsc/snes_ntsc.h
 	 frameserver/ntsc/snes_ntsc.c
- 	)
-	add_definitions(-DENABLE_FSRV_LIBRETRO)
+	 frameserver/graphing/net_graph.c
+	 frameserver/graphing/net_graph.h
+	 frameserver/graphing/font_8x8.h
+	)
 
 	if (${ENABLE_LIBRETRO3D})
 		message("  |-> Enabling experimental 3D support.")
@@ -330,36 +327,52 @@ if (${ENABLE_LIBRETRO})
 				FRAMESERVER_LIBRETRO_3D
 		)	
 	endif(${ENABLE_LIBRETRO3D})
-
 endif(${ENABLE_LIBRETRO})
 
 if (${APR_FOUND} AND ${ENABLE_NET})
 	message("--> Including networking support.") 
-	list(APPEND FSRV_LIBRARIES ${APR_LIBRARIES} )
-	list(APPEND FSRV_SOURCES
-   frameserver/net.h
-	 frameserver/net.c
+	list(APPEND FSRV_NET_LIBRARIES ${APR_LIBRARIES} )
+	set(FSRV_NET_SOURCES
+		frameserver/graphing/net_graph.c
+		frameserver/graphing/net_graph.h
+		frameserver/graphing/font_8x8.h
+		frameserver/net.h
+		frameserver/net.c
 	)
-	add_definitions(-DENABLE_FSRV_NET)
 else (${APR_FOUND} AND ${ENABLE_NET})
 	message("--> Disabling networking support.")
 endif (${APR_FOUND} AND ${ENABLE_NET})
 
-add_definitions(-DENABLE_FSRV_AVFEED)
-list(APPEND FSRV_SOURCES
+list(APPEND FSRV_AVFEED_SOURCES
     frameserver/avfeed.c
 )
 
 if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
-	message("--> Enabling video encoding/decoding support.") 
-	list(APPEND FSRV_LIBRARIES ${FFMPEG_LIBRARIES})
-	list(APPEND FSRV_SOURCES 
+	message("--> Including video encoding/decoding support.") 
+	set(FSRV_DECODE_LIBRARIES 
+		${FFMPEG_LIBRARIES}
+		pthread
+		${BZIP2_LIBRARIES}
+		${ZLIB_LIBRARY}
+	)
+
+	set(FSRV_ENCODE_LIBRARIES 
+		${FFMPEG_LIBRARIES}
+		pthread
+		${BZIP2_LIBRARIES}
+		${ZLIB_LIBRARY}
+	)
+	set(FSRV_DECODE_SOURCES 
 		frameserver/decode.c
+		external/fft/kiss_fft.c
+		external/fft/kiss_fftr.c
+	)
+	set(FSRV_ENCODE_SOURCES
 		frameserver/encode.c
 		frameserver/encode_presets.c
 		frameserver/encode_presets.h
 	)
-	add_definitions(-DENABLE_FSRV_ENCODE -DENABLE_FSRV_DECODE)
+
 else (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 	message("--> Disabling video de-/encoding.")
 endif(${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
@@ -395,8 +408,6 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 endif()
 
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
-set_target_properties( arcan_frameserver PROPERTIES COMPILE_FLAGS "${FSRV_BUILD_FLAGS}" )
-
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
 install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})

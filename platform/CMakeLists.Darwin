@@ -35,42 +35,43 @@ set_property(SOURCE ${PLATFORM_PATH}/map_resource.c
 set_property(SOURCE ${CMAKE_SOURCE_DIR}/engine/arcan_main.c
 				PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
 
+find_library(IOKIT NAMES IOKit)
+find_library(COREFOUNDATION NAMES CoreFoundation)
+
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video_mini.c)
-	list(APPEND FSRV_PLATFORM_SOURCES ${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
-	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY} ${GLEW_LIBRARIES} ${OPENGL_gl_LIBRARY})
-	set_property(SOURCE ${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
-		PROPERTY COMPILE_FLAGS -Dmain=SDL_main)
+	list(APPEND FSRV_LIBRETRO_SOURCES 
+		${PLATFORM_PATH}/../sdl/video_mini.c
+		${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m)
+	list(APPEND FSRV_LIBRETRO_LIBRARIES 
+		${SDL_LIBRARY} 
+		${GLEW_LIBRARIES} 
+		${OPENGL_gl_LIBRARY}
+	)
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.fsrv)
+
+if (SPLIT_FRAMESERVER)
+	set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
+		COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO main=SDL_main)
+else()
+	set_property(TARGET arcan_frameserver APPEND PROPERTY COMPILE_DEFINITIONS
+		${definitions} main=SDL_main)
+endif()
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
 	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 
 add_definitions(-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D__APPLE__)
 
-find_library(IOKIT NAMES IOKit)
-find_library(COREFOUNDATION NAMES CoreFoundation)
 LIST(APPEND MAIN_LIBRARIES ${IOKIT} ${COREFOUNDATION})
-LIST(APPEND FSRV_LIBRARIES ${COREFOUNDATION})
-
+LIST(APPEND FSRV_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND SOURCES
-					${CMAKE_SOURCE_DIR}/engine/arcan_target_launcher.c)
-
-#add_library( arcan_hijack SHARED 
-#	arcan_target_osx.c 
-#	arcan_target.c
-#	arcan_event.c 
-#	arcan_frameserver_shmpage.c 
-#	frameserver/ntsc/snes_ntsc.c
-#	frameserver/resampler/resample.c
-#)
-
-#target_link_libraries( arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY} )
+	${CMAKE_SOURCE_DIR}/engine/arcan_target_launcher.c)
 
 add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES})
-add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.
