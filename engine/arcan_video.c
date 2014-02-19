@@ -112,6 +112,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr, 
 	float* imatr, surface_properties* prop, arcan_vobject* src);
+static void poll_readback(struct rendertarget* tgt);
 
 static inline void trace(const char* msg, ...)
 {
@@ -3720,6 +3721,9 @@ static void poll_list(arcan_vobject_litem* current)
 }
 
 void arcan_video_pollfeed(){
+ for (off_t ind = 0; ind < current_context->n_rtargets; ind++)
+		poll_readback(&current_context->rtargets[ind]);	
+
 	for (int i = 0; i < current_context->n_rtargets; i++)
 		poll_list(current_context->rtargets[i].first);
 
@@ -4020,30 +4024,39 @@ arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
 	return ARCAN_OK;
 }
 
-static void process_readback(struct rendertarget* tgt, float fract)
+/* check outstanding readbacks, map and feed onwards */
+static inline void poll_readback(struct rendertarget* tgt)
 {
+	if (!tgt->readreq || !arcan_video_display.pbo_support)
+		return;
+
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
+	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+
+	if (src){
+		arcan_vobject* vobj = tgt->color;
+		vobj->feed.ffunc(ffunc_rendertarget_readback, src, 
+			vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp,
+			vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
+			vobj->feed.state);
+	} 
+
+	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+	tgt->readreq = false;
+}
+
 /* should we issue a new readback? */
+static inline void process_readback(struct rendertarget* tgt, float fract)
+{
+	if (!arcan_video_display.pbo_support)
+		return;
+	
 	bool req_rb = false;
 
 /* check if there's data ready to be copied,
  * this doesn't work for STENCIL or DEPTH */
-	if (tgt->readreq && arcan_video_display.pbo_support){
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-		GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
-
-		if (src){
-			arcan_vobject* vobj = tgt->color;
-			vobj->feed.ffunc(ffunc_rendertarget_readback, src, 
-				vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp,
-				vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
-				vobj->feed.state);
-		}
-
-/* TODO: EGL/GLES target doesn't have PBOs until 3.0,
- * the fallback option should be glReadPixels */
-		glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
-		tgt->readreq = false;
-	}
 
 /* resolution is "by frame" */
 	if (tgt->readback < 0){
@@ -4065,31 +4078,36 @@ static void process_readback(struct rendertarget* tgt, float fract)
 	}
 
 /* check if we should request new data */
-	if (req_rb && arcan_video_display.pbo_support){
-		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-		glBindTexture(GL_TEXTURE_2D, tgt->color->vstore->vinf.text.glid);
-		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
-
-/* null as PBO is responsible */
-		tgt->readreq = true;
+	if (req_rb){
+		if (tgt->readreq){
+			arcan_warning("(video) inconsistency, readback request with "
+				"requests already pending.\n");
+		} else {
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
+			glBindTexture(GL_TEXTURE_2D, tgt->color->vstore->vinf.text.glid);
+			glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+			tgt->readreq = true;
+		}
 	}
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
 void arcan_video_refresh_GL(float lerp)
 {
 /* for performance reasons, we should try and re-use FBOs whenever possible */
 	if (arcan_video_display.fbo_support){
-		for (off_t ind = 0; ind < current_context->n_rtargets; ind++){
+		for (int ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
 			bool active_fbo = activate_fbo(tgt);
 			
 			if (active_fbo){
 				process_rendertarget(tgt, lerp);
-				process_readback(tgt, false);
 			}	
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		
+			for (int ind = 0; ind < current_context->n_rtargets; ind++)
+				process_readback(&current_context->rtargets[ind], lerp);
 		}
 	}
 
