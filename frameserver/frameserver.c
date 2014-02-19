@@ -279,20 +279,23 @@ int main(int argc, char** argv)
 		return 1;
 	}	
 
+	if (getenv("ARCAN_FRAMESERVER_DEBUGSTALL")){
+		LOG("frameserver_debugstall, waiting 10s to continue. pid: %d\n",
+			(int) getpid());
+		sleep(10);
+	}
+	
 	char* fsrvmode = argv[3];
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		fsrvmode = "net";
 	}
 
-	char* binname = argv[0];
-	char* resources = argv[1];
-	char* keyfile = argv[2];
-
 	size_t newbin = strlen(argv[0]) + strlen(fsrvmode) + 2;
  	char* newarg = malloc(newbin);
 	snprintf(newarg, newbin, "%s_%s", argv[0], fsrvmode);
 
-	return execv(newarg, argv + 1);
+	argv[0] = newarg;
+	return execv(newarg, argv);
 }
 
 #else

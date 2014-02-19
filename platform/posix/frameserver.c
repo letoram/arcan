@@ -305,11 +305,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 				strdup(setup.args.builtin.mode), 
 			NULL};
 	
-/* just to help keeping track when there's a lot of them */
-			char vla[ strlen(setup.args.builtin.mode) + 1];
-			snprintf( vla, sizeof(vla), "%s", setup.args.builtin.mode );
-			argv[0] = vla;
-
 			execv(arcan_binpath, argv);
 			arcan_fatal("FATAL, arcan_frameserver_spawn_server(), "
 				"couldn't spawn frameserver(%s) with %s:%s. Reason: %s\n", 
