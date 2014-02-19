@@ -73,6 +73,7 @@
 #include "arcan_led.h"
 #endif
 
+#define arcan_fatal(...) { last_function(ctx); arcan_fatal( __VA_ARGS__); } 
 /* this macro is placed in every arcan- specific function callable from the LUA
  * space. By default, it's empty, but can be used to map out stack contents 
  * (above will only be LUA context pointer that can be used to devise the
@@ -186,6 +187,17 @@ static struct {
 
 extern char* _n_strdup(const char* instr, const char* alt);
 
+static void last_function(lua_State* ctx)
+{
+	lua_Debug ar;
+
+	if (lua_getstack(ctx, 1, &ar)){
+		lua_getinfo(ctx, "Snl", &ar);
+		if (ar.currentline > 1) {
+			arcan_warning("%s:%d: ", ar.short_src, ar.currentline);
+		}
+	}
+}
 static void dump_call_trace(lua_State* ctx)
 {
 #if LUA_VERSION_NUM == 501
@@ -202,7 +214,7 @@ static void dump_call_trace(lua_State* ctx)
 				lua_pushinteger(ctx, 2);
 				lua_call(ctx, 2, 1);
 				const char* str = lua_tostring(ctx, -1);
-				arcan_warning("%s\n", str);
+				arcan_warning("\n%s\n", str);
 			}
 	}
 #endif
@@ -573,7 +585,7 @@ static int moveimage(lua_State* ctx)
 		}
 	}
 	else
-		arcan_fatal("moveimage(), invalid argument (1) "
+		arcan_fatal("move_image(), invalid argument (1) "
 			"expected VID or indexed table of VIDs\n");
 
 	return 0;
@@ -607,7 +619,7 @@ static int nudgeimage(lua_State* ctx)
 		}
 	}
 	else
-		arcan_fatal("nudgeimage(), invalid argument (1) "
+		arcan_fatal("nudge_image(), invalid argument (1) "
 			"expected VID or indexed table of VIDs\n");
 
 	return 0;
@@ -705,7 +717,7 @@ static int rotateimage(lua_State* ctx)
 			lua_pop(ctx, 1);
 		}
 	}
-	else arcan_fatal("rotateimage(), invalid argument (1) "
+	else arcan_fatal("rotate_image(), invalid argument (1) "
 		"expected VID or indexed table of VIDs\n");
 
 	return 0;
@@ -800,7 +812,7 @@ static int orderimage(lua_State* ctx)
 		}
 	}
 	else
-		arcan_fatal("orderimage(), invalid argument (1) "
+		arcan_fatal("order_image(), invalid argument (1) "
 			"expected VID or indexed table of VIDs\n");
 
 	return 0;
@@ -843,13 +855,13 @@ static int imageopacity(lua_State* ctx)
 	LUA_TRACE("blend_image");
 
 	float val = luaL_checknumber(ctx, 2);
-	massopacity(ctx, val, "imageopacity");
+	massopacity(ctx, val, "blend_image");
 	return 0;
 }
 
 static int showimage(lua_State* ctx)
 {
-	massopacity(ctx, 1.0, "showimage");
+	massopacity(ctx, 1.0, "show_image");
 	return 0;
 }
 
@@ -857,7 +869,7 @@ static int hideimage(lua_State* ctx)
 {
 	LUA_TRACE("hide_image");
 
-	massopacity(ctx, 0.0, "hideimage");
+	massopacity(ctx, 0.0, "hide_image");
 	return 0;
 }
 
@@ -4410,17 +4422,47 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	else if (cmd == ffunc_tick)
 		;
 	else if (cmd == ffunc_rendertarget_readback){
-		struct proctarget_src* src = state.ptr;
+/* 
+ * The buffer that comes from proctarget is special (gpu driver 
+ * maps it into our address space, gdb and friends won't understand 
+ * it and, in addition, there are usage constraints that we can't
+ * see here, so we maintain a shared scrapbuffer, preventing 
+ * script writes from breaking. 
+ */ 
+		static void* scrapbuf;
+		static size_t scrapbuf_sz;
 
-		lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
+		if (scrapbuf_sz < s_buf){
+			free(scrapbuf);
+			scrapbuf = malloc(s_buf);
+			if (scrapbuf)
+				scrapbuf_sz = s_buf;
+		} 
+		else
+			memcpy(scrapbuf, buf, scrapbuf_sz);
 
-		lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
-		lua_pushlstring(src->ctx, (const char*) buf, s_buf);
-	 	lua_pushnumber(src->ctx, width);
-		lua_pushnumber(src->ctx, height);
-		lua_pushnumber(src->ctx, bpp);	
-		wraperr(src->ctx, lua_pcall(src->ctx, 4, 0, 0), "proctarget_cb");
-		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+/*
+ * enable for getting dumps of what's sent to calc targets 
+		static int calc = 10;
+		static bool saved;
+		if (calc-- == 0 && !saved){
+			arcan_rgba32_pngfile(fopen("test.png", "w+"), 
+				scrapbuf, width, height, false);
+			saved = true;
+		}
+*/
+		if (scrapbuf){
+			struct proctarget_src* src = state.ptr;
+			lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
+
+			lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+			lua_pushlstring(src->ctx, (const char*) scrapbuf, scrapbuf_sz);
+		 	lua_pushnumber(src->ctx, width);
+			lua_pushnumber(src->ctx, height);
+			lua_pushnumber(src->ctx, bpp);	
+			wraperr(src->ctx, lua_pcall(src->ctx, 4, 0, 0), "proctarget_cb");
+			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+		}
 	}
 
 	return 0;	

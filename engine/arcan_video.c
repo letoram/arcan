@@ -4078,19 +4078,13 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 	}
 
 /* check if we should request new data */
-	if (req_rb){
-		if (tgt->readreq){
-			arcan_warning("(video) inconsistency, readback request with "
-				"requests already pending.\n");
-		} else {
-			glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-			glBindTexture(GL_TEXTURE_2D, tgt->color->vstore->vinf.text.glid);
-			glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
-			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-			tgt->readreq = true;
-		}
+	if (!req_rb){
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
+		glBindTexture(GL_TEXTURE_2D, tgt->color->vstore->vinf.text.glid);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		tgt->readreq = true;
 	}
-
 }
 
 void arcan_video_refresh_GL(float lerp)
