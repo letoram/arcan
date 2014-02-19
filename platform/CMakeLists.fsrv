@@ -4,6 +4,9 @@
 #
 #
 
+set(FSRV_TARGETS
+	arcan_frameserver)
+
 if (SPLIT_FRAMESERVER)
 message("---- Building frameserver in SPLIT mode ----")
 
@@ -17,6 +20,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE)
 		target_link_libraries(arcan_frameserver_movie ${FSRV_PLATFORM_LIBRARIES}
 			${FSRV_DECODE_LIBRARIES})
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_movie)
 	endif()
 
 	if (FSRV_ENCODE_SOURCES)
@@ -29,6 +33,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			COMPILE_DEFINITIONS ENABLE_FSRV_ENCODE)	
 		target_link_libraries(arcan_frameserver_record ${FSRV_PLATFORM_LIBRARIES}
 			${FSRV_ENCODE_LIBRARIES})
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_record)
 	endif()
 
 	if (FSRV_NET_SOURCES)
@@ -41,6 +46,7 @@ message("---- Building frameserver in SPLIT mode ----")
 			COMPILE_DEFINITIONS ENABLE_FSRV_NET)
 		target_link_libraries(arcan_frameserver_net ${FSRV_PLATFORM_LIBRARIES}
 			${FSRV_NET_LIBRARIES})
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_net)
 	endif()
 
 	if (FSRV_LIBRETRO_SOURCES)
@@ -49,16 +55,21 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_PLATFORM_SOURCES}
 			${FSRV_LIBRETRO_SOURCES}
 		)
+		message(${FSRV_SOURCES})
 		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
-						COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO main=SDL_main)
+						COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO) 
 		target_link_libraries(arcan_frameserver_libretro ${FSRV_PLATFORM_LIBRARIES}
 			${FSRV_LIBRETRO_LIBRARIES})
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_libretro)
 	endif()
 
 	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
+	target_link_libraries(arcan_frameserver ${FSRV_PLATFORM_LIBRARIES})
+	set_property(TARGET arcan_frameserver APPEND PROPERTY
+		COMPILE_DEFINITIONS ARCAN_FRAMESERVER_SPLITMODE)
 
 else(SPLIT_FRAMESERVER)
-message("---- Building Frameserver in JOINED mode ----")
+message("---- Building Frameserver in COMBINED mode ----")
 	set(definitions)
 
 	if (FSRV_DECODE_SOURCES)
@@ -87,6 +98,7 @@ message("---- Building Frameserver in JOINED mode ----")
 	endif()
 	
 	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
+	target_link_libraries(arcan_frameserver ${FSRV_PLATFORM_LIBRARIES})
 endif(SPLIT_FRAMESERVER)
 
 
