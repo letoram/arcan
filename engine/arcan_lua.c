@@ -3958,7 +3958,7 @@ static int targetsynchronous(lua_State* ctx)
 
 	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
 	fsrv->desc.explicit_xfer = true;
-	fsrv->nopts = true;
+	fsrv->ptsdisable = true;
 
 	return 0;	
 }

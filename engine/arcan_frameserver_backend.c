@@ -660,7 +660,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /* early out if the "synch- to PTS" feature has been disabled */
 		frame_cell* ccell = arcan_framequeue_front(&src->vfq);
 	
-		if (src->nopts)
+		if (src->nopts || src->ptsdisable)
 			return ccell ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
 
 		if (ccell){
