@@ -226,6 +226,8 @@ function trig_dragh(self, vid, dx, dy)
 		self.lb = self.lb > 255 and 255 or self.lb;
 		self.ub = self.ub < 0 and 0 or self.ub;
 		self.ub = self.ub > 255 and 255 or self.ub;
+		self.lb = self.lb > self.ub and (self.ub - 1) or self.lb;
+		self.ub = self.ub < self.lb and (self.lb + 1) or self.ub;
 
 		self:shupdate();
 		print(string.format("bounds (%d:%d)", self.lb, self.ub));
