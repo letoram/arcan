@@ -4,15 +4,18 @@
 
 trigger_y = 0;
 start_analyse = nil;
+def_thresh = 20;
+def_ub = 128;
+def_lb = 60;
+start_framenumber = 0;
+last_frame = 0;
+last_pts = 0;
+dryrun = true;
 
 --
 -- TODO:
---
--- a. option to click / manipulate the defined trigger regions;
--- set detector, filter function etc. to better tune outputs.
--- (use the mouse helper scripts)
---
--- b. convert the trails- part and add as a possible prefilter 
+-- a. convert the trails- part and add as a possible prefilter 
+-- b. add a text region that maps to OCRing
 --
 -- The default shader for passive monitoring regions 
 --
@@ -133,13 +136,13 @@ function tvist()
 	prefilter = "normal";
 
 	if (arguments[1] == nil or not resource(arguments[1])) then
-		shutdown("Usage: arcan tvist moviename [prefilt=fltname] " ..
+		shutdown("Usage: arcan tvist moviename OR :avfeed arg [prefilt=fltname] " ..
 			"[outcfg=fname] [run=fname]");
 		return;
 	end
 
 	moviename = arguments[1];
-	savecfg_name = nil;
+	savecfg_name = "default";
 	local cmdfile;
 
 	for i=2,#arguments do
@@ -157,33 +160,46 @@ function tvist()
 			savecfg_name = val;
 		elseif (cmd == "run") then
 			cmdfile = val;
-		elseif (cmd == "src") then
-			
+			dryrun = false;
 		end
 	end
 	
 	triggers = {};
 
-	movieref = load_movie(arguments[1], FRAMESERVER_LOOP, video_trigger);
+	if (arguments[1] == ":avfeed") then
+		movieref = launch_avfeed(arguments[2], video_trigger);
+	else
+		movieref = load_movie(arguments[1], FRAMESERVER_LOOP, video_trigger);
+	end
+
+	image_tracetag(movieref, "input_raw");
+	image_mask_set(movieref, MASK_UNPICKABLE);
+
 	target_verbose(movieref);
 -- setup mouse cursor and place it at the middle of the screen
 	local cursor = load_image("cursor.png");
 	show_image(cursor);
-	mx = VRESW * 0.5;
-	my = VRESH * 0.5;
 	mouse = null_surface(1,1);
+	image_tracetag(mouse, "mouse_anchor");
 	move_image(mouse, mx, my);
 	link_image(cursor, mouse);
 	show_image({mouse, cursor});
 	move_image(cursor, -15, -15);	
 	image_inherit_order(cursor, true);
 	order_image(mouse, 255);
+	mouse_setup(mouse, 255, 1, true);
+	image_mask_set(cursor, MASK_UNPICKABLE);
+	image_mask_set(mouse, MASK_UNPICKABLE);
 
 	if (cmdfile ~= nil) then
 		print(string.format("Using cfgfile=%s",cmdfile));
 		system_load(cmdfile)();
 		start_analyse = 1;
+	else
+		show_help();
 	end
+
+	hooktbl["TAB"]();
 end
 
 function video_trigger(source, status)
@@ -194,9 +210,6 @@ function video_trigger(source, status)
 	elseif (status.kind == "frame") then
 		last_frame = status.number;
 		last_pts = status.pts;
-		if (last_frame == 0 and start_analyse) then
-			activate_regions();
-		end
 
 	elseif (status.kind == "frameserver_loop") then
 		if (start_analyse) then
@@ -205,17 +218,67 @@ function video_trigger(source, status)
 	end
 end
 
+function trig_dragh(self, vid, dx, dy)
+	if (control_held) then
+		self.lb = self.lb + dx;
+		self.ub = self.ub + dy;
+		self.lb = self.lb < 0 and 0 or self.lb;
+		self.lb = self.lb > 255 and 255 or self.lb;
+		self.ub = self.ub < 0 and 0 or self.ub;
+		self.ub = self.ub > 255 and 255 or self.ub;
+
+		self:shupdate();
+		print(string.format("bounds (%d:%d)", self.lb, self.ub));
+
+	elseif (shift_held) then
+		self.thresh = (self.thresh + dx) % 255;
+		self.thresh = self.thresh < 0 and 0 or self.thresh;
+		self.thresh = self.thresh > 255 and 255 or self.thresh;
+
+		print("threshold:", self.thresh);
+	else
+		if (self.dmode == nil) then
+			local mx, my = mouse_xy();
+			local rprops = image_surface_resolve_properties(vid);
+			rprops.width = rprops.width * 0.5;
+			rprops.height= rprops.height * 0.5;
+
+			local cata  = math.abs(rprops.x + rprops.width - mx);
+			local catb  = math.abs(rprops.y + rprops.height - my);
+			local dist  = math.sqrt( cata * cata + catb * catb );
+			local hhyp  = math.sqrt( rprops.width * rprops.width +
+				rprops.height * rprops.height ) * 0.5;
+
+			if (dist < hhyp) then
+				self.dmode = "move";
+			else
+				self.dmode = "scale"; 
+			end
+		elseif (self.dmode == "move") then
+			nudge_image(self.vid, dx, dy);
+		elseif (self.dmode == "scale") then
+			local props = image_surface_properties(self.vid);
+			resize_image(self.vid, props.width + dx, props.height + dy);
+		end
+	end
+end
+
 function add_trigger_region(x1, y1, x2, y2, lb, ub, thresh, subtype)
 	local props = image_surface_initial_properties(movieref);
 	local newtrig = {};
 
-	newtrig.vid = instance_image(movieref);
 	newtrig.x1 = x1;
 	newtrig.x2 = x2;
 	newtrig.y1 = y1;
 	newtrig.y2 = y2;
 	newtrig.w  = x2 - x1;
 	newtrig.h  = y2 - y1;
+	newtrig.w  = newtrig.w < 1 and 1 or newtrig.w;
+	newtrig.h  = newtrig.h < 1 and 1 or newtrig.h;
+	newtrig.vid = null_surface(newtrig.w, newtrig.h);
+	image_sharestorage(movieref, newtrig.vid);
+	image_tracetag(newtrig.vid, "trigger_region_" .. tostring(#triggers));
+	
 	newtrig.ub = ub; 
 	newtrig.lb = lb;
 	newtrig.thresh = thresh;
@@ -239,11 +302,13 @@ function add_trigger_region(x1, y1, x2, y2, lb, ub, thresh, subtype)
 	local t1 = newy / props.height;
 	local s2 = (newx + neww) / props.width;
 	local t2 = (newy + newh) / props.height;
+	
+	newtrig.txcos = {s1, t1, s2, t1, s2, t2, s1, t2};
 
 	move_image(newtrig.vid, 0, trigger_y); 
 	resize_image(newtrig.vid, x2 - x1, y2 - y1);
 	show_image(newtrig.vid);
-	image_set_txcos(newtrig.vid, {s1, t1, s2, t1, s2, t2, s1, t2});
+	image_set_txcos(newtrig.vid, newtrig.txcos);
 	
 	newtrig.flt = build_shader(nil, passf, "pass_filter" .. tostring(#triggers));
 	image_shader(newtrig.vid, newtrig.flt);
@@ -256,10 +321,18 @@ function add_trigger_region(x1, y1, x2, y2, lb, ub, thresh, subtype)
 		newtrig.ub / 255.0, newtrig.lb / 255.0); 
 	end
 
+	newtrig.own = function(self, vid) return vid == self.vid; end
+	newtrig.drag = trig_dragh;
+	newtrig.drop = function() newtrig.dmode = nil; end
+	newtrig.name = "region_" .. tostring(newtrig.ind);
+
 	newtrig.shupdate();
 -- just add all trigger points in the first row
 	trigger_y = trigger_y + (y2 - y1);
 	table.insert(triggers, newtrig);
+
+	mouse_addlistener(newtrig, {"drag", "drop"});
+	activate_region(newtrig, true);
 end
 
 --
@@ -270,8 +343,11 @@ end
 function new_rect_pick(cbf, subtype, r, g, b)
 	mouse_recv = { 
 		step = function(self)
+			local mx, my = mouse_xy();
+
 			if (self.x1 ~= nil) then
-				cbf(self.x1, self.y1, mx, my, 20, 200, 128, subtype);
+				cbf(self.x1, self.y1, mx, my, 
+					def_thresh, def_ub, def_lb, subtype);
 				order_image(mouse, max_current_image_order() + 1);
 				self:destroy();
 			else
@@ -305,9 +381,16 @@ function new_rect_pick(cbf, subtype, r, g, b)
 	};
 end
 
-function avg_trigfun(source, indata, threshold, tag)
+function avg_trigfun(source, indata, trigtbl)
 	local sum = 0;
 	local pxc = 0;
+
+-- don't repeat calls on the same video frame
+	if (trigtbl.last_frame ~= nil and 
+		last_frame - start_framenumber == trigtbl.last_frame) then
+		return;
+	end
+	trigtbl.last_frame = last_frame - start_framenumber;
 
 --
 -- This is a painfully inefficient way of accessing,
@@ -329,17 +412,7 @@ function avg_trigfun(source, indata, threshold, tag)
 
 	local avg = sum / pxc;
 
---
--- The video playback callback sets the globals last_framenumber, last_pts
--- the 'g' activation sets the start_framenumber
---
-	if (avg > threshold) then
-		print( string.format("avg:%d:1:%d:%d", tag, last_pts,
-			last_frame - start_framenumber));
-	else
-		print( string.format("avg:%d:0:%d:%d", tag, last_pts,
-			last_frame - start_framenumber));
-	end
+	return (avg > trigtbl.thresh) and 1 or 0;
 end
 
 -- 
@@ -352,9 +425,15 @@ end
 -- bright point in the row, scan [n x m] downwards and check if 
 -- they exceed some value.
 --
-function avgrow_trigfun(source, indata, threshold, tag)
-	local props = image_surface_properties(source);
+function avgrow_trigfun(source, indata, trigtbl)
+-- don't repeat calls on the same video frame
+	if (trigtbl.last_frame ~= nil and 
+		last_frame - start_framenumber == trigtbl.last_frame) then
+		return;
+	end
+	trigtbl.last_frame = last_frame - start_framenumber;
 
+	local props = image_surface_properties(source);
 	local ofs = 1;
 
 	for row=1, props.height do
@@ -372,84 +451,95 @@ function avgrow_trigfun(source, indata, threshold, tag)
 
 		rsum = rsum / props.width;
 
-		if (rsum > threshold) then
-			print(string.format("avgrow:%d:%d:%d:%d", tag, row - 1,
-				last_pts, last_frame - start_framenumber));
-			return;
+		if (rsum > trigtbl.thresh) then
+			return (row - 1);
 		end
 	end
 
-	print(string.format("avgrow:%d:-1:%d:%d", tag, last_pts, 
-		last_frame - start_framenumber));
+	return -1;
 end
 
 function activate_region(v)
-	local newsrf = fill_surface(v.w, v.h, 0, 0, 0, v.w, v.h);
+	local calcdst = fill_surface(v.w, v.h, 0, 0, 0, v.w, v.h);
+	local nsrf = null_surface(v.w, v.h);
+	image_tracetag(calcdst, "calc_destination");
+	image_tracetag(nsrf, "calc_input");
+
+	image_sharestorage(movieref, nsrf);
+	image_shader(nsrf, v.flt);
+	show_image(nsrf);
+	image_set_txcos(nsrf, v.txcos);
+
+	if (dryrun) then
+		v.signalchld = color_surface(64, 64, 0, 0, 0);
+		link_image(v.signalchld, v.vid);
+		image_inherit_order(v.signalchld, true);
+		show_image(v.signalchld);
+		move_image(v.signalchld, -64, 0);
+	end
 
 --
 -- every tick (25Hz), read-back the contents of the region, run the avg_trigfun
 -- (change to something of your liking depending on method of analysis)
 -- it might be useful to configure this rate for higher-rate video sources
+-- as well as experiment with target_synchronous on the movieref and 
+-- possible recordtargets
 --
-	define_calctarget(newsrf, {v.vid}, 
-		RENDERTARGET_NODETACH, RENDERTARGET_NOSCALE, 1, function(datablock)
+	define_calctarget(calcdst, {nsrf}, 
+		RENDERTARGET_DETACH, RENDERTARGET_NOSCALE, -1, function(datablock)
 			if (v.subtype == "avg") then 
-				avg_trigfun(newsrf, datablock, v.thresh, tostring(v.ind)); 
+				local signal = avg_trigfun(calcdst, datablock, v);
+
+				if (signal ~= nil and dryrun) then
+					image_color(v.signalchld, 0, signal == 1 and 255 or 0, 0);
+				elseif (signal ~= nil) then
+					print(string.format("avg(%d):%d:%d:%d", 
+						v.ind, last_frame, last_pts, signal));
+				end
+
 			elseif (v.subtype == "avg_row") then
-				avgrow_trigfun(newsrf, datablock, v.thresh, tostring(v.ind));
+				local row = avgrow_trigfun(calcdst, datablock, v);
+
+				if (row ~= nil and dryrun) then
+					if (row == -1) then
+						image_color(v.signalchld, 255, 0, 0);
+					else
+						image_color(v.signalchld, 0, math.floor((row / v.h) * 255), 0);
+					end
+				elseif (row ~= nil) then
+					print(string.format("avg_row(%d):%d:%d:%d/%d", 
+						v.ind, last_frame, last_pts, row, v.h));
+				end
 			end
 	end);
-
-	show_image(newsrf);
-
--- properties are not bound to rendertargets, so either instance
--- the source material and attach to the calctarget, or stack them.
-	move_image(v.vid, 0, 0);
 end
 
 -- setup a calc-target for each trigger region
-function activate_regions()
+function save_configuration()
 	start_framenumber = last_frame;
 
 	if (savecfg_name ~= nil) then
 		zap_resource(savecfg_name);
+		print("saving configuration to: ", savecfg_name);
 		open_rawresource(savecfg_name);
 		write_rawresource(
 			string.format("-- arcan arguments: -w %d -h %d\n", VRESW, VRESH));
-	end
 
-	for i, v in ipairs(triggers) do
-		if (savecfg_name ~= nil) then
-			write_rawresource(
-				string.format("add_trigger_region(%d, %d, %d, %d, %d, " .. 
-				"%d, %d, [[%s]])\n", v.x1, v.y1, v.x2, v.y2, v.lb, v.ub, 
-				v.thresh, v.subtype)
-			);
+		for i, v in ipairs(triggers) do
+				write_rawresource(
+					string.format("add_trigger_region(%d, %d, %d, %d, %d, " .. 
+					"%d, %d, [[%s]]);\n", v.x1, v.y1, v.x2, v.y2, v.lb, v.ub, 
+					v.thresh, v.subtype
+				));
 		end
-		activate_region(v);
-	end
 
-	if (savecfg_name ~= nil) then
 		close_rawresource();
-	end
-
--- disable all UI elements, setup actual readbacks and filters then go
-	tvist_input = function(iotbl)
-		if (iotbl.kind == "digital" and iotbl.active) then
-			if (keysym[iotbl.keysym] == "ESCAPE") then
-				shutdown();
-
-			elseif (keysym[iotbl.keysym] == "LCTRL") then
-				toggle_mouse_grab();
-			end
-		end
 	end
 end
 
 hooktbl = {};
 hooktbl["g"] = function()
-	start_analyse = 1;
-	activate_regions();
+	save_configuration();
 end
 
 hooktbl["p"] = function()
@@ -460,6 +550,35 @@ hooktbl["p"] = function()
 	new_rect_pick(add_trigger_region, "avg", 0, 255, 0); 
 end
 
+function show_help()
+	if (valid_vid(helpvis)) then
+		delete_image(helpvis);
+		helpvis = nil;
+		return;
+	end
+
+	helpvis = render_text(string.format([[\ffonts/default.ttf,18
+		\bLeft/Right\!b \tSeek +- 5 seconds\n\r
+		\bUp/Down\!b    \tSeek +- 10 seconds\n\r
+		\bp\!b          \tDefine new binary trigger\n\r
+		\by\!b          \tDefine new line trigger\n\r
+		\bg\!b          \tSave Config to (%s)\n\r
+		\bTab\!b        \tToggle input grab on/off\n\r
+		\bESCAPE\!b     \tShutdown\n\r
+		\bF1\!b         \tShow/Hide Help\n\r\n\r\n\r
+		(on trigger image)\n\r
+		\bcenter drag\!b\t dX / dY move image\n\r
+		\bcorner drag\!b\t resize image\n\r
+		\blctrl + drag\!b\t dX change gate func. lower\n\r
+		\blctrl + drag\!b\t dY change gate func. upper\n\r
+		\blshift + drag\!b\t dX change trigger threshold\n\r
+	]], savecfg_name));
+
+	move_image(helpvis, VRESW - image_surface_properties(helpvis).width - 10, 10);
+	show_image(helpvis);
+	order_image(helpvis, 200);
+end
+
 hooktbl["y"] = function()
 	if (mouse_recv) then
 		mouse_recv:destroy();
@@ -468,8 +587,38 @@ hooktbl["y"] = function()
 	new_rect_pick(add_trigger_region, "avg_row", 255, 0, 0);
 end
 
-hooktbl["LCTRL"] = function()
+hooktbl["LEFT"] = function()
+	target_seek(movieref, -5, 0);
+end
+
+hooktbl["RIGHT"] = function()
+	target_seek(movieref,  5, 0);
+end
+
+hooktbl["UP"] = function()
+	target_seek(movieref, 30, 0);
+end
+
+hooktbl["DOWN"] = function()
+	target_seek(movieref, -30, 0);
+end
+
+hooktbl["TAB"] = function()
 	toggle_mouse_grab();
+end
+
+hooktbl[" "] = function()
+	if (paused) then
+		paused = nil;
+		resume_movie(movieref);
+	else
+		pause_movie(movieref);
+		paused = true;
+	end
+end
+
+hooktbl["F1"] = function()
+	show_help();
 end
 
 hooktbl["ESCAPE"] = function() 
@@ -480,38 +629,45 @@ hooktbl["ESCAPE"] = function()
 	end
 end
 
+function tvist_clock_pulse()
+	mouse_tick(1);
+end
+
+minputtbl = {false, false, false, false, false};
 function tvist_input(iotbl)
-	if (iotbl.kind == "digital" and iotbl.active) then
-		if (iotbl.translated) then	
-			local cfun = hooktbl[ keysym[iotbl.keysym] ];
+	if (iotbl.kind == "digital") then
+		local sym = keysym[iotbl.keysym];
+		if (sym == "LCTRL") then
+			control_held = iotbl.active;
+
+		elseif (sym == "LSHIFT") then
+			shift_held = iotbl.active;
+		end
+
+		if (iotbl.translated and iotbl.active) then	
+		local cfun = hooktbl[ sym ]; 
 			if (cfun ~= nil) then
 				cfun();
 			end
 
 		elseif (iotbl.source == "mouse") then
-			if (mouse_recv) then
+			if (mouse_recv and iotbl.active) then
 				mouse_recv:step();
+			else
+				minputtbl[iotbl.subid] = iotbl.active;
+				mouse_input(0, 0, minputtbl);
 			end
 		end
 
 -- update cursor and clamp inside window constraints (+ possible
 -- constraints from the current mouse target)
 	elseif (iotbl.kind == "analog" and iotbl.source == "mouse") then
-		if (iotbl.subid == 0) then
-			mx = mx + iotbl.samples[2];
-		else
-			my = my + iotbl.samples[2];
-		end
-		
-		if (mouse_recv) then
-			mx, my = mouse_recv:move(mx, my);
-		end
+		mouse_input(iotbl.subid == 0 and iotbl.samples[2] or 0,
+			iotbl.subid == 1 and iotbl.samples[2] or 0, minputtbl);
 
-		if (mx < 0) then mx = 0; end
-		if (my < 0) then my = 0; end
-		if (mx > VRESW) then mx = VRESW; end
-		if (my > VRESH) then my = VRESH; end
-		
-		move_image(mouse, mx, my);
+		if (mouse_recv) then
+			mx, my = mouse_xy();
+			mouse_recv:move(mx, my);
+		end
 	end
 end
