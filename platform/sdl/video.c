@@ -177,7 +177,8 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	arcan_video_display.width  = width;
 	arcan_video_display.height = height;
 	arcan_video_display.bpp    = bpp;
-
+	glViewport(0, 0, width, height);
+		
 	return true;
 }
 
