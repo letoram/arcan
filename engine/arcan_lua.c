@@ -4437,9 +4437,22 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			scrapbuf = malloc(s_buf);
 			if (scrapbuf)
 				scrapbuf_sz = s_buf;
+			else
+				return 0;
 		} 
-		else
-			memcpy(scrapbuf, buf, scrapbuf_sz);
+
+/* 
+ * terribly slow, but compiler SSE3 intrisics segfault
+ * terribly with some GPU drivers even though the buffer is mapped  
+ * this might be workable by making sure we get page-aligned 
+ * source/dst 
+ */	
+		volatile uint32_t* inbuf = (uint32_t*) buf;
+		uint32_t* outbuf = (uint32_t*) scrapbuf;
+
+		int i;
+		for (i = 0; i < width * height; i++)
+			outbuf[i] = inbuf[i];
 
 /*
  * enable for getting dumps of what's sent to calc targets 

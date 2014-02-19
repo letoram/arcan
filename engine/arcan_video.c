@@ -3982,7 +3982,7 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
  * in case of rendertargets, and for streaming readbacks of those we already
  * have readback toggles etc. Thus this function is only for "one-off" reads
  * where a blocking behavior may be accepted, especially outside a main 
- * renderloop as this will force a sync for the pipeline. 
+ * renderloop as this will possibly stall the pipeline 
  */
 	
 	arcan_vobject* vobj = arcan_video_getobject(sid);
@@ -4031,8 +4031,15 @@ static inline void poll_readback(struct rendertarget* tgt)
 		return;
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
-	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+	GLubyte* src = glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
 
+/*
+ * there are a bunch of driver bugs to watch out for here,
+ * the way we're using it should be mostly "safe" but historically
+ * speaking, there's been very race-condition prone cache 
+ * coherency issues for the last cache line or so,
+ * and GL_READ_ONLY is a contract, not a hint! 
+ */ 
 	if (src){
 		arcan_vobject* vobj = tgt->color;
 		vobj->feed.ffunc(ffunc_rendertarget_readback, src, 
@@ -4078,7 +4085,7 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 	}
 
 /* check if we should request new data */
-	if (!req_rb){
+	if (req_rb){
 		glBindBuffer(GL_PIXEL_PACK_BUFFER, tgt->pbo);
 		glBindTexture(GL_TEXTURE_2D, tgt->color->vstore->vinf.text.glid);
 		glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
