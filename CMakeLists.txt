@@ -393,6 +393,7 @@ include_directories(${INCLUDE_DIRS})
 
 #
 # OS and more compiler specific files, packaging etc.
+# Expected to 
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
@@ -410,7 +411,7 @@ endif()
 target_link_libraries( arcan ${MAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
 
-install(TARGETS arcan_frameserver DESTINATION ${BIN_DST})
+install(TARGETS ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ 
 	DESTINATION ${THEME_DST} 
