@@ -27,7 +27,7 @@ ${PLATFORM_PATH}/shm.c
 if (${ENABLE_LIBRETRO})
 if (${ENABLE_LIBRETRO3D})
 	list(APPEND FSRV_LIBRETRO_SOURCES 
-		${PLATFORM_PATH}/../sdl/video_mini.c
+		${PLATFORM_PATH}/../sdl/video_mini.c)
 	list(APPEND FSRV_LIBRETRO_LIBRARIES 
 		${SDL_LIBRARY} 
 		${GLEW_LIBRARIES} 
@@ -35,6 +35,9 @@ if (${ENABLE_LIBRETRO3D})
 	)
 endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
+
+LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
+LIST(APPEND FSRV_PLATFORM_LIBRARIES pthread rt m dl)
 
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
@@ -49,6 +52,9 @@ add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
 	-Wall -Wno-missing-braces -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
 	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
+#
+# Uncomment if you want ctags output generated
+# 
 # find_program(GENERATE_TAGS ctags)
 #if (GENERATE_TAGS)
 #	message("--> ctags command found, generating tags output")
@@ -67,10 +73,6 @@ LIST(APPEND SOURCES
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 
 LIST(APPEND MAIN_LIBRARIES m rt udev) 
-LIST(APPEND FSRV_SOURCES frameserver/frameserver.c 
-	${FSERV_PLATFORM_SOURCES})
-
-LIST(APPEND FSRV_LIBRARIES rt m dl)
 
 SET(HIJACK_SOURCES
 	hijack/arcan_target_unix.c
@@ -97,7 +99,6 @@ set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES} )
-add_executable( arcan_frameserver ${FSRV_SOURCES})
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
