@@ -55,7 +55,6 @@ message("---- Building frameserver in SPLIT mode ----")
 			${FSRV_PLATFORM_SOURCES}
 			${FSRV_LIBRETRO_SOURCES}
 		)
-		message(${FSRV_SOURCES})
 		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
 						COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO) 
 		target_link_libraries(arcan_frameserver_libretro ${FSRV_PLATFORM_LIBRARIES}
