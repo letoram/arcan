@@ -100,7 +100,7 @@ struct core_variable {
 typedef void(*pixconv_fun)(const void* data, uint32_t* outp, 
 	unsigned width, unsigned height, size_t pitch, bool postfilter);
 
-static struct {
+struct libretro_ctx {
 /* frame management */
 /* flag for rendering callbacks, should the frame be processed or not */
 	bool skipframe_a, skipframe_v; 
@@ -142,7 +142,7 @@ static struct {
 	pixconv_fun converter;
 	uint16_t* ntsc_imb;
 	bool ntscconv;
-	snes_ntsc_t ntscctx;
+	snes_ntsc_t* ntscctx;
 	snes_ntsc_setup_t ntsc_opts;
 
 /* SHM- API input /output */
@@ -205,7 +205,9 @@ static struct {
 	bool (*serialize)(void*, size_t);
 	bool (*deserialize)(const void*, size_t);
 	void (*set_ioport)(unsigned, unsigned);
-} retroctx = {.prewake = 4, .preaudiogen = 0};
+};
+
+static struct libretro_ctx retroctx = {.prewake = 4, .preaudiogen = 0};
 
 /* render statistics unto *vidp, at the very end of this .c file */
 static void push_stats(); 
@@ -296,7 +298,7 @@ static void push_ntsc(unsigned width, unsigned height,
 
 /* only draw on every other line, so we can easily mix or 
  * blend interleaved (or just duplicate) */
-	snes_ntsc_blit(&retroctx.ntscctx, ntsc_imb, width, 0, 
+	snes_ntsc_blit(retroctx.ntscctx, ntsc_imb, width, 0, 
 		width, height, outp, linew * 2);
 
 	for (int row = 1; row < height * 2; row += 2)
@@ -1104,7 +1106,7 @@ static inline void targetev(arcan_event* ev)
 
 /* ioev[0].iv = group, 1.fv, 2.fv, 3.fv */
 		case TARGET_COMMAND_NTSCFILTER_ARGS:
-			snes_ntsc_update_setup(&retroctx.ntscctx, &retroctx.ntsc_opts,
+			snes_ntsc_update_setup(retroctx.ntscctx, &retroctx.ntsc_opts,
 				tgt->ioevs[0].iv, tgt->ioevs[1].fv, tgt->ioevs[2].fv,tgt->ioevs[3].fv);
 
 		break;
@@ -1418,6 +1420,13 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	const char* resname  = NULL;
 	const char* val;
 
+	LOG(" offsets: rebase (%lu) drop_ring (%lu) framebuf %lu, shmcont: %lu\n",
+		offsetof(struct libretro_ctx, rebasecount),
+		offsetof(struct libretro_ctx, drop_ringbuf),
+		offsetof(struct libretro_ctx, framebuf_ofs),
+		offsetof(struct libretro_ctx, shmcont)
+	);
+
 	if (arg_lookup(args, "core", 0, &val))
 		libname = strdup(val);
 
@@ -1585,7 +1594,8 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 
 		retroctx.ntscconv  = false;
 		retroctx.ntsc_opts = snes_ntsc_rgb;
-		snes_ntsc_init(&retroctx.ntscctx, &retroctx.ntsc_opts);
+		retroctx.ntscctx = malloc(sizeof(snes_ntsc_t));
+		snes_ntsc_init(retroctx.ntscctx, &retroctx.ntsc_opts);
 
 		LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n", 
 			(float)retroctx.avinfo.timing.fps, (float)retroctx.mspf, 
