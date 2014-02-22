@@ -34,6 +34,9 @@ endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
+LIST(APPEND STDLIB
+	rt
+)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
 	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
