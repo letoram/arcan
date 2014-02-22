@@ -24,20 +24,28 @@ ${PLATFORM_PATH}/sem.c
 ${PLATFORM_PATH}/shm.c
 )
 
+if (${ENABLE_LIBRETRO})
+if (${ENABLE_LIBRETRO3D})
+	list(APPEND FSRV_LIBRETRO_SOURCES ${PLATFORM_PATH}/../sdl/video_mini.c)
+	list(APPEND FSRV_LIBRETRO_LIBRARIES ${SDL_LIBRARY})
+	list(APPEND FSRV_LIBRETRO_LIBRARIES ${GLEW_LIBRARIES})
+	list(APPEND FSRV_LIBRETRO_LIBRARIES ${OPENGL_gl_LIBRARY})
+endif(${ENABLE_LIBRETRO3D})
+endif(${ENABLE_LIBRETRO})
+
+LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
+
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
 	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
 	-DLUA_51 -D_WITH_DPRINTF -D__UNIX -D_LIBUSB_BSD)
 
 include_directories(platform/freebsd)
 
-if (${ENABLE_LIBRETRO})
-if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_SOURCES ${PLATFORM_PATH}/../sdl/video_mini.c)
-	list(APPEND FSRV_LIBRARIES ${SDL_LIBRARY})
-	list(APPEND FSRV_LIBRARIES ${GLEW_LIBRARIES})
-	list(APPEND FSRV_LIBRARIES ${OPENGL_gl_LIBRARY})
-endif(${ENABLE_LIBRETRO3D})
-endif(${ENABLE_LIBRETRO})
+LIST(APPEND FSRV_SOURCES frameserver/frameserver.c 
+	${FSERV_PLATFORM_SOURCES})
+LIST(APPEND FSRV_LIBRARIES -lrt)
+
+include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 LIST(APPEND SOURCES 
@@ -47,10 +55,6 @@ ${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
 )
 
 LIST(APPEND MAIN_LIBRARIES usb rt)
-LIST(APPEND FSRV_SOURCES frameserver/frameserver.c 
-	${FSERV_PLATFORM_SOURCES})
-LIST(APPEND FSRV_LIBRARIES -lrt)
-
 add_library(arcan_hijack SHARED 
 	hijack/arcan_target_unix.c
  	hijack/arcan_target.c
@@ -77,7 +81,6 @@ set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
 add_executable( arcan ${SOURCES})
-add_executable( arcan_frameserver ${FSRV_SOURCES})
 
 install(FILES ${CMAKE_SOURCE_DIR}/doc/arcan.1 
 	DESTINATION /usr/local/share/man/man1
