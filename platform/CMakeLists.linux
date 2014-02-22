@@ -37,7 +37,6 @@ endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
-LIST(APPEND FSRV_PLATFORM_LIBRARIES pthread rt m dl)
 
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
@@ -72,7 +71,7 @@ LIST(APPEND SOURCES
 )
 LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 
-LIST(APPEND MAIN_LIBRARIES m rt udev) 
+LIST(APPEND MAIN_LIBRARIES udev) 
 
 SET(HIJACK_SOURCES
 	hijack/arcan_target_unix.c
@@ -92,7 +91,7 @@ add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
 set_property(TARGET arcan_hijack PROPERTY 
 	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
-target_link_libraries(arcan_hijack ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
+target_link_libraries(arcan_hijack ${STDLIB} ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
@@ -108,7 +107,7 @@ if (ENABLE_32BITHIJACK)
 	add_library(arcan_hijack32 SHARED ${HIJACK_SOURCES})
 	
 	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
- 	target_link_libraries(arcan_hijack32 -m32 -lrt )
+ 	target_link_libraries(arcan_hijack32 ${STDLIB} -m32 )
 	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif (ENABLE_32BITHIJACK)
 
