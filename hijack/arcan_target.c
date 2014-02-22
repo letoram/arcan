@@ -113,7 +113,7 @@ static struct {
 /* for NTSC conversion filter */
 	uint16_t* ntsc_imb;
 	bool ntscconv;
-	snes_ntsc_t ntscctx;
+	snes_ntsc_t* ntscctx;
 	snes_ntsc_setup_t ntsc_opts;
 	
 /* specialized hack for vector graphics, a better approach would be to implement
@@ -321,7 +321,7 @@ void ARCAN_target_init(){
 		global.shared.esem, &(global.inevq), &(global.outevq), false);
 
 	global.ntsc_opts = snes_ntsc_rgb;
-	snes_ntsc_init(&global.ntscctx, &global.ntsc_opts);
+
 }
 
 void ARCAN_target_shmsize(int w, int h, int bpp)
@@ -526,6 +526,19 @@ static inline void push_ioevent_sdl(arcan_ioevent event){
 	}
 }
 
+void setup_ntsc(int v1, int v2, int v3, int v4)
+{
+	static bool init;
+	if (!init){
+		init = true;
+		global.ntscctx = malloc(sizeof(snes_ntsc_t));
+		snes_ntsc_init(global.ntscctx, &global.ntsc_opts);
+	}
+
+	snes_ntsc_update_setup(
+		global.ntscctx, &global.ntsc_opts, v1, v2, v3, v4);
+}
+
 void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 {
 	switch (kind)
@@ -561,8 +574,8 @@ void process_targetevent(unsigned kind, arcan_tgtevent* ev)
 		break;
 		
 		case TARGET_COMMAND_NTSCFILTER_ARGS:
-			snes_ntsc_update_setup(&global.ntscctx, &global.ntsc_opts, 
-				ev->ioevs[0].iv, ev->ioevs[1].fv, ev->ioevs[2].fv, ev->ioevs[3].fv);
+			setup_ntsc(ev->ioevs[0].iv, ev->ioevs[1].fv, ev->ioevs[2].fv, ev->ioevs[3].fv);
+
 		break;	
 	}
 }
@@ -640,7 +653,7 @@ static void push_ntsc()
 	size_t line_sz = SNES_NTSC_OUT_WIDTH(global.sourcew) * 4;
 
 /* only draw on every other line, so we can easily mix or blend interleaved */
-	snes_ntsc_blit(&global.ntscctx, global.ntsc_imb, 
+	snes_ntsc_blit(global.ntscctx, global.ntsc_imb, 
 		global.sourcew, 0, global.sourcew, global.sourceh, 
 		global.vidp, line_sz * 2);
 

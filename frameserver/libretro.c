@@ -210,6 +210,7 @@ struct libretro_ctx {
 static struct libretro_ctx retroctx = {.prewake = 4, .preaudiogen = 0};
 
 /* render statistics unto *vidp, at the very end of this .c file */
+static void update_ntsc(int v1, int v2, int v3, int v4);
 static void push_stats(); 
 static void log_msg(char* msg, bool flush);
 static void setup_3dcore(struct retro_hw_render_callback*);
@@ -1106,9 +1107,8 @@ static inline void targetev(arcan_event* ev)
 
 /* ioev[0].iv = group, 1.fv, 2.fv, 3.fv */
 		case TARGET_COMMAND_NTSCFILTER_ARGS:
-			snes_ntsc_update_setup(retroctx.ntscctx, &retroctx.ntsc_opts,
-				tgt->ioevs[0].iv, tgt->ioevs[1].fv, tgt->ioevs[2].fv,tgt->ioevs[3].fv);
-
+			update_ntsc(tgt->ioevs[0].iv, tgt->ioevs[1].fv,
+				tgt->ioevs[2].fv, tgt->ioevs[3].fv);
 		break;
 
 /* 0 : auto, -1 : single-step, > 0 render every n frames.
@@ -1228,6 +1228,20 @@ static inline void flush_eventq(){
 /* Only pause if the DMS isn't released */
 		while (retroctx.shmcont.addr->dms &&
 			retroctx.pause && (arcan_timesleep(1), 1));
+}
+
+void update_ntsc(int v1, int v2, int v3, int v4)
+{
+	static bool init;
+	if (!init){
+		retroctx.ntsc_opts = snes_ntsc_rgb;
+		retroctx.ntscctx = malloc(sizeof(snes_ntsc_t));
+		snes_ntsc_init(retroctx.ntscctx, &retroctx.ntsc_opts);
+		init = true;
+	}
+
+	snes_ntsc_update_setup(
+		retroctx.ntscctx, &retroctx.ntsc_opts, v1, v2, v3, v4);
 }
 
 /* return true if we're in synch (may sleep),
@@ -1593,9 +1607,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 		retroctx.mspf = ( 1000.0 * (1.0 / retroctx.avinfo.timing.fps) );
 
 		retroctx.ntscconv  = false;
-		retroctx.ntsc_opts = snes_ntsc_rgb;
-		retroctx.ntscctx = malloc(sizeof(snes_ntsc_t));
-		snes_ntsc_init(retroctx.ntscctx, &retroctx.ntsc_opts);
 
 		LOG("video timing: %f fps (%f ms), audio samplerate: %f Hz\n", 
 			(float)retroctx.avinfo.timing.fps, (float)retroctx.mspf, 
