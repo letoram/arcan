@@ -37,6 +37,9 @@ endif(${ENABLE_LIBRETRO3D})
 endif(${ENABLE_LIBRETRO})
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
+LIST(APPEND STDLIB
+ dl
+ rt)
 
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 

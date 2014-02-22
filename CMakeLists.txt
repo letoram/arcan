@@ -67,9 +67,7 @@ option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 add_definitions(-std=gnu11)
 
 set (STDLIB
-	rt
 	m
-	dl
 	pthread
 )
 
