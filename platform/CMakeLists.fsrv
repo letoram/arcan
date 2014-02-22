@@ -18,8 +18,11 @@ message("---- Building frameserver in SPLIT mode ----")
 		)
 		set_property(TARGET arcan_frameserver_movie APPEND PROPERTY
 			COMPILE_DEFINITIONS ENABLE_FSRV_DECODE)
-		target_link_libraries(arcan_frameserver_movie ${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_DECODE_LIBRARIES})
+		target_link_libraries(arcan_frameserver_movie 
+			${STDLIB} 
+			${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_DECODE_LIBRARIES}
+		)
 		LIST(APPEND FSRV_TARGETS arcan_frameserver_movie)
 	endif()
 
@@ -31,8 +34,11 @@ message("---- Building frameserver in SPLIT mode ----")
 		)
 		set_property(TARGET arcan_frameserver_record APPEND PROPERTY
 			COMPILE_DEFINITIONS ENABLE_FSRV_ENCODE)	
-		target_link_libraries(arcan_frameserver_record ${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_ENCODE_LIBRARIES})
+		target_link_libraries(arcan_frameserver_record 
+			${STDLIB} 
+			${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_ENCODE_LIBRARIES}
+		)
 		LIST(APPEND FSRV_TARGETS arcan_frameserver_record)
 	endif()
 
@@ -44,8 +50,11 @@ message("---- Building frameserver in SPLIT mode ----")
 		)
 		set_property(TARGET arcan_frameserver_net APPEND PROPERTY
 			COMPILE_DEFINITIONS ENABLE_FSRV_NET)
-		target_link_libraries(arcan_frameserver_net ${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_NET_LIBRARIES})
+		target_link_libraries(arcan_frameserver_net 
+			${STDLIB}
+			${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_NET_LIBRARIES}
+		)
 		LIST(APPEND FSRV_TARGETS arcan_frameserver_net)
 	endif()
 
@@ -57,8 +66,11 @@ message("---- Building frameserver in SPLIT mode ----")
 		)
 		set_property(TARGET arcan_frameserver_libretro APPEND PROPERTY
 						COMPILE_DEFINITIONS ENABLE_FSRV_LIBRETRO) 
-		target_link_libraries(arcan_frameserver_libretro ${FSRV_PLATFORM_LIBRARIES}
-			${FSRV_LIBRETRO_LIBRARIES})
+		target_link_libraries(arcan_frameserver_libretro 
+			${STDLIB}
+			${FSRV_PLATFORM_LIBRARIES}
+			${FSRV_LIBRETRO_LIBRARIES}
+		)
 		LIST(APPEND FSRV_TARGETS arcan_frameserver_libretro)
 	endif()
 
@@ -72,6 +84,7 @@ message("---- Building Frameserver in COMBINED mode ----")
 	set(definitions)
 
 	if (FSRV_DECODE_SOURCES)
+		message(" |-> encode/decode added to frameserver")
 		list(APPEND FSRV_SOURCES	
 			${FSRV_DECODE_SOURCES}
 			${FSRV_ENCODE_SOURCES})
@@ -81,6 +94,7 @@ message("---- Building Frameserver in COMBINED mode ----")
 	endif()
 
 	if (FSRV_NET_SOURCES)
+		message(" |-> networking added to frameserver")
 		list(APPEND FSRV_SOURCES
 			${FSRV_NET_SOURCES})
 		list(APPEND FSRV_LIBRARIES
@@ -89,6 +103,7 @@ message("---- Building Frameserver in COMBINED mode ----")
 	endif()
 
 	if (FSRV_LIBRETRO_SOURCES)
+		message(" |-> libretro added to frameserver")
 		list(APPEND FSRV_SOURCES
 			${FSRV_LIBRETRO_SOURCES})
 		list(APPEND FSRV_LIBRARIES
@@ -98,6 +113,8 @@ message("---- Building Frameserver in COMBINED mode ----")
 	
 	add_executable( arcan_frameserver ${FSRV_SOURCES} ${FSRV_PLATFORM_SOURCES})
 	target_link_libraries(arcan_frameserver ${FSRV_PLATFORM_LIBRARIES})
+	set_property(TARGET arcan_frameserver APPEND PROPERTY
+		COMPILE_DEFINITIONS ${definitions})
 endif(SPLIT_FRAMESERVER)
 
 

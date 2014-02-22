@@ -56,6 +56,7 @@ option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
 option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" OFF)
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
+option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 
 #
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
@@ -64,6 +65,31 @@ option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 # C11 requirement is for _Alignas and _Atomic
 #
 add_definitions(-std=gnu11)
+
+set (STDLIB
+	rt
+	m
+	dl
+	pthread
+)
+
+#
+# Incomplete, major workarounds need to be added for all external deps. etc. 
+# to build without linking in all the glibc filth
+#
+if (MUSL_LIBC) 
+	set(MUSL ${CMAKE_CURRENT_SOURCE_DIR}/external/musl)
+	ExternalProject_Add(
+	libmusl
+	SOURCE_DIR ${MUSL}
+	CONFIGURE_COMMAND ${MUSL}/configure --prefix=${MUSL}/.libs --disable-shared
+	PREFIX ${MUSL} 
+	BUILD_COMMAND make
+	BUILD_IN_SOURCE 1
+)
+	
+	set(STDLIB ${MUSL}/.libs/lib/libc.a)
+endif()
 
 message("Using compiler: ${CMAKE_C_COMPILER_ID}") 
 
@@ -408,8 +434,8 @@ elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Darwin)
 endif()
 
-target_link_libraries( arcan ${MAIN_LIBRARIES} )
-target_link_libraries( arcan_frameserver ${FSRV_LIBRARIES} )
+target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} )
+target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
 
 install(TARGETS ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
