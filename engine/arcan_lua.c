@@ -2741,6 +2741,21 @@ static int buildmodel(lua_State* ctx)
 	return 1;
 }
 
+static int finalmodel(lua_State* ctx)
+{
+	LUA_TRACE("finalize_3dmodel");
+
+arcan_warning("finalizing");
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	arcan_errc rv = arcan_3d_finalizemodel(id);
+	if (rv == ARCAN_ERRC_UNACCEPTED_STATE){
+		arcan_fatal("new_3dmodel(), specified vid"
+			"	is not connected to a 3d model.\n");
+	}
+
+	return 0;
+}
+
 static int buildplane(lua_State* ctx)
 {
 	LUA_TRACE("build_3dplane");
@@ -6066,6 +6081,7 @@ static const luaL_Reg imgfuns[] = {
 #define EXT_MAPTBL_3D
 static const luaL_Reg threedfuns[] = {
 {"new_3dmodel",      buildmodel   },
+{"finalize_3dmodel", finalmodel   },
 {"add_3dmesh",       loadmesh     },
 {"attrtag_model",    attrtag      },
 {"move3d_model",     movemodel    },
