@@ -200,6 +200,11 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.otag = src->tag
 		};
 		
+/* force flush beforehand */
+		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
+			src->queue_mask, 0.5, src->vid);
+		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
+	
 /*
  * prevent looping if the frameserver didn't last more than a second, 
  * indicative of it being broken, rapid relaunching could result
@@ -221,10 +226,6 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 			src->desc.callback_framestate = cb_fstate;
 		}
 
-/* force flush beforehand */
-		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
-			src->queue_mask, 0.5, src->vid);
-		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
 		return false;
 	}
 
@@ -328,15 +329,22 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned mode, vfunc_state state)
 {
-
+	arcan_frameserver* tgt = state.ptr;
+	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+	
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 	switch (cmd){
+		case ffunc_poll:
+			if (shmpage->resized) 
+				arcan_frameserver_tick_control(tgt);
+			return shmpage->vready;	
+
 		case ffunc_tick:
-			arcan_frameserver_tick_control( (arcan_frameserver*) state.ptr);
+			arcan_frameserver_tick_control(tgt); 
 		break;
 
 		case ffunc_destroy:
-			arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+			arcan_frameserver_free(tgt, false);
 		break;
 
 		default:
@@ -430,9 +438,9 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /* done differently since we don't care if the frameserver wants 
  * to resize, that's its problem. */
 		if (!arcan_frameserver_control_chld(src)){
-            vfunc_state cstate = *arcan_video_feedstate(src->vid);
-            arcan_video_alterfeed(src->vid,
-							arcan_frameserver_dummyframe, cstate);
+ 			vfunc_state cstate = *arcan_video_feedstate(src->vid);
+			arcan_video_alterfeed(src->vid,
+				arcan_frameserver_dummyframe, cstate);
   		return FFUNC_RV_NOFRAME;
     }
 	}
