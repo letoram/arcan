@@ -82,6 +82,8 @@ struct geometry {
 
 typedef struct {
 	pthread_mutex_t lock;
+	int work_count;
+
 	struct geometry* geometry;
 	arcan_shader_id program;
 
@@ -93,10 +95,21 @@ typedef struct {
 	struct {
 /* debug geometry (position, normals, bounding box, ...) */
 		bool debug_vis;
+
+/* unless this flag is set AND there are no pending
+ * load operations, some operations will be deferred. */
+		bool complete;
+
 /* ignore projection matrix */
 		bool infinite;
 	} flags;
 
+	struct {
+		bool scale; /* scale vertices */
+		bool orient; /* base orient */
+		vector orientf;
+	} deferred;
+	
 	arcan_vobject* parent;
 } arcan_3dmodel;
 
@@ -216,6 +229,30 @@ static void freemodel(arcan_3dmodel* src)
 	}
 }
 
+static void push_deferred(arcan_3dmodel* model)
+{
+	if (model->work_count > 0)
+		return;
+
+	if (!model->flags.complete)
+		return;
+
+	if (model->deferred.scale){
+		arcan_3d_scalevertices(model->parent->cellid); 
+		model->deferred.scale = false;
+	}	
+
+	if (model->deferred.orient){
+		arcan_3d_baseorient(model->parent->cellid,
+			model->deferred.orientf.x, 
+			model->deferred.orientf.y, 
+			model->deferred.orientf.z
+		);
+		model->deferred.orient = false;
+	}
+}
+
+
 /*
  * Render-loops, Pass control, Initialization
  */
@@ -224,8 +261,10 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 {
 	assert(vobj);
 
-	if (props.opa < EPSILON)
+	if (props.opa < EPSILON || !src->flags.complete){
+		//push_deferred(src);
 		return;
+	}
 
 	unsigned cframe = 0;
 
@@ -246,9 +285,6 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	struct geometry* base = src->geometry;
 
 	while (base){
-		if (!base->complete)
-			goto step;
-
 			if (-1 != base->program)
 				arcan_shader_activate(base->program);
 			else
@@ -597,8 +633,6 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	dst->verts = (float*) malloc(vrtsize);
 	dst->program = -1;
 
-/*	arcan_warning("mesh loaded, %d vertices, %d triangles, %d texture maps\n"
- *	dst->nverts, dst->ntris, uvmaps); */
 	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
 	const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
@@ -702,6 +736,7 @@ static void* threadloader(void* arg)
 
 	CTMcontext ctx = ctmNewContext(CTM_IMPORT);
 	ctmLoadCustom(ctx, ctm_readfun, threadarg); 
+	arcan_3dmodel* model = threadarg->model;
 
 	if (ctmGetError(ctx) == CTM_NONE){
 		loadmesh(threadarg->geom, ctx);
@@ -709,7 +744,12 @@ static void* threadloader(void* arg)
 
 /* nonetheless, unlock the slot for the main rendering loop,
  * or free ( which is locking deferred ) */
+	pthread_mutex_lock(&model->lock);
 	threadarg->geom->complete = true;
+	model->work_count--;
+	push_deferred(model);
+	
+	pthread_mutex_unlock(&threadarg->model->lock);
 	ctmFreeContext(ctx);
 
 	free(threadarg);
@@ -721,97 +761,109 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	data_source resource, unsigned nmaps)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+		
+	arcan_3dmodel* model = vobj->feed.state.ptr;
+
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ ||
+		model->flags.complete == true)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 /* 2d frameset and set of vids associated as textures 
  * with models are weakly linked */
-	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
-	{
-		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
-		struct threadarg* arg = (struct threadarg*)malloc(sizeof(struct threadarg));
+	pthread_mutex_lock(&model->lock);
+	struct threadarg* arg = (struct threadarg*)malloc(sizeof(struct threadarg));
 
-		arg->model = dst;
-		arg->resource = resource;
-		arg->readofs = 0;
-		arg->datamap = arcan_map_resource(&arg->resource, false);
-		if (arg->datamap.ptr == NULL){
-			free(arg);
-			return rv;
-		}
+	arg->model = model;
+	arg->resource = resource;
+	arg->readofs = 0;
+	arg->datamap = arcan_map_resource(&arg->resource, false);
+	if (arg->datamap.ptr == NULL){
+		free(arg);
+		return ARCAN_ERRC_BAD_RESOURCE;
+	}
 
 /* find last elem and add */
-		struct geometry** nextslot = &(dst->geometry);
-		while (*nextslot)
-			nextslot = &((*nextslot)->next);
+	struct geometry** nextslot = &(model->geometry);
+	while (*nextslot)
+		nextslot = &((*nextslot)->next);
 
-		*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
+	*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
 
-		(*nextslot)->nmaps = nmaps;
-		arg->geom = *nextslot;
-		pthread_create(&arg->geom->worker, NULL, threadloader, (void*) arg);
+	(*nextslot)->nmaps = nmaps;
+	arg->geom = *nextslot;
+	model->work_count++;
+	pthread_mutex_unlock(&model->lock);
+	pthread_create(&arg->geom->worker, NULL, threadloader, (void*) arg);
 
-		rv = ARCAN_OK;
-	} else
-		rv = ARCAN_ERRC_BAD_RESOURCE;
-
-	return rv;
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 {
 	arcan_vobject* vobj = arcan_video_getobject(vid);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	/* 2d frameset and set of vids associated as textures 
-	 * with models are weakly linked */
-	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ)
-	{
-		arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
-		struct geometry* geom = dst->geometry;
-
-		while (geom){
-			while (!geom->complete);
-			minmax_verts(&dst->bbmin, &dst->bbmax, geom->verts, geom->nverts);
-			geom = geom->next;
-		}
-
-		geom = dst->geometry;
-		float sf, tx, ty, tz;
-
-		float dx = dst->bbmax.x - dst->bbmin.x;
-		float dy = dst->bbmax.y - dst->bbmin.y;
-		float dz = dst->bbmax.z - dst->bbmin.z;
-
-		if (dz > dy && dz > dx)
-			sf = 2.0 / dz;
-		else if (dy > dz && dy > dx)
-			sf = 2.0 / dy;
-		else
-			sf = 2.0 / dx;
-
-		dst->bbmax = mul_vectorf(dst->bbmax, sf);
-		dst->bbmin = mul_vectorf(dst->bbmin, sf);
-
-		tx = (0.0 - dst->bbmin.x) - (dst->bbmax.x - dst->bbmin.x) * 0.5;
-		ty = (0.0 - dst->bbmin.y) - (dst->bbmax.y - dst->bbmin.y) * 0.5;
-		tz = (0.0 - dst->bbmin.z) - (dst->bbmax.z - dst->bbmin.z) * 0.5;
-
-		dst->bbmax.x += tx; dst->bbmin.x += tx;
-		dst->bbmax.y += ty; dst->bbmin.y += ty;
-		dst->bbmax.z += tz; dst->bbmin.z += tz;
-
-		while(geom){
-			for (unsigned i = 0; i < geom->nverts * 3; i += 3){
-				geom->verts[i]   = tx + geom->verts[i]   * sf;
-				geom->verts[i+1] = ty + geom->verts[i+1] * sf;
-				geom->verts[i+2] = tz + geom->verts[i+2] * sf;
-			}
-
-			geom = geom->next;
-		}
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+	
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+	
+	arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
+	
+	pthread_mutex_lock(&dst->lock);
+	if (dst->work_count != 0 || !dst->flags.complete){
+		dst->deferred.scale = true;
+		pthread_mutex_unlock(&dst->lock);
+		return ARCAN_OK;
 	}
 
-    return rv;
+	struct geometry* geom = dst->geometry;
+
+	while (geom){
+		minmax_verts(&dst->bbmin, &dst->bbmax, geom->verts, geom->nverts);
+		geom = geom->next;
+	}
+
+	geom = dst->geometry;
+	float sf, tx, ty, tz;
+
+	float dx = dst->bbmax.x - dst->bbmin.x;
+	float dy = dst->bbmax.y - dst->bbmin.y;
+	float dz = dst->bbmax.z - dst->bbmin.z;
+
+	if (dz > dy && dz > dx)
+		sf = 2.0 / dz;
+	else if (dy > dz && dy > dx)
+		sf = 2.0 / dy;
+	else
+		sf = 2.0 / dx;
+
+	dst->bbmax = mul_vectorf(dst->bbmax, sf);
+	dst->bbmin = mul_vectorf(dst->bbmin, sf);
+
+	tx = (0.0 - dst->bbmin.x) - (dst->bbmax.x - dst->bbmin.x) * 0.5;
+	ty = (0.0 - dst->bbmin.y) - (dst->bbmax.y - dst->bbmin.y) * 0.5;
+	tz = (0.0 - dst->bbmin.z) - (dst->bbmax.z - dst->bbmin.z) * 0.5;
+
+	dst->bbmax.x += tx; dst->bbmin.x += tx;
+	dst->bbmax.y += ty; dst->bbmin.y += ty;
+	dst->bbmax.z += tz; dst->bbmin.z += tz;
+
+	while(geom){
+		for (unsigned i = 0; i < geom->nverts * 3; i += 3){
+			geom->verts[i]   = tx + geom->verts[i]   * sf;
+			geom->verts[i+1] = ty + geom->verts[i+1] * sf;
+			geom->verts[i+2] = tz + geom->verts[i+2] * sf;
+		}
+
+		geom = geom->next;
+	}
+
+	pthread_mutex_unlock(&dst->lock);
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_3d_infinitemodel(arcan_vobj_id id, bool state)
@@ -827,6 +879,24 @@ arcan_errc arcan_3d_infinitemodel(arcan_vobj_id id, bool state)
 	dstobj->flags.infinite = state;
 
 	return ARCAN_OK;	
+}
+
+arcan_errc arcan_3d_finalizemodel(arcan_vobj_id id)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	arcan_3dmodel* dstobj = vobj->feed.state.ptr;
+	pthread_mutex_lock(&dstobj->lock);
+	dstobj->flags.complete = true;
+	pthread_mutex_unlock(&dstobj->lock);
+	
+	push_deferred(dstobj);
+	return ARCAN_OK;
 }
 
 arcan_vobj_id arcan_3d_emptymodel()
@@ -851,40 +921,51 @@ arcan_errc arcan_3d_baseorient(arcan_vobj_id dst,
 	float roll, float pitch, float yaw)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
-	arcan_errc rv       = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
-		arcan_3dmodel* model = vobj->feed.state.ptr;
-		struct geometry* geom = model->geometry;
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-/* 1. create the rotation matrix by mapping to a quaternion */
-		quat repr = build_quat_taitbryan(roll, pitch, yaw);
-		float matr[16];
-		matr_quatf(repr, matr);
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-/* 2. iterate all geometries connected to the model */
-		while (geom){
-			while (!geom->complete);
-	
-			float*  verts = geom->verts;
+	arcan_3dmodel* model = vobj->feed.state.ptr;
+	pthread_mutex_lock(&model->lock);
 
-/* 3. sweep through all the vertexes in the model */
-			for (unsigned i = 0; i < geom->nverts * 3; i += 3){
-				float xyz[4] = {verts[i], verts[i+1], verts[i+2], 1.0};
-				float out[4];
-
-/* 4. transform the current vertex */
-				mult_matrix_vecf(matr, xyz, out);
-				verts[i] = out[0]; verts[i+1] = out[1]; verts[i+2] = out[2];
-			}
-
-			geom = geom->next;
-		}
-
-		rv = ARCAN_OK;
+	if (model->work_count != 0 || !model->flags.complete){
+		model->deferred.orient = true;
+		model->deferred.orientf.x = roll;
+		model->deferred.orientf.y = pitch;
+		model->deferred.orientf.z = yaw;
+		pthread_mutex_unlock(&model->lock);
+		return ARCAN_OK;
 	}
 
-	return rv;
+	struct geometry* geom = model->geometry;
+
+/* 1. create the rotation matrix by mapping to a quaternion */
+	quat repr = build_quat_taitbryan(roll, pitch, yaw);
+	float matr[16];
+	matr_quatf(repr, matr);
+
+/* 2. iterate all geometries connected to the model */
+	while (geom){
+		float* verts = geom->verts;
+
+/* 3. sweep through all the vertexes in the model */
+		for (unsigned i = 0; i < geom->nverts * 3; i += 3){
+			float xyz[4] = {verts[i], verts[i+1], verts[i+2], 1.0};
+			float out[4];
+
+/* 4. transform the current vertex */
+			mult_matrix_vecf(matr, xyz, out);
+			verts[i] = out[0]; verts[i+1] = out[1]; verts[i+2] = out[2];
+		}
+
+		geom = geom->next;
+	}
+
+	pthread_mutex_unlock(&model->lock);
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_3d_camtag(arcan_vobj_id vid, 

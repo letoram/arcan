@@ -252,7 +252,7 @@ function load_model_generic(modelname, rndmissing, synthtbl)
 	end
 	
 	switch_default_imageproc(IMAGEPROC_NORMAL);
-
+	
 	return model;
 end
 
@@ -413,7 +413,8 @@ function load_model(modelname)
 			rv.screenview.orientation.yaw = 
 				rv.screenview.orientation.yaw   - rv.default_orientation.yaw;
 		end
-		
+	
+		finalize_3dmodel(rv.vid);
 	end
 	
 	return rv;

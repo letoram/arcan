@@ -38,6 +38,7 @@ arcan_errc arcan_3d_swizzlemodel(arcan_vobj_id model);
 /* empty model allocates and populates a container,
  * then add a hierarchy of meshes to the model */
 arcan_vobj_id arcan_3d_emptymodel();
+arcan_errc arcan_3d_finalizemodel(arcan_vobj_id);
 arcan_errc arcan_3d_infinitemodel(arcan_vobj_id, bool);
 arcan_errc arcan_3d_meshshader(arcan_vobj_id dst, 
 	arcan_shader_id shid, unsigned slot);
