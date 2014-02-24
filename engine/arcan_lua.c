@@ -2745,7 +2745,6 @@ static int finalmodel(lua_State* ctx)
 {
 	LUA_TRACE("finalize_3dmodel");
 
-arcan_warning("finalizing");
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 	arcan_errc rv = arcan_3d_finalizemodel(id);
 	if (rv == ARCAN_ERRC_UNACCEPTED_STATE){

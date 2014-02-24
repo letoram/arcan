@@ -261,11 +261,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 {
 	assert(vobj);
 
-	if (props.opa < EPSILON || !src->flags.complete){
-		//push_deferred(src);
+	if (props.opa < EPSILON || !src->flags.complete)
 		return;
-	}
-
+	
 	unsigned cframe = 0;
 
 	float wmvm[16];
@@ -747,9 +745,9 @@ static void* threadloader(void* arg)
 	pthread_mutex_lock(&model->lock);
 	threadarg->geom->complete = true;
 	model->work_count--;
-	push_deferred(model);
-	
 	pthread_mutex_unlock(&threadarg->model->lock);
+
+	push_deferred(model);
 	ctmFreeContext(ctx);
 
 	free(threadarg);
@@ -808,8 +806,9 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 	if (!vobj)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 	
-	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
-		return ARCAN_ERRC_UNACCEPTED_STATE;
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ){
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+	}
 	
 	arcan_3dmodel* dst = (arcan_3dmodel*) vobj->feed.state.ptr;
 	
@@ -819,7 +818,6 @@ arcan_errc arcan_3d_scalevertices(arcan_vobj_id vid)
 		pthread_mutex_unlock(&dst->lock);
 		return ARCAN_OK;
 	}
-
 	struct geometry* geom = dst->geometry;
 
 	while (geom){
