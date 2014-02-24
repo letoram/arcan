@@ -69,6 +69,7 @@ enum arcan_frameserver_kinds {
 	ARCAN_FRAMESERVER_INPUT,
 	ARCAN_FRAMESERVER_OUTPUT,
 	ARCAN_FRAMESERVER_INTERACTIVE,
+	ARCAN_FRAMESERVER_AVFEED,
 	ARCAN_FRAMESERVER_NETCL,
 	ARCAN_FRAMESERVER_NETSRV,
 	ARCAN_HIJACKLIB
@@ -151,7 +152,7 @@ typedef struct arcan_frameserver {
 	int64_t lastpts;
 	int64_t starttime;
 	int64_t launchedtime;
-	bool loop, autoplay, nopts, ptsdisable;
+	bool loop, autoplay, nopts, ptsdisable, socksig;
 
 	enum arcan_frameserver_kinds kind;
 	
