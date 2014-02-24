@@ -40,7 +40,6 @@ LIST(APPEND FSRV_SOURCES frameserver/frameserver.c)
 LIST(APPEND STDLIB
  dl
  rt)
-
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 
 #

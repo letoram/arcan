@@ -46,7 +46,6 @@ include_directories(platform/freebsd)
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c 
 	${FSERV_PLATFORM_SOURCES})
-LIST(APPEND FSRV_LIBRARIES -lrt)
 
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
 

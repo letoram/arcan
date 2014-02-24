@@ -54,7 +54,11 @@ option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserv
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
-option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" OFF)
+
+if (NOT WIN32)
+	option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" OFF)
+endif()
+
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
 option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 
@@ -66,6 +70,10 @@ option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 #
 add_definitions(-std=gnu11)
 
+#
+# Hooks added here to later switch to -nostdlib -nodefaultlibs and
+# get a decent libc for linux 
+#
 set (STDLIB
 	m
 	pthread
