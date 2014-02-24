@@ -254,8 +254,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_DONTWAIT 0
 #endif
 
-	if (dst->kind == ARCAN_FRAMESERVER_NETCL || 
-		dst->kind == ARCAN_FRAMESERVER_NETSRV){
+	if (dst->socksig){
 		int sn = 0;
 		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
 	}
@@ -1105,7 +1104,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		}
 /* similar to movie but no raw framequeues or feeds */
 		if (strcmp(setup.args.builtin.mode, "avfeed") == 0){
-			ctx->kind     = ARCAN_FRAMESERVER_INPUT;
+			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
+			ctx->socksig  = true;
 			ctx->nopts    = true;
 			ctx->autoplay = true;
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
@@ -1138,6 +1138,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->use_pbo = false;
 			ctx->nopts   = false;
 			ctx->autoplay= true;
+			ctx->socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
@@ -1145,6 +1146,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->use_pbo = false;
 			ctx->nopts   = false;
 			ctx->autoplay= true;
+			ctx->socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 
