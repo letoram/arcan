@@ -50,8 +50,6 @@
 /*
  * refactor needs:
  * should be able to get rid of SDL here
- * the terminate process doesn't work particularly gracefully,
- * and can block / stall the main app
  */ 
 
 sem_handle async, vsync, esync;
@@ -101,9 +99,13 @@ static BOOL SafeTerminateProcess(HANDLE hProcess, UINT* uExitCode)
 		dwErr = ERROR_PROCESS_ABORTED;
 	}
 	if (hRT) {
-		WaitForSingleObject((bDup) ? hProcessDup : hProcess, INFINITE);
+		CloseHandle(hRT);
+/*
+ (created big stalls, assume target plays somewhat nice) 
+   	WaitForSingleObject((bDup) ? hProcessDup : hProcess, INFINITE);
 		CloseHandle(hRT);
 		bSuccess = TRUE;
+*/
 	}
 
 	if (bDup)

@@ -1088,6 +1088,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 {
 	arcan_errc errc;
 	
+	ctx->vfq.alive = false;
+	ctx->afq.alive = false;
+
 /* "movie" mode involves parallel queues of raw, decoded, 
  * frames and heuristics for dropping, delaying or showing 
  * frames based on DTS/PTS values */
@@ -1097,6 +1100,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) 
 											arcan_frameserver_audioframe, ctx, &errc);
 			ctx->queue_mask = EVENT_EXTERNAL;
+
 /* nopts / autoplay is preset from the calling context */
 		}
 /* similar to movie but no raw framequeues or feeds */
