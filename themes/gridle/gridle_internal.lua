@@ -340,13 +340,13 @@ end
 local function setup_bezel(source)
 	if (image_loaded(source)) then
 		local props = image_storage_properties(source);
-		resize_image(source, VRESW, VRESH);
+		resize_image(source, INTERW, INTERH); 
 		local x1,y1,x2,y2 = image_borderscan(source);
 
-		x1 = (x1 / props.width) * VRESW;
-		x2 = (x2 / props.width) * VRESW;
-		y1 = (y1 / props.height) * VRESH;
-		y2 = (y2 / props.height) * VRESH;
+		x1 = (x1 / props.width) * INTERW;
+		x2 = (x2 / props.width) * INTERW;
+		y1 = (y1 / props.height) * INTERH;
+		y2 = (y2 / props.height) * INTERH;
 
 		local dstvid = valid_vid(imagery.display_vid) 
 			and imagery.display_vid or internal_vid;
@@ -733,7 +733,7 @@ local function toggle_upscaler(sourcevid, init_props, mode, factor)
 	local neww = init_props.width  * factor;
 	local newh = init_props.height * factor;
 
-	while ((neww > VRESW or newh > VRESH) and factor > 1) do
+	while ((neww > INTERW or newh > INTERH) and factor > 1) do
 		factor = factor - 1;
 		neww = init_props.width * factor;
 		newh = init_props.height * factor;
@@ -955,7 +955,7 @@ function gridlemenu_rebuilddisplay(toggles)
 		target_linewidth(dstvid, settings.vector_linew);
 
 		local dstw, dsth;
-		if (props.width > VRESW or props.height > VRESH) then
+		if (props.width > INTERW or props.height > INTERH) then
 			dstw = windw;
 			dsth = windh;
 		else
@@ -1017,6 +1017,10 @@ function gridlemenu_rebuilddisplay(toggles)
 		push_ntsc();
 	end
 
+	if (INTERX ~= nil) then
+		move_image(dstvid, INTERX, INTERY);
+		rotate_image(dstvid, INTERANG);
+	end
 -- all the above changes may have reordered the menu
 	gridlemenu_tofront(current_menu);
 --	push_ntsc(true);
@@ -1051,11 +1055,11 @@ function gridlemenu_resize_fullscreen(source, init_props)
 		rotate = -90;
 	end
 
+	local windw = INTERW;
+	local windh = INTERH;
 	local scalemode = settings.scalemode;
 	local cocktailmode = settings.cocktail_mode;
 
-	local windw = VRESW;
-	local windh = VRESH;
 	rotate_image(source, 0);
 
 	local props = init_props;
@@ -2183,7 +2187,7 @@ function gridle_delete_internal_extras()
 		resize_image(imagery.cocktail_vid, 1, 1, settings.transitiondelay);
 		blend_image(imagery.cocktail_vid, 0.0, settings.transitiondelay);
 		move_image(imagery.cocktail_vid, 
-			VRESW * 0.5, VRESH * 0.5, settings.transitiondelay);
+			INTERW * 0.5, INTERH * 0.5, settings.transitiondelay);
 
 		imagery.cocktail_vid = BADID;
 	end

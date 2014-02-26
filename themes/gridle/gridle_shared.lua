@@ -814,8 +814,9 @@ function internallaunch_event(source, datatbl)
 		gridle_internal_setup(source, datatbl, current_game);
 
 	elseif (datatbl.kind == "frameserver_terminated") then
-		order_image(imagery.crashimage, INGAMELAYER_OVERLAY);
-		blend_image(imagery.crashimage, 0.8);
+		instant_image_transform(imagery.crashimage);
+		order_image(imagery.crashimage, max_current_image_order() + 1);
+		blend_image(imagery.crashimage, 1.0);
 
 		if (settings.status_loading) then
 			remove_loaded();

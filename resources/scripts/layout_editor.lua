@@ -1025,7 +1025,9 @@ end
 local function layout_show(self)
 	if (self.temporary) then
 		for ind, val in ipairs(self.temporary) do
-			delete_image(val);
+			if (valid_vid(val)) then
+				delete_image(val);
+			end
 		end
 	end
 
