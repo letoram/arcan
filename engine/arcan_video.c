@@ -483,19 +483,20 @@ static void transfer_persists(struct arcan_video_context* src,
 		if (src->vitems_pool[i].flags.in_use && src->vitems_pool[i].flags.persist &&
 			(!delsrc || (dst->vitems_pool[i].flags.in_use && 
 			dst->vitems_pool[i].flags.persist))){
+				
+			detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
 			memcpy(&dst->vitems_pool[i], &src->vitems_pool[i], sizeof(arcan_vobject));
 
 /* cross- referencing world- outside context isn't permitted */
 			dst->vitems_pool[i].parent = &dst->world;
 
 			if (delsrc){
-				detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
 				memset(&src->vitems_pool[i], 0, sizeof(arcan_vobject));
 			}
 			else{
 				dst->nalive++;
 				src->vitems_pool[i].owner = NULL;
-				attach_object(&dst->stdoutp, &src->vitems_pool[i]);
+				attach_object(&dst->stdoutp, &dst->vitems_pool[i]);
 				trace("vcontext_stack_push() : transfer-attach: %s\n", 
 					src->vitems_pool[i].tracetag);
 			}
