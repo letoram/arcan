@@ -151,7 +151,7 @@ function badsample(startid)
 		origh = 0,
 		source = "none",
 		props = {
-			opa = 0,
+			opacity = 0,
 			position = {0, 0, 0},
 			scale = {0, 0, 0},
 			rotation = {0, 0, 0}
@@ -172,6 +172,7 @@ local keytbl = {
 	"lifetime", 
 	"flags", 
 	"tracetag", 
+	"opacity",
 	"origw", 
 	"origh",
 	"posx",
@@ -225,7 +226,7 @@ local typetbl = {
 	lifetime = "\\bLifetime:\\!b\\#00ff00 %d \\#ffffff\\t",
 	flags = "\\bFlags: \\!b\\#00ff00 %s\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
 	tracetag = "\\b\\n\\rTracetag: \\!b\\#ffaa00 %s\\n\\r\\#ff9999----------\\n\\r\\#ffffff",
-
+	opacity  = "\\#ffffff\\bOpacity:\\!b \\#00ff00 %.4f \\#ffffff\\n\\r",
 	origw    = "\\bOrigin\\!b( width: \\#00ff00 %d \\#ffffff",
 	origh    = " height: \\#00ff00 %d \\#ffffff)\\n\\r",
 	posx     = " \\bPosition\\!b(\\#00ff00 %.2f ",
@@ -294,6 +295,7 @@ function render_sample(smpl)
 	
 	local strtbl = {};
 -- expand samples:
+	smpl.opacity = smpl.props.opacity;
 	smpl.posx = smpl.props.position[1];
 	smpl.posy = smpl.props.position[2];
 	smpl.posz = smpl.props.position[3];
