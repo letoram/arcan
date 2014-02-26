@@ -1,7 +1,9 @@
 -- simple [message list] (LEFT, RIGHT, SELECT, ESCAPE) selection dialog
 
 local function dialog_nextlabel(self, step)
-	if (self.labelstr) then delete_image(self.labelstr); self.labelstr = nil; end
+	if (valid_vid(self.labelstr)) then 
+		delete_image(self.labelstr); self.labelstr = nil; 
+	end
 
 -- move and cap
 	self.current = self.current + step;

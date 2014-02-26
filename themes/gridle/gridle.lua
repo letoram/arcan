@@ -375,7 +375,7 @@ function gridle_launchinternal()
 
 	local tmptbl = {};
 	tmptbl["MENU_ESCAPE"] = function()
-		gridle_internal_cleanup(gridview_cleanuphook, true);
+		gridle_internal_cleanup(gridview_cleanuphook, false);
 	end
 	
 	dispatch_push(tmptbl, "launch_internal", nil, 0);
@@ -468,6 +468,12 @@ function gridle()
 	  error("Unsupported resolution (" .. VRESW .. " x " .. VRESH .. 
 			") requested (minimum 240x180). Check -w / -h arguments.");
 	end
+
+	INTERW = VRESW;
+	INTERH = VRESH;
+	INTERX = nil;
+	INTERY = 0;
+	INTERANG = 0;
 
 -- We'll reduce stack layers (since we barely use them) and increase number 
 -- of elements on the default one make sure that it fits the resolution of 
@@ -1750,13 +1756,16 @@ function disable_snapshot()
 
 	gameflags.snapshot_warning = true;
 	settings.capabilities.snapshot = false;
-	local vid = instance_image(imagery.nosave);
-	image_mask_clear(vid, MASK_OPACITY);
-	show_image(vid);
-	order_image(vid, INGAMELAYER_OVERLAY);
-	expire_image(vid, 50);
-	blend_image(vid, 1.0, 40);
-	blend_image(vid, 0.0, 10);
+
+	if (imagery.nosave == nil) then
+		imagery.nosave = load_image("images/icons/brokensave.png");
+	end
+
+	show_image(imagery.nosave);
+	order_image(imagery.nosave, INGAMELAYER_OVERLAY);
+	expire_image(imagery.nosave, 50);
+	blend_image(imagery.nosave, 1.0, 40);
+	blend_image(imagery.nosave, 0.0, 10);
 end
 
 function gridle_internal_status(source, tbl)

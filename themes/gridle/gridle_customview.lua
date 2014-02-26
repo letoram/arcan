@@ -15,13 +15,6 @@ local grid_stepy = 2;
 customview = {};
 
 local function customview_internal(source, datatbl)
-	if (datatbl.kind == "frameserver_terminated") then
-		pop_video_context();
-		imagery.crashimage = load_image("images/icons/terminated.png");
-		image_tracetag(imagery.crashimage, "terminated");
-		dispatch_pop();
-	end
-
 	internallaunch_event(source, datatbl);
 end
 
@@ -39,7 +32,7 @@ local function cleanup()
 
 	if ( (settings.autosave == "On" or 
 		(settings.autosave == "On (No Warning)")) and valid_vid(internal_vid)) then
-		local counter = 20;
+		local counter = 25;
 		local old_clock = gridle_clock_pulse;
 		blend_image(internal_vid, 0.0, 20);
 		audio_gain(internal_aid, 0.0, 20);
@@ -50,12 +43,12 @@ local function cleanup()
 			if counter > 0 then
 				counter = counter - 1;
 			else
-				pop_video_context();
+				cleanup_trigger();
 				gridle_clock_pulse = old_clock;
 			end
 		end
 	else
-		pop_video_context();
+		cleanup_trigger();
 	end
 end
 
@@ -70,19 +63,23 @@ local function launch(tbl)
 
 -- can also be invoked from the context menus
 	if (launch_internal) then
-		push_video_context();
+		local dstreg = (layout["internal"] and 
+			#layout["internal"] > 0) and layout["internal"][1] or nil;
 
--- load the standard icons needed to show internal launch info
-		imagery.loading = load_image("images/icons/colourwheel.png");
-		resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
-		move_image(imagery.loading, 
-			0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
-		order_image(imagery.loading, INGAMELAYER_OVERLAY);
-		
-		image_tracetag(imagery.loading, "loading");
-	
-		imagery.nosave  = load_image("images/icons/brokensave.png");
-		image_tracetag(imagery.nosave, "nosave");
+		if (not dstreg) then
+			push_video_context();
+			cleanup_trigger = pop_video_context;
+			INTERX = nil;
+		else
+			INTERW = dstreg.size[1];
+			INTERH = dstreg.size[2];
+			INTERX = dstreg.pos[1];
+			INTERY = dstreg.pos[2];
+			INTERANG = dstreg.ang;
+			cleanup_trigger = function() end
+		end
+
+		order_image(imagery.loading, INGAMELAYER_OVERLAY);		
 
 		play_audio(soundmap["LAUNCH_INTERNAL"]);
 		settings.capabilities = tbl.capabilities;
@@ -90,7 +87,7 @@ local function launch(tbl)
 
 		local tmptbl = {};
 		tmptbl["MENU_ESCAPE"] = function()
-			pop_video_context();
+			cleanup_trigger();
 			dispatch_pop();
 		end
 
@@ -347,6 +344,29 @@ function gridle_customview()
 	setup_3dsupport();
 	customview_3dbase();
 
+	INTERW = VRESW;
+	INTERH = VRESH;
+
+	imagery.crashimage = load_image("images/icons/terminated.png");
+	resize_image(imagery.crashimage, VRESW * 0.5, VRESH * 0.5);
+	move_image(imagery.crashimage, 
+		0.5 * (VRESW - (VRESW * 0.5)), 
+		0.5 * (VRESH - (VRESH * 0.5)));
+	image_tracetag(imagery.crashimage, "terminated");
+	persist_image(imagery.crashimage);
+
+-- load the standard icons needed to show internal launch info
+	imagery.loading = load_image("images/icons/colourwheel.png");
+	resize_image(imagery.loading, VRESW * 0.05, VRESW * 0.05);
+	move_image(imagery.loading, 
+		0.5 * (VRESW - VRESW * 0.1), 0.5 * (VRESH - VRESW * 0.1) - 30);
+	image_tracetag(imagery.loading, "loading");
+	persist_image(imagery.loading);
+
+	imagery.nosave  = load_image("images/icons/brokensave.png");
+	image_tracetag(imagery.nosave, "nosave");
+	persist_image(imagery.nosave);
+
 	layout = layout_load("customview.lay", load_cb);
 	if (layout) then
 		setup_customview();
@@ -428,6 +448,10 @@ function gridle_customview()
 		end 
 	);
 
+	layout:add_resource("internal", "internal", "Internal Launch", 
+		"Input Feeds...", LAYRES_FRAMESERVER, true, 
+		load_image("images/placeholders/internal.png"));
+	
 	for ind, val in ipairs( {"Title", "Genre", "Subgenre", 
 		"Setname", "Manufacturer", "Buttons", "Players", 
 		"Year", "Target", "System"} ) do
