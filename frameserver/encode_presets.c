@@ -28,7 +28,7 @@ static void vcodec_defaults(struct codec_ent* dst, unsigned width,
 	ctx->time_base.den = fps;
 	ctx->time_base.num = 1;
 	
-	AVFrame* pframe = avcodec_alloc_frame();
+	AVFrame* pframe = av_frame_alloc();
 	pframe->data[0] = av_malloc( (base_sz * 3) / 2);
 	pframe->data[1] = pframe->data[0] + base_sz;
 	pframe->data[2] = pframe->data[1] + base_sz / 4;

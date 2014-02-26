@@ -210,7 +210,7 @@ static bool encode_audio(bool flush)
 	AVPacket pkt = {0};
 	av_init_packet(&pkt);
 
-	frame = avcodec_alloc_frame();
+	frame = av_frame_alloc();
 	frame->channel_layout = ctx->channel_layout;
 
 	int buffer_sz;
@@ -260,7 +260,7 @@ forceencode:
 			exit(EXIT_FAILURE);
 		}
 
-		avcodec_free_frame(&frame);
+		av_freep(&frame);
 	}
 
 	av_free_packet(&pkt);
@@ -285,7 +285,7 @@ forceencode:
 				(ctx->flags & CODEC_CAP_VARIABLE_FRAME_SIZE) > 0)){
 			recctx.aframe_insz = recctx.encabuf_ofs;
 			recctx.aframe_smplcnt = recctx.aframe_insz >> 2;
-			frame = avcodec_alloc_frame();
+			frame = av_frame_alloc();
 			frame->channel_layout = ctx->channel_layout;
 
 			forcetog = true;
@@ -582,7 +582,6 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 		muxer.storage.container.format->flags);
 	struct codec_ent audio = encode_getacodec(ack, 
 		muxer.storage.container.format->flags);
-	unsigned contextc = 0; /* track of which ID the next stream has */
 
 	if (!video.storage.container.context){
 		LOG("(encode) No valid output container found, aborting.\n");
@@ -601,12 +600,11 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 		if ( video.setup.video(&video, desw, desh, fps, vbr, stream_outp) ){
 			recctx.encvbuf_sz = desw * desh * bpp;
 			recctx.bpp = bpp;
-			recctx.encvbuf    = av_malloc(recctx.encvbuf_sz);
-			recctx.vstream = av_new_stream(muxer.storage.container.context,
-				contextc++);
-			recctx.vcodec  = video.storage.video.codec;
+			recctx.encvbuf = av_malloc(recctx.encvbuf_sz);
+			recctx.vstream=avformat_new_stream(muxer.storage.container.context,NULL);
+			recctx.vcodec = video.storage.video.codec;
 			recctx.vcontext= video.storage.video.context;
-			recctx.pframe  = video.storage.video.pframe;
+			recctx.pframe = video.storage.video.pframe;
 			
 			recctx.vstream->codec = recctx.vcontext;
 			recctx.fps = fps;
@@ -616,14 +614,13 @@ static bool setup_ffmpeg_encode(const char* resource, int desw, int desh)
 
 	if (!noaudio && video.storage.audio.codec){
 		if ( audio.setup.audio(&audio, channels, samplerate, abr) ){
-			recctx.encabuf_sz     = ARCAN_SHMPAGE_AUDIOBUF_SZ * 2;
-			recctx.encabuf_ofs    = 0;
-			recctx.encabuf        = av_malloc(recctx.encabuf_sz);
+			recctx.encabuf_sz = ARCAN_SHMPAGE_AUDIOBUF_SZ * 2;
+			recctx.encabuf_ofs = 0;
+			recctx.encabuf = av_malloc(recctx.encabuf_sz);
 
-			recctx.astream        = av_new_stream(muxer.storage.container.context,
-				contextc++);
-			recctx.acontext       = audio.storage.audio.context;
-			recctx.acodec         = audio.storage.audio.codec;
+			recctx.astream=avformat_new_stream(muxer.storage.container.context,NULL);
+			recctx.acontext = audio.storage.audio.context;
+			recctx.acodec = audio.storage.audio.codec;
 			recctx.astream->codec = recctx.acontext;
 
 /* feeding audio encoder by this much each time,

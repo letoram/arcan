@@ -177,7 +177,7 @@ static bool decode_aframe()
 	static AVFrame* aframe;
 
 	if (!aframe)
-		aframe = avcodec_alloc_frame();
+		aframe = av_frame_alloc(); 
 	
 	int got_frame = 1;
 
@@ -266,7 +266,7 @@ static bool decode_vframe()
 	static AVFrame* vframe;
 
 	if (vframe == NULL)
-		vframe = avcodec_alloc_frame();
+		vframe = av_frame_alloc();
 
 	avcodec_decode_video2(decctx.vcontext, vframe, 
 		&complete_frame, &decctx.packet);
