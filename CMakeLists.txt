@@ -20,6 +20,7 @@
 # --- Project metadata
 PROJECT( arcan )
 include(ExternalProject)
+include(CheckIncludeFiles)
 
 set(CMAKE_EXTERNAL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/external)
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
@@ -40,11 +41,10 @@ set( MAIN_LIBRARIES )
 #
 if( CMAKE_SIZEOF_VOID_P EQUAL 4 )
 	set( HAVE_64_BIT 0 )
-else( CMAKE_SIZEOF_VOID_P EQUAL 4 )
+else() 
 	option(ENABLE_32BITHIJACK "Build both 64 and 32bit hijack libraries" OFF)
 	set( HAVE_64_BIT 1 )
-	set( HAVE_SIMD TRUE )
-endif( CMAKE_SIZEOF_VOID_P EQUAL 4 )
+endif()
 
 option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OFF)
 option(ENABLE_NET "Build with networking support in frameserver" ON)
@@ -53,6 +53,7 @@ option(ENABLE_LIBRETRO3D "Add 3D core support to libretro frameserver" ON)
 option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
+option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
 
 if (NOT WIN32)
@@ -170,12 +171,30 @@ if(WIN32)
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
 endif()
 
-FIND_PACKAGE ( SDL REQUIRED )
-FIND_PACKAGE ( SDL_image )
+if (NOT VIDEO_PLATFORM)
+	set(VIDEO_PLATFORM "sdl")
+	FIND_PACKAGE( SDL REQUIRED )
+	FIND_PACKAGE ( SDL_image )
+endif()
+
+if (NOT INPUT_PLATFORM)
+	set(INPUT_PLATFORM "sdl")
+	FIND_PACKAGE( SDL REQUIRED )
+endif()
+
 FIND_PACKAGE ( Freetype REQUIRED )
-FIND_PACKAGE ( OpenGL REQUIRED )
-FIND_PACKAGE ( OpenAL REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
+
+if (NOT VIDEO_PLATFORM STREQUAL "egl")
+	FIND_PACKAGE ( OpenGL REQUIRED )
+	FIND_PACKAGE ( GLEW REQUIRED )
+endif()
+
+FIND_PACKAGE ( OpenAL REQUIRED )
+				
+message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
+message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
+message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
 
 # modified version of the 51 package that checks for the lua51_jit option 
 if (LUA51_JIT)
@@ -200,8 +219,6 @@ if (NOT SQLITE_AMALGAMATE)
 FIND_PACKAGE ( SQLITE3 REQUIRED )
 endif(NOT SQLITE_AMALGAMATE) 
 
-FIND_PACKAGE ( GLEW REQUIRED )
-
 # Adds support for frameserver_net
 FIND_PACKAGE ( APR ) 
 
@@ -211,10 +228,8 @@ FIND_PACKAGE ( FFMPEG )
 LIST (APPEND
 	MAIN_LIBRARIES
 	${OPENCTM_LIBRARY}
-	${SDL_LIBRARY}
 	${FREETYPE_LIBRARY}
 	${LUA_LIBRARIES}
-	${OPENGL_gl_LIBRARY}
 	${OPENAL_LIBRARY}
 	${BZIP2_LIBRARIES}
 	${ZLIB_LIBRARY}
@@ -228,13 +243,11 @@ set (
 INCLUDE_DIRS
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
-	${SDL_INCLUDE_DIR}
 	${PNG_INCLUDE_DIR}
 	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
 	${FFMPEG_INCLUDE_DIRS}
 	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
-	${GLEW_INCLUDE_DIRS}
 	"frameserver"
 	"frameserver/ntsc"
 	"external"

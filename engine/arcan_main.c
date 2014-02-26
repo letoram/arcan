@@ -167,14 +167,14 @@ int main(int argc, char* argv[])
 	char* monitor_arg     = "LOG";
 
 	char* dbfname = NULL;
-	char ch;
+	int ch;
 	
 	srand( time(0) );
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
 
 	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:"
-		"t:M:O:o:l:a:d:F:1:2:gr:S", longopts, NULL)) != -1){
+		"t:M:O:o:l:a:d:F:1:2:gr:S", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
 		usage();

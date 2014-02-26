@@ -3,9 +3,9 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include <arcan_math.h>
-#include <arcan_general.h>
-#include <arcan_event.h>
+#include "arcan_math.h"
+#include "arcan_general.h"
+#include "arcan_event.h"
 
 arcan_errc arcan_event_analogstate(int devid, int axisid,
 	int* lower_bound, int* upper_bound, int* deadzone,
@@ -30,6 +30,15 @@ void platform_event_process(arcan_evctx* ctx)
 
 void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
 {
+}
+
+void arcan_event_rescan_idev(arcan_evctx* ctx)
+{
+}
+
+const char* arcan_event_devlabel(int devid)
+{
+	return NULL;
 }
 
 void platform_event_deinit(arcan_evctx* ctx)
