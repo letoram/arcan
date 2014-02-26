@@ -24,45 +24,70 @@ ${PLATFORM_PATH}/shm.c
 
 if (VIDEO_PLATFORM STREQUAL "egl")
 # detect broadcom etc. and add appropriate flags
-	include_directories(/opt/vc/include/interface/vcos/pthreads)
-	include_directories(/opt/vc/include)
-	include_directories(/opt/vc/include/interface/vmcs_host/linux)
+
+	if (EXISTS "/opt/vc/include/bcm_host.h")
+		message("EGL: bcm_host detected, enabling raspberry pi / broadcom support")
+		include_directories(/opt/vc/include/interface/vcos/pthreads)
+		include_directories(/opt/vc/include)
+		include_directories(/opt/vc/include/interface/vmcs_host/linux)
+		include_directories(/opt/vc/include/GLES2)
+		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
+			APPEND PROPERTY COMPILE_DEFINITIONS RPI_BCM) 
+
+		set(GL_LIBRARIES	
+			/opt/vc/lib/libGLESv2.so 
+			/opt/vc/lib/libbcm_host.so
+			/opt/vc/lib/libEGL.so
+		)
+	else()
+		set (GL_LIBRARIES
+			GLESv2
+      EGL
+		)
+	endif()
+
+	list(APPEND MAIN_LIBRARIES ${GL_LIBRARIES})
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../egl/video.c)
+	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\")
 
-	set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-		APPEND PROPERTY COMPILE_DEFINITIONS RPI_BCM) 
-
-	list(APPEND MAIN_LIBRARIES 
-		/opt/vc/lib/libGLESv2.so 
-		/opt/vc/lib/libbcm_host.so
-		/opt/vc/lib/libEGL.so
-	)
+	if (${ENABLE_LIBRETRO})
+	if (${ENABLE_LIBRETRO3D})
+		list(APPEND FSRV_LIBRETRO_SOURCES 
+			${PLATFORM_PATH}/../egl/video.c)
+		list(APPEND FSRV_LIBRETRO_LIBRARIES
+			${GL_LIBRARIES}
+		)
+	endif(${ENABLE_LIBRETRO3D})
+	endif(${ENABLE_LIBRETRO})
 
 else()
+	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
+	set(ENABLE_LIBRETRO3D FALSE)
+endif()
+
+if (INPUT_PLATFORM STREQUAL "sdl")
+	list(APPEND PLATFORM_SOURCES
+		${PLATFORM_PATH}/../sdl/event.c
+	)
+	if (${ENABLE_LIBRETRO})
+	if (${ENABLE_LIBRETRO3D})
+		list(APPEND FSRV_LIBRETRO_SOURCES 
+			${PLATFORM_PATH}/../sdl/video_mini.c)
+		list(APPEND FSRV_LIBRETRO_LIBRARIES 
+			${SDL_LIBRARY} 
+			${GLEW_LIBRARIES} 
+			${OPENGL_gl_LIBRARY}
+		)
+	endif()
+	endif()
 endif()
 
 if (INPUT_PLATFORM STREQUAL "linux")
 	list(APPEND PLATFORM_SOURCES
 		${PLATFORM_PATH}/../stub/event.c
 	)
-else()
-	list(APPEND PLATFORM_SOURCES
-		${PLATFORM_PATH}/../sdl/event.c
-	)
 endif()
-
-if (${ENABLE_LIBRETRO})
-if (${ENABLE_LIBRETRO3D})
-	list(APPEND FSRV_LIBRETRO_SOURCES 
-		${PLATFORM_PATH}/../sdl/video_mini.c)
-	list(APPEND FSRV_LIBRETRO_LIBRARIES 
-		${SDL_LIBRARY} 
-		${GLEW_LIBRARIES} 
-		${OPENGL_gl_LIBRARY}
-	)
-endif(${ENABLE_LIBRETRO3D})
-endif(${ENABLE_LIBRETRO})
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
 LIST(APPEND STDLIB
@@ -77,7 +102,6 @@ set_property(SOURCE ${PLATFORM_PATH}/frameserver.c
 				PROPERTY COMPILE_FLAGS -Wno-gnu-variable-sized-type-not-at-end)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
-	-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
 	-Wall -Wno-missing-braces -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
 	-D_POSIX_C_SOURCE -D_GNU_SOURCE)
 
@@ -121,7 +145,11 @@ add_library(arcan_hijack SHARED ${HIJACK_SOURCES})
 set_property(TARGET arcan_hijack PROPERTY 
 	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
-target_link_libraries(arcan_hijack ${STDLIB} ${SDL_LIBRARY} ${OPENGL_gl_LIBRARY})
+target_link_libraries(arcan_hijack 
+	${STDLIB} 
+	${SDL_LIBRARY} 
+	${OPENGL_gl_LIBRARY}
+)
 
 set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)

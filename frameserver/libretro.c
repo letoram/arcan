@@ -40,8 +40,8 @@
 
 #include "resampler/speex_resampler.h"
 
-#ifdef FRAMESERVER_LIBRETRO_3D 
-#include "../platform/sdl/glheaders.h"
+#ifdef FRAMESERVER_LIBRETRO_3D
+#include GL_HEADERS
 #include "../platform/platform.h"
 
 static void build_fbo(int neww, int newh, int* dw, int* dh, 

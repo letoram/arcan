@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <string.h>
+#include <stddef.h>
 
 #include GL_HEADERS
 
@@ -453,7 +455,6 @@ static bool build_shader(const char* label, GLuint* dprg,
 	char buf[256];
 	int rlen;
 
-	*dprg = glCreateProgram();
 	*vprg = glCreateShader(GL_VERTEX_SHADER);
 	*fprg = glCreateShader(GL_FRAGMENT_SHADER);
 
@@ -488,6 +489,7 @@ static bool build_shader(const char* label, GLuint* dprg,
 		kill_shader(dprg, vprg, fprg);
 		return false;
 	} else {
+		*dprg = glCreateProgram();
 		glAttachShader(*dprg, *fprg);
 		glAttachShader(*dprg, *vprg);
 		glLinkProgram(*dprg);
