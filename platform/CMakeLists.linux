@@ -23,10 +23,10 @@ ${PLATFORM_PATH}/shm.c
 )
 
 if (VIDEO_PLATFORM STREQUAL "egl")
-# detect broadcom etc. and add appropriate flags
 
+# detect broadcom (rpi) etc. and add appropriate flags
 	if (EXISTS "/opt/vc/include/bcm_host.h")
-		message("EGL: bcm_host detected, enabling raspberry pi / broadcom support")
+		message(STATUS "EGL: bcm_host detected, enabling raspberry pi / broadcom support")
 		include_directories(/opt/vc/include/interface/vcos/pthreads)
 		include_directories(/opt/vc/include)
 		include_directories(/opt/vc/include/interface/vmcs_host/linux)
@@ -44,6 +44,7 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 			GLESv2
       EGL
 		)
+		set(ENABLE_LIBRETRO3D FALSE)
 	endif()
 
 	list(APPEND MAIN_LIBRARIES ${GL_LIBRARIES})
@@ -55,38 +56,38 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 		list(APPEND FSRV_LIBRETRO_SOURCES 
 			${PLATFORM_PATH}/../egl/video.c)
 		list(APPEND FSRV_LIBRETRO_LIBRARIES
-			${GL_LIBRARIES}
+			${GL_LIBRARIES} 
 		)
 	endif(${ENABLE_LIBRETRO3D})
 	endif(${ENABLE_LIBRETRO})
 
-else()
+elseif(VIDEO_PLATFORM STREQUAL "sdl")
 	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
-	set(ENABLE_LIBRETRO3D FALSE)
-endif()
 
-if (INPUT_PLATFORM STREQUAL "sdl")
-	list(APPEND PLATFORM_SOURCES
-		${PLATFORM_PATH}/../sdl/event.c
-	)
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
 		list(APPEND FSRV_LIBRETRO_SOURCES 
 			${PLATFORM_PATH}/../sdl/video_mini.c)
 		list(APPEND FSRV_LIBRETRO_LIBRARIES 
 			${SDL_LIBRARY} 
-			${GLEW_LIBRARIES} 
+			${GLEW_LIBRARY} 
 			${OPENGL_gl_LIBRARY}
 		)
 	endif()
 	endif()
 endif()
 
-if (INPUT_PLATFORM STREQUAL "linux")
+if (INPUT_PLATFORM STREQUAL "sdl")
+	list(APPEND PLATFORM_SOURCES
+		${PLATFORM_PATH}/../sdl/event.c
+	)
+elseif (INPUT_PLATFORM STREQUAL "linux")
 	list(APPEND PLATFORM_SOURCES
 		${PLATFORM_PATH}/../stub/event.c
 	)
+else()
+	message(FATAL_ERROR "Linux: Unsupported input platform (${INPUT_PLATFORM})")
 endif()
 
 LIST(APPEND FSRV_SOURCES frameserver/frameserver.c) 
@@ -94,12 +95,6 @@ LIST(APPEND STDLIB
  dl
  rt)
 include(${PLATFORM_PATH}/../CMakeLists.fsrv)
-
-#
-# This one is just pathetic
-#
-set_property(SOURCE ${PLATFORM_PATH}/frameserver.c 
-				PROPERTY COMPILE_FLAGS -Wno-gnu-variable-sized-type-not-at-end)
 
 add_definitions(-DPLATFORM_HEADER=\"${PLATFORM_PATH}/platform.h\"
 	-Wall -Wno-missing-braces -DCLOCK_SOURCE_RAW -DLUA_51 -D__UNIX
@@ -142,7 +137,7 @@ SET(HIJACK_SOURCES
 
 add_library(arcan_hijack SHARED ${HIJACK_SOURCES}) 
 
-set_property(TARGET arcan_hijack PROPERTY 
+set_property(TARGET arcan_hijack APPEND PROPERTY 
 	COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
 
 target_link_libraries(arcan_hijack 
@@ -163,9 +158,12 @@ if (ENABLE_32BITHIJACK)
 	message("(*) 64-bit target detected, building compat. 32-bit hijack library")
 
 	add_library(arcan_hijack32 SHARED ${HIJACK_SOURCES})
-	
-	set_target_properties(arcan_hijack32 PROPERTIES COMPILE_FLAGS "-m32")
- 	target_link_libraries(arcan_hijack32 ${STDLIB} -m32 )
+
+	set_property(TARGET arcan_hijack32 APPEND PROPERTY 
+		COMPILE_FLAGS "-m32")
+	set_property(TARGET arcan_hijack32 APPEND PROPERTY 
+		COMPILE_DEFINITIONS ENABLE_X11HIJACK ENABLE_WINE_HIJACK)
+	 	target_link_libraries(arcan_hijack32 ${STDLIB} -m32 )
 	install(TARGETS arcan_hijack32 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 endif (ENABLE_32BITHIJACK)
 
