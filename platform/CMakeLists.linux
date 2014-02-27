@@ -84,7 +84,7 @@ if (INPUT_PLATFORM STREQUAL "sdl")
 	)
 elseif (INPUT_PLATFORM STREQUAL "linux")
 	list(APPEND PLATFORM_SOURCES
-		${PLATFORM_PATH}/../stub/event.c
+		${PLATFORM_PATH}/../linux/event.c
 	)
 else()
 	message(FATAL_ERROR "Linux: Unsupported input platform (${INPUT_PLATFORM})")
