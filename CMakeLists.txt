@@ -138,10 +138,6 @@ endif (ENABLE_ASAN)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/platform/cmake)
 set(OPENCTM_LIBRARY openctm)
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-set(BSD_BUILD ON)
-endif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-
 # OS Specific libraries / dependencies first
 if(WIN32)
 	set(WINLIB ${CMAKE_CURRENT_SOURCE_DIR}/platform/win32/lib)
@@ -169,34 +165,52 @@ if(WIN32)
 	set(SDLIMAGE_INCLUDE_DIR ${WININC}\\SDL)
 	set(GLEW_INCLUDE_DIR ${WININC})
 	set(GLEW_LIBRARY ${WINLIB}\\glew32s.lib)
+	set(OS_PLATFORM_NAME "Win32")
 endif()
 
-if (NOT VIDEO_PLATFORM)
+if (NOT VIDEO_PLATFORM OR VIDEO_PLATFORM STREQUAL "sdl")
 	set(VIDEO_PLATFORM "sdl")
 	FIND_PACKAGE( SDL REQUIRED )
+	FIND_PACKAGE ( OpenGL REQUIRED )
+	FIND_PACKAGE ( GLEW REQUIRED )
 	FIND_PACKAGE ( SDL_image )
+	LIST(APPEND MAIN_LIBRARIES ${GLEW_LIBRARY} ${OPENGL_gl_LIBRARY} ${SDL_LIBRARY})
+	LIST(APPEND INCLUDE_DIRS ${SDL_INCLUDE_DIR} ${GLEW_INCLUDE_DIRS})
+
+	if (${SDLIMAGE_FOUND})
+		message("--> SDL_Image found, adding") 
+		list(APPEND MAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
+		list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
+		add_definitions(-DSDLIMAGE)
+	endif(${SDLIMAGE_FOUND}) 
 endif()
 
-if (NOT INPUT_PLATFORM)
+if (NOT INPUT_PLATFORM OR INPUT_PLATFORM STREQUAL "sdl")
 	set(INPUT_PLATFORM "sdl")
 	FIND_PACKAGE( SDL REQUIRED )
+endif()
+
+if (NOT AUDIO_PLATFORM)
+	set(AUDIO_PLATFORM "openal")
+	FIND_PACKAGE( OpenAL REQUIRED )
 endif()
 
 FIND_PACKAGE ( Freetype REQUIRED )
 FIND_PACKAGE ( PNG REQUIRED )
 
-if (NOT VIDEO_PLATFORM STREQUAL "egl")
-	FIND_PACKAGE ( OpenGL REQUIRED )
-	FIND_PACKAGE ( GLEW REQUIRED )
-endif()
-
-FIND_PACKAGE ( OpenAL REQUIRED )
-				
 message("video output (VIDEO_PLATFORM) set to : ${VIDEO_PLATFORM}")
 message("audio output (AUDIO_PLATFORM) set to : ${AUDIO_PLATFORM}")
 message("device input (INPUT_PLATFORM) set to : ${INPUT_PLATFORM}")
-
+message("\n---- Stage 1: library dependencies and configuration ----")
 # modified version of the 51 package that checks for the lua51_jit option 
+FIND_PACKAGE ( BZip2 REQUIRED )
+FIND_PACKAGE ( ZLIB REQUIRED )
+
+if (NOT SQLITE_AMALGAMATE) 
+FIND_PACKAGE ( SQLITE3 REQUIRED )
+endif(NOT SQLITE_AMALGAMATE) 
+
+message(STATUS "LUA")
 if (LUA51_JIT)
 	FIND_PACKAGE ( Lua51JIT )
 endif (LUA51_JIT)
@@ -212,19 +226,6 @@ if (NOT LUA_LIBRARIES)
 	set (LUA_LIBRARIES lua51 )
 endif (NOT LUA_LIBRARIES)
 
-FIND_PACKAGE ( BZip2 REQUIRED )
-FIND_PACKAGE ( ZLIB REQUIRED )
-
-if (NOT SQLITE_AMALGAMATE) 
-FIND_PACKAGE ( SQLITE3 REQUIRED )
-endif(NOT SQLITE_AMALGAMATE) 
-
-# Adds support for frameserver_net
-FIND_PACKAGE ( APR ) 
-
-# Adds support for frameserver_encode, frameserver_decode
-FIND_PACKAGE ( FFMPEG )
-
 LIST (APPEND
 	MAIN_LIBRARIES
 	${OPENCTM_LIBRARY}
@@ -239,8 +240,8 @@ LIST (APPEND
 	${PNG_LIBRARIES}
 )
 
-set (
-INCLUDE_DIRS
+LIST (APPEND 
+	INCLUDE_DIRS
 	${LUA_INCLUDE_DIR}
 	${OPENAL_INCLUDE_DIR}
 	${PNG_INCLUDE_DIR}
@@ -254,17 +255,6 @@ INCLUDE_DIRS
 	"shmif"
 	"engine"
 )
-
-if (${APR_FOUND})
-	list(APPEND INCLUDE_DIRS ${APR_INCLUDE_DIR})
-endif()
-
-if (${SDLIMAGE_FOUND})
-	message("--> SDL_Image found, enabling (use -DCMAKE_DISABLE_FIND_PACKAGE_SDL_image to force off).")
-	list(APPEND MAIN_LIBRARIES ${SDLIMAGE_LIBRARY})
-	list(APPEND INCLUDE_DIRS ${SDLIMAGE_INCLUDE_DIR})
-	add_definitions(-DSDLIMAGE)
-endif(${SDLIMAGE_FOUND}) 
 
 add_subdirectory( external/openctm )
 
@@ -324,31 +314,34 @@ set (
 set_property(SOURCE frameserver/graphing/net_graph.c 
 	PROPERTY COMPILE_FLAGS -Wno-unused)
 
-if (${ENABLE_LED})
+if (ENABLE_SIMD)
+	message("--> Enabling SIMD")
+	set_property(SOURCE engine/arcan_math.c
+		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
+	list(APPEND SOURCES engine/arcan_math_simd.c)
+endif()
+
+if (ENABLE_LED)
+	message("--> Adding LED controller support.")
 	list(APPEND ${SOURCES}
 		arcan_led.c
 		arcan_led.h
 	)
 	add_definitions(-DARCAN_LED)
-endif (${ENABLE_LED})
+endif()
 
-if (${ENABLE_HMD})
+if (ENABLE_HMD)
+	message("--> Adding HMD device support.")
 	list(APPEND ${SOURCES}
 		arcan_hmd.c
 		arcan_hmd.h
 	)
 	add_definitions(-DARCAN_HMD)
-endif (${ENABLE_HMD})
-
-if (${HAVE_SIMD})
-	message("-- Enabling SIMD")
-	add_definitions(-DARCAN_MATH_SIMD)
-	list(APPEND SOURCES engine/arcan_math_simd.c)
-endif (${HAVE_SIMD})
+endif(ENABLE_HMD)
 
 # Enable / Disable individual frameserver features
-if (${ENABLE_LIBRETRO})
-	message("--> Including libretro support.")
+if (ENABLE_LIBRETRO)
+	message("--> Adding libretro support.")
 	set(FSRV_LIBRETRO_SOURCES
 	 frameserver/libretro.h
 	 frameserver/libretro.c
@@ -365,17 +358,20 @@ if (${ENABLE_LIBRETRO})
 	 frameserver/graphing/font_8x8.h
 	)
 
-	if (${ENABLE_LIBRETRO3D})
-		message("  |-> Enabling experimental 3D support.")
+	if (ENABLE_LIBRETRO3D)
+		message("    |-> Enabling experimental 3D support.")
 		set_property( SOURCE frameserver/libretro.c
 			APPEND PROPERTY COMPILE_DEFINITIONS
 				FRAMESERVER_LIBRETRO_3D
 		)	
-	endif(${ENABLE_LIBRETRO3D})
-endif(${ENABLE_LIBRETRO})
+	endif()
+endif()
 
-if (${APR_FOUND} AND ${ENABLE_NET})
-	message("--> Including networking support.") 
+if (ENABLE_NET)
+	message("--> Adding networking support.") 
+	FIND_PACKAGE(APR REQUIRED) 
+
+	list(APPEND INCLUDE_DIRS ${APR_INCLUDE_DIR})
 	list(APPEND FSRV_NET_LIBRARIES ${APR_LIBRARIES} )
 	set(FSRV_NET_SOURCES
 		frameserver/graphing/net_graph.c
@@ -384,16 +380,20 @@ if (${APR_FOUND} AND ${ENABLE_NET})
 		frameserver/net.h
 		frameserver/net.c
 	)
-else (${APR_FOUND} AND ${ENABLE_NET})
-	message("--> Disabling networking support.")
-endif (${APR_FOUND} AND ${ENABLE_NET})
+endif()
 
-list(APPEND FSRV_AVFEED_SOURCES
-    frameserver/avfeed.c
-)
+#
+# AVfeed is a convenience- mapped input skeleton frameserver
+# for hooking up custom input sources
+#
+if (AVFEED_SOURCES)
+	list(APPEND FSRV_AVFEED_SOURCES ${AVFEED_SOURCES})
+	list(APPEND FSRV_AVFEED_LIBRARIES ${AVFEED_LIBS})
+endif()
 
-if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
-	message("--> Including video encoding/decoding support.") 
+if (${ENABLE_VIDDECENC})
+	FIND_PACKAGE ( FFMPEG REQUIRED)
+	message("--> Adding video encoding/decoding support.") 
 	set(FSRV_DECODE_LIBRARIES 
 		${FFMPEG_LIBRARIES}
 		pthread
@@ -407,20 +407,19 @@ if (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
 		${BZIP2_LIBRARIES}
 		${ZLIB_LIBRARY}
 	)
+
 	set(FSRV_DECODE_SOURCES 
 		frameserver/decode.c
 		external/fft/kiss_fft.c
 		external/fft/kiss_fftr.c
 	)
+
 	set(FSRV_ENCODE_SOURCES
 		frameserver/encode.c
 		frameserver/encode_presets.c
 		frameserver/encode_presets.h
 	)
-
-else (${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
-	message("--> Disabling video de-/encoding.")
-endif(${FFMPEG_FOUND} AND ${ENABLE_VIDDECENC})
+endif()
 
 if (SQLITE_AMALGAMATE)
 	message("--> Embedding the SQLite Amalgamation.")
@@ -441,18 +440,26 @@ include_directories(${INCLUDE_DIRS})
 # Expected to 
 #
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+	message("\n---- Stage 2, FreeBSD specific configuration ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.FreeBSD)
 
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+	message("\n---- Stage 2, Linux specific configuration ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.linux)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+	message("\n---- Stage 2, Windows specific configuration ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Windows)
 
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+	message("\n---- Stage 2, OS X specific configuration ----")
 	include(${CMAKE_CURRENT_SOURCE_DIR}/platform/CMakeLists.Darwin)
+
+else()
+	message(FATAL_ERROR "Unsupported OS detected, abandon ship!.")
 endif()
 
+message("\n---- Stage 3, Linking / Packaging ----")
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
 
@@ -462,21 +469,21 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/
 	DESTINATION ${THEME_DST} 
 	DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} 
 	FILE_PERMISSIONS ${SHARED_PERMISSIONS} 
-	PATTERN ".svn" EXCLUDE)
+	PATTERN ".gitignore" EXCLUDE)
 
 if (TEST_DST) 
 	install(DIRECTORY ${CMAKE_SOURCE_DIR}/tests/
 		DESTINATION ${TEST_DST}
 		DIRECTORY_PERMISSIONS ${SHARED_PERMISSIONS_DIR}
 		FILE_PERMISSIONS ${SHARED_PERMISSIONS}
-		PATTERN ".svn" EXCLUDE)
+		PATTERN ".gitignore" EXCLUDE)
 endif (TEST_DST)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/resources/ 
 				DESTINATION ${RESOURCES_DST} 
 				DIRECTORY_PERMISSIONS ${SHARED_PERMISSONS_DIR} 
 				FILE_PERMISSIONS ${SHARED_PERMISSIONS} 
-				PATTERN ".svn" EXCLUDE)
+				PATTERN ".gitignore" EXCLUDE)
 
 INCLUDE(InstallRequiredSystemLibraries)
 set(CPACK_SOURCE_IGNORE_FILES "/\\\\..*$;~$;${CPACK_SOURCE_IGNORE_FILES}")
@@ -488,5 +495,5 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/distr/LICENSE.txt")
 set(CPACK_PACKAGE_VERSION_MAJOR ${MAJOR_VERSION} )
 set(CPACK_PACKAGE_VERSION_MINOR ${MINOR_VERSION} )
 set(CPACK_PACKAGE_VERSION_PATCH ${PATCH_LEVEL} )
-set(CPACK_PACKAGE_CONTACT "arcan-fe@b-stahl.se")
+set(CPACK_PACKAGE_CONTACT "contact@arcan-fe.com")
 INCLUDE( CPack )

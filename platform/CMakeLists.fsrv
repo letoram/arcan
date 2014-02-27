@@ -42,6 +42,21 @@ message("---- Building frameserver in SPLIT mode ----")
 		LIST(APPEND FSRV_TARGETS arcan_frameserver_record)
 	endif()
 
+	if (FSRV_AVFEED_SOURCES)
+		add_executable(arcan_frameserver_avfeed
+			${FSRV_SOURCES}
+			${FSRV_PLATFORM_SOURCES}
+			${FSRV_AVFEED_SOURCES}
+		)
+		set_property(TARGET arcan_frameserver_avfeed APPEND PROPERTY
+			COMPILE_DEFINITIONS ENABLE_FSRV_AVFEED)
+		target_link_libraries(arcan_frameserver_avfeed
+			${STDLIB}
+			${FSRV_AVFEED_LIBRARIES}
+		)
+		LIST(APPEND FSRV_TARGETS arcan_frameserver_avfeed)
+	endif()
+
 	if (FSRV_NET_SOURCES)
 		add_executable(arcan_frameserver_net
 			${FSRV_SOURCES}
@@ -99,7 +114,14 @@ message("---- Building Frameserver in COMBINED mode ----")
 			${FSRV_NET_SOURCES})
 		list(APPEND FSRV_LIBRARIES
 			${FSRV_NET_LIBRARIES})
-		list(APPEND definitions EANBLE_FSRV_NET) 
+		list(APPEND definitions ENABLE_FSRV_NET) 
+	endif()
+
+	if (FSRV_AVFEED_SOURCES)
+		message(" |-> custom avfeed added to frameserver")
+		list(APPEND FSRV_SOURCES ${FSRV_AVFEED_SOURCES})
+		list(APPEND FSRV_LIBRARIES ${FSRV_AVFEED_LIBRARIES})
+		list(APPEND definitions ENABLE_FSRV_AVFEED)
 	endif()
 
 	if (FSRV_LIBRETRO_SOURCES)
