@@ -326,6 +326,7 @@ struct arcan_img_meta;
 void push_globj(arcan_vobject*, bool, struct arcan_img_meta*);
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
+void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);
 
 /*
  * To split between GLFX/EGL/SDL/etc. All relevant settings are predefined in
