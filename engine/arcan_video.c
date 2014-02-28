@@ -1915,7 +1915,7 @@ static void* thread_loader(void* in)
 	return 0;
 }
 
-static void join_asynchimg(arcan_vobject* img, bool emit, bool force)
+void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 {
 	if (!force && img->feed.state.tag != ARCAN_TAG_ASYNCIMGRD){
 		return;
@@ -2002,7 +2002,7 @@ arcan_errc arcan_video_pushasynch(arcan_vobj_id source)
 	if (vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGLD ||
 		vobj->feed.state.tag == ARCAN_TAG_ASYNCIMGRD){
 		/* protect us against premature invocation */
-		join_asynchimg(vobj, false, true);
+		arcan_video_joinasynch(vobj, false, true);
 	}
 	else 
 		return ARCAN_ERRC_UNACCEPTED_STATE;
@@ -3320,7 +3320,7 @@ static void tick_rendertarget(struct rendertarget* tgt)
 
 	while (current){
 		arcan_vobject* elem = current->elem;
-		join_asynchimg(elem, true, false);
+		arcan_video_joinasynch(elem, true, false);
 
 		if (elem->last_updated != arcan_video_display.c_ticks){
 /* is the item to be updated? */
