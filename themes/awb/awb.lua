@@ -106,11 +106,13 @@ function shortcut_popup(icn, tbl, name)
 			local buttontbl = {
 				{ caption = desktoplbl("OK"), trigger = 
 				function(own)
+					if (icn.set_caption == nil) then
+						return;
+					end
 					zap_resource("shortcuts/" .. name);
 						open_rawresource("shortcuts/" .. name);
 						write_rawresource(shortcut_str(own.inputfield.msg, state));
 					close_rawresource();
-					icn:set_caption(iconlbl(own.inputfield.msg));
 				end
 				},
 				{ caption = desktoplbl("Cancel"), trigger = function(own) end }
@@ -390,6 +392,9 @@ function show_help()
 		end
 
 		local helpimg = desktoplbl(msg);
+		if (not valid_vid(helpimg)) then
+			return;
+		end
 		link_image(helpimg, wnd.canvas.vid);
 		show_image(helpimg);
 		image_clip_on(helpimg, CLIP_SHALLOW);

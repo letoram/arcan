@@ -42,8 +42,9 @@ end
 
 function awblist_resize(self, neww, newh)
 	self:orig_resize(neww, newh);
-
 	local props = image_surface_properties(self.canvas.vid);
+	move_image(self.ianchor, props.x, props.y);
+
 	self.capacity = math.floor(props.height / (self.lineh + self.linespace)) - 1;
 
 	if (self.capacity < 1) then
