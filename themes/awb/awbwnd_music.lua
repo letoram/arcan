@@ -36,7 +36,6 @@ local function filterpop(wnd, icn)
 		end
 	end, {ref = icn.vid});
 end
-
 local function playlistwnd(wnd)
 	local x, y = mouse_xy();
 	local props = image_surface_properties(wnd.anchor);
@@ -64,14 +63,54 @@ local function playlistwnd(wnd)
 
 	local bar = nwin:add_bar("tt", wnd.dir.tt.activeimg, wnd.dir.tt.activeimg,
 		wnd.dir.t.rsize, wnd.dir.t.bsize);
-
+	
 	local cfg = awbwman_cfg();
+	bar.hoverlut[
+		(bar:add_icon("sortaz", "l", cfg.bordericns["sortaz"],
+			function()
+				table.sort(wnd.playlist, function(a, b) 
+					return string.lower(a) < string.lower(b); 
+				end);
+				table.sort(wnd.playlist_full, function(a, b)
+					return string.lower(a.name) < string.lower(b.name);
+				end);
+				nwin:force_update();
+			end
+		)).vid] = MESSAGE["HOVER_SORTAZ"];
 
 	bar.hoverlut[
-	(bar:add_icon("shuffle", "l", cfg.bordericns["list"], 
-		function() 
-			print("shuffle"); 
-		end)).vid] = MESSAGE["HOVER_PLAYLIST"];
+	(bar:add_icon("sortza", "l", cfg.bordericns["sortza"],
+		function()
+			table.sort(wnd.playlist, function(a, b) 
+				return string.lower(a) > string.lower(b); 
+			end);	
+			table.sort(wnd.playlist_full, function(a, b)
+				return string.lower(a.name) > string.lower(b.name);
+			end);
+			nwin:force_update();
+		end
+	)).vid] = MESSAGE["HOVER_SORTZA"];
+
+	bar.hoverlut[
+	(bar:add_icon("shuffle", "l", cfg.bordericns["shuffle"], 
+		function()
+			local newlist_wnd = {};
+			local newlist_full = {};
+
+			while #wnd.playlist_full > 0 do
+				local ind = math.random(1, #wnd.playlist_full);
+				local entry = table.remove(wnd.playlist_full, ind);
+				table.insert(newlist_full, entry);
+				entry = table.remove(wnd.playlist, ind);
+				table.insert(newlist_wnd, entry); 
+			end
+
+			wnd.playlist_full = newlist_full;
+			nwin.tbl = newlist_full; 
+			wnd.playlist = newlist_wnd;
+			wnd.playlist_ofs = 1;
+			nwin:force_update();
+		end)).vid] = MESSAGE["HOVER_SHUFFLE"];
 
 	nwin:add_handler("on_destroy", function(self)
 		wnd.playlistwnd = nil;
@@ -123,14 +162,13 @@ local function playlistwnd(wnd)
 			return;
 		end
 
-		print("playlist ind:", nwin.line_heights[ind]);
 		blend_image(sel, 0.4);
 		move_image(sel, 0, nwin.line_heights[ind]);
 		resize_image(sel, nwin.canvasw, nwin.lineh + nwin.linespace);
 	end
 
 	nwin.on_resize = nwin.update_cursor;
-
+	nwin:force_update();
 	wnd:add_cascade(nwin);
 end
 

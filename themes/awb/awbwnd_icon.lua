@@ -25,8 +25,12 @@ end
 local function awbicon_add(self, icntbl)
 -- anchor + clipping region
 	local icn_area = null_surface(self.cell_w, self.cell_h);
+	show_image(icn_area);
+
 	move_image(icn_area, cx, cy);
 	link_image(icn_area, self.canvas.vid);
+	image_clip_on(icn_area);
+
 	image_inherit_order(icn_area, true);
 	image_tracetag(icn_area, tostring(icntbl.name) .. ".anchor_region");
 	show_image(icn_area);
@@ -51,6 +55,7 @@ local function awbicon_add(self, icntbl)
 		image_mask_set(icntbl.caption, MASK_UNPICKABLE);
 		image_inherit_order(icntbl.caption, true);
 		order_image(icntbl.caption, 1);
+		image_clip_on(icntbl.caption);
 		image_tracetag(icntbl.caption, tostring(icntbl.name) .. ".caption");
 		move_image(icntbl.caption, math.ceil(0.5 * (self.cell_w - props.width)),
 			self.cell_h - props.height);
@@ -132,9 +137,8 @@ local function awbicon_resize(self, neww, newh)
 	end
 
 	local props = image_surface_properties(self.canvas.vid);
-	local cols  = math.floor(props.width  / (self.cell_w + self.hspace));
-	local rows  = math.floor(props.height / (self.cell_h + 
-		self.vspace + self.caph));
+	local cols  = math.floor(props.width / (self.cell_w + self.hspace));
+	local rows  = math.floor(props.height / (self.cell_h + self.vspace));
 
 	self.capacity = cols * rows;
 	local tbl = nil;

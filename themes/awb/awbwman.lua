@@ -2472,6 +2472,9 @@ function awbwman_init(defrndr, mnurndr)
 	awb_cfg.bordericns["uparrow"]  = load_image("awbicons/uparrow.png");
 	awb_cfg.bordericns["downarrow"]= load_image("awbicons/downarrow.png");
 	awb_cfg.bordericns["flip"]     = load_image("awbicons/flip.png");
+	awb_cfg.bordericns["shuffle"]  = load_image("awbicons/shuffle.png");
+	awb_cfg.bordericns["sortaz"]   = load_image("awbicons/az.png");
+	awb_cfg.bordericns["sortza"]   = load_image("awbicons/za.png");
 	awb_cfg.bordericns["sysopt"]   = load_image("awbicons/sysopt.png");
 	awb_cfg.bordericns["resolution"]  = load_image("awbicons/resolution.png");
 	awb_cfg.bordericns["fastforward"] = load_image("awbicons/fastforward.png");

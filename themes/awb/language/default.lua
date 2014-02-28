@@ -25,6 +25,9 @@ return {
 	HOVER_INPUTCFG = "Switch active input layout",
 	HOVER_PLAYLIST = "Show Playlist",
 	HOVER_SYSOPT = "System Options",
+	HOVER_SHUFFLE = "Randomize Playlist",
+	HOVER_SORTAZ = "Sort Ascending",
+	HOVER_SORTZA = "Sort Descending",
 
 	ANALOG_FILTERMODE = "Switch Filtering Mode",
 	ANALOG_KERNELSIZE = "Set Filter-kernel Size",
@@ -118,9 +121,9 @@ return {
 
 	HELP_3DMEDIA = [[
 		\#00ff00(canvas)\#ffffff\n\r
-		UP/DOWN/LEFT/RIGHT Zoom/Rotate Model
-		DRAG\t\t Rotate Model
-		clone-CLICK\t Update Display
+		UP/DOWN/LEFT/RIGHT Zoom/Rotate Model\n\r
+		DRAG\t\t Rotate Model\n\r
+		clone-CLICK\t Update Display\n\r
 	]],
 
 	HELP_AMEDIA = [[
