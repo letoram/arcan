@@ -201,6 +201,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		};
 		
 /* force flush beforehand */
+		printf("control child\n");
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 			src->queue_mask, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
@@ -1010,16 +1011,17 @@ ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
 		arcan_frameserver* movie = state->ptr;
 		struct arcan_shmif_page* shm = movie->shm.ptr;
 
-			if (shm->vready) {
-				frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
-				current->tag = shm->vpts;
-				memcpy(dst, movie->vidp, ntr);
-				shm->vready = false;
-				arcan_sem_post(movie->vsync);
-				rv = ntr;
-			}
-			else
-				errno = EAGAIN;
+		if (shm->vready) {
+			frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
+			current->tag = shm->vpts;
+			memcpy(dst, movie->vidp, ntr);
+			shm->vready = false;
+			arcan_sem_post(movie->vsync);
+			rv = ntr;
+		}
+		else{
+			errno = EAGAIN;
+		}
 	}
 	else
 		errno = EINVAL;

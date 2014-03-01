@@ -3333,8 +3333,9 @@ static void tick_rendertarget(struct rendertarget* tgt)
 /* special case for "unreachables", e.g. detached frameset cells */
 		for (int i = 0; i < elem->frameset_meta.capacity; i++){
 			arcan_vobject* cell = elem->frameset[i];
-			if (cell->owner == NULL && cell->feed.ffunc)
-				elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
+			if (cell->owner == NULL && cell->feed.ffunc){
+				cell->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, cell->feed.state);
+			}
 		}
 
 /* mode > 0, cycle every 'n' ticks */

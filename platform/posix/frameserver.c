@@ -225,6 +225,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		goto error_cleanup;
 	}
 
+	memset(shmpage, '\0', shmsize);
+ 	shmpage->dms = true;	
 	shmpage->parent = getpid();
 
 	int sockp[2] = {-1, -1};
