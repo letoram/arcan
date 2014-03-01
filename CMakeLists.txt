@@ -316,7 +316,6 @@ set_property(SOURCE frameserver/graphing/net_graph.c
 
 if (ENABLE_SIMD)
 	message("--> Enabling SIMD")
-	add_definitions(-msse -mfpmath=sse)
 	set_property(SOURCE engine/arcan_math.c
 		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
 	list(APPEND SOURCES engine/arcan_math_simd.c)

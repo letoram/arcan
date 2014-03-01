@@ -2,6 +2,8 @@ set (LAUNCHER_PATH ${CMAKE_SOURCE_DIR}/utils/ArcanLauncher)
 set (DISTR_PATH ${CMAKE_SOURCE_DIR}/distr)
 set (WIN32_PATH ${CMAKE_SOURCE_DIR}/platform/win32)
 
+add_definitions(-msse -mfpmath=sse)
+
 set (PLATFORM_SOURCES
 platform/posix/fmt_open.c
 ${WIN32_PATH}/sem.c
