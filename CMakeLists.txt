@@ -316,6 +316,7 @@ set_property(SOURCE frameserver/graphing/net_graph.c
 
 if (ENABLE_SIMD)
 	message("--> Enabling SIMD")
+	add_definitions(-msse -mfpmath=sse)
 	set_property(SOURCE engine/arcan_math.c
 		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
 	list(APPEND SOURCES engine/arcan_math_simd.c)
@@ -463,7 +464,7 @@ message("\n---- Stage 3, Linking / Packaging ----")
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
 
-install(TARGETS ${FSRV_TARGETS} DESTINATION ${BIN_DST})
+install(TARGETS $rcan_frameserver {FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ 
 	DESTINATION ${THEME_DST} 
