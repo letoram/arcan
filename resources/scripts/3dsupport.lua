@@ -113,7 +113,6 @@ shader_uniform(def3d_fullbright, "map_diffuse", "i", PERSIST, 0);
 shader_uniform(def3d_txcoscroll, "map_diffuse", "i", PERSIST, 0);
 
 local function material_loaded(source, statustbl)
-	print("material loaded", statustbl.kind);
 	if (statustbl.kind == "load_failed") then
 		warning("Material load failed on resource ( " 
 			.. tostring(statustbl.resource) .. " )\n");
