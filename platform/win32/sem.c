@@ -13,7 +13,7 @@
 
 int arcan_sem_post(sem_handle sem)
 {
-	return ReleaseSemaphore(sem, 1, 0);
+	return ReleaseSemaphore(sem, 1, 0) == 0 ? -1 : 1;
 }
 
 int arcan_sem_unlink(sem_handle sem, char* key)
@@ -50,7 +50,7 @@ int arcan_sem_trywait(sem_handle sem)
 			"-- unknown result on WaitForSingleObject (%i)\n", rc);
 	}
 
-	return rc;
+	return rv;
 }
 
 int arcan_sem_wait(sem_handle sem)
@@ -81,4 +81,6 @@ int arcan_sem_wait(sem_handle sem)
 		arcan_warning("Warning: arcan_sem_timedwait(win32) "
 			"-- unknown result on WaitForSingleObject (%i)\n", rc);
 	}
+
+	return rv;
 }

@@ -46,11 +46,12 @@ const int audio_channels   = DST_AUDIOCHAN;
 const int video_channels   = DST_VIDEOCHAN; 
 
 FILE* logdev;
+
+/*
+ * arcan_shmif_acquire actually uses these 
+ */
 HWND parent = 0;
 sem_handle async, vsync, esync;
-
-/* linking hacks .. */
-void arcan_frameserver_free(void* dontuse){}
 
 bool stdout_redirected;
 bool stderr_redirected;

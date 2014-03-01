@@ -268,7 +268,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 
 	ctx->vsync = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
 	ctx->async = CreateSemaphore(&nullsec_attr, 0, 1, NULL);
-	ctx->esync = CreateSemaphore(&nullsec_attr, 1, 1, NULL);
+	ctx->esync = CreateSemaphore(&nullsec_attr, 1, 200, NULL);
 
 	if (!ctx->vsync || !ctx->async ||!ctx->esync)
 		arcan_fatal("arcan_frameserver(win32) couldn't allocate semaphores.\n");

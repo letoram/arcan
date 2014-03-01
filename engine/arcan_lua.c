@@ -3543,6 +3543,8 @@ lua_State* arcan_lua_alloc()
 void arcan_lua_mapfunctions(lua_State* ctx, int debuglevel)
 {
 	arcan_lua_exposefuncs(ctx, debuglevel);
+/* update with debuglevel etc. */
+	arcan_lua_pushglobalconsts(ctx);
 }
 
 static int shutdown(lua_State *ctx)
@@ -6439,6 +6441,80 @@ static inline void dump_props(FILE* dst, surface_properties props)
 	fprintf_float(dst, "props.opacity = ", props.opa, ";\n");
 }
 
+static inline int qused(arcan_evctx* dq)
+{
+	return *(dq->front) > *(dq->back) ? dq->eventbuf_sz -
+	*(dq->front) + *(dq->back) : *(dq->back) - *(dq->front);
+}
+
+static inline const char* fsrvtos(enum arcan_frameserver_kinds ink)
+{
+	switch(ink){
+	case ARCAN_FRAMESERVER_INPUT: return "input";
+	case ARCAN_FRAMESERVER_OUTPUT: return "output";
+	case ARCAN_FRAMESERVER_INTERACTIVE: return "interactive";
+	case ARCAN_FRAMESERVER_AVFEED: return "avfeed";
+	case ARCAN_FRAMESERVER_NETCL: return "net-client";
+	case ARCAN_FRAMESERVER_NETSRV: return "net-server";
+	case ARCAN_HIJACKLIB: return "hijack";
+	}
+	return "";
+}
+
+static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
+{
+	if (vobj->feed.state.ptr &&
+		vobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
+		arcan_frameserver* fsrv = vobj->feed.state.ptr;
+		fprintf(dst, 
+"vobj.fsrv = {\
+\tsource = [[%s]],\
+\tlastpts = %lld,\
+\tloop = %d,\
+\tautoplay = %d,\
+\tnopts = %d,\
+\tptsdisable = %d,\
+\tsocksig = %d,\
+\tpbo = %d,\
+\tvfq_alive = %d,\
+\tvfq_ni = %d,\
+\tvfq_ci = %d,\
+\tafq_alive = %d,\
+\tafq_ni = %d,\
+\tafq_ci = %d,\
+\taudbuf_sz = %d,\
+\taudbuf_used = %d,\
+\tchild_alive = %d,\
+\tinevq_sz = %d,\
+\tinevq_used = %d,\
+\toutevq_sz = %d,\
+\toutevq_used = %d,\
+\tkind = [[%s]]};\n",
+	fsrv->source ? fsrv->source : "NULL",
+	(long long) fsrv->lastpts,
+	(int) fsrv->loop,
+	(int) fsrv->autoplay,
+	(int) fsrv->nopts,
+	(int) fsrv->ptsdisable,
+	(int) fsrv->socksig,
+	(int) fsrv->use_pbo,
+	(int) fsrv->vfq.alive,
+	(int) fsrv->vfq.ni,
+	(int) fsrv->vfq.ci,
+	(int) fsrv->afq.alive,
+	(int) fsrv->afq.ni,
+	(int) fsrv->afq.ci,
+	(int) fsrv->sz_audb,
+	(int) fsrv->ofs_audb,
+	(int) fsrv->child_alive,
+	(int) fsrv->inqueue.eventbuf_sz,
+	qused(&fsrv->inqueue),
+	(int) fsrv->outqueue.eventbuf_sz,
+	qused(&fsrv->outqueue),
+	fsrvtos(fsrv->kind));
+	}
+}
+
 static inline void dump_vobject(FILE* dst, arcan_vobject* src)
 {
 	char* mask = maskstr(src->mask);
@@ -6552,6 +6628,7 @@ vobj.glstore_refc = %d;\n", src->vstore->vinf.text.glid,
 		fprintf(dst, "vobj.parent = %"PRIxVOBJ";\n", src->parent->cellid);
 	}
 
+	dump_vstate(dst, src);
 	fprintf(dst, "props = {};\n");
 	dump_props(dst, src->current);
 	fprintf(dst, "vobj.props = props;\n"); 
