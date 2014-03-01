@@ -89,10 +89,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	res.vsem = vsync;
 	res.esem = esync;
 
-	res.addr->vready = false;
-	res.addr->aready = false;
-	res.addr->dms = true;
-
 	parent = res.addr->parent;
 
 	struct guard_struct gs = {
@@ -101,15 +97,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	};
 	spawn_guardthread(gs);
 
-	if (shmif_type == SHMIF_INPUT){
-		if (-1 == arcan_sem_wait(res.asem) ||
-			-1 == arcan_sem_wait(res.vsem))
-		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
-			"setup semaphore states, giving up.\n");
-	} 
-	else {
-/* default state is OK */
-	}
+/*
+ * Type-specific handling if necessary here
+ */ 
 
 	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
@@ -179,13 +169,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		return res;
 	}
 
-/* step 2, buffer all set-up, map it to the addr structure */
-/*	res.addr->w = 0;
-	res.addr->h = 0; */
-	res.addr->vready = false;
-	res.addr->aready = false;
-	res.addr->dms = true;
-
 	struct guard_struct gs = {
 		.dms = &res.addr->dms,
 		.semset = { res.asem, res.vsem, res.esem },
@@ -193,19 +176,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	};
 
 	spawn_guardthread(gs);
-
-/* 
- * step 3, set the initial semaphore states
- */
-	if (shmif_type == SHMIF_INPUT){
-		if (-1 == arcan_sem_wait(res.asem) ||
-			-1 == arcan_sem_wait(res.vsem))
-		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
-			"setup semaphore states, giving up.\n");
-	} 
-	else {
-/* default state is OK */
-	}
 
 	return res;
 }

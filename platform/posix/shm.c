@@ -19,8 +19,12 @@
 #include <arcan_math.h>
 #include <arcan_general.h>
 
-/* try to allocate a shared memory page and two semaphores (vid / aud) is specififed,
- * return a pointer to the shared key (this will keep the resources allocated) or NULL on fail */
+/*
+ * try to allocate a shared memory page and three semaphores (vid / aud / ev)
+ * return a pointer to the shared key (this will keep the resources allocated) 
+ * or NULL on fail. For semalloc == false, it means that semaphores will be
+ * allocated / set / used in some other way (win32 ex. pass handles on cmdline)
+ */
 #include <sys/mman.h>
 char* arcan_findshmkey(int* dfd, bool semalloc){
 	int fd = -1;
@@ -34,10 +38,14 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 		snprintf(playbuf, sizeof(playbuf) - 1, "/arcan_%i_%im", selfpid, rand());
 		fd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
 
-	/* with EEXIST, we happened to have a name collision, it is unlikely, but may happen.
-	 * for the others however, there is something else going on and there's no point retrying */
+	/* 
+	 * with EEXIST, we happened to have a name collision, 
+	 * it is unlikely, but may happen. for the others however, 
+	 * there is something else going on and there's no point retrying 
+	 */
 		if (-1 == fd && errno != EEXIST){
-			arcan_warning("arcan_findshmkey(), allocating shared memory, reason: %d\n", errno);
+			arcan_warning("arcan_findshmkey(), allocating "
+				"shared memory, reason: %d\n", errno);
 			return NULL;
 		}
 
@@ -47,12 +55,12 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 
 			char* work = strdup(playbuf);
 			work[strlen(work) - 1] = 'v';
-			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
+			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 0);
 
 			if (SEM_FAILED != vid){
 				work[strlen(work) - 1] = 'a';
 
-				sem_t* aud = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
+				sem_t* aud = sem_open(work, O_CREAT | O_EXCL, 0700, 0);
 				if (SEM_FAILED != aud){
 
 					work[strlen(work) -1] = 'e';
@@ -77,7 +85,8 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 			free(work);
 
 			if (retrycount-- == 0){
-				arcan_warning("arcan_findshmkey(), allocating named semaphores failed, reason: %d, aborting.\n", errno);
+				arcan_warning("arcan_findshmkey(), allocating named "
+				"semaphores failed, reason: %d, aborting.\n", errno);
 				return NULL;
 			}
 		}
