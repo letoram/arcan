@@ -74,8 +74,10 @@ int arcan_event_wait(struct arcan_evctx* ctx, struct arcan_event* dst)
 	assert(dst);
 	volatile int* ks = (volatile int*) ctx->synch.killswitch;
 
-	while (*ctx->front == *ctx->back && *ks)
+	while (*ctx->front == *ctx->back && *ks){
+		fprintf(stderr, "going to sleep, eventqueue empty\n");	
 		arcan_sem_wait(ctx->synch.handle);
+	}
 	
 	return arcan_event_poll(ctx, dst);
 }
@@ -86,6 +88,7 @@ int arcan_event_enqueue(arcan_evctx* ctx, const struct arcan_event* const src)
 /* child version doesn't use any masking */
 
 	while ( ((*ctx->back + 1) % ctx->eventbuf_sz) == *ctx->front){
+		fprintf(stderr, "going to sleep, eventqueue full\n");
 		arcan_sem_wait(ctx->synch.handle);
 	}
 	

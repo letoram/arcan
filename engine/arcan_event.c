@@ -155,43 +155,6 @@ void arcan_event_setmask(arcan_evctx* ctx, uint32_t mask)
 }
 
 /*
- * This is something of a hack, process the entire eventqueue
- * and switch the source element for video/frameserver inputs to
- * a BADID (which won't get propagated when pushing to LUA).
- *
- * The rationale stem from that there can be other events in the
- * queue after an object has died (note; video manipulation 
- * comes from the same (main) thread and new ones for the object
- * in question won't be enqueued during this call, so the 
- * lockless ringbuffer still holds.
- */
-void arcan_event_erase_vobj(arcan_evctx* ctx, 
-	enum ARCAN_EVENT_CATEGORY category, arcan_vobj_id source)
-{
-	unsigned elem = *(ctx->front);
-
-/* ignore unsupported categories */
-	if ( !(category == EVENT_VIDEO || category == EVENT_FRAMESERVER) )
-		return;
-
-	while(elem != *(ctx->back)){
-
-		switch (ctx->eventbuf[elem].category){
-		case EVENT_VIDEO: 
-			if (ctx->eventbuf[elem].data.video.source == source)
-				ctx->eventbuf[elem].data.video.source = ARCAN_EID;
-		break;
-		case EVENT_FRAMESERVER: 
-			if (ctx->eventbuf[elem].data.frameserver.video == source)
-				ctx->eventbuf[elem].data.frameserver.video = ARCAN_EID; 
-		break;
-		}
-
-		elem = (elem + 1) % ctx->eventbuf_sz;
-	}
-}
-
-/*
  * enqueue to current context considering input-masking,
  * unless label is set, assign one based on what kind of event it is
  * This function has a similar prototype to the enqueue defined in

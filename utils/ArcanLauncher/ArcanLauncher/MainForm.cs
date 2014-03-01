@@ -20,7 +20,9 @@ namespace ArcanLauncher
             String baseDir;
 
             InitializeComponent();
+            
             List<String> paths = new List<String>();
+            paths.Add(Directory.GetCurrentDirectory());
             paths.Add("C:\\Program Files (x86)\\Arcan");
             paths.Add("C:\\Program Files (x86)\\Arcan31");
             paths.Add("C:\\Program Files\\Arcan");
