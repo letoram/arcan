@@ -60,6 +60,8 @@ ${FSERV_PLATFORM_SOURCES})
 LIST(APPEND FSRV_LIBRARIES mingwex ws2_32 winmm pthread)
 LIST(APPEND MAIN_LIBRARIES iberty winmm setupapi mingw32)
 
+include(${WIN32_PATH}/../CMakeLists.fsrv)
+
 set(BIN_DST ".")
 set(RESOURCES_DST "./resources")
 set(THEME_DST "./themes")
@@ -90,7 +92,6 @@ add_custom_target(arcan_romman.exe
 	${CMAKE_SOURCE_DIR}/resources/scripts/romman_base.rb
 )
 add_executable( arcan WIN32 ${SOURCES} )
-add_executable( arcan_frameserver ${FSRV_SOURCES})
 
 # ------------- Win32 Arcan Launcher Tool -----------
 include_external_msproject(ArcanLauncher 

@@ -195,7 +195,7 @@ class FBA
 		return (File.exists?(@fbatarget) )
 	end
 
-	def check_games(rompath, group)
+	def check_games(rompath )
 		setnames = {}
 		exts = ["zip", "ZIP", "iso", "ISO"]
 		

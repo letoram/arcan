@@ -208,7 +208,7 @@ typedef struct arcan_vobject {
  * transformations somewhere in the parent chain */
 	bool valid_cache, rotate_state;
 	surface_properties prop_cache;
-	_Alignas(16) float prop_matr[16];
+	float _Alignas(16) prop_matr[16];
 
 /* life-cycle tracking */
 	unsigned long last_updated;

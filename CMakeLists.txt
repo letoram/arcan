@@ -464,7 +464,7 @@ message("\n---- Stage 3, Linking / Packaging ----")
 target_link_libraries( arcan ${STDLIB} ${MAIN_LIBRARIES} )
 target_link_libraries( arcan_frameserver ${STDLIB} ${FSRV_LIBRARIES} )
 
-install(TARGETS $rcan_frameserver {FSRV_TARGETS} DESTINATION ${BIN_DST})
+install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ 
 	DESTINATION ${THEME_DST} 

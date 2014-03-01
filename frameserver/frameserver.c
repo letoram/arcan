@@ -348,6 +348,7 @@ int main(int argc, char** argv)
 	if (strcmp(fsrvmode, "net-cl") == 0 || strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
 		arcan_frameserver_net_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
@@ -355,6 +356,7 @@ int main(int argc, char** argv)
 	if (strcmp(fsrvmode, "movie") == 0 || strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("dec");
 		arcan_frameserver_decode_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
@@ -362,6 +364,7 @@ int main(int argc, char** argv)
 	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("rec");
 		arcan_frameserver_encode_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
@@ -371,6 +374,7 @@ int main(int argc, char** argv)
 		extern void arcan_frameserver_libretro_run(
 			const char* resource, const char* shmkey);
 		arcan_frameserver_libretro_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
@@ -378,6 +382,7 @@ int main(int argc, char** argv)
 	if (strcmp(fsrvmode, "avfeed") == 0){
 		toggle_logdev("avfeed");
 		arcan_frameserver_avfeed_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
