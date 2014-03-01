@@ -29,9 +29,11 @@ void multiply_matrix(float* restrict dst,
 	const __m128 c = _mm_load_ps(&ina[8]);
 	const __m128 d = _mm_load_ps(&ina[12]);
 
+#ifdef ARCAN_MATH_ALIGNED_SIMD
 	assert(((uintptr_t)dst % 16) == 0);
 	assert(((uintptr_t)ina % 16) == 0);
 	assert(((uintptr_t)inb % 16) == 0);
+#endif
 
  	__m128 t1, t2;
 
@@ -46,7 +48,11 @@ void multiply_matrix(float* restrict dst,
 
 /* can we guarantee alignment? else 
  * __mm_storeu_ps */
+#ifdef ARCAN_MATH_ALIGNED_SIMD
 	_mm_store_ps(&dst[0], t2);
+#else
+	_mm_storeu_ps(&dst[0], t2);
+#endif
 
 	t1 = _mm_set1_ps(inb[4]);
 	t2 = _mm_mul_ps(a, t1);
@@ -57,7 +63,11 @@ void multiply_matrix(float* restrict dst,
 	t1 =_mm_set1_ps(inb[7]);
 	t2 = _mm_add_ps(_mm_mul_ps(d, t1), t2);
 
+#ifdef ARCAN_MATH_ALIGNED_SIMD
 	_mm_store_ps(&dst[4], t2);
+#else
+	_mm_storeu_ps(&dst[4], t2);
+#endif
 
 	t1 = _mm_set1_ps(inb[8]);
 	t2 = _mm_mul_ps(a, t1);
@@ -68,7 +78,11 @@ void multiply_matrix(float* restrict dst,
 	t1 =_mm_set1_ps(inb[11]);
 	t2 = _mm_add_ps(_mm_mul_ps(d, t1), t2);
 
- 	_mm_store_ps(&dst[8], t2);
+#ifdef ARCAN_MATH_ALIGNED_SIMD
+	_mm_store_ps(&dst[8], t2);
+#else
+	_mm_storeu_ps(&dst[8], t2);
+#endif
 
  	t1 = _mm_set1_ps(inb[12]);
  	t2 = _mm_mul_ps(a, t1);
@@ -79,5 +93,9 @@ void multiply_matrix(float* restrict dst,
  	t1 =_mm_set1_ps(inb[15]);
  	t2 = _mm_add_ps(_mm_mul_ps(d, t1), t2);
 
+#ifdef ARCAN_MATH_ALIGNED_SIMD
 	_mm_store_ps(&dst[12], t2);
+#else
+	_mm_storeu_ps(&dst[12], t2);
+#endif
 }

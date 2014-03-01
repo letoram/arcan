@@ -4225,6 +4225,15 @@ static char* lookup_hijack(int gameid)
 	return newstr;
 }
 
+static void escapestr(char* instr)
+{
+	while(instr && *instr){
+		if (*instr == ':')
+			*instr = '\t';
+		instr++;
+	}
+}
+
 static int targetlaunch(lua_State* ctx)
 {
 	LUA_TRACE("launch_target");
@@ -4260,6 +4269,10 @@ static int targetlaunch(lua_State* ctx)
 					arcan_warning("\t%s\n", *argbase++);
 		}
 
+		char** argbase = cmdline.data.strarr;
+		while(*argbase)
+			escapestr(*argbase++);
+
 		if (internal && resourcestr)
  /* for lib / frameserver targets, we assume that
 	* the argumentlist is just [romsetfull] */
@@ -4273,12 +4286,7 @@ static int targetlaunch(lua_State* ctx)
 						strlen(argstr ? argstr : "")  + 1;
 
 /* escape resource, unpack in frameserver fixes it */
-					char* work = resourcestr;
-					do {
-						if (*work == ':')
-							*work = '\t';
-					} while (*work++);
-
+					escapestr(resourcestr);
 					metastr = (char*) malloc( arglim );
 					snprintf(metastr, arglim, "core=%s:resource=%s%s%s", 
 						resourcestr, cmdline.data.strarr[1], argstr ? ":" : "",

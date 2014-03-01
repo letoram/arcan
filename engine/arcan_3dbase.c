@@ -278,8 +278,9 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	
 	unsigned cframe = 0;
 
-	float wmvm[16];
-	float dmatr[16], omatr[16];
+	float _Alignas(16) wmvm[16];
+	float _Alignas(16) dmatr[16];
+	float _Alignas(16) omatr[16];
 	
 	memcpy(wmvm, modelview, sizeof(float) * 16);
 
@@ -474,7 +475,9 @@ arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 		return cell;	
 	
 	struct camtag_data* camera = camobj->feed.state.ptr;
-	float matr[16], dmatr[16], omatr[16];
+	float _Alignas(16) matr[16];
+	float _Alignas(16) dmatr[16];
+	float _Alignas(16) omatr[16];
 
 	surface_properties dprop;
 	arcan_resolve_vidprop(camobj, fract, &dprop);

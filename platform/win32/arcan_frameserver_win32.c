@@ -210,7 +210,6 @@ static void toggle_logdev(const char* prefix)
 
 int main(int argc, char* argv[])
 {
-	toggle_logdev("main");
 
 #ifndef _DEBUG
 /*	_set_invalid_parameter_handler(inval_param_handler) */
@@ -222,6 +221,7 @@ int main(int argc, char* argv[])
  * set this env whenever you want to step through the
  * frameserver as launched from the parent 
  */
+	toggle_logdev("main");
 	LOG("arcan_frameserver(win32) -- launched with %d args.\n", argc);
 #endif
 
@@ -259,14 +259,13 @@ int main(int argc, char* argv[])
 	char* fsrvmode = argv[5];
 	char* keyfile  = argv[1];
 
-	LOG("arcan_frameserver(win32) resource: %s, fsrvmode: %s\n", 
-		resource, fsrvmode);
-
 #ifdef ENABLE_FSRV_DECODE
 	if (strcmp(fsrvmode, "movie") == 0 
 		|| strcmp(fsrvmode, "audio") == 0){
 		toggle_logdev("decode");
+		LOG("decode(%s:%s) : %s\n", fsrvmode, keyfile, resource);
 		arcan_frameserver_decode_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
@@ -274,30 +273,40 @@ int main(int argc, char* argv[])
 	if (strcmp(fsrvmode, "net-cl") == 0 
 		|| strcmp(fsrvmode, "net-srv") == 0){
 		toggle_logdev("net");
+		LOG("net(%s) : %s\n", keyfile, resource);
 		arcan_frameserver_net_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
 #ifdef ENABLE_FSRV_LIBRETRO
 	if (strcmp(fsrvmode, "libretro") == 0){
 		toggle_logdev("retro");
+		LOG("retro(%s) : %s\n", keyfile, resource);
 		arcan_frameserver_libretro_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
 #ifdef ENABLE_FSRV_ENCODE
 	if (strcmp(fsrvmode, "record") == 0){
 		toggle_logdev("record");
+		LOG("record(%s) : %s\n", keyfile, resource);
 		arcan_frameserver_encode_run(resource, keyfile);
+		return 0;
 	}
 #endif
 
 #ifdef ENABLE_FSRV_AVFEED
 	if (strcmp(fsrvmode, "avfeed") == 0){
 		toggle_logdev("record");
+		LOG("avfeed(%s) : %s\n", keyfile, resource);
 		arcan_frameserver_avfeed_run(resource, keyfile);
+		return 0;
 	}
 #endif
+
+	LOG("arcan_frameserver(win32) unknown mode, %s\n", fsrvmode);
 
 return 0;
 }
