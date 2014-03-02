@@ -210,7 +210,8 @@ static bool decode_aframe()
 				uint8_t* outb[] = {decctx.audp, NULL};
 				unsigned nsamples = (unsigned)(ARCAN_SHMPAGE_AUDIOBUF_SZ - 
 					decctx.shmcont.addr->abufused) >> 2;
-	
+				LOG("got room for : %d samples\n", nsamples);
+
 				outb[0] += decctx.shmcont.addr->abufused;
 
 				if (!decctx.rcontext){
@@ -234,6 +235,8 @@ static bool decode_aframe()
 				}
 
 				decctx.shmcont.addr->abufused += rc << 2;
+				LOG("abufused: %d, %d => %d\n", decctx.shmcont.addr->abufused,
+					rc, nsamples);
 			} else{
 				uint8_t* ofbuf = aframe->extended_data[0];
 				uint32_t* abufused = &decctx.shmcont.addr->abufused;
@@ -343,7 +346,7 @@ void push_streamstatus()
 	snprintf((char*)status.data.external.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
-//	arcan_event_enqueue(&decctx.outevq, &status);
+	arcan_event_enqueue(&decctx.outevq, &status);
 }
 	
 bool ffmpeg_decode()
