@@ -201,7 +201,6 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		};
 		
 /* force flush beforehand */
-		printf("control child\n");
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 			src->queue_mask, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
@@ -1046,21 +1045,36 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 			frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
 			current->tag = shm->vpts;
 
+/*
+ * sign that someone is trying to have some fun
+ */
+			if (shm->abufused > ARCAN_SHMPAGE_AUDIOBUF_SZ){
+				shm->abufused = 0;
+				shm->aready = false;
+				arcan_sem_post(movie->async);
+				return EAGAIN;
+			}
+
 /* more in buffer than we can process in this frame? copy as much
  * as possible, return and let the main lock/step */
-			if (shm->abufused - shm->abufbase > ntr) {
-				memcpy(dst, movie->audp + shm->abufbase, ntr);
-				shm->abufbase += ntr;
+			if (shm->abufused - movie->ofs_audp > ntr) {
+				movie->ofs_audp += ntr;
+				memcpy(dst, movie->audp + movie->ofs_audp, ntr);
 				rv = ntr;
 			}
 			else {
-				size_t nc = shm->abufused - shm->abufbase;
-				memcpy(dst, movie->audp + shm->abufbase, nc);
+				ssize_t nc = movie->ofs_audp - shm->abufused;
+				if (nc > 0){
+					memcpy(dst, movie->audp + movie->ofs_audp, nc);
+					rv = nc;
+				}
+				else
+					errno = EAGAIN;
+
+				movie->ofs_audp;
 				shm->abufused = 0;
-				shm->abufbase = 0;
 				shm->aready = false;
 				arcan_sem_post(movie->async);
-				rv = nc;
 			}
 		}
 		else
