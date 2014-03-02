@@ -98,6 +98,9 @@ void arcan_framequeue_flush(frame_queue* queue)
 	pthread_mutex_lock(&queue->framesync);
 
 	while (queue->ci != queue->ni){
+		queue->da_cells[queue->ci].ofs = 0;
+		queue->da_cells[queue->ci].tag = 0;
+
 		queue->ci = (queue->ci + 1) % queue->c_cells;
 		sem_post(&queue->framecount);
 	}
