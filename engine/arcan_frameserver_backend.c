@@ -690,7 +690,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 				arcan_framequeue_dequeue(&src->vfq);
 				ccell = arcan_framequeue_front(&src->vfq); 
-
+				
 				if (!ccell){
 					return FFUNC_RV_NOFRAME;
 				}
@@ -699,6 +699,8 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 					emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
 
 				delta = now - (int64_t) ccell->tag;
+				arcan_warning("dropped frame %lld %lld %lld\n", 
+					(long long) now, (long long) ccell->tag, (long long) delta);
 			}
 			
 			if (delta > -1 * src->desc.vfthresh){
@@ -1058,19 +1060,19 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 /* more in buffer than we can process in this frame? copy as much
  * as possible, return and let the main lock/step */
 			if (shm->abufused - movie->ofs_audp > ntr) {
-				movie->ofs_audp += ntr;
 				memcpy(dst, movie->audp + movie->ofs_audp, ntr);
+				movie->ofs_audp += ntr;
 				rv = ntr;
 			}
 			else {
-				ssize_t nc = movie->ofs_audp - shm->abufused;
+				ssize_t nc = shm->abufused - movie->ofs_audp;
 				if (nc > 0){
 					memcpy(dst, movie->audp + movie->ofs_audp, nc);
-					rv = nc;
 				}
 				else
-					errno = EAGAIN;
+					;
 
+				rv = nc;
 				movie->ofs_audp = 0;
 				shm->abufused = 0;
 				shm->aready = false;

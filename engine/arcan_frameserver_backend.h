@@ -22,10 +22,27 @@
 #ifndef _HAVE_ARCAN_FRAMESERVER
 #define _HAVE_ARCAN_FRAMESERVER
 
-#define ARCAN_FRAMESERVER_VCACHE_LIMIT 6 
-#define ARCAN_FRAMESERVER_ACACHE_LIMIT 24 
+/*
+ * these tend to take some tuning, this should just compensate
+ * for jittery synchronization between frameserver and main 
+ * engine, for playback, the datasource should buffer internally
+ * to what is needed to compensate for poorly interleaved sources
+ * in order for process limits etc. to hit right.
+ */ 
+
+/*
+ * ratio vcache / acache:
+ * seconds = desired number of seconds internal buffer
+ * vlimit / fps = seconds.
+ * abps = (srate * channels * bytes per sample)
+ * abps * seconds = abytes
+ * abuffer_size (depends on audio device, but 4-8k?)
+ * acache = abytes / abuffer_size 
+ */
+#define ARCAN_FRAMESERVER_VCACHE_LIMIT 10 
+#define ARCAN_FRAMESERVER_ACACHE_LIMIT 16 
 #define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 30
-#define ARCAN_FRAMESERVER_ABUFFER_SIZE (4 * 1024) 
+#define ARCAN_FRAMESERVER_ABUFFER_SIZE 4096 
 #define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 450
 #define ARCAN_FRAMESERVER_PRESILENCE 16024
 #define ARCAN_FRAMESERVER_RESET_PTS_THRESH 800 
