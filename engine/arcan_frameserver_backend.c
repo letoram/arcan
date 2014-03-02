@@ -1071,7 +1071,7 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 				else
 					errno = EAGAIN;
 
-				movie->ofs_audp;
+				movie->ofs_audp = 0;
 				shm->abufused = 0;
 				shm->aready = false;
 				arcan_sem_post(movie->async);
