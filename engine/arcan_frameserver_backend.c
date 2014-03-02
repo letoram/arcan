@@ -658,6 +658,8 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * > 0 if there are frames to render
  */
 	if (cmd == ffunc_poll) {
+		frame_cell* ccell;
+
 		if (src->shm.ptr && src->shm.ptr->resized)
 			arcan_frameserver_tick_control(src);
 
@@ -665,50 +667,44 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		return FFUNC_RV_NOFRAME;
 
 /* early out if the "synch- to PTS" feature has been disabled */
-		frame_cell* ccell = arcan_framequeue_front(&src->vfq);
+retry:
+		ccell = arcan_framequeue_front(&src->vfq);
 	
-		if (src->nopts || src->ptsdisable)
+		if (src->nopts || src->ptsdisable || !ccell)
 			return ccell ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
 
-		if (ccell){
-/* seeks etc. start giving PTSes that are outside expected values */
-			int64_t now = arcan_frametime() - src->starttime;
-			int64_t delta = now - (int64_t)ccell->tag;
+/* are we ahead or behind? */
+		int64_t npts = ccell->tag;
+		int64_t now = arcan_frametime() - src->starttime;
 
-			if (abs(delta) > src->desc.resynchthresh){
+		if (now < npts){
+			int64_t ahead = npts - now;
+			if (ahead > src->desc.resynchthresh){
 				src->reclock = true;
-				src->starttime += delta;
-				delta = 0;
+				src->starttime -= ahead;
+				goto retry;
 			}
-
-/* if frames are too old, just ignore them */
-			while (delta > src->desc.vskipthresh){
-				if (src->desc.explicit_xfer){
-					src->starttime = arcan_frametime();
-					break;
-				}
-
-				arcan_framequeue_dequeue(&src->vfq);
-				ccell = arcan_framequeue_front(&src->vfq); 
-				
-				if (!ccell){
-					return FFUNC_RV_NOFRAME;
-				}
-
-				if (src->desc.callback_framestate)
-					emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
-
-				delta = now - (int64_t) ccell->tag;
-				arcan_warning("dropped frame %lld %lld %lld\n", 
-					(long long) now, (long long) ccell->tag, (long long) delta);
-			}
-			
-			if (delta > -1 * src->desc.vfthresh){
-				src->lastpts = ccell->tag; 
-				return FFUNC_RV_GOTFRAME;
-			}
+			else
+				return (npts - now < src->desc.vfthresh) ? 
+					FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
 		}
-		else;
+
+/* we might be lagging behind, in that case, skip frames and re-evaluate: */
+		int64_t behind = now - npts;
+
+		if (behind > src->desc.vskipthresh){
+			if (behind > src->desc.resynchthresh){
+				src->reclock = true;
+				src->starttime += behind;
+				goto retry;
+			}
+
+			arcan_framequeue_dequeue(&src->vfq);
+			emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
+			goto retry;
+		}
+		else
+			return FFUNC_RV_GOTFRAME;
 	}
 /* no videoframes, but we have audioframes? might be the 
  * sounddrivers that have given up, last resort workaround */
@@ -782,7 +778,7 @@ arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id,
 
 /* seems to work better with just have the soundcard buffer and play whatever,
  * should experiment more or make this feature programmable */
-			if (1 || dc < audioframe_prethresh){
+			if (dc < audioframe_prethresh){
 				sem_wait(&src->lock_audb);
 				arcan_audio_buffer(aobj, buffer, ccell->buf, 
 					buffers, src->desc.channels, src->desc.samplerate, tag);
