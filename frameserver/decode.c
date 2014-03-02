@@ -153,6 +153,7 @@ static void generate_frame()
 			}
 
 			decctx.shmcont.addr->vpts = vptsc;
+			LOG(" video frame\n ");
 			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 
 			vptsc += 1000.0f / (
@@ -166,6 +167,7 @@ static inline void synch_audio()
 	if (decctx.fft_audio)
 		generate_frame();
 
+	LOG(" audio frame\n ");
 	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD); 
 	decctx.shmcont.addr->abufused = 0;
 }
@@ -291,7 +293,7 @@ static bool decode_vframe()
 			decctx.packet.dts : 0) * av_q2d(decctx.vstream->time_base) * 1000.0;
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
-		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID); 
+		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 	}
 	else;
 
@@ -341,7 +343,7 @@ void push_streamstatus()
 	snprintf((char*)status.data.external.streamstat.timestr, strlim,
 		"%d:%02d:%02d", dh, dm, ds);
 
-	arcan_event_enqueue(&decctx.outevq, &status);
+//	arcan_event_enqueue(&decctx.outevq, &status);
 }
 	
 bool ffmpeg_decode()
@@ -354,6 +356,7 @@ bool ffmpeg_decode()
 	while (fstatus &&
 		av_read_frame(decctx.fcontext, &decctx.packet) >= 0) {
 
+		LOG("decode\n");
 		if (decctx.packet.dts != AV_NOPTS_VALUE){
 			if (decctx.packet.stream_index == decctx.vid)
 				decctx.last_dts = decctx.packet.dts * 
@@ -377,7 +380,9 @@ bool ffmpeg_decode()
 
 		av_free_packet(&decctx.packet);
 		push_streamstatus();
+		LOG("preflush\n");
 		flush_eventq();
+		LOG("postflush\n");
 	}
 
 	return fstatus;

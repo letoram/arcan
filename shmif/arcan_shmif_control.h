@@ -224,7 +224,7 @@ struct arcan_shmif_page {
  * the audio buffering is a bit more lenient. This value signals
  * how much of the audio buffer is actually used, and can be 
  * manipulated by both sides. */
-	uint32_t abufused, abufbase;
+	uint32_t abufused;
 };
 
 /* 

@@ -177,7 +177,7 @@ typedef struct arcan_frameserver {
 
 /* temporary buffer for aligning queue/dequeue events in audio */
 	size_t sz_audb;
-	off_t ofs_audb;
+	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
 	sem_t lock_audb;
 
