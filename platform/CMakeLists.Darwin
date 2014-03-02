@@ -8,7 +8,7 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/ilaunch.c
 	${PLATFORM_PATH}/strip_traverse.c
 	${PLATFORM_PATH}/paths.c
-	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/../darwin/sem.c
 	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/warning.c

@@ -59,6 +59,7 @@ typedef struct {
 } arcan_acontext;
 
 static bool _wrap_alError(arcan_aobj*, char*);
+static int find_bufferind(arcan_aobj* cur, unsigned bufnum);
 
 #ifndef CONST_MAX_ASAMPLESZ
 #define CONST_MAX_ASAMPLESZ 1048756  
@@ -490,11 +491,20 @@ arcan_errc arcan_audio_rebuild(arcan_aobj_id id)
 
 	if (aobj && aobj->alid) {
 		alSourceStop(aobj->alid);
-		alDeleteBuffers(aobj->n_streambuf, aobj->streambuf);
+		_wrap_alError(NULL, "audio_rebuild(stop)");
+
+		int n;
+		while(alGetSourcei(aobj->alid, AL_BUFFERS_PROCESSED, &n), n > 0){
+			unsigned buffer = 0, bufferind;
+			alSourceUnqueueBuffers(aobj->alid, 1, &buffer);
+			bufferind = find_bufferind(aobj, buffer);
+			aobj->streambufmask[bufferind] = false;
+			aobj->used--;
+		}	
+
 		alDeleteSources(1, &aobj->alid);
 		alGenSources(1, &aobj->alid);
-		alGenBuffers(aobj->n_streambuf, aobj->streambuf);
-		_wrap_alError(NULL, "audio_rebuild(Delete/Stop/Delete/Gen/Buffer)");
+		_wrap_alError(NULL, "audio_rebuild(recreate)");
 
 		rv = ARCAN_OK;
 	}
@@ -787,7 +797,6 @@ playback:
 	return;
 
 cleanup:
-arcan_warning("cleaning up\n");
 /* means that when main() receives this event, it will kill/free the object */
 	newevent.data.audio.source = current->id;
 	arcan_event_enqueue(arcan_event_defaultctx(), &newevent);

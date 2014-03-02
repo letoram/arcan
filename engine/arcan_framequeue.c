@@ -30,6 +30,8 @@
 
 #include <pthread.h>
 
+#include <arcan_shmif.h>
+#include "../platform/platform.h"
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include <assert.h>
@@ -38,9 +40,16 @@
 /* Slide the destination buffer target */
 void arcan_framequeue_step(frame_queue* src)
 {
-	sem_wait(&src->framecount);
+	arcan_sem_wait(src->framecount);
 	pthread_mutex_lock(&src->framesync);
+		int ci = src->ci, count = 0;
+
 		src->ni = (src->ni + 1) % src->c_cells;
+		while (ci != src->ni){
+			ci = (ci + 1) % src->c_cells;
+			count++;
+		}
+//		printf("step %s, used? %d / %d\n", src->label, count, src->c_cells); 
 	pthread_mutex_unlock(&src->framesync);
 }
 
@@ -61,7 +70,7 @@ void arcan_framequeue_dequeue(frame_queue* src)
 		src->da_cells[src->ci].ofs = 0;
 		src->da_cells[src->ci].tag = 0;
 		src->ci = (src->ci + 1) % src->c_cells;
-		sem_post(&src->framecount);
+		arcan_sem_post(src->framecount);
 
 	pthread_mutex_unlock(&src->framesync);
 }
@@ -73,10 +82,10 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 	if (queue && queue->da_cells){
 /* alive-flag + wakeup -> unlock thread loop which will check flag and exit */
 		queue->alive = false;
-		sem_post(&queue->framecount);
+		arcan_sem_post(queue->framecount);
 		pthread_join(queue->iothread, NULL);
 
-		sem_destroy(&queue->framecount);
+		arcan_sem_destroy(queue->framecount);
 		pthread_mutex_destroy(&queue->framesync);
 		free(queue->label);
 
@@ -102,7 +111,7 @@ void arcan_framequeue_flush(frame_queue* queue)
 		queue->da_cells[queue->ci].tag = 0;
 
 		queue->ci = (queue->ci + 1) % queue->c_cells;
-		sem_post(&queue->framecount);
+		arcan_sem_post(queue->framecount);
 	}
 
 	pthread_mutex_unlock(&queue->framesync);
@@ -114,13 +123,14 @@ static void* framequeue_loop(void* data)
 
 	while (queue->alive) {
 		frame_cell* current = &queue->da_cells[ queue->ni ];
-		size_t ntr = queue->vcs ? queue->cell_size : queue->cell_size - current->ofs;
+		size_t ntr = queue->cell_size - current->ofs;
 		ssize_t nr = queue->read(queue->fd, current->buf + current->ofs, ntr);
 
 		if (nr > 0)
 			current->ofs += nr;
-		else if (nr == -1 && errno == EAGAIN)
+		else if (nr == -1 && errno == EAGAIN){
 			arcan_timesleep(1);
+		}
 		else if (errno == EINVAL)
 			break;
 
@@ -134,8 +144,7 @@ static void* framequeue_loop(void* data)
 }
 
 arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, 
-	unsigned int cell_count, unsigned int cell_size, bool variable, 
-	arcan_rfunc rfunc, char* label)
+	unsigned cell_count, unsigned cell_size, arcan_rfunc rfunc, char* label)
 {
 	assert(queue);
 
@@ -148,6 +157,7 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	queue->da_cells = malloc(sizeof(frame_cell) * queue->c_cells);
 	memset(queue->da_cells, '\0', sizeof(frame_cell) * queue->c_cells);
 
+	queue->firstpts = -1;
  	queue->ni = 0;
 	queue->ci = 0;
 
@@ -168,7 +178,12 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	queue->label = label ? strdup(label) : strdup("(unlabeled)");
 
 	pthread_mutex_init(&queue->framesync, NULL);
-	sem_init(&queue->framecount, 0, queue->c_cells - 1);
+
+/* workaround for darwin */
+	if (-1 == arcan_sem_init(&queue->framecount, queue->c_cells - 1)){
+		arcan_warning("couldn't create framequeue synchronization handle");
+	}
+	
 	queue->alive = true;
 
 	pthread_create(&queue->iothread, NULL, framequeue_loop, (void*) queue); 

@@ -67,7 +67,7 @@
 
 long long ARCAN_VIDEO_WORLDID = -1;
 static surface_properties empty_surface();
-static sem_t asynchsynch;
+static sem_handle asynchsynch;
 
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
@@ -1194,7 +1194,10 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 
 /* might be called multiple times so.. */
 	if (firstinit){
-		sem_init(&asynchsynch, 0, ASYNCH_CONCURRENT_THREADS);
+		if (-1 == arcan_sem_init(&asynchsynch, ASYNCH_CONCURRENT_THREADS)){
+			arcan_warning("video_init couldn't create synchronization handle\n");
+		}
+		
 		firstinit = false;
 	}
 
@@ -1265,7 +1268,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * also, look into using pthread_setschedparam and switch to 
  * pthreads exclusively 
  */
-	sem_wait(&asynchsynch);
+	arcan_sem_wait(asynchsynch);
 	arcan_errc rv = ARCAN_ERRC_BAD_RESOURCE;
 
 	char* imgbuf = NULL;
@@ -1274,7 +1277,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 /* try- open */
 	data_source inres = arcan_open_resource(fname);
 	if (inres.fd == BADFD){
-		sem_post(&asynchsynch);
+		arcan_sem_post(asynchsynch);
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
 
@@ -1282,7 +1285,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * useful due to alignment) */
 	map_region inmem = arcan_map_resource(&inres, false);
 	if (inmem.ptr == NULL){
-		sem_post(&asynchsynch);
+		arcan_sem_post(asynchsynch);
 		arcan_release_resource(&inres);
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
@@ -1370,7 +1373,7 @@ push_comp:
 			push_globj(dst, false, &meta);
 	}
 
-	sem_post(&asynchsynch);
+	arcan_sem_post(asynchsynch);
 	return rv;
 }
 
