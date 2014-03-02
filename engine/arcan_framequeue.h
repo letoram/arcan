@@ -39,6 +39,7 @@ typedef struct frame_cell {
 typedef struct frame_queue {
 /* queue static storage */
 	unsigned int c_cells, cell_size;
+	long long firstpts;
 
 	/* array to pick elements from */
 	frame_cell* da_cells;
@@ -49,9 +50,9 @@ typedef struct frame_queue {
  * mutex for frame_queue manipulation
  * framec for counting available cells in the queue */
 	pthread_t iothread;
-	sem_t framecount; 
+	sem_handle framecount; 
 	pthread_mutex_t framesync;
-	bool alive, vcs;
+	bool alive;
 
 /* input source and callback trigger */
 	int fd;
@@ -68,8 +69,7 @@ typedef struct frame_queue {
  * if rfunc is NULL, it defaults to read() on fd, 
  * tag queue with idlabel for tracing */
 arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd, 
-	unsigned int cell_count, unsigned int cell_size, bool variable, 
-	arcan_rfunc rfunc, char* idlabel);
+	unsigned cell_count, unsigned cell_size, arcan_rfunc rfunc, char* idlabel);
 
 /*
  * For seek- etc. operations where we know that

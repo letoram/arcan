@@ -254,22 +254,27 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 
 }
 
+#include <assert.h>
 void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 {
 	if (mask == SHMIF_SIGVID){
 		ctx->addr->vready = true;
 		arcan_sem_wait(ctx->vsem);
+		assert(ctx->addr->vready == false);
 	}
 	else if (mask == SHMIF_SIGAUD){ 
 		ctx->addr->aready = true;
 		arcan_sem_wait(ctx->asem);
-		}
+		assert(ctx->addr->aready == false);
+	}
 	else if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD)){
+					printf("vsynch\n");
 		ctx->addr->vready = ctx->addr->aready = true;
 		arcan_sem_wait(ctx->vsem);
 		arcan_sem_wait(ctx->asem);
+		assert(ctx->addr->aready == false && ctx->addr->vready == false);
 	}
-	else
+	else 
 		;
 }
 

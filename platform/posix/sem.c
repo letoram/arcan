@@ -36,3 +36,13 @@ int arcan_sem_wait(sem_handle sem)
 {
 	return sem_wait(sem);
 }
+
+int arcan_sem_init(sem_handle sem, int val)
+{
+	return sem_init(sem, 0, val); 
+}
+
+int arcan_sem_destroy(sem_handle sem)
+{
+	return sem_destroy(sem);
+}

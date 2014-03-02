@@ -39,9 +39,9 @@
  * abuffer_size (depends on audio device, but 4-8k?)
  * acache = abytes / abuffer_size 
  */
-#define ARCAN_FRAMESERVER_VCACHE_LIMIT 10 
-#define ARCAN_FRAMESERVER_ACACHE_LIMIT 16 
-#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 25
+#define ARCAN_FRAMESERVER_VCACHE_LIMIT 10  
+#define ARCAN_FRAMESERVER_ACACHE_LIMIT 16
+#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 25 
 #define ARCAN_FRAMESERVER_ABUFFER_SIZE 4096 
 #define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 450
 #define ARCAN_FRAMESERVER_PRESILENCE 16024
@@ -196,7 +196,7 @@ typedef struct arcan_frameserver {
 	size_t sz_audb;
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
-	sem_t lock_audb;
+	pthread_mutex_t lock_audb;
 
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;

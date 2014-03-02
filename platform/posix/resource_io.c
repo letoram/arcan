@@ -82,7 +82,8 @@ data_source arcan_open_resource(const char* url)
 		if (res.fd != -1){
 			res.start  = 0;
 			res.source = strdup(url);
-			res.len    = 0; /* map resource can figure it out */ 
+			res.len    = 0; /* map resource can figure it out */
+			fcntl(res.fd, FD_CLOEXEC);	
 		}
 	}
 	else 

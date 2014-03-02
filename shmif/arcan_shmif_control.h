@@ -129,8 +129,8 @@ enum arcan_shmif_type {
 };
 
 enum arcan_shmif_sigmask {
-	SHMIF_SIGVID,
-	SHMIF_SIGAUD
+	SHMIF_SIGVID = 1,
+	SHMIF_SIGAUD = 2
 };
 
 /* 
