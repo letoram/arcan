@@ -262,9 +262,10 @@ int main(int argc, char* argv[])
 		benchdata.bench_enabled = true;
 
 		if (strncmp(monitor_arg, "LOG:", 4) == 0){
-			monitor_outf = fopen(&monitor_arg[4], "w+"); 
+			monitor_outf = fopen(&monitor_arg[4], "w+");	
 			if (NULL == monitor_outf)
 				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
+			fcntl(fileno(monitor_outf), FD_CLOEXEC);
 		}
 		else {
 			int pair[2];
