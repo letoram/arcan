@@ -336,6 +336,11 @@ static int rawresource(lua_State* ctx)
 	else
 		lua_ctx_store.rfile = fopen(path, "r");
 
+#ifndef _WIN32
+	if (lua_ctx_store.rfile)
+		fcntl(fileno(lua_ctx_store.rfile), FD_CLOEXEC);
+#endif
+
 	lua_pushboolean(ctx, lua_ctx_store.rfile != NULL);
 	free(path);
 	return 1;
