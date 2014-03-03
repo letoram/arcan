@@ -268,7 +268,6 @@ void arcan_shmif_signal(struct arcan_shmif_cont* ctx, int mask)
 		assert(ctx->addr->aready == false);
 	}
 	else if (mask == (SHMIF_SIGVID | SHMIF_SIGAUD)){
-					printf("vsynch\n");
 		ctx->addr->vready = ctx->addr->aready = true;
 		arcan_sem_wait(ctx->vsem);
 		arcan_sem_wait(ctx->asem);

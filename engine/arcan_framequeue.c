@@ -42,14 +42,7 @@ void arcan_framequeue_step(frame_queue* src)
 {
 	arcan_sem_wait(src->framecount);
 	pthread_mutex_lock(&src->framesync);
-		int ci = src->ci, count = 0;
-
 		src->ni = (src->ni + 1) % src->c_cells;
-		while (ci != src->ni){
-			ci = (ci + 1) % src->c_cells;
-			count++;
-		}
-//		printf("step %s, used? %d / %d\n", src->label, count, src->c_cells); 
 	pthread_mutex_unlock(&src->framesync);
 }
 
