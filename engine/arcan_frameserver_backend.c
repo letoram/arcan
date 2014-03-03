@@ -663,7 +663,25 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		if (src->shm.ptr && src->shm.ptr->resized)
 			arcan_frameserver_tick_control(src);
 
-		if (!(src->playstate == ARCAN_PLAYING))
+		if (src->playstate == ARCAN_BUFFERING){
+			int ci = src->vfq.ci;
+			int ni = src->vfq.ni;
+			int count = 0;
+			while (ci != ni){ 
+				count++; 
+				ci = (ci + 1) % src->vfq.c_cells; 
+			}
+			if (count > src->vfq.c_cells * 0.5){
+				src->playstate = ARCAN_PLAYING;
+			}
+/*
+ * good spot to add adaptive resizing of input queues
+ * to converge on the interleaving pattern in the source
+ * decoder
+ */
+		}
+
+		if (!(src->playstate == ARCAN_PLAYING)) 
 		return FFUNC_RV_NOFRAME;
 
 /* early out if the "synch- to PTS" feature has been disabled */
@@ -681,7 +699,7 @@ retry:
 			int64_t ahead = npts - now;
 			if (ahead > src->desc.resynchthresh){
 				src->reclock = true;
-				src->starttime -= ahead;
+				src->starttime -= src->desc.resynchthresh;
 				goto retry;
 			}
 			else{
@@ -692,14 +710,14 @@ retry:
 
 /* we might be lagging behind, in that case, skip frames and re-evaluate: */
 		int64_t behind = now - npts;
-
 		if (behind > src->desc.vskipthresh){
 			if (behind > src->desc.resynchthresh){
 				src->reclock = true;
-				src->starttime += behind;
+				src->starttime += src->desc.resynchthresh;
 				goto retry;
 			}
-
+		
+			src->lastpts = arcan_framequeue_front(&src->vfq)->tag;
 			arcan_framequeue_dequeue(&src->vfq);
 			emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
 			goto retry;
@@ -718,8 +736,9 @@ retry:
 
 		if (src->desc.callback_framestate)
 			emit_deliveredframe(src, current->tag, src->desc.framecount++);
-
-		arcan_errc rv = push_buffer( src, (char*) current->buf, 
+	
+		src->lastpts = current->tag;
+		arcan_errc rv = push_buffer(src, (char*) current->buf, 
 			gltarget, src->desc.width, src->desc.height, src->desc.bpp, 
 			width, height, bpp);
 
@@ -762,41 +781,28 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, 
 	unsigned buffer, void* tag)
 {
-	arcan_errc rv = ARCAN_ERRC_NOTREADY;
 	arcan_frameserver* src = (arcan_frameserver*) tag;
+	frame_cell* current = arcan_framequeue_front(&src->afq); 
 
-/* for each cell, buffer (-> quit), wait (-> quit) or drop(full/partially) */
-	if (src->playstate == ARCAN_PLAYING){
-		frame_cell* ccell;
-	
-		while ( (ccell = arcan_framequeue_front(&src->afq)) != NULL){
+	if (src->playstate != ARCAN_PLAYING || !current)
+		return ARCAN_ERRC_NOTREADY;
 
-			size_t buffers = src->afq.cell_size; 
-			double dc = (double)src->lastpts - src->audioclock;
-			src->audioclock += src->bpms * (double)buffers;
-			const float audioframe_prethresh = 40.0f;
-
-/* seems to work better with just have the soundcard buffer and play whatever,
- * should experiment more or make this feature programmable */
-			if (dc < audioframe_prethresh){
-				pthread_mutex_lock(&src->lock_audb);
-				arcan_audio_buffer(aobj, buffer, ccell->buf, 
-					buffers, src->desc.channels, src->desc.samplerate, tag);
-				pthread_mutex_unlock(&src->lock_audb);
-				arcan_framequeue_dequeue(&src->afq);
-				rv = ARCAN_OK;
-				break;
-			}
-			else if (src->reclock){
-				src->reclock = false;
-				src->audioclock = src->lastpts;
-			}
-			else
-				arcan_framequeue_dequeue(&src->afq);
-		}
+	if (src->reclock){
+		src->audioclock = src->lastpts;
+		src->reclock = false;
 	}
 
-	return rv;
+	int nsamples = current->ofs / (src->desc.channels << 1);
+	
+	if (src->audioclock - src->lastpts > 0)
+		return ARCAN_ERRC_NOTREADY;
+
+	src->audioclock += (double)nsamples / ((double)src->desc.samplerate / 1000.0); 
+	arcan_audio_buffer(aobj, buffer, current->buf,  
+		current->ofs, src->desc.channels, src->desc.samplerate, tag);
+			
+	arcan_framequeue_dequeue(&src->afq);
+	return ARCAN_OK;
 }
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
@@ -896,12 +902,10 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 			}
 
 /* tolerance margins for PTS deviations */
-			src->bpms = (1000.0 / (double)src->desc.samplerate) / 
-				(double)src->desc.channels * 0.5;
 			src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
 			src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
 			src->desc.resynchthresh = ARCAN_FRAMESERVER_RESET_PTS_THRESH;
-			src->audioclock = 0.0;
+			src->audioclock = 0; 
 
 /* just to get some kind of trace when threading acts up */
 			snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
@@ -927,7 +931,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 
-		if (src->autoplay && src->playstate != ARCAN_PLAYING)
+		if (src->autoplay && 
+			(src->playstate != ARCAN_PLAYING || src->playstate != ARCAN_BUFFERING))
 			arcan_frameserver_playback(src);
 
 /* acknowledge the resize */
@@ -942,7 +947,7 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
 	src->starttime = arcan_frametime();
-	src->playstate = ARCAN_PLAYING;
+	src->playstate = ARCAN_BUFFERING;
 
 	arcan_audio_play(src->aid, false, 0.0);
 	return ARCAN_OK;
@@ -965,11 +970,8 @@ arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (src && (src->playstate == ARCAN_PAUSED ||
-		src->playstate == ARCAN_SUSPENDED)
-	) {
-		src->playstate = ARCAN_PLAYING;
-		/* arcan_audio_play(src->aid); */
-
+		src->playstate == ARCAN_SUSPENDED)) {
+		src->playstate = ARCAN_BUFFERING;
 		rv = ARCAN_OK;
 	}
 
@@ -983,11 +985,11 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 
 	if (fsrv->vfq.alive){
 		arcan_framequeue_flush(&fsrv->vfq);
+		fsrv->playstate = ARCAN_BUFFERING;
 	}
 	
 	if (fsrv->afq.alive){
 		arcan_framequeue_flush(&fsrv->afq);
-
 		arcan_audio_rebuild(fsrv->aid);
 		fsrv->reclock = true;
 	}

@@ -12,6 +12,7 @@
 #include "frameserver.h"
 
 #define AUD_VIS_HRES 2048 
+#define AUD_SYNC_THRESH 4096
 
 #include <libavcodec/avcodec.h>
 #include <libavutil/audioconvert.h>
@@ -153,23 +154,14 @@ static void generate_frame()
 			}
 
 			decctx.shmcont.addr->vpts = vptsc;
-			LOG(" video frame\n ");
 			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 
 			vptsc += 1000.0f / (
 				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
 		}
 	}
-}
 
-static inline void synch_audio()
-{
-	if (decctx.fft_audio)
-		generate_frame();
-
-	LOG(" audio frame\n ");
-	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD); 
-	decctx.shmcont.addr->abufused = 0;
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
 }
 
 /* decode as much into our shared audio buffer as possible,
@@ -210,7 +202,6 @@ static bool decode_aframe()
 				uint8_t* outb[] = {decctx.audp, NULL};
 				unsigned nsamples = (unsigned)(ARCAN_SHMPAGE_AUDIOBUF_SZ - 
 					decctx.shmcont.addr->abufused) >> 2;
-				LOG("got room for : %d samples\n", nsamples);
 
 				outb[0] += decctx.shmcont.addr->abufused;
 
@@ -235,8 +226,6 @@ static bool decode_aframe()
 				}
 
 				decctx.shmcont.addr->abufused += rc << 2;
-				LOG("abufused: %d, %d => %d\n", decctx.shmcont.addr->abufused,
-					rc, nsamples);
 			} else{
 				uint8_t* ofbuf = aframe->extended_data[0];
 				uint32_t* abufused = &decctx.shmcont.addr->abufused;
@@ -253,7 +242,7 @@ static bool decode_aframe()
 					ofbuf += ntc;
 
 					if (*abufused == ARCAN_SHMPAGE_AUDIOBUF_SZ)
-						synch_audio();
+						arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD); 
 
 				} while (plane_size > 0);
 			}
@@ -296,7 +285,9 @@ static bool decode_vframe()
 			decctx.packet.dts : 0) * av_q2d(decctx.vstream->time_base) * 1000.0;
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
-		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
+		arcan_shmif_signal(&decctx.shmcont, 
+			decctx.shmcont.addr->abufused > AUD_SYNC_THRESH ? 
+			SHMIF_SIGVID | SHMIF_SIGAUD : SHMIF_SIGVID);
 	}
 	else;
 
@@ -359,7 +350,6 @@ bool ffmpeg_decode()
 	while (fstatus &&
 		av_read_frame(decctx.fcontext, &decctx.packet) >= 0) {
 
-		LOG("decode\n");
 		if (decctx.packet.dts != AV_NOPTS_VALUE){
 			if (decctx.packet.stream_index == decctx.vid)
 				decctx.last_dts = decctx.packet.dts * 
@@ -369,23 +359,23 @@ bool ffmpeg_decode()
 					av_q2d(decctx.astream->time_base) * 1000.0;
 		}
 
-/* got a videoframe */
-		if (decctx.packet.stream_index == decctx.vid){
+/*
+ * got a videoframe, this will synch both audio
+ * and video unless we've been instructed to pack audio-fft
+ * in video 
+ */
+		if (decctx.packet.stream_index == decctx.vid)
 			fstatus = decode_vframe();
-		}
 
-/* or audioframe, not that currently both audio and video synch separately */
 		else if (decctx.packet.stream_index == decctx.aid){
 			fstatus = decode_aframe();
-			if (decctx.shmcont.addr->abufused)
-				synch_audio();
-		}
+			if (decctx.fft_audio)
+				generate_frame();
+			}
 
 		av_free_packet(&decctx.packet);
 		push_streamstatus();
-		LOG("preflush\n");
 		flush_eventq();
-		LOG("postflush\n");
 	}
 
 	return fstatus;

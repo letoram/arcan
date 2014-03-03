@@ -37,11 +37,15 @@
  * abps = (srate * channels * bytes per sample)
  * abps * seconds = abytes
  * abuffer_size (depends on audio device, but 4-8k?)
- * acache = abytes / abuffer_size 
+ * acache = abytes / abuffer_size
+ *
+ * these assume ideal interleaving in the source video
+ * so for embedded tuning more care has to be taken in
+ * the decode frameserver, for desktop, just be excessive with mem.  
  */
-#define ARCAN_FRAMESERVER_VCACHE_LIMIT 10  
-#define ARCAN_FRAMESERVER_ACACHE_LIMIT 16
-#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 25 
+#define ARCAN_FRAMESERVER_VCACHE_LIMIT 8 
+#define ARCAN_FRAMESERVER_ACACHE_LIMIT 128 
+#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 30 
 #define ARCAN_FRAMESERVER_ABUFFER_SIZE 4096 
 #define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 450
 #define ARCAN_FRAMESERVER_PRESILENCE 16024
@@ -76,10 +80,11 @@
 
 enum arcan_playstate {
 	ARCAN_PASSIVE = 0,
-	ARCAN_PLAYING = 1,
-	ARCAN_PAUSED = 2,
-	ARCAN_FINISHED = 3,
-	ARCAN_SUSPENDED = 4
+	ARCAN_BUFFERING = 1,
+	ARCAN_PLAYING = 2,
+	ARCAN_PAUSED = 3,
+	ARCAN_FINISHED = 4,
+	ARCAN_SUSPENDED = 5
 };
 
 enum arcan_frameserver_kinds {
@@ -105,7 +110,6 @@ typedef struct {
 /* audio */
 	unsigned samplerate;
 	uint8_t channels;
-	uint8_t format;
 	uint16_t vfthresh;
 
 /* transfer */
@@ -175,7 +179,6 @@ typedef struct arcan_frameserver {
 	
 /* timing, only relevant if nopts == false */
 	uint32_t vfcount;
-	double bpms;
 	bool reclock;
 	double audioclock;
 
