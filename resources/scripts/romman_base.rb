@@ -495,6 +495,8 @@ def reset_db(dbname)
 		db.execute( value )
 	}
 
+	db.execute("INSERT INTO theme_arcan VALUES('dbversion', 2);");
+
 	db
 
 rescue => er
