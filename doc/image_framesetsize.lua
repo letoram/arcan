@@ -4,7 +4,12 @@
 -- @outargs: 
 -- @longdescr: Objects can have a frameset associated with them. A frameset is
 -- comprised of references to other objects, including itself. This can be used
--- for anything from multitexturing to animations to round-robin storage.
+-- for anything from multitexturing to animations to round-robin storage. Default
+-- mode is FRAMESET_SPLIT, other options are FRAMESET_MULTITEXTURE. FRAMESET_SPLIT
+-- only has one active frame, like any other video object (and then relies on framecyclemode
+-- or manually selecting visible frame), whileas FRAMESET_MULTITEXTURE tries to split
+-- the frameset on multiple texture units. This requires that the shader access the samplers
+-- through symbols map_tu0, map_tu1 etc.
 -- @group: image
 -- @note: When calling allocframes for an object that already has a defined frameset,
 -- the objects that would be orphaned (only attached to the frameset) will be 
@@ -13,6 +18,7 @@
 -- @note: A persistant object cannot have a frameset or be linked to one. 
 -- @note: When deleting an object with frames attached, the deletion will also
 -- cascade to cover frameset objects unless MASK_LIVING is cleared.
+
 -- @note: Specialized surface types e.g. color_surface, null_surface cannot have a frameset
 -- or be linked to one.
 -- @note: providing unreasonable (0 < n < 256, outside n) values to count are treated as a 
