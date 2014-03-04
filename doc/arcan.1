@@ -105,16 +105,9 @@ If set, the frameserver binary used will be the one specified unless overridden
 through command-line arguments.
 
 .SH RESOURCES
-Arcan resource management is built around a two-tier namespace. 
-There's a shared (R/O w. exceptions for games/system and savestates) tier 
-called 'resources' (or resourcepath) and a local (R/W) one restricted to 
-themepath/themename. On namespace collisions, the theme- specific tier is 
-given priority.
+Arcan resource management is built around a two-tier namespace. There's a shared (R/O w. exceptions for games/system and savestates) tier called 'resources' (or resourcepath) and a local (R/W) one restricted to themepath/themename. On namespace collisions, the theme- specific tier is given priority.
 
-Resource- and theme tier path is determined by the search order 
-(higher to lower priority): command-line argument, environment variable, 
-current working directory , HOME/.arcan, 
-/usr/local/share/arcan, /usr/share/arcan 
+Resource- and theme tier path is determined by the search order (higher to lower priority): command-line argument, environment variable, current working directory , HOME/.arcan, /usr/local/share/arcan, /usr/share/arcan 
 
 .SH HIJACKING
 For some targets, a hijack- library can be used. This can either be the default 
@@ -123,14 +116,14 @@ The one that will be preloaded in the launched target is defined in the
 database, or, if undefined, the default. The role of the hijack- library is to
 translate the parent event-loop into the namespace of the hijacked target, 
 but also to sample audio/video and transfer over a shared memory interface.
- The default implementation handles targets that use SDLv1.2 and, to a 
+The default implementation handles targets that use SDLv1.2 and, to a 
 lesser extent, OpenGL trough X11. 
 
 .SH DATABASE
 All tasks that involve launching and controlling external applications needs to 
 have a configuration stored in the share database (which also acts as a 
 key/value store for theme- specific data). The supplementary tool
- arcan_romman.rb can be used to automatically scan and build a database 
+arcan_romman.rb can be used to automatically scan and build a database 
 from a resource- folder, or manually view and edit settings.
 
 .SH FRAMESERVER
@@ -142,8 +135,8 @@ and usually resides in the same location as the main arcan binary.
 
 .SH DIAGNOSTICS
 There are a number of ways the engine can shut down, 
-especially if the built in Debug mode. 
-To diagnose a problem with a script (rather than a crash in the Engine, 
+especially if the engine was built in Debug mode. 
+ To diagnose a problem with a script (rather than a crash in the Engine, 
 for that, see the \fBBUGS\fR section below), there are several tools to assist 
 you. One is increasing the debuglevel through the -g calls, which will increase
 the level of verbosity in messages and warnings sent to STDOUT, but this is also
@@ -152,7 +145,7 @@ the level of verbosity in messages and warnings sent to STDOUT, but this is also
 state-space in a .lua readable script (crash_timeofcrash.lua) that can be used 
 to build more refined troubleshooting tools. In addition, there is the notion 
 of monitoring scripts, launching two arcan sessions where one samples and 
-monitors the state of another. See resources/scripts/monitor for examples.
+monitors the state of another. See themes/monitor_awb for examples.
 
 .SH HOMEPAGE
 https://arcan-fe.com
@@ -163,13 +156,13 @@ https://arcan-fe.com
 
 .SH BUGS
 You can report bugs at the forum on the homepage or through the the AUTHOR
- contact below. Save a snapshot of core-dumps (in the case of engine issues) or 
+contact below. Save a snapshot of core-dumps (in the case of engine issues) or 
 the appropriate resources/logs entries. For some issues, a copy of the database
- used and a list of files (with permissions) in themepath and 
+used and a list of files (with permissions) in themepath and 
 resourcepath might also be relevant.
 
 .SH COPYRIGHT
-Copyright  ©  2013  Bjorn Stahl. License GPLv3+: GNU GPL version 3 or 
+Copyright  ©  2003-2014  Bjorn Stahl. License GPLv3+: GNU GPL version 3 or 
 later <http://gnu.org/licenses/gpl.html>. This is free software: you are 
 free  to  change  and  redistribute  it. There is NO WARRANTY, 
 to the extent permitted by law.

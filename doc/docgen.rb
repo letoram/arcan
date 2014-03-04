@@ -1,9 +1,4 @@
 #!/usr/bin/ruby
-keys = [
-"RESOURCE", "CONTROL", "DATABASE",
-"AUDIO", "IMAGE", "3D", "SYSTEM",
-"IODEV", "VIDSYS", "NETWORK" 
-]
 
 def scangrp(inf)
 	line = "";
@@ -14,10 +9,14 @@ def scangrp(inf)
 		if line[0..3] == "-- @"
 			group = line[4..line.index(":")-1]
 			msg = line[(line.index(":")+1)..-1];
+			if (res[group] == nil) then
+				res[group] = []
+			else
+			end
 
 			if (msg != nil)
 				msg.strip!
-				res[group] = [msg] if msg.length > 0
+				res[group] << msg if msg.length > 0
 			end
 		else
 			res[group] << line[3..-1].strip;
@@ -32,6 +31,12 @@ rescue => er
 	return res, ""
 end
 
+class String
+	def join(a)
+		"#{self}#{a}"
+	end
+end
+
 class DocReader
 	def initialize
 		@short = ""
@@ -41,7 +46,7 @@ class DocReader
 		@group = ""
 		@cfunction = ""
 		@related = []
-		@notes = []
+		@note = []
 		@example = ""
 		@main_tests = []
 		@error_tests = []
@@ -67,13 +72,19 @@ class DocReader
 		}
 
 		res	
-#	rescue
-#		nil	
+	rescue
+		nil	
+	end
+
+	def note=(v)
+		@note << v
 	end
 
 	attr_accessor :short, :inargs, :outargs, 
-		:longdescr, :group, :cfunction, :related, :notes,
+		:longdescr, :group, :cfunction, :related, 
 		:example, :main_tests, :error_tests
+
+	attr_reader :note
 
 	private :initialize
 end
@@ -118,6 +129,11 @@ function main()
 end\n") end
 end
 
+#
+# Parse the C binding file. look for our preprocessor 
+# markers, extract the lua symbol, c symbol etc. and 
+# push to the function pointer in cfun
+#
 def cscan(cfun)
 	in_grp = false
 	File.open("../engine/arcan_lua.c").each_line{|line|
@@ -136,33 +152,86 @@ def cscan(cfun)
 	}
 end
 
+$grouptbl = {}
 def scangroups(group, sym, csym)
 	if ($grouptbl[group] == nil) then
-		$grouptbl[group] = [];
+		$grouptbl[group] = []
 	end
-	$grouptbl[group] << sym;
+	$grouptbl[group] << sym
+end
+
+def troffdescr(descr)
+	a = descr.join("\n")
+  a.gsub!(/\*(\w+)\*/, "\\fI \\1 \\fR ") 
+	a.gsub!("  ", " ")	
 end
 
 def funtoman(fname)
-	cgroup = nil;
-	inexample = false;
+	cgroup = nil
+	inexample = false
 
-	outm = File.new("man/#{fname}.3", IO::CREAT | IO::RDWR)
-	outm << ".\\\" groff -man -Tascii #{fname}.3\n";
-	outm << ".TH #{fname} 3 \"October 2013\" arcan \"Arcan API Reference\"";
+	inf = DocReader.Open("#{fname}.lua")
+	outm = File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR)
+	outm << ".\\\" groff -man -Tascii #{fname}.3\n"
+	outm << ".Th \"#{fname}\" 3 \"#{Time.now.strftime("%B %Y")}\" \"Arcan LUA API\"\n"
+	outm << ".Sh NAME\n"
+	outm << ".Nm #{fname}\n"
+	outm << ".Nd #{inf.short.join(" ")}\n"
+	outm << ".Sh SYNOPSIS\n"
 
-	inf = File.open("#{fname}.lua")
-	shortnm = inf.readline()[3..-1].strip
-	outm << ".SH #{shortnm}\n"
+	if (inf.outargs.size > 0)
+		outm << ".Ft #{inf.outargs.join("\n.Ft ")}\n"
+	end
 
-	groups, line = scangrp(inf)
-	groups.each_pair{|group, line|
-		workstr = line.strip
-		if (workstr.length > 0)
-			outm << ".SH #{group}\n"
-			outm << workstr << "\n"
-		end
+	inf.inargs.size.times{|a|
+		inf.inargs[a].gsub!(/\,/, " ")
 	}
+
+	outm << ".Fo #{fname}\n"
+	if (inf.inargs.size > 0)
+		outm << ".Fa #{inf.inargs.join("\n.Fa ")} \n"
+	end
+	outm << ".Fc\n"
+
+	if (inf.longdescr.size > 0)
+		outm << ".Sh DESCRIPTION\n"
+		outm << troffdescr(inf.longdescr)
+		outm << "\n"
+	end
+
+	if (inf.note.size > 0)
+		outm << ".Sh NOTE\n"
+		inf.note.each{|a| 
+			outm << a
+		}
+		outm << "\n"
+	end
+
+	if (inf.example.size > 0)
+		outm << ".SH EXAMPLE"
+		outm << inf.example.join("\n")
+		outm << "\n"
+	end
+
+	if (inf.related.size > 0)
+		outm << ".Sh SEE ALSO:\n"
+		outm << "\n"
+	end
+
+#	inf = File.open("#{fname}.lua")
+#	shortnm = inf.readline()[3..-1].strip
+#	outm << ".SH #{shortnm}\n"
+
+#	groups, line = scangrp(inf)
+#	groups.each_pair{|group, line|
+#		workstr = line.join("\n").strip
+#		if (workstr.length > 0)
+#			outm << ".SH #{group}\n"
+#			outm << workstr << "\n"
+#		end
+#	}
+rescue => er
+	STDERR.print("Failed to parse/generate (#{fname} reason: #{er}\n #{er.backtrace.join("\n")})\n")
 end
 
 if (ARGV[0] == "scan")
@@ -177,17 +246,23 @@ elsif (ARGV[0] == "missing")
 	}
 
 elsif (ARGV[0] == "mangen")
-	cscan(:scangroups)
+# add preamble / header to the overview file,
 	inf = File.open("arcan_api_overview_hdr")
-	if (File.exists?("arcan_api_overview.1"))
-		File.delete("arcan_api_overview.1")
+
+	if (Dir.exists?("mantmp"))
+		Dir["mantmp/*"].each{|a| File.delete(a) }
+	else
+		Dir.mkdir("mantmp")
 	end
 
-	outf = File.new("arcan_api_overview.1", IO::CREAT | IO::RDWR)
+	outf = File.new("mantmp/arcan_api_overview.1", IO::CREAT | IO::RDWR)
 	inf.each_line{|line| outf << line}
-	
-# setup default intro manpage by taking the stub and then attaching
-# group references to the other manpages
+
+# populate $grptbl with the contents of the lua.c file	
+	cscan(:scangroups)
+
+# add the functions of each group to a section in the
+# overview file
 	$grouptbl.each_pair{|key, val|
 		gotc = false
 		outf << ".SH #{key}\n"
@@ -199,12 +274,15 @@ elsif (ARGV[0] == "mangen")
 				outf << ",\\&\\fI#{i}\\fR\\|(3)"
 			end
 			outf << "\n"
+
 			funtoman(i)
 		}
 	}
 	inf = File.open("arcan_api_overview_ftr").each_line{|line|
 		outf << line;
 	}
+
+	outf.close
 
 else
 	STDOUT.print("Usage: ruby docgen.rb command\nscan:\n\

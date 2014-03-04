@@ -43,25 +43,9 @@ Invoked every video frame, this may occur at rather spurious intervals
 depending on engine configuration. Any computation in this entrypoint
 should be considered extremely costly.
 
-.IP "\fBthemename_system(evtbl)\fR"
-System events, evtbl.kind contains the corresponding event code.
-Normal application use shouldn't have any use for this entrypoint.
-
-.IP "\fBthemename_audio_event(source, evtbl)\fR"
-Invoked whenever an audio event is successfully completed.
-Look at the kind- field of evtbl for a more specific identifier,
-some examples include "audio buffer underrun", "gain transformed", 
-"playback finished", "playback aborted". The use of this function is 
-discouraged, but the design issue on how the replacement
-should work is still open.
-
 .IP "\fBthemename_shutdown()\fR"
 A shutdown() call will not immediately terminate but rather enqueue a
 shutdown command on the eventqueue to allow future subsystems to terminate
 in a clean manner. This entrypoint will be triggered as a final point
 before the arcan process will exit.
-
-.IP "\fBthemename_frameserver_event(source, evtbl)\fR"
-The use of this entry-point is considered deprecated and replaced with
-callback functions attached to each frameserver object.
 

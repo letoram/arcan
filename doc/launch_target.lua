@@ -14,16 +14,16 @@
 -- See notes below for details on statustbl contents.
 -- *argstr* is a regular k1=v1:k2:k3=v3 kind of argument string, used primarily
 -- for libretro cores when prefixed with core_
--- @notes: Possible statustbl.kind values; "resized", "ident", "message", "failure",
+-- @note: Possible statustbl.kind values; "resized", "ident", "message", "failure",
 -- "frameserver_terminated", "frame", "state_size", "resource_status", "unknown".
--- @notes: for kind == "resized", width, height 
--- @notes: for kind == "frame", frame
--- @notes: for kind == "message", message
--- @notes: for kind == "ident", message
--- @notes: for kind == "failure", code
--- @notes: for kind == "state_size", state_size
--- @notes: for kind == "unknown", unknown
--- @notes: for kind == "resource_status", "message"
+-- @note: for kind == "resized", width, height 
+-- @note: for kind == "frame", frame
+-- @note: for kind == "message", message
+-- @note: for kind == "ident", message
+-- @note: for kind == "failure", code
+-- @note: for kind == "state_size", state_size
+-- @note: for kind == "unknown", unknown
+-- @note: for kind == "resource_status", "message"
 -- @group: targetcontrol 
 -- @alias: target_launch
 -- @cfunction: arcan_lua_targetlaunch
