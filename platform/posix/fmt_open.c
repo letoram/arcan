@@ -32,9 +32,11 @@ int fmt_open(int flags, mode_t mode, const char* fmt, ...)
 		free(dbuf);
 	}
 
+#ifndef _WIN32
 /* don't let spawned children have access to this one */
 	if (-1 != rv)
 		fcntl(rv, FD_CLOEXEC);
+#endif
 
 	return rv;
 }
