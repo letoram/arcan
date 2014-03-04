@@ -4624,3 +4624,55 @@ arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
 
 	return rv;
 }
+
+arcan_vobj_id arcan_video_renderstring(const char* message, 
+	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, 
+	unsigned int* n_lines, unsigned int** lineheights)
+{
+	arcan_vobj_id rv = ARCAN_EID;
+	if (!message)
+		return rv;
+
+	arcan_vobject* vobj = arcan_video_newvobject(&rv);
+
+	if (!vobj){
+		arcan_fatal("Fatal: arcan_video_renderstring(), "
+			"couldn't allocate video object. Out of Memory or out of IDs "
+			"in current context. There is likely a resource leak in the "
+			"scripts of the current theme.\n");
+	}
+
+	int maxw, maxh;
+	
+	struct storage_info_t* ds = vobj->vstore; 
+
+	ds->vinf.text.raw = renderfun_renderfmtstr(
+		message, line_spacing, tab_spacing,
+		tabs, true, n_lines, lineheights,  
+		&ds->w, &ds->h, &ds->vinf.text.s_raw, &maxw, &maxh
+	);
+
+	if (ds->vinf.text.raw == NULL){
+		arcan_video_deleteobject(rv);
+		return ARCAN_EID;
+	}
+
+	vobj->feed.state.tag = ARCAN_TAG_TEXT;
+	vobj->blendmode = blend_force;
+	vobj->origw = maxw;
+	vobj->origh = maxh;
+	ds->vinf.text.source = strdup(message);
+
+	push_globj(vobj, false, NULL);
+
+/*
+ * POT but not all used, 
+ */ 
+	float wv = (float)maxw / (float)vobj->vstore->w;
+	float hv = (float)maxh / (float)vobj->vstore->h;
+	generate_basic_mapping(vobj->txcos, wv, hv);
+	arcan_video_attachobject(rv);
+
+	return rv;	
+}
+

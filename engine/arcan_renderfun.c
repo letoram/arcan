@@ -721,19 +721,18 @@ static inline void copy_rect(TTF_Surface* surf, uint32_t* dst,
 			&wrk[row * surf->width], surf->width * 4);
 }
 	
-/* note: currently does not obey restrictions placed on texturemode 
- * (i.e. everything is padded to power of two and txco hacked),
- * partly because this is all planned to be transformed to using proper
- * text-texture packing and more clever antialiasing */
-arcan_vobj_id arcan_video_renderstring(const char* message, 
-	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, 
-	unsigned int* n_lines, unsigned int** lineheights)
+void* renderfun_renderfmtstr(const char* message,
+	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
+	unsigned int* n_lines, unsigned int** lineheights,
+	unsigned short* dw, unsigned short * dh, uint32_t* d_sz, 
+	int* maxw, int* maxh)
 {
-	arcan_vobj_id rv = ARCAN_EID;
 	if (!message)
-		return rv;
+		return NULL;
+
+	uint32_t* raw = NULL;
 	
-/* (A) */
+/* (A) parse format string and build chains of renderblocks */
 	int chainlines;
 	struct rcell* root = calloc( sizeof(struct rcell), 1);
 	
@@ -743,11 +742,11 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	last_style.cr = false;
 
 	if ((chainlines = build_textchain(work, root, false)) > 0) {
-/* (B) */
+/* (B) traverse the renderblocks and figure out constraints*/
 		struct rcell* cnode = root;
 		unsigned int linecount = 0;
-		int maxw = 0;
-		int maxh = 0;
+		*maxw = 0;
+		*maxh = 0;
 		int lineh = 0;
 		int curw = 0;
 /* note, linecount is overflow */
@@ -771,56 +770,36 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 
 				if (cnode->data.format.newline > 0)
 					for (int i = cnode->data.format.newline; i > 0; i--) {
-						lines[linecount++] = maxh;
-						maxh += lineh + line_spacing;
+						lines[linecount++] = *maxh;
+						*maxh += lineh + line_spacing;
 						lineh = 0;
 					}
 			}
 
-			if (curw > maxw)
-				maxw = curw;
+			if (curw > *maxw)
+				*maxw = curw;
 
 			cnode = cnode->next;
 		}
 		
-/* (C) */
-/* prepare structures */
-		arcan_vobject* vobj = NULL;
-		vobj = arcan_video_newvobject(&rv);
+/* (C) render into destination buffers */
+		*dw = pot ? nexthigher(*maxw) : *maxw;
+		*dh = pot ? nexthigher(*maxh) : *maxh;
 
-		if (!vobj){
-			arcan_fatal("Fatal: arcan_video_renderstring(), "
-				"couldn't allocate video object. Out of Memory or out of IDs "
-				"in current context. There is likely a resource leak in the "
-				"scripts of the current theme.\n");
-		}
+		*d_sz = *dw * *dh * GL_PIXEL_BPP;
+		raw = malloc(*d_sz);
+		if (!raw)
+			goto cleanup;
 
-		struct storage_info_t* s = vobj->vstore;
+		memset(raw, '\0', *d_sz);
 
-		int storw = nexthigher(maxw);
-		int storh = nexthigher(maxh);
-		s->w = storw;
-		s->h = storh;
-		s->vinf.text.s_raw = storw * storh * GL_PIXEL_BPP;
-		s->vinf.text.raw = malloc(s->vinf.text.s_raw);
-		memset(s->vinf.text.raw, '\0', s->vinf.text.s_raw);
-		vobj->feed.state.tag = ARCAN_TAG_TEXT;
-		vobj->blendmode = blend_force;
-		vobj->origw = maxw;
-		vobj->origh = maxh;
-		s->vinf.text.source = strdup(message);
-
-/* find dimensions and cleanup */
 		cnode = root;
 		curw = 0;
-
-		uint32_t* canvas = (uint32_t*) s->vinf.text.raw; 
-
 		int line = 0;
 
 		while (cnode) {
 			if (cnode->surface) {
-				copy_rect(cnode->data.surf, canvas, storw, curw, lines[line]);
+				copy_rect(cnode->data.surf, raw, *dw, curw, lines[line]);
 				curw += cnode->data.surf->width;
 			}
 			else {
@@ -830,22 +809,12 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 				if (cnode->data.format.cr)
 					curw = 0;
 
-				if (cnode->data.format.newline > 0) {
+				if (cnode->data.format.newline > 0) 
 					line += cnode->data.format.newline;
-				}
 			}
-			
 			cnode = cnode->next;
 		}
 	
-/* upload */
-		push_globj(vobj, false, NULL);
-
-		float wv = (float)maxw / (float)vobj->vstore->w;
-		float hv = (float)maxh / (float)vobj->vstore->h;
-		generate_basic_mapping(vobj->txcos, wv, hv);
-		arcan_video_attachobject(rv);
-		
 		if (n_lines)
 			*n_lines = linecount;
 
@@ -857,6 +826,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	
 	struct rcell* current;
 
+cleanup:
 	current = root;
 	while (current){
 		assert(current != (void*) 0xdeadbeef);
@@ -870,8 +840,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	}
 	
 	free(work);
-
-	return rv;
+	return raw;
 }
 
 /*  

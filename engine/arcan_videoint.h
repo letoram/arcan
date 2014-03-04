@@ -343,6 +343,12 @@ unsigned arcan_video_pushglids(struct storage_info_t* glstor,unsigned ofs);
 arcan_vobject_litem* arcan_refresh_3d(arcan_vobj_id camtag,
 	arcan_vobject_litem* cell, float frag);
 
+void* renderfun_renderfmtstr(const char* message,
+	int8_t line_spacing, int8_t tab_spacing, unsigned int* tabs, bool pot,
+	unsigned int* n_lines, unsigned int** lineheights,
+	unsigned short* dw, unsigned short* dh, 
+	uint32_t* d_sz, int* maxw, int* maxh);
+
 int stretchblit(char* src, int srcw, int srch,
 	uint32_t* dst, int dstw, int dsth, int flipy);
 #endif
