@@ -21,6 +21,20 @@ int arcan_sem_unlink(sem_handle sem, char* key)
 	return CloseHandle(sem);
 }
 
+int arcan_sem_init(sem_handle* sem, int value)
+{
+	*sem = CreateSemaphore(NULL, value, 65535, NULL);
+	return *sem != NULL ? 0 : -1;
+}
+
+int arcan_sem_destroy(sem_handle sem)
+{
+	if (sem == NULL)
+		return -1;
+
+	return CloseHandle(sem) ? 0 : -1;
+}
+
 int arcan_sem_trywait(sem_handle sem)
 {
 	DWORD rc = WaitForSingleObject(sem, 0);
