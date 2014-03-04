@@ -228,6 +228,8 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	memset(shmpage, '\0', shmsize);
  	shmpage->dms = true;	
 	shmpage->parent = getpid();
+	shmpage->major = ARCAN_VERSION_MAJOR;
+	shmpage->minor = ARCAN_VERSION_MINOR;
 
 	int sockp[2] = {-1, -1};
 	if ( socketpair(PF_UNIX, SOCK_DGRAM, 0, sockp) < 0 ){

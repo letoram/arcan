@@ -38,6 +38,15 @@
 #define ARCAN_HATBTNBASE 128
 #define ARCAN_MOUSEIDBASE 0
 
+/*
+ * This part of the interface is still rather crude and messy,
+ * being a blob that has grown organically through the course 
+ * of the project (and initially just being a part of the engine
+ * internals, not of the shmif), and will be refactored in 
+ * incremental steps.
+ * 
+ */ 
+
 /* this is relevant if the event queue is authoritative,
  * i.e. the main process side with a frameserver associated. 
  *

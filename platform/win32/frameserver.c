@@ -278,6 +278,9 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	ctx->shm.shmsize = ARCAN_SHMPAGE_MAX_SZ;
 	ctx->shm.handle = shmh;
 	shmpage->parent = handle;
+	shmpage->dms = true;
+	shmpage->major = ARCAN_VERSION_MAJOR;
+	shmpage->minor = ARCAN_VERSION_MINOR;
 
 	arcan_frameserver_configure(ctx, setup);
 
