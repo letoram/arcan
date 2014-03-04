@@ -164,6 +164,14 @@ struct arcan_shmif_page {
  * has failed and everything should be dropped and terminated */
 	volatile uintptr_t dms;
 
+/* 
+ * These will be set to the ARCAN_VERSION_MAJOR and ARCAN_VERSION_MAJOR
+ * defines, a mismatch will cause the integrity_check to fail and 
+ * both sides may decide to terminate.  
+ */
+	int8_t major;
+	int8_t minor;
+
 /* used as a hint to how disruptions (e.g. broken datastreams,
  * end of content in terms of video playback etc.) should be handled,
  * terminating or looping back to the initial state (if possible) */ 
@@ -208,7 +216,6 @@ struct arcan_shmif_page {
  * is present in this field and the main process gets the happy job
  * of trying to compensate for synchronization */ 
 	int64_t vpts;
-	int64_t apts;
 
 /* 
  * For some cases, the child doesn't always have access to 
@@ -276,12 +283,13 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
 void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
 
 /*
- * This is currently a "stub" although it is suggested that
- * both frameservers and parents repeatedly invokes it as part
- * of rendering / eventloops or similar activity. The purpose
- * is to (through checksums or similar means) detect and self-destruct
- * in the event of a corrupt page (indication of a serious underlying
- * problem) so that proper debug-/tracing-/user- measures can be taken.  
+ * This is currently a "stub" (merely version check)
+ * although it is suggested that both frameservers and parents 
+ * repeatedly invokes it as part of rendering / eventloops or 
+ * similar activity. The purpose is to (through checksums or 
+ * similar means) detect and self-destruct in the event of a corrupt 
+ * page (indication of a serious underlying problem) so that 
+ * proper debug-/tracing-/user- measures can be taken.  
  */
 bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
 

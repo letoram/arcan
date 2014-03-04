@@ -216,6 +216,11 @@ static void* guard_thread(void* gs)
 
 bool arcan_shmif_integrity_check(struct arcan_shmif_page* shmp)
 {
+	if (shmp->major != ARCAN_VERSION_MAJOR ||
+		shmp->minor != ARCAN_VERSION_MINOR){
+		arcan_warning("frameserver::shmif integrity check failed\n");
+		return false;
+	}
 	return true;
 }
 

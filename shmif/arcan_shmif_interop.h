@@ -84,8 +84,7 @@ typedef int arcan_aobj_id;
  * returns non-zero on success. 
  */
 int arcan_event_poll(struct arcan_evctx*, struct arcan_event* dst);
-int arcan_event_wait(
-	struct arcan_evctx*, struct arcan_event* dst);
+int arcan_event_wait(struct arcan_evctx*, struct arcan_event* dst);
 
 /*
  * Try and enqueue the element to the queue. If the context is 
