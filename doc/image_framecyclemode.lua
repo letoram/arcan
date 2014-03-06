@@ -4,9 +4,13 @@
 -- @longdescr: Framesets associated with an object can have its active_frame 
 -- property vary with other engine states. By setting *mode* till 0 (disable)
 -- only activeframe can alter the active frame property. With mode < 0 the
--- active frame will be cycled (rotate-right) every n logical frames. With
--- mode > 0, the active frame will be cycled (rotate-right) every n rendered
--- frame.
+-- active frame will be cycled (rotate-right) every n logical frames. 
+-- Mode > 0 is only defined for images with a feed function attached (e.g.
+-- frameserver connections) and means to step every n times the feed function
+-- provides an update. 
+-- @note: If you want the behavior of stepping each rendered frame, do this 
+-- manually by implementing the themename_frame_pulse and calling image_activeframe 
+-- rather than relying on a framecyclemode.
 -- @group: image
 -- @cfunction: arcan_lua_framesetcycle
 -- @related: image_framesetsize, image_activeframe, set_image_as_frame
