@@ -18,7 +18,6 @@
 -- @note: A persistant object cannot have a frameset or be linked to one. 
 -- @note: When deleting an object with frames attached, the deletion will also
 -- cascade to cover frameset objects unless MASK_LIVING is cleared.
-
 -- @note: Specialized surface types e.g. color_surface, null_surface cannot have a frameset
 -- or be linked to one.
 -- @note: providing unreasonable (0 < n < 256, outside n) values to count are treated as a 

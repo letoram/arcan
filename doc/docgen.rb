@@ -12,6 +12,7 @@ def scangrp(inf)
 			if (res[group] == nil) then
 				res[group] = []
 			else
+				res[group] << ""
 			end
 
 			if (msg != nil)
@@ -37,6 +38,27 @@ class String
 	end
 end
 
+def extract_example(lines, defs)
+	iobj = IO.popen(
+		"cpp -pipe -fno-rtti -fno-builtin -fno-common #{defs}", 
+		File::RDWR
+	)
+	iobj.print(lines)
+	iobj.close_write
+	iobj.each_line{|a|
+		if (a[0] == "#" or a.strip == "") 
+			next
+		end
+
+		yield a
+	}
+	iobj.close_read
+end
+
+#
+# Missing;
+# alias, flags (placeholder, , examples and testcases
+#
 class DocReader
 	def initialize
 		@short = ""
@@ -47,7 +69,7 @@ class DocReader
 		@cfunction = ""
 		@related = []
 		@note = []
-		@example = ""
+		@examples = [] 
 		@main_tests = []
 		@error_tests = []
 	end
@@ -71,8 +93,27 @@ class DocReader
 			end	
 		}
 
+		while (line.strip! == "")
+			line = a.readline
+			if (line == nil) then
+				return res
+			end
+		end
+
+		lines = a.readlines
+		lines.insert(0, line)
+		remainder = lines.join("\n")
+
+		main = "" 
+		extract_example(remainder, "-DMAIN"){|line| main << line} 
+		res.examples << main
+
 		res	
-	rescue
+	rescue EOFError
+		res
+	rescue => er 
+					p er
+					p er.backtrace
 		nil	
 	end
 
@@ -82,7 +123,7 @@ class DocReader
 
 	attr_accessor :short, :inargs, :outargs, 
 		:longdescr, :group, :cfunction, :related, 
-		:example, :main_tests, :error_tests
+		:examples, :main_tests, :error_tests
 
 	attr_reader :note
 
@@ -162,9 +203,36 @@ end
 
 def troffdescr(descr)
 	a = descr.join("\n")
-  a.gsub!(/\*(\w+)\*/, "\\fI \\1 \\fR ") 
-	a.gsub!("  ", " ")	
+	a.gsub!(/\./, ".\n.R")
+  a.gsub!(/\*(\w+)\*/, "\\fI \\1 \\fR") 
+	a.gsub!("  ", " ")
+	a.strip!
+	a[0..-3]
 end
+
+# template:
+# .TH PRJ 3 "Date" System "Group"
+# .SH NAME
+# function \- descr
+# .SH SYNOPSIS
+# .I retval
+# .B fname
+# .R (
+# .I arg
+# .I arg2
+# .R )
+# .SH DESCRIPTION
+# .B somethingsomething
+# somethingsoemthing
+# .BR highlight
+# something
+# .SH NOTES
+# .IP seqn. 
+# descr
+# .SH EXAMPLE
+# if present
+# .SH SEE ALSO
+#
 
 def funtoman(fname)
 	cgroup = nil
@@ -173,65 +241,77 @@ def funtoman(fname)
 	inf = DocReader.Open("#{fname}.lua")
 	outm = File.new("mantmp/#{fname}.3", IO::CREAT | IO::RDWR)
 	outm << ".\\\" groff -man -Tascii #{fname}.3\n"
-	outm << ".Th \"#{fname}\" 3 \"#{Time.now.strftime("%B %Y")}\" \"Arcan LUA API\"\n"
-	outm << ".Sh NAME\n"
-	outm << ".Nm #{fname}\n"
-	outm << ".Nd #{inf.short.join(" ")}\n"
-	outm << ".Sh SYNOPSIS\n"
+	outm << ".TH \"#{fname}\" 3 \"#{Time.now.strftime(
+		"%B %Y")}\" #{inf.group[0]} \"Arcan LUA API\"\n"
+	outm << ".SH NAME\n"
+	outm << ".B #{fname} \ - \n#{inf.short.join(" ")}\n"
+	outm << ".SH SYNOPSIS\n"
 
 	if (inf.outargs.size > 0)
-		outm << ".Ft #{inf.outargs.join("\n.Ft ")}\n"
+		outm << ".I #{inf.outargs.join(", ")}\n"
+	else
+		outm << ".I nil \n"
 	end
 
-	inf.inargs.size.times{|a|
-		inf.inargs[a].gsub!(/\,/, " ")
-	}
+	outm << ".br\n.B #{fname}\n"
+	outm << "("
 
-	outm << ".Fo #{fname}\n"
-	if (inf.inargs.size > 0)
-		outm << ".Fa #{inf.inargs.join("\n.Fa ")} \n"
+	if (inf.inargs.size > 0) 
+		tbl = inf.inargs[0].split(/\,/)
+		tbl.each_with_index{|a, b|
+			if (a =~ /\*/)
+				outm << "\n.I #{a.gsub(/\*/, "").gsub("  ", " ").strip}"
+			else
+				outm << "#{a.strip}"
+			end
+
+			if (b < tbl.size - 1) then
+				outm << ", "
+			else
+				outm << "\n"
+			end
+		}
 	end
-	outm << ".Fc\n"
+
+	outm << ")\n"
 
 	if (inf.longdescr.size > 0)
-		outm << ".Sh DESCRIPTION\n"
+		outm << ".SH DESCRIPTION\n"
 		outm << troffdescr(inf.longdescr)
-		outm << "\n"
+		outm << "\n\n"
 	end
 
 	if (inf.note.size > 0)
-		outm << ".Sh NOTE\n"
-		inf.note.each{|a| 
-			outm << a
+		outm << ".SH NOTES\n.IP 1\n"
+		count = 1
+
+		inf.note[0].each{|a|
+			if (a.strip == "")
+				count = count + 1
+				outm << ".IP #{count}\n"
+			else
+				outm << "#{a}\n"
+			end
+		}
+	end
+
+	if (inf.examples.size > 0)
+		outm << ".SH EXAMPLE\n.BD -literal\n\n"
+		outm << inf.examples[0]
+		outm << "\n.Ed\n"
+	end
+
+	if (inf.related.size > 0)
+		outm << ".SH SEE ALSO:\n"
+		inf.related[0].split(",").each{|a|
+			outm << ".BR #{a.strip} (3)\n"
 		}
 		outm << "\n"
 	end
 
-	if (inf.example.size > 0)
-		outm << ".SH EXAMPLE"
-		outm << inf.example.join("\n")
-		outm << "\n"
-	end
-
-	if (inf.related.size > 0)
-		outm << ".Sh SEE ALSO:\n"
-		outm << "\n"
-	end
-
-#	inf = File.open("#{fname}.lua")
-#	shortnm = inf.readline()[3..-1].strip
-#	outm << ".SH #{shortnm}\n"
-
-#	groups, line = scangrp(inf)
-#	groups.each_pair{|group, line|
-#		workstr = line.join("\n").strip
-#		if (workstr.length > 0)
-#			outm << ".SH #{group}\n"
-#			outm << workstr << "\n"
-#		end
-#	}
 rescue => er
-	STDERR.print("Failed to parse/generate (#{fname} reason: #{er}\n #{er.backtrace.join("\n")})\n")
+	STDERR.print("Failed to parse/generate (#{fname} reason: #{er}\n #{
+		er.backtrace.join("\n")})\n")
 end
 
 if (ARGV[0] == "scan")

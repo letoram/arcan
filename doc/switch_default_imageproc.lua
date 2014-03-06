@@ -23,7 +23,7 @@ function main()
 	switch_default_imageproc("test1");
 #endif
 
-ifdef ERROR2
+#ifdef ERROR2
 	switch_default_imageproc(200);
 #endif
 end
