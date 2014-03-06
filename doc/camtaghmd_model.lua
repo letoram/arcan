@@ -6,4 +6,4 @@
 -- @group: 3d 
 -- @cfunction: arcan_lua_camtaghmd
 -- @related: camtag_model
---
+

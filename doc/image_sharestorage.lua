@@ -20,7 +20,7 @@ function main()
 	b = null_surface(64, 64);
 	move_image(b, 100, 100);
 	show_image({a, b});
-#endif MAIN
+#endif
 
 #ifdef MAIN
 	image_sharestorage(a, b);

@@ -12,4 +12,4 @@
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_targetpostfilter
 -- @related: target_linewidth, target_pointsize, target_postfilter_args 
---
+

@@ -14,4 +14,4 @@
 -- @group: network 
 -- @cfunction: arcan_lua_net_authenticate
 -- @exampleref: net_advanced
---
+
