@@ -296,9 +296,9 @@ def funtoman(fname)
 	end
 
 	if (inf.examples.size > 0)
-		outm << ".SH EXAMPLE\n.BD -literal\n\n"
+		outm << ".SH EXAMPLE\n.nf \n\n"
 		outm << inf.examples[0]
-		outm << "\n.Ed\n"
+		outm << "\n.fi\n"
 	end
 
 	if (inf.related.size > 0)
