@@ -304,11 +304,9 @@ int main(int argc, char* argv[])
 		fullscreen = false;
 	}
 #endif
-	char* dbname;
 
 /* also used as restart point for switiching themes */
 themeswitch:
-	dbname = NULL;
 
 /*
  * try to open the specified database,
@@ -326,7 +324,7 @@ themeswitch:
 		FILE* fpek = fopen(dbfname, "a");
 		if (fpek){
 			fclose(fpek);
-			dbhandle = arcan_db_open(dbname, arcan_themename);
+			dbhandle = arcan_db_open(dbfname, arcan_themename);
 		}
 
 		if (!dbhandle){
