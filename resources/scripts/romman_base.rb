@@ -618,10 +618,15 @@ def import_roms(options)
 			STDOUT.print("No importer found for #{group}, ignoring.\n")
 			next
 		end
-	
+
+		begin	
 		unless (imp.check_target(group, options[:targetpath]))
 			STDOUT.print("#{imp.to_s} Couldn't open target: #{group}, ignoring.\n")
 			next
+		end
+		rescue
+			STDOUT.print("#{imp.to_s} Importer failed, moving on.\n")
+			next 
 		end
 	
 		fn = "#{options[:rompath]}/#{group}/#{group}.descr"
