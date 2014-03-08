@@ -9,7 +9,9 @@ Arcan is a fast, free and portable (BSD, Linux, Windows, …) fully Lua- scripta
 Licensing details can be found in distr/COPYRIGHT
 
 Example themes (AWB, Gridle) can be found in their separate repositories, i.e.:
+
 http://github.com/letoram/awb
+
 http://github.com/letoram/gridle
 
 quickstart
