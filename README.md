@@ -4,9 +4,13 @@ homepage @ http://arcan-fe.com
 
 Arcan, Scriptable 2D/3D Multimedia Engine
 
-Arcan is a fast, free (GPLv3) and portable (BSD, Linux, Windows, …) fully Lua- scriptable 2D/3D engine for realtime media processing, game and visualization prototypes and frontend purposes e.g. launching and manipulating games, emulators and other full-screen applications in a visual appealing way, as seamlessly as possible.
+Arcan is a fast, free and portable (BSD, Linux, Windows, …) fully Lua- scriptable 2D/3D engine for realtime media processing, game and visualization prototypes and frontend purposes e.g. launching and manipulating games, emulators and other full-screen applications in a visual appealing way, as seamlessly as possible.
 
 Licensing details can be found in distr/COPYRIGHT
+
+Example themes (AWB, Gridle) can be found in their separate repositories, i.e.:
+http://github.com/letoram/awb
+http://github.com/letoram/gridle
 
 quickstart
 =====
