@@ -23,6 +23,11 @@ struct axis_opts {
 
 	int lower, upper, deadzone;
 
+/* we won't get access to a good range distribution
+ * if we don't emit the first / last sample that got
+ * into the drop range */
+	bool inlzone, inuzone, indzone;
+
 	int kernel_sz;
 	int kernel_ofs;
 	int32_t flt_kernel[64];
@@ -42,6 +47,7 @@ struct arcan_stick {
  * to higher layers in order to retain / track settings
  * for a certain device, put that here */
 	char label[256];
+
 	SDL_Joystick* handle;
 
 	unsigned long hashid;
@@ -69,13 +75,38 @@ static inline bool process_axis(arcan_evctx* ctx,
 		goto accept_sample;
 
 /* quickfilter deadzone */
-	if (abs(samplev) < daxis->deadzone)
-		return false;
+	if (abs(samplev) < daxis->deadzone){
+		if (!daxis->indzone){
+			samplev = 0; 
+			daxis->indzone = true;
+		}
+		else 
+			return false;
+	}
+	else
+		daxis->indzone = false;
 
 /* quickfilter out controller edgenoise */
-	if (samplev < daxis->lower ||
-		samplev > daxis->upper)
-		return false;
+	if (samplev < daxis->lower){
+		if (!daxis->inlzone){
+			samplev = daxis->lower;
+			daxis->inlzone = true;
+			daxis->inuzone = false;
+		}	
+		else
+			return false;
+	}
+	else if (samplev > daxis->upper){
+		if (!daxis->inuzone){
+			samplev = daxis->upper;
+			daxis->inuzone = true;
+			daxis->inlzone = false;
+		}
+		else
+			return false;
+	}
+	else
+		daxis->inlzone = daxis->inuzone = false;
 
 	daxis->flt_kernel[ daxis->kernel_ofs++ ] = samplev;
 

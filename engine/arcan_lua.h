@@ -37,7 +37,7 @@ void arcan_luaL_dostring(struct arcan_luactx*, const char* sbuf);
 void arcan_luaL_shutdown(struct arcan_luactx*);
 
 /* add a set of wrapper functions exposing arcan_video and friends 
- * to the LUA state, debugfuncs corresponds to desired debug level / behavior */
+ * to the Lua state, debugfuncs corresponds to desired debug level / behavior */
 arcan_errc arcan_lua_exposefuncs(struct arcan_luactx* dst, 
 	unsigned char debugfuncs);
 
@@ -58,7 +58,7 @@ void arcan_lua_eachglobal(struct arcan_luactx* ctx, char* prefix,
 /* for initialization, update / push all the global constants used */
 void arcan_lua_pushglobalconsts(struct arcan_luactx* ctx);
 
-/* serialize a LUA- parseable snapshot of the various mapped subsystems 
+/* serialize a Lua- parseable snapshot of the various mapped subsystems 
  * and resources into the (dst) filestream. 
  * If delim is set, we're in streaming mode so a delimiter will be added
  * to account for more snapshots over the same stream */
