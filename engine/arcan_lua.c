@@ -1536,7 +1536,7 @@ static bool is_special_res(const char* msg)
 static int setupavstream(lua_State* ctx)
 {
 	LUA_TRACE("launch_avfeed");
-	const char* argstr = luaL_optstring(ctx, 1, NULL);
+	const char* argstr = luaL_optstring(ctx, 1, "");
 	uintptr_t ref = 0;
 	int cbofs = 2;
 
@@ -1718,7 +1718,7 @@ static int setled(lua_State* ctx)
  * events in the queue preceeding a push_context, pop_context,
  * the -- possibly -- safest option would be to completely flush event queues 
  * between successful context pops, in such cases, it should be handled in the 
- * LUA layer */
+ * Lua layer */
 static int pushcontext(lua_State* ctx)
 {
 	LUA_TRACE("push_video_context");
@@ -1793,7 +1793,7 @@ static inline bool intblbool(lua_State* ctx, int ind, const char* field){
  * convert it back into an arcan event, push that to the target_launcher 
  * or frameserver. The target_launcher will serialise it to a hijack function
  * which then decodes into a native format (currently most likely SDL). 
- * All this hassle (instead of creating a custom LUA object, 
+ * All this hassle (instead of creating a custom Lua object, 
  * tag it with the raw event and be done with it) is to allow the theme- to 
  * modify or even generate new ones based on in-theme actions.
  */
