@@ -160,7 +160,6 @@ SET(CPACK_NSIS_CREATE_ICONS_EXTRA "
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Workbench).lnk' '\$INSTDIR\\\\arcan.exe' 'awb'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle'
 	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Gridle Remote).lnk' '\$INSTDIR\\\\arcan.exe' 'gridle_remote'
-	CreateShortCut '\$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Arcan (Streamer).lnk' '\$INSTDIR\\\\arcan.exe' '-V -v streamer'
   WriteINIStr '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Web Site.url' 'InternetShortcut' 'URL' 'http://arcan-fe.com'
 ")
 
