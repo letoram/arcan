@@ -170,6 +170,7 @@ typedef struct arcan_vobject {
 	struct {
 		arcan_vfunc_cb ffunc;
 		vfunc_state state;
+		int pcookie;
 	} feed;
 
 /* basic texture mapping, can be overridden (to mirror, skew etc.) */

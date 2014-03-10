@@ -3657,7 +3657,7 @@ static inline void draw_texsurf(struct rendertarget* dst,
 		prop.scale.y, 0, txcos);
 }
 
-static void ffunc_process(arcan_vobject* dst)
+static void ffunc_process(arcan_vobject* dst, int cookie)
 {
 /*
  * if there's a feed function, try and grab a new sample and upload,
@@ -3665,9 +3665,13 @@ static void ffunc_process(arcan_vobject* dst)
  * the target to its current active frame, most of the time, 
  * they are the same */
 
-	if (dst->flags.clone == false && dst->feed.ffunc &&
-		dst->feed.ffunc(ffunc_poll, 0, 0, 0, 0, 0, 0, dst->feed.state) == 
-			FFUNC_RV_GOTFRAME) {
+	if (dst->feed.pcookie == cookie || dst->flags.clone)
+		return;
+
+	dst->feed.pcookie = cookie;
+
+	if (dst->feed.ffunc(
+		ffunc_poll, 0, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
 		arcan_vobject* cframe = dst->current_frame;
 
 /* cycle active frame */
@@ -3710,30 +3714,34 @@ static void ffunc_process(arcan_vobject* dst)
  * in a separate list and run prior to all other rendering, might gain 
  * something when other pseudo-asynchronous operations (e.g. PBO) are concerned
  */
-static void poll_list(arcan_vobject_litem* current)
+static void poll_list(arcan_vobject_litem* current, int cookie)
 {
 	while(current && current->elem){
 	arcan_vobject* celem  = current->elem;
 
-	ffunc_process(celem);
+	if (celem->feed.ffunc)
+		ffunc_process(celem, cookie);
 
 /* special treatment for "orphans" */
 	for (unsigned int i = 0; i < celem->frameset_meta.capacity; i++)
 		if (celem->frameset[i]->owner == NULL)
-			ffunc_process(celem->frameset[i]);
+			ffunc_process(celem->frameset[i], cookie);
 
 		current = current->next;
 	}
 }
 
 void arcan_video_pollfeed(){
+	static int vcookie = 1;
+	vcookie++;
+
  for (off_t ind = 0; ind < current_context->n_rtargets; ind++)
 		poll_readback(&current_context->rtargets[ind]);	
 
 	for (int i = 0; i < current_context->n_rtargets; i++)
-		poll_list(current_context->rtargets[i].first);
+		poll_list(current_context->rtargets[i].first, vcookie);
 
-	poll_list(current_context->stdoutp.first);
+	poll_list(current_context->stdoutp.first, vcookie);
 }
 
 void arcan_video_setblend(const surface_properties* dprops, 
