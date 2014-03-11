@@ -291,15 +291,6 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
-	char* shmsize = getenv("ARCAN_SHMSIZE");
-	unsigned bufsize = shmsize ? strtoul(shmsize, NULL, 10) : 0;
-
-	if (bufsize == 0 || errno == ERANGE || errno == EINVAL){
-		fprintf(stderr, "arcan hijack: bad value in "
-			"env[arcan_shmsize], terminating.\n");
-		exit(1);
-	}
-
 	global.shared = arcan_shmif_acquire(global.shmkey, SHMIF_INPUT, true);
 	if (!global.shared.addr){
 		fprintf(stderr, "arcan hijack: couldn't allocate "
