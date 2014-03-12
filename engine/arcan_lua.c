@@ -1659,7 +1659,7 @@ static int loadmovie(lua_State* ctx)
 	return 2;
 }
 
-#ifndef ARCAN_LUA_NOLED
+#ifdef ARCAN_LED
 static int n_leds(lua_State* ctx)
 {
 	LUA_TRACE("controller_leds");
@@ -2831,6 +2831,7 @@ static int camtag(lua_State* ctx)
 	return 1;
 }
 
+#ifdef ARCAN_HMD
 static int camtaghmd(lua_State* ctx)
 {
 	LUA_TRACE("camtaghmd_model");
@@ -2875,6 +2876,7 @@ static int camtaghmd(lua_State* ctx)
 
 	return 7;	
 }
+#endif
 
 static int getimageprop(lua_State* ctx)
 {
@@ -6268,8 +6270,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FRAMESERVER_NOLOOP", FRAMESERVER_NOLOOP },
 {"POSTFILTER_NTSC",    POSTFILTER_NTSC    },
 {"POSTFILTER_OFF",     POSTFILTER_OFF     },
-#ifndef ARCAN_LUA_NOLED
+#ifdef ARCAN_LED
 {"LEDCONTROLLERS",     arcan_led_controllers()},
+#else
+{"LEDCONTROLLERS",     0},
 #endif
 {"NOW",           0},
 {"NOPERSIST",     0},
