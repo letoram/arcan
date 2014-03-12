@@ -47,8 +47,6 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 			)
 			set(ENABLE_LIBRETRO3D FALSE)
 		endif()
-	
-		add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../egl/gles_glheaders.h\")
 	else()
 		set(GL_LIBRARIES
 			EGL
@@ -57,13 +55,16 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 		)
 		include_directories(${GLEW_INCLUDE_DIRS})
 
-		if (ENABLE_X11)
-			set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-				APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
-		endif()
-			
-		add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../egl/gl_glheaders.h\")
 	endif()
+
+	if (ENABLE_X11)
+		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
+			APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
+
+		set_property(SOURCE ${PLATFORM_PATH}/../linux/event.c
+			APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
+	endif()
+	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\")
 
 	list(APPEND MAIN_LIBRARIES ${GL_LIBRARIES})
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../egl/video.c)

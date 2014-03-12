@@ -16,6 +16,9 @@
  *  WITH_HEADLESS - allocates a GL context that lacks a framebuffer
  *                  only available on systems where we can use the 
  *                  KHR_ method of context creation (dep, WITH_OGL3)
+ *  WITH_RGB565   - Use RGB565 instead of other native formats,
+ *                  this also requires GL_PIXEL_BPP to be set and a 
+ *                  shmif that has ARCAN_SHMPAGE_VCHANNELS set 3 
  *  WITH_GLEW     - some setups might have problems with calls 
  *                  (particularly if you want to use some fancy extension)
  *                  this library helps with that, but not needed everywhere
@@ -24,6 +27,8 @@
  * EGL_NATIVE_DISPLAY 
  */
 
+#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -57,12 +62,15 @@ static struct {
 	XWindowAttributes xwa;
 } x11;
 
+Display* x11_display = NULL;
+
 static bool setup_xwnd(int w, int h, bool fullscreen)
 {
 	x11.xdisp = XOpenDisplay(NULL);
 	if (!x11.xdisp)
 		return false;
 
+	x11_display = x11.xdisp;
 	XSetWindowAttributes xwndattr;
 	xwndattr.event_mask = ExposureMask | PointerMotionMask | KeyPressMask;
 
@@ -80,7 +88,7 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
  * specific one directly
  */
 	XWMHints hints;
-  hints.input = False;
+  hints.input = True;
   hints.flags = InputHint;
   XSetWMHints(x11.xdisp, x11.xwnd, &hints);
  
@@ -88,9 +96,20 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
   XStoreName(x11.xdisp, x11.xwnd, "Arcan"); 
 
 	if (fullscreen){
-		/* other properties needed */
-	}
+		XEvent xev = {0};
+ 		Atom wm_state   = XInternAtom ( x11.xdisp, "_NET_WM_STATE", False );
+	  Atom fsa = XInternAtom ( x11.xdisp, "_NET_WM_STATE_FULLSCREEN", False );
 
+  	xev.type = ClientMessage;
+	  xev.xclient.window = x11.xwnd;
+  	xev.xclient.message_type = wm_state;
+  	xev.xclient.format = 32;
+	  xev.xclient.data.l[0] = 1;
+	  xev.xclient.data.l[1] = fsa; 
+	  XSendEvent ( x11.xdisp, DefaultRootWindow( x11.xdisp ), False,
+			SubstructureNotifyMask, &xev );
+	}
+  
 	egl.wnd = x11.xwnd;
 	return true;
 }
@@ -172,7 +191,19 @@ bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 
 void platform_video_bufferswap()
 {
+#ifdef WITH_X11
+	while (XPending(x11.xdisp)){
+		XEvent xev;
+		XNextEvent(x11.xdisp, &xev);
+/*		if (xev.type == KeyPress)
+						exit(1);
+*/
+	}
+#endif
+	long long start = arcan_timemillis();
 	eglSwapBuffers(egl.disp, egl.surf);
+	long long stop = arcan_timemillis();
+	printf("%lld\n", stop - start);
 }
 
 #ifndef EGL_NATIVE_DISPLAY
@@ -183,7 +214,12 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 	bool frames)
 {
 	EGLint ca[] = { 
-		EGL_CONTEXT_CLIENT_VERSION, 2, 
+		EGL_CONTEXT_CLIENT_VERSION, 
+#ifdef WITH_GLES3
+		3,
+#else
+		2,
+#endif
 		EGL_NONE, 
 		EGL_NONE 
 	};
@@ -195,7 +231,9 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		EGL_ALPHA_SIZE, 8,
 		EGL_DEPTH_SIZE, 8,
 		EGL_STENCIL_SIZE, 1,
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_BUFFER_SIZE, 16, // ?
+		EGL_RENDERABLE_TYPE, // ?
+		EGL_OPENGL_ES2_BIT, // ?
 		EGL_NONE
 	};
 
@@ -213,7 +251,11 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 #endif
 
 	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
+#if defined(WITH_GLES3) || defined(WITH_OGL3)
+	arcan_video_display.pbo_support = true;
+#else
 	arcan_video_display.pbo_support = false;
+#endif
 
 	if (egl.disp == EGL_NO_DISPLAY){
 		arcan_warning("Couldn't create display\n");
@@ -255,12 +297,21 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		arcan_warning("Couldn't activate context\n");
 		return false;
 	}
-	
-	arcan_warning("EGL context active\n");
+
+/* 
+ * Interestingly enough, EGL swap allows dirty rect updates with
+ * eglSwapBuffersREegionNOK. In animations, we can, each update,
+ * take the full boundary volume or better yet, go quadtree 
+ * and do dirty regions that way. Not leveraged yet but should
+ * definitely be a concern later on.
+ */ 	
+	arcan_warning("EGL context active (%d x %d)\n", w, h);
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
 	arcan_video_display.bpp = bpp;
 	glViewport(0, 0, w, h);
+
+	eglSwapInterval(egl.disp, 1);
 
 /* 
  * This should be needed less and less with newer GL versions
