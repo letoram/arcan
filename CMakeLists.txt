@@ -247,8 +247,6 @@ LIST (APPEND
 	${PNG_INCLUDE_DIR}
 	${FREETYPE_INCLUDE_DIRS}
 	${SQLITE3_INCLUDE_DIR}
-	${FFMPEG_INCLUDE_DIRS}
-	${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	"frameserver"
 	"frameserver/ntsc"
 	"external"
@@ -418,6 +416,11 @@ if (${ENABLE_VIDDECENC})
 		frameserver/encode.c
 		frameserver/encode_presets.c
 		frameserver/encode_presets.h
+	)
+
+	list(APPEND INCLUDE_DIRS
+		${FFMPEG_INCLUDE_DIRS}
+		${FFMPEG_LIBAVCODEC_INCLUDE_DIR}
 	)
 endif()
 
