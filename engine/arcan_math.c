@@ -33,7 +33,19 @@
 
 quat default_quat;
 
-void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
+/* note:
+ * there's some reason and rhyme to some of the naive implementations 
+ * here and why everything isn't SIMD. While profiling isn't yet in
+ * the highest of priorities, we want to the function that rely 
+ * on (possibly superflous) use of these functions, 
+ * and first establish is there a way to cache or omitt the call
+ * altogether rather than "hiding" the cost by making the 
+ * calculation very efficient. When this subset is reduced to a minimum,
+ * the corresponding functions get their turn in vectorization
+ */
+#ifndef ARCAN_MATH_SIMD 
+void mult_matrix_vecf(const float* restrict matrix, 
+	const float* restrict inv, const float* restrict out)
 {
 	int i;
 
@@ -45,16 +57,6 @@ void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4])
 		in[3] * matrix[3*4+i];
 }
 
-void mult_matrix_vec3f(const float matrix[16], const float in[3], float out[3])
-{
-	for (int i=0; i<3; i++) 
-		out[i] =
-		in[0] * matrix[0*4+i] +
-		in[1] * matrix[1*4+i] +
-		in[2] * matrix[2*4+i]; 
-}
-
-#ifndef ARCAN_MATH_SIMD 
 void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b)
 {
 	for (int i = 0; i < 16; i+= 4)

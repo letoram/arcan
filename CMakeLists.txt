@@ -54,6 +54,7 @@ option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserv
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
+option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
 option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
 
@@ -334,6 +335,17 @@ if (ENABLE_SIMD)
 	set_property(SOURCE engine/arcan_math.c
 		APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_SIMD)
 	list(APPEND SOURCES engine/arcan_math_simd.c)
+
+	if (ENABLE_SIMD_ALIGNED)
+		message("      |--> Asserting SIMD operands are aligned")
+		message("           These can *crash* at odd intervals on ")
+		message("           poor _Alignas implementations")
+		set_property(SOURCE engine/arcan_math_simd.c
+			APPEND PROPERTY COMPILE_DEFINITIONS ARCAN_MATH_ALIGNED_SIMD)
+	endif()
+
+	set_property(SOURCE engine/arcan_math_simd.c
+		APPEND PROPERTY COMPILE_FLAGS -msse3)
 endif()
 
 if (ENABLE_LED)
