@@ -69,15 +69,16 @@ enum cstate {
 
 void arcan_math_init();
 
-/* Matrices */
+/* Matrices
+ * All assume column major organization */
 void scale_matrix(float*, float, float, float);
 void translate_matrix(float*, float, float, float);
 void identity_matrix(float*);
-void multiply_matrix(float* dst, float* a, float* b);
+void multiply_matrix(float* restrict dst, float* restrict a, float* restrict b);
 quat quat_matrix(float* src); 
 void matr_lookat(float* m, vector position, vector dstpos, vector up);
-void mult_matrix_vecf(const float matrix[16], const float in[4], float out[4]);
-void mult_matrix_vec3f(const float matrix[16], const float in[3], float out[3]);
+void mult_matrix_vecf(const float* restrict inmatr, 
+	const float* restrict, float* restrict outv);
 
 /* Vectors */
 vector build_vect_polar(const float phi, const float theta);
