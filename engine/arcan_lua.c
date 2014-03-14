@@ -4500,7 +4500,7 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
-			lua_pushlstring(src->ctx, (const char*) scrapbuf, scrapbuf_sz);
+			lua_pushlstring(src->ctx, (const char*) scrapbuf, width * height * 4);
 		 	lua_pushnumber(src->ctx, width);
 			lua_pushnumber(src->ctx, height);
 			lua_pushnumber(src->ctx, bpp);	
