@@ -68,6 +68,7 @@
 long long ARCAN_VIDEO_WORLDID = -1;
 static surface_properties empty_surface();
 static sem_handle asynchsynch;
+static long long lastlerp;
 
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
@@ -4010,6 +4011,20 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
 	return ARCAN_OK;
 }
 
+arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* tgt = find_rendertarget(vobj);
+	if (!tgt)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	process_rendertarget(tgt, lastlerp);
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
 {
 	*dsize = sizeof(char) * arcan_video_display.width * 
@@ -4103,6 +4118,8 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 void arcan_video_refresh_GL(float lerp)
 {
 /* for performance reasons, we should try and re-use FBOs whenever possible */
+	lastlerp = lerp;
+
 	if (arcan_video_display.fbo_support){
 		for (int ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
