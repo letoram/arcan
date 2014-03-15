@@ -1460,7 +1460,7 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	size_t logbuf_sz = sizeof(logbuf); 
 
 	if (!info_only)
-		retroctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true);
+		retroctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
 
 	struct arcan_shmif_page* shared = retroctx.shmcont.addr;
 

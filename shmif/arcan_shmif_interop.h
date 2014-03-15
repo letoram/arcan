@@ -36,7 +36,7 @@
 #define _HAVE_ARCAN_SHMIF_INTEROP
 
 #define ARCAN_VERSION_MAJOR 0
-#define ARCAN_VERSION_MINOR 4 
+#define ARCAN_VERSION_MINOR 5 
 #define ARCAN_VERSION_PATCH 0 
 
 /* There is a limited amount of types that both arcan

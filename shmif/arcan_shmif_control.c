@@ -107,9 +107,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 #else
 #include <sys/mman.h>
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, bool force_unlink){
-/* step 1, use the fd (which in turn is set up by the parent 
- * to point to a mmaped "tempfile" */
+	const char* shmkey, int shmif_type, char force_unlink, char noguard){
 	struct arcan_shmif_cont res = {0};
 	force_unlink = false;
 
@@ -120,7 +118,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
  * shm_open on a named shm already mapped in the same process (?!) */
 	fd = shm_open(shmkey, O_RDWR, 0700);
 
-	if (-1 == fd) {
+	if (-1 == fd){
 		arcan_warning("arcan_frameserver(getshm) -- couldn't open "
 			"keyfile (%s), reason: %s\n", shmkey, strerror(errno));
 		return res;
@@ -135,7 +133,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	0);
 
 	close(fd);
-	if (force_unlink) shm_unlink(shmkey);
+
+	if (force_unlink) 
+		shm_unlink(shmkey);
 
 	if (res.addr == MAP_FAILED){
 		arcan_warning("arcan_frameserver(getshm) -- couldn't map keyfile"
@@ -150,15 +150,18 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	char* work = strdup(shmkey);
 	work[strlen(work) - 1] = 'v';
 	res.vsem = sem_open(work, 0);
-	if (force_unlink) sem_unlink(work);
+	if (force_unlink) 
+		sem_unlink(work);
 
 	work[strlen(work) - 1] = 'a';
 	res.asem = sem_open(work, 0);
-	if (force_unlink) sem_unlink(work);
+	if (force_unlink) 
+		sem_unlink(work);
 
 	work[strlen(work) - 1] = 'e';
 	res.esem = sem_open(work, 0);
-	if (force_unlink) sem_unlink(work);
+	if (force_unlink) 
+		sem_unlink(work);
 	free(work);
 
 	if (res.asem == 0x0 ||
@@ -166,6 +169,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		res.vsem == 0x0 ){
 		arcan_warning("arcan_shmif_control(getshm) -- couldn't "
 			"map semaphores (basekey: %s), giving up.\n", shmkey);
+		free(res.addr);
+		res.addr = MAP_FAILED;
 		return res;
 	}
 
