@@ -4370,6 +4370,17 @@ cleanup:
 	return rv;
 }
 
+static int rendertargetforce(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_forceupdate");
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+	if (ARCAN_OK != arcan_video_forceupdate(vid))
+		arcan_fatal("rendertarget_forceupdate(), specified vid "
+			"was not connected to a rendertarget");
+
+	return 0;
+}
+
 static int renderattach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_attach");
@@ -5982,6 +5993,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_rendertarget",        renderset                },
 {"define_recordtarget",        recordset                },
 {"define_calctarget",          procset                  },
+{"rendertarget_forceupdate",   rendertargetforce        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_attach",        renderattach             },
 {"play_movie",                 playmovie                },
