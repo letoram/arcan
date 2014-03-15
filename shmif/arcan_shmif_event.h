@@ -53,7 +53,6 @@
  * A failure to retrieve a lock on the eventqueue within this 
  * timeframe will forcibly KILL the frameserver process/process group 
  */
-#define DEFAULT_EVENT_TIMEOUT 500
 
 enum ARCAN_EVENT_CATEGORY {
 	EVENT_SYSTEM      = 1,
@@ -125,7 +124,12 @@ enum ARCAN_TARGET_COMMAND {
 /* for audio / video synchronization in video decode/encode 
  * (ioevs[0] -> samples per channel) */
 	TARGET_COMMAND_AUDDELAY,
-	
+
+/*
+ * to indicate that there's a new segment to be allocated
+ */
+	TARGET_COMMAND_NEWSEGMENT,
+
 /* specialized output hinting */
 	TARGET_COMMAND_GRAPHMODE,
 	TARGET_COMMAND_VECTOR_LINEWIDTH,
@@ -179,7 +183,8 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_NOTICE_STREAMSTATUS,
 	EVENT_EXTERNAL_NOTICE_PLAYBACKSTATUS,
 	EVENT_EXTERNAL_NOTICE_STATESIZE,
-	EVENT_EXTERNAL_NOTICE_RESOURCE
+	EVENT_EXTERNAL_NOTICE_RESOURCE,
+	EVENT_EXTERNAL_NOTICE_SEGREQ
 };
 
 enum ARCAN_EVENT_VIDEO {

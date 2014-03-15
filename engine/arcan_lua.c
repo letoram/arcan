@@ -129,6 +129,16 @@
 #define CONST_RENDERTARGET_NOSCALE 31
 #endif
 
+#ifndef CONST_FRAMESERVER_INPUT 
+#define CONST_FRAMESERVER_INPUT 41
+#endif
+
+#ifndef CONST_FRAMESERVER_OUTPUT
+#define CONST_FRAMESERVER_OUTPUT 42
+#endif
+
+/* we map the constants here so that poor or confused
+ * debuggers also have a chance to give us symbol resolution */ 
 static const int MOUSE_GRAB_ON  = 20;
 static const int MOUSE_GRAB_OFF = 21;
 
@@ -4241,6 +4251,47 @@ static void escapestr(char* instr)
 	}
 }
 
+static int targetalloc(lua_State* ctx)
+{
+	LUA_TRACE("target_alloc");
+
+	luaL_checktype(ctx, 3, LUA_TFUNCTION);
+	if (lua_iscfunction(ctx, 3))
+		arcan_fatal("target_alloc(), callback to C function forbidden.\n");
+
+	lua_pushvalue(ctx, 2);
+	intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	
+/*
+ * allocate new key or give to preexisting frameserver?
+ */ 
+	if (lua_isstring(ctx, 1)){
+		const char* key = luaL_checkstring(ctx, 1); 
+		if (strlen(key) == 0)
+			key = NULL; /* key will go out of scope on return */
+		arcan_frameserver* newfsrv = arcan_frameserver_alloc(); 
+		struct frameserver_envp args = {
+			.use_builtin = false,
+			.custom_feed = true, /* need to set this to a listening socket */
+		};
+
+	}
+	else {
+		arcan_vobj_id srcfsrv = luaL_checkvid(ctx, 1, NULL);
+		arcan_vobj_id dstfsrv;
+		vfunc_state* state;
+
+		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
+			arcan_frameserver_spawn_subsegment( (arcan_frameserver*) state->ptr, 
+				srcfsrv,luaL_checknumber(ctx, 3) == CONST_FRAMESERVER_INPUT);
+		else
+			arcan_fatal("target_alloc() specified source ID doesn't "
+				"contain a frameserver\n.");
+	}
+
+	return 1;
+}
+
 static int targetlaunch(lua_State* ctx)
 {
 	LUA_TRACE("launch_target");
@@ -4331,7 +4382,7 @@ static int targetlaunch(lua_State* ctx)
 					lookup_hijack( gameid ), cmdline.data.strarr );
 
 				free(hijacktgt);
-				if (intarget) {
+				if (intarget){
 					intarget->tag = ref;
 					lua_pushvid(ctx, intarget->vid);
 					lua_pushaid(ctx, intarget->aid);
@@ -5957,6 +6008,7 @@ static const luaL_Reg resfuns[] = {
 #define EXT_MAPTBL_TARGETCONTROL
 static const luaL_Reg tgtfuns[] = {
 {"launch_target",              targetlaunch             },
+{"target_alloc",               targetalloc              },
 {"launch_target_capabilities", targetlaunch_capabilities},
 {"target_input",               targetinput              },
 {"input_target",               targetinput              },
@@ -6213,6 +6265,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FRAMESET_MULTITEXTURE", ARCAN_FRAMESET_MULTITEXTURE},
 {"FRAMESET_NODETACH",     FRAMESET_NODETACH          },
 {"FRAMESET_DETACH",       FRAMESET_DETACH            },
+{"FRAMESERVER_INPUT",     CONST_FRAMESERVER_INPUT    },
+{"FRAMESRVER_OUTPUT",     CONST_FRAMESERVER_OUTPUT   },
 {"BLEND_NONE",     BLEND_NONE    },
 {"BLEND_ADD",      BLEND_ADD     },
 {"BLEND_MULTIPLY", BLEND_MULTIPLY},
