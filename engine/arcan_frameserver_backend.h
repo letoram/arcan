@@ -259,8 +259,8 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
 /* 
  * allocate a new frameserver segment,
  */
-arcan_vobj_id arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, arcan_vobj_id parent, bool input);
+arcan_frameserver* arcan_frameserver_spawn_subsegment(
+	arcan_frameserver* ctx, bool input);
 
 /* take the argument event and add it to the event queue of the target, 
  * returns a failure if the event queue in the child is full */

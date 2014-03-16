@@ -4263,35 +4263,36 @@ static int targetalloc(lua_State* ctx)
 
 	lua_pushvalue(ctx, 2);
 	intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	
+		
+	arcan_frameserver* newref = NULL;
 /*
  * allocate new key or give to preexisting frameserver?
  */ 
 	if (lua_isstring(ctx, 1)){
-		const char* key = luaL_checkstring(ctx, 1); 
-		if (strlen(key) == 0)
-			key = NULL; /* key will go out of scope on return */
-		arcan_frameserver* newfsrv = arcan_frameserver_alloc(); 
+		arcan_fatal("target_alloc without pre-existing frameserver incomplete.\n");
 		struct frameserver_envp args = {
 			.use_builtin = false,
 			.custom_feed = true, /* need to set this to a listening socket */
 		};
-
+		newref = arcan_frameserver_alloc(); 
+		arcan_frameserver_spawn_server(newref, args);
 	}
 	else {
 		arcan_vobj_id srcfsrv = luaL_checkvid(ctx, 1, NULL);
-		arcan_vobj_id dstfsrv;
-		vfunc_state* state;
+		vfunc_state* state = arcan_video_feedstate(srcfsrv);
 
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
-			arcan_frameserver_spawn_subsegment( (arcan_frameserver*) state->ptr, 
-				srcfsrv,luaL_checknumber(ctx, 3) == CONST_FRAMESERVER_INPUT);
+			newref = arcan_frameserver_spawn_subsegment(
+				(arcan_frameserver*) state->ptr, true); 
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
 				"contain a frameserver\n.");
 	}
 
-	return 1;
+	newref->tag = ref;
+	lua_pushvid(ctx, newref->vid);
+	lua_pushaid(ctx, newref->aid);
+	return 3;
 }
 
 static int targetlaunch(lua_State* ctx)
