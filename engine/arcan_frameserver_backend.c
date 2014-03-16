@@ -113,7 +113,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		};
 
 		arcan_frameserver_pushevent(src, &exev);
-	
 		arcan_frameserver_killchild(src);
  
 		src->child = BROKEN_PROCESS_HANDLE;

@@ -30,12 +30,14 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 	int fd = -1;
 	pid_t selfpid = getpid();
 	int retrycount = 10;
+	size_t pb_ofs = 0;
 
-	char playbuf[4096];
-	playbuf[4095] = '\0';
+	const char* pattern = "/arcan_%i_%im";
+	char playbuf[sizeof(pattern) + 8];
 
 	while (1){
-		snprintf(playbuf, sizeof(playbuf) - 1, "/arcan_%i_%im", selfpid, rand());
+		snprintf(playbuf, sizeof(playbuf), pattern, selfpid % 1000, rand() % 1000);
+		pb_ofs = strlen(playbuf) - 1;
 		fd = shm_open(playbuf, O_CREAT | O_RDWR | O_EXCL, 0700);
 
 	/* 
@@ -53,36 +55,33 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 			if (!semalloc)
 				break;
 
-			char* work = strdup(playbuf);
-			work[strlen(work) - 1] = 'v';
-			sem_t* vid = sem_open(work, O_CREAT | O_EXCL, 0700, 0);
+			playbuf[pb_ofs] = 'v';
+			sem_t* vid = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 0);
 
 			if (SEM_FAILED != vid){
-				work[strlen(work) - 1] = 'a';
+				playbuf[pb_ofs] = 'a';
 
-				sem_t* aud = sem_open(work, O_CREAT | O_EXCL, 0700, 0);
+				sem_t* aud = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 0);
 				if (SEM_FAILED != aud){
 
-					work[strlen(work) -1] = 'e';
-					sem_t* ev = sem_open(work, O_CREAT | O_EXCL, 0700, 1);
+/* note the initial state of the semaphore here: */
+					playbuf[pb_ofs] = 'e';
+					sem_t* ev = sem_open(playbuf, O_CREAT | O_EXCL, 0700, 1);
 
-					if (SEM_FAILED != ev){
-						free(work);
+					if (SEM_FAILED != ev)
 						break;
-					}
 
-					work[strlen(work) -1] = 'a';
-					sem_unlink(work);
+					playbuf[pb_ofs] = 'a';
+					sem_unlink(playbuf);
 				}
 
-				work[strlen(work) - 1] = 'v';
-				sem_unlink(work);
+				playbuf[pb_ofs] = 'v';
+				sem_unlink(playbuf);
 			}
 
 		/* semaphores couldn't be created, retry */
 			shm_unlink(playbuf);
 			fd = -1;
-			free(work);
 
 			if (retrycount-- == 0){
 				arcan_warning("arcan_findshmkey(), allocating named "
@@ -95,6 +94,7 @@ char* arcan_findshmkey(int* dfd, bool semalloc){
 	if (dfd)
 		*dfd = fd;
 
+	playbuf[pb_ofs] = 'm';
 	return strdup(playbuf);
 }
 
