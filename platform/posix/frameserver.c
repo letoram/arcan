@@ -191,6 +191,7 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 	int shmfd = 0;
 
 	ctx->shm.key = arcan_findshmkey(&shmfd, true);
+	ctx->shm.shmsize = shmsize;
 	char* work = strdup(ctx->shm.key);
 		work[strlen(work) - 1] = 'v';
 		ctx->vsync = sem_open(work, 0);
@@ -199,6 +200,7 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 		work[strlen(work) - 1] = 'e';
 		ctx->esync = sem_open(work, 0);	
 	free(work);
+	assert(namedsocket != true);
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
@@ -216,6 +218,13 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 	if (MAP_FAILED == shmpage){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
+
+		work[strlen(work) - 1] = 'v';
+		sem_unlink(work);
+		work[strlen(work) - 1] = 'a';
+		sem_unlink(work);
+		work[strlen(work) - 1] = 'e';
+		sem_unlink(work);	
 		return false;
 	}
 
@@ -224,12 +233,13 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 	shmpage->parent = getpid();
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
+	ctx->shm.ptr = shmpage;
 
 	return true;	
 }	
 
-arcan_vobj_id arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, arcan_vobj_id parent, bool input)
+arcan_frameserver* arcan_frameserver_spawn_subsegment(
+	arcan_frameserver* ctx, bool input)
 {
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
 	if (!newseg)
@@ -262,8 +272,7 @@ arcan_vobj_id arcan_frameserver_spawn_subsegment(
  */
   
 	arcan_event_enqueue(&ctx->outqueue, &keyev); 
-	
-	return ARCAN_EID;	
+	return newseg;	
 }
 
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
@@ -307,8 +316,6 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 /* revert back to empty vfunc? */
 		}
 
-		ctx->shm.ptr     = (void*) shmpage;
-		ctx->shm.shmsize = shmsize;
 		ctx->sockout_fd  = sockp[0];
 		ctx->child       = child;
 
@@ -350,7 +357,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		} else {
 /* hijack lib */
 			char shmsize_s[32];
-			snprintf(shmsize_s, 32, "%zu", shmsize);
+			snprintf(shmsize_s, 32, "%zu", ctx->shm.shmsize);
 			
 			char** envv = setup.args.external.envv;
 
@@ -370,15 +377,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		}
 	}
 	else /* -1 */
-		goto error_cleanup;
+		arcan_fatal("fork() failed, check ulimit or similar configuration issue.");
 		
 	return ARCAN_OK;
-
-error_cleanup:
-	arcan_frameserver_dropsemaphores_keyed(ctx->shm.key);
-	shm_unlink(ctx->shm.key);
-	free(ctx->shm.key);
-	ctx->shm.key = NULL;
-
-	return ARCAN_ERRC_OUT_OF_SPACE;
 }
