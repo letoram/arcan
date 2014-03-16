@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/param.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -184,7 +185,8 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	return rv;
 }
 
-static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
+static bool shmalloc(arcan_frameserver* ctx, 
+	bool namedsocket, const char* optkey)
 {
 	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
 	struct arcan_shmif_page* shmpage;
@@ -198,9 +200,70 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 		work[strlen(work) - 1] = 'a';
 		ctx->async = sem_open(work, 0);
 		work[strlen(work) - 1] = 'e';
-		ctx->esync = sem_open(work, 0);	
-	free(work);
-	assert(namedsocket != true);
+		ctx->esync = sem_open(work, 0);
+
+/*
+ * Named domain sockets are used for non-authoritative connections
+ * it enforces a build-time prefix (non / path means apply homedir env)
+ * but an optkey can be specified to override default arcan_%d_%d part
+ * note the odd length requirements of sun_path though.
+ */
+	if (namedsocket){
+		struct sockaddr_un addr;
+		int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		memset(&addr, '\0', sizeof(addr));
+		addr.sun_family = AF_UNIX;
+	
+		size_t baselen = sizeof(ARCAN_SHM_PREFIX);
+		size_t auxsz = 0;
+		const char* auxp = "", (* auxv) = "";
+
+		if (ARCAN_SHM_PREFIX[0] != '/' 
+#ifdef __LINUX
+&& ARCAN_SHM_PREFIX[0] != '\0'
+#endif
+		){
+			auxp = getenv("HOME");
+			if (!auxp){
+				arcan_warning("posix/frameserver.c:shmalloc(), compile-time "
+					"prefix set to home but HOME environment missing, cannot "
+					"setup frameserver connectionpoint.\n");
+				goto fail;
+			}
+			auxv = "/";
+			auxsz += strlen(auxp) + 1;
+		}
+
+		if (baselen + auxsz + 
+			(optkey ? strlen(optkey) : 11) >= sizeof(addr.sun_path)){
+				arcan_fatal("posix/frameserver.c:shmalloc(), compile-time prefix "
+				"yielded a length that is not suitable for a domain socket "
+				"i.e. %s%s%s should be %d characters or less\n", auxp,
+				ARCAN_SHM_PREFIX, optkey?optkey: "_num_num", sizeof(addr.sun_path)-1);
+		}
+
+		int retrc = 10;
+		if (optkey != NULL)
+			retrc = 1;
+	
+		while(1){
+			if (optkey != NULL)
+				snprintf(addr.sun_path, sizeof(addr.sun_path), 
+					"%s%s%s", auxp, auxv, optkey);
+			else
+				snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s_%i_%i", auxp,
+					ARCAN_SHM_PREFIX, getpid() % 1000, rand() % 1000);
+
+			if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) == 0)
+				break;
+			else if (--retrc == 0){
+				arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
+					"domain socket for frameserver connectionpoint, check "
+					"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
+				goto fail;
+			}
+		}
+	}
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
@@ -219,12 +282,14 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
 
+fail:
 		work[strlen(work) - 1] = 'v';
 		sem_unlink(work);
 		work[strlen(work) - 1] = 'a';
 		sem_unlink(work);
 		work[strlen(work) - 1] = 'e';
 		sem_unlink(work);	
+		free(work);
 		return false;
 	}
 
@@ -234,6 +299,7 @@ static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
 	ctx->shm.ptr = shmpage;
+	free(work);
 
 	return true;	
 }	
@@ -245,7 +311,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!newseg)
 		return ARCAN_EID;
 
-	shmalloc(newseg, true);
+	shmalloc(newseg, true, NULL);
 
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
@@ -281,7 +347,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	if (ctx == NULL)
 		return ARCAN_ERRC_BAD_ARGUMENT;
 
-	shmalloc(ctx, false);
+	shmalloc(ctx, false, NULL);
 
 	ctx->launchedtime = arcan_frametime();
 

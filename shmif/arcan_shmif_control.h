@@ -241,18 +241,21 @@ struct arcan_shmif_page {
  * to be used 
  */
 
-/* This function is used by a frameserver to use some kind of
+/* 
+ * This function is used by a frameserver to use some kind of
  * named shared memory reference string (typically provided by
  * as an argument on the command-line. 
  *
  * The force-unlink flag is to set if whatever symbol in whatever 
  * namespace the key resides in, should be unlinked after
- * allocation, to prevent other processes from mapping it as well.
+ * allocation, to prevent other processes from mapping it as well
+ * (this may be desirable for a monitoring / debugging tool though).
  * 
  * If disable_guard is true, the guard-thread that unlocks
  * semaphores and the dmh switch, should the monitor pid die,
  * will not be launched and it's upp to the application to take
- * care of monitoring.
+ * care of monitoring. It is also disabled for new frameserver
+ * segments (all those allocated after the first).
  */
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink,
@@ -333,9 +336,11 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
 #ifndef ARCAN_SHM_PREFIX 
 #define ARCAN_SHM_PREFIX "\0arcan_shm_"
 #endif
+
+/* if the first character does not begin with /, HOME env will be used. */
 #else
 #ifndef ARCAN_SHM_PREFIX
-#define ARCAN_SHM_PREFIX
+#define ARCAN_SHM_PREFIX ".arcan_shm_"
 #endif
 #endif
 
