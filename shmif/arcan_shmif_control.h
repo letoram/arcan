@@ -247,9 +247,15 @@ struct arcan_shmif_page {
  * The force-unlink flag is to set if whatever symbol in whatever 
  * namespace the key resides in, should be unlinked after
  * allocation, to prevent other processes from mapping it as well.
+ * 
+ * If disable_guard is true, the guard-thread that unlocks
+ * semaphores and the dmh switch, should the monitor pid die,
+ * will not be launched and it's upp to the application to take
+ * care of monitoring.
  */
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, bool force_unlink);
+	const char* shmkey, int shmif_type, char force_unlink,
+	char disable_guard);
 
 /* 
  * Using the specified shmpage state, return pointers into 
