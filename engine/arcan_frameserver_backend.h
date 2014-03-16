@@ -247,12 +247,20 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
-/* frameserver_pushfd send the file_handle into the process controlled
+/* 
+ * frameserver_pushfd send the file_handle into the process controlled
  * by the specified frameserver and emits a corresponding event into the
  * eventqueue of the frameserver. returns !ARCAN_OK if the socket isn't
  * connected, wrong type, OS can't handle transfer or the FD can't be
- * transferred (e.g. stdin) fd will always be closed in this function. */ 
+ * transferred (e.g. stdin) fd will always be closed in this function. 
+ */ 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
+
+/* 
+ * allocate a new frameserver segment,
+ */
+arcan_vobj_id arcan_frameserver_spawn_subsegment(
+	arcan_frameserver* ctx, arcan_vobj_id parent, bool input);
 
 /* take the argument event and add it to the event queue of the target, 
  * returns a failure if the event queue in the child is full */

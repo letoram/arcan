@@ -48,7 +48,9 @@
 void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 {
 /*	struct arg_arr* args = arg_unpack(resource); */
-	struct arcan_shmif_cont shms = arcan_shmif_acquire(keyfile,SHMIF_INPUT,true);
+	struct arcan_shmif_cont shms = arcan_shmif_acquire(
+		keyfile, SHMIF_INPUT, true, false);
+
 	struct arcan_evctx inevq, outevq;
 	struct arcan_event ev;
 

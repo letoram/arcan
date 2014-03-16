@@ -184,13 +184,8 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	return rv;
 }
 
-
-arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
-	struct frameserver_envp setup)
+static bool shmalloc(arcan_frameserver* ctx, bool namedsocket)
 {
-	if (ctx == NULL)
-		return ARCAN_ERRC_BAD_ARGUMENT;
-
 	size_t shmsize = ARCAN_SHMPAGE_MAX_SZ;
 	struct arcan_shmif_page* shmpage;
 	int shmfd = 0;
@@ -205,16 +200,15 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		ctx->esync = sem_open(work, 0);	
 	free(work);
 
-	ctx->launchedtime = arcan_frametime();
 /* max videoframesize + DTS + structure + maxaudioframesize,
 * start with max, then truncate down to whatever is actually used */
 	int rc = ftruncate(shmfd, shmsize);
 	if (-1 == rc){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- allocating"
 		"	(%d) shared memory failed (%d).\n", shmsize, errno);
-		goto error_cleanup;
+		return false;
 	}
-	
+
 	shmpage = (void*) mmap(NULL, shmsize, PROT_READ | PROT_WRITE, 
 		MAP_SHARED, shmfd, 0);
 	close(shmfd);
@@ -222,7 +216,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	if (MAP_FAILED == shmpage){
 		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
 			"allocate shmpage\n");
-		goto error_cleanup;
+		return false;
 	}
 
 	memset(shmpage, '\0', shmsize);
@@ -230,6 +224,57 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	shmpage->parent = getpid();
 	shmpage->major = ARCAN_VERSION_MAJOR;
 	shmpage->minor = ARCAN_VERSION_MINOR;
+
+	return true;	
+}	
+
+arcan_vobj_id arcan_frameserver_spawn_subsegment(
+	arcan_frameserver* ctx, arcan_vobj_id parent, bool input)
+{
+	arcan_frameserver* newseg = arcan_frameserver_alloc();
+	if (!newseg)
+		return ARCAN_EID;
+
+	shmalloc(newseg, true);
+
+	arcan_event keyev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_NEWSEGMENT
+	};
+
+	snprintf(keyev.data.target.message, 
+		sizeof(keyev.data.target.message[0]) / 
+			sizeof(keyev.data.target.message[1]), "fixme");
+	
+	newseg->use_pbo = ctx->use_pbo;
+	newseg->launchedtime = ctx->launchedtime;
+	newseg->child = ctx->child;
+
+/*
+ * the following fields should be copied:
+ * use_pbo
+ * launched_time
+ *
+ * the following should be set again:
+ * shm.key, vsync, async, esync,
+ *
+ * how to deal with aid?
+ */
+  
+	arcan_event_enqueue(&ctx->outqueue, &keyev); 
+	
+	return ARCAN_EID;	
+}
+
+arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
+	struct frameserver_envp setup)
+{
+	if (ctx == NULL)
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
+	shmalloc(ctx, false);
+
+	ctx->launchedtime = arcan_frametime();
 
 	int sockp[2] = {-1, -1};
 	if ( socketpair(PF_UNIX, SOCK_DGRAM, 0, sockp) < 0 ){
