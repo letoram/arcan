@@ -263,6 +263,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 				goto fail;
 			}
 		}
+		ctx->sockout_fd = fd;
 	}
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
@@ -304,6 +305,13 @@ fail:
 	return true;	
 }	
 
+/*
+ * Allocate a new segment (shmalloc), inherit the relevant
+ * tracking members from the parent, re-use the segment
+ * to notify the new key to be used, mark the segment as 
+ * pending and set a transitional feed-function that
+ * looks for an ident on the socket.
+ */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver* ctx, bool input)
 {
@@ -318,26 +326,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		.kind = TARGET_COMMAND_NEWSEGMENT
 	};
 
-	snprintf(keyev.data.target.message, 
-		sizeof(keyev.data.target.message[0]) / 
-			sizeof(keyev.data.target.message[1]), "fixme");
-	
 	newseg->use_pbo = ctx->use_pbo;
 	newseg->launchedtime = ctx->launchedtime;
 	newseg->child = ctx->child;
 
-/*
- * the following fields should be copied:
- * use_pbo
- * launched_time
- *
- * the following should be set again:
- * shm.key, vsync, async, esync,
- *
- * how to deal with aid?
- */
-  
-	arcan_event_enqueue(&ctx->outqueue, &keyev); 
+	arcan_event_enqueue(&ctx->outqueue, &keyev);
+ 	arcan_frameserver_pushfd(ctx, newseg->sockout_fd);	
 	return newseg;	
 }
 

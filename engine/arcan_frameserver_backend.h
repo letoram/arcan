@@ -142,6 +142,12 @@ struct frameserver_audmix {
 	struct frameserver_audsrc* inaud;
 };
 
+/*
+ * FIXME; two things, 1. check all members and see
+ * if they're actually needed in the form they are
+ * 2. add tracking to see at which frequency the
+ * different buffers are updated. 
+ */
 typedef struct arcan_frameserver {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
