@@ -2300,6 +2300,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 					ev->data.external.streamstat.streaming!=0,top);
 			break;
 
+			case EVENT_EXTERNAL_NOTICE_SEGREQ:
+				tblstr(ctx, "kind", "segment_request", top);
+			break;
+			
 			case EVENT_EXTERNAL_NOTICE_STATESIZE:
 				tblstr(ctx, "kind", "state_size", top);
 				tblnum(ctx, "state_size", ev->data.external.state_sz, top);
