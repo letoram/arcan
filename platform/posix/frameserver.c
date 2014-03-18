@@ -320,18 +320,28 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		return ARCAN_EID;
 
 	shmalloc(newseg, true, NULL);
+ 	
+/* Transfer the new event socket, along with
+ * the base-key that will be used to find shmetc.
+ * There is little other than convenience that makes
+ * us re-use the other parts of the shm setup routine,
+ * we could've sent the shm and semaphores this way as well */
+	arcan_frameserver_pushfd(ctx, newseg->sockout_fd);	
 
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
 		.kind = TARGET_COMMAND_NEWSEGMENT
 	};
 
+	snprintf(keyev.data.target.message,
+		sizeof(keyev.data.target.message) / sizeof(keyev.data.target.message[1]),
+	"%s", ctx->shm.key);
+		
 	newseg->use_pbo = ctx->use_pbo;
 	newseg->launchedtime = ctx->launchedtime;
 	newseg->child = ctx->child;
 
 	arcan_event_enqueue(&ctx->outqueue, &keyev);
- 	arcan_frameserver_pushfd(ctx, newseg->sockout_fd);	
 	return newseg;	
 }
 
