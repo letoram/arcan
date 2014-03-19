@@ -19,6 +19,34 @@
 *
 */
 
+/*
+ * Notes regarding LUA use;
+ * - There are a few cases that has turned out problematic enough to
+ *   warrant some kind of tracking to think about how things should 
+ *   be developed for the future. Due to the desire (need even) to
+ *   support both LUA-jit and the reference lua implementation, some
+ *   of the usual annoyances (global scope being the default, 
+ *   double pollution, 1 indexing, no ; statement delimiter, no ternary
+ *   operator, no aggregate operators, ...)
+ *
+ * - Type coersion; the whole "1" can turn into a number makes for a lot
+ *   of problems with WORLDID and BADID being common "number-in-string" 
+ *   values with possibly hard to locate results. 
+ *
+ *   Worse still, true / false vs. nil use is terribly inconsistent,
+ *   and some functions where the desire had been to force a boolean type
+ *   integer options were temporarily used and now we have scripts in the
+ *   wild relying in the behavior.
+ *
+ * - Double, strings and decimal points; some build-time dependencies pull
+ *   in other dependencies where some have the audacity to change radix 
+ *   point behavior at random points during execution. Varying with window
+ *   manager and display server conditions we run into situations where
+ *   tonumber() tostring() class functions (and everything that maps to
+ *   printf family) will at one time give 12345.6789 and shortly thereafter,
+ *   12345,6789
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -4261,18 +4289,20 @@ static int targetalloc(lua_State* ctx)
 {
 	LUA_TRACE("target_alloc");
 
-	luaL_checktype(ctx, 3, LUA_TFUNCTION);
-	if (lua_iscfunction(ctx, 3))
+	luaL_checktype(ctx, 2, LUA_TFUNCTION);
+	if (lua_iscfunction(ctx, 2))
 		arcan_fatal("target_alloc(), callback to C function forbidden.\n");
 
 	lua_pushvalue(ctx, 2);
 	intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 		
 	arcan_frameserver* newref = NULL;
+	const char* key = "";
+
 /*
  * allocate new key or give to preexisting frameserver?
- */ 
-	if (lua_isstring(ctx, 1)){
+ */
+	if (lua_type(ctx, 1) == LUA_TSTRING){
 		arcan_fatal("target_alloc without pre-existing frameserver incomplete.\n");
 		struct frameserver_envp args = {
 			.use_builtin = false,
@@ -4294,8 +4324,11 @@ static int targetalloc(lua_State* ctx)
 	}
 
 	newref->tag = ref;
+
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
+	lua_pushstring(ctx, key);
+
 	return 3;
 }
 
