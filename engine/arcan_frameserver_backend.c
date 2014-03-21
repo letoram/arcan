@@ -285,10 +285,15 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 /* flip-floping PBOs, simply using one risks the chance of turning a PBO 
  * operation synchronous, eliminating much of the point in using them
- * in the first place */
+ * in the first place. Note that with PBOs running, we currently have
+ * one frame delay in that the buffer won't be activate until the next 
+ * frame is about to be queued. This works fine on a streaming source
+ * but not in other places unfortunately */
 	if (src->desc.pbo_transfer){
+#ifdef VIDEO_PBO_FLIPFLOP
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 
 			src->desc.upload_pbo[src->desc.pbo_index]);
+
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
@@ -303,6 +308,17 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#else
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER,
+			src->desc.upload_pbo[0]);
+		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		if (ptr)
+			memcpy(ptr, buf, sw * sh * bpp);
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#endif
 	}
 	else
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh,
@@ -367,8 +383,9 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 	switch (cmd){
 	case ffunc_rendertarget_readback: break;
 	case ffunc_poll:
+
 		if (shmpage->resized)
-			arcan_frameserver_tick_control( tgt);
+			arcan_frameserver_tick_control(tgt);
 
 		return shmpage->vready;
 	break;
