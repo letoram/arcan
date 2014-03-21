@@ -142,12 +142,6 @@ struct frameserver_audmix {
 	struct frameserver_audsrc* inaud;
 };
 
-/*
- * FIXME; two things, 1. check all members and see
- * if they're actually needed in the form they are
- * 2. add tracking to see at which frequency the
- * different buffers are updated. 
- */
 typedef struct arcan_frameserver {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
@@ -163,16 +157,16 @@ typedef struct arcan_frameserver {
 	sem_handle vsync, async, esync; 
 	file_handle sockout_fd;
 	
-	arcan_aobj_id aid;
 /* for monitoring hooks, NULL term. */
 	arcan_aobj_id* alocks;
+	arcan_aobj_id aid;
 	arcan_vobj_id vid;
 
 	struct {
 		unsigned n_aids;
 		size_t max_bufsz;
 		struct frameserver_audsrc* inaud;
-	}  amixer;
+	} amixer;
 
 /* used for playing, pausing etc. */
 	enum arcan_playstate playstate;
