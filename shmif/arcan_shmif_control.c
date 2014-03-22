@@ -109,7 +109,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink, char noguard){
 	struct arcan_shmif_cont res = {0};
-	force_unlink = false;
 
 	unsigned bufsize = ARCAN_SHMPAGE_MAX_SZ;
 	int fd = -1;

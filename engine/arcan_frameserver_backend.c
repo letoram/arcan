@@ -1119,9 +1119,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 {
 	arcan_errc errc;
 	
-	ctx->vfq.alive = false;
-	ctx->afq.alive = false;
-
 /* "movie" mode involves parallel queues of raw, decoded, 
  * frames and heuristics for dropping, delaying or showing 
  * frames based on DTS/PTS values */
