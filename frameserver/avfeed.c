@@ -37,9 +37,64 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 #include <arcan_shmif.h>
 #include "frameserver.h"
+
+static void update_frame(uint32_t* cptr, 
+	struct arcan_shmif_cont* shms, uint32_t val)
+{
+	int np = shms->addr->w * shms->addr->h;
+	for (int i = 0; i < np; i++)
+		*cptr++ = val; 
+
+	printf("update: %d\n", val);
+	arcan_shmif_signal(shms, SHMIF_SIGVID);
+}
+
+struct seginf {
+	struct arcan_evctx inevq, outevq;
+	struct arcan_event ev;
+	struct arcan_shmif_cont shms;
+	uint32_t* vidp;
+	uint16_t* audp;
+};
+
+static void* segthread(void* arg)
+{
+	struct seginf* seg = (struct seginf*) arg;
+	uint8_t green = 0;
+	
+	while(seg->shms.addr->dms){
+		arcan_event ev;
+		printf("waiting for events\n");
+		while(1 == arcan_event_wait(&seg->inevq, &ev)){
+			printf("got event\n");
+			update_frame(seg->vidp, &seg->shms, 0xff000000 | (green++ << 8));
+		}
+	}
+
+	return NULL;
+}
+
+static void mapseg(int evfd, const char* key)
+{
+	struct arcan_shmif_cont shms = arcan_shmif_acquire(
+		key, SHMIF_INPUT, false, true 
+	);
+
+	struct seginf* newseg = malloc(sizeof(struct seginf));
+
+	pthread_t thr; 
+	arcan_shmif_calcofs(shms.addr, (uint8_t**) &newseg->vidp, 
+		(uint8_t**) &newseg->audp);
+	newseg->shms = shms;
+	arcan_shmif_setevqs(shms.addr, shms.esem, 
+		&newseg->inevq, &newseg->outevq, false);
+
+	pthread_create(&thr, NULL, segthread, newseg);
+}
 
 /*
  * Quick skeleton to map up a audio/video/input 
@@ -55,9 +110,8 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	struct arcan_event ev;
 
 	arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false);
-	int startw = 320, starth = 200;
 
-	if (!arcan_shmif_resize(&shms, startw, starth)){
+	if (!arcan_shmif_resize(&shms, 320, 200)){
 		LOG("arcan_frameserver(decode) shmpage setup, resize failed\n");
 		return;
 	}
@@ -66,13 +120,29 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	uint16_t* audp;
 
 	arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
-	uint32_t* cptr = vidp;
-	for (int i = 0; i < starth * startw; i++)
-		*cptr++ = 0xff000000;
-	arcan_shmif_signal(&shms, SHMIF_SIGVID);
+	update_frame(vidp, &shms, 0xffffffff);
+
+/*
+ * request a new segment
+ */
+	ev.category = EVENT_EXTERNAL;
+	ev.kind = EVENT_EXTERNAL_NOTICE_SEGREQ;
+	arcan_event_enqueue(&outevq, &ev);
+
+	int lastfd;
 
 	while(1){
-		while (1 == arcan_event_poll(&inevq, &ev)){
+		while (1 == arcan_event_wait(&inevq, &ev)){
+			if (ev.category == EVENT_TARGET){
+				if (ev.category == TARGET_COMMAND_FDTRANSFER){
+					lastfd = frameserver_readhandle(&ev);
+					printf("got handle (for new event transfer)\n");
+				}
+			}
+			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){	
+				printf("new segment ready, key: %s\n", ev.data.target.message);	
+				mapseg(lastfd, ev.data.target.message);
+			}
 /*
  *	event dispatch loop, look at shmpage interop,
  *	valid categories here should (at least)
