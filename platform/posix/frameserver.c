@@ -330,7 +330,6 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	if (!newseg)
 		return NULL;
 
-	arcan_frameserver_meta vinfo = {0};
 	shmalloc(newseg, true, NULL);
  	
 /* Transfer the new event socket, along with
@@ -347,21 +346,60 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	snprintf(keyev.data.target.message,
 		sizeof(keyev.data.target.message) / sizeof(keyev.data.target.message[1]),
-	"%s", ctx->shm.key);
+	"%s", newseg->shm.key);
 	
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
-	ctx->source = ctx->source ? strdup(ctx->source) : NULL;
+	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 
 	newseg->use_pbo = ctx->use_pbo;
 	newseg->launchedtime = ctx->launchedtime;
 	newseg->child = ctx->child;
+	newseg->child_alive = true;
 	newseg->vid = arcan_video_addfobject((arcan_vfunc_cb)
 		arcan_frameserver_emptyframe, state, cons, 0);
 
 	arcan_errc errc;
 	newseg->aid = arcan_audio_feed((arcan_afunc_cb)
 		arcan_frameserver_audioframe_direct, ctx, &errc);
+	
+/* NOTE: should we allow some segments to map events
+ * with other masks, or should this be a separate command
+ * with a heavy warning? i.e. allowing EVENT_INPUT gives
+ * remote-control etc. options, with all the security considerations
+ * that comes with it */	
+	newseg->queue_mask = EVENT_EXTERNAL;
+
+/*
+ * Memory- constraints and future refactoring plans means that
+ * AVFEED/INTERACTIVE are the only supported subtypes (never buffered
+ * INPUT á movie
+ */
+	newseg->autoplay = true;
+	if (input){
+		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
+		newseg->socksig = true;
+		newseg->nopts = true;
+	}
+	else {
+		newseg->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+		newseg->socksig = true;
+		newseg->nopts = true;
+	}
+
+/*
+ * NOTE: experiment with deferring this step as new segments likely
+ * won't need / use audio, "Mute" shmif- sessions should also be 
+ * permitted to cut down on shm memory use 
+ */
+	newseg->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ; 
+	newseg->ofs_audb = 0;
+	newseg->audb = malloc(ctx->sz_audb);
+
+	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync, 
+		&(newseg->inqueue), &(newseg->outqueue), true);
+	newseg->inqueue.synch.killswitch = (void*) newseg;
+	newseg->outqueue.synch.killswitch = (void*) newseg;
 
 	arcan_event_enqueue(&ctx->outqueue, &keyev);
 	return newseg;	
@@ -392,7 +430,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
  * keep the vid / aud as they are external references into the 
  * scripted state-space 
  */
-		if (ctx->vid == ARCAN_EID) {
+		if (ctx->vid == ARCAN_EID){
 			img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
 

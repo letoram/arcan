@@ -66,6 +66,8 @@ static void* segthread(void* arg)
 	struct seginf* seg = (struct seginf*) arg;
 	uint8_t green = 0;
 	
+	arcan_shmif_resize(&seg->shms, 320, 200);
+
 	while(seg->shms.addr->dms){
 		arcan_event ev;
 		printf("waiting for events\n");
@@ -81,7 +83,7 @@ static void* segthread(void* arg)
 static void mapseg(int evfd, const char* key)
 {
 	struct arcan_shmif_cont shms = arcan_shmif_acquire(
-		key, SHMIF_INPUT, false, true 
+		key, SHMIF_INPUT, true, true 
 	);
 
 	struct seginf* newseg = malloc(sizeof(struct seginf));
@@ -134,7 +136,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	while(1){
 		while (1 == arcan_event_wait(&inevq, &ev)){
 			if (ev.category == EVENT_TARGET){
-				if (ev.category == TARGET_COMMAND_FDTRANSFER){
+				if (ev.kind == TARGET_COMMAND_FDTRANSFER){
 					lastfd = frameserver_readhandle(&ev);
 					printf("got handle (for new event transfer)\n");
 				}
@@ -142,6 +144,10 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){	
 				printf("new segment ready, key: %s\n", ev.data.target.message);	
 				mapseg(lastfd, ev.data.target.message);
+			}
+			else {
+				static int red;
+				update_frame(vidp, &shms, 0xff000000 | red++);
 			}
 /*
  *	event dispatch loop, look at shmpage interop,
