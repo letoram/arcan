@@ -243,7 +243,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * decent mechanism active for waking a child that's simultaneously
  * polling and need to respond quickly to enqueued events,
  */
-	if (dst && ev)
+	if (dst && ev){
 		rv = dst->child_alive ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
@@ -253,9 +253,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_DONTWAIT 0
 #endif
 
-	if (dst->socksig){
-		int sn = 0;
-		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
+		if (dst->socksig){
+			int sn = 0;
+			send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
+		}
 	}
 #endif
 
