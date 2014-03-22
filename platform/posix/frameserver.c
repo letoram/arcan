@@ -101,7 +101,10 @@ void arcan_frameserver_killchild(arcan_frameserver* src)
  * with video_deleteobject or sweeping the full state context etc.
  * 
  * Cheapest, it seems, is to actually spawn a guard thread with a 
- * sleep + wait cycle, countdown and then send KILL
+ * sleep + wait cycle, countdown and then send KILL. Other possible
+ * idea is (and part of this should be implemented anyway)
+ * is to have a session and group, and a plain run a zombie-catcher / kill 
+ * broadcaster as a session leader. 
  */
 	pid_t* pidptr = malloc(sizeof(pid_t));
 	pthread_t pthr;
@@ -120,8 +123,13 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 	if (!src || !src->child_alive || !src->child)
 		return false;
 
-/* note that on loop conditions, the pid can change, this we have to assume
- * it will be valid in the near future. */ 
+/* 
+ * Note that on loop conditions, the pid can change, 
+ * thus we have to assume it will be valid in the near future. 
+ * PID != privilege, it's simply a process to monitor as hint
+ * to what the state of a child is, the child is free to 
+ * redirect to anything (heck, including init)..
+ */ 
 	int ec = waitpid(src->child, &status, WNOHANG);
 
 	if (ec == src->child){
@@ -315,10 +323,14 @@ fail:
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	arcan_frameserver* ctx, bool input)
 {
+	if (!ctx || ctx->child_alive == false)
+		return NULL;
+
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
 	if (!newseg)
-		return ARCAN_EID;
+		return NULL;
 
+	arcan_frameserver_meta vinfo = {0};
 	shmalloc(newseg, true, NULL);
  	
 /* Transfer the new event socket, along with
@@ -336,10 +348,20 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	snprintf(keyev.data.target.message,
 		sizeof(keyev.data.target.message) / sizeof(keyev.data.target.message[1]),
 	"%s", ctx->shm.key);
-		
+	
+	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
+	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
+	ctx->source = ctx->source ? strdup(ctx->source) : NULL;
+
 	newseg->use_pbo = ctx->use_pbo;
 	newseg->launchedtime = ctx->launchedtime;
 	newseg->child = ctx->child;
+	newseg->vid = arcan_video_addfobject((arcan_vfunc_cb)
+		arcan_frameserver_emptyframe, state, cons, 0);
+
+	arcan_errc errc;
+	newseg->aid = arcan_audio_feed((arcan_afunc_cb)
+		arcan_frameserver_audioframe_direct, ctx, &errc);
 
 	arcan_event_enqueue(&ctx->outqueue, &keyev);
 	return newseg;	
