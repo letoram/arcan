@@ -5,13 +5,36 @@
  * for licensing terms.
  */
 
+/*
+ * A lot of toggleable options in this one.
+ * Important ones:
+ *  WITH_X11      - adds X11 support to context setup
+ *  WITH_BCM      - special setup needed for certain broadcom GPUs
+ *  WITH_GLES3    - default is GLES2, preferably we want 3 for PBOs
+ *  WITH_OGL3     - when the 'nux graphics mess gets cleaned up,
+ *                  this is the minimum version to support
+ *  WITH_HEADLESS - allocates a GL context that lacks a framebuffer
+ *                  only available on systems where we can use the 
+ *                  KHR_ method of context creation (dep, WITH_OGL3)
+ *  WITH_RGB565   - Use RGB565 instead of other native formats,
+ *                  this also requires GL_PIXEL_BPP to be set and a 
+ *                  shmif that has ARCAN_SHMPAGE_VCHANNELS set 3 
+ *  WITH_GLEW     - some setups might have problems with calls 
+ *                  (particularly if you want to use some fancy extension)
+ *                  this library helps with that, but not needed everywhere
+ *
+ * Each different device / Windowing type etc. need to have this defined:
+ * EGL_NATIVE_DISPLAY 
+ */
+
+#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
 
-#include <GLES2/gl2.h>
-#include <EGL/egl.h>
+#include GL_HEADERS
 
 #include "arcan_math.h"
 #include "arcan_general.h"
@@ -26,7 +49,73 @@ static struct {
 	EGLNativeWindowType wnd;
 } egl;
 
-#ifdef RPI_BCM
+#ifdef WITH_X11
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
+
+#define EGL_NATIVE_DISPLAY x11.xdisp
+
+static struct {
+	Display* xdisp;
+	Window xwnd;
+	XWindowAttributes xwa;
+} x11;
+
+Display* x11_display = NULL;
+
+static bool setup_xwnd(int w, int h, bool fullscreen)
+{
+	x11.xdisp = XOpenDisplay(NULL);
+	if (!x11.xdisp)
+		return false;
+
+	x11_display = x11.xdisp;
+	XSetWindowAttributes xwndattr;
+	xwndattr.event_mask = ExposureMask | PointerMotionMask | KeyPressMask;
+
+	Window root = DefaultRootWindow(x11.xdisp);
+	x11.xwnd = XCreateWindow(x11.xdisp, root, 0, 0, w, h, 0, CopyFromParent,
+		InputOutput, CopyFromParent, CWEventMask, &xwndattr);
+
+	XSetWindowAttributes xattr;
+	xattr.override_redirect = False;
+  XChangeWindowAttributes (x11.xdisp, x11.xwnd, CWOverrideRedirect, &xattr);
+
+/*
+ * We don't take care of input here, either we have an
+ * input platform driver for x11 or we use a linux/bsd/...
+ * specific one directly
+ */
+	XWMHints hints;
+  hints.input = True;
+  hints.flags = InputHint;
+  XSetWMHints(x11.xdisp, x11.xwnd, &hints);
+ 
+  XMapWindow(x11.xdisp, x11.xwnd);
+  XStoreName(x11.xdisp, x11.xwnd, "Arcan"); 
+
+	if (fullscreen){
+		XEvent xev = {0};
+ 		Atom wm_state   = XInternAtom ( x11.xdisp, "_NET_WM_STATE", False );
+	  Atom fsa = XInternAtom ( x11.xdisp, "_NET_WM_STATE_FULLSCREEN", False );
+
+  	xev.type = ClientMessage;
+	  xev.xclient.window = x11.xwnd;
+  	xev.xclient.message_type = wm_state;
+  	xev.xclient.format = 32;
+	  xev.xclient.data.l[0] = 1;
+	  xev.xclient.data.l[1] = fsa; 
+	  XSendEvent ( x11.xdisp, DefaultRootWindow( x11.xdisp ), False,
+			SubstructureNotifyMask, &xev );
+	}
+  
+	egl.wnd = x11.xwnd;
+	return true;
+}
+#endif
+
+#ifdef WITH_BCM 
 #include <bcm_host.h>
 bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 {
@@ -102,14 +191,35 @@ bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 
 void platform_video_bufferswap()
 {
+#ifdef WITH_X11
+	while (XPending(x11.xdisp)){
+		XEvent xev;
+		XNextEvent(x11.xdisp, &xev);
+/*		if (xev.type == KeyPress)
+						exit(1);
+*/
+	}
+#endif
+	long long start = arcan_timemillis();
 	eglSwapBuffers(egl.disp, egl.surf);
+	long long stop = arcan_timemillis();
+	printf("%lld\n", stop - start);
 }
+
+#ifndef EGL_NATIVE_DISPLAY
+#define EGL_NATIVE_DISPLAY EGL_DEFAULT_DISPLAY
+#endif
 
 bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 	bool frames)
 {
 	EGLint ca[] = { 
-		EGL_CONTEXT_CLIENT_VERSION, 2, 
+		EGL_CONTEXT_CLIENT_VERSION, 
+#ifdef WITH_GLES3
+		3,
+#else
+		2,
+#endif
 		EGL_NONE, 
 		EGL_NONE 
 	};
@@ -121,32 +231,45 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		EGL_ALPHA_SIZE, 8,
 		EGL_DEPTH_SIZE, 8,
 		EGL_STENCIL_SIZE, 1,
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_BUFFER_SIZE, 16, // ?
+		EGL_RENDERABLE_TYPE, // ?
+		EGL_OPENGL_ES2_BIT, // ?
 		EGL_NONE
 	};
 
 	EGLint nc;
 
-#ifdef RPI_BCM
+#ifdef WITH_BCM
 	alloc_bcm_wnd(&w, &h);
 #endif
 
-	egl.disp = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	
+#ifdef WITH_X11
+	if (!setup_xwnd(w, h, fs)){
+		arcan_warning("Couldn't setup Window (X11)\n");
+		return false;
+	}
+#endif
+
+	egl.disp = eglGetDisplay((EGLNativeDisplayType) EGL_NATIVE_DISPLAY);
+#if defined(WITH_GLES3) || defined(WITH_OGL3)
+	arcan_video_display.pbo_support = true;
+#else
+	arcan_video_display.pbo_support = false;
+#endif
+
 	if (egl.disp == EGL_NO_DISPLAY){
 		arcan_warning("Couldn't create display\n");
 		return false;
 	}
 
-	uint32_t major, minor;
+	EGLint major, minor;
 
 	if (!eglInitialize(egl.disp, &major, &minor)){
 		arcan_warning("Couldn't initialize EGL\n");
 		return false;
 	}
 	else 
-		arcan_warning("EGL ( %d , %d )\n", major, minor);
-
+		arcan_warning("EGL Version %d.%d Found\n", major, minor);
 
 	if (!eglGetConfigs(egl.disp, NULL, 0, &nc)){
 		arcan_warning("No fitting configurations found\n");
@@ -175,10 +298,32 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 		return false;
 	}
 
+/* 
+ * Interestingly enough, EGL swap allows dirty rect updates with
+ * eglSwapBuffersREegionNOK. In animations, we can, each update,
+ * take the full boundary volume or better yet, go quadtree 
+ * and do dirty regions that way. Not leveraged yet but should
+ * definitely be a concern later on.
+ */ 	
+	arcan_warning("EGL context active (%d x %d)\n", w, h);
 	arcan_video_display.width = w;
 	arcan_video_display.height = h;
 	arcan_video_display.bpp = bpp;
-	arcan_video_display.pbo_support = false;
+	glViewport(0, 0, w, h);
+
+	eglSwapInterval(egl.disp, 1);
+
+/* 
+ * This should be needed less and less with newer GL versions
+ */
+#ifdef WITH_GLEW
+	int err;
+	if ( (err = glewInit()) != GLEW_OK){
+		platform_video_shutdown();
+		arcan_warning("Couldn't initialize GLEW\n");
+		return false;
+	}
+#endif
 
 	return true;
 }
@@ -190,7 +335,16 @@ void platform_video_restore_external()
 {}
 
 void platform_video_shutdown()
-{}
+{
+	eglDestroyContext(egl.disp, egl.ctx);
+	eglDestroySurface(egl.disp, egl.surf);
+  eglTerminate(egl.disp);
+
+#ifdef WITH_X11
+  XDestroyWindow(x11.xdisp, x11.xwnd);
+  XCloseDisplay(x11.xdisp);
+#endif
+}
 
 void platform_video_timing(float* vsync, float* stddev, float* variance)
 {
