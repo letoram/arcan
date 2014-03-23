@@ -1111,6 +1111,16 @@ arcan_frameserver* arcan_frameserver_alloc()
 	memset(res, 0, sizeof(arcan_frameserver));
 	res->use_pbo = arcan_video_display.pbo_support;
 	res->watch_const = 0xdead;
+
+	pthread_mutex_init(&res->lock_audb, NULL);
+
+	res->child_alive = true;
+
+/* shm- related settings are deferred as this is called previous to mapping
+ * (spawn_subsegment / spawn_server) so setting up the eventqueues with
+ * killswitches have to be done elsewhere
+ */ 
+
 	return res;
 }
 
@@ -1208,19 +1218,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->ofs_audb = 0;
 		ctx->audb     = malloc( ctx->sz_audb );
 	}
-
-	pthread_mutex_init(&ctx->lock_audb, NULL);
-	arcan_frameserver_meta vinfo = {0};
-
-	ctx->child_alive = true;
-	ctx->desc        = vinfo;
-
-/* these are just placeholders to be able to return a real vid without
- * stalling waiting for the other process to finish, so the first event
- * tend to be a resize- */ 
-	ctx->desc.width  = 32;
-	ctx->desc.height = 32;
-	ctx->desc.bpp    = GL_PIXEL_BPP;
 
 /* two separate queues for passing events back and forth between main program
  * and frameserver, set the buffer pointers to the relevant offsets in 

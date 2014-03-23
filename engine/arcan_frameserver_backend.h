@@ -184,8 +184,10 @@ typedef struct arcan_frameserver {
 
 	process_handle child;
 	long long childp;
-
 	bool child_alive;
+
+/* some properties are disabled / ignored for subsegments */
+	bool subsegment;
 
 /* not all scenarios dictate a use of PBOs, as the flip-flop approach use
  * introduces a possible 1-frame latency from upload to display, which requires
@@ -208,7 +210,6 @@ typedef struct arcan_frameserver {
 
 /* contains both structures for managing movie- playback,
  * both video and audio support functions */
-
 struct frameserver_envp {
 	bool use_builtin;
 	bool custom_feed;
@@ -238,8 +239,8 @@ struct frameserver_envp {
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, 
 	struct frameserver_envp);
 
-/* allocate heap memory, reset all members to an
- * empty state and then enforce defaults */
+/* allocate shared and heap memory, reset all members to an
+ * empty state and then enforce defaults, returns NULL on failure */
 arcan_frameserver* arcan_frameserver_alloc();
 
 /* enable the forked process to start decoding */

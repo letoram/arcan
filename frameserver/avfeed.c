@@ -73,6 +73,12 @@ static void* segthread(void* arg)
 		printf("waiting for events\n");
 		while(1 == arcan_event_wait(&seg->inevq, &ev)){
 			printf("got event\n");
+			if (ev.category == EVENT_TARGET && 
+				ev.kind == TARGET_COMMAND_EXIT){
+				printf("parent requested termination\n");
+				update_frame(seg->vidp, &seg->shms, 0xffffff00);
+				return NULL;
+			}
 			update_frame(seg->vidp, &seg->shms, 0xff000000 | (green++ << 8));
 		}
 	}
@@ -144,6 +150,10 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){	
 				printf("new segment ready, key: %s\n", ev.data.target.message);	
 				mapseg(lastfd, ev.data.target.message);
+			}
+			if (ev.kind == TARGET_COMMAND_EXIT){
+				printf("parent requested termination, leaving.\n");
+				break;
 			}
 			else {
 				static int red;
