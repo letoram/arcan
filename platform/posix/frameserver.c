@@ -89,7 +89,7 @@ void arcan_frameserver_dropshared(arcan_frameserver* src)
 
 void arcan_frameserver_killchild(arcan_frameserver* src)
 {
-	if (!src)
+	if (!src || src->subsegment)
 		return;
 
 /* 
@@ -202,13 +202,14 @@ static bool shmalloc(arcan_frameserver* ctx,
 
 	ctx->shm.key = arcan_findshmkey(&shmfd, true);
 	ctx->shm.shmsize = shmsize;
+
 	char* work = strdup(ctx->shm.key);
-		work[strlen(work) - 1] = 'v';
-		ctx->vsync = sem_open(work, 0);
-		work[strlen(work) - 1] = 'a';
-		ctx->async = sem_open(work, 0);
-		work[strlen(work) - 1] = 'e';
-		ctx->esync = sem_open(work, 0);
+	work[strlen(work) - 1] = 'v';
+	ctx->vsync = sem_open(work, 0);
+	work[strlen(work) - 1] = 'a';
+	ctx->async = sem_open(work, 0);
+	work[strlen(work) - 1] = 'e';
+	ctx->esync = sem_open(work, 0);
 
 /*
  * Named domain sockets are used for non-authoritative connections
@@ -242,12 +243,17 @@ static bool shmalloc(arcan_frameserver* ctx,
 			auxsz += strlen(auxp) + 1;
 		}
 
-		if (baselen + auxsz + 
-			(optkey ? strlen(optkey) : 11) >= sizeof(addr.sun_path)){
+		size_t full_len = baselen + auxsz + (optkey ? strlen(optkey) : 11);
+		arcan_event ev;
+		size_t msg_sz = sizeof(ev.data.target.message) - 1;
+		size_t max_sz = sizeof(addr.sun_path) - 1 > msg_sz ? 
+			msg_sz : sizeof(addr.sun_path) - 1;
+	
+		if (full_len > max_sz){
 				arcan_fatal("posix/frameserver.c:shmalloc(), compile-time prefix "
 				"yielded a length that is not suitable for a domain socket "
 				"i.e. %s%s%s should be %d characters or less\n", auxp,
-				ARCAN_SHM_PREFIX, optkey?optkey: "_num_num", sizeof(addr.sun_path)-1);
+				ARCAN_SHM_PREFIX, optkey?optkey: "_num_num", max_sz); 
 		}
 
 		int retrc = 10;
@@ -292,12 +298,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 			"allocate shmpage\n");
 
 fail:
-		work[strlen(work) - 1] = 'v';
-		sem_unlink(work);
-		work[strlen(work) - 1] = 'a';
-		sem_unlink(work);
-		work[strlen(work) - 1] = 'e';
-		sem_unlink(work);	
+		arcan_frameserver_dropsemaphores_keyed(work);
 		free(work);
 		return false;
 	}
@@ -325,13 +326,52 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 {
 	if (!ctx || ctx->child_alive == false)
 		return NULL;
-
+	
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
 	if (!newseg)
 		return NULL;
 
-	shmalloc(newseg, true, NULL);
- 	
+	if (!shmalloc(newseg, true, NULL)){
+		arcan_frameserver_free(newseg, false);
+		return NULL;
+	}
+		
+/*
+ * Display object (default at 32x32x4, nothing will be activated
+ * until first resize) as per arcan_frameserver_emptyframe
+ */	
+	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
+	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
+	arcan_frameserver_meta vinfo = {
+		.width = 32, 
+		.height = 32, 
+		.bpp = GL_PIXEL_BPP
+	};
+	arcan_vobj_id newvid = arcan_video_addfobject((arcan_vfunc_cb)
+		arcan_frameserver_emptyframe, state, cons, 0);
+
+	if (newvid == ARCAN_EID){
+		arcan_frameserver_free(newseg, false);
+		return NULL;
+	}
+
+/*
+ * Currently, we're reserving a rather aggressive amount of memory
+ * for audio, even though it's likely that (especially for multiple-
+ * segments) it will go by unused. For arcan->frameserver data transfers
+ * we shouldn't have an AID, attach monitors and synch audio transfers
+ * to video.
+ */
+	arcan_errc errc;
+	if (!input)
+		newseg->aid = arcan_audio_feed((arcan_afunc_cb)
+			arcan_frameserver_audioframe_direct, ctx, &errc);
+
+ 	newseg->desc = vinfo;
+	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
+	newseg->vid = newvid;
+	newseg->use_pbo = ctx->use_pbo;
+
 /* Transfer the new event socket, along with
  * the base-key that will be used to find shmetc.
  * There is little other than convenience that makes
@@ -347,22 +387,14 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	snprintf(keyev.data.target.message,
 		sizeof(keyev.data.target.message) / sizeof(keyev.data.target.message[1]),
 	"%s", newseg->shm.key);
-	
-	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
-	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
-	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 
-	newseg->use_pbo = ctx->use_pbo;
-	newseg->launchedtime = ctx->launchedtime;
+/*
+ * We monitor the same PID (but on frameserver_free, 
+ */
+	newseg->launchedtime = arcan_timemillis();
 	newseg->child = ctx->child;
 	newseg->child_alive = true;
-	newseg->vid = arcan_video_addfobject((arcan_vfunc_cb)
-		arcan_frameserver_emptyframe, state, cons, 0);
 
-	arcan_errc errc;
-	newseg->aid = arcan_audio_feed((arcan_afunc_cb)
-		arcan_frameserver_audioframe_direct, ctx, &errc);
-	
 /* NOTE: should we allow some segments to map events
  * with other masks, or should this be a separate command
  * with a heavy warning? i.e. allowing EVENT_INPUT gives
@@ -380,6 +412,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
 		newseg->socksig = true;
 		newseg->nopts = true;
+		keyev.data.target.ioevs[0].iv = 1;
 	}
 	else {
 		newseg->kind = ARCAN_FRAMESERVER_INTERACTIVE;

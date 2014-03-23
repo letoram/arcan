@@ -49,6 +49,7 @@ static void update_frame(uint32_t* cptr,
 	for (int i = 0; i < np; i++)
 		*cptr++ = val; 
 
+	printf("update: %d\n", val);
 	arcan_shmif_signal(shms, SHMIF_SIGVID);
 }
 
@@ -64,11 +65,20 @@ static void* segthread(void* arg)
 {
 	struct seginf* seg = (struct seginf*) arg;
 	uint8_t green = 0;
-
 	
-	while(1){
+	arcan_shmif_resize(&seg->shms, 320, 200);
+
+	while(seg->shms.addr->dms){
 		arcan_event ev;
+		printf("waiting for events\n");
 		while(1 == arcan_event_wait(&seg->inevq, &ev)){
+			printf("got event\n");
+			if (ev.category == EVENT_TARGET && 
+				ev.kind == TARGET_COMMAND_EXIT){
+				printf("parent requested termination\n");
+				update_frame(seg->vidp, &seg->shms, 0xffffff00);
+				return NULL;
+			}
 			update_frame(seg->vidp, &seg->shms, 0xff000000 | (green++ << 8));
 		}
 	}
@@ -79,7 +89,7 @@ static void* segthread(void* arg)
 static void mapseg(int evfd, const char* key)
 {
 	struct arcan_shmif_cont shms = arcan_shmif_acquire(
-		key, SHMIF_INPUT, false, true 
+		key, SHMIF_INPUT, true, true 
 	);
 
 	struct seginf* newseg = malloc(sizeof(struct seginf));
@@ -118,7 +128,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	uint16_t* audp;
 
 	arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
-	update_frame(vidp, &shms, 0xff0000ff);
+	update_frame(vidp, &shms, 0xffffffff);
 
 /*
  * request a new segment
@@ -132,7 +142,7 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 	while(1){
 		while (1 == arcan_event_wait(&inevq, &ev)){
 			if (ev.category == EVENT_TARGET){
-				if (ev.category == TARGET_COMMAND_FDTRANSFER){
+				if (ev.kind == TARGET_COMMAND_FDTRANSFER){
 					lastfd = frameserver_readhandle(&ev);
 					printf("got handle (for new event transfer)\n");
 				}
@@ -140,6 +150,14 @@ void arcan_frameserver_avfeed_run(const char* resource, const char* keyfile)
 			if (ev.kind == TARGET_COMMAND_NEWSEGMENT){	
 				printf("new segment ready, key: %s\n", ev.data.target.message);	
 				mapseg(lastfd, ev.data.target.message);
+			}
+			if (ev.kind == TARGET_COMMAND_EXIT){
+				printf("parent requested termination, leaving.\n");
+				break;
+			}
+			else {
+				static int red;
+				update_frame(vidp, &shms, 0xff000000 | red++);
 			}
 /*
  *	event dispatch loop, look at shmpage interop,
