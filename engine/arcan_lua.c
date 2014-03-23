@@ -4303,13 +4303,10 @@ static int targetalloc(lua_State* ctx)
  * allocate new key or give to preexisting frameserver?
  */
 	if (lua_type(ctx, 1) == LUA_TSTRING){
-		arcan_fatal("target_alloc without pre-existing frameserver incomplete.\n");
-		struct frameserver_envp args = {
-			.use_builtin = false,
-			.custom_feed = true, /* need to set this to a listening socket */
-		};
-		newref = arcan_frameserver_alloc(); 
-		arcan_frameserver_spawn_server(newref, args);
+		key = luaL_checkstring(ctx, 1);
+		newref = arcan_frameserver_listen_external(key);
+		if (!newref)
+			return 0;
 	}
 	else {
 		arcan_vobj_id srcfsrv = luaL_checkvid(ctx, 1, NULL);

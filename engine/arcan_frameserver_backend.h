@@ -239,6 +239,12 @@ struct frameserver_envp {
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, 
 	struct frameserver_envp);
 
+/*
+ * setup a frameserver that is idle until an external party connects
+ * through a listening socket, then behaves as an avfeed
+ */
+arcan_frameserver* arcan_frameserver_listen_external(const char* key);
+
 /* allocate shared and heap memory, reset all members to an
  * empty state and then enforce defaults, returns NULL on failure */
 arcan_frameserver* arcan_frameserver_alloc();

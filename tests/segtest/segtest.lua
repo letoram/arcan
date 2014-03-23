@@ -36,6 +36,8 @@ function segtest_input(iotbl)
 		elseif(symtable[iotbl.keysym] == "F9") then
 			print("dropping alt seg");
 			delete_image(newvid);
+		elseif (symtable[iotbl.keysym] == "F8") then
+			target_alloc("mykey", seg2);
 		else
 			print("input to:", newvid);
 			target_input(newvid, iotbl);

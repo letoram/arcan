@@ -345,11 +345,12 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	unsigned mode, vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
-	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+	struct arcan_shmif_page* shmpage;
 	
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 	switch (cmd){
 		case ffunc_poll:
+  		shmpage = tgt->shm.ptr;
 			if (shmpage->resized) 
 				arcan_frameserver_tick_control(tgt);
 			return shmpage->vready;	
