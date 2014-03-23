@@ -119,10 +119,14 @@ void arcan_glTexImage2D(GLenum target, GLint level, GLsizei width,
 		delem = alloc_id( did, 
 			djb_hash((const char*) data, width * height * 4),
 			width * height * 4 );
+/* 1. copy data into delem */
+		retexture_state.teximage2d(target, level, width,
+			height, border, format, type, data);	
+	} 
+	else {
+/* 1. update local copy but do not forward */
+		return;
 	}
-
-	retexture_state.teximage2d(target, level, width,
-		height, border, format, type, data);	
 }
 
 void arcan_glDeleteTextures(GLsizei n, const GLuint* textures)

@@ -438,6 +438,56 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	return newseg;	
 }
 
+static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
+	vfunc_state state)
+{
+	arcan_frameserver* tgt = state.ptr;
+	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+
+	if (state.tag != ARCAN_TAG_FRAMESERV || !shmpage){
+		arcan_warning("platform/posix/frameserver.c:socketpoll, called with"
+			" invalid source tag, investigate.\n");
+		return FFUNC_RV_NOFRAME;
+	}
+	switch (cmd){
+		case ffunc_poll:
+/* missing; poll socket, read message with possible code, if valid,
+ * setup missing properties e.g. child etc.
+ */
+		break;
+
+		case ffunc_destroy:
+			arcan_frameserver_free(tgt, false);
+
+		default:
+		break;
+	}
+
+	return FFUNC_RV_NOFRAME;
+}
+
+arcan_frameserver* arcan_frameserver_listen_external(const char* key)
+{
+	arcan_frameserver* res = arcan_frameserver_alloc();
+	if (!shmalloc(res, true, key)){
+		arcan_warning("arcan_frameserver_listen_external(), shared memory"
+			" setup failed\n");
+		return NULL;
+	}
+
+	res->launchedtime = arcan_timemillis();
+	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
+	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
+
+	res->source = strdup(":external");
+	res->vid = arcan_video_addfobject((arcan_vfunc_cb)
+		socketpoll, state, cons, 0);
+	res->aid = ARCAN_EID;	
+
+	return res;	
+}
+
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx, 
 	struct frameserver_envp setup)
 {
