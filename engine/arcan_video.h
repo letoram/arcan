@@ -310,6 +310,14 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, 
 	bool scale, enum rendertarget_mode format);		
 
+/* 
+ * immediately process the rendertarget color output matching vid
+ * as a means of updating storage state outside the main rendering loop,
+ * can be used for scenarios where a temporary renderingtarget is created
+ * between frames, run once, then destroyed
+ */
+arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
+
 /* Attach src to rendertarget did,
  * if detach is set to true, the rendertarget will be the 
  * new owner of the object */

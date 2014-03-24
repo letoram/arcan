@@ -69,7 +69,7 @@
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
 
-#ifdef ARCAN_LED
+#ifndef ARCAN_LUA_NOLED
 #include "arcan_led.h"
 #endif
 
@@ -4370,6 +4370,17 @@ cleanup:
 	return rv;
 }
 
+static int rendertargetforce(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_forceupdate");
+	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
+	if (ARCAN_OK != arcan_video_forceupdate(vid))
+		arcan_fatal("rendertarget_forceupdate(), specified vid "
+			"was not connected to a rendertarget");
+
+	return 0;
+}
+
 static int renderattach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_attach");
@@ -4500,7 +4511,7 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
 
 			lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
-			lua_pushlstring(src->ctx, (const char*) scrapbuf, scrapbuf_sz);
+			lua_pushlstring(src->ctx, (const char*) scrapbuf, width * height * 4);
 		 	lua_pushnumber(src->ctx, width);
 			lua_pushnumber(src->ctx, height);
 			lua_pushnumber(src->ctx, bpp);	
@@ -5982,6 +5993,7 @@ static const luaL_Reg tgtfuns[] = {
 {"define_rendertarget",        renderset                },
 {"define_recordtarget",        recordset                },
 {"define_calctarget",          procset                  },
+{"rendertarget_forceupdate",   rendertargetforce        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_attach",        renderattach             },
 {"play_movie",                 playmovie                },
@@ -6273,7 +6285,7 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 #ifdef ARCAN_LED
 {"LEDCONTROLLERS",     arcan_led_controllers()},
 #else
-{"LEDCONTROLLERS", 0},
+{"LEDCONTROLLERS",     0},
 #endif
 {"NOW",           0},
 {"NOPERSIST",     0},
