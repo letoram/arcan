@@ -4182,57 +4182,73 @@ void arcan_video_default_texmode(enum arcan_vtex_mode modes,
 
 arcan_errc arcan_video_screencoords(arcan_vobj_id id, vector* res)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
 
-	if (vobj){
-		rv = ARCAN_OK;
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 /* get object properties taking inheritance etc. into account,
  * this will automatically re-use any possible cache */
-		surface_properties dprops = empty_surface();
-		arcan_resolve_vidprop(vobj, 0.0, &dprops);
-		dprops.scale.x *= vobj->origw * 0.5;
-		dprops.scale.y *= vobj->origh * 0.5;
+	surface_properties dprops = empty_surface();
+	arcan_resolve_vidprop(vobj, 0.0, &dprops);
+	dprops.scale.x *= vobj->origw * 0.5;
+	dprops.scale.y *= vobj->origh * 0.5;
 
-/* transform and rotate the bounding coordinates into screen space */
-		float _Alignas(16) omatr[16];
-	 	float _Alignas(16) imatr[16];
-	 	float _Alignas(16) dmatr[16];
-
-		int view[4] = {0, 0, arcan_video_display.width, 
-			arcan_video_display.height};
-
-		if (vobj->valid_cache)
-			memcpy(dmatr, vobj->prop_matr, sizeof(float) * 16);
-		else {
-			identity_matrix(imatr);
-			matr_quatf(dprops.rotation.quaternion, omatr);
-			translate_matrix(imatr, dprops.position.x + dprops.scale.x, 
-				dprops.position.y + dprops.scale.y, 0.0);
-			multiply_matrix(dmatr, imatr, omatr);
-		}
-
-/* transform the four vertices of the quad to window */
-		project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr,
-		current_context->stdoutp.projection, view, &res[0].x,&res[0].y,&res[0].z);
-
-		project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, 
-		current_context->stdoutp.projection, view, &res[1].x,&res[1].y,&res[1].z);
-
-		project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, 
-		current_context->stdoutp.projection, view, &res[2].x,&res[2].y,&res[2].z);
-
-		project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, 
-		current_context->stdoutp.projection, view, &res[3].x,&res[3].y,&res[3].z);
-
-		res[0].y = arcan_video_display.height - res[0].y;
-		res[1].y = arcan_video_display.height - res[1].y;
-		res[2].y = arcan_video_display.height - res[2].y;
-		res[3].y = arcan_video_display.height - res[3].y;	
+/*
+ * Offer a cheaper way out for the (common) situation where we 
+ * just have a screen-aligned quad and not a skeleton of 3d meshes.
+ */
+	if (!vobj->rotate_state && vobj->feed.state.tag != ARCAN_TAG_3DOBJ){
+		float x1 = dprops.position.x - dprops.scale.x;
+	 	float x2 = dprops.position.x + dprops.scale.x;
+		float y1 = dprops.position.y - dprops.scale.y;
+		float y2 = dprops.position.y + dprops.scale.y;
+		res[0].z = res[1].z = res[2].z = res[3].z = 0.0;
+		res[0].x = x1; res[0].y = y1;
+		res[1].x = x2; res[1].y = y1;
+		res[2].x = x2; res[2].y = y2;
+		res[3].x = x1; res[3].y = y2;
+		return ARCAN_OK;
 	}
 
-	return rv;
+
+/* transform and rotate the bounding coordinates into screen space */
+	float _Alignas(16) omatr[16];
+ 	float _Alignas(16) imatr[16];
+ 	float _Alignas(16) dmatr[16];
+
+	int view[4] = {0, 0, arcan_video_display.width, 
+		arcan_video_display.height};
+
+	if (vobj->valid_cache)
+		memcpy(dmatr, vobj->prop_matr, sizeof(float) * 16);
+	else {
+		identity_matrix(imatr);
+		matr_quatf(dprops.rotation.quaternion, omatr);
+		translate_matrix(imatr, dprops.position.x + dprops.scale.x, 
+			dprops.position.y + dprops.scale.y, 0.0);
+		multiply_matrix(dmatr, imatr, omatr);
+	}
+
+/* transform the four vertices of the quad to window */
+	project_matrix(-dprops.scale.x, -dprops.scale.y, 0.0, dmatr,
+	current_context->stdoutp.projection, view, &res[0].x,&res[0].y,&res[0].z);
+
+	project_matrix( dprops.scale.x, -dprops.scale.y, 0.0, dmatr, 
+	current_context->stdoutp.projection, view, &res[1].x,&res[1].y,&res[1].z);
+
+	project_matrix( dprops.scale.x,  dprops.scale.y, 0.0, dmatr, 
+	current_context->stdoutp.projection, view, &res[2].x,&res[2].y,&res[2].z);
+
+	project_matrix(-dprops.scale.x,  dprops.scale.y, 0.0, dmatr, 
+	current_context->stdoutp.projection, view, &res[3].x,&res[3].y,&res[3].z);
+
+	res[0].y = arcan_video_display.height - res[0].y;
+	res[1].y = arcan_video_display.height - res[1].y;
+	res[2].y = arcan_video_display.height - res[2].y;
+	res[3].y = arcan_video_display.height - res[3].y;	
+
+	return ARCAN_OK;
 }
 
 static inline int isign(int p1_x, int p1_y, 
