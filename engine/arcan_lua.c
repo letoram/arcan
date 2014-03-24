@@ -69,7 +69,7 @@
 #define arcan_luactx lua_State
 #include "arcan_lua.h"
 
-#ifndef ARCAN_LUA_NOLED
+#ifndef ARCAN_LUA_LED
 #include "arcan_led.h"
 #endif
 
