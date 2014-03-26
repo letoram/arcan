@@ -12,14 +12,17 @@ set (PLATFORM_SOURCES
 	${PLATFORM_PATH}/shm.c
 	${PLATFORM_PATH}/../darwin/time.c
 	${PLATFORM_PATH}/warning.c
-	${PLATFORM_PATH}/../sdl/event.c
-	${PLATFORM_PATH}/../sdl/video.c
 	${PLATFORM_PATH}/frameserver.c
-	${PLATFORM_PATH}/../darwin/SDLmain.m
 	${CMAKE_SOURCE_DIR}/external/hidapi/hid_darwin.c 
 	${CMAKE_SOURCE_DIR}/external/hidapi/hidapi.h 
 )
-	
+
+set (SDL_PLATFORM_SOURCES
+	${PLATFORM_PATH}/../sdl/event.c
+	${PLATFORM_PATH}/../sdl/video.c
+	${PLATFORM_PATH}/../darwin/SDLmain.m
+)
+
 set (FSRV_PLATFORM_SOURCES
 	${CMAKE_SOURCE_DIR}/frameserver/frameserver.c
 	${PLATFORM_PATH}/warning.c
@@ -71,7 +74,22 @@ LIST(APPEND FSRV_LIBRARIES ${IOKIT} ${COREFOUNDATION})
 LIST(APPEND SOURCES
 	${CMAKE_SOURCE_DIR}/engine/arcan_target_launcher.c)
 
-add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES})
+add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} ${SDL_PLATFORM_SOURCES})
+
+if (ENABLE_LWA)
+	set(LWA_SOURCES
+		${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m
+		${PLATFORM_PATH}/../arcan/video.c)
+
+	add_executable( arcan_headless 
+		${SOURCES} 
+		${PLATFORM_SOURCES} 
+		${LWA_SOURCES}
+	)
+
+	set_property(TARGET arcan_headless 
+		APPEND PROPERTY COMPILE_DEFINITIONS SDL_PLATFORM) 	
+endif()
 
 # Packaging and installation. build a DMG which installs to a default
 # Application folder, with resources, themes and frameworks included.

@@ -12,12 +12,18 @@
  */ 
 
 /* 1. we re-use the EGL platform with a little hack */
-#define platform_video_ static inline egl_platform_video_
+
+#ifdef SDL_PLATFORM
+#define SDL_MINI_SUFFIX static inline ext
+#include "../sdl/video_mini.c"
+#else
 #include "../egl/video.c" 
-#undef platform_video_
+#endif
 
 /* 2. interpose and map to shm */
 #include <arcan_shmif.h>
+#include "arcan_math.h"
+#include "arcan_general.h"
 
 static struct arcan_shmif_cont shms;
 static struct arcan_evctx inevq, outevq;
@@ -28,7 +34,7 @@ static uint32_t* audp;
 bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames)
 {
-	static first_init = true;
+	static bool first_init = true;
 
 	if (first_init){
 		shms = arcan_shmif_acquire(getenv("ARCAN_SHMKEY"), SHMIF_INPUT, true);	
@@ -43,7 +49,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		}
 
 		arcan_shmif_calcofs(shms.addr, (uint8_t**) &vidp, (uint8_t**) &audp);
-		arcan_shmif_setevqs(shms.addr, &inevq, &outevq, false); 
+		arcan_shmif_setevqs(shms.addr, shms.esem, &inevq, &outevq, false); 
 
 		first_init = false;
 	} 
@@ -57,7 +63,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /* 
  * currently, we actually never de-init this
  */
-	return egl_platform_video_init(width, height, bpp, fs, frames);
+	return ext_video_init(width, height, bpp, fs, frames);
 }
 
 /*
@@ -65,17 +71,24 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
  */ 
 void platform_video_shutdown()
 {
-	egl_platform_video_shutdown();
+	ext_video_shutdown();
 }
 
 void platform_video_prepare_external()
 {
-	egl_platform_video_prepare_external();
+	ext_video_prepare_external();
 }
 
 void platform_video_restore_external()
 {
-	egl_platform_video_restore_external();
+	ext_video_restore_external();
+}
+
+void platform_video_timing(float* os, float* std, float* ov)
+{
+	*os = 16.667;
+	*std = 0.0;
+	*ov = 0.0;
 }
 
 void platform_video_bufferswap()
@@ -85,10 +98,62 @@ void platform_video_bufferswap()
  * if we have access to inter-process texture sharing, we can just fling 
  * the FD, for now, readback into the shmpage */
 
-	glReadPixels(0, 0, shms.width, shms.height, 
+	glReadPixels(0, 0, shms.addr->w, shms.addr->h, 
 		GL_RGBA, GL_UNSIGNED_BYTE, vidp);
 
-	arcan_shmif_signal(&shms.shmcont, SHMIF_SIGVID);	
+	arcan_shmif_signal(&shms, SHMIF_SIGVID);	
+}
+
+/*
+ * The regular event layer is just stubbed, when the filtering etc.
+ * is broken out of the platform layer, we can re-use that to have
+ * local filtering untop of the one the engine is doing.
+ */
+
+arcan_errc arcan_event_analogstate(int devid, int axisid,
+	int* lower_bound, int* upper_bound, int* deadzone,
+	int* kernel_size, enum ARCAN_ANALOGFILTER_KIND* mode)
+{
+	return ARCAN_ERRC_UNACCEPTED_STATE;
+}
+
+void arcan_event_analogall(bool enable, bool mouse)
+{
+}
+
+void arcan_event_analogfilter(int devid, 
+	int axisid, int lower_bound, int upper_bound, int deadzone,
+	int buffer_sz, enum ARCAN_ANALOGFILTER_KIND kind)
+{
+}
+
+const char* arcan_event_devlabel(int devid)
+{
+	return "no device";
+}
+
+void platform_event_process(arcan_evctx* ctx)
+{
+}
+
+void arcan_event_rescan_idev(arcan_evctx* ctx)
+{
+}
+
+void platform_key_repeat(arcan_evctx* ctx, unsigned int rate)
+{
+}
+
+void platform_event_deinit(arcan_evctx* ctx)
+{
+}
+
+void platform_device_lock(int devind, bool state)
+{
+}
+
+void platform_event_init(arcan_evctx* ctx)
+{
 }
 
 /*
