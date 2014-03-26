@@ -12,10 +12,18 @@
 
 #include "glheaders.h"
 
+#ifndef SDL_MINI_SUFFIX
+#define SDL_MINI_SUFFIX platform
+#endif
+
+#define MERGE(X,Y) X ## Y
+#define EVAL(X,Y) MERGE(X,Y)
+#define PLATFORM_SYMBOL(fun) EVAL(SDL_MINI_SUFFIX, fun)
+
 /* this is just to re-use the interface for 
  * the libretro- frameserver 3D special case */
 
-bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
+bool PLATFORM_SYMBOL(_video_init) (uint16_t width, uint16_t height, uint8_t bpp,
 	bool fs, bool frames)
 {
 	SDL_Init(SDL_INIT_VIDEO);
@@ -36,7 +44,24 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	return true;
 }
 
-void platform_video_minimize()
+void PLATFORM_SYMBOL(_video_minimize) ()
 {
 	SDL_WM_IconifyWindow();
 }
+
+void PLATFORM_SYMBOL(_video_prepare_external) ()
+{
+}
+
+void PLATFORM_SYMBOL(_video_restore_external) ()
+{
+}
+
+void PLATFORM_SYMBOL(_video_bufferswap) ()
+{
+}
+
+void PLATFORM_SYMBOL(_video_shutdown) ()
+{
+}
+
