@@ -28,7 +28,6 @@
 
 static struct arcan_shmif_cont shms;
 static struct arcan_evctx inevq, outevq;
-static struct arcan_event ev;
 static uint32_t* vidp;
 static uint32_t* audp;
 

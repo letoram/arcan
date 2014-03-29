@@ -1,25 +1,30 @@
 set (PLATFORM_PATH ${CMAKE_SOURCE_DIR}/platform/posix)
 
 set (PLATFORM_SOURCES
-${PLATFORM_PATH}/fmt_open.c
-${PLATFORM_PATH}/glob.c
-${PLATFORM_PATH}/map_resource.c
-${PLATFORM_PATH}/resource_io.c
-${PLATFORM_PATH}/ilaunch.c
-${PLATFORM_PATH}/strip_traverse.c
-${PLATFORM_PATH}/paths.c
-${PLATFORM_PATH}/sem.c
-${PLATFORM_PATH}/shm.c
-${PLATFORM_PATH}/time.c
-${PLATFORM_PATH}/warning.c
-${PLATFORM_PATH}/frameserver.c
+	${PLATFORM_PATH}/fmt_open.c
+	${PLATFORM_PATH}/glob.c
+	${PLATFORM_PATH}/map_resource.c
+	${PLATFORM_PATH}/resource_io.c
+	${PLATFORM_PATH}/ilaunch.c
+	${PLATFORM_PATH}/strip_traverse.c
+	${PLATFORM_PATH}/paths.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/time.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/frameserver.c
 )
 
 set (FSRV_PLATFORM_SOURCES
-${PLATFORM_PATH}/warning.c
-${PLATFORM_PATH}/time.c
-${PLATFORM_PATH}/sem.c
-${PLATFORM_PATH}/shm.c
+	${PLATFORM_PATH}/warning.c
+	${PLATFORM_PATH}/time.c
+	${PLATFORM_PATH}/sem.c
+	${PLATFORM_PATH}/shm.c
+)
+
+set (LWA_PLATFORM_SOURCES
+	${PLATFORM_SOURCES}
+	${PLATFORM_PATH}/../arcan/video.c
 )
 
 if (VIDEO_PLATFORM STREQUAL "egl")
@@ -68,6 +73,8 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 
 	list(APPEND MAIN_LIBRARIES ${GL_LIBRARIES})
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../egl/video.c)
+	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
+		AAPPEND PROPERTY COMPILE_DEFINITIONS EGL_PLATFORM)
 
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
@@ -82,6 +89,11 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 elseif(VIDEO_PLATFORM STREQUAL "sdl")
 	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\")
 	list(APPEND PLATFORM_SOURCES ${PLATFORM_PATH}/../sdl/video.c)
+	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
+		APPEND PROPERTY COMPILE_DEFINITIONS 
+		SDL_PLATFORM
+		GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
+	)
 
 	if (${ENABLE_LIBRETRO})
 	if (${ENABLE_LIBRETRO3D})
@@ -136,7 +148,6 @@ LIST(APPEND SOURCES
 	${CMAKE_EXTERNAL_SRCDIR}/hidapi/hidapi.h
  	engine/arcan_target_launcher.c 
 )
-LIST(APPEND SOURCES ${PLATFORM_SOURCES})
 
 LIST(APPEND MAIN_LIBRARIES udev) 
 
@@ -154,20 +165,22 @@ SET(HIJACK_SOURCES
 )
 
 #
-# for LWA support currently, we need EGL (
-# for NVidia folks, this is only available on 334.16+ drivers)
-# consider the feature experimental currently
+# For LWA support, we mimic the video platform used by main arcan
+# (to get GL up and running) and substitute the shmif for input/audio
+# Audio is managed by building / linking a special AL-soft with a 
+# backend that uses the shmif.
 #
 if (ENABLE_LWA)
-	message("LWA support enabled, building arcan_lwa with EGL/SoftAL")
-	set (LWA_PLATFORM_SOURCES
-		${PLATFORM_PATH}/../arcan/video.c
+	message("LWA support enabled, video backend (${VIDEO_PLATFORM} )")
+
+	add_executable(arcan_lwa 
+		${SOURCES}
+		${LWA_PLATFORM_SOURCES}
 	)
-	add_executable(arcan_lwa ${LWA_PLATFORM_SOURCES})
-	set_property(TARGET arcan_lwa
-		APPEND PROPERTY COMPILE_DEFINITIONS 
-			DGL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\"
-	)
+
+#	set_property(TARGET arcan_lwa
+#		APPEND PROPERTY COMPILE_DEFINITIONS 
+#	)
 endif()
 
 add_library(arcan_hijack SHARED ${HIJACK_SOURCES}) 
@@ -185,7 +198,7 @@ set(BIN_DST ${CMAKE_INSTALL_PREFIX}/bin)
 set(THEME_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/themes)
 set(RESOURCES_DST ${CMAKE_INSTALL_PREFIX}/share/arcan/resources)
 
-add_executable( arcan ${SOURCES} )
+add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} )
 
 install(TARGETS arcan_hijack DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
