@@ -48,10 +48,7 @@
  * The events as such can be found in the arcan_event.h header
  *
  * It is assumed that all newly spawned frameservers are allowed
- * ONE video- buffer and ONE audio- buffer to work with. What is
- * currently lacking is the option to request additional ones 
- * (which would also need sematics for handling the corresponding
- * rejection).
+ * ONE video- buffer and ONE audio- buffer to work with. 
  *
  * Other forms of data (files for transferring to a remote source,
  * data sources for state serialization / deserialization) etc.
@@ -146,6 +143,15 @@ struct arcan_shmif_cont {
 
 struct arcan_shmif_page {
 /* 
+ * These will be set to the ARCAN_VERSION_MAJOR and ARCAN_VERSION_MAJOR
+ * defines, a mismatch will cause the integrity_check to fail and 
+ * both sides may decide to terminate. Thus, they also act as a header
+ * guard. 
+ */
+	int8_t major;
+	int8_t minor;
+
+/* 
  * These queues carry the event blocks (~100b datastructures)
  * back and forth between parent and child. It is treated as a
  * one-producer, one-consumer ring-buffer.
@@ -163,14 +169,6 @@ struct arcan_shmif_page {
 /* when released, it is assumed that the parent or child or both
  * has failed and everything should be dropped and terminated */
 	volatile uintptr_t dms;
-
-/* 
- * These will be set to the ARCAN_VERSION_MAJOR and ARCAN_VERSION_MAJOR
- * defines, a mismatch will cause the integrity_check to fail and 
- * both sides may decide to terminate.  
- */
-	int8_t major;
-	int8_t minor;
 
 /* used as a hint to how disruptions (e.g. broken datastreams,
  * end of content in terms of video playback etc.) should be handled,
@@ -206,15 +204,18 @@ struct arcan_shmif_page {
  * an agreed upon handle for sharing textures across processes, which
  * would allow for scenarios like (frameserver allocates GL context,
  * creates a texture and attaches as FBO color output, after rendering,
- * switches the buffer, sets the value here and flags the vready toggle).
+ * switches the buffer, sets the value here and flags the vready toggle)
+ * which would remove the last direct buffer copy needed for video.
  */
 	uint64_t glhandle;
 
-/* some data-sources (e.g. video-playback) may take advantage
+/* 
+ * some data-sources (e.g. video-playback) may take advantage
  * of buffering in the parent process and keep presentation/timing/queue
  * management there. In those cases, a relative ms timestamp
  * is present in this field and the main process gets the happy job
- * of trying to compensate for synchronization */ 
+ * of trying to compensate for synchronization.
+ */ 
 	int64_t vpts;
 
 /* 
@@ -222,15 +223,15 @@ struct arcan_shmif_page {
  * whichever process is responsible for managing "the other end"
  * of this interface. The native PID is therefore set here,
  * and for the local monitoring thread (that frequently checks
- * to see if the parent is still alive as a last resort 
- * against deadlocks).
+ * to see if the parent is still alive as a monitoring target 
+ * as input to how to behave if the parent has died.
  */
 	process_handle parent;
 
 /* while video transfers are done progressively, one frame at a time,
  * the audio buffering is a bit more lenient. This value signals
  * how much of the audio buffer is actually used, and can be 
- * manipulated by both sides. */
+ * manipulated by both sides (only one at a time, the asem decides who) */
 	uint32_t abufused;
 };
 
@@ -240,16 +241,25 @@ struct arcan_shmif_page {
  * to be used 
  */
 
-/* This function is used by a frameserver to use some kind of
+/* 
+ * This function is used by a frameserver to use some kind of
  * named shared memory reference string (typically provided by
  * as an argument on the command-line. 
  *
  * The force-unlink flag is to set if whatever symbol in whatever 
  * namespace the key resides in, should be unlinked after
- * allocation, to prevent other processes from mapping it as well.
+ * allocation, to prevent other processes from mapping it as well
+ * (this may be desirable for a monitoring / debugging tool though).
+ * 
+ * If disable_guard is true, the guard-thread that unlocks
+ * semaphores and the dmh switch, should the monitor pid die,
+ * will not be launched and it's upp to the application to take
+ * care of monitoring. It is also disabled for new frameserver
+ * segments (all those allocated after the first).
  */
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, bool force_unlink);
+	const char* shmkey, int shmif_type, char force_unlink,
+	char disable_guard);
 
 /* 
  * Using the specified shmpage state, return pointers into 
@@ -292,5 +302,47 @@ void arcan_shmif_signal(struct arcan_shmif_cont*, int mask);
  * proper debug-/tracing-/user- measures can be taken.  
  */
 bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
+
+/*
+ * Additional buffers can be allocated, and non-authoritative,
+ * (i.e. processes that are outside the direct control of the parent)
+ * can optionally be allowed to connect through a similar mechanism;
+ * For a new connection to a pre-existing frameserver,
+ * the arcan_frameserver_spawn_subsegment (lua: target_alloc) function
+ * which pushes an event on the queue notifying which key to access
+ * the new connection under. The management / setup is exactly like
+ * the main one, including separate eventqueues. 
+ *
+ * For a new external connection, look at the defines below. It's
+ * implemented through an event socket with a pre-set prefix
+ * (i.e. /tmp/arcan_shm_ or for linux, \0arcan_shm_ a (user-defined
+ * or random) key, an optional code and a predefined UMASK. 
+ * It is up to the script / engine implementation to communicate 
+ * this to the external process. The main difference between the 
+ * authoritative way and the non-authoritiative way is that the latter
+ * needs to do a domain socket connection and send an activation message.
+ * Until then, the shmif segment is viewed as pending by the main engine.
+ *
+ * The use of a code is to prevent partially compromised processes to 
+ * race- the shared namespace (enumerable or not) and, more importantly,
+ * for the main engine to have a chance of detecting if this is the case or not
+ *
+ * Setting the ARCAN_SHM_PREFIX to an empty string this approach
+ * entirely. For the non-authoritative additional buffer cases, the 
+ * code is not used, but rather the UID/GID is checked against the monitoring
+ * pid in the preexisting frameserver.
+ */
+#ifdef __LINUX
+#ifndef ARCAN_SHM_PREFIX 
+#define ARCAN_SHM_PREFIX "\0arcan_shm_"
+#endif
+
+/* if the first character does not begin with /, HOME env will be used. */
+#else
+#ifndef ARCAN_SHM_PREFIX
+#define ARCAN_SHM_PREFIX ".arcan_shm_"
+#endif
+#endif
+
 
 #endif

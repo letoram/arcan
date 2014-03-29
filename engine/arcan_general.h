@@ -172,10 +172,20 @@ const char* internal_launch_support();
 #define ARCAN_TIMER_TICK 25
 #endif
 
+/*
+ * The engine interpolates animations between timesteps (timer_tick clock), 
+ * but only if n ms have progressed since the last rendered frame,
+ * where n is defined as (INTERP_MINSTEP * ARCAN_TIMER_TICK)
+ */
 #ifndef INTERP_MINSTEP
 #define INTERP_MINSTEP 0.15
 #endif
 
+/*
+ * Regularly test by redefining this to something outside 1 <= n <= 64k and 
+ * not -1, to ensure that no part of the engine or any user scripts rely
+ * on hard-coded constants rather than their corresponding symbols.
+ */
 #define ARCAN_EID 0
 
 #define CAP(X,L,H) ( (((X) < (L) ? (L) : (X)) > (H) ? (H) : (X)) )

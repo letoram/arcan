@@ -17,6 +17,7 @@
 #define SDL_MINI_SUFFIX static inline ext
 #include "../sdl/video_mini.c"
 #else
+#define EGL_SUFFIX static inline ext
 #include "../egl/video.c" 
 #endif
 
@@ -37,7 +38,9 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	static bool first_init = true;
 
 	if (first_init){
-		shms = arcan_shmif_acquire(getenv("ARCAN_SHMKEY"), SHMIF_INPUT, true);	
+		shms = arcan_shmif_acquire(
+			getenv("ARCAN_SHMKEY"), SHMIF_INPUT, true, false);	
+
 		if (shms.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
 			return false;

@@ -579,7 +579,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 {
 	bool statusfl = false;
 	struct arg_arr* args = arg_unpack(resource);
-	decctx.shmcont = arcan_shmif_acquire(keyfile,SHMIF_INPUT,true);
+	decctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_INPUT, true, false);
 
 	arcan_shmif_setevqs(decctx.shmcont.addr, decctx.shmcont.esem, 
 		&(decctx.inevq), &(decctx.outevq), false);

@@ -291,7 +291,9 @@ SDL_GrabMode ARCAN_SDL_WM_GrabInput(SDL_GrabMode mode)
 
 void ARCAN_target_init(){
 	global.shmkey = getenv("ARCAN_SHMKEY");
-	global.shared = arcan_shmif_acquire(global.shmkey, SHMIF_INPUT, true);
+	global.shared = arcan_shmif_acquire(global.shmkey, 
+		SHMIF_INPUT, true, false);
+
 	if (!global.shared.addr){
 		fprintf(stderr, "arcan hijack: couldn't allocate "
 			"shared memory, terminating.\n");

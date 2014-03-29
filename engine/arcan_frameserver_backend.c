@@ -113,7 +113,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		};
 
 		arcan_frameserver_pushevent(src, &exev);
-	
 		arcan_frameserver_killchild(src);
  
 		src->child = BROKEN_PROCESS_HANDLE;
@@ -244,7 +243,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
  * decent mechanism active for waking a child that's simultaneously
  * polling and need to respond quickly to enqueued events,
  */
-	if (dst && ev)
+	if (dst && ev){
 		rv = dst->child_alive ?
 			(arcan_event_enqueue(&dst->outqueue, ev), ARCAN_OK) :
 			ARCAN_ERRC_UNACCEPTED_STATE;
@@ -254,9 +253,10 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 #define MSG_DONTWAIT 0
 #endif
 
-	if (dst->socksig){
-		int sn = 0;
-		send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
+		if (dst->socksig){
+			int sn = 0;
+			send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
+		}
 	}
 #endif
 
@@ -286,10 +286,15 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 /* flip-floping PBOs, simply using one risks the chance of turning a PBO 
  * operation synchronous, eliminating much of the point in using them
- * in the first place */
+ * in the first place. Note that with PBOs running, we currently have
+ * one frame delay in that the buffer won't be activate until the next 
+ * frame is about to be queued. This works fine on a streaming source
+ * but not in other places unfortunately */
 	if (src->desc.pbo_transfer){
+#ifdef VIDEO_PBO_FLIPFLOP
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 
 			src->desc.upload_pbo[src->desc.pbo_index]);
+
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
 			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
 
@@ -304,6 +309,17 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#else
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER,
+			src->desc.upload_pbo[0]);
+		void* ptr = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		if (ptr)
+			memcpy(ptr, buf, sw * sh * bpp);
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, 
+			GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, 0);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+#endif
 	}
 	else
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh,
@@ -329,11 +345,12 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	unsigned mode, vfunc_state state)
 {
 	arcan_frameserver* tgt = state.ptr;
-	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
+	struct arcan_shmif_page* shmpage;
 	
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 	switch (cmd){
 		case ffunc_poll:
+  		shmpage = tgt->shm.ptr;
 			if (shmpage->resized) 
 				arcan_frameserver_tick_control(tgt);
 			return shmpage->vready;	
@@ -368,8 +385,9 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 	switch (cmd){
 	case ffunc_rendertarget_readback: break;
 	case ffunc_poll:
+
 		if (shmpage->resized)
-			arcan_frameserver_tick_control( tgt);
+			arcan_frameserver_tick_control(tgt);
 
 		return shmpage->vready;
 	break;
@@ -1094,6 +1112,16 @@ arcan_frameserver* arcan_frameserver_alloc()
 	memset(res, 0, sizeof(arcan_frameserver));
 	res->use_pbo = arcan_video_display.pbo_support;
 	res->watch_const = 0xdead;
+
+	pthread_mutex_init(&res->lock_audb, NULL);
+
+	res->child_alive = true;
+
+/* shm- related settings are deferred as this is called previous to mapping
+ * (spawn_subsegment / spawn_server) so setting up the eventqueues with
+ * killswitches have to be done elsewhere
+ */ 
+
 	return res;
 }
 
@@ -1102,9 +1130,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 {
 	arcan_errc errc;
 	
-	ctx->vfq.alive = false;
-	ctx->afq.alive = false;
-
 /* "movie" mode involves parallel queues of raw, decoded, 
  * frames and heuristics for dropping, delaying or showing 
  * frames based on DTS/PTS values */
@@ -1194,19 +1219,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		ctx->ofs_audb = 0;
 		ctx->audb     = malloc( ctx->sz_audb );
 	}
-
-	pthread_mutex_init(&ctx->lock_audb, NULL);
-	arcan_frameserver_meta vinfo = {0};
-
-	ctx->child_alive = true;
-	ctx->desc        = vinfo;
-
-/* these are just placeholders to be able to return a real vid without
- * stalling waiting for the other process to finish, so the first event
- * tend to be a resize- */ 
-	ctx->desc.width  = 32;
-	ctx->desc.height = 32;
-	ctx->desc.bpp    = GL_PIXEL_BPP;
 
 /* two separate queues for passing events back and forth between main program
  * and frameserver, set the buffer pointers to the relevant offsets in 

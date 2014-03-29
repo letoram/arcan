@@ -711,7 +711,7 @@ void arcan_frameserver_encode_run(const char* resource,
 {
 /* setup shmpage etc. resolution etc. is already in 
  * place thanks to the parent */
-	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true);
+	recctx.shmcont = arcan_shmif_acquire(keyfile, SHMIF_OUTPUT, true, false);
 	arcan_shmif_setevqs(recctx.shmcont.addr, recctx.shmcont.esem, 
 		&(recctx.inevq), &(recctx.outevq), false);
 

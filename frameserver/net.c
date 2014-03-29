@@ -1496,7 +1496,7 @@ void arcan_frameserver_net_run(const char* resource, const char* shmkey)
 /* using the shared memory context as a graphing / logging window,
  * for event passing, the sound as a possible alert, 
  * but also for the guard thread*/
-	netcontext.shmcont  = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true);
+	netcontext.shmcont  = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
 
 	if (!arcan_shmif_resize(&netcontext.shmcont, gwidth, gheight))
 		return;

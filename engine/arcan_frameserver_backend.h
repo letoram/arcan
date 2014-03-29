@@ -157,16 +157,16 @@ typedef struct arcan_frameserver {
 	sem_handle vsync, async, esync; 
 	file_handle sockout_fd;
 	
-	arcan_aobj_id aid;
 /* for monitoring hooks, NULL term. */
 	arcan_aobj_id* alocks;
+	arcan_aobj_id aid;
 	arcan_vobj_id vid;
 
 	struct {
 		unsigned n_aids;
 		size_t max_bufsz;
 		struct frameserver_audsrc* inaud;
-	}  amixer;
+	} amixer;
 
 /* used for playing, pausing etc. */
 	enum arcan_playstate playstate;
@@ -184,8 +184,10 @@ typedef struct arcan_frameserver {
 
 	process_handle child;
 	long long childp;
-
 	bool child_alive;
+
+/* some properties are disabled / ignored for subsegments */
+	bool subsegment;
 
 /* not all scenarios dictate a use of PBOs, as the flip-flop approach use
  * introduces a possible 1-frame latency from upload to display, which requires
@@ -208,7 +210,6 @@ typedef struct arcan_frameserver {
 
 /* contains both structures for managing movie- playback,
  * both video and audio support functions */
-
 struct frameserver_envp {
 	bool use_builtin;
 	bool custom_feed;
@@ -238,8 +239,15 @@ struct frameserver_envp {
 arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* dst, 
 	struct frameserver_envp);
 
-/* allocate heap memory, reset all members to an
- * empty state and then enforce defaults */
+/*
+ * setup a frameserver that is idle until an external party connects
+ * through a listening socket, then behaves as an avfeed- style
+ * frameserver. 
+ */
+arcan_frameserver* arcan_frameserver_listen_external(const char* key);
+
+/* allocate shared and heap memory, reset all members to an
+ * empty state and then enforce defaults, returns NULL on failure */
 arcan_frameserver* arcan_frameserver_alloc();
 
 /* enable the forked process to start decoding */
@@ -247,12 +255,22 @@ arcan_errc arcan_frameserver_playback(arcan_frameserver*);
 arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
-/* frameserver_pushfd send the file_handle into the process controlled
+/* 
+ * frameserver_pushfd send the file_handle into the process controlled
  * by the specified frameserver and emits a corresponding event into the
  * eventqueue of the frameserver. returns !ARCAN_OK if the socket isn't
  * connected, wrong type, OS can't handle transfer or the FD can't be
- * transferred (e.g. stdin) fd will always be closed in this function. */ 
+ * transferred (e.g. stdin) fd will always be closed in this function. 
+ */ 
 arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
+
+/* 
+ * allocate a new frameserver segment, bind it to the same process
+ * and communicate the necessary IPC arguments (key etc.) using 
+ * the pre-existing eventqueue of the frameserver controlled by (ctx)
+ */
+arcan_frameserver* arcan_frameserver_spawn_subsegment(
+	arcan_frameserver* ctx, bool input);
 
 /* take the argument event and add it to the event queue of the target, 
  * returns a failure if the event queue in the child is full */
