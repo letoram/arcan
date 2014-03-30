@@ -57,6 +57,14 @@
  *
  */
 
+/*
+ * The IPC connection points (which may vary slightly based on
+ * connection method, e.g. authorative or non-authorative, are
+ * the shmpage, a socket and three semaphores. 
+ * The way these can reach the process vary; by being passed as 
+ * an environment variable (ARCAN_SHMKEY, 
+ */
+
 /* 
  * Compile-time constants that define the size and layout
  * of the shared structure.
@@ -92,7 +100,7 @@ static const int ARCAN_SHMPAGE_ACHANNELS = 2;
  * input as that. It is suggested that other formats
  * and packing strategies (e.g. hardware YUV) still
  * pack in 4x8bit channels interleaved and then hint the
- * conversion in the shader used 
+ * conversion in the shader used  
  */ 
 #ifndef PP_SHMPAGE_MAXW
 #define PP_SHMPAGE_MAXW 1920
@@ -101,6 +109,11 @@ static const int ARCAN_SHMPAGE_ACHANNELS = 2;
 #ifndef PP_SHMPAGE_MAXH
 #define PP_SHMPAGE_MAXH 1080
 #endif
+
+#ifndef PP_SHMPAGE_SHMKEYLIM
+#define PP_SHMPAGE_SHMKEYLIM 78
+#endif
+
 static const int ARCAN_SHMPAGE_VCHANNELS = 4;
 static const int ARCAN_SHMPAGE_MAXW = PP_SHMPAGE_MAXW;
 static const int ARCAN_SHMPAGE_MAXH = PP_SHMPAGE_MAXH;
@@ -260,6 +273,20 @@ struct arcan_shmif_page {
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink,
 	char disable_guard);
+
+/*
+ * This is used to make a non-authoritative connection using
+ * a domain- socket as a connection point (as specified by the
+ * connpath and optional connkey). 
+ *
+ * This connection will thereafter be used to transfer a key
+ * through which to find semaphores, while the shared memory page
+ * can be either passed as a file-descriptor or key. 
+ *
+ * Upon failure, cont.addr will be set to NULL.
+ */
+struct arcan_shmif_cont arcan_shmif_connect(
+	const char* connpath, const char* connkey, char disable_guard);
 
 /* 
  * Using the specified shmpage state, return pointers into 
