@@ -485,9 +485,7 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 /* only need a few characters, so can get away with not having a more
  * elaborate buffering strategy */
-		while (-1 != read(tgt->sockout_fd, tgt->sockinbuf + tgt->sockrofs, 1)){
-			tgt->sockrofs++;
-				
+		while (-1 != read(tgt->sockout_fd, &ch, 1)){
 			if (ch == '\n'){
 				tgt->sockinbuf[tgt->sockrofs] = '\0';
 				if (strcmp(tgt->sockinbuf, tgt->clientkey) == 0)
@@ -496,7 +494,10 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 					PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
 				tgt->child_alive = false;
 			}
-			else if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
+			else
+				tgt->sockinbuf[tgt->sockrofs++] = ch;
+
+			if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
 				arcan_warning("platform/frameserver.c(), socket "
 					"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
 /* will terminate the frameserver session */

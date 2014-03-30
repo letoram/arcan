@@ -206,9 +206,8 @@ struct arcan_shmif_cont arcan_shmif_connect(const char* connpath,
 	const char* connkey, char disableguard)
 {
 	assert(connpath);
-	assert(connkey);
 
-/* 1. treat connkey as socket and connect */
+/* 1. treat connpath as socket and connect */
 	struct arcan_shmif_cont cont = {0};
 	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
 	struct sockaddr_un dst = {
@@ -273,7 +272,7 @@ struct arcan_shmif_cont arcan_shmif_connect(const char* connpath,
 		}
 	} 
 	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
-	wbuf[ofs] = '\0';
+	wbuf[ofs-1] = '\0';
 
 /* 4. use key as input to arcan_shmif_acquire,
  *    if segment successfully mapped, set env. vars etc. for convenience,
