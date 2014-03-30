@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -73,6 +74,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, bool force_unlink)
 {
 	struct arcan_shmif_cont res = {0};
+	assert(shmkey);
+
 	HANDLE shmh = (HANDLE) strtoul(shmkey, NULL, 10);
 
 	res.addr = (struct arcan_shmif_page*) MapViewOfFile(shmh, 
@@ -104,8 +107,23 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	arcan_warning("arcan_frameserver() -- shmpage configured and filled.\n");
 	return res;
 }
+
+/*
+ * No implementation on windows currently (or planned)
+ */
+struct arcan_shmif_cont arcan_shmif_connect(const char* sockkey, 
+	const char* idkey, char noguard)
+{
+	struct arcan_shmif_cont res = {0};
+
+	return res;
+}
+
 #else
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+
 struct arcan_shmif_cont arcan_shmif_acquire(
 	const char* shmkey, int shmif_type, char force_unlink, char noguard){
 	struct arcan_shmif_cont res = {0};
@@ -123,7 +141,7 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		return res;
 	}
 
-	/* map up the shared key- file */
+/* map up the shared key- file */
 	res.addr = (struct arcan_shmif_page*) mmap(NULL,
 		bufsize,
 		PROT_READ | PROT_WRITE,
@@ -182,6 +200,97 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	spawn_guardthread(gs);
 
 	return res;
+}
+
+struct arcan_shmif_cont arcan_shmif_connect(const char* connpath, 
+	const char* connkey, char disableguard)
+{
+	assert(connpath);
+	assert(connkey);
+
+/* 1. treat connkey as socket and connect */
+	struct arcan_shmif_cont cont = {0};
+	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	struct sockaddr_un dst = {
+		.sun_family = AF_UNIX
+	};
+
+	if (-1 == sock){
+		arcan_warning("arcan_shmif_connect(), "
+			"couldn't allocate socket, reason: %s\n", strerror(errno));
+		return cont;
+	}
+
+	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
+	if (snprintf(dst.sun_path, lim, "%s", connpath) >= lim){
+		arcan_warning("arcan_shmif_connect(), "
+			"specified connection path exceeds limits (%d)\n", lim);
+		close(sock);
+		return cont;
+	}
+
+/* connection or not, unlink the connection path */
+	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
+		arcan_warning("arcan_shmif_connect(%s), "
+			"couldn't connect to server.\n", connpath);
+		close(sock);
+		unlink(connpath);
+		return cont;
+	}
+	unlink(connpath);
+
+/* 2. send (optional) connection key, we send that first (keylen + linefeed) */
+	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
+	if (connkey){
+		size_t nw = snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", connkey);
+		if (nw >= PP_SHMPAGE_SHMKEYLIM){
+			arcan_warning("arcan_shmif_connect(%s), "
+				"ident string (%s) exceeds limit (%d).\n", 
+				connpath, connkey, PP_SHMPAGE_SHMKEYLIM
+			);
+			close(sock);
+			return cont;
+		}
+
+		if (write(sock, wbuf, nw) < nw){
+			arcan_warning("arcan_shmif_connect(%s), "
+				"error sending connection string, reason: %s\n", 
+				connpath, strerror(errno)
+			);
+			close(sock);
+			return cont;
+		}
+	}
+
+/* 3. wait for key response (or broken socket) */
+	size_t ofs = 0;
+	do {
+		if (-1 == read(sock, wbuf + ofs, 1)){
+			arcan_warning("arcan_shmif_connect(%s), "
+				"invalid response received during shmpage negotiation.\n", connpath);
+			close(sock);
+			return cont;
+		}
+	} 
+	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
+	wbuf[ofs] = '\0';
+
+/* 4. use key as input to arcan_shmif_acquire,
+ *    if segment successfully mapped, set env. vars etc. for convenience,
+ *    else cleanup */
+	cont = arcan_shmif_acquire(wbuf, SHMIF_INPUT, true, false);
+	if (cont.addr){
+		setenv("ARCAN_SHMKEY", wbuf, true);
+		snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%d", sock);
+		setenv("ARCAN_SOCKIN_FD", wbuf, true);
+	}
+	else{
+		close(sock);
+		arcan_warning("arcan_shmif_connect(%s), "
+			"couldn't setup shmif, giving up.\n", connpath);
+	}
+
+	return cont;	
 }
 
 #include <signal.h>

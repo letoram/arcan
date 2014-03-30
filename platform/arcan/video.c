@@ -37,8 +37,18 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	static bool first_init = true;
 
 	if (first_init){
-		shms = arcan_shmif_acquire(
-			getenv("ARCAN_SHMKEY"), SHMIF_INPUT, true, false);	
+		const char* connkey = getenv("ARCAN_CONNKEY");
+		if (!connkey){
+			const char* shmkey = getenv("ARCAN_SHMKEY");
+			if (!shmkey){
+				arcan_warning("platform/arcan/video.c:platform_video_init(): "
+					"no connection key found, giving up. (see environment ARCAN_SHMKEY)\n");
+				return false;
+			}
+			shms = arcan_shmif_acquire(shmkey, SHMIF_INPUT, true, false);
+		}
+		else
+			shms = arcan_shmif_connect(connkey, NULL, false);
 
 		if (shms.addr == NULL){
 			arcan_warning("couldn't connect to parent\n");
