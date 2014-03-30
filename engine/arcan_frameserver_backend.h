@@ -152,10 +152,18 @@ typedef struct arcan_frameserver {
 /* original resource, needed for reloading */
 	char* source;
 	
-/*  OS- specific, defined in general.h */
+/* OS- specific, defined in general.h */
 	shm_handle shm;
 	sem_handle vsync, async, esync; 
 	file_handle sockout_fd;
+
+/* used for connections negotiated via socket
+ * (sockout_fd) */
+	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
+	off_t sockrofs;
+	char* sockaddr;
+	char* clientkey;
+	bool pending;
 	
 /* for monitoring hooks, NULL term. */
 	arcan_aobj_id* alocks;
