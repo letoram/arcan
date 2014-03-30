@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <pthread.h>
+#include <poll.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -275,6 +276,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 				snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s_%i_%i", auxp,
 					ARCAN_SHM_PREFIX, getpid() % 1000, rand() % 1000);
 
+			unlink(addr.sun_path);
 			if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) == 0)
 				break;
 			else if (--retrc == 0){
@@ -284,7 +286,14 @@ static bool shmalloc(arcan_frameserver* ctx,
 				goto fail;
 			}
 		}
+
+		listen(fd, 1);
 		ctx->sockout_fd = fd;
+
+/* track output socket separately so we can unlink on exit,
+ * other options (readlink on proc) or F_GETPATH are unportable
+ * (and in the case of readlink .. /facepalm) */ 
+		ctx->source = strdup(addr.sun_path);
 	}
 
 /* max videoframesize + DTS + structure + maxaudioframesize,
@@ -445,6 +454,90 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	return newseg;	
 }
 
+/*
+ * When we are in this callback state, it means that there's
+ * a VID connected to a frameserver that is waiting for a non-authorative
+ * connection. (Pending state), to monitor for suspicious activity,
+ * maintain a counter here and/or add a timeout and propagate a 
+ * "frameserver terminated" session [not implemented].
+ *
+ * Note that we dont't track the PID of the client here,
+ * as the implementation for passing credentials over sockets is exotic
+ * (BSD vs Linux etc.) so part of the 'non-authoritative' bit is that
+ * the server won't kill-signal or check if pid is still alive in this mode.
+ *
+ * (listen) -> socketpoll (connection) -> socketverify -> (key ? wait) -> ok -> 
+ * send connection data, set emptyframe.  
+ * 
+ */
+static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
+	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
+	vfunc_state state)
+{
+	arcan_frameserver* tgt = state.ptr;
+	char ch;
+	size_t ntw;
+	
+	switch (cmd){
+	case ffunc_poll:
+		if (!tgt->clientkey)
+			goto send_key;
+
+/* only need a few characters, so can get away with not having a more
+ * elaborate buffering strategy */
+		while (-1 != read(tgt->sockout_fd, tgt->sockinbuf + tgt->sockrofs, 1)){
+			tgt->sockrofs++;
+				
+			if (ch == '\n'){
+				tgt->sockinbuf[tgt->sockrofs] = '\0';
+				if (strcmp(tgt->sockinbuf, tgt->clientkey) == 0)
+					goto send_key;
+				arcan_warning("platform/frameserver.c(), key verification failed on %"
+					PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
+				tgt->child_alive = false;
+			}
+			else if (tgt->sockrofs >= PP_SHMPAGE_SHMKEYLIM){
+				arcan_warning("platform/frameserver.c(), socket "
+					"verify failed on %"PRIxVOBJ", terminating.\n", tgt->vid);
+/* will terminate the frameserver session */
+				tgt->child_alive = false; 
+			}
+		}
+		if (errno != EAGAIN && errno != EINTR){
+			arcan_warning("platform/frameserver.c(), "
+				"read broken on %"PRIxVOBJ", reason: %s\n", tgt->vid); 
+			tgt->child_alive = false;
+		}
+		return FFUNC_RV_NOFRAME;
+
+	case ffunc_destroy:
+		if (tgt->clientkey){
+			free(tgt->clientkey);
+			tgt->clientkey = NULL;			
+		}
+	default:
+		return FFUNC_RV_NOFRAME;
+	break;	
+	}
+
+
+/* switch to resize polling default handler */
+send_key:
+	arcan_warning("platform/frameserver.c(), connection verified.\n");
+	if (tgt->clientkey){
+		free(tgt->clientkey);
+		tgt->clientkey = NULL;
+	}
+
+	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
+	write(tgt->sockout_fd, tgt->sockinbuf, ntw); 
+
+	arcan_video_alterfeed(tgt->vid,
+		arcan_frameserver_emptyframe, state);
+
+	return FFUNC_RV_NOFRAME;
+}
+
 static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
 	vfunc_state state)
@@ -457,16 +550,48 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			" invalid source tag, investigate.\n");
 		return FFUNC_RV_NOFRAME;
 	}
+
+	struct pollfd polldscr = {
+		.fd = tgt->sockout_fd,
+		.events = POLLIN	
+	};
+
+/* wait for connection, then unlink directory node,
+ * switch to verify callback.*/ 
 	switch (cmd){
 		case ffunc_poll:
-/* missing; poll socket, read message with possible code, if valid,
- * setup missing properties e.g. child etc.
- */
+			if (1 == poll(&polldscr, 1, 0)){
+				int insock = accept(polldscr.fd, NULL, NULL);
+				if (insock != -1){
+					close(polldscr.fd);
+				tgt->sockout_fd = insock;
+				fcntl(insock, O_NONBLOCK);
+				arcan_video_alterfeed(tgt->vid, socketverify, state);
+				if (tgt->sockaddr){
+					unlink(tgt->sockaddr);
+					free(tgt->sockaddr);
+					tgt->sockaddr = NULL;
+				}
+
+				return socketverify(cmd, buf, s_buf, width, height, bpp, mode, state);
+				}
+				else if (errno == EFAULT || errno == EINVAL)
+					tgt->child_alive = false;		
+			}
 		break;
 
+/* socket is closed in frameserver_destroy */
 		case ffunc_destroy:
 			arcan_frameserver_free(tgt, false);
-
+			if (tgt->sockaddr){
+				unlink(tgt->sockaddr);
+				free(tgt->sockaddr);
+				tgt->sockaddr = NULL;
+			}
+			if (tgt->clientkey){
+				free(tgt->clientkey);
+				tgt->clientkey = NULL;
+			}
 		default:
 		break;
 	}
@@ -487,7 +612,6 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 
-	res->source = strdup(":external");
 	res->vid = arcan_video_addfobject((arcan_vfunc_cb)
 		socketpoll, state, cons, 0);
 	res->aid = ARCAN_EID;	
