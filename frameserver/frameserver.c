@@ -331,6 +331,10 @@ int main(int argc, char** argv)
 	if (getenv("ARCAN_SOCKIN_FD")){
 		sockin_fd = strtol( getenv("ARCAN_SOCKIN_FD"), NULL, 10 );
 	}
+	else if (getenv("ARCAN_CONNPATH")){
+		keyfile = arcan_shmif_connect(
+			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
+	}
 	
 /*
  * set this env whenever you want to step through the 

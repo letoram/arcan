@@ -279,14 +279,13 @@ struct arcan_shmif_cont arcan_shmif_acquire(
  * a domain- socket as a connection point (as specified by the
  * connpath and optional connkey). 
  *
- * This connection will thereafter be used to transfer a key
- * through which to find semaphores, while the shared memory page
- * can be either passed as a file-descriptor or key. 
+ * The environment variable ARCAN_SOCKIN_FD will possibly be altered by
+ * calling this function.
  *
- * Upon failure, cont.addr will be set to NULL.
+ * Will return NULL or a user-managed string with a key 
+ * suitable for shnkey. 
  */
-struct arcan_shmif_cont arcan_shmif_connect(
-	const char* connpath, const char* connkey, char disable_guard);
+char* arcan_shmif_connect(const char* connpath, const char* connkey);
 
 /* 
  * Using the specified shmpage state, return pointers into 
