@@ -546,6 +546,8 @@ themeswitch:
 				unsigned cost = arcan_video_refresh(frag, true);
 				arcan_bench_register_cost(cost);
 				arcan_bench_register_frame();
+					if (framepulse)
+						framepulse = arcan_lua_callvoidfun(luactx, "frame_pulse", false);
 
 				int delta = arcan_timemillis() - lastflip;
 				lastflip += delta;
