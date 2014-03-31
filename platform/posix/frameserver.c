@@ -121,8 +121,13 @@ bool arcan_frameserver_validchild(arcan_frameserver* src){
 
 /* free (consequence of a delete call on the associated vid)
  * will disable the child_alive flag */
-	if (!src || !src->child_alive || !src->child)
+	if (!src || !src->child_alive)
 		return false;
+
+/* this means that we have a child that we have no monitoring strategy
+ * for currently (i.e. non-authorative) */ 
+	if (src->child == BROKEN_PROCESS_HANDLE)
+		return true;	
 
 /* 
  * Note that on loop conditions, the pid can change, 
@@ -273,6 +278,8 @@ static bool shmalloc(arcan_frameserver* ctx,
 				snprintf(addr.sun_path, sizeof(addr.sun_path), 
 					"%s%s%s", auxp, auxv, optkey);
 			else
+/* this is not an obfuscation or security mechanism as the namespaces may well
+ * be enumerable, it is simply to reduce the chance of beign collisions */
 				snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s_%i_%i", auxp,
 					ARCAN_SHM_PREFIX, getpid() % 1000, rand() % 1000);
 
@@ -536,6 +543,12 @@ send_key:
 	arcan_video_alterfeed(tgt->vid,
 		arcan_frameserver_emptyframe, state);
 
+	arcan_errc errc;	
+	tgt->aid = arcan_audio_feed((arcan_afunc_cb)
+		arcan_frameserver_audioframe_direct, tgt, &errc);
+	tgt->sz_audb = 1024 * 64;
+	tgt->audb = malloc(tgt->sz_audb);
+
 	return FFUNC_RV_NOFRAME;
 }
 
@@ -609,13 +622,32 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
 		return NULL;
 	}
 
+/* 
+ * defaults for an external connection is similar to that of avfeed/libretro 
+ */
+	res->kind = ARCAN_FRAMESERVER_INTERACTIVE;
+	res->socksig = false;
+	res->nopts = true;
+	res->autoplay = true;
+	res->pending = true;
 	res->launchedtime = arcan_timemillis();
+	res->child = BROKEN_PROCESS_HANDLE; 
 	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = res};
 
 	res->vid = arcan_video_addfobject((arcan_vfunc_cb)
 		socketpoll, state, cons, 0);
-	res->aid = ARCAN_EID;	
+
+/*
+ * audio setup is deferred until the connection has been acknowledged
+ * and verified, but since this call yields a valid VID, we need to have
+ * the queues in place.
+ */
+	res->queue_mask = EVENT_EXTERNAL;
+	arcan_shmif_setevqs(res->shm.ptr, res->esync, 
+		&(res->inqueue), &(res->outqueue), true);
+	res->inqueue.synch.killswitch = (void*) res;
+	res->outqueue.synch.killswitch = (void*) res;
 
 	return res;	
 }

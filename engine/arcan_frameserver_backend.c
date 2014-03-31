@@ -1156,9 +1156,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->queue_mask = EVENT_EXTERNAL;
 		} 
 /* "libretro" (or rather, interactive mode) treats a single pair of 
- * videoframe+audiobuffer each transfer, minimising latency is key. 
- * All operations require an intermediate buffer and are synched 
- * to one framequeue */
+ * videoframe+audiobuffer each transfer, minimising latency is key. */ 
 		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
 			ctx->nopts    = true;
 			ctx->autoplay = true;
