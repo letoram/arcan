@@ -1434,13 +1434,6 @@ void arcan_frameserver_libretro_run(const char* resource, const char* keyfile)
 	const char* resname  = NULL;
 	const char* val;
 
-	LOG(" offsets: rebase (%lu) drop_ring (%lu) framebuf %lu, shmcont: %lu\n",
-		offsetof(struct libretro_ctx, rebasecount),
-		offsetof(struct libretro_ctx, drop_ringbuf),
-		offsetof(struct libretro_ctx, framebuf_ofs),
-		offsetof(struct libretro_ctx, shmcont)
-	);
-
 	if (arg_lookup(args, "core", 0, &val))
 		libname = strdup(val);
 
