@@ -273,6 +273,10 @@ static bool shmalloc(arcan_frameserver* ctx,
 		if (optkey != NULL)
 			retrc = 1;
 	
+/* this makes things not particularly thread safe, but we should not 
+ * be in a multithreaded context anyhow */
+		mode_t cumask = umask(0);
+		umask(ARCAN_SHM_UMASK);
 		while(1){
 			if (optkey != NULL)
 				snprintf(addr.sun_path, sizeof(addr.sun_path), 
@@ -284,15 +288,18 @@ static bool shmalloc(arcan_frameserver* ctx,
 					ARCAN_SHM_PREFIX, getpid() % 1000, rand() % 1000);
 
 			unlink(addr.sun_path);
+
 			if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) == 0)
 				break;
 			else if (--retrc == 0){
 				arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
 					"domain socket for frameserver connectionpoint, check "
 					"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
+				umask(cumask);
 				goto fail;
 			}
 		}
+		umask(cumask);
 
 		listen(fd, 1);
 		ctx->sockout_fd = fd;

@@ -358,7 +358,7 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
  * code is not used, but rather the UID/GID is checked against the monitoring
  * pid in the preexisting frameserver.
  */
-#ifdef __LINUX
+#ifdef __linux
 #ifndef ARCAN_SHM_PREFIX 
 #define ARCAN_SHM_PREFIX "\0arcan_shm_"
 #endif
@@ -370,5 +370,8 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
 #endif
 #endif
 
+#ifndef ARCAN_SHM_UMASK
+#define ARCAN_SHM_UMASK 0770
+#endif
 
 #endif
