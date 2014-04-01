@@ -204,7 +204,32 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 
 char* arcan_shmif_connect(const char* connpath, const char* connkey)
 {
-	assert(connpath);
+	if (!connpath){
+		arcan_warning("arcan_shmif_connect(), missing connpath, giving up.\n");
+		return NULL;
+	}
+
+	char* res = NULL;	
+	char* workbuf = strdup(connpath);
+
+/* the rules for resolving the connection socket namespace are 
+ * somewhat complex, i.e. on linux we have the atrocious \0 prefix
+ * that defines a separate socket namespace, if we don't specify
+ * an absolute path, the key will resolve to be relative your 
+ * HOME environment (BUT we also have an odd size limitation to
+ * sun_path to take into consideration). */
+	if (ARCAN_SHM_PREFIX[0] != '/'
+#ifdef __linux
+	&& ARCAN_SHM_PREFIX[0] != '\0'
+#endif
+	){
+		const char* auxp = getenv("HOME");
+		size_t conn_sz = strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX);
+		const char* temp = malloc(strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX);
+		snprintf(temp, conn_sz, "%s/%s", auxp, connpath);
+		free(workbuf);
+		workbuf = temp;
+	}
 
 /* 1. treat connpath as socket and connect */
 	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -215,15 +240,15 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	if (-1 == sock){
 		arcan_warning("arcan_shmif_connect(), "
 			"couldn't allocate socket, reason: %s\n", strerror(errno));
-		return NULL;
+		goto end;
 	}
 
 	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
-	if (snprintf(dst.sun_path, lim, "%s", connpath) >= lim){
+	if (snprintf(dst.sun_path, lim, "%s", workbuf) >= lim){
 		arcan_warning("arcan_shmif_connect(), "
 			"specified connection path exceeds limits (%d)\n", lim);
 		close(sock);
-		return NULL;
+		goto end;
 	}
 
 /* connection or not, unlink the connection path */
@@ -231,10 +256,10 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 		arcan_warning("arcan_shmif_connect(%s), "
 			"couldn't connect to server.\n", connpath);
 		close(sock);
-		unlink(connpath);
-		return NULL;
+		unlink(workbuf);
+		goto end;
 	}
-	unlink(connpath);
+	unlink(workbuf);
 
 /* 2. send (optional) connection key, we send that first (keylen + linefeed) */
 	char wbuf[PP_SHMPAGE_SHMKEYLIM+1];
@@ -243,19 +268,19 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 		if (nw >= PP_SHMPAGE_SHMKEYLIM){
 			arcan_warning("arcan_shmif_connect(%s), "
 				"ident string (%s) exceeds limit (%d).\n", 
-				connpath, connkey, PP_SHMPAGE_SHMKEYLIM
+				workbuf, connkey, PP_SHMPAGE_SHMKEYLIM
 			);
 			close(sock);
-			return NULL;
+			goto end;
 		}
 
 		if (write(sock, wbuf, nw) < nw){
 			arcan_warning("arcan_shmif_connect(%s), "
 				"error sending connection string, reason: %s\n", 
-				connpath, strerror(errno)
+				workbuf, strerror(errno)
 			);
 			close(sock);
-			return NULL;
+			goto end;
 		}
 	}
 
@@ -264,9 +289,9 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	do {
 		if (-1 == read(sock, wbuf + ofs, 1)){
 			arcan_warning("arcan_shmif_connect(%s), "
-				"invalid response received during shmpage negotiation.\n", connpath);
+				"invalid response received during shmpage negotiation.\n", workbuf);
 			close(sock);
-			return NULL;
+			goto end;
 		}
 	} 
 	while(wbuf[ofs++] != '\n' && ofs < PP_SHMPAGE_SHMKEYLIM);
@@ -274,10 +299,12 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 
 /* 4. omitted, just return a copy of the key and let someone else
  * perform the arcan_shmif_acquire call. Just set the env. */
-	char* res = strdup(wbuf); 
+	res = strdup(wbuf); 
 	snprintf(wbuf, PP_SHMPAGE_SHMKEYLIM, "%d", sock);
 	setenv("ARCAN_SOCKIN_FD", wbuf, true);
-	
+
+end:
+	free(workbuf);
 	return res;
 }
 

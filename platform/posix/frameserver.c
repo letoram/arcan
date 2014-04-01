@@ -241,7 +241,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 		const char* auxp = "", (* auxv) = "";
 
 		if (ARCAN_SHM_PREFIX[0] != '/' 
-#ifdef __LINUX
+#ifdef __linux
 && ARCAN_SHM_PREFIX[0] != '\0'
 #endif
 		){
