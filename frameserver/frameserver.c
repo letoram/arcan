@@ -334,8 +334,14 @@ int main(int argc, char** argv)
 	else if (getenv("ARCAN_CONNPATH")){
 		keyfile = arcan_shmif_connect(
 			getenv("ARCAN_CONNPATH"), getenv("ARCAN_CONNKEY"));
+
+		if (!keyfile)
+			LOG("no shared memory key could be acquired, "
+				"check socket at ARCAN_CONNKEY environment.\n");
+			return 1;
 	}
-	
+
+
 /*
  * set this env whenever you want to step through the 
  * frameserver as launched from the parent 
