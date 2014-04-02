@@ -217,87 +217,86 @@ static bool shmalloc(arcan_frameserver* ctx,
 	work[strlen(work) - 1] = 'e';
 	ctx->esync = sem_open(work, 0);
 
-/*
- * Named domain sockets are used for non-authoritative connections
- * it enforces a build-time prefix (non / path means apply homedir env)
- * but an optkey can be specified to override default arcan_%d_%d part
- * note the odd length requirements of sun_path though.
- */
 	if (namedsocket){
-		if (optkey == NULL || strlen(optkey) == 0){
+		size_t optlen;
+		struct sockaddr_un addr;
+		size_t lim = sizeof(addr.sun_path) / sizeof(addr.sun_path[0]) - 1;
+		size_t pref_sz = sizeof(ARCAN_SHM_PREFIX) - 1;
+
+		if (optkey == NULL || (optlen = strlen(optkey)) == 0 || 
+			pref_sz + optlen > lim){
 			arcan_warning("posix/frameserver.c:shmalloc(), named socket "
-				"connected requested but with empty/missing key. cannot "
+				"connected requested but with empty/missing/oversized key. cannot "
 				"setup frameserver connectionpoint.\n");
 			goto fail;
 		}
 
-		struct sockaddr_un addr;
 		int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (fd == -1){
+			arcan_warning("posix/frameserver.c:shmalloc(), could allocate socket "
+				"for listening, check permissions and descriptor ulimit.\n");
+			goto fail;
+		}
+		fcntl(fd, FD_CLOEXEC);
+
 		memset(&addr, '\0', sizeof(addr));
 		addr.sun_family = AF_UNIX;
+		char* dst = (char*) &addr.sun_path;
 	
-		size_t baselen = sizeof(ARCAN_SHM_PREFIX);
-		size_t auxsz = 0;
-		const char* auxp = "", (* auxv) = "";
-
-		if (ARCAN_SHM_PREFIX[0] != '/' 
 #ifdef __linux
-&& ARCAN_SHM_PREFIX[0] != '\0'
+		if (ARCAN_SHM_PREFIX[0] == '\0')
+		{
+			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
+			dst += sizeof(ARCAN_SHM_PREFIX) - 1;
+			memcpy(dst, optkey, optlen); 
+		}
+		else
 #endif
-		){
-			auxp = getenv("HOME");
+		if (ARCAN_SHM_PREFIX[0] != '/'){
+			char* auxp = getenv("HOME");
 			if (!auxp){
 				arcan_warning("posix/frameserver.c:shmalloc(), compile-time "
 					"prefix set to home but HOME environment missing, cannot "
 					"setup frameserver connectionpoint.\n");
+				close(fd);
 				goto fail;
 			}
-			auxv = "/";
-			auxsz += strlen(auxp) + 1;
+			
+			size_t envlen = strlen(auxp);
+			if (envlen + optlen + pref_sz > lim){
+				arcan_warning("posix/frameserver.c:shmalloc(), applying built-in "
+					"prefix and resolving username exceeds socket path limit.\n");
+				close(fd);
+				goto fail;
+			}
+		
+			memcpy(dst, auxp, envlen);
+			dst += envlen;
+			*dst++ = '/';
+			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
+			dst += pref_sz;
+			memcpy(dst, optkey, optlen);
+		} 
+/* use prefix in its full form */
+		else {
+			memcpy(dst, ARCAN_SHM_PREFIX, pref_sz);
+			dst += pref_sz;
+			memcpy(dst, optkey, optlen);
 		}
 
-		size_t full_len = baselen + auxsz + (optkey ? strlen(optkey) : 11);
-		arcan_event ev;
-		size_t msg_sz = sizeof(ev.data.target.message) - 1;
-		size_t max_sz = sizeof(addr.sun_path) - 1 > msg_sz ? 
-			msg_sz : sizeof(addr.sun_path) - 1;
-	
-		if (full_len > max_sz){
-				arcan_fatal("posix/frameserver.c:shmalloc(), compile-time prefix "
-				"yielded a length that is not suitable for a domain socket "
-				"i.e. %s%s%s should be %d characters or less\n", auxp,
-				ARCAN_SHM_PREFIX, optkey?optkey: "_num_num", max_sz); 
-		}
-
-		int retrc = 10;
-		if (optkey != NULL)
-			retrc = 1;
-	
 /* this makes things not particularly thread safe, but we should not 
  * be in a multithreaded context anyhow */
 		mode_t cumask = umask(0);
 		umask(ARCAN_SHM_UMASK);
-		while(1){
-			if (optkey != NULL)
-				snprintf(addr.sun_path, sizeof(addr.sun_path), 
-					"%s%s%s", auxp, auxv, optkey);
-			else
-/* this is not an obfuscation or security mechanism as the namespaces may well
- * be enumerable, it is simply to reduce the chance of beign collisions */
-				snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s_%i_%i", auxp,
-					ARCAN_SHM_PREFIX, getpid() % 1000, rand() % 1000);
 
-			unlink(addr.sun_path);
-
-			if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) == 0)
-				break;
-			else if (--retrc == 0){
-				arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
-					"domain socket for frameserver connectionpoint, check "
-					"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
-				umask(cumask);
-				goto fail;
-			}
+		unlink(addr.sun_path);
+		if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0){
+			arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
+				"domain socket for frameserver connectionpoint, check "
+				"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
+			umask(cumask);
+			close(fd);
+			goto fail;
 		}
 		umask(cumask);
 
@@ -492,6 +491,8 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	char ch;
 	size_t ntw;
 	
+	printf("verify\n");
+
 	switch (cmd){
 	case ffunc_poll:
 		if (!tgt->clientkey)
@@ -547,6 +548,7 @@ send_key:
 	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
 	write(tgt->sockout_fd, tgt->sockinbuf, ntw); 
 
+	arcan_warning("key sent, switching to emptyframe\n");
 	arcan_video_alterfeed(tgt->vid,
 		arcan_frameserver_emptyframe, state);
 
@@ -555,6 +557,7 @@ send_key:
 		arcan_frameserver_audioframe_direct, tgt, &errc);
 	tgt->sz_audb = 1024 * 64;
 	tgt->audb = malloc(tgt->sz_audb);
+	printf("aud set to: %d\n", tgt->aid);
 
 	return FFUNC_RV_NOFRAME;
 }
@@ -603,7 +606,6 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 /* socket is closed in frameserver_destroy */
 		case ffunc_destroy:
-			arcan_frameserver_free(tgt, false);
 			if (tgt->sockaddr){
 				unlink(tgt->sockaddr);
 				free(tgt->sockaddr);
@@ -613,6 +615,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				free(tgt->clientkey);
 				tgt->clientkey = NULL;
 			}
+			arcan_frameserver_free(tgt, false);
 		default:
 		break;
 	}
