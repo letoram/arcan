@@ -225,7 +225,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	){
 		const char* auxp = getenv("HOME");
 		size_t conn_sz = strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX);
-		const char* temp = malloc(strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX);
+		char* temp = malloc(strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX));
 		snprintf(temp, conn_sz, "%s/%s", auxp, connpath);
 		free(workbuf);
 		workbuf = temp;
