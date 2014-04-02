@@ -23,8 +23,10 @@
 
 /* 2. interpose and map to shm */
 #include <arcan_shmif.h>
-#include "arcan_math.h"
-#include "arcan_general.h"
+#include <arcan_math.h>
+#include <arcan_general.h>
+#include <arcan_video.h>
+#include <arcan_videoint.h>
 
 static struct arcan_shmif_cont shms;
 static struct arcan_evctx inevq, outevq;
@@ -61,6 +63,7 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			return false;
 		}
 
+		shms.addr->glsource = true;
 		if (!arcan_shmif_resize( &shms, width, height )){
 			arcan_warning("couldn't set shm dimensions (%d, %d)\n", width, height);
 			return false;
@@ -81,7 +84,16 @@ bool platform_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 /* 
  * currently, we actually never de-init this
  */
-	return ext_video_init(width, height, bpp, fs, frames);
+	if (ext_video_init(width, height, bpp, fs, frames))
+	{
+		arcan_video_display.width = width;
+		arcan_video_display.height = height;
+		arcan_video_display.bpp = bpp;
+		glViewport(0, 0, width, height);
+		return true;
+	}
+	else 
+		return false;
 }
 
 /*
@@ -111,7 +123,7 @@ void platform_video_timing(float* os, float* std, float* ov)
 
 void platform_video_bufferswap()
 {
-	glFlush();
+//	SDL_GL_SwapBuffers();
 /* now our color attachment contains the final picture,
  * if we have access to inter-process texture sharing, we can just fling 
  * the FD, for now, readback into the shmpage */
@@ -152,6 +164,11 @@ const char* arcan_event_devlabel(int devid)
 
 void platform_event_process(arcan_evctx* ctx)
 {
+	arcan_event ev;
+
+	while (1 == arcan_event_poll(&inevq, &ev)){
+		arcan_event_enqueue(ctx, &ev);
+	}
 }
 
 void arcan_event_rescan_idev(arcan_evctx* ctx)
