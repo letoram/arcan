@@ -4143,29 +4143,21 @@ void arcan_video_refresh_GL(float lerp)
 		}
 	}
 
-/* use MRT to populate a possible "capture" FBO, 
- * the process_rendertarget function will make sure to not render the color
- * target (reading + writing to the same texture is undefined behavior), 
- * although it can be "circumvented" with instancing,
- * this is marked incomplete due to driver issues */
+/* initial plan was to use MRT for handling "render default output to FBO",
+ * but given the problem with manipulating existing shaders to emit gl_FragData,
+ * the requirement for outputs to have the same dimensions(?), it's easier,
+ * for now, just to treat the outp as a regular RTT */
 	if (current_context->stdoutp.color){
-/*		GLenum buffers[] = {GL_BACK, GL_COLOR_ATTACHMENT0};
-		arcan_debug_pumpglwarnings("mrt");
-  	glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
-  	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
-  	GL_TEXTURE_2D, current_context->stdoutp.color->vstore->glid, 0);
-  	glDrawBuffers(2, buffers); */
-		process_rendertarget(&current_context->stdoutp, lerp);
-		arcan_debug_pumpglwarnings("mrtpost");
+		if (activate_fbo(&current_context->stdoutp))
+			process_rendertarget(&current_context->stdoutp, lerp);
+
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-/*	if (current_context->stdoutp.readback != 0){
+		if (current_context->stdoutp.readback != 0)
 			process_readback(&current_context->stdoutp, lerp);
-		} 
-*/
 	}
-	else
-		process_rendertarget(&current_context->stdoutp, lerp);
+
+	process_rendertarget(&current_context->stdoutp, lerp);
 }
 
 unsigned arcan_video_refresh(float tofs, bool synch)
