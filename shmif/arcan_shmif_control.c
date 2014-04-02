@@ -210,7 +210,8 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	}
 
 	char* res = NULL;	
-	char* workbuf = strdup(connpath);
+	char* workbuf = NULL;
+	size_t conn_sz;
 
 /* the rules for resolving the connection socket namespace are 
  * somewhat complex, i.e. on linux we have the atrocious \0 prefix
@@ -218,17 +219,25 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
  * an absolute path, the key will resolve to be relative your 
  * HOME environment (BUT we also have an odd size limitation to
  * sun_path to take into consideration). */
-	if (ARCAN_SHM_PREFIX[0] != '/'
 #ifdef __linux
-	&& ARCAN_SHM_PREFIX[0] != '\0'
+	if (ARCAN_SHM_PREFIX[0] == '\0'){
+		conn_sz = strlen(connpath) + sizeof(ARCAN_SHM_PREFIX);
+		workbuf = malloc(conn_sz);
+		snprintf(workbuf+1, conn_sz-1, "%s%s", &ARCAN_SHM_PREFIX[1], connpath);
+		workbuf[0] = '\0';
+	}
+	else
 #endif
-	){
+	if (ARCAN_SHM_PREFIX[0] != '/'){
 		const char* auxp = getenv("HOME");
-		size_t conn_sz = strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX);
-		char* temp = malloc(strlen(workbuf) + sizeof(ARCAN_SHM_PREFIX));
-		snprintf(temp, conn_sz, "%s/%s", auxp, connpath);
-		free(workbuf);
-		workbuf = temp;
+		conn_sz = strlen(connpath) + strlen(auxp) + sizeof(ARCAN_SHM_PREFIX);
+		workbuf = malloc(conn_sz);
+		snprintf(workbuf, conn_sz, "%s/%s%s", auxp, ARCAN_SHM_PREFIX, connpath);
+	} 
+	else {
+		conn_sz = strlen(connpath) + sizeof(ARCAN_SHM_PREFIX);
+		workbuf = malloc(conn_sz);
+		snprintf(workbuf, conn_sz, "%s%s", ARCAN_SHM_PREFIX, connpath);
 	}
 
 /* 1. treat connpath as socket and connect */
@@ -244,12 +253,12 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 	}
 
 	size_t lim = sizeof(dst.sun_path) / sizeof(dst.sun_path[0]);
-	if (snprintf(dst.sun_path, lim, "%s", workbuf) >= lim){
+	if (lim < conn_sz){
 		arcan_warning("arcan_shmif_connect(), "
 			"specified connection path exceeds limits (%d)\n", lim);
-		close(sock);
 		goto end;
 	}
+	memcpy(dst.sun_path, workbuf, conn_sz);
 
 /* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
