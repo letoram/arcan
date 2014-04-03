@@ -366,12 +366,12 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
 /* if the first character does not begin with /, HOME env will be used. */
 #else
 #ifndef ARCAN_SHM_PREFIX
-#define ARCAN_SHM_PREFIX ".arcan_shm_"
+#define ARCAN_SHM_PREFIX ".arcan_"
 #endif
 #endif
 
 #ifndef ARCAN_SHM_UMASK
-#define ARCAN_SHM_UMASK 0770
+#define ARCAN_SHM_UMASK (S_IRWXU | S_IRWXG)
 #endif
 
 #endif

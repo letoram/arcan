@@ -286,20 +286,17 @@ static bool shmalloc(arcan_frameserver* ctx,
 
 /* this makes things not particularly thread safe, but we should not 
  * be in a multithreaded context anyhow */
-		mode_t cumask = umask(0);
-		umask(ARCAN_SHM_UMASK);
 
 		unlink(addr.sun_path);
 		if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0){
 			arcan_warning("posix/frameserver.c:shmalloc(), couldn't setup "
 				"domain socket for frameserver connectionpoint, check "
 				"path permissions (%s), reason:%s\n",addr.sun_path,strerror(errno));
-			umask(cumask);
 			close(fd);
 			goto fail;
 		}
-		umask(cumask);
 
+		fchmod(fd, ARCAN_SHM_UMASK);
 		listen(fd, 1);
 		ctx->sockout_fd = fd;
 
@@ -536,6 +533,7 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 	case ffunc_destroy:
 		if (tgt->clientkey){
+			unlink(tgt->source);
 			free(tgt->clientkey);
 			tgt->clientkey = NULL;			
 		}
@@ -556,7 +554,6 @@ send_key:
 	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
 	write(tgt->sockout_fd, tgt->sockinbuf, ntw); 
 
-	arcan_warning("key sent, switching to emptyframe\n");
 	arcan_video_alterfeed(tgt->vid,
 		arcan_frameserver_emptyframe, state);
 
@@ -565,7 +562,6 @@ send_key:
 		arcan_frameserver_audioframe_direct, tgt, &errc);
 	tgt->sz_audb = 1024 * 64;
 	tgt->audb = malloc(tgt->sz_audb);
-	printf("aud set to: %d\n", tgt->aid);
 
 	return FFUNC_RV_NOFRAME;
 }
