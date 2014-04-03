@@ -357,14 +357,14 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		return NULL;
 	
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
-	if (!newseg)
-		return NULL;
-
-	if (!shmalloc(newseg, true, NULL)){
+	if (!shmalloc(newseg, false, NULL)){
 		arcan_frameserver_free(newseg, false);
 		return NULL;
 	}
-		
+
+	if (!newseg)
+		return NULL;
+	
 /*
  * Display object (default at 32x32x4, nothing will be activated
  * until first resize) as per arcan_frameserver_emptyframe
@@ -406,8 +406,18 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * There is little other than convenience that makes
  * us re-use the other parts of the shm setup routine,
  * we could've sent the shm and semaphores this way as well */
-	arcan_frameserver_pushfd(ctx, newseg->sockout_fd);	
-
+	int sockp[2] = {-1, -1};
+	if ( socketpair(PF_UNIX, SOCK_DGRAM, 0, sockp) < 0 ){
+		arcan_warning("arcan_frameserver_spawn_server(unix) -- couldn't "
+			"get socket pair\n");
+	}
+	else {
+		fcntl(sockp[0], FD_CLOEXEC);
+    fcntl(sockp[1], FD_CLOEXEC);
+  	newseg->sockout_fd = sockp[0];
+		arcan_frameserver_pushfd(ctx, sockp[1]);
+	}
+  
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
 		.kind = TARGET_COMMAND_NEWSEGMENT
@@ -491,8 +501,6 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	char ch;
 	size_t ntw;
 	
-	printf("verify\n");
-
 	switch (cmd){
 	case ffunc_poll:
 		if (!tgt->clientkey)

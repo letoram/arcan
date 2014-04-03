@@ -104,19 +104,24 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
 		src->shm.ptr;
 
-	if (src->child_alive){
-		shmpage->dms = false;
+	if (shmpage){
+		if (src->child_alive){
+			shmpage->dms = false;
 
-		arcan_event exev = {
-			.category = EVENT_TARGET,
-			.kind = TARGET_COMMAND_EXIT
-		};
+			arcan_event exev = {
+				.category = EVENT_TARGET,
+				.kind = TARGET_COMMAND_EXIT
+			};
 
-		arcan_frameserver_pushevent(src, &exev);
-		arcan_frameserver_killchild(src);
+			arcan_frameserver_pushevent(src, &exev);
+			arcan_frameserver_killchild(src);
  
-		src->child = BROKEN_PROCESS_HANDLE;
-		src->child_alive = false;
+			src->child = BROKEN_PROCESS_HANDLE;
+			src->child_alive = false;
+		}
+
+		arcan_frameserver_dropshared(src);
+		src->shm.ptr = NULL;
 	}
 
 /* unhook audio monitors */
@@ -128,11 +133,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 
 	free(src->audb);
 	pthread_mutex_destroy(&src->lock_audb);
-
-	if (shmpage){
-		arcan_frameserver_dropshared(src);
-		src->shm.ptr = NULL;
-	}
 
 #ifndef _WIN32
 	close(src->sockout_fd);
