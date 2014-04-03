@@ -230,7 +230,7 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 #endif
 	if (ARCAN_SHM_PREFIX[0] != '/'){
 		const char* auxp = getenv("HOME");
-		conn_sz = strlen(connpath) + strlen(auxp) + sizeof(ARCAN_SHM_PREFIX);
+		conn_sz = strlen(connpath) + strlen(auxp) + sizeof(ARCAN_SHM_PREFIX) + 1;
 		workbuf = malloc(conn_sz);
 		snprintf(workbuf, conn_sz, "%s/%s%s", auxp, ARCAN_SHM_PREFIX, connpath);
 	} 
@@ -263,7 +263,9 @@ char* arcan_shmif_connect(const char* connpath, const char* connkey)
 /* connection or not, unlink the connection path */
 	if (connect(sock, (struct sockaddr*) &dst, sizeof(struct sockaddr_un)) < 0){
 		arcan_warning("arcan_shmif_connect(%s), "
-			"couldn't connect to server.\n", connpath);
+			"couldn't connect to server, reason: %s.\n", 
+			dst.sun_path, strerror(errno)
+		);
 		close(sock);
 		unlink(workbuf);
 		goto end;
