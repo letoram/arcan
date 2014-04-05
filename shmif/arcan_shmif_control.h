@@ -45,7 +45,6 @@
  *
  * The primary use here is for frequent, synchronized transfer
  * of video frames along with related control events. 
- * The events as such can be found in the arcan_event.h header
  *
  * It is assumed that all newly spawned frameservers are allowed
  * ONE video- buffer and ONE audio- buffer to work with. 
@@ -55,14 +54,33 @@
  * are managed through file-descriptor passing (HANDLES for the 
  * windows crowd). 
  *
+ * See frameserver/avfeed.c for a stripped down example of using
+ * this interface. There are three principal ways this interface 
+ * is used;
+ * 1. compliant frameservers - video decoders, encoders, network
+ * protocol implementations etc. Environment and connection points
+ * are prepared by the parent process in beforehand.
+ *
+ * 2. external programs - using arcan as a display server. The
+ * domain socket is used to find a connection point to the parent.
+ * These points has to be explicitly set-up and managed by the
+ * parent (from the LUA side, target_alloc). 
+ *
+ * 3. hijacked programs - code injected into other processes,
+ * as a means of exfiltrating data. These are launched as compliant
+ * frameservers, but additional data (which descriptors should
+ * be used to communicate etc.) are conveyed through environmental
+ * variables.
  */
 
 /*
  * The IPC connection points (which may vary slightly based on
  * connection method, e.g. authorative or non-authorative, are
- * the shmpage, a socket and three semaphores. 
+ * the shmpage, a socket and three semaphores.
+ *
  * The way these can reach the process vary; by being passed as 
- * an environment variable (ARCAN_SHMKEY, 
+ * an environment variable (ARCAN_CONNPATH, and for additional
+ * authentication, ARCAN_CONNKEY). 
  */
 
 /* 
