@@ -79,6 +79,12 @@ add_executable( arcan ${SOURCES} ${PLATFORM_SOURCES} ${SDL_PLATFORM_SOURCES})
 if (ENABLE_LWA)
 	message("LWA support enabled, video backend (${VIDEO_PLATFORM})")
 
+	set_property(SOURCE ${PLATFORM_PATH}/../arcan/video.c
+		APPEND PROPERTY COMPILE_DEFINITIONS 
+		SDL_PLATFORM
+		GL_HEADERS=\"${PLATFORM_PATH}/../sdl/glheaders.h\"
+	)
+
 	set(LWA_SOURCES
 		${PLATFORM_PATH}/../darwin/SDLmain_fsrv.m
 		${PLATFORM_PATH}/../arcan/video.c)
