@@ -4408,7 +4408,8 @@ static int targetlaunch(lua_State* ctx)
 					free(intarget);
 				}
 
-				free(metastr);
+				if (metastr != resourcestr)
+					free(metastr);
 
 				rv = 2;
 			}
