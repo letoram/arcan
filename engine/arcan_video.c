@@ -3666,7 +3666,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
  * the target to its current active frame, most of the time, 
  * they are the same */
 
-	if (dst->feed.pcookie == cookie || dst->flags.clone)
+	if (!dst->feed.ffunc || dst->feed.pcookie == cookie || dst->flags.clone)
 		return;
 
 	dst->feed.pcookie = cookie;
