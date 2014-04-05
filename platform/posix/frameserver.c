@@ -500,15 +500,17 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	
 	switch (cmd){
 	case ffunc_poll:
-		if (!tgt->clientkey)
+		if (tgt->clientkey[0] == '\0')
 			goto send_key;
 
 /* only need a few characters, so can get away with not having a more
  * elaborate buffering strategy */
 		while (-1 != read(tgt->sockout_fd, &ch, 1)){
 			if (ch == '\n'){
-				tgt->sockinbuf[tgt->sockrofs] = '\0';
-				if (strcmp(tgt->sockinbuf, tgt->clientkey) == 0)
+/* pad to limit length, compare 0 as to not expose timing */
+				memset(tgt->sockinbuf + tgt->sockrofs, '\0', 
+					PP_SHMPAGE_SHMKEYLIM - tgt->sockrofs);
+				if (memcmp(tgt->sockinbuf, tgt->clientkey, PP_SHMPAGE_SHMKEYLIM) == 0)
 					goto send_key;
 				arcan_warning("platform/frameserver.c(), key verification failed on %"
 					PRIxVOBJ", received: %s\n", tgt->vid, tgt->sockinbuf);
@@ -532,11 +534,8 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		return FFUNC_RV_NOFRAME;
 
 	case ffunc_destroy:
-		if (tgt->clientkey){
-			unlink(tgt->source);
-			free(tgt->clientkey);
-			tgt->clientkey = NULL;			
-		}
+		unlink(tgt->source);
+	
 	default:
 		return FFUNC_RV_NOFRAME;
 	break;	
@@ -546,10 +545,6 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /* switch to resize polling default handler */
 send_key:
 	arcan_warning("platform/frameserver.c(), connection verified.\n");
-	if (tgt->clientkey){
-		free(tgt->clientkey);
-		tgt->clientkey = NULL;
-	}
 
 	ntw = snprintf(tgt->sockinbuf, PP_SHMPAGE_SHMKEYLIM, "%s\n", tgt->shm.key);
 	write(tgt->sockout_fd, tgt->sockinbuf, ntw); 
@@ -615,10 +610,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				free(tgt->sockaddr);
 				tgt->sockaddr = NULL;
 			}
-			if (tgt->clientkey){
-				free(tgt->clientkey);
-				tgt->clientkey = NULL;
-			}
+
 			arcan_frameserver_free(tgt, false);
 		default:
 		break;

@@ -160,9 +160,9 @@ typedef struct arcan_frameserver {
 /* used for connections negotiated via socket
  * (sockout_fd) */
 	char sockinbuf[PP_SHMPAGE_SHMKEYLIM];
+	char* clientkey[PP_SHMPAGE_SHMKEYLIM];
 	off_t sockrofs;
 	char* sockaddr;
-	char* clientkey;
 	bool pending;
 	
 /* for monitoring hooks, NULL term. */
