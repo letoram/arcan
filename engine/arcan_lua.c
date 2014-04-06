@@ -4344,9 +4344,8 @@ static int targetalloc(lua_State* ctx)
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
-	lua_pushstring(ctx, key);
 
-	return 3;
+	return 2;
 }
 
 static int targetlaunch(lua_State* ctx)
@@ -4630,6 +4629,150 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	return 0;	
 }
 
+static int spawn_recsubseg(lua_State* ctx,
+	arcan_vobj_id did, arcan_vobj_id dfsrv, int naids,
+	arcan_aobj_id* aidlocks)
+{
+	arcan_vobject* vobj = arcan_video_getobject(dfsrv);
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	if (!fsrv || vobj->feed.state.tag != ARCAN_TAG_FRAMESERV){
+		arcan_fatal("spawn_recsubseg() -- specified destination is "
+			"not a frameserver.\n");
+	}
+
+	arcan_frameserver* rv = 
+		arcan_frameserver_spawn_subsegment(fsrv, false);
+
+	if(rv){
+		vfunc_state fftag = {
+			.tag = ARCAN_TAG_FRAMESERV,
+			.ptr = rv 
+		};
+
+		if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
+			lua_pushvalue(ctx, 9);
+			rv->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
+		}
+
+/* shmpage prepared, force dimensions based on source object */
+		arcan_vobject* dobj = arcan_video_getobject(did);
+		struct arcan_shmif_page* shmpage = rv->shm.ptr;
+		shmpage->w = dobj->vstore->w;
+		shmpage->h = dobj->vstore->h;
+		arcan_shmif_calcofs(shmpage, &(rv->vidp), &(rv->audp));
+		arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
+
+/* similar restrictions and problems as in spawn_recfsrv */ 
+		rv->alocks = aidlocks;
+		arcan_aobj_id* base = aidlocks;
+			while(base && *base){
+			void* hookfun;
+			arcan_audio_hookfeed(*base++, rv, arcan_frameserver_avfeedmon, &hookfun);
+		}
+
+		if (naids > 1)
+			arcan_frameserver_avfeed_mixer(rv, naids, aidlocks);
+
+		lua_pushvid(ctx, rv->vid); 
+		return 1;
+	}
+
+	arcan_warning("spawn_recsubseg() -- operation failed, "
+		"couldn't attach output segment.\n");
+	return 0;
+}
+
+static int spawn_recfsrv(lua_State* ctx, 
+	arcan_vobj_id did, arcan_vobj_id dfsrv, int naids,
+	arcan_aobj_id* aidlocks, 
+	const char* argl, const char* resf)
+{
+	arcan_frameserver* mvctx = arcan_frameserver_alloc();
+	mvctx->loop = FRAMESERVER_NOLOOP;
+	mvctx->vid  = did;
+
+	/* in order to stay backward compatible API wise, 
+ * the load_movie with function callback will always need to specify 
+ * loop condition. (or we can switch to heuristic stack management) */
+	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
+		lua_pushvalue(ctx, 9);
+		mvctx->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
+	}
+
+	struct frameserver_envp args = {
+		.use_builtin = true,
+		.custom_feed = true,
+		.args.builtin.mode = "record",
+		.args.builtin.resource = argl
+	};
+
+/* we use a special feed function meant to flush audiobuffer + 
+ * a single video frame for encoding */
+	vfunc_state fftag = {
+		.tag = ARCAN_TAG_FRAMESERV,
+		.ptr = mvctx
+	};
+	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
+
+	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
+		arcan_vobject* dobj = arcan_video_getobject(did);
+
+/* we define the size of the recording to be that of the storage
+ * of the rendertarget vid, this should be allocated through fill_surface */
+		struct arcan_shmif_page* shmpage = mvctx->shm.ptr;
+		shmpage->w = dobj->vstore->w;
+		shmpage->h = dobj->vstore->h;
+
+		arcan_shmif_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
+
+/* pushing the file descriptor signals the frameserver to start receiving 
+ * (and use the proper dimensions), it is permitted to close and push another
+ * one to the same session, with special treatment for "dumb" resource names
+ * or streaming sessions */
+		int fd;
+		if (strstr(args.args.builtin.resource, "container=stream") != NULL ||
+			strlen(args.args.builtin.resource) == 0)
+			fd = open(NULFILE, O_WRONLY);
+		else
+			fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/%s/%s", arcan_themepath,
+				arcan_themename, resf);
+
+		if (fd){
+			arcan_frameserver_pushfd( mvctx, fd );
+			mvctx->alocks = aidlocks;
+
+/* 
+ * lastly, lock each audio object and forcibly attach the frameserver as
+ * a monitor. NOTE that this currently doesn't handle the case where we we
+ * set up multiple recording sessions sharing audio objects. 
+ */
+			arcan_aobj_id* base = mvctx->alocks;
+			while(base && *base){
+				void* hookfun;
+				arcan_audio_hookfeed(*base++, mvctx, 
+					arcan_frameserver_avfeedmon, &hookfun);
+			}
+
+/*
+ * if we have several input audio sources, we need to set up an intermediate 
+ * mixing system, that accumulates samples from each audio source monitor,
+ * and emitts a mixed buffer. This requires that the audio sources operate at
+ * the same rate and buffering will converge on the biggest- buffer audio source
+ */
+			if (naids > 1)
+				arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
+		}
+		else
+			arcan_warning("recordset(%s/%s/%s)--couldn't create output.\n",
+				arcan_themepath, arcan_themename, resf);
+	}
+	else
+		free(mvctx);
+
+	return 0;	
+}
+
 static int procset(lua_State* ctx)
 {
 	LUA_TRACE("define_calctarget");
@@ -4731,8 +4874,18 @@ static int recordset(lua_State* ctx)
 	LUA_TRACE("define_recordtarget");
 
 	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
-	const char* resf  = luaL_checkstring(ctx, 2);
-	char* argl        = strdup( luaL_checkstring(ctx, 3) );
+
+	const char* resf = NULL;
+	char* argl = NULL;
+	arcan_vobj_id dfsrv = ARCAN_EID;
+
+	if (lua_type(ctx, 2) == LUA_TNUMBER){
+		dfsrv = luaL_checkvid(ctx, 2, NULL);
+	}
+	else {
+		resf = luaL_checkstring(ctx, 2);
+		argl = strdup( luaL_checkstring(ctx, 3) );
+	}
 
 	luaL_checktype(ctx, 4, LUA_TTABLE);
 	int nvids         = lua_rawlen(ctx, 4);
@@ -4854,90 +5007,13 @@ static int recordset(lua_State* ctx)
 		}
 	}
 
-	arcan_frameserver* mvctx = arcan_frameserver_alloc();
-	mvctx->loop = FRAMESERVER_NOLOOP;
-	mvctx->vid  = did;
-
-	/* in order to stay backward compatible API wise, 
- * the load_movie with function callback will always need to specify 
- * loop condition. (or we can switch to heuristic stack management) */
-	if (lua_isfunction(ctx, 9) && !lua_iscfunction(ctx, 9)){
-		lua_pushvalue(ctx, 9);
-		mvctx->tag = luaL_ref(ctx, LUA_REGISTRYINDEX);
-	}
-
-	struct frameserver_envp args = {
-		.use_builtin = true,
-		.custom_feed = true,
-		.args.builtin.mode = "record",
-		.args.builtin.resource = argl
-	};
-
-/* we use a special feed function meant to flush audiobuffer + 
- * a single video frame for encoding */
-	vfunc_state fftag = {
-		.tag = ARCAN_TAG_FRAMESERV,
-		.ptr = mvctx};
-	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
-
-	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
-		arcan_vobject* dobj = arcan_video_getobject(did);
-
-/* we define the size of the recording to be that of the storage
- * of the rendertarget vid, this should be allocated through fill_surface */
-		struct arcan_shmif_page* shmpage = mvctx->shm.ptr;
-		shmpage->w = dobj->vstore->w;
-		shmpage->h = dobj->vstore->h;
-
-		arcan_shmif_calcofs(shmpage, &(mvctx->vidp), &(mvctx->audp));
-
-/* pushing the file descriptor signals the frameserver to start receiving 
- * (and use the proper dimensions), it is permitted to close and push another
- * one to the same session, with special treatment for "dumb" resource names
- * or streaming sessions */
-		int fd;
-		if (strstr(args.args.builtin.resource, "container=stream") != NULL ||
-			strlen(args.args.builtin.resource) == 0)
-			fd = open(NULFILE, O_WRONLY);
-		else
-			fd = fmt_open(O_CREAT | O_RDWR, S_IRWXU, "%s/%s/%s", arcan_themepath,
-				arcan_themename, resf);
-
-		if (fd){
-			arcan_frameserver_pushfd( mvctx, fd );
-			mvctx->alocks = aidlocks;
-
-/* 
- * lastly, lock each audio object and forcibly attach the frameserver as
- * a monitor. NOTE that this currently doesn't handle the case where we we
- * set up multiple recording sessions sharing audio objects. 
- */
-			arcan_aobj_id* base = mvctx->alocks;
-			while(base && *base){
-				void* hookfun;
-				arcan_audio_hookfeed(*base++, mvctx, 
-					arcan_frameserver_avfeedmon, &hookfun);
-			}
-
-/*
- * if we have several input audio sources, we need to set up an intermediate 
- * mixing system, that accumulates samples from each audio source monitor,
- * and emitts a mixed buffer. This requires that the audio sources operate at
- * the same rate and buffering will converge on the biggest- buffer audio source
- */
-			if (naids > 1)
-				arcan_frameserver_avfeed_mixer(mvctx, naids, aidlocks);
-		}
-		else
-			arcan_warning("recordset(%s/%s/%s)--couldn't create output.\n",
-				arcan_themepath, arcan_themename, resf);
-	}
-	else
-		free(mvctx);
+	int rc = dfsrv != ARCAN_EID ? 
+		spawn_recsubseg(ctx, did, dfsrv, naids, aidlocks) :
+		spawn_recfsrv(ctx, did, dfsrv, naids, aidlocks, argl, resf);
 
 cleanup:
 	free(argl);
-	return 0;
+	return rc;
 }
 
 static int recordgain(lua_State* ctx)
