@@ -1903,7 +1903,7 @@ static int targetinput(lua_State* ctx)
 			ev.data.io.input.analog.axisval[i] = lua_tointeger(ctx, -1);
 			lua_pop(ctx, 1);
 		}
-
+		ev.data.io.input.analog.nvalues = naxiss;
 	}
 	else if (strcmp(kindlbl, "digital") == 0){
 		if (intblbool(ctx, tblind, "translated")){
@@ -4288,12 +4288,30 @@ static void escapestr(char* instr)
 static int targetalloc(lua_State* ctx)
 {
 	LUA_TRACE("target_alloc");
+	int cb_ind = 2;
+	char* pw = NULL;
+	size_t pwlen = 0;
 
-	luaL_checktype(ctx, 2, LUA_TFUNCTION);
-	if (lua_iscfunction(ctx, 2))
+	if (lua_type(ctx, 2) == LUA_TSTRING){
+		pw = (char*) luaL_checkstring(ctx, 2);
+		pwlen = strlen(pw);
+		if (pwlen > PP_SHMPAGE_SHMKEYLIM-1){
+			arcan_warning(
+				"target_alloc(), requested passkey length (%d) exceeds "
+				"built-in threshold (%d characters) and will be truncated .\n",
+				pwlen, pw);
+	
+			pwlen = PP_SHMPAGE_SHMKEYLIM-1;
+		}
+		else
+			cb_ind = 3;
+	}
+
+	luaL_checktype(ctx, cb_ind, LUA_TFUNCTION);
+	if (lua_iscfunction(ctx, cb_ind))
 		arcan_fatal("target_alloc(), callback to C function forbidden.\n");
 
-	lua_pushvalue(ctx, 2);
+	lua_pushvalue(ctx, cb_ind);
 	intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
 		
 	arcan_frameserver* newref = NULL;
@@ -4321,6 +4339,8 @@ static int targetalloc(lua_State* ctx)
 	}
 
 	newref->tag = ref;
+	if (pw)
+		memcpy(newref->clientkey, pw, pwlen);
 
 	lua_pushvid(ctx, newref->vid);
 	lua_pushaid(ctx, newref->aid);
