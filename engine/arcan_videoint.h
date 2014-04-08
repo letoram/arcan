@@ -65,25 +65,25 @@ struct rendertarget {
 };
 
 struct transf_move{
-	enum arcan_interp_function interp;
+	arcan_interp_3d_function interp;
 	arcan_tickv startt, endt;
 	point startp, endp;
 };
 
 struct transf_scale{
-	enum arcan_interp_function interp;
+	arcan_interp_3d_function interp;
 	arcan_tickv startt, endt;
 	scalefactor startd, endd;
 };
 
 struct transf_blend{
-	enum arcan_interp_function interp;
+	arcan_interp_1d_function interp;
 	arcan_tickv startt, endt;
 	float startopa, endopa;
 };
 
 struct transf_rotate{
-	enum arcan_interp_function interp;
+	arcan_interp_4d_function interp;
 	arcan_tickv startt, endt;
 	surface_orientation starto, endo;
 };

@@ -2922,7 +2922,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
 
 			base->rotate.interp = (abs(bv.roll - roll) > 180.0 || 
 				abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
-				interpolate_normalized_linear : interpolate_normalized_linear_large;
+				nlerp_quat180 : nlerp_quat360;
 		}
 	}
 	
@@ -2993,7 +2993,7 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 			base->blend.endt = base->blend.startt + tv;
 			base->blend.startopa = bv;
 			base->blend.endopa = opa + 0.0000000001;
-			base->blend.interp = interpolate_linear;
+			base->blend.interp = interp_1d_linear;
 		}
 	}
 
@@ -3054,7 +3054,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 			base->move.startt = last->move.endt < arcan_video_display.c_ticks ?
 				arcan_video_display.c_ticks : last->move.endt;
 			base->move.endt   = base->move.startt + tv;
-			base->move.interp = interpolate_linear;
+			base->move.interp = interp_3d_linear; 
 			base->move.startp = bwp;
 			base->move.endp   = newp;
 		}
@@ -3113,7 +3113,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 			base->scale.startt = last->scale.endt < arcan_video_display.c_ticks ?
 				arcan_video_display.c_ticks : last->scale.endt;
 			base->scale.endt = base->scale.startt + tv;
-			base->scale.interp = interpolate_linear;
+			base->scale.interp = interp_3d_linear;
 			base->scale.startd = bs;
 			base->scale.endd.x = wf;
 			base->scale.endd.y = hf;
@@ -3171,17 +3171,11 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	return rv;
 }
 
-static quat interp_rotation(quat* q1, quat* q2, 
-	float fract, enum arcan_interp_function fun)
+static inline float lerp_fract(float startt, float endt, float ts)
 {
-	switch (fun){
-	case interpolate_linear :
-	case interpolate_normalized_linear: return nlerp_quat180(*q1, *q2, fract); 
-	case interpolate_normalized_linear_large: return nlerp_quat360(*q1,*q2,fract);
-	case interpolate_spherical: return slerp_quat180(*q1, *q2, fract); 
-	case interpolate_spherical_large : return slerp_quat360(*q1, *q2, fract); 
-	}
-  return *q1;
+	float rv = (EPSILON + (ts - startt)) / (endt - startt);
+	rv = rv > 1.0 ? 1.0 : rv; 
+	return rv;
 }
 
 static bool update_object(arcan_vobject* ci, unsigned long long stamp)
@@ -3204,10 +3198,13 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		upd = true;
 		float fract = lerp_fract(ci->transform->blend.startt, 
 			ci->transform->blend.endt, stamp);
-		ci->current.opa = lerp_val(ci->transform->blend.startopa, 
-			ci->transform->blend.endopa, fract);
+	
+		ci->current.opa = ci->transform->blend.interp(
+			ci->transform->blend.startopa, 
+			ci->transform->blend.endopa, fract
+		);
 
-		if (fract > 0.9999f) {
+		if (fract > 0.999) {
 			ci->current.opa = ci->transform->blend.endopa;
 
 			if (ci->flags.cycletransform){
@@ -3225,10 +3222,12 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		upd = true;
 		float fract = lerp_fract(ci->transform->move.startt, 
 			ci->transform->move.endt, stamp);
-		ci->current.position = lerp_vector(ci->transform->move.startp, 
-			ci->transform->move.endp, fract);
+		ci->current.position = ci->transform->move.interp(
+				ci->transform->move.startp, 
+				ci->transform->move.endp, fract
+			);
 
-		if (fract > 0.9999f) {
+		if (fract > 0.999) {
 			ci->current.position = ci->transform->move.endp;
 
 			if (ci->flags.cycletransform)
@@ -3248,10 +3247,12 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		upd = true;
 		float fract = lerp_fract(ci->transform->scale.startt, 
 			ci->transform->scale.endt, stamp);
-		ci->current.scale = lerp_vector(ci->transform->scale.startd, 
-			ci->transform->scale.endd, fract);
+		ci->current.scale = ci->transform->scale.interp(
+			ci->transform->scale.startd, 
+			ci->transform->scale.endd, fract
+		);
 
-		if (fract > 0.9999f) {
+		if (fract > 0.999) {
 			ci->current.scale = ci->transform->scale.endd;
 
 			if (ci->flags.cycletransform)
@@ -3272,7 +3273,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			ci->transform->rotate.endt, stamp);
 
 /* close enough */
-		if (fract > 0.9999f) {
+		if (fract > 0.999) {
 			ci->current.rotation = ci->transform->rotate.endo;
 			if (ci->flags.cycletransform)
 				arcan_video_objectrotate(ci->cellid,
@@ -3287,9 +3288,10 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		}
 		else
 			ci->current.rotation.quaternion = 
-				interp_rotation(&ci->transform->rotate.starto.quaternion,
-				&ci->transform->rotate.endo.quaternion, fract, 
-				ci->transform->rotate.interp);
+				ci->transform->rotate.interp(	
+					ci->transform->rotate.starto.quaternion,
+					ci->transform->rotate.endo.quaternion, fract
+				);
 	}
 
 	return upd;
@@ -3442,23 +3444,32 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 		unsigned ct = arcan_video_display.c_ticks;
 
 		if (tf->move.startt)
-			dprops->position = lerp_vector(tf->move.startp,
+			dprops->position = tf->move.interp(
+				tf->move.startp,
 				tf->move.endp,
-				lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp));
+				lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp)
+			);
 
 		if (tf->scale.startt)
-			dprops->scale = lerp_vector(tf->scale.startd, tf->scale.endd, 
-				lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp));
+			dprops->scale = tf->scale.interp(
+				tf->scale.startd, 
+				tf->scale.endd,
+				lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp)
+			);
 
 		if (tf->blend.startt)
-			dprops->opa = lerp_val(tf->blend.startopa, tf->blend.endopa, 
-				lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp));
+			dprops->opa = tf->blend.interp(
+				tf->blend.startopa, 
+				tf->blend.endopa,
+				lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp)
+			);
 
 		if (tf->rotate.startt){
-			dprops->rotation.quaternion = interp_rotation(
-				&tf->rotate.starto.quaternion, &tf->rotate.endo.quaternion,
+			dprops->rotation.quaternion = tf->rotate.interp(
+				tf->rotate.starto.quaternion, tf->rotate.endo.quaternion,
 				lerp_fract(tf->rotate.startt, tf->rotate.endt, 
-					(float)ct + lerp), tf->rotate.interp);
+					(float)ct + lerp)
+			);
 
 			vector ang = angle_quat(dprops->rotation.quaternion);
 			dprops->rotation.roll  = ang.x;
@@ -3750,7 +3761,7 @@ void arcan_video_setblend(const surface_properties* dprops,
 {
 /* only blend if the object isn't entirely solid or 
  * if the object has specific settings */
-	if ((dprops->opa > 0.999f && elem->blendmode == blend_disable) ||
+	if ((dprops->opa > 0.999 && elem->blendmode == blend_disable) ||
 		elem->blendmode == blend_disable )
 		glDisable(GL_BLEND);
 	else{
@@ -3860,9 +3871,29 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 				}
 			}
 
-/* enable clipping using stencil buffer */
+/* enable clipping using stencil buffer, 
+ * we need to reset the state of the stencil buffer between 
+ * draw calls so track if it's enabled or not */
 			bool clipped = false;
-			if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
+
+/* a common clipping situation is that we have an invisible clipping parent
+ * where neither objects are in a rotated state, which gives an easy way
+ * out through the drawing region */
+			if (elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
+				elem->parent != &current_context->world && !elem->rotate_state){
+				surface_properties pprops = empty_surface();
+				arcan_resolve_vidprop(elem->parent, fract, &pprops);
+
+				float xp1 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
+				float yp1 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
+				float xp2 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
+				float yp2 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
+
+				printf("clip(%f, %f, %f, %f) to (%f, %f, %f, %f)\n",
+					-xp1, -yp1, xp1, yp1,
+					-xp2, -yp2, xp2, yp2);
+			}
+			else if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
 				elem->parent != &current_context->world){
 /* toggle stenciling, reset into zero, draw parent bounding area to 
  * stencil only,redraw parent into stencil, draw new object 
@@ -3966,7 +3997,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 		draw_texsurf(tgt, dprops, elem, txcos);
 
 /* even though there might be latent "other frames" bound,
- * they won't change much unless the program itself uses multitexturing 
+ * they won't change much unless the program itself uses multitexturing
 		if (unbc){
 			for (int i = 1; i <= unbc-1; i++){
 				glActiveTexture(GL_TEXTURE0 + i);
@@ -4478,8 +4509,10 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{ /* need to interpolate */
 					float fract = lerp_fract(current->move.startt, 
 						current->move.endt, ticks);
-					rv.position = lerp_vector(current->move.startp, 
-						current->move.endp, fract);
+					rv.position = current->move.interp(
+						current->move.startp, 
+						current->move.endp, fract
+					);
 				}
 			}
 
@@ -4496,8 +4529,10 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{
 					float fract = lerp_fract(current->scale.startt, 
 						current->scale.endt, ticks);
-					rv.scale = lerp_vector(current->scale.startd, 
-						current->scale.endd, fract);
+					rv.scale = current->scale.interp(
+						current->scale.startd, 
+						current->scale.endd, fract
+					);
 				}
 			}
 
@@ -4514,8 +4549,11 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{
 					float fract = lerp_fract(current->blend.startt, 
 						current->blend.endt, ticks);
-					rv.opa = lerp_val(current->blend.startopa, 
-						current->blend.endopa, fract);
+					rv.opa = current->blend.interp(
+						current->blend.startopa, 
+						current->blend.endopa, 
+						fract
+					);
 				}
 			}
 
@@ -4532,10 +4570,11 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{
 					float fract = lerp_fract(current->rotate.startt, 
 						current->rotate.endt, ticks);
-					rv.rotation.quaternion = interp_rotation(
-						&current->rotate.starto.quaternion, 
-						&current->rotate.endo.quaternion, fract, 
-						current->rotate.interp);
+
+					rv.rotation.quaternion = current->rotate.interp(
+						current->rotate.starto.quaternion, 
+						current->rotate.endo.quaternion, fract
+					);	
 				}
 			}
 		}

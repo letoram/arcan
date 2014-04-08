@@ -423,9 +423,27 @@ vector lerp_vector(vector a, vector b, float fact)
 	return res;
 }
 
-float lerp_val(float a, float b, float fact)
+float interp_1d_linear(float sv, float ev, float fract)
 {
-	return a + fact * (b - a);
+	return sv + (ev - sv) * fract;
+}
+
+vector interp_3d_linear(vector sv, vector ev, float fract)
+{
+	vector res;
+	res.x = sv.x + (ev.x - sv.x) * fract;
+	res.y	= sv.y + (ev.y - sv.y) * fract;
+	res.z = sv.z + (ev.z - sv.z) * fract;
+	return res;
+}
+
+vector interp_3d_sine(vector sv, vector ev, float fract)
+{
+	vector res;
+	res.x = sv.x + (ev.x - sv.x) * sinf(0.5 * fract * M_PI);
+	res.y = sv.y + (ev.y - sv.y) * sinf(0.5 * fract * M_PI);
+	res.z = sv.z + (ev.z - sv.z) * sinf(0.5 * fract * M_PI);
+	return res;
 }
 
 static inline quat slerp_quatfl(quat a, quat b, float fact, bool r360)
@@ -572,19 +590,6 @@ vector taitbryan_forwardv(float roll, float pitch, float yaw)
 	view.z = dmatr[10];
 
 	return view;
-}
-
-float lerp_fract(unsigned startt, unsigned endt, float ct)
-{
-	float startf = (float)startt + EPSILON;
-	float endf = (float)endt + EPSILON;
-
-	if (ct > endt)
-		ct = endt;
-
-	float cf = ((float)ct - startf + EPSILON);
-
-	return cf / (endf - startf);
 }
 
 static inline void normalize_plane(float* pl)
