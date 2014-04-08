@@ -45,7 +45,7 @@ extern quat default_quat;
 typedef struct {
 	union {
 		struct {
-			float x, y, z, w;
+			float x, y, z;
 		};
 		float xyz[3]; 
 	};
@@ -87,7 +87,6 @@ float len_vector(vector invect);
 vector crossp_vector(vector a, vector b);
 float dotp_vector(vector a, vector b);
 vector norm_vector(vector invect);
-vector lerp_vector(vector a, vector b, float f);
 vector mul_vector(vector a, vector b);
 vector add_vector(vector a, vector b);
 vector sub_vector(vector a, vector b);
@@ -113,16 +112,18 @@ quat slerp_quat360(quat a, quat b, float f);
 quat nlerp_quat180(quat a, quat b, float f);
 quat nlerp_quat360(quat a, quat b, float f);
 
+/* regular, 1d and 3d interpolators */
+float interp_1d_linear(float startv, float stopv, float fract);
+vector interp_3d_linear(vector startv, vector stopv, float fract);
+vector interp_3d_sine(vector startv, vector endv, float fract);
+
 quat add_quat(quat a, quat b);
 quat build_quat_taitbryan(float roll, float pitch, float yaw);
 quat quat_lookat(vector viewpos, vector dstpos);
 
 vector taitbryan_forwardv(float roll, float pitch, float yaw);
 
-scalefactor lerp_scale(scalefactor a, scalefactor b, float f);
 void update_view(orientation* dst, float roll, float pitch, float yaw);
-float lerp_val(float a, float b, float f);
-float lerp_fract(unsigned startt, unsigned endt, float ct);
 
 void build_projection_matrix(float* m, float near, float far, 
 	float aspect, float fov);

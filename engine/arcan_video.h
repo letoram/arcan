@@ -140,13 +140,9 @@ enum arcan_blendfunc {
 	blend_multiply
 };
 
-enum arcan_interp_function {
-	interpolate_linear,
-	interpolate_spherical,
-	interpolate_spherical_large,
-	interpolate_normalized_linear,
-	interpolate_normalized_linear_large
-};
+typedef float (*arcan_interp_1d_function)(float startv, float stopv, float fract); 
+typedef vector (*arcan_interp_3d_function)(vector begin, vector end, float fract); 
+typedef quat (*arcan_interp_4d_function)(quat begin, quat end, float fract);
 
 enum arcan_imageproc_mode {
 	imageproc_normal,
