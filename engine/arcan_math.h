@@ -112,10 +112,17 @@ quat slerp_quat360(quat a, quat b, float f);
 quat nlerp_quat180(quat a, quat b, float f);
 quat nlerp_quat360(quat a, quat b, float f);
 
-/* regular, 1d and 3d interpolators */
+/* some of the more common interpolators (1D, 3D) */
 float interp_1d_linear(float startv, float stopv, float fract);
+float interp_1d_sine(float startv, float endv, float fract);
+float interp_1d_expout(float startv, float endv, float fract);
+float interp_1d_expin(float startv, float endv, float fract);
+float interp_1d_expinout(float startv, float endv, float fract);
 vector interp_3d_linear(vector startv, vector stopv, float fract);
 vector interp_3d_sine(vector startv, vector endv, float fract);
+vector interp_3d_expout(vector startv, vector endv, float fract);
+vector interp_3d_expin(vector startv, vector endv, float fract);
+vector interp_3d_expinout(vector startv, vector endv, float fract);
 
 quat add_quat(quat a, quat b);
 quat build_quat_taitbryan(float roll, float pitch, float yaw);

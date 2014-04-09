@@ -437,6 +437,83 @@ vector interp_3d_linear(vector sv, vector ev, float fract)
 	return res;
 }
 
+float interp_1d_expout(float sv, float ev, float fract)
+{
+	return fract < EPSILON ? sv : 
+		sv + (ev - sv) * (1.0 - powf(2.0, -10.0 * fract));
+}
+
+float interp_1d_expin(float sv, float ev, float fract)
+{
+	return fract < EPSILON ? sv : 
+		sv + (ev - sv) * powf(2, 10 * (fract - 1.0));
+}
+
+float interp_1d_expinout(float sv, float ev, float fract)
+{
+	return fract < EPSILON ? sv :
+			fract > 1.0 - EPSILON ? ev :
+				fract < 0.5 ? 
+					sv + (ev - sv) * ( 0.5 * powf(2, (20 * fract) - 10)) :
+					sv + (ev - sv) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
+}
+
+vector interp_3d_expin(vector sv, vector ev, float fract)
+{
+	vector res;
+
+	res.x = fract < EPSILON ? sv.x : 
+		sv.x + (ev.x - sv.x) * powf(2, 10 * (fract - 1.0));
+
+	res.y = fract < EPSILON ? sv.x : 
+		sv.y + (ev.y - sv.y) * powf(2, 10 * (fract - 1.0));
+
+	res.z = fract < EPSILON ? sv.x : 
+		sv.z + (ev.z - sv.z) * powf(2, 10 * (fract - 1.0));
+
+	return res;
+}
+
+vector interp_3d_expinout(vector sv, vector ev, float fract)
+{
+	vector res;
+	res.x = fract < EPSILON ? sv.x :
+			fract > 1.0 - EPSILON ? ev.x :
+				fract < 0.5 ? 
+					sv.x + (ev.x - sv.x) * ( 0.5 * powf(2, (20 * fract) - 10)) :
+					sv.x + (ev.x - sv.x) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
+
+	res.y = fract < EPSILON ? sv.y :
+			fract > 1.0 - EPSILON ? ev.y :
+				fract < 0.5 ? 
+					sv.y + (ev.y - sv.y) * ( 0.5 * powf(2, (20 * fract) - 10)) :
+					sv.y + (ev.y - sv.y) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
+
+	res.z = fract < EPSILON ? sv.z :
+			fract > 1.0 - EPSILON ? ev.z :
+				fract < 0.5 ? 
+					sv.z + (ev.z - sv.z) * ( 0.5 * powf(2, (20 * fract) - 10)) :
+					sv.z + (ev.z - sv.z) * ((-0.5 * powf(2, (-20 * fract) + 10)) + 1);
+
+	return res;
+}
+
+vector interp_3d_expout(vector sv, vector ev, float fract)
+{
+	vector res;
+
+	res.x = fract < EPSILON ? sv.x : 
+		sv.x + (ev.x - sv.x) * (1.0 - powf(2.0, -10.0 * fract));
+
+	res.y = fract < EPSILON ? sv.x : 
+		sv.y + (ev.y - sv.y) * (1.0 - powf(2.0, -10.0 * fract));
+
+	res.z = fract < EPSILON ? sv.x : 
+		sv.z + (ev.z - sv.z) * (1.0 - powf(2.0, -10.0 * fract));
+
+	return res;
+}
+
 vector interp_3d_sine(vector sv, vector ev, float fract)
 {
 	vector res;
