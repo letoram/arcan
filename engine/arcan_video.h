@@ -76,11 +76,13 @@ enum arcan_vfilter_mode {
 	ARCAN_VFILTER_TRILINEAR
 };
 
-enum arcan_vinterpolant {
+enum arcan_vinterp {
 	ARCAN_VINTER_LINEAR = 0,
 	ARCAN_VINTER_SINE,
 	ARCAN_VINTER_EXPIN,
-	ARCAN_VINTER_EXPOUT
+	ARCAN_VINTER_EXPOUT,
+	ARCAN_VINTER_EXPINOUT,
+	ARCAN_VINTER_ENDMARKER
 };
 
 enum arcan_vimage_mode {
@@ -339,12 +341,15 @@ arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
  * chained- changes for that particular attribute */
 arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, 
 	float newz, unsigned int time);
+arcan_errc arcan_video_moveinterp(arcan_vobj_id id, enum arcan_vinterp);
 arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf, float hf, 
 	float df, unsigned int time);
+arcan_errc arcan_video_scaleinterp(arcan_vobj_id id, enum arcan_vinterp);
 arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch, 
 	float yaw, unsigned int time);
 arcan_errc arcan_video_objectopacity(arcan_vobj_id id, float opa, 
 	unsigned int time);
+arcan_errc arcan_video_blendinterp(arcan_vobj_id id, enum arcan_vinterp);
 arcan_errc arcan_video_origoshift(arcan_vobj_id id, float sx, 
 	float sy, float sz);
 

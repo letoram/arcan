@@ -423,6 +423,11 @@ vector lerp_vector(vector a, vector b, float fact)
 	return res;
 }
 
+float interp_1d_sine(float sv, float ev, float fract)
+{
+	return sv + (ev - sv) * sinf(0.5 * fract * M_PI);
+}
+
 float interp_1d_linear(float sv, float ev, float fract)
 {
 	return sv + (ev - sv) * fract;
