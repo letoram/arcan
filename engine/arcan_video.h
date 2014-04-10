@@ -76,6 +76,13 @@ enum arcan_vfilter_mode {
 	ARCAN_VFILTER_TRILINEAR
 };
 
+enum arcan_vinterpolant {
+	ARCAN_VINTER_LINEAR = 0,
+	ARCAN_VINTER_SINE,
+	ARCAN_VINTER_EXPIN,
+	ARCAN_VINTER_EXPOUT
+};
+
 enum arcan_vimage_mode {
 	ARCAN_VIMAGE_NOPOW2    = 0,
 	ARCAN_VIMAGE_SCALEPOW2 = 1 

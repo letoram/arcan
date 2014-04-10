@@ -70,6 +70,21 @@ static surface_properties empty_surface();
 static sem_handle asynchsynch;
 static long long lastlerp;
 
+/* these match arcan_vinterpolant enum */
+static arcan_interp_3d_function lut_interp_3d[] = {
+	interp_3d_linear,
+	interp_3d_linear,
+	interp_3d_linear,
+	interp_3d_linear	
+};
+
+static arcan_interp_1d_function lut_interp_1d[] = {
+	interp_1d_linear,
+	interp_1d_linear,
+	interp_1d_linear,
+	interp_1d_linear
+};
+
 struct arcan_video_display arcan_video_display = {
 	.bpp = 0, .width = 0, .height = 0, .conservative = false,
 	.deftxs = GL_CLAMP_TO_EDGE, .deftxt = GL_CLAMP_TO_EDGE,
@@ -1664,7 +1679,7 @@ static bool alloc_fbo(struct rendertarget* dst)
 			GL_TEXTURE_2D, dst->color->vstore->vinf.text.glid, 0);
 
 /* need a Z buffer in the offscreen rendering but don't want 
- * to store it, so setup a renderbuffer */
+ * bo store it, so setup a renderbuffer */
 		if (dst->mode > RENDERTARGET_COLOR) {
 			glGenRenderbuffers(1, &dst->depth);
 
@@ -2993,7 +3008,7 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 			base->blend.endt = base->blend.startt + tv;
 			base->blend.startopa = bv;
 			base->blend.endopa = opa + 0.0000000001;
-			base->blend.interp = interp_1d_linear;
+			base->blend.interp = ARCAN_VINTER_LINEAR;
 		}
 	}
 
@@ -3054,7 +3069,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 			base->move.startt = last->move.endt < arcan_video_display.c_ticks ?
 				arcan_video_display.c_ticks : last->move.endt;
 			base->move.endt   = base->move.startt + tv;
-			base->move.interp = interp_3d_linear; 
+			base->move.interp = ARCAN_VINTER_LINEAR;
 			base->move.startp = bwp;
 			base->move.endp   = newp;
 		}
@@ -3113,7 +3128,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 			base->scale.startt = last->scale.endt < arcan_video_display.c_ticks ?
 				arcan_video_display.c_ticks : last->scale.endt;
 			base->scale.endt = base->scale.startt + tv;
-			base->scale.interp = interp_3d_linear;
+			base->scale.interp = ARCAN_VINTER_LINEAR;
 			base->scale.startd = bs;
 			base->scale.endd.x = wf;
 			base->scale.endd.y = hf;
@@ -3199,7 +3214,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		float fract = lerp_fract(ci->transform->blend.startt, 
 			ci->transform->blend.endt, stamp);
 	
-		ci->current.opa = ci->transform->blend.interp(
+		ci->current.opa = lut_interp_1d[ci->transform->blend.interp](
 			ci->transform->blend.startopa, 
 			ci->transform->blend.endopa, fract
 		);
@@ -3222,7 +3237,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		upd = true;
 		float fract = lerp_fract(ci->transform->move.startt, 
 			ci->transform->move.endt, stamp);
-		ci->current.position = ci->transform->move.interp(
+		ci->current.position = lut_interp_3d[ci->transform->move.interp](
 				ci->transform->move.startp, 
 				ci->transform->move.endp, fract
 			);
@@ -3247,7 +3262,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		upd = true;
 		float fract = lerp_fract(ci->transform->scale.startt, 
 			ci->transform->scale.endt, stamp);
-		ci->current.scale = ci->transform->scale.interp(
+		ci->current.scale = lut_interp_3d[ci->transform->scale.interp](
 			ci->transform->scale.startd, 
 			ci->transform->scale.endd, fract
 		);
@@ -3444,21 +3459,21 @@ static void apply(arcan_vobject* vobj, surface_properties* dprops, float lerp,
 		unsigned ct = arcan_video_display.c_ticks;
 
 		if (tf->move.startt)
-			dprops->position = tf->move.interp(
+			dprops->position = lut_interp_3d[tf->move.interp](
 				tf->move.startp,
 				tf->move.endp,
 				lerp_fract(tf->move.startt, tf->move.endt, (float)ct + lerp)
 			);
 
 		if (tf->scale.startt)
-			dprops->scale = tf->scale.interp(
+			dprops->scale = lut_interp_3d[tf->scale.interp](
 				tf->scale.startd, 
 				tf->scale.endd,
 				lerp_fract(tf->scale.startt, tf->scale.endt, (float)ct + lerp)
 			);
 
 		if (tf->blend.startt)
-			dprops->opa = tf->blend.interp(
+			dprops->opa = lut_interp_1d[tf->blend.interp](
 				tf->blend.startopa, 
 				tf->blend.endopa,
 				lerp_fract(tf->blend.startt, tf->blend.endt, (float)ct + lerp)
@@ -3888,10 +3903,6 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 				float yp1 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
 				float xp2 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
 				float yp2 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
-
-				printf("clip(%f, %f, %f, %f) to (%f, %f, %f, %f)\n",
-					-xp1, -yp1, xp1, yp1,
-					-xp2, -yp2, xp2, yp2);
 			}
 			else if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
 				elem->parent != &current_context->world){
@@ -4509,7 +4520,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{ /* need to interpolate */
 					float fract = lerp_fract(current->move.startt, 
 						current->move.endt, ticks);
-					rv.position = current->move.interp(
+					rv.position = lut_interp_3d[current->move.interp](
 						current->move.startp, 
 						current->move.endp, fract
 					);
@@ -4529,7 +4540,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{
 					float fract = lerp_fract(current->scale.startt, 
 						current->scale.endt, ticks);
-					rv.scale = current->scale.interp(
+					rv.scale = lut_interp_3d[current->scale.interp](
 						current->scale.startd, 
 						current->scale.endd, fract
 					);
@@ -4549,7 +4560,7 @@ surface_properties arcan_video_properties_at(arcan_vobj_id id, unsigned ticks)
 				else{
 					float fract = lerp_fract(current->blend.startt, 
 						current->blend.endt, ticks);
-					rv.opa = current->blend.interp(
+					rv.opa = lut_interp_1d[current->blend.interp](
 						current->blend.startopa, 
 						current->blend.endopa, 
 						fract
