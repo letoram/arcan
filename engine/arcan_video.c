@@ -73,16 +73,18 @@ static long long lastlerp;
 /* these match arcan_vinterpolant enum */
 static arcan_interp_3d_function lut_interp_3d[] = {
 	interp_3d_linear,
-	interp_3d_linear,
-	interp_3d_linear,
-	interp_3d_linear	
+	interp_3d_sine,
+	interp_3d_expin,
+	interp_3d_expout,
+	interp_3d_expinout,	
 };
 
 static arcan_interp_1d_function lut_interp_1d[] = {
 	interp_1d_linear,
-	interp_1d_linear,
-	interp_1d_linear,
-	interp_1d_linear
+	interp_1d_sine,
+	interp_1d_expin,
+	interp_1d_expout,
+	interp_1d_expinout
 };
 
 struct arcan_video_display arcan_video_display = {
@@ -3015,6 +3017,69 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 	return rv;
 }
 
+arcan_errc arcan_video_blendinterp(arcan_vobj_id id, enum arcan_vinterp inter)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (!vobj->transform)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	surface_transform* base = vobj->transform;
+
+	while (base && base->blend.startt && 
+		base->next && base->next->blend.startt)
+			base = base->next;
+	
+	assert(base);
+	base->blend.interp = inter;	
+
+	return ARCAN_OK;
+}
+
+arcan_errc arcan_video_scaleinterp(arcan_vobj_id id, enum arcan_vinterp inter)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (!vobj->transform)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	surface_transform* base = vobj->transform;
+
+	while (base && base->scale.startt && 
+		base->next && base->next->scale.startt)
+			base = base->next;
+	
+	assert(base);
+	base->scale.interp = inter;	
+
+	return ARCAN_OK;
+}
+
+arcan_errc arcan_video_moveinterp(arcan_vobj_id id, enum arcan_vinterp inter)
+{
+	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if (!vobj->transform)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	surface_transform* base = vobj->transform;
+
+	while (base && base->move.startt && 
+		base->next && base->next->move.startt)
+			base = base->next;
+	
+	assert(base);
+	base->move.interp = inter;	
+
+	return ARCAN_OK;
+}
+
 /* linear transition from current position to a new desired position,
  * if time is 0 the move will be instantaneous (and not generate an event)
  * otherwise time denotes how many ticks it should take to move the object
@@ -3899,10 +3964,10 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 				surface_properties pprops = empty_surface();
 				arcan_resolve_vidprop(elem->parent, fract, &pprops);
 
-				float xp1 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
+/*				float xp1 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
 				float yp1 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
 				float xp2 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
-				float yp2 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
+				float yp2 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f; */
 			}
 			else if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
 				elem->parent != &current_context->world){

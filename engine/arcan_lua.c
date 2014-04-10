@@ -609,6 +609,8 @@ static int moveimage(lua_State* ctx)
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
+	int interp = luaL_optint(ctx, 5, -1);
+
 	if (time < 0) time = 0;
 
 /* array of VIDs or single VID */
@@ -616,6 +618,8 @@ static int moveimage(lua_State* ctx)
 	if (argtype == LUA_TNUMBER){
 		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_objectmove(id, newx, newy, 1.0, time);
+		if (time > 0 && interp >= 0 && interp < ARCAN_VINTER_ENDMARKER)
+			arcan_video_moveinterp(id, interp); 
 	}
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
@@ -624,6 +628,9 @@ static int moveimage(lua_State* ctx)
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectmove(id, newx, newy, 1.0, time);
+			if (time > 0 && interp >= 0 && interp < ARCAN_VINTER_ENDMARKER)
+				arcan_video_moveinterp(id, interp);
+
 			lua_pop(ctx, 1);
 		}
 	}
@@ -640,7 +647,10 @@ static int nudgeimage(lua_State* ctx)
 	float newx = luaL_optnumber(ctx, 2, 0);
 	float newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
+	int interp = luaL_optint(ctx, 5, -1);
+
 	if (time < 0) time = 0;
+	bool use_interp = time > 0 && interp >= 0 && interp < ARCAN_VINTER_ENDMARKER;
 
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
@@ -648,6 +658,9 @@ static int nudgeimage(lua_State* ctx)
 		surface_properties props = arcan_video_current_properties(id);
 		arcan_video_objectmove(id, props.position.x + newx, 
 			props.position.y + newy, 1.0, time);
+
+		if (use_interp);
+			arcan_video_moveinterp(id, interp); 
 	}
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
@@ -658,6 +671,10 @@ static int nudgeimage(lua_State* ctx)
 			surface_properties props = arcan_video_current_properties(id);
 			arcan_video_objectmove(id, props.position.x + newx, 
 				props.position.y + newy, 1.0, time);
+
+			if (use_interp)
+				arcan_video_moveinterp(id, interp); 
+
 			lua_pop(ctx, 1);
 		}
 	}
@@ -776,6 +793,9 @@ static int scaleimage2(lua_State* ctx)
 	float neww = luaL_checknumber(ctx, 2);
 	float newh = luaL_checknumber(ctx, 3);
 	int time = luaL_optint(ctx, 4, 0);
+	int interp = luaL_optint(ctx, 5, -1);
+	bool use_interp = time > 0 && interp >= 0 && interp < ARCAN_VINTER_ENDMARKER;
+
 	if (time < 0) time = 0;
 
 	if (neww < 0.0001 && newh < 0.0001)
@@ -799,6 +819,9 @@ static int scaleimage2(lua_State* ctx)
 		arcan_video_objectscale(id, neww / prop.scale.x, 
 			newh / prop.scale.y, 1.0, time);
 
+		if (use_interp)
+			arcan_video_scaleinterp(id, interp);
+
 		lua_pushnumber(ctx, neww);
 		lua_pushnumber(ctx, newh);
 	}
@@ -814,7 +837,9 @@ static int scaleimage(lua_State* ctx)
 	float desw = luaL_checknumber(ctx, 2);
 	float desh = luaL_checknumber(ctx, 3);
 	int time = luaL_optint(ctx, 4, 0);
+	int interp = luaL_optint(ctx, 5, -1);
 	if (time < 0) time = 0;
+	bool use_interp = time > 0 && interp >= 0 && interp < ARCAN_VINTER_ENDMARKER;
 
 	surface_properties prop = arcan_video_initial_properties(id);
 
@@ -826,6 +851,8 @@ static int scaleimage(lua_State* ctx)
 			desh = desw * (prop.scale.y / prop.scale.x);
 
 	arcan_video_objectscale(id, desw, desh, 1.0, time);
+	if (use_interp)
+		arcan_video_scaleinterp(id, interp); 
 
 	lua_pushnumber(ctx, desw);
 	lua_pushnumber(ctx, desh);
@@ -871,12 +898,17 @@ static int maxorderimage(lua_State* ctx)
 static inline void massopacity(lua_State* ctx, 
 	float val, const char* caller)
 {
-	float time = luaL_optint(ctx, 3, 0); 
+	int time = luaL_optint(ctx, 3, 0); 
+	int interp = luaL_optint(ctx, 4, -1);
+	bool use_interp = time > 0 && 
+		interp >= 0 && interp < ARCAN_VINTER_ENDMARKER;
 
 	int argtype = lua_type(ctx, 1);
 	if (argtype == LUA_TNUMBER){
 		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_objectopacity(id, val, time);
+		if (use_interp);
+			arcan_video_blendinterp(id, interp); 
 	}
 	else if (argtype == LUA_TTABLE){
 		int nelems = lua_rawlen(ctx, 1);
@@ -885,6 +917,8 @@ static inline void massopacity(lua_State* ctx,
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectopacity(id, val, time);
+			if (use_interp);
+				arcan_video_blendinterp(id, interp); 
 			lua_pop(ctx, 1);
 		}
 	}
@@ -6433,6 +6467,11 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"FILTER_LINEAR",    ARCAN_VFILTER_LINEAR   },
 {"FILTER_BILINEAR",  ARCAN_VFILTER_BILINEAR },
 {"FILTER_TRILINEAR", ARCAN_VFILTER_TRILINEAR},
+{"INTERP_LINEAR",    ARCAN_VINTER_LINEAR    },
+{"INTERP_SINE",      ARCAN_VINTER_SINE      },
+{"INTERP_EXPIN",     ARCAN_VINTER_EXPIN     },
+{"INTERP_EXPOUT",    ARCAN_VINTER_EXPOUT    },
+{"INTERP_EXPINOUT",  ARCAN_VINTER_EXPINOUT  },
 {"SCALE_NOPOW2",     ARCAN_VIMAGE_NOPOW2},
 {"SCALE_POW2",       ARCAN_VIMAGE_SCALEPOW2},
 {"IMAGEPROC_NORMAL", imageproc_normal},

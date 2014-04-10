@@ -65,19 +65,19 @@ struct rendertarget {
 };
 
 struct transf_move{
-	char interp;
+	unsigned char interp;
 	arcan_tickv startt, endt;
 	point startp, endp;
 };
 
 struct transf_scale{
-	char interp;
+	unsigned char interp;
 	arcan_tickv startt, endt;
 	scalefactor startd, endd;
 };
 
 struct transf_blend{
-	char interp;
+	unsigned char interp;
 	arcan_tickv startt, endt;
 	float startopa, endopa;
 };
