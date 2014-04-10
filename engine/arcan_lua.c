@@ -4888,6 +4888,7 @@ static int recordset(lua_State* ctx)
 	}
 
 	luaL_checktype(ctx, 4, LUA_TTABLE);
+	int rc = 0;
 	int nvids         = lua_rawlen(ctx, 4);
 
 	int detach        = luaL_checkint(ctx, 6);
@@ -5007,7 +5008,7 @@ static int recordset(lua_State* ctx)
 		}
 	}
 
-	int rc = dfsrv != ARCAN_EID ? 
+	rc = dfsrv != ARCAN_EID ? 
 		spawn_recsubseg(ctx, did, dfsrv, naids, aidlocks) :
 		spawn_recfsrv(ctx, did, dfsrv, naids, aidlocks, argl, resf);
 
