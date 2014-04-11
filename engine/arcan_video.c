@@ -3290,6 +3290,8 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 			if (ci->flags.cycletransform){
 				arcan_video_objectopacity(ci->cellid, ci->transform->blend.endopa, 
 					ci->transform->blend.endt - ci->transform->blend.startt);
+				if (ci->transform->blend.interp > 0)
+					arcan_video_blendinterp(ci->cellid, ci->transform->blend.interp);
 			}
 
 			compact_transformation(ci,
@@ -3310,12 +3312,16 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		if (fract > 0.999) {
 			ci->current.position = ci->transform->move.endp;
 
-			if (ci->flags.cycletransform)
+			if (ci->flags.cycletransform){
 				arcan_video_objectmove(ci->cellid,
 					 ci->transform->move.endp.x,
 					 ci->transform->move.endp.y,
 					 ci->transform->move.endp.z,
 					 ci->transform->move.endt - ci->transform->move.startt);
+			
+				if (ci->transform->move.interp > 0)
+					arcan_video_moveinterp(ci->cellid, ci->transform->move.interp);
+			}
 
 			compact_transformation(ci,
 				offsetof(surface_transform, move),
@@ -3335,11 +3341,15 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 		if (fract > 0.999) {
 			ci->current.scale = ci->transform->scale.endd;
 
-			if (ci->flags.cycletransform)
+			if (ci->flags.cycletransform){
 				arcan_video_objectscale(ci->cellid, ci->transform->scale.endd.x,
 					ci->transform->scale.endd.y,
 					ci->transform->scale.endd.z,
 					ci->transform->scale.endt - ci->transform->scale.startt);
+			
+				if (ci->transform->scale.interp > 0)
+					arcan_video_scaleinterp(ci->cellid, ci->transform->scale.interp);
+			}
 
 			compact_transformation(ci,
 				offsetof(surface_transform, scale),
