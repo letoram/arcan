@@ -659,7 +659,7 @@ static int nudgeimage(lua_State* ctx)
 		arcan_video_objectmove(id, props.position.x + newx, 
 			props.position.y + newy, 1.0, time);
 
-		if (use_interp);
+		if (use_interp)
 			arcan_video_moveinterp(id, interp); 
 	}
 	else if (argtype == LUA_TTABLE){
@@ -900,6 +900,7 @@ static inline void massopacity(lua_State* ctx,
 {
 	int time = luaL_optint(ctx, 3, 0); 
 	int interp = luaL_optint(ctx, 4, -1);
+
 	bool use_interp = time > 0 && 
 		interp >= 0 && interp < ARCAN_VINTER_ENDMARKER;
 
@@ -907,7 +908,7 @@ static inline void massopacity(lua_State* ctx,
 	if (argtype == LUA_TNUMBER){
 		arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
 		arcan_video_objectopacity(id, val, time);
-		if (use_interp);
+		if (use_interp)
 			arcan_video_blendinterp(id, interp); 
 	}
 	else if (argtype == LUA_TTABLE){
@@ -917,7 +918,7 @@ static inline void massopacity(lua_State* ctx,
 			lua_rawgeti(ctx, 1, i+1);
 			arcan_vobj_id id = luaL_checkvid(ctx, -1, NULL);
 			arcan_video_objectopacity(id, val, time);
-			if (use_interp);
+			if (use_interp)
 				arcan_video_blendinterp(id, interp); 
 			lua_pop(ctx, 1);
 		}
