@@ -3194,6 +3194,41 @@ static int getgenres(lua_State* ctx)
 	return rv;
 }
 
+static int allocsurface(lua_State* ctx)
+{
+	LUA_TRACE("alloc_surface");
+	img_cons cons = {};
+	cons.w = luaL_checknumber(ctx, 1);
+	cons.h = luaL_checknumber(ctx, 2);
+	cons.bpp = GL_PIXEL_BPP;
+
+	if (cons.w < 0 || cons.w > MAX_SURFACEW || 
+		cons.h < 0 || cons.h > MAX_SURFACEH)
+		arcan_fatal("alloc_surface(%d, %d) failed, unacceptable "
+			"surface dimensions. Compile time restriction (%d,%d)\n",
+			cons.w, cons.h, MAX_SURFACEW, MAX_SURFACEH);
+
+	uint8_t* buf = malloc(cons.w * cons.h * GL_PIXEL_BPP);
+	uint32_t* cptr = (uint32_t*) buf;
+
+	if (!buf){
+		arcan_warning("alloc_surface(%d, %d) failed, couldn't allocate "
+			"storage buffer, out of memory?\n", cons.w, cons.h);
+		lua_pushvid(ctx, ARCAN_EID);
+	}
+
+	for (int y = 0; y < cons.h; y++)
+		for (int x = 0; x < cons.w; x++)
+			RGBAPACK(0, 0, 0, 0xff, cptr++);
+
+	arcan_vobj_id id = arcan_video_rawobject(
+		buf, cons.w * cons.h * GL_PIXEL_BPP, cons, cons.w, cons.h, 0);
+
+	lua_pushvid(ctx, id);
+	
+	return 1;	
+}
+
 static int fillsurface(lua_State* ctx)
 {
 	LUA_TRACE("fill_surface");
@@ -6153,6 +6188,28 @@ static void register_tbl(lua_State* ctx, const luaL_Reg* funtbl)
 	}
 }
 
+#include <hidapi/hidapi.h>
+int turretcmd(lua_State* ctx)
+{
+	static hid_device* handle;
+	if (!handle)
+		handle = hid_open_path("/dev/hidraw5");
+
+	if (!handle){
+		lua_pushboolean(ctx, false);
+		return 1;
+	}
+	
+	unsigned char dbuf[8] = {0};
+	dbuf[0] = lua_tonumber(ctx, 1);
+	dbuf[1] = lua_tonumber(ctx, 2);
+
+	hid_write(handle, dbuf, 8);
+
+	lua_pushboolean(ctx, true);
+	return 1;
+}
+
 arcan_errc arcan_lua_exposefuncs(lua_State* ctx, unsigned char debugfuncs)
 {
 	if (!ctx)
@@ -6241,6 +6298,17 @@ static const luaL_Reg dbfuns[] = {
 #undef EXT_MAPTBL_DATABASE
 	register_tbl(ctx, dbfuns);
 
+/*
+ * Personal hacks for internal projects
+ */
+#define EXT_MAPTBL_CUSTOM
+static const luaL_Reg custfuns[] = {
+{"turret_cmd", turretcmd},
+{NULL, NULL}
+};
+#undef EXT_MAPTBL_CUSTOM
+	register_tbl(ctx, custfuns);
+
 #define EXT_MAPTBL_AUDIO
 static const luaL_Reg audfuns[] = {
 {"play_audio",        playaudio   },
@@ -6307,6 +6375,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_sharestorage",       sharestorage       },
 {"image_color",              imagecolor         },
 {"fill_surface",             fillsurface        },
+{"alloc_surface",            allocsurface       },
 {"raw_surface",              rawsurface         },
 {"color_surface",            colorsurface       },
 {"null_surface",             nullsurface        },
