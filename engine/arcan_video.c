@@ -125,7 +125,6 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src);
 static arcan_errc update_zv(arcan_vobject* vobj, unsigned short newzv);
 static void rebase_transform(struct surface_transform*, arcan_tickv);
 static bool alloc_fbo(struct rendertarget* dst);
-static bool activate_fbo(struct rendertarget* dst);
 static void process_rendertarget(struct rendertarget* tgt, float fract);
 static arcan_vobject* new_vobject(arcan_vobj_id* id, 
 struct arcan_video_context* dctx);
@@ -1653,12 +1652,6 @@ arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did,
 	}
 
 	return rv;
-}
-
-static bool activate_fbo(struct rendertarget* dst)
-{
-	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
-	return true;
 }
 
 /* 
@@ -4146,7 +4139,10 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	process_rendertarget(tgt, lastlerp);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
+		process_rendertarget(tgt, lastlerp);
+
 	return ARCAN_OK;
 }
 
@@ -4248,11 +4244,9 @@ void arcan_video_refresh_GL(float lerp)
 	if (arcan_video_display.fbo_support){
 		for (int ind = 0; ind < current_context->n_rtargets; ind++){
 			struct rendertarget* tgt = &current_context->rtargets[ind];
-			bool active_fbo = activate_fbo(tgt);
-			
-			if (active_fbo){
-				process_rendertarget(tgt, lerp);
-			}	
+
+			glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
+			process_rendertarget(tgt, lerp);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		
 			for (int ind = 0; ind < current_context->n_rtargets; ind++)
@@ -4265,9 +4259,8 @@ void arcan_video_refresh_GL(float lerp)
  * the requirement for outputs to have the same dimensions(?), it's easier,
  * for now, just to treat the outp as a regular RTT */
 	if (current_context->stdoutp.color){
-		if (activate_fbo(&current_context->stdoutp))
-			process_rendertarget(&current_context->stdoutp, lerp);
-
+		glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
+		process_rendertarget(&current_context->stdoutp, lerp);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		if (current_context->stdoutp.readback != 0)
