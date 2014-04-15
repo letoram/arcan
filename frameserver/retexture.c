@@ -54,6 +54,15 @@
  * no different mipmap- levels, only supported targets are TEXTURE_2D.
  */
 
+/*
+ * Work-items left:
+ * 0. Setup a log (dump to disk) define that also stores hashid
+ * 1. Test in situ replacement by hard-coding a specific texture swap
+ * 2. Get the texture page preview output working
+ * 3. Switch the hard coded swap with dynamic entries from parent
+ * 4. Let parent switch between a static and a streamed source
+ */
+
 struct track_elem
 {
 /* we split between active and alive for now in order to 
@@ -106,6 +115,14 @@ static struct {
 	struct track_bucket* buckets;	
 	int n_buckets;
 
+	struct extcon {
+		uint32_t* vidp;
+		uint16_t* audp;
+		struct arcan_shmif_cont* cont;
+		struct arcan_evctx inevq;
+		struct arcan_evctx outevq;
+	} in, out;
+
 /* notification channel for discoveries / changes */	
 	arcan_event* dqueue;
 
@@ -114,7 +131,7 @@ static struct {
 		GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid*);
 	void (*deletetextures)(GLsizei, const GLuint*);
 
-} retexctx;
+} retexctx = {0};
 
 static bool supported_format(GLenum target, GLint format)
 {
@@ -228,6 +245,27 @@ static unsigned long djb_hash(const char* str, size_t nb)
 	return hash;
 }
 
+void arcan_retexture_tick()
+{
+	if (!retexctx.in.cont)
+		return;
+
+/* events we are interested in:
+ * switching graphing mode 
+ * (i.e. how active texture preview should be refreshed on the output page)
+ * incoming texture
+ * (should be copied into local buffer and run through arcan retex_update) 
+ */
+	arcan_event inev;
+	while( arcan_event_poll(&retexctx.in.inevq, &inev) == 1 ){
+	}
+
+/*
+ * FIXME: Rebuild active texture page (if dirty),
+ * signal output for transfer
+ */ 
+}
+
 /*
  * It is up to the calling library to perform the actual hijack,
  * e.g. patching the existing symbol to redirect / jump here
@@ -239,6 +277,7 @@ void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
 {
 	if (!retexctx.running || !supported_format(target, format))
 		goto upload;
+
 
 	size_t nb = width * height * 4;
 	unsigned long id = djb_hash(data, nb); 
@@ -340,7 +379,26 @@ void arcan_retexture_update_shmif(
 	struct arcan_shmif_cont* inseg, 
 	struct arcan_shmif_cont* outseg)
 {
-		
+/*
+ * FIXME: free if new inseg is sent,
+ * this implies that the parent has switched to a different 
+ * output mechanism (explicit push or stream)
+ */
+	if (inseg){
+		retexctx.in.cont = inseg;
+		arcan_shmif_calcofs( retexctx.in.cont->addr, 
+			(uint8_t**) &retexctx.in.vidp, (uint8_t**) &retexctx.in.audp);
+		arcan_shmif_setevqs(retexctx.in.cont->addr, retexctx.in.cont->esem,
+			&(retexctx.in.inevq), &(retexctx.in.outevq), false);
+	} 
+
+	if (outseg){
+		retexctx.out.cont = outseg;
+		arcan_shmif_calcofs( retexctx.out.cont->addr, 
+			(uint8_t**) &retexctx.out.vidp, (uint8_t**) &retexctx.out.audp);
+		arcan_shmif_setevqs(retexctx.in.cont->addr, retexctx.in.cont->esem,
+			&(retexctx.in.inevq), &(retexctx.in.outevq), false);
+	}
 }
 
 /* 

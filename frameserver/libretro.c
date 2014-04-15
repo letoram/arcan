@@ -37,6 +37,7 @@
 #include "ievsched.h"
 #include "stateman.h"
 #include "libretro.h"
+#include "retexture.h"
 
 #include "resampler/speex_resampler.h"
 
@@ -1329,13 +1330,16 @@ static void build_fbo(int neww, int newh, int* dw, int* dh,
 	glGenTextures(1, dcol);
 	glBindTexture(GL_TEXTURE_2D, *dcol);
 	
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	arcan_retexture_disable();
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, neww, newh, 0, 
 		GL_RGBA, GL_UNSIGNED_BYTE, mem);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	arcan_retexture_enable();
+
 	free(mem);
 
 /* won't read this one back but emulation might still need it */
@@ -1378,6 +1382,14 @@ static uintptr_t get_framebuffer()
 	return (uintptr_t) dfbo->fbo; 
 }
 
+/*
+ * In preparation for additional dynamic hijinx 
+ */
+static void* intercept_procaddr(const char* proc)
+{
+	return SDL_GL_GetProcAddress(proc);
+}
+
 static void setup_3dcore(struct retro_hw_render_callback* ctx)
 {
 /* we just want a dummy window with a valid openGL context
@@ -1388,10 +1400,26 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		exit(1);
 	}
 
+	arcan_retexture_init(NULL, false);
+
+/* 
+ * allocate an input and an output segment and map up,
+ * the socket file descriptors will just be ignored here 
+ * as the main thread will be used to pump the queues
+ * and the shared memory segments will be used to push
+ * data 
+ */
+	arcan_event ev = {
+		.category = EVENT_EXTERNAL,
+		.kind = EVENT_EXTERNAL_NOTICE_SEGREQ
+	};
+
+	arcan_event_enqueue(&retroctx.outevq, &ev);
+
 	platform_video_minimize();
 
 	ctx->get_current_framebuffer = get_framebuffer; 
-	ctx->get_proc_address = (retro_hw_get_proc_address_t) SDL_GL_GetProcAddress;
+	ctx->get_proc_address = (retro_hw_get_proc_address_t) intercept_procaddr;
 
 	if (ctx->bottom_left_origin)
 		retroctx.shmcont.addr->glsource = true;
@@ -1399,7 +1427,7 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 	memcpy(&retroctx.hwctx, ctx, 
 		sizeof(struct retro_hw_render_callback));
 
-		ctx->context_reset();
+	ctx->context_reset();
 
 /* missing (except for the build options)
  * is possibly the timer trigger thing */
