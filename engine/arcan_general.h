@@ -206,10 +206,143 @@ typedef struct {
 	char costofs;
 } arcan_benchdata;
 
+
+/* 
+ * Type / use hinted memory (de-)allocation routines.
+ * The simplest version merely maps to malloc/memcpy family,
+ * but local platforms can add reasonable protection (mprotect etc.)
+ * where applicable, but also to take advantage of non-uniform
+ * memory subsystems. 
+ * This also includes info-leak protections in the form of hinting to the 
+ * OS to avoid core-dumping certain pages.
+ * 
+ * The values are structured like a bitmask in order
+ * to hint / switch which groups we want a certain level of protection
+ * for. 
+ *
+ * The raw implementation for this is in the platform,
+ * thus, any exotic approaches should be placed there (e.g. 
+ * installing custom SIGSEGV handler to zero- out important areas etc).
+ *
+ * Memory allocated in this way must also be freed using a similar function,
+ * particularly to allow non-natural alignment (page, hugepage, simd, ...)
+ * but also for the allocator to work in a more wasteful manner,
+ * meaning to add usage-aware pre/post guard buffers.
+ *
+ * By default, an external out of memory condition is treated as a 
+ * terminal state transition (unless you specify ARCAN_MEM_NONFATAL)
+ * and allocation therefore never returns NULL.
+ *
+ * The primary purposes of this wrapper is to track down and control
+ * dynamic memory use in the engine, to ease distinguishing memory that
+ * comes from the engine and memory that comes from libraries we depend on,
+ * and make it easier to debug/detect memory- related issues. This is not 
+ * an effective protection against foreign code execution in process by 
+ * a hostile party.  
+ */
+
+enum arcan_memtypes {
+/*
+ * Texture data, FBO storage, ...
+ * Ranging from MEDIUM to HUGE (64k -> 16M)
+ * should exploit the fact that many dimensions will be powers of 2.
+ */
+	ARCAN_MEM_VBUFFER = 1,
+
+/*
+ * Management of the video-pipeline (render target, transforms etc.)
+ * these are usually accessed often and very proximate to eachother.
+ */
+	ARCAN_MEM_VSTRUCT,
+
+/*
+ * Audio buffers for samples and for frameserver transfers
+ * SMALL to MEDIUM, >1M is a monitoring condition.
+ */
+	ARCAN_MEM_ABUFFER, 
+
+/*
+ * Typically temporary buffers for building input/output strings
+ * SMALL to TINY, > 64k is a monitoring condition.
+ */
+	ARCAN_MEM_STRINGBUF,
+
+/*
+ * Use- specific buffer associated with a video object (container
+ * for 3d model, container for frameserver etc.) SMALL to TINY
+ */
+	ARCAN_MEM_VTAG,
+
+/*
+ * Use for script interface bindings, thus may contain user-important
+ * states, untrusted contents etc.
+ */
+	ARCAN_MEM_BINDING,
+
+/*
+ * Use for vertices, texture coordinates, ...
+ */
+	ARCAN_MEM_MODELDATA,
+
+/*
+ * Database- contents, session keys, etc.
+ */
+	ARCAN_MEM_SENSITIVE,
+
+/* context that is used to pass data to a newly created thread */
+	ARCAN_MEM_THREADCTX
+};
+
+/*
+ * No memtype is exec unless explicitly marked as such,
+ * and exec is always non-writable (use alloc_fillmem).
+ */
+enum arcan_memhint {
+	ARCAN_MEM_BZERO = 1,
+	ARCAN_MEM_TEMPORARY = 2,
+	ARCAN_MEM_EXEC = 4,
+	ARCAN_MEM_NONFATAL = 8,
+	ARCAN_MEM_READONLY = 16
+};
+
+enum arcan_memalign {
+	ARCAN_MEMALIGN_NATURAL,
+	ARCAN_MEMALIGN_PAGE,
+	ARCAN_MEMALIGN_SIMD
+};
+
+/*
+ * align: 0 = natural, -1 = page
+ */
+void* arcan_alloc_mem(size_t, 
+	enum arcan_memtypes, 
+	enum arcan_memhint, 
+	enum arcan_memalign);
+
+/*
+ * NULL is allowed (and ignored),
+ * otherwise 
+ */
+void arcan_mem_free(void*);
+
+/*
+ * Allocate memory intended for read-only or 
+ * exec use (JIT, ...)
+ */
+void* arcan_alloc_fillmem(void*,
+	size_t,
+	enum arcan_memtypes, 
+	enum arcan_memhint, 
+	enum arcan_memalign);
+
 void arcan_bench_register_tick(unsigned);
 void arcan_bench_register_cost(unsigned);
 void arcan_bench_register_frame();
 
+/*
+ * These are slated for removal / replacement when
+ * we add a real package format etc.
+ */
 extern char* arcan_themename;
 extern char* arcan_resourcepath;
 extern char* arcan_themepath;

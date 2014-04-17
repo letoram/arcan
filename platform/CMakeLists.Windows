@@ -6,6 +6,7 @@ add_definitions(-msse -mfpmath=sse)
 
 set (PLATFORM_SOURCES
 platform/posix/fmt_open.c
+${WIN32_PATH}/../stub/mem.c
 ${WIN32_PATH}/sem.c
 ${WIN32_PATH}/strip_traverse.c
 ${WIN32_PATH}/shm.c
