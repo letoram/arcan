@@ -3962,7 +3962,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 /* a common clipping situation is that we have an invisible clipping parent
  * where neither objects are in a rotated state, which gives an easy way
  * out through the drawing region */
-			if (elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
+			if (0 && elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
 				elem->parent != &current_context->world && !elem->rotate_state){
 				surface_properties pprops = empty_surface();
 				arcan_resolve_vidprop(elem->parent, fract, &pprops);
