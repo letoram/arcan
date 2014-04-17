@@ -160,11 +160,10 @@ static void drop_glres(struct storage_info_t* s)
 			glDeleteTextures(1, &s->vinf.text.glid);
 
 			if (s->vinf.text.raw)
-				free(s->vinf.text.raw);
+				arcan_mem_free(s->vinf.text.raw);
 		}
 
-		memset(s, '\0', sizeof(struct storage_info_t));
-		free(s);
+		arcan_mem_free(s);
 	}
 }
 
@@ -255,7 +254,7 @@ void push_globj(arcan_vobject* dst, bool noupload,
 	}
 
 	if (arcan_video_display.conservative){
-		free(s->vinf.text.raw);
+		arcan_mem_free(s->vinf.text.raw);
 		s->vinf.text.raw = NULL;
 		s->vinf.text.s_raw = 0;
 	}
@@ -390,7 +389,7 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 
 /* pool is dynamically sized and size is set on layer push */
 	if (del){
-		free(context->vitems_pool);
+		arcan_mem_free(context->vitems_pool);
 		context->vitems_pool = NULL;
 	}
 }
@@ -419,8 +418,9 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 	if (!context->vitems_pool){
 		context->vitem_limit = arcan_video_display.default_vitemlim;
 		context->vitem_ofs   = 1;
-		context->vitems_pool = (arcan_vobject*) calloc( sizeof(arcan_vobject),
-			context->vitem_limit);
+		context->vitems_pool = arcan_alloc_mem(
+			sizeof(struct arcan_vobject) * context->vitem_limit, 
+				ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	}
 	else for (int i = 1; i < context->vitem_limit; i++)
 		if (context->vitems_pool[i].flags.in_use){
@@ -445,7 +445,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			if (arcan_video_display.conservative &&	
 				(char)current->feed.state.tag == ARCAN_TAG_IMAGE){
 					char* fname = strdup( current->vstore->vinf.text.source ); 
-					free(current->vstore->vinf.text.source);
+					arcan_mem_free(current->vstore->vinf.text.source);
 				arcan_video_getimage(fname, current, 
 					arcan_video_dimensions(current->origw, current->origh), false);
 				free(fname); 
@@ -551,8 +551,10 @@ signed arcan_video_pushcontext()
 
 	current_context->world = empty_vobj;
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
-	current_context->vitems_pool = calloc(sizeof(arcan_vobject), 
-			current_context->vitem_limit);
+	current_context->vitems_pool = arcan_alloc_mem(
+		sizeof(struct arcan_vobject) * current_context->vitem_limit, 
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+				
 	current_context->rtargets[0].first = NULL;
 
 /* propagate persistent flagged objects upwards */
@@ -586,7 +588,7 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
 	
 		if (*dst == ARCAN_EID)
-			free(dstbuf);
+			arcan_mem_free(dstbuf);
 	}
 
 	return rv;
@@ -609,7 +611,7 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
 	
 		if (*dst == ARCAN_EID)
-		free(dstbuf);
+			arcan_mem_free(dstbuf);
 	}
 
 	return rv;
@@ -752,8 +754,11 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		rv->current_frame = rv;
 		rv->order = 0;
 
-		rv->vstore = malloc(sizeof(struct storage_info_t));
-		memset(rv->vstore, '\0', sizeof(struct storage_info_t));
+		rv->vstore = arcan_alloc_mem(
+			sizeof(struct storage_info_t),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL
+		);
 
 		rv->vstore->txmapped   = TXSTATE_TEX2D;
 		rv->vstore->txu        = arcan_video_display.deftxs;
@@ -861,8 +866,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	}
 
 /* cleanup torem */
-	memset(torem, 0, sizeof(arcan_vobject_litem));
-	free(torem);
+	arcan_mem_free(torem);
 
 	if (src->owner == dst) 
 		src->owner = NULL;
@@ -888,7 +892,10 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 
 static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 {
-	arcan_vobject_litem* new_litem = malloc(sizeof *new_litem);
+	arcan_vobject_litem* new_litem = 
+		arcan_alloc_mem(sizeof *new_litem, 
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
+
 	new_litem->next = new_litem->previous = NULL;
 	new_litem->elem = src;
 
@@ -979,8 +986,9 @@ static surface_transform* dup_chain(surface_transform* base)
 	if (!base)
 		return NULL;
 
-	surface_transform* res = (surface_transform*) 
-		malloc(sizeof(surface_transform));
+	surface_transform* res = arcan_alloc_mem( sizeof(surface_transform),
+		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
+
 	surface_transform* current = res;
 
 	while (base)
@@ -988,7 +996,8 @@ static surface_transform* dup_chain(surface_transform* base)
 		memcpy(current, base, sizeof(surface_transform));
 
 		if (base->next)
-			current->next = (surface_transform*) malloc(sizeof(surface_transform));
+			current->next = arcan_alloc_mem( sizeof(surface_transform),
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
 		else
 			current->next = NULL;
 
@@ -1250,8 +1259,9 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 	current_context->world.current.scale.x = 1.0;
 	current_context->world.current.scale.y = 1.0;
 	current_context->vitem_limit = arcan_video_display.default_vitemlim;
-	current_context->vitems_pool = calloc(sizeof(arcan_vobject),
-		current_context->vitem_limit);
+	current_context->vitems_pool = arcan_alloc_mem(
+		sizeof(struct arcan_vobject) * current_context->vitem_limit, 
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	arcan_video_gldefault();
 
@@ -1350,7 +1360,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 			dst->origh = forced.h;
 
 			dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
-			dstframe->vinf.text.raw   = malloc(dstframe->vinf.text.s_raw); 
+			dstframe->vinf.text.raw   = arcan_alloc_mem(dstframe->vinf.text.s_raw,
+				ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+
 			stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
 				neww, newh, dst->vstore->imageproc == imageproc_fliph);
 			free(imgbuf);
@@ -1361,7 +1373,9 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 			if (neww != inw || newh != inh){
 				dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
-				dstframe->vinf.text.raw = malloc(dstframe->vinf.text.s_raw);
+				dstframe->vinf.text.raw = arcan_alloc_mem(dstframe->vinf.text.s_raw,
+					ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+
 				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
 					neww, newh, dst->vstore->imageproc == imageproc_fliph);
 				free(imgbuf);
@@ -1440,7 +1454,7 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 					arcan_video_deleteobject(torem->cellid);
 			}
 
-			free(target->frameset);
+			arcan_mem_free(target->frameset);
 			target->frameset = NULL;
 		}
 
@@ -1448,7 +1462,8 @@ arcan_errc arcan_video_allocframes(arcan_vobj_id id, unsigned char capacity,
 		target->current_frame = target;
 
 	if (capacity > 0){
-		target->frameset = malloc(sizeof(arcan_vobject*) * capacity);
+		target->frameset = arcan_alloc_mem(sizeof(arcan_vobject*) * capacity,
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
 
 /* fill each slot with references to self */
 		for (int i = 0; i < capacity; i++){
@@ -1695,7 +1710,9 @@ static bool alloc_fbo(struct rendertarget* dst)
 		int h = dst->color->vstore->h;
 		drop_glres(dst->color->vstore);
 
-		dst->color->vstore = malloc(sizeof(struct storage_info_t));
+		dst->color->vstore = arcan_alloc_mem(sizeof(struct storage_info_t),
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL);
+
 		struct storage_info_t* store = dst->color->vstore;
 
 		memset(store, '\0', sizeof(struct storage_info_t));
@@ -1956,8 +1973,9 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 		img->origw = 32;
 		img->origh = 32;
 		img->vstore->vinf.text.s_raw = 32 * 32 * GL_PIXEL_BPP;
-		img->vstore->vinf.text.raw = malloc(img->vstore->vinf.text.s_raw);
-		memset(img->vstore->vinf.text.raw, 0, img->vstore->vinf.text.s_raw);
+		img->vstore->vinf.text.raw = arcan_alloc_mem(img->vstore->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+		
 		img->vstore->w = 32;
 		img->vstore->h = 32;
 		img->vstore->vinf.text.source = strdup(args->fname);
@@ -1973,7 +1991,7 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 		arcan_event_enqueue(arcan_event_defaultctx(), &loadev);
 
 	free(args->fname);
-	free(args);
+	arcan_mem_free(args);
 	img->feed.state.ptr = NULL;
 	img->feed.state.tag = ARCAN_TAG_IMAGE;
 }
@@ -1990,7 +2008,9 @@ static arcan_vobj_id loadimage_asynch(const char* fname,
 	if (!dstobj)
 		return rv;
 
-	struct thread_loader_args* args = malloc(sizeof(struct thread_loader_args));
+	struct thread_loader_args* args = arcan_alloc_mem(
+		sizeof(struct thread_loader_args),
+		ARCAN_MEM_THREADCTX, 0, ARCAN_MEMALIGN_NATURAL);
 
 	args->dstid = rv;
 	args->dst = dstobj;
@@ -2119,8 +2139,8 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 /* allocate */
 		vstor->vinf.text.s_raw = newvobj->vstore->w * newvobj->vstore->h * 
 			newvobj->vstore->bpp;
-		vstor->vinf.text.raw = malloc(vstor->vinf.text.s_raw);
-		memset(vstor->vinf.text.raw, '\0', vstor->vinf.text.s_raw);
+		vstor->vinf.text.raw = arcan_alloc_mem(vstor->vinf.text.s_raw,
+			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 		newvobj->feed.ffunc = ffunc;
 		push_globj(newvobj, false, NULL);
@@ -2163,9 +2183,10 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		vobj->vstore->vinf.text.s_raw = vobj->vstore->w * vobj->vstore->h * 
 			GL_PIXEL_BPP;
 
-		free(vobj->vstore->vinf.text.raw);
-		vobj->vstore->vinf.text.raw = malloc(vobj->vstore->vinf.text.s_raw);
-		memset(vobj->vstore->vinf.text.raw, '\0', vobj->vstore->vinf.text.s_raw);
+		arcan_mem_free(vobj->vstore->vinf.text.raw);
+		vobj->vstore->vinf.text.raw = 
+			arcan_alloc_mem(vobj->vstore->vinf.text.s_raw,
+				ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 /* as the dimensions may be different, we need to 
  * reinitialize the gl-storage as well */
@@ -2378,7 +2399,7 @@ arcan_errc arcan_video_zaptransform(arcan_vobj_id id)
 
 		while (current) {
 			surface_transform* next = current->next;
-			free(current);
+			arcan_mem_free(current);
 			current = next;
 		}
 		vobj->transform = NULL;
@@ -2587,7 +2608,8 @@ static void drop_rtarget(arcan_vobject* vobj)
 /* create a temporary copy of all the elements in the rendertarget */
 	arcan_vobject_litem* current = dst->first;
 	size_t pool_sz = (dst->color->extrefc.attachments) * sizeof(arcan_vobject*);
-	pool = malloc(pool_sz);
+	pool = arcan_alloc_mem(pool_sz, ARCAN_MEM_VSTRUCT, ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_NATURAL);
 
 /* note the contents of the rendertarget as "detached" from the source vobj */
 	while (current){
@@ -2610,7 +2632,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 		current->elem = NULL;
 		current = current->next;
 		last->next = (struct arcan_vobject_litem*) 0xdeadbeef;
-		free(last);
+		arcan_mem_free(last);
 	}
 
 /* compact the context array of rendertargets */
@@ -2644,7 +2666,7 @@ static void drop_rtarget(arcan_vobject* vobj)
 			}
 		}
 
-	free(pool);
+	arcan_mem_free(pool);
 }
 
 /* by far, the most involved and dangerous function in this .o, 
@@ -2753,7 +2775,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			}
 		}
 
-		free(vobj->children);
+		arcan_mem_free(vobj->children);
 		vobj->childslots = 0;
 
 	current_context->nalive--;
@@ -2776,7 +2798,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 			arcan_video_pushasynch(id);
 		}
 
-		free(vobj->frameset);
+		arcan_mem_free(vobj->frameset);
 		vobj->frameset = NULL;
 
 /* video storage, will take care of refcounting in case of 
@@ -2794,7 +2816,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 #endif
 	}
 
-	free(vobj->tracetag);
+	arcan_mem_free(vobj->tracetag);
 
 /* lots of default values are assumed to be 0, so reset the 
  * entire object to be sure. will help leak detectors as well */
@@ -2912,9 +2934,12 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
 
 			if (!base){
 				if (last)
-					base = last->next = calloc(sizeof(surface_transform), 1);
+					base = last->next = 
+						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
+							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				else
-					base = last = calloc(sizeof(surface_transform), 1);
+					arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
+						ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 			}
 
 			if (!vobj->transform)
@@ -2990,9 +3015,13 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 
 			if (!base){
 				if (last)
-					base = last->next = calloc(sizeof(surface_transform), 1);
+					base = last->next =
+						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
+							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				else
-					base = last = calloc(sizeof(surface_transform), 1);
+					base = last =
+						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
+							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 			}
 
 			if (!vobj->transform)
@@ -3114,10 +3143,14 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 
 			if (!base){
 				if (last)
-					base = last->next = calloc(sizeof(surface_transform), 1);
+					base = last->next = 
+						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
+							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				else
-					base = last = calloc(sizeof(surface_transform), 1);
-			}
+					base = last = 
+						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
+							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+ 			}
 
 			point newp = {newx, newy, newz};
 
@@ -3175,9 +3208,11 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 
 			if (!base){
 				if (last)
-					base = last->next = calloc(sizeof(surface_transform), 1);
+					base = last->next = arcan_alloc_mem(sizeof(surface_transform), 
+							ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				else
-					base = last = calloc(sizeof(surface_transform), 1);
+					base = last = arcan_alloc_mem(sizeof(surface_transform), 
+							ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 			}
 
 			if (!vobj->transform)
@@ -3223,7 +3258,7 @@ static void compact_transformation(arcan_vobject* base,
 	          work->move.startt |
 	          work->rotate.startt )
 	   )	{
-		free(work);
+		arcan_mem_free(work);
 		if (last)
 			last->next = NULL;
 		else
@@ -4120,7 +4155,8 @@ arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dsize)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
 	*dsize = GL_PIXEL_BPP * dstore->w * dstore->h; 
-	*dptr  = malloc(*dsize);
+	*dptr  = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER, 
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
 	glBindTexture(GL_TEXTURE_2D, dstore->vinf.text.glid); 
 	glGetTexImage(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, *dptr);
@@ -4151,7 +4187,8 @@ arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize)
 	*dsize = sizeof(char) * arcan_video_display.width * 
 		arcan_video_display.height * GL_PIXEL_BPP;
 
-	*dptr = malloc( *dsize );
+	*dptr = arcan_alloc_mem(*dsize, ARCAN_MEM_VBUFFER,
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_NONFATAL, ARCAN_MEMALIGN_PAGE);
 
 	if (!(*dptr)){
 		*dsize = 0;
