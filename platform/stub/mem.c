@@ -25,7 +25,7 @@ void* arcan_alloc_mem(size_t nb,
  * Allocate memory intended for read-only or 
  * exec use (JIT, ...)
  */
-void* arcan_alloc_fillmem(void* data,
+void* arcan_alloc_fillmem(const void* data,
 	size_t ds,
 	enum arcan_memtypes type, 
 	enum arcan_memhint hint, 

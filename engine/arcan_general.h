@@ -252,6 +252,7 @@ enum arcan_memtypes {
 /*
  * Management of the video-pipeline (render target, transforms etc.)
  * these are usually accessed often and very proximate to eachother.
+ * TINY in size.
  */
 	ARCAN_MEM_VSTRUCT,
 
@@ -329,7 +330,7 @@ void arcan_mem_free(void*);
  * Allocate memory intended for read-only or 
  * exec use (JIT, ...)
  */
-void* arcan_alloc_fillmem(void*,
+void* arcan_alloc_fillmem(const void*,
 	size_t,
 	enum arcan_memtypes, 
 	enum arcan_memhint, 

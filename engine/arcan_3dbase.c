@@ -173,8 +173,11 @@ static void build_hplane(point min, point max, point step,
 	unsigned nz = ceil(delta.z / step.z);
 	
 	*nverts = nx * nz;
-	*verts = (float*) malloc(sizeof(float) * (*nverts) * 3);
-	*txcos = (float*) malloc(sizeof(float) * (*nverts) * 2);
+	*verts = arcan_alloc_mem(sizeof(float) * (*nverts) * 3,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+
+	*txcos = arcan_alloc_mem(sizeof(float) * (*nverts) * 2,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 	
 	unsigned vofs = 0, tofs = 0;
 	for (unsigned x = 0; x < nx; x++)
@@ -188,7 +191,9 @@ static void build_hplane(point min, point max, point step,
 
 	vofs = 0; tofs = 0;
 #define GETVERT(X,Z)( ( (X) * nz) + Z)
-	*indices = (unsigned*) malloc(sizeof(unsigned) * (*nverts) * 3 * 2);
+	*indices = arcan_alloc_mem(sizeof(unsigned) * (*nverts) * 3 * 2,
+			ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+
 		for (unsigned x = 0; x < nx-1; x++)
 			for (unsigned z = 0; z < nz-1; z++){
 				(*indices)[vofs++] = GETVERT(x, z);
@@ -222,18 +227,18 @@ static void freemodel(arcan_3dmodel* src)
 	geom = src->geometry;
 
 	while(geom){
-		free(geom->indices);
-		free(geom->verts);
-		free(geom->normals);
-		free(geom->txcos);
+		arcan_mem_free(geom->indices);
+		arcan_mem_free(geom->verts);
+		arcan_mem_free(geom->normals);
+		arcan_mem_free(geom->txcos);
 		struct geometry* last = geom;
 		geom = geom->next;
 		last->next = (struct geometry*) 0xdead;
-		free(last);
+		arcan_mem_free(last);
 	}
 
 	pthread_mutex_destroy(&src->lock);
-	free(src);
+	arcan_mem_free(src);
 }
 
 static void push_deferred(arcan_3dmodel* model)
@@ -579,15 +584,8 @@ arcan_vobj_id arcan_3d_buildbox(point min, point max, unsigned nmaps)
 	img_cons empty = {0};
 
 	rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
-
-	arcan_3dmodel* newmodel = NULL;
-
-	if (rv != ARCAN_EID){
-		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
-		state.ptr = (void*) newmodel;
-		arcan_fatal("arcan_3d_buildbox() unfinished\n");
-	}
-
+	arcan_fatal("arcan_3d_buildbox() incomplete \n");
+	
 	return rv;
 }
 
@@ -599,6 +597,8 @@ arcan_vobj_id arcan_3d_buildcube(float mpx, float mpy,
 	arcan_vobj_id rv = arcan_video_addfobject(ffunc_3d, state, empty, 1);
 	if (rv == ARCAN_EID)
 		return rv;
+	
+	arcan_fatal("arcan_3d_buildcube() incomplete \n");
 
 	return rv;
 }
@@ -618,7 +618,9 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 		point maxp = {.x = maxx, .y = y, .z = maxz};
 		point step = {.x = wdens, .y = 0, .z = ddens};
 
-		newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
+		newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel), ARCAN_MEM_VTAG,
+			ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
+	
 		pthread_mutex_init(&newmodel->lock, NULL);
 
 		state.ptr = (void*) newmodel;
@@ -628,7 +630,8 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 		while (*nextslot)
 			nextslot = &((*nextslot)->next);
 
-		*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
+		*nextslot = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
+			ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 		(*nextslot)->nmaps = nmaps;
 		newmodel->geometry = *nextslot;
@@ -663,55 +666,61 @@ static void invert_txcos(float* buf, unsigned bufs){
  * interleaved way rather than planar. */
 static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {
+	dst->program = -1;
+
 /* figure out dimensions */
 	dst->nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
 	dst->ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
 	unsigned uvmaps = ctmGetInteger(ctx, CTM_UV_MAP_COUNT);
 	unsigned vrtsize = dst->nverts * 3 * sizeof(float);
-	dst->verts = (float*) malloc(vrtsize);
-	dst->program = -1;
 
 	const CTMfloat* verts   = ctmGetFloatArray(ctx, CTM_VERTICES);
 	const CTMfloat* normals = ctmGetFloatArray(ctx, CTM_NORMALS);
 	const CTMuint*  indices = ctmGetIntegerArray(ctx, CTM_INDICES);
 
 /* copy and repack */
-	if (normals){
-		dst->normals = (float*) malloc(vrtsize);
-		memcpy(dst->normals, normals, vrtsize);
-	}
+	if (normals)
+		dst->normals = arcan_alloc_fillmem(normals, vrtsize,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
-	memcpy(dst->verts, verts, vrtsize);
+	dst->verts = arcan_alloc_fillmem(verts, vrtsize,
+		ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
 
 /* lots of memory to be saved, so worth the trouble */
 	if (indices){
 		dst->nindices = dst->ntris * 3;
-
 		if (dst->nindices < 256){
-			uint8_t* buf = (uint8_t*) malloc(dst->nindices * sizeof(uint8_t));
+			uint8_t* buf = arcan_alloc_mem(dst->nindices,
+				ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+
 			dst->indexformat = GL_UNSIGNED_BYTE;
 
 			for (unsigned i = 0; i < dst->nindices; i++)
 				buf[i] = indices[i];
 
-			dst->indices = (void*) buf;
+			dst->indices = buf;
 		}
 		else if (dst->nindices < 65536){
-			uint16_t* buf = (uint16_t*) malloc(dst->nindices * sizeof(uint16_t));
+			uint16_t* buf = arcan_alloc_mem(dst->nindices * sizeof(GLushort),
+				ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+
 			dst->indexformat = GL_UNSIGNED_SHORT;
 
 			for (unsigned i = 0; i < dst->nindices; i++)
 				buf[i] = indices[i];
 
-			dst->indices = (void*) buf;
+			dst->indices = buf;
 		}
 		else{
-			uint32_t* buf = (uint32_t*) malloc(dst->nindices * sizeof(uint32_t));
-			dst->indexformat = GL_UNSIGNED_INT;
+			uint32_t* buf = arcan_alloc_mem( dst->nindices * sizeof(GLuint),
+				ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE);
+
+				dst->indexformat = GL_UNSIGNED_INT;
+
 			for (unsigned i = 0; i < dst->nindices; i++)
 				buf[i] = indices[i];
 
-			dst->indices = (void*) buf;
+			dst->indices = buf;
 		}
 	}
 
@@ -720,8 +729,8 @@ static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 	if (uvmaps > 0){
         dst->nmaps = 1;
 		unsigned txsize = sizeof(float) * 2 * dst->nverts;
-		dst->txcos = (float*) malloc(txsize);
-		memcpy(dst->txcos, ctmGetFloatArray(ctx, CTM_UV_MAP_1), txsize);
+		dst->txcos = arcan_alloc_fillmem(ctmGetFloatArray(ctx, CTM_UV_MAP_1),
+			txsize, ARCAN_MEM_MODELDATA, 0, ARCAN_MEMALIGN_PAGE); 
 	}
 }
 
@@ -790,7 +799,7 @@ static void* threadloader(void* arg)
 	push_deferred(model);
 	ctmFreeContext(ctx);
 
-	free(threadarg);
+	arcan_mem_free(threadarg);
 	
 	return NULL;
 }
@@ -811,14 +820,15 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 
 /* 2d frameset and set of vids associated as textures 
  * with models are weakly linked */
-	struct threadarg* arg = (struct threadarg*)malloc(sizeof(struct threadarg));
+	struct threadarg* arg = arcan_alloc_mem(sizeof(struct threadarg),
+		ARCAN_MEM_THREADCTX, 0, ARCAN_MEMALIGN_NATURAL);
 
 	arg->model = model;
 	arg->resource = resource;
 	arg->readofs = 0;
 	arg->datamap = arcan_map_resource(&arg->resource, false);
 	if (arg->datamap.ptr == NULL){
-		free(arg);
+		arcan_mem_free(arg);
 		return ARCAN_ERRC_BAD_RESOURCE;
 	}
 
@@ -827,7 +837,8 @@ arcan_errc arcan_3d_addmesh(arcan_vobj_id dst,
 	while (*nextslot)
 		nextslot = &((*nextslot)->next);
 
-	*nextslot = (struct geometry*) calloc(sizeof(struct geometry), 1);
+	*nextslot = arcan_alloc_mem(sizeof(struct geometry), ARCAN_MEM_VTAG,
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	(*nextslot)->nmaps = nmaps;
 	arg->geom = *nextslot;
@@ -941,7 +952,8 @@ arcan_vobj_id arcan_3d_emptymodel()
 {
 	arcan_vobj_id rv = ARCAN_EID;
 	img_cons econs = {0};
-	arcan_3dmodel* newmodel = (arcan_3dmodel*) calloc(sizeof(arcan_3dmodel), 1);
+	arcan_3dmodel* newmodel = arcan_alloc_mem(sizeof(arcan_3dmodel),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 	vfunc_state state = {.tag = ARCAN_TAG_3DOBJ, .ptr = newmodel};
 
 	rv = arcan_video_addfobject(ffunc_3d, state, econs, 1);
@@ -950,7 +962,7 @@ arcan_vobj_id arcan_3d_emptymodel()
 		newmodel->parent = arcan_video_getobject(rv);
 		pthread_mutex_init(&newmodel->lock, NULL);
 	} else
-		free(newmodel);
+		arcan_mem_free(newmodel);
 
 	return rv;
 }
@@ -1012,7 +1024,9 @@ arcan_errc arcan_3d_camtag(arcan_vobj_id vid,
 	arcan_vobject* vobj = arcan_video_getobject(vid);
 
 	vobj->owner->camtag = vobj->cellid;
-	struct camtag_data* camobj = malloc(sizeof(struct camtag_data));
+	struct camtag_data* camobj = arcan_alloc_mem(sizeof(struct camtag_data),
+		ARCAN_MEM_VTAG, 0, ARCAN_MEMALIGN_NATURAL);
+	
 	memcpy(camobj->projection, projection, sizeof(float) * 16);
 
 /* we cull the inverse */
