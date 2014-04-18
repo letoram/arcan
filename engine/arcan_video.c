@@ -3922,7 +3922,6 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 /* should possibly have a "per rendertarget" flag to disable this one
  * amounts to quite some overdraw on low- power devices */
 	glClear(GL_COLOR_BUFFER_BIT);
-	arcan_debug_pumpglwarnings("refreshGL:pre3d");
 
 /* first, handle all 3d work 
  * (which may require multiple passes etc.) */
@@ -3935,8 +3934,6 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	while (current && current->elem->order < 0)
 		current = current->next;
 
-	arcan_debug_pumpglwarnings("refreshGL:pre2d");
-
 	if (current){
 	/* make sure we're in a decent state for 2D */
 		glDisable(GL_DEPTH_TEST);
@@ -3946,18 +3943,6 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 		arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
 		while (current && current->elem->order >= 0){
-#ifdef _DEBUG
-			static bool warned;
-			if (!warned){
-				char cvid[24];
-				snprintf(cvid,24,"refreshGL:2d(%d)", (unsigned) current->elem->cellid);
-				if (arcan_debug_pumpglwarnings(cvid) == -1){
-					arcan_warning("warning: GL error detected, check dump.\n");
-					warned = true;
-				};
-			}
-#endif
-
 			arcan_vobject* elem = current->elem;
 
 /* calculate coordinate system translations, world cannot be masked */
@@ -3997,7 +3982,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 			bool clipped = false;
 
 /* a common clipping situation is that we have an invisible clipping parent
- * where neither objects are in a rotated state, which gives an easy way
+ * where neither objects is in a rotated state, which gives an easy way
  * out through the drawing region */
 			if (0 && elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
 				elem->parent != &current_context->world && !elem->rotate_state){
@@ -4786,17 +4771,6 @@ void arcan_video_shutdown()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	platform_video_shutdown();
-}
-
-int arcan_debug_pumpglwarnings(const char* src){
-#ifdef _DEBUG
-/*	GLenum errc = glGetError();
-	if (errc != GL_NO_ERROR){
-		arcan_warning("GLError detected (%s) GL error, code: %d\n", src, errc);
-		return -1;
-	} */
-#endif
-	return 1;
 }
 
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
