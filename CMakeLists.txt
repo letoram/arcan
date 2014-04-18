@@ -404,8 +404,8 @@ if (ENABLE_LIBRETRO)
 	 frameserver/stateman.c
 	 frameserver/ievsched.c
 	 frameserver/ievsched.h
-	 frameserver/retexture.h
-	 frameserver/retexture.c
+#	 frameserver/retexture.h
+#	 frameserver/retexture.c
 	 frameserver/resampler/resample.c
 	 frameserver/resampler/speex_resampler.h
 	 frameserver/ntsc/snes_ntsc.h

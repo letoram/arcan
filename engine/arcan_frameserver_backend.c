@@ -248,6 +248,7 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 			ARCAN_ERRC_UNACCEPTED_STATE;
 
 #ifndef _WIN32
+
 #ifndef MSG_DONTWAIT
 #define MSG_DONTWAIT 0
 #endif
@@ -256,9 +257,8 @@ arcan_errc arcan_frameserver_pushevent(arcan_frameserver* dst,
 			int sn = 0;
 			send(dst->sockout_fd, &sn, sizeof(int), MSG_DONTWAIT);
 		}
-	}
 #endif
-
+	}
 	return rv;
 }
 
