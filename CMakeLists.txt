@@ -56,17 +56,47 @@ option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
 option(ENABLE_SIMD_ALIGNED "Assert that SIMD data sources are 16-byte aligned" OFF)
 option(ENABLE_LWA "Build a lightweight arcan (arcan_lwa) with nested platform" OFF)
-option(LUA51_JIT "Use the luajit-5.1 VM (if found)" ON)
+option(ENABLE_LUAJIT "Use the luajit-5.1 VM (if found)" ON)
 
 if (NOT WIN32)
 	option(SPLIT_FRAMESERVER "Split frameservers into separate binaries" OFF)
 	option(EGL_VIDEO_PLATFORM "Build video subsystem using EGL (will disable SDL)" OFF)
 	option(ENABLE_GLES2 "Use GLES2 rather than OpenGL 2.1 (requires EGL)" OFF)
 	option(ENABLE_X11 "Use an XWindows Display for the GLES context (requires EGL)" OFF)
+	option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
 endif()
 
 option(SQLITE_AMALGAMATE "Use the SQLite Amalgamation" OFF)
-option(MUSL_LIBC "Use the MUSL libc implementation (incomplete)" OFF)
+
+message("")
+message("Cmake options:")
+message("   -DCMAKE_BUILD_TYPE=[Debug|Release|Profile|DebugTrace]")
+message("   -DENABLE_ASAN=[Off|On] : Build with Address Sanitizer enabled")
+message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
+message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte aligned data")
+message("")
+message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
+message("   -DENABLE_VIDDECENC=[On|Off] : Build video encoding/decoding frameserver (requires ffmpeg libraries)")
+message("")
+message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
+message("   -DENABLE_LIRETRO3D=[On|Off] : |--> Enable 3D support in libretro frameserver")
+message("")
+message("   -DENABLE_LED=[On|Off] : Build with LED controller support in core")
+message("   -DENABLE_HMD=[On|Off] : Build with Head-Mounted Display support in core")
+message("   -DENABLE_LWA=[Off|On] : Build lightweight additional arcan client (arcan-in-arcan)")
+message("   -DENABLE_LUAJIT=[On|Off] : link with luajit51 (if found)")
+message("   -DSQLITE_AMALGAMATE=[Off|On] : Build / Link with the SQLite Amalgamation")
+
+if (NOT WIN32) 
+message("   -DSPLIT_FRAMESERVER=[Off|On] : Build frameserver in split-chain loading mode (each role gets a separate binary")
+message("")
+message("   -DEGL_VIDEO_PLATFORM=[Off|On] : Build with EGL video platform (replaces SDL)")
+message("   -DENABLE_GLES2=[Off|On] :       |--> EGL platform uses GLES2 API)")
+message("   -DENABLE_X11=[Off|On] :         |--> EGL platform uses X11 Windowing")
+message("")
+message("   -DMUSL_LIBC=[Off|On] build and link with MUSL Libc (incomplete)") 
+endif()
+message("")
 
 #
 # Collective sigh for stupid standard breaking features (nested functions, seriously..).
@@ -374,6 +404,8 @@ if (ENABLE_LIBRETRO)
 	 frameserver/stateman.c
 	 frameserver/ievsched.c
 	 frameserver/ievsched.h
+	 frameserver/retexture.h
+	 frameserver/retexture.c
 	 frameserver/resampler/resample.c
 	 frameserver/resampler/speex_resampler.h
 	 frameserver/ntsc/snes_ntsc.h
