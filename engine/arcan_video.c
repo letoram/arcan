@@ -298,15 +298,17 @@ static void addchild(arcan_vobject* parent, arcan_vobject* child)
 			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL
 		);
 
-		memcpy(news, parent->children, parent->childslots * sizeof(void*));
-		free(parent->children);
-		parent->children = news;
+		if (parent->children){
+			memcpy(news, parent->children, parent->childslots * sizeof(void*));
+			arcan_mem_free(parent->children);
+		}
 
+		parent->children = news;
 		for (int i = 0; i < 8; i++)
 			parent->children[parent->childslots + i] = NULL;
 
-		parent->childslots += 8;
 		slot = &parent->children[parent->childslots];
+		parent->childslots += 8;
 	}
 
 	if (child->flags.clone)

@@ -136,7 +136,7 @@ static struct {
 static bool supported_format(GLenum target, GLint format)
 {
 	return (target == GL_TEXTURE_2D && 
-		(	format == GL_RGBA || GL_BGRA )); 
+		(	format == (GL_RGBA | GL_BGRA) )); 
 }
 
 static struct track_elem* get_elem_byglid(unsigned long glid)
@@ -266,6 +266,7 @@ void arcan_retexture_tick()
  */ 
 }
 
+#include "londepng.c"
 /*
  * It is up to the calling library to perform the actual hijack,
  * e.g. patching the existing symbol to redirect / jump here
@@ -275,13 +276,17 @@ void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
 	GLsizei width, GLsizei height, GLint border, GLenum format, 
 	GLenum type, const GLvoid* data)
 {
-	if (!retexctx.running || !supported_format(target, format))
+	if (!retexctx.running || !supported_format(target, format) ||
+		width < 64 || height < 64)
 		goto upload;
-
 
 	size_t nb = width * height * 4;
 	unsigned long id = djb_hash(data, nb); 
 
+	char comp[64];
+	static int seqn;
+	snprintf(comp, 64, "dump_%d_%ld.png", seqn++, id);
+	lodepng_encode32_file(comp, data, width, height);
 /* 
  * we also use texture updates as a "tick" to determine which
  * cached textured could be discarded to not have the decay run 
