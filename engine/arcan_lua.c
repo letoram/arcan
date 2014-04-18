@@ -216,12 +216,12 @@ static struct {
 	enum arcan_cb_source cb_source_kind;
 	long long cb_source_tag;
 
-} lua_ctx_store = {
-	.lua_vidbase = 0,
-	.rfile = NULL,
-	.debug = 0,
-	.grab = 0
-};
+/* limits themename + identifier to this length 
+ * will be modified in when calling into lua */ 
+	char* prefix_buf;
+	size_t prefix_ofs;
+
+} lua_ctx_store = {0};
 
 extern char* _n_strdup(const char* instr, const char* alt);
 
@@ -1383,11 +1383,13 @@ static int pick(lua_State* ctx)
 	bool reverse = luaL_optint(ctx, 4, 0) != 0;
 
 	unsigned int limit = luaL_optint(ctx, 3, 8);
+	static arcan_vobj_id pickbuf[1024];
+	if (limit > 1024) 
+		arcan_fatal("pick_items(), unreasonable pick "
+			"buffer size (%d) requested.", limit);
 
-	arcan_vobj_id* pickbuf = arcan_alloc_mem(limit*sizeof(arcan_vobj_id),
-		ARCAN_MEM_BINDING, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-
-	unsigned int count = reverse ? arcan_video_rpick(pickbuf, limit, x, y) : 
+	unsigned int count = reverse ? 
+		arcan_video_rpick(pickbuf, limit, x, y) : 
 		arcan_video_pick(pickbuf, limit, x, y);
 	unsigned int ofs = 1;
 
@@ -1401,7 +1403,6 @@ static int pick(lua_State* ctx)
 		ofs++;
 	}
 
-	arcan_mem_free(pickbuf);
 	return 1;
 }
 
@@ -1480,6 +1481,18 @@ static int systemcontextsize(lua_State* ctx)
 
 char* arcan_luaL_dofile(lua_State* ctx, const char* fname)
 {
+/* since we prefix themename to functions that we look-up,
+ * we need a buffer to expand into with as few read/writes/allocs
+ * as possible, arcan_luaL_dofile is only ever invoked when
+ * a theme is about to be loaded so here is a decent entrypoint */
+	free(lua_ctx_store.prefix_buf);
+	lua_ctx_store.prefix_ofs = strlen(arcan_themename);
+	lua_ctx_store.prefix_buf = arcan_alloc_mem(
+		strlen(fname) + 34,
+		ARCAN_MEM_BINDING, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_SIMD
+	);
+	memcpy(lua_ctx_store.prefix_buf, arcan_themename, lua_ctx_store.prefix_ofs);
+
 	int code = luaL_dofile(ctx, fname);
 	if (code == 1){
 		const char* msg = lua_tostring(ctx, -1);
@@ -2018,17 +2031,24 @@ static int targetresume(lua_State* ctx)
 	return 0;
 }
 
-static bool grabthemefunction(lua_State* ctx, const char* funame)
+/* 
+ * A more optimized approach than this one would be to track when the globals 
+ * change for C<->LUA related transfer functions and just have
+ * cached function pointers.
+ */ 
+static bool grabthemefunction(lua_State* ctx, const char* funame, size_t funlen)
 {
-	if (strcmp(arcan_themename, funame) == 0)
-		lua_getglobal(ctx, arcan_themename);
-	else {
-		char* tmpname = arcan_alloc_mem(strlen(arcan_themename) + strlen(funame)+2,
-			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
-			sprintf(tmpname, "%s_%s", arcan_themename, funame);
-			lua_getglobal(ctx, tmpname);
-			arcan_mem_free(tmpname);
+	if (funlen > 0){
+		strncpy(lua_ctx_store.prefix_buf + 
+			lua_ctx_store.prefix_ofs + 1, funame, 32);
+
+		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '_';
+		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs + funlen + 1] = '\0';
 	}
+	else
+		lua_ctx_store.prefix_buf[lua_ctx_store.prefix_ofs] = '\0';
+
+	lua_getglobal(ctx, lua_ctx_store.prefix_buf);
 
 	if (!lua_isfunction(ctx, -1)){
 		lua_pop(ctx, 1);
@@ -2137,10 +2157,10 @@ static char* streamtype(int num)
 void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 {
 	if (ev->category == EVENT_SYSTEM && 
-		grabthemefunction(ctx, "system")){
+		grabthemefunction(ctx, "system", 6)){
 		lua_newtable(ctx);
 	}
-	if (ev->category == EVENT_IO && grabthemefunction(ctx, "input")){
+	if (ev->category == EVENT_IO && grabthemefunction(ctx, "input", 5)){
 		int top = funtable(ctx, ev->kind);
 
 		lua_pushstring(ctx, "kind");
@@ -2223,7 +2243,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 	else if (ev->category == EVENT_TIMER){
 		arcan_lua_setglobalint(ctx, "CLOCK", ev->tickstamp);
 
-		if (grabthemefunction(ctx, "clock_pulse")) {
+		if (grabthemefunction(ctx, "clock_pulse", 11)) {
 			lua_pushnumber(ctx, ev->tickstamp);
 			lua_pushnumber(ctx, ev->data.timer.pulse_count);
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0),"event loop: clock pulse");
@@ -2377,7 +2397,7 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 				tblstr(ctx, "kind", "resource_status", top);
 				tblstr(ctx, "message", (char*)ev->data.external.message, top);
 			break;
-			default:
+			 default:
 				tblstr(ctx, "kind", "unknown", top);
 				tblnum(ctx, "kind_num", ev->kind, top);
 			}
@@ -2390,7 +2410,6 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		}
 	}
 	else if (ev->category == EVENT_FRAMESERVER){
-		bool gotfun;
 		intptr_t dst_cb = 0;
 
 /*
@@ -2401,10 +2420,10 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 		if (arcan_video_findparent(ev->data.frameserver.video) == ARCAN_EID)
 			return;
 
-		if (grabthemefunction(ctx, "frameserver_event"))
-			gotfun = true;
-		else
-			gotfun = (lua_pushnumber(ctx, 0), false);
+/*
+ * placeholder slot for adding the callback function reference
+ */
+		lua_pushnumber(ctx, 0);
 
 		lua_pushvid(ctx, ev->data.frameserver.video);
 		lua_newtable(ctx);
@@ -2453,11 +2472,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 			lua_ctx_store.cb_source_kind = CB_SOURCE_FRAMESERVER;
 			lua_rawgeti(ctx, LUA_REGISTRYINDEX, dst_cb);
 			lua_replace(ctx, 1);
-			gotfun = true;
-		}
-
-		if (gotfun)
 			wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "frameserver_event");
+		}
 		else
 			lua_settop(ctx, 0);
 
@@ -2526,28 +2542,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 		lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
 	}
-	else if (ev->category == EVENT_AUDIO && 
-		grabthemefunction(ctx, "audio_event")){
-		lua_pushaid(ctx, ev->data.video.source);
-		lua_newtable(ctx);
-
-		int top = lua_gettop(ctx);
-		switch (ev->kind){
-		case EVENT_AUDIO_BUFFER_UNDERRUN: tblstr(
-			ctx, "kind", "audio buffer underrun", top); break;
-		case EVENT_AUDIO_GAIN_TRANSFORMATION_FINISHED: tblstr(
-			ctx, "kind", "gain transformed", top); break;
-		case EVENT_AUDIO_PLAYBACK_FINISHED: tblstr(
-			ctx, "kind", "playback finished", top); break;
-		case EVENT_AUDIO_PLAYBACK_ABORTED: tblstr(
-			ctx, "kind", "playback aborted", top); break;
-		case EVENT_AUDIO_OBJECT_GONE: tblstr(ctx, "kind", "gone", top); break;
-		default:
-			arcan_warning("Engine -> Script Warning: arcan_lua_pushevent(),"
-				"	unknown audio event (%i)\n", ev->kind);
-		}
-		wraperr(ctx, lua_pcall(ctx, 2, 0, 0), "event loop: audio_event");
-	}
+	else if (ev->category == EVENT_AUDIO)
+		;
 }
 
 static int imageparent(lua_State* ctx)
@@ -3870,7 +3866,7 @@ static int screencoord(lua_State* ctx)
 
 bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 {
-	if ( grabthemefunction(ctx, fun) ){
+	if ( grabthemefunction(ctx, fun, strlen(fun)) ){
 		wraperr(ctx, lua_pcall(ctx, 0, 0, 0), fun);
 		return true;
 	}
