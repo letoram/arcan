@@ -18,8 +18,6 @@
 
 #define TBLSIZE (1 + TIMESTAMP_D - MODELVIEW_MATR)
 
-extern int arcan_debug_pumpglwarnings(const char* src);
-
 /* all current global shader settings,
  * updated whenever a vobj/3dobj needs a different state
  * each global */
@@ -148,26 +146,6 @@ static void setv(GLint loc, enum shdrutype kind, void* val,
 	case shdrmat4x4: glUniformMatrix4fv(loc, 1, false, (GLfloat*) val); 
 									 break;
 	}
-
-#ifdef _DEBUG
-	if (arcan_debug_pumpglwarnings("shdrmgmt.c:setv:post") == -1){
-		int progno;
-		static bool warned;
-	
-		if (!warned){
-			glGetIntegerv(GL_CURRENT_PROGRAM, &progno);
-
-			printf("failed operation: store type(%i) into slot(%i:%s)"
-			"	on program(%i:%s)\n", kind, loc, id, progno, program);
-			struct shader_cont* src = &shdr_global.slots[ shdr_global.active_prg ];
-			printf("last active shader: (%s), locals: \n", src->label);
-			for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++)
-				printf("\t [%i] %s : %i\n", i, symtbl[i], src->locations[i]);
-
-			warned = true;
- 	  }
-	}
-#endif
 }
 
 arcan_errc arcan_shader_activate(arcan_shader_id shid)
@@ -458,10 +436,6 @@ static bool build_shader(const char* label, GLuint* dprg,
 	*vprg = glCreateShader(GL_VERTEX_SHADER);
 	*fprg = glCreateShader(GL_FRAGMENT_SHADER);
 
-	if (arcan_debug_pumpglwarnings("shdrmgmt:pre:build_shader") == -1){
-		arcan_warning("|--> When attempting to build (%s)\n", label);
-	}
-
 	glShaderSource(*vprg, 1, &vprogram, NULL);
 	glShaderSource(*fprg, 1, &fprogram, NULL);
 
@@ -483,28 +457,10 @@ static bool build_shader(const char* label, GLuint* dprg,
 		arcan_warning("Fragment Program: %s\n", fprogram);
 	}
 
-	if (arcan_debug_pumpglwarnings("shdrmgmt:post:build_shader") == -1){
-		arcan_warning("Warning: Error while compiling (%s)\n", label);
-
-		kill_shader(dprg, vprg, fprg);
-		return false;
-	} else {
-		*dprg = glCreateProgram();
-		glAttachShader(*dprg, *fprg);
-		glAttachShader(*dprg, *vprg);
-		glLinkProgram(*dprg);
-
-		if (arcan_debug_pumpglwarnings("shdrmgmt:post:link_shader") == -1){
-			glGetProgramInfoLog(*dprg, 256, &rlen, buf);
-
-			if (rlen)
-				arcan_warning("Warning: Problem linking Shader "
-					"Program(%s): %s\n", label, buf);
-
-			kill_shader(dprg, vprg, fprg);
-			return false;
-		}
-	}
+	*dprg = glCreateProgram();
+	glAttachShader(*dprg, *fprg);
+	glAttachShader(*dprg, *vprg);
+	glLinkProgram(*dprg);
 
 	return true;
 }
