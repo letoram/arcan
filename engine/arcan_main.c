@@ -414,7 +414,6 @@ themeswitch:
 	setrlimit(RLIMIT_CORE, &coresize);
 #endif
 
-
 /* setup VM, map arguments and possible overrides */ 
 	struct arcan_luactx* luactx = arcan_lua_alloc();
 
@@ -439,7 +438,7 @@ themeswitch:
 		arcan_lua_pushargv(luactx, argv + optind + 1);
 
 	arcan_lua_mapfunctions(luactx, debuglevel);
-	arcan_lua_callvoidfun(luactx, arcan_themename, true);
+	arcan_lua_callvoidfun(luactx, "", true);
 	arcan_lua_callvoidfun(luactx, "show", false);
 
 	bool done = false, framepulse = true;
