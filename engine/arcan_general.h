@@ -257,6 +257,12 @@ enum arcan_memtypes {
 	ARCAN_MEM_VSTRUCT,
 
 /*
+ * Used for external dependency handles, e.g. Sqlite3 database connection
+ * Unknown range but should typically be small.
+ */
+	ARCAN_MEM_EXTSTRUCT,
+
+/*
  * Audio buffers for samples and for frameserver transfers
  * SMALL to MEDIUM, >1M is a monitoring condition.
  */
@@ -273,6 +279,7 @@ enum arcan_memtypes {
  * for 3d model, container for frameserver etc.) SMALL to TINY
  */
 	ARCAN_MEM_VTAG,
+	ARCAN_MEM_ATAG,
 
 /*
  * Use for script interface bindings, thus may contain user-important
@@ -284,11 +291,6 @@ enum arcan_memtypes {
  * Use for vertices, texture coordinates, ...
  */
 	ARCAN_MEM_MODELDATA,
-
-/*
- * Database- contents, session keys, etc.
- */
-	ARCAN_MEM_SENSITIVE,
 
 /* context that is used to pass data to a newly created thread */
 	ARCAN_MEM_THREADCTX
@@ -303,7 +305,8 @@ enum arcan_memhint {
 	ARCAN_MEM_TEMPORARY = 2,
 	ARCAN_MEM_EXEC = 4,
 	ARCAN_MEM_NONFATAL = 8,
-	ARCAN_MEM_READONLY = 16
+	ARCAN_MEM_READONLY = 16,
+	ARCAN_MEM_SENSITIVE = 32
 };
 
 enum arcan_memalign {

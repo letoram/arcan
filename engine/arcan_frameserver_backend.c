@@ -131,7 +131,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		base++;
 	}
 
-	free(src->audb);
+	arcan_mem_free(src->audb);
 	pthread_mutex_destroy(&src->lock_audb);
 
 #ifndef _WIN32
@@ -142,8 +142,7 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 		vfunc_state emptys = {0};
 		arcan_audio_stop(src->aid);
 		arcan_video_alterfeed(src->vid, NULL, emptys);
-		memset(src, 0xaa, sizeof(arcan_frameserver));
-		free(src);
+		arcan_mem_free(src);
 	}
 
 	return ARCAN_OK;	
@@ -175,7 +174,7 @@ void arcan_frameserver_dropsemaphores_keyed(char* key)
 		arcan_sem_unlink(NULL, work);
 		work[strlen(work) - 1] = 'e';
 		arcan_sem_unlink(NULL, work);
-	free(work);
+	arcan_mem_free(work);
 }
 
 void arcan_frameserver_dropsemaphores(arcan_frameserver* src){
@@ -595,10 +594,12 @@ void arcan_frameserver_avfeed_mixer(arcan_frameserver* dst, int n_sources,
 	assert(sources != NULL && dst != NULL && n_sources > 0);
 	
 	if (dst->amixer.n_aids)
-		free(dst->amixer.inaud);
+		arcan_mem_free(dst->amixer.inaud);
 		
-	dst->amixer.inaud = malloc(n_sources * sizeof(struct frameserver_audsrc) 
-		* n_sources);
+	dst->amixer.inaud = arcan_alloc_mem(
+		n_sources * sizeof(struct frameserver_audsrc),
+		ARCAN_MEM_ATAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	
 	for (int i = 0; i < n_sources; i++){
 		dst->amixer.inaud[i].l_gain  = 1.0;
 		dst->amixer.inaud[i].r_gain  = 1.0;
@@ -1105,11 +1106,9 @@ ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
 
 arcan_frameserver* arcan_frameserver_alloc()
 {
-	arcan_frameserver* res = malloc(sizeof(arcan_frameserver));
-	if (!res)
-		return NULL;
+	arcan_frameserver* res = arcan_alloc_mem(sizeof(arcan_frameserver),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL); 
 
-	memset(res, 0, sizeof(arcan_frameserver));
 	res->use_pbo = arcan_video_display.pbo_support;
 	res->watch_const = 0xdead;
 
@@ -1152,7 +1151,9 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 											arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
-			ctx->audb     = malloc( ctx->sz_audb);
+			ctx->audb     = arcan_alloc_mem(ctx->sz_audb, 
+				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
+
 			ctx->queue_mask = EVENT_EXTERNAL;
 		} 
 /* "libretro" (or rather, interactive mode) treats a single pair of 
@@ -1165,7 +1166,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->sz_audb  = 1024 * 64;
 			ctx->ofs_audb = 0;
-			ctx->audb     = malloc( ctx->sz_audb );
+			ctx->audb     = arcan_alloc_mem(ctx->sz_audb,
+				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 
@@ -1197,7 +1199,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * output, thus not how large the intermediate buffer should be to 
  * safely accommodate them all */
 			ctx->sz_audb = ARCAN_SHMPAGE_AUDIOBUF_SZ;
-			ctx->audb = malloc( ctx->sz_audb );
+			ctx->audb = arcan_alloc_mem(ctx->sz_audb,
+				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 			ctx->queue_mask = EVENT_EXTERNAL;
 		}
 	}
@@ -1215,7 +1218,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * sampledata may still be needed for recording/monitoring */ 
 		ctx->sz_audb  = 1024 * 64;
 		ctx->ofs_audb = 0;
-		ctx->audb     = malloc( ctx->sz_audb );
+		ctx->audb = arcan_alloc_mem(ctx->sz_audb,
+			ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 	}
 
 /* two separate queues for passing events back and forth between main program

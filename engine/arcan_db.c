@@ -73,7 +73,8 @@ static arcan_dbh_res db_string_query(arcan_dbh* dbh, sqlite3_stmt* stmt, arcan_d
 	arcan_dbh_res res = {.kind = 0};
 
 	if (!opt) {
-		res.data.strarr = (char**) calloc(sizeof(char**), 8);
+		res.data.strarr = arcan_alloc_mem(sizeof(char**) * 8,
+			ARCAN_MEM_STRINGBUF, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 		res.limit = 8;
 	}
 
@@ -81,23 +82,17 @@ static arcan_dbh_res db_string_query(arcan_dbh* dbh, sqlite3_stmt* stmt, arcan_d
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
 		res.data.strarr[res.count++] = _n_strdup(arg, NULL);
 
-		/* need to always have a space left, one for NULL terminator,
-		 * one for romset */
 		if (res.count == res.limit) {
-			char** newarr = (char**) realloc(res.data.strarr, (res.limit += REALLOC_STEP) * sizeof(char*));
-			if (newarr)
-				res.data.strarr = newarr;
-			else { /* couldn't resize, clean up and give up */
-				char** itr = res.data.strarr;
-				while (*itr)
-					free(*itr++);
+			char** newbuf = arcan_alloc_mem( 
+				(res.limit + REALLOC_STEP) * sizeof(char*),
+				ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL
+			);
 
-				free(res.data.strarr);
-
-				res.limit -= 8;
-				res.kind = -1;
-				return res;
-			}
+/* grow by REALLOC_STEP */
+			memcpy(newbuf, res.data.strarr, res.limit * sizeof(char*));
+			arcan_mem_free(res.data.strarr);
+			res.data.strarr = newbuf;
+			res.limit += REALLOC_STEP;
 		}
 	}
 
@@ -158,12 +153,12 @@ static void freegame(arcan_db_game* game)
 	if (!game)
 		return;
 	
-	free(game->title);
-	free(game->genre);
-	free(game->subgenre);
-	free(game->setname);
-	free(game->targetname);
-	free(game->system);
+	arcan_mem_free(game->title);
+	arcan_mem_free(game->genre);
+	arcan_mem_free(game->subgenre);
+	arcan_mem_free(game->setname);
+	arcan_mem_free(game->targetname);
+	arcan_mem_free(game->system);
 }
 
 static void create_theme_group(arcan_dbh* dbh, const char* themename)
@@ -429,8 +424,12 @@ arcan_dbh_res arcan_db_gamebyid(arcan_dbh* dbh, int gameid)
 	if (sqlite3_step(stmt) == SQLITE_ROW){
 		res.kind = 1;
 		res.count = 1;
-		res.data.gamearr = malloc(sizeof(arcan_db_game*) * 2);
-		res.data.gamearr[0] = calloc(sizeof(arcan_db_game), 1);
+		res.data.gamearr = arcan_alloc_mem(sizeof(arcan_db_game*) * 2,
+			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+	
+		res.data.gamearr[0] = arcan_alloc_mem(sizeof(arcan_db_game),
+			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL);
 
 		int ncols = sqlite3_column_count(stmt);
 		int ofs = 0;
@@ -606,7 +605,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 	int code = sqlite3_prepare_v2(dbh->dbh, wbuf, strlen(wbuf), &stmt, NULL);
 	int count = 0, alimit = 8;
 	res.kind = 1;
-	res.data.gamearr = (arcan_db_game**) calloc(sizeof(arcan_db_game*), 8);
+	res.data.gamearr = arcan_alloc_mem(sizeof(arcan_db_game*) * 8,
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, 
+		ARCAN_MEMALIGN_NATURAL);	
 
 	/* as any combination of the above strings are useful,
 	 * we need to employ a trick or two to bind the correct data,
@@ -634,9 +635,9 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		int ncols = sqlite3_column_count(stmt);
 		int ofs = 0;
 
-		arcan_db_game* row = (arcan_db_game*) calloc(sizeof(arcan_db_game), 1);
-		if (!row)
-			break;
+		arcan_db_game* row = arcan_alloc_mem(sizeof(arcan_db_game),
+			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO,
+			ARCAN_MEMALIGN_NATURAL);
 
 		do 
 			extract_gameinfo(stmt, row, ofs);
@@ -645,29 +646,23 @@ arcan_dbh_res arcan_db_games(arcan_dbh* dbh,
 		if (input > 0 && (row->input & input) == 0) {
 			/* continue if result doesn't match mask */
 			freegame(row);
-			free(row);
+			arcan_mem_free(row);
 			continue;
 		}
 
 		res.data.gamearr[count++] = row;
 
 		if (count == alimit-1) {
-			arcan_db_game** newarr = (arcan_db_game**) realloc(res.data.gamearr,
-				(alimit += REALLOC_STEP) * sizeof(arcan_db_game*));
-			if (newarr)
-				res.data.gamearr = newarr;
-			else {
-				arcan_db_game** itr = res.data.gamearr;
-				while (*itr)
-					freegame(*itr++);
+			arcan_db_game** newarr = arcan_alloc_mem((alimit + REALLOC_STEP) *
+				sizeof(arcan_db_game*), ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY,
+				ARCAN_MEMALIGN_NATURAL);
 
-				free(res.data.gamearr);
-
-				res.kind = -1;
-				break;
-			}
+/* grow by REALLOC_STEP */
+			memcpy(newarr, res.data.gamearr, alimit * sizeof(arcan_db_game*));
+			arcan_mem_free(res.data.gamearr);
+			res.data.gamearr = newarr;
+			alimit += REALLOC_STEP;
 		}
-
 	}
 
 	if (res.data.gamearr != NULL)
@@ -819,7 +814,7 @@ bool arcan_db_theme_kv(arcan_dbh* dbh, const char* themename,
 		sqlite3_prepare_v2(dbh->dbh, wbuf, nw, &stmt, NULL);
 		sqlite3_bind_text(stmt, 2, key,   -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT);
-		free(okey);
+		arcan_mem_free(okey);
 	}
 	else {
 		nw = snprintf(wbuf, wbufsize, 
@@ -859,7 +854,11 @@ char* arcan_db_theme_val(arcan_dbh* dbh, const char* themename, const char* key)
 arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 {
 	arcan_dbh_res res = {.kind = 0};
-	res.data.strarr = (char**) calloc(sizeof(char*), 8);
+	res.data.strarr = arcan_alloc_mem(sizeof(char*) * 8,
+		ARCAN_MEM_STRINGBUF, 
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+
 	unsigned int count = 0, limit = 8;
 	sqlite3_stmt* stmt = NULL;
 
@@ -918,14 +917,14 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 		const char* arg = (const char*) sqlite3_column_text(stmt, 0);
 		if (strcmp((char*)arg, "[romset]") == 0) {
 			res.data.strarr[count++] = _n_strdup(romset, "");
-			free(romset);
+			arcan_mem_free(romset);
 			romset = NULL;
 		}
 		else if ( strcmp(arg, "[romsetfull]") == 0){
 			snprintf(wbuf, wbufsize, "%s/games/%s/%s", 
 				arcan_resourcepath, targetname, romset);
 			res.data.strarr[count++] = strdup(wbuf);
-			free(romset);
+			arcan_mem_free(romset);
 			romset = NULL;
 		}
 		else if ( (strlen(arg) >= 10) && strncmp(arg, "[gamepath]", 10) == 0){
@@ -943,37 +942,23 @@ arcan_dbh_res arcan_db_launch_options(arcan_dbh* dbh, int gameid, bool internal)
 /* need to always have two spaces left, one for NULL terminator,
  * one for (possible) romset */
 		if (count == limit-1) {
-			char** newarr = (char**) realloc(res.data.strarr, 
-				(limit += REALLOC_STEP) * sizeof(char*));
-			if (newarr)
-				res.data.strarr = newarr;
-			else {
-				char** itr = res.data.strarr;
-				while (*itr)
-					free(*itr++);
+			char** newarr = arcan_alloc_mem((limit + REALLOC_STEP) * sizeof(char*),
+				ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 
-				free(res.data.strarr);
-
-				res.kind = -1;
-				return res;
-			}
+/* grow by REALLOC_STEP */
+			memcpy(newarr, res.data.strarr, limit * sizeof(char*));
+			arcan_mem_free(res.data.strarr);
+			res.data.strarr = newarr;
+			limit += REALLOC_STEP;
 		}
 	}
-
-/* Omitted, previously tracked if we had set romset or not, 
- * now it's always up to the db to have proper values */ 
-/*  if (romset) {
-		res.data.strarr[count++] = _n_strdup((char*) romset, "");
-		free(romset);
-		romset = NULL;
-	}
-*/
 
 	res.data.strarr[count] = NULL;
 	res.count = count;
 	res.limit = limit;
 	
-	free(targetname); /* just used to construct [romsetfull] */
+/* just used to construct [romsetfull] */
+	arcan_mem_free(targetname); 
 	return res;
 }
 
@@ -985,9 +970,9 @@ bool arcan_db_free_res(arcan_dbh* dbh, arcan_dbh_res res)
 	if (res.kind == 0) {
 		char** cptr = (char**) res.data.strarr;
 		while (cptr && *cptr)
-			free(*cptr++);
+			arcan_mem_free(*cptr++);
 
-		free(res.data.strarr);
+		arcan_mem_free(res.data.strarr);
 	}
 	else
 		if (res.kind == 1) {
@@ -1037,7 +1022,7 @@ void arcan_db_close(arcan_dbh* ctx)
 		return;
 
 	sqlite3_close(ctx->dbh);
-	free(ctx);
+	arcan_mem_free(ctx);
 }
 
 arcan_dbh* arcan_db_open(const char* fname, const char* themename)
@@ -1060,14 +1045,18 @@ arcan_dbh* arcan_db_open(const char* fname, const char* themename)
 		themename = "_default";
 	
 	if ((rc = sqlite3_open_v2(fname, &dbh, SQLITE_OPEN_READWRITE, NULL))
-		== SQLITE_OK) {
-		arcan_dbh* res = (arcan_dbh*) calloc(sizeof(arcan_dbh), 1);
+		== SQLITE_OK){
+			arcan_dbh* res = arcan_alloc_mem(
+				sizeof(arcan_dbh), ARCAN_MEM_EXTSTRUCT,
+				ARCAN_MEM_SENSITIVE | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE
+			);
+
 		res->dbh = dbh;
 		assert(dbh);
 
 		if ( !dbh_integrity_check(res) ){
 			sqlite3_close(dbh);
-			free(res);
+			arcan_mem_free(res);
 			return NULL;
 		}
 

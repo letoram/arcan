@@ -541,7 +541,10 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 					}
 
 /* slide- alloc list of rendered blocks */
-					cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
+					cnode = cnode->next = 
+						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+	
 					*current = '\\';
 				}
 
@@ -559,12 +562,16 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 					cnode->data.format.newline = curr_style->newline;
 					cnode->data.format.tab = curr_style->tab;
 					cnode->data.format.cr = curr_style->cr;
-					cnode = cnode->next = (void*) calloc(sizeof(struct rcell), 1);
+					cnode = cnode->next = 
+						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				} 
 
 				if (curr_style->image){
 					currstyle_cnode(curr_style, base, cnode, sizeonly);
-					cnode = cnode->next = (struct rcell*) calloc(sizeof(struct rcell), 1);
+					cnode = cnode->next = 
+						arcan_alloc_mem(sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+							ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				}
 
 				current = base = curr_style->endofs;
@@ -598,7 +605,11 @@ static int build_textchain(char* message, struct rcell* root, bool sizeonly)
 		}
 	}
 
-	cnode = cnode->next = (void*) calloc(sizeof(struct rcell), 1);
+	cnode = cnode->next = arcan_alloc_mem(
+		sizeof(struct rcell), ARCAN_MEM_VSTRUCT,
+		ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL
+	);
+	
 	cnode->data.format.newline = 1;
 	rv++;
 
@@ -734,7 +745,9 @@ void* renderfun_renderfmtstr(const char* message,
 	
 /* (A) parse format string and build chains of renderblocks */
 	int chainlines;
-	struct rcell* root = calloc( sizeof(struct rcell), 1);
+	struct rcell* root = arcan_alloc_mem(sizeof(struct rcell),
+		ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_NATURAL);
 	
 	char* work = strdup(message);
 	last_style.newline = 0;
@@ -750,8 +763,10 @@ void* renderfun_renderfmtstr(const char* message,
 		int lineh = 0;
 		int curw = 0;
 /* note, linecount is overflow */
-		unsigned int* lines = (unsigned int*) calloc(sizeof(unsigned int), 
-			chainlines + 1);
+		unsigned int* lines = arcan_alloc_mem(sizeof(unsigned) * (chainlines + 1),
+			ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO | ARCAN_MEM_TEMPORARY,
+			ARCAN_MEMALIGN_NATURAL
+		);
 
 		while (cnode) {
 			if (cnode->surface) {
@@ -787,11 +802,13 @@ void* renderfun_renderfmtstr(const char* message,
 		*dh = pot ? nexthigher(*maxh) : *maxh;
 
 		*d_sz = *dw * *dh * GL_PIXEL_BPP;
-		raw = malloc(*d_sz);
+
+		raw = arcan_alloc_mem(*d_sz, ARCAN_MEM_VBUFFER, 
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO | ARCAN_MEM_NONFATAL,
+		 	ARCAN_MEMALIGN_PAGE);
+		
 		if (!raw)
 			goto cleanup;
-
-		memset(raw, '\0', *d_sz);
 
 		cnode = root;
 		curw = 0;
@@ -821,7 +838,7 @@ void* renderfun_renderfmtstr(const char* message,
 		if (lineheights)
 			*lineheights = lines;
 		else
-			free(lines);
+			arcan_mem_free(lines);
 	}
 	
 	struct rcell* current;
@@ -831,15 +848,15 @@ cleanup:
 	while (current){
 		assert(current != (void*) 0xdeadbeef);
 		if (current->surface && current->data.surf)
-			free(current->data.surf);
+			arcan_mem_free(current->data.surf);
 			
 		struct rcell* prev = current;
 		current = current->next;
 		prev->next = (void*) 0xdeadbeef;
-		free(prev);
+		arcan_mem_free(prev);
 	}
 	
-	free(work);
+	arcan_mem_free(work);
 	return raw;
 }
 
@@ -896,12 +913,16 @@ int stretchblit(char* src, int inw, int inh,
 	
 	int spixelgap, spixelw, spixelh, dgap, t1, t2;
 
-	if ((sax = (int *) malloc((dstw + 1) * sizeof(uint32_t))) == NULL) {
-		return (-1);
-	}
-	if ((say = (int *) malloc((dsth + 1) * sizeof(uint32_t))) == NULL) {
-		free(sax);
-		return (-1);
+	if ((sax = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t),
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL | ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_PAGE)) == NULL)
+		return -1;
+
+	if ((say = arcan_alloc_mem((dstw + 1) * sizeof(uint32_t),
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL | ARCAN_MEM_TEMPORARY,
+		ARCAN_MEMALIGN_PAGE)) == NULL){
+		arcan_mem_free(say);
+		return -1;
 	}
 
 	spixelw = (inw - 1);
@@ -1013,8 +1034,8 @@ int stretchblit(char* src, int inw, int inh,
 		dp = (tColorRGBA *) ((uint8_t *) dp + dgap);
 	}
 
-	free(sax);
-	free(say);
+	arcan_mem_free(sax);
+	arcan_mem_free(say);
 
-	return (0);
+	return 0;
 }
