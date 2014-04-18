@@ -101,6 +101,14 @@
 #include "arcan_led.h"
 #endif
 
+/*
+ * some operations, typically resize, move and rotate suffered a lot from
+ * lua floats propagating, meaning that we'd either get subpixel positioning 
+ * and blurring text etc. as a consequence. For these functions, we now 
+ * force the type to whatever acoord is specified as (here, unsigned). 
+ */
+typedef int acoord;
+
 #define arcan_fatal(...) { last_function(ctx); arcan_fatal( __VA_ARGS__); } 
 /* this macro is placed in every arcan- specific function callable from the LUA
  * space. By default, it's empty, but can be used to map out stack contents 
@@ -606,8 +614,8 @@ static int imageloaded(lua_State* ctx)
 static int moveimage(lua_State* ctx)
 {
 	LUA_TRACE("move_image");
-	float newx = luaL_optnumber(ctx, 2, 0);
-	float newy = luaL_optnumber(ctx, 3, 0);
+	acoord newx = luaL_optnumber(ctx, 2, 0);
+	acoord newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
 	int interp = luaL_optint(ctx, 5, -1);
 
@@ -644,8 +652,8 @@ static int moveimage(lua_State* ctx)
 static int nudgeimage(lua_State* ctx)
 {
 	LUA_TRACE("nudge_image");
-	float newx = luaL_optnumber(ctx, 2, 0);
-	float newy = luaL_optnumber(ctx, 3, 0);
+	acoord newx = luaL_optnumber(ctx, 2, 0);
+	acoord newy = luaL_optnumber(ctx, 3, 0);
 	int time = luaL_optint(ctx, 4, 0);
 	int interp = luaL_optint(ctx, 5, -1);
 
@@ -759,7 +767,7 @@ static int rotateimage(lua_State* ctx)
 {
 	LUA_TRACE("rotate_image");
 
-	float ang = luaL_checknumber(ctx, 2);
+	acoord ang = luaL_checknumber(ctx, 2);
 	int time = luaL_optint(ctx, 3, 0);
 
 	int argtype = lua_type(ctx, 1);
@@ -790,8 +798,9 @@ static int scaleimage2(lua_State* ctx)
 	LUA_TRACE("resize_image");
 
 	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
-	float neww = luaL_checknumber(ctx, 2);
-	float newh = luaL_checknumber(ctx, 3);
+	float neww = (acoord) luaL_checknumber(ctx, 2);
+	float newh = (acoord) luaL_checknumber(ctx, 3);
+
 	int time = luaL_optint(ctx, 4, 0);
 	int interp = luaL_optint(ctx, 5, -1);
 	bool use_interp = time > 0 && interp >= 0 && interp < ARCAN_VINTER_ENDMARKER;
