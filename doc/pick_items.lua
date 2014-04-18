@@ -1,7 +1,7 @@
 -- pick_items
--- @short: return a list of *limit* objects whose bounding 
+-- @short: return a list of *limit* (default, 8) objects whose bounding 
 -- region overlap x,y in screen space.
--- @inargs: x, y, limit, *reverse*   
+-- @inargs: x, y, *limit*, *reverse*   
 -- @outargs: res_table
 -- @longdescr: pick_items can be used as a crude interface to 
 -- implement collision detection and response. The default behavior
@@ -16,7 +16,9 @@
 -- @note: the cost for calling pick_items vary with the complexity
 -- of the object in the scene, and increase noticeably with the 
 -- progression (2D- object) -> (x,y rotated 2D object) -> (x,y,z
--- rotated 2D object / 3D object). 
+-- rotated 2D object / 3D object).
+-- @note: unspecified limit defaults to 8, a limit larger than 1024
+-- elemnts is a terminal state transition.
 -- @note: the behavior of pick_items is undefined if an object
 -- uses a non-rectangular representation (e.g. custom defined 2D 
 -- surface or transformed with a vertex shader.
