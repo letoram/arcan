@@ -266,7 +266,7 @@ void arcan_retexture_tick()
  */ 
 }
 
-#include "londepng.c"
+/* #include "londepng.c" */
 /*
  * It is up to the calling library to perform the actual hijack,
  * e.g. patching the existing symbol to redirect / jump here
@@ -286,7 +286,7 @@ void GLLOCAL_SYMBOL(glTexImage2D) (GLenum target, GLint level, GLint iformat,
 	char comp[64];
 	static int seqn;
 	snprintf(comp, 64, "dump_%d_%ld.png", seqn++, id);
-	lodepng_encode32_file(comp, data, width, height);
+/*	lodepng_encode32_file(comp, data, width, height); */
 /* 
  * we also use texture updates as a "tick" to determine which
  * cached textured could be discarded to not have the decay run 

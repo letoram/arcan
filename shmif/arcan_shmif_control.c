@@ -71,7 +71,7 @@ static inline bool parent_alive()
 /* force_unlink isn't used here as the semaphores are 
  * passed as inherited handles */
 struct arcan_shmif_cont arcan_shmif_acquire(
-	const char* shmkey, int shmif_type, bool force_unlink)
+	const char* shmkey, int shmif_type, char force_unlink, char noguard)
 {
 	struct arcan_shmif_cont res = {0};
 	assert(shmkey);
@@ -98,7 +98,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.dms = &res.addr->dms,
 		.semset = { async, vsync, esync }
 	};
-	spawn_guardthread(gs);
+
+	if (!noguard)
+		spawn_guardthread(gs);
 
 /*
  * Type-specific handling if necessary here
@@ -111,12 +113,9 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 /*
  * No implementation on windows currently (or planned)
  */
-struct arcan_shmif_cont arcan_shmif_connect(const char* sockkey, 
-	const char* idkey, char noguard)
+char* arcan_shmif_connect(const char* connpath, const char* connkey)
 {
-	struct arcan_shmif_cont res = {0};
-
-	return res;
+	return NULL;
 }
 
 #else
@@ -197,7 +196,8 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 		.parent = res.addr->parent
 	};
 
-	spawn_guardthread(gs);
+	if (!noguard)
+		spawn_guardthread(gs);
 
 	return res;
 }

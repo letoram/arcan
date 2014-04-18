@@ -194,6 +194,16 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 	return rv;
 }
 
+arcan_frameserver* arcan_frameserver_listen_external(const char* key)
+{
+	return NULL;
+}
+
+arcan_frameserver* arcan_frameserver_spawn_subsegment(arcan_frameserver* ctx, bool input)
+{
+	return NULL;
+}
+
 static TCHAR* alloc_wchar(const char* key)
 {
 	CHAR* mskey = (TCHAR*) malloc((sizeof(TCHAR))*(strlen(key)));

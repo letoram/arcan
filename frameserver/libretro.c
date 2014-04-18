@@ -37,12 +37,14 @@
 #include "ievsched.h"
 #include "stateman.h"
 #include "libretro.h"
-#include "retexture.h"
 
 #include "resampler/speex_resampler.h"
 
 #ifdef FRAMESERVER_LIBRETRO_3D
 #include GL_HEADERS
+#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
+#include "retexture.h"
+#endif
 #include "../platform/platform.h"
 
 static void build_fbo(int neww, int newh, int* dw, int* dh, 
@@ -1329,8 +1331,11 @@ static void build_fbo(int neww, int newh, int* dw, int* dh,
 
 	glGenTextures(1, dcol);
 	glBindTexture(GL_TEXTURE_2D, *dcol);
-	
+
+#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	arcan_retexture_disable();
+#endif
+
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -1338,7 +1343,10 @@ static void build_fbo(int neww, int newh, int* dw, int* dh,
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, neww, newh, 0, 
 		GL_RGBA, GL_UNSIGNED_BYTE, mem);
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	arcan_retexture_enable();
+#endif
 
 	free(mem);
 
@@ -1400,7 +1408,9 @@ static void setup_3dcore(struct retro_hw_render_callback* ctx)
 		exit(1);
 	}
 
+#ifdef FRAMSESERVER_LIBRETRO_3D_RETEXTURE
 	arcan_retexture_init(NULL, false);
+#endif
 
 /* 
  * allocate an input and an output segment and map up,
