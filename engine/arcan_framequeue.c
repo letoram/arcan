@@ -82,11 +82,9 @@ arcan_errc arcan_framequeue_free(frame_queue* queue)
 		pthread_mutex_destroy(&queue->framesync);
 		free(queue->label);
 
-/* linear continuous, rest will die too -- don't want contents
- * of previous frameserver staying in buffer so reset that forcibly */
 		memset(queue->da_cells[0].buf, '\0', queue->cell_size * queue->c_cells); 
-		free(queue->da_cells[0].buf);
-		free(queue->da_cells);
+		arcan_mem_free(queue->da_cells[0].buf);
+		arcan_mem_free(queue->da_cells);
 
 		memset(queue, '\0', sizeof(frame_queue));
 		rv = ARCAN_OK;
@@ -147,8 +145,8 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	queue->c_cells = cell_count; 
 	queue->cell_size = cell_size;
 
-	queue->da_cells = malloc(sizeof(frame_cell) * queue->c_cells);
-	memset(queue->da_cells, '\0', sizeof(frame_cell) * queue->c_cells);
+	queue->da_cells = arcan_alloc_mem(sizeof(frame_cell) * queue->c_cells,
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 
 	queue->firstpts = -1;
  	queue->ni = 0;
@@ -159,9 +157,8 @@ arcan_errc arcan_framequeue_alloc(frame_queue* queue, int fd,
 	else
 		queue->read = (arcan_rfunc) read;
 
-/* map continuous linear region and partition with respect
- * to the cells */
-	unsigned char* mbuf = malloc(cell_size * queue->c_cells);
+	unsigned char* mbuf = arcan_alloc_mem(cell_size * queue->c_cells,
+		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 	for (int i = 0; i < queue->c_cells; i++) {
 		queue->da_cells[i].buf = mbuf + (i * cell_size);

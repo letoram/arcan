@@ -293,20 +293,20 @@ static void addchild(arcan_vobject* parent, arcan_vobject* child)
 
 /* grow and set element */
 	if (!slot){
-		arcan_vobject** news = realloc(parent->children,
-			(parent->childslots + 8) * sizeof(void*));
+		arcan_vobject** news = arcan_alloc_mem(
+			(parent->childslots + 8) * sizeof(void*),
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_NATURAL
+		);
 
-		if (news != NULL){
-			parent->children = news;
+		memcpy(news, parent->children, parent->childslots * sizeof(void*));
+		free(parent->children);
+		parent->children = news;
 
-			for (int i = 0; i < 8; i++)
-				parent->children[parent->childslots + i] = NULL;
+		for (int i = 0; i < 8; i++)
+			parent->children[parent->childslots + i] = NULL;
 
-			slot = &parent->children[parent->childslots];
-			parent->childslots += 8;
-		}
-		else
-			return;
+		parent->childslots += 8;
+		slot = &parent->children[parent->childslots];
 	}
 
 	if (child->flags.clone)
@@ -2938,8 +2938,8 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
 						arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
 							ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 				else
-					arcan_alloc_mem(sizeof(surface_transform), ARCAN_MEM_VSTRUCT, 
-						ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+					base = last = arcan_alloc_mem(sizeof(surface_transform), 
+						ARCAN_MEM_VSTRUCT, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
 			}
 
 			if (!vobj->transform)

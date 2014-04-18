@@ -175,7 +175,8 @@ static ALuint load_wave(const char* fname){
 	off_t ofs = nofs + 8;
 	int32_t innb = nb;
 
-	uint8_t* samplebuf = malloc(nb);
+	uint8_t* samplebuf = arcan_alloc_mem(nb, 
+		ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 	if (bits_ps == 8){
 		alfmt = nch == 1 ? AL_FORMAT_MONO8 : AL_FORMAT_STEREO8;
@@ -195,7 +196,7 @@ static ALuint load_wave(const char* fname){
 	alGenBuffers(1, &rv);
 	alBufferData(rv, alfmt, samplebuf, innb, smplrte);
 	_wrap_alError(NULL, "load_wave(bufferData)");
-	free(samplebuf);
+	arcan_mem_free(samplebuf);
 
 cleanup:
 	arcan_release_map(inmem);
@@ -217,7 +218,9 @@ static arcan_aobj_id arcan_audio_alloc(arcan_aobj** dst)
 	if (alid == AL_NONE)
 		return rv;
 
-	arcan_aobj* newcell = (arcan_aobj*) calloc(sizeof(arcan_aobj), 1);
+	arcan_aobj* newcell = arcan_alloc_mem(sizeof(arcan_aobj), ARCAN_MEM_ATAG,
+		ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
 	newcell->alid = alid;
 	rv = newcell->id = current_acontext->lastid++;
 	if (dst)
@@ -292,9 +295,8 @@ arcan_errc arcan_audio_free(arcan_aobj_id id)
 		}
 
 		_wrap_alError(NULL, "audio_free(DeleteBuffers/sources)");
-		memset(current, 0, sizeof(arcan_aobj));
-		free(current);
-		
+		arcan_mem_free(current);
+	
 		rv = ARCAN_OK;
 	}
 	
@@ -605,7 +607,7 @@ static inline void reset_chain(arcan_aobj* dobj)
 
 	while (current) {
 		next = current->next;
-		free(current);
+		arcan_mem_free(current);
 		current = next; 
 	}
 
@@ -639,7 +641,9 @@ arcan_errc arcan_audio_setgain(arcan_aobj_id id, float gain, uint16_t time)
 				dptr = &(*dptr)->next;
 			}
 			
-			*dptr = malloc(sizeof(struct arcan_achain));
+			*dptr = arcan_alloc_mem(sizeof(struct arcan_achain), 
+				ARCAN_MEM_ATAG, 0, ARCAN_MEMALIGN_NATURAL);
+
 			(*dptr)->next = NULL;
 			(*dptr)->t_gain = time;
 			(*dptr)->d_gain = gain;
@@ -810,12 +814,12 @@ char** arcan_audio_capturelist()
 	if (capturelist){
 		char** cur = capturelist;
 		while (*cur){
-			free(*cur);
+			arcan_mem_free(*cur);
 			*cur = NULL;
 			cur++;
 		}
 		
-		free(capturelist);
+		arcan_mem_free(capturelist);
 	}
 
 /* convert from ALs list format to NULL terminated array of strings */
@@ -832,7 +836,9 @@ char** arcan_audio_capturelist()
 		list += len + 1;
 	};
 
-	capturelist = malloc(sizeof(char*) * (elemc + 1));
+	capturelist = arcan_alloc_mem(sizeof(char*) * (elemc + 1), 
+		ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+
 	elemc = 0;
 
 	list = base;
@@ -863,8 +869,10 @@ static arcan_errc capturefeed(arcan_aobj* aobj, arcan_aobj_id id,
  * statically as some AL implementations behaved incorrectly and overflowed 
  * into other members making it more difficult to track down than necessary */
 		static int16_t* capturebuf;
+
 		if (!capturebuf)
-			capturebuf = malloc(1024 * 4); 
+			capturebuf = arcan_alloc_mem(1024 * 4, ARCAN_MEM_ABUFFER,
+				ARCAN_MEM_SENSITIVE, ARCAN_MEMALIGN_PAGE);
 		
 		ALCint sample;
 		ALCdevice* dev = (ALCdevice*) tag;

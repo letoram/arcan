@@ -1384,7 +1384,8 @@ static int pick(lua_State* ctx)
 
 	unsigned int limit = luaL_optint(ctx, 3, 8);
 
-	arcan_vobj_id* pickbuf = (arcan_vobj_id*) malloc(limit*sizeof(arcan_vobj_id));
+	arcan_vobj_id* pickbuf = arcan_alloc_mem(limit*sizeof(arcan_vobj_id),
+		ARCAN_MEM_BINDING, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 
 	unsigned int count = reverse ? arcan_video_rpick(pickbuf, limit, x, y) : 
 		arcan_video_pick(pickbuf, limit, x, y);
@@ -1400,7 +1401,7 @@ static int pick(lua_State* ctx)
 		ofs++;
 	}
 
-	free(pickbuf);
+	arcan_mem_free(pickbuf);
 	return 1;
 }
 
@@ -2022,10 +2023,11 @@ static bool grabthemefunction(lua_State* ctx, const char* funame)
 	if (strcmp(arcan_themename, funame) == 0)
 		lua_getglobal(ctx, arcan_themename);
 	else {
-		char* tmpname = (char*) malloc(strlen(arcan_themename) + strlen(funame)+2);
+		char* tmpname = arcan_alloc_mem(strlen(arcan_themename) + strlen(funame)+2,
+			ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
 			sprintf(tmpname, "%s_%s", arcan_themename, funame);
 			lua_getglobal(ctx, tmpname);
-		free(tmpname);
+			arcan_mem_free(tmpname);
 	}
 
 	if (!lua_isfunction(ctx, -1)){
@@ -3202,20 +3204,15 @@ static int allocsurface(lua_State* ctx)
 	cons.h = luaL_checknumber(ctx, 2);
 	cons.bpp = GL_PIXEL_BPP;
 
-	if (cons.w < 0 || cons.w > MAX_SURFACEW || 
-		cons.h < 0 || cons.h > MAX_SURFACEH)
+	if (cons.w > MAX_SURFACEW || cons.h > MAX_SURFACEH)
 		arcan_fatal("alloc_surface(%d, %d) failed, unacceptable "
 			"surface dimensions. Compile time restriction (%d,%d)\n",
 			cons.w, cons.h, MAX_SURFACEW, MAX_SURFACEH);
 
-	uint8_t* buf = malloc(cons.w * cons.h * GL_PIXEL_BPP);
+	uint8_t* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+	
 	uint32_t* cptr = (uint32_t*) buf;
-
-	if (!buf){
-		arcan_warning("alloc_surface(%d, %d) failed, couldn't allocate "
-			"storage buffer, out of memory?\n", cons.w, cons.h);
-		lua_pushvid(ctx, ARCAN_EID);
-	}
 
 	for (int y = 0; y < cons.h; y++)
 		for (int x = 0; x < cons.w; x++)
@@ -3247,7 +3244,9 @@ static int fillsurface(lua_State* ctx)
 	if (cons.w > 0 && cons.w <= MAX_SURFACEW &&
 		cons.h > 0 && cons.h <= MAX_SURFACEH){
 
-		uint8_t* buf = (uint8_t*) malloc(cons.w * cons.h * 4);
+		uint8_t* buf = arcan_alloc_mem(cons.w * cons.h * GL_PIXEL_BPP,
+			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+	
 		if (!buf)
 			goto error;
 
@@ -3257,8 +3256,9 @@ static int fillsurface(lua_State* ctx)
 			for (int x = 0; x < cons.w; x++)
 				RGBAPACK(r, g, b, 0xff, cptr++);
 
-		arcan_vobj_id id = arcan_video_rawobject(buf, cons.w * cons.h * 4, cons, 
-			desw, desh, 0);
+		arcan_vobj_id id = arcan_video_rawobject(buf, 
+			cons.w * cons.h * GL_PIXEL_BPP, cons, desw, desh, 0);
+	
 		lua_pushvid(ctx, id);
 		return 1;
 	}
@@ -3347,7 +3347,9 @@ static int rawsurface(lua_State* ctx)
 	unsigned ofs = 1;
 
 	if (desw > 0 && desh > 0 && desw <= MAX_SURFACEW && desh <= MAX_SURFACEH){
-		uint8_t* buf   = malloc(desw * desh * GL_PIXEL_BPP);
+		uint8_t* buf = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+			ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+
 		uint32_t* cptr = (uint32_t*) buf;
 
 		for (int y = 0; y < cons.h; y++)
@@ -3406,9 +3408,11 @@ static int randomsurface(lua_State* ctx)
 
 	int desw = abs( luaL_checknumber(ctx, 1) );
 	int desh = abs( luaL_checknumber(ctx, 2) );
-	img_cons cons = {.w = desw, .h = desh, .bpp = 4};
+	img_cons cons = {.w = desw, .h = desh, .bpp = GL_PIXEL_BPP};
 
-	uint32_t* cptr = (uint32_t*) malloc(desw * desh * 4);
+	uint32_t* cptr = arcan_alloc_mem(desw * desh * GL_PIXEL_BPP,
+		ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
+
 	uint8_t* buf = (uint8_t*) cptr;
 
 	for (int y = 0; y < cons.h; y++)
@@ -4339,7 +4343,9 @@ static char* lookup_hijack(int gameid)
 	if (!res)
 		res = strdup(LIBNAME);
 
-	char* newstr = malloc(strlen(res) + strlen(arcan_libpath) + 2);
+	char* newstr = arcan_alloc_mem(strlen(res) + strlen(arcan_libpath) + 2,
+		ARCAN_MEM_STRINGBUF, ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+
 	sprintf(newstr, "%s/%s", arcan_libpath, res);
 	free(res);
 
@@ -4471,7 +4477,9 @@ static int targetlaunch(lua_State* ctx)
 
 /* escape resource, unpack in frameserver fixes it */
 					escapestr(resourcestr);
-					metastr = (char*) malloc( arglim );
+					metastr = arcan_alloc_mem(arglim, ARCAN_MEM_STRINGBUF,
+						ARCAN_MEM_TEMPORARY, ARCAN_MEMALIGN_NATURAL);
+
 					snprintf(metastr, arglim, "core=%s:resource=%s%s%s", 
 						resourcestr, cmdline.data.strarr[1], argstr ? ":" : "",
 						argstr ? argstr : "");
@@ -4651,8 +4659,10 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		static size_t scrapbuf_sz;
 
 		if (scrapbuf_sz < s_buf){
-			free(scrapbuf);
-			scrapbuf = malloc(s_buf);
+			arcan_mem_free(scrapbuf);
+			scrapbuf = arcan_alloc_mem(s_buf, ARCAN_MEM_BINDING,
+				0, ARCAN_MEMALIGN_SIMD);
+
 			if (scrapbuf)
 				scrapbuf_sz = s_buf;
 			else
@@ -4661,7 +4671,7 @@ static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 
 /* 
  * terribly slow, but compiler SSE3 intrisics segfault
- * terribly with some GPU drivers even though the buffer is mapped  
+ * with some GPU drivers even though the buffer is mapped  
  * this might be workable by making sure we get page-aligned 
  * source/dst 
  */	
@@ -4920,7 +4930,9 @@ static int procset(lua_State* ctx)
 		goto cleanup;
 	}
 
-	struct proctarget_src* cbsrc = malloc(sizeof(struct proctarget_src));
+	struct proctarget_src* cbsrc = arcan_alloc_mem(sizeof(struct proctarget_src),
+		ARCAN_MEM_VTAG, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
 	cbsrc->ctx = ctx;
 	cbsrc->cbfun = 0;
 
@@ -5051,7 +5063,9 @@ static int recordset(lua_State* ctx)
 	arcan_aobj_id* aidlocks = NULL;
 
 	if (naids > 0 && global_monitor == false){
-		aidlocks = malloc(sizeof(arcan_aobj_id) * naids + 1);
+		aidlocks = arcan_alloc_mem(sizeof(arcan_aobj_id) * naids + 1,
+			ARCAN_MEM_ATAG, 0, ARCAN_MEMALIGN_NATURAL);
+	
 		aidlocks[naids] = 0; /* terminate */
 
 /* can't hook the monitors until we have the frameserver in place */
@@ -5067,7 +5081,9 @@ static int recordset(lua_State* ctx)
 				free(aidlocks);
 				aidlocks = NULL;
 				naids = 0;
-				char* ol = malloc(strlen(argl) + strlen(":noaudio=true") + 1);
+				char* ol = arcan_alloc_mem(strlen(argl) + strlen(":noaudio=true") + 1,
+					ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+
 				sprintf(ol, "%s%s", argl, ":noaudio=true");
 				free(argl);
 				argl = ol;
@@ -5923,7 +5939,9 @@ static int net_open(lua_State* ctx)
 		work_sz = strlen(workstr);
 	}
 
-	char* instr = malloc(work_sz + strlen("mode=client:host=") + 1);
+	char* instr = arcan_alloc_mem(work_sz + strlen("mode=client:host=") + 1,
+		ARCAN_MEM_STRINGBUF, 0, ARCAN_MEMALIGN_NATURAL);
+
 	sprintf(instr,"mode=client%s%s", host ? ":host=" : "", workstr ? workstr:"");
 
 	struct frameserver_envp args = {
@@ -7077,11 +7095,12 @@ void arcan_lua_stategrab(lua_State* ctx, char* dstfun, int src)
 
 /* initial setup */
 	if (!statebuf){
-		statebuf      = malloc(1024);
-		statebuf_sz   = 1024;
-		inpoll.fd     = src;
+		statebuf_sz = 1024;
+		statebuf = arcan_alloc_mem(statebuf_sz, ARCAN_MEM_STRINGBUF,
+			ARCAN_MEM_TEMPORARY | ARCAN_MEM_BZERO, ARCAN_MEMALIGN_NATURAL);
+
+		inpoll.fd = src;
 		inpoll.events = POLLIN;
-		memset(statebuf, '\0', statebuf_sz);
 	}
 
 /* flush read into buffer, parse buffer for \n#ENDBLOCK\n pattern */
