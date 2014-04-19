@@ -3776,7 +3776,7 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	float cval[3] = {r, g, b};	
 
 	setup_surf(dst, &prop, src);
-	arcan_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false); 
+	arcan_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, 
 		prop.scale.y, 0, NULL);
 }
@@ -3900,6 +3900,154 @@ void arcan_video_setblend(const surface_properties* dprops,
 	}
 }
 
+static inline void populate_stencil(struct rendertarget* tgt, 
+	arcan_vobject* celem, float fract)
+{
+/* toggle stenciling, reset into zero, draw parent bounding area to 
+ * stencil only,redraw parent into stencil, draw new object 
+ * then disable stencil. */
+	glEnable(GL_STENCIL_TEST);
+	glDisable(GL_BLEND);
+
+	glClearStencil(0);
+	glClear(GL_STENCIL_BUFFER_BIT);
+	glColorMask(0, 0, 0, 0);
+	glStencilFunc(GL_ALWAYS, 1, 1);
+	glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+
+/* switch to default color shader as we don't want any fancy 
+ * vertex processing or texturing interfering with clipping */
+	arcan_shader_activate(arcan_video_display.defclrshdr);
+
+	if (celem->flags.cliptoparent == ARCAN_CLIP_SHALLOW){
+		surface_properties pprops = empty_surface();
+		arcan_resolve_vidprop(celem->parent, fract, &pprops);
+		draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+	}
+	else
+/* deep -> draw all objects that aren't clipping to parent,
+ * terminate when a shallow clip- object is found */
+		while (celem->parent != &current_context->world){
+			surface_properties pprops = empty_surface();
+			arcan_resolve_vidprop(celem->parent, fract, &pprops);
+
+			if (celem->parent->flags.cliptoparent == ARCAN_CLIP_OFF)
+				draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+
+			else if (celem->parent->flags.cliptoparent == ARCAN_CLIP_SHALLOW){
+				draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
+				break;
+			}
+
+			celem = celem->parent;
+		}
+
+	glColorMask(1, 1, 1, 1);
+	glStencilFunc(GL_EQUAL, 1, 1);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+}
+
+static inline void bind_multitexture(arcan_vobject* elem)
+{
+	int j = 
+		GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? 
+		GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
+
+	for(int i = 0; i < j; i++){
+		char unifbuf[16];
+		unifbuf[15] = '\0';
+
+		int frameind = ((elem->frameset_meta.current - i) % j + j)  % j;
+
+		glActiveTexture(GL_TEXTURE0 + i);
+		glBindTexture(GL_TEXTURE_2D, 
+			elem->frameset[ frameind ]->vstore->vinf.text.glid);
+	
+		snprintf(unifbuf, 15, "map_tu%d", i);
+		arcan_shader_forceunif(unifbuf, shdrint, &i, false);
+	}
+
+	glActiveTexture(GL_TEXTURE0);
+}
+
+static inline void clone_copy_attr(arcan_vobject* elem)
+{
+	if ( (elem->mask & MASK_FRAMESET) > 0 ){
+		enum arcan_framemode mode = elem->frameset_meta.framemode;
+		elem->frameset = elem->parent->frameset;
+		elem->frameset_meta = elem->parent->frameset_meta;
+		elem->current_frame = elem->parent->current_frame;
+		elem->frameset_meta.mode = mode;
+	} 
+	else {
+		elem->frameset = elem->parent->frameset;
+		elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
+
+		assert(elem->parent && elem->parent != &current_context->world);
+		elem->current_frame = (elem->parent->frameset_meta.capacity > 0 &&
+			elem->parent->frameset[ elem->frameset_meta.current ]) ?
+		elem->parent->frameset[elem->frameset_meta.current] : 
+		elem->parent->current_frame;
+	}
+}
+
+static inline bool setup_shallow_texclip(arcan_vobject* elem, 
+	float** txcos, surface_properties* dprops, float fract)
+{
+	surface_properties pprops = empty_surface();
+	arcan_resolve_vidprop(elem->parent, fract, &pprops);
+
+	float p_x = pprops.position.x;
+	float p_y = pprops.position.y;
+	float p_w = pprops.scale.x * elem->parent->origw;
+	float p_h = pprops.scale.y * elem->parent->origh;
+	float p_xw = p_x + p_w;
+	float p_yh = p_y + p_h;
+
+	float cp_x = dprops->position.x;
+	float cp_y = dprops->position.y;
+	float cp_w = dprops->scale.x * elem->origw;
+	float cp_h = dprops->scale.y * elem->origh;
+	float cp_xw = cp_x + cp_w;
+	float cp_yh = cp_y + cp_h;
+
+/* fully outside? skip drawing */
+	if (cp_xw < p_x || cp_yh < p_y ||	cp_x > p_xw || cp_y > p_yh)
+		return false;
+
+/* fully contained? don't do anything */
+	else if (	cp_x >= p_x && cp_xw <= p_xw && cp_y >= p_y && cp_yh <= p_yh )
+		return true;
+
+	if (cp_x < p_x){
+		cp_w -= p_x - cp_x;
+		cp_x = p_x;
+	}
+	
+	if (cp_y < p_y){
+		cp_h -= p_y - cp_y;
+		cp_y = p_y;
+	}
+
+	if (cp_x + cp_w > p_xw){
+		cp_w -= (cp_x + cp_w) - p_xw;
+	}
+
+	if (cp_y + cp_h > p_yh){
+		cp_h -= (cp_y + cp_h) - p_yh;
+	}
+
+/* dprops modifications should be moved to a scaled draw */
+	dprops->position.x = cp_x;
+	dprops->position.y = cp_y;
+	dprops->scale.x = cp_w / elem->origw;
+	dprops->scale.y = cp_h / elem->origh;
+
+/* this is expensive, we should instead temporarily offset */
+	elem->valid_cache = false;
+	return true;	
+}
+
 static void process_rendertarget(struct rendertarget* tgt, float fract)
 {
 	arcan_vobject_litem* current = tgt->first;
@@ -3934,112 +4082,68 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	while (current && current->elem->order < 0)
 		current = current->next;
 
-	if (current){
-	/* make sure we're in a decent state for 2D */
-		glDisable(GL_DEPTH_TEST);
+	if (!current)
+		goto end3d;
 
-		arcan_shader_activate(arcan_video_display.defaultshdr);
-		arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
-		arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+/* make sure we're in a decent state for 2D */
+	glDisable(GL_DEPTH_TEST);
 
-		while (current && current->elem->order >= 0){
-			arcan_vobject* elem = current->elem;
+	arcan_shader_activate(arcan_video_display.defaultshdr);
+	arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
+	arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
+
+	while (current && current->elem->order >= 0){
+		arcan_vobject* elem = current->elem;
 
 /* calculate coordinate system translations, world cannot be masked */
-			surface_properties dprops = empty_surface();
-			arcan_resolve_vidprop(elem, fract, &dprops);
+		surface_properties dprops = empty_surface();
+		arcan_resolve_vidprop(elem, fract, &dprops);
 
 /* don't waste time on objects that aren't supposed to be visible */
-			if ( dprops.opa < EPSILON || elem == current_context->stdoutp.color){
-				current = current->next;
-				continue;
-			}
+		if ( dprops.opa < EPSILON || elem == current_context->stdoutp.color){
+			current = current->next;
+			continue;
+		}
 
 /* special safeguards, current_frame could've been deleted and replaced 
  * leaving a dangling pointer here,or frameset location might've moved */
-			if (elem->flags.clone){
-				if ( (elem->mask & MASK_FRAMESET) > 0 ){
-					enum arcan_framemode mode = elem->frameset_meta.framemode;
-					elem->frameset = elem->parent->frameset;
-					elem->frameset_meta = elem->parent->frameset_meta;
-					elem->current_frame = elem->parent->current_frame;
-					elem->frameset_meta.mode = mode;
-				} else {
-					elem->frameset = elem->parent->frameset;
-					elem->frameset_meta.capacity = elem->parent->frameset_meta.capacity;
-
-					assert(elem->parent && elem->parent != &current_context->world);
-					elem->current_frame = (elem->parent->frameset_meta.capacity > 0 &&
-						elem->parent->frameset[ elem->frameset_meta.current ]) ?
-					elem->parent->frameset[elem->frameset_meta.current] : 
-					elem->parent->current_frame;
-				}
-			}
+		if (elem->flags.clone)
+			clone_copy_attr(elem);
 
 /* enable clipping using stencil buffer, 
  * we need to reset the state of the stencil buffer between 
  * draw calls so track if it's enabled or not */
-			bool clipped = false;
+		bool clipped = false;
+
+/*
+ * texture coordinates that will be passed to the draw call,
+ * clipping and other effects may maintain a local copy and
+ * manipulate these
+ */		
+		float* txcos = elem->current_frame->txcos;
+		float** dstcos = &txcos;
+
+		if ( (elem->mask & MASK_MAPPING) > 0)
+			txcos = elem->parent != &current_context->world ? 
+				elem->parent->txcos : elem->txcos;
+		else if (elem->flags.clone)
+			txcos = elem->txcos;
 
 /* a common clipping situation is that we have an invisible clipping parent
  * where neither objects is in a rotated state, which gives an easy way
  * out through the drawing region */
-			if (0 && elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
-				elem->parent != &current_context->world && !elem->rotate_state){
-				surface_properties pprops = empty_surface();
-				arcan_resolve_vidprop(elem->parent, fract, &pprops);
-
-/*				float xp1 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
-				float yp1 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f;
-				float xp2 = dprops.scale.x + dprops.scale.x * elem->origw * 0.5f;
-				float yp2 = dprops.scale.y + dprops.scale.y * elem->origh * 0.5f; */
+		if (0 && elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
+			elem->parent != &current_context->world && !elem->rotate_state){
+			if (!setup_shallow_texclip(elem, dstcos, &dprops, fract)){
+				current = current->next;
+				continue;	
 			}
-			else if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
-				elem->parent != &current_context->world){
-/* toggle stenciling, reset into zero, draw parent bounding area to 
- * stencil only,redraw parent into stencil, draw new object 
- * then disable stencil. */
-				clipped = true;
-				glEnable(GL_STENCIL_TEST);
-				glDisable(GL_BLEND);
-
-				glClearStencil(0);
-				glClear(GL_STENCIL_BUFFER_BIT);
-				glColorMask(0, 0, 0, 0);
-				glStencilFunc(GL_ALWAYS, 1, 1);
-				glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
-
-/* switch to default color shader as we don't want any fancy 
- * vertex processing or texturing interfering with clipping */
-				arcan_shader_activate(arcan_video_display.defclrshdr);
-				arcan_vobject* celem = elem;
-
-				if (celem->flags.cliptoparent == ARCAN_CLIP_SHALLOW){
-					surface_properties pprops = empty_surface();
-					arcan_resolve_vidprop(celem->parent, fract, &pprops);
-					draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
-				}
-				else
-/* deep -> draw all objects that aren't clipping to parent,
- * terminate when a shallow clip- object is found */
-				while (celem->parent != &current_context->world){
-					surface_properties pprops = empty_surface();
-					arcan_resolve_vidprop(celem->parent, fract, &pprops);
-
-					if (celem->parent->flags.cliptoparent == ARCAN_CLIP_OFF)
-						draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
-					else if (celem->parent->flags.cliptoparent == ARCAN_CLIP_SHALLOW){
-						draw_colorsurf(tgt, pprops, celem->parent, 1.0, 1.0, 1.0);
-						break;
-					}
-
-					celem = celem->parent;
-				}
-
-				glColorMask(1, 1, 1, 1);
-				glStencilFunc(GL_EQUAL, 1, 1);
-				glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-			}
+		}
+		else if (elem->flags.cliptoparent != ARCAN_CLIP_OFF && 
+			elem->parent != &current_context->world){
+			clipped = true;
+			populate_stencil(tgt, elem, fract);
+		}
 
 /* if the object is not txmapped (or null, in that case give up) */ 
 		if (elem->vstore->txmapped == TXSTATE_OFF){
@@ -4061,61 +4165,26 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 /* depending on frameset- mode, we may need to split 
  * the frameset up into multitexturing */
-		int cfind  = elem->frameset_meta.current;
+
 		if (elem->frameset_meta.capacity > 0 && 
-			elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE){
-			int j = GL_MAX_TEXTURE_UNITS < elem->frameset_meta.capacity ? 
-				GL_MAX_TEXTURE_UNITS : elem->frameset_meta.capacity;
-
-			for(int i = 0; i < j; i++){
-				char unifbuf[16];
-				unifbuf[15] = '\0';
-
-				int frameind = ((cfind - i) % j + j)  % j;
-
-				glActiveTexture(GL_TEXTURE0 + i);
-				glBindTexture(GL_TEXTURE_2D, 
-					elem->frameset[ frameind ]->vstore->vinf.text.glid);
-				snprintf(unifbuf, 15, "map_tu%d", i);
-				arcan_shader_forceunif(unifbuf, shdrint, &i, false);
-			}
-
-			glActiveTexture(GL_TEXTURE0);
-		}
+			elem->frameset_meta.framemode == ARCAN_FRAMESET_MULTITEXTURE)
+/* we don't unbind these unless necessary */
+			bind_multitexture(elem);
 		else
 			glBindTexture(GL_TEXTURE_2D, 
 				elem->current_frame->vstore->vinf.text.glid);
 
-		float* txcos = elem->current_frame->txcos;
-
-		if ( (elem->mask & MASK_MAPPING) > 0)
-			txcos = elem->parent != &current_context->world ? 
-				elem->parent->txcos : elem->txcos;
-		else if (elem->flags.clone)
-			txcos = elem->txcos;
-
 		arcan_video_setblend(&dprops, elem);
-		draw_texsurf(tgt, dprops, elem, txcos);
+		draw_texsurf(tgt, dprops, elem, *dstcos);
 
-/* even though there might be latent "other frames" bound,
- * they won't change much unless the program itself uses multitexturing
-		if (unbc){
-			for (int i = 1; i <= unbc-1; i++){
-				glActiveTexture(GL_TEXTURE0 + i);
-				glBindTexture(GL_TEXTURE_2D, 0);
-			}
-			glActiveTexture(GL_TEXTURE0);
-		}
-*/
+	if (clipped)
+		glDisable(GL_STENCIL_TEST);
 
-		if (clipped)
-			glDisable(GL_STENCIL_TEST);
-
-			current = current->next;
-		}
+		current = current->next;
 	}
 
 /* reset and try the 3d part again if requested */
+end3d:
 	current = tgt->first;
 	if (current && current->elem->order < 0 && 
 		arcan_video_display.order3d == order3d_last)
