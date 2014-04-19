@@ -3991,9 +3991,17 @@ static inline void clone_copy_attr(arcan_vobject* elem)
 	}
 }
 
+/*
+ * Apply clipping without using the stencil buffer,
+ * cheaper but with some caveats of its own.
+ * Will work particularly bad for partial clipping
+ * with customized texture coordinates.
+ */
 static inline bool setup_shallow_texclip(arcan_vobject* elem, 
 	float** txcos, surface_properties* dprops, float fract)
 {
+	static float cliptxbuf[8];
+
 	surface_properties pprops = empty_surface();
 	arcan_resolve_vidprop(elem->parent, fract, &pprops);
 
@@ -4019,22 +4027,38 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 	else if (	cp_x >= p_x && cp_xw <= p_xw && cp_y >= p_y && cp_yh <= p_yh )
 		return true;
 
+	memcpy(cliptxbuf, *txcos, sizeof(float) * 8);
+	float xrange = cliptxbuf[2] - cliptxbuf[0];
+	float yrange = cliptxbuf[7] - cliptxbuf[1];
+
 	if (cp_x < p_x){
+		float sl = ((p_x - cp_x) / elem->origw) * xrange;
 		cp_w -= p_x - cp_x;
+		cliptxbuf[0] += sl;
+		cliptxbuf[6] += sl;
 		cp_x = p_x;
 	}
 	
 	if (cp_y < p_y){
+		float su = ((p_y - cp_y) / elem->origh) * yrange;
 		cp_h -= p_y - cp_y;
+		cliptxbuf[1] += su;
+		cliptxbuf[3] += su;
 		cp_y = p_y;
 	}
 
 	if (cp_x + cp_w > p_xw){
+		float sr = ((cp_x + cp_w) - p_xw) / elem->origw * xrange;
 		cp_w -= (cp_x + cp_w) - p_xw;
+		cliptxbuf[2] -= sr;
+		cliptxbuf[4] -= sr;
 	}
 
 	if (cp_y + cp_h > p_yh){
+		float sd = ((cp_y + cp_h) - p_yh) / elem->origh * yrange;
 		cp_h -= (cp_y + cp_h) - p_yh;
+		cliptxbuf[5] -= sd;
+		cliptxbuf[7] -= sd;
 	}
 
 /* dprops modifications should be moved to a scaled draw */
@@ -4045,6 +4069,7 @@ static inline bool setup_shallow_texclip(arcan_vobject* elem,
 
 /* this is expensive, we should instead temporarily offset */
 	elem->valid_cache = false;
+	*txcos = cliptxbuf;
 	return true;	
 }
 
@@ -4132,7 +4157,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 /* a common clipping situation is that we have an invisible clipping parent
  * where neither objects is in a rotated state, which gives an easy way
  * out through the drawing region */
-		if (0 && elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
+		if (elem->flags.cliptoparent == ARCAN_CLIP_SHALLOW &&
 			elem->parent != &current_context->world && !elem->rotate_state){
 			if (!setup_shallow_texclip(elem, dstcos, &dprops, fract)){
 				current = current->next;
