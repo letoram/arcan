@@ -29,38 +29,21 @@ set (LWA_PLATFORM_SOURCES
 )
 
 if (VIDEO_PLATFORM STREQUAL "egl")
-	if (ENABLE_GLES2)
-# detect broadcom (rpi) etc. and add appropriate flags
-		if (EXISTS "/opt/vc/include/bcm_host.h")
-			message(STATUS "EGL: bcm_host detected, enabling raspberry pi / broadcom support")
-			include_directories(/opt/vc/include/interface/vcos/pthreads)
-			include_directories(/opt/vc/include)
-			include_directories(/opt/vc/include/interface/vmcs_host/linux)
-			include_directories(/opt/vc/include/GLES2)
-			set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
-				APPEND PROPERTY COMPILE_DEFINITIONS WITH_BCM)
+	if (GLES2_BCM_IMPLEMENTATION)
+		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
+			APPEND PROPERTY COMPILE_DEFINITIONS WITH_BCM)
+	endif()
 
-			set(GL_LIBRARIES	
-				/opt/vc/lib/libGLESv2.so 
-				/opt/vc/lib/libbcm_host.so
-				/opt/vc/lib/libEGL.so
-			)
-# assume that they're in our default library path already
-		else()
-			set (GL_LIBRARIES
-				GLESv2
-    	  EGL
-			)
-			set(ENABLE_LIBRETRO3D FALSE)
-		endif()
+	if (ENABLE_GLES2)
+		set (GL_LIBRARIES ${GLES2_LIBRARIES} ${EGL_LIBRARIES})
+		set(ENABLE_LIBRETRO3D FALSE) #not yet ported
 	else()
 		set(GL_LIBRARIES
-			EGL
-			${OPENGL_gl_LIBRARY}
+			${EGL_LIBRARIES}
+			${OPENGL_LIBRARIES}
 			${GLEW_LIBRARY}
 		)
 		include_directories(${GLEW_INCLUDE_DIRS})
-
 	endif()
 
 	if (ENABLE_X11)
@@ -69,6 +52,9 @@ if (VIDEO_PLATFORM STREQUAL "egl")
 
 		set_property(SOURCE ${PLATFORM_PATH}/../linux/event.c
 			APPEND PROPERTY COMPILE_DEFINITIONS WITH_X11)
+	else()
+		set_property(SOURCE ${PLATFORM_PATH}/../egl/video.c
+			APPEND PROPERTY COMPILE_DEFINITIONS WITH_GBMKMS)
 	endif()
 	add_definitions(-DGL_HEADERS=\"${PLATFORM_PATH}/../egl/glheaders.h\")
 

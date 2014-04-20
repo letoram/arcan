@@ -24,7 +24,13 @@
  *                  this library helps with that, but not needed everywhere
  *
  * Each different device / Windowing type etc. need to have this defined:
- * EGL_NATIVE_DISPLAY 
+ * EGL_NATIVE_DISPLAY
+ *
+ * Furthermore, for headless to work well, we also need support in arcan_video
+ * for having a default output FBO where our destination textures will reside.
+ * This is relevant for the arcan-in-arcan case where the result will be read-back
+ * or, even more preferably, shared with the main process. The latter case relies
+ * on currently-missing-extensions however. 
  */
 
 #include <stdio.h>
@@ -33,6 +39,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include GL_HEADERS
 
@@ -115,9 +125,138 @@ static bool setup_xwnd(int w, int h, bool fullscreen)
 }
 #endif
 
+#ifdef WITH_GBMKMS
+
+#include <gbm.h>
+#include <drm.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+
+static struct {
+	drmModeConnector* conn;
+	drmModeEncoder* enc;
+	drmModeModeInfo mode;
+	drmModeCrtcPtr old_settings;
+
+	struct gbm_surface* surf;
+	struct gbm_device* dev;
+
+	int fd;
+
+	uint32_t fb_id;
+
+} gbmkms = {
+	.fd = -1				
+};
+
+#define EGL_NATIVE_DISPLAY gbmkms.dev
+
+/*
+ * atexit handler, restore initial mode settings for output device,
+ * also used for platform_prepare_external
+ */
+static void restore_gbmkms()
+{
+	if (!gbmkms.conn)
+		return;
+
+	drmModeSetCrtc(gbmkms.fd, gbmkms.old_settings->crtc_id,
+		gbmkms.old_settings->buffer_id, gbmkms.old_settings->x, 
+		gbmkms.old_settings->y, 
+		&gbmkms.conn->connector_id, 1, &gbmkms.old_settings->mode
+	);
+
+	drmModeFreeCrtc(gbmkms.old_settings);
+}
+
+static bool setup_gbmkms(uint16_t* w, uint16_t* h, bool switchres)
+{
+/* we don't got a command-line argument interface in place to set this up 
+ * in any other way (and don't want to go the .cfg route) */
+	const char* dev = getenv("ARCAN_OUTPUT_DEVICE");
+	if (!dev)
+		dev = "/dev/dri/card0";
+
+	gbmkms.fd = open(dev, O_RDWR);
+	if (-1 == gbmkms.fd){
+		arcan_warning("platform/egl: "
+			"couldn't open display device node (%s), giving up.\n", dev);
+		return false;
+	}
+
+	gbmkms.dev = gbm_create_device(gbmkms.fd);
+	if (!gbmkms.dev){
+		close(gbmkms.fd);
+		arcan_warning("platform/egl: "
+			"couldn't create GBM device connection, giving up.\n");
+		return false;
+	}
+
+/* enumerate connectors among resources, find the first one that's connected */
+	drmModeRes* reslist = drmModeGetResources(gbmkms.fd);
+	for (int conn_ind = 0; conn_ind < reslist->count_connectors; conn_ind++){
+		gbmkms.conn = drmModeGetConnector(gbmkms.fd, reslist->connectors[conn_ind]);
+		if (!gbmkms.conn)
+			continue;
+
+		if (gbmkms.conn->connection == DRM_MODE_CONNECTED && gbmkms.conn->count_modes > 0)
+			break;
+
+		drmModeFreeConnector(gbmkms.conn);
+		gbmkms.conn = NULL;
+	}
+	
+	if (!gbmkms.conn){
+		arcan_warning("platform/egl: "
+			"no active connector found, cannot setup display.\n");
+		close(gbmkms.fd);
+/* any gdb_destroy_device(fd)? */
+		return false;
+	}
+
+/* then find the first encoder that fits the selected connector */
+	for (int enc_ind = 0; enc_ind < reslist->count_encoders; enc_ind++){
+		gbmkms.enc = drmModeGetEncoder(gbmkms.fd, reslist->encoders[enc_ind]);
+		if (!gbmkms.enc)
+			continue;
+
+		if (gbmkms.enc->encoder_id == gbmkms.conn->encoder_id)
+			break;
+
+		drmModeFreeEncoder(gbmkms.enc);
+		gbmkms.enc = NULL;
+	}
+
+	if (!gbmkms.enc){
+		arcan_warning("platform/egl: "
+			"no suitable encoder found, cannot setup display.\n");
+		close(gbmkms.fd);
+		gbmkms.fd = -1; 
+		drmModeFreeConnector(gbmkms.conn);
+		gbmkms.conn = NULL;
+		return false;
+	}
+
+/* assumption: first display-mode is the most "suitable",
+ * extending this would be sweeping for the user-preferred one */ 
+	*w = gbmkms.conn->modes[0].hdisplay;
+	*h = gbmkms.conn->modes[0].vdisplay;
+
+	gbmkms.surf = gbm_surface_create(gbmkms.dev, *w, *h, 
+		GBM_BO_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);	
+	gbmkms.old_settings = drmModeGetCrtc(gbmkms.fd, gbmkms.enc->crtc_id);
+	atexit(restore_gbmkms);
+
+	egl.wnd = (EGLNativeWindowType) gbmkms.surf;
+
+	return true;
+}
+
+#endif
+
 #ifdef WITH_BCM 
 #include <bcm_host.h>
-bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
+static bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 {
 	bcm_host_init();
 
@@ -192,6 +331,8 @@ bool alloc_bcm_wnd(uint16_t* w, uint16_t* h)
 void platform_video_bufferswap()
 {
 #ifdef WITH_X11
+/* should be moved into its own
+ * platform module (ofc.) here as a quickhack atm. */
 	while (XPending(x11.xdisp)){
 		XEvent xev;
 		XNextEvent(x11.xdisp, &xev);
@@ -200,10 +341,33 @@ void platform_video_bufferswap()
 */
 	}
 #endif
-	long long start = arcan_timemillis();
 	eglSwapBuffers(egl.disp, egl.surf);
-	long long stop = arcan_timemillis();
-	printf("%lld\n", stop - start);
+
+#ifdef WITH_GBMKMS
+	struct gbm_bo* bo = gbm_surface_lock_front_buffer(gbmkms.surf);
+	
+	unsigned handle = gbm_bo_get_handle(bo).u32;
+	unsigned stride = gbm_bo_get_stride(bo);
+
+	if (-1 == drmModeAddFB(gbmkms.fd, 
+		arcan_video_display.width, arcan_video_display.height,
+		24, 32, stride, handle, &gbmkms.fb_id))
+		arcan_fatal("platform/egl: couldn't obtain framebuffer handle\n");
+
+	int fl;
+	if (-1 == 
+		drmModePageFlip(gbmkms.fd, gbmkms.enc->crtc_id,	
+			gbmkms.fb_id, DRM_MODE_PAGE_FLIP_EVENT, &fl))
+		arcan_fatal("platform/egl: waiting for flip failure\n");
+
+	int buf;
+	read(gbmkms.fd, &buf, 1);
+	gbm_surface_release_buffer(gbmkms.surf, bo);
+
+// gbm_surface_has_free_buffers(surf)
+/*	drmModeSetCrtc(fd, kms.encoder->crtc_id, kms.fb_id, 0, 0,
+		&kms.connector->connector_id, 1, &kms.mode);*/
+#endif
 }
 
 #ifndef EGL_NATIVE_DISPLAY
@@ -246,6 +410,12 @@ bool platform_video_init(uint16_t w, uint16_t h, uint8_t bpp, bool fs,
 #ifdef WITH_X11
 	if (!setup_xwnd(w, h, fs)){
 		arcan_warning("Couldn't setup Window (X11)\n");
+		return false;
+	}
+#endif
+
+#ifdef WITH_GBMKMS
+	if (!setup_gbmkms(&w, &h, fs)){
 		return false;
 	}
 #endif
