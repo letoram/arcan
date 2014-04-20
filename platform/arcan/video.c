@@ -166,6 +166,11 @@ void platform_event_process(arcan_evctx* ctx)
 {
 	arcan_event ev;
 
+/*
+ * Most events can just be added to the local queue,
+ * but we want to handle some of the target commands separately
+ * (with a special path to LUA and a different hook)
+ */
 	while (1 == arcan_event_poll(&inevq, &ev)){
 		arcan_event_enqueue(ctx, &ev);
 	}
@@ -192,11 +197,6 @@ void platform_event_init(arcan_evctx* ctx)
 }
 
 /*
- * missing; for the event-queue, we just reuse the queuetransfer(!)
- * routine to move things between the shared memory event-queue
- *
- * -- we don't propagate much upwards 
- *
  * for the audio support, we re-use openAL soft with a patch to
  * existing backends to just expose a single device with properties
  * matching the shmif constants, write into the audp and voila!
