@@ -1210,6 +1210,10 @@ static int settxcos_default(lua_State* ctx)
 	luaL_checkvid(ctx, 1, &dst);
 	bool mirror = luaL_optinteger(ctx, 2, 0) != 0;
 
+	if (!dst->txcos)
+		dst->txcos = arcan_alloc_mem(sizeof(float)*8, 
+			ARCAN_MEM_VSTRUCT,0,ARCAN_MEMALIGN_SIMD);
+
 	if (dst){
 		if (mirror)
 			generate_mirror_mapping(dst->txcos, 1.0, 1.0);
