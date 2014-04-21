@@ -132,6 +132,7 @@ static inline void build_modelview(float* dmatr,
 	float* imatr, surface_properties* prop, arcan_vobject* src);
 static void poll_readback(struct rendertarget* tgt);
 
+#define TRACE_ENABLE
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
@@ -1635,6 +1636,7 @@ static arcan_errc attach_readback(arcan_vobj_id src)
 			return ARCAN_ERRC_BAD_ARGUMENT;
 		}
 
+		current_context->stdoutp.mode = RENDERTARGET_COLOR;
 		current_context->stdoutp.color = dstobj;
 
 		if (current_context->stdoutp.fbo == 0){
@@ -4435,10 +4437,13 @@ void arcan_video_refresh_GL(float lerp)
 		arcan_shader_activate(arcan_video_display.defaultshdr);
 		glClear(GL_COLOR_BUFFER_BIT);
 		glBindTexture(GL_TEXTURE_2D,
-			current_context->stdoutp.color->vstore->vinf.text.glid);
-		draw_vobj(0, 0, arcan_video_display.width, arcan_video_display.height,
-			current_context->stdoutp.color->txcos);	
+			current_context->stdoutp.color->current_frame->vstore->vinf.text.glid);
+		int w = arcan_video_display.width >> 1;
+		int h = arcan_video_display.height >> 1;
+		
+		draw_vobj(-w, -h, w, h, arcan_video_display.default_txcos);
 		glBindTexture(GL_TEXTURE_2D, 0);
+		glFlush();
 #endif
 
 		if (current_context->stdoutp.readback != 0)
