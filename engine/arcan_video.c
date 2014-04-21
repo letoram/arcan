@@ -702,7 +702,13 @@ arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
 
 		nobj->current.rotation.quaternion = default_quat; 
 		nobj->program = pobj->program;
-		generate_basic_mapping(nobj->txcos, 1.0, 1.0);
+		
+		if (pobj->txcos){
+			nobj->txcos = arcan_alloc_fillmem(pobj->txcos, 
+				sizeof(float)*8, ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
+		}
+		else
+			nobj->txcos = NULL;
 
 		addchild(pobj, nobj);
 		trace("(clone) new instance of (%d:%s) with ID: %d, total: %d\n", 
@@ -791,7 +797,6 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 		
 		rv->cellid = fid;
 		assert(rv->cellid > 0);
-		generate_basic_mapping(rv->txcos, 1.0, 1.0);
 
 		rv->parent = &current_context->world;
 		rv->mask = MASK_ORIENTATION | MASK_OPACITY | MASK_POSITION 
@@ -1226,6 +1231,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 			arcan_warning("video_init couldn't create synchronization handle\n");
 		}
 		
+		generate_basic_mapping(arcan_video_display.default_txcos, 1.0, 1.0);
 		firstinit = false;
 	}
 
@@ -1515,7 +1521,22 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 
 		dst->vstore = src->vstore;
 		dst->vstore->refcount++;
-		memcpy(dst->txcos, src->txcos, sizeof(dst->txcos));
+
+/*
+ * customized texture coordinates unless we should use
+ * defaults ... 
+ */
+		if (src->txcos){
+			if (!dst->txcos)
+				dst->txcos = arcan_alloc_mem(8 * sizeof(float), 
+					ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
+			
+			memcpy(dst->txcos, src->txcos, sizeof(float) * 8);
+		}
+		else if (dst->txcos){
+			free(dst->txcos);
+			dst->txcos = NULL;
+		}
 	
 		rv = ARCAN_OK;
 	}
@@ -2130,12 +2151,14 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 		}
 		else {
 /* For feeds, we don't do the forced- rescale on 
- * every frame, way too expensive */
+ * every frame, way too expensive, this behavior only
+ * occurs if there's a custom set of texture coordinates already */
 			newvobj->vstore->w = nexthigher(constraints.w);
 			newvobj->vstore->h = nexthigher(constraints.h);
 			float hx = (float)constraints.w / (float)newvobj->vstore->w;
 			float hy = (float)constraints.h / (float)newvobj->vstore->h;
-			generate_basic_mapping(newvobj->txcos, hx, hy);
+			if (newvobj->txcos)
+				generate_basic_mapping(newvobj->txcos, hx, hy);
 		}
 
 /* allocate */
@@ -2266,11 +2289,19 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj){
+		if (!vobj->txcos)
+			vobj->txcos = arcan_alloc_mem(8 * sizeof(float), 
+				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD); 
+
 		generate_basic_mapping(vobj->txcos, 1.0, 1.0);
-		vobj->txcos[0] *= sfs; 	vobj->txcos[2] *= sfs; 	
-		vobj->txcos[4] *= sfs; 	vobj->txcos[6] *= sfs;
-		vobj->txcos[1] *= sft; 	vobj->txcos[3] *= sft; 	
-		vobj->txcos[5] *= sft; 	vobj->txcos[7] *= sft;
+		vobj->txcos[0] *= sfs; 	
+		vobj->txcos[1] *= sft; 	
+		vobj->txcos[2] *= sfs; 	
+		vobj->txcos[3] *= sft; 	
+		vobj->txcos[4] *= sfs; 	
+		vobj->txcos[5] *= sft; 	
+		vobj->txcos[6] *= sfs;
+		vobj->txcos[7] *= sft;
 
 		rv = ARCAN_OK;
 	}
@@ -2708,6 +2739,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	}
 
 	if (current_context->stdoutp.color == vobj){
+/* NOTE: should we possibly decrease reference counting here? */
 		current_context->stdoutp.color = NULL;
 		glBindBuffer(GL_FRAMEBUFFER, 0);
 		glDeleteFramebuffers(1, &current_context->stdoutp.fbo);
@@ -2784,6 +2816,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* time to drop all associated resources */
 	arcan_video_zaptransform(id);
+	free(vobj->txcos);
 
 /* full- object specific clean-up */
 	if (vobj->flags.clone == false){
@@ -2844,7 +2877,13 @@ arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* newmapping)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj && id > 0) {
+		if (vobj->txcos)
+			free(vobj->txcos);
+	
+		vobj->txcos = arcan_alloc_mem(sizeof(float) * 8, 
+			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 		memcpy(vobj->txcos, newmapping, sizeof(float) * 8);
+
 		rv = ARCAN_OK;
 	}
 
@@ -2857,7 +2896,9 @@ arcan_errc arcan_video_retrieve_mapping(arcan_vobj_id id, float* dst)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj && dst && id > 0) {
-		memcpy(dst, vobj->txcos, sizeof(float) * 8);
+		float* sptr = vobj->txcos ? 
+			vobj->txcos : arcan_video_display.default_txcos;
+		memcpy(dst, sptr, sizeof(float) * 8);
 		rv = ARCAN_OK;
 	}
 
@@ -3678,8 +3719,7 @@ void arcan_resolve_vidprop(arcan_vobject* vobj, float lerp,
  	else;
 }
 
-static inline void draw_vobj(float x, float y, float x2, float y2, 
-	float zv, float* txcos)
+static inline void draw_vobj(float x, float y,float x2, float y2, float* txcos)
 {
 	GLfloat verts[] = { x,y, x2,y, x2,y2, x,y2 };
 	bool settex = false;
@@ -3778,7 +3818,7 @@ static inline void draw_colorsurf(struct rendertarget* dst,
 	setup_surf(dst, &prop, src);
 	arcan_shader_forceunif("obj_col", shdrvec3, (void*) &cval, false);
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, 
-		prop.scale.y, 0, NULL);
+		prop.scale.y, NULL);
 }
 
 static inline void draw_texsurf(struct rendertarget* dst,
@@ -3786,7 +3826,7 @@ static inline void draw_texsurf(struct rendertarget* dst,
 {
 	setup_surf(dst, &prop, src);
 	draw_vobj(-prop.scale.x, -prop.scale.y, prop.scale.x, 
-		prop.scale.y, 0, txcos);
+		prop.scale.y, txcos);
 }
 
 static void ffunc_process(arcan_vobject* dst, int cookie)
@@ -4146,6 +4186,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
  * manipulate these
  */		
 		float* txcos = elem->current_frame->txcos;
+
 		float** dstcos = &txcos;
 
 		if ( (elem->mask & MASK_MAPPING) > 0)
@@ -4154,6 +4195,9 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 		else if (elem->flags.clone)
 			txcos = elem->txcos;
 
+		if (!txcos)
+			txcos = arcan_video_display.default_txcos;
+	
 /* a common clipping situation is that we have an invisible clipping parent
  * where neither objects is in a rotated state, which gives an easy way
  * out through the drawing region */
@@ -4372,20 +4416,36 @@ void arcan_video_refresh_GL(float lerp)
 		}
 	}
 
-/* initial plan was to use MRT for handling "render default output to FBO",
- * but given the problem with manipulating existing shaders to emit gl_FragData,
- * the requirement for outputs to have the same dimensions(?), it's easier,
- * for now, just to treat the outp as a regular RTT */
+/*
+ * Readback / Draw management is slightly different from the current
+ * countext standard output. If a recipient is set, we will draw into
+ * that through an FBO, then re-use that texture on a full-screen
+ * quad. 
+ * This allows us to share the recordtarget- approach for partial
+ * recording etc. but also to work on platforms where we might not
+ * have control over the final display (where we're expected to draw
+ * into an FBO and let the window manager go on from there).
+ */
 	if (current_context->stdoutp.color){
 		glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
 		process_rendertarget(&current_context->stdoutp, lerp);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+#ifndef NO_ARCAN_VIDEO_STDOUT_FSQ
+		arcan_shader_activate(arcan_video_display.defaultshdr);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glBindTexture(GL_TEXTURE_2D,
+			current_context->stdoutp.color->vstore->vinf.text.glid);
+		draw_vobj(0, 0, arcan_video_display.width, arcan_video_display.height,
+			current_context->stdoutp.color->txcos);	
+		glBindTexture(GL_TEXTURE_2D, 0);
+#endif
+
 		if (current_context->stdoutp.readback != 0)
 			process_readback(&current_context->stdoutp, lerp);
 	}
-
-	process_rendertarget(&current_context->stdoutp, lerp);
+	else
+		process_rendertarget(&current_context->stdoutp, lerp);
 }
 
 unsigned arcan_video_refresh(float tofs, bool synch)
@@ -4919,6 +4979,8 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	vobj->blendmode = blend_force;
 	vobj->origw = maxw;
 	vobj->origh = maxh;
+	vobj->txcos = arcan_alloc_mem(8 * sizeof(float), 
+		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 	ds->vinf.text.source = strdup(message);
 
 	push_globj(vobj, false, NULL);

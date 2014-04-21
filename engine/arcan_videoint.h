@@ -173,8 +173,8 @@ typedef struct arcan_vobject {
 		int pcookie;
 	} feed;
 
-/* basic texture mapping, can be overridden (to mirror, skew etc.) */
-	float txcos[8];
+/* if NULL, a default mapping will be used */ 
+	float* txcos;
 	enum arcan_blendfunc blendmode;
 
 	struct {
@@ -252,7 +252,8 @@ struct arcan_video_display {
  
 	arcan_shader_id defaultshdr;
 	arcan_shader_id defclrshdr;
-	
+	float default_txcos[8];
+
 /* default image loading options */
 	enum arcan_vimage_mode scalemode;
 	enum arcan_imageproc_mode imageproc;
@@ -269,7 +270,6 @@ struct arcan_video_display {
 	
 	unsigned char msasamples;
 	float vsync_timing, vsync_stddev, vsync_variance;
-
 	char* txdump;
 };
 
