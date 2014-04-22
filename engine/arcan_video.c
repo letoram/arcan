@@ -132,7 +132,6 @@ static inline void build_modelview(float* dmatr,
 	float* imatr, surface_properties* prop, arcan_vobject* src);
 static void poll_readback(struct rendertarget* tgt);
 
-#define TRACE_ENABLE
 static inline void trace(const char* msg, ...)
 {
 #ifdef TRACE_ENABLE
