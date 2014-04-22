@@ -1600,24 +1600,17 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 		ds->bpp = cons.bpp;
 		ds->vinf.text.s_raw = bufs;
 		ds->vinf.text.raw   = buf;
+		ds->txmapped = TXSTATE_TEX2D;
+		ds->filtermode = arcan_video_display.filtermode;
+
 		newvobj->origw = origw;
 		newvobj->origh = origh;
+		newvobj->blendmode = blend_normal;
+		newvobj->order = zv;
 
-		ds->txmapped = TXSTATE_TEX2D;
 		glGenTextures(1, &ds->vinf.text.glid);
 
-		glBindTexture(GL_TEXTURE_2D, ds->vinf.text.glid);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-		newvobj->blendmode = blend_normal;
-
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_PIXEL_FORMAT,
-			ds->w, ds->h, 0, GL_PIXEL_FORMAT, GL_UNSIGNED_BYTE, ds->vinf.text.raw);
-
-		glBindTexture(GL_TEXTURE_2D, 0);
-		newvobj->order = zv;
-	
+		push_globj(newvobj, false, NULL); 
 		arcan_video_attachobject(rv);
 	}
 
