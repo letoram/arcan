@@ -97,7 +97,7 @@ struct arcan_video_display arcan_video_display = {
 	.msasamples = 4,
 	.c_ticks = 1,
 	.default_vitemlim = 1024,
-	.imageproc = imageproc_normal,
+	.imageproc = IMAGEPROC_NORMAL,
     .mipmap = true
 };
 
@@ -780,7 +780,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 
 		rv->valid_cache = false;
 
-		rv->blendmode = blend_normal;
+		rv->blendmode = BLEND_NORMAL;
 		rv->flags.cliptoparent = false;
 
 		rv->current.scale.x = 1.0;
@@ -1327,7 +1327,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 	struct arcan_img_meta meta = {0};
 	rv = arcan_img_decode(fname, inmem.ptr, inmem.sz, &imgbuf, &inw, &inh,
-	&meta, dst->vstore->imageproc == imageproc_fliph, malloc);
+	&meta, dst->vstore->imageproc == IMAGEPROC_FLIPH, malloc);
 
 	arcan_release_map(inmem);
 	arcan_release_resource(&inres);
@@ -1372,7 +1372,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 				ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 			stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
-				neww, newh, dst->vstore->imageproc == imageproc_fliph);
+				neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
 			free(imgbuf);
 		}
 		else if (desm == ARCAN_VIMAGE_SCALEPOW2){
@@ -1385,7 +1385,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 					ARCAN_MEM_VBUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
-					neww, newh, dst->vstore->imageproc == imageproc_fliph);
+					neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
 				free(imgbuf);
 			} 
 			else {
@@ -1605,7 +1605,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 
 		newvobj->origw = origw;
 		newvobj->origh = origh;
-		newvobj->blendmode = blend_normal;
+		newvobj->blendmode = BLEND_NORMAL;
 		newvobj->order = zv;
 
 		glGenTextures(1, &ds->vinf.text.glid);
@@ -1738,7 +1738,7 @@ static bool alloc_fbo(struct rendertarget* dst)
 		store->txu        = GL_CLAMP;
 		store->txv        = GL_CLAMP;
 		store->scale      = ARCAN_VIMAGE_NOPOW2; 
-		store->imageproc  = imageproc_normal; 
+		store->imageproc  = IMAGEPROC_NORMAL; 
 		store->filtermode = ARCAN_VFILTER_NONE;
 		store->refcount   = 1;
 		store->w = w;
@@ -2013,10 +2013,6 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 	img->feed.state.tag = ARCAN_TAG_IMAGE;
 }
 
-/* create a new vobj, fill it out with enough vals that we can treat it
- * as any other, but while the ASYNCIMG tag is active, it will be skipped in
- * rendering (linking, instancing etc. sortof works) but any external (script)
- * using the object before receiving a LOADED event may give undefined results*/
 static arcan_vobj_id loadimage_asynch(const char* fname, 
 	img_cons constraints, intptr_t tag)
 {
@@ -2815,7 +2811,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 /* full- object specific clean-up */
 	if (vobj->flags.clone == false){
 		if (vobj->feed.ffunc){
-			vobj->feed.ffunc(ffunc_destroy, 0, 0, 0, 0, 0, 0, vobj->feed.state);
+			vobj->feed.ffunc(FFUNC_DESTROY, 0, 0, 0, 0, 0, 0, vobj->feed.state);
 
 			vobj->feed.state.ptr = NULL;
 			vobj->feed.ffunc = NULL;
@@ -3489,13 +3485,13 @@ static void tick_rendertarget(struct rendertarget* tgt)
 		}
 
 		if (elem->feed.ffunc)
-			elem->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, elem->feed.state);
+			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, elem->feed.state);
 
 /* special case for "unreachables", e.g. detached frameset cells */
 		for (int i = 0; i < elem->frameset_meta.capacity; i++){
 			arcan_vobject* cell = elem->frameset[i];
 			if (cell->owner == NULL && cell->feed.ffunc){
-				cell->feed.ffunc(ffunc_tick, 0, 0, 0, 0, 0, 0, cell->feed.state);
+				cell->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, cell->feed.state);
 			}
 		}
 
@@ -3515,7 +3511,7 @@ static void tick_rendertarget(struct rendertarget* tgt)
 	}
 }
 
-unsigned arcan_video_tick(unsigned steps)
+unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 {
 	if (steps == 0)
 		return 0;
@@ -3837,7 +3833,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 	dst->feed.pcookie = cookie;
 
 	if (dst->feed.ffunc(
-		ffunc_poll, 0, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
+		FFUNC_POLL, 0, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
 		arcan_vobject* cframe = dst->current_frame;
 
 /* cycle active frame */
@@ -3852,7 +3848,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 			}
 		}
 
-	enum arcan_ffunc_rv funcres = dst->feed.ffunc(ffunc_render,
+	enum arcan_ffunc_rv funcres = dst->feed.ffunc(FFUNC_RENDER,
 		cframe->vstore->vinf.text.raw, cframe->vstore->vinf.text.s_raw,
 		cframe->vstore->w, cframe->vstore->h, cframe->vstore->bpp,
 		cframe->vstore->vinf.text.glid,
@@ -3915,18 +3911,18 @@ void arcan_video_setblend(const surface_properties* dprops,
 {
 /* only blend if the object isn't entirely solid or 
  * if the object has specific settings */
-	if ((dprops->opa > 0.999 && elem->blendmode == blend_disable) ||
-		elem->blendmode == blend_disable )
+	if ((dprops->opa > 0.999 && elem->blendmode == BLEND_NONE) ||
+		elem->blendmode == BLEND_NONE )
 		glDisable(GL_BLEND);
 	else{
 		glEnable(GL_BLEND);
 		switch (elem->blendmode){
-		case blend_force:
-		case blend_normal: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
+		case BLEND_FORCE:
+		case BLEND_NORMAL: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
 		break;
-		case blend_multiply: glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA); 
+		case BLEND_MULTIPLY: glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA); 
 		break;
-		case blend_add: glBlendFunc(GL_ONE, GL_ONE); 
+		case BLEND_ADD: glBlendFunc(GL_ONE, GL_ONE); 
 		break;
 		default:
 			arcan_warning("unknown blend-mode specified(%d)\n", elem->blendmode);
@@ -4132,7 +4128,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 /* first, handle all 3d work 
  * (which may require multiple passes etc.) */
-	if (!arcan_video_display.order3d == order3d_first && 
+	if (!arcan_video_display.order3d == ORDER3D_FIRST && 
 		current && current->elem->order < 0){
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
 	}
@@ -4250,7 +4246,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 end3d:
 	current = tgt->first;
 	if (current && current->elem->order < 0 && 
-		arcan_video_display.order3d == order3d_last)
+		arcan_video_display.order3d == ORDER3D_LAST)
 		current = arcan_refresh_3d(tgt->camtag, current, fract);
 }
 
@@ -4340,7 +4336,7 @@ static inline void poll_readback(struct rendertarget* tgt)
  */ 
 	if (src){
 		arcan_vobject* vobj = tgt->color;
-		vobj->feed.ffunc(ffunc_rendertarget_readback, src, 
+		vobj->feed.ffunc(FFUNC_READBACK, src, 
 			vobj->vstore->w * vobj->vstore->h * vobj->vstore->bpp,
 			vobj->vstore->w,  vobj->vstore->h,  vobj->vstore->bpp, 0,
 			vobj->feed.state);
@@ -4871,13 +4867,13 @@ unsigned arcan_video_maxorder()
 	return order;
 }
 
-unsigned arcan_video_contextusage(unsigned* free)
+unsigned arcan_video_contextusage(unsigned* used)
 {
-	if (free){
-		*free = 0;
+	if (used){
+		*used = 0;
 		for (unsigned i = 1; i < current_context->vitem_limit-1; i++)
 			if (current_context->vitems_pool[i].flags.in_use)
-				(*free)++;
+				(*used)++;
 	}
 
 	return current_context->vitem_limit-1;
@@ -4973,7 +4969,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 	}
 
 	vobj->feed.state.tag = ARCAN_TAG_TEXT;
-	vobj->blendmode = blend_force;
+	vobj->blendmode = BLEND_FORCE;
 	vobj->origw = maxw;
 	vobj->origh = maxh;
 	vobj->txcos = arcan_alloc_mem(8 * sizeof(float), 

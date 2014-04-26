@@ -392,15 +392,16 @@ step:
 	}
 }
 
-static int8_t ffunc_3d(enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, 
+static enum arcan_ffunc_rv ffunc_3d(
+	enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, 
 	uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,vfunc_state state)
 {
 	if (state.tag == ARCAN_TAG_3DOBJ && state.ptr){
 		switch (cmd){
-		case ffunc_tick:
+		case FFUNC_TICK:
 		break;
 
-		case ffunc_destroy:
+		case FFUNC_DESTROY:
 			freemodel( (arcan_3dmodel*) state.ptr );
 		break;
 
