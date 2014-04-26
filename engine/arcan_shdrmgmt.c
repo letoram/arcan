@@ -56,6 +56,15 @@ static enum shdrutype typetbl[TBLSIZE] = {
 	shdrint /* timestamp */
 };
 
+static int counttbl[TBLSIZE] = {
+	0,
+	0,
+	0,
+	0,
+	0,
+	0
+};
+
 static char* symtbl[TBLSIZE] = {
 	"modelview",
 	"projection",
@@ -170,9 +179,11 @@ arcan_errc arcan_shader_activate(arcan_shader_id shid)
 /* sweep the ofset table, for each ofset that has a set (nonnegative) ofset,
  * we use the index as a lookup for value and type */
 		for (unsigned i = 0; i < sizeof(ofstbl) / sizeof(ofstbl[0]); i++){
-			if (cur->locations[i] >= 0)
+			if (cur->locations[i] >= 0){
 				setv(cur->locations[i], typetbl[i], (char*)(&shdr_global.context)
 					+ ofstbl[i], symtbl[i], cur->label);
+				counttbl[i]++;
+			}
 		}
 
 /* activate any persistant values */
@@ -334,11 +345,14 @@ arcan_shader_id arcan_shader_build(const char* tag, const char* geom,
 	return dstind + shdr_global.base;
 }
 
-bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
+int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 {
 	memcpy((char*) (&shdr_global.context) + ofstbl[slot], value, size);
+	int rv = counttbl[slot];
+	counttbl[slot] = 0;	
+
 	if (-1  == shdr_global.active_prg)
-		return false;
+		return rv;
 
 	int glloc = shdr_global.slots[ shdr_global.active_prg].locations[slot];
 
@@ -351,10 +365,10 @@ bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size)
 		assert(size == sizetbl[ typetbl[slot] ]);
 		setv(glloc, typetbl[slot], value, symtbl[slot], 
 			shdr_global.slots[ shdr_global.active_prg].label );
-		return true;
+		return rv;
 	}
 
-	return false;
+	return rv;
 }
 
 GLint arcan_shader_vattribute_loc(enum shader_vertex_attributes attr)
@@ -368,6 +382,7 @@ void arcan_shader_forceunif(const char* label, enum shdrutype type,
 	GLint loc;
 	assert(shdr_global.active_prg != -1);
 	struct shader_cont* slot = &shdr_global.slots[shdr_global.active_prg];
+	FLAG_DIRTY();
 
 /* try to find a matching label, if one is found, just replace 
  * the loc and copy the value */

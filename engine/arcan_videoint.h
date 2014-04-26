@@ -24,6 +24,8 @@
 #define RENDERTARGET_LIMIT 64 
 #endif
 
+#define FLAG_DIRTY() (arcan_video_display.dirty++);
+
 struct arcan_vobject_litem;
 struct arcan_vobject;
 
@@ -49,14 +51,22 @@ struct rendertarget {
  * cleared when buffer have been mapped */
 	bool readreq; 
 
+/* tracked to allow partial pool re-use */
+	bool alive;
+
+/* set this to true if it is certain that the rendertarget 
+ * shouldn't be cleared on every drawpass */
+	bool noclear;
+
 	enum rendertarget_mode mode;
+
+/* updated on each renderpass, > 0 means that we need to update */
+	int transfc;
 
 /* each rendertarget can have one possible camera attached to it
  * which affects the 3d pipe. This is defaulted to BADID until 
  * a vobj is explicitly camtaged */
 	arcan_vobj_id camtag;
-
-	bool alive;
 
 /* color representes the attached vid, 
  * first is the pipeline (subset of context vid pool) */
@@ -201,6 +211,7 @@ typedef struct arcan_vobject {
 	point origo_ofs;
 	
 	surface_transform* transform;
+	int transfc;
 	enum arcan_transform_mask mask;
 	
 /* transform caching,
@@ -246,6 +257,8 @@ typedef struct arcan_vobject_litem arcan_vobject_litem;
 struct arcan_video_display {
 	bool suspended, fullscreen, conservative;
 	bool vsync, fbo_support, pbo_support;
+
+	int dirty;
 	enum arcan_order3d order3d;
 
 	unsigned default_vitemlim;

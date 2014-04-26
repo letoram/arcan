@@ -98,7 +98,8 @@ struct arcan_video_display arcan_video_display = {
 	.c_ticks = 1,
 	.default_vitemlim = 1024,
 	.imageproc = IMAGEPROC_NORMAL,
-    .mipmap = true
+	.mipmap = true,
+	.dirty = 0 
 };
 
 struct arcan_video_context vcontext_stack[CONTEXT_STACK_LIMIT] = {
@@ -326,6 +327,8 @@ static void addchild(arcan_vobject* parent, arcan_vobject* child)
  */
 static void invalidate_cache(arcan_vobject* vobj)
 {
+	FLAG_DIRTY();
+
 	if (!vobj->valid_cache)
 		return;
 
@@ -561,6 +564,7 @@ signed arcan_video_pushcontext()
 
 /* propagate persistent flagged objects upwards */
 	transfer_persists(&vcontext_stack[ vcontext_ind - 1], current_context, false);
+	FLAG_DIRTY();
 
 	return arcan_video_nfreecontexts();
 }
@@ -633,6 +637,7 @@ unsigned arcan_video_popcontext()
 	}
 
 	reallocate_gl_context(current_context);
+	FLAG_DIRTY();
 
 	return (CONTEXT_STACK_LIMIT - 1) - vcontext_ind;
 }
@@ -753,6 +758,7 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 	struct arcan_video_context* dctx)
 {
 	arcan_vobject* rv = NULL;
+	FLAG_DIRTY();
 
 	bool status;
 	arcan_vobj_id fid = arcan_video_allocid(&status, dctx);
@@ -894,6 +900,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 		src->cellid, video_tracetag(src), src->extrefc.attachments);
 	}
 	
+	FLAG_DIRTY();
 	return true;
 }
 
@@ -946,6 +953,7 @@ static void attach_object(struct rendertarget* dst, arcan_vobject* src)
 		}
 	}
 
+	FLAG_DIRTY();
 	if (dst->color){
 		src->extrefc.attachments++;
 		dst->color->extrefc.attachments++;
@@ -1123,7 +1131,9 @@ arcan_errc arcan_video_linkobjs(arcan_vobj_id srcid, arcan_vobj_id parentid,
 		swipe_chain(src->transform, offsetof(surface_transform, rotate),
 			sizeof(struct transf_rotate));
 
+		src->transfc = 0;
 		src->mask = mask;
+		FLAG_DIRTY();
 	}
 
 	return rv;
@@ -1537,7 +1547,8 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 			free(dst->txcos);
 			dst->txcos = NULL;
 		}
-	
+
+		FLAG_DIRTY();	
 		rv = ARCAN_OK;
 	}
 
@@ -2293,6 +2304,7 @@ arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft)
 		vobj->txcos[6] *= sfs;
 		vobj->txcos[7] *= sft;
 
+		FLAG_DIRTY();
 		rv = ARCAN_OK;
 	}
 
@@ -2415,51 +2427,55 @@ arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned lifetime)
 
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
-	if (vobj) {
-		surface_transform* current = vobj->transform;
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+		
+	surface_transform* current = vobj->transform;
 
-		while (current) {
-			surface_transform* next = current->next;
-			arcan_mem_free(current);
-			current = next;
-		}
-		vobj->transform = NULL;
-		rv = ARCAN_OK;
+	while (current) {
+		surface_transform* next = current->next;
+		arcan_mem_free(current);
+		current = next;
 	}
+	
+	vobj->transform = NULL;
+	vobj->transfc = 0;
 
-	return rv;
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_instanttransform(arcan_vobj_id id){
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* vobj = arcan_video_getobject(id);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && vobj->transform) {
-			surface_transform* current = vobj->transform;
-			while (current){
-				if (current->move.startt){
-					vobj->current.position = current->move.endp;
-				}
+	if (!vobj->transform)
+		return ARCAN_OK;
 
-				if (current->blend.startt)
-					vobj->current.opa = current->blend.endopa;
+	surface_transform* current = vobj->transform;
+	while (current){
+		if (current->move.startt)
+			vobj->current.position = current->move.endp;
 
-				if (current->rotate.startt)
-					vobj->current.rotation = current->rotate.endo;
+		if (current->blend.startt)
+			vobj->current.opa = current->blend.endopa;
 
-				if (current->scale.startt)
-					vobj->current.scale = current->scale.endd;
+		if (current->rotate.startt)
+			vobj->current.rotation = current->rotate.endo;
 
-				current = current->next;
-			}
-
-		invalidate_cache(vobj);
-		arcan_video_zaptransform(id);
+		if (current->scale.startt)
+			vobj->current.scale = current->scale.endd;
+		
+		surface_transform* tokill = current;
+		current = current->next;
+		arcan_mem_free(tokill);
 	}
 
-	return rv;
+	vobj->transform = NULL;
+	vobj->transfc = 0;
+	invalidate_cache(vobj);
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, 
@@ -2870,9 +2886,8 @@ arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* newmapping)
 		if (vobj->txcos)
 			free(vobj->txcos);
 	
-		vobj->txcos = arcan_alloc_mem(sizeof(float) * 8, 
-			ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
-		memcpy(vobj->txcos, newmapping, sizeof(float) * 8);
+		vobj->txcos = arcan_alloc_fillmem(vobj->txcos,
+			sizeof(float) * 8, ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 
 		rv = ARCAN_OK;
 	}
@@ -2987,6 +3002,7 @@ arcan_errc arcan_video_objectrotate(arcan_vobj_id id, float roll, float pitch,
 			base->rotate.endo.pitch = pitch;
 			base->rotate.endo.yaw   = yaw;
 			base->rotate.endo.quaternion = build_quat_taitbryan(roll, pitch, yaw);
+			vobj->transfc++;
 
 			base->rotate.interp = (abs(bv.roll - roll) > 180.0 || 
 				abs(bv.pitch - pitch) > 180.0 || abs(bv.yaw - yaw) > 180.0) ?
@@ -3060,6 +3076,7 @@ arcan_errc arcan_video_objectopacity(arcan_vobj_id id,
 			if (!vobj->transform)
 				vobj->transform = base;
 
+			vobj->transfc++;
 			base->blend.startt = last->blend.endt < arcan_video_display.c_ticks ? 
 				arcan_video_display.c_ticks : last->blend.endt;
 			base->blend.endt = base->blend.startt + tv;
@@ -3196,6 +3213,7 @@ arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx,
 			base->move.interp = ARCAN_VINTER_LINEAR;
 			base->move.startp = bwp;
 			base->move.endp   = newp;
+			vobj->transfc++;
 		}
 	}
 
@@ -3259,6 +3277,7 @@ arcan_errc arcan_video_objectscale(arcan_vobj_id id, float wf,
 			base->scale.endd.x = wf;
 			base->scale.endd.y = hf;
 			base->scale.endd.z = df;
+			vobj->transfc++;
 		}
 	}
 
@@ -3284,13 +3303,11 @@ static void compact_transformation(arcan_vobject* base,
 
 	/* reset the last one */
 	memset((char*) work + ofs, 0, count);
+	base->transfc--;
 
 	/* if it is now empty, free and delink */
-	if (!(work->blend.startt |
-	          work->scale.startt |
-	          work->move.startt |
-	          work->rotate.startt )
-	   )	{
+	if (!(work->blend.startt | work->scale.startt | 
+		work->move.startt | work->rotate.startt )){
 		arcan_mem_free(work);
 		if (last)
 			last->next = NULL;
@@ -3305,6 +3322,7 @@ arcan_errc arcan_video_setprogram(arcan_vobj_id id, arcan_shader_id shid)
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (vobj && arcan_shader_valid(shid)) {
+		FLAG_DIRTY();
 		vobj->program = shid;
 		rv = ARCAN_OK;
 	}
@@ -3319,24 +3337,24 @@ static inline float lerp_fract(float startt, float endt, float ts)
 	return rv;
 }
 
-static bool update_object(arcan_vobject* ci, unsigned long long stamp)
+static int update_object(arcan_vobject* ci, unsigned long long stamp)
 {
-	bool upd = false;
+	int upd = 0;
 
 /* update parent if this has not already been updated this cycle */
 	if (ci->last_updated < stamp &&
 		ci->parent && ci->parent != &current_context->world &&
 		ci->parent->last_updated != stamp){
-		update_object(ci->parent, stamp);
+		upd += update_object(ci->parent, stamp);
 	}
 
 	ci->last_updated = stamp;
 
 	if (!ci->transform)
-		return false;
+		return upd;
 
 	if (ci->transform->blend.startt) {
-		upd = true;
+		upd++;
 		float fract = lerp_fract(ci->transform->blend.startt, 
 			ci->transform->blend.endt, stamp);
 	
@@ -3362,7 +3380,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 	}
 
 	if (ci->transform && ci->transform->move.startt) {
-		upd = true;
+		upd++; 
 		float fract = lerp_fract(ci->transform->move.startt, 
 			ci->transform->move.endt, stamp);
 		ci->current.position = lut_interp_3d[ci->transform->move.interp](
@@ -3391,7 +3409,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 	}
 
 	if (ci->transform && ci->transform->scale.startt) {
-		upd = true;
+		upd++;
 		float fract = lerp_fract(ci->transform->scale.startt, 
 			ci->transform->scale.endt, stamp);
 		ci->current.scale = lut_interp_3d[ci->transform->scale.interp](
@@ -3419,7 +3437,7 @@ static bool update_object(arcan_vobject* ci, unsigned long long stamp)
 	}
 
 	if (ci->transform && ci->transform->rotate.startt) {
-		upd = true;
+		upd++;
 		float fract = lerp_fract(ci->transform->rotate.startt, 
 			ci->transform->rotate.endt, stamp);
 
@@ -3471,18 +3489,21 @@ static void expire_object(arcan_vobject* obj){
 
 /* process a logical time-frame (which more or less means, 
  * update / rescale / redraw / flip) returns msecs elapsed */
-static void tick_rendertarget(struct rendertarget* tgt)
+static int tick_rendertarget(struct rendertarget* tgt)
 {
+	int rv = 0;
+
+	tgt->transfc = 0;
 	arcan_vobject_litem* current = tgt->first;
 
 	while (current){
 		arcan_vobject* elem = current->elem;
+		tgt->transfc += elem->transfc;
+
 		arcan_video_joinasynch(elem, true, false);
 
-		if (elem->last_updated != arcan_video_display.c_ticks){
-/* is the item to be updated? */
+		if (elem->last_updated != arcan_video_display.c_ticks)
 			update_object(elem, arcan_video_display.c_ticks);
-		}
 
 		if (elem->feed.ffunc)
 			elem->feed.ffunc(FFUNC_TICK, 0, 0, 0, 0, 0, 0, elem->feed.state);
@@ -3501,6 +3522,7 @@ static void tick_rendertarget(struct rendertarget* tgt)
 			if (elem->frameset_meta.counter == 0){
 				elem->frameset_meta.counter = abs( elem->frameset_meta.mode );
 				step_active_frame(elem);
+				rv++;
 			}
 		}
 
@@ -3509,6 +3531,8 @@ static void tick_rendertarget(struct rendertarget* tgt)
 		
 		current = current->next;
 	}
+
+	return rv + tgt->transfc;
 }
 
 unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
@@ -3524,14 +3548,19 @@ unsigned arcan_video_tick(unsigned steps, unsigned* njobs)
 #endif
 
 	do {
-		update_object(&current_context->world, arcan_video_display.c_ticks);
+		arcan_video_display.dirty +=
+			update_object(&current_context->world, arcan_video_display.c_ticks);
 
-		arcan_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
+		arcan_video_display.dirty += 
+			arcan_shader_envv(TIMESTAMP_D, &tsd, sizeof(uint32_t));
 
 		for (int i = 0; i < current_context->n_rtargets; i++)
-			tick_rendertarget(&current_context->rtargets[i]);
+			arcan_video_display.dirty += 
+				tick_rendertarget(&current_context->rtargets[i]);
 
-		tick_rendertarget(&current_context->stdoutp);
+		arcan_video_display.dirty += 
+			tick_rendertarget(&current_context->stdoutp);
+	
 		arcan_video_display.c_ticks++;
 		steps = steps - 1;
 	} while (steps);
@@ -3834,6 +3863,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 
 	if (dst->feed.ffunc(
 		FFUNC_POLL, 0, 0, 0, 0, 0, 0, dst->feed.state) == FFUNC_RV_GOTFRAME) {
+		FLAG_DIRTY();
 		arcan_vobject* cframe = dst->current_frame;
 
 /* cycle active frame */
@@ -3847,7 +3877,7 @@ static void ffunc_process(arcan_vobject* dst, int cookie)
 				cframe = dst->current_frame;
 			}
 		}
-
+			
 	enum arcan_ffunc_rv funcres = dst->feed.ffunc(FFUNC_RENDER,
 		cframe->vstore->vinf.text.raw, cframe->vstore->vinf.text.s_raw,
 		cframe->vstore->w, cframe->vstore->h, cframe->vstore->bpp,
@@ -4108,6 +4138,10 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	arcan_vobject_litem* current = tgt->first;
 	int width, height;
 
+	if (arcan_video_display.dirty == 0 && tgt->transfc == 0){
+		return;
+	}
+
 	if (tgt->color){
 		width = tgt->color->origw;
 		height = tgt->color->origh;
@@ -4122,9 +4156,8 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 	glScissor(0, 0, width, height);
 	glViewport(0, 0, width, height);
 
-/* should possibly have a "per rendertarget" flag to disable this one
- * amounts to quite some overdraw on low- power devices */
-	glClear(GL_COLOR_BUFFER_BIT);
+	if (!tgt->noclear)
+		glClear(GL_COLOR_BUFFER_BIT);
 
 /* first, handle all 3d work 
  * (which may require multiple passes etc.) */
@@ -4145,7 +4178,6 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 
 	arcan_shader_activate(arcan_video_display.defaultshdr);
 	arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
-	arcan_shader_envv(FRACT_TIMESTAMP_F, &fract, sizeof(float));
 
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;
@@ -4290,7 +4322,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	if (!tgt)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-
+	FLAG_DIRTY();
 	glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 		process_rendertarget(tgt, lastlerp);
 
@@ -4390,8 +4422,10 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 
 void arcan_video_refresh_GL(float lerp)
 {
-/* for performance reasons, we should try and re-use FBOs whenever possible */
 	lastlerp = lerp;
+
+	arcan_video_display.dirty +=
+		arcan_shader_envv(FRACT_TIMESTAMP_F, &lerp, sizeof(float));
 
 	if (arcan_video_display.fbo_support){
 		for (int ind = 0; ind < current_context->n_rtargets; ind++){
@@ -4439,6 +4473,8 @@ void arcan_video_refresh_GL(float lerp)
 	}
 	else
 		process_rendertarget(&current_context->stdoutp, lerp);
+
+	arcan_video_display.dirty = 0;
 }
 
 unsigned arcan_video_refresh(float tofs, bool synch)
