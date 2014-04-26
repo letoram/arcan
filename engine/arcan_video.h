@@ -625,6 +625,7 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, 
 	arcan_vobj_id src, bool detach);
 arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
+arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 
 /* Object state property manipulation */ 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);

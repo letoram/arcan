@@ -4568,6 +4568,17 @@ static int rendertargetforce(lua_State* ctx)
 	return 0;
 }
 
+static int rendernoclear(lua_State* ctx)
+{
+	LUA_TRACE("rendertarget_noclear");
+	arcan_vobj_id did = luaL_checkvid(ctx, 1, NULL);
+	bool clearfl = lua_toboolean(ctx, 2);
+
+	lua_pushboolean(ctx,
+		arcan_video_rendertarget_setnoclear(did, clearfl) == ARCAN_OK);
+	return 1;
+}
+
 static int renderattach(lua_State* ctx)
 {
 	LUA_TRACE("rendertarget_attach");
@@ -6294,6 +6305,7 @@ static const luaL_Reg tgtfuns[] = {
 {"rendertarget_forceupdate",   rendertargetforce        },
 {"recordtarget_gain",          recordgain               },
 {"rendertarget_attach",        renderattach             },
+{"rendertarget_noclear",       rendernoclear            },
 {"play_movie",                 playmovie                },
 {"load_movie",                 loadmovie                },
 {"launch_avfeed",              setupavstream            },
