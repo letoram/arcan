@@ -175,6 +175,8 @@ void push_globj(arcan_vobject* dst, bool noupload,
 	if (s->txmapped == TXSTATE_OFF)
 		return;
 
+	FLAG_DIRTY();
+
 	if (noupload)
 		glBindTexture(GL_TEXTURE_2D, s->vinf.text.glid);
 	else{
@@ -1799,6 +1801,24 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 	}
 
 	return ARCAN_ERRC_UNACCEPTED_STATE;
+}
+
+arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value)
+{
+	if (did == ARCAN_VIDEO_WORLDID){
+		current_context->stdoutp.noclear = value;
+		return ARCAN_OK;
+	}
+	arcan_vobject* vobj = arcan_video_getobject(did);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	struct rendertarget* rtgt = find_rendertarget(vobj);
+	if (!rtgt)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	rtgt->noclear = value;
+	return ARCAN_OK;	
 }
 
 arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, 
