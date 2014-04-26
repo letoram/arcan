@@ -205,14 +205,14 @@ enum arcan_blendfunc {
 	BLEND_MULTIPLY  
 };
 
-typedef float (*arcan_interp_1d_function)(float startv, 
-	float stopv, float fract); 
+typedef float (*arcan_interp_1d_function)(
+	float startv, float stopv, float fract); 
 
-typedef vector (*arcan_interp_3d_function)(vector begin, 
-	vector end, float fract); 
+typedef vector (*arcan_interp_3d_function)(
+	vector begin, vector end, float fract); 
 
-typedef quat (*arcan_interp_4d_function)(quat begin, 
-	quat end, float fract);
+typedef quat (*arcan_interp_4d_function)(
+	quat begin, quat end, float fract);
 
 /*
  * When loading an image, a transformation can be applied
@@ -282,7 +282,7 @@ typedef enum arcan_ffunc_rv(*arcan_vfunc_cb)(
  * environment variables or build time flags for additional setup.
  *
  * width/height can be 0 and will then be set to a probed default.
- * fullscreen / frames are hints to the windowing manager / system (if present)
+ * fullscreen / frames are hints to any window manager / compositor
  *
  * conservative hints that memory is a scarce resource and that we 
  * should try and avoid online local stores if possible (and rather
@@ -290,6 +290,50 @@ typedef enum arcan_ffunc_rv(*arcan_vfunc_cb)(
  */
 arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp, 
 	bool fullscreen, bool frames, bool conservative);
+
+/*
+ * Clear the display, deallocate all resources (fonts, shaders, 
+ * video objects), chain to platform_video_shutdown etc.
+ * Note that this do not reset any attributes modified by the
+ * the _default_ class functions.
+ */ 
+void arcan_video_shutdown();
+
+/*
+ * Push the current context, shut down the video display but in a way
+ * that all state can be restored at a later time. This is intended 
+ * for launching resource- hungry 3rd party software that can work 
+ * standalone, and for hibernation/suspend style power management.  
+ */
+bool arcan_video_prepare_external();
+
+/*
+ * Re-initialize the event layer, shaders, video objects etc. and
+ * pop the last context saved. This ASSUMES that we are in a state
+ * defined by arcan_video_prepare_external. 
+ */
+void arcan_video_restore_external();
+
+/*
+ * Perform a render-pass, set synch to true if we should block
+ * until the results have been sucessfully sent to the output display.
+ * Fragment is in the 0..999 range and specifies how far we are 
+ * towards the next logical tick. This is used to calculate interpolations
+ * for transformation chains to get smoother animation even when running
+ * with a slow logic clock.
+ */
+unsigned arcan_video_refresh(float fragment, bool synch);
+
+/*
+ * Specify if the 3D pipeline should be processed and if so,
+ * if it should happen before or after the 2D pipeline has been processed.
+ */
+void arcan_video_3dorder(enum arcan_order3d);
+
+/*
+ * Forcibly empty the font cache, this can free up some memory resources.
+ */
+void arcan_video_reset_fontcache();
 
 /*
  * the arcan_video_default_ class of functions all change the current
@@ -301,6 +345,7 @@ void arcan_video_default_texmode(enum arcan_vtex_mode s,
 	enum arcan_vtex_mode t);
 void arcan_video_default_texfilter(enum arcan_vfilter_mode);
 void arcan_video_default_imageprocmode(enum arcan_imageproc_mode);
+arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize);
 
 /*
  * Request a fullscreen/window toggle if working / implemented,
@@ -316,6 +361,13 @@ void arcan_video_fullscreen();
  */
 uint16_t arcan_video_screenw();
 uint16_t arcan_video_screenh();
+
+/*
+ * Get the currently highest Z value (rendering order) for the 
+ * currently active context. This imposes a linear search through
+ * the entire context, O(n) where n is context size.
+ */
+unsigned arcan_video_maxorder();
 
 /*
  * Set a new object limit for new contexts. This will not effect 
@@ -411,6 +463,107 @@ arcan_vobj_id arcan_video_addfobject(arcan_vfunc_cb feed,
 	vfunc_state state, img_cons constraints, unsigned short zv);
 
 /*
+ * Create a restricted instance of a specific object. 
+ * These instances forcibly inherits a lot of properties from its 
+ * parent, and other arcan_video_ functions that are restricted to 
+ * instances will return ARCAN_ERRC_CLONE_NOT_PERMITTED, if used.
+ *
+ * Ideally, instance calls can re-use a lot of graphic state containers
+ * from its parent, but the feature is largely superseeded by the less
+ * restricted nullobject with shared storage.
+ *
+ * Some clone-restricted features include feed functions, framesets, 
+ * linking, altering living mask, persist flags.
+ *
+ */
+arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id id);
+
+/*
+ * Create a new video object based on a format string.
+ * Message is a UTF-8 encoded string with backslash triggered format
+ * strings. Accepted formatting commands:
+ * \ffontres,fontdim : set the currently active font to the resource specified
+ *                     by fontres, with the hinted size of fontdim
+ *
+ * \t : insert tab, they are by default spaced with [tab_spacing] in pixels
+ *      unless there's a specified tab size in the 0 terminated array [tabs].
+ * \n : begin a new line, this does not impose a carriage return
+ * \r : return carriage to beginning of line, should be used with \n
+ * \u : switch font style to underlined
+ * \b : switch font style to bold
+ * \i : switch font style to italic
+ * \presname : load image specified by resname
+ * \Pw,h,resname : load image and scale to specific dimensions
+ * \#rrggbb : switch font color
+ *
+ * stringdimensions is a reduced version of this function that only
+ * generates the data without creating a video object, setting up a 
+ * backing store etc.
+ */
+arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, 
+	int8_t tab_spacing, unsigned int* tabs, unsigned int* lines, 
+	unsigned int** lineheights);
+void arcan_video_stringdimensions(const char* message, int8_t line_spacing, 
+	int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, 
+	unsigned int* maxh);
+
+/*
+ * Immediately erase the object and all its related resources.
+ * Depending on the internal structure of the object in question,
+ * this can be an expensive operation as deletions will cascade to
+ * linked objects, framesets, rendertarget attachments and so on.
+ */
+arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
+
+/*
+ * Set a lifetime counter for the specified object. When reached,
+ * an event will be scheduled that will request the main eventloop
+ * to invoke deleteobject.
+ *
+ * A [ticks] value of 0 will disable any existing lifetime timer.
+ * This will also force-enable the MASK_LIVING. 
+ */
+arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned ticks);
+
+/*
+ * Change the feed function currently associated with a fobject.
+ * This should only be used to switch callback function or state
+ * container in a setting that knows more about the internal state
+ * already, e.g. the frameserver feed-functions, otherwise
+ * it is likely that resources will leak.
+ */
+arcan_errc arcan_video_alterfeed(arcan_vobj_id id, 
+	arcan_vfunc_cb feed, vfunc_state state);
+
+/*
+ * Get a reference to the current feedstate in use by a specific object.
+ */
+vfunc_state* arcan_video_feedstate(arcan_vobj_id);
+
+/* 
+ * A skeleton that can be used to disable dynamic behaviors in
+ * a dynamic object, use as [feed] argument to arcan_video_alterfeed.
+ */
+arcan_vfunc_cb arcan_video_emptyffunc();
+
+/*
+ * Run through all registered dynamic feed objects and request that they
+ * notify if their internal state has changed or not. If it has, backing
+ * stores will update.
+ */
+void arcan_video_pollfeed();
+
+/*
+ * Forcibly alter the feed state for the specified object,
+ * this is typically used by a dynamically resizing source e.g. a frameserver.
+ *
+ * Note that the operation is rather expensive as it involves
+ * deallocating current backing stores and replacing them with new ones.
+ */
+arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, 
+	img_cons display);
+
+/*
  * arcan_video_loadimageasynch and arcan_video_loadimage 
  *
  * Load an image from the resource description in [resource]
@@ -435,36 +588,60 @@ arcan_vobj_id arcan_video_loadimage(const char* fname,
 
 /*
  * Force-join on an outstanding asynchronous (loadimageasynch) object.
+ * Return codes other than ARCAN_OK is not necessarily bad, just that 
+ * the effect of the operation was a no-op. 
  */
 arcan_errc arcan_video_pushasynch(arcan_vobj_id id);
 
 /*
  * By default, all objects share a set of texture coordinates in the form
- * [ul(s,t), ur(s,t), lr(s,t), ll(st)] 
+ * [ul(s,t), ur(s,t), lr(s,t), ll(st)]. When any texture coordinate related
+ * operation is called, a local set is generated and used for the particular
+ * video object. This function generates a local set and then scales the 
+ * s and t values with the supplied factors. 
  */
 arcan_errc arcan_video_scaletxcos(arcan_vobj_id id, float sfs, float sft);
-arcan_errc arcan_video_alterfeed(arcan_vobj_id id, 
-	arcan_vfunc_cb feed, vfunc_state state);
-arcan_errc arcan_video_changefilter(arcan_vobj_id id, 
-	enum arcan_vfilter_mode);
 
-arcan_errc arcan_video_persistobject(arcan_vobj_id id);
-
-vfunc_state* arcan_video_feedstate(arcan_vobj_id);
-arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store, 
-	img_cons display);
-arcan_vfunc_cb arcan_video_emptyffunc();
-
-arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id id);
+/* Object hierarchy related functions */
 arcan_errc arcan_video_linkobjs(arcan_vobj_id src, arcan_vobj_id parent, 
 	enum arcan_transform_mask mask);
+arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
+arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
+arcan_errc arcan_video_changefilter(arcan_vobj_id id, 
+	enum arcan_vfilter_mode);
+arcan_errc arcan_video_persistobject(arcan_vobj_id id);
+
+arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity, 
+	enum arcan_framemode mode);
+arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, 
+	unsigned fid, bool detach, arcan_errc* errc);
+arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
+arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
+
+/* Rendertarget- operations */
+arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, 
+	bool scale, enum rendertarget_mode format);		
+arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
+arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, 
+	arcan_vobj_id src, bool detach);
+arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
+
+/* Object state property manipulation */ 
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src, 
 	enum arcan_transform_mask mask);
 arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode toggleon);
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);
-const char* const arcan_video_readtag(arcan_vobj_id id);
+arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
+arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, 
+	enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
+arcan_errc arcan_video_objectfilter(arcan_vobj_id id, 
+	enum arcan_vfilter_mode filter);
+arcan_errc arcan_video_setzv(arcan_vobj_id id,unsigned short newzv);
 
+/* Object state retrieval */
+unsigned short arcan_video_getzv(arcan_vobj_id id);
+const char* const arcan_video_readtag(arcan_vobj_id id);
 img_cons arcan_video_storage_properties(arcan_vobj_id id);
 surface_properties arcan_video_resolve_properties(arcan_vobj_id id);
 surface_properties arcan_video_initial_properties(arcan_vobj_id id);
@@ -472,34 +649,10 @@ surface_properties arcan_video_current_properties(arcan_vobj_id id);
 arcan_errc arcan_video_screencoords(arcan_vobj_id, vector*);
 surface_properties arcan_video_properties_at(
 	arcan_vobj_id id, uint32_t ticks);
-
-arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
-arcan_errc arcan_video_objecttexmode(arcan_vobj_id id, 
-	enum arcan_vtex_mode modes, enum arcan_vtex_mode modet);
-arcan_errc arcan_video_objectfilter(arcan_vobj_id id, 
-	enum arcan_vfilter_mode filter);
-arcan_vobj_id arcan_video_findparent(arcan_vobj_id id);
-arcan_vobj_id arcan_video_findchild(arcan_vobj_id parentid, unsigned ofs);
-
 img_cons arcan_video_dimensions(uint16_t w, uint16_t h);
+arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dstsz);
 
-arcan_errc arcan_video_allocframes(arcan_vobj_id id, uint8_t capacity, 
-	enum arcan_framemode mode);
-
-arcan_vobj_id arcan_video_setasframe(arcan_vobj_id dst, arcan_vobj_id src, 
-	unsigned fid, bool detach, arcan_errc* errc);
-arcan_errc arcan_video_setactiveframe(arcan_vobj_id dst, unsigned fid);
-arcan_errc arcan_video_framecyclemode(arcan_vobj_id id, signed mode);
-arcan_errc arcan_video_setzv(arcan_vobj_id id,unsigned short newzv);
-unsigned short arcan_video_getzv(arcan_vobj_id id);
-arcan_errc arcan_video_setlife(arcan_vobj_id id, unsigned nCycles);
-arcan_errc arcan_video_deleteobject(arcan_vobj_id id);
-arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did, int readback, 
-	bool scale, enum rendertarget_mode format);		
-arcan_errc arcan_video_forceupdate(arcan_vobj_id vid);
-arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, 
-	arcan_vobj_id src, bool detach);
-arcan_errc arcan_video_alterreadback(arcan_vobj_id did, int readback);
+/* Transformation chain actions */
 arcan_errc arcan_video_objectmove(arcan_vobj_id id, float newx, float newy, 
 	float newz, unsigned int time);
 arcan_errc arcan_video_moveinterp(arcan_vobj_id id, enum arcan_vinterp);
@@ -525,8 +678,8 @@ arcan_errc arcan_video_copyprops(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did);
 arcan_errc arcan_video_transformcycle(arcan_vobj_id, bool);
 arcan_errc arcan_video_zaptransform(arcan_vobj_id id);
-unsigned arcan_video_maxorder();
-arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent);
+
+/* picking, collision detection */
 unsigned arcan_video_tick(unsigned steps, unsigned* njobs);
 bool arcan_video_hittest(arcan_vobj_id id, unsigned int x, unsigned int y);
 unsigned int arcan_video_pick(arcan_vobj_id* dst, unsigned int count, 
@@ -535,23 +688,5 @@ unsigned int arcan_video_rpick(arcan_vobj_id* dst, unsigned int count,
 	int x, int y);
 uint32_t arcan_video_pick_detailed(uint32_t* dst, uint32_t count, 
 	uint16_t x, uint16_t y, int zval_low, int zval_high, bool ignore_alpha);
-void arcan_video_stringdimensions(const char* message, int8_t line_spacing, 
-	int8_t tab_spacing, unsigned int* tabs, unsigned int* maxw, 
-	unsigned int* maxh);
-arcan_vobj_id arcan_video_renderstring(const char* message, int8_t line_spacing, 
-	int8_t tab_spacing, unsigned int* tabs, unsigned int* lines, 
-	unsigned int** lineheights
-);
-void arcan_video_reset_fontcache();
-void arcan_video_dumppipe();
-arcan_errc arcan_video_screenshot(void** dptr, size_t* dsize);
-arcan_errc arcan_video_forceread(arcan_vobj_id sid, void** dptr, size_t* dstsz);
-void arcan_video_3dorder(enum arcan_order3d);
-bool arcan_video_prepare_external();
-void arcan_video_restore_external();
-unsigned arcan_video_refresh(float fragment, bool synch);
-void arcan_video_pollfeed();
-void arcan_video_shutdown();
-
 #endif
 
