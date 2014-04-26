@@ -83,8 +83,8 @@ int arcan_shader_vattribute_loc(enum shader_vertex_attributes attr);
 
 /* subid ignored for (! n*) types,
  * value assumed to have type specified in enumlabel,
- * true if this matched something in the current active shader */
-bool arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
+ * returns the number of times the envv has been used since the last update. */ 
+int arcan_shader_envv(enum arcan_shader_envts slot, void* value, size_t size);
 
 const char* arcan_shader_symtype(enum arcan_shader_envts env);
 
