@@ -318,7 +318,7 @@ ssize_t arcan_frameserver_shmvidaudcb(int fd, void* dst, size_t ntr);
 
 /* used for streaming data to the frameserver, 
  * audio / video interleaved in one synch */
-int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, 
+enum arcan_ffunc_rv arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, 
 	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
 	uint8_t bpp, unsigned int mode, vfunc_state state);
 
@@ -332,11 +332,11 @@ void arcan_frameserver_update_mixweight(arcan_frameserver* dst,
 	arcan_aobj_id source, float leftch, float rightch);
 
 /* return a callback function for retrieving appropriate video-feeds */
-int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, 
+enum arcan_ffunc_rv arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd,
 	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
 	uint8_t bpp, unsigned int mode, vfunc_state state);
 
-int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, 
+enum arcan_ffunc_rv arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, 
 	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
 	uint8_t bpp, unsigned int mode, vfunc_state state); 
 
@@ -351,7 +351,8 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv);
 
 /* simplified versions of the above that 
  * ignores PTS/DTS and doesn't use the framequeue */
-int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, 
+enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
+	enum arcan_ffunc_cmd cmd, 
 	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, 
 	uint8_t bpp, unsigned int mode, vfunc_state state);
 

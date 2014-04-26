@@ -293,7 +293,8 @@ enum arcan_memtypes {
 	ARCAN_MEM_MODELDATA,
 
 /* context that is used to pass data to a newly created thread */
-	ARCAN_MEM_THREADCTX
+	ARCAN_MEM_THREADCTX,
+	ARCAN_MEM_ENDMARKER
 };
 
 /*
@@ -306,7 +307,8 @@ enum arcan_memhint {
 	ARCAN_MEM_EXEC = 4,
 	ARCAN_MEM_NONFATAL = 8,
 	ARCAN_MEM_READONLY = 16,
-	ARCAN_MEM_SENSITIVE = 32
+	ARCAN_MEM_SENSITIVE = 32,
+	ARCAN_MEM_LOCKACCESS = 64
 };
 
 enum arcan_memalign {
@@ -324,10 +326,26 @@ void* arcan_alloc_mem(size_t,
 	enum arcan_memalign);
 
 /*
+ * called early on application startup,
+ * before any arcan_alloc_mem calls,
+ * used to setup pools, prepare random seeds etc.
+ */
+void arcan_mem_init();
+
+/*
  * NULL is allowed (and ignored),
  * otherwise 
  */
 void arcan_mem_free(void*);
+
+/*
+ * For memory blocks allocated with ARCAN_MEM_LOCKACCESS,
+ * where some OS specific primitive is used for multithreaded
+ * access, but also for some types (e.g. frobbed strings,
+ * sensitive marked blocks) 
+ */
+void arcan_mem_lock(void*);
+void arcan_mem_unlock(void*);
 
 /*
  * Allocate memory intended for read-only or 

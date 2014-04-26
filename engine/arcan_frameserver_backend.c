@@ -329,17 +329,19 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 	return FFUNC_RV_NOUPLOAD;
 }
 
-int8_t arcan_frameserver_dummyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+enum arcan_ffunc_rv arcan_frameserver_dummyframe(
+	enum arcan_ffunc_cmd cmd, uint8_t* buf, 
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned mode, vfunc_state state)
 {
-    if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr && cmd == ffunc_destroy)
+    if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr && cmd == FFUNC_DESTROY)
         arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
 
     return FFUNC_RV_NOFRAME;
 }
 
-int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+enum arcan_ffunc_rv arcan_frameserver_emptyframe(
+	enum arcan_ffunc_cmd cmd, uint8_t* buf, 
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned mode, vfunc_state state)
 {
@@ -348,17 +350,17 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	
 	if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr)
 	switch (cmd){
-		case ffunc_poll:
+		case FFUNC_POLL:
   		shmpage = tgt->shm.ptr;
 			if (shmpage->resized) 
 				arcan_frameserver_tick_control(tgt);
 			return shmpage->vready;	
 
-		case ffunc_tick:
+		case FFUNC_TICK:
 			arcan_frameserver_tick_control(tgt); 
 		break;
 
-		case ffunc_destroy:
+		case FFUNC_DESTROY:
 			arcan_frameserver_free(tgt, false);
 		break;
 
@@ -369,8 +371,9 @@ int8_t arcan_frameserver_emptyframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	return FFUNC_RV_NOFRAME;
 }
 
-int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd, 
-	uint8_t* buf, uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
+enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
+	enum arcan_ffunc_cmd cmd, uint8_t* buf, uint32_t s_buf, 
+	uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned int mode, vfunc_state state)
 {
 	int8_t rv = 0;
@@ -382,18 +385,18 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 	unsigned srcw, srch;
 
 	switch (cmd){
-	case ffunc_rendertarget_readback: break;
-	case ffunc_poll:
+	case FFUNC_READBACK: break;
+	case FFUNC_POLL:
 
 		if (shmpage->resized)
 			arcan_frameserver_tick_control(tgt);
 
 		return shmpage->vready;
 	break;
-	case ffunc_tick: arcan_frameserver_tick_control( tgt ); break;
-	case ffunc_destroy: arcan_frameserver_free( tgt, false ); break;
+	case FFUNC_TICK: arcan_frameserver_tick_control( tgt ); break;
+	case FFUNC_DESTROY: arcan_frameserver_free( tgt, false ); break;
 
-	case ffunc_render:
+	case FFUNC_RENDER:
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, 
 			tgt->queue_mask, 0.5, tgt->vid);
 /* as we don't really "synch on resize", if one is 
@@ -439,7 +442,8 @@ int8_t arcan_frameserver_videoframe_direct(enum arcan_ffunc_cmd cmd,
 	return rv;
 }
 
-int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
+	enum arcan_ffunc_cmd cmd, uint8_t* buf, 
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned mode, vfunc_state state)
 {
@@ -447,10 +451,10 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	assert(state.tag == ARCAN_TAG_FRAMESERV);
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
-	if (cmd == ffunc_destroy)
+	if (cmd == FFUNC_DESTROY)
 		arcan_frameserver_free(state.ptr, false);
 
-	else if (cmd == ffunc_tick){
+	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver wants 
  * to resize, that's its problem. */
 		if (!arcan_frameserver_control_chld(src)){
@@ -469,7 +473,7 @@ int8_t arcan_frameserver_avfeedframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * it can catch up reasonably by using less CPU intensive frame format.
  * Audio will keep on buffering until overflow,
  */
-	else if (cmd == ffunc_rendertarget_readback){
+	else if (cmd == FFUNC_READBACK){
 		if ( (src->desc.explicit_xfer && arcan_sem_wait(src->vsync) == 0) ||
 			(!src->desc.explicit_xfer && arcan_sem_trywait(src->vsync) == 0)){
 			memcpy(src->vidp, buf, s_buf);
@@ -664,7 +668,8 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
-int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf, 
+enum arcan_ffunc_rv arcan_frameserver_videoframe(
+	enum arcan_ffunc_cmd cmd, uint8_t* buf, 
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
 	unsigned gltarget, vfunc_state vstate)
 {
@@ -676,7 +681,7 @@ int8_t arcan_frameserver_videoframe(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * PEEK -
  * > 0 if there are frames to render
  */
-	if (cmd == ffunc_poll) {
+	if (cmd == FFUNC_POLL) {
 		frame_cell* ccell;
 
 		if (src->shm.ptr && src->shm.ptr->resized)
@@ -748,7 +753,7 @@ retry:
  * sounddrivers that have given up, last resort workaround */
 
 /* RENDER, can assume that peek has just happened */
-	else if (cmd == ffunc_render) {
+	else if (cmd == FFUNC_RENDER) {
 		frame_cell* current = arcan_framequeue_front(&src->vfq);
 		if (!current)
 			return FFUNC_RV_NOFRAME;
@@ -764,10 +769,10 @@ retry:
 		arcan_framequeue_dequeue(&src->vfq);
 		return rv;
 	}
-	else if (cmd == ffunc_tick)
+	else if (cmd == FFUNC_TICK)
 		arcan_frameserver_tick_control(src);
 
-	else if (cmd == ffunc_destroy){
+	else if (cmd == FFUNC_DESTROY){
 		arcan_frameserver_free(src, false);
 	}
 

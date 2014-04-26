@@ -416,6 +416,7 @@ themeswitch:
 
 /* setup VM, map arguments and possible overrides */ 
 	struct arcan_luactx* luactx = arcan_lua_alloc();
+	arcan_lua_mapfunctions(luactx, debuglevel);
 
 	char* themescr = (char*) malloc(strlen(arcan_themename) + 5);
 	sprintf(themescr, "%s.lua", arcan_themename);
@@ -437,7 +438,6 @@ themeswitch:
 	if (argc > optind)
 		arcan_lua_pushargv(luactx, argv + optind + 1);
 
-	arcan_lua_mapfunctions(luactx, debuglevel);
 	arcan_lua_callvoidfun(luactx, "", true);
 	arcan_lua_callvoidfun(luactx, "show", false);
 
@@ -503,7 +503,9 @@ themeswitch:
 
 /* priority is always in maintaining logical clock and event processing */
 		if (nticks > 0){
-			arcan_video_tick(nticks);
+			unsigned njobs;
+
+			arcan_video_tick(nticks, &njobs);
 			arcan_bench_register_tick(nticks);
 
 			arcan_audio_tick(nticks);

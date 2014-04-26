@@ -195,12 +195,6 @@ static const int RENDERFMT_COLOR = RENDERTARGET_COLOR;
 static const int RENDERFMT_DEPTH = RENDERTARGET_DEPTH;
 static const int RENDERFMT_FULL  = RENDERTARGET_COLOR_DEPTH_STENCIL;
 
-static const int BLEND_NONE     = blend_disable;
-static const int BLEND_NORMAL   = blend_normal;
-static const int BLEND_ADD      = blend_add;
-static const int BLEND_MULTIPLY = blend_multiply;
-static const int BLEND_FORCE    = blend_force;
-
 static const int POSTFILTER_NTSC = 100;
 static const int POSTFILTER_OFF  = 10;
 
@@ -3150,7 +3144,7 @@ static int v3dorder(lua_State* ctx)
 	LUA_TRACE("video_3dorder");
 	int order = luaL_checknumber(ctx, 1);
 
-	if (order != order3d_first && order != order3d_last && order != order3d_none)
+	if (order != ORDER3D_FIRST && order != ORDER3D_LAST && order != ORDER3D_NONE)
 		arcan_fatal("3dorder(%d) invalid order specified (%d),"
 			"	expected ORDER_FIRST, ORDER_LAST or ORDER_NONE\n");
 
@@ -4647,16 +4641,16 @@ struct proctarget_src {
 	uintptr_t cbfun;
 };
 
-static int8_t proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
+static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
 	unsigned mode, vfunc_state state)
 {
-	if (cmd == ffunc_destroy){
+	if (cmd == FFUNC_DESTROY){
 		free(state.ptr);	
 	}
-	else if (cmd == ffunc_tick)
+	else if (cmd == FFUNC_TICK)
 		;
-	else if (cmd == ffunc_rendertarget_readback){
+	else if (cmd == FFUNC_READBACK){
 /* 
  * The buffer that comes from proctarget is special (gpu driver 
  * maps it into our address space, gdb and friends won't understand 
@@ -5539,7 +5533,7 @@ static int setimageproc(lua_State* ctx)
 	LUA_TRACE("switch_default_imageproc");
 	int num = luaL_checknumber(ctx, 1);
 
-	if (num == imageproc_normal || num == imageproc_fliph){
+	if (num == IMAGEPROC_NORMAL || num == IMAGEPROC_FLIPH){
 		arcan_video_default_imageprocmode(num);
 	} else
 		arcan_fatal("setimageproc(%d), invalid image postprocess "
@@ -6571,8 +6565,8 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"INTERP_EXPINOUT",  ARCAN_VINTER_EXPINOUT  },
 {"SCALE_NOPOW2",     ARCAN_VIMAGE_NOPOW2},
 {"SCALE_POW2",       ARCAN_VIMAGE_SCALEPOW2},
-{"IMAGEPROC_NORMAL", imageproc_normal},
-{"IMAGEPROC_FLIPH",  imageproc_fliph },
+{"IMAGEPROC_NORMAL", IMAGEPROC_NORMAL},
+{"IMAGEPROC_FLIPH",  IMAGEPROC_FLIPH },
 {"WORLDID", ARCAN_VIDEO_WORLDID},
 {"CLIP_ON", ARCAN_CLIP_ON},
 {"CLIP_OFF", ARCAN_CLIP_OFF},
@@ -6595,10 +6589,10 @@ void arcan_lua_pushglobalconsts(lua_State* ctx){
 {"MASK_UNPICKABLE",  MASK_UNPICKABLE },
 {"MASK_FRAMESET",    MASK_FRAMESET   },
 {"MASK_MAPPING",     MASK_MAPPING    },
-{"ORDER_FIRST",      order3d_first   },
-{"ORDER_NONE",       order3d_none    },
-{"ORDER_LAST",       order3d_last    },
-{"ORDER_SKIP",       order3d_none    },
+{"ORDER_FIRST",      ORDER3D_FIRST   },
+{"ORDER_NONE",       ORDER3D_NONE    },
+{"ORDER_LAST",       ORDER3D_LAST    },
+{"ORDER_SKIP",       ORDER3D_NONE    },
 {"MOUSE_GRABON",       MOUSE_GRAB_ON      },
 {"MOUSE_GRABOFF",      MOUSE_GRAB_OFF     },
 {"FRAMESERVER_LOOP",   FRAMESERVER_LOOP   },
@@ -6671,8 +6665,8 @@ static inline char* lut_filtermode(enum arcan_vfilter_mode mode)
 static inline char* lut_imageproc(enum arcan_imageproc_mode mode)
 {
 	switch(mode){
-	case imageproc_normal: return "normal";
-	case imageproc_fliph : return "vflip";
+	case IMAGEPROC_NORMAL: return "normal";
+	case IMAGEPROC_FLIPH : return "vflip";
 	}
 	return "[missing proc]";
 }
@@ -6701,7 +6695,6 @@ static inline char* lut_clipmode(enum arcan_clipmode mode)
 	case ARCAN_CLIP_OFF     : return "disabled";
 	case ARCAN_CLIP_ON      : return "stencil deep";
 	case ARCAN_CLIP_SHALLOW : return "stencil shallow";
-	case ARCAN_CLIP_SCISSOR : return "scissor";
 	}
 	return "[missing clipmode]";
 }
@@ -6709,11 +6702,11 @@ static inline char* lut_clipmode(enum arcan_clipmode mode)
 static inline char* lut_blendmode(enum arcan_blendfunc func)
 {
 	switch(func){
-	case blend_disable  : return "disabled";
-	case blend_normal   : return "normal";
-	case blend_force    : return "forceblend";
-	case blend_add      : return "additive";
-	case blend_multiply : return "multiply";
+	case BLEND_NONE     : return "disabled";
+	case BLEND_NORMAL   : return "normal";
+	case BLEND_FORCE    : return "forceblend";
+	case BLEND_ADD      : return "additive";
+	case BLEND_MULTIPLY : return "multiply";
 	}
 	return "[missing blendmode]";
 }
