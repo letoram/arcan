@@ -507,19 +507,22 @@ static void transfer_persists(struct arcan_video_context* src,
 	for (int i = 1; i < src->vitem_limit - 1; i++){
 		if (src->vitems_pool[i].flags.in_use && src->vitems_pool[i].flags.persist &&
 			(!delsrc || (dst->vitems_pool[i].flags.in_use && 
-			dst->vitems_pool[i].flags.persist))){
-				
-			detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
-			memcpy(&dst->vitems_pool[i], &src->vitems_pool[i], sizeof(arcan_vobject));
+			dst->vitems_pool[i].flags.persist))){				
 
 /* cross- referencing world- outside context isn't permitted */
 			dst->vitems_pool[i].parent = &dst->world;
 
+/* pop remove from src */
 			if (delsrc){
+				detach_fromtarget(&src->stdoutp, &src->vitems_pool[i]);
+					memcpy(&dst->vitems_pool[i], 
+					&src->vitems_pool[i], sizeof(arcan_vobject));
 				memset(&src->vitems_pool[i], 0, sizeof(arcan_vobject));
 			}
 			else{
 				dst->nalive++;
+				memcpy(&dst->vitems_pool[i], 
+					&src->vitems_pool[i], sizeof(arcan_vobject));
 				src->vitems_pool[i].owner = NULL;
 				attach_object(&dst->stdoutp, &dst->vitems_pool[i]);
 				trace("vcontext_stack_push() : transfer-attach: %s\n", 
@@ -583,20 +586,29 @@ unsigned arcan_video_extpopcontext(arcan_vobj_id* dst)
 	char* dstbuf;
 	size_t dsz;
 	
+	FLAG_DIRTY();
 	arcan_video_refresh(0.0, true);
-	bool ss = arcan_video_screenshot((void*)&dstbuf, &dsz);
+	bool ss = arcan_video_screenshot((void*)&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_popcontext(); 
 
 	if (ss){
 		int w = arcan_video_display.width;
 		int h = arcan_video_display.height;
 
-/* flip y */
 		img_cons cons = {.w = w, .h = h, .bpp = GL_PIXEL_BPP};
 		*dst = arcan_video_rawobject((uint8_t*)dstbuf, dsz, cons, w, h, 1);
-	
-		if (*dst == ARCAN_EID)
+
+		if (*dst == ARCAN_EID){
 			arcan_mem_free(dstbuf);
+		} 
+		else{
+/* flip y by using texture coordinates */
+			arcan_vobject* vobj = arcan_video_getobject(*dst);
+			vobj->txcos = arcan_alloc_mem(sizeof(float) * 8, 
+				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
+
+			generate_mirror_mapping(vobj->txcos, 1.0, 1.0);
+		}
 	}
 
 	return rv;
@@ -606,9 +618,10 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 {
 	void* dstbuf;
 	size_t dsz;
-	
+
+	FLAG_DIRTY();	
 	arcan_video_refresh(0.0, true);
-	bool ss = arcan_video_screenshot(&dstbuf, &dsz);
+	bool ss = arcan_video_screenshot(&dstbuf, &dsz) == ARCAN_OK;
 	int rv = arcan_video_pushcontext(); 
 
 	if (ss){
@@ -620,6 +633,14 @@ signed arcan_video_extpushcontext(arcan_vobj_id* dst)
 	
 		if (*dst == ARCAN_EID)
 			arcan_mem_free(dstbuf);
+		else
+		{
+			arcan_vobject* vobj = arcan_video_getobject(*dst);
+			vobj->txcos = arcan_alloc_mem(sizeof(float) * 8, 
+				ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
+
+			generate_mirror_mapping(vobj->txcos, 1.0, 1.0);
+		}
 	}
 
 	return rv;
