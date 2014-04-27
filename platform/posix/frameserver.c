@@ -490,7 +490,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * send connection data, set emptyframe.  
  * 
  */
-static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
+static enum arcan_ffunc_rv socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, unsigned mode,
 	vfunc_state state)
 {
@@ -499,7 +499,7 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	size_t ntw;
 	
 	switch (cmd){
-	case ffunc_poll:
+	case FFUNC_POLL:
 		if (tgt->clientkey[0] == '\0')
 			goto send_key;
 
@@ -533,7 +533,7 @@ static int8_t socketverify(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		}
 		return FFUNC_RV_NOFRAME;
 
-	case ffunc_destroy:
+	case FFUNC_DESTROY:
 		unlink(tgt->source);
 	
 	default:
@@ -582,7 +582,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 /* wait for connection, then unlink directory node,
  * switch to verify callback.*/ 
 	switch (cmd){
-		case ffunc_poll:
+		case FFUNC_POLL:
 			if (1 == poll(&polldscr, 1, 0)){
 				int insock = accept(polldscr.fd, NULL, NULL);
 				if (insock != -1){
@@ -604,7 +604,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 		break;
 
 /* socket is closed in frameserver_destroy */
-		case ffunc_destroy:
+		case FFUNC_DESTROY:
 			if (tgt->sockaddr){
 				unlink(tgt->sockaddr);
 				free(tgt->sockaddr);
