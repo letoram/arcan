@@ -1395,8 +1395,8 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
  * so we force the rescale texture mode for mismatches and set 
  * dimensions accordingly */
 		if (forced.h > 0 && forced.w > 0){
-			neww = ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.w) : forced.w;
-			newh = ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.h) : forced.h;
+			neww = desm == ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.w) : forced.w;
+			newh = desm == ARCAN_VIMAGE_SCALEPOW2 ? nexthigher(forced.h) : forced.h;
 			dst->origw = forced.w;
 			dst->origh = forced.h;
 
@@ -1653,30 +1653,35 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 
 static arcan_errc attach_readback(arcan_vobj_id src)
 {
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 	arcan_vobject* dstobj = arcan_video_getobject(src);
-
-	if (dstobj){
-		if (dstobj->vstore->w != arcan_video_screenw() || 
-			dstobj->vstore->h != arcan_video_screenh()){
-			return ARCAN_ERRC_BAD_ARGUMENT;
-		}
-
-		current_context->stdoutp.mode = RENDERTARGET_COLOR;
-		current_context->stdoutp.color = dstobj;
-
-		if (current_context->stdoutp.fbo == 0){
-			if (!alloc_fbo(&current_context->stdoutp)){
-				current_context->stdoutp.color = NULL;
-				rv = ARCAN_ERRC_UNACCEPTED_STATE;
-			}
-			else
-				rv = ARCAN_OK;
-		}
-
+	if (!dstobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+		
+	if (dstobj->vstore->w != arcan_video_screenw() || 
+		dstobj->vstore->h != arcan_video_screenh()){
+		return ARCAN_ERRC_BAD_ARGUMENT;
 	}
 
-	return rv;
+/*
+ * note; should have a different strategy for handling multiple
+ * readbacks here, currently the video pipeline is replaced when
+ * a stdoutp- color is defined and then we can use regular readbacks
+ * that way, the other approach would be direct FBO-FBO transfers.
+ */ 
+	if (current_context->stdoutp.color)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	current_context->stdoutp.mode = RENDERTARGET_COLOR;
+	current_context->stdoutp.color = dstobj;
+
+	if (current_context->stdoutp.fbo == 0){
+		if (!alloc_fbo(&current_context->stdoutp)){
+			current_context->stdoutp.color = NULL;
+			return ARCAN_ERRC_UNACCEPTED_STATE;
+		}
+	}
+
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_attachtorendertarget(arcan_vobj_id did, 
@@ -4506,7 +4511,6 @@ void arcan_video_refresh_GL(float lerp)
 		
 		draw_vobj(-w, -h, w, h, arcan_video_display.default_txcos);
 		glBindTexture(GL_TEXTURE_2D, 0);
-		glFlush();
 #endif
 
 		if (current_context->stdoutp.readback != 0)
