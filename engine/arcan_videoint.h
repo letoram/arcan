@@ -195,6 +195,7 @@ typedef struct arcan_vobject {
 		bool cycletransform; /* when a transform is finished, attach it to the end*/
 		bool origoofs;       /* use world-space coordinate as center for rotation */
 		bool orderofs;       /* ofset is relative parent                          */
+		bool mipmap;         /* is the object in a mipmap- enabled state?         */
 #ifdef _DEBUG
 		bool frozen;         /* tag for debugging */
 #endif
@@ -339,7 +340,7 @@ void arcan_debug_tracetag_dump();
 uint16_t nexthigher(uint16_t k);
 
 struct arcan_img_meta;
-void push_globj(arcan_vobject*, bool, struct arcan_img_meta*);
+void push_globj(arcan_vobject*, bool noupload, bool mipmap);
 void generate_basic_mapping(float* dst, float st, float tt);
 void generate_mirror_mapping(float* dst, float st, float tt);
 void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force);

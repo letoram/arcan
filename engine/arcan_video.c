@@ -65,6 +65,10 @@
  - (char*)&(*(type*)0)))
 #endif
 
+#ifndef ARCAN_VIDEO_DEFAULT_MIPMAP_STATE
+#define ARCAN_VIDEO_DEFAULT_MIPMAP_STATE true
+#endif
+
 long long ARCAN_VIDEO_WORLDID = -1;
 static surface_properties empty_surface();
 static sem_handle asynchsynch;
@@ -98,7 +102,7 @@ struct arcan_video_display arcan_video_display = {
 	.c_ticks = 1,
 	.default_vitemlim = 1024,
 	.imageproc = IMAGEPROC_NORMAL,
-	.mipmap = true,
+	.mipmap = ARCAN_VIDEO_DEFAULT_MIPMAP_STATE,
 	.dirty = 0 
 };
 
@@ -159,17 +163,19 @@ static void drop_glres(struct storage_info_t* s)
 	if (s->refcount == 0){
 		if (s->txmapped != TXSTATE_OFF && s->vinf.text.glid){
 			glDeleteTextures(1, &s->vinf.text.glid);
+			s->vinf.text.glid = 0;
 
-			if (s->vinf.text.raw)
+			if (s->vinf.text.raw){
 				arcan_mem_free(s->vinf.text.raw);
+				s->vinf.text.raw = NULL;
+			}
 		}
 
 		arcan_mem_free(s);
 	}
 }
 
-void push_globj(arcan_vobject* dst, bool noupload, 
-		struct arcan_img_meta* meta)
+void push_globj(arcan_vobject* dst, bool noupload, bool mipmap)
 {
 	struct storage_info_t* s = dst->vstore; 
 	if (s->txmapped == TXSTATE_OFF)
@@ -196,18 +202,16 @@ void push_globj(arcan_vobject* dst, bool noupload,
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, s->txv);
 
 /* 
- * Mipmapping API/ Mapping is a bit clumsy at the moment,
- * should be reworked to individual vobj- setting
- * that can handle different sources for different mipmap
- * levels
+ * Mipmapping still misses the option to manually define mipmap levels
  */
-	bool mipmap = arcan_video_display.mipmap;
+	if (!noupload){
 #ifndef GL_GENERATE_MIPMAP
 		if (mipmap)
 			glGenerateMipmap(GL_TEXTURE_2D);
 #else
-		glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmap);
+			glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, mipmap);
 #endif
+	}
 
 	switch (s->filtermode){
 	case ARCAN_VFILTER_NONE:
@@ -233,21 +237,6 @@ void push_globj(arcan_vobject* dst, bool noupload,
 	}
 
 	if (!noupload){
-/*
- * some drivers expose this kind of functionality, but with CodeXL/GDEbugger etc.
- * support being a bit sketchy, this little hack can be enabled with a debugbuild
- * and a txdump subfolder in cwd 
- */
-#ifdef _DEBUG
-		if (arcan_video_display.txdump && s->vinf.text.raw){
-			static int seqn = 0;
-			int outfd = fmt_open(O_RDWR | O_CREAT, S_IRWXU, "%sgldump%d.png", 
-				arcan_video_display.txdump, seqn++);
-			if (-1 != outfd)
-				arcan_rgba32_pngfile(fdopen(outfd, "w"),
-					(char*) s->vinf.text.raw, s->w, s->h, false);
-		}
-#endif
 		if (s->txmapped == TXSTATE_DEPTH)
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, s->w, s->h, 0,
 				GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
@@ -459,7 +448,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 			}
 			else
 				if (current->vstore->txmapped != TXSTATE_OFF)
-					push_globj(current, false, NULL);
+					push_globj(current, false, current->flags.mipmap);
 
 			arcan_frameserver* movie = current->feed.state.ptr;
 			if (current->feed.state.tag == ARCAN_TAG_FRAMESERV && movie){ 
@@ -685,6 +674,7 @@ arcan_vobj_id arcan_video_allocid(bool* status, struct arcan_video_context* ctx)
 			*status = true;
 			ctx->nalive++;
 			ctx->vitems_pool[i].flags.in_use = true;
+			ctx->vitems_pool[i].flags.mipmap = arcan_video_display.mipmap;
 			ctx->vitem_ofs = (ctx->vitem_ofs + 1) >= ctx->vitem_limit ? 1 : i + 1;
 			return i;
 		}
@@ -693,6 +683,41 @@ arcan_vobj_id arcan_video_allocid(bool* status, struct arcan_video_context* ctx)
 	}
 
 	return ARCAN_EID;
+}
+
+arcan_errc arcan_video_mipmapset(arcan_vobj_id vid, bool enable)
+{
+	arcan_vobject* vobj = arcan_video_getobject(vid);
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
+
+	if ((vobj->flags.mipmap && enable) || 
+		(!vobj->flags.mipmap && !enable))
+		return ARCAN_OK;
+		
+	if (vobj->vstore->txmapped != TXSTATE_TEX2D ||
+		!vobj->vstore->vinf.text.raw)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+/* 
+ * For both disable and enable, we need to recreate the 
+ * gl_store and possibly remove the old one.
+ */	
+	void* newbuf = arcan_alloc_fillmem(vobj->vstore->vinf.text.raw,
+		vobj->vstore->vinf.text.s_raw, 
+		ARCAN_MEM_VBUFFER, ARCAN_MEM_NONFATAL, 
+		ARCAN_MEMALIGN_PAGE
+	);	
+
+	if (!newbuf)
+		return ARCAN_ERRC_OUT_OF_SPACE;
+
+	drop_glres(vobj->vstore);
+	vobj->flags.mipmap = enable;
+	vobj->vstore->vinf.text.raw = newbuf;
+	push_globj(vobj, false, vobj->flags.mipmap);
+
+	return ARCAN_OK;
 }
 
 arcan_vobj_id arcan_video_cloneobject(arcan_vobj_id parent)
@@ -1443,7 +1468,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 push_comp:
 		if (!asynchsrc && dst->vstore->txmapped != TXSTATE_OFF)
-			push_globj(dst, false, &meta);
+			push_globj(dst, false, dst->flags.mipmap);
 	}
 
 	arcan_sem_post(asynchsynch);
@@ -1645,7 +1670,7 @@ arcan_vobj_id arcan_video_rawobject(uint8_t* buf, size_t bufs,
 
 		glGenTextures(1, &ds->vinf.text.glid);
 
-		push_globj(newvobj, false, NULL); 
+		push_globj(newvobj, false, newvobj->flags.mipmap); 
 		arcan_video_attachobject(rv);
 	}
 
@@ -1785,7 +1810,7 @@ static bool alloc_fbo(struct rendertarget* dst)
 		store->h = h;
 	
 /* generate ID etc. special path for TXSTATE_DEPTH */
-		push_globj(dst->color, false, NULL); 
+		push_globj(dst->color, false, false); 
 
 		glDrawBuffer(GL_NONE);
 		glReadBuffer(GL_NONE);
@@ -2054,13 +2079,14 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 		img->vstore->w = 32;
 		img->vstore->h = 32;
 		img->vstore->vinf.text.source = strdup(args->fname);
+		img->flags.mipmap = false;
 
 		loadev.data.video.width = 32;
 		loadev.data.video.height = 32;
 		loadev.kind = EVENT_VIDEO_ASYNCHIMAGE_FAILED;
 	}
 
-	push_globj(img, false, NULL);
+	push_globj(img, false, img->flags.mipmap);
 
 	if (emit)
 		arcan_event_enqueue(arcan_event_defaultctx(), &loadev);
@@ -2192,6 +2218,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 		newvobj->origw = constraints.w;
 		newvobj->origh = constraints.h;
 		newvobj->vstore->bpp = ncpt == 0 ? GL_PIXEL_BPP : ncpt;
+		newvobj->flags.mipmap = false;
 
 		if (newvobj->vstore->scale == ARCAN_VIMAGE_NOPOW2){
 			newvobj->vstore->w = constraints.w;
@@ -2216,7 +2243,7 @@ arcan_vobj_id arcan_video_setupfeed(arcan_vfunc_cb ffunc,
 			ARCAN_MEM_VBUFFER, ARCAN_MEM_BZERO, ARCAN_MEMALIGN_PAGE);
 
 		newvobj->feed.ffunc = ffunc;
-		push_globj(newvobj, false, NULL);
+		push_globj(newvobj, false, newvobj->flags.mipmap);
 	}
 
 	return rv;
@@ -2266,7 +2293,7 @@ arcan_errc arcan_video_resizefeed(arcan_vobj_id id, img_cons store,
 		glDeleteTextures(1, &vobj->vstore->vinf.text.glid);
 		vobj->vstore->vinf.text.glid = 0;
 
-		push_globj(vobj, false, NULL);
+		push_globj(vobj, false, vobj->flags.mipmap);
 
 		rv = ARCAN_OK;
 	}
@@ -2536,7 +2563,7 @@ arcan_errc arcan_video_objecttexmode(arcan_vobj_id id,
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
 		src->vstore->txv = modet == ARCAN_VTEX_REPEAT ? 
 			GL_REPEAT : GL_CLAMP_TO_EDGE;
-		push_globj(src, true, NULL);
+		push_globj(src, true, src->flags.mipmap);
 	}
 
 	return rv;
@@ -2551,7 +2578,7 @@ arcan_errc arcan_video_objectfilter(arcan_vobj_id id,
 /* fake an upload with disabled filteroptions */
 	if (src){
 		src->vstore->filtermode = mode;
-		push_globj(src, true, NULL);
+		push_globj(src, true, src->flags.mipmap);
 	}
 
 	return rv;
@@ -4223,18 +4250,9 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 /* make sure we're in a decent state for 2D */
 	glDisable(GL_DEPTH_TEST);
 
-	float* pm = tgt->projection;
 	arcan_shader_activate(arcan_video_display.defaultshdr);
-
 	arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
-	printf("projection:\n %f, %f, %f, %f\n %f, %f, %f, "
-		"%f\n, %f, %f, %f, %f\n %f %f %f %f\n", 
-		pm[0], pm[1], pm[2], pm[3],
- 		pm[4], pm[5], pm[6], pm[7],
-		pm[8], pm[9], pm[10], pm[11], 
-		pm[12], pm[13], pm[14], pm[15]);
- 
-
+	
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;
 
@@ -5067,7 +5085,7 @@ arcan_vobj_id arcan_video_renderstring(const char* message,
 		ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 	ds->vinf.text.source = strdup(message);
 
-	push_globj(vobj, false, NULL);
+	push_globj(vobj, false, false);
 
 /*
  * POT but not all used, 

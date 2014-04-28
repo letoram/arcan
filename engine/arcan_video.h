@@ -631,6 +631,19 @@ arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value);
 enum arcan_transform_mask arcan_video_getmask(arcan_vobj_id src);
 arcan_errc arcan_video_transformmask(arcan_vobj_id src, 
 	enum arcan_transform_mask mask);
+
+/*
+ * Convert the mipmapping mode for the video object to on [state=true] or
+ * off [state=false]. By default, all objects are created with mimapping,
+ * but for certain ones, there is a possible performance gain if you are
+ * certain that lower mipmap levels will not be used.
+ *
+ * Note that OpenGL and friends can't directly free storage previously
+ * used for mipmaps. Therefore, calls to this function will create a copy
+ * of the offline buffer and use that to assign a new glstore. 
+ */
+arcan_errc arcan_video_mipmapset(arcan_vobj_id id, bool state);
+
 arcan_errc arcan_video_setclip(arcan_vobj_id id, enum arcan_clipmode toggleon);
 arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char* const message);
 arcan_errc arcan_video_forceblend(arcan_vobj_id id, enum arcan_blendfunc);
