@@ -3275,6 +3275,15 @@ error:
 	return 0;
 }
 
+static int imagemipmap(lua_State* ctx)
+{
+	LUA_TRACE("image_mipmap");
+	arcan_vobj_id id = luaL_checkvid(ctx, 1, NULL);
+	bool state = lua_toboolean(ctx, 1);
+	arcan_video_mipmapset(id, state);
+	return 0;
+}	
+
 static int imagecolor(lua_State* ctx)
 {
 	LUA_TRACE("image_color");
@@ -5121,12 +5130,11 @@ static int recordgain(lua_State* ctx)
 {
 	LUA_TRACE("recordtarget_gain");
 
-	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	arcan_vobject* vobj; 
+	luaL_checkvid(ctx, 1, &vobj);
 	arcan_aobj_id aid = luaL_checkaid(ctx, 2);
 	float left = luaL_checknumber(ctx, 3);
 	float right = luaL_checknumber(ctx, 4);
-
-	arcan_vobject* vobj = arcan_video_getobject(tgt);
 
 	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
 		arcan_fatal("recordgain() -- bad arg1, "
@@ -5146,8 +5154,8 @@ static int borderscan(lua_State* ctx)
 	x2 = arcan_video_screenw();
 	y2 = arcan_video_screenh();
 
-	arcan_vobj_id vid = luaL_checkvid(ctx, 1, NULL);
-	arcan_vobject* vobj = arcan_video_getobject(vid);
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
 
 /* since GLES doesn't support texture readback, the option would be to render
  * then readback pixels as there is limited use for this feature, we'll stick
@@ -6407,6 +6415,7 @@ static const luaL_Reg imgfuns[] = {
 {"image_shader",             setshader          },
 {"image_sharestorage",       sharestorage       },
 {"image_color",              imagecolor         },
+{"image_mipmap",             imagemipmap        },
 {"fill_surface",             fillsurface        },
 {"alloc_surface",            allocsurface       },
 {"raw_surface",              rawsurface         },

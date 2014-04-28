@@ -1143,6 +1143,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) 
 											arcan_frameserver_audioframe, ctx, &errc);
 			ctx->queue_mask = EVENT_EXTERNAL;
+			ctx->autoplay = true;
 
 /* nopts / autoplay is preset from the calling context */
 		}
