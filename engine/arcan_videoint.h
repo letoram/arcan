@@ -265,7 +265,9 @@ struct arcan_video_display {
  
 	arcan_shader_id defaultshdr;
 	arcan_shader_id defclrshdr;
+
 	float default_txcos[8];
+	float mirror_txcos[8];
 
 /* default image loading options */
 	enum arcan_vimage_mode scalemode;
