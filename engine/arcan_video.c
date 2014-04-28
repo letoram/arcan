@@ -455,7 +455,7 @@ static void reallocate_gl_context(struct arcan_video_context* context)
 					arcan_mem_free(current->vstore->vinf.text.source);
 				arcan_video_getimage(fname, current, 
 					arcan_video_dimensions(current->origw, current->origh), false);
-				free(fname); 
+				arcan_mem_free(fname); 
 			}
 			else
 				if (current->vstore->txmapped != TXSTATE_OFF)
@@ -1265,6 +1265,7 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		}
 		
 		generate_basic_mapping(arcan_video_display.default_txcos, 1.0, 1.0);
+		generate_mirror_mapping(arcan_video_display.mirror_txcos, 1.0, 1.0);
 		firstinit = false;
 	}
 
@@ -1406,7 +1407,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 			stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
 				neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
-			free(imgbuf);
+			arcan_mem_free(imgbuf);
 		}
 		else if (desm == ARCAN_VIMAGE_SCALEPOW2){
 			neww = nexthigher(neww);
@@ -1419,7 +1420,7 @@ arcan_errc arcan_video_getimage(const char* fname, arcan_vobject* dst,
 
 				stretchblit(imgbuf, inw, inh, (uint32_t*) dstframe->vinf.text.raw, 
 					neww, newh, dst->vstore->imageproc == IMAGEPROC_FLIPH);
-				free(imgbuf);
+				arcan_mem_free(imgbuf);
 			} 
 			else {
 				dstframe->vinf.text.s_raw = neww * newh * GL_PIXEL_BPP;
@@ -1567,7 +1568,7 @@ arcan_errc arcan_video_shareglstore(arcan_vobj_id sid, arcan_vobj_id did)
 			memcpy(dst->txcos, src->txcos, sizeof(float) * 8);
 		}
 		else if (dst->txcos){
-			free(dst->txcos);
+			arcan_mem_free(dst->txcos);
 			dst->txcos = NULL;
 		}
 
@@ -2064,7 +2065,7 @@ void arcan_video_joinasynch(arcan_vobject* img, bool emit, bool force)
 	if (emit)
 		arcan_event_enqueue(arcan_event_defaultctx(), &loadev);
 
-	free(args->fname);
+	arcan_mem_free(args->fname);
 	arcan_mem_free(args);
 	img->feed.state.ptr = NULL;
 	img->feed.state.tag = ARCAN_TAG_IMAGE;
@@ -2868,7 +2869,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 
 /* time to drop all associated resources */
 	arcan_video_zaptransform(id);
-	free(vobj->txcos);
+	arcan_mem_free(vobj->txcos);
 
 /* full- object specific clean-up */
 	if (vobj->flags.clone == false){
@@ -2930,9 +2931,9 @@ arcan_errc arcan_video_override_mapping(arcan_vobj_id id, float* newmapping)
 
 	if (vobj && id > 0) {
 		if (vobj->txcos)
-			free(vobj->txcos);
+			arcan_mem_free(vobj->txcos);
 	
-		vobj->txcos = arcan_alloc_fillmem(vobj->txcos,
+		vobj->txcos = arcan_alloc_fillmem(newmapping,
 			sizeof(float) * 8, ARCAN_MEM_VSTRUCT, 0, ARCAN_MEMALIGN_SIMD);
 
 		rv = ARCAN_OK;
@@ -4222,8 +4223,17 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 /* make sure we're in a decent state for 2D */
 	glDisable(GL_DEPTH_TEST);
 
+	float* pm = tgt->projection;
 	arcan_shader_activate(arcan_video_display.defaultshdr);
+
 	arcan_shader_envv(PROJECTION_MATR, tgt->projection, sizeof(float)*16);
+	printf("projection:\n %f, %f, %f, %f\n %f, %f, %f, "
+		"%f\n, %f, %f, %f, %f\n %f %f %f %f\n", 
+		pm[0], pm[1], pm[2], pm[3],
+ 		pm[4], pm[5], pm[6], pm[7],
+		pm[8], pm[9], pm[10], pm[11], 
+		pm[12], pm[13], pm[14], pm[15]);
+ 
 
 	while (current && current->elem->order >= 0){
 		arcan_vobject* elem = current->elem;
@@ -4233,7 +4243,7 @@ static void process_rendertarget(struct rendertarget* tgt, float fract)
 		arcan_resolve_vidprop(elem, fract, &dprops);
 
 /* don't waste time on objects that aren't supposed to be visible */
-		if ( dprops.opa < EPSILON || elem == current_context->stdoutp.color){
+		if ( dprops.opa < EPSILON || elem == tgt->color){ 
 			current = current->next;
 			continue;
 		}
@@ -4509,7 +4519,7 @@ void arcan_video_refresh_GL(float lerp)
 		int w = arcan_video_display.width >> 1;
 		int h = arcan_video_display.height >> 1;
 		
-		draw_vobj(-w, -h, w, h, arcan_video_display.default_txcos);
+		draw_vobj(-w, -h, w, h, arcan_video_display.mirror_txcos);
 		glBindTexture(GL_TEXTURE_2D, 0);
 #endif
 
@@ -5008,7 +5018,7 @@ arcan_errc arcan_video_tracetag(arcan_vobj_id id, const char*const message)
 
 	if (vobj){
 		if (vobj->tracetag)
-			free(vobj->tracetag);
+			arcan_mem_free(vobj->tracetag);
 
 		vobj->tracetag = strdup(message);
 		rv = ARCAN_OK;
