@@ -20,6 +20,10 @@ local mstate = {
 	btns = {false, false, false}, -- always LMB, MMB, RMB 
 	cur_over = {},
 	hover_track = {},
+	autohide = false,
+	hide_base = 40,
+	hide_count = 40,
+	hidden = false,
 
 -- mouse event is triggered
 	accel_x      = 1,
@@ -49,7 +53,14 @@ local function mouse_cursorupd(x, y)
 	mstate.y = mstate.y < 0 and 0 or mstate.y;
 	mstate.x = mstate.x > VRESW and VRESW-1 or mstate.x; 
 	mstate.y = mstate.y > VRESH and VRESH-1 or mstate.y; 
-	
+	mstate.hide_count = mstate.hide_base;
+
+	if (mstate.hidden) then
+		instant_image_transform(mstate.cursor);
+		blend_image(mstate.cursor, 1.0, 10);
+		mstate.hidden = false;
+	end
+
 	move_image(mstate.cursor, mstate.x + mstate.x_ofs, 
 		mstate.y + mstate.y_ofs);
 	return (mstate.x - lmx), (mstate.y - lmy);
@@ -141,11 +152,17 @@ end
 -- cicon(string) : path to valid resource for cursor 
 -- clayer(uint)  : which ordervalue for cursor to have
 --
-function mouse_setup(cvid, clayer, pickdepth, cachepick)
+function mouse_setup(cvid, clayer, pickdepth, cachepick, hidden)
 	mstate.cursor = cvid; 
 	mstate.x = math.floor(VRESW * 0.5);
 	mstate.y = math.floor(VRESH * 0.5);
-	show_image(cvid);
+
+
+	if (hidden ~= nil and hidden ~= true) then
+	else
+		show_image(cvid);
+	end
+
 	move_image(cvid, mstate.x, mstate.y);
 	mstate.pickdepth = pickdepth;
 	order_image(cvid, clayer);
@@ -401,6 +418,16 @@ end
 function mouse_tick(val)
 	mstate.counter = mstate.counter + val;
 	mstate.hover_count = mstate.hover_count + 1;
+
+	if (mstate.autohide and mstate.hidden == false) then
+		mstate.hide_count = mstate.hide_count - val;
+		if (mstate.hide_count <= 0) then
+			mstate.hidden = true;
+			instant_image_transform(mstate.cursor);
+			mstate.hide_count = mstate.hide_base;
+			blend_image(mstate.cursor, 0.0, 20, INTERP_EXPOUT);
+		end
+	end
 
 	local hval = mstate.hover_ticks;
 	if (CLOCK - mstate.last_hover < 200) then
