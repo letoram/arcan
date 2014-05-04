@@ -247,7 +247,9 @@ local function lmbhandler(hists, press)
 			for key, val in pairs(mstate.drag.list) do
 				local res = linear_find_vid(mstate.handlers.drop, val, "drop");
 				if (res) then
-					res:drop(val, mstate.x, mstate.y);
+					if (res:drop(val, mstate.x, mstate.y)) then
+						return;
+					end
 				end
 			end
 -- only click if we havn't started dragging
@@ -255,7 +257,9 @@ local function lmbhandler(hists, press)
 			for key, val in pairs(hists) do
 				local res = linear_find_vid(mstate.handlers.click, val, "click");
 				if (res) then
-					res:click(val, mstate.x, mstate.y);
+					if (res:click(val, mstate.x, mstate.y)) then
+						break;
+					end
 				end
 			end
 
@@ -268,7 +272,9 @@ local function lmbhandler(hists, press)
 				for key, val in pairs(hists) do
 					local res = linear_find_vid(mstate.handlers.dblclick, val,"dblclick");
 					if (res) then
-						res:dblclick(val, mstate.x, mstate.y);
+						if (res:dblclick(val, mstate.x, mstate.y)) then
+							break;
+						end
 					end
 				end
 			end
@@ -290,7 +296,9 @@ function mouse_input(x, y, state)
 
 		if (dx + dy > mstate.hover_thresh) then
 			for i,v in ipairs(mstate.hover_track) do
-				v.state:hover(v.vid, mstate.x, mstate.y, false);
+				if (v.state:hover(v.vid, mstate.x, mstate.y, false)) then
+					break;
+				end
 			end
 			
 			mstate.hover_track = {};
