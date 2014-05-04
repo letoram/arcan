@@ -3894,29 +3894,22 @@ bool arcan_lua_callvoidfun(lua_State* ctx, const char* fun, bool warn)
 
 static int getqueueopts(lua_State* ctx)
 {
-	LUA_TRACE("default_movie_queueopts");
+	LUA_TRACE("default_movie_queueopts (deprecated)");
+	arcan_warning("default_movie_queueopts(), deprecated.\n");
 
-	unsigned short rv[4];
-	arcan_frameserver_queueopts( &rv[0], &rv[1], &rv[2], &rv[3] );
-	lua_pushnumber(ctx, rv[0]);
-	lua_pushnumber(ctx, rv[1]);
-	lua_pushnumber(ctx, rv[2]);
-	lua_pushnumber(ctx, rv[3]);
+	lua_pushnumber(ctx, 0); 
+	lua_pushnumber(ctx, 0); 
+	lua_pushnumber(ctx, 0);
+	lua_pushnumber(ctx, 0); 
 
 	return 4;
 }
 
 static int setqueueopts(lua_State* ctx)
 {
-	LUA_TRACE("default_movie_queueopts_override");
+	LUA_TRACE("default_movie_queueopts_override (deprecated)");
+	arcan_warning("default_movie_queueopts_override(), deprecated.\n");
 
-	unsigned char vcellc = luaL_checknumber(ctx, 1);
-	unsigned char acellc = luaL_checknumber(ctx, 2);
-	unsigned short abufs = luaL_checknumber(ctx, 3);
-	unsigned short presilence = luaL_optnumber(ctx, 4, 
-		ARCAN_FRAMESERVER_PRESILENCE);
-
-	arcan_frameserver_queueopts_override( vcellc, acellc, abufs, presilence );
 	return 0;
 }
 
@@ -6834,12 +6827,6 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 \tptsdisable = %d,\
 \tsocksig = %d,\
 \tpbo = %d,\
-\tvfq_alive = %d,\
-\tvfq_ni = %d,\
-\tvfq_ci = %d,\
-\tafq_alive = %d,\
-\tafq_ni = %d,\
-\tafq_ci = %d,\
 \taudbuf_sz = %d,\
 \taudbuf_used = %d,\
 \tchild_alive = %d,\
@@ -6856,12 +6843,6 @@ static inline void dump_vstate(FILE* dst, arcan_vobject* vobj)
 	(int) fsrv->ptsdisable,
 	(int) fsrv->socksig,
 	(int) fsrv->use_pbo,
-	(int) fsrv->vfq.alive,
-	(int) fsrv->vfq.ni,
-	(int) fsrv->vfq.ci,
-	(int) fsrv->afq.alive,
-	(int) fsrv->afq.ni,
-	(int) fsrv->afq.ci,
 	(int) fsrv->sz_audb,
 	(int) fsrv->ofs_audb,
 	(int) fsrv->child_alive,

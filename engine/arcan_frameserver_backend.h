@@ -23,35 +23,6 @@
 #define _HAVE_ARCAN_FRAMESERVER
 
 /*
- * these tend to take some tuning, this should just compensate
- * for jittery synchronization between frameserver and main 
- * engine, for playback, the datasource should buffer internally
- * to what is needed to compensate for poorly interleaved sources
- * in order for process limits etc. to hit right.
- */ 
-
-/*
- * ratio vcache / acache:
- * seconds = desired number of seconds internal buffer
- * vlimit / fps = seconds.
- * abps = (srate * channels * bytes per sample)
- * abps * seconds = abytes
- * abuffer_size (depends on audio device, but 4-8k?)
- * acache = abytes / abuffer_size
- *
- * these assume ideal interleaving in the source video
- * so for embedded tuning more care has to be taken in
- * the decode frameserver, for desktop, just be excessive with mem.  
- */
-#define ARCAN_FRAMESERVER_VCACHE_LIMIT 8 
-#define ARCAN_FRAMESERVER_ACACHE_LIMIT 128 
-#define ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP 30 
-#define ARCAN_FRAMESERVER_ABUFFER_SIZE 4096 
-#define ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH 450
-#define ARCAN_FRAMESERVER_PRESILENCE 16024
-#define ARCAN_FRAMESERVER_RESET_PTS_THRESH 800 
-
-/*
  * Missing;
  *  The resource mapping between main engine and frameservers is 
  *  1:1, 1 shmpage segment (associated with one vid,aid pair) etc.
@@ -145,7 +116,6 @@ struct frameserver_audmix {
 typedef struct arcan_frameserver {
 /* video / audio properties used */
 	arcan_frameserver_meta desc;
-	frame_queue vfq, afq;
 	struct arcan_evctx inqueue, outqueue;
 	int queue_mask;
 
@@ -297,16 +267,6 @@ void arcan_frameserver_dropsemaphores_keyed(char*);
  * is intact and look for any state-changes, e.g. resize (which would 
  * require a recalculation of shared memory layout */
 void arcan_frameserver_tick_control(arcan_frameserver*);
-
-/* override the default queue opts (may be necessary 
- * for some frame-server sources (decode in particular) */
-void arcan_frameserver_queueopts_override(unsigned short vcellcount, 
-	unsigned short abufsize, unsigned short acellcount, 
-	unsigned short presilence);
-
-void arcan_frameserver_queueopts(unsigned short* vcellcount, 
-	unsigned short* acellcount, unsigned short* abufsize, 
-	unsigned short* presilence);
 
 /* default implementations for shared memory framequeue readers, 
  * two with separate sync (vidcb audcb) and one where sync is 
