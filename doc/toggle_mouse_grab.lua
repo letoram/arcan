@@ -4,7 +4,7 @@
 -- @outargs: grabstate
 -- @longdescr: For some control schemes, it's important to prevent mouse input from
 -- being dropped due to window managers in the underlying OS. This function allows
--- you to toggle this state (or explicitly set it to MOUSE_GRAB_ON or MOUSE_GRAB_OFF).
+-- you to toggle this state (or explicitly set it to MOUSE_GRABON or MOUSE_GRABOFF).
 -- Calling this function always return the current active state.
 -- @note: always provide escape options for the user to disable grab in order to
 -- allow poor desktop environments to recover in the event of a live-lock.
@@ -14,8 +14,8 @@ function main()
 #ifdef MAIN
 	print( tostring( toggle_mouse_grab() ) );
 	print( tostring( toggle_mouse_grab() ) );
-	print( tostring( toggle_mouse_grab(MOUSE_GRAB_ON) ) );
-	print( tostring( toggle_mouse_grab(MOUSE_GRAB_OFF) ) );
+	print( tostring( toggle_mouse_grab(MOUSE_GRABON) ) );
+	print( tostring( toggle_mouse_grab(MOUSE_GRABOFF) ) );
 #endif
 
 #ifdef ERROR1
