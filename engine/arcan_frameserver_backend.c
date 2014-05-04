@@ -40,7 +40,6 @@
 #include "arcan_math.h"
 #include "arcan_general.h"
 #include "arcan_event.h"
-#include "arcan_framequeue.h"
 #include "arcan_video.h"
 #include "arcan_videoint.h"
 #include "arcan_audio.h"
@@ -49,38 +48,10 @@
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 
-static struct {
-	unsigned vcellcount;
-	unsigned abufsize;
-	unsigned short acellcount;
-	unsigned presilence;
-} queueopts = {
-	.vcellcount = ARCAN_FRAMESERVER_VCACHE_LIMIT,
-	.abufsize   = ARCAN_FRAMESERVER_ABUFFER_SIZE,
-	.acellcount = ARCAN_FRAMESERVER_ACACHE_LIMIT,
-	.presilence = ARCAN_FRAMESERVER_PRESILENCE
-};
-
-/*
- * used for both encode and decode,
- * for encode where the previously delivered frame hasn't been consumed
- * and for decode where the framequeue heuristic decides to throw away (or
- * emit) a frame.
- */
 static inline void emit_deliveredframe(arcan_frameserver* src, 
 	unsigned long long pts, unsigned long long framecount);
 static inline void emit_droppedframe(arcan_frameserver* src, 
 	unsigned long long pts, unsigned long long framecount);
-
-void arcan_frameserver_queueopts_override(unsigned short vcellcount,
-	unsigned short abufsize, unsigned short acellcount, 
-	unsigned short presilence)
-{
-	queueopts.vcellcount = vcellcount;
-	queueopts.abufsize = abufsize;
-	queueopts.acellcount = acellcount;
-	queueopts.presilence = presilence;
-}
 
 arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 {
@@ -94,12 +65,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
  * conntected to the vid */
 
 	src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
-
-	if (src->vfq.alive)
-		arcan_framequeue_free(&src->vfq);
-		
-	if (src->afq.alive)
-		arcan_framequeue_free(&src->afq);
 
 	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
 		src->shm.ptr;
@@ -146,22 +111,6 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	}
 
 	return ARCAN_OK;	
-}
-
-void arcan_frameserver_queueopts(unsigned short* vcellcount, 
-	unsigned short* acellcount, unsigned short* abufsize, 
-	unsigned short* presilence){
-	if (vcellcount)
-		*vcellcount = queueopts.vcellcount;
-
-	if (abufsize)
-		*abufsize = queueopts.abufsize;
-
-	if (acellcount)
-		*acellcount = queueopts.acellcount;
-
-	if (presilence)
-		*presilence = queueopts.presilence;
 }
 
 /* won't do anything on windows */
@@ -382,7 +331,6 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 
 	arcan_frameserver* tgt = state.ptr;
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
-	unsigned srcw, srch;
 
 	switch (cmd){
 	case FFUNC_READBACK: break;
@@ -391,7 +339,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		if (shmpage->resized)
 			arcan_frameserver_tick_control(tgt);
 
-		return shmpage->vready;
+		return shmpage->vready && (tgt->ofs_audb < 2 * ARCAN_ASTREAMBUF_LLIMIT);
 	break;
 	case FFUNC_TICK: arcan_frameserver_tick_control( tgt ); break;
 	case FFUNC_DESTROY: arcan_frameserver_free( tgt, false ); break;
@@ -399,16 +347,17 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 	case FFUNC_RENDER:
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, 
 			tgt->queue_mask, 0.5, tgt->vid);
-/* as we don't really "synch on resize", if one is 
- * detected, just ignore this frame */
-		srcw = shmpage->w;
-		srch = shmpage->h;
 	
-		if (srcw == tgt->desc.width && srch == tgt->desc.height){
-			rv = push_buffer( tgt, (char*) tgt->vidp, mode, srcw, srch, 
-				GL_PIXEL_BPP, width, height, GL_PIXEL_BPP);
-		}
-		
+		rv = push_buffer( tgt, (char*) tgt->vidp, mode, 
+			tgt->desc.width, tgt->desc.height, GL_PIXEL_BPP, width, height, GL_PIXEL_BPP);
+
+		if (tgt->desc.callback_framestate)
+			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
+	
+/*
+ * we also flush audio into an intermediate buffer here,
+ * as most scenarios with video also covers a connected audio stream.
+ */	
 		if (shmpage->abufused > 0){
 			pthread_mutex_lock(&tgt->lock_audb);
 
@@ -668,117 +617,6 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
-enum arcan_ffunc_rv arcan_frameserver_videoframe(
-	enum arcan_ffunc_cmd cmd, uint8_t* buf, 
-	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp, 
-	unsigned gltarget, vfunc_state vstate)
-{
-	assert(vstate.ptr);
-	assert(vstate.tag == ARCAN_TAG_FRAMESERV);
-
-	arcan_frameserver* src = (arcan_frameserver*) vstate.ptr;
-/* 
- * PEEK -
- * > 0 if there are frames to render
- */
-	if (cmd == FFUNC_POLL) {
-		frame_cell* ccell;
-
-		if (src->shm.ptr && src->shm.ptr->resized)
-			arcan_frameserver_tick_control(src);
-
-		if (src->playstate == ARCAN_BUFFERING){
-			int ci = src->vfq.ci;
-			int ni = src->vfq.ni;
-			int count = 0;
-			while (ci != ni){ 
-				count++; 
-				ci = (ci + 1) % src->vfq.c_cells; 
-			}
-			if (count > src->vfq.c_cells * 0.5){
-				src->playstate = ARCAN_PLAYING;
-			}
-/*
- * good spot to add adaptive resizing of input queues
- * to converge on the interleaving pattern in the source
- * decoder
- */
-		}
-
-		if (!(src->playstate == ARCAN_PLAYING)) 
-		return FFUNC_RV_NOFRAME;
-
-/* early out if the "synch- to PTS" feature has been disabled */
-retry:
-		ccell = arcan_framequeue_front(&src->vfq);
-
-		if (src->nopts || src->ptsdisable || !ccell)
-			return ccell ? FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
-
-/* are we ahead or behind? */
-		int64_t npts = ccell->tag;
-		int64_t now = arcan_frametime() - src->starttime;
-
-		if (now < npts){
-			int64_t ahead = npts - now;
-			if (ahead > src->desc.resynchthresh){
-				src->reclock = true;
-				src->starttime -= src->desc.resynchthresh;
-				goto retry;
-			}
-			else{
-				return ahead < src->desc.vfthresh ? 
-					FFUNC_RV_GOTFRAME : FFUNC_RV_NOFRAME;
-			}
-		}
-
-/* we might be lagging behind, in that case, skip frames and re-evaluate: */
-		int64_t behind = now - npts;
-		if (behind > src->desc.vskipthresh){
-			if (behind > src->desc.resynchthresh){
-				src->reclock = true;
-				src->starttime += src->desc.resynchthresh;
-				goto retry;
-			}
-		
-			src->lastpts = arcan_framequeue_front(&src->vfq)->tag;
-			arcan_framequeue_dequeue(&src->vfq);
-			emit_droppedframe(src, ccell->tag, src->desc.dropcount++);
-			goto retry;
-		}
-		else
-			return FFUNC_RV_GOTFRAME;
-	}
-/* no videoframes, but we have audioframes? might be the 
- * sounddrivers that have given up, last resort workaround */
-
-/* RENDER, can assume that peek has just happened */
-	else if (cmd == FFUNC_RENDER) {
-		frame_cell* current = arcan_framequeue_front(&src->vfq);
-		if (!current)
-			return FFUNC_RV_NOFRAME;
-
-		if (src->desc.callback_framestate)
-			emit_deliveredframe(src, current->tag, src->desc.framecount++);
-	
-		src->lastpts = current->tag;
-		arcan_errc rv = push_buffer(src, (char*) current->buf, 
-			gltarget, src->desc.width, src->desc.height, src->desc.bpp, 
-			width, height, bpp);
-
-		arcan_framequeue_dequeue(&src->vfq);
-		return rv;
-	}
-	else if (cmd == FFUNC_TICK)
-		arcan_frameserver_tick_control(src);
-
-	else if (cmd == FFUNC_DESTROY){
-		arcan_frameserver_free(src, false);
-	}
-
-	return FFUNC_RV_NOFRAME;
-}
-
 arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, 
 	arcan_aobj_id id, unsigned buffer, void* tag)
 {
@@ -787,7 +625,6 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 
 /* buffer == 0, shutting down */
 	if (buffer > 0 && src->audb && src->ofs_audb > ARCAN_ASTREAMBUF_LLIMIT){
-
 /* this function will make sure all monitors etc. gets their chance */
 		pthread_mutex_lock(&src->lock_audb);
 			arcan_audio_buffer(aobj, buffer, src->audb, src->ofs_audb, 
@@ -800,33 +637,6 @@ arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj,
 	}
 
 	return rv;
-}
-
-arcan_errc arcan_frameserver_audioframe(arcan_aobj* aobj, arcan_aobj_id id, 
-	unsigned buffer, void* tag)
-{
-	arcan_frameserver* src = (arcan_frameserver*) tag;
-	frame_cell* current = arcan_framequeue_front(&src->afq); 
-
-	if (src->playstate != ARCAN_PLAYING || !current)
-		return ARCAN_ERRC_NOTREADY;
-
-	if (src->reclock){
-		src->audioclock = src->lastpts;
-		src->reclock = false;
-	}
-
-	int nsamples = current->ofs / (src->desc.channels << 1);
-	
-	if (src->audioclock - src->lastpts > 0)
-		return ARCAN_ERRC_NOTREADY;
-
-	src->audioclock += (double)nsamples / ((double)src->desc.samplerate / 1000.0); 
-	arcan_audio_buffer(aobj, buffer, current->buf,  
-		current->ofs, src->desc.channels, src->desc.samplerate, tag);
-			
-	arcan_framequeue_dequeue(&src->afq);
-	return ARCAN_OK;
 }
 
 void arcan_frameserver_tick_control(arcan_frameserver* src)
@@ -848,7 +658,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 /* may happen multiple- times, reasonably costly, might
  * want rate-limit this */
 	if ( shmpage->resized ){
-		char labelbuf[32];
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
 		img_cons store = {
 			.w = shmpage->w, 
@@ -859,9 +668,6 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 		src->desc.width = store.w; 
 		src->desc.height = store.h; 
 		src->desc.bpp = store.bpp;
-
-		arcan_framequeue_free(&src->vfq);
-		arcan_framequeue_free(&src->afq);
 
 /* resize the source vid in a way that won't propagate to user scripts */
 		src->desc.samplerate = ARCAN_SHMPAGE_SAMPLERATE;
@@ -906,41 +712,8 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
  * and rebuild, slightly different if we don't maintain a queue 
  * (present as soon as possible)
  */
-		if (src->nopts){
-			arcan_video_alterfeed(src->vid, 
-				arcan_frameserver_videoframe_direct, cstate);
-		}
-		else {
-			arcan_video_alterfeed(src->vid, arcan_frameserver_videoframe, cstate);
-
-/* otherwise, figure out reasonable buffer sizes (or user-defined overrides)*/
-			unsigned short acachelim, vcachelim, abufsize, presilence;
-			arcan_frameserver_queueopts(&vcachelim, &acachelim, 
-				&abufsize, &presilence);
-			if (acachelim == 0 || abufsize == 0){
-				float mspvf = 1000.0 / 30.0;
-				float mspaf = 1000.0 / (float) ARCAN_SHMPAGE_SAMPLERATE;
-				abufsize = ceilf( (mspvf / mspaf) * 
-					ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t));
-				acachelim = vcachelim * 2;
-			}
-
-/* tolerance margins for PTS deviations */
-			src->desc.vfthresh = ARCAN_FRAMESERVER_DEFAULT_VTHRESH_SKIP;
-			src->desc.vskipthresh = ARCAN_FRAMESERVER_IGNORE_SKIP_THRESH;
-			src->desc.resynchthresh = ARCAN_FRAMESERVER_RESET_PTS_THRESH;
-			src->audioclock = 0; 
-
-/* just to get some kind of trace when threading acts up */
-			snprintf(labelbuf, 32, "audio_%lli", (long long) src->vid);
-			arcan_framequeue_alloc(&src->afq, src->vid, acachelim, abufsize,
-				arcan_frameserver_shmaudcb, labelbuf);
-
-			snprintf(labelbuf, 32, "video_%lli", (long long) src->aid);
-			arcan_framequeue_alloc(&src->vfq, src->vid, vcachelim, 
-				src->desc.width * src->desc.height * src->desc.bpp,
-				arcan_frameserver_shmvidcb, labelbuf);
-		}
+		arcan_video_alterfeed(src->vid, 
+			arcan_frameserver_videoframe_direct, cstate);
 
 		arcan_event rezev = {
 			.category = EVENT_FRAMESERVER,
@@ -1006,107 +779,10 @@ arcan_errc arcan_frameserver_flush(arcan_frameserver* fsrv)
 {
 	if (!fsrv)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (fsrv->vfq.alive){
-		arcan_framequeue_flush(&fsrv->vfq);
-		fsrv->playstate = ARCAN_BUFFERING;
-	}
-	
-	if (fsrv->afq.alive){
-		arcan_framequeue_flush(&fsrv->afq);
-		arcan_audio_rebuild(fsrv->aid);
-		fsrv->reclock = true;
-	}
+		
+	arcan_audio_rebuild(fsrv->aid);
 
 	return ARCAN_OK;
-}
-
-/* video- frames will always yield a ntr here that
- * corresponds to a full frame (no partials allowed) */
-ssize_t arcan_frameserver_shmvidcb(int fd, void* dst, size_t ntr)
-{
-	ssize_t rv = -1;
-	vfunc_state* state = arcan_video_feedstate(fd);
-
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
-		((arcan_frameserver*)state->ptr)->child_alive) {
-		arcan_frameserver* movie = state->ptr;
-		struct arcan_shmif_page* shm = movie->shm.ptr;
-
-		if (shm->vready) {
-			frame_cell* current = &(movie->vfq.da_cells[ movie->vfq.ni ]);
-			current->tag = shm->vpts;
-			memcpy(dst, movie->vidp, ntr);
-			shm->vready = false;
-			arcan_sem_post(movie->vsync);
-			rv = ntr;
-		}
-		else{
-			errno = EAGAIN;
-		}
-	}
-	else
-		errno = EINVAL;
-
-	return rv;
-}
-
-/* audio on the other hand, is not set up to get a fixed frame-size,
- * so here we may need to buffer */
-ssize_t arcan_frameserver_shmaudcb(int fd, void* dst, size_t ntr)
-{
-	vfunc_state* state = arcan_video_feedstate(fd);
-	ssize_t rv = -1;
-
-	if (state && state->tag == ARCAN_TAG_FRAMESERV && 
-		((arcan_frameserver*)state->ptr)->child_alive) {
-		arcan_frameserver* movie = (arcan_frameserver*) state->ptr;
-		struct arcan_shmif_page* shm = (struct arcan_shmif_page*)
-			movie->shm.ptr;
-
-		if (shm->aready) {
-			frame_cell* current = &(movie->afq.da_cells[ movie->afq.ni ]);
-			current->tag = shm->vpts;
-
-/*
- * sign that someone is trying to have some fun
- */
-			if (shm->abufused > ARCAN_SHMPAGE_AUDIOBUF_SZ){
-				shm->abufused = 0;
-				shm->aready = false;
-				arcan_sem_post(movie->async);
-				return EAGAIN;
-			}
-
-/* more in buffer than we can process in this frame? copy as much
- * as possible, return and let the main lock/step */
-			if (shm->abufused - movie->ofs_audp > ntr) {
-				memcpy(dst, movie->audp + movie->ofs_audp, ntr);
-				movie->ofs_audp += ntr;
-				rv = ntr;
-			}
-			else {
-				ssize_t nc = shm->abufused - movie->ofs_audp;
-				if (nc > 0){
-					memcpy(dst, movie->audp + movie->ofs_audp, nc);
-				}
-				else
-					;
-
-				rv = nc;
-				movie->ofs_audp = 0;
-				shm->abufused = 0;
-				shm->aready = false;
-				arcan_sem_post(movie->async);
-			}
-		}
-		else
-			errno = EAGAIN;
-	}
-	else
-		errno = EINVAL;
-
-	return rv;
 }
 
 arcan_frameserver* arcan_frameserver_alloc()
@@ -1138,17 +814,8 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * frames and heuristics for dropping, delaying or showing 
  * frames based on DTS/PTS values */
 	if (setup.use_builtin){
-		if (strcmp(setup.args.builtin.mode, "movie") == 0){
-			ctx->kind  = ARCAN_FRAMESERVER_INPUT;
-			ctx->aid   = arcan_audio_feed((arcan_afunc_cb) 
-											arcan_frameserver_audioframe, ctx, &errc);
-			ctx->queue_mask = EVENT_EXTERNAL;
-			ctx->autoplay = true;
-
-/* nopts / autoplay is preset from the calling context */
-		}
-/* similar to movie but no raw framequeues or feeds */
-		if (strcmp(setup.args.builtin.mode, "avfeed") == 0){
+		if ((strcmp(setup.args.builtin.mode, "movie") == 0) ||
+		(strcmp(setup.args.builtin.mode, "avfeed") == 0)){
 			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
 			ctx->socksig  = true;
 			ctx->nopts    = true;

@@ -161,7 +161,7 @@ static void generate_frame()
 		}
 	}
 
-	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 }
 
 /* decode as much into our shared audio buffer as possible,
@@ -241,10 +241,8 @@ static bool decode_aframe()
 					plane_size -= ntc;
 					ofbuf += ntc;
 
-					if (*abufused == ARCAN_SHMPAGE_AUDIOBUF_SZ)
-						arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD); 
-
-				} while (plane_size > 0);
+				} 
+				while (plane_size > 0);
 			}
 		;
 	}
@@ -285,9 +283,7 @@ static bool decode_vframe()
 			decctx.packet.dts : 0) * av_q2d(decctx.vstream->time_base) * 1000.0;
 		memcpy(decctx.vidp, decctx.video_buf, decctx.c_video_buf);
 
-		arcan_shmif_signal(&decctx.shmcont, 
-			decctx.shmcont.addr->abufused > AUD_SYNC_THRESH ? 
-			SHMIF_SIGVID | SHMIF_SIGAUD : SHMIF_SIGVID);
+		arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
 	}
 	else;
 
