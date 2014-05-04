@@ -325,7 +325,6 @@ set (
  SOURCES
  engine/arcan_event.c
  engine/arcan_lua.c
- engine/arcan_framequeue.c
  engine/arcan_main.c
  engine/arcan_db.c
  engine/arcan_video.c
@@ -337,7 +336,6 @@ set (
  engine/arcan_ttf.c
  engine/arcan_img.c
  engine/arcan_audioint.h
- engine/arcan_framequeue.h
  engine/arcan_event.h
  engine/arcan_lua.h
  engine/arcan_math.h

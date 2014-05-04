@@ -53,7 +53,6 @@
 #include "arcan_event.h"
 #include "arcan_audio.h"
 #include "arcan_video.h"
-#include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
 #include "arcan_lua.h"
 

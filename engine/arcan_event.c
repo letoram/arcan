@@ -45,7 +45,6 @@
 #include "arcan_shmif.h"
 #include "arcan_event.h"
 
-#include "arcan_framequeue.h"
 #include "arcan_frameserver_backend.h"
 
 static int64_t arcan_last_frametime = 0;
