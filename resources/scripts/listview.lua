@@ -4,9 +4,18 @@
 ----------
 -- listview_create(elem_list, nelems, font, fontsize) => table
 --
+-- Note:
+-- This is rather dated and could/should be rewritten to take advantage
+-- of API changes as to how clipping, ordering etc. work now. 
+-- (null_surface, color_surface, image_inherit_order, ..)
+--
+-- The mouse support currently lacks a decent way to detect if the list
+-- should scroll or not.. either we add scrollbar support and a moveable
+-- cursor, or add an invisible "scroll down while over" region.
+--
 -- Table methods:
 --------------------
--- show();
+-- show([order]);
 -- destroy();
 -- move_cursor(step, relative_motion);
 -- push_to_front()
@@ -23,7 +32,7 @@ local function listview_redraw(self)
 		return false;
 	end
 
-	if (valid_vid(self.listvid)) then 
+	if (valid_vid(self.listvid)) then
 		delete_image(self.listvid); 
 	end
 
@@ -36,7 +45,7 @@ local function listview_redraw(self)
 	self.last_beg = self.page_beg;
 	self.last_end = self.page_end;
 	
-	renderstr = "";
+	local renderstr = "";
 	
     for ind = self.page_beg, self.page_end do
 			local tmpname = self.gsub_ignore and self.list[ind] or 
@@ -56,7 +65,8 @@ local function listview_redraw(self)
 
 -- self.list_lines is GCed, .list is "not"
 	self.listvid, self.list_lines = render_text(renderstr, self.vspace);
-	
+
+	image_tracetag(self.listvid, "listview(list)");
 	link_image(self.listvid, self.window);
 	image_clip_on(self.listvid);
 	show_image(self.listvid);
@@ -89,9 +99,9 @@ local function listview_redraw(self)
 
 	move_image(self.window, self.borderw, self.borderw);
 	resize_image(self.border, props.width + self.borderw * 2, 
-		props.height + self.borderw, 5);
+		props.height + self.borderw, self.animspeed, INTERP_EXPOUT);
 	resize_image(self.window, props.width,
-		props.height - self.borderw, 5);
+		props.height - self.borderw, self.animspeed, INTERP_EXPOUT);
 	order_image(self.listvid, image_surface_properties(self.window).order + 1);
 end
 
@@ -101,15 +111,24 @@ local function listview_invalidate(self)
 end
 
 local function listview_destroy(self)
-	expire_image(self.window, 20);
-	blend_image(self.window, 0.0, 20);
-	expire_image(self.border, 20);
-	blend_image(self.border, 0.0, 20);
-	expire_image(self.cursorvid, 20);
-	blend_image(self.cursorvid, 0.0, 20);
-	expire_image(self.listvid, 20);
-	blend_image(self.listvid, 0.0, 20);
-	expire_image(self.anchor, 20);
+	if (self.cascade_destroy) then
+		self.cascade_destroy:destroy();
+	end
+
+	mouse_droplistener(self.mhandler);
+
+	resize_image(self.border, 1, 1, self.animspeed, INTERP_EXPOUT);
+	resize_image(self.window, 1, 1, self.animspeed, INTERP_EXPOUT);
+
+	expire_image(self.window, self.animspeed);
+	blend_image(self.window, 0.0, self.animspeed);
+	expire_image(self.border, self.animspeed);
+	blend_image(self.border, 0.0, self.animspeed);
+	expire_image(self.cursorvid, self.animspeed);
+	blend_image(self.cursorvid, 0.0, self.animspeed);
+	expire_image(self.listvid, self.animspeed);
+	blend_image(self.listvid, 0.0, self.animspeed);
+	expire_image(self.anchor, self.animspeed);
 end
 
 local function listview_select(self)
@@ -122,10 +141,24 @@ end
 -- this function will then look up in list-lines and convert into
 --  
 --
-local function listview_cursor_toline(self, rely)
+local function listview_cursor_toline(self, abs_x, abs_y)
+	local props = image_surface_resolve_properties(self.listvid);
+	abs_x = abs_x - props.x;
+	abs_y = abs_y - props.y;
+
+	if (abs_x > props.width or abs_y > props.height) then
+		return;
+	end
+
+	local i = 1;
+	while i < #self.list_lines-1 and abs_y >= self.list_lines[i+1] do
+		i = i + 1;
+	end
+
+	return i;	
 end
 
-local function listview_move_cursor(self, step, relative)
+local function listview_move_cursor(self, step, relative, mouse_src)
 	local itempos = relative and (self.cursor + step) or step;
 
 -- start with wrapping around
@@ -139,7 +172,7 @@ local function listview_move_cursor(self, step, relative)
 -- separator glyph in use
 	self.cursor = itempos;
 	if (string.sub( self.list[ self.cursor ], 1, 3) == "---" ) then
-		if (step ~= 0) then 
+		if (step ~= 0 and mouse_src == nil) then 
 			self:move_cursor(step, relative);
 		end
 	end
@@ -158,9 +191,14 @@ local function listview_move_cursor(self, step, relative)
 	self.cursorvid = nil;
 	
 -- create a new cursor
-	self.cursorvid = fill_surface(image_surface_properties(self.window, 5).width, 
+	self.cursorvid = fill_surface(image_surface_properties(
+		self.window, self.animspeed).width, 
 		self.font_size + 2, 255, 255, 255);
+	image_mask_set(self.cursorvid, MASK_UNPICKABLE);
+	image_tracetag(self.cursorvid, "listview(cursor)");
+
 	link_image(self.cursorvid, self.listvid);
+	image_clip_on(self.cursorvid, CLIP_SHALLOW);
 	blend_image(self.cursorvid, 0.3);
 	move_image(self.cursorvid, 0, self.list_lines[self.page_ofs] );
 	order_image(self.cursorvid, order + 1);
@@ -193,13 +231,23 @@ local function listview_calcpage(self, number, size, limit)
 	return page_start + 1, offset + 1, page_end;
 end
 
-function listview_show(self)
+function listview_show(self, order)
 	self.anchor    = fill_surface(1, 1, 0, 0, 0);
 	self.cursorvid = fill_surface(1, 1, 255, 255, 255);
 	self.border    = fill_surface(8, 8, self.dialog_border.r, 
 		self.dialog_border.g, self.dialog_border.b);
 	self.window    = fill_surface(8, 8, self.dialog_window.r, 
 		self.dialog_window.g, self.dialog_window.b);
+
+	image_tracetag(self.anchor, "listview(anchor)");
+	image_tracetag(self.cursorvid, "listview(cursor)");
+	image_tracetag(self.border, "listview(border)");
+	image_tracetag(self.window, "listview(window)");
+
+	image_mask_set(self.window, MASK_UNPICKABLE);
+	image_mask_set(self.border, MASK_UNPICKABLE);
+	image_mask_set(self.cursorvid, MASK_UNPICKABLE);
+	image_mask_set(self.anchor, MASK_UNPICKABLE);
 
 	move_image(self.anchor, -1, -1);
 	blend_image(self.anchor, 1.0, settings.fadedelay);
@@ -216,7 +264,7 @@ function listview_show(self)
 
 -- "bounce" expand-contract amination
 	self:move_cursor(0, true);
-	self:push_to_front();
+	self:push_to_front(order);
 end
 
 local function window_height(self, nlines)
@@ -228,8 +276,8 @@ local function window_height(self, nlines)
 	return txh;
 end
 
-function listview_create(elem_list, height, maxw, formatlist)
-	restbl = {
+function listview_create(elem_list, height, maxw, formatlist, nomouse)
+	local restbl = {
 		show          = listview_show,
 		destroy       = listview_destroy,
 		move_cursor   = listview_move_cursor,
@@ -237,7 +285,8 @@ function listview_create(elem_list, height, maxw, formatlist)
 		redraw        = listview_redraw,
 		select        = listview_select,
   	calcpage      = listview_calcpage,
-    invalidate    = listview_invalidate   
+    invalidate    = listview_invalidate,
+		animspeed = 20
 	};
 	
 	if (settings == nil) then 
@@ -248,6 +297,46 @@ function listview_create(elem_list, height, maxw, formatlist)
 		settings.colourtable = system_load("scripts/colourtable.lua")(); 
 	end
 	
+	local mh = {
+		motion = function(self, vid)
+			if (vid ~= restbl.listvid) then
+				return;
+			end
+
+			local mx, my = mouse_xy();
+			local line = listview_cursor_toline(restbl, mx, my);
+			if (line and line ~= restbl.cursor) then
+				restbl:move_cursor(line, false, true);
+			end
+
+			return true;
+		end,
+		clickh = function(self, vid, dx, dy, left)
+			if (restbl.on_click) then
+				local line = nil;
+
+				if (vid == restbl.listvid) then
+					local mx, my = mouse_xy();
+					line = listview_cursor_toline(restbl, mx, my);
+				else
+					print("mismatch,", image_tracetag(vid), image_tracetag(restbl.listvid));
+				end
+
+				restbl:on_click(line, left);
+			end
+		end,
+		click = function(self, vid, dx, dy)
+			self:clickh(vid, dx, dy, false);
+		end,
+		rclick = function(self, vid, dx, dy)
+			self:clickh(vid, dx, dy, true);
+		end,
+		own = function(self, vid)
+			return true; 
+		end
+	};
+
+	restbl.mhandler = mh;
 	restbl.height  = height;
 	restbl.list    = elem_list;
 	restbl.width   = 1;
