@@ -147,7 +147,8 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		.data.frameserver.otag = src->tag
 		};
 		
-/* force flush beforehand */
+/* force flush beforehand, in a saturated queue, data may still
+ * get lost here */
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 			src->queue_mask, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
@@ -155,7 +156,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 /*
  * prevent looping if the frameserver didn't last more than a second, 
  * indicative of it being broken, rapid relaunching could result
- * in triggering alarm systems etc. for fork() bombs 
+ * in triggering alarm systems. 
  */
 		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
 			bool cb_fstate = src->desc.callback_framestate;
@@ -216,6 +217,7 @@ static int push_buffer(arcan_frameserver* src, char* buf, unsigned int glid,
 	unsigned dw, unsigned dh, unsigned dpp)
 {
 	int8_t rv;
+	FLAG_DIRTY();
 
 	if (sw != dw ||
 		sh != dh) {

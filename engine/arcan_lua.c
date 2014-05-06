@@ -4647,22 +4647,68 @@ static int renderset(lua_State* ctx)
 	return 0;
 }
 
+enum colorspace {
+	PROC_RGBA = 0,
+	PROC_MONO8 = 1
+};
 
 struct proctarget_src {
 	lua_State* ctx;
 	uintptr_t cbfun;
 };
 
+struct rn_userdata {
+	void* bufptr;
+	int width, height;
+	size_t nelem;
+	bool valid;
+};
+
+static int procimage_get(lua_State* ctx)
+{
+	struct rn_userdata* ud = luaL_checkudata(ctx, 1, "calcImage");
+	if (ud->valid == false)
+		arcan_fatal("calcImage:get, calctarget object called out of scope\n");
+
+	int x = luaL_checknumber(ctx, 2);
+	int y = luaL_checknumber(ctx, 3);
+
+	if (x > ud->width || y > ud->height){
+		arcan_fatal("calcImage:get, requested coordinates out of range, "
+			"source: %d * %d, requested: %d, %d\n",
+			ud->width, ud->height, x, y);
+	}
+
+	uint8_t* img = ud->bufptr;
+	uint8_t r = img[(y * ud->width + x + 0) * GL_PIXEL_BPP];
+	uint8_t g = img[(y * ud->width + x + 1) * GL_PIXEL_BPP];
+	uint8_t b = img[(y * ud->width + x + 2) * GL_PIXEL_BPP];
+
+	int mono = luaL_optnumber(ctx, 4, 0);
+
+	if (mono){
+		lua_pushnumber(ctx, (float)(r + g + b) / 3.0);
+		return 1;
+	}	else {
+		lua_pushnumber(ctx, r);
+		lua_pushnumber(ctx, g);
+		lua_pushnumber(ctx, b);
+		return 3;
+	}
+}
+
 static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 	uint32_t s_buf, uint16_t width, uint16_t height, uint8_t bpp,
 	unsigned mode, vfunc_state state)
 {
 	if (cmd == FFUNC_DESTROY){
-		free(state.ptr);	
+		free(state.ptr);
+		return 0;
 	}
-	else if (cmd == FFUNC_TICK)
-		;
-	else if (cmd == FFUNC_READBACK){
+	
+	if (cmd != FFUNC_READBACK)
+		return 0;
+
 /* 
  * The buffer that comes from proctarget is special (gpu driver 
  * maps it into our address space, gdb and friends won't understand 
@@ -4670,32 +4716,35 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
  * see here, so we maintain a shared scrapbuffer, preventing 
  * script writes from breaking. 
  */ 
-		static void* scrapbuf;
-		static size_t scrapbuf_sz;
+	static void* scrapbuf;
+	static size_t scrapbuf_sz;
 
-		if (scrapbuf_sz < s_buf){
-			arcan_mem_free(scrapbuf);
-			scrapbuf = arcan_alloc_mem(s_buf, ARCAN_MEM_BINDING,
-				0, ARCAN_MEMALIGN_SIMD);
+	if (!scrapbuf || scrapbuf_sz < s_buf){
+		arcan_mem_free(scrapbuf);
+		scrapbuf = arcan_alloc_mem(s_buf, ARCAN_MEM_BINDING,
+			0, ARCAN_MEMALIGN_PAGE);
 
-			if (scrapbuf)
-				scrapbuf_sz = s_buf;
-			else
-				return 0;
-		} 
+		if (scrapbuf)
+			scrapbuf_sz = s_buf;
+		else
+			return 0;
+	} 
 
-/* 
- * terribly slow, but compiler SSE3 intrisics segfault
- * with some GPU drivers even though the buffer is mapped  
- * this might be workable by making sure we get page-aligned 
- * source/dst 
+/*
+ * Monitor these calls closely, experienced wild crashes here
+ * in the past. 
  */	
+	if ( (uintptr_t)buf % system_page_size != 0 && 
+		((uintptr_t)scrapbuf % system_page_size != 0)){
 		volatile uint32_t* inbuf = (uint32_t*) buf;
 		uint32_t* outbuf = (uint32_t*) scrapbuf;
 
-		int i;
-		for (i = 0; i < width * height; i++)
+		for (int i = 0; i < width * height; i++)
 			outbuf[i] = inbuf[i];
+	}
+	else {
+		memcpy(scrapbuf, buf, s_buf); 
+	}
 
 /*
  * enable for getting dumps of what's sent to calc targets 
@@ -4707,19 +4756,33 @@ static enum arcan_ffunc_rv proctarget(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 			saved = true;
 		}
 */
-		if (scrapbuf){
-			struct proctarget_src* src = state.ptr;
-			lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
 
-			lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
-			lua_pushlstring(src->ctx, (const char*) scrapbuf, width * height * 4);
-		 	lua_pushnumber(src->ctx, width);
-			lua_pushnumber(src->ctx, height);
-			lua_pushnumber(src->ctx, bpp);	
-			wraperr(src->ctx, lua_pcall(src->ctx, 4, 0, 0), "proctarget_cb");
-			lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
-		}
-	}
+	struct proctarget_src* src = state.ptr;
+	lua_rawgeti(src->ctx, LUA_REGISTRYINDEX, src->cbfun);
+
+	struct rn_userdata* ud = lua_newuserdata(src->ctx, 
+		sizeof(struct rn_userdata));
+	luaL_getmetatable(src->ctx, "calcImage");
+	lua_setmetatable(src->ctx, -2);
+
+	ud->bufptr = scrapbuf;
+	ud->width = width;
+	ud->height = height;
+	ud->nelem = width * height;
+	ud->valid = true;
+
+	lua_ctx_store.cb_source_kind = CB_SOURCE_IMAGE;
+
+ 	lua_pushnumber(src->ctx, width);
+	lua_pushnumber(src->ctx, height);
+	wraperr(src->ctx, lua_pcall(src->ctx, 3, 0, 0), "proctarget_cb");
+
+/*
+ * Even if the lua function maintains a reference to this userdata,
+ * we know that it's accessed outside scope and can put a fatal error on it.
+ */	
+	lua_ctx_store.cb_source_kind = CB_SOURCE_NONE;
+	ud->valid = false;
 
 	return 0;	
 }
@@ -6530,6 +6593,17 @@ static const luaL_Reg netfuns[] = {
 };
 #undef EXT_MAPTBL_NETWORK
 	register_tbl(ctx, netfuns);
+
+/*
+ * METATABLE definitions
+ *  [image] => used for calctargets
+ */
+	luaL_newmetatable(ctx, "calcImage");
+	lua_pushvalue(ctx, -1);
+	lua_setfield(ctx, -2, "__index");
+	lua_pushcfunction(ctx, procimage_get);
+	lua_setfield(ctx, -2, "get");
+	lua_pop(ctx, 1);
 
 	atexit(arcan_lua_cleanup);
 	return ARCAN_OK;

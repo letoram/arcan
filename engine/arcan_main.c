@@ -69,15 +69,13 @@
 
 arcan_dbh* dbhandle = NULL;
 
-/* globals, hackishly used in other places */
-extern char* arcan_themename;
-extern char* arcan_themepath;
-extern char* arcan_resourcepath;
-extern char* arcan_libpath;
-extern char* arcan_binpath;
-
 bool stderr_redirected = false;
 bool stdout_redirected = false;
+
+/*
+ * default, probed / replaced on some systems
+ */ 
+int system_page_size = 4096;
 
 static const struct option longopts[] = {
 	{ "help",         no_argument,       NULL, '?'},
@@ -411,7 +409,9 @@ themeswitch:
 
 	coresize.rlim_cur = coresize.rlim_max;
 	setrlimit(RLIMIT_CORE, &coresize);
+	system_page_size = sysconf(_SC_PAGE_SIZE);
 #endif
+
 
 /* setup VM, map arguments and possible overrides */ 
 	struct arcan_luactx* luactx = arcan_lua_alloc();
@@ -440,7 +440,7 @@ themeswitch:
 	arcan_lua_callvoidfun(luactx, "", true);
 	arcan_lua_callvoidfun(luactx, "show", false);
 
-	bool done = false, framepulse = true;
+	bool done = false, framepulse = true, feedtrig = true;
 	float lastfrag = 0.0f;
 	long long int lastflip = arcan_timemillis();
 	int monitor_counter = monitor;
@@ -454,7 +454,10 @@ themeswitch:
 #ifdef ARCAN_HMD
 		arcan_hmd_update();
 #endif
-		arcan_video_pollfeed();
+		if (feedtrig){
+			feedtrig = false;
+			arcan_video_pollfeed();
+		}
 
 /* NOTE: might be better if this terminates if we're closing in on a 
  * deadline as to not be saturated with an onslaught of I/O events. */
@@ -538,12 +541,14 @@ themeswitch:
 		const int min_respthresh = 9;
 
 /* only render if there's enough relevant changes */
-		if (nticks > 0 || frag - lastfrag > INTERP_MINSTEP){
+		if (!waitsleep || nticks > 0 || frag - lastfrag > INTERP_MINSTEP){
 
 /* separate between cheap (possibly vsync off or triple buffering) 
  * flip cost and expensive (vsync on) */
 			if (arcan_video_display.vsync_timing < 8.0){
 				unsigned cost = arcan_video_refresh(frag, true);
+				feedtrig = true;
+
 				arcan_bench_register_cost(cost);
 				arcan_bench_register_frame();
 					if (framepulse)
@@ -559,6 +564,8 @@ themeswitch:
 				int delta = arcan_timemillis() - lastflip;
 				if (delta >= (float)arcan_video_display.vsync_timing * vfalign){
 					unsigned cost = arcan_video_refresh(frag, true);
+					feedtrig = true;
+
 					arcan_bench_register_cost(cost);
 					arcan_bench_register_frame();
 					if (framepulse)
