@@ -275,9 +275,10 @@ FIND_PACKAGE ( SQLITE3 REQUIRED )
 endif(NOT SQLITE_AMALGAMATE) 
 
 message(STATUS "Lua")
-if (LUA51_JIT)
+if (ENABLE_LUAJIT)
+	message(STATUS "Looking for JIT enabled LUA VM")
 	FIND_PACKAGE ( Lua51JIT )
-endif (LUA51_JIT)
+endif()
 
 if (NOT LUA_LIBRARY)
 	FIND_PACKAGE ( Lua51 )

@@ -365,6 +365,9 @@ void arcan_bench_register_frame();
  * These are slated for removal / replacement when
  * we add a real package format etc.
  */
+
+extern int system_page_size;
+
 extern char* arcan_themename;
 extern char* arcan_resourcepath;
 extern char* arcan_themepath;

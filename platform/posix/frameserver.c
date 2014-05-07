@@ -716,6 +716,23 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 		setenv("ARCAN_SOCKIN_FD", convb, 1);
 
 /*
+ * frameservers that are semi-trusted currently get an
+ * environment variable to help search for theme-relative resources
+ */
+		char cwdinbuf[ PATH_MAX ];
+
+		if ( getcwd(cwdinbuf, PATH_MAX) ){
+			int baselen = strlen(arcan_themename) + strlen(arcan_themepath);
+			size_t cwd_sz = PATH_MAX + baselen + 1;
+			char cwdbuf[ cwd_sz ]; 
+			snprintf(cwdbuf, cwd_sz, "%s/%s/%s", 
+					cwdinbuf, arcan_themepath, arcan_themename); 
+			setenv("ARCAN_THEMEPATH", cwdbuf, 1);
+		}
+		else
+			setenv("ARCAN_THEMEPATH", ".", 1);
+
+/*
  * we need to mask this signal as when debugging parent process, 
  * GDB pushes SIGINT to children, killing them and changing
  * the behavior in the core process 

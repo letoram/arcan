@@ -134,7 +134,8 @@ static arcan_vobject* new_vobject(arcan_vobj_id* id,
 struct arcan_video_context* dctx);
 static inline void build_modelview(float* dmatr, 
 	float* imatr, surface_properties* prop, arcan_vobject* src);
-static void poll_readback(struct rendertarget* tgt);
+static inline void process_readback(struct rendertarget* tgt, float fract);
+static inline void poll_readback(struct rendertarget* tgt);
 
 static inline void trace(const char* msg, ...)
 {
@@ -931,7 +932,7 @@ static bool detach_fromtarget(struct rendertarget* dst, arcan_vobject* src)
 	if (src->owner == dst) 
 		src->owner = NULL;
 
-	if (dst->color){
+	if (dst->color && dst != &current_context->stdoutp){
 		dst->color->extrefc.attachments--;
 		src->extrefc.attachments--;
 
@@ -1215,6 +1216,15 @@ static void arcan_video_gldefault()
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
 	glCullFace(GL_BACK);
+
+	if (arcan_video_display.pbo_support){
+		glGenBuffers(1, &current_context->stdoutp.pbo);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, current_context->stdoutp.pbo);
+		glBufferData(GL_PIXEL_PACK_BUFFER, 
+			arcan_video_display.width * arcan_video_display.height * GL_PIXEL_BPP,
+			NULL, GL_STREAM_READ);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	}
 }
 
 const char* defvprg =
@@ -1298,16 +1308,15 @@ arcan_errc arcan_video_init(uint16_t width, uint16_t height, uint8_t bpp,
 		return ARCAN_ERRC_BADVMODE;
 	}
 
-/* flip twice (back->front->display) to hopefully wash out initial jitter */
+/*
+ * this should be switched to passively maintain timing information to
+ * be more reponsive to change etc. as the cost now is too high in terms
+ * of startup times. If initial values can be estimated or probed however, 
+ * it should work as a starting point for other heuristics to be reasonably
+ * stable. 
+ */
 	platform_video_timing(&arcan_video_display.vsync_timing, 
 		&arcan_video_display.vsync_stddev, &arcan_video_display.vsync_variance);
-
-/* 
- * try to get a decent measurement of actual timing, this is not really used for
- * synchronization but rather as a guess of we're actually vsyncing and how 
- * processing should be scheduled in relation to vsync, or if we should yield at
- * appropriate times.
- */
 
 	arcan_warning("arcan_video_init(), timing estimate"
 	"	(mean: %f, deviation: %f, variance: %f)\n", 
@@ -1695,7 +1704,7 @@ static arcan_errc attach_readback(arcan_vobj_id src)
  */ 
 	if (current_context->stdoutp.color)
 		return ARCAN_ERRC_UNACCEPTED_STATE;
-
+	
 	current_context->stdoutp.mode = RENDERTARGET_COLOR;
 	current_context->stdoutp.color = dstobj;
 
@@ -1705,6 +1714,8 @@ static arcan_errc attach_readback(arcan_vobj_id src)
 			return ARCAN_ERRC_UNACCEPTED_STATE;
 		}
 	}
+
+	dstobj->extrefc.attachments += 2;
 
 	return ARCAN_OK;
 }
@@ -1846,12 +1857,12 @@ arcan_errc arcan_video_alterreadback ( arcan_vobj_id did, int readback )
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	struct rendertarget* rtgt = find_rendertarget(vobj);
-	if (rtgt){
-		rtgt->readback = readback;
-		return ARCAN_OK;
-	}
+	if (!rtgt)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-	return ARCAN_ERRC_UNACCEPTED_STATE;
+	rtgt->readback = readback;
+	rtgt->readcnt = abs(readback); 
+	return ARCAN_OK;
 }
 
 arcan_errc arcan_video_rendertarget_setnoclear(arcan_vobj_id did, bool value)
@@ -2820,6 +2831,7 @@ arcan_errc arcan_video_deleteobject(arcan_vobj_id id)
 	if (current_context->stdoutp.color == vobj){
 /* NOTE: should we possibly decrease reference counting here? */
 		current_context->stdoutp.color = NULL;
+		vobj->extrefc.attachments -= 2;
 		glBindBuffer(GL_FRAMEBUFFER, 0);
 		glDeleteFramebuffers(1, &current_context->stdoutp.fbo);
 		current_context->stdoutp.fbo = 0;
@@ -4003,6 +4015,9 @@ void arcan_video_pollfeed(){
  for (off_t ind = 0; ind < current_context->n_rtargets; ind++)
 		poll_readback(&current_context->rtargets[ind]);	
 
+	if (current_context->stdoutp.readreq)
+		poll_readback(&current_context->stdoutp);
+
 	for (int i = 0; i < current_context->n_rtargets; i++)
 		poll_list(current_context->rtargets[i].first, vcookie);
 
@@ -4398,6 +4413,12 @@ arcan_errc arcan_video_forceupdate(arcan_vobj_id vid)
 	FLAG_DIRTY();
 	glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 		process_rendertarget(tgt, lastlerp);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	if (tgt->readback != 0){
+		process_readback(tgt, lastlerp);
+		poll_readback(tgt);	
+	}
 
 	return ARCAN_OK;
 }
@@ -4467,7 +4488,7 @@ static inline void process_readback(struct rendertarget* tgt, float fract)
 /* resolution is "by frame" */
 	if (tgt->readback < 0){
 		tgt->readcnt--;
-		if (tgt->readcnt == 0){
+		if (tgt->readcnt <= 0){
 			req_rb = true;
 			tgt->readcnt = abs(tgt->readback);
 		}
@@ -4507,7 +4528,7 @@ void arcan_video_refresh_GL(float lerp)
 			glBindFramebuffer(GL_FRAMEBUFFER, tgt->fbo);
 			process_rendertarget(tgt, lerp);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		
+
 			for (int ind = 0; ind < current_context->n_rtargets; ind++)
 				process_readback(&current_context->rtargets[ind], lerp);
 		}
@@ -4528,16 +4549,25 @@ void arcan_video_refresh_GL(float lerp)
 		process_rendertarget(&current_context->stdoutp, lerp);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+/*
+ * If we have a color attachment (someone reading WORLDID), there's
+ * no point doing an additional renderpass (little reason to define this
+ * except for testing). This can even be used for some fullscreen effects.
+ */
 #ifndef NO_ARCAN_VIDEO_STDOUT_FSQ
-		arcan_shader_activate(arcan_video_display.defaultshdr);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glBindTexture(GL_TEXTURE_2D,
-			current_context->stdoutp.color->current_frame->vstore->vinf.text.glid);
+		arcan_vobject* outp = current_context->stdoutp.color;
+
+		arcan_shader_activate(outp->program);
+		arcan_shader_envv(MODELVIEW_MATR, outp->prop_matr, sizeof(float) * 16); 
+		glBindTexture(GL_TEXTURE_2D, outp->current_frame->vstore->vinf.text.glid);
+	
 		int w = arcan_video_display.width >> 1;
 		int h = arcan_video_display.height >> 1;
 		
 		draw_vobj(-w, -h, w, h, arcan_video_display.mirror_txcos);
 		glBindTexture(GL_TEXTURE_2D, 0);
+#else
+		process_rendertarget(&current_context->stdoutp, lerp);
 #endif
 
 		if (current_context->stdoutp.readback != 0)
