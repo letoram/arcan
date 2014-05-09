@@ -301,7 +301,7 @@ static void rendermodel(arcan_vobject* vobj, arcan_3dmodel* src,
 	struct geometry* base = src->geometry;
 
 	while (base){
-			if (-1 != base->program){
+			if (base->program > 0){
 				arcan_shader_activate(base->program);
 			}
 			else{
@@ -644,7 +644,6 @@ arcan_vobj_id arcan_3d_buildplane(float minx, float minz, float maxx,float maxz,
 		newmodel->geometry->ntris = newmodel->geometry->nindices / 3;
 		arcan_video_allocframes(rv, 1, ARCAN_FRAMESET_SPLIT);
 		newmodel->geometry->indexformat = GL_UNSIGNED_INT;
-		newmodel->geometry->program = -1;
 		newmodel->geometry->complete = true;
 	}
 
@@ -667,8 +666,6 @@ static void invert_txcos(float* buf, unsigned bufs){
  * interleaved way rather than planar. */
 static void loadmesh(struct geometry* dst, CTMcontext* ctx)
 {
-	dst->program = -1;
-
 /* figure out dimensions */
 	dst->nverts = ctmGetInteger(ctx, CTM_VERTEX_COUNT);
 	dst->ntris  = ctmGetInteger(ctx, CTM_TRIANGLE_COUNT);
@@ -739,23 +736,25 @@ arcan_errc arcan_3d_meshshader(arcan_vobj_id dst,
 	arcan_shader_id shid, unsigned slot)
 {
 	arcan_vobject* vobj = arcan_video_getobject(dst);
-	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
-	if (vobj && vobj->feed.state.tag == ARCAN_TAG_3DOBJ){
-		struct geometry* cur = ((arcan_3dmodel*)vobj->feed.state.ptr)->geometry;
-		while (cur && slot){
-			cur = cur->next;
-			slot--;
-		}
+	if (!vobj)
+		return ARCAN_ERRC_NO_SUCH_OBJECT;
 
-		if (cur && slot == 0){
-			cur->program = shid;
-			rv = ARCAN_OK;
-		}
-		else rv = ARCAN_ERRC_BAD_ARGUMENT;
+	if (vobj->feed.state.tag != ARCAN_TAG_3DOBJ)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
+
+	struct geometry* cur = ((arcan_3dmodel*)vobj->feed.state.ptr)->geometry;
+	while (cur && slot){
+		cur = cur->next;
+		slot--;
 	}
 
-	return rv;
+	if (cur && slot <= 0)
+		cur->program = shid;
+	else 
+		return ARCAN_ERRC_BAD_ARGUMENT;
+
+	return ARCAN_OK;
 }
 
 struct threadarg{
