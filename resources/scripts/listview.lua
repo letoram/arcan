@@ -9,10 +9,6 @@
 -- of API changes as to how clipping, ordering etc. work now. 
 -- (null_surface, color_surface, image_inherit_order, ..)
 --
--- The mouse support currently lacks a decent way to detect if the list
--- should scroll or not.. either we add scrollbar support and a moveable
--- cursor, or add an invisible "scroll down while over" region.
---
 -- Table methods:
 --------------------
 -- show([order]);
@@ -36,12 +32,6 @@ local function listview_redraw(self)
 		delete_image(self.listvid); 
 	end
 
--- the others (scrollpos, scrollbtn) are anchored to scrollbar
-	if (valid_vid(self.scrollbar)) then
-		delete_image(self.scrollbar);
-		self.scrollbar = BADID;
-	end
-	
 	self.last_beg = self.page_beg;
 	self.last_end = self.page_end;
 	
@@ -69,33 +59,16 @@ local function listview_redraw(self)
 	image_tracetag(self.listvid, "listview(list)");
 	link_image(self.listvid, self.window);
 	image_clip_on(self.listvid);
+	image_inherit_order(self.listvid, true);
 	show_image(self.listvid);
 
 --
 -- Possibly switch [16] with whatever the font width is for one character
 --
-	local scroll  = self.vscroll and self.page_size < #self.list;
 	local props   = image_surface_properties(self.listvid);
-	self.padding  = scroll and 18 or 2; 
+	self.padding  = 2; 
 	props.width   = (props.width + self.padding);  --< self.maxw)
 --		and (props.width + self.padding) or self.maxw; 
-
---
--- If scrolling is enabled, adjust the window size,
--- add a scroll list and corresponding buttons
---
-	if (scroll) then
-		local wcol = settings.colourtable.dialog_window;
-		local cr = wcol.r * 0.5; 
-		local cg = wcol.g * 0.5;
-		local cb = wcol.b * 0.5;
-		self.scrollbar = fill_surface(self.padding, 
-			props.height - self.borderw, cr, cg, cb);
-		link_image(self.scrollbar, self.window);
-		move_image(self.scrollbar, props.width - self.borderw, 0);
-		order_image(self.scrollbar, image_surface_properties(self.window).order + 4);
-		show_image(self.scrollbar);
-	end
 
 	move_image(self.window, self.borderw, self.borderw);
 	resize_image(self.border, props.width + self.borderw * 2, 
@@ -111,6 +84,10 @@ local function listview_invalidate(self)
 end
 
 local function listview_destroy(self)
+	if (self.anchor == nil) then
+		return;
+	end
+
 	if (self.cascade_destroy) then
 		self.cascade_destroy:destroy();
 	end
@@ -120,15 +97,22 @@ local function listview_destroy(self)
 	resize_image(self.border, 1, 1, self.animspeed, INTERP_EXPOUT);
 	resize_image(self.window, 1, 1, self.animspeed, INTERP_EXPOUT);
 
-	expire_image(self.window, self.animspeed);
-	blend_image(self.window, 0.0, self.animspeed);
-	expire_image(self.border, self.animspeed);
-	blend_image(self.border, 0.0, self.animspeed);
-	expire_image(self.cursorvid, self.animspeed);
-	blend_image(self.cursorvid, 0.0, self.animspeed);
-	expire_image(self.listvid, self.animspeed);
-	blend_image(self.listvid, 0.0, self.animspeed);
 	expire_image(self.anchor, self.animspeed);
+	blend_image(self.window, 0.0, self.animspeed);
+	blend_image(self.border, 0.0, self.animspeed);
+
+	if (valid_vid(self.cursorvid)) then
+		blend_image(self.cursorvid, 0.0, self.animspeed);
+		self.cursorvid = nil;
+	end
+
+	if (valid_vid(self.listvid)) then
+		blend_image(self.listvid, 0.0, self.animspeed);
+		self.listvid = nil;
+	end
+
+	self.mhandler = nil;
+	self.anchor = nil;
 end
 
 local function listview_select(self)
@@ -186,39 +170,38 @@ local function listview_move_cursor(self, step, relative, mouse_src)
 
 -- cursor behavior changed (r431 and beyond),
 -- now it leaves a quickly fading trail rather than moving around ..
-	expire_image(self.cursorvid, 20);
-	blend_image(self.cursorvid, 0.0, 20);
-	self.cursorvid = nil;
+	if (valid_vid(self.cursorvid)) then
+		expire_image(self.cursorvid, self.animspeed);
+		blend_image(self.cursorvid, 0.0, self.animspeed);
+		self.cursorvid = nil;
+	end
 	
 -- create a new cursor
-	self.cursorvid = fill_surface(image_surface_properties(
+	self.cursorvid = color_surface(image_surface_properties(
 		self.window, self.animspeed).width, 
 		self.font_size + 2, 255, 255, 255);
 	image_mask_set(self.cursorvid, MASK_UNPICKABLE);
-	image_tracetag(self.cursorvid, "listview(cursor)");
 
 	link_image(self.cursorvid, self.listvid);
+	image_inherit_order(self.cursorvid, 1);
 	image_clip_on(self.cursorvid, CLIP_SHALLOW);
 	blend_image(self.cursorvid, 0.3);
 	move_image(self.cursorvid, 0, self.list_lines[self.page_ofs] );
-	order_image(self.cursorvid, order + 1);
+	order_image(self.cursorvid, 1);
 end
 
 local function listview_tofront(self, base)
+	if (self == nil or self.anchor == nil) then
+		return;
+	end
+
 	if (base == nil) then
 		base = max_current_image_order();
 	end
-	
-	order_image(self.border,    base + 1); 
-	order_image(self.window,    base + 2); 
-	order_image(self.listvid,   base + 3); 
-	order_image(self.cursorvid, base + 4);
-	if (self.scrollbar) then
-		order_image(self.scrollbar, base + 3);
-	end
+
+	order_image(self.anchor, base);
 end
 
--- Need this wholeheartedly to get around the headache of 1-indexed vs ofset. 
 local function listview_calcpage(self, number, size, limit)
 	local page_start = math.floor( (number-1) / size) * size;
 	local offset = (number - 1) % size;
@@ -232,38 +215,40 @@ local function listview_calcpage(self, number, size, limit)
 end
 
 function listview_show(self, order)
-	self.anchor    = fill_surface(1, 1, 0, 0, 0);
-	self.cursorvid = fill_surface(1, 1, 255, 255, 255);
-	self.border    = fill_surface(8, 8, self.dialog_border.r, 
-		self.dialog_border.g, self.dialog_border.b);
-	self.window    = fill_surface(8, 8, self.dialog_window.r, 
-		self.dialog_window.g, self.dialog_window.b);
+	self.anchor    = null_surface(1, 1);
+	self.border    = color_surface(8, 8, 
+		self.dialog_border.r, self.dialog_border.g, self.dialog_border.b);
+	self.window    = fill_surface(8, 8, 
+		self.dialog_window.r, self.dialog_window.g, self.dialog_window.b);
 
 	image_tracetag(self.anchor, "listview(anchor)");
-	image_tracetag(self.cursorvid, "listview(cursor)");
 	image_tracetag(self.border, "listview(border)");
 	image_tracetag(self.window, "listview(window)");
 
 	image_mask_set(self.window, MASK_UNPICKABLE);
 	image_mask_set(self.border, MASK_UNPICKABLE);
-	image_mask_set(self.cursorvid, MASK_UNPICKABLE);
 	image_mask_set(self.anchor, MASK_UNPICKABLE);
 
-	move_image(self.anchor, -1, -1);
-	blend_image(self.anchor, 1.0, settings.fadedelay);
+	move_image(self.anchor, 0, 0); 
 	
 	link_image(self.border, self.anchor);
 	link_image(self.window, self.anchor);
 
+	image_inherit_order(self.border, true);
+	image_inherit_order(self.window, true);
+	image_inherit_order(self.cursor, true);
+
+	order_image(self.window, 1);
+	order_image(self.cursor, 1);
+
+	show_image(self.anchor);
 	blend_image(self.window, self.dialog_window.a);
 	blend_image(self.border, self.dialog_border.a);
-	
-	link_image(self.cursorvid, self.anchor);
-	blend_image(self.cursorvid, 0.3);
+
 	move_image(self.window, self.borderw * 0.5, self.borderw * 0.5);
 
 -- "bounce" expand-contract amination
-	self:move_cursor(0, true);
+	self:move_cursor(0, true, false);
 	self:push_to_front(order);
 end
 
@@ -298,6 +283,7 @@ function listview_create(elem_list, height, maxw, formatlist, nomouse)
 	end
 	
 	local mh = {
+		name = "listview",
 		motion = function(self, vid)
 			if (vid ~= restbl.listvid) then
 				return;
@@ -318,11 +304,8 @@ function listview_create(elem_list, height, maxw, formatlist, nomouse)
 				if (vid == restbl.listvid) then
 					local mx, my = mouse_xy();
 					line = listview_cursor_toline(restbl, mx, my);
-				else
-					print("mismatch,", image_tracetag(vid), image_tracetag(restbl.listvid));
+					restbl:on_click(line, left);
 				end
-
-				restbl:on_click(line, left);
 			end
 		end,
 		click = function(self, vid, dx, dy)
@@ -353,10 +336,12 @@ function listview_create(elem_list, height, maxw, formatlist, nomouse)
 	restbl.dialog_window   = settings.colourtable.dialog_window;
 	restbl.gsub_ignore     = false;
 	
-	restbl.page_size = math.floor( height / (restbl.font_size + restbl.borderw) );
+	restbl.page_size = math.floor(height/(restbl.font_size + restbl.borderw));
 	
 	if (restbl.page_size == 0) then
-		warning("listview_create() -- bad arguments: empty page_size. (" .. tostring(height) .. " / " .. tostring(restbl.font_size + restbl.borderw) .. ")\n");
+		warning(string.format("listview_create() -- bad arguments: " ..
+			"empty page_size. (%d / %d)\n", height, 
+			restrbl.font_size + restbl.borderw));
 		return nil;
 	end
 
