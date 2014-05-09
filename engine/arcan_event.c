@@ -108,7 +108,7 @@ static void pull_killswitch(arcan_evctx* ctx)
 	arcan_sem_post(ctx->synch.handle);
 	arcan_warning("inconsistency while processing "
 		"shmpage events, pulling killswitch.\n");
-	arcan_frameserver_free(ks, ks->loop);
+	arcan_frameserver_free(ks);
 	ctx->synch.killswitch = NULL;
 }
 

@@ -348,6 +348,14 @@ void arcan_mem_lock(void*);
 void arcan_mem_unlock(void*);
 
 /*
+ * generate a LUA (and possibly other relevant states) dump
+ * into resourcepath/logs/prefix_timestamp.exts
+ * key is a message describing the reason,
+ * src is ann estimation of the origin
+ */
+void arcan_state_dump(const char* prefix, const char* key, const char* src);
+
+/*
  * Allocate memory intended for read-only or 
  * exec use (JIT, ...)
  */
