@@ -53,9 +53,7 @@ enum arcan_playstate {
 	ARCAN_PASSIVE = 0,
 	ARCAN_BUFFERING = 1,
 	ARCAN_PLAYING = 2,
-	ARCAN_PAUSED = 3,
-	ARCAN_FINISHED = 4,
-	ARCAN_SUSPENDED = 5
+	ARCAN_PAUSED = 3
 };
 
 enum arcan_frameserver_kinds {
@@ -151,7 +149,7 @@ typedef struct arcan_frameserver {
 	int64_t lastpts;
 	int64_t starttime;
 	int64_t launchedtime;
-	bool loop, autoplay, nopts, ptsdisable, socksig;
+	bool socksig;
 
 	enum arcan_frameserver_kinds kind;
 	
@@ -230,7 +228,7 @@ arcan_frameserver* arcan_frameserver_alloc();
 
 /* enable the forked process to start decoding */
 arcan_errc arcan_frameserver_playback(arcan_frameserver*);
-arcan_errc arcan_frameserver_pause(arcan_frameserver*, bool syssusp);
+arcan_errc arcan_frameserver_pause(arcan_frameserver*);
 arcan_errc arcan_frameserver_resume(arcan_frameserver*);
 
 /* 
@@ -349,10 +347,5 @@ void arcan_frameserver_dropshared(arcan_frameserver* ctx);
 void arcan_frameserver_configure(arcan_frameserver* ctx, 
 	struct frameserver_envp setup);
 
-/* stop playback and free resources associated with a movie,
- * in some cases, this will clear the container. 
- * As the frameservers are supposed to be used in conjunction
- * with their VID reference, refrain from any other 
- * manual memory management or aliasing */
-arcan_errc arcan_frameserver_free(arcan_frameserver*, bool loop);
+arcan_errc arcan_frameserver_free(arcan_frameserver*);
 #endif

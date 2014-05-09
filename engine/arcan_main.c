@@ -93,6 +93,7 @@ static const struct option longopts[] = {
 	{ "conservative", no_argument,       NULL, 'm'},
 	{ "database",     required_argument, NULL, 'd'},
 	{ "scalemode",    required_argument, NULL, 'r'},
+	{ "timedump",     required_argument, NULL, 'q'},
 	{ "multisamples", required_argument, NULL, 'a'},
 	{ "nosound",      no_argument,       NULL, 'S'},
 	{ "novsync",      no_argument,       NULL, 'v'},
@@ -119,6 +120,7 @@ printf("usage:\narcan [-whxyfmstptodgavSrMO] [theme] [themearguments]\n"
 "-M\t--monitor     \tsplit open a debug arcan monitoring session\n"
 "-O\t--monitor-out \tLOG:fname or themename\n"
 #endif
+"-q\t--timedump    \twait n ticks, dump snapshot to resources/logs/timedump\n"
 "-s\t--windowed    \ttoggle borderless window mode\n"
 "-p\t--rpath       \tchange path for resources (default: autodetect)\n"
 "-t\t--themepath   \tchange path for themes (default: autodetect)\n"
@@ -154,6 +156,7 @@ int main(int argc, char* argv[])
 	int height    = 480;
 	int winx      = -1;
 	int winy      = -1;
+	int timedump  = 0;
 	float vfalign = 0.6;
 	
 /* only used when monitor mode is activated, where we want some 
@@ -170,7 +173,7 @@ int main(int argc, char* argv[])
 /* VIDs all have a randomized base to provoke crashes in poorly written scripts,
  * only -g will make their base and sequence repeatable */
 
-	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:"
+	while ((ch = getopt_long(argc, argv, "w:h:x:y:?fvVmisp:q:"
 		"t:M:O:o:l:a:d:F:1:2:gr:S", longopts, NULL)) >= 0){
 	switch (ch) {
 	case '?' :
@@ -188,6 +191,7 @@ int main(int argc, char* argv[])
 	case 'l' : arcan_libpath = strdup(optarg); break;
 	case 'd' : dbfname = strdup(optarg); break;
 	case 'S' : nosound = true; break;
+	case 'q' : timedump = strtol(optarg, NULL, 10); break;
 	case 'a' : arcan_video_display.msasamples = strtol(optarg, NULL, 10); break;
 	case 'v' : arcan_video_display.vsync = false; break;
 	case 'V' : waitsleep = false; break;
@@ -521,7 +525,17 @@ themeswitch:
 					monitor_counter = monitor;
 					arcan_lua_statesnap(monitor_outf, buf, true);
 				}
-			} 
+			}
+
+/* debugging functionality to generate a dump and abort after n ticks */
+			if (timedump){
+				timedump -= nticks; 
+
+				if (timedump <= 0){
+					arcan_state_dump("timedump", "user requested a dump", __func__);
+					break;
+				}
+			}	
 		}
 
 /* this is internally buffering and non-blocking, hence the fd use compared

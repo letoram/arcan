@@ -35,19 +35,11 @@ function movietest()
 	move_image(text_vid, VRESW - sprop.width, 0, 0);
 	show_image(text_vid);
 
-	debugbar_vid = fill_surface(1, 64, 0, 255, 0);
-	debugbar_aid = fill_surface(1, 64, 0, 0, 255);
-
-	move_image(debugbar_vid, 0, VRESH - 128, 0);
-	move_image(debugbar_aid, 0, VRESH - 64,  0);
-	show_image(debugbar_vid);
-	show_image(debugbar_aid);	
-
 	webcam_ind = 0
 	
-	vid = load_movie("movietest.avi", FRAMESERVER_LOOP, function(source, statustbl)
+	vid = load_movie("movietest.avi",
+	function(source, statustbl)
 		if (statustbl.kind == "resized") then
-			print("main frameserver_event(",source, statustbl.kind,")"); 
 			show_image(source)
 			resize_image(source, statustbl.width, statustbl.height);
 			play_movie(source);

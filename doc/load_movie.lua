@@ -1,19 +1,15 @@
 -- load_movie
 -- @short: Launch a video decoding frameserver 
--- @inargs: resstr, looparg, callback
+-- @inargs: resstr, [optarg], callback
 -- @outargs: vid, aid
--- @longdescr: Spawn a new video decoding frameserver in a separate process and request that
--- resstr should be opened and decoded. Looparg can be either FRAMESERVER_LOOP or FRAMESERVER_NOLOOP, and determines what the frameserver should do when playback is finished or terminated abruptly. 
--- With LOOP, a new process will be launched, 
--- re-using as much resources of the old one as possible. 
--- @note: If the frameserver dies too quickly (threshold on a second or two repeatedly), the looping behavior will stop.
--- @note: this function also accepts device:, capture: and stream: arguments. 
+-- @longdescr: Spawn a new video decoding frameserver in a separate process and request that resstr should be opened and decoded. If *optarg* is not set to an argument string to pass to the decode frameserver, the second argument to load_movie will be the callback function.
+-- @note: this function also accepts device:, capture: and stream: arguments.
 -- @group: targetcontrol 
 -- @cfunction: arcan_lua_loadmovie
--- @related: play_movie
+-- @related: play_movie, launch_avfeed
 function main()
 #ifdef MAIN
-	vid = load_movie("test.avi", FRAMESERVER_LOOP, function(source, status)
+	vid = load_movie("test.avi", function(source, status)
 		print(status.kind);
 		play_movie(source);
 	end);

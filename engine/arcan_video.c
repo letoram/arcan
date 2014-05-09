@@ -368,7 +368,6 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 
 /* only non-persistant objects will have their GL objects removed immediately */
 			else if (current->flags.persist == false){
-				arcan_frameserver* dstfsrv = current->feed.state.ptr;
 
 /* glid 0 will be used as a flag for shared storages */
 				if (current->vstore->txmapped != TXSTATE_OFF 
@@ -376,10 +375,8 @@ static void deallocate_gl_context(struct arcan_video_context* context, bool del)
 					glDeleteTextures(1, &current->vstore->vinf.text.glid);
 					current->vstore->vinf.text.glid = 0;
 				}
-
-				if (dstfsrv && current->feed.state.tag == ARCAN_TAG_FRAMESERV)
-					arcan_frameserver_pause(dstfsrv, true);
 			}
+
 		}
 	}
 

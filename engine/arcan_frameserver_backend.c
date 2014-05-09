@@ -53,41 +53,36 @@ static inline void emit_deliveredframe(arcan_frameserver* src,
 static inline void emit_droppedframe(arcan_frameserver* src, 
 	unsigned long long pts, unsigned long long framecount);
 
-arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
+arcan_errc arcan_frameserver_free(arcan_frameserver* src)
 {
 	if (!src)
 		return ARCAN_ERRC_NO_SUCH_OBJECT;
 		
-/* the more complicated case here is looping,
- * meaning that if the frameserver dies or exits within
- * a set threshold, launch it again and reuse as much
- * of the resources as possible, but especially everything
- * conntected to the vid */
-
-	src->playstate = loop ? ARCAN_PAUSED : ARCAN_PASSIVE;
-
 	struct arcan_shmif_page* shmpage = (struct arcan_shmif_page*)
 		src->shm.ptr;
 
-	if (shmpage){
-		if (src->child_alive){
-			shmpage->dms = false;
+	if (!shmpage || !src->child_alive)
+		return ARCAN_ERRC_UNACCEPTED_STATE;
 
-			arcan_event exev = {
-				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_EXIT
-			};
+	shmpage->dms = false;
+	shmpage->vready = false;
+	shmpage->aready = false;
+	arcan_sem_post( src->vsync );
+	arcan_sem_post( src->async );
 
-			arcan_frameserver_pushevent(src, &exev);
-			arcan_frameserver_killchild(src);
+	arcan_event exev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_EXIT
+	};
+
+	arcan_frameserver_pushevent(src, &exev);
+	arcan_frameserver_killchild(src);
  
-			src->child = BROKEN_PROCESS_HANDLE;
-			src->child_alive = false;
-		}
+	src->child = BROKEN_PROCESS_HANDLE;
+	src->child_alive = false;
 
-		arcan_frameserver_dropshared(src);
-		src->shm.ptr = NULL;
-	}
+	arcan_frameserver_dropshared(src);
+	src->shm.ptr = NULL;
 
 /* unhook audio monitors */
 	arcan_aobj_id* base = src->alocks;
@@ -103,12 +98,10 @@ arcan_errc arcan_frameserver_free(arcan_frameserver* src, bool loop)
 	close(src->sockout_fd);
 #endif
 
-	if (!loop){
-		vfunc_state emptys = {0};
-		arcan_audio_stop(src->aid);
-		arcan_video_alterfeed(src->vid, NULL, emptys);
-		arcan_mem_free(src);
-	}
+	vfunc_state emptys = {0};
+	arcan_audio_stop(src->aid);
+	arcan_video_alterfeed(src->vid, NULL, emptys);
+	arcan_mem_free(src);
 
 	return ARCAN_OK;	
 }
@@ -139,6 +132,7 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 	if ( src->child_alive && 
 		(arcan_shmif_integrity_check(src->shm.ptr) == false ||
 		arcan_frameserver_validchild(src) == false)){
+
 		arcan_event sevent = {.category = EVENT_FRAMESERVER,
 		.kind = EVENT_FRAMESERVER_TERMINATED,
 		.data.frameserver.video = src->vid,
@@ -152,28 +146,6 @@ bool arcan_frameserver_control_chld(arcan_frameserver* src){
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &src->inqueue, 
 			src->queue_mask, 0.5, src->vid);
 		arcan_event_enqueue(arcan_event_defaultctx(), &sevent);
-	
-/*
- * prevent looping if the frameserver didn't last more than a second, 
- * indicative of it being broken, rapid relaunching could result
- * in triggering alarm systems. 
- */
-		if (src->loop && abs(arcan_frametime() - src->launchedtime) > 1000 ){
-			bool cb_fstate = src->desc.callback_framestate;
-			arcan_frameserver_free(src, true);
-			src->autoplay = true;
-			sevent.kind = EVENT_FRAMESERVER_LOOPED;
-
-			struct frameserver_envp args = {
-				.use_builtin = true,
-				.args.builtin.resource = src->source,
-				.args.builtin.mode = "movie"
-			};
-
-			arcan_frameserver_spawn_server(src, args);
-			src->desc.callback_framestate = cb_fstate;
-		}
-
 		return false;
 	}
 
@@ -286,7 +258,7 @@ enum arcan_ffunc_rv arcan_frameserver_dummyframe(
 	unsigned mode, vfunc_state state)
 {
     if (state.tag == ARCAN_TAG_FRAMESERV && state.ptr && cmd == FFUNC_DESTROY)
-        arcan_frameserver_free( (arcan_frameserver*) state.ptr, false);
+        arcan_frameserver_free( (arcan_frameserver*) state.ptr);
 
     return FFUNC_RV_NOFRAME;
 }
@@ -312,7 +284,7 @@ enum arcan_ffunc_rv arcan_frameserver_emptyframe(
 		break;
 
 		case FFUNC_DESTROY:
-			arcan_frameserver_free(tgt, false);
+			arcan_frameserver_free(tgt);
 		break;
 
 		default:
@@ -335,16 +307,22 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 	struct arcan_shmif_page* shmpage = tgt->shm.ptr;
 
 	switch (cmd){
-	case FFUNC_READBACK: break;
-	case FFUNC_POLL:
+	case FFUNC_READBACK: 
+	break;
 
+	case FFUNC_POLL:
 		if (shmpage->resized)
 			arcan_frameserver_tick_control(tgt);
 
-		return shmpage->vready && (tgt->ofs_audb < 2 * ARCAN_ASTREAMBUF_LLIMIT);
+		return tgt->playstate == ARCAN_PLAYING && shmpage->vready 
+				&& (tgt->ofs_audb < 2 * ARCAN_ASTREAMBUF_LLIMIT);
 	break;
-	case FFUNC_TICK: arcan_frameserver_tick_control( tgt ); break;
-	case FFUNC_DESTROY: arcan_frameserver_free( tgt, false ); break;
+
+	case FFUNC_TICK: 
+		arcan_frameserver_tick_control( tgt ); 
+	break;
+
+	case FFUNC_DESTROY: arcan_frameserver_free( tgt ); break;
 
 	case FFUNC_RENDER:
 		arcan_event_queuetransfer(arcan_event_defaultctx(), &tgt->inqueue, 
@@ -403,7 +381,7 @@ enum arcan_ffunc_rv arcan_frameserver_avfeedframe(
 	arcan_frameserver* src = (arcan_frameserver*) state.ptr;
 
 	if (cmd == FFUNC_DESTROY)
-		arcan_frameserver_free(state.ptr, false);
+		arcan_frameserver_free(state.ptr);
 
 	else if (cmd == FFUNC_TICK){
 /* done differently since we don't care if the frameserver wants 
@@ -730,34 +708,18 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 
 		arcan_event_enqueue(arcan_event_defaultctx(), &rezev);
 
-		if (src->autoplay && 
-			(src->playstate != ARCAN_PLAYING || src->playstate != ARCAN_BUFFERING))
-			arcan_frameserver_playback(src);
-
 /* acknowledge the resize */
 		shmpage->resized = false;
 	}
 
 }
 
-arcan_errc arcan_frameserver_playback(arcan_frameserver* src)
-{
-	if (!src)
-		return ARCAN_ERRC_BAD_ARGUMENT;
-
-	src->starttime = arcan_frametime();
-	src->playstate = ARCAN_BUFFERING;
-
-	arcan_audio_play(src->aid, false, 0.0);
-	return ARCAN_OK;
-}
-
-arcan_errc arcan_frameserver_pause(arcan_frameserver* src, bool syssusp)
+arcan_errc arcan_frameserver_pause(arcan_frameserver* src)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
 
 	if (src) {
-		src->playstate = (syssusp ? ARCAN_SUSPENDED : ARCAN_PAUSED);
+		src->playstate = ARCAN_PAUSED;
 		rv = ARCAN_OK;
 	}
 
@@ -767,12 +729,8 @@ arcan_errc arcan_frameserver_pause(arcan_frameserver* src, bool syssusp)
 arcan_errc arcan_frameserver_resume(arcan_frameserver* src)
 {
 	arcan_errc rv = ARCAN_ERRC_NO_SUCH_OBJECT;
-
-	if (src && (src->playstate == ARCAN_PAUSED ||
-		src->playstate == ARCAN_SUSPENDED)) {
-		src->playstate = ARCAN_BUFFERING;
-		rv = ARCAN_OK;
-	}
+	if (src)
+		src->playstate = ARCAN_PLAYING;
 
 	return rv;
 }
@@ -797,6 +755,7 @@ arcan_frameserver* arcan_frameserver_alloc()
 
 	pthread_mutex_init(&res->lock_audb, NULL);
 
+	res->playstate = ARCAN_PLAYING;
 	res->child_alive = true;
 
 /* shm- related settings are deferred as this is called previous to mapping
@@ -820,8 +779,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		(strcmp(setup.args.builtin.mode, "avfeed") == 0)){
 			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
 			ctx->socksig  = true;
-			ctx->nopts    = true;
-			ctx->autoplay = true;
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
 											arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->sz_audb  = 1024 * 64;
@@ -834,8 +791,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 /* "libretro" (or rather, interactive mode) treats a single pair of 
  * videoframe+audiobuffer each transfer, minimising latency is key. */ 
 		else if (strcmp(setup.args.builtin.mode, "libretro") == 0){
-			ctx->nopts    = true;
-			ctx->autoplay = true;
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb) 
 												arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
@@ -851,16 +806,12 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		else if (strcmp(setup.args.builtin.mode, "net-cl") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETCL;
 			ctx->use_pbo = false;
-			ctx->nopts   = false;
-			ctx->autoplay= true;
 			ctx->socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
 		else if (strcmp(setup.args.builtin.mode, "net-srv") == 0){
 			ctx->kind    = ARCAN_FRAMESERVER_NETSRV;
 			ctx->use_pbo = false;
-			ctx->nopts   = false;
-			ctx->autoplay= true;
 			ctx->socksig = true;
 			ctx->queue_mask = EVENT_EXTERNAL | EVENT_NET;
 		}
@@ -885,8 +836,6 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
  * switching parent-vs-child relations */
 	else{
 		ctx->kind = ARCAN_HIJACKLIB;
-		ctx->autoplay = true;
-		ctx->nopts = true;
 		ctx->queue_mask = EVENT_EXTERNAL;
 
 /* although audio playback tend to be kept in the child process, the

@@ -51,7 +51,7 @@ static void* nanny_thread(void* arg)
 	pid_t* pid = (pid_t*) arg;
 	
 	if (pid){
-		int counter = 60;
+		int counter = 10;
 		
 		while (counter--){
 			int statusfl;
@@ -157,7 +157,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 			struct cmsghdr hdr;
 			int fd[1];
 		} msgbuf;
-		
+
 		struct iovec nothing_ptr = {
 			.iov_base = &empty,
 			.iov_len = 1
@@ -354,7 +354,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	
 	arcan_frameserver* newseg = arcan_frameserver_alloc();
 	if (!shmalloc(newseg, false, NULL)){
-		arcan_frameserver_free(newseg, false);
+		arcan_frameserver_free(newseg);
 		return NULL;
 	}
 
@@ -376,7 +376,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 		arcan_frameserver_emptyframe, state, cons, 0);
 
 	if (newvid == ARCAN_EID){
-		arcan_frameserver_free(newseg, false);
+		arcan_frameserver_free(newseg);
 		return NULL;
 	}
 
@@ -442,17 +442,14 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
  * AVFEED/INTERACTIVE are the only supported subtypes (never buffered
  * INPUT á movie
  */
-	newseg->autoplay = true;
 	if (input){
 		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
 		newseg->socksig = true;
-		newseg->nopts = true;
 		keyev.data.target.ioevs[0].iv = 1;
 	}
 	else {
 		newseg->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 		newseg->socksig = true;
-		newseg->nopts = true;
 	}
 
 /*
@@ -610,7 +607,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				tgt->sockaddr = NULL;
 			}
 
-			arcan_frameserver_free(tgt, false);
+			arcan_frameserver_free(tgt);
 		default:
 		break;
 	}
@@ -632,8 +629,6 @@ arcan_frameserver* arcan_frameserver_listen_external(const char* key)
  */
 	res->kind = ARCAN_FRAMESERVER_INTERACTIVE;
 	res->socksig = false;
-	res->nopts = true;
-	res->autoplay = true;
 	res->pending = true;
 	res->launchedtime = arcan_timemillis();
 	res->child = BROKEN_PROCESS_HANDLE; 
