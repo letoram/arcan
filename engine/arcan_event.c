@@ -228,18 +228,33 @@ void arcan_event_queuetransfer(arcan_evctx* dstqueue, arcan_evctx* srcqueue,
 		
 /*
  * update / translate to make sure the corresponding frameserver<->lua mapping
- * can be found and tracked 
+ * can be found and tracked, there are also a few events that can be handled here
  */
-		if ((inev.category & allowed) > 0 ){
-			if (inev.category == EVENT_EXTERNAL)
-				inev.data.external.source = source;
+		if ((inev.category & allowed) == 0 )
+			continue;
 
-			else if (inev.category == EVENT_NET){
-				inev.data.network.source = source;
+		if (inev.category == EVENT_EXTERNAL){
+			arcan_frameserver* tgt; 
+
+			switch(inev.kind){
+				case EVENT_EXTERNAL_NOTICE_FLUSHAUD:
+					tgt = arcan_video_feedstate(source)->ptr;
+					if (tgt)
+						arcan_frameserver_flush(tgt);
+					continue;
+				break;
+
+				default:
+				break;
 			}
-
-			arcan_event_enqueue(dstqueue, &inev);
+			inev.data.external.source = source;
 		}
+
+		else if (inev.category == EVENT_NET){
+			inev.data.network.source = source;
+		}
+
+		arcan_event_enqueue(dstqueue, &inev);
 	}
 
 }

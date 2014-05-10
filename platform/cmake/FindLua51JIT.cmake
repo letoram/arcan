@@ -26,8 +26,6 @@
 #  License text for the above reference.)
 
 find_path(LUA_INCLUDE_DIR luajit.h
-  HINTS
-    ENV LUA_DIR
   PATH_SUFFIXES include/luajit-2.0 include/lua51 include/lua5.1 include/lua include
   PATHS
   ~/Library/Frameworks
@@ -54,7 +52,6 @@ find_library(LUA_LIBRARY
 
 set ( LUA51_JIT FALSE )
 if(LUA_LIBRARY)
-	message("found:${LUA_LIBRARY}")
 	set ( LUA51_JIT TRUE ) 
   # include the math/ldl library for Unix
   if(UNIX AND NOT BSD_BUILD)

@@ -334,11 +334,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 		if (tgt->desc.callback_framestate)
 			emit_deliveredframe(tgt, shmpage->vpts, tgt->desc.framecount++);
 	
-/*
- * we also flush audio into an intermediate buffer here,
- * as most scenarios with video also covers a connected audio stream.
- */	
-		if (shmpage->abufused > 0){
+		if (tgt->kind == ARCAN_FRAMESERVER_INTERACTIVE && shmpage->abufused > 0){
 			pthread_mutex_lock(&tgt->lock_audb);
 
 			size_t ntc = tgt->ofs_audb + shmpage->abufused > tgt->sz_audb ?
@@ -357,6 +353,7 @@ enum arcan_ffunc_rv arcan_frameserver_videoframe_direct(
 			memcpy(&tgt->audb[tgt->ofs_audb], tgt->audp, ntc);
 			tgt->ofs_audb += ntc;
 			shmpage->abufused = 0;
+			shmpage->aready = false;
 			pthread_mutex_unlock(&tgt->lock_audb);
 		}
 
@@ -597,6 +594,26 @@ static inline void emit_droppedframe(arcan_frameserver* src,
 	arcan_event_enqueue(arcan_event_defaultctx(), &deliv);
 }
 
+arcan_errc arcan_frameserver_audioframe_shared(arcan_aobj* aobj,
+	arcan_aobj_id id, unsigned buffer, void* tag)
+{
+	arcan_frameserver* src = (arcan_frameserver*) tag;
+	struct arcan_shmif_page* shmpage = src->shm.ptr;
+
+	if (!shmpage || !shmpage->aready)
+		return ARCAN_ERRC_NOTREADY;
+
+	if (shmpage->abufused)
+		arcan_audio_buffer(aobj, buffer, src->audp, shmpage->abufused,
+			src->desc.channels, src->desc.samplerate, tag);
+
+	shmpage->abufused = 0;
+	shmpage->aready = false;
+	arcan_sem_post(src->async);
+
+	return ARCAN_OK;
+}
+
 arcan_errc arcan_frameserver_audioframe_direct(arcan_aobj* aobj, 
 	arcan_aobj_id id, unsigned buffer, void* tag)
 {
@@ -770,21 +787,19 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 	struct frameserver_envp setup)
 {
 	arcan_errc errc;
-	
-/* "movie" mode involves parallel queues of raw, decoded, 
- * frames and heuristics for dropping, delaying or showing 
- * frames based on DTS/PTS values */
+
+/* avfeed   = sync audio and video transfers independently,
+ * movie    = legacy back when we used ffmpeg backend
+ * libretro = sync audio and video on video only */
 	if (setup.use_builtin){
 		if ((strcmp(setup.args.builtin.mode, "movie") == 0) ||
 		(strcmp(setup.args.builtin.mode, "avfeed") == 0)){
 			ctx->kind     = ARCAN_FRAMESERVER_AVFEED;
-			ctx->socksig  = true;
+			ctx->socksig  = false;
 			ctx->aid      = arcan_audio_feed((arcan_afunc_cb)
-											arcan_frameserver_audioframe_direct, ctx, &errc);
-			ctx->sz_audb  = 1024 * 64;
+											arcan_frameserver_audioframe_shared, ctx, &errc);
+			ctx->sz_audb  = 0; 
 			ctx->ofs_audb = 0;
-			ctx->audb     = arcan_alloc_mem(ctx->sz_audb, 
-				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
 
 			ctx->queue_mask = EVENT_EXTERNAL;
 		} 
@@ -795,6 +810,7 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 												arcan_frameserver_audioframe_direct, ctx, &errc);
 			ctx->kind     = ARCAN_FRAMESERVER_INTERACTIVE;
 			ctx->sz_audb  = 1024 * 64;
+			ctx->socksig  = false;
 			ctx->ofs_audb = 0;
 			ctx->audb     = arcan_alloc_mem(ctx->sz_audb,
 				ARCAN_MEM_ABUFFER, 0, ARCAN_MEMALIGN_PAGE);
