@@ -50,7 +50,8 @@ option(ENABLE_ASAN "Build with Address-Sanitizer, (gcc >= 4.8, clang >= 3.1)" OF
 option(ENABLE_NET "Build with networking support in frameserver" ON)
 option(ENABLE_LIBRETRO "Build with libretro support in frameserver" ON)
 option(ENABLE_LIBRETRO3D "Add 3D core support to libretro frameserver" ON)
-option(ENABLE_VIDDECENC "Build with video decoding/encoding support in frameserver" ON)
+option(ENABLE_VIDDEC "Build with libVLC video decoding support in frameserver" ON)
+option(ENABLE_VIDENC "Build with FFMPEG video encoding support in frameserver" ON)
 option(ENABLE_LED "Build with LED controller support in core" ON)
 option(ENABLE_HMD "Build with Head-Mounted Display support in core" ON)
 option(ENABLE_SIMD "Build with SIMD vector instruction set support" ON)
@@ -76,7 +77,8 @@ message("   -DENABLE_SIMD=[On|Off] : Enable SIMD optimized instructions")
 message("   -DENABLE_SIMD_ALIGNED=[Off|On] : |--> SIMD support assumes 16-byte aligned data")
 message("")
 message("   -DENABLE_NET=[On|Off] : Build networking frameserver (requires apache portable runtime libraries, APR)")
-message("   -DENABLE_VIDDECENC=[On|Off] : Build video encoding/decoding frameserver (requires ffmpeg libraries)")
+message("   -DENABLE_VIDDEC=[On|Off] : Build video decoding frameserver (requires libvlc libraries)")
+message("   -DENABLE_VIDENC=[On|Off] : Build video encoding frameserver (requires ffmpeg libraries)")
 message("")
 message("   -DENABLE_LIBRETRO=[On|Off] : Build libretro frameserver")
 message("   -DENABLE_LIRETRO3D=[On|Off] : |--> Enable 3D support in libretro frameserver")
@@ -465,27 +467,30 @@ if (AVFEED_SOURCES)
 	list(APPEND FSRV_AVFEED_LIBRARIES ${AVFEED_LIBS})
 endif()
 
-if (${ENABLE_VIDDECENC})
-	FIND_PACKAGE ( FFMPEG REQUIRED)
-	message("--> Adding video encoding/decoding support.") 
-	set(FSRV_DECODE_LIBRARIES 
-		${FFMPEG_LIBRARIES}
-		pthread
-		${BZIP2_LIBRARIES}
-		${ZLIB_LIBRARY}
+if (${ENABLE_VIDDEC})
+	FIND_PACKAGE( VLC REQUIRED )
+	set(FSRV_DECODE_SOURCES 
+		frameserver/decode_vlc.c
+		external/fft/kiss_fft.c
+		external/fft/kiss_fftr.c
 	)
+	set(FSRV_DECODE_LIBRARIES
+		${LIBVLC_LIBRARY}
+	)
+	
+	list(APPEND INCLUDE_DIRS
+		${LIBVLC_INCLUDE_DIR}
+	)
+endif()
 
+if (${ENABLE_VIDENC})
+	FIND_PACKAGE ( FFMPEG REQUIRED)
+	message("--> Adding video encoding (ffmpeg) support.") 
 	set(FSRV_ENCODE_LIBRARIES 
 		${FFMPEG_LIBRARIES}
 		pthread
 		${BZIP2_LIBRARIES}
 		${ZLIB_LIBRARY}
-	)
-
-	set(FSRV_DECODE_SOURCES 
-		frameserver/decode.c
-		external/fft/kiss_fft.c
-		external/fft/kiss_fftr.c
 	)
 
 	set(FSRV_ENCODE_SOURCES
