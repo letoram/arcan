@@ -189,7 +189,8 @@ typedef struct arcan_frameserver {
 struct frameserver_envp {
 	bool use_builtin;
 	bool custom_feed;
-	
+	int init_w, init_h;
+
 	union {
 
 		struct {
@@ -246,7 +247,7 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver*, int fd);
  * the pre-existing eventqueue of the frameserver controlled by (ctx)
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, bool input);
+	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag);
 
 /* take the argument event and add it to the event queue of the target, 
  * returns a failure if the event queue in the child is full */
