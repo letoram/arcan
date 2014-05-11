@@ -640,11 +640,11 @@ void arcan_frameserver_tick_control(arcan_frameserver* src)
 {
 	struct arcan_shmif_page* shmpage = src->shm.ptr;
 
-    if (!arcan_frameserver_control_chld(src) || !src || !shmpage){
+	if (!arcan_frameserver_control_chld(src) || !src || !shmpage){
 		vfunc_state cstate = *arcan_video_feedstate(src->vid);
 		arcan_video_alterfeed(src->vid, arcan_frameserver_emptyframe, cstate);
-        return;
-    }
+		return;
+	}
 
 /* only allow the two categories below, and only let the 
  * internal event queue be filled to half in order to not 
@@ -872,4 +872,10 @@ void arcan_frameserver_configure(arcan_frameserver* ctx,
 		&(ctx->inqueue), &(ctx->outqueue), true);
 	ctx->inqueue.synch.killswitch = (void*) ctx;
 	ctx->outqueue.synch.killswitch = (void*) ctx;
+
+	struct arcan_shmif_page* shmpage = ctx->shm.ptr;
+	shmpage->w = setup.init_w;
+	shmpage->h = setup.init_h; 
+
+	arcan_shmif_calcofs(shmpage, &(ctx->vidp), &(ctx->audp));
 }

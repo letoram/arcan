@@ -150,49 +150,59 @@ arcan_errc arcan_frameserver_pushfd(arcan_frameserver* fsrv, int fd)
 {
 	arcan_errc rv = ARCAN_ERRC_BAD_ARGUMENT;
 
-	if (fsrv && fd > 0){
-		char empty = '!';
+	if (!fsrv || fd == 0)
+		return rv; 
 
-		struct cmsgbuf {
-			struct cmsghdr hdr;
-			int fd[1];
-		} msgbuf;
-
-		struct iovec nothing_ptr = {
-			.iov_base = &empty,
-			.iov_len = 1
-		};
+	char empty = '!';
 	
-		struct msghdr msg = {
-			.msg_name = NULL,
-			.msg_namelen = 0,
-			.msg_iov = &nothing_ptr,
-			.msg_iovlen = 1,
-			.msg_flags = 0,
-			.msg_control = &msgbuf,
-			.msg_controllen = CMSG_LEN(sizeof(int))
-		};
+/* 
+ * Horrible interface (thanks Linux) and disguisting workaround (thanks GNU)
+ * This may not be the place to rally for compiler ***-ups but not agreeing on a 
+ * decent error managament system (intervals, what's that?) 
+ * and keeping the whole Wgnu-shoot-me-now system... 
+ */ 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
+	struct cmsgbuf {
+		struct cmsghdr hdr;
+		int fd[1];
+	} msgbuf;
+#pragma GCC diagnostic pop
 
-		struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-		cmsg->cmsg_len = msg.msg_controllen;
-		cmsg->cmsg_level = SOL_SOCKET;
-		cmsg->cmsg_type  = SCM_RIGHTS;
-		int* dptr = (int*) CMSG_DATA(cmsg);
-		*dptr = fd;
+	struct iovec nothing_ptr = {
+		.iov_base = &empty,
+		.iov_len = 1
+	};
+	
+	struct msghdr msg = {
+		.msg_name = NULL,
+		.msg_namelen = 0,
+		.msg_iov = &nothing_ptr,
+		.msg_iovlen = 1,
+		.msg_flags = 0,
+		.msg_control = &msgbuf,
+		.msg_controllen = CMSG_LEN(sizeof(int))
+	};
+
+	struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_len = msg.msg_controllen;
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type  = SCM_RIGHTS;
+	int* dptr = (int*) CMSG_DATA(cmsg);
+	*dptr = fd;
 		
-		if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0){
-			rv = ARCAN_OK;
-			arcan_event ev = {
-				.category = EVENT_TARGET,
-				.kind = TARGET_COMMAND_FDTRANSFER
-			};
-			
-			arcan_frameserver_pushevent( fsrv, &ev );
-		}
-		else
-			arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", 
-				fd, fsrv->sockout_fd, errno, strerror(errno));
+	if (sendmsg(fsrv->sockout_fd, &msg, 0) >= 0){
+		rv = ARCAN_OK;
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_FDTRANSFER
+		};
+		
+		arcan_frameserver_pushevent( fsrv, &ev );
 	}
+	else
+		arcan_warning("frameserver_pushfd(%d->%d) failed, reason(%d) : %s\n", 
+			fd, fsrv->sockout_fd, errno, strerror(errno));
 	
 	close(fd);
 	return rv;
@@ -347,7 +357,7 @@ fail:
  * looks for an ident on the socket.
  */
 arcan_frameserver* arcan_frameserver_spawn_subsegment(
-	arcan_frameserver* ctx, bool input)
+	arcan_frameserver* ctx, bool input, int hintw, int hinth, int tag)
 {
 	if (!ctx || ctx->child_alive == false)
 		return NULL;
@@ -360,16 +370,15 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 	if (!newseg)
 		return NULL;
-	
-/*
- * Display object (default at 32x32x4, nothing will be activated
- * until first resize) as per arcan_frameserver_emptyframe
- */	
-	img_cons cons = {.w = 32, .h = 32, .bpp = 4};
+
+	hintw = hintw < 0 || hintw > ARCAN_SHMPAGE_MAXW ? 32 : hintw;
+	hinth = hinth < 0 || hinth > ARCAN_SHMPAGE_MAXH ? 32 : hinth;
+
+	img_cons cons = {.w = hintw , .h = hinth, .bpp = ARCAN_SHMPAGE_VCHANNELS};
 	vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = newseg};
 	arcan_frameserver_meta vinfo = {
-		.width = 32, 
-		.height = 32, 
+		.width = hintw, 
+		.height = hinth, 
 		.bpp = GL_PIXEL_BPP
 	};
 	arcan_vobj_id newvid = arcan_video_addfobject((arcan_vfunc_cb)
@@ -439,13 +448,13 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 
 /*
  * Memory- constraints and future refactoring plans means that
- * AVFEED/INTERACTIVE are the only supported subtypes (never buffered
- * INPUT á movie
+ * AVFEED/INTERACTIVE are the only supported subtypes 
  */
 	if (input){
 		newseg->kind = ARCAN_FRAMESERVER_OUTPUT;
 		newseg->socksig = true;
 		keyev.data.target.ioevs[0].iv = 1;
+		keyev.data.target.ioevs[1].iv = tag;
 	}
 	else {
 		newseg->kind = ARCAN_FRAMESERVER_INTERACTIVE;
@@ -672,26 +681,20 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	if (child) {
 		close(sockp[1]);
 
-/* 
- * init- call (different from loop-exec as we need to 
- * keep the vid / aud as they are external references into the 
- * scripted state-space 
- */
-		if (ctx->vid == ARCAN_EID){
-			img_cons cons = {.w = 32, .h = 32, .bpp = 4};
-			vfunc_state state = {.tag = ARCAN_TAG_FRAMESERV, .ptr = ctx};
-
-			ctx->source = strdup(setup.args.builtin.resource);
-			ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
-				arcan_frameserver_emptyframe, state, cons, 0);
-			ctx->aid = ARCAN_EID;
-		}
-		else if (setup.custom_feed == false){ 
-			vfunc_state* cstate = arcan_video_feedstate(ctx->vid);
-			arcan_video_alterfeed(ctx->vid, (arcan_vfunc_cb)
-				arcan_frameserver_emptyframe, *cstate); 
-/* revert back to empty vfunc? */
-		}
+		img_cons cons = {
+			.w = setup.init_w, 
+			.h = setup.init_h, 
+			.bpp = 4
+		};
+		vfunc_state state = {
+			.tag = ARCAN_TAG_FRAMESERV, 
+			.ptr = ctx
+		};
+	
+		ctx->source = strdup(setup.args.builtin.resource);
+		ctx->vid = arcan_video_addfobject((arcan_vfunc_cb)
+			arcan_frameserver_emptyframe, state, cons, 0);
+		ctx->aid = ARCAN_EID;
 
 		ctx->sockout_fd  = sockp[0];
 		ctx->child       = child;

@@ -1699,7 +1699,7 @@ static int loadmovie(lua_State* ctx)
 
 	if (lua_type(ctx, 2) == LUA_TNUMBER){
 		arcan_warning("load_movie(), second argument uses deprecated "
-			"number argument type.");
+			"number argument type.\n");
 		cbind++;
 	}
 	else if (lua_type(ctx, 2) == LUA_TSTRING){
@@ -4049,9 +4049,6 @@ static int targetseek(lua_State* ctx)
 		ev.data.target.ioevs[0].fv = val;
 
 	tgtevent(tgt, ev);
-	
-	arcan_frameserver* fsrv = (arcan_frameserver*) state->ptr;
-	arcan_frameserver_flush(fsrv);
 
 	return 0;
 }
@@ -4121,6 +4118,57 @@ static int targetskipmodecfg(lua_State* ctx)
 	ev.data.target.ioevs[4].iv = skipdbg2;
 
 	tgtevent(tgt, ev);
+
+	return 0;
+}
+
+static int targetbond(lua_State* ctx)
+{
+	LUA_TRACE("bond_target");
+	arcan_vobject* vobj_a;
+	arcan_vobject* vobj_b;
+	
+/* a state to b */
+	luaL_checkvid(ctx, 1, &vobj_a);
+	luaL_checkvid(ctx, 2, &vobj_b);
+	
+	if (vobj_a->feed.state.tag != ARCAN_TAG_FRAMESERV ||
+		vobj_b->feed.state.tag != ARCAN_TAG_FRAMESERV)
+		arcan_fatal("bond_target(), both arguments must be valid frameservers.\n");
+
+/* if target_a is net or target_b is net, a possible third argument
+ * may be added to specify which domain that should receive the state
+ * in question */
+#ifndef WIN32
+	int pair[2];
+	if (pipe(pair) == -1){
+		arcan_warning("bond_target(), pipe pair failed. Reason: %s\n", strerror(errno));
+		return -1;
+	}
+
+	arcan_frameserver* fsrv_a = vobj_a->feed.state.ptr;
+	arcan_frameserver* fsrv_b = vobj_b->feed.state.ptr;
+
+	if (ARCAN_OK == arcan_frameserver_pushfd(fsrv_a, pair[1]) &&
+		ARCAN_OK == arcan_frameserver_pushfd(fsrv_b, pair[0])){
+		arcan_event ev = {
+			.category = EVENT_TARGET,
+			.kind = TARGET_COMMAND_STORE
+		};
+
+		arcan_frameserver_pushevent(fsrv_a, &ev);
+
+		ev.kind = TARGET_COMMAND_RESTORE;
+		arcan_frameserver_pushevent(fsrv_b, &ev);
+	}
+
+	close(pair[0]);
+	close(pair[1]);	
+
+#else
+	arcan_warning("bond_target yet to be implemented for WIN32");
+#endif
+
 
 	return 0;
 }
@@ -4381,7 +4429,7 @@ static int targetalloc(lua_State* ctx)
 
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
 			newref = arcan_frameserver_spawn_subsegment(
-				(arcan_frameserver*) state->ptr, true); 
+				(arcan_frameserver*) state->ptr, true, 0, 0, 0); 
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
 				"contain a frameserver\n.");
@@ -4769,7 +4817,7 @@ static int spawn_recsubseg(lua_State* ctx,
 	}
 
 	arcan_frameserver* rv = 
-		arcan_frameserver_spawn_subsegment(fsrv, false);
+		arcan_frameserver_spawn_subsegment(fsrv, false, 0, 0, 0);
 
 	if(rv){
 		vfunc_state fftag = {
@@ -4816,6 +4864,8 @@ static int spawn_recfsrv(lua_State* ctx,
 	const char* argl, const char* resf)
 {
 	arcan_frameserver* mvctx = arcan_frameserver_alloc();
+	arcan_vobject* dobj = arcan_video_getobject(did);
+
 	mvctx->vid  = did;
 
 	/* in order to stay backward compatible API wise, 
@@ -4830,7 +4880,9 @@ static int spawn_recfsrv(lua_State* ctx,
 		.use_builtin = true,
 		.custom_feed = true,
 		.args.builtin.mode = "record",
-		.args.builtin.resource = argl
+		.args.builtin.resource = argl,
+		.init_w = dobj->vstore->w,
+		.init_h = dobj->vstore->h
 	};
 
 /* we use a special feed function meant to flush audiobuffer + 
@@ -4842,7 +4894,6 @@ static int spawn_recfsrv(lua_State* ctx,
 	arcan_video_alterfeed(did, arcan_frameserver_avfeedframe, fftag);
 
 	if ( arcan_frameserver_spawn_server(mvctx, args) == ARCAN_OK ){
-		arcan_vobject* dobj = arcan_video_getobject(did);
 
 /* we define the size of the recording to be that of the storage
  * of the rendertarget vid, this should be allocated through fill_surface */
@@ -6329,6 +6380,7 @@ static const luaL_Reg tgtfuns[] = {
 {"stepframe_target",           targetstepframe          },
 {"snapshot_target",            targetsnapshot           },
 {"restore_target",             targetrestore            },
+{"bond_target",                targetbond               },
 {"reset_target",               targetreset              },
 {"define_rendertarget",        renderset                },
 {"define_recordtarget",        recordset                },

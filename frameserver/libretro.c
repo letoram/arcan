@@ -28,6 +28,7 @@
 #include <string.h>
 #include <strings.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include "../shmif/arcan_shmif.h"
 
@@ -1191,18 +1192,41 @@ static inline void targetev(arcan_event* ev)
 
 		case TARGET_COMMAND_RESTORE:
 			if (BADID != retroctx.last_fd){
-				ssize_t dstsize = -1;
+				ssize_t dstsize = retroctx.serialize_size();
+				size_t ntc = dstsize;
+				void* buf;
 
-				void* buf = frameserver_getrawfile_handle( retroctx.last_fd, &dstsize);
-				if (buf != NULL && dstsize > 0){
-					retroctx.deserialize( buf, dstsize );
-					reset_timing(true);
+			if (dstsize && (buf = malloc(dstsize))){
+				void* dst = buf;
+				while (ntc){
+					ssize_t nr = read(retroctx.last_fd, dst, ntc);
+					if (nr == -1){
+						if (errno != EINTR && errno != EAGAIN)
+							break;
+						else
+							continue;
+					}
+					
+					dst += nr;
+					ntc -= nr;
 				}
 
+				if (ntc == 0){
+					retroctx.deserialize( buf, dstsize );
+					reset_timing(true);
+				}	
+				else
+					LOG("failed restoring from snapshot (%s)\n", strerror(errno));
+			
+				close(retroctx.last_fd);
 				retroctx.last_fd = BADID;
+				free(buf);
 			}
 			else
-				LOG("snapshot restore requested without any viable target\n");
+				LOG("restore requested but core does not support savestates\n");
+		}
+		else
+			LOG("snapshot restore requested without any viable target\n");
 		break;
 
 		default:
