@@ -6,6 +6,8 @@
 #include <string.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <math.h>
+#include <fft/kiss_fftr.h>
 
 #include <vlc/vlc.h>
 #include <arcan_shmif.h>
@@ -17,12 +19,17 @@ struct {
 	struct arcan_shmif_cont shmcont;
 	struct arcan_evctx inevq;
 	struct arcan_evctx outevq;
-	
+
+	bool fft_audio;
+	kiss_fftr_cfg fft_state;
+
 	pthread_mutex_t tsync;
 	uint8_t* vidp, (* audp);
-} decctx;
+
+} decctx = {0};
 
 #define LOG(...) (fprintf(stderr, __VA_ARGS__))
+#define AUD_VIS_HRES 2048 
 
 static unsigned video_setup(void** ctx, char* chroma, unsigned* width, 
 	unsigned* height, unsigned* pitches, unsigned* lines)
@@ -47,16 +54,113 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	return 1;
 }
 
+static void generate_frame()
+{
+	const int smpl_wndw = AUD_VIS_HRES * 2;
+	static float smplbuf[AUD_VIS_HRES * 2];
+	static kiss_fft_scalar fsmplbuf[AUD_VIS_HRES * 2];
+	static kiss_fft_cpx foutsmplbuf[AUD_VIS_HRES * 2];
+
+	static bool gotfft;
+	static kiss_fftr_cfg kfft;
+
+	if (!gotfft){
+		kfft = kiss_fftr_alloc(smpl_wndw, false, NULL, NULL);
+		gotfft = true;
+	}
+
+	static int smplc;
+	static double vptsc = 0;
+
+	int16_t* basep = (int16_t*) decctx.audp;
+	int counter = decctx.shmcont.addr->abufused;
+
+	while (counter){
+/* could've split the window up into 
+ * two functions and used the b and a channels
+ * but little point atm. */
+		float lv = (*basep++) / 32767.0f;
+		float rv = (*basep++) / 32767.0f;
+		float smpl = (lv + rv) / 2.0f; 
+		smplbuf[smplc] = smpl;
+
+/* hann window float sample before FFT */ 
+		float winv = 0.5f * ( 1.0f - cosf(2.0 * M_PI * smplc / (float) smpl_wndw));
+		fsmplbuf[smplc] = smpl + 1.0 * winv;
+
+		smplc++;
+		counter -= 4; /* 4 bytes consumed */
+
+		if (smplc == smpl_wndw){
+			smplc = 0;
+
+			uint8_t* base = decctx.vidp;
+			kiss_fftr(kfft, fsmplbuf, foutsmplbuf);
+
+/* store FFT output in dB scale */
+			float low = 255.0f;
+			float high = 0.0f;
+
+			for (int j= 0; j < smpl_wndw / 2; j++)
+			{
+				float magnitude = sqrtf(foutsmplbuf[j].r * foutsmplbuf[j].r +
+					foutsmplbuf[j].i * foutsmplbuf[j].i);
+				fsmplbuf[j] = 10.0f * log10f(magnitude);
+				if (fsmplbuf[j] < low)
+					low = fsmplbuf[j];
+				if (fsmplbuf[j] > high)
+					high = fsmplbuf[j];	
+			}
+
+/* wasting a level just to get POT as the interface doesn't
+ * support a 1D texture format */
+			for (int j=0; j<smpl_wndw / 2; j++){
+				*base++ = 0;
+				*base++ = 0;
+				*base++ = 0;
+				*base++ = 0xff;
+			}
+
+/* pack in output image, smooth two audio samples */
+			for (int j=0; j < smpl_wndw / 2; j++){
+				*base++ = (1.0f + ((smplbuf[j * 2] + 
+					smplbuf[j * 2 + 1]) / 2.0)) / 2.0 * 255.0;
+				*base++ = (fsmplbuf[j] / high) * 255.0;
+				*base++ = 0x00;
+				*base++ = 0xff;
+			}
+
+			decctx.shmcont.addr->vpts = vptsc;
+			arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID);
+
+			vptsc += 1000.0f / (
+				(double)(ARCAN_SHMPAGE_SAMPLERATE) / (double)smpl_wndw);
+		}
+	}
+
+	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGVID | SHMIF_SIGAUD);
+}
+
 static void audio_play(void *data, 
 	const void *samples, unsigned count, int64_t pts)
 {
 	size_t nb = count * ARCAN_SHMPAGE_ACHANNELS * sizeof(uint16_t);
+
+	if (decctx.vidp == NULL)
+	{
+		arcan_shmif_resize(&decctx.shmcont, AUD_VIS_HRES, 2);
+		arcan_shmif_calcofs(decctx.shmcont.addr, &(decctx.vidp), &(decctx.audp) );
+		decctx.fft_audio = true;
+	}
 
 	pthread_mutex_lock(&decctx.tsync);
 		memcpy(decctx.audp + decctx.shmcont.addr->abufused, samples, nb);
 		decctx.shmcont.addr->abufused += nb;
 	pthread_mutex_unlock(&decctx.tsync);
 
+	if (decctx.fft_audio){
+		generate_frame();
+	}
 }
 
 static void audio_flush()
@@ -73,7 +177,6 @@ static void audio_flush()
 
 static void audio_drain()
 {
-	printf("drain\n");
 	arcan_shmif_signal(&decctx.shmcont, SHMIF_SIGAUD);
 }
 
@@ -99,7 +202,7 @@ static void video_display(void* ctx, void* picture)
 
 static void video_unlock(void* ctx, void* picture, void* const* planes)
 {
-	
+		
 }
 
 static void push_streamstatus()
@@ -140,7 +243,7 @@ static void push_streamstatus()
 	pthread_mutex_unlock(&decctx.tsync);
 }
 
-void player_event(const struct libvlc_event_t* event, void* ud)
+static void player_event(const struct libvlc_event_t* event, void* ud)
 {
 	switch(event->type){
 	case libvlc_MediaPlayerPlaying:
@@ -151,7 +254,8 @@ void player_event(const struct libvlc_event_t* event, void* ud)
 	break;
 
 	case libvlc_MediaPlayerEncounteredError:
-		printf("error\n");
+		case libvlc_MediaPlayerEndReached:
+			decctx.shmcont.addr->dms = false;
 	break;
 
 	default:
@@ -159,10 +263,12 @@ void player_event(const struct libvlc_event_t* event, void* ud)
 	}
 }
 
-static void log_event(void* data, int level, 
-	const libvlc_log_t* ctx, const char* fmt, va_list args)
+static void seek_relative(int seconds)
 {
-	vprintf(fmt, args);	
+	int64_t time_v = libvlc_media_player_get_time(decctx.player);
+	time_v += seconds * 1000;
+	time_v = time_v > 0 ? time_v : 0;
+	libvlc_media_player_set_time(decctx.player, time_v);
 }
 
 void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
@@ -239,7 +345,9 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 
 	struct libvlc_event_manager_t* em = libvlc_media_player_event_manager(decctx.player);
 
-	libvlc_event_attach(em, libvlc_MediaPlayerPositionChanged, player_event, NULL);  
+	libvlc_event_attach(em, libvlc_MediaPlayerPositionChanged, player_event, NULL); 
+	libvlc_event_attach(em, libvlc_MediaPlayerEndReached, player_event, NULL); 
+
 	libvlc_video_set_format_callbacks(decctx.player, video_setup, video_cleanup);
 	libvlc_video_set_callbacks(decctx.player, video_lock, video_unlock, video_display, NULL);
 	libvlc_audio_set_format(decctx.player, "S16N", 44100, 2); 
@@ -254,7 +362,8 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 	libvlc_media_player_play(decctx.player);
 
 	arcan_event ev;
-	while(arcan_event_wait(&decctx.inevq, &ev)){
+	
+	while(decctx.shmcont.addr->dms && arcan_event_wait(&decctx.inevq, &ev)){
 		arcan_tgtevent* tgt = &ev.data.target;
 	
 		if (ev.category == EVENT_TARGET)
@@ -275,16 +384,20 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
  * */
 		break;
 
+		case TARGET_COMMAND_EXIT:
+			goto cleanup;
+		break;
+
 		case TARGET_COMMAND_SEEKTIME:
 			if (tgt->ioevs[1].iv != 0){
-
+					seek_relative(tgt->ioevs[1].iv);
 			}
 			else 
 				libvlc_media_player_set_position(decctx.player, tgt->ioevs[0].fv);
 		break;
 
 		default:
-			printf("%d, %d\n", ev.kind, ev.category);
+			printf("unhandled event: %d, %d\n", ev.kind, ev.category);
 		}
 			
 /*
@@ -294,6 +407,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
  */
 	}
 
+cleanup:
 /* cleanup */
  	libvlc_media_player_stop(decctx.player);
  	libvlc_media_player_release(decctx.player);
