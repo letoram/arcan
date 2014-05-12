@@ -19,6 +19,46 @@
  *
  */
 
+/*
+ * The networking frameserver / support is somewhat more involved than
+ * the others, partly because it defines a set of support functions and 
+ * modes, but the actual communication logic etc. is part of the script.
+ *
+ * This means that server pub/priv. key storage and public key verification
+ * is an external process from a controlling channel and not a part of 
+ * the implementation here. 
+ *
+ * There are multiple modes which the networking code can be used, 
+ * for the server side, there is a public "gatekeeper" that listens for 
+ * requests on UDP and responds with a possible public-key, ident and dstip:port
+ * for the connection.
+ *
+ * If the request supplied a non-empty public key, the response will be 
+ * encrypted using this key and provide a nonce of its own (or 0 when we 
+ * do not need / want a connection between the gatekeeper and the server, 
+ * then the nonce has to be registered in the client connection tracking
+ * structure), which will be used as the base for a counter on the control session.
+ * 
+ * If the client accepts the public key (verification happens elsewhere,
+ * on an offline channel, through communicating a fingerprint, etc.) it connects
+ * to the server. This connection is encrypted, not authenticated. The server
+ * should not rely on the client IP to maintain this connection, it will be a 
+ * configurable feature to use TOR or similar local proxy for this session.
+ *
+ * By default, there's no explicit connection between the gatekeeper and the 
+ * other server, though without knowledge of the server public key it might be
+ * hard to get known (though it can be configured to use no public- key, 
+ * for semi-trusted LANs etc.). 
+ *
+ * The governing script has to explicitly acknowledge the authenticity of the
+ * client (cache / key store of previously known ones etc.) when that is done
+ * a session_key update will be sent (this can be re-keyed arbitrarily).
+ *
+ * A normal connection is only allowed to pass small control messages between
+ * each-other. An authenticated session is allowed to do block based state transfers
+ * and to initiate streaming sessions.  
+ */
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -51,21 +91,13 @@
 #define OUTBUF_CAP 65536
 #endif
 
-/*
- * Priority list;
- * 1. Get client/server graphing up and running.
- * 2. Test/fix/harden state transfers.
- * 3. Enable NaCL sessions.
- * 4. Fingerprinting of NaCL keys.
- * 5. Request/setup streaming sessions (e.g. audio/video).
- */
-
 static const int outbuf_cap = OUTBUF_CAP;
 static const int discover_delay = CLIENT_DISCOVER_DELAY;
 
-/* IDENT:PKEY:ADDR (port is a compile-time constant)
+/* IDENT:NAME:PKEY:ADDR (port is a compile-time constant)
  * max addr is ipv6 textual representation + strsep + port */
 #define IDENT_SIZE 4
+#define MAX_NAME_SIZE 15 
 #define MAX_PUBLIC_KEY_SIZE 64
 #define MAX_ADDR_SIZE 45
 #define MAX_HEADER_SIZE 128
@@ -93,10 +125,6 @@ enum server_modes {
 	SERVER_DIRECTORY_NACL,
 };
 
-/* Used for both listening and outgoing sessions.
- * Important is (CONN_OFFLINE -> CONN_CONNECTED -> 
- * (parent app authenticates) -> CONN_AUTHENTICATED, then loop between
- * STATEXFER and AUTHENTICATED), each step can transition back into OFFLINE */
 enum connection_state {
 	CONN_OFFLINE = 0,
 	CONN_DISCOVERING,
@@ -107,28 +135,34 @@ enum connection_state {
 	CONN_STATEXFER
 };
 
-int idcookie = 0;
+/*
+ * just rand() XoR key for use with higher level API (Arcan scripting),
+ * purpose is just to enforce actual tracking in the script and preventing
+ * hard-coded values. 
+ */
+static int idcookie = 0;
 
 struct {
+/* SHM-API interface */
 	struct arcan_shmif_cont shmcont;
+	apr_socket_t* evsock; 
+	uint8_t* vidp, (* audp);
+	struct arcan_evctx inevq;
+	struct arcan_evctx outevq;
 
 /* callback driven struct, basic one is just colors matching
- * some state of the server/client */
+ * some state of the server/client but the hooks are here for 
+ * GNUPlot- style runtime graphing */
 	struct graph_context* graphing;
 	unsigned graphrate;
 
 /* for future time-synchronization (ping/pongs interleaved
- * with regular messages */
+ * with regular messages, compare drift with timestamps to 
+ * determine current channel latency */
 	unsigned long long basestamp;
 
 	apr_pool_t* mempool;
 	apr_pollset_t* pollset;
-	apr_socket_t* evsock; /* used as signaling / polling mechanism */
-
-/* SHM-API interface */
-	uint8_t* vidp, (* audp);
-	struct arcan_evctx inevq;
-	struct arcan_evctx outevq;
 
 /* intermediate storage (1:1 statechange vs. event msg),
  * this can be transferred to a connection */
@@ -142,9 +176,8 @@ struct {
 	char* rledec_buf;
 	size_t rledec_sz;
 
+/* state tracking when in CLIENT mode, servers use the conn_state below */
 	enum connection_state connstate;
-/* some incoming events are only valid in certain states 
- * (i.e. authenticated etc.) */
 } netcontext = {0};
 
 /* single-threaded multiplexing server with a fixed limit on number of 
@@ -583,9 +616,9 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 
 	apr_socket_addr_get(&addr, APR_REMOTE, newsock);
 	arcan_event outev = {
-					.kind = EVENT_NET_CONNECTED, 
-					.category = EVENT_NET, 
-					.data.network.connid = active_cons[j].slot
+		.kind = EVENT_NET_CONNECTED, 
+		.category = EVENT_NET, 
+		.data.network.connid = active_cons[j].slot
 	};
 
 	size_t out_sz = sizeof(outev.data.network.host.addr) / 
@@ -767,6 +800,20 @@ static inline struct conn_state* lookup_connection(struct conn_state*
 	return NULL;
 }
 
+static void authenticate(struct conn_state* active_cons, int nconns, int slot)
+{
+	if (slot == 0)
+		return;
+
+	struct conn_state* target_con = lookup_connection(active_cons, nconns, slot);
+	if (!target_con || target_con->connstate != CONN_CONNECTED)
+		return;
+
+	target_con->connstate = CONN_AUTHENTICATED;
+
+/* FIXME: Send session REKEY if encrypted */
+}
+
 static void disconnect(struct conn_state* active_cons, int nconns, int slot)
 {
 	if (slot == 0){
@@ -812,7 +859,11 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 			case EVENT_NET_DISCONNECT:
 				disconnect(active_cons, nconns, ev.data.network.connid);
 			break;
-				
+			
+			case EVENT_NET_AUTHENTICATE:
+				authenticate(active_cons, nconns, ev.data.network.connid);
+			break;
+
 			case EVENT_NET_GRAPHREFRESH:
 				if (netcontext.shmcont.addr->vready == false && 
 					graph_refresh(netcontext.graphing))
@@ -820,7 +871,6 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 			break;
 
 			case EVENT_NET_CUSTOMMSG:
-				LOG("(net-srv) broadcast %s\n", ev.data.network.message);
 				outbuf[0] = TAG_NETMSG;
 				outbuf[1] = msgsz;
 				outbuf[2] = msgsz >> 8;
@@ -843,7 +893,6 @@ static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 					netcontext.tmphandle = frameserver_readhandle(&ev);
 				break;
 
-/* active slot -> fdtransfer -> store or restore */
 				case TARGET_COMMAND_STORE:
 					netcontext.tmphandle = 0;
 				break;
@@ -1185,8 +1234,8 @@ static bool client_data_tlvdisp(struct conn_state* self,
 static bool client_data_process(apr_socket_t* inconn, const apr_pollfd_t* desc)
 {
 	static arcan_event ev = {
-					.category = EVENT_NET,
-				 	.kind = EVENT_NET_DISCONNECTED
+		.category = EVENT_NET,
+		.kind = EVENT_NET_DISCONNECTED
 	};
 	
 /* only one client- connection for the life-time of the process, so this bit
@@ -1292,7 +1341,9 @@ static bool client_inevq_process(apr_socket_t* outconn)
 		}
 		else if (ev.category == EVENT_TARGET){
 			switch (ev.kind){
-			case TARGET_COMMAND_EXIT: return false; break;
+			case TARGET_COMMAND_EXIT: 
+				return false; 
+			break;
 
 			case TARGET_COMMAND_FDTRANSFER:
 				netcontext.tmphandle = frameserver_readhandle(&ev);
@@ -1301,9 +1352,15 @@ static bool client_inevq_process(apr_socket_t* outconn)
 			case TARGET_COMMAND_STORE:
 				netcontext.tmphandle = 0;
 			break;
+
 			case TARGET_COMMAND_RESTORE:
 				netcontext.tmphandle = 0;
 			break;
+
+/* broadcast PING pulse */
+			case TARGET_COMMAND_STEPFRAME:
+			break;
+
 			default:
 				; /* just ignore */
 		}
@@ -1379,8 +1436,8 @@ static void client_session(char* hoststr, enum client_modes mode)
 
 /* connection completed */
 	arcan_event ev = { 
-					.category = EVENT_NET,
-				 	.kind = EVENT_NET_CONNECTED
+		.category = EVENT_NET,
+		.kind = EVENT_NET_CONNECTED
  	};
 	snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 	arcan_event_enqueue(&netcontext.outevq, &ev);
