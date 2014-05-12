@@ -39,8 +39,6 @@ static unsigned video_setup(void** ctx, char* chroma, unsigned* width,
 	chroma[2] = 'B';
 	chroma[3] = 'A';
 
-	printf("format, %d, %d, %d, %d, %c%c%c%c\n", 
-		*width, *height, *pitches, *lines, chroma[0], chroma[1], chroma[2], chroma[3]);
 	*pitches = *width * 4;
 
 	if (!arcan_shmif_resize(&decctx.shmcont, *width, *height)){
@@ -263,6 +261,24 @@ static void player_event(const struct libvlc_event_t* event, void* ud)
 	}
 }
 
+static libvlc_media_t* find_capture_device(
+	int id, int desw, int desh, float desfps)
+{
+	libvlc_media_t* media = NULL;
+
+#ifdef WIN32
+		
+#else
+	char url[24];
+	snprintf(url,24, "v4l2:///dev/video%d", id);
+	media = libvlc_media_new_path(decctx.vlc, url);
+#endif
+
+/* add_media_options	:v4l2-width=640 :v4l2-height=480 */
+
+	return media;
+}
+
 static void seek_relative(int seconds)
 {
 	int64_t time_v = libvlc_media_player_get_time(decctx.player);
@@ -328,12 +344,14 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 		if (arg_lookup(args, "height", 0, &val))
 			desh = strtoul(val, NULL, 10);
 			desh = (desh > 0 && desh < ARCAN_SHMPAGE_MAXH) ? desh : 0;
+
+		media = find_capture_device(devind, desw, desh, fps);
 	}
 	else if (arg_lookup(args, "file", 0, &val))
 		media = libvlc_media_new_path(decctx.vlc, val);
 
 	if (!media){
-			printf("no media\n");
+		LOG("couldn't open any media source, giving up.\n");
 		 return;	
 	}
 
@@ -341,7 +359,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 
 /* register media with vlc, hook up local input mapping */
   decctx.player = libvlc_media_player_new_from_media(media);
-  libvlc_media_release(media);
+//  libvlc_media_release(media);
 
 	struct libvlc_event_manager_t* em = libvlc_media_player_event_manager(decctx.player);
 
@@ -397,7 +415,7 @@ void arcan_frameserver_decode_run(const char* resource, const char* keyfile)
 		break;
 
 		default:
-			printf("unhandled event: %d, %d\n", ev.kind, ev.category);
+			LOG("unhandled target event received (%d:%d)\n", ev.kind, ev.category);
 		}
 			
 /*
