@@ -267,6 +267,9 @@ struct arcan_video_display {
 	arcan_shader_id defaultshdr;
 	arcan_shader_id defclrshdr;
 
+	float default_projection[16];
+	float flipy_projection[16];
+
 	float default_txcos[8];
 	float mirror_txcos[8];
 

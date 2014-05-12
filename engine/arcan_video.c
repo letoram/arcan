@@ -1206,9 +1206,16 @@ static void arcan_video_gldefault()
  * glEnable(GL_LINE_SMOOTH);
  * glEnable(GL_POLYGON_SMOOTH);
 */
+	
+	build_orthographic_matrix(arcan_video_display.flipy_projection, 0, 
+		arcan_video_display.width, 0, arcan_video_display.height, 0, 1);
 
-	build_orthographic_matrix(current_context->stdoutp.projection, 0, 
+	build_orthographic_matrix(arcan_video_display.default_projection, 0, 
 		arcan_video_display.width, arcan_video_display.height, 0, 0, 1);
+
+	memcpy(current_context->stdoutp.projection, 
+		arcan_video_display.default_projection, sizeof(float) * 16);
+
 	identity_matrix(current_context->stdoutp.base);
 	glScissor(0, 0, arcan_video_display.width, arcan_video_display.height);
 	glFrontFace(GL_CW);
@@ -1925,7 +1932,7 @@ arcan_errc arcan_video_setuprendertarget(arcan_vobj_id did,
 /* since we may likely have a differently sized FBO, scale it */
 			scale_matrix(dst->base, xs, ys, 1.0);
 		} 
-
+			
 		alloc_fbo(dst);
 
 /* allocate a readback buffer with the PBO */
@@ -4543,8 +4550,15 @@ void arcan_video_refresh_GL(float lerp)
  */
 	if (current_context->stdoutp.color){
 		glBindFramebuffer(GL_FRAMEBUFFER, current_context->stdoutp.fbo);
+		memcpy(current_context->stdoutp.projection, 
+			arcan_video_display.flipy_projection, sizeof(float) * 16);
+
 		process_rendertarget(&current_context->stdoutp, lerp);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		memcpy(current_context->stdoutp.projection, 
+			arcan_video_display.default_projection, sizeof(float) * 16);
+
 
 /*
  * If we have a color attachment (someone reading WORLDID), there's
