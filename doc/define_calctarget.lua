@@ -7,6 +7,12 @@
 -- will be stored in *dstvid* and issue a readback at *samplerate*. A positive samplerate
 -- will retrieve a sample every 'n' logical ticks, a negative samplerate will retrieve a 
 -- sample every abs(n) rendered frames.
+-- 
+-- The callback will be invoked with three arguments: image, width, height
+-- the following metamethods are valid on image:
+-- get(x, y, [nchannels=3]) => r, g, b, 
+-- nchannels=1 => lum
+--
 -- @note: The callback will be executed as part of the main loop, it is paramount that
 -- the processing done is kept to a minimum.
 -- @note: setting RENDERTARGET_DETACH as detacharg means that the object will no-longer
@@ -24,12 +30,8 @@ function main()
 
 	define_calctarget(dstvid, {srcvid}, RENDERTARGET_DETACH, 
 		RENDERTARGET_SCALE, 10,
-	function(srcary)
-		print(string.format("%d, %d, %d, %d"),
-			string.byte(srcary,1), 
-			string.byte(srcary,2), 
-			string.byte(srcary, 3),
-			string.byte(srcary, 4));
+	function(srcary, w, h)
+		print(srcary:get(0, 0));
 	end);
 
 	show_image(srcvid);
