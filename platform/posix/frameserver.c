@@ -246,7 +246,7 @@ static bool shmalloc(arcan_frameserver* ctx,
 				"for listening, check permissions and descriptor ulimit.\n");
 			goto fail;
 		}
-		fcntl(fd, FD_CLOEXEC);
+		fcntl(fd, F_SETFD, FD_CLOEXEC);
 
 		memset(&addr, '\0', sizeof(addr));
 		addr.sun_family = AF_UNIX;
@@ -417,8 +417,8 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 			"get socket pair\n");
 	}
 	else {
-		fcntl(sockp[0], FD_CLOEXEC);
-    fcntl(sockp[1], FD_CLOEXEC);
+		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
+    fcntl(sockp[1], F_SETFD, FD_CLOEXEC);
   	newseg->sockout_fd = sockp[0];
 		arcan_frameserver_pushfd(ctx, sockp[1]);
 	}
@@ -593,7 +593,7 @@ static int8_t socketpoll(enum arcan_ffunc_cmd cmd, uint8_t* buf,
 				if (insock != -1){
 					close(polldscr.fd);
 				tgt->sockout_fd = insock;
-				fcntl(insock, O_NONBLOCK);
+				fcntl(insock, F_SETFD, O_NONBLOCK);
 				arcan_video_alterfeed(tgt->vid, socketverify, state);
 				if (tgt->sockaddr){
 					unlink(tgt->sockaddr);
@@ -680,6 +680,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	pid_t child = fork();
 	if (child) {
 		close(sockp[1]);
+		fcntl(sockp[0], F_SETFD, FD_CLOEXEC);
 
 		img_cons cons = {
 			.w = setup.init_w, 
@@ -703,7 +704,7 @@ arcan_errc arcan_frameserver_spawn_server(arcan_frameserver* ctx,
 	
 	} else if (child == 0) {
 		char convb[8];
-	
+
 /*
  * this little thing is used to push file-descriptors between 
  * parent and child, as to not expose child to parents namespace, 

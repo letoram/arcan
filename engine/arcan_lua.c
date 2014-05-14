@@ -380,7 +380,7 @@ static int rawresource(lua_State* ctx)
 
 #ifndef _WIN32
 	if (lua_ctx_store.rfile)
-		fcntl(fileno(lua_ctx_store.rfile), FD_CLOEXEC);
+		fcntl(fileno(lua_ctx_store.rfile), F_SETFD, FD_CLOEXEC);
 #endif
 
 	lua_pushboolean(ctx, lua_ctx_store.rfile != NULL);
@@ -1137,7 +1137,7 @@ static int setmeshshader(lua_State* ctx)
 	return 0;
 }
 
-static int strsize(lua_State* ctx)
+static int textdimensions(lua_State* ctx)
 {
 	LUA_TRACE("text_dimensions");
 
@@ -1155,7 +1155,7 @@ static int strsize(lua_State* ctx)
 	return 2;
 }
 
-static int buildstr(lua_State* ctx)
+static int rendertext(lua_State* ctx)
 {
 	LUA_TRACE("render_text");
 	arcan_vobj_id id  = ARCAN_EID;
@@ -6148,8 +6148,28 @@ static int net_pushsrv(lua_State* ctx)
 		snprintf(outev.data.network.message, out_sz, "%s", msg);
 	}
 	else if (lua_isnumber(ctx, 2)){
-		arcan_fatal("net_pushsrv() -- "
-			"pushing VID (image, frameserver, ...) not implemented.\n");
+		arcan_vobject* dvobj;
+		arcan_vobj_id dvid = luaL_checkvid(ctx, 2, &dvobj);
+		if (dvobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
+			arcan_fatal("net_pushsrv(), pushing frameserver needs streaming support, "
+				"which is currently unsupported, should use define_recordtarget.");
+		}
+
+		if (!dvobj->vstore->txmapped)
+			arcan_fatal("net_pushsrv() with an image as source only works for "
+				"texture mapped objects.");
+
+/* create a temporary segment, inject this into the target frameserver,
+ * populate the internal buffer and immediately delete */
+		arcan_frameserver* srv = arcan_frameserver_spawn_subsegment(
+			dvobj->feed.state.ptr, true, dvobj->vstore->w, dvobj->vstore->h, domain);
+
+		if (!srv)
+			arcan_fatal("net_pushsrv() couldn't spawn subsegment");
+	
+		size_t buf_sz; 
+		arcan_video_forceread(dvid, (void**)&srv->vidp, &buf_sz);
+		arcan_frameserver_free(srv);
 	}
 	else if (lua_istable(ctx, 2)){
 		arcan_fatal("net_pushsrv() -- "
@@ -6498,8 +6518,8 @@ static const luaL_Reg imgfuns[] = {
 {"null_surface",             nullsurface        },
 {"image_surface_properties", getimageprop       },
 {"image_storage_properties", getimagestorageprop},
-{"render_text",              buildstr           },
-{"text_dimensions",          strsize            },
+{"render_text",              rendertext         },
+{"text_dimensions",          textdimensions     },
 {"image_borderscan",         borderscan         },
 {"random_surface",           randomsurface      },
 {"force_image_blend",        forceblend         },

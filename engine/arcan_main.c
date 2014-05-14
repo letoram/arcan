@@ -266,7 +266,7 @@ int main(int argc, char* argv[])
 			monitor_outf = fopen(&monitor_arg[4], "w+");	
 			if (NULL == monitor_outf)
 				arcan_fatal("couldn't open log output (%s) for writing\n", monitor_arg[4]);
-			fcntl(fileno(monitor_outf), FD_CLOEXEC);
+			fcntl(fileno(monitor_outf), F_SETFD, FD_CLOEXEC);
 		}
 		else {
 			int pair[2];
@@ -282,10 +282,12 @@ int main(int argc, char* argv[])
 				if (fork() != 0) 
 					exit(0); 
 
-/* set the descriptor of the inherited pipe as an envvariable,
+/* 
+ * set the descriptor of the inherited pipe as an envvariable,
  * this will have the program be launched with in_monitor set to true
  * the monitor args will then be ignored and themename replaced with 
- * the monitorarg */
+ * the monitorarg 
+ */
 				char monfd_buf[8] = {0};
 				snprintf(monfd_buf, 8, "%d", pair[0]);
 				setenv("ARCAN_MONITOR_FD", monfd_buf, 1);
@@ -293,7 +295,7 @@ int main(int argc, char* argv[])
 
 				execv(argv[0], argv);
 				exit(1);
-			} 
+			}
 			else {
 /* don't terminate just because the pipe gets broken (i.e. dead monitor) */
 				close(pair[0]);
