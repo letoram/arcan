@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <fcntl.h>
 
 /* Note; 
  * These should be refactored to use a small pre-allocated pool that
@@ -464,7 +465,14 @@ TTF_Font* TTF_OpenFontRW( FILE* src, int freesrc, int ptsize )
 TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize, long index )
 {
 	FILE* rw = fopen(file, "rb");
-	return rw ? TTF_OpenFontIndexRW(rw, 1, ptsize, index) : NULL;
+	if (rw){
+#ifndef WIN32
+	fcntl(fileno(rw), O_CLOEXEC);
+#endif
+
+		return TTF_OpenFontIndexRW(rw, 1, ptsize, index);
+	}
+	return NULL;
 }
 
 TTF_Font* TTF_OpenFont( const char *file, int ptsize )
