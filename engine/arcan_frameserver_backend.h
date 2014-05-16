@@ -177,7 +177,6 @@ typedef struct arcan_frameserver {
 	size_t sz_audb;
 	off_t ofs_audb, ofs_audp;
 	uint8_t* audb;
-	pthread_mutex_t lock_audb;
 
 /* usual hack, similar to load_asynchimage */
 	intptr_t tag;
