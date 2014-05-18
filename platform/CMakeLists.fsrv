@@ -140,10 +140,3 @@ message("---- Building Frameserver in COMBINED mode ----")
 		COMPILE_DEFINITIONS ${definitions})
 endif(SPLIT_FRAMESERVER)
 
-# seriously dislike doing something like this, but the 
-# -Wno-variable-sized-at-end-of-struct idiocy pushed it.
-set_property(SOURCE frameserver/frameserver.c PROPERTY
-  COMPILE_FLAGS 
-  -w 
-)
-

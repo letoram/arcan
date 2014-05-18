@@ -36,47 +36,6 @@ struct mempool_meta {
 	size_t n_pages;
 };
 
-/*
- * default masks for mapped pages
- */
-static const int pooladv[] = {
-	0, /* not used */
-	MADV_SEQUENTIAL | MADV_DONTFORK | NO_DUMPFLAG, /* vbuffer */
-	MADV_RANDOM, /* extstruct */
-};
-
-/*
- * Each pool-size can be compile-time limited,
- * 0 implies no strict limit
- */
-static const int poollim[] = {
-	0, /* not used */
-	0xdeadbeef, /* vbuffer */
-	0xbeefcace, /* extstruct */
-	0xd15ea5e5, /* abuffer */
-	0xfdfdfdfd, /* stringbuffer */
-	0xbabababa, /* vtag */
-	0, /* atag */
-	0, /* binding */
-	0, /* modeldata */
-	0, /* threadctx */
-	0  /* endmarker */
-};
-
-static const int32_t guardbtbl[] = {
-	0, /* not used */
-	0xdeadbeef, /* vbuffer */
-	0xbeefcace, /* extstruct */
-	0xd15ea5e5, /* abuffer */
-	0xfdfdfdfd, /* stringbuffer */
-	0xbabababa, /* vtag */
-	0, /* atag */
-	0, /* binding */
-	0, /* modeldata */
-	0, /* threadctx */
-	0 /* endmarker */
-};
-	
 /* pool behaviors:
  * [ SENSITIVE is always a special case ]
  *   |-> pages will remain mapped in dumps, but data will be
