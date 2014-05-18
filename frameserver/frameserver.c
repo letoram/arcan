@@ -167,11 +167,14 @@ int frameserver_readhandle(arcan_event* inev)
 /* some would call this black magic. They'd be right. */
 	if (sockin_fd != -1){
 		char empty;
-	
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
 		struct cmsgbuf {
 			struct cmsghdr hdr;
 			int fd[1];
 		} msgbuf;
+#pragma GCC diagnostic pop
 
 		struct iovec nothing_ptr = {
 			.iov_base = &empty,
@@ -230,7 +233,10 @@ void* frameserver_requirefun(const char* const sym, bool module)
 	return dlsym(lastlib, sym);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static void toggle_logdev(const char* prefix)
+#pragma GCC diagnostic pop
 {
 	const char* const logdir = getenv("ARCAN_FRAMESERVER_LOGDIR");
 
