@@ -232,7 +232,7 @@ static retro_proc_address_t libretro_requirefun(const char* sym)
 		exit(1);
 	}
 
-	return res;
+	return (retro_proc_address_t) res;
 }
 
 static void resize_shmpage(int neww, int newh, bool first)
@@ -1197,7 +1197,7 @@ static inline void targetev(arcan_event* ev)
 				void* buf;
 
 			if (dstsize && (buf = malloc(dstsize))){
-				void* dst = buf;
+				char* dst = buf;
 				while (ntc){
 					ssize_t nr = read(retroctx.last_fd, dst, ntc);
 					if (nr == -1){
