@@ -101,14 +101,6 @@ endif()
 message("")
 
 #
-# Collective sigh for stupid standard breaking features (nested functions, seriously..).
-# one GNU extension is forcibly used here, variable size structure member 
-# not at end of struct (for Linux/CMSG)
-# C11 requirement is for _Alignas and _Atomic
-#
-add_definitions(-std=gnu11)
-
-#
 # Hooks added here to later switch to -nostdlib -nodefaultlibs and
 # get a decent libc for linux 
 #
@@ -374,9 +366,6 @@ set (
  shmif/arcan_shmif.h
 )
 
-set_property(SOURCE frameserver/graphing/net_graph.c 
-	PROPERTY COMPILE_FLAGS -Wno-unused)
-
 if (ENABLE_SIMD)
 	message("--> Enabling SIMD")
 	set_property(SOURCE engine/arcan_math.c
@@ -455,6 +444,9 @@ if (ENABLE_NET)
 		frameserver/graphing/font_8x8.h
 		frameserver/net.h
 		frameserver/net.c
+		frameserver/net_cl.c
+		frameserver/net_shared.h
+		frameserver/net_shared.c
 	)
 endif()
 
@@ -550,6 +542,12 @@ if (ENABLE_LWA)
 	target_link_libraries( arcan_lwa ${STDLIB} ${MAIN_LIBRARIES} )
 endif()
 
+#
+# Collective sigh for stupid standard breaking features (nested functions, seriously..).
+# one GNU extension is forcibly used here, variable size structure member 
+# not at end of struct (for Linux/CMSG) else we'd be c11. 
+# C11 requirement is for _Alignas and _Atomic
+#
 install(TARGETS arcan_frameserver ${FSRV_TARGETS} DESTINATION ${BIN_DST})
 install(TARGETS arcan DESTINATION ${BIN_DST})
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/themes/ 
