@@ -404,28 +404,6 @@ void graphing_switch_mode(struct graph_context* ctx, enum graphing_mode mode)
 		mode = GRAPH_MANUAL;			
 	break;
 
-/* render possibly attached labels */
-	bool labels;
-
-/* should basev/maxv/minv be relative to window or accumulate */
-	bool absolute; 
-
-	enum plot_mode mode;
-
-/* data model -- ring-buffer of datapoints, these and scales are
- * modified dynamically based on the domain- specific events further below */
-	int ringbuf_sz, buf_front, buf_back;
-	struct datapoint* ringbuf;
-
-/* x scale */
-	const char* suffix_x;
-	long long int last_updated;
-	long long int window_beg;
-
-/* y scale */
-	const char* suffix_y;
-	int maxv, minv, basev;
-
 /* server mode, focus on a single targetid */
 	case GRAPH_NET_SERVER_SINGLE:
 		ctx->n_buckets = 1;
@@ -528,12 +506,6 @@ void graph_log_discover_req(struct graph_context* ctx,
 {
 	assert(ctx);
 	assert(label);
-
-	struct datapoint newp = {
-		.label = strdup(label),
-		.continuous = false,
-		.timestamp = arcan_timemillis()
-	};
 
 //	attach_datapoint(ctx, &newp);
 }

@@ -71,9 +71,9 @@ void platform_video_timing(float* o_sync, float* o_stddev, float* o_variance)
  * processing should be scheduled in relation to vsync, or if we should yield at
  * appropriate times.
  */
-
-		const int nsamples = 10;
-		long long int samples[nsamples], sample_sum;
+		enum {nsamples = 10};
+		long long int samples[nsamples];
+		long long int	sample_sum;
 
 retry:
 		sample_sum = 0;

@@ -346,7 +346,7 @@ fail:
 	ctx->shm.ptr = shmpage;
 	free(work);
 
-	return true;	
+	return true;
 }	
 
 /*
@@ -405,6 +405,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->source = ctx->source ? strdup(ctx->source) : NULL;
 	newseg->vid = newvid;
 	newseg->use_pbo = ctx->use_pbo;
+	newseg->subsegment = true;
 
 /* Transfer the new event socket, along with
  * the base-key that will be used to find shmetc.
@@ -425,12 +426,14 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
   
 	arcan_event keyev = {
 		.category = EVENT_TARGET,
-		.kind = TARGET_COMMAND_NEWSEGMENT
+		.kind = TARGET_COMMAND_NEWSEGMENT,
+		.data.target.ioevs[0].iv = input ? 1 : 0,
+		.data.target.ioevs[1].iv = tag 
 	};
 
 	snprintf(keyev.data.target.message,
 		sizeof(keyev.data.target.message) / sizeof(keyev.data.target.message[1]),
-	"%s", newseg->shm.key);
+		"%s", newseg->shm.key);
 
 /*
  * We monitor the same PID (but on frameserver_free, 
@@ -470,6 +473,7 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	newseg->ofs_audb = 0;
 	newseg->audb = malloc(ctx->sz_audb);
 
+	arcan_shmif_calcofs(newseg->shm.ptr, &(newseg->vidp), &(newseg->audp));
 	arcan_shmif_setevqs(newseg->shm.ptr, newseg->esync, 
 		&(newseg->inqueue), &(newseg->outqueue), true);
 	newseg->inqueue.synch.killswitch = (void*) newseg;
