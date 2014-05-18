@@ -1,6 +1,6 @@
 -- target_alloc
 -- @short: Setup a subsegment or external connection
--- @inargs: key or vid, [passcode], callback
+-- @inargs: key or vid, [passcode], callback, [tag]
 -- @outargs: vid, aid
 -- @longdescr: By default, frameserver connections are single-segment and
 -- authoritative, meaning that they can only be explicitly created and 
@@ -12,7 +12,9 @@
 -- but it is up to the running script to honor that request or not. 
 -- target_alloc is then used to attach additional input segments 
 -- to a pre-existing frameserver connection (by specifying the vid of said
--- frameserver).
+-- frameserver). When communicating these segments, it is also possible to
+-- specify a *tag* (default: 0) which should correspond to the tag value
+-- in an segment_request kind target event in a frameserver callback.
 -- target_alloc is also used to allow non-authoritative connections that
 -- follow a more traditional client server model. By specifying a
 -- key string, a listening connection is prepared in a shared namespace (OS 
@@ -31,7 +33,7 @@
 -- or connection attempts in a short timeframe etc.
 -- @group: targetcontrol 
 -- @cfunction: targetalloc
--- @related: define_recordtarget
+-- @related: define_recordtarget, target_reject
 function main()
 #ifdef MAIN
 	local chain_call = function()
