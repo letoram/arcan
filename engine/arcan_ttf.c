@@ -467,7 +467,7 @@ TTF_Font* TTF_OpenFontIndex( const char *file, int ptsize, long index )
 	FILE* rw = fopen(file, "rb");
 	if (rw){
 #ifndef WIN32
-	fcntl(fileno(rw), F_SETFD, O_CLOEXEC);
+	fcntl(fileno(rw), F_SETFD, FD_CLOEXEC);
 #endif
 
 		return TTF_OpenFontIndexRW(rw, 1, ptsize, index);
