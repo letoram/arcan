@@ -331,6 +331,11 @@ bool arcan_shmif_resize(struct arcan_shmif_cont*,
 	unsigned width, unsigned height);
 
 /*
+ * Unmap memory, release semaphores and related resources
+ */
+void arcan_shmif_drop(struct arcan_shmif_cont*);
+
+/*
  * Signal that the audio and/or video blocks are ready for 
  * a transfer, this may block indefinitely 
  */
@@ -371,7 +376,7 @@ bool arcan_shmif_integrity_check(struct arcan_shmif_page*);
  * race- the shared namespace (enumerable or not) and, more importantly,
  * for the main engine to have a chance of detecting if this is the case or not
  *
- * Setting the ARCAN_SHM_PREFIX to an empty string this approach
+ * Setting the ARCAN_SHM_PREFIX to an empty string disables this approach
  * entirely. For the non-authoritative additional buffer cases, the 
  * code is not used, but rather the UID/GID is checked against the monitoring
  * pid in the preexisting frameserver.

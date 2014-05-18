@@ -44,15 +44,14 @@
  * of the project (and initially just being a part of the engine
  * internals, not of the shmif), and will be refactored in 
  * incremental steps.
- * 
- */ 
-
-/* this is relevant if the event queue is authoritative,
- * i.e. the main process side with a frameserver associated. 
  *
- * A failure to retrieve a lock on the eventqueue within this 
- * timeframe will forcibly KILL the frameserver process/process group 
- */
+ * 1. Document the EXTERNAL NOTICES, NET_, TARGET_COMMANDS
+ *    (as they are used to communicate betewen parent - frameservers)
+ *
+ * 2. Separate out all the "arcan internal" categories / states
+ *
+ * 3. Make this into a proper protocol / IPC part 
+ */ 
 
 enum ARCAN_EVENT_CATEGORY {
 	EVENT_SYSTEM      = 1,
@@ -127,8 +126,15 @@ enum ARCAN_TARGET_COMMAND {
 
 /*
  * to indicate that there's a new segment to be allocated
+ * ioev[0].iv carries 
  */
 	TARGET_COMMAND_NEWSEGMENT,
+
+/*
+ * request for a state transfer or new segment failed,
+ * ioev[0].iv carries request ID
+ */
+	TARGET_COMMAND_REQFAIL,
 
 /* specialized output hinting */
 	TARGET_COMMAND_GRAPHMODE,
@@ -184,7 +190,8 @@ enum ARCAN_EVENT_EXTERNAL {
 	EVENT_EXTERNAL_NOTICE_STATESIZE,
 	EVENT_EXTERNAL_NOTICE_RESOURCE,
 	EVENT_EXTERNAL_NOTICE_FLUSHAUD,
-	EVENT_EXTERNAL_NOTICE_SEGREQ
+	EVENT_EXTERNAL_NOTICE_SEGREQ,
+	EVENT_EXTERNAL_NOTICE_DATASEQ
 };
 
 enum ARCAN_EVENT_VIDEO {
@@ -208,6 +215,7 @@ enum ARCAN_EVENT_NET {
 /* bidirectional */
 	EVENT_NET_CUSTOMMSG,
 	EVENT_NET_INPUTEVENT,
+	EVENT_NET_STATEREQ
 };
 
 enum ARCAN_EVENT_AUDIO {
@@ -368,6 +376,11 @@ typedef struct arcan_extevent {
 			uint8_t streamid;   /* key used to tell the decoder to switch */
 			uint8_t datakind;   /* 0: audio, 1: video, 2: text, 3: overlay */
 		} streaminf;
+
+		struct {
+			uint32_t id;
+			uint8_t type;
+		} noticereq;
 
 		struct {
 			uint8_t timestr[9]; /* HH:MM:SS\0 */
