@@ -130,8 +130,6 @@ struct arcan_shmif_cont arcan_shmif_acquire(
 	unsigned bufsize = ARCAN_SHMPAGE_MAX_SZ;
 	int fd = -1;
 
-/* little hack to get around some implementations not accepting a 
- * shm_open on a named shm already mapped in the same process (?!) */
 	fd = shm_open(shmkey, O_RDWR, 0700);
 
 	if (-1 == fd){
@@ -395,7 +393,6 @@ void arcan_shmif_setevqs(struct arcan_shmif_page* dst,
 	outq->front = &dst->parentdevq.front;
 	outq->back  = &dst->parentdevq.back;
 	outq->eventbuf_sz = ARCAN_SHMPAGE_QUEUE_SZ; 
-
 }
 
 #include <assert.h>
@@ -452,6 +449,15 @@ void arcan_shmif_calcofs(struct arcan_shmif_page* shmp,
 {
 	arcan_shmif_forceofs(shmp, dstvidptr, dstaudptr, 
 		shmp->w, shmp->h, ARCAN_SHMPAGE_VCHANNELS);
+}
+
+void arcan_shmif_drop(struct arcan_shmif_cont* inctx)
+{
+#if _WIN32
+#else
+	munmap(inctx->addr, ARCAN_SHMPAGE_MAX_SZ);
+	memset(inctx, '\0', sizeof(struct arcan_shmif_cont));
+#endif
 }
 
 bool arcan_shmif_resize(struct arcan_shmif_cont* arg, 
