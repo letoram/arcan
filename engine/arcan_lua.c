@@ -299,29 +299,29 @@ void arcan_state_dump(const char* key, const char* msg, const char* src)
 static void dump_stack(lua_State* ctx)
 {
 	int top = lua_gettop(ctx);
-	printf("-- stack dump --\n");
+	arcan_warning("-- stack dump --\n");
 
 	for (int i = 1; i <= top; i++) {
 		int t = lua_type(ctx, i);
 
 		switch (t) {
 			case LUA_TBOOLEAN:
-				fprintf(stdout, lua_toboolean(ctx, i) ? "true" : "false");
+				arcan_warning(lua_toboolean(ctx, i) ? "true" : "false");
 				break;
 			case LUA_TSTRING:
-				fprintf(stdout, "`%s'", lua_tostring(ctx, i));
+				arcan_warning("`%s'", lua_tostring(ctx, i));
 				break;
 			case LUA_TNUMBER:
-				fprintf(stdout, "%g", lua_tonumber(ctx, i));
+				arcan_warning("%g", lua_tonumber(ctx, i));
 				break;
 			default:
-				fprintf(stdout, "%s", lua_typename(ctx, t));
+				arcan_warning("%s", lua_typename(ctx, t));
 				break;
 		}
-		fprintf(stdout, "  ");
+		arcan_warning("  ");
 	}
 
-	fprintf(stdout, "\n");
+	arcan_warning("\n");
 }
 
 
@@ -2370,6 +2370,8 @@ void arcan_lua_pushevent(lua_State* ctx, arcan_event* ev)
 
 			case EVENT_EXTERNAL_NOTICE_SEGREQ:
 				tblstr(ctx, "kind", "segment_request", top);
+				tblnum(ctx, "reqid", ev->data.external.noticereq.id, top);
+				tblnum(ctx, "type", ev->data.external.noticereq.type, top); 
 			break;
 			
 			case EVENT_EXTERNAL_NOTICE_STATESIZE:
@@ -3173,7 +3175,7 @@ static int getgenres(lua_State* ctx)
 static int allocsurface(lua_State* ctx)
 {
 	LUA_TRACE("alloc_surface");
-	img_cons cons = {};
+	img_cons cons = {0};
 	cons.w = luaL_checknumber(ctx, 1);
 	cons.h = luaL_checknumber(ctx, 2);
 	cons.bpp = GL_PIXEL_BPP;
@@ -3962,6 +3964,22 @@ static inline bool tgtevent(arcan_vobj_id dst, arcan_event ev)
 	return false;
 }
 
+static int targetreject(lua_State* ctx)
+{
+	LUA_TRACE("target_reject");
+	arcan_event ev = {
+		.category = EVENT_TARGET,
+		.kind = TARGET_COMMAND_REQFAIL
+	};
+
+	arcan_vobj_id tgt = luaL_checkvid(ctx, 1, NULL);
+	ev.data.target.ioevs[0].iv = luaL_checkinteger(ctx, 2);
+
+	tgtevent(tgt, ev);
+
+	return 0;
+}
+
 static int targetportcfg(lua_State* ctx)
 {
 	LUA_TRACE("target_portconfig");
@@ -4410,7 +4428,9 @@ static int targetalloc(lua_State* ctx)
 
 	lua_pushvalue(ctx, cb_ind);
 	intptr_t ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
-		
+
+	int tag = luaL_optint(ctx, cb_ind+1, 0);
+
 	arcan_frameserver* newref = NULL;
 	const char* key = "";
 
@@ -4429,7 +4449,7 @@ static int targetalloc(lua_State* ctx)
 
 		if (state && state->tag == ARCAN_TAG_FRAMESERV && state->ptr)
 			newref = arcan_frameserver_spawn_subsegment(
-				(arcan_frameserver*) state->ptr, true, 0, 0, 0); 
+				(arcan_frameserver*) state->ptr, true, 0, 0, tag); 
 		else
 			arcan_fatal("target_alloc() specified source ID doesn't "
 				"contain a frameserver\n.");
@@ -6061,45 +6081,112 @@ static int net_open(lua_State* ctx)
 	return 1;
 }
 
+static inline arcan_frameserver* luaL_checknet(lua_State* ctx, 
+	bool server, arcan_vobject** dvobj, const char* prefix)
+{
+	arcan_vobject* vobj;
+	luaL_checkvid(ctx, 1, &vobj);
+
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+		arcan_fatal("%s -- VID is not a frameserver.\n", prefix);
+
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+
+	if (server && fsrv->kind != ARCAN_FRAMESERVER_NETSRV){
+		arcan_fatal("%s -- Frameserver connected to VID is not in server mode "
+			"(net_open vs net_listen)\n", prefix);
+	}
+	else if (!server && fsrv->kind != ARCAN_FRAMESERVER_NETCL)
+		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
+			"(net_open vs net_listen)\n", prefix);
+
+	if (fsrv->subsegment)
+		arcan_fatal("%s -- Subsegment argument target not allowed\n", prefix);
+
+	*dvobj = vobj;
+	return fsrv;
+}
+
 static int net_pushcl(lua_State* ctx)
 {
 	LUA_TRACE("net_push");
-
 	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
+	arcan_frameserver* fsrv = luaL_checknet(ctx, false, &vobj, "net_push");
 
 /* arg2 can be (string) => NETMSG, (event) => just push */
 	arcan_event outev = {.category = EVENT_NET};
 
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
-		arcan_fatal("net_pushcl() -- bad arg1, "
-			"VID is not a frameserver.\n");
+	int t = lua_type(ctx, 2);
+	arcan_vobject* dvobj, (* srcvobj);
+	arcan_vobj_id dvid;
+	luaL_checkvid(ctx, 1, &srcvobj);
 
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	switch(t){
+		case LUA_TSTRING:
+			outev.kind = EVENT_NET_CUSTOMMSG;
 
-	if (!fsrv->kind == ARCAN_FRAMESERVER_NETCL)
-		arcan_fatal("net_pushcl() -- bad arg1, specified frameserver is"
-			"	not in client mode (net_open).\n");
+			const char* msg = luaL_checkstring(ctx, 2);
+			size_t out_sz = sizeof(outev.data.network.message) / 
+				sizeof(outev.data.network.message[0]);
+			snprintf(outev.data.network.message, out_sz, "%s", msg);
+		break;
 
-	if (lua_isstring(ctx, 2)){
-		outev.kind = EVENT_NET_CUSTOMMSG;
+		case LUA_TNUMBER:
+ 			dvid = luaL_checkvid(ctx, 2, &dvobj);
+			uintptr_t ref = 0;
 
-		const char* msg = luaL_checkstring(ctx, 2);
-		size_t out_sz = sizeof(outev.data.network.message) / 
-			sizeof(outev.data.network.message[0]);
-		snprintf(outev.data.network.message, out_sz, "%s", msg);
+			if (lua_isfunction(ctx, 3) && !lua_iscfunction(ctx, 3)){
+				lua_pushvalue(ctx, 3);
+				ref = luaL_ref(ctx, LUA_REGISTRYINDEX);
+			}
+			else
+				arcan_fatal("net_pushcl(), missing callback\n");
+
+			if (dvobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
+				arcan_fatal("net_pushcl(), pushing a frameserver needs "
+					"separate support use bond_target, define_recordtarget "
+					"with the network connection as destination");
+			}
+
+			if (!dvobj->vstore->txmapped)
+				arcan_fatal("net_pushcl() with an image as source only works for "
+					"texture mapped objects.");
+
+			arcan_frameserver* srv = arcan_frameserver_spawn_subsegment(
+				srcvobj->feed.state.ptr, false, dvobj->vstore->w, dvobj->vstore->h, 0);
+
+			if (!srv){
+				arcan_warning("net_pushcl(), allocating subsegment failed\n");
+				return 0;
+			}
+
+/* disable "regular" frameserver behavior */
+			vfunc_state cstate = *arcan_video_feedstate(srv->vid);
+			arcan_video_alterfeed(srv->vid, arcan_frameserver_emptyframe, cstate);
+
+/* we can't delete the frameserver immediately as the child might 
+ * not have mapped the memory yet, so we defer and use a callback */
+			memcpy(srv->vidp, dvobj->vstore->vinf.text.raw, 
+				dvobj->vstore->vinf.text.s_raw);
+
+			srv->shm.ptr->vready = true;
+			arcan_sem_post(srv->vsync);
+
+			outev.kind = TARGET_COMMAND_STEPFRAME;
+			arcan_frameserver_pushevent(srv, &outev);
+			lua_pushvid(ctx, srv->vid);
+			srv->tag = ref; 
+
+/* copy state into dvobj, then send event 
+ * that we're ready for a push 
+ */
+		break;
+	
+		default:
+			arcan_fatal("net_pushcl() -- unexpected data to push, accepted "
+				"(string, VID, evtable)\n");
+		break;
 	}
-	else if (lua_isnumber(ctx, 2)){
-		arcan_fatal("net_pushcl() -- pushing frameserver state"
-			"	not implemented.\n");
-	}
-	else if (lua_istable(ctx, 2)){
-		arcan_fatal("net_pushcl() -- pushing frameserver state"
-			"	not implemented.\n");
-	}
-	else
-		arcan_fatal("net_pushcl() -- unexpected data to push, accepted "
-			"(string, VID, evtable)\n");
 
 /* for *NUX, setup a pipe() pair, push the output end to the client, 
  * push the input end to the server, emit FDtransfer messages, flagging that
@@ -6125,12 +6212,14 @@ static int net_pushsrv(lua_State* ctx)
 
 /* arg2 can be (string) => NETMSG, (event) => just push */
 	arcan_event outev = {.category = EVENT_NET, .data.network.connid = domain};
+	arcan_frameserver* fsrv = vobj->feed.state.ptr;
 
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
+	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !fsrv)
 		arcan_fatal("net_pushsrv() -- bad arg1, VID "
 			"is not a frameserver.\n");
 
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
+	if (fsrv->subsegment)
+		arcan_fatal("net_pushsrv() -- cannot push VID to a subsegment.\n");
 
 	if (!fsrv->kind == ARCAN_FRAMESERVER_NETSRV)
 		arcan_fatal("net_pushsrv() -- bad arg1, specified frameserver"
@@ -6139,77 +6228,28 @@ static int net_pushsrv(lua_State* ctx)
 /* we clean this as to not expose stack trash */
 	size_t out_sz = sizeof(outev.data.network.message) / 
 		sizeof(outev.data.network.message[0]);
-	memset(outev.data.network.message, 0, out_sz);
 
 	if (lua_isstring(ctx, 2)){
 		outev.kind = EVENT_NET_CUSTOMMSG;
 
 		const char* msg = luaL_checkstring(ctx, 2);
 		snprintf(outev.data.network.message, out_sz, "%s", msg);
-	}
-	else if (lua_isnumber(ctx, 2)){
-		arcan_vobject* dvobj;
-		arcan_vobj_id dvid = luaL_checkvid(ctx, 2, &dvobj);
-		if (dvobj->feed.state.tag == ARCAN_TAG_FRAMESERV){
-			arcan_fatal("net_pushsrv(), pushing frameserver needs streaming support, "
-				"which is currently unsupported, should use define_recordtarget.");
-		}
-
-		if (!dvobj->vstore->txmapped)
-			arcan_fatal("net_pushsrv() with an image as source only works for "
-				"texture mapped objects.");
-
-/* create a temporary segment, inject this into the target frameserver,
- * populate the internal buffer and immediately delete */
-		arcan_frameserver* srv = arcan_frameserver_spawn_subsegment(
-			dvobj->feed.state.ptr, true, dvobj->vstore->w, dvobj->vstore->h, domain);
-
-		if (!srv)
-			arcan_fatal("net_pushsrv() couldn't spawn subsegment");
-	
-		size_t buf_sz; 
-		arcan_video_forceread(dvid, (void**)&srv->vidp, &buf_sz);
-		arcan_frameserver_free(srv);
-	}
-	else if (lua_istable(ctx, 2)){
-		arcan_fatal("net_pushsrv() -- "
-			"pushing event table not implemented.\n");
+		arcan_frameserver_pushevent(fsrv, &outev);
 	}
 	else
 		arcan_fatal("net_pushsrv() -- "
-			"unexpected data to push, accepted (string, VID, evtable)\n");
+			"unexpected data to push, accepted (string)\n");
 
-	arcan_frameserver_pushevent(fsrv, &outev);
 	return 0;
-}
-
-static inline arcan_frameserver* luaL_checknet(lua_State* ctx, 
-	bool server, const char* prefix)
-{
-	arcan_vobject* vobj;
-	luaL_checkvid(ctx, 1, &vobj);
-
-	if (vobj->feed.state.tag != ARCAN_TAG_FRAMESERV || !vobj->feed.state.ptr)
-		arcan_fatal("%s -- VID is not a frameserver.\n", prefix);
-
-	arcan_frameserver* fsrv = vobj->feed.state.ptr;
-
-	if (server && fsrv->kind != ARCAN_FRAMESERVER_NETSRV){
-		arcan_fatal("%s -- Frameserver connected to VID is not in server mode "
-			"(net_open vs net_listen)\n", prefix);
-	}
-	else if (!server && fsrv->kind != ARCAN_FRAMESERVER_NETCL)
-		arcan_fatal("%s -- Frameserver connected to VID is not in client mode "
-			"(net_open vs net_listen)\n", prefix);
-	return fsrv;
 }
 
 static int net_accept(lua_State* ctx)
 {
 	LUA_TRACE("net_accept");
 
-	arcan_frameserver* fsrv = luaL_checknet(ctx, true, 
-		"net_accept(vid, connid)");
+	arcan_vobject* dvobj;
+	arcan_frameserver* fsrv = luaL_checknet(
+		ctx, true, &dvobj, "net_accept(vid, connid)");
 
 	int domain = luaL_checkint(ctx, 2);
 
@@ -6227,8 +6267,9 @@ static int net_disconnect(lua_State* ctx)
 {
 	LUA_TRACE("net_disconnect");
 
-	arcan_frameserver* fsrv = luaL_checknet(ctx, true, 
-		"net_disconnect(vid, connid)");
+	arcan_vobject* dvobj;
+	arcan_frameserver* fsrv = luaL_checknet(
+		ctx, true, &dvobj, "net_disconnect(vid, connid)");
 
 	int domain = luaL_checkint(ctx, 2);
 
@@ -6246,8 +6287,9 @@ static int net_authenticate(lua_State* ctx)
 {
 	LUA_TRACE("net_authenticate");
 
-	arcan_frameserver* fsrv = luaL_checknet(ctx, true, 
-		"net_authenticate(vid, connid)");
+	arcan_vobject* dvobj;
+	arcan_frameserver* fsrv = luaL_checknet(
+		ctx, true, &dvobj, "net_authenticate(vid, connid)");
 
 	int domain = luaL_checkint(ctx, 2);
 	if (domain == 0)
@@ -6397,6 +6439,7 @@ static const luaL_Reg tgtfuns[] = {
 {"target_postfilter_args",     targetpostfilterargs     },
 {"target_seek",                targetseek               },
 {"target_coreopt",             targetcoreopt            },
+{"target_reject",              targetreject             },
 {"stepframe_target",           targetstepframe          },
 {"snapshot_target",            targetsnapshot           },
 {"restore_target",             targetrestore            },
