@@ -36,7 +36,8 @@ enum net_tags {
 	TAG_NETINPUT         = 6, 
 	TAG_NETPING          = 7,
 	TAG_NETPONG          = 8,
-	TAG_STATE_EOB        = 9
+	TAG_STATE_EOB        = 9,
+	TAG_LAST_VALUE       = 10
 };
 
 enum net_states{
@@ -69,27 +70,28 @@ enum connection_state {
 };
 
 struct conn_state {
-	apr_socket_t* inout;
-	enum connection_state connstate;
-	apr_pollset_t* pollset;
-
 	arcan_evctx* outevq;
-
-/* apr requires us to keep track of this one explicitly in order 
- * to flag some poll options on or off (writable-without-blocking 
- * being the most relevant) */
+	apr_socket_t* inout;
+	apr_pollset_t* pollset;
 	apr_pollfd_t poll_state;
 
-/* (poll-IN) -> incoming -> validator -> dispatch,
- * outgoing -> queueout -> (poll-OUT) -> flushout  */
-	bool (*dispatch)(struct conn_state* self, char tag, int len, char* value);
-	bool (*validator)(struct conn_state* self);
-	bool (*flushout)(struct conn_state* self);
-	bool (*queueout)(struct conn_state* self, char* buf, size_t buf_sz);
+	enum connection_state connstate;
 
-/* protocol / side specific implementation bit, we have a verified TLV */ 
-	bool (*decode)(struct conn_state* self, 
-		enum net_tags tag, int len, char* buf);
+/* (poll-IN) -> buffer [+ decrypt + decompress] -> validator [verify TLV] -> 
+ * dispatch [implement management protocol] -> 
+ * decode [implement application protocol] */
+	bool (*buffer)(struct conn_state*);
+	bool (*validator)(struct conn_state*, size_t len, char* buf, size_t* consumed);
+	bool (*decode)(struct conn_state*, enum net_tags, size_t len, char* buf);
+	bool (*dispatch)(struct conn_state*, enum net_tags, size_t len, char* value);
+
+/*
+ * (input-EV/ongoing transfer) -> (pack) [+ encrypt, compress] -> 
+ * queueout -> flushout 
+ */
+	bool (*pack)(struct conn_state*, enum net_tags, size_t len, char* buf);
+ 	bool (*queueout)(struct conn_state*, size_t len, char* buf);
+	bool (*flushout)(struct conn_state*);
 
 /* PING/PONG (for TCP) is bound to other messages */
 	unsigned long long connect_stamp, last_ping, last_pong;
@@ -113,8 +115,6 @@ struct conn_state {
 		int fd;
 		size_t ofs, lim;
 
-/* we need to poll events on the ctx until we know (STEPFRAME)
- * that data is available for input or output */	
 		enum xfer_state state;
 		
 		struct arcan_shmif_cont ctx;
@@ -146,9 +146,19 @@ void arcan_net_client_session(
 apr_socket_t* net_prepare_socket(const char* host, apr_sockaddr_t* 
 	althost, int sport, bool tcp, apr_pool_t* mempool);
 
+void net_setup_cell(struct conn_state* conn, 
+	arcan_evctx* evq, apr_pollset_t* pollset);
+
+bool net_validator_tlv(struct conn_state*, size_t, char*, size_t* );
+bool net_dispatch_tlv(struct conn_state*, enum net_tags, size_t, char*);
+
+bool net_pack_basic(struct conn_state*, enum net_tags, size_t, char*);
+bool net_buffer_basic(struct conn_state*);
+bool net_flushout_default(struct conn_state*);
+bool net_queueout_default(struct conn_state*, size_t, char*);  
+
+enum seg_kinds {
+	SEGMENT_TRANSFER = 0,
+	SEGMENT_RECEIVE = 1
+};
 void net_newseg(struct conn_state* conn, int kind, char* key);
-void net_setup_cell(struct conn_state* conn, arcan_evctx* evq, apr_pollset_t* pollset);
-bool net_validator_tlv(struct conn_state* self);
-bool net_dispatch_tlv(struct conn_state* self, char tag, int len, char* value);
-bool net_flushout_default(struct conn_state* self);
-bool net_queueout_default(struct conn_state* self, char* buf, size_t buf_sz);

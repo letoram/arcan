@@ -104,6 +104,12 @@ struct {
 
 } srvctx = {0};
 
+/*
+ * placeholder marker for data that should be rendered to the 
+ * primary output display
+ */
+#define GRAPH_EVENT(...) LOG(__VA_ARGS__)
+
 static struct conn_state* init_conn_states(int limit)
 {
 	struct conn_state* active_cons = malloc(sizeof(struct conn_state) * limit);
@@ -121,14 +127,231 @@ static struct conn_state* init_conn_states(int limit)
 	return active_cons;
 }
 
+static inline struct conn_state* lookup_connection(struct conn_state* 
+	active_cons, int nconns, int id)
+{
+	for (int i = 0; i < nconns; i++){
+		if (active_cons[i].slot == id)
+			return &active_cons[i];
+	}
+
+	return NULL;
+}
+
+static void authenticate(struct conn_state* active_cons, int nconns, int slot)
+{
+	if (slot == 0){
+		LOG("Attempt to set authentication flag on broken domain\n");
+		return;
+	}
+
+	struct conn_state* target_con = lookup_connection(active_cons, nconns, slot);
+	if (!target_con || target_con->connstate != CONN_CONNECTED)
+		return;
+
+	target_con->connstate = CONN_AUTHENTICATED;
+	GRAPH_EVENT("Slot %d authenticated", slot);
+/* FIXME: Send session REKEY if encrypted */
+}
+
+static void disconnect(struct conn_state* active_cons, int nconns, int slot)
+{
+	if (slot == 0){
+		for (int i = 0; i < nconns; i++)
+			if (active_cons[i].connstate > CONN_OFFLINE){
+				GRAPH_EVENT("Mass Disconnect (%i:%i)\n", i, active_cons[i].slot);
+				apr_socket_close(active_cons[i].inout);
+				apr_pollset_remove(srvctx.pollset, &active_cons[i].poll_state);
+				net_setup_cell( &active_cons[i], &srvctx.outevq, srvctx.pollset );
+			}
+	}
+	else {
+		struct conn_state* target_con = lookup_connection(active_cons, 
+			nconns, slot);
+		if (target_con && target_con->connstate > CONN_OFFLINE){
+			GRAPH_EVENT("Disconnecting %d\n", slot);
+			apr_socket_close(target_con->inout);
+			apr_pollset_remove(srvctx.pollset, &target_con->poll_state);
+			net_setup_cell( target_con, &srvctx.outevq, srvctx.pollset );
+		}
+		else
+			LOG("Attempt to disconnect bad or already disconnected slot (%d)\n", slot);
+	}
+}
+
+static void server_pack_data(struct conn_state* active_cons, 
+	int nconns, int id, enum net_tags tag, size_t buf_sz, char* buf)
+{
+	if (id > nconns || id < 0)
+		return;
+
+/* broadcast */
+	if (id == 0){
+		GRAPH_EVENT("broadcast (%zu) bytes\n", buf_sz);
+		for(int i = 0; i < nconns; i++)
+			if (active_cons[i].inout){
+				if (!active_cons[i].pack(&active_cons[i], tag, buf_sz, buf))
+					disconnect(active_cons, nconns, id);
+			}
+	}
+
+/* unicast */
+	else if (active_cons[id-1].inout){
+		GRAPH_EVENT("queue (%zu) bytes to slot (%d)\n", buf_sz, id);
+		if (!active_cons[id-1].pack(&active_cons[id-1], tag, buf_sz, buf))
+			disconnect(active_cons, nconns, id);
+	}
+	else;
+
+	return;
+}
+
 static void client_socket_close(struct conn_state* state)
 {
 	arcan_event rv = {.kind = EVENT_NET_DISCONNECTED, .category = EVENT_NET};
-	LOG("(net-srv) -- disconnecting client. %d\n", state->slot);
+	GRAPH_EVENT("close socket on (%d)\n", state->slot);
 
 	net_setup_cell( state, &srvctx.outevq, srvctx.pollset );
 	arcan_event_enqueue(&srvctx.outevq, &rv);
 }
+
+static bool server_decode(struct conn_state* self, 
+	enum net_tags tag, size_t len, char* val)
+{
+	if (self->connstate != CONN_AUTHENTICATED){
+		LOG("(net-srv) permission error, block transfer to "
+			"an unauthenticated session is not permitted. ");
+		return false;
+	}
+	
+	switch (tag){
+		case TAG_STATE_IMGOBJ:
+			if (1){
+			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
+			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
+			GRAPH_EVENT("incoming image transfer (%d x %d) transfer on %d\n",
+				desw, desh, self->slot);
+			}
+		break;
+
+		case TAG_STATE_DATAOBJ:
+			GRAPH_EVENT("incoming state transfer on %d\n", self->slot);
+		break;
+
+		case TAG_STATE_EOB:
+			GRAPH_EVENT("block transfer completed\n");
+		break;
+
+		case TAG_STATE_DATABLOCK:
+			GRAPH_EVENT("incoming block of size %zu on %d\n", len, self->slot);
+		break;
+
+		default:
+			LOG("(net-srv) unhandled tag (%d)\n", tag);
+		break;
+	}
+
+	return true;	
+}
+
+static bool server_process_inevq(struct conn_state* active_cons, int nconns)
+{
+	arcan_event ev;
+	uint16_t msgsz = sizeof(ev.data.network.message) / 
+		sizeof(ev.data.network.message[0]);
+
+	while ( arcan_event_poll(&srvctx.inevq, &ev) == 1 )
+		if (ev.category == EVENT_NET){
+			switch (ev.kind){
+			case EVENT_NET_INPUTEVENT:
+				LOG("(net-srv) inputevent unfinished, implement "
+					"event_pack()/unpack(), ignored\n");
+			break;
+
+/* don't confuse this one with EVENT_NET_DISCONNECTED, which is a 
+ * notification rather than a command */
+			case EVENT_NET_DISCONNECT:
+				disconnect(active_cons, nconns, ev.data.network.connid);
+			break;
+			
+			case EVENT_NET_AUTHENTICATE:
+				authenticate(active_cons, nconns, ev.data.network.connid);
+			break;
+
+			case EVENT_NET_GRAPHREFRESH:
+			break;
+
+			case EVENT_NET_CUSTOMMSG:
+				GRAPH_EVENT("Parent pushed message (%s)\n", ev.data.network.message);
+				server_pack_data(active_cons, nconns, ev.data.network.connid, 
+					TAG_NETMSG, msgsz, ev.data.network.message);
+			break;
+
+			default:
+				LOG("(net-srv) unhandled network event, %d\n", ev.kind);
+			}
+		}
+		else if (ev.category == EVENT_TARGET){
+			switch (ev.kind){
+				case TARGET_COMMAND_EXIT:
+					LOG("(net-srv) parent requested termination, giving up.\n");
+					return false;
+				break;
+
+				case TARGET_COMMAND_FDTRANSFER:
+					srvctx.tmphandle = frameserver_readhandle(&ev);
+				break;
+
+/*
+ * ioevs[0] : 1, output (arcan -> frameserver) segment,
+ *            implies parents wants to transfer to us.
+ *            If we have a pending transfer already, 
+ *            send a protocol error.
+ *
+ * ioevs[1] : tag, if we've submitted a request for a new segment,
+ *            this tag will help us pin-point which client connection
+ *            it was that was accepted ( or rejected )
+ */
+				case TARGET_COMMAND_NEWSEGMENT:
+					LOG("new segment arrived, id %d\n", ev.data.target.ioevs[1].iv);
+					net_newseg(lookup_connection(active_cons, nconns, 
+						ev.data.target.ioevs[1].iv), ev.data.target.ioevs[0].iv,
+						ev.data.target.message);
+					close(srvctx.tmphandle);
+				 srvctx.tmphandle	= 0;
+				break;
+
+/*
+ * parent signalling that the previously mapped segment can be used
+ * to transfer now. ioevs[0] signals the slot that will be used.
+ */			
+				case TARGET_COMMAND_STEPFRAME:
+
+				break;
+
+				case TARGET_COMMAND_REQFAIL:
+					LOG("(net-srv) client disallowed connection");
+				break;
+
+				case TARGET_COMMAND_STORE:
+/* lookup connection, set state_in or out "fd" member, then add 
+ * support to populate on loop */
+					srvctx.tmphandle = 0;
+				break;
+
+				case TARGET_COMMAND_RESTORE:
+					srvctx.tmphandle = 0;
+				break;
+	
+				default:
+					LOG("(net-srv) unhandled target event: %d\n", ev.kind);	
+			}
+		}
+		else;
+
+	return true;
+}
+
 
 static void server_accept_connection(int limit, apr_socket_t* ear_sock, 
 	apr_pollset_t* pollset, struct conn_state* active_cons)
@@ -149,10 +372,13 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 
 /* add and setup real callthroughs */
 	active_cons[j].inout     = newsock;
+	active_cons[j].buffer    = net_buffer_basic;
 	active_cons[j].validator = net_validator_tlv;
 	active_cons[j].dispatch  = net_dispatch_tlv;
 	active_cons[j].flushout  = net_flushout_default;
 	active_cons[j].queueout  = net_queueout_default;
+	active_cons[j].pack      = net_pack_basic;
+	active_cons[j].decode = server_decode; 
 	active_cons[j].connect_stamp = arcan_timemillis();
 	active_cons[j].connstate = CONN_CONNECTED;
 	active_cons[j].pollset = srvctx.pollset;
@@ -246,6 +472,7 @@ static void server_gatekeeper_message(apr_socket_t* gk_sock,
 			apr_size_t tosend = MAX_HEADER_SIZE;
 			src_addr.port = DEFAULT_DISCOVER_RESP_PORT;
 			apr_socket_sendto(gk_sock, &src_addr, 0, gk_outbuf, &tosend);
+			GRAPH_EVENT("gatekeeper reply sent\n");
 		}
 		else;
 
@@ -256,169 +483,6 @@ static apr_socket_t* server_prepare_gatekeeper(char* host)
 {
 	return net_prepare_socket(host, NULL, 
 		DEFAULT_DISCOVER_REQ_PORT, false, srvctx.mempool);
-}
-
-static void server_queueout_data(struct conn_state* active_cons, 
-	int nconns, char* buf, size_t buf_sz, int id)
-{
-	if (id > nconns || id < 0)
-		return;
-
-/* broadcast */
-	if (id == 0)
-		for(int i = 0; i < nconns; i++){
-			if (active_cons[i].inout)
-				active_cons[i].queueout(&active_cons[i], buf, buf_sz);
-		}
-
-/* unicast */
-	else if (active_cons[id-1].inout)
-		active_cons[id-1].queueout(&active_cons[id-1], buf, buf_sz);
-	else;
-
-	return;
-}
-
-static inline struct conn_state* lookup_connection(struct conn_state* 
-	active_cons, int nconns, int id)
-{
-	for (int i = 0; i < nconns; i++){
-		if (active_cons[i].slot == id)
-			return &active_cons[i];
-	}
-
-	return NULL;
-}
-
-static void authenticate(struct conn_state* active_cons, int nconns, int slot)
-{
-	if (slot == 0)
-		return;
-
-	struct conn_state* target_con = lookup_connection(active_cons, nconns, slot);
-	if (!target_con || target_con->connstate != CONN_CONNECTED)
-		return;
-
-	target_con->connstate = CONN_AUTHENTICATED;
-
-/* FIXME: Send session REKEY if encrypted */
-}
-
-static void disconnect(struct conn_state* active_cons, int nconns, int slot)
-{
-	if (slot == 0){
-		for (int i = 0; i < nconns; i++)
-			if (active_cons[i].connstate > CONN_OFFLINE){
-				LOG("Mass Disconnect (%i:%i)\n", i, active_cons[i].slot);
-				apr_socket_close(active_cons[i].inout);
-				apr_pollset_remove(srvctx.pollset, &active_cons[i].poll_state);
-				net_setup_cell( &active_cons[i], &srvctx.outevq, srvctx.pollset );
-			}
-	}
-	else {
-		struct conn_state* target_con = lookup_connection(active_cons, 
-			nconns, slot);
-		if (target_con && target_con->connstate > CONN_OFFLINE){
-			apr_socket_close(target_con->inout);
-			apr_pollset_remove(srvctx.pollset, &target_con->poll_state);
-			net_setup_cell( target_con, &srvctx.outevq, srvctx.pollset );
-		}
-	}
-}
-
-static bool server_process_inevq(struct conn_state* active_cons, int nconns)
-{
-	arcan_event ev;
-	uint16_t msgsz = sizeof(ev.data.network.message) / 
-		sizeof(ev.data.network.message[0]);
-	char outbuf[ msgsz + 3 ];
-
-/*	outbuf[0] = tag, [1] = lsb, [2] = msb -- payload + FRAME_HEADER_SIZE */
-
-	while ( arcan_event_poll(&srvctx.inevq, &ev) == 1 )
-		if (ev.category == EVENT_NET){
-			switch (ev.kind){
-			case EVENT_NET_INPUTEVENT:
-				LOG("(net-srv) inputevent unfinished, implement "
-					"event_pack()/unpack(), ignored\n");
-			break;
-
-/* don't confuse this one with EVENT_NET_DISCONNECTED, which is a 
- * notification rather than a command */
-			case EVENT_NET_DISCONNECT:
-				disconnect(active_cons, nconns, ev.data.network.connid);
-			break;
-			
-			case EVENT_NET_AUTHENTICATE:
-				authenticate(active_cons, nconns, ev.data.network.connid);
-			break;
-
-			case EVENT_NET_GRAPHREFRESH:
-			break;
-
-			case EVENT_NET_CUSTOMMSG:
-				outbuf[0] = TAG_NETMSG;
-				outbuf[1] = msgsz;
-				outbuf[2] = msgsz >> 8;
-				memcpy(&outbuf[3], ev.data.network.message, msgsz);
-				server_queueout_data(active_cons, nconns, outbuf, msgsz + 3, 
-					ev.data.network.connid);
-				break;
-
-			default:
-				LOG("(net-srv) unhandled network event, %d\n", ev.kind);
-			}
-		}
-		else if (ev.category == EVENT_TARGET){
-			switch (ev.kind){
-				case TARGET_COMMAND_EXIT:
-					LOG("(net-srv) parent requested termination, giving up.\n");
-					return false;
-				break;
-
-				case TARGET_COMMAND_FDTRANSFER:
-					srvctx.tmphandle = frameserver_readhandle(&ev);
-				break;
-
-/*
- * ioevs[0] : 1, output (arcan -> frameserver) segment,
- *            implies parents wants to transfer to us.
- *            If we have a pending transfer already, 
- *            send a protocol error.
- *
- * ioevs[1] : tag, if we've submitted a request for a new segment,
- *            this tag will help us pin-point which client connection
- *            it was that was accepted ( or rejected )
- */
-				case TARGET_COMMAND_NEWSEGMENT:
-					net_newseg(lookup_connection(active_cons, nconns, 
-						ev.data.target.ioevs[1].iv), ev.data.target.ioevs[0].iv,
-						ev.data.target.message);
-					close(srvctx.tmphandle);
-				 srvctx.tmphandle	= 0;
-				break;
-				
-				case TARGET_COMMAND_REQFAIL:
-					LOG("(net-srv) client disallowed connection");
-				break;
-
-				case TARGET_COMMAND_STORE:
-/* lookup connection, set state_in or out "fd" member, then add 
- * support to populate on loop */
-					srvctx.tmphandle = 0;
-				break;
-
-				case TARGET_COMMAND_RESTORE:
-					srvctx.tmphandle = 0;
-				break;
-	
-				default:
-					LOG("(net-srv) unhandled target event: %d\n", ev.kind);	
-			}
-		}
-		else;
-
-	return true;
 }
 
 static void server_session(const char* host, int limit)
@@ -557,7 +621,7 @@ retry:
 			struct conn_state* state = cb;
 
 			if ((evs & APR_POLLIN) > 0)
-				res = state->validator(state);
+				res = state->buffer(state);
 
 /* will only be triggered intermittently, as event processing *MAY*
  * queue output to one or several connected clients, and until finally
