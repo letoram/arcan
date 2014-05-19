@@ -42,6 +42,7 @@
 static struct {
 /* SHM-API interface */
 	struct arcan_shmif_cont shmcont;
+
 	apr_socket_t* evsock; 
 	uint8_t* vidp, (* audp);
 	struct arcan_evctx inevq;
@@ -59,6 +60,38 @@ static struct {
 	struct conn_state conn;
 } clctx = {0};
 
+static bool queueout_data(struct conn_state* conn)
+{
+	if (conn->state_out.state == STATE_NONE)
+		return true;
+
+	if (conn->state_out.state == STATE_DATA){
+		abort();
+/* flush FD into outbuf at header ofset */
+	}
+	else if (conn->state_out.state == STATE_IMG){
+		size_t ntc = conn->state_out.lim - conn->state_out.ofs;
+		ntc = ntc > 32 * 1024 ? 32 * 1024 : ntc;
+		conn->state_out.ofs += ntc;
+
+		return conn->pack(&clctx.conn, TAG_STATE_DATABLOCK, 
+			ntc, (char*) conn->state_out.vidp + conn->state_out.ofs);
+	}
+
+/* ignore for now */
+	return true;
+}
+
+static void flushvid(struct conn_state* self)
+{
+	self->state_in.ctx.addr->vready = true;
+	arcan_shmif_signal(&self->state_in.ctx, SHMIF_SIGVID);
+	arcan_shmif_drop(&self->state_in.ctx);
+	self->state_in.state = STATE_NONE;
+	self->state_in.ofs = 0;
+	self->state_in.lim = 0;
+}
+
 /*
  * The core protocol dictates a few features like
  * keepalive, session re-keying etc. Additional
@@ -71,36 +104,94 @@ static struct {
  *
  */
 static bool client_decode(struct conn_state* self, 
-	enum net_tags tag, int len, char* val)
+	enum net_tags tag, size_t len, char* val)
 {
-	arcan_event outev = {0};
 	if (self->connstate != CONN_AUTHENTICATED){
 		LOG("(net-cl) permission error, block transfer to "
-			"an unauthenticated session is not permitted.");
+			"an unauthenticated session is not permitted.\n");
 		return false;
 	}
 
 	switch (tag){
+/* 
+ * there are two ways in which we can propagate information
+ * about an incoming image object, one is "in advance" by
+ * having the parent give us an input segment, then we resize
+ * that when we know the dimensions. The other is that we 
+ * explicitly request a new segment to draw into, and then
+ * we will have to wait for a response from the parent before
+ * moving on.
+ */
 	case TAG_STATE_IMGOBJ:
 		if (self->state_in.state == STATE_NONE){
-			outev.category = EVENT_EXTERNAL;
-			outev.kind = EVENT_EXTERNAL_NOTICE_SEGREQ;
-			arcan_event_enqueue(&clctx.outevq, &outev);
-			clctx.blocked = true;
+			if (len < 4) /*w, h, little-endian */
+				return false;
+	
+			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
+			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
+
+			printf("got request for image, %d x %d\n", desw, desh); 
+			if (self->state_in.ctx.addr){
+				if (!arcan_shmif_resize(&self->state_in.ctx, desw, desh)){
+					LOG("incoming data segment outside allowed dimensions (%d x %d)"
+						", terminating.\n", desw, desh);
+					return false;
+				}
+				self->state_in.state = STATE_IMG;
+			} 
+			else {
+				arcan_event outev = {
+					.kind = EVENT_EXTERNAL_NOTICE_SEGREQ,
+					.category = EVENT_EXTERNAL,
+					.data.external.noticereq.width = desw,
+					.data.external.noticereq.height = desh
+				};
+
+				arcan_event_enqueue(&clctx.outevq, &outev);
+				clctx.blocked = true;
+/* need to process the eventqueue here as there may be
+ * packets pending */
+			}
 		}
 	break;
 
 	case TAG_STATE_EOB:
 		if (self->state_in.state == STATE_IMG){
-			self->state_in.ctx.addr->vready = true;
-			arcan_shmif_signal(&self->state_in.ctx, SHMIF_SIGVID);
-			arcan_shmif_drop(&self->state_in.ctx);
-/* note: possible semaphore leak here */
+			flushvid(self);
 		}
 		else if (self->state_in.state == STATE_DATA){
 			close(self->state_in.fd);
 			self->state_in.fd = BADFD;
 		}
+	break;
+
+	case TAG_STATE_DATABLOCK:
+/* silent drop */
+		if (self->state_in.state == STATE_NONE){
+			return true; 
+		}
+/* streaming, no limit */
+		else if (self->state_in.state == STATE_DATA){
+			while(len > 0){
+				size_t nw = write(self->state_in.fd, val, len);
+				if (nw == -1 && (errno != EAGAIN || errno != EINTR))
+					break;
+				else 
+					continue;	
+
+				len -= nw;
+				val += nw;
+			}	
+		}
+		else if (self->state_in.state == STATE_IMG){
+			ssize_t ub = self->state_in.lim - self->state_in.ofs;
+			size_t ntw = ub > len ? len : ub; 
+		 	memcpy(self->state_in.vidp + self->state_in.ofs, val, ntw);	
+			self->state_in.ofs += ntw;
+			if (self->state_in.ofs == self->state_in.lim)
+				flushvid(self);
+		}
+		return true;
 	break;
 
 	case TAG_STATE_DATAOBJ:
@@ -113,23 +204,11 @@ static bool client_decode(struct conn_state* self,
 		else {
 /* need some message to hint that we have a state transfer incoming */
 		}
-	
+	break;	
 /* 
  * flush package, this could potentially be locked to the 
  * responsiveness of the recipient.
  */
-		while(len > 0){
-			size_t nw = write(self->state_in.fd, val, len);
-			if (nw == -1 && (errno != EAGAIN || errno != EINTR))
-					break;
-				else 
-					continue;	
-
-			len -= nw;
-			val += nw;
-		}
-	break;
-
 	default:
 	break;
 	}
@@ -142,8 +221,6 @@ static bool client_inevq_process(apr_socket_t* outconn)
 	arcan_event ev;
 	uint16_t msgsz = sizeof(ev.data.network.message) / 
 		sizeof(ev.data.network.message[0]);
-	char outbuf[ msgsz + 3];
-	outbuf[msgsz + 2] = 0;
 
 /* since we flush the entire eventqueue at once, it means that multiple
  * messages may possible be interleaved in one push (up to the 64k buffer)
@@ -168,12 +245,8 @@ static bool client_inevq_process(apr_socket_t* outconn)
 				if (strlen(ev.data.network.message) + 1 < msgsz)
 					msgsz = strlen(ev.data.network.message) + 1;
 
-				outbuf[0] = TAG_NETMSG;
-				outbuf[1] = msgsz;
-				outbuf[2] = msgsz >> 8;
-				memcpy(&outbuf[3], ev.data.network.message, msgsz);
-				if (!clctx.conn.queueout(&clctx.conn, outbuf, msgsz + 3))
-					return false;	
+				return clctx.conn.pack(&clctx.conn, 
+					TAG_NETMSG, msgsz, ev.data.network.message);
 			break;
 
 			case EVENT_NET_GRAPHREFRESH:
@@ -195,21 +268,23 @@ static bool client_inevq_process(apr_socket_t* outconn)
 			case TARGET_COMMAND_NEWSEGMENT:
 				net_newseg(&clctx.conn,	ev.data.target.ioevs[0].iv,
 					ev.data.target.message);
-				
-				if (ev.data.target.ioevs[0].iv == 1){
-					outbuf[0] = TAG_STATE_IMGOBJ;
-					outbuf[1] = 4;
-					outbuf[2] = 0;
-					outbuf[3] = clctx.conn.state_out.lim;
-					outbuf[4] = clctx.conn.state_out.lim >> 8;
-					outbuf[5] = clctx.conn.state_out.lim >> 16;
-					outbuf[6] = clctx.conn.state_out.lim >> 24;
-/* will start pushing next block */
-					while (!clctx.conn.queueout(&clctx.conn, outbuf, 7))
-						return false;
+			
+/* output type? assume transfer request */	
+				if (ev.data.target.ioevs[0].iv == 0){
+					char outbuf[4] = {
+						clctx.conn.state_out.ctx.addr->w,
+						clctx.conn.state_out.ctx.addr->w >> 8,
+						clctx.conn.state_out.ctx.addr->h,
+						clctx.conn.state_out.ctx.addr->h >> 8
+					};
+					clctx.conn.state_out.state = STATE_IMG;
+					return (clctx.conn.pack(
+						&clctx.conn, TAG_STATE_IMGOBJ, 4, outbuf));
 				} 
 				else {
-
+					if (clctx.blocked){
+						clctx.blocked = false;
+					}
 				}
 
 				close(clctx.tmphandle);
@@ -232,6 +307,7 @@ static bool client_inevq_process(apr_socket_t* outconn)
 			break;
 
 			case TARGET_COMMAND_STEPFRAME:
+				queueout_data(&clctx.conn);
 			break;
 
 			default:
@@ -451,13 +527,8 @@ void arcan_net_client_session(const char* shmkey,
 		.kind = EVENT_NET_CONNECTED
  	};
 
-	net_setup_cell(&clctx.conn, &clctx.outevq, clctx.pollset);
-	clctx.conn.inout = sock;
-	clctx.conn.decode = client_decode;
-
 	snprintf(ev.data.network.host.addr, 40, "%s", hoststr);
 	arcan_event_enqueue(&clctx.outevq, &ev);
-	clctx.conn.connstate = CONN_CONNECTED;
 
 /* 
  * setup a pollset for incoming / outgoing and for event notification,
@@ -483,7 +554,6 @@ void arcan_net_client_session(const char* shmkey,
 	}
 #endif
 	
-	apr_pollset_t* pset;
 	apr_pollfd_t pfd = {
 		.p = clctx.mempool,
 		.desc.s = sock,
@@ -492,6 +562,7 @@ void arcan_net_client_session(const char* shmkey,
 		.rtnevents = 0,
 		.client_data = &sock
 	};
+	clctx.conn.poll_state = pfd;
 
 	apr_pollfd_t epfd = {
 		.p = clctx.mempool,
@@ -508,16 +579,28 @@ void arcan_net_client_session(const char* shmkey,
     timeout = 1000;
 #endif
 
-	if (apr_pollset_create(&pset, 1, clctx.mempool, 0) != APR_SUCCESS){
+	if (apr_pollset_create(&clctx.pollset, 1, clctx.mempool, 0) != APR_SUCCESS){
 		LOG("(net) -- couldn't allocate pollset. Giving up.\n");
 		return;
 	}
 
 #ifndef _WIN32
-	apr_pollset_add(pset, &epfd);
+	apr_pollset_add(clctx.pollset, &epfd);
 #endif
+	apr_pollset_add(clctx.pollset, &clctx.conn.poll_state);
 
-	apr_pollset_add(pset, &pfd);
+/* setup client connection context, this rather awkward structure
+ * is to be able to re-use a lot of the server-side code */
+	net_setup_cell(&clctx.conn, &clctx.outevq, clctx.pollset);
+	clctx.conn.inout = sock;
+	clctx.conn.decode = client_decode;
+	clctx.conn.pack = net_pack_basic;
+	clctx.conn.buffer = net_buffer_basic;
+	clctx.conn.validator = net_validator_tlv;
+	clctx.conn.dispatch = net_dispatch_tlv;
+	clctx.conn.flushout = net_flushout_default;
+	clctx.conn.queueout = net_queueout_default;
+	clctx.conn.connstate = CONN_CONNECTED;
 
 /* main client loop */
 	while (true){
@@ -527,9 +610,13 @@ void arcan_net_client_session(const char* shmkey,
 			continue;
 		}
 
+		if (!queueout_data(&clctx.conn))
+			break;
+
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
-		apr_status_t status = apr_pollset_poll(pset, timeout, &pnum, &ret_pfd);
+		apr_status_t status = apr_pollset_poll(
+			clctx.pollset, timeout, &pnum, &ret_pfd);
 
 		if (status != APR_SUCCESS && status != APR_EINTR && status != APR_TIMEUP){
 			LOG("(net-cl) -- broken poll, giving up.\n");
@@ -550,7 +637,11 @@ void arcan_net_client_session(const char* shmkey,
 				if (ret_pfd[i].rtnevents & (APR_POLLHUP | APR_POLLERR | APR_POLLNVAL)){
 					LOG("(net-cl) -- poll on socket failed, shutting down.\n");
 				}
-				if (net_validator_tlv(&clctx.conn))
+
+				if (ret_pfd[i].rtnevents & APR_POLLOUT)
+					clctx.conn.flushout(&clctx.conn);
+
+				if (clctx.conn.buffer(&clctx.conn))
 					continue;
 					
 				arcan_event_enqueue(&clctx.outevq, &ev);

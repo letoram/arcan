@@ -380,6 +380,8 @@ typedef struct arcan_extevent {
 		struct {
 			uint32_t id;
 			uint8_t type;
+			uint16_t width;
+			uint16_t height;
 		} noticereq;
 
 		struct {
