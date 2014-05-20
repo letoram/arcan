@@ -390,6 +390,12 @@ arcan_frameserver* arcan_frameserver_spawn_subsegment(
 	}
 
 /*
+ * set these before pushing to the child to avoid a possible race 
+ */
+	newseg->shm.ptr->w = hintw;
+	newseg->shm.ptr->h = hinth;
+
+/*
  * Currently, we're reserving a rather aggressive amount of memory
  * for audio, even though it's likely that (especially for multiple-
  * segments) it will go by unused. For arcan->frameserver data transfers

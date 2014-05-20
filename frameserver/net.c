@@ -215,45 +215,6 @@ static void client_socket_close(struct conn_state* state)
 	arcan_event_enqueue(&srvctx.outevq, &rv);
 }
 
-static bool server_decode(struct conn_state* self, 
-	enum net_tags tag, size_t len, char* val)
-{
-	if (self->connstate != CONN_AUTHENTICATED){
-		LOG("(net-srv) permission error, block transfer to "
-			"an unauthenticated session is not permitted. ");
-		return false;
-	}
-	
-	switch (tag){
-		case TAG_STATE_IMGOBJ:
-			if (1){
-			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
-			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
-			GRAPH_EVENT("incoming image transfer (%d x %d) transfer on %d\n",
-				desw, desh, self->slot);
-			}
-		break;
-
-		case TAG_STATE_DATAOBJ:
-			GRAPH_EVENT("incoming state transfer on %d\n", self->slot);
-		break;
-
-		case TAG_STATE_EOB:
-			GRAPH_EVENT("block transfer completed\n");
-		break;
-
-		case TAG_STATE_DATABLOCK:
-			GRAPH_EVENT("incoming block of size %zu on %d\n", len, self->slot);
-		break;
-
-		default:
-			LOG("(net-srv) unhandled tag (%d)\n", tag);
-		break;
-	}
-
-	return true;	
-}
-
 static bool server_process_inevq(struct conn_state* active_cons, int nconns)
 {
 	arcan_event ev;
@@ -378,10 +339,10 @@ static void server_accept_connection(int limit, apr_socket_t* ear_sock,
 	active_cons[j].flushout  = net_flushout_default;
 	active_cons[j].queueout  = net_queueout_default;
 	active_cons[j].pack      = net_pack_basic;
-	active_cons[j].decode = server_decode; 
-	active_cons[j].connect_stamp = arcan_timemillis();
+	active_cons[j].decode    = net_hl_decode;
 	active_cons[j].connstate = CONN_CONNECTED;
-	active_cons[j].pollset = srvctx.pollset;
+	active_cons[j].pollset   = srvctx.pollset;
+	active_cons[j].connect_stamp = arcan_timemillis();
 
 	apr_pollfd_t* pfd = &active_cons[j].poll_state;
 

@@ -53,167 +53,37 @@ static struct {
 
 	file_handle tmphandle;
 
-/* if we're forced to wait for a 
- * response from the parent before proceeding */
-	bool blocked;
-
 	struct conn_state conn;
 } clctx = {0};
 
-static bool queueout_data(struct conn_state* conn)
+static ssize_t queueout_data(struct conn_state* conn)
 {
 	if (conn->state_out.state == STATE_NONE)
-		return true;
+		return 0;
+		
+	size_t ntc = conn->state_out.lim - conn->state_out.ofs;
 
 	if (conn->state_out.state == STATE_DATA){
 		abort();
 /* flush FD into outbuf at header ofset */
 	}
 	else if (conn->state_out.state == STATE_IMG){
-		size_t ntc = conn->state_out.lim - conn->state_out.ofs;
 		ntc = ntc > 32 * 1024 ? 32 * 1024 : ntc;
 		conn->state_out.ofs += ntc;
 
-		return conn->pack(&clctx.conn, TAG_STATE_DATABLOCK, 
-			ntc, (char*) conn->state_out.vidp + conn->state_out.ofs);
+		if (ntc == 0){
+			if (!conn->pack(&clctx.conn, TAG_STATE_EOB, 
+				0, (char*) conn->state_out.vidp))
+				return -1;
+		}
+		
+		if (!conn->pack(&clctx.conn, TAG_STATE_DATABLOCK, 
+			ntc, (char*) conn->state_out.vidp + conn->state_out.ofs))
+			return -1;
 	}
 
 /* ignore for now */
-	return true;
-}
-
-static void flushvid(struct conn_state* self)
-{
-	self->state_in.ctx.addr->vready = true;
-	arcan_shmif_signal(&self->state_in.ctx, SHMIF_SIGVID);
-	arcan_shmif_drop(&self->state_in.ctx);
-	self->state_in.state = STATE_NONE;
-	self->state_in.ofs = 0;
-	self->state_in.lim = 0;
-}
-
-/*
- * The core protocol dictates a few features like
- * keepalive, session re-keying etc. Additional
- * TLV- based features can be defined in the net.c
- * and net_cl.c.
- *
- * Here, we add to option to support IMGOBJ and
- * DATAOBJ, both which need the main process to 
- * provide us with extra resources to direct the data.
- *
- */
-static bool client_decode(struct conn_state* self, 
-	enum net_tags tag, size_t len, char* val)
-{
-	if (self->connstate != CONN_AUTHENTICATED){
-		LOG("(net-cl) permission error, block transfer to "
-			"an unauthenticated session is not permitted.\n");
-		return false;
-	}
-
-	switch (tag){
-/* 
- * there are two ways in which we can propagate information
- * about an incoming image object, one is "in advance" by
- * having the parent give us an input segment, then we resize
- * that when we know the dimensions. The other is that we 
- * explicitly request a new segment to draw into, and then
- * we will have to wait for a response from the parent before
- * moving on.
- */
-	case TAG_STATE_IMGOBJ:
-		if (self->state_in.state == STATE_NONE){
-			if (len < 4) /*w, h, little-endian */
-				return false;
-	
-			int desw = (int16_t)val[0] | (int16_t)val[1] << 8;
-			int desh = (int16_t)val[2] | (int16_t)val[3] << 8;
-
-			printf("got request for image, %d x %d\n", desw, desh); 
-			if (self->state_in.ctx.addr){
-				if (!arcan_shmif_resize(&self->state_in.ctx, desw, desh)){
-					LOG("incoming data segment outside allowed dimensions (%d x %d)"
-						", terminating.\n", desw, desh);
-					return false;
-				}
-				self->state_in.state = STATE_IMG;
-			} 
-			else {
-				arcan_event outev = {
-					.kind = EVENT_EXTERNAL_NOTICE_SEGREQ,
-					.category = EVENT_EXTERNAL,
-					.data.external.noticereq.width = desw,
-					.data.external.noticereq.height = desh
-				};
-
-				arcan_event_enqueue(&clctx.outevq, &outev);
-				clctx.blocked = true;
-/* need to process the eventqueue here as there may be
- * packets pending */
-			}
-		}
-	break;
-
-	case TAG_STATE_EOB:
-		if (self->state_in.state == STATE_IMG){
-			flushvid(self);
-		}
-		else if (self->state_in.state == STATE_DATA){
-			close(self->state_in.fd);
-			self->state_in.fd = BADFD;
-		}
-	break;
-
-	case TAG_STATE_DATABLOCK:
-/* silent drop */
-		if (self->state_in.state == STATE_NONE){
-			return true; 
-		}
-/* streaming, no limit */
-		else if (self->state_in.state == STATE_DATA){
-			while(len > 0){
-				size_t nw = write(self->state_in.fd, val, len);
-				if (nw == -1 && (errno != EAGAIN || errno != EINTR))
-					break;
-				else 
-					continue;	
-
-				len -= nw;
-				val += nw;
-			}	
-		}
-		else if (self->state_in.state == STATE_IMG){
-			ssize_t ub = self->state_in.lim - self->state_in.ofs;
-			size_t ntw = ub > len ? len : ub; 
-		 	memcpy(self->state_in.vidp + self->state_in.ofs, val, ntw);	
-			self->state_in.ofs += ntw;
-			if (self->state_in.ofs == self->state_in.lim)
-				flushvid(self);
-		}
-		return true;
-	break;
-
-	case TAG_STATE_DATAOBJ:
-		if (self->state_in.state == STATE_NONE){
-			return true; /* silent drop */
-		}
-		else if (self->state_in.state == STATE_IMG){
-			return false; /* protocol error */
-		}
-		else {
-/* need some message to hint that we have a state transfer incoming */
-		}
-	break;	
-/* 
- * flush package, this could potentially be locked to the 
- * responsiveness of the recipient.
- */
-	default:
-	break;
-	}
-	
-	return true;
+	return ntc;
 }
 
 static bool client_inevq_process(apr_socket_t* outconn)
@@ -282,8 +152,8 @@ static bool client_inevq_process(apr_socket_t* outconn)
 						&clctx.conn, TAG_STATE_IMGOBJ, 4, outbuf));
 				} 
 				else {
-					if (clctx.blocked){
-						clctx.blocked = false;
+					if (clctx.conn.blocked){
+						clctx.conn.blocked = false;
 					}
 				}
 
@@ -593,7 +463,7 @@ void arcan_net_client_session(const char* shmkey,
  * is to be able to re-use a lot of the server-side code */
 	net_setup_cell(&clctx.conn, &clctx.outevq, clctx.pollset);
 	clctx.conn.inout = sock;
-	clctx.conn.decode = client_decode;
+	clctx.conn.decode = net_hl_decode;
 	clctx.conn.pack = net_pack_basic;
 	clctx.conn.buffer = net_buffer_basic;
 	clctx.conn.validator = net_validator_tlv;
@@ -604,15 +474,18 @@ void arcan_net_client_session(const char* shmkey,
 
 /* main client loop */
 	while (true){
-		if (clctx.blocked){
+		if (clctx.conn.blocked){
 			if (!client_inevq_process(sock))
 				break;
 			continue;
 		}
 
-		if (!queueout_data(&clctx.conn))
+		ssize_t q_sz = queueout_data(&clctx.conn);
+		if (-1 == q_sz)
 			break;
-
+		else if (q_sz > 0)
+			continue;
+			
 		const apr_pollfd_t* ret_pfd;
 		apr_int32_t pnum;
 		apr_status_t status = apr_pollset_poll(
